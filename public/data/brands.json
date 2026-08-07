@@ -1,0 +1,274 @@
+{
+  "meta": {
+    "source": "SB Agency Brand Outreach — Master Contact Sheet",
+    "note": "Brand names and categories only. All contact data from the original sheet was discarded per instruction and will be re-derived from SponsorUnited.",
+    "totalBrands": 151,
+    "categories": 17
+  },
+
+  "categories": [
+    {
+      "key": "beverage",
+      "name": "Energy Drinks & Beverages",
+      "brands": [
+        { "name": "Celsius", "tier": "established" },
+        { "name": "Alani Nu", "tier": "growth" },
+        { "name": "Red Bull", "tier": "established" },
+        { "name": "Ghost Energy", "tier": "growth" },
+        { "name": "Prime Hydration", "tier": "growth" },
+        { "name": "Bloom Nutrition", "tier": "growth" },
+        { "name": "Gorgie", "tier": "emerging" },
+        { "name": "Update", "tier": "emerging", "verify": "brand identity unclear" },
+        { "name": "A1R Water", "tier": "emerging", "verify": "brand identity unclear" },
+        { "name": "k2o", "tier": "emerging", "verify": "brand identity unclear" }
+      ]
+    },
+    {
+      "key": "nicotine",
+      "name": "Nicotine & Alt-Tobacco",
+      "ageGate": 21,
+      "brands": [
+        { "name": "Zyn", "tier": "established", "parent": "Philip Morris" },
+        { "name": "Velo", "tier": "growth", "parent": "BAT" },
+        { "name": "On!", "tier": "growth", "parent": "Altria" },
+        { "name": "Rogue", "tier": "emerging" },
+        { "name": "Lucy", "tier": "emerging" }
+      ]
+    },
+    {
+      "key": "cpg",
+      "name": "Snacks & CPG Food",
+      "brands": [
+        { "name": "Quest Nutrition", "tier": "established" },
+        { "name": "David Protein", "tier": "growth" },
+        { "name": "Takis", "tier": "established" },
+        { "name": "Insomnia Cookies", "tier": "established" },
+        { "name": "Chomps", "tier": "growth" },
+        { "name": "Grillo's Pickles", "tier": "growth" },
+        { "name": "Good Culture", "tier": "growth" },
+        { "name": "SAUZ", "tier": "emerging" },
+        { "name": "Fruit Riot!", "tier": "emerging", "verify": "confirm domain" },
+        { "name": "Ice Cream For Bears", "tier": "emerging", "verify": "confirm domain" },
+        { "name": "Pistakio", "tier": "emerging", "verify": "confirm domain" },
+        { "name": "Yough!", "tier": "emerging", "verify": "confirm domain" },
+        { "name": "Good Girl Snacks", "tier": "emerging", "founderLed": true },
+        { "name": "Alec's Ice Cream", "tier": "emerging" },
+        { "name": "Better Sour", "tier": "emerging" },
+        { "name": "Hu", "tier": "growth", "parent": "Mondelez" }
+      ]
+    },
+    {
+      "key": "alcohol",
+      "name": "Alcohol & RTD",
+      "ageGate": 21,
+      "brands": [
+        { "name": "High Noon", "tier": "established", "parent": "E&J Gallo" },
+        { "name": "White Claw", "tier": "established", "parent": "Mark Anthony Brands" },
+        { "name": "Nutrl", "tier": "growth", "parent": "Anheuser-Busch" },
+        { "name": "Surfside", "tier": "growth" },
+        { "name": "BuzzBallz", "tier": "growth" },
+        { "name": "Mom Water", "tier": "emerging", "verify": "confirm domain" },
+        { "name": "SipMargs", "tier": "emerging", "verify": "confirm domain" },
+        { "name": "Sprinter", "tier": "emerging", "celebrity": "Blake Lively" },
+        { "name": "818 Tequila", "tier": "growth", "celebrity": "Kendall Jenner" },
+        { "name": "Loverboy", "tier": "emerging" }
+      ]
+    },
+    {
+      "key": "apparel",
+      "name": "Apparel, Fashion & Accessories",
+      "brands": [
+        { "name": "Chubbies", "tier": "growth" },
+        { "name": "Rhoback", "tier": "growth" },
+        { "name": "True Classic", "tier": "growth" },
+        { "name": "Gymshark", "tier": "established" },
+        { "name": "Vineyard Vines", "tier": "established" },
+        { "name": "Kulani Kinis", "tier": "emerging" },
+        { "name": "Revolve", "tier": "established" },
+        { "name": "Guess", "tier": "established" },
+        { "name": "Skims", "tier": "established" },
+        { "name": "Lululemon", "tier": "established" },
+        { "name": "goodr", "tier": "growth" },
+        { "name": "Pickle", "tier": "emerging", "verify": "clothing rental — confirm brand" }
+      ]
+    },
+    {
+      "key": "tech",
+      "name": "Tech & Gadgets",
+      "brands": [
+        { "name": "Anker", "tier": "established" },
+        { "name": "JBL", "tier": "established", "parent": "Harman" },
+        { "name": "Ray-Ban Meta", "tier": "established", "parent": "Meta" },
+        { "name": "Skullcandy", "tier": "growth" },
+        { "name": "Nothing", "tier": "emerging" },
+        { "name": "Canon", "tier": "established" },
+        { "name": "Sony", "tier": "established" },
+        { "name": "Casetify", "tier": "growth" },
+        { "name": "SharkNinja", "tier": "established" },
+        { "name": "Amazon", "tier": "established" }
+      ]
+    },
+    {
+      "key": "fintech",
+      "name": "Fintech & Money Apps",
+      "brands": [
+        { "name": "Robinhood", "tier": "established" },
+        { "name": "Cash App", "tier": "established", "parent": "Block" },
+        { "name": "SoFi", "tier": "established" },
+        { "name": "Coinbase", "tier": "established" },
+        { "name": "Chime", "tier": "established" }
+      ]
+    },
+    {
+      "key": "software",
+      "name": "AI & Software Tools",
+      "brands": [
+        { "name": "Perplexity", "tier": "growth" },
+        { "name": "Notion", "tier": "established" },
+        { "name": "Grammarly", "tier": "established" },
+        { "name": "OpenAI", "tier": "established" },
+        { "name": "Gamma", "tier": "emerging" },
+        { "name": "Google Workspace", "tier": "established" },
+        { "name": "Dropbox", "tier": "established" },
+        { "name": "Windscribe", "tier": "emerging" },
+        { "name": "Proton VPN", "tier": "growth" },
+        { "name": "Obscura VPN", "tier": "emerging", "verify": "confirm .net vs .com" }
+      ],
+      "removed": [
+        { "name": "Notion AI", "reason": "same company as Notion — merged to avoid duplicate outreach" }
+      ]
+    },
+    {
+      "key": "beauty",
+      "name": "Beauty, Grooming & Personal Care",
+      "brands": [
+        { "name": "Dr. Squatch", "tier": "established" },
+        { "name": "Manscaped", "tier": "growth" },
+        { "name": "e.l.f.", "tier": "established" },
+        { "name": "Native", "tier": "growth", "parent": "P&G" },
+        { "name": "Hims & Hers", "tier": "established", "note": "health claims need review" },
+        { "name": "Starface World", "tier": "growth" },
+        { "name": "Olive & June", "tier": "growth" },
+        { "name": "Topicals", "tier": "growth" },
+        { "name": "The Ordinary", "tier": "established", "parent": "DECIEM" },
+        { "name": "Vacation Sunscreen", "tier": "growth" },
+        { "name": "Beauty of Joseon", "tier": "growth" },
+        { "name": "Tower 28", "tier": "growth" },
+        { "name": "Summer Fridays", "tier": "growth" },
+        { "name": "Supergoop", "tier": "established" },
+        { "name": "Kiehl's", "tier": "established", "parent": "L'Oreal" },
+        { "name": "Sol de Janeiro", "tier": "established" }
+      ]
+    },
+    {
+      "key": "apps",
+      "name": "Dating, Social & Lifestyle Apps",
+      "brands": [
+        { "name": "Fizz", "tier": "emerging", "note": "college-only app — strongest category fit" },
+        { "name": "Hinge", "tier": "established", "parent": "Match Group" },
+        { "name": "Bumble", "tier": "established" },
+        { "name": "Partiful", "tier": "growth" },
+        { "name": "Yik Yak", "tier": "emerging" },
+        { "name": "Tinder", "tier": "established", "parent": "Match Group" },
+        { "name": "Raya", "tier": "emerging", "verify": "confirm domain" },
+        { "name": "Snapchat", "tier": "established" },
+        { "name": "BeReal", "tier": "growth" },
+        { "name": "LinkedIn", "tier": "established", "note": "daytime/career events only" },
+        { "name": "Posh", "tier": "growth" }
+      ]
+    },
+    {
+      "key": "betting",
+      "name": "Betting, Prediction Markets & DFS",
+      "ageGate": 21,
+      "note": "Real-money sportsbooks are 21+ and legal in ~30 states. Polymarket and Kalshi are 18+ prediction markets, different regulatory footing.",
+      "brands": [
+        { "name": "FanDuel", "tier": "established" },
+        { "name": "DraftKings", "tier": "established" },
+        { "name": "BetMGM", "tier": "established" },
+        { "name": "Caesars Sportsbook", "tier": "established" },
+        { "name": "Fanatics Sportsbook", "tier": "growth" },
+        { "name": "ESPN Bet", "tier": "growth", "parent": "Penn Entertainment" },
+        { "name": "bet365", "tier": "established" },
+        { "name": "Hard Rock Bet", "tier": "growth" },
+        { "name": "Fliff", "tier": "growth", "note": "sweepstakes model — widest eligibility" },
+        { "name": "Betr", "tier": "emerging" },
+        { "name": "Polymarket", "tier": "growth", "ageGate": 18 },
+        { "name": "Kalshi", "tier": "growth", "ageGate": 18 },
+        { "name": "PrizePicks", "tier": "established" },
+        { "name": "Underdog Fantasy", "tier": "growth" },
+        { "name": "Sleeper", "tier": "growth" }
+      ]
+    },
+    {
+      "key": "nightlife",
+      "name": "Nightlife & DJ Culture",
+      "note": "Highest hit rate — these already sponsor live events, so SponsorUnited should have real sponsorship contacts.",
+      "brands": [
+        { "name": "BeatBox Beverages", "tier": "growth", "ageGate": 21 },
+        { "name": "Happy Dad", "tier": "growth", "ageGate": 21 },
+        { "name": "Liquid Death", "tier": "established" },
+        { "name": "Govee", "tier": "growth" },
+        { "name": "Fujifilm Instax", "tier": "established" },
+        { "name": "Loop Earplugs", "tier": "growth" }
+      ]
+    },
+    {
+      "key": "wellness",
+      "name": "Health & Wellness",
+      "brands": [
+        { "name": "AG1", "tier": "established" },
+        { "name": "Vital Proteins", "tier": "established", "parent": "Nestle" },
+        { "name": "Liquid I.V.", "tier": "established" },
+        { "name": "LMNT", "tier": "growth" },
+        { "name": "Poppi", "tier": "established", "parent": "PepsiCo" },
+        { "name": "Lemme", "tier": "growth" },
+        { "name": "Thorne", "tier": "established" },
+        { "name": "Reale Actives", "tier": "emerging", "verify": "confirm domain" },
+        { "name": "Culture Pop Soda", "tier": "emerging" },
+        { "name": "Recess", "tier": "growth", "note": "non-hemp Mood line only; CBD line has state and venue restrictions" },
+        { "name": "Leisure Hydration", "tier": "emerging", "verify": "confirm domain" },
+        { "name": "Royal Honey", "tier": "emerging", "verify": "vet brand safety before contacting" }
+      ],
+      "removed": [
+        { "name": "Recess CBD", "reason": "same brand as Recess — merged" }
+      ]
+    },
+    {
+      "key": "qsr",
+      "name": "Food & QSR",
+      "brands": [
+        { "name": "McDonald's", "tier": "established", "note": "local franchise co-op is the realistic path" },
+        { "name": "Raising Cane's", "tier": "established" },
+        { "name": "Zack's Bees", "tier": "emerging", "verify": "brand identity unclear" }
+      ]
+    },
+    {
+      "key": "home",
+      "name": "Home, Lifestyle & Drinkware",
+      "brands": [
+        { "name": "Hydro Flask", "tier": "established", "parent": "Helen of Troy" },
+        { "name": "Takeya", "tier": "growth" },
+        { "name": "IKEA", "tier": "established" },
+        { "name": "Costa Farms", "tier": "growth" }
+      ]
+    },
+    {
+      "key": "entertainment",
+      "name": "Entertainment & Sports",
+      "brands": [
+        { "name": "UFC", "tier": "established", "parent": "TKO Group" }
+      ]
+    },
+    {
+      "key": "unresolved",
+      "name": "Needs Clarification",
+      "note": "Cannot be researched until you confirm what these are.",
+      "brands": [
+        { "name": "Cloud", "verify": "vodka? water? an app?" },
+        { "name": "KyMI", "verify": "confirm brand" },
+        { "name": "Tempted", "verify": "confirm brand" }
+      ]
+    }
+  ]
+}
