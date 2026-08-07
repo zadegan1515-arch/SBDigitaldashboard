@@ -1,0 +1,289 @@
+// SB Agency — Command Center
+// Sponsor prospecting + LinkedIn outreach
+//
+// Standalone. Does not touch the sb-crm database.
+// Designed so a link to sb-crm (shows, chapters) can be added later
+// via nullable reference fields rather than a restructure.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Vercel's Neon integration sets both of these automatically.
+  // DATABASE_URL is pooled (PgBouncer) — fine for queries.
+  // Schema changes need a direct connection; pooled ones fail here.
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// ---------------------------------------------------------------
+// Brands
+// ---------------------------------------------------------------
+
+model Brand {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  website   String?
+  hq        String?
+
+  // "beverage", "cpg", "apparel", "nicotine", "betting"...
+  category  String?
+  // "emerging" | "growth" | "established" — drives prioritisation
+  tier      String?
+
+  // Where this record came from: "sponsorunited" | "manual" | "import"
+  source        String   @default("manual")
+  // SponsorUnited profile ULID, so we can re-sync without duplicating
+  externalId    String?  @unique
+  // Their public LinkedIn company page (distinct from a person's profile)
+  linkedinUrl   String?
+
+  notes     String?
+
+  contacts  Contact[]
+  targets   Target[]
+  partner   Partner?
+  deals     Deal[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+  @@index([tier])
+}
+
+// ---------------------------------------------------------------
+// People at brands
+// ---------------------------------------------------------------
+
+model Contact {
+  id       String  @id @default(cuid())
+  brandId  String
+  brand    Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  name     String
+  title    String?
+  email    String?
+  phone    String?
+  location String?
+
+  // The field this whole Salesforce exercise exists to carry.
+  linkedinUrl String?
+  twitterUrl  String?
+
+  source     String  @default("manual")
+  externalId String? @unique
+
+  // True when the title suggests they buy sponsorships —
+  // "College & Field Marketing", "Sports Marketing", "Partnerships".
+  // Set by a heuristic on import, editable by hand.
+  isDecisionMaker Boolean @default(false)
+
+  targets  Target[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([brandId])
+  @@index([isDecisionMaker])
+}
+
+// ---------------------------------------------------------------
+// Outreach queue — one row per person we intend to contact
+// ---------------------------------------------------------------
+
+enum TargetStatus {
+  queued
+  drafted
+  sent
+  replied
+  converted
+  declined
+  dead
+}
+
+model Target {
+  id        String @id @default(cuid())
+  brandId   String
+  brand     Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  status    TargetStatus @default(queued)
+
+  // Which rep sends this. Currently always Zach.
+  assignedTo String?
+
+  // 0-100. Drives the "Today" queue ordering so the best targets
+  // go out first — matters because one LinkedIn account caps
+  // near 100 connection requests a week.
+  fitScore  Int  @default(50)
+
+  // Set when it lands in a day's send list, so "Today" is stable
+  // and doesn't reshuffle mid-session.
+  queuedFor DateTime?
+  sentAt    DateTime?
+  repliedAt DateTime?
+
+  notes     String?
+
+  drafts    Draft[]
+  events    TargetEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([contactId])
+  @@index([status])
+  @@index([queuedFor])
+  @@index([fitScore])
+}
+
+// ---------------------------------------------------------------
+// Generated messages
+// ---------------------------------------------------------------
+
+model Draft {
+  id       String @id @default(cuid())
+  targetId String
+  target   Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  // "identity" (lead with who we are + proof)
+  // "question" (lead with a specific ask)
+  variant  String
+
+  // LinkedIn caps the connection note at 300 chars and
+  // the first message at 600. Enforced in the UI, not here,
+  // so a long draft is still saved and visibly over.
+  connectionNote String
+  firstMessage   String
+
+  // Which voice profile generated it
+  voice     String?
+  model     String?
+  // Whether a human edited it before sending — the signal we need
+  // to improve the prompts over time.
+  editedByHuman Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([targetId])
+}
+
+// ---------------------------------------------------------------
+// Audit trail — every status change, so we can measure what works
+// ---------------------------------------------------------------
+
+model TargetEvent {
+  id       String @id @default(cuid())
+  targetId String
+  target   Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  // "queued" | "drafted" | "sent" | "replied" | "note"
+  kind      String
+  fromStatus String?
+  toStatus   String?
+  actor      String?
+  detail     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([targetId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------
+// CRM — brands that became relationships
+// ---------------------------------------------------------------
+
+enum Lifecycle {
+  prospect
+  in_network
+  active_partner
+  past_partner
+}
+
+model Partner {
+  id      String @id @default(cuid())
+  brandId String @unique
+  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  lifecycle   Lifecycle @default(prospect)
+  // "title sponsor" | "sampling" | "product seeding"...
+  relationship String?
+  owner        String?
+  notes        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([lifecycle])
+}
+
+// ---------------------------------------------------------------
+// Pipeline
+// ---------------------------------------------------------------
+
+model Deal {
+  id      String @id @default(cuid())
+  brandId String
+  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  name  String
+  // "conversation" | "proposal" | "verbal" | "closed" | "lost"
+  stage String @default("conversation")
+  // Cents, not dollars — never store money as a float.
+  valueCents Int @default(0)
+
+  // Free text for now. When we link to sb-crm this becomes a
+  // real reference to a show or season rather than a string.
+  eventRef  String?
+  closeDate DateTime?
+  notes     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([stage])
+  @@index([brandId])
+}
+
+// ---------------------------------------------------------------
+// Voice profiles — how drafts learn to sound like a real person
+// ---------------------------------------------------------------
+
+model Voice {
+  id   String @id @default(cuid())
+  name String @unique   // "Zach"
+  role String?          // shown in signatures
+
+  // Distilled instructions built from real sample messages.
+  // Empty until Zach's messages arrive — drafts read generic until then.
+  guidelines String?
+  // Verbatim examples. The actual source of the voice.
+  samples    String[]
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------
+// Todos
+// ---------------------------------------------------------------
+
+model Todo {
+  id       String  @id @default(cuid())
+  text     String
+  category String?
+  owner    String?
+  done     Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([done])
+}
