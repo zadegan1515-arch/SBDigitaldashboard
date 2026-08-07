@@ -91,7 +91,15 @@ const handlers: Record<string, Handler> = {
       counts,
       totalTargets: Object.values(counts).reduce((a, b) => a + b, 0),
       pipelineCents: pipeline._sum.valueCents ?? 0,
-      categories: categories.map(c => ({ key: c.category, count: c._count })),
+      categories: categories
+        .map(c => ({ key: c.category, count: c._count }))
+        // Biggest categories first; the "unresolved" junk drawer always
+        // last — three unidentifiable brands shouldn't lead the page.
+        .sort((a, b) => {
+          if (a.key === 'unresolved') return 1
+          if (b.key === 'unresolved') return -1
+          return b.count - a.count
+        }),
       todos,
     }
   },
@@ -330,6 +338,42 @@ const handlers: Record<string, Handler> = {
     }
 
     return result
+  },
+
+  // -------- brands --------
+
+  // Powers the category drill-down. Counts come from the DB rather than
+  // being computed client-side, so the numbers can't drift.
+  async listBrands({ category, search, take = 500 }: any) {
+    const brands = await prisma.brand.findMany({
+      where: {
+        ...(category && category !== 'all' ? { category } : {}),
+        ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
+      },
+      include: {
+        _count: { select: { contacts: true, targets: true } },
+        contacts: {
+          where: { isDecisionMaker: true },
+          select: { name: true, title: true, linkedinUrl: true },
+          take: 3,
+        },
+      },
+      take,
+    })
+
+    // Brands with contacts first — those are the actionable ones.
+    // Then by tier, emerging ahead of established: hungrier for
+    // awareness, faster to say yes.
+    const tierRank: Record<string, number> = { emerging: 0, growth: 1, established: 2 }
+    return brands.sort((a, b) => {
+      const aHas = a._count.contacts > 0 ? 0 : 1
+      const bHas = b._count.contacts > 0 ? 0 : 1
+      if (aHas !== bHas) return aHas - bHas
+      const at = tierRank[a.tier ?? ''] ?? 3
+      const bt = tierRank[b.tier ?? ''] ?? 3
+      if (at !== bt) return at - bt
+      return a.name.localeCompare(b.name)
+    })
   },
 
   // -------- crm + pipeline --------
