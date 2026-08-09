@@ -11,11 +11,12 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  // Vercel's Neon integration sets both of these automatically.
-  // DATABASE_URL is pooled (PgBouncer) — fine for queries.
-  // Schema changes need a direct connection; pooled ones fail here.
-  url       = env("DATABASE_URL")
-  directUrl = env("DATABASE_URL_UNPOOLED")
+  url      = env("DATABASE_URL")
+  // directUrl deliberately omitted. It requires DATABASE_URL_UNPOOLED,
+  // which isn't reliably set on these Vercel projects — a missing one
+  // fails the build with P1012 before anything else runs. sb-crm hit
+  // this same wall and removed it for the same reason.
+  // Neon's pooled endpoint handles `prisma db push` fine.
 }
 
 // ---------------------------------------------------------------
