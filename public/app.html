@@ -115,6 +115,7 @@
     </div>
     <button class="nav-item active" data-view="dashboard">Dashboard</button>
     <button class="nav-item" data-view="outreach">Outreach <span class="n" id="nav-outreach"></span></button>
+    <button class="nav-item" data-view="shows">Shows <span class="n" id="nav-shows"></span></button>
     <button class="nav-item" data-view="pipeline">Pipeline</button>
     <button class="nav-item" data-view="crm">CRM</button>
     <div class="nav-label">Categories</div>
@@ -139,6 +140,18 @@
       <h1 id="brands-title">Brands</h1>
       <div class="sub" id="brands-sub">Loading…</div>
       <div style="margin-top:22px" id="brands-list"></div>
+    </section>
+
+    <!-- SHOWS — read live from sb-crm -->
+    <section class="view page" id="shows">
+      <div class="eyebrow">Shows</div>
+      <h1>Confirmed shows</h1>
+      <div class="sub" id="shows-sub">Loading…</div>
+      <div class="chips" style="margin-top:22px">
+        <button class="chip active" data-shows="all">All</button>
+        <button class="chip" data-shows="unsold">Unsold only</button>
+      </div>
+      <div id="shows-list"></div>
     </section>
 
     <!-- OUTREACH -->
@@ -313,7 +326,14 @@ function loadBrands(category) {
         ? '<a class="btn-ghost" target="_blank" rel="noopener" href="https://pro.sponsorunited.com/dashboard">Find contacts ↗</a>'
         : '';
 
-      return '<div class="target">' +
+      // Company LinkedIn page — a route forward for brands with no
+      // named contact yet. Guessed from the name, so it's a search
+      // rather than a direct link we might get wrong.
+      var li = '<a class="btn-ghost" target="_blank" rel="noopener" href="' +
+        'https://www.linkedin.com/search/results/companies/?keywords=' +
+        encodeURIComponent(b.name) + '">in ↗</a>';
+
+      return '<div class="target" data-brand="' + esc(b.id) + '" data-name="' + esc(b.name) + '">' +
         '<div class="t-main">' +
           '<div class="t-line"><span class="t-brand">' + esc(b.name) + '</span>' +
             (b.tier ? '<span class="t-sep">·</span><span class="t-title">' + esc(b.tier) + '</span>' : '') +
@@ -323,13 +343,139 @@ function loadBrands(category) {
         '<div class="t-actions">' +
           '<span class="fit" title="contacts">' + b._count.contacts + ' contacts</span>' +
           (b._count.targets ? '<span class="status">' + b._count.targets + ' queued</span>' : '') +
-          research +
+          li + research +
+          '<button class="btn-ghost" data-act="shows">+ Shows</button>' +
         '</div>' +
       '</div>';
     }).join('') || '<div class="panel"><div class="empty"><h3>No brands here</h3></div></div>';
   }).catch(function (e) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
       esc(e.message) + '</p></div></div>';
+  });
+}
+
+// --- shows -----------------------------------------------------
+
+var SHOWS_CACHE = null, showsFilter = 'all';
+
+function showLine(s) {
+  var bits = [s.school, s.chapter].filter(Boolean).join(' · ');
+  var meta = [s.eventDate, s.artist, s.attendance ? s.attendance + ' expected' : null,
+              s.venue, s.rep ? 'rep ' + s.rep : null].filter(Boolean).join(' · ');
+  var sponsors = (s.sponsors || []).map(function (sp) {
+    return '<span class="status ' + (sp.status === 'confirmed' ? 'replied' : 'drafted') + '">' +
+      esc(sp.brandName) + '</span>';
+  }).join(' ');
+  return '<div class="target">' +
+    '<div class="t-main">' +
+      '<div class="t-line"><span class="t-brand">' + esc(bits) + '</span></div>' +
+      '<div class="t-meta"><span>' + esc(meta || s.stage) + '</span></div>' +
+    '</div>' +
+    '<div class="t-actions">' + (sponsors ||
+      '<span style="font-size:12px;color:var(--ink-3)">unsold</span>') + '</div>' +
+  '</div>';
+}
+
+function loadShows() {
+  var box = document.getElementById('shows-list');
+  box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+
+  return api('listShows', { onlyUnsold: showsFilter === 'unsold' }).then(function (d) {
+    SHOWS_CACHE = d;
+    if (!d.connected) {
+      document.getElementById('shows-sub').textContent = 'Not connected to the CRM';
+      box.innerHTML = '<div class="panel"><div class="empty"><h3>CRM not connected</h3>' +
+        '<p>Add CRM_DATABASE_URL in Vercel and redeploy. Until then shows can\'t be read.</p></div></div>';
+      return;
+    }
+    document.getElementById('shows-sub').textContent =
+      d.total + ' confirmed shows · ' + d.unsold + ' with no sponsor yet';
+    document.getElementById('nav-shows').textContent = d.total || '';
+    box.innerHTML = d.shows.length ? d.shows.map(showLine).join('')
+      : '<div class="panel"><div class="empty"><h3>No shows at stage 10+</h3>' +
+        '<p>Shows appear here once a lead reaches Contract Signed in sb-crm.</p></div></div>';
+  }).catch(function (e) {
+    box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
+      esc(e.message) + '</p></div></div>';
+  });
+}
+
+// --- attach shows to a brand -----------------------------------
+
+function openShowPicker(brandId, brandName, anchor) {
+  var existing = document.getElementById('show-picker');
+  if (existing) existing.remove();
+
+  var wrap = document.createElement('div');
+  wrap.id = 'show-picker';
+  wrap.className = 'panel';
+  wrap.style.cssText = 'margin:-4px 0 10px;padding:16px 18px';
+  wrap.innerHTML = '<div style="font-size:13px;font-weight:600;margin-bottom:10px">' +
+    'Attach ' + esc(brandName) + ' to shows</div><div>Loading…</div>';
+  anchor.parentNode.insertBefore(wrap, anchor.nextSibling);
+
+  api('listShows', {}).then(function (d) {
+    if (!d.connected) {
+      wrap.innerHTML = '<div style="font-size:13px;color:var(--ink-2)">' +
+        'CRM not connected — add CRM_DATABASE_URL in Vercel first.</div>';
+      return;
+    }
+    if (!d.shows.length) {
+      wrap.innerHTML = '<div style="font-size:13px;color:var(--ink-2)">No confirmed shows yet.</div>';
+      return;
+    }
+    wrap.innerHTML =
+      '<div style="font-size:13px;font-weight:600;margin-bottom:10px">Attach ' +
+        esc(brandName) + ' to shows</div>' +
+      '<div style="max-height:280px;overflow:auto;border:1px solid var(--border-soft);' +
+        'border-radius:8px;padding:8px 10px;background:var(--surface-2)">' +
+      d.shows.map(function (s) {
+        var already = (s.sponsors || []).some(function (sp) { return sp.brandId === brandId; });
+        var label = [s.school, s.chapter].filter(Boolean).join(' · ');
+        var meta = [s.eventDate, s.artist].filter(Boolean).join(' · ');
+        return '<label style="display:flex;gap:9px;align-items:flex-start;padding:5px 0;' +
+          'font-size:13px;cursor:pointer">' +
+          '<input type="checkbox" data-show="' + esc(s.id) + '"' + (already ? ' checked' : '') +
+          ' style="margin-top:3px">' +
+          '<span><span style="font-weight:600">' + esc(label) + '</span>' +
+          (meta ? '<span style="color:var(--ink-3)"> — ' + esc(meta) + '</span>' : '') + '</span></label>';
+      }).join('') + '</div>' +
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">' +
+        '<input id="sp-value" type="text" placeholder="Value per show, e.g. 5000" ' +
+          'class="field-box" style="width:190px;padding:7px 10px;font-size:13px">' +
+        '<input id="sp-deliv" type="text" placeholder="Deliverables (sampling, banner…)" ' +
+          'class="field-box" style="flex:1;min-width:200px;padding:7px 10px;font-size:13px">' +
+        '<select id="sp-status" class="field-box" style="padding:7px 10px;font-size:13px">' +
+          '<option value="proposed">Proposed</option>' +
+          '<option value="confirmed">Confirmed</option>' +
+        '</select>' +
+        '<button class="btn-draft" id="sp-save">Attach</button>' +
+        '<button class="btn-ghost" id="sp-cancel">Cancel</button>' +
+      '</div>';
+
+    wrap.querySelector('#sp-cancel').onclick = function () { wrap.remove(); };
+    wrap.querySelector('#sp-save').onclick = function () {
+      var picked = [].slice.call(wrap.querySelectorAll('input[data-show]:checked'))
+        .map(function (cb) {
+          var s = d.shows.filter(function (x) { return x.id === cb.getAttribute('data-show'); })[0];
+          return { id: s.id, school: s.school, chapter: s.chapter, artist: s.artist, eventDate: s.eventDate };
+        });
+      if (!picked.length) { toast('Pick at least one show'); return; }
+      var dollars = parseFloat(wrap.querySelector('#sp-value').value || '0') || 0;
+      this.disabled = true;
+      this.innerHTML = '<span class="spinner"></span> Saving…';
+      api('attachShows', {
+        brandId: brandId,
+        shows: picked,
+        status: wrap.querySelector('#sp-status').value,
+        // Dollars in the box, cents in the database — money is never a float.
+        valueCents: Math.round(dollars * 100),
+        deliverables: wrap.querySelector('#sp-deliv').value || null
+      }).then(function (r) {
+        toast('Attached to ' + r.attached + ' show' + (r.attached === 1 ? '' : 's'));
+        wrap.remove();
+      }).catch(function (e) { toast(e.message); });
+    };
   });
 }
 
@@ -458,6 +604,7 @@ document.querySelectorAll('.nav-item[data-view]').forEach(function (b) {
     showView(id);
     b.classList.add('active');
     if (id === 'outreach') loadOutreach();
+    if (id === 'shows') loadShows();
     if (id === 'pipeline') loadPipeline();
     if (id === 'crm') loadCRM();
   });
@@ -467,6 +614,23 @@ document.querySelectorAll('.nav-item[data-view]').forEach(function (b) {
 document.querySelector('.sidebar').addEventListener('click', function (e) {
   var btn = e.target.closest('.nav-item[data-category]');
   if (btn) loadBrands(btn.getAttribute('data-category'));
+});
+
+// Brand rows are re-rendered on every category change — delegate.
+document.getElementById('brands-list').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-act="shows"]');
+  if (!btn) return;
+  var row = btn.closest('.target');
+  openShowPicker(row.getAttribute('data-brand'), row.getAttribute('data-name'), row);
+});
+
+document.querySelectorAll('.chip[data-shows]').forEach(function (c) {
+  c.addEventListener('click', function () {
+    document.querySelectorAll('.chip[data-shows]').forEach(function (x) { x.classList.remove('active'); });
+    c.classList.add('active');
+    showsFilter = c.getAttribute('data-shows');
+    loadShows();
+  });
 });
 
 // Same for the dashboard cards.
