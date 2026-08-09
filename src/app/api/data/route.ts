@@ -15,6 +15,33 @@ import Anthropic from '@anthropic-ai/sdk'
 
 const prisma = new PrismaClient()
 
+// Read-only connection to sb-crm's database. Used ONLY for $queryRaw —
+// the models in this project's schema don't describe sb-crm's tables,
+// and nothing here ever writes. sb-crm remains the owner of that data.
+//
+// Falls back to the local URL so the app still builds and runs if
+// CRM_DATABASE_URL isn't set; the shows list just comes back empty.
+const crm = new PrismaClient({
+  datasources: { db: { url: process.env.CRM_DATABASE_URL ?? process.env.DATABASE_URL } },
+})
+
+const CRM_CONNECTED = Boolean(process.env.CRM_DATABASE_URL)
+
+// sb-crm stores stages as strings copied verbatim from the sheet:
+// "01 - New Lead" … "14 - COMPLETED", plus "LOST" and "CANCELED".
+//
+// Sellable inventory = contract signed (10) but not yet played (14).
+// Parsing the leading number rather than matching exact names means
+// renaming stage 11 or 12 in the sheet won't silently break this.
+const SHOW_STAGE_MIN = 10
+const SHOW_STAGE_MAX = 13
+
+function stageNumber(stage: string | null): number | null {
+  if (!stage) return null
+  const m = stage.match(/^\s*(\d{1,2})/)
+  return m ? parseInt(m[1], 10) : null
+}
+
 // LinkedIn's hard limits. Enforced at generation time so drafts
 // come back usable rather than needing a trim.
 const CONNECTION_NOTE_MAX = 300
@@ -87,6 +114,33 @@ const handlers: Record<string, Handler> = {
     const counts: Record<string, number> = {}
     for (const row of byStatus) counts[row.status] = row._count
 
+    // Sellable inventory: confirmed shows, and how many still have no
+    // sponsor attached. Wrapped in try/catch so a CRM connection problem
+    // degrades to "no data" rather than blanking the whole dashboard.
+    let showStats: { connected: boolean; total: number; unsold: number } =
+      { connected: false, total: 0, unsold: 0 }
+    if (CRM_CONNECTED) {
+      try {
+        const rows: any[] = await crm.$queryRawUnsafe(
+          `SELECT "id", "stage" FROM "Lead" WHERE "stage" IS NOT NULL LIMIT 2000`
+        )
+        const ids = rows
+          .filter(r => {
+            const n = stageNumber(r.stage)
+            return n !== null && n >= SHOW_STAGE_MIN && n <= SHOW_STAGE_MAX
+          })
+          .map(r => r.id)
+        const sold = await prisma.showSponsor.findMany({
+          where: { crmLeadId: { in: ids } },
+          select: { crmLeadId: true },
+          distinct: ['crmLeadId'],
+        })
+        showStats = { connected: true, total: ids.length, unsold: ids.length - sold.length }
+      } catch (err) {
+        console.error('[getDashboard] CRM read failed', err)
+      }
+    }
+
     return {
       counts,
       totalTargets: Object.values(counts).reduce((a, b) => a + b, 0),
@@ -100,6 +154,7 @@ const handlers: Record<string, Handler> = {
           if (b.key === 'unresolved') return -1
           return b.count - a.count
         }),
+      shows: showStats,
       todos,
     }
   },
@@ -373,6 +428,110 @@ const handlers: Record<string, Handler> = {
       const bt = tierRank[b.tier ?? ''] ?? 3
       if (at !== bt) return at - bt
       return a.name.localeCompare(b.name)
+    })
+  },
+
+  // -------- shows (read live from sb-crm) --------
+
+  // Confirmed, not-yet-played shows — the inventory you can sell against.
+  // Read-only against sb-crm. Never writes.
+  async listShows({ search, onlyUnsold = false }: any) {
+    if (!CRM_CONNECTED) {
+      return { connected: false, shows: [] }
+    }
+
+    // Raw SQL because this project's Prisma schema doesn't model sb-crm's
+    // tables. Quoted identifiers because Prisma creates them case-sensitive.
+    const rows: any[] = await crm.$queryRawUnsafe(`
+      SELECT l."id", l."stage", l."schoolRaw", l."chapterRaw", l."artist",
+             l."rep", l."eventDate", l."venueName", l."attendance",
+             l."eventType", l."ticketing", s."name" AS "schoolName",
+             s."city", s."state"
+      FROM "Lead" l
+      LEFT JOIN "School" s ON s."id" = l."schoolId"
+      WHERE l."stage" IS NOT NULL
+      ORDER BY l."updatedAt" DESC
+      LIMIT 2000
+    `)
+
+    const sellable = rows.filter(r => {
+      const n = stageNumber(r.stage)
+      return n !== null && n >= SHOW_STAGE_MIN && n <= SHOW_STAGE_MAX
+    })
+
+    // Which of these already have a sponsor attached, and who.
+    const links = await prisma.showSponsor.findMany({
+      where: { crmLeadId: { in: sellable.map(r => r.id) } },
+      include: { brand: { select: { id: true, name: true } } },
+    })
+    const byLead: Record<string, any[]> = {}
+    for (const link of links) (byLead[link.crmLeadId] ??= []).push(link)
+
+    let shows = sellable.map(r => ({
+      id: r.id,
+      stage: r.stage,
+      school: r.schoolName || r.schoolRaw,
+      chapter: r.chapterRaw,
+      artist: r.artist,
+      rep: r.rep,
+      eventDate: r.eventDate,
+      venue: r.venueName,
+      attendance: r.attendance,
+      eventType: r.eventType,
+      ticketing: r.ticketing,
+      city: r.city,
+      state: r.state,
+      sponsors: (byLead[r.id] ?? []).map(l => ({
+        brandId: l.brand.id, brandName: l.brand.name, status: l.status,
+      })),
+    }))
+
+    if (search) {
+      const q = String(search).toLowerCase()
+      shows = shows.filter(s =>
+        [s.school, s.chapter, s.artist, s.venue].some(v => v && String(v).toLowerCase().includes(q))
+      )
+    }
+    if (onlyUnsold) shows = shows.filter(s => s.sponsors.length === 0)
+
+    return {
+      connected: true,
+      total: shows.length,
+      unsold: shows.filter(s => s.sponsors.length === 0).length,
+      shows,
+    }
+  },
+
+  // Attach a brand to one or more shows. Idempotent — re-attaching
+  // updates rather than erroring on the unique constraint.
+  async attachShows({ brandId, shows, status = 'proposed', valueCents = 0, deliverables }: any) {
+    const results = []
+    for (const s of shows) {
+      results.push(await prisma.showSponsor.upsert({
+        where: { brandId_crmLeadId: { brandId, crmLeadId: s.id } },
+        create: {
+          brandId, crmLeadId: s.id,
+          school: s.school ?? null, chapter: s.chapter ?? null,
+          artist: s.artist ?? null, eventDate: s.eventDate ?? null,
+          status, valueCents, deliverables: deliverables ?? null,
+        },
+        update: { status, valueCents, deliverables: deliverables ?? null },
+      }))
+    }
+    return { attached: results.length }
+  },
+
+  async detachShow({ brandId, crmLeadId }: any) {
+    await prisma.showSponsor.delete({
+      where: { brandId_crmLeadId: { brandId, crmLeadId } },
+    })
+    return { ok: true }
+  },
+
+  async listBrandShows({ brandId }: any) {
+    return prisma.showSponsor.findMany({
+      where: { brandId },
+      orderBy: { createdAt: 'desc' },
     })
   },
 
