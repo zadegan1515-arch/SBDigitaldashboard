@@ -45,6 +45,7 @@ model Brand {
   contacts  Contact[]
   targets   Target[]
   partner   Partner?
+  shows     ShowSponsor[]
   deals     Deal[]
 
   createdAt DateTime @default(now())
@@ -269,6 +270,52 @@ model Voice {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------
+// Sponsor ↔ Show
+// ---------------------------------------------------------------
+//
+// Shows are NOT stored here. They live in sb-crm's Lead table and are
+// read live over a second, read-only connection — so a stage change
+// there shows up here instantly and there's no sync job to drift.
+//
+// This table holds only the link. crmLeadId is sb-crm's Lead.id, kept
+// as a plain string since there's no foreign key across databases.
+
+model ShowSponsor {
+  id      String @id @default(cuid())
+  brandId String
+  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  crmLeadId String
+
+  // Copies taken at attach time. If the show is later deleted or
+  // renamed in sb-crm, this still reads sensibly instead of becoming
+  // an orphaned ID.
+  school    String?
+  chapter   String?
+  artist    String?
+  eventDate String?
+
+  // proposed  — pitched, not agreed
+  // confirmed — brand has agreed to sponsor this show
+  // declined  — brand passed on this one
+  status     String @default("proposed")
+  valueCents Int    @default(0)
+
+  // What the brand actually gets. Varies per show — sampling at one,
+  // stage banner at another — so it lives on the link, not the brand.
+  deliverables String?
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One row per brand per show. Attaching twice is always a mistake.
+  @@unique([brandId, crmLeadId])
+  @@index([crmLeadId])
+  @@index([status])
 }
 
 // ---------------------------------------------------------------
