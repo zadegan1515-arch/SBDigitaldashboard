@@ -27,19 +27,28 @@ const crm = new PrismaClient({
 
 const CRM_CONNECTED = Boolean(process.env.CRM_DATABASE_URL)
 
-// sb-crm stores stages as strings copied verbatim from the sheet:
-// "01 - New Lead" … "14 - COMPLETED", plus "LOST" and "CANCELED".
+// Confirmed shows live in TWO tables with two different vocabularies.
+// These values were read off the live database, not guessed from the
+// schema — an earlier version matched "10 - Contract Signed", a stage
+// that doesn't exist in the real data, and silently under-reported.
 //
-// Sellable inventory = contract signed (10) but not yet played (14).
-// Parsing the leading number rather than matching exact names means
-// renaming stage 11 or 12 in the sheet won't silently break this.
-const SHOW_STAGE_MIN = 10
-const SHOW_STAGE_MAX = 13
+//   Lead.stage  = "13 - CONFIRMED"                  (20 rows)
+//   Deal.status = "Offer Confirmed" | "Signed"      (35 rows, season "current")
+//
+// Deliberately excluded: Lead "12 - Formal Offer Sent" and Deal
+// "Offer Out" (offer made, not accepted); "Declined Pivot",
+// "Canceled", "Refund client", "Rescheduled to Fall"; and seasons
+// "2425" / "2526", which have already been played.
+const LEAD_CONFIRMED_STAGE = '13 - CONFIRMED'
+const DEAL_CONFIRMED_STATUS = ['Offer Confirmed', 'Signed']
+const DEAL_CURRENT_SEASON = 'current'
 
-function stageNumber(stage: string | null): number | null {
-  if (!stage) return null
-  const m = stage.match(/^\s*(\d{1,2})/)
-  return m ? parseInt(m[1], 10) : null
+// A booking can exist in both tables. Key on school + chapter + date
+// so it appears once. Loose normalisation because these are free-text
+// fields typed by six different reps.
+function showKey(school: string | null, chapter: string | null, date: string | null): string {
+  const norm = (v: string | null) => (v ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  return [norm(school), norm(chapter), norm(date)].join('|')
 }
 
 // LinkedIn's hard limits. Enforced at generation time so drafts
@@ -121,15 +130,27 @@ const handlers: Record<string, Handler> = {
       { connected: false, total: 0, unsold: 0 }
     if (CRM_CONNECTED) {
       try {
-        const rows: any[] = await crm.$queryRawUnsafe(
-          `SELECT "id", "stage" FROM "Lead" WHERE "stage" IS NOT NULL LIMIT 2000`
-        )
-        const ids = rows
-          .filter(r => {
-            const n = stageNumber(r.stage)
-            return n !== null && n >= SHOW_STAGE_MIN && n <= SHOW_STAGE_MAX
-          })
-          .map(r => r.id)
+        // Same two-table union as listShows, deduped the same way, so the
+        // dashboard count can never disagree with the Shows tab.
+        const rows: any[] = await crm.$queryRawUnsafe(`
+          SELECT l."id", l."schoolRaw", l."chapterRaw", l."eventDate",
+                 s."name" AS "schoolName"
+          FROM "Lead" l LEFT JOIN "School" s ON s."id" = l."schoolId"
+          WHERE l."stage" = $1
+          UNION ALL
+          SELECT d."id", d."schoolRaw", d."chapterRaw", d."eventDate",
+                 s."name" AS "schoolName"
+          FROM "Deal" d LEFT JOIN "School" s ON s."id" = d."schoolId"
+          WHERE d."season" = $2 AND d."status" = ANY($3::text[])
+        `, LEAD_CONFIRMED_STAGE, DEAL_CURRENT_SEASON, DEAL_CONFIRMED_STATUS)
+
+        const byKey = new Map<string, string>()
+        for (const r of rows) {
+          const key = showKey(r.schoolName || r.schoolRaw, r.chapterRaw, r.eventDate)
+          if (!byKey.has(key)) byKey.set(key, r.id)
+        }
+        const ids = [...byKey.values()]
+
         const sold = await prisma.showSponsor.findMany({
           where: { crmLeadId: { in: ids } },
           select: { crmLeadId: true },
@@ -442,22 +463,39 @@ const handlers: Record<string, Handler> = {
 
     // Raw SQL because this project's Prisma schema doesn't model sb-crm's
     // tables. Quoted identifiers because Prisma creates them case-sensitive.
+    // UNION because confirmed shows live in both Lead and Deal.
     const rows: any[] = await crm.$queryRawUnsafe(`
-      SELECT l."id", l."stage", l."schoolRaw", l."chapterRaw", l."artist",
-             l."rep", l."eventDate", l."venueName", l."attendance",
-             l."eventType", l."ticketing", s."name" AS "schoolName",
-             s."city", s."state"
+      SELECT 'lead' AS "src", l."id", l."stage" AS "state",
+             l."schoolRaw", l."chapterRaw", l."artist", l."rep",
+             l."eventDate", l."venueName", l."attendance",
+             l."eventType", l."ticketing",
+             s."name" AS "schoolName", s."city", s."state"
       FROM "Lead" l
       LEFT JOIN "School" s ON s."id" = l."schoolId"
-      WHERE l."stage" IS NOT NULL
-      ORDER BY l."updatedAt" DESC
-      LIMIT 2000
-    `)
+      WHERE l."stage" = $1
 
-    const sellable = rows.filter(r => {
-      const n = stageNumber(r.stage)
-      return n !== null && n >= SHOW_STAGE_MIN && n <= SHOW_STAGE_MAX
-    })
+      UNION ALL
+
+      SELECT 'deal' AS "src", d."id", d."status" AS "state",
+             d."schoolRaw", d."chapterRaw", d."artist", d."rep",
+             d."eventDate", NULL AS "venueName", NULL AS "attendance",
+             NULL AS "eventType", NULL AS "ticketing",
+             s."name" AS "schoolName", s."city", s."state"
+      FROM "Deal" d
+      LEFT JOIN "School" s ON s."id" = d."schoolId"
+      WHERE d."season" = $2 AND d."status" = ANY($3::text[])
+    `, LEAD_CONFIRMED_STAGE, DEAL_CURRENT_SEASON, DEAL_CONFIRMED_STATUS)
+
+    // A booking can appear in both tables. Keep one row per real show,
+    // preferring the Lead record since it carries venue and attendance —
+    // the two fields a sponsor actually asks about.
+    const seen = new Map<string, any>()
+    for (const r of rows) {
+      const key = showKey(r.schoolName || r.schoolRaw, r.chapterRaw, r.eventDate)
+      const existing = seen.get(key)
+      if (!existing || (existing.src === 'deal' && r.src === 'lead')) seen.set(key, r)
+    }
+    const sellable = [...seen.values()]
 
     // Which of these already have a sponsor attached, and who.
     const links = await prisma.showSponsor.findMany({
@@ -469,7 +507,7 @@ const handlers: Record<string, Handler> = {
 
     let shows = sellable.map(r => ({
       id: r.id,
-      stage: r.stage,
+      stage: r.state,
       school: r.schoolName || r.schoolRaw,
       chapter: r.chapterRaw,
       artist: r.artist,
