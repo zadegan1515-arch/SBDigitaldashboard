@@ -11,7 +11,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient, TargetStatus } from '@prisma/client'
+import { getServerSession } from 'next-auth'
 import Anthropic from '@anthropic-ai/sdk'
+import { authOptions } from '@/lib/auth'
 
 const prisma = new PrismaClient()
 
@@ -60,6 +62,101 @@ const FIRST_MESSAGE_MAX = 600
 // Ten a day keeps a comfortable margin under that.
 const DAILY_SEND_LIMIT = 10
 
+// Vercel functions run in UTC, so a naive setHours(0,0,0,0) makes "today"
+// start at 7 or 8pm the previous evening for anyone on the east coast —
+// which silently handed out a second day's queue every evening.
+const WORK_TZ = 'America/New_York'
+
+function startOfLocalDay(now: Date = new Date()): Date {
+  // Find today's date in WORK_TZ, then search for the UTC instant whose
+  // local rendering is midnight on that date. Subtracting elapsed
+  // wall-clock time is simpler but wrong on the two DST changeover days,
+  // when the offset at midnight differs from the offset now.
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: WORK_TZ,
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false,
+  })
+  const read = (d: Date) => {
+    const p = fmt.formatToParts(d)
+    const g = (t: string) => p.find(x => x.type === t)?.value ?? '0'
+    return { ymd: `${g('year')}-${g('month')}-${g('day')}`, hour: Number(g('hour')) % 24 }
+  }
+  const today = read(now).ymd
+  const [y, m, d] = today.split('-').map(Number)
+  // US timezones sit between UTC-4 and UTC-10; scan the plausible range.
+  for (let offset = 0; offset <= 14; offset++) {
+    const candidate = new Date(Date.UTC(y, m - 1, d, offset))
+    const r = read(candidate)
+    if (r.ymd === today && r.hour === 0) return candidate
+  }
+  // Unreachable for real timezones, but never let the queue die on it.
+  const fallback = new Date(now)
+  fallback.setUTCHours(0, 0, 0, 0)
+  return fallback
+}
+
+// Seed list for the owner dropdown. Not a whitelist — listOwners unions
+// this with every distinct owner already in the data, so adding a person
+// is just assigning them something, not editing this file.
+const SEED_OWNERS = ['Leo', 'Zach', 'Elizabeth']
+
+// The category vocabulary the UI knows how to render. Auto-categorisation
+// must return one of these — a made-up key would render as a raw string
+// and drop the brand into an unlabelled bucket.
+const CATEGORY_KEYS = [
+  'beverage', 'nicotine', 'cpg', 'alcohol', 'apparel', 'tech', 'fintech',
+  'software', 'beauty', 'apps', 'betting', 'nightlife', 'wellness',
+  'qsr', 'home', 'entertainment', 'unresolved',
+] as const
+
+const TIER_KEYS = ['emerging', 'growth', 'established'] as const
+
+// Which Claude model writes the drafts.
+//
+// This was hardcoded to 'claude-sonnet-4-6', which is not a model ID the
+// API currently accepts — every "✦ Draft" click would have returned a
+// 404 from Anthropic. Set ANTHROPIC_MODEL in Vercel to change it without
+// touching this file; the fallbacks below cover the ID being retired
+// later, since a model going away should degrade rather than break the
+// one feature the app exists for.
+const DRAFT_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5'
+const MODEL_FALLBACKS = ['claude-sonnet-5', 'claude-haiku-4-5']
+
+// Tries DRAFT_MODEL, then each fallback, but only when the failure looks
+// like "that model doesn't exist". A rate limit or a bad key should
+// surface as itself, not be retried against three models in a row.
+async function askClaude(prompt: string, maxTokens: number): Promise<{ text: string; model: string }> {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  const candidates = [DRAFT_MODEL, ...MODEL_FALLBACKS.filter(m => m !== DRAFT_MODEL)]
+
+  let lastErr: any = null
+  for (const model of candidates) {
+    try {
+      const res = await anthropic.messages.create({
+        model,
+        max_tokens: maxTokens,
+        messages: [{ role: 'user', content: prompt }],
+      })
+      const block = res.content.find(b => b.type === 'text')
+      return { text: block && 'text' in block ? block.text : '', model }
+    } catch (err: any) {
+      lastErr = err
+      const notFound = err?.status === 404 || /model/i.test(err?.message ?? '')
+      if (!notFound) throw err
+      console.warn(`[askClaude] model ${model} rejected, trying next`, err?.message)
+    }
+  }
+  throw lastErr ?? new Error('No usable Claude model')
+}
+
+// A sponsorship's status drives its pipeline stage. Kept as a map rather
+// than inline so the two vocabularies can diverge later without hunting.
+const SPONSOR_STAGE: Record<string, string> = {
+  proposed: 'proposal',
+  confirmed: 'closed',
+  declined: 'lost',
+}
+
 type Handler = (args: any) => Promise<any>
 
 // ---------------------------------------------------------------
@@ -102,6 +199,148 @@ function looksLikeDecisionMaker(title: string | null): boolean {
 }
 
 // ---------------------------------------------------------------
+// Categorisation
+// ---------------------------------------------------------------
+
+// Keyword fallback. Deliberately conservative — it would rather return
+// "unresolved" and let a human decide than confidently file a brand
+// under the wrong category, because a miscategorised brand is invisible
+// (nobody browses the category it landed in looking for it).
+const CATEGORY_HINTS: Array<[RegExp, string]> = [
+  [/energy drink|seltzer water|sparkling water|hydration|electrolyte|soda|coffee|tea\b|juice/i, 'beverage'],
+  [/nicotine|pouch|vape|tobacco|zyn/i, 'nicotine'],
+  [/vodka|tequila|whiskey|beer|hard seltzer|rtd|spirits|brewing|distill/i, 'alcohol'],
+  [/snack|protein bar|jerky|chips|candy|cereal|granola/i, 'cpg'],
+  [/apparel|clothing|streetwear|sneaker|footwear|hoodie|denim/i, 'apparel'],
+  [/sportsbook|betting|dfs|parlay|casino/i, 'betting'],
+  [/bank|card|invest|trading|crypto|payments|fintech/i, 'fintech'],
+  [/dating|social app|messaging app/i, 'apps'],
+  [/skincare|grooming|deodorant|fragrance|cosmetic|beauty|haircare/i, 'beauty'],
+  [/supplement|creatine|fitness|gym|recovery|sleep|wellness|vitamin/i, 'wellness'],
+  [/pizza|burger|chicken|taco|restaurant|delivery|qsr|fast food/i, 'qsr'],
+  [/tumbler|drinkware|cooler|bottle|furniture|bedding|home/i, 'home'],
+  [/headphone|speaker|camera|charger|laptop|phone|gadget/i, 'tech'],
+  [/\bai\b|software|saas|platform|app builder/i, 'software'],
+  [/festival|concert|nightclub|dj\b|rave|edm/i, 'nightlife'],
+  [/label|studio|streaming|sports team|league|esports/i, 'entertainment'],
+]
+
+function guessCategory(name: string, hint?: string | null): string {
+  const text = `${name} ${hint ?? ''}`
+  for (const [pattern, key] of CATEGORY_HINTS) {
+    if (pattern.test(text)) return key
+  }
+  return 'unresolved'
+}
+
+// Asks Claude to place a brand, then validates the answer against the
+// known vocabulary. An unrecognised category falls back to the keyword
+// guess rather than being written through — the model returning
+// something plausible-but-unknown is the failure mode to guard against.
+async function inferCategory(name: string, hint?: string | null): Promise<{
+  category: string
+  tier: string | null
+  confidence: string
+  reasoning: string
+  method: 'claude' | 'keywords'
+}> {
+  const fallback = () => ({
+    category: guessCategory(name, hint),
+    tier: null,
+    confidence: 'low',
+    reasoning: 'Matched on keywords — no model call.',
+    method: 'keywords' as const,
+  })
+
+  if (!process.env.ANTHROPIC_API_KEY) return fallback()
+
+  try {
+    const res = await askClaude(`SB Agency books artists and DJs for fraternity and sorority events and sells
+sponsorships against those shows. Place this brand in the sponsor-prospecting taxonomy.
+
+Brand: ${name}${hint ? `\nContext supplied by the user: ${hint}` : ''}
+
+Categories (choose exactly one key):
+${CATEGORY_KEYS.join(', ')}
+
+Use "unresolved" if you are not reasonably sure which brand this is, or if
+the name is ambiguous. Do not guess between two plausible companies.
+
+Tier, by how established the brand is with US college-age consumers:
+  emerging     — young, small budget, moving fast
+  growth       — scaling, has a real marketing team
+  established  — national, large budget, slow process
+
+Return ONLY minified JSON, no markdown fence:
+{"category":"<key>","tier":"<tier or null>","confidence":"high|medium|low","reasoning":"<one short sentence>"}`, 400)
+
+    const match = res.text.match(/\{[\s\S]*\}/)
+    if (!match) return fallback()
+
+    const parsed = JSON.parse(match[0])
+    const category = (CATEGORY_KEYS as readonly string[]).includes(parsed.category)
+      ? parsed.category
+      : guessCategory(name, hint)
+    const tier = (TIER_KEYS as readonly string[]).includes(parsed.tier) ? parsed.tier : null
+
+    return {
+      category,
+      tier,
+      confidence: ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'low',
+      reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning.slice(0, 240) : '',
+      method: 'claude',
+    }
+  } catch (err) {
+    // A categorisation failure must never block adding a brand.
+    console.error('[inferCategory] falling back to keywords', err)
+    return fallback()
+  }
+}
+
+// ---------------------------------------------------------------
+// Sponsorship → pipeline deal
+// ---------------------------------------------------------------
+
+// Every sponsorship attachment mirrors into exactly one Deal, so the
+// pipeline is a real total rather than something that has to be kept up
+// by hand. Deals created this way carry source="sponsorship" and are
+// rewritten on each edit; detaching cascades the delete.
+async function syncSponsorDeal(sponsorId: string) {
+  const s = await prisma.showSponsor.findUnique({
+    where: { id: sponsorId },
+    include: { brand: { select: { name: true } } },
+  })
+  if (!s) return null
+
+  const where = [s.school, s.chapter].filter(Boolean).join(' ')
+  const eventRef = [where, s.eventDate].filter(Boolean).join(' · ') || 'Unspecified show'
+  const name = `${s.brand.name} — ${where || 'show'}`
+
+  return prisma.deal.upsert({
+    where: { showSponsorId: s.id },
+    create: {
+      brandId: s.brandId,
+      showSponsorId: s.id,
+      name,
+      stage: SPONSOR_STAGE[s.status] ?? 'proposal',
+      valueCents: s.valueCents,
+      eventRef,
+      owner: s.owner,
+      source: 'sponsorship',
+      notes: s.deliverables,
+    },
+    update: {
+      name,
+      stage: SPONSOR_STAGE[s.status] ?? 'proposal',
+      valueCents: s.valueCents,
+      eventRef,
+      owner: s.owner,
+      notes: s.deliverables,
+    },
+  })
+}
+
+// ---------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------
 
@@ -110,7 +349,7 @@ const handlers: Record<string, Handler> = {
   // -------- dashboard --------
 
   async getDashboard() {
-    const [byStatus, categories, pipeline, todos] = await Promise.all([
+    const [byStatus, categories, pipeline, todos, sponsorAgg, byOwner] = await Promise.all([
       prisma.target.groupBy({ by: ['status'], _count: true }),
       prisma.brand.groupBy({ by: ['category'], _count: true }),
       prisma.deal.aggregate({
@@ -118,10 +357,36 @@ const handlers: Record<string, Handler> = {
         where: { stage: { notIn: ['closed', 'lost'] } },
       }),
       prisma.todo.findMany({ where: { done: false }, orderBy: { createdAt: 'desc' }, take: 25 }),
+      // Sponsorship money, split by status. This is a SEPARATE revenue
+      // line from booking revenue — what a chapter pays for the artist
+      // lives in sb-crm and is deliberately never added to these numbers.
+      prisma.showSponsor.groupBy({
+        by: ['status'],
+        _sum: { valueCents: true },
+        _count: true,
+      }),
+      prisma.showSponsor.groupBy({
+        by: ['owner'],
+        _sum: { valueCents: true },
+        _count: true,
+        where: { status: 'confirmed' },
+      }),
     ])
 
     const counts: Record<string, number> = {}
     for (const row of byStatus) counts[row.status] = row._count
+
+    const sponsorship = { confirmedCents: 0, proposedCents: 0, confirmedCount: 0, proposedCount: 0 }
+    for (const row of sponsorAgg) {
+      const cents = row._sum.valueCents ?? 0
+      if (row.status === 'confirmed') {
+        sponsorship.confirmedCents = cents
+        sponsorship.confirmedCount = row._count
+      } else if (row.status === 'proposed') {
+        sponsorship.proposedCents = cents
+        sponsorship.proposedCount = row._count
+      }
+    }
 
     // Sellable inventory: confirmed shows, and how many still have no
     // sponsor attached. Wrapped in try/catch so a CRM connection problem
@@ -176,44 +441,77 @@ const handlers: Record<string, Handler> = {
           return b.count - a.count
         }),
       shows: showStats,
+      sponsorship,
+      byOwner: byOwner
+        .map(o => ({
+          owner: o.owner ?? 'Unassigned',
+          count: o._count,
+          cents: o._sum.valueCents ?? 0,
+        }))
+        .sort((a, b) => b.cents - a.cents),
       todos,
     }
   },
 
   // -------- outreach queue --------
 
-  // The day's send list. Locked once built so it doesn't reshuffle
-  // underneath you mid-session.
+  // The day's send list.
+  //
+  // The budget is DAILY_SEND_LIMIT actual sends per day, counted from
+  // sentAt — not "ten rows stamped once". Two earlier bugs lived here:
+  // marking all ten sent immediately handed out ten more (so the limit
+  // capped nothing), and anything stamped but not sent yesterday matched
+  // neither branch and vanished from the queue forever.
+  //
+  // Now: unsent work carries over first, and new targets only top up
+  // whatever room is left in today's budget.
   async getTodayQueue() {
-    const startOfDay = new Date()
-    startOfDay.setHours(0, 0, 0, 0)
+    const startOfDay = startOfLocalDay()
 
-    const already = await prisma.target.findMany({
-      where: { queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] } },
-      include: { brand: true, contact: true, drafts: { orderBy: { createdAt: 'desc' } } },
-      orderBy: { fitScore: 'desc' },
-    })
-    if (already.length > 0) return already
+    const sentToday = await prisma.target.count({ where: { sentAt: { gte: startOfDay } } })
+    const room = Math.max(0, DAILY_SEND_LIMIT - sentToday)
+    if (room === 0) return []
 
-    // Nothing locked in yet — pick today's batch by fit.
-    const picks = await prisma.target.findMany({
-      where: { status: 'queued', queuedFor: null },
+    const include = {
+      brand: true,
+      contact: true,
+      // Capped: "Redraft" appends two more rows each time, and without a
+      // take the row grows a new pair of panels on every click.
+      drafts: { orderBy: { createdAt: 'desc' as const }, take: 2 },
+    }
+
+    // Already stamped and still not sent — yesterday's leftovers included.
+    const carried = await prisma.target.findMany({
+      where: { queuedFor: { not: null }, status: { in: ['queued', 'drafted'] } },
+      include,
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
-      take: DAILY_SEND_LIMIT,
+      take: room,
+    })
+    if (carried.length >= room) return carried
+
+    // Includes 'drafted': drafting from the All-targets tab sets the
+    // status without stamping queuedFor, and those rows used to match
+    // neither branch and never surface in Today again.
+    const picks = await prisma.target.findMany({
+      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null },
+      orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
+      take: room - carried.length,
       select: { id: true },
     })
-    if (picks.length === 0) return []
+    if (picks.length === 0) return carried
 
     await prisma.target.updateMany({
       where: { id: { in: picks.map(p => p.id) } },
       data: { queuedFor: new Date() },
     })
 
-    return prisma.target.findMany({
+    const fresh = await prisma.target.findMany({
       where: { id: { in: picks.map(p => p.id) } },
-      include: { brand: true, contact: true, drafts: { orderBy: { createdAt: 'desc' } } },
+      include,
       orderBy: { fitScore: 'desc' },
     })
+
+    return [...carried, ...fresh].sort((a, b) => b.fitScore - a.fitScore)
   },
 
   async listTargets({ status, category, search, take = 200 }: any) {
@@ -283,20 +581,16 @@ const handlers: Record<string, Handler> = {
     })
     if (!target) throw new Error('Target not found')
 
+    if (!process.env.ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY is not set in Vercel — drafting is off.')
+    }
+
     const voice = await prisma.voice.findFirst({ where: { active: true } })
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
     const drafts = []
     for (const variant of variants) {
-      const prompt = buildPrompt(target, variant, voice)
-      const res = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }],
-      })
-
-      const text = res.content.find(b => b.type === 'text')
-      const parsed = parseDraft(text && 'text' in text ? text.text : '')
+      const res = await askClaude(buildPrompt(target, variant, voice), 1000)
+      const parsed = parseDraft(res.text)
       if (!parsed) continue
 
       drafts.push(await prisma.draft.create({
@@ -306,7 +600,9 @@ const handlers: Record<string, Handler> = {
           connectionNote: parsed.connectionNote,
           firstMessage: parsed.firstMessage,
           voice: voice?.name ?? null,
-          model: 'claude-sonnet-4-6',
+          // Record which model actually answered, not which one we asked
+          // for — they differ when a fallback kicks in.
+          model: res.model,
         },
       }))
     }
@@ -364,9 +660,17 @@ const handlers: Record<string, Handler> = {
   // Bulk-loads contacts pulled from SponsorUnited, creating a queued
   // target for anyone who looks like a decision maker.
   async importContacts({ rows }: any) {
-    const result = { brandsCreated: 0, contactsCreated: 0, targetsCreated: 0, skipped: 0 }
+    const result = {
+      brandsCreated: 0, contactsCreated: 0, targetsCreated: 0, skipped: 0,
+      failed: 0, errors: [] as string[],
+    }
 
     for (const row of rows) {
+      // Per-row, because one bad row must not abandon the rest halfway
+      // through. Contact.externalId is unique, so the same SponsorUnited
+      // person listed under two brands used to throw P2002 and kill the
+      // whole import with some rows already written.
+      try {
       if (!row.brandName || !row.name) { result.skipped++; continue }
 
       let brand = await prisma.brand.findUnique({ where: { name: row.brandName } })
@@ -410,6 +714,12 @@ const handlers: Record<string, Handler> = {
           },
         })
         result.targetsCreated++
+      }
+      } catch (err: any) {
+        result.failed++
+        if (result.errors.length < 20) {
+          result.errors.push(`${row.brandName} / ${row.name}: ${err?.message ?? 'unknown error'}`)
+        }
       }
     }
 
@@ -469,7 +779,7 @@ const handlers: Record<string, Handler> = {
              l."schoolRaw", l."chapterRaw", l."artist", l."rep",
              l."eventDate", l."venueName", l."attendance",
              l."eventType", l."ticketing",
-             s."name" AS "schoolName", s."city", s."state"
+             s."name" AS "schoolName", s."city", s."state" AS "schoolState"
       FROM "Lead" l
       LEFT JOIN "School" s ON s."id" = l."schoolId"
       WHERE l."stage" = $1
@@ -480,7 +790,7 @@ const handlers: Record<string, Handler> = {
              d."schoolRaw", d."chapterRaw", d."artist", d."rep",
              d."eventDate", NULL AS "venueName", NULL AS "attendance",
              NULL AS "eventType", NULL AS "ticketing",
-             s."name" AS "schoolName", s."city", s."state"
+             s."name" AS "schoolName", s."city", s."state" AS "schoolState"
       FROM "Deal" d
       LEFT JOIN "School" s ON s."id" = d."schoolId"
       WHERE d."season" = $2 AND d."status" = ANY($3::text[])
@@ -518,9 +828,10 @@ const handlers: Record<string, Handler> = {
       eventType: r.eventType,
       ticketing: r.ticketing,
       city: r.city,
-      state: r.state,
+      state: r.schoolState,
       sponsors: (byLead[r.id] ?? []).map(l => ({
         brandId: l.brand.id, brandName: l.brand.name, status: l.status,
+        valueCents: l.valueCents,
       })),
     }))
 
@@ -542,24 +853,40 @@ const handlers: Record<string, Handler> = {
 
   // Attach a brand to one or more shows. Idempotent — re-attaching
   // updates rather than erroring on the unique constraint.
-  async attachShows({ brandId, shows, status = 'proposed', valueCents = 0, deliverables }: any) {
+  //
+  // Each attachment mirrors into a pipeline Deal, so Pipeline fills in
+  // by itself instead of needing the same numbers typed twice.
+  async attachShows({ brandId, shows, status = 'proposed', valueCents = 0, deliverables, owner }: any) {
     const results = []
     for (const s of shows) {
-      results.push(await prisma.showSponsor.upsert({
+      const row = await prisma.showSponsor.upsert({
         where: { brandId_crmLeadId: { brandId, crmLeadId: s.id } },
         create: {
           brandId, crmLeadId: s.id,
           school: s.school ?? null, chapter: s.chapter ?? null,
           artist: s.artist ?? null, eventDate: s.eventDate ?? null,
           status, valueCents, deliverables: deliverables ?? null,
+          owner: owner ?? null,
         },
-        update: { status, valueCents, deliverables: deliverables ?? null },
-      }))
+        update: { status, valueCents, deliverables: deliverables ?? null, owner: owner ?? null },
+      })
+      await syncSponsorDeal(row.id)
+      results.push(row)
     }
+
+    // A brand you're attaching to shows is at minimum in the network.
+    // Only ever upgrades — never demotes an existing partner record.
+    await prisma.partner.upsert({
+      where: { brandId },
+      create: { brandId, lifecycle: status === 'confirmed' ? 'active_partner' : 'in_network', owner: owner ?? null },
+      update: status === 'confirmed' ? { lifecycle: 'active_partner' } : {},
+    })
+
     return { attached: results.length }
   },
 
   async detachShow({ brandId, crmLeadId }: any) {
+    // The Deal cascades away with it — see the relation on Deal.
     await prisma.showSponsor.delete({
       where: { brandId_crmLeadId: { brandId, crmLeadId } },
     })
@@ -573,6 +900,281 @@ const handlers: Record<string, Handler> = {
     })
   },
 
+  // -------- sponsorships ledger --------
+
+  // Every brand↔show link in one place, which is the record that didn't
+  // exist before: you could create an attachment but never see them all.
+  async listSponsorships({ status = 'all', brandId, owner, q, take = 500 }: any) {
+    const rows = await prisma.showSponsor.findMany({
+      where: {
+        ...(status && status !== 'all' ? { status } : {}),
+        ...(brandId ? { brandId } : {}),
+        ...(owner && owner !== 'all' ? { owner } : {}),
+        ...(q
+          ? {
+              OR: [
+                { school: { contains: q, mode: 'insensitive' } },
+                { chapter: { contains: q, mode: 'insensitive' } },
+                { artist: { contains: q, mode: 'insensitive' } },
+                { brand: { name: { contains: q, mode: 'insensitive' } } },
+              ],
+            }
+          : {}),
+      },
+      include: { brand: { select: { id: true, name: true, category: true, tier: true } } },
+      orderBy: [{ createdAt: 'desc' }],
+      take,
+    })
+
+    // Totals over the FILTERED set, so the number under the heading
+    // always describes what's actually on screen.
+    const totals = { all: 0, confirmed: 0, proposed: 0, declined: 0 }
+    for (const r of rows) {
+      totals.all += r.valueCents
+      if (r.status in totals) totals[r.status as 'confirmed' | 'proposed' | 'declined'] += r.valueCents
+    }
+
+    return { rows, count: rows.length, totals }
+  },
+
+  async updateSponsorship({ id, status, valueCents, deliverables, notes, owner }: any) {
+    const row = await prisma.showSponsor.update({
+      where: { id },
+      data: {
+        ...(status !== undefined ? { status } : {}),
+        ...(valueCents !== undefined ? { valueCents } : {}),
+        ...(deliverables !== undefined ? { deliverables } : {}),
+        ...(notes !== undefined ? { notes } : {}),
+        ...(owner !== undefined ? { owner } : {}),
+      },
+    })
+    await syncSponsorDeal(row.id)
+    if (status === 'confirmed') {
+      await prisma.partner.upsert({
+        where: { brandId: row.brandId },
+        create: { brandId: row.brandId, lifecycle: 'active_partner', owner: owner ?? null },
+        update: { lifecycle: 'active_partner' },
+      })
+    }
+    return row
+  },
+
+  async deleteSponsorship({ id }: any) {
+    await prisma.showSponsor.delete({ where: { id } })
+    return { ok: true }
+  },
+
+  // -------- brand detail --------
+
+  // Everything about one brand on one screen: who works there, which
+  // shows they sponsor, what that's worth, what outreach has happened.
+  async getBrand({ brandId }: any) {
+    const brand = await prisma.brand.findUnique({
+      where: { id: brandId },
+      include: {
+        contacts: { orderBy: [{ isDecisionMaker: 'desc' }, { name: 'asc' }] },
+        partner: true,
+        shows: { orderBy: { createdAt: 'desc' } },
+        deals: { orderBy: { valueCents: 'desc' } },
+        targets: {
+          include: {
+            contact: { select: { id: true, name: true, title: true, linkedinUrl: true } },
+            drafts: { orderBy: { createdAt: 'desc' }, take: 2 },
+          },
+          orderBy: { fitScore: 'desc' },
+        },
+      },
+    })
+    if (!brand) throw new Error('Brand not found')
+
+    const events = await prisma.targetEvent.findMany({
+      where: { target: { brandId } },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+      include: { target: { include: { contact: { select: { name: true } } } } },
+    })
+
+    const money = { confirmedCents: 0, proposedCents: 0 }
+    for (const s of brand.shows) {
+      if (s.status === 'confirmed') money.confirmedCents += s.valueCents
+      else if (s.status === 'proposed') money.proposedCents += s.valueCents
+    }
+
+    return { brand, events, money }
+  },
+
+  async updateBrand({ brandId, ...fields }: any) {
+    const allowed = ['category', 'tier', 'owner', 'notes', 'website', 'linkedinUrl', 'hq'] as const
+    const data: Record<string, any> = {}
+    for (const key of allowed) {
+      if (fields[key] !== undefined) data[key] = fields[key] === '' ? null : fields[key]
+    }
+    if (Object.keys(data).length === 0) throw new Error('Nothing to update')
+    return prisma.brand.update({ where: { id: brandId }, data })
+  },
+
+  // -------- add a brand --------
+
+  // Preview the category without committing, so the form can show its
+  // guess and let a human override before anything is written.
+  async suggestCategory({ name, hint }: any) {
+    if (!name) throw new Error('Name required')
+    return inferCategory(name, hint)
+  },
+
+  // Category is inferred when not supplied. A duplicate name returns the
+  // existing brand rather than throwing — adding a brand twice is a
+  // normal thing to do by accident and shouldn't read as an error.
+  async createBrand({ name, category, tier, website, linkedinUrl, notes, owner, hint }: any) {
+    const clean = String(name ?? '').trim()
+    if (!clean) throw new Error('Name required')
+
+    const existing = await prisma.brand.findUnique({ where: { name: clean } })
+    if (existing) return { brand: existing, created: false, inference: null }
+
+    let inference: any = null
+    let finalCategory = category
+    let finalTier = tier
+
+    if (!finalCategory) {
+      inference = await inferCategory(clean, hint)
+      finalCategory = inference.category
+      if (!finalTier) finalTier = inference.tier
+    }
+
+    const brand = await prisma.brand.create({
+      data: {
+        name: clean,
+        category: finalCategory ?? 'unresolved',
+        tier: finalTier ?? null,
+        website: website || null,
+        linkedinUrl: linkedinUrl || null,
+        notes: notes || null,
+        owner: owner || null,
+        source: 'manual',
+      },
+    })
+
+    return { brand, created: true, inference }
+  },
+
+  // -------- search --------
+
+  // One box over brands, people, sponsorships and live CRM shows.
+  async search({ q, take = 12 }: any) {
+    const query = String(q ?? '').trim()
+    if (query.length < 2) return { q: query, brands: [], contacts: [], sponsorships: [], shows: [] }
+
+    const [brands, contacts, sponsorships] = await Promise.all([
+      prisma.brand.findMany({
+        where: { name: { contains: query, mode: 'insensitive' } },
+        select: { id: true, name: true, category: true, tier: true, _count: { select: { contacts: true, shows: true } } },
+        take,
+      }),
+      prisma.contact.findMany({
+        where: {
+          OR: [
+            { name: { contains: query, mode: 'insensitive' } },
+            { title: { contains: query, mode: 'insensitive' } },
+            { email: { contains: query, mode: 'insensitive' } },
+          ],
+        },
+        include: { brand: { select: { id: true, name: true } } },
+        take,
+      }),
+      prisma.showSponsor.findMany({
+        where: {
+          OR: [
+            { school: { contains: query, mode: 'insensitive' } },
+            { chapter: { contains: query, mode: 'insensitive' } },
+            { artist: { contains: query, mode: 'insensitive' } },
+            { brand: { name: { contains: query, mode: 'insensitive' } } },
+          ],
+        },
+        include: { brand: { select: { id: true, name: true } } },
+        take,
+      }),
+    ])
+
+    // Live shows from sb-crm. Wrapped so a CRM hiccup degrades this
+    // section rather than failing the whole search.
+    let shows: any[] = []
+    if (CRM_CONNECTED) {
+      try {
+        const like = `%${query.toLowerCase()}%`
+        const rows: any[] = await crm.$queryRawUnsafe(`
+          SELECT l."id", l."schoolRaw", l."chapterRaw", l."artist", l."eventDate",
+                 s."name" AS "schoolName"
+          FROM "Lead" l LEFT JOIN "School" s ON s."id" = l."schoolId"
+          WHERE l."stage" = $1
+            AND (LOWER(COALESCE(s."name", l."schoolRaw", '')) LIKE $4
+              OR LOWER(COALESCE(l."chapterRaw", '')) LIKE $4
+              OR LOWER(COALESCE(l."artist", '')) LIKE $4)
+          UNION ALL
+          SELECT d."id", d."schoolRaw", d."chapterRaw", d."artist", d."eventDate",
+                 s."name" AS "schoolName"
+          FROM "Deal" d LEFT JOIN "School" s ON s."id" = d."schoolId"
+          WHERE d."season" = $2 AND d."status" = ANY($3::text[])
+            AND (LOWER(COALESCE(s."name", d."schoolRaw", '')) LIKE $4
+              OR LOWER(COALESCE(d."chapterRaw", '')) LIKE $4
+              OR LOWER(COALESCE(d."artist", '')) LIKE $4)
+          LIMIT 40
+        `, LEAD_CONFIRMED_STAGE, DEAL_CURRENT_SEASON, DEAL_CONFIRMED_STATUS, like)
+
+        const seen = new Map<string, any>()
+        for (const r of rows) {
+          const key = showKey(r.schoolName || r.schoolRaw, r.chapterRaw, r.eventDate)
+          if (!seen.has(key)) {
+            seen.set(key, {
+              id: r.id,
+              school: r.schoolName || r.schoolRaw,
+              chapter: r.chapterRaw,
+              artist: r.artist,
+              eventDate: r.eventDate,
+            })
+          }
+        }
+        shows = [...seen.values()].slice(0, take)
+      } catch (err) {
+        console.error('[search] CRM read failed', err)
+      }
+    }
+
+    return { q: query, brands, contacts, sponsorships, shows }
+  },
+
+  // -------- people --------
+
+  // Seed names unioned with everyone already assigned to something, so
+  // the dropdown grows as the team does without a code change.
+  async listOwners() {
+    const [brands, sponsors, partners] = await Promise.all([
+      prisma.brand.findMany({ where: { owner: { not: null } }, select: { owner: true }, distinct: ['owner'] }),
+      prisma.showSponsor.findMany({ where: { owner: { not: null } }, select: { owner: true }, distinct: ['owner'] }),
+      prisma.partner.findMany({ where: { owner: { not: null } }, select: { owner: true }, distinct: ['owner'] }),
+    ])
+    const set = new Set<string>(SEED_OWNERS)
+    for (const r of [...brands, ...sponsors, ...partners]) if (r.owner) set.add(r.owner)
+    return [...set].sort((a, b) => a.localeCompare(b))
+  },
+
+  // Who is signed in, so actions attribute themselves instead of every
+  // event being logged as "Zach" regardless of who clicked.
+  async getMe() {
+    try {
+      const session = await getServerSession(authOptions)
+      const email = session?.user?.email ?? null
+      const name = session?.user?.name ?? null
+      // Match the session against the owner list on first name, so
+      // "Elizabeth Chen" signs in and owns things as "Elizabeth".
+      const first = (name ?? '').split(' ')[0]
+      const owner = SEED_OWNERS.find(o => o.toLowerCase() === first.toLowerCase()) ?? name ?? email
+      return { email, name, owner }
+    } catch {
+      return { email: null, name: null, owner: null }
+    }
+  },
+
   // -------- crm + pipeline --------
 
   async listPartners({ lifecycle }: any) {
@@ -583,8 +1185,114 @@ const handlers: Record<string, Handler> = {
     })
   },
 
+  async updatePartner({ brandId, lifecycle, relationship, owner, notes }: any) {
+    return prisma.partner.upsert({
+      where: { brandId },
+      create: { brandId, lifecycle: lifecycle ?? 'prospect', relationship, owner, notes },
+      update: {
+        ...(lifecycle !== undefined ? { lifecycle } : {}),
+        ...(relationship !== undefined ? { relationship } : {}),
+        ...(owner !== undefined ? { owner } : {}),
+        ...(notes !== undefined ? { notes } : {}),
+      },
+    })
+  },
+
+  // Add a person by hand — for brands where SponsorUnited has nothing
+  // and the name came off LinkedIn instead. Queues a target on the same
+  // rule as the bulk import: decision-maker title plus a LinkedIn URL.
+  async upsertContact({ id, brandId, name, title, email, location, linkedinUrl, isDecisionMaker }: any) {
+    if (id) {
+      return prisma.contact.update({
+        where: { id },
+        data: { name, title, email, location, linkedinUrl, isDecisionMaker },
+      })
+    }
+    if (!brandId || !name) throw new Error('Brand and name required')
+
+    const brand = await prisma.brand.findUnique({ where: { id: brandId } })
+    if (!brand) throw new Error('Brand not found')
+
+    const dm = isDecisionMaker ?? looksLikeDecisionMaker(title ?? null)
+    const contact = await prisma.contact.create({
+      data: {
+        brandId, name,
+        title: title || null,
+        email: email || null,
+        location: location || null,
+        linkedinUrl: linkedinUrl || null,
+        isDecisionMaker: dm,
+        source: 'manual',
+      },
+    })
+
+    if (dm && contact.linkedinUrl) {
+      await prisma.target.create({
+        data: {
+          brandId,
+          contactId: contact.id,
+          fitScore: scoreFit(contact.title, brand.tier),
+          assignedTo: brand.owner ?? null,
+        },
+      })
+    }
+    return contact
+  },
+
   async listDeals() {
-    return prisma.deal.findMany({ include: { brand: true }, orderBy: { valueCents: 'desc' } })
+    const deals = await prisma.deal.findMany({
+      include: {
+        brand: { select: { id: true, name: true, category: true, tier: true } },
+        showSponsor: { select: { id: true, status: true, eventDate: true, deliverables: true } },
+      },
+      orderBy: { valueCents: 'desc' },
+    })
+
+    // Won vs open, kept apart. All of this is sponsorship money — booking
+    // revenue is a different line and lives in sb-crm.
+    let openCents = 0, wonCents = 0
+    for (const d of deals) {
+      if (d.stage === 'closed') wonCents += d.valueCents
+      else if (d.stage !== 'lost') openCents += d.valueCents
+    }
+    return { deals, openCents, wonCents }
+  },
+
+  // Manual deals only. Deals with source="sponsorship" are rewritten from
+  // their attachment on every sync, so editing one here would be silently
+  // undone — updateSponsorship is the right door for those.
+  async upsertDeal({ id, brandId, name, stage, valueCents, eventRef, notes, owner }: any) {
+    if (id) {
+      const existing = await prisma.deal.findUnique({ where: { id } })
+      if (existing?.source === 'sponsorship') {
+        throw new Error('This deal is generated from a sponsorship — edit the sponsorship instead.')
+      }
+      return prisma.deal.update({
+        where: { id },
+        data: { name, stage, valueCents, eventRef, notes, owner },
+      })
+    }
+    if (!brandId || !name) throw new Error('Brand and name required')
+    return prisma.deal.create({
+      data: {
+        brandId, name,
+        stage: stage ?? 'conversation',
+        valueCents: valueCents ?? 0,
+        eventRef: eventRef ?? null,
+        notes: notes ?? null,
+        owner: owner ?? null,
+        source: 'manual',
+      },
+    })
+  },
+
+  async deleteDeal({ id }: any) {
+    const existing = await prisma.deal.findUnique({ where: { id } })
+    if (existing?.source === 'sponsorship') {
+      throw new Error('Detach the show instead — this deal is generated from a sponsorship.')
+    }
+    await prisma.deal.delete({ where: { id } })
+    return { ok: true }
   },
 
   async upsertTodo({ id, text, category, owner, done }: any) {
