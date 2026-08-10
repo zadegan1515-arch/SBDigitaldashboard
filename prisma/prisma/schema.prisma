@@ -1,0 +1,344 @@
+// SB Agency CRM — Postgres schema
+// Mirrors the consolidated data model from the Apps Script CRM:
+// SBV "All Leads" -> Lead, SBOY deals + COMPLETED SHOWS -> Deal,
+// Campus Roster -> RosterEntry, alias map -> Alias.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // directUrl removed: Vercel no longer has DATABASE_URL_UNPOOLED set, which
+  // failed the build (P1012). Neon's pooled endpoint handles `db push` fine.
+}
+
+// ---------- Auth (NextAuth) ----------
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  // Access levels, same semantics as the Apps Script app:
+  // 1 = shows/schools/dates only; 2 = + dollar amounts (no margins);
+  // 3 = + expenses/GP/agent contacts; isAdmin = manage access
+  level         Int       @default(1)
+  isAdmin       Boolean   @default(false)
+  accounts      Account[]
+  sessions      Session[]
+  leads         Lead[]    @relation("LeadCreator")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------- Core CRM ----------
+
+model School {
+  id       String        @id @default(cuid())
+  name     String        @unique // canonical name (post-alias)
+  city     String?
+  state    String?
+  lat      Float?
+  lng      Float?
+  chapters Chapter[]
+  leads    Lead[]
+  deals    Deal[]
+  roster   RosterEntry[]
+}
+
+model Chapter {
+  id       String  @id @default(cuid())
+  schoolId String
+  name     String // canonical chapter name (post-alias), e.g. "Sigma Alpha Epsilon"
+  school   School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, name])
+}
+
+// The 16 pipeline stages, stored as strings identical to the sheet values
+// ("01 - New Lead" ... "14 - COMPLETED", "LOST", "CANCELED") so imports are lossless.
+
+model Lead {
+  id          String   @id @default(cuid())
+  stage       String   @default("01 - New Lead")
+  schoolId    String?
+  school      School?  @relation(fields: [schoolId], references: [id])
+  schoolRaw   String // as typed, pre-alias (kept for audit)
+  chapterRaw  String?
+  artist      String?
+  rep         String? // Account Exec
+  eventDate   String? // free-text like the sheet ("7/15", "Nov 2, 2026")
+  budget      String?
+  genre       String?
+  production  String?
+  competitor  String?
+  notes       String?
+  lostReason  String?
+  // Deal money — filled in by the rep when a lead confirms (Level 2+).
+  // GP is stored (rep-entered or auto-calc = contract - artistExp - prodExp).
+  contract    Float?
+  collected   Float?
+  dep1        Float?
+  dep1Due     String?
+  dep1In      Boolean @default(false)
+  dep2        Float?
+  dep2Due     String?
+  dep2In      Boolean @default(false)
+  artistExp   Float?
+  prodExp     Float?
+  gp          Float?
+  // DocuSign (client-facing) revenue split + real payout side (margin math)
+  artistRev   Float?
+  supportRev  Float?
+  prodRev     Float?
+  otherRev    Float?
+  supportExp  Float?
+  // Agent-facing deposit (money OUT to the agency, per the paper chain)
+  agentDep     Float?
+  agentDepDue  String?
+  agentDepPaid Boolean @default(false)
+  // Discipline — every live row should have a next action + due date.
+  nextAction  String?
+  nextActionDue String?
+  // Lead-gen grid fields (spreadsheet view): main contact, group-chat name, last convo date.
+  mainContact String?
+  groupChat   String?
+  lastConvo   String?
+  reachedOut  Boolean @default(false)
+  convoStatus String?
+  gcMembers   String?
+  followUpDue String?
+  targetSem   String? // explicit target semester (e.g. "Fall 26") — overrides date-guessing on the roster
+  // Google Offer Form (paper chain step 1-2): what the client formally requested
+  offerAt      String? // form submission timestamp
+  offerBy      String? // submitter name
+  offerEmail   String?
+  venueName    String?
+  venueAddress String?
+  eventType    String? // Private / Public
+  ticketing    String? // Ticketed / Free
+  attendance   String?
+  setTime      String?
+  setLength    String?
+  offerAmount  String? // artist offer amount as submitted
+  prodBudget   String? // production budget as submitted
+  humanEditAt DateTime? // set only when a person edits on the site — lets the sheet sync protect fresh site edits
+  createdById String?
+  createdBy   User?    @relation("LeadCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([stage])
+  @@index([schoolId])
+}
+
+model Deal {
+  id         String  @id @default(cuid())
+  source     String  @default("SBOY") // SBOY | HISTORY (completed shows import)
+  season     String? // "current" | "2526" | "2425"
+  stage      String?
+  status     String?
+  schoolId   String?
+  school     School? @relation(fields: [schoolId], references: [id])
+  schoolRaw  String
+  chapterRaw String?
+  artist     String?
+  rep        String?
+  eventDate  String?
+  // Money — Level 2 sees contract/collected/balance; Level 3 sees the rest.
+  contract   Float?
+  collected  Float?
+  balance    Float?
+  dep1       Float?
+  dep1Due    String?
+  dep1In     Boolean @default(false)
+  dep2       Float?
+  dep2Due    String?
+  dep2In     Boolean @default(false)
+  // Level 3+ only (stripped server-side for lower levels):
+  artistRev  Float?
+  supportRev Float?
+  prodRev    Float?
+  totalExp   Float?
+  artistExp  Float?
+  prodExp    Float?
+  gp         Float?
+  margin     Float?
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([season])
+}
+
+model RosterEntry {
+  id          String   @id @default(cuid())
+  schoolId    String
+  school      School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  chapter     String
+  type        String   @default("HOUSE") // HOUSE | VENUE | PROMOTER | SORORITY
+  ae          String? // owning Account Exec (CLAIM button writes here)
+  lastContact DateTime?
+  mainContact String?
+  contactRole String?
+  phone       String?
+  chatLink    String?
+  competitor  String?
+  notes       String?
+  semNotes    Json? // rolling semester notes, keyed "Fall 25" etc.
+  createdBy   String?
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([schoolId, chapter])
+}
+
+// Alias normalization (SAE = Sigma Alpha Epsilon, Bama = Alabama...).
+// Applied on read/import; raw values are never rewritten. Rulings preserved:
+// MSU = Michigan State, OSU = Ohio State, CU = Boulder, SC and USC never merge.
+model Alias {
+  id        String @id @default(cuid())
+  kind      String // "school" | "chapter"
+  fromValue String
+  toValue   String
+
+  @@unique([kind, fromValue])
+}
+
+// ---------- Rolodex (Level 3 only) ----------
+// Booking contacts: who to reach to book an artist. Agents represent many
+// Artists; each Artist links to at most one primary Agent.
+
+model Agent {
+  id        String   @id @default(cuid())
+  name      String
+  agency    String? // WME, CAA, UTA, indie, etc.
+  email     String?
+  phone     String?
+  notes     String?
+  artists   Artist[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Artist {
+  id        String         @id @default(cuid())
+  name      String         @unique
+  genre     String?
+  agentId   String?
+  agent     Agent?         @relation(fields: [agentId], references: [id])
+  notes     String?
+  avails    Availability[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+}
+
+// Team notes / comments. Directed to a rep (forRep), optionally linked to a deal
+// (school/chapter/artist). Replies point at a root note via parentId. Resolvable.
+model TeamNote {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  author     String // email
+  authorName String?
+  body       String
+  forRep     String? // directed-to rep name
+  school     String?
+  chapter    String?
+  artist     String?
+  resolved   Boolean  @default(false)
+  parentId   String? // reply -> root note id
+
+  @@index([resolved])
+  @@index([parentId])
+}
+
+// Season revenue goals — one "team" row plus one per rep. Editable in-app.
+model Goal {
+  id        String   @id @default(cuid())
+  scope     String // "team" or the rep's name
+  season    String   @default("current")
+  amount    Float
+  updatedAt DateTime @updatedAt
+
+  @@unique([scope, season])
+}
+
+// Team activity log — who did what, when. Powers the dashboard feed and
+// stalled-lead accountability. Append-only.
+model DeletedLead {
+  id  String   @id @default(cuid())
+  key String   @unique // school|chapter|rep (lowercased rep) — blocks the sheet sync from resurrecting
+  at  DateTime @default(now())
+}
+
+model Pref {
+  email      String   @id
+  queueOrder String? // JSON: [{"id":"due","on":true},...] — My Day priority order
+  colors     String? // JSON: {"schools":{...},"tabs":{...},"navs":{...}} — personal color coding
+  updatedAt  DateTime @updatedAt
+}
+
+model Activity {
+  id      String   @id @default(cuid())
+  at      DateTime @default(now())
+  user    String? // email of the actor
+  action  String // "stage" | "edit" | "create" | "lost" | "roster"
+  school  String?
+  chapter String?
+  artist  String?
+  detail  String? // e.g. "09 - DocuSign Sent → 10 - Contract Signed"
+
+  @@index([at])
+}
+
+// One availability window per row. kind = "available" (routing/open),
+// "hold" (soft hold), or "blocked" (unavailable). Single day => start == end.
+model Availability {
+  id        String   @id @default(cuid())
+  artistId  String
+  artist    Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  start     DateTime
+  end       DateTime
+  kind      String   @default("available")
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([artistId])
+}
