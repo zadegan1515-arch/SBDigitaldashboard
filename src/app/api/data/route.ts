@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient, TargetStatus } from '@prisma/client'
 import { getServerSession } from 'next-auth'
 import Anthropic from '@anthropic-ai/sdk'
-import { authOptions } from '@/lib/auth'
+import { authOptions, allowlist } from '@/lib/auth'
 
 const prisma = new PrismaClient()
 
@@ -34,14 +34,14 @@ const CRM_CONNECTED = Boolean(process.env.CRM_DATABASE_URL)
 // schema — an earlier version matched "10 - Contract Signed", a stage
 // that doesn't exist in the real data, and silently under-reported.
 //
-//   Lead.stage  = "13 - CONFIRMED"                  (20 rows)
-//   Deal.status = "Offer Confirmed" | "Signed"      (35 rows, season "current")
-//
-// Deliberately excluded: Lead "12 - Formal Offer Sent" and Deal
-// "Offer Out" (offer made, not accepted); "Declined Pivot",
-// "Canceled", "Refund client", "Rescheduled to Fall"; and seasons
-// "2425" / "2526", which have already been played.
-const LEAD_CONFIRMED_STAGE = '13 - CONFIRMED'
+// "Confirmed" = Lead stage 13 and above (so "14 - COMPLETED" keeps
+// counting once a show plays out), plus Deal "Offer Confirmed"/"Signed"
+// in the current season. Leo's call on 2026-08-11: stages below 13 —
+// including "08 - Offer Form Signed" (63 rows) and "12 - Formal Offer
+// Sent" — are pipeline, not confirmed. Also excluded: Deal "Offer Out",
+// "Declined Pivot", "Canceled", "Refund client", "Rescheduled to Fall",
+// and past seasons "2425"/"2526".
+const LEAD_CONFIRMED_STAGE_REGEX = '^1[3-9]'
 const DEAL_CONFIRMED_STATUS = ['Offer Confirmed', 'Signed']
 const DEAL_CURRENT_SEASON = 'current'
 
@@ -401,13 +401,13 @@ const handlers: Record<string, Handler> = {
           SELECT l."id", l."schoolRaw", l."chapterRaw", l."eventDate",
                  s."name" AS "schoolName"
           FROM "Lead" l LEFT JOIN "School" s ON s."id" = l."schoolId"
-          WHERE l."stage" = $1
+          WHERE l."stage" ~ $1
           UNION ALL
           SELECT d."id", d."schoolRaw", d."chapterRaw", d."eventDate",
                  s."name" AS "schoolName"
           FROM "Deal" d LEFT JOIN "School" s ON s."id" = d."schoolId"
           WHERE d."season" = $2 AND d."status" = ANY($3::text[])
-        `, LEAD_CONFIRMED_STAGE, DEAL_CURRENT_SEASON, DEAL_CONFIRMED_STATUS)
+        `, LEAD_CONFIRMED_STAGE_REGEX, DEAL_CURRENT_SEASON, DEAL_CONFIRMED_STATUS)
 
         const byKey = new Map<string, string>()
         for (const r of rows) {
@@ -782,7 +782,7 @@ const handlers: Record<string, Handler> = {
              s."name" AS "schoolName", s."city", s."state" AS "schoolState"
       FROM "Lead" l
       LEFT JOIN "School" s ON s."id" = l."schoolId"
-      WHERE l."stage" = $1
+      WHERE l."stage" ~ $1
 
       UNION ALL
 
@@ -794,7 +794,7 @@ const handlers: Record<string, Handler> = {
       FROM "Deal" d
       LEFT JOIN "School" s ON s."id" = d."schoolId"
       WHERE d."season" = $2 AND d."status" = ANY($3::text[])
-    `, LEAD_CONFIRMED_STAGE, DEAL_CURRENT_SEASON, DEAL_CONFIRMED_STATUS)
+    `, LEAD_CONFIRMED_STAGE_REGEX, DEAL_CURRENT_SEASON, DEAL_CONFIRMED_STATUS)
 
     // A booking can appear in both tables. Keep one row per real show,
     // preferring the Lead record since it carries venue and attendance —
@@ -1106,7 +1106,7 @@ const handlers: Record<string, Handler> = {
           SELECT l."id", l."schoolRaw", l."chapterRaw", l."artist", l."eventDate",
                  s."name" AS "schoolName"
           FROM "Lead" l LEFT JOIN "School" s ON s."id" = l."schoolId"
-          WHERE l."stage" = $1
+          WHERE l."stage" ~ $1
             AND (LOWER(COALESCE(s."name", l."schoolRaw", '')) LIKE $4
               OR LOWER(COALESCE(l."chapterRaw", '')) LIKE $4
               OR LOWER(COALESCE(l."artist", '')) LIKE $4)
@@ -1119,7 +1119,7 @@ const handlers: Record<string, Handler> = {
               OR LOWER(COALESCE(d."chapterRaw", '')) LIKE $4
               OR LOWER(COALESCE(d."artist", '')) LIKE $4)
           LIMIT 40
-        `, LEAD_CONFIRMED_STAGE, DEAL_CURRENT_SEASON, DEAL_CONFIRMED_STATUS, like)
+        `, LEAD_CONFIRMED_STAGE_REGEX, DEAL_CURRENT_SEASON, DEAL_CONFIRMED_STATUS, like)
 
         const seen = new Map<string, any>()
         for (const r of rows) {
@@ -1156,6 +1156,46 @@ const handlers: Record<string, Handler> = {
     const set = new Set<string>(SEED_OWNERS)
     for (const r of [...brands, ...sponsors, ...partners]) if (r.owner) set.add(r.owner)
     return [...set].sort((a, b) => a.localeCompare(b))
+  },
+
+  // -------- team access --------
+
+  // Managers are the founding ALLOWED_EMAILS three. Everyone they add
+  // here can sign in; removing an email locks that person out on their
+  // next sign-in. The founding list itself can only change in Vercel.
+  async listTeam() {
+    const session = await getServerSession(authOptions)
+    const me = session?.user?.email?.toLowerCase() ?? null
+    const managers = allowlist()
+    const invited = await prisma.allowedEmail.findMany({ orderBy: { createdAt: 'desc' } })
+    return { managers, invited, canManage: Boolean(me && managers.includes(me)) }
+  },
+
+  async addTeamEmail({ email }: any) {
+    const session = await getServerSession(authOptions)
+    const me = session?.user?.email?.toLowerCase()
+    if (!me || !allowlist().includes(me)) {
+      throw new Error('Only the founding members can manage access.')
+    }
+    const clean = String(email ?? '').trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) throw new Error('That does not look like an email address.')
+    if (allowlist().includes(clean)) throw new Error('That person already has founding access.')
+    return prisma.allowedEmail.upsert({
+      where: { email: clean },
+      create: { email: clean, addedBy: me },
+      update: {},
+    })
+  },
+
+  async removeTeamEmail({ email }: any) {
+    const session = await getServerSession(authOptions)
+    const me = session?.user?.email?.toLowerCase()
+    if (!me || !allowlist().includes(me)) {
+      throw new Error('Only the founding members can manage access.')
+    }
+    const clean = String(email ?? '').trim().toLowerCase()
+    await prisma.allowedEmail.deleteMany({ where: { email: clean } })
+    return { ok: true }
   },
 
   // Who is signed in, so actions attribute themselves instead of every
