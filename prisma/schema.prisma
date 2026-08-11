@@ -351,6 +351,22 @@ model ShowSponsor {
 }
 
 // ---------------------------------------------------------------
+// Access — who may sign in, beyond the founding ALLOWED_EMAILS
+// ---------------------------------------------------------------
+//
+// ALLOWED_EMAILS in Vercel stays the root list (Leo, Zach, Elizabeth)
+// and still fails closed. This table holds everyone added from the
+// Team page, so granting access no longer needs a redeploy.
+
+model AllowedEmail {
+  id      String @id @default(cuid())
+  email   String @unique
+  addedBy String?
+
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------
 // Todos
 // ---------------------------------------------------------------
 
