@@ -1217,6 +1217,50 @@ const handlers: Record<string, Handler> = {
 
   // -------- crm + pipeline --------
 
+    // Booking funnel: how many leads sit at each stage of sb-crm's 14-step
+  // pipeline. Read-only, same convention as the confirmed-shows query above.
+  // Booking revenue is reported here because it's the point of the funnel —
+  // it is still NOT added into any sponsorship total.
+  async getFunnel() {
+    const PIPE = [
+      '01 - New Lead', '02 - Group Chat Made', '03 - Call Scheduled', '04 - Discovery Done',
+      '05 - List Sent', '06 - Names Highlighted', '07 - Avail Check', '08 - Offer Form Signed',
+      '09 - DocuSign Sent', '10 - Contract Signed', '11 - Deposit Pending', '12 - Formal Offer Sent',
+      '13 - CONFIRMED', '14 - COMPLETED',
+    ]
+    try {
+      const rows: any[] = await crm.$queryRawUnsafe(`
+        SELECT stage,
+               COUNT(*)::int AS count,
+               COALESCE(SUM(contract), 0)::float AS value
+        FROM "Lead"
+        GROUP BY stage
+      `)
+      const by: Record<string, any> = {}
+      for (const r of rows) by[String(r.stage || '').trim()] = r
+
+      const stages = PIPE.map((s) => {
+        const parts = s.split(' - ')
+        return {
+          stage: s,
+          number: parts[0],
+          label: parts.slice(1).join(' - '),
+          count: by[s]?.count ?? 0,
+          value: by[s]?.value ?? 0,
+        }
+      })
+      return {
+        ok: true,
+        stages,
+        total: stages.reduce((a, s) => a + s.count, 0),
+        totalValue: stages.reduce((a, s) => a + s.value, 0),
+      }
+    } catch (e: any) {
+      // Degrade gracefully — a CRM hiccup shouldn't break the page.
+      return { ok: false, error: e?.message ?? 'Could not reach sb-crm', stages: [] }
+    }
+  },
+
   async listPartners({ lifecycle }: any) {
     return prisma.partner.findMany({
       where: lifecycle && lifecycle !== 'all' ? { lifecycle } : {},
