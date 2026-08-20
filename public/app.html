@@ -1773,7 +1773,7 @@ loadDashboard().catch(function (e) {
         + (showMoney ? '<span style="width:96px;flex:none;text-align:right;font-size:11px;color:#8a8a8a">' + money(s.value) + '</span>' : '')
         + '</div>';
     });
-    h += '<div style="margin-top:14px;font-size:11px;color:#8a8a8a"><a href="https://sb-crmv1.vercel.app/app.html" target="_blank" rel="noopener">open the booking CRM</a></div>';
+        h += '<div style="margin-top:14px;font-size:11px;color:#8a8a8a"><a href="https://sb-crmv1.vercel.app/app.html?status=' + encodeURIComponent('13 - CONFIRMED') + '" target="_blank" rel="noopener">open confirmed shows in the CRM</a></div>';
     return h;
   }
   function paint() { var el = document.getElementById('bookingFunnel'); if (el && CACHE) el.innerHTML = html(CACHE); }
