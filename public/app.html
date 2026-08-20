@@ -180,6 +180,7 @@
     <button class="nav-item" data-view="outreach">Outreach <span class="n" id="nav-outreach"></span></button>
     <button class="nav-item" data-view="shows">Shows <span class="n" id="nav-shows"></span></button>
     <button class="nav-item" data-view="sponsorships">Sponsorships <span class="n" id="nav-spon"></span></button>
+    <button class="nav-item" data-view="needs">Needs contacts <span class="n" id="nav-needs"></span></button>
     <button class="nav-item" data-view="pipeline">Pipeline</button>
     <button class="nav-item" data-view="crm">CRM</button>
     <button class="nav-item" data-view="team">Team</button>
@@ -267,14 +268,24 @@
     <section class="view page" id="outreach">
       <div class="eyebrow">Outreach</div>
       <h1>Sponsor outreach</h1>
-      <div class="chips" style="margin-top:22px">
+      <div class="chips" style="margin-top:22px;align-items:center">
         <button class="chip active" data-mode="today">Today <span class="n" id="c-today">0</span></button>
         <button class="chip" data-mode="all">All targets <span class="n" id="c-all">0</span></button>
+        <button class="btn-ghost" id="btn-retrim" style="margin-left:auto">Cap to top 3 / brand</button>
       </div>
       <div id="status-filters" class="chips" style="display:none"></div>
       <div class="count-head" id="queue-head">To send today <span class="n"></span></div>
       <div class="hint">Generate drafts, copy, send on LinkedIn, then mark sent.</div>
       <div id="targets"></div>
+    </section>
+
+    <!-- NEEDS CONTACTS -->
+    <section class="view page" id="needs">
+      <div class="eyebrow">Gaps</div>
+      <h1>Needs contact info</h1>
+      <div class="sub" id="needs-sub">Loading…</div>
+      <div class="hint" style="margin-top:6px">Brands with nobody to reach yet. Add a name and a LinkedIn (or email/phone) to start outreach, or pull them from SponsorUnited.</div>
+      <div id="needs-list" style="margin-top:18px"></div>
     </section>
 
     <!-- PIPELINE -->
@@ -353,6 +364,7 @@
 'use strict';
 
 var CONNECTION_MAX = 300, MESSAGE_MAX = 600;
+var TARGET_CAP = 3;   // top-N contacts per brand kept in the send queue
 var CAT_COLORS = ['var(--cat-1)','var(--cat-2)','var(--cat-3)','var(--cat-4)','var(--cat-5)'];
 var CAT_NAMES = {
   beverage:'Energy Drinks & Beverages', nicotine:'Nicotine & Alt-Tobacco', cpg:'Snacks & CPG Food',
@@ -699,6 +711,7 @@ function loadBrand(brandId) {
           '<div class="t-meta">' +
             (c.isDecisionMaker ? '<span class="status replied">decision maker</span>' : '') +
             (c.email ? '<span>' + esc(c.email) + '</span>' : '') +
+            (c.phone ? '<span>· ' + esc(c.phone) + '</span>' : '') +
             (c.location ? '<span>· ' + esc(c.location) + '</span>' : '') +
           '</div></div>' +
           '<div class="t-actions">' +
@@ -710,18 +723,29 @@ function loadBrand(brandId) {
         '<p>Pull them from SponsorUnited, or add one by hand from LinkedIn.</p></div></div>');
 
     // outreach
+    var activeCount = b.targets.filter(function (t) { return !t.shelved; }).length;
     var outreach = b.targets.length
-      ? '<div class="section-head">Outreach <span class="n">' + b.targets.length + '</span></div>' +
+      ? '<div class="section-head">Outreach <span class="n">' + activeCount + ' in queue' +
+          (b.targets.length > activeCount ? ' · ' + (b.targets.length - activeCount) + ' shelved' : '') +
+        '</span></div>' +
+        '<div class="hint" style="margin:-6px 0 10px">Only the top ' + TARGET_CAP + ' by fit per brand go in the queue. ' +
+          'Promote or shelve anyone here.</div>' +
         b.targets.map(function (t) {
-          return '<div class="target"><div class="t-main"><div class="t-line">' +
+          var canSend = t.status === 'queued' || t.status === 'drafted';
+          return '<div class="target"' + (t.shelved ? ' style="opacity:.62"' : '') + '>' +
+            '<div class="t-main"><div class="t-line">' +
             '<span class="t-brand">' + esc(t.contact.name) + '</span>' +
             (t.contact.title ? '<span class="t-sep">·</span><span class="t-title">' +
               esc(t.contact.title) + '</span>' : '') + '</div>' +
-            '<div class="t-meta"><span class="status ' + t.status + '">' + t.status + '</span>' +
+            '<div class="t-meta">' +
+            (t.shelved ? '<span class="status declined">shelved</span>'
+                       : '<span class="status ' + t.status + '">' + t.status + '</span>') +
             '<span>· fit ' + t.fitScore + '</span>' +
             (t.drafts.length ? '<span>· ' + t.drafts.length + ' draft' +
               (t.drafts.length === 1 ? '' : 's') + '</span>' : '') + '</div></div>' +
             '<div class="t-actions">' +
+            (canSend ? '<button class="btn-ghost" data-shelf="' + esc(t.id) + '" data-to="' +
+              (t.shelved ? '0' : '1') + '">' + (t.shelved ? 'Promote' : 'Shelve') + '</button>' : '') +
             (t.contact.linkedinUrl ? '<a class="btn-ghost" href="' + esc(t.contact.linkedinUrl) +
               '" target="_blank" rel="noopener">↗</a>' : '') + '</div></div>';
         }).join('')
@@ -839,7 +863,7 @@ function openSponsorEditor(s, row) {
 
 // --- add a person ----------------------------------------------
 
-function openContactForm(brandId, slot) {
+function openContactForm(brandId, slot, onDone) {
   slot.innerHTML =
     '<div class="panel panel-pad" style="margin-bottom:10px">' +
       '<div class="row2" style="margin-bottom:10px">' +
@@ -849,6 +873,10 @@ function openContactForm(brandId, slot) {
       '<div class="row2" style="margin-bottom:10px">' +
         '<div><label class="lbl">LinkedIn URL</label><input class="field-box" id="nc-li"></div>' +
         '<div><label class="lbl">Email</label><input class="field-box" id="nc-email"></div>' +
+      '</div>' +
+      '<div class="row2" style="margin-bottom:10px">' +
+        '<div><label class="lbl">Phone</label><input class="field-box" id="nc-phone"></div>' +
+        '<div><label class="lbl">Location</label><input class="field-box" id="nc-loc"></div>' +
       '</div>' +
       '<div style="display:flex;gap:8px"><button class="btn-solid" id="nc-save">Add person</button>' +
         '<button class="btn-ghost" id="nc-cancel">Cancel</button></div>' +
@@ -865,10 +893,13 @@ function openContactForm(brandId, slot) {
       name: name,
       title: slot.querySelector('#nc-title').value || null,
       linkedinUrl: slot.querySelector('#nc-li').value || null,
-      email: slot.querySelector('#nc-email').value || null
+      email: slot.querySelector('#nc-email').value || null,
+      phone: slot.querySelector('#nc-phone').value || null,
+      location: slot.querySelector('#nc-loc').value || null
     }).then(function () {
       toast('Added');
-      loadBrand(brandId);
+      if (onDone) onDone();
+      else loadBrand(brandId);
     }).catch(function (e) { toast(e.message); });
   };
 }
@@ -877,20 +908,25 @@ function openContactForm(brandId, slot) {
 
 var showsFilter = 'all';
 
+var SHOWS_BY_ID = {};
+
 function showLine(s) {
+  SHOWS_BY_ID[s.id] = s;
   var bits = [s.school, s.chapter].filter(Boolean).join(' · ');
   var meta = [s.eventDate, s.artist, s.attendance ? s.attendance + ' expected' : null,
               s.venue, s.rep ? 'rep ' + s.rep : null].filter(Boolean).join(' · ');
   var sponsors = (s.sponsors || []).map(function (sp) {
     return '<span class="status ' + esc(sp.status) + '">' + esc(sp.brandName) + '</span>';
   }).join(' ');
-  return '<div class="target">' +
+  return '<div class="target" data-show="' + esc(s.id) + '">' +
     '<div class="t-main">' +
       '<div class="t-line"><span class="t-brand">' + esc(bits) + '</span></div>' +
       '<div class="t-meta"><span>' + esc(meta || s.stage) + '</span></div>' +
     '</div>' +
-    '<div class="t-actions">' + (sponsors ||
-      '<span style="font-size:12px;color:var(--ink-3)">unsold</span>') + '</div>' +
+    '<div class="t-actions">' +
+      (sponsors || '<span style="font-size:12px;color:var(--ink-3)">unsold</span>') +
+      '<button class="btn-ghost" data-showact="addsponsor">+ Add sponsor</button>' +
+    '</div>' +
   '</div>';
 }
 
@@ -919,7 +955,139 @@ function loadShows() {
   });
 }
 
+// --- needs contact info ----------------------------------------
+
+function loadNeeds() {
+  showView('needs');
+  var box = document.getElementById('needs-list');
+  box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+
+  return api('listNeedsContact').then(function (d) {
+    document.getElementById('needs-sub').textContent =
+      d.count + ' of ' + d.total + ' brands have no contact yet';
+    document.getElementById('nav-needs').textContent = d.count || '';
+
+    if (!d.brands.length) {
+      box.innerHTML = '<div class="panel"><div class="empty"><h3>Every brand has a contact</h3>' +
+        '<p>Nothing to fill in right now.</p></div></div>';
+      return;
+    }
+
+    box.innerHTML = d.brands.map(function (b) {
+      var tag = [CAT_NAMES[b.category] || b.category, b.tier].filter(Boolean).join(' · ');
+      var liSearch = b.linkedinUrl ||
+        ('https://www.linkedin.com/search/results/companies/?keywords=' + encodeURIComponent(b.name));
+      return '<div data-needs="' + esc(b.id) + '" style="margin-bottom:7px">' +
+        '<div class="target" style="margin-bottom:0">' +
+          '<div class="t-main">' +
+            '<div class="t-line"><span class="t-brand" data-brand="' + esc(b.id) + '" style="cursor:pointer">' +
+              esc(b.name) + '</span></div>' +
+            (tag ? '<div class="t-meta"><span>' + esc(tag) + '</span></div>' : '') +
+          '</div>' +
+          '<div class="t-actions">' +
+            '<a class="btn-ghost" href="' + esc(liSearch) + '" target="_blank" rel="noopener">Find on LinkedIn ↗</a>' +
+            '<button class="btn-draft" data-nact="add">+ Add contact</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="needs-slot" style="margin-top:7px"></div>' +
+      '</div>';
+    }).join('');
+  }).catch(function (e) {
+    box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
+      esc(e.message) + '</p></div></div>';
+  });
+}
+
 // --- attach shows to a brand -----------------------------------
+
+// Reverse of openShowPicker: from a show, pick brands to sponsor it.
+// Lives on the Shows page so a sponsor can be attached from either side.
+function openBrandPicker(show, anchor) {
+  var existing = document.getElementById('brand-picker');
+  if (existing) { existing.remove(); return; }
+
+  var wrap = document.createElement('div');
+  wrap.id = 'brand-picker';
+  wrap.className = 'panel panel-pad';
+  wrap.style.cssText = 'margin:0 0 10px';
+  var showLabel = [show.school, show.chapter].filter(Boolean).join(' · ');
+  wrap.innerHTML = '<div style="font-size:13px;font-weight:600;margin-bottom:10px">' +
+    'Attach a sponsor to ' + esc(showLabel) + '</div><div>Loading brands…</div>';
+  anchor.parentNode.insertBefore(wrap, anchor.nextSibling);
+
+  api('listBrands', {}).then(function (brands) {
+    var attachedIds = {};
+    (show.sponsors || []).forEach(function (sp) { attachedIds[sp.brandId] = sp.status; });
+
+    wrap.innerHTML =
+      '<div style="font-size:13px;font-weight:600;margin-bottom:8px">Attach a sponsor to ' +
+        esc(showLabel) + '</div>' +
+      '<input class="inp" id="bp-filter" placeholder="Filter brands…" style="width:100%;margin-bottom:8px">' +
+      '<div id="bp-rows" style="max-height:300px;overflow:auto;border:1px solid var(--border-soft);' +
+        'border-radius:8px;padding:8px 10px;background:var(--surface-2)">' +
+      brands.map(function (b) {
+        var mine = attachedIds[b.id];
+        var tag = [CAT_NAMES[b.category] || b.category, b.tier].filter(Boolean).join(' · ');
+        return '<label class="bp-row" data-text="' + esc(b.name.toLowerCase()) + '" ' +
+          'style="display:flex;gap:9px;align-items:flex-start;padding:5px 0;font-size:13px;cursor:pointer' +
+          (mine ? ';opacity:.7' : '') + '">' +
+          '<input type="radio" name="bp-brand" data-brand="' + esc(b.id) + '" data-name="' + esc(b.name) +
+            '" style="margin-top:3px">' +
+          '<span><span style="font-weight:600">' + esc(b.name) + '</span>' +
+          (tag ? '<span style="color:var(--ink-3)"> — ' + esc(tag) + '</span>' : '') +
+          (mine ? ' <span class="status ' + esc(mine) + '">already ' + esc(mine) + '</span>' : '') +
+          '</span></label>';
+      }).join('') + '</div>' +
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">' +
+        '<input id="bp-value" type="text" placeholder="Value, e.g. 5000" class="inp" style="width:150px">' +
+        '<input id="bp-deliv" type="text" placeholder="Deliverables (sampling, banner…)" class="inp" style="flex:1;min-width:160px">' +
+        '<select id="bp-status" class="inp">' +
+          '<option value="proposed">Proposed</option>' +
+          '<option value="confirmed">Confirmed</option>' +
+        '</select>' +
+        '<select id="bp-owner" class="inp">' + ownerOptions(ME.owner) + '</select>' +
+        '<button class="btn-draft" id="bp-save">Attach</button>' +
+        '<button class="btn-ghost" id="bp-cancel">Cancel</button>' +
+      '</div>' +
+      '<div class="hint" style="margin:10px 0 0">Attaching creates a matching pipeline deal for this show.</div>';
+
+    wrap.querySelector('#bp-filter').addEventListener('input', function () {
+      var q = this.value.toLowerCase();
+      wrap.querySelectorAll('.bp-row').forEach(function (r) {
+        r.style.display = !q || r.getAttribute('data-text').indexOf(q) > -1 ? '' : 'none';
+      });
+    });
+    wrap.querySelector('#bp-cancel').onclick = function () { wrap.remove(); };
+    wrap.querySelector('#bp-save').onclick = function () {
+      var btn = this;
+      var picked = wrap.querySelector('input[name="bp-brand"]:checked');
+      if (!picked) { toast('Pick a brand'); return; }
+      var cents = parseMoney(wrap.querySelector('#bp-value').value);
+      if (cents === null) { toast('Value must be a number, e.g. 5000 or 5,000'); return; }
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Saving…';
+      api('attachShows', {
+        brandId: picked.getAttribute('data-brand'),
+        shows: [{ id: show.id, school: show.school, chapter: show.chapter,
+                  artist: show.artist, eventDate: show.eventDate }],
+        status: wrap.querySelector('#bp-status').value,
+        valueCents: cents,
+        deliverables: wrap.querySelector('#bp-deliv').value || null,
+        owner: wrap.querySelector('#bp-owner').value || null
+      }).then(function () {
+        toast(picked.getAttribute('data-name') + ' attached — deal created');
+        wrap.remove();
+        loadShows();
+      }).catch(function (e) {
+        toast(e.message);
+        btn.disabled = false;
+        btn.textContent = 'Attach';
+      });
+    };
+  }).catch(function (e) {
+    wrap.innerHTML = '<div style="font-size:13px;color:var(--ink-2)">Could not load brands: ' + esc(e.message) + '</div>';
+  });
+}
 
 function openShowPicker(brandId, brandName, anchor) {
   var existing = document.getElementById('show-picker');
@@ -1433,6 +1601,7 @@ document.querySelectorAll('.nav-item[data-view]').forEach(function (b) {
     if (id === 'outreach') loadOutreach();
     if (id === 'shows') loadShows();
     if (id === 'sponsorships') loadSponsorships();
+    if (id === 'needs') loadNeeds();
     if (id === 'pipeline') loadPipeline();
     if (id === 'crm') loadCRM();
     if (id === 'team') loadTeam();
@@ -1452,13 +1621,48 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
     if (e.target.closest('a')) return;   // let real links through
     loadBrand(el.getAttribute('data-brand'));
   });
+});
+
+// Shows page: "+ Add sponsor" opens a brand picker for that show.
+document.getElementById('shows-list').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-showact="addsponsor"]');
+  if (!btn) return;
+  var row = btn.closest('[data-show]');
+  var show = SHOWS_BY_ID[row.getAttribute('data-show')];
+  if (!show) { toast('Reload and try again'); return; }
+  openBrandPicker(show, row);
+});
+
+// Needs-contacts page: "+ Add contact" reveals the add-person form inline.
+document.getElementById('needs-list').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-nact="add"]');
+  if (!btn) return;
+  var row = btn.closest('[data-needs]');
+  var brandId = row.getAttribute('data-needs');
+  var slot = row.querySelector('.needs-slot');
+  if (slot.innerHTML) { slot.innerHTML = ''; return; }
+  openContactForm(brandId, slot, function () { loadNeeds(); });
+});
+
+// Promote / shelve a target from the brand page.
+document.getElementById('brand-body').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-shelf]');
+  if (!btn) return;
+  btn.disabled = true;
+  api('setTargetShelved', {
+    targetId: btn.getAttribute('data-shelf'),
+    shelved: btn.getAttribute('data-to') === '1'
+  }).then(function () {
+    toast(btn.getAttribute('data-to') === '1' ? 'Shelved' : 'Promoted to queue');
+    if (CURRENT_BRAND) loadBrand(CURRENT_BRAND.brand.id);
+  }).catch(function (err) { toast(err.message); btn.disabled = false; });
 });
 
 document.getElementById('brand-crumb').addEventListener('click', function () {
@@ -1496,6 +1700,36 @@ document.querySelectorAll('.chip[data-mode]').forEach(function (c) {
     mode = c.getAttribute('data-mode');
     loadOutreach();
   });
+});
+
+// Cap the whole queue to top-N per brand. Preview first (nothing is
+// deleted — extras are shelved and stay promotable), then apply.
+document.getElementById('btn-retrim').addEventListener('click', function () {
+  var btn = this;
+  btn.disabled = true;
+  api('retrimTargets', { apply: false }).then(function (p) {
+    if (p.shelved === 0) {
+      toast('Already at ' + p.perBrand + ' or fewer per brand — nothing to trim');
+      btn.disabled = false;
+      return;
+    }
+    var top = (p.sample || []).slice(0, 8).map(function (s) {
+      return '• ' + s.brand + ': ' + s.active + ' → keep ' + s.keep + ', shelve ' + s.shelve;
+    }).join('\n');
+    var ok = window.confirm(
+      'Cap the queue to top ' + p.perBrand + ' per brand.\n\n' +
+      p.shelved + ' targets across ' + p.brandsAffected + ' brands would be shelved ' +
+      '(' + p.activeBefore + ' active now → ' + p.activeAfter + ' after).\n\n' +
+      'Nobody is deleted — shelved people stay on their brand page and can be promoted back anytime.\n\n' +
+      (top ? 'Biggest changes:\n' + top + '\n\n' : '') +
+      'Apply this now?');
+    if (!ok) { btn.disabled = false; return; }
+    api('retrimTargets', { apply: true }).then(function (r) {
+      toast('Trimmed — ' + r.shelved + ' shelved, ' + r.activeAfter + ' active in the queue');
+      btn.disabled = false;
+      loadOutreach();
+    }).catch(function (e) { toast(e.message); btn.disabled = false; });
+  }).catch(function (e) { toast(e.message); btn.disabled = false; });
 });
 
 // Status filter chips — rendered on every load, so delegate.
@@ -1691,53 +1925,4 @@ loadDashboard().catch(function (e) {
 });
 </script>
 </body>
-<script>
-/* Booking funnel - reads sb-crm live via getFunnel.
-   Mounted from outside #pipeline because the app rebuilds that section on every
-   tab switch, which deletes anything hardcoded inside it. Re-inserts itself. */
-(function () {
-  var CACHE = null;
-  function money(n) { return n ? '$' + Math.round(n).toLocaleString() : ''; }
-  function html(d) {
-    if (!d || !d.ok) {
-      return '<div style="font-size:13px;color:#c0392b">Booking pipeline unavailable: ' + ((d && d.error) || 'unknown error') + '</div>';
-    }
-    var max = Math.max.apply(null, d.stages.map(function (s) { return s.count; })) || 1;
-    var showMoney = d.stages.some(function (s) { return s.value > 0; });
-    var h = '<div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8a8a8a;margin-bottom:4px">Booking pipeline</div>'
-      + '<div style="font-size:12px;color:#888;margin-bottom:14px">' + (d.total || 0).toLocaleString() + ' active leads in sb-crm' + (showMoney ? ' - ' + money(d.totalValue) : '') + '</div>';
-    d.stages.forEach(function (s) {
-      var pct = Math.round(s.count / max * 100);
-      h += '<div style="display:flex;align-items:center;gap:10px;padding:5px 0;' + (s.count ? '' : 'opacity:.38') + '">'
-        + '<span style="width:180px;flex:none;font-size:12px;font-weight:700">' + s.number + ' <span style="color:#8a8a8a;font-weight:600">' + s.label + '</span></span>'
-        + '<span style="display:block;flex:1;height:20px;background:#f1f1f3;border-radius:5px;overflow:hidden">'
-        + '<span style="display:block;height:100%;width:' + pct + '%;background:#111;border-radius:5px"></span></span>'
-        + '<span style="width:56px;flex:none;text-align:right;font-size:13px;font-weight:800">' + s.count + '</span>'
-        + (showMoney ? '<span style="width:96px;flex:none;text-align:right;font-size:11px;color:#8a8a8a">' + money(s.value) + '</span>' : '')
-        + '</div>';
-    });
-        h += '<div style="margin-top:14px;font-size:11px;color:#8a8a8a"><a href="https://sb-crmv1.vercel.app/app.html?status=' + encodeURIComponent('13 - CONFIRMED') + '" target="_blank" rel="noopener">open confirmed shows in the CRM</a></div>';
-    return h;
-  }
-  function paint() { var el = document.getElementById('bookingFunnel'); if (el && CACHE) el.innerHTML = html(CACHE); }
-  function load() {
-    api('getFunnel').then(function (d) { CACHE = d; paint(); })
-      .catch(function (e) { CACHE = { ok: false, error: e.message }; paint(); });
-  }
-  function ensure() {
-    var sec = document.getElementById('pipeline');
-    if (!sec || sec.offsetParent === null) return;
-    if (document.getElementById('bookingFunnel')) return;
-    var el = document.createElement('div');
-    el.id = 'bookingFunnel';
-    el.style.cssText = 'max-width:840px;margin:0 0 30px';
-    el.innerHTML = CACHE ? html(CACHE) : '<div style="font-size:13px;color:#888">Loading booking pipeline...</div>';
-    sec.insertBefore(el, sec.firstChild);
-    if (!CACHE) load();
-  }
-  setInterval(ensure, 700);
-  setInterval(load, 120000);
-  load();
-})();
-</script>
 </html>
