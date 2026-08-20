@@ -1230,10 +1230,30 @@ const handlers: Record<string, Handler> = {
     ]
     try {
       const rows: any[] = await crm.$queryRawUnsafe(`
-        SELECT stage,
-               COUNT(*)::int AS count,
-               COALESCE(SUM(contract), 0)::float AS value
-        FROM "Lead"
+                SELECT stage, SUM(cnt)::int AS count, SUM(val)::float AS value
+        FROM (
+          SELECT stage AS stage, COUNT(*) AS cnt, COALESCE(SUM(contract), 0) AS val
+          FROM "Lead"
+          GROUP BY stage
+          UNION ALL
+          SELECT COALESCE(
+                   NULLIF(btrim(stage), ''),
+                   CASE lower(btrim(status))
+                     WHEN 'offer out'       THEN '12 - Formal Offer Sent'
+                     WHEN 'offer confirmed' THEN '13 - CONFIRMED'
+                     WHEN 'confirmed'       THEN '13 - CONFIRMED'
+                     WHEN 'signed'          THEN '10 - Contract Signed'
+                     WHEN 'deposit pending' THEN '11 - Deposit Pending'
+                     WHEN 'completed'       THEN '14 - COMPLETED'
+                   END
+                 ) AS stage,
+                 COUNT(*) AS cnt,
+                 COALESCE(SUM(contract), 0) AS val
+          FROM "Deal"
+          WHERE season = 'current' AND source NOT LIKE 'HISTORY%'
+          GROUP BY 1
+        ) x
+        WHERE stage IS NOT NULL
         GROUP BY stage
       `)
       const by: Record<string, any> = {}
