@@ -1748,4 +1748,53 @@ loadDashboard().catch(function (e) {
 });
 </script>
 </body>
+<script>
+/* Booking funnel - reads sb-crm live via getFunnel.
+   Mounted from outside #pipeline because the app rebuilds that section on every
+   tab switch, which deletes anything hardcoded inside it. Re-inserts itself. */
+(function () {
+  var CACHE = null;
+  function money(n) { return n ? '$' + Math.round(n).toLocaleString() : ''; }
+  function html(d) {
+    if (!d || !d.ok) {
+      return '<div style="font-size:13px;color:#c0392b">Booking pipeline unavailable: ' + ((d && d.error) || 'unknown error') + '</div>';
+    }
+    var max = Math.max.apply(null, d.stages.map(function (s) { return s.count; })) || 1;
+    var showMoney = d.stages.some(function (s) { return s.value > 0; });
+    var h = '<div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8a8a8a;margin-bottom:4px">Booking pipeline</div>'
+      + '<div style="font-size:12px;color:#888;margin-bottom:14px">' + (d.total || 0).toLocaleString() + ' active leads in sb-crm' + (showMoney ? ' - ' + money(d.totalValue) : '') + '</div>';
+    d.stages.forEach(function (s) {
+      var pct = Math.round(s.count / max * 100);
+      h += '<div style="display:flex;align-items:center;gap:10px;padding:5px 0;' + (s.count ? '' : 'opacity:.38') + '">'
+        + '<span style="width:180px;flex:none;font-size:12px;font-weight:700">' + s.number + ' <span style="color:#8a8a8a;font-weight:600">' + s.label + '</span></span>'
+        + '<span style="display:block;flex:1;height:20px;background:#f1f1f3;border-radius:5px;overflow:hidden">'
+        + '<span style="display:block;height:100%;width:' + pct + '%;background:#111;border-radius:5px"></span></span>'
+        + '<span style="width:56px;flex:none;text-align:right;font-size:13px;font-weight:800">' + s.count + '</span>'
+        + (showMoney ? '<span style="width:96px;flex:none;text-align:right;font-size:11px;color:#8a8a8a">' + money(s.value) + '</span>' : '')
+        + '</div>';
+    });
+    h += '<div style="margin-top:14px;font-size:11px;color:#8a8a8a"><a href="https://sb-crmv1.vercel.app/app.html" target="_blank" rel="noopener">open the booking CRM</a></div>';
+    return h;
+  }
+  function paint() { var el = document.getElementById('bookingFunnel'); if (el && CACHE) el.innerHTML = html(CACHE); }
+  function load() {
+    api('getFunnel').then(function (d) { CACHE = d; paint(); })
+      .catch(function (e) { CACHE = { ok: false, error: e.message }; paint(); });
+  }
+  function ensure() {
+    var sec = document.getElementById('pipeline');
+    if (!sec || sec.offsetParent === null) return;
+    if (document.getElementById('bookingFunnel')) return;
+    var el = document.createElement('div');
+    el.id = 'bookingFunnel';
+    el.style.cssText = 'max-width:840px;margin:0 0 30px';
+    el.innerHTML = CACHE ? html(CACHE) : '<div style="font-size:13px;color:#888">Loading booking pipeline...</div>';
+    sec.insertBefore(el, sec.firstChild);
+    if (!CACHE) load();
+  }
+  setInterval(ensure, 700);
+  setInterval(load, 120000);
+  load();
+})();
+</script>
 </html>
