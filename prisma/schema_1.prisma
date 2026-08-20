@@ -1,0 +1,392 @@
+// SB Agency — Command Center
+// Sponsor prospecting + LinkedIn outreach
+//
+// Standalone. Does not touch the sb-crm database.
+// Designed so a link to sb-crm (shows, chapters) can be added later
+// via nullable reference fields rather than a restructure.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // directUrl deliberately omitted. It requires DATABASE_URL_UNPOOLED,
+  // which isn't reliably set on these Vercel projects — a missing one
+  // fails the build with P1012 before anything else runs. sb-crm hit
+  // this same wall and removed it for the same reason.
+  // Neon's pooled endpoint handles `prisma db push` fine.
+}
+
+// ---------------------------------------------------------------
+// Brands
+// ---------------------------------------------------------------
+
+model Brand {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  website   String?
+  hq        String?
+
+  // "beverage", "cpg", "apparel", "nicotine", "betting"...
+  category  String?
+  // "emerging" | "growth" | "established" — drives prioritisation
+  tier      String?
+
+  // Where this record came from: "sponsorunited" | "manual" | "import"
+  source        String   @default("manual")
+  // SponsorUnited profile ULID, so we can re-sync without duplicating
+  externalId    String?  @unique
+  // Their public LinkedIn company page (distinct from a person's profile)
+  linkedinUrl   String?
+
+  notes     String?
+
+  // Which rep owns this relationship. Free text rather than an enum —
+  // the team grows, and a new hire shouldn't need a schema migration.
+  owner     String?
+
+  contacts  Contact[]
+  targets   Target[]
+  partner   Partner?
+  shows     ShowSponsor[]
+  deals     Deal[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+  @@index([tier])
+}
+
+// ---------------------------------------------------------------
+// People at brands
+// ---------------------------------------------------------------
+
+model Contact {
+  id       String  @id @default(cuid())
+  brandId  String
+  brand    Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  name     String
+  title    String?
+  email    String?
+  phone    String?
+  location String?
+
+  // The field this whole Salesforce exercise exists to carry.
+  linkedinUrl String?
+  twitterUrl  String?
+
+  source     String  @default("manual")
+  externalId String? @unique
+
+  // True when the title suggests they buy sponsorships —
+  // "College & Field Marketing", "Sports Marketing", "Partnerships".
+  // Set by a heuristic on import, editable by hand.
+  isDecisionMaker Boolean @default(false)
+
+  targets  Target[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([brandId])
+  @@index([isDecisionMaker])
+}
+
+// ---------------------------------------------------------------
+// Outreach queue — one row per person we intend to contact
+// ---------------------------------------------------------------
+
+enum TargetStatus {
+  queued
+  drafted
+  sent
+  replied
+  converted
+  declined
+  dead
+}
+
+model Target {
+  id        String @id @default(cuid())
+  brandId   String
+  brand     Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  status    TargetStatus @default(queued)
+
+  // Which rep sends this. Currently always Zach.
+  assignedTo String?
+
+  // 0-100. Drives the "Today" queue ordering so the best targets
+  // go out first — matters because one LinkedIn account caps
+  // near 100 connection requests a week.
+  fitScore  Int  @default(50)
+
+  // Parked out of the send queue by the per-brand cap (top 3 by fit).
+  // The person stays fully in the system on their brand page — one click
+  // promotes them back. This is how "only reach the best few per brand"
+  // is enforced without ever deleting anyone. Default false, so existing
+  // rows and every new target start active until a cap shelves them.
+  shelved   Boolean @default(false)
+
+  // Set when it lands in a day's send list, so "Today" is stable
+  // and doesn't reshuffle mid-session.
+  queuedFor DateTime?
+  sentAt    DateTime?
+  repliedAt DateTime?
+
+  notes     String?
+
+  drafts    Draft[]
+  events    TargetEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([contactId])
+  @@index([status])
+  @@index([queuedFor])
+  @@index([fitScore])
+  @@index([shelved])
+}
+
+// ---------------------------------------------------------------
+// Generated messages
+// ---------------------------------------------------------------
+
+model Draft {
+  id       String @id @default(cuid())
+  targetId String
+  target   Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  // "identity" (lead with who we are + proof)
+  // "question" (lead with a specific ask)
+  variant  String
+
+  // LinkedIn caps the connection note at 300 chars and
+  // the first message at 600. Enforced in the UI, not here,
+  // so a long draft is still saved and visibly over.
+  connectionNote String
+  firstMessage   String
+
+  // Which voice profile generated it
+  voice     String?
+  model     String?
+  // Whether a human edited it before sending — the signal we need
+  // to improve the prompts over time.
+  editedByHuman Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([targetId])
+}
+
+// ---------------------------------------------------------------
+// Audit trail — every status change, so we can measure what works
+// ---------------------------------------------------------------
+
+model TargetEvent {
+  id       String @id @default(cuid())
+  targetId String
+  target   Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  // "queued" | "drafted" | "sent" | "replied" | "note"
+  kind      String
+  fromStatus String?
+  toStatus   String?
+  actor      String?
+  detail     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([targetId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------
+// CRM — brands that became relationships
+// ---------------------------------------------------------------
+
+enum Lifecycle {
+  prospect
+  in_network
+  active_partner
+  past_partner
+}
+
+model Partner {
+  id      String @id @default(cuid())
+  brandId String @unique
+  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  lifecycle   Lifecycle @default(prospect)
+  // "title sponsor" | "sampling" | "product seeding"...
+  relationship String?
+  owner        String?
+  notes        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([lifecycle])
+}
+
+// ---------------------------------------------------------------
+// Pipeline
+// ---------------------------------------------------------------
+
+model Deal {
+  id      String @id @default(cuid())
+  brandId String
+  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  name  String
+  // "conversation" | "proposal" | "verbal" | "closed" | "lost"
+  stage String @default("conversation")
+  // Cents, not dollars — never store money as a float.
+  //
+  // This is SPONSORSHIP money only. Booking revenue (what a chapter pays
+  // for the artist) lives in sb-crm and is never mixed in here — they are
+  // two separate revenue lines and summing them would be meaningless.
+  valueCents Int @default(0)
+
+  // Free text for now. When we link to sb-crm this becomes a
+  // real reference to a show or season rather than a string.
+  eventRef  String?
+  closeDate DateTime?
+  notes     String?
+
+  owner  String?
+  // "manual" — someone typed it in
+  // "sponsorship" — generated by attaching a brand to a show. These are
+  // kept in sync automatically and should not be hand-edited; edit the
+  // sponsorship instead.
+  source String @default("manual")
+
+  // Set for source="sponsorship". Unique so one attachment can only ever
+  // produce one deal, and cascading so detaching a show removes the deal
+  // rather than leaving a phantom number in the pipeline total.
+  showSponsorId String?      @unique
+  showSponsor   ShowSponsor? @relation(fields: [showSponsorId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([stage])
+  @@index([brandId])
+  @@index([source])
+}
+
+// ---------------------------------------------------------------
+// Voice profiles — how drafts learn to sound like a real person
+// ---------------------------------------------------------------
+
+model Voice {
+  id   String @id @default(cuid())
+  name String @unique   // "Zach"
+  role String?          // shown in signatures
+
+  // Distilled instructions built from real sample messages.
+  // Empty until Zach's messages arrive — drafts read generic until then.
+  guidelines String?
+  // Verbatim examples. The actual source of the voice.
+  samples    String[]
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------
+// Sponsor ↔ Show
+// ---------------------------------------------------------------
+//
+// Shows are NOT stored here. They live in sb-crm's Lead table and are
+// read live over a second, read-only connection — so a stage change
+// there shows up here instantly and there's no sync job to drift.
+//
+// This table holds only the link. crmLeadId is sb-crm's Lead.id, kept
+// as a plain string since there's no foreign key across databases.
+
+model ShowSponsor {
+  id      String @id @default(cuid())
+  brandId String
+  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  crmLeadId String
+
+  // Copies taken at attach time. If the show is later deleted or
+  // renamed in sb-crm, this still reads sensibly instead of becoming
+  // an orphaned ID.
+  school    String?
+  chapter   String?
+  artist    String?
+  eventDate String?
+
+  // proposed  — pitched, not agreed
+  // confirmed — brand has agreed to sponsor this show
+  // declined  — brand passed on this one
+  status     String @default("proposed")
+  valueCents Int    @default(0)
+
+  // What the brand actually gets. Varies per show — sampling at one,
+  // stage banner at another — so it lives on the link, not the brand.
+  deliverables String?
+
+  notes     String?
+
+  // Which rep closed this one. Drives per-rep attribution on the ledger.
+  owner     String?
+
+  // The auto-generated pipeline deal. Created on attach, updated on every
+  // edit, removed by cascade on detach.
+  deal      Deal?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One row per brand per show. Attaching twice is always a mistake.
+  @@unique([brandId, crmLeadId])
+  @@index([crmLeadId])
+  @@index([status])
+  @@index([owner])
+}
+
+// ---------------------------------------------------------------
+// Access — who may sign in, beyond the founding ALLOWED_EMAILS
+// ---------------------------------------------------------------
+//
+// ALLOWED_EMAILS in Vercel stays the root list (Leo, Zach, Elizabeth)
+// and still fails closed. This table holds everyone added from the
+// Team page, so granting access no longer needs a redeploy.
+
+model AllowedEmail {
+  id      String @id @default(cuid())
+  email   String @unique
+  addedBy String?
+
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------
+// Todos
+// ---------------------------------------------------------------
+
+model Todo {
+  id       String  @id @default(cuid())
+  text     String
+  category String?
+  owner    String?
+  done     Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([done])
+}
