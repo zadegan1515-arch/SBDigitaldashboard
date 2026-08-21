@@ -127,6 +127,13 @@ model Target {
   // near 100 connection requests a week.
   fitScore  Int  @default(50)
 
+  // Parked out of the send queue by the per-brand cap (top 3 by fit).
+  // The person stays fully in the system on their brand page — one click
+  // promotes them back. This is how "only reach the best few per brand"
+  // is enforced without ever deleting anyone. Default false, so existing
+  // rows and every new target start active until a cap shelves them.
+  shelved   Boolean @default(false)
+
   // Set when it lands in a day's send list, so "Today" is stable
   // and doesn't reshuffle mid-session.
   queuedFor DateTime?
@@ -145,6 +152,7 @@ model Target {
   @@index([status])
   @@index([queuedFor])
   @@index([fitScore])
+  @@index([shelved])
 }
 
 // ---------------------------------------------------------------
