@@ -94,14 +94,27 @@ export async function POST(req: NextRequest) {
       if (!row.brandName || !row.name) { result.skipped++; continue }
 
       // Brands must already exist — this endpoint does not invent brands,
-      // so a typo can't silently create a junk brand.
-      const brand = await prisma.brand.findUnique({ where: { name: row.brandName } })
+      // so a typo can't silently create a junk brand. Case-insensitive so
+      // SponsorUnited's "ESPN BET" matches the dashboard's "ESPN Bet".
+      const brand = await prisma.brand.findFirst({
+        where: { name: { equals: row.brandName, mode: 'insensitive' } },
+      })
       if (!brand) {
         if (!result.brandsMissing.includes(row.brandName)) result.brandsMissing.push(row.brandName)
         result.skipped++
         continue
       }
       touched.add(brand.id)
+
+      // Save the brand's SponsorUnited profile ID the first time we see it,
+      // so the dashboard's "SponsorUnited" button can deep-link straight to
+      // this brand instead of the generic search. Only sets it if empty —
+      // never overwrites a good ID with a bad one.
+      const suId = row.brandExternalId ?? body.brandExternalId ?? null
+      if (suId && !brand.externalId) {
+        try { await prisma.brand.update({ where: { id: brand.id }, data: { externalId: suId } }) }
+        catch { /* a clash on the unique externalId shouldn't fail the import */ }
+      }
 
       const dupe = await prisma.contact.findFirst({ where: { brandId: brand.id, name: row.name } })
       if (dupe) { result.skipped++; continue }
@@ -113,6 +126,7 @@ export async function POST(req: NextRequest) {
           name: row.name,
           title: row.title ?? null,
           email: row.email ?? null,
+          phone: row.phone ?? null,
           location: row.location ?? null,
           linkedinUrl: row.linkedinUrl ?? null,
           source: 'sponsorunited',
