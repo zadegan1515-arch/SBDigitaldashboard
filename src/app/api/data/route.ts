@@ -1065,8 +1065,12 @@ const handlers: Record<string, Handler> = {
       include: {
         contacts: { orderBy: [{ isDecisionMaker: 'desc' }, { name: 'asc' }] },
         partner: true,
-        shows: { orderBy: { createdAt: 'desc' } },
+        shows: {
+          orderBy: { createdAt: 'desc' },
+          include: { deliverableItems: { orderBy: { createdAt: 'asc' } } },
+        },
         deals: { orderBy: { valueCents: 'desc' } },
+        documents: { orderBy: { createdAt: 'desc' } },
         targets: {
           include: {
             contact: { select: { id: true, name: true, title: true, linkedinUrl: true } },
@@ -1095,7 +1099,7 @@ const handlers: Record<string, Handler> = {
   },
 
   async updateBrand({ brandId, ...fields }: any) {
-    const allowed = ['category', 'tier', 'owner', 'notes', 'website', 'linkedinUrl', 'hq', 'externalId'] as const
+    const allowed = ['category', 'tier', 'owner', 'notes', 'goals', 'website', 'linkedinUrl', 'hq', 'externalId'] as const
     const data: Record<string, any> = {}
     for (const key of allowed) {
       if (fields[key] !== undefined) data[key] = fields[key] === '' ? null : fields[key]
@@ -1501,6 +1505,198 @@ const handlers: Record<string, Handler> = {
     }
     await prisma.deal.delete({ where: { id } })
     return { ok: true }
+  },
+
+  // -------- rate card / valuation --------
+
+  async getRateCard() {
+    const row = await prisma.setting.findUnique({ where: { key: 'rateCard' } })
+    if (!row) return { perAttendeeCents: 0, packages: [] as any[] }
+    try {
+      const v = JSON.parse(row.value)
+      return { perAttendeeCents: v.perAttendeeCents ?? 0, packages: Array.isArray(v.packages) ? v.packages : [] }
+    } catch {
+      return { perAttendeeCents: 0, packages: [] as any[] }
+    }
+  },
+
+  async saveRateCard({ perAttendeeCents = 0, packages = [] }: any) {
+    const value = JSON.stringify({
+      perAttendeeCents: Math.max(0, Math.round(Number(perAttendeeCents) || 0)),
+      // Each package: { name, cents, deliverables }
+      packages: (Array.isArray(packages) ? packages : []).map((p: any) => ({
+        name: String(p.name ?? '').slice(0, 60),
+        cents: Math.max(0, Math.round(Number(p.cents) || 0)),
+        deliverables: String(p.deliverables ?? '').slice(0, 300),
+      })).filter((p: any) => p.name),
+    })
+    await prisma.setting.upsert({
+      where: { key: 'rateCard' },
+      create: { key: 'rateCard', value },
+      update: { value },
+    })
+    return { ok: true }
+  },
+
+  // -------- fulfillment deliverables --------
+
+  async addDeliverable({ showSponsorId, text }: any) {
+    if (!showSponsorId || !text) throw new Error('Show and text required')
+    return prisma.deliverable.create({ data: { showSponsorId, text: String(text).slice(0, 200) } })
+  },
+
+  async updateDeliverable({ id, done, proofUrl, text }: any) {
+    return prisma.deliverable.update({
+      where: { id },
+      data: {
+        ...(done !== undefined ? { done: !!done } : {}),
+        ...(proofUrl !== undefined ? { proofUrl: proofUrl || null } : {}),
+        ...(text !== undefined ? { text: String(text).slice(0, 200) } : {}),
+      },
+    })
+  },
+
+  async deleteDeliverable({ id }: any) {
+    await prisma.deliverable.delete({ where: { id } })
+    return { ok: true }
+  },
+
+  // Bootstraps the checklist from the free-text deliverables on the
+  // sponsorship (comma or newline separated), if it has none yet.
+  async seedDeliverables({ showSponsorId }: any) {
+    const existing = await prisma.deliverable.count({ where: { showSponsorId } })
+    if (existing > 0) return { created: 0 }
+    const sp = await prisma.showSponsor.findUnique({ where: { id: showSponsorId } })
+    if (!sp?.deliverables) return { created: 0 }
+    const items = sp.deliverables.split(/[,\n;]+/).map(s => s.trim()).filter(Boolean)
+    for (const text of items) {
+      await prisma.deliverable.create({ data: { showSponsorId, text: text.slice(0, 200) } })
+    }
+    return { created: items.length }
+  },
+
+  // -------- proposal + recap generators --------
+
+  async generateProposal({ brandId, shows = [], packageName, valueCents, extra }: any) {
+    const brand = await prisma.brand.findUnique({ where: { id: brandId } })
+    if (!brand) throw new Error('Brand not found')
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in Vercel — generation is off.')
+
+    const showLines = (shows as any[]).map(s =>
+      `- ${[s.school, s.chapter].filter(Boolean).join(' · ')}` +
+      `${s.eventDate ? `, ${s.eventDate}` : ''}` +
+      `${s.artist ? `, artist: ${s.artist}` : ''}` +
+      `${s.attendance ? `, ~${s.attendance} attendees` : ''}`
+    ).join('\n') || '(no specific shows selected)'
+
+    const dollars = valueCents ? `$${(valueCents / 100).toLocaleString('en-US')}` : 'to be discussed'
+
+    const prompt = [
+      `You are a sponsorship sales rep at SB Agency, which books artists and DJs for US college fraternity and sorority events and sells brands the chance to activate at those shows (sampling, banners, product seeding, title sponsorship).`,
+      `Write a concise, tailored sponsorship PROPOSAL (max ~500 words, markdown) to pitch this brand. Do NOT use generic tier packages — tailor it to what THIS brand wants.`,
+      ``,
+      `BRAND: ${brand.name}${brand.category ? ` (${brand.category})` : ''}`,
+      brand.goals ? `WHAT THEY WANT (from discovery): ${brand.goals}` : `WHAT THEY WANT: unknown — infer likely goals for this kind of brand reaching college students.`,
+      `SHOWS ON OFFER:\n${showLines}`,
+      packageName ? `PACKAGE: ${packageName}` : ``,
+      `INVESTMENT: ${dollars}`,
+      extra ? `EXTRA CONTEXT: ${extra}` : ``,
+      ``,
+      `Structure: a one-line hook tied to their goal; why this audience fits them; the specific shows + what they get; the investment; a clear next step. Frame a win for the brand, the chapter, and the students. Warm and direct, not corporate. Output markdown only, no preamble.`,
+    ].filter(Boolean).join('\n')
+
+    const res = await askClaude(prompt, 1200)
+    const title = `Proposal — ${brand.name}${packageName ? ` (${packageName})` : ''}`
+    const doc = await prisma.document.create({
+      data: { brandId, kind: 'proposal', title, content: res.text, model: res.model },
+    })
+    return doc
+  },
+
+  async generateRecap({ showSponsorId, attendance, extra }: any) {
+    const sp = await prisma.showSponsor.findUnique({
+      where: { id: showSponsorId },
+      include: { brand: true, deliverableItems: { orderBy: { createdAt: 'asc' } } },
+    })
+    if (!sp) throw new Error('Sponsorship not found')
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in Vercel — generation is off.')
+
+    // Best-effort attendance from sb-crm if not supplied.
+    let att = attendance
+    if (!att && CRM_CONNECTED) {
+      try {
+        const rows: any[] = await crm.$queryRawUnsafe(
+          `SELECT "attendance" FROM "Lead" WHERE "id" = $1 LIMIT 1`, sp.crmLeadId)
+        att = rows?.[0]?.attendance ?? null
+      } catch { /* ignore */ }
+    }
+
+    const delivered = sp.deliverableItems.filter(d => d.done)
+    const pending = sp.deliverableItems.filter(d => !d.done)
+    const delivLines = sp.deliverableItems.length
+      ? sp.deliverableItems.map(d => `- [${d.done ? 'x' : ' '}] ${d.text}${d.proofUrl ? ` (proof: ${d.proofUrl})` : ''}`).join('\n')
+      : (sp.deliverables ? sp.deliverables : '(no deliverables recorded)')
+
+    const prompt = [
+      `You are a sponsorship account rep at SB Agency (books artists/DJs for college fraternity & sorority events; sells brands activation at those shows).`,
+      `Write a short, upbeat post-event RECAP (max ~400 words, markdown) to send the sponsor, proving what they got and setting up a renewal for next season.`,
+      ``,
+      `BRAND: ${sp.brand.name}`,
+      `SHOW: ${[sp.school, sp.chapter].filter(Boolean).join(' · ')}${sp.eventDate ? `, ${sp.eventDate}` : ''}${sp.artist ? `, artist ${sp.artist}` : ''}`,
+      att ? `ATTENDANCE: ~${att} students` : ``,
+      `INVESTMENT: $${(sp.valueCents / 100).toLocaleString('en-US')}`,
+      `DELIVERABLES:\n${delivLines}`,
+      delivered.length ? `(${delivered.length} delivered, ${pending.length} outstanding)` : ``,
+      extra ? `EXTRA CONTEXT / RESULTS: ${extra}` : ``,
+      ``,
+      `Structure: a warm thank-you; what was delivered (make it feel valuable, reference attendance/energy); a soft results/impressions note; a clear invitation to run it back next season. Do not invent hard metrics you weren't given. Output markdown only, no preamble.`,
+    ].filter(Boolean).join('\n')
+
+    const res = await askClaude(prompt, 1000)
+    const title = `Recap — ${sp.brand.name} @ ${[sp.school, sp.chapter].filter(Boolean).join(' ') || 'show'}`
+    const doc = await prisma.document.create({
+      data: { brandId: sp.brandId, showSponsorId, kind: 'recap', title, content: res.text, model: res.model },
+    })
+    return doc
+  },
+
+  async listDocuments({ brandId, kind }: any) {
+    return prisma.document.findMany({
+      where: { ...(brandId ? { brandId } : {}), ...(kind ? { kind } : {}) },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    })
+  },
+
+  async deleteDocument({ id }: any) {
+    await prisma.document.delete({ where: { id } })
+    return { ok: true }
+  },
+
+  // -------- renewals --------
+
+  // Brands that have booked a confirmed sponsorship — the warmest possible
+  // list to re-approach next season, with what they spent last time.
+  async listRenewals() {
+    const rows = await prisma.showSponsor.findMany({
+      where: { status: 'confirmed' },
+      include: { brand: { select: { id: true, name: true, category: true, tier: true, owner: true } } },
+      orderBy: { createdAt: 'desc' },
+    })
+    const byBrand = new Map<string, any>()
+    for (const r of rows) {
+      let b = byBrand.get(r.brandId)
+      if (!b) {
+        b = { brand: r.brand, totalCents: 0, shows: 0, lastEvent: null as string | null, owner: r.owner ?? r.brand.owner ?? null }
+        byBrand.set(r.brandId, b)
+      }
+      b.totalCents += r.valueCents
+      b.shows += 1
+      if (r.eventDate && (!b.lastEvent || r.eventDate > b.lastEvent)) b.lastEvent = r.eventDate
+    }
+    const list = [...byBrand.values()].sort((a, b) => b.totalCents - a.totalCents)
+    const totalCents = list.reduce((s, b) => s + b.totalCents, 0)
+    return { count: list.length, totalCents, brands: list }
   },
 
   async upsertTodo({ id, text, category, owner, done }: any) {
