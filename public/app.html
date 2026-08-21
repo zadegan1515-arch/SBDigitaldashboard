@@ -182,6 +182,7 @@
     <button class="nav-item" data-view="sponsorships">Sponsorships <span class="n" id="nav-spon"></span></button>
     <button class="nav-item" data-view="needs">Needs contacts <span class="n" id="nav-needs"></span></button>
     <button class="nav-item" data-view="pipeline">Pipeline</button>
+    <button class="nav-item" data-view="renewals">Renewals <span class="n" id="nav-renew"></span></button>
     <button class="nav-item" data-view="crm">CRM</button>
     <button class="nav-item" data-view="team">Team</button>
     <div class="nav-label">Categories</div>
@@ -242,10 +243,12 @@
       <div class="eyebrow">Shows</div>
       <h1>Confirmed shows</h1>
       <div class="sub" id="shows-sub">Loading…</div>
-      <div class="chips" style="margin-top:22px">
+      <div class="chips" style="margin-top:22px;align-items:center">
         <button class="chip active" data-shows="all">All</button>
         <button class="chip" data-shows="unsold">Unsold only</button>
+        <button class="btn-ghost" id="btn-ratecard" style="margin-left:auto">Rate card</button>
       </div>
+      <div id="ratecard-slot"></div>
       <div id="shows-list"></div>
     </section>
 
@@ -286,6 +289,15 @@
       <div class="sub" id="needs-sub">Loading…</div>
       <div class="hint" style="margin-top:6px">Brands with nobody to reach yet. Add a name and a LinkedIn (or email/phone) to start outreach, or pull them from SponsorUnited.</div>
       <div id="needs-list" style="margin-top:18px"></div>
+    </section>
+
+    <!-- RENEWALS -->
+    <section class="view page" id="renewals">
+      <div class="eyebrow">Repeat revenue</div>
+      <h1>Renewals</h1>
+      <div class="sub" id="renew-sub">Loading…</div>
+      <div class="hint" style="margin-top:6px">Every brand that's confirmed a sponsorship — your warmest list to re-approach next season. The recap you sent is what earns the yes.</div>
+      <div id="renew-list" style="margin-top:18px"></div>
     </section>
 
     <!-- PIPELINE -->
@@ -636,6 +648,7 @@ function loadBrand(brandId) {
     CURRENT_BRAND = d;
     var b = d.brand;
     rememberSponsors(b.shows);
+    (b.documents || []).forEach(function (dc) { DOC_BY_ID[dc.id] = dc; });
     var liCompany = b.linkedinUrl ||
       ('https://www.linkedin.com/search/results/companies/?keywords=' + encodeURIComponent(b.name));
     // Deep-link straight to this brand's SponsorUnited profile when we have
@@ -688,6 +701,8 @@ function loadBrand(brandId) {
         '</div>' +
         '<div style="margin-bottom:10px"><label class="lbl">LinkedIn company page</label>' +
           '<input class="field-box" data-bfield="linkedinUrl" value="' + esc(b.linkedinUrl || '') + '"></div>' +
+        '<div style="margin-bottom:10px"><label class="lbl">What they want (discovery)</label>' +
+          '<textarea class="field-box" rows="2" data-bfield="goals" placeholder="Goals, regions, timing — captured on the first call. Feeds the proposal.">' + esc(b.goals || '') + '</textarea></div>' +
         '<div style="margin-bottom:12px"><label class="lbl">Notes</label>' +
           '<textarea class="field-box" rows="2" data-bfield="notes">' + esc(b.notes || '') + '</textarea></div>' +
         '<div style="display:flex;gap:8px">' +
@@ -761,6 +776,15 @@ function loadBrand(brandId) {
         }).join('')
       : '';
 
+    // proposals & recaps
+    var docs =
+      '<div class="section-head">Proposals &amp; recaps <span class="n">' + b.documents.length + '</span>' +
+        '<button class="btn-ghost" id="b-proposal" style="margin-left:auto">✦ Generate proposal</button></div>' +
+      '<div id="b-doc-slot"></div>' +
+      (b.documents.length ? b.documents.map(docRow).join('')
+        : '<div class="panel"><div class="empty"><h3>No documents yet</h3>' +
+          '<p>Generate a tailored proposal to pitch this brand — or a recap on a confirmed show (below) to earn the renewal.</p></div></div>');
+
     // activity
     var activity = d.events.length
       ? '<div class="section-head">Activity</div><div class="panel panel-pad"><div class="timeline">' +
@@ -772,7 +796,7 @@ function loadBrand(brandId) {
         }).join('') + '</div></div>'
       : '';
 
-    box.innerHTML = head + shows + contacts + details + outreach + activity;
+    box.innerHTML = head + shows + contacts + details + outreach + docs + activity;
 
     document.getElementById('b-save').onclick = function () {
       var payload = { brandId: b.id };
@@ -802,6 +826,10 @@ function loadBrand(brandId) {
         if (lastCategory) loadBrands(lastCategory); else loadDashboard();
       });
     };
+
+    document.getElementById('b-proposal').onclick = function () {
+      openProposalForm(b.id);
+    };
   }).catch(function (e) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
       esc(e.message) + '</p></div></div>';
@@ -823,10 +851,142 @@ function sponsorRow(s, brandName) {
     '<div class="t-actions">' +
       '<span class="amount">' + money(s.valueCents) + '</span>' +
       '<span class="status ' + esc(s.status) + '">' + esc(s.status) + '</span>' +
+      (brandName ? '' : '<button class="btn-ghost" data-sact="fulfill">Fulfill</button>') +
       '<button class="btn-ghost" data-sact="edit">Edit</button>' +
       '<button class="btn-ghost danger" data-sact="remove">Remove</button>' +
     '</div>' +
   '</div>';
+}
+
+// One generated document (proposal or recap) row.
+function docRow(d) {
+  return '<div class="target" data-doc="' + esc(d.id) + '">' +
+    '<div class="t-main"><div class="t-line">' +
+      '<span class="status ' + (d.kind === 'recap' ? 'confirmed' : 'proposed') + '">' + esc(d.kind) + '</span>' +
+      '<span class="t-brand" style="margin-left:8px">' + esc(d.title) + '</span></div>' +
+      '<div class="t-meta"><span>' + when(d.createdAt) + '</span></div></div>' +
+    '<div class="t-actions">' +
+      '<button class="btn-ghost" data-docact="view">View</button>' +
+      '<button class="btn-ghost" data-docact="copy">Copy</button>' +
+      '<button class="btn-ghost danger" data-docact="delete">Delete</button>' +
+    '</div></div>';
+}
+
+var DOC_BY_ID = {};
+
+// Generate a tailored proposal for the current brand.
+function openProposalForm(brandId) {
+  var slot = document.getElementById('b-doc-slot');
+  if (!slot) return;
+  var shows = (CURRENT_BRAND && CURRENT_BRAND.brand.shows) || [];
+  var pkgOpts = '<option value="">— no package —</option>' + (RATE_CARD.packages || []).map(function (p) {
+    return '<option value="' + esc(p.name) + '" data-cents="' + (p.cents || 0) + '">' + esc(p.name) +
+      (p.cents ? ' ($' + (p.cents / 100).toLocaleString('en-US') + ')' : '') + '</option>';
+  }).join('');
+  slot.innerHTML =
+    '<div class="panel panel-pad" style="margin-bottom:10px">' +
+      '<div style="font-size:13px;font-weight:600;margin-bottom:8px">Generate a proposal for ' + esc(CURRENT_BRAND.brand.name) + '</div>' +
+      (shows.length
+        ? '<div class="hint" style="margin:0 0 10px">Pitching the ' + shows.length + ' attached show' + (shows.length === 1 ? '' : 's') + '. Attach more above first if you want them included.</div>'
+        : '<div class="hint" style="margin:0 0 10px">No shows attached yet — this will be a general pitch. Attach shows above to pitch specific ones.</div>') +
+      '<div class="row2" style="margin-bottom:10px">' +
+        '<div><label class="lbl">Package</label><select class="field-box" id="pp-pkg">' + pkgOpts + '</select></div>' +
+        '<div><label class="lbl">Investment ($)</label><input class="field-box" id="pp-value" placeholder="optional"></div>' +
+      '</div>' +
+      '<div style="margin-bottom:10px"><label class="lbl">Anything to emphasize (optional)</label>' +
+        '<input class="field-box" id="pp-extra" placeholder="e.g. they care about the Southeast, spring timing"></div>' +
+      '<div style="display:flex;gap:8px;align-items:center"><button class="btn-solid" id="pp-go">✦ Generate</button>' +
+        '<button class="btn-ghost" id="pp-cancel">Cancel</button>' +
+        '<span id="pp-msg" style="font-size:12px;color:var(--ink-3)"></span></div>' +
+    '</div>';
+
+  slot.querySelector('#pp-pkg').onchange = function () {
+    var o = this.options[this.selectedIndex], c = o.getAttribute('data-cents');
+    if (c && c !== '0' && !slot.querySelector('#pp-value').value) slot.querySelector('#pp-value').value = (c / 100);
+  };
+  slot.querySelector('#pp-cancel').onclick = function () { slot.innerHTML = ''; };
+  slot.querySelector('#pp-go').onclick = function () {
+    var btn = this; btn.disabled = true;
+    slot.querySelector('#pp-msg').innerHTML = '<span class="spinner"></span> Writing…';
+    api('generateProposal', {
+      brandId: brandId,
+      shows: shows.map(function (s) { return { school: s.school, chapter: s.chapter, eventDate: s.eventDate, artist: s.artist }; }),
+      packageName: slot.querySelector('#pp-pkg').value || null,
+      valueCents: parseMoney(slot.querySelector('#pp-value').value),
+      extra: slot.querySelector('#pp-extra').value || null
+    }).then(function () {
+      toast('Proposal generated');
+      loadBrand(brandId);
+    }).catch(function (e) { slot.querySelector('#pp-msg').textContent = e.message; btn.disabled = false; });
+  };
+}
+
+// Fulfillment checklist + recap for one confirmed/attached show.
+function openFulfillment(s, row) {
+  var ex = document.getElementById('fulfill-panel'); if (ex) ex.remove();
+  var wrap = document.createElement('div');
+  wrap.id = 'fulfill-panel'; wrap.className = 'panel panel-pad'; wrap.style.cssText = 'margin:-4px 0 10px';
+  row.parentNode.insertBefore(wrap, row.nextSibling);
+  renderFulfill(wrap, s);
+}
+
+function renderFulfill(wrap, s) {
+  var items = s.deliverableItems || [];
+  wrap.innerHTML =
+    '<div style="font-size:13px;font-weight:600;margin-bottom:8px">Fulfillment — ' +
+      esc([s.school, s.chapter].filter(Boolean).join(' · ') || 'show') + '</div>' +
+    (items.length ? items.map(function (d) {
+      return '<div class="dl-item" data-dl="' + esc(d.id) + '" style="display:flex;gap:8px;align-items:center;margin-bottom:6px">' +
+        '<input type="checkbox" data-dlact="done"' + (d.done ? ' checked' : '') + '>' +
+        '<span style="flex:1;font-size:13px' + (d.done ? ';text-decoration:line-through;color:var(--ink-3)' : '') + '">' + esc(d.text) + '</span>' +
+        '<input class="inp" data-dlact="proof" placeholder="proof link" value="' + esc(d.proofUrl || '') + '" style="width:140px">' +
+        '<button class="btn-ghost danger" data-dlact="del" type="button">×</button></div>';
+    }).join('') : '<div class="hint" style="margin:0 0 8px">No deliverables tracked yet' + (s.deliverables ? ' — import them from the sponsorship, or add below.' : '.') + '</div>') +
+    '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
+      '<input class="inp" id="dl-new" placeholder="Add a deliverable…" style="flex:1;min-width:150px">' +
+      '<button class="btn-ghost" id="dl-add" type="button">Add</button>' +
+      (s.deliverables && !items.length ? '<button class="btn-ghost" id="dl-seed" type="button">Import from sponsorship</button>' : '') +
+      '<button class="btn-draft" id="dl-recap" type="button">✦ Generate recap</button>' +
+    '</div><div id="dl-msg" style="font-size:12px;color:var(--ink-3);margin-top:6px"></div>';
+
+  wrap.querySelectorAll('.dl-item').forEach(function (r) {
+    var id = r.getAttribute('data-dl');
+    r.querySelector('[data-dlact="done"]').onchange = function () {
+      api('updateDeliverable', { id: id, done: this.checked }).then(function () { refreshFulfill(wrap, s); });
+    };
+    r.querySelector('[data-dlact="proof"]').onchange = function () {
+      api('updateDeliverable', { id: id, proofUrl: this.value });
+    };
+    r.querySelector('[data-dlact="del"]').onclick = function () {
+      api('deleteDeliverable', { id: id }).then(function () { refreshFulfill(wrap, s); });
+    };
+  });
+  wrap.querySelector('#dl-add').onclick = function () {
+    var t = wrap.querySelector('#dl-new').value.trim(); if (!t) return;
+    api('addDeliverable', { showSponsorId: s.id, text: t }).then(function () { refreshFulfill(wrap, s); });
+  };
+  if (wrap.querySelector('#dl-seed')) wrap.querySelector('#dl-seed').onclick = function () {
+    api('seedDeliverables', { showSponsorId: s.id }).then(function (r) {
+      toast(r.created + ' imported'); refreshFulfill(wrap, s);
+    });
+  };
+  wrap.querySelector('#dl-recap').onclick = function () {
+    var b = this; b.disabled = true;
+    wrap.querySelector('#dl-msg').innerHTML = '<span class="spinner"></span> Writing recap…';
+    api('generateRecap', { showSponsorId: s.id }).then(function () {
+      toast('Recap generated — see Proposals & recaps');
+      if (CURRENT_BRAND) loadBrand(CURRENT_BRAND.brand.id);
+    }).catch(function (e) { wrap.querySelector('#dl-msg').textContent = e.message; b.disabled = false; });
+  };
+}
+
+function refreshFulfill(wrap, s) {
+  if (!CURRENT_BRAND) return;
+  api('getBrand', { brandId: CURRENT_BRAND.brand.id }).then(function (d) {
+    CURRENT_BRAND = d; rememberSponsors(d.brand.shows);
+    var fresh = (d.brand.shows || []).filter(function (x) { return x.id === s.id; })[0];
+    if (fresh) renderFulfill(wrap, fresh);
+  });
 }
 
 function openSponsorEditor(s, row) {
@@ -935,10 +1095,13 @@ function showLine(s) {
   var sponsors = (s.sponsors || []).map(function (sp) {
     return '<span class="status ' + esc(sp.status) + '">' + esc(sp.brandName) + '</span>';
   }).join(' ');
+  var suggested = suggestedShowValue(s.attendance);
   return '<div class="target" data-show="' + esc(s.id) + '">' +
     '<div class="t-main">' +
       '<div class="t-line"><span class="t-brand">' + esc(bits) + '</span></div>' +
-      '<div class="t-meta"><span>' + esc(meta || s.stage) + '</span></div>' +
+      '<div class="t-meta"><span>' + esc(meta || s.stage) + '</span>' +
+        (suggested ? '<span>· <span class="fit">worth ~' + money(suggested) + '</span></span>' : '') +
+      '</div>' +
     '</div>' +
     '<div class="t-actions">' +
       (sponsors || '<span style="font-size:12px;color:var(--ink-3)">unsold</span>') +
@@ -1037,6 +1200,104 @@ function loadNeeds() {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
       esc(e.message) + '</p></div></div>';
   });
+}
+
+// --- renewals --------------------------------------------------
+
+function loadRenewals() {
+  showView('renewals');
+  var box = document.getElementById('renew-list');
+  box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  return api('listRenewals').then(function (d) {
+    document.getElementById('renew-sub').textContent =
+      d.count + ' brand' + (d.count === 1 ? '' : 's') + ' have booked ' + money(d.totalCents) + ' in confirmed sponsorships';
+    document.getElementById('nav-renew').textContent = d.count || '';
+    if (!d.brands.length) {
+      box.innerHTML = '<div class="panel"><div class="empty"><h3>No confirmed sponsorships yet</h3>' +
+        '<p>Once a brand confirms a show, it lands here — with what it spent — so re-approaching next season is a list, not a memory.</p></div></div>';
+      return;
+    }
+    box.innerHTML = d.brands.map(function (b) {
+      return '<div class="target" data-brand="' + esc(b.brand.id) + '" style="cursor:pointer">' +
+        '<div class="t-main"><div class="t-line"><span class="t-brand">' + esc(b.brand.name) + '</span></div>' +
+        '<div class="t-meta"><span>' + esc(CAT_NAMES[b.brand.category] || b.brand.category || '') + '</span>' +
+          (b.lastEvent ? '<span>· last show ' + esc(b.lastEvent) + '</span>' : '') +
+          (b.owner ? '<span>· ' + esc(b.owner) + '</span>' : '') + '</div></div>' +
+        '<div class="t-actions"><span class="amount">' + money(b.totalCents) + '</span>' +
+          '<span class="status confirmed">' + b.shows + ' show' + (b.shows === 1 ? '' : 's') + '</span></div></div>';
+    }).join('');
+  }).catch(function (e) {
+    box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+}
+
+// --- rate card (loaded once, used for suggested values) --------
+
+var RATE_CARD = { perAttendeeCents: 0, packages: [] };
+
+function loadRateCard() {
+  return api('getRateCard').then(function (rc) { RATE_CARD = rc; return rc; }).catch(function () { return RATE_CARD; });
+}
+
+function suggestedShowValue(attendance) {
+  var a = parseInt(attendance, 10);
+  if (!a || !RATE_CARD.perAttendeeCents) return null;
+  return a * RATE_CARD.perAttendeeCents;
+}
+
+function pkgRowHtml(p) {
+  p = p || { name: '', cents: 0, deliverables: '' };
+  return '<div class="rc-pkg" style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">' +
+    '<input class="inp rc-name" placeholder="Package (e.g. Sampling)" value="' + esc(p.name || '') + '" style="width:150px">' +
+    '<input class="inp rc-price" placeholder="Price $" value="' + (p.cents ? p.cents / 100 : '') + '" style="width:110px">' +
+    '<input class="inp rc-deliv" placeholder="What they get" value="' + esc(p.deliverables || '') + '" style="flex:1;min-width:160px">' +
+    '<button class="btn-ghost danger rc-del" type="button">×</button>' +
+  '</div>';
+}
+
+function openRateCard() {
+  var slot = document.getElementById('ratecard-slot');
+  if (slot.innerHTML) { slot.innerHTML = ''; return; }
+  var pkgs = RATE_CARD.packages && RATE_CARD.packages.length ? RATE_CARD.packages : [{ name: '', cents: 0, deliverables: '' }];
+  slot.innerHTML =
+    '<div class="panel panel-pad" style="margin:0 0 12px">' +
+      '<div style="font-size:13px;font-weight:600;margin-bottom:4px">Rate card</div>' +
+      '<div class="hint" style="margin:0 0 12px">Sets the suggested value on each show (attendance × rate) and the packages you can pick when pitching.</div>' +
+      '<div class="row2" style="margin-bottom:12px;max-width:340px">' +
+        '<div><label class="lbl">Value per attendee ($)</label>' +
+          '<input class="field-box" id="rc-perhead" value="' + (RATE_CARD.perAttendeeCents ? RATE_CARD.perAttendeeCents / 100 : '') + '" placeholder="e.g. 2"></div>' +
+      '</div>' +
+      '<label class="lbl">Packages</label>' +
+      '<div id="rc-pkgs">' + pkgs.map(pkgRowHtml).join('') + '</div>' +
+      '<button class="btn-ghost" id="rc-add" type="button" style="margin-bottom:12px">+ Add package</button>' +
+      '<div style="display:flex;gap:8px"><button class="btn-solid" id="rc-save">Save rate card</button>' +
+        '<button class="btn-ghost" id="rc-cancel">Close</button></div>' +
+    '</div>';
+
+  slot.querySelector('#rc-add').onclick = function () {
+    var wrap = document.createElement('div'); wrap.innerHTML = pkgRowHtml();
+    slot.querySelector('#rc-pkgs').appendChild(wrap.firstChild);
+  };
+  slot.querySelector('#rc-pkgs').addEventListener('click', function (e) {
+    var del = e.target.closest('.rc-del'); if (del) del.closest('.rc-pkg').remove();
+  });
+  slot.querySelector('#rc-cancel').onclick = function () { slot.innerHTML = ''; };
+  slot.querySelector('#rc-save').onclick = function () {
+    var perHead = parseMoney(slot.querySelector('#rc-perhead').value);
+    if (perHead === null) perHead = 0;
+    var packages = [].slice.call(slot.querySelectorAll('.rc-pkg')).map(function (row) {
+      return {
+        name: row.querySelector('.rc-name').value.trim(),
+        cents: parseMoney(row.querySelector('.rc-price').value) || 0,
+        deliverables: row.querySelector('.rc-deliv').value.trim()
+      };
+    }).filter(function (p) { return p.name; });
+    var btn = this; btn.disabled = true;
+    api('saveRateCard', { perAttendeeCents: perHead, packages: packages }).then(function () {
+      toast('Rate card saved');
+      loadRateCard().then(function () { slot.innerHTML = ''; loadShows(); });
+    }).catch(function (e) { toast(e.message); btn.disabled = false; });
+  };
 }
 
 // --- attach shows to a brand -----------------------------------
@@ -1643,6 +1904,7 @@ document.querySelectorAll('.nav-item[data-view]').forEach(function (b) {
     if (id === 'shows') loadShows();
     if (id === 'sponsorships') loadSponsorships();
     if (id === 'needs') loadNeeds();
+    if (id === 'renewals') loadRenewals();
     if (id === 'pipeline') loadPipeline();
     if (id === 'crm') loadCRM();
     if (id === 'team') loadTeam();
@@ -1662,7 +1924,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'renew-list'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
@@ -1699,6 +1961,38 @@ document.getElementById('needs-list').addEventListener('click', function (e) {
   }
 });
 
+// Proposal / recap document actions on the brand page.
+document.getElementById('brand-body').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-docact]');
+  if (!btn) return;
+  var docId = btn.closest('[data-doc]').getAttribute('data-doc');
+  var doc = DOC_BY_ID[docId];
+  if (!doc) { toast('Reload and try again'); return; }
+  var act = btn.getAttribute('data-docact');
+  if (act === 'copy') { navigator.clipboard.writeText(doc.content); toast('Copied'); return; }
+  if (act === 'delete') {
+    if (!window.confirm('Delete "' + doc.title + '"?')) return;
+    api('deleteDocument', { id: docId }).then(function () {
+      toast('Deleted'); delete DOC_BY_ID[docId];
+      if (CURRENT_BRAND) loadBrand(CURRENT_BRAND.brand.id);
+    }).catch(function (err) { toast(err.message); });
+    return;
+  }
+  // view — show the content in the doc slot with a copy button
+  var slot = document.getElementById('b-doc-slot');
+  slot.innerHTML =
+    '<div class="panel panel-pad" style="margin-bottom:10px">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+        '<b style="flex:1;font-size:13px">' + esc(doc.title) + '</b>' +
+        '<button class="btn-ghost" id="dv-copy">Copy</button>' +
+        '<button class="btn-ghost" id="dv-close">Close</button></div>' +
+      '<pre style="white-space:pre-wrap;font:14px/1.55 system-ui,-apple-system,sans-serif;margin:0;color:var(--ink-2)">' +
+        esc(doc.content) + '</pre></div>';
+  slot.querySelector('#dv-copy').onclick = function () { navigator.clipboard.writeText(doc.content); toast('Copied'); };
+  slot.querySelector('#dv-close').onclick = function () { slot.innerHTML = ''; };
+  slot.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+
 // Promote / shelve a target from the brand page.
 document.getElementById('brand-body').addEventListener('click', function (e) {
   var btn = e.target.closest('[data-shelf]');
@@ -1717,6 +2011,8 @@ document.getElementById('brand-crumb').addEventListener('click', function () {
   if (lastCategory) loadBrands(lastCategory);
   else loadDashboard();
 });
+
+document.getElementById('btn-ratecard').addEventListener('click', openRateCard);
 
 document.querySelectorAll('.chip[data-shows]').forEach(function (c) {
   c.addEventListener('click', function () {
@@ -1799,6 +2095,7 @@ document.getElementById('status-filters').addEventListener('click', function (e)
     if (!record) { toast('Reload and try again'); return; }
 
     if (btn.getAttribute('data-sact') === 'edit') { openSponsorEditor(record, row); return; }
+    if (btn.getAttribute('data-sact') === 'fulfill') { openFulfillment(record, row); return; }
 
     // Show exactly what is about to disappear before doing it.
     var label = [record.school, record.chapter, record.eventDate].filter(Boolean).join(' · ');
@@ -1967,6 +2264,8 @@ Promise.all([
     '<option value="all">Everyone</option>' +
     OWNERS.map(function (o) { return '<option value="' + esc(o) + '">' + esc(o) + '</option>'; }).join('');
 });
+
+loadRateCard();
 
 loadDashboard().catch(function (e) {
   document.getElementById('dash-sub').textContent = 'Could not connect: ' + e.message;
