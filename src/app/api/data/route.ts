@@ -198,6 +198,44 @@ function looksLikeDecisionMaker(title: string | null): boolean {
   return /college|campus|field marketing|experiential|sponsorship|partnerships|sports marketing|brand marketing|founder|ceo|cmo/i.test(title)
 }
 
+// How many people we actually pursue per brand. A brand pull can surface
+// ten marketing contacts; we only want the best few in the send queue so
+// outreach stays focused and the weekly LinkedIn cap isn't blown on one
+// brand. The rest are "shelved" — kept, visible, promotable, just not
+// queued. Leo's call: top 3 by fit.
+const TARGET_CAP_PER_BRAND = 3
+
+// Enforces the cap for one brand. Among the currently-active targets
+// (queued/drafted, not already shelved), keeps the highest-fit few and
+// shelves the rest. Already-contacted people (anyone with a sentAt) count
+// against the cap — reaching four people at a brand because three were
+// already messaged isn't the intent.
+//
+// Shelve-only by design: it never auto-promotes a shelved person, so a
+// deliberate manual shelve is never silently undone by a later retrim.
+// Promoting is always an explicit act (setTargetShelved). Idempotent.
+async function reconcileBrandTargets(brandId: string, perBrand = TARGET_CAP_PER_BRAND) {
+  const worked = await prisma.target.count({
+    where: { brandId, sentAt: { not: null } },
+  })
+  const room = Math.max(0, perBrand - worked)
+
+  const active = await prisma.target.findMany({
+    where: { brandId, status: { in: ['queued', 'drafted'] }, shelved: false },
+    orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
+    select: { id: true },
+  })
+
+  const shelve = active.slice(room).map(t => t.id)
+  if (shelve.length) {
+    await prisma.target.updateMany({ where: { id: { in: shelve } }, data: { shelved: true } })
+  }
+  return {
+    active: Math.min(active.length, room),
+    shelvedNow: shelve.length,
+  }
+}
+
 // ---------------------------------------------------------------
 // Categorisation
 // ---------------------------------------------------------------
@@ -350,7 +388,10 @@ const handlers: Record<string, Handler> = {
 
   async getDashboard() {
     const [byStatus, categories, pipeline, todos, sponsorAgg, byOwner] = await Promise.all([
-      prisma.target.groupBy({ by: ['status'], _count: true }),
+      // Only active targets — shelved ones (parked by the per-brand cap)
+      // shouldn't inflate the headline "Targets" / "Queued" numbers, since
+      // they're deliberately not being worked.
+      prisma.target.groupBy({ by: ['status'], _count: true, where: { shelved: false } }),
       prisma.brand.groupBy({ by: ['category'], _count: true }),
       prisma.deal.aggregate({
         _sum: { valueCents: true },
@@ -481,8 +522,9 @@ const handlers: Record<string, Handler> = {
     }
 
     // Already stamped and still not sent — yesterday's leftovers included.
+    // Shelved targets (parked by the per-brand cap) never enter the queue.
     const carried = await prisma.target.findMany({
-      where: { queuedFor: { not: null }, status: { in: ['queued', 'drafted'] } },
+      where: { queuedFor: { not: null }, status: { in: ['queued', 'drafted'] }, shelved: false },
       include,
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: room,
@@ -493,7 +535,7 @@ const handlers: Record<string, Handler> = {
     // status without stamping queuedFor, and those rows used to match
     // neither branch and never surface in Today again.
     const picks = await prisma.target.findMany({
-      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null },
+      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false },
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: room - carried.length,
       select: { id: true },
@@ -514,9 +556,12 @@ const handlers: Record<string, Handler> = {
     return [...carried, ...fresh].sort((a, b) => b.fitScore - a.fitScore)
   },
 
-  async listTargets({ status, category, search, take = 200 }: any) {
+  async listTargets({ status, category, search, take = 200, shelved = false }: any) {
     return prisma.target.findMany({
       where: {
+        // Shelved targets (parked by the per-brand cap) are hidden unless
+        // explicitly asked for, so the outreach list shows the real queue.
+        ...(shelved === 'any' ? {} : { shelved: !!shelved }),
         ...(status && status !== 'all' ? { status: status as TargetStatus } : {}),
         ...(category ? { brand: { category } } : {}),
         ...(search
@@ -661,9 +706,13 @@ const handlers: Record<string, Handler> = {
   // target for anyone who looks like a decision maker.
   async importContacts({ rows }: any) {
     const result = {
-      brandsCreated: 0, contactsCreated: 0, targetsCreated: 0, skipped: 0,
-      failed: 0, errors: [] as string[],
+      brandsCreated: 0, contactsCreated: 0, targetsCreated: 0, targetsShelved: 0,
+      skipped: 0, failed: 0, errors: [] as string[],
     }
+
+    // Every brand a row touched, so the cap can be applied once per brand
+    // at the end rather than after each contact.
+    const touched = new Set<string>()
 
     for (const row of rows) {
       // Per-row, because one bad row must not abandon the rest halfway
@@ -680,6 +729,7 @@ const handlers: Record<string, Handler> = {
         })
         result.brandsCreated++
       }
+      touched.add(brand.id)
 
       const dupe = await prisma.contact.findFirst({
         where: { brandId: brand.id, name: row.name },
@@ -721,6 +771,16 @@ const handlers: Record<string, Handler> = {
           result.errors.push(`${row.brandName} / ${row.name}: ${err?.message ?? 'unknown error'}`)
         }
       }
+    }
+
+    // Apply the per-brand cap. Targets were created for everyone who
+    // qualifies; this shelves all but the top few per brand so only the
+    // best land in the queue.
+    for (const brandId of touched) {
+      try {
+        const r = await reconcileBrandTargets(brandId)
+        result.targetsShelved += r.shelvedNow
+      } catch { /* one brand's cap failing must not fail the import */ }
     }
 
     return result
@@ -1217,70 +1277,6 @@ const handlers: Record<string, Handler> = {
 
   // -------- crm + pipeline --------
 
-    // Booking funnel: how many leads sit at each stage of sb-crm's 14-step
-  // pipeline. Read-only, same convention as the confirmed-shows query above.
-  // Booking revenue is reported here because it's the point of the funnel —
-  // it is still NOT added into any sponsorship total.
-  async getFunnel() {
-    const PIPE = [
-      '01 - New Lead', '02 - Group Chat Made', '03 - Call Scheduled', '04 - Discovery Done',
-      '05 - List Sent', '06 - Names Highlighted', '07 - Avail Check', '08 - Offer Form Signed',
-      '09 - DocuSign Sent', '10 - Contract Signed', '11 - Deposit Pending', '12 - Formal Offer Sent',
-      '13 - CONFIRMED', '14 - COMPLETED',
-    ]
-    try {
-      const rows: any[] = await crm.$queryRawUnsafe(`
-                SELECT stage, SUM(cnt)::int AS count, SUM(val)::float AS value
-        FROM (
-          SELECT stage AS stage, COUNT(*) AS cnt, COALESCE(SUM(contract), 0) AS val
-          FROM "Lead"
-          GROUP BY stage
-          UNION ALL
-          SELECT COALESCE(
-                   NULLIF(btrim(stage), ''),
-                   CASE lower(btrim(status))
-                     WHEN 'offer out'       THEN '12 - Formal Offer Sent'
-                     WHEN 'offer confirmed' THEN '13 - CONFIRMED'
-                     WHEN 'confirmed'       THEN '13 - CONFIRMED'
-                     WHEN 'signed'          THEN '10 - Contract Signed'
-                     WHEN 'deposit pending' THEN '11 - Deposit Pending'
-                     WHEN 'completed'       THEN '14 - COMPLETED'
-                   END
-                 ) AS stage,
-                 COUNT(*) AS cnt,
-                 COALESCE(SUM(contract), 0) AS val
-          FROM "Deal"
-          WHERE season = 'current' AND source NOT LIKE 'HISTORY%'
-          GROUP BY 1
-        ) x
-        WHERE stage IS NOT NULL
-        GROUP BY stage
-      `)
-      const by: Record<string, any> = {}
-      for (const r of rows) by[String(r.stage || '').trim()] = r
-
-      const stages = PIPE.map((s) => {
-        const parts = s.split(' - ')
-        return {
-          stage: s,
-          number: parts[0],
-          label: parts.slice(1).join(' - '),
-          count: by[s]?.count ?? 0,
-          value: by[s]?.value ?? 0,
-        }
-      })
-      return {
-        ok: true,
-        stages,
-        total: stages.reduce((a, s) => a + s.count, 0),
-        totalValue: stages.reduce((a, s) => a + s.value, 0),
-      }
-    } catch (e: any) {
-      // Degrade gracefully — a CRM hiccup shouldn't break the page.
-      return { ok: false, error: e?.message ?? 'Could not reach sb-crm', stages: [] }
-    }
-  },
-
   async listPartners({ lifecycle }: any) {
     return prisma.partner.findMany({
       where: lifecycle && lifecycle !== 'all' ? { lifecycle } : {},
@@ -1305,11 +1301,11 @@ const handlers: Record<string, Handler> = {
   // Add a person by hand — for brands where SponsorUnited has nothing
   // and the name came off LinkedIn instead. Queues a target on the same
   // rule as the bulk import: decision-maker title plus a LinkedIn URL.
-  async upsertContact({ id, brandId, name, title, email, location, linkedinUrl, isDecisionMaker }: any) {
+  async upsertContact({ id, brandId, name, title, email, phone, location, linkedinUrl, isDecisionMaker }: any) {
     if (id) {
       return prisma.contact.update({
         where: { id },
-        data: { name, title, email, location, linkedinUrl, isDecisionMaker },
+        data: { name, title, email, phone, location, linkedinUrl, isDecisionMaker },
       })
     }
     if (!brandId || !name) throw new Error('Brand and name required')
@@ -1323,6 +1319,7 @@ const handlers: Record<string, Handler> = {
         brandId, name,
         title: title || null,
         email: email || null,
+        phone: phone || null,
         location: location || null,
         linkedinUrl: linkedinUrl || null,
         isDecisionMaker: dm,
@@ -1339,8 +1336,84 @@ const handlers: Record<string, Handler> = {
           assignedTo: brand.owner ?? null,
         },
       })
+      // A manual add is deliberate, so the person goes straight into the
+      // queue even if the brand already has its three — the cap governs
+      // bulk pulls, not a hand-picked contact. They can be shelved later.
     }
     return contact
+  },
+
+  // -------- per-brand target cap --------
+
+  // Re-applies the top-N-per-brand cap across every brand at once. Used to
+  // trim a queue that grew too large (e.g. after a big pull queued ten
+  // people per brand). Preview by default — pass apply:true to commit.
+  // Nothing is deleted; extras are shelved and stay promotable.
+  async retrimTargets({ perBrand = TARGET_CAP_PER_BRAND, apply = false }: any) {
+    const cap = Math.max(1, Number(perBrand) || TARGET_CAP_PER_BRAND)
+    const brands = await prisma.brand.findMany({ select: { id: true, name: true } })
+
+    let activeBefore = 0, wouldShelve = 0, brandsAffected = 0
+    const sample: Array<{ brand: string; active: number; keep: number; shelve: number }> = []
+
+    for (const b of brands) {
+      const worked = await prisma.target.count({
+        where: { brandId: b.id, sentAt: { not: null } },
+      })
+      const room = Math.max(0, cap - worked)
+      const openActive = await prisma.target.count({
+        where: { brandId: b.id, status: { in: ['queued', 'drafted'] }, shelved: false },
+      })
+      activeBefore += openActive
+      const over = Math.max(0, openActive - room)
+      if (over > 0) {
+        wouldShelve += over
+        brandsAffected++
+        if (sample.length < 50) {
+          sample.push({ brand: b.name, active: openActive, keep: Math.min(openActive, room), shelve: over })
+        }
+      }
+      if (apply) await reconcileBrandTargets(b.id, cap)
+    }
+
+    sample.sort((a, b) => b.shelve - a.shelve)
+    return {
+      apply, perBrand: cap,
+      brandsScanned: brands.length,
+      brandsAffected,
+      activeBefore,
+      shelved: wouldShelve,
+      activeAfter: activeBefore - wouldShelve,
+      sample,
+    }
+  },
+
+  // Flip one target in or out of the queue by hand. Promoting past the
+  // cap is allowed — it's an explicit choice, and the next bulk retrim
+  // would reconsider it.
+  async setTargetShelved({ targetId, shelved }: any) {
+    return prisma.target.update({
+      where: { id: targetId },
+      data: { shelved: !!shelved },
+    })
+  },
+
+  // -------- brands with no contacts --------
+
+  // The "Needs contact info" tab: brands where we have nobody to reach.
+  // These are the gaps to fill by hand or by another SponsorUnited pull.
+  async listNeedsContact() {
+    const brands = await prisma.brand.findMany({
+      include: { _count: { select: { contacts: true } } },
+      orderBy: { name: 'asc' },
+    })
+    const missing = brands
+      .filter(b => b._count.contacts === 0)
+      .map(b => ({
+        id: b.id, name: b.name, category: b.category, tier: b.tier,
+        website: b.website, linkedinUrl: b.linkedinUrl,
+      }))
+    return { count: missing.length, total: brands.length, brands: missing }
   },
 
   async listDeals() {
