@@ -638,6 +638,15 @@ function loadBrand(brandId) {
     rememberSponsors(b.shows);
     var liCompany = b.linkedinUrl ||
       ('https://www.linkedin.com/search/results/companies/?keywords=' + encodeURIComponent(b.name));
+    // Deep-link straight to this brand's SponsorUnited profile when we have
+    // its SponsorUnited ID. We don't for most brands yet (they were imported
+    // by name only), and SponsorUnited's search is a live autocomplete with
+    // no linkable URL — so without the ID the best we can do is open the
+    // search page for you to type the name.
+    var suUrl = b.externalId
+      ? ('https://pro.sponsorunited.com/profile/' + encodeURIComponent(b.externalId) + '/contacts')
+      : 'https://pro.sponsorunited.com/search/smart';
+    var suLabel = b.externalId ? 'SponsorUnited ↗' : 'SponsorUnited (search) ↗';
 
     var head =
       '<h1>' + esc(b.name) + '</h1>' +
@@ -684,7 +693,8 @@ function loadBrand(brandId) {
         '<div style="display:flex;gap:8px">' +
           '<button class="btn-solid" id="b-save">Save</button>' +
           '<a class="btn-ghost" href="' + esc(liCompany) + '" target="_blank" rel="noopener">LinkedIn ↗</a>' +
-          '<a class="btn-ghost" href="https://pro.sponsorunited.com/dashboard" target="_blank" rel="noopener">SponsorUnited ↗</a>' +
+          '<a class="btn-ghost" href="' + esc(suUrl) + '" target="_blank" rel="noopener">' + suLabel + '</a>' +
+          '<button class="btn-ghost danger" id="b-delete" style="margin-left:auto">Delete brand</button>' +
         '</div>' +
       '</div>';
 
@@ -784,6 +794,13 @@ function loadBrand(brandId) {
 
     document.getElementById('b-addcontact').onclick = function () {
       openContactForm(b.id, document.getElementById('b-contact-slot'));
+    };
+
+    document.getElementById('b-delete').onclick = function () {
+      confirmDeleteBrand(b.id, function () {
+        toast('Brand deleted');
+        if (lastCategory) loadBrands(lastCategory); else loadDashboard();
+      });
     };
   }).catch(function (e) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
@@ -955,6 +972,29 @@ function loadShows() {
   });
 }
 
+// --- delete a brand --------------------------------------------
+
+// Two-step: ask the backend what's attached, show it, then delete only
+// on a real confirmation. onDone runs after a successful delete.
+function confirmDeleteBrand(brandId, onDone) {
+  return api('deleteBrand', { brandId: brandId }).then(function (r) {
+    var s = r.summary;
+    var extras = [];
+    if (s.contacts) extras.push(s.contacts + ' contact' + (s.contacts === 1 ? '' : 's'));
+    if (s.targets) extras.push(s.targets + ' outreach target' + (s.targets === 1 ? '' : 's'));
+    if (s.shows) extras.push(s.shows + ' attached show' + (s.shows === 1 ? '' : 's') +
+      (s.attachedCents ? ' worth ' + money(s.attachedCents) : ''));
+    if (s.deals) extras.push(s.deals + ' pipeline deal' + (s.deals === 1 ? '' : 's'));
+    var msg = 'Delete brand "' + s.name + '" permanently?';
+    if (extras.length) msg += '\n\nThis also removes:\n• ' + extras.join('\n• ');
+    msg += '\n\nThis cannot be undone.';
+    if (!window.confirm(msg)) return;
+    return api('deleteBrand', { brandId: brandId, confirm: true }).then(function () {
+      if (onDone) onDone();
+    });
+  }).catch(function (e) { toast(e.message); });
+}
+
 // --- needs contact info ----------------------------------------
 
 function loadNeeds() {
@@ -987,6 +1027,7 @@ function loadNeeds() {
           '<div class="t-actions">' +
             '<a class="btn-ghost" href="' + esc(liSearch) + '" target="_blank" rel="noopener">Find on LinkedIn ↗</a>' +
             '<button class="btn-draft" data-nact="add">+ Add contact</button>' +
+            '<button class="btn-ghost danger" data-nact="delete">Delete</button>' +
           '</div>' +
         '</div>' +
         '<div class="needs-slot" style="margin-top:7px"></div>' +
@@ -1640,15 +1681,22 @@ document.getElementById('shows-list').addEventListener('click', function (e) {
   openBrandPicker(show, row);
 });
 
-// Needs-contacts page: "+ Add contact" reveals the add-person form inline.
+// Needs-contacts page: "+ Add contact" reveals the add-person form inline;
+// "Delete" removes a junk/misnamed brand.
 document.getElementById('needs-list').addEventListener('click', function (e) {
-  var btn = e.target.closest('[data-nact="add"]');
-  if (!btn) return;
-  var row = btn.closest('[data-needs]');
-  var brandId = row.getAttribute('data-needs');
-  var slot = row.querySelector('.needs-slot');
-  if (slot.innerHTML) { slot.innerHTML = ''; return; }
-  openContactForm(brandId, slot, function () { loadNeeds(); });
+  var addBtn = e.target.closest('[data-nact="add"]');
+  var delBtn = e.target.closest('[data-nact="delete"]');
+  if (addBtn) {
+    var row = addBtn.closest('[data-needs]');
+    var slot = row.querySelector('.needs-slot');
+    if (slot.innerHTML) { slot.innerHTML = ''; return; }
+    openContactForm(row.getAttribute('data-needs'), slot, function () { loadNeeds(); });
+    return;
+  }
+  if (delBtn) {
+    var brandId = delBtn.closest('[data-needs]').getAttribute('data-needs');
+    confirmDeleteBrand(brandId, function () { toast('Brand deleted'); loadNeeds(); });
+  }
 });
 
 // Promote / shelve a target from the brand page.
