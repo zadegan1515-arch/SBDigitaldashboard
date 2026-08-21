@@ -1024,6 +1024,37 @@ const handlers: Record<string, Handler> = {
     return { ok: true }
   },
 
+  // Permanently remove a brand — for junk or misnamed rows. Two-step by
+  // design: called without confirm, it returns a summary of everything
+  // that would go with it (contacts, targets, attached shows and their
+  // money, deals) so the UI can show it before anything is destroyed.
+  // Cascades handle the children — see onDelete: Cascade on each relation.
+  async deleteBrand({ brandId, confirm = false }: any) {
+    const brand = await prisma.brand.findUnique({
+      where: { id: brandId },
+      include: {
+        _count: { select: { contacts: true, targets: true, shows: true, deals: true } },
+        shows: { select: { valueCents: true } },
+      },
+    })
+    if (!brand) throw new Error('Brand not found')
+
+    const attachedCents = brand.shows.reduce((sum, s) => sum + s.valueCents, 0)
+    const summary = {
+      name: brand.name,
+      contacts: brand._count.contacts,
+      targets: brand._count.targets,
+      shows: brand._count.shows,
+      deals: brand._count.deals,
+      attachedCents,
+    }
+
+    if (!confirm) return { deleted: false, summary }
+
+    await prisma.brand.delete({ where: { id: brandId } })
+    return { deleted: true, summary }
+  },
+
   // -------- brand detail --------
 
   // Everything about one brand on one screen: who works there, which
@@ -1064,7 +1095,7 @@ const handlers: Record<string, Handler> = {
   },
 
   async updateBrand({ brandId, ...fields }: any) {
-    const allowed = ['category', 'tier', 'owner', 'notes', 'website', 'linkedinUrl', 'hq'] as const
+    const allowed = ['category', 'tier', 'owner', 'notes', 'website', 'linkedinUrl', 'hq', 'externalId'] as const
     const data: Record<string, any> = {}
     for (const key of allowed) {
       if (fields[key] !== undefined) data[key] = fields[key] === '' ? null : fields[key]
