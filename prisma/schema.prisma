@@ -43,6 +43,11 @@ model Brand {
 
   notes     String?
 
+  // Discovery notes — what this brand actually wants (goals, regions,
+  // timing), captured on the first call. Feeds the proposal generator so
+  // pitches read tailored instead of generic.
+  goals     String?
+
   // Which rep owns this relationship. Free text rather than an enum —
   // the team grows, and a new hire shouldn't need a schema migration.
   owner     String?
@@ -52,6 +57,7 @@ model Brand {
   partner   Partner?
   shows     ShowSponsor[]
   deals     Deal[]
+  documents Document[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -348,6 +354,10 @@ model ShowSponsor {
   // edit, removed by cascade on detach.
   deal      Deal?
 
+  // Fulfillment checklist — the individual deliverables promised for this
+  // show, ticked off with proof as they happen. Drives the recap.
+  deliverableItems Deliverable[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -389,4 +399,66 @@ model Todo {
   updatedAt DateTime @updatedAt
 
   @@index([done])
+}
+
+// ---------------------------------------------------------------
+// Fulfillment — one promised deliverable for a sponsored show
+// ---------------------------------------------------------------
+
+model Deliverable {
+  id            String      @id @default(cuid())
+  showSponsorId String
+  showSponsor   ShowSponsor @relation(fields: [showSponsorId], references: [id], onDelete: Cascade)
+
+  text     String
+  done     Boolean @default(false)
+  // Link to proof — a photo album, a post, a report.
+  proofUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([showSponsorId])
+}
+
+// ---------------------------------------------------------------
+// Generated documents — proposals and recaps
+// ---------------------------------------------------------------
+//
+// One model for both. A proposal is written before the sale to pitch a
+// brand; a recap is written after the show to prove what they got and
+// earn the renewal. Content is markdown so it can be copied straight out.
+
+model Document {
+  id      String @id @default(cuid())
+  brandId String
+  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  // Optional link to the specific sponsorship a recap covers.
+  showSponsorId String?
+
+  // "proposal" | "recap"
+  kind    String
+  title   String
+  content String
+
+  // Which model wrote it, for the record.
+  model  String?
+  author String?
+
+  createdAt DateTime @default(now())
+
+  @@index([brandId])
+  @@index([kind])
+}
+
+// ---------------------------------------------------------------
+// Settings — small key/value store (the rate card lives here)
+// ---------------------------------------------------------------
+
+model Setting {
+  key       String   @id
+  // JSON string. The rate card is stored under key "rateCard".
+  value     String
+  updatedAt DateTime @updatedAt
 }
