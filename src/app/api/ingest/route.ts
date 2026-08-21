@@ -45,6 +45,23 @@ function scoreFit(title: string | null, tier: string | null): number {
   return Math.max(0, Math.min(100, score))
 }
 
+// Mirror of reconcileBrandTargets in /api/data: keep only the top few
+// (by fit) queued per brand, shelving the rest. Already-contacted people
+// count against the cap. Nothing is deleted.
+const TARGET_CAP_PER_BRAND = 3
+async function reconcileBrandTargets(brandId: string, perBrand = TARGET_CAP_PER_BRAND) {
+  const worked = await prisma.target.count({ where: { brandId, sentAt: { not: null } } })
+  const room = Math.max(0, perBrand - worked)
+  const active = await prisma.target.findMany({
+    where: { brandId, status: { in: ['queued', 'drafted'] }, shelved: false },
+    orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
+    select: { id: true },
+  })
+  const shelve = active.slice(room).map(t => t.id)
+  if (shelve.length) await prisma.target.updateMany({ where: { id: { in: shelve } }, data: { shelved: true } })
+  return shelve.length
+}
+
 // CORS so the SponsorUnited tab (a different origin) can POST here.
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -69,7 +86,8 @@ export async function POST(req: NextRequest) {
   }
 
   const rows: any[] = Array.isArray(body.rows) ? body.rows : []
-  const result = { contactsCreated: 0, targetsCreated: 0, skipped: 0, failed: 0, brandsMissing: [] as string[], errors: [] as string[] }
+  const result = { contactsCreated: 0, targetsCreated: 0, targetsShelved: 0, skipped: 0, failed: 0, brandsMissing: [] as string[], errors: [] as string[] }
+  const touched = new Set<string>()
 
   for (const row of rows) {
     try {
@@ -83,6 +101,7 @@ export async function POST(req: NextRequest) {
         result.skipped++
         continue
       }
+      touched.add(brand.id)
 
       const dupe = await prisma.contact.findFirst({ where: { brandId: brand.id, name: row.name } })
       if (dupe) { result.skipped++; continue }
@@ -117,6 +136,11 @@ export async function POST(req: NextRequest) {
       result.failed++
       if (result.errors.length < 20) result.errors.push(`${row.brandName} / ${row.name}: ${err?.message ?? 'error'}`)
     }
+  }
+
+  // Apply the per-brand cap to every brand this batch touched.
+  for (const brandId of touched) {
+    try { result.targetsShelved += await reconcileBrandTargets(brandId) } catch { /* skip */ }
   }
 
   return NextResponse.json({ ok: true, ...result }, { headers: cors })
