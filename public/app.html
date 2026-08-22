@@ -206,6 +206,7 @@
       <div class="eyebrow">Dashboard</div>
       <h1 id="today-date">—</h1>
       <div class="sub" id="dash-sub">Loading…</div>
+      <div id="action-panel" style="margin-top:20px"></div>
       <div class="kpi-row" id="kpis"></div>
       <div class="section-head">Sponsorship revenue <span class="n">separate line from booking revenue</span></div>
       <div class="kpi-row" id="rev-kpis" style="margin-top:0"></div>
@@ -508,8 +509,33 @@ function showView(id) {
 
 // --- dashboard -------------------------------------------------
 
+function renderActionPanel() {
+  var box = document.getElementById('action-panel');
+  if (!box) return;
+  return api('getActionQueue').then(function (d) {
+    if (!d.count) { box.innerHTML = ''; return; }
+    box.innerHTML = '<div class="section-head" style="margin-top:0">Needs action today <span class="n">' + d.count + '</span></div>' +
+      d.items.map(function (it) {
+        var badge = it.reason === 'reply'
+          ? '<span class="status replied">reply — set next step</span>'
+          : '<span class="status ' + (it.overdue ? 'declined' : 'proposed') + '">' + (it.overdue ? 'overdue' : 'follow up') + '</span>';
+        return '<div class="target" data-brand="' + esc(it.brandId) + '" style="cursor:pointer">' +
+          '<div class="t-main"><div class="t-line"><span class="t-brand">' + esc(it.brandName) + '</span>' +
+            '<span class="t-sep">·</span>' + esc(it.contactName) +
+            (it.contactTitle ? ' <span class="t-title">— ' + esc(it.contactTitle) + '</span>' : '') + '</div>' +
+          '<div class="t-meta">' + badge +
+            (it.nextStep ? '<span>· ▸ ' + esc(it.nextStep) + '</span>' : '') +
+            (it.followUpAt ? '<span>· ' + shortDate(it.followUpAt) + '</span>' : '') + '</div></div>' +
+          '<div class="t-actions">' +
+            (it.linkedinUrl ? '<a class="btn-ghost" href="' + esc(it.linkedinUrl) + '" target="_blank" rel="noopener">↗</a>' : '') +
+            '<button class="btn-ghost" data-brand="' + esc(it.brandId) + '">Open →</button></div></div>';
+      }).join('');
+  }).catch(function () { box.innerHTML = ''; });
+}
+
 function loadDashboard() {
   showView('dashboard');
+  renderActionPanel();
   document.getElementById('today-date').textContent =
     new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
 
@@ -1665,6 +1691,7 @@ var mode = 'today', statusFilter = 'all';
 // and stay open on reload unless closed — closing is remembered for the
 // session only, which is the behaviour you want mid-work-session.
 var CLOSED_DRAFTS = {};
+var TARGET_CACHE = {};
 
 function targetRow(t) {
   var d = (t.drafts || [])[0];
@@ -1678,17 +1705,58 @@ function targetRow(t) {
       '<div class="t-meta"><span class="status ' + t.status + '">' + t.status + '</span>' +
       (t.brand.category ? '<span>' + esc(CAT_NAMES[t.brand.category] || t.brand.category) + '</span>' : '') +
       (t.brand.tier ? '<span>·</span><span>' + esc(t.brand.tier) + '</span>' : '') +
-      '<span>·</span><span class="fit">fit ' + t.fitScore + '</span></div>' +
+      '<span>·</span><span class="fit">fit ' + t.fitScore + '</span>' +
+      (t.nextStep ? '<span>·</span><span class="fit">▸ ' + esc(t.nextStep) +
+        (t.followUpAt ? ' (' + shortDate(t.followUpAt) + ')' : '') + '</span>' : '') +
+      '</div>' +
     '</div>' +
     '<div class="t-actions">' +
       '<button class="btn-ghost" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
       (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">↗ LinkedIn</a>' : '') +
       (d ? '<button class="btn-ghost" data-act="toggle">' + (open ? 'Close draft' : 'Show draft') + '</button>' : '') +
       '<button class="btn-draft" data-act="draft">✦ ' + (d ? 'Redraft' : 'Draft') + '</button>' +
-      '<button class="btn-ghost" data-act="sent">Mark sent</button>' +
+      (t.status === 'queued' || t.status === 'drafted' ? '<button class="btn-ghost" data-act="sent">Mark sent</button>' : '') +
+      (t.status !== 'replied' && t.status !== 'converted' && t.status !== 'declined' && t.status !== 'dead'
+        ? '<button class="btn-ghost" data-act="replied">Replied</button>' : '') +
+      (t.status === 'replied' ? '<button class="btn-ghost" data-act="nextstep">Next step</button>' : '') +
+      (t.status === 'replied' ? '<button class="btn-ghost" data-act="won">Won</button>' : '') +
+      (t.status !== 'declined' && t.status !== 'dead' && t.status !== 'converted'
+        ? '<button class="btn-ghost danger" data-act="pass">Pass</button>' : '') +
     '</div>' +
   '</div>' +
   (open ? draftBlock(t) : '');
+}
+
+function plus3Days() { var d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().slice(0, 10); }
+function isoDate(x) { return new Date(x).toISOString().slice(0, 10); }
+function shortDate(x) { return new Date(x).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+
+// After a reply: capture the next step + follow-up date (defaults to +3 days).
+function openNextStepForm(id, row) {
+  var t = TARGET_CACHE[id] || {};
+  var ex = document.getElementById('nextstep-form'); if (ex) ex.remove();
+  var wrap = document.createElement('div');
+  wrap.id = 'nextstep-form'; wrap.className = 'panel panel-pad'; wrap.style.cssText = 'margin:-4px 0 10px';
+  wrap.innerHTML =
+    '<div style="font-size:13px;font-weight:600;margin-bottom:8px">Logged a reply — what\'s next?</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">' +
+      '<div style="flex:1;min-width:180px"><label class="lbl">Next step</label>' +
+        '<input class="field-box" id="ns-step" value="' + esc(t.nextStep || 'Send proposal') + '"></div>' +
+      '<div><label class="lbl">Follow up</label>' +
+        '<input class="field-box" id="ns-date" type="date" value="' + (t.followUpAt ? isoDate(t.followUpAt) : plus3Days()) + '"></div>' +
+      '<button class="btn-solid" id="ns-save">Save</button>' +
+      '<button class="btn-ghost" id="ns-cancel">Cancel</button>' +
+    '</div>';
+  row.parentNode.insertBefore(wrap, row.nextSibling);
+  wrap.querySelector('#ns-cancel').onclick = function () { wrap.remove(); };
+  wrap.querySelector('#ns-save').onclick = function () {
+    api('setTargetStatus', {
+      targetId: id, status: 'replied', actor: ME.owner || null,
+      nextStep: wrap.querySelector('#ns-step').value || null,
+      followUpAt: wrap.querySelector('#ns-date').value || null
+    }).then(function () { toast('Saved — it\'s on your dashboard'); loadOutreach(); })
+      .catch(function (e) { toast(e.message); });
+  };
 }
 
 function draftBlock(t) {
@@ -1733,6 +1801,7 @@ function loadOutreach() {
     : api('listTargets', { status: statusFilter });
 
   return call.then(function (list) {
+    (list || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
     document.getElementById('queue-head').innerHTML = mode === 'today'
       ? 'To send today <span class="n">' + list.length + '</span>'
       : 'All targets <span class="n">' + list.length + '</span>';
@@ -1924,7 +1993,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'renew-list'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'renew-list', 'action-panel'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
@@ -2152,6 +2221,20 @@ document.getElementById('targets').addEventListener('click', function (e) {
   if (act === 'sent') {
     api('setTargetStatus', { targetId: id, status: 'sent', actor: ME.owner || null })
       .then(function () { toast('Marked sent'); return loadOutreach(); })
+      .catch(function (err) { toast(err.message); });
+  }
+
+  if (act === 'replied' || act === 'nextstep') { openNextStepForm(id, row); return; }
+
+  if (act === 'won') {
+    api('setTargetStatus', { targetId: id, status: 'converted', actor: ME.owner || null, clearFollowUp: true })
+      .then(function () { toast('Marked won 🎉'); return loadOutreach(); })
+      .catch(function (err) { toast(err.message); });
+  }
+
+  if (act === 'pass') {
+    api('setTargetStatus', { targetId: id, status: 'declined', actor: ME.owner || null, clearFollowUp: true })
+      .then(function () { toast('Passed'); return loadOutreach(); })
       .catch(function (err) { toast(err.message); });
   }
 });
