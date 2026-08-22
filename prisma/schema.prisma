@@ -140,6 +140,13 @@ model Target {
   // rows and every new target start active until a cap shelves them.
   shelved   Boolean @default(false)
 
+  // Follow-up layer — the connective tissue that keeps a deal moving after
+  // "sent". nextStep is what to do next in plain words; followUpAt is when
+  // it's due. Both drive the dashboard's "Needs action" list so a reply or
+  // a due follow-up never falls through the cracks.
+  nextStep   String?
+  followUpAt DateTime?
+
   // Set when it lands in a day's send list, so "Today" is stable
   // and doesn't reshuffle mid-session.
   queuedFor DateTime?
@@ -159,6 +166,7 @@ model Target {
   @@index([queuedFor])
   @@index([fitScore])
   @@index([shelved])
+  @@index([followUpAt])
 }
 
 // ---------------------------------------------------------------
