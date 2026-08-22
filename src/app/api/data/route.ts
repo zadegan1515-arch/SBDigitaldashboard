@@ -579,7 +579,7 @@ const handlers: Record<string, Handler> = {
     })
   },
 
-  async setTargetStatus({ targetId, status, actor }: any) {
+  async setTargetStatus({ targetId, status, actor, nextStep, followUpAt, clearFollowUp }: any) {
     const before = await prisma.target.findUnique({ where: { id: targetId } })
     if (!before) throw new Error('Target not found')
 
@@ -587,23 +587,32 @@ const handlers: Record<string, Handler> = {
     const updated = await prisma.target.update({
       where: { id: targetId },
       data: {
-        status,
+        ...(status ? { status } : {}),
         ...(status === 'sent' && !before.sentAt ? { sentAt: now } : {}),
         ...(status === 'replied' && !before.repliedAt ? { repliedAt: now } : {}),
+        // Follow-up layer. clearFollowUp wipes it (e.g. when a deal closes);
+        // otherwise set whatever was passed.
+        ...(nextStep !== undefined ? { nextStep: nextStep || null } : {}),
+        ...(clearFollowUp ? { nextStep: null, followUpAt: null }
+          : followUpAt !== undefined ? { followUpAt: followUpAt ? new Date(followUpAt) : null } : {}),
       },
       include: { brand: true, contact: true },
     })
 
-    // Audit trail — this is what makes "which approach works" answerable later.
-    await prisma.targetEvent.create({
-      data: {
-        targetId,
-        kind: 'status',
-        fromStatus: before.status,
-        toStatus: status,
-        actor: actor ?? null,
-      },
-    })
+    // Audit trail — only when the status actually changed (this handler is
+    // also used to set a next step without moving the deal).
+    if (status && status !== before.status) {
+      await prisma.targetEvent.create({
+        data: {
+          targetId,
+          kind: 'status',
+          fromStatus: before.status,
+          toStatus: status,
+          actor: actor ?? null,
+          detail: nextStep || null,
+        },
+      })
+    }
 
     // A reply means a relationship exists. Promote the brand.
     if (status === 'replied') {
@@ -615,6 +624,49 @@ const handlers: Record<string, Handler> = {
     }
 
     return updated
+  },
+
+  // The "Needs action today" list — the follow-up layer's payoff. A target
+  // needs action when it isn't dead/won and either its follow-up is due (or
+  // overdue), or a reply came in that hasn't been given a next step yet.
+  async getActionQueue() {
+    const endOfToday = new Date(startOfLocalDay().getTime() + 24 * 60 * 60 * 1000)
+    const now = new Date()
+
+    const targets = await prisma.target.findMany({
+      where: {
+        status: { notIn: ['converted', 'declined', 'dead'] },
+        OR: [
+          { followUpAt: { lte: endOfToday } },
+          { AND: [{ status: 'replied' }, { followUpAt: null }] },
+        ],
+      },
+      include: {
+        brand: { select: { id: true, name: true, category: true } },
+        contact: { select: { name: true, title: true, linkedinUrl: true } },
+      },
+      orderBy: [{ followUpAt: 'asc' }, { repliedAt: 'asc' }],
+      take: 100,
+    })
+
+    const items = targets.map(t => {
+      const due = t.followUpAt != null
+      return {
+        targetId: t.id,
+        brandId: t.brandId,
+        brandName: t.brand.name,
+        category: t.brand.category,
+        contactName: t.contact.name,
+        contactTitle: t.contact.title,
+        linkedinUrl: t.contact.linkedinUrl,
+        status: t.status,
+        nextStep: t.nextStep,
+        followUpAt: t.followUpAt,
+        overdue: due && t.followUpAt! < now,
+        reason: due ? 'followup' : 'reply',
+      }
+    })
+    return { count: items.length, items }
   },
 
   // -------- draft generation --------
