@@ -277,6 +277,10 @@
         <button class="chip" data-mode="all">All targets <span class="n" id="c-all">0</span></button>
         <button class="btn-ghost" id="btn-retrim" style="margin-left:auto">Cap to top 3 / brand</button>
       </div>
+      <div style="position:relative;margin-top:12px;max-width:420px">
+        <input class="inp" id="oq-add" placeholder="+ Add a brand to the queue — type its name…" style="width:100%" autocomplete="off">
+        <div id="oq-results" style="position:absolute;top:100%;left:0;right:0;z-index:30;display:none;background:var(--surface-1);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:260px;overflow:auto;margin-top:4px"></div>
+      </div>
       <div id="status-filters" class="chips" style="display:none"></div>
       <div class="count-head" id="queue-head">To send today <span class="n"></span></div>
       <div class="hint">Generate drafts, copy, send on LinkedIn, then mark sent.</div>
@@ -306,6 +310,8 @@
       <div class="eyebrow">Pipeline</div>
       <h1>Sponsor pipeline</h1>
       <div class="sub">Sponsorship money only. Booking revenue lives in sb-crm and is never added in here.</div>
+      <div style="margin-top:18px"><button class="btn-solid" id="btn-newdeal">+ New deal</button></div>
+      <div id="deal-form-slot" style="margin-top:12px"></div>
       <div class="kpi-row" id="pipe-kpis"></div>
       <div id="deals"></div>
     </section>
@@ -1825,6 +1831,123 @@ function loadOutreach() {
   });
 }
 
+// --- new deal (brand + description + duration + shows) ---------
+
+function openNewDealForm() {
+  var slot = document.getElementById('deal-form-slot');
+  if (slot.innerHTML) { slot.innerHTML = ''; return; }
+  var picked = { id: null, name: null };
+
+  slot.innerHTML =
+    '<div class="panel panel-pad">' +
+      '<div style="font-size:13px;font-weight:600;margin-bottom:10px">New deal</div>' +
+      '<div style="position:relative;margin-bottom:10px">' +
+        '<label class="lbl">Brand</label>' +
+        '<input class="field-box" id="nd-brand" placeholder="Type the brand name…" autocomplete="off">' +
+        '<div id="nd-brand-results" style="position:absolute;top:100%;left:0;right:0;z-index:30;display:none;background:var(--surface-1);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:220px;overflow:auto;margin-top:4px"></div>' +
+      '</div>' +
+      '<div style="margin-bottom:10px"><label class="lbl">What we\'re doing for them</label>' +
+        '<textarea class="field-box" id="nd-desc" rows="2" placeholder="e.g. Sampling at every show, stage banner, story posts"></textarea></div>' +
+      '<div class="row2" style="margin-bottom:10px">' +
+        '<div><label class="lbl">Duration</label><input class="field-box" id="nd-duration" placeholder="e.g. Fall semester"></div>' +
+        '<div><label class="lbl">Total value ($)</label><input class="field-box" id="nd-total" placeholder="e.g. 10,000"></div>' +
+      '</div>' +
+      '<div class="row2" style="margin-bottom:10px">' +
+        '<div><label class="lbl">Status</label><select class="field-box" id="nd-status">' +
+          '<option value="proposed">Proposed</option><option value="confirmed">Confirmed</option></select></div>' +
+        '<div><label class="lbl">Owner</label><select class="field-box" id="nd-owner">' + ownerOptions(ME.owner) + '</select></div>' +
+      '</div>' +
+      '<label class="lbl">Shows on this deal</label>' +
+      '<input class="inp" id="nd-filter" placeholder="Filter shows…" style="width:100%;margin-bottom:8px">' +
+      '<div id="nd-shows" style="max-height:260px;overflow:auto;border:1px solid var(--border-soft);border-radius:8px;padding:8px 10px;background:var(--surface-2);margin-bottom:12px">Loading shows…</div>' +
+      '<div class="hint" id="nd-split" style="margin:0 0 12px"></div>' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+        '<button class="btn-solid" id="nd-save">Create deal</button>' +
+        '<button class="btn-ghost" id="nd-cancel">Cancel</button>' +
+        '<span id="nd-msg" style="font-size:12px;color:var(--ink-3)"></span></div>' +
+    '</div>';
+
+  // Brand typeahead.
+  var bIn = slot.querySelector('#nd-brand'), bDrop = slot.querySelector('#nd-brand-results'), bTimer = null;
+  bIn.addEventListener('input', function () {
+    picked = { id: null, name: null };
+    var q = bIn.value.trim();
+    clearTimeout(bTimer);
+    if (q.length < 2) { bDrop.style.display = 'none'; return; }
+    bTimer = setTimeout(function () {
+      api('listBrands', { search: q, take: 8 }).then(function (brands) {
+        bDrop.innerHTML = brands.length ? brands.map(function (b) {
+          return '<div class="ndb-row" data-b="' + esc(b.id) + '" data-n="' + esc(b.name) + '" style="padding:9px 12px;font-size:13px;cursor:pointer"><b>' + esc(b.name) + '</b> <span style="color:var(--ink-3)">' + esc(CAT_NAMES[b.category] || b.category || '') + '</span></div>';
+        }).join('') : '<div style="padding:9px 12px;font-size:13px;color:var(--ink-3)">No match — add it with + Add brand first.</div>';
+        bDrop.style.display = 'block';
+      });
+    }, 250);
+  });
+  bDrop.addEventListener('click', function (e) {
+    var r = e.target.closest('.ndb-row'); if (!r) return;
+    picked = { id: r.getAttribute('data-b'), name: r.getAttribute('data-n') };
+    bIn.value = picked.name;
+    bDrop.style.display = 'none';
+  });
+
+  // Shows checklist.
+  var SHOWS = [];
+  function updateSplit() {
+    var n = slot.querySelectorAll('input[data-ndshow]:checked').length;
+    var cents = parseMoney(slot.querySelector('#nd-total').value);
+    slot.querySelector('#nd-split').textContent =
+      n && cents ? n + ' show' + (n === 1 ? '' : 's') + ' — the total splits to about ' + money(Math.floor(cents / n)) + ' per show. Each show gets its own line on the ledger and its own pipeline deal.'
+      : 'Pick the shows this deal covers. The total is split across them automatically.';
+  }
+  api('listShows', {}).then(function (d) {
+    SHOWS = d.shows || [];
+    slot.querySelector('#nd-shows').innerHTML = SHOWS.length ? SHOWS.map(function (s) {
+      var label = [s.school, s.chapter].filter(Boolean).join(' · ');
+      var meta = [s.eventDate, s.artist].filter(Boolean).join(' · ');
+      return '<label class="nd-row" data-text="' + esc((label + ' ' + meta).toLowerCase()) + '" style="display:flex;gap:9px;align-items:flex-start;padding:5px 0;font-size:13px;cursor:pointer">' +
+        '<input type="checkbox" data-ndshow="' + esc(s.id) + '" style="margin-top:3px">' +
+        '<span><span style="font-weight:600">' + esc(label) + '</span>' +
+        (meta ? '<span style="color:var(--ink-3)"> — ' + esc(meta) + '</span>' : '') + '</span></label>';
+    }).join('') : '<div style="font-size:13px;color:var(--ink-2)">No confirmed shows to attach.</div>';
+    updateSplit();
+  });
+  slot.querySelector('#nd-filter').addEventListener('input', function () {
+    var q = this.value.toLowerCase();
+    slot.querySelectorAll('.nd-row').forEach(function (r) {
+      r.style.display = !q || r.getAttribute('data-text').indexOf(q) > -1 ? '' : 'none';
+    });
+  });
+  slot.querySelector('#nd-shows').addEventListener('change', updateSplit);
+  slot.querySelector('#nd-total').addEventListener('input', updateSplit);
+
+  slot.querySelector('#nd-cancel').onclick = function () { slot.innerHTML = ''; };
+  slot.querySelector('#nd-save').onclick = function () {
+    var msg = slot.querySelector('#nd-msg');
+    if (!picked.id) { msg.textContent = 'Pick a brand from the list.'; return; }
+    var cents = parseMoney(slot.querySelector('#nd-total').value);
+    if (cents === null) { msg.textContent = 'Total must be a number, e.g. 10,000.'; return; }
+    var chosen = [].slice.call(slot.querySelectorAll('input[data-ndshow]:checked')).map(function (cb) {
+      var s = SHOWS.filter(function (x) { return x.id === cb.getAttribute('data-ndshow'); })[0];
+      return { id: s.id, school: s.school, chapter: s.chapter, artist: s.artist, eventDate: s.eventDate };
+    });
+    if (!chosen.length) { msg.textContent = 'Pick at least one show.'; return; }
+    var btn = this; btn.disabled = true;
+    api('createDealPackage', {
+      brandId: picked.id,
+      description: slot.querySelector('#nd-desc').value || null,
+      duration: slot.querySelector('#nd-duration').value || null,
+      totalCents: cents,
+      status: slot.querySelector('#nd-status').value,
+      owner: slot.querySelector('#nd-owner').value || null,
+      shows: chosen
+    }).then(function (r) {
+      toast(r.brandName + ' — deal across ' + r.attached + ' show' + (r.attached === 1 ? '' : 's') + ' created');
+      slot.innerHTML = '';
+      loadPipeline();
+    }).catch(function (e) { msg.textContent = e.message; btn.disabled = false; });
+  };
+}
+
 // --- pipeline + crm --------------------------------------------
 
 var STAGE_ORDER = ['conversation', 'proposal', 'verbal', 'closed', 'lost'];
@@ -2082,6 +2205,7 @@ document.getElementById('brand-crumb').addEventListener('click', function () {
 });
 
 document.getElementById('btn-ratecard').addEventListener('click', openRateCard);
+document.getElementById('btn-newdeal').addEventListener('click', openNewDealForm);
 
 document.querySelectorAll('.chip[data-shows]').forEach(function (c) {
   c.addEventListener('click', function () {
@@ -2114,6 +2238,54 @@ document.querySelectorAll('.chip[data-mode]').forEach(function (c) {
     loadOutreach();
   });
 });
+
+// Hand-pick a brand into the outreach queue. Type a name, click a result,
+// and its best reachable contact jumps into Today.
+(function () {
+  var box = document.getElementById('oq-add');
+  var drop = document.getElementById('oq-results');
+  var timer = null;
+
+  function hide() { drop.style.display = 'none'; drop.innerHTML = ''; }
+
+  box.addEventListener('input', function () {
+    var q = box.value.trim();
+    clearTimeout(timer);
+    if (q.length < 2) { hide(); return; }
+    timer = setTimeout(function () {
+      api('listBrands', { search: q, take: 8 }).then(function (brands) {
+        if (!brands.length) {
+          drop.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--ink-3)">No brand named “' + esc(q) + '” — add it with + Add brand first.</div>';
+          drop.style.display = 'block';
+          return;
+        }
+        drop.innerHTML = brands.map(function (b) {
+          return '<div class="oq-row" data-oq="' + esc(b.id) + '" style="padding:9px 12px;font-size:13px;cursor:pointer;display:flex;gap:8px;align-items:center">' +
+            '<span style="font-weight:600">' + esc(b.name) + '</span>' +
+            '<span style="color:var(--ink-3)">' + esc(CAT_NAMES[b.category] || b.category || '') + '</span>' +
+            '<span style="margin-left:auto;color:var(--ink-3);font-size:12px">' + b._count.contacts + ' contact' + (b._count.contacts === 1 ? '' : 's') + '</span></div>';
+        }).join('');
+        drop.style.display = 'block';
+      }).catch(hide);
+    }, 250);
+  });
+
+  drop.addEventListener('click', function (e) {
+    var row = e.target.closest('.oq-row');
+    if (!row) return;
+    var brandId = row.getAttribute('data-oq');
+    hide(); box.value = '';
+    api('queueBrandTargets', { brandId: brandId }).then(function (r) {
+      if (r.queued) toast(r.contactName + ' added to the queue' + (r.revived ? ' (brought back)' : ''));
+      else toast('Already in play — ' + r.contactName + ' is ' + r.status);
+      loadOutreach();
+    }).catch(function (err) { toast(err.message); });
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('#oq-add') && !e.target.closest('#oq-results')) hide();
+  });
+})();
 
 // Cap the whole queue to top-N per brand. Preview first (nothing is
 // deleted — extras are shelved and stay promotable), then apply.
