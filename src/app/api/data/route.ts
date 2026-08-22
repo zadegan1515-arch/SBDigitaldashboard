@@ -997,6 +997,56 @@ const handlers: Record<string, Handler> = {
     return { attached: results.length }
   },
 
+  // One deal, many shows. "Alec's Ice Cream — $10k for the fall, these 4
+  // shows." The total is split across the shows in exact cents (remainder
+  // on the first), each link mirrors into its own pipeline deal via the
+  // usual sync, and every show involved lists the brand as its sponsor —
+  // so Pipeline, the Sponsorships ledger, and the Shows tab all agree
+  // without anything being typed twice.
+  async createDealPackage({ brandId, description, duration, totalCents = 0, status = 'proposed', owner, shows = [] }: any) {
+    const brand = await prisma.brand.findUnique({ where: { id: brandId } })
+    if (!brand) throw new Error('Brand not found')
+    if (!Array.isArray(shows) || shows.length === 0) throw new Error('Pick at least one show')
+
+    const total = Math.max(0, Math.round(Number(totalCents) || 0))
+    const base = Math.floor(total / shows.length)
+    let remainder = total - base * shows.length
+
+    const results = []
+    for (const s of shows) {
+      const cents = base + (remainder > 0 ? 1 : 0)
+      if (remainder > 0) remainder--
+      const row = await prisma.showSponsor.upsert({
+        where: { brandId_crmLeadId: { brandId, crmLeadId: s.id } },
+        create: {
+          brandId, crmLeadId: s.id,
+          school: s.school ?? null, chapter: s.chapter ?? null,
+          artist: s.artist ?? null, eventDate: s.eventDate ?? null,
+          status, valueCents: cents,
+          deliverables: description || null,
+          notes: duration ? `Duration: ${duration}` : null,
+          owner: owner ?? null,
+        },
+        update: {
+          status, valueCents: cents,
+          deliverables: description || null,
+          notes: duration ? `Duration: ${duration}` : null,
+          owner: owner ?? null,
+        },
+      })
+      await syncSponsorDeal(row.id)
+      results.push(row)
+    }
+
+    await prisma.partner.upsert({
+      where: { brandId },
+      create: { brandId, lifecycle: status === 'confirmed' ? 'active_partner' : 'in_network', owner: owner ?? null },
+      update: status === 'confirmed' ? { lifecycle: 'active_partner' } : {},
+    })
+
+    return { attached: results.length, totalCents: total, brandName: brand.name }
+  },
+
   async detachShow({ brandId, crmLeadId }: any) {
     // The Deal cascades away with it — see the relation on Deal.
     await prisma.showSponsor.delete({
@@ -1473,6 +1523,63 @@ const handlers: Record<string, Handler> = {
       activeAfter: activeBefore - wouldShelve,
       sample,
     }
+  },
+
+  // "I want to reach out to THIS brand." Hand-picks a brand into today's
+  // queue: takes its best-fit reachable person (LinkedIn required, decision
+  // makers first), revives or creates their target, unshelves it, and
+  // stamps queuedFor so it surfaces in Today immediately — a deliberate
+  // pick always jumps the line, cap or no cap.
+  async queueBrandTargets({ brandId }: any) {
+    const brand = await prisma.brand.findUnique({
+      where: { id: brandId },
+      include: {
+        contacts: {
+          where: { linkedinUrl: { not: null } },
+          orderBy: { isDecisionMaker: 'desc' },
+        },
+        targets: { include: { contact: { select: { name: true } } } },
+      },
+    })
+    if (!brand) throw new Error('Brand not found')
+
+    // Already actively in the pipeline? Say so instead of double-queuing.
+    const live = brand.targets.find(t => !t.shelved && ['queued', 'drafted', 'sent', 'replied'].includes(t.status))
+    if (live) {
+      return { queued: false, reason: 'already', contactName: live.contact.name, status: live.status }
+    }
+
+    // A shelved or dormant target to revive, best fit first.
+    const revivable = brand.targets
+      .filter(t => ['queued', 'drafted'].includes(t.status))
+      .sort((a, b) => b.fitScore - a.fitScore)[0]
+    if (revivable) {
+      await prisma.target.update({
+        where: { id: revivable.id },
+        data: { shelved: false, queuedFor: new Date() },
+      })
+      return { queued: true, contactName: revivable.contact.name, revived: true }
+    }
+
+    // No target yet — create one from the best reachable contact.
+    const targeted = new Set(brand.targets.map(t => t.contactId))
+    const pick = brand.contacts
+      .filter(c => !targeted.has(c.id))
+      .sort((a, b) => scoreFit(b.title, brand.tier) - scoreFit(a.title, brand.tier))[0]
+    if (!pick) {
+      throw new Error(brand.contacts.length === 0
+        ? `${brand.name} has no contacts with a LinkedIn URL yet — add one or pull from SponsorUnited first.`
+        : `${brand.name} has no one left to queue — everyone reachable was already contacted.`)
+    }
+    const t = await prisma.target.create({
+      data: {
+        brandId, contactId: pick.id,
+        fitScore: scoreFit(pick.title, brand.tier),
+        assignedTo: brand.owner ?? null,
+        queuedFor: new Date(),
+      },
+    })
+    return { queued: true, contactName: pick.name, targetId: t.id }
   },
 
   // Flip one target in or out of the queue by hand. Promoting past the
