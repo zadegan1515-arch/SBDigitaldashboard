@@ -963,6 +963,35 @@ const handlers: Record<string, Handler> = {
     }
   },
 
+  // The FULL sb-crm lead table — every stage, not just confirmed. Read
+  // only: this is a window into the booking pipeline so nobody has to
+  // switch apps to see where a show stands. Nothing here ever writes back.
+  async listAllLeads({ take = 500 }: any) {
+    if (!CRM_CONNECTED) return { connected: false, leads: [] }
+    const limit = Math.max(1, Math.min(1000, Number(take) || 500))
+    const rows: any[] = await crm.$queryRawUnsafe(`
+      SELECT l."id", l."stage", l."schoolRaw", l."chapterRaw", l."artist",
+             l."rep", l."eventDate", s."name" AS "schoolName"
+      FROM "Lead" l
+      LEFT JOIN "School" s ON s."id" = l."schoolId"
+      ORDER BY l."stage" DESC, l."eventDate" ASC NULLS LAST
+      LIMIT ${limit}
+    `)
+    const leads = rows.map(r => ({
+      id: r.id,
+      stage: r.stage,
+      school: r.schoolName || r.schoolRaw,
+      chapter: r.chapterRaw,
+      artist: r.artist,
+      rep: r.rep,
+      eventDate: r.eventDate,
+    }))
+    // Stage counts for the header line, biggest stage first.
+    const byStage: Record<string, number> = {}
+    for (const l of leads) byStage[l.stage ?? 'unknown'] = (byStage[l.stage ?? 'unknown'] ?? 0) + 1
+    return { connected: true, total: leads.length, byStage, leads }
+  },
+
   // Attach a brand to one or more shows. Idempotent — re-attaching
   // updates rather than erroring on the unique constraint.
   //
