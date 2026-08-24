@@ -315,6 +315,7 @@
       <div class="chips" style="margin-top:22px;align-items:center">
         <button class="chip active" data-mode="today">Today <span class="n" id="c-today">0</span></button>
         <button class="chip" data-mode="all">All targets <span class="n" id="c-all">0</span></button>
+        <button class="chip" data-mode="email">✉ Email <span class="n" id="c-email"></span></button>
         <button class="btn-ghost" id="btn-retrim" style="margin-left:auto">Cap to top 3 / brand</button>
       </div>
       <div style="position:relative;margin-top:12px;max-width:420px">
@@ -1839,6 +1840,11 @@ function loadOutreach() {
   showView('outreach');
   var box = document.getElementById('targets');
   box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  if (mode === 'email') {
+    document.getElementById('status-filters').style.display = 'none';
+    document.getElementById('queue-head').innerHTML = 'Email outreach';
+    return renderEmailMode(box);
+  }
   renderStatusFilters();
 
   var call = mode === 'today'
@@ -1985,6 +1991,133 @@ function openNewDealForm() {
       loadPipeline();
     }).catch(function (e) { msg.textContent = e.message; btn.disabled = false; });
   };
+}
+
+// --- email outreach mode ---------------------------------------
+
+function renderEmailMode(box) {
+  return api('getEmailStatus').then(function (st) {
+    if (!st.configured) {
+      box.innerHTML =
+        '<div class="panel panel-pad">' +
+          '<h3 style="font-size:15px;margin-bottom:8px">Connect an email to start</h3>' +
+          '<div style="font-size:13.5px;color:var(--ink-2);line-height:1.7">' +
+          'Email outreach sends from a Gmail address you control. One-time setup:<br>' +
+          '1. On the Google account you\'ll send from, turn on <b>2-Step Verification</b>, then create an <b>App password</b> at <span style="font-family:monospace">myaccount.google.com/apppasswords</span>.<br>' +
+          '2. In <b>Vercel → sb-digitaldashboard → Settings → Environment Variables</b>, add:<br>' +
+          '<span style="font-family:monospace;font-size:12.5px">EMAIL_USER</span> = the Gmail address · ' +
+          '<span style="font-family:monospace;font-size:12.5px">EMAIL_APP_PASSWORD</span> = the app password<br>' +
+          '3. Redeploy. Come back here and the daily batch starts.<br><br>' +
+          'Swapping to marketing@sboyagency.com later = just change those two values.</div></div>';
+      return;
+    }
+    return api('listEmailQueue').then(function (q) {
+      document.getElementById('c-email').textContent = q.drafts.length || '';
+      var head =
+        '<div class="panel panel-pad" style="margin-bottom:12px">' +
+          '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+            '<div style="font-size:13px"><b>' + esc(st.address) + '</b>' +
+              '<span style="color:var(--ink-3)"> · ' + st.sentToday + '/' + st.cap + ' sent today · ' +
+              st.totalSent + ' all-time · ' + st.totalReplies + ' replies</span></div>' +
+            '<span style="margin-left:auto"></span>' +
+            '<button class="btn-ghost" id="em-draft">✦ Draft today\'s batch</button>' +
+            '<button class="btn-ghost" id="em-check">Check replies</button>' +
+            '<button class="btn-solid" id="em-send"' + (q.drafts.length ? '' : ' disabled') + '>Send all (' + q.drafts.length + ')</button>' +
+          '</div>' +
+          '<div class="hint" style="margin:8px 0 0">Daily cap ramps up ~5/week to 40 to protect deliverability. Drafts wait here until you hit Send.</div>' +
+        '</div>';
+
+      var drafts = q.drafts.length
+        ? '<div class="count-head">To approve <span class="n">' + q.drafts.length + '</span></div>' +
+          q.drafts.map(function (d) {
+            return '<div class="panel panel-pad" style="margin-bottom:10px" data-em="' + esc(d.id) + '">' +
+              '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;font-size:13px">' +
+                '<b>' + esc(d.target.brand.name) + '</b><span class="t-sep">·</span>' +
+                esc(d.target.contact.name) +
+                '<span style="color:var(--ink-3)">&lt;' + esc(d.toEmail || '') + '&gt;</span>' +
+                '<span class="status ' + (d.kind === 'followup' ? 'proposed' : 'sent') + '">' + d.kind + '</span>' +
+                '<button class="btn-ghost danger" data-emact="del" style="margin-left:auto">Skip</button></div>' +
+              '<input class="field-box" data-emfield="subject" value="' + esc(d.subject || '') + '" style="margin-bottom:8px;font-weight:600">' +
+              '<textarea class="field-box" data-emfield="body" rows="' + Math.max(4, Math.ceil((d.body || '').length / 80)) + '">' + esc(d.body || '') + '</textarea>' +
+            '</div>';
+          }).join('')
+        : '<div class="panel"><div class="empty"><h3>No drafts waiting</h3><p>Hit “Draft today\'s batch” — it writes a personalized email for your best-fit targets who have a work address, up to today\'s cap.</p></div></div>';
+
+      var replies = q.replies.length
+        ? '<div class="count-head" style="margin-top:20px">Replies <span class="n">' + q.replies.length + '</span></div>' +
+          q.replies.map(function (r) {
+            return '<div class="target clickable" data-brand="' + esc(r.target.brand.id) + '"><div class="t-main">' +
+              '<div class="t-line"><span class="t-brand">' + esc(r.target.brand.name) + '</span>' +
+              '<span class="t-sep">·</span>' + esc(r.target.contact.name) + '</div>' +
+              '<div class="t-meta"><span>' + esc(r.subject || '(no subject)') + '</span><span>· ' + when(r.sentAt || r.createdAt) + '</span></div>' +
+              '</div><div class="t-actions"><span class="status replied">replied</span></div></div>';
+          }).join('')
+        : '';
+
+      var recent = q.recent.length
+        ? '<div class="count-head" style="margin-top:20px">Recently sent</div>' +
+          q.recent.map(function (r) {
+            return '<div class="target"><div class="t-main">' +
+              '<div class="t-line"><span class="t-brand">' + esc(r.target.brand.name) + '</span>' +
+              '<span class="t-sep">·</span>' + esc(r.subject || '') + '</div>' +
+              '<div class="t-meta"><span>' + esc(r.toEmail || '') + '</span><span>· ' + when(r.sentAt || r.createdAt) + '</span></div></div>' +
+              '<div class="t-actions"><span class="status ' + (r.status === 'failed' ? 'declined' : 'sent') + '">' + r.status + '</span></div></div>';
+          }).join('')
+        : '';
+
+      box.innerHTML = head + drafts + replies + recent;
+
+      box.querySelector('#em-draft').onclick = function () {
+        var btn = this; btn.disabled = true; var total = 0;
+        function step(rounds) {
+          btn.textContent = '✦ Drafting… (' + total + ')';
+          api('draftEmails', { limit: 4 }).then(function (r) {
+            total += r.drafted;
+            if (!r.done && rounds < 10 && r.drafted > 0) step(rounds + 1);
+            else { toast(total + ' email' + (total === 1 ? '' : 's') + ' drafted'); loadOutreach(); }
+          }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = '✦ Draft today\'s batch'; });
+        }
+        step(0);
+      };
+      box.querySelector('#em-check').onclick = function () {
+        var btn = this; btn.disabled = true; btn.textContent = 'Checking…';
+        api('checkEmailReplies').then(function (r) {
+          toast(r.error ? 'Check hit a snag: ' + r.error : (r.replies + ' new repl' + (r.replies === 1 ? 'y' : 'ies')));
+          loadOutreach();
+        }).catch(function (e) { toast(e.message); btn.disabled = false; });
+      };
+      box.querySelector('#em-send').onclick = function () {
+        if (!window.confirm('Send ' + q.drafts.length + ' email' + (q.drafts.length === 1 ? '' : 's') + ' from ' + st.address + '?')) return;
+        var btn = this; btn.disabled = true; btn.textContent = 'Sending…';
+        api('sendApprovedEmails').then(function (r) {
+          toast(r.sent + ' sent' + (r.failed ? ', ' + r.failed + ' failed' : ''));
+          if (r.errors && r.errors.length) window.alert('Some failed:\n' + r.errors.join('\n'));
+          loadOutreach();
+        }).catch(function (e) { toast(e.message); btn.disabled = false; });
+      };
+
+      // Autosave draft edits on blur.
+      box.querySelectorAll('[data-emfield]').forEach(function (el) {
+        el.addEventListener('blur', function () {
+          var card = el.closest('[data-em]');
+          api('updateEmailDraft', {
+            id: card.getAttribute('data-em'),
+            subject: card.querySelector('[data-emfield="subject"]').value,
+            body: card.querySelector('[data-emfield="body"]').value
+          }).catch(function () { toast('Could not save edit'); });
+        });
+      });
+      box.querySelectorAll('[data-emact="del"]').forEach(function (b) {
+        b.onclick = function () {
+          api('deleteEmailDraft', { id: b.closest('[data-em]').getAttribute('data-em') })
+            .then(function () { toast('Skipped'); loadOutreach(); })
+            .catch(function (e) { toast(e.message); });
+        };
+      });
+    });
+  }).catch(function (e) {
+    box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
 }
 
 // --- pipeline + crm --------------------------------------------
