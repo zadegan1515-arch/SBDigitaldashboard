@@ -14,6 +14,10 @@ import { PrismaClient, TargetStatus } from '@prisma/client'
 import { getServerSession } from 'next-auth'
 import Anthropic from '@anthropic-ai/sdk'
 import { authOptions, allowlist } from '@/lib/auth'
+import {
+  emailStatus, listEmailQueue, draftDailyEmails,
+  sendApprovedEmails, checkReplies,
+} from '@/lib/email'
 
 const prisma = new PrismaClient()
 
@@ -1885,6 +1889,31 @@ const handlers: Record<string, Handler> = {
     const list = [...byBrand.values()].sort((a, b) => b.totalCents - a.totalCents)
     const totalCents = list.reduce((s, b) => s + b.totalCents, 0)
     return { count: list.length, totalCents, brands: list }
+  },
+
+  // -------- email outreach --------
+
+  async getEmailStatus() { return emailStatus() },
+  async listEmailQueue() { return listEmailQueue() },
+  async draftEmails({ limit = 4 }: any) { return draftDailyEmails(Math.min(6, limit)) },
+  async sendApprovedEmails() { return sendApprovedEmails() },
+  async checkEmailReplies() { return checkReplies() },
+
+  async updateEmailDraft({ id, subject, body }: any) {
+    return prisma.emailMessage.update({
+      where: { id },
+      data: {
+        ...(subject !== undefined ? { subject } : {}),
+        ...(body !== undefined ? { body } : {}),
+      },
+    })
+  },
+
+  async deleteEmailDraft({ id }: any) {
+    const m = await prisma.emailMessage.findUnique({ where: { id } })
+    if (m && m.status !== 'draft') throw new Error('Only drafts can be deleted')
+    await prisma.emailMessage.delete({ where: { id } })
+    return { ok: true }
   },
 
   async upsertTodo({ id, text, category, owner, done }: any) {
