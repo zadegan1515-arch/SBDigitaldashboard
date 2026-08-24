@@ -218,6 +218,7 @@
       </div>
       <nav class="tabs">
         <button class="nav-item active" data-view="dashboard">Home</button>
+        <button class="nav-item" data-view="brands">Brands</button>
         <button class="nav-item" data-view="outreach">Outreach <span class="n" id="nav-outreach"></span></button>
         <button class="nav-item" data-view="shows">Shows <span class="n" id="nav-shows"></span></button>
         <button class="nav-item" data-view="sponsorships">Sponsorships <span class="n" id="nav-spon"></span></button>
@@ -267,7 +268,8 @@
       <div class="eyebrow">Category</div>
       <h1 id="brands-title">Brands</h1>
       <div class="sub" id="brands-sub">Loading…</div>
-      <div style="margin-top:22px" id="brands-list"></div>
+      <div class="chips" id="brand-cat-chips" style="margin-top:20px"></div>
+      <div id="brands-list"></div>
     </section>
 
     <!-- BRAND DETAIL -->
@@ -654,11 +656,20 @@ var lastCategory = null;
 
 function loadBrands(category) {
   showView('brands');
+  category = category || 'all';
   lastCategory = category;
   var nav = document.querySelector('.nav-item[data-category="' + category + '"]');
   if (nav) nav.classList.add('active');
 
-  document.getElementById('brands-title').textContent = CAT_NAMES[category] || category;
+  document.getElementById('brands-title').textContent =
+    category === 'all' ? 'All brands' : (CAT_NAMES[category] || category);
+  // Category filter chips — flip between categories without leaving the page.
+  document.getElementById('brand-cat-chips').innerHTML =
+    '<button class="chip' + (category === 'all' ? ' active' : '') + '" data-bcat="all">All</button>' +
+    CAT_KEYS.map(function (k) {
+      return '<button class="chip' + (k === category ? ' active' : '') + '" data-bcat="' + k + '">' +
+        esc(CAT_NAMES[k]) + '</button>';
+    }).join('');
   document.getElementById('brands-sub').textContent = 'Loading…';
   var box = document.getElementById('brands-list');
   box.innerHTML = '';
@@ -2118,6 +2129,7 @@ document.getElementById('team-body').addEventListener('click', function (e) {
 
 function gotoView(id) {
   if (id === 'dashboard') loadDashboard();
+  if (id === 'brands') loadBrands('all');
   if (id === 'outreach') loadOutreach();
   if (id === 'shows') loadShows();
   if (id === 'sponsorships') loadSponsorships();
@@ -2140,6 +2152,12 @@ document.querySelectorAll('.go-card[data-goto]').forEach(function (c) {
 document.querySelector('.sidebar').addEventListener('click', function (e) {
   var btn = e.target.closest('.nav-item[data-category]');
   if (btn) loadBrands(btn.getAttribute('data-category'));
+});
+
+// Category chips on the Brands tab.
+document.getElementById('brand-cat-chips').addEventListener('click', function (e) {
+  var chip = e.target.closest('.chip[data-bcat]');
+  if (chip) loadBrands(chip.getAttribute('data-bcat'));
 });
 
 document.getElementById('cat-cards').addEventListener('click', function (e) {
