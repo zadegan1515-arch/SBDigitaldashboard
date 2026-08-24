@@ -4,48 +4,57 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SB Command Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&display=swap">
 <style>
   :root{
-    --surface-0:#f4f4f2; --surface-1:#fff; --surface-2:#faf9f8;
-    --border:#e7e6e2; --border-soft:#efeeeb;
-    --ink-1:#14140f; --ink-2:#56554e; --ink-3:#8b8a82;
-    --accent:#e5533d;           /* placeholder — swap for SB brand colour */
+    --surface-0:#f2f0ea; --surface-1:#fff; --surface-2:#faf9f5;
+    --border:#e5e2d8; --border-soft:#edeae1;
+    --ink-1:#131210; --ink-2:#55524a; --ink-3:#8b887c;
+    --accent:#e03e18;            /* SB show-poster red */
+    --side:#161510; --side-ink:#b8b4a6; --side-dim:#7d7a6d;
     --draft:#6e56cf;
     --good:#12684a; --warn:#8a6300;
     --cat-1:#2a78d6; --cat-2:#eb6834; --cat-3:#1baf7a; --cat-4:#eda100; --cat-5:#e87ba4;
-    --radius:10px; --shadow:0 1px 2px rgba(20,20,15,.04),0 1px 3px rgba(20,20,15,.03);
+    --radius:12px; --shadow:0 1px 2px rgba(20,20,15,.04),0 1px 3px rgba(20,20,15,.03);
+    --display:'Archivo',-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Helvetica,Arial,sans-serif;
     background:var(--surface-0);color:var(--ink-1);-webkit-font-smoothing:antialiased;font-size:14px;line-height:1.5}
   .app{display:flex;min-height:100vh}
-  .sidebar{width:228px;flex:none;background:var(--surface-1);border-right:1px solid var(--border);
-    padding:18px 12px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
-  .logo{display:flex;align-items:center;gap:9px;padding:4px 8px 18px}
-  .logo-mark{width:28px;height:28px;border-radius:7px;background:var(--accent);color:#fff;
-    display:grid;place-items:center;font-weight:700;font-size:11px}
-  .logo-text{font-weight:600;font-size:13.5px;line-height:1.2}
-  .logo-text span{display:block;font-weight:400;font-size:11px;color:var(--ink-3)}
-  .nav-label{font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);padding:14px 8px 6px}
+  .sidebar{width:220px;flex:none;background:var(--side);
+    padding:20px 12px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
+  .logo{display:flex;align-items:center;gap:10px;padding:4px 8px 22px}
+  .logo-mark{width:30px;height:30px;border-radius:8px;background:var(--accent);color:#fff;
+    display:grid;place-items:center;font-weight:900;font-size:12px;font-family:var(--display)}
+  .logo-text{font-weight:700;font-size:14px;line-height:1.2;color:#fff;font-family:var(--display);letter-spacing:-.01em}
+  .logo-text span{display:block;font-weight:500;font-size:10.5px;color:var(--side-dim);font-family:inherit;
+    letter-spacing:.08em;text-transform:uppercase;margin-top:2px}
+  .nav-label{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--side-dim);padding:14px 8px 8px}
   .nav-item{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:7px;color:var(--ink-2);
     cursor:pointer;font-size:13.5px;font-weight:500;border:none;background:none;width:100%;text-align:left;font-family:inherit}
-  .nav-item:hover{background:var(--surface-2);color:var(--ink-1)}
-  .nav-item.active{background:var(--surface-0);color:var(--ink-1);font-weight:600}
+  .sidebar .nav-item{color:var(--side-ink)}
+  .sidebar .nav-item:hover{background:rgba(255,255,255,.07);color:#fff}
+  .sidebar .nav-item.active{background:rgba(255,255,255,.1);color:#fff;font-weight:600}
   .nav-item .n{margin-left:auto;font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .sidebar .nav-item .n{color:var(--side-dim)}
   .dot{width:7px;height:7px;border-radius:50%;flex:none}
   .main{flex:1;min-width:0}
 
   /* sticky header: search row + page tabs */
-  .header-stick{position:sticky;top:0;z-index:40;background:rgba(244,244,242,.95);
+  .header-stick{position:sticky;top:0;z-index:40;background:rgba(242,240,234,.96);
     backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
-  .topbar{display:flex;align-items:center;gap:10px;padding:11px 40px 8px}
-  .tabs{display:flex;gap:2px;padding:0 32px;overflow-x:auto;scrollbar-width:none}
+  .topbar{display:flex;align-items:center;gap:10px;padding:12px 40px 8px}
+  .tabs{display:flex;gap:4px;padding:0 32px;overflow-x:auto;scrollbar-width:none}
   .tabs::-webkit-scrollbar{display:none}
-  .tabs .nav-item{width:auto;flex:none;border-radius:0;padding:9px 12px 11px;font-size:13px;
-    border-bottom:2px solid transparent;color:var(--ink-2)}
+  .tabs .nav-item{width:auto;flex:none;border-radius:0;padding:13px 18px 15px;font-size:15.5px;
+    font-weight:600;font-family:var(--display);letter-spacing:-.01em;
+    border-bottom:3px solid transparent;color:var(--ink-3)}
   .tabs .nav-item:hover{background:none;color:var(--ink-1)}
-  .tabs .nav-item.active{background:none;border-bottom-color:var(--ink-1);color:var(--ink-1);font-weight:600}
-  .tabs .nav-item .n{margin-left:6px}
+  .tabs .nav-item.active{background:none;border-bottom-color:var(--accent);color:var(--ink-1);font-weight:700}
+  .tabs .nav-item .n{margin-left:7px;font-size:12px;font-family:inherit}
 
   /* home page section cards */
   .go-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:12px}
@@ -64,21 +73,21 @@
   .whoami{margin-left:auto;font-size:12px;color:var(--ink-3)}
 
   .page{max-width:1180px;padding:28px 40px 90px}
-  .eyebrow{font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px}
+  .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
   .eyebrow a,.crumb{color:var(--ink-3);cursor:pointer;text-decoration:none}
   .crumb:hover{color:var(--ink-1)}
-  h1{font-size:30px;font-weight:600;letter-spacing:-.025em;line-height:1.15}
+  h1{font-size:34px;font-weight:800;letter-spacing:-.03em;line-height:1.1;font-family:var(--display)}
   .sub{color:var(--ink-2);font-size:13.5px;margin-top:5px}
   .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:26px 0 12px}
   .kpi{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow)}
   .kpi-label{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
-  .kpi-value{font-size:24px;font-weight:600;letter-spacing:-.02em;margin-top:5px;font-variant-numeric:tabular-nums}
+  .kpi-value{font-size:26px;font-weight:800;letter-spacing:-.02em;margin-top:5px;font-variant-numeric:tabular-nums;font-family:var(--display)}
   .kpi-note{font-size:11px;color:var(--ink-3);margin-top:3px}
   .kpi.money{border-left:3px solid var(--good)}
   .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(276px,1fr));gap:12px;margin-top:22px}
   .cat-card{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);
     padding:16px 18px;box-shadow:var(--shadow);border-left:3px solid var(--c,var(--cat-1));cursor:pointer}
-  .cat-card h3{font-size:15px;font-weight:600}
+  .cat-card h3{font-size:15px;font-weight:700;font-family:var(--display);letter-spacing:-.01em}
   .cat-stats{display:flex;gap:22px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-soft)}
   .cat-stat-label{font-size:9.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
   .cat-stat-value{font-size:17px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
