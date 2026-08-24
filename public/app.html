@@ -35,10 +35,25 @@
   .dot{width:7px;height:7px;border-radius:50%;flex:none}
   .main{flex:1;min-width:0}
 
-  /* top bar — search, add, who's signed in */
-  .topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:10px;
-    padding:11px 40px;background:rgba(244,244,242,.92);backdrop-filter:blur(8px);
-    border-bottom:1px solid var(--border)}
+  /* sticky header: search row + page tabs */
+  .header-stick{position:sticky;top:0;z-index:40;background:rgba(244,244,242,.95);
+    backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
+  .topbar{display:flex;align-items:center;gap:10px;padding:11px 40px 8px}
+  .tabs{display:flex;gap:2px;padding:0 32px;overflow-x:auto;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs .nav-item{width:auto;flex:none;border-radius:0;padding:9px 12px 11px;font-size:13px;
+    border-bottom:2px solid transparent;color:var(--ink-2)}
+  .tabs .nav-item:hover{background:none;color:var(--ink-1)}
+  .tabs .nav-item.active{background:none;border-bottom-color:var(--ink-1);color:var(--ink-1);font-weight:600}
+  .tabs .nav-item .n{margin-left:6px}
+
+  /* home page section cards */
+  .go-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:12px}
+  .go-card{display:flex;align-items:center;gap:10px;background:var(--surface-1);border:1px solid var(--border);
+    border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow);cursor:pointer;
+    font-size:13.5px;font-weight:600;color:var(--ink-1)}
+  .go-card:hover{border-color:#d8d7d2}
+  .go-card .arr{margin-left:auto;color:var(--ink-3);font-weight:400}
   .search-wrap{position:relative;flex:1;max-width:520px}
   .search-input{width:100%;padding:8px 12px 8px 32px;border-radius:8px;border:1px solid var(--border);
     background:var(--surface-1);font-family:inherit;font-size:13.5px;color:var(--ink-1)}
@@ -176,29 +191,32 @@
       <div class="logo-mark">SB</div>
       <div class="logo-text">Command Center<span>SB Agency</span></div>
     </div>
-    <button class="nav-item active" data-view="dashboard">Dashboard</button>
-    <button class="nav-item" data-view="outreach">Outreach <span class="n" id="nav-outreach"></span></button>
-    <button class="nav-item" data-view="shows">Shows <span class="n" id="nav-shows"></span></button>
-    <button class="nav-item" data-view="sponsorships">Sponsorships <span class="n" id="nav-spon"></span></button>
-    <button class="nav-item" data-view="needs">Needs contacts <span class="n" id="nav-needs"></span></button>
-    <button class="nav-item" data-view="pipeline">Pipeline</button>
-    <button class="nav-item" data-view="renewals">Renewals <span class="n" id="nav-renew"></span></button>
-    <button class="nav-item" data-view="crm">CRM</button>
-    <button class="nav-item" data-view="team">Team</button>
     <div class="nav-label">Categories</div>
     <div id="nav-categories"></div>
   </aside>
 
   <main class="main">
-    <div class="topbar">
-      <div class="search-wrap">
-        <span class="search-icon">⌕</span>
-        <input class="search-input" id="q" type="text" autocomplete="off"
-               placeholder="Search brands, people, shows, sponsorships…">
-        <span class="kbd" id="kbd-hint">/</span>
+    <div class="header-stick">
+      <div class="topbar">
+        <div class="search-wrap">
+          <span class="search-icon">⌕</span>
+          <input class="search-input" id="q" type="text" autocomplete="off"
+                 placeholder="Search brands, people, shows, sponsorships…">
+          <span class="kbd" id="kbd-hint">/</span>
+        </div>
+        <button class="btn-solid" id="btn-add-brand">+ Add brand</button>
+        <span class="whoami" id="whoami"></span>
       </div>
-      <button class="btn-solid" id="btn-add-brand">+ Add brand</button>
-      <span class="whoami" id="whoami"></span>
+      <nav class="tabs">
+        <button class="nav-item active" data-view="dashboard">Home</button>
+        <button class="nav-item" data-view="outreach">Outreach <span class="n" id="nav-outreach"></span></button>
+        <button class="nav-item" data-view="shows">Shows <span class="n" id="nav-shows"></span></button>
+        <button class="nav-item" data-view="sponsorships">Sponsorships <span class="n" id="nav-spon"></span></button>
+        <button class="nav-item" data-view="needs">Needs contacts <span class="n" id="nav-needs"></span></button>
+        <button class="nav-item" data-view="pipeline">Pipeline</button>
+        <button class="nav-item" data-view="crm">CRM</button>
+        <button class="nav-item" data-view="team">Team</button>
+      </nav>
     </div>
 
     <!-- DASHBOARD -->
@@ -215,6 +233,16 @@
       <div class="card-grid" id="cat-cards" style="margin-top:0"></div>
       <div class="section-head">Open todos</div>
       <div class="panel" id="todos"></div>
+      <div class="section-head">Jump to</div>
+      <div class="go-grid">
+        <div class="go-card" data-goto="outreach">Outreach <span class="arr">→</span></div>
+        <div class="go-card" data-goto="shows">Shows <span class="arr">→</span></div>
+        <div class="go-card" data-goto="sponsorships">Sponsorships <span class="arr">→</span></div>
+        <div class="go-card" data-goto="needs">Needs contacts <span class="arr">→</span></div>
+        <div class="go-card" data-goto="pipeline">Pipeline <span class="arr">→</span></div>
+        <div class="go-card" data-goto="crm">CRM <span class="arr">→</span></div>
+        <div class="go-card" data-goto="team">Team <span class="arr">→</span></div>
+      </div>
     </section>
 
     <!-- SEARCH RESULTS -->
@@ -245,8 +273,9 @@
       <h1>Confirmed shows</h1>
       <div class="sub" id="shows-sub">Loading…</div>
       <div class="chips" style="margin-top:22px;align-items:center">
-        <button class="chip active" data-shows="all">All</button>
+        <button class="chip active" data-shows="all">Confirmed</button>
         <button class="chip" data-shows="unsold">Unsold only</button>
+        <button class="chip" data-shows="leads">All leads (CRM)</button>
         <button class="btn-ghost" id="btn-ratecard" style="margin-left:auto">Rate card</button>
       </div>
       <div id="ratecard-slot"></div>
@@ -294,15 +323,6 @@
       <div class="sub" id="needs-sub">Loading…</div>
       <div class="hint" style="margin-top:6px">Brands with nobody to reach yet. Add a name and a LinkedIn (or email/phone) to start outreach, or pull them from SponsorUnited.</div>
       <div id="needs-list" style="margin-top:18px"></div>
-    </section>
-
-    <!-- RENEWALS -->
-    <section class="view page" id="renewals">
-      <div class="eyebrow">Repeat revenue</div>
-      <h1>Renewals</h1>
-      <div class="sub" id="renew-sub">Loading…</div>
-      <div class="hint" style="margin-top:6px">Every brand that's confirmed a sponsorship — your warmest list to re-approach next season. The recap you sent is what earns the yes.</div>
-      <div id="renew-list" style="margin-top:18px"></div>
     </section>
 
     <!-- PIPELINE -->
@@ -1147,6 +1167,34 @@ function loadShows() {
   var box = document.getElementById('shows-list');
   box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
 
+  // "All leads" — the full sb-crm booking pipeline, every stage, read-only.
+  if (showsFilter === 'leads') {
+    return api('listAllLeads', {}).then(function (d) {
+      if (!d.connected) {
+        document.getElementById('shows-sub').textContent = 'Not connected to the CRM';
+        box.innerHTML = '<div class="panel"><div class="empty"><h3>CRM not connected</h3></div></div>';
+        return;
+      }
+      document.getElementById('shows-sub').textContent =
+        d.total + ' leads in sb-crm, every stage — read-only';
+      box.innerHTML = '<div class="hint" style="margin:0 0 10px">The full booking pipeline from sb-crm. ' +
+        'Leads at stage 13+ are the confirmed shows you can sell sponsors on.</div>' +
+        d.leads.map(function (l) {
+          var bits = [l.school, l.chapter].filter(Boolean).join(' · ');
+          var meta = [l.eventDate, l.artist, l.rep ? 'rep ' + l.rep : null].filter(Boolean).join(' · ');
+          var confirmed = /^1[3-9]/.test(l.stage || '');
+          return '<div class="target">' +
+            '<div class="t-main"><div class="t-line"><span class="t-brand">' + esc(bits || 'Unnamed') + '</span></div>' +
+            '<div class="t-meta"><span>' + esc(meta || '—') + '</span></div></div>' +
+            '<div class="t-actions"><span class="status' + (confirmed ? ' confirmed' : '') + '">' +
+              esc(l.stage || '?') + '</span></div></div>';
+        }).join('');
+    }).catch(function (e) {
+      box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
+        esc(e.message) + '</p></div></div>';
+    });
+  }
+
   return api('listShows', { onlyUnsold: showsFilter === 'unsold' }).then(function (d) {
     if (!d.connected) {
       document.getElementById('shows-sub').textContent = 'Not connected to the CRM';
@@ -1231,35 +1279,6 @@ function loadNeeds() {
   }).catch(function (e) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
       esc(e.message) + '</p></div></div>';
-  });
-}
-
-// --- renewals --------------------------------------------------
-
-function loadRenewals() {
-  showView('renewals');
-  var box = document.getElementById('renew-list');
-  box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
-  return api('listRenewals').then(function (d) {
-    document.getElementById('renew-sub').textContent =
-      d.count + ' brand' + (d.count === 1 ? '' : 's') + ' have booked ' + money(d.totalCents) + ' in confirmed sponsorships';
-    document.getElementById('nav-renew').textContent = d.count || '';
-    if (!d.brands.length) {
-      box.innerHTML = '<div class="panel"><div class="empty"><h3>No confirmed sponsorships yet</h3>' +
-        '<p>Once a brand confirms a show, it lands here — with what it spent — so re-approaching next season is a list, not a memory.</p></div></div>';
-      return;
-    }
-    box.innerHTML = d.brands.map(function (b) {
-      return '<div class="target" data-brand="' + esc(b.brand.id) + '" style="cursor:pointer">' +
-        '<div class="t-main"><div class="t-line"><span class="t-brand">' + esc(b.brand.name) + '</span></div>' +
-        '<div class="t-meta"><span>' + esc(CAT_NAMES[b.brand.category] || b.brand.category || '') + '</span>' +
-          (b.lastEvent ? '<span>· last show ' + esc(b.lastEvent) + '</span>' : '') +
-          (b.owner ? '<span>· ' + esc(b.owner) + '</span>' : '') + '</div></div>' +
-        '<div class="t-actions"><span class="amount">' + money(b.totalCents) + '</span>' +
-          '<span class="status confirmed">' + b.shows + ' show' + (b.shows === 1 ? '' : 's') + '</span></div></div>';
-    }).join('');
-  }).catch(function (e) {
-    box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
   });
 }
 
@@ -2088,19 +2107,24 @@ document.getElementById('team-body').addEventListener('click', function (e) {
 
 // --- events ----------------------------------------------------
 
+function gotoView(id) {
+  if (id === 'dashboard') loadDashboard();
+  if (id === 'outreach') loadOutreach();
+  if (id === 'shows') loadShows();
+  if (id === 'sponsorships') loadSponsorships();
+  if (id === 'needs') loadNeeds();
+  if (id === 'pipeline') loadPipeline();
+  if (id === 'crm') loadCRM();
+  if (id === 'team') loadTeam();
+}
+
 document.querySelectorAll('.nav-item[data-view]').forEach(function (b) {
-  b.addEventListener('click', function () {
-    var id = b.getAttribute('data-view');
-    if (id === 'dashboard') loadDashboard();
-    if (id === 'outreach') loadOutreach();
-    if (id === 'shows') loadShows();
-    if (id === 'sponsorships') loadSponsorships();
-    if (id === 'needs') loadNeeds();
-    if (id === 'renewals') loadRenewals();
-    if (id === 'pipeline') loadPipeline();
-    if (id === 'crm') loadCRM();
-    if (id === 'team') loadTeam();
-  });
+  b.addEventListener('click', function () { gotoView(b.getAttribute('data-view')); });
+});
+
+// Home page "Jump to" cards.
+document.querySelectorAll('.go-card[data-goto]').forEach(function (c) {
+  c.addEventListener('click', function () { gotoView(c.getAttribute('data-goto')); });
 });
 
 // Category nav items are rendered after load, so delegate from the sidebar.
@@ -2116,7 +2140,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'renew-list', 'action-panel'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'action-panel'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
