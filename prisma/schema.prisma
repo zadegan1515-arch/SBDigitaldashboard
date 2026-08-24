@@ -157,6 +157,7 @@ model Target {
 
   drafts    Draft[]
   events    TargetEvent[]
+  emails    EmailMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -458,6 +459,44 @@ model Document {
 
   @@index([brandId])
   @@index([kind])
+}
+
+// ---------------------------------------------------------------
+// Email outreach — every message out or in, per target
+// ---------------------------------------------------------------
+//
+// The email channel runs beside LinkedIn, never through it: sending an
+// email does not touch the target's LinkedIn status or the 10/day
+// LinkedIn budget. A reply from either channel marks the target replied.
+// The sending mailbox lives in env vars (EMAIL_USER/EMAIL_APP_PASSWORD),
+// so swapping the personal address for marketing@ later is a settings
+// change, not a code change.
+
+model EmailMessage {
+  id       String @id @default(cuid())
+  targetId String
+  target   Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  // "out" — we sent it; "in" — they wrote back
+  direction String
+  // "intro" | "followup" | "reply"
+  kind      String
+  // out: "draft" -> "sent" | "failed"; in: "received"
+  status    String @default("draft")
+
+  toEmail   String?
+  fromEmail String?
+  subject   String?
+  body      String?
+  error     String?
+
+  sentAt    DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([targetId])
+  @@index([status])
+  @@index([direction])
 }
 
 // ---------------------------------------------------------------
