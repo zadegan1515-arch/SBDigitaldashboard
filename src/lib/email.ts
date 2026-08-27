@@ -104,16 +104,29 @@ function parseEmailJson(text: string): { subject: string; body: string } | null 
 
 // ---- drafting --------------------------------------------------
 
-function introPrompt(t: any): string {
-  return [
-    `Write a cold outreach EMAIL for SB Agency, which books artists and DJs for US college fraternity and sorority events and sells brands sponsorship activations at those shows (sampling, banners, product seeding).`,
-    `TO: ${t.contact.name}${t.contact.title ? `, ${t.contact.title}` : ''} at ${t.brand.name}${t.brand.category ? ` (${t.brand.category})` : ''}.`,
-    t.brand.goals ? `WHAT THEY WANT (from discovery): ${t.brand.goals}` : ``,
+// Leo's outreach template, used verbatim for every intro — (NAME) and
+// (BRAND) filled in, nothing AI-written. His voice, every time.
+function introEmail(t: any): { subject: string; body: string } {
+  const firstName = String(t.contact.name || '').trim().split(/\s+/)[0] || 'there'
+  const brand = t.brand.name
+  const body = [
+    `Hi ${firstName},`,
     ``,
-    `Rules: under 110 words. Plain text, no links, no bullet points, no placeholder brackets. Sound like a real person, not a newsletter. One specific hook about why ${t.brand.name} fits college shows, one concrete offer (get their product in front of thousands of students at live events), one easy ask (worth a quick call?). Sign off exactly:\nLeo\nSB Agency\n\nEnd the body with this exact line: "If this isn't relevant, just reply 'no thanks' and I won't follow up."`,
+    `Hope you're having a good week!`,
     ``,
-    `Return ONLY JSON: {"subject": "...", "body": "..."} — subject under 8 words, lowercase-casual is fine, no clickbait.`,
-  ].filter(Boolean).join('\n')
+    `I'm reaching out from SB Agency. We are the largest producer of collegiate events and live entertainment activations in North America.`,
+    ``,
+    `Our experiential team puts brands directly inside the room at hundreds of major college events each year. We help partners tap into our established live audience on campus, giving them high-impact reach without having to build crowds from the ground up.`,
+    ``,
+    `We'd love to jump on a quick call to better understand ${brand} goals for the upcoming year and brainstorm a few ways we might collaborate.`,
+    ``,
+    `Let me know your availability next week, and we can set up a call.`,
+    ``,
+    `Best,`,
+    `Leo`,
+    `SB Agency`,
+  ].join('\n')
+  return { subject: `SB Agency x ${brand}`, body }
 }
 
 function followupPrompt(t: any, firstEmail: any): string {
@@ -179,7 +192,7 @@ export async function draftDailyEmails(limit = 5) {
   }
 
   // 2. Fresh intros: best-fit active targets with an email and no email
-  //    history at all.
+  //    history at all. Template-filled, not AI-written — instant.
   if (drafted < limit && room > 0) {
     const fresh = await prisma.target.findMany({
       where: {
@@ -193,13 +206,12 @@ export async function draftDailyEmails(limit = 5) {
       take: Math.min(limit - drafted, room),
     })
     for (const t of fresh) {
-      const parsed = parseEmailJson(await askClaude(introPrompt(t), 600))
-      if (!parsed) continue
+      const filled = introEmail(t)
       await prisma.emailMessage.create({
         data: {
           targetId: t.id, direction: 'out', kind: 'intro', status: 'draft',
           toEmail: t.contact.email, fromEmail: emailAddress(),
-          subject: parsed.subject, body: parsed.body,
+          subject: filled.subject, body: filled.body,
         },
       })
       drafted++; room--
@@ -211,6 +223,22 @@ export async function draftDailyEmails(limit = 5) {
 
 // ---- sending ---------------------------------------------------
 
+// The SBA one-pager, attached to every outreach email. Lives in the
+// repo at public/materials/ so it's versioned with the site; fetched
+// once per send batch so a missing file never blocks sending.
+const ONE_PAGER_URL = 'https://sb-digitaldashboard.vercel.app/materials/sba-one-pager.pdf'
+const ONE_PAGER_NAME = 'SBA One Pager.pdf'
+
+async function onePagerAttachment(): Promise<{ filename: string; content: Buffer } | null> {
+  try {
+    const res = await fetch(ONE_PAGER_URL)
+    if (!res.ok) return null
+    const buf = Buffer.from(await res.arrayBuffer())
+    if (buf.length < 1000) return null
+    return { filename: ONE_PAGER_NAME, content: buf }
+  } catch { return null }
+}
+
 export async function sendApprovedEmails() {
   if (!emailConfigured()) return { configured: false, sent: 0, failed: 0 }
 
@@ -218,6 +246,8 @@ export async function sendApprovedEmails() {
     host: 'smtp.gmail.com', port: 465, secure: true,
     auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_APP_PASSWORD },
   })
+
+  const attachment = await onePagerAttachment()
 
   const drafts = await prisma.emailMessage.findMany({
     where: { direction: 'out', status: 'draft' },
@@ -236,6 +266,7 @@ export async function sendApprovedEmails() {
         to,
         subject: d.subject ?? '',
         text: d.body ?? '',
+        ...(attachment ? { attachments: [attachment] } : {}),
       })
       await prisma.emailMessage.update({
         where: { id: d.id },
