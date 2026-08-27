@@ -2045,14 +2045,45 @@ function renderEmailMode(box) {
           '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
             '<div style="font-size:13px"><b>' + esc(st.address) + '</b>' +
               '<span style="color:var(--ink-3)"> · ' + st.sentToday + '/' + st.cap + ' sent today · ' +
-              st.totalSent + ' all-time · ' + st.totalReplies + ' replies</span></div>' +
+              st.totalSent + ' all-time · ' + (st.totalOpened || 0) + ' opened · ' + st.totalReplies + ' replies' +
+              (st.approved ? ' · <b style="color:var(--accent)">' + st.approved + ' scheduled for 9am</b>' : '') + '</span></div>' +
             '<span style="margin-left:auto"></span>' +
             '<button class="btn-ghost" id="em-draft">✦ Draft today\'s batch</button>' +
             '<button class="btn-ghost" id="em-check">Check replies</button>' +
             '<button class="btn-ghost" id="em-test">Send test to me</button>' +
-            '<button class="btn-solid" id="em-send"' + (q.drafts.length ? '' : ' disabled') + '>Send all (' + q.drafts.length + ')</button>' +
+            '<button class="btn-ghost" id="em-approve"' + (q.drafts.length ? '' : ' disabled') + '>Approve → 9am send</button>' +
+            '<button class="btn-solid" id="em-send"' + (q.drafts.length ? '' : ' disabled') + '>Send all now (' + q.drafts.length + ')</button>' +
           '</div>' +
-          '<div class="hint" style="margin:8px 0 0">Daily cap ramps up ~5/week to 40 to protect deliverability. Drafts wait here until you hit Send.</div>' +
+        '</div>';
+
+      // The team cheat-sheet: how outreach works, in one glance.
+      var guide =
+        '<div class="panel panel-pad" style="margin-bottom:12px">' +
+          '<div style="display:flex;align-items:center;gap:8px;cursor:pointer" id="em-guide-toggle">' +
+            '<b style="font-size:13px">How outreach works</b>' +
+            '<span style="color:var(--ink-3);font-size:12px">— the 20-second version for anyone using this page</span>' +
+            '<span style="margin-left:auto;color:var(--ink-3)" id="em-guide-arrow">▾</span>' +
+          '</div>' +
+          '<div id="em-guide-body" style="margin-top:10px">' +
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;font-size:12.5px;line-height:1.55">' +
+              '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">' +
+                '<b style="color:var(--accent)">1 · The sequence</b><br>' +
+                'Intro (one-pager linked) → follow-up <b>day 3</b> → closing note <b>day 7</b>. ' +
+                'A reply stops everything. Still silent after all 3? The brand shows up under <b>“Went quiet”</b> with a recommended next move.</div>' +
+              '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">' +
+                '<b style="color:var(--accent)">2 · Nothing sends itself</b><br>' +
+                'Drafts wait here until a person acts: <b>Send</b> on one card, <b>Send all now</b>, or <b>Approve → 9am</b> ' +
+                '(goes out automatically Tue–Thu ~9am ET — the best reply window).</div>' +
+              '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">' +
+                '<b style="color:var(--accent)">3 · Before you send</b><br>' +
+                'Check the <b>To</b> person is right (switching fixes the greeting), CC anyone useful, ' +
+                'and hit <b>✦ Insert</b> on the brand-specific angle — personalized emails get more replies.</div>' +
+              '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">' +
+                '<b style="color:var(--accent)">4 · After it\'s sent</b><br>' +
+                '<b>👁 opened</b> = they saw it. Replies land below — use <b>✦ Draft response</b> and push for a 15-min call. ' +
+                'Daily cap ramps slowly on purpose: it keeps us out of spam folders.</div>' +
+            '</div>' +
+          '</div>' +
         '</div>';
 
       var drafts = q.drafts.length
@@ -2100,8 +2131,11 @@ function renderEmailMode(box) {
               '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;font-size:13px">' +
                 '<b>' + esc(d.target.brand.name) + '</b><span class="t-sep">·</span>' +
                 esc(d.target.contact.name) +
-                '<span class="status ' + (d.kind === 'followup' ? 'proposed' : 'sent') + '">' + d.kind + '</span>' +
-                '<span style="color:var(--ink-3);font-size:11.5px">📎 SBA One Pager.pdf</span>' +
+                '<span class="status ' + (d.kind === 'intro' ? 'sent' : 'proposed') + '">' + d.kind + '</span>' +
+                (d.status === 'approved' ? '<span class="status replied">scheduled 9am</span>' : '') +
+                (d.kind === 'intro'
+                  ? '<span style="color:var(--ink-3);font-size:11.5px">🔗 one-pager linked</span>'
+                  : '<span style="color:var(--ink-3);font-size:11.5px">📎 SBA One Pager.pdf</span>') +
                 '<button class="btn-ghost danger" data-emact="del" style="margin-left:auto">Skip</button>' +
                 '<button class="btn-solid" data-emact="sendone">Send</button></div>' +
               recip +
@@ -2118,14 +2152,37 @@ function renderEmailMode(box) {
           }).join('')
         : '<div class="panel"><div class="empty"><h3>No drafts waiting</h3><p>Hit “Draft today\'s batch” — it writes a personalized email for your best-fit targets who have a work address, up to today\'s cap.</p></div></div>';
 
+      var exhausted = (q.exhausted && q.exhausted.length)
+        ? '<div class="count-head" style="margin-top:20px">Went quiet — needs a decision <span class="n">' + q.exhausted.length + '</span></div>' +
+          q.exhausted.map(function (x) {
+            return '<div class="panel panel-pad" style="margin-bottom:10px" data-exh="' + esc(x.targetId) + '">' +
+              '<div style="display:flex;gap:8px;align-items:center;font-size:13px;flex-wrap:wrap">' +
+                '<b>' + esc(x.brand.name) + '</b><span class="t-sep">·</span>' + esc(x.contact.name) +
+                '<span style="color:var(--ink-3)">3 touches, no reply' + (x.opened ? ' · 👁 they DID open' : '') + (x.lastTouch ? ' · last ' + when(x.lastTouch) : '') + '</span>' +
+              '</div>' +
+              '<div style="margin-top:6px;font-size:12.5px;color:var(--ink-2)"><b style="color:var(--accent)">Recommendation:</b> ' + esc(x.recommendation) + '</div>' +
+              '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
+                (x.nextContact
+                  ? '<button class="btn-solid" data-exact="alt" data-contact="' + esc(x.nextContact.id) + '">✉ Email ' + esc(x.nextContact.name.split(' ')[0]) + ' instead</button>'
+                  : '') +
+                '<button class="btn-ghost" data-exact="nudge">One more follow-up</button>' +
+                '<button class="btn-ghost danger" data-exact="cold">Mark cold</button>' +
+              '</div>' +
+            '</div>';
+          }).join('')
+        : '';
+
       var replies = q.replies.length
         ? '<div class="count-head" style="margin-top:20px">Replies <span class="n">' + q.replies.length + '</span></div>' +
           q.replies.map(function (r) {
-            return '<div class="target clickable" data-brand="' + esc(r.target.brand.id) + '"><div class="t-main">' +
+            return '<div class="target" data-reply="' + esc(r.id) + '" data-rrtarget="' + esc(r.targetId) + '"><div class="t-main">' +
               '<div class="t-line"><span class="t-brand">' + esc(r.target.brand.name) + '</span>' +
               '<span class="t-sep">·</span>' + esc(r.target.contact.name) + '</div>' +
               '<div class="t-meta"><span>' + esc(r.subject || '(no subject)') + '</span><span>· ' + when(r.sentAt || r.createdAt) + '</span></div>' +
-              '</div><div class="t-actions"><span class="status replied">replied</span></div></div>';
+              '</div><div class="t-actions">' +
+                '<button class="btn-ghost" data-emact="draftresp">✦ Draft response</button>' +
+                '<span class="status replied">replied</span></div></div>' +
+              '<div data-rrpanel="' + esc(r.id) + '" style="display:none;margin:0 0 10px;padding:12px;border:1px solid var(--border);border-radius:8px"></div>';
           }).join('')
         : '';
 
@@ -2136,11 +2193,29 @@ function renderEmailMode(box) {
               '<div class="t-line"><span class="t-brand">' + esc(r.target.brand.name) + '</span>' +
               '<span class="t-sep">·</span>' + esc(r.subject || '') + '</div>' +
               '<div class="t-meta"><span>' + esc(r.toEmail || '') + '</span><span>· ' + when(r.sentAt || r.createdAt) + '</span></div></div>' +
-              '<div class="t-actions"><span class="status ' + (r.status === 'failed' ? 'declined' : 'sent') + '">' + r.status + '</span></div></div>';
+              '<div class="t-actions">' +
+              (r.opens > 0 ? '<span class="status replied">👁 opened' + (r.opens > 1 ? ' ×' + r.opens : '') + '</span>' : '') +
+              '<span class="status ' + (r.status === 'failed' ? 'declined' : 'sent') + '">' + r.status + '</span></div></div>';
           }).join('')
         : '';
 
-      box.innerHTML = head + drafts + replies + recent;
+      box.innerHTML = head + guide + drafts + exhausted + replies + recent;
+
+      // Cheat-sheet collapses (and remembers) so regulars aren't nagged.
+      (function () {
+        var body = box.querySelector('#em-guide-body');
+        var arrow = box.querySelector('#em-guide-arrow');
+        var open = true;
+        try { open = localStorage.getItem('emGuideOpen') !== '0'; } catch (e) {}
+        body.style.display = open ? 'block' : 'none';
+        arrow.textContent = open ? '▾' : '▸';
+        box.querySelector('#em-guide-toggle').onclick = function () {
+          open = !open;
+          body.style.display = open ? 'block' : 'none';
+          arrow.textContent = open ? '▾' : '▸';
+          try { localStorage.setItem('emGuideOpen', open ? '1' : '0'); } catch (e) {}
+        };
+      })();
 
       box.querySelector('#em-draft').onclick = function () {
         var btn = this; btn.disabled = true; var total = 0;
@@ -2170,6 +2245,75 @@ function renderEmailMode(box) {
           loadOutreach();
         }).catch(function (e) { toast(e.message); btn.disabled = false; });
       };
+      box.querySelector('#em-approve').onclick = function () {
+        var btn = this; btn.disabled = true;
+        api('approveAllDrafts').then(function (r) {
+          toast(r.approved + ' email' + (r.approved === 1 ? '' : 's') + ' scheduled — they\'ll go out the next Tue–Thu morning ~9am ET');
+          loadOutreach();
+        }).catch(function (e) { toast(e.message); btn.disabled = false; });
+      };
+
+      // "Went quiet" decisions.
+      box.querySelectorAll('[data-exact="alt"]').forEach(function (b) {
+        b.onclick = function () {
+          var card = b.closest('[data-exh]');
+          b.disabled = true; b.textContent = 'Setting up…';
+          api('emailDifferentContact', { targetId: card.getAttribute('data-exh'), contactId: b.getAttribute('data-contact') })
+            .then(function (r) { toast('New intro drafted to ' + r.to + ' — it\'s in your approval queue'); loadOutreach(); })
+            .catch(function (e) { toast(e.message); b.disabled = false; });
+        };
+      });
+      box.querySelectorAll('[data-exact="nudge"]').forEach(function (b) {
+        b.onclick = function () {
+          var card = b.closest('[data-exh]');
+          b.disabled = true; b.innerHTML = '<span class="spinner"></span> Drafting…';
+          api('draftFinalNudge', { targetId: card.getAttribute('data-exh') })
+            .then(function () { toast('Final follow-up drafted — review it above'); loadOutreach(); })
+            .catch(function (e) { toast(e.message); b.disabled = false; b.textContent = 'One more follow-up'; });
+        };
+      });
+      box.querySelectorAll('[data-exact="cold"]').forEach(function (b) {
+        b.onclick = function () {
+          var card = b.closest('[data-exh]');
+          api('setTargetStatus', { targetId: card.getAttribute('data-exh'), status: 'dead' })
+            .then(function () { toast('Marked cold'); loadOutreach(); })
+            .catch(function (e) { toast(e.message); });
+        };
+      });
+
+      // Reply assistant: draft a response in Leo's voice, editable, sendable.
+      box.querySelectorAll('[data-emact="draftresp"]').forEach(function (b) {
+        b.onclick = function () {
+          var row = b.closest('[data-reply]');
+          var rid = row.getAttribute('data-reply');
+          var tid = row.getAttribute('data-rrtarget');
+          var panel = box.querySelector('[data-rrpanel="' + rid + '"]');
+          if (panel.style.display !== 'none' && panel.innerHTML) { panel.style.display = 'none'; return; }
+          b.disabled = true; b.innerHTML = '<span class="spinner"></span> Drafting…';
+          api('draftReplyResponse', { id: rid }).then(function (r) {
+            b.disabled = false; b.textContent = '✦ Draft response';
+            panel.style.display = 'block';
+            panel.innerHTML =
+              '<div style="font-size:12px;color:var(--ink-3);margin-bottom:6px">To ' + esc(r.to || '') + '</div>' +
+              '<input class="field-box" data-rr="subject" value="' + esc(r.subject || '') + '" style="margin-bottom:8px;font-weight:600">' +
+              '<textarea class="field-box" data-rr="body" rows="7">' + esc(r.body || '') + '</textarea>' +
+              '<div style="display:flex;gap:8px;margin-top:8px">' +
+                '<button class="btn-solid" data-rr="send" data-to="' + esc(r.to || '') + '" data-tid="' + esc(tid) + '">Send response</button>' +
+                '<button class="btn-ghost" data-rr="close">Close</button></div>';
+            panel.querySelector('[data-rr="close"]').onclick = function () { panel.style.display = 'none'; };
+            panel.querySelector('[data-rr="send"]').onclick = function () {
+              var sb = this; sb.disabled = true; sb.textContent = 'Sending…';
+              api('sendReplyEmail', {
+                targetId: sb.getAttribute('data-tid'),
+                to: sb.getAttribute('data-to'),
+                subject: panel.querySelector('[data-rr="subject"]').value,
+                body: panel.querySelector('[data-rr="body"]').value
+              }).then(function (r2) { toast('Response sent to ' + r2.to); loadOutreach(); })
+                .catch(function (e) { toast(e.message); sb.disabled = false; sb.textContent = 'Send response'; });
+            };
+          }).catch(function (e) { toast(e.message); b.disabled = false; b.textContent = '✦ Draft response'; });
+        };
+      });
 
       // Autosave draft edits on blur.
       box.querySelectorAll('[data-emfield]').forEach(function (el) {
