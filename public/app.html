@@ -449,6 +449,7 @@ var CAT_NAMES = {
   software:'AI & Software', beauty:'Beauty & Grooming', apps:'Dating & Social Apps',
   betting:'Betting & DFS', nightlife:'Nightlife & DJ Culture', wellness:'Health & Wellness',
   qsr:'Food & QSR', home:'Home & Drinkware', entertainment:'Entertainment & Sports',
+  retail:'Retail & Stores', transport:'Travel & Transport', conglomerate:'Conglomerates',
   unresolved:'Needs Clarification'
 };
 var CAT_KEYS = Object.keys(CAT_NAMES);
@@ -2059,14 +2060,50 @@ function renderEmailMode(box) {
           q.drafts.map(function (d) {
             var sug = null;
             try { sug = d.suggestion ? JSON.parse(d.suggestion) : null; } catch (e) {}
+            var ccArr = [];
+            try { ccArr = d.ccEmails ? JSON.parse(d.ccEmails) : []; } catch (e) {}
+            var contacts = (d.target.brand.contacts || []).filter(function (c) { return c.email; });
+            var curTo = (d.toEmail || '').toLowerCase();
+            // "To" picker: every contact we have at the brand; if the draft's
+            // current address isn't one of them, keep it as its own option.
+            var toOpts = contacts.map(function (c) {
+              return '<option value="' + esc(c.email) + '" data-name="' + esc(c.name) + '"' +
+                (c.email.toLowerCase() === curTo ? ' selected' : '') + '>' +
+                esc(c.name + (c.title ? ' — ' + c.title : '')) + '</option>';
+            });
+            if (curTo && !contacts.some(function (c) { return c.email.toLowerCase() === curTo; })) {
+              toOpts.unshift('<option value="' + esc(d.toEmail) + '" selected>' + esc(d.toEmail) + '</option>');
+            }
+            var ccChips = ccArr.map(function (a) {
+              return '<span class="status" style="display:inline-flex;gap:5px;align-items:center">' + esc(a) +
+                '<a href="#" data-emact="ccdel" data-cc="' + esc(a) + '" style="text-decoration:none;color:var(--accent);font-weight:700">×</a></span>';
+            }).join(' ');
+            var inCc = {}; ccArr.forEach(function (a) { inCc[a.toLowerCase()] = 1; });
+            var addOpts = contacts.filter(function (c) {
+              return c.email.toLowerCase() !== curTo && !inCc[c.email.toLowerCase()];
+            }).map(function (c) {
+              return '<option value="' + esc(c.email) + '">' + esc(c.name + (c.title ? ' — ' + c.title : '')) + '</option>';
+            }).join('');
+            var recip =
+              '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:12.5px;padding:8px 10px;background:var(--bg-2,#f7f6f3);border:1px solid var(--border);border-radius:8px">' +
+                '<span style="color:var(--ink-3);font-weight:600">To</span>' +
+                '<select data-emrec="to" class="field-box" style="width:auto;max-width:260px;padding:4px 8px;font-size:12.5px">' + toOpts.join('') + '</select>' +
+                '<span style="color:var(--ink-3)">&lt;' + esc(d.toEmail || '') + '&gt;</span>' +
+                '<span style="color:var(--ink-3);font-weight:600;margin-left:6px">CC</span>' +
+                (ccChips || '<span style="color:var(--ink-3)">none</span>') +
+                '<select data-emrec="ccadd" class="field-box" style="width:auto;max-width:220px;padding:4px 8px;font-size:12.5px">' +
+                  '<option value="">+ Add person…</option>' + addOpts +
+                  '<option value="__custom">Type an email…</option>' +
+                '</select>' +
+              '</div>';
             return '<div class="panel panel-pad" style="margin-bottom:10px" data-em="' + esc(d.id) + '">' +
               '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;font-size:13px">' +
                 '<b>' + esc(d.target.brand.name) + '</b><span class="t-sep">·</span>' +
                 esc(d.target.contact.name) +
-                '<span style="color:var(--ink-3)">&lt;' + esc(d.toEmail || '') + '&gt;</span>' +
                 '<span class="status ' + (d.kind === 'followup' ? 'proposed' : 'sent') + '">' + d.kind + '</span>' +
                 '<span style="color:var(--ink-3);font-size:11.5px">📎 SBA One Pager.pdf</span>' +
                 '<button class="btn-ghost danger" data-emact="del" style="margin-left:auto">Skip</button></div>' +
+              recip +
               '<input class="field-box" data-emfield="subject" value="' + esc(d.subject || '') + '" style="margin-bottom:8px;font-weight:600">' +
               '<textarea class="field-box" data-emfield="body" rows="' + Math.max(4, Math.ceil((d.body || '').length / 80)) + '">' + esc(d.body || '') + '</textarea>' +
               (sug
@@ -2179,6 +2216,55 @@ function renderEmailMode(box) {
           api('suggestForDraft', { id: b.closest('[data-em]').getAttribute('data-em') })
             .then(function () { loadOutreach(); })
             .catch(function (e) { toast(e.message); b.disabled = false; b.textContent = '✦ Suggest angle'; });
+        };
+      });
+
+      // Recipient controls: switch who the email goes to (greeting updates
+      // to match), CC extra people from the brand's contact list or by
+      // typing an address, remove a CC with its ×.
+      function draftById(id) {
+        for (var i = 0; i < q.drafts.length; i++) if (q.drafts[i].id === id) return q.drafts[i];
+        return null;
+      }
+      box.querySelectorAll('[data-emrec="to"]').forEach(function (sel) {
+        sel.onchange = function () {
+          var id = sel.closest('[data-em]').getAttribute('data-em');
+          var opt = sel.options[sel.selectedIndex];
+          api('setDraftRecipients', { id: id, toEmail: sel.value, toName: opt.getAttribute('data-name') || '' })
+            .then(function () { toast('Recipient updated'); loadOutreach(); })
+            .catch(function (e) { toast(e.message); loadOutreach(); });
+        };
+      });
+      box.querySelectorAll('[data-emrec="ccadd"]').forEach(function (sel) {
+        sel.onchange = function () {
+          if (!sel.value) return;
+          var id = sel.closest('[data-em]').getAttribute('data-em');
+          var addr = sel.value;
+          if (addr === '__custom') {
+            addr = window.prompt('CC this email address:') || '';
+            if (!/@/.test(addr)) { sel.value = ''; return; }
+          }
+          var d = draftById(id);
+          var cc = [];
+          try { cc = d && d.ccEmails ? JSON.parse(d.ccEmails) : []; } catch (e) {}
+          cc.push(addr.trim());
+          api('setDraftRecipients', { id: id, cc: cc })
+            .then(function () { toast('Added to CC'); loadOutreach(); })
+            .catch(function (e) { toast(e.message); loadOutreach(); });
+        };
+      });
+      box.querySelectorAll('[data-emact="ccdel"]').forEach(function (a) {
+        a.onclick = function (ev) {
+          ev.preventDefault();
+          var id = a.closest('[data-em]').getAttribute('data-em');
+          var gone = a.getAttribute('data-cc').toLowerCase();
+          var d = draftById(id);
+          var cc = [];
+          try { cc = d && d.ccEmails ? JSON.parse(d.ccEmails) : []; } catch (e) {}
+          cc = cc.filter(function (x) { return x.toLowerCase() !== gone; });
+          api('setDraftRecipients', { id: id, cc: cc })
+            .then(function () { toast('Removed from CC'); loadOutreach(); })
+            .catch(function (e) { toast(e.message); loadOutreach(); });
         };
       });
 
