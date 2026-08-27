@@ -224,6 +224,7 @@
         <button class="nav-item" data-view="sponsorships">Sponsorships <span class="n" id="nav-spon"></span></button>
         <button class="nav-item" data-view="needs">Needs contacts <span class="n" id="nav-needs"></span></button>
         <button class="nav-item" data-view="pipeline">Pipeline</button>
+        <button class="nav-item" data-view="materials">Materials</button>
         <button class="nav-item" data-view="crm">CRM</button>
         <button class="nav-item" data-view="team">Team</button>
       </nav>
@@ -335,6 +336,31 @@
       <div class="sub" id="needs-sub">Loading…</div>
       <div class="hint" style="margin-top:6px">Brands with nobody to reach yet. Add a name and a LinkedIn (or email/phone) to start outreach, or pull them from SponsorUnited.</div>
       <div id="needs-list" style="margin-top:18px"></div>
+    </section>
+
+    <!-- MATERIALS -->
+    <section class="view page" id="materials">
+      <div class="eyebrow">Sales materials</div>
+      <h1>Materials</h1>
+      <div class="sub">What goes out with your outreach. The one-pager below is attached to every outreach email automatically.</div>
+      <div class="panel panel-pad" style="margin-top:24px;max-width:720px">
+        <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+          <a href="/materials/sba-one-pager.pdf" target="_blank" rel="noopener" style="flex:none">
+            <img src="/materials/sba-one-pager.png" alt="SBA One Pager"
+                 style="width:180px;border-radius:8px;border:1px solid var(--border);display:block"
+                 onerror="this.parentNode.parentNode.parentNode.querySelector('.mat-missing').style.display='block';this.parentNode.style.display='none'">
+          </a>
+          <div style="flex:1;min-width:220px">
+            <div style="font-family:var(--display);font-weight:700;font-size:16px">SBA One Pager for Outreach</div>
+            <div style="font-size:13px;color:var(--ink-2);margin:6px 0 14px">The GenZ experiential footprint one-pager — 500+ shows/year, 100+ tier-1 college markets. Attached as a PDF to every outreach email sent from the Email queue.</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <a class="btn-solid" href="/materials/sba-one-pager.pdf" target="_blank" rel="noopener" style="text-decoration:none">Open PDF</a>
+              <button class="btn-ghost" id="mat-copy">Copy link</button>
+            </div>
+            <div class="mat-missing" style="display:none;margin-top:12px;font-size:12.5px;color:var(--warn)">File not uploaded yet — it will appear here once deployed.</div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- PIPELINE -->
@@ -2268,6 +2294,7 @@ function gotoView(id) {
   if (id === 'sponsorships') loadSponsorships();
   if (id === 'needs') loadNeeds();
   if (id === 'pipeline') loadPipeline();
+  if (id === 'materials') showView('materials');
   if (id === 'crm') loadCRM();
   if (id === 'team') loadTeam();
 }
@@ -2389,6 +2416,10 @@ document.getElementById('brand-crumb').addEventListener('click', function () {
 });
 
 document.getElementById('btn-ratecard').addEventListener('click', openRateCard);
+document.getElementById('mat-copy').addEventListener('click', function () {
+  navigator.clipboard.writeText('https://sb-digitaldashboard.vercel.app/materials/sba-one-pager.pdf');
+  toast('Link copied');
+});
 document.getElementById('btn-newdeal').addEventListener('click', openNewDealForm);
 
 document.querySelectorAll('.chip[data-shows]').forEach(function (c) {
