@@ -353,10 +353,15 @@ export async function sendApprovedEmails() {
   for (const d of drafts) {
     const to = d.toEmail || d.target.contact.email
     if (!to) { failed++; continue }
+    // Extra people Leo added onto this draft ride along as CC.
+    let cc: string[] = []
+    try { cc = JSON.parse(d.ccEmails ?? '[]') } catch {}
+    cc = cc.filter(a => typeof a === 'string' && /@/.test(a) && a.toLowerCase() !== to.toLowerCase())
     try {
       await transporter.sendMail({
         from: `Leo — SB Agency <${process.env.EMAIL_USER}>`,
         to,
+        ...(cc.length ? { cc } : {}),
         subject: d.subject ?? '',
         text: d.body ?? '',
         ...(attachment ? { attachments: [attachment] } : {}),
@@ -479,11 +484,52 @@ export async function emailStatus() {
   }
 }
 
+// Point a draft at a different person (and/or CC extras). Switching the
+// main recipient also rewrites the "Hi <name>," greeting so the email
+// never opens with the wrong first name.
+export async function setDraftRecipients(emailId: string, args: { toEmail?: string; toName?: string; cc?: string[] }) {
+  const d = await prisma.emailMessage.findUnique({ where: { id: emailId } })
+  if (!d) throw new Error('Draft not found')
+  if (d.status !== 'draft') throw new Error('Only unsent drafts can be re-addressed')
+
+  const data: any = {}
+  if (args.toEmail !== undefined) {
+    const to = String(args.toEmail).trim()
+    if (!/@/.test(to)) throw new Error('Valid recipient address required')
+    data.toEmail = to
+    // Fix the greeting to match the new person.
+    if (args.toName && d.body) {
+      const first = String(args.toName).trim().split(/\s+/)[0]
+      if (first) data.body = d.body.replace(/^Hi [^,\n]{0,60},/, `Hi ${first},`)
+    }
+  }
+  if (args.cc !== undefined) {
+    const clean = (Array.isArray(args.cc) ? args.cc : [])
+      .map(a => String(a).trim()).filter(a => /@/.test(a))
+    const seen = new Set<string>()
+    const deduped = clean.filter(a => {
+      const k = a.toLowerCase()
+      if (seen.has(k)) return false
+      seen.add(k); return true
+    })
+    data.ccEmails = deduped.length ? JSON.stringify(deduped) : null
+  }
+  if (Object.keys(data).length === 0) return d
+  return prisma.emailMessage.update({ where: { id: emailId }, data })
+}
+
 export async function listEmailQueue() {
   const include = { target: { include: { brand: { select: { id: true, name: true, category: true } }, contact: { select: { name: true, title: true, email: true } } } } }
+  // Drafts also carry every contact we have at the brand, so the UI can
+  // offer "send to someone else / add someone" without a second call.
+  const draftInclude = { target: { include: {
+    brand: { select: { id: true, name: true, category: true,
+      contacts: { select: { id: true, name: true, title: true, email: true }, where: { email: { not: null } }, orderBy: { name: 'asc' as const } } } },
+    contact: { select: { name: true, title: true, email: true } },
+  } } }
   const drafts = await prisma.emailMessage.findMany({
     where: { direction: 'out', status: 'draft' },
-    include, orderBy: { createdAt: 'asc' },
+    include: draftInclude, orderBy: { createdAt: 'asc' },
   })
   const recent = await prisma.emailMessage.findMany({
     where: { direction: 'out', status: { in: ['sent', 'failed'] } },
