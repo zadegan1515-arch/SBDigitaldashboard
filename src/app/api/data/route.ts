@@ -1867,6 +1867,252 @@ const handlers: Record<string, Handler> = {
     return { ok: true }
   },
 
+  // -------- results / analytics --------
+
+  // The outreach funnel and what's working, computed brand-level so one
+  // brand emailed five times still counts once. Feeds the Results tab.
+  async getOutreachAnalytics() {
+    const sent = await prisma.emailMessage.findMany({
+      where: { direction: 'out', status: 'sent' },
+      select: {
+        id: true, kind: true, opens: true, sentAt: true,
+        target: { select: { brandId: true, brand: { select: { category: true } } } },
+      },
+    })
+    const replies = await prisma.emailMessage.findMany({
+      where: { direction: 'in' },
+      select: { createdAt: true, target: { select: { brandId: true, brand: { select: { category: true } } } } },
+    })
+    const deals = await prisma.deal.findMany({ select: { brandId: true, stage: true, valueCents: true } })
+
+    // Brand-level funnel.
+    const emailed = new Set(sent.map(m => m.target.brandId))
+    const opened = new Set(sent.filter(m => m.opens > 0).map(m => m.target.brandId))
+    const replied = new Set(replies.map(m => m.target.brandId))
+    const inPipeline = new Set(deals.filter(d => !['lost'].includes(d.stage)).map(d => d.brandId))
+    const won = new Set(deals.filter(d => d.stage === 'closed').map(d => d.brandId))
+
+    // Per category: emails sent / brands opened / brands replied.
+    const byCat: Record<string, { sent: number; openedBrands: Set<string>; repliedBrands: Set<string>; brands: Set<string> }> = {}
+    const catOf = (m: any) => m.target.brand.category || 'uncategorized'
+    for (const m of sent) {
+      const c = catOf(m)
+      byCat[c] = byCat[c] || { sent: 0, openedBrands: new Set(), repliedBrands: new Set(), brands: new Set() }
+      byCat[c].sent++
+      byCat[c].brands.add(m.target.brandId)
+      if (m.opens > 0) byCat[c].openedBrands.add(m.target.brandId)
+    }
+    for (const m of replies) {
+      const c = catOf(m)
+      byCat[c] = byCat[c] || { sent: 0, openedBrands: new Set(), repliedBrands: new Set(), brands: new Set() }
+      byCat[c].repliedBrands.add(m.target.brandId)
+    }
+    const categories = Object.entries(byCat).map(([category, v]) => ({
+      category, sent: v.sent, brands: v.brands.size,
+      opened: v.openedBrands.size, replied: v.repliedBrands.size,
+      replyRate: v.brands.size ? Math.round((v.repliedBrands.size / v.brands.size) * 100) : 0,
+    })).sort((a, b) => b.sent - a.sent)
+
+    // Last 8 weeks, Monday-anchored buckets.
+    const weekOf = (d: Date) => {
+      const t = new Date(d)
+      const day = (t.getUTCDay() + 6) % 7   // Mon=0
+      t.setUTCDate(t.getUTCDate() - day)
+      t.setUTCHours(0, 0, 0, 0)
+      return t.getTime()
+    }
+    const now = Date.now()
+    const weeks: { start: number; label: string; sent: number; replies: number }[] = []
+    for (let i = 7; i >= 0; i--) {
+      const start = weekOf(new Date(now - i * 7 * 24 * 60 * 60 * 1000))
+      const d = new Date(start)
+      weeks.push({ start, label: `${d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })} ${d.getUTCDate()}`, sent: 0, replies: 0 })
+    }
+    const bucket = (ts: Date | null) => {
+      if (!ts) return null
+      const w = weekOf(new Date(ts))
+      return weeks.find(x => x.start === w) ?? null
+    }
+    for (const m of sent) { const w = bucket(m.sentAt); if (w) w.sent++ }
+    for (const m of replies) { const w = bucket(m.createdAt); if (w) w.replies++ }
+
+    const sentTotal = sent.length
+    const openedMsgs = sent.filter(m => m.opens > 0).length
+    return {
+      totals: {
+        emailsSent: sentTotal,
+        openRate: sentTotal ? Math.round((openedMsgs / sentTotal) * 100) : 0,
+        replyRate: emailed.size ? Math.round((replied.size / emailed.size) * 100) : 0,
+        totalReplies: replies.length,
+      },
+      funnel: [
+        { label: 'Brands emailed', n: emailed.size },
+        { label: 'Opened', n: opened.size },
+        { label: 'Replied', n: replied.size },
+        { label: 'In pipeline', n: [...inPipeline].filter(b => emailed.has(b)).length },
+        { label: 'Won', n: [...won].filter(b => emailed.has(b)).length },
+      ],
+      categories,
+      weeks: weeks.map(({ label, sent, replies }) => ({ label, sent, replies })),
+    }
+  },
+
+  // -------- call prep --------
+
+  // Everything a rep needs before dialing a brand, in one generated brief.
+  async generateCallPrep({ brandId }: any) {
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in Vercel — generation is off.')
+    const brand = await prisma.brand.findUnique({
+      where: { id: brandId },
+      include: {
+        contacts: { orderBy: { name: 'asc' } },
+        targets: { include: { contact: true, emails: { orderBy: { createdAt: 'asc' } } } },
+        deals: true,
+        shows: { include: { deliverableItems: true } },
+      } as any,
+    }) as any
+    if (!brand) throw new Error('Brand not found')
+
+    const history: string[] = []
+    for (const t of brand.targets ?? []) {
+      for (const e of t.emails ?? []) {
+        if (e.direction === 'out' && e.status === 'sent') {
+          history.push(`- ${e.sentAt ? new Date(e.sentAt).toISOString().slice(0, 10) : '?'} sent ${e.kind} to ${t.contact?.name}${e.opens > 0 ? ` (opened ×${e.opens})` : ''}`)
+        }
+        if (e.direction === 'in') history.push(`- ${e.sentAt ? new Date(e.sentAt).toISOString().slice(0, 10) : '?'} THEY REPLIED: "${e.subject ?? ''}"`)
+      }
+    }
+
+    let rateCard = ''
+    try {
+      const row = await prisma.setting.findUnique({ where: { key: 'rateCard' } })
+      if (row) {
+        const v = JSON.parse(row.value)
+        rateCard = (v.packages ?? []).map((p: any) =>
+          `- ${p.name}: $${((p.priceCents ?? 0) / 100).toLocaleString('en-US')}${p.includes ? ` — ${p.includes}` : ''}`).join('\n')
+      }
+    } catch {}
+
+    const prompt = [
+      `You are prepping a sponsorship sales rep at SB Agency (produces large fraternity/sorority concerts at US colleges; sells brands activations there: sampling, banners, product seeding, title sponsorship, ambassadors) for a CALL with this brand.`,
+      `Write a tight one-page CALL PREP BRIEF (markdown, ~350 words max). The rep may know nothing — make them sound informed in 30 seconds.`,
+      ``,
+      `BRAND: ${brand.name}${brand.category ? ` (${brand.category})` : ''}${brand.tier ? `, stage: ${brand.tier}` : ''}`,
+      brand.goals ? `DISCOVERY NOTES (what they want): ${brand.goals}` : `DISCOVERY NOTES: none yet — infer likely goals for this kind of brand with college students.`,
+      brand.notes ? `OTHER NOTES: ${brand.notes}` : ``,
+      `CONTACTS WE HAVE:\n${(brand.contacts ?? []).map((c: any) => `- ${c.name}${c.title ? `, ${c.title}` : ''}${c.email ? ` <${c.email}>` : ''}`).join('\n') || '(none)'}`,
+      `EMAIL HISTORY:\n${history.join('\n') || '(no emails yet)'}`,
+      rateCard ? `OUR RATE CARD:\n${rateCard}` : ``,
+      brand.deals?.length ? `EXISTING DEALS: ${brand.deals.map((d: any) => `${d.name} (${d.stage}, $${(d.valueCents / 100).toLocaleString('en-US')})`).join('; ')}` : ``,
+      ``,
+      `Structure exactly: **Who they are** (2 lines); **What they likely want** (tie to college audience); **Who we know** (contacts + who to push for); **Where we stand** (history in one line); **Pitch this** (1–2 specific packages with prices from the rate card if given); **Ask these** (3 sharp discovery questions); **If they push back** (2 likely objections + one-line answers); **Next step** (the close for this call). Markdown only, no preamble.`,
+    ].filter(Boolean).join('\n')
+
+    const res = await askClaude(prompt, 1100)
+    const doc = await prisma.document.create({
+      data: { brandId, kind: 'callprep', title: `Call prep — ${brand.name}`, content: res.text, model: res.model },
+    })
+    return doc
+  },
+
+  // -------- contract & invoice --------
+
+  // A clean agreement draft from a deal's actual terms. Clearly labeled a
+  // draft — real signatures deserve a lawyer's eyes.
+  async generateContract({ dealId, paymentTerms, extra }: any) {
+    const deal = await prisma.deal.findUnique({
+      where: { id: dealId },
+      include: { brand: { include: { contacts: { where: { email: { not: null } }, take: 3 } } }, showSponsor: { include: { deliverableItems: true } } },
+    })
+    if (!deal) throw new Error('Deal not found')
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in Vercel — generation is off.')
+
+    const sp = deal.showSponsor
+    const showLine = sp
+      ? `${[sp.school, sp.chapter].filter(Boolean).join(' · ')}${sp.eventDate ? `, ${sp.eventDate}` : ''}${sp.artist ? `, artist: ${sp.artist}` : ''}`
+      : (deal.eventRef ?? 'event(s) to be scheduled')
+    const deliverables = sp?.deliverableItems?.length
+      ? sp.deliverableItems.map(d => `- ${d.text}`).join('\n')
+      : (sp?.deliverables ?? deal.notes ?? '(deliverables per attached proposal)')
+
+    const prompt = [
+      `Draft a concise SPONSORSHIP AGREEMENT (markdown, ~450 words) between SB Agency ("Producer") and ${deal.brand.name} ("Sponsor").`,
+      ``,
+      `DEAL: ${deal.name}`,
+      `EVENT(S): ${showLine}`,
+      `SPONSORSHIP FEE: $${(deal.valueCents / 100).toLocaleString('en-US')}`,
+      `DELIVERABLES:\n${deliverables}`,
+      `PAYMENT TERMS: ${paymentTerms || '50% due on signing, 50% due 7 days before the first event'}`,
+      extra ? `EXTRA TERMS: ${extra}` : ``,
+      ``,
+      `Sections: Parties & Purpose; Sponsorship Deliverables; Fee & Payment; Term; Cancellation (event postponed → deliverables move to the rescheduled date or a comparable event); Brand Assets & Approval (sponsor provides assets 14 days ahead, approves use of name/logo for the listed deliverables); Limitation of Liability (each party liable only up to the fee); Signatures block (name/title/date lines for both parties).`,
+      `Plain business English, numbered sections, no invented terms beyond what's given. End with the exact line: "*Draft prepared by SB Agency's deal desk — have an attorney review before signing.*" Markdown only, no preamble.`,
+    ].filter(Boolean).join('\n')
+
+    const res = await askClaude(prompt, 1400)
+    const doc = await prisma.document.create({
+      data: { brandId: deal.brandId, kind: 'contract', title: `Agreement — ${deal.brand.name} (${deal.name})`, content: res.text, model: res.model },
+    })
+    return doc
+  },
+
+  // Deterministic invoice — numbers come from the deal, not a model.
+  async generateInvoice({ dealId, dueDays = 15, notes }: any) {
+    const deal = await prisma.deal.findUnique({
+      where: { id: dealId },
+      include: { brand: { include: { contacts: { where: { email: { not: null } }, take: 1 } } }, showSponsor: true },
+    })
+    if (!deal) throw new Error('Deal not found')
+
+    const year = new Date().getFullYear()
+    const count = await prisma.document.count({ where: { kind: 'invoice' } })
+    const invoiceNo = `INV-${year}-${String(count + 1).padStart(3, '0')}`
+    const issued = new Date()
+    const due = new Date(issued.getTime() + dueDays * 24 * 60 * 60 * 1000)
+    const fmt = (d: Date) => d.toISOString().slice(0, 10)
+    const sp = deal.showSponsor
+    const lineDesc = sp
+      ? `Sponsorship — ${[sp.school, sp.chapter].filter(Boolean).join(' ')}${sp.eventDate ? ` (${sp.eventDate})` : ''}`
+      : `Sponsorship — ${deal.name}${deal.eventRef ? ` (${deal.eventRef})` : ''}`
+    const total = `$${(deal.valueCents / 100).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+    const billContact = deal.brand.contacts[0]
+
+    const content = [
+      `# Invoice ${invoiceNo}`,
+      ``,
+      `**From:** SB Agency · leo@sboyagency.com`,
+      `**Bill to:** ${deal.brand.name}${billContact ? ` — ${billContact.name} <${billContact.email}>` : ''}`,
+      ``,
+      `**Issued:** ${fmt(issued)}   **Due:** ${fmt(due)} (net ${dueDays})`,
+      ``,
+      `| Description | Amount |`,
+      `|---|---|`,
+      `| ${lineDesc} | ${total} |`,
+      `| **Total due** | **${total}** |`,
+      ``,
+      notes ? `**Notes:** ${notes}\n` : ``,
+      `Payment by check or bank transfer — remittance details provided separately. Please reference **${invoiceNo}** on payment.`,
+      ``,
+      `*Thank you — SB Agency*`,
+    ].filter(l => l !== '').join('\n')
+
+    const doc = await prisma.document.create({
+      data: { brandId: deal.brandId, kind: 'invoice', title: `Invoice ${invoiceNo} — ${deal.brand.name}`, content, model: null },
+    })
+    return doc
+  },
+
+  // Stage-only move for the pipeline board. Manual deals only —
+  // sponsorship-sourced deals mirror their show and are locked here.
+  async setDealStage({ id, stage }: any) {
+    const STAGES = ['conversation', 'proposal', 'verbal', 'closed', 'lost']
+    if (!STAGES.includes(stage)) throw new Error('Unknown stage')
+    const deal = await prisma.deal.findUnique({ where: { id } })
+    if (!deal) throw new Error('Deal not found')
+    if (deal.source === 'sponsorship') throw new Error('This deal mirrors a show — change the sponsorship status instead.')
+    return prisma.deal.update({ where: { id }, data: { stage } })
+  },
+
   // -------- renewals --------
 
   // Brands that have booked a confirmed sponsorship — the warmest possible
