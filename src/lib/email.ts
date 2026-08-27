@@ -194,6 +194,15 @@ export async function draftDailyEmails(limit = 5) {
   // 2. Fresh intros: best-fit active targets with an email and no email
   //    history at all. Template-filled, not AI-written — instant.
   if (drafted < limit && room > 0) {
+    // One email per BRAND, not per person: a brand that has ever been
+    // emailed (any contact, draft or sent) is skipped, and only its
+    // best-fit person gets the intro.
+    const emailedBrands = new Set(
+      (await prisma.emailMessage.findMany({
+        where: { direction: 'out' },
+        select: { target: { select: { brandId: true } } },
+      })).map(m => m.target.brandId)
+    )
     const fresh = await prisma.target.findMany({
       where: {
         status: { in: ['queued', 'drafted', 'sent'] },
@@ -203,9 +212,12 @@ export async function draftDailyEmails(limit = 5) {
       },
       include: { brand: true, contact: true },
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
-      take: Math.min(limit - drafted, room),
+      take: 100,
     })
     for (const t of fresh) {
+      if (drafted >= limit || room === 0) break
+      if (emailedBrands.has(t.brandId)) continue
+      emailedBrands.add(t.brandId)
       const filled = introEmail(t)
       await prisma.emailMessage.create({
         data: {
