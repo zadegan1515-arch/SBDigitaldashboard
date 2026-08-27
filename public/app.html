@@ -2102,7 +2102,8 @@ function renderEmailMode(box) {
                 esc(d.target.contact.name) +
                 '<span class="status ' + (d.kind === 'followup' ? 'proposed' : 'sent') + '">' + d.kind + '</span>' +
                 '<span style="color:var(--ink-3);font-size:11.5px">📎 SBA One Pager.pdf</span>' +
-                '<button class="btn-ghost danger" data-emact="del" style="margin-left:auto">Skip</button></div>' +
+                '<button class="btn-ghost danger" data-emact="del" style="margin-left:auto">Skip</button>' +
+                '<button class="btn-solid" data-emact="sendone">Send</button></div>' +
               recip +
               '<input class="field-box" data-emfield="subject" value="' + esc(d.subject || '') + '" style="margin-bottom:8px;font-weight:600">' +
               '<textarea class="field-box" data-emfield="body" rows="' + Math.max(4, Math.ceil((d.body || '').length / 80)) + '">' + esc(d.body || '') + '</textarea>' +
@@ -2186,6 +2187,32 @@ function renderEmailMode(box) {
           api('deleteEmailDraft', { id: b.closest('[data-em]').getAttribute('data-em') })
             .then(function () { toast('Skipped'); loadOutreach(); })
             .catch(function (e) { toast(e.message); });
+        };
+      });
+
+      // Send just this one draft (any unsaved subject/body edits are
+      // saved first so what's on screen is what goes out).
+      box.querySelectorAll('[data-emact="sendone"]').forEach(function (b) {
+        b.onclick = function () {
+          var card = b.closest('[data-em]');
+          var id = card.getAttribute('data-em');
+          var d = draftById(id);
+          var who = card.querySelector('[data-emrec="to"]');
+          var toLabel = who && who.options[who.selectedIndex] ? who.options[who.selectedIndex].textContent : (d ? d.toEmail : '');
+          if (!window.confirm('Send this email to ' + toLabel + ' now?')) return;
+          b.disabled = true; b.textContent = 'Sending…';
+          api('updateEmailDraft', {
+            id: id,
+            subject: card.querySelector('[data-emfield="subject"]').value,
+            body: card.querySelector('[data-emfield="body"]').value
+          }).then(function () {
+            return api('sendEmailDraft', { id: id });
+          }).then(function (r) {
+            toast('Sent to ' + r.to + (r.cc && r.cc.length ? ' (+' + r.cc.length + ' CC)' : ''));
+            loadOutreach();
+          }).catch(function (e) {
+            toast(e.message); b.disabled = false; b.textContent = 'Send';
+          });
         };
       });
 
