@@ -18,6 +18,7 @@ import { PrismaClient } from '@prisma/client'
 import Anthropic from '@anthropic-ai/sdk'
 import nodemailer from 'nodemailer'
 import { ImapFlow } from 'imapflow'
+import { resolveMx } from 'dns/promises'
 
 const prisma = new PrismaClient()
 
@@ -26,8 +27,11 @@ const prisma = new PrismaClient()
 const DAILY_START = 10       // day-one cap: warm the address up slowly
 const DAILY_MAX = 40         // ceiling, even fully warmed
 const RAMP_PER_WEEK = 5      // cap grows this much each week
-const FOLLOWUP_AFTER_DAYS = 4
+const FOLLOWUP_AFTER_DAYS = 3   // intro -> follow-up 1
+const FOLLOWUP2_AFTER_DAYS = 4  // follow-up 1 -> follow-up 2 (day ~7 overall)
+const EXHAUSTED_AFTER_DAYS = 3  // follow-up 2 -> flagged "went quiet"
 const WORK_TZ = 'America/New_York'
+const SITE_URL = 'https://sb-digitaldashboard.vercel.app'
 
 export function emailConfigured(): boolean {
   return !!(process.env.EMAIL_USER && process.env.EMAIL_APP_PASSWORD)
@@ -124,6 +128,8 @@ function introEmail(t: any): { subject: string; body: string } {
     ``,
     `Our experiential team puts brands directly inside the room at hundreds of major college events each year. We help partners tap into our established live audience on campus, giving them high-impact reach without having to build crowds from the ground up.`,
     ``,
+    `Here's a quick one-pager on what we do: ${SITE_URL}/materials/sba-one-pager.pdf`,
+    ``,
     `We'd love to jump on a quick call to better understand ${possessive(brand)} goals for the upcoming year and brainstorm a few ways we might collaborate.`,
     ``,
     `Let me know your availability next week, and we can set up a call.`,
@@ -218,6 +224,18 @@ function followupPrompt(t: any, firstEmail: any): string {
   ].join('\n')
 }
 
+function followup2Prompt(t: any, firstEmail: any): string {
+  return [
+    `Write the LAST follow-up email in a sequence (two earlier emails got no reply) for SB Agency (produces large fraternity/sorority concerts at US colleges; sells brands activations there).`,
+    `TO: ${t.contact.name} at ${t.brand.name}.`,
+    `FIRST EMAIL SUBJECT: ${firstEmail?.subject ?? ''}`,
+    ``,
+    `Rules: under 45 words, plain text. "Closing the loop" style — graceful, zero pressure, makes clear this is the last note, leaves the door open ("if the timing's ever right..."). Optionally offer to send a one-pager or intro to whoever owns campus partnerships. Sign off exactly:\nLeo\nSB Agency`,
+    ``,
+    `Return ONLY JSON: {"subject": "...", "body": "..."} — subject should be "re:" + the first subject.`,
+  ].join('\n')
+}
+
 // Drafts up to `limit` emails per call (Claude calls are slow; callers
 // loop until done=true). Follow-ups first — momentum beats new names.
 export async function draftDailyEmails(limit = 5) {
@@ -229,20 +247,21 @@ export async function draftDailyEmails(limit = 5) {
     where: { direction: 'out', status: 'sent', sentAt: { gte: startOfLocalDay() } },
   })
   const pendingDrafts = await prisma.emailMessage.count({
-    where: { direction: 'out', status: 'draft' },
+    where: { direction: 'out', status: { in: ['draft', 'approved'] } },
   })
   let room = Math.max(0, cap - sentToday - pendingDrafts)
   if (room === 0) return { configured: true, drafted: 0, done: true, cap, sentToday, pendingDrafts }
 
   let drafted = 0
 
-  // 1. Follow-ups due: intro sent >= N days ago, no reply, no follow-up yet,
-  //    target still in play.
-  const cutoff = new Date(Date.now() - FOLLOWUP_AFTER_DAYS * 24 * 60 * 60 * 1000)
+  // 1. Follow-ups due. Two rungs: follow-up 1 (intro sent >= 3 days ago)
+  //    and follow-up 2 (follow-up 1 sent >= 4 more days ago, the last
+  //    touch). A reply at any point stops the ladder.
+  const cutoff1 = new Date(Date.now() - FOLLOWUP_AFTER_DAYS * 24 * 60 * 60 * 1000)
   const followCandidates = await prisma.target.findMany({
     where: {
       status: { notIn: ['replied', 'converted', 'declined', 'dead'] },
-      emails: { some: { direction: 'out', kind: 'intro', status: 'sent', sentAt: { lte: cutoff } } },
+      emails: { some: { direction: 'out', kind: 'intro', status: 'sent', sentAt: { lte: cutoff1 } } },
     },
     include: {
       brand: true, contact: true,
@@ -250,22 +269,38 @@ export async function draftDailyEmails(limit = 5) {
     },
     take: 50,
   })
+  const cutoff2 = new Date(Date.now() - FOLLOWUP2_AFTER_DAYS * 24 * 60 * 60 * 1000)
   for (const t of followCandidates) {
     if (drafted >= limit || room === 0) break
-    const hasReply = t.emails.some(e => e.direction === 'in')
-    const hasFollowup = t.emails.some(e => e.kind === 'followup')
-    if (hasReply || hasFollowup || !t.contact.email) continue
+    if (t.emails.some(e => e.direction === 'in') || !t.contact.email) continue
     const intro = t.emails.find(e => e.kind === 'intro' && e.status === 'sent')
-    const parsed = parseEmailJson(await askClaude(followupPrompt(t, intro), 500))
-    if (!parsed) continue
-    await prisma.emailMessage.create({
-      data: {
-        targetId: t.id, direction: 'out', kind: 'followup', status: 'draft',
-        toEmail: t.contact.email, fromEmail: emailAddress(),
-        subject: parsed.subject, body: parsed.body,
-      },
-    })
-    drafted++; room--
+    const f1 = t.emails.find(e => e.kind === 'followup')
+    const hasF2 = t.emails.some(e => e.kind === 'followup2')
+    if (!f1) {
+      // Rung 1 due.
+      const parsed = parseEmailJson(await askClaude(followupPrompt(t, intro), 500))
+      if (!parsed) continue
+      await prisma.emailMessage.create({
+        data: {
+          targetId: t.id, direction: 'out', kind: 'followup', status: 'draft',
+          toEmail: t.contact.email, fromEmail: emailAddress(),
+          subject: parsed.subject, body: parsed.body,
+        },
+      })
+      drafted++; room--
+    } else if (!hasF2 && f1.status === 'sent' && f1.sentAt && f1.sentAt <= cutoff2) {
+      // Rung 2 due — the closing-the-loop note.
+      const parsed = parseEmailJson(await askClaude(followup2Prompt(t, intro), 500))
+      if (!parsed) continue
+      await prisma.emailMessage.create({
+        data: {
+          targetId: t.id, direction: 'out', kind: 'followup2', status: 'draft',
+          toEmail: t.contact.email, fromEmail: emailAddress(),
+          subject: parsed.subject, body: parsed.body,
+        },
+      })
+      drafted++; room--
+    }
   }
 
   // 2. Fresh intros: best-fit active targets with an email and no email
@@ -339,27 +374,74 @@ function makeTransport() {
   })
 }
 
-// Send exactly one draft: to + any CC, one-pager attached, marked sent.
-// Shared by "Send all" (loops it) and the per-card "Send" button.
+// Bounce protection: a domain with no mail servers means a guaranteed
+// bounce, and bounces are what get a sending address flagged as spam.
+// Checked once per domain per batch.
+const mxCache = new Map<string, boolean>()
+async function domainAcceptsMail(address: string): Promise<boolean> {
+  const domain = (address.split('@')[1] || '').toLowerCase()
+  if (!domain) return false
+  if (mxCache.has(domain)) return mxCache.get(domain)!
+  let ok = false
+  try {
+    const mx = await resolveMx(domain)
+    ok = Array.isArray(mx) && mx.length > 0
+  } catch { ok = false }
+  mxCache.set(domain, ok)
+  return ok
+}
+
+// The HTML twin of the plain-text body: same words, plus the open-
+// tracking pixel. Gmail shows this version; text-only clients get the
+// plain version untouched.
+function htmlBody(text: string, emailId: string): string {
+  const escaped = text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>')
+    .replace(/\n/g, '<br>\n')
+  return '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.55">' +
+    escaped +
+    '</div><img src="' + SITE_URL + '/api/track?e=' + encodeURIComponent(emailId) + '" width="1" height="1" alt="" style="display:none">'
+}
+
+// Send exactly one draft: to + any CC, marked sent. Intros LINK the
+// one-pager (attachments on a first cold email raise spam scores);
+// follow-ups attach it. Shared by "Send all", the per-card Send button,
+// and the 9am auto-send cron.
 async function deliverDraft(d: any, transporter: any, attachment: { filename: string; content: Buffer } | null) {
   const to = d.toEmail || d.target.contact.email
   if (!to) throw new Error('No recipient address on this draft')
+  if (!(await domainAcceptsMail(to))) throw new Error(`${to} — domain has no mail server (bounce protection)`)
   let cc: string[] = []
   try { cc = JSON.parse(d.ccEmails ?? '[]') } catch {}
   cc = cc.filter(a => typeof a === 'string' && /@/.test(a) && a.toLowerCase() !== to.toLowerCase())
+  const attach = d.kind === 'intro' ? null : attachment
   await transporter.sendMail({
     from: `Leo — SB Agency <${process.env.EMAIL_USER}>`,
     to,
     ...(cc.length ? { cc } : {}),
     subject: d.subject ?? '',
     text: d.body ?? '',
-    ...(attachment ? { attachments: [attachment] } : {}),
+    html: htmlBody(d.body ?? '', d.id),
+    ...(attach ? { attachments: [attach] } : {}),
   })
   await prisma.emailMessage.update({
     where: { id: d.id },
     data: { status: 'sent', sentAt: new Date(), toEmail: to, fromEmail: emailAddress() },
   })
   return { to, cc }
+}
+
+// The open-tracking pixel calls this (via /api/track?e=<id>).
+export async function recordOpen(emailId: string) {
+  try {
+    const d = await prisma.emailMessage.findUnique({ where: { id: emailId } })
+    if (!d || d.direction !== 'out' || d.status !== 'sent') return
+    await prisma.emailMessage.update({
+      where: { id: emailId },
+      data: { opens: { increment: 1 }, ...(d.openedAt ? {} : { openedAt: new Date() }) },
+    })
+  } catch {}
 }
 
 // One email, by draft id — the per-card Send button.
@@ -370,7 +452,7 @@ export async function sendOneEmail(emailId: string) {
     include: { target: { include: { contact: true, brand: true } } },
   })
   if (!d) throw new Error('Draft not found')
-  if (d.direction !== 'out' || d.status !== 'draft') throw new Error('Only unsent drafts can be sent')
+  if (d.direction !== 'out' || !['draft', 'approved'].includes(d.status)) throw new Error('Only unsent drafts can be sent')
 
   const transporter = makeTransport()
   const attachment = await onePagerAttachment()
@@ -386,14 +468,35 @@ export async function sendOneEmail(emailId: string) {
   }
 }
 
+// "Approve for 9am": marks every waiting draft approved; the Tue–Thu
+// morning cron picks them up and sends in the best reply window.
+export async function approveAllDrafts() {
+  const r = await prisma.emailMessage.updateMany({
+    where: { direction: 'out', status: 'draft' },
+    data: { status: 'approved' },
+  })
+  return { approved: r.count }
+}
+
+// The auto-send cron: sends ONLY approved emails (drafts Leo hasn't
+// approved stay put).
+export async function sendScheduledEmails() {
+  return sendBatch(['approved'])
+}
+
+// "Send all now": sends everything waiting — drafts and approved alike.
 export async function sendApprovedEmails() {
+  return sendBatch(['draft', 'approved'])
+}
+
+async function sendBatch(statuses: string[]) {
   if (!emailConfigured()) return { configured: false, sent: 0, failed: 0 }
 
   const transporter = makeTransport()
   const attachment = await onePagerAttachment()
 
   const drafts = await prisma.emailMessage.findMany({
-    where: { direction: 'out', status: 'draft' },
+    where: { direction: 'out', status: { in: statuses } },
     include: { target: { include: { contact: true, brand: true } } },
     orderBy: { createdAt: 'asc' },
   })
@@ -499,6 +602,164 @@ export async function checkReplies() {
   return { configured: true, replies }
 }
 
+// ---- exhausted sequences ---------------------------------------
+
+// Brands that got the full ladder — intro, follow-up, closing note —
+// and stayed silent. Each comes back flagged with a recommendation:
+// the brand's next-best un-emailed contact if there is one, otherwise
+// one last follow-up.
+export async function listExhausted() {
+  const cutoff = new Date(Date.now() - EXHAUSTED_AFTER_DAYS * 24 * 60 * 60 * 1000)
+  const ts = await prisma.target.findMany({
+    where: {
+      status: { notIn: ['replied', 'converted', 'declined', 'dead'] },
+      emails: { some: { direction: 'out', kind: 'followup2', status: 'sent', sentAt: { lte: cutoff } } },
+    },
+    include: {
+      brand: { select: { id: true, name: true, contacts: { select: { id: true, name: true, title: true, email: true }, where: { email: { not: null } } } } },
+      contact: { select: { id: true, name: true, title: true, email: true } },
+      emails: { orderBy: { sentAt: 'desc' } },
+    },
+    take: 30,
+  })
+  const silent = ts.filter(t => !t.emails.some(e => e.direction === 'in'))
+  if (silent.length === 0) return []
+
+  // Every address the BRAND has already been emailed at (any target),
+  // so we never recommend someone who's already been hit.
+  const brandIds = Array.from(new Set(silent.map(t => t.brandId)))
+  const priorOut = await prisma.emailMessage.findMany({
+    where: { direction: 'out', toEmail: { not: null }, target: { brandId: { in: brandIds } } },
+    select: { toEmail: true, target: { select: { brandId: true } } },
+  })
+  const emailedByBrand = new Map<string, Set<string>>()
+  for (const m of priorOut) {
+    const set = emailedByBrand.get(m.target.brandId) ?? new Set<string>()
+    set.add(m.toEmail!.toLowerCase())
+    emailedByBrand.set(m.target.brandId, set)
+  }
+
+  return silent.map(t => {
+    const emailed = emailedByBrand.get(t.brandId) ?? new Set<string>()
+    const next = t.brand.contacts.find(c => c.email && !emailed.has(c.email.toLowerCase())) ?? null
+    const lastOut = t.emails.find(e => e.direction === 'out' && e.status === 'sent')
+    return {
+      targetId: t.id,
+      brand: { id: t.brand.id, name: t.brand.name },
+      contact: { name: t.contact.name, title: t.contact.title, email: t.contact.email },
+      lastTouch: lastOut?.sentAt ?? null,
+      opened: t.emails.some(e => e.direction === 'out' && (e as any).opens > 0),
+      nextContact: next,
+      recommendation: next
+        ? `Try ${next.name}${next.title ? ` (${next.title})` : ''} — a fresh intro to a new person restarts the clock.`
+        : `No other contact on file — one last short follow-up, or mark it cold and revisit next semester.`,
+    }
+  })
+}
+
+// "Email the other person": retires the silent target and starts a
+// fresh intro (template + suggestion) to a different contact at the
+// same brand — waits in the draft queue like everything else.
+export async function emailDifferentContact(targetId: string, contactId: string) {
+  const old = await prisma.target.findUnique({ where: { id: targetId }, include: { brand: true } })
+  if (!old) throw new Error('Target not found')
+  const contact = await prisma.contact.findUnique({ where: { id: contactId } })
+  if (!contact || contact.brandId !== old.brandId) throw new Error('That contact is not at this brand')
+  if (!contact.email) throw new Error('That contact has no email address')
+
+  await prisma.target.update({ where: { id: targetId }, data: { status: 'dead' } })
+  await prisma.targetEvent.create({
+    data: { targetId, kind: 'status', fromStatus: old.status, toStatus: 'dead', detail: 'no response after full email sequence — switching contacts' },
+  })
+
+  let t = await prisma.target.findFirst({ where: { brandId: old.brandId, contactId } })
+  if (!t) {
+    t = await prisma.target.create({ data: { brandId: old.brandId, contactId, status: 'queued', fitScore: old.fitScore } })
+  } else if (['declined', 'dead'].includes(t.status as any)) {
+    await prisma.target.update({ where: { id: t.id }, data: { status: 'queued', shelved: false } })
+  }
+  const full = await prisma.target.findUnique({ where: { id: t.id }, include: { brand: true, contact: true } })
+  const filled = introEmail(full)
+  const suggestion = await generateSuggestion(full)
+  const draft = await prisma.emailMessage.create({
+    data: {
+      targetId: t.id, direction: 'out', kind: 'intro', status: 'draft',
+      toEmail: contact.email, fromEmail: emailAddress(),
+      subject: filled.subject, body: filled.body, suggestion,
+    },
+  })
+  return { ok: true, draftId: draft.id, to: contact.email }
+}
+
+// "One more follow-up" on an exhausted thread — a very short, final nudge.
+export async function draftFinalNudge(targetId: string) {
+  const t = await prisma.target.findUnique({
+    where: { id: targetId },
+    include: { brand: true, contact: true, emails: { orderBy: { createdAt: 'asc' } } },
+  })
+  if (!t) throw new Error('Target not found')
+  if (!t.contact.email) throw new Error('No email on this contact')
+  const intro = t.emails.find(e => e.kind === 'intro' && e.status === 'sent')
+  const parsed = parseEmailJson(await askClaude(followup2Prompt(t, intro), 500))
+  if (!parsed) throw new Error('Could not draft — try again')
+  const draft = await prisma.emailMessage.create({
+    data: {
+      targetId: t.id, direction: 'out', kind: 'followup3', status: 'draft',
+      toEmail: t.contact.email, fromEmail: emailAddress(),
+      subject: parsed.subject, body: parsed.body,
+    },
+  })
+  return { ok: true, draftId: draft.id }
+}
+
+// ---- reply assistant -------------------------------------------
+
+// A brand wrote back — draft Leo's response for him to edit and send.
+export async function draftReplyResponse(emailId: string) {
+  const reply = await prisma.emailMessage.findUnique({
+    where: { id: emailId },
+    include: { target: { include: { brand: true, contact: true, emails: { orderBy: { createdAt: 'asc' } } } } },
+  })
+  if (!reply || reply.direction !== 'in') throw new Error('That is not an incoming reply')
+  const t = reply.target
+  const thread = t.emails.filter(e => e.direction === 'out' && e.status === 'sent')
+    .map(e => `[${e.kind}] ${e.subject}`).join('\n')
+  const prompt = [
+    `You are drafting a reply for Leo at SB Agency (produces large fraternity/sorority concerts at US colleges; sells brands activations there: sampling, banners, product seeding, ambassadors).`,
+    `${reply.target.contact.name}${t.contact.title ? ` (${t.contact.title})` : ''} at ${t.brand.name} just replied to Leo's outreach.`,
+    `THEIR REPLY SUBJECT: ${reply.subject ?? '(unknown)'}`,
+    `WHAT WE'VE SENT THEM SO FAR:\n${thread}`,
+    t.brand.goals ? `BRAND DISCOVERY NOTES: ${t.brand.goals}` : '',
+    ``,
+    `Write Leo's response. Rules: warm, concise (under 110 words), plain text. Assume the reply was interested-or-curious unless the subject clearly says otherwise. Goal: lock a 15-minute call this week or next — propose two concrete windows (e.g. "Tue or Wed afternoon"). Offer to tailor ideas to their goals. Sign off exactly:\nBest,\nLeo\nSB Agency`,
+    ``,
+    `Return ONLY JSON: {"subject": "...", "body": "..."} — subject "re:" + their subject.`,
+  ].filter(Boolean).join('\n')
+  const parsed = parseEmailJson(await askClaude(prompt, 600))
+  if (!parsed) throw new Error('Could not draft a response — try again')
+  return { subject: parsed.subject, body: parsed.body, to: reply.fromEmail ?? t.contact.email }
+}
+
+// Send that response (or Leo's edited version of it).
+export async function sendReplyEmail(targetId: string, to: string, subject: string, body: string) {
+  if (!emailConfigured()) throw new Error('Email is not configured')
+  if (!to || !/@/.test(to)) throw new Error('Valid address required')
+  if (!(await domainAcceptsMail(to))) throw new Error(`${to} — domain has no mail server`)
+  const transporter = makeTransport()
+  const rec = await prisma.emailMessage.create({
+    data: {
+      targetId, direction: 'out', kind: 'response', status: 'draft',
+      toEmail: to, fromEmail: emailAddress(), subject, body,
+    },
+  })
+  await transporter.sendMail({
+    from: `Leo — SB Agency <${process.env.EMAIL_USER}>`,
+    to, subject, text: body, html: htmlBody(body, rec.id),
+  })
+  await prisma.emailMessage.update({ where: { id: rec.id }, data: { status: 'sent', sentAt: new Date() } })
+  return { ok: true, to }
+}
+
 // ---- status ----------------------------------------------------
 
 export async function emailStatus() {
@@ -508,11 +769,13 @@ export async function emailStatus() {
     where: { direction: 'out', status: 'sent', sentAt: { gte: startOfLocalDay() } },
   })
   const drafts = await prisma.emailMessage.count({ where: { direction: 'out', status: 'draft' } })
+  const approved = await prisma.emailMessage.count({ where: { direction: 'out', status: 'approved' } })
   const totalSent = await prisma.emailMessage.count({ where: { direction: 'out', status: 'sent' } })
   const totalReplies = await prisma.emailMessage.count({ where: { direction: 'in' } })
+  const totalOpened = await prisma.emailMessage.count({ where: { direction: 'out', status: 'sent', opens: { gt: 0 } } })
   return {
     configured: true, address: emailAddress(),
-    cap, sentToday, drafts, totalSent, totalReplies,
+    cap, sentToday, drafts, approved, totalSent, totalReplies, totalOpened,
     lastCheck: await getSetting('emailLastCheck'),
   }
 }
@@ -561,7 +824,7 @@ export async function listEmailQueue() {
     contact: { select: { name: true, title: true, email: true } },
   } } }
   const drafts = await prisma.emailMessage.findMany({
-    where: { direction: 'out', status: 'draft' },
+    where: { direction: 'out', status: { in: ['draft', 'approved'] } },
     include: draftInclude, orderBy: { createdAt: 'asc' },
   })
   const recent = await prisma.emailMessage.findMany({
@@ -572,5 +835,6 @@ export async function listEmailQueue() {
     where: { direction: 'in' },
     include, orderBy: { createdAt: 'desc' }, take: 20,
   })
-  return { drafts, recent, replies }
+  const exhausted = await listExhausted().catch(() => [])
+  return { drafts, recent, replies, exhausted }
 }
