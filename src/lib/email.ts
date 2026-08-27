@@ -104,6 +104,12 @@ function parseEmailJson(text: string): { subject: string; body: string } | null 
 
 // ---- drafting --------------------------------------------------
 
+// "Pickle's goals" but "Kulani Kinis' goals" — names already ending in
+// s take a bare apostrophe.
+function possessive(name: string): string {
+  return /s$/i.test(name.trim()) ? `${name}'` : `${name}'s`
+}
+
 // Leo's outreach template, used verbatim for every intro — (NAME) and
 // (BRAND) filled in, nothing AI-written. His voice, every time.
 function introEmail(t: any): { subject: string; body: string } {
@@ -118,7 +124,7 @@ function introEmail(t: any): { subject: string; body: string } {
     ``,
     `Our experiential team puts brands directly inside the room at hundreds of major college events each year. We help partners tap into our established live audience on campus, giving them high-impact reach without having to build crowds from the ground up.`,
     ``,
-    `We'd love to jump on a quick call to better understand ${brand}'s goals for the upcoming year and brainstorm a few ways we might collaborate.`,
+    `We'd love to jump on a quick call to better understand ${possessive(brand)} goals for the upcoming year and brainstorm a few ways we might collaborate.`,
     ``,
     `Let me know your availability next week, and we can set up a call.`,
     ``,
@@ -127,6 +133,77 @@ function introEmail(t: any): { subject: string; body: string } {
     `SB Agency`,
   ].join('\n')
   return { subject: `SB Agency x ${brand}`, body }
+}
+
+// One sharp, brand-specific angle per draft — different for every brand
+// because it's built from THAT brand's category, tier, and discovery
+// notes. Returns {tip, insert} or null if generation fails (a draft
+// without a suggestion is still a perfectly good draft).
+async function generateSuggestion(t: any): Promise<string | null> {
+  try {
+    const prompt = [
+      `You advise a sponsorship rep at SB Agency, which produces large fraternity/sorority concerts at US colleges and sells brands activations there (sampling, banners, product seeding, ambassadors).`,
+      `The rep is about to email this brand a templated intro. Give ONE angle that is SPECIFIC to this brand — never generic advice that could apply to anyone.`,
+      ``,
+      `BRAND: ${t.brand.name}`,
+      t.brand.category ? `CATEGORY: ${t.brand.category}` : ``,
+      t.brand.tier ? `STAGE: ${t.brand.tier}` : ``,
+      t.brand.goals ? `WHAT THEY WANT (discovery notes): ${t.brand.goals}` : ``,
+      t.brand.notes ? `NOTES: ${t.brand.notes}` : ``,
+      `CONTACT: ${t.contact.name}${t.contact.title ? `, ${t.contact.title}` : ''}`,
+      ``,
+      `Return ONLY JSON:`,
+      `{"tip": "one sentence telling the rep the angle and why it fits this brand", "insert": "one natural, friendly sentence ready to paste into the email that uses that angle — mentions the brand or its product specifically, fits before 'We'd love to jump on a quick call', no placeholder brackets"}`,
+    ].filter(Boolean).join('\n')
+    const text = await askClaude(prompt, 400)
+    const m = text.match(/\{[\s\S]*\}/)
+    if (!m) return null
+    const j = JSON.parse(m[0])
+    if (!j.tip || !j.insert) return null
+    return JSON.stringify({ tip: String(j.tip).slice(0, 400), insert: String(j.insert).slice(0, 400) })
+  } catch { return null }
+}
+
+// Generate (or regenerate) the suggestion for an existing draft.
+export async function suggestForDraft(emailId: string) {
+  const d = await prisma.emailMessage.findUnique({
+    where: { id: emailId },
+    include: { target: { include: { brand: true, contact: true } } },
+  })
+  if (!d) throw new Error('Draft not found')
+  const s = await generateSuggestion(d.target)
+  if (!s) throw new Error('Could not generate a suggestion — try again')
+  await prisma.emailMessage.update({ where: { id: emailId }, data: { suggestion: s } })
+  return JSON.parse(s)
+}
+
+// One demo email so Leo can see exactly what a recipient gets — same
+// template, same attachment, sent to an address he chooses. Uses the
+// first waiting draft as the sample (untouched), or a filled template
+// if the queue is empty. Never counts against the daily cap.
+export async function sendTestEmail(to: string) {
+  if (!emailConfigured()) throw new Error('Email is not configured')
+  if (!to || !/@/.test(to)) throw new Error('Valid address required')
+
+  const sample = await prisma.emailMessage.findFirst({
+    where: { direction: 'out', status: 'draft' },
+    orderBy: { createdAt: 'asc' },
+    include: { target: { include: { brand: true, contact: true } } },
+  })
+  const subject = sample ? `[TEST] ${sample.subject}` : '[TEST] SB Agency outreach preview'
+  const body = sample?.body ?? 'This is a preview of the SB Agency outreach email.'
+
+  const transporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com', port: 465, secure: true,
+    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_APP_PASSWORD },
+  })
+  const attachment = await onePagerAttachment()
+  await transporter.sendMail({
+    from: `Leo — SB Agency <${process.env.EMAIL_USER}>`,
+    to, subject, text: body,
+    ...(attachment ? { attachments: [attachment] } : {}),
+  })
+  return { ok: true, to, subject, attached: !!attachment }
 }
 
 function followupPrompt(t: any, firstEmail: any): string {
@@ -219,11 +296,15 @@ export async function draftDailyEmails(limit = 5) {
       if (emailedBrands.has(t.brandId)) continue
       emailedBrands.add(t.brandId)
       const filled = introEmail(t)
+      // Brand-specific angle, generated per draft — different for every
+      // brand by construction. A failed generation never blocks the draft.
+      const suggestion = await generateSuggestion(t)
       await prisma.emailMessage.create({
         data: {
           targetId: t.id, direction: 'out', kind: 'intro', status: 'draft',
           toEmail: t.contact.email, fromEmail: emailAddress(),
           subject: filled.subject, body: filled.body,
+          suggestion,
         },
       })
       drafted++; room--
