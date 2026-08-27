@@ -17,7 +17,7 @@ import { authOptions, allowlist } from '@/lib/auth'
 import {
   emailStatus, listEmailQueue, draftDailyEmails,
   sendApprovedEmails, checkReplies, suggestForDraft, sendTestEmail,
-  setDraftRecipients,
+  setDraftRecipients, sendOneEmail,
 } from '@/lib/email'
 
 const prisma = new PrismaClient()
@@ -1905,6 +1905,7 @@ const handlers: Record<string, Handler> = {
   async setDraftRecipients({ id, toEmail, toName, cc }: any) {
     return setDraftRecipients(id, { toEmail, toName, cc })
   },
+  async sendEmailDraft({ id }: any) { return sendOneEmail(id) },
 
   async updateEmailDraft({ id, subject, body }: any) {
     return prisma.emailMessage.update({
