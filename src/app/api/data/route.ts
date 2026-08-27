@@ -17,7 +17,8 @@ import { authOptions, allowlist } from '@/lib/auth'
 import {
   emailStatus, listEmailQueue, draftDailyEmails,
   sendApprovedEmails, checkReplies, suggestForDraft, sendTestEmail,
-  setDraftRecipients, sendOneEmail,
+  setDraftRecipients, sendOneEmail, approveAllDrafts,
+  emailDifferentContact, draftFinalNudge, draftReplyResponse, sendReplyEmail,
 } from '@/lib/email'
 
 const prisma = new PrismaClient()
@@ -1906,6 +1907,11 @@ const handlers: Record<string, Handler> = {
     return setDraftRecipients(id, { toEmail, toName, cc })
   },
   async sendEmailDraft({ id }: any) { return sendOneEmail(id) },
+  async approveAllDrafts() { return approveAllDrafts() },
+  async emailDifferentContact({ targetId, contactId }: any) { return emailDifferentContact(targetId, contactId) },
+  async draftFinalNudge({ targetId }: any) { return draftFinalNudge(targetId) },
+  async draftReplyResponse({ id }: any) { return draftReplyResponse(id) },
+  async sendReplyEmail({ targetId, to, subject, body }: any) { return sendReplyEmail(targetId, to, subject, body) },
 
   async updateEmailDraft({ id, subject, body }: any) {
     return prisma.emailMessage.update({
