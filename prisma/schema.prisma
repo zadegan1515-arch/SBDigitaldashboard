@@ -490,6 +490,10 @@ model EmailMessage {
   body      String?
   error     String?
 
+  // AI angle for this specific brand, JSON: {"tip": advice for the rep,
+  // "insert": a ready-made sentence they can drop into the email}.
+  suggestion String?
+
   sentAt    DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
