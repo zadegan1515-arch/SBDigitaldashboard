@@ -224,6 +224,7 @@
         <button class="nav-item" data-view="sponsorships">Sponsorships <span class="n" id="nav-spon"></span></button>
         <button class="nav-item" data-view="needs">Needs contacts <span class="n" id="nav-needs"></span></button>
         <button class="nav-item" data-view="pipeline">Pipeline</button>
+        <button class="nav-item" data-view="results">Results</button>
         <button class="nav-item" data-view="materials">Materials</button>
         <button class="nav-item" data-view="crm">CRM</button>
         <button class="nav-item" data-view="team">Team</button>
@@ -251,6 +252,7 @@
         <div class="go-card" data-goto="sponsorships">Sponsorships <span class="arr">→</span></div>
         <div class="go-card" data-goto="needs">Needs contacts <span class="arr">→</span></div>
         <div class="go-card" data-goto="pipeline">Pipeline <span class="arr">→</span></div>
+        <div class="go-card" data-goto="results">Results <span class="arr">→</span></div>
         <div class="go-card" data-goto="crm">CRM <span class="arr">→</span></div>
         <div class="go-card" data-goto="team">Team <span class="arr">→</span></div>
       </div>
@@ -372,6 +374,15 @@
       <div id="deal-form-slot" style="margin-top:12px"></div>
       <div class="kpi-row" id="pipe-kpis"></div>
       <div id="deals"></div>
+    </section>
+
+    <!-- RESULTS -->
+    <section class="view page" id="results">
+      <div class="eyebrow">Results</div>
+      <h1>Outreach results</h1>
+      <div class="sub">What the email machine is producing — counted per brand, so one brand emailed five times still counts once.</div>
+      <div class="kpi-row" id="res-kpis"></div>
+      <div id="res-body"></div>
     </section>
 
     <!-- CRM -->
@@ -878,12 +889,13 @@ function loadBrand(brandId) {
 
     // proposals & recaps
     var docs =
-      '<div class="section-head">Proposals &amp; recaps <span class="n">' + b.documents.length + '</span>' +
-        '<button class="btn-ghost" id="b-proposal" style="margin-left:auto">✦ Generate proposal</button></div>' +
+      '<div class="section-head">Documents <span class="n">' + b.documents.length + '</span>' +
+        '<button class="btn-ghost" id="b-callprep" style="margin-left:auto">📞 Call prep</button>' +
+        '<button class="btn-ghost" id="b-proposal">✦ Generate proposal</button></div>' +
       '<div id="b-doc-slot"></div>' +
       (b.documents.length ? b.documents.map(docRow).join('')
         : '<div class="panel"><div class="empty"><h3>No documents yet</h3>' +
-          '<p>Generate a tailored proposal to pitch this brand — or a recap on a confirmed show (below) to earn the renewal.</p></div></div>');
+          '<p>Generate a call prep brief before you dial, a tailored proposal to pitch, or a recap on a confirmed show to earn the renewal. Contracts and invoices are made from the Pipeline page.</p></div></div>');
 
     // activity
     var activity = d.events.length
@@ -930,6 +942,14 @@ function loadBrand(brandId) {
     document.getElementById('b-proposal').onclick = function () {
       openProposalForm(b.id);
     };
+
+    document.getElementById('b-callprep').onclick = function () {
+      var btn = this; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Prepping…';
+      api('generateCallPrep', { brandId: b.id }).then(function () {
+        toast('Call prep ready — it\'s in Documents below');
+        loadBrand(b.id);
+      }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = '📞 Call prep'; });
+    };
   }).catch(function (e) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
       esc(e.message) + '</p></div></div>';
@@ -960,9 +980,11 @@ function sponsorRow(s, brandName) {
 
 // One generated document (proposal or recap) row.
 function docRow(d) {
+  var kindClass = { recap: 'confirmed', proposal: 'proposed', callprep: 'sent', contract: 'confirmed', invoice: 'replied' }[d.kind] || 'proposed';
+  var kindLabel = { callprep: 'call prep' }[d.kind] || d.kind;
   return '<div class="target" data-doc="' + esc(d.id) + '">' +
     '<div class="t-main"><div class="t-line">' +
-      '<span class="status ' + (d.kind === 'recap' ? 'confirmed' : 'proposed') + '">' + esc(d.kind) + '</span>' +
+      '<span class="status ' + kindClass + '">' + esc(kindLabel) + '</span>' +
       '<span class="t-brand" style="margin-left:8px">' + esc(d.title) + '</span></div>' +
       '<div class="t-meta"><span>' + when(d.createdAt) + '</span></div></div>' +
     '<div class="t-actions">' +
@@ -2478,33 +2500,150 @@ function loadPipeline() {
         '<p>Attach a brand to a show and a deal is created here automatically.</p></div></div>';
       return;
     }
+    // Kanban board: one column per stage, always all five so the shape
+    // of the funnel is visible even when a column is empty.
     var stages = {};
+    STAGE_ORDER.forEach(function (s) { stages[s] = []; });
     deals.forEach(function (x) { (stages[x.stage] = stages[x.stage] || []).push(x); });
-    var keys = Object.keys(stages).sort(function (a, b) {
-      var ai = STAGE_ORDER.indexOf(a), bi = STAGE_ORDER.indexOf(b);
-      return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
-    });
+    var STAGE_LABEL = { conversation: 'Conversation', proposal: 'Proposal sent', verbal: 'Verbal yes', closed: 'Won', lost: 'Lost' };
 
-    el.innerHTML = keys.map(function (s) {
-      var sum = stages[s].reduce(function (a, x) { return a + x.valueCents; }, 0);
-      return '<div style="margin-bottom:20px"><div style="display:flex;gap:9px;align-items:baseline;margin-bottom:8px">' +
-        '<span style="font-size:13px;font-weight:600">' + esc(s) + '</span>' +
-        '<span style="font-size:12.5px;color:var(--ink-3)">' + stages[s].length + ' · ' + money(sum) + '</span></div>' +
-        stages[s].map(function (x) {
-          return '<div class="target clickable" data-brand="' + esc(x.brandId) + '">' +
-            '<div class="t-main"><div class="t-line">' +
-            '<span class="t-brand">' + esc(x.brand.name) + '</span>' +
-            (x.eventRef ? '<span class="t-sep">·</span><span class="t-title">' + esc(x.eventRef) + '</span>' : '') +
-            '</div><div class="t-meta">' +
-            (x.source === 'sponsorship' ? '<span class="status">auto from sponsorship</span>' : '') +
-            (x.owner ? '<span>· ' + esc(x.owner) + '</span>' : '') +
-            (x.notes ? '<span>· ' + esc(x.notes) + '</span>' : '') +
-            '</div></div><div class="amount">' + money(x.valueCents) + '</div></div>';
-        }).join('') + '</div>';
-    }).join('');
+    el.innerHTML =
+      '<div style="display:grid;grid-auto-flow:column;grid-auto-columns:minmax(225px,1fr);gap:12px;overflow-x:auto;align-items:start;padding-bottom:6px">' +
+      STAGE_ORDER.map(function (s) {
+        var col = stages[s] || [];
+        var sum = col.reduce(function (a, x) { return a + x.valueCents; }, 0);
+        return '<div style="background:var(--bg-2,#f5f4f1);border:1px solid var(--border);border-radius:10px;padding:10px">' +
+          '<div style="display:flex;gap:8px;align-items:baseline;margin-bottom:10px">' +
+            '<span style="font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em' + (s === 'closed' ? ';color:var(--accent)' : (s === 'lost' ? ';color:var(--ink-3)' : '')) + '">' + STAGE_LABEL[s] + '</span>' +
+            '<span style="font-size:11.5px;color:var(--ink-3);margin-left:auto">' + col.length + ' · ' + money(sum) + '</span></div>' +
+          (col.length ? col.map(function (x) {
+            var i = STAGE_ORDER.indexOf(s);
+            var locked = x.source === 'sponsorship';
+            return '<div class="panel panel-pad" style="margin-bottom:8px;padding:10px" data-deal="' + esc(x.id) + '">' +
+              '<div style="display:flex;align-items:baseline;gap:6px">' +
+                '<a href="#" data-brand="' + esc(x.brandId) + '" style="font-weight:600;font-size:13px;color:inherit;text-decoration:none">' + esc(x.brand.name) + '</a>' +
+                '<span class="amount" style="margin-left:auto;font-size:12.5px">' + money(x.valueCents) + '</span></div>' +
+              (x.eventRef || x.name !== x.brand.name ? '<div style="font-size:11.5px;color:var(--ink-3);margin-top:2px">' + esc(x.eventRef || x.name) + '</div>' : '') +
+              '<div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap">' +
+                (locked
+                  ? '<span style="font-size:11px;color:var(--ink-3)" title="Mirrors its show — change the sponsorship status instead">🔒 from show</span>'
+                  : (i > 0 ? '<button class="btn-ghost" data-dact="move" data-to="' + STAGE_ORDER[i - 1] + '" style="padding:2px 7px;font-size:11.5px" title="Back to ' + STAGE_LABEL[STAGE_ORDER[i - 1]] + '">◀</button>' : '') +
+                    (i < STAGE_ORDER.length - 1 && s !== 'closed' ? '<button class="btn-ghost" data-dact="move" data-to="' + STAGE_ORDER[i + 1] + '" style="padding:2px 7px;font-size:11.5px" title="Move to ' + STAGE_LABEL[STAGE_ORDER[i + 1]] + '">▶</button>' : '')) +
+                ((s === 'verbal' || s === 'closed')
+                  ? '<button class="btn-ghost" data-dact="contract" style="padding:2px 7px;font-size:11.5px">📄 Contract</button>' +
+                    '<button class="btn-ghost" data-dact="invoice" style="padding:2px 7px;font-size:11.5px">🧾 Invoice</button>'
+                  : '') +
+              '</div></div>';
+          }).join('') : '<div style="font-size:11.5px;color:var(--ink-3);padding:6px 2px">—</div>') +
+        '</div>';
+      }).join('') + '</div>' +
+      '<div class="hint" style="margin-top:10px">◀ ▶ moves a deal between stages. 🔒 deals mirror an attached show — edit them on the Sponsorships page. Contract and invoice land in the brand\'s Documents.</div>';
+
+    el.querySelectorAll('a[data-brand]').forEach(function (a) {
+      a.onclick = function (ev) { ev.preventDefault(); loadBrand(a.getAttribute('data-brand')); };
+    });
+    el.querySelectorAll('[data-dact="move"]').forEach(function (b) {
+      b.onclick = function () {
+        b.disabled = true;
+        api('setDealStage', { id: b.closest('[data-deal]').getAttribute('data-deal'), stage: b.getAttribute('data-to') })
+          .then(function () { loadPipeline(); })
+          .catch(function (e) { toast(e.message); b.disabled = false; });
+      };
+    });
+    el.querySelectorAll('[data-dact="contract"]').forEach(function (b) {
+      b.onclick = function () {
+        var card = b.closest('[data-deal]');
+        b.disabled = true; b.innerHTML = '<span class="spinner"></span>';
+        api('generateContract', { dealId: card.getAttribute('data-deal') })
+          .then(function (doc) { toast('Contract drafted — opening the brand page'); loadBrand(doc.brandId); })
+          .catch(function (e) { toast(e.message); b.disabled = false; b.textContent = '📄 Contract'; });
+      };
+    });
+    el.querySelectorAll('[data-dact="invoice"]').forEach(function (b) {
+      b.onclick = function () {
+        var card = b.closest('[data-deal]');
+        b.disabled = true; b.innerHTML = '<span class="spinner"></span>';
+        api('generateInvoice', { dealId: card.getAttribute('data-deal') })
+          .then(function (doc) { toast('Invoice created — opening the brand page'); loadBrand(doc.brandId); })
+          .catch(function (e) { toast(e.message); b.disabled = false; b.textContent = '🧾 Invoice'; });
+      };
+    });
   }).catch(function (e) {
     document.getElementById('deals').innerHTML =
       '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+}
+
+// --- results ---------------------------------------------------
+//
+// Three views of the same machine: the funnel (brands, stage by stage),
+// reply rate by category (where to double down), and volume by week.
+// Single-measure bars use the accent; the weekly pair uses accent red
+// for sends and a validated blue (#2f66a8) for replies.
+
+function loadResults() {
+  showView('results');
+  var body = document.getElementById('res-body');
+  body.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  return api('getOutreachAnalytics').then(function (a) {
+    document.getElementById('res-kpis').innerHTML =
+      '<div class="kpi"><div class="kpi-label">Emails sent</div><div class="kpi-value">' + a.totals.emailsSent + '</div><div class="kpi-note">all-time</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Open rate</div><div class="kpi-value">' + a.totals.openRate + '%</div><div class="kpi-note">of sent emails</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Reply rate</div><div class="kpi-value">' + a.totals.replyRate + '%</div><div class="kpi-note">of brands emailed</div></div>' +
+      '<div class="kpi money"><div class="kpi-label">Replies</div><div class="kpi-value">' + a.totals.totalReplies + '</div><div class="kpi-note">conversations started</div></div>';
+
+    // Funnel — horizontal bars, widths relative to the first stage.
+    var maxF = Math.max(1, a.funnel[0].n);
+    var funnel =
+      '<div class="panel panel-pad" style="margin-bottom:14px"><div style="font-size:13px;font-weight:600;margin-bottom:12px">Funnel — brands, stage by stage</div>' +
+      a.funnel.map(function (f, i) {
+        var pct = Math.round((f.n / maxF) * 100);
+        var conv = i > 0 && a.funnel[i - 1].n > 0 ? Math.round((f.n / a.funnel[i - 1].n) * 100) + '% of previous' : '';
+        return '<div style="display:grid;grid-template-columns:110px 1fr 90px;gap:10px;align-items:center;margin-bottom:8px" title="' + esc(f.label + ': ' + f.n) + '">' +
+          '<div style="font-size:12px;color:var(--ink-2)">' + esc(f.label) + '</div>' +
+          '<div style="background:var(--bg-2,#f0efec);border-radius:4px;height:14px;overflow:hidden">' +
+            '<div style="width:' + Math.max(pct, f.n > 0 ? 3 : 0) + '%;height:100%;background:var(--accent);border-radius:0 4px 4px 0"></div></div>' +
+          '<div style="font-size:12px"><b>' + f.n + '</b>' + (conv ? ' <span style="color:var(--ink-3)">· ' + conv + '</span>' : '') + '</div></div>';
+      }).join('') + '</div>';
+
+    // Reply rate by category.
+    var cats = a.categories.filter(function (c) { return c.brands > 0; });
+    var maxR = Math.max(1, Math.max.apply(null, cats.map(function (c) { return c.replyRate; }).concat([1])));
+    var catBlock = cats.length
+      ? '<div class="panel panel-pad" style="margin-bottom:14px"><div style="font-size:13px;font-weight:600;margin-bottom:4px">Reply rate by category</div>' +
+        '<div class="hint" style="margin:0 0 12px">Where to double down — brands that replied ÷ brands emailed, per category.</div>' +
+        cats.map(function (c) {
+          var w = Math.round((c.replyRate / Math.max(maxR, 1)) * 100);
+          return '<div style="display:grid;grid-template-columns:150px 1fr 150px;gap:10px;align-items:center;margin-bottom:7px" title="' + esc((CAT_NAMES[c.category] || c.category) + ': ' + c.replied + ' of ' + c.brands + ' brands replied') + '">' +
+            '<div style="font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(CAT_NAMES[c.category] || c.category) + '</div>' +
+            '<div style="background:var(--bg-2,#f0efec);border-radius:4px;height:12px;overflow:hidden">' +
+              '<div style="width:' + Math.max(w, c.replyRate > 0 ? 3 : 0) + '%;height:100%;background:var(--accent);border-radius:0 4px 4px 0"></div></div>' +
+            '<div style="font-size:12px"><b>' + c.replyRate + '%</b> <span style="color:var(--ink-3)">· ' + c.replied + '/' + c.brands + ' brands · ' + c.sent + ' sent</span></div></div>';
+        }).join('') + '</div>'
+      : '';
+
+    // Weekly volume — sends (red) vs replies (blue), grouped columns.
+    var maxW = Math.max(1, Math.max.apply(null, a.weeks.map(function (w) { return Math.max(w.sent, w.replies); })));
+    var weekly =
+      '<div class="panel panel-pad"><div style="display:flex;gap:14px;align-items:baseline;margin-bottom:12px">' +
+        '<div style="font-size:13px;font-weight:600">Last 8 weeks</div>' +
+        '<span style="font-size:11.5px;color:var(--ink-2)"><span style="display:inline-block;width:9px;height:9px;background:var(--accent);border-radius:2px;margin-right:4px"></span>Sent</span>' +
+        '<span style="font-size:11.5px;color:var(--ink-2)"><span style="display:inline-block;width:9px;height:9px;background:#2f66a8;border-radius:2px;margin-right:4px"></span>Replies</span></div>' +
+      '<div style="display:grid;grid-template-columns:repeat(8,1fr);gap:10px;align-items:end;height:130px">' +
+      a.weeks.map(function (w) {
+        var hs = Math.round((w.sent / maxW) * 100), hr = Math.round((w.replies / maxW) * 100);
+        return '<div style="display:flex;gap:2px;align-items:flex-end;height:100%" title="' + esc('Week of ' + w.label + ': ' + w.sent + ' sent, ' + w.replies + ' replies') + '">' +
+          '<div style="flex:1;background:var(--accent);border-radius:4px 4px 0 0;height:' + Math.max(hs, w.sent > 0 ? 3 : 1) + '%"></div>' +
+          '<div style="flex:1;background:#2f66a8;border-radius:4px 4px 0 0;height:' + Math.max(hr, w.replies > 0 ? 3 : 1) + '%"></div></div>';
+      }).join('') + '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(8,1fr);gap:10px;margin-top:6px">' +
+      a.weeks.map(function (w) {
+        return '<div style="font-size:10.5px;color:var(--ink-3);text-align:center">' + esc(w.label) + '<br><b style="color:var(--ink-2)">' + w.sent + '</b>' + (w.replies ? ' <span style="color:#2f66a8;font-weight:700">/' + w.replies + '</span>' : '') + '</div>';
+      }).join('') + '</div></div>';
+
+    body.innerHTML = funnel + catBlock + weekly;
+  }).catch(function (e) {
+    body.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
   });
 }
 
@@ -2602,6 +2741,7 @@ function gotoView(id) {
   if (id === 'sponsorships') loadSponsorships();
   if (id === 'needs') loadNeeds();
   if (id === 'pipeline') loadPipeline();
+  if (id === 'results') loadResults();
   if (id === 'materials') showView('materials');
   if (id === 'crm') loadCRM();
   if (id === 'team') loadTeam();
