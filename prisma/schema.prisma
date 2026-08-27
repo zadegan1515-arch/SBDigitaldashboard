@@ -486,6 +486,9 @@ model EmailMessage {
 
   toEmail   String?
   fromEmail String?
+  // Extra recipients CC'd on the send, JSON array of addresses:
+  // ["a@x.com","b@y.com"]. Null/empty = no CC.
+  ccEmails  String?
   subject   String?
   body      String?
   error     String?
