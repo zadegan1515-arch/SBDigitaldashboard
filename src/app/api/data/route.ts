@@ -16,7 +16,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { authOptions, allowlist } from '@/lib/auth'
 import {
   emailStatus, listEmailQueue, draftDailyEmails,
-  sendApprovedEmails, checkReplies,
+  sendApprovedEmails, checkReplies, suggestForDraft, sendTestEmail,
 } from '@/lib/email'
 
 const prisma = new PrismaClient()
@@ -1898,6 +1898,9 @@ const handlers: Record<string, Handler> = {
   async draftEmails({ limit = 4 }: any) { return draftDailyEmails(Math.min(6, limit)) },
   async sendApprovedEmails() { return sendApprovedEmails() },
   async checkEmailReplies() { return checkReplies() },
+
+  async suggestForDraft({ id }: any) { return suggestForDraft(id) },
+  async sendTestEmail({ to }: any) { return sendTestEmail(to) },
 
   async updateEmailDraft({ id, subject, body }: any) {
     return prisma.emailMessage.update({
