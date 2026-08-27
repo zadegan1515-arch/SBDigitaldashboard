@@ -2048,6 +2048,7 @@ function renderEmailMode(box) {
             '<span style="margin-left:auto"></span>' +
             '<button class="btn-ghost" id="em-draft">✦ Draft today\'s batch</button>' +
             '<button class="btn-ghost" id="em-check">Check replies</button>' +
+            '<button class="btn-ghost" id="em-test">Send test to me</button>' +
             '<button class="btn-solid" id="em-send"' + (q.drafts.length ? '' : ' disabled') + '>Send all (' + q.drafts.length + ')</button>' +
           '</div>' +
           '<div class="hint" style="margin:8px 0 0">Daily cap ramps up ~5/week to 40 to protect deliverability. Drafts wait here until you hit Send.</div>' +
@@ -2056,15 +2057,25 @@ function renderEmailMode(box) {
       var drafts = q.drafts.length
         ? '<div class="count-head">To approve <span class="n">' + q.drafts.length + '</span></div>' +
           q.drafts.map(function (d) {
+            var sug = null;
+            try { sug = d.suggestion ? JSON.parse(d.suggestion) : null; } catch (e) {}
             return '<div class="panel panel-pad" style="margin-bottom:10px" data-em="' + esc(d.id) + '">' +
               '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;font-size:13px">' +
                 '<b>' + esc(d.target.brand.name) + '</b><span class="t-sep">·</span>' +
                 esc(d.target.contact.name) +
                 '<span style="color:var(--ink-3)">&lt;' + esc(d.toEmail || '') + '&gt;</span>' +
                 '<span class="status ' + (d.kind === 'followup' ? 'proposed' : 'sent') + '">' + d.kind + '</span>' +
+                '<span style="color:var(--ink-3);font-size:11.5px">📎 SBA One Pager.pdf</span>' +
                 '<button class="btn-ghost danger" data-emact="del" style="margin-left:auto">Skip</button></div>' +
               '<input class="field-box" data-emfield="subject" value="' + esc(d.subject || '') + '" style="margin-bottom:8px;font-weight:600">' +
               '<textarea class="field-box" data-emfield="body" rows="' + Math.max(4, Math.ceil((d.body || '').length / 80)) + '">' + esc(d.body || '') + '</textarea>' +
+              (sug
+                ? '<div style="margin-top:8px;padding:10px 12px;background:var(--accent-soft,#fdf0ec);border:1px solid var(--border);border-radius:8px;font-size:12.5px">' +
+                    '<b style="color:var(--accent)">✦ Angle for ' + esc(d.target.brand.name) + ':</b> ' + esc(sug.tip) +
+                    '<div style="margin-top:6px;color:var(--ink-2);font-style:italic">“' + esc(sug.insert) + '”</div>' +
+                    '<button class="btn-ghost" data-emact="insert" data-insert="' + esc(sug.insert) + '" style="margin-top:8px">Insert into email</button>' +
+                  '</div>'
+                : '<div style="margin-top:8px"><button class="btn-ghost" data-emact="suggest">✦ Suggest angle</button></div>') +
             '</div>';
           }).join('')
         : '<div class="panel"><div class="empty"><h3>No drafts waiting</h3><p>Hit “Draft today\'s batch” — it writes a personalized email for your best-fit targets who have a work address, up to today\'s cap.</p></div></div>';
@@ -2140,6 +2151,46 @@ function renderEmailMode(box) {
             .catch(function (e) { toast(e.message); });
         };
       });
+
+      // Insert the suggested sentence as its own paragraph, right before
+      // the call-to-action line, then save.
+      box.querySelectorAll('[data-emact="insert"]').forEach(function (b) {
+        b.onclick = function () {
+          var card = b.closest('[data-em]');
+          var ta = card.querySelector('[data-emfield="body"]');
+          var line = b.getAttribute('data-insert');
+          var marker = "We'd love to jump on a quick call";
+          var idx = ta.value.indexOf(marker);
+          ta.value = idx > -1
+            ? ta.value.slice(0, idx) + line + '\n\n' + ta.value.slice(idx)
+            : ta.value.replace(/\n\nBest,/, '\n\n' + line + '\n\nBest,');
+          api('updateEmailDraft', {
+            id: card.getAttribute('data-em'),
+            subject: card.querySelector('[data-emfield="subject"]').value,
+            body: ta.value
+          }).then(function () { toast('Inserted'); b.disabled = true; b.textContent = 'Inserted ✓'; })
+            .catch(function (e) { toast(e.message); });
+        };
+      });
+
+      box.querySelectorAll('[data-emact="suggest"]').forEach(function (b) {
+        b.onclick = function () {
+          b.disabled = true; b.innerHTML = '<span class="spinner"></span> Thinking…';
+          api('suggestForDraft', { id: b.closest('[data-em]').getAttribute('data-em') })
+            .then(function () { loadOutreach(); })
+            .catch(function (e) { toast(e.message); b.disabled = false; b.textContent = '✦ Suggest angle'; });
+        };
+      });
+
+      box.querySelector('#em-test').onclick = function () {
+        var to = window.prompt('Send a test email (with the one-pager attached) to:', 'zadegan1515@gmail.com');
+        if (!to) return;
+        var b = this; b.disabled = true; b.textContent = 'Sending…';
+        api('sendTestEmail', { to: to }).then(function (r) {
+          toast('Test sent to ' + r.to + (r.attached ? ' with the one-pager' : ' (one-pager missing!)'));
+          b.disabled = false; b.textContent = 'Send test to me';
+        }).catch(function (e) { toast(e.message); b.disabled = false; b.textContent = 'Send test to me'; });
+      };
     });
   }).catch(function (e) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
