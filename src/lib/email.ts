@@ -118,7 +118,7 @@ function introEmail(t: any): { subject: string; body: string } {
     ``,
     `Our experiential team puts brands directly inside the room at hundreds of major college events each year. We help partners tap into our established live audience on campus, giving them high-impact reach without having to build crowds from the ground up.`,
     ``,
-    `We'd love to jump on a quick call to better understand ${brand} goals for the upcoming year and brainstorm a few ways we might collaborate.`,
+    `We'd love to jump on a quick call to better understand ${brand}'s goals for the upcoming year and brainstorm a few ways we might collaborate.`,
     ``,
     `Let me know your availability next week, and we can set up a call.`,
     ``,
