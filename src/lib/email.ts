@@ -332,14 +332,64 @@ async function onePagerAttachment(): Promise<{ filename: string; content: Buffer
   } catch { return null }
 }
 
-export async function sendApprovedEmails() {
-  if (!emailConfigured()) return { configured: false, sent: 0, failed: 0 }
-
-  const transporter = nodemailer.createTransport({
+function makeTransport() {
+  return nodemailer.createTransport({
     host: 'smtp.gmail.com', port: 465, secure: true,
     auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_APP_PASSWORD },
   })
+}
 
+// Send exactly one draft: to + any CC, one-pager attached, marked sent.
+// Shared by "Send all" (loops it) and the per-card "Send" button.
+async function deliverDraft(d: any, transporter: any, attachment: { filename: string; content: Buffer } | null) {
+  const to = d.toEmail || d.target.contact.email
+  if (!to) throw new Error('No recipient address on this draft')
+  let cc: string[] = []
+  try { cc = JSON.parse(d.ccEmails ?? '[]') } catch {}
+  cc = cc.filter(a => typeof a === 'string' && /@/.test(a) && a.toLowerCase() !== to.toLowerCase())
+  await transporter.sendMail({
+    from: `Leo — SB Agency <${process.env.EMAIL_USER}>`,
+    to,
+    ...(cc.length ? { cc } : {}),
+    subject: d.subject ?? '',
+    text: d.body ?? '',
+    ...(attachment ? { attachments: [attachment] } : {}),
+  })
+  await prisma.emailMessage.update({
+    where: { id: d.id },
+    data: { status: 'sent', sentAt: new Date(), toEmail: to, fromEmail: emailAddress() },
+  })
+  return { to, cc }
+}
+
+// One email, by draft id — the per-card Send button.
+export async function sendOneEmail(emailId: string) {
+  if (!emailConfigured()) throw new Error('Email is not configured')
+  const d = await prisma.emailMessage.findUnique({
+    where: { id: emailId },
+    include: { target: { include: { contact: true, brand: true } } },
+  })
+  if (!d) throw new Error('Draft not found')
+  if (d.direction !== 'out' || d.status !== 'draft') throw new Error('Only unsent drafts can be sent')
+
+  const transporter = makeTransport()
+  const attachment = await onePagerAttachment()
+  try {
+    const r = await deliverDraft(d, transporter, attachment)
+    return { ok: true, brand: d.target.brand.name, to: r.to, cc: r.cc, attached: !!attachment }
+  } catch (err: any) {
+    await prisma.emailMessage.update({
+      where: { id: d.id },
+      data: { status: 'failed', error: String(err?.message ?? 'send failed').slice(0, 300) },
+    })
+    throw new Error(`${d.target.brand.name}: ${err?.message ?? 'send failed'}`)
+  }
+}
+
+export async function sendApprovedEmails() {
+  if (!emailConfigured()) return { configured: false, sent: 0, failed: 0 }
+
+  const transporter = makeTransport()
   const attachment = await onePagerAttachment()
 
   const drafts = await prisma.emailMessage.findMany({
@@ -351,25 +401,8 @@ export async function sendApprovedEmails() {
   let sent = 0, failed = 0
   const errors: string[] = []
   for (const d of drafts) {
-    const to = d.toEmail || d.target.contact.email
-    if (!to) { failed++; continue }
-    // Extra people Leo added onto this draft ride along as CC.
-    let cc: string[] = []
-    try { cc = JSON.parse(d.ccEmails ?? '[]') } catch {}
-    cc = cc.filter(a => typeof a === 'string' && /@/.test(a) && a.toLowerCase() !== to.toLowerCase())
     try {
-      await transporter.sendMail({
-        from: `Leo — SB Agency <${process.env.EMAIL_USER}>`,
-        to,
-        ...(cc.length ? { cc } : {}),
-        subject: d.subject ?? '',
-        text: d.body ?? '',
-        ...(attachment ? { attachments: [attachment] } : {}),
-      })
-      await prisma.emailMessage.update({
-        where: { id: d.id },
-        data: { status: 'sent', sentAt: new Date(), toEmail: to, fromEmail: emailAddress() },
-      })
+      await deliverDraft(d, transporter, attachment)
       sent++
     } catch (err: any) {
       failed++
@@ -377,7 +410,7 @@ export async function sendApprovedEmails() {
       await prisma.emailMessage.update({
         where: { id: d.id },
         data: { status: 'failed', error: String(err?.message ?? 'send failed').slice(0, 300) },
-      })
+      }).catch(() => {})
     }
   }
   return { configured: true, sent, failed, errors }
