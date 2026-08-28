@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { draftDailyEmails, checkReplies } from '@/lib/email'
+import { syncNotionDeals } from '@/lib/notion'
 
 export const maxDuration = 60
 
@@ -34,7 +35,8 @@ export async function GET(req: NextRequest) {
       if (r.done || !r.configured) break
     }
     const replies = await checkReplies()
-    return NextResponse.json({ ok: true, drafted, replies })
+    const notion = await syncNotionDeals().catch((e: any) => ({ error: String(e?.message ?? e) }))
+    return NextResponse.json({ ok: true, drafted, replies, notion })
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: err?.message ?? 'cron failed' }, { status: 500 })
   }
