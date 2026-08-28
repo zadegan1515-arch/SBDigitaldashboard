@@ -848,6 +848,9 @@ function loadBrand(brandId) {
           '<button class="btn-solid" id="b-save">Save</button>' +
           '<a class="btn-ghost" href="' + esc(liCompany) + '" target="_blank" rel="noopener">LinkedIn ↗</a>' +
           '<a class="btn-ghost" href="' + esc(suUrl) + '" target="_blank" rel="noopener">' + suLabel + '</a>' +
+          (b.doNotEmail
+            ? '<button class="btn-ghost" id="b-dne" style="border-color:var(--accent);color:var(--accent)" title="This brand is excluded from all outreach emails — click to allow again">🚫 Do not email</button>'
+            : '<button class="btn-ghost" id="b-dne" title="Exclude this brand from all outreach emails (intros and follow-ups)">✉ Emails on</button>') +
           '<button class="btn-ghost danger" id="b-delete" style="margin-left:auto">Delete brand</button>' +
         '</div>' +
       '</div>';
@@ -958,6 +961,14 @@ function loadBrand(brandId) {
 
     document.getElementById('b-addcontact').onclick = function () {
       openContactForm(b.id, document.getElementById('b-contact-slot'));
+    };
+
+    document.getElementById('b-dne').onclick = function () {
+      api('updateBrand', { brandId: b.id, doNotEmail: !b.doNotEmail })
+        .then(function () {
+          toast(b.doNotEmail ? 'Emails allowed again for ' + b.name : b.name + ' excluded from all outreach emails');
+          loadBrand(b.id);
+        }).catch(function (e) { toast(e.message); });
     };
 
     document.getElementById('b-delete').onclick = function () {
