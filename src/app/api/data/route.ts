@@ -1771,7 +1771,7 @@ const handlers: Record<string, Handler> = {
 
   // -------- proposal + recap generators --------
 
-  async generateProposal({ brandId, shows = [], packageName, valueCents, extra }: any) {
+  async generateProposal({ brandId, shows = [], packageName, valueCents, extra, __user }: any) {
     const brand = await prisma.brand.findUnique({ where: { id: brandId } })
     if (!brand) throw new Error('Brand not found')
     if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in Vercel — generation is off.')
@@ -1787,6 +1787,7 @@ const handlers: Record<string, Handler> = {
 
     const prompt = [
       `You are a sponsorship sales rep at SB Agency, which books artists and DJs for US college fraternity and sorority events and sells brands the chance to activate at those shows (sampling, banners, product seeding, title sponsorship).`,
+      `SB AGENCY FACTS you may cite: 500+ shows/year; 100+ tier-1 college markets; 100+ Greek life campus networks; fully customizable programs; in-house photo/video production with full commercial asset rights; data-backed post-campaign recaps.`,
       `Write a concise, tailored sponsorship PROPOSAL (max ~500 words, markdown) to pitch this brand. Do NOT use generic tier packages — tailor it to what THIS brand wants.`,
       ``,
       `BRAND: ${brand.name}${brand.category ? ` (${brand.category})` : ''}`,
@@ -1802,12 +1803,12 @@ const handlers: Record<string, Handler> = {
     const res = await askClaude(prompt, 1200)
     const title = `Proposal — ${brand.name}${packageName ? ` (${packageName})` : ''}`
     const doc = await prisma.document.create({
-      data: { brandId, kind: 'proposal', title, content: res.text, model: res.model },
+      data: { brandId, kind: 'proposal', title, content: res.text, model: res.model, author: __user ?? null },
     })
     return doc
   },
 
-  async generateRecap({ showSponsorId, attendance, extra }: any) {
+  async generateRecap({ showSponsorId, attendance, extra, __user }: any) {
     const sp = await prisma.showSponsor.findUnique({
       where: { id: showSponsorId },
       include: { brand: true, deliverableItems: { orderBy: { createdAt: 'asc' } } },
@@ -1849,7 +1850,7 @@ const handlers: Record<string, Handler> = {
     const res = await askClaude(prompt, 1000)
     const title = `Recap — ${sp.brand.name} @ ${[sp.school, sp.chapter].filter(Boolean).join(' ') || 'show'}`
     const doc = await prisma.document.create({
-      data: { brandId: sp.brandId, showSponsorId, kind: 'recap', title, content: res.text, model: res.model },
+      data: { brandId: sp.brandId, showSponsorId, kind: 'recap', title, content: res.text, model: res.model, author: __user ?? null },
     })
     return doc
   },
@@ -1960,7 +1961,7 @@ const handlers: Record<string, Handler> = {
   // -------- call prep --------
 
   // Everything a rep needs before dialing a brand, in one generated brief.
-  async generateCallPrep({ brandId }: any) {
+  async generateCallPrep({ brandId, __user }: any) {
     if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in Vercel — generation is off.')
     const brand = await prisma.brand.findUnique({
       where: { id: brandId },
@@ -1995,6 +1996,7 @@ const handlers: Record<string, Handler> = {
 
     const prompt = [
       `You are prepping a sponsorship sales rep at SB Agency (produces large fraternity/sorority concerts at US colleges; sells brands activations there: sampling, banners, product seeding, title sponsorship, ambassadors) for a CALL with this brand.`,
+      `SB AGENCY FACTS you may cite: 500+ shows/year; 100+ tier-1 college markets; 100+ Greek life campus networks; fully customizable programs; in-house photo/video production with full asset rights.`,
       `Write a tight one-page CALL PREP BRIEF (markdown, ~350 words max). The rep may know nothing — make them sound informed in 30 seconds.`,
       ``,
       `BRAND: ${brand.name}${brand.category ? ` (${brand.category})` : ''}${brand.tier ? `, stage: ${brand.tier}` : ''}`,
@@ -2010,7 +2012,7 @@ const handlers: Record<string, Handler> = {
 
     const res = await askClaude(prompt, 1100)
     const doc = await prisma.document.create({
-      data: { brandId, kind: 'callprep', title: `Call prep — ${brand.name}`, content: res.text, model: res.model },
+      data: { brandId, kind: 'callprep', title: `Call prep — ${brand.name}`, content: res.text, model: res.model, author: __user ?? null },
     })
     return doc
   },
@@ -2019,7 +2021,7 @@ const handlers: Record<string, Handler> = {
 
   // A clean agreement draft from a deal's actual terms. Clearly labeled a
   // draft — real signatures deserve a lawyer's eyes.
-  async generateContract({ dealId, paymentTerms, extra }: any) {
+  async generateContract({ dealId, paymentTerms, extra, __user }: any) {
     const deal = await prisma.deal.findUnique({
       where: { id: dealId },
       include: { brand: { include: { contacts: { where: { email: { not: null } }, take: 3 } } }, showSponsor: { include: { deliverableItems: true } } },
@@ -2051,13 +2053,13 @@ const handlers: Record<string, Handler> = {
 
     const res = await askClaude(prompt, 1400)
     const doc = await prisma.document.create({
-      data: { brandId: deal.brandId, kind: 'contract', title: `Agreement — ${deal.brand.name} (${deal.name})`, content: res.text, model: res.model },
+      data: { brandId: deal.brandId, kind: 'contract', title: `Agreement — ${deal.brand.name} (${deal.name})`, content: res.text, model: res.model, author: __user ?? null },
     })
     return doc
   },
 
   // Deterministic invoice — numbers come from the deal, not a model.
-  async generateInvoice({ dealId, dueDays = 15, notes }: any) {
+  async generateInvoice({ dealId, dueDays = 15, notes, __user }: any) {
     const deal = await prisma.deal.findUnique({
       where: { id: dealId },
       include: { brand: { include: { contacts: { where: { email: { not: null } }, take: 1 } } }, showSponsor: true },
@@ -2097,9 +2099,145 @@ const handlers: Record<string, Handler> = {
     ].filter(l => l !== '').join('\n')
 
     const doc = await prisma.document.create({
-      data: { brandId: deal.brandId, kind: 'invoice', title: `Invoice ${invoiceNo} — ${deal.brand.name}`, content, model: null },
+      data: { brandId: deal.brandId, kind: 'invoice', title: `Invoice ${invoiceNo} — ${deal.brand.name}`, content, model: null, author: __user ?? null },
     })
     return doc
+  },
+
+  // -------- discover --------
+
+  // The brand hunt: Claude searches the live web for brands matching the
+  // query, keeps only ones with a verified LinkedIn company page (the
+  // "no LinkedIn → forget it" rule), and benches them in DiscoveredBrand
+  // for a human to Add or Dismiss. Nothing touches the real Brand table
+  // here.
+  async discoverBrands({ query }: any) {
+    const q = String(query ?? '').trim()
+    if (q.length < 3) throw new Error('Give me a real search — e.g. "venture-backed CPG brands"')
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in Vercel — discovery is off.')
+
+    const CATS = 'beverage, alcohol, cpg, apparel, tech, fintech, software, beauty, apps, betting, nightlife, wellness, qsr, home, entertainment, retail, transport, conglomerate, nicotine'
+    const prompt = [
+      `Find real, currently-operating brands matching this search, for a sponsorship sales team at SB Agency (they produce 500+ fraternity/sorority concerts a year at US colleges and sell brands activations there).`,
+      ``,
+      `SEARCH: ${q}`,
+      ``,
+      `Use web search to find ~15 strong matches. For EACH brand you must verify it has a real LinkedIn COMPANY page (linkedin.com/company/...) — search for it. If you cannot find the LinkedIn company page, DROP the brand entirely; do not guess a URL.`,
+      `Prefer brands that plausibly market to US college students / Gen Z. Skip brands that are defunct or acquired-and-retired.`,
+      ``,
+      `Return ONLY a JSON array, no other text:`,
+      `[{"name": "...", "category": "one of: ${CATS}", "reason": "one line on why it fits the search AND why college students matter to them", "website": "https://... or null", "linkedinUrl": "https://www.linkedin.com/company/..."}]`,
+    ].join('\n')
+
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    let text = ''
+    const candidates = ['claude-sonnet-5', 'claude-haiku-4-5']
+    let lastErr: any = null
+    for (const model of candidates) {
+      try {
+        const res: any = await anthropic.messages.create({
+          model, max_tokens: 6000,
+          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 10 }] as any,
+          messages: [{ role: 'user', content: prompt }],
+        })
+        text = res.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
+        if (text) break
+      } catch (err: any) {
+        lastErr = err
+        if (!(err?.status === 404 || /model/i.test(err?.message ?? ''))) throw err
+      }
+    }
+    if (!text) throw lastErr ?? new Error('Search produced nothing — try again')
+
+    const m = text.replace(/```(?:json)?/g, '').match(/\[[\s\S]*\]/)
+    if (!m) throw new Error('Could not parse the search results — try again')
+    let rows: any[] = []
+    try { rows = JSON.parse(m[0]) } catch { throw new Error('Could not parse the search results — try again') }
+
+    // The rule, enforced: no LinkedIn company page, no row.
+    rows = rows.filter(r => r?.name && typeof r.linkedinUrl === 'string' && /linkedin\.com\/company\//i.test(r.linkedinUrl)).slice(0, 20)
+
+    const out: any[] = []
+    for (const r of rows) {
+      const name = String(r.name).trim().slice(0, 120)
+      // Already one of ours?
+      const existing = await prisma.brand.findFirst({
+        where: { name: { equals: name, mode: 'insensitive' } },
+        select: { id: true, _count: { select: { contacts: true } } },
+      })
+      const row = await (prisma as any).discoveredBrand.upsert({
+        where: { query_name: { query: q, name } },
+        create: {
+          query: q, name,
+          category: r.category ? String(r.category).slice(0, 40) : null,
+          reason: r.reason ? String(r.reason).slice(0, 300) : null,
+          website: r.website ? String(r.website).slice(0, 300) : null,
+          linkedinUrl: String(r.linkedinUrl).slice(0, 300),
+          ...(existing ? { status: 'added', brandId: existing.id } : {}),
+        },
+        update: {
+          reason: r.reason ? String(r.reason).slice(0, 300) : undefined,
+          ...(existing ? { status: 'added', brandId: existing.id } : {}),
+        },
+      })
+      out.push({ ...row, inSystem: !!existing, contactCount: existing?._count.contacts ?? 0 })
+    }
+    return { query: q, results: out }
+  },
+
+  // The bench, refreshed: re-checks each row against the Brand table so a
+  // userscript capture on SponsorUnited flips a row to "contacts ✓"
+  // the next time this loads.
+  async listDiscoveries({ query }: any) {
+    const where = query ? { query } : {}
+    const rows = await (prisma as any).discoveredBrand.findMany({
+      where, orderBy: { createdAt: 'desc' }, take: 200,
+    })
+    const recent = await (prisma as any).discoveredBrand.groupBy({
+      by: ['query'], _count: { query: true }, _max: { createdAt: true },
+      orderBy: { _max: { createdAt: 'desc' } }, take: 10,
+    })
+    const out: any[] = []
+    for (const r of rows) {
+      const existing = await prisma.brand.findFirst({
+        where: r.brandId ? { id: r.brandId } : { name: { equals: r.name, mode: 'insensitive' } },
+        select: { id: true, _count: { select: { contacts: true } } },
+      })
+      if (existing && !r.brandId) {
+        await (prisma as any).discoveredBrand.update({ where: { id: r.id }, data: { brandId: existing.id, status: r.status === 'dismissed' ? 'dismissed' : 'added' } })
+        r.brandId = existing.id
+        if (r.status !== 'dismissed') r.status = 'added'
+      }
+      out.push({ ...r, inSystem: !!existing, contactCount: existing?._count.contacts ?? 0 })
+    }
+    return {
+      rows: out,
+      recent: recent.map(g => ({ query: g.query, n: g._count.query, at: g._max.createdAt })),
+    }
+  },
+
+  // Promote a discovery to a real Brand. It arrives contact-less, so it
+  // shows up on Needs Contacts — the SU userscript or manual add fills it.
+  async addDiscoveredBrand({ id, tier = 'established' }: any) {
+    const d = await (prisma as any).discoveredBrand.findUnique({ where: { id } })
+    if (!d) throw new Error('Not found')
+    let brand = await prisma.brand.findFirst({ where: { name: { equals: d.name, mode: 'insensitive' } } })
+    if (!brand) {
+      brand = await prisma.brand.create({
+        data: {
+          name: d.name, category: d.category ?? null, tier,
+          website: d.website ?? null, linkedinUrl: d.linkedinUrl ?? null,
+          source: 'discover', notes: d.reason ? `Discover: ${d.reason}` : null,
+        },
+      })
+    }
+    await (prisma as any).discoveredBrand.update({ where: { id }, data: { status: 'added', brandId: brand.id } })
+    return { ok: true, brandId: brand.id }
+  },
+
+  async dismissDiscovered({ id }: any) {
+    await (prisma as any).discoveredBrand.update({ where: { id }, data: { status: 'dismissed' } })
+    return { ok: true }
   },
 
   // Stage-only move for the pipeline board. Manual deals only —
@@ -2252,6 +2390,10 @@ function parseDraft(raw: string): { connectionNote: string; firstMessage: string
 
 // ---------------------------------------------------------------
 
+// Discover's web-searched brand hunt can run well past the default
+// function timeout; everything else finishes in a fraction of this.
+export const maxDuration = 60
+
 export async function POST(req: NextRequest) {
   try {
     const { fn, args } = await req.json()
@@ -2259,7 +2401,18 @@ export async function POST(req: NextRequest) {
     if (!handler) {
       return NextResponse.json({ ok: false, error: `Unknown function: ${fn}` }, { status: 400 })
     }
-    const data = await handler(args ?? {})
+    // Who's acting, for attribution (documents record their author).
+    // Middleware already guarantees a session exists.
+    const a = { ...(args ?? {}) }
+    try {
+      const session: any = await getServerSession(authOptions)
+      const email = session?.user?.email
+      if (email) {
+        const first = String(email).split('@')[0].split(/[._-]/)[0]
+        a.__user = first.charAt(0).toUpperCase() + first.slice(1)
+      }
+    } catch {}
+    const data = await handler(a)
     return NextResponse.json({ ok: true, data })
   } catch (err: any) {
     console.error('[api/data]', err)
