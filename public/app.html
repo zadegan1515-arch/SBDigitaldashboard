@@ -236,12 +236,11 @@
         <button class="nav-item" data-view="discover">Discover</button>
         <button class="nav-item" data-view="outreach">Outreach <span class="n" id="nav-outreach"></span></button>
         <button class="nav-item" data-view="shows">Shows <span class="n" id="nav-shows"></span></button>
+        <button class="nav-item" data-view="results">Results</button>
         <button class="nav-item" data-view="sponsorships">Sponsorships <span class="n" id="nav-spon"></span></button>
         <button class="nav-item" data-view="needs">Needs contacts <span class="n" id="nav-needs"></span></button>
         <button class="nav-item" data-view="pipeline">Pipeline</button>
-        <button class="nav-item" data-view="results">Results</button>
         <button class="nav-item" data-view="materials">Materials</button>
-        <button class="nav-item" data-view="crm">CRM</button>
         <button class="nav-item" data-view="team">Team</button>
       </nav>
     </div>
@@ -269,7 +268,6 @@
         <div class="go-card" data-goto="pipeline">Pipeline <span class="arr">→</span></div>
         <div class="go-card" data-goto="results">Results <span class="arr">→</span></div>
         <div class="go-card" data-goto="discover">Discover <span class="arr">→</span></div>
-        <div class="go-card" data-goto="crm">CRM <span class="arr">→</span></div>
         <div class="go-card" data-goto="team">Team <span class="arr">→</span></div>
       </div>
     </section>
@@ -332,9 +330,9 @@
       <div class="eyebrow">Outreach</div>
       <h1>Sponsor outreach</h1>
       <div class="chips" style="margin-top:22px;align-items:center">
-        <button class="chip active" data-mode="today">Today <span class="n" id="c-today">0</span></button>
+        <button class="chip" data-mode="today">Today <span class="n" id="c-today">0</span></button>
         <button class="chip" data-mode="all">All targets <span class="n" id="c-all">0</span></button>
-        <button class="chip" data-mode="email">✉ Email <span class="n" id="c-email"></span></button>
+        <button class="chip active" data-mode="email">✉ Email <span class="n" id="c-email"></span></button>
         <button class="btn-ghost" id="btn-retrim" style="margin-left:auto">Cap to top 3 / brand</button>
       </div>
       <div style="position:relative;margin-top:12px;max-width:420px">
@@ -892,7 +890,7 @@ function loadBrand(brandId) {
     var outreach = b.targets.length
       ? '<div class="section-head">Outreach <span class="n">' + activeCount + ' in queue' +
           (b.targets.length > activeCount ? ' · ' + (b.targets.length - activeCount) + ' shelved' : '') +
-        '</span></div>' +
+        '</span><button class="btn-ghost" id="b-draftintro" style="margin-left:auto">✉ Draft intro email</button></div>' +
         '<div class="hint" style="margin:-6px 0 10px">Only the top ' + TARGET_CAP + ' by fit per brand go in the queue. ' +
           'Promote or shelve anyone here.</div>' +
         b.targets.map(function (t) {
@@ -970,6 +968,15 @@ function loadBrand(brandId) {
 
     document.getElementById('b-proposal').onclick = function () {
       openProposalForm(b.id);
+    };
+
+    var di = document.getElementById('b-draftintro');
+    if (di) di.onclick = function () {
+      var btn = di; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Drafting…';
+      api('draftBrandIntro', { brandId: b.id }).then(function (r) {
+        toast('Intro drafted to ' + r.to + ' — it\'s waiting in Outreach → ✉ Email');
+        btn.disabled = false; btn.textContent = '✉ Draft intro email';
+      }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = '✉ Draft intro email'; });
     };
 
     document.getElementById('b-callprep').onclick = function () {
@@ -1809,7 +1816,7 @@ function guessFor(name) {
 
 // --- outreach --------------------------------------------------
 
-var mode = 'today', statusFilter = 'all';
+var mode = 'email', statusFilter = 'all';
 
 // Draft panels the user has explicitly closed. Panels open on generate
 // and stay open on reload unless closed — closing is remembered for the
@@ -2073,6 +2080,20 @@ function openNewDealForm() {
 
 // --- email outreach mode ---------------------------------------
 
+// Quick deliverability lint, computed client-side per draft.
+function lintDraft(subject, body) {
+  var warns = [];
+  if ((subject || '').length > 60) warns.push('Subject over 60 characters — may clip on phones');
+  var low = ((subject || '') + ' ' + (body || '')).toLowerCase();
+  ['act now', 'limited time', 'guarantee', 'winner', 'no obligation', 'click here', '100% free', 'risk-free', 'once in a lifetime'].forEach(function (w) {
+    if (low.indexOf(w) > -1) warns.push('Spam-trigger phrase: \u201c' + w + '\u201d');
+  });
+  var links = (body || '').match(/https?:\/\//g) || [];
+  if (links.length > 2) warns.push(links.length + ' links — 1\u20132 is safer for deliverability');
+  if ((body || '').length > 1800) warns.push('Long email — short notes get more replies');
+  return warns;
+}
+
 function renderEmailMode(box) {
   return api('getEmailStatus').then(function (st) {
     if (!st.configured) {
@@ -2178,17 +2199,22 @@ function renderEmailMode(box) {
                   '<option value="__custom">Type an email…</option>' +
                 '</select>' +
               '</div>';
+            var warns = lintDraft(d.subject, d.body);
             return '<div class="panel panel-pad" style="margin-bottom:10px" data-em="' + esc(d.id) + '">' +
-              '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;font-size:13px">' +
-                '<b>' + esc(d.target.brand.name) + '</b><span class="t-sep">·</span>' +
-                esc(d.target.contact.name) +
+              '<div data-emtoggle style="display:flex;gap:8px;align-items:center;font-size:13px;cursor:pointer">' +
+                '<span data-emarrow style="color:var(--ink-3);flex:none">▸</span>' +
+                '<b style="flex:none">' + esc(d.target.brand.name) + '</b><span class="t-sep">·</span>' +
+                '<span style="flex:none">' + esc(d.target.contact.name) + '</span>' +
                 '<span class="status ' + (d.kind === 'intro' ? 'sent' : 'proposed') + '">' + d.kind + '</span>' +
                 (d.status === 'approved' ? '<span class="status replied">scheduled 9am</span>' : '') +
-                (d.kind === 'intro'
-                  ? '<span style="color:var(--ink-3);font-size:11.5px">🔗 one-pager linked</span>'
-                  : '<span style="color:var(--ink-3);font-size:11.5px">📎 SBA One Pager.pdf</span>') +
-                '<button class="btn-ghost danger" data-emact="del" style="margin-left:auto">Skip</button>' +
-                '<button class="btn-solid" data-emact="sendone">Send</button></div>' +
+                (warns.length ? '<span class="status declined" title="' + esc(warns.join('\n')) + '">⚠</span>' : '') +
+                '<span style="color:var(--ink-3);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:40px">' + esc(d.subject || '') + '</span>' +
+                '<button class="btn-ghost danger" data-emact="del" style="flex:none">Skip</button>' +
+                '<button class="btn-solid" data-emact="sendone" style="flex:none">Send</button></div>' +
+              '<div data-embody style="display:none;margin-top:10px">' +
+              (d.kind === 'intro'
+                ? '<div style="color:var(--ink-3);font-size:11.5px;margin-bottom:6px">🔗 one-pager linked in the email</div>'
+                : '<div style="color:var(--ink-3);font-size:11.5px;margin-bottom:6px">📎 SBA One Pager.pdf attached</div>') +
               recip +
               '<input class="field-box" data-emfield="subject" value="' + esc(d.subject || '') + '" style="margin-bottom:8px;font-weight:600">' +
               '<textarea class="field-box" data-emfield="body" rows="' + Math.max(4, Math.ceil((d.body || '').length / 80)) + '">' + esc(d.body || '') + '</textarea>' +
@@ -2199,7 +2225,7 @@ function renderEmailMode(box) {
                     '<button class="btn-ghost" data-emact="insert" data-insert="' + esc(sug.insert) + '" style="margin-top:8px">Insert into email</button>' +
                   '</div>'
                 : '<div style="margin-top:8px"><button class="btn-ghost" data-emact="suggest">✦ Suggest angle</button></div>') +
-            '</div>';
+            '</div></div>';
           }).join('')
         : '<div class="panel"><div class="empty"><h3>No drafts waiting</h3><p>Hit “Draft today\'s batch” — it writes a personalized email for your best-fit targets who have a work address, up to today\'s cap.</p></div></div>';
 
@@ -2251,6 +2277,18 @@ function renderEmailMode(box) {
         : '';
 
       box.innerHTML = head + guide + drafts + exhausted + replies + recent;
+
+      // Draft cards start closed; clicking the header row opens one.
+      box.querySelectorAll('[data-emtoggle]').forEach(function (h) {
+        h.addEventListener('click', function (ev) {
+          if (ev.target.closest('button, select, a, input, textarea')) return;
+          var card = h.closest('[data-em]');
+          var bd = card.querySelector('[data-embody]');
+          var open = bd.style.display !== 'none';
+          bd.style.display = open ? 'none' : 'block';
+          h.querySelector('[data-emarrow]').textContent = open ? '▸' : '▾';
+        });
+      });
 
       // Cheat-sheet collapses (and remembers) so regulars aren't nagged.
       (function () {
@@ -2912,7 +2950,6 @@ function gotoView(id) {
   if (id === 'results') loadResults();
   if (id === 'discover') loadDiscover();
   if (id === 'materials') showView('materials');
-  if (id === 'crm') loadCRM();
   if (id === 'team') loadTeam();
 }
 
