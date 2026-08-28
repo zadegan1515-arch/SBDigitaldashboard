@@ -359,6 +359,7 @@ export async function draftDailyEmails(limit = 5) {
   for (const t of followCandidates) {
     if (drafted >= limit || room === 0) break
     if (t.emails.some(e => e.direction === 'in') || !t.contact.email) continue
+    if ((t.brand as any).doNotEmail || /skip/i.test(t.brand.notes ?? '')) continue
     const intro = t.emails.find(e => e.kind === 'intro' && e.status === 'sent')
     const f1 = t.emails.find(e => e.kind === 'followup')
     const hasF2 = t.emails.some(e => e.kind === 'followup2')
@@ -409,6 +410,12 @@ export async function draftDailyEmails(limit = 5) {
         shelved: false,
         contact: { email: { not: null } },
         emails: { none: {} },
+        // A "do not email" flag — or the word "skip" in the brand's
+        // notes — keeps the whole brand out of the machine.
+        brand: {
+          doNotEmail: false,
+          NOT: { notes: { contains: 'skip', mode: 'insensitive' } },
+        } as any,
       },
       include: { brand: true, contact: true },
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
@@ -700,6 +707,10 @@ export async function checkReplies() {
 // "✉ Draft intro email" button). Respects the one-email-per-brand rule.
 export async function draftBrandIntro(brandId: string) {
   if (!emailConfigured()) throw new Error('Email is not configured')
+  const b = await prisma.brand.findUnique({ where: { id: brandId } })
+  if (b && ((b as any).doNotEmail || /skip/i.test(b.notes ?? ''))) {
+    throw new Error('This brand is marked do-not-email (flag or "skip" in notes). Clear that first.')
+  }
   const prior = await prisma.emailMessage.findFirst({
     where: { direction: 'out', target: { brandId } },
   })
