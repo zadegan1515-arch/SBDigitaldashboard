@@ -20,6 +20,7 @@ import {
   setDraftRecipients, sendOneEmail, approveAllDrafts, draftBrandIntro,
   emailDifferentContact, draftFinalNudge, draftReplyResponse, sendReplyEmail,
 } from '@/lib/email'
+import { syncNotionDeals } from '@/lib/notion'
 
 const prisma = new PrismaClient()
 
@@ -2200,7 +2201,7 @@ const handlers: Record<string, Handler> = {
     const content = [
       `# Invoice ${invoiceNo}`,
       ``,
-      `**From:** SB Agency · leo@sboyagency.com`,
+      `**From:** SB Agency · ${process.env.EMAIL_USER ?? 'partnerships@sboyagency.com'}`,
       `**Bill to:** ${deal.brand.name}${billContact ? ` — ${billContact.name} <${billContact.email}>` : ''}`,
       ``,
       `**Issued:** ${fmt(issued)}   **Due:** ${fmt(due)} (net ${dueDays})`,
@@ -2399,6 +2400,7 @@ const handlers: Record<string, Handler> = {
     const deal = await prisma.deal.findUnique({ where: { id } })
     if (!deal) throw new Error('Deal not found')
     if (deal.source === 'sponsorship') throw new Error('This deal mirrors a show — change the sponsorship status instead.')
+    if (deal.source === 'notion') throw new Error('This deal mirrors Notion — change its Stage there (it syncs nightly, or hit Sync now).')
     return prisma.deal.update({ where: { id }, data: { stage } })
   },
 
@@ -2442,6 +2444,7 @@ const handlers: Record<string, Handler> = {
     return setDraftRecipients(id, { toEmail, toName, cc })
   },
   async sendEmailDraft({ id }: any) { return sendOneEmail(id) },
+  async syncNotionDeals() { return syncNotionDeals() },
   async draftBrandIntro({ brandId }: any) { return draftBrandIntro(brandId) },
   async approveAllDrafts() { return approveAllDrafts() },
   async emailDifferentContact({ targetId, contactId }: any) { return emailDifferentContact(targetId, contactId) },
