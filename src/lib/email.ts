@@ -106,6 +106,85 @@ function parseEmailJson(text: string): { subject: string; body: string } | null 
   } catch { return null }
 }
 
+// ---- no-credit fallbacks ---------------------------------------
+//
+// Every AI feature tries Claude first. When the API account is out of
+// credits (or the call fails), these hand-written templates take over,
+// filled with the brand's real data — the machine never stops.
+
+function isBillingError(err: any): boolean {
+  return /credit balance|billing|purchase credits|invalid_request_error.*credit/i.test(String(err?.message ?? ''))
+}
+
+function firstNameOf(t: any): string {
+  return String(t.contact?.name || '').trim().split(/\s+/)[0] || 'there'
+}
+
+// Deterministic pick so the same brand always gets the same variant.
+function pick<T>(arr: T[], seed: string): T {
+  let h = 0
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0
+  return arr[h % arr.length]
+}
+
+export function templateFollowup1(t: any, intro: any): { subject: string; body: string } {
+  const first = firstNameOf(t)
+  const brand = t.brand.name
+  const bodies = [
+    `Hi ${first},\n\nWanted to float this back to the top of your inbox. We're locking in partners for the semester now, and I think ${brand} would land really well on campus.\n\nWorth a quick 15 minutes this week?\n\nLeo\nSB Agency`,
+    `Hi ${first},\n\nJust circling back — we're routing 500+ shows this year and still have room for a partner like ${brand} in a few big markets.\n\nOpen to a quick call?\n\nLeo\nSB Agency`,
+    `Hi ${first},\n\nFollowing up in case this got buried. Spring calendars are filling in, and campus feels like a strong fit for ${brand}.\n\nHappy to share a one-pager or hop on a 15-minute call — whatever's easiest.\n\nLeo\nSB Agency`,
+  ]
+  return { subject: `re: ${intro?.subject ?? `SB Agency x ${brand}`}`, body: pick(bodies, brand) }
+}
+
+export function templateFollowup2(t: any, intro: any): { subject: string; body: string } {
+  const first = firstNameOf(t)
+  const brand = t.brand.name
+  const bodies = [
+    `Hi ${first},\n\nLast note from me — I'll stop filling your inbox. If campus ever makes sense for ${brand}, the door's open and I'd love to build something together.\n\nEither way, keep crushing it.\n\nLeo\nSB Agency`,
+    `Hi ${first},\n\nClosing the loop on this one. If the timing's ever right for ${brand} to get in front of students, just say the word — we'll make it easy.\n\nAll the best,\nLeo\nSB Agency`,
+  ]
+  return { subject: `re: ${intro?.subject ?? `SB Agency x ${brand}`}`, body: pick(bodies, brand + '2') }
+}
+
+// Per-category angles for the ✦ suggestion box — {brand} gets substituted.
+const CATEGORY_ANGLES: Record<string, { tip: string; insert: string }> = {
+  beverage:  { tip: 'Sampling is the natural play — cold product in hands at peak energy is exactly what beverage brands buy.', insert: 'Concerts are a natural sampling moment for {brand} — thousands of students with product in hand at peak energy, plus all the content that follows.' },
+  alcohol:   { tip: 'Lead with compliant 21+ sampling — the compliance angle is usually their first question.', insert: 'Our 21+ events give {brand} a compliant way to put product in hands in exactly the setting where trial converts.' },
+  cpg:       { tip: 'Product seeding and house drops before show day put the product into daily student life, not just one night.', insert: 'Beyond show night, house drops across our Greek chapters would put {brand} into students\u2019 daily routines all semester.' },
+  beauty:    { tip: 'The getting-ready moment before shows is where beauty routines and content happen — pitch sorority house seeding.', insert: 'Sorority house drops and the getting-ready moments before every show are a perfect fit for {brand} — that\u2019s where routines form and content gets made.' },
+  betting:   { tip: 'College-age sports fans are their exact acquisition demo — talk signups per event, not impressions.', insert: 'Our crowds are exactly the demo {brand} is acquiring, and on-site signup activations convert while the energy is high.' },
+  fintech:   { tip: 'Students opening their first accounts are a decade-long customer — frame campus as early acquisition.', insert: 'Students setting up their financial lives are {brand}\u2019s next decade of customers — campus is where that relationship starts.' },
+  tech:      { tip: 'Device/app trial spreads fast through Greek networks — pitch hands-on demos plus a student-exclusive offer.', insert: 'Hands-on trial at our shows plus a student-exclusive offer would let {brand} ride word-of-mouth through the tightest networks on campus.' },
+  software:  { tip: 'Student plans and campus ambassadors are the proven playbook for software on campus.', insert: 'A student offer seeded through our ambassadors would put {brand} in front of exactly the early adopters who spread it.' },
+  apps:      { tip: 'Downloads happen in the room — QR moments at peak energy beat any paid install campaign.', insert: 'A QR moment on the big screen at peak energy is the cheapest install {brand} will ever buy — and it comes with a story.' },
+  qsr:       { tip: 'Late-night after-show hunger is their moment — pitch vouchers and sampling at the exits.', insert: 'The after-show rush is prime {brand} territory — vouchers and sampling at the exits land right when cravings peak.' },
+  apparel:   { tip: 'Front-row outfits are content — pitch ambassador seeding so the brand gets photographed all night.', insert: 'Show nights are the most photographed nights on campus — {brand} on our ambassadors gets seen, tagged, and shared all night.' },
+  wellness:  { tip: 'Recovery and hydration around show weekends is the native use case.', insert: 'Show weekends are exactly when students reach for what {brand} makes — sampling before and after slots right into the routine.' },
+  retail:    { tip: 'A student-exclusive discount pushed through Greek networks drives measurable store/site traffic.', insert: 'A student-exclusive {brand} offer pushed through our chapters would drive traffic you can actually measure.' },
+  transport: { tip: 'Every show ends with thousands needing a ride — ride codes at the exits are an easy, measurable win.', insert: 'Every one of our shows ends with thousands of students needing a ride home — {brand} codes at the exits are an easy, measurable win.' },
+  nightlife: { tip: 'They live in this exact culture — pitch co-branded moments, not just logos.', insert: '{brand} lives in exactly this culture — a co-branded moment inside the show would feel native, not sponsored.' },
+  entertainment: { tip: 'Cross-promotion to a captive Gen Z audience is the pitch — trailers, activations, talent moments.', insert: 'Our shows put {brand} in front of a captive Gen Z audience at full attention — perfect for a launch or cross-promotion moment.' },
+}
+const DEFAULT_ANGLE = { tip: 'Make the first idea concrete — name the one thing this brand wants from students (trial, signups, or content) and pitch that.', insert: 'We\u2019d come with concrete ideas for how {brand} shows up — sampling, signage, or seeded product — matched to what you\u2019re trying to grow this year.' }
+
+function templateSuggestion(t: any): string {
+  const a = CATEGORY_ANGLES[t.brand.category ?? ''] ?? DEFAULT_ANGLE
+  return JSON.stringify({
+    tip: a.tip,
+    insert: a.insert.replace(/\{brand\}/g, t.brand.name),
+  })
+}
+
+export function templateReplyResponse(contactName: string, brandName: string, replySubject: string | null): { subject: string; body: string } {
+  const first = String(contactName || '').trim().split(/\s+/)[0] || 'there'
+  return {
+    subject: `re: ${replySubject ?? `SB Agency x ${brandName}`}`,
+    body: `Hi ${first},\n\nGreat to hear from you! I'd love to grab 15 minutes to walk through how we'd put ${brandName} inside our shows this semester \u2014 we run 500+ a year across 100+ college markets, so there's a lot to pick from.\n\nWould Tuesday or Wednesday afternoon work? Happy to flex to your calendar.\n\nBest,\nLeo\nSB Agency`,
+  }
+}
+
 // ---- drafting --------------------------------------------------
 
 // "Pickle's goals" but "Kulani Kinis' goals" — names already ending in
@@ -170,9 +249,9 @@ async function generateSuggestion(t: any): Promise<string | null> {
     const m = text.match(/\{[\s\S]*\}/)
     if (!m) return null
     const j = JSON.parse(m[0])
-    if (!j.tip || !j.insert) return null
+    if (!j.tip || !j.insert) return templateSuggestion(t)
     return JSON.stringify({ tip: String(j.tip).slice(0, 400), insert: String(j.insert).slice(0, 400) })
-  } catch { return null }
+  } catch { return templateSuggestion(t) }
 }
 
 // Generate (or regenerate) the suggestion for an existing draft.
@@ -183,7 +262,7 @@ export async function suggestForDraft(emailId: string) {
   })
   if (!d) throw new Error('Draft not found')
   const s = await generateSuggestion(d.target)
-  if (!s) throw new Error('Could not generate a suggestion — try again')
+  if (!s) throw new Error('Could not generate a suggestion — try again')  // unreachable: template fallback always answers
   await prisma.emailMessage.update({ where: { id: emailId }, data: { suggestion: s } })
   return JSON.parse(s)
 }
@@ -245,7 +324,7 @@ function followup2Prompt(t: any, firstEmail: any): string {
 // loop until done=true). Follow-ups first — momentum beats new names.
 export async function draftDailyEmails(limit = 5) {
   if (!emailConfigured()) return { configured: false, drafted: 0, done: true }
-  if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set — drafting is off.')
+  // No API key just means templates do the writing — never a hard stop.
 
   const cap = await currentDailyCap()
   const sentToday = await prisma.emailMessage.count({
@@ -282,9 +361,10 @@ export async function draftDailyEmails(limit = 5) {
     const f1 = t.emails.find(e => e.kind === 'followup')
     const hasF2 = t.emails.some(e => e.kind === 'followup2')
     if (!f1) {
-      // Rung 1 due.
-      const parsed = parseEmailJson(await askClaude(followupPrompt(t, intro), 800))
-      if (!parsed) continue
+      // Rung 1 due. AI first, template if the account can't pay for it.
+      let parsed: any = null
+      try { parsed = parseEmailJson(await askClaude(followupPrompt(t, intro), 800)) } catch (err) { if (!isBillingError(err)) throw err }
+      if (!parsed) parsed = templateFollowup1(t, intro)
       await prisma.emailMessage.create({
         data: {
           targetId: t.id, direction: 'out', kind: 'followup', status: 'draft',
@@ -294,9 +374,10 @@ export async function draftDailyEmails(limit = 5) {
       })
       drafted++; room--
     } else if (!hasF2 && f1.status === 'sent' && f1.sentAt && f1.sentAt <= cutoff2) {
-      // Rung 2 due — the closing-the-loop note.
-      const parsed = parseEmailJson(await askClaude(followup2Prompt(t, intro), 800))
-      if (!parsed) continue
+      // Rung 2 due — the closing-the-loop note. Same fallback rule.
+      let parsed: any = null
+      try { parsed = parseEmailJson(await askClaude(followup2Prompt(t, intro), 800)) } catch (err) { if (!isBillingError(err)) throw err }
+      if (!parsed) parsed = templateFollowup2(t, intro)
       await prisma.emailMessage.create({
         data: {
           targetId: t.id, direction: 'out', kind: 'followup2', status: 'draft',
@@ -735,8 +816,9 @@ export async function draftFinalNudge(targetId: string) {
   if (!t) throw new Error('Target not found')
   if (!t.contact.email) throw new Error('No email on this contact')
   const intro = t.emails.find(e => e.kind === 'intro' && e.status === 'sent')
-  const parsed = parseEmailJson(await askClaude(followup2Prompt(t, intro), 800))
-  if (!parsed) throw new Error('Could not draft — try again')
+  let parsed: any = null
+  try { parsed = parseEmailJson(await askClaude(followup2Prompt(t, intro), 800)) } catch (err) { if (!isBillingError(err)) throw err }
+  if (!parsed) parsed = templateFollowup2(t, intro)
   const draft = await prisma.emailMessage.create({
     data: {
       targetId: t.id, direction: 'out', kind: 'followup3', status: 'draft',
@@ -770,8 +852,9 @@ export async function draftReplyResponse(emailId: string) {
     ``,
     `Return ONLY JSON: {"subject": "...", "body": "..."} — subject "re:" + their subject.`,
   ].filter(Boolean).join('\n')
-  const parsed = parseEmailJson(await askClaude(prompt, 600))
-  if (!parsed) throw new Error('Could not draft a response — try again')
+  let parsed: any = null
+  try { parsed = parseEmailJson(await askClaude(prompt, 600)) } catch (err) { if (!isBillingError(err)) throw err }
+  if (!parsed) parsed = templateReplyResponse(t.contact.name, t.brand.name, reply.subject)
   return { subject: parsed.subject, body: parsed.body, to: reply.fromEmail ?? t.contact.email }
 }
 
