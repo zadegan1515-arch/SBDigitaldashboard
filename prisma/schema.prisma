@@ -514,6 +514,36 @@ model EmailMessage {
 // Settings — small key/value store (the rate card lives here)
 // ---------------------------------------------------------------
 
+// ---------------------------------------------------------------
+// Discover — AI-found brand candidates, waiting for a human verdict
+// ---------------------------------------------------------------
+//
+// Rows are written by the Discover tab's web search. Only brands with a
+// verified LinkedIn company page get stored (no LinkedIn = discarded
+// before it ever reaches here). "Add" promotes one into the real Brand
+// table; until then it lives only on this bench.
+
+model DiscoveredBrand {
+  id    String @id @default(cuid())
+  query String   // the search that surfaced it, verbatim
+  name  String
+
+  category    String?  // mapped to our category keys
+  reason      String?  // one line: why it fits the query
+  website     String?
+  linkedinUrl String?
+
+  // "new" | "added" (promoted to Brand, or already existed) | "dismissed"
+  status  String  @default("new")
+  brandId String? // set once linked to a real Brand
+
+  createdAt DateTime @default(now())
+
+  @@unique([query, name])
+  @@index([status])
+  @@index([createdAt])
+}
+
 model Setting {
   key       String   @id
   // JSON string. The rate card is stored under key "rateCard".
