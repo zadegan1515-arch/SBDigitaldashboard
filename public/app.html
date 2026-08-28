@@ -174,6 +174,20 @@
   .modal-foot{padding:14px 22px;border-top:1px solid var(--border-soft);background:var(--surface-2);
     display:flex;gap:8px;justify-content:flex-end;align-items:center}
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  /* Phone pass: sidebar becomes a wrapping chip bar, pages lose the wide
+     gutters, two-column forms stack. Nothing else changes shape. */
+  @media (max-width:768px){
+    .app{flex-direction:column}
+    .sidebar{width:100%;height:auto;position:static;flex-direction:row;flex-wrap:wrap;gap:2px;
+      padding:10px 10px 8px;align-items:center;overflow:visible}
+    .logo{width:100%;padding:2px 6px 8px}
+    .sidebar .nav-item{flex:0 0 auto;padding:6px 10px;font-size:12.5px}
+    .tabs{padding:0 12px}
+    .tabs .nav-item{padding:10px 12px 12px;font-size:13.5px}
+    .page{padding:18px 14px 70px}
+    .row2{grid-template-columns:1fr}
+    h1{font-size:24px}
+  }
   .lbl{font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
     color:var(--ink-3);margin-bottom:5px;display:block}
   .guess{border:1px solid var(--border-soft);background:var(--surface-2);border-radius:8px;
@@ -219,6 +233,7 @@
       <nav class="tabs">
         <button class="nav-item active" data-view="dashboard">Home</button>
         <button class="nav-item" data-view="brands">Brands</button>
+        <button class="nav-item" data-view="discover">Discover</button>
         <button class="nav-item" data-view="outreach">Outreach <span class="n" id="nav-outreach"></span></button>
         <button class="nav-item" data-view="shows">Shows <span class="n" id="nav-shows"></span></button>
         <button class="nav-item" data-view="sponsorships">Sponsorships <span class="n" id="nav-spon"></span></button>
@@ -253,6 +268,7 @@
         <div class="go-card" data-goto="needs">Needs contacts <span class="arr">→</span></div>
         <div class="go-card" data-goto="pipeline">Pipeline <span class="arr">→</span></div>
         <div class="go-card" data-goto="results">Results <span class="arr">→</span></div>
+        <div class="go-card" data-goto="discover">Discover <span class="arr">→</span></div>
         <div class="go-card" data-goto="crm">CRM <span class="arr">→</span></div>
         <div class="go-card" data-goto="team">Team <span class="arr">→</span></div>
       </div>
@@ -374,6 +390,19 @@
       <div id="deal-form-slot" style="margin-top:12px"></div>
       <div class="kpi-row" id="pipe-kpis"></div>
       <div id="deals"></div>
+    </section>
+
+    <!-- DISCOVER -->
+    <section class="view page" id="discover">
+      <div class="eyebrow">Discover</div>
+      <h1>Find new brands</h1>
+      <div class="sub">Describe a niche and AI searches the live web for matching brands — only ones with a verified LinkedIn company page make the list. Add the good ones, then pull their contacts on SponsorUnited.</div>
+      <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
+        <input class="field-box" id="disc-q" placeholder="e.g. venture-backed CPG brands, hard seltzer challengers, sunscreen brands going after Gen Z" style="flex:1;min-width:260px">
+        <button class="btn-solid" id="disc-go">✦ Search</button>
+      </div>
+      <div id="disc-recent" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"></div>
+      <div id="disc-body" style="margin-top:16px"></div>
     </section>
 
     <!-- RESULTS -->
@@ -986,7 +1015,7 @@ function docRow(d) {
     '<div class="t-main"><div class="t-line">' +
       '<span class="status ' + kindClass + '">' + esc(kindLabel) + '</span>' +
       '<span class="t-brand" style="margin-left:8px">' + esc(d.title) + '</span></div>' +
-      '<div class="t-meta"><span>' + when(d.createdAt) + '</span></div></div>' +
+      '<div class="t-meta"><span>' + when(d.createdAt) + '</span>' + (d.author ? '<span>· by ' + esc(d.author) + '</span>' : '') + '</div></div>' +
     '<div class="t-actions">' +
       '<button class="btn-ghost" data-docact="view">View</button>' +
       '<button class="btn-ghost" data-docact="copy">Copy</button>' +
@@ -2524,6 +2553,9 @@ function loadPipeline() {
                 '<a href="#" data-brand="' + esc(x.brandId) + '" style="font-weight:600;font-size:13px;color:inherit;text-decoration:none">' + esc(x.brand.name) + '</a>' +
                 '<span class="amount" style="margin-left:auto;font-size:12.5px">' + money(x.valueCents) + '</span></div>' +
               (x.eventRef || x.name !== x.brand.name ? '<div style="font-size:11.5px;color:var(--ink-3);margin-top:2px">' + esc(x.eventRef || x.name) + '</div>' : '') +
+              '<div style="font-size:11px;color:var(--ink-3);margin-top:3px">' +
+                (x.owner ? '👤 ' + esc(x.owner) : '👤 unassigned') +
+                (locked ? '' : ' <a href="#" data-dact="owner" style="color:var(--accent);text-decoration:none">✎</a>') + '</div>' +
               '<div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap">' +
                 (locked
                   ? '<span style="font-size:11px;color:var(--ink-3)" title="Mirrors its show — change the sponsorship status instead">🔒 from show</span>'
@@ -2541,6 +2573,17 @@ function loadPipeline() {
 
     el.querySelectorAll('a[data-brand]').forEach(function (a) {
       a.onclick = function (ev) { ev.preventDefault(); loadBrand(a.getAttribute('data-brand')); };
+    });
+    el.querySelectorAll('[data-dact="owner"]').forEach(function (a) {
+      a.onclick = function (ev) {
+        ev.preventDefault();
+        var id = a.closest('[data-deal]').getAttribute('data-deal');
+        var name = window.prompt('Who owns this deal? (name, or blank to unassign)');
+        if (name === null) return;
+        api('upsertDeal', { id: id, owner: name.trim() || null })
+          .then(function () { loadPipeline(); })
+          .catch(function (e) { toast(e.message); });
+      };
     });
     el.querySelectorAll('[data-dact="move"]').forEach(function (b) {
       b.onclick = function () {
@@ -2574,6 +2617,108 @@ function loadPipeline() {
   });
 }
 
+// --- discover --------------------------------------------------
+//
+// AI brand hunt. The search runs server-side with live web search and
+// only returns brands whose LinkedIn company page was actually found.
+// Rows wait here until someone Adds or Dismisses them; a userscript
+// capture on SponsorUnited flips a row to "contacts ✓" on next load.
+
+function loadDiscover(selectedQuery) {
+  showView('discover');
+  var body = document.getElementById('disc-body');
+  api('listDiscoveries', selectedQuery ? { query: selectedQuery } : {}).then(function (d) {
+    document.getElementById('disc-recent').innerHTML = (d.recent || []).map(function (r) {
+      return '<button class="btn-ghost" data-discq="' + esc(r.query) + '" style="font-size:12px;padding:4px 10px' +
+        (selectedQuery === r.query ? ';border-color:var(--accent);color:var(--accent)' : '') + '">' +
+        esc(r.query) + ' (' + r.n + ')</button>';
+    }).join('');
+    document.querySelectorAll('[data-discq]').forEach(function (b) {
+      b.onclick = function () { loadDiscover(b.getAttribute('data-discq')); };
+    });
+    renderDiscoverRows(body, d.rows || [], selectedQuery);
+  }).catch(function (e) {
+    body.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+
+  var go = document.getElementById('disc-go');
+  go.onclick = function () {
+    var q = document.getElementById('disc-q').value.trim();
+    if (q.length < 3) { toast('Type what kind of brands to hunt for'); return; }
+    go.disabled = true; go.innerHTML = '<span class="spinner"></span> Searching the web…';
+    body.innerHTML = '<div class="panel"><div class="empty"><h3>Hunting…</h3><p>Searching the web for “' + esc(q) + '” and verifying LinkedIn pages. Takes up to a minute.</p></div></div>';
+    api('discoverBrands', { query: q }).then(function (r) {
+      go.disabled = false; go.textContent = '✦ Search';
+      toast(r.results.length + ' brand' + (r.results.length === 1 ? '' : 's') + ' found with verified LinkedIn');
+      loadDiscover(q);
+    }).catch(function (e) {
+      go.disabled = false; go.textContent = '✦ Search';
+      body.innerHTML = '<div class="panel"><div class="empty"><h3>Search failed</h3><p>' + esc(e.message) + '</p></div></div>';
+    });
+  };
+  document.getElementById('disc-q').onkeydown = function (ev) { if (ev.key === 'Enter') go.onclick(); };
+}
+
+function renderDiscoverRows(body, rows, selectedQuery) {
+  var live = rows.filter(function (r) { return r.status !== 'dismissed'; });
+  if (!live.length) {
+    body.innerHTML = '<div class="panel"><div class="empty"><h3>' + (selectedQuery ? 'Nothing left from this search' : 'No discoveries yet') + '</h3>' +
+      '<p>Run a search above — try “venture-backed CPG brands” or “energy drink challengers”.</p></div></div>';
+    return;
+  }
+  body.innerHTML = live.map(function (r) {
+    var badge = r.inSystem
+      ? (r.contactCount > 0
+          ? '<span class="status confirmed">in system · ' + r.contactCount + ' contact' + (r.contactCount === 1 ? '' : 's') + ' ✓</span>'
+          : '<span class="status sent">in system · needs contacts</span>')
+      : '';
+    return '<div class="panel panel-pad" style="margin-bottom:8px" data-disc="' + esc(r.id) + '">' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+        (r.brandId ? '<a href="#" class="t-brand" data-brand="' + esc(r.brandId) + '" style="font-weight:600;color:inherit;text-decoration:none">' + esc(r.name) + '</a>'
+                   : '<b>' + esc(r.name) + '</b>') +
+        (r.category ? '<span class="status">' + esc(CAT_NAMES[r.category] || r.category) + '</span>' : '') +
+        badge +
+        '<span style="margin-left:auto"></span>' +
+        '<a class="btn-ghost" href="' + esc(r.linkedinUrl) + '" target="_blank" rel="noopener" style="padding:3px 9px;font-size:12px">in ↗</a>' +
+        (r.website ? '<a class="btn-ghost" href="' + esc(r.website) + '" target="_blank" rel="noopener" style="padding:3px 9px;font-size:12px">🌐</a>' : '') +
+        '<button class="btn-ghost" data-discact="su" style="padding:3px 9px;font-size:12px" title="Copies the name and opens SponsorUnited — use the capture script on the brand page">SU ↗</button>' +
+        (r.inSystem ? '' : '<button class="btn-solid" data-discact="add" style="padding:3px 11px;font-size:12px">+ Add</button>') +
+        '<button class="btn-ghost danger" data-discact="dismiss" style="padding:3px 9px;font-size:12px">×</button>' +
+      '</div>' +
+      (r.reason ? '<div style="font-size:12.5px;color:var(--ink-2);margin-top:5px">' + esc(r.reason) + '</div>' : '') +
+    '</div>';
+  }).join('') +
+  '<div class="hint" style="margin-top:8px">SU ↗ copies the brand name and opens SponsorUnited — search it there and the capture script pulls contacts straight in; this list updates on the next load. + Add saves a brand with its LinkedIn so it lands in Needs Contacts.</div>';
+
+  body.querySelectorAll('a[data-brand]').forEach(function (a) {
+    a.onclick = function (ev) { ev.preventDefault(); loadBrand(a.getAttribute('data-brand')); };
+  });
+  body.querySelectorAll('[data-discact="su"]').forEach(function (b) {
+    b.onclick = function () {
+      var card = b.closest('[data-disc]');
+      var name = card.querySelector('b, a.t-brand').textContent;
+      try { navigator.clipboard.writeText(name); } catch (e) {}
+      toast('“' + name + '” copied — paste it into SponsorUnited search');
+      window.open('https://app.sponsorunited.com/', '_blank');
+    };
+  });
+  body.querySelectorAll('[data-discact="add"]').forEach(function (b) {
+    b.onclick = function () {
+      b.disabled = true;
+      api('addDiscoveredBrand', { id: b.closest('[data-disc]').getAttribute('data-disc') })
+        .then(function () { toast('Added — it\'s in Brands and Needs Contacts'); loadDiscover(selectedQuery); })
+        .catch(function (e) { toast(e.message); b.disabled = false; });
+    };
+  });
+  body.querySelectorAll('[data-discact="dismiss"]').forEach(function (b) {
+    b.onclick = function () {
+      api('dismissDiscovered', { id: b.closest('[data-disc]').getAttribute('data-disc') })
+        .then(function () { loadDiscover(selectedQuery); })
+        .catch(function (e) { toast(e.message); });
+    };
+  });
+}
+
 // --- results ---------------------------------------------------
 //
 // Three views of the same machine: the funnel (brands, stage by stage),
@@ -2585,7 +2730,8 @@ function loadResults() {
   showView('results');
   var body = document.getElementById('res-body');
   body.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
-  return api('getOutreachAnalytics').then(function (a) {
+  return Promise.all([api('getOutreachAnalytics'), api('listDeals')]).then(function (both) {
+    var a = both[0], dl = both[1];
     document.getElementById('res-kpis').innerHTML =
       '<div class="kpi"><div class="kpi-label">Emails sent</div><div class="kpi-value">' + a.totals.emailsSent + '</div><div class="kpi-note">all-time</div></div>' +
       '<div class="kpi"><div class="kpi-label">Open rate</div><div class="kpi-value">' + a.totals.openRate + '%</div><div class="kpi-note">of sent emails</div></div>' +
@@ -2641,7 +2787,29 @@ function loadResults() {
         return '<div style="font-size:10.5px;color:var(--ink-3);text-align:center">' + esc(w.label) + '<br><b style="color:var(--ink-2)">' + w.sent + '</b>' + (w.replies ? ' <span style="color:#2f66a8;font-weight:700">/' + w.replies + '</span>' : '') + '</div>';
       }).join('') + '</div></div>';
 
-    body.innerHTML = funnel + catBlock + weekly;
+    // Per-rep: open and won value by deal owner.
+    var byOwner = {};
+    (dl.deals || []).forEach(function (x) {
+      if (x.stage === 'lost') return;
+      var o = x.owner || 'Unassigned';
+      byOwner[o] = byOwner[o] || { open: 0, won: 0, n: 0 };
+      byOwner[o].n++;
+      if (x.stage === 'closed') byOwner[o].won += x.valueCents; else byOwner[o].open += x.valueCents;
+    });
+    var owners = Object.keys(byOwner).sort(function (p, q) { return (byOwner[q].won + byOwner[q].open) - (byOwner[p].won + byOwner[p].open); });
+    var repBlock = owners.length
+      ? '<div class="panel panel-pad" style="margin-top:14px"><div style="font-size:13px;font-weight:600;margin-bottom:10px">By rep</div>' +
+        owners.map(function (o) {
+          var v = byOwner[o];
+          return '<div style="display:flex;gap:10px;align-items:baseline;margin-bottom:6px;font-size:12.5px">' +
+            '<b style="min-width:110px">' + esc(o) + '</b>' +
+            '<span style="color:var(--ink-3)">' + v.n + ' deal' + (v.n === 1 ? '' : 's') + '</span>' +
+            '<span style="margin-left:auto">open ' + money(v.open) + ' · <b style="color:var(--accent)">won ' + money(v.won) + '</b></span></div>';
+        }).join('') +
+        '<div class="hint" style="margin:8px 0 0">Assign owners with the ✎ on Pipeline cards. Documents also record who generated them.</div></div>'
+      : '';
+
+    body.innerHTML = funnel + catBlock + weekly + repBlock;
   }).catch(function (e) {
     body.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
   });
@@ -2742,6 +2910,7 @@ function gotoView(id) {
   if (id === 'needs') loadNeeds();
   if (id === 'pipeline') loadPipeline();
   if (id === 'results') loadResults();
+  if (id === 'discover') loadDiscover();
   if (id === 'materials') showView('materials');
   if (id === 'crm') loadCRM();
   if (id === 'team') loadTeam();
