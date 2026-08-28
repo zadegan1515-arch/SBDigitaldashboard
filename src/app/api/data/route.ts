@@ -1255,6 +1255,7 @@ const handlers: Record<string, Handler> = {
     for (const key of allowed) {
       if (fields[key] !== undefined) data[key] = fields[key] === '' ? null : fields[key]
     }
+    if (fields.doNotEmail !== undefined) data.doNotEmail = !!fields.doNotEmail
     if (Object.keys(data).length === 0) throw new Error('Nothing to update')
     return prisma.brand.update({ where: { id: brandId }, data })
   },
