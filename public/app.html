@@ -384,7 +384,8 @@
       <div class="eyebrow">Pipeline</div>
       <h1>Sponsor pipeline</h1>
       <div class="sub">Sponsorship money only. Booking revenue lives in sb-crm and is never added in here.</div>
-      <div style="margin-top:18px"><button class="btn-solid" id="btn-newdeal">+ New deal</button></div>
+      <div style="margin-top:18px;display:flex;gap:8px"><button class="btn-solid" id="btn-newdeal">+ New deal</button>
+        <button class="btn-ghost" id="btn-notionsync" title="Pull the deal list from Notion now (also runs automatically every morning)">⟳ Sync Notion</button></div>
       <div id="deal-form-slot" style="margin-top:12px"></div>
       <div class="kpi-row" id="pipe-kpis"></div>
       <div id="deals"></div>
@@ -2140,7 +2141,7 @@ function renderEmailMode(box) {
             '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;font-size:12.5px;line-height:1.55">' +
               '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">' +
                 '<b style="color:var(--accent)">1 · The sequence</b><br>' +
-                'Intro (one-pager linked) → follow-up <b>day 3</b> → closing note <b>day 7</b>. ' +
+                'Intro → follow-up <b>day 3</b> → closing note <b>day 7</b> — one-pager attached to every email. ' +
                 'A reply stops everything. Still silent after all 3? The brand shows up under <b>“Went quiet”</b> with a recommended next move.</div>' +
               '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">' +
                 '<b style="color:var(--accent)">2 · Nothing sends itself</b><br>' +
@@ -2212,9 +2213,7 @@ function renderEmailMode(box) {
                 '<button class="btn-ghost danger" data-emact="del" style="flex:none">Skip</button>' +
                 '<button class="btn-solid" data-emact="sendone" style="flex:none">Send</button></div>' +
               '<div data-embody style="display:none;margin-top:10px">' +
-              (d.kind === 'intro'
-                ? '<div style="color:var(--ink-3);font-size:11.5px;margin-bottom:6px">🔗 one-pager linked in the email</div>'
-                : '<div style="color:var(--ink-3);font-size:11.5px;margin-bottom:6px">📎 SBA One Pager.pdf attached</div>') +
+              '<div style="color:var(--ink-3);font-size:11.5px;margin-bottom:6px">📎 SBA One Pager.pdf attached</div>' +
               recip +
               '<input class="field-box" data-emfield="subject" value="' + esc(d.subject || '') + '" style="margin-bottom:8px;font-weight:600">' +
               '<textarea class="field-box" data-emfield="body" rows="' + Math.max(4, Math.ceil((d.body || '').length / 80)) + '">' + esc(d.body || '') + '</textarea>' +
@@ -2549,6 +2548,17 @@ var STAGE_ORDER = ['conversation', 'proposal', 'verbal', 'closed', 'lost'];
 
 function loadPipeline() {
   showView('pipeline');
+  var ns = document.getElementById('btn-notionsync');
+  if (ns) ns.onclick = function () {
+    ns.disabled = true; ns.innerHTML = '<span class="spinner"></span> Syncing…';
+    api('syncNotionDeals').then(function (r) {
+      ns.disabled = false; ns.textContent = '⟳ Sync Notion';
+      if (r.configured === false) { toast(r.hint || 'Notion is not connected yet'); return; }
+      toast(r.synced + ' deal' + (r.synced === 1 ? '' : 's') + ' synced' + (r.created ? ', ' + r.created + ' new' : '') +
+        (r.skipped && r.skipped.length ? ' · skipped: ' + r.skipped.join(', ') : ''));
+      loadPipeline();
+    }).catch(function (e) { ns.disabled = false; ns.textContent = '⟳ Sync Notion'; toast(e.message); });
+  };
   return api('listDeals').then(function (d) {
     var deals = d.deals || [];
     document.getElementById('pipe-kpis').innerHTML =
@@ -2585,7 +2595,7 @@ function loadPipeline() {
             '<span style="font-size:11.5px;color:var(--ink-3);margin-left:auto">' + col.length + ' · ' + money(sum) + '</span></div>' +
           (col.length ? col.map(function (x) {
             var i = STAGE_ORDER.indexOf(s);
-            var locked = x.source === 'sponsorship';
+            var locked = x.source === 'sponsorship' || x.source === 'notion';
             return '<div class="panel panel-pad" style="margin-bottom:8px;padding:10px" data-deal="' + esc(x.id) + '">' +
               '<div style="display:flex;align-items:baseline;gap:6px">' +
                 '<a href="#" data-brand="' + esc(x.brandId) + '" style="font-weight:600;font-size:13px;color:inherit;text-decoration:none">' + esc(x.brand.name) + '</a>' +
@@ -2596,7 +2606,9 @@ function loadPipeline() {
                 (locked ? '' : ' <a href="#" data-dact="owner" style="color:var(--accent);text-decoration:none">✎</a>') + '</div>' +
               '<div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap">' +
                 (locked
-                  ? '<span style="font-size:11px;color:var(--ink-3)" title="Mirrors its show — change the sponsorship status instead">🔒 from show</span>'
+                  ? (x.source === 'notion'
+                      ? '<span style="font-size:11px;color:var(--ink-3)" title="Mirrors Notion — change its Stage there; syncs nightly">📓 from Notion</span>'
+                      : '<span style="font-size:11px;color:var(--ink-3)" title="Mirrors its show — change the sponsorship status instead">🔒 from show</span>')
                   : (i > 0 ? '<button class="btn-ghost" data-dact="move" data-to="' + STAGE_ORDER[i - 1] + '" style="padding:2px 7px;font-size:11.5px" title="Back to ' + STAGE_LABEL[STAGE_ORDER[i - 1]] + '">◀</button>' : '') +
                     (i < STAGE_ORDER.length - 1 && s !== 'closed' ? '<button class="btn-ghost" data-dact="move" data-to="' + STAGE_ORDER[i + 1] + '" style="padding:2px 7px;font-size:11.5px" title="Move to ' + STAGE_LABEL[STAGE_ORDER[i + 1]] + '">▶</button>' : '')) +
                 ((s === 'verbal' || s === 'closed')
