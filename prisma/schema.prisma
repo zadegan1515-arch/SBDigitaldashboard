@@ -52,6 +52,10 @@ model Brand {
   // the team grows, and a new hire shouldn't need a schema migration.
   owner     String?
 
+  // Hard exclusion from the email machine: no intros, no follow-ups.
+  // Also honored implicitly when the notes contain the word "skip".
+  doNotEmail Boolean @default(false)
+
   contacts  Contact[]
   targets   Target[]
   partner   Partner?
