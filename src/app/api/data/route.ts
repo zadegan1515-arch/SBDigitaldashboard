@@ -155,6 +155,19 @@ async function askClaude(prompt: string, maxTokens: number): Promise<{ text: str
   throw lastErr ?? new Error('No usable Claude model')
 }
 
+// AI-or-template: returns null when the API account can't pay (or has no
+// key), so callers can fall back to a deterministic document instead of
+// failing. Any other error still surfaces.
+async function tryClaude(prompt: string, maxTokens: number): Promise<{ text: string; model: string } | null> {
+  if (!process.env.ANTHROPIC_API_KEY) return null
+  try {
+    return await askClaude(prompt, maxTokens)
+  } catch (err: any) {
+    if (/credit balance|billing|purchase credits/i.test(String(err?.message ?? ''))) return null
+    throw err
+  }
+}
+
 // A sponsorship's status drives its pipeline stage. Kept as a map rather
 // than inline so the two vocabularies can diverge later without hunting.
 const SPONSOR_STAGE: Record<string, string> = {
@@ -1774,7 +1787,6 @@ const handlers: Record<string, Handler> = {
   async generateProposal({ brandId, shows = [], packageName, valueCents, extra, __user }: any) {
     const brand = await prisma.brand.findUnique({ where: { id: brandId } })
     if (!brand) throw new Error('Brand not found')
-    if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in Vercel — generation is off.')
 
     const showLines = (shows as any[]).map(s =>
       `- ${[s.school, s.chapter].filter(Boolean).join(' · ')}` +
@@ -1800,7 +1812,31 @@ const handlers: Record<string, Handler> = {
       `Structure: a one-line hook tied to their goal; why this audience fits them; the specific shows + what they get; the investment; a clear next step. Frame a win for the brand, the chapter, and the students. Warm and direct, not corporate. Output markdown only, no preamble.`,
     ].filter(Boolean).join('\n')
 
-    const res = await askClaude(prompt, 1200)
+    let res = await tryClaude(prompt, 1200)
+    if (!res) {
+      // Template proposal — no AI, all real data.
+      res = {
+        model: 'template',
+        text: [
+          `# ${brand.name} × SB Agency — Sponsorship Proposal`,
+          ``,
+          `**Who we are.** SB Agency is the nation's largest collegiate concert producer: 500+ shows a year across 100+ tier-1 college markets, run through our own Greek life campus networks, with in-house photo/video production and full commercial asset rights on every show.`,
+          ``,
+          `**Why ${brand.name}.** Our audiences put your brand directly inside the room with thousands of high-intent students at peak energy — sampling, signage, product seeding, ambassadors, and the content wave that follows every show.`,
+          ``,
+          `**The shows on offer**`,
+          showLines,
+          ``,
+          packageName ? `**Package:** ${packageName}` : `**Program:** fully customizable — built around your goals.`,
+          `**Investment:** ${dollars}`,
+          extra ? `\n**Notes:** ${extra}` : ``,
+          ``,
+          `**What you get.** On-site activation at each show, brand integration in event promotion, all professional photo/video with full rights, and a data-backed recap (reach, sampling counts, impressions) after every event.`,
+          ``,
+          `**Next step.** A 15-minute call to tailor this to ${brand.name}'s goals for the semester — we'll bring concrete ideas.`,
+        ].filter(l => l !== '').join('\n'),
+      }
+    }
     const title = `Proposal — ${brand.name}${packageName ? ` (${packageName})` : ''}`
     const doc = await prisma.document.create({
       data: { brandId, kind: 'proposal', title, content: res.text, model: res.model, author: __user ?? null },
@@ -1814,7 +1850,6 @@ const handlers: Record<string, Handler> = {
       include: { brand: true, deliverableItems: { orderBy: { createdAt: 'asc' } } },
     })
     if (!sp) throw new Error('Sponsorship not found')
-    if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in Vercel — generation is off.')
 
     // Best-effort attendance from sb-crm if not supplied.
     let att = attendance
@@ -1847,7 +1882,27 @@ const handlers: Record<string, Handler> = {
       `Structure: a warm thank-you; what was delivered (make it feel valuable, reference attendance/energy); a soft results/impressions note; a clear invitation to run it back next season. Do not invent hard metrics you weren't given. Output markdown only, no preamble.`,
     ].filter(Boolean).join('\n')
 
-    const res = await askClaude(prompt, 1000)
+    let res = await tryClaude(prompt, 1000)
+    if (!res) {
+      res = {
+        model: 'template',
+        text: [
+          `# Recap — ${sp.brand.name} × SB Agency`,
+          ``,
+          `Thank you for partnering with us${sp.school ? ` at ${[sp.school, sp.chapter].filter(Boolean).join(' · ')}` : ''}${sp.eventDate ? ` (${sp.eventDate})` : ''}${sp.artist ? ` featuring ${sp.artist}` : ''}. The room was electric — exactly the environment this partnership was built for.`,
+          ``,
+          att ? `**Attendance:** ~${att} students` : ``,
+          `**Investment:** $${(sp.valueCents / 100).toLocaleString('en-US')}`,
+          ``,
+          `**Delivered**`,
+          delivLines,
+          ``,
+          `Every professional photo and video from the night is yours with full commercial rights — we'll send the asset folder separately.`,
+          ``,
+          `We'd love to run it back next semester — same energy, bigger footprint. Let's find 15 minutes to talk about what's next.`,
+        ].filter(l => l !== '').join('\n'),
+      }
+    }
     const title = `Recap — ${sp.brand.name} @ ${[sp.school, sp.chapter].filter(Boolean).join(' ') || 'show'}`
     const doc = await prisma.document.create({
       data: { brandId: sp.brandId, showSponsorId, kind: 'recap', title, content: res.text, model: res.model, author: __user ?? null },
@@ -1962,7 +2017,6 @@ const handlers: Record<string, Handler> = {
 
   // Everything a rep needs before dialing a brand, in one generated brief.
   async generateCallPrep({ brandId, __user }: any) {
-    if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in Vercel — generation is off.')
     const brand = await prisma.brand.findUnique({
       where: { id: brandId },
       include: {
@@ -2010,7 +2064,38 @@ const handlers: Record<string, Handler> = {
       `Structure exactly: **Who they are** (2 lines); **What they likely want** (tie to college audience); **Who we know** (contacts + who to push for); **Where we stand** (history in one line); **Pitch this** (1–2 specific packages with prices from the rate card if given); **Ask these** (3 sharp discovery questions); **If they push back** (2 likely objections + one-line answers); **Next step** (the close for this call). Markdown only, no preamble.`,
     ].filter(Boolean).join('\n')
 
-    const res = await askClaude(prompt, 1100)
+    let res = await tryClaude(prompt, 1100)
+    if (!res) {
+      // Template brief: all the assembled data, canned strategy.
+      res = {
+        model: 'template',
+        text: [
+          `# Call prep — ${brand.name}`,
+          ``,
+          `**Who they are.** ${brand.name}${brand.category ? ` (${brand.category})` : ''}${brand.tier ? `, ${brand.tier}` : ''}.${brand.goals ? ` What they want: ${brand.goals}` : ''}`,
+          brand.notes ? `**Notes.** ${brand.notes}` : ``,
+          ``,
+          `**Who we know**`,
+          (brand.contacts ?? []).map((c: any) => `- ${c.name}${c.title ? `, ${c.title}` : ''}${c.email ? ` <${c.email}>` : ''}`).join('\n') || '- (no contacts yet)',
+          ``,
+          `**Where we stand**`,
+          history.slice(-8).join('\n') || '- No outreach yet — this is a first conversation.',
+          ``,
+          rateCard ? `**Pitch this**\n${rateCard}` : `**Pitch this**\n- A pilot show in a market they care about, with sampling + signage + full content rights.`,
+          ``,
+          `**Ask these**`,
+          `- What does a successful semester with college students look like for you?`,
+          `- Which regions or campuses matter most right now?`,
+          `- What's your planning window and budget range for experiential this year?`,
+          ``,
+          `**If they push back**`,
+          `- "No budget" → start with a single-show pilot; the recap proves it before a bigger commitment.`,
+          `- "Bad timing" → calendars lock early; reserving now costs nothing and holds the best dates.`,
+          ``,
+          `**Next step.** Close for a specific follow-up: a tailored proposal within 48 hours, or a date hold on a named show.`,
+        ].filter(l => l !== '').join('\n'),
+      }
+    }
     const doc = await prisma.document.create({
       data: { brandId, kind: 'callprep', title: `Call prep — ${brand.name}`, content: res.text, model: res.model, author: __user ?? null },
     })
@@ -2027,7 +2112,6 @@ const handlers: Record<string, Handler> = {
       include: { brand: { include: { contacts: { where: { email: { not: null } }, take: 3 } } }, showSponsor: { include: { deliverableItems: true } } },
     })
     if (!deal) throw new Error('Deal not found')
-    if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in Vercel — generation is off.')
 
     const sp = deal.showSponsor
     const showLine = sp
@@ -2051,7 +2135,41 @@ const handlers: Record<string, Handler> = {
       `Plain business English, numbered sections, no invented terms beyond what's given. End with the exact line: "*Draft prepared by SB Agency's deal desk — have an attorney review before signing.*" Markdown only, no preamble.`,
     ].filter(Boolean).join('\n')
 
-    const res = await askClaude(prompt, 1400)
+    let res = await tryClaude(prompt, 1400)
+    if (!res) {
+      const fee = `$${(deal.valueCents / 100).toLocaleString('en-US')}`
+      const terms = paymentTerms || '50% due on signing, 50% due 7 days before the first event'
+      res = {
+        model: 'template',
+        text: [
+          `# Sponsorship Agreement`,
+          ``,
+          `**1. Parties & Purpose.** This Agreement is between SB Agency ("Producer") and ${deal.brand.name} ("Sponsor"). Producer will provide the sponsorship deliverables below in connection with: ${showLine}.`,
+          ``,
+          `**2. Sponsorship Deliverables.** Producer will deliver:`,
+          deliverables,
+          ``,
+          `**3. Fee & Payment.** Sponsor will pay Producer a total sponsorship fee of **${fee}**. Payment terms: ${terms}. Amounts are non-refundable once the applicable event has occurred.`,
+          extra ? `\n**Additional terms.** ${extra}` : ``,
+          ``,
+          `**4. Term.** This Agreement runs from the date of signing through completion of the deliverables above.`,
+          ``,
+          `**5. Postponement.** If an event is postponed, the deliverables move to the rescheduled date or a comparable Producer event agreed by both parties.`,
+          ``,
+          `**6. Brand Assets & Approval.** Sponsor will provide required brand assets at least 14 days before the first event and approves Producer's use of its name and logo solely for the deliverables listed above.`,
+          ``,
+          `**7. Limitation of Liability.** Each party's total liability under this Agreement is limited to the sponsorship fee. Neither party is liable for indirect or consequential damages.`,
+          ``,
+          `**8. Signatures**`,
+          ``,
+          `SB Agency — Name: ______________  Title: ______________  Date: ________`,
+          ``,
+          `${deal.brand.name} — Name: ______________  Title: ______________  Date: ________`,
+          ``,
+          `*Draft prepared by SB Agency's deal desk — have an attorney review before signing.*`,
+        ].filter(l => l !== '').join('\n'),
+      }
+    }
     const doc = await prisma.document.create({
       data: { brandId: deal.brandId, kind: 'contract', title: `Agreement — ${deal.brand.name} (${deal.name})`, content: res.text, model: res.model, author: __user ?? null },
     })
@@ -2144,6 +2262,9 @@ const handlers: Record<string, Handler> = {
         if (text) break
       } catch (err: any) {
         lastErr = err
+        if (/credit balance|billing|purchase credits/i.test(String(err?.message ?? ''))) {
+          throw new Error('Discover needs API credits (console.anthropic.com → Plans & Billing) — or ask Claude in Cowork to run this hunt for free and load the results here.')
+        }
         if (!(err?.status === 404 || /model/i.test(err?.message ?? ''))) throw err
       }
     }
@@ -2233,6 +2354,36 @@ const handlers: Record<string, Handler> = {
     }
     await (prisma as any).discoveredBrand.update({ where: { id }, data: { status: 'added', brandId: brand.id } })
     return { ok: true, brandId: brand.id }
+  },
+
+  // Bulk insert for Discover rows researched OUTSIDE the site (e.g. a
+  // Cowork/Claude session doing the web hunt for free). Same rules as
+  // discoverBrands: a row without a LinkedIn company URL is refused.
+  async importDiscoveries({ query, rows = [] }: any) {
+    const q = String(query ?? '').trim()
+    if (!q) throw new Error('query required')
+    let saved = 0, skipped = 0
+    for (const r of rows.slice(0, 40)) {
+      if (!r?.name || !/linkedin\.com\/company\//i.test(String(r.linkedinUrl ?? ''))) { skipped++; continue }
+      const name = String(r.name).trim().slice(0, 120)
+      const existing = await prisma.brand.findFirst({
+        where: { name: { equals: name, mode: 'insensitive' } }, select: { id: true },
+      })
+      await (prisma as any).discoveredBrand.upsert({
+        where: { query_name: { query: q, name } },
+        create: {
+          query: q, name,
+          category: r.category ? String(r.category).slice(0, 40) : null,
+          reason: r.reason ? String(r.reason).slice(0, 300) : null,
+          website: r.website ? String(r.website).slice(0, 300) : null,
+          linkedinUrl: String(r.linkedinUrl).slice(0, 300),
+          ...(existing ? { status: 'added', brandId: existing.id } : {}),
+        },
+        update: { reason: r.reason ? String(r.reason).slice(0, 300) : undefined },
+      })
+      saved++
+    }
+    return { saved, skipped }
   },
 
   async dismissDiscovered({ id }: any) {
