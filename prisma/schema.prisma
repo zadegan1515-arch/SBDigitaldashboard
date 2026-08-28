@@ -283,6 +283,10 @@ model Deal {
   // sponsorship instead.
   source String @default("manual")
 
+  // Set for source="notion": the Notion page URL this deal mirrors, so
+  // the nightly sync can find and update it without duplicating.
+  externalRef String? @unique
+
   // Set for source="sponsorship". Unique so one attachment can only ever
   // produce one deal, and cascading so detaching a show removes the deal
   // rather than leaving a phantom number in the pipeline total.
