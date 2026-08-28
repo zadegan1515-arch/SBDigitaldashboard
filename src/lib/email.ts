@@ -32,6 +32,12 @@ const FOLLOWUP2_AFTER_DAYS = 4  // follow-up 1 -> follow-up 2 (day ~7 overall)
 const EXHAUSTED_AFTER_DAYS = 3  // follow-up 2 -> flagged "went quiet"
 const WORK_TZ = 'America/New_York'
 const SITE_URL = 'https://sb-digitaldashboard.vercel.app'
+// Who the emails are from and who signs them. When the mailbox swaps to
+// Zach: change EMAIL_USER/EMAIL_APP_PASSWORD and set EMAIL_SENDER_NAME=Zach.
+const SENDER_NAME = process.env.EMAIL_SENDER_NAME || 'Leo'
+// Teammates copied on every outreach email (not tests), on top of any
+// per-draft CCs.
+const AUTO_CC = ['elizabeth@sboyagency.com', 'jackson@sboyagency.com']
 
 export function emailConfigured(): boolean {
   return !!(process.env.EMAIL_USER && process.env.EMAIL_APP_PASSWORD)
@@ -131,9 +137,9 @@ export function templateFollowup1(t: any, intro: any): { subject: string; body: 
   const first = firstNameOf(t)
   const brand = t.brand.name
   const bodies = [
-    `Hi ${first},\n\nWanted to float this back to the top of your inbox. We're locking in partners for the semester now, and I think ${brand} would land really well on campus.\n\nWorth a quick 15 minutes this week?\n\nLeo\nSB Agency`,
-    `Hi ${first},\n\nJust circling back — we're routing 500+ shows this year and still have room for a partner like ${brand} in a few big markets.\n\nOpen to a quick call?\n\nLeo\nSB Agency`,
-    `Hi ${first},\n\nFollowing up in case this got buried. Spring calendars are filling in, and campus feels like a strong fit for ${brand}.\n\nHappy to share a one-pager or hop on a 15-minute call — whatever's easiest.\n\nLeo\nSB Agency`,
+    `Hi ${first},\n\nWanted to float this back to the top of your inbox. We're locking in partners for the semester now, and I think ${brand} would land really well on campus.\n\nWorth a quick 15 minutes this week?\n\n${SENDER_NAME}\nSB Agency`,
+    `Hi ${first},\n\nJust circling back — we're routing 500+ shows this year and still have room for a partner like ${brand} in a few big markets.\n\nOpen to a quick call?\n\n${SENDER_NAME}\nSB Agency`,
+    `Hi ${first},\n\nFollowing up in case this got buried. Spring calendars are filling in, and campus feels like a strong fit for ${brand}.\n\nHappy to share a one-pager or hop on a 15-minute call — whatever's easiest.\n\n${SENDER_NAME}\nSB Agency`,
   ]
   return { subject: `re: ${intro?.subject ?? `SB Agency x ${brand}`}`, body: pick(bodies, brand) }
 }
@@ -142,8 +148,8 @@ export function templateFollowup2(t: any, intro: any): { subject: string; body: 
   const first = firstNameOf(t)
   const brand = t.brand.name
   const bodies = [
-    `Hi ${first},\n\nLast note from me — I'll stop filling your inbox. If campus ever makes sense for ${brand}, the door's open and I'd love to build something together.\n\nEither way, keep crushing it.\n\nLeo\nSB Agency`,
-    `Hi ${first},\n\nClosing the loop on this one. If the timing's ever right for ${brand} to get in front of students, just say the word — we'll make it easy.\n\nAll the best,\nLeo\nSB Agency`,
+    `Hi ${first},\n\nLast note from me — I'll stop filling your inbox. If campus ever makes sense for ${brand}, the door's open and I'd love to build something together.\n\nEither way, keep crushing it.\n\n${SENDER_NAME}\nSB Agency`,
+    `Hi ${first},\n\nClosing the loop on this one. If the timing's ever right for ${brand} to get in front of students, just say the word — we'll make it easy.\n\nAll the best,\n${SENDER_NAME}\nSB Agency`,
   ]
   return { subject: `re: ${intro?.subject ?? `SB Agency x ${brand}`}`, body: pick(bodies, brand + '2') }
 }
@@ -181,7 +187,7 @@ export function templateReplyResponse(contactName: string, brandName: string, re
   const first = String(contactName || '').trim().split(/\s+/)[0] || 'there'
   return {
     subject: `re: ${replySubject ?? `SB Agency x ${brandName}`}`,
-    body: `Hi ${first},\n\nGreat to hear from you! I'd love to grab 15 minutes to walk through how we'd put ${brandName} inside our shows this semester \u2014 we run 500+ a year across 100+ college markets, so there's a lot to pick from.\n\nWould Tuesday or Wednesday afternoon work? Happy to flex to your calendar.\n\nBest,\nLeo\nSB Agency`,
+    body: `Hi ${first},\n\nGreat to hear from you! I'd love to grab 15 minutes to walk through how we'd put ${brandName} inside our shows this semester \u2014 we run 500+ a year across 100+ college markets, so there's a lot to pick from.\n\nWould Tuesday or Wednesday afternoon work? Happy to flex to your calendar.\n\nBest,\n${SENDER_NAME}\nSB Agency`,
   }
 }
 
@@ -207,16 +213,12 @@ function introEmail(t: any): { subject: string; body: string } {
     ``,
     `Our experiential team puts brands directly inside the room at hundreds of major college events each year. We help partners tap into our established live audience on campus, giving them high-impact reach without having to build crowds from the ground up.`,
     ``,
-    `That's 500+ shows a year across 100+ tier-1 college markets, all through our own Greek life campus networks.`,
-    ``,
-    `Here's a quick one-pager on what we do: ${SITE_URL}/materials/sba-one-pager.pdf`,
-    ``,
     `We'd love to jump on a quick call to better understand ${possessive(brand)} goals for the upcoming year and brainstorm a few ways we might collaborate.`,
     ``,
     `Let me know your availability next week, and we can set up a call.`,
     ``,
     `Best,`,
-    `Leo`,
+    SENDER_NAME,
     `SB Agency`,
   ].join('\n')
   return { subject: `SB Agency x ${brand}`, body }
@@ -289,7 +291,7 @@ export async function sendTestEmail(to: string) {
   })
   const attachment = await onePagerAttachment()
   await transporter.sendMail({
-    from: `Leo — SB Agency <${process.env.EMAIL_USER}>`,
+    from: `${SENDER_NAME} — SB Agency <${process.env.EMAIL_USER}>`,
     to, subject, text: body,
     ...(attachment ? { attachments: [attachment] } : {}),
   })
@@ -302,7 +304,7 @@ function followupPrompt(t: any, firstEmail: any): string {
     `TO: ${t.contact.name} at ${t.brand.name}.`,
     `FIRST EMAIL SUBJECT: ${firstEmail?.subject ?? ''}`,
     ``,
-    `Rules: under 60 words, plain text. Friendly, zero pressure, adds one small new angle (timing, a specific school region, or momentum), then a soft ask. No guilt-tripping. Sign off exactly:\nLeo\nSB Agency`,
+    `Rules: under 60 words, plain text. Friendly, zero pressure, adds one small new angle (timing, a specific school region, or momentum), then a soft ask. No guilt-tripping. Sign off exactly:\n${SENDER_NAME}\nSB Agency`,
     ``,
     `Return ONLY JSON: {"subject": "...", "body": "..."} — subject should be "re:" + the first subject.`,
   ].join('\n')
@@ -314,7 +316,7 @@ function followup2Prompt(t: any, firstEmail: any): string {
     `TO: ${t.contact.name} at ${t.brand.name}.`,
     `FIRST EMAIL SUBJECT: ${firstEmail?.subject ?? ''}`,
     ``,
-    `Rules: under 45 words, plain text. "Closing the loop" style — graceful, zero pressure, makes clear this is the last note, leaves the door open ("if the timing's ever right..."). Optionally offer to send a one-pager or intro to whoever owns campus partnerships. Sign off exactly:\nLeo\nSB Agency`,
+    `Rules: under 45 words, plain text. "Closing the loop" style — graceful, zero pressure, makes clear this is the last note, leaves the door open ("if the timing's ever right..."). Optionally offer to send a one-pager or intro to whoever owns campus partnerships. Sign off exactly:\n${SENDER_NAME}\nSB Agency`,
     ``,
     `Return ONLY JSON: {"subject": "...", "body": "..."} — subject should be "re:" + the first subject.`,
   ].join('\n')
@@ -490,20 +492,26 @@ function htmlBody(text: string, emailId: string): string {
     '</div><img src="' + SITE_URL + '/api/track?e=' + encodeURIComponent(emailId) + '" width="1" height="1" alt="" style="display:none">'
 }
 
-// Send exactly one draft: to + any CC, marked sent. Intros LINK the
-// one-pager (attachments on a first cold email raise spam scores);
-// follow-ups attach it. Shared by "Send all", the per-card Send button,
-// and the 9am auto-send cron.
+// Send exactly one draft: to + any CC, marked sent, one-pager attached.
+// Shared by "Send all", the per-card Send button, and the 9am cron.
 async function deliverDraft(d: any, transporter: any, attachment: { filename: string; content: Buffer } | null) {
   const to = d.toEmail || d.target.contact.email
   if (!to) throw new Error('No recipient address on this draft')
   if (!(await domainAcceptsMail(to))) throw new Error(`${to} — domain has no mail server (bounce protection)`)
   let cc: string[] = []
   try { cc = JSON.parse(d.ccEmails ?? '[]') } catch {}
-  cc = cc.filter(a => typeof a === 'string' && /@/.test(a) && a.toLowerCase() !== to.toLowerCase())
-  const attach = d.kind === 'intro' ? null : attachment
+  cc = [...cc, ...AUTO_CC]
+  const seenCc = new Set<string>()
+  cc = cc.filter(a => {
+    if (typeof a !== 'string' || !/@/.test(a) || a.toLowerCase() === to.toLowerCase()) return false
+    const k = a.toLowerCase()
+    if (seenCc.has(k)) return false
+    seenCc.add(k); return true
+  })
+  // The one-pager rides on every email, per Leo's call.
+  const attach = attachment
   await transporter.sendMail({
-    from: `Leo — SB Agency <${process.env.EMAIL_USER}>`,
+    from: `${SENDER_NAME} — SB Agency <${process.env.EMAIL_USER}>`,
     to,
     ...(cc.length ? { cc } : {}),
     subject: d.subject ?? '',
@@ -842,13 +850,13 @@ export async function draftReplyResponse(emailId: string) {
   const thread = t.emails.filter(e => e.direction === 'out' && e.status === 'sent')
     .map(e => `[${e.kind}] ${e.subject}`).join('\n')
   const prompt = [
-    `You are drafting a reply for Leo at SB Agency (produces large fraternity/sorority concerts at US colleges; sells brands activations there: sampling, banners, product seeding, ambassadors).`,
-    `${reply.target.contact.name}${t.contact.title ? ` (${t.contact.title})` : ''} at ${t.brand.name} just replied to Leo's outreach.`,
+    `You are drafting a reply for ${SENDER_NAME} at SB Agency (produces large fraternity/sorority concerts at US colleges; sells brands activations there: sampling, banners, product seeding, ambassadors).`,
+    `${reply.target.contact.name}${t.contact.title ? ` (${t.contact.title})` : ''} at ${t.brand.name} just replied to ${SENDER_NAME}'s outreach.`,
     `THEIR REPLY SUBJECT: ${reply.subject ?? '(unknown)'}`,
     `WHAT WE'VE SENT THEM SO FAR:\n${thread}`,
     t.brand.goals ? `BRAND DISCOVERY NOTES: ${t.brand.goals}` : '',
     ``,
-    `Write Leo's response. Rules: warm, concise (under 110 words), plain text. Assume the reply was interested-or-curious unless the subject clearly says otherwise. Goal: lock a 15-minute call this week or next — propose two concrete windows (e.g. "Tue or Wed afternoon"). Offer to tailor ideas to their goals. Sign off exactly:\nBest,\nLeo\nSB Agency`,
+    `Write ${SENDER_NAME}'s response. Rules: warm, concise (under 110 words), plain text. Assume the reply was interested-or-curious unless the subject clearly says otherwise. Goal: lock a 15-minute call this week or next — propose two concrete windows (e.g. "Tue or Wed afternoon"). Offer to tailor ideas to their goals. Sign off exactly:\nBest,\n${SENDER_NAME}\nSB Agency`,
     ``,
     `Return ONLY JSON: {"subject": "...", "body": "..."} — subject "re:" + their subject.`,
   ].filter(Boolean).join('\n')
@@ -870,9 +878,11 @@ export async function sendReplyEmail(targetId: string, to: string, subject: stri
       toEmail: to, fromEmail: emailAddress(), subject, body,
     },
   })
+  const replyCc = AUTO_CC.filter(a => a.toLowerCase() !== to.toLowerCase())
   await transporter.sendMail({
-    from: `Leo — SB Agency <${process.env.EMAIL_USER}>`,
-    to, subject, text: body, html: htmlBody(body, rec.id),
+    from: `${SENDER_NAME} — SB Agency <${process.env.EMAIL_USER}>`,
+    to, ...(replyCc.length ? { cc: replyCc } : {}),
+    subject, text: body, html: htmlBody(body, rec.id),
   })
   await prisma.emailMessage.update({ where: { id: rec.id }, data: { status: 'sent', sentAt: new Date() } })
   return { ok: true, to }
