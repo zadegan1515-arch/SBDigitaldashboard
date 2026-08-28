@@ -607,6 +607,36 @@ export async function checkReplies() {
   return { configured: true, replies }
 }
 
+// Draft an intro for ONE specific brand, on demand (the brand page's
+// "✉ Draft intro email" button). Respects the one-email-per-brand rule.
+export async function draftBrandIntro(brandId: string) {
+  if (!emailConfigured()) throw new Error('Email is not configured')
+  const prior = await prisma.emailMessage.findFirst({
+    where: { direction: 'out', target: { brandId } },
+  })
+  if (prior) throw new Error('This brand already has an email drafted or sent — one thread per brand.')
+  const t = await prisma.target.findFirst({
+    where: {
+      brandId, shelved: false,
+      status: { in: ['queued', 'drafted', 'sent'] },
+      contact: { email: { not: null } },
+    },
+    include: { brand: true, contact: true },
+    orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
+  })
+  if (!t) throw new Error('No queued contact with an email at this brand — add or promote one first.')
+  const filled = introEmail(t)
+  const suggestion = await generateSuggestion(t)
+  const draft = await prisma.emailMessage.create({
+    data: {
+      targetId: t.id, direction: 'out', kind: 'intro', status: 'draft',
+      toEmail: t.contact.email, fromEmail: emailAddress(),
+      subject: filled.subject, body: filled.body, suggestion,
+    },
+  })
+  return { ok: true, draftId: draft.id, to: t.contact.email, contact: t.contact.name }
+}
+
 // ---- exhausted sequences ---------------------------------------
 
 // Brands that got the full ladder — intro, follow-up, closing note —
