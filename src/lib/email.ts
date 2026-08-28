@@ -128,6 +128,8 @@ function introEmail(t: any): { subject: string; body: string } {
     ``,
     `Our experiential team puts brands directly inside the room at hundreds of major college events each year. We help partners tap into our established live audience on campus, giving them high-impact reach without having to build crowds from the ground up.`,
     ``,
+    `That's 500+ shows a year across 100+ tier-1 college markets, all through our own Greek life campus networks.`,
+    ``,
     `Here's a quick one-pager on what we do: ${SITE_URL}/materials/sba-one-pager.pdf`,
     ``,
     `We'd love to jump on a quick call to better understand ${possessive(brand)} goals for the upcoming year and brainstorm a few ways we might collaborate.`,
@@ -149,6 +151,7 @@ async function generateSuggestion(t: any): Promise<string | null> {
   try {
     const prompt = [
       `You advise a sponsorship rep at SB Agency, which produces large fraternity/sorority concerts at US colleges and sells brands activations there (sampling, banners, product seeding, ambassadors).`,
+      `SB AGENCY FACTS you may use: 500+ shows/year; 100+ tier-1 college markets; 100+ Greek life campus networks; fully customizable programs; in-house photo/video production on every show.`,
       `The rep is about to email this brand a templated intro. Give ONE angle that is SPECIFIC to this brand — never generic advice that could apply to anyone.`,
       ``,
       `BRAND: ${t.brand.name}`,
@@ -161,7 +164,9 @@ async function generateSuggestion(t: any): Promise<string | null> {
       `Return ONLY JSON:`,
       `{"tip": "one sentence telling the rep the angle and why it fits this brand", "insert": "one natural, friendly sentence ready to paste into the email that uses that angle — mentions the brand or its product specifically, fits before 'We'd love to jump on a quick call', no placeholder brackets"}`,
     ].filter(Boolean).join('\n')
-    const text = await askClaude(prompt, 400)
+    // 800 tokens: at 400 the model's answer was getting cut mid-JSON and
+    // every suggestion "failed". Also strip markdown fences before parsing.
+    const text = (await askClaude(prompt, 800)).replace(/```(?:json)?/g, '')
     const m = text.match(/\{[\s\S]*\}/)
     if (!m) return null
     const j = JSON.parse(m[0])
@@ -278,7 +283,7 @@ export async function draftDailyEmails(limit = 5) {
     const hasF2 = t.emails.some(e => e.kind === 'followup2')
     if (!f1) {
       // Rung 1 due.
-      const parsed = parseEmailJson(await askClaude(followupPrompt(t, intro), 500))
+      const parsed = parseEmailJson(await askClaude(followupPrompt(t, intro), 800))
       if (!parsed) continue
       await prisma.emailMessage.create({
         data: {
@@ -290,7 +295,7 @@ export async function draftDailyEmails(limit = 5) {
       drafted++; room--
     } else if (!hasF2 && f1.status === 'sent' && f1.sentAt && f1.sentAt <= cutoff2) {
       // Rung 2 due — the closing-the-loop note.
-      const parsed = parseEmailJson(await askClaude(followup2Prompt(t, intro), 500))
+      const parsed = parseEmailJson(await askClaude(followup2Prompt(t, intro), 800))
       if (!parsed) continue
       await prisma.emailMessage.create({
         data: {
@@ -700,7 +705,7 @@ export async function draftFinalNudge(targetId: string) {
   if (!t) throw new Error('Target not found')
   if (!t.contact.email) throw new Error('No email on this contact')
   const intro = t.emails.find(e => e.kind === 'intro' && e.status === 'sent')
-  const parsed = parseEmailJson(await askClaude(followup2Prompt(t, intro), 500))
+  const parsed = parseEmailJson(await askClaude(followup2Prompt(t, intro), 800))
   if (!parsed) throw new Error('Could not draft — try again')
   const draft = await prisma.emailMessage.create({
     data: {
