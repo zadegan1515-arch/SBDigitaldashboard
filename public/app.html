@@ -2747,6 +2747,8 @@ function renderDiscoverRows(body, rows, selectedQuery) {
         '<button class="btn-ghost danger" data-discact="dismiss" style="padding:3px 9px;font-size:12px">×</button>' +
       '</div>' +
       (r.reason ? '<div style="font-size:12.5px;color:var(--ink-2);margin-top:5px">' + esc(r.reason) + '</div>' : '') +
+      (r.activation ? '<div style="font-size:12.5px;margin-top:5px;padding:7px 10px;background:var(--accent-soft,#fdf0ec);border-radius:6px">' +
+        '<b style="color:var(--accent)">Activation idea:</b> ' + esc(r.activation) + '</div>' : '') +
     '</div>';
   }).join('') +
   '<div class="hint" style="margin-top:8px">SU ↗ copies the brand name and opens SponsorUnited — search it there and the capture script pulls contacts straight in; this list updates on the next load. + Add saves a brand with its LinkedIn so it lands in Needs Contacts.</div>';
