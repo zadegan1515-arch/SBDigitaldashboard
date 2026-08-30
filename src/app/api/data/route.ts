@@ -2246,7 +2246,7 @@ const handlers: Record<string, Handler> = {
       `Prefer brands that plausibly market to US college students / Gen Z. Skip brands that are defunct or acquired-and-retired.`,
       ``,
       `Return ONLY a JSON array, no other text:`,
-      `[{"name": "...", "category": "one of: ${CATS}", "reason": "one line on why it fits the search AND why college students matter to them", "website": "https://... or null", "linkedinUrl": "https://www.linkedin.com/company/..."}]`,
+      `[{"name": "...", "category": "one of: ${CATS}", "reason": "one line on why it fits the search AND why college students matter to them", "activation": "one line naming a CONCRETE activation SB Agency could sell them at a show \u2014 e.g. sampling at the door, a stage banner, product seeding into Greek houses, an ambassador program, a QR moment, a photo activation \u2014 specific to THIS brand's product", "website": "https://... or null", "linkedinUrl": "https://www.linkedin.com/company/..."}]`,
     ].join('\n')
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -2294,12 +2294,14 @@ const handlers: Record<string, Handler> = {
           query: q, name,
           category: r.category ? String(r.category).slice(0, 40) : null,
           reason: r.reason ? String(r.reason).slice(0, 300) : null,
+          activation: r.activation ? String(r.activation).slice(0, 300) : null,
           website: r.website ? String(r.website).slice(0, 300) : null,
           linkedinUrl: String(r.linkedinUrl).slice(0, 300),
           ...(existing ? { status: 'added', brandId: existing.id } : {}),
         },
         update: {
           reason: r.reason ? String(r.reason).slice(0, 300) : undefined,
+          activation: r.activation ? String(r.activation).slice(0, 300) : undefined,
           ...(existing ? { status: 'added', brandId: existing.id } : {}),
         },
       })
@@ -2350,7 +2352,8 @@ const handlers: Record<string, Handler> = {
         data: {
           name: d.name, category: d.category ?? null, tier,
           website: d.website ?? null, linkedinUrl: d.linkedinUrl ?? null,
-          source: 'discover', notes: d.reason ? `Discover: ${d.reason}` : null,
+          source: 'discover',
+          notes: [d.reason ? `Discover: ${d.reason}` : '', (d as any).activation ? `Activation idea: ${(d as any).activation}` : ''].filter(Boolean).join('\n') || null,
         },
       })
     }
@@ -2377,11 +2380,15 @@ const handlers: Record<string, Handler> = {
           query: q, name,
           category: r.category ? String(r.category).slice(0, 40) : null,
           reason: r.reason ? String(r.reason).slice(0, 300) : null,
+          activation: r.activation ? String(r.activation).slice(0, 300) : null,
           website: r.website ? String(r.website).slice(0, 300) : null,
           linkedinUrl: String(r.linkedinUrl).slice(0, 300),
           ...(existing ? { status: 'added', brandId: existing.id } : {}),
         },
-        update: { reason: r.reason ? String(r.reason).slice(0, 300) : undefined },
+        update: {
+          reason: r.reason ? String(r.reason).slice(0, 300) : undefined,
+          activation: r.activation ? String(r.activation).slice(0, 300) : undefined,
+        },
       })
       saved++
     }
