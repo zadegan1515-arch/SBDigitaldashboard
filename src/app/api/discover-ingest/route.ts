@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
         query, name,
         category: r.category ? String(r.category).slice(0, 40) : null,
         reason: r.reason ? String(r.reason).slice(0, 300) : null,
+        activation: r.activation ? String(r.activation).slice(0, 300) : null,
         website: r.website ? String(r.website).slice(0, 300) : null,
         linkedinUrl: linkedinUrl.slice(0, 300),
       },
