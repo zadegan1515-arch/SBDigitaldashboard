@@ -541,6 +541,8 @@ model DiscoveredBrand {
 
   category    String?  // mapped to our category keys
   reason      String?  // one line: why it fits the query
+  // The pitch: a concrete SB Agency activation this brand could buy.
+  activation  String?
   website     String?
   linkedinUrl String?
 
