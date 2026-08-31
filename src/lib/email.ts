@@ -1013,6 +1013,30 @@ export async function sendReplyEmail(targetId: string, to: string, subject: stri
   return { ok: true, to }
 }
 
+// Drafts store their sign-off as literal text, written at draft time.
+// So changing EMAIL_SENDER_NAME renames future drafts but leaves the
+// queue signed by whoever was configured when it was generated. This
+// rewrites just that one line on drafts that haven't gone out — the
+// body copy is never touched, so any hand edits survive.
+export async function resignDrafts() {
+  const drafts = await prisma.emailMessage.findMany({
+    where: { direction: 'out', status: { in: ['draft', 'approved'] } },
+    select: { id: true, body: true },
+  })
+  let changed = 0
+  for (const d of drafts) {
+    const body = d.body ?? ''
+    // Every template ends "<name>\nSB Agency". Anchored to the end so a
+    // stray "SB Agency" mid-paragraph can't be mistaken for the sign-off.
+    const next = body.replace(/\n([^\n]{1,40})\nSB Agency\s*$/, '\n' + SENDER_NAME + '\nSB Agency')
+    if (next !== body) {
+      await prisma.emailMessage.update({ where: { id: d.id }, data: { body: next } })
+      changed++
+    }
+  }
+  return { scanned: drafts.length, changed, signedAs: SENDER_NAME }
+}
+
 // ---- status ----------------------------------------------------
 
 export async function emailStatus() {
