@@ -1132,11 +1132,16 @@ export async function resignDrafts() {
   let changed = 0
   for (const d of drafts) {
     const body = d.body ?? ''
-    // Old drafts end "<name>\nSB Agency". Anchored to the end so a stray
-    // "SB Agency" mid-paragraph can't be mistaken for the sign-off. A
-    // draft already carrying the new block won't match, so this is safe
-    // to run more than once.
-    const next = body.replace(/\n([^\n]{1,40})\nSB Agency\s*$/, '\n' + SIGNATURE)
+    // Two shapes to catch, both anchored to the very end of the body:
+    //   1. the original "<name>\nSB Agency" sign-off
+    //   2. any earlier version of the block itself (name/title, Direct:,
+    //      Email:) — so a change to the title, number or address can be
+    //      pushed onto drafts that were already re-signed once.
+    // Anchoring to the end keeps a stray "SB Agency" mid-paragraph safe,
+    // and re-running is a no-op once a draft already matches.
+    const next = body
+      .replace(/\n[^\n]*\|[^\n]*\nDirect:[^\n]*\nEmail:[^\n]*\s*$/, '\n' + SIGNATURE)
+      .replace(/\n([^\n]{1,40})\nSB Agency\s*$/, '\n' + SIGNATURE)
     if (next !== body) {
       await prisma.emailMessage.update({ where: { id: d.id }, data: { body: next } })
       changed++
