@@ -79,9 +79,26 @@ async function deliver(mail: OutgoingMail) {
 }
 
 // The From header follows whichever account is actually sending.
+// The display name recipients see in their inbox list. Kept separate
+// from SENDER_NAME (which signs the body) because they want different
+// forms: "Zach Goldstein" reads as a person in a From line, while the
+// sign-off wants the first name alone.
+const FROM_NAME = process.env.EMAIL_FROM_NAME || `${SENDER_NAME} — SB Agency`
+
+// The block that closes every outreach email, reply and follow-up.
+// Defined once so a title, number or address change is a single edit
+// (or a single Vercel variable) instead of a hunt through templates.
+// Kept as plain text: the HTML twin is generated from it, so the two
+// versions can never drift apart.
+const SIGNATURE = process.env.EMAIL_SIGNATURE || [
+  'Zach Goldstein | Co-CEO',
+  'Direct: +1 (561) 716-8734 | sboyagency.com',
+  'Email: zachgoldstein@sboyagency.com',
+].join('\n')
+
 async function fromHeader(): Promise<string> {
   const { address } = await sendMode()
-  return `${SENDER_NAME} — SB Agency <${address ?? process.env.EMAIL_USER}>`
+  return `${FROM_NAME} <${address ?? process.env.EMAIL_USER}>`
 }
 
 function startOfLocalDay(): Date {
@@ -175,9 +192,9 @@ export function templateFollowup1(t: any, intro: any): { subject: string; body: 
   const first = firstNameOf(t)
   const brand = t.brand.name
   const bodies = [
-    `Hi ${first},\n\nWanted to float this back to the top of your inbox. We're locking in partners for the semester now, and I think ${brand} would land really well on campus.\n\nWorth a quick 15 minutes this week?\n\n${SENDER_NAME}\nSB Agency`,
-    `Hi ${first},\n\nJust circling back — we're routing 500+ shows this year and still have room for a partner like ${brand} in a few big markets.\n\nOpen to a quick call?\n\n${SENDER_NAME}\nSB Agency`,
-    `Hi ${first},\n\nFollowing up in case this got buried. Spring calendars are filling in, and campus feels like a strong fit for ${brand}.\n\nHappy to share a one-pager or hop on a 15-minute call — whatever's easiest.\n\n${SENDER_NAME}\nSB Agency`,
+    `Hi ${first},\n\nWanted to float this back to the top of your inbox. We're locking in partners for the semester now, and I think ${brand} would land really well on campus.\n\nWorth a quick 15 minutes this week?\n\n${SIGNATURE}`,
+    `Hi ${first},\n\nJust circling back — we're routing 500+ shows this year and still have room for a partner like ${brand} in a few big markets.\n\nOpen to a quick call?\n\n${SIGNATURE}`,
+    `Hi ${first},\n\nFollowing up in case this got buried. Spring calendars are filling in, and campus feels like a strong fit for ${brand}.\n\nHappy to share a one-pager or hop on a 15-minute call — whatever's easiest.\n\n${SIGNATURE}`,
   ]
   return { subject: `re: ${intro?.subject ?? `SB Agency x ${brand}`}`, body: pick(bodies, brand) }
 }
@@ -186,8 +203,8 @@ export function templateFollowup2(t: any, intro: any): { subject: string; body: 
   const first = firstNameOf(t)
   const brand = t.brand.name
   const bodies = [
-    `Hi ${first},\n\nLast note from me — I'll stop filling your inbox. If campus ever makes sense for ${brand}, the door's open and I'd love to build something together.\n\nEither way, keep crushing it.\n\n${SENDER_NAME}\nSB Agency`,
-    `Hi ${first},\n\nClosing the loop on this one. If the timing's ever right for ${brand} to get in front of students, just say the word — we'll make it easy.\n\nAll the best,\n${SENDER_NAME}\nSB Agency`,
+    `Hi ${first},\n\nLast note from me — I'll stop filling your inbox. If campus ever makes sense for ${brand}, the door's open and I'd love to build something together.\n\nEither way, keep crushing it.\n\n${SIGNATURE}`,
+    `Hi ${first},\n\nClosing the loop on this one. If the timing's ever right for ${brand} to get in front of students, just say the word — we'll make it easy.\n\nAll the best,\n${SIGNATURE}`,
   ]
   return { subject: `re: ${intro?.subject ?? `SB Agency x ${brand}`}`, body: pick(bodies, brand + '2') }
 }
@@ -225,7 +242,7 @@ export function templateReplyResponse(contactName: string, brandName: string, re
   const first = String(contactName || '').trim().split(/\s+/)[0] || 'there'
   return {
     subject: `re: ${replySubject ?? `SB Agency x ${brandName}`}`,
-    body: `Hi ${first},\n\nGreat to hear from you! I'd love to grab 15 minutes to walk through how we'd put ${brandName} inside our shows this semester \u2014 we run 500+ a year across 100+ college markets, so there's a lot to pick from.\n\nWould Tuesday or Wednesday afternoon work? Happy to flex to your calendar.\n\nBest,\n${SENDER_NAME}\nSB Agency`,
+    body: `Hi ${first},\n\nGreat to hear from you! I'd love to grab 15 minutes to walk through how we'd put ${brandName} inside our shows this semester \u2014 we run 500+ a year across 100+ college markets, so there's a lot to pick from.\n\nWould Tuesday or Wednesday afternoon work? Happy to flex to your calendar.\n\nBest,\n${SIGNATURE}`,
   }
 }
 
@@ -258,8 +275,7 @@ function introEmail(t: any): { subject: string; body: string } {
     `If this isn't relevant for you, just say the word and I won't follow up.`,
     ``,
     `Best,`,
-    SENDER_NAME,
-    `SB Agency`,
+    SIGNATURE,
   ].join('\n')
   return { subject: `SB Agency x ${brand}`, body }
 }
@@ -348,7 +364,7 @@ function followupPrompt(t: any, firstEmail: any): string {
     `TO: ${t.contact.name} at ${t.brand.name}.`,
     `FIRST EMAIL SUBJECT: ${firstEmail?.subject ?? ''}`,
     ``,
-    `Rules: under 60 words, plain text. Friendly, zero pressure, adds one small new angle (timing, a specific school region, or momentum), then a soft ask. No guilt-tripping. Sign off exactly:\n${SENDER_NAME}\nSB Agency`,
+    `Rules: under 60 words, plain text. Friendly, zero pressure, adds one small new angle (timing, a specific school region, or momentum), then a soft ask. No guilt-tripping. Sign off exactly:\n${SIGNATURE}`,
     ``,
     `Return ONLY JSON: {"subject": "...", "body": "..."} — subject should be "re:" + the first subject.`,
   ].join('\n')
@@ -360,7 +376,7 @@ function followup2Prompt(t: any, firstEmail: any): string {
     `TO: ${t.contact.name} at ${t.brand.name}.`,
     `FIRST EMAIL SUBJECT: ${firstEmail?.subject ?? ''}`,
     ``,
-    `Rules: under 45 words, plain text. "Closing the loop" style — graceful, zero pressure, makes clear this is the last note, leaves the door open ("if the timing's ever right..."). Optionally offer to send a one-pager or intro to whoever owns campus partnerships. Sign off exactly:\n${SENDER_NAME}\nSB Agency`,
+    `Rules: under 45 words, plain text. "Closing the loop" style — graceful, zero pressure, makes clear this is the last note, leaves the door open ("if the timing's ever right..."). Optionally offer to send a one-pager or intro to whoever owns campus partnerships. Sign off exactly:\n${SIGNATURE}`,
     ``,
     `Return ONLY JSON: {"subject": "...", "body": "..."} — subject should be "re:" + the first subject.`,
   ].join('\n')
@@ -565,6 +581,11 @@ function htmlBody(text: string, emailId: string, withLogo = false): string {
   const escaped = text
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>')
+    // The signature writes the site bare ("sboyagency.com") and the
+    // address plain, so link them here rather than making the plain-text
+    // copy carry markup it shouldn't have.
+    .replace(/([\w.-]+@[\w.-]+\.\w+)/g, '<a href="mailto:$1">$1</a>')
+    .replace(/(^|[\s|(])(sboyagency\.com)\b/g, '$1<a href="https://sboyagency.com">$2</a>')
     .replace(/\n/g, '<br>\n')
   // Only reference the cid when the logo actually got attached —
   // a dangling cid renders as a broken-image icon, which looks worse
@@ -978,7 +999,7 @@ export async function draftReplyResponse(emailId: string) {
     `WHAT WE'VE SENT THEM SO FAR:\n${thread}`,
     t.brand.goals ? `BRAND DISCOVERY NOTES: ${t.brand.goals}` : '',
     ``,
-    `Write ${SENDER_NAME}'s response. Rules: warm, concise (under 110 words), plain text. Assume the reply was interested-or-curious unless the subject clearly says otherwise. Goal: lock a 15-minute call this week or next — propose two concrete windows (e.g. "Tue or Wed afternoon"). Offer to tailor ideas to their goals. Sign off exactly:\nBest,\n${SENDER_NAME}\nSB Agency`,
+    `Write ${SENDER_NAME}'s response. Rules: warm, concise (under 110 words), plain text. Assume the reply was interested-or-curious unless the subject clearly says otherwise. Goal: lock a 15-minute call this week or next — propose two concrete windows (e.g. "Tue or Wed afternoon"). Offer to tailor ideas to their goals. Sign off exactly:\nBest,\n${SIGNATURE}`,
     ``,
     `Return ONLY JSON: {"subject": "...", "body": "..."} — subject "re:" + their subject.`,
   ].filter(Boolean).join('\n')
@@ -1026,9 +1047,11 @@ export async function resignDrafts() {
   let changed = 0
   for (const d of drafts) {
     const body = d.body ?? ''
-    // Every template ends "<name>\nSB Agency". Anchored to the end so a
-    // stray "SB Agency" mid-paragraph can't be mistaken for the sign-off.
-    const next = body.replace(/\n([^\n]{1,40})\nSB Agency\s*$/, '\n' + SENDER_NAME + '\nSB Agency')
+    // Old drafts end "<name>\nSB Agency". Anchored to the end so a stray
+    // "SB Agency" mid-paragraph can't be mistaken for the sign-off. A
+    // draft already carrying the new block won't match, so this is safe
+    // to run more than once.
+    const next = body.replace(/\n([^\n]{1,40})\nSB Agency\s*$/, '\n' + SIGNATURE)
     if (next !== body) {
       await prisma.emailMessage.update({ where: { id: d.id }, data: { body: next } })
       changed++
