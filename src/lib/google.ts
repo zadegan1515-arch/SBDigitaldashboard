@@ -16,6 +16,11 @@
 // The refresh token lives in the app's own Postgres (Setting table),
 // server-side only: never in the repo, never in a client bundle, never
 // returned by any API this app exposes.
+//
+// Credentials are GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET — deliberately
+// NOT the GOOGLE_* pair, which belongs to NextAuth's dashboard sign-in.
+// Two separate OAuth clients, two separate jobs: clobbering the sign-in
+// credentials would lock the team out of the site.
 
 import { PrismaClient } from '@prisma/client'
 import MailComposer from 'nodemailer/lib/mail-composer'
@@ -26,7 +31,7 @@ const SCOPE = 'https://www.googleapis.com/auth/gmail.send'
 const REDIRECT_PATH = '/api/google/callback'
 
 export function googleConfigured(): boolean {
-  return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
+  return !!(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET)
 }
 
 function siteUrl(): string {
@@ -45,7 +50,7 @@ async function setSetting(key: string, value: string) {
 
 export function googleAuthUrl(): string {
   const p = new URLSearchParams({
-    client_id: process.env.GOOGLE_CLIENT_ID!,
+    client_id: process.env.GMAIL_CLIENT_ID!,
     redirect_uri: siteUrl() + REDIRECT_PATH,
     response_type: 'code',
     scope: SCOPE,
@@ -62,8 +67,8 @@ export async function googleExchangeCode(code: string) {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       code,
-      client_id: process.env.GOOGLE_CLIENT_ID!,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+      client_id: process.env.GMAIL_CLIENT_ID!,
+      client_secret: process.env.GMAIL_CLIENT_SECRET!,
       redirect_uri: siteUrl() + REDIRECT_PATH,
       grant_type: 'authorization_code',
     }),
@@ -117,8 +122,8 @@ async function accessToken(): Promise<string> {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       refresh_token: refresh,
-      client_id: process.env.GOOGLE_CLIENT_ID!,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+      client_id: process.env.GMAIL_CLIENT_ID!,
+      client_secret: process.env.GMAIL_CLIENT_SECRET!,
       grant_type: 'refresh_token',
     }),
   })
