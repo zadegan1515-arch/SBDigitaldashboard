@@ -348,7 +348,7 @@ export async function sendTestEmail(to: string) {
   // purpose — a test open shouldn't move any real open count.
   const attachment = await onePagerAttachment()
   const mark = await logoAttachment()
-  const files = [attachment, mark].filter(Boolean)
+  const files = [attachment, ...(await signatureAssets())].filter(Boolean)
   await deliver({
     from: await fromHeader(),
     to, subject, text: body,
@@ -531,23 +531,49 @@ async function onePagerAttachment(): Promise<{ filename: string; content: Buffer
 //
 // Fetched once per process and cached: the plain-text copy of the email
 // is unchanged, so a client that shows text-only loses nothing.
-const LOGO_URL = 'https://sb-digitaldashboard.vercel.app/materials/sb-logo.png'
+const SITE_ASSETS = 'https://sb-digitaldashboard.vercel.app/materials/'
 const LOGO_CID = 'sblogo'
+const LI_CID = 'iconli'
+const IG_CID = 'iconig'
 
-async function fetchLogo(): Promise<any | null> {
+// LinkedIn from the company signature doc. Instagram is deliberately
+// unlinked: the icon in that doc carries no href either, and guessing a
+// handle that 404s is worse than a plain mark.
+const LINKEDIN_URL = process.env.SIGNATURE_LINKEDIN_URL
+  || 'https://www.linkedin.com/company/sboy-agency/?viewAsMember=true'
+const INSTAGRAM_URL = process.env.SIGNATURE_INSTAGRAM_URL || ''
+
+async function fetchAsset(file: string, cid: string, min = 200): Promise<any | null> {
   try {
-    const res = await fetch(LOGO_URL)
+    const res = await fetch(SITE_ASSETS + file)
     if (!res.ok) return null
     const content = Buffer.from(await res.arrayBuffer())
-    if (content.length < 200) return null
-    return { filename: 'sb-agency.png', content, cid: LOGO_CID, contentDisposition: 'inline' }
+    if (content.length < min) return null
+    return { filename: file, content, cid, contentDisposition: 'inline' }
   } catch { return null }
 }
 
-let logoCache: any | null | undefined
+// All three signature images, fetched once per process. Returned as one
+// array so callers can't accidentally attach the logo without the icons
+// and end up with a half-rendered signature.
+let assetCache: any[] | undefined
+async function signatureAssets(): Promise<any[]> {
+  if (assetCache === undefined) {
+    const [logo, li, ig] = await Promise.all([
+      fetchAsset('sb-logo.png', LOGO_CID),
+      fetchAsset('icon-linkedin.png', LI_CID, 100),
+      fetchAsset('icon-instagram.png', IG_CID, 100),
+    ])
+    assetCache = [logo, li, ig].filter(Boolean)
+  }
+  return assetCache
+}
+
+// True only when the logo itself made it — the signature falls back to
+// plain text otherwise rather than showing broken-image icons.
 async function logoAttachment(): Promise<any | null> {
-  if (logoCache === undefined) logoCache = await fetchLogo()
-  return logoCache
+  const a = await signatureAssets()
+  return a.find(x => x.cid === LOGO_CID) ?? null
 }
 
 function makeTransport() {
@@ -577,27 +603,56 @@ async function domainAcceptsMail(address: string): Promise<boolean> {
 // The HTML twin of the plain-text body: same words, plus the open-
 // tracking pixel. Gmail shows this version; text-only clients get the
 // plain version untouched.
-function htmlBody(text: string, emailId: string, withLogo = false): string {
-  const escaped = text
+function esc(t: string): string {
+  return t
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>')
-    // The signature writes the site bare ("sboyagency.com") and the
-    // address plain, so link them here rather than making the plain-text
-    // copy carry markup it shouldn't have.
-    .replace(/([\w.-]+@[\w.-]+\.\w+)/g, '<a href="mailto:$1">$1</a>')
-    .replace(/(^|[\s|(])(sboyagency\.com)\b/g, '$1<a href="https://sboyagency.com">$2</a>')
     .replace(/\n/g, '<br>\n')
-  // Only reference the cid when the logo actually got attached —
-  // a dangling cid renders as a broken-image icon, which looks worse
-  // than no logo at all.
-  const mark = withLogo
-    ? '<div style="margin-top:16px"><img src="cid:' + LOGO_CID +
-      '" alt="SB Agency" width="120" style="width:120px;height:auto;display:block;border:0"></div>'
-    : ''
+}
+
+// The styled twin of the plain-text SIGNATURE block: logo on top, name
+// bold with the title in regular weight, then contact lines and the
+// social marks — matching the company signature doc. Everything is a
+// cid: reference, so it renders with remote images blocked, which is
+// the default state for a first email from an unknown sender.
+function signatureHtml(): string {
+  const icon = (cid: string, alt: string, href: string) => {
+    const img = '<img src="cid:' + cid + '" alt="' + alt +
+      '" width="20" height="20" style="width:20px;height:20px;border:0;vertical-align:middle">'
+    return href ? '<a href="' + href + '" style="text-decoration:none;margin-right:6px">' + img + '</a>'
+                : '<span style="margin-right:6px;display:inline-block">' + img + '</span>'
+  }
+  return '' +
+    '<div style="margin-top:18px">' +
+      '<img src="cid:' + LOGO_CID + '" alt="SB Agency" width="130" ' +
+        'style="width:130px;height:auto;display:block;border:0;margin-bottom:8px">' +
+      '<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#1a1a1a;line-height:1.55">' +
+        '<span style="font-weight:700">Zach Goldstein</span> | Co-CEO<br>' +
+        'Direct: <a href="tel:+15617168734" style="color:#1a1a1a;text-decoration:none">+1 (561) 716-8734</a>' +
+        ' | <a href="https://sboyagency.com" style="color:#1a1a1a;font-weight:700">sboyagency.com</a><br>' +
+        'Email: <a href="mailto:zachgoldstein@sboyagency.com">zachgoldstein@sboyagency.com</a>' +
+      '</div>' +
+      '<div style="margin-top:8px">' +
+        icon(LI_CID, 'LinkedIn', LINKEDIN_URL) +
+        icon(IG_CID, 'Instagram', INSTAGRAM_URL) +
+      '</div>' +
+    '</div>'
+}
+
+// The HTML twin of the plain-text body: same words, plus the open-
+// tracking pixel. The trailing SIGNATURE is lifted out and re-rendered
+// as signatureHtml() so the two versions can never drift — the draft
+// stays editable as plain text, the email still looks designed.
+function htmlBody(text: string, emailId: string, withLogo = false): string {
+  const at = text.lastIndexOf(SIGNATURE)
+  const hasSig = at >= 0 && withLogo
+  const main = at >= 0 && withLogo ? text.slice(0, at) : text
   return '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.55">' +
-    escaped + mark +
+    esc(main.replace(/\n+$/, '')) +
+    (hasSig ? signatureHtml() : '') +
     '</div><img src="' + SITE_URL + '/api/track?e=' + encodeURIComponent(emailId) + '" width="1" height="1" alt="" style="display:none">'
 }
+
 
 // Send exactly one draft: to + any CC, marked sent, one-pager attached.
 // Shared by "Send all", the per-card Send button, and the 9am cron.
@@ -619,7 +674,7 @@ async function deliverDraft(d: any, _transporter: any, attachment: { filename: s
   // inline underneath the sign-off.
   const attach = attachment
   const mark = await logoAttachment()
-  const files = [attach, mark].filter(Boolean)
+  const files = [attach, ...(await signatureAssets())].filter(Boolean)
   const from = await fromHeader()
   await deliver({
     from, to,
@@ -1024,11 +1079,12 @@ export async function sendReplyEmail(targetId: string, to: string, subject: stri
   })
   const replyCc = AUTO_CC.filter(a => a.toLowerCase() !== to.toLowerCase())
   const replyMark = await logoAttachment()
+  const replyFiles = await signatureAssets()
   await deliver({
     from: await fromHeader(),
     to, ...(replyCc.length ? { cc: replyCc } : {}),
     subject, text: body, html: htmlBody(body, rec.id, !!replyMark),
-    ...(replyMark ? { attachments: [replyMark] } : {}),
+    ...(replyFiles.length ? { attachments: replyFiles } : {}),
   })
   await prisma.emailMessage.update({ where: { id: rec.id }, data: { status: 'sent', sentAt: new Date() } })
   return { ok: true, to }
