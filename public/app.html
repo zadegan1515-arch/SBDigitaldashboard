@@ -2140,6 +2140,30 @@ function renderEmailMode(box) {
           '</div>' +
         '</div>';
 
+      // Sending status: who we send as, and the master on/off switch.
+      var sendState =
+        '<div class="panel panel-pad" style="margin-bottom:12px;border-color:' + (st.paused ? 'var(--accent)' : 'var(--border)') + '">' +
+          '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+            (st.paused
+              ? '<b style="color:var(--accent)">⏸ Sending is paused</b><span style="font-size:12.5px;color:var(--ink-2)">Drafts keep building; nothing goes out until you turn this on.</span>'
+              : '<b style="color:#2f66a8">▶ Sending is live</b>') +
+            '<span style="margin-left:auto"></span>' +
+            '<button class="btn-' + (st.paused ? 'solid' : 'ghost') + '" id="em-pause">' + (st.paused ? 'Turn sending on' : 'Pause sending') + '</button>' +
+          '</div>' +
+          '<div style="margin-top:9px;font-size:12.5px;color:var(--ink-2);display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+            'Sending as <b>' + esc(st.address || '—') + '</b>' +
+            (st.mode === 'gmail'
+              ? '<span class="status confirmed">Google · send-only</span>'
+              : '<span class="status proposed">app password · full mailbox</span>') +
+            '<span style="margin-left:auto"></span>' +
+            (st.google && st.google.connected
+              ? '<button class="btn-ghost" id="em-gdisc">Disconnect Google</button>'
+              : (st.google && st.google.configured
+                  ? '<a class="btn-solid" href="/api/google/start">Connect Google account</a>'
+                  : '<span style="color:var(--ink-3)">Add GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET in Vercel to enable send-only Google</span>')) +
+          '</div>' +
+        '</div>';
+
       // The team cheat-sheet: how outreach works, in one glance.
       var guide =
         '<div class="panel panel-pad" style="margin-bottom:12px">' +
@@ -2157,7 +2181,7 @@ function renderEmailMode(box) {
               '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">' +
                 '<b style="color:var(--accent)">2 · Nothing sends itself</b><br>' +
                 'Drafts wait here until a person acts: <b>Send</b> on one card, <b>Send all now</b>, or <b>Approve → 9am</b> ' +
-                '(goes out automatically Tue–Thu ~9am ET — the best reply window).</div>' +
+                '(they then drip out Tue–Thu across business hours, a few at a time, so it never looks like a blast).</div>' +
               '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">' +
                 '<b style="color:var(--accent)">3 · Before you send</b><br>' +
                 'Check the <b>To</b> person is right (switching fixes the greeting), CC anyone useful, ' +
@@ -2286,7 +2310,7 @@ function renderEmailMode(box) {
           }).join('')
         : '';
 
-      box.innerHTML = head + guide + drafts + exhausted + replies + recent;
+      box.innerHTML = head + sendState + guide + drafts + exhausted + replies + recent;
 
       // Draft cards start closed; clicking the header row opens one.
       box.querySelectorAll('[data-emtoggle]').forEach(function (h) {
@@ -2344,6 +2368,22 @@ function renderEmailMode(box) {
           loadOutreach();
         }).catch(function (e) { toast(e.message); btn.disabled = false; });
       };
+      box.querySelector('#em-pause').onclick = function () {
+        var b = this;
+        if (st.paused && !window.confirm('Turn sending ON? Approved and drafted emails can go out from ' + (st.address || 'the connected account') + '.')) return;
+        b.disabled = true;
+        api('setSendingPaused', { paused: !st.paused })
+          .then(function (r) { toast(r.paused ? 'Sending paused' : 'Sending is live'); loadOutreach(); })
+          .catch(function (e) { toast(e.message); b.disabled = false; });
+      };
+      var gd = box.querySelector('#em-gdisc');
+      if (gd) gd.onclick = function () {
+        if (!window.confirm('Disconnect the Google account? Sending falls back to the app-password mailbox.')) return;
+        gd.disabled = true;
+        api('disconnectGoogle').then(function () { toast('Google disconnected'); loadOutreach(); })
+          .catch(function (e) { toast(e.message); gd.disabled = false; });
+      };
+
       box.querySelector('#em-approve').onclick = function () {
         var btn = this; btn.disabled = true;
         api('approveAllDrafts').then(function (r) {
@@ -2977,6 +3017,20 @@ function gotoView(id) {
   if (id === 'materials') showView('materials');
   if (id === 'team') loadTeam();
 }
+
+// Coming back from the Google consent screen.
+(function () {
+  var p = new URLSearchParams(location.search);
+  var g = p.get('google');
+  if (!g) return;
+  history.replaceState({}, '', location.pathname);
+  if (g === 'connected') {
+    toast('Google connected — sending as ' + (p.get('as') || 'the connected account'));
+    setTimeout(function () { gotoView('outreach'); }, 300);
+  } else {
+    toast('Google connect failed: ' + g);
+  }
+})();
 
 document.querySelectorAll('.nav-item[data-view]').forEach(function (b) {
   b.addEventListener('click', function () { gotoView(b.getAttribute('data-view')); });
