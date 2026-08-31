@@ -93,7 +93,7 @@ const FROM_NAME = process.env.EMAIL_FROM_NAME || `${SENDER_NAME} — SB Agency`
 const SIGNATURE = process.env.EMAIL_SIGNATURE || [
   'Zach Goldstein | Co-CEO',
   'Direct: +1 (561) 716-8734 | sboyagency.com',
-  'Email: zachgoldstein@sboyagency.com',
+  'Email: zach@sboyagency.com',
 ].join('\n')
 
 async function fromHeader(): Promise<string> {
@@ -536,12 +536,10 @@ const LOGO_CID = 'sblogo'
 const LI_CID = 'iconli'
 const IG_CID = 'iconig'
 
-// LinkedIn from the company signature doc. Instagram is deliberately
-// unlinked: the icon in that doc carries no href either, and guessing a
-// handle that 404s is worse than a plain mark.
+// Both from the company signature doc / Leo.
 const LINKEDIN_URL = process.env.SIGNATURE_LINKEDIN_URL
   || 'https://www.linkedin.com/company/sboy-agency/?viewAsMember=true'
-const INSTAGRAM_URL = process.env.SIGNATURE_INSTAGRAM_URL || ''
+const INSTAGRAM_URL = process.env.SIGNATURE_INSTAGRAM_URL || 'https://www.instagram.com/sboyagency/'
 
 async function fetchAsset(file: string, cid: string, min = 200): Promise<any | null> {
   try {
@@ -630,7 +628,7 @@ function signatureHtml(): string {
         '<span style="font-weight:700">Zach Goldstein</span> | Co-CEO<br>' +
         'Direct: <a href="tel:+15617168734" style="color:#1a1a1a;text-decoration:none">+1 (561) 716-8734</a>' +
         ' | <a href="https://sboyagency.com" style="color:#1a1a1a;font-weight:700">sboyagency.com</a><br>' +
-        'Email: <a href="mailto:zachgoldstein@sboyagency.com">zachgoldstein@sboyagency.com</a>' +
+        'Email: <a href="mailto:zach@sboyagency.com">zach@sboyagency.com</a>' +
       '</div>' +
       '<div style="margin-top:8px">' +
         icon(LI_CID, 'LinkedIn', LINKEDIN_URL) +
