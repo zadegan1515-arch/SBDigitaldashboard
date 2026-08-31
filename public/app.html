@@ -2093,6 +2093,28 @@ function openNewDealForm() {
 // --- email outreach mode ---------------------------------------
 
 // Quick deliverability lint, computed client-side per draft.
+// The signature exactly as it lands in the recipient's inbox. Shown under
+// the draft so what you approve here is what actually goes out — the
+// textarea holds the plain-text copy, this is its rendered twin.
+function signaturePreview() {
+  var v = '?v=2026-08-31';
+  return '<div style="margin-top:10px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--paper,#fff)">' +
+    '<div style="color:var(--ink-3);font-size:11.5px;margin-bottom:8px">Signature added automatically</div>' +
+    '<img src="/materials/sb-logo.png' + v + '" alt="SB Agency" style="width:130px;height:auto;display:block;margin-bottom:8px">' +
+    '<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.55;color:var(--ink)">' +
+      '<b>Zach Goldstein</b> | Co-CEO<br>' +
+      'Direct: +1 (561) 716-8734 | <b>sboyagency.com</b><br>' +
+      'Email: <a href="mailto:zach@sboyagency.com">zach@sboyagency.com</a>' +
+    '</div>' +
+    '<div style="margin-top:8px">' +
+      '<a href="https://www.linkedin.com/company/sboy-agency/" target="_blank" rel="noopener" style="margin-right:6px">' +
+        '<img src="/materials/icon-linkedin.png' + v + '" alt="LinkedIn" style="width:20px;height:20px;vertical-align:middle"></a>' +
+      '<a href="https://www.instagram.com/sboyagency/" target="_blank" rel="noopener">' +
+        '<img src="/materials/icon-instagram.png' + v + '" alt="Instagram" style="width:20px;height:20px;vertical-align:middle"></a>' +
+    '</div>' +
+  '</div>';
+}
+
 function lintDraft(subject, body) {
   var warns = [];
   if ((subject || '').length > 60) warns.push('Subject over 60 characters — may clip on phones');
@@ -2252,6 +2274,7 @@ function renderEmailMode(box) {
               recip +
               '<input class="field-box" data-emfield="subject" value="' + esc(d.subject || '') + '" style="margin-bottom:8px;font-weight:600">' +
               '<textarea class="field-box" data-emfield="body" rows="' + Math.max(4, Math.ceil((d.body || '').length / 80)) + '">' + esc(d.body || '') + '</textarea>' +
+              signaturePreview() +
               (sug
                 ? '<div style="margin-top:8px;padding:10px 12px;background:var(--accent-soft,#fdf0ec);border:1px solid var(--border);border-radius:8px;font-size:12.5px">' +
                     '<b style="color:var(--accent)">✦ Angle for ' + esc(d.target.brand.name) + ':</b> ' + esc(sug.tip) +
