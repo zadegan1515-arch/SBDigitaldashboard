@@ -27,7 +27,17 @@ import MailComposer from 'nodemailer/lib/mail-composer'
 
 const prisma = new PrismaClient()
 
-const SCOPE = 'https://www.googleapis.com/auth/gmail.send'
+// Two scopes, both narrow, on the campaign mailbox only:
+//   gmail.send     — send as that address; cannot read anything
+//   gmail.readonly — read that mailbox so replies can be logged
+// Note what is NOT here: mail.google.com (full account, what IMAP over
+// OAuth would force) and any modify/delete scope. The app can read and
+// send; it cannot alter or delete a single message. Revocable in one
+// click at myaccount.google.com/permissions.
+const SCOPE = [
+  'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/gmail.readonly',
+].join(' ')
 const REDIRECT_PATH = '/api/google/callback'
 
 export function googleConfigured(): boolean {
@@ -178,4 +188,64 @@ export async function sendViaGmail(mail: OutgoingMail) {
     throw new Error(`Gmail API ${res.status}: ${t.slice(0, 200)}`)
   }
   return res.json()
+}
+
+
+// ---- reading replies -------------------------------------------------
+
+// Gmail's REST API instead of IMAP: IMAP over OAuth requires the broad
+// mail.google.com scope, which would hand over the whole account. This
+// path stays inside gmail.readonly.
+//
+// Returns light metadata only — sender, subject, date. Message bodies
+// are never fetched or stored; the dashboard only needs to know that a
+// given contact replied.
+export type ReplyMeta = { from: string; subject: string | null; date: Date }
+
+export async function gmailListReplies(since: Date, max = 100): Promise<ReplyMeta[]> {
+  const token = await accessToken()
+  const d = since
+  const q = `in:inbox after:${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
+
+  const listRes = await fetch(
+    'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=' + max +
+      '&q=' + encodeURIComponent(q),
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  if (!listRes.ok) {
+    const t = await listRes.text()
+    throw new Error(`Gmail list ${listRes.status}: ${t.slice(0, 200)}`)
+  }
+  const list: any = await listRes.json()
+  const ids: string[] = (list.messages ?? []).map((m: any) => m.id)
+  if (!ids.length) return []
+
+  const out: ReplyMeta[] = []
+  // Sequential-ish in small batches: Gmail rate-limits hard on bursts,
+  // and this runs once a day against a mailbox with light volume.
+  for (let i = 0; i < ids.length; i += 10) {
+    const chunk = ids.slice(i, i + 10)
+    const metas = await Promise.all(chunk.map(async id => {
+      const r = await fetch(
+        'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + id +
+          '?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date',
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
+      if (!r.ok) return null
+      const j: any = await r.json()
+      const h: any[] = j.payload?.headers ?? []
+      const get = (n: string) => h.find(x => String(x.name).toLowerCase() === n)?.value ?? null
+      const fromRaw = get('from') ?? ''
+      const m = fromRaw.match(/<([^>]+)>/)
+      const from = (m ? m[1] : fromRaw).trim().toLowerCase()
+      if (!from) return null
+      return {
+        from,
+        subject: get('subject'),
+        date: j.internalDate ? new Date(Number(j.internalDate)) : new Date(),
+      } as ReplyMeta
+    }))
+    for (const m of metas) if (m) out.push(m)
+  }
+  return out
 }

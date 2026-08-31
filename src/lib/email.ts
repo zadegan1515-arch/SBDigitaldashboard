@@ -19,7 +19,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import nodemailer from 'nodemailer'
 import { ImapFlow } from 'imapflow'
 import { resolveMx } from 'dns/promises'
-import { sendViaGmail, googleStatus, type OutgoingMail } from '@/lib/google'
+import { sendViaGmail, googleStatus, type OutgoingMail, gmailListReplies } from '@/lib/google'
 
 const prisma = new PrismaClient()
 
@@ -808,21 +808,82 @@ function replyMailbox(): { user: string; pass: string } | null {
   return user && pass ? { user, pass } : null
 }
 
-export async function checkReplies() {
-  const box = replyMailbox()
-  if (!box) return { configured: false, replies: 0, hint: 'Set REPLY_IMAP_USER and REPLY_IMAP_APP_PASSWORD to the tracking mailbox.' }
+// Logs a single inbound reply against the target it belongs to.
+// Shared by both readers so the Gmail and IMAP paths can't drift.
+async function recordReply(targetId: string, from: string, subject: string | null, when: Date) {
+  // One record per target per subject — a thread that gets several
+  // messages shouldn't show up as several separate replies.
+  const dupe = await prisma.emailMessage.findFirst({
+    where: { targetId, direction: 'in', subject },
+  })
+  if (dupe) return false
 
+  await prisma.emailMessage.create({
+    data: {
+      targetId, direction: 'in', kind: 'reply', status: 'received',
+      fromEmail: from, subject, sentAt: when,
+    },
+  })
+
+  const t = await prisma.target.findUnique({ where: { id: targetId } })
+  if (t && !['replied', 'converted', 'declined', 'dead'].includes(t.status)) {
+    await prisma.target.update({
+      where: { id: targetId },
+      data: { status: 'replied', repliedAt: t.repliedAt ?? new Date() },
+    })
+    await prisma.targetEvent.create({
+      data: { targetId, kind: 'status', fromStatus: t.status, toStatus: 'replied', detail: 'email reply' },
+    })
+    await prisma.partner.upsert({
+      where: { brandId: t.brandId },
+      create: { brandId: t.brandId, lifecycle: 'in_network' },
+      update: {},
+    })
+  }
+  return true
+}
+
+export async function checkReplies() {
   // Everyone we've emailed, keyed by address.
   const sentOut = await prisma.emailMessage.findMany({
     where: { direction: 'out', status: 'sent', toEmail: { not: null } },
     select: { targetId: true, toEmail: true },
   })
-  if (sentOut.length === 0) return { configured: true, replies: 0 }
   const byEmail = new Map<string, string>()
   for (const m of sentOut) byEmail.set(m.toEmail!.toLowerCase(), m.targetId)
 
   const lastCheck = await getSetting('emailLastCheck')
   const since = lastCheck ? new Date(lastCheck) : new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+
+  // Preferred path: the connected Google account, read through the Gmail
+  // API on the gmail.readonly scope. No password anywhere, and the app
+  // can't modify or delete anything in the mailbox.
+  const g = await googleStatus()
+  if (g.connected) {
+    if (sentOut.length === 0) return { configured: true, via: 'gmail', replies: 0 }
+    let replies = 0
+    try {
+      for (const msg of await gmailListReplies(since)) {
+        const targetId = byEmail.get(msg.from)
+        if (!targetId) continue
+        if (await recordReply(targetId, msg.from, msg.subject, msg.date)) replies++
+      }
+    } catch (err: any) {
+      return { configured: true, via: 'gmail', replies, error: String(err?.message ?? 'Gmail read failed').slice(0, 200) }
+    }
+    await setSetting('emailLastCheck', new Date().toISOString())
+    return { configured: true, via: 'gmail', replies }
+  }
+
+  // Fallback: IMAP with an app password, for a mailbox connected that way.
+  const box = replyMailbox()
+  if (!box) {
+    return {
+      configured: false, replies: 0,
+      hint: 'Connect the Google account on the Outreach page, or set REPLY_IMAP_USER / REPLY_IMAP_APP_PASSWORD.',
+    }
+  }
+  if (sentOut.length === 0) return { configured: true, via: 'imap', replies: 0 }
 
   const client = new ImapFlow({
     host: 'imap.gmail.com', port: 993, secure: true,
@@ -840,39 +901,8 @@ export async function checkReplies() {
         if (!from) continue
         const targetId = byEmail.get(from)
         if (!targetId) continue
-
-        // One reply record per target per message date-ish; skip if we
-        // already logged a reply for this target with this subject.
-        const subject = msg.envelope?.subject ?? null
-        const dupe = await prisma.emailMessage.findFirst({
-          where: { targetId, direction: 'in', subject },
-        })
-        if (dupe) continue
-
-        await prisma.emailMessage.create({
-          data: {
-            targetId, direction: 'in', kind: 'reply', status: 'received',
-            fromEmail: from, subject,
-            sentAt: msg.envelope?.date ?? new Date(),
-          },
-        })
-
-        const t = await prisma.target.findUnique({ where: { id: targetId } })
-        if (t && !['replied', 'converted', 'declined', 'dead'].includes(t.status)) {
-          await prisma.target.update({
-            where: { id: targetId },
-            data: { status: 'replied', repliedAt: t.repliedAt ?? new Date() },
-          })
-          await prisma.targetEvent.create({
-            data: { targetId, kind: 'status', fromStatus: t.status, toStatus: 'replied', detail: 'email reply' },
-          })
-          await prisma.partner.upsert({
-            where: { brandId: t.brandId },
-            create: { brandId: t.brandId, lifecycle: 'in_network' },
-            update: {},
-          })
-        }
-        replies++
+        const ok = await recordReply(targetId, from, msg.envelope?.subject ?? null, msg.envelope?.date ?? new Date())
+        if (ok) replies++
       }
     } finally {
       lock.release()
@@ -880,12 +910,13 @@ export async function checkReplies() {
     await client.logout()
   } catch (err: any) {
     try { await client.logout() } catch {}
-    return { configured: true, replies, error: String(err?.message ?? 'IMAP failed').slice(0, 200) }
+    return { configured: true, via: 'imap', replies, error: String(err?.message ?? 'IMAP failed').slice(0, 200) }
   }
 
   await setSetting('emailLastCheck', new Date().toISOString())
-  return { configured: true, replies }
+  return { configured: true, via: 'imap', replies }
 }
+
 
 // Draft an intro for ONE specific brand, on demand (the brand page's
 // "✉ Draft intro email" button). Respects the one-email-per-brand rule.
@@ -1132,7 +1163,10 @@ export async function emailStatus() {
   const totalOpened = await prisma.emailMessage.count({ where: { direction: 'out', status: 'sent', opens: { gt: 0 } } })
   return {
     configured: true, address, mode, paused, google,
-    replyBox: process.env.REPLY_IMAP_USER || process.env.EMAIL_USER || null,
+    // Where replies are read from: the connected Google account when
+    // there is one, otherwise whatever IMAP mailbox is configured.
+    replyBox: google.connected ? google.address : (process.env.REPLY_IMAP_USER || process.env.EMAIL_USER || null),
+    replyVia: google.connected ? 'gmail' : (replyMailbox() ? 'imap' : null),
     cap, sentToday, drafts, approved, totalSent, totalReplies, totalOpened,
     lastCheck: await getSetting('emailLastCheck'),
   }
