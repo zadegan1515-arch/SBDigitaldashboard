@@ -19,6 +19,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import nodemailer from 'nodemailer'
 import { ImapFlow } from 'imapflow'
 import { resolveMx } from 'dns/promises'
+import { sendViaGmail, googleStatus, type OutgoingMail } from '@/lib/google'
 
 const prisma = new PrismaClient()
 
@@ -39,11 +40,48 @@ const SENDER_NAME = process.env.EMAIL_SENDER_NAME || 'Leo'
 // per-draft CCs.
 const AUTO_CC = ['elizabeth@sboyagency.com', 'jackson@sboyagency.com']
 
+// Two ways to send, in priority order:
+//   1. Google OAuth, scope gmail.send only — cannot read the mailbox.
+//      This is how we send as Zach without holding his inbox.
+//   2. SMTP with an app password (EMAIL_USER/EMAIL_APP_PASSWORD) — only
+//      for a mailbox whose owner is fine with full access, e.g. Leo's.
+export async function sendMode(): Promise<{ mode: 'gmail' | 'smtp' | 'none'; address: string | null }> {
+  const g = await googleStatus()
+  if (g.connected) return { mode: 'gmail', address: g.address ?? null }
+  if (process.env.EMAIL_USER && process.env.EMAIL_APP_PASSWORD) return { mode: 'smtp', address: process.env.EMAIL_USER }
+  return { mode: 'none', address: null }
+}
+
 export function emailConfigured(): boolean {
   return !!(process.env.EMAIL_USER && process.env.EMAIL_APP_PASSWORD)
 }
 export function emailAddress(): string | null {
   return process.env.EMAIL_USER ?? null
+}
+
+// A hard stop that outranks everything: while this is on, nothing leaves
+// the building — not the per-card Send button, not "Send all", not the
+// morning cron. Drafting, discovery and every other feature keep running.
+export async function sendingPaused(): Promise<boolean> {
+  return (await getSetting('sendingPaused')) !== '0'   // default: PAUSED
+}
+export async function setSendingPaused(paused: boolean) {
+  await setSetting('sendingPaused', paused ? '1' : '0')
+  return { paused }
+}
+
+// One door for every outgoing message, whichever transport is live.
+async function deliver(mail: OutgoingMail) {
+  const { mode } = await sendMode()
+  if (mode === 'gmail') return sendViaGmail(mail)
+  if (mode === 'smtp') return makeTransport().sendMail(mail as any)
+  throw new Error('No sending account connected — connect Google on the Outreach page.')
+}
+
+// The From header follows whichever account is actually sending.
+async function fromHeader(): Promise<string> {
+  const { address } = await sendMode()
+  return `${SENDER_NAME} — SB Agency <${address ?? process.env.EMAIL_USER}>`
 }
 
 function startOfLocalDay(): Date {
@@ -217,6 +255,8 @@ function introEmail(t: any): { subject: string; body: string } {
     ``,
     `Let me know your availability next week, and we can set up a call.`,
     ``,
+    `If this isn't relevant for you, just say the word and I won't follow up.`,
+    ``,
     `Best,`,
     SENDER_NAME,
     `SB Agency`,
@@ -274,7 +314,9 @@ export async function suggestForDraft(emailId: string) {
 // first waiting draft as the sample (untouched), or a filled template
 // if the queue is empty. Never counts against the daily cap.
 export async function sendTestEmail(to: string) {
-  if (!emailConfigured()) throw new Error('Email is not configured')
+  if (await sendingPaused()) throw new Error('Sending is paused — turn it on in Outreach → ✉ Email when you\'re ready to go live.')
+  const { mode } = await sendMode()
+  if (mode === 'none') throw new Error('No sending account connected')
   if (!to || !/@/.test(to)) throw new Error('Valid address required')
 
   const sample = await prisma.emailMessage.findFirst({
@@ -285,13 +327,9 @@ export async function sendTestEmail(to: string) {
   const subject = sample ? `[TEST] ${sample.subject}` : '[TEST] SB Agency outreach preview'
   const body = sample?.body ?? 'This is a preview of the SB Agency outreach email.'
 
-  const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com', port: 465, secure: true,
-    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_APP_PASSWORD },
-  })
   const attachment = await onePagerAttachment()
-  await transporter.sendMail({
-    from: `${SENDER_NAME} — SB Agency <${process.env.EMAIL_USER}>`,
+  await deliver({
+    from: await fromHeader(),
     to, subject, text: body,
     ...(attachment ? { attachments: [attachment] } : {}),
   })
@@ -325,7 +363,8 @@ function followup2Prompt(t: any, firstEmail: any): string {
 // Drafts up to `limit` emails per call (Claude calls are slow; callers
 // loop until done=true). Follow-ups first — momentum beats new names.
 export async function draftDailyEmails(limit = 5) {
-  if (!emailConfigured()) return { configured: false, drafted: 0, done: true }
+  const { mode } = await sendMode()
+  if (mode === 'none') return { configured: false, drafted: 0, done: true }
   // No API key just means templates do the writing — never a hard stop.
 
   const cap = await currentDailyCap()
@@ -371,7 +410,7 @@ export async function draftDailyEmails(limit = 5) {
       await prisma.emailMessage.create({
         data: {
           targetId: t.id, direction: 'out', kind: 'followup', status: 'draft',
-          toEmail: t.contact.email, fromEmail: emailAddress(),
+          toEmail: t.contact.email, fromEmail: (await sendMode()).address,
           subject: parsed.subject, body: parsed.body,
         },
       })
@@ -384,7 +423,7 @@ export async function draftDailyEmails(limit = 5) {
       await prisma.emailMessage.create({
         data: {
           targetId: t.id, direction: 'out', kind: 'followup2', status: 'draft',
-          toEmail: t.contact.email, fromEmail: emailAddress(),
+          toEmail: t.contact.email, fromEmail: (await sendMode()).address,
           subject: parsed.subject, body: parsed.body,
         },
       })
@@ -432,7 +471,7 @@ export async function draftDailyEmails(limit = 5) {
       await prisma.emailMessage.create({
         data: {
           targetId: t.id, direction: 'out', kind: 'intro', status: 'draft',
-          toEmail: t.contact.email, fromEmail: emailAddress(),
+          toEmail: t.contact.email, fromEmail: (await sendMode()).address,
           subject: filled.subject, body: filled.body,
           suggestion,
         },
@@ -501,7 +540,7 @@ function htmlBody(text: string, emailId: string): string {
 
 // Send exactly one draft: to + any CC, marked sent, one-pager attached.
 // Shared by "Send all", the per-card Send button, and the 9am cron.
-async function deliverDraft(d: any, transporter: any, attachment: { filename: string; content: Buffer } | null) {
+async function deliverDraft(d: any, _transporter: any, attachment: { filename: string; content: Buffer } | null) {
   const to = d.toEmail || d.target.contact.email
   if (!to) throw new Error('No recipient address on this draft')
   if (!(await domainAcceptsMail(to))) throw new Error(`${to} — domain has no mail server (bounce protection)`)
@@ -517,18 +556,19 @@ async function deliverDraft(d: any, transporter: any, attachment: { filename: st
   })
   // The one-pager rides on every email, per Leo's call.
   const attach = attachment
-  await transporter.sendMail({
-    from: `${SENDER_NAME} — SB Agency <${process.env.EMAIL_USER}>`,
-    to,
+  const from = await fromHeader()
+  await deliver({
+    from, to,
     ...(cc.length ? { cc } : {}),
     subject: d.subject ?? '',
     text: d.body ?? '',
     html: htmlBody(d.body ?? '', d.id),
     ...(attach ? { attachments: [attach] } : {}),
   })
+  const { address } = await sendMode()
   await prisma.emailMessage.update({
     where: { id: d.id },
-    data: { status: 'sent', sentAt: new Date(), toEmail: to, fromEmail: emailAddress() },
+    data: { status: 'sent', sentAt: new Date(), toEmail: to, fromEmail: address },
   })
   return { to, cc }
 }
@@ -547,7 +587,9 @@ export async function recordOpen(emailId: string) {
 
 // One email, by draft id — the per-card Send button.
 export async function sendOneEmail(emailId: string) {
-  if (!emailConfigured()) throw new Error('Email is not configured')
+  if (await sendingPaused()) throw new Error('Sending is paused — turn it on in Outreach → ✉ Email when you\'re ready to go live.')
+  const { mode } = await sendMode()
+  if (mode === 'none') throw new Error('No sending account connected — connect Google on the Outreach page.')
   const d = await prisma.emailMessage.findUnique({
     where: { id: emailId },
     include: { target: { include: { contact: true, brand: true } } },
@@ -581,8 +623,16 @@ export async function approveAllDrafts() {
 
 // The auto-send cron: sends ONLY approved emails (drafts Leo hasn't
 // approved stay put).
+// The drip. The cron fires hourly through business hours; each firing
+// sends a random 1-3 approved emails and sometimes none at all, so the
+// day's volume lands in a human-looking pattern instead of one 9am blast
+// (which is what tips spam filters off to bulk sending).
 export async function sendScheduledEmails() {
-  return sendBatch(['approved'])
+  if (Math.random() < 0.25) {
+    return { configured: true, sent: 0, failed: 0, skippedThisHour: true }
+  }
+  const n = 1 + Math.floor(Math.random() * 3)
+  return sendBatch(['approved'], n)
 }
 
 // "Send all now": sends everything waiting — drafts and approved alike.
@@ -590,8 +640,10 @@ export async function sendApprovedEmails() {
   return sendBatch(['draft', 'approved'])
 }
 
-async function sendBatch(statuses: string[]) {
-  if (!emailConfigured()) return { configured: false, sent: 0, failed: 0 }
+async function sendBatch(statuses: string[], limit?: number) {
+  if (await sendingPaused()) return { configured: true, paused: true, sent: 0, failed: 0, errors: ['Sending is paused'] }
+  const { mode } = await sendMode()
+  if (mode === 'none') return { configured: false, sent: 0, failed: 0 }
 
   const transporter = makeTransport()
   const attachment = await onePagerAttachment()
@@ -600,6 +652,7 @@ async function sendBatch(statuses: string[]) {
     where: { direction: 'out', status: { in: statuses } },
     include: { target: { include: { contact: true, brand: true } } },
     orderBy: { createdAt: 'asc' },
+    ...(limit ? { take: limit } : {}),
   })
 
   let sent = 0, failed = 0
@@ -625,8 +678,22 @@ async function sendBatch(statuses: string[]) {
 // Reads the inbox over IMAP and matches senders against people we've
 // emailed. A match marks the target replied (which surfaces it in
 // "Needs action today") and stops any future follow-up to them.
+// Replies are detected by reading a dedicated TRACKING mailbox — never
+// the sending account's inbox. The sender sets one Gmail filter that
+// forwards outreach replies there; they keep every reply themselves, and
+// this app never holds read access to a personal inbox.
+//   REPLY_IMAP_USER / REPLY_IMAP_APP_PASSWORD  → the tracking mailbox
+// Falls back to EMAIL_USER/EMAIL_APP_PASSWORD only when those are the
+// same mailbox we already send from with an app password.
+function replyMailbox(): { user: string; pass: string } | null {
+  const user = process.env.REPLY_IMAP_USER || process.env.EMAIL_USER
+  const pass = process.env.REPLY_IMAP_APP_PASSWORD || process.env.EMAIL_APP_PASSWORD
+  return user && pass ? { user, pass } : null
+}
+
 export async function checkReplies() {
-  if (!emailConfigured()) return { configured: false, replies: 0 }
+  const box = replyMailbox()
+  if (!box) return { configured: false, replies: 0, hint: 'Set REPLY_IMAP_USER and REPLY_IMAP_APP_PASSWORD to the tracking mailbox.' }
 
   // Everyone we've emailed, keyed by address.
   const sentOut = await prisma.emailMessage.findMany({
@@ -642,7 +709,7 @@ export async function checkReplies() {
 
   const client = new ImapFlow({
     host: 'imap.gmail.com', port: 993, secure: true,
-    auth: { user: process.env.EMAIL_USER!, pass: process.env.EMAIL_APP_PASSWORD! },
+    auth: { user: box.user, pass: box.pass },
     logger: false,
   })
 
@@ -706,7 +773,8 @@ export async function checkReplies() {
 // Draft an intro for ONE specific brand, on demand (the brand page's
 // "✉ Draft intro email" button). Respects the one-email-per-brand rule.
 export async function draftBrandIntro(brandId: string) {
-  if (!emailConfigured()) throw new Error('Email is not configured')
+  const { mode } = await sendMode()
+  if (mode === 'none') throw new Error('No sending account connected — connect Google on the Outreach page.')
   const b = await prisma.brand.findUnique({ where: { id: brandId } })
   if (b && ((b as any).doNotEmail || /skip/i.test(b.notes ?? ''))) {
     throw new Error('This brand is marked do-not-email (flag or "skip" in notes). Clear that first.')
@@ -730,7 +798,7 @@ export async function draftBrandIntro(brandId: string) {
   const draft = await prisma.emailMessage.create({
     data: {
       targetId: t.id, direction: 'out', kind: 'intro', status: 'draft',
-      toEmail: t.contact.email, fromEmail: emailAddress(),
+      toEmail: t.contact.email, fromEmail: (await sendMode()).address,
       subject: filled.subject, body: filled.body, suggestion,
     },
   })
@@ -819,7 +887,7 @@ export async function emailDifferentContact(targetId: string, contactId: string)
   const draft = await prisma.emailMessage.create({
     data: {
       targetId: t.id, direction: 'out', kind: 'intro', status: 'draft',
-      toEmail: contact.email, fromEmail: emailAddress(),
+      toEmail: contact.email, fromEmail: (await sendMode()).address,
       subject: filled.subject, body: filled.body, suggestion,
     },
   })
@@ -841,7 +909,7 @@ export async function draftFinalNudge(targetId: string) {
   const draft = await prisma.emailMessage.create({
     data: {
       targetId: t.id, direction: 'out', kind: 'followup3', status: 'draft',
-      toEmail: t.contact.email, fromEmail: emailAddress(),
+      toEmail: t.contact.email, fromEmail: (await sendMode()).address,
       subject: parsed.subject, body: parsed.body,
     },
   })
@@ -879,19 +947,20 @@ export async function draftReplyResponse(emailId: string) {
 
 // Send that response (or Leo's edited version of it).
 export async function sendReplyEmail(targetId: string, to: string, subject: string, body: string) {
-  if (!emailConfigured()) throw new Error('Email is not configured')
+  if (await sendingPaused()) throw new Error('Sending is paused — turn it on in Outreach → ✉ Email when you\'re ready to go live.')
+  const { mode } = await sendMode()
+  if (mode === 'none') throw new Error('No sending account connected')
   if (!to || !/@/.test(to)) throw new Error('Valid address required')
   if (!(await domainAcceptsMail(to))) throw new Error(`${to} — domain has no mail server`)
-  const transporter = makeTransport()
   const rec = await prisma.emailMessage.create({
     data: {
       targetId, direction: 'out', kind: 'response', status: 'draft',
-      toEmail: to, fromEmail: emailAddress(), subject, body,
+      toEmail: to, fromEmail: (await sendMode()).address, subject, body,
     },
   })
   const replyCc = AUTO_CC.filter(a => a.toLowerCase() !== to.toLowerCase())
-  await transporter.sendMail({
-    from: `${SENDER_NAME} — SB Agency <${process.env.EMAIL_USER}>`,
+  await deliver({
+    from: await fromHeader(),
     to, ...(replyCc.length ? { cc: replyCc } : {}),
     subject, text: body, html: htmlBody(body, rec.id),
   })
@@ -902,7 +971,10 @@ export async function sendReplyEmail(targetId: string, to: string, subject: stri
 // ---- status ----------------------------------------------------
 
 export async function emailStatus() {
-  if (!emailConfigured()) return { configured: false }
+  const { mode, address } = await sendMode()
+  const paused = await sendingPaused()
+  const google = await googleStatus()
+  if (mode === 'none') return { configured: false, paused, google }
   const cap = await currentDailyCap()
   const sentToday = await prisma.emailMessage.count({
     where: { direction: 'out', status: 'sent', sentAt: { gte: startOfLocalDay() } },
@@ -913,7 +985,8 @@ export async function emailStatus() {
   const totalReplies = await prisma.emailMessage.count({ where: { direction: 'in' } })
   const totalOpened = await prisma.emailMessage.count({ where: { direction: 'out', status: 'sent', opens: { gt: 0 } } })
   return {
-    configured: true, address: emailAddress(),
+    configured: true, address, mode, paused, google,
+    replyBox: process.env.REPLY_IMAP_USER || process.env.EMAIL_USER || null,
     cap, sentToday, drafts, approved, totalSent, totalReplies, totalOpened,
     lastCheck: await getSetting('emailLastCheck'),
   }
