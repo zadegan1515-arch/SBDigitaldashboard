@@ -327,11 +327,17 @@ export async function sendTestEmail(to: string) {
   const subject = sample ? `[TEST] ${sample.subject}` : '[TEST] SB Agency outreach preview'
   const body = sample?.body ?? 'This is a preview of the SB Agency outreach email.'
 
+  // The preview has to look like the real thing, logo included, or it
+  // isn't a preview. 'test' as the tracking id is a dead reference on
+  // purpose — a test open shouldn't move any real open count.
   const attachment = await onePagerAttachment()
+  const mark = await logoAttachment()
+  const files = [attachment, mark].filter(Boolean)
   await deliver({
     from: await fromHeader(),
     to, subject, text: body,
-    ...(attachment ? { attachments: [attachment] } : {}),
+    html: htmlBody(body, 'test', !!mark),
+    ...(files.length ? { attachments: files } : {}),
   })
   return { ok: true, to, subject, attached: !!attachment }
 }
@@ -501,6 +507,33 @@ async function onePagerAttachment(): Promise<{ filename: string; content: Buffer
   } catch { return null }
 }
 
+// The SB Agency mark, shown under the sign-off in the HTML version of
+// every email. It rides along as an INLINE (cid) attachment rather than
+// a plain remote <img src>, because Gmail and Outlook block remote
+// images by default on a first email from an unknown sender — exactly
+// the case every one of these emails is. Inline always renders.
+//
+// Fetched once per process and cached: the plain-text copy of the email
+// is unchanged, so a client that shows text-only loses nothing.
+const LOGO_URL = 'https://sb-digitaldashboard.vercel.app/materials/sb-logo.png'
+const LOGO_CID = 'sblogo'
+
+async function fetchLogo(): Promise<any | null> {
+  try {
+    const res = await fetch(LOGO_URL)
+    if (!res.ok) return null
+    const content = Buffer.from(await res.arrayBuffer())
+    if (content.length < 200) return null
+    return { filename: 'sb-agency.png', content, cid: LOGO_CID, contentDisposition: 'inline' }
+  } catch { return null }
+}
+
+let logoCache: any | null | undefined
+async function logoAttachment(): Promise<any | null> {
+  if (logoCache === undefined) logoCache = await fetchLogo()
+  return logoCache
+}
+
 function makeTransport() {
   return nodemailer.createTransport({
     host: 'smtp.gmail.com', port: 465, secure: true,
@@ -528,13 +561,20 @@ async function domainAcceptsMail(address: string): Promise<boolean> {
 // The HTML twin of the plain-text body: same words, plus the open-
 // tracking pixel. Gmail shows this version; text-only clients get the
 // plain version untouched.
-function htmlBody(text: string, emailId: string): string {
+function htmlBody(text: string, emailId: string, withLogo = false): string {
   const escaped = text
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>')
     .replace(/\n/g, '<br>\n')
+  // Only reference the cid when the logo actually got attached —
+  // a dangling cid renders as a broken-image icon, which looks worse
+  // than no logo at all.
+  const mark = withLogo
+    ? '<div style="margin-top:16px"><img src="cid:' + LOGO_CID +
+      '" alt="SB Agency" width="120" style="width:120px;height:auto;display:block;border:0"></div>'
+    : ''
   return '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.55">' +
-    escaped +
+    escaped + mark +
     '</div><img src="' + SITE_URL + '/api/track?e=' + encodeURIComponent(emailId) + '" width="1" height="1" alt="" style="display:none">'
 }
 
@@ -554,16 +594,19 @@ async function deliverDraft(d: any, _transporter: any, attachment: { filename: s
     if (seenCc.has(k)) return false
     seenCc.add(k); return true
   })
-  // The one-pager rides on every email, per Leo's call.
+  // The one-pager rides on every email, per Leo's call. The logo rides
+  // inline underneath the sign-off.
   const attach = attachment
+  const mark = await logoAttachment()
+  const files = [attach, mark].filter(Boolean)
   const from = await fromHeader()
   await deliver({
     from, to,
     ...(cc.length ? { cc } : {}),
     subject: d.subject ?? '',
     text: d.body ?? '',
-    html: htmlBody(d.body ?? '', d.id),
-    ...(attach ? { attachments: [attach] } : {}),
+    html: htmlBody(d.body ?? '', d.id, !!mark),
+    ...(files.length ? { attachments: files } : {}),
   })
   const { address } = await sendMode()
   await prisma.emailMessage.update({
@@ -959,10 +1002,12 @@ export async function sendReplyEmail(targetId: string, to: string, subject: stri
     },
   })
   const replyCc = AUTO_CC.filter(a => a.toLowerCase() !== to.toLowerCase())
+  const replyMark = await logoAttachment()
   await deliver({
     from: await fromHeader(),
     to, ...(replyCc.length ? { cc: replyCc } : {}),
-    subject, text: body, html: htmlBody(body, rec.id),
+    subject, text: body, html: htmlBody(body, rec.id, !!replyMark),
+    ...(replyMark ? { attachments: [replyMark] } : {}),
   })
   await prisma.emailMessage.update({ where: { id: rec.id }, data: { status: 'sent', sentAt: new Date() } })
   return { ok: true, to }
