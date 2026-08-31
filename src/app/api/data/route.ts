@@ -17,7 +17,7 @@ import { authOptions, allowlist } from '@/lib/auth'
 import {
   emailStatus, listEmailQueue, draftDailyEmails,
   sendApprovedEmails, checkReplies, suggestForDraft, sendTestEmail,
-  setDraftRecipients, sendOneEmail, approveAllDrafts, draftBrandIntro,
+  setDraftRecipients, sendOneEmail, approveAllDrafts, draftBrandIntro, resignDrafts,
   sendingPaused, setSendingPaused,
   emailDifferentContact, draftFinalNudge, draftReplyResponse, sendReplyEmail,
 } from '@/lib/email'
@@ -2461,6 +2461,7 @@ const handlers: Record<string, Handler> = {
   async getSendingPaused() { return { paused: await sendingPaused() } },
   async setSendingPaused({ paused }: any) { return setSendingPaused(!!paused) },
   async approveAllDrafts() { return approveAllDrafts() },
+  async resignDrafts() { return resignDrafts() },
   async emailDifferentContact({ targetId, contactId }: any) { return emailDifferentContact(targetId, contactId) },
   async draftFinalNudge({ targetId }: any) { return draftFinalNudge(targetId) },
   async draftReplyResponse({ id }: any) { return draftReplyResponse(id) },
