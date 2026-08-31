@@ -16,7 +16,7 @@ export async function GET() {
   }
   if (!googleConfigured()) {
     return NextResponse.json(
-      { ok: false, error: 'Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Vercel first.' },
+      { ok: false, error: 'Add GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET in Vercel first.' },
       { status: 503 },
     )
   }
