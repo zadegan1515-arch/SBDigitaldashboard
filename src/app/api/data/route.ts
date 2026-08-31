@@ -18,9 +18,11 @@ import {
   emailStatus, listEmailQueue, draftDailyEmails,
   sendApprovedEmails, checkReplies, suggestForDraft, sendTestEmail,
   setDraftRecipients, sendOneEmail, approveAllDrafts, draftBrandIntro,
+  sendingPaused, setSendingPaused,
   emailDifferentContact, draftFinalNudge, draftReplyResponse, sendReplyEmail,
 } from '@/lib/email'
 import { syncNotionDeals } from '@/lib/notion'
+import { googleStatus, googleDisconnect } from '@/lib/google'
 
 const prisma = new PrismaClient()
 
@@ -2454,6 +2456,10 @@ const handlers: Record<string, Handler> = {
   async sendEmailDraft({ id }: any) { return sendOneEmail(id) },
   async syncNotionDeals() { return syncNotionDeals() },
   async draftBrandIntro({ brandId }: any) { return draftBrandIntro(brandId) },
+  async getGoogleStatus() { return googleStatus() },
+  async disconnectGoogle() { return googleDisconnect() },
+  async getSendingPaused() { return { paused: await sendingPaused() } },
+  async setSendingPaused({ paused }: any) { return setSendingPaused(!!paused) },
   async approveAllDrafts() { return approveAllDrafts() },
   async emailDifferentContact({ targetId, contactId }: any) { return emailDifferentContact(targetId, contactId) },
   async draftFinalNudge({ targetId }: any) { return draftFinalNudge(targetId) },
