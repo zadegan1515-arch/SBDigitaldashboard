@@ -1586,8 +1586,12 @@ const handlers: Record<string, Handler> = {
     const brand = await prisma.brand.findUnique({
       where: { id: brandId },
       include: {
+        // Reachable = has an email OR a LinkedIn URL. The LinkedIn-only
+        // gate was a holdover from when outreach was LinkedIn messages;
+        // for email outreach a work address is the thing that matters,
+        // and most imported contacts have one without the other.
         contacts: {
-          where: { linkedinUrl: { not: null } },
+          where: { OR: [{ email: { not: null } }, { linkedinUrl: { not: null } }] },
           orderBy: { isDecisionMaker: 'desc' },
         },
         targets: { include: { contact: { select: { name: true } } } },
@@ -1615,12 +1619,16 @@ const handlers: Record<string, Handler> = {
 
     // No target yet — create one from the best reachable contact.
     const targeted = new Set(brand.targets.map(t => t.contactId))
+    // Best fit first, but anyone with an email address outranks anyone
+    // without one — a target we can't email can't enter the email queue.
     const pick = brand.contacts
       .filter(c => !targeted.has(c.id))
-      .sort((a, b) => scoreFit(b.title, brand.tier) - scoreFit(a.title, brand.tier))[0]
+      .sort((a, b) =>
+        (b.email ? 1 : 0) - (a.email ? 1 : 0) ||
+        scoreFit(b.title, brand.tier) - scoreFit(a.title, brand.tier))[0]
     if (!pick) {
       throw new Error(brand.contacts.length === 0
-        ? `${brand.name} has no contacts with a LinkedIn URL yet — add one or pull from SponsorUnited first.`
+        ? `${brand.name} has no contacts with an email or LinkedIn URL yet — add one first.`
         : `${brand.name} has no one left to queue — everyone reachable was already contacted.`)
     }
     const t = await prisma.target.create({
@@ -1631,7 +1639,12 @@ const handlers: Record<string, Handler> = {
         queuedFor: new Date(),
       },
     })
-    return { queued: true, contactName: pick.name, targetId: t.id }
+    // Queued, but the email drafter will skip this one until the
+    // contact has an address. Say so now rather than later.
+    return {
+      queued: true, contactName: pick.name, targetId: t.id,
+      ...(pick.email ? {} : { warning: `${pick.name} has no email address yet — add one on the contact or the email drafter will skip ${brand.name}.` }),
+    }
   },
 
   // Flip one target in or out of the queue by hand. Promoting past the
