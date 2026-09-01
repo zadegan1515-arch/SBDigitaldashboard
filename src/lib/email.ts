@@ -30,9 +30,12 @@ const prisma = new PrismaClient()
 // is Gmail's spam-rate ceiling (0.30%, target under 0.10%), which at
 // this volume a single "report spam" click can blow past. Slow ramp,
 // low ceiling, human-reviewed drafts.
-const DAILY_START = 10       // day-one cap on a warmed mailbox
-const DAILY_MAX = 15         // hard ceiling — Leo's call, keeps us well clear
-const RAMP_PER_WEEK = 5      // 10 -> 15, then flat
+// Ramp per the back-office brief: 5-10/day for two weeks, ~20 by week
+// three, 30-40 from week five. The cap grows automatically from the
+// date sending first turns on; nobody has to remember to raise it.
+const DAILY_START = 5        // week one on a freshly warmed mailbox
+const DAILY_MAX = 40         // ceiling — Leo + Zach's call
+const RAMP_PER_WEEK = 8      // 5 → 13 → 21 → 29 → 37 → 40
 const FOLLOWUP_AFTER_DAYS = 3   // intro -> follow-up 1
 const FOLLOWUP2_AFTER_DAYS = 4  // follow-up 1 -> follow-up 2 (day ~7 overall)
 const EXHAUSTED_AFTER_DAYS = 3  // follow-up 2 -> flagged "went quiet"
@@ -72,6 +75,15 @@ export async function sendingPaused(): Promise<boolean> {
 }
 export async function setSendingPaused(paused: boolean) {
   await setSetting('sendingPaused', paused ? '1' : '0')
+  // Turning sending ON is day one of the ramp. The ramp clock had been
+  // ticking since the code first ran, days before any real send — left
+  // alone it would open at week-two volume on a mailbox with no history.
+  // Only reset when nothing has ever been sent, so a pause/unpause
+  // mid-campaign doesn't knock the cap back to 5.
+  if (!paused) {
+    const everSent = await prisma.emailMessage.count({ where: { direction: 'out', status: 'sent', kind: { not: 'test' } } })
+    if (everSent === 0) await setSetting('emailRampStart', new Date().toISOString())
+  }
   return { paused }
 }
 
