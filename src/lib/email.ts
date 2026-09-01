@@ -25,9 +25,14 @@ const prisma = new PrismaClient()
 
 // ---- config ----------------------------------------------------
 
-const DAILY_START = 10       // day-one cap: warm the address up slowly
-const DAILY_MAX = 40         // ceiling, even fully warmed
-const RAMP_PER_WEEK = 5      // cap grows this much each week
+// Volume is deliberately small. Google's bulk-sender rules bite at
+// 5,000 messages/day, so we are nowhere near them — the real constraint
+// is Gmail's spam-rate ceiling (0.30%, target under 0.10%), which at
+// this volume a single "report spam" click can blow past. Slow ramp,
+// low ceiling, human-reviewed drafts.
+const DAILY_START = 10       // day-one cap on a warmed mailbox
+const DAILY_MAX = 15         // hard ceiling — Leo's call, keeps us well clear
+const RAMP_PER_WEEK = 5      // 10 -> 15, then flat
 const FOLLOWUP_AFTER_DAYS = 3   // intro -> follow-up 1
 const FOLLOWUP2_AFTER_DAYS = 4  // follow-up 1 -> follow-up 2 (day ~7 overall)
 const EXHAUSTED_AFTER_DAYS = 3  // follow-up 2 -> flagged "went quiet"
