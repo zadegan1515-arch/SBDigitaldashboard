@@ -719,6 +719,11 @@ export async function sendOneEmail(emailId: string) {
   if (!d) throw new Error('Draft not found')
   if (d.direction !== 'out' || !['draft', 'approved'].includes(d.status)) throw new Error('Only unsent drafts can be sent')
 
+  // The per-card Send button counts against the same daily cap. Without
+  // this, clicking through the queue one by one would bypass it.
+  const { cap, sentToday, room } = await roomToday()
+  if (room === 0) throw new Error(`Daily cap reached (${sentToday}/${cap}) — this one goes out tomorrow.`)
+
   const transporter = makeTransport()
   const attachment = await onePagerAttachment()
   try {
@@ -762,10 +767,31 @@ export async function sendApprovedEmails() {
   return sendBatch(['draft', 'approved'])
 }
 
+// How many more emails may go out today. The cap is enforced HERE, at
+// the moment of sending, not only when drafts are created — because
+// drafts accumulate (per-brand intros, a few days of drafting, a
+// re-run) and "Send all" would otherwise fire every one of them at once.
+// A hard stop at send time is what makes a whole-list blast impossible,
+// whatever is queued.
+async function roomToday(): Promise<{ cap: number; sentToday: number; room: number }> {
+  const cap = await currentDailyCap()
+  const sentToday = await prisma.emailMessage.count({
+    where: { direction: 'out', status: 'sent', sentAt: { gte: startOfLocalDay() } },
+  })
+  return { cap, sentToday, room: Math.max(0, cap - sentToday) }
+}
+
 async function sendBatch(statuses: string[], limit?: number) {
   if (await sendingPaused()) return { configured: true, paused: true, sent: 0, failed: 0, errors: ['Sending is paused'] }
   const { mode } = await sendMode()
   if (mode === 'none') return { configured: false, sent: 0, failed: 0 }
+
+  const { cap, sentToday, room } = await roomToday()
+  if (room === 0) {
+    return { configured: true, sent: 0, failed: 0, cap, sentToday, capped: true,
+      errors: [`Daily cap reached (${sentToday}/${cap}). The rest goes out tomorrow.`] }
+  }
+  const take = limit ? Math.min(limit, room) : room
 
   const transporter = makeTransport()
   const attachment = await onePagerAttachment()
@@ -774,8 +800,10 @@ async function sendBatch(statuses: string[], limit?: number) {
     where: { direction: 'out', status: { in: statuses } },
     include: { target: { include: { contact: true, brand: true } } },
     orderBy: { createdAt: 'asc' },
-    ...(limit ? { take: limit } : {}),
+    take,
   })
+  const queued = await prisma.emailMessage.count({ where: { direction: 'out', status: { in: statuses } } })
+  const held = Math.max(0, queued - drafts.length)
 
   let sent = 0, failed = 0
   const errors: string[] = []
@@ -792,7 +820,8 @@ async function sendBatch(statuses: string[], limit?: number) {
       }).catch(() => {})
     }
   }
-  return { configured: true, sent, failed, errors }
+  if (held > 0) errors.push(`${held} held for tomorrow — daily cap is ${cap}.`)
+  return { configured: true, sent, failed, errors, cap, sentToday: sentToday + sent, held }
 }
 
 // ---- replies ---------------------------------------------------
