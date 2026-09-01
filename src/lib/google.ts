@@ -249,3 +249,63 @@ export async function gmailListReplies(since: Date, max = 100): Promise<ReplyMet
   }
   return out
 }
+
+
+// A raw metadata scan of the connected mailbox, used by the warmup
+// monitor. Same gmail.readonly scope as reply detection, same
+// metadata-only discipline: sender, recipient, thread id, date. No
+// message bodies are fetched or stored.
+export type ScanMsg = {
+  id: string; threadId: string
+  from: string; to: string
+  date: Date
+}
+
+function addr(raw: string): string {
+  const m = String(raw || '').match(/<([^>]+)>/)
+  return (m ? m[1] : String(raw || '')).trim().toLowerCase()
+}
+
+export async function gmailScan(query: string, max = 150): Promise<ScanMsg[]> {
+  const token = await accessToken()
+  const out: ScanMsg[] = []
+  let pageToken: string | undefined
+
+  while (out.length < max) {
+    const url = 'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=' +
+      Math.min(100, max - out.length) + '&q=' + encodeURIComponent(query) +
+      (pageToken ? '&pageToken=' + pageToken : '')
+    const listRes = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    if (!listRes.ok) {
+      const t = await listRes.text()
+      throw new Error(`Gmail scan ${listRes.status}: ${t.slice(0, 200)}`)
+    }
+    const list: any = await listRes.json()
+    const ids: string[] = (list.messages ?? []).map((m: any) => m.id)
+    if (!ids.length) break
+
+    for (let i = 0; i < ids.length; i += 10) {
+      const metas = await Promise.all(ids.slice(i, i + 10).map(async id => {
+        const r = await fetch(
+          'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + id +
+            '?format=metadata&metadataHeaders=From&metadataHeaders=To',
+          { headers: { Authorization: `Bearer ${token}` } },
+        )
+        if (!r.ok) return null
+        const j: any = await r.json()
+        const h: any[] = j.payload?.headers ?? []
+        const get = (n: string) => h.find(x => String(x.name).toLowerCase() === n)?.value ?? ''
+        return {
+          id: j.id, threadId: j.threadId,
+          from: addr(get('from')), to: addr(get('to')),
+          date: j.internalDate ? new Date(Number(j.internalDate)) : new Date(),
+        } as ScanMsg
+      }))
+      for (const m of metas) if (m) out.push(m)
+    }
+
+    pageToken = list.nextPageToken
+    if (!pageToken) break
+  }
+  return out
+}

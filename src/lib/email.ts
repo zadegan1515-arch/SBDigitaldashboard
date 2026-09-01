@@ -19,7 +19,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import nodemailer from 'nodemailer'
 import { ImapFlow } from 'imapflow'
 import { resolveMx } from 'dns/promises'
-import { sendViaGmail, googleStatus, type OutgoingMail, gmailListReplies } from '@/lib/google'
+import { sendViaGmail, googleStatus, type OutgoingMail, gmailListReplies, gmailScan } from '@/lib/google'
 
 const prisma = new PrismaClient()
 
@@ -1239,4 +1239,87 @@ export async function listEmailQueue() {
   })
   const exhausted = await listExhausted().catch(() => [])
   return { drafts, recent, replies, exhausted }
+}
+
+
+// ---- warmup monitor --------------------------------------------------
+
+// Before cold outreach starts, the new mailbox needs a history of real
+// two-way conversation — that's the signal Gmail weighs most heavily.
+// This reads the connected mailbox (metadata only: who, when, which
+// thread — never message bodies) and reports whether that history is
+// actually being built.
+//
+// The number that matters is TWO-WAY THREADS: threads containing both a
+// message we sent and a message we received. A thread that only ever
+// goes one direction is not a conversation and does almost nothing for
+// reputation.
+const OUR_DOMAIN = 'sboyagency.com'
+
+export async function warmupStatus(days = 14) {
+  const g = await googleStatus()
+  if (!g.connected) {
+    return { connected: false, hint: 'Connect the Google account on the Outreach page first.' }
+  }
+
+  const me = (g.address || '').toLowerCase()
+  const q = `newer_than:${days}d -in:chats -in:spam -in:trash`
+  let msgs: any[] = []
+  try {
+    msgs = await gmailScan(q, 300)
+  } catch (err: any) {
+    return { connected: true, error: String(err?.message ?? 'Gmail scan failed').slice(0, 200) }
+  }
+
+  const threads = new Map<string, { sent: number; recv: number; who: Set<string> }>()
+  const partners = new Set<string>()
+  const domains = new Set<string>()
+  const byDay = new Map<string, { sent: number; recv: number }>()
+  let sent = 0, received = 0
+
+  for (const m of msgs) {
+    const outbound = m.from === me
+    const other = outbound ? m.to : m.from
+    if (!other || !other.includes('@')) continue
+
+    const day = m.date.toISOString().slice(0, 10)
+    const d = byDay.get(day) ?? { sent: 0, recv: 0 }
+    if (outbound) { sent++; d.sent++ } else { received++; d.recv++ }
+    byDay.set(day, d)
+
+    // Internal mail is weighted differently by Gmail and teaches it very
+    // little — count it, but never as a warmup partner.
+    const dom = other.split('@')[1] || ''
+    if (dom && dom !== OUR_DOMAIN) { partners.add(other); domains.add(dom) }
+
+    const t = threads.get(m.threadId) ?? { sent: 0, recv: 0, who: new Set<string>() }
+    if (outbound) t.sent++; else t.recv++
+    if (dom !== OUR_DOMAIN) t.who.add(other)
+    threads.set(m.threadId, t)
+  }
+
+  const twoWay = [...threads.values()].filter(t => t.sent > 0 && t.recv > 0)
+  const twoWayExternal = [...threads.values()].filter(t => t.sent > 0 && t.recv > 0 && t.who.size > 0)
+  const deep = twoWay.filter(t => t.sent + t.recv >= 4)
+
+  // 20–30 real external exchanges over two weeks is the working target.
+  const TARGET = 20
+  const progress = Math.min(100, Math.round((twoWayExternal.length / TARGET) * 100))
+
+  return {
+    connected: true,
+    mailbox: me,
+    windowDays: days,
+    sent, received,
+    threads: threads.size,
+    twoWayThreads: twoWay.length,
+    twoWayExternal: twoWayExternal.length,
+    deepThreads: deep.length,
+    uniquePartners: partners.size,
+    uniqueDomains: domains.size,
+    target: TARGET,
+    progress,
+    ready: twoWayExternal.length >= TARGET && domains.size >= 4,
+    byDay: [...byDay.entries()].sort().map(([day, v]) => ({ day, ...v })),
+  }
 }
