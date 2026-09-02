@@ -104,6 +104,11 @@
   .chip .n{opacity:.55;margin-left:5px;font-variant-numeric:tabular-nums}
   .hint{font-size:12.5px;color:var(--ink-3);margin:-8px 0 14px}
   .count-head{font-size:14px;font-weight:600;margin-bottom:2px}
+  /* activations budget table */
+  .tbl{width:100%;border-collapse:collapse;font-size:13px}
+  .tbl th{text-align:left;font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);padding:8px 6px;border-bottom:1px solid var(--border)}
+  .tbl td{padding:4px 6px;vertical-align:middle;font-variant-numeric:tabular-nums}
+  .tbl .field-box{padding:5px 8px;font-size:13px}
   .count-head .n{color:var(--ink-3);font-weight:500;margin-left:6px}
   .target{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);
     padding:12px 14px;margin-bottom:7px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow)}
@@ -240,6 +245,7 @@
         <button class="nav-item" data-view="sponsorships">Sponsorships <span class="n" id="nav-spon"></span></button>
         <button class="nav-item" data-view="needs">Needs contacts <span class="n" id="nav-needs"></span></button>
         <button class="nav-item" data-view="pipeline">Pipeline</button>
+        <button class="nav-item" data-view="activations">Activations</button>
         <button class="nav-item" data-view="materials">Materials</button>
         <button class="nav-item" data-view="team">Team</button>
       </nav>
@@ -389,6 +395,21 @@
       <div id="deal-form-slot" style="margin-top:12px"></div>
       <div class="kpi-row" id="pipe-kpis"></div>
       <div id="deals"></div>
+    </section>
+
+    <!-- ACTIVATIONS -->
+    <section class="view page" id="activations">
+      <div class="eyebrow">Delivery</div>
+      <h1>Activations</h1>
+      <div class="sub">Signed deals being carried out — budget, tasks and staff per event. Cost side only: sponsorship revenue stays in Pipeline, booking revenue in sb-crm, and the three are never added together.</div>
+      <div style="margin-top:18px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-solid" id="act-new">+ New activation</button>
+        <button class="btn-ghost" id="act-seed" title="Loads the Underdog x A&amp;M production sheet — safe to click twice">Import Underdog sheet</button>
+      </div>
+      <div id="act-form-slot" style="margin-top:12px"></div>
+      <div class="kpi-row" id="act-kpis"></div>
+      <div id="act-list"></div>
+      <div id="act-detail" style="margin-top:22px"></div>
     </section>
 
     <!-- DISCOVER -->
@@ -3027,6 +3048,385 @@ document.getElementById('team-body').addEventListener('click', function (e) {
 
 // --- events ----------------------------------------------------
 
+// --- activations ------------------------------------------------
+//
+// Signed deals being delivered. One activation → one or more events;
+// each event owns a budget (the production sheet), a task list and a
+// staff list. Everything edits in place and saves on change.
+
+var ACT_SECTIONS = [
+  ['venue', 'Venue'], ['production', 'Vendors / Production'], ['print', 'Print'],
+  ['staff', 'Staff / Travel / Labor'], ['talent', 'Talent & Promo']
+];
+var ACT_STATUS = [['planning', 'Planning'], ['in_progress', 'In progress'], ['delivered', 'Delivered'], ['recapped', 'Recapped']];
+var TASK_STATUS = [['todo', 'To do'], ['doing', 'Doing'], ['blocked', 'Blocked'], ['done', 'Done']];
+var actOpenId = null;
+
+function actSel(opts, val, attr) {
+  return '<select class="field-box" ' + attr + '>' + opts.map(function (o) {
+    return '<option value="' + o[0] + '"' + (o[0] === val ? ' selected' : '') + '>' + o[1] + '</option>';
+  }).join('') + '</select>';
+}
+function dateInput(iso) {
+  return iso ? new Date(iso).toISOString().slice(0, 10) : '';
+}
+function daysLabel(n) {
+  if (n == null) return '';
+  if (n < 0) return Math.abs(n) + 'd ago';
+  if (n === 0) return 'today';
+  return n + 'd out';
+}
+
+function loadActivations() {
+  showView('activations');
+  document.getElementById('act-detail').innerHTML = '';
+  actOpenId = null;
+  return api('listActivations').then(function (rows) {
+    var active = rows.filter(function (a) { return a.status !== 'recapped'; });
+    var budget = active.reduce(function (s, a) { return s + a.budgetCents; }, 0);
+    var estimate = active.reduce(function (s, a) { return s + a.estimateCents; }, 0);
+    var overdue = active.reduce(function (s, a) { return s + a.tasksOverdue; }, 0);
+    document.getElementById('act-kpis').innerHTML =
+      '<div class="kpi"><div class="kpi-label">Active</div><div class="kpi-value">' + active.length + '</div><div class="kpi-note">activations</div></div>' +
+      '<div class="kpi money"><div class="kpi-label">Approved budget</div><div class="kpi-value">' + money(budget) + '</div><div class="kpi-note">across active</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Estimated cost</div><div class="kpi-value">' + money(estimate) + '</div><div class="kpi-note">' + (budget ? Math.round(estimate / budget * 100) + '% of budget' : '—') + '</div></div>' +
+      '<div class="kpi"' + (overdue ? ' style="border-left:3px solid var(--warn)"' : '') + '><div class="kpi-label">Overdue tasks</div><div class="kpi-value">' + overdue + '</div><div class="kpi-note">across all events</div></div>';
+
+    var box = document.getElementById('act-list');
+    if (!rows.length) {
+      box.innerHTML = '<div class="panel" style="margin-top:14px"><div class="empty"><h3>No activations yet</h3><p>Create one, or import the Underdog production sheet to start with a real example.</p></div></div>';
+      return;
+    }
+    box.innerHTML = '<div class="card-grid">' + rows.map(function (a) {
+      var next = a.events.filter(function (e) { return e.eventDate; })[0];
+      var st = ACT_STATUS.filter(function (s) { return s[0] === a.status; })[0];
+      return '<div class="cat-card" data-act-open="' + esc(a.id) + '" style="--c:' + (a.tasksOverdue ? 'var(--warn)' : 'var(--accent)') + '">' +
+        '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">' +
+          '<div><h3>' + esc(a.name) + '</h3><div style="font-size:12.5px;color:var(--ink-2);margin-top:2px">' + esc(a.brand.name) + (a.owner ? ' · ' + esc(a.owner) : '') + '</div></div>' +
+          '<span class="status ' + (a.status === 'delivered' || a.status === 'recapped' ? 'confirmed' : a.status === 'in_progress' ? 'sent' : 'proposed') + '">' + esc(st ? st[1] : a.status) + '</span>' +
+        '</div>' +
+        (next ? '<div style="font-size:13px;margin-top:10px"><b>' + esc(next.name) + '</b> · ' + when(next.eventDate) + ' · <span style="color:' + (next.daysOut != null && next.daysOut < 7 ? 'var(--warn)' : 'var(--ink-2)') + '">' + daysLabel(next.daysOut) + '</span></div>' : '') +
+        '<div class="cat-stats">' +
+          '<div><div class="cat-stat-label">Budget</div><div style="font-weight:700">' + money(a.budgetCents) + '</div></div>' +
+          '<div><div class="cat-stat-label">Estimate</div><div style="font-weight:700">' + money(a.estimateCents) + '</div></div>' +
+          '<div><div class="cat-stat-label">Tasks</div><div style="font-weight:700">' + a.tasksDone + '/' + a.tasksTotal + (a.tasksOverdue ? ' <span style="color:var(--warn)">· ' + a.tasksOverdue + ' late</span>' : '') + '</div></div>' +
+        '</div>' +
+      '</div>';
+    }).join('') + '</div>';
+  }).catch(function (e) { toast(e.message); });
+}
+
+function actNewForm() {
+  var slot = document.getElementById('act-form-slot');
+  slot.innerHTML = '<div class="panel panel-pad">' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+      '<input class="field-box" id="actf-brand" placeholder="Brand (e.g. Underdog)">' +
+      '<input class="field-box" id="actf-name" placeholder="Activation name (e.g. Underdog x A&M — Venue Takeover)">' +
+      '<input class="field-box" id="actf-owner" placeholder="Owner">' +
+      actSel(ACT_STATUS, 'planning', 'id="actf-status"') +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn-solid" id="actf-save">Create</button><button class="btn-ghost" id="actf-cancel">Cancel</button></div>' +
+  '</div>';
+  document.getElementById('actf-cancel').onclick = function () { slot.innerHTML = ''; };
+  document.getElementById('actf-save').onclick = function () {
+    api('upsertActivation', {
+      brandName: document.getElementById('actf-brand').value,
+      name: document.getElementById('actf-name').value,
+      owner: document.getElementById('actf-owner').value,
+      status: document.getElementById('actf-status').value
+    }).then(function (a) { slot.innerHTML = ''; toast('Created'); openActivation(a.id); })
+      .catch(function (e) { toast(e.message); });
+  };
+}
+
+function openActivation(id) {
+  actOpenId = id;
+  return api('getActivation', { id: id }).then(function (a) {
+    document.getElementById('act-list').innerHTML = '';
+    var box = document.getElementById('act-detail');
+    var h = '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<div><a class="crumb" data-act-back>← All activations</a>' +
+      '<h2 style="font-family:var(--display);font-size:24px;font-weight:800;letter-spacing:-.02em;margin-top:6px">' + esc(a.name) + '</h2>' +
+      '<div style="font-size:13px;color:var(--ink-2)">' + esc(a.brand.name) + (a.deal ? ' · deal: ' + esc(a.deal.name) + ' · ' + money(a.deal.valueCents) + ' (' + esc(a.deal.stage) + ')' : ' · no Pipeline deal linked') + '</div></div>' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+        actSel(ACT_STATUS, a.status, 'data-act-field="status" style="width:auto"') +
+        '<input class="field-box" data-act-field="owner" value="' + esc(a.owner || '') + '" placeholder="Owner" style="width:140px">' +
+        '<button class="btn-ghost" data-act-newevent>+ Event</button>' +
+        '<button class="btn-ghost danger" data-act-delete>Delete</button>' +
+      '</div></div>';
+    if (a.notes) h += '<div class="panel panel-pad" style="margin-top:12px;font-size:13px;color:var(--ink-2);white-space:pre-wrap">' + esc(a.notes) + '</div>';
+
+    if (!a.events.length) {
+      h += '<div class="panel" style="margin-top:14px"><div class="empty"><h3>No events yet</h3><p>Add the first event to start a budget and task list.</p></div></div>';
+    }
+    a.events.forEach(function (e) { h += renderActEvent(e); });
+    box.innerHTML = h;
+    window.scrollTo(0, 0);
+  }).catch(function (e) { toast(e.message); });
+}
+
+function renderActEvent(e) {
+  var estimate = e.lines.reduce(function (s, l) { return s + l.estimateCents; }, 0);
+  var finalSum = e.lines.reduce(function (s, l) { return s + (l.finalCents || 0); }, 0);
+  var finalCount = e.lines.filter(function (l) { return l.finalCents != null; }).length;
+  var grand = e.budgetCents + e.agencyFeeCents;
+  var days = e.eventDate ? Math.ceil((new Date(e.eventDate).getTime() - Date.now()) / 86400000) : null;
+  var done = e.tasks.filter(function (t) { return t.status === 'done'; }).length;
+
+  var h = '<div class="panel panel-pad" style="margin-top:16px" data-act-event="' + esc(e.id) + '">';
+  // header
+  h += '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start">' +
+    '<div><div style="font-family:var(--display);font-size:18px;font-weight:700">' + esc(e.name) + '</div>' +
+    '<div style="font-size:13px;color:var(--ink-2);margin-top:3px">' + esc([e.venue, e.city].filter(Boolean).join(', ')) +
+      (e.eventDate ? ' · ' + new Date(e.eventDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + ' · <b style="color:' + (days != null && days < 7 ? 'var(--warn)' : 'inherit') + '">' + daysLabel(days) + '</b>' : '') + '</div>' +
+    '<div style="font-size:12px;color:var(--ink-3);margin-top:3px">Load-in ' + esc(e.loadIn || '—') + ' · Event ' + esc(e.eventTime || '—') + ' · Load-out ' + esc(e.loadOut || '—') + '</div></div>' +
+    '<button class="btn-ghost" data-ev-edit="' + esc(e.id) + '">Edit event</button></div>';
+  h += '<div data-ev-form="' + esc(e.id) + '"></div>';
+
+  // money summary
+  h += '<div class="kpi-row" style="margin:14px 0 6px">' +
+    '<div class="kpi money"><div class="kpi-label">Approved budget</div><div class="kpi-value">' + money(e.budgetCents) + '</div><div class="kpi-note">+ fee ' + money(e.agencyFeeCents) + ' = ' + money(grand) + '</div></div>' +
+    '<div class="kpi"><div class="kpi-label">Estimated</div><div class="kpi-value">' + money(estimate) + '</div><div class="kpi-note" style="color:' + (estimate > e.budgetCents ? 'var(--warn)' : 'var(--ink-3)') + '">' + (e.budgetCents ? (estimate > e.budgetCents ? money(estimate - e.budgetCents) + ' over' : money(e.budgetCents - estimate) + ' under') : '—') + '</div></div>' +
+    '<div class="kpi"><div class="kpi-label">Actual so far</div><div class="kpi-value">' + money(finalSum) + '</div><div class="kpi-note">' + finalCount + '/' + e.lines.length + ' lines final</div></div>' +
+    '<div class="kpi"><div class="kpi-label">Tasks</div><div class="kpi-value">' + done + '/' + e.tasks.length + '</div><div class="kpi-note">' + e.staff.filter(function (s) { return s.kind === 'ambassador'; }).length + ' ambassadors</div></div>' +
+  '</div>';
+
+  // budget table
+  h += '<div class="count-head" style="margin-top:14px">Budget <span class="n">' + e.lines.length + '</span>' +
+    '<span style="font-weight:400;font-size:12px;color:var(--ink-3);margin-left:8px">estimate is the sheet; final is what it actually cost</span></div>';
+  h += '<div style="overflow-x:auto"><table class="tbl" style="min-width:760px"><thead><tr><th>Item</th><th>Description</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">Estimate</th><th style="text-align:right">Final</th><th>Notes</th><th>Ordered</th><th></th></tr></thead><tbody>';
+  ACT_SECTIONS.forEach(function (sec) {
+    var lines = e.lines.filter(function (l) { return l.section === sec[0]; });
+    if (!lines.length) return;
+    var sub = lines.reduce(function (s, l) { return s + l.estimateCents; }, 0);
+    var subF = lines.reduce(function (s, l) { return s + (l.finalCents || 0); }, 0);
+    h += '<tr><td colspan="4" style="font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);padding-top:14px">' + sec[1] + '</td>' +
+      '<td style="text-align:right;font-weight:700;padding-top:14px">' + money(sub) + '</td><td style="text-align:right;font-weight:700;padding-top:14px">' + (subF ? money(subF) : '') + '</td><td colspan="3"></td></tr>';
+    lines.forEach(function (l) {
+      var v = l.finalCents != null ? l.finalCents - l.estimateCents : null;
+      h += '<tr data-line="' + esc(l.id) + '">' +
+        '<td><input class="field-box" data-lf="item" value="' + esc(l.item) + '" style="min-width:150px"></td>' +
+        '<td><input class="field-box" data-lf="description" value="' + esc(l.description || '') + '" style="min-width:170px"></td>' +
+        '<td><input class="field-box" data-lf="qty" value="' + (l.qty == null ? '' : l.qty) + '" style="width:56px;text-align:right"></td>' +
+        '<td><input class="field-box" data-lf="unitCents" value="' + (l.unitCents == null ? '' : (l.unitCents / 100)) + '" style="width:84px;text-align:right"></td>' +
+        '<td><input class="field-box" data-lf="estimateCents" value="' + (l.estimateCents / 100) + '" style="width:96px;text-align:right"></td>' +
+        '<td><input class="field-box" data-lf="finalCents" value="' + (l.finalCents == null ? '' : (l.finalCents / 100)) + '" placeholder="—" style="width:96px;text-align:right' + (v != null ? ';color:' + (v > 0 ? 'var(--warn)' : 'var(--good)') : '') + '" title="' + (v != null ? (v > 0 ? '+' : '') + money(v) + ' vs estimate' : '') + '"></td>' +
+        '<td><input class="field-box" data-lf="notes" value="' + esc(l.notes || '') + '" style="min-width:150px"></td>' +
+        '<td style="text-align:center"><input type="checkbox" data-lf="ordered"' + (l.ordered ? ' checked' : '') + '></td>' +
+        '<td><button class="btn-ghost danger" data-line-del="' + esc(l.id) + '" title="Remove line">×</button></td></tr>';
+    });
+  });
+  h += '</tbody></table></div>';
+  h += '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">' +
+    actSel(ACT_SECTIONS, 'production', 'data-newline-sec style="width:auto"') +
+    '<input class="field-box" data-newline-item placeholder="New line item" style="width:220px">' +
+    '<input class="field-box" data-newline-est placeholder="Estimate $" style="width:110px">' +
+    '<button class="btn-ghost" data-newline-add="' + esc(e.id) + '">+ Add line</button>' +
+    '<button class="btn-ghost" data-gen-tasks="' + esc(e.id) + '" title="Creates an order/book/confirm task for every line that isn\'t ordered yet, due back from the event by its lead time">✦ Generate tasks from budget</button>' +
+  '</div>';
+
+  // tasks
+  h += '<div class="count-head" style="margin-top:22px">Tasks <span class="n">' + e.tasks.length + '</span></div>';
+  if (!e.tasks.length) h += '<div style="font-size:13px;color:var(--ink-3)">No tasks yet — generate them from the budget, or add one below.</div>';
+  h += '<div>' + e.tasks.map(function (t) {
+    var late = t.status !== 'done' && t.dueDate && new Date(t.dueDate).getTime() < Date.now();
+    return '<div data-task="' + esc(t.id) + '" style="display:grid;grid-template-columns:110px 1fr 150px 130px 32px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-soft)' + (t.status === 'done' ? ';opacity:.55' : '') + '">' +
+      actSel(TASK_STATUS, t.status, 'data-tf="status"') +
+      '<div><input class="field-box" data-tf="text" value="' + esc(t.text) + '">' + (t.line ? '<div style="font-size:11px;color:var(--ink-3);margin-top:2px">from budget · ' + esc(t.line.item) + '</div>' : '') + '</div>' +
+      '<input class="field-box" data-tf="owner" value="' + esc(t.owner || '') + '" placeholder="Owner">' +
+      '<input class="field-box" type="date" data-tf="dueDate" value="' + dateInput(t.dueDate) + '"' + (late ? ' style="border-color:var(--warn);color:var(--warn)"' : '') + '>' +
+      '<button class="btn-ghost danger" data-task-del="' + esc(t.id) + '">×</button></div>';
+  }).join('') + '</div>';
+  h += '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><input class="field-box" data-newtask-text placeholder="New task" style="flex:1;min-width:220px"><input class="field-box" data-newtask-owner placeholder="Owner" style="width:140px"><input class="field-box" type="date" data-newtask-due style="width:150px"><button class="btn-ghost" data-newtask-add="' + esc(e.id) + '">+ Add task</button></div>';
+
+  // staff
+  h += '<div class="count-head" style="margin-top:22px">Staff & ambassadors <span class="n">' + e.staff.length + '</span></div>';
+  h += '<div>' + e.staff.map(function (s) {
+    return '<div data-staff="' + esc(s.id) + '" style="display:grid;grid-template-columns:130px 1fr 1fr 110px 90px 32px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-soft)">' +
+      actSel([['team', 'SB team'], ['ambassador', 'Ambassador']], s.kind, 'data-sf="kind"') +
+      '<input class="field-box" data-sf="name" value="' + esc(s.name) + '">' +
+      '<input class="field-box" data-sf="role" value="' + esc(s.role || '') + '" placeholder="Role">' +
+      '<input class="field-box" data-sf="rateCents" value="' + (s.rateCents == null ? '' : s.rateCents / 100) + '" placeholder="Rate $" style="text-align:right">' +
+      '<label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" data-sf="confirmed"' + (s.confirmed ? ' checked' : '') + '> confirmed</label>' +
+      '<button class="btn-ghost danger" data-staff-del="' + esc(s.id) + '">×</button></div>';
+  }).join('') + '</div>';
+  h += '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
+    actSel([['team', 'SB team'], ['ambassador', 'Ambassador']], 'ambassador', 'data-newstaff-kind style="width:auto"') +
+    '<input class="field-box" data-newstaff-name placeholder="Name" style="width:180px"><input class="field-box" data-newstaff-role placeholder="Role" style="width:160px">' +
+    '<button class="btn-ghost" data-newstaff-add="' + esc(e.id) + '">+ Add person</button></div>';
+  h += '</div>';
+  return h;
+}
+
+function actEventForm(e) {
+  var slot = document.querySelector('[data-ev-form="' + e.id + '"]');
+  if (!slot) return;
+  slot.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-top:10px;padding:12px;background:var(--surface-2,var(--surface-1));border:1px solid var(--border);border-radius:8px">' +
+    '<input class="field-box" data-ef="name" value="' + esc(e.name) + '" placeholder="Event name">' +
+    '<input class="field-box" data-ef="venue" value="' + esc(e.venue || '') + '" placeholder="Venue">' +
+    '<input class="field-box" data-ef="city" value="' + esc(e.city || '') + '" placeholder="City">' +
+    '<input class="field-box" type="date" data-ef="eventDate" value="' + dateInput(e.eventDate) + '">' +
+    '<input class="field-box" data-ef="loadIn" value="' + esc(e.loadIn || '') + '" placeholder="Load-in">' +
+    '<input class="field-box" data-ef="eventTime" value="' + esc(e.eventTime || '') + '" placeholder="Event time">' +
+    '<input class="field-box" data-ef="loadOut" value="' + esc(e.loadOut || '') + '" placeholder="Load-out">' +
+    '<input class="field-box" data-ef="budget" value="' + (e.budgetCents / 100) + '" placeholder="Approved budget $">' +
+    '<input class="field-box" data-ef="fee" value="' + (e.agencyFeeCents / 100) + '" placeholder="Agency fee $">' +
+    '<div style="display:flex;gap:8px"><button class="btn-solid" data-ef-save="' + esc(e.id) + '">Save</button><button class="btn-ghost" data-ef-cancel>Cancel</button><button class="btn-ghost danger" data-ef-delete="' + esc(e.id) + '" style="margin-left:auto">Delete event</button></div>' +
+  '</div>';
+}
+
+document.getElementById('act-new').addEventListener('click', actNewForm);
+document.getElementById('act-seed').addEventListener('click', function () {
+  api('seedUnderdogActivation').then(function (r) {
+    toast(r.seeded ? 'Underdog sheet imported — ' + r.lines + ' budget lines' : 'Underdog is already loaded');
+    openActivation(r.id);
+  }).catch(function (e) { toast(e.message); });
+});
+document.getElementById('act-list').addEventListener('click', function (ev) {
+  var card = ev.target.closest('[data-act-open]');
+  if (card) openActivation(card.getAttribute('data-act-open'));
+});
+
+// One delegated handler for everything inside an open activation.
+var actDetail = document.getElementById('act-detail');
+actDetail.addEventListener('click', function (ev) {
+  var t = ev.target;
+  var b;
+  if (t.closest('[data-act-back]')) { ev.preventDefault(); loadActivations(); return; }
+  if (t.closest('[data-act-delete]')) {
+    if (!confirm('Delete this activation and everything under it?')) return;
+    api('deleteActivation', { id: actOpenId }).then(function () { toast('Deleted'); loadActivations(); }).catch(function (e) { toast(e.message); });
+    return;
+  }
+  if (t.closest('[data-act-newevent]')) {
+    var nm = prompt('Event name');
+    if (!nm) return;
+    api('upsertActivationEvent', { activationId: actOpenId, name: nm }).then(function () { openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
+    return;
+  }
+  if ((b = t.closest('[data-ev-edit]'))) {
+    api('getActivation', { id: actOpenId }).then(function (a) {
+      var e = a.events.filter(function (x) { return x.id === b.getAttribute('data-ev-edit'); })[0];
+      if (e) actEventForm(e);
+    });
+    return;
+  }
+  if (t.closest('[data-ef-cancel]')) { openActivation(actOpenId); return; }
+  if ((b = t.closest('[data-ef-save]'))) {
+    var f = b.closest('[data-ev-form]');
+    var g = function (k) { var el = f.querySelector('[data-ef="' + k + '"]'); return el ? el.value : undefined; };
+    var budget = parseMoney(g('budget')), fee = parseMoney(g('fee'));
+    if (budget == null || fee == null) { toast('Budget and fee must be numbers'); return; }
+    api('upsertActivationEvent', {
+      id: b.getAttribute('data-ef-save'), name: g('name'), venue: g('venue'), city: g('city'),
+      eventDate: g('eventDate') || null, loadIn: g('loadIn'), eventTime: g('eventTime'), loadOut: g('loadOut'),
+      budgetCents: budget, agencyFeeCents: fee
+    }).then(function () { toast('Saved'); openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
+    return;
+  }
+  if ((b = t.closest('[data-ef-delete]'))) {
+    if (!confirm('Delete this event, its budget, tasks and staff?')) return;
+    api('deleteActivationEvent', { id: b.getAttribute('data-ef-delete') }).then(function () { openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
+    return;
+  }
+  if ((b = t.closest('[data-line-del]'))) {
+    api('deleteBudgetLine', { id: b.getAttribute('data-line-del') }).then(function () { openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
+    return;
+  }
+  if ((b = t.closest('[data-newline-add]'))) {
+    var wrap = b.parentNode;
+    var est = parseMoney(wrap.querySelector('[data-newline-est]').value);
+    if (est == null) { toast('Estimate must be a number'); return; }
+    api('upsertBudgetLine', {
+      eventId: b.getAttribute('data-newline-add'),
+      section: wrap.querySelector('[data-newline-sec]').value,
+      item: wrap.querySelector('[data-newline-item]').value,
+      estimateCents: est
+    }).then(function () { openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
+    return;
+  }
+  if ((b = t.closest('[data-gen-tasks]'))) {
+    api('generateEventTasks', { eventId: b.getAttribute('data-gen-tasks') }).then(function (r) {
+      toast(r.created + ' task' + (r.created === 1 ? '' : 's') + ' created' + (r.skipped ? ', ' + r.skipped + ' already covered' : ''));
+      openActivation(actOpenId);
+    }).catch(function (e) { toast(e.message); });
+    return;
+  }
+  if ((b = t.closest('[data-task-del]'))) {
+    api('deleteActivationTask', { id: b.getAttribute('data-task-del') }).then(function () { openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
+    return;
+  }
+  if ((b = t.closest('[data-newtask-add]'))) {
+    var w = b.parentNode;
+    var text = w.querySelector('[data-newtask-text]').value.trim();
+    if (!text) { toast('Task needs text'); return; }
+    api('upsertActivationTask', {
+      eventId: b.getAttribute('data-newtask-add'), text: text,
+      owner: w.querySelector('[data-newtask-owner]').value, dueDate: w.querySelector('[data-newtask-due]').value || null
+    }).then(function () { openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
+    return;
+  }
+  if ((b = t.closest('[data-staff-del]'))) {
+    api('deleteEventStaff', { id: b.getAttribute('data-staff-del') }).then(function () { openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
+    return;
+  }
+  if ((b = t.closest('[data-newstaff-add]'))) {
+    var ws = b.parentNode;
+    api('upsertEventStaff', {
+      eventId: b.getAttribute('data-newstaff-add'),
+      kind: ws.querySelector('[data-newstaff-kind]').value,
+      name: ws.querySelector('[data-newstaff-name]').value,
+      role: ws.querySelector('[data-newstaff-role]').value
+    }).then(function () { openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
+    return;
+  }
+});
+
+// Inline edits save on change. Money fields go through parseMoney so
+// "$1,750" doesn't become $1.
+actDetail.addEventListener('change', function (ev) {
+  var t = ev.target;
+  var row, args, k;
+  if (t.hasAttribute('data-act-field')) {
+    args = { id: actOpenId }; args[t.getAttribute('data-act-field')] = t.value;
+    api('upsertActivation', args).then(function () { toast('Saved'); }).catch(function (e) { toast(e.message); });
+    return;
+  }
+  if ((row = t.closest('[data-line]')) && t.hasAttribute('data-lf')) {
+    k = t.getAttribute('data-lf');
+    args = { id: row.getAttribute('data-line') };
+    if (k === 'ordered') args.ordered = t.checked;
+    else if (k === 'qty') args.qty = t.value === '' ? null : Number(t.value);
+    else if (/Cents$/.test(k)) {
+      if (t.value.trim() === '') { args[k] = null; }
+      else { var c = parseMoney(t.value); if (c == null) { toast('Not a number'); return; } args[k] = c; }
+      if (k === 'estimateCents' && args[k] == null) args[k] = 0;
+    } else args[k] = t.value;
+    api('upsertBudgetLine', args).then(function () {
+      // totals changed — redraw, but only for money/ordered edits
+      if (/Cents$/.test(k) || k === 'ordered') openActivation(actOpenId); else toast('Saved');
+    }).catch(function (e) { toast(e.message); });
+    return;
+  }
+  if ((row = t.closest('[data-task]')) && t.hasAttribute('data-tf')) {
+    k = t.getAttribute('data-tf');
+    args = { id: row.getAttribute('data-task') };
+    args[k] = k === 'dueDate' ? (t.value || null) : t.value;
+    api('upsertActivationTask', args).then(function () {
+      if (k === 'status') openActivation(actOpenId); else toast('Saved');
+    }).catch(function (e) { toast(e.message); });
+    return;
+  }
+  if ((row = t.closest('[data-staff]')) && t.hasAttribute('data-sf')) {
+    k = t.getAttribute('data-sf');
+    args = { id: row.getAttribute('data-staff') };
+    if (k === 'confirmed') args.confirmed = t.checked;
+    else if (k === 'rateCents') { var rc = t.value.trim() === '' ? null : parseMoney(t.value); if (t.value.trim() !== '' && rc == null) { toast('Not a number'); return; } args.rateCents = rc; }
+    else args[k] = t.value;
+    api('upsertEventStaff', args).then(function () { toast('Saved'); }).catch(function (e) { toast(e.message); });
+  }
+});
+
 function gotoView(id) {
   if (id === 'dashboard') loadDashboard();
   if (id === 'brands') loadBrands('all');
@@ -3035,6 +3435,7 @@ function gotoView(id) {
   if (id === 'sponsorships') loadSponsorships();
   if (id === 'needs') loadNeeds();
   if (id === 'pipeline') loadPipeline();
+  if (id === 'activations') loadActivations();
   if (id === 'results') loadResults();
   if (id === 'discover') loadDiscover();
   if (id === 'materials') showView('materials');
