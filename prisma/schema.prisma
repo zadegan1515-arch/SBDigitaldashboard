@@ -62,6 +62,7 @@ model Brand {
   shows     ShowSponsor[]
   deals     Deal[]
   documents Document[]
+  activations Activation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -562,4 +563,143 @@ model Setting {
   // JSON string. The rate card is stored under key "rateCard".
   value     String
   updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------
+// Activations — signed deals being carried out
+// ---------------------------------------------------------------
+//
+// Pipeline ends at "closed". This is what happens next: the work of
+// actually delivering what was sold. One Activation per signed deal;
+// one or more Events under it (Underdog is one venue takeover, a
+// multi-show deal would be several); each Event owns its own budget,
+// task list and staff. Money here is COST, kept apart from both
+// sponsorship revenue (Deal.valueCents) and booking revenue (sb-crm) —
+// three separate lines, never summed across.
+
+model Activation {
+  id      String @id @default(cuid())
+  brandId String
+  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  // Optional link back to the Pipeline deal it fulfils.
+  dealId  String?
+
+  name   String
+  // "planning" | "in_progress" | "delivered" | "recapped"
+  status String @default("planning")
+  owner  String?
+  notes  String?
+
+  events ActivationEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([brandId])
+  @@index([status])
+}
+
+model ActivationEvent {
+  id           String     @id @default(cuid())
+  activationId String
+  activation   Activation @relation(fields: [activationId], references: [id], onDelete: Cascade)
+
+  name      String
+  venue     String?
+  city      String?
+  eventDate DateTime?
+  loadIn    String?
+  eventTime String?
+  loadOut   String?
+  notes     String?
+
+  // Top of the production sheet. Cents. The approved budget is what the
+  // brand signed off; agency fee is SB's; grand total is the invoice.
+  budgetCents    Int @default(0)
+  agencyFeeCents Int @default(0)
+
+  lines BudgetLine[]
+  tasks ActivationTask[]
+  staff EventStaff[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activationId])
+  @@index([eventDate])
+}
+
+// One row of the production sheet.
+model BudgetLine {
+  id      String          @id @default(cuid())
+  eventId String
+  event   ActivationEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  // "venue" | "production" | "print" | "staff" | "talent" — the sheet's
+  // section headers, so the page can rebuild the sheet's shape.
+  section     String
+  item        String
+  description String?
+  qty         Int?
+  unitCents   Int?
+  // Estimate is what was budgeted; final is what it actually cost.
+  // Variance is derived, never stored.
+  estimateCents Int  @default(0)
+  finalCents    Int?
+  notes         String?
+  // The sheet's "ordered" / "confirmed" checkbox.
+  ordered   Boolean @default(false)
+  sortOrder Int     @default(0)
+
+  tasks ActivationTask[]
+
+  @@index([eventId])
+}
+
+model ActivationTask {
+  id      String          @id @default(cuid())
+  eventId String
+  event   ActivationEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  // Set when the task was generated from a budget line (lead time,
+  // ordering, confirmation), so ticking the task can tick the line.
+  lineId  String?
+  line    BudgetLine?     @relation(fields: [lineId], references: [id], onDelete: SetNull)
+
+  text      String
+  owner     String?
+  // "team" | "ambassador"
+  ownerKind String  @default("team")
+  dueDate   DateTime?
+  // "todo" | "doing" | "done" | "blocked"
+  status    String  @default("todo")
+  notes     String?
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+// Who is working the event — SB team and brand ambassadors alike.
+model EventStaff {
+  id      String          @id @default(cuid())
+  eventId String
+  event   ActivationEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  name  String
+  role  String?
+  // "team" | "ambassador"
+  kind  String @default("team")
+  // Reference into the ambassador tracker once that's linked.
+  externalRef String?
+  email       String?
+  phone       String?
+  rateCents   Int?
+  confirmed   Boolean @default(false)
+  notes       String?
+
+  @@index([eventId])
 }
