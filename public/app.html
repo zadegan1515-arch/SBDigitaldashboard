@@ -104,11 +104,29 @@
   .chip .n{opacity:.55;margin-left:5px;font-variant-numeric:tabular-nums}
   .hint{font-size:12.5px;color:var(--ink-3);margin:-8px 0 14px}
   .count-head{font-size:14px;font-weight:600;margin-bottom:2px}
-  /* activations budget table */
-  .tbl{width:100%;border-collapse:collapse;font-size:13px}
-  .tbl th{text-align:left;font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);padding:8px 6px;border-bottom:1px solid var(--border)}
-  .tbl td{padding:4px 6px;vertical-align:middle;font-variant-numeric:tabular-nums}
-  .tbl .field-box{padding:5px 8px;font-size:13px}
+  /* activations budget sheet — reads as a table, edits in place */
+  .sheet{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+  .sheet th{position:sticky;top:0;z-index:1;text-align:left;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);padding:10px 10px;background:var(--surface-1);border-bottom:1px solid var(--border);white-space:nowrap}
+  .sheet th.r,.sheet td.r{text-align:right}
+  .sheet td{padding:0;border-bottom:1px solid var(--border-soft);vertical-align:middle;font-variant-numeric:tabular-nums}
+  .sheet tr.sec td{background:var(--surface-2,#f6f5f2);padding:9px 10px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);border-bottom:1px solid var(--border)}
+  .sheet tr.sec td.r{font-size:13px;letter-spacing:0;text-transform:none}
+  .sheet tr.tot td{padding:11px 10px;font-weight:800;font-size:14px;border-top:2px solid var(--border);border-bottom:0;background:var(--surface-1)}
+  .sheet tr.tot td.r.over{color:var(--warn)}
+  .sheet tbody tr.ln:nth-child(even) td{background:rgba(0,0,0,.015)}
+  .sheet tbody tr.ln:hover td{background:rgba(0,0,0,.035)}
+  .sheet td.item{font-weight:600}
+  .sheet td.muted{color:var(--ink-3)}
+  .sheet input[type="text"]{width:100%;box-sizing:border-box;border:1px solid transparent;background:transparent;padding:9px 10px;font:inherit;color:inherit;border-radius:6px;min-width:0}
+  .sheet input[type="text"]:hover{border-color:var(--border-soft);background:var(--surface-1)}
+  .sheet input[type="text"]:focus{outline:none;border-color:var(--accent);background:var(--surface-1);box-shadow:0 0 0 3px rgba(224,62,24,.08)}
+  .sheet td.r input[type="text"]{text-align:right}
+  .sheet input::placeholder{color:var(--ink-3);opacity:.7}
+  .sheet td.var{font-size:12px;white-space:nowrap;padding:0 10px}
+  .sheet td.chk{text-align:center;padding:0 6px}
+  .sheet td.del{text-align:center;padding:0 4px}
+  .sheet td.del button{padding:4px 8px;line-height:1}
+  .sheet .field-box{padding:5px 8px;font-size:13px}
   .count-head .n{color:var(--ink-3);font-weight:500;margin-left:6px}
   .target{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);
     padding:12px 14px;margin-bottom:7px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow)}
@@ -3191,33 +3209,40 @@ function renderActEvent(e) {
     '<div class="kpi"><div class="kpi-label">Tasks</div><div class="kpi-value">' + done + '/' + e.tasks.length + '</div><div class="kpi-note">' + e.staff.filter(function (s) { return s.kind === 'ambassador'; }).length + ' ambassadors</div></div>' +
   '</div>';
 
-  // budget table
-  h += '<div class="count-head" style="margin-top:14px">Budget <span class="n">' + e.lines.length + '</span>' +
-    '<span style="font-weight:400;font-size:12px;color:var(--ink-3);margin-left:8px">estimate is the sheet; final is what it actually cost</span></div>';
-  h += '<div style="overflow-x:auto"><table class="tbl" style="min-width:760px"><thead><tr><th>Item</th><th>Description</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">Estimate</th><th style="text-align:right">Final</th><th>Notes</th><th>Ordered</th><th></th></tr></thead><tbody>';
+  // budget table — reads like the production sheet, edits in place
+  h += '<div class="count-head" style="margin-top:14px">Budget <span class="n">' + e.lines.length + ' lines</span>' +
+    '<span style="font-weight:400;font-size:12px;color:var(--ink-3);margin-left:8px">click any cell to edit · estimate is the sheet, final is what it actually cost</span></div>';
+  h += '<div style="overflow-x:auto;margin-top:8px"><table class="sheet" style="min-width:860px">' +
+    '<colgroup><col style="width:19%"><col style="width:22%"><col style="width:6%"><col style="width:10%"><col style="width:11%"><col style="width:11%"><col style="width:7%"><col style="width:auto"><col style="width:36px"><col style="width:36px"></colgroup>' +
+    '<thead><tr><th>Item</th><th>Description</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Estimate</th><th class="r">Final</th><th class="r">Var</th><th>Notes / timing</th><th title="Ordered / confirmed">✓</th><th></th></tr></thead><tbody>';
   ACT_SECTIONS.forEach(function (sec) {
     var lines = e.lines.filter(function (l) { return l.section === sec[0]; });
     if (!lines.length) return;
     var sub = lines.reduce(function (s, l) { return s + l.estimateCents; }, 0);
     var subF = lines.reduce(function (s, l) { return s + (l.finalCents || 0); }, 0);
-    h += '<tr><td colspan="4" style="font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);padding-top:14px">' + sec[1] + '</td>' +
-      '<td style="text-align:right;font-weight:700;padding-top:14px">' + money(sub) + '</td><td style="text-align:right;font-weight:700;padding-top:14px">' + (subF ? money(subF) : '') + '</td><td colspan="3"></td></tr>';
+    h += '<tr class="sec"><td colspan="4">' + sec[1] + '</td><td class="r">' + money(sub) + '</td><td class="r">' + (subF ? money(subF) : '') + '</td><td colspan="4"></td></tr>';
     lines.forEach(function (l) {
       var v = l.finalCents != null ? l.finalCents - l.estimateCents : null;
-      h += '<tr data-line="' + esc(l.id) + '">' +
-        '<td><input class="field-box" data-lf="item" value="' + esc(l.item) + '" style="min-width:150px"></td>' +
-        '<td><input class="field-box" data-lf="description" value="' + esc(l.description || '') + '" style="min-width:170px"></td>' +
-        '<td><input class="field-box" data-lf="qty" value="' + (l.qty == null ? '' : l.qty) + '" style="width:56px;text-align:right"></td>' +
-        '<td><input class="field-box" data-lf="unitCents" value="' + (l.unitCents == null ? '' : (l.unitCents / 100)) + '" style="width:84px;text-align:right"></td>' +
-        '<td><input class="field-box" data-lf="estimateCents" value="' + (l.estimateCents / 100) + '" style="width:96px;text-align:right"></td>' +
-        '<td><input class="field-box" data-lf="finalCents" value="' + (l.finalCents == null ? '' : (l.finalCents / 100)) + '" placeholder="—" style="width:96px;text-align:right' + (v != null ? ';color:' + (v > 0 ? 'var(--warn)' : 'var(--good)') : '') + '" title="' + (v != null ? (v > 0 ? '+' : '') + money(v) + ' vs estimate' : '') + '"></td>' +
-        '<td><input class="field-box" data-lf="notes" value="' + esc(l.notes || '') + '" style="min-width:150px"></td>' +
-        '<td style="text-align:center"><input type="checkbox" data-lf="ordered"' + (l.ordered ? ' checked' : '') + '></td>' +
-        '<td><button class="btn-ghost danger" data-line-del="' + esc(l.id) + '" title="Remove line">×</button></td></tr>';
+      h += '<tr class="ln" data-line="' + esc(l.id) + '">' +
+        '<td class="item"><input type="text" data-lf="item" value="' + esc(l.item) + '"></td>' +
+        '<td class="muted"><input type="text" data-lf="description" value="' + esc(l.description || '') + '" placeholder="—"></td>' +
+        '<td class="r"><input type="text" data-lf="qty" value="' + (l.qty == null ? '' : l.qty) + '" placeholder="—"></td>' +
+        '<td class="r"><input type="text" data-lf="unitCents" value="' + (l.unitCents == null ? '' : money(l.unitCents)) + '" placeholder="—"></td>' +
+        '<td class="r"><input type="text" data-lf="estimateCents" value="' + money(l.estimateCents) + '"></td>' +
+        '<td class="r"><input type="text" data-lf="finalCents" value="' + (l.finalCents == null ? '' : money(l.finalCents)) + '" placeholder="—"></td>' +
+        '<td class="r var" style="color:' + (v == null ? 'var(--ink-3)' : v > 0 ? 'var(--warn)' : v < 0 ? 'var(--good)' : 'var(--ink-3)') + '">' + (v == null ? '' : (v > 0 ? '+' : v < 0 ? '−' : '') + money(Math.abs(v))) + '</td>' +
+        '<td class="muted"><input type="text" data-lf="notes" value="' + esc(l.notes || '') + '" placeholder="—"></td>' +
+        '<td class="chk"><input type="checkbox" data-lf="ordered"' + (l.ordered ? ' checked' : '') + '></td>' +
+        '<td class="del"><button class="btn-ghost danger" data-line-del="' + esc(l.id) + '" title="Remove line">×</button></td></tr>';
     });
   });
+  h += '<tr class="tot"><td colspan="4">Total estimate' + (e.budgetCents ? ' <span style="font-weight:500;color:var(--ink-3);font-size:12px">· budget ' + money(e.budgetCents) + '</span>' : '') + '</td>' +
+    '<td class="r' + (e.budgetCents && estimate > e.budgetCents ? ' over' : '') + '">' + money(estimate) + '</td>' +
+    '<td class="r">' + (finalSum ? money(finalSum) : '') + '</td>' +
+    '<td class="r var">' + (finalCount ? ((finalSum - e.lines.filter(function (l) { return l.finalCents != null; }).reduce(function (s, l) { return s + l.estimateCents; }, 0)) > 0 ? '+' : '') + money(finalSum - e.lines.filter(function (l) { return l.finalCents != null; }).reduce(function (s, l) { return s + l.estimateCents; }, 0)) : '') + '</td>' +
+    '<td colspan="3"></td></tr>';
   h += '</tbody></table></div>';
-  h += '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">' +
+  h += '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center">' +
     actSel(ACT_SECTIONS, 'production', 'data-newline-sec style="width:auto"') +
     '<input class="field-box" data-newline-item placeholder="New line item" style="width:220px">' +
     '<input class="field-box" data-newline-est placeholder="Estimate $" style="width:110px">' +
@@ -3253,9 +3278,62 @@ function renderActEvent(e) {
   h += '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
     actSel([['team', 'SB team'], ['ambassador', 'Ambassador']], 'ambassador', 'data-newstaff-kind style="width:auto"') +
     '<input class="field-box" data-newstaff-name placeholder="Name" style="width:180px"><input class="field-box" data-newstaff-role placeholder="Role" style="width:160px">' +
-    '<button class="btn-ghost" data-newstaff-add="' + esc(e.id) + '">+ Add person</button></div>';
+    '<button class="btn-ghost" data-newstaff-add="' + esc(e.id) + '">+ Add person</button>' +
+    '<button class="btn-ghost" data-roster-open="' + esc(e.id) + '" title="Pick ambassadors from the Sboy Vision platform">👥 Pick from roster</button></div>' +
+    '<div data-roster-slot="' + esc(e.id) + '"></div>';
   h += '</div>';
   return h;
+}
+
+// Roster picker: pulls the ambassador platform's list into a checklist
+// under the event. Chosen people land on the staff list linked to their
+// platform record, so the same person can't be added twice.
+function openRoster(eventId) {
+  var slot = document.querySelector('[data-roster-slot="' + eventId + '"]');
+  if (!slot) return;
+  slot.innerHTML = '<div style="margin-top:10px;font-size:13px;color:var(--ink-3)">Loading roster…</div>';
+  api('listRoster', { onboardedOnly: false }).then(function (r) {
+    if (!r.rows.length) { slot.innerHTML = '<div style="margin-top:10px;font-size:13px;color:var(--ink-3)">Roster is empty.</div>'; return; }
+    slot.innerHTML = '<div class="panel panel-pad" style="margin-top:10px">' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">' +
+        '<b style="font-size:13px">' + r.total + ' on the platform</b>' +
+        '<input class="field-box" data-roster-q placeholder="Search name, school, @handle" style="width:240px">' +
+        '<select class="field-box" data-roster-uni style="width:auto"><option value="">All schools</option>' + r.universities.map(function (u) { return '<option>' + esc(u) + '</option>'; }).join('') + '</select>' +
+        '<label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" data-roster-onb> onboarded only</label>' +
+        '<span style="flex:1"></span>' +
+        '<button class="btn-solid" data-roster-add="' + esc(eventId) + '">Add selected</button>' +
+        '<button class="btn-ghost" data-roster-close="' + esc(eventId) + '">Close</button>' +
+      '</div>' +
+      '<div data-roster-list style="max-height:360px;overflow:auto">' + renderRosterRows(r.rows) + '</div>' +
+    '</div>';
+    slot._rows = r.rows;
+  }).catch(function (e) {
+    slot.innerHTML = '<div style="margin-top:10px;font-size:13px;color:var(--warn)">' + esc(e.message) + '</div>';
+  });
+}
+function renderRosterRows(rows) {
+  if (!rows.length) return '<div style="font-size:13px;color:var(--ink-3);padding:8px 0">No matches.</div>';
+  return rows.map(function (a) {
+    var camps = (a.campaigns || []).map(function (c) { return c.name; }).join(', ');
+    return '<label style="display:grid;grid-template-columns:24px 1fr 1fr 1fr;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-soft);font-size:13px;cursor:pointer">' +
+      '<input type="checkbox" data-roster-pick="' + esc(a.id) + '">' +
+      '<div><b>' + esc(a.name) + '</b>' + (a.instagram ? ' <span style="color:var(--ink-3)">@' + esc(a.instagram) + '</span>' : '') + '</div>' +
+      '<div style="color:var(--ink-2)">' + esc(a.university || '—') + (a.classYear ? ' · ’' + String(a.classYear).slice(-2) : '') + '</div>' +
+      '<div style="color:var(--ink-3);font-size:12px">' + (a.onboarded ? '<span class="status confirmed">onboarded</span> ' : '<span class="status proposed">onboarding</span> ') + esc(camps) + '</div>' +
+    '</label>';
+  }).join('');
+}
+function filterRoster(slot) {
+  var q = (slot.querySelector('[data-roster-q]').value || '').toLowerCase();
+  var uni = slot.querySelector('[data-roster-uni]').value;
+  var onb = slot.querySelector('[data-roster-onb]').checked;
+  var rows = (slot._rows || []).filter(function (a) {
+    if (onb && !a.onboarded) return false;
+    if (uni && (a.university || '') !== uni) return false;
+    if (q && ![a.name, a.email, a.university, a.instagram].concat((a.campaigns || []).map(function (c) { return c.name; })).filter(Boolean).some(function (v) { return String(v).toLowerCase().indexOf(q) >= 0; })) return false;
+    return true;
+  });
+  slot.querySelector('[data-roster-list]').innerHTML = renderRosterRows(rows);
 }
 
 function actEventForm(e) {
@@ -3370,6 +3448,24 @@ actDetail.addEventListener('click', function (ev) {
     api('deleteEventStaff', { id: b.getAttribute('data-staff-del') }).then(function () { openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
     return;
   }
+  if ((b = t.closest('[data-roster-open]'))) { openRoster(b.getAttribute('data-roster-open')); return; }
+  if ((b = t.closest('[data-roster-close]'))) {
+    var rs = document.querySelector('[data-roster-slot="' + b.getAttribute('data-roster-close') + '"]');
+    if (rs) rs.innerHTML = '';
+    return;
+  }
+  if ((b = t.closest('[data-roster-add]'))) {
+    var slotEl = document.querySelector('[data-roster-slot="' + b.getAttribute('data-roster-add') + '"]');
+    var picked = {};
+    slotEl.querySelectorAll('[data-roster-pick]:checked').forEach(function (c) { picked[c.getAttribute('data-roster-pick')] = true; });
+    var chosen = (slotEl._rows || []).filter(function (a) { return picked[a.id]; });
+    if (!chosen.length) { toast('Tick at least one person'); return; }
+    api('addRosterToEvent', { eventId: b.getAttribute('data-roster-add'), ambassadors: chosen }).then(function (r) {
+      toast(r.added + ' added' + (r.skipped ? ', ' + r.skipped + ' already on the list' : ''));
+      openActivation(actOpenId);
+    }).catch(function (e) { toast(e.message); });
+    return;
+  }
   if ((b = t.closest('[data-newstaff-add]'))) {
     var ws = b.parentNode;
     api('upsertEventStaff', {
@@ -3382,11 +3478,19 @@ actDetail.addEventListener('click', function (ev) {
   }
 });
 
+actDetail.addEventListener('input', function (ev) {
+  var slot = ev.target.closest('[data-roster-slot]');
+  if (slot && (ev.target.hasAttribute('data-roster-q'))) filterRoster(slot);
+});
+
 // Inline edits save on change. Money fields go through parseMoney so
 // "$1,750" doesn't become $1.
 actDetail.addEventListener('change', function (ev) {
   var t = ev.target;
   var row, args, k;
+  var rslot = t.closest('[data-roster-slot]');
+  if (rslot && (t.hasAttribute('data-roster-uni') || t.hasAttribute('data-roster-onb'))) { filterRoster(rslot); return; }
+  if (rslot) return;
   if (t.hasAttribute('data-act-field')) {
     args = { id: actOpenId }; args[t.getAttribute('data-act-field')] = t.value;
     api('upsertActivation', args).then(function () { toast('Saved'); }).catch(function (e) { toast(e.message); });
