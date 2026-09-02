@@ -2453,6 +2453,319 @@ const handlers: Record<string, Handler> = {
     return { count: list.length, totalCents, brands: list }
   },
 
+  // -------- activations (signed deals being delivered) --------
+  //
+  // Cost side of a closed deal. Kept strictly apart from Deal.valueCents
+  // (sponsorship revenue) and from sb-crm booking revenue. All cents.
+
+  async listActivations() {
+    const rows = await prisma.activation.findMany({
+      include: {
+        brand: { select: { id: true, name: true } },
+        events: {
+          include: {
+            lines: { select: { estimateCents: true, finalCents: true } },
+            tasks: { select: { status: true, dueDate: true } },
+            staff: { select: { kind: true, confirmed: true } },
+          },
+          orderBy: { eventDate: 'asc' },
+        },
+      },
+      orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
+    })
+    const now = Date.now()
+    return rows.map(a => {
+      const ev = a.events.map(e => {
+        const estimate = e.lines.reduce((s, l) => s + l.estimateCents, 0)
+        const final = e.lines.reduce((s, l) => s + (l.finalCents ?? 0), 0)
+        const finalised = e.lines.filter(l => l.finalCents != null).length
+        const done = e.tasks.filter(t => t.status === 'done').length
+        const overdue = e.tasks.filter(t => t.status !== 'done' && t.dueDate && t.dueDate.getTime() < now).length
+        return {
+          id: e.id, name: e.name, venue: e.venue, city: e.city, eventDate: e.eventDate,
+          budgetCents: e.budgetCents, agencyFeeCents: e.agencyFeeCents,
+          estimateCents: estimate, finalCents: final, linesTotal: e.lines.length, linesFinal: finalised,
+          tasksDone: done, tasksTotal: e.tasks.length, tasksOverdue: overdue,
+          ambassadors: e.staff.filter(s => s.kind === 'ambassador').length,
+          ambassadorsConfirmed: e.staff.filter(s => s.kind === 'ambassador' && s.confirmed).length,
+          daysOut: e.eventDate ? Math.ceil((e.eventDate.getTime() - now) / 86400000) : null,
+        }
+      })
+      return {
+        id: a.id, name: a.name, status: a.status, owner: a.owner, notes: a.notes, dealId: a.dealId,
+        brand: a.brand, events: ev,
+        budgetCents: ev.reduce((s, e) => s + e.budgetCents, 0),
+        estimateCents: ev.reduce((s, e) => s + e.estimateCents, 0),
+        finalCents: ev.reduce((s, e) => s + e.finalCents, 0),
+        tasksDone: ev.reduce((s, e) => s + e.tasksDone, 0),
+        tasksTotal: ev.reduce((s, e) => s + e.tasksTotal, 0),
+        tasksOverdue: ev.reduce((s, e) => s + e.tasksOverdue, 0),
+        nextDate: ev.map(e => e.eventDate).filter(Boolean).sort()[0] ?? null,
+      }
+    })
+  },
+
+  async getActivation({ id }: any) {
+    const a = await prisma.activation.findUnique({
+      where: { id },
+      include: {
+        brand: { select: { id: true, name: true, category: true } },
+        events: {
+          include: {
+            lines: { orderBy: [{ section: 'asc' }, { sortOrder: 'asc' }] },
+            tasks: { orderBy: [{ status: 'asc' }, { dueDate: 'asc' }, { sortOrder: 'asc' }], include: { line: { select: { item: true, section: true } } } },
+            staff: { orderBy: [{ kind: 'asc' }, { name: 'asc' }] },
+          },
+          orderBy: { eventDate: 'asc' },
+        },
+      },
+    })
+    if (!a) throw new Error('Activation not found')
+    const deal = a.dealId ? await prisma.deal.findUnique({ where: { id: a.dealId }, select: { id: true, name: true, valueCents: true, stage: true } }) : null
+    return { ...a, deal }
+  },
+
+  async upsertActivation({ id, brandId, brandName, dealId, name, status, owner, notes }: any) {
+    let bid = brandId
+    if (!bid && brandName) {
+      const b = await prisma.brand.upsert({
+        where: { name: String(brandName).trim() },
+        create: { name: String(brandName).trim(), source: 'manual' },
+        update: {},
+      })
+      bid = b.id
+    }
+    if (!id && !bid) throw new Error('A brand is required')
+    if (!id && !name) throw new Error('A name is required')
+    const data: any = {}
+    if (bid) data.brandId = bid
+    if (dealId !== undefined) data.dealId = dealId || null
+    if (name !== undefined) data.name = String(name).trim()
+    if (status !== undefined) data.status = status
+    if (owner !== undefined) data.owner = owner || null
+    if (notes !== undefined) data.notes = notes || null
+    return id
+      ? prisma.activation.update({ where: { id }, data })
+      : prisma.activation.create({ data: { brandId: bid, name: data.name, dealId: data.dealId ?? null, status: data.status ?? 'planning', owner: data.owner ?? null, notes: data.notes ?? null } })
+  },
+
+  async deleteActivation({ id }: any) {
+    await prisma.activation.delete({ where: { id } })
+    return { ok: true }
+  },
+
+  async upsertActivationEvent({ id, activationId, name, venue, city, eventDate, loadIn, eventTime, loadOut, notes, budgetCents, agencyFeeCents }: any) {
+    const data: any = {}
+    for (const [k, v] of Object.entries({ name, venue, city, loadIn, eventTime, loadOut, notes })) {
+      if (v !== undefined) data[k] = v === '' ? null : v
+    }
+    if (eventDate !== undefined) data.eventDate = eventDate ? new Date(eventDate) : null
+    if (budgetCents !== undefined) data.budgetCents = Math.round(Number(budgetCents) || 0)
+    if (agencyFeeCents !== undefined) data.agencyFeeCents = Math.round(Number(agencyFeeCents) || 0)
+    if (id) return prisma.activationEvent.update({ where: { id }, data })
+    if (!activationId || !name) throw new Error('activationId and name are required')
+    return prisma.activationEvent.create({ data: { activationId, ...data, name } })
+  },
+
+  async deleteActivationEvent({ id }: any) {
+    await prisma.activationEvent.delete({ where: { id } })
+    return { ok: true }
+  },
+
+  async upsertBudgetLine({ id, eventId, section, item, description, qty, unitCents, estimateCents, finalCents, notes, ordered, sortOrder }: any) {
+    const data: any = {}
+    if (section !== undefined) data.section = section
+    if (item !== undefined) data.item = String(item).trim()
+    if (description !== undefined) data.description = description || null
+    if (qty !== undefined) data.qty = qty === '' || qty == null ? null : Math.round(Number(qty))
+    if (unitCents !== undefined) data.unitCents = unitCents === '' || unitCents == null ? null : Math.round(Number(unitCents))
+    if (estimateCents !== undefined) data.estimateCents = Math.round(Number(estimateCents) || 0)
+    if (finalCents !== undefined) data.finalCents = finalCents === '' || finalCents == null ? null : Math.round(Number(finalCents))
+    if (notes !== undefined) data.notes = notes || null
+    if (ordered !== undefined) data.ordered = !!ordered
+    if (sortOrder !== undefined) data.sortOrder = Math.round(Number(sortOrder) || 0)
+    if (id) return prisma.budgetLine.update({ where: { id }, data })
+    if (!eventId || !data.section || !data.item) throw new Error('eventId, section and item are required')
+    const last = await prisma.budgetLine.findFirst({ where: { eventId, section: data.section }, orderBy: { sortOrder: 'desc' } })
+    return prisma.budgetLine.create({ data: { eventId, sortOrder: (last?.sortOrder ?? 0) + 1, ...data } })
+  },
+
+  async deleteBudgetLine({ id }: any) {
+    await prisma.budgetLine.delete({ where: { id } })
+    return { ok: true }
+  },
+
+  async upsertActivationTask({ id, eventId, lineId, text, owner, ownerKind, dueDate, status, notes }: any) {
+    const data: any = {}
+    if (text !== undefined) data.text = String(text).trim()
+    if (owner !== undefined) data.owner = owner || null
+    if (ownerKind !== undefined) data.ownerKind = ownerKind
+    if (dueDate !== undefined) data.dueDate = dueDate ? new Date(dueDate) : null
+    if (status !== undefined) data.status = status
+    if (notes !== undefined) data.notes = notes || null
+    if (lineId !== undefined) data.lineId = lineId || null
+    const t = id
+      ? await prisma.activationTask.update({ where: { id }, data })
+      : await prisma.activationTask.create({ data: { eventId, ...data, text: data.text || 'Untitled' } })
+    // Finishing an ordering task ticks the budget line's checkbox too.
+    if (t.lineId && status === 'done') {
+      await prisma.budgetLine.update({ where: { id: t.lineId }, data: { ordered: true } }).catch(() => {})
+    }
+    return t
+  },
+
+  async deleteActivationTask({ id }: any) {
+    await prisma.activationTask.delete({ where: { id } })
+    return { ok: true }
+  },
+
+  async upsertEventStaff({ id, eventId, name, role, kind, externalRef, email, phone, rateCents, confirmed, notes }: any) {
+    const data: any = {}
+    for (const [k, v] of Object.entries({ role, externalRef, email, phone, notes })) {
+      if (v !== undefined) data[k] = v === '' ? null : v
+    }
+    if (name !== undefined) data.name = String(name).trim()
+    if (kind !== undefined) data.kind = kind
+    if (rateCents !== undefined) data.rateCents = rateCents === '' || rateCents == null ? null : Math.round(Number(rateCents))
+    if (confirmed !== undefined) data.confirmed = !!confirmed
+    if (id) return prisma.eventStaff.update({ where: { id }, data })
+    if (!eventId || !data.name) throw new Error('eventId and name are required')
+    return prisma.eventStaff.create({ data: { eventId, ...data } })
+  },
+
+  async deleteEventStaff({ id }: any) {
+    await prisma.eventStaff.delete({ where: { id } })
+    return { ok: true }
+  },
+
+  // Turn the production sheet into a to-do list. Every line that has to
+  // be ordered/booked becomes a task; a lead time in the notes ("2-week
+  // lead time", "2-3 week production") sets the due date back from the
+  // event. Idempotent: lines that already have a task are skipped.
+  async generateEventTasks({ eventId }: any) {
+    const e = await prisma.activationEvent.findUnique({
+      where: { id: eventId },
+      include: { lines: true, tasks: { select: { lineId: true } } },
+    })
+    if (!e) throw new Error('Event not found')
+    const have = new Set(e.tasks.map(t => t.lineId).filter(Boolean))
+    const eventMs = e.eventDate?.getTime() ?? null
+    const week = 7 * 86400000
+    let created = 0
+    for (const l of e.lines) {
+      if (have.has(l.id) || l.ordered) continue
+      const note = (l.notes ?? '').toLowerCase()
+      let weeksBack: number | null = null
+      const m = note.match(/(\d+)\s*(?:-\s*(\d+))?\s*week/)
+      if (m) weeksBack = Math.max(Number(m[1]), m[2] ? Number(m[2]) : 0)
+      // Nothing stated: assume vendors need ~2 weeks, talent ~3.
+      if (weeksBack == null) weeksBack = l.section === 'talent' ? 3 : 2
+      const verb = l.section === 'talent' ? 'Confirm' : l.section === 'staff' ? 'Book' : 'Order'
+      const detail = l.description ? ` — ${l.description}` : ''
+      await prisma.activationTask.create({
+        data: {
+          eventId, lineId: l.id,
+          text: `${verb} ${l.item}${detail}`,
+          dueDate: eventMs ? new Date(eventMs - weeksBack * week) : null,
+          notes: l.notes ?? null,
+        },
+      })
+      created++
+    }
+    return { created, skipped: e.lines.length - created }
+  },
+
+  // One-shot import of the Underdog x A&M production sheet (Sept 2026).
+  // Safe to re-run: skips if the activation already exists.
+  async seedUnderdogActivation() {
+    const existing = await prisma.activation.findFirst({ where: { name: 'Underdog x A&M — Venue Takeover' } })
+    if (existing) return { ok: true, id: existing.id, seeded: false }
+
+    const brand = await prisma.brand.upsert({
+      where: { name: 'Underdog' },
+      create: { name: 'Underdog', category: 'betting', source: 'manual' },
+      update: {},
+    })
+    const deal = await prisma.deal.findFirst({ where: { brandId: brand.id }, orderBy: { updatedAt: 'desc' } })
+
+    const a = await prisma.activation.create({
+      data: {
+        brandId: brand.id, dealId: deal?.id ?? null,
+        name: 'Underdog x A&M — Venue Takeover', status: 'in_progress',
+        notes: 'Imported from PRODUCTION BUDGET: Underdogs x AM (Sheet1). Agency fee on the sheet is $60,000; 15% of $359,000 is $53,850 — confirm which is intended.',
+      },
+    })
+    const ev = await prisma.activationEvent.create({
+      data: {
+        activationId: a.id,
+        name: 'Underdog Venue Takeover', venue: 'Good Bull Ice House', city: 'College Station, TX',
+        eventDate: new Date('2026-09-26T12:00:00-05:00'),
+        loadIn: '6:00 AM', eventTime: 'TBD', loadOut: '2:00 AM – 4:00 AM',
+        budgetCents: 35900000, agencyFeeCents: 6000000,
+      },
+    })
+
+    const $ = (d: number) => Math.round(d * 100)
+    type L = [string, string, string | null, number | null, number | null, number, string | null]
+    const rows: L[] = [
+      // section, item, description, qty, unit$, estimate$, notes
+      ['venue', 'Venue Rental', 'N/A', 1, 50000, 50000, null],
+
+      ['production', 'Furniture Rental', 'TBD on walkthrough', null, null, 0, null],
+      ['production', 'Branded Games', 'Underdog branded lawn games', null, null, 5000, null],
+      ['production', 'Activation #1', 'Threader Challenge', null, null, 25000, null],
+      ['production', 'Activation #2', 'Custom Cards', null, null, 18000, null],
+      ['production', 'Activation #3', 'Hot dog cart for 500 guests', null, null, 10000, null],
+      ['production', 'DJ Booth Rental & Staging', null, null, null, 10000, null],
+      ['production', 'A/V: DJ Equipment', null, null, null, 2500, 'Final needs based on talent selection'],
+      ['production', 'LED Wall', null, 8, 1750, 14000, null],
+      ['production', 'Wireless Microphone', null, null, null, 500, null],
+      ['production', 'Wristbands', null, null, null, 1000, '2-3 week production'],
+      ['production', 'Photo/Video', null, null, null, 4500, 'Hire local'],
+      ['production', 'Napkins', null, null, null, 500, '2-week lead time'],
+
+      ['print', 'Co-branded Collateral', 'Merch for staff', null, null, 3000, 'Based on final creative timing'],
+      ['print', 'Consumer Giveaways', 'Hats, phone chargers, etc.', null, null, 12000, 'Based on final creative timing'],
+      ['print', 'Step & Repeat', 'SEG material', null, null, 4000, '2-week lead time'],
+      ['print', 'Glass Decals', 'Placed throughout venue where allowed', null, null, 5000, null],
+      ['print', 'Large Banners', 'TBD final number', null, null, 20000, null],
+      ['print', 'Gift Cards', '200 people @ $25', 200, 25, 5000, null],
+
+      ['staff', 'Brand Ambassadors', 'Working all stations', 6, 500, 3000, null],
+      ['staff', 'Local Production Lead', 'Max', null, null, 5000, null],
+      ['staff', 'Venue Manager', 'Liz', null, null, 5000, null],
+      ['staff', 'Travel', 'Hotel / airfare / per diem', null, null, 10000, null],
+      ['staff', 'Install', 'Load-in 6:00 AM – 2:00 PM', 1, 9000, 9000, null],
+      ['staff', 'Strike', 'Load-out 8:00 PM – 9:00 PM', 1, 5000, 5000, null],
+      ['staff', 'Trucking / Shipping', 'Round trip', 1, 2000, 2000, null],
+      ['staff', 'Pre-production', 'Covers all requests until event', 1, 5000, 5000, null],
+
+      ['talent', 'Host', null, null, null, 30000, null],
+      ['talent', 'Influencer Talent', null, 8, 2000, 16000, null],
+      ['talent', 'Support DJ #1', null, null, null, 2000, null],
+      ['talent', 'Support DJ #2', null, null, null, 2000, null],
+      ['talent', 'Headliner DJ', null, null, null, 60000, null],
+      ['talent', 'Local Frat Promotion', null, null, null, 15000, null],
+    ]
+    let i = 0
+    for (const [section, item, description, qty, unit, est, notes] of rows) {
+      await prisma.budgetLine.create({
+        data: {
+          eventId: ev.id, section, item, description, qty,
+          unitCents: unit == null ? null : $(unit), estimateCents: $(est), notes, sortOrder: i++,
+        },
+      })
+    }
+    // Named people on the sheet go straight onto the staff list.
+    await prisma.eventStaff.createMany({
+      data: [
+        { eventId: ev.id, name: 'Max', role: 'Local Production Lead', kind: 'team', rateCents: $(5000) },
+        { eventId: ev.id, name: 'Liz', role: 'Venue Manager', kind: 'team', rateCents: $(5000) },
+      ],
+    })
+    return { ok: true, id: a.id, seeded: true, lines: rows.length }
+  },
+
   // -------- email outreach --------
 
   async getEmailStatus() { return emailStatus() },
