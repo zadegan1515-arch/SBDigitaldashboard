@@ -2766,6 +2766,69 @@ const handlers: Record<string, Handler> = {
     return { ok: true, id: a.id, seeded: true, lines: rows.length }
   },
 
+  // -------- ambassador platform (Sboy Vision) --------
+  //
+  // Read-only pull from the ambassador platform's integration endpoint.
+  // Configured by two env vars; without them the feature just reports
+  // "not connected" instead of failing. Nothing here writes to the
+  // platform, and the platform returns no identity or tax fields.
+
+  async getRosterStatus() {
+    return {
+      configured: !!(process.env.AMBASSADOR_PLATFORM_URL && process.env.AMBASSADOR_PLATFORM_TOKEN),
+      url: process.env.AMBASSADOR_PLATFORM_URL || null,
+    }
+  },
+
+  async listRoster({ q, university, onboardedOnly }: any) {
+    const base = process.env.AMBASSADOR_PLATFORM_URL
+    const token = process.env.AMBASSADOR_PLATFORM_TOKEN
+    if (!base || !token) {
+      throw new Error('Ambassador platform not connected — set AMBASSADOR_PLATFORM_URL and AMBASSADOR_PLATFORM_TOKEN in Vercel.')
+    }
+    const res = await fetch(base.replace(/\/$/, '') + '/api/integrations/ambassadors', {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    })
+    if (res.status === 401) throw new Error('Ambassador platform rejected the token — the two INTEGRATION_TOKEN values don\'t match.')
+    if (!res.ok) throw new Error(`Ambassador platform returned ${res.status}`)
+    const j: any = await res.json()
+    let rows: any[] = j.ambassadors ?? []
+    if (onboardedOnly) rows = rows.filter(r => r.onboarded)
+    if (university) rows = rows.filter(r => (r.university || '').toLowerCase() === String(university).toLowerCase())
+    if (q) {
+      const needle = String(q).toLowerCase()
+      rows = rows.filter(r => [r.name, r.email, r.university, r.instagram, ...(r.campaigns || []).map((c: any) => c.name)]
+        .filter(Boolean).some(v => String(v).toLowerCase().includes(needle)))
+    }
+    const universities = [...new Set((j.ambassadors ?? []).map((r: any) => r.university).filter(Boolean))].sort()
+    return { total: j.count ?? rows.length, rows, universities, generatedAt: j.generatedAt }
+  },
+
+  // Put chosen roster members on an event's staff list. Idempotent on
+  // the platform id, so picking someone twice doesn't duplicate them.
+  async addRosterToEvent({ eventId, ambassadors }: any) {
+    if (!eventId || !Array.isArray(ambassadors)) throw new Error('eventId and ambassadors[] required')
+    const existing = await prisma.eventStaff.findMany({ where: { eventId, externalRef: { not: null } }, select: { externalRef: true } })
+    const have = new Set(existing.map(s => s.externalRef))
+    let added = 0
+    for (const a of ambassadors) {
+      const ref = 'sboy:' + a.id
+      if (!a.id || have.has(ref)) continue
+      await prisma.eventStaff.create({
+        data: {
+          eventId, kind: 'ambassador', externalRef: ref,
+          name: a.name || 'Ambassador',
+          role: [a.university, a.instagram ? '@' + a.instagram : null].filter(Boolean).join(' · ') || null,
+          email: a.email || null, phone: a.phone || null,
+          confirmed: false,
+        },
+      })
+      added++
+    }
+    return { added, skipped: ambassadors.length - added }
+  },
+
   // -------- email outreach --------
 
   async getEmailStatus() { return emailStatus() },
