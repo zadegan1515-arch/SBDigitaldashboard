@@ -590,6 +590,11 @@ model Activation {
   owner  String?
   notes  String?
 
+  // Working docs in Google Drive (created by the dashboard or pasted in).
+  sheetUrl      String?
+  docUrl        String?
+  driveFolderId String?
+
   events ActivationEvent[]
 
   createdAt DateTime @default(now())
@@ -617,6 +622,11 @@ model ActivationEvent {
   // brand signed off; agency fee is SB's; grand total is the invoice.
   budgetCents    Int @default(0)
   agencyFeeCents Int @default(0)
+
+  // Sboy Vision platform campaign that recruits/pays the ambassadors.
+  platformCampaignId String?
+  inviteUrl          String?
+  rosterSyncedAt     DateTime?
 
   lines BudgetLine[]
   tasks ActivationTask[]
@@ -693,13 +703,19 @@ model EventStaff {
   role  String?
   // "team" | "ambassador"
   kind  String @default("team")
-  // Reference into the ambassador tracker once that's linked.
+  // Reference into the ambassador tracker once that's linked ("sboy:<userId>").
   externalRef String?
   email       String?
   phone       String?
   rateCents   Int?
   confirmed   Boolean @default(false)
   notes       String?
+  // Budget line this person fills a slot on (e.g. "Brand Ambassadors" x6).
+  lineId      String?
+  // Where they are: "invited" | "onboarding" | "ready" | "confirmed" | "declined" | "no_show" | "done"
+  status      String  @default("invited")
+  platformStage String?
+  invitedAt   DateTime?
 
   @@index([eventId])
 }
