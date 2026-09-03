@@ -2890,16 +2890,20 @@ const handlers: Record<string, Handler> = {
   async createEventCampaign({ eventId }: any) {
     const ev = await prisma.activationEvent.findUnique({
       where: { id: eventId },
-      include: { activation: { include: { brand: { select: { name: true } } } }, lines: { where: { section: 'staff' } } },
+      include: { activation: { include: { brand: { select: { name: true } }, _count: { select: { events: true } } } }, lines: { where: { section: 'staff' } } },
     })
     if (!ev) throw new Error('Event not found')
     const amb = ev.lines.find(l => /ambassador/i.test(l.item)) ?? null
     const date = ev.eventDate ? ev.eventDate.toISOString().slice(0, 10) : null
+    // Noon, not midnight: a bare date renders as the evening before in US time zones.
+    const dateNoon = date ? `${date}T12:00:00` : null
+    // One event → the activation's name is the campaign name; several → qualify it.
+    const campaignName = ev.activation._count.events > 1 ? `${ev.activation.name} — ${ev.name}` : ev.activation.name
     const when = [ev.loadIn ? `Load-in ${ev.loadIn}` : null, ev.eventTime ? `Event ${ev.eventTime}` : null, ev.loadOut ? `Load-out ${ev.loadOut}` : null].filter(Boolean).join(' · ')
     const body = {
       externalRef: 'sb-event:' + ev.id,
       clientName: ev.activation.brand.name,
-      name: ev.activation.name === ev.name ? ev.name : `${ev.activation.name} — ${ev.name}`,
+      name: campaignName,
       brief: [
         `${ev.activation.brand.name} activation${ev.venue ? ` at ${ev.venue}` : ''}${ev.city ? `, ${ev.city}` : ''}${date ? ` on ${date}` : ''}.`,
         when || null,
@@ -2907,7 +2911,7 @@ const handlers: Record<string, Handler> = {
         ev.notes || null,
       ].filter(Boolean).join('\n'),
       targetAmbassadors: amb ? Math.max(1, amb.qty ?? 1) : null,
-      startDate: date, endDate: date,
+      startDate: dateNoon, endDate: dateNoon,
       payoutCents: amb?.unitCents ?? 0,
       budgetCents: amb ? amb.estimateCents : 0,
       deliverableType: 'Event shift',
