@@ -1364,3 +1364,26 @@ export async function warmupStatus(days = 14) {
     byDay: [...byDay.entries()].sort().map(([day, v]) => ({ day, ...v })),
   }
 }
+
+// One-off transactional message (event invites to ambassadors). Not
+// outreach, so the pause switch doesn't apply — but it still counts
+// against the day's sending room so the mailbox never exceeds its ramp.
+// Signed and branded like everything else that leaves this address.
+export async function sendPlainEmail(args: { to: string; subject: string; body: string; cc?: string[] }) {
+  const { to, subject, body } = args
+  const { mode } = await sendMode()
+  if (mode === 'none') throw new Error('No sending account connected')
+  if (!to || !/@/.test(to)) throw new Error('Valid address required')
+  const { room, cap } = await roomToday()
+  if (room === 0) throw new Error(`Today's send cap (${cap}) is used up — copy the link instead, or send tomorrow.`)
+  const text = body.trimEnd() + '\n\n' + SIGNATURE
+  const mark = await logoAttachment()
+  const files = await signatureAssets()
+  await deliver({
+    from: await fromHeader(),
+    to, ...(args.cc?.length ? { cc: args.cc } : {}),
+    subject, text, html: htmlBody(text, 'invite-' + Date.now(), !!mark),
+    ...(files.length ? { attachments: files } : {}),
+  })
+  return { ok: true, to }
+}

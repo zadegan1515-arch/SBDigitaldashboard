@@ -58,15 +58,22 @@ async function setSetting(key: string, value: string) {
 
 // ---- connect flow ----------------------------------------------
 
-export function googleAuthUrl(): string {
+// Drive is a separate grant on a separate account (whoever owns the
+// activation docs — Leo), so it gets its own scope and its own stored
+// refresh token. drive.file = only files this app creates; it cannot see
+// the rest of the Drive.
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
+
+export function googleAuthUrl(kind: 'gmail' | 'drive' = 'gmail'): string {
   const p = new URLSearchParams({
     client_id: process.env.GMAIL_CLIENT_ID!,
     redirect_uri: siteUrl() + REDIRECT_PATH,
     response_type: 'code',
-    scope: SCOPE,
+    scope: kind === 'drive' ? DRIVE_SCOPE : SCOPE,
     access_type: 'offline',      // we need a refresh token
     prompt: 'consent',           // force one so re-connecting always works
     include_granted_scopes: 'false',
+    state: kind,
   })
   return 'https://accounts.google.com/o/oauth2/v2/auth?' + p.toString()
 }
@@ -308,4 +315,197 @@ export async function gmailScan(query: string, max = 150): Promise<ScanMsg[]> {
     if (!pageToken) break
   }
   return out
+}
+
+
+// ---- Google Drive (activation working docs) ---------------------
+
+export async function driveExchangeCode(code: string) {
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code,
+      client_id: process.env.GMAIL_CLIENT_ID!,
+      client_secret: process.env.GMAIL_CLIENT_SECRET!,
+      redirect_uri: siteUrl() + REDIRECT_PATH,
+      grant_type: 'authorization_code',
+    }),
+  })
+  const j: any = await res.json()
+  if (!res.ok || !j.refresh_token) {
+    throw new Error(j.error_description || j.error || 'Google did not return a refresh token')
+  }
+  let address = ''
+  try {
+    const ab = await fetch('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)', {
+      headers: { Authorization: `Bearer ${j.access_token}` },
+    })
+    if (ab.ok) address = (await ab.json()).user?.emailAddress ?? ''
+  } catch {}
+  await setSetting('driveRefreshToken', j.refresh_token)
+  if (address) await setSetting('driveEmail', address)
+  return { address }
+}
+
+export async function driveDisconnect() {
+  const token = await getSetting('driveRefreshToken')
+  if (token) {
+    try { await fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(token), { method: 'POST' }) } catch {}
+  }
+  await prisma.setting.deleteMany({ where: { key: { in: ['driveRefreshToken', 'driveEmail', 'driveRootFolderId'] } } })
+  return { ok: true }
+}
+
+export async function driveStatus() {
+  return {
+    configured: googleConfigured(),
+    connected: !!(await getSetting('driveRefreshToken')),
+    address: await getSetting('driveEmail'),
+  }
+}
+
+async function driveAccessToken(): Promise<string> {
+  const refresh = await getSetting('driveRefreshToken')
+  if (!refresh) throw new Error('Google Drive is not connected — click "Connect Google Drive" on the Activations page.')
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      refresh_token: refresh,
+      client_id: process.env.GMAIL_CLIENT_ID!,
+      client_secret: process.env.GMAIL_CLIENT_SECRET!,
+      grant_type: 'refresh_token',
+    }),
+  })
+  const j: any = await res.json()
+  if (!res.ok || !j.access_token) {
+    throw new Error(/invalid_grant/.test(String(j.error))
+      ? 'Google Drive access was revoked or expired — reconnect it on the Activations page.'
+      : (j.error_description || j.error || 'Could not refresh Google Drive token'))
+  }
+  return j.access_token
+}
+
+async function gapi(token: string, url: string, init: RequestInit = {}): Promise<any> {
+  const res = await fetch(url, {
+    ...init,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init.headers || {}) },
+  })
+  const text = await res.text()
+  let j: any = {}
+  try { j = text ? JSON.parse(text) : {} } catch { j = { raw: text } }
+  if (!res.ok) {
+    const msg = j?.error?.message || j?.error_description || j?.error || `HTTP ${res.status}`
+    const hint = /has not been used|is disabled|accessNotConfigured/i.test(String(msg))
+      ? ' — enable this API in the Google Cloud project (APIs & Services → Library).'
+      : ''
+    throw new Error(String(msg) + hint)
+  }
+  return j
+}
+
+const MIME = {
+  folder: 'application/vnd.google-apps.folder',
+  sheet: 'application/vnd.google-apps.spreadsheet',
+  doc: 'application/vnd.google-apps.document',
+}
+
+async function driveCreate(token: string, name: string, mimeType: string, parentId?: string) {
+  const body: any = { name, mimeType }
+  if (parentId) body.parents = [parentId]
+  return gapi(token, 'https://www.googleapis.com/drive/v3/files?fields=id,name,webViewLink', {
+    method: 'POST', body: JSON.stringify(body),
+  })
+}
+
+// One "SB Activations" folder for everything; remembered so we don't
+// make a new one each time.
+async function rootFolder(token: string): Promise<string> {
+  const saved = await getSetting('driveRootFolderId')
+  if (saved) {
+    try {
+      const f = await gapi(token, `https://www.googleapis.com/drive/v3/files/${saved}?fields=id,trashed`)
+      if (f?.id && !f.trashed) return saved
+    } catch {}
+  }
+  const f = await driveCreate(token, 'SB Activations', MIME.folder)
+  await setSetting('driveRootFolderId', f.id)
+  return f.id
+}
+
+export type SheetTab = { title: string; rows: (string | number | null)[][]; widths?: number[] }
+
+// Creates <folder>/<name> with a Sheet and a Doc inside. Sheet tabs are
+// filled through the Sheets API; the Doc gets a plain-text run sheet
+// through the Docs API. Either fill failing (API not enabled yet) is
+// reported as a warning — the files still exist and the links still work.
+export async function driveCreateActivationDocs(opts: {
+  name: string
+  sheetTabs: SheetTab[]
+  docText: string
+}): Promise<{ folderId: string; folderUrl: string; sheetId: string; sheetUrl: string; docId: string; docUrl: string; warnings: string[] }> {
+  const token = await driveAccessToken()
+  const warnings: string[] = []
+  const root = await rootFolder(token)
+  const folder = await driveCreate(token, opts.name, MIME.folder, root)
+  const sheet = await driveCreate(token, `${opts.name} — Budget`, MIME.sheet, folder.id)
+  const doc = await driveCreate(token, `${opts.name} — Run of Show`, MIME.doc, folder.id)
+
+  try {
+    await sheetsFill(token, sheet.id, opts.sheetTabs)
+  } catch (e: any) { warnings.push('Sheet created but not filled: ' + String(e?.message || e)) }
+  try {
+    await docsFill(token, doc.id, opts.docText)
+  } catch (e: any) { warnings.push('Doc created but not filled: ' + String(e?.message || e)) }
+
+  return {
+    folderId: folder.id,
+    folderUrl: `https://drive.google.com/drive/folders/${folder.id}`,
+    sheetId: sheet.id,
+    sheetUrl: `https://docs.google.com/spreadsheets/d/${sheet.id}/edit`,
+    docId: doc.id,
+    docUrl: `https://docs.google.com/document/d/${doc.id}/edit`,
+    warnings,
+  }
+}
+
+async function sheetsFill(token: string, spreadsheetId: string, tabs: SheetTab[]) {
+  if (!tabs.length) return
+  // Rename the default first tab, add the rest.
+  const meta = await gapi(token, `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets(properties(sheetId,title))`)
+  const firstId = meta?.sheets?.[0]?.properties?.sheetId ?? 0
+  const requests: any[] = [
+    { updateSheetProperties: { properties: { sheetId: firstId, title: tabs[0].title }, fields: 'title' } },
+  ]
+  tabs.slice(1).forEach((t, i) => requests.push({ addSheet: { properties: { title: t.title, index: i + 1 } } }))
+  await gapi(token, `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+    method: 'POST', body: JSON.stringify({ requests }),
+  })
+  const data = tabs.map((t) => ({ range: `'${t.title.replace(/'/g, "''")}'!A1`, values: t.rows }))
+  await gapi(token, `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
+    method: 'POST', body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data }),
+  })
+  // Bold header rows, freeze them, size columns.
+  const meta2 = await gapi(token, `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets(properties(sheetId,title))`)
+  const fmt: any[] = []
+  for (const sh of meta2.sheets || []) {
+    const t = tabs.find((x) => x.title === sh.properties.title)
+    if (!t) continue
+    const sid = sh.properties.sheetId
+    fmt.push({ repeatCell: { range: { sheetId: sid, startRowIndex: 0, endRowIndex: 1 }, cell: { userEnteredFormat: { textFormat: { bold: true } } }, fields: 'userEnteredFormat.textFormat.bold' } })
+    fmt.push({ updateSheetProperties: { properties: { sheetId: sid, gridProperties: { frozenRowCount: 1 } }, fields: 'gridProperties.frozenRowCount' } })
+    ;(t.widths || []).forEach((w, i) => fmt.push({ updateDimensionProperties: { range: { sheetId: sid, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: w }, fields: 'pixelSize' } }))
+  }
+  if (fmt.length) await gapi(token, `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+    method: 'POST', body: JSON.stringify({ requests: fmt }),
+  })
+}
+
+async function docsFill(token: string, documentId: string, text: string) {
+  if (!text) return
+  await gapi(token, `https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({ requests: [{ insertText: { location: { index: 1 }, text } }] }),
+  })
 }
