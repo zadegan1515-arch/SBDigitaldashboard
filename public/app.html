@@ -228,6 +228,16 @@
   .kv{display:grid;grid-template-columns:110px 1fr;gap:6px 14px;font-size:13px}
   .kv .k{color:var(--ink-3);font-size:12px}
   .res-group{margin-bottom:24px}
+  /* activations workspace: swap sidebar + tabs */
+  .act-only{display:none}
+  .app.act-mode .cc-only{display:none}
+  .app.act-mode .act-only{display:block}
+  .app.act-mode nav.act-only{display:flex}
+  #nav-activations .nav-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left}
+  #nav-activations .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  #nav-activations .nav-item .n{margin-left:auto}
+  .row-link:hover{background:var(--surface-2,rgba(0,0,0,.03))}
+  .status.lost{background:#fde8e8;color:#a33}
 </style>
 </head>
 <body>
@@ -237,8 +247,9 @@
       <div class="logo-mark">SB</div>
       <div class="logo-text">Command Center<span>SB Agency</span></div>
     </div>
-    <div class="nav-label">Categories</div>
-    <div id="nav-categories"></div>
+    <div class="nav-label cc-only">Categories</div>
+    <div id="nav-categories" class="cc-only"></div>
+    <div id="nav-activations" class="act-only"></div>
   </aside>
 
   <main class="main">
@@ -253,7 +264,7 @@
         <button class="btn-solid" id="btn-add-brand">+ Add brand</button>
         <span class="whoami" id="whoami"></span>
       </div>
-      <nav class="tabs">
+      <nav class="tabs cc-only">
         <button class="nav-item active" data-view="dashboard">Home</button>
         <button class="nav-item" data-view="brands">Brands</button>
         <button class="nav-item" data-view="discover">Discover</button>
@@ -267,6 +278,7 @@
         <button class="nav-item" data-view="materials">Materials</button>
         <button class="nav-item" data-view="team">Team</button>
       </nav>
+      <nav class="tabs act-only" id="act-tabs"></nav>
     </div>
 
     <!-- DASHBOARD -->
@@ -415,19 +427,9 @@
       <div id="deals"></div>
     </section>
 
-    <!-- ACTIVATIONS -->
+    <!-- ACTIVATIONS (own workspace: sidebar + section tabs swap in) -->
     <section class="view page" id="activations">
-      <div class="eyebrow">Delivery</div>
-      <h1>Activations</h1>
-      <div class="sub">Signed deals being carried out — budget, tasks and staff per event. Cost side only: sponsorship revenue stays in Pipeline, booking revenue in sb-crm, and the three are never added together.</div>
-      <div style="margin-top:18px;display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn-solid" id="act-new">+ New activation</button>
-        <button class="btn-ghost" id="act-seed" title="Loads the Underdog x A&amp;M production sheet — safe to click twice">Import Underdog sheet</button>
-      </div>
-      <div id="act-form-slot" style="margin-top:12px"></div>
-      <div class="kpi-row" id="act-kpis"></div>
-      <div id="act-list"></div>
-      <div id="act-detail" style="margin-top:22px"></div>
+      <div id="act-body"></div>
     </section>
 
     <!-- DISCOVER -->
@@ -3068,75 +3070,143 @@ document.getElementById('team-body').addEventListener('click', function (e) {
 
 // --- activations ------------------------------------------------
 //
-// Signed deals being delivered. One activation → one or more events;
-// each event owns a budget (the production sheet), a task list and a
-// staff list. Everything edits in place and saves on change.
+// Its own part of the site. Entering it swaps the sidebar for the
+// activations list and the top tabs for the activation's sections:
+// Overview → Budget → People → Docs → Recap. That order is the job:
+// approve the money, book the lines, staff the slots, share the docs,
+// close it out. Everything edits in place and saves on change.
 
 var ACT_SECTIONS = [
   ['venue', 'Venue'], ['production', 'Vendors / Production'], ['print', 'Print'],
   ['staff', 'Staff / Travel / Labor'], ['talent', 'Talent & Promo']
 ];
 var ACT_STATUS = [['planning', 'Planning'], ['in_progress', 'In progress'], ['delivered', 'Delivered'], ['recapped', 'Recapped']];
-var TASK_STATUS = [['todo', 'To do'], ['doing', 'Doing'], ['blocked', 'Blocked'], ['done', 'Done']];
-var actOpenId = null;
+var STAFF_STATUS = [['invited', 'Invited'], ['onboarding', 'Onboarding'], ['ready', 'Ready'], ['confirmed', 'Confirmed'], ['declined', 'Declined'], ['no_show', 'No-show'], ['done', 'Worked']];
+var ACT_TABS = [['overview', 'Overview'], ['budget', 'Budget'], ['people', 'People'], ['docs', 'Docs'], ['recap', 'Recap']];
+var actOpenId = null, actTab = 'overview', actList = [], actCur = null, actPlatform = null, actDrive = null, actOpenLine = null;
 
 function actSel(opts, val, attr) {
   return '<select class="field-box" ' + attr + '>' + opts.map(function (o) {
     return '<option value="' + o[0] + '"' + (o[0] === val ? ' selected' : '') + '>' + o[1] + '</option>';
   }).join('') + '</select>';
 }
-function dateInput(iso) {
-  return iso ? new Date(iso).toISOString().slice(0, 10) : '';
-}
+function dateInput(iso) { return iso ? new Date(iso).toISOString().slice(0, 10) : ''; }
 function daysLabel(n) {
   if (n == null) return '';
   if (n < 0) return Math.abs(n) + 'd ago';
   if (n === 0) return 'today';
   return n + 'd out';
 }
+function staffPill(s) {
+  var cls = { invited: 'proposed', onboarding: 'proposed', ready: 'sent', confirmed: 'confirmed', done: 'confirmed', declined: 'lost', no_show: 'lost' }[s] || 'proposed';
+  var lab = (STAFF_STATUS.filter(function (x) { return x[0] === s; })[0] || [s, s])[1];
+  return '<span class="status ' + cls + '">' + esc(lab) + '</span>';
+}
+function pct(a, b) { return b ? Math.round(a / b * 100) : 0; }
+function signed(c) { return (c > 0 ? '+' : c < 0 ? '−' : '') + money(Math.abs(c)); }
+// A staff-section line is a people line (slots to fill) unless it's
+// travel / labour money rather than named people.
+function isPeopleLine(l) { return l.section === 'staff' && !/travel|hotel|airfare|per diem|install|strike|truck|shipping|freight|pre-?production|labou?r|overtime/i.test(l.item); }
+function actHash() {
+  var h = '#activations' + (actOpenId ? '/' + actOpenId + '/' + actTab : '');
+  if (location.hash !== h) history.replaceState({}, '', location.pathname + h);
+}
 
-function loadActivations() {
+// Enter / leave the workspace.
+function actMode(on) {
+  document.querySelector('.app').classList.toggle('act-mode', !!on);
+}
+
+function loadActivations(keepOpen) {
   showView('activations');
-  document.getElementById('act-detail').innerHTML = '';
-  actOpenId = null;
+  actMode(true);
+  if (!keepOpen) { actOpenId = null; actCur = null; }
+  if (!actPlatform) api('getRosterStatus').then(function (r) { actPlatform = r; }).catch(function () {});
+  if (!actDrive) api('getDriveStatus').then(function (r) { actDrive = r; renderActSidebar(); }).catch(function () {});
   return api('listActivations').then(function (rows) {
-    var active = rows.filter(function (a) { return a.status !== 'recapped'; });
-    var budget = active.reduce(function (s, a) { return s + a.budgetCents; }, 0);
-    var estimate = active.reduce(function (s, a) { return s + a.estimateCents; }, 0);
-    var overdue = active.reduce(function (s, a) { return s + a.tasksOverdue; }, 0);
-    document.getElementById('act-kpis').innerHTML =
-      '<div class="kpi"><div class="kpi-label">Active</div><div class="kpi-value">' + active.length + '</div><div class="kpi-note">activations</div></div>' +
-      '<div class="kpi money"><div class="kpi-label">Approved budget</div><div class="kpi-value">' + money(budget) + '</div><div class="kpi-note">across active</div></div>' +
-      '<div class="kpi"><div class="kpi-label">Estimated cost</div><div class="kpi-value">' + money(estimate) + '</div><div class="kpi-note">' + (budget ? Math.round(estimate / budget * 100) + '% of budget' : '—') + '</div></div>' +
-      '<div class="kpi"' + (overdue ? ' style="border-left:3px solid var(--warn)"' : '') + '><div class="kpi-label">Overdue tasks</div><div class="kpi-value">' + overdue + '</div><div class="kpi-note">across all events</div></div>';
+    actList = rows;
+    renderActSidebar();
+    if (actOpenId) return openActivation(actOpenId, actTab);
+    renderActHome();
+    actHash();
+  }).catch(function (e) { toast(e.message); });
+}
 
-    var box = document.getElementById('act-list');
-    if (!rows.length) {
-      box.innerHTML = '<div class="panel" style="margin-top:14px"><div class="empty"><h3>No activations yet</h3><p>Create one, or import the Underdog production sheet to start with a real example.</p></div></div>';
-      return;
-    }
-    box.innerHTML = '<div class="card-grid">' + rows.map(function (a) {
+function renderActSidebar() {
+  var box = document.getElementById('nav-activations');
+  var h = '<button class="nav-item" data-act-exit>← Command Center</button>' +
+    '<div class="nav-label" style="margin-top:14px">Activations</div>';
+  if (!actList.length) h += '<div style="padding:6px 12px;font-size:12px;color:var(--side-dim)">None yet</div>';
+  h += actList.map(function (a) {
+    var c = a.status === 'recapped' ? 'var(--side-dim)' : a.currentCents > a.budgetCents && a.budgetCents ? 'var(--warn)' : a.status === 'in_progress' ? 'var(--good)' : 'var(--accent)';
+    return '<button class="nav-item' + (a.id === actOpenId ? ' active' : '') + '" data-act-go="' + esc(a.id) + '" title="' + esc(a.brand.name) + '">' +
+      '<span class="dot" style="background:' + c + '"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(a.name) + '</span>' +
+      (a.daysOut != null && a.status !== 'recapped' ? '<span class="n">' + (a.daysOut < 0 ? 'past' : a.daysOut + 'd') + '</span>' : '') + '</button>';
+  }).join('');
+  h += '<button class="nav-item" data-act-new style="margin-top:8px;color:var(--side-dim)">+ New activation</button>';
+  h += '<div class="nav-label" style="margin-top:18px">Connections</div>' +
+    '<div style="padding:4px 12px;font-size:12px;color:var(--side-dim);line-height:1.7">' +
+      '<div>' + (actPlatform && actPlatform.configured ? '● ' : '○ ') + 'Sboy Vision platform</div>' +
+      '<div>' + (actDrive && actDrive.connected ? '● Google Drive' : '○ <a data-drive-connect style="color:inherit;text-decoration:underline;cursor:pointer">Connect Google Drive</a>') + '</div>' +
+    '</div>';
+  box.innerHTML = h;
+  // top tabs for the open activation
+  var tabs = document.getElementById('act-tabs');
+  if (actOpenId) {
+    tabs.innerHTML = ACT_TABS.map(function (t) {
+      return '<button class="nav-item' + (t[0] === actTab ? ' active' : '') + '" data-act-tab="' + t[0] + '">' + t[1] + '</button>';
+    }).join('');
+  } else {
+    tabs.innerHTML = '<button class="nav-item active">All activations</button>';
+  }
+}
+
+// The landing page inside the workspace: every activation as a card.
+function renderActHome() {
+  var box = document.getElementById('act-body');
+  var active = actList.filter(function (a) { return a.status !== 'recapped'; });
+  var budget = active.reduce(function (s, a) { return s + a.budgetCents; }, 0);
+  var current = active.reduce(function (s, a) { return s + a.currentCents; }, 0);
+  var soon = active.filter(function (a) { return a.daysOut != null && a.daysOut >= 0; }).sort(function (a, b) { return a.daysOut - b.daysOut; })[0];
+  var h = '<div class="eyebrow">Activations</div><h1>What we\'re delivering</h1>' +
+    '<div class="sub">Signed deals being carried out. Cost side only — sponsorship revenue stays in Pipeline, booking revenue in sb-crm, never added together.</div>';
+  h += '<div class="kpi-row">' +
+    '<div class="kpi"><div class="kpi-label">Active</div><div class="kpi-value">' + active.length + '</div><div class="kpi-note">activations</div></div>' +
+    '<div class="kpi money"><div class="kpi-label">Approved budget</div><div class="kpi-value">' + money(budget) + '</div><div class="kpi-note">across active</div></div>' +
+    '<div class="kpi"' + (budget && current > budget ? ' style="border-left:3px solid var(--warn)"' : '') + '><div class="kpi-label">Spent vs approved</div><div class="kpi-value">' + pct(current, budget) + '%</div><div class="kpi-note">' + money(current) + ' committed</div></div>' +
+    '<div class="kpi"><div class="kpi-label">Next event</div><div class="kpi-value">' + (soon ? daysLabel(soon.daysOut) : '—') + '</div><div class="kpi-note">' + (soon ? esc(soon.name) : 'nothing scheduled') + '</div></div>' +
+  '</div>';
+  h += '<div id="act-form-slot"></div>';
+  if (!actList.length) {
+    h += '<div class="panel" style="margin-top:14px"><div class="empty"><h3>No activations yet</h3><p>Create one from the sidebar.</p></div></div>';
+  } else {
+    h += '<div class="card-grid" style="margin-top:16px">' + actList.map(function (a) {
       var next = a.events.filter(function (e) { return e.eventDate; })[0];
       var st = ACT_STATUS.filter(function (s) { return s[0] === a.status; })[0];
-      return '<div class="cat-card" data-act-open="' + esc(a.id) + '" style="--c:' + (a.tasksOverdue ? 'var(--warn)' : 'var(--accent)') + '">' +
+      var over = a.budgetCents && a.currentCents > a.budgetCents;
+      return '<div class="cat-card" data-act-go="' + esc(a.id) + '" style="--c:' + (over ? 'var(--warn)' : 'var(--accent)') + '">' +
         '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">' +
           '<div><h3>' + esc(a.name) + '</h3><div style="font-size:12.5px;color:var(--ink-2);margin-top:2px">' + esc(a.brand.name) + (a.owner ? ' · ' + esc(a.owner) : '') + '</div></div>' +
           '<span class="status ' + (a.status === 'delivered' || a.status === 'recapped' ? 'confirmed' : a.status === 'in_progress' ? 'sent' : 'proposed') + '">' + esc(st ? st[1] : a.status) + '</span>' +
         '</div>' +
         (next ? '<div style="font-size:13px;margin-top:10px"><b>' + esc(next.name) + '</b> · ' + when(next.eventDate) + ' · <span style="color:' + (next.daysOut != null && next.daysOut < 7 ? 'var(--warn)' : 'var(--ink-2)') + '">' + daysLabel(next.daysOut) + '</span></div>' : '') +
         '<div class="cat-stats">' +
-          '<div><div class="cat-stat-label">Budget</div><div style="font-weight:700">' + money(a.budgetCents) + '</div></div>' +
-          '<div><div class="cat-stat-label">Estimate</div><div style="font-weight:700">' + money(a.estimateCents) + '</div></div>' +
-          '<div><div class="cat-stat-label">Tasks</div><div style="font-weight:700">' + a.tasksDone + '/' + a.tasksTotal + (a.tasksOverdue ? ' <span style="color:var(--warn)">· ' + a.tasksOverdue + ' late</span>' : '') + '</div></div>' +
+          '<div><div class="cat-stat-label">Approved</div><div style="font-weight:700">' + money(a.budgetCents) + '</div></div>' +
+          '<div><div class="cat-stat-label">Current cost</div><div style="font-weight:700;color:' + (over ? 'var(--warn)' : 'inherit') + '">' + money(a.currentCents) + '</div></div>' +
+          '<div><div class="cat-stat-label">People</div><div style="font-weight:700">' + a.peopleConfirmed + '/' + (a.slots || a.people) + '</div></div>' +
         '</div>' +
       '</div>';
     }).join('') + '</div>';
-  }).catch(function (e) { toast(e.message); });
+  }
+  box.innerHTML = h;
 }
 
 function actNewForm() {
+  if (!actOpenId) renderActHome();
   var slot = document.getElementById('act-form-slot');
-  slot.innerHTML = '<div class="panel panel-pad">' +
+  if (!slot) return;
+  slot.innerHTML = '<div class="panel panel-pad" style="margin-top:14px">' +
+    '<div style="font-weight:600;margin-bottom:8px">New activation</div>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
       '<input class="field-box" id="actf-brand" placeholder="Brand (e.g. Underdog)">' +
       '<input class="field-box" id="actf-name" placeholder="Activation name (e.g. Underdog x A&M — Venue Takeover)">' +
@@ -3152,148 +3222,339 @@ function actNewForm() {
       name: document.getElementById('actf-name').value,
       owner: document.getElementById('actf-owner').value,
       status: document.getElementById('actf-status').value
-    }).then(function (a) { slot.innerHTML = ''; toast('Created'); openActivation(a.id); })
+    }).then(function (a) {
+      slot.innerHTML = ''; toast('Created');
+      actOpenId = a.id; actTab = 'overview';
+      // every activation has at least one event — the budget hangs off it
+      return api('upsertActivationEvent', { activationId: a.id, name: a.name });
+    }).then(function () { return loadActivations(true); })
       .catch(function (e) { toast(e.message); });
   };
 }
 
-function openActivation(id) {
-  actOpenId = id;
+function openActivation(id, tab) {
+  actOpenId = id; actTab = tab || actTab || 'overview';
   return api('getActivation', { id: id }).then(function (a) {
-    document.getElementById('act-list').innerHTML = '';
-    var box = document.getElementById('act-detail');
-    var h = '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
-      '<div><a class="crumb" data-act-back>← All activations</a>' +
-      '<h2 style="font-family:var(--display);font-size:24px;font-weight:800;letter-spacing:-.02em;margin-top:6px">' + esc(a.name) + '</h2>' +
-      '<div style="font-size:13px;color:var(--ink-2)">' + esc(a.brand.name) + (a.deal ? ' · deal: ' + esc(a.deal.name) + ' · ' + money(a.deal.valueCents) + ' (' + esc(a.deal.stage) + ')' : ' · no Pipeline deal linked') + '</div></div>' +
-      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
-        actSel(ACT_STATUS, a.status, 'data-act-field="status" style="width:auto"') +
-        '<input class="field-box" data-act-field="owner" value="' + esc(a.owner || '') + '" placeholder="Owner" style="width:140px">' +
-        '<button class="btn-ghost" data-act-newevent>+ Event</button>' +
-        '<button class="btn-ghost danger" data-act-delete>Delete</button>' +
-      '</div></div>';
-    if (a.notes) h += '<div class="panel panel-pad" style="margin-top:12px;font-size:13px;color:var(--ink-2);white-space:pre-wrap">' + esc(a.notes) + '</div>';
-
-    if (!a.events.length) {
-      h += '<div class="panel" style="margin-top:14px"><div class="empty"><h3>No events yet</h3><p>Add the first event to start a budget and task list.</p></div></div>';
-    }
-    a.events.forEach(function (e) { h += renderActEvent(e); });
-    box.innerHTML = h;
+    actCur = a;
+    renderActSidebar();
+    renderActivation();
+    actHash();
     window.scrollTo(0, 0);
   }).catch(function (e) { toast(e.message); });
 }
 
-function renderActEvent(e) {
+function actEventSummary(e) {
   var estimate = e.lines.reduce(function (s, l) { return s + l.estimateCents; }, 0);
-  var finalSum = e.lines.reduce(function (s, l) { return s + (l.finalCents || 0); }, 0);
+  var current = e.lines.reduce(function (s, l) { return s + (l.finalCents || 0); }, 0);
   var finalCount = e.lines.filter(function (l) { return l.finalCents != null; }).length;
-  var grand = e.budgetCents + e.agencyFeeCents;
+  var ordered = e.lines.filter(function (l) { return l.ordered; }).length;
   var days = e.eventDate ? Math.ceil((new Date(e.eventDate).getTime() - Date.now()) / 86400000) : null;
-  var done = e.tasks.filter(function (t) { return t.status === 'done'; }).length;
+  var staffLines = e.lines.filter(isPeopleLine);
+  var slots = staffLines.reduce(function (s, l) { return s + Math.max(1, l.qty || 1); }, 0);
+  var lineIds = {}; staffLines.forEach(function (l) { lineIds[l.id] = true; });
+  var confirmed = e.staff.filter(function (s) { return lineIds[s.lineId] && (s.status === 'confirmed' || s.status === 'done'); }).length;
+  return { estimate: estimate, current: current, finalCount: finalCount, ordered: ordered, days: days, slots: slots, confirmed: confirmed, staffLines: staffLines };
+}
 
-  var h = '<div class="panel panel-pad" style="margin-top:16px" data-act-event="' + esc(e.id) + '">';
-  // header
-  h += '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start">' +
-    '<div><div style="font-family:var(--display);font-size:18px;font-weight:700">' + esc(e.name) + '</div>' +
-    '<div style="font-size:13px;color:var(--ink-2);margin-top:3px">' + esc([e.venue, e.city].filter(Boolean).join(', ')) +
-      (e.eventDate ? ' · ' + new Date(e.eventDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + ' · <b style="color:' + (days != null && days < 7 ? 'var(--warn)' : 'inherit') + '">' + daysLabel(days) + '</b>' : '') + '</div>' +
-    '<div style="font-size:12px;color:var(--ink-3);margin-top:3px">Load-in ' + esc(e.loadIn || '—') + ' · Event ' + esc(e.eventTime || '—') + ' · Load-out ' + esc(e.loadOut || '—') + '</div></div>' +
-    '<button class="btn-ghost" data-ev-edit="' + esc(e.id) + '">Edit event</button></div>';
-  h += '<div data-ev-form="' + esc(e.id) + '"></div>';
+function renderActivation() {
+  var a = actCur;
+  var box = document.getElementById('act-body');
+  var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
+    '<div><div class="eyebrow">' + esc(a.brand.name) + (a.deal ? ' · deal ' + money(a.deal.valueCents) + ' (' + esc(a.deal.stage) + ')' : '') + '</div>' +
+    '<h1 style="margin-top:2px">' + esc(a.name) + '</h1></div>' +
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">' +
+      actSel(ACT_STATUS, a.status, 'data-act-field="status" style="width:auto"') +
+      '<input class="field-box" data-act-field="owner" value="' + esc(a.owner || '') + '" placeholder="Owner" style="width:140px">' +
+      (a.sheetUrl ? '<a class="btn-ghost" href="' + esc(a.sheetUrl) + '" target="_blank" rel="noopener">📊 Sheet</a>' : '') +
+      (a.docUrl ? '<a class="btn-ghost" href="' + esc(a.docUrl) + '" target="_blank" rel="noopener">📄 Doc</a>' : '') +
+    '</div></div>';
+  if (actTab === 'overview') h += renderActOverview(a);
+  else if (actTab === 'budget') h += renderActBudget(a);
+  else if (actTab === 'people') h += renderActPeople(a);
+  else if (actTab === 'docs') h += renderActDocs(a);
+  else if (actTab === 'recap') h += renderActRecap(a);
+  box.innerHTML = h;
+}
 
-  // money summary
-  h += '<div class="kpi-row" style="margin:14px 0 6px">' +
-    '<div class="kpi money"><div class="kpi-label">Approved budget</div><div class="kpi-value">' + money(e.budgetCents) + '</div><div class="kpi-note">+ fee ' + money(e.agencyFeeCents) + ' = ' + money(grand) + '</div></div>' +
-    '<div class="kpi"><div class="kpi-label">Estimated</div><div class="kpi-value">' + money(estimate) + '</div><div class="kpi-note" style="color:' + (estimate > e.budgetCents ? 'var(--warn)' : 'var(--ink-3)') + '">' + (e.budgetCents ? (estimate > e.budgetCents ? money(estimate - e.budgetCents) + ' over' : money(e.budgetCents - estimate) + ' under') : '—') + '</div></div>' +
-    '<div class="kpi"><div class="kpi-label">Actual so far</div><div class="kpi-value">' + money(finalSum) + '</div><div class="kpi-note">' + finalCount + '/' + e.lines.length + ' lines final</div></div>' +
-    '<div class="kpi"><div class="kpi-label">Tasks</div><div class="kpi-value">' + done + '/' + e.tasks.length + '</div><div class="kpi-note">' + e.staff.filter(function (s) { return s.kind === 'ambassador'; }).length + ' ambassadors</div></div>' +
-  '</div>';
-
-  // budget table — reads like the production sheet, edits in place
-  h += '<div class="count-head" style="margin-top:14px">Budget <span class="n">' + e.lines.length + ' lines</span>' +
-    '<span style="font-weight:400;font-size:12px;color:var(--ink-3);margin-left:8px">click any cell to edit · estimate is the sheet, final is what it actually cost</span></div>';
-  h += '<div style="overflow-x:auto;margin-top:8px"><table class="sheet" style="min-width:860px">' +
-    '<colgroup><col style="width:19%"><col style="width:22%"><col style="width:6%"><col style="width:10%"><col style="width:11%"><col style="width:11%"><col style="width:7%"><col style="width:auto"><col style="width:36px"><col style="width:36px"></colgroup>' +
-    '<thead><tr><th>Item</th><th>Description</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Estimate</th><th class="r">Final</th><th class="r">Var</th><th>Notes / timing</th><th title="Ordered / confirmed">✓</th><th></th></tr></thead><tbody>';
-  ACT_SECTIONS.forEach(function (sec) {
-    var lines = e.lines.filter(function (l) { return l.section === sec[0]; });
-    if (!lines.length) return;
-    var sub = lines.reduce(function (s, l) { return s + l.estimateCents; }, 0);
-    var subF = lines.reduce(function (s, l) { return s + (l.finalCents || 0); }, 0);
-    h += '<tr class="sec"><td colspan="4">' + sec[1] + '</td><td class="r">' + money(sub) + '</td><td class="r">' + (subF ? money(subF) : '') + '</td><td colspan="4"></td></tr>';
-    lines.forEach(function (l) {
-      var v = l.finalCents != null ? l.finalCents - l.estimateCents : null;
-      h += '<tr class="ln" data-line="' + esc(l.id) + '">' +
-        '<td class="item"><input type="text" data-lf="item" value="' + esc(l.item) + '"></td>' +
-        '<td class="muted"><input type="text" data-lf="description" value="' + esc(l.description || '') + '" placeholder="—"></td>' +
-        '<td class="r"><input type="text" data-lf="qty" value="' + (l.qty == null ? '' : l.qty) + '" placeholder="—"></td>' +
-        '<td class="r"><input type="text" data-lf="unitCents" value="' + (l.unitCents == null ? '' : money(l.unitCents)) + '" placeholder="—"></td>' +
-        '<td class="r"><input type="text" data-lf="estimateCents" value="' + money(l.estimateCents) + '"></td>' +
-        '<td class="r"><input type="text" data-lf="finalCents" value="' + (l.finalCents == null ? '' : money(l.finalCents)) + '" placeholder="—"></td>' +
-        '<td class="r var" style="color:' + (v == null ? 'var(--ink-3)' : v > 0 ? 'var(--warn)' : v < 0 ? 'var(--good)' : 'var(--ink-3)') + '">' + (v == null ? '' : (v > 0 ? '+' : v < 0 ? '−' : '') + money(Math.abs(v))) + '</td>' +
-        '<td class="muted"><input type="text" data-lf="notes" value="' + esc(l.notes || '') + '" placeholder="—"></td>' +
-        '<td class="chk"><input type="checkbox" data-lf="ordered"' + (l.ordered ? ' checked' : '') + '></td>' +
-        '<td class="del"><button class="btn-ghost danger" data-line-del="' + esc(l.id) + '" title="Remove line">×</button></td></tr>';
-    });
+// -------- Overview: where things stand + what to do next --------
+function renderActOverview(a) {
+  var h = '';
+  var budget = a.events.reduce(function (s, e) { return s + e.budgetCents; }, 0);
+  var current = 0, slots = 0, confirmed = 0, nearest = null;
+  a.events.forEach(function (e) {
+    var s = actEventSummary(e);
+    current += s.current; slots += s.slots; confirmed += s.confirmed;
+    if (s.days != null && (nearest == null || s.days < nearest)) nearest = s.days;
   });
-  h += '<tr class="tot"><td colspan="4">Total estimate' + (e.budgetCents ? ' <span style="font-weight:500;color:var(--ink-3);font-size:12px">· budget ' + money(e.budgetCents) + '</span>' : '') + '</td>' +
-    '<td class="r' + (e.budgetCents && estimate > e.budgetCents ? ' over' : '') + '">' + money(estimate) + '</td>' +
-    '<td class="r">' + (finalSum ? money(finalSum) : '') + '</td>' +
-    '<td class="r var">' + (finalCount ? ((finalSum - e.lines.filter(function (l) { return l.finalCents != null; }).reduce(function (s, l) { return s + l.estimateCents; }, 0)) > 0 ? '+' : '') + money(finalSum - e.lines.filter(function (l) { return l.finalCents != null; }).reduce(function (s, l) { return s + l.estimateCents; }, 0)) : '') + '</td>' +
-    '<td colspan="3"></td></tr>';
-  h += '</tbody></table></div>';
-  h += '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center">' +
-    actSel(ACT_SECTIONS, 'production', 'data-newline-sec style="width:auto"') +
-    '<input class="field-box" data-newline-item placeholder="New line item" style="width:220px">' +
-    '<input class="field-box" data-newline-est placeholder="Estimate $" style="width:110px">' +
-    '<button class="btn-ghost" data-newline-add="' + esc(e.id) + '">+ Add line</button>' +
-    '<button class="btn-ghost" data-gen-tasks="' + esc(e.id) + '" title="Creates an order/book/confirm task for every line that isn\'t ordered yet, due back from the event by its lead time">✦ Generate tasks from budget</button>' +
+  var over = budget && current > budget;
+  h += '<div class="kpi-row">' +
+    '<div class="kpi money"><div class="kpi-label">Approved budget</div><div class="kpi-value">' + money(budget) + '</div><div class="kpi-note">' + a.events.length + ' event' + (a.events.length === 1 ? '' : 's') + '</div></div>' +
+    '<div class="kpi"' + (over ? ' style="border-left:3px solid var(--warn)"' : '') + '><div class="kpi-label">Current cost</div><div class="kpi-value">' + money(current) + '</div><div class="kpi-note">' + (budget ? pct(current, budget) + '% of approved' + (over ? ' · ' + money(current - budget) + ' over' : '') : 'finals entered so far') + '</div></div>' +
+    '<div class="kpi"><div class="kpi-label">Days to event</div><div class="kpi-value">' + (nearest == null ? '—' : nearest < 0 ? 'past' : nearest) + '</div><div class="kpi-note">' + (nearest == null ? 'set a date' : nearest < 0 ? Math.abs(nearest) + ' days ago' : nearest === 0 ? 'today' : 'until load-in') + '</div></div>' +
+    '<div class="kpi"><div class="kpi-label">People</div><div class="kpi-value">' + confirmed + '/' + (slots || '—') + '</div><div class="kpi-note">confirmed / slots</div></div>' +
   '</div>';
 
-  // tasks
-  h += '<div class="count-head" style="margin-top:22px">Tasks <span class="n">' + e.tasks.length + '</span></div>';
-  if (!e.tasks.length) h += '<div style="font-size:13px;color:var(--ink-3)">No tasks yet — generate them from the budget, or add one below.</div>';
-  h += '<div>' + e.tasks.map(function (t) {
-    var late = t.status !== 'done' && t.dueDate && new Date(t.dueDate).getTime() < Date.now();
-    return '<div data-task="' + esc(t.id) + '" style="display:grid;grid-template-columns:110px 1fr 150px 130px 32px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-soft)' + (t.status === 'done' ? ';opacity:.55' : '') + '">' +
-      actSel(TASK_STATUS, t.status, 'data-tf="status"') +
-      '<div><input class="field-box" data-tf="text" value="' + esc(t.text) + '">' + (t.line ? '<div style="font-size:11px;color:var(--ink-3);margin-top:2px">from budget · ' + esc(t.line.item) + '</div>' : '') + '</div>' +
-      '<input class="field-box" data-tf="owner" value="' + esc(t.owner || '') + '" placeholder="Owner">' +
-      '<input class="field-box" type="date" data-tf="dueDate" value="' + dateInput(t.dueDate) + '"' + (late ? ' style="border-color:var(--warn);color:var(--warn)"' : '') + '>' +
-      '<button class="btn-ghost danger" data-task-del="' + esc(t.id) + '">×</button></div>';
-  }).join('') + '</div>';
-  h += '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><input class="field-box" data-newtask-text placeholder="New task" style="flex:1;min-width:220px"><input class="field-box" data-newtask-owner placeholder="Owner" style="width:140px"><input class="field-box" type="date" data-newtask-due style="width:150px"><button class="btn-ghost" data-newtask-add="' + esc(e.id) + '">+ Add task</button></div>';
+  // next steps, computed — the checklist that replaces the task list
+  var steps = [];
+  if (!a.sheetUrl) steps.push({ t: 'Create the working docs (Google Sheet + Doc)', tab: 'docs' });
+  a.events.forEach(function (e) {
+    var s = actEventSummary(e);
+    var pre = a.events.length > 1 ? e.name + ': ' : '';
+    if (!e.venue || !e.eventDate) steps.push({ t: pre + 'Add venue and date', tab: 'overview', ev: e.id });
+    if (!e.budgetCents) steps.push({ t: pre + 'Enter the approved budget', tab: 'overview', ev: e.id });
+    if (s.staffLines.some(function (l) { return /ambassador/i.test(l.item); }) && !e.platformCampaignId) steps.push({ t: pre + 'Set up the ambassador campaign on Sboy Vision', tab: 'people' });
+    s.staffLines.forEach(function (l) {
+      var need = Math.max(1, l.qty || 1);
+      var have = e.staff.filter(function (p) { return p.lineId === l.id && (p.status === 'confirmed' || p.status === 'done'); }).length;
+      var pend = e.staff.filter(function (p) { return p.lineId === l.id && p.status !== 'confirmed' && p.status !== 'done' && p.status !== 'declined' && p.status !== 'no_show'; }).length;
+      if (have < need) steps.push({ t: pre + 'Confirm ' + (need - have) + ' more ' + l.item + (pend ? ' (' + pend + ' invited)' : ''), tab: 'people', line: l.id });
+    });
+    var unordered = e.lines.filter(function (l) { return !l.ordered && l.section !== 'staff'; }).length;
+    if (unordered) steps.push({ t: pre + 'Book / order ' + unordered + ' budget line' + (unordered === 1 ? '' : 's'), tab: 'budget' });
+    var noFinal = e.lines.filter(function (l) { return l.ordered && l.finalCents == null; }).length;
+    if (noFinal) steps.push({ t: pre + 'Enter final cost on ' + noFinal + ' ordered line' + (noFinal === 1 ? '' : 's'), tab: 'budget' });
+    if (s.days != null && s.days < 0 && a.status !== 'delivered' && a.status !== 'recapped') steps.push({ t: pre + 'Event has happened — mark delivered and recap', tab: 'recap' });
+  });
+  h += '<div class="count-head" style="margin-top:20px">Next steps <span class="n">' + steps.length + '</span></div>';
+  h += steps.length
+    ? '<div class="panel">' + steps.map(function (s) {
+        return '<div class="row-link" data-act-step="' + s.tab + '"' + (s.line ? ' data-act-line="' + esc(s.line) + '"' : '') + ' style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border-soft);cursor:pointer"><span>' + esc(s.t) + '</span><span style="color:var(--ink-3);font-size:12px">' + (ACT_TABS.filter(function (t) { return t[0] === s.tab; })[0] || ['', ''])[1] + ' →</span></div>';
+      }).join('') + '</div>'
+    : '<div class="panel panel-pad" style="color:var(--good)">Everything is booked, staffed and costed. Nothing left to do here.</div>';
 
-  // staff
-  h += '<div class="count-head" style="margin-top:22px">Staff & ambassadors <span class="n">' + e.staff.length + '</span></div>';
-  h += '<div>' + e.staff.map(function (s) {
-    return '<div data-staff="' + esc(s.id) + '" style="display:grid;grid-template-columns:130px 1fr 1fr 110px 90px 32px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-soft)">' +
-      actSel([['team', 'SB team'], ['ambassador', 'Ambassador']], s.kind, 'data-sf="kind"') +
-      '<input class="field-box" data-sf="name" value="' + esc(s.name) + '">' +
-      '<input class="field-box" data-sf="role" value="' + esc(s.role || '') + '" placeholder="Role">' +
-      '<input class="field-box" data-sf="rateCents" value="' + (s.rateCents == null ? '' : s.rateCents / 100) + '" placeholder="Rate $" style="text-align:right">' +
-      '<label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" data-sf="confirmed"' + (s.confirmed ? ' checked' : '') + '> confirmed</label>' +
-      '<button class="btn-ghost danger" data-staff-del="' + esc(s.id) + '">×</button></div>';
-  }).join('') + '</div>';
-  h += '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
-    actSel([['team', 'SB team'], ['ambassador', 'Ambassador']], 'ambassador', 'data-newstaff-kind style="width:auto"') +
-    '<input class="field-box" data-newstaff-name placeholder="Name" style="width:180px"><input class="field-box" data-newstaff-role placeholder="Role" style="width:160px">' +
-    '<button class="btn-ghost" data-newstaff-add="' + esc(e.id) + '">+ Add person</button>' +
-    '<button class="btn-ghost" data-roster-open="' + esc(e.id) + '" title="Pick ambassadors from the Sboy Vision platform">👥 Pick from roster</button></div>' +
-    '<div data-roster-slot="' + esc(e.id) + '"></div>';
+  // events
+  h += '<div class="count-head" style="margin-top:22px">Events <span class="n">' + a.events.length + '</span><button class="btn-ghost" data-act-newevent style="margin-left:auto">+ Event</button></div>';
+  if (!a.events.length) h += '<div class="panel panel-pad" style="color:var(--ink-3)">Add the first event to start a budget.</div>';
+  a.events.forEach(function (e) {
+    var s = actEventSummary(e);
+    h += '<div class="panel panel-pad" style="margin-top:10px" data-act-event="' + esc(e.id) + '">' +
+      '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start">' +
+        '<div><div style="font-family:var(--display);font-size:18px;font-weight:700">' + esc(e.name) + '</div>' +
+        '<div style="font-size:13px;color:var(--ink-2);margin-top:3px">' + esc([e.venue, e.city].filter(Boolean).join(', ') || 'Venue TBD') +
+          (e.eventDate ? ' · ' + new Date(e.eventDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + ' · <b style="color:' + (s.days != null && s.days < 7 ? 'var(--warn)' : 'inherit') + '">' + daysLabel(s.days) + '</b>' : ' · date TBD') + '</div>' +
+        '<div style="font-size:12px;color:var(--ink-3);margin-top:3px">Load-in ' + esc(e.loadIn || '—') + ' · Event ' + esc(e.eventTime || '—') + ' · Load-out ' + esc(e.loadOut || '—') + '</div></div>' +
+        '<div style="display:flex;gap:16px;font-size:13px;text-align:right">' +
+          '<div><div class="cat-stat-label">Approved</div><b>' + money(e.budgetCents) + '</b></div>' +
+          '<div><div class="cat-stat-label">Current</div><b style="color:' + (e.budgetCents && s.current > e.budgetCents ? 'var(--warn)' : 'inherit') + '">' + money(s.current) + '</b></div>' +
+          '<div><div class="cat-stat-label">Booked</div><b>' + s.ordered + '/' + e.lines.length + '</b></div>' +
+          '<div><div class="cat-stat-label">People</div><b>' + s.confirmed + '/' + s.slots + '</b></div>' +
+          '<button class="btn-ghost" data-ev-edit="' + esc(e.id) + '">Edit</button>' +
+        '</div></div>' +
+      '<div data-ev-form="' + esc(e.id) + '"></div>' +
+      (e.notes ? '<div style="font-size:13px;color:var(--ink-2);margin-top:8px;white-space:pre-wrap">' + esc(e.notes) + '</div>' : '') +
+    '</div>';
+  });
+  h += '<div style="margin-top:18px;display:flex;justify-content:flex-end"><button class="btn-ghost danger" data-act-delete>Delete activation</button></div>';
+  return h;
+}
+
+// -------- Budget: the production sheet --------
+function renderActBudget(a) {
+  var h = '';
+  if (!a.events.length) return '<div class="panel panel-pad" style="margin-top:14px;color:var(--ink-3)">Add an event first (Overview).</div>';
+  a.events.forEach(function (e) {
+    var s = actEventSummary(e);
+    var over = e.budgetCents && s.current > e.budgetCents;
+    h += '<div class="panel panel-pad" style="margin-top:14px" data-act-event="' + esc(e.id) + '">';
+    if (a.events.length > 1) h += '<div style="font-family:var(--display);font-size:18px;font-weight:700">' + esc(e.name) + '</div>';
+    h += '<div class="kpi-row" style="margin:6px 0 4px">' +
+      '<div class="kpi money"><div class="kpi-label">Approved budget</div><div class="kpi-value">' + money(e.budgetCents) + '</div><div class="kpi-note">signed off by the brand</div></div>' +
+      '<div class="kpi"' + (over ? ' style="border-left:3px solid var(--warn)"' : '') + '><div class="kpi-label">Current cost</div><div class="kpi-value">' + money(s.current) + '</div><div class="kpi-note">' + s.finalCount + '/' + e.lines.length + ' lines final</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Spent vs approved</div><div class="kpi-value" style="color:' + (over ? 'var(--warn)' : 'inherit') + '">' + pct(s.current, e.budgetCents) + '%</div><div class="kpi-note">' + (e.budgetCents ? (over ? money(s.current - e.budgetCents) + ' over' : money(e.budgetCents - s.current) + ' left') : 'set the approved budget') + '</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Booked</div><div class="kpi-value">' + s.ordered + '/' + e.lines.length + '</div><div class="kpi-note">lines ordered / confirmed · estimate ' + money(s.estimate) + '</div></div>' +
+    '</div>';
+    h += '<div style="font-size:12px;color:var(--ink-3);margin:8px 0 6px">Click any cell to edit · <b>Estimate</b> is the sheet, <b>Final</b> is what it actually cost · tick ✓ when it\'s ordered or confirmed · staff lines open in People</div>';
+    h += '<div style="overflow-x:auto"><table class="sheet" style="min-width:860px">' +
+      '<colgroup><col style="width:19%"><col style="width:22%"><col style="width:6%"><col style="width:10%"><col style="width:11%"><col style="width:11%"><col style="width:7%"><col style="width:auto"><col style="width:36px"><col style="width:36px"></colgroup>' +
+      '<thead><tr><th>Item</th><th>Description</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Estimate</th><th class="r">Final</th><th class="r">Var</th><th>Notes / timing</th><th title="Ordered / confirmed">✓</th><th></th></tr></thead><tbody>';
+    ACT_SECTIONS.forEach(function (sec) {
+      var lines = e.lines.filter(function (l) { return l.section === sec[0]; });
+      if (!lines.length) return;
+      var sub = lines.reduce(function (s2, l) { return s2 + l.estimateCents; }, 0);
+      var subF = lines.reduce(function (s2, l) { return s2 + (l.finalCents || 0); }, 0);
+      h += '<tr class="sec"><td colspan="4">' + sec[1] + '</td><td class="r">' + money(sub) + '</td><td class="r">' + (subF ? money(subF) : '') + '</td><td colspan="4"></td></tr>';
+      lines.forEach(function (l) {
+        var v = l.finalCents != null ? l.finalCents - l.estimateCents : null;
+        var isStaff = isPeopleLine(l);
+        var filled = isStaff ? e.staff.filter(function (p) { return p.lineId === l.id && (p.status === 'confirmed' || p.status === 'done'); }).length : 0;
+        h += '<tr class="ln" data-line="' + esc(l.id) + '">' +
+          '<td class="item">' + (isStaff
+            ? '<a data-line-people="' + esc(l.id) + '" style="cursor:pointer;text-decoration:underline dotted" title="Open in People">' + esc(l.item) + '</a> <span style="font-weight:400;color:var(--ink-3);font-size:11px">' + filled + '/' + Math.max(1, l.qty || 1) + '</span>'
+            : '<input type="text" data-lf="item" value="' + esc(l.item) + '">') + '</td>' +
+          '<td class="muted"><input type="text" data-lf="description" value="' + esc(l.description || '') + '" placeholder="—"></td>' +
+          '<td class="r"><input type="text" data-lf="qty" value="' + (l.qty == null ? '' : l.qty) + '" placeholder="—"></td>' +
+          '<td class="r"><input type="text" data-lf="unitCents" value="' + (l.unitCents == null ? '' : money(l.unitCents)) + '" placeholder="—"></td>' +
+          '<td class="r"><input type="text" data-lf="estimateCents" value="' + money(l.estimateCents) + '"></td>' +
+          '<td class="r"><input type="text" data-lf="finalCents" value="' + (l.finalCents == null ? '' : money(l.finalCents)) + '" placeholder="—"></td>' +
+          '<td class="r var" style="color:' + (v == null ? 'var(--ink-3)' : v > 0 ? 'var(--warn)' : v < 0 ? 'var(--good)' : 'var(--ink-3)') + '">' + (v == null ? '' : (v > 0 ? '+' : v < 0 ? '−' : '') + money(Math.abs(v))) + '</td>' +
+          '<td class="muted"><input type="text" data-lf="notes" value="' + esc(l.notes || '') + '" placeholder="—"></td>' +
+          '<td class="chk"><input type="checkbox" data-lf="ordered"' + (l.ordered ? ' checked' : '') + '></td>' +
+          '<td class="del"><button class="btn-ghost danger" data-line-del="' + esc(l.id) + '" title="Remove line">×</button></td></tr>';
+      });
+    });
+    var finalEst = e.lines.filter(function (l) { return l.finalCents != null; }).reduce(function (s2, l) { return s2 + l.estimateCents; }, 0);
+    h += '<tr class="tot"><td colspan="4">Total <span style="font-weight:500;color:var(--ink-3);font-size:12px">· approved ' + money(e.budgetCents) + '</span></td>' +
+      '<td class="r' + (e.budgetCents && s.estimate > e.budgetCents ? ' over' : '') + '">' + money(s.estimate) + '</td>' +
+      '<td class="r' + (over ? ' over' : '') + '">' + (s.current ? money(s.current) : '') + '</td>' +
+      '<td class="r var" style="color:' + (s.current - finalEst > 0 ? 'var(--warn)' : 'var(--good)') + '">' + (s.finalCount ? signed(s.current - finalEst) : '') + '</td>' +
+      '<td colspan="3"></td></tr>';
+    h += '</tbody></table></div>';
+    h += '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center">' +
+      actSel(ACT_SECTIONS, 'production', 'data-newline-sec style="width:auto"') +
+      '<input class="field-box" data-newline-item placeholder="New line item" style="width:220px">' +
+      '<input class="field-box" data-newline-est placeholder="Estimate $" style="width:110px">' +
+      '<button class="btn-ghost" data-newline-add="' + esc(e.id) + '">+ Add line</button>' +
+    '</div></div>';
+  });
+  return h;
+}
+
+// -------- People: slots per staff line, fed by the platform --------
+function renderActPeople(a) {
+  var h = '';
+  if (!a.events.length) return '<div class="panel panel-pad" style="margin-top:14px;color:var(--ink-3)">Add an event first (Overview).</div>';
+  a.events.forEach(function (e) {
+    var s = actEventSummary(e);
+    h += '<div class="panel panel-pad" style="margin-top:14px" data-act-event="' + esc(e.id) + '">';
+    if (a.events.length > 1) h += '<div style="font-family:var(--display);font-size:18px;font-weight:700">' + esc(e.name) + '</div>';
+
+    // platform strip
+    h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2,var(--surface-1));font-size:13px">' +
+      '<b>Sboy Vision</b>';
+    if (!actPlatform || !actPlatform.configured) h += '<span style="color:var(--ink-3)">platform not connected</span>';
+    else if (!e.platformCampaignId) h += '<span style="color:var(--ink-2)">No campaign yet — this creates one so ambassadors can sign up, onboard and get paid.</span><button class="btn-solid" data-plat-create="' + esc(e.id) + '" style="margin-left:auto">Set up on platform</button>';
+    else h += '<span style="color:var(--ink-2)">Invite link</span><input class="field-box" readonly value="' + esc(e.inviteUrl || '') + '" style="flex:1;min-width:220px;font-size:12px" data-invite-url>' +
+      '<button class="btn-ghost" data-copy="' + esc(e.inviteUrl || '') + '">Copy link</button>' +
+      (actPlatform.url ? '<a class="btn-ghost" href="' + esc(actPlatform.url + '/agency/campaigns/' + e.platformCampaignId) + '" target="_blank" rel="noopener">Open campaign ↗</a>' : '') +
+      '<button class="btn-ghost" data-plat-sync="' + esc(e.id) + '" title="Pull who has joined / onboarded">↻ Sync</button>';
+    h += '</div>';
+
+    // slots by staff line
+    if (!s.staffLines.length) h += '<div style="font-size:13px;color:var(--ink-3);margin-top:12px">No staff lines on the budget yet — add "Brand Ambassadors" (qty 6, $500) on the Budget tab and slots appear here.</div>';
+    s.staffLines.forEach(function (l) {
+      var need = Math.max(1, l.qty || 1);
+      var people = e.staff.filter(function (p) { return p.lineId === l.id; });
+      var have = people.filter(function (p) { return p.status === 'confirmed' || p.status === 'done'; }).length;
+      var open = actOpenLine === l.id || (actOpenLine == null && /ambassador/i.test(l.item));
+      var isAmb = /ambassador/i.test(l.item);
+      h += '<div class="count-head" style="margin-top:18px;cursor:pointer" data-line-toggle="' + esc(l.id) + '">' + (open ? '▾' : '▸') + ' ' + esc(l.item) +
+        ' <span class="n">' + have + '/' + need + ' confirmed' + (people.length > have ? ' · ' + (people.length - have) + ' pending' : '') + (l.unitCents ? ' · ' + money(l.unitCents) + ' each' : '') + '</span></div>';
+      if (!open) return;
+      h += '<div>' + people.map(function (p) { return renderPerson(p, e); }).join('');
+      for (var i = people.length; i < need; i++) h += '<div style="padding:8px 0;border-bottom:1px dashed var(--border-soft);font-size:13px;color:var(--ink-3)">Open slot ' + (i + 1) + ' of ' + need + '</div>';
+      h += '</div>';
+      h += '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">' +
+        (isAmb ? '<button class="btn-solid" data-roster-open="' + esc(e.id) + '" data-roster-line="' + esc(l.id) + '">👥 Pick from roster</button>' : '') +
+        '<input class="field-box" data-newstaff-name placeholder="Name" style="width:160px">' +
+        '<input class="field-box" data-newstaff-email placeholder="Email (optional)" style="width:200px">' +
+        '<button class="btn-ghost" data-newstaff-add="' + esc(e.id) + '" data-newstaff-line="' + esc(l.id) + '" data-newstaff-kind="' + (isAmb ? 'ambassador' : 'team') + '">+ Add ' + (isAmb ? 'ambassador' : 'person') + '</button>' +
+        (isAmb && e.inviteUrl ? '<button class="btn-ghost" data-newstaff-add="' + esc(e.id) + '" data-newstaff-line="' + esc(l.id) + '" data-newstaff-kind="ambassador" data-newstaff-invite="1" title="Adds them and emails the invite link">✉ Add + email invite</button>' : '') +
+      '</div><div data-roster-slot="' + esc(e.id) + '"></div>';
+    });
+
+    // people not tied to a line
+    var loose = e.staff.filter(function (p) { return !p.lineId || !s.staffLines.some(function (l) { return l.id === p.lineId; }); });
+    h += '<div class="count-head" style="margin-top:18px">Other people <span class="n">' + loose.length + '</span></div>';
+    h += '<div>' + loose.map(function (p) { return renderPerson(p, e); }).join('') + '</div>';
+    h += '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">' +
+      actSel([['team', 'SB team'], ['ambassador', 'Ambassador']], 'team', 'data-newstaff-kindsel style="width:auto"') +
+      '<input class="field-box" data-newstaff-name placeholder="Name" style="width:160px"><input class="field-box" data-newstaff-role placeholder="Role" style="width:150px"><input class="field-box" data-newstaff-email placeholder="Email" style="width:180px">' +
+      '<button class="btn-ghost" data-newstaff-add="' + esc(e.id) + '">+ Add person</button>' +
+      '</div><div data-roster-slot="' + esc(e.id) + '"></div>';
+    h += '</div>';
+  });
+  return h;
+}
+
+function renderPerson(p, e) {
+  var open = p.id === actOpenPerson;
+  var h = '<div data-staff="' + esc(p.id) + '" style="border-bottom:1px solid var(--border-soft)">' +
+    '<div style="display:grid;grid-template-columns:1fr 130px 130px 90px 32px;gap:8px;align-items:center;padding:6px 0">' +
+      '<div style="cursor:pointer" data-person-toggle="' + esc(p.id) + '"><b>' + esc(p.name) + '</b>' +
+        '<span style="color:var(--ink-3);font-size:12px;margin-left:6px">' + esc(p.kind === 'team' ? (p.role || 'SB team') : (p.notes || p.role || '')) + '</span>' +
+        (p.externalRef ? ' <span title="On the Sboy Vision platform" style="font-size:11px;color:var(--ink-3)">● platform</span>' : '') + '</div>' +
+      '<div>' + actSel(STAFF_STATUS, p.status || 'invited', 'data-sf="status" style="font-size:12px"') + '</div>' +
+      '<input class="field-box" data-sf="rateCents" value="' + (p.rateCents == null ? '' : money(p.rateCents)) + '" placeholder="Rate" style="text-align:right;font-size:12px">' +
+      '<div>' + (p.kind === 'ambassador' && p.email && e.inviteUrl && p.status === 'invited' ? '<button class="btn-ghost" data-invite-send="' + esc(p.id) + '" title="Email the invite link" style="font-size:12px;padding:4px 8px">✉ Invite</button>' : '') + '</div>' +
+      '<button class="btn-ghost danger" data-staff-del="' + esc(p.id) + '">×</button>' +
+    '</div>';
+  if (open) {
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;padding:4px 0 12px;font-size:13px">' +
+      '<div><div class="cat-stat-label">Email</div><input class="field-box" data-sf="email" value="' + esc(p.email || '') + '" placeholder="—"></div>' +
+      '<div><div class="cat-stat-label">Phone</div><input class="field-box" data-sf="phone" value="' + esc(p.phone || '') + '" placeholder="—"></div>' +
+      '<div><div class="cat-stat-label">Role</div><input class="field-box" data-sf="role" value="' + esc(p.role || '') + '" placeholder="—"></div>' +
+      '<div><div class="cat-stat-label">Notes</div><input class="field-box" data-sf="notes" value="' + esc(p.notes || '') + '" placeholder="school · @handle · anything"></div>' +
+      '<div><div class="cat-stat-label">Platform</div><div style="padding-top:6px">' + (p.externalRef ? (p.platformStage ? esc(p.platformStage) : 'linked') + (actPlatform && actPlatform.url ? ' · <a href="' + esc(actPlatform.url + '/agency/ambassadors') + '" target="_blank" rel="noopener">open on Sboy Vision ↗</a>' : '') : '<span style="color:var(--ink-3)">not on the platform</span>') + '</div></div>' +
+      '<div><div class="cat-stat-label">Invited</div><div style="padding-top:6px">' + (p.invitedAt ? when(p.invitedAt) : '—') + '</div></div>' +
+    '</div>';
+  }
+  return h + '</div>';
+}
+var actOpenPerson = null;
+
+// -------- Docs: Google Sheet + Doc --------
+function renderActDocs(a) {
+  var h = '<div class="panel panel-pad" style="margin-top:14px">';
+  h += '<div style="font-weight:600;margin-bottom:6px">Working docs</div>' +
+    '<div style="font-size:13px;color:var(--ink-2);margin-bottom:12px">One Google Sheet (budget, people, schedule) and one Google Doc (run of show) per activation, in a shared Drive folder. Create them here, or paste links to ones you already have.</div>';
+  h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">' +
+    (a.sheetUrl ? '<a class="btn-solid" href="' + esc(a.sheetUrl) + '" target="_blank" rel="noopener">📊 Open Sheet ↗</a>' : '<span class="btn-ghost" style="opacity:.5">📊 No Sheet yet</span>') +
+    (a.docUrl ? '<a class="btn-solid" href="' + esc(a.docUrl) + '" target="_blank" rel="noopener">📄 Open Doc ↗</a>' : '<span class="btn-ghost" style="opacity:.5">📄 No Doc yet</span>') +
+    (a.driveFolderId ? '<a class="btn-ghost" href="https://drive.google.com/drive/folders/' + esc(a.driveFolderId) + '" target="_blank" rel="noopener">📁 Drive folder ↗</a>' : '') +
+  '</div>';
+  if (!(a.sheetUrl && a.docUrl)) {
+    if (actDrive && actDrive.connected) h += '<button class="btn-solid" data-docs-create>Create Sheet + Doc in Google Drive</button><span style="font-size:12px;color:var(--ink-3);margin-left:10px">as ' + esc(actDrive.address || 'connected account') + '</span>';
+    else h += '<button class="btn-solid" data-drive-connect>Connect Google Drive</button><span style="font-size:12px;color:var(--ink-3);margin-left:10px">one-time, only lets the dashboard create its own files</span>';
+  }
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px">' +
+    '<div><div class="cat-stat-label">Sheet URL</div><input class="field-box" data-act-field="sheetUrl" value="' + esc(a.sheetUrl || '') + '" placeholder="https://docs.google.com/spreadsheets/…"></div>' +
+    '<div><div class="cat-stat-label">Doc URL</div><input class="field-box" data-act-field="docUrl" value="' + esc(a.docUrl || '') + '" placeholder="https://docs.google.com/document/…"></div>' +
+  '</div>';
+  if (actDrive && actDrive.connected) h += '<div style="margin-top:14px;font-size:12px;color:var(--ink-3)">Drive connected as ' + esc(actDrive.address || '') + ' · <a data-drive-disconnect style="cursor:pointer;text-decoration:underline">disconnect</a></div>';
   h += '</div>';
   return h;
 }
 
+// -------- Recap: close it out --------
+function renderActRecap(a) {
+  var h = '';
+  a.events.forEach(function (e) {
+    var s = actEventSummary(e);
+    var over = e.budgetCents && s.current > e.budgetCents;
+    h += '<div class="panel panel-pad" style="margin-top:14px">';
+    if (a.events.length > 1) h += '<div style="font-family:var(--display);font-size:18px;font-weight:700">' + esc(e.name) + '</div>';
+    h += '<div class="kpi-row" style="margin:6px 0 4px">' +
+      '<div class="kpi money"><div class="kpi-label">Approved</div><div class="kpi-value">' + money(e.budgetCents) + '</div></div>' +
+      '<div class="kpi"' + (over ? ' style="border-left:3px solid var(--warn)"' : '') + '><div class="kpi-label">Final cost</div><div class="kpi-value">' + money(s.current) + '</div><div class="kpi-note">' + s.finalCount + '/' + e.lines.length + ' lines final' + (s.finalCount < e.lines.length ? ' — finish the Budget tab' : '') + '</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Vs approved</div><div class="kpi-value" style="color:' + (over ? 'var(--warn)' : 'var(--good)') + '">' + (e.budgetCents ? (over ? '+' : '−') + money(Math.abs(s.current - e.budgetCents)) : '—') + '</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Worked</div><div class="kpi-value">' + e.staff.filter(function (p) { return p.status === 'done'; }).length + '/' + e.staff.length + '</div><div class="kpi-note">mark people "Worked" in People</div></div>' +
+    '</div>';
+    h += '<table class="sheet" style="margin-top:8px"><thead><tr><th>Section</th><th class="r">Estimate</th><th class="r">Final</th><th class="r">Variance</th></tr></thead><tbody>';
+    ACT_SECTIONS.forEach(function (sec) {
+      var lines = e.lines.filter(function (l) { return l.section === sec[0]; });
+      if (!lines.length) return;
+      var est = lines.reduce(function (x, l) { return x + l.estimateCents; }, 0);
+      var fin = lines.reduce(function (x, l) { return x + (l.finalCents || 0); }, 0);
+      var v = fin - est;
+      h += '<tr><td>' + sec[1] + '</td><td class="r">' + money(est) + '</td><td class="r">' + money(fin) + '</td><td class="r" style="color:' + (v > 0 ? 'var(--warn)' : 'var(--good)') + '">' + signed(v) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+  });
+  h += '<div class="panel panel-pad" style="margin-top:14px"><div class="cat-stat-label">Recap notes</div>' +
+    '<textarea class="field-box" data-act-field="notes" rows="6" placeholder="What happened, what worked, what to change next time" style="width:100%;margin-top:6px">' + esc(a.notes || '') + '</textarea>' +
+    '<div style="display:flex;gap:8px;margin-top:10px;align-items:center"><span style="font-size:13px;color:var(--ink-2)">Status</span>' + actSel(ACT_STATUS, a.status, 'data-act-field="status" style="width:auto"') + '</div></div>';
+  return h;
+}
+
 // Roster picker: pulls the ambassador platform's list into a checklist
-// under the event. Chosen people land on the staff list linked to their
+// under the slot. Chosen people land on that line, linked to their
 // platform record, so the same person can't be added twice.
-function openRoster(eventId) {
+function openRoster(eventId, lineId) {
   var slot = document.querySelector('[data-roster-slot="' + eventId + '"]');
   if (!slot) return;
   slot.innerHTML = '<div style="margin-top:10px;font-size:13px;color:var(--ink-3)">Loading roster…</div>';
   api('listRoster', { onboardedOnly: false }).then(function (r) {
-    if (!r.rows.length) { slot.innerHTML = '<div style="margin-top:10px;font-size:13px;color:var(--ink-3)">Roster is empty.</div>'; return; }
+    if (!r.rows.length) { slot.innerHTML = '<div style="margin-top:10px;font-size:13px;color:var(--ink-3)">Nobody on the platform yet. Share the invite link — people who sign up appear here after ↻ Sync.</div>'; return; }
     slot.innerHTML = '<div class="panel panel-pad" style="margin-top:10px">' +
       '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">' +
         '<b style="font-size:13px">' + r.total + ' on the platform</b>' +
@@ -3301,7 +3562,7 @@ function openRoster(eventId) {
         '<select class="field-box" data-roster-uni style="width:auto"><option value="">All schools</option>' + r.universities.map(function (u) { return '<option>' + esc(u) + '</option>'; }).join('') + '</select>' +
         '<label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" data-roster-onb> onboarded only</label>' +
         '<span style="flex:1"></span>' +
-        '<button class="btn-solid" data-roster-add="' + esc(eventId) + '">Add selected</button>' +
+        '<button class="btn-solid" data-roster-add="' + esc(eventId) + '" data-roster-line="' + esc(lineId || '') + '">Add selected</button>' +
         '<button class="btn-ghost" data-roster-close="' + esc(eventId) + '">Close</button>' +
       '</div>' +
       '<div data-roster-list style="max-height:360px;overflow:auto">' + renderRosterRows(r.rows) + '</div>' +
@@ -3344,33 +3605,86 @@ function actEventForm(e) {
     '<input class="field-box" data-ef="venue" value="' + esc(e.venue || '') + '" placeholder="Venue">' +
     '<input class="field-box" data-ef="city" value="' + esc(e.city || '') + '" placeholder="City">' +
     '<input class="field-box" type="date" data-ef="eventDate" value="' + dateInput(e.eventDate) + '">' +
-    '<input class="field-box" data-ef="loadIn" value="' + esc(e.loadIn || '') + '" placeholder="Load-in">' +
+    '<input class="field-box" data-ef="loadIn" value="' + esc(e.loadIn || '') + '" placeholder="Load-in (e.g. 6:00 AM)">' +
     '<input class="field-box" data-ef="eventTime" value="' + esc(e.eventTime || '') + '" placeholder="Event time">' +
     '<input class="field-box" data-ef="loadOut" value="' + esc(e.loadOut || '') + '" placeholder="Load-out">' +
     '<input class="field-box" data-ef="budget" value="' + (e.budgetCents / 100) + '" placeholder="Approved budget $">' +
-    '<input class="field-box" data-ef="fee" value="' + (e.agencyFeeCents / 100) + '" placeholder="Agency fee $">' +
-    '<div style="display:flex;gap:8px"><button class="btn-solid" data-ef-save="' + esc(e.id) + '">Save</button><button class="btn-ghost" data-ef-cancel>Cancel</button><button class="btn-ghost danger" data-ef-delete="' + esc(e.id) + '" style="margin-left:auto">Delete event</button></div>' +
+    '<input class="field-box" data-ef="notes" value="' + esc(e.notes || '') + '" placeholder="Notes" style="grid-column:1/-1">' +
+    '<div style="display:flex;gap:8px;grid-column:1/-1"><button class="btn-solid" data-ef-save="' + esc(e.id) + '">Save</button><button class="btn-ghost" data-ef-cancel>Cancel</button><button class="btn-ghost danger" data-ef-delete="' + esc(e.id) + '" style="margin-left:auto">Delete event</button></div>' +
   '</div>';
 }
 
-document.getElementById('act-new').addEventListener('click', actNewForm);
-document.getElementById('act-seed').addEventListener('click', function () {
-  api('seedUnderdogActivation').then(function (r) {
-    toast(r.seeded ? 'Underdog sheet imported — ' + r.lines + ' budget lines' : 'Underdog is already loaded');
-    openActivation(r.id);
-  }).catch(function (e) { toast(e.message); });
+function copyText(t) {
+  if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(t).then(function () { toast('Copied'); });
+  var ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); toast('Copied'); } catch (e) { toast('Copy failed'); }
+  document.body.removeChild(ta);
+}
+
+// Sidebar + section tabs (both live outside #act-body).
+document.getElementById('nav-activations').addEventListener('click', function (ev) {
+  var b;
+  if (ev.target.closest('[data-act-exit]')) { actMode(false); gotoView('dashboard'); return; }
+  if (ev.target.closest('[data-act-new]')) { actOpenId = null; actCur = null; renderActSidebar(); renderActHome(); actNewForm(); actHash(); return; }
+  if ((b = ev.target.closest('[data-act-go]'))) { actOpenLine = null; openActivation(b.getAttribute('data-act-go'), 'overview'); return; }
+  if (ev.target.closest('[data-drive-connect]')) { location.href = '/api/google/start?drive=1'; return; }
 });
-document.getElementById('act-list').addEventListener('click', function (ev) {
-  var card = ev.target.closest('[data-act-open]');
-  if (card) openActivation(card.getAttribute('data-act-open'));
+document.getElementById('act-tabs').addEventListener('click', function (ev) {
+  var b = ev.target.closest('[data-act-tab]');
+  if (b && actOpenId) { actTab = b.getAttribute('data-act-tab'); renderActSidebar(); renderActivation(); actHash(); window.scrollTo(0, 0); }
 });
 
-// One delegated handler for everything inside an open activation.
-var actDetail = document.getElementById('act-detail');
+// One delegated handler for everything inside the workspace body.
+var actDetail = document.getElementById('act-body');
 actDetail.addEventListener('click', function (ev) {
   var t = ev.target;
   var b;
-  if (t.closest('[data-act-back]')) { ev.preventDefault(); loadActivations(); return; }
+  if ((b = t.closest('[data-act-go]'))) { actOpenLine = null; openActivation(b.getAttribute('data-act-go'), 'overview'); return; }
+  if ((b = t.closest('[data-act-step]'))) {
+    actTab = b.getAttribute('data-act-step');
+    if (b.getAttribute('data-act-line')) actOpenLine = b.getAttribute('data-act-line');
+    renderActSidebar(); renderActivation(); actHash(); window.scrollTo(0, 0); return;
+  }
+  if ((b = t.closest('[data-line-people]'))) { actOpenLine = b.getAttribute('data-line-people'); actTab = 'people'; renderActSidebar(); renderActivation(); actHash(); return; }
+  if ((b = t.closest('[data-line-toggle]'))) { var lid = b.getAttribute('data-line-toggle'); actOpenLine = actOpenLine === lid ? '' : lid; renderActivation(); return; }
+  if ((b = t.closest('[data-person-toggle]'))) { var pid = b.getAttribute('data-person-toggle'); actOpenPerson = actOpenPerson === pid ? null : pid; renderActivation(); return; }
+  if ((b = t.closest('[data-copy]'))) { copyText(b.getAttribute('data-copy')); return; }
+  if (t.closest('[data-drive-connect]')) { location.href = '/api/google/start?drive=1'; return; }
+  if (t.closest('[data-drive-disconnect]')) {
+    if (!confirm('Disconnect Google Drive? Existing docs stay where they are.')) return;
+    api('disconnectDrive').then(function () { actDrive = { connected: false }; renderActSidebar(); renderActivation(); }).catch(function (e) { toast(e.message); });
+    return;
+  }
+  if (t.closest('[data-docs-create]')) {
+    var btn = t.closest('[data-docs-create]'); btn.disabled = true; btn.textContent = 'Creating…';
+    api('createActivationDocs', { activationId: actOpenId }).then(function (r) {
+      toast(r.existing ? 'Docs already existed' : 'Sheet + Doc created' + (r.warnings && r.warnings.length ? ' — ' + r.warnings[0] : ''));
+      if (r.warnings && r.warnings.length) console.warn(r.warnings);
+      openActivation(actOpenId, 'docs');
+    }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Create Sheet + Doc in Google Drive'; });
+    return;
+  }
+  if ((b = t.closest('[data-plat-create]'))) {
+    b.disabled = true; b.textContent = 'Setting up…';
+    api('createEventCampaign', { eventId: b.getAttribute('data-plat-create') }).then(function (r) {
+      toast(r.created ? 'Campaign created on Sboy Vision' : 'Linked to existing campaign');
+      openActivation(actOpenId, 'people');
+    }).catch(function (e) { toast(e.message); openActivation(actOpenId, 'people'); });
+    return;
+  }
+  if ((b = t.closest('[data-plat-sync]'))) {
+    api('syncEventRoster', { eventId: b.getAttribute('data-plat-sync') }).then(function (r) {
+      toast('Synced ' + r.synced + (r.created ? ' · ' + r.created + ' new from the platform' : ''));
+      openActivation(actOpenId, 'people');
+    }).catch(function (e) { toast(e.message); });
+    return;
+  }
+  if ((b = t.closest('[data-invite-send]'))) {
+    b.disabled = true;
+    api('sendEventInvite', { staffId: b.getAttribute('data-invite-send') }).then(function (r) { toast('Invite emailed to ' + r.to); openActivation(actOpenId, 'people'); })
+      .catch(function (e) { toast(e.message); b.disabled = false; });
+    return;
+  }
   if (t.closest('[data-act-delete]')) {
     if (!confirm('Delete this activation and everything under it?')) return;
     api('deleteActivation', { id: actOpenId }).then(function () { toast('Deleted'); loadActivations(); }).catch(function (e) { toast(e.message); });
@@ -3383,31 +3697,30 @@ actDetail.addEventListener('click', function (ev) {
     return;
   }
   if ((b = t.closest('[data-ev-edit]'))) {
-    api('getActivation', { id: actOpenId }).then(function (a) {
-      var e = a.events.filter(function (x) { return x.id === b.getAttribute('data-ev-edit'); })[0];
-      if (e) actEventForm(e);
-    });
+    var e = actCur.events.filter(function (x) { return x.id === b.getAttribute('data-ev-edit'); })[0];
+    if (e) actEventForm(e);
     return;
   }
-  if (t.closest('[data-ef-cancel]')) { openActivation(actOpenId); return; }
+  if (t.closest('[data-ef-cancel]')) { renderActivation(); return; }
   if ((b = t.closest('[data-ef-save]'))) {
     var f = b.closest('[data-ev-form]');
     var g = function (k) { var el = f.querySelector('[data-ef="' + k + '"]'); return el ? el.value : undefined; };
-    var budget = parseMoney(g('budget')), fee = parseMoney(g('fee'));
-    if (budget == null || fee == null) { toast('Budget and fee must be numbers'); return; }
+    var budget = parseMoney(g('budget'));
+    if (budget == null) { toast('Budget must be a number'); return; }
     api('upsertActivationEvent', {
       id: b.getAttribute('data-ef-save'), name: g('name'), venue: g('venue'), city: g('city'),
-      eventDate: g('eventDate') || null, loadIn: g('loadIn'), eventTime: g('eventTime'), loadOut: g('loadOut'),
-      budgetCents: budget, agencyFeeCents: fee
+      eventDate: g('eventDate') || null, loadIn: g('loadIn'), eventTime: g('eventTime'), loadOut: g('loadOut'), notes: g('notes'),
+      budgetCents: budget
     }).then(function () { toast('Saved'); openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
     return;
   }
   if ((b = t.closest('[data-ef-delete]'))) {
-    if (!confirm('Delete this event, its budget, tasks and staff?')) return;
+    if (!confirm('Delete this event, its budget and people?')) return;
     api('deleteActivationEvent', { id: b.getAttribute('data-ef-delete') }).then(function () { openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
     return;
   }
   if ((b = t.closest('[data-line-del]'))) {
+    if (!confirm('Remove this budget line?')) return;
     api('deleteBudgetLine', { id: b.getAttribute('data-line-del') }).then(function () { openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
     return;
   }
@@ -3423,57 +3736,55 @@ actDetail.addEventListener('click', function (ev) {
     }).then(function () { openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
     return;
   }
-  if ((b = t.closest('[data-gen-tasks]'))) {
-    api('generateEventTasks', { eventId: b.getAttribute('data-gen-tasks') }).then(function (r) {
-      toast(r.created + ' task' + (r.created === 1 ? '' : 's') + ' created' + (r.skipped ? ', ' + r.skipped + ' already covered' : ''));
-      openActivation(actOpenId);
-    }).catch(function (e) { toast(e.message); });
-    return;
-  }
-  if ((b = t.closest('[data-task-del]'))) {
-    api('deleteActivationTask', { id: b.getAttribute('data-task-del') }).then(function () { openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
-    return;
-  }
-  if ((b = t.closest('[data-newtask-add]'))) {
-    var w = b.parentNode;
-    var text = w.querySelector('[data-newtask-text]').value.trim();
-    if (!text) { toast('Task needs text'); return; }
-    api('upsertActivationTask', {
-      eventId: b.getAttribute('data-newtask-add'), text: text,
-      owner: w.querySelector('[data-newtask-owner]').value, dueDate: w.querySelector('[data-newtask-due]').value || null
-    }).then(function () { openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
-    return;
-  }
   if ((b = t.closest('[data-staff-del]'))) {
+    if (!confirm('Remove this person from the event?')) return;
     api('deleteEventStaff', { id: b.getAttribute('data-staff-del') }).then(function () { openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
     return;
   }
-  if ((b = t.closest('[data-roster-open]'))) { openRoster(b.getAttribute('data-roster-open')); return; }
+  if ((b = t.closest('[data-roster-open]'))) { openRoster(b.getAttribute('data-roster-open'), b.getAttribute('data-roster-line')); return; }
   if ((b = t.closest('[data-roster-close]'))) {
-    var rs = document.querySelector('[data-roster-slot="' + b.getAttribute('data-roster-close') + '"]');
+    var rs = b.closest('[data-roster-slot]');
     if (rs) rs.innerHTML = '';
     return;
   }
   if ((b = t.closest('[data-roster-add]'))) {
-    var slotEl = document.querySelector('[data-roster-slot="' + b.getAttribute('data-roster-add') + '"]');
+    var slotEl = b.closest('[data-roster-slot]');
     var picked = {};
     slotEl.querySelectorAll('[data-roster-pick]:checked').forEach(function (c) { picked[c.getAttribute('data-roster-pick')] = true; });
     var chosen = (slotEl._rows || []).filter(function (a) { return picked[a.id]; });
     if (!chosen.length) { toast('Tick at least one person'); return; }
-    api('addRosterToEvent', { eventId: b.getAttribute('data-roster-add'), ambassadors: chosen }).then(function (r) {
-      toast(r.added + ' added' + (r.skipped ? ', ' + r.skipped + ' already on the list' : ''));
-      openActivation(actOpenId);
-    }).catch(function (e) { toast(e.message); });
+    b.disabled = true;
+    api('addRosterToEvent', { eventId: b.getAttribute('data-roster-add'), ambassadors: chosen, lineId: b.getAttribute('data-roster-line') || undefined }).then(function (r) {
+      toast(r.added + ' added' + (r.skipped ? ', ' + r.skipped + ' already on the list' : '') + (r.platform && r.platform.error ? ' · platform: ' + r.platform.error : r.platform ? ' · invited on the platform' : ''));
+      openActivation(actOpenId, 'people');
+    }).catch(function (e) { toast(e.message); b.disabled = false; });
     return;
   }
   if ((b = t.closest('[data-newstaff-add]'))) {
     var ws = b.parentNode;
-    api('upsertEventStaff', {
+    var kindSel = ws.querySelector('[data-newstaff-kindsel]');
+    var emailEl = ws.querySelector('[data-newstaff-email]');
+    var roleEl = ws.querySelector('[data-newstaff-role]');
+    var name = ws.querySelector('[data-newstaff-name]').value.trim();
+    if (!name) { toast('Name first'); return; }
+    var wantInvite = b.getAttribute('data-newstaff-invite') === '1';
+    if (wantInvite && !(emailEl && /@/.test(emailEl.value))) { toast('Email needed to send an invite'); return; }
+    var args = {
       eventId: b.getAttribute('data-newstaff-add'),
-      kind: ws.querySelector('[data-newstaff-kind]').value,
-      name: ws.querySelector('[data-newstaff-name]').value,
-      role: ws.querySelector('[data-newstaff-role]').value
-    }).then(function () { openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
+      kind: kindSel ? kindSel.value : (b.getAttribute('data-newstaff-kind') || 'team'),
+      name: name, role: roleEl ? roleEl.value : undefined,
+      email: emailEl ? emailEl.value : undefined,
+      lineId: b.getAttribute('data-newstaff-line') || undefined
+    };
+    if (args.lineId && actCur) {
+      var ln = []; actCur.events.forEach(function (e2) { ln = ln.concat(e2.lines); });
+      var L = ln.filter(function (x) { return x.id === args.lineId; })[0];
+      if (L) { args.role = L.item; if (L.unitCents) args.rateCents = L.unitCents; }
+    }
+    api('upsertEventStaff', args).then(function (p) {
+      if (wantInvite) return api('sendEventInvite', { staffId: p.id }).then(function (r) { toast('Added and invite emailed to ' + r.to); });
+      toast('Added');
+    }).then(function () { openActivation(actOpenId, 'people'); }).catch(function (e) { toast(e.message); openActivation(actOpenId, 'people'); });
     return;
   }
 });
@@ -3492,8 +3803,9 @@ actDetail.addEventListener('change', function (ev) {
   if (rslot && (t.hasAttribute('data-roster-uni') || t.hasAttribute('data-roster-onb'))) { filterRoster(rslot); return; }
   if (rslot) return;
   if (t.hasAttribute('data-act-field')) {
-    args = { id: actOpenId }; args[t.getAttribute('data-act-field')] = t.value;
-    api('upsertActivation', args).then(function () { toast('Saved'); }).catch(function (e) { toast(e.message); });
+    k = t.getAttribute('data-act-field');
+    args = { id: actOpenId }; args[k] = t.value;
+    api('upsertActivation', args).then(function () { toast('Saved'); if (k === 'status' || k === 'sheetUrl' || k === 'docUrl') openActivation(actOpenId); }).catch(function (e) { toast(e.message); });
     return;
   }
   if ((row = t.closest('[data-line]')) && t.hasAttribute('data-lf')) {
@@ -3507,31 +3819,21 @@ actDetail.addEventListener('change', function (ev) {
       if (k === 'estimateCents' && args[k] == null) args[k] = 0;
     } else args[k] = t.value;
     api('upsertBudgetLine', args).then(function () {
-      // totals changed — redraw, but only for money/ordered edits
-      if (/Cents$/.test(k) || k === 'ordered') openActivation(actOpenId); else toast('Saved');
-    }).catch(function (e) { toast(e.message); });
-    return;
-  }
-  if ((row = t.closest('[data-task]')) && t.hasAttribute('data-tf')) {
-    k = t.getAttribute('data-tf');
-    args = { id: row.getAttribute('data-task') };
-    args[k] = k === 'dueDate' ? (t.value || null) : t.value;
-    api('upsertActivationTask', args).then(function () {
-      if (k === 'status') openActivation(actOpenId); else toast('Saved');
+      if (/Cents$/.test(k) || k === 'ordered' || k === 'qty') openActivation(actOpenId); else toast('Saved');
     }).catch(function (e) { toast(e.message); });
     return;
   }
   if ((row = t.closest('[data-staff]')) && t.hasAttribute('data-sf')) {
     k = t.getAttribute('data-sf');
     args = { id: row.getAttribute('data-staff') };
-    if (k === 'confirmed') args.confirmed = t.checked;
-    else if (k === 'rateCents') { var rc = t.value.trim() === '' ? null : parseMoney(t.value); if (t.value.trim() !== '' && rc == null) { toast('Not a number'); return; } args.rateCents = rc; }
+    if (k === 'rateCents') { var rc = t.value.trim() === '' ? null : parseMoney(t.value); if (t.value.trim() !== '' && rc == null) { toast('Not a number'); return; } args.rateCents = rc; }
     else args[k] = t.value;
-    api('upsertEventStaff', args).then(function () { toast('Saved'); }).catch(function (e) { toast(e.message); });
+    api('upsertEventStaff', args).then(function () { if (k === 'status') openActivation(actOpenId, 'people'); else toast('Saved'); }).catch(function (e) { toast(e.message); });
   }
 });
 
 function gotoView(id) {
+  if (id !== 'activations') actMode(false);
   if (id === 'dashboard') loadDashboard();
   if (id === 'brands') loadBrands('all');
   if (id === 'outreach') loadOutreach();
@@ -3558,6 +3860,24 @@ function gotoView(id) {
   } else {
     toast('Google connect failed: ' + g);
   }
+})();
+
+// Coming back from the Google Drive consent screen.
+(function () {
+  var p = new URLSearchParams(location.search);
+  var d = p.get('drive');
+  if (!d) return;
+  history.replaceState({}, '', location.pathname + location.hash);
+  if (d === 'connected') { actDrive = null; toast('Google Drive connected as ' + (p.get('as') || 'your account')); }
+  else toast('Google Drive connect failed: ' + d);
+})();
+
+// Deep links: #activations, #activations/<id>, #activations/<id>/<tab>
+(function () {
+  var m = /^#activations(?:\/([^\/]+))?(?:\/([a-z]+))?/.exec(location.hash || '');
+  if (!m) return;
+  actOpenId = m[1] || null; actTab = m[2] || 'overview';
+  setTimeout(function () { loadActivations(!!actOpenId); }, 50);
 })();
 
 document.querySelectorAll('.nav-item[data-view]').forEach(function (b) {
