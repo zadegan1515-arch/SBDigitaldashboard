@@ -2551,7 +2551,7 @@ const handlers: Record<string, Handler> = {
           include: {
             lines: { orderBy: [{ section: 'asc' }, { sortOrder: 'asc' }] },
             tasks: { orderBy: [{ status: 'asc' }, { dueDate: 'asc' }, { sortOrder: 'asc' }], include: { line: { select: { item: true, section: true } } } },
-            staff: { orderBy: [{ lineId: 'asc' }, { createdAt: 'asc' }] },
+            staff: { orderBy: [{ lineId: 'asc' }, { name: 'asc' }] },
           },
           orderBy: { eventDate: 'asc' },
         },
