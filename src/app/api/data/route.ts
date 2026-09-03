@@ -2492,7 +2492,7 @@ const handlers: Record<string, Handler> = {
         events: {
           include: {
             lines: { select: { id: true, section: true, item: true, qty: true, estimateCents: true, finalCents: true, ordered: true } },
-            staff: { select: { kind: true, confirmed: true, status: true } },
+            staff: { select: { kind: true, confirmed: true, status: true, lineId: true } },
           },
           orderBy: { eventDate: 'asc' },
         },
