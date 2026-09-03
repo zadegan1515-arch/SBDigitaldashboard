@@ -19,10 +19,10 @@ import {
   sendApprovedEmails, checkReplies, suggestForDraft, sendTestEmail,
   setDraftRecipients, sendOneEmail, approveAllDrafts, draftBrandIntro, resignDrafts, warmupStatus,
   sendingPaused, setSendingPaused,
-  emailDifferentContact, draftFinalNudge, draftReplyResponse, sendReplyEmail,
+  emailDifferentContact, draftFinalNudge, draftReplyResponse, sendReplyEmail, sendPlainEmail,
 } from '@/lib/email'
 import { syncNotionDeals } from '@/lib/notion'
-import { googleStatus, googleDisconnect } from '@/lib/google'
+import { googleStatus, googleDisconnect, driveStatus, driveDisconnect, driveCreateActivationDocs } from '@/lib/google'
 
 const prisma = new PrismaClient()
 
@@ -403,6 +403,33 @@ async function syncSponsorDeal(sponsorId: string) {
 // ---------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------
+
+// A staff-section budget line is a "people line" (slots to fill) unless
+// it's travel / labour money rather than named people.
+function isPeopleLine(l: { section: string; item: string }): boolean {
+  return l.section === 'staff' && !/travel|hotel|airfare|per diem|install|strike|truck|shipping|freight|pre-?production|labou?r|overtime/i.test(l.item)
+}
+
+// -------- Sboy Vision ambassador platform client --------
+function platformConfigured(): boolean {
+  return !!(process.env.AMBASSADOR_PLATFORM_URL && process.env.AMBASSADOR_PLATFORM_TOKEN)
+}
+async function platformFetch(path: string, init: RequestInit = {}): Promise<any> {
+  const base = process.env.AMBASSADOR_PLATFORM_URL
+  const token = process.env.AMBASSADOR_PLATFORM_TOKEN
+  if (!base || !token) throw new Error('Ambassador platform not connected — set AMBASSADOR_PLATFORM_URL and AMBASSADOR_PLATFORM_TOKEN in Vercel.')
+  const res = await fetch(base.replace(/\/$/, '') + path, {
+    ...init,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init.headers || {}) },
+    cache: 'no-store',
+  })
+  if (res.status === 401) throw new Error('Ambassador platform rejected the token — the two INTEGRATION_TOKEN values don\'t match.')
+  const text = await res.text()
+  let j: any = {}
+  try { j = text ? JSON.parse(text) : {} } catch { j = {} }
+  if (!res.ok) throw new Error(j?.error || `Ambassador platform returned ${res.status}`)
+  return j
+}
 
 const handlers: Record<string, Handler> = {
 
@@ -2464,9 +2491,8 @@ const handlers: Record<string, Handler> = {
         brand: { select: { id: true, name: true } },
         events: {
           include: {
-            lines: { select: { estimateCents: true, finalCents: true } },
-            tasks: { select: { status: true, dueDate: true } },
-            staff: { select: { kind: true, confirmed: true } },
+            lines: { select: { id: true, section: true, item: true, qty: true, estimateCents: true, finalCents: true, ordered: true } },
+            staff: { select: { kind: true, confirmed: true, status: true } },
           },
           orderBy: { eventDate: 'asc' },
         },
@@ -2477,30 +2503,41 @@ const handlers: Record<string, Handler> = {
     return rows.map(a => {
       const ev = a.events.map(e => {
         const estimate = e.lines.reduce((s, l) => s + l.estimateCents, 0)
-        const final = e.lines.reduce((s, l) => s + (l.finalCents ?? 0), 0)
+        // "Current cost" is committed money only: lines with a final amount.
+        const current = e.lines.reduce((s, l) => s + (l.finalCents ?? 0), 0)
         const finalised = e.lines.filter(l => l.finalCents != null).length
-        const done = e.tasks.filter(t => t.status === 'done').length
-        const overdue = e.tasks.filter(t => t.status !== 'done' && t.dueDate && t.dueDate.getTime() < now).length
+        const peopleLines = e.lines.filter(isPeopleLine)
+        const slots = peopleLines.reduce((s, l) => s + Math.max(1, l.qty ?? 1), 0)
+        const lineIds = new Set(peopleLines.map(l => l.id))
+        const people = e.staff.length
+        const confirmed = e.staff.filter(s => s.lineId && lineIds.has(s.lineId) && (s.status === 'confirmed' || s.status === 'done')).length
         return {
           id: e.id, name: e.name, venue: e.venue, city: e.city, eventDate: e.eventDate,
           budgetCents: e.budgetCents, agencyFeeCents: e.agencyFeeCents,
-          estimateCents: estimate, finalCents: final, linesTotal: e.lines.length, linesFinal: finalised,
-          tasksDone: done, tasksTotal: e.tasks.length, tasksOverdue: overdue,
+          estimateCents: estimate, currentCents: current, finalCents: current,
+          linesTotal: e.lines.length, linesFinal: finalised, linesOrdered: e.lines.filter(l => l.ordered).length,
+          slots, people, peopleConfirmed: confirmed,
           ambassadors: e.staff.filter(s => s.kind === 'ambassador').length,
-          ambassadorsConfirmed: e.staff.filter(s => s.kind === 'ambassador' && s.confirmed).length,
+          ambassadorsConfirmed: e.staff.filter(s => s.kind === 'ambassador' && (s.confirmed || s.status === 'confirmed')).length,
+          platformCampaignId: e.platformCampaignId, inviteUrl: e.inviteUrl,
           daysOut: e.eventDate ? Math.ceil((e.eventDate.getTime() - now) / 86400000) : null,
         }
       })
       return {
         id: a.id, name: a.name, status: a.status, owner: a.owner, notes: a.notes, dealId: a.dealId,
+        sheetUrl: a.sheetUrl, docUrl: a.docUrl, driveFolderId: a.driveFolderId,
         brand: a.brand, events: ev,
         budgetCents: ev.reduce((s, e) => s + e.budgetCents, 0),
         estimateCents: ev.reduce((s, e) => s + e.estimateCents, 0),
+        currentCents: ev.reduce((s, e) => s + e.currentCents, 0),
         finalCents: ev.reduce((s, e) => s + e.finalCents, 0),
-        tasksDone: ev.reduce((s, e) => s + e.tasksDone, 0),
-        tasksTotal: ev.reduce((s, e) => s + e.tasksTotal, 0),
-        tasksOverdue: ev.reduce((s, e) => s + e.tasksOverdue, 0),
+        slots: ev.reduce((s, e) => s + e.slots, 0),
+        people: ev.reduce((s, e) => s + e.people, 0),
+        peopleConfirmed: ev.reduce((s, e) => s + e.peopleConfirmed, 0),
+        linesOrdered: ev.reduce((s, e) => s + e.linesOrdered, 0),
+        linesTotal: ev.reduce((s, e) => s + e.linesTotal, 0),
         nextDate: ev.map(e => e.eventDate).filter(Boolean).sort()[0] ?? null,
+        daysOut: (() => { const d = ev.map(e => e.daysOut).filter((x): x is number => x != null); return d.length ? Math.min(...d) : null })(),
       }
     })
   },
@@ -2514,7 +2551,7 @@ const handlers: Record<string, Handler> = {
           include: {
             lines: { orderBy: [{ section: 'asc' }, { sortOrder: 'asc' }] },
             tasks: { orderBy: [{ status: 'asc' }, { dueDate: 'asc' }, { sortOrder: 'asc' }], include: { line: { select: { item: true, section: true } } } },
-            staff: { orderBy: [{ kind: 'asc' }, { name: 'asc' }] },
+            staff: { orderBy: [{ lineId: 'asc' }, { createdAt: 'asc' }] },
           },
           orderBy: { eventDate: 'asc' },
         },
@@ -2525,7 +2562,7 @@ const handlers: Record<string, Handler> = {
     return { ...a, deal }
   },
 
-  async upsertActivation({ id, brandId, brandName, dealId, name, status, owner, notes }: any) {
+  async upsertActivation({ id, brandId, brandName, dealId, name, status, owner, notes, sheetUrl, docUrl }: any) {
     let bid = brandId
     if (!bid && brandName) {
       const b = await prisma.brand.upsert({
@@ -2544,6 +2581,8 @@ const handlers: Record<string, Handler> = {
     if (status !== undefined) data.status = status
     if (owner !== undefined) data.owner = owner || null
     if (notes !== undefined) data.notes = notes || null
+    if (sheetUrl !== undefined) data.sheetUrl = sheetUrl || null
+    if (docUrl !== undefined) data.docUrl = docUrl || null
     return id
       ? prisma.activation.update({ where: { id }, data })
       : prisma.activation.create({ data: { brandId: bid, name: data.name, dealId: data.dealId ?? null, status: data.status ?? 'planning', owner: data.owner ?? null, notes: data.notes ?? null } })
@@ -2619,21 +2658,32 @@ const handlers: Record<string, Handler> = {
     return { ok: true }
   },
 
-  async upsertEventStaff({ id, eventId, name, role, kind, externalRef, email, phone, rateCents, confirmed, notes }: any) {
+  async upsertEventStaff({ id, eventId, name, role, kind, externalRef, email, phone, rateCents, confirmed, notes, status, lineId }: any) {
     const data: any = {}
-    for (const [k, v] of Object.entries({ role, externalRef, email, phone, notes })) {
+    for (const [k, v] of Object.entries({ role, externalRef, email, phone, notes, lineId })) {
       if (v !== undefined) data[k] = v === '' ? null : v
+    }
+    if (status !== undefined) {
+      data.status = status
+      if (status === 'confirmed' || status === 'done') data.confirmed = true
+      if (status === 'declined' || status === 'no_show' || status === 'invited') data.confirmed = false
     }
     if (name !== undefined) data.name = String(name).trim()
     if (kind !== undefined) data.kind = kind
     if (rateCents !== undefined) data.rateCents = rateCents === '' || rateCents == null ? null : Math.round(Number(rateCents))
-    if (confirmed !== undefined) data.confirmed = !!confirmed
+    if (confirmed !== undefined) { data.confirmed = !!confirmed; if (confirmed && !status) data.status = 'confirmed' }
     if (id) return prisma.eventStaff.update({ where: { id }, data })
     if (!eventId || !data.name) throw new Error('eventId and name are required')
-    return prisma.eventStaff.create({ data: { eventId, ...data } })
+    return prisma.eventStaff.create({ data: { eventId, ...data, status: data.status ?? (data.kind === 'team' ? 'confirmed' : 'invited') } })
   },
 
   async deleteEventStaff({ id }: any) {
+    const st = await prisma.eventStaff.findUnique({ where: { id }, include: { event: { select: { platformCampaignId: true } } } })
+    if (!st) return { ok: true }
+    // Best effort: also take them off the platform campaign.
+    if (st.externalRef?.startsWith('sboy:') && st.event.platformCampaignId && platformConfigured()) {
+      try { await platformFetch(`/api/integrations/campaigns/${st.event.platformCampaignId}/members/${st.externalRef.slice(5)}/remove`, { method: 'POST' }) } catch {}
+    }
     await prisma.eventStaff.delete({ where: { id } })
     return { ok: true }
   },
@@ -2781,18 +2831,7 @@ const handlers: Record<string, Handler> = {
   },
 
   async listRoster({ q, university, onboardedOnly }: any) {
-    const base = process.env.AMBASSADOR_PLATFORM_URL
-    const token = process.env.AMBASSADOR_PLATFORM_TOKEN
-    if (!base || !token) {
-      throw new Error('Ambassador platform not connected — set AMBASSADOR_PLATFORM_URL and AMBASSADOR_PLATFORM_TOKEN in Vercel.')
-    }
-    const res = await fetch(base.replace(/\/$/, '') + '/api/integrations/ambassadors', {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: 'no-store',
-    })
-    if (res.status === 401) throw new Error('Ambassador platform rejected the token — the two INTEGRATION_TOKEN values don\'t match.')
-    if (!res.ok) throw new Error(`Ambassador platform returned ${res.status}`)
-    const j: any = await res.json()
+    const j: any = await platformFetch('/api/integrations/ambassadors')
     let rows: any[] = j.ambassadors ?? []
     if (onboardedOnly) rows = rows.filter(r => r.onboarded)
     if (university) rows = rows.filter(r => (r.university || '').toLowerCase() === String(university).toLowerCase())
@@ -2807,26 +2846,206 @@ const handlers: Record<string, Handler> = {
 
   // Put chosen roster members on an event's staff list. Idempotent on
   // the platform id, so picking someone twice doesn't duplicate them.
-  async addRosterToEvent({ eventId, ambassadors }: any) {
+  async addRosterToEvent({ eventId, ambassadors, lineId }: any) {
     if (!eventId || !Array.isArray(ambassadors)) throw new Error('eventId and ambassadors[] required')
+    const ev = await prisma.activationEvent.findUnique({ where: { id: eventId }, select: { platformCampaignId: true, lines: { where: { section: 'staff' }, select: { id: true, item: true, unitCents: true } } } })
+    if (!ev) throw new Error('Event not found')
+    const line = lineId ? ev.lines.find(l => l.id === lineId) : ev.lines.find(l => /ambassador/i.test(l.item)) ?? null
     const existing = await prisma.eventStaff.findMany({ where: { eventId, externalRef: { not: null } }, select: { externalRef: true } })
     const have = new Set(existing.map(s => s.externalRef))
     let added = 0
+    const newIds: string[] = []
     for (const a of ambassadors) {
       const ref = 'sboy:' + a.id
       if (!a.id || have.has(ref)) continue
       await prisma.eventStaff.create({
         data: {
-          eventId, kind: 'ambassador', externalRef: ref,
+          eventId, kind: 'ambassador', externalRef: ref, lineId: line?.id ?? null,
           name: a.name || 'Ambassador',
-          role: [a.university, a.instagram ? '@' + a.instagram : null].filter(Boolean).join(' · ') || null,
+          role: line?.item ?? [a.university, a.instagram ? '@' + a.instagram : null].filter(Boolean).join(' · ') ?? null,
           email: a.email || null, phone: a.phone || null,
-          confirmed: false,
+          rateCents: line?.unitCents ?? null,
+          confirmed: false, status: a.onboarded ? 'ready' : 'invited', invitedAt: new Date(),
+          notes: [a.university, a.instagram ? '@' + a.instagram : null].filter(Boolean).join(' · ') || null,
         },
       })
+      newIds.push(String(a.id))
       added++
     }
-    return { added, skipped: ambassadors.length - added }
+    // Mirror onto the platform campaign so they see it in their portal.
+    let platform: any = null
+    if (newIds.length && ev.platformCampaignId && platformConfigured()) {
+      try {
+        platform = await platformFetch(`/api/integrations/campaigns/${ev.platformCampaignId}/members`, { method: 'POST', body: JSON.stringify({ userIds: newIds }) })
+        await handlers.syncEventRoster({ eventId })
+      } catch (e: any) { platform = { error: String(e?.message || e) } }
+    }
+    return { added, skipped: ambassadors.length - added, platform: platform ? { added: platform.added, error: platform.error } : null }
+  },
+
+  // -------- ambassador platform: campaign per event --------
+
+  // Creates (or re-links) the platform campaign that recruits and pays
+  // this event's ambassadors. Idempotent on the event id.
+  async createEventCampaign({ eventId }: any) {
+    const ev = await prisma.activationEvent.findUnique({
+      where: { id: eventId },
+      include: { activation: { include: { brand: { select: { name: true } } } }, lines: { where: { section: 'staff' } } },
+    })
+    if (!ev) throw new Error('Event not found')
+    const amb = ev.lines.find(l => /ambassador/i.test(l.item)) ?? null
+    const date = ev.eventDate ? ev.eventDate.toISOString().slice(0, 10) : null
+    const when = [ev.loadIn ? `Load-in ${ev.loadIn}` : null, ev.eventTime ? `Event ${ev.eventTime}` : null, ev.loadOut ? `Load-out ${ev.loadOut}` : null].filter(Boolean).join(' · ')
+    const body = {
+      externalRef: 'sb-event:' + ev.id,
+      clientName: ev.activation.brand.name,
+      name: ev.activation.name === ev.name ? ev.name : `${ev.activation.name} — ${ev.name}`,
+      brief: [
+        `${ev.activation.brand.name} activation${ev.venue ? ` at ${ev.venue}` : ''}${ev.city ? `, ${ev.city}` : ''}${date ? ` on ${date}` : ''}.`,
+        when || null,
+        amb?.description ? `Ambassadors: ${amb.description}.` : null,
+        ev.notes || null,
+      ].filter(Boolean).join('\n'),
+      targetAmbassadors: amb ? Math.max(1, amb.qty ?? 1) : null,
+      startDate: date, endDate: date,
+      payoutCents: amb?.unitCents ?? 0,
+      budgetCents: amb ? amb.estimateCents : 0,
+      deliverableType: 'Event shift',
+      deliverableTitle: `Work the event${ev.venue ? ` — ${ev.venue}` : ''}`,
+      deliverableDescription: when || null,
+    }
+    const r: any = await platformFetch('/api/integrations/campaigns', { method: 'POST', body: JSON.stringify(body) })
+    const c = r.campaign
+    await prisma.activationEvent.update({ where: { id: ev.id }, data: { platformCampaignId: c.id, inviteUrl: c.inviteUrl, rosterSyncedAt: new Date() } })
+    await handlers.syncEventRoster({ eventId })
+    return { created: r.created, campaignId: c.id, inviteUrl: c.inviteUrl, agencyUrl: c.agencyUrl }
+  },
+
+  // Pull the campaign's members into the event's people list and refresh
+  // each person's stage. Local decisions (confirmed / declined / no-show)
+  // are never overwritten by the platform.
+  async syncEventRoster({ eventId }: any) {
+    const ev = await prisma.activationEvent.findUnique({ where: { id: eventId }, include: { staff: true, lines: { where: { section: 'staff' } } } })
+    if (!ev) throw new Error('Event not found')
+    if (!ev.platformCampaignId) return { synced: 0, note: 'No platform campaign yet' }
+    const r: any = await platformFetch(`/api/integrations/campaigns/${ev.platformCampaignId}`)
+    const c = r.campaign
+    const line = ev.lines.find(l => /ambassador/i.test(l.item)) ?? null
+    const stageToStatus = (m: any) => {
+      if (m.stage === 'removed') return 'declined'
+      if (m.stage === 'completed') return 'done'
+      if (m.stage === 'active' || m.stage === 'clearance_ready' || m.onboarded) return 'ready'
+      if (m.stage === 'onboarding') return 'onboarding'
+      return 'invited'
+    }
+    const sticky = new Set(['confirmed', 'declined', 'no_show', 'done'])
+    let synced = 0, created = 0
+    for (const m of c.members ?? []) {
+      const ref = 'sboy:' + m.id
+      const local = ev.staff.find(s => s.externalRef === ref)
+      const status = stageToStatus(m)
+      if (local) {
+        await prisma.eventStaff.update({ where: { id: local.id }, data: {
+          platformStage: m.stage,
+          email: local.email || m.email || null, phone: local.phone || m.phone || null,
+          ...(sticky.has(local.status) ? {} : { status }),
+        } })
+      } else {
+        await prisma.eventStaff.create({ data: {
+          eventId, kind: 'ambassador', externalRef: ref, lineId: line?.id ?? null,
+          name: m.name || 'Ambassador', role: line?.item ?? 'Brand Ambassador',
+          email: m.email || null, phone: m.phone || null, rateCents: line?.unitCents ?? null,
+          status, platformStage: m.stage, invitedAt: m.joinedAt ? new Date(m.joinedAt) : new Date(),
+          notes: [m.university, m.instagram ? '@' + m.instagram : null].filter(Boolean).join(' · ') || null,
+        } })
+        created++
+      }
+      synced++
+    }
+    await prisma.activationEvent.update({ where: { id: eventId }, data: { rosterSyncedAt: new Date(), inviteUrl: c.inviteUrl ?? ev.inviteUrl } })
+    return { synced, created, inviteUrl: c.inviteUrl, campaign: { id: c.id, name: c.name, status: c.status, agencyUrl: c.agencyUrl, target: c.targetAmbassadors } }
+  },
+
+  // Email the invite link to one person on the list (or a fresh address).
+  async sendEventInvite({ staffId, eventId, email, name }: any) {
+    let st = staffId ? await prisma.eventStaff.findUnique({ where: { id: staffId }, include: { event: { include: { activation: { include: { brand: true } } } } } }) : null
+    const ev = st ? st.event : await prisma.activationEvent.findUnique({ where: { id: eventId }, include: { activation: { include: { brand: true } } } })
+    if (!ev) throw new Error('Event not found')
+    if (!ev.inviteUrl) throw new Error('Create the platform campaign first (People → Set up on platform).')
+    const to = (st?.email || email || '').trim()
+    if (!to) throw new Error('No email address for this person')
+    const first = String(st?.name || name || '').split(' ')[0] || 'there'
+    const date = ev.eventDate ? ev.eventDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'TBD'
+    const rate = st?.rateCents ? ` Pay is $${Math.round(st.rateCents / 100).toLocaleString('en-US')} for the day.` : ''
+    const subject = `${ev.activation.brand.name} event — ${date}${ev.city ? ` in ${ev.city}` : ''}`
+    const body = `Hi ${first},
+
+We're staffing the ${ev.activation.brand.name} activation${ev.venue ? ` at ${ev.venue}` : ''}${ev.city ? ` in ${ev.city}` : ''} on ${date}${ev.eventTime ? ` (${ev.eventTime})` : ''}.${rate}
+
+If you're in, sign up here — it takes about five minutes and gets you set up for payment:
+${ev.inviteUrl}
+
+Reply to this email with any questions.
+
+Best,`
+    const r = await sendPlainEmail({ to, subject, body })
+    if (st) await prisma.eventStaff.update({ where: { id: st.id }, data: { invitedAt: new Date(), status: st.status === 'invited' || !st.status ? 'invited' : st.status } })
+    else await prisma.eventStaff.create({ data: { eventId: ev.id, kind: 'ambassador', name: name || to, email: to, status: 'invited', invitedAt: new Date() } })
+    return r
+  },
+
+  // -------- Google Drive working docs --------
+
+  async getDriveStatus() { return driveStatus() },
+  async disconnectDrive() { return driveDisconnect() },
+
+  async createActivationDocs({ activationId }: any) {
+    const a = await prisma.activation.findUnique({
+      where: { id: activationId },
+      include: { brand: { select: { name: true } }, events: { include: { lines: { orderBy: [{ section: 'asc' }, { sortOrder: 'asc' }] }, staff: true }, orderBy: { eventDate: 'asc' } } },
+    })
+    if (!a) throw new Error('Activation not found')
+    if (a.sheetUrl && a.docUrl) return { sheetUrl: a.sheetUrl, docUrl: a.docUrl, existing: true }
+    const $ = (c: number | null | undefined) => c == null ? '' : Math.round(c) / 100
+    const secName: Record<string, string> = { venue: 'Venue', production: 'Vendors / Production', print: 'Print', staff: 'Staff / Travel / Labor', talent: 'Talent & Promo' }
+    const budgetRows: any[][] = [['Section', 'Item', 'Description', 'Qty', 'Unit', 'Estimate', 'Final', 'Ordered', 'Notes']]
+    for (const e of a.events) {
+      if (a.events.length > 1) budgetRows.push([e.name])
+      for (const l of e.lines) budgetRows.push([secName[l.section] ?? l.section, l.item, l.description ?? '', l.qty ?? '', $(l.unitCents), $(l.estimateCents), $(l.finalCents), l.ordered ? 'Yes' : '', l.notes ?? ''])
+      budgetRows.push(['', 'Total', '', '', '', `=SUM(F2:F${budgetRows.length})`, `=SUM(G2:G${budgetRows.length})`, '', ''])
+      budgetRows.push(['', 'Approved budget', '', '', '', $(e.budgetCents), '', '', ''])
+    }
+    const peopleRows: any[][] = [['Event', 'Name', 'Role', 'Type', 'Status', 'Email', 'Phone', 'Rate', 'Notes']]
+    for (const e of a.events) for (const s of e.staff) peopleRows.push([e.name, s.name, s.role ?? '', s.kind, s.status, s.email ?? '', s.phone ?? '', $(s.rateCents), s.notes ?? ''])
+    const schedRows: any[][] = [['Event', 'Venue', 'City', 'Date', 'Load-in', 'Event', 'Load-out', 'Notes']]
+    for (const e of a.events) schedRows.push([e.name, e.venue ?? '', e.city ?? '', e.eventDate ? e.eventDate.toISOString().slice(0, 10) : '', e.loadIn ?? '', e.eventTime ?? '', e.loadOut ?? '', e.notes ?? ''])
+    const docText = [
+      `${a.name}`, `Brand: ${a.brand.name}`, `Owner: ${a.owner ?? '—'}`, '',
+      ...a.events.flatMap(e => [
+        `EVENT: ${e.name}`,
+        `Venue: ${e.venue ?? '—'}${e.city ? `, ${e.city}` : ''}`,
+        `Date: ${e.eventDate ? e.eventDate.toDateString() : 'TBD'}`,
+        `Load-in: ${e.loadIn ?? '—'}   Event: ${e.eventTime ?? '—'}   Load-out: ${e.loadOut ?? '—'}`,
+        `Approved budget: $${Math.round(e.budgetCents / 100).toLocaleString('en-US')}`,
+        '', 'RUN OF SHOW', '(fill in)', '', 'ON-SITE TEAM',
+        ...e.staff.filter(s => s.kind === 'team').map(s => `- ${s.name}${s.role ? ` — ${s.role}` : ''}${s.phone ? ` — ${s.phone}` : ''}`),
+        '', 'AMBASSADORS',
+        ...e.staff.filter(s => s.kind === 'ambassador').map(s => `- ${s.name} (${s.status})${s.phone ? ` — ${s.phone}` : ''}`),
+        '', 'VENDORS & CONTACTS', '(fill in)', '', 'NOTES', e.notes ?? '', '',
+      ]),
+      a.notes ?? '',
+    ].join('\n')
+    const r = await driveCreateActivationDocs({
+      name: `${a.brand.name} — ${a.name}`,
+      sheetTabs: [
+        { title: 'Budget', rows: budgetRows, widths: [150, 200, 260, 50, 90, 100, 100, 70, 240] },
+        { title: 'People', rows: peopleRows, widths: [160, 160, 160, 90, 90, 200, 130, 80, 240] },
+        { title: 'Schedule', rows: schedRows, widths: [200, 200, 120, 100, 120, 120, 120, 300] },
+      ],
+      docText,
+    })
+    await prisma.activation.update({ where: { id: a.id }, data: { sheetUrl: r.sheetUrl, docUrl: r.docUrl, driveFolderId: r.folderId } })
+    return { ...r, existing: false }
   },
 
   // -------- email outreach --------
