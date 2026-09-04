@@ -571,8 +571,16 @@ async function fetchAsset(file: string, cid: string, min = 200): Promise<any | n
 // All three signature images, fetched once per process. Returned as one
 // array so callers can't accidentally attach the logo without the icons
 // and end up with a half-rendered signature.
+// Signature images are now referenced by URL from the site rather than
+// embedded as cid: attachments. Embedded ones showed up as three loose
+// "attachments" (logo, two icons) in Apple Mail / Outlook / some Gmail
+// views, which looked odd next to the one-pager. Hosted images render
+// in place and the only attachment left is the PDF. (fetchAsset stays
+// so this can be flipped back with SIGNATURE_EMBED=1.)
+const EMBED_SIGNATURE = process.env.SIGNATURE_EMBED === '1'
 let assetCache: any[] | undefined
 async function signatureAssets(): Promise<any[]> {
+  if (!EMBED_SIGNATURE) return []
   if (assetCache === undefined) {
     const [logo, li, ig] = await Promise.all([
       fetchAsset('sb-logo.png', LOGO_CID),
@@ -584,11 +592,15 @@ async function signatureAssets(): Promise<any[]> {
   return assetCache
 }
 
-// True only when the logo itself made it — the signature falls back to
-// plain text otherwise rather than showing broken-image icons.
+// Truthy when the HTML signature should render with images. Hosted mode
+// always can; embedded mode only when the logo bytes actually arrived.
 async function logoAttachment(): Promise<any | null> {
+  if (!EMBED_SIGNATURE) return { hosted: true }
   const a = await signatureAssets()
   return a.find(x => x.cid === LOGO_CID) ?? null
+}
+function imgSrc(cid: string, file: string): string {
+  return EMBED_SIGNATURE ? 'cid:' + cid : SITE_ASSETS + file + '?v=2026-09-03'
 }
 
 function makeTransport() {
@@ -631,15 +643,15 @@ function esc(t: string): string {
 // cid: reference, so it renders with remote images blocked, which is
 // the default state for a first email from an unknown sender.
 function signatureHtml(): string {
-  const icon = (cid: string, alt: string, href: string) => {
-    const img = '<img src="cid:' + cid + '" alt="' + alt +
+  const icon = (src: string, alt: string, href: string) => {
+    const img = '<img src="' + src + '" alt="' + alt +
       '" width="20" height="20" style="width:20px;height:20px;border:0;vertical-align:middle">'
     return href ? '<a href="' + href + '" style="text-decoration:none;margin-right:6px">' + img + '</a>'
                 : '<span style="margin-right:6px;display:inline-block">' + img + '</span>'
   }
   return '' +
     '<div style="margin-top:18px">' +
-      '<img src="cid:' + LOGO_CID + '" alt="SB Agency" width="130" ' +
+      '<img src="' + imgSrc(LOGO_CID, 'sb-logo.png') + '" alt="SB Agency" width="130" ' +
         'style="width:130px;height:auto;display:block;border:0;margin-bottom:8px">' +
       '<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#1a1a1a;line-height:1.55">' +
         '<span style="font-weight:700">Zach Goldstein</span> | Co-CEO<br>' +
@@ -648,8 +660,8 @@ function signatureHtml(): string {
         'Email: <a href="mailto:zach@sboyagency.com">zach@sboyagency.com</a>' +
       '</div>' +
       '<div style="margin-top:8px">' +
-        icon(LI_CID, 'LinkedIn', LINKEDIN_URL) +
-        icon(IG_CID, 'Instagram', INSTAGRAM_URL) +
+        icon(imgSrc(LI_CID, 'icon-linkedin.png'), 'LinkedIn', LINKEDIN_URL) +
+        icon(imgSrc(IG_CID, 'icon-instagram.png'), 'Instagram', INSTAGRAM_URL) +
       '</div>' +
     '</div>'
 }
