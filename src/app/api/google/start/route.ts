@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic'
 
 // Bumped on every deploy that touches this file, so /api/google/start?debug=1
 // tells us at a glance whether the build we think is live actually is.
-const BUILD_MARKER = 'gmail-oauth-v4-drive'
+const BUILD_MARKER = 'gmail-oauth-v5-ops'
 
 export async function GET(req: Request) {
   const session: any = await getServerSession(authOptions)
@@ -46,6 +46,7 @@ export async function GET(req: Request) {
     )
   }
   // ?drive=1 starts the Drive grant (activation docs) instead of Gmail.
-  const kind = new URL(req.url).searchParams.get('drive') === '1' ? 'drive' : 'gmail'
+  const sp = new URL(req.url).searchParams
+  const kind = sp.get('drive') === '1' ? 'drive' : sp.get('ops') === '1' ? 'ops' : 'gmail'
   return NextResponse.redirect(googleAuthUrl(kind))
 }
