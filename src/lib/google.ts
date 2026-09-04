@@ -64,11 +64,12 @@ async function setSetting(key: string, value: string) {
 // the rest of the Drive.
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
 
-export function googleAuthUrl(kind: 'gmail' | 'drive' = 'gmail'): string {
+export function googleAuthUrl(kind: 'gmail' | 'drive' | 'ops' = 'gmail'): string {
   const p = new URLSearchParams({
     client_id: process.env.GMAIL_CLIENT_ID!,
     redirect_uri: siteUrl() + REDIRECT_PATH,
     response_type: 'code',
+    // ops = the operations mailbox: same two narrow Gmail scopes as outreach.
     scope: kind === 'drive' ? DRIVE_SCOPE : SCOPE,
     access_type: 'offline',      // we need a refresh token
     prompt: 'consent',           // force one so re-connecting always works
@@ -509,3 +510,187 @@ async function docsFill(token: string, documentId: string, text: string) {
     body: JSON.stringify({ requests: [{ insertText: { location: { index: 1 }, text } }] }),
   })
 }
+
+
+// ---- Operations mailbox (ops@) ---------------------------------------
+//
+// A second Gmail grant, stored under its own keys, same two scopes as the
+// outreach mailbox (send + readonly). Everything below reads with
+// gmail.readonly and sends with gmail.send; nothing can modify or delete
+// mail in that box.
+
+export async function opsExchangeCode(code: string) {
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code,
+      client_id: process.env.GMAIL_CLIENT_ID!,
+      client_secret: process.env.GMAIL_CLIENT_SECRET!,
+      redirect_uri: siteUrl() + REDIRECT_PATH,
+      grant_type: 'authorization_code',
+    }),
+  })
+  const j: any = await res.json()
+  if (!res.ok || !j.refresh_token) throw new Error(j.error_description || j.error || 'Google did not return a refresh token')
+  let address = ''
+  try {
+    const pr = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', { headers: { Authorization: `Bearer ${j.access_token}` } })
+    if (pr.ok) address = (await pr.json()).emailAddress ?? ''
+  } catch {}
+  await setSetting('opsRefreshToken', j.refresh_token)
+  if (address) await setSetting('opsEmail', address)
+  return { address }
+}
+
+export async function opsDisconnect() {
+  const token = await getSetting('opsRefreshToken')
+  if (token) { try { await fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(token), { method: 'POST' }) } catch {} }
+  await prisma.setting.deleteMany({ where: { key: { in: ['opsRefreshToken', 'opsEmail', 'opsLastScanAt'] } } })
+  return { ok: true }
+}
+
+export async function opsStatus() {
+  return {
+    configured: googleConfigured(),
+    connected: !!(await getSetting('opsRefreshToken')),
+    address: await getSetting('opsEmail'),
+    lastScanAt: await getSetting('opsLastScanAt'),
+  }
+}
+
+async function opsAccessToken(): Promise<string> {
+  const refresh = await getSetting('opsRefreshToken')
+  if (!refresh) throw new Error('Ops mailbox is not connected — click "Connect ops@" on the Operations page.')
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      refresh_token: refresh,
+      client_id: process.env.GMAIL_CLIENT_ID!,
+      client_secret: process.env.GMAIL_CLIENT_SECRET!,
+      grant_type: 'refresh_token',
+    }),
+  })
+  const j: any = await res.json()
+  if (!res.ok || !j.access_token) {
+    throw new Error(/invalid_grant/.test(String(j.error))
+      ? 'Ops mailbox access was revoked or expired — reconnect it on the Operations page.'
+      : (j.error_description || j.error || 'Could not refresh ops token'))
+  }
+  return j.access_token
+}
+
+async function gm(token: string, path: string, init: RequestInit = {}): Promise<any> {
+  const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/' + path, {
+    ...init, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init.headers || {}) },
+  })
+  if (!res.ok) { const t = await res.text(); throw new Error(`Gmail ${res.status}: ${t.slice(0, 200)}`) }
+  return res.json()
+}
+
+export type OpsAttachment = { id: string; filename: string; mimeType: string; size: number }
+export type OpsMail = {
+  id: string; threadId: string
+  fromName: string | null; fromEmail: string; toEmail: string | null
+  subject: string; snippet: string; body: string; date: Date
+  attachments: OpsAttachment[]
+  labels: string[]
+}
+
+function b64url(s: string): string {
+  return Buffer.from(String(s).replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
+}
+function parseFrom(raw: string): { name: string | null; email: string } {
+  const m = String(raw || '').match(/^\s*(?:"?([^"<]*)"?\s*)?<([^>]+)>\s*$/)
+  if (m) return { name: (m[1] || '').trim() || null, email: m[2].trim().toLowerCase() }
+  return { name: null, email: String(raw || '').trim().toLowerCase() }
+}
+// Walk the MIME tree: collect text/plain (fallback: stripped text/html)
+// and every part that has a filename + attachmentId.
+function walkParts(payload: any, acc: { text: string[]; html: string[]; att: OpsAttachment[] }) {
+  if (!payload) return
+  const mime = String(payload.mimeType || '')
+  const fname = payload.filename ? String(payload.filename) : ''
+  if (fname && payload.body?.attachmentId) {
+    acc.att.push({ id: payload.body.attachmentId, filename: fname, mimeType: mime, size: Number(payload.body.size || 0) })
+  } else if (mime === 'text/plain' && payload.body?.data) {
+    acc.text.push(b64url(payload.body.data))
+  } else if (mime === 'text/html' && payload.body?.data) {
+    acc.html.push(b64url(payload.body.data))
+  }
+  for (const p of payload.parts || []) walkParts(p, acc)
+}
+function htmlToText(h: string): string {
+  return h.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|tr|li|h\d)>/gi, '\n').replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+export async function opsGetMessage(id: string): Promise<OpsMail> {
+  const token = await opsAccessToken()
+  const j = await gm(token, 'messages/' + id + '?format=full')
+  const h: any[] = j.payload?.headers ?? []
+  const get = (n: string) => h.find(x => String(x.name).toLowerCase() === n)?.value ?? ''
+  const acc = { text: [] as string[], html: [] as string[], att: [] as OpsAttachment[] }
+  walkParts(j.payload, acc)
+  const body = (acc.text.join('\n').trim() || htmlToText(acc.html.join('\n'))).slice(0, 20000)
+  const from = parseFrom(get('from'))
+  return {
+    id: j.id, threadId: j.threadId,
+    fromName: from.name, fromEmail: from.email, toEmail: parseFrom(get('to')).email || null,
+    subject: get('subject') || '(no subject)', snippet: String(j.snippet || ''), body,
+    date: j.internalDate ? new Date(Number(j.internalDate)) : new Date(),
+    attachments: acc.att, labels: j.labelIds || [],
+  }
+}
+
+// Ids of messages matching a query, newest first, up to max.
+export async function opsListIds(query: string, max = 300): Promise<string[]> {
+  const token = await opsAccessToken()
+  const ids: string[] = []
+  let pageToken: string | undefined
+  while (ids.length < max) {
+    const j = await gm(token, 'messages?maxResults=' + Math.min(100, max - ids.length) + '&q=' + encodeURIComponent(query) + (pageToken ? '&pageToken=' + pageToken : ''))
+    for (const m of j.messages ?? []) ids.push(m.id)
+    pageToken = j.nextPageToken
+    if (!pageToken || !(j.messages ?? []).length) break
+  }
+  return ids
+}
+
+export async function opsGetAttachment(messageId: string, attachmentId: string): Promise<Buffer> {
+  const token = await opsAccessToken()
+  const j = await gm(token, 'messages/' + messageId + '/attachments/' + attachmentId)
+  return Buffer.from(String(j.data || '').replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+}
+
+// Send from the ops mailbox. inReplyTo/threadId keep replies in the thread.
+export async function opsSend(mail: OutgoingMail & { threadId?: string; inReplyTo?: string }) {
+  const token = await opsAccessToken()
+  const raw = await new Promise<string>((resolve, reject) => {
+    new MailComposer({
+      from: mail.from, to: mail.to,
+      ...(mail.cc && mail.cc.length ? { cc: mail.cc } : {}),
+      subject: mail.subject, text: mail.text,
+      ...(mail.html ? { html: mail.html } : {}),
+      ...(mail.attachments && mail.attachments.length ? { attachments: mail.attachments } : {}),
+      ...(mail.inReplyTo ? { inReplyTo: mail.inReplyTo, references: mail.inReplyTo } : {}),
+    }).compile().build((err: any, message: Buffer) => {
+      if (err) return reject(err)
+      resolve(message.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''))
+    })
+  })
+  return gm(token, 'messages/send', { method: 'POST', body: JSON.stringify({ raw, ...(mail.threadId ? { threadId: mail.threadId } : {}) }) })
+}
+
+// Message-ID header, needed for a threaded reply.
+export async function opsMessageIdHeader(id: string): Promise<string | null> {
+  const token = await opsAccessToken()
+  const j = await gm(token, 'messages/' + id + '?format=metadata&metadataHeaders=Message-ID')
+  const h: any[] = j.payload?.headers ?? []
+  return h.find(x => String(x.name).toLowerCase() === 'message-id')?.value ?? null
+}
+
+export async function opsSetLastScan(iso: string) { await setSetting('opsLastScanAt', iso) }
