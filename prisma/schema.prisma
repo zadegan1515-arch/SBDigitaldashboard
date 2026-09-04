@@ -719,3 +719,55 @@ model EventStaff {
 
   @@index([eventId])
 }
+
+// ---------------------------------------------------------------
+// Operations inbox — every email in the ops@ mailbox, sorted into
+// contracts / invoices / other by rules (no AI), with a status and
+// optional links into the rest of the system so an invoice can become
+// a real cost on an activation budget.
+// ---------------------------------------------------------------
+model OpsMessage {
+  id        String @id @default(cuid())
+  gmailId   String @unique
+  threadId  String
+  fromName  String?
+  fromEmail String
+  toEmail   String?
+  subject   String
+  snippet   String?
+  // Plain-text body, capped (~20k chars). Attachments stay in Gmail and
+  // are fetched on demand — nothing binary is stored here.
+  body      String?
+  date      DateTime
+  // [{ id, filename, mimeType, size }]
+  attachments String @default("[]")
+  hasAttachments Boolean @default(false)
+  // "contract" | "invoice_payable" (we owe) | "invoice_receivable" (we sent) | "other"
+  kind   String @default("other")
+  // "needs_review" | "approved" | "paid" | "signed" | "done" | "ignored"
+  status String @default("needs_review")
+  amountCents Int?
+  dueDate     DateTime?
+  vendor      String?
+  owner       String?
+  notes       String?
+  // Optional links into the rest of the dashboard.
+  brandId      String?
+  activationId String?
+  dealId       String?
+  budgetLineId String?
+  forwardedTo  String?
+  forwardedAt  DateTime?
+  repliedAt    DateTime?
+  // Set by the rules pass so a hand edit is never overwritten by a rescan.
+  autoKind   String?
+  reviewedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([kind, status])
+  @@index([date])
+  @@index([threadId])
+  @@index([activationId])
+}
