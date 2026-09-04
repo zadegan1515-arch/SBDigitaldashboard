@@ -289,6 +289,34 @@
   .act-seg .seg .b.todo{color:var(--accent);font-weight:600}
   .act-substat{display:flex;gap:20px;flex-wrap:wrap;font-size:13px;color:var(--ink-2);margin:2px 0 8px}
   .act-substat b{font-variant-numeric:tabular-nums}
+  /* operations inbox: split view — list left, reading pane right */
+  .ops-split{display:grid;grid-template-columns:minmax(320px,5fr) 7fr;gap:14px;margin-top:10px;align-items:start}
+  .ops-list{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+  .ops-row{padding:10px 14px;border-bottom:1px solid var(--border-soft);cursor:pointer;border-left:3px solid transparent}
+  .ops-row:last-child{border-bottom:none}
+  .ops-row:hover{background:var(--surface-2)}
+  .ops-row.sel{background:var(--surface-2);border-left-color:var(--accent)}
+  .ops-row .r1{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+  .ops-row .r1 b{font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ops-row .r1 .d{font-size:11.5px;color:var(--ink-3);flex:none}
+  .ops-row .subj{font-size:13px;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ops-row .sum{font-size:12px;color:var(--ink-3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ops-row .meta{display:flex;gap:8px;align-items:center;margin-top:5px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2)}
+  .ops-read{position:sticky;top:112px;max-height:calc(100vh - 128px);overflow:auto}
+  .ops-tldr{background:var(--accent-soft,#fdf0ec);border-radius:8px;padding:10px 14px;margin-top:12px;font-size:13px;line-height:1.55}
+  .ops-tldr .tl-label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:2px}
+  .ops-tldr ul{margin:4px 0 0 16px;padding:0}
+  .ops-smartbar{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:12px;padding:8px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)}
+  .ops-smartbar .f{display:flex;align-items:center;gap:7px}
+  .ops-smartbar .k{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+  .ops-smartbar select,.ops-smartbar input{border:0;background:transparent;font:inherit;font-size:13px;font-weight:600;padding:2px 0;color:var(--ink-1)}
+  .ops-smartbar input{width:88px}
+  .ops-smartbar .auto{font-size:9.5px;color:var(--accent);text-transform:uppercase;letter-spacing:.05em}
+  .ops-body-text{white-space:pre-wrap;font-size:13.5px;line-height:1.65;padding:16px 2px 4px;overflow-wrap:break-word}
+  .ops-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--border-soft)}
+  .ops-sec{margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)}
+  .ops-sec[hidden]{display:none}
+  @media (max-width:1100px){.ops-split{grid-template-columns:1fr}.ops-read{position:static;max-height:none;order:-1}}
 </style>
 </head>
 <body>
@@ -4040,6 +4068,75 @@ function loadOperations(filter) {
   }).catch(function (e) { toast(e.message); });
 }
 
+// --- free rules-based email summary (no AI, no keys) -------------
+// Strips quoted history + signatures, then pulls out the money, the
+// deadline, the invoice number, and the sentences that ask for things.
+
+function opsCleanBody(raw) {
+  var lines = String(raw || '').replace(/\r/g, '').split('\n'), out = [];
+  for (var i = 0; i < lines.length; i++) {
+    var L = lines[i];
+    if (/^\s*>/.test(L)) break;                                   // quoted history
+    if (/^\s*On .{4,80} wrote:\s*$/.test(L)) break;               // quote header
+    if (/^-{3,}\s*(Forwarded message|Original Message)/i.test(L)) break;
+    if (/^\s*--\s*$/.test(L) && i > 2) break;                     // signature separator
+    if (/^(Sent from my|Get Outlook for)/i.test(L)) break;
+    out.push(L);
+  }
+  return out.join('\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+var OPS_MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 };
+function opsIso(d) { return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10); }
+
+function opsExtract(m) {
+  var text = opsCleanBody(m.body || m.snippet || '');
+  var scan = (m.subject || '') + '\n' + text;
+  var base = m.date ? new Date(m.date) : new Date();
+  var r = { amountCents: null, dueDate: null, invoiceNo: null, asks: [] };
+  // biggest dollar figure = the probable total
+  var best = 0, mm, re = /\$\s?(\d{1,3}(?:,\d{3})*|\d+)(\.\d{2})?/g;
+  while ((mm = re.exec(scan))) {
+    var c = Math.round(parseFloat(mm[1].replace(/,/g, '') + (mm[2] || '')) * 100);
+    if (c > best) best = c;
+  }
+  if (best) r.amountCents = best;
+  var inv = /\b(?:invoice|inv)\.?\s*(?:#|no\.?|number)?\s*:?\s*([A-Za-z]{0,4}-?\d[\w-]{0,14})/i.exec(scan);
+  if (inv) r.invoiceNo = inv[1];
+  // due date: "due (by|on) Month D[, YYYY]" · "due 9/15[/26]" · "net 30"
+  var d1 = /(?:due|payable|needed|deadline)[^\n.]{0,20}?\b([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?/i.exec(scan);
+  var d2 = /(?:due|by|before)[^\n.]{0,15}?\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/.exec(scan);
+  var d3 = /\bnet\s*-?\s*(\d{1,3})\b/i.exec(scan);
+  if (d1 && OPS_MONTHS[d1[1].slice(0, 4).toLowerCase()] != null) {
+    var dt = new Date(Date.UTC(d1[3] ? +d1[3] : base.getUTCFullYear(), OPS_MONTHS[d1[1].slice(0, 4).toLowerCase()], +d1[2]));
+    if (!d1[3] && dt.getTime() < base.getTime() - 5 * 86400000) dt.setUTCFullYear(dt.getUTCFullYear() + 1);
+    r.dueDate = opsIso(dt);
+  } else if (d2) {
+    var y2 = d2[3] ? (+d2[3] < 100 ? 2000 + +d2[3] : +d2[3]) : base.getUTCFullYear();
+    var dt2 = new Date(Date.UTC(y2, +d2[1] - 1, +d2[2]));
+    if (!d2[3] && dt2.getTime() < base.getTime() - 5 * 86400000) dt2.setUTCFullYear(dt2.getUTCFullYear() + 1);
+    r.dueDate = opsIso(dt2);
+  } else if (d3) {
+    r.dueDate = opsIso(new Date(base.getTime() + (+d3[1]) * 86400000));
+  }
+  // the sentences that ask for something
+  var ASK = /\b(please|can you|could you|kindly|we need|need(?:s)? (?:you|your|to)|sign|signature|counter-?sign|review|approve|approval|remit|payment|pay by|wire|w-?9|coi\b|certificate of insurance|confirm|let (?:us|me) know|attached|deadline)\b/i;
+  var sents = text.replace(/\n+/g, ' ').split(/(?:[.!?])\s+/);
+  for (var i = 0; i < sents.length && r.asks.length < 2; i++) {
+    var s = sents[i].trim();
+    if (s.length > 15 && s.length < 240 && ASK.test(s)) r.asks.push(s.length > 160 ? s.slice(0, 157) + '…' : s);
+  }
+  return r;
+}
+
+// One-line gist for a list row: the ask if we found one, else the snippet.
+function opsRowSummary(m, ex) {
+  var bits = [];
+  if (ex.invoiceNo) bits.push('#' + ex.invoiceNo);
+  if (ex.asks.length) bits.push(ex.asks[0]);
+  return bits.length ? bits.join(' · ') : (m.snippet || '');
+}
+
 function renderOps(r) {
   var box = document.getElementById('ops-body');
   var st = r.status || {};
@@ -4066,28 +4163,35 @@ function renderOps(r) {
     '<input class="field-box" data-ops-q value="' + esc(opsQ) + '" placeholder="Search sender, subject, vendor" style="margin-left:auto;width:260px">' +
   '</div>';
   if (!st.connected) {
-    h += '<div class="panel" style="margin-top:8px"><div class="empty"><h3>Connect the ops mailbox</h3><p>One click, Google asks for read + send on ops@sboyagency.com. The last 90 days get pulled in, then every morning after.</p></div></div>';
+    h += '<div class="panel" style="margin-top:8px"><div class="empty"><h3>Connect the ops mailbox</h3><p>One click, Google asks for read + send on ops@sboyagency.com. The last 90 days get pulled in, then every morning after.</p></div></div>' +
+      '<div id="ops-detail" hidden></div>';
   } else if (!r.rows.length) {
-    h += '<div class="panel" style="margin-top:8px"><div class="empty"><h3>Nothing here</h3><p>' + (opsFilter === 'inbox' ? 'Inbox is clear. Hit Scan now to pull the latest.' : 'No items match.') + '</p></div></div>';
+    h += '<div class="panel" style="margin-top:8px"><div class="empty"><h3>Nothing here</h3><p>' + (opsFilter === 'inbox' ? 'Inbox is clear. Hit Scan now to pull the latest.' : 'No items match.') + '</p></div></div>' +
+      '<div id="ops-detail" hidden></div>';
   } else {
-    h += '<div class="panel"><table class="sheet" style="width:100%"><colgroup><col style="width:90px"><col style="width:20%"><col><col style="width:130px"><col style="width:100px"><col style="width:95px"><col style="width:120px"><col style="width:28px"></colgroup>' +
-      '<thead><tr><th>Date</th><th>From</th><th>Subject</th><th>Type</th><th class="r">Amount</th><th>Due</th><th>Status</th><th></th></tr></thead><tbody>';
+    h += '<div class="ops-split"><div class="ops-list">';
     r.rows.forEach(function (m) {
       var late = m.dueDate && (m.status === 'needs_review' || m.status === 'approved') && new Date(m.dueDate).getTime() < Date.now();
-      h += '<tr class="ln row-link" data-ops-open="' + esc(m.id) + '" style="cursor:pointer' + (m.id === opsOpenId ? ';background:var(--surface-2,rgba(0,0,0,.03))' : '') + '">' +
-        '<td style="color:var(--ink-3);font-size:12px">' + when(m.date) + '</td>' +
-        '<td><b>' + esc(m.fromName || m.fromEmail.split('@')[0]) + '</b><div style="font-size:11px;color:var(--ink-3)">' + esc(m.vendor || m.fromEmail.split('@')[1] || '') + '</div></td>' +
-        '<td>' + esc(m.subject) + '<div style="font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px">' + esc(m.snippet || '') + '</div></td>' +
-        '<td>' + opsKindPill(m.kind) + '</td>' +
-        '<td class="r" style="padding-right:14px">' + (m.amountCents != null ? money(m.amountCents) : '<span style="color:var(--ink-3)">—</span>') + '</td>' +
-        '<td style="color:' + (late ? 'var(--warn)' : 'inherit') + '">' + (m.dueDate ? when(m.dueDate) : '<span style="color:var(--ink-3)">—</span>') + '</td>' +
-        '<td>' + opsStatusPill(m.status) + '</td>' +
-        '<td title="' + (m.attachments || []).length + ' attachment(s)">' + (m.hasAttachments ? '📎' : '') + '</td></tr>';
+      var ex = opsExtract(m);
+      var amt = m.amountCents != null ? m.amountCents : ex.amountCents;
+      var due = m.dueDate || ex.dueDate;
+      h += '<div class="ops-row' + (m.id === opsOpenId ? ' sel' : '') + '" data-ops-open="' + esc(m.id) + '">' +
+        '<div class="r1"><b>' + esc(m.fromName || m.fromEmail.split('@')[0]) + '</b><span class="d">' + when(m.date) + '</span></div>' +
+        '<div class="subj">' + esc(m.subject) + '</div>' +
+        '<div class="sum">' + esc(opsRowSummary(m, ex)) + '</div>' +
+        '<div class="meta">' + opsKindPill(m.kind) + opsStatusPill(m.status) +
+          (amt != null ? '<b>' + money(amt) + '</b>' : '') +
+          (due ? '<span style="color:' + (late ? 'var(--warn)' : 'var(--ink-3)') + '">due ' + when(due) + '</span>' : '') +
+          (m.hasAttachments ? '<span title="Has attachments">📎</span>' : '') +
+        '</div></div>';
     });
-    h += '</tbody></table></div>';
+    h += '</div><div class="ops-read" id="ops-detail">' + opsPanePlaceholder() + '</div></div>';
   }
-  h += '<div id="ops-detail" style="margin-top:16px"></div>';
   box.innerHTML = h;
+}
+
+function opsPanePlaceholder() {
+  return '<div class="panel" style="padding:48px 20px;text-align:center;color:var(--ink-3);font-size:13px">Select an email on the left to read it here</div>';
 }
 
 function openOps(id) {
@@ -4095,13 +4199,14 @@ function openOps(id) {
   history.replaceState({}, '', location.pathname + '#operations/' + id);
   var det = document.getElementById('ops-detail');
   if (!det) return;
-  det.innerHTML = '<div style="font-size:13px;color:var(--ink-3)">Loading…</div>';
-  det.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  det.innerHTML = '<div class="panel panel-pad" style="font-size:13px;color:var(--ink-3)">Loading…</div>';
+  // reading pane sits beside the list — only scroll on narrow screens where it stacks
+  if (window.matchMedia && window.matchMedia('(max-width:1100px)').matches) det.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.querySelectorAll('.ops-row').forEach(function (el) { el.classList.toggle('sel', el.getAttribute('data-ops-open') === id); });
   var p = opsLinks ? Promise.resolve(opsLinks) : api('opsLinkOptions').then(function (l) { opsLinks = l; return l; });
   Promise.all([api('getOpsItem', { id: id }), p]).then(function (res) {
     renderOpsDetail(res[0], res[1]);
-    document.querySelectorAll('[data-ops-open]').forEach(function (tr) { tr.style.background = tr.getAttribute('data-ops-open') === id ? 'var(--surface-2,rgba(0,0,0,.03))' : ''; });
-  }).catch(function (e) { det.innerHTML = '<div style="color:var(--warn)">' + esc(e.message) + '</div>'; });
+  }).catch(function (e) { det.innerHTML = '<div class="panel panel-pad" style="color:var(--warn)">' + esc(e.message) + '</div>'; });
 }
 
 function renderOpsDetail(m, links) {
@@ -4112,58 +4217,100 @@ function renderOpsDetail(m, links) {
   if (curAct) curAct.events.forEach(function (e) {
     e.lines.forEach(function (l) { lineOpts += '<option value="' + esc(l.id) + '"' + (l.id === m.budgetLineId ? ' selected' : '') + '>' + esc((curAct.events.length > 1 ? e.name + ' · ' : '') + l.item) + ' — ' + money(l.estimateCents) + (l.finalCents != null ? ' / final ' + money(l.finalCents) : '') + '</option>'; });
   });
+
+  var ex = opsExtract(m);
+  // auto-fill from the extractor: only fields the scan left empty, never
+  // anything a person already reviewed, and it shows as "auto" in the bar
+  var autoAmt = false, autoDue = false;
+  if (!m.reviewedAt) {
+    var fill = { id: m.id };
+    if (m.amountCents == null && ex.amountCents != null) { fill.amountCents = ex.amountCents; m.amountCents = ex.amountCents; autoAmt = true; }
+    if (!m.dueDate && ex.dueDate) { fill.dueDate = ex.dueDate; m.dueDate = ex.dueDate; autoDue = true; }
+    if (autoAmt || autoDue) api('updateOpsItem', fill).catch(function () {});
+  }
+
+  // header
   var h = '<div class="panel panel-pad" data-ops-item="' + esc(m.id) + '">' +
-    '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start">' +
-      '<div><div style="font-family:var(--display);font-size:18px;font-weight:700">' + esc(m.subject) + '</div>' +
-      '<div style="font-size:13px;color:var(--ink-2);margin-top:3px">' + esc(m.fromName ? m.fromName + ' <' + m.fromEmail + '>' : m.fromEmail) + ' · ' + new Date(m.date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) +
-        (m.repliedAt ? ' · replied ' + when(m.repliedAt) : '') + (m.forwardedTo ? ' · forwarded to ' + esc(m.forwardedTo) : '') + '</div></div>' +
-      '<div style="display:flex;gap:6px;flex-wrap:wrap">' + opsKindPill(m.kind) + opsStatusPill(m.status) + '<button class="btn-ghost" data-ops-close>Close</button></div>' +
+    '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">' +
+      '<div style="min-width:0"><div style="font-family:var(--display);font-size:17px;font-weight:700;line-height:1.3">' + esc(m.subject) + '</div>' +
+      '<div style="font-size:12.5px;color:var(--ink-2);margin-top:3px">' + esc(m.fromName ? m.fromName + ' <' + m.fromEmail + '>' : m.fromEmail) + ' · ' + new Date(m.date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) +
+        (m.repliedAt ? ' · <span style="color:var(--good)">replied ' + when(m.repliedAt) + '</span>' : '') + (m.forwardedTo ? ' · forwarded to ' + esc(m.forwardedTo) : '') + '</div></div>' +
+      '<button class="btn-ghost" data-ops-close title="Close" style="flex:none">×</button>' +
     '</div>';
 
-  // fields
-  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:14px">' +
-    '<div><div class="cat-stat-label">Type</div>' + actSel(OPS_KIND, m.kind, 'data-of="kind"') + '</div>' +
-    '<div><div class="cat-stat-label">Status</div>' + actSel(OPS_STATUS, m.status, 'data-of="status"') + '</div>' +
-    '<div><div class="cat-stat-label">Amount</div><input class="field-box" data-of="amountCents" value="' + (m.amountCents == null ? '' : money(m.amountCents)) + '" placeholder="$"></div>' +
-    '<div><div class="cat-stat-label">Due</div><input class="field-box" type="date" data-of="dueDate" value="' + dateInput(m.dueDate) + '"></div>' +
-    '<div><div class="cat-stat-label">Vendor / counterparty</div><input class="field-box" data-of="vendor" value="' + esc(m.vendor || '') + '"></div>' +
-    '<div><div class="cat-stat-label">Owner</div><input class="field-box" data-of="owner" value="' + esc(m.owner || '') + '" placeholder="Who handles it"></div>' +
+  // TL;DR — rules-based, free
+  var tl = [];
+  if (ex.invoiceNo) tl.push('Invoice #' + ex.invoiceNo);
+  if (m.amountCents != null) tl.push('<b>' + money(m.amountCents) + '</b>');
+  if (m.dueDate) tl.push('due <b>' + when(m.dueDate) + '</b>');
+  if (tl.length || ex.asks.length) {
+    h += '<div class="ops-tldr"><div class="tl-label">TL;DR</div>' +
+      (tl.length ? '<div>' + tl.join(' · ') + '</div>' : '') +
+      (ex.asks.length ? '<ul>' + ex.asks.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>' : '') +
+    '</div>';
+  }
+
+  // smart bar: the four fields that matter, editable in place
+  h += '<div class="ops-smartbar">' +
+    '<span class="f"><span class="k">Type</span>' + actSel(OPS_KIND, m.kind, 'data-of="kind" style="width:auto"') + '</span>' +
+    '<span class="f"><span class="k">Status</span>' + actSel(OPS_STATUS, m.status, 'data-of="status" style="width:auto"') + '</span>' +
+    '<span class="f"><span class="k">Amount</span><input data-of="amountCents" value="' + (m.amountCents == null ? '' : money(m.amountCents)) + '" placeholder="—">' + (autoAmt ? '<span class="auto" title="Read out of the email — edit if wrong">auto</span>' : '') + '</span>' +
+    '<span class="f"><span class="k">Due</span><input type="date" data-of="dueDate" value="' + dateInput(m.dueDate) + '" style="width:130px">' + (autoDue ? '<span class="auto" title="Read out of the email — edit if wrong">auto</span>' : '') + '</span>' +
   '</div>';
-  // links
-  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:10px">' +
-    '<div><div class="cat-stat-label">Activation</div><select class="field-box" data-of="activationId"><option value="">— none —</option>' +
-      act.map(function (a) { return '<option value="' + esc(a.id) + '"' + (a.id === m.activationId ? ' selected' : '') + '>' + esc(a.brand.name + ' · ' + a.name) + '</option>'; }).join('') + '</select></div>' +
-    '<div><div class="cat-stat-label">Budget line (becomes final cost when paid)</div><select class="field-box" data-of="budgetLineId"' + (curAct ? '' : ' disabled') + '><option value="">— none —</option>' + lineOpts + '</select></div>' +
-    '<div><div class="cat-stat-label">Pipeline deal</div><select class="field-box" data-of="dealId"><option value="">— none —</option>' +
-      (links.deals || []).map(function (d) { return '<option value="' + esc(d.id) + '"' + (d.id === m.dealId ? ' selected' : '') + '>' + esc(d.name + ' (' + d.stage + ')') + '</option>'; }).join('') + '</select></div>' +
-  '</div>';
-  h += '<div style="margin-top:10px"><div class="cat-stat-label">Notes</div><input class="field-box" data-of="notes" value="' + esc(m.notes || '') + '" placeholder="Anything the next person needs to know"></div>';
 
   // attachments
   if ((m.attachments || []).length) {
-    h += '<div class="count-head" style="margin-top:16px">Attachments <span class="n">' + m.attachments.length + '</span></div><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+    h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
       m.attachments.map(function (a) {
         return '<a class="btn-ghost" href="/api/ops/attachment?m=' + encodeURIComponent(m.id) + '&a=' + encodeURIComponent(a.id) + '" target="_blank" rel="noopener">📎 ' + esc(a.filename) + ' <span style="color:var(--ink-3);font-size:11px">' + Math.round((a.size || 0) / 1024) + ' KB</span></a>';
       }).join('') + '</div>';
   }
-  // body
-  h += '<div class="count-head" style="margin-top:16px">Message</div>' +
-    '<div style="white-space:pre-wrap;font-size:13px;line-height:1.55;max-height:360px;overflow:auto;padding:12px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface-2,var(--surface-1))">' + esc(m.body || m.snippet || '(empty)') + '</div>';
+
+  // the message itself, quoted history stripped (toggle to see all of it)
+  var raw = m.body || m.snippet || '(empty)';
+  var clean = opsCleanBody(raw) || raw;
+  var trimmed = clean.length < raw.length - 80;
+  h += '<div class="ops-body-text" data-ops-bodytext>' + esc(clean) + '</div>';
+  if (trimmed) h += '<a data-ops-raw style="cursor:pointer;font-size:12px;color:var(--ink-3);text-decoration:underline">Show quoted history &amp; signature</a>' +
+    '<div class="ops-body-text" data-ops-rawtext hidden>' + esc(raw) + '</div>';
   if ((m.thread || []).length > 1) {
-    h += '<div style="font-size:12px;color:var(--ink-3);margin-top:6px">Thread: ' + m.thread.map(function (t) { return (t.id === m.id ? '<b>' : '<a data-ops-open="' + esc(t.id) + '" style="cursor:pointer;text-decoration:underline">') + esc((t.fromName || t.fromEmail) + ' · ' + when(t.date)) + (t.id === m.id ? '</b>' : '</a>'); }).join(' → ') + '</div>';
+    h += '<div style="font-size:12px;color:var(--ink-3);margin-top:10px">Thread: ' + m.thread.map(function (t) { return (t.id === m.id ? '<b>' : '<a data-ops-open="' + esc(t.id) + '" style="cursor:pointer;text-decoration:underline">') + esc((t.fromName || t.fromEmail) + ' · ' + when(t.date)) + (t.id === m.id ? '</b>' : '</a>'); }).join(' → ') + '</div>';
   }
-  // reply
-  h += '<div class="count-head" style="margin-top:18px">Reply as SB Agency Operations</div>' +
-    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><span style="font-size:12px;color:var(--ink-3)">To</span><input class="field-box" data-ops-reply-to value="' + esc(m.fromEmail) + '" style="width:280px"></div>' +
-    '<textarea class="field-box" data-ops-reply-body rows="5" placeholder="Type the reply — signature is added automatically" style="width:100%"></textarea>' +
-    '<div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"><button class="btn-solid" data-ops-reply-send>Send reply</button>' +
+
+  // actions — composers and admin fields stay hidden until asked for
+  h += '<div class="ops-actions">' +
+    '<button class="btn-solid" data-ops-toggle="reply">↩ Reply</button>' +
+    '<button class="btn-ghost" data-ops-toggle="forward">↪ Forward</button>' +
+    '<button class="btn-ghost" data-ops-toggle="details">Details ▾</button>' +
     '<span style="flex:1"></span>' +
-    '<span style="font-size:12px;color:var(--ink-3)">Forward with attachments to</span>' +
+    '<button class="btn-ghost danger" data-ops-delete>Remove</button>' +
+  '</div>';
+
+  h += '<div class="ops-sec" data-ops-sec="reply" hidden>' +
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><span style="font-size:12px;color:var(--ink-3)">To</span><input class="field-box" data-ops-reply-to value="' + esc(m.fromEmail) + '" style="width:280px"></div>' +
+    '<textarea class="field-box" data-ops-reply-body rows="5" placeholder="Type the reply — sent as SB Agency Operations, signature added automatically" style="width:100%"></textarea>' +
+    '<div style="margin-top:8px"><button class="btn-solid" data-ops-reply-send>Send reply</button></div></div>';
+
+  h += '<div class="ops-sec" data-ops-sec="forward" hidden>' +
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="font-size:12px;color:var(--ink-3)">Forward with attachments to</span>' +
     OPS_FORWARD_TO.map(function (f) { return '<button class="btn-ghost" data-ops-forward="' + f[1] + '">' + f[0] + '</button>'; }).join('') +
-    '<input class="field-box" data-ops-forward-to placeholder="other@…" style="width:160px"><button class="btn-ghost" data-ops-forward="custom">Forward</button>' +
+    '<input class="field-box" data-ops-forward-to placeholder="other@…" style="width:160px"><button class="btn-ghost" data-ops-forward="custom">Forward</button></div>' +
+    '<input class="field-box" data-ops-forward-note placeholder="Note to include (optional)" style="width:100%;margin-top:8px"></div>';
+
+  h += '<div class="ops-sec" data-ops-sec="details" hidden>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px">' +
+      '<div><div class="cat-stat-label">Vendor / counterparty</div><input class="field-box" data-of="vendor" value="' + esc(m.vendor || '') + '"></div>' +
+      '<div><div class="cat-stat-label">Owner</div><input class="field-box" data-of="owner" value="' + esc(m.owner || '') + '" placeholder="Who handles it"></div>' +
     '</div>' +
-    '<input class="field-box" data-ops-forward-note placeholder="Note to include when forwarding (optional)" style="width:100%;margin-top:6px">';
-  h += '<div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="btn-ghost danger" data-ops-delete>Remove from dashboard</button></div>';
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:8px">' +
+      '<div><div class="cat-stat-label">Activation</div><select class="field-box" data-of="activationId"><option value="">— none —</option>' +
+        act.map(function (a) { return '<option value="' + esc(a.id) + '"' + (a.id === m.activationId ? ' selected' : '') + '>' + esc(a.brand.name + ' · ' + a.name) + '</option>'; }).join('') + '</select></div>' +
+      '<div><div class="cat-stat-label">Budget line (becomes final cost when paid)</div><select class="field-box" data-of="budgetLineId"' + (curAct ? '' : ' disabled') + '><option value="">— none —</option>' + lineOpts + '</select></div>' +
+      '<div><div class="cat-stat-label">Pipeline deal</div><select class="field-box" data-of="dealId"><option value="">— none —</option>' +
+        (links.deals || []).map(function (d) { return '<option value="' + esc(d.id) + '"' + (d.id === m.dealId ? ' selected' : '') + '>' + esc(d.name + ' (' + d.stage + ')') + '</option>'; }).join('') + '</select></div>' +
+    '</div>' +
+    '<div style="margin-top:8px"><div class="cat-stat-label">Notes</div><input class="field-box" data-of="notes" value="' + esc(m.notes || '') + '" placeholder="Anything the next person needs to know"></div></div>';
+
   h += '</div>';
   det.innerHTML = h;
 }
@@ -4230,7 +4377,18 @@ opsBody.addEventListener('click', function (ev) {
   }
   if ((b = t.closest('[data-ops-filter]'))) { loadOperations(b.getAttribute('data-ops-filter')); return; }
   if ((b = t.closest('[data-ops-open]'))) { openOps(b.getAttribute('data-ops-open')); return; }
-  if (t.closest('[data-ops-close]')) { opsOpenId = null; document.getElementById('ops-detail').innerHTML = ''; history.replaceState({}, '', location.pathname + '#operations'); document.querySelectorAll('[data-ops-open]').forEach(function (tr) { tr.style.background = ''; }); return; }
+  if (t.closest('[data-ops-close]')) { opsOpenId = null; document.getElementById('ops-detail').innerHTML = opsPanePlaceholder(); history.replaceState({}, '', location.pathname + '#operations'); document.querySelectorAll('.ops-row').forEach(function (el) { el.classList.remove('sel'); }); return; }
+  if ((b = t.closest('[data-ops-toggle]'))) {
+    var sec = b.closest('[data-ops-item]').querySelector('[data-ops-sec="' + b.getAttribute('data-ops-toggle') + '"]');
+    if (sec) { sec.hidden = !sec.hidden; if (!sec.hidden) { var fi = sec.querySelector('textarea,input'); if (fi) fi.focus(); } }
+    return;
+  }
+  if ((b = t.closest('[data-ops-raw]'))) {
+    var rt = b.closest('[data-ops-item]').querySelector('[data-ops-rawtext]');
+    var ct = b.closest('[data-ops-item]').querySelector('[data-ops-bodytext]');
+    if (rt) { rt.hidden = !rt.hidden; ct.hidden = !rt.hidden; b.textContent = rt.hidden ? 'Show quoted history & signature' : 'Hide quoted history'; }
+    return;
+  }
   if (t.closest('[data-ops-delete]')) {
     if (!confirm('Remove this item from the dashboard? The email stays in Gmail.')) return;
     api('deleteOpsItem', { id: opsOpenId }).then(function () { opsOpenId = null; loadOperations(); refreshWorkspaceNav(); }).catch(function (e) { toast(e.message); });
