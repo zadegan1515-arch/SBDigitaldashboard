@@ -238,7 +238,26 @@
   #nav-activations .nav-item .n{margin-left:auto}
   .row-link:hover{background:var(--surface-2,rgba(0,0,0,.03))}
   .status.lost{background:#fde8e8;color:#a33}
+  #nav-workspaces .nav-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left}
+  #nav-workspaces .nav-item .n{margin-left:auto}
   .act-fold{cursor:pointer;user-select:none}
+  .plat-strip{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2,var(--surface-1));font-size:13px}
+  .role-head{display:flex;align-items:center;gap:8px;padding:8px 0 6px;border-bottom:1px solid var(--border);font-size:14px}
+  .role-head .n{font-weight:400;color:var(--ink-3);font-size:12px}
+  .role-head .caret{width:12px;color:var(--ink-3)}
+  .btn-ghost.sm{padding:3px 9px;font-size:12px}
+  .add-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 12px;margin:8px 0;background:var(--surface-2,var(--surface-1));border:1px dashed var(--border);border-radius:8px}
+  .add-form[hidden]{display:none}
+  .sheet.people{margin-top:6px}
+  .sheet.people td.item{font-weight:600}
+  .sheet.people .sub-note{font-weight:400;font-size:11px;color:var(--ink-3);margin-top:1px;padding-left:16px}
+  .sheet.people tr.slot td{color:var(--ink-3);font-size:12px;font-style:italic;padding:7px 8px;border-bottom:1px dashed var(--border-soft)}
+  .sheet.people select{border:0;background:transparent;font:inherit;font-size:12.5px;padding:2px 0;width:100%}
+  .sheet.people tr.detail td{background:var(--surface-2,var(--surface-1));padding:10px 12px 12px 30px}
+  .detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px 14px;font-size:12.5px}
+  .detail-grid label span,.detail-grid > div > span{display:block;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);margin-bottom:3px}
+  .detail-grid .field-box{width:100%;padding:5px 8px;font-size:12.5px}
+  .detail-grid .v{padding-top:5px}
   .act-fold .caret{display:inline-block;width:12px;color:var(--ink-3);transition:transform .12s}
   .act-fold:hover .caret{color:var(--accent)}
   .act-footnav{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:26px;padding-top:14px;border-top:1px solid var(--border-soft)}
@@ -253,7 +272,8 @@
       <div class="logo-mark">SB</div>
       <div class="logo-text">Command Center<span>SB Agency</span></div>
     </div>
-    <div class="nav-label cc-only">Categories</div>
+    <div id="nav-workspaces" class="cc-only"></div>
+    <div class="nav-label cc-only" style="margin-top:14px">Categories</div>
     <div id="nav-categories" class="cc-only"></div>
     <div id="nav-activations" class="act-only"></div>
   </aside>
@@ -281,6 +301,7 @@
         <button class="nav-item" data-view="needs">Needs contacts <span class="n" id="nav-needs"></span></button>
         <button class="nav-item" data-view="pipeline">Pipeline</button>
         <button class="nav-item" data-view="activations">Activations</button>
+        <button class="nav-item" data-view="operations">Operations</button>
         <button class="nav-item" data-view="materials">Materials</button>
         <button class="nav-item" data-view="team">Team</button>
       </nav>
@@ -436,6 +457,11 @@
     <!-- ACTIVATIONS (own workspace: sidebar + section tabs swap in) -->
     <section class="view page" id="activations">
       <div id="act-body"></div>
+    </section>
+
+    <!-- OPERATIONS (ops@ inbox: contracts + invoices) -->
+    <section class="view page" id="operations">
+      <div id="ops-body"></div>
     </section>
 
     <!-- DISCOVER -->
@@ -651,7 +677,7 @@ function refreshAfterSponsorChange() {
 // --- views -----------------------------------------------------
 
 function showView(id) {
-  document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.remove('active'); });
+  document.querySelectorAll('.nav-item').forEach(function (b) { if (!b.closest('#act-tabs')) b.classList.remove('active'); });
   document.querySelectorAll('.view').forEach(function (v) { v.classList.toggle('active', v.id === id); });
   var nav = document.querySelector('.nav-item[data-view="' + id + '"]');
   if (nav) nav.classList.add('active');
@@ -749,6 +775,7 @@ function loadDashboard() {
         '<div class="cat-stat-value">' + cat.count + '</div></div></div></div>';
     }).join('') : '';
 
+    refreshWorkspaceNav();
     document.getElementById('nav-categories').innerHTML = cats.map(function (cat, i) {
       return '<button class="nav-item" data-category="' + esc(cat.key) + '">' +
         '<span class="dot" style="background:' + CAT_COLORS[i % 5] + '"></span>' +
@@ -3432,85 +3459,101 @@ function renderActBudget(a) {
 }
 
 // -------- People: slots per staff line, fed by the platform --------
+// One sheet-style table per role line. A row is a person or an open
+// slot; click ▸ on a name for the details row. Add-forms stay hidden
+// behind "+ Add" so the page reads as a roster, not a form.
 function renderActPeople(a) {
   var h = '';
   if (!a.events.length) return '<div class="panel panel-pad" style="margin-top:14px;color:var(--ink-3)">Add an event first (Overview).</div>';
   a.events.forEach(function (e) {
     var s = actEventSummary(e);
     h += '<div class="panel panel-pad" style="margin-top:14px" data-act-event="' + esc(e.id) + '">';
-    if (a.events.length > 1) h += '<div style="font-family:var(--display);font-size:18px;font-weight:700">' + esc(e.name) + '</div>';
+    if (a.events.length > 1) h += '<div style="font-family:var(--display);font-size:18px;font-weight:700;margin-bottom:8px">' + esc(e.name) + '</div>';
 
     // platform strip
-    h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2,var(--surface-1));font-size:13px">' +
-      '<b>Sboy Vision</b>';
+    h += '<div class="plat-strip"><b>Sboy Vision</b>';
     if (!actPlatform || !actPlatform.configured) h += '<span style="color:var(--ink-3)">platform not connected</span>';
-    else if (!e.platformCampaignId) h += '<span style="color:var(--ink-2)">No campaign yet — this creates one so ambassadors can sign up, onboard and get paid.</span><button class="btn-solid" data-plat-create="' + esc(e.id) + '" style="margin-left:auto">Set up on platform</button>';
-    else h += '<span style="color:var(--ink-2)">Invite link</span><input class="field-box" readonly value="' + esc(e.inviteUrl || '') + '" style="flex:1;min-width:220px;font-size:12px" data-invite-url>' +
-      '<button class="btn-ghost" data-copy="' + esc(e.inviteUrl || '') + '">Copy link</button>' +
-      (actPlatform.url ? '<a class="btn-ghost" href="' + esc(actPlatform.url + '/agency/campaigns/' + e.platformCampaignId) + '" target="_blank" rel="noopener">Open campaign ↗</a>' : '') +
+    else if (!e.platformCampaignId) h += '<span style="color:var(--ink-2)">No campaign yet — creates one so ambassadors can sign up, onboard and get paid.</span><button class="btn-solid" data-plat-create="' + esc(e.id) + '" style="margin-left:auto">Set up on platform</button>';
+    else h += '<span style="color:var(--ink-3)">Invite link</span><input class="field-box" readonly value="' + esc(e.inviteUrl || '') + '" style="flex:1;min-width:200px;font-size:12px" data-invite-url>' +
+      '<button class="btn-ghost" data-copy="' + esc(e.inviteUrl || '') + '">Copy</button>' +
+      (actPlatform.url ? '<a class="btn-ghost" href="' + esc(actPlatform.url + '/agency/campaigns/' + e.platformCampaignId) + '" target="_blank" rel="noopener">Open ↗</a>' : '') +
       '<button class="btn-ghost" data-plat-sync="' + esc(e.id) + '" title="Pull who has joined / onboarded">↻ Sync</button>';
     h += '</div>';
 
-    // slots by staff line
     if (!s.staffLines.length) h += '<div style="font-size:13px;color:var(--ink-3);margin-top:12px">No staff lines on the budget yet — add "Brand Ambassadors" (qty 6, $500) on the Budget tab and slots appear here.</div>';
-    s.staffLines.forEach(function (l) {
-      var need = Math.max(1, l.qty || 1);
-      var people = e.staff.filter(function (p) { return p.lineId === l.id; });
-      var have = people.filter(function (p) { return p.status === 'confirmed' || p.status === 'done'; }).length;
-      var open = lineOpen(l.id);
-      var isAmb = /ambassador/i.test(l.item);
-      h += '<div class="count-head act-fold' + (open ? ' open' : '') + '" data-line-toggle="' + esc(l.id) + '" title="' + (open ? 'Click to collapse' : 'Click to expand') + '"><span class="caret">' + (open ? '▾' : '▸') + '</span> ' + esc(l.item) +
-        ' <span class="n">' + have + '/' + need + ' confirmed' + (people.length > have ? ' · ' + (people.length - have) + ' pending' : '') + (l.unitCents ? ' · ' + money(l.unitCents) + ' each' : '') + '</span></div>';
-      if (!open) return;
-      h += '<div>' + people.map(function (p) { return renderPerson(p, e); }).join('');
-      for (var i = people.length; i < need; i++) h += '<div style="padding:8px 0;border-bottom:1px dashed var(--border-soft);font-size:13px;color:var(--ink-3)">Open slot ' + (i + 1) + ' of ' + need + '</div>';
-      h += '</div>';
-      h += '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">' +
-        (isAmb ? '<button class="btn-solid" data-roster-open="' + esc(e.id) + '" data-roster-line="' + esc(l.id) + '">👥 Pick from roster</button>' : '') +
-        '<input class="field-box" data-newstaff-name placeholder="Name" style="width:160px">' +
-        '<input class="field-box" data-newstaff-email placeholder="Email (optional)" style="width:200px">' +
-        '<button class="btn-ghost" data-newstaff-add="' + esc(e.id) + '" data-newstaff-line="' + esc(l.id) + '" data-newstaff-kind="' + (isAmb ? 'ambassador' : 'team') + '">+ Add ' + (isAmb ? 'ambassador' : 'person') + '</button>' +
-        (isAmb && e.inviteUrl ? '<button class="btn-ghost" data-newstaff-add="' + esc(e.id) + '" data-newstaff-line="' + esc(l.id) + '" data-newstaff-kind="ambassador" data-newstaff-invite="1" title="Adds them and emails the invite link">✉ Add + email invite</button>' : '') +
-      '</div><div data-roster-slot="' + esc(e.id) + '"></div>';
-    });
+    s.staffLines.forEach(function (l) { h += renderRoleGroup(e, l); });
 
     // people not tied to a line
     var loose = e.staff.filter(function (p) { return !p.lineId || !s.staffLines.some(function (l) { return l.id === p.lineId; }); });
-    h += '<div class="count-head" style="margin-top:18px">Other people <span class="n">' + loose.length + '</span></div>';
-    h += '<div>' + loose.map(function (p) { return renderPerson(p, e); }).join('') + '</div>';
-    h += '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">' +
+    h += '<div class="role-head" style="margin-top:18px"><span class="caret" style="visibility:hidden">▾</span><b>Other people</b><span class="n">' + loose.length + '</span>' +
+      '<button class="btn-ghost sm" data-add-toggle="' + esc(e.id) + '-loose" style="margin-left:auto">+ Add</button></div>';
+    h += '<div class="add-form" data-add-form="' + esc(e.id) + '-loose" hidden>' +
       actSel([['team', 'SB team'], ['ambassador', 'Ambassador']], 'team', 'data-newstaff-kindsel style="width:auto"') +
       '<input class="field-box" data-newstaff-name placeholder="Name" style="width:160px"><input class="field-box" data-newstaff-role placeholder="Role" style="width:150px"><input class="field-box" data-newstaff-email placeholder="Email" style="width:180px">' +
-      '<button class="btn-ghost" data-newstaff-add="' + esc(e.id) + '">+ Add person</button>' +
-      '</div><div data-roster-slot="' + esc(e.id) + '"></div>';
+      '<button class="btn-solid" data-newstaff-add="' + esc(e.id) + '">Add</button></div>';
+    if (loose.length) h += peopleTable(loose, e, null, 0);
+    h += '<div data-roster-slot="' + esc(e.id) + '"></div>';
     h += '</div>';
   });
   return h;
 }
 
-function renderPerson(p, e) {
+function renderRoleGroup(e, l) {
+  var need = Math.max(1, l.qty || 1);
+  var people = e.staff.filter(function (p) { return p.lineId === l.id; });
+  var have = people.filter(function (p) { return p.status === 'confirmed' || p.status === 'done'; }).length;
+  var open = lineOpen(l.id);
+  var isAmb = /ambassador/i.test(l.item);
+  var h = '<div class="role-head act-fold' + (open ? ' open' : '') + '" data-line-toggle="' + esc(l.id) + '" style="margin-top:18px">' +
+    '<span class="caret">' + (open ? '▾' : '▸') + '</span><b>' + esc(l.item) + '</b>' +
+    '<span class="n">' + have + '/' + need + ' confirmed' + (people.length > have ? ' · ' + (people.length - have) + ' pending' : '') + '</span>' +
+    (l.unitCents ? '<span class="n" style="margin-left:6px">' + money(l.unitCents) + ' each</span>' : '') +
+    '<span style="margin-left:auto;display:flex;gap:6px" data-stop>' +
+      (isAmb ? '<button class="btn-ghost sm" data-roster-open="' + esc(e.id) + '" data-roster-line="' + esc(l.id) + '">👥 Roster</button>' : '') +
+      '<button class="btn-ghost sm" data-add-toggle="' + esc(l.id) + '">+ Add</button></span></div>';
+  if (!open) return h;
+  h += '<div class="add-form" data-add-form="' + esc(l.id) + '" hidden>' +
+    '<input class="field-box" data-newstaff-name placeholder="Name" style="width:180px">' +
+    '<input class="field-box" data-newstaff-email placeholder="Email (optional)" style="width:220px">' +
+    '<button class="btn-solid" data-newstaff-add="' + esc(e.id) + '" data-newstaff-line="' + esc(l.id) + '" data-newstaff-kind="' + (isAmb ? 'ambassador' : 'team') + '">Add</button>' +
+    (isAmb && e.inviteUrl ? '<button class="btn-ghost" data-newstaff-add="' + esc(e.id) + '" data-newstaff-line="' + esc(l.id) + '" data-newstaff-kind="ambassador" data-newstaff-invite="1" title="Adds them and emails the invite link">Add + email invite</button>' : '') +
+    '</div>';
+  h += peopleTable(people, e, l, need);
+  return h;
+}
+
+function peopleTable(people, e, line, need) {
+  var h = '<table class="sheet people"><colgroup><col style="width:34%"><col style="width:140px"><col style="width:110px"><col style="width:110px"><col style="width:auto"><col style="width:36px"></colgroup>' +
+    '<thead><tr><th>Name</th><th>Status</th><th class="r">Rate</th><th>Platform</th><th>Contact</th><th></th></tr></thead><tbody>';
+  people.forEach(function (p) { h += personRows(p, e, line); });
+  for (var i = people.length; i < need; i++) h += '<tr class="slot"><td colspan="6">Open slot ' + (i + 1) + ' of ' + need + '</td></tr>';
+  if (!people.length && !need) h += '<tr class="slot"><td colspan="6">Nobody yet</td></tr>';
+  return h + '</tbody></table>';
+}
+
+function personRows(p, e, line) {
   var open = personOpen(p.id);
-  var h = '<div data-staff="' + esc(p.id) + '" style="border-bottom:1px solid var(--border-soft)">' +
-    '<div style="display:grid;grid-template-columns:1fr 130px 130px 90px 32px;gap:8px;align-items:center;padding:6px 0">' +
-      '<div class="act-fold' + (open ? ' open' : '') + '" data-person-toggle="' + esc(p.id) + '" title="' + (open ? 'Hide details' : 'Show details') + '"><span class="caret">' + (open ? '▾' : '▸') + '</span> <b>' + esc(p.name) + '</b>' +
-        '<span style="color:var(--ink-3);font-size:12px;margin-left:6px">' + esc(p.kind === 'team' ? (p.role || 'SB team') : (p.notes || p.role || '')) + '</span>' +
-        (p.externalRef ? ' <span title="On the Sboy Vision platform" style="font-size:11px;color:var(--ink-3)">● platform</span>' : '') + '</div>' +
-      '<div>' + actSel(STAFF_STATUS, p.status || 'invited', 'data-sf="status" style="font-size:12px"') + '</div>' +
-      '<input class="field-box" data-sf="rateCents" value="' + (p.rateCents == null ? '' : money(p.rateCents)) + '" placeholder="Rate" style="text-align:right;font-size:12px">' +
-      '<div>' + (p.kind === 'ambassador' && p.email && e.inviteUrl && p.status === 'invited' ? '<button class="btn-ghost" data-invite-send="' + esc(p.id) + '" title="Email the invite link" style="font-size:12px;padding:4px 8px">✉ Invite</button>' : '') + '</div>' +
-      '<button class="btn-ghost danger" data-staff-del="' + esc(p.id) + '">×</button>' +
-    '</div>';
+  var contact = [p.email, p.phone].filter(Boolean).join(' · ');
+  var plat = p.externalRef ? '<span class="status ' + (p.platformStage === 'active' || p.platformStage === 'clearance_ready' ? 'confirmed' : 'proposed') + '">' + esc(p.platformStage || 'linked') + '</span>' : '<span style="color:var(--ink-3)">—</span>';
+  var h = '<tr class="ln" data-staff="' + esc(p.id) + '">' +
+    '<td class="item"><span class="act-fold' + (open ? ' open' : '') + '" data-person-toggle="' + esc(p.id) + '" title="' + (open ? 'Hide details' : 'Show details') + '"><span class="caret">' + (open ? '▾' : '▸') + '</span> <b>' + esc(p.name) + '</b></span>' +
+      (p.notes && p.kind === 'ambassador' ? '<div class="sub-note">' + esc(p.notes) + '</div>' : (p.role && p.kind === 'team' && !line ? '<div class="sub-note">' + esc(p.role) + '</div>' : '')) + '</td>' +
+    '<td>' + actSel(STAFF_STATUS, p.status || 'invited', 'data-sf="status"') + '</td>' +
+    '<td class="r"><input type="text" data-sf="rateCents" value="' + (p.rateCents == null ? '' : money(p.rateCents)) + '" placeholder="—"></td>' +
+    '<td>' + plat + '</td>' +
+    '<td class="muted">' + (contact ? esc(contact) : '<span style="color:var(--ink-3)">—</span>') +
+      (p.kind === 'ambassador' && p.email && e.inviteUrl && p.status === 'invited' ? ' <button class="btn-ghost sm" data-invite-send="' + esc(p.id) + '" title="Email the invite link">✉ Invite</button>' : '') + '</td>' +
+    '<td class="del"><button class="btn-ghost danger" data-staff-del="' + esc(p.id) + '" title="Remove">×</button></td></tr>';
   if (open) {
-    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;padding:4px 0 12px;font-size:13px">' +
-      '<div><div class="cat-stat-label">Email</div><input class="field-box" data-sf="email" value="' + esc(p.email || '') + '" placeholder="—"></div>' +
-      '<div><div class="cat-stat-label">Phone</div><input class="field-box" data-sf="phone" value="' + esc(p.phone || '') + '" placeholder="—"></div>' +
-      '<div><div class="cat-stat-label">Role</div><input class="field-box" data-sf="role" value="' + esc(p.role || '') + '" placeholder="—"></div>' +
-      '<div><div class="cat-stat-label">Notes</div><input class="field-box" data-sf="notes" value="' + esc(p.notes || '') + '" placeholder="school · @handle · anything"></div>' +
-      '<div><div class="cat-stat-label">Platform</div><div style="padding-top:6px">' + (p.externalRef ? (p.platformStage ? esc(p.platformStage) : 'linked') + (actPlatform && actPlatform.url ? ' · <a href="' + esc(actPlatform.url + '/agency/ambassadors') + '" target="_blank" rel="noopener">open on Sboy Vision ↗</a>' : '') : '<span style="color:var(--ink-3)">not on the platform</span>') + '</div></div>' +
-      '<div><div class="cat-stat-label">Invited</div><div style="padding-top:6px">' + (p.invitedAt ? when(p.invitedAt) : '—') + '</div></div>' +
-    '</div>';
+    h += '<tr class="detail" data-staff="' + esc(p.id) + '"><td colspan="6"><div class="detail-grid">' +
+      '<label><span>Email</span><input class="field-box" data-sf="email" value="' + esc(p.email || '') + '" placeholder="—"></label>' +
+      '<label><span>Phone</span><input class="field-box" data-sf="phone" value="' + esc(p.phone || '') + '" placeholder="—"></label>' +
+      '<label><span>Role</span><input class="field-box" data-sf="role" value="' + esc(p.role || '') + '" placeholder="—"></label>' +
+      '<label><span>Notes</span><input class="field-box" data-sf="notes" value="' + esc(p.notes || '') + '" placeholder="school · @handle · anything"></label>' +
+      '<div><span>Platform</span><div class="v">' + (p.externalRef ? esc(p.platformStage || 'linked') + (actPlatform && actPlatform.url ? ' · <a href="' + esc(actPlatform.url + '/agency/ambassadors') + '" target="_blank" rel="noopener">open on Sboy Vision ↗</a>' : '') : 'not on the platform') + (p.invitedAt ? ' · invited ' + when(p.invitedAt) : '') + '</div></div>' +
+    '</div></td></tr>';
   }
-  return h + '</div>';
+  return h;
 }
 
 // -------- Docs: Google Sheet + Doc --------
@@ -3690,7 +3733,14 @@ actDetail.addEventListener('click', function (ev) {
     renderActSidebar(); renderActivation(); actHash(); window.scrollTo(0, 0); return;
   }
   if ((b = t.closest('[data-line-people]'))) { setLineOpen(b.getAttribute('data-line-people'), true); actGoTab('people'); return; }
-  if ((b = t.closest('[data-line-toggle]'))) { var lid = b.getAttribute('data-line-toggle'); setLineOpen(lid, !lineOpen(lid)); renderActivation(); return; }
+  if ((b = t.closest('[data-roster-open]'))) { openRoster(b.getAttribute('data-roster-open'), b.getAttribute('data-roster-line')); return; }
+  if ((b = t.closest('[data-add-toggle]'))) {
+    var f = document.querySelector('[data-add-form="' + b.getAttribute('data-add-toggle') + '"]');
+    if (f) { f.hidden = !f.hidden; if (!f.hidden) { var inp = f.querySelector('input'); if (inp) inp.focus(); } }
+    return;
+  }
+  if (t.closest('[data-stop]') && !t.closest('[data-roster-open]')) { return; }
+  if ((b = t.closest('[data-line-toggle]')) && !t.closest('[data-stop]')) { var lid = b.getAttribute('data-line-toggle'); setLineOpen(lid, !lineOpen(lid)); renderActivation(); return; }
   if ((b = t.closest('[data-person-toggle]'))) { var pid = b.getAttribute('data-person-toggle'); setPersonOpen(pid, !personOpen(pid)); renderActivation(); return; }
   if ((b = t.closest('[data-act-prev]'))) { actGoTab(b.getAttribute('data-act-prev')); return; }
   if ((b = t.closest('[data-act-next]'))) { actGoTab(b.getAttribute('data-act-next')); return; }
@@ -3807,7 +3857,7 @@ actDetail.addEventListener('click', function (ev) {
     return;
   }
   if ((b = t.closest('[data-newstaff-add]'))) {
-    var ws = b.parentNode;
+    var ws = b.closest('[data-add-form]') || b.parentNode;
     var kindSel = ws.querySelector('[data-newstaff-kindsel]');
     var emailEl = ws.querySelector('[data-newstaff-email]');
     var roleEl = ws.querySelector('[data-newstaff-role]');
@@ -3878,6 +3928,285 @@ actDetail.addEventListener('change', function (ev) {
   }
 });
 
+// --- operations (ops@ inbox) ---------------------------------------
+//
+// Contracts and invoices from the ops mailbox, sorted by rules, with a
+// status, links into activations/deals, and reply / forward from the
+// ops address. Gmail stays the system of record; this is the desk.
+
+var OPS_KIND = [['contract', 'Contract'], ['invoice_payable', 'Invoice — we owe'], ['invoice_receivable', 'Invoice — we sent'], ['other', 'Other']];
+var OPS_STATUS = [['needs_review', 'Needs review'], ['approved', 'Approved'], ['paid', 'Paid'], ['signed', 'Signed'], ['done', 'Done'], ['ignored', 'Ignored']];
+var OPS_FILTERS = [['inbox', 'Inbox'], ['contract', 'Contracts'], ['invoice_payable', 'We owe'], ['invoice_receivable', 'We sent'], ['other', 'Other'], ['done', 'Done']];
+var opsFilter = 'inbox', opsQ = '', opsRows = [], opsOpenId = null, opsLinks = null, opsStatusInfo = null;
+var OPS_FORWARD_TO = [['Zach', 'zach@sboyagency.com'], ['Liz', 'elizabeth@sboyagency.com'], ['Jackson', 'jackson@sboyagency.com']];
+
+function opsKindPill(k) {
+  var cls = { contract: 'sent', invoice_payable: 'proposed', invoice_receivable: 'confirmed', other: '' }[k] || '';
+  var lab = (OPS_KIND.filter(function (x) { return x[0] === k; })[0] || [k, k])[1];
+  return '<span class="status ' + cls + '">' + esc(lab) + '</span>';
+}
+function opsStatusPill(s) {
+  var cls = { needs_review: 'proposed', approved: 'sent', paid: 'confirmed', signed: 'confirmed', done: '', ignored: 'lost' }[s] || '';
+  var lab = (OPS_STATUS.filter(function (x) { return x[0] === s; })[0] || [s, s])[1];
+  return '<span class="status ' + cls + '">' + esc(lab) + '</span>';
+}
+function opsQueryArgs() {
+  var a = { q: opsQ || undefined };
+  if (opsFilter === 'inbox') a.status = 'open';
+  else if (opsFilter === 'done') a.status = 'done';
+  else { a.kind = opsFilter; a.status = 'all'; }
+  return a;
+}
+
+function loadOperations(filter) {
+  showView('operations');
+  actMode(false);
+  if (filter) { opsFilter = filter; opsOpenId = null; }
+  var hash = '#operations' + (opsOpenId ? '/' + opsOpenId : '');
+  if (location.hash !== hash) history.replaceState({}, '', location.pathname + hash);
+  return api('listOps', opsQueryArgs()).then(function (r) {
+    opsRows = r.rows; opsStatusInfo = r.status;
+    renderOps(r);
+    renderWorkspaceNav();
+    if (opsOpenId) openOps(opsOpenId);
+  }).catch(function (e) { toast(e.message); });
+}
+
+function renderOps(r) {
+  var box = document.getElementById('ops-body');
+  var st = r.status || {};
+  var sum = r.summary || {};
+  var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
+    '<div><div class="eyebrow">Operations</div><h1>Contracts & invoices</h1>' +
+    '<div class="sub">Everything that lands in the ops mailbox, sorted and tracked here. Reply and forward go out as SB Agency Operations.</div></div>' +
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">' +
+      (st.connected
+        ? '<span style="font-size:12px;color:var(--ink-3)">● ' + esc(st.address || 'connected') + (st.lastScanAt ? ' · scanned ' + when(st.lastScanAt) : '') + '</span>' +
+          '<button class="btn-solid" data-ops-scan>↻ Scan now</button>' +
+          '<a class="btn-ghost" data-ops-disconnect style="cursor:pointer">Disconnect</a>'
+        : '<button class="btn-solid" data-ops-connect>Connect ops@ mailbox</button>' +
+          '<span style="font-size:12px;color:var(--ink-3)">read + send on that mailbox only</span>') +
+    '</div></div>';
+  h += '<div class="kpi-row">' +
+    '<div class="kpi"><div class="kpi-label">Inbox</div><div class="kpi-value">' + (sum.inbox || 0) + '</div><div class="kpi-note">needs review or approved</div></div>' +
+    '<div class="kpi"><div class="kpi-label">Contracts</div><div class="kpi-value">' + (sum.contracts || 0) + '</div><div class="kpi-note">open</div></div>' +
+    '<div class="kpi"><div class="kpi-label">Invoices we owe</div><div class="kpi-value">' + (sum.payable || 0) + '</div><div class="kpi-note">open</div></div>' +
+    '<div class="kpi"' + (sum.overdue ? ' style="border-left:3px solid var(--warn)"' : '') + '><div class="kpi-label">Overdue</div><div class="kpi-value">' + (sum.overdue || 0) + '</div><div class="kpi-note">past due date</div></div>' +
+  '</div>';
+  h += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:14px 0 8px">' +
+    OPS_FILTERS.map(function (f) { return '<button class="chip' + (opsFilter === f[0] ? ' active' : '') + '" data-ops-filter="' + f[0] + '">' + f[1] + '</button>'; }).join('') +
+    '<input class="field-box" data-ops-q value="' + esc(opsQ) + '" placeholder="Search sender, subject, vendor" style="margin-left:auto;width:260px">' +
+  '</div>';
+  if (!st.connected) {
+    h += '<div class="panel" style="margin-top:8px"><div class="empty"><h3>Connect the ops mailbox</h3><p>One click, Google asks for read + send on ops@sboyagency.com. The last 90 days get pulled in, then every morning after.</p></div></div>';
+  } else if (!r.rows.length) {
+    h += '<div class="panel" style="margin-top:8px"><div class="empty"><h3>Nothing here</h3><p>' + (opsFilter === 'inbox' ? 'Inbox is clear. Hit Scan now to pull the latest.' : 'No items match.') + '</p></div></div>';
+  } else {
+    h += '<div class="panel"><table class="sheet" style="width:100%"><colgroup><col style="width:90px"><col style="width:20%"><col><col style="width:130px"><col style="width:100px"><col style="width:95px"><col style="width:120px"><col style="width:28px"></colgroup>' +
+      '<thead><tr><th>Date</th><th>From</th><th>Subject</th><th>Type</th><th class="r">Amount</th><th>Due</th><th>Status</th><th></th></tr></thead><tbody>';
+    r.rows.forEach(function (m) {
+      var late = m.dueDate && (m.status === 'needs_review' || m.status === 'approved') && new Date(m.dueDate).getTime() < Date.now();
+      h += '<tr class="ln row-link" data-ops-open="' + esc(m.id) + '" style="cursor:pointer' + (m.id === opsOpenId ? ';background:var(--surface-2,rgba(0,0,0,.03))' : '') + '">' +
+        '<td style="color:var(--ink-3);font-size:12px">' + when(m.date) + '</td>' +
+        '<td><b>' + esc(m.fromName || m.fromEmail.split('@')[0]) + '</b><div style="font-size:11px;color:var(--ink-3)">' + esc(m.vendor || m.fromEmail.split('@')[1] || '') + '</div></td>' +
+        '<td>' + esc(m.subject) + '<div style="font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px">' + esc(m.snippet || '') + '</div></td>' +
+        '<td>' + opsKindPill(m.kind) + '</td>' +
+        '<td class="r" style="padding-right:14px">' + (m.amountCents != null ? money(m.amountCents) : '<span style="color:var(--ink-3)">—</span>') + '</td>' +
+        '<td style="color:' + (late ? 'var(--warn)' : 'inherit') + '">' + (m.dueDate ? when(m.dueDate) : '<span style="color:var(--ink-3)">—</span>') + '</td>' +
+        '<td>' + opsStatusPill(m.status) + '</td>' +
+        '<td title="' + (m.attachments || []).length + ' attachment(s)">' + (m.hasAttachments ? '📎' : '') + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+  h += '<div id="ops-detail" style="margin-top:16px"></div>';
+  box.innerHTML = h;
+}
+
+function openOps(id) {
+  opsOpenId = id;
+  history.replaceState({}, '', location.pathname + '#operations/' + id);
+  var det = document.getElementById('ops-detail');
+  if (!det) return;
+  det.innerHTML = '<div style="font-size:13px;color:var(--ink-3)">Loading…</div>';
+  det.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  var p = opsLinks ? Promise.resolve(opsLinks) : api('opsLinkOptions').then(function (l) { opsLinks = l; return l; });
+  Promise.all([api('getOpsItem', { id: id }), p]).then(function (res) {
+    renderOpsDetail(res[0], res[1]);
+    document.querySelectorAll('[data-ops-open]').forEach(function (tr) { tr.style.background = tr.getAttribute('data-ops-open') === id ? 'var(--surface-2,rgba(0,0,0,.03))' : ''; });
+  }).catch(function (e) { det.innerHTML = '<div style="color:var(--warn)">' + esc(e.message) + '</div>'; });
+}
+
+function renderOpsDetail(m, links) {
+  var det = document.getElementById('ops-detail');
+  var act = links.activations || [];
+  var curAct = act.filter(function (a) { return a.id === m.activationId; })[0];
+  var lineOpts = '';
+  if (curAct) curAct.events.forEach(function (e) {
+    e.lines.forEach(function (l) { lineOpts += '<option value="' + esc(l.id) + '"' + (l.id === m.budgetLineId ? ' selected' : '') + '>' + esc((curAct.events.length > 1 ? e.name + ' · ' : '') + l.item) + ' — ' + money(l.estimateCents) + (l.finalCents != null ? ' / final ' + money(l.finalCents) : '') + '</option>'; });
+  });
+  var h = '<div class="panel panel-pad" data-ops-item="' + esc(m.id) + '">' +
+    '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start">' +
+      '<div><div style="font-family:var(--display);font-size:18px;font-weight:700">' + esc(m.subject) + '</div>' +
+      '<div style="font-size:13px;color:var(--ink-2);margin-top:3px">' + esc(m.fromName ? m.fromName + ' <' + m.fromEmail + '>' : m.fromEmail) + ' · ' + new Date(m.date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) +
+        (m.repliedAt ? ' · replied ' + when(m.repliedAt) : '') + (m.forwardedTo ? ' · forwarded to ' + esc(m.forwardedTo) : '') + '</div></div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' + opsKindPill(m.kind) + opsStatusPill(m.status) + '<button class="btn-ghost" data-ops-close>Close</button></div>' +
+    '</div>';
+
+  // fields
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:14px">' +
+    '<div><div class="cat-stat-label">Type</div>' + actSel(OPS_KIND, m.kind, 'data-of="kind"') + '</div>' +
+    '<div><div class="cat-stat-label">Status</div>' + actSel(OPS_STATUS, m.status, 'data-of="status"') + '</div>' +
+    '<div><div class="cat-stat-label">Amount</div><input class="field-box" data-of="amountCents" value="' + (m.amountCents == null ? '' : money(m.amountCents)) + '" placeholder="$"></div>' +
+    '<div><div class="cat-stat-label">Due</div><input class="field-box" type="date" data-of="dueDate" value="' + dateInput(m.dueDate) + '"></div>' +
+    '<div><div class="cat-stat-label">Vendor / counterparty</div><input class="field-box" data-of="vendor" value="' + esc(m.vendor || '') + '"></div>' +
+    '<div><div class="cat-stat-label">Owner</div><input class="field-box" data-of="owner" value="' + esc(m.owner || '') + '" placeholder="Who handles it"></div>' +
+  '</div>';
+  // links
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:10px">' +
+    '<div><div class="cat-stat-label">Activation</div><select class="field-box" data-of="activationId"><option value="">— none —</option>' +
+      act.map(function (a) { return '<option value="' + esc(a.id) + '"' + (a.id === m.activationId ? ' selected' : '') + '>' + esc(a.brand.name + ' · ' + a.name) + '</option>'; }).join('') + '</select></div>' +
+    '<div><div class="cat-stat-label">Budget line (becomes final cost when paid)</div><select class="field-box" data-of="budgetLineId"' + (curAct ? '' : ' disabled') + '><option value="">— none —</option>' + lineOpts + '</select></div>' +
+    '<div><div class="cat-stat-label">Pipeline deal</div><select class="field-box" data-of="dealId"><option value="">— none —</option>' +
+      (links.deals || []).map(function (d) { return '<option value="' + esc(d.id) + '"' + (d.id === m.dealId ? ' selected' : '') + '>' + esc(d.name + ' (' + d.stage + ')') + '</option>'; }).join('') + '</select></div>' +
+  '</div>';
+  h += '<div style="margin-top:10px"><div class="cat-stat-label">Notes</div><input class="field-box" data-of="notes" value="' + esc(m.notes || '') + '" placeholder="Anything the next person needs to know"></div>';
+
+  // attachments
+  if ((m.attachments || []).length) {
+    h += '<div class="count-head" style="margin-top:16px">Attachments <span class="n">' + m.attachments.length + '</span></div><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      m.attachments.map(function (a) {
+        return '<a class="btn-ghost" href="/api/ops/attachment?m=' + encodeURIComponent(m.id) + '&a=' + encodeURIComponent(a.id) + '" target="_blank" rel="noopener">📎 ' + esc(a.filename) + ' <span style="color:var(--ink-3);font-size:11px">' + Math.round((a.size || 0) / 1024) + ' KB</span></a>';
+      }).join('') + '</div>';
+  }
+  // body
+  h += '<div class="count-head" style="margin-top:16px">Message</div>' +
+    '<div style="white-space:pre-wrap;font-size:13px;line-height:1.55;max-height:360px;overflow:auto;padding:12px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface-2,var(--surface-1))">' + esc(m.body || m.snippet || '(empty)') + '</div>';
+  if ((m.thread || []).length > 1) {
+    h += '<div style="font-size:12px;color:var(--ink-3);margin-top:6px">Thread: ' + m.thread.map(function (t) { return (t.id === m.id ? '<b>' : '<a data-ops-open="' + esc(t.id) + '" style="cursor:pointer;text-decoration:underline">') + esc((t.fromName || t.fromEmail) + ' · ' + when(t.date)) + (t.id === m.id ? '</b>' : '</a>'); }).join(' → ') + '</div>';
+  }
+  // reply
+  h += '<div class="count-head" style="margin-top:18px">Reply as SB Agency Operations</div>' +
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><span style="font-size:12px;color:var(--ink-3)">To</span><input class="field-box" data-ops-reply-to value="' + esc(m.fromEmail) + '" style="width:280px"></div>' +
+    '<textarea class="field-box" data-ops-reply-body rows="5" placeholder="Type the reply — signature is added automatically" style="width:100%"></textarea>' +
+    '<div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"><button class="btn-solid" data-ops-reply-send>Send reply</button>' +
+    '<span style="flex:1"></span>' +
+    '<span style="font-size:12px;color:var(--ink-3)">Forward with attachments to</span>' +
+    OPS_FORWARD_TO.map(function (f) { return '<button class="btn-ghost" data-ops-forward="' + f[1] + '">' + f[0] + '</button>'; }).join('') +
+    '<input class="field-box" data-ops-forward-to placeholder="other@…" style="width:160px"><button class="btn-ghost" data-ops-forward="custom">Forward</button>' +
+    '</div>' +
+    '<input class="field-box" data-ops-forward-note placeholder="Note to include when forwarding (optional)" style="width:100%;margin-top:6px">';
+  h += '<div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="btn-ghost danger" data-ops-delete>Remove from dashboard</button></div>';
+  h += '</div>';
+  det.innerHTML = h;
+}
+
+// Sidebar "Workspaces" block (Command Center mode): activations to click
+// into, and the operations queues with live counts.
+var wsCounts = null;
+function renderWorkspaceNav() {
+  var box = document.getElementById('nav-workspaces');
+  if (!box) return;
+  var acts = (actList || []).filter(function (a) { return a.status !== 'recapped'; });
+  var h = '<div class="nav-label" style="margin-top:0">Activations</div>';
+  if (!acts.length) h += '<button class="nav-item" data-ws-act="">All activations</button>';
+  acts.slice(0, 8).forEach(function (a) {
+    h += '<button class="nav-item" data-ws-act="' + esc(a.id) + '" title="' + esc(a.brand.name) + '"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(a.name) + '</span>' + (a.daysOut != null ? '<span class="n">' + (a.daysOut < 0 ? 'past' : a.daysOut + 'd') + '</span>' : '') + '</button>';
+  });
+  if (acts.length) h += '<button class="nav-item" data-ws-act="" style="color:var(--side-dim)">All activations →</button>';
+  h += '<div class="nav-label" style="margin-top:14px">Operations</div>';
+  var c = wsCounts || {};
+  h += '<button class="nav-item" data-ws-ops="inbox">Inbox' + (c.inbox ? '<span class="n">' + c.inbox + '</span>' : '') + '</button>' +
+    '<button class="nav-item" data-ws-ops="contract">Contracts' + (c.contracts ? '<span class="n">' + c.contracts + '</span>' : '') + '</button>' +
+    '<button class="nav-item" data-ws-ops="invoice_payable">Invoices we owe' + (c.payable ? '<span class="n">' + c.payable + '</span>' : '') + '</button>' +
+    '<button class="nav-item" data-ws-ops="invoice_receivable">Invoices we sent' + (c.receivable ? '<span class="n">' + c.receivable + '</span>' : '') + '</button>';
+  box.innerHTML = h;
+}
+function refreshWorkspaceNav() {
+  Promise.all([
+    api('listActivations').catch(function () { return actList || []; }),
+    api('listOps', { status: 'open', limit: 1 }).catch(function () { return null; })
+  ]).then(function (r) {
+    actList = r[0] || [];
+    if (r[1]) wsCounts = r[1].summary;
+    renderWorkspaceNav();
+  });
+}
+
+document.getElementById('nav-workspaces').addEventListener('click', function (ev) {
+  var b;
+  if ((b = ev.target.closest('[data-ws-act]'))) {
+    var id = b.getAttribute('data-ws-act');
+    actOpenId = id || null; actTab = 'overview';
+    loadActivations(!!id);
+    return;
+  }
+  if ((b = ev.target.closest('[data-ws-ops]'))) { loadOperations(b.getAttribute('data-ws-ops')); return; }
+});
+
+var opsBody = document.getElementById('ops-body');
+opsBody.addEventListener('click', function (ev) {
+  var t = ev.target, b;
+  if (t.closest('[data-ops-connect]')) { location.href = '/api/google/start?ops=1'; return; }
+  if (t.closest('[data-ops-disconnect]')) {
+    if (!confirm('Disconnect the ops mailbox? Items already pulled in stay here.')) return;
+    api('disconnectOps').then(function () { loadOperations(); }).catch(function (e) { toast(e.message); });
+    return;
+  }
+  if ((b = t.closest('[data-ops-scan]'))) {
+    b.disabled = true; b.textContent = 'Scanning…';
+    api('scanOps', {}).then(function (r) {
+      toast(r.connected ? 'Scanned ' + r.scanned + ' · ' + r.added + ' new' + (r.errors && r.errors.length ? ' · ' + r.errors.length + ' errors' : '') : 'Not connected');
+      loadOperations(); refreshWorkspaceNav();
+    }).catch(function (e) { toast(e.message); loadOperations(); });
+    return;
+  }
+  if ((b = t.closest('[data-ops-filter]'))) { loadOperations(b.getAttribute('data-ops-filter')); return; }
+  if ((b = t.closest('[data-ops-open]'))) { openOps(b.getAttribute('data-ops-open')); return; }
+  if (t.closest('[data-ops-close]')) { opsOpenId = null; document.getElementById('ops-detail').innerHTML = ''; history.replaceState({}, '', location.pathname + '#operations'); document.querySelectorAll('[data-ops-open]').forEach(function (tr) { tr.style.background = ''; }); return; }
+  if (t.closest('[data-ops-delete]')) {
+    if (!confirm('Remove this item from the dashboard? The email stays in Gmail.')) return;
+    api('deleteOpsItem', { id: opsOpenId }).then(function () { opsOpenId = null; loadOperations(); refreshWorkspaceNav(); }).catch(function (e) { toast(e.message); });
+    return;
+  }
+  if ((b = t.closest('[data-ops-reply-send]'))) {
+    var wrap = b.closest('[data-ops-item]');
+    var body = wrap.querySelector('[data-ops-reply-body]').value.trim();
+    var to = wrap.querySelector('[data-ops-reply-to]').value.trim();
+    if (!body) { toast('Write the reply first'); return; }
+    if (!confirm('Send this reply from ops@ to ' + to + '?')) return;
+    b.disabled = true;
+    api('replyOps', { id: opsOpenId, body: body, to: to }).then(function (r) { toast('Sent to ' + r.to); openOps(opsOpenId); }).catch(function (e) { toast(e.message); b.disabled = false; });
+    return;
+  }
+  if ((b = t.closest('[data-ops-forward]'))) {
+    var w2 = b.closest('[data-ops-item]');
+    var to2 = b.getAttribute('data-ops-forward');
+    if (to2 === 'custom') to2 = w2.querySelector('[data-ops-forward-to]').value.trim();
+    if (!/@/.test(to2)) { toast('Enter an address to forward to'); return; }
+    if (!confirm('Forward this email (with attachments) from ops@ to ' + to2 + '?')) return;
+    b.disabled = true;
+    api('forwardOps', { id: opsOpenId, to: to2, note: w2.querySelector('[data-ops-forward-note]').value }).then(function (r) { toast('Forwarded to ' + r.to + (r.attachments ? ' with ' + r.attachments + ' file(s)' : '')); openOps(opsOpenId); }).catch(function (e) { toast(e.message); b.disabled = false; });
+    return;
+  }
+});
+opsBody.addEventListener('keydown', function (ev) {
+  if (ev.target.hasAttribute('data-ops-q') && ev.key === 'Enter') { opsQ = ev.target.value.trim(); loadOperations(); }
+});
+opsBody.addEventListener('change', function (ev) {
+  var t = ev.target;
+  if (!t.hasAttribute('data-of') || !opsOpenId) return;
+  var k = t.getAttribute('data-of');
+  var args = { id: opsOpenId };
+  if (k === 'amountCents') { if (t.value.trim() === '') args.amountCents = null; else { var c = parseMoney(t.value); if (c == null) { toast('Not a number'); return; } args.amountCents = c; } }
+  else if (k === 'dueDate') args.dueDate = t.value || null;
+  else args[k] = t.value;
+  if (k === 'activationId') args.budgetLineId = '';
+  api('updateOpsItem', args).then(function () {
+    toast('Saved');
+    if (k === 'status' || k === 'kind' || k === 'activationId') { loadOperations(); refreshWorkspaceNav(); }
+  }).catch(function (e) { toast(e.message); });
+});
+
 function gotoView(id) {
   if (id !== 'activations') actMode(false);
   if (id === 'dashboard') loadDashboard();
@@ -3888,6 +4217,7 @@ function gotoView(id) {
   if (id === 'needs') loadNeeds();
   if (id === 'pipeline') loadPipeline();
   if (id === 'activations') loadActivations();
+  if (id === 'operations') loadOperations();
   if (id === 'results') loadResults();
   if (id === 'discover') loadDiscover();
   if (id === 'materials') showView('materials');
@@ -3916,6 +4246,24 @@ function gotoView(id) {
   history.replaceState({}, '', location.pathname + location.hash);
   if (d === 'connected') { actDrive = null; toast('Google Drive connected as ' + (p.get('as') || 'your account')); }
   else toast('Google Drive connect failed: ' + d);
+})();
+
+// Coming back from the ops mailbox consent screen.
+(function () {
+  var p = new URLSearchParams(location.search);
+  var o = p.get('ops');
+  if (!o) return;
+  history.replaceState({}, '', location.pathname + location.hash);
+  if (o === 'connected') { toast('Ops mailbox connected as ' + (p.get('as') || 'ops@') + ' — scanning the last 90 days'); setTimeout(function () { loadOperations('inbox').then(function () { api('scanOps', {}).then(function (r) { toast('Pulled in ' + r.added + ' emails'); loadOperations(); refreshWorkspaceNav(); }).catch(function (e) { toast(e.message); }); }); }, 200); }
+  else toast('Ops mailbox connect failed: ' + o);
+})();
+
+// Deep link: #operations or #operations/<id>
+(function () {
+  var m = /^#operations(?:\/([^\/]+))?/.exec(location.hash || '');
+  if (!m) return;
+  opsOpenId = m[1] || null;
+  setTimeout(function () { loadOperations(); }, 50);
 })();
 
 // Deep links: #activations, #activations/<id>, #activations/<id>/<tab>
