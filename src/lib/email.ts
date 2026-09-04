@@ -555,7 +555,7 @@ const IG_CID = 'iconig'
 
 // Both from the company signature doc / Leo.
 const LINKEDIN_URL = process.env.SIGNATURE_LINKEDIN_URL
-  || 'https://www.linkedin.com/company/sboy-agency/?viewAsMember=true'
+  || 'https://www.linkedin.com/company/sboy-agency/'
 const INSTAGRAM_URL = process.env.SIGNATURE_INSTAGRAM_URL || 'https://www.instagram.com/sboyagency/'
 
 async function fetchAsset(file: string, cid: string, min = 200): Promise<any | null> {
