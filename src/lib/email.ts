@@ -659,9 +659,15 @@ function signatureHtml(): string {
         ' | <a href="https://sboyagency.com" style="color:#1a1a1a;font-weight:700">sboyagency.com</a><br>' +
         'Email: <a href="mailto:zach@sboyagency.com">zach@sboyagency.com</a>' +
       '</div>' +
-      '<div style="margin-top:8px">' +
-        icon(imgSrc(LI_CID, 'icon-linkedin.png'), 'LinkedIn', LINKEDIN_URL) +
-        icon(imgSrc(IG_CID, 'icon-instagram.png'), 'Instagram', INSTAGRAM_URL) +
+      // Social links as text, not icons: every extra image tips
+      // SpamAssassin's image-to-text ratio (HTML_IMAGE_ONLY_*), and two
+      // 20px icons aren't worth ~1.3 points on a cold email. The icon
+      // helper stays for SIGNATURE_ICONS=1.
+      '<div style="margin-top:6px;font-family:Arial,Helvetica,sans-serif;font-size:12px">' +
+        (process.env.SIGNATURE_ICONS === '1'
+          ? icon(imgSrc(LI_CID, 'icon-linkedin.png'), 'LinkedIn', LINKEDIN_URL) + icon(imgSrc(IG_CID, 'icon-instagram.png'), 'Instagram', INSTAGRAM_URL)
+          : '<a href="' + LINKEDIN_URL + '" style="color:#1a1a1a">LinkedIn</a>' +
+            ' &middot; <a href="' + INSTAGRAM_URL + '" style="color:#1a1a1a">Instagram</a>') +
       '</div>' +
     '</div>'
 }
