@@ -3213,6 +3213,8 @@ export async function POST(req: NextRequest) {
       if (email) {
         const first = String(email).split('@')[0].split(/[._-]/)[0]
         a.__user = first.charAt(0).toUpperCase() + first.slice(1)
+      } else if ((req.headers.get('authorization') ?? '').startsWith('Bearer ')) {
+        a.__user = 'CLI'   // bearer-token caller (Claude Code / scripts), let through by middleware
       }
     } catch {}
     const data = await handler(a)
