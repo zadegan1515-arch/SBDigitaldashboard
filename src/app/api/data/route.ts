@@ -22,7 +22,8 @@ import {
   emailDifferentContact, draftFinalNudge, draftReplyResponse, sendReplyEmail, sendPlainEmail,
 } from '@/lib/email'
 import { syncNotionDeals } from '@/lib/notion'
-import { googleStatus, googleDisconnect, driveStatus, driveDisconnect, driveCreateActivationDocs } from '@/lib/google'
+import { googleStatus, googleDisconnect, driveStatus, driveDisconnect, driveCreateActivationDocs, opsStatus, opsDisconnect } from '@/lib/google'
+import { scanOps, listOps, getOps, updateOps, deleteOps, replyOps, forwardOps } from '@/lib/ops'
 
 const prisma = new PrismaClient()
 
@@ -3095,6 +3096,25 @@ Best,`
     if (m && m.status !== 'draft') throw new Error('Only drafts can be deleted')
     await prisma.emailMessage.delete({ where: { id } })
     return { ok: true }
+  },
+
+  // -------- operations inbox (ops@) --------
+  async getOpsStatus() { return opsStatus() },
+  async disconnectOps() { return opsDisconnect() },
+  async scanOps({ max }: any) { return scanOps({ max }) },
+  async listOps(args: any) { return listOps(args || {}) },
+  async getOpsItem({ id }: any) { return getOps(id) },
+  async updateOpsItem(args: any) { return updateOps(args) },
+  async deleteOpsItem({ id }: any) { return deleteOps(id) },
+  async replyOps({ id, body, to, cc }: any) { return replyOps({ id, body, to, cc }) },
+  async forwardOps({ id, to, note, withAttachments }: any) { return forwardOps({ id, to, note, withAttachments }) },
+  // Small pick-lists for linking an item to the rest of the system.
+  async opsLinkOptions() {
+    const [activations, deals] = await Promise.all([
+      prisma.activation.findMany({ where: { status: { not: 'recapped' } }, select: { id: true, name: true, brandId: true, brand: { select: { name: true } }, events: { select: { id: true, name: true, lines: { select: { id: true, item: true, section: true, estimateCents: true, finalCents: true }, orderBy: [{ section: 'asc' }, { sortOrder: 'asc' }] } } } }, orderBy: { updatedAt: 'desc' } }),
+      prisma.deal.findMany({ select: { id: true, name: true, brandId: true, stage: true }, orderBy: { updatedAt: 'desc' }, take: 100 }),
+    ])
+    return { activations, deals }
   },
 
   async upsertTodo({ id, text, category, owner, done }: any) {
