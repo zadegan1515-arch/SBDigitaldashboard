@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { draftDailyEmails, checkReplies } from '@/lib/email'
 import { syncNotionDeals } from '@/lib/notion'
+import { scanOps } from '@/lib/ops'
 
 export const maxDuration = 60
 
@@ -36,7 +37,9 @@ export async function GET(req: NextRequest) {
     }
     const replies = await checkReplies()
     const notion = await syncNotionDeals().catch((e: any) => ({ error: String(e?.message ?? e) }))
-    return NextResponse.json({ ok: true, drafted, replies, notion })
+    // Ops mailbox sweep rides along here: Hobby allows only two cron jobs.
+    const ops = await scanOps({ max: 150 }).catch((e: any) => ({ error: String(e?.message ?? e) }))
+    return NextResponse.json({ ok: true, drafted, replies, notion, ops })
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: err?.message ?? 'cron failed' }, { status: 500 })
   }
