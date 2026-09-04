@@ -238,6 +238,12 @@
   #nav-activations .nav-item .n{margin-left:auto}
   .row-link:hover{background:var(--surface-2,rgba(0,0,0,.03))}
   .status.lost{background:#fde8e8;color:#a33}
+  .act-fold{cursor:pointer;user-select:none}
+  .act-fold .caret{display:inline-block;width:12px;color:var(--ink-3);transition:transform .12s}
+  .act-fold:hover .caret{color:var(--accent)}
+  .act-footnav{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:26px;padding-top:14px;border-top:1px solid var(--border-soft)}
+  #act-tabs .nav-item{position:relative}
+  #act-tabs .nav-item.active::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--accent)}
 </style>
 </head>
 <body>
@@ -3083,7 +3089,22 @@ var ACT_SECTIONS = [
 var ACT_STATUS = [['planning', 'Planning'], ['in_progress', 'In progress'], ['delivered', 'Delivered'], ['recapped', 'Recapped']];
 var STAFF_STATUS = [['invited', 'Invited'], ['onboarding', 'Onboarding'], ['ready', 'Ready'], ['confirmed', 'Confirmed'], ['declined', 'Declined'], ['no_show', 'No-show'], ['done', 'Worked']];
 var ACT_TABS = [['overview', 'Overview'], ['budget', 'Budget'], ['people', 'People'], ['docs', 'Docs'], ['recap', 'Recap']];
-var actOpenId = null, actTab = 'overview', actList = [], actCur = null, actPlatform = null, actDrive = null, actOpenLine = null;
+var actOpenId = null, actTab = 'overview', actList = [], actCur = null, actPlatform = null, actDrive = null;
+
+// Which groups / person rows are open, per activation, remembered across
+// reloads. Groups default to open the first time; person rows to closed.
+function actUi() {
+  var all = {};
+  try { all = JSON.parse(localStorage.getItem('sb.act.ui') || '{}') || {}; } catch (e) { all = {}; }
+  var u = all[actOpenId] || (all[actOpenId] = { lines: {}, persons: {} });
+  u.lines = u.lines || {}; u.persons = u.persons || {};
+  u.save = function () { try { var c = {}; c[actOpenId] = { lines: u.lines, persons: u.persons }; all[actOpenId] = c[actOpenId]; localStorage.setItem('sb.act.ui', JSON.stringify(all)); } catch (e) {} };
+  return u;
+}
+function lineOpen(id) { var u = actUi(); return u.lines[id] !== false; }
+function setLineOpen(id, on) { var u = actUi(); u.lines[id] = !!on; u.save(); }
+function personOpen(id) { return !!actUi().persons[id]; }
+function setPersonOpen(id, on) { var u = actUi(); if (on) u.persons[id] = true; else delete u.persons[id]; u.save(); }
 
 function actSel(opts, val, attr) {
   return '<select class="field-box" ' + attr + '>' + opts.map(function (o) {
@@ -3273,6 +3294,7 @@ function renderActivation() {
   else if (actTab === 'people') h += renderActPeople(a);
   else if (actTab === 'docs') h += renderActDocs(a);
   else if (actTab === 'recap') h += renderActRecap(a);
+  h += actTabFooter();
   box.innerHTML = h;
 }
 
@@ -3435,9 +3457,9 @@ function renderActPeople(a) {
       var need = Math.max(1, l.qty || 1);
       var people = e.staff.filter(function (p) { return p.lineId === l.id; });
       var have = people.filter(function (p) { return p.status === 'confirmed' || p.status === 'done'; }).length;
-      var open = actOpenLine === l.id || (actOpenLine == null && /ambassador/i.test(l.item));
+      var open = lineOpen(l.id);
       var isAmb = /ambassador/i.test(l.item);
-      h += '<div class="count-head" style="margin-top:18px;cursor:pointer" data-line-toggle="' + esc(l.id) + '">' + (open ? '▾' : '▸') + ' ' + esc(l.item) +
+      h += '<div class="count-head act-fold' + (open ? ' open' : '') + '" data-line-toggle="' + esc(l.id) + '" title="' + (open ? 'Click to collapse' : 'Click to expand') + '"><span class="caret">' + (open ? '▾' : '▸') + '</span> ' + esc(l.item) +
         ' <span class="n">' + have + '/' + need + ' confirmed' + (people.length > have ? ' · ' + (people.length - have) + ' pending' : '') + (l.unitCents ? ' · ' + money(l.unitCents) + ' each' : '') + '</span></div>';
       if (!open) return;
       h += '<div>' + people.map(function (p) { return renderPerson(p, e); }).join('');
@@ -3467,10 +3489,10 @@ function renderActPeople(a) {
 }
 
 function renderPerson(p, e) {
-  var open = p.id === actOpenPerson;
+  var open = personOpen(p.id);
   var h = '<div data-staff="' + esc(p.id) + '" style="border-bottom:1px solid var(--border-soft)">' +
     '<div style="display:grid;grid-template-columns:1fr 130px 130px 90px 32px;gap:8px;align-items:center;padding:6px 0">' +
-      '<div style="cursor:pointer" data-person-toggle="' + esc(p.id) + '"><b>' + esc(p.name) + '</b>' +
+      '<div class="act-fold' + (open ? ' open' : '') + '" data-person-toggle="' + esc(p.id) + '" title="' + (open ? 'Hide details' : 'Show details') + '"><span class="caret">' + (open ? '▾' : '▸') + '</span> <b>' + esc(p.name) + '</b>' +
         '<span style="color:var(--ink-3);font-size:12px;margin-left:6px">' + esc(p.kind === 'team' ? (p.role || 'SB team') : (p.notes || p.role || '')) + '</span>' +
         (p.externalRef ? ' <span title="On the Sboy Vision platform" style="font-size:11px;color:var(--ink-3)">● platform</span>' : '') + '</div>' +
       '<div>' + actSel(STAFF_STATUS, p.status || 'invited', 'data-sf="status" style="font-size:12px"') + '</div>' +
@@ -3490,7 +3512,6 @@ function renderPerson(p, e) {
   }
   return h + '</div>';
 }
-var actOpenPerson = null;
 
 // -------- Docs: Google Sheet + Doc --------
 function renderActDocs(a) {
@@ -3626,12 +3647,35 @@ document.getElementById('nav-activations').addEventListener('click', function (e
   var b;
   if (ev.target.closest('[data-act-exit]')) { actMode(false); gotoView('dashboard'); return; }
   if (ev.target.closest('[data-act-new]')) { actOpenId = null; actCur = null; renderActSidebar(); renderActHome(); actNewForm(); actHash(); return; }
-  if ((b = ev.target.closest('[data-act-go]'))) { actOpenLine = null; openActivation(b.getAttribute('data-act-go'), 'overview'); return; }
+  if ((b = ev.target.closest('[data-act-go]'))) { openActivation(b.getAttribute('data-act-go'), 'overview'); return; }
   if (ev.target.closest('[data-drive-connect]')) { location.href = '/api/google/start?drive=1'; return; }
 });
+function actGoTab(tab) {
+  if (!actOpenId || !ACT_TABS.some(function (t) { return t[0] === tab; })) return;
+  actTab = tab; renderActSidebar(); renderActivation(); actHash(); window.scrollTo(0, 0);
+}
+function actTabFooter() {
+  var i = ACT_TABS.map(function (t) { return t[0]; }).indexOf(actTab);
+  var prev = ACT_TABS[i - 1], next = ACT_TABS[i + 1];
+  return '<div class="act-footnav">' +
+    (prev ? '<button class="btn-ghost" data-act-prev="' + prev[0] + '">← ' + prev[1] + '</button>' : '<span></span>') +
+    '<span style="font-size:12px;color:var(--ink-3)">' + (i + 1) + ' / ' + ACT_TABS.length + ' · ← → keys switch sections</span>' +
+    (next ? '<button class="btn-ghost" data-act-next="' + next[0] + '">' + next[1] + ' →</button>' : '<span></span>') +
+  '</div>';
+}
 document.getElementById('act-tabs').addEventListener('click', function (ev) {
   var b = ev.target.closest('[data-act-tab]');
-  if (b && actOpenId) { actTab = b.getAttribute('data-act-tab'); renderActSidebar(); renderActivation(); actHash(); window.scrollTo(0, 0); }
+  if (b && actOpenId) actGoTab(b.getAttribute('data-act-tab'));
+});
+// Left / right arrow keys move between sections when you're not typing.
+document.addEventListener('keydown', function (ev) {
+  if (!actOpenId || !document.querySelector('.app').classList.contains('act-mode')) return;
+  if (ev.altKey || ev.metaKey || ev.ctrlKey) return;
+  var tag = (ev.target && ev.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select' || (ev.target && ev.target.isContentEditable)) return;
+  var i = ACT_TABS.map(function (t) { return t[0]; }).indexOf(actTab);
+  if (ev.key === 'ArrowRight' && ACT_TABS[i + 1]) { ev.preventDefault(); actGoTab(ACT_TABS[i + 1][0]); }
+  if (ev.key === 'ArrowLeft' && ACT_TABS[i - 1]) { ev.preventDefault(); actGoTab(ACT_TABS[i - 1][0]); }
 });
 
 // One delegated handler for everything inside the workspace body.
@@ -3639,15 +3683,17 @@ var actDetail = document.getElementById('act-body');
 actDetail.addEventListener('click', function (ev) {
   var t = ev.target;
   var b;
-  if ((b = t.closest('[data-act-go]'))) { actOpenLine = null; openActivation(b.getAttribute('data-act-go'), 'overview'); return; }
+  if ((b = t.closest('[data-act-go]'))) { openActivation(b.getAttribute('data-act-go'), 'overview'); return; }
   if ((b = t.closest('[data-act-step]'))) {
     actTab = b.getAttribute('data-act-step');
-    if (b.getAttribute('data-act-line')) actOpenLine = b.getAttribute('data-act-line');
+    if (b.getAttribute('data-act-line')) setLineOpen(b.getAttribute('data-act-line'), true);
     renderActSidebar(); renderActivation(); actHash(); window.scrollTo(0, 0); return;
   }
-  if ((b = t.closest('[data-line-people]'))) { actOpenLine = b.getAttribute('data-line-people'); actTab = 'people'; renderActSidebar(); renderActivation(); actHash(); return; }
-  if ((b = t.closest('[data-line-toggle]'))) { var lid = b.getAttribute('data-line-toggle'); actOpenLine = actOpenLine === lid ? '' : lid; renderActivation(); return; }
-  if ((b = t.closest('[data-person-toggle]'))) { var pid = b.getAttribute('data-person-toggle'); actOpenPerson = actOpenPerson === pid ? null : pid; renderActivation(); return; }
+  if ((b = t.closest('[data-line-people]'))) { setLineOpen(b.getAttribute('data-line-people'), true); actGoTab('people'); return; }
+  if ((b = t.closest('[data-line-toggle]'))) { var lid = b.getAttribute('data-line-toggle'); setLineOpen(lid, !lineOpen(lid)); renderActivation(); return; }
+  if ((b = t.closest('[data-person-toggle]'))) { var pid = b.getAttribute('data-person-toggle'); setPersonOpen(pid, !personOpen(pid)); renderActivation(); return; }
+  if ((b = t.closest('[data-act-prev]'))) { actGoTab(b.getAttribute('data-act-prev')); return; }
+  if ((b = t.closest('[data-act-next]'))) { actGoTab(b.getAttribute('data-act-next')); return; }
   if ((b = t.closest('[data-copy]'))) { copyText(b.getAttribute('data-copy')); return; }
   if (t.closest('[data-drive-connect]')) { location.href = '/api/google/start?drive=1'; return; }
   if (t.closest('[data-drive-disconnect]')) {
