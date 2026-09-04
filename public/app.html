@@ -263,6 +263,32 @@
   .act-footnav{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:26px;padding-top:14px;border-top:1px solid var(--border-soft)}
   #act-tabs .nav-item{position:relative}
   #act-tabs .nav-item.active::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--accent)}
+  /* open activation: header row, summary strip, in-page section tabs */
+  .act-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+  .act-head-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px}
+  .act-strip{display:flex;gap:26px;align-items:center;flex-wrap:wrap;margin-top:16px;padding:11px 18px;
+    border:1px solid var(--border);border-radius:10px;background:var(--surface-1);box-shadow:var(--shadow)}
+  .act-strip .st{display:flex;align-items:baseline;gap:7px;white-space:nowrap}
+  .act-strip .k{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+  .act-strip b{font-size:14.5px;font-variant-numeric:tabular-nums}
+  .act-strip .k2{font-size:11.5px;color:var(--ink-3)}
+  .act-strip .links{margin-left:auto;display:flex;gap:14px}
+  .act-strip .links a{font-size:12.5px;color:var(--ink-2);text-decoration:none}
+  .act-strip .links a:hover{color:var(--ink-1);text-decoration:underline}
+  .act-seg{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-top:14px;padding:5px;
+    border:1px solid var(--border);border-radius:12px;background:var(--surface-2)}
+  .act-seg .seg{display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 6px 8px;border:0;
+    border-radius:8px;background:transparent;cursor:pointer;font-family:inherit;color:var(--ink-2)}
+  .act-seg .seg:hover{background:rgba(0,0,0,.045)}
+  .act-seg .seg.on{background:var(--surface-1);color:var(--ink-1);box-shadow:0 1px 3px rgba(20,20,15,.1)}
+  .act-seg .seg .t{font-size:13.5px;font-weight:600;font-family:var(--display);letter-spacing:-.01em}
+  .act-seg .seg.on .t{font-weight:700}
+  .act-seg .seg .b{font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .act-seg .seg .b.ok{color:var(--good)}
+  .act-seg .seg .b.warn{color:var(--warn);font-weight:600}
+  .act-seg .seg .b.todo{color:var(--accent);font-weight:600}
+  .act-substat{display:flex;gap:20px;flex-wrap:wrap;font-size:13px;color:var(--ink-2);margin:2px 0 8px}
+  .act-substat b{font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -3198,12 +3224,13 @@ function renderActSidebar() {
       '<div>' + (actDrive && actDrive.connected ? '● Google Drive' : '○ <a data-drive-connect style="color:inherit;text-decoration:underline;cursor:pointer">Connect Google Drive</a>') + '</div>' +
     '</div>';
   box.innerHTML = h;
-  // top tabs for the open activation
+  // top bar: breadcrumb back to the list — the section tabs live in the page
   var tabs = document.getElementById('act-tabs');
   if (actOpenId) {
-    tabs.innerHTML = ACT_TABS.map(function (t) {
-      return '<button class="nav-item' + (t[0] === actTab ? ' active' : '') + '" data-act-tab="' + t[0] + '">' + t[1] + '</button>';
-    }).join('');
+    var cur = actCur || actList.filter(function (x) { return x.id === actOpenId; })[0] || {};
+    tabs.innerHTML = '<button class="nav-item" data-act-home>All activations</button>' +
+      '<span style="align-self:center;color:var(--ink-3);padding:0 2px">›</span>' +
+      '<span class="nav-item active" style="cursor:default">' + esc(cur.name || '…') + '</span>';
   } else {
     tabs.innerHTML = '<button class="nav-item active">All activations</button>';
   }
@@ -3304,46 +3331,22 @@ function actEventSummary(e) {
   return { estimate: estimate, current: current, finalCount: finalCount, ordered: ordered, days: days, slots: slots, confirmed: confirmed, staffLines: staffLines };
 }
 
-function renderActivation() {
-  var a = actCur;
-  var box = document.getElementById('act-body');
-  var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
-    '<div><div class="eyebrow">' + esc(a.brand.name) + (a.deal ? ' · deal ' + money(a.deal.valueCents) + ' (' + esc(a.deal.stage) + ')' : '') + '</div>' +
-    '<h1 style="margin-top:2px">' + esc(a.name) + '</h1></div>' +
-    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">' +
-      actSel(ACT_STATUS, a.status, 'data-act-field="status" style="width:auto"') +
-      '<input class="field-box" data-act-field="owner" value="' + esc(a.owner || '') + '" placeholder="Owner" style="width:140px">' +
-      (a.sheetUrl ? '<a class="btn-ghost" href="' + esc(a.sheetUrl) + '" target="_blank" rel="noopener">📊 Sheet</a>' : '') +
-      (a.docUrl ? '<a class="btn-ghost" href="' + esc(a.docUrl) + '" target="_blank" rel="noopener">📄 Doc</a>' : '') +
-    '</div></div>';
-  if (actTab === 'overview') h += renderActOverview(a);
-  else if (actTab === 'budget') h += renderActBudget(a);
-  else if (actTab === 'people') h += renderActPeople(a);
-  else if (actTab === 'docs') h += renderActDocs(a);
-  else if (actTab === 'recap') h += renderActRecap(a);
-  h += actTabFooter();
-  box.innerHTML = h;
-}
-
-// -------- Overview: where things stand + what to do next --------
-function renderActOverview(a) {
-  var h = '';
-  var budget = a.events.reduce(function (s, e) { return s + e.budgetCents; }, 0);
-  var current = 0, slots = 0, confirmed = 0, nearest = null;
+// Whole-activation totals, summed across events — feeds the summary
+// strip and the tab badges so every section shows the same numbers.
+function actTotals(a) {
+  var t = { budget: 0, current: 0, estimate: 0, slots: 0, confirmed: 0, ordered: 0, lines: 0, finals: 0, nearest: null };
   a.events.forEach(function (e) {
     var s = actEventSummary(e);
-    current += s.current; slots += s.slots; confirmed += s.confirmed;
-    if (s.days != null && (nearest == null || s.days < nearest)) nearest = s.days;
+    t.budget += e.budgetCents; t.current += s.current; t.estimate += s.estimate;
+    t.slots += s.slots; t.confirmed += s.confirmed; t.ordered += s.ordered;
+    t.lines += e.lines.length; t.finals += s.finalCount;
+    if (s.days != null && (t.nearest == null || s.days < t.nearest)) t.nearest = s.days;
   });
-  var over = budget && current > budget;
-  h += '<div class="kpi-row">' +
-    '<div class="kpi money"><div class="kpi-label">Approved budget</div><div class="kpi-value">' + money(budget) + '</div><div class="kpi-note">' + a.events.length + ' event' + (a.events.length === 1 ? '' : 's') + '</div></div>' +
-    '<div class="kpi"' + (over ? ' style="border-left:3px solid var(--warn)"' : '') + '><div class="kpi-label">Current cost</div><div class="kpi-value">' + money(current) + '</div><div class="kpi-note">' + (budget ? pct(current, budget) + '% of approved' + (over ? ' · ' + money(current - budget) + ' over' : '') : 'finals entered so far') + '</div></div>' +
-    '<div class="kpi"><div class="kpi-label">Days to event</div><div class="kpi-value">' + (nearest == null ? '—' : nearest < 0 ? 'past' : nearest) + '</div><div class="kpi-note">' + (nearest == null ? 'set a date' : nearest < 0 ? Math.abs(nearest) + ' days ago' : nearest === 0 ? 'today' : 'until load-in') + '</div></div>' +
-    '<div class="kpi"><div class="kpi-label">People</div><div class="kpi-value">' + confirmed + '/' + (slots || '—') + '</div><div class="kpi-note">confirmed / slots</div></div>' +
-  '</div>';
+  return t;
+}
 
-  // next steps, computed — the checklist that replaces the task list
+// The computed to-do list. Used on Overview and for the Overview badge.
+function actSteps(a) {
   var steps = [];
   if (!a.sheetUrl) steps.push({ t: 'Create the working docs (Google Sheet + Doc)', tab: 'docs' });
   a.events.forEach(function (e) {
@@ -3364,7 +3367,69 @@ function renderActOverview(a) {
     if (noFinal) steps.push({ t: pre + 'Enter final cost on ' + noFinal + ' ordered line' + (noFinal === 1 ? '' : 's'), tab: 'budget' });
     if (s.days != null && s.days < 0 && a.status !== 'delivered' && a.status !== 'recapped') steps.push({ t: pre + 'Event has happened — mark delivered and recap', tab: 'recap' });
   });
-  h += '<div class="count-head" style="margin-top:20px">Next steps <span class="n">' + steps.length + '</span></div>';
+  return steps;
+}
+
+// In-page section tabs. Each carries a live badge so the state of the
+// whole activation is readable without visiting every section.
+function actSegTabs(a, t, steps) {
+  var badge = {
+    overview: steps.length ? [steps.length + ' to do', 'todo'] : ['all done', 'ok'],
+    budget: t.budget ? [pct(t.current, t.budget) + '% spent', t.current > t.budget ? 'warn' : ''] : (t.lines ? [t.ordered + '/' + t.lines + ' booked', ''] : ['no lines yet', '']),
+    people: t.slots ? [t.confirmed + '/' + t.slots + ' confirmed', t.confirmed >= t.slots ? 'ok' : ''] : ['no slots yet', ''],
+    docs: a.sheetUrl && a.docUrl ? ['ready ✓', 'ok'] : (a.sheetUrl || a.docUrl ? ['1 of 2', ''] : ['not set up', '']),
+    recap: a.status === 'recapped' ? ['closed ✓', 'ok'] : (a.status === 'delivered' ? ['write it', 'todo'] : ['after the event', ''])
+  };
+  return '<div class="act-seg">' + ACT_TABS.map(function (tb) {
+    var b = badge[tb[0]];
+    return '<button class="seg' + (tb[0] === actTab ? ' on' : '') + '" data-act-tab="' + tb[0] + '">' +
+      '<span class="t">' + tb[1] + '</span><span class="b ' + b[1] + '">' + b[0] + '</span></button>';
+  }).join('') + '</div>';
+}
+
+function renderActivation() {
+  var a = actCur;
+  var t = actTotals(a);
+  var steps = actSteps(a);
+  var over = t.budget && t.current > t.budget;
+  var box = document.getElementById('act-body');
+  // header: just who + what on the left, status + owner on the right
+  var h = '<div class="act-head">' +
+    '<div><div class="eyebrow">' + esc(a.brand.name) + (a.deal ? ' · deal ' + money(a.deal.valueCents) + ' (' + esc(a.deal.stage) + ')' : '') + '</div>' +
+    '<h1 style="margin-top:2px">' + esc(a.name) + '</h1></div>' +
+    '<div class="act-head-meta">' +
+      actSel(ACT_STATUS, a.status, 'data-act-field="status" style="width:auto"') +
+      '<input class="field-box" data-act-field="owner" value="' + esc(a.owner || '') + '" placeholder="Owner" style="width:130px">' +
+    '</div></div>';
+  // summary strip: the whole activation at a glance, on every tab
+  h += '<div class="act-strip">' +
+    '<div class="st"><span class="k">Approved</span><b>' + money(t.budget) + '</b></div>' +
+    '<div class="st"><span class="k">Current</span><b' + (over ? ' style="color:var(--warn)"' : '') + '>' + money(t.current) + '</b>' +
+      (t.budget ? '<span class="k2">' + pct(t.current, t.budget) + '%' + (over ? ' · ' + money(t.current - t.budget) + ' over' : '') + '</span>' : '') + '</div>' +
+    '<div class="st"><span class="k">Event</span><b>' + (t.nearest == null ? '—' : daysLabel(t.nearest)) + '</b></div>' +
+    '<div class="st"><span class="k">People</span><b>' + t.confirmed + '/' + (t.slots || '—') + '</b></div>' +
+    '<div class="st"><span class="k">Booked</span><b>' + t.ordered + '/' + t.lines + '</b></div>' +
+    '<span class="links">' +
+      (a.sheetUrl ? '<a href="' + esc(a.sheetUrl) + '" target="_blank" rel="noopener">📊 Sheet ↗</a>' : '') +
+      (a.docUrl ? '<a href="' + esc(a.docUrl) + '" target="_blank" rel="noopener">📄 Doc ↗</a>' : '') +
+    '</span></div>';
+  h += actSegTabs(a, t, steps);
+  if (actTab === 'overview') h += renderActOverview(a);
+  else if (actTab === 'budget') h += renderActBudget(a);
+  else if (actTab === 'people') h += renderActPeople(a);
+  else if (actTab === 'docs') h += renderActDocs(a);
+  else if (actTab === 'recap') h += renderActRecap(a);
+  h += actTabFooter();
+  box.innerHTML = h;
+}
+
+// -------- Overview: what to do next + the events --------
+// The numbers live in the summary strip above, so this page is just
+// the checklist and the event cards.
+function renderActOverview(a) {
+  var h = '';
+  var steps = actSteps(a);
+  h += '<div class="count-head" style="margin-top:22px">Next steps <span class="n">' + steps.length + '</span></div>';
   h += steps.length
     ? '<div class="panel">' + steps.map(function (s) {
         return '<div class="row-link" data-act-step="' + s.tab + '"' + (s.line ? ' data-act-line="' + esc(s.line) + '"' : '') + ' style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border-soft);cursor:pointer"><span>' + esc(s.t) + '</span><span style="color:var(--ink-3);font-size:12px">' + (ACT_TABS.filter(function (t) { return t[0] === s.tab; })[0] || ['', ''])[1] + ' →</span></div>';
@@ -3405,14 +3470,14 @@ function renderActBudget(a) {
     var s = actEventSummary(e);
     var over = e.budgetCents && s.current > e.budgetCents;
     h += '<div class="panel panel-pad" style="margin-top:14px" data-act-event="' + esc(e.id) + '">';
-    if (a.events.length > 1) h += '<div style="font-family:var(--display);font-size:18px;font-weight:700">' + esc(e.name) + '</div>';
-    h += '<div class="kpi-row" style="margin:6px 0 4px">' +
-      '<div class="kpi money"><div class="kpi-label">Approved budget</div><div class="kpi-value">' + money(e.budgetCents) + '</div><div class="kpi-note">signed off by the brand</div></div>' +
-      '<div class="kpi"' + (over ? ' style="border-left:3px solid var(--warn)"' : '') + '><div class="kpi-label">Current cost</div><div class="kpi-value">' + money(s.current) + '</div><div class="kpi-note">' + s.finalCount + '/' + e.lines.length + ' lines final</div></div>' +
-      '<div class="kpi"><div class="kpi-label">Spent vs approved</div><div class="kpi-value" style="color:' + (over ? 'var(--warn)' : 'inherit') + '">' + pct(s.current, e.budgetCents) + '%</div><div class="kpi-note">' + (e.budgetCents ? (over ? money(s.current - e.budgetCents) + ' over' : money(e.budgetCents - s.current) + ' left') : 'set the approved budget') + '</div></div>' +
-      '<div class="kpi"><div class="kpi-label">Booked</div><div class="kpi-value">' + s.ordered + '/' + e.lines.length + '</div><div class="kpi-note">lines ordered / confirmed · estimate ' + money(s.estimate) + '</div></div>' +
+    if (a.events.length > 1) h += '<div style="font-family:var(--display);font-size:18px;font-weight:700;margin-bottom:4px">' + esc(e.name) + '</div>';
+    h += '<div class="act-substat">' +
+      '<span><b>' + money(e.budgetCents) + '</b> approved</span>' +
+      '<span><b' + (over ? ' style="color:var(--warn)"' : '') + '>' + money(s.current) + '</b> current · ' + s.finalCount + '/' + e.lines.length + ' lines final</span>' +
+      '<span>' + (e.budgetCents ? (over ? '<b style="color:var(--warn)">' + money(s.current - e.budgetCents) + '</b> over' : '<b>' + money(e.budgetCents - s.current) + '</b> left') : 'set the approved budget in Overview') + '</span>' +
+      '<span><b>' + s.ordered + '/' + e.lines.length + '</b> booked · estimate ' + money(s.estimate) + '</span>' +
     '</div>';
-    h += '<div style="font-size:12px;color:var(--ink-3);margin:8px 0 6px">Click any cell to edit · <b>Estimate</b> is the sheet, <b>Final</b> is what it actually cost · tick ✓ when it\'s ordered or confirmed · staff lines open in People</div>';
+    h += '<div style="font-size:12px;color:var(--ink-3);margin:4px 0 6px">Click any cell to edit · <b>Estimate</b> is the sheet, <b>Final</b> is what it actually cost · tick ✓ when it\'s ordered or confirmed · staff lines open in People</div>';
     h += '<div style="overflow-x:auto"><table class="sheet" style="min-width:860px">' +
       '<colgroup><col style="width:19%"><col style="width:22%"><col style="width:6%"><col style="width:10%"><col style="width:11%"><col style="width:11%"><col style="width:7%"><col style="width:auto"><col style="width:36px"><col style="width:36px"></colgroup>' +
       '<thead><tr><th>Item</th><th>Description</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Estimate</th><th class="r">Final</th><th class="r">Var</th><th>Notes / timing</th><th title="Ordered / confirmed">✓</th><th></th></tr></thead><tbody>';
@@ -3707,8 +3772,10 @@ function actTabFooter() {
   '</div>';
 }
 document.getElementById('act-tabs').addEventListener('click', function (ev) {
-  var b = ev.target.closest('[data-act-tab]');
-  if (b && actOpenId) actGoTab(b.getAttribute('data-act-tab'));
+  if (ev.target.closest('[data-act-home]')) {
+    actOpenId = null; actCur = null;
+    renderActSidebar(); renderActHome(); actHash(); window.scrollTo(0, 0);
+  }
 });
 // Left / right arrow keys move between sections when you're not typing.
 document.addEventListener('keydown', function (ev) {
@@ -3727,6 +3794,7 @@ actDetail.addEventListener('click', function (ev) {
   var t = ev.target;
   var b;
   if ((b = t.closest('[data-act-go]'))) { openActivation(b.getAttribute('data-act-go'), 'overview'); return; }
+  if ((b = t.closest('[data-act-tab]'))) { actGoTab(b.getAttribute('data-act-tab')); return; }
   if ((b = t.closest('[data-act-step]'))) {
     actTab = b.getAttribute('data-act-step');
     if (b.getAttribute('data-act-line')) setLineOpen(b.getAttribute('data-act-line'), true);
