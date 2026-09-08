@@ -301,7 +301,9 @@
   .ops-row .r1 .d{font-size:11.5px;color:var(--ink-3);flex:none}
   .ops-row .subj{font-size:13px;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .ops-row .sum{font-size:12px;color:var(--ink-3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .ops-row .meta{display:flex;gap:8px;align-items:center;margin-top:5px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2)}
+  .ops-row .meta{display:flex;gap:8px;align-items:center;margin-top:5px;flex-wrap:wrap;font-size:11px;color:var(--ink-2)}
+  .ops-row.todo .subj{font-weight:600;color:var(--ink-1)}
+  .ops-row.todo .r1 b::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:1px}
   .ops-read{position:sticky;top:112px;max-height:calc(100vh - 128px);overflow:auto}
   .ops-tldr{background:var(--accent-soft,#fdf0ec);border-radius:8px;padding:10px 14px;margin-top:12px;font-size:13px;line-height:1.55}
   .ops-tldr .tl-label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:2px}
@@ -312,9 +314,14 @@
   .ops-smartbar select,.ops-smartbar input{border:0;background:transparent;font:inherit;font-size:13px;font-weight:600;padding:2px 0;color:var(--ink-1)}
   .ops-smartbar input{width:88px}
   .ops-smartbar .auto{font-size:9.5px;color:var(--accent);text-transform:uppercase;letter-spacing:.05em}
-  .ops-body-text{white-space:pre-wrap;font-size:13.5px;line-height:1.65;padding:16px 2px 4px;overflow-wrap:break-word}
-  .ops-body-text a{color:inherit;text-decoration:underline;text-underline-offset:2px;text-decoration-color:var(--ink-3)}
-  .ops-body-text a:hover{text-decoration-color:currentColor}
+  .ops-body-text{white-space:pre-wrap;font-size:13.5px;line-height:1.65;padding:16px 2px 4px;overflow-wrap:break-word;max-width:72ch}
+  /* long URLs written out in plain-text bodies become small domain chips */
+  .lnk-chip{display:inline-flex;align-items:center;max-width:230px;padding:0 8px;margin:0 1px;
+    border:1px solid var(--border);border-radius:999px;background:var(--surface-2);
+    font-size:11.5px;font-weight:600;line-height:19px;color:var(--accent);text-decoration:none;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:baseline}
+  .lnk-chip::before{content:'🔗';font-size:9.5px;margin-right:5px}
+  .lnk-chip:hover{border-color:var(--accent);background:var(--accent-soft,#fdf0ec)}
   .ops-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--border-soft)}
   .ops-sec{margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)}
   .ops-sec[hidden]{display:none}
@@ -4075,7 +4082,9 @@ function loadOperations(filter) {
 // deadline, the invoice number, and the sentences that ask for things.
 
 function opsCleanBody(raw) {
-  var lines = String(raw || '').replace(/\r/g, '').split('\n'), out = [];
+  // invisible spacer chars marketing senders pad preheaders with
+  raw = String(raw || '').replace(/[\u200B\u200C\u200D\u2060\uFEFF\u00AD\u034F]/g, '');
+  var lines = raw.replace(/\r/g, '').split('\n'), out = [];
   for (var i = 0; i < lines.length; i++) {
     var L = lines[i];
     if (/^\s*>/.test(L)) break;                                   // quoted history
@@ -4083,29 +4092,56 @@ function opsCleanBody(raw) {
     if (/^-{3,}\s*(Forwarded message|Original Message)/i.test(L)) break;
     if (/^\s*--\s*$/.test(L) && i > 2) break;                     // signature separator
     if (/^(Sent from my|Get Outlook for)/i.test(L)) break;
+    L = L.replace(/\[(image|cid|logo|banner):[^\]]*\]/gi, '');    // inline-image placeholders
+    if (/^[\s\-_=~*•]{8,}$/.test(L)) continue;                    // decorative divider rows
+    if (/^\s*\[?(EXTERNAL|CAUTION)\b[\]:]/i.test(L)) continue;    // corporate mail banners
+    if (L.length < 130 && /\b(unsubscribe|manage (your )?preferences|update (your )?(email )?preferences|view (this email|it|online)? ?in (your )?browser|why (did I|am I) (get|receiv)|add us to your address book)\b/i.test(L)) continue;
     out.push(L);
   }
   return out.join('\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-// Text → HTML for the message pane: "[label](url)" (from the server-side
-// cleaner) becomes a link, bare URLs become short clickable links
-// (host/path, cut at 60 chars), e-mail addresses become mailto links.
-function opsRich(text) {
-  var s = esc(text || '');
-  s = s.replace(/\[([^\]\n]{1,120})\]\(((?:https?:\/\/|mailto:)[^)\s]+)\)/g, function (_, label, url) {
-    return '<a href="' + url + '" target="_blank" rel="noopener">' + label + '</a>';
-  });
-  s = s.replace(/(^|[^"'>=\/])(https?:\/\/[^\s<>"']+)/g, function (_, pre, url) {
-    var u = url.replace(/[.,;:!?)]+$/, ''), tail = url.slice(u.length);
-    var show = u.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
-    if (show.length > 60) show = show.slice(0, 57) + '…';
-    return pre + '<a href="' + u + '" target="_blank" rel="noopener" title="' + u + '">' + show + '</a>' + tail;
-  });
-  s = s.replace(/(^|[\s(>])([\w.+-]+@[\w-]+(?:\.[\w-]+)+)(?![^<]*<\/a>)/g, function (_, pre, mail) {
+// URLs written out in a plain-text body become small clickable chips
+// showing just the site's domain — the full address stays on hover and
+// on click. The email reads like an email again, not like a log file.
+var OPS_URL_RE = /https?:\/\/[^\s<>"]+/g;
+function opsDomain(url) {
+  return url.replace(/^https?:\/\//i, '').split(/[\/?#]/)[0].replace(/^www\./i, '') || 'link';
+}
+function opsStripUrls(s) {
+  return String(s || '').replace(/<(https?:\/\/[^\s<>]+)>/g, '$1')
+    .replace(/\[([^\]\n]{1,120})\]\((?:https?:\/\/|mailto:)[^)\s]+\)/g, '$1')
+    .replace(OPS_URL_RE, function (u) { return opsDomain(u); });
+}
+// Also understands "[label](url)" pairs the server-side cleaner produces
+// from Outlook's "label<url>" text (chip shows the label, not the domain),
+// and turns e-mail addresses into mailto links.
+var OPS_LINK_RE = /\[([^\]\n]{1,120})\]\(((?:https?:\/\/|mailto:)[^)\s]+)\)|https?:\/\/[^\s<>"]+/g;
+function opsChip(url, label) {
+  return '<a class="lnk-chip" href="' + esc(url) + '" target="_blank" rel="noopener" title="' + esc(url) + '">' + esc(label) + '</a>';
+}
+function opsLinkChips(text) {
+  var str = String(text || '').replace(/<(https?:\/\/[^\s<>]+)>/g, '$1'); // "<url>" wrapping
+  var out = '', last = 0, mm;
+  OPS_LINK_RE.lastIndex = 0;
+  while ((mm = OPS_LINK_RE.exec(str))) {
+    out += opsMailto(esc(str.slice(last, mm.index)));
+    if (mm[1]) {                                                   // [label](url)
+      last = mm.index + mm[0].length;
+      out += opsChip(mm[2], mm[1]);
+    } else {
+      var url = mm[0].replace(/[.,;:!?)\]'"]+$/, '');               // trailing punctuation
+      last = mm.index + url.length;
+      out += opsChip(url, opsDomain(url));
+    }
+    OPS_LINK_RE.lastIndex = last;
+  }
+  return out + opsMailto(esc(str.slice(last)));
+}
+function opsMailto(escaped) {
+  return escaped.replace(/(^|[\s(>])([\w.+-]+@[\w-]+(?:\.[\w-]+)+)/g, function (_, pre, mail) {
     return pre + '<a href="mailto:' + mail + '">' + mail + '</a>';
   });
-  return s;
 }
 
 var OPS_MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 };
@@ -4145,7 +4181,7 @@ function opsExtract(m) {
   var ASK = /\b(please|can you|could you|kindly|we need|need(?:s)? (?:you|your|to)|sign|signature|counter-?sign|review|approve|approval|remit|payment|pay by|wire|w-?9|coi\b|certificate of insurance|confirm|let (?:us|me) know|attached|deadline)\b/i;
   var sents = text.replace(/\n+/g, ' ').split(/(?:[.!?])\s+/);
   for (var i = 0; i < sents.length && r.asks.length < 2; i++) {
-    var s = sents[i].trim();
+    var s = opsStripUrls(sents[i].trim());
     if (s.length > 15 && s.length < 240 && ASK.test(s)) r.asks.push(s.length > 160 ? s.slice(0, 157) + '…' : s);
   }
   return r;
@@ -4156,7 +4192,7 @@ function opsRowSummary(m, ex) {
   var bits = [];
   if (ex.invoiceNo) bits.push('#' + ex.invoiceNo);
   if (ex.asks.length) bits.push(ex.asks[0]);
-  return bits.length ? bits.join(' · ') : (m.snippet || '');
+  return opsStripUrls(bits.length ? bits.join(' · ') : (m.snippet || ''));
 }
 
 function renderOps(r) {
@@ -4197,13 +4233,14 @@ function renderOps(r) {
       var ex = opsExtract(m);
       var amt = m.amountCents != null ? m.amountCents : ex.amountCents;
       var due = m.dueDate || ex.dueDate;
-      h += '<div class="ops-row' + (m.id === opsOpenId ? ' sel' : '') + '" data-ops-open="' + esc(m.id) + '">' +
+      h += '<div class="ops-row' + (m.id === opsOpenId ? ' sel' : '') + (m.status === 'needs_review' ? ' todo' : '') + '" data-ops-open="' + esc(m.id) + '">' +
         '<div class="r1"><b>' + esc(m.fromName || m.fromEmail.split('@')[0]) + '</b><span class="d">' + when(m.date) + '</span></div>' +
         '<div class="subj">' + esc(m.subject) + '</div>' +
         '<div class="sum">' + esc(opsRowSummary(m, ex)) + '</div>' +
-        '<div class="meta">' + opsKindPill(m.kind) + opsStatusPill(m.status) +
+        '<div class="meta">' + opsKindPill(m.kind) +
+          (m.status === 'needs_review' ? '' : opsStatusPill(m.status)) +
           (amt != null ? '<b>' + money(amt) + '</b>' : '') +
-          (due ? '<span style="color:' + (late ? 'var(--warn)' : 'var(--ink-3)') + '">due ' + when(due) + '</span>' : '') +
+          (due ? '<span style="color:' + (late ? 'var(--warn)' : 'var(--ink-3)') + (late ? ';font-weight:600' : '') + '">due ' + when(due) + '</span>' : '') +
           (m.hasAttachments ? '<span title="Has attachments">📎</span>' : '') +
         '</div></div>';
     });
@@ -4292,9 +4329,9 @@ function renderOpsDetail(m, links) {
   var raw = m.body || m.snippet || '(empty)';
   var clean = opsCleanBody(raw) || raw;
   var trimmed = clean.length < raw.length - 80;
-  h += '<div class="ops-body-text" data-ops-bodytext>' + opsRich(clean) + '</div>';
+  h += '<div class="ops-body-text" data-ops-bodytext>' + opsLinkChips(clean) + '</div>';
   if (trimmed) h += '<a data-ops-raw style="cursor:pointer;font-size:12px;color:var(--ink-3);text-decoration:underline">Show quoted history &amp; signature</a>' +
-    '<div class="ops-body-text" data-ops-rawtext hidden>' + opsRich(raw) + '</div>';
+    '<div class="ops-body-text" data-ops-rawtext hidden>' + opsLinkChips(raw) + '</div>';
   if ((m.thread || []).length > 1) {
     h += '<div style="font-size:12px;color:var(--ink-3);margin-top:10px">Thread: ' + m.thread.map(function (t) { return (t.id === m.id ? '<b>' : '<a data-ops-open="' + esc(t.id) + '" style="cursor:pointer;text-decoration:underline">') + esc((t.fromName || t.fromEmail) + ' · ' + when(t.date)) + (t.id === m.id ? '</b>' : '</a>'); }).join(' → ') + '</div>';
   }
