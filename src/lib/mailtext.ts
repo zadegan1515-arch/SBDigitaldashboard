@@ -41,9 +41,31 @@ export function unwrapUrl(url: string): string {
 
 const URL_RX = /https?:\/\/[^\s<>()\[\]"']+/g
 
+// HTML entities that survive the html→text step of some senders
+// ("&mdash;", "&zwnj;" spacer runs in marketing preheaders, "&#8217;").
+const ENTITIES: Record<string, string> = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+  mdash: '—', ndash: '–', hellip: '…', bull: '•', middot: '·',
+  lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', laquo: '«', raquo: '»',
+  copy: '©', reg: '®', trade: '™', deg: '°', times: '×', euro: '€', pound: '£', cent: '¢', yen: '¥',
+  zwnj: '', zwj: '', shy: '', ensp: ' ', emsp: ' ', thinsp: ' ',
+}
+export function decodeEntities(s: string): string {
+  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e: string) => {
+    if (e[0] === '#') {
+      const code = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10)
+      return Number.isFinite(code) && code > 0 ? String.fromCodePoint(code) : m
+    }
+    const v = ENTITIES[e.toLowerCase()]
+    return v === undefined ? m : v
+  })
+}
+
 export function cleanEmailText(raw: string): string {
-  let t = String(raw || '').replace(/\r/g, '')
+  let t = decodeEntities(String(raw || '').replace(/\r/g, ''))
   if (!t) return t
+  // invisible spacer characters marketing senders pad preheaders with
+  t = t.replace(/[\u200B\u200C\u200D\u2060\uFEFF\u00AD\u034F]/g, '')
   // 1. real destinations instead of tracking wrappers
   t = t.replace(URL_RX, u => {
     const trail = /[.,;:!?]+$/.exec(u)?.[0] || ''
