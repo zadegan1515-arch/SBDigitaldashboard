@@ -623,6 +623,12 @@ function walkParts(payload: any, acc: { text: string[]; html: string[]; att: Ops
 }
 function htmlToText(h: string): string {
   return h.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '')
+    // keep links: "<a href=U>label</a>" → "label U" (the UI renders the
+    // URL as a chip; plain forwards keep a working address)
+    .replace(/<a\b[^>]*\bhref=["']?(https?:\/\/[^"'\s>]+)["']?[^>]*>([\s\S]*?)<\/a>/gi, (_m, href, inner) => {
+      const label = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+      return label && label !== href ? `${label} ${href}` : href
+    })
     .replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|tr|li|h\d)>/gi, '\n').replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
     .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
