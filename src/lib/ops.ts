@@ -12,6 +12,7 @@ import {
   opsListIds, opsGetMessage, opsGetAttachment, opsSend, opsMessageIdHeader,
   opsStatus, opsSetLastScan,
 } from '@/lib/google'
+import { cleanEmailText } from '@/lib/mailtext'
 
 const prisma = new PrismaClient()
 
@@ -83,6 +84,8 @@ export async function scanOps(opts: { max?: number } = {}) {
     }))
     for (const m of batch) {
       if (!m) continue
+      m.body = cleanEmailText(m.body)
+      m.snippet = cleanEmailText(m.snippet)
       const c = classify(m)
       await prisma.opsMessage.create({
         data: {
@@ -143,7 +146,7 @@ export async function listOps(args: { kind?: string; status?: string; q?: string
     }
   }
   summary.overdue = await prisma.opsMessage.count({ where: { status: { in: ['needs_review', 'approved'] }, dueDate: { lt: new Date() } } })
-  return { rows: rows.map(r => ({ ...r, attachments: JSON.parse(r.attachments || '[]') })), summary, status: await opsStatus() }
+  return { rows: rows.map(r => ({ ...r, snippet: cleanEmailText(r.snippet || ''), attachments: JSON.parse(r.attachments || '[]') })), summary, status: await opsStatus() }
 }
 
 export async function getOps(id: string) {
@@ -156,7 +159,8 @@ export async function getOps(id: string) {
     m.dealId ? prisma.deal.findUnique({ where: { id: m.dealId }, select: { id: true, name: true } }) : null,
     m.budgetLineId ? prisma.budgetLine.findUnique({ where: { id: m.budgetLineId }, select: { id: true, item: true, estimateCents: true, finalCents: true } }) : null,
   ])
-  return { ...m, attachments: JSON.parse(m.attachments || '[]'), thread, brand, activation, deal, line }
+  // rows stored before the cleaner existed get cleaned on the way out
+  return { ...m, body: cleanEmailText(m.body || ''), snippet: cleanEmailText(m.snippet || ''), attachments: JSON.parse(m.attachments || '[]'), thread, brand, activation, deal, line }
 }
 
 export async function updateOps(args: any) {
@@ -225,8 +229,8 @@ export async function forwardOps(args: { id: string; to: string; note?: string; 
     }
   }
   const header = `---------- Forwarded message ----------\nFrom: ${m.fromName ? `${m.fromName} <${m.fromEmail}>` : m.fromEmail}\nDate: ${m.date.toLocaleString('en-US')}\nSubject: ${m.subject}\n\n`
-  const text = (args.note ? String(args.note).trimEnd() + '\n\n' : '') + header + (m.body || m.snippet || '') + '\n\n' + opsSignatureText()
-  await opsSend({ from: await opsFrom(), to, subject: 'Fwd: ' + m.subject, text, html: opsHtml((args.note ? String(args.note).trimEnd() + '\n\n' : '') + header + (m.body || m.snippet || '')), ...(files.length ? { attachments: files } : {}) })
+  const text = (args.note ? String(args.note).trimEnd() + '\n\n' : '') + header + cleanEmailText(m.body || m.snippet || '') + '\n\n' + opsSignatureText()
+  await opsSend({ from: await opsFrom(), to, subject: 'Fwd: ' + m.subject, text, html: opsHtml((args.note ? String(args.note).trimEnd() + '\n\n' : '') + header + cleanEmailText(m.body || m.snippet || '')), ...(files.length ? { attachments: files } : {}) })
   await prisma.opsMessage.update({ where: { id: m.id }, data: { forwardedTo: to, forwardedAt: new Date() } })
   return { ok: true, to, attachments: files.length }
 }

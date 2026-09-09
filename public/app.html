@@ -4126,20 +4126,38 @@ function opsDomain(url) {
 }
 function opsStripUrls(s) {
   return String(s || '').replace(/<(https?:\/\/[^\s<>]+)>/g, '$1')
+    .replace(/\[([^\]\n]{1,120})\]\((?:https?:\/\/|mailto:)[^)\s]+\)/g, '$1')
     .replace(OPS_URL_RE, function (u) { return opsDomain(u); });
+}
+// Also understands "[label](url)" pairs the server-side cleaner produces
+// from Outlook's "label<url>" text (chip shows the label, not the domain),
+// and turns e-mail addresses into mailto links.
+var OPS_LINK_RE = /\[([^\]\n]{1,120})\]\(((?:https?:\/\/|mailto:)[^)\s]+)\)|https?:\/\/[^\s<>"]+/g;
+function opsChip(url, label) {
+  return '<a class="lnk-chip" href="' + esc(url) + '" target="_blank" rel="noopener" title="' + esc(url) + '">' + esc(label) + '</a>';
 }
 function opsLinkChips(text) {
   var str = String(text || '').replace(/<(https?:\/\/[^\s<>]+)>/g, '$1'); // "<url>" wrapping
   var out = '', last = 0, mm;
-  OPS_URL_RE.lastIndex = 0;
-  while ((mm = OPS_URL_RE.exec(str))) {
-    var url = mm[0].replace(/[.,;:!?)\]'"]+$/, '');               // trailing punctuation
-    out += esc(str.slice(last, mm.index));
-    last = mm.index + url.length;
-    OPS_URL_RE.lastIndex = last;
-    out += '<a class="lnk-chip" href="' + esc(url) + '" target="_blank" rel="noopener" title="' + esc(url) + '">' + esc(opsDomain(url)) + '</a>';
+  OPS_LINK_RE.lastIndex = 0;
+  while ((mm = OPS_LINK_RE.exec(str))) {
+    out += opsMailto(esc(str.slice(last, mm.index)));
+    if (mm[1]) {                                                   // [label](url)
+      last = mm.index + mm[0].length;
+      out += opsChip(mm[2], mm[1]);
+    } else {
+      var url = mm[0].replace(/[.,;:!?)\]'"]+$/, '');               // trailing punctuation
+      last = mm.index + url.length;
+      out += opsChip(url, opsDomain(url));
+    }
+    OPS_LINK_RE.lastIndex = last;
   }
-  return out + esc(str.slice(last));
+  return out + opsMailto(esc(str.slice(last)));
+}
+function opsMailto(escaped) {
+  return escaped.replace(/(^|[\s(>])([\w.+-]+@[\w-]+(?:\.[\w-]+)+)/g, function (_, pre, mail) {
+    return pre + '<a href="mailto:' + mail + '">' + mail + '</a>';
+  });
 }
 
 var OPS_MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 };
