@@ -4081,9 +4081,25 @@ function loadOperations(filter) {
 // Strips quoted history + signatures, then pulls out the money, the
 // deadline, the invoice number, and the sentences that ask for things.
 
+// Bodies pulled in before the server learned to decode entities still
+// carry them ("&mdash;", "&zwnj;", "&#8217;") \u2014 decode at render time.
+var OPS_ENT = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
+  mdash: '\u2014', ndash: '\u2013', rsquo: '\u2019', lsquo: '\u2018', rdquo: '\u201D', ldquo: '\u201C',
+  hellip: '\u2026', bull: '\u2022', middot: '\u00B7', copy: '\u00A9', reg: '\u00AE', trade: '\u2122', deg: '\u00B0',
+  times: '\u00D7', divide: '\u00F7', laquo: '\u00AB', raquo: '\u00BB', cent: '\u00A2', pound: '\u00A3', euro: '\u20AC',
+  zwnj: '', zwj: '', shy: '', ensp: ' ', emsp: ' ', thinsp: ' ' };
+function opsDecodeEntities(s) {
+  function cp(n) { try { return n > 8 ? String.fromCodePoint(n) : ''; } catch (e) { return ''; } }
+  return String(s || '')
+    .replace(/&#x([0-9a-f]{1,6});/gi, function (_m, h) { return cp(parseInt(h, 16)); })
+    .replace(/&#(\d{1,7});/g, function (_m, d) { return cp(Number(d)); })
+    .replace(/&([a-z]{2,8});/gi, function (m, n) { var k = n.toLowerCase(); return k in OPS_ENT ? OPS_ENT[k] : m; });
+}
+
 function opsCleanBody(raw) {
-  // invisible spacer chars marketing senders pad preheaders with
-  raw = String(raw || '').replace(/[\u200B\u200C\u200D\u2060\uFEFF\u00AD\u034F]/g, '');
+  // decode leftover entities, drop invisible spacer chars marketing
+  // senders pad preheaders with
+  raw = opsDecodeEntities(raw).replace(/[\u200B\u200C\u200D\u2060\uFEFF\u00AD\u034F]/g, '');
   var lines = raw.replace(/\r/g, '').split('\n'), out = [];
   for (var i = 0; i < lines.length; i++) {
     var L = lines[i];
@@ -4174,7 +4190,7 @@ function opsRowSummary(m, ex) {
   var bits = [];
   if (ex.invoiceNo) bits.push('#' + ex.invoiceNo);
   if (ex.asks.length) bits.push(ex.asks[0]);
-  return opsStripUrls(bits.length ? bits.join(' · ') : (m.snippet || ''));
+  return opsStripUrls(bits.length ? bits.join(' · ') : opsDecodeEntities(m.snippet || ''));
 }
 
 function renderOps(r) {
@@ -4308,8 +4324,8 @@ function renderOpsDetail(m, links) {
   }
 
   // the message itself, quoted history stripped (toggle to see all of it)
-  var raw = m.body || m.snippet || '(empty)';
-  var clean = opsCleanBody(raw) || raw;
+  var raw = opsDecodeEntities(m.body || m.snippet || '(empty)');
+  var clean = opsCleanBody(m.body || m.snippet || '(empty)') || raw;
   var trimmed = clean.length < raw.length - 80;
   h += '<div class="ops-body-text" data-ops-bodytext>' + opsLinkChips(clean) + '</div>';
   if (trimmed) h += '<a data-ops-raw style="cursor:pointer;font-size:12px;color:var(--ink-3);text-decoration:underline">Show quoted history &amp; signature</a>' +

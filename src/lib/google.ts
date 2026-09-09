@@ -621,16 +621,33 @@ function walkParts(payload: any, acc: { text: string[]; html: string[]; att: Ops
   }
   for (const p of payload.parts || []) walkParts(p, acc)
 }
+// Emails are full of entities the old six-replace chain missed (&mdash;
+// &zwnj; &rsquo; …) — they were landing on screen as literal text.
+const HTML_ENT: Record<string, string> = {
+  nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
+  mdash: '—', ndash: '–', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“',
+  hellip: '…', bull: '•', middot: '·', copy: '©', reg: '®', trade: '™', deg: '°',
+  times: '×', divide: '÷', laquo: '«', raquo: '»', cent: '¢', pound: '£', euro: '€',
+  zwnj: '', zwj: '', shy: '', ensp: ' ', emsp: ' ', thinsp: ' ',
+}
+function decodeEntities(s: string): string {
+  const cp = (n: number) => { try { return n > 8 ? String.fromCodePoint(n) : '' } catch { return '' } }
+  return s.replace(/&#x([0-9a-f]{1,6});/gi, (_m, h) => cp(parseInt(h, 16)))
+    .replace(/&#(\d{1,7});/g, (_m, d) => cp(Number(d)))
+    .replace(/&([a-z]{2,8});/gi, (m, n) => { const k = n.toLowerCase(); return k in HTML_ENT ? HTML_ENT[k] : m })
+}
 function htmlToText(h: string): string {
-  return h.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '')
+  return decodeEntities(h.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<head[\s\S]*?<\/head>/gi, '')
     // keep links: "<a href=U>label</a>" → "label U" (the UI renders the
     // URL as a chip; plain forwards keep a working address)
     .replace(/<a\b[^>]*\bhref=["']?(https?:\/\/[^"'\s>]+)["']?[^>]*>([\s\S]*?)<\/a>/gi, (_m, href, inner) => {
       const label = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
       return label && label !== href ? `${label} ${href}` : href
     })
-    .replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|tr|li|h\d)>/gi, '\n').replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/<br\s*\/?>/gi, '\n').replace(/<\/t[dh]>/gi, '  ')   // cells get a gap, not a squish
+    .replace(/<li\b[^>]*>/gi, '• ').replace(/<\/(p|div|tr|li|h\d|table|ul|ol|blockquote)>/gi, '\n')
+    .replace(/<[^>]+>/g, ''))
     .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
