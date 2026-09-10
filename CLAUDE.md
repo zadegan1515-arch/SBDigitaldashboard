@@ -35,6 +35,18 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - `src/app/api/data/route.ts` — every server function. Add a handler = add a key to `handlers`.
 - `src/lib/email.ts` — outreach: drafting, cap/ramp (`roomToday`), sending via Gmail API, replies, warmup stats, signature (hosted images, LinkedIn/IG as text links).
 - `src/lib/google.ts` — OAuth (gmail / drive / ops grants), Gmail read+send, Drive/Sheets/Docs create.
+- `src/lib/shows.ts` — **the show list** for the Shows tab and the public sponsor page. Reads the
+  "SB AGENCY - FULL BUILT CRM" Google Sheet (read-only, tab gid 1397302046 preferred) via the Drive
+  grant; a row is a confirmed show only with a booked status **and** date **and** artist **and** school.
+  Past shows from `src/data/show-archive.json`. School abbreviations → name/city/state in `SCHOOL_TABLE`;
+  genre auto-tags in `GENRE_ARTISTS` (overrides in Setting `artistGenres`). Cache in Setting `crmShows`
+  (6 h; daily cron; ↻ Sheet button). Show ids: `sh_<hash>` / `ar_<hash>`. sb-crm's DB is no longer the source.
+- `public/sponsor.html` + `src/app/api/public/{shows,request}` — **brand-facing page**, no sign-in,
+  served on `SPONSOR_HOST` (default shows.sboyagency.com; `/` rewrites to it, middleware blocks
+  everything else on that host). Links: `/?state=TX&genre=edm`, hand-picked `/?for=Brand&pick=id,id`
+  (built from the Shows tab checkboxes → "Copy link for this brand"). A submit → `src/lib/sponsor-request.ts`:
+  Brand + Contact + ShowSponsor(status `requested`) per show + one Deal (source `request`) + email to
+  `SPONSOR_REQUEST_TO`. Only brand-safe fields ever leave the public API (no reps, statuses, money).
 - `src/lib/ops.ts` — Operations inbox: rules classifier (contract / invoice_payable / invoice_receivable / other), 90-day backfill scan, reply/forward as "SB Agency Operations".
 - `src/app/api/google/{start,callback}` — OAuth entry/return. `?drive=1`, `?ops=1` pick the grant.
 - `src/app/api/ops/attachment` — streams a Gmail attachment to a signed-in user.
@@ -46,7 +58,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 DATABASE_URL · NEXTAUTH_SECRET · GOOGLE_CLIENT_ID/SECRET (sign-in) · GMAIL_CLIENT_ID/SECRET (mail+drive+ops OAuth) ·
 EMAIL_SENDER_NAME=Zach · SITE_URL · ANTHROPIC_API_KEY (optional; avoid spend) · NOTION_* ·
 AMBASSADOR_PLATFORM_URL · AMBASSADOR_PLATFORM_TOKEN (= platform INTEGRATION_TOKEN) · INGEST_TOKEN · CRON_SECRET ·
-optional: SIGNATURE_LINKEDIN_URL, SIGNATURE_INSTAGRAM_URL, SIGNATURE_EMBED=1, SIGNATURE_ICONS=1, OPS_BACKFILL_DAYS.
+optional: SIGNATURE_LINKEDIN_URL, SIGNATURE_INSTAGRAM_URL, SIGNATURE_EMBED=1, SIGNATURE_ICONS=1, OPS_BACKFILL_DAYS,
+SPONSOR_HOST (brand page host), SPONSOR_REQUEST_TO (who gets sponsor requests), CRM_SHEET_ID, CRM_SHEET_GID.
 
 ## Conventions
 - Cents everywhere; `money()` formats on the client, `parseMoney()` parses "$1,750".
