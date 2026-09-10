@@ -24,6 +24,7 @@ import {
 import { syncNotionDeals } from '@/lib/notion'
 import { googleStatus, googleDisconnect, driveStatus, driveDisconnect, driveCreateActivationDocs, opsStatus, opsDisconnect } from '@/lib/google'
 import { scanOps, listOps, getOps, updateOps, deleteOps, replyOps, forwardOps } from '@/lib/ops'
+import { allShows, refreshShows, setGenreOverride, cachedShows, GENRES } from '@/lib/shows'
 
 const prisma = new PrismaClient()
 
@@ -175,6 +176,7 @@ async function tryClaude(prompt: string, maxTokens: number): Promise<{ text: str
 // A sponsorship's status drives its pipeline stage. Kept as a map rather
 // than inline so the two vocabularies can diverge later without hunting.
 const SPONSOR_STAGE: Record<string, string> = {
+  requested: 'conversation',
   proposed: 'proposal',
   confirmed: 'closed',
   declined: 'lost',
@@ -484,38 +486,20 @@ const handlers: Record<string, Handler> = {
     // degrades to "no data" rather than blanking the whole dashboard.
     let showStats: { connected: boolean; total: number; unsold: number } =
       { connected: false, total: 0, unsold: 0 }
-    if (CRM_CONNECTED) {
-      try {
-        // Same two-table union as listShows, deduped the same way, so the
-        // dashboard count can never disagree with the Shows tab.
-        const rows: any[] = await crm.$queryRawUnsafe(`
-          SELECT l."id", l."schoolRaw", l."chapterRaw", l."eventDate",
-                 s."name" AS "schoolName"
-          FROM "Lead" l LEFT JOIN "School" s ON s."id" = l."schoolId"
-          WHERE l."stage" ~ $1
-          UNION ALL
-          SELECT d."id", d."schoolRaw", d."chapterRaw", d."eventDate",
-                 s."name" AS "schoolName"
-          FROM "Deal" d LEFT JOIN "School" s ON s."id" = d."schoolId"
-          WHERE d."season" = $2 AND d."status" = ANY($3::text[])
-        `, LEAD_CONFIRMED_STAGE_REGEX, DEAL_CURRENT_SEASON, DEAL_CONFIRMED_STATUS)
-
-        const byKey = new Map<string, string>()
-        for (const r of rows) {
-          const key = showKey(r.schoolName || r.schoolRaw, r.chapterRaw, r.eventDate)
-          if (!byKey.has(key)) byKey.set(key, r.id)
-        }
-        const ids = [...byKey.values()]
-
-        const sold = await prisma.showSponsor.findMany({
-          where: { crmLeadId: { in: ids } },
-          select: { crmLeadId: true },
-          distinct: ['crmLeadId'],
-        })
-        showStats = { connected: true, total: ids.length, unsold: ids.length - sold.length }
-      } catch (err) {
-        console.error('[getDashboard] CRM read failed', err)
-      }
+    try {
+      // Same source as the Shows tab (the CRM sheet), so the dashboard
+      // count can never disagree with it.
+      const all = await allShows()
+      const season = all.shows.filter(x => !x.past).map(x => x.season)[0] || null
+      const ids = all.shows.filter(x => !x.past || (x.source === 'sheet' && (!season || x.season === season))).map(x => x.id)
+      const sold = await prisma.showSponsor.findMany({
+        where: { crmLeadId: { in: ids } },
+        select: { crmLeadId: true },
+        distinct: ['crmLeadId'],
+      })
+      showStats = { connected: true, total: ids.length, unsold: ids.length - sold.length }
+    } catch (err) {
+      console.error('[getDashboard] show read failed', err)
     }
 
     return {
@@ -928,70 +912,45 @@ const handlers: Record<string, Handler> = {
 
   // Confirmed, not-yet-played shows — the inventory you can sell against.
   // Read-only against sb-crm. Never writes.
-  async listShows({ search, onlyUnsold = false }: any) {
-    if (!CRM_CONNECTED) {
-      return { connected: false, shows: [] }
-    }
+  // Confirmed shows — read from the team's CRM Google Sheet (see
+  // lib/shows.ts), not from sb-crm's lead table any more. A show is
+  // confirmed only when the sheet row has a booked status AND a date AND
+  // an artist AND a school. Past shows are folded in from the website
+  // archive for the sponsor page; the tab shows this season by default.
+  async listShows({ search, onlyUnsold, includePast, refresh }: any = {}) {
+    if (refresh) await refreshShows()
+    const [all, cache] = await Promise.all([allShows(), cachedShows()])
+    const season = all.shows.filter(s => !s.past).map(s => s.season)[0] || null
+    let rows = includePast ? all.shows : all.shows.filter(s => !s.past || (s.source === 'sheet' && (!season || s.season === season)))
 
-    // Raw SQL because this project's Prisma schema doesn't model sb-crm's
-    // tables. Quoted identifiers because Prisma creates them case-sensitive.
-    // UNION because confirmed shows live in both Lead and Deal.
-    const rows: any[] = await crm.$queryRawUnsafe(`
-      SELECT 'lead' AS "src", l."id", l."stage" AS "state",
-             l."schoolRaw", l."chapterRaw", l."artist", l."rep",
-             l."eventDate", l."venueName", l."attendance",
-             l."eventType", l."ticketing",
-             s."name" AS "schoolName", s."city", s."state" AS "schoolState"
-      FROM "Lead" l
-      LEFT JOIN "School" s ON s."id" = l."schoolId"
-      WHERE l."stage" ~ $1
-
-      UNION ALL
-
-      SELECT 'deal' AS "src", d."id", d."status" AS "state",
-             d."schoolRaw", d."chapterRaw", d."artist", d."rep",
-             d."eventDate", NULL AS "venueName", NULL AS "attendance",
-             NULL AS "eventType", NULL AS "ticketing",
-             s."name" AS "schoolName", s."city", s."state" AS "schoolState"
-      FROM "Deal" d
-      LEFT JOIN "School" s ON s."id" = d."schoolId"
-      WHERE d."season" = $2 AND d."status" = ANY($3::text[])
-    `, LEAD_CONFIRMED_STAGE_REGEX, DEAL_CURRENT_SEASON, DEAL_CONFIRMED_STATUS)
-
-    // A booking can appear in both tables. Keep one row per real show,
-    // preferring the Lead record since it carries venue and attendance —
-    // the two fields a sponsor actually asks about.
-    const seen = new Map<string, any>()
-    for (const r of rows) {
-      const key = showKey(r.schoolName || r.schoolRaw, r.chapterRaw, r.eventDate)
-      const existing = seen.get(key)
-      if (!existing || (existing.src === 'deal' && r.src === 'lead')) seen.set(key, r)
-    }
-    const sellable = [...seen.values()]
-
-    // Which of these already have a sponsor attached, and who.
     const links = await prisma.showSponsor.findMany({
-      where: { crmLeadId: { in: sellable.map(r => r.id) } },
+      where: { crmLeadId: { in: rows.map(r => r.id) } },
       include: { brand: { select: { id: true, name: true } } },
     })
-    const byLead: Record<string, any[]> = {}
-    for (const link of links) (byLead[link.crmLeadId] ??= []).push(link)
+    const byShow: Record<string, any[]> = {}
+    for (const link of links) (byShow[link.crmLeadId] ??= []).push(link)
 
-    let shows = sellable.map(r => ({
+    let shows = rows.map(r => ({
       id: r.id,
-      stage: r.state,
-      school: r.schoolName || r.schoolRaw,
-      chapter: r.chapterRaw,
+      stage: r.status,
+      past: r.past,
+      source: r.source,
+      school: r.schoolName,
+      schoolShort: r.school,
+      chapter: r.chapter,
       artist: r.artist,
+      type: r.type,
+      genre: r.genre,
       rep: r.rep,
-      eventDate: r.eventDate,
-      venue: r.venueName,
-      attendance: r.attendance,
-      eventType: r.eventType,
-      ticketing: r.ticketing,
+      eventDate: r.date,
+      season: r.season,
+      venue: null as string | null,
+      attendance: null as number | null,
+      eventType: null as string | null,
+      ticketing: null as string | null,
       city: r.city,
-      state: r.schoolState,
-      sponsors: (byLead[r.id] ?? []).map(l => ({
+      state: r.state,
+      sponsors: (byShow[r.id] ?? []).map(l => ({
         brandId: l.brand.id, brandName: l.brand.name, status: l.status,
         valueCents: l.valueCents,
       })),
@@ -1000,17 +959,38 @@ const handlers: Record<string, Handler> = {
     if (search) {
       const q = String(search).toLowerCase()
       shows = shows.filter(s =>
-        [s.school, s.chapter, s.artist, s.venue].some(v => v && String(v).toLowerCase().includes(q))
+        [s.school, s.schoolShort, s.chapter, s.artist, s.city, s.state, s.genre].some(v => v && String(v).toLowerCase().includes(q))
       )
     }
     if (onlyUnsold) shows = shows.filter(s => s.sponsors.length === 0)
 
     return {
       connected: true,
+      source: 'sheet',
+      updatedAt: cache.at,
       total: shows.length,
       unsold: shows.filter(s => s.sponsors.length === 0).length,
+      rejected: cache.rejected.length,
+      genres: GENRES,
       shows,
     }
+  },
+
+  // Re-read the CRM sheet now (also runs daily with the email cron).
+  async refreshShows() {
+    return refreshShows()
+  },
+
+  // Rows the sheet parser skipped and why — so a rep can fix the sheet.
+  async listShowRejects() {
+    const c = await cachedShows()
+    return { updatedAt: c.at, rejected: c.rejected }
+  },
+
+  // Genre override for one artist (blank genre = back to auto-tag).
+  async setArtistGenre({ artist, genre }: any) {
+    if (genre && !(GENRES as readonly string[]).includes(genre)) throw new Error('Unknown genre')
+    return { overrides: await setGenreOverride(String(artist || ''), String(genre || '')) }
   },
 
   // The FULL sb-crm lead table — every stage, not just confirmed. Read
@@ -1373,48 +1353,17 @@ const handlers: Record<string, Handler> = {
       }),
     ])
 
-    // Live shows from sb-crm. Wrapped so a CRM hiccup degrades this
-    // section rather than failing the whole search.
+    // Shows from the CRM sheet (same source as the Shows tab).
     let shows: any[] = []
-    if (CRM_CONNECTED) {
-      try {
-        const like = `%${query.toLowerCase()}%`
-        const rows: any[] = await crm.$queryRawUnsafe(`
-          SELECT l."id", l."schoolRaw", l."chapterRaw", l."artist", l."eventDate",
-                 s."name" AS "schoolName"
-          FROM "Lead" l LEFT JOIN "School" s ON s."id" = l."schoolId"
-          WHERE l."stage" ~ $1
-            AND (LOWER(COALESCE(s."name", l."schoolRaw", '')) LIKE $4
-              OR LOWER(COALESCE(l."chapterRaw", '')) LIKE $4
-              OR LOWER(COALESCE(l."artist", '')) LIKE $4)
-          UNION ALL
-          SELECT d."id", d."schoolRaw", d."chapterRaw", d."artist", d."eventDate",
-                 s."name" AS "schoolName"
-          FROM "Deal" d LEFT JOIN "School" s ON s."id" = d."schoolId"
-          WHERE d."season" = $2 AND d."status" = ANY($3::text[])
-            AND (LOWER(COALESCE(s."name", d."schoolRaw", '')) LIKE $4
-              OR LOWER(COALESCE(d."chapterRaw", '')) LIKE $4
-              OR LOWER(COALESCE(d."artist", '')) LIKE $4)
-          LIMIT 40
-        `, LEAD_CONFIRMED_STAGE_REGEX, DEAL_CURRENT_SEASON, DEAL_CONFIRMED_STATUS, like)
-
-        const seen = new Map<string, any>()
-        for (const r of rows) {
-          const key = showKey(r.schoolName || r.schoolRaw, r.chapterRaw, r.eventDate)
-          if (!seen.has(key)) {
-            seen.set(key, {
-              id: r.id,
-              school: r.schoolName || r.schoolRaw,
-              chapter: r.chapterRaw,
-              artist: r.artist,
-              eventDate: r.eventDate,
-            })
-          }
-        }
-        shows = [...seen.values()].slice(0, take)
-      } catch (err) {
-        console.error('[search] CRM read failed', err)
-      }
+    try {
+      const q = query.toLowerCase()
+      const all = await allShows()
+      shows = all.shows
+        .filter(x => !x.past && [x.schoolName, x.school, x.chapter, x.artist, x.city, x.state].some(v => v && v.toLowerCase().includes(q)))
+        .map(x => ({ id: x.id, school: x.schoolName, chapter: x.chapter, artist: x.artist, eventDate: x.date }))
+        .slice(0, take)
+    } catch (err) {
+      console.error('[search] show read failed', err)
     }
 
     return { q: query, brands, contacts, sponsorships, shows }
