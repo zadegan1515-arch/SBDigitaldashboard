@@ -72,6 +72,8 @@
   .f input,.f textarea,.f select{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;outline:none;background:var(--soft);color:var(--ink)}
   .f input:focus,.f textarea:focus{border-color:var(--ink-3)}
   .hp{position:absolute;left:-9999px;opacity:0;height:0;overflow:hidden}
+  .morelink{font-size:13px;font-weight:600;color:var(--accent);cursor:pointer}
+  [hidden]{display:none!important}
   .actions{display:flex;gap:10px;align-items:center;margin-top:18px}
   .btn{background:var(--ink);color:#111;border:0;border-radius:999px;padding:12px 22px;font-weight:700}
   .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
@@ -111,7 +113,6 @@
     <select class="sel" id="f-month"><option value="">Any month</option></select>
   </div>
   <div class="chips" id="f-perf"></div>
-  <div class="chips" id="f-genre" style="margin-top:0"></div>
 
   <div class="count" id="count"></div>
   <div id="list"></div>
@@ -149,7 +150,6 @@
   group = { college: 'college', state: 'state' }[P.get('group')] || 'date';
   if (q) document.getElementById('q').value = q;
   document.querySelectorAll('#seg-group button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-group') === group); });
-  var GENRE_LABEL = { edm: 'EDM / House', 'hip-hop': 'Hip-hop', country: 'Country', pop: 'Pop', band: 'Live band', other: 'Other' };
   var PERF_LABEL = { dj: 'DJs', singer: 'Singers', rapper: 'Rappers', band: 'Live bands' };
   // One tag per show: the act, flavored by genre where that adds anything.
   function actTag(s) {
@@ -198,13 +198,12 @@
 
   function buildFilters() {
     var p = pool();
-    var states = {}, schools = {}, months = {}, perfs = {}, genres = {};
+    var states = {}, schools = {}, months = {}, perfs = {};
     p.forEach(function (s) {
       if (s.state) states[s.state] = (states[s.state] || 0) + 1;
       schools[s.school] = (schools[s.school] || 0) + 1;
       var k = s.date.slice(0, 7); months[k] = (months[k] || 0) + 1;
       perfs[s.performer || 'dj'] = (perfs[s.performer || 'dj'] || 0) + 1;
-      genres[s.genre || 'other'] = (genres[s.genre || 'other'] || 0) + 1;
     });
     var opt = function (v, label, n, cur) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label) + (n != null ? ' (' + n + ')' : '') + '</option>'; };
     var st = Object.keys(states).sort();
@@ -219,8 +218,6 @@
     var chip = function (k, v, label, n, cur) { return '<button class="chip' + (v === cur ? ' on' : '') + '" data-f="' + k + '" data-v="' + esc(v) + '">' + esc(label) + (n != null ? '<span class="n">' + n + '</span>' : '') + '</button>'; };
     var pf = ['dj', 'singer', 'rapper', 'band'].filter(function (k) { return perfs[k]; });
     document.getElementById('f-perf').innerHTML = chip('perf', '', 'Any act', null, fPerf) + pf.map(function (x) { return chip('perf', x, PERF_LABEL[x], perfs[x], fPerf); }).join('');
-    var ge = ['edm', 'hip-hop', 'country', 'pop', 'band', 'other'].filter(function (g) { return genres[g]; });
-    document.getElementById('f-genre').innerHTML = chip('genre', '', 'Any sound', null, fGenre) + ge.map(function (x) { return chip('genre', x, GENRE_LABEL[x] || x, genres[x], fGenre); }).join('');
   }
 
   function filtered() {
@@ -314,7 +311,7 @@
   document.getElementById('f-month').addEventListener('change', function () { fMonth = this.value; render(); });
   document.addEventListener('click', function (e) {
     var c = e.target.closest('.chip[data-f]');
-    if (c) { if (c.getAttribute('data-f') === 'perf') fPerf = c.getAttribute('data-v'); else fGenre = c.getAttribute('data-v'); buildFilters(); render(); return; }
+    if (c) { fPerf = c.getAttribute('data-v'); buildFilters(); render(); return; }
     if (e.target.id === 'clear-f') { q = ''; fState = fSchool = fMonth = fPerf = fGenre = ''; document.getElementById('q').value = ''; buildFilters(); render(); return; }
     if (e.target.id === 'pick-all') { filtered().forEach(function (s) { if (!s.past) picked[s.id] = s; }); render(); return; }
     var row = e.target.closest('.show[data-id]');
@@ -331,21 +328,32 @@
   function openForm() {
     var ids = Object.keys(picked); if (!ids.length) return;
     var list = ids.map(function (id) { return picked[id]; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    // A returning brand shouldn't retype anything.
+    var saved = {};
+    try { saved = JSON.parse(localStorage.getItem('sbRequester') || '{}') || {}; } catch (e) { saved = {}; }
     var card = document.getElementById('card');
-    card.innerHTML = '<h2>Request sponsorship</h2><p class="sub">Tell us who you are and we\'ll come back within a business day with options and pricing for these shows.</p>' +
+    card.innerHTML = '<h2>Request sponsorship</h2><p class="sub">Three fields and you\'re done — we come back within a business day with options and pricing.</p>' +
       '<div class="picked">' + list.map(function (s) { return '<div>' + fmt(s.date, { month: 'short', day: 'numeric' }) + ' · <b>' + esc(s.artist) + '</b> · ' + esc(s.school) + (s.state ? ', ' + esc(s.state) : '') + '</div>'; }).join('') + '</div>' +
       '<form id="rq" class="f" autocomplete="on">' +
-        '<div><label>Company / brand</label><input name="company" required maxlength="120" value="' + esc(FOR) + '"></div>' +
-        '<div><label>Your name</label><input name="name" required maxlength="120"></div>' +
-        '<div><label>Work email</label><input name="email" type="email" required maxlength="200"></div>' +
-        '<div><label>Phone (optional)</label><input name="phone" maxlength="40"></div>' +
-        '<div class="full"><label>Budget range (optional)</label><select name="budget"><option value="">Prefer not to say</option><option>Under $5k</option><option>$5k – $15k</option><option>$15k – $50k</option><option>$50k+</option></select></div>' +
-        '<div class="full"><label>What are you hoping to do at these shows? (optional)</label><textarea name="notes" rows="3" maxlength="2000" placeholder="Sampling, signage, ambassadors, content…"></textarea></div>' +
+        '<div class="full"><label>Work email</label><input name="email" type="email" required maxlength="200" autocomplete="email" value="' + esc(saved.email || '') + '"></div>' +
+        '<div><label>Your name</label><input name="name" required maxlength="120" autocomplete="name" value="' + esc(saved.name || '') + '"></div>' +
+        '<div><label>Company / brand</label><input name="company" required maxlength="120" autocomplete="organization" value="' + esc(FOR || saved.company || '') + '"></div>' +
+        '<div class="full"><span class="morelink" id="rq-more">+ Add budget, phone or a note (optional)</span></div>' +
+        '<div class="full" id="rq-extra" hidden>' +
+          '<div class="f" style="margin-top:2px">' +
+          '<div><label>Budget range</label><select name="budget"><option value="">Prefer not to say</option><option>Under $5k</option><option>$5k – $15k</option><option>$15k – $50k</option><option>$50k+</option></select></div>' +
+          '<div><label>Phone</label><input name="phone" maxlength="40" autocomplete="tel" value="' + esc(saved.phone || '') + '"></div>' +
+          '<div class="full"><label>What are you hoping to do at these shows?</label><textarea name="notes" rows="3" maxlength="2000" placeholder="Sampling, signage, ambassadors, content…"></textarea></div>' +
+          '</div>' +
+        '</div>' +
         '<div class="hp" aria-hidden="true"><label>Website</label><input name="website_url" tabindex="-1" autocomplete="off"></div>' +
-        '<div class="full actions"><button class="btn" type="submit">Send request</button><button class="btn ghost" type="button" id="rq-cancel">Back</button><span class="err" id="rq-err"></span></div>' +
+        '<div class="full actions"><button class="btn" type="submit">Send request →</button><button class="btn ghost" type="button" id="rq-cancel">Back</button><span class="err" id="rq-err"></span></div>' +
       '</form>';
     document.getElementById('modal').classList.add('show');
+    card.querySelector('#rq-more').onclick = function () { card.querySelector('#rq-extra').hidden = false; this.hidden = true; };
     card.querySelector('#rq-cancel').onclick = function () { document.getElementById('modal').classList.remove('show'); };
+    var firstEmpty = ['email', 'name', 'company'].map(function (k) { return card.querySelector('input[name=' + k + ']'); }).filter(function (i) { return !i.value; })[0];
+    if (firstEmpty) firstEmpty.focus();
     card.querySelector('#rq').onsubmit = function (ev) {
       ev.preventDefault();
       var f = ev.target, btn = f.querySelector('button[type=submit]'), err = f.querySelector('#rq-err');
@@ -356,11 +364,12 @@
         .then(function (r) { return r.json(); })
         .then(function (r) {
           if (!r.ok) throw new Error(r.error || 'Something went wrong');
+          try { localStorage.setItem('sbRequester', JSON.stringify({ company: body.company, name: body.name, email: body.email, phone: body.phone })); } catch (e) {}
           card.innerHTML = '<div class="done"><div class="big">🎉</div><h2>Got it — thank you.</h2><p class="sub">We\'ve got your picks (' + ids.length + ' show' + (ids.length === 1 ? '' : 's') + ') and will be in touch at <b>' + esc(body.email) + '</b>.</p>' +
             '<button class="btn" id="rq-done">Done</button></div>';
           card.querySelector('#rq-done').onclick = function () { document.getElementById('modal').classList.remove('show'); picked = {}; render(); };
         })
-        .catch(function (e) { err.textContent = e.message; btn.disabled = false; btn.textContent = 'Send request'; });
+        .catch(function (e) { err.textContent = e.message; btn.disabled = false; btn.textContent = 'Send request →'; });
     };
   }
   document.getElementById('modal').addEventListener('click', function (e) { if (e.target === this) this.classList.remove('show'); });
