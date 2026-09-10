@@ -62,7 +62,10 @@ async function setSetting(key: string, value: string) {
 // activation docs — Leo), so it gets its own scope and its own stored
 // refresh token. drive.file = only files this app creates; it cannot see
 // the rest of the Drive.
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
+// spreadsheets.readonly is added so the same grant can READ the team's
+// CRM sheet (shows for the sponsor page). Read-only: nothing is ever
+// written to the CRM from here.
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets.readonly'
 
 export function googleAuthUrl(kind: 'gmail' | 'drive' | 'ops' = 'gmail'): string {
   const p = new URLSearchParams({
@@ -388,6 +391,21 @@ async function driveAccessToken(): Promise<string> {
   return j.access_token
 }
 
+// Read every tab of a spreadsheet as raw cell values. Used for the CRM
+// sheet; needs the spreadsheets.readonly scope (reconnect Drive once).
+export async function sheetsReadAll(spreadsheetId: string): Promise<{ title: string; gid: number; rows: string[][] }[]> {
+  const token = await driveAccessToken()
+  const meta = await gapi(token, `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties(title,sheetId,gridProperties)`)
+  const out: { title: string; gid: number; rows: string[][] }[] = []
+  for (const sh of meta.sheets || []) {
+    const title = sh.properties?.title
+    if (!title) continue
+    const v = await gapi(token, `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent("'" + title.replace(/'/g, "''") + "'")}?valueRenderOption=FORMATTED_VALUE`)
+    out.push({ title, gid: Number(sh.properties?.sheetId ?? -1), rows: (v.values || []) as string[][] })
+  }
+  return out
+}
+
 async function gapi(token: string, url: string, init: RequestInit = {}): Promise<any> {
   const res = await fetch(url, {
     ...init,
@@ -621,33 +639,16 @@ function walkParts(payload: any, acc: { text: string[]; html: string[]; att: Ops
   }
   for (const p of payload.parts || []) walkParts(p, acc)
 }
-// Emails are full of entities the old six-replace chain missed (&mdash;
-// &zwnj; &rsquo; …) — they were landing on screen as literal text.
-const HTML_ENT: Record<string, string> = {
-  nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
-  mdash: '—', ndash: '–', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“',
-  hellip: '…', bull: '•', middot: '·', copy: '©', reg: '®', trade: '™', deg: '°',
-  times: '×', divide: '÷', laquo: '«', raquo: '»', cent: '¢', pound: '£', euro: '€',
-  zwnj: '', zwj: '', shy: '', ensp: ' ', emsp: ' ', thinsp: ' ',
-}
-function decodeEntities(s: string): string {
-  const cp = (n: number) => { try { return n > 8 ? String.fromCodePoint(n) : '' } catch { return '' } }
-  return s.replace(/&#x([0-9a-f]{1,6});/gi, (_m, h) => cp(parseInt(h, 16)))
-    .replace(/&#(\d{1,7});/g, (_m, d) => cp(Number(d)))
-    .replace(/&([a-z]{2,8});/gi, (m, n) => { const k = n.toLowerCase(); return k in HTML_ENT ? HTML_ENT[k] : m })
-}
 function htmlToText(h: string): string {
-  return decodeEntities(h.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<head[\s\S]*?<\/head>/gi, '')
+  return h.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '')
     // keep links: "<a href=U>label</a>" → "label U" (the UI renders the
     // URL as a chip; plain forwards keep a working address)
     .replace(/<a\b[^>]*\bhref=["']?(https?:\/\/[^"'\s>]+)["']?[^>]*>([\s\S]*?)<\/a>/gi, (_m, href, inner) => {
       const label = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
       return label && label !== href ? `${label} ${href}` : href
     })
-    .replace(/<br\s*\/?>/gi, '\n').replace(/<\/t[dh]>/gi, '  ')   // cells get a gap, not a squish
-    .replace(/<li\b[^>]*>/gi, '• ').replace(/<\/(p|div|tr|li|h\d|table|ul|ol|blockquote)>/gi, '\n')
-    .replace(/<[^>]+>/g, ''))
+    .replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|tr|li|h\d)>/gi, '\n').replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
     .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
