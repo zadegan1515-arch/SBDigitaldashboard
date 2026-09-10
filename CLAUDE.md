@@ -43,8 +43,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (6 h; daily cron; ↻ Sheet button). Show ids: `sh_<hash>` / `ar_<hash>`. sb-crm's DB is no longer the source.
 - `public/sponsor.html` + `src/app/api/public/{shows,request}` — **brand-facing page**, no sign-in,
   served on `SPONSOR_HOST` (default shows.sboyagency.com; `/` rewrites to it, middleware blocks
-  everything else on that host). Links: `/?state=TX&genre=edm`, hand-picked `/?for=Brand&pick=id,id`
-  (built from the Shows tab checkboxes → "Copy link for this brand"). A submit → `src/lib/sponsor-request.ts`:
+  everything else on that host). Brands browse by date / college / state (`?group=college`), filter by
+  performer (`?performer=dj|singer|rapper|band`, derived in `performerFor` from genre+type) and genre.
+  Links: `/?state=TX&genre=edm`, hand-picked `/?for=Brand&pick=id,id` (built from the Shows tab
+  checkboxes → "Copy link for this brand"). Copied links use `SPONSOR_HOST` only when that env var is
+  set; until Leo attaches the custom domain in Vercel they fall back to `SITE_URL/sponsor.html`. A submit → `src/lib/sponsor-request.ts`:
   Brand + Contact + ShowSponsor(status `requested`) per show + one Deal (source `request`) + email to
   `SPONSOR_REQUEST_TO`. Only brand-safe fields ever leave the public API (no reps, statuses, money).
 - `src/lib/ops.ts` — Operations inbox: rules classifier (contract / invoice_payable / invoice_receivable / other), 90-day backfill scan, reply/forward as "SB Agency Operations".

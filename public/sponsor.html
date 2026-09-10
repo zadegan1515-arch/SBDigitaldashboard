@@ -108,12 +108,13 @@
 
   <div class="bar">
     <div class="seg"><button class="on" data-mode="upcoming">Upcoming</button><button data-mode="past">Past shows</button></div>
+    <div class="seg" id="seg-group"><button class="on" data-group="date">By date</button><button data-group="college">By college</button><button data-group="state">By state</button></div>
     <input class="search" id="q" placeholder="Search artist, school, city…" autocomplete="off">
     <select class="sel" id="f-state"><option value="">All states</option></select>
     <select class="sel" id="f-school"><option value="">All schools</option></select>
     <select class="sel" id="f-month"><option value="">Any month</option></select>
   </div>
-  <div class="chips" id="f-type"></div>
+  <div class="chips" id="f-perf"></div>
   <div class="chips" id="f-genre" style="margin-top:0"></div>
 
   <div class="count" id="count"></div>
@@ -138,21 +139,29 @@
 
 <script>
 (function () {
-  var SHOWS = [], mode = 'upcoming', q = '', fState = '', fSchool = '', fMonth = '', fType = '', fGenre = '';
+  var SHOWS = [], mode = 'upcoming', group = 'date', q = '', fState = '', fSchool = '', fMonth = '', fPerf = '', fGenre = '';
   var picked = {};
   // ?pick=id,id&for=Brand&b=brandId → a hand-picked list for one brand.
-  // ?state=TX&genre=edm&school=…&q=… → open with filters applied.
+  // ?state=TX&genre=edm&performer=dj&school=…&q=…&group=college → open with filters applied.
   var P = new URLSearchParams(location.search);
   var PICK = (P.get('pick') || '').split(',').filter(Boolean);
   var FOR = (P.get('for') || '').slice(0, 80), BRAND_ID = (P.get('b') || '').slice(0, 40);
-  fState = P.get('state') || ''; fGenre = P.get('genre') || ''; fSchool = P.get('school') || ''; fType = P.get('type') || ''; q = P.get('q') || '';
+  fState = P.get('state') || ''; fGenre = P.get('genre') || ''; fSchool = P.get('school') || ''; q = P.get('q') || '';
+  fPerf = (P.get('performer') || '').toLowerCase();
+  var oldType = (P.get('type') || '').toLowerCase();           // pre-performer links
+  if (!fPerf && oldType) fPerf = oldType === 'dj' ? 'dj' : 'band';
+  group = { college: 'college', state: 'state' }[P.get('group')] || 'date';
   if (q) document.getElementById('q').value = q;
+  document.querySelectorAll('#seg-group button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-group') === group); });
   var GENRE_LABEL = { edm: 'EDM / House', 'hip-hop': 'Hip-hop', country: 'Country', pop: 'Pop', band: 'Live band', other: 'Other' };
+  var PERF_LABEL = { dj: 'DJs', singer: 'Singers', rapper: 'Rappers', band: 'Live bands' };
+  var PERF_TAG = { dj: 'DJ', singer: 'Singer', rapper: 'Rapper', band: 'Live band' };
+  var STATE_NAME = { AL:'Alabama', AK:'Alaska', AZ:'Arizona', AR:'Arkansas', CA:'California', CO:'Colorado', CT:'Connecticut', DE:'Delaware', DC:'Washington DC', FL:'Florida', GA:'Georgia', HI:'Hawaii', ID:'Idaho', IL:'Illinois', IN:'Indiana', IA:'Iowa', KS:'Kansas', KY:'Kentucky', LA:'Louisiana', ME:'Maine', MD:'Maryland', MA:'Massachusetts', MI:'Michigan', MN:'Minnesota', MS:'Mississippi', MO:'Missouri', MT:'Montana', NE:'Nebraska', NV:'Nevada', NH:'New Hampshire', NJ:'New Jersey', NM:'New Mexico', NY:'New York', NC:'North Carolina', ND:'North Dakota', OH:'Ohio', OK:'Oklahoma', OR:'Oregon', PA:'Pennsylvania', RI:'Rhode Island', SC:'South Carolina', SD:'South Dakota', TN:'Tennessee', TX:'Texas', UT:'Utah', VT:'Vermont', VA:'Virginia', WA:'Washington', WV:'West Virginia', WI:'Wisconsin', WY:'Wyoming', ON:'Ontario, Canada' };
   var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function d(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso); return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])) : null; }
   function fmt(iso, opts) { var x = d(iso); return x ? x.toLocaleDateString('en-US', Object.assign({ timeZone: 'UTC' }, opts)) : iso; }
-  function typeLabel(t) { return t === 'Live act' ? 'Live act' : t === 'DJ' ? 'DJ' : ''; }
+  function stateName(st) { return STATE_NAME[st] || st || 'Other'; }
 
   function load() {
     document.getElementById('list').innerHTML = '<div class="empty">Loading shows…</div>';
@@ -166,7 +175,7 @@
           document.querySelector('.hero h1').textContent = FOR ? 'Shows we picked for ' + FOR + '.' : 'Shows we picked for you.';
           document.querySelector('.hero p').innerHTML = 'Tick the ones you want to be at and send the request — we\'ll come back with a package. <a href="/sponsor.html" style="color:var(--accent)">See every show →</a>';
           document.getElementById('f-school').style.display = 'none'; document.getElementById('stats').style.display = 'none';
-          if (!only.some(function (s) { return !s.past; })) { mode = 'past'; document.querySelectorAll('.seg button').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-mode') === 'past'); }); }
+          if (!only.some(function (s) { return !s.past; })) { mode = 'past'; document.querySelectorAll('.seg button[data-mode]').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-mode') === 'past'); }); }
           if (only.some(function (s) { return !s.past; })) only.forEach(function (s) { if (!s.past) picked[s.id] = s; });
         }
       }
@@ -187,12 +196,12 @@
 
   function buildFilters() {
     var p = pool();
-    var states = {}, schools = {}, months = {}, types = {}, genres = {};
+    var states = {}, schools = {}, months = {}, perfs = {}, genres = {};
     p.forEach(function (s) {
       if (s.state) states[s.state] = (states[s.state] || 0) + 1;
       schools[s.school] = (schools[s.school] || 0) + 1;
       var k = s.date.slice(0, 7); months[k] = (months[k] || 0) + 1;
-      if (s.type) types[s.type] = (types[s.type] || 0) + 1;
+      perfs[s.performer || 'dj'] = (perfs[s.performer || 'dj'] || 0) + 1;
       genres[s.genre || 'other'] = (genres[s.genre || 'other'] || 0) + 1;
     });
     var opt = function (v, label, n, cur) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label) + (n != null ? ' (' + n + ')' : '') + '</option>'; };
@@ -206,8 +215,8 @@
     document.getElementById('f-month').innerHTML = opt('', 'Any month', null, fMonth) + mo.map(function (x) { return opt(x, MONTHS[+x.slice(5, 7) - 1] + ' ' + x.slice(0, 4), months[x], fMonth); }).join('');
     if (fMonth && !months[fMonth]) fMonth = '';
     var chip = function (k, v, label, n, cur) { return '<button class="chip' + (v === cur ? ' on' : '') + '" data-f="' + k + '" data-v="' + esc(v) + '">' + esc(label) + (n != null ? '<span class="n">' + n + '</span>' : '') + '</button>'; };
-    var ty = Object.keys(types).sort();
-    document.getElementById('f-type').innerHTML = ty.length ? chip('type', '', 'Any act', null, fType) + ty.map(function (x) { return chip('type', x, typeLabel(x), types[x], fType); }).join('') : '';
+    var pf = ['dj', 'singer', 'rapper', 'band'].filter(function (k) { return perfs[k]; });
+    document.getElementById('f-perf').innerHTML = chip('perf', '', 'Any act', null, fPerf) + pf.map(function (x) { return chip('perf', x, PERF_LABEL[x], perfs[x], fPerf); }).join('');
     var ge = ['edm', 'hip-hop', 'country', 'pop', 'band', 'other'].filter(function (g) { return genres[g]; });
     document.getElementById('f-genre').innerHTML = chip('genre', '', 'Any sound', null, fGenre) + ge.map(function (x) { return chip('genre', x, GENRE_LABEL[x] || x, genres[x], fGenre); }).join('');
   }
@@ -218,34 +227,59 @@
       if (fState && s.state !== fState) return false;
       if (fSchool && s.school !== fSchool) return false;
       if (fMonth && s.date.slice(0, 7) !== fMonth) return false;
-      if (fType && s.type !== fType) return false;
+      if (fPerf && (s.performer || 'dj') !== fPerf) return false;
       if (fGenre && (s.genre || 'other') !== fGenre) return false;
       if (qq && [s.artist, s.school, s.schoolShort, s.city, s.state, s.chapter].join(' ').toLowerCase().indexOf(qq) < 0) return false;
       return true;
     });
   }
 
+  // What heads each section of the list, per grouping mode.
+  function sectionKey(s) { return group === 'college' ? s.school : group === 'state' ? (s.state || '') : s.date.slice(0, 7); }
+  function sectionLabel(s, count) {
+    if (group === 'college') {
+      var where = [s.city, s.state].filter(Boolean).join(', ');
+      return esc(s.school) + (where ? ' — ' + esc(where) : '') + ' · ' + count + ' show' + (count === 1 ? '' : 's');
+    }
+    if (group === 'state') return esc(stateName(s.state)) + ' · ' + count + ' show' + (count === 1 ? '' : 's');
+    var mk = s.date.slice(0, 7);
+    return MONTHS[+mk.slice(5, 7) - 1] + ' ' + mk.slice(0, 4);
+  }
+
   function render() {
     var rows = filtered();
-    if (mode === 'past') rows = rows.slice().reverse();
+    if (group === 'date') {
+      if (mode === 'past') rows = rows.slice().reverse();
+    } else {
+      // Alphabetical sections (college name, or state name), dates inside.
+      rows = rows.slice().sort(function (a, b) {
+        var ka = group === 'college' ? a.school : stateName(a.state);
+        var kb = group === 'college' ? b.school : stateName(b.state);
+        if (ka !== kb) return ka < kb ? -1 : 1;
+        if (group === 'state' && a.school !== b.school) return a.school < b.school ? -1 : 1;
+        return a.date < b.date ? -1 : 1;
+      });
+    }
+    var counts = {};
+    rows.forEach(function (s) { var k = sectionKey(s); counts[k] = (counts[k] || 0) + 1; });
     var list = document.getElementById('list');
     var n = Object.keys(picked).length;
     document.getElementById('count').innerHTML = rows.length + (mode === 'past' ? ' past shows' : ' upcoming shows') +
-      (fState || fSchool || fMonth || fType || fGenre || q ? ' · <a id="clear-f">clear filters</a>' : '') +
+      (fState || fSchool || fMonth || fPerf || fGenre || q ? ' · <a id="clear-f">clear filters</a>' : '') +
       (mode === 'upcoming' && rows.length && n < rows.length ? ' · <a id="pick-all">select all shown</a>' : '');
     if (!rows.length) { list.innerHTML = '<div class="empty">No shows match — try fewer filters.</div>'; return; }
-    var h = '', lastMonth = '';
+    var h = '', lastKey = null;
     rows.forEach(function (s) {
-      var mk = s.date.slice(0, 7);
-      if (mk !== lastMonth) { lastMonth = mk; h += '<div class="month">' + MONTHS[+mk.slice(5, 7) - 1] + ' ' + mk.slice(0, 4) + '</div>'; }
+      var mk = sectionKey(s);
+      if (mk !== lastKey) { lastKey = mk; h += '<div class="month">' + sectionLabel(s, counts[mk]) + '</div>'; }
       var on = !!picked[s.id];
       h += '<div class="show' + (on ? ' on' : '') + (s.past ? ' past' : '') + '" data-id="' + esc(s.id) + '">' +
         '<div class="box">' + (on ? '✓' : '') + '</div>' +
         '<div class="date"><b>' + fmt(s.date, { month: 'short', day: 'numeric' }) + '</b><span>' + fmt(s.date, { weekday: 'long' }) + '</span></div>' +
         '<div class="main"><div class="artist">' + esc(s.artist) + '</div>' +
           '<div class="where"><b>' + esc(s.school) + '</b>' + (s.chapter ? ' · ' + esc(s.chapter) : '') + ((s.city || s.state) ? ' · ' + esc([s.city, s.state].filter(Boolean).join(', ')) : '') + '</div></div>' +
-        '<div class="tags">' + (s.state ? '<span class="tag state">' + esc(s.state) + '</span>' : '') +
-          (s.type ? '<span class="tag">' + esc(typeLabel(s.type)) + '</span>' : '') +
+        '<div class="tags">' + (s.state && group !== 'state' ? '<span class="tag state">' + esc(s.state) + '</span>' : '') +
+          '<span class="tag">' + esc(PERF_TAG[s.performer] || 'DJ') + '</span>' +
           (s.genre && s.genre !== 'other' ? '<span class="tag">' + esc(GENRE_LABEL[s.genre] || s.genre) + '</span>' : '') +
           (s.past ? '<span class="tag played">Played</span>' : '') + '</div>' +
       '</div>';
@@ -261,10 +295,16 @@
   }
 
   // events
-  document.querySelectorAll('.seg button').forEach(function (b) {
+  document.querySelectorAll('.seg button[data-mode]').forEach(function (b) {
     b.addEventListener('click', function () {
-      document.querySelectorAll('.seg button').forEach(function (x) { x.classList.remove('on'); });
+      document.querySelectorAll('.seg button[data-mode]').forEach(function (x) { x.classList.remove('on'); });
       b.classList.add('on'); mode = b.getAttribute('data-mode'); fMonth = ''; buildFilters(); render();
+    });
+  });
+  document.querySelectorAll('#seg-group button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('#seg-group button').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on'); group = b.getAttribute('data-group'); render();
     });
   });
   document.getElementById('q').addEventListener('input', function () { q = this.value; render(); });
@@ -273,8 +313,8 @@
   document.getElementById('f-month').addEventListener('change', function () { fMonth = this.value; render(); });
   document.addEventListener('click', function (e) {
     var c = e.target.closest('.chip[data-f]');
-    if (c) { if (c.getAttribute('data-f') === 'type') fType = c.getAttribute('data-v'); else fGenre = c.getAttribute('data-v'); buildFilters(); render(); return; }
-    if (e.target.id === 'clear-f') { q = ''; fState = fSchool = fMonth = fType = fGenre = ''; document.getElementById('q').value = ''; buildFilters(); render(); return; }
+    if (c) { if (c.getAttribute('data-f') === 'perf') fPerf = c.getAttribute('data-v'); else fGenre = c.getAttribute('data-v'); buildFilters(); render(); return; }
+    if (e.target.id === 'clear-f') { q = ''; fState = fSchool = fMonth = fPerf = fGenre = ''; document.getElementById('q').value = ''; buildFilters(); render(); return; }
     if (e.target.id === 'pick-all') { filtered().forEach(function (s) { if (!s.past) picked[s.id] = s; }); render(); return; }
     var row = e.target.closest('.show[data-id]');
     if (row && !row.classList.contains('past')) {

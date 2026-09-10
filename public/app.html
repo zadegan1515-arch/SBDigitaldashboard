@@ -1444,7 +1444,9 @@ function showLine(s) {
 }
 var SHOW_GENRES = ['edm', 'hip-hop', 'country', 'pop', 'band', 'other'];
 var SHOWS_LAST = [];
-var SPONSOR_URL = 'https://shows.sboyagency.com';
+// The brand-facing page URL; listShows sends the real one (custom host
+// when SPONSOR_HOST is set, else this deployment's own /sponsor.html).
+var SPONSOR_URL = location.origin + '/sponsor.html';
 var showsSel = {};
 var showsPick = { state: '', type: '', genre: '' };
 function fmtShowDate(d) {
@@ -4780,7 +4782,7 @@ document.querySelectorAll('.chip[data-shows]').forEach(function (c) {
 
 // Shows tab: brand link, sheet refresh, filter chips, genre override, skipped rows.
 document.getElementById('btn-showlink').addEventListener('click', function () {
-  var url = SPONSOR_URL + '/';
+  var url = SPONSOR_URL;
   navigator.clipboard.writeText(url).then(function () { toast('Brand link copied — ' + url); });
   window.open(url, '_blank', 'noopener');
 });
@@ -4801,7 +4803,7 @@ function showsSendBar() {
 function showsPickLink() {
   var ids = Object.keys(showsSel);
   var name = document.getElementById('shows-sendfor').value.trim();
-  return SPONSOR_URL + '/?' + (name ? 'for=' + encodeURIComponent(name) + '&' : '') + 'pick=' + ids.join(',');
+  return SPONSOR_URL + '?' + (name ? 'for=' + encodeURIComponent(name) + '&' : '') + 'pick=' + ids.join(',');
 }
 document.getElementById('shows-list').addEventListener('change', function (e) {
   var cb = e.target.closest('input[data-showsel]'); if (!cb) return;

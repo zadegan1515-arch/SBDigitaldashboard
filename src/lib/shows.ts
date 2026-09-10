@@ -199,6 +199,18 @@ export function genreFor(artist: string, type: string, overrides: Record<string,
 }
 export const GENRES = ['edm', 'hip-hop', 'country', 'pop', 'band', 'other'] as const
 
+// What kind of act is on stage — the split brands actually think in.
+// Derived from genre (which Leo can already override per artist) plus the
+// sheet's Live act / DJ column, so an override fixes both at once.
+export type Performer = 'dj' | 'singer' | 'rapper' | 'band'
+export function performerFor(s: { type: string; genre: string }): Performer {
+  if (s.genre === 'hip-hop') return 'rapper'
+  if (s.genre === 'band') return 'band'
+  if (s.genre === 'country') return 'singer'
+  if (/live/i.test(s.type)) return 'singer'   // pop/other live acts front a singer
+  return 'dj'                                  // edm, pop DJ-producers, unknowns
+}
+
 // ---- dates ------------------------------------------------------------------
 const MONTHS: Record<string, number> = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 }
 export function parseShowDate(s: string): string | null {
@@ -369,5 +381,5 @@ export async function allShows(): Promise<{ at: string | null; shows: Show[]; up
 
 // What the public page is allowed to see. No rep, no status, no money.
 export function publicShow(s: Show) {
-  return { id: s.id, past: s.past, date: s.date, season: s.season, artist: s.artist, type: s.type, genre: s.genre, school: s.schoolName, schoolShort: s.school, city: s.city, state: s.state, chapter: s.chapter }
+  return { id: s.id, past: s.past, date: s.date, season: s.season, artist: s.artist, type: s.type, performer: performerFor(s), genre: s.genre, school: s.schoolName, schoolShort: s.school, city: s.city, state: s.state, chapter: s.chapter }
 }

@@ -972,8 +972,12 @@ const handlers: Record<string, Handler> = {
       unsold: shows.filter(s => s.sponsors.length === 0).length,
       rejected: cache.rejected.length,
       genres: GENRES,
-      // The brand-facing host (never the dashboard's own URL).
-      sponsorUrl: 'https://' + (process.env.SPONSOR_HOST || 'shows.sboyagency.com'),
+      // The brand-facing page. SPONSOR_HOST only when Leo has actually
+      // attached that domain in Vercel — otherwise its links 404, so the
+      // fallback is the page on the deployment itself, which always works.
+      sponsorUrl: process.env.SPONSOR_HOST
+        ? 'https://' + process.env.SPONSOR_HOST + '/'
+        : (process.env.SITE_URL || 'https://sb-digitaldashboard.vercel.app') + '/sponsor.html',
       shows,
     }
   },
