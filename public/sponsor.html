@@ -140,6 +140,13 @@
 (function () {
   var SHOWS = [], mode = 'upcoming', q = '', fState = '', fSchool = '', fMonth = '', fType = '', fGenre = '';
   var picked = {};
+  // ?pick=id,id&for=Brand&b=brandId → a hand-picked list for one brand.
+  // ?state=TX&genre=edm&school=…&q=… → open with filters applied.
+  var P = new URLSearchParams(location.search);
+  var PICK = (P.get('pick') || '').split(',').filter(Boolean);
+  var FOR = (P.get('for') || '').slice(0, 80), BRAND_ID = (P.get('b') || '').slice(0, 40);
+  fState = P.get('state') || ''; fGenre = P.get('genre') || ''; fSchool = P.get('school') || ''; fType = P.get('type') || ''; q = P.get('q') || '';
+  if (q) document.getElementById('q').value = q;
   var GENRE_LABEL = { edm: 'EDM / House', 'hip-hop': 'Hip-hop', country: 'Country', pop: 'Pop', band: 'Live band', other: 'Other' };
   var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -152,6 +159,17 @@
     fetch('/api/public/shows').then(function (r) { return r.json(); }).then(function (r) {
       if (!r.ok) throw new Error(r.error || 'Could not load');
       SHOWS = r.shows;
+      if (PICK.length) {
+        var only = SHOWS.filter(function (s) { return PICK.indexOf(s.id) >= 0; });
+        if (only.length) {
+          SHOWS = only;
+          document.querySelector('.hero h1').textContent = FOR ? 'Shows we picked for ' + FOR + '.' : 'Shows we picked for you.';
+          document.querySelector('.hero p').innerHTML = 'Tick the ones you want to be at and send the request — we\'ll come back with a package. <a href="/sponsor.html" style="color:var(--accent)">See every show →</a>';
+          document.getElementById('f-school').style.display = 'none'; document.getElementById('stats').style.display = 'none';
+          if (!only.some(function (s) { return !s.past; })) { mode = 'past'; document.querySelectorAll('.seg button').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-mode') === 'past'); }); }
+          if (only.some(function (s) { return !s.past; })) only.forEach(function (s) { if (!s.past) picked[s.id] = s; });
+        }
+      }
       var up = SHOWS.filter(function (s) { return !s.past; });
       var schools = {}, states = {};
       up.forEach(function (s) { schools[s.school] = 1; if (s.state) states[s.state] = 1; });
@@ -276,7 +294,7 @@
     card.innerHTML = '<h2>Request sponsorship</h2><p class="sub">Tell us who you are and we\'ll come back within a business day with options and pricing for these shows.</p>' +
       '<div class="picked">' + list.map(function (s) { return '<div>' + fmt(s.date, { month: 'short', day: 'numeric' }) + ' · <b>' + esc(s.artist) + '</b> · ' + esc(s.school) + (s.state ? ', ' + esc(s.state) : '') + '</div>'; }).join('') + '</div>' +
       '<form id="rq" class="f" autocomplete="on">' +
-        '<div><label>Company / brand</label><input name="company" required maxlength="120"></div>' +
+        '<div><label>Company / brand</label><input name="company" required maxlength="120" value="' + esc(FOR) + '"></div>' +
         '<div><label>Your name</label><input name="name" required maxlength="120"></div>' +
         '<div><label>Work email</label><input name="email" type="email" required maxlength="200"></div>' +
         '<div><label>Phone (optional)</label><input name="phone" maxlength="40"></div>' +
@@ -291,7 +309,7 @@
       ev.preventDefault();
       var f = ev.target, btn = f.querySelector('button[type=submit]'), err = f.querySelector('#rq-err');
       btn.disabled = true; btn.textContent = 'Sending…'; err.textContent = '';
-      var body = { showIds: ids };
+      var body = { showIds: ids, brandId: BRAND_ID || undefined };
       ['company', 'name', 'email', 'phone', 'budget', 'notes', 'website_url'].forEach(function (k) { body[k] = f.elements[k].value; });
       fetch('/api/public/request', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
         .then(function (r) { return r.json(); })

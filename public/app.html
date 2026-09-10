@@ -143,6 +143,7 @@
   .status.replied,.status.confirmed,.status.converted{background:#e4f6ef;color:#12684a}
   .status.drafted,.status.proposed{background:#f0edfb;color:#4a3aa7}
   .status.requested{background:#fff1e6;color:#b4520f}
+  .target.sel{outline:2px solid var(--accent);outline-offset:-2px}
   .status.dead,.status.declined{background:#f6eceb;color:#8f342f}
   .fit{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink-2)}
   .amount{font-variant-numeric:tabular-nums;font-weight:600;min-width:78px;text-align:right}
@@ -438,6 +439,14 @@
         <button class="btn-ghost" id="btn-ratecard">Rate card</button>
       </div>
       <div class="chips" id="shows-filters" style="margin-top:8px;gap:6px" hidden></div>
+      <div id="shows-sendbar" class="panel panel-pad" style="margin:10px 0 0;display:none;align-items:center;gap:10px;flex-wrap:wrap">
+        <b id="shows-sendn">0 selected</b>
+        <input class="field-box" id="shows-sendfor" placeholder="Brand name (shown on the page)" style="width:240px">
+        <button class="btn-solid" id="shows-sendcopy">Copy link for this brand</button>
+        <button class="btn-ghost" id="shows-sendall">Select all shown</button>
+        <button class="btn-ghost" id="shows-sendclear">Clear</button>
+        <span class="hint" id="shows-sendhint" style="margin:0"></span>
+      </div>
       <div id="ratecard-slot"></div>
       <div id="shows-list"></div>
     </section>
@@ -1421,7 +1430,8 @@ function showLine(s) {
   }).join(' ');
   var genreSel = '<select class="field-box" data-genre="' + esc(s.artist) + '" title="Genre shown to brands — change to correct the auto-tag" style="font-size:11px;padding:2px 6px;width:auto">' +
     (SHOW_GENRES).map(function (g) { return '<option value="' + g + '"' + (g === s.genre ? ' selected' : '') + '>' + g + '</option>'; }).join('') + '</select>';
-  return '<div class="target' + (s.past ? ' past' : '') + '" data-show="' + esc(s.id) + '">' +
+  return '<div class="target' + (s.past ? ' past' : '') + (showsSel[s.id] ? ' sel' : '') + '" data-show="' + esc(s.id) + '">' +
+    '<label style="display:flex;align-items:center;padding-right:10px;cursor:pointer" title="Select to send to a brand"><input type="checkbox" data-showsel="' + esc(s.id) + '"' + (showsSel[s.id] ? ' checked' : '') + '></label>' +
     '<div class="t-main">' +
       '<div class="t-line"><span class="t-brand">' + esc(bits) + '</span>' + (s.past ? '<span class="status">played</span>' : '') + '</div>' +
       '<div class="t-meta"><span>' + esc(meta || s.stage) + '</span></div>' +
@@ -1434,6 +1444,8 @@ function showLine(s) {
 }
 var SHOW_GENRES = ['edm', 'hip-hop', 'country', 'pop', 'band', 'other'];
 var SHOWS_LAST = [];
+var SPONSOR_URL = 'https://shows.sboyagency.com';
+var showsSel = {};
 var showsPick = { state: '', type: '', genre: '' };
 function fmtShowDate(d) {
   if (!d) return '';
@@ -1501,7 +1513,7 @@ function loadShows() {
     var shows = d.shows;
     if (showsFilter === 'past') shows = shows.filter(function (s) { return s.past; }).reverse();
     if (showsFilter === 'requested') shows = shows.filter(function (s) { return (s.sponsors || []).some(function (sp) { return sp.status === 'requested'; }); });
-    SHOWS_LAST = shows;
+    SHOWS_LAST = shows; if (d.sponsorUrl) SPONSOR_URL = d.sponsorUrl;
     var when = d.updatedAt ? 'sheet read ' + timeAgo(d.updatedAt) : 'sheet not read yet — connect Google Drive on Activations, then ↻ Sheet';
     document.getElementById('shows-sub').innerHTML =
       esc(shows.length + (showsFilter === 'past' ? ' past shows' : ' confirmed shows') + (showsFilter === 'all' ? ' · ' + d.unsold + ' with no sponsor yet' : '') + ' · ' + when) +
@@ -4768,7 +4780,7 @@ document.querySelectorAll('.chip[data-shows]').forEach(function (c) {
 
 // Shows tab: brand link, sheet refresh, filter chips, genre override, skipped rows.
 document.getElementById('btn-showlink').addEventListener('click', function () {
-  var url = location.origin + '/sponsor.html';
+  var url = SPONSOR_URL + '/';
   navigator.clipboard.writeText(url).then(function () { toast('Brand link copied — ' + url); });
   window.open(url, '_blank', 'noopener');
 });
@@ -4779,6 +4791,36 @@ document.getElementById('btn-showrefresh').addEventListener('click', function ()
     toast(r.count + ' confirmed shows from ' + r.tables + ' table' + (r.tables === 1 ? '' : 's') + ' · ' + r.rejected.length + ' rows skipped');
     loadShows();
   }).catch(function (e) { toast(e.message); }).then(function () { b.disabled = false; b.textContent = '↻ Sheet'; });
+});
+function showsSendBar() {
+  var n = Object.keys(showsSel).length;
+  var bar = document.getElementById('shows-sendbar');
+  bar.style.display = n ? 'flex' : 'none';
+  document.getElementById('shows-sendn').textContent = n + ' selected';
+}
+function showsPickLink() {
+  var ids = Object.keys(showsSel);
+  var name = document.getElementById('shows-sendfor').value.trim();
+  return SPONSOR_URL + '/?' + (name ? 'for=' + encodeURIComponent(name) + '&' : '') + 'pick=' + ids.join(',');
+}
+document.getElementById('shows-list').addEventListener('change', function (e) {
+  var cb = e.target.closest('input[data-showsel]'); if (!cb) return;
+  var id = cb.getAttribute('data-showsel');
+  if (cb.checked) showsSel[id] = true; else delete showsSel[id];
+  cb.closest('.target').classList.toggle('sel', cb.checked);
+  showsSendBar();
+});
+document.getElementById('shows-sendcopy').addEventListener('click', function () {
+  var url = showsPickLink();
+  navigator.clipboard.writeText(url).then(function () { toast('Link copied — paste it into your email to the brand'); document.getElementById('shows-sendhint').textContent = url; });
+});
+document.getElementById('shows-sendall').addEventListener('click', function () {
+  document.querySelectorAll('#shows-list input[data-showsel]').forEach(function (cb) { showsSel[cb.getAttribute('data-showsel')] = true; cb.checked = true; cb.closest('.target').classList.add('sel'); });
+  showsSendBar();
+});
+document.getElementById('shows-sendclear').addEventListener('click', function () {
+  showsSel = {}; document.querySelectorAll('#shows-list input[data-showsel]').forEach(function (cb) { cb.checked = false; cb.closest('.target').classList.remove('sel'); });
+  document.getElementById('shows-sendhint').textContent = ''; showsSendBar();
 });
 document.getElementById('shows-filters').addEventListener('click', function (e) {
   var c = e.target.closest('[data-pick]'); if (!c) return;
