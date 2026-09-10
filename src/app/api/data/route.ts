@@ -972,6 +972,8 @@ const handlers: Record<string, Handler> = {
       unsold: shows.filter(s => s.sponsors.length === 0).length,
       rejected: cache.rejected.length,
       genres: GENRES,
+      // The brand-facing host (never the dashboard's own URL).
+      sponsorUrl: 'https://' + (process.env.SPONSOR_HOST || 'shows.sboyagency.com'),
       shows,
     }
   },
