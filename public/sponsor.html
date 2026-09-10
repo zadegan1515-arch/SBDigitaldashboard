@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sponsor a show — SB Agency</title>
-<meta name="description" content="Pick the college shows you want your brand at. SB Agency books 400+ shows a year across 100+ campuses.">
+<title>SB Agency Show Board</title>
+<meta name="description" content="SB Agency Show Board.">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#0d0d0d">
 <link rel="icon" href="/materials/sb-logo.png">
@@ -85,11 +85,23 @@
   .done h2{margin:8px 0 6px}
   .foot{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);font-size:12.5px;color:var(--ink-3);display:flex;gap:16px;flex-wrap:wrap}
   @media (max-width:640px){
-    .show{grid-template-columns:22px 70px 1fr;gap:10px}
+    .wrap{padding:0 14px 120px}
+    .hero{padding:24px 0 16px}
+    .stats{gap:16px}
+    .bar{gap:8px}
+    .seg button{padding:6px 10px;font-size:12px}
+    .search{order:5;min-width:100%}
+    .sel{order:6;max-width:none;flex:1;min-width:31%;font-size:12px;padding:7px 8px}
+    .show{grid-template-columns:20px 60px 1fr;gap:10px;padding:12px}
     .show .tags{grid-column:2/-1;justify-content:flex-start}
+    .show .main .artist{font-size:16px}
     .f{grid-template-columns:1fr}
-    .hero{padding-top:28px}
-    .sel{max-width:140px}
+    .card{padding:20px}
+    .tray{padding:12px 14px;gap:10px}
+    .tray .n{font-size:13px}
+    .tray .n b{font-size:16px}
+    .tray .clear{padding:8px 12px;font-size:12px}
+    .tray .go{padding:11px 16px;font-size:14px}
   }
 </style>
 </head>
@@ -101,7 +113,7 @@
 
 <div class="wrap">
   <section class="hero">
-    <h1>Pick the shows you want your brand at.</h1>
+    <h1>SB Agency Show Board</h1>
     <p></p>
     <div class="stats" id="stats"></div>
   </section>
@@ -121,13 +133,12 @@
 
   <div class="foot">
     <span>© SB Agency · <a href="https://sboyagency.com">sboyagency.com</a></span>
-    <span>Questions: <a href="mailto:zach@sboyagency.com">zach@sboyagency.com</a></span>
-    <span id="updated"></span>
+    <span><a href="mailto:zach@sboyagency.com">zach@sboyagency.com</a></span>
   </div>
 </div>
 
 <div class="tray" id="tray">
-  <div class="n"><b id="tray-n">0</b> shows selected</div>
+  <div class="n"><b id="tray-n">0</b> selected</div>
   <button class="clear" id="tray-clear">Clear</button>
   <button class="go" id="tray-go">Request sponsorship →</button>
 </div>
@@ -176,8 +187,8 @@
         var only = SHOWS.filter(function (s) { return PICK.indexOf(s.id) >= 0; });
         if (only.length) {
           SHOWS = only;
-          document.querySelector('.hero h1').textContent = FOR ? 'Shows we picked for ' + FOR + '.' : 'Shows we picked for you.';
-          document.querySelector('.hero p').innerHTML = 'Tick the ones you want to be at and send the request — we\'ll come back with a package. <a href="/partnerships" style="color:var(--accent)">See every show →</a>';
+          document.querySelector('.hero h1').textContent = FOR ? 'Shows for ' + FOR : 'SB Agency Show Board';
+          document.querySelector('.hero p').innerHTML = '<a href="/partnerships" style="color:var(--accent)">See every show →</a>';
           document.getElementById('f-school').style.display = 'none'; document.getElementById('stats').style.display = 'none';
           if (!only.some(function (s) { return !s.past; })) { mode = 'past'; document.querySelectorAll('.seg button[data-mode]').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-mode') === 'past'); }); }
           if (only.some(function (s) { return !s.past; })) only.forEach(function (s) { if (!s.past) picked[s.id] = s; });
@@ -191,7 +202,6 @@
         '<div><b>' + Object.keys(schools).length + '</b>schools</div>' +
         '<div><b>' + Object.keys(states).length + '</b>states</div>' +
         '<div><b>' + r.past + '</b>past shows</div>';
-      if (r.updatedAt) document.getElementById('updated').textContent = 'Show list updated ' + new Date(r.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       buildFilters(); render();
     }).catch(function (e) { document.getElementById('list').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
   }
@@ -266,7 +276,7 @@
     var list = document.getElementById('list');
     document.getElementById('count').innerHTML = rows.length + (mode === 'past' ? ' past shows' : ' upcoming shows') +
       (fState || fSchool || fMonth || fPerf || fGenre || q ? ' · <a id="clear-f">clear filters</a>' : '');
-    if (!rows.length) { list.innerHTML = '<div class="empty">No shows match — try fewer filters.</div>'; return; }
+    if (!rows.length) { list.innerHTML = '<div class="empty">No shows match.</div>'; return; }
     var h = '', lastKey = null;
     rows.forEach(function (s) {
       var mk = sectionKey(s);
@@ -331,18 +341,17 @@
     var saved = {};
     try { saved = JSON.parse(localStorage.getItem('sbRequester') || '{}') || {}; } catch (e) { saved = {}; }
     var card = document.getElementById('card');
-    card.innerHTML = '<h2>Request sponsorship</h2><p class="sub">Three fields and you\'re done — we come back within a business day with options and pricing.</p>' +
+    card.innerHTML = '<h2>Request sponsorship</h2>' +
       '<div class="picked">' + list.map(function (s) { return '<div>' + fmt(s.date, { month: 'short', day: 'numeric' }) + ' · <b>' + esc(s.artist) + '</b> · ' + esc(s.school) + (s.state ? ', ' + esc(s.state) : '') + '</div>'; }).join('') + '</div>' +
       '<form id="rq" class="f" autocomplete="on">' +
         '<div class="full"><label>Work email</label><input name="email" type="email" required maxlength="200" autocomplete="email" value="' + esc(saved.email || '') + '"></div>' +
-        '<div><label>Your name</label><input name="name" required maxlength="120" autocomplete="name" value="' + esc(saved.name || '') + '"></div>' +
-        '<div><label>Company / brand</label><input name="company" required maxlength="120" autocomplete="organization" value="' + esc(FOR || saved.company || '') + '"></div>' +
-        '<div class="full"><span class="morelink" id="rq-more">+ Add budget, phone or a note (optional)</span></div>' +
+        '<div><label>Name</label><input name="name" required maxlength="120" autocomplete="name" value="' + esc(saved.name || '') + '"></div>' +
+        '<div><label>Company</label><input name="company" required maxlength="120" autocomplete="organization" value="' + esc(FOR || saved.company || '') + '"></div>' +
+        '<div class="full"><span class="morelink" id="rq-more">Add phone or note</span></div>' +
         '<div class="full" id="rq-extra" hidden>' +
           '<div class="f" style="margin-top:2px">' +
-          '<div><label>Budget range</label><select name="budget"><option value="">Prefer not to say</option><option>Under $5k</option><option>$5k – $15k</option><option>$15k – $50k</option><option>$50k+</option></select></div>' +
           '<div><label>Phone</label><input name="phone" maxlength="40" autocomplete="tel" value="' + esc(saved.phone || '') + '"></div>' +
-          '<div class="full"><label>What are you hoping to do at these shows?</label><textarea name="notes" rows="3" maxlength="2000" placeholder="Sampling, signage, ambassadors, content…"></textarea></div>' +
+          '<div class="full"><label>Note</label><textarea name="notes" rows="3" maxlength="2000"></textarea></div>' +
           '</div>' +
         '</div>' +
         '<div class="hp" aria-hidden="true"><label>Website</label><input name="website_url" tabindex="-1" autocomplete="off"></div>' +
@@ -358,13 +367,13 @@
       var f = ev.target, btn = f.querySelector('button[type=submit]'), err = f.querySelector('#rq-err');
       btn.disabled = true; btn.textContent = 'Sending…'; err.textContent = '';
       var body = { showIds: ids, brandId: BRAND_ID || undefined };
-      ['company', 'name', 'email', 'phone', 'budget', 'notes', 'website_url'].forEach(function (k) { body[k] = f.elements[k].value; });
+      ['company', 'name', 'email', 'phone', 'notes', 'website_url'].forEach(function (k) { body[k] = f.elements[k].value; });
       fetch('/api/public/request', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
         .then(function (r) { return r.json(); })
         .then(function (r) {
           if (!r.ok) throw new Error(r.error || 'Something went wrong');
           try { localStorage.setItem('sbRequester', JSON.stringify({ company: body.company, name: body.name, email: body.email, phone: body.phone })); } catch (e) {}
-          card.innerHTML = '<div class="done"><div class="big">🎉</div><h2>Got it — thank you.</h2><p class="sub">We\'ve got your picks (' + ids.length + ' show' + (ids.length === 1 ? '' : 's') + ') and will be in touch at <b>' + esc(body.email) + '</b>.</p>' +
+          card.innerHTML = '<div class="done"><h2>Request sent</h2><p class="sub">We\'ll be in touch at <b>' + esc(body.email) + '</b>.</p>' +
             '<button class="btn" id="rq-done">Done</button></div>';
           card.querySelector('#rq-done').onclick = function () { document.getElementById('modal').classList.remove('show'); picked = {}; render(); };
         })
