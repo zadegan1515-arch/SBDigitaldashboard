@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sponsor a show — SB Agency</title>
+<meta name="description" content="Pick the college shows you want your brand at. SB Agency books 400+ shows a year across 100+ campuses.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="/materials/sb-logo.png">
+<style>
+  :root{--ink:#111;--ink-2:#444;--ink-3:#7a7a7a;--line:#e6e2dc;--soft:#f6f4f0;--accent:#d9542b;--accent-2:#fdf0ec;--ok:#1d7a4a}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#fff;color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:inherit}
+  button{font:inherit;cursor:pointer}
+  .top{background:#111;color:#fff;padding:14px 20px;display:flex;align-items:center;gap:14px}
+  .top img{height:30px;width:auto;display:block;filter:invert(1)}
+  .top .who{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#bbb}
+  .top .cta{margin-left:auto;font-size:13px;color:#ddd;text-decoration:none}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 20px 120px}
+  .hero{padding:44px 0 22px}
+  .hero h1{font-size:clamp(28px,4.5vw,44px);line-height:1.05;margin:0 0 10px;letter-spacing:-.02em}
+  .hero p{margin:0;color:var(--ink-2);max-width:640px;font-size:16px}
+  .stats{display:flex;gap:22px;flex-wrap:wrap;margin-top:18px;font-size:13px;color:var(--ink-3)}
+  .stats b{color:var(--ink);font-size:20px;display:block;letter-spacing:-.01em}
+  .bar{position:sticky;top:0;background:#fff;z-index:5;border-bottom:1px solid var(--line);padding:12px 0;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+  .seg button{border:0;background:#fff;padding:7px 14px;font-size:13px;font-weight:600;color:var(--ink-2)}
+  .seg button.on{background:#111;color:#fff}
+  .search{flex:1;min-width:200px;border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-size:14px;outline:none}
+  .search:focus{border-color:#111}
+  .sel{border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-size:13px;background:#fff;color:var(--ink);max-width:180px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 4px}
+  .chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:600;color:var(--ink-2)}
+  .chip.on{background:var(--accent-2);border-color:var(--accent);color:var(--accent)}
+  .chip .n{color:var(--ink-3);font-weight:500;margin-left:4px}
+  .lbl{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:16px 0 0}
+  .count{font-size:13px;color:var(--ink-3);margin:14px 0 8px;display:flex;align-items:center;gap:12px}
+  .count a{font-size:12px;color:var(--accent);cursor:pointer}
+  .month{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin:22px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  .show{display:grid;grid-template-columns:24px 92px 1fr auto;gap:14px;align-items:center;padding:12px 10px;border-radius:12px;border:1px solid transparent;cursor:pointer}
+  .show:hover{background:var(--soft)}
+  .show.on{background:var(--accent-2);border-color:var(--accent)}
+  .show.past{cursor:default;opacity:.85}
+  .show .box{width:20px;height:20px;border:1.5px solid #bbb;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;background:#fff}
+  .show.on .box{background:var(--accent);border-color:var(--accent)}
+  .show .date b{display:block;font-size:15px;letter-spacing:-.01em}
+  .show .date span{font-size:12px;color:var(--ink-3)}
+  .show .main .artist{font-weight:700;font-size:16px;letter-spacing:-.01em}
+  .show .main .where{font-size:13.5px;color:var(--ink-2);margin-top:2px}
+  .show .main .where b{font-weight:600;color:var(--ink)}
+  .tags{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .tag{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:999px;background:var(--soft);color:var(--ink-2)}
+  .tag.state{background:#111;color:#fff}
+  .tag.played{background:#eee;color:#777}
+  .empty{padding:50px 10px;text-align:center;color:var(--ink-3)}
+  .tray{position:fixed;left:0;right:0;bottom:0;background:#111;color:#fff;padding:14px 20px;display:flex;align-items:center;gap:14px;transform:translateY(110%);transition:transform .2s;z-index:20;box-shadow:0 -6px 30px rgba(0,0,0,.18)}
+  .tray.show{transform:none}
+  .tray .n{font-size:14px}
+  .tray .n b{font-size:18px}
+  .tray .go{margin-left:auto;background:var(--accent);color:#fff;border:0;border-radius:999px;padding:12px 22px;font-weight:700;font-size:15px}
+  .tray .clear{background:transparent;border:1px solid #444;color:#ccc;border-radius:999px;padding:9px 14px;font-size:13px}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:20px;z-index:30}
+  .modal.show{display:flex}
+  .card{background:#fff;border-radius:18px;max-width:560px;width:100%;max-height:92vh;overflow:auto;padding:26px}
+  .card h2{margin:0 0 4px;font-size:22px;letter-spacing:-.01em}
+  .card .sub{color:var(--ink-3);font-size:13.5px;margin:0 0 16px}
+  .picked{background:var(--soft);border-radius:12px;padding:10px 14px;font-size:13px;margin-bottom:16px;max-height:160px;overflow:auto}
+  .picked div{padding:2px 0}
+  .f{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+  .f .full{grid-column:1/-1}
+  .f label{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+  .f input,.f textarea,.f select{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;outline:none;background:#fff}
+  .f input:focus,.f textarea:focus{border-color:#111}
+  .hp{position:absolute;left:-9999px;opacity:0;height:0;overflow:hidden}
+  .actions{display:flex;gap:10px;align-items:center;margin-top:18px}
+  .btn{background:#111;color:#fff;border:0;border-radius:999px;padding:12px 22px;font-weight:700}
+  .btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  .btn[disabled]{opacity:.6;cursor:default}
+  .err{color:#b3261e;font-size:13px}
+  .done{text-align:center;padding:20px 0}
+  .done .big{font-size:44px}
+  .done h2{margin:8px 0 6px}
+  .foot{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);font-size:12.5px;color:var(--ink-3);display:flex;gap:16px;flex-wrap:wrap}
+  @media (max-width:640px){
+    .top .cta{display:none}
+    .show{grid-template-columns:22px 70px 1fr;gap:10px}
+    .show .tags{grid-column:2/-1;justify-content:flex-start}
+    .f{grid-template-columns:1fr}
+    .hero{padding-top:28px}
+    .sel{max-width:140px}
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <img src="/materials/sb-logo.png" alt="SB Agency">
+  <div class="who">Brand partnerships</div>
+  <a class="cta" href="mailto:zach@sboyagency.com">zach@sboyagency.com</a>
+</header>
+
+<div class="wrap">
+  <section class="hero">
+    <h1>Pick the shows you want your brand at.</h1>
+    <p>SB Agency books DJs and live acts for fraternity and campus events across the country. Browse what's coming up, filter by state, school or sound, tick the ones that fit, and we'll come back with a package.</p>
+    <div class="stats" id="stats"></div>
+  </section>
+
+  <div class="bar">
+    <div class="seg"><button class="on" data-mode="upcoming">Upcoming</button><button data-mode="past">Past shows</button></div>
+    <input class="search" id="q" placeholder="Search artist, school, city…" autocomplete="off">
+    <select class="sel" id="f-state"><option value="">All states</option></select>
+    <select class="sel" id="f-school"><option value="">All schools</option></select>
+    <select class="sel" id="f-month"><option value="">Any month</option></select>
+  </div>
+  <div class="chips" id="f-type"></div>
+  <div class="chips" id="f-genre" style="margin-top:0"></div>
+
+  <div class="count" id="count"></div>
+  <div id="list"></div>
+
+  <div class="foot">
+    <span>© SB Agency · <a href="https://sboyagency.com">sboyagency.com</a></span>
+    <span>Questions: <a href="mailto:zach@sboyagency.com">zach@sboyagency.com</a></span>
+    <span id="updated"></span>
+  </div>
+</div>
+
+<div class="tray" id="tray">
+  <div class="n"><b id="tray-n">0</b> shows selected</div>
+  <button class="clear" id="tray-clear">Clear</button>
+  <button class="go" id="tray-go">Request sponsorship →</button>
+</div>
+
+<div class="modal" id="modal">
+  <div class="card" id="card"></div>
+</div>
+
+<script>
+(function () {
+  var SHOWS = [], mode = 'upcoming', q = '', fState = '', fSchool = '', fMonth = '', fType = '', fGenre = '';
+  var picked = {};
+  var GENRE_LABEL = { edm: 'EDM / House', 'hip-hop': 'Hip-hop', country: 'Country', pop: 'Pop', band: 'Live band', other: 'Other' };
+  var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function d(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso); return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])) : null; }
+  function fmt(iso, opts) { var x = d(iso); return x ? x.toLocaleDateString('en-US', Object.assign({ timeZone: 'UTC' }, opts)) : iso; }
+  function typeLabel(t) { return t === 'Live act' ? 'Live act' : t === 'DJ' ? 'DJ' : ''; }
+
+  function load() {
+    document.getElementById('list').innerHTML = '<div class="empty">Loading shows…</div>';
+    fetch('/api/public/shows').then(function (r) { return r.json(); }).then(function (r) {
+      if (!r.ok) throw new Error(r.error || 'Could not load');
+      SHOWS = r.shows;
+      var up = SHOWS.filter(function (s) { return !s.past; });
+      var schools = {}, states = {};
+      up.forEach(function (s) { schools[s.school] = 1; if (s.state) states[s.state] = 1; });
+      document.getElementById('stats').innerHTML =
+        '<div><b>' + r.upcoming + '</b>upcoming shows</div>' +
+        '<div><b>' + Object.keys(schools).length + '</b>schools</div>' +
+        '<div><b>' + Object.keys(states).length + '</b>states</div>' +
+        '<div><b>' + r.past + '</b>past shows</div>';
+      if (r.updatedAt) document.getElementById('updated').textContent = 'Show list updated ' + new Date(r.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      buildFilters(); render();
+    }).catch(function (e) { document.getElementById('list').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+  }
+
+  function pool() { return SHOWS.filter(function (s) { return mode === 'past' ? s.past : !s.past; }); }
+
+  function buildFilters() {
+    var p = pool();
+    var states = {}, schools = {}, months = {}, types = {}, genres = {};
+    p.forEach(function (s) {
+      if (s.state) states[s.state] = (states[s.state] || 0) + 1;
+      schools[s.school] = (schools[s.school] || 0) + 1;
+      var k = s.date.slice(0, 7); months[k] = (months[k] || 0) + 1;
+      if (s.type) types[s.type] = (types[s.type] || 0) + 1;
+      genres[s.genre || 'other'] = (genres[s.genre || 'other'] || 0) + 1;
+    });
+    var opt = function (v, label, n, cur) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label) + (n != null ? ' (' + n + ')' : '') + '</option>'; };
+    var st = Object.keys(states).sort();
+    document.getElementById('f-state').innerHTML = opt('', 'All states', null, fState) + st.map(function (x) { return opt(x, x, states[x], fState); }).join('');
+    if (fState && !states[fState]) fState = '';
+    var sc = Object.keys(schools).sort();
+    document.getElementById('f-school').innerHTML = opt('', 'All schools', null, fSchool) + sc.map(function (x) { return opt(x, x, schools[x], fSchool); }).join('');
+    if (fSchool && !schools[fSchool]) fSchool = '';
+    var mo = Object.keys(months).sort(); if (mode === 'past') mo.reverse();
+    document.getElementById('f-month').innerHTML = opt('', 'Any month', null, fMonth) + mo.map(function (x) { return opt(x, MONTHS[+x.slice(5, 7) - 1] + ' ' + x.slice(0, 4), months[x], fMonth); }).join('');
+    if (fMonth && !months[fMonth]) fMonth = '';
+    var chip = function (k, v, label, n, cur) { return '<button class="chip' + (v === cur ? ' on' : '') + '" data-f="' + k + '" data-v="' + esc(v) + '">' + esc(label) + (n != null ? '<span class="n">' + n + '</span>' : '') + '</button>'; };
+    var ty = Object.keys(types).sort();
+    document.getElementById('f-type').innerHTML = ty.length ? chip('type', '', 'Any act', null, fType) + ty.map(function (x) { return chip('type', x, typeLabel(x), types[x], fType); }).join('') : '';
+    var ge = ['edm', 'hip-hop', 'country', 'pop', 'band', 'other'].filter(function (g) { return genres[g]; });
+    document.getElementById('f-genre').innerHTML = chip('genre', '', 'Any sound', null, fGenre) + ge.map(function (x) { return chip('genre', x, GENRE_LABEL[x] || x, genres[x], fGenre); }).join('');
+  }
+
+  function filtered() {
+    var qq = q.trim().toLowerCase();
+    return pool().filter(function (s) {
+      if (fState && s.state !== fState) return false;
+      if (fSchool && s.school !== fSchool) return false;
+      if (fMonth && s.date.slice(0, 7) !== fMonth) return false;
+      if (fType && s.type !== fType) return false;
+      if (fGenre && (s.genre || 'other') !== fGenre) return false;
+      if (qq && [s.artist, s.school, s.schoolShort, s.city, s.state, s.chapter].join(' ').toLowerCase().indexOf(qq) < 0) return false;
+      return true;
+    });
+  }
+
+  function render() {
+    var rows = filtered();
+    if (mode === 'past') rows = rows.slice().reverse();
+    var list = document.getElementById('list');
+    var n = Object.keys(picked).length;
+    document.getElementById('count').innerHTML = rows.length + (mode === 'past' ? ' past shows' : ' upcoming shows') +
+      (fState || fSchool || fMonth || fType || fGenre || q ? ' · <a id="clear-f">clear filters</a>' : '') +
+      (mode === 'upcoming' && rows.length && n < rows.length ? ' · <a id="pick-all">select all shown</a>' : '');
+    if (!rows.length) { list.innerHTML = '<div class="empty">No shows match — try fewer filters.</div>'; return; }
+    var h = '', lastMonth = '';
+    rows.forEach(function (s) {
+      var mk = s.date.slice(0, 7);
+      if (mk !== lastMonth) { lastMonth = mk; h += '<div class="month">' + MONTHS[+mk.slice(5, 7) - 1] + ' ' + mk.slice(0, 4) + '</div>'; }
+      var on = !!picked[s.id];
+      h += '<div class="show' + (on ? ' on' : '') + (s.past ? ' past' : '') + '" data-id="' + esc(s.id) + '">' +
+        '<div class="box">' + (on ? '✓' : '') + '</div>' +
+        '<div class="date"><b>' + fmt(s.date, { month: 'short', day: 'numeric' }) + '</b><span>' + fmt(s.date, { weekday: 'long' }) + '</span></div>' +
+        '<div class="main"><div class="artist">' + esc(s.artist) + '</div>' +
+          '<div class="where"><b>' + esc(s.school) + '</b>' + (s.chapter ? ' · ' + esc(s.chapter) : '') + ((s.city || s.state) ? ' · ' + esc([s.city, s.state].filter(Boolean).join(', ')) : '') + '</div></div>' +
+        '<div class="tags">' + (s.state ? '<span class="tag state">' + esc(s.state) + '</span>' : '') +
+          (s.type ? '<span class="tag">' + esc(typeLabel(s.type)) + '</span>' : '') +
+          (s.genre && s.genre !== 'other' ? '<span class="tag">' + esc(GENRE_LABEL[s.genre] || s.genre) + '</span>' : '') +
+          (s.past ? '<span class="tag played">Played</span>' : '') + '</div>' +
+      '</div>';
+    });
+    list.innerHTML = h;
+    tray();
+  }
+
+  function tray() {
+    var n = Object.keys(picked).length;
+    document.getElementById('tray-n').textContent = n;
+    document.getElementById('tray').classList.toggle('show', n > 0);
+  }
+
+  // events
+  document.querySelectorAll('.seg button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.seg button').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on'); mode = b.getAttribute('data-mode'); fMonth = ''; buildFilters(); render();
+    });
+  });
+  document.getElementById('q').addEventListener('input', function () { q = this.value; render(); });
+  document.getElementById('f-state').addEventListener('change', function () { fState = this.value; render(); });
+  document.getElementById('f-school').addEventListener('change', function () { fSchool = this.value; render(); });
+  document.getElementById('f-month').addEventListener('change', function () { fMonth = this.value; render(); });
+  document.addEventListener('click', function (e) {
+    var c = e.target.closest('.chip[data-f]');
+    if (c) { if (c.getAttribute('data-f') === 'type') fType = c.getAttribute('data-v'); else fGenre = c.getAttribute('data-v'); buildFilters(); render(); return; }
+    if (e.target.id === 'clear-f') { q = ''; fState = fSchool = fMonth = fType = fGenre = ''; document.getElementById('q').value = ''; buildFilters(); render(); return; }
+    if (e.target.id === 'pick-all') { filtered().forEach(function (s) { if (!s.past) picked[s.id] = s; }); render(); return; }
+    var row = e.target.closest('.show[data-id]');
+    if (row && !row.classList.contains('past')) {
+      var id = row.getAttribute('data-id');
+      if (picked[id]) delete picked[id]; else picked[id] = SHOWS.filter(function (s) { return s.id === id; })[0];
+      row.classList.toggle('on', !!picked[id]); row.querySelector('.box').textContent = picked[id] ? '✓' : '';
+      tray();
+    }
+  });
+  document.getElementById('tray-clear').addEventListener('click', function () { picked = {}; render(); });
+  document.getElementById('tray-go').addEventListener('click', openForm);
+
+  function openForm() {
+    var ids = Object.keys(picked); if (!ids.length) return;
+    var list = ids.map(function (id) { return picked[id]; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    var card = document.getElementById('card');
+    card.innerHTML = '<h2>Request sponsorship</h2><p class="sub">Tell us who you are and we\'ll come back within a business day with options and pricing for these shows.</p>' +
+      '<div class="picked">' + list.map(function (s) { return '<div>' + fmt(s.date, { month: 'short', day: 'numeric' }) + ' · <b>' + esc(s.artist) + '</b> · ' + esc(s.school) + (s.state ? ', ' + esc(s.state) : '') + '</div>'; }).join('') + '</div>' +
+      '<form id="rq" class="f" autocomplete="on">' +
+        '<div><label>Company / brand</label><input name="company" required maxlength="120"></div>' +
+        '<div><label>Your name</label><input name="name" required maxlength="120"></div>' +
+        '<div><label>Work email</label><input name="email" type="email" required maxlength="200"></div>' +
+        '<div><label>Phone (optional)</label><input name="phone" maxlength="40"></div>' +
+        '<div class="full"><label>Budget range (optional)</label><select name="budget"><option value="">Prefer not to say</option><option>Under $5k</option><option>$5k – $15k</option><option>$15k – $50k</option><option>$50k+</option></select></div>' +
+        '<div class="full"><label>What are you hoping to do at these shows? (optional)</label><textarea name="notes" rows="3" maxlength="2000" placeholder="Sampling, signage, ambassadors, content…"></textarea></div>' +
+        '<div class="hp" aria-hidden="true"><label>Website</label><input name="website_url" tabindex="-1" autocomplete="off"></div>' +
+        '<div class="full actions"><button class="btn" type="submit">Send request</button><button class="btn ghost" type="button" id="rq-cancel">Back</button><span class="err" id="rq-err"></span></div>' +
+      '</form>';
+    document.getElementById('modal').classList.add('show');
+    card.querySelector('#rq-cancel').onclick = function () { document.getElementById('modal').classList.remove('show'); };
+    card.querySelector('#rq').onsubmit = function (ev) {
+      ev.preventDefault();
+      var f = ev.target, btn = f.querySelector('button[type=submit]'), err = f.querySelector('#rq-err');
+      btn.disabled = true; btn.textContent = 'Sending…'; err.textContent = '';
+      var body = { showIds: ids };
+      ['company', 'name', 'email', 'phone', 'budget', 'notes', 'website_url'].forEach(function (k) { body[k] = f.elements[k].value; });
+      fetch('/api/public/request', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function (r) { return r.json(); })
+        .then(function (r) {
+          if (!r.ok) throw new Error(r.error || 'Something went wrong');
+          card.innerHTML = '<div class="done"><div class="big">🎉</div><h2>Got it — thank you.</h2><p class="sub">We\'ve got your picks (' + ids.length + ' show' + (ids.length === 1 ? '' : 's') + ') and will be in touch at <b>' + esc(body.email) + '</b>.</p>' +
+            '<button class="btn" id="rq-done">Done</button></div>';
+          card.querySelector('#rq-done').onclick = function () { document.getElementById('modal').classList.remove('show'); picked = {}; render(); };
+        })
+        .catch(function (e) { err.textContent = e.message; btn.disabled = false; btn.textContent = 'Send request'; });
+    };
+  }
+  document.getElementById('modal').addEventListener('click', function (e) { if (e.target === this) this.classList.remove('show'); });
+
+  load();
+})();
+</script>
+</body>
+</html>

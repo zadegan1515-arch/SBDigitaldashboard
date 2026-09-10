@@ -142,6 +142,7 @@
   .status.sent{background:#e9f1fb;color:#1c5cab}
   .status.replied,.status.confirmed,.status.converted{background:#e4f6ef;color:#12684a}
   .status.drafted,.status.proposed{background:#f0edfb;color:#4a3aa7}
+  .status.requested{background:#fff1e6;color:#b4520f}
   .status.dead,.status.declined{background:#f6eceb;color:#8f342f}
   .fit{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink-2)}
   .amount{font-variant-numeric:tabular-nums;font-weight:600;min-width:78px;text-align:right}
@@ -429,9 +430,14 @@
       <div class="chips" style="margin-top:22px;align-items:center">
         <button class="chip active" data-shows="all">Confirmed</button>
         <button class="chip" data-shows="unsold">Unsold only</button>
+        <button class="chip" data-shows="requested">Requested by brands</button>
+        <button class="chip" data-shows="past">Past shows</button>
         <button class="chip" data-shows="leads">All leads (CRM)</button>
-        <button class="btn-ghost" id="btn-ratecard" style="margin-left:auto">Rate card</button>
+        <button class="btn-ghost" id="btn-showlink" style="margin-left:auto" title="Public page where brands pick shows to sponsor">Brand link</button>
+        <button class="btn-ghost" id="btn-showrefresh" title="Re-read the CRM sheet now">↻ Sheet</button>
+        <button class="btn-ghost" id="btn-ratecard">Rate card</button>
       </div>
+      <div class="chips" id="shows-filters" style="margin-top:8px;gap:6px" hidden></div>
       <div id="ratecard-slot"></div>
       <div id="shows-list"></div>
     </section>
@@ -444,6 +450,7 @@
       <div class="chips" style="margin-top:22px">
         <button class="chip active" data-spon="all">All</button>
         <button class="chip" data-spon="confirmed">Confirmed</button>
+        <button class="chip" data-spon="requested">Requested</button>
         <button class="chip" data-spon="proposed">Proposed</button>
         <button class="chip" data-spon="declined">Declined</button>
         <select class="inp" id="spon-owner" style="margin-left:6px"><option value="all">Everyone</option></select>
@@ -687,6 +694,16 @@ function when(iso) {
   if (!iso) return '';
   var d = new Date(iso);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+function timeAgo(iso) {
+  var ms = Date.now() - new Date(iso).getTime();
+  if (isNaN(ms)) return '';
+  var m = Math.round(ms / 60000);
+  if (m < 2) return 'just now';
+  if (m < 60) return m + ' min ago';
+  var h = Math.round(m / 60);
+  if (h < 36) return h + ' h ago';
+  return Math.round(h / 24) + ' days ago';
 }
 
 function ownerOptions(selected) {
@@ -1307,7 +1324,7 @@ function openSponsorEditor(s, row) {
   wrap.innerHTML =
     '<div class="row2" style="margin-bottom:10px">' +
       '<div><label class="lbl">Status</label><select class="field-box" id="se-status">' +
-        ['proposed', 'confirmed', 'declined'].map(function (v) {
+        ['requested', 'proposed', 'confirmed', 'declined'].map(function (v) {
           return '<option value="' + v + '"' + (v === s.status ? ' selected' : '') + '>' + v + '</option>';
         }).join('') + '</select></div>' +
       '<div><label class="lbl">Value (dollars)</label>' +
@@ -1397,24 +1414,54 @@ var SHOWS_BY_ID = {};
 function showLine(s) {
   SHOWS_BY_ID[s.id] = s;
   var bits = [s.school, s.chapter].filter(Boolean).join(' · ');
-  var meta = [s.eventDate, s.artist, s.attendance ? s.attendance + ' expected' : null,
-              s.venue, s.rep ? 'rep ' + s.rep : null].filter(Boolean).join(' · ');
+  var where = [s.city, s.state].filter(Boolean).join(', ');
+  var meta = [fmtShowDate(s.eventDate), s.artist, s.type || null, where || null, s.rep ? 'rep ' + s.rep : null].filter(Boolean).join(' · ');
   var sponsors = (s.sponsors || []).map(function (sp) {
-    return '<span class="status ' + esc(sp.status) + '">' + esc(sp.brandName) + '</span>';
+    return '<span class="status ' + esc(sp.status) + '">' + esc(sp.brandName) + (sp.status === 'requested' ? ' · requested' : '') + '</span>';
   }).join(' ');
-  var suggested = suggestedShowValue(s.attendance);
-  return '<div class="target" data-show="' + esc(s.id) + '">' +
+  var genreSel = '<select class="field-box" data-genre="' + esc(s.artist) + '" title="Genre shown to brands — change to correct the auto-tag" style="font-size:11px;padding:2px 6px;width:auto">' +
+    (SHOW_GENRES).map(function (g) { return '<option value="' + g + '"' + (g === s.genre ? ' selected' : '') + '>' + g + '</option>'; }).join('') + '</select>';
+  return '<div class="target' + (s.past ? ' past' : '') + '" data-show="' + esc(s.id) + '">' +
     '<div class="t-main">' +
-      '<div class="t-line"><span class="t-brand">' + esc(bits) + '</span></div>' +
-      '<div class="t-meta"><span>' + esc(meta || s.stage) + '</span>' +
-        (suggested ? '<span>· <span class="fit">worth ~' + money(suggested) + '</span></span>' : '') +
-      '</div>' +
+      '<div class="t-line"><span class="t-brand">' + esc(bits) + '</span>' + (s.past ? '<span class="status">played</span>' : '') + '</div>' +
+      '<div class="t-meta"><span>' + esc(meta || s.stage) + '</span></div>' +
     '</div>' +
-    '<div class="t-actions">' +
+    '<div class="t-actions">' + genreSel +
       (sponsors || '<span style="font-size:12px;color:var(--ink-3)">unsold</span>') +
       '<button class="btn-ghost" data-showact="addsponsor">+ Add sponsor</button>' +
     '</div>' +
   '</div>';
+}
+var SHOW_GENRES = ['edm', 'hip-hop', 'country', 'pop', 'band', 'other'];
+var SHOWS_LAST = [];
+var showsPick = { state: '', type: '', genre: '' };
+function fmtShowDate(d) {
+  if (!d) return '';
+  var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
+  if (!m) return d;
+  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+// State / type / genre chips built from whatever is in the list.
+function renderShowFilters(shows) {
+  var box = document.getElementById('shows-filters');
+  var states = {}, types = {}, genres = {};
+  shows.forEach(function (s) { if (s.state) states[s.state] = 1; if (s.type) types[s.type] = 1; if (s.genre) genres[s.genre] = 1; });
+  var chip = function (k, v, label) { return '<button class="chip' + (showsPick[k] === v ? ' active' : '') + '" data-pick="' + k + '" data-val="' + esc(v) + '">' + esc(label) + '</button>'; };
+  var h = '';
+  var st = Object.keys(states).sort();
+  if (st.length > 1) h += '<span style="font-size:11px;color:var(--ink-3);margin-right:2px">State</span>' + chip('state', '', 'All') + st.map(function (x) { return chip('state', x, x); }).join('');
+  var ty = Object.keys(types).sort();
+  if (ty.length > 1) h += '<span style="font-size:11px;color:var(--ink-3);margin:0 2px 0 10px">Type</span>' + chip('type', '', 'All') + ty.map(function (x) { return chip('type', x, x); }).join('');
+  var ge = Object.keys(genres).sort();
+  if (ge.length > 1) h += '<span style="font-size:11px;color:var(--ink-3);margin:0 2px 0 10px">Genre</span>' + chip('genre', '', 'All') + ge.map(function (x) { return chip('genre', x, x); }).join('');
+  box.innerHTML = h; box.hidden = !h;
+}
+function applyShowFilters() {
+  var list = SHOWS_LAST.filter(function (s) {
+    return (!showsPick.state || s.state === showsPick.state) && (!showsPick.type || s.type === showsPick.type) && (!showsPick.genre || s.genre === showsPick.genre);
+  });
+  var box = document.getElementById('shows-list');
+  box.innerHTML = list.length ? list.map(showLine).join('') : '<div class="panel"><div class="empty"><h3>Nothing matches those filters</h3></div></div>';
 }
 
 function loadShows() {
@@ -1450,20 +1497,25 @@ function loadShows() {
     });
   }
 
-  return api('listShows', { onlyUnsold: showsFilter === 'unsold' }).then(function (d) {
-    if (!d.connected) {
-      document.getElementById('shows-sub').textContent = 'Not connected to the CRM';
-      box.innerHTML = '<div class="panel"><div class="empty"><h3>CRM not connected</h3>' +
-        '<p>Add CRM_DATABASE_URL in Vercel and redeploy. Until then shows can\'t be read.</p></div></div>';
+  return api('listShows', { onlyUnsold: showsFilter === 'unsold', includePast: showsFilter === 'past' }).then(function (d) {
+    var shows = d.shows;
+    if (showsFilter === 'past') shows = shows.filter(function (s) { return s.past; }).reverse();
+    if (showsFilter === 'requested') shows = shows.filter(function (s) { return (s.sponsors || []).some(function (sp) { return sp.status === 'requested'; }); });
+    SHOWS_LAST = shows;
+    var when = d.updatedAt ? 'sheet read ' + timeAgo(d.updatedAt) : 'sheet not read yet — connect Google Drive on Activations, then ↻ Sheet';
+    document.getElementById('shows-sub').innerHTML =
+      esc(shows.length + (showsFilter === 'past' ? ' past shows' : ' confirmed shows') + (showsFilter === 'all' ? ' · ' + d.unsold + ' with no sponsor yet' : '') + ' · ' + when) +
+      (d.rejected ? ' · <a data-showrejects style="cursor:pointer;text-decoration:underline">' + d.rejected + ' sheet rows skipped</a>' : '');
+    if (showsFilter === 'all') document.getElementById('nav-shows').textContent = d.total || '';
+    renderShowFilters(shows);
+    if (!shows.length) {
+      box.innerHTML = '<div class="panel"><div class="empty"><h3>' + (showsFilter === 'requested' ? 'No brand requests yet' : 'No confirmed shows') + '</h3>' +
+        (showsFilter === 'requested' ? '<p>When a brand picks shows on the brand link, they appear here.</p>' :
+        '<p>A show counts as confirmed when its row in the CRM sheet has a booked status <b>and</b> a date, an artist and a school.' +
+        (d.updatedAt ? '' : ' Connect Google Drive (Activations page) and press ↻ Sheet.') + '</p>') + '</div></div>';
       return;
     }
-    document.getElementById('shows-sub').textContent =
-      d.total + ' confirmed shows · ' + d.unsold + ' with no sponsor yet';
-    document.getElementById('nav-shows').textContent = d.total || '';
-    box.innerHTML = d.shows.length ? d.shows.map(showLine).join('')
-      : '<div class="panel"><div class="empty"><h3>No confirmed shows</h3>' +
-        '<p>A show appears here once its lead reaches <b>stage 13 or later</b> (confirmed or completed), ' +
-        'or its deal is <b>Offer Confirmed</b> or <b>Signed</b> in the current season.</p></div></div>';
+    applyShowFilters();
   }).catch(function (e) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
       esc(e.message) + '</p></div></div>';
@@ -4081,25 +4133,9 @@ function loadOperations(filter) {
 // Strips quoted history + signatures, then pulls out the money, the
 // deadline, the invoice number, and the sentences that ask for things.
 
-// Bodies pulled in before the server learned to decode entities still
-// carry them ("&mdash;", "&zwnj;", "&#8217;") \u2014 decode at render time.
-var OPS_ENT = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
-  mdash: '\u2014', ndash: '\u2013', rsquo: '\u2019', lsquo: '\u2018', rdquo: '\u201D', ldquo: '\u201C',
-  hellip: '\u2026', bull: '\u2022', middot: '\u00B7', copy: '\u00A9', reg: '\u00AE', trade: '\u2122', deg: '\u00B0',
-  times: '\u00D7', divide: '\u00F7', laquo: '\u00AB', raquo: '\u00BB', cent: '\u00A2', pound: '\u00A3', euro: '\u20AC',
-  zwnj: '', zwj: '', shy: '', ensp: ' ', emsp: ' ', thinsp: ' ' };
-function opsDecodeEntities(s) {
-  function cp(n) { try { return n > 8 ? String.fromCodePoint(n) : ''; } catch (e) { return ''; } }
-  return String(s || '')
-    .replace(/&#x([0-9a-f]{1,6});/gi, function (_m, h) { return cp(parseInt(h, 16)); })
-    .replace(/&#(\d{1,7});/g, function (_m, d) { return cp(Number(d)); })
-    .replace(/&([a-z]{2,8});/gi, function (m, n) { var k = n.toLowerCase(); return k in OPS_ENT ? OPS_ENT[k] : m; });
-}
-
 function opsCleanBody(raw) {
-  // decode leftover entities, drop invisible spacer chars marketing
-  // senders pad preheaders with
-  raw = opsDecodeEntities(raw).replace(/[\u200B\u200C\u200D\u2060\uFEFF\u00AD\u034F]/g, '');
+  // invisible spacer chars marketing senders pad preheaders with
+  raw = String(raw || '').replace(/[\u200B\u200C\u200D\u2060\uFEFF\u00AD\u034F]/g, '');
   var lines = raw.replace(/\r/g, '').split('\n'), out = [];
   for (var i = 0; i < lines.length; i++) {
     var L = lines[i];
@@ -4208,7 +4244,7 @@ function opsRowSummary(m, ex) {
   var bits = [];
   if (ex.invoiceNo) bits.push('#' + ex.invoiceNo);
   if (ex.asks.length) bits.push(ex.asks[0]);
-  return opsStripUrls(bits.length ? bits.join(' · ') : opsDecodeEntities(m.snippet || ''));
+  return opsStripUrls(bits.length ? bits.join(' · ') : (m.snippet || ''));
 }
 
 function renderOps(r) {
@@ -4342,8 +4378,8 @@ function renderOpsDetail(m, links) {
   }
 
   // the message itself, quoted history stripped (toggle to see all of it)
-  var raw = opsDecodeEntities(m.body || m.snippet || '(empty)');
-  var clean = opsCleanBody(m.body || m.snippet || '(empty)') || raw;
+  var raw = m.body || m.snippet || '(empty)';
+  var clean = opsCleanBody(raw) || raw;
   var trimmed = clean.length < raw.length - 80;
   h += '<div class="ops-body-text" data-ops-bodytext>' + opsLinkChips(clean) + '</div>';
   if (trimmed) h += '<a data-ops-raw style="cursor:pointer;font-size:12px;color:var(--ink-3);text-decoration:underline">Show quoted history &amp; signature</a>' +
@@ -4559,6 +4595,13 @@ function gotoView(id) {
   else toast('Ops mailbox connect failed: ' + o);
 })();
 
+// Deep link: #brand/<id> (used by sponsor-request emails)
+(function () {
+  var m = /^#brand\/([^\/]+)/.exec(location.hash || '');
+  if (!m) return;
+  setTimeout(function () { loadBrand(m[1]); }, 50);
+})();
+
 // Deep link: #operations or #operations/<id>
 (function () {
   var m = /^#operations(?:\/([^\/]+))?/.exec(location.hash || '');
@@ -4705,6 +4748,49 @@ document.querySelectorAll('.chip[data-shows]').forEach(function (c) {
     showsFilter = c.getAttribute('data-shows');
     loadShows();
   });
+});
+
+// Shows tab: brand link, sheet refresh, filter chips, genre override, skipped rows.
+document.getElementById('btn-showlink').addEventListener('click', function () {
+  var url = location.origin + '/sponsor.html';
+  navigator.clipboard.writeText(url).then(function () { toast('Brand link copied — ' + url); });
+  window.open(url, '_blank', 'noopener');
+});
+document.getElementById('btn-showrefresh').addEventListener('click', function () {
+  var b = this; b.disabled = true; b.textContent = 'Reading sheet…';
+  api('refreshShows', {}).then(function (r) {
+    if (!r.ok) throw new Error(r.error || 'Could not read the sheet');
+    toast(r.count + ' confirmed shows from ' + r.tables + ' table' + (r.tables === 1 ? '' : 's') + ' · ' + r.rejected.length + ' rows skipped');
+    loadShows();
+  }).catch(function (e) { toast(e.message); }).then(function () { b.disabled = false; b.textContent = '↻ Sheet'; });
+});
+document.getElementById('shows-filters').addEventListener('click', function (e) {
+  var c = e.target.closest('[data-pick]'); if (!c) return;
+  showsPick[c.getAttribute('data-pick')] = c.getAttribute('data-val');
+  renderShowFilters(SHOWS_LAST); applyShowFilters();
+});
+document.getElementById('shows-list').addEventListener('change', function (e) {
+  var sel = e.target.closest('select[data-genre]'); if (!sel) return;
+  api('setArtistGenre', { artist: sel.getAttribute('data-genre'), genre: sel.value }).then(function () {
+    SHOWS_LAST.forEach(function (s) { if (s.artist === sel.getAttribute('data-genre')) s.genre = sel.value; });
+    toast('Genre saved for ' + sel.getAttribute('data-genre'));
+  }).catch(function (err) { toast(err.message); });
+});
+document.getElementById('shows-sub').addEventListener('click', function (e) {
+  if (!e.target.closest('[data-showrejects]')) return;
+  api('listShowRejects', {}).then(function (r) {
+    var box = document.getElementById('shows-list');
+    var groups = {};
+    r.rejected.forEach(function (x) { (groups[x.reason] = groups[x.reason] || []).push(x.row); });
+    box.innerHTML = '<div class="panel panel-pad"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><b style="flex:1">Sheet rows that did not count as confirmed</b><button class="btn-ghost" data-back>Back</button></div>' +
+      '<div class="hint" style="margin:0 0 10px">A row counts only with a booked status (Offer Confirmed / Signed / Show Confirmed) <b>and</b> a date, an artist and a school. Fix the row in the sheet, then ↻ Sheet.</div>' +
+      Object.keys(groups).map(function (k) {
+        return '<div style="margin:8px 0 4px;font-weight:600;font-size:12px">' + esc(k) + ' <span style="color:var(--ink-3);font-weight:400">' + groups[k].length + '</span></div>' +
+          groups[k].slice(0, 40).map(function (row) { return '<div style="font-size:12.5px;color:var(--ink-2);padding:2px 0">' + esc(row) + '</div>'; }).join('') +
+          (groups[k].length > 40 ? '<div class="hint">…and ' + (groups[k].length - 40) + ' more</div>' : '');
+      }).join('') + '</div>';
+    box.querySelector('[data-back]').onclick = loadShows;
+  }).catch(function (err) { toast(err.message); });
 });
 
 document.querySelectorAll('.chip[data-spon]').forEach(function (c) {
