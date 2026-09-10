@@ -977,7 +977,7 @@ const handlers: Record<string, Handler> = {
       // fallback is the page on the deployment itself, which always works.
       sponsorUrl: process.env.SPONSOR_HOST
         ? 'https://' + process.env.SPONSOR_HOST + '/'
-        : (process.env.SITE_URL || 'https://sb-digitaldashboard.vercel.app') + '/sponsor.html',
+        : (process.env.SITE_URL || 'https://sb-digitaldashboard.vercel.app') + '/partnerships',
       shows,
     }
   },

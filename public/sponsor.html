@@ -150,7 +150,13 @@
   document.querySelectorAll('#seg-group button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-group') === group); });
   var GENRE_LABEL = { edm: 'EDM / House', 'hip-hop': 'Hip-hop', country: 'Country', pop: 'Pop', band: 'Live band', other: 'Other' };
   var PERF_LABEL = { dj: 'DJs', singer: 'Singers', rapper: 'Rappers', band: 'Live bands' };
-  var PERF_TAG = { dj: 'DJ', singer: 'Singer', rapper: 'Rapper', band: 'Live band' };
+  // One tag per show: the act, flavored by genre where that adds anything.
+  function actTag(s) {
+    if (s.performer === 'rapper') return 'Rapper';
+    if (s.performer === 'band') return 'Live band';
+    if (s.performer === 'singer') return s.genre === 'country' ? 'Country singer' : s.genre === 'pop' ? 'Pop singer' : 'Singer';
+    return 'DJ';
+  }
   var STATE_NAME = { AL:'Alabama', AK:'Alaska', AZ:'Arizona', AR:'Arkansas', CA:'California', CO:'Colorado', CT:'Connecticut', DE:'Delaware', DC:'Washington DC', FL:'Florida', GA:'Georgia', HI:'Hawaii', ID:'Idaho', IL:'Illinois', IN:'Indiana', IA:'Iowa', KS:'Kansas', KY:'Kentucky', LA:'Louisiana', ME:'Maine', MD:'Maryland', MA:'Massachusetts', MI:'Michigan', MN:'Minnesota', MS:'Mississippi', MO:'Missouri', MT:'Montana', NE:'Nebraska', NV:'Nevada', NH:'New Hampshire', NJ:'New Jersey', NM:'New Mexico', NY:'New York', NC:'North Carolina', ND:'North Dakota', OH:'Ohio', OK:'Oklahoma', OR:'Oregon', PA:'Pennsylvania', RI:'Rhode Island', SC:'South Carolina', SD:'South Dakota', TN:'Tennessee', TX:'Texas', UT:'Utah', VT:'Vermont', VA:'Virginia', WA:'Washington', WV:'West Virginia', WI:'Wisconsin', WY:'Wyoming', ON:'Ontario, Canada' };
   var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -168,7 +174,7 @@
         if (only.length) {
           SHOWS = only;
           document.querySelector('.hero h1').textContent = FOR ? 'Shows we picked for ' + FOR + '.' : 'Shows we picked for you.';
-          document.querySelector('.hero p').innerHTML = 'Tick the ones you want to be at and send the request — we\'ll come back with a package. <a href="/sponsor.html" style="color:var(--accent)">See every show →</a>';
+          document.querySelector('.hero p').innerHTML = 'Tick the ones you want to be at and send the request — we\'ll come back with a package. <a href="/partnerships" style="color:var(--accent)">See every show →</a>';
           document.getElementById('f-school').style.display = 'none'; document.getElementById('stats').style.display = 'none';
           if (!only.some(function (s) { return !s.past; })) { mode = 'past'; document.querySelectorAll('.seg button[data-mode]').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-mode') === 'past'); }); }
           if (only.some(function (s) { return !s.past; })) only.forEach(function (s) { if (!s.past) picked[s.id] = s; });
@@ -274,8 +280,7 @@
         '<div class="main"><div class="artist">' + esc(s.artist) + '</div>' +
           '<div class="where"><b>' + esc(s.school) + '</b>' + (s.chapter ? ' · ' + esc(s.chapter) : '') + ((s.city || s.state) ? ' · ' + esc([s.city, s.state].filter(Boolean).join(', ')) : '') + '</div></div>' +
         '<div class="tags">' + (s.state && group !== 'state' ? '<span class="tag state">' + esc(s.state) + '</span>' : '') +
-          '<span class="tag">' + esc(PERF_TAG[s.performer] || 'DJ') + '</span>' +
-          (s.genre && s.genre !== 'other' ? '<span class="tag">' + esc(GENRE_LABEL[s.genre] || s.genre) + '</span>' : '') +
+          '<span class="tag">' + esc(actTag(s)) + '</span>' +
           (s.past ? '<span class="tag played">Played</span>' : '') + '</div>' +
       '</div>';
     });

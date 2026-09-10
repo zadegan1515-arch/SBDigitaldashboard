@@ -14,10 +14,10 @@ import { withAuth } from 'next-auth/middleware'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-// The brand hostname (shows.sboyagency.com) only ever serves the sponsor
-// page and what it needs. Anything else on that host goes to the page.
-const SPONSOR_HOST = (process.env.SPONSOR_HOST || 'shows.sboyagency.com').toLowerCase()
-const SPONSOR_OK = /^\/(sponsor\.html|api\/public\/|materials\/)/
+// The brand hostname (partnerships.sboyagency.com) only ever serves the
+// sponsor page and what it needs. Anything else on that host goes to the page.
+const SPONSOR_HOST = (process.env.SPONSOR_HOST || 'partnerships.sboyagency.com').toLowerCase()
+const SPONSOR_OK = /^\/(sponsor\.html|partnerships$|api\/public\/|materials\/)/
 
 const auth = withAuth({
   pages: { signIn: '/signin' },
