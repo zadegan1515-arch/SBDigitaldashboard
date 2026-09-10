@@ -43,8 +43,10 @@ export async function createSponsorRequest(input: any) {
   const picked = ids.map(id => byId.get(id)).filter((s): s is Show => !!s)
   if (!picked.length) throw new Error('Those shows are no longer available — reload the page')
 
-  // Brand: match on name, case-insensitive; never rename an existing one.
-  let brand = await prisma.brand.findFirst({ where: { name: { equals: company, mode: 'insensitive' } } })
+  // Brand: a hand-picked link carries the brand id; otherwise match on
+  // name, case-insensitive. Never rename an existing brand.
+  const brandById = input.brandId ? await prisma.brand.findUnique({ where: { id: String(input.brandId).slice(0, 40) } }) : null
+  let brand = brandById || await prisma.brand.findFirst({ where: { name: { equals: company, mode: 'insensitive' } } })
   if (!brand) brand = await prisma.brand.create({ data: { name: company, source: 'sponsor-page', notes: `Came in through the sponsor page on ${new Date().toISOString().slice(0, 10)}.` } })
 
   // Contact: reuse by email under this brand.
