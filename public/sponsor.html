@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#0d0d0d">
 <link rel="icon" href="/materials/sb-logo.png">
 <style>
-  :root{--bg:#0d0d0d;--ink:#f3f1ed;--ink-2:#b9b5ae;--ink-3:#82807b;--line:#262523;--soft:#1a1918;--accent:#d9542b;--accent-2:#2a1810;--ok:#4cc98a;color-scheme:dark}
+  :root{--bg:#0d0d0d;--ink:#f5f3ef;--ink-2:#c6c2bb;--ink-3:#8f8d87;--line:#292826;--soft:#191817;--accent:#d9542b;--accent-2:#2a1810;--ok:#4cc98a;color-scheme:dark}
   *{box-sizing:border-box}
   html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
   a{color:inherit}
@@ -38,16 +38,16 @@
   .count{font-size:13px;color:var(--ink-3);margin:14px 0 8px;display:flex;align-items:center;gap:12px}
   .count a{font-size:12px;color:var(--accent);cursor:pointer}
   .month{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin:22px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
-  .show{display:grid;grid-template-columns:24px 92px 1fr auto;gap:14px;align-items:center;padding:12px 10px;border-radius:12px;border:1px solid transparent;cursor:pointer}
-  .show:hover{background:var(--soft)}
+  .show{display:grid;grid-template-columns:24px 92px 1fr auto;gap:14px;align-items:center;padding:14px 14px;border-radius:12px;border:1px solid var(--line);background:var(--soft);margin-bottom:8px;cursor:pointer}
+  .show:hover{background:#222120;border-color:#3a3835}
   .show.on{background:var(--accent-2);border-color:var(--accent)}
   .show.past{cursor:default;opacity:.85}
-  .show .box{width:20px;height:20px;border:1.5px solid #4a4844;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;background:transparent}
+  .show .box{width:20px;height:20px;border:1.5px solid #5c5a56;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;background:transparent}
   .show.on .box{background:var(--accent);border-color:var(--accent)}
-  .show .date b{display:block;font-size:15px;letter-spacing:-.01em}
+  .show .date b{display:block;font-size:16px;letter-spacing:-.01em}
   .show .date span{font-size:12px;color:var(--ink-3)}
-  .show .main .artist{font-weight:700;font-size:16px;letter-spacing:-.01em}
-  .show .main .where{font-size:13.5px;color:var(--ink-2);margin-top:2px}
+  .show .main .artist{font-weight:700;font-size:17px;letter-spacing:-.01em}
+  .show .main .where{font-size:14px;color:var(--ink-2);margin-top:2px}
   .show .main .where b{font-weight:600;color:var(--ink)}
   .tags{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
   .tag{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:999px;background:var(--soft);color:var(--ink-2)}
@@ -262,10 +262,8 @@
     var counts = {};
     rows.forEach(function (s) { var k = sectionKey(s); counts[k] = (counts[k] || 0) + 1; });
     var list = document.getElementById('list');
-    var n = Object.keys(picked).length;
     document.getElementById('count').innerHTML = rows.length + (mode === 'past' ? ' past shows' : ' upcoming shows') +
-      (fState || fSchool || fMonth || fPerf || fGenre || q ? ' · <a id="clear-f">clear filters</a>' : '') +
-      (mode === 'upcoming' && rows.length && n < rows.length ? ' · <a id="pick-all">select all shown</a>' : '');
+      (fState || fSchool || fMonth || fPerf || fGenre || q ? ' · <a id="clear-f">clear filters</a>' : '');
     if (!rows.length) { list.innerHTML = '<div class="empty">No shows match — try fewer filters.</div>'; return; }
     var h = '', lastKey = null;
     rows.forEach(function (s) {
@@ -313,7 +311,6 @@
     var c = e.target.closest('.chip[data-f]');
     if (c) { fPerf = c.getAttribute('data-v'); buildFilters(); render(); return; }
     if (e.target.id === 'clear-f') { q = ''; fState = fSchool = fMonth = fPerf = fGenre = ''; document.getElementById('q').value = ''; buildFilters(); render(); return; }
-    if (e.target.id === 'pick-all') { filtered().forEach(function (s) { if (!s.past) picked[s.id] = s; }); render(); return; }
     var row = e.target.closest('.show[data-id]');
     if (row && !row.classList.contains('past')) {
       var id = row.getAttribute('data-id');
