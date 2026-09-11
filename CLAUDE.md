@@ -29,9 +29,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 `src/app/api/data/route.ts`.
 
 ## Where things live
-- `public/app.html` — the whole UI. Sections: Home, Brands, Discover, Outreach, Shows, Results,
-  Sponsorships, Needs contacts, Pipeline, **Activations** (own workspace: sidebar + tabs swap in),
-  **Operations** (ops@ inbox), Materials, Team. Deep links: `#activations/<id>/<tab>`, `#operations/<id>`.
+- `public/app.html` — the whole UI. Top nav is five groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
+  `showView`): Home · Brands (All brands / Discover / Needs contacts) · Outreach (Queue / Results) ·
+  **Deals** (Board = the old Pipeline / Sponsorships / Shows) · Operations (Inbox / Materials / Team).
+  **Activations** is its own workspace (sidebar + tabs swap in), entered from the left sidebar or the
+  Home "Jump to" card — not in the top nav. Deep links: `#activations/<id>/<tab>`, `#operations/<id>`.
 - `src/app/api/data/route.ts` — every server function. Add a handler = add a key to `handlers`.
 - `src/lib/email.ts` — outreach: drafting, cap/ramp (`roomToday`), sending via Gmail API, replies, warmup stats, signature (hosted images, LinkedIn/IG as text links).
 - `src/lib/google.ts` — OAuth (gmail / drive / ops grants), Gmail read+send, Drive/Sheets/Docs create.

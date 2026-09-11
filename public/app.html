@@ -358,18 +358,11 @@
       <nav class="tabs cc-only">
         <button class="nav-item active" data-view="dashboard">Home</button>
         <button class="nav-item" data-view="brands">Brands</button>
-        <button class="nav-item" data-view="discover">Discover</button>
         <button class="nav-item" data-view="outreach">Outreach <span class="n" id="nav-outreach"></span></button>
-        <button class="nav-item" data-view="shows">Shows <span class="n" id="nav-shows"></span></button>
-        <button class="nav-item" data-view="results">Results</button>
-        <button class="nav-item" data-view="sponsorships">Sponsorships <span class="n" id="nav-spon"></span></button>
-        <button class="nav-item" data-view="needs">Needs contacts <span class="n" id="nav-needs"></span></button>
-        <button class="nav-item" data-view="pipeline">Pipeline</button>
-        <button class="nav-item" data-view="activations">Activations</button>
+        <button class="nav-item" data-view="pipeline">Deals <span class="n" id="nav-spon"></span></button>
         <button class="nav-item" data-view="operations">Operations</button>
-        <button class="nav-item" data-view="materials">Materials</button>
-        <button class="nav-item" data-view="team">Team</button>
       </nav>
+      <nav class="tabs cc-only" id="sub-tabs" style="display:none"></nav>
       <nav class="tabs act-only" id="act-tabs"></nav>
     </div>
 
@@ -390,13 +383,9 @@
       <div class="section-head">Jump to</div>
       <div class="go-grid">
         <div class="go-card" data-goto="outreach">Outreach <span class="arr">→</span></div>
-        <div class="go-card" data-goto="shows">Shows <span class="arr">→</span></div>
-        <div class="go-card" data-goto="sponsorships">Sponsorships <span class="arr">→</span></div>
-        <div class="go-card" data-goto="needs">Needs contacts <span class="arr">→</span></div>
-        <div class="go-card" data-goto="pipeline">Pipeline <span class="arr">→</span></div>
-        <div class="go-card" data-goto="results">Results <span class="arr">→</span></div>
-        <div class="go-card" data-goto="discover">Discover <span class="arr">→</span></div>
-        <div class="go-card" data-goto="team">Team <span class="arr">→</span></div>
+        <div class="go-card" data-goto="pipeline">Deals <span class="arr">→</span></div>
+        <div class="go-card" data-goto="activations">Activations <span class="arr">→</span></div>
+        <div class="go-card" data-goto="operations">Operations <span class="arr">→</span></div>
       </div>
     </section>
 
@@ -521,11 +510,11 @@
       </div>
     </section>
 
-    <!-- PIPELINE -->
+    <!-- DEALS (pipeline board) -->
     <section class="view page" id="pipeline">
-      <div class="eyebrow">Pipeline</div>
-      <h1>Sponsor pipeline</h1>
-      <div class="sub">Sponsorship money only. Booking revenue lives in sb-crm and is never added in here.</div>
+      <div class="eyebrow">Deals</div>
+      <h1>Deals</h1>
+      <div class="sub">Every deal in one place — Show Board requests land here automatically, outreach deals start with + New deal. Sponsorship money only; booking revenue lives in sb-crm and is never added in here.</div>
       <div style="margin-top:18px;display:flex;gap:8px"><button class="btn-solid" id="btn-newdeal">+ New deal</button>
         <button class="btn-ghost" id="btn-notionsync" title="Pull the deal list from Notion now (also runs automatically every morning)">⟳ Sync Notion</button></div>
       <div id="deal-form-slot" style="margin-top:12px"></div>
@@ -765,11 +754,35 @@ function refreshAfterSponsorChange() {
 
 // --- views -----------------------------------------------------
 
+// The top nav holds five groups; the views inside a group show as a
+// second row of sub-tabs. GROUP_OF maps every view to its group.
+var SUBTABS = {
+  brands: [['brands', 'All brands'], ['discover', 'Discover'], ['needs', 'Needs contacts']],
+  outreach: [['outreach', 'Queue'], ['results', 'Results']],
+  pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships'], ['shows', 'Shows']],
+  operations: [['operations', 'Inbox'], ['materials', 'Materials'], ['team', 'Team']],
+};
+var GROUP_OF = {
+  brands: 'brands', brand: 'brands', discover: 'brands', needs: 'brands',
+  outreach: 'outreach', results: 'outreach',
+  pipeline: 'pipeline', sponsorships: 'pipeline', shows: 'pipeline',
+  operations: 'operations', materials: 'operations', team: 'operations',
+};
+
 function showView(id) {
-  document.querySelectorAll('.nav-item').forEach(function (b) { if (!b.closest('#act-tabs')) b.classList.remove('active'); });
+  document.querySelectorAll('.nav-item').forEach(function (b) { if (!b.closest('#act-tabs') && !b.closest('#sub-tabs')) b.classList.remove('active'); });
   document.querySelectorAll('.view').forEach(function (v) { v.classList.toggle('active', v.id === id); });
-  var nav = document.querySelector('.nav-item[data-view="' + id + '"]');
+  var group = GROUP_OF[id] || id;
+  var nav = document.querySelector('.tabs .nav-item[data-view="' + group + '"]');
   if (nav) nav.classList.add('active');
+  var bar = document.getElementById('sub-tabs');
+  var tabs = SUBTABS[group];
+  if (tabs) {
+    bar.style.display = '';
+    bar.innerHTML = tabs.map(function (t) {
+      return '<button class="nav-item' + (t[0] === id ? ' active' : '') + '" data-view="' + t[0] + '">' + t[1] + '</button>';
+    }).join('');
+  } else { bar.style.display = 'none'; bar.innerHTML = ''; }
   window.scrollTo(0, 0);
 }
 
@@ -852,7 +865,6 @@ function loadDashboard() {
       : '';
 
     document.getElementById('nav-outreach').textContent = c.queued || '';
-    document.getElementById('nav-shows').textContent = (d.shows && d.shows.total) || '';
     document.getElementById('nav-spon').textContent =
       ((sp.confirmedCount || 0) + (sp.proposedCount || 0)) || '';
 
@@ -1520,7 +1532,6 @@ function loadShows() {
     document.getElementById('shows-sub').innerHTML =
       esc(shows.length + (showsFilter === 'past' ? ' past shows' : ' confirmed shows') + (showsFilter === 'all' ? ' · ' + d.unsold + ' with no sponsor yet' : '') + ' · ' + when) +
       (d.rejected ? ' · <a data-showrejects style="cursor:pointer;text-decoration:underline">' + d.rejected + ' sheet rows skipped</a>' : '');
-    if (showsFilter === 'all') document.getElementById('nav-shows').textContent = d.total || '';
     renderShowFilters(shows);
     if (!shows.length) {
       box.innerHTML = '<div class="panel"><div class="empty"><h3>' + (showsFilter === 'requested' ? 'No brand requests yet' : 'No confirmed shows') + '</h3>' +
@@ -1569,7 +1580,6 @@ function loadNeeds() {
   return api('listNeedsContact').then(function (d) {
     document.getElementById('needs-sub').textContent =
       d.count + ' of ' + d.total + ' brands have no contact yet';
-    document.getElementById('nav-needs').textContent = d.count || '';
 
     if (!d.brands.length) {
       box.innerHTML = '<div class="panel"><div class="empty"><h3>Every brand has a contact</h3>' +
@@ -2850,8 +2860,8 @@ function loadPipeline() {
 
     var el = document.getElementById('deals');
     if (!deals.length) {
-      el.innerHTML = '<div class="panel"><div class="empty"><h3>Nothing in the pipeline</h3>' +
-        '<p>Attach a brand to a show and a deal is created here automatically.</p></div></div>';
+      el.innerHTML = '<div class="panel"><div class="empty"><h3>No deals yet</h3>' +
+        '<p>A deal appears here the moment a brand requests shows on the Show Board, when a sponsorship is attached to a show, or when you start one with + New deal.</p></div></div>';
       return;
     }
     // Kanban board: one column per stage, always all five so the shape
@@ -2896,7 +2906,7 @@ function loadPipeline() {
           }).join('') : '<div style="font-size:11.5px;color:var(--ink-3);padding:6px 2px">—</div>') +
         '</div>';
       }).join('') + '</div>' +
-      '<div class="hint" style="margin-top:10px">◀ ▶ moves a deal between stages. 🔒 deals mirror an attached show — edit them on the Sponsorships page. Contract and invoice land in the brand\'s Documents.</div>';
+      '<div class="hint" style="margin-top:10px">◀ ▶ moves a deal between stages. 🔒 deals mirror an attached show — edit them on the Sponsorships sub-tab. Contract and invoice land in the brand\'s Documents.</div>';
 
     el.querySelectorAll('a[data-brand]').forEach(function (a) {
       a.onclick = function (ev) { ev.preventDefault(); loadBrand(a.getAttribute('data-brand')); };
@@ -4650,6 +4660,12 @@ function gotoView(id) {
 
 document.querySelectorAll('.nav-item[data-view]').forEach(function (b) {
   b.addEventListener('click', function () { gotoView(b.getAttribute('data-view')); });
+});
+
+// Sub-tab buttons are re-rendered on every view change, so delegate.
+document.getElementById('sub-tabs').addEventListener('click', function (e) {
+  var b = e.target.closest('.nav-item[data-view]');
+  if (b) gotoView(b.getAttribute('data-view'));
 });
 
 // Home page "Jump to" cards.
