@@ -35,7 +35,11 @@ const auth = withAuth({
 export default function middleware(req: NextRequest, ev: any) {
   const host = (req.headers.get('host') || '').toLowerCase().split(':')[0]
   if (host === SPONSOR_HOST) {
-    if (SPONSOR_OK.test(req.nextUrl.pathname) || req.nextUrl.pathname === '/') return NextResponse.next()
+    // "/" must be rewritten here: an afterFiles rewrite in next.config
+    // never runs for "/" because the app-router root route matches first
+    // (and that route redirects into the sign-in-gated dashboard).
+    if (req.nextUrl.pathname === '/') return NextResponse.rewrite(new URL('/sponsor.html', req.url))
+    if (SPONSOR_OK.test(req.nextUrl.pathname)) return NextResponse.next()
     return NextResponse.redirect(new URL('/', req.url))
   }
   // Normal host: only the paths that were always gated go through

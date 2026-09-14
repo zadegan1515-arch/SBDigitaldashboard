@@ -11,10 +11,14 @@ const SPONSOR_HOST = process.env.SPONSOR_HOST || 'shows.sboyagency.com'
 const nextConfig = {
   reactStrictMode: true,
   async rewrites() {
-    return [
-      { source: '/', has: [{ type: 'host', value: SPONSOR_HOST }], destination: '/sponsor.html' },
-      { source: '/partnerships', destination: '/sponsor.html' },
-    ]
+    // beforeFiles so these win over app-router routes; the "/" case is
+    // also handled in middleware, which runs first on the sponsor host.
+    return {
+      beforeFiles: [
+        { source: '/', has: [{ type: 'host', value: SPONSOR_HOST }], destination: '/sponsor.html' },
+        { source: '/partnerships', destination: '/sponsor.html' },
+      ],
+    }
   },
 }
 
