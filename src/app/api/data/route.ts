@@ -1704,14 +1704,21 @@ const handlers: Record<string, Handler> = {
     return { deals, openCents, wonCents }
   },
 
-  // Recent Show Board opens through the access gate, newest first.
+  // Recent Show Board opens through the access gate, newest first, plus
+  // the headline numbers for the Show Board overview.
   async listBoardActivity({ limit }: any) {
-    const visits = await prisma.boardVisit.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: Math.min(Number(limit) || 50, 200),
-      include: { brand: { select: { id: true, name: true } } },
-    })
-    return { visits }
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    const [visits, total, last7, requestCount] = await Promise.all([
+      prisma.boardVisit.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: Math.min(Number(limit) || 50, 200),
+        include: { brand: { select: { id: true, name: true } } },
+      }),
+      prisma.boardVisit.count(),
+      prisma.boardVisit.count({ where: { createdAt: { gt: weekAgo } } }),
+      prisma.deal.count({ where: { source: 'request' } }),
+    ])
+    return { visits, total, last7, requestCount }
   },
 
   // Every request that came in through the public Show Board (one deal

@@ -374,6 +374,7 @@
         <button class="nav-item active" data-view="dashboard">Home</button>
         <button class="nav-item" data-view="brands">Brands</button>
         <button class="nav-item" data-view="outreach">Outreach <span class="n" id="nav-outreach"></span></button>
+        <button class="nav-item" data-view="board">Show Board</button>
         <button class="nav-item" data-view="pipeline">Deals <span class="n" id="nav-spon"></span></button>
         <button class="nav-item" data-view="operations">Operations</button>
       </nav>
@@ -398,6 +399,7 @@
       <div class="section-head">Jump to</div>
       <div class="go-grid">
         <div class="go-card" data-goto="outreach">Outreach <span class="arr">→</span></div>
+        <div class="go-card" data-goto="board">Show Board <span class="arr">→</span></div>
         <div class="go-card" data-goto="pipeline">Deals <span class="arr">→</span></div>
         <div class="go-card" data-goto="activations">Activations <span class="arr">→</span></div>
         <div class="go-card" data-goto="operations">Operations <span class="arr">→</span></div>
@@ -541,14 +543,30 @@
       <div id="deals"></div>
     </section>
 
+    <!-- SHOW BOARD OVERVIEW -->
+    <section class="view page" id="board">
+      <div class="eyebrow">Show Board</div>
+      <h1>Show Board</h1>
+      <div class="sub" id="bd-sub">The brand-facing board — gated by access codes.</div>
+      <div class="section-head" style="margin-top:24px">Access codes <span class="n">look up a brand, hand out a code</span></div>
+      <div class="panel panel-pad">
+        <div style="position:relative;max-width:440px">
+          <input class="field-box" id="bd-q" placeholder="Type a brand name…" autocomplete="off" style="width:100%">
+          <div id="bd-results" style="position:absolute;top:100%;left:0;right:0;z-index:30;display:none;background:var(--surface-1);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:260px;overflow:auto;margin-top:4px"></div>
+        </div>
+        <div id="bd-code"></div>
+      </div>
+      <div class="kpi-row" id="bd-kpis"></div>
+      <div class="section-head">Who's opened the board</div>
+      <div id="bd-activity"></div>
+    </section>
+
     <!-- SHOW BOARD REQUESTS -->
     <section class="view page" id="requests">
-      <div class="eyebrow">Deals</div>
-      <h1>Show Board requests</h1>
+      <div class="eyebrow">Show Board</div>
+      <h1>Requests</h1>
       <div class="sub" id="req-sub">Loading…</div>
       <div id="req-list" style="margin-top:18px"></div>
-      <div class="section-head" id="req-act-head" hidden>Who's opened the board</div>
-      <div id="req-activity"></div>
     </section>
 
     <!-- ACTIVATIONS (own workspace: sidebar + section tabs swap in) -->
@@ -788,13 +806,15 @@ function refreshAfterSponsorChange() {
 var SUBTABS = {
   brands: [['brands', 'All brands'], ['discover', 'Discover'], ['needs', 'Needs contacts']],
   outreach: [['outreach', 'Queue'], ['results', 'Results']],
-  pipeline: [['pipeline', 'Board'], ['requests', 'Requests'], ['sponsorships', 'Sponsorships'], ['shows', 'Shows']],
+  board: [['board', 'Overview'], ['requests', 'Requests'], ['shows', 'Shows']],
+  pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
   operations: [['operations', 'Inbox'], ['materials', 'Materials'], ['team', 'Team']],
 };
 var GROUP_OF = {
   brands: 'brands', brand: 'brands', discover: 'brands', needs: 'brands',
   outreach: 'outreach', results: 'outreach',
-  pipeline: 'pipeline', requests: 'pipeline', sponsorships: 'pipeline', shows: 'pipeline',
+  board: 'board', requests: 'board', shows: 'board',
+  pipeline: 'pipeline', sponsorships: 'pipeline',
   operations: 'operations', materials: 'operations', team: 'operations',
 };
 
@@ -3103,22 +3123,95 @@ function loadRequests() {
   }).catch(function (e) {
     document.getElementById('req-list').innerHTML =
       '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
-  }).then(function () {
-    // Gate activity: who opened the board (email + brand + when).
-    return api('listBoardActivity', { limit: 30 }).then(function (d) {
-      var head = document.getElementById('req-act-head'), el = document.getElementById('req-activity');
-      var visits = d.visits || [];
-      head.hidden = !visits.length;
-      el.innerHTML = visits.map(function (v) {
-        return '<div class="target"' + (v.brand ? ' data-brand="' + esc(v.brand.id) + '" style="cursor:pointer"' : '') + '>' +
-          '<div class="t-main"><div class="t-line">' +
-            '<span class="t-brand">' + esc(v.brand ? v.brand.name : 'Team code') + '</span>' +
-            (v.email ? '<span class="t-sep">·</span>' + esc(v.email) : '') + '</div></div>' +
-          '<div style="font-size:12px;color:var(--ink-3)">' + shortDate(v.createdAt) + '</div></div>';
-      }).join('');
-    }).catch(function () { /* feed is best-effort */ });
   });
 }
+
+// --- show board overview ----------------------------------------
+//
+// One place for running the board: hand out access codes, see the
+// numbers, see who's been opening it.
+
+var BD_BRANDS = null;      // cached brand list for the code lookup
+var BD_SELECTED = null;    // brand currently shown in the code panel
+
+function renderBoardCode() {
+  var el = document.getElementById('bd-code');
+  var b = BD_SELECTED;
+  if (!b) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">' +
+    '<a href="#" id="bd-open-brand" style="font-family:var(--display);font-weight:700;font-size:15px;color:inherit;text-decoration:none">' + esc(b.name) + ' →</a>' +
+    (b.boardCode
+      ? '<code style="font-size:15px;font-weight:700;letter-spacing:.08em">' + esc(b.boardCode) + '</code>' +
+        '<button class="btn-ghost" id="bd-copy">Copy code</button>' +
+        '<button class="btn-ghost" id="bd-link">Copy board link</button>' +
+        '<button class="btn-ghost" id="bd-new">New code</button>'
+      : '<button class="btn-solid" id="bd-gen">Generate code</button>') +
+    '</div>';
+  var open = el.querySelector('#bd-open-brand');
+  open.onclick = function (ev) { ev.preventDefault(); loadBrand(b.id); };
+  var gen = el.querySelector('#bd-gen'), cnew = el.querySelector('#bd-new');
+  [gen, cnew].forEach(function (btn) {
+    if (!btn) return;
+    btn.onclick = function () {
+      if (btn === cnew && !window.confirm('Generate a new code? The old one stops working immediately.')) return;
+      btn.disabled = true;
+      api('setBrandCode', { brandId: b.id }).then(function (r) {
+        b.boardCode = r.code; renderBoardCode(); toast('Code ready — copy the board link and send it');
+      }).catch(function (e) { toast(e.message); btn.disabled = false; });
+    };
+  });
+  var copy = el.querySelector('#bd-copy');
+  if (copy) copy.onclick = function () { navigator.clipboard.writeText(b.boardCode); toast('Code copied'); };
+  var link = el.querySelector('#bd-link');
+  if (link) link.onclick = function () {
+    var u = SPONSOR_URL + '?code=' + encodeURIComponent(b.boardCode);
+    navigator.clipboard.writeText(u); toast('Board link copied — ' + u);
+  };
+}
+
+function loadBoard() {
+  showView('board');
+  document.getElementById('bd-sub').innerHTML =
+    'The brand-facing board at <a href="' + esc(SPONSOR_URL) + '" target="_blank" rel="noopener">' + esc(SPONSOR_URL.replace(/^https?:\/\//, '')) + '</a> — gated by access codes.';
+  if (!BD_BRANDS) api('listBrands', { category: 'all' }).then(function (list) { BD_BRANDS = list; }).catch(function () {});
+  return api('listBoardActivity', { limit: 50 }).then(function (d) {
+    document.getElementById('bd-kpis').innerHTML =
+      '<div class="kpi"><div class="kpi-label">Views</div><div class="kpi-value">' + (d.last7 || 0) + '</div><div class="kpi-note">last 7 days</div></div>' +
+      '<div class="kpi"><div class="kpi-label">All time</div><div class="kpi-value">' + (d.total || 0) + '</div><div class="kpi-note">board opens</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Requests</div><div class="kpi-value">' + (d.requestCount || 0) + '</div><div class="kpi-note">from the board</div></div>';
+    var visits = d.visits || [];
+    document.getElementById('bd-activity').innerHTML = visits.length ? visits.map(function (v) {
+      return '<div class="target"' + (v.brand ? ' data-brand="' + esc(v.brand.id) + '" style="cursor:pointer"' : '') + '>' +
+        '<div class="t-main"><div class="t-line">' +
+          '<span class="t-brand">' + esc(v.brand ? v.brand.name : 'Team code') + '</span>' +
+          (v.email ? '<span class="t-sep">·</span>' + esc(v.email) : '') + '</div></div>' +
+        '<div style="font-size:12px;color:var(--ink-3)">' + shortDate(v.createdAt) + '</div></div>';
+    }).join('') : '<div class="panel"><div class="empty"><h3>No opens yet</h3><p>Every visit through the gate lands here with the brand and email.</p></div></div>';
+  }).catch(function (e) {
+    document.getElementById('bd-activity').innerHTML =
+      '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+}
+
+// Code lookup: filter the cached brand list, pick one, mint/copy codes.
+document.getElementById('bd-q').addEventListener('input', function () {
+  var q = this.value.trim().toLowerCase(), box = document.getElementById('bd-results');
+  if (q.length < 2 || !BD_BRANDS) { box.style.display = 'none'; return; }
+  var hits = BD_BRANDS.filter(function (b) { return b.name.toLowerCase().indexOf(q) >= 0; }).slice(0, 8);
+  box.innerHTML = hits.map(function (b) {
+    return '<div class="clickable" data-bdpick="' + esc(b.id) + '" style="padding:9px 12px;font-size:13.5px;cursor:pointer">' +
+      esc(b.name) + (b.boardCode ? ' <span style="color:var(--ink-3);font-size:12px">· has code</span>' : '') + '</div>';
+  }).join('') || '<div style="padding:9px 12px;font-size:13px;color:var(--ink-3)">No brand with that name</div>';
+  box.style.display = 'block';
+});
+document.getElementById('bd-results').addEventListener('click', function (e) {
+  var row = e.target.closest('[data-bdpick]');
+  if (!row) return;
+  BD_SELECTED = BD_BRANDS.filter(function (b) { return b.id === row.getAttribute('data-bdpick'); })[0] || null;
+  this.style.display = 'none';
+  document.getElementById('bd-q').value = BD_SELECTED ? BD_SELECTED.name : '';
+  renderBoardCode();
+});
 
 // --- discover --------------------------------------------------
 //
@@ -4759,6 +4852,7 @@ function gotoView(id) {
   if (id === 'sponsorships') loadSponsorships();
   if (id === 'needs') loadNeeds();
   if (id === 'pipeline') loadPipeline();
+  if (id === 'board') loadBoard();
   if (id === 'requests') loadRequests();
   if (id === 'activations') loadActivations();
   if (id === 'operations') loadOperations();
@@ -4859,7 +4953,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'action-panel', 'req-list', 'req-activity'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'action-panel', 'req-list', 'bd-activity'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;

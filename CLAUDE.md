@@ -29,9 +29,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 `src/app/api/data/route.ts`.
 
 ## Where things live
-- `public/app.html` — the whole UI. Top nav is five groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
+- `public/app.html` — the whole UI. Top nav is six groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
   `showView`): Home · Brands (All brands / Discover / Needs contacts) · Outreach (Queue / Results) ·
-  **Deals** (Board = the old Pipeline / Sponsorships / Shows) · Operations (Inbox / Materials / Team).
+  **Show Board** (Overview = code lookup + view stats + who's-opened feed / Requests / Shows) ·
+  **Deals** (Board = the old Pipeline / Sponsorships) · Operations (Inbox / Materials / Team).
   **Activations** is its own workspace (sidebar + tabs swap in), entered from the left sidebar or the
   Home "Jump to" card — not in the top nav. Deep links: `#activations/<id>/<tab>`, `#operations/<id>`.
 - `src/app/api/data/route.ts` — every server function. Add a handler = add a key to `handlers`.
