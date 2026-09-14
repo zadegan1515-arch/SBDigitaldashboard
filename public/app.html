@@ -328,6 +328,21 @@
   .ops-sec{margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)}
   .ops-sec[hidden]{display:none}
   @media (max-width:1100px){.ops-split{grid-template-columns:1fr}.ops-read{position:static;max-height:none;order:-1}}
+  /* Show Board requests — dark cards matching the public page */
+  .req-card{background:#101010;border:1px solid #262523;border-radius:14px;padding:16px 18px;margin-bottom:10px;cursor:pointer;color:#f3f1ed;transition:border-color .15s}
+  .req-card:hover{border-color:#d9542b}
+  .req-top{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+  .req-brand{font-family:var(--display);font-weight:700;font-size:17px}
+  .req-stage{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:#2a1810;color:#f0855e}
+  .req-stage.won{background:#0f2318;color:#4cc98a}
+  .req-stage.lost{background:#1c1b19;color:#8f8d87}
+  .req-date{margin-left:auto;font-size:12px;color:#8f8d87}
+  .req-who{font-size:13px;color:#c6c2bb;margin-top:4px}
+  .req-who a{color:#f0855e;text-decoration:none}
+  .req-shows{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .req-pill{font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;background:#1c1b19;color:#c6c2bb;border:1px solid #262523}
+  .req-pill b{color:#f3f1ed;font-weight:700}
+  .req-note{margin-top:10px;font-size:13px;color:#c6c2bb;font-style:italic}
 </style>
 </head>
 <body>
@@ -2978,26 +2993,23 @@ function loadRequests() {
         '<p>When a brand picks shows on the Show Board and submits, it appears here with a deal on the Board.</p></div></div>';
       return;
     }
+    var STAGE_TAG = { conversation: 'new', proposal: 'proposal', verbal: 'verbal yes', closed: 'won', lost: 'lost' };
     el.innerHTML = d.requests.map(function (r) {
       var c = r.contact;
-      var stageCls = r.stage === 'closed' ? 'confirmed' : r.stage === 'lost' ? 'declined' : 'proposed';
-      return '<div class="panel panel-pad" style="margin-bottom:10px">' +
-        '<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">' +
-          '<span style="font-family:var(--display);font-weight:700;font-size:16px">' + esc(r.brand.name) + '</span>' +
-          '<span class="status ' + stageCls + '">' + esc(r.stage) + '</span>' +
-          '<span style="margin-left:auto;font-size:12px;color:var(--ink-3)">' + shortDate(r.createdAt) + '</span></div>' +
-        (c ? '<div style="font-size:13px;color:var(--ink-2);margin-top:4px">' + esc(c.name || '') +
-          (c.email ? ' · <a href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a>' : '') +
-          (c.phone ? ' · ' + esc(c.phone) : '') + '</div>' : '') +
-        (r.shows.length ? '<div style="margin-top:8px">' + r.shows.map(function (s) {
-          return '<div style="font-size:13px;padding:2px 0;color:var(--ink-2)">' + esc(s.eventDate || '') +
-            ' · <b style="color:var(--ink)">' + esc(s.artist) + '</b> · ' + esc(s.school) +
-            (s.chapter ? ' · ' + esc(s.chapter) : '') + '</div>';
+      // Just the line the brand typed, not the whole generated request text.
+      var note = ((/^Notes: (.+)$/m).exec(r.notes || '') || [])[1] || '';
+      return '<div class="req-card" data-brand="' + esc(r.brand.id) + '">' +
+        '<div class="req-top"><span class="req-brand">' + esc(r.brand.name) + '</span>' +
+          '<span class="req-stage' + (r.stage === 'closed' ? ' won' : r.stage === 'lost' ? ' lost' : '') + '">' + esc(STAGE_TAG[r.stage] || r.stage) + '</span>' +
+          '<span class="req-date">' + shortDate(r.createdAt) + '</span></div>' +
+        (c ? '<div class="req-who">' + esc(c.name || '') +
+          (c.email ? ' · <a href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a>' : '') + '</div>' : '') +
+        (r.shows.length ? '<div class="req-shows">' + r.shows.map(function (s) {
+          // date-only strings get noon appended so the day never shifts with the timezone
+          var ed = s.eventDate && s.eventDate.length === 10 ? s.eventDate + 'T12:00:00' : s.eventDate;
+          return '<span class="req-pill">' + (ed ? shortDate(ed) + ' · ' : '') + '<b>' + esc(s.artist) + '</b> · ' + esc(s.school) + '</span>';
         }).join('') + '</div>' : '') +
-        (r.notes ? '<details style="margin-top:8px"><summary style="font-size:12.5px;color:var(--ink-3);cursor:pointer">Full request</summary>' +
-          '<pre style="white-space:pre-wrap;font:12.5px/1.5 inherit;color:var(--ink-2);margin:6px 0 0">' + esc(r.notes) + '</pre></details>' : '') +
-        '<div style="display:flex;gap:8px;margin-top:10px">' +
-          '<button class="btn-ghost" data-brand="' + esc(r.brand.id) + '">Open brand →</button></div>' +
+        (note ? '<div class="req-note">“' + esc(note) + '”</div>' : '') +
       '</div>';
     }).join('');
   }).catch(function (e) {
