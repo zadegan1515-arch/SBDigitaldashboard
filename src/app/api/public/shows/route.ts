@@ -6,16 +6,25 @@
 
 import { NextResponse } from 'next/server'
 import { allShows, publicShow } from '@/lib/shows'
-import { brandForCode } from '@/lib/board-access'
+import { brandForCode, gateEnabled, logBoardVisit } from '@/lib/board-access'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
 export async function GET(req: Request) {
   try {
-    const code = new URL(req.url).searchParams.get('code')
+    const params = new URL(req.url).searchParams
+    const code = params.get('code')
     const who = await brandForCode(code)
     if (!who) return NextResponse.json({ ok: false, error: 'code' }, { status: 401 })
+    // With the gate on, a work email is required too, and every open is
+    // logged (who's viewing = that email + the code's brand).
+    if (gateEnabled()) {
+      const email = String(params.get('email') || '').trim()
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ ok: false, error: 'email' }, { status: 401 })
+      const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || null
+      logBoardVisit({ brandId: who.brand?.id, email, code, ip })
+    }
     const r = await allShows()
     const shows = r.shows.map(publicShow)
     return NextResponse.json(

@@ -40,3 +40,21 @@ export async function brandForCode(code: unknown): Promise<{ brand: Brand | null
   }
   return gateEnabled() ? null : { brand: null }
 }
+
+// Log a board open. One row per (brand/email/ip) per half hour, so a
+// brand clicking around doesn't flood the feed. Never throws — a logging
+// failure must not take the board down.
+export async function logBoardVisit(v: { brandId?: string | null; email?: string | null; code?: string | null; ip?: string | null }) {
+  try {
+    const email = String(v.email || '').trim().toLowerCase().slice(0, 200) || null
+    const since = new Date(Date.now() - 30 * 60 * 1000)
+    const dupe = await prisma.boardVisit.findFirst({
+      where: { brandId: v.brandId || null, email, ip: v.ip || null, createdAt: { gt: since } },
+      select: { id: true },
+    })
+    if (dupe) return
+    await prisma.boardVisit.create({
+      data: { brandId: v.brandId || null, email, code: normalizeCode(v.code) || null, ip: v.ip || null },
+    })
+  } catch { /* never block the board on logging */ }
+}

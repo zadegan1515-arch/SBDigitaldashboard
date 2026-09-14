@@ -158,7 +158,8 @@
     <img src="/materials/sb-logo.png" alt="SB Agency">
     <h2>Enter your access code</h2>
     <form id="gate-form">
-      <input id="gate-code" placeholder="XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="40">
+      <input id="gate-code" placeholder="Access code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="40" required>
+      <input id="gate-email" type="email" placeholder="Work email" autocomplete="email" maxlength="200" required style="text-transform:none;letter-spacing:normal">
       <button class="btn" type="submit">Open the board</button>
       <span class="err" id="gate-err"></span>
     </form>
@@ -175,10 +176,12 @@
   var PICK = (P.get('pick') || '').split(',').filter(Boolean);
   var FOR = (P.get('for') || '').slice(0, 80), BRAND_ID = (P.get('b') || '').slice(0, 40);
   // Access code: from the link (?code=) or remembered on this device.
-  var CODE = (P.get('code') || '').trim().toUpperCase();
+  // The email typed at the gate is remembered the same way.
+  var CODE = (P.get('code') || '').trim().toUpperCase(), GATE_EMAIL = '';
   try {
     if (CODE) localStorage.setItem('sbBoardCode', CODE);
     else CODE = (localStorage.getItem('sbBoardCode') || '').toUpperCase();
+    GATE_EMAIL = localStorage.getItem('sbBoardEmail') || '';
   } catch (e) {}
   fState = P.get('state') || ''; fGenre = P.get('genre') || ''; fSchool = P.get('school') || ''; q = P.get('q') || '';
   fPerf = (P.get('performer') || '').toLowerCase();
@@ -205,22 +208,28 @@
   function showGate(msg) {
     document.getElementById('gate').hidden = false;
     document.getElementById('gate-err').textContent = msg || '';
-    document.getElementById('gate-code').focus();
+    var codeIn = document.getElementById('gate-code'), emailIn = document.getElementById('gate-email');
+    if (CODE && !codeIn.value) codeIn.value = CODE;
+    if (GATE_EMAIL && !emailIn.value) emailIn.value = GATE_EMAIL;
+    (codeIn.value ? emailIn : codeIn).focus();
   }
   document.getElementById('gate-form').addEventListener('submit', function (ev) {
     ev.preventDefault();
     CODE = document.getElementById('gate-code').value.trim().toUpperCase();
-    if (!CODE) return;
-    try { localStorage.setItem('sbBoardCode', CODE); } catch (e) {}
+    GATE_EMAIL = document.getElementById('gate-email').value.trim();
+    if (!CODE || !GATE_EMAIL) return;
+    try { localStorage.setItem('sbBoardCode', CODE); localStorage.setItem('sbBoardEmail', GATE_EMAIL); } catch (e) {}
     load();
   });
 
   function load() {
-    // The server decides whether a code is needed (SPONSOR_GATE): fetch
-    // first, show the gate only on a 401.
+    // The server decides what the gate needs (SPONSOR_GATE): fetch first,
+    // show the gate only on a 401 — missing email comes back as its own
+    // error so a ?code= link just asks for the email, code pre-filled.
     document.getElementById('list').innerHTML = '<div class="empty">Loading shows…</div>';
-    fetch('/api/public/shows?code=' + encodeURIComponent(CODE)).then(function (r) { return r.json(); }).then(function (r) {
-      if (!r.ok && r.error === 'code') { showGate('That code didn’t work — check it and try again.'); return; }
+    fetch('/api/public/shows?code=' + encodeURIComponent(CODE) + '&email=' + encodeURIComponent(GATE_EMAIL)).then(function (r) { return r.json(); }).then(function (r) {
+      if (!r.ok && r.error === 'code') { showGate(CODE ? 'That code didn’t work — check it and try again.' : ''); return; }
+      if (!r.ok && r.error === 'email') { showGate(GATE_EMAIL ? 'Enter a valid work email to continue.' : ''); return; }
       if (!r.ok) throw new Error(r.error || 'Could not load');
       document.getElementById('gate').hidden = true;
       SHOWS = r.shows;

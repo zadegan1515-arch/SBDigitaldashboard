@@ -24,33 +24,33 @@ datasource db {
 // ---------------------------------------------------------------
 
 model Brand {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  website   String?
-  hq        String?
+  id      String  @id @default(cuid())
+  name    String  @unique
+  website String?
+  hq      String?
 
   // "beverage", "cpg", "apparel", "nicotine", "betting"...
-  category  String?
+  category String?
   // "emerging" | "growth" | "established" — drives prioritisation
-  tier      String?
+  tier     String?
 
   // Where this record came from: "sponsorunited" | "manual" | "import"
-  source        String   @default("manual")
+  source      String  @default("manual")
   // SponsorUnited profile ULID, so we can re-sync without duplicating
-  externalId    String?  @unique
+  externalId  String? @unique
   // Their public LinkedIn company page (distinct from a person's profile)
-  linkedinUrl   String?
+  linkedinUrl String?
 
-  notes     String?
+  notes String?
 
   // Discovery notes — what this brand actually wants (goals, regions,
   // timing), captured on the first call. Feeds the proposal generator so
   // pitches read tailored instead of generic.
-  goals     String?
+  goals String?
 
   // Which rep owns this relationship. Free text rather than an enum —
   // the team grows, and a new hire shouldn't need a schema migration.
-  owner     String?
+  owner String?
 
   // Hard exclusion from the email machine: no intros, no follow-ups.
   // Also honored implicitly when the notes contain the word "skip".
@@ -63,13 +63,14 @@ model Brand {
   // the setBrandCode handler instead.
   boardCode String?
 
-  contacts  Contact[]
-  targets   Target[]
-  partner   Partner?
-  shows     ShowSponsor[]
-  deals     Deal[]
-  documents Document[]
+  contacts    Contact[]
+  targets     Target[]
+  partner     Partner?
+  shows       ShowSponsor[]
+  deals       Deal[]
+  documents   Document[]
   activations Activation[]
+  boardVisits BoardVisit[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -84,9 +85,9 @@ model Brand {
 // ---------------------------------------------------------------
 
 model Contact {
-  id       String  @id @default(cuid())
-  brandId  String
-  brand    Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  brandId String
+  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
 
   name     String
   title    String?
@@ -106,7 +107,7 @@ model Contact {
   // Set by a heuristic on import, editable by hand.
   isDecisionMaker Boolean @default(false)
 
-  targets  Target[]
+  targets Target[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -130,13 +131,13 @@ enum TargetStatus {
 }
 
 model Target {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   brandId   String
   brand     Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
   contactId String
   contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
-  status    TargetStatus @default(queued)
+  status TargetStatus @default(queued)
 
   // Which rep sends this. Currently always Zach.
   assignedTo String?
@@ -144,14 +145,14 @@ model Target {
   // 0-100. Drives the "Today" queue ordering so the best targets
   // go out first — matters because one LinkedIn account caps
   // near 100 connection requests a week.
-  fitScore  Int  @default(50)
+  fitScore Int @default(50)
 
   // Parked out of the send queue by the per-brand cap (top 3 by fit).
   // The person stays fully in the system on their brand page — one click
   // promotes them back. This is how "only reach the best few per brand"
   // is enforced without ever deleting anyone. Default false, so existing
   // rows and every new target start active until a cap shelves them.
-  shelved   Boolean @default(false)
+  shelved Boolean @default(false)
 
   // Follow-up layer — the connective tissue that keeps a deal moving after
   // "sent". nextStep is what to do next in plain words; followUpAt is when
@@ -166,11 +167,11 @@ model Target {
   sentAt    DateTime?
   repliedAt DateTime?
 
-  notes     String?
+  notes String?
 
-  drafts    Draft[]
-  events    TargetEvent[]
-  emails    EmailMessage[]
+  drafts Draft[]
+  events TargetEvent[]
+  emails EmailMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -194,7 +195,7 @@ model Draft {
 
   // "identity" (lead with who we are + proof)
   // "question" (lead with a specific ask)
-  variant  String
+  variant String
 
   // LinkedIn caps the connection note at 300 chars and
   // the first message at 600. Enforced in the UI, not here,
@@ -203,8 +204,8 @@ model Draft {
   firstMessage   String
 
   // Which voice profile generated it
-  voice     String?
-  model     String?
+  voice         String?
+  model         String?
   // Whether a human edited it before sending — the signal we need
   // to improve the prompts over time.
   editedByHuman Boolean @default(false)
@@ -224,7 +225,7 @@ model TargetEvent {
   target   Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
 
   // "queued" | "drafted" | "sent" | "replied" | "note"
-  kind      String
+  kind       String
   fromStatus String?
   toStatus   String?
   actor      String?
@@ -252,7 +253,7 @@ model Partner {
   brandId String @unique
   brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
 
-  lifecycle   Lifecycle @default(prospect)
+  lifecycle    Lifecycle @default(prospect)
   // "title sponsor" | "sampling" | "product seeding"...
   relationship String?
   owner        String?
@@ -273,15 +274,15 @@ model Deal {
   brandId String
   brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
 
-  name  String
+  name       String
   // "conversation" | "proposal" | "verbal" | "closed" | "lost"
-  stage String @default("conversation")
+  stage      String @default("conversation")
   // Cents, not dollars — never store money as a float.
   //
   // This is SPONSORSHIP money only. Booking revenue (what a chapter pays
   // for the artist) lives in sb-crm and is never mixed in here — they are
   // two separate revenue lines and summing them would be meaningless.
-  valueCents Int @default(0)
+  valueCents Int    @default(0)
 
   // Free text for now. When we link to sb-crm this becomes a
   // real reference to a show or season rather than a string.
@@ -294,7 +295,7 @@ model Deal {
   // "sponsorship" — generated by attaching a brand to a show. These are
   // kept in sync automatically and should not be hand-edited; edit the
   // sponsorship instead.
-  source String @default("manual")
+  source String  @default("manual")
 
   // Set for source="notion": the Notion page URL this deal mirrors, so
   // the nightly sync can find and update it without duplicating.
@@ -322,9 +323,9 @@ model Deal {
 // ---------------------------------------------------------------
 
 model Voice {
-  id   String @id @default(cuid())
-  name String @unique   // "Zach"
-  role String?          // shown in signatures
+  id   String  @id @default(cuid())
+  name String  @unique // "Zach"
+  role String? // shown in signatures
 
   // Distilled instructions built from real sample messages.
   // Empty until Zach's messages arrive — drafts read generic until then.
@@ -374,14 +375,14 @@ model ShowSponsor {
   // stage banner at another — so it lives on the link, not the brand.
   deliverables String?
 
-  notes     String?
+  notes String?
 
   // Which rep closed this one. Drives per-rep attribution on the ledger.
-  owner     String?
+  owner String?
 
   // The auto-generated pipeline deal. Created on attach, updated on every
   // edit, removed by cascade on detach.
-  deal      Deal?
+  deal Deal?
 
   // Fulfillment checklist — the individual deliverables promised for this
   // show, ticked off with proof as they happen. Drives the recap.
@@ -406,8 +407,8 @@ model ShowSponsor {
 // Team page, so granting access no longer needs a redeploy.
 
 model AllowedEmail {
-  id      String @id @default(cuid())
-  email   String @unique
+  id      String  @id @default(cuid())
+  email   String  @unique
   addedBy String?
 
   createdAt DateTime @default(now())
@@ -514,16 +515,16 @@ model EmailMessage {
   error     String?
 
   // Open tracking: the pixel at /api/track?e=<id> bumps these.
-  opens     Int       @default(0)
-  openedAt  DateTime?
+  opens    Int       @default(0)
+  openedAt DateTime?
 
   // AI angle for this specific brand, JSON: {"tip": advice for the rep,
   // "insert": a ready-made sentence they can drop into the email}.
   suggestion String?
 
   sentAt    DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@index([targetId])
   @@index([status])
@@ -545,11 +546,11 @@ model EmailMessage {
 
 model DiscoveredBrand {
   id    String @id @default(cuid())
-  query String   // the search that surfaced it, verbatim
+  query String // the search that surfaced it, verbatim
   name  String
 
-  category    String?  // mapped to our category keys
-  reason      String?  // one line: why it fits the query
+  category    String? // mapped to our category keys
+  reason      String? // one line: why it fits the query
   // The pitch: a concrete SB Agency activation this brand could buy.
   activation  String?
   website     String?
@@ -586,15 +587,15 @@ model Setting {
 // three separate lines, never summed across.
 
 model Activation {
-  id      String @id @default(cuid())
+  id      String  @id @default(cuid())
   brandId String
-  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  brand   Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
   // Optional link back to the Pipeline deal it fulfils.
   dealId  String?
 
   name   String
   // "planning" | "in_progress" | "delivered" | "recapped"
-  status String @default("planning")
+  status String  @default("planning")
   owner  String?
   notes  String?
 
@@ -655,19 +656,19 @@ model BudgetLine {
 
   // "venue" | "production" | "print" | "staff" | "talent" — the sheet's
   // section headers, so the page can rebuild the sheet's shape.
-  section     String
-  item        String
-  description String?
-  qty         Int?
-  unitCents   Int?
+  section       String
+  item          String
+  description   String?
+  qty           Int?
+  unitCents     Int?
   // Estimate is what was budgeted; final is what it actually cost.
   // Variance is derived, never stored.
-  estimateCents Int  @default(0)
+  estimateCents Int     @default(0)
   finalCents    Int?
   notes         String?
   // The sheet's "ordered" / "confirmed" checkbox.
-  ordered   Boolean @default(false)
-  sortOrder Int     @default(0)
+  ordered       Boolean @default(false)
+  sortOrder     Int     @default(0)
 
   tasks ActivationTask[]
 
@@ -686,12 +687,12 @@ model ActivationTask {
   text      String
   owner     String?
   // "team" | "ambassador"
-  ownerKind String  @default("team")
+  ownerKind String    @default("team")
   dueDate   DateTime?
   // "todo" | "doing" | "done" | "blocked"
-  status    String  @default("todo")
+  status    String    @default("todo")
   notes     String?
-  sortOrder Int     @default(0)
+  sortOrder Int       @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -707,23 +708,23 @@ model EventStaff {
   eventId String
   event   ActivationEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
-  name  String
-  role  String?
+  name          String
+  role          String?
   // "team" | "ambassador"
-  kind  String @default("team")
+  kind          String    @default("team")
   // Reference into the ambassador tracker once that's linked ("sboy:<userId>").
-  externalRef String?
-  email       String?
-  phone       String?
-  rateCents   Int?
-  confirmed   Boolean @default(false)
-  notes       String?
+  externalRef   String?
+  email         String?
+  phone         String?
+  rateCents     Int?
+  confirmed     Boolean   @default(false)
+  notes         String?
   // Budget line this person fills a slot on (e.g. "Brand Ambassadors" x6).
-  lineId      String?
+  lineId        String?
   // Where they are: "invited" | "onboarding" | "ready" | "confirmed" | "declined" | "no_show" | "done"
-  status      String  @default("invited")
+  status        String    @default("invited")
   platformStage String?
-  invitedAt   DateTime?
+  invitedAt     DateTime?
 
   @@index([eventId])
 }
@@ -735,41 +736,41 @@ model EventStaff {
 // a real cost on an activation budget.
 // ---------------------------------------------------------------
 model OpsMessage {
-  id        String @id @default(cuid())
-  gmailId   String @unique
-  threadId  String
-  fromName  String?
-  fromEmail String
-  toEmail   String?
-  subject   String
-  snippet   String?
+  id             String    @id @default(cuid())
+  gmailId        String    @unique
+  threadId       String
+  fromName       String?
+  fromEmail      String
+  toEmail        String?
+  subject        String
+  snippet        String?
   // Plain-text body, capped (~20k chars). Attachments stay in Gmail and
   // are fetched on demand — nothing binary is stored here.
-  body      String?
-  date      DateTime
+  body           String?
+  date           DateTime
   // [{ id, filename, mimeType, size }]
-  attachments String @default("[]")
-  hasAttachments Boolean @default(false)
+  attachments    String    @default("[]")
+  hasAttachments Boolean   @default(false)
   // "contract" | "invoice_payable" (we owe) | "invoice_receivable" (we sent) | "other"
-  kind   String @default("other")
+  kind           String    @default("other")
   // "needs_review" | "approved" | "paid" | "signed" | "done" | "ignored"
-  status String @default("needs_review")
-  amountCents Int?
-  dueDate     DateTime?
-  vendor      String?
-  owner       String?
-  notes       String?
+  status         String    @default("needs_review")
+  amountCents    Int?
+  dueDate        DateTime?
+  vendor         String?
+  owner          String?
+  notes          String?
   // Optional links into the rest of the dashboard.
-  brandId      String?
-  activationId String?
-  dealId       String?
-  budgetLineId String?
-  forwardedTo  String?
-  forwardedAt  DateTime?
-  repliedAt    DateTime?
+  brandId        String?
+  activationId   String?
+  dealId         String?
+  budgetLineId   String?
+  forwardedTo    String?
+  forwardedAt    DateTime?
+  repliedAt      DateTime?
   // Set by the rules pass so a hand edit is never overwritten by a rescan.
-  autoKind   String?
-  reviewedAt DateTime?
+  autoKind       String?
+  reviewedAt     DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -778,4 +779,20 @@ model OpsMessage {
   @@index([date])
   @@index([threadId])
   @@index([activationId])
+}
+
+// One row per Show Board open through the access gate: which brand's
+// code, the email typed at the gate, when. Feeds "who's viewing" on the
+// brand page, the Requests activity feed, and the Home KPI.
+model BoardVisit {
+  id        String   @id @default(cuid())
+  brandId   String?
+  brand     Brand?   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  email     String?
+  code      String?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([brandId])
+  @@index([createdAt])
 }

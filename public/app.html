@@ -547,6 +547,8 @@
       <h1>Show Board requests</h1>
       <div class="sub" id="req-sub">Loading…</div>
       <div id="req-list" style="margin-top:18px"></div>
+      <div class="section-head" id="req-act-head" hidden>Who's opened the board</div>
+      <div id="req-activity"></div>
     </section>
 
     <!-- ACTIVATIONS (own workspace: sidebar + section tabs swap in) -->
@@ -860,7 +862,8 @@ function loadDashboard() {
       ['Confirmed shows', (d.shows && d.shows.total) || 0,
         d.shows && d.shows.connected ? (d.shows.unsold + ' with no sponsor') : 'CRM not connected'],
       ['Sponsorships', (sp.confirmedCount || 0) + (sp.proposedCount || 0),
-        (sp.confirmedCount || 0) + ' confirmed']
+        (sp.confirmedCount || 0) + ' confirmed'],
+      ['Board views', d.boardViews7d || 0, 'last 7 days']
     ];
     document.getElementById('kpis').innerHTML = kpis.map(function (k) {
       return '<div class="kpi"><div class="kpi-label">' + k[0] + '</div>' +
@@ -1185,7 +1188,12 @@ function loadBrand(brandId) {
               '<button class="btn-ghost" id="b-code-link">Copy board link</button>' +
               '<button class="btn-ghost" id="b-code-new">New code</button>' +
               '<button class="btn-ghost danger" id="b-code-clear" style="margin-left:auto">Remove</button></div>' +
-            '<div class="hint" style="margin:8px 0 0">The link carries the code, so they skip the gate: ' + esc(SPONSOR_URL) + '?code=' + esc(b.boardCode) + '</div>'
+            '<div class="hint" style="margin:8px 0 0">The link carries the code, so they skip the gate: ' + esc(SPONSOR_URL) + '?code=' + esc(b.boardCode) + '</div>' +
+            (d.boardViews && d.boardViews.count
+              ? '<div class="hint" style="margin:6px 0 0">Board opened <b>' + d.boardViews.count + '×</b>' +
+                (d.boardViews.last ? ' · last ' + shortDate(d.boardViews.last.createdAt) +
+                  (d.boardViews.last.email ? ' by ' + esc(d.boardViews.last.email) : '') : '') + '</div>'
+              : '')
           : '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
               '<span style="font-size:13px;color:var(--ink-2)">No access code yet — needed only when the board gate is on (SPONSOR_GATE=1 in Vercel); a code in the link also ties their requests to this brand.</span>' +
               '<button class="btn-solid" id="b-code-gen">Generate code</button></div>') +
@@ -3095,6 +3103,20 @@ function loadRequests() {
   }).catch(function (e) {
     document.getElementById('req-list').innerHTML =
       '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  }).then(function () {
+    // Gate activity: who opened the board (email + brand + when).
+    return api('listBoardActivity', { limit: 30 }).then(function (d) {
+      var head = document.getElementById('req-act-head'), el = document.getElementById('req-activity');
+      var visits = d.visits || [];
+      head.hidden = !visits.length;
+      el.innerHTML = visits.map(function (v) {
+        return '<div class="target"' + (v.brand ? ' data-brand="' + esc(v.brand.id) + '" style="cursor:pointer"' : '') + '>' +
+          '<div class="t-main"><div class="t-line">' +
+            '<span class="t-brand">' + esc(v.brand ? v.brand.name : 'Team code') + '</span>' +
+            (v.email ? '<span class="t-sep">·</span>' + esc(v.email) : '') + '</div></div>' +
+          '<div style="font-size:12px;color:var(--ink-3)">' + shortDate(v.createdAt) + '</div></div>';
+      }).join('');
+    }).catch(function () { /* feed is best-effort */ });
   });
 }
 
@@ -4837,7 +4859,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'action-panel', 'req-list'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'action-panel', 'req-list', 'req-activity'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;

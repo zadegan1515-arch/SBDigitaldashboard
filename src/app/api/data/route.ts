@@ -440,6 +440,9 @@ const handlers: Record<string, Handler> = {
   // -------- dashboard --------
 
   async getDashboard() {
+    const boardViews7d = await prisma.boardVisit.count({
+      where: { createdAt: { gt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+    })
     const [byStatus, categories, pipeline, todos, sponsorAgg, byOwner] = await Promise.all([
       // Only active targets — shelved ones (parked by the per-brand cap)
       // shouldn't inflate the headline "Targets" / "Queued" numbers, since
@@ -507,6 +510,7 @@ const handlers: Record<string, Handler> = {
       counts,
       totalTargets: Object.values(counts).reduce((a, b) => a + b, 0),
       pipelineCents: pipeline._sum.valueCents ?? 0,
+      boardViews7d,
       categories: categories
         .map(c => ({ key: c.category, count: c._count }))
         // Biggest categories first; the "unresolved" junk drawer always
@@ -1263,7 +1267,12 @@ const handlers: Record<string, Handler> = {
       else if (s.status === 'proposed') money.proposedCents += s.valueCents
     }
 
-    return { brand, events, money }
+    const [boardViewCount, lastVisit] = await Promise.all([
+      prisma.boardVisit.count({ where: { brandId } }),
+      prisma.boardVisit.findFirst({ where: { brandId }, orderBy: { createdAt: 'desc' } }),
+    ])
+
+    return { brand, events, money, boardViews: { count: boardViewCount, last: lastVisit } }
   },
 
   // Generate (or clear) a brand's Show Board access code. Uniqueness is
@@ -1693,6 +1702,16 @@ const handlers: Record<string, Handler> = {
       else if (d.stage !== 'lost') openCents += d.valueCents
     }
     return { deals, openCents, wonCents }
+  },
+
+  // Recent Show Board opens through the access gate, newest first.
+  async listBoardActivity({ limit }: any) {
+    const visits = await prisma.boardVisit.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(Number(limit) || 50, 200),
+      include: { brand: { select: { id: true, name: true } } },
+    })
+    return { visits }
   },
 
   // Every request that came in through the public Show Board (one deal
