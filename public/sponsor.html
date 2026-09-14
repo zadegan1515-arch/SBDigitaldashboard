@@ -216,7 +216,8 @@
   });
 
   function load() {
-    if (!CODE) { showGate(''); return; }
+    // The server decides whether a code is needed (SPONSOR_GATE): fetch
+    // first, show the gate only on a 401.
     document.getElementById('list').innerHTML = '<div class="empty">Loading shows…</div>';
     fetch('/api/public/shows?code=' + encodeURIComponent(CODE)).then(function (r) { return r.json(); }).then(function (r) {
       if (!r.ok && r.error === 'code') { showGate('That code didn’t work — check it and try again.'); return; }

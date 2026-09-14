@@ -21,13 +21,22 @@ export function normalizeCode(code: unknown) {
   return String(code ?? '').trim().toUpperCase()
 }
 
-// null = not a valid code. Otherwise who it belongs to (brand: null for
-// the master code).
+// The gate is off unless Leo sets SPONSOR_GATE=1 in Vercel. With it off
+// the board is open to anyone with the link; a valid brand code in the
+// link still attributes requests to that brand.
+export function gateEnabled() {
+  return process.env.SPONSOR_GATE === '1'
+}
+
+// null = no access. Otherwise who it is (brand: null for the master code
+// or, with the gate off, an anonymous visitor).
 export async function brandForCode(code: unknown): Promise<{ brand: Brand | null } | null> {
   const c = normalizeCode(code)
-  if (!c) return null
-  const master = normalizeCode(process.env.SPONSOR_MASTER_CODE)
-  if (master && c === master) return { brand: null }
-  const brand = await prisma.brand.findFirst({ where: { boardCode: c } })
-  return brand ? { brand } : null
+  if (c) {
+    const master = normalizeCode(process.env.SPONSOR_MASTER_CODE)
+    if (master && c === master) return { brand: null }
+    const brand = await prisma.brand.findFirst({ where: { boardCode: c } })
+    if (brand) return { brand }
+  }
+  return gateEnabled() ? null : { brand: null }
 }
