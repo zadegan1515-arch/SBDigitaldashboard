@@ -550,12 +550,12 @@
       <div class="sub" id="bd-sub">The brand-facing board — gated by access codes.</div>
       <div class="section-head" style="margin-top:24px">Access codes <span class="n">look up a brand, hand out a code</span></div>
       <div class="panel panel-pad">
-        <div style="position:relative;max-width:440px">
-          <input class="field-box" id="bd-q" placeholder="Type a brand name…" autocomplete="off" style="width:100%">
-          <div id="bd-results" style="position:absolute;top:100%;left:0;right:0;z-index:30;display:none;background:var(--surface-1);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:260px;overflow:auto;margin-top:4px"></div>
-        </div>
+        <input class="field-box" id="bd-q" placeholder="Type a brand name…" autocomplete="off" style="width:100%;max-width:440px">
+        <div id="bd-results" style="display:none;max-width:440px;border:1px solid var(--border);border-radius:10px;max-height:340px;overflow:auto;margin-top:6px"></div>
         <div id="bd-code"></div>
       </div>
+      <div class="section-head" id="bd-req-head" hidden>Access requests <span class="n" id="bd-req-n"></span></div>
+      <div id="bd-reqs"></div>
       <div class="kpi-row" id="bd-kpis"></div>
       <div class="section-head">Who's opened the board</div>
       <div id="bd-activity"></div>
@@ -3172,8 +3172,40 @@ function renderBoardCode() {
 function loadBoard() {
   showView('board');
   document.getElementById('bd-sub').innerHTML =
-    'The brand-facing board at <a href="' + esc(SPONSOR_URL) + '" target="_blank" rel="noopener">' + esc(SPONSOR_URL.replace(/^https?:\/\//, '')) + '</a> — gated by access codes.';
+    '<a href="' + esc(SPONSOR_URL) + '" target="_blank" rel="noopener">' + esc(SPONSOR_URL.replace(/^https?:\/\//, '')) + '</a>';
   if (!BD_BRANDS) api('listBrands', { category: 'all' }).then(function (list) { BD_BRANDS = list; }).catch(function () {});
+
+  // Pending access requests from the gate: approve (emails the code) or deny.
+  api('listAccessRequests').then(function (d) {
+    var pending = d.pending || [];
+    document.getElementById('bd-req-head').hidden = !pending.length;
+    document.getElementById('bd-req-n').textContent = pending.length || '';
+    document.getElementById('bd-reqs').innerHTML = pending.map(function (r) {
+      return '<div class="target" data-accreq="' + esc(r.id) + '">' +
+        '<div class="t-main"><div class="t-line"><span class="t-brand">' + esc(r.company) + '</span>' +
+          '<span class="t-sep">·</span>' + esc(r.name) + '<span class="t-sep">·</span>' + esc(r.email) + '</div>' +
+          '<div class="t-meta"><span>asked ' + shortDate(r.createdAt) + '</span></div></div>' +
+        '<div class="t-actions">' +
+          '<button class="btn-solid" data-accact="approve">Approve — email code</button>' +
+          '<button class="btn-ghost danger" data-accact="deny">Deny</button></div></div>';
+    }).join('');
+    document.getElementById('bd-reqs').querySelectorAll('[data-accact]').forEach(function (btn) {
+      btn.onclick = function () {
+        var id = btn.closest('[data-accreq]').getAttribute('data-accreq');
+        if (btn.getAttribute('data-accact') === 'deny') {
+          if (!window.confirm('Deny this request? They are not notified.')) return;
+          api('denyAccessRequest', { id: id }).then(function () { loadBoard(); }).catch(function (e) { toast(e.message); });
+          return;
+        }
+        btn.disabled = true; btn.textContent = 'Approving…';
+        api('approveAccessRequest', { id: id }).then(function (r) {
+          toast(r.emailed ? 'Approved — code emailed' : 'Approved — email failed, copy the code from the brand page');
+          BD_BRANDS = null; loadBoard();
+        }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Approve — email code'; });
+      };
+    });
+  }).catch(function () {});
+
   return api('listBoardActivity', { limit: 50 }).then(function (d) {
     document.getElementById('bd-kpis').innerHTML =
       '<div class="kpi"><div class="kpi-label">Views</div><div class="kpi-value">' + (d.last7 || 0) + '</div><div class="kpi-note">last 7 days</div></div>' +
@@ -3197,11 +3229,13 @@ function loadBoard() {
 document.getElementById('bd-q').addEventListener('input', function () {
   var q = this.value.trim().toLowerCase(), box = document.getElementById('bd-results');
   if (q.length < 2 || !BD_BRANDS) { box.style.display = 'none'; return; }
-  var hits = BD_BRANDS.filter(function (b) { return b.name.toLowerCase().indexOf(q) >= 0; }).slice(0, 8);
+  // Every match, in a scrollable list that pushes the page down instead
+  // of a floating menu that clips.
+  var hits = BD_BRANDS.filter(function (b) { return b.name.toLowerCase().indexOf(q) >= 0; });
   box.innerHTML = hits.map(function (b) {
-    return '<div class="clickable" data-bdpick="' + esc(b.id) + '" style="padding:9px 12px;font-size:13.5px;cursor:pointer">' +
+    return '<div class="clickable" data-bdpick="' + esc(b.id) + '" style="padding:10px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid var(--border)">' +
       esc(b.name) + (b.boardCode ? ' <span style="color:var(--ink-3);font-size:12px">· has code</span>' : '') + '</div>';
-  }).join('') || '<div style="padding:9px 12px;font-size:13px;color:var(--ink-3)">No brand with that name</div>';
+  }).join('') || '<div style="padding:10px 12px;font-size:13px;color:var(--ink-3)">No brand with that name</div>';
   box.style.display = 'block';
 });
 document.getElementById('bd-results').addEventListener('click', function (e) {
@@ -4901,6 +4935,12 @@ function gotoView(id) {
   var m = /^#brand\/([^\/]+)/.exec(location.hash || '');
   if (!m) return;
   setTimeout(function () { loadBrand(m[1]); }, 50);
+})();
+
+// Deep link: #board (used by access-request emails)
+(function () {
+  if (!/^#board/.test(location.hash || '')) return;
+  setTimeout(function () { loadBoard(); }, 50);
 })();
 
 // Deep link: #operations or #operations/<id>

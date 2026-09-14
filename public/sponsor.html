@@ -163,6 +163,17 @@
       <button class="btn" type="submit">Open the board</button>
       <span class="err" id="gate-err"></span>
     </form>
+    <div style="margin-top:24px;border-top:1px solid var(--line);padding-top:18px">
+      <span class="morelink" id="gate-req-link">Don’t have a code? Request the show list</span>
+      <form id="gate-req" hidden style="margin-top:14px">
+        <input id="gr-name" placeholder="Your name" required maxlength="120" autocomplete="name" style="text-transform:none;letter-spacing:normal">
+        <input id="gr-email" type="email" placeholder="Work email" required maxlength="200" autocomplete="email" style="text-transform:none;letter-spacing:normal">
+        <input id="gr-company" placeholder="Company / brand" required maxlength="120" autocomplete="organization" style="text-transform:none;letter-spacing:normal">
+        <div class="hp" aria-hidden="true"><input id="gr-hp" tabindex="-1" autocomplete="off"></div>
+        <button class="btn" type="submit">Request access</button>
+        <span class="err" id="gr-err"></span>
+      </form>
+    </div>
   </div>
 </div>
 
@@ -220,6 +231,31 @@
     if (!CODE || !GATE_EMAIL) return;
     try { localStorage.setItem('sbBoardCode', CODE); localStorage.setItem('sbBoardEmail', GATE_EMAIL); } catch (e) {}
     load();
+  });
+
+  // No code yet → ask for access; approval emails them a code.
+  document.getElementById('gate-req-link').addEventListener('click', function () {
+    var f = document.getElementById('gate-req');
+    f.hidden = !f.hidden;
+    if (!f.hidden) document.getElementById('gr-name').focus();
+  });
+  document.getElementById('gate-req').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var btn = this.querySelector('button'), err = document.getElementById('gr-err');
+    btn.disabled = true; btn.textContent = 'Sending…'; err.textContent = '';
+    fetch('/api/public/access', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: document.getElementById('gr-name').value,
+        email: document.getElementById('gr-email').value,
+        company: document.getElementById('gr-company').value,
+        website_url: document.getElementById('gr-hp').value,
+      }),
+    }).then(function (r) { return r.json(); }).then(function (r) {
+      if (!r.ok) throw new Error(r.error || 'Something went wrong');
+      document.getElementById('gate-req').outerHTML =
+        '<div style="margin-top:14px;font-size:14px;color:var(--ink-2)">Request sent — we’ll email you a code.</div>';
+    }).catch(function (e) { err.textContent = e.message; btn.disabled = false; btn.textContent = 'Request access'; });
   });
 
   function load() {

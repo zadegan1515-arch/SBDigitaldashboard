@@ -31,7 +31,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 ## Where things live
 - `public/app.html` — the whole UI. Top nav is six groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
   `showView`): Home · Brands (All brands / Discover / Needs contacts) · Outreach (Queue / Results) ·
-  **Show Board** (Overview = code lookup + view stats + who's-opened feed / Requests / Shows) ·
+  **Show Board** (Overview = code lookup + access-request approve/deny queue + view stats +
+  who's-opened feed / Requests / Shows) ·
   **Deals** (Board = the old Pipeline / Sponsorships) · Operations (Inbox / Materials / Team).
   **Activations** is its own workspace (sidebar + tabs swap in), entered from the left sidebar or the
   Home "Jump to" card — not in the top nav. Deep links: `#activations/<id>/<tab>`, `#operations/<id>`.
@@ -49,7 +50,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   open). Per-brand codes (`Brand.boardCode`, minted on the brand page; `src/lib/board-access.ts`;
   team-wide `SPONSOR_MASTER_CODE` env) always attribute requests to their brand; with the gate on
   they're required. The page remembers the code per device; links copied from a brand page carry
-  `?code=` so the brand skips the gate. At
+  `?code=` so the brand skips the gate. No code → "Request the show list" on the gate
+  (`/api/public/access` → `BoardAccessRequest` pending + email to `SPONSOR_REQUEST_TO`); approve on
+  the Show Board tab creates brand+contact, mints a code and emails it from the ops mailbox. At
   `/partnerships` on every host (rewrite; the old `/sponsor.html` path still works) and served on
   `SPONSOR_HOST` (default shows.sboyagency.com; `/` rewrites to it, middleware blocks
   everything else on that host). Brands browse by date / college / state (`?group=college`), filter by

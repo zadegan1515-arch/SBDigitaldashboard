@@ -796,3 +796,22 @@ model BoardVisit {
   @@index([brandId])
   @@index([createdAt])
 }
+
+// A brand asked for Show Board access from the gate ("Request the show
+// list"). Approve mints their brand + code and emails it; deny just
+// closes it. status: pending | approved | denied.
+model BoardAccessRequest {
+  id      String  @id @default(cuid())
+  company String
+  name    String
+  email   String
+  status  String  @default("pending")
+  brandId String?
+  ip      String?
+
+  createdAt DateTime  @default(now())
+  decidedAt DateTime?
+
+  @@index([status])
+  @@index([createdAt])
+}

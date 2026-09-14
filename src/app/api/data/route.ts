@@ -22,7 +22,7 @@ import {
   emailDifferentContact, draftFinalNudge, draftReplyResponse, sendReplyEmail, sendPlainEmail,
 } from '@/lib/email'
 import { syncNotionDeals } from '@/lib/notion'
-import { googleStatus, googleDisconnect, driveStatus, driveDisconnect, driveCreateActivationDocs, opsStatus, opsDisconnect } from '@/lib/google'
+import { googleStatus, googleDisconnect, driveStatus, driveDisconnect, driveCreateActivationDocs, opsStatus, opsDisconnect, opsSend } from '@/lib/google'
 import { scanOps, listOps, getOps, updateOps, deleteOps, replyOps, forwardOps } from '@/lib/ops'
 import { allShows, refreshShows, setGenreOverride, cachedShows, GENRES } from '@/lib/shows'
 import { newBoardCode } from '@/lib/board-access'
@@ -1719,6 +1719,56 @@ const handlers: Record<string, Handler> = {
       prisma.deal.count({ where: { source: 'request' } }),
     ])
     return { visits, total, last7, requestCount }
+  },
+
+  // Access requests from the gate's "Request the show list" form.
+  async listAccessRequests() {
+    const rows = await prisma.boardAccessRequest.findMany({ orderBy: { createdAt: 'desc' }, take: 50 })
+    return { pending: rows.filter(r => r.status === 'pending'), decided: rows.filter(r => r.status !== 'pending').slice(0, 10) }
+  },
+
+  // Approve: brand found-or-created, requester saved as a contact, a
+  // board code minted if the brand has none, and the code + link emailed
+  // to the requester from the ops mailbox.
+  async approveAccessRequest({ id }: any) {
+    const reqRow = await prisma.boardAccessRequest.findUnique({ where: { id } })
+    if (!reqRow) throw new Error('Request not found')
+    if (reqRow.status !== 'pending') throw new Error('Already ' + reqRow.status)
+
+    let brand = await prisma.brand.findFirst({ where: { name: { equals: reqRow.company, mode: 'insensitive' } } })
+    if (!brand) brand = await prisma.brand.create({ data: { name: reqRow.company, source: 'board-access', notes: `Asked for Show Board access on ${new Date().toISOString().slice(0, 10)}.` } })
+    if (!brand.boardCode) {
+      for (let i = 0; i < 5; i++) {
+        const code = newBoardCode()
+        if (await prisma.brand.findFirst({ where: { boardCode: code } })) continue
+        brand = await prisma.brand.update({ where: { id: brand.id }, data: { boardCode: code } })
+        break
+      }
+      if (!brand.boardCode) throw new Error('Could not generate a unique code — try again')
+    }
+    const existing = await prisma.contact.findFirst({ where: { brandId: brand.id, email: reqRow.email } })
+    if (!existing) await prisma.contact.create({ data: { brandId: brand.id, name: reqRow.name, email: reqRow.email, source: 'board-access' } })
+
+    const boardUrl = process.env.SPONSOR_HOST
+      ? 'https://' + process.env.SPONSOR_HOST + '/'
+      : (process.env.SITE_URL || 'https://sb-digitaldashboard.vercel.app') + '/partnerships'
+    const link = boardUrl + '?code=' + encodeURIComponent(brand.boardCode!)
+    const subject = 'Your access to the SB Agency Show Board'
+    const text = `Hi ${reqRow.name},\n\nHere's your access to the SB Agency Show Board:\n${link}\n\nAccess code: ${brand.boardCode}\n\nPick the shows you want your brand at and send the request — we'll come back with options and pricing.\n\nSB Agency`
+    let emailed = false
+    try {
+      const st = await opsStatus()
+      if (st.connected) { await opsSend({ from: `SB Agency <${st.address || 'ops@sboyagency.com'}>`, to: reqRow.email, subject, text }); emailed = true }
+      else { await sendPlainEmail({ to: reqRow.email, subject, body: text }); emailed = true }
+    } catch { emailed = false }
+
+    await prisma.boardAccessRequest.update({ where: { id }, data: { status: 'approved', brandId: brand.id, decidedAt: new Date() } })
+    return { brandId: brand.id, code: brand.boardCode, emailed }
+  },
+
+  async denyAccessRequest({ id }: any) {
+    await prisma.boardAccessRequest.update({ where: { id }, data: { status: 'denied', decidedAt: new Date() } })
+    return { ok: true }
   },
 
   // Every request that came in through the public Show Board (one deal
