@@ -56,6 +56,13 @@ model Brand {
   // Also honored implicitly when the notes contain the word "skip".
   doNotEmail Boolean @default(false)
 
+  // Access code for the public Show Board (the whole board is gated).
+  // Generated per brand from the brand page. Indexed but deliberately
+  // NOT unique — a unique constraint makes `prisma db push` demand
+  // --accept-data-loss on existing tables; uniqueness is enforced in
+  // the setBrandCode handler instead.
+  boardCode String?
+
   contacts  Contact[]
   targets   Target[]
   partner   Partner?
@@ -69,6 +76,7 @@ model Brand {
 
   @@index([category])
   @@index([tier])
+  @@index([boardCode])
 }
 
 // ---------------------------------------------------------------

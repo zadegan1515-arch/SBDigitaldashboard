@@ -7,6 +7,7 @@
 
 import { NextResponse } from 'next/server'
 import { createSponsorRequest } from '@/lib/sponsor-request'
+import { brandForCode } from '@/lib/board-access'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -25,7 +26,11 @@ export async function POST(req: Request) {
     if (limited(ip)) return NextResponse.json({ ok: false, error: 'Too many requests — try again in an hour.' }, { status: 429 })
     const body = await req.json().catch(() => ({}))
     if (body.website_url) return NextResponse.json({ ok: true, id: 'ok' })     // honeypot: bots fill it, people never see it
-    const r = await createSponsorRequest({ ...body, ip })
+    // Same gate as the show list. A code tied to a brand also pins the
+    // request to that brand, whatever company name was typed.
+    const who = await brandForCode(body.code)
+    if (!who) return NextResponse.json({ ok: false, error: 'code' }, { status: 401 })
+    const r = await createSponsorRequest({ ...body, brandId: who.brand?.id || body.brandId, ip })
     return NextResponse.json({ ok: true, ...r })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 400 })

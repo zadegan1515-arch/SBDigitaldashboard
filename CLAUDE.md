@@ -43,9 +43,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Past shows from `src/data/show-archive.json`. School abbreviations → name/city/state in `SCHOOL_TABLE`;
   genre auto-tags in `GENRE_ARTISTS` (overrides in Setting `artistGenres`). Cache in Setting `crmShows`
   (6 h; daily cron; ↻ Sheet button). Show ids: `sh_<hash>` / `ar_<hash>`. sb-crm's DB is no longer the source.
-- `public/sponsor.html` + `src/app/api/public/{shows,request}` — **brand-facing page**, no sign-in,
-  at `/partnerships` on every host (rewrite; the old `/sponsor.html` path still works) and served on
-  `SPONSOR_HOST` (default partnerships.sboyagency.com; `/` rewrites to it, middleware blocks
+- `public/sponsor.html` + `src/app/api/public/{shows,request}` — **brand-facing Show Board**, no
+  sign-in but **fully gated by per-brand access codes** (`Brand.boardCode`, minted on the brand page;
+  `src/lib/board-access.ts`; optional team-wide `SPONSOR_MASTER_CODE` env). The page remembers the
+  code per device; links copied from a brand page carry `?code=` so the brand skips the gate. At
+  `/partnerships` on every host (rewrite; the old `/sponsor.html` path still works) and served on
+  `SPONSOR_HOST` (default shows.sboyagency.com; `/` rewrites to it, middleware blocks
   everything else on that host). Brands browse by date / college / state (`?group=college`), filter by
   performer (`?performer=dj|singer|rapper|band`, derived in `performerFor` from genre+type) and genre.
   Links: `/?state=TX&genre=edm`, hand-picked `/?for=Brand&pick=id,id` (built from the Shows tab
@@ -65,7 +68,8 @@ DATABASE_URL · NEXTAUTH_SECRET · GOOGLE_CLIENT_ID/SECRET (sign-in) · GMAIL_CL
 EMAIL_SENDER_NAME=Zach · SITE_URL · ANTHROPIC_API_KEY (optional; avoid spend) · NOTION_* ·
 AMBASSADOR_PLATFORM_URL · AMBASSADOR_PLATFORM_TOKEN (= platform INTEGRATION_TOKEN) · INGEST_TOKEN · CRON_SECRET ·
 optional: SIGNATURE_LINKEDIN_URL, SIGNATURE_INSTAGRAM_URL, SIGNATURE_EMBED=1, SIGNATURE_ICONS=1, OPS_BACKFILL_DAYS,
-SPONSOR_HOST (brand page host), SPONSOR_REQUEST_TO (who gets sponsor requests), CRM_SHEET_ID, CRM_SHEET_GID.
+SPONSOR_HOST (brand page host), SPONSOR_REQUEST_TO (who gets sponsor requests), SPONSOR_MASTER_CODE
+(team code that always opens the Show Board), CRM_SHEET_ID, CRM_SHEET_GID.
 
 ## Conventions
 - Cents everywhere; `money()` formats on the client, `parseMoney()` parses "$1,750".

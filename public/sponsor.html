@@ -74,6 +74,14 @@
   .hp{position:absolute;left:-9999px;opacity:0;height:0;overflow:hidden}
   .morelink{font-size:13px;font-weight:600;color:var(--accent);cursor:pointer}
   [hidden]{display:none!important}
+  .gate{position:fixed;inset:0;background:var(--bg);z-index:40;display:flex;align-items:center;justify-content:center;padding:20px}
+  .gate-box{width:100%;max-width:360px;text-align:center}
+  .gate-box img{height:34px;filter:invert(1);margin-bottom:20px}
+  .gate-box h2{margin:0 0 16px;font-size:22px;letter-spacing:-.01em}
+  .gate-box input{width:100%;border:1px solid var(--line);border-radius:12px;background:var(--soft);color:var(--ink);padding:13px 14px;font:inherit;font-size:16px;text-align:center;letter-spacing:.12em;text-transform:uppercase;outline:none;margin-bottom:10px}
+  .gate-box input:focus{border-color:var(--ink-3)}
+  .gate-box .btn{width:100%}
+  .gate-box .err{display:block;margin-top:10px;min-height:18px}
   .actions{display:flex;gap:10px;align-items:center;margin-top:18px}
   .btn{background:var(--ink);color:#111;border:0;border-radius:999px;padding:12px 22px;font-weight:700}
   .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
@@ -145,6 +153,18 @@
   <div class="card" id="card"></div>
 </div>
 
+<div class="gate" id="gate" hidden>
+  <div class="gate-box">
+    <img src="/materials/sb-logo.png" alt="SB Agency">
+    <h2>Enter your access code</h2>
+    <form id="gate-form">
+      <input id="gate-code" placeholder="XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="40">
+      <button class="btn" type="submit">Open the board</button>
+      <span class="err" id="gate-err"></span>
+    </form>
+  </div>
+</div>
+
 <script>
 (function () {
   var SHOWS = [], mode = 'upcoming', group = 'date', q = '', fState = '', fSchool = '', fMonth = '', fPerf = '', fGenre = '';
@@ -154,6 +174,12 @@
   var P = new URLSearchParams(location.search);
   var PICK = (P.get('pick') || '').split(',').filter(Boolean);
   var FOR = (P.get('for') || '').slice(0, 80), BRAND_ID = (P.get('b') || '').slice(0, 40);
+  // Access code: from the link (?code=) or remembered on this device.
+  var CODE = (P.get('code') || '').trim().toUpperCase();
+  try {
+    if (CODE) localStorage.setItem('sbBoardCode', CODE);
+    else CODE = (localStorage.getItem('sbBoardCode') || '').toUpperCase();
+  } catch (e) {}
   fState = P.get('state') || ''; fGenre = P.get('genre') || ''; fSchool = P.get('school') || ''; q = P.get('q') || '';
   fPerf = (P.get('performer') || '').toLowerCase();
   var oldType = (P.get('type') || '').toLowerCase();           // pre-performer links
@@ -176,10 +202,26 @@
   function fmt(iso, opts) { var x = d(iso); return x ? x.toLocaleDateString('en-US', Object.assign({ timeZone: 'UTC' }, opts)) : iso; }
   function stateName(st) { return STATE_NAME[st] || st || 'Other'; }
 
+  function showGate(msg) {
+    document.getElementById('gate').hidden = false;
+    document.getElementById('gate-err').textContent = msg || '';
+    document.getElementById('gate-code').focus();
+  }
+  document.getElementById('gate-form').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    CODE = document.getElementById('gate-code').value.trim().toUpperCase();
+    if (!CODE) return;
+    try { localStorage.setItem('sbBoardCode', CODE); } catch (e) {}
+    load();
+  });
+
   function load() {
+    if (!CODE) { showGate(''); return; }
     document.getElementById('list').innerHTML = '<div class="empty">Loading shows…</div>';
-    fetch('/api/public/shows').then(function (r) { return r.json(); }).then(function (r) {
+    fetch('/api/public/shows?code=' + encodeURIComponent(CODE)).then(function (r) { return r.json(); }).then(function (r) {
+      if (!r.ok && r.error === 'code') { showGate('That code didn’t work — check it and try again.'); return; }
       if (!r.ok) throw new Error(r.error || 'Could not load');
+      document.getElementById('gate').hidden = true;
       SHOWS = r.shows;
       if (PICK.length) {
         var only = SHOWS.filter(function (s) { return PICK.indexOf(s.id) >= 0; });
@@ -364,7 +406,7 @@
       ev.preventDefault();
       var f = ev.target, btn = f.querySelector('button[type=submit]'), err = f.querySelector('#rq-err');
       btn.disabled = true; btn.textContent = 'Sending…'; err.textContent = '';
-      var body = { showIds: ids, brandId: BRAND_ID || undefined };
+      var body = { showIds: ids, brandId: BRAND_ID || undefined, code: CODE };
       ['company', 'name', 'email', 'phone', 'notes', 'website_url'].forEach(function (k) { body[k] = f.elements[k].value; });
       fetch('/api/public/request', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
         .then(function (r) { return r.json(); })

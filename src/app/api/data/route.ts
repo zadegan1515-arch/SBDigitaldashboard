@@ -25,6 +25,7 @@ import { syncNotionDeals } from '@/lib/notion'
 import { googleStatus, googleDisconnect, driveStatus, driveDisconnect, driveCreateActivationDocs, opsStatus, opsDisconnect } from '@/lib/google'
 import { scanOps, listOps, getOps, updateOps, deleteOps, replyOps, forwardOps } from '@/lib/ops'
 import { allShows, refreshShows, setGenreOverride, cachedShows, GENRES } from '@/lib/shows'
+import { newBoardCode } from '@/lib/board-access'
 
 const prisma = new PrismaClient()
 
@@ -1263,6 +1264,23 @@ const handlers: Record<string, Handler> = {
     }
 
     return { brand, events, money }
+  },
+
+  // Generate (or clear) a brand's Show Board access code. Uniqueness is
+  // enforced here rather than by the schema (see prisma/schema.prisma).
+  async setBrandCode({ brandId, clear }: any) {
+    if (clear) {
+      await prisma.brand.update({ where: { id: brandId }, data: { boardCode: null } })
+      return { code: null }
+    }
+    for (let i = 0; i < 5; i++) {
+      const code = newBoardCode()
+      const taken = await prisma.brand.findFirst({ where: { boardCode: code } })
+      if (taken) continue
+      await prisma.brand.update({ where: { id: brandId }, data: { boardCode: code } })
+      return { code }
+    }
+    throw new Error('Could not generate a unique code — try again')
   },
 
   async updateBrand({ brandId, ...fields }: any) {

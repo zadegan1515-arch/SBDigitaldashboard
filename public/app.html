@@ -1137,7 +1137,51 @@ function loadBrand(brandId) {
         }).join('') + '</div></div>'
       : '';
 
-    box.innerHTML = head + shows + contacts + details + outreach + docs + activity;
+    // Show Board access — the whole public board is code-gated; this is
+    // where a brand's code is minted and its ready-to-send link copied.
+    var boardAccess =
+      '<div class="section-head">Show Board access</div>' +
+      '<div class="panel panel-pad">' +
+        (b.boardCode
+          ? '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+              '<code style="font-size:16px;font-weight:700;letter-spacing:.08em">' + esc(b.boardCode) + '</code>' +
+              '<button class="btn-ghost" id="b-code-copy">Copy code</button>' +
+              '<button class="btn-ghost" id="b-code-link">Copy board link</button>' +
+              '<button class="btn-ghost" id="b-code-new">New code</button>' +
+              '<button class="btn-ghost danger" id="b-code-clear" style="margin-left:auto">Remove</button></div>' +
+            '<div class="hint" style="margin:8px 0 0">The link carries the code, so they skip the gate: ' + esc(SPONSOR_URL) + '?code=' + esc(b.boardCode) + '</div>'
+          : '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+              '<span style="font-size:13px;color:var(--ink-2)">No access code yet — this brand can\'t open the Show Board.</span>' +
+              '<button class="btn-solid" id="b-code-gen">Generate code</button></div>') +
+      '</div>';
+
+    box.innerHTML = head + shows + contacts + boardAccess + details + outreach + docs + activity;
+
+    var codeGen = box.querySelector('#b-code-gen');
+    if (codeGen) codeGen.onclick = function () {
+      codeGen.disabled = true;
+      api('setBrandCode', { brandId: b.id }).then(function () { loadBrand(b.id); })
+        .catch(function (e) { toast(e.message); codeGen.disabled = false; });
+    };
+    var codeNew = box.querySelector('#b-code-new');
+    if (codeNew) codeNew.onclick = function () {
+      if (!window.confirm('Generate a new code? The old one stops working immediately.')) return;
+      api('setBrandCode', { brandId: b.id }).then(function () { toast('New code set'); loadBrand(b.id); })
+        .catch(function (e) { toast(e.message); });
+    };
+    var codeClear = box.querySelector('#b-code-clear');
+    if (codeClear) codeClear.onclick = function () {
+      if (!window.confirm('Remove this brand\'s access code? They lose access to the board.')) return;
+      api('setBrandCode', { brandId: b.id, clear: true }).then(function () { loadBrand(b.id); })
+        .catch(function (e) { toast(e.message); });
+    };
+    var codeCopy = box.querySelector('#b-code-copy');
+    if (codeCopy) codeCopy.onclick = function () { navigator.clipboard.writeText(b.boardCode); toast('Code copied'); };
+    var codeLink = box.querySelector('#b-code-link');
+    if (codeLink) codeLink.onclick = function () {
+      var u = SPONSOR_URL + '?code=' + encodeURIComponent(b.boardCode);
+      navigator.clipboard.writeText(u); toast('Board link copied — ' + u);
+    };
 
     document.getElementById('b-save').onclick = function () {
       var payload = { brandId: b.id };
