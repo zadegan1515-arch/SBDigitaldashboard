@@ -1677,6 +1677,32 @@ const handlers: Record<string, Handler> = {
     return { deals, openCents, wonCents }
   },
 
+  // Every request that came in through the public Show Board (one deal
+  // per submit, source "request"), newest first, with the person who
+  // asked and the shows still marked "requested" for that brand.
+  async listRequests() {
+    const deals = await prisma.deal.findMany({
+      where: { source: 'request' },
+      include: { brand: { select: { id: true, name: true, category: true } } },
+      orderBy: { createdAt: 'desc' },
+    })
+    const brandIds = [...new Set(deals.map(d => d.brandId))]
+    const [contacts, sponsors] = await Promise.all([
+      prisma.contact.findMany({ where: { brandId: { in: brandIds }, source: 'sponsor-page' }, orderBy: { createdAt: 'desc' } }),
+      prisma.showSponsor.findMany({ where: { brandId: { in: brandIds }, status: 'requested' }, orderBy: { eventDate: 'asc' } }),
+    ])
+    return {
+      count: deals.length,
+      requests: deals.map(d => ({
+        id: d.id, createdAt: d.createdAt, name: d.name, stage: d.stage, notes: d.notes, eventRef: d.eventRef,
+        brand: d.brand,
+        contact: contacts.find(c => c.brandId === d.brandId) || null,
+        shows: sponsors.filter(s => s.brandId === d.brandId)
+          .map(s => ({ id: s.id, school: s.school, chapter: s.chapter, artist: s.artist, eventDate: s.eventDate })),
+      })),
+    }
+  },
+
   // Manual deals only. Deals with source="sponsorship" are rewritten from
   // their attachment on every sync, so editing one here would be silently
   // undone — updateSponsorship is the right door for those.

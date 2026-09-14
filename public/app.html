@@ -522,6 +522,14 @@
       <div id="deals"></div>
     </section>
 
+    <!-- SHOW BOARD REQUESTS -->
+    <section class="view page" id="requests">
+      <div class="eyebrow">Deals</div>
+      <h1>Show Board requests</h1>
+      <div class="sub" id="req-sub">Loading…</div>
+      <div id="req-list" style="margin-top:18px"></div>
+    </section>
+
     <!-- ACTIVATIONS (own workspace: sidebar + section tabs swap in) -->
     <section class="view page" id="activations">
       <div id="act-body"></div>
@@ -759,13 +767,13 @@ function refreshAfterSponsorChange() {
 var SUBTABS = {
   brands: [['brands', 'All brands'], ['discover', 'Discover'], ['needs', 'Needs contacts']],
   outreach: [['outreach', 'Queue'], ['results', 'Results']],
-  pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships'], ['shows', 'Shows']],
+  pipeline: [['pipeline', 'Board'], ['requests', 'Requests'], ['sponsorships', 'Sponsorships'], ['shows', 'Shows']],
   operations: [['operations', 'Inbox'], ['materials', 'Materials'], ['team', 'Team']],
 };
 var GROUP_OF = {
   brands: 'brands', brand: 'brands', discover: 'brands', needs: 'brands',
   outreach: 'outreach', results: 'outreach',
-  pipeline: 'pipeline', sponsorships: 'pipeline', shows: 'pipeline',
+  pipeline: 'pipeline', requests: 'pipeline', sponsorships: 'pipeline', shows: 'pipeline',
   operations: 'operations', materials: 'operations', team: 'operations',
 };
 
@@ -2954,6 +2962,50 @@ function loadPipeline() {
   });
 }
 
+// --- show board requests ---------------------------------------
+//
+// Everything brands submitted on the public Show Board, newest first.
+// The same requests also arrive by email; this is the in-app copy.
+
+function loadRequests() {
+  showView('requests');
+  return api('listRequests').then(function (d) {
+    document.getElementById('req-sub').textContent =
+      d.count ? d.count + ' request' + (d.count === 1 ? '' : 's') + ' from the Show Board' : 'Requests from the Show Board land here and in your email.';
+    var el = document.getElementById('req-list');
+    if (!d.requests.length) {
+      el.innerHTML = '<div class="panel"><div class="empty"><h3>No requests yet</h3>' +
+        '<p>When a brand picks shows on the Show Board and submits, it appears here with a deal on the Board.</p></div></div>';
+      return;
+    }
+    el.innerHTML = d.requests.map(function (r) {
+      var c = r.contact;
+      var stageCls = r.stage === 'closed' ? 'confirmed' : r.stage === 'lost' ? 'declined' : 'proposed';
+      return '<div class="panel panel-pad" style="margin-bottom:10px">' +
+        '<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">' +
+          '<span style="font-family:var(--display);font-weight:700;font-size:16px">' + esc(r.brand.name) + '</span>' +
+          '<span class="status ' + stageCls + '">' + esc(r.stage) + '</span>' +
+          '<span style="margin-left:auto;font-size:12px;color:var(--ink-3)">' + shortDate(r.createdAt) + '</span></div>' +
+        (c ? '<div style="font-size:13px;color:var(--ink-2);margin-top:4px">' + esc(c.name || '') +
+          (c.email ? ' · <a href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a>' : '') +
+          (c.phone ? ' · ' + esc(c.phone) : '') + '</div>' : '') +
+        (r.shows.length ? '<div style="margin-top:8px">' + r.shows.map(function (s) {
+          return '<div style="font-size:13px;padding:2px 0;color:var(--ink-2)">' + esc(s.eventDate || '') +
+            ' · <b style="color:var(--ink)">' + esc(s.artist) + '</b> · ' + esc(s.school) +
+            (s.chapter ? ' · ' + esc(s.chapter) : '') + '</div>';
+        }).join('') + '</div>' : '') +
+        (r.notes ? '<details style="margin-top:8px"><summary style="font-size:12.5px;color:var(--ink-3);cursor:pointer">Full request</summary>' +
+          '<pre style="white-space:pre-wrap;font:12.5px/1.5 inherit;color:var(--ink-2);margin:6px 0 0">' + esc(r.notes) + '</pre></details>' : '') +
+        '<div style="display:flex;gap:8px;margin-top:10px">' +
+          '<button class="btn-ghost" data-brand="' + esc(r.brand.id) + '">Open brand →</button></div>' +
+      '</div>';
+    }).join('');
+  }).catch(function (e) {
+    document.getElementById('req-list').innerHTML =
+      '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+}
+
 // --- discover --------------------------------------------------
 //
 // AI brand hunt. The search runs server-side with live web search and
@@ -4593,6 +4645,7 @@ function gotoView(id) {
   if (id === 'sponsorships') loadSponsorships();
   if (id === 'needs') loadNeeds();
   if (id === 'pipeline') loadPipeline();
+  if (id === 'requests') loadRequests();
   if (id === 'activations') loadActivations();
   if (id === 'operations') loadOperations();
   if (id === 'results') loadResults();
@@ -4692,7 +4745,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'action-panel'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'action-panel', 'req-list'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
