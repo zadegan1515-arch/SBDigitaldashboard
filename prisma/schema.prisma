@@ -311,6 +311,12 @@ model Deal {
   // sponsorship instead.
   source String  @default("manual")
 
+  // Deal-room follow-up layer: what to do next and when it's due.
+  // Editable on every deal (sponsorship-sourced included) — the syncs
+  // never touch these two fields.
+  nextStep   String?
+  followUpAt DateTime?
+
   // Set for source="notion": the Notion page URL this deal mirrors, so
   // the nightly sync can find and update it without duplicating.
   // Indexed but deliberately NOT unique — a unique constraint makes

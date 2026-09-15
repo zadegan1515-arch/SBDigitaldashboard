@@ -2423,6 +2423,99 @@ const handlers: Record<string, Handler> = {
     return { brands: rows }
   },
 
+  // -------- deal room --------
+
+  // One screen per deal: the brand's people, the show and its
+  // deliverables, live board heat, and a follow-up that can't lapse.
+  async getDealRoom({ dealId }: any) {
+    const deal = await prisma.deal.findUnique({
+      where: { id: dealId },
+      include: {
+        brand: { include: { contacts: { orderBy: [{ isDecisionMaker: 'desc' }, { name: 'asc' }], take: 8 } } },
+        showSponsor: { include: { deliverableItems: { orderBy: { createdAt: 'asc' } } } },
+      },
+    })
+    if (!deal) throw new Error('Deal not found')
+    const twoWeeks = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
+    const [boardViews14d, lastVisit] = await Promise.all([
+      prisma.boardVisit.count({ where: { brandId: deal.brandId, createdAt: { gte: twoWeeks } } }),
+      prisma.boardVisit.findFirst({ where: { brandId: deal.brandId }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
+    ])
+    return { deal, boardViews14d, lastBoardVisit: lastVisit?.createdAt ?? null }
+  },
+
+  // Follow-up fields work on every deal, sponsorship-sourced included —
+  // the syncs never write these, so nothing gets clobbered.
+  async setDealFollowUp({ dealId, nextStep, followUpAt }: any) {
+    return prisma.deal.update({
+      where: { id: dealId },
+      data: {
+        ...(nextStep !== undefined ? { nextStep: nextStep || null } : {}),
+        ...(followUpAt !== undefined ? { followUpAt: followUpAt ? new Date(followUpAt) : null } : {}),
+      },
+    })
+  },
+
+  // -------- next best brands --------
+
+  // Rules-only ranking (no model calls) of brands nobody has contacted:
+  // tier, reachable decision makers, and how the brand's category has
+  // actually replied to us so far. Feeds the list under the queue.
+  async nextBestBrands({ take = 15 }: any = {}) {
+    const [brands, sent, replies] = await Promise.all([
+      prisma.brand.findMany({
+        where: { doNotEmail: false },
+        include: {
+          contacts: { select: { title: true, linkedinUrl: true, email: true, isDecisionMaker: true } },
+          targets: { select: { status: true, sentAt: true } },
+          _count: { select: { contacts: true } },
+        },
+      }),
+      prisma.emailMessage.findMany({
+        where: { direction: 'out', status: 'sent' },
+        select: { target: { select: { brandId: true, brand: { select: { category: true } } } } },
+      }),
+      prisma.emailMessage.findMany({
+        where: { direction: 'in' },
+        select: { target: { select: { brandId: true, brand: { select: { category: true } } } } },
+      }),
+    ])
+
+    // Brand-level reply rate per category.
+    const emailedByCat: Record<string, Set<string>> = {}
+    const repliedByCat: Record<string, Set<string>> = {}
+    for (const m of sent) (emailedByCat[m.target.brand.category ?? ''] ??= new Set()).add(m.target.brandId)
+    for (const m of replies) (repliedByCat[m.target.brand.category ?? ''] ??= new Set()).add(m.target.brandId)
+
+    const touched = (b: (typeof brands)[number]) =>
+      b.targets.some(t => t.sentAt || ['sent', 'accepted', 'replied', 'converted'].includes(t.status))
+
+    const rows = brands
+      .filter(b => b.contacts.length && !touched(b))
+      .map(b => {
+        let score = 0
+        const why: string[] = []
+        const tierPts: Record<string, number> = { emerging: 30, growth: 20, established: 8 }
+        score += tierPts[b.tier ?? ''] ?? 12
+        if (b.tier) why.push(b.tier)
+        if (b.contacts.some(c => c.isDecisionMaker && c.linkedinUrl)) { score += 30; why.push('decision-maker on LinkedIn') }
+        else if (b.contacts.some(c => c.linkedinUrl)) { score += 15; why.push('contact on LinkedIn') }
+        if (b.contacts.some(c => c.email)) { score += 8; why.push('email on file') }
+        const cat = b.category ?? ''
+        const emailed = emailedByCat[cat]?.size ?? 0
+        const replied = repliedByCat[cat]?.size ?? 0
+        if (emailed >= 3) {
+          const rate = Math.round((replied / emailed) * 100)
+          score += Math.min(25, rate)
+          if (rate > 0) why.push('category replies at ' + rate + '%')
+        }
+        return { id: b.id, name: b.name, category: b.category, tier: b.tier, contacts: b._count.contacts, score, why }
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, Math.min(Number(take) || 15, 50))
+    return { brands: rows }
+  },
+
   // -------- results / analytics --------
 
   // The outreach funnel and what's working, computed brand-level so one

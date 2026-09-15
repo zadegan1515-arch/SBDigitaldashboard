@@ -563,6 +563,7 @@
       <div id="status-filters" class="chips" style="display:none"></div>
       <div class="count-head" id="queue-head">To send today <span class="n"></span></div>
       <div id="targets"></div>
+      <div id="nextbest"></div>
     </section>
 
     <!-- EMAIL OUTREACH -->
@@ -638,6 +639,7 @@
       <div style="margin-top:18px;display:flex;gap:8px"><button class="btn-solid" id="btn-newdeal">+ New deal</button>
         <button class="btn-ghost" id="btn-notionsync" title="Pull the deal list from Notion now (also runs automatically every morning)">Sync Notion</button></div>
       <div id="deal-form-slot" style="margin-top:12px"></div>
+      <div id="deal-room-slot" style="margin-top:12px"></div>
       <div class="kpi-row" id="pipe-kpis"></div>
       <div id="deals"></div>
     </section>
@@ -2587,6 +2589,8 @@ function targetRow(t) {
       '<span class="t-sep">·</span>' + esc(t.contact.name) +
       (t.contact.title ? ' <span class="t-title">— ' + esc(t.contact.title) + '</span>' : '') + '</div>' +
       '<div class="t-meta"><span class="status ' + t.status + '">' + t.status + '</span>' +
+      (t.status === 'accepted' && t.updatedAt && (Date.now() - new Date(t.updatedAt).getTime()) > 3 * 864e5
+        ? '<span class="status declined">DM overdue</span>' : '') +
       (t.brand.category ? '<span>' + esc(CAT_NAMES[t.brand.category] || t.brand.category) + '</span>' : '') +
       (t.brand.tier ? '<span>·</span><span>' + esc(t.brand.tier) + '</span>' : '') +
       '<span>·</span><span class="fit">fit ' + t.fitScore + '</span>' +
@@ -2699,10 +2703,12 @@ function loadOutreach() {
     ? Promise.all([api('listTargets', { status: 'accepted' }), api('getTodayQueue'), api('listTargets', { status: 'sent' })])
         .then(function (r) {
           var midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+          var weekAgo = Date.now() - 7 * 864e5;
           var sentToday = (r[2] || []).filter(function (t) { return t.sentAt && new Date(t.sentAt) >= midnight; });
-          return { accepted: r[0] || [], list: r[1] || [], sentToday: sentToday };
+          var stale = (r[2] || []).filter(function (t) { return t.sentAt && new Date(t.sentAt).getTime() <= weekAgo; });
+          return { accepted: r[0] || [], list: r[1] || [], sentToday: sentToday, stale: stale };
         })
-    : api('listTargets', { status: statusFilter }).then(function (l) { return { accepted: [], list: l || [], sentToday: [] }; });
+    : api('listTargets', { status: statusFilter }).then(function (l) { return { accepted: [], list: l || [], sentToday: [], stale: [] }; });
 
   return call.then(function (r) {
     var list = r.list;
@@ -2724,9 +2730,15 @@ function loadOutreach() {
       ? '<div class="count-head" style="margin-top:20px">Sent today — waiting on accepts <span class="n">' + r.sentToday.length + '</span></div>' +
         r.sentToday.map(targetRow).join('')
       : '';
+    (r.stale || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
+    var staleBlock = (r.stale || []).length
+      ? '<div class="count-head" style="margin-top:20px;color:var(--warn)">Going stale — invited 7+ days ago, no accept <span class="n">' + r.stale.length + '</span></div>' +
+        '<div class="hint" style="margin:2px 0 10px">Press “They accepted” if they did, try their email instead, or Pass and free the slot.</div>' +
+        r.stale.map(targetRow).join('')
+      : '';
 
-    box.innerHTML = list.length || r.accepted.length || r.sentToday.length
-      ? acceptedBlock + list.map(targetRow).join('') + sentBlock
+    box.innerHTML = list.length || r.accepted.length || r.sentToday.length || (r.stale || []).length
+      ? acceptedBlock + list.map(targetRow).join('') + sentBlock + staleBlock
       : '<div class="panel"><div class="empty"><h3>Nothing here</h3>' +
         '<p>' + (mode === 'all'
           ? (statusFilter !== 'all'
@@ -2736,6 +2748,8 @@ function loadOutreach() {
             'the daily cap that keeps the LinkedIn account out of trouble. ' +
             'All targets shows everything regardless.') +
         '</p></div></div>';
+    if (mode === 'today') renderNextBest();
+    else document.getElementById('nextbest').innerHTML = '';
   }).catch(function (e) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
       esc(e.message) + '</p></div></div>';
@@ -3414,6 +3428,110 @@ function renderEmailMode(box) {
 
 var STAGE_ORDER = ['conversation', 'proposal', 'verbal', 'closed', 'lost'];
 
+// The deal room: everything needed to close one deal on one panel —
+// the people, the show and its deliverables, board heat, and a
+// follow-up date that shows up as "follow-up due" on the card.
+function openDealRoom(dealId) {
+  var slot = document.getElementById('deal-room-slot');
+  slot.innerHTML = '<div class="panel panel-pad">Loading…</div>';
+  window.scrollTo(0, 0);
+  api('getDealRoom', { dealId: dealId }).then(function (r) {
+    var deal = r.deal, b = deal.brand, sp = deal.showSponsor;
+    var heat = r.boardViews14d
+      ? '<span class="status confirmed">🔥 ' + r.boardViews14d + ' board view' + (r.boardViews14d === 1 ? '' : 's') + ' in 14 days</span>' +
+        (r.lastBoardVisit ? '<span style="color:var(--ink-3)">last seen ' + when(r.lastBoardVisit) + '</span>' : '')
+      : '<span style="color:var(--ink-3)">No Show Board views in the last 14 days — worth re-sending their board link.</span>';
+
+    var people = (b.contacts || []).map(function (c) {
+      return '<div class="t-meta" style="margin-top:6px">' +
+        '<span style="color:var(--ink-1);font-weight:600">' + esc(c.name) + '</span>' +
+        (c.title ? '<span class="t-title">— ' + esc(c.title) + '</span>' : '') +
+        (c.linkedinUrl ? '<a class="btn-ghost" href="' + esc(c.linkedinUrl) + '" target="_blank" rel="noopener" style="padding:2px 9px;font-size:11.5px">in ↗</a>' : '') +
+        (c.email ? '<span style="color:var(--ink-3)">' + esc(c.email) + '</span>' : '') +
+      '</div>';
+    }).join('') || '<div class="t-meta" style="margin-top:6px"><span>No people saved — add them on the brand page.</span></div>';
+
+    var showBlock = '';
+    if (sp) {
+      var items = (sp.deliverableItems || []).map(function (it) {
+        return '<label style="display:flex;gap:8px;align-items:flex-start;padding:4px 0;font-size:13px;cursor:pointer">' +
+          '<input type="checkbox" data-rmdeliv="' + esc(it.id) + '"' + (it.done ? ' checked' : '') + ' style="margin-top:3px">' +
+          '<span' + (it.done ? ' style="color:var(--ink-3);text-decoration:line-through"' : '') + '>' + esc(it.text) + '</span></label>';
+      }).join('');
+      showBlock =
+        '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft)">' +
+          '<div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px">Show & deliverables</div>' +
+          '<div style="font-size:13px">' + esc([sp.artist, sp.school, sp.eventDate].filter(Boolean).join(' · ') || 'Show') +
+            ' <span class="status ' + esc(sp.status) + '">' + esc(sp.status) + '</span></div>' +
+          (items || (sp.deliverables
+            ? '<div class="hint" style="margin:8px 0 0">Promised: ' + esc(sp.deliverables) + ' <button class="btn-ghost" id="rm-seed" style="padding:2px 9px;font-size:11.5px">Turn into checklist</button></div>'
+            : '<div class="hint" style="margin:8px 0 0">Nothing promised yet.</div>')) +
+          '<div style="display:flex;gap:8px;margin-top:8px"><input class="field-box" id="rm-newdeliv" placeholder="+ Add a deliverable…" style="flex:1">' +
+          '<button class="btn-ghost" id="rm-adddeliv">Add</button></div>' +
+        '</div>';
+    }
+
+    slot.innerHTML =
+      '<div class="panel panel-pad">' +
+        '<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">' +
+          '<b style="font-size:16px;font-family:var(--display);cursor:pointer" data-rmbrand="' + esc(b.id) + '">' + esc(b.name) + '</b>' +
+          '<span class="amount">' + money(deal.valueCents) + '</span>' +
+          '<span class="status ' + esc(deal.stage) + '">' + esc(deal.stage) + '</span>' +
+          (deal.owner ? '<span style="color:var(--ink-3);font-size:12.5px">' + esc(deal.owner) + '</span>' : '') +
+          '<button class="btn-ghost" id="rm-close" style="margin-left:auto">Close ×</button>' +
+        '</div>' +
+        '<div class="t-meta" style="margin-top:10px">' + heat + '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:14px">' +
+          '<div style="flex:1;min-width:200px"><label class="lbl">Next step</label>' +
+            '<input class="field-box" id="rm-step" placeholder="e.g. Send revised proposal" value="' + esc(deal.nextStep || '') + '"></div>' +
+          '<div><label class="lbl">Follow up</label>' +
+            '<input class="field-box" id="rm-date" type="date" value="' + (deal.followUpAt ? isoDate(deal.followUpAt) : '') + '"></div>' +
+          '<button class="btn-solid" id="rm-save">Save</button>' +
+        '</div>' +
+        showBlock +
+        '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft)">' +
+          '<div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin-bottom:2px">People at ' + esc(b.name) + '</div>' +
+          people +
+        '</div>' +
+      '</div>';
+
+    slot.querySelector('#rm-close').onclick = function () { slot.innerHTML = ''; };
+    slot.querySelector('[data-rmbrand]').onclick = function () { loadBrand(b.id); };
+    slot.querySelector('#rm-save').onclick = function () {
+      var btn = this; btn.disabled = true;
+      api('setDealFollowUp', {
+        dealId: dealId,
+        nextStep: slot.querySelector('#rm-step').value || null,
+        followUpAt: slot.querySelector('#rm-date').value || null,
+      }).then(function () { toast('Saved'); btn.disabled = false; loadPipeline(); })
+        .catch(function (e) { toast(e.message); btn.disabled = false; });
+    };
+    slot.querySelectorAll('[data-rmdeliv]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        api('updateDeliverable', { id: cb.getAttribute('data-rmdeliv'), done: cb.checked })
+          .then(function () { openDealRoom(dealId); })
+          .catch(function (e) { toast(e.message); });
+      });
+    });
+    var seed = slot.querySelector('#rm-seed');
+    if (seed) seed.onclick = function () {
+      api('seedDeliverables', { showSponsorId: sp.id })
+        .then(function () { openDealRoom(dealId); })
+        .catch(function (e) { toast(e.message); });
+    };
+    var addBtn = slot.querySelector('#rm-adddeliv');
+    if (addBtn) addBtn.onclick = function () {
+      var text = slot.querySelector('#rm-newdeliv').value.trim();
+      if (!text) return;
+      api('addDeliverable', { showSponsorId: sp.id, text: text })
+        .then(function () { openDealRoom(dealId); })
+        .catch(function (e) { toast(e.message); });
+    };
+  }).catch(function (e) {
+    slot.innerHTML = '<div class="panel panel-pad">' + esc(e.message) + '</div>';
+  });
+}
+
 function loadPipeline() {
   showView('pipeline');
   var ns = document.getElementById('btn-notionsync');
@@ -3471,8 +3589,11 @@ function loadPipeline() {
               (x.eventRef || x.name !== x.brand.name ? '<div style="font-size:11.5px;color:var(--ink-3);margin-top:2px">' + esc(x.eventRef || x.name) + '</div>' : '') +
               '<div style="font-size:11px;color:var(--ink-3);margin-top:3px">' +
                 (x.owner ? '' + esc(x.owner) : 'unassigned') +
-                (locked ? '' : ' <a href="#" data-dact="owner" style="color:var(--accent);text-decoration:none">✎</a>') + '</div>' +
+                (locked ? '' : ' <a href="#" data-dact="owner" style="color:var(--accent);text-decoration:none">✎</a>') +
+                (x.followUpAt && new Date(x.followUpAt) <= new Date() && s !== 'closed' && s !== 'lost'
+                  ? ' <span class="status declined">follow-up due</span>' : '') + '</div>' +
               '<div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap">' +
+                '<button class="btn-ghost" data-dact="room" style="padding:2px 7px;font-size:11.5px" title="Everything about this deal on one panel">Room</button>' +
                 (locked
                   ? (x.source === 'notion'
                       ? '<span style="font-size:11px;color:var(--ink-3)" title="Mirrors Notion — change its Stage there; syncs nightly">from Notion</span>'
@@ -3498,6 +3619,9 @@ function loadPipeline() {
           .then(function () { loadPipeline(); })
           .catch(function (e) { toast(e.message); });
       };
+    });
+    el.querySelectorAll('[data-dact="room"]').forEach(function (b) {
+      b.onclick = function () { openDealRoom(b.closest('[data-deal]').getAttribute('data-deal')); };
     });
     el.querySelectorAll('[data-dact="move"]').forEach(function (b) {
       b.onclick = function () {
@@ -5480,11 +5604,12 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'reached-list', 'action-panel', 'req-list', 'bd-activity'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'reached-list', 'nextbest', 'action-panel', 'req-list', 'bd-activity'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
     if (e.target.closest('a')) return;   // let real links through
+    if (e.target.closest('[data-nbq]')) return;   // Queue button handles itself
     loadBrand(el.getAttribute('data-brand'));
   });
 });
@@ -5673,6 +5798,44 @@ document.querySelectorAll('.chip[data-mode]').forEach(function (c) {
     mode = c.getAttribute('data-mode');
     loadOutreach();
   });
+});
+
+// Under the queue: brands nobody has contacted yet, ranked by plain
+// rules (tier, reachable decision makers, how the category replies).
+// One click queues the brand's best contact.
+function renderNextBest() {
+  var slot = document.getElementById('nextbest');
+  api('nextBestBrands', { take: 15 }).then(function (d) {
+    var rows = d.brands || [];
+    if (!rows.length) { slot.innerHTML = ''; return; }
+    slot.innerHTML =
+      '<div class="count-head" style="margin-top:26px">Next best brands — not contacted yet <span class="n">' + rows.length + '</span></div>' +
+      '<div class="hint" style="margin:2px 0 10px">Ranked by tier, reachable decision makers, and how each category has replied so far. Queue adds their best contact to Today.</div>' +
+      rows.map(function (b) {
+        var tag = [CAT_NAMES[b.category] || b.category].filter(Boolean).join('');
+        return '<div class="target" data-brand="' + esc(b.id) + '">' +
+          '<div class="t-main">' +
+            '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(b.name) + '</span>' +
+              (tag ? '<span class="t-sep">·</span><span class="t-title">' + esc(tag) + '</span>' : '') + '</div>' +
+            '<div class="t-meta"><span>' + esc((b.why || []).join(' · ')) + '</span></div>' +
+          '</div>' +
+          '<div class="t-actions">' +
+            '<span class="fit">' + b.contacts + ' contact' + (b.contacts === 1 ? '' : 's') + '</span>' +
+            '<button class="btn-draft" data-nbq="' + esc(b.id) + '">Queue</button>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+  }).catch(function () { slot.innerHTML = ''; });
+}
+
+document.getElementById('nextbest').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-nbq]');
+  if (!btn) return;
+  btn.disabled = true;
+  api('queueBrandTargets', { brandId: btn.getAttribute('data-nbq') }).then(function (r) {
+    toast(r.queued ? r.contactName + ' added to the queue' : 'Already in play — ' + r.contactName + ' is ' + r.status);
+    loadOutreach();
+  }).catch(function (err) { toast(err.message); btn.disabled = false; });
 });
 
 // Add a brand-new brand from the LinkedIn tab: create it, add their
