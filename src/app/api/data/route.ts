@@ -29,7 +29,7 @@ import { newBoardCode } from '@/lib/board-access'
 import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
-  listAttendees, listDupCandidates, mergeAttendees, deleteAttendee, importAttendees,
+  listAttendees, listDupCandidates, mergeAttendees, deleteAttendee, importAttendees, segmentsOverview,
 } from '@/lib/audience'
 
 const prisma = new PrismaClient()
@@ -3743,6 +3743,7 @@ Best,`
   async mergeAttendees({ fromId, intoId }: any) { return mergeAttendees(fromId, intoId) },
   async deleteAttendee({ id }: any) { return deleteAttendee(id) },
   async importAttendees(args: any) { return importAttendees(args || {}) },
+  async segmentsOverview() { return segmentsOverview() },
 }
 
 // ---------------------------------------------------------------
