@@ -423,9 +423,9 @@
       <nav class="tabs cc-only">
         <button class="nav-item active" data-view="dashboard">Home</button>
         <button class="nav-item" data-view="brands">Brands</button>
-        <button class="nav-item" data-view="outreach">Outreach <span class="n" id="nav-outreach"></span></button>
+        <button class="nav-item" data-view="outreach">Outreach</button>
         <button class="nav-item" data-view="board">Show Board</button>
-        <button class="nav-item" data-view="pipeline">Deals <span class="n" id="nav-spon"></span></button>
+        <button class="nav-item" data-view="pipeline">Deals</button>
         <button class="nav-item" data-view="audience">Audience</button>
         <button class="nav-item" data-view="operations">Operations</button>
       </nav>
@@ -523,28 +523,25 @@
     <section class="view page" id="outreach">
       <div class="eyebrow">Outreach</div>
       <h1>LinkedIn outreach</h1>
-      <div class="sub">Step 1: connect with a short note. Step 2: DM them after they accept. Email has its own tab.</div>
+      <div class="sub" id="outreach-sub">Loading…</div>
       <div class="panel panel-pad" style="margin-top:18px">
         <div style="display:flex;align-items:center;gap:8px;cursor:pointer" id="li-guide-toggle">
           <b style="font-size:13px">How LinkedIn outreach works</b>
-          <span style="color:var(--ink-3);font-size:12px">— the 20-second version for anyone using this page</span>
           <span style="margin-left:auto;color:var(--ink-3)" id="li-guide-arrow">▾</span>
         </div>
         <div id="li-guide-body" style="margin-top:10px">
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;font-size:12.5px;line-height:1.55">
             <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">
-              <b style="color:var(--accent)">1 · Connect first</b><br>
-              On LinkedIn you can only message people who accepted your invite — so invites are the engine.
-              Every row arrives pre-drafted: hit <b>1 · Copy note</b>, open <b>2 · Profile ↗</b>, click
-              <b>Connect → Add a note</b>, paste, send, then <b>3 · Mark sent</b>. ~10 a day keeps the account safe.</div>
+              <b style="color:var(--accent)">1 · Connect</b><br>
+              <b>Copy note</b>, open <b>Profile ↗</b>, click <b>Connect → Add a note</b>, paste, send,
+              then <b>Mark sent</b>. Max ~10 a day.</div>
             <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">
-              <b style="color:var(--accent)">2 · When they accept</b><br>
-              Press <b>They accepted</b> on their row — they jump to a “send the DM” list at the top of
-              Today. Hit <b>Copy DM</b> and paste it into your LinkedIn chat, same day if you can.</div>
+              <b style="color:var(--accent)">2 · They accept</b><br>
+              Hit <b>They accepted</b>, then <b>Copy DM</b> and send it the same day.</div>
             <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">
-              <b style="color:var(--accent)">3 · Log everything</b><br>
-              <b>Mark sent</b> after each invite, <b>Replied</b> the moment they answer — replies land on
-              Home and always come before new invites. The Reached tab keeps the full history.</div>
+              <b style="color:var(--accent)">3 · Log it</b><br>
+              <b>Mark sent</b> after each invite, <b>Replied</b> when they answer.
+              History lives in Reached.</div>
           </div>
         </div>
       </div>
@@ -1052,10 +1049,6 @@ function loadDashboard() {
             '<div class="amount">' + money(o.cents) + '</div></div>';
         }).join('')
       : '';
-
-    document.getElementById('nav-outreach').textContent = c.queued || '';
-    document.getElementById('nav-spon').textContent =
-      ((sp.confirmedCount || 0) + (sp.proposedCount || 0)) || '';
 
     var cats = (d.categories || []).filter(function (x) { return x.key; });
     document.getElementById('cat-cards').innerHTML = cats.length ? cats.map(function (cat, i) {
@@ -2133,6 +2126,13 @@ function renderReached() {
       if (p.linkedin) {
         bits.push('<span class="status ' + esc(p.linkedin.status) + '">in · ' + esc(p.linkedin.status) + '</span>');
         if (p.linkedin.sentAt) bits.push('<span>invited ' + shortDate(p.linkedin.sentAt) + '</span>');
+        // Log progress from right here — no trip back to the queue.
+        if (p.linkedin.status === 'sent') {
+          bits.push('<button class="btn-ghost" data-rcact="accepted" data-rct="' + esc(p.linkedin.targetId) + '" style="padding:3px 10px;font-size:11.5px">They accepted ✓</button>');
+        }
+        if (p.linkedin.status === 'sent' || p.linkedin.status === 'accepted') {
+          bits.push('<button class="btn-ghost" data-rcact="replied" data-rct="' + esc(p.linkedin.targetId) + '" style="padding:3px 10px;font-size:11.5px">Replied ✓</button>');
+        }
       }
       if (p.email) {
         bits.push('<span class="status sent">✉ ' + p.email.count + '×' + (p.email.opened ? ' · opened' : '') + '</span>');
@@ -2174,6 +2174,18 @@ function loadReached() {
   });
 }
 document.getElementById('rc-q').addEventListener('input', function () { renderReached(); });
+document.getElementById('reached-list').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-rcact]');
+  if (!btn) return;
+  btn.disabled = true;
+  var status = btn.getAttribute('data-rcact');
+  api('setTargetStatus', { targetId: btn.getAttribute('data-rct'), status: status, actor: ME.owner || null })
+    .then(function () {
+      toast(status === 'replied' ? 'Reply logged — they’re on your Home needs-action list' : 'Accepted — DM them from the LinkedIn tab');
+      RC_DATA = [];
+      loadReached();
+    }).catch(function (err) { toast(err.message); btn.disabled = false; });
+});
 
 // --- rate card (loaded once, used for suggested values) --------
 
@@ -2477,7 +2489,6 @@ function loadSponsorships() {
     document.getElementById('spon-sub').textContent =
       d.count + ' sponsorship' + (d.count === 1 ? '' : 's') + ' · ' +
       money(d.totals.confirmed) + ' confirmed · ' + money(d.totals.proposed) + ' proposed';
-    document.getElementById('nav-spon').textContent = d.count || '';
 
     box.innerHTML = d.rows.length
       ? d.rows.map(function (s) { return sponsorRow(s, s.brand.name); }).join('')
@@ -2728,6 +2739,14 @@ function loadOutreach() {
   var box = document.getElementById('targets');
   box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   renderStatusFilters();
+
+  // The queue count lives here in the subtitle, not on the top nav.
+  api('countQueued').then(function (r) {
+    document.getElementById('outreach-sub').textContent =
+      (r.queued || 0) + ' in the queue · Email has its own tab.';
+  }).catch(function () {
+    document.getElementById('outreach-sub').textContent = 'Email has its own tab.';
+  });
 
   // Today also surfaces everyone who accepted an invite and is still
   // waiting on their DM (first), and everyone marked sent today (last,
@@ -3032,27 +3051,23 @@ function renderEmailMode(box) {
         '<div class="panel panel-pad" style="margin-bottom:12px">' +
           '<div style="display:flex;align-items:center;gap:8px;cursor:pointer" id="em-guide-toggle">' +
             '<b style="font-size:13px">How outreach works</b>' +
-            '<span style="color:var(--ink-3);font-size:12px">— the 20-second version for anyone using this page</span>' +
             '<span style="margin-left:auto;color:var(--ink-3)" id="em-guide-arrow">▾</span>' +
           '</div>' +
           '<div id="em-guide-body" style="margin-top:10px">' +
             '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;font-size:12.5px;line-height:1.55">' +
               '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">' +
                 '<b style="color:var(--accent)">1 · The sequence</b><br>' +
-                'Intro → follow-up <b>day 3</b> → closing note <b>day 7</b> — one-pager attached to every email. ' +
-                'A reply stops everything. Still silent after all 3? The brand shows up under <b>“Went quiet”</b> with a recommended next move.</div>' +
+                'Intro → follow-up day 3 → closing note day 7. A reply stops everything; ' +
+                'silence puts the brand under <b>Went quiet</b>.</div>' +
               '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">' +
                 '<b style="color:var(--accent)">2 · Nothing sends itself</b><br>' +
-                'Drafts wait here until a person acts: <b>Send</b> on one card, <b>Send all now</b>, or <b>Approve → 9am</b> ' +
-                '(they then drip out Tue–Thu across business hours, a few at a time, so it never looks like a blast).</div>' +
+                'Drafts wait until you hit <b>Send</b>, <b>Send all now</b>, or <b>Approve → 9am</b>.</div>' +
               '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">' +
                 '<b style="color:var(--accent)">3 · Before you send</b><br>' +
-                'Check the <b>To</b> person is right (switching fixes the greeting), CC anyone useful, ' +
-                'and hit <b>Insert</b> on the brand-specific angle — personalized emails get more replies.</div>' +
+                'Check the <b>To</b> person, CC anyone useful, hit <b>Insert</b> for the brand angle.</div>' +
               '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">' +
-                '<b style="color:var(--accent)">4 · After it\'s sent</b><br>' +
-                '<b>opened</b> = they saw it. Replies land below — use <b>Draft response</b> and push for a 15-min call. ' +
-                'Daily cap ramps slowly on purpose: it keeps us out of spam folders.</div>' +
+                '<b style="color:var(--accent)">4 · After</b><br>' +
+                '<b>opened</b> = they saw it. Replies land below — <b>Draft response</b> and push for a call.</div>' +
             '</div>' +
           '</div>' +
         '</div>';
@@ -5644,7 +5659,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
     if (e.target.closest('a')) return;   // let real links through
-    if (e.target.closest('[data-nbq]')) return;   // Queue button handles itself
+    if (e.target.closest('[data-nbq]') || e.target.closest('[data-rcact]')) return;   // buttons with their own handlers
     loadBrand(el.getAttribute('data-brand'));
   });
 });
