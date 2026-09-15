@@ -43,6 +43,12 @@ model Brand {
 
   notes String?
 
+  // Other names this brand goes by, comma-separated ("818 Tequila" for
+  // 818 Spirits). SponsorUnited captures and pasted imports match on the
+  // name OR any of these, so a capture lands even when SponsorUnited
+  // calls the brand something different.
+  aka String?
+
   // Discovery notes — what this brand actually wants (goals, regions,
   // timing), captured on the first call. Feeds the proposal generator so
   // pitches read tailored instead of generic.
@@ -130,6 +136,8 @@ enum TargetStatus {
   queued
   drafted
   sent
+  // LinkedIn: they accepted the connection request — DM them now.
+  accepted
   replied
   converted
   declined
@@ -302,6 +310,12 @@ model Deal {
   // kept in sync automatically and should not be hand-edited; edit the
   // sponsorship instead.
   source String  @default("manual")
+
+  // Deal-room follow-up layer: what to do next and when it's due.
+  // Editable on every deal (sponsorship-sourced included) — the syncs
+  // never touch these two fields.
+  nextStep   String?
+  followUpAt DateTime?
 
   // Set for source="notion": the Notion page URL this deal mirrors, so
   // the nightly sync can find and update it without duplicating.

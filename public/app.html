@@ -12,10 +12,10 @@
     color-scheme:dark;
     --surface-0:#0b0b0f; --surface-1:#14141a; --surface-2:#191921;
     --border:#26262f; --border-soft:#1e1e26;
-    --ink-1:#ededf2; --ink-2:#9c9caa; --ink-3:#63636f;
+    --ink-1:#ffffff; --ink-2:#c0c0cd; --ink-3:#8f8f9d;
     --accent:#4f83f7; --accent-hi:#6f9dff;
     --accent-soft:rgba(79,131,247,.13); --ring:rgba(79,131,247,.32);
-    --side:#0e0e13; --side-ink:#a6a6b4; --side-dim:#5c5c68;
+    --side:#0e0e13; --side-ink:#c0c0cd; --side-dim:#83838f;
     --draft:#6f9dff;
     --good:#3ecf8e; --warn:#e8b64c; --bad:#f0716b; --blue:#43c6e8;
     --paper:#14141a; --bg-2:#191921;
@@ -71,29 +71,19 @@
   /* sticky header: search row + quick stats + page tabs */
   .header-stick{position:sticky;top:0;z-index:40;background:rgba(11,11,15,.82);
     backdrop-filter:blur(12px);border-bottom:1px solid var(--border-soft)}
-  .topbar{display:flex;align-items:center;gap:10px;padding:12px 40px 8px}
-  .quickbar{display:flex;align-items:center;gap:0;padding:0 40px 2px;overflow-x:auto;scrollbar-width:none}
-  .quickbar::-webkit-scrollbar{display:none}
-  .qstat{display:flex;align-items:baseline;gap:7px;padding:5px 18px 5px 0;margin-right:18px;
-    border:none;background:none;cursor:pointer;font-family:inherit;white-space:nowrap;
-    border-right:1px solid var(--border-soft)}
-  .qstat:last-child{border-right:none}
-  .qstat .ql{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
-  .qstat b{font-size:13px;font-weight:700;color:var(--ink-1);font-variant-numeric:tabular-nums}
-  .qstat:hover b{color:var(--accent-hi)}
-  .qstat b.hot{color:var(--accent-hi)}
-  .tabs{display:flex;gap:4px;padding:0 32px;overflow-x:auto;scrollbar-width:none}
+  .topbar{display:flex;align-items:center;gap:12px;padding:18px 48px 12px}
+  .tabs{display:flex;gap:10px;padding:2px 40px;overflow-x:auto;scrollbar-width:none}
   .tabs::-webkit-scrollbar{display:none}
-  .tabs .nav-item{width:auto;flex:none;border-radius:0;padding:12px 16px 14px;font-size:15px;
+  .tabs .nav-item{width:auto;flex:none;border-radius:0;padding:14px 18px 16px;font-size:15px;
     font-weight:600;font-family:var(--display);letter-spacing:-.01em;
     border-bottom:2px solid transparent;color:var(--ink-3)}
   .tabs .nav-item:hover{background:none;color:var(--ink-1)}
   .tabs .nav-item.active{background:none;border-bottom-color:var(--accent);color:var(--ink-1);font-weight:700}
   .tabs .nav-item .n{margin-left:7px;font-size:12px;font-family:inherit}
   /* sub-tab rows read as segmented pills, not a second underline row */
-  #sub-tabs,#act-tabs{gap:6px;padding:2px 40px 12px}
+  #sub-tabs,#act-tabs{gap:8px;padding:6px 48px 16px}
   #sub-tabs .nav-item,#act-tabs .nav-item{border:1px solid var(--border);border-radius:999px;
-    padding:5px 14px;font-size:12.5px;font-weight:600;font-family:inherit;letter-spacing:0;color:var(--ink-2)}
+    padding:7px 16px;font-size:12.5px;font-weight:600;font-family:inherit;letter-spacing:0;color:var(--ink-2)}
   #sub-tabs .nav-item:hover,#act-tabs .nav-item:hover{color:var(--ink-1);border-color:#33333e}
   #sub-tabs .nav-item.active,#act-tabs .nav-item.active{background:var(--accent-soft);
     border-color:rgba(79,131,247,.5);color:#aac6ff;font-weight:600}
@@ -115,19 +105,19 @@
     border:1px solid var(--border);border-radius:4px;padding:1px 5px;background:var(--surface-2)}
   .whoami{margin-left:auto;font-size:12px;color:var(--ink-3)}
 
-  .page{max-width:1180px;padding:28px 40px 90px}
-  .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-hi);margin-bottom:8px}
+  .page{max-width:1220px;padding:44px 48px 110px}
+  .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-hi);margin-bottom:10px}
   .eyebrow a,.crumb{color:var(--ink-3);cursor:pointer;text-decoration:none}
   .crumb:hover{color:var(--ink-1)}
   h1{font-size:34px;font-weight:800;letter-spacing:-.03em;line-height:1.1;font-family:var(--display)}
-  .sub{color:var(--ink-2);font-size:13.5px;margin-top:5px}
-  .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:26px 0 12px}
-  .kpi{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow)}
+  .sub{color:var(--ink-2);font-size:13.5px;margin-top:8px}
+  .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:32px 0 16px}
+  .kpi{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow)}
   .kpi-label{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
   .kpi-value{font-size:26px;font-weight:800;letter-spacing:-.02em;margin-top:5px;font-variant-numeric:tabular-nums;font-family:var(--display)}
   .kpi-note{font-size:11px;color:var(--ink-3);margin-top:3px}
   .kpi.money{border-left:3px solid var(--good)}
-  .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(276px,1fr));gap:12px;margin-top:22px}
+  .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(276px,1fr));gap:14px;margin-top:26px}
   .cat-card{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);
     padding:16px 18px;box-shadow:var(--shadow);border-left:3px solid var(--c,var(--cat-1));cursor:pointer;transition:border-color .15s}
   .cat-card:hover{border-color:#33333e;border-left-color:var(--c,var(--cat-1))}
@@ -135,13 +125,13 @@
   .cat-stats{display:flex;gap:22px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-soft)}
   .cat-stat-label{font-size:9.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
   .cat-stat-value{font-size:17px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
-  .section-head{margin:32px 0 12px;font-size:13px;font-weight:600;color:var(--ink-2);
+  .section-head{margin:40px 0 14px;font-size:13px;font-weight:600;color:var(--ink-2);
     display:flex;align-items:center;gap:10px}
   .section-head .n{font-weight:500;color:var(--ink-3)}
   .panel{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
-  .panel-pad{padding:16px 18px}
-  .chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
-  .chip{padding:6px 13px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--ink-2);
+  .panel-pad{padding:20px 22px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:18px}
+  .chip{padding:7px 15px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--ink-2);
     background:var(--surface-1);border:1px solid var(--border);cursor:pointer;font-family:inherit}
   .chip:hover{border-color:#33333e;color:var(--ink-1)}
   .chip.active{background:var(--accent-soft);color:#aac6ff;border-color:rgba(79,131,247,.5);font-weight:600}
@@ -173,7 +163,7 @@
   .sheet .field-box{padding:5px 8px;font-size:13px}
   .count-head .n{color:var(--ink-3);font-weight:500;margin-left:6px}
   .target{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);
-    padding:14px 16px;margin-bottom:8px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow);
+    padding:17px 20px;margin-bottom:10px;display:flex;align-items:center;gap:16px;box-shadow:var(--shadow);
     transition:border-color .15s}
   .target.clickable{cursor:pointer}
   .target.clickable:hover{border-color:rgba(79,131,247,.5)}
@@ -182,9 +172,10 @@
   .t-brand{font-weight:600}
   .t-sep{color:var(--ink-3);margin:0 5px}
   .t-title{color:var(--ink-2)}
-  .t-meta{display:flex;align-items:center;gap:7px;margin-top:5px;font-size:11.5px;color:var(--ink-3);flex-wrap:wrap}
+  .t-meta{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:11.5px;color:var(--ink-3);flex-wrap:wrap}
   .status{font-weight:700;padding:2px 9px;border-radius:999px;font-size:10.5px;letter-spacing:.02em;background:var(--surface-2);color:var(--ink-2)}
   .status.sent{background:rgba(97,165,250,.14);color:#82b6fb}
+  .status.accepted{background:rgba(67,198,232,.15);color:#6cd6f0}
   .status.replied,.status.confirmed,.status.converted{background:rgba(62,207,142,.13);color:#55d9a2}
   .status.drafted,.status.proposed{background:rgba(138,123,255,.15);color:#ab9fff}
   .status.requested{background:rgba(246,143,94,.14);color:#f8a077}
@@ -267,7 +258,6 @@
     .tabs .nav-item{padding:10px 12px 12px;font-size:13.5px}
     #sub-tabs,#act-tabs{padding:2px 12px 10px}
     .topbar{padding:12px 14px 8px}
-    .quickbar{padding:0 14px 2px}
     .page{padding:18px 14px 70px}
     .row2{grid-template-columns:1fr}
     h1{font-size:24px}
@@ -441,7 +431,6 @@
       </nav>
       <nav class="tabs cc-only" id="sub-tabs" style="display:none"></nav>
       <nav class="tabs act-only" id="act-tabs"></nav>
-      <div class="quickbar cc-only" id="quickbar" hidden></div>
     </div>
 
     <!-- DASHBOARD -->
@@ -533,20 +522,81 @@
     <!-- OUTREACH -->
     <section class="view page" id="outreach">
       <div class="eyebrow">Outreach</div>
-      <h1>Sponsor outreach</h1>
+      <h1>LinkedIn outreach</h1>
+      <div class="sub">Step 1: connect with a short note. Step 2: DM them after they accept. Email has its own tab.</div>
+      <div class="panel panel-pad" style="margin-top:18px">
+        <div style="display:flex;align-items:center;gap:8px;cursor:pointer" id="li-guide-toggle">
+          <b style="font-size:13px">How LinkedIn outreach works</b>
+          <span style="color:var(--ink-3);font-size:12px">— the 20-second version for anyone using this page</span>
+          <span style="margin-left:auto;color:var(--ink-3)" id="li-guide-arrow">▾</span>
+        </div>
+        <div id="li-guide-body" style="margin-top:10px">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;font-size:12.5px;line-height:1.55">
+            <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">
+              <b style="color:var(--accent)">1 · Connect first</b><br>
+              On LinkedIn you can only message people who accepted your invite — so invites are the engine.
+              Every row arrives pre-drafted: hit <b>1 · Copy note</b>, open <b>2 · Profile ↗</b>, click
+              <b>Connect → Add a note</b>, paste, send, then <b>3 · Mark sent</b>. ~10 a day keeps the account safe.</div>
+            <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">
+              <b style="color:var(--accent)">2 · When they accept</b><br>
+              Press <b>They accepted</b> on their row — they jump to a “send the DM” list at the top of
+              Today. Hit <b>Copy DM</b> and paste it into your LinkedIn chat, same day if you can.</div>
+            <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">
+              <b style="color:var(--accent)">3 · Log everything</b><br>
+              <b>Mark sent</b> after each invite, <b>Replied</b> the moment they answer — replies land on
+              Home and always come before new invites. The Reached tab keeps the full history.</div>
+          </div>
+        </div>
+      </div>
       <div class="chips" style="margin-top:22px;align-items:center">
-        <button class="chip" data-mode="today">Today <span class="n" id="c-today">0</span></button>
+        <button class="chip active" data-mode="today">Today <span class="n" id="c-today">0</span></button>
         <button class="chip" data-mode="all">All targets <span class="n" id="c-all">0</span></button>
-        <button class="chip active" data-mode="email">Email <span class="n" id="c-email"></span></button>
         <button class="btn-ghost" id="btn-retrim" style="margin-left:auto">Cap to top 3 / brand</button>
       </div>
-      <div style="position:relative;margin-top:12px;max-width:420px">
-        <input class="inp" id="oq-add" placeholder="+ Add a brand to the queue — type its name…" style="width:100%" autocomplete="off">
-        <div id="oq-results" style="position:absolute;top:100%;left:0;right:0;z-index:30;display:none;background:var(--surface-1);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:260px;overflow:auto;margin-top:4px"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;max-width:560px">
+        <div style="position:relative;flex:1">
+          <input class="inp" id="oq-add" placeholder="+ Add a brand to the queue — type its name…" style="width:100%" autocomplete="off">
+          <div id="oq-results" style="position:absolute;top:100%;left:0;right:0;z-index:30;display:none;background:var(--surface-1);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:260px;overflow:auto;margin-top:4px"></div>
+        </div>
+        <button class="btn-solid" id="oq-new" style="flex:none">+ New brand</button>
       </div>
+      <div id="oq-new-slot" style="max-width:560px"></div>
       <div id="status-filters" class="chips" style="display:none"></div>
       <div class="count-head" id="queue-head">To send today <span class="n"></span></div>
       <div id="targets"></div>
+      <div id="nextbest"></div>
+    </section>
+
+    <!-- EMAIL OUTREACH -->
+    <section class="view page" id="email-out">
+      <div class="eyebrow">Outreach</div>
+      <h1>Email outreach</h1>
+      <div id="email-box" style="margin-top:18px"></div>
+    </section>
+
+    <!-- REACHED — everyone we've contacted, grouped by brand -->
+    <section class="view page" id="reached">
+      <div class="eyebrow">Outreach</div>
+      <h1>Reached</h1>
+      <div class="sub" id="rc-sub">Everyone we've contacted on LinkedIn or by email, grouped by brand.</div>
+      <div style="display:flex;gap:8px;margin-top:18px;max-width:420px">
+        <input class="inp" id="rc-q" placeholder="Filter by brand or person…" style="width:100%" autocomplete="off">
+      </div>
+      <div id="reached-list" style="margin-top:14px"></div>
+    </section>
+
+    <!-- LINKEDIN PEOPLE DIRECTORY -->
+    <section class="view page" id="linkedin">
+      <div class="eyebrow">Outreach</div>
+      <h1>People on LinkedIn</h1>
+      <div class="sub" id="li-sub">Loading…</div>
+      <div class="chips" style="margin-top:18px;align-items:center">
+        <button class="chip active" data-lif="all">All brands</button>
+        <button class="chip" data-lif="profiles">Saved profiles</button>
+        <button class="chip" data-lif="none">Nobody yet</button>
+        <input class="inp" id="li-q" placeholder="Filter brands…" autocomplete="off" style="margin-left:auto;width:220px">
+      </div>
+      <div id="li-list" style="margin-top:14px"></div>
     </section>
 
     <!-- NEEDS CONTACTS -->
@@ -590,6 +640,7 @@
       <div style="margin-top:18px;display:flex;gap:8px"><button class="btn-solid" id="btn-newdeal">+ New deal</button>
         <button class="btn-ghost" id="btn-notionsync" title="Pull the deal list from Notion now (also runs automatically every morning)">Sync Notion</button></div>
       <div id="deal-form-slot" style="margin-top:12px"></div>
+      <div id="deal-room-slot" style="margin-top:12px"></div>
       <div class="kpi-row" id="pipe-kpis"></div>
       <div id="deals"></div>
     </section>
@@ -766,7 +817,7 @@ var CAT_NAMES = {
   unresolved:'Needs Clarification'
 };
 var CAT_KEYS = Object.keys(CAT_NAMES);
-var TARGET_STATUSES = ['all','queued','drafted','sent','replied','converted','declined','dead'];
+var TARGET_STATUSES = ['all','queued','drafted','sent','accepted','replied','converted','declined','dead'];
 var ME = { owner: null };
 var OWNERS = [];
 
@@ -891,7 +942,7 @@ function refreshAfterSponsorChange() {
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
   brands: [['brands', 'All brands'], ['discover', 'Discover'], ['needs', 'Needs contacts']],
-  outreach: [['outreach', 'Queue'], ['results', 'Results']],
+  outreach: [['outreach', 'LinkedIn'], ['email-out', 'Email'], ['reached', 'Reached'], ['linkedin', 'People'], ['results', 'Results']],
   board: [['board', 'Overview'], ['talks', 'In talks'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
   audience: [['audience', 'Events'], ['attendees', 'Attendees']],
@@ -899,7 +950,7 @@ var SUBTABS = {
 };
 var GROUP_OF = {
   brands: 'brands', brand: 'brands', discover: 'brands', needs: 'brands',
-  outreach: 'outreach', results: 'outreach',
+  outreach: 'outreach', 'email-out': 'outreach', reached: 'outreach', linkedin: 'outreach', results: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
   pipeline: 'pipeline', sponsorships: 'pipeline',
   audience: 'audience', attendees: 'audience',
@@ -1005,7 +1056,6 @@ function loadDashboard() {
     document.getElementById('nav-outreach').textContent = c.queued || '';
     document.getElementById('nav-spon').textContent =
       ((sp.confirmedCount || 0) + (sp.proposedCount || 0)) || '';
-    refreshQuickbar(d);
 
     var cats = (d.categories || []).filter(function (x) { return x.key; });
     document.getElementById('cat-cards').innerHTML = cats.length ? cats.map(function (cat, i) {
@@ -1093,6 +1143,37 @@ function loadBrands(category) {
   });
 }
 
+// --- merging duplicate brands ----------------------------------
+// Manual only, from the "Merge duplicate…" button on a brand page.
+// No auto-detection: brands under one parent company legitimately
+// share an email domain and stay separate (Leo's call).
+
+// Two-step like confirmDeleteBrand: preview exactly what moves, merge
+// only on a real confirmation. onDone runs after a successful merge.
+function confirmMergeBrands(fromId, toId, onDone) {
+  return api('mergeBrands', { fromId: fromId, toId: toId }).then(function (r) {
+    var s = r.summary;
+    var moves = [];
+    if (s.contacts) moves.push(s.contacts + ' contact' + (s.contacts === 1 ? '' : 's'));
+    if (s.targets) moves.push(s.targets + ' outreach target' + (s.targets === 1 ? '' : 's'));
+    if (s.shows) moves.push(s.shows + ' attached show' + (s.shows === 1 ? '' : 's'));
+    if (s.deals) moves.push(s.deals + ' deal' + (s.deals === 1 ? '' : 's'));
+    if (s.documents) moves.push(s.documents + ' document' + (s.documents === 1 ? '' : 's'));
+    if (s.activations) moves.push(s.activations + ' activation' + (s.activations === 1 ? '' : 's'));
+    var msg = 'Merge "' + s.from + '" into "' + s.to + '"?\n\n' +
+      (moves.length
+        ? 'Moves to ' + s.to + ':\n• ' + moves.join('\n• ') + '\n\n'
+        : 'Nothing is attached to ' + s.from + '.\n\n') +
+      (s.dupShows ? s.dupShows + ' show link' + (s.dupShows === 1 ? ' exists' : 's exist') + ' on both brands — ' + s.to + ' keeps its copy.\n\n' : '') +
+      '"' + s.from + '" is then deleted. This cannot be undone.';
+    if (!window.confirm(msg)) return;
+    return api('mergeBrands', { fromId: fromId, toId: toId, confirm: true }).then(function () {
+      toast('Merged into ' + s.to);
+      if (onDone) onDone();
+    });
+  }).catch(function (e) { toast(e.message); });
+}
+
 // Brands tab search: filters the loaded list as you type; a name that
 // isn't in the system yet gets a one-click "add + find on SponsorUnited"
 // (their search has no API and no linkable query, so we create the brand,
@@ -1153,7 +1234,7 @@ function loadBrand(brandId) {
     var head =
       '<h1>' + esc(b.name) + '</h1>' +
       '<div class="sub">' +
-        esc(CAT_NAMES[b.category] || b.category || 'Uncategorised') +
+        esc(CAT_NAMES[b.category] || b.category || 'Uncategorized') +
         (b.tier ? ' · ' + esc(b.tier) : '') +
         (b.partner ? ' · ' + esc(b.partner.lifecycle.replace(/_/g, ' ')) : '') +
       '</div>' +
@@ -1179,6 +1260,7 @@ function loadBrand(brandId) {
     };
     var siteHref = b.website ? (/^https?:/i.test(b.website) ? b.website : 'https://' + b.website) : '';
     var facts =
+      factLine('Also called', b.aka ? esc(b.aka) : '') +
       factLine('About', b.about ? esc(b.about) : '') +
       factLine('Best sellers', b.topProducts ? esc(b.topProducts) : '') +
       factLine('Website', b.website ? '<a href="' + esc(siteHref) + '" target="_blank" rel="noopener">' + esc(b.website.replace(/^https?:\/\//i, '')) + '</a>' : '') +
@@ -1196,9 +1278,18 @@ function loadBrand(brandId) {
           (b.doNotEmail
             ? '<button class="btn-ghost" id="b-dne" style="border-color:var(--accent);color:var(--accent)" title="This brand is excluded from all outreach emails — click to allow again">Do not email</button>'
             : '<button class="btn-ghost" id="b-dne" title="Exclude this brand from all outreach emails (intros and follow-ups)">Emails on</button>') +
+          '<button class="btn-ghost" id="b-merge">Merge duplicate…</button>' +
           '<button class="btn-ghost danger" id="b-delete" style="margin-left:auto">Delete brand</button>' +
         '</div>' +
+        '<div id="b-merge-slot"></div>' +
         '<div id="b-edit" hidden style="margin-top:14px;border-top:1px solid var(--border-soft);padding-top:14px">' +
+          '<div class="row2" style="margin-bottom:4px">' +
+            '<div><label class="lbl">Name</label>' +
+              '<input class="field-box" data-bfield="name" value="' + esc(b.name) + '"></div>' +
+            '<div><label class="lbl">Also known as</label>' +
+              '<input class="field-box" data-bfield="aka" value="' + esc(b.aka || '') + '" placeholder="e.g. 818 Tequila"></div>' +
+          '</div>' +
+          '<div class="hint" style="margin:0 0 10px">SponsorUnited captures land on this brand when they match the name <i>or</i> any “also known as” name (comma-separate several) — add the name SponsorUnited uses if it differs.</div>' +
           '<div class="row2" style="margin-bottom:10px">' +
             '<div><label class="lbl">Category</label>' +
               '<select class="field-box" data-bfield="category">' + catOptions(b.category) + '</select></div>' +
@@ -1403,6 +1494,39 @@ function loadBrand(brandId) {
           toast(b.doNotEmail ? 'Emails allowed again for ' + b.name : b.name + ' excluded from all outreach emails');
           loadBrand(b.id);
         }).catch(function (e) { toast(e.message); });
+    };
+
+    // Fold another brand into this one: pick the duplicate, see what
+    // moves, confirm. This brand is the keeper.
+    document.getElementById('b-merge').onclick = function () {
+      var slot = document.getElementById('b-merge-slot');
+      if (slot.innerHTML) { slot.innerHTML = ''; return; }
+      slot.innerHTML = '<div style="position:relative;margin-top:12px;max-width:400px">' +
+        '<input class="field-box" id="bm-q" placeholder="Type the duplicate brand — it folds into ' + esc(b.name) + '…" autocomplete="off">' +
+        '<div id="bm-results" style="position:absolute;top:100%;left:0;right:0;z-index:30;display:none;background:var(--surface-1);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:220px;overflow:auto;margin-top:4px"></div>' +
+        '<div class="hint" style="margin:8px 0 0">Its contacts, outreach, deals and shows move here; the duplicate is deleted after a confirmation that lists everything.</div></div>';
+      var inp = slot.querySelector('#bm-q'), drop = slot.querySelector('#bm-results'), timer = null;
+      inp.addEventListener('input', function () {
+        clearTimeout(timer);
+        var q = inp.value.trim();
+        if (q.length < 2) { drop.style.display = 'none'; return; }
+        timer = setTimeout(function () {
+          api('listBrands', { search: q, take: 8 }).then(function (list) {
+            list = list.filter(function (x) { return x.id !== b.id; });
+            drop.innerHTML = list.length ? list.map(function (x) {
+              return '<div class="bm-row" data-m="' + esc(x.id) + '" style="padding:9px 12px;font-size:13px;cursor:pointer"><b>' + esc(x.name) + '</b> <span style="color:var(--ink-3)">' + x._count.contacts + ' contact' + (x._count.contacts === 1 ? '' : 's') + '</span></div>';
+            }).join('') : '<div style="padding:9px 12px;font-size:13px;color:var(--ink-3)">No other brand matches.</div>';
+            drop.style.display = 'block';
+          });
+        }, 250);
+      });
+      drop.addEventListener('click', function (e) {
+        var r = e.target.closest('.bm-row');
+        if (!r) return;
+        drop.style.display = 'none';
+        confirmMergeBrands(r.getAttribute('data-m'), b.id, function () { loadBrand(b.id); });
+      });
+      inp.focus();
     };
 
     document.getElementById('b-delete').onclick = function () {
@@ -1858,6 +1982,11 @@ function loadNeeds() {
             (tag ? '<div class="t-meta"><span>' + esc(tag) + '</span></div>' : '') +
           '</div>' +
           '<div class="t-actions">' +
+            // Deep-links to the brand's SponsorUnited profile when we know
+            // its ID; otherwise copies the name (the SponsorUnited one, if
+            // "also known as" is set) and opens the search page.
+            '<button class="btn-ghost" data-nact="su" data-su="' + esc(b.externalId || '') + '" data-suname="' +
+              esc(b.aka ? b.aka.split(/[,;]/)[0].trim() : b.name) + '">SponsorUnited ↗</button>' +
             '<a class="btn-ghost" href="' + esc(liSearch) + '" target="_blank" rel="noopener">Find on LinkedIn ↗</a>' +
             '<button class="btn-draft" data-nact="add">+ Add contact</button>' +
             '<button class="btn-ghost danger" data-nact="delete">Delete</button>' +
@@ -1871,6 +2000,180 @@ function loadNeeds() {
       esc(e.message) + '</p></div></div>';
   });
 }
+
+// --- LinkedIn work view ----------------------------------------
+// One column built for a LinkedIn session: each brand with its saved
+// profile links up front, plus the company People page and a
+// title-filtered buyer search for brands where nobody is saved yet.
+
+var LI_DATA = [];
+var LI_FILTER = 'all';
+
+// The titles Leo targets on LinkedIn: partnership/sponsorship buyers,
+// brand & field marketing, and marketing leadership for smaller brands.
+var LI_TITLE_QUERY = 'partnerships OR sponsorship OR "brand marketing" OR "field marketing" OR CMO OR "marketing director" OR "vp marketing"';
+
+function liPeopleUrl(b) {
+  // The brand's own People page when we have their company URL;
+  // otherwise a company search so the page is one hop away.
+  if (b.linkedinUrl) {
+    var u = b.linkedinUrl.replace(/\/+$/, '');
+    if (/linkedin\.com\/company\//.test(u)) return u + '/people/';
+    return u;
+  }
+  return 'https://www.linkedin.com/search/results/companies/?keywords=' + encodeURIComponent(b.name);
+}
+
+function liBuyerUrl(b) {
+  // Company People page scoped to marketing when we have their page —
+  // that always returns actual employees. The old global search with a
+  // quoted brand plus seven OR'd titles usually returned nobody.
+  if (b.linkedinUrl && /linkedin\.com\/company\//.test(b.linkedinUrl)) {
+    return b.linkedinUrl.replace(/\/+$/, '') + '/people/?keywords=' + encodeURIComponent('marketing');
+  }
+  return 'https://www.linkedin.com/search/results/people/?keywords=' +
+    encodeURIComponent(b.name + ' marketing');
+}
+
+function renderLinkedin() {
+  var box = document.getElementById('li-list');
+  var q = (document.getElementById('li-q').value || '').trim().toLowerCase();
+  var rows = LI_DATA.filter(function (b) {
+    if (q && b.name.toLowerCase().indexOf(q) === -1) return false;
+    if (LI_FILTER === 'profiles') return b.contacts.some(function (c) { return c.linkedinUrl; });
+    if (LI_FILTER === 'none') return !b.contacts.length;
+    return true;
+  });
+
+  if (!rows.length) {
+    box.innerHTML = '<div class="panel"><div class="empty"><h3>No brands here</h3>' +
+      '<p>Try another filter, or add brands from Discover.</p></div></div>';
+    return;
+  }
+
+  box.innerHTML = rows.map(function (b) {
+    var tag = [CAT_NAMES[b.category] || b.category, b.tier].filter(Boolean).join(' · ');
+    var people = b.contacts.map(function (c) {
+      return '<div class="t-meta" style="margin-top:7px">' +
+        (c.linkedinUrl
+          ? '<a class="btn-ghost" href="' + esc(c.linkedinUrl) + '" target="_blank" rel="noopener" style="padding:3px 10px;font-size:12px">in ↗&nbsp; ' + esc(c.name) + '</a>'
+          : '<span>' + esc(c.name) + '</span>') +
+        (c.title ? '<span class="t-title">— ' + esc(c.title) + '</span>' : '') +
+        (c.status ? '<span class="status ' + esc(c.status) + '">' + esc(c.status) + '</span>' : '') +
+      '</div>';
+    }).join('');
+    return '<div class="target" data-brand="' + esc(b.id) + '" style="align-items:flex-start">' +
+      '<div class="t-main">' +
+        '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(b.name) + '</span>' +
+          (tag ? '<span class="t-sep">·</span><span class="t-title">' + esc(tag) + '</span>' : '') + '</div>' +
+        (people || '<div class="t-meta" style="margin-top:7px"><span>Nobody saved yet — use Find buyer ↗, then add them on the brand page.</span></div>') +
+      '</div>' +
+      '<div class="t-actions">' +
+        '<a class="btn-ghost" href="' + esc(liPeopleUrl(b)) + '" target="_blank" rel="noopener">People ↗</a>' +
+        '<a class="btn-ghost" href="' + esc(liBuyerUrl(b)) + '" target="_blank" rel="noopener">Find buyer ↗</a>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function loadLinkedin() {
+  showView('linkedin');
+  var box = document.getElementById('li-list');
+  if (!LI_DATA.length) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+
+  return api('linkedinPeople').then(function (d) {
+    LI_DATA = d.brands || [];
+    var profiles = 0, brandsWith = 0;
+    LI_DATA.forEach(function (b) {
+      var n = b.contacts.filter(function (c) { return c.linkedinUrl; }).length;
+      profiles += n; if (n) brandsWith++;
+    });
+    document.getElementById('li-sub').textContent =
+      profiles + ' saved profile' + (profiles === 1 ? '' : 's') + ' across ' + brandsWith +
+      ' brand' + (brandsWith === 1 ? '' : 's') + ' · ' + LI_DATA.length + ' brands total';
+    renderLinkedin();
+  }).catch(function (e) {
+    box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
+      esc(e.message) + '</p></div></div>';
+  });
+}
+
+document.querySelectorAll('#linkedin .chip[data-lif]').forEach(function (ch) {
+  ch.addEventListener('click', function () {
+    LI_FILTER = ch.getAttribute('data-lif');
+    document.querySelectorAll('#linkedin .chip[data-lif]').forEach(function (c) {
+      c.classList.toggle('active', c === ch);
+    });
+    renderLinkedin();
+  });
+});
+document.getElementById('li-q').addEventListener('input', function () { renderLinkedin(); });
+
+// --- reached (everyone we've contacted, by brand) --------------
+
+var RC_DATA = [];
+
+function renderReached() {
+  var box = document.getElementById('reached-list');
+  var q = (document.getElementById('rc-q').value || '').trim().toLowerCase();
+  var rows = RC_DATA.filter(function (g) {
+    if (!q) return true;
+    if (g.brand.name.toLowerCase().indexOf(q) > -1) return true;
+    return g.people.some(function (p) { return p.name.toLowerCase().indexOf(q) > -1; });
+  });
+  if (!rows.length) {
+    box.innerHTML = '<div class="panel"><div class="empty"><h3>Nobody reached yet</h3>' +
+      '<p>People show up here the moment an invite is marked sent or an email goes out.</p></div></div>';
+    return;
+  }
+  box.innerHTML = rows.map(function (g) {
+    var tag = [CAT_NAMES[g.brand.category] || g.brand.category, g.brand.tier].filter(Boolean).join(' · ');
+    var people = g.people.map(function (p) {
+      var bits = [];
+      if (p.linkedin) {
+        bits.push('<span class="status ' + esc(p.linkedin.status) + '">in · ' + esc(p.linkedin.status) + '</span>');
+        if (p.linkedin.sentAt) bits.push('<span>invited ' + shortDate(p.linkedin.sentAt) + '</span>');
+      }
+      if (p.email) {
+        bits.push('<span class="status sent">✉ ' + p.email.count + '×' + (p.email.opened ? ' · opened' : '') + '</span>');
+        if (p.email.lastAt) bits.push('<span>last ' + shortDate(p.email.lastAt) + '</span>');
+      }
+      return '<div class="t-meta" style="margin-top:7px">' +
+        (p.linkedinUrl
+          ? '<a class="btn-ghost" href="' + esc(p.linkedinUrl) + '" target="_blank" rel="noopener" style="padding:3px 10px;font-size:12px">' + esc(p.name) + ' ↗</a>'
+          : '<span style="color:var(--ink-1)">' + esc(p.name) + '</span>') +
+        (p.title ? '<span class="t-title">— ' + esc(p.title) + '</span>' : '') +
+        bits.join('') +
+      '</div>';
+    }).join('');
+    return '<div class="target" data-brand="' + esc(g.brand.id) + '" style="align-items:flex-start">' +
+      '<div class="t-main">' +
+        '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(g.brand.name) + '</span>' +
+          (tag ? '<span class="t-sep">·</span><span class="t-title">' + esc(tag) + '</span>' : '') +
+          '<span class="t-sep">·</span><span class="t-title">' + g.people.length + ' ' + (g.people.length === 1 ? 'person' : 'people') + ' contacted</span>' +
+        '</div>' + people +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function loadReached() {
+  showView('reached');
+  var box = document.getElementById('reached-list');
+  if (!RC_DATA.length) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  return api('listReached').then(function (d) {
+    RC_DATA = d.brands || [];
+    var people = 0;
+    RC_DATA.forEach(function (g) { people += g.people.length; });
+    document.getElementById('rc-sub').textContent =
+      people + ' ' + (people === 1 ? 'person' : 'people') + ' contacted across ' + RC_DATA.length +
+      ' brand' + (RC_DATA.length === 1 ? '' : 's') + ' — LinkedIn and email together.';
+    renderReached();
+  }).catch(function (e) {
+    box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+}
+document.getElementById('rc-q').addEventListener('input', function () { renderReached(); });
 
 // --- rate card (loaded once, used for suggested values) --------
 
@@ -2300,24 +2603,27 @@ function guessFor(name) {
 
 // --- outreach --------------------------------------------------
 
-var mode = 'email', statusFilter = 'all';
+var mode = 'today', statusFilter = 'all';
 
-// Draft panels the user has explicitly closed. Panels open on generate
-// and stay open on reload unless closed — closing is remembered for the
-// session only, which is the behaviour you want mid-work-session.
-var CLOSED_DRAFTS = {};
+// Draft panels start CLOSED everywhere; this maps the targets the user
+// has expanded (or just drafted — a fresh draft opens so you see it).
+// Remembered for the session only.
+var OPEN_DRAFTS = {};
 var TARGET_CACHE = {};
 
 function targetRow(t) {
   var d = (t.drafts || [])[0];
   var li = t.contact.linkedinUrl;
-  var open = d && !CLOSED_DRAFTS[t.id];
+  var open = d && OPEN_DRAFTS[t.id];
+  var isPre = t.status === 'queued' || t.status === 'drafted';
   return '<div class="target" data-id="' + t.id + '">' +
     '<div class="t-main">' +
       '<div class="t-line"><span class="t-brand">' + esc(t.brand.name) + '</span>' +
       '<span class="t-sep">·</span>' + esc(t.contact.name) +
       (t.contact.title ? ' <span class="t-title">— ' + esc(t.contact.title) + '</span>' : '') + '</div>' +
       '<div class="t-meta"><span class="status ' + t.status + '">' + t.status + '</span>' +
+      (t.status === 'accepted' && t.updatedAt && (Date.now() - new Date(t.updatedAt).getTime()) > 3 * 864e5
+        ? '<span class="status declined">DM overdue</span>' : '') +
       (t.brand.category ? '<span>' + esc(CAT_NAMES[t.brand.category] || t.brand.category) + '</span>' : '') +
       (t.brand.tier ? '<span>·</span><span>' + esc(t.brand.tier) + '</span>' : '') +
       '<span>·</span><span class="fit">fit ' + t.fitScore + '</span>' +
@@ -2325,16 +2631,26 @@ function targetRow(t) {
         (t.followUpAt ? ' (' + shortDate(t.followUpAt) + ')' : '') + '</span>' : '') +
       '</div>' +
     '</div>' +
+    // Buttons show only the steps that make sense for this person's
+    // stage, numbered without gaps, current step highlighted.
+    // Before the invite: 1 copy note · 2 profile · 3 mark sent.
+    // Invite out: They accepted ✓ (or undo). Accepted: Copy DM.
     '<div class="t-actions">' +
-      '<button class="btn-ghost" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
-      (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">↗ LinkedIn</a>' : '') +
-      (d ? '<button class="btn-ghost" data-act="toggle">' + (open ? 'Close draft' : 'Show draft') + '</button>' : '') +
-      '<button class="btn-draft" data-act="draft">' + (d ? 'Redraft' : 'Draft') + '</button>' +
-      (t.status === 'queued' || t.status === 'drafted' ? '<button class="btn-ghost" data-act="sent">Mark sent</button>' : '') +
-      (t.status !== 'replied' && t.status !== 'converted' && t.status !== 'declined' && t.status !== 'dead'
-        ? '<button class="btn-ghost" data-act="replied">Replied</button>' : '') +
+      (isPre && d ? '<button class="btn-draft" data-act="copynote" title="Copy the short intro, then on their profile: Connect → Add a note → paste">1 · Copy note</button>' : '') +
+      (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">' + (isPre ? '2 · Profile ↗' : 'Profile ↗') + '</a>' : '') +
+      (isPre ? '<button class="btn-ghost" data-act="sent" title="Log that the invite went out">3 · Mark sent</button>' : '') +
+      (t.status === 'sent'
+        ? '<button class="btn-draft" data-act="accepted" title="They accepted your invite — next you DM them">They accepted ✓</button>' +
+          '<button class="btn-ghost" data-act="unsend" title="Hit Mark sent by mistake? Puts them back in the queue and uncounts the send">↩ Not sent</button>' : '') +
+      (t.status === 'accepted' && d
+        ? '<button class="btn-draft" data-act="copymsg" title="Copy the DM and paste it into your LinkedIn chat with them">Copy DM</button>' : '') +
+      (t.status === 'sent' || t.status === 'accepted'
+        ? '<button class="btn-ghost" data-act="replied" title="They wrote back">Replied</button>' : '') +
       (t.status === 'replied' ? '<button class="btn-ghost" data-act="nextstep">Next step</button>' : '') +
       (t.status === 'replied' ? '<button class="btn-ghost" data-act="won">Won</button>' : '') +
+      (d ? '<button class="btn-ghost" data-act="toggle">' + (open ? 'Close draft' : 'Edit draft') + '</button>' : '') +
+      (isPre ? '<button class="btn-ghost" data-act="draft">' + (d ? 'Redraft' : 'Draft') + '</button>' : '') +
+      '<button class="btn-ghost" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
       (t.status !== 'declined' && t.status !== 'dead' && t.status !== 'converted'
         ? '<button class="btn-ghost danger" data-act="pass">Pass</button>' : '') +
     '</div>' +
@@ -2380,8 +2696,8 @@ function draftBlock(t) {
       '<div class="tmpl-name">' +
         (d.variant === 'identity' ? 'Identity + proof' : 'Specific question') +
         (d.voice ? ' — ' + esc(d.voice) + '-style' : '') + '</div>' +
-      field('Connection note', d.connectionNote, CONNECTION_MAX, d.id, 'connectionNote') +
-      field('First message', d.firstMessage, MESSAGE_MAX, d.id, 'firstMessage') +
+      field('1 · Invite note — goes with the Connect request', d.connectionNote, CONNECTION_MAX, d.id, 'connectionNote') +
+      field('2 · First DM — send after they accept', d.firstMessage, MESSAGE_MAX, d.id, 'firstMessage') +
     '</div>';
   }).join('') + '</div>';
 }
@@ -2405,22 +2721,32 @@ function renderStatusFilters() {
   }).join('');
 }
 
+// The LinkedIn queue: connection-note + first-message drafts, sent by
+// hand on LinkedIn. Email lives in its own tab (loadEmailOutreach).
 function loadOutreach() {
   showView('outreach');
   var box = document.getElementById('targets');
   box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
-  if (mode === 'email') {
-    document.getElementById('status-filters').style.display = 'none';
-    document.getElementById('queue-head').innerHTML = 'Email outreach';
-    return renderEmailMode(box);
-  }
   renderStatusFilters();
 
+  // Today also surfaces everyone who accepted an invite and is still
+  // waiting on their DM (first), and everyone marked sent today (last,
+  // so a mis-click is one “↩ Not sent” away instead of vanishing).
   var call = mode === 'today'
-    ? api('getTodayQueue')
-    : api('listTargets', { status: statusFilter });
+    ? Promise.all([api('listTargets', { status: 'accepted' }), api('getTodayQueue'), api('listTargets', { status: 'sent' })])
+        .then(function (r) {
+          var midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+          var weekAgo = Date.now() - 7 * 864e5;
+          var sentToday = (r[2] || []).filter(function (t) { return t.sentAt && new Date(t.sentAt) >= midnight; });
+          var stale = (r[2] || []).filter(function (t) { return t.sentAt && new Date(t.sentAt).getTime() <= weekAgo; });
+          return { accepted: r[0] || [], list: r[1] || [], sentToday: sentToday, stale: stale };
+        })
+    : api('listTargets', { status: statusFilter }).then(function (l) { return { accepted: [], list: l || [], sentToday: [], stale: [] }; });
 
-  return call.then(function (list) {
+  return call.then(function (r) {
+    var list = r.list;
+    r.accepted.forEach(function (t) { TARGET_CACHE[t.id] = t; });
+    r.sentToday.forEach(function (t) { TARGET_CACHE[t.id] = t; });
     (list || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
     document.getElementById('queue-head').innerHTML = mode === 'today'
       ? 'To send today <span class="n">' + list.length + '</span>'
@@ -2428,8 +2754,24 @@ function loadOutreach() {
     document.getElementById('c-' + (mode === 'today' ? 'today' : 'all')).textContent = list.length;
     document.getElementById('status-filters').style.display = mode === 'all' ? 'flex' : 'none';
 
-    box.innerHTML = list.length
-      ? list.map(targetRow).join('')
+    var acceptedBlock = r.accepted.length
+      ? '<div class="count-head" style="color:var(--good)">They accepted — send the DM <span class="n">' + r.accepted.length + '</span></div>' +
+        r.accepted.map(targetRow).join('') +
+        (list.length ? '<div class="count-head" style="margin-top:20px">New invites</div>' : '')
+      : '';
+    var sentBlock = r.sentToday.length
+      ? '<div class="count-head" style="margin-top:20px">Sent today — waiting on accepts <span class="n">' + r.sentToday.length + '</span></div>' +
+        r.sentToday.map(targetRow).join('')
+      : '';
+    (r.stale || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
+    var staleBlock = (r.stale || []).length
+      ? '<div class="count-head" style="margin-top:20px;color:var(--warn)">Going stale — invited 7+ days ago, no accept <span class="n">' + r.stale.length + '</span></div>' +
+        '<div class="hint" style="margin:2px 0 10px">Press “They accepted” if they did, try their email instead, or Pass and free the slot.</div>' +
+        r.stale.map(targetRow).join('')
+      : '';
+
+    box.innerHTML = list.length || r.accepted.length || r.sentToday.length || (r.stale || []).length
+      ? acceptedBlock + list.map(targetRow).join('') + sentBlock + staleBlock
       : '<div class="panel"><div class="empty"><h3>Nothing here</h3>' +
         '<p>' + (mode === 'all'
           ? (statusFilter !== 'all'
@@ -2439,6 +2781,8 @@ function loadOutreach() {
             'the daily cap that keeps the LinkedIn account out of trouble. ' +
             'All targets shows everything regardless.') +
         '</p></div></div>';
+    if (mode === 'today') renderNextBest();
+    else document.getElementById('nextbest').innerHTML = '';
   }).catch(function (e) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
       esc(e.message) + '</p></div></div>';
@@ -2600,6 +2944,32 @@ function lintDraft(subject, body) {
   return warns;
 }
 
+// The LinkedIn cheat-sheet collapses (and remembers) like the email one.
+(function () {
+  var body = document.getElementById('li-guide-body');
+  var arrow = document.getElementById('li-guide-arrow');
+  var head = document.getElementById('li-guide-toggle');
+  if (!body || !head) return;
+  var open = true;
+  try { open = localStorage.getItem('liGuideOpen') !== '0'; } catch (e) {}
+  body.style.display = open ? 'block' : 'none';
+  arrow.textContent = open ? '▾' : '▸';
+  head.onclick = function () {
+    open = !open;
+    body.style.display = open ? 'block' : 'none';
+    arrow.textContent = open ? '▾' : '▸';
+    try { localStorage.setItem('liGuideOpen', open ? '1' : '0'); } catch (e) {}
+  };
+})();
+
+// The Email tab — its own view, fully separate from the LinkedIn queue.
+function loadEmailOutreach() {
+  showView('email-out');
+  var box = document.getElementById('email-box');
+  box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  return renderEmailMode(box);
+}
+
 function renderEmailMode(box) {
   return api('getEmailStatus').then(function (st) {
     if (!st.configured) {
@@ -2617,7 +2987,6 @@ function renderEmailMode(box) {
       return;
     }
     return api('listEmailQueue').then(function (q) {
-      document.getElementById('c-email').textContent = q.drafts.length || '';
       var head =
         '<div class="panel panel-pad" style="margin-bottom:12px">' +
           '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
@@ -2842,7 +3211,7 @@ function renderEmailMode(box) {
           api('draftEmails', { limit: 4 }).then(function (r) {
             total += r.drafted;
             if (!r.done && rounds < 10 && r.drafted > 0) step(rounds + 1);
-            else { toast(total + ' email' + (total === 1 ? '' : 's') + ' drafted'); loadOutreach(); }
+            else { toast(total + ' email' + (total === 1 ? '' : 's') + ' drafted'); loadEmailOutreach(); }
           }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Draft today\'s batch'; });
         }
         step(0);
@@ -2851,7 +3220,7 @@ function renderEmailMode(box) {
         var btn = this; btn.disabled = true; btn.textContent = 'Checking…';
         api('checkEmailReplies').then(function (r) {
           toast(r.error ? 'Check hit a snag: ' + r.error : (r.replies + ' new repl' + (r.replies === 1 ? 'y' : 'ies')));
-          loadOutreach();
+          loadEmailOutreach();
         }).catch(function (e) { toast(e.message); btn.disabled = false; });
       };
       box.querySelector('#em-send').onclick = function () {
@@ -2860,7 +3229,7 @@ function renderEmailMode(box) {
         api('sendApprovedEmails').then(function (r) {
           toast(r.sent + ' sent' + (r.failed ? ', ' + r.failed + ' failed' : ''));
           if (r.errors && r.errors.length) window.alert('Some failed:\n' + r.errors.join('\n'));
-          loadOutreach();
+          loadEmailOutreach();
         }).catch(function (e) { toast(e.message); btn.disabled = false; });
       };
       box.querySelector('#em-pause').onclick = function () {
@@ -2868,14 +3237,14 @@ function renderEmailMode(box) {
         if (st.paused && !window.confirm('Turn sending ON? Approved and drafted emails can go out from ' + (st.address || 'the connected account') + '.')) return;
         b.disabled = true;
         api('setSendingPaused', { paused: !st.paused })
-          .then(function (r) { toast(r.paused ? 'Sending paused' : 'Sending is live'); loadOutreach(); })
+          .then(function (r) { toast(r.paused ? 'Sending paused' : 'Sending is live'); loadEmailOutreach(); })
           .catch(function (e) { toast(e.message); b.disabled = false; });
       };
       var gd = box.querySelector('#em-gdisc');
       if (gd) gd.onclick = function () {
         if (!window.confirm('Disconnect the Google account? Sending falls back to the app-password mailbox.')) return;
         gd.disabled = true;
-        api('disconnectGoogle').then(function () { toast('Google disconnected'); loadOutreach(); })
+        api('disconnectGoogle').then(function () { toast('Google disconnected'); loadEmailOutreach(); })
           .catch(function (e) { toast(e.message); gd.disabled = false; });
       };
 
@@ -2883,7 +3252,7 @@ function renderEmailMode(box) {
         var btn = this; btn.disabled = true;
         api('approveAllDrafts').then(function (r) {
           toast(r.approved + ' email' + (r.approved === 1 ? '' : 's') + ' scheduled — they\'ll go out the next Tue–Thu morning ~9am ET');
-          loadOutreach();
+          loadEmailOutreach();
         }).catch(function (e) { toast(e.message); btn.disabled = false; });
       };
 
@@ -2893,7 +3262,7 @@ function renderEmailMode(box) {
           var card = b.closest('[data-exh]');
           b.disabled = true; b.textContent = 'Setting up…';
           api('emailDifferentContact', { targetId: card.getAttribute('data-exh'), contactId: b.getAttribute('data-contact') })
-            .then(function (r) { toast('New intro drafted to ' + r.to + ' — it\'s in your approval queue'); loadOutreach(); })
+            .then(function (r) { toast('New intro drafted to ' + r.to + ' — it\'s in your approval queue'); loadEmailOutreach(); })
             .catch(function (e) { toast(e.message); b.disabled = false; });
         };
       });
@@ -2902,7 +3271,7 @@ function renderEmailMode(box) {
           var card = b.closest('[data-exh]');
           b.disabled = true; b.innerHTML = '<span class="spinner"></span> Drafting…';
           api('draftFinalNudge', { targetId: card.getAttribute('data-exh') })
-            .then(function () { toast('Final follow-up drafted — review it above'); loadOutreach(); })
+            .then(function () { toast('Final follow-up drafted — review it above'); loadEmailOutreach(); })
             .catch(function (e) { toast(e.message); b.disabled = false; b.textContent = 'One more follow-up'; });
         };
       });
@@ -2910,7 +3279,7 @@ function renderEmailMode(box) {
         b.onclick = function () {
           var card = b.closest('[data-exh]');
           api('setTargetStatus', { targetId: card.getAttribute('data-exh'), status: 'dead' })
-            .then(function () { toast('Marked cold'); loadOutreach(); })
+            .then(function () { toast('Marked cold'); loadEmailOutreach(); })
             .catch(function (e) { toast(e.message); });
         };
       });
@@ -2942,7 +3311,7 @@ function renderEmailMode(box) {
                 to: sb.getAttribute('data-to'),
                 subject: panel.querySelector('[data-rr="subject"]').value,
                 body: panel.querySelector('[data-rr="body"]').value
-              }).then(function (r2) { toast('Response sent to ' + r2.to); loadOutreach(); })
+              }).then(function (r2) { toast('Response sent to ' + r2.to); loadEmailOutreach(); })
                 .catch(function (e) { toast(e.message); sb.disabled = false; sb.textContent = 'Send response'; });
             };
           }).catch(function (e) { toast(e.message); b.disabled = false; b.textContent = 'Draft response'; });
@@ -2963,7 +3332,7 @@ function renderEmailMode(box) {
       box.querySelectorAll('[data-emact="del"]').forEach(function (b) {
         b.onclick = function () {
           api('deleteEmailDraft', { id: b.closest('[data-em]').getAttribute('data-em') })
-            .then(function () { toast('Skipped'); loadOutreach(); })
+            .then(function () { toast('Skipped'); loadEmailOutreach(); })
             .catch(function (e) { toast(e.message); });
         };
       });
@@ -2987,7 +3356,7 @@ function renderEmailMode(box) {
             return api('sendEmailDraft', { id: id });
           }).then(function (r) {
             toast('Sent to ' + r.to + (r.cc && r.cc.length ? ' (+' + r.cc.length + ' CC)' : ''));
-            loadOutreach();
+            loadEmailOutreach();
           }).catch(function (e) {
             toast(e.message); b.disabled = false; b.textContent = 'Send';
           });
@@ -3019,7 +3388,7 @@ function renderEmailMode(box) {
         b.onclick = function () {
           b.disabled = true; b.innerHTML = '<span class="spinner"></span> Thinking…';
           api('suggestForDraft', { id: b.closest('[data-em]').getAttribute('data-em') })
-            .then(function () { loadOutreach(); })
+            .then(function () { loadEmailOutreach(); })
             .catch(function (e) { toast(e.message); b.disabled = false; b.textContent = 'Suggest angle'; });
         };
       });
@@ -3036,8 +3405,8 @@ function renderEmailMode(box) {
           var id = sel.closest('[data-em]').getAttribute('data-em');
           var opt = sel.options[sel.selectedIndex];
           api('setDraftRecipients', { id: id, toEmail: sel.value, toName: opt.getAttribute('data-name') || '' })
-            .then(function () { toast('Recipient updated'); loadOutreach(); })
-            .catch(function (e) { toast(e.message); loadOutreach(); });
+            .then(function () { toast('Recipient updated'); loadEmailOutreach(); })
+            .catch(function (e) { toast(e.message); loadEmailOutreach(); });
         };
       });
       box.querySelectorAll('[data-emrec="ccadd"]').forEach(function (sel) {
@@ -3054,8 +3423,8 @@ function renderEmailMode(box) {
           try { cc = d && d.ccEmails ? JSON.parse(d.ccEmails) : []; } catch (e) {}
           cc.push(addr.trim());
           api('setDraftRecipients', { id: id, cc: cc })
-            .then(function () { toast('Added to CC'); loadOutreach(); })
-            .catch(function (e) { toast(e.message); loadOutreach(); });
+            .then(function () { toast('Added to CC'); loadEmailOutreach(); })
+            .catch(function (e) { toast(e.message); loadEmailOutreach(); });
         };
       });
       box.querySelectorAll('[data-emact="ccdel"]').forEach(function (a) {
@@ -3068,8 +3437,8 @@ function renderEmailMode(box) {
           try { cc = d && d.ccEmails ? JSON.parse(d.ccEmails) : []; } catch (e) {}
           cc = cc.filter(function (x) { return x.toLowerCase() !== gone; });
           api('setDraftRecipients', { id: id, cc: cc })
-            .then(function () { toast('Removed from CC'); loadOutreach(); })
-            .catch(function (e) { toast(e.message); loadOutreach(); });
+            .then(function () { toast('Removed from CC'); loadEmailOutreach(); })
+            .catch(function (e) { toast(e.message); loadEmailOutreach(); });
         };
       });
 
@@ -3091,6 +3460,110 @@ function renderEmailMode(box) {
 // --- pipeline + crm --------------------------------------------
 
 var STAGE_ORDER = ['conversation', 'proposal', 'verbal', 'closed', 'lost'];
+
+// The deal room: everything needed to close one deal on one panel —
+// the people, the show and its deliverables, board heat, and a
+// follow-up date that shows up as "follow-up due" on the card.
+function openDealRoom(dealId) {
+  var slot = document.getElementById('deal-room-slot');
+  slot.innerHTML = '<div class="panel panel-pad">Loading…</div>';
+  window.scrollTo(0, 0);
+  api('getDealRoom', { dealId: dealId }).then(function (r) {
+    var deal = r.deal, b = deal.brand, sp = deal.showSponsor;
+    var heat = r.boardViews14d
+      ? '<span class="status confirmed">🔥 ' + r.boardViews14d + ' board view' + (r.boardViews14d === 1 ? '' : 's') + ' in 14 days</span>' +
+        (r.lastBoardVisit ? '<span style="color:var(--ink-3)">last seen ' + when(r.lastBoardVisit) + '</span>' : '')
+      : '<span style="color:var(--ink-3)">No Show Board views in the last 14 days — worth re-sending their board link.</span>';
+
+    var people = (b.contacts || []).map(function (c) {
+      return '<div class="t-meta" style="margin-top:6px">' +
+        '<span style="color:var(--ink-1);font-weight:600">' + esc(c.name) + '</span>' +
+        (c.title ? '<span class="t-title">— ' + esc(c.title) + '</span>' : '') +
+        (c.linkedinUrl ? '<a class="btn-ghost" href="' + esc(c.linkedinUrl) + '" target="_blank" rel="noopener" style="padding:2px 9px;font-size:11.5px">in ↗</a>' : '') +
+        (c.email ? '<span style="color:var(--ink-3)">' + esc(c.email) + '</span>' : '') +
+      '</div>';
+    }).join('') || '<div class="t-meta" style="margin-top:6px"><span>No people saved — add them on the brand page.</span></div>';
+
+    var showBlock = '';
+    if (sp) {
+      var items = (sp.deliverableItems || []).map(function (it) {
+        return '<label style="display:flex;gap:8px;align-items:flex-start;padding:4px 0;font-size:13px;cursor:pointer">' +
+          '<input type="checkbox" data-rmdeliv="' + esc(it.id) + '"' + (it.done ? ' checked' : '') + ' style="margin-top:3px">' +
+          '<span' + (it.done ? ' style="color:var(--ink-3);text-decoration:line-through"' : '') + '>' + esc(it.text) + '</span></label>';
+      }).join('');
+      showBlock =
+        '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft)">' +
+          '<div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px">Show & deliverables</div>' +
+          '<div style="font-size:13px">' + esc([sp.artist, sp.school, sp.eventDate].filter(Boolean).join(' · ') || 'Show') +
+            ' <span class="status ' + esc(sp.status) + '">' + esc(sp.status) + '</span></div>' +
+          (items || (sp.deliverables
+            ? '<div class="hint" style="margin:8px 0 0">Promised: ' + esc(sp.deliverables) + ' <button class="btn-ghost" id="rm-seed" style="padding:2px 9px;font-size:11.5px">Turn into checklist</button></div>'
+            : '<div class="hint" style="margin:8px 0 0">Nothing promised yet.</div>')) +
+          '<div style="display:flex;gap:8px;margin-top:8px"><input class="field-box" id="rm-newdeliv" placeholder="+ Add a deliverable…" style="flex:1">' +
+          '<button class="btn-ghost" id="rm-adddeliv">Add</button></div>' +
+        '</div>';
+    }
+
+    slot.innerHTML =
+      '<div class="panel panel-pad">' +
+        '<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">' +
+          '<b style="font-size:16px;font-family:var(--display);cursor:pointer" data-rmbrand="' + esc(b.id) + '">' + esc(b.name) + '</b>' +
+          '<span class="amount">' + money(deal.valueCents) + '</span>' +
+          '<span class="status ' + esc(deal.stage) + '">' + esc(deal.stage) + '</span>' +
+          (deal.owner ? '<span style="color:var(--ink-3);font-size:12.5px">' + esc(deal.owner) + '</span>' : '') +
+          '<button class="btn-ghost" id="rm-close" style="margin-left:auto">Close ×</button>' +
+        '</div>' +
+        '<div class="t-meta" style="margin-top:10px">' + heat + '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:14px">' +
+          '<div style="flex:1;min-width:200px"><label class="lbl">Next step</label>' +
+            '<input class="field-box" id="rm-step" placeholder="e.g. Send revised proposal" value="' + esc(deal.nextStep || '') + '"></div>' +
+          '<div><label class="lbl">Follow up</label>' +
+            '<input class="field-box" id="rm-date" type="date" value="' + (deal.followUpAt ? isoDate(deal.followUpAt) : '') + '"></div>' +
+          '<button class="btn-solid" id="rm-save">Save</button>' +
+        '</div>' +
+        showBlock +
+        '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft)">' +
+          '<div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin-bottom:2px">People at ' + esc(b.name) + '</div>' +
+          people +
+        '</div>' +
+      '</div>';
+
+    slot.querySelector('#rm-close').onclick = function () { slot.innerHTML = ''; };
+    slot.querySelector('[data-rmbrand]').onclick = function () { loadBrand(b.id); };
+    slot.querySelector('#rm-save').onclick = function () {
+      var btn = this; btn.disabled = true;
+      api('setDealFollowUp', {
+        dealId: dealId,
+        nextStep: slot.querySelector('#rm-step').value || null,
+        followUpAt: slot.querySelector('#rm-date').value || null,
+      }).then(function () { toast('Saved'); btn.disabled = false; loadPipeline(); })
+        .catch(function (e) { toast(e.message); btn.disabled = false; });
+    };
+    slot.querySelectorAll('[data-rmdeliv]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        api('updateDeliverable', { id: cb.getAttribute('data-rmdeliv'), done: cb.checked })
+          .then(function () { openDealRoom(dealId); })
+          .catch(function (e) { toast(e.message); });
+      });
+    });
+    var seed = slot.querySelector('#rm-seed');
+    if (seed) seed.onclick = function () {
+      api('seedDeliverables', { showSponsorId: sp.id })
+        .then(function () { openDealRoom(dealId); })
+        .catch(function (e) { toast(e.message); });
+    };
+    var addBtn = slot.querySelector('#rm-adddeliv');
+    if (addBtn) addBtn.onclick = function () {
+      var text = slot.querySelector('#rm-newdeliv').value.trim();
+      if (!text) return;
+      api('addDeliverable', { showSponsorId: sp.id, text: text })
+        .then(function () { openDealRoom(dealId); })
+        .catch(function (e) { toast(e.message); });
+    };
+  }).catch(function (e) {
+    slot.innerHTML = '<div class="panel panel-pad">' + esc(e.message) + '</div>';
+  });
+}
 
 function loadPipeline() {
   showView('pipeline');
@@ -3149,8 +3622,11 @@ function loadPipeline() {
               (x.eventRef || x.name !== x.brand.name ? '<div style="font-size:11.5px;color:var(--ink-3);margin-top:2px">' + esc(x.eventRef || x.name) + '</div>' : '') +
               '<div style="font-size:11px;color:var(--ink-3);margin-top:3px">' +
                 (x.owner ? '' + esc(x.owner) : 'unassigned') +
-                (locked ? '' : ' <a href="#" data-dact="owner" style="color:var(--accent);text-decoration:none">✎</a>') + '</div>' +
+                (locked ? '' : ' <a href="#" data-dact="owner" style="color:var(--accent);text-decoration:none">✎</a>') +
+                (x.followUpAt && new Date(x.followUpAt) <= new Date() && s !== 'closed' && s !== 'lost'
+                  ? ' <span class="status declined">follow-up due</span>' : '') + '</div>' +
               '<div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap">' +
+                '<button class="btn-ghost" data-dact="room" style="padding:2px 7px;font-size:11.5px" title="Everything about this deal on one panel">Room</button>' +
                 (locked
                   ? (x.source === 'notion'
                       ? '<span style="font-size:11px;color:var(--ink-3)" title="Mirrors Notion — change its Stage there; syncs nightly">from Notion</span>'
@@ -3176,6 +3652,9 @@ function loadPipeline() {
           .then(function () { loadPipeline(); })
           .catch(function (e) { toast(e.message); });
       };
+    });
+    el.querySelectorAll('[data-dact="room"]').forEach(function (b) {
+      b.onclick = function () { openDealRoom(b.closest('[data-deal]').getAttribute('data-deal')); };
     });
     el.querySelectorAll('[data-dact="move"]').forEach(function (b) {
       b.onclick = function () {
@@ -3370,7 +3849,7 @@ function loadBoard() {
   return api('listBoardActivity', { limit: 50 }).then(function (d) {
     document.getElementById('bd-kpis').innerHTML =
       '<div class="kpi"><div class="kpi-label">Views</div><div class="kpi-value">' + (d.last7 || 0) + '</div><div class="kpi-note">last 7 days</div></div>' +
-      '<div class="kpi"><div class="kpi-label">All time</div><div class="kpi-value">' + (d.total || 0) + '</div><div class="kpi-note">board opens</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Brands today</div><div class="kpi-value">' + (d.brandsToday || 0) + '</div><div class="kpi-note">viewed the board</div></div>' +
       '<div class="kpi"><div class="kpi-label">Requests</div><div class="kpi-value">' + (d.requestCount || 0) + '</div><div class="kpi-note">from the board</div></div>';
     var top = d.topShows || [];
     document.getElementById('bd-top-head').hidden = !top.length;
@@ -5043,6 +5522,9 @@ function gotoView(id) {
   if (id === 'dashboard') loadDashboard();
   if (id === 'brands') loadBrands('all');
   if (id === 'outreach') loadOutreach();
+  if (id === 'email-out') loadEmailOutreach();
+  if (id === 'reached') loadReached();
+  if (id === 'linkedin') loadLinkedin();
   if (id === 'shows') loadShows();
   if (id === 'sponsorships') loadSponsorships();
   if (id === 'needs') loadNeeds();
@@ -5068,7 +5550,7 @@ function gotoView(id) {
   history.replaceState({}, '', location.pathname);
   if (g === 'connected') {
     toast('Google connected — sending as ' + (p.get('as') || 'the connected account'));
-    setTimeout(function () { gotoView('outreach'); }, 300);
+    setTimeout(function () { gotoView('email-out'); }, 300);
   } else {
     toast('Google connect failed: ' + g);
   }
@@ -5157,11 +5639,12 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'action-panel', 'req-list', 'bd-activity'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'reached-list', 'nextbest', 'action-panel', 'req-list', 'bd-activity'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
     if (e.target.closest('a')) return;   // let real links through
+    if (e.target.closest('[data-nbq]')) return;   // Queue button handles itself
     loadBrand(el.getAttribute('data-brand'));
   });
 });
@@ -5179,8 +5662,21 @@ document.getElementById('shows-list').addEventListener('click', function (e) {
 // Needs-contacts page: "+ Add contact" reveals the add-person form inline;
 // "Delete" removes a junk/misnamed brand.
 document.getElementById('needs-list').addEventListener('click', function (e) {
+  var suBtn = e.target.closest('[data-nact="su"]');
   var addBtn = e.target.closest('[data-nact="add"]');
   var delBtn = e.target.closest('[data-nact="delete"]');
+  if (suBtn) {
+    var suId = suBtn.getAttribute('data-su');
+    if (suId) {
+      window.open('https://pro.sponsorunited.com/profile/' + encodeURIComponent(suId) + '/contacts', '_blank', 'noopener');
+    } else {
+      var nm = suBtn.getAttribute('data-suname');
+      navigator.clipboard.writeText(nm);
+      toast('“' + nm + '” copied — paste it into SponsorUnited search');
+      window.open('https://pro.sponsorunited.com/search/smart', '_blank', 'noopener');
+    }
+    return;
+  }
   if (addBtn) {
     var row = addBtn.closest('[data-needs]');
     var slot = row.querySelector('.needs-slot');
@@ -5352,6 +5848,84 @@ document.querySelectorAll('.chip[data-mode]').forEach(function (c) {
   });
 });
 
+// Under the queue: brands nobody has contacted yet, ranked by plain
+// rules (tier, reachable decision makers, how the category replies).
+// One click queues the brand's best contact.
+function renderNextBest() {
+  var slot = document.getElementById('nextbest');
+  api('nextBestBrands', { take: 15 }).then(function (d) {
+    var rows = d.brands || [];
+    if (!rows.length) { slot.innerHTML = ''; return; }
+    slot.innerHTML =
+      '<div class="count-head" style="margin-top:26px">Next best brands — not contacted yet <span class="n">' + rows.length + '</span></div>' +
+      '<div class="hint" style="margin:2px 0 10px">Ranked by tier, reachable decision makers, and how each category has replied so far. Queue adds their best contact to Today.</div>' +
+      rows.map(function (b) {
+        var tag = [CAT_NAMES[b.category] || b.category].filter(Boolean).join('');
+        return '<div class="target" data-brand="' + esc(b.id) + '">' +
+          '<div class="t-main">' +
+            '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(b.name) + '</span>' +
+              (tag ? '<span class="t-sep">·</span><span class="t-title">' + esc(tag) + '</span>' : '') + '</div>' +
+            '<div class="t-meta"><span>' + esc((b.why || []).join(' · ')) + '</span></div>' +
+          '</div>' +
+          '<div class="t-actions">' +
+            '<span class="fit">' + b.contacts + ' contact' + (b.contacts === 1 ? '' : 's') + '</span>' +
+            '<button class="btn-draft" data-nbq="' + esc(b.id) + '">Queue</button>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+  }).catch(function () { slot.innerHTML = ''; });
+}
+
+document.getElementById('nextbest').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-nbq]');
+  if (!btn) return;
+  btn.disabled = true;
+  api('queueBrandTargets', { brandId: btn.getAttribute('data-nbq') }).then(function (r) {
+    toast(r.queued ? r.contactName + ' added to the queue' : 'Already in play — ' + r.contactName + ' is ' + r.status);
+    loadOutreach();
+  }).catch(function (err) { toast(err.message); btn.disabled = false; });
+});
+
+// Add a brand-new brand from the LinkedIn tab: create it, add their
+// person, and queueBrandTargets drops them straight into Today.
+function openNewBrandForm(prefill) {
+  var slot = document.getElementById('oq-new-slot');
+  if (slot.innerHTML) { slot.innerHTML = ''; return; }
+  slot.innerHTML =
+    '<div class="panel panel-pad" style="margin-top:10px">' +
+      '<div style="font-size:13px;font-weight:600;margin-bottom:10px">New brand → straight into the queue</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        '<input class="field-box" id="ob-name" placeholder="Brand name" style="flex:1;min-width:200px" value="' + esc(prefill || '') + '">' +
+        '<button class="btn-solid" id="ob-create">Create</button>' +
+        '<button class="btn-ghost" id="ob-cancel">Cancel</button>' +
+      '</div>' +
+      '<div class="hint" style="margin:8px 0 0">Step 2 opens right here: add their person (a decision-maker title + LinkedIn URL) and they land in the queue.</div>' +
+      '<div id="ob-contact" style="margin-top:10px"></div>' +
+    '</div>';
+  slot.querySelector('#ob-cancel').onclick = function () { slot.innerHTML = ''; };
+  slot.querySelector('#ob-create').onclick = function () {
+    var name = slot.querySelector('#ob-name').value.trim();
+    if (name.length < 2) { toast('Type the brand name first'); return; }
+    var btn = this;
+    btn.disabled = true;
+    api('createBrand', { name: name, hint: 'added from the LinkedIn queue' }).then(function (r) {
+      toast(r.created === false ? 'That brand already exists — add their person below' : 'Brand created — now add their person');
+      slot.querySelector('#ob-name').disabled = true;
+      btn.hidden = true;
+      openContactForm(r.brand.id, slot.querySelector('#ob-contact'), function () {
+        // Queue whoever was just added (or the brand's best contact).
+        api('queueBrandTargets', { brandId: r.brand.id }).then(function (q) {
+          toast(q.queued ? q.contactName + ' is in the queue — hit Draft on their row'
+            : (q.contactName ? 'Already in play — ' + q.contactName + ' is ' + q.status : 'Person added'));
+        }).catch(function () { toast('Person added — queue them from the brand page'); })
+          .then(function () { slot.innerHTML = ''; loadOutreach(); });
+      });
+    }).catch(function (e) { toast(e.message); btn.disabled = false; });
+  };
+  slot.querySelector('#ob-name').focus();
+}
+document.getElementById('oq-new').addEventListener('click', function () { openNewBrandForm(''); });
+
 // Hand-pick a brand into the outreach queue. Type a name, click a result,
 // and its best reachable contact jumps into Today.
 (function () {
@@ -5368,7 +5942,7 @@ document.querySelectorAll('.chip[data-mode]').forEach(function (c) {
     timer = setTimeout(function () {
       api('listBrands', { search: q, take: 8 }).then(function (brands) {
         if (!brands.length) {
-          drop.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--ink-3)">No brand named “' + esc(q) + '” — add it with + Add brand first.</div>';
+          drop.innerHTML = '<div class="oq-row-new" style="padding:10px 12px;font-size:13px;cursor:pointer;color:var(--accent-hi);font-weight:600">+ Add “' + esc(q) + '” as a new brand</div>';
           drop.style.display = 'block';
           return;
         }
@@ -5384,6 +5958,13 @@ document.querySelectorAll('.chip[data-mode]').forEach(function (c) {
   });
 
   drop.addEventListener('click', function (e) {
+    var addNew = e.target.closest('.oq-row-new');
+    if (addNew) {
+      var q = box.value.trim();
+      hide(); box.value = '';
+      openNewBrandForm(q);
+      return;
+    }
     var row = e.target.closest('.oq-row');
     if (!row) return;
     var brandId = row.getAttribute('data-oq');
@@ -5488,16 +6069,33 @@ document.getElementById('targets').addEventListener('click', function (e) {
   var id = row.getAttribute('data-id');
 
   if (act === 'toggle') {
-    if (CLOSED_DRAFTS[id]) delete CLOSED_DRAFTS[id];
-    else CLOSED_DRAFTS[id] = true;
+    if (OPEN_DRAFTS[id]) delete OPEN_DRAFTS[id];
+    else OPEN_DRAFTS[id] = true;
     loadOutreach();
+    return;
+  }
+
+  // Quick copy from the collapsed row. An open, edited textarea wins
+  // over the cached draft so hand-tweaks are what lands on LinkedIn.
+  if (act === 'copynote' || act === 'copymsg') {
+    var qt = TARGET_CACHE[id] || {};
+    var qd = (qt.drafts || [])[0] || {};
+    var qkey = act === 'copynote' ? 'connectionNote' : 'firstMessage';
+    var qta = qd.id ? document.querySelector('textarea[data-draft="' + qd.id + '"][data-key="' + qkey + '"]') : null;
+    var qtext = qta ? qta.value : (qd[qkey] || '');
+    if (!qtext) { toast('Nothing drafted for that yet — hit Draft first'); return; }
+    navigator.clipboard.writeText(qtext).then(function () {
+      toast(act === 'copynote'
+        ? 'Invite note copied — on their profile: Connect → Add a note → paste'
+        : 'First DM copied — paste it into your LinkedIn chat with them');
+    }, function () { toast('Could not copy — open the draft and copy from there'); });
     return;
   }
 
   if (act === 'draft') {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Writing…';
-    delete CLOSED_DRAFTS[id];   // a fresh draft always opens
+    OPEN_DRAFTS[id] = true;   // a fresh draft always opens
     api('generateDrafts', { targetId: id })
       .then(function () { return loadOutreach(); })
       .catch(function (err) { toast(err.message); btn.disabled = false; btn.textContent = 'Draft'; });
@@ -5505,7 +6103,19 @@ document.getElementById('targets').addEventListener('click', function (e) {
 
   if (act === 'sent') {
     api('setTargetStatus', { targetId: id, status: 'sent', actor: ME.owner || null })
-      .then(function () { toast('Marked sent'); return loadOutreach(); })
+      .then(function () { toast('Invite logged — press “They accepted” when it lands'); return loadOutreach(); })
+      .catch(function (err) { toast(err.message); });
+  }
+
+  if (act === 'accepted') {
+    api('setTargetStatus', { targetId: id, status: 'accepted', actor: ME.owner || null })
+      .then(function () { toast('Accepted 🎉 — now hit “Copy DM” and message them'); return loadOutreach(); })
+      .catch(function (err) { toast(err.message); });
+  }
+
+  if (act === 'unsend') {
+    api('setTargetStatus', { targetId: id, status: 'drafted', clearSent: true, actor: ME.owner || null })
+      .then(function () { toast('Back in the queue — that send is uncounted'); return loadOutreach(); })
       .catch(function (err) { toast(err.message); });
   }
 
@@ -5622,12 +6232,7 @@ document.getElementById('nb-save').addEventListener('click', function () {
 // --- audience: events + attendees (sponsorship Phase 1) --------
 
 var AUD_EVENTS = [];
-
-function copyText(text, btn) {
-  var done = function () { if (btn) { var old = btn.textContent; btn.textContent = 'Copied ✓'; setTimeout(function () { btn.textContent = old; }, 1600); } };
-  if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () { prompt('Copy this:', text); });
-  else prompt('Copy this:', text);
-}
+// copyText comes from the shared helper defined above (toast-based).
 
 function loadAudience() {
   showView('audience');
@@ -5946,9 +6551,10 @@ document.getElementById('quickbar').addEventListener('click', function (e) {
     btn.title = min ? 'Expand sidebar' : 'Collapse sidebar';
     try { localStorage.setItem('sb.sideMin', min ? '1' : '0'); } catch (err) {}
   }
+  // Collapsed is the default; expanding is remembered per device.
   var saved = null;
   try { saved = localStorage.getItem('sb.sideMin'); } catch (err) {}
-  if (saved === '1') setMin(true);
+  if (saved !== '0') setMin(true);
   btn.addEventListener('click', function () { setMin(!app.classList.contains('side-min')); });
 })();
 

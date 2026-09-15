@@ -154,7 +154,14 @@ export async function currentDailyCap(): Promise<number> {
 const DRAFT_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5'
 const MODEL_FALLBACKS = ['claude-sonnet-5', 'claude-haiku-4-5']
 
+// Leo's rule (Sep 2026): this site makes NO paid API calls, ever. The
+// billing-shaped error routes every caller to its template fallback —
+// intros are templates already, follow-ups and reply drafts fall back
+// via isBillingError, suggestions fall back in generateSuggestion.
+const NO_PAID_APIS = true
+
 async function askClaude(prompt: string, maxTokens: number): Promise<string> {
+  if (NO_PAID_APIS) throw new Error('Model calls are turned off — no paid APIs on this site (credit balance guard).')
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   const candidates = [DRAFT_MODEL, ...MODEL_FALLBACKS.filter(m => m !== DRAFT_MODEL)]
   let lastErr: any = null
