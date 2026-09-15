@@ -128,6 +128,12 @@
   .section-head{margin:40px 0 14px;font-size:13px;font-weight:600;color:var(--ink-2);
     display:flex;align-items:center;gap:10px}
   .section-head .n{font-weight:500;color:var(--ink-3)}
+  /* Collapsible sections on the brand page — closed by default so the
+     page stays short; the chevron flips when open. */
+  details.fold>summary.section-head{cursor:pointer;user-select:none;list-style:none;margin:26px 0 12px}
+  details.fold>summary.section-head::-webkit-details-marker{display:none}
+  details.fold>summary.section-head:before{content:'▸';color:var(--ink-3);font-size:11px}
+  details.fold[open]>summary.section-head:before{content:'▾'}
   .panel{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
   .panel-pad{padding:20px 22px}
   .chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:18px}
@@ -465,6 +471,7 @@
       <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
         <input class="field-box" id="bq" placeholder="Search brands — or type a new name to add one…" style="flex:1;min-width:240px" autocomplete="off">
         <button class="btn-solid" id="bq-add" hidden>Add + find on SponsorUnited</button>
+        <button class="btn-ghost" id="bq-fill" title="Fills empty brand summaries from a built-in list of known brands — never overwrites anything you typed">Fill summaries</button>
       </div>
       <div class="chips" id="brand-cat-chips" style="margin-top:12px"></div>
       <div id="brands-list"></div>
@@ -1198,6 +1205,21 @@ document.getElementById('bq-add').addEventListener('click', function () {
   }).catch(function (e) { toast(e.message); }).then(function () { add.disabled = false; });
 });
 
+// Fill empty brand summaries from the built-in list (no API calls).
+// Safe to click any time — it only writes fields that are blank.
+document.getElementById('bq-fill').addEventListener('click', function () {
+  var btn = this;
+  btn.disabled = true; btn.textContent = 'Filling…';
+  api('fillBrandSummaries').then(function (r) {
+    toast(r.filled
+      ? 'Filled ' + r.filled + ' brand' + (r.filled === 1 ? '' : 's') +
+        (r.unmatched.length ? ' · ' + r.unmatched.length + ' not in the built-in list' : '')
+      : 'Nothing to fill — ' + r.unmatched.length + ' brands aren\'t in the built-in list yet');
+    loadBrands(lastCategory);
+  }).catch(function (e) { toast(e.message); })
+    .then(function () { btn.disabled = false; btn.textContent = 'Fill summaries'; });
+});
+
 // --- brand detail ----------------------------------------------
 
 var CURRENT_BRAND = null;
@@ -1231,6 +1253,13 @@ function loadBrand(brandId) {
         (b.tier ? ' · ' + esc(b.tier) : '') +
         (b.partner ? ' · ' + esc(b.partner.lifecycle.replace(/_/g, ' ')) : '') +
       '</div>' +
+      // Two-sentence summary right under the name: what they do + what
+      // they're known for. Lives in the About / Best sellers fields.
+      (b.about
+        ? '<div style="font-size:14px;line-height:1.55;color:var(--ink-2);max-width:660px;margin:8px 0 0">' +
+            esc(b.about) + (/[.!?]$/.test(b.about) ? '' : '.') +
+            (b.topProducts ? ' Known for ' + esc(b.topProducts) + '.' : '') + '</div>'
+        : '<div class="hint" style="margin:8px 0 0">No summary yet — open “Details &amp; notes” below and fill in “What they do”.</div>') +
       '<div class="kpi-row">' +
         '<div class="kpi money"><div class="kpi-label">Confirmed</div><div class="kpi-value">' +
           money(d.money.confirmedCents) + '</div><div class="kpi-note">sponsorship revenue</div></div>' +
@@ -1260,7 +1289,7 @@ function loadBrand(brandId) {
       factLine('Wants', b.goals ? esc(b.goals) : '') +
       factLine('Notes', b.notes ? esc(b.notes) : '');
     var details =
-      '<div class="section-head">Details</div>' +
+      '<details class="fold"><summary class="section-head">Details &amp; notes</summary>' +
       '<div class="panel panel-pad">' +
         (facts || '<div style="font-size:13px;color:var(--ink-3);padding:2px 0">Nothing on file yet.</div>') +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
@@ -1310,7 +1339,7 @@ function loadBrand(brandId) {
             '<textarea class="field-box" rows="2" data-bfield="notes">' + esc(b.notes || '') + '</textarea></div>' +
           '<button class="btn-solid" id="b-save">Save</button>' +
         '</div>' +
-      '</div>';
+      '</div></details>';
 
     // shows
     var shows =
@@ -1375,31 +1404,35 @@ function loadBrand(brandId) {
         }).join('')
       : '';
 
-    // proposals & recaps
+    // proposals & recaps — folded; the generate buttons live inside.
     var docs =
-      '<div class="section-head">Documents <span class="n">' + b.documents.length + '</span>' +
-        '<button class="btn-ghost" id="b-callprep" style="margin-left:auto">📞 Call prep</button>' +
+      '<details class="fold"><summary class="section-head">Documents <span class="n">' + b.documents.length + '</span></summary>' +
+      '<div style="display:flex;gap:8px;margin:0 0 10px">' +
+        '<button class="btn-ghost" id="b-callprep">📞 Call prep</button>' +
         '<button class="btn-ghost" id="b-proposal">Generate proposal</button></div>' +
       '<div id="b-doc-slot"></div>' +
       (b.documents.length ? b.documents.map(docRow).join('')
         : '<div class="panel"><div class="empty"><h3>No documents yet</h3>' +
-          '<p>Generate a call prep brief before you dial, a tailored proposal to pitch, or a recap on a confirmed show to earn the renewal. Contracts and invoices are made from the Pipeline page.</p></div></div>');
+          '<p>Generate a call prep brief before you dial, a tailored proposal to pitch, or a recap on a confirmed show to earn the renewal. Contracts and invoices are made from the Pipeline page.</p></div></div>') +
+      '</details>';
 
     // activity
     var activity = d.events.length
-      ? '<div class="section-head">Activity</div><div class="panel panel-pad"><div class="timeline">' +
+      ? '<details class="fold"><summary class="section-head">Activity <span class="n">' + d.events.length + '</span></summary>' +
+        '<div class="panel panel-pad"><div class="timeline">' +
         d.events.map(function (e) {
           return '<div><span class="when">' + when(e.createdAt) + '</span> — ' +
             esc(e.target && e.target.contact ? e.target.contact.name : '') + ' ' +
             esc(e.fromStatus || '') + ' → ' + esc(e.toStatus || e.kind) +
             (e.actor ? ' <span class="when">(' + esc(e.actor) + ')</span>' : '') + '</div>';
-        }).join('') + '</div></div>'
+        }).join('') + '</div></div></details>'
       : '';
 
     // Show Board access — the whole public board is code-gated; this is
     // where a brand's code is minted and its ready-to-send link copied.
     var boardAccess =
-      '<div class="section-head">Show Board access</div>' +
+      '<details class="fold"><summary class="section-head">Show Board access' +
+        (b.boardCode ? ' <span class="n">code set</span>' : '') + '</summary>' +
       '<div class="panel panel-pad">' +
         (b.boardCode
           ? '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
@@ -1417,9 +1450,10 @@ function loadBrand(brandId) {
           : '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
               '<span style="font-size:13px;color:var(--ink-2)">No access code yet — needed only when the board gate is on (SPONSOR_GATE=1 in Vercel); a code in the link also ties their requests to this brand.</span>' +
               '<button class="btn-solid" id="b-code-gen">Generate code</button></div>') +
-      '</div>';
+      '</div></details>';
 
-    box.innerHTML = head + shows + contacts + boardAccess + details + outreach + docs + activity;
+    // Essentials open (people, outreach, shows); everything else folded.
+    box.innerHTML = head + contacts + outreach + shows + details + boardAccess + docs + activity;
 
     box.querySelector('#b-edit-toggle').onclick = function () {
       var f = box.querySelector('#b-edit'); f.hidden = !f.hidden;

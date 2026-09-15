@@ -26,6 +26,7 @@ import { googleStatus, googleDisconnect, driveStatus, driveDisconnect, driveCrea
 import { scanOps, listOps, getOps, updateOps, deleteOps, replyOps, forwardOps } from '@/lib/ops'
 import { allShows, refreshShows, setGenreOverride, cachedShows, GENRES } from '@/lib/shows'
 import { newBoardCode } from '@/lib/board-access'
+import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
   listAttendees, listDupCandidates, mergeAttendees, deleteAttendee, importAttendees,
@@ -1500,6 +1501,33 @@ const handlers: Record<string, Handler> = {
     return { found: j, filled: Object.keys(data) }
   },
 
+  // Fill empty About / Best sellers fields from the hand-typed table in
+  // src/data/brand-summaries.json — zero API calls, matches on the brand
+  // name or any "also known as" name. Never touches a non-empty field,
+  // so hand edits and auto-filled data stay as they are. Idempotent.
+  async fillBrandSummaries() {
+    const table = BRAND_SUMMARIES as Record<string, { about?: string; topProducts?: string }>
+    const brands = await prisma.brand.findMany({
+      where: { OR: [{ about: null }, { topProducts: null }] },
+    })
+    let filled = 0
+    const unmatched: string[] = []
+    for (const b of brands) {
+      const names = [b.name, ...(b.aka ?? '').split(/[,;]/)]
+        .map(s => s.trim().toLowerCase()).filter(Boolean)
+      const hit = names.map(n => table[n]).find(v => v && typeof v === 'object')
+      if (!hit) { if (!b.about) unmatched.push(b.name); continue }
+      const data: Record<string, string> = {}
+      if (!b.about && hit.about) data.about = hit.about.slice(0, 200)
+      if (!b.topProducts && hit.topProducts) data.topProducts = hit.topProducts.slice(0, 200)
+      if (Object.keys(data).length) {
+        await prisma.brand.update({ where: { id: b.id }, data })
+        filled++
+      }
+    }
+    return { filled, unmatched }
+  },
+
   async updateBrand({ brandId, ...fields }: any) {
     const allowed = ['category', 'tier', 'owner', 'notes', 'goals', 'website', 'linkedinUrl', 'hq', 'externalId', 'about', 'topProducts', 'aka'] as const
     const data: Record<string, any> = {}
@@ -1893,11 +1921,30 @@ const handlers: Record<string, Handler> = {
   // These are the gaps to fill by hand or by another SponsorUnited pull.
   async listNeedsContact() {
     const brands = await prisma.brand.findMany({
-      include: { _count: { select: { contacts: true } } },
+      include: {
+        _count: {
+          select: {
+            contacts: true,
+            activations: true,
+            // Only real business counts — a deal still at conversation or
+            // proposal stage means we're chasing them, so a missing
+            // contact is still a gap worth flagging.
+            deals: { where: { stage: { in: ['verbal', 'closed'] } } },
+          },
+        },
+      },
       orderBy: { name: 'asc' },
     })
+    // A brand is only a "gap" if it has no contact AND we're not already
+    // doing business with it (activation or verbal/closed deal) AND it's
+    // not our own/internal record or one excluded from outreach.
     const missing = brands
-      .filter(b => b._count.contacts === 0)
+      .filter(b =>
+        b._count.contacts === 0 &&
+        b._count.activations === 0 &&
+        b._count.deals === 0 &&
+        !b.doNotEmail &&
+        !/internal/i.test(b.name))
       .map(b => ({
         id: b.id, name: b.name, category: b.category, tier: b.tier,
         website: b.website, linkedinUrl: b.linkedinUrl,
