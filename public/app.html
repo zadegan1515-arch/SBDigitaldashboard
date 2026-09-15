@@ -1311,6 +1311,9 @@ function loadBrand(brandId) {
           (b.doNotEmail
             ? '<button class="btn-ghost" id="b-dne" style="border-color:var(--accent);color:var(--accent)" title="This brand is excluded from all outreach emails — click to allow again">Do not email</button>'
             : '<button class="btn-ghost" id="b-dne" title="Exclude this brand from all outreach emails (intros and follow-ups)">Emails on</button>') +
+          (b.passedAt
+            ? '<button class="btn-ghost" id="b-pass" style="border-color:var(--warn);color:var(--warn)" title="Passed — hidden from all outreach. Click to bring it back.">Passed — bring back</button>'
+            : '<button class="btn-ghost" id="b-pass" title="Hide this brand from all outreach (queue, picks, next-best) until you bring it back">Pass brand</button>') +
           '<button class="btn-ghost" id="b-merge">Merge duplicate…</button>' +
           '<button class="btn-ghost danger" id="b-delete" style="margin-left:auto">Delete brand</button>' +
         '</div>' +
@@ -1524,6 +1527,14 @@ function loadBrand(brandId) {
 
     document.getElementById('b-addcontact').onclick = function () {
       openContactForm(b.id, document.getElementById('b-contact-slot'));
+    };
+
+    document.getElementById('b-pass').onclick = function () {
+      api('setBrandPassed', { brandId: b.id, passed: !b.passedAt })
+        .then(function (r) {
+          toast(r.passed ? b.name + ' passed — hidden from outreach until brought back' : b.name + ' is back in outreach');
+          loadBrand(b.id);
+        }).catch(function (e) { toast(e.message); });
     };
 
     document.getElementById('b-dne').onclick = function () {
@@ -2708,7 +2719,8 @@ function targetRow(t) {
       (isPre ? '<button class="btn-ghost" data-act="draft">' + (d ? 'Redraft' : 'Draft') + '</button>' : '') +
       '<button class="btn-ghost" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
       (t.status !== 'declined' && t.status !== 'dead' && t.status !== 'converted'
-        ? '<button class="btn-ghost danger" data-act="pass">Pass</button>' : '') +
+        ? '<button class="btn-ghost danger" data-act="pass" title="Pass this person — the brand’s next decision maker steps into their place">Pass</button>' +
+          '<button class="btn-ghost danger" data-act="passbrand" title="Pass the whole brand — hidden from all outreach until you bring it back on the brand page">⃠ Brand</button>' : '') +
     '</div>' +
   '</div>' +
   (open ? draftBlock(t) : '');
@@ -5705,7 +5717,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
     if (e.target.closest('a')) return;   // let real links through
-    if (e.target.closest('[data-nbq]') || e.target.closest('[data-rcact]')) return;   // buttons with their own handlers
+    if (e.target.closest('[data-nbq]') || e.target.closest('[data-nbp]') || e.target.closest('[data-rcact]')) return;   // buttons with their own handlers
     loadBrand(el.getAttribute('data-brand'));
   });
 });
@@ -5931,6 +5943,7 @@ function renderNextBest() {
           '<div class="t-actions">' +
             '<span class="fit">' + b.contacts + ' contact' + (b.contacts === 1 ? '' : 's') + '</span>' +
             '<button class="btn-draft" data-nbq="' + esc(b.id) + '">Queue</button>' +
+            '<button class="btn-ghost danger" data-nbp="' + esc(b.id) + '" title="Pass this brand — never suggested again unless you bring it back on its brand page">Pass</button>' +
           '</div>' +
         '</div>';
       }).join('');
@@ -5938,6 +5951,15 @@ function renderNextBest() {
 }
 
 document.getElementById('nextbest').addEventListener('click', function (e) {
+  var pass = e.target.closest('[data-nbp]');
+  if (pass) {
+    pass.disabled = true;
+    api('setBrandPassed', { brandId: pass.getAttribute('data-nbp'), passed: true }).then(function (r) {
+      toast(r.name + ' passed — it won’t be suggested again');
+      renderNextBest();
+    }).catch(function (err) { toast(err.message); pass.disabled = false; });
+    return;
+  }
   var btn = e.target.closest('[data-nbq]');
   if (!btn) return;
   btn.disabled = true;
@@ -6200,9 +6222,31 @@ document.getElementById('targets').addEventListener('click', function (e) {
       .catch(function (err) { toast(err.message); });
   }
 
+  // Pass one person → the brand's next decision maker steps in
+  // automatically (queueBrandTargets picks best-fit, decision makers
+  // first). If nobody's left, the pass still lands.
   if (act === 'pass') {
+    var pBrandId = TARGET_CACHE[id] && TARGET_CACHE[id].brandId;
     api('setTargetStatus', { targetId: id, status: 'declined', actor: ME.owner || null, clearFollowUp: true })
-      .then(function () { toast('Passed'); return loadOutreach(); })
+      .then(function () {
+        if (!pBrandId) { toast('Passed'); return loadOutreach(); }
+        return api('queueBrandTargets', { brandId: pBrandId })
+          .then(function (r) {
+            toast(r.queued ? 'Passed — ' + r.contactName + ' is next in line' : 'Passed');
+            return loadOutreach();
+          })
+          .catch(function () { toast('Passed — nobody left to queue at this brand'); return loadOutreach(); });
+      })
+      .catch(function (err) { toast(err.message); });
+  }
+
+  // Pass the whole brand: gone from the queue, picks and next-best
+  // until brought back from its brand page.
+  if (act === 'passbrand') {
+    var pbId = TARGET_CACHE[id] && TARGET_CACHE[id].brandId;
+    if (!pbId) return;
+    api('setBrandPassed', { brandId: pbId, passed: true })
+      .then(function (r) { toast(r.name + ' passed — bring it back from its brand page if needed'); return loadOutreach(); })
       .catch(function (err) { toast(err.message); });
   }
 });

@@ -62,6 +62,10 @@ model Brand {
   // Also honored implicitly when the notes contain the word "skip".
   doNotEmail Boolean @default(false)
 
+  // Passed on outreach entirely: hidden from the queue, auto-picks and
+  // next-best until someone brings it back from the brand page.
+  passedAt DateTime?
+
   // Access code for the public Show Board (the whole board is gated).
   // Generated per brand from the brand page. Indexed but deliberately
   // NOT unique — a unique constraint makes `prisma db push` demand

@@ -644,7 +644,7 @@ const handlers: Record<string, Handler> = {
     // Already stamped and still not sent — yesterday's leftovers included.
     // Shelved targets (parked by the per-brand cap) never enter the queue.
     const carried = await prisma.target.findMany({
-      where: { queuedFor: { not: null }, status: { in: ['queued', 'drafted'] }, shelved: false },
+      where: { queuedFor: { not: null }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } },
       include,
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: room,
@@ -655,7 +655,7 @@ const handlers: Record<string, Handler> = {
     // status without stamping queuedFor, and those rows used to match
     // neither branch and never surface in Today again.
     const picks = await prisma.target.findMany({
-      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false },
+      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: { passedAt: null } },
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: room - carried.length,
       select: { id: true },
@@ -1856,6 +1856,7 @@ const handlers: Record<string, Handler> = {
       },
     })
     if (!brand) throw new Error('Brand not found')
+    if (brand.passedAt) throw new Error(`${brand.name} is passed — bring it back from its brand page first.`)
 
     // Two people per brand can be in play at once (Leo's rule): a
     // second thread doubles the odds without reading as a blast. Queue
@@ -1910,6 +1911,24 @@ const handlers: Record<string, Handler> = {
       queued: true, contactName: pick.name, targetId: t.id, second,
       ...(pick.email ? {} : { warning: `${pick.name} has no email address yet — add one on the contact or the email drafter will skip ${brand.name}.` }),
     }
+  },
+
+  // Pass a whole brand: it disappears from the queue, auto-picks and
+  // next-best until brought back. Queued people are shelved (not
+  // deleted) so cancelling the pass restores them; threads already in
+  // motion (sent/accepted/replied) keep tracking in Reached.
+  async setBrandPassed({ brandId, passed }: any) {
+    const brand = await prisma.brand.update({
+      where: { id: brandId },
+      data: { passedAt: passed ? new Date() : null },
+    })
+    if (passed) {
+      await prisma.target.updateMany({
+        where: { brandId, status: { in: ['queued', 'drafted'] } },
+        data: { shelved: true, queuedFor: null },
+      })
+    }
+    return { id: brand.id, name: brand.name, passed: !!brand.passedAt }
   },
 
   // Flip one target in or out of the queue by hand. Promoting past the
@@ -2532,7 +2551,7 @@ const handlers: Record<string, Handler> = {
   async nextBestBrands({ take = 15 }: any = {}) {
     const [brands, sent, replies] = await Promise.all([
       prisma.brand.findMany({
-        where: { doNotEmail: false },
+        where: { doNotEmail: false, passedAt: null },
         include: {
           contacts: { select: { title: true, linkedinUrl: true, email: true, isDecisionMaker: true } },
           targets: { select: { status: true, sentAt: true } },
