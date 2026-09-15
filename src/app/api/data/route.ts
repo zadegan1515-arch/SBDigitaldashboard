@@ -1865,13 +1865,22 @@ const handlers: Record<string, Handler> = {
   // the headline numbers and the most-picked shows for the overview.
   async listBoardActivity({ limit }: any) {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-    const [visits, total, last7, requestCount, picked] = await Promise.all([
+    // "Today" in Eastern time — the team and the schools run on it.
+    const now = new Date()
+    const ny = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+    const dayStart = new Date(now.getTime() -
+      (ny.getHours() * 3600e3 + ny.getMinutes() * 60e3 + ny.getSeconds() * 1e3))
+    const [visits, brandsTodayRows, last7, requestCount, picked] = await Promise.all([
       prisma.boardVisit.findMany({
         orderBy: { createdAt: 'desc' },
         take: Math.min(Number(limit) || 50, 200),
         include: { brand: { select: { id: true, name: true } } },
       }),
-      prisma.boardVisit.count(),
+      prisma.boardVisit.findMany({
+        where: { createdAt: { gte: dayStart }, brandId: { not: null } },
+        select: { brandId: true },
+        distinct: ['brandId'],
+      }),
       prisma.boardVisit.count({ where: { createdAt: { gt: weekAgo } } }),
       prisma.deal.count({ where: { source: 'request' } }),
       // Every show a brand ever picked on the board (the request marker
@@ -1889,7 +1898,7 @@ const handlers: Record<string, Handler> = {
       byShow.set(k, row)
     }
     const topShows = [...byShow.values()].sort((a, b) => b.count - a.count).slice(0, 10)
-    return { visits, total, last7, requestCount, topShows }
+    return { visits, brandsToday: brandsTodayRows.length, last7, requestCount, topShows }
   },
 
   // The "In talks" cards: every brand holding a board code, with its

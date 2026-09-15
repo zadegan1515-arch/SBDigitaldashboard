@@ -12,10 +12,10 @@
     color-scheme:dark;
     --surface-0:#0b0b0f; --surface-1:#14141a; --surface-2:#191921;
     --border:#26262f; --border-soft:#1e1e26;
-    --ink-1:#ededf2; --ink-2:#9c9caa; --ink-3:#63636f;
+    --ink-1:#ffffff; --ink-2:#c0c0cd; --ink-3:#8f8f9d;
     --accent:#4f83f7; --accent-hi:#6f9dff;
     --accent-soft:rgba(79,131,247,.13); --ring:rgba(79,131,247,.32);
-    --side:#0e0e13; --side-ink:#a6a6b4; --side-dim:#5c5c68;
+    --side:#0e0e13; --side-ink:#c0c0cd; --side-dim:#83838f;
     --draft:#6f9dff;
     --good:#3ecf8e; --warn:#e8b64c; --bad:#f0716b; --blue:#43c6e8;
     --paper:#14141a; --bg-2:#191921;
@@ -3673,7 +3673,7 @@ function loadBoard() {
   return api('listBoardActivity', { limit: 50 }).then(function (d) {
     document.getElementById('bd-kpis').innerHTML =
       '<div class="kpi"><div class="kpi-label">Views</div><div class="kpi-value">' + (d.last7 || 0) + '</div><div class="kpi-note">last 7 days</div></div>' +
-      '<div class="kpi"><div class="kpi-label">All time</div><div class="kpi-value">' + (d.total || 0) + '</div><div class="kpi-note">board opens</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Brands today</div><div class="kpi-value">' + (d.brandsToday || 0) + '</div><div class="kpi-note">viewed the board</div></div>' +
       '<div class="kpi"><div class="kpi-label">Requests</div><div class="kpi-value">' + (d.requestCount || 0) + '</div><div class="kpi-note">from the board</div></div>';
     var top = d.topShows || [];
     document.getElementById('bd-top-head').hidden = !top.length;
