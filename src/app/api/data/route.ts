@@ -2252,6 +2252,78 @@ const handlers: Record<string, Handler> = {
     return { ok: true }
   },
 
+  // Everyone we've actually reached out to, on either channel, grouped
+  // by brand for the Reached tab. LinkedIn: targets whose invite went
+  // out (sentAt stamped, or a post-send status). Email: sent messages.
+  async listReached() {
+    const [targets, emails] = await Promise.all([
+      prisma.target.findMany({
+        where: {
+          OR: [
+            { sentAt: { not: null } },
+            { status: { in: ['sent', 'accepted', 'replied', 'converted'] } },
+          ],
+        },
+        include: {
+          brand: { select: { id: true, name: true, category: true, tier: true } },
+          contact: { select: { id: true, name: true, title: true, linkedinUrl: true } },
+        },
+      }),
+      prisma.emailMessage.findMany({
+        where: { direction: 'out', status: 'sent' },
+        select: {
+          sentAt: true, createdAt: true, opens: true, toEmail: true,
+          target: {
+            select: {
+              brand: { select: { id: true, name: true, category: true, tier: true } },
+              contact: { select: { id: true, name: true, title: true, linkedinUrl: true } },
+            },
+          },
+        },
+      }),
+    ])
+
+    type Person = {
+      id: string; name: string; title: string | null; linkedinUrl: string | null
+      linkedin: { status: string; sentAt: string | null; repliedAt: string | null } | null
+      email: { count: number; lastAt: string | null; opened: boolean } | null
+      lastAt: string | null
+    }
+    const brands: Record<string, { brand: any; people: Record<string, Person>; lastAt: string | null }> = {}
+    const touch = (b: any) => (brands[b.id] ??= { brand: b, people: {}, lastAt: null })
+    const later = (a: string | null, b: string | null) => (!a ? b : !b ? a : a > b ? a : b)
+
+    for (const t of targets) {
+      const g = touch(t.brand)
+      const p = (g.people[t.contact.id] ??= { id: t.contact.id, name: t.contact.name, title: t.contact.title, linkedinUrl: t.contact.linkedinUrl, linkedin: null, email: null, lastAt: null })
+      p.linkedin = {
+        status: t.status,
+        sentAt: t.sentAt ? t.sentAt.toISOString() : null,
+        repliedAt: t.repliedAt ? t.repliedAt.toISOString() : null,
+      }
+      p.lastAt = later(p.lastAt, p.linkedin.repliedAt || p.linkedin.sentAt)
+    }
+    for (const m of emails) {
+      const g = touch(m.target.brand)
+      const c = m.target.contact
+      const p = (g.people[c.id] ??= { id: c.id, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl, linkedin: null, email: null, lastAt: null })
+      const at = (m.sentAt || m.createdAt).toISOString()
+      p.email = {
+        count: (p.email?.count || 0) + 1,
+        lastAt: later(p.email?.lastAt || null, at),
+        opened: (p.email?.opened || false) || m.opens > 0,
+      }
+      p.lastAt = later(p.lastAt, at)
+    }
+
+    const rows = Object.values(brands).map(g => {
+      const people = Object.values(g.people).sort((a, b) => (b.lastAt || '').localeCompare(a.lastAt || ''))
+      const lastAt = people.reduce<string | null>((m, p) => later(m, p.lastAt), null)
+      return { brand: g.brand, people, lastAt }
+    }).sort((a, b) => (b.lastAt || '').localeCompare(a.lastAt || ''))
+    return { brands: rows }
+  },
+
   // -------- results / analytics --------
 
   // The outreach funnel and what's working, computed brand-level so one

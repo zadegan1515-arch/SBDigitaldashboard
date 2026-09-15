@@ -175,6 +175,7 @@
   .t-meta{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:11.5px;color:var(--ink-3);flex-wrap:wrap}
   .status{font-weight:700;padding:2px 9px;border-radius:999px;font-size:10.5px;letter-spacing:.02em;background:var(--surface-2);color:var(--ink-2)}
   .status.sent{background:rgba(97,165,250,.14);color:#82b6fb}
+  .status.accepted{background:rgba(67,198,232,.15);color:#6cd6f0}
   .status.replied,.status.confirmed,.status.converted{background:rgba(62,207,142,.13);color:#55d9a2}
   .status.drafted,.status.proposed{background:rgba(138,123,255,.15);color:#ab9fff}
   .status.requested{background:rgba(246,143,94,.14);color:#f8a077}
@@ -537,12 +538,12 @@
               <b>Connect → Add a note</b>, paste, send. About 10 a day keeps the account safe.</div>
             <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">
               <b style="color:var(--accent)">2 · When they accept</b><br>
-              Come back to their row, hit <b>2 · First DM</b>, and paste it into your LinkedIn chat with
-              them — same day if you can, while you're fresh in their notifications.</div>
+              Press <b>They accepted</b> on their row — they jump to a “send the DM” list at the top of
+              Today. Hit <b>Copy DM</b> and paste it into your LinkedIn chat, same day if you can.</div>
             <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">
               <b style="color:var(--accent)">3 · Log everything</b><br>
-              <b>Mark sent</b> right after the invite goes out; <b>Replied</b> the moment they answer —
-              replies jump to the top of Home and always come before new invites.</div>
+              <b>Mark sent</b> after each invite, <b>Replied</b> the moment they answer — replies land on
+              Home and always come before new invites. The Reached tab keeps the full history.</div>
           </div>
         </div>
       </div>
@@ -569,6 +570,17 @@
       <div class="eyebrow">Outreach</div>
       <h1>Email outreach</h1>
       <div id="email-box" style="margin-top:18px"></div>
+    </section>
+
+    <!-- REACHED — everyone we've contacted, grouped by brand -->
+    <section class="view page" id="reached">
+      <div class="eyebrow">Outreach</div>
+      <h1>Reached</h1>
+      <div class="sub" id="rc-sub">Everyone we've contacted on LinkedIn or by email, grouped by brand.</div>
+      <div style="display:flex;gap:8px;margin-top:18px;max-width:420px">
+        <input class="inp" id="rc-q" placeholder="Filter by brand or person…" style="width:100%" autocomplete="off">
+      </div>
+      <div id="reached-list" style="margin-top:14px"></div>
     </section>
 
     <!-- LINKEDIN PEOPLE DIRECTORY -->
@@ -777,7 +789,7 @@ var CAT_NAMES = {
   unresolved:'Needs Clarification'
 };
 var CAT_KEYS = Object.keys(CAT_NAMES);
-var TARGET_STATUSES = ['all','queued','drafted','sent','replied','converted','declined','dead'];
+var TARGET_STATUSES = ['all','queued','drafted','sent','accepted','replied','converted','declined','dead'];
 var ME = { owner: null };
 var OWNERS = [];
 
@@ -902,14 +914,14 @@ function refreshAfterSponsorChange() {
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
   brands: [['brands', 'All brands'], ['discover', 'Discover'], ['needs', 'Needs contacts']],
-  outreach: [['outreach', 'LinkedIn'], ['email-out', 'Email'], ['linkedin', 'People'], ['results', 'Results']],
+  outreach: [['outreach', 'LinkedIn'], ['email-out', 'Email'], ['reached', 'Reached'], ['linkedin', 'People'], ['results', 'Results']],
   board: [['board', 'Overview'], ['talks', 'In talks'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
   operations: [['materials', 'Materials'], ['team', 'Team']],
 };
 var GROUP_OF = {
   brands: 'brands', brand: 'brands', discover: 'brands', needs: 'brands',
-  outreach: 'outreach', 'email-out': 'outreach', linkedin: 'outreach', results: 'outreach',
+  outreach: 'outreach', 'email-out': 'outreach', reached: 'outreach', linkedin: 'outreach', results: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
   pipeline: 'pipeline', sponsorships: 'pipeline',
   materials: 'operations', team: 'operations',
@@ -1970,8 +1982,14 @@ function liPeopleUrl(b) {
 }
 
 function liBuyerUrl(b) {
+  // Company People page scoped to marketing when we have their page —
+  // that always returns actual employees. The old global search with a
+  // quoted brand plus seven OR'd titles usually returned nobody.
+  if (b.linkedinUrl && /linkedin\.com\/company\//.test(b.linkedinUrl)) {
+    return b.linkedinUrl.replace(/\/+$/, '') + '/people/?keywords=' + encodeURIComponent('marketing');
+  }
   return 'https://www.linkedin.com/search/results/people/?keywords=' +
-    encodeURIComponent('"' + b.name + '" (' + LI_TITLE_QUERY + ')');
+    encodeURIComponent(b.name + ' marketing');
 }
 
 function renderLinkedin() {
@@ -2047,6 +2065,72 @@ document.querySelectorAll('#linkedin .chip[data-lif]').forEach(function (ch) {
   });
 });
 document.getElementById('li-q').addEventListener('input', function () { renderLinkedin(); });
+
+// --- reached (everyone we've contacted, by brand) --------------
+
+var RC_DATA = [];
+
+function renderReached() {
+  var box = document.getElementById('reached-list');
+  var q = (document.getElementById('rc-q').value || '').trim().toLowerCase();
+  var rows = RC_DATA.filter(function (g) {
+    if (!q) return true;
+    if (g.brand.name.toLowerCase().indexOf(q) > -1) return true;
+    return g.people.some(function (p) { return p.name.toLowerCase().indexOf(q) > -1; });
+  });
+  if (!rows.length) {
+    box.innerHTML = '<div class="panel"><div class="empty"><h3>Nobody reached yet</h3>' +
+      '<p>People show up here the moment an invite is marked sent or an email goes out.</p></div></div>';
+    return;
+  }
+  box.innerHTML = rows.map(function (g) {
+    var tag = [CAT_NAMES[g.brand.category] || g.brand.category, g.brand.tier].filter(Boolean).join(' · ');
+    var people = g.people.map(function (p) {
+      var bits = [];
+      if (p.linkedin) {
+        bits.push('<span class="status ' + esc(p.linkedin.status) + '">in · ' + esc(p.linkedin.status) + '</span>');
+        if (p.linkedin.sentAt) bits.push('<span>invited ' + shortDate(p.linkedin.sentAt) + '</span>');
+      }
+      if (p.email) {
+        bits.push('<span class="status sent">✉ ' + p.email.count + '×' + (p.email.opened ? ' · opened' : '') + '</span>');
+        if (p.email.lastAt) bits.push('<span>last ' + shortDate(p.email.lastAt) + '</span>');
+      }
+      return '<div class="t-meta" style="margin-top:7px">' +
+        (p.linkedinUrl
+          ? '<a class="btn-ghost" href="' + esc(p.linkedinUrl) + '" target="_blank" rel="noopener" style="padding:3px 10px;font-size:12px">' + esc(p.name) + ' ↗</a>'
+          : '<span style="color:var(--ink-1)">' + esc(p.name) + '</span>') +
+        (p.title ? '<span class="t-title">— ' + esc(p.title) + '</span>' : '') +
+        bits.join('') +
+      '</div>';
+    }).join('');
+    return '<div class="target" data-brand="' + esc(g.brand.id) + '" style="align-items:flex-start">' +
+      '<div class="t-main">' +
+        '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(g.brand.name) + '</span>' +
+          (tag ? '<span class="t-sep">·</span><span class="t-title">' + esc(tag) + '</span>' : '') +
+          '<span class="t-sep">·</span><span class="t-title">' + g.people.length + ' ' + (g.people.length === 1 ? 'person' : 'people') + ' contacted</span>' +
+        '</div>' + people +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function loadReached() {
+  showView('reached');
+  var box = document.getElementById('reached-list');
+  if (!RC_DATA.length) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  return api('listReached').then(function (d) {
+    RC_DATA = d.brands || [];
+    var people = 0;
+    RC_DATA.forEach(function (g) { people += g.people.length; });
+    document.getElementById('rc-sub').textContent =
+      people + ' ' + (people === 1 ? 'person' : 'people') + ' contacted across ' + RC_DATA.length +
+      ' brand' + (RC_DATA.length === 1 ? '' : 's') + ' — LinkedIn and email together.';
+    renderReached();
+  }).catch(function (e) {
+    box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+}
+document.getElementById('rc-q').addEventListener('input', function () { renderReached(); });
 
 // --- rate card (loaded once, used for suggested values) --------
 
@@ -2501,21 +2585,26 @@ function targetRow(t) {
         (t.followUpAt ? ' (' + shortDate(t.followUpAt) + ')' : '') + '</span>' : '') +
       '</div>' +
     '</div>' +
+    // Buttons read left to right as the actual work order, and the
+    // current step is the highlighted one: copy the note → open their
+    // profile → mark sent → they accepted → copy the DM → replied.
     '<div class="t-actions">' +
-      '<button class="btn-ghost" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
-      // The LinkedIn work loop, right on the row: copy the note (or the
-      // message), then the profile link is one click away — no need to
-      // expand the draft.
-      (d ? '<button class="btn-draft" data-act="copynote" title="Copy the short intro to paste when you click Connect → Add a note on their profile">1 · Invite note</button>' +
-           '<button class="btn-ghost" data-act="copymsg" title="Copy the message to DM them after they accept your invite">2 · First DM</button>' : '') +
-      (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">↗ LinkedIn</a>' : '') +
-      (d ? '<button class="btn-ghost" data-act="toggle">' + (open ? 'Close draft' : 'Show draft') + '</button>' : '') +
-      '<button class="btn-draft" data-act="draft">' + (d ? 'Redraft' : 'Draft') + '</button>' +
-      (t.status === 'queued' || t.status === 'drafted' ? '<button class="btn-ghost" data-act="sent">Mark sent</button>' : '') +
-      (t.status !== 'replied' && t.status !== 'converted' && t.status !== 'declined' && t.status !== 'dead'
-        ? '<button class="btn-ghost" data-act="replied">Replied</button>' : '') +
+      (d ? '<button class="' + (t.status === 'queued' || t.status === 'drafted' ? 'btn-draft' : 'btn-ghost') +
+           '" data-act="copynote" title="Copy the short intro, then on their profile: Connect → Add a note → paste">1 · Copy note</button>' : '') +
+      (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">2 · Profile ↗</a>' : '') +
+      (t.status === 'queued' || t.status === 'drafted'
+        ? '<button class="btn-ghost" data-act="sent" title="Log that the invite went out">3 · Mark sent</button>' : '') +
+      (t.status === 'sent'
+        ? '<button class="btn-draft" data-act="accepted" title="They accepted your invite — next you DM them">4 · They accepted</button>' : '') +
+      (d ? '<button class="' + (t.status === 'accepted' ? 'btn-draft' : 'btn-ghost') +
+           '" data-act="copymsg" title="Copy the message to DM them after they accept">5 · Copy DM</button>' : '') +
+      (t.status === 'sent' || t.status === 'accepted'
+        ? '<button class="btn-ghost" data-act="replied" title="They wrote back">Replied</button>' : '') +
       (t.status === 'replied' ? '<button class="btn-ghost" data-act="nextstep">Next step</button>' : '') +
       (t.status === 'replied' ? '<button class="btn-ghost" data-act="won">Won</button>' : '') +
+      (d ? '<button class="btn-ghost" data-act="toggle">' + (open ? 'Close draft' : 'Edit draft') + '</button>' : '') +
+      '<button class="btn-ghost" data-act="draft">' + (d ? 'Redraft' : 'Draft') + '</button>' +
+      '<button class="btn-ghost" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
       (t.status !== 'declined' && t.status !== 'dead' && t.status !== 'converted'
         ? '<button class="btn-ghost danger" data-act="pass">Pass</button>' : '') +
     '</div>' +
@@ -2594,11 +2683,16 @@ function loadOutreach() {
   box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   renderStatusFilters();
 
+  // Today also surfaces everyone who accepted an invite and is still
+  // waiting on their DM — those come first, before any new invites.
   var call = mode === 'today'
-    ? api('getTodayQueue')
-    : api('listTargets', { status: statusFilter });
+    ? Promise.all([api('listTargets', { status: 'accepted' }), api('getTodayQueue')])
+        .then(function (r) { return { accepted: r[0] || [], list: r[1] || [] }; })
+    : api('listTargets', { status: statusFilter }).then(function (l) { return { accepted: [], list: l || [] }; });
 
-  return call.then(function (list) {
+  return call.then(function (r) {
+    var list = r.list;
+    r.accepted.forEach(function (t) { TARGET_CACHE[t.id] = t; });
     (list || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
     document.getElementById('queue-head').innerHTML = mode === 'today'
       ? 'To send today <span class="n">' + list.length + '</span>'
@@ -2606,8 +2700,14 @@ function loadOutreach() {
     document.getElementById('c-' + (mode === 'today' ? 'today' : 'all')).textContent = list.length;
     document.getElementById('status-filters').style.display = mode === 'all' ? 'flex' : 'none';
 
-    box.innerHTML = list.length
-      ? list.map(targetRow).join('')
+    var acceptedBlock = r.accepted.length
+      ? '<div class="count-head" style="color:var(--good)">They accepted — send the DM <span class="n">' + r.accepted.length + '</span></div>' +
+        r.accepted.map(targetRow).join('') +
+        '<div class="count-head" style="margin-top:20px">New invites</div>'
+      : '';
+
+    box.innerHTML = list.length || r.accepted.length
+      ? acceptedBlock + list.map(targetRow).join('')
       : '<div class="panel"><div class="empty"><h3>Nothing here</h3>' +
         '<p>' + (mode === 'all'
           ? (statusFilter !== 'all'
@@ -5247,6 +5347,7 @@ function gotoView(id) {
   if (id === 'brands') loadBrands('all');
   if (id === 'outreach') loadOutreach();
   if (id === 'email-out') loadEmailOutreach();
+  if (id === 'reached') loadReached();
   if (id === 'linkedin') loadLinkedin();
   if (id === 'shows') loadShows();
   if (id === 'sponsorships') loadSponsorships();
@@ -5360,7 +5461,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'action-panel', 'req-list', 'bd-activity'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'reached-list', 'action-panel', 'req-list', 'bd-activity'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
@@ -5772,7 +5873,13 @@ document.getElementById('targets').addEventListener('click', function (e) {
 
   if (act === 'sent') {
     api('setTargetStatus', { targetId: id, status: 'sent', actor: ME.owner || null })
-      .then(function () { toast('Marked sent'); return loadOutreach(); })
+      .then(function () { toast('Invite logged — press “They accepted” when it lands'); return loadOutreach(); })
+      .catch(function (err) { toast(err.message); });
+  }
+
+  if (act === 'accepted') {
+    api('setTargetStatus', { targetId: id, status: 'accepted', actor: ME.owner || null })
+      .then(function () { toast('Accepted 🎉 — now hit “5 · Copy DM” and message them'); return loadOutreach(); })
       .catch(function (err) { toast(err.message); });
   }
 

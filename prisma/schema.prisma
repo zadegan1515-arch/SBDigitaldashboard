@@ -130,6 +130,8 @@ enum TargetStatus {
   queued
   drafted
   sent
+  // LinkedIn: they accepted the connection request — DM them now.
+  accepted
   replied
   converted
   declined
