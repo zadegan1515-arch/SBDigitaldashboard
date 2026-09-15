@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SBOY RSVP</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0d0d0d">
+<link rel="icon" href="/materials/sb-logo.png">
+<style>
+  :root{--bg:#0d0d0d;--ink:#f5f3ef;--ink-2:#c6c2bb;--ink-3:#8f8d87;--line:#292826;--soft:#191817;--accent:#d9542b;--ok:#4cc98a;color-scheme:dark}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  .top{padding:14px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line)}
+  .top img{height:26px;filter:invert(1)}
+  .top span{font-size:13px;color:var(--ink-3)}
+  .wrap{max-width:480px;margin:0 auto;padding:26px 20px 80px}
+  h1{font-size:clamp(26px,6vw,34px);line-height:1.08;margin:0 0 6px;letter-spacing:-.02em}
+  .sub{color:var(--ink-2);font-size:15px;margin:0 0 22px}
+  .sub b{color:var(--ink)}
+  label{display:block;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:16px 0 6px}
+  input,select{width:100%;border:1px solid var(--line);border-radius:12px;padding:13px 14px;font:inherit;font-size:16px;background:var(--soft);color:var(--ink);outline:none}
+  input:focus,select:focus{border-color:var(--ink-3)}
+  .consent{display:flex;gap:10px;align-items:flex-start;margin-top:20px;font-size:12.5px;color:var(--ink-3);line-height:1.55}
+  .consent input{width:18px;height:18px;margin-top:1px;flex:none}
+  .go{width:100%;margin-top:20px;background:var(--accent);color:#fff;border:0;border-radius:999px;padding:15px;font-weight:700;font-size:16px;cursor:pointer}
+  .go:disabled{opacity:.6;cursor:default}
+  .err{color:#f0855e;font-size:13.5px;margin-top:12px;min-height:18px}
+  .ticket{border:1px solid var(--line);border-radius:18px;background:var(--soft);padding:26px 22px;text-align:center;margin-top:8px}
+  .ticket .ok{color:var(--ok);font-weight:700;font-size:14px;letter-spacing:.08em;text-transform:uppercase}
+  .ticket h2{margin:8px 0 2px;font-size:24px;letter-spacing:-.01em}
+  .ticket .who{color:var(--ink-2);font-size:14px}
+  .code{font:700 30px/1 ui-monospace,Menlo,monospace;letter-spacing:.14em;margin:20px 0 4px}
+  .code-lbl{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:18px}
+  .hint{font-size:12.5px;color:var(--ink-3);margin-top:14px}
+  .btn2{width:100%;margin-top:16px;background:transparent;border:1px solid var(--line);color:var(--ink);border-radius:999px;padding:13px;font-weight:600;font-size:15px;cursor:pointer}
+  .btn2.primary{background:var(--ink);color:#111;border-color:var(--ink)}
+  .checked{color:var(--ok);font-weight:700;font-size:17px;margin-top:16px}
+  .center{padding:60px 10px;text-align:center;color:var(--ink-3)}
+</style>
+</head>
+<body>
+<div class="top"><img src="/materials/sb-logo.png" alt="SBOY" onerror="this.style.display='none'"><span>SBOY Events</span></div>
+<div class="wrap" id="app"><div class="center">Loading…</div></div>
+<script>
+'use strict';
+var qs = new URLSearchParams(location.search);
+var SLUG = qs.get('e') || '';
+var REF = qs.get('ref') || '';
+var app = document.getElementById('app');
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function fmtDate(iso){if(!iso)return '';return new Date(iso).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});}
+function savedToken(){try{return localStorage.getItem('sb.rsvp.'+SLUG);}catch(e){return null;}}
+function saveToken(t){try{localStorage.setItem('sb.rsvp.'+SLUG,t);}catch(e){}}
+
+function showError(msg){app.innerHTML='<div class="center">'+esc(msg)+'</div>';}
+
+// ---- ticket view -------------------------------------------------
+function loadTicket(token){
+  fetch('/api/public/rsvp?t='+encodeURIComponent(token)).then(function(r){return r.json();}).then(function(j){
+    if(!j.ok){renderForm(window.__EV);return;}
+    renderTicket(token,j.ticket);
+  }).catch(function(){showError('Could not load your ticket — check your connection and reload.');});
+}
+function renderTicket(token,t){
+  saveToken(token);
+  var code='SB-'+token.slice(-6).toUpperCase();
+  app.innerHTML=
+    '<div class="ticket">'+
+      '<div class="ok">You’re on the list</div>'+
+      '<h2>'+esc(t.event)+'</h2>'+
+      '<div class="who">'+esc([t.venue,fmtDate(t.date)].filter(Boolean).join(' · '))+'</div>'+
+      '<div class="code">'+code+'</div>'+
+      '<div class="code-lbl">'+esc(t.name||t.email)+'</div>'+
+      (t.checkedIn
+        ? '<div class="checked">Checked in ✓</div>'
+        : '<button class="btn2 primary" id="btn-in">I’m at the door — check me in</button>')+
+      '<div class="hint">Screenshot this, or save the link — this page is your ticket.</div>'+
+      '<button class="btn2" id="btn-copy">Copy my ticket link</button>'+
+    '</div>';
+  var btn=document.getElementById('btn-in');
+  if(btn)btn.addEventListener('click',function(){
+    btn.disabled=true;btn.textContent='Checking in…';
+    fetch('/api/public/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token})})
+      .then(function(r){return r.json();}).then(function(j){
+        if(!j.ok)throw new Error(j.error||'failed');
+        btn.outerHTML='<div class="checked">Checked in ✓ Have a great show</div>';
+      }).catch(function(e){btn.disabled=false;btn.textContent='I’m at the door — check me in';alert(e.message);});
+  });
+  document.getElementById('btn-copy').addEventListener('click',function(){
+    var link=location.origin+'/rsvp.html?e='+encodeURIComponent(SLUG)+'&t='+encodeURIComponent(token);
+    (navigator.clipboard?navigator.clipboard.writeText(link):Promise.reject()).then(function(){
+      document.getElementById('btn-copy').textContent='Copied ✓';
+    }).catch(function(){prompt('Copy this link:',link);});
+  });
+}
+
+// ---- RSVP form ---------------------------------------------------
+function renderForm(ev){
+  var years=['2026','2027','2028','2029','2030'];
+  app.innerHTML=
+    '<h1>'+esc(ev.name)+'</h1>'+
+    '<p class="sub">'+esc([ev.headliner,ev.venue,[ev.city,ev.state].filter(Boolean).join(', '),fmtDate(ev.date)].filter(Boolean).join(' · '))+'</p>'+
+    (ev.open?
+    '<label for="f-email">Email</label><input id="f-email" type="email" autocomplete="email" placeholder="you@school.edu">'+
+    '<label for="f-name">Name</label><input id="f-name" type="text" autocomplete="name" placeholder="First Last">'+
+    '<label for="f-school">School</label><input id="f-school" type="text" placeholder="'+esc(ev.school||'Your school')+'">'+
+    '<label for="f-year">Class year</label><select id="f-year"><option value="">—</option>'+
+      years.map(function(y){return '<option>'+y+'</option>';}).join('')+'<option>Other</option></select>'+
+    '<label for="f-for">Who are you coming to see?</label><input id="f-for" type="text" placeholder="'+esc(ev.headliner||'')+'">'+
+    '<input id="f-web" name="website_url" type="text" style="position:absolute;left:-9999px" tabindex="-1" autocomplete="off">'+
+    '<div class="consent"><input type="checkbox" id="f-ok"><span id="consent-text">'+esc(ev.consentText||'')+'</span></div>'+
+    '<button class="go" id="f-go">RSVP — it’s free</button>'+
+    '<div class="err" id="f-err"></div>'
+    : '<div class="center">RSVPs are closed for this event.</div>');
+  var go=document.getElementById('f-go');
+  if(!go)return;
+  go.addEventListener('click',function(){
+    var err=document.getElementById('f-err');err.textContent='';
+    if(!document.getElementById('f-ok').checked){err.textContent='Please tick the consent box — it’s how we’re allowed to keep your RSVP.';return;}
+    go.disabled=true;go.textContent='Saving…';
+    fetch('/api/public/rsvp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      slug:SLUG,
+      email:document.getElementById('f-email').value,
+      name:document.getElementById('f-name').value,
+      school:document.getElementById('f-school').value,
+      classYear:document.getElementById('f-year').value,
+      cameFor:document.getElementById('f-for').value,
+      ref:REF,consent:true,
+      website_url:document.getElementById('f-web').value
+    })}).then(function(r){return r.json();}).then(function(j){
+      if(!j.ok)throw new Error(j.error||'Could not save your RSVP');
+      loadTicket(j.token);
+    }).catch(function(e){go.disabled=false;go.textContent='RSVP — it’s free';err.textContent=e.message;});
+  });
+}
+
+// ---- boot --------------------------------------------------------
+if(!SLUG){showError('This link is missing its event. Ask for a fresh one.');}
+else fetch('/api/public/rsvp?e='+encodeURIComponent(SLUG)).then(function(r){return r.json();}).then(function(j){
+  if(!j.ok)throw new Error(j.error||'Event not found');
+  window.__EV=j.event;
+  var t=qs.get('t')||savedToken();
+  if(t)loadTicket(t);else renderForm(j.event);
+}).catch(function(e){showError(e.message);});
+</script>
+</body>
+</html>

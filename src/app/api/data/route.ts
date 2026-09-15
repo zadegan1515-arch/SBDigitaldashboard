@@ -26,6 +26,10 @@ import { googleStatus, googleDisconnect, driveStatus, driveDisconnect, driveCrea
 import { scanOps, listOps, getOps, updateOps, deleteOps, replyOps, forwardOps } from '@/lib/ops'
 import { allShows, refreshShows, setGenreOverride, cachedShows, GENRES } from '@/lib/shows'
 import { newBoardCode } from '@/lib/board-access'
+import {
+  listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
+  listAttendees, listDupCandidates, mergeAttendees, deleteAttendee, importAttendees,
+} from '@/lib/audience'
 
 const prisma = new PrismaClient()
 
@@ -3679,6 +3683,19 @@ Best,`
     if (id) return prisma.todo.update({ where: { id }, data: { text, category, owner, done } })
     return prisma.todo.create({ data: { text, category, owner } })
   },
+
+  // -------- audience (attendees + events, sponsorship Phase 1) --------
+  // Logic lives in lib/audience.ts; these are thin dispatch entries.
+  async listAudienceEvents() { return listAudienceEvents() },
+  async saveAudienceEvent(args: any) { return saveAudienceEvent(args) },
+  async deleteAudienceEvent({ id }: any) { return deleteAudienceEvent(id) },
+  async regenStaffPin({ id }: any) { return regenStaffPin(id) },
+  async audienceEventStats({ id }: any) { return audienceEventStats(id) },
+  async listAttendees(args: any) { return listAttendees(args || {}) },
+  async listDupCandidates() { return listDupCandidates() },
+  async mergeAttendees({ fromId, intoId }: any) { return mergeAttendees(fromId, intoId) },
+  async deleteAttendee({ id }: any) { return deleteAttendee(id) },
+  async importAttendees(args: any) { return importAttendees(args || {}) },
 }
 
 // ---------------------------------------------------------------
