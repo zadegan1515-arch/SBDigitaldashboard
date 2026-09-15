@@ -43,6 +43,12 @@ model Brand {
 
   notes String?
 
+  // Other names this brand goes by, comma-separated ("818 Tequila" for
+  // 818 Spirits). SponsorUnited captures and pasted imports match on the
+  // name OR any of these, so a capture lands even when SponsorUnited
+  // calls the brand something different.
+  aka String?
+
   // Discovery notes — what this brand actually wants (goals, regions,
   // timing), captured on the first call. Feeds the proposal generator so
   // pitches read tailored instead of generic.

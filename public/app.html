@@ -1230,6 +1230,7 @@ function loadBrand(brandId) {
     };
     var siteHref = b.website ? (/^https?:/i.test(b.website) ? b.website : 'https://' + b.website) : '';
     var facts =
+      factLine('Also called', b.aka ? esc(b.aka) : '') +
       factLine('About', b.about ? esc(b.about) : '') +
       factLine('Best sellers', b.topProducts ? esc(b.topProducts) : '') +
       factLine('Website', b.website ? '<a href="' + esc(siteHref) + '" target="_blank" rel="noopener">' + esc(b.website.replace(/^https?:\/\//i, '')) + '</a>' : '') +
@@ -1252,6 +1253,13 @@ function loadBrand(brandId) {
         '</div>' +
         '<div id="b-merge-slot"></div>' +
         '<div id="b-edit" hidden style="margin-top:14px;border-top:1px solid var(--border-soft);padding-top:14px">' +
+          '<div class="row2" style="margin-bottom:4px">' +
+            '<div><label class="lbl">Name</label>' +
+              '<input class="field-box" data-bfield="name" value="' + esc(b.name) + '"></div>' +
+            '<div><label class="lbl">Also known as</label>' +
+              '<input class="field-box" data-bfield="aka" value="' + esc(b.aka || '') + '" placeholder="e.g. 818 Tequila"></div>' +
+          '</div>' +
+          '<div class="hint" style="margin:0 0 10px">SponsorUnited captures land on this brand when they match the name <i>or</i> any “also known as” name (comma-separate several) — add the name SponsorUnited uses if it differs.</div>' +
           '<div class="row2" style="margin-bottom:10px">' +
             '<div><label class="lbl">Category</label>' +
               '<select class="field-box" data-bfield="category">' + catOptions(b.category) + '</select></div>' +

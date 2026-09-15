@@ -878,7 +878,20 @@ const handlers: Record<string, Handler> = {
       try {
       if (!row.brandName || !row.name) { result.skipped++; continue }
 
-      let brand = await prisma.brand.findUnique({ where: { name: row.brandName } })
+      // Match the name case-insensitively, then any "also known as" name
+      // (Brand.aka, comma-separated) — SponsorUnited often lists a brand
+      // under a different name than ours ("818 Tequila" vs "818 Spirits").
+      // Mirrored in /api/ingest (findBrandForCapture).
+      let brand = await prisma.brand.findFirst({
+        where: { name: { equals: row.brandName, mode: 'insensitive' } },
+      })
+      if (!brand) {
+        const want = String(row.brandName).trim().toLowerCase()
+        const withAka = await prisma.brand.findMany({ where: { aka: { not: null } } })
+        brand = withAka.find(b =>
+          (b.aka ?? '').split(/[,;]/).some(a => a.trim().toLowerCase() === want)
+        ) ?? null
+      }
       if (!brand) {
         brand = await prisma.brand.create({
           data: { name: row.brandName, category: row.category ?? null, tier: row.tier ?? null, source: 'sponsorunited' },
@@ -1476,14 +1489,26 @@ const handlers: Record<string, Handler> = {
   },
 
   async updateBrand({ brandId, ...fields }: any) {
-    const allowed = ['category', 'tier', 'owner', 'notes', 'goals', 'website', 'linkedinUrl', 'hq', 'externalId', 'about', 'topProducts'] as const
+    const allowed = ['category', 'tier', 'owner', 'notes', 'goals', 'website', 'linkedinUrl', 'hq', 'externalId', 'about', 'topProducts', 'aka'] as const
     const data: Record<string, any> = {}
     for (const key of allowed) {
       if (fields[key] !== undefined) data[key] = fields[key] === '' ? null : fields[key]
     }
     if (fields.doNotEmail !== undefined) data.doNotEmail = !!fields.doNotEmail
+    // Renaming is allowed but never to empty; a clash with an existing
+    // brand means it's a duplicate — merge, don't rename over it.
+    if (fields.name !== undefined) {
+      const clean = String(fields.name).trim()
+      if (!clean) throw new Error('The brand name cannot be empty')
+      data.name = clean
+    }
     if (Object.keys(data).length === 0) throw new Error('Nothing to update')
-    return prisma.brand.update({ where: { id: brandId }, data })
+    try {
+      return await prisma.brand.update({ where: { id: brandId }, data })
+    } catch (err: any) {
+      if (err?.code === 'P2002') throw new Error('Another brand already has that name — use "Merge duplicate…" instead')
+      throw err
+    }
   },
 
   // -------- add a brand --------

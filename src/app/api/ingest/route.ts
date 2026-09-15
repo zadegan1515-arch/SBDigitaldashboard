@@ -45,6 +45,29 @@ function scoreFit(title: string | null, tier: string | null): number {
   return Math.max(0, Math.min(100, score))
 }
 
+// Find the brand a captured row belongs to. SponsorUnited often lists a
+// brand under a different name than the dashboard ("818 Tequila" vs
+// "818 Spirits"), so beyond the case-insensitive name match we also try
+// the SponsorUnited profile ID (saved on first successful capture) and
+// the brand's comma-separated "also known as" names (Brand.aka, edited
+// on the brand page). Mirrored in importContacts in /api/data.
+async function findBrandForCapture(name: string, externalId: string | null) {
+  let brand = await prisma.brand.findFirst({
+    where: { name: { equals: name, mode: 'insensitive' } },
+  })
+  if (!brand && externalId) {
+    brand = await prisma.brand.findFirst({ where: { externalId } })
+  }
+  if (!brand) {
+    const want = name.trim().toLowerCase()
+    const withAka = await prisma.brand.findMany({ where: { aka: { not: null } } })
+    brand = withAka.find(b =>
+      (b.aka ?? '').split(/[,;]/).some(a => a.trim().toLowerCase() === want)
+    ) ?? null
+  }
+  return brand
+}
+
 // Mirror of reconcileBrandTargets in /api/data: keep only the top few
 // (by fit) queued per brand, shelving the rest. Already-contacted people
 // count against the cap. Nothing is deleted.
@@ -94,11 +117,11 @@ export async function POST(req: NextRequest) {
       if (!row.brandName || !row.name) { result.skipped++; continue }
 
       // Brands must already exist — this endpoint does not invent brands,
-      // so a typo can't silently create a junk brand. Case-insensitive so
-      // SponsorUnited's "ESPN BET" matches the dashboard's "ESPN Bet".
-      const brand = await prisma.brand.findFirst({
-        where: { name: { equals: row.brandName, mode: 'insensitive' } },
-      })
+      // so a typo can't silently create a junk brand. Matches the name
+      // (case-insensitive, so "ESPN BET" matches "ESPN Bet"), then the
+      // SponsorUnited profile ID, then any "also known as" name.
+      const suId = row.brandExternalId ?? body.brandExternalId ?? null
+      const brand = await findBrandForCapture(row.brandName, suId)
       if (!brand) {
         if (!result.brandsMissing.includes(row.brandName)) result.brandsMissing.push(row.brandName)
         result.skipped++
@@ -110,7 +133,6 @@ export async function POST(req: NextRequest) {
       // so the dashboard's "SponsorUnited" button can deep-link straight to
       // this brand instead of the generic search. Only sets it if empty —
       // never overwrites a good ID with a bad one.
-      const suId = row.brandExternalId ?? body.brandExternalId ?? null
       if (suId && !brand.externalId) {
         try { await prisma.brand.update({ where: { id: brand.id }, data: { externalId: suId } }) }
         catch { /* a clash on the unique externalId shouldn't fail the import */ }
