@@ -9,11 +9,11 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&display=swap">
 <style>
   :root{
-    --surface-0:#f2f0ea; --surface-1:#fff; --surface-2:#faf9f5;
-    --border:#e5e2d8; --border-soft:#edeae1;
-    --ink-1:#131210; --ink-2:#55524a; --ink-3:#8b887c;
+    --surface-0:#f4f4f5; --surface-1:#fff; --surface-2:#fafafa;
+    --border:#e4e4e7; --border-soft:#ececef;
+    --ink-1:#18181b; --ink-2:#52525b; --ink-3:#8e8e96;
     --accent:#d9542b;            /* Show Board orange */
-    --side:#161510; --side-ink:#b8b4a6; --side-dim:#7d7a6d;
+    --side:#141416; --side-ink:#b4b4bc; --side-dim:#77777f;
     --draft:#6e56cf;
     --good:#12684a; --warn:#8a6300;
     --cat-1:#2a78d6; --cat-2:#eb6834; --cat-3:#1baf7a; --cat-4:#eda100; --cat-5:#e87ba4;
@@ -45,7 +45,7 @@
   .main{flex:1;min-width:0}
 
   /* sticky header: search row + page tabs */
-  .header-stick{position:sticky;top:0;z-index:40;background:rgba(242,240,234,.96);
+  .header-stick{position:sticky;top:0;z-index:40;background:rgba(244,244,245,.96);
     backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
   .topbar{display:flex;align-items:center;gap:10px;padding:12px 40px 8px}
   .tabs{display:flex;gap:4px;padding:0 32px;overflow-x:auto;scrollbar-width:none}
@@ -67,7 +67,7 @@
   .search-wrap{position:relative;flex:1;max-width:520px}
   .search-input{width:100%;padding:9px 12px 9px 34px;border-radius:999px;border:1px solid var(--border);
     background:var(--surface-1);font-family:inherit;font-size:13.5px;color:var(--ink-1)}
-  .search-input:focus{outline:none;border-color:#cfcec8}
+  .search-input:focus{outline:none;border-color:#d4d4d8}
   .search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--ink-3);font-size:13px}
   .kbd{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-size:10.5px;color:var(--ink-3);
     border:1px solid var(--border);border-radius:4px;padding:1px 5px;background:var(--surface-2)}
@@ -100,7 +100,7 @@
   .chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
   .chip{padding:6px 13px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--ink-2);
     background:var(--surface-1);border:1px solid var(--border);cursor:pointer;font-family:inherit}
-  .chip:hover{border-color:#d8d7d2}
+  .chip:hover{border-color:#d4d4d8}
   .chip.active{background:var(--ink-1);color:#fff;border-color:var(--ink-1);font-weight:600}
   .chip .n{opacity:.55;margin-left:5px;font-variant-numeric:tabular-nums}
   .hint{font-size:12.5px;color:var(--ink-3);margin:-8px 0 14px}
@@ -110,7 +110,7 @@
   .sheet th{position:sticky;top:0;z-index:1;text-align:left;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);padding:10px 10px;background:var(--surface-1);border-bottom:1px solid var(--border);white-space:nowrap}
   .sheet th.r,.sheet td.r{text-align:right}
   .sheet td{padding:0;border-bottom:1px solid var(--border-soft);vertical-align:middle;font-variant-numeric:tabular-nums}
-  .sheet tr.sec td{background:var(--surface-2,#f6f5f2);padding:9px 10px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);border-bottom:1px solid var(--border)}
+  .sheet tr.sec td{background:var(--surface-2,#fafafa);padding:9px 10px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);border-bottom:1px solid var(--border)}
   .sheet tr.sec td.r{font-size:13px;letter-spacing:0;text-transform:none}
   .sheet tr.tot td{padding:11px 10px;font-weight:800;font-size:14px;border-top:2px solid var(--border);border-bottom:0;background:var(--surface-1)}
   .sheet tr.tot td.r.over{color:var(--warn)}
@@ -153,7 +153,7 @@
   .btn-ghost{display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:999px;
     border:1px solid var(--border);background:var(--surface-1);color:var(--ink-2);
     font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:none}
-  .btn-ghost:hover{border-color:#d3d2cd;color:var(--ink-1)}
+  .btn-ghost:hover{border-color:#d4d4d8;color:var(--ink-1)}
   .btn-ghost.danger:hover{border-color:#e0b6b2;color:#8f342f}
   .btn-draft{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;border-radius:999px;border:none;
     background:var(--draft);color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
@@ -171,10 +171,10 @@
   .counter.over{color:var(--accent)}
   .field-box{width:100%;background:var(--surface-1);border:1px solid var(--border-soft);border-radius:11px;
     padding:11px 13px;font-size:13.5px;line-height:1.6;color:var(--ink-1);font-family:inherit;resize:vertical}
-  .field-box:focus{outline:none;border-color:#d3d2cd}
+  .field-box:focus{outline:none;border-color:#d4d4d8}
   .inp{background:var(--surface-1);border:1px solid var(--border);border-radius:10px;
     padding:7px 11px;font-size:13px;font-family:inherit;color:var(--ink-1)}
-  .inp:focus{outline:none;border-color:#cfcec8}
+  .inp:focus{outline:none;border-color:#d4d4d8}
   .copy{margin-left:auto;font-size:11px;color:var(--draft);font-weight:600;cursor:pointer;
     background:none;border:none;font-family:inherit;letter-spacing:0;text-transform:none}
   .empty{padding:52px 26px;text-align:center;color:var(--ink-3)}
@@ -980,7 +980,8 @@ function loadBrands(category) {
           '<div class="t-line"><span class="t-brand">' + esc(b.name) + '</span>' +
             (b.tier ? '<span class="t-sep">·</span><span class="t-title">' + esc(b.tier) + '</span>' : '') +
           '</div>' +
-          (people || '<div class="t-meta"><span>No contacts yet</span></div>') +
+          (b.about ? '<div class="t-meta"><span>' + esc(b.about) + '</span></div>'
+            : (people || '<div class="t-meta"><span>No contacts yet</span></div>')) +
         '</div>' +
         '<div class="t-actions">' +
           '<span class="fit" title="contacts">' + b._count.contacts + ' contacts</span>' +
@@ -1073,38 +1074,61 @@ function loadBrand(brandId) {
       '</div>';
 
     // details / edit
+    // Lead with what we actually know; the edit form stays folded away so
+    // the card never opens as a wall of empty boxes.
+    var factLine = function (label, val) {
+      return val ? '<div style="display:flex;gap:12px;font-size:13.5px;padding:4px 0">' +
+        '<span style="flex:none;width:96px;color:var(--ink-3);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;padding-top:3px">' + label + '</span>' +
+        '<span style="min-width:0">' + val + '</span></div>' : '';
+    };
+    var siteHref = b.website ? (/^https?:/i.test(b.website) ? b.website : 'https://' + b.website) : '';
+    var facts =
+      factLine('About', b.about ? esc(b.about) : '') +
+      factLine('Best sellers', b.topProducts ? esc(b.topProducts) : '') +
+      factLine('Website', b.website ? '<a href="' + esc(siteHref) + '" target="_blank" rel="noopener">' + esc(b.website.replace(/^https?:\/\//i, '')) + '</a>' : '') +
+      factLine('Wants', b.goals ? esc(b.goals) : '') +
+      factLine('Notes', b.notes ? esc(b.notes) : '');
     var details =
       '<div class="section-head">Details</div>' +
       '<div class="panel panel-pad">' +
-        '<div class="row2" style="margin-bottom:10px">' +
-          '<div><label class="lbl">Category</label>' +
-            '<select class="field-box" data-bfield="category">' + catOptions(b.category) + '</select></div>' +
-          '<div><label class="lbl">Tier</label><select class="field-box" data-bfield="tier">' +
-            ['', 'emerging', 'growth', 'established'].map(function (t) {
-              return '<option value="' + t + '"' + (t === (b.tier || '') ? ' selected' : '') + '>' +
-                (t || '—') + '</option>';
-            }).join('') + '</select></div>' +
-        '</div>' +
-        '<div class="row2" style="margin-bottom:10px">' +
-          '<div><label class="lbl">Owner</label>' +
-            '<select class="field-box" data-bfield="owner">' + ownerOptions(b.owner) + '</select></div>' +
-          '<div><label class="lbl">Website</label>' +
-            '<input class="field-box" data-bfield="website" value="' + esc(b.website || '') + '"></div>' +
-        '</div>' +
-        '<div style="margin-bottom:10px"><label class="lbl">LinkedIn company page</label>' +
-          '<input class="field-box" data-bfield="linkedinUrl" value="' + esc(b.linkedinUrl || '') + '"></div>' +
-        '<div style="margin-bottom:10px"><label class="lbl">What they want (discovery)</label>' +
-          '<textarea class="field-box" rows="2" data-bfield="goals" placeholder="Goals, regions, timing — captured on the first call. Feeds the proposal.">' + esc(b.goals || '') + '</textarea></div>' +
-        '<div style="margin-bottom:12px"><label class="lbl">Notes</label>' +
-          '<textarea class="field-box" rows="2" data-bfield="notes">' + esc(b.notes || '') + '</textarea></div>' +
-        '<div style="display:flex;gap:8px">' +
-          '<button class="btn-solid" id="b-save">Save</button>' +
+        (facts || '<div style="font-size:13px;color:var(--ink-3);padding:2px 0">Nothing on file yet.</div>') +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
+          '<button class="btn-solid" id="b-enrich">Auto-fill from the web</button>' +
+          '<button class="btn-ghost" id="b-edit-toggle">Edit</button>' +
           '<a class="btn-ghost" href="' + esc(liCompany) + '" target="_blank" rel="noopener">LinkedIn ↗</a>' +
           '<a class="btn-ghost" href="' + esc(suUrl) + '" target="_blank" rel="noopener">' + suLabel + '</a>' +
           (b.doNotEmail
             ? '<button class="btn-ghost" id="b-dne" style="border-color:var(--accent);color:var(--accent)" title="This brand is excluded from all outreach emails — click to allow again">Do not email</button>'
             : '<button class="btn-ghost" id="b-dne" title="Exclude this brand from all outreach emails (intros and follow-ups)">Emails on</button>') +
           '<button class="btn-ghost danger" id="b-delete" style="margin-left:auto">Delete brand</button>' +
+        '</div>' +
+        '<div id="b-edit" hidden style="margin-top:14px;border-top:1px solid var(--border-soft);padding-top:14px">' +
+          '<div class="row2" style="margin-bottom:10px">' +
+            '<div><label class="lbl">Category</label>' +
+              '<select class="field-box" data-bfield="category">' + catOptions(b.category) + '</select></div>' +
+            '<div><label class="lbl">Tier</label><select class="field-box" data-bfield="tier">' +
+              ['', 'emerging', 'growth', 'established'].map(function (t) {
+                return '<option value="' + t + '"' + (t === (b.tier || '') ? ' selected' : '') + '>' +
+                  (t || '—') + '</option>';
+              }).join('') + '</select></div>' +
+          '</div>' +
+          '<div class="row2" style="margin-bottom:10px">' +
+            '<div><label class="lbl">Owner</label>' +
+              '<select class="field-box" data-bfield="owner">' + ownerOptions(b.owner) + '</select></div>' +
+            '<div><label class="lbl">Website</label>' +
+              '<input class="field-box" data-bfield="website" value="' + esc(b.website || '') + '"></div>' +
+          '</div>' +
+          '<div style="margin-bottom:10px"><label class="lbl">What they do</label>' +
+            '<input class="field-box" data-bfield="about" maxlength="200" value="' + esc(b.about || '') + '"></div>' +
+          '<div style="margin-bottom:10px"><label class="lbl">Best sellers</label>' +
+            '<input class="field-box" data-bfield="topProducts" maxlength="200" value="' + esc(b.topProducts || '') + '"></div>' +
+          '<div style="margin-bottom:10px"><label class="lbl">LinkedIn company page</label>' +
+            '<input class="field-box" data-bfield="linkedinUrl" value="' + esc(b.linkedinUrl || '') + '"></div>' +
+          '<div style="margin-bottom:10px"><label class="lbl">What they want</label>' +
+            '<textarea class="field-box" rows="2" data-bfield="goals">' + esc(b.goals || '') + '</textarea></div>' +
+          '<div style="margin-bottom:12px"><label class="lbl">Notes</label>' +
+            '<textarea class="field-box" rows="2" data-bfield="notes">' + esc(b.notes || '') + '</textarea></div>' +
+          '<button class="btn-solid" id="b-save">Save</button>' +
         '</div>' +
       '</div>';
 
@@ -1216,6 +1240,18 @@ function loadBrand(brandId) {
       '</div>';
 
     box.innerHTML = head + shows + contacts + boardAccess + details + outreach + docs + activity;
+
+    box.querySelector('#b-edit-toggle').onclick = function () {
+      var f = box.querySelector('#b-edit'); f.hidden = !f.hidden;
+    };
+    var enrich = box.querySelector('#b-enrich');
+    enrich.onclick = function () {
+      enrich.disabled = true; enrich.textContent = 'Searching the web…';
+      api('enrichBrand', { brandId: b.id }).then(function (r) {
+        toast(r.filled.length ? 'Filled in: ' + r.filled.join(', ') : 'Nothing new found — fields may already be set');
+        loadBrand(b.id);
+      }).catch(function (e) { toast(e.message); enrich.disabled = false; enrich.textContent = 'Auto-fill from the web'; });
+    };
 
     var codeGen = box.querySelector('#b-code-gen');
     if (codeGen) codeGen.onclick = function () {

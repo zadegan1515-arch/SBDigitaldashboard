@@ -63,6 +63,12 @@ model Brand {
   // the setBrandCode handler instead.
   boardCode String?
 
+  // One-liners for the brand card: what the company does and its best
+  // sellers. Filled by hand or by "Auto-fill from the web" (enrichBrand);
+  // auto-fill only ever writes empty fields.
+  about       String?
+  topProducts String?
+
   contacts    Contact[]
   targets     Target[]
   partner     Partner?

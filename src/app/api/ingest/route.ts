@@ -116,6 +116,17 @@ export async function POST(req: NextRequest) {
         catch { /* a clash on the unique externalId shouldn't fail the import */ }
       }
 
+      // Brand-level extras a capture may carry (website, what they do,
+      // best sellers) — fill-if-empty only, hand data is never touched.
+      const fill: Record<string, string> = {}
+      const bw = row.brandWebsite ?? body.brandWebsite, ba = row.brandAbout ?? body.brandAbout, bp = row.brandProducts ?? body.brandProducts
+      if (bw && !brand.website) fill.website = String(bw).slice(0, 300)
+      if (ba && !brand.about) fill.about = String(ba).slice(0, 200)
+      if (bp && !brand.topProducts) fill.topProducts = String(bp).slice(0, 200)
+      if (Object.keys(fill).length) {
+        try { await prisma.brand.update({ where: { id: brand.id }, data: fill }) } catch { /* non-fatal */ }
+      }
+
       const dupe = await prisma.contact.findFirst({ where: { brandId: brand.id, name: row.name } })
       if (dupe) { result.skipped++; continue }
 

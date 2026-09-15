@@ -1292,8 +1292,55 @@ const handlers: Record<string, Handler> = {
     throw new Error('Could not generate a unique code — try again')
   },
 
+  // One click on the brand page: search the public web and fill in the
+  // brand's website, what it does, and its best sellers. Costs one small
+  // Anthropic web-search call; only empty fields are written, so
+  // hand-entered data is never overwritten. (Approved by Leo 2026-09-15.)
+  async enrichBrand({ brandId }: any) {
+    const brand = await prisma.brand.findUnique({ where: { id: brandId } })
+    if (!brand) throw new Error('Brand not found')
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in Vercel')
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    const prompt =
+      `Research the consumer brand "${brand.name}"${brand.website ? ` (website: ${brand.website})` : ''}. ` +
+      'Return ONLY a JSON object, no prose: {"website": "official site URL", ' +
+      '"about": "what the company does, one plain sentence under 140 characters", ' +
+      '"topProducts": "their best-selling products, comma-separated, under 140 characters"}. ' +
+      'If you cannot find the brand, return {"website":null,"about":null,"topProducts":null}.'
+    let text = ''
+    let lastErr: any = null
+    for (const model of ['claude-sonnet-5', 'claude-haiku-4-5']) {
+      try {
+        const res: any = await anthropic.messages.create({
+          model, max_tokens: 1000,
+          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }] as any,
+          messages: [{ role: 'user', content: prompt }],
+        })
+        text = res.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
+        if (text) break
+      } catch (err: any) {
+        lastErr = err
+        if (/credit balance|billing|purchase credits/i.test(String(err?.message ?? ''))) {
+          throw new Error('Auto-fill needs API credits (console.anthropic.com → Plans & Billing).')
+        }
+        if (!(err?.status === 404 || /model/i.test(err?.message ?? ''))) throw err
+      }
+    }
+    if (!text) throw lastErr ?? new Error('Search produced nothing — try again')
+    const m = text.replace(/```(?:json)?/g, '').match(/\{[\s\S]*\}/)
+    if (!m) throw new Error('Could not parse the result — try again')
+    let j: any = {}
+    try { j = JSON.parse(m[0]) } catch { throw new Error('Could not parse the result — try again') }
+    const data: Record<string, string> = {}
+    if (!brand.website && j.website) data.website = String(j.website).slice(0, 300)
+    if (!brand.about && j.about) data.about = String(j.about).slice(0, 200)
+    if (!brand.topProducts && j.topProducts) data.topProducts = String(j.topProducts).slice(0, 200)
+    if (Object.keys(data).length) await prisma.brand.update({ where: { id: brandId }, data })
+    return { found: j, filled: Object.keys(data) }
+  },
+
   async updateBrand({ brandId, ...fields }: any) {
-    const allowed = ['category', 'tier', 'owner', 'notes', 'goals', 'website', 'linkedinUrl', 'hq', 'externalId'] as const
+    const allowed = ['category', 'tier', 'owner', 'notes', 'goals', 'website', 'linkedinUrl', 'hq', 'externalId', 'about', 'topProducts'] as const
     const data: Record<string, any> = {}
     for (const key of allowed) {
       if (fields[key] !== undefined) data[key] = fields[key] === '' ? null : fields[key]
