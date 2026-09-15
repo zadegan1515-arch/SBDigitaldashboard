@@ -2385,7 +2385,7 @@ const handlers: Record<string, Handler> = {
 
     type Person = {
       id: string; name: string; title: string | null; linkedinUrl: string | null
-      linkedin: { status: string; sentAt: string | null; repliedAt: string | null } | null
+      linkedin: { targetId: string; status: string; sentAt: string | null; repliedAt: string | null } | null
       email: { count: number; lastAt: string | null; opened: boolean } | null
       lastAt: string | null
     }
@@ -2397,6 +2397,7 @@ const handlers: Record<string, Handler> = {
       const g = touch(t.brand)
       const p = (g.people[t.contact.id] ??= { id: t.contact.id, name: t.contact.name, title: t.contact.title, linkedinUrl: t.contact.linkedinUrl, linkedin: null, email: null, lastAt: null })
       p.linkedin = {
+        targetId: t.id,
         status: t.status,
         sentAt: t.sentAt ? t.sentAt.toISOString() : null,
         repliedAt: t.repliedAt ? t.repliedAt.toISOString() : null,

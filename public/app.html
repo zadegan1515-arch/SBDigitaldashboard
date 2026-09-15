@@ -2105,6 +2105,13 @@ function renderReached() {
       if (p.linkedin) {
         bits.push('<span class="status ' + esc(p.linkedin.status) + '">in · ' + esc(p.linkedin.status) + '</span>');
         if (p.linkedin.sentAt) bits.push('<span>invited ' + shortDate(p.linkedin.sentAt) + '</span>');
+        // Log progress from right here — no trip back to the queue.
+        if (p.linkedin.status === 'sent') {
+          bits.push('<button class="btn-ghost" data-rcact="accepted" data-rct="' + esc(p.linkedin.targetId) + '" style="padding:3px 10px;font-size:11.5px">They accepted ✓</button>');
+        }
+        if (p.linkedin.status === 'sent' || p.linkedin.status === 'accepted') {
+          bits.push('<button class="btn-ghost" data-rcact="replied" data-rct="' + esc(p.linkedin.targetId) + '" style="padding:3px 10px;font-size:11.5px">Replied ✓</button>');
+        }
       }
       if (p.email) {
         bits.push('<span class="status sent">✉ ' + p.email.count + '×' + (p.email.opened ? ' · opened' : '') + '</span>');
@@ -2146,6 +2153,18 @@ function loadReached() {
   });
 }
 document.getElementById('rc-q').addEventListener('input', function () { renderReached(); });
+document.getElementById('reached-list').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-rcact]');
+  if (!btn) return;
+  btn.disabled = true;
+  var status = btn.getAttribute('data-rcact');
+  api('setTargetStatus', { targetId: btn.getAttribute('data-rct'), status: status, actor: ME.owner || null })
+    .then(function () {
+      toast(status === 'replied' ? 'Reply logged — they’re on your Home needs-action list' : 'Accepted — DM them from the LinkedIn tab');
+      RC_DATA = [];
+      loadReached();
+    }).catch(function (err) { toast(err.message); btn.disabled = false; });
+});
 
 // --- rate card (loaded once, used for suggested values) --------
 
@@ -5614,7 +5633,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
     if (e.target.closest('a')) return;   // let real links through
-    if (e.target.closest('[data-nbq]')) return;   // Queue button handles itself
+    if (e.target.closest('[data-nbq]') || e.target.closest('[data-rcact]')) return;   // buttons with their own handlers
     loadBrand(el.getAttribute('data-brand'));
   });
 });
