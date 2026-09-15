@@ -477,6 +477,7 @@
         <button class="btn-solid" id="bq-add" hidden>Add + find on SponsorUnited</button>
       </div>
       <div class="chips" id="brand-cat-chips" style="margin-top:12px"></div>
+      <div id="brand-dupes"></div>
       <div id="brands-list"></div>
     </section>
 
@@ -1051,6 +1052,7 @@ function loadBrands(category) {
   var box = document.getElementById('brands-list');
   box.innerHTML = '';
 
+  renderBrandDupes();
   return api('listBrands', { category: category }).then(function (list) {
     var withContacts = list.filter(function (b) { return b._count.contacts > 0; }).length;
     document.getElementById('brands-sub').textContent =
@@ -1084,6 +1086,66 @@ function loadBrands(category) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
       esc(e.message) + '</p></div></div>';
   });
+}
+
+// --- duplicate brands ------------------------------------------
+// Brands whose contacts share a company email domain are flagged at
+// the top of the Brands tab. Merging always shows what moves first.
+
+function renderBrandDupes() {
+  var slot = document.getElementById('brand-dupes');
+  slot.innerHTML = '';
+  api('findDuplicateBrands').then(function (d) {
+    if (!d.groups || !d.groups.length) return;
+    slot.innerHTML = '<div class="panel panel-pad" style="margin-bottom:14px;border-color:rgba(232,182,76,.45)">' +
+      '<div style="font-size:13px;font-weight:600;margin-bottom:4px">Possible duplicates — contacts share an email domain</div>' +
+      d.groups.map(function (g) {
+        return g.merge.map(function (m) {
+          return '<div style="display:flex;gap:10px;align-items:center;padding:7px 0;font-size:13px;flex-wrap:wrap">' +
+            '<span style="color:var(--ink-3)">@' + esc(g.domain) + '</span>' +
+            '<b>' + esc(m.name) + '</b><span style="color:var(--ink-3)">folds into</span><b>' + esc(g.keep.name) + '</b>' +
+            '<span style="color:var(--ink-3)">' + m.contacts + ' + ' + g.keep.contacts + ' contacts</span>' +
+            '<button class="btn-ghost" data-mfrom="' + esc(m.id) + '" data-mto="' + esc(g.keep.id) + '" style="margin-left:auto">Merge</button>' +
+          '</div>';
+        }).join('');
+      }).join('') +
+    '</div>';
+  }).catch(function () {});
+}
+
+document.getElementById('brand-dupes').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-mfrom]');
+  if (!btn) return;
+  btn.disabled = true;
+  confirmMergeBrands(btn.getAttribute('data-mfrom'), btn.getAttribute('data-mto'), function () {
+    loadBrands(lastCategory);
+  }).then(function () { btn.disabled = false; });
+});
+
+// Two-step like confirmDeleteBrand: preview exactly what moves, merge
+// only on a real confirmation. onDone runs after a successful merge.
+function confirmMergeBrands(fromId, toId, onDone) {
+  return api('mergeBrands', { fromId: fromId, toId: toId }).then(function (r) {
+    var s = r.summary;
+    var moves = [];
+    if (s.contacts) moves.push(s.contacts + ' contact' + (s.contacts === 1 ? '' : 's'));
+    if (s.targets) moves.push(s.targets + ' outreach target' + (s.targets === 1 ? '' : 's'));
+    if (s.shows) moves.push(s.shows + ' attached show' + (s.shows === 1 ? '' : 's'));
+    if (s.deals) moves.push(s.deals + ' deal' + (s.deals === 1 ? '' : 's'));
+    if (s.documents) moves.push(s.documents + ' document' + (s.documents === 1 ? '' : 's'));
+    if (s.activations) moves.push(s.activations + ' activation' + (s.activations === 1 ? '' : 's'));
+    var msg = 'Merge "' + s.from + '" into "' + s.to + '"?\n\n' +
+      (moves.length
+        ? 'Moves to ' + s.to + ':\n• ' + moves.join('\n• ') + '\n\n'
+        : 'Nothing is attached to ' + s.from + '.\n\n') +
+      (s.dupShows ? s.dupShows + ' show link' + (s.dupShows === 1 ? ' exists' : 's exist') + ' on both brands — ' + s.to + ' keeps its copy.\n\n' : '') +
+      '"' + s.from + '" is then deleted. This cannot be undone.';
+    if (!window.confirm(msg)) return;
+    return api('mergeBrands', { fromId: fromId, toId: toId, confirm: true }).then(function () {
+      toast('Merged into ' + s.to);
+      if (onDone) onDone();
+    });
+  }).catch(function (e) { toast(e.message); });
 }
 
 // Brands tab search: filters the loaded list as you type; a name that
@@ -1146,7 +1208,7 @@ function loadBrand(brandId) {
     var head =
       '<h1>' + esc(b.name) + '</h1>' +
       '<div class="sub">' +
-        esc(CAT_NAMES[b.category] || b.category || 'Uncategorised') +
+        esc(CAT_NAMES[b.category] || b.category || 'Uncategorized') +
         (b.tier ? ' · ' + esc(b.tier) : '') +
         (b.partner ? ' · ' + esc(b.partner.lifecycle.replace(/_/g, ' ')) : '') +
       '</div>' +
@@ -1189,8 +1251,10 @@ function loadBrand(brandId) {
           (b.doNotEmail
             ? '<button class="btn-ghost" id="b-dne" style="border-color:var(--accent);color:var(--accent)" title="This brand is excluded from all outreach emails — click to allow again">Do not email</button>'
             : '<button class="btn-ghost" id="b-dne" title="Exclude this brand from all outreach emails (intros and follow-ups)">Emails on</button>') +
+          '<button class="btn-ghost" id="b-merge">Merge duplicate…</button>' +
           '<button class="btn-ghost danger" id="b-delete" style="margin-left:auto">Delete brand</button>' +
         '</div>' +
+        '<div id="b-merge-slot"></div>' +
         '<div id="b-edit" hidden style="margin-top:14px;border-top:1px solid var(--border-soft);padding-top:14px">' +
           '<div class="row2" style="margin-bottom:10px">' +
             '<div><label class="lbl">Category</label>' +
@@ -1396,6 +1460,39 @@ function loadBrand(brandId) {
           toast(b.doNotEmail ? 'Emails allowed again for ' + b.name : b.name + ' excluded from all outreach emails');
           loadBrand(b.id);
         }).catch(function (e) { toast(e.message); });
+    };
+
+    // Fold another brand into this one: pick the duplicate, see what
+    // moves, confirm. This brand is the keeper.
+    document.getElementById('b-merge').onclick = function () {
+      var slot = document.getElementById('b-merge-slot');
+      if (slot.innerHTML) { slot.innerHTML = ''; return; }
+      slot.innerHTML = '<div style="position:relative;margin-top:12px;max-width:400px">' +
+        '<input class="field-box" id="bm-q" placeholder="Type the duplicate brand — it folds into ' + esc(b.name) + '…" autocomplete="off">' +
+        '<div id="bm-results" style="position:absolute;top:100%;left:0;right:0;z-index:30;display:none;background:var(--surface-1);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:220px;overflow:auto;margin-top:4px"></div>' +
+        '<div class="hint" style="margin:8px 0 0">Its contacts, outreach, deals and shows move here; the duplicate is deleted after a confirmation that lists everything.</div></div>';
+      var inp = slot.querySelector('#bm-q'), drop = slot.querySelector('#bm-results'), timer = null;
+      inp.addEventListener('input', function () {
+        clearTimeout(timer);
+        var q = inp.value.trim();
+        if (q.length < 2) { drop.style.display = 'none'; return; }
+        timer = setTimeout(function () {
+          api('listBrands', { search: q, take: 8 }).then(function (list) {
+            list = list.filter(function (x) { return x.id !== b.id; });
+            drop.innerHTML = list.length ? list.map(function (x) {
+              return '<div class="bm-row" data-m="' + esc(x.id) + '" style="padding:9px 12px;font-size:13px;cursor:pointer"><b>' + esc(x.name) + '</b> <span style="color:var(--ink-3)">' + x._count.contacts + ' contact' + (x._count.contacts === 1 ? '' : 's') + '</span></div>';
+            }).join('') : '<div style="padding:9px 12px;font-size:13px;color:var(--ink-3)">No other brand matches.</div>';
+            drop.style.display = 'block';
+          });
+        }, 250);
+      });
+      drop.addEventListener('click', function (e) {
+        var r = e.target.closest('.bm-row');
+        if (!r) return;
+        drop.style.display = 'none';
+        confirmMergeBrands(r.getAttribute('data-m'), b.id, function () { loadBrand(b.id); });
+      });
+      inp.focus();
     };
 
     document.getElementById('b-delete').onclick = function () {

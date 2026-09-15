@@ -1227,6 +1227,118 @@ const handlers: Record<string, Handler> = {
     return { deleted: true, summary }
   },
 
+  // Merge a duplicate brand into the one you're keeping. Two-step like
+  // deleteBrand: called without confirm it only reports what would move,
+  // so the UI can show exactly what changes before anything does.
+  // Everything hanging off the duplicate (contacts, targets, deals,
+  // shows, documents, activations, board activity, ops links) is
+  // re-pointed at the keeper; empty fields on the keeper are filled from
+  // the duplicate; then the empty duplicate is deleted.
+  async mergeBrands({ fromId, toId, confirm = false }: any) {
+    if (!fromId || !toId) throw new Error('Pick both brands')
+    if (fromId === toId) throw new Error('That is the same brand')
+    const [from, to] = await Promise.all([
+      prisma.brand.findUnique({ where: { id: fromId }, include: { partner: true, _count: { select: { contacts: true, targets: true, shows: true, deals: true, documents: true, activations: true, boardVisits: true } } } }),
+      prisma.brand.findUnique({ where: { id: toId }, include: { partner: true } }),
+    ])
+    if (!from || !to) throw new Error('Brand not found')
+
+    // Shows both brands are attached to: the keeper's row wins, the
+    // duplicate's copy (and its auto-deal, by cascade) is dropped.
+    const [fromShows, toShows] = await Promise.all([
+      prisma.showSponsor.findMany({ where: { brandId: fromId }, select: { id: true, crmLeadId: true } }),
+      prisma.showSponsor.findMany({ where: { brandId: toId }, select: { crmLeadId: true } }),
+    ])
+    const toLeadIds = new Set(toShows.map(s => s.crmLeadId))
+    const dupShowIds = fromShows.filter(s => toLeadIds.has(s.crmLeadId)).map(s => s.id)
+
+    const summary = {
+      from: from.name, to: to.name,
+      contacts: from._count.contacts, targets: from._count.targets,
+      shows: from._count.shows - dupShowIds.length, dupShows: dupShowIds.length,
+      deals: from._count.deals, documents: from._count.documents,
+      activations: from._count.activations, boardVisits: from._count.boardVisits,
+    }
+    if (!confirm) return { merged: false, summary }
+
+    // Fields the keeper is missing, taken from the duplicate.
+    const fill: Record<string, any> = {}
+    for (const k of ['website', 'hq', 'category', 'tier', 'linkedinUrl', 'goals', 'owner', 'notes', 'about', 'topProducts', 'boardCode'] as const) {
+      if (!to[k] && from[k]) fill[k] = from[k]
+    }
+    if (from.doNotEmail && !to.doNotEmail) fill.doNotEmail = true
+    const moveExternalId = !to.externalId && !!from.externalId ? from.externalId : null
+
+    await prisma.$transaction(async tx => {
+      if (dupShowIds.length) await tx.showSponsor.deleteMany({ where: { id: { in: dupShowIds } } })
+      await tx.contact.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
+      await tx.target.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
+      await tx.deal.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
+      await tx.showSponsor.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
+      await tx.document.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
+      await tx.activation.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
+      await tx.boardVisit.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
+      await tx.boardAccessRequest.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
+      await tx.opsMessage.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
+      await tx.discoveredBrand.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
+      // Partner is one-per-brand: move it only if the keeper has none.
+      if (from.partner && !to.partner) {
+        await tx.partner.update({ where: { brandId: fromId }, data: { brandId: toId } })
+      }
+      // externalId is unique — free it on the duplicate before it lands
+      // on the keeper, so a re-sync from SponsorUnited finds one brand.
+      if (moveExternalId) {
+        await tx.brand.update({ where: { id: fromId }, data: { externalId: null } })
+        fill.externalId = moveExternalId
+      }
+      if (Object.keys(fill).length) await tx.brand.update({ where: { id: toId }, data: fill })
+      await tx.brand.delete({ where: { id: fromId } })
+    })
+    return { merged: true, summary }
+  },
+
+  // Brands whose contacts share a company email domain are almost
+  // certainly the same company entered twice (e.g. "Lucy" and
+  // "Lucy Goods Inc", both @lucy.co). Free-mail domains prove nothing
+  // and are skipped. The brand with the most attached data is suggested
+  // as the keeper; nothing merges without a confirmed mergeBrands call.
+  async findDuplicateBrands() {
+    const FREE = new Set(['gmail.com', 'googlemail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'live.com', 'icloud.com', 'me.com', 'aol.com', 'proton.me', 'protonmail.com'])
+    const brands = await prisma.brand.findMany({
+      include: {
+        contacts: { select: { email: true } },
+        _count: { select: { contacts: true, shows: true, deals: true, targets: true } },
+      },
+    })
+    const byDomain: Record<string, typeof brands> = {}
+    for (const b of brands) {
+      const domains = new Set<string>()
+      for (const c of b.contacts) {
+        const d = (c.email || '').split('@')[1]?.toLowerCase()
+        if (d && !FREE.has(d)) domains.add(d)
+      }
+      for (const d of domains) (byDomain[d] ??= []).push(b)
+    }
+    const score = (b: (typeof brands)[number]) =>
+      b._count.contacts * 10 + b._count.shows * 100 + b._count.deals * 100 + b._count.targets
+    const groups = []
+    const seen = new Set<string>()
+    for (const [domain, list] of Object.entries(byDomain)) {
+      if (list.length < 2) continue
+      // A brand pair already suggested under one domain isn't repeated.
+      const key = list.map(b => b.id).sort().join('|')
+      if (seen.has(key)) continue
+      seen.add(key)
+      const sorted = [...list].sort((a, b) => score(b) - score(a) || a.createdAt.getTime() - b.createdAt.getTime())
+      groups.push({
+        domain,
+        keep: { id: sorted[0].id, name: sorted[0].name, contacts: sorted[0]._count.contacts },
+        merge: sorted.slice(1).map(b => ({ id: b.id, name: b.name, contacts: b._count.contacts })),
+      })
+    }
+    return { groups }
+  },
+
   // -------- brand detail --------
 
   // Everything about one brand on one screen: who works there, which
