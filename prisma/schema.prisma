@@ -136,6 +136,8 @@ enum TargetStatus {
   queued
   drafted
   sent
+  // LinkedIn: they accepted the connection request — DM them now.
+  accepted
   replied
   converted
   declined
@@ -308,6 +310,12 @@ model Deal {
   // kept in sync automatically and should not be hand-edited; edit the
   // sponsorship instead.
   source String  @default("manual")
+
+  // Deal-room follow-up layer: what to do next and when it's due.
+  // Editable on every deal (sponsorship-sourced included) — the syncs
+  // never touch these two fields.
+  nextStep   String?
+  followUpAt DateTime?
 
   // Set for source="notion": the Notion page URL this deal mirrors, so
   // the nightly sync can find and update it without duplicating.

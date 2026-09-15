@@ -137,7 +137,13 @@ const MODEL_FALLBACKS = ['claude-sonnet-5', 'claude-haiku-4-5']
 // Tries DRAFT_MODEL, then each fallback, but only when the failure looks
 // like "that model doesn't exist". A rate limit or a bad key should
 // surface as itself, not be retried against three models in a row.
+// Leo's rule (Sep 2026): this site makes NO paid API calls, ever. The
+// billing-shaped message routes every caller to its template fallback
+// (tryClaude returns null; email.ts isBillingError matches it too).
+const NO_PAID_APIS = true
+
 async function askClaude(prompt: string, maxTokens: number): Promise<{ text: string; model: string }> {
+  if (NO_PAID_APIS) throw new Error('Model calls are turned off — no paid APIs on this site (credit balance guard).')
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   const candidates = [DRAFT_MODEL, ...MODEL_FALLBACKS.filter(m => m !== DRAFT_MODEL)]
 
@@ -222,6 +228,70 @@ function scoreFit(title: string | null, tier: string | null): number {
 function looksLikeDecisionMaker(title: string | null): boolean {
   if (!title) return false
   return /college|campus|field marketing|experiential|sponsorship|partnerships|sports marketing|brand marketing|founder|ceo|cmo/i.test(title)
+}
+
+// ---------------------------------------------------------------
+// LinkedIn draft templates — no model call, no spend, never blocks
+// ---------------------------------------------------------------
+
+// One hook per category so the DM says something specific to the brand.
+const LI_HOOKS: Record<string, string> = {
+  beverage: 'product-in-hand sampling for thousands of students a night',
+  alcohol: 'compliant 21+ sampling right where trial converts',
+  cpg: 'sampling on show nights plus house drops across our Greek chapters',
+  beauty: 'the getting-ready moment before every show, where routines form',
+  betting: 'on-site signups from exactly the demo you are acquiring',
+  fintech: 'students opening their first accounts — the next decade of customers',
+  tech: 'hands-on demos that ride word-of-mouth through Greek networks',
+  software: 'student offers seeded through our campus ambassadors',
+  apps: 'QR moments on the big screen at peak energy',
+  qsr: 'the after-show rush, right when cravings peak',
+  apparel: 'the most photographed nights on campus',
+  wellness: 'show weekends, when students actually reach for recovery and hydration',
+  retail: 'student-exclusive offers pushed through our chapters',
+  transport: 'thousands of students needing a ride home after every show',
+  nightlife: 'co-branded moments inside the show itself',
+  entertainment: 'a captive Gen Z audience at full attention',
+}
+const LI_HOOK_DEFAULT = 'sampling, stage branding and seeded product built around each show'
+
+function templateLinkedInDraft(target: { brand: any; contact: any }, variant: string) {
+  const first = String(target.contact.name || '').trim().split(/\s+/)[0] || 'there'
+  const brand = target.brand.name
+  const hook = LI_HOOKS[target.brand.category ?? ''] ?? LI_HOOK_DEFAULT
+  const connectionNote = (variant === 'question'
+    ? `Hi ${first} — is campus on ${brand}'s map this year? We produce large college concerts across the US (500+ shows a year) and I think there's a real fit. Would love to connect.`
+    : `Hi ${first} — I'm with SB Agency. We produce big fraternity/sorority concerts at 100+ US colleges and build brand sponsorships around them. Would love to connect and share what that could look like for ${brand}.`
+  ).slice(0, 300)
+  const firstMessage =
+    `Thanks for connecting, ${first}! Quick context: SB Agency runs 500+ college shows a year — packed student crowds across 100+ tier-1 markets, with in-house photo and video on every show. For ${brand}, the natural fit is ${hook}.\n\n` +
+    `Happy to send this semester's show list, or grab 15 minutes if that's easier — what works best?`
+  return { connectionNote, firstMessage }
+}
+
+// Every target headed for the Today queue arrives pre-drafted, so a
+// day's outreach is copy-paste from the first row. Free (templates), so
+// safe to run on every load.
+async function ensureTemplateDrafts(targets: any[]) {
+  for (const t of targets) {
+    if (t.drafts && t.drafts.length) continue
+    const created = []
+    for (const variant of ['identity', 'question']) {
+      const made = templateLinkedInDraft(t, variant)
+      created.push(await prisma.draft.create({
+        data: { targetId: t.id, variant, connectionNote: made.connectionNote, firstMessage: made.firstMessage, model: 'template' },
+      }))
+    }
+    t.drafts = created
+    if (t.status === 'queued') {
+      await prisma.target.update({ where: { id: t.id }, data: { status: 'drafted' } })
+      await prisma.targetEvent.create({
+        data: { targetId: t.id, kind: 'drafted', fromStatus: 'queued', toStatus: 'drafted' },
+      })
+      t.status = 'drafted'
+    }
+  }
+  return targets
 }
 
 // How many people we actually pursue per brand. A brand pull can surface
@@ -568,7 +638,7 @@ const handlers: Record<string, Handler> = {
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: room,
     })
-    if (carried.length >= room) return carried
+    if (carried.length >= room) return ensureTemplateDrafts(carried)
 
     // Includes 'drafted': drafting from the All-targets tab sets the
     // status without stamping queuedFor, and those rows used to match
@@ -579,7 +649,7 @@ const handlers: Record<string, Handler> = {
       take: room - carried.length,
       select: { id: true },
     })
-    if (picks.length === 0) return carried
+    if (picks.length === 0) return ensureTemplateDrafts(carried)
 
     await prisma.target.updateMany({
       where: { id: { in: picks.map(p => p.id) } },
@@ -592,7 +662,7 @@ const handlers: Record<string, Handler> = {
       orderBy: { fitScore: 'desc' },
     })
 
-    return [...carried, ...fresh].sort((a, b) => b.fitScore - a.fitScore)
+    return ensureTemplateDrafts([...carried, ...fresh].sort((a, b) => b.fitScore - a.fitScore))
   },
 
   async listTargets({ status, category, search, take = 200, shelved = false }: any) {
@@ -618,7 +688,7 @@ const handlers: Record<string, Handler> = {
     })
   },
 
-  async setTargetStatus({ targetId, status, actor, nextStep, followUpAt, clearFollowUp }: any) {
+  async setTargetStatus({ targetId, status, actor, nextStep, followUpAt, clearFollowUp, clearSent }: any) {
     const before = await prisma.target.findUnique({ where: { id: targetId } })
     if (!before) throw new Error('Target not found')
 
@@ -628,6 +698,9 @@ const handlers: Record<string, Handler> = {
       data: {
         ...(status ? { status } : {}),
         ...(status === 'sent' && !before.sentAt ? { sentAt: now } : {}),
+        // Undo for a mis-clicked "Mark sent": back to the queue with the
+        // send stamp wiped so today's cap and Reached don't count it.
+        ...(clearSent ? { sentAt: null } : {}),
         ...(status === 'replied' && !before.repliedAt ? { repliedAt: now } : {}),
         // Follow-up layer. clearFollowUp wipes it (e.g. when a deal closes);
         // otherwise set whatever was passed.
@@ -717,28 +790,20 @@ const handlers: Record<string, Handler> = {
     })
     if (!target) throw new Error('Target not found')
 
-    if (!process.env.ANTHROPIC_API_KEY) {
-      throw new Error('ANTHROPIC_API_KEY is not set in Vercel — drafting is off.')
-    }
-
-    const voice = await prisma.voice.findFirst({ where: { active: true } })
-
+    // Template-based on purpose: drafting never costs money and never
+    // blocks on an API (Leo's no-paid-APIs rule). Redraft replaces the
+    // old pair so the row doesn't grow a new panel per click.
+    await prisma.draft.deleteMany({ where: { targetId } })
     const drafts = []
     for (const variant of variants) {
-      const res = await askClaude(buildPrompt(target, variant, voice), 1000)
-      const parsed = parseDraft(res.text)
-      if (!parsed) continue
-
+      const made = templateLinkedInDraft(target, variant)
       drafts.push(await prisma.draft.create({
         data: {
           targetId,
           variant,
-          connectionNote: parsed.connectionNote,
-          firstMessage: parsed.firstMessage,
-          voice: voice?.name ?? null,
-          // Record which model actually answered, not which one we asked
-          // for — they differ when a fallback kicks in.
-          model: res.model,
+          connectionNote: made.connectionNote,
+          firstMessage: made.firstMessage,
+          model: 'template',
         },
       }))
     }
@@ -1383,7 +1448,7 @@ const handlers: Record<string, Handler> = {
   async enrichBrand({ brandId }: any) {
     const brand = await prisma.brand.findUnique({ where: { id: brandId } })
     if (!brand) throw new Error('Brand not found')
-    if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in Vercel')
+    if (NO_PAID_APIS) throw new Error('Auto-fill is turned off — this site makes no paid API calls. Fill the fields by hand instead.')
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
     const prompt =
       `Research the consumer brand "${brand.name}"${brand.website ? ` (website: ${brand.website})` : ''}. ` +
@@ -1891,13 +1956,22 @@ const handlers: Record<string, Handler> = {
   // the headline numbers and the most-picked shows for the overview.
   async listBoardActivity({ limit }: any) {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-    const [visits, total, last7, requestCount, picked] = await Promise.all([
+    // "Today" in Eastern time — the team and the schools run on it.
+    const now = new Date()
+    const ny = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+    const dayStart = new Date(now.getTime() -
+      (ny.getHours() * 3600e3 + ny.getMinutes() * 60e3 + ny.getSeconds() * 1e3))
+    const [visits, brandsTodayRows, last7, requestCount, picked] = await Promise.all([
       prisma.boardVisit.findMany({
         orderBy: { createdAt: 'desc' },
         take: Math.min(Number(limit) || 50, 200),
         include: { brand: { select: { id: true, name: true } } },
       }),
-      prisma.boardVisit.count(),
+      prisma.boardVisit.findMany({
+        where: { createdAt: { gte: dayStart }, brandId: { not: null } },
+        select: { brandId: true },
+        distinct: ['brandId'],
+      }),
       prisma.boardVisit.count({ where: { createdAt: { gt: weekAgo } } }),
       prisma.deal.count({ where: { source: 'request' } }),
       // Every show a brand ever picked on the board (the request marker
@@ -1915,7 +1989,7 @@ const handlers: Record<string, Handler> = {
       byShow.set(k, row)
     }
     const topShows = [...byShow.values()].sort((a, b) => b.count - a.count).slice(0, 10)
-    return { visits, total, last7, requestCount, topShows }
+    return { visits, brandsToday: brandsTodayRows.length, last7, requestCount, topShows }
   },
 
   // The "In talks" cards: every brand holding a board code, with its
@@ -2278,6 +2352,171 @@ const handlers: Record<string, Handler> = {
     return { ok: true }
   },
 
+  // Everyone we've actually reached out to, on either channel, grouped
+  // by brand for the Reached tab. LinkedIn: targets whose invite went
+  // out (sentAt stamped, or a post-send status). Email: sent messages.
+  async listReached() {
+    const [targets, emails] = await Promise.all([
+      prisma.target.findMany({
+        where: {
+          OR: [
+            { sentAt: { not: null } },
+            { status: { in: ['sent', 'accepted', 'replied', 'converted'] } },
+          ],
+        },
+        include: {
+          brand: { select: { id: true, name: true, category: true, tier: true } },
+          contact: { select: { id: true, name: true, title: true, linkedinUrl: true } },
+        },
+      }),
+      prisma.emailMessage.findMany({
+        where: { direction: 'out', status: 'sent' },
+        select: {
+          sentAt: true, createdAt: true, opens: true, toEmail: true,
+          target: {
+            select: {
+              brand: { select: { id: true, name: true, category: true, tier: true } },
+              contact: { select: { id: true, name: true, title: true, linkedinUrl: true } },
+            },
+          },
+        },
+      }),
+    ])
+
+    type Person = {
+      id: string; name: string; title: string | null; linkedinUrl: string | null
+      linkedin: { status: string; sentAt: string | null; repliedAt: string | null } | null
+      email: { count: number; lastAt: string | null; opened: boolean } | null
+      lastAt: string | null
+    }
+    const brands: Record<string, { brand: any; people: Record<string, Person>; lastAt: string | null }> = {}
+    const touch = (b: any) => (brands[b.id] ??= { brand: b, people: {}, lastAt: null })
+    const later = (a: string | null, b: string | null) => (!a ? b : !b ? a : a > b ? a : b)
+
+    for (const t of targets) {
+      const g = touch(t.brand)
+      const p = (g.people[t.contact.id] ??= { id: t.contact.id, name: t.contact.name, title: t.contact.title, linkedinUrl: t.contact.linkedinUrl, linkedin: null, email: null, lastAt: null })
+      p.linkedin = {
+        status: t.status,
+        sentAt: t.sentAt ? t.sentAt.toISOString() : null,
+        repliedAt: t.repliedAt ? t.repliedAt.toISOString() : null,
+      }
+      p.lastAt = later(p.lastAt, p.linkedin.repliedAt || p.linkedin.sentAt)
+    }
+    for (const m of emails) {
+      const g = touch(m.target.brand)
+      const c = m.target.contact
+      const p = (g.people[c.id] ??= { id: c.id, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl, linkedin: null, email: null, lastAt: null })
+      const at = (m.sentAt || m.createdAt).toISOString()
+      p.email = {
+        count: (p.email?.count || 0) + 1,
+        lastAt: later(p.email?.lastAt || null, at),
+        opened: (p.email?.opened || false) || m.opens > 0,
+      }
+      p.lastAt = later(p.lastAt, at)
+    }
+
+    const rows = Object.values(brands).map(g => {
+      const people = Object.values(g.people).sort((a, b) => (b.lastAt || '').localeCompare(a.lastAt || ''))
+      const lastAt = people.reduce<string | null>((m, p) => later(m, p.lastAt), null)
+      return { brand: g.brand, people, lastAt }
+    }).sort((a, b) => (b.lastAt || '').localeCompare(a.lastAt || ''))
+    return { brands: rows }
+  },
+
+  // -------- deal room --------
+
+  // One screen per deal: the brand's people, the show and its
+  // deliverables, live board heat, and a follow-up that can't lapse.
+  async getDealRoom({ dealId }: any) {
+    const deal = await prisma.deal.findUnique({
+      where: { id: dealId },
+      include: {
+        brand: { include: { contacts: { orderBy: [{ isDecisionMaker: 'desc' }, { name: 'asc' }], take: 8 } } },
+        showSponsor: { include: { deliverableItems: { orderBy: { createdAt: 'asc' } } } },
+      },
+    })
+    if (!deal) throw new Error('Deal not found')
+    const twoWeeks = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
+    const [boardViews14d, lastVisit] = await Promise.all([
+      prisma.boardVisit.count({ where: { brandId: deal.brandId, createdAt: { gte: twoWeeks } } }),
+      prisma.boardVisit.findFirst({ where: { brandId: deal.brandId }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
+    ])
+    return { deal, boardViews14d, lastBoardVisit: lastVisit?.createdAt ?? null }
+  },
+
+  // Follow-up fields work on every deal, sponsorship-sourced included —
+  // the syncs never write these, so nothing gets clobbered.
+  async setDealFollowUp({ dealId, nextStep, followUpAt }: any) {
+    return prisma.deal.update({
+      where: { id: dealId },
+      data: {
+        ...(nextStep !== undefined ? { nextStep: nextStep || null } : {}),
+        ...(followUpAt !== undefined ? { followUpAt: followUpAt ? new Date(followUpAt) : null } : {}),
+      },
+    })
+  },
+
+  // -------- next best brands --------
+
+  // Rules-only ranking (no model calls) of brands nobody has contacted:
+  // tier, reachable decision makers, and how the brand's category has
+  // actually replied to us so far. Feeds the list under the queue.
+  async nextBestBrands({ take = 15 }: any = {}) {
+    const [brands, sent, replies] = await Promise.all([
+      prisma.brand.findMany({
+        where: { doNotEmail: false },
+        include: {
+          contacts: { select: { title: true, linkedinUrl: true, email: true, isDecisionMaker: true } },
+          targets: { select: { status: true, sentAt: true } },
+          _count: { select: { contacts: true } },
+        },
+      }),
+      prisma.emailMessage.findMany({
+        where: { direction: 'out', status: 'sent' },
+        select: { target: { select: { brandId: true, brand: { select: { category: true } } } } },
+      }),
+      prisma.emailMessage.findMany({
+        where: { direction: 'in' },
+        select: { target: { select: { brandId: true, brand: { select: { category: true } } } } },
+      }),
+    ])
+
+    // Brand-level reply rate per category.
+    const emailedByCat: Record<string, Set<string>> = {}
+    const repliedByCat: Record<string, Set<string>> = {}
+    for (const m of sent) (emailedByCat[m.target.brand.category ?? ''] ??= new Set()).add(m.target.brandId)
+    for (const m of replies) (repliedByCat[m.target.brand.category ?? ''] ??= new Set()).add(m.target.brandId)
+
+    const touched = (b: (typeof brands)[number]) =>
+      b.targets.some(t => t.sentAt || ['sent', 'accepted', 'replied', 'converted'].includes(t.status))
+
+    const rows = brands
+      .filter(b => b.contacts.length && !touched(b))
+      .map(b => {
+        let score = 0
+        const why: string[] = []
+        const tierPts: Record<string, number> = { emerging: 30, growth: 20, established: 8 }
+        score += tierPts[b.tier ?? ''] ?? 12
+        if (b.tier) why.push(b.tier)
+        if (b.contacts.some(c => c.isDecisionMaker && c.linkedinUrl)) { score += 30; why.push('decision-maker on LinkedIn') }
+        else if (b.contacts.some(c => c.linkedinUrl)) { score += 15; why.push('contact on LinkedIn') }
+        if (b.contacts.some(c => c.email)) { score += 8; why.push('email on file') }
+        const cat = b.category ?? ''
+        const emailed = emailedByCat[cat]?.size ?? 0
+        const replied = repliedByCat[cat]?.size ?? 0
+        if (emailed >= 3) {
+          const rate = Math.round((replied / emailed) * 100)
+          score += Math.min(25, rate)
+          if (rate > 0) why.push('category replies at ' + rate + '%')
+        }
+        return { id: b.id, name: b.name, category: b.category, tier: b.tier, contacts: b._count.contacts, score, why }
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, Math.min(Number(take) || 15, 50))
+    return { brands: rows }
+  },
+
   // -------- results / analytics --------
 
   // The outreach funnel and what's working, computed brand-level so one
@@ -2587,7 +2826,7 @@ const handlers: Record<string, Handler> = {
   async discoverBrands({ query }: any) {
     const q = String(query ?? '').trim()
     if (q.length < 3) throw new Error('Give me a real search — e.g. "venture-backed CPG brands"')
-    if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in Vercel — discovery is off.')
+    if (NO_PAID_APIS) throw new Error('Discovery search is turned off — this site makes no paid API calls. Add brands by hand or via SponsorUnited.')
 
     const CATS = 'beverage, alcohol, cpg, apparel, tech, fintech, software, beauty, apps, betting, nightlife, wellness, qsr, home, entertainment, retail, transport, conglomerate, nicotine'
     const prompt = [
