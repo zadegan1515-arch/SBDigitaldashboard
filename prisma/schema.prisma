@@ -808,6 +808,135 @@ model BoardVisit {
   @@index([createdAt])
 }
 
+// ---------------------------------------------------------------
+// Audience — attendees captured at SBOY events (sponsorship module,
+// Phase 1). The attendance join table is the product: "same person,
+// multiple events" is the signal that gets sold to brands. Individual
+// rows never leave the dashboard — sponsors only ever see aggregates.
+// ---------------------------------------------------------------
+
+model Event {
+  id     String    @id @default(cuid())
+  name   String
+  school String?
+  venue  String?
+  city   String?
+  state  String?
+  date   DateTime?
+  // People expected, for show-rate context. Not enforced anywhere.
+  capacity  Int?
+  headliner String?
+  genre     String?
+
+  // "internal" | "box_office" | "third_party"
+  ticketSource String @default("internal")
+
+  // Optional link to a CRM sheet show ("sh_<hash>"). The fields above are
+  // a snapshot taken at creation, so the door never depends on the sheet.
+  showRef String?
+
+  // Public RSVP link: /rsvp.html?e=<slug>. A cuid so links can't be
+  // guessed by walking small numbers.
+  rsvpSlug String @unique @default(cuid())
+
+  // Unlocks door.html (staff check-in) for this event — door staff won't
+  // be on the Google allowlist. Regenerated from the Events tab.
+  staffPin String?
+  rsvpOpen Boolean @default(true)
+
+  attendances Attendance[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+}
+
+model Attendee {
+  id String @id @default(cuid())
+
+  // Identity key. Always stored lowercased + trimmed — normalization
+  // lives in ONE helper (normalizeEmail in lib/audience-core) used by
+  // RSVP, check-in, and CSV import alike, and is covered by tests.
+  // Repeat attendance dies silently if this breaks.
+  email String @unique
+
+  name      String?
+  phone     String?
+  school    String?
+  classYear String?
+  // Self-reported, optional — never inferred.
+  ageBand      String?
+  gender       String?
+  homeCity     String?
+  socialHandle String?
+
+  // Consent: version points at ConsentText.version; flags is a JSON
+  // string ({"contact":true}) so a new flag doesn't need a migration.
+  consentVersion String?
+  consentFlags   String    @default("{}")
+  consentAt      DateTime?
+
+  // Merge tool: losers point at the survivor and are excluded everywhere.
+  mergedIntoId String?
+
+  attendances Attendance[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([school])
+  @@index([mergedIntoId])
+}
+
+// One row per person per event — the join table.
+model Attendance {
+  id         String   @id @default(cuid())
+  attendeeId String
+  attendee   Attendee @relation(fields: [attendeeId], references: [id], onDelete: Cascade)
+  eventId    String
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  // "ga" | "vip" | "comp"
+  ticketType String @default("ga")
+  // Cents. Ticket money is its own line — never summed with sponsorship
+  // revenue, booking revenue, or activation costs.
+  pricePaidCents Int @default(0)
+
+  rsvpAt      DateTime?
+  // null = bought / RSVP'd but didn't show.
+  checkedInAt DateTime?
+
+  // "rsvp" | "ambassador_link" | "walkup_qr" | "import"
+  source String @default("rsvp")
+  // "sboy:<userId>" — Sboy Vision platform ref, same convention as
+  // EventStaff.externalRef. A string, not an FK: ambassadors live on the
+  // platform, not in this database.
+  referringAmbassadorRef String?
+
+  // The RSVP form's "who are you coming to see".
+  cameFor String?
+
+  // Unguessable token carried in the personal ticket link; presenting it
+  // is how self check-in authenticates.
+  checkinToken String @unique @default(cuid())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([attendeeId, eventId])
+  @@index([eventId])
+  @@index([referringAmbassadorRef])
+}
+
+// Versioned consent copy. Every RSVP / import stores the version it saw,
+// so "what did this person agree to" is always answerable.
+model ConsentText {
+  version   String   @id // "v1"
+  text      String
+  createdAt DateTime @default(now())
+}
+
 // A brand asked for Show Board access from the gate ("Request the show
 // list"). Approve mints their brand + code and emails it; deny just
 // closes it. status: pending | approved | denied.

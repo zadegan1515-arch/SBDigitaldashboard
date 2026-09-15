@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SBOY Door</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0d0d0d">
+<link rel="icon" href="/materials/sb-logo.png">
+<style>
+  :root{--bg:#0d0d0d;--ink:#f5f3ef;--ink-2:#c6c2bb;--ink-3:#8f8d87;--line:#292826;--soft:#191817;--accent:#d9542b;--ok:#4cc98a;--warn:#e8b93e;color-scheme:dark}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:640px;margin:0 auto;padding:18px 16px 80px}
+  h1{font-size:22px;margin:0;letter-spacing:-.01em}
+  .sub{color:var(--ink-3);font-size:13px;margin:2px 0 0}
+  .head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding-bottom:12px;border-bottom:1px solid var(--line)}
+  .head .stat{margin-left:auto;font-size:14px;color:var(--ink-2)}
+  .head .stat b{color:var(--ink);font-size:18px}
+  .net{margin:10px 0 0;font-size:13px;padding:8px 12px;border-radius:10px;display:none}
+  .net.off{display:block;background:#2a2110;color:var(--warn)}
+  input{width:100%;border:1px solid var(--line);border-radius:12px;padding:14px;font:inherit;font-size:17px;background:var(--soft);color:var(--ink);outline:none;margin-top:14px}
+  input:focus{border-color:var(--ink-3)}
+  .row{display:flex;align-items:center;gap:12px;padding:13px 12px;border:1px solid var(--line);border-radius:12px;background:var(--soft);margin-top:8px}
+  .row .who{flex:1;min-width:0}
+  .row .who b{display:block;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .who span{font-size:12.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+  .tt{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:999px;background:#242320;color:var(--ink-2);flex:none}
+  .tt.vip{background:#2a1810;color:#f0855e}
+  .in{flex:none;border:0;border-radius:999px;padding:11px 18px;font-weight:700;font-size:14px;background:var(--accent);color:#fff;cursor:pointer}
+  .done{flex:none;color:var(--ok);font-weight:700;font-size:13px}
+  .queued{flex:none;color:var(--warn);font-weight:700;font-size:13px}
+  .go{width:100%;margin-top:16px;background:var(--accent);color:#fff;border:0;border-radius:999px;padding:15px;font-weight:700;font-size:16px;cursor:pointer}
+  .btn2{background:transparent;border:1px solid var(--line);color:var(--ink-2);border-radius:999px;padding:8px 14px;font-size:13px;cursor:pointer}
+  .center{padding:50px 10px;text-align:center;color:var(--ink-3)}
+  .err{color:#f0855e;font-size:13.5px;margin-top:10px;min-height:18px}
+  .tools{display:flex;gap:8px;margin-top:12px;align-items:center}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="center">Loading…</div></div>
+<script>
+'use strict';
+// Door mode: PIN-unlocked staff check-in for one event. The guest list
+// is cached locally after the first load and check-ins queue in
+// localStorage, so a dead venue connection never stops the line — taps
+// mark people locally and sync in batches whenever the network is back.
+var SLUG=new URLSearchParams(location.search).get('e')||'';
+var app=document.getElementById('app');
+var PIN=null,EVENT='',GUESTS=[];
+var K_CACHE='sb.door.'+SLUG,K_QUEUE='sb.doorq.'+SLUG,K_PIN='sb.doorpin.'+SLUG;
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function lsGet(k){try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+function queue(){return lsGet(K_QUEUE)||[];}
+
+function post(body){
+  return fetch('/api/public/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){return r.json();}).then(function(j){if(!j.ok)throw new Error(j.error||'Request failed');return j;});
+}
+
+// ---- sync loop ---------------------------------------------------
+var syncing=false;
+function flush(){
+  var q=queue();
+  if(!q.length||syncing||!PIN)return renderNet();
+  syncing=true;
+  post({mode:'checkin',slug:SLUG,pin:PIN,ids:q.slice(0,200)}).then(function(){
+    lsSet(K_QUEUE,queue().slice(200));
+    syncing=false;
+    // Rows showing "queued" flip to "in ✓" the moment the sync lands.
+    if(document.getElementById('list'))renderRows();
+    renderNet();
+    if(queue().length)flush();
+  }).catch(function(){syncing=false;renderNet();});
+}
+setInterval(flush,15000);
+window.addEventListener('online',flush);
+function renderNet(){
+  var n=document.getElementById('net');if(!n)return;
+  var q=queue().length;
+  var off=!navigator.onLine||q>0;
+  n.className='net'+(off?' off':'');
+  n.textContent=q?q+' check-in'+(q>1?'s':'')+' queued — they’ll sync as soon as the connection allows.'
+    :'Connection is down — check-ins keep working and will sync when it’s back.';
+  var s=document.getElementById('stat');
+  if(s){var done=GUESTS.filter(function(g){return g.checkedIn;}).length;
+    s.innerHTML='<b>'+done+'</b> / '+GUESTS.length+' in';}
+}
+
+// ---- PIN screen --------------------------------------------------
+function renderPin(msg){
+  app.innerHTML='<div class="head"><div><h1>Door check-in</h1><div class="sub">Staff only — enter the event PIN from the Events tab.</div></div></div>'+
+    '<input id="pin" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit PIN">'+
+    '<button class="go" id="go">Open the list</button><div class="err" id="err">'+esc(msg||'')+'</div>';
+  document.getElementById('go').addEventListener('click',function(){load(document.getElementById('pin').value.trim());});
+}
+
+function load(pin){
+  post({mode:'list',slug:SLUG,pin:pin}).then(function(j){
+    PIN=pin;EVENT=j.event;GUESTS=j.guests;
+    // Re-apply anything still queued locally so a reload can't un-check people.
+    var q=queue();GUESTS.forEach(function(g){if(q.indexOf(g.id)>-1)g.checkedIn=true;});
+    lsSet(K_CACHE,{event:EVENT,guests:GUESTS,ts:Date.now()});lsSet(K_PIN,pin);
+    renderList();flush();
+  }).catch(function(e){
+    // Offline (or server trouble) with a cached copy → keep working.
+    var c=lsGet(K_CACHE),savedPin=lsGet(K_PIN);
+    if(c&&savedPin===pin){PIN=pin;EVENT=c.event;GUESTS=c.guests;renderList();renderNet();}
+    else renderPin(e.message);
+  });
+}
+
+// ---- list --------------------------------------------------------
+function renderList(){
+  app.innerHTML='<div class="head"><div><h1>'+esc(EVENT)+'</h1><div class="sub">Door check-in</div></div>'+
+    '<div class="stat" id="stat"></div></div>'+
+    '<div class="net" id="net"></div>'+
+    '<input id="q" placeholder="Search name or email…" autocomplete="off">'+
+    '<div class="tools"><button class="btn2" id="refresh">↻ Refresh list</button>'+
+    '<span class="sub">Attendees can also self check-in from their ticket link.</span></div>'+
+    '<div id="list"></div>';
+  document.getElementById('q').addEventListener('input',renderRows);
+  document.getElementById('refresh').addEventListener('click',function(){load(PIN);});
+  renderRows();renderNet();
+}
+function renderRows(){
+  var q=(document.getElementById('q').value||'').toLowerCase();
+  var rows=GUESTS.filter(function(g){
+    return !q||String(g.name||'').toLowerCase().indexOf(q)>-1||String(g.email||'').toLowerCase().indexOf(q)>-1;
+  });
+  var pending=queue();
+  document.getElementById('list').innerHTML=rows.slice(0,50).map(function(g){
+    var state=g.checkedIn
+      ?(pending.indexOf(g.id)>-1?'<span class="queued">queued</span>':'<span class="done">in ✓</span>')
+      :'<button class="in" data-id="'+esc(g.id)+'">Check in</button>';
+    return '<div class="row"><div class="who"><b>'+esc(g.name||'(no name)')+'</b><span>'+esc(g.email)+'</span></div>'+
+      '<span class="tt'+(g.ticketType==='vip'?' vip':'')+'">'+esc(g.ticketType)+'</span>'+state+'</div>';
+  }).join('')+(rows.length>50?'<div class="center">'+(rows.length-50)+' more — keep typing to narrow it down</div>':'')
+    +(rows.length?'':'<div class="center">No matches. Walk-ups can scan the RSVP QR — that checks them in too.</div>');
+  var list=document.getElementById('list');
+  list.querySelectorAll('.in').forEach(function(b){
+    b.addEventListener('click',function(){
+      var id=b.getAttribute('data-id');
+      var g=GUESTS.find(function(x){return x.id===id;});
+      if(g)g.checkedIn=true;
+      lsSet(K_CACHE,{event:EVENT,guests:GUESTS,ts:Date.now()});
+      lsSet(K_QUEUE,queue().concat([id]));
+      renderRows();renderNet();flush();
+    });
+  });
+}
+
+// ---- boot --------------------------------------------------------
+if(!SLUG){app.innerHTML='<div class="center">This link is missing its event.</div>';}
+else{
+  var savedPin=lsGet(K_PIN);
+  if(savedPin)load(savedPin);else renderPin();
+}
+</script>
+</body>
+</html>

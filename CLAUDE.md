@@ -10,7 +10,8 @@ If `../CLAUDE.md` (the SB Agency workspace file) exists it applies too. The rule
 5. **Claude does not move real money.** Payouts on the platform run only when a human clicks; PayPal stays sandbox unless Leo sets `PAYPAL_ENV=live`.
 6. **Never bulk-delete or overwrite data** without showing exactly what changes first.
 7. **Email sending:** cap is enforced in code (start 5/day, +8/week, ceiling 40). Never raise it without Leo. Warmup / test emails from the app are fine.
-8. Ask clarifying questions when the request is ambiguous. When reporting back: **what you fixed, what Leo needs to give you** — short, with links. No long explanations.
+8. Ask clarifying questions when the request is ambiguous. When reporting back: **what you fixed, what Leo needs to give you** — short, with links. No long explanations. Anything Leo must do himself is a labeled **NEED** block: a bold one-line label, numbered steps, only the info required — nothing extra.
+9. **Attendee data (Audience module):** individual attendee records never leave the dashboard — sponsors and every public API get aggregates only. Email is identity: all attendee writes go through `normalizeEmail` in `src/lib/audience-core.ts`, guarded by `node scripts/test-audience.mjs`. Consent text is versioned (`ConsentText`); imports never claim consent the person didn't give. Deleting an attendee (the "remove my data" path) always shows what goes before it goes.
 
 ## Ways of working
 - Leo chose: **push straight to `main`**. Both hosts auto-deploy, so after every push **check the build went green** (Vercel dashboard or `vercel` CLI; Railway deployments tab) and re-check the live page.
@@ -34,7 +35,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   **Show Board** (Overview = code lookup + access-request approve/deny queue + view stats +
   who's-opened feed / **In talks** = per-brand engagement cards (code, viewers, opens, timed minutes
   via the board's 60s heartbeat → `BoardVisit.lastSeenAt`, picked shows, visit log) / Requests /
-  Shows) · **Deals** (Board = the old Pipeline / Sponsorships) · Operations (Materials / Team —
+  Shows) · **Deals** (Board = the old Pipeline / Sponsorships) · **Audience** (Events / Attendees —
+  attendee capture, sponsorship module Phase 1) · Operations (Materials / Team —
   the ops@ inbox and contract/invoice UI are removed from the site per Leo; `src/lib/ops.ts`, its
   cron scan and the generateContract/Invoice handlers still exist server-side).
   **Activations** is its own workspace (sidebar + tabs swap in), entered from the left sidebar or the
@@ -69,6 +71,17 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - `src/app/api/google/{start,callback}` — OAuth entry/return. `?drive=1`, `?ops=1` pick the grant.
 - `src/app/api/ops/attachment` — streams a Gmail attachment to a signed-in user.
 - `src/app/api/cron/email` (11:00 UTC: draft, replies, Notion sync, ops scan) · `src/app/api/cron/send` (15:00 UTC).
+- **Audience module (sponsorship Phase 1)** — `prisma`: Event / Attendee / Attendance (the join
+  table — "same person, multiple events" is the product) / ConsentText. `src/lib/audience.ts` =
+  server logic; `src/lib/audience-core.ts` = pure helpers (email normalization, CSV import mapping;
+  tested by `node scripts/test-audience.mjs`). Public, no sign-in: `public/rsvp.html?e=<slug>`
+  (RSVP + ticket + self check-in; ambassador links add `&ref=sboy:<userId>` — refs come from the
+  Sboy Vision roster, no parallel one) and `public/door.html?e=<slug>` (staff check-in behind the
+  event's `staffPin`; caches the list + queues check-ins in localStorage so a dead venue connection
+  doesn't stop the line), served by `/api/public/rsvp` + `/api/public/checkin`. Dashboard: the
+  Audience nav group (Events = CRUD, links, PIN, per-event stats; Attendees = search, CSV import
+  with mandatory preview, merge tool, delete path). Later phases (segments, SponsorUnited matching,
+  activations, sponsor reports) build on these tables — brands go in the existing Brand table.
 - `prisma/schema.prisma` — Brand, Contact, OutreachTarget, EmailMessage, Deal, Activation → ActivationEvent → BudgetLine / EventStaff, OpsMessage, Setting (key/value, holds refresh tokens).
 - `public/materials/` — one-pager PDF, logo, icons (served, referenced by URL in emails).
 
