@@ -137,7 +137,13 @@ const MODEL_FALLBACKS = ['claude-sonnet-5', 'claude-haiku-4-5']
 // Tries DRAFT_MODEL, then each fallback, but only when the failure looks
 // like "that model doesn't exist". A rate limit or a bad key should
 // surface as itself, not be retried against three models in a row.
+// Leo's rule (Sep 2026): this site makes NO paid API calls, ever. The
+// billing-shaped message routes every caller to its template fallback
+// (tryClaude returns null; email.ts isBillingError matches it too).
+const NO_PAID_APIS = true
+
 async function askClaude(prompt: string, maxTokens: number): Promise<{ text: string; model: string }> {
+  if (NO_PAID_APIS) throw new Error('Model calls are turned off — no paid APIs on this site (credit balance guard).')
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   const candidates = [DRAFT_MODEL, ...MODEL_FALLBACKS.filter(m => m !== DRAFT_MODEL)]
 
@@ -222,6 +228,70 @@ function scoreFit(title: string | null, tier: string | null): number {
 function looksLikeDecisionMaker(title: string | null): boolean {
   if (!title) return false
   return /college|campus|field marketing|experiential|sponsorship|partnerships|sports marketing|brand marketing|founder|ceo|cmo/i.test(title)
+}
+
+// ---------------------------------------------------------------
+// LinkedIn draft templates — no model call, no spend, never blocks
+// ---------------------------------------------------------------
+
+// One hook per category so the DM says something specific to the brand.
+const LI_HOOKS: Record<string, string> = {
+  beverage: 'product-in-hand sampling for thousands of students a night',
+  alcohol: 'compliant 21+ sampling right where trial converts',
+  cpg: 'sampling on show nights plus house drops across our Greek chapters',
+  beauty: 'the getting-ready moment before every show, where routines form',
+  betting: 'on-site signups from exactly the demo you are acquiring',
+  fintech: 'students opening their first accounts — the next decade of customers',
+  tech: 'hands-on demos that ride word-of-mouth through Greek networks',
+  software: 'student offers seeded through our campus ambassadors',
+  apps: 'QR moments on the big screen at peak energy',
+  qsr: 'the after-show rush, right when cravings peak',
+  apparel: 'the most photographed nights on campus',
+  wellness: 'show weekends, when students actually reach for recovery and hydration',
+  retail: 'student-exclusive offers pushed through our chapters',
+  transport: 'thousands of students needing a ride home after every show',
+  nightlife: 'co-branded moments inside the show itself',
+  entertainment: 'a captive Gen Z audience at full attention',
+}
+const LI_HOOK_DEFAULT = 'sampling, stage branding and seeded product built around each show'
+
+function templateLinkedInDraft(target: { brand: any; contact: any }, variant: string) {
+  const first = String(target.contact.name || '').trim().split(/\s+/)[0] || 'there'
+  const brand = target.brand.name
+  const hook = LI_HOOKS[target.brand.category ?? ''] ?? LI_HOOK_DEFAULT
+  const connectionNote = (variant === 'question'
+    ? `Hi ${first} — is campus on ${brand}'s map this year? We produce large college concerts across the US (500+ shows a year) and I think there's a real fit. Would love to connect.`
+    : `Hi ${first} — I'm with SB Agency. We produce big fraternity/sorority concerts at 100+ US colleges and build brand sponsorships around them. Would love to connect and share what that could look like for ${brand}.`
+  ).slice(0, 300)
+  const firstMessage =
+    `Thanks for connecting, ${first}! Quick context: SB Agency runs 500+ college shows a year — packed student crowds across 100+ tier-1 markets, with in-house photo and video on every show. For ${brand}, the natural fit is ${hook}.\n\n` +
+    `Happy to send this semester's show list, or grab 15 minutes if that's easier — what works best?`
+  return { connectionNote, firstMessage }
+}
+
+// Every target headed for the Today queue arrives pre-drafted, so a
+// day's outreach is copy-paste from the first row. Free (templates), so
+// safe to run on every load.
+async function ensureTemplateDrafts(targets: any[]) {
+  for (const t of targets) {
+    if (t.drafts && t.drafts.length) continue
+    const created = []
+    for (const variant of ['identity', 'question']) {
+      const made = templateLinkedInDraft(t, variant)
+      created.push(await prisma.draft.create({
+        data: { targetId: t.id, variant, connectionNote: made.connectionNote, firstMessage: made.firstMessage, model: 'template' },
+      }))
+    }
+    t.drafts = created
+    if (t.status === 'queued') {
+      await prisma.target.update({ where: { id: t.id }, data: { status: 'drafted' } })
+      await prisma.targetEvent.create({
+        data: { targetId: t.id, kind: 'drafted', fromStatus: 'queued', toStatus: 'drafted' },
+      })
+      t.status = 'drafted'
+    }
+  }
+  return targets
 }
 
 // How many people we actually pursue per brand. A brand pull can surface
@@ -568,7 +638,7 @@ const handlers: Record<string, Handler> = {
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: room,
     })
-    if (carried.length >= room) return carried
+    if (carried.length >= room) return ensureTemplateDrafts(carried)
 
     // Includes 'drafted': drafting from the All-targets tab sets the
     // status without stamping queuedFor, and those rows used to match
@@ -579,7 +649,7 @@ const handlers: Record<string, Handler> = {
       take: room - carried.length,
       select: { id: true },
     })
-    if (picks.length === 0) return carried
+    if (picks.length === 0) return ensureTemplateDrafts(carried)
 
     await prisma.target.updateMany({
       where: { id: { in: picks.map(p => p.id) } },
@@ -592,7 +662,7 @@ const handlers: Record<string, Handler> = {
       orderBy: { fitScore: 'desc' },
     })
 
-    return [...carried, ...fresh].sort((a, b) => b.fitScore - a.fitScore)
+    return ensureTemplateDrafts([...carried, ...fresh].sort((a, b) => b.fitScore - a.fitScore))
   },
 
   async listTargets({ status, category, search, take = 200, shelved = false }: any) {
@@ -618,7 +688,7 @@ const handlers: Record<string, Handler> = {
     })
   },
 
-  async setTargetStatus({ targetId, status, actor, nextStep, followUpAt, clearFollowUp }: any) {
+  async setTargetStatus({ targetId, status, actor, nextStep, followUpAt, clearFollowUp, clearSent }: any) {
     const before = await prisma.target.findUnique({ where: { id: targetId } })
     if (!before) throw new Error('Target not found')
 
@@ -628,6 +698,9 @@ const handlers: Record<string, Handler> = {
       data: {
         ...(status ? { status } : {}),
         ...(status === 'sent' && !before.sentAt ? { sentAt: now } : {}),
+        // Undo for a mis-clicked "Mark sent": back to the queue with the
+        // send stamp wiped so today's cap and Reached don't count it.
+        ...(clearSent ? { sentAt: null } : {}),
         ...(status === 'replied' && !before.repliedAt ? { repliedAt: now } : {}),
         // Follow-up layer. clearFollowUp wipes it (e.g. when a deal closes);
         // otherwise set whatever was passed.
@@ -717,28 +790,20 @@ const handlers: Record<string, Handler> = {
     })
     if (!target) throw new Error('Target not found')
 
-    if (!process.env.ANTHROPIC_API_KEY) {
-      throw new Error('ANTHROPIC_API_KEY is not set in Vercel — drafting is off.')
-    }
-
-    const voice = await prisma.voice.findFirst({ where: { active: true } })
-
+    // Template-based on purpose: drafting never costs money and never
+    // blocks on an API (Leo's no-paid-APIs rule). Redraft replaces the
+    // old pair so the row doesn't grow a new panel per click.
+    await prisma.draft.deleteMany({ where: { targetId } })
     const drafts = []
     for (const variant of variants) {
-      const res = await askClaude(buildPrompt(target, variant, voice), 1000)
-      const parsed = parseDraft(res.text)
-      if (!parsed) continue
-
+      const made = templateLinkedInDraft(target, variant)
       drafts.push(await prisma.draft.create({
         data: {
           targetId,
           variant,
-          connectionNote: parsed.connectionNote,
-          firstMessage: parsed.firstMessage,
-          voice: voice?.name ?? null,
-          // Record which model actually answered, not which one we asked
-          // for — they differ when a fallback kicks in.
-          model: res.model,
+          connectionNote: made.connectionNote,
+          firstMessage: made.firstMessage,
+          model: 'template',
         },
       }))
     }
@@ -1370,7 +1435,7 @@ const handlers: Record<string, Handler> = {
   async enrichBrand({ brandId }: any) {
     const brand = await prisma.brand.findUnique({ where: { id: brandId } })
     if (!brand) throw new Error('Brand not found')
-    if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in Vercel')
+    if (NO_PAID_APIS) throw new Error('Auto-fill is turned off — this site makes no paid API calls. Fill the fields by hand instead.')
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
     const prompt =
       `Research the consumer brand "${brand.name}"${brand.website ? ` (website: ${brand.website})` : ''}. ` +
@@ -2642,7 +2707,7 @@ const handlers: Record<string, Handler> = {
   async discoverBrands({ query }: any) {
     const q = String(query ?? '').trim()
     if (q.length < 3) throw new Error('Give me a real search — e.g. "venture-backed CPG brands"')
-    if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in Vercel — discovery is off.')
+    if (NO_PAID_APIS) throw new Error('Discovery search is turned off — this site makes no paid API calls. Add brands by hand or via SponsorUnited.')
 
     const CATS = 'beverage, alcohol, cpg, apparel, tech, fintech, software, beauty, apps, betting, nightlife, wellness, qsr, home, entertainment, retail, transport, conglomerate, nicotine'
     const prompt = [

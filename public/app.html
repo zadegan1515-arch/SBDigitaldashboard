@@ -534,8 +534,8 @@
             <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">
               <b style="color:var(--accent)">1 · Connect first</b><br>
               On LinkedIn you can only message people who accepted your invite — so invites are the engine.
-              Hit <b>1 · Invite note</b> to copy the short intro, open <b>↗ LinkedIn</b>, click
-              <b>Connect → Add a note</b>, paste, send. About 10 a day keeps the account safe.</div>
+              Every row arrives pre-drafted: hit <b>1 · Copy note</b>, open <b>2 · Profile ↗</b>, click
+              <b>Connect → Add a note</b>, paste, send, then <b>3 · Mark sent</b>. ~10 a day keeps the account safe.</div>
             <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">
               <b style="color:var(--accent)">2 · When they accept</b><br>
               Press <b>They accepted</b> on their row — they jump to a “send the DM” list at the top of
@@ -2572,6 +2572,7 @@ function targetRow(t) {
   var d = (t.drafts || [])[0];
   var li = t.contact.linkedinUrl;
   var open = d && OPEN_DRAFTS[t.id];
+  var isPre = t.status === 'queued' || t.status === 'drafted';
   return '<div class="target" data-id="' + t.id + '">' +
     '<div class="t-main">' +
       '<div class="t-line"><span class="t-brand">' + esc(t.brand.name) + '</span>' +
@@ -2585,25 +2586,25 @@ function targetRow(t) {
         (t.followUpAt ? ' (' + shortDate(t.followUpAt) + ')' : '') + '</span>' : '') +
       '</div>' +
     '</div>' +
-    // Buttons read left to right as the actual work order, and the
-    // current step is the highlighted one: copy the note → open their
-    // profile → mark sent → they accepted → copy the DM → replied.
+    // Buttons show only the steps that make sense for this person's
+    // stage, numbered without gaps, current step highlighted.
+    // Before the invite: 1 copy note · 2 profile · 3 mark sent.
+    // Invite out: They accepted ✓ (or undo). Accepted: Copy DM.
     '<div class="t-actions">' +
-      (d ? '<button class="' + (t.status === 'queued' || t.status === 'drafted' ? 'btn-draft' : 'btn-ghost') +
-           '" data-act="copynote" title="Copy the short intro, then on their profile: Connect → Add a note → paste">1 · Copy note</button>' : '') +
-      (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">2 · Profile ↗</a>' : '') +
-      (t.status === 'queued' || t.status === 'drafted'
-        ? '<button class="btn-ghost" data-act="sent" title="Log that the invite went out">3 · Mark sent</button>' : '') +
+      (isPre && d ? '<button class="btn-draft" data-act="copynote" title="Copy the short intro, then on their profile: Connect → Add a note → paste">1 · Copy note</button>' : '') +
+      (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">' + (isPre ? '2 · Profile ↗' : 'Profile ↗') + '</a>' : '') +
+      (isPre ? '<button class="btn-ghost" data-act="sent" title="Log that the invite went out">3 · Mark sent</button>' : '') +
       (t.status === 'sent'
-        ? '<button class="btn-draft" data-act="accepted" title="They accepted your invite — next you DM them">4 · They accepted</button>' : '') +
-      (d ? '<button class="' + (t.status === 'accepted' ? 'btn-draft' : 'btn-ghost') +
-           '" data-act="copymsg" title="Copy the message to DM them after they accept">5 · Copy DM</button>' : '') +
+        ? '<button class="btn-draft" data-act="accepted" title="They accepted your invite — next you DM them">They accepted ✓</button>' +
+          '<button class="btn-ghost" data-act="unsend" title="Hit Mark sent by mistake? Puts them back in the queue and uncounts the send">↩ Not sent</button>' : '') +
+      (t.status === 'accepted' && d
+        ? '<button class="btn-draft" data-act="copymsg" title="Copy the DM and paste it into your LinkedIn chat with them">Copy DM</button>' : '') +
       (t.status === 'sent' || t.status === 'accepted'
         ? '<button class="btn-ghost" data-act="replied" title="They wrote back">Replied</button>' : '') +
       (t.status === 'replied' ? '<button class="btn-ghost" data-act="nextstep">Next step</button>' : '') +
       (t.status === 'replied' ? '<button class="btn-ghost" data-act="won">Won</button>' : '') +
       (d ? '<button class="btn-ghost" data-act="toggle">' + (open ? 'Close draft' : 'Edit draft') + '</button>' : '') +
-      '<button class="btn-ghost" data-act="draft">' + (d ? 'Redraft' : 'Draft') + '</button>' +
+      (isPre ? '<button class="btn-ghost" data-act="draft">' + (d ? 'Redraft' : 'Draft') + '</button>' : '') +
       '<button class="btn-ghost" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
       (t.status !== 'declined' && t.status !== 'dead' && t.status !== 'converted'
         ? '<button class="btn-ghost danger" data-act="pass">Pass</button>' : '') +
@@ -2684,15 +2685,21 @@ function loadOutreach() {
   renderStatusFilters();
 
   // Today also surfaces everyone who accepted an invite and is still
-  // waiting on their DM — those come first, before any new invites.
+  // waiting on their DM (first), and everyone marked sent today (last,
+  // so a mis-click is one “↩ Not sent” away instead of vanishing).
   var call = mode === 'today'
-    ? Promise.all([api('listTargets', { status: 'accepted' }), api('getTodayQueue')])
-        .then(function (r) { return { accepted: r[0] || [], list: r[1] || [] }; })
-    : api('listTargets', { status: statusFilter }).then(function (l) { return { accepted: [], list: l || [] }; });
+    ? Promise.all([api('listTargets', { status: 'accepted' }), api('getTodayQueue'), api('listTargets', { status: 'sent' })])
+        .then(function (r) {
+          var midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+          var sentToday = (r[2] || []).filter(function (t) { return t.sentAt && new Date(t.sentAt) >= midnight; });
+          return { accepted: r[0] || [], list: r[1] || [], sentToday: sentToday };
+        })
+    : api('listTargets', { status: statusFilter }).then(function (l) { return { accepted: [], list: l || [], sentToday: [] }; });
 
   return call.then(function (r) {
     var list = r.list;
     r.accepted.forEach(function (t) { TARGET_CACHE[t.id] = t; });
+    r.sentToday.forEach(function (t) { TARGET_CACHE[t.id] = t; });
     (list || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
     document.getElementById('queue-head').innerHTML = mode === 'today'
       ? 'To send today <span class="n">' + list.length + '</span>'
@@ -2703,11 +2710,15 @@ function loadOutreach() {
     var acceptedBlock = r.accepted.length
       ? '<div class="count-head" style="color:var(--good)">They accepted — send the DM <span class="n">' + r.accepted.length + '</span></div>' +
         r.accepted.map(targetRow).join('') +
-        '<div class="count-head" style="margin-top:20px">New invites</div>'
+        (list.length ? '<div class="count-head" style="margin-top:20px">New invites</div>' : '')
+      : '';
+    var sentBlock = r.sentToday.length
+      ? '<div class="count-head" style="margin-top:20px">Sent today — waiting on accepts <span class="n">' + r.sentToday.length + '</span></div>' +
+        r.sentToday.map(targetRow).join('')
       : '';
 
-    box.innerHTML = list.length || r.accepted.length
-      ? acceptedBlock + list.map(targetRow).join('')
+    box.innerHTML = list.length || r.accepted.length || r.sentToday.length
+      ? acceptedBlock + list.map(targetRow).join('') + sentBlock
       : '<div class="panel"><div class="empty"><h3>Nothing here</h3>' +
         '<p>' + (mode === 'all'
           ? (statusFilter !== 'all'
@@ -5879,7 +5890,13 @@ document.getElementById('targets').addEventListener('click', function (e) {
 
   if (act === 'accepted') {
     api('setTargetStatus', { targetId: id, status: 'accepted', actor: ME.owner || null })
-      .then(function () { toast('Accepted 🎉 — now hit “5 · Copy DM” and message them'); return loadOutreach(); })
+      .then(function () { toast('Accepted 🎉 — now hit “Copy DM” and message them'); return loadOutreach(); })
+      .catch(function (err) { toast(err.message); });
+  }
+
+  if (act === 'unsend') {
+    api('setTargetStatus', { targetId: id, status: 'drafted', clearSent: true, actor: ME.owner || null })
+      .then(function () { toast('Back in the queue — that send is uncounted'); return loadOutreach(); })
       .catch(function (err) { toast(err.message); });
   }
 
