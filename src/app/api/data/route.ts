@@ -609,6 +609,12 @@ const handlers: Record<string, Handler> = {
   //
   // The budget is DAILY_SEND_LIMIT actual sends per day, counted from
   // sentAt — not "ten rows stamped once". Two earlier bugs lived here:
+  // Queue size for the LinkedIn page subtitle — same number the
+  // dashboard's "Queued" stat reports (active targets only).
+  async countQueued() {
+    return { queued: await prisma.target.count({ where: { shelved: false, status: 'queued' } }) }
+  },
+
   // marking all ten sent immediately handed out ten more (so the limit
   // capped nothing), and anything stamped but not sent yesterday matched
   // neither branch and vanished from the queue forever.
@@ -967,8 +973,10 @@ const handlers: Record<string, Handler> = {
       },
       include: {
         _count: { select: { contacts: true, targets: true } },
+        // Decision-makers first, but never pretend a brand with contacts
+        // has none — that read as "No contacts yet" next to "5 contacts".
         contacts: {
-          where: { isDecisionMaker: true },
+          orderBy: { isDecisionMaker: 'desc' },
           select: { name: true, title: true, linkedinUrl: true },
           take: 3,
         },
@@ -2404,7 +2412,7 @@ const handlers: Record<string, Handler> = {
 
     type Person = {
       id: string; name: string; title: string | null; linkedinUrl: string | null
-      linkedin: { status: string; sentAt: string | null; repliedAt: string | null } | null
+      linkedin: { targetId: string; status: string; sentAt: string | null; repliedAt: string | null } | null
       email: { count: number; lastAt: string | null; opened: boolean } | null
       lastAt: string | null
     }
@@ -2416,6 +2424,7 @@ const handlers: Record<string, Handler> = {
       const g = touch(t.brand)
       const p = (g.people[t.contact.id] ??= { id: t.contact.id, name: t.contact.name, title: t.contact.title, linkedinUrl: t.contact.linkedinUrl, linkedin: null, email: null, lastAt: null })
       p.linkedin = {
+        targetId: t.id,
         status: t.status,
         sentAt: t.sentAt ? t.sentAt.toISOString() : null,
         repliedAt: t.repliedAt ? t.repliedAt.toISOString() : null,
