@@ -532,11 +532,11 @@
     <!-- OUTREACH -->
     <section class="view page" id="outreach">
       <div class="eyebrow">Outreach</div>
-      <h1>Sponsor outreach</h1>
+      <h1>LinkedIn outreach</h1>
+      <div class="sub">Draft a connection note + first message, copy, send on LinkedIn, then Mark sent. Email has its own tab.</div>
       <div class="chips" style="margin-top:22px;align-items:center">
-        <button class="chip" data-mode="today">Today <span class="n" id="c-today">0</span></button>
+        <button class="chip active" data-mode="today">Today <span class="n" id="c-today">0</span></button>
         <button class="chip" data-mode="all">All targets <span class="n" id="c-all">0</span></button>
-        <button class="chip active" data-mode="email">Email <span class="n" id="c-email"></span></button>
         <button class="btn-ghost" id="btn-retrim" style="margin-left:auto">Cap to top 3 / brand</button>
       </div>
       <div style="position:relative;margin-top:12px;max-width:420px">
@@ -548,10 +548,17 @@
       <div id="targets"></div>
     </section>
 
-    <!-- LINKEDIN WORK VIEW -->
+    <!-- EMAIL OUTREACH -->
+    <section class="view page" id="email-out">
+      <div class="eyebrow">Outreach</div>
+      <h1>Email outreach</h1>
+      <div id="email-box" style="margin-top:18px"></div>
+    </section>
+
+    <!-- LINKEDIN PEOPLE DIRECTORY -->
     <section class="view page" id="linkedin">
       <div class="eyebrow">Outreach</div>
-      <h1>LinkedIn</h1>
+      <h1>People on LinkedIn</h1>
       <div class="sub" id="li-sub">Loading…</div>
       <div class="chips" style="margin-top:18px;align-items:center">
         <button class="chip active" data-lif="all">All brands</button>
@@ -879,14 +886,14 @@ function refreshAfterSponsorChange() {
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
   brands: [['brands', 'All brands'], ['discover', 'Discover'], ['needs', 'Needs contacts']],
-  outreach: [['outreach', 'Queue'], ['linkedin', 'LinkedIn'], ['results', 'Results']],
+  outreach: [['outreach', 'LinkedIn'], ['email-out', 'Email'], ['linkedin', 'People'], ['results', 'Results']],
   board: [['board', 'Overview'], ['talks', 'In talks'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
   operations: [['materials', 'Materials'], ['team', 'Team']],
 };
 var GROUP_OF = {
   brands: 'brands', brand: 'brands', discover: 'brands', needs: 'brands',
-  outreach: 'outreach', linkedin: 'outreach', results: 'outreach',
+  outreach: 'outreach', 'email-out': 'outreach', linkedin: 'outreach', results: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
   pipeline: 'pipeline', sponsorships: 'pipeline',
   materials: 'operations', team: 'operations',
@@ -2388,7 +2395,7 @@ function guessFor(name) {
 
 // --- outreach --------------------------------------------------
 
-var mode = 'email', statusFilter = 'all';
+var mode = 'today', statusFilter = 'all';
 
 // Draft panels the user has explicitly closed. Panels open on generate
 // and stay open on reload unless closed — closing is remembered for the
@@ -2493,15 +2500,12 @@ function renderStatusFilters() {
   }).join('');
 }
 
+// The LinkedIn queue: connection-note + first-message drafts, sent by
+// hand on LinkedIn. Email lives in its own tab (loadEmailOutreach).
 function loadOutreach() {
   showView('outreach');
   var box = document.getElementById('targets');
   box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
-  if (mode === 'email') {
-    document.getElementById('status-filters').style.display = 'none';
-    document.getElementById('queue-head').innerHTML = 'Email outreach';
-    return renderEmailMode(box);
-  }
   renderStatusFilters();
 
   var call = mode === 'today'
@@ -2688,6 +2692,14 @@ function lintDraft(subject, body) {
   return warns;
 }
 
+// The Email tab — its own view, fully separate from the LinkedIn queue.
+function loadEmailOutreach() {
+  showView('email-out');
+  var box = document.getElementById('email-box');
+  box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  return renderEmailMode(box);
+}
+
 function renderEmailMode(box) {
   return api('getEmailStatus').then(function (st) {
     if (!st.configured) {
@@ -2705,7 +2717,6 @@ function renderEmailMode(box) {
       return;
     }
     return api('listEmailQueue').then(function (q) {
-      document.getElementById('c-email').textContent = q.drafts.length || '';
       var head =
         '<div class="panel panel-pad" style="margin-bottom:12px">' +
           '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
@@ -2930,7 +2941,7 @@ function renderEmailMode(box) {
           api('draftEmails', { limit: 4 }).then(function (r) {
             total += r.drafted;
             if (!r.done && rounds < 10 && r.drafted > 0) step(rounds + 1);
-            else { toast(total + ' email' + (total === 1 ? '' : 's') + ' drafted'); loadOutreach(); }
+            else { toast(total + ' email' + (total === 1 ? '' : 's') + ' drafted'); loadEmailOutreach(); }
           }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Draft today\'s batch'; });
         }
         step(0);
@@ -2939,7 +2950,7 @@ function renderEmailMode(box) {
         var btn = this; btn.disabled = true; btn.textContent = 'Checking…';
         api('checkEmailReplies').then(function (r) {
           toast(r.error ? 'Check hit a snag: ' + r.error : (r.replies + ' new repl' + (r.replies === 1 ? 'y' : 'ies')));
-          loadOutreach();
+          loadEmailOutreach();
         }).catch(function (e) { toast(e.message); btn.disabled = false; });
       };
       box.querySelector('#em-send').onclick = function () {
@@ -2948,7 +2959,7 @@ function renderEmailMode(box) {
         api('sendApprovedEmails').then(function (r) {
           toast(r.sent + ' sent' + (r.failed ? ', ' + r.failed + ' failed' : ''));
           if (r.errors && r.errors.length) window.alert('Some failed:\n' + r.errors.join('\n'));
-          loadOutreach();
+          loadEmailOutreach();
         }).catch(function (e) { toast(e.message); btn.disabled = false; });
       };
       box.querySelector('#em-pause').onclick = function () {
@@ -2956,14 +2967,14 @@ function renderEmailMode(box) {
         if (st.paused && !window.confirm('Turn sending ON? Approved and drafted emails can go out from ' + (st.address || 'the connected account') + '.')) return;
         b.disabled = true;
         api('setSendingPaused', { paused: !st.paused })
-          .then(function (r) { toast(r.paused ? 'Sending paused' : 'Sending is live'); loadOutreach(); })
+          .then(function (r) { toast(r.paused ? 'Sending paused' : 'Sending is live'); loadEmailOutreach(); })
           .catch(function (e) { toast(e.message); b.disabled = false; });
       };
       var gd = box.querySelector('#em-gdisc');
       if (gd) gd.onclick = function () {
         if (!window.confirm('Disconnect the Google account? Sending falls back to the app-password mailbox.')) return;
         gd.disabled = true;
-        api('disconnectGoogle').then(function () { toast('Google disconnected'); loadOutreach(); })
+        api('disconnectGoogle').then(function () { toast('Google disconnected'); loadEmailOutreach(); })
           .catch(function (e) { toast(e.message); gd.disabled = false; });
       };
 
@@ -2971,7 +2982,7 @@ function renderEmailMode(box) {
         var btn = this; btn.disabled = true;
         api('approveAllDrafts').then(function (r) {
           toast(r.approved + ' email' + (r.approved === 1 ? '' : 's') + ' scheduled — they\'ll go out the next Tue–Thu morning ~9am ET');
-          loadOutreach();
+          loadEmailOutreach();
         }).catch(function (e) { toast(e.message); btn.disabled = false; });
       };
 
@@ -2981,7 +2992,7 @@ function renderEmailMode(box) {
           var card = b.closest('[data-exh]');
           b.disabled = true; b.textContent = 'Setting up…';
           api('emailDifferentContact', { targetId: card.getAttribute('data-exh'), contactId: b.getAttribute('data-contact') })
-            .then(function (r) { toast('New intro drafted to ' + r.to + ' — it\'s in your approval queue'); loadOutreach(); })
+            .then(function (r) { toast('New intro drafted to ' + r.to + ' — it\'s in your approval queue'); loadEmailOutreach(); })
             .catch(function (e) { toast(e.message); b.disabled = false; });
         };
       });
@@ -2990,7 +3001,7 @@ function renderEmailMode(box) {
           var card = b.closest('[data-exh]');
           b.disabled = true; b.innerHTML = '<span class="spinner"></span> Drafting…';
           api('draftFinalNudge', { targetId: card.getAttribute('data-exh') })
-            .then(function () { toast('Final follow-up drafted — review it above'); loadOutreach(); })
+            .then(function () { toast('Final follow-up drafted — review it above'); loadEmailOutreach(); })
             .catch(function (e) { toast(e.message); b.disabled = false; b.textContent = 'One more follow-up'; });
         };
       });
@@ -2998,7 +3009,7 @@ function renderEmailMode(box) {
         b.onclick = function () {
           var card = b.closest('[data-exh]');
           api('setTargetStatus', { targetId: card.getAttribute('data-exh'), status: 'dead' })
-            .then(function () { toast('Marked cold'); loadOutreach(); })
+            .then(function () { toast('Marked cold'); loadEmailOutreach(); })
             .catch(function (e) { toast(e.message); });
         };
       });
@@ -3030,7 +3041,7 @@ function renderEmailMode(box) {
                 to: sb.getAttribute('data-to'),
                 subject: panel.querySelector('[data-rr="subject"]').value,
                 body: panel.querySelector('[data-rr="body"]').value
-              }).then(function (r2) { toast('Response sent to ' + r2.to); loadOutreach(); })
+              }).then(function (r2) { toast('Response sent to ' + r2.to); loadEmailOutreach(); })
                 .catch(function (e) { toast(e.message); sb.disabled = false; sb.textContent = 'Send response'; });
             };
           }).catch(function (e) { toast(e.message); b.disabled = false; b.textContent = 'Draft response'; });
@@ -3051,7 +3062,7 @@ function renderEmailMode(box) {
       box.querySelectorAll('[data-emact="del"]').forEach(function (b) {
         b.onclick = function () {
           api('deleteEmailDraft', { id: b.closest('[data-em]').getAttribute('data-em') })
-            .then(function () { toast('Skipped'); loadOutreach(); })
+            .then(function () { toast('Skipped'); loadEmailOutreach(); })
             .catch(function (e) { toast(e.message); });
         };
       });
@@ -3075,7 +3086,7 @@ function renderEmailMode(box) {
             return api('sendEmailDraft', { id: id });
           }).then(function (r) {
             toast('Sent to ' + r.to + (r.cc && r.cc.length ? ' (+' + r.cc.length + ' CC)' : ''));
-            loadOutreach();
+            loadEmailOutreach();
           }).catch(function (e) {
             toast(e.message); b.disabled = false; b.textContent = 'Send';
           });
@@ -3107,7 +3118,7 @@ function renderEmailMode(box) {
         b.onclick = function () {
           b.disabled = true; b.innerHTML = '<span class="spinner"></span> Thinking…';
           api('suggestForDraft', { id: b.closest('[data-em]').getAttribute('data-em') })
-            .then(function () { loadOutreach(); })
+            .then(function () { loadEmailOutreach(); })
             .catch(function (e) { toast(e.message); b.disabled = false; b.textContent = 'Suggest angle'; });
         };
       });
@@ -3124,8 +3135,8 @@ function renderEmailMode(box) {
           var id = sel.closest('[data-em]').getAttribute('data-em');
           var opt = sel.options[sel.selectedIndex];
           api('setDraftRecipients', { id: id, toEmail: sel.value, toName: opt.getAttribute('data-name') || '' })
-            .then(function () { toast('Recipient updated'); loadOutreach(); })
-            .catch(function (e) { toast(e.message); loadOutreach(); });
+            .then(function () { toast('Recipient updated'); loadEmailOutreach(); })
+            .catch(function (e) { toast(e.message); loadEmailOutreach(); });
         };
       });
       box.querySelectorAll('[data-emrec="ccadd"]').forEach(function (sel) {
@@ -3142,8 +3153,8 @@ function renderEmailMode(box) {
           try { cc = d && d.ccEmails ? JSON.parse(d.ccEmails) : []; } catch (e) {}
           cc.push(addr.trim());
           api('setDraftRecipients', { id: id, cc: cc })
-            .then(function () { toast('Added to CC'); loadOutreach(); })
-            .catch(function (e) { toast(e.message); loadOutreach(); });
+            .then(function () { toast('Added to CC'); loadEmailOutreach(); })
+            .catch(function (e) { toast(e.message); loadEmailOutreach(); });
         };
       });
       box.querySelectorAll('[data-emact="ccdel"]').forEach(function (a) {
@@ -3156,8 +3167,8 @@ function renderEmailMode(box) {
           try { cc = d && d.ccEmails ? JSON.parse(d.ccEmails) : []; } catch (e) {}
           cc = cc.filter(function (x) { return x.toLowerCase() !== gone; });
           api('setDraftRecipients', { id: id, cc: cc })
-            .then(function () { toast('Removed from CC'); loadOutreach(); })
-            .catch(function (e) { toast(e.message); loadOutreach(); });
+            .then(function () { toast('Removed from CC'); loadEmailOutreach(); })
+            .catch(function (e) { toast(e.message); loadEmailOutreach(); });
         };
       });
 
@@ -5131,6 +5142,7 @@ function gotoView(id) {
   if (id === 'dashboard') loadDashboard();
   if (id === 'brands') loadBrands('all');
   if (id === 'outreach') loadOutreach();
+  if (id === 'email-out') loadEmailOutreach();
   if (id === 'linkedin') loadLinkedin();
   if (id === 'shows') loadShows();
   if (id === 'sponsorships') loadSponsorships();
@@ -5155,7 +5167,7 @@ function gotoView(id) {
   history.replaceState({}, '', location.pathname);
   if (g === 'connected') {
     toast('Google connected — sending as ' + (p.get('as') || 'the connected account'));
-    setTimeout(function () { gotoView('outreach'); }, 300);
+    setTimeout(function () { gotoView('email-out'); }, 300);
   } else {
     toast('Google connect failed: ' + g);
   }
