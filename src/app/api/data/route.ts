@@ -1297,47 +1297,6 @@ const handlers: Record<string, Handler> = {
     return { merged: true, summary }
   },
 
-  // Brands whose contacts share a company email domain are almost
-  // certainly the same company entered twice (e.g. "Lucy" and
-  // "Lucy Goods Inc", both @lucy.co). Free-mail domains prove nothing
-  // and are skipped. The brand with the most attached data is suggested
-  // as the keeper; nothing merges without a confirmed mergeBrands call.
-  async findDuplicateBrands() {
-    const FREE = new Set(['gmail.com', 'googlemail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'live.com', 'icloud.com', 'me.com', 'aol.com', 'proton.me', 'protonmail.com'])
-    const brands = await prisma.brand.findMany({
-      include: {
-        contacts: { select: { email: true } },
-        _count: { select: { contacts: true, shows: true, deals: true, targets: true } },
-      },
-    })
-    const byDomain: Record<string, typeof brands> = {}
-    for (const b of brands) {
-      const domains = new Set<string>()
-      for (const c of b.contacts) {
-        const d = (c.email || '').split('@')[1]?.toLowerCase()
-        if (d && !FREE.has(d)) domains.add(d)
-      }
-      for (const d of domains) (byDomain[d] ??= []).push(b)
-    }
-    const score = (b: (typeof brands)[number]) =>
-      b._count.contacts * 10 + b._count.shows * 100 + b._count.deals * 100 + b._count.targets
-    const groups = []
-    const seen = new Set<string>()
-    for (const [domain, list] of Object.entries(byDomain)) {
-      if (list.length < 2) continue
-      // A brand pair already suggested under one domain isn't repeated.
-      const key = list.map(b => b.id).sort().join('|')
-      if (seen.has(key)) continue
-      seen.add(key)
-      const sorted = [...list].sort((a, b) => score(b) - score(a) || a.createdAt.getTime() - b.createdAt.getTime())
-      groups.push({
-        domain,
-        keep: { id: sorted[0].id, name: sorted[0].name, contacts: sorted[0]._count.contacts },
-        merge: sorted.slice(1).map(b => ({ id: b.id, name: b.name, contacts: b._count.contacts })),
-      })
-    }
-    return { groups }
-  },
 
   // -------- brand detail --------
 

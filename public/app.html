@@ -477,7 +477,6 @@
         <button class="btn-solid" id="bq-add" hidden>Add + find on SponsorUnited</button>
       </div>
       <div class="chips" id="brand-cat-chips" style="margin-top:12px"></div>
-      <div id="brand-dupes"></div>
       <div id="brands-list"></div>
     </section>
 
@@ -1052,7 +1051,6 @@ function loadBrands(category) {
   var box = document.getElementById('brands-list');
   box.innerHTML = '';
 
-  renderBrandDupes();
   return api('listBrands', { category: category }).then(function (list) {
     var withContacts = list.filter(function (b) { return b._count.contacts > 0; }).length;
     document.getElementById('brands-sub').textContent =
@@ -1088,39 +1086,10 @@ function loadBrands(category) {
   });
 }
 
-// --- duplicate brands ------------------------------------------
-// Brands whose contacts share a company email domain are flagged at
-// the top of the Brands tab. Merging always shows what moves first.
-
-function renderBrandDupes() {
-  var slot = document.getElementById('brand-dupes');
-  slot.innerHTML = '';
-  api('findDuplicateBrands').then(function (d) {
-    if (!d.groups || !d.groups.length) return;
-    slot.innerHTML = '<div class="panel panel-pad" style="margin-bottom:14px;border-color:rgba(232,182,76,.45)">' +
-      '<div style="font-size:13px;font-weight:600;margin-bottom:4px">Possible duplicates — contacts share an email domain</div>' +
-      d.groups.map(function (g) {
-        return g.merge.map(function (m) {
-          return '<div style="display:flex;gap:10px;align-items:center;padding:7px 0;font-size:13px;flex-wrap:wrap">' +
-            '<span style="color:var(--ink-3)">@' + esc(g.domain) + '</span>' +
-            '<b>' + esc(m.name) + '</b><span style="color:var(--ink-3)">folds into</span><b>' + esc(g.keep.name) + '</b>' +
-            '<span style="color:var(--ink-3)">' + m.contacts + ' + ' + g.keep.contacts + ' contacts</span>' +
-            '<button class="btn-ghost" data-mfrom="' + esc(m.id) + '" data-mto="' + esc(g.keep.id) + '" style="margin-left:auto">Merge</button>' +
-          '</div>';
-        }).join('');
-      }).join('') +
-    '</div>';
-  }).catch(function () {});
-}
-
-document.getElementById('brand-dupes').addEventListener('click', function (e) {
-  var btn = e.target.closest('[data-mfrom]');
-  if (!btn) return;
-  btn.disabled = true;
-  confirmMergeBrands(btn.getAttribute('data-mfrom'), btn.getAttribute('data-mto'), function () {
-    loadBrands(lastCategory);
-  }).then(function () { btn.disabled = false; });
-});
+// --- merging duplicate brands ----------------------------------
+// Manual only, from the "Merge duplicate…" button on a brand page.
+// No auto-detection: brands under one parent company legitimately
+// share an email domain and stay separate (Leo's call).
 
 // Two-step like confirmDeleteBrand: preview exactly what moves, merge
 // only on a real confirmation. onDone runs after a successful merge.
