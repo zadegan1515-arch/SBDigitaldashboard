@@ -80,8 +80,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   event's `staffPin`; caches the list + queues check-ins in localStorage so a dead venue connection
   doesn't stop the line), served by `/api/public/rsvp` + `/api/public/checkin`. Dashboard: the
   Audience nav group (Events = CRUD, links, PIN, per-event stats; Attendees = search, CSV import
-  with mandatory preview, merge tool, delete path). Later phases (segments, SponsorUnited matching,
-  activations, sponsor reports) build on these tables — brands go in the existing Brand table.
+  with mandatory preview, merge tool, delete path; Segments = Phase 2, `segmentsOverview` derives
+  repeat/VIP/first-timer/genre/campus segments on demand — nothing stored — plus the portfolio
+  rollup and a print-ready one-pager per segment, aggregates only). Later phases (SponsorUnited
+  matching, activations, sponsor reports) build on these tables — brands go in the existing Brand table.
 - `prisma/schema.prisma` — Brand, Contact, OutreachTarget, EmailMessage, Deal, Activation → ActivationEvent → BudgetLine / EventStaff, OpsMessage, Setting (key/value, holds refresh tokens).
 - `public/materials/` — one-pager PDF, logo, icons (served, referenced by URL in emails).
 

@@ -710,6 +710,17 @@
       <div id="att-list" style="margin-top:6px"></div>
     </section>
 
+    <!-- AUDIENCE: SEGMENTS (derived, recomputed on demand — Phase 2) -->
+    <section class="view page" id="segments">
+      <div class="eyebrow">Audience</div>
+      <h1>Segments</h1>
+      <div class="sub" id="seg-sub">Derived from the attendance table, recomputed on demand — never hand-entered. Export any profile as the one-pager that goes in front of a brand (aggregates only).</div>
+      <div class="kpi-row" id="seg-kpis"></div>
+      <div id="seg-rollups"></div>
+      <div class="section-head">Segments <span class="n" id="seg-n"></span></div>
+      <div id="seg-list"></div>
+    </section>
+
     <!-- ACTIVATIONS (own workspace: sidebar + section tabs swap in) -->
     <section class="view page" id="activations">
       <div id="act-body"></div>
@@ -949,7 +960,7 @@ var SUBTABS = {
   outreach: [['outreach', 'LinkedIn'], ['email-out', 'Email'], ['reached', 'Reached'], ['linkedin', 'People'], ['results', 'Results']],
   board: [['board', 'Overview'], ['talks', 'In talks'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
-  audience: [['audience', 'Events'], ['attendees', 'Attendees']],
+  audience: [['audience', 'Events'], ['attendees', 'Attendees'], ['segments', 'Segments']],
   operations: [['materials', 'Materials'], ['team', 'Team']],
 };
 var GROUP_OF = {
@@ -957,7 +968,7 @@ var GROUP_OF = {
   outreach: 'outreach', 'email-out': 'outreach', reached: 'outreach', linkedin: 'outreach', results: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
   pipeline: 'pipeline', sponsorships: 'pipeline',
-  audience: 'audience', attendees: 'audience',
+  audience: 'audience', attendees: 'audience', segments: 'audience',
   materials: 'operations', team: 'operations',
 };
 
@@ -5580,6 +5591,7 @@ function gotoView(id) {
   if (id === 'pipeline') loadPipeline();
   if (id === 'audience') loadAudience();
   if (id === 'attendees') loadAttendees();
+  if (id === 'segments') loadSegments();
   if (id === 'board') loadBoard();
   if (id === 'requests') loadRequests();
   if (id === 'activations') loadActivations();
@@ -6535,6 +6547,103 @@ function runImport(dry) {
       loadAttendees();
     }
   }).catch(function (e) { out.innerHTML = ''; toast(e.message); });
+}
+
+// --- segments (derived on demand — Phase 2) --------------------
+
+var SEG_DATA = null;
+
+function loadSegments() {
+  showView('segments');
+  return api('segmentsOverview').then(function (d) {
+    SEG_DATA = d;
+    var p = d.portfolio;
+    document.getElementById('seg-kpis').innerHTML = [
+      ['Unique attendees', p.uniqueAttendees, 'deduped on email'],
+      ['Check-ins', p.totalCheckins, p.totalRsvps + ' RSVPs across ' + p.events + ' events'],
+      ['Repeat share', p.repeatShare + '%', 'came back for a 2nd show'],
+      ['Ticket revenue', money(p.ticketRevenueCents), 'its own line — never mixed in']
+    ].map(function (k) {
+      return '<div class="kpi"><div class="kpi-label">' + k[0] + '</div><div class="kpi-value">' + k[1] + '</div>' +
+        '<div class="kpi-note">' + k[2] + '</div></div>';
+    }).join('');
+    function chips(title, obj) {
+      var keys = Object.keys(obj || {});
+      if (!keys.length) return '';
+      return '<div class="section-head">' + title + '</div><div class="chips">' +
+        keys.sort(function (a, b) { return obj[b] - obj[a]; }).slice(0, 10).map(function (k) {
+          return '<span class="chip">' + esc(k) + ' <span class="n">' + obj[k] + '</span></span>';
+        }).join('') + '</div>';
+    }
+    document.getElementById('seg-rollups').innerHTML =
+      chips('Attendance by campus', p.bySchool) + chips('By state', p.byState) + chips('By genre', p.byGenre);
+    document.getElementById('seg-n').textContent = d.segments.length;
+    var box = document.getElementById('seg-list');
+    if (!d.segments.length) {
+      box.innerHTML = '<div class="panel" style="margin-top:8px"><div class="empty"><h3>No segments yet</h3><p>They appear as soon as attendees exist — run an event or import a list.</p></div></div>';
+      return;
+    }
+    box.innerHTML = d.segments.map(function (s, i) {
+      return '<div class="panel panel-pad" style="margin-top:8px">' +
+        '<div style="display:flex;gap:14px;align-items:baseline;flex-wrap:wrap">' +
+          '<b style="font-size:16px">' + esc(s.name) + '</b>' +
+          '<span style="font-size:13px;color:var(--ink-2)"><b style="color:var(--ink-1)">' + s.size + '</b> people</span>' +
+          '<span style="font-size:13px;color:var(--ink-2)">' + money(s.avgSpendCents) + ' avg spend</span>' +
+          '<span style="font-size:13px;color:var(--ink-2)">' + s.avgEvents + ' events avg</span>' +
+          '<span style="font-size:13px;color:var(--ink-2)">' + s.repeatPct + '% repeat</span>' +
+          '<button class="btn-ghost" data-segx="' + i + '" style="margin-left:auto">Export one-pager</button></div>' +
+        '<div style="font-size:12.5px;color:var(--ink-2);margin-top:4px">' + esc(s.desc) + '</div>' +
+        '<div class="chips" style="margin-top:8px">' +
+          s.topSchools.map(function (x) { return '<span class="chip">' + esc(x[0]) + ' <span class="n">' + x[1] + '</span></span>'; }).join('') +
+        '</div></div>';
+    }).join('');
+    box.querySelectorAll('[data-segx]').forEach(function (b) {
+      b.addEventListener('click', function () { exportSegmentProfile(Number(b.getAttribute('data-segx'))); });
+    });
+  }).catch(function (e) { toast(e.message); });
+}
+
+// The one-page audience profile — the artifact that goes in front of a
+// brand. Opens print-ready in a new tab (browser print → PDF). Contains
+// AGGREGATES ONLY: no names, no emails, ever.
+function exportSegmentProfile(i) {
+  var s = SEG_DATA.segments[i], p = SEG_DATA.portfolio;
+  var years = Object.keys(s.classYears).sort();
+  var maxYear = 1;
+  years.forEach(function (y) { if (s.classYears[y] > maxYear) maxYear = s.classYears[y]; });
+  var html = '<!doctype html><html><head><meta charset="utf-8"><title>SBOY Audience — ' + esc(s.name) + '</title><style>' +
+    'body{font:14px/1.5 -apple-system,"Segoe UI",Helvetica,Arial,sans-serif;color:#111;max-width:720px;margin:36px auto;padding:0 24px}' +
+    'h1{font-size:26px;letter-spacing:-.02em;margin:0}h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#777;margin:26px 0 8px}' +
+    '.k{display:flex;gap:28px;flex-wrap:wrap;margin-top:18px}.k div b{display:block;font-size:26px}.k div span{font-size:12px;color:#777}' +
+    '.bar{display:flex;align-items:center;gap:10px;margin:4px 0}.bar i{display:inline-block;height:12px;background:#d9542b;border-radius:0 3px 3px 0}' +
+    '.bar em{font-style:normal;font-size:12px;color:#555;min-width:110px}.bar b{font-size:12px}' +
+    '.chip{display:inline-block;border:1px solid #ddd;border-radius:99px;padding:2px 10px;font-size:12px;margin:2px 4px 2px 0}' +
+    '.foot{margin-top:34px;padding-top:12px;border-top:1px solid #eee;font-size:11px;color:#999}' +
+    '@media print{.noprint{display:none}}</style></head><body>' +
+    '<div style="font-size:12px;letter-spacing:.1em;color:#d9542b;font-weight:700">SBOY AUDIENCE PROFILE</div>' +
+    '<h1>' + esc(s.name) + '</h1>' +
+    '<div style="color:#555;margin-top:4px">' + esc(s.desc) + '</div>' +
+    '<div class="k">' +
+      '<div><b>' + s.size + '</b><span>people in segment</span></div>' +
+      '<div><b>' + s.avgEvents + '</b><span>events attended (avg)</span></div>' +
+      '<div><b>' + s.repeatPct + '%</b><span>attend repeatedly</span></div>' +
+      '<div><b>' + money(s.avgSpendCents) + '</b><span>avg lifetime ticket spend</span></div>' +
+      '<div><b>' + s.checkinRate + '%</b><span>show rate</span></div></div>' +
+    '<h2>Campuses</h2>' + s.topSchools.map(function (x) { return '<span class="chip">' + esc(x[0]) + ' — ' + x[1] + '</span>'; }).join('') +
+    (s.topStates.length ? '<h2>Markets</h2>' + s.topStates.map(function (x) { return '<span class="chip">' + esc(x[0]) + ' — ' + x[1] + '</span>'; }).join('') : '') +
+    (years.length ? '<h2>Class year</h2>' + years.map(function (y) {
+      return '<div class="bar"><em>Class of ' + esc(y) + '</em><i style="width:' + Math.round(s.classYears[y] / maxYear * 300) + 'px"></i><b>' + s.classYears[y] + '</b></div>';
+    }).join('') : '') +
+    '<h2>The SBOY portfolio behind it</h2>' +
+    '<div style="font-size:13px;color:#444">' + p.uniqueAttendees + ' unique attendees · ' + p.totalCheckins + ' check-ins across ' + p.events + ' events · ' + p.repeatShare + '% attend more than once.</div>' +
+    '<div class="foot">Generated ' + new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) + ' by SBOY. ' +
+    'Aggregated audience data only — individual attendee records are never shared.</div>' +
+    '<button class="noprint" style="margin-top:20px;padding:10px 18px;font-size:14px" onclick="window.print()">Print / save as PDF</button>' +
+    '</body></html>';
+  var w = window.open('', '_blank');
+  if (!w) { toast('Allow pop-ups to export the profile'); return; }
+  w.document.write(html);
+  w.document.close();
 }
 
 document.getElementById('btn-newevent').addEventListener('click', function () { audEventForm(null); });

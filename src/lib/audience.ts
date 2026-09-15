@@ -398,6 +398,133 @@ export async function deleteAttendee(id: string) {
 }
 
 // ---------------------------------------------------------------
+// Segments — derived, never hand-entered (sponsorship Phase 2)
+// ---------------------------------------------------------------
+//
+// Everything below is recomputed from the attendance join table on
+// demand; nothing is stored. "Same person, multiple events" is the
+// signal, so every profile leads with repeat behavior. Output is
+// aggregates only — these numbers are what goes in front of a brand,
+// never the rows behind them.
+
+type PersonAgg = {
+  school: string | null
+  classYear: string | null
+  events: number
+  checkins: number
+  spendCents: number
+  vip: boolean
+  genres: Record<string, number>
+  states: Record<string, number>
+}
+
+function profileOf(members: PersonAgg[]) {
+  const size = members.length
+  const schools: Record<string, number> = {}
+  const classYears: Record<string, number> = {}
+  const states: Record<string, number> = {}
+  let spend = 0, events = 0, checkins = 0, repeat = 0
+  for (const m of members) {
+    spend += m.spendCents; events += m.events; checkins += m.checkins
+    if (m.events >= 2) repeat++
+    if (m.school) schools[m.school] = (schools[m.school] || 0) + 1
+    if (m.classYear) classYears[m.classYear] = (classYears[m.classYear] || 0) + 1
+    for (const st of Object.keys(m.states)) states[st] = (states[st] || 0) + 1
+  }
+  const top = (o: Record<string, number>, n: number) =>
+    Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, n)
+  return {
+    size,
+    avgSpendCents: size ? Math.round(spend / size) : 0,
+    avgEvents: size ? Math.round((events / size) * 10) / 10 : 0,
+    checkinRate: events ? Math.round((checkins / events) * 100) : 0,
+    repeatPct: size ? Math.round((repeat / size) * 100) : 0,
+    topSchools: top(schools, 6),
+    topStates: top(states, 6),
+    classYears,
+  }
+}
+
+export async function segmentsOverview() {
+  const atts = await prisma.attendance.findMany({
+    include: {
+      attendee: { select: { id: true, school: true, classYear: true, mergedIntoId: true } },
+      event: { select: { id: true, school: true, state: true, genre: true } },
+    },
+  })
+  const people = new Map<string, PersonAgg>()
+  const portfolio = {
+    totalRsvps: 0, totalCheckins: 0,
+    bySchool: {} as Record<string, number>,
+    byState: {} as Record<string, number>,
+    byGenre: {} as Record<string, number>,
+    ticketRevenueCents: 0,
+  }
+  for (const a of atts) {
+    if (a.attendee.mergedIntoId) continue
+    portfolio.totalRsvps++
+    if (a.checkedInAt) portfolio.totalCheckins++
+    portfolio.ticketRevenueCents += a.pricePaidCents
+    const evSchool = a.event.school || '(unknown)'
+    portfolio.bySchool[evSchool] = (portfolio.bySchool[evSchool] || 0) + 1
+    if (a.event.state) portfolio.byState[a.event.state] = (portfolio.byState[a.event.state] || 0) + 1
+    if (a.event.genre) portfolio.byGenre[a.event.genre] = (portfolio.byGenre[a.event.genre] || 0) + 1
+
+    let p = people.get(a.attendee.id)
+    if (!p) {
+      p = { school: a.attendee.school, classYear: a.attendee.classYear, events: 0, checkins: 0, spendCents: 0, vip: false, genres: {}, states: {} }
+      people.set(a.attendee.id, p)
+    }
+    p.events++
+    if (a.checkedInAt) p.checkins++
+    p.spendCents += a.pricePaidCents
+    if (a.ticketType === 'vip') p.vip = true
+    if (a.event.genre) p.genres[a.event.genre] = (p.genres[a.event.genre] || 0) + 1
+    if (a.event.state) p.states[a.event.state] = (p.states[a.event.state] || 0) + 1
+  }
+  const all = Array.from(people.values())
+  const majorityGenre = (p: PersonAgg) => {
+    const e = Object.entries(p.genres).sort((a, b) => b[1] - a[1])
+    return e.length ? e[0][0] : null
+  }
+
+  const segments: any[] = []
+  const add = (key: string, name: string, desc: string, members: PersonAgg[]) => {
+    if (members.length) segments.push({ key, name, desc, ...profileOf(members) })
+  }
+  add('repeat2', 'Repeat attenders (2+)', 'Came to two or more SBOY shows — the proof the flywheel works.', all.filter(p => p.events >= 2))
+  add('repeat3', 'Core fans (3+)', 'Three or more shows. The audience a brand can reach again and again.', all.filter(p => p.events >= 3))
+  add('vip', 'VIP / high-spend', 'Bought VIP at least once, or $75+ lifetime ticket spend.', all.filter(p => p.vip || p.spendCents >= 7500))
+  add('first', 'First-timers', 'One show so far — the pool the repeat segments grow from.', all.filter(p => p.events === 1))
+  // Genre affinity: one segment per genre with members whose majority is it.
+  const genres = new Set(all.map(majorityGenre).filter(Boolean) as string[])
+  for (const g of Array.from(genres).sort()) {
+    add('genre:' + g, g + ' affinity', 'Majority of shows attended were ' + g + ' headliners.', all.filter(p => majorityGenre(p) === g))
+  }
+  // Campus cohorts: attendee's own school, largest first, small ones folded away.
+  const bySchool = new Map<string, PersonAgg[]>()
+  for (const p of all) {
+    if (!p.school) continue
+    const arr = bySchool.get(p.school) || []
+    arr.push(p); bySchool.set(p.school, arr)
+  }
+  Array.from(bySchool.entries()).sort((a, b) => b[1].length - a[1].length).slice(0, 8)
+    .forEach(([school, members]) => {
+      if (members.length >= 5) add('campus:' + school, school + ' cohort', 'Attendees who told us ' + school + ' is their school.', members)
+    })
+
+  return {
+    portfolio: {
+      uniqueAttendees: all.length,
+      events: await prisma.event.count(),
+      ...portfolio,
+      repeatShare: all.length ? Math.round((all.filter(p => p.events >= 2).length / all.length) * 100) : 0,
+    },
+    segments,
+  }
+}
+
+// ---------------------------------------------------------------
 // Dashboard: CSV import
 // ---------------------------------------------------------------
 
