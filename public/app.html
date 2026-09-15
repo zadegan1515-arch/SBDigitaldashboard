@@ -533,7 +533,31 @@
     <section class="view page" id="outreach">
       <div class="eyebrow">Outreach</div>
       <h1>LinkedIn outreach</h1>
-      <div class="sub">Draft a connection note + first message, copy, send on LinkedIn, then Mark sent. Email has its own tab.</div>
+      <div class="sub">Step 1: connect with a short note. Step 2: DM them after they accept. Email has its own tab.</div>
+      <div class="panel panel-pad" style="margin-top:18px">
+        <div style="display:flex;align-items:center;gap:8px;cursor:pointer" id="li-guide-toggle">
+          <b style="font-size:13px">How LinkedIn outreach works</b>
+          <span style="color:var(--ink-3);font-size:12px">— the 20-second version for anyone using this page</span>
+          <span style="margin-left:auto;color:var(--ink-3)" id="li-guide-arrow">▾</span>
+        </div>
+        <div id="li-guide-body" style="margin-top:10px">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;font-size:12.5px;line-height:1.55">
+            <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">
+              <b style="color:var(--accent)">1 · Connect first</b><br>
+              On LinkedIn you can only message people who accepted your invite — so invites are the engine.
+              Hit <b>1 · Invite note</b> to copy the short intro, open <b>↗ LinkedIn</b>, click
+              <b>Connect → Add a note</b>, paste, send. About 10 a day keeps the account safe.</div>
+            <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">
+              <b style="color:var(--accent)">2 · When they accept</b><br>
+              Come back to their row, hit <b>2 · First DM</b>, and paste it into your LinkedIn chat with
+              them — same day if you can, while you're fresh in their notifications.</div>
+            <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">
+              <b style="color:var(--accent)">3 · Log everything</b><br>
+              <b>Mark sent</b> right after the invite goes out; <b>Replied</b> the moment they answer —
+              replies jump to the top of Home and always come before new invites.</div>
+          </div>
+        </div>
+      </div>
       <div class="chips" style="margin-top:22px;align-items:center">
         <button class="chip active" data-mode="today">Today <span class="n" id="c-today">0</span></button>
         <button class="chip" data-mode="all">All targets <span class="n" id="c-all">0</span></button>
@@ -2491,8 +2515,8 @@ function targetRow(t) {
       // The LinkedIn work loop, right on the row: copy the note (or the
       // message), then the profile link is one click away — no need to
       // expand the draft.
-      (d ? '<button class="btn-draft" data-act="copynote" title="Copy the connection note">Copy note</button>' +
-           '<button class="btn-ghost" data-act="copymsg" title="Copy the first message (for after they accept)">Copy msg</button>' : '') +
+      (d ? '<button class="btn-draft" data-act="copynote" title="Copy the short intro to paste when you click Connect → Add a note on their profile">1 · Invite note</button>' +
+           '<button class="btn-ghost" data-act="copymsg" title="Copy the message to DM them after they accept your invite">2 · First DM</button>' : '') +
       (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">↗ LinkedIn</a>' : '') +
       (d ? '<button class="btn-ghost" data-act="toggle">' + (open ? 'Close draft' : 'Show draft') + '</button>' : '') +
       '<button class="btn-draft" data-act="draft">' + (d ? 'Redraft' : 'Draft') + '</button>' +
@@ -2546,8 +2570,8 @@ function draftBlock(t) {
       '<div class="tmpl-name">' +
         (d.variant === 'identity' ? 'Identity + proof' : 'Specific question') +
         (d.voice ? ' — ' + esc(d.voice) + '-style' : '') + '</div>' +
-      field('Connection note', d.connectionNote, CONNECTION_MAX, d.id, 'connectionNote') +
-      field('First message', d.firstMessage, MESSAGE_MAX, d.id, 'firstMessage') +
+      field('1 · Invite note — goes with the Connect request', d.connectionNote, CONNECTION_MAX, d.id, 'connectionNote') +
+      field('2 · First DM — send after they accept', d.firstMessage, MESSAGE_MAX, d.id, 'firstMessage') +
     '</div>';
   }).join('') + '</div>';
 }
@@ -2762,6 +2786,24 @@ function lintDraft(subject, body) {
   if ((body || '').length > 1800) warns.push('Long email — short notes get more replies');
   return warns;
 }
+
+// The LinkedIn cheat-sheet collapses (and remembers) like the email one.
+(function () {
+  var body = document.getElementById('li-guide-body');
+  var arrow = document.getElementById('li-guide-arrow');
+  var head = document.getElementById('li-guide-toggle');
+  if (!body || !head) return;
+  var open = true;
+  try { open = localStorage.getItem('liGuideOpen') !== '0'; } catch (e) {}
+  body.style.display = open ? 'block' : 'none';
+  arrow.textContent = open ? '▾' : '▸';
+  head.onclick = function () {
+    open = !open;
+    body.style.display = open ? 'block' : 'none';
+    arrow.textContent = open ? '▾' : '▸';
+    try { localStorage.setItem('liGuideOpen', open ? '1' : '0'); } catch (e) {}
+  };
+})();
 
 // The Email tab — its own view, fully separate from the LinkedIn queue.
 function loadEmailOutreach() {
@@ -5674,7 +5716,9 @@ document.getElementById('targets').addEventListener('click', function (e) {
     var qtext = qta ? qta.value : (qd[qkey] || '');
     if (!qtext) { toast('Nothing drafted for that yet — hit Draft first'); return; }
     navigator.clipboard.writeText(qtext).then(function () {
-      toast((act === 'copynote' ? 'Connection note' : 'First message') + ' copied — paste into LinkedIn');
+      toast(act === 'copynote'
+        ? 'Invite note copied — on their profile: Connect → Add a note → paste'
+        : 'First DM copied — paste it into your LinkedIn chat with them');
     }, function () { toast('Could not copy — open the draft and copy from there'); });
     return;
   }
