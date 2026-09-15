@@ -470,6 +470,7 @@
       <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
         <input class="field-box" id="bq" placeholder="Search brands — or type a new name to add one…" style="flex:1;min-width:240px" autocomplete="off">
         <button class="btn-solid" id="bq-add" hidden>Add + find on SponsorUnited</button>
+        <button class="btn-ghost" id="bq-fill" title="Fills empty brand summaries from a built-in list of known brands — never overwrites anything you typed">Fill summaries</button>
       </div>
       <div class="chips" id="brand-cat-chips" style="margin-top:12px"></div>
       <div id="brands-list"></div>
@@ -1174,6 +1175,21 @@ document.getElementById('bq-add').addEventListener('click', function () {
     document.getElementById('bq').value = '';
     loadBrand(r.brand.id);
   }).catch(function (e) { toast(e.message); }).then(function () { add.disabled = false; });
+});
+
+// Fill empty brand summaries from the built-in list (no API calls).
+// Safe to click any time — it only writes fields that are blank.
+document.getElementById('bq-fill').addEventListener('click', function () {
+  var btn = this;
+  btn.disabled = true; btn.textContent = 'Filling…';
+  api('fillBrandSummaries').then(function (r) {
+    toast(r.filled
+      ? 'Filled ' + r.filled + ' brand' + (r.filled === 1 ? '' : 's') +
+        (r.unmatched.length ? ' · ' + r.unmatched.length + ' not in the built-in list' : '')
+      : 'Nothing to fill — ' + r.unmatched.length + ' brands aren\'t in the built-in list yet');
+    loadBrands(lastCategory);
+  }).catch(function (e) { toast(e.message); })
+    .then(function () { btn.disabled = false; btn.textContent = 'Fill summaries'; });
 });
 
 // --- brand detail ----------------------------------------------
