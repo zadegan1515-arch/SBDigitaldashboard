@@ -1857,22 +1857,29 @@ const handlers: Record<string, Handler> = {
     })
     if (!brand) throw new Error('Brand not found')
 
-    // Already actively in the pipeline? Say so instead of double-queuing.
-    const live = brand.targets.find(t => !t.shelved && ['queued', 'drafted', 'sent', 'replied'].includes(t.status))
-    if (live) {
-      return { queued: false, reason: 'already', contactName: live.contact.name, status: live.status }
+    // Two people per brand can be in play at once (Leo's rule): a
+    // second thread doubles the odds without reading as a blast. Queue
+    // is a no-op only once both slots are taken.
+    const WORK_PER_BRAND = 2
+    const live = brand.targets.filter(t => !t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied'].includes(t.status))
+    if (live.length >= WORK_PER_BRAND) {
+      return {
+        queued: false, reason: 'full',
+        contactName: live.map(t => t.contact.name).join(' and '), status: 'in play',
+      }
     }
+    const second = live.length === 1
 
-    // A shelved or dormant target to revive, best fit first.
+    // A shelved target to revive, best fit first.
     const revivable = brand.targets
-      .filter(t => ['queued', 'drafted'].includes(t.status))
+      .filter(t => t.shelved && ['queued', 'drafted'].includes(t.status))
       .sort((a, b) => b.fitScore - a.fitScore)[0]
     if (revivable) {
       await prisma.target.update({
         where: { id: revivable.id },
         data: { shelved: false, queuedFor: new Date() },
       })
-      return { queued: true, contactName: revivable.contact.name, revived: true }
+      return { queued: true, contactName: revivable.contact.name, revived: true, second }
     }
 
     // No target yet — create one from the best reachable contact.
@@ -1900,7 +1907,7 @@ const handlers: Record<string, Handler> = {
     // Queued, but the email drafter will skip this one until the
     // contact has an address. Say so now rather than later.
     return {
-      queued: true, contactName: pick.name, targetId: t.id,
+      queued: true, contactName: pick.name, targetId: t.id, second,
       ...(pick.email ? {} : { warning: `${pick.name} has no email address yet — add one on the contact or the email drafter will skip ${brand.name}.` }),
     }
   },

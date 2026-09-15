@@ -5942,10 +5942,24 @@ document.getElementById('nextbest').addEventListener('click', function (e) {
   if (!btn) return;
   btn.disabled = true;
   api('queueBrandTargets', { brandId: btn.getAttribute('data-nbq') }).then(function (r) {
-    toast(r.queued ? r.contactName + ' added to the queue' : 'Already in play — ' + r.contactName + ' is ' + r.status);
+    queueToast(r);
     loadOutreach();
   }).catch(function (err) { toast(err.message); btn.disabled = false; });
 });
+
+// One message for every "add to queue" path. Up to two people per
+// brand can be in play at once; the server says when both slots are.
+function queueToast(r) {
+  if (r.queued) {
+    toast(r.contactName + (r.revived ? ' brought back' : ' added to the queue') +
+      (r.second ? ' — two people now in play at this brand' : ''));
+  } else if (r.reason === 'full') {
+    toast('Both slots at this brand are in play — ' + r.contactName);
+  } else {
+    toast('Already in play — ' + r.contactName + ' is ' + r.status);
+  }
+  if (r.warning) toast(r.warning);
+}
 
 // Add a brand-new brand from the LinkedIn tab: create it, add their
 // person, and queueBrandTargets drops them straight into Today.
@@ -5976,8 +5990,7 @@ function openNewBrandForm(prefill) {
       openContactForm(r.brand.id, slot.querySelector('#ob-contact'), function () {
         // Queue whoever was just added (or the brand's best contact).
         api('queueBrandTargets', { brandId: r.brand.id }).then(function (q) {
-          toast(q.queued ? q.contactName + ' is in the queue — hit Draft on their row'
-            : (q.contactName ? 'Already in play — ' + q.contactName + ' is ' + q.status : 'Person added'));
+          if (q.contactName) queueToast(q); else toast('Person added');
         }).catch(function () { toast('Person added — queue them from the brand page'); })
           .then(function () { slot.innerHTML = ''; loadOutreach(); });
       });
@@ -6031,8 +6044,7 @@ document.getElementById('oq-new').addEventListener('click', function () { openNe
     var brandId = row.getAttribute('data-oq');
     hide(); box.value = '';
     api('queueBrandTargets', { brandId: brandId }).then(function (r) {
-      if (r.queued) toast(r.contactName + ' added to the queue' + (r.revived ? ' (brought back)' : ''));
-      else toast('Already in play — ' + r.contactName + ' is ' + r.status);
+      queueToast(r);
       loadOutreach();
     }).catch(function (err) { toast(err.message); });
   });
