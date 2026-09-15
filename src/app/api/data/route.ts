@@ -1705,10 +1705,10 @@ const handlers: Record<string, Handler> = {
   },
 
   // Recent Show Board opens through the access gate, newest first, plus
-  // the headline numbers for the Show Board overview.
+  // the headline numbers and the most-picked shows for the overview.
   async listBoardActivity({ limit }: any) {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-    const [visits, total, last7, requestCount] = await Promise.all([
+    const [visits, total, last7, requestCount, picked] = await Promise.all([
       prisma.boardVisit.findMany({
         orderBy: { createdAt: 'desc' },
         take: Math.min(Number(limit) || 50, 200),
@@ -1717,8 +1717,22 @@ const handlers: Record<string, Handler> = {
       prisma.boardVisit.count(),
       prisma.boardVisit.count({ where: { createdAt: { gt: weekAgo } } }),
       prisma.deal.count({ where: { source: 'request' } }),
+      // Every show a brand ever picked on the board (the request marker
+      // lives in the row's notes), whatever its status is today.
+      prisma.showSponsor.findMany({
+        where: { notes: { contains: 'sponsor page' } },
+        select: { crmLeadId: true, artist: true, school: true, eventDate: true },
+      }),
     ])
-    return { visits, total, last7, requestCount }
+    const byShow = new Map<string, { artist: string; school: string | null; eventDate: string | null; count: number }>()
+    for (const s of picked) {
+      const k = s.crmLeadId || `${s.artist}|${s.school}|${s.eventDate}`
+      const row = byShow.get(k) || { artist: s.artist, school: s.school, eventDate: s.eventDate, count: 0 }
+      row.count++
+      byShow.set(k, row)
+    }
+    const topShows = [...byShow.values()].sort((a, b) => b.count - a.count).slice(0, 10)
+    return { visits, total, last7, requestCount, topShows }
   },
 
   // Access requests from the gate's "Request the show list" form.

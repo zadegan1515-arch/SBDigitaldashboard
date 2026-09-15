@@ -557,6 +557,8 @@
       <div class="section-head" id="bd-req-head" hidden>Access requests <span class="n" id="bd-req-n"></span></div>
       <div id="bd-reqs"></div>
       <div class="kpi-row" id="bd-kpis"></div>
+      <div class="section-head" id="bd-top-head" hidden>Most requested shows</div>
+      <div id="bd-top"></div>
       <div class="section-head">Who's opened the board</div>
       <div id="bd-activity"></div>
     </section>
@@ -3211,6 +3213,16 @@ function loadBoard() {
       '<div class="kpi"><div class="kpi-label">Views</div><div class="kpi-value">' + (d.last7 || 0) + '</div><div class="kpi-note">last 7 days</div></div>' +
       '<div class="kpi"><div class="kpi-label">All time</div><div class="kpi-value">' + (d.total || 0) + '</div><div class="kpi-note">board opens</div></div>' +
       '<div class="kpi"><div class="kpi-label">Requests</div><div class="kpi-value">' + (d.requestCount || 0) + '</div><div class="kpi-note">from the board</div></div>';
+    var top = d.topShows || [];
+    document.getElementById('bd-top-head').hidden = !top.length;
+    document.getElementById('bd-top').innerHTML = top.map(function (s) {
+      var ed = s.eventDate && s.eventDate.length === 10 ? s.eventDate + 'T12:00:00' : s.eventDate;
+      return '<div class="target"><div class="t-main"><div class="t-line">' +
+        '<span class="t-brand">' + esc(s.artist) + '</span>' +
+        (s.school ? '<span class="t-sep">·</span>' + esc(s.school) : '') +
+        (ed ? '<span class="t-sep">·</span><span class="t-title">' + shortDate(ed) + '</span>' : '') + '</div></div>' +
+        '<span class="fit" title="times picked in requests">' + s.count + '×</span></div>';
+    }).join('');
     var visits = d.visits || [];
     document.getElementById('bd-activity').innerHTML = visits.length ? visits.map(function (v) {
       return '<div class="target"' + (v.brand ? ' data-brand="' + esc(v.brand.id) + '" style="cursor:pointer"' : '') + '>' +
