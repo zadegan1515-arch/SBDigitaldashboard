@@ -2397,16 +2397,16 @@ function guessFor(name) {
 
 var mode = 'today', statusFilter = 'all';
 
-// Draft panels the user has explicitly closed. Panels open on generate
-// and stay open on reload unless closed — closing is remembered for the
-// session only, which is the behaviour you want mid-work-session.
-var CLOSED_DRAFTS = {};
+// Draft panels start CLOSED everywhere; this maps the targets the user
+// has expanded (or just drafted — a fresh draft opens so you see it).
+// Remembered for the session only.
+var OPEN_DRAFTS = {};
 var TARGET_CACHE = {};
 
 function targetRow(t) {
   var d = (t.drafts || [])[0];
   var li = t.contact.linkedinUrl;
-  var open = d && !CLOSED_DRAFTS[t.id];
+  var open = d && OPEN_DRAFTS[t.id];
   return '<div class="target" data-id="' + t.id + '">' +
     '<div class="t-main">' +
       '<div class="t-line"><span class="t-brand">' + esc(t.brand.name) + '</span>' +
@@ -5587,8 +5587,8 @@ document.getElementById('targets').addEventListener('click', function (e) {
   var id = row.getAttribute('data-id');
 
   if (act === 'toggle') {
-    if (CLOSED_DRAFTS[id]) delete CLOSED_DRAFTS[id];
-    else CLOSED_DRAFTS[id] = true;
+    if (OPEN_DRAFTS[id]) delete OPEN_DRAFTS[id];
+    else OPEN_DRAFTS[id] = true;
     loadOutreach();
     return;
   }
@@ -5596,7 +5596,7 @@ document.getElementById('targets').addEventListener('click', function (e) {
   if (act === 'draft') {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Writing…';
-    delete CLOSED_DRAFTS[id];   // a fresh draft always opens
+    OPEN_DRAFTS[id] = true;   // a fresh draft always opens
     api('generateDrafts', { targetId: id })
       .then(function () { return loadOutreach(); })
       .catch(function (err) { toast(err.message); btn.disabled = false; btn.textContent = 'Draft'; });
