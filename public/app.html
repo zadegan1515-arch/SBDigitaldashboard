@@ -2721,6 +2721,7 @@ function targetRow(t) {
       (d ? '<button class="btn-ghost" data-act="toggle">' + (open ? 'Close draft' : 'Edit draft') + '</button>' : '') +
       (isPre ? '<button class="btn-ghost" data-act="draft">' + (d ? 'Redraft' : 'Draft') + '</button>' : '') +
       '<button class="btn-ghost" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
+      (isPre ? '<button class="btn-ghost" data-act="unqueue" title="Take them off the queue — nothing is deleted, promote them back anytime from the brand page">Off queue</button>' : '') +
       (t.status !== 'declined' && t.status !== 'dead' && t.status !== 'converted'
         ? '<button class="btn-ghost danger" data-act="pass" title="Pass this person — the brand’s next decision maker steps into their place">Pass</button>' +
           '<button class="btn-ghost danger" data-act="passbrand" title="Pass the whole brand — hidden from all outreach until you bring it back on the brand page">⃠ Brand</button>' : '') +
@@ -6217,6 +6218,15 @@ document.getElementById('targets').addEventListener('click', function (e) {
     api('setTargetStatus', { targetId: id, status: 'drafted', clearSent: true, actor: ME.owner || null })
       .then(function () { toast('Back in the queue — that send is uncounted'); return loadOutreach(); })
       .catch(function (err) { toast(err.message); });
+  }
+
+  // Off the queue without passing: shelve the target. It stays on the
+  // brand page and can be promoted back; the brand returns to next-best.
+  if (act === 'unqueue') {
+    api('setTargetShelved', { targetId: id, shelved: true })
+      .then(function () { toast('Off the queue — still on the brand page'); return loadOutreach(); })
+      .catch(function (err) { toast(err.message); });
+    return;
   }
 
   if (act === 'replied' || act === 'nextstep') { openNextStepForm(id, row); return; }

@@ -2566,7 +2566,7 @@ const handlers: Record<string, Handler> = {
         where: { doNotEmail: false, passedAt: null },
         include: {
           contacts: { select: { title: true, linkedinUrl: true, email: true, isDecisionMaker: true } },
-          targets: { select: { status: true, sentAt: true } },
+          targets: { select: { status: true, sentAt: true, shelved: true } },
           _count: { select: { contacts: true } },
         },
       }),
@@ -2586,8 +2586,13 @@ const handlers: Record<string, Handler> = {
     for (const m of sent) (emailedByCat[m.target.brand.category ?? ''] ??= new Set()).add(m.target.brandId)
     for (const m of replies) (repliedByCat[m.target.brand.category ?? ''] ??= new Set()).add(m.target.brandId)
 
+    // A brand already in the queue (an active queued/drafted target)
+    // is in play — it must not show up here as "not contacted yet".
+    // Shelved targets don't count: taking a brand off the queue puts
+    // it back in this pool.
     const touched = (b: (typeof brands)[number]) =>
-      b.targets.some(t => t.sentAt || ['sent', 'accepted', 'replied', 'converted'].includes(t.status))
+      b.targets.some(t => t.sentAt ||
+        (!t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied', 'converted'].includes(t.status)))
 
     const rows = brands
       .filter(b => b.contacts.length && !touched(b))
