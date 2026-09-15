@@ -1889,6 +1889,7 @@ const handlers: Record<string, Handler> = {
       .map(b => ({
         id: b.id, name: b.name, category: b.category, tier: b.tier,
         website: b.website, linkedinUrl: b.linkedinUrl,
+        externalId: b.externalId, aka: b.aka,
       }))
     return { count: missing.length, total: brands.length, brands: missing }
   },
