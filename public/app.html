@@ -2488,6 +2488,11 @@ function targetRow(t) {
     '</div>' +
     '<div class="t-actions">' +
       '<button class="btn-ghost" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
+      // The LinkedIn work loop, right on the row: copy the note (or the
+      // message), then the profile link is one click away — no need to
+      // expand the draft.
+      (d ? '<button class="btn-draft" data-act="copynote" title="Copy the connection note">Copy note</button>' +
+           '<button class="btn-ghost" data-act="copymsg" title="Copy the first message (for after they accept)">Copy msg</button>' : '') +
       (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">↗ LinkedIn</a>' : '') +
       (d ? '<button class="btn-ghost" data-act="toggle">' + (open ? 'Close draft' : 'Show draft') + '</button>' : '') +
       '<button class="btn-draft" data-act="draft">' + (d ? 'Redraft' : 'Draft') + '</button>' +
@@ -5656,6 +5661,21 @@ document.getElementById('targets').addEventListener('click', function (e) {
     if (OPEN_DRAFTS[id]) delete OPEN_DRAFTS[id];
     else OPEN_DRAFTS[id] = true;
     loadOutreach();
+    return;
+  }
+
+  // Quick copy from the collapsed row. An open, edited textarea wins
+  // over the cached draft so hand-tweaks are what lands on LinkedIn.
+  if (act === 'copynote' || act === 'copymsg') {
+    var qt = TARGET_CACHE[id] || {};
+    var qd = (qt.drafts || [])[0] || {};
+    var qkey = act === 'copynote' ? 'connectionNote' : 'firstMessage';
+    var qta = qd.id ? document.querySelector('textarea[data-draft="' + qd.id + '"][data-key="' + qkey + '"]') : null;
+    var qtext = qta ? qta.value : (qd[qkey] || '');
+    if (!qtext) { toast('Nothing drafted for that yet — hit Draft first'); return; }
+    navigator.clipboard.writeText(qtext).then(function () {
+      toast((act === 'copynote' ? 'Connection note' : 'First message') + ' copied — paste into LinkedIn');
+    }, function () { toast('Could not copy — open the draft and copy from there'); });
     return;
   }
 
