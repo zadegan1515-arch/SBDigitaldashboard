@@ -432,6 +432,7 @@
         <button class="nav-item" data-view="outreach">Outreach</button>
         <button class="nav-item" data-view="board">Show Board</button>
         <button class="nav-item" data-view="pipeline">Deals</button>
+        <button class="nav-item" data-view="audience">Audience</button>
         <button class="nav-item" data-view="operations">Operations</button>
       </nav>
       <nav class="tabs cc-only" id="sub-tabs" style="display:none"></nav>
@@ -684,6 +685,31 @@
       <div id="req-list" style="margin-top:18px"></div>
     </section>
 
+    <!-- AUDIENCE: EVENTS (attendee capture — sponsorship Phase 1) -->
+    <section class="view page" id="audience">
+      <div class="eyebrow">Audience</div>
+      <h1>Events</h1>
+      <div class="sub">Capture who actually comes to the shows — RSVP links via ambassadors, door check-in, box-office imports. Individual attendees never leave this dashboard.</div>
+      <div style="margin-top:18px;display:flex;gap:8px"><button class="btn-solid" id="btn-newevent">+ New event</button></div>
+      <div id="aud-form-slot" style="margin-top:12px"></div>
+      <div id="aud-list" style="margin-top:6px"></div>
+      <div id="aud-detail" style="margin-top:14px"></div>
+    </section>
+
+    <!-- AUDIENCE: ATTENDEES -->
+    <section class="view page" id="attendees">
+      <div class="eyebrow">Audience</div>
+      <h1>Attendees</h1>
+      <div class="sub" id="att-sub">Deduped on email across every event — repeat attendance is the signal this exists to grow.</div>
+      <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
+        <input class="field-box" id="att-q" placeholder="Search name, email, or school…" style="flex:1;min-width:240px" autocomplete="off">
+        <button class="btn-solid" id="btn-att-import">Import CSV</button>
+      </div>
+      <div id="att-import-slot" style="margin-top:12px"></div>
+      <div id="att-dups" style="margin-top:12px"></div>
+      <div id="att-list" style="margin-top:6px"></div>
+    </section>
+
     <!-- ACTIVATIONS (own workspace: sidebar + section tabs swap in) -->
     <section class="view page" id="activations">
       <div id="act-body"></div>
@@ -923,6 +949,7 @@ var SUBTABS = {
   outreach: [['outreach', 'LinkedIn'], ['email-out', 'Email'], ['reached', 'Reached'], ['linkedin', 'People'], ['results', 'Results']],
   board: [['board', 'Overview'], ['talks', 'In talks'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
+  audience: [['audience', 'Events'], ['attendees', 'Attendees']],
   operations: [['materials', 'Materials'], ['team', 'Team']],
 };
 var GROUP_OF = {
@@ -930,6 +957,7 @@ var GROUP_OF = {
   outreach: 'outreach', 'email-out': 'outreach', reached: 'outreach', linkedin: 'outreach', results: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
   pipeline: 'pipeline', sponsorships: 'pipeline',
+  audience: 'audience', attendees: 'audience',
   materials: 'operations', team: 'operations',
 };
 
@@ -5550,6 +5578,8 @@ function gotoView(id) {
   if (id === 'sponsorships') loadSponsorships();
   if (id === 'needs') loadNeeds();
   if (id === 'pipeline') loadPipeline();
+  if (id === 'audience') loadAudience();
+  if (id === 'attendees') loadAttendees();
   if (id === 'board') loadBoard();
   if (id === 'requests') loadRequests();
   if (id === 'activations') loadActivations();
@@ -6246,6 +6276,272 @@ document.getElementById('nb-save').addEventListener('click', function () {
     btn.textContent = 'Add brand';
     document.getElementById('nb-msg').textContent = e.message;
   });
+});
+
+// --- audience: events + attendees (sponsorship Phase 1) --------
+
+var AUD_EVENTS = [];
+// copyText comes from the shared helper defined above (toast-based).
+
+function loadAudience() {
+  showView('audience');
+  document.getElementById('aud-form-slot').innerHTML = '';
+  document.getElementById('aud-detail').innerHTML = '';
+  return api('listAudienceEvents').then(function (events) {
+    AUD_EVENTS = events;
+    var box = document.getElementById('aud-list');
+    if (!events.length) {
+      box.innerHTML = '<div class="panel" style="margin-top:14px"><div class="empty"><h3>No events yet</h3><p>Create one, then share its RSVP link through the ambassadors.</p></div></div>';
+      return;
+    }
+    box.innerHTML = events.map(function (ev) {
+      return '<div class="panel panel-pad" data-audev="' + esc(ev.id) + '" style="margin-top:8px;cursor:pointer;display:flex;gap:14px;align-items:center;flex-wrap:wrap">' +
+        '<div style="flex:1;min-width:200px"><b>' + esc(ev.name) + '</b>' +
+          '<div style="font-size:12.5px;color:var(--ink-2)">' + esc([ev.school, ev.venue, ev.date ? when(ev.date) : null].filter(Boolean).join(' · ')) + '</div></div>' +
+        '<div style="font-size:13px;color:var(--ink-2)"><b style="color:var(--ink-1)">' + ev.rsvps + '</b> RSVPs</div>' +
+        '<div style="font-size:13px;color:var(--ink-2)"><b style="color:var(--ink-1)">' + ev.checkins + '</b> in' +
+          (ev.rsvps ? ' · ' + Math.round(ev.checkins / ev.rsvps * 100) + '%' : '') + '</div>' +
+        (ev.rsvpOpen ? '<span class="status proposed">RSVP open</span>' : '<span class="status declined">closed</span>') +
+        '</div>';
+    }).join('');
+    box.querySelectorAll('[data-audev]').forEach(function (row) {
+      row.addEventListener('click', function () { openAudEvent(row.getAttribute('data-audev')); });
+    });
+  });
+}
+
+function audEventForm(ev) {
+  ev = ev || {};
+  var slot = document.getElementById('aud-form-slot');
+  slot.innerHTML = '<div class="panel panel-pad">' +
+    '<div class="section-head" style="margin-top:0">' + (ev.id ? 'Edit event' : 'New event') + '</div>' +
+    '<div style="display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">' +
+    '<input class="inp" id="ae-name" placeholder="Event name *" value="' + esc(ev.name || '') + '">' +
+    '<input class="inp" id="ae-school" placeholder="School" value="' + esc(ev.school || '') + '">' +
+    '<input class="inp" id="ae-venue" placeholder="Venue" value="' + esc(ev.venue || '') + '">' +
+    '<input class="inp" id="ae-city" placeholder="City" value="' + esc(ev.city || '') + '">' +
+    '<input class="inp" id="ae-state" placeholder="State (TX)" value="' + esc(ev.state || '') + '" maxlength="2" style="text-transform:uppercase">' +
+    '<input class="inp" id="ae-date" type="date" value="' + (ev.date ? String(ev.date).slice(0, 10) : '') + '">' +
+    '<input class="inp" id="ae-headliner" placeholder="Headliner / artist" value="' + esc(ev.headliner || '') + '">' +
+    '<input class="inp" id="ae-genre" placeholder="Genre (EDM, country…)" value="' + esc(ev.genre || '') + '">' +
+    '<input class="inp" id="ae-capacity" placeholder="Capacity" inputmode="numeric" value="' + (ev.capacity || '') + '">' +
+    '<select class="inp" id="ae-source">' +
+      ['internal', 'box_office', 'third_party'].map(function (s) {
+        return '<option value="' + s + '"' + (s === (ev.ticketSource || 'internal') ? ' selected' : '') + '>' + s.replace('_', ' ') + '</option>';
+      }).join('') + '</select>' +
+    '</div>' +
+    '<label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px;color:var(--ink-2)">' +
+      '<input type="checkbox" id="ae-open"' + (ev.rsvpOpen !== false ? ' checked' : '') + '> RSVP page open</label>' +
+    '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn-solid" id="ae-save">' + (ev.id ? 'Save' : 'Create event') + '</button>' +
+    '<button class="btn-ghost" id="ae-cancel">Cancel</button></div></div>';
+  document.getElementById('ae-cancel').addEventListener('click', function () { slot.innerHTML = ''; });
+  document.getElementById('ae-save').addEventListener('click', function () {
+    var btn = this; btn.disabled = true;
+    api('saveAudienceEvent', {
+      id: ev.id || null,
+      name: document.getElementById('ae-name').value,
+      school: document.getElementById('ae-school').value,
+      venue: document.getElementById('ae-venue').value,
+      city: document.getElementById('ae-city').value,
+      state: document.getElementById('ae-state').value.toUpperCase(),
+      date: document.getElementById('ae-date').value || null,
+      headliner: document.getElementById('ae-headliner').value,
+      genre: document.getElementById('ae-genre').value,
+      capacity: document.getElementById('ae-capacity').value,
+      ticketSource: document.getElementById('ae-source').value,
+      rsvpOpen: document.getElementById('ae-open').checked
+    }).then(function (saved) {
+      toast(ev.id ? 'Saved' : 'Event created');
+      loadAudience().then(function () { openAudEvent(saved.id); });
+    }).catch(function (e) { btn.disabled = false; toast(e.message); });
+  });
+}
+
+function openAudEvent(id) {
+  var ev = null;
+  AUD_EVENTS.forEach(function (e) { if (e.id === id) ev = e; });
+  if (!ev) return;
+  var box = document.getElementById('aud-detail');
+  var rsvpLink = location.origin + '/rsvp.html?e=' + encodeURIComponent(ev.rsvpSlug);
+  var doorLink = location.origin + '/door.html?e=' + encodeURIComponent(ev.rsvpSlug);
+  box.innerHTML = '<div class="panel panel-pad"><div class="section-head" style="margin-top:0">' + esc(ev.name) +
+    ' <span class="n">' + esc([ev.school, ev.date ? when(ev.date) : null].filter(Boolean).join(' · ')) + '</span></div>' +
+    '<div class="kpi-row" id="ae-kpis" style="margin-top:0"></div>' +
+    '<div class="section-head">Links <span class="n">RSVP goes to attendees, door stays with staff</span></div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+      '<button class="btn-solid" id="ae-copy-rsvp">Copy RSVP link</button>' +
+      '<button class="btn-ghost" id="ae-copy-door">Copy door link</button>' +
+      '<span style="font-size:13px;color:var(--ink-2)">Door PIN: <b class="mono" id="ae-pin">' + esc(ev.staffPin || '—') + '</b></span>' +
+      '<button class="btn-ghost" id="ae-newpin" title="Old PIN stops working immediately">New PIN</button></div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">' +
+      '<input class="inp" id="ae-amb" placeholder="Ambassador ref (sboy:u_123)" style="width:220px">' +
+      '<button class="btn-ghost" id="ae-copy-amb">Copy ambassador link</button>' +
+      '<span class="hint" style="margin:0">their RSVPs get attributed to that ref</span></div>' +
+    '<div id="ae-stats"></div>' +
+    '<div style="display:flex;gap:8px;margin-top:16px"><button class="btn-ghost" id="ae-edit">Edit event</button>' +
+    '<button class="btn-ghost" id="ae-del" style="color:var(--warn)">Delete event…</button></div></div>';
+  document.getElementById('ae-copy-rsvp').addEventListener('click', function () { copyText(rsvpLink, this); });
+  document.getElementById('ae-copy-door').addEventListener('click', function () { copyText(doorLink, this); });
+  document.getElementById('ae-copy-amb').addEventListener('click', function () {
+    var ref = document.getElementById('ae-amb').value.trim();
+    if (!/^sboy:/.test(ref)) { toast('Refs look like sboy:u_123 — from the platform roster'); return; }
+    copyText(rsvpLink + '&ref=' + encodeURIComponent(ref), this);
+  });
+  document.getElementById('ae-newpin').addEventListener('click', function () {
+    if (!confirm('Generate a new door PIN? The old one stops working immediately.')) return;
+    api('regenStaffPin', { id: ev.id }).then(function (r) {
+      document.getElementById('ae-pin').textContent = r.staffPin; ev.staffPin = r.staffPin; toast('New PIN set');
+    }).catch(function (e) { toast(e.message); });
+  });
+  document.getElementById('ae-edit').addEventListener('click', function () { audEventForm(ev); window.scrollTo(0, 0); });
+  document.getElementById('ae-del').addEventListener('click', function () {
+    if (!confirm('Delete "' + ev.name + '" and its ' + ev.rsvps + ' attendance rows? Attendees themselves are kept. This cannot be undone.')) return;
+    api('deleteAudienceEvent', { id: ev.id }).then(function () { toast('Event deleted'); loadAudience(); })
+      .catch(function (e) { toast(e.message); });
+  });
+  api('audienceEventStats', { id: ev.id }).then(function (s) {
+    document.getElementById('ae-kpis').innerHTML = [
+      ['RSVPs', s.rsvps, ''], ['Checked in', s.checkins, s.showRate + '% show rate'],
+      ['Repeat attendees', s.repeatCount, 'seen at another event'],
+      ['Ticket revenue', money(s.revenueCents), 'its own line — never mixed in']
+    ].map(function (k) {
+      return '<div class="kpi"><div class="kpi-label">' + k[0] + '</div><div class="kpi-value">' + k[1] + '</div>' +
+        (k[2] ? '<div class="kpi-note">' + k[2] + '</div>' : '') + '</div>';
+    }).join('');
+    function breakdown(title, obj) {
+      var keys = Object.keys(obj || {});
+      if (!keys.length) return '';
+      return '<div class="section-head">' + title + '</div><div class="chips">' + keys.sort(function (a, b) { return obj[b] - obj[a]; })
+        .slice(0, 10).map(function (k) { return '<span class="chip">' + esc(k) + ' <span class="n">' + obj[k] + '</span></span>'; }).join('') + '</div>';
+    }
+    document.getElementById('ae-stats').innerHTML =
+      breakdown('Source', s.bySource) + breakdown('Ticket mix', s.byTicket) + breakdown('Schools', s.bySchool) +
+      (s.ambassadors.length ? '<div class="section-head">Ambassador attribution</div><div class="chips">' +
+        s.ambassadors.map(function (a) { return '<span class="chip">' + esc(a.ref) + ' <span class="n">' + a.count + '</span></span>'; }).join('') + '</div>' : '');
+  }).catch(function (e) { toast(e.message); });
+}
+
+function loadAttendees() {
+  showView('attendees');
+  var q = document.getElementById('att-q').value.trim();
+  return api('listAttendees', { q: q }).then(function (d) {
+    document.getElementById('att-sub').textContent = d.total +
+      ' unique attendees, deduped on email — repeat attendance is the signal this exists to grow.';
+    var box = document.getElementById('att-list');
+    if (!d.attendees.length) {
+      box.innerHTML = '<div class="panel" style="margin-top:14px"><div class="empty"><h3>' + (q ? 'No matches' : 'No attendees yet') + '</h3>' +
+        '<p>' + (q ? 'Try a different search.' : 'They arrive through RSVP links, the door, and CSV imports.') + '</p></div></div>';
+      return;
+    }
+    box.innerHTML = d.attendees.map(function (a) {
+      return '<div class="panel panel-pad" style="margin-top:8px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">' +
+        '<div style="flex:1;min-width:220px"><b>' + esc(a.name || '(no name)') + '</b>' +
+          '<div style="font-size:12.5px;color:var(--ink-2)">' + esc(a.email) +
+          (a.school ? ' · ' + esc(a.school) : '') + (a.classYear ? ' ’' + esc(String(a.classYear).slice(-2)) : '') + '</div></div>' +
+        '<div style="font-size:13px;color:var(--ink-2)"><b style="color:var(--ink-1)">' + a.events + '</b> event' + (a.events === 1 ? '' : 's') +
+          ' · ' + a.checkedIn + ' attended</div>' +
+        '<div style="font-size:13px;color:var(--ink-2)">' + money(a.spendCents) + '</div>' +
+        (a.consentAt ? '<span class="status converted" title="Agreed to the consent text">consent ✓</span>' : '<span class="status proposed" title="Imported — no direct consent yet">imported</span>') +
+        '<button class="btn-ghost" data-attdel="' + esc(a.id) + '" data-attmail="' + esc(a.email) + '" data-attn="' + a.events + '">Delete…</button></div>';
+    }).join('');
+    box.querySelectorAll('[data-attdel]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        if (!confirm('Delete ' + b.getAttribute('data-attmail') + ' and their ' + b.getAttribute('data-attn') + ' attendance rows? This is the "remove my data" path and cannot be undone.')) return;
+        api('deleteAttendee', { id: b.getAttribute('data-attdel') }).then(function () { toast('Deleted'); loadAttendees(); })
+          .catch(function (e) { toast(e.message); });
+      });
+    });
+  }).then(function () {
+    return api('listDupCandidates').then(function (groups) {
+      var box = document.getElementById('att-dups');
+      if (!groups.length) { box.innerHTML = ''; return; }
+      box.innerHTML = '<div class="panel panel-pad"><div class="section-head" style="margin-top:0">Possible duplicates <span class="n">same name, different email — pick which record to keep</span></div>' +
+        groups.map(function (g, gi) {
+          return '<div style="border-top:1px solid var(--border);padding:8px 0">' + g.map(function (p) {
+            return '<div style="display:flex;gap:10px;align-items:center;padding:3px 0;font-size:13px">' +
+              '<div style="flex:1">' + esc(p.name) + ' — ' + esc(p.email) + (p.school ? ' · ' + esc(p.school) : '') +
+              ' <span class="n">' + p.events + ' events</span></div>' +
+              '<button class="btn-ghost" data-keep="' + esc(p.id) + '" data-group="' + gi + '">Keep this one</button></div>';
+          }).join('') + '</div>';
+        }).join('') + '</div>';
+      box.querySelectorAll('[data-keep]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var g = groups[Number(b.getAttribute('data-group'))];
+          var into = b.getAttribute('data-keep');
+          var others = g.filter(function (p) { return p.id !== into; });
+          if (!confirm('Merge ' + others.length + ' record(s) into ' + g.find(function (p) { return p.id === into; }).email +
+            '? Their attendance history moves over; the duplicate emails are retired.')) return;
+          var chain = Promise.resolve();
+          others.forEach(function (p) { chain = chain.then(function () { return api('mergeAttendees', { fromId: p.id, intoId: into }); }); });
+          chain.then(function () { toast('Merged'); loadAttendees(); }).catch(function (e) { toast(e.message); });
+        });
+      });
+    });
+  }).catch(function (e) { toast(e.message); });
+}
+
+function attImportPanel() {
+  var slot = document.getElementById('att-import-slot');
+  if (slot.innerHTML) { slot.innerHTML = ''; return; }
+  var evOpts = AUD_EVENTS.map(function (e) { return '<option value="' + esc(e.id) + '">' + esc(e.name) + '</option>'; }).join('');
+  var render = function () {
+    slot.innerHTML = '<div class="panel panel-pad"><div class="section-head" style="margin-top:0">Import a box-office / ticketing CSV</div>' +
+      '<div style="font-size:13px;color:var(--ink-2);margin-bottom:10px">Needs a header row with an email column; name, school, ticket type and price are picked up when present. Nothing is written until you confirm the preview.</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+      '<select class="inp" id="imp-event">' + evOpts + '</select>' +
+      '<input type="file" id="imp-file" accept=".csv,text/csv" style="font-size:13px;color:var(--ink-2)">' +
+      '</div>' +
+      '<textarea class="inp" id="imp-text" placeholder="…or paste CSV text here" style="width:100%;min-height:110px;margin-top:10px;font-family:var(--mono,monospace);font-size:12px"></textarea>' +
+      '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn-solid" id="imp-preview">Preview</button></div>' +
+      '<div id="imp-result" style="margin-top:10px"></div></div>';
+    document.getElementById('imp-file').addEventListener('change', function () {
+      var f = this.files && this.files[0];
+      if (!f) return;
+      var r = new FileReader();
+      r.onload = function () { document.getElementById('imp-text').value = String(r.result || ''); };
+      r.readAsText(f);
+    });
+    document.getElementById('imp-preview').addEventListener('click', function () { runImport(true); });
+  };
+  if (!AUD_EVENTS.length) api('listAudienceEvents').then(function (evs) { AUD_EVENTS = evs; evOpts = evs.map(function (e) { return '<option value="' + esc(e.id) + '">' + esc(e.name) + '</option>'; }).join(''); render(); });
+  else render();
+}
+
+function runImport(dry) {
+  var out = document.getElementById('imp-result');
+  var csv = document.getElementById('imp-text').value;
+  var eventId = document.getElementById('imp-event').value;
+  if (!csv.trim()) { toast('Paste or choose a CSV first'); return; }
+  out.innerHTML = '<span class="spinner"></span>';
+  api('importAttendees', { eventId: eventId, csv: csv, dryRun: dry }).then(function (r) {
+    var skipped = r.skipped.length
+      ? '<div style="font-size:12.5px;color:var(--warn);margin-top:6px">' + r.skipped.length + ' rows skipped: ' +
+        esc(r.skipped.slice(0, 5).map(function (s) { return 'line ' + s.line + ' (' + s.reason + ')'; }).join('; ')) +
+        (r.skipped.length > 5 ? '…' : '') + '</div>' : '';
+    var summary = '<div class="chips">' +
+      '<span class="chip"><b>' + r.rows + '</b>&nbsp;people in file</span>' +
+      '<span class="chip"><b>' + r.newAttendees + '</b>&nbsp;new</span>' +
+      '<span class="chip"><b>' + r.existing + '</b>&nbsp;matched existing (dedupe)</span>' +
+      '<span class="chip"><b>' + r.alreadyOnEvent + '</b>&nbsp;already on this event</span>' +
+      (r.dupesInFile ? '<span class="chip"><b>' + r.dupesInFile + '</b>&nbsp;duplicate rows folded</span>' : '') + '</div>' + skipped;
+    if (r.dryRun) {
+      out.innerHTML = summary +
+        '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn-solid" id="imp-confirm">Import ' + r.rows + ' people</button></div>';
+      var c = document.getElementById('imp-confirm');
+      if (c && r.rows) c.addEventListener('click', function () { runImport(false); });
+    } else {
+      out.innerHTML = summary + '<div style="font-size:13px;color:var(--ok,#4cc98a);margin-top:8px">Imported — ' + r.added + ' added to the event.</div>';
+      toast('Imported ' + r.added);
+      loadAttendees();
+    }
+  }).catch(function (e) { out.innerHTML = ''; toast(e.message); });
+}
+
+document.getElementById('btn-newevent').addEventListener('click', function () { audEventForm(null); });
+document.getElementById('btn-att-import').addEventListener('click', attImportPanel);
+document.getElementById('att-q').addEventListener('input', function () {
+  clearTimeout(window.__attT);
+  window.__attT = setTimeout(loadAttendees, 350);
 });
 
 // --- sidebar collapse ------------------------------------------
