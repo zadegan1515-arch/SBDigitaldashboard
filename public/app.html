@@ -72,16 +72,6 @@
   .header-stick{position:sticky;top:0;z-index:40;background:rgba(11,11,15,.82);
     backdrop-filter:blur(12px);border-bottom:1px solid var(--border-soft)}
   .topbar{display:flex;align-items:center;gap:12px;padding:18px 48px 12px}
-  .quickbar{display:flex;align-items:center;gap:0;padding:4px 48px 8px;overflow-x:auto;scrollbar-width:none}
-  .quickbar::-webkit-scrollbar{display:none}
-  .qstat{display:flex;align-items:baseline;gap:8px;padding:8px 24px 8px 0;margin-right:24px;
-    border:none;background:none;cursor:pointer;font-family:inherit;white-space:nowrap;
-    border-right:1px solid var(--border-soft)}
-  .qstat:last-child{border-right:none}
-  .qstat .ql{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
-  .qstat b{font-size:13px;font-weight:700;color:var(--ink-1);font-variant-numeric:tabular-nums}
-  .qstat:hover b{color:var(--accent-hi)}
-  .qstat b.hot{color:var(--accent-hi)}
   .tabs{display:flex;gap:10px;padding:2px 40px;overflow-x:auto;scrollbar-width:none}
   .tabs::-webkit-scrollbar{display:none}
   .tabs .nav-item{width:auto;flex:none;border-radius:0;padding:14px 18px 16px;font-size:15px;
@@ -267,7 +257,6 @@
     .tabs .nav-item{padding:10px 12px 12px;font-size:13.5px}
     #sub-tabs,#act-tabs{padding:2px 12px 10px}
     .topbar{padding:12px 14px 8px}
-    .quickbar{padding:0 14px 2px}
     .page{padding:18px 14px 70px}
     .row2{grid-template-columns:1fr}
     h1{font-size:24px}
@@ -440,7 +429,6 @@
       </nav>
       <nav class="tabs cc-only" id="sub-tabs" style="display:none"></nav>
       <nav class="tabs act-only" id="act-tabs"></nav>
-      <div class="quickbar cc-only" id="quickbar" hidden></div>
     </div>
 
     <!-- DASHBOARD -->
@@ -563,10 +551,14 @@
         <button class="chip" data-mode="all">All targets <span class="n" id="c-all">0</span></button>
         <button class="btn-ghost" id="btn-retrim" style="margin-left:auto">Cap to top 3 / brand</button>
       </div>
-      <div style="position:relative;margin-top:12px;max-width:420px">
-        <input class="inp" id="oq-add" placeholder="+ Add a brand to the queue — type its name…" style="width:100%" autocomplete="off">
-        <div id="oq-results" style="position:absolute;top:100%;left:0;right:0;z-index:30;display:none;background:var(--surface-1);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:260px;overflow:auto;margin-top:4px"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;max-width:560px">
+        <div style="position:relative;flex:1">
+          <input class="inp" id="oq-add" placeholder="+ Add a brand to the queue — type its name…" style="width:100%" autocomplete="off">
+          <div id="oq-results" style="position:absolute;top:100%;left:0;right:0;z-index:30;display:none;background:var(--surface-1);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:260px;overflow:auto;margin-top:4px"></div>
+        </div>
+        <button class="btn-solid" id="oq-new" style="flex:none">+ New brand</button>
       </div>
+      <div id="oq-new-slot" style="max-width:560px"></div>
       <div id="status-filters" class="chips" style="display:none"></div>
       <div class="count-head" id="queue-head">To send today <span class="n"></span></div>
       <div id="targets"></div>
@@ -1022,7 +1014,6 @@ function loadDashboard() {
     document.getElementById('nav-outreach').textContent = c.queued || '';
     document.getElementById('nav-spon').textContent =
       ((sp.confirmedCount || 0) + (sp.proposedCount || 0)) || '';
-    refreshQuickbar(d);
 
     var cats = (d.categories || []).filter(function (x) { return x.key; });
     document.getElementById('cat-cards').innerHTML = cats.length ? cats.map(function (cat, i) {
@@ -5564,6 +5555,46 @@ document.querySelectorAll('.chip[data-mode]').forEach(function (c) {
   });
 });
 
+// Add a brand-new brand from the LinkedIn tab: create it, add their
+// person, and queueBrandTargets drops them straight into Today.
+function openNewBrandForm(prefill) {
+  var slot = document.getElementById('oq-new-slot');
+  if (slot.innerHTML) { slot.innerHTML = ''; return; }
+  slot.innerHTML =
+    '<div class="panel panel-pad" style="margin-top:10px">' +
+      '<div style="font-size:13px;font-weight:600;margin-bottom:10px">New brand → straight into the queue</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        '<input class="field-box" id="ob-name" placeholder="Brand name" style="flex:1;min-width:200px" value="' + esc(prefill || '') + '">' +
+        '<button class="btn-solid" id="ob-create">Create</button>' +
+        '<button class="btn-ghost" id="ob-cancel">Cancel</button>' +
+      '</div>' +
+      '<div class="hint" style="margin:8px 0 0">Step 2 opens right here: add their person (a decision-maker title + LinkedIn URL) and they land in the queue.</div>' +
+      '<div id="ob-contact" style="margin-top:10px"></div>' +
+    '</div>';
+  slot.querySelector('#ob-cancel').onclick = function () { slot.innerHTML = ''; };
+  slot.querySelector('#ob-create').onclick = function () {
+    var name = slot.querySelector('#ob-name').value.trim();
+    if (name.length < 2) { toast('Type the brand name first'); return; }
+    var btn = this;
+    btn.disabled = true;
+    api('createBrand', { name: name, hint: 'added from the LinkedIn queue' }).then(function (r) {
+      toast(r.created === false ? 'That brand already exists — add their person below' : 'Brand created — now add their person');
+      slot.querySelector('#ob-name').disabled = true;
+      btn.hidden = true;
+      openContactForm(r.brand.id, slot.querySelector('#ob-contact'), function () {
+        // Queue whoever was just added (or the brand's best contact).
+        api('queueBrandTargets', { brandId: r.brand.id }).then(function (q) {
+          toast(q.queued ? q.contactName + ' is in the queue — hit Draft on their row'
+            : (q.contactName ? 'Already in play — ' + q.contactName + ' is ' + q.status : 'Person added'));
+        }).catch(function () { toast('Person added — queue them from the brand page'); })
+          .then(function () { slot.innerHTML = ''; loadOutreach(); });
+      });
+    }).catch(function (e) { toast(e.message); btn.disabled = false; });
+  };
+  slot.querySelector('#ob-name').focus();
+}
+document.getElementById('oq-new').addEventListener('click', function () { openNewBrandForm(''); });
+
 // Hand-pick a brand into the outreach queue. Type a name, click a result,
 // and its best reachable contact jumps into Today.
 (function () {
@@ -5580,7 +5611,7 @@ document.querySelectorAll('.chip[data-mode]').forEach(function (c) {
     timer = setTimeout(function () {
       api('listBrands', { search: q, take: 8 }).then(function (brands) {
         if (!brands.length) {
-          drop.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--ink-3)">No brand named “' + esc(q) + '” — add it with + Add brand first.</div>';
+          drop.innerHTML = '<div class="oq-row-new" style="padding:10px 12px;font-size:13px;cursor:pointer;color:var(--accent-hi);font-weight:600">+ Add “' + esc(q) + '” as a new brand</div>';
           drop.style.display = 'block';
           return;
         }
@@ -5596,6 +5627,13 @@ document.querySelectorAll('.chip[data-mode]').forEach(function (c) {
   });
 
   drop.addEventListener('click', function (e) {
+    var addNew = e.target.closest('.oq-row-new');
+    if (addNew) {
+      var q = box.value.trim();
+      hide(); box.value = '';
+      openNewBrandForm(q);
+      return;
+    }
     var row = e.target.closest('.oq-row');
     if (!row) return;
     var brandId = row.getAttribute('data-oq');
@@ -5846,50 +5884,6 @@ document.getElementById('nb-save').addEventListener('click', function () {
     btn.textContent = 'Add brand';
     document.getElementById('nb-msg').textContent = e.message;
   });
-});
-
-// --- quick-stats bar -------------------------------------------
-
-// A slim always-visible strip in the sticky header: today's numbers that
-// decide what to work on next. Filled from the dashboard payload plus two
-// cheap lookups; each stat clicks through to its tab.
-var QB = { room: null, replied: null, pending: null, views: null, deals: null };
-function renderQuickbar() {
-  var bar = document.getElementById('quickbar');
-  if (!bar) return;
-  function st(go, label, val, hot) {
-    if (val == null) return '';
-    return '<button class="qstat" data-go="' + go + '"><span class="ql">' + label +
-      '</span><b' + (hot ? ' class="hot"' : '') + '>' + val + '</b></button>';
-  }
-  var h = st('outreach', 'Emails left today', QB.room) +
-          st('outreach', 'Replies waiting', QB.replied, QB.replied > 0) +
-          st('board', 'Access requests', QB.pending, QB.pending > 0) +
-          st('talks', 'Board views · 7d', QB.views) +
-          st('pipeline', 'Open deals', QB.deals);
-  bar.innerHTML = h;
-  bar.hidden = !h;
-}
-function refreshQuickbar(dash) {
-  if (dash) {
-    QB.replied = (dash.counts || {}).replied || 0;
-    QB.views = dash.boardViews7d || 0;
-    QB.deals = ((dash.sponsorship || {}).confirmedCount || 0) +
-               ((dash.sponsorship || {}).proposedCount || 0);
-    renderQuickbar();
-  }
-  api('getEmailStatus').then(function (s) {
-    QB.room = s && s.configured ? Math.max(0, (s.cap || 0) - (s.sentToday || 0)) : null;
-    renderQuickbar();
-  }).catch(function () {});
-  api('listAccessRequests').then(function (r) {
-    QB.pending = r && r.pending ? r.pending.length : 0;
-    renderQuickbar();
-  }).catch(function () {});
-}
-document.getElementById('quickbar').addEventListener('click', function (e) {
-  var b = e.target.closest('.qstat[data-go]');
-  if (b) gotoView(b.getAttribute('data-go'));
 });
 
 // --- sidebar collapse ------------------------------------------
