@@ -1881,11 +1881,30 @@ const handlers: Record<string, Handler> = {
   // These are the gaps to fill by hand or by another SponsorUnited pull.
   async listNeedsContact() {
     const brands = await prisma.brand.findMany({
-      include: { _count: { select: { contacts: true } } },
+      include: {
+        _count: {
+          select: {
+            contacts: true,
+            activations: true,
+            // Only real business counts — a deal still at conversation or
+            // proposal stage means we're chasing them, so a missing
+            // contact is still a gap worth flagging.
+            deals: { where: { stage: { in: ['verbal', 'closed'] } } },
+          },
+        },
+      },
       orderBy: { name: 'asc' },
     })
+    // A brand is only a "gap" if it has no contact AND we're not already
+    // doing business with it (activation or verbal/closed deal) AND it's
+    // not our own/internal record or one excluded from outreach.
     const missing = brands
-      .filter(b => b._count.contacts === 0)
+      .filter(b =>
+        b._count.contacts === 0 &&
+        b._count.activations === 0 &&
+        b._count.deals === 0 &&
+        !b.doNotEmail &&
+        !/internal/i.test(b.name))
       .map(b => ({
         id: b.id, name: b.name, category: b.category, tier: b.tier,
         website: b.website, linkedinUrl: b.linkedinUrl,
