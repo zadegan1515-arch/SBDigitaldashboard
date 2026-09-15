@@ -583,6 +583,7 @@
       <div class="eyebrow">Outreach</div>
       <h1>Reached</h1>
       <div class="sub" id="rc-sub">Everyone we've contacted on LinkedIn or by email, grouped by brand.</div>
+      <div class="kpi-row" id="rc-kpis"></div>
       <div style="display:flex;gap:8px;margin-top:18px;max-width:420px">
         <input class="inp" id="rc-q" placeholder="Filter by brand or person…" style="width:100%" autocomplete="off">
       </div>
@@ -2202,11 +2203,27 @@ function renderReached() {
         bits.join('') +
       '</div>';
     }).join('');
+    // Deal stage, right on the card: pick a stage and the brand's deal
+    // moves (or a deal is created at that stage if none exists).
+    // Sponsorship/Notion deals sync from elsewhere, so read-only.
+    var STAGES = ['conversation', 'proposal', 'verbal', 'closed', 'lost'];
+    var dealCtl;
+    if (g.deal && (g.deal.source === 'sponsorship' || g.deal.source === 'notion')) {
+      dealCtl = '<span class="status ' + esc(g.deal.stage) + '" title="Synced from its ' + (g.deal.source === 'notion' ? 'Notion page' : 'show') + '">' + esc(g.deal.stage) + '</span>';
+    } else {
+      dealCtl = '<select class="field-box" data-rcstage data-rcbrand="' + esc(g.brand.id) + '" data-rcname="' + esc(g.brand.name) + '" data-rcdeal="' + esc(g.deal ? g.deal.id : '') +
+        '" style="width:auto;padding:4px 8px;font-size:12px" title="Deal stage — picking one creates the deal if this brand has none yet">' +
+        '<option value=""' + (g.deal ? '' : ' selected') + '>— deal stage —</option>' +
+        STAGES.map(function (s) {
+          return '<option value="' + s + '"' + (g.deal && g.deal.stage === s ? ' selected' : '') + '>' + s + '</option>';
+        }).join('') + '</select>';
+    }
     return '<div class="target" data-brand="' + esc(g.brand.id) + '" style="align-items:flex-start">' +
       '<div class="t-main">' +
-        '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(g.brand.name) + '</span>' +
+        '<div class="t-line" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="t-brand" style="cursor:pointer">' + esc(g.brand.name) + '</span>' +
           (tag ? '<span class="t-sep">·</span><span class="t-title">' + esc(tag) + '</span>' : '') +
           '<span class="t-sep">·</span><span class="t-title">' + g.people.length + ' ' + (g.people.length === 1 ? 'person' : 'people') + ' contacted</span>' +
+          '<span style="margin-left:auto">' + dealCtl + '</span>' +
         '</div>' + people +
       '</div>' +
     '</div>';
@@ -2224,12 +2241,36 @@ function loadReached() {
     document.getElementById('rc-sub').textContent =
       people + ' ' + (people === 1 ? 'person' : 'people') + ' contacted across ' + RC_DATA.length +
       ' brand' + (RC_DATA.length === 1 ? '' : 's') + ' — LinkedIn and email together.';
+    // The LinkedIn funnel: is the note working, are DMs landing?
+    var tt = d.totals || { invited: 0, accepted: 0, replied: 0 };
+    var pct = function (n) { return tt.invited ? Math.round((n / tt.invited) * 100) + '%' : '—'; };
+    document.getElementById('rc-kpis').innerHTML =
+      '<div class="kpi"><div class="kpi-label">Invites sent</div><div class="kpi-value">' + tt.invited + '</div><div class="kpi-note">LinkedIn, all-time</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Accepted</div><div class="kpi-value">' + tt.accepted + '</div><div class="kpi-note">' + pct(tt.accepted) + ' accept rate</div></div>' +
+      '<div class="kpi money"><div class="kpi-label">Replied</div><div class="kpi-value">' + tt.replied + '</div><div class="kpi-note">' + pct(tt.replied) + ' reply rate</div></div>';
     renderReached();
   }).catch(function (e) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
   });
 }
 document.getElementById('rc-q').addEventListener('input', function () { renderReached(); });
+// Stage dropdown on a Reached card: moves the brand's deal, creating
+// one at that stage when the brand has none yet.
+document.getElementById('reached-list').addEventListener('change', function (e) {
+  var sel = e.target.closest('[data-rcstage]');
+  if (!sel || !sel.value) return;
+  var dealId = sel.getAttribute('data-rcdeal');
+  sel.disabled = true;
+  var call = dealId
+    ? api('setDealStage', { id: dealId, stage: sel.value })
+    : api('upsertDeal', { brandId: sel.getAttribute('data-rcbrand'), name: sel.getAttribute('data-rcname'), stage: sel.value });
+  call.then(function () {
+    toast(dealId ? 'Deal moved to ' + sel.value : 'Deal created at ' + sel.value + ' — it’s on the Deals board');
+    RC_DATA = [];
+    loadReached();
+  }).catch(function (err) { toast(err.message); sel.disabled = false; });
+});
+
 document.getElementById('reached-list').addEventListener('click', function (e) {
   var btn = e.target.closest('[data-rcact]');
   if (!btn) return;
@@ -5721,7 +5762,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
     if (e.target.closest('a')) return;   // let real links through
-    if (e.target.closest('[data-nbq]') || e.target.closest('[data-nbp]') || e.target.closest('[data-rcact]')) return;   // buttons with their own handlers
+    if (e.target.closest('[data-nbq]') || e.target.closest('[data-nbp]') || e.target.closest('[data-rcact]') || e.target.closest('[data-rcstage]')) return;   // controls with their own handlers
     loadBrand(el.getAttribute('data-brand'));
   });
 });

@@ -2514,12 +2514,31 @@ const handlers: Record<string, Handler> = {
       p.lastAt = later(p.lastAt, at)
     }
 
+    // The brand's deal, so the Reached card can move it through the
+    // pipeline directly. Latest deal wins; sponsorship/Notion-sourced
+    // ones render read-only (their stage is synced elsewhere).
+    const deals = await prisma.deal.findMany({
+      where: { brandId: { in: Object.keys(brands) } },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true, brandId: true, stage: true, source: true, valueCents: true },
+    })
+    const dealByBrand: Record<string, (typeof deals)[number]> = {}
+    for (const d of deals) dealByBrand[d.brandId] ??= d
+
+    // LinkedIn funnel across everyone invited: accepted counts anyone
+    // at accepted or beyond, replied anyone at replied or beyond.
+    const totals = {
+      invited: targets.length,
+      accepted: targets.filter(t => ['accepted', 'replied', 'converted'].includes(t.status)).length,
+      replied: targets.filter(t => ['replied', 'converted'].includes(t.status)).length,
+    }
+
     const rows = Object.values(brands).map(g => {
       const people = Object.values(g.people).sort((a, b) => (b.lastAt || '').localeCompare(a.lastAt || ''))
       const lastAt = people.reduce<string | null>((m, p) => later(m, p.lastAt), null)
-      return { brand: g.brand, people, lastAt }
+      return { brand: g.brand, people, lastAt, deal: dealByBrand[g.brand.id] ?? null }
     }).sort((a, b) => (b.lastAt || '').localeCompare(a.lastAt || ''))
-    return { brands: rows }
+    return { brands: rows, totals }
   },
 
   // -------- deal room --------
