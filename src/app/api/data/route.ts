@@ -260,13 +260,17 @@ const LI_HOOKS: Record<string, string> = {
 }
 const LI_HOOK_DEFAULT = 'sampling, stage branding and seeded product built around each show'
 
+// Leo's templates (Sep 2026): one note written for a man, one for a
+// woman — same pitch, different opener. The rep picks which to copy;
+// the site never guesses gender from a name.
 function templateLinkedInDraft(target: { brand: any; contact: any }, variant: string) {
   const first = String(target.contact.name || '').trim().split(/\s+/)[0] || 'there'
   const brand = target.brand.name
   const hook = LI_HOOKS[target.brand.category ?? ''] ?? LI_HOOK_DEFAULT
-  const connectionNote = (variant === 'question'
-    ? `Hi ${first} — is campus on ${brand}'s map this year? We produce large college concerts across the US (500+ shows a year) and I think there's a real fit. Would love to connect.`
-    : `Hi ${first} — I'm with SB Agency. We produce big fraternity/sorority concerts at 100+ US colleges and build brand sponsorships around them. Would love to connect and share what that could look like for ${brand}.`
+  const pitch = `I'm Zach with SB Agency, we book top artist talent for fraternities and sororities across the country. Would love to chat more and see if ${brand} is interested in activating at these events, or if we can help build out other college activations for you.`
+  const connectionNote = (variant === 'woman'
+    ? `Hey ${first}, great to meet you! ${pitch}`
+    : `${first} – what's up man! ${pitch}`
   ).slice(0, 300)
   const firstMessage =
     `Thanks for connecting, ${first}! Quick context: SB Agency runs 500+ college shows a year — packed student crowds across 100+ tier-1 markets, with in-house photo and video on every show. For ${brand}, the natural fit is ${hook}.\n\n` +
@@ -279,9 +283,17 @@ function templateLinkedInDraft(target: { brand: any; contact: any }, variant: st
 // safe to run on every load.
 async function ensureTemplateDrafts(targets: any[]) {
   for (const t of targets) {
-    if (t.drafts && t.drafts.length) continue
+    // Untouched template drafts from an older template are replaced so
+    // the whole queue speaks the current voice; hand-edited drafts and
+    // rows with current variants are left alone.
+    if (t.drafts && t.drafts.length) {
+      const stale = t.drafts.every((d: any) =>
+        d.model === 'template' && !d.editedByHuman && d.variant !== 'man' && d.variant !== 'woman')
+      if (!stale) continue
+      await prisma.draft.deleteMany({ where: { targetId: t.id } })
+    }
     const created = []
-    for (const variant of ['identity', 'question']) {
+    for (const variant of ['man', 'woman']) {
       const made = templateLinkedInDraft(t, variant)
       created.push(await prisma.draft.create({
         data: { targetId: t.id, variant, connectionNote: made.connectionNote, firstMessage: made.firstMessage, model: 'template' },
@@ -794,7 +806,7 @@ const handlers: Record<string, Handler> = {
 
   // -------- draft generation --------
 
-  async generateDrafts({ targetId, variants = ['identity', 'question'] }: any) {
+  async generateDrafts({ targetId, variants = ['man', 'woman'] }: any) {
     const target = await prisma.target.findUnique({
       where: { id: targetId },
       include: { brand: true, contact: true },

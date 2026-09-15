@@ -2703,7 +2703,10 @@ function targetRow(t) {
     // Before the invite: 1 copy note · 2 profile · 3 mark sent.
     // Invite out: They accepted ✓ (or undo). Accepted: Copy DM.
     '<div class="t-actions">' +
-      (isPre && d ? '<button class="btn-draft" data-act="copynote" title="Copy the short intro, then on their profile: Connect → Add a note → paste">1 · Copy note</button>' : '') +
+      (isPre && d
+        ? '<button class="btn-draft" data-act="copynote" data-variant="man" title="Copy the invite note written for a man — then on their profile: Connect → Add a note → paste">1 · Note — man</button>' +
+          '<button class="btn-ghost" data-act="copynote" data-variant="woman" title="Copy the invite note written for a woman — then on their profile: Connect → Add a note → paste">Note — woman</button>'
+        : '') +
       (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">' + (isPre ? '2 · Profile ↗' : 'Profile ↗') + '</a>' : '') +
       (isPre ? '<button class="btn-ghost" data-act="sent" title="Log that the invite went out">3 · Mark sent</button>' : '') +
       (t.status === 'sent'
@@ -2762,7 +2765,8 @@ function draftBlock(t) {
   return '<div class="panel" style="margin:-4px 0 10px">' + (t.drafts || []).map(function (d) {
     return '<div class="tmpl">' +
       '<div class="tmpl-name">' +
-        (d.variant === 'identity' ? 'Identity + proof' : 'Specific question') +
+        (d.variant === 'man' ? 'For a man' : d.variant === 'woman' ? 'For a woman'
+          : d.variant === 'identity' ? 'Identity + proof' : 'Specific question') +
         (d.voice ? ' — ' + esc(d.voice) + '-style' : '') + '</div>' +
       field('1 · Invite note — goes with the Connect request', d.connectionNote, CONNECTION_MAX, d.id, 'connectionNote') +
       field('2 · First DM — send after they accept', d.firstMessage, MESSAGE_MAX, d.id, 'firstMessage') +
@@ -6174,7 +6178,8 @@ document.getElementById('targets').addEventListener('click', function (e) {
   // over the cached draft so hand-tweaks are what lands on LinkedIn.
   if (act === 'copynote' || act === 'copymsg') {
     var qt = TARGET_CACHE[id] || {};
-    var qd = (qt.drafts || [])[0] || {};
+    var qv = btn.getAttribute('data-variant');
+    var qd = (qt.drafts || []).filter(function (x) { return !qv || x.variant === qv; })[0] || (qt.drafts || [])[0] || {};
     var qkey = act === 'copynote' ? 'connectionNote' : 'firstMessage';
     var qta = qd.id ? document.querySelector('textarea[data-draft="' + qd.id + '"][data-key="' + qkey + '"]') : null;
     var qtext = qta ? qta.value : (qd[qkey] || '');
