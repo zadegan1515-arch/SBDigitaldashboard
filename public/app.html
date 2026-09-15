@@ -2744,9 +2744,12 @@ function targetRow(t) {
     // Before the invite: 1 copy note · 2 profile · 3 mark sent.
     // Invite out: They accepted ✓ (or undo). Accepted: Copy DM.
     '<div class="t-actions">' +
+      // Two equal buttons — the rep picks which template fits the
+      // person; nothing here is a guess about who they are.
       (isPre && d
-        ? '<button class="btn-draft" data-act="copynote" data-variant="man" title="Copy the invite note written for a man — then on their profile: Connect → Add a note → paste">1 · Note — man</button>' +
-          '<button class="btn-ghost" data-act="copynote" data-variant="woman" title="Copy the invite note written for a woman — then on their profile: Connect → Add a note → paste">Note — woman</button>'
+        ? '<span style="font-size:11px;font-weight:700;color:var(--ink-3);letter-spacing:.04em">1 · COPY NOTE</span>' +
+          '<button class="btn-draft" data-act="copynote" data-variant="man" title="Copy the invite note written for a man — then on their profile: Connect → Add a note → paste">Man</button>' +
+          '<button class="btn-draft" data-act="copynote" data-variant="woman" title="Copy the invite note written for a woman — then on their profile: Connect → Add a note → paste">Woman</button>'
         : '') +
       (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">' + (isPre ? '2 · Profile ↗' : 'Profile ↗') + '</a>' : '') +
       (isPre ? '<button class="btn-ghost" data-act="sent" title="Log that the invite went out">3 · Mark sent</button>' : '') +
