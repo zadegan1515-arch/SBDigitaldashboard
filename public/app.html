@@ -1949,6 +1949,11 @@ function loadNeeds() {
             (tag ? '<div class="t-meta"><span>' + esc(tag) + '</span></div>' : '') +
           '</div>' +
           '<div class="t-actions">' +
+            // Deep-links to the brand's SponsorUnited profile when we know
+            // its ID; otherwise copies the name (the SponsorUnited one, if
+            // "also known as" is set) and opens the search page.
+            '<button class="btn-ghost" data-nact="su" data-su="' + esc(b.externalId || '') + '" data-suname="' +
+              esc(b.aka ? b.aka.split(/[,;]/)[0].trim() : b.name) + '">SponsorUnited ↗</button>' +
             '<a class="btn-ghost" href="' + esc(liSearch) + '" target="_blank" rel="noopener">Find on LinkedIn ↗</a>' +
             '<button class="btn-draft" data-nact="add">+ Add contact</button>' +
             '<button class="btn-ghost danger" data-nact="delete">Delete</button>' +
@@ -5399,8 +5404,21 @@ document.getElementById('shows-list').addEventListener('click', function (e) {
 // Needs-contacts page: "+ Add contact" reveals the add-person form inline;
 // "Delete" removes a junk/misnamed brand.
 document.getElementById('needs-list').addEventListener('click', function (e) {
+  var suBtn = e.target.closest('[data-nact="su"]');
   var addBtn = e.target.closest('[data-nact="add"]');
   var delBtn = e.target.closest('[data-nact="delete"]');
+  if (suBtn) {
+    var suId = suBtn.getAttribute('data-su');
+    if (suId) {
+      window.open('https://pro.sponsorunited.com/profile/' + encodeURIComponent(suId) + '/contacts', '_blank', 'noopener');
+    } else {
+      var nm = suBtn.getAttribute('data-suname');
+      navigator.clipboard.writeText(nm);
+      toast('“' + nm + '” copied — paste it into SponsorUnited search');
+      window.open('https://pro.sponsorunited.com/search/smart', '_blank', 'noopener');
+    }
+    return;
+  }
   if (addBtn) {
     var row = addBtn.closest('[data-needs]');
     var slot = row.querySelector('.needs-slot');
