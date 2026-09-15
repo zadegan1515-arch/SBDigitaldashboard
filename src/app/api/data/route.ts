@@ -609,6 +609,12 @@ const handlers: Record<string, Handler> = {
   //
   // The budget is DAILY_SEND_LIMIT actual sends per day, counted from
   // sentAt — not "ten rows stamped once". Two earlier bugs lived here:
+  // Queue size for the LinkedIn page subtitle — same number the
+  // dashboard's "Queued" stat reports (active targets only).
+  async countQueued() {
+    return { queued: await prisma.target.count({ where: { shelved: false, status: 'queued' } }) }
+  },
+
   // marking all ten sent immediately handed out ten more (so the limit
   // capped nothing), and anything stamped but not sent yesterday matched
   // neither branch and vanished from the queue forever.
@@ -967,8 +973,10 @@ const handlers: Record<string, Handler> = {
       },
       include: {
         _count: { select: { contacts: true, targets: true } },
+        // Decision-makers first, but never pretend a brand with contacts
+        // has none — that read as "No contacts yet" next to "5 contacts".
         contacts: {
-          where: { isDecisionMaker: true },
+          orderBy: { isDecisionMaker: 'desc' },
           select: { name: true, title: true, linkedinUrl: true },
           take: 3,
         },
