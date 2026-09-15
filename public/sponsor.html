@@ -186,14 +186,11 @@
   var P = new URLSearchParams(location.search);
   var PICK = (P.get('pick') || '').split(',').filter(Boolean);
   var FOR = (P.get('for') || '').slice(0, 80), BRAND_ID = (P.get('b') || '').slice(0, 40);
-  // Access code: from the link (?code=) or remembered on this device.
-  // The email typed at the gate is remembered the same way.
+  // Access code: only from the link (?code=) or typed at the gate —
+  // deliberately never remembered, so every visit goes through the gate.
+  // Clear anything an older version of this page stored.
   var CODE = (P.get('code') || '').trim().toUpperCase(), GATE_EMAIL = '';
-  try {
-    if (CODE) localStorage.setItem('sbBoardCode', CODE);
-    else CODE = (localStorage.getItem('sbBoardCode') || '').toUpperCase();
-    GATE_EMAIL = localStorage.getItem('sbBoardEmail') || '';
-  } catch (e) {}
+  try { localStorage.removeItem('sbBoardCode'); localStorage.removeItem('sbBoardEmail'); } catch (e) {}
   fState = P.get('state') || ''; fGenre = P.get('genre') || ''; fSchool = P.get('school') || ''; q = P.get('q') || '';
   fPerf = (P.get('performer') || '').toLowerCase();
   var oldType = (P.get('type') || '').toLowerCase();           // pre-performer links
@@ -229,7 +226,6 @@
     CODE = document.getElementById('gate-code').value.trim().toUpperCase();
     GATE_EMAIL = document.getElementById('gate-email').value.trim();
     if (!CODE || !GATE_EMAIL) return;
-    try { localStorage.setItem('sbBoardCode', CODE); localStorage.setItem('sbBoardEmail', GATE_EMAIL); } catch (e) {}
     load();
   });
 
