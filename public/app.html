@@ -366,7 +366,7 @@
         <div class="search-wrap">
           <span class="search-icon">⌕</span>
           <input class="search-input" id="q" type="text" autocomplete="off"
-                 placeholder="Search brands, people, shows, sponsorships…">
+                 placeholder="Search">
           <span class="kbd" id="kbd-hint">/</span>
         </div>
         <button class="btn-solid" id="btn-add-brand">+ Add brand</button>
@@ -396,16 +396,8 @@
       <div id="owner-split"></div>
       <div class="section-head">Categories</div>
       <div class="card-grid" id="cat-cards" style="margin-top:0"></div>
-      <div class="section-head">Open todos</div>
+      <div class="section-head" id="todos-head">Open todos</div>
       <div class="panel" id="todos"></div>
-      <div class="section-head">Jump to</div>
-      <div class="go-grid">
-        <div class="go-card" data-goto="outreach">Outreach <span class="arr">→</span></div>
-        <div class="go-card" data-goto="board">Show Board <span class="arr">→</span></div>
-        <div class="go-card" data-goto="pipeline">Deals <span class="arr">→</span></div>
-        <div class="go-card" data-goto="activations">Activations <span class="arr">→</span></div>
-        <div class="go-card" data-goto="operations">Operations <span class="arr">→</span></div>
-      </div>
     </section>
 
     <!-- SEARCH RESULTS -->
@@ -446,8 +438,7 @@
         <button class="chip" data-shows="requested">Requested by brands</button>
         <button class="chip" data-shows="past">Past shows</button>
         <button class="chip" data-shows="leads">All leads (CRM)</button>
-        <button class="btn-ghost" id="btn-showlink" style="margin-left:auto" title="Public page where brands pick shows to sponsor">Brand link</button>
-        <button class="btn-ghost" id="btn-showrefresh" title="Re-read the CRM sheet now">↻ Sheet</button>
+        <button class="btn-ghost" id="btn-showrefresh" title="Re-read the CRM sheet now">Refresh sheet</button>
         <button class="btn-ghost" id="btn-ratecard">Rate card</button>
       </div>
       <div class="chips" id="shows-filters" style="margin-top:8px;gap:6px" hidden></div>
@@ -486,7 +477,7 @@
       <div class="chips" style="margin-top:22px;align-items:center">
         <button class="chip" data-mode="today">Today <span class="n" id="c-today">0</span></button>
         <button class="chip" data-mode="all">All targets <span class="n" id="c-all">0</span></button>
-        <button class="chip active" data-mode="email">✉ Email <span class="n" id="c-email"></span></button>
+        <button class="chip active" data-mode="email">Email <span class="n" id="c-email"></span></button>
         <button class="btn-ghost" id="btn-retrim" style="margin-left:auto">Cap to top 3 / brand</button>
       </div>
       <div style="position:relative;margin-top:12px;max-width:420px">
@@ -495,7 +486,6 @@
       </div>
       <div id="status-filters" class="chips" style="display:none"></div>
       <div class="count-head" id="queue-head">To send today <span class="n"></span></div>
-      <div class="hint">Generate drafts, copy, send on LinkedIn, then mark sent.</div>
       <div id="targets"></div>
     </section>
 
@@ -504,7 +494,6 @@
       <div class="eyebrow">Gaps</div>
       <h1>Needs contact info</h1>
       <div class="sub" id="needs-sub">Loading…</div>
-      <div class="hint" style="margin-top:6px">Brands with nobody to reach yet. Add a name and a LinkedIn (or email/phone) to start outreach, or pull them from SponsorUnited.</div>
       <div id="needs-list" style="margin-top:18px"></div>
     </section>
 
@@ -512,7 +501,7 @@
     <section class="view page" id="materials">
       <div class="eyebrow">Sales materials</div>
       <h1>Materials</h1>
-      <div class="sub">What goes out with your outreach. The one-pager below is attached to every outreach email automatically.</div>
+      <div class="sub">Attached to every outreach email automatically.</div>
       <div class="panel panel-pad" style="margin-top:24px;max-width:720px">
         <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
           <a href="/materials/sba-one-pager.pdf?v=2026-08-31" target="_blank" rel="noopener" style="flex:none">
@@ -537,9 +526,9 @@
     <section class="view page" id="pipeline">
       <div class="eyebrow">Deals</div>
       <h1>Deals</h1>
-      <div class="sub">Every deal in one place — Show Board requests land here automatically, outreach deals start with + New deal. Sponsorship money only; booking revenue lives in sb-crm and is never added in here.</div>
+      <div class="sub">Sponsorship revenue only — booking money stays in sb-crm.</div>
       <div style="margin-top:18px;display:flex;gap:8px"><button class="btn-solid" id="btn-newdeal">+ New deal</button>
-        <button class="btn-ghost" id="btn-notionsync" title="Pull the deal list from Notion now (also runs automatically every morning)">⟳ Sync Notion</button></div>
+        <button class="btn-ghost" id="btn-notionsync" title="Pull the deal list from Notion now (also runs automatically every morning)">Sync Notion</button></div>
       <div id="deal-form-slot" style="margin-top:12px"></div>
       <div class="kpi-row" id="pipe-kpis"></div>
       <div id="deals"></div>
@@ -587,10 +576,10 @@
     <section class="view page" id="discover">
       <div class="eyebrow">Discover</div>
       <h1>Find new brands</h1>
-      <div class="sub">Describe a niche and AI searches the live web for matching brands — only ones with a verified LinkedIn company page make the list. Add the good ones, then pull their contacts on SponsorUnited.</div>
+      <div class="sub">Describe a niche; add the matches you like.</div>
       <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
         <input class="field-box" id="disc-q" placeholder="e.g. venture-backed CPG brands, hard seltzer challengers, sunscreen brands going after Gen Z" style="flex:1;min-width:260px">
-        <button class="btn-solid" id="disc-go">✦ Search</button>
+        <button class="btn-solid" id="disc-go">Search</button>
       </div>
       <div id="disc-recent" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"></div>
       <div id="disc-body" style="margin-top:16px"></div>
@@ -617,7 +606,7 @@
     <section class="view page" id="team">
       <div class="eyebrow">Team</div>
       <h1>Who can sign in</h1>
-      <div class="sub">Anyone listed here can open the site with their Google account. Nobody else gets in.</div>
+      <div class="sub">Google sign-in allowlist.</div>
       <div id="team-body" style="margin-top:24px"></div>
     </section>
   </main>
@@ -937,12 +926,15 @@ function loadDashboard() {
         esc(CAT_NAMES[cat.key] || cat.key) + '<span class="n">' + cat.count + '</span></button>';
     }).join('') || '<div style="padding:4px 8px;font-size:12.5px;color:var(--ink-3)">None yet</div>';
 
+    // Todos only earn space on the page when there are some.
     var todos = d.todos || [];
+    document.getElementById('todos-head').hidden = !todos.length;
+    document.getElementById('todos').hidden = !todos.length;
     document.getElementById('todos').innerHTML = todos.length
       ? '<div style="padding:14px 18px">' + todos.map(function (t) {
           return '<div style="padding:5px 0;font-size:13.5px;color:var(--ink-2)">' + esc(t.text) + '</div>';
         }).join('') + '</div>'
-      : '<div class="empty"><h3>Nothing open</h3><p>Todos appear here once there are sponsors to chase.</p></div>';
+      : '';
   });
 }
 
@@ -1110,8 +1102,8 @@ function loadBrand(brandId) {
           '<a class="btn-ghost" href="' + esc(liCompany) + '" target="_blank" rel="noopener">LinkedIn ↗</a>' +
           '<a class="btn-ghost" href="' + esc(suUrl) + '" target="_blank" rel="noopener">' + suLabel + '</a>' +
           (b.doNotEmail
-            ? '<button class="btn-ghost" id="b-dne" style="border-color:var(--accent);color:var(--accent)" title="This brand is excluded from all outreach emails — click to allow again">🚫 Do not email</button>'
-            : '<button class="btn-ghost" id="b-dne" title="Exclude this brand from all outreach emails (intros and follow-ups)">✉ Emails on</button>') +
+            ? '<button class="btn-ghost" id="b-dne" style="border-color:var(--accent);color:var(--accent)" title="This brand is excluded from all outreach emails — click to allow again">Do not email</button>'
+            : '<button class="btn-ghost" id="b-dne" title="Exclude this brand from all outreach emails (intros and follow-ups)">Emails on</button>') +
           '<button class="btn-ghost danger" id="b-delete" style="margin-left:auto">Delete brand</button>' +
         '</div>' +
       '</div>';
@@ -1155,7 +1147,7 @@ function loadBrand(brandId) {
     var outreach = b.targets.length
       ? '<div class="section-head">Outreach <span class="n">' + activeCount + ' in queue' +
           (b.targets.length > activeCount ? ' · ' + (b.targets.length - activeCount) + ' shelved' : '') +
-        '</span><button class="btn-ghost" id="b-draftintro" style="margin-left:auto">✉ Draft intro email</button></div>' +
+        '</span><button class="btn-ghost" id="b-draftintro" style="margin-left:auto">Draft intro email</button></div>' +
         '<div class="hint" style="margin:-6px 0 10px">Only the top ' + TARGET_CAP + ' by fit per brand go in the queue. ' +
           'Promote or shelve anyone here.</div>' +
         b.targets.map(function (t) {
@@ -1183,7 +1175,7 @@ function loadBrand(brandId) {
     var docs =
       '<div class="section-head">Documents <span class="n">' + b.documents.length + '</span>' +
         '<button class="btn-ghost" id="b-callprep" style="margin-left:auto">📞 Call prep</button>' +
-        '<button class="btn-ghost" id="b-proposal">✦ Generate proposal</button></div>' +
+        '<button class="btn-ghost" id="b-proposal">Generate proposal</button></div>' +
       '<div id="b-doc-slot"></div>' +
       (b.documents.length ? b.documents.map(docRow).join('')
         : '<div class="panel"><div class="empty"><h3>No documents yet</h3>' +
@@ -1296,9 +1288,9 @@ function loadBrand(brandId) {
     if (di) di.onclick = function () {
       var btn = di; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Drafting…';
       api('draftBrandIntro', { brandId: b.id }).then(function (r) {
-        toast('Intro drafted to ' + r.to + ' — it\'s waiting in Outreach → ✉ Email');
-        btn.disabled = false; btn.textContent = '✉ Draft intro email';
-      }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = '✉ Draft intro email'; });
+        toast('Intro drafted to ' + r.to + ' — it\'s waiting in Outreach → Email');
+        btn.disabled = false; btn.textContent = 'Draft intro email';
+      }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Draft intro email'; });
     };
 
     document.getElementById('b-callprep').onclick = function () {
@@ -1375,7 +1367,7 @@ function openProposalForm(brandId) {
       '</div>' +
       '<div style="margin-bottom:10px"><label class="lbl">Anything to emphasize (optional)</label>' +
         '<input class="field-box" id="pp-extra" placeholder="e.g. they care about the Southeast, spring timing"></div>' +
-      '<div style="display:flex;gap:8px;align-items:center"><button class="btn-solid" id="pp-go">✦ Generate</button>' +
+      '<div style="display:flex;gap:8px;align-items:center"><button class="btn-solid" id="pp-go">Generate</button>' +
         '<button class="btn-ghost" id="pp-cancel">Cancel</button>' +
         '<span id="pp-msg" style="font-size:12px;color:var(--ink-3)"></span></div>' +
     '</div>';
@@ -1426,7 +1418,7 @@ function renderFulfill(wrap, s) {
       '<input class="inp" id="dl-new" placeholder="Add a deliverable…" style="flex:1;min-width:150px">' +
       '<button class="btn-ghost" id="dl-add" type="button">Add</button>' +
       (s.deliverables && !items.length ? '<button class="btn-ghost" id="dl-seed" type="button">Import from sponsorship</button>' : '') +
-      '<button class="btn-draft" id="dl-recap" type="button">✦ Generate recap</button>' +
+      '<button class="btn-draft" id="dl-recap" type="button">Generate recap</button>' +
     '</div><div id="dl-msg" style="font-size:12px;color:var(--ink-3);margin-top:6px"></div>';
 
   wrap.querySelectorAll('.dl-item').forEach(function (r) {
@@ -1663,7 +1655,7 @@ function loadShows() {
     if (showsFilter === 'past') shows = shows.filter(function (s) { return s.past; }).reverse();
     if (showsFilter === 'requested') shows = shows.filter(function (s) { return (s.sponsors || []).some(function (sp) { return sp.status === 'requested'; }); });
     SHOWS_LAST = shows; if (d.sponsorUrl) SPONSOR_URL = d.sponsorUrl;
-    var when = d.updatedAt ? 'sheet read ' + timeAgo(d.updatedAt) : 'sheet not read yet — connect Google Drive on Activations, then ↻ Sheet';
+    var when = d.updatedAt ? 'sheet read ' + timeAgo(d.updatedAt) : 'sheet not read yet — connect Google Drive on Activations, then Refresh sheet';
     document.getElementById('shows-sub').innerHTML =
       esc(shows.length + (showsFilter === 'past' ? ' past shows' : ' confirmed shows') + (showsFilter === 'all' ? ' · ' + d.unsold + ' with no sponsor yet' : '') + ' · ' + when) +
       (d.rejected ? ' · <a data-showrejects style="cursor:pointer;text-decoration:underline">' + d.rejected + ' sheet rows skipped</a>' : '');
@@ -1672,7 +1664,7 @@ function loadShows() {
       box.innerHTML = '<div class="panel"><div class="empty"><h3>' + (showsFilter === 'requested' ? 'No brand requests yet' : 'No confirmed shows') + '</h3>' +
         (showsFilter === 'requested' ? '<p>When a brand picks shows on the brand link, they appear here.</p>' :
         '<p>A show counts as confirmed when its row in the CRM sheet has a booked status <b>and</b> a date, an artist and a school.' +
-        (d.updatedAt ? '' : ' Connect Google Drive (Activations page) and press ↻ Sheet.') + '</p>') + '</div></div>';
+        (d.updatedAt ? '' : ' Connect Google Drive (Activations page) and press Refresh sheet.') + '</p>') + '</div></div>';
       return;
     }
     applyShowFilters();
@@ -2205,7 +2197,7 @@ function targetRow(t) {
       '<button class="btn-ghost" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
       (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">↗ LinkedIn</a>' : '') +
       (d ? '<button class="btn-ghost" data-act="toggle">' + (open ? 'Close draft' : 'Show draft') + '</button>' : '') +
-      '<button class="btn-draft" data-act="draft">✦ ' + (d ? 'Redraft' : 'Draft') + '</button>' +
+      '<button class="btn-draft" data-act="draft">' + (d ? 'Redraft' : 'Draft') + '</button>' +
       (t.status === 'queued' || t.status === 'drafted' ? '<button class="btn-ghost" data-act="sent">Mark sent</button>' : '') +
       (t.status !== 'replied' && t.status !== 'converted' && t.status !== 'declined' && t.status !== 'dead'
         ? '<button class="btn-ghost" data-act="replied">Replied</button>' : '') +
@@ -2502,7 +2494,7 @@ function renderEmailMode(box) {
               st.totalSent + ' all-time · ' + (st.totalOpened || 0) + ' opened · ' + st.totalReplies + ' replies' +
               (st.approved ? ' · <b style="color:var(--accent)">' + st.approved + ' scheduled for 9am</b>' : '') + '</span></div>' +
             '<span style="margin-left:auto"></span>' +
-            '<button class="btn-ghost" id="em-draft">✦ Draft today\'s batch</button>' +
+            '<button class="btn-ghost" id="em-draft">Draft today\'s batch</button>' +
             '<button class="btn-ghost" id="em-check">Check replies</button>' +
             '<button class="btn-ghost" id="em-test">Send test to me</button>' +
             '<button class="btn-ghost" id="em-approve"' + (q.drafts.length ? '' : ' disabled') + '>Approve → 9am send</button>' +
@@ -2555,10 +2547,10 @@ function renderEmailMode(box) {
               '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">' +
                 '<b style="color:var(--accent)">3 · Before you send</b><br>' +
                 'Check the <b>To</b> person is right (switching fixes the greeting), CC anyone useful, ' +
-                'and hit <b>✦ Insert</b> on the brand-specific angle — personalized emails get more replies.</div>' +
+                'and hit <b>Insert</b> on the brand-specific angle — personalized emails get more replies.</div>' +
               '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">' +
                 '<b style="color:var(--accent)">4 · After it\'s sent</b><br>' +
-                '<b>👁 opened</b> = they saw it. Replies land below — use <b>✦ Draft response</b> and push for a 15-min call. ' +
+                '<b>opened</b> = they saw it. Replies land below — use <b>Draft response</b> and push for a 15-min call. ' +
                 'Daily cap ramps slowly on purpose: it keeps us out of spam folders.</div>' +
             '</div>' +
           '</div>' +
@@ -2625,11 +2617,11 @@ function renderEmailMode(box) {
               signaturePreview() +
               (sug
                 ? '<div style="margin-top:8px;padding:10px 12px;background:var(--accent-soft,#fdf0ec);border:1px solid var(--border);border-radius:8px;font-size:12.5px">' +
-                    '<b style="color:var(--accent)">✦ Angle for ' + esc(d.target.brand.name) + ':</b> ' + esc(sug.tip) +
+                    '<b style="color:var(--accent)">Angle for ' + esc(d.target.brand.name) + ':</b> ' + esc(sug.tip) +
                     '<div style="margin-top:6px;color:var(--ink-2);font-style:italic">“' + esc(sug.insert) + '”</div>' +
                     '<button class="btn-ghost" data-emact="insert" data-insert="' + esc(sug.insert) + '" style="margin-top:8px">Insert into email</button>' +
                   '</div>'
-                : '<div style="margin-top:8px"><button class="btn-ghost" data-emact="suggest">✦ Suggest angle</button></div>') +
+                : '<div style="margin-top:8px"><button class="btn-ghost" data-emact="suggest">Suggest angle</button></div>') +
             '</div></div>';
           }).join('')
         : '<div class="panel"><div class="empty"><h3>No drafts waiting</h3><p>Hit “Draft today\'s batch” — it writes a personalized email for your best-fit targets who have a work address, up to today\'s cap.</p></div></div>';
@@ -2645,7 +2637,7 @@ function renderEmailMode(box) {
               '<div style="margin-top:6px;font-size:12.5px;color:var(--ink-2)"><b style="color:var(--accent)">Recommendation:</b> ' + esc(x.recommendation) + '</div>' +
               '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
                 (x.nextContact
-                  ? '<button class="btn-solid" data-exact="alt" data-contact="' + esc(x.nextContact.id) + '">✉ Email ' + esc(x.nextContact.name.split(' ')[0]) + ' instead</button>'
+                  ? '<button class="btn-solid" data-exact="alt" data-contact="' + esc(x.nextContact.id) + '">Email ' + esc(x.nextContact.name.split(' ')[0]) + ' instead</button>'
                   : '') +
                 '<button class="btn-ghost" data-exact="nudge">One more follow-up</button>' +
                 '<button class="btn-ghost danger" data-exact="cold">Mark cold</button>' +
@@ -2662,7 +2654,7 @@ function renderEmailMode(box) {
               '<span class="t-sep">·</span>' + esc(r.target.contact.name) + '</div>' +
               '<div class="t-meta"><span>' + esc(r.subject || '(no subject)') + '</span><span>· ' + when(r.sentAt || r.createdAt) + '</span></div>' +
               '</div><div class="t-actions">' +
-                '<button class="btn-ghost" data-emact="draftresp">✦ Draft response</button>' +
+                '<button class="btn-ghost" data-emact="draftresp">Draft response</button>' +
                 '<span class="status replied">replied</span></div></div>' +
               '<div data-rrpanel="' + esc(r.id) + '" style="display:none;margin:0 0 10px;padding:12px;border:1px solid var(--border);border-radius:8px"></div>';
           }).join('')
@@ -2676,7 +2668,7 @@ function renderEmailMode(box) {
               '<span class="t-sep">·</span>' + esc(r.subject || '') + '</div>' +
               '<div class="t-meta"><span>' + esc(r.toEmail || '') + '</span><span>· ' + when(r.sentAt || r.createdAt) + '</span></div></div>' +
               '<div class="t-actions">' +
-              (r.opens > 0 ? '<span class="status replied">👁 opened' + (r.opens > 1 ? ' ×' + r.opens : '') + '</span>' : '') +
+              (r.opens > 0 ? '<span class="status replied">opened' + (r.opens > 1 ? ' ×' + r.opens : '') + '</span>' : '') +
               '<span class="status ' + (r.status === 'failed' ? 'declined' : 'sent') + '">' + r.status + '</span></div></div>';
           }).join('')
         : '';
@@ -2714,12 +2706,12 @@ function renderEmailMode(box) {
       box.querySelector('#em-draft').onclick = function () {
         var btn = this; btn.disabled = true; var total = 0;
         function step(rounds) {
-          btn.textContent = '✦ Drafting… (' + total + ')';
+          btn.textContent = 'Drafting… (' + total + ')';
           api('draftEmails', { limit: 4 }).then(function (r) {
             total += r.drafted;
             if (!r.done && rounds < 10 && r.drafted > 0) step(rounds + 1);
             else { toast(total + ' email' + (total === 1 ? '' : 's') + ' drafted'); loadOutreach(); }
-          }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = '✦ Draft today\'s batch'; });
+          }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Draft today\'s batch'; });
         }
         step(0);
       };
@@ -2801,7 +2793,7 @@ function renderEmailMode(box) {
           if (panel.style.display !== 'none' && panel.innerHTML) { panel.style.display = 'none'; return; }
           b.disabled = true; b.innerHTML = '<span class="spinner"></span> Drafting…';
           api('draftReplyResponse', { id: rid }).then(function (r) {
-            b.disabled = false; b.textContent = '✦ Draft response';
+            b.disabled = false; b.textContent = 'Draft response';
             panel.style.display = 'block';
             panel.innerHTML =
               '<div style="font-size:12px;color:var(--ink-3);margin-bottom:6px">To ' + esc(r.to || '') + '</div>' +
@@ -2821,7 +2813,7 @@ function renderEmailMode(box) {
               }).then(function (r2) { toast('Response sent to ' + r2.to); loadOutreach(); })
                 .catch(function (e) { toast(e.message); sb.disabled = false; sb.textContent = 'Send response'; });
             };
-          }).catch(function (e) { toast(e.message); b.disabled = false; b.textContent = '✦ Draft response'; });
+          }).catch(function (e) { toast(e.message); b.disabled = false; b.textContent = 'Draft response'; });
         };
       });
 
@@ -2896,7 +2888,7 @@ function renderEmailMode(box) {
           b.disabled = true; b.innerHTML = '<span class="spinner"></span> Thinking…';
           api('suggestForDraft', { id: b.closest('[data-em]').getAttribute('data-em') })
             .then(function () { loadOutreach(); })
-            .catch(function (e) { toast(e.message); b.disabled = false; b.textContent = '✦ Suggest angle'; });
+            .catch(function (e) { toast(e.message); b.disabled = false; b.textContent = 'Suggest angle'; });
         };
       });
 
@@ -2974,12 +2966,12 @@ function loadPipeline() {
   if (ns) ns.onclick = function () {
     ns.disabled = true; ns.innerHTML = '<span class="spinner"></span> Syncing…';
     api('syncNotionDeals').then(function (r) {
-      ns.disabled = false; ns.textContent = '⟳ Sync Notion';
+      ns.disabled = false; ns.textContent = 'Sync Notion';
       if (r.configured === false) { toast(r.hint || 'Notion is not connected yet'); return; }
       toast(r.synced + ' deal' + (r.synced === 1 ? '' : 's') + ' synced' + (r.created ? ', ' + r.created + ' new' : '') +
         (r.skipped && r.skipped.length ? ' · skipped: ' + r.skipped.join(', ') : ''));
       loadPipeline();
-    }).catch(function (e) { ns.disabled = false; ns.textContent = '⟳ Sync Notion'; toast(e.message); });
+    }).catch(function (e) { ns.disabled = false; ns.textContent = 'Sync Notion'; toast(e.message); });
   };
   return api('listDeals').then(function (d) {
     var deals = d.deals || [];
@@ -3024,24 +3016,24 @@ function loadPipeline() {
                 '<span class="amount" style="margin-left:auto;font-size:12.5px">' + money(x.valueCents) + '</span></div>' +
               (x.eventRef || x.name !== x.brand.name ? '<div style="font-size:11.5px;color:var(--ink-3);margin-top:2px">' + esc(x.eventRef || x.name) + '</div>' : '') +
               '<div style="font-size:11px;color:var(--ink-3);margin-top:3px">' +
-                (x.owner ? '👤 ' + esc(x.owner) : '👤 unassigned') +
+                (x.owner ? '' + esc(x.owner) : 'unassigned') +
                 (locked ? '' : ' <a href="#" data-dact="owner" style="color:var(--accent);text-decoration:none">✎</a>') + '</div>' +
               '<div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap">' +
                 (locked
                   ? (x.source === 'notion'
-                      ? '<span style="font-size:11px;color:var(--ink-3)" title="Mirrors Notion — change its Stage there; syncs nightly">📓 from Notion</span>'
-                      : '<span style="font-size:11px;color:var(--ink-3)" title="Mirrors its show — change the sponsorship status instead">🔒 from show</span>')
+                      ? '<span style="font-size:11px;color:var(--ink-3)" title="Mirrors Notion — change its Stage there; syncs nightly">from Notion</span>'
+                      : '<span style="font-size:11px;color:var(--ink-3)" title="Mirrors its show — change the sponsorship status instead">from show</span>')
                   : (i > 0 ? '<button class="btn-ghost" data-dact="move" data-to="' + STAGE_ORDER[i - 1] + '" style="padding:2px 7px;font-size:11.5px" title="Back to ' + STAGE_LABEL[STAGE_ORDER[i - 1]] + '">◀</button>' : '') +
                     (i < STAGE_ORDER.length - 1 && s !== 'closed' ? '<button class="btn-ghost" data-dact="move" data-to="' + STAGE_ORDER[i + 1] + '" style="padding:2px 7px;font-size:11.5px" title="Move to ' + STAGE_LABEL[STAGE_ORDER[i + 1]] + '">▶</button>' : '')) +
                 ((s === 'verbal' || s === 'closed')
-                  ? '<button class="btn-ghost" data-dact="contract" style="padding:2px 7px;font-size:11.5px">📄 Contract</button>' +
-                    '<button class="btn-ghost" data-dact="invoice" style="padding:2px 7px;font-size:11.5px">🧾 Invoice</button>'
+                  ? '<button class="btn-ghost" data-dact="contract" style="padding:2px 7px;font-size:11.5px">Contract</button>' +
+                    '<button class="btn-ghost" data-dact="invoice" style="padding:2px 7px;font-size:11.5px">Invoice</button>'
                   : '') +
               '</div></div>';
           }).join('') : '<div style="font-size:11.5px;color:var(--ink-3);padding:6px 2px">—</div>') +
         '</div>';
       }).join('') + '</div>' +
-      '<div class="hint" style="margin-top:10px">◀ ▶ moves a deal between stages. 🔒 deals mirror an attached show — edit them on the Sponsorships sub-tab. Contract and invoice land in the brand\'s Documents.</div>';
+      '';
 
     el.querySelectorAll('a[data-brand]').forEach(function (a) {
       a.onclick = function (ev) { ev.preventDefault(); loadBrand(a.getAttribute('data-brand')); };
@@ -3071,7 +3063,7 @@ function loadPipeline() {
         b.disabled = true; b.innerHTML = '<span class="spinner"></span>';
         api('generateContract', { dealId: card.getAttribute('data-deal') })
           .then(function (doc) { toast('Contract drafted — opening the brand page'); loadBrand(doc.brandId); })
-          .catch(function (e) { toast(e.message); b.disabled = false; b.textContent = '📄 Contract'; });
+          .catch(function (e) { toast(e.message); b.disabled = false; b.textContent = 'Contract'; });
       };
     });
     el.querySelectorAll('[data-dact="invoice"]').forEach(function (b) {
@@ -3080,7 +3072,7 @@ function loadPipeline() {
         b.disabled = true; b.innerHTML = '<span class="spinner"></span>';
         api('generateInvoice', { dealId: card.getAttribute('data-deal') })
           .then(function (doc) { toast('Invoice created — opening the brand page'); loadBrand(doc.brandId); })
-          .catch(function (e) { toast(e.message); b.disabled = false; b.textContent = '🧾 Invoice'; });
+          .catch(function (e) { toast(e.message); b.disabled = false; b.textContent = 'Invoice'; });
       };
     });
   }).catch(function (e) {
@@ -3292,11 +3284,11 @@ function loadDiscover(selectedQuery) {
     go.disabled = true; go.innerHTML = '<span class="spinner"></span> Searching the web…';
     body.innerHTML = '<div class="panel"><div class="empty"><h3>Hunting…</h3><p>Searching the web for “' + esc(q) + '” and verifying LinkedIn pages. Takes up to a minute.</p></div></div>';
     api('discoverBrands', { query: q }).then(function (r) {
-      go.disabled = false; go.textContent = '✦ Search';
+      go.disabled = false; go.textContent = 'Search';
       toast(r.results.length + ' brand' + (r.results.length === 1 ? '' : 's') + ' found with verified LinkedIn');
       loadDiscover(q);
     }).catch(function (e) {
-      go.disabled = false; go.textContent = '✦ Search';
+      go.disabled = false; go.textContent = 'Search';
       body.innerHTML = '<div class="panel"><div class="empty"><h3>Search failed</h3><p>' + esc(e.message) + '</p></div></div>';
     });
   };
@@ -4027,7 +4019,7 @@ function personRows(p, e, line) {
     '<td class="r"><input type="text" data-sf="rateCents" value="' + (p.rateCents == null ? '' : money(p.rateCents)) + '" placeholder="—"></td>' +
     '<td>' + plat + '</td>' +
     '<td class="muted">' + (contact ? esc(contact) : '<span style="color:var(--ink-3)">—</span>') +
-      (p.kind === 'ambassador' && p.email && e.inviteUrl && p.status === 'invited' ? ' <button class="btn-ghost sm" data-invite-send="' + esc(p.id) + '" title="Email the invite link">✉ Invite</button>' : '') + '</td>' +
+      (p.kind === 'ambassador' && p.email && e.inviteUrl && p.status === 'invited' ? ' <button class="btn-ghost sm" data-invite-send="' + esc(p.id) + '" title="Email the invite link">Invite</button>' : '') + '</td>' +
     '<td class="del"><button class="btn-ghost danger" data-staff-del="' + esc(p.id) + '" title="Remove">×</button></td></tr>';
   if (open) {
     h += '<tr class="detail" data-staff="' + esc(p.id) + '"><td colspan="6"><div class="detail-grid">' +
@@ -5111,19 +5103,14 @@ document.querySelectorAll('.chip[data-shows]').forEach(function (c) {
   });
 });
 
-// Shows tab: brand link, sheet refresh, filter chips, genre override, skipped rows.
-document.getElementById('btn-showlink').addEventListener('click', function () {
-  var url = SPONSOR_URL;
-  navigator.clipboard.writeText(url).then(function () { toast('Brand link copied — ' + url); });
-  window.open(url, '_blank', 'noopener');
-});
+// Shows tab: sheet refresh, filter chips, genre override, skipped rows.
 document.getElementById('btn-showrefresh').addEventListener('click', function () {
   var b = this; b.disabled = true; b.textContent = 'Reading sheet…';
   api('refreshShows', {}).then(function (r) {
     if (!r.ok) throw new Error(r.error || 'Could not read the sheet');
     toast(r.count + ' confirmed shows from ' + r.tables + ' table' + (r.tables === 1 ? '' : 's') + ' · ' + r.rejected.length + ' rows skipped');
     loadShows();
-  }).catch(function (e) { toast(e.message); }).then(function () { b.disabled = false; b.textContent = '↻ Sheet'; });
+  }).catch(function (e) { toast(e.message); }).then(function () { b.disabled = false; b.textContent = 'Refresh sheet'; });
 });
 function showsSendBar() {
   var n = Object.keys(showsSel).length;
@@ -5174,7 +5161,7 @@ document.getElementById('shows-sub').addEventListener('click', function (e) {
     var groups = {};
     r.rejected.forEach(function (x) { (groups[x.reason] = groups[x.reason] || []).push(x.row); });
     box.innerHTML = '<div class="panel panel-pad"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><b style="flex:1">Sheet rows that did not count as confirmed</b><button class="btn-ghost" data-back>Back</button></div>' +
-      '<div class="hint" style="margin:0 0 10px">A row counts only with a booked status (Offer Confirmed / Signed / Show Confirmed) <b>and</b> a date, an artist and a school. Fix the row in the sheet, then ↻ Sheet.</div>' +
+      '<div class="hint" style="margin:0 0 10px">A row counts only with a booked status (Offer Confirmed / Signed / Show Confirmed) <b>and</b> a date, an artist and a school. Fix the row in the sheet, then Refresh sheet.</div>' +
       Object.keys(groups).map(function (k) {
         return '<div style="margin:8px 0 4px;font-weight:600;font-size:12px">' + esc(k) + ' <span style="color:var(--ink-3);font-weight:400">' + groups[k].length + '</span></div>' +
           groups[k].slice(0, 40).map(function (row) { return '<div style="font-size:12.5px;color:var(--ink-2);padding:2px 0">' + esc(row) + '</div>'; }).join('') +
@@ -5355,7 +5342,7 @@ document.getElementById('targets').addEventListener('click', function (e) {
     delete CLOSED_DRAFTS[id];   // a fresh draft always opens
     api('generateDrafts', { targetId: id })
       .then(function () { return loadOutreach(); })
-      .catch(function (err) { toast(err.message); btn.disabled = false; btn.textContent = '✦ Draft'; });
+      .catch(function (err) { toast(err.message); btn.disabled = false; btn.textContent = 'Draft'; });
   }
 
   if (act === 'sent') {
