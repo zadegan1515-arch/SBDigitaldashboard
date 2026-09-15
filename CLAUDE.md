@@ -32,8 +32,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - `public/app.html` — the whole UI. Top nav is six groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
   `showView`): Home · Brands (All brands / Discover / Needs contacts) · Outreach (Queue / Results) ·
   **Show Board** (Overview = code lookup + access-request approve/deny queue + view stats +
-  who's-opened feed / Requests / Shows) ·
-  **Deals** (Board = the old Pipeline / Sponsorships) · Operations (Inbox / Materials / Team).
+  who's-opened feed / **In talks** = per-brand engagement cards (code, viewers, opens, timed minutes
+  via the board's 60s heartbeat → `BoardVisit.lastSeenAt`, picked shows, visit log) / Requests /
+  Shows) · **Deals** (Board = the old Pipeline / Sponsorships) · Operations (Materials / Team —
+  the ops@ inbox and contract/invoice UI are removed from the site per Leo; `src/lib/ops.ts`, its
+  cron scan and the generateContract/Invoice handlers still exist server-side).
   **Activations** is its own workspace (sidebar + tabs swap in), entered from the left sidebar or the
   Home "Jump to" card — not in the top nav. Deep links: `#activations/<id>/<tab>`, `#operations/<id>`.
 - `src/app/api/data/route.ts` — every server function. Add a handler = add a key to `handlers`.

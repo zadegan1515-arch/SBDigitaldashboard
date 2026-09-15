@@ -791,12 +791,17 @@ model OpsMessage {
 // code, the email typed at the gate, when. Feeds "who's viewing" on the
 // brand page, the Requests activity feed, and the Home KPI.
 model BoardVisit {
-  id        String   @id @default(cuid())
-  brandId   String?
-  brand     Brand?   @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  email     String?
-  code      String?
-  ip        String?
+  id      String  @id @default(cuid())
+  brandId String?
+  brand   Brand?  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  email   String?
+  code    String?
+  ip      String?
+
+  // Bumped by the board's once-a-minute ping while the tab stays open,
+  // so lastSeenAt - createdAt ≈ how long they looked.
+  lastSeenAt DateTime?
+
   createdAt DateTime @default(now())
 
   @@index([brandId])

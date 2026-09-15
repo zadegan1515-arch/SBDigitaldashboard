@@ -554,6 +554,14 @@
       <div id="bd-activity"></div>
     </section>
 
+    <!-- SHOW BOARD: IN TALKS -->
+    <section class="view page" id="talks">
+      <div class="eyebrow">Show Board</div>
+      <h1>In talks</h1>
+      <div class="sub" id="tk-sub">Every brand holding a board code, with what they've done on it.</div>
+      <div id="tk-list" style="margin-top:18px"></div>
+    </section>
+
     <!-- SHOW BOARD REQUESTS -->
     <section class="view page" id="requests">
       <div class="eyebrow">Show Board</div>
@@ -799,16 +807,16 @@ function refreshAfterSponsorChange() {
 var SUBTABS = {
   brands: [['brands', 'All brands'], ['discover', 'Discover'], ['needs', 'Needs contacts']],
   outreach: [['outreach', 'Queue'], ['results', 'Results']],
-  board: [['board', 'Overview'], ['requests', 'Requests'], ['shows', 'Shows']],
+  board: [['board', 'Overview'], ['talks', 'In talks'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
-  operations: [['operations', 'Inbox'], ['materials', 'Materials'], ['team', 'Team']],
+  operations: [['materials', 'Materials'], ['team', 'Team']],
 };
 var GROUP_OF = {
   brands: 'brands', brand: 'brands', discover: 'brands', needs: 'brands',
   outreach: 'outreach', results: 'outreach',
-  board: 'board', requests: 'board', shows: 'board',
+  board: 'board', talks: 'board', requests: 'board', shows: 'board',
   pipeline: 'pipeline', sponsorships: 'pipeline',
-  operations: 'operations', materials: 'operations', team: 'operations',
+  materials: 'operations', team: 'operations',
 };
 
 function showView(id) {
@@ -3061,10 +3069,6 @@ function loadPipeline() {
                       : '<span style="font-size:11px;color:var(--ink-3)" title="Mirrors its show — change the sponsorship status instead">from show</span>')
                   : (i > 0 ? '<button class="btn-ghost" data-dact="move" data-to="' + STAGE_ORDER[i - 1] + '" style="padding:2px 7px;font-size:11.5px" title="Back to ' + STAGE_LABEL[STAGE_ORDER[i - 1]] + '">◀</button>' : '') +
                     (i < STAGE_ORDER.length - 1 && s !== 'closed' ? '<button class="btn-ghost" data-dact="move" data-to="' + STAGE_ORDER[i + 1] + '" style="padding:2px 7px;font-size:11.5px" title="Move to ' + STAGE_LABEL[STAGE_ORDER[i + 1]] + '">▶</button>' : '')) +
-                ((s === 'verbal' || s === 'closed')
-                  ? '<button class="btn-ghost" data-dact="contract" style="padding:2px 7px;font-size:11.5px">Contract</button>' +
-                    '<button class="btn-ghost" data-dact="invoice" style="padding:2px 7px;font-size:11.5px">Invoice</button>'
-                  : '') +
               '</div></div>';
           }).join('') : '<div style="font-size:11.5px;color:var(--ink-3);padding:6px 2px">—</div>') +
         '</div>';
@@ -3091,24 +3095,6 @@ function loadPipeline() {
         api('setDealStage', { id: b.closest('[data-deal]').getAttribute('data-deal'), stage: b.getAttribute('data-to') })
           .then(function () { loadPipeline(); })
           .catch(function (e) { toast(e.message); b.disabled = false; });
-      };
-    });
-    el.querySelectorAll('[data-dact="contract"]').forEach(function (b) {
-      b.onclick = function () {
-        var card = b.closest('[data-deal]');
-        b.disabled = true; b.innerHTML = '<span class="spinner"></span>';
-        api('generateContract', { dealId: card.getAttribute('data-deal') })
-          .then(function (doc) { toast('Contract drafted — opening the brand page'); loadBrand(doc.brandId); })
-          .catch(function (e) { toast(e.message); b.disabled = false; b.textContent = 'Contract'; });
-      };
-    });
-    el.querySelectorAll('[data-dact="invoice"]').forEach(function (b) {
-      b.onclick = function () {
-        var card = b.closest('[data-deal]');
-        b.disabled = true; b.innerHTML = '<span class="spinner"></span>';
-        api('generateInvoice', { dealId: card.getAttribute('data-deal') })
-          .then(function (doc) { toast('Invoice created — opening the brand page'); loadBrand(doc.brandId); })
-          .catch(function (e) { toast(e.message); b.disabled = false; b.textContent = 'Invoice'; });
       };
     });
   }).catch(function (e) {
@@ -3154,6 +3140,61 @@ function loadRequests() {
     }).join('');
   }).catch(function (e) {
     document.getElementById('req-list').innerHTML =
+      '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+}
+
+// --- show board: in talks ---------------------------------------
+//
+// One card per brand with a board code: their code, who's been looking,
+// how often and how long, what they picked, and the raw visit log.
+
+function loadTalks() {
+  showView('talks');
+  return api('listTalks').then(function (d) {
+    var talks = d.talks || [];
+    document.getElementById('tk-sub').textContent =
+      talks.length + ' brand' + (talks.length === 1 ? '' : 's') + ' with board access';
+    var el = document.getElementById('tk-list');
+    if (!talks.length) {
+      el.innerHTML = '<div class="panel"><div class="empty"><h3>Nobody in talks yet</h3>' +
+        '<p>Hand out a code on the Overview and the brand shows up here with its activity.</p></div></div>';
+      return;
+    }
+    el.innerHTML = talks.map(function (t) {
+      var when = function (x) {
+        var d2 = new Date(x);
+        return d2.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' +
+          d2.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      };
+      var stat = t.opens
+        ? t.opens + ' open' + (t.opens === 1 ? '' : 's') +
+          ' · ' + t.viewers.length + ' viewer' + (t.viewers.length === 1 ? '' : 's') +
+          (t.sessionsTimed ? ' · ~' + t.minutesTracked + ' min on the board' : '') +
+          (t.lastOpenAt ? ' · last ' + when(t.lastOpenAt) : '')
+        : 'Code sent — not opened yet';
+      return '<div class="panel panel-pad" style="margin-bottom:10px">' +
+        '<div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap">' +
+          '<a href="#" data-tk-brand="' + esc(t.brand.id) + '" style="font-family:var(--display);font-weight:700;font-size:16px;color:inherit;text-decoration:none">' + esc(t.brand.name) + '</a>' +
+          '<code style="font-size:13px;font-weight:700;letter-spacing:.07em;color:var(--ink-2)">' + esc(t.code) + '</code>' +
+          '<span style="margin-left:auto;font-size:12.5px;color:var(--ink-3)">' + esc(stat) + '</span></div>' +
+        (t.viewers.length ? '<div style="font-size:13px;color:var(--ink-2);margin-top:6px">' + t.viewers.map(esc).join(' · ') + '</div>' : '') +
+        (t.shows.length ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">' + t.shows.map(function (s) {
+          var ed = s.eventDate && s.eventDate.length === 10 ? s.eventDate + 'T12:00:00' : s.eventDate;
+          return '<span class="status">' + (ed ? shortDate(ed) + ' · ' : '') + esc(s.artist) + ' · ' + esc(s.school || '') + '</span>';
+        }).join('') + '</div>' : '') +
+        (t.log.length ? '<details style="margin-top:10px"><summary style="font-size:12.5px;color:var(--ink-3);cursor:pointer">Visit log</summary>' +
+          '<div style="margin-top:6px">' + t.log.map(function (v) {
+            return '<div style="font-size:12.5px;color:var(--ink-2);padding:3px 0">' + when(v.at) +
+              (v.minutes ? ' · ' + v.minutes + ' min' : '') + (v.email ? ' · ' + esc(v.email) : '') + '</div>';
+          }).join('') + '</div></details>' : '') +
+      '</div>';
+    }).join('');
+    el.querySelectorAll('[data-tk-brand]').forEach(function (a) {
+      a.onclick = function (ev) { ev.preventDefault(); loadBrand(a.getAttribute('data-tk-brand')); };
+    });
+  }).catch(function (e) {
+    document.getElementById('tk-list').innerHTML =
       '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
   });
 }
@@ -4814,21 +4855,11 @@ function renderWorkspaceNav() {
     h += '<button class="nav-item" data-ws-act="' + esc(a.id) + '" title="' + esc(a.brand.name) + '"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(a.name) + '</span>' + (a.daysOut != null ? '<span class="n">' + (a.daysOut < 0 ? 'past' : a.daysOut + 'd') + '</span>' : '') + '</button>';
   });
   if (acts.length) h += '<button class="nav-item" data-ws-act="" style="color:var(--side-dim)">All activations →</button>';
-  h += '<div class="nav-label" style="margin-top:14px">Operations</div>';
-  var c = wsCounts || {};
-  h += '<button class="nav-item" data-ws-ops="inbox">Inbox' + (c.inbox ? '<span class="n">' + c.inbox + '</span>' : '') + '</button>' +
-    '<button class="nav-item" data-ws-ops="contract">Contracts' + (c.contracts ? '<span class="n">' + c.contracts + '</span>' : '') + '</button>' +
-    '<button class="nav-item" data-ws-ops="invoice_payable">Invoices we owe' + (c.payable ? '<span class="n">' + c.payable + '</span>' : '') + '</button>' +
-    '<button class="nav-item" data-ws-ops="invoice_receivable">Invoices we sent' + (c.receivable ? '<span class="n">' + c.receivable + '</span>' : '') + '</button>';
   box.innerHTML = h;
 }
 function refreshWorkspaceNav() {
-  Promise.all([
-    api('listActivations').catch(function () { return actList || []; }),
-    api('listOps', { status: 'open', limit: 1 }).catch(function () { return null; })
-  ]).then(function (r) {
-    actList = r[0] || [];
-    if (r[1]) wsCounts = r[1].summary;
+  api('listActivations').catch(function () { return actList || []; }).then(function (r) {
+    actList = r || [];
     renderWorkspaceNav();
   });
 }
@@ -4931,7 +4962,8 @@ function gotoView(id) {
   if (id === 'board') loadBoard();
   if (id === 'requests') loadRequests();
   if (id === 'activations') loadActivations();
-  if (id === 'operations') loadOperations();
+  if (id === 'operations') showView('materials');
+  if (id === 'talks') loadTalks();
   if (id === 'results') loadResults();
   if (id === 'discover') loadDiscover();
   if (id === 'materials') showView('materials');

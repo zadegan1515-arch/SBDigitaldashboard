@@ -19,16 +19,17 @@ export async function GET(req: Request) {
     if (!who) return NextResponse.json({ ok: false, error: 'code' }, { status: 401 })
     // With the gate on, a work email is required too, and every open is
     // logged (who's viewing = that email + the code's brand).
+    let visitId: string | null = null
     if (gateEnabled()) {
       const email = String(params.get('email') || '').trim()
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ ok: false, error: 'email' }, { status: 401 })
       const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || null
-      logBoardVisit({ brandId: who.brand?.id, email, code, ip })
+      visitId = await logBoardVisit({ brandId: who.brand?.id, email, code, ip })
     }
     const r = await allShows()
     const shows = r.shows.map(publicShow)
     return NextResponse.json(
-      { ok: true, updatedAt: r.at, upcoming: r.upcoming, past: r.past, shows, brandName: who.brand?.name || null },
+      { ok: true, updatedAt: r.at, upcoming: r.upcoming, past: r.past, shows, brandName: who.brand?.name || null, visitId },
       { headers: { 'Cache-Control': 'private, no-store' } },
     )
   } catch (e: any) {

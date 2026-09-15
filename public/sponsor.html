@@ -255,6 +255,17 @@
     }).catch(function (e) { err.textContent = e.message; btn.disabled = false; btn.textContent = 'Request access'; });
   });
 
+  // While the tab stays open, ping once a minute so the team can see
+  // how long the board was looked at. Carries only the visit id.
+  var PING = null;
+  function startPing(id) {
+    if (PING) clearInterval(PING);
+    var send = function () {
+      try { navigator.sendBeacon('/api/public/ping', JSON.stringify({ visitId: id })); } catch (e) {}
+    };
+    PING = setInterval(send, 60000);
+  }
+
   function load() {
     // The server decides what the gate needs (SPONSOR_GATE): fetch first,
     // show the gate only on a 401 — missing email comes back as its own
@@ -265,6 +276,7 @@
       if (!r.ok && r.error === 'email') { showGate(GATE_EMAIL ? 'Enter a valid work email to continue.' : ''); return; }
       if (!r.ok) throw new Error(r.error || 'Could not load');
       document.getElementById('gate').hidden = true;
+      if (r.visitId) startPing(r.visitId);
       SHOWS = r.shows;
       if (PICK.length) {
         var only = SHOWS.filter(function (s) { return PICK.indexOf(s.id) >= 0; });

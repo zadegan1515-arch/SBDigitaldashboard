@@ -44,7 +44,7 @@ export async function brandForCode(code: unknown): Promise<{ brand: Brand | null
 // Log a board open. One row per (brand/email/ip) per half hour, so a
 // brand clicking around doesn't flood the feed. Never throws — a logging
 // failure must not take the board down.
-export async function logBoardVisit(v: { brandId?: string | null; email?: string | null; code?: string | null; ip?: string | null }) {
+export async function logBoardVisit(v: { brandId?: string | null; email?: string | null; code?: string | null; ip?: string | null }): Promise<string | null> {
   try {
     const email = String(v.email || '').trim().toLowerCase().slice(0, 200) || null
     const since = new Date(Date.now() - 30 * 60 * 1000)
@@ -52,9 +52,24 @@ export async function logBoardVisit(v: { brandId?: string | null; email?: string
       where: { brandId: v.brandId || null, email, ip: v.ip || null, createdAt: { gt: since } },
       select: { id: true },
     })
-    if (dupe) return
-    await prisma.boardVisit.create({
+    if (dupe) return dupe.id
+    const row = await prisma.boardVisit.create({
       data: { brandId: v.brandId || null, email, code: normalizeCode(v.code) || null, ip: v.ip || null },
     })
-  } catch { /* never block the board on logging */ }
+    return row.id
+  } catch { return null /* never block the board on logging */ }
+}
+
+// The board pings once a minute while open; bumping lastSeenAt turns
+// open-time into time-on-board. Only recent visits accept pings.
+export async function touchBoardVisit(visitId: unknown) {
+  try {
+    const id = String(visitId || '')
+    if (!/^[a-z0-9]{20,32}$/i.test(id)) return
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    await prisma.boardVisit.updateMany({
+      where: { id, createdAt: { gt: dayAgo } },
+      data: { lastSeenAt: new Date() },
+    })
+  } catch { /* best effort */ }
 }

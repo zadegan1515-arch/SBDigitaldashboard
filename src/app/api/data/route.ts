@@ -1782,6 +1782,44 @@ const handlers: Record<string, Handler> = {
     return { visits, total, last7, requestCount, topShows }
   },
 
+  // The "In talks" cards: every brand holding a board code, with its
+  // engagement — who opened the board, how often, roughly how long
+  // (heartbeat-timed sessions only), and which shows they picked.
+  async listTalks() {
+    const brands = await prisma.brand.findMany({
+      where: { boardCode: { not: null } },
+      select: { id: true, name: true, boardCode: true, about: true },
+    })
+    const ids = brands.map(b => b.id)
+    const [visits, picks] = await Promise.all([
+      prisma.boardVisit.findMany({ where: { brandId: { in: ids } }, orderBy: { createdAt: 'desc' } }),
+      prisma.showSponsor.findMany({
+        where: { brandId: { in: ids }, notes: { contains: 'sponsor page' } },
+        orderBy: { eventDate: 'asc' },
+        select: { brandId: true, artist: true, school: true, eventDate: true },
+      }),
+    ])
+    const minutes = (v: { createdAt: Date; lastSeenAt: Date | null }) =>
+      v.lastSeenAt ? Math.max(1, Math.round((+v.lastSeenAt - +v.createdAt) / 60000)) : null
+    const talks = brands.map(b => {
+      const v = visits.filter(x => x.brandId === b.id)
+      const timed = v.filter(x => x.lastSeenAt)
+      return {
+        brand: { id: b.id, name: b.name, about: b.about },
+        code: b.boardCode,
+        opens: v.length,
+        viewers: [...new Set(v.map(x => x.email).filter(Boolean))] as string[],
+        lastOpenAt: v[0]?.createdAt ?? null,
+        minutesTracked: timed.reduce((a, x) => a + (minutes(x) || 0), 0),
+        sessionsTimed: timed.length,
+        shows: picks.filter(p => p.brandId === b.id),
+        log: v.slice(0, 12).map(x => ({ at: x.createdAt, email: x.email, minutes: minutes(x) })),
+      }
+    })
+    talks.sort((a, b) => (b.lastOpenAt ? +new Date(b.lastOpenAt) : 0) - (a.lastOpenAt ? +new Date(a.lastOpenAt) : 0))
+    return { talks }
+  },
+
   // Access requests from the gate's "Request the show list" form.
   async listAccessRequests() {
     const rows = await prisma.boardAccessRequest.findMany({ orderBy: { createdAt: 'desc' }, take: 50 })
