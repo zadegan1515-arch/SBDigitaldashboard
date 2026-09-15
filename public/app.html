@@ -548,6 +548,20 @@
       <div id="targets"></div>
     </section>
 
+    <!-- LINKEDIN WORK VIEW -->
+    <section class="view page" id="linkedin">
+      <div class="eyebrow">Outreach</div>
+      <h1>LinkedIn</h1>
+      <div class="sub" id="li-sub">Loading…</div>
+      <div class="chips" style="margin-top:18px;align-items:center">
+        <button class="chip active" data-lif="all">All brands</button>
+        <button class="chip" data-lif="profiles">Saved profiles</button>
+        <button class="chip" data-lif="none">Nobody yet</button>
+        <input class="inp" id="li-q" placeholder="Filter brands…" autocomplete="off" style="margin-left:auto;width:220px">
+      </div>
+      <div id="li-list" style="margin-top:14px"></div>
+    </section>
+
     <!-- NEEDS CONTACTS -->
     <section class="view page" id="needs">
       <div class="eyebrow">Gaps</div>
@@ -865,14 +879,14 @@ function refreshAfterSponsorChange() {
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
   brands: [['brands', 'All brands'], ['discover', 'Discover'], ['needs', 'Needs contacts']],
-  outreach: [['outreach', 'Queue'], ['results', 'Results']],
+  outreach: [['outreach', 'Queue'], ['linkedin', 'LinkedIn'], ['results', 'Results']],
   board: [['board', 'Overview'], ['talks', 'In talks'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
   operations: [['materials', 'Materials'], ['team', 'Team']],
 };
 var GROUP_OF = {
   brands: 'brands', brand: 'brands', discover: 'brands', needs: 'brands',
-  outreach: 'outreach', results: 'outreach',
+  outreach: 'outreach', linkedin: 'outreach', results: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
   pipeline: 'pipeline', sponsorships: 'pipeline',
   materials: 'operations', team: 'operations',
@@ -1843,6 +1857,108 @@ function loadNeeds() {
       esc(e.message) + '</p></div></div>';
   });
 }
+
+// --- LinkedIn work view ----------------------------------------
+// One column built for a LinkedIn session: each brand with its saved
+// profile links up front, plus the company People page and a
+// title-filtered buyer search for brands where nobody is saved yet.
+
+var LI_DATA = [];
+var LI_FILTER = 'all';
+
+// The titles Leo targets on LinkedIn: partnership/sponsorship buyers,
+// brand & field marketing, and marketing leadership for smaller brands.
+var LI_TITLE_QUERY = 'partnerships OR sponsorship OR "brand marketing" OR "field marketing" OR CMO OR "marketing director" OR "vp marketing"';
+
+function liPeopleUrl(b) {
+  // The brand's own People page when we have their company URL;
+  // otherwise a company search so the page is one hop away.
+  if (b.linkedinUrl) {
+    var u = b.linkedinUrl.replace(/\/+$/, '');
+    if (/linkedin\.com\/company\//.test(u)) return u + '/people/';
+    return u;
+  }
+  return 'https://www.linkedin.com/search/results/companies/?keywords=' + encodeURIComponent(b.name);
+}
+
+function liBuyerUrl(b) {
+  return 'https://www.linkedin.com/search/results/people/?keywords=' +
+    encodeURIComponent('"' + b.name + '" (' + LI_TITLE_QUERY + ')');
+}
+
+function renderLinkedin() {
+  var box = document.getElementById('li-list');
+  var q = (document.getElementById('li-q').value || '').trim().toLowerCase();
+  var rows = LI_DATA.filter(function (b) {
+    if (q && b.name.toLowerCase().indexOf(q) === -1) return false;
+    if (LI_FILTER === 'profiles') return b.contacts.some(function (c) { return c.linkedinUrl; });
+    if (LI_FILTER === 'none') return !b.contacts.length;
+    return true;
+  });
+
+  if (!rows.length) {
+    box.innerHTML = '<div class="panel"><div class="empty"><h3>No brands here</h3>' +
+      '<p>Try another filter, or add brands from Discover.</p></div></div>';
+    return;
+  }
+
+  box.innerHTML = rows.map(function (b) {
+    var tag = [CAT_NAMES[b.category] || b.category, b.tier].filter(Boolean).join(' · ');
+    var people = b.contacts.map(function (c) {
+      return '<div class="t-meta" style="margin-top:7px">' +
+        (c.linkedinUrl
+          ? '<a class="btn-ghost" href="' + esc(c.linkedinUrl) + '" target="_blank" rel="noopener" style="padding:3px 10px;font-size:12px">in ↗&nbsp; ' + esc(c.name) + '</a>'
+          : '<span>' + esc(c.name) + '</span>') +
+        (c.title ? '<span class="t-title">— ' + esc(c.title) + '</span>' : '') +
+        (c.status ? '<span class="status ' + esc(c.status) + '">' + esc(c.status) + '</span>' : '') +
+      '</div>';
+    }).join('');
+    return '<div class="target" data-brand="' + esc(b.id) + '" style="align-items:flex-start">' +
+      '<div class="t-main">' +
+        '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(b.name) + '</span>' +
+          (tag ? '<span class="t-sep">·</span><span class="t-title">' + esc(tag) + '</span>' : '') + '</div>' +
+        (people || '<div class="t-meta" style="margin-top:7px"><span>Nobody saved yet — use Find buyer ↗, then add them on the brand page.</span></div>') +
+      '</div>' +
+      '<div class="t-actions">' +
+        '<a class="btn-ghost" href="' + esc(liPeopleUrl(b)) + '" target="_blank" rel="noopener">People ↗</a>' +
+        '<a class="btn-ghost" href="' + esc(liBuyerUrl(b)) + '" target="_blank" rel="noopener">Find buyer ↗</a>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function loadLinkedin() {
+  showView('linkedin');
+  var box = document.getElementById('li-list');
+  if (!LI_DATA.length) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+
+  return api('linkedinPeople').then(function (d) {
+    LI_DATA = d.brands || [];
+    var profiles = 0, brandsWith = 0;
+    LI_DATA.forEach(function (b) {
+      var n = b.contacts.filter(function (c) { return c.linkedinUrl; }).length;
+      profiles += n; if (n) brandsWith++;
+    });
+    document.getElementById('li-sub').textContent =
+      profiles + ' saved profile' + (profiles === 1 ? '' : 's') + ' across ' + brandsWith +
+      ' brand' + (brandsWith === 1 ? '' : 's') + ' · ' + LI_DATA.length + ' brands total';
+    renderLinkedin();
+  }).catch(function (e) {
+    box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
+      esc(e.message) + '</p></div></div>';
+  });
+}
+
+document.querySelectorAll('#linkedin .chip[data-lif]').forEach(function (ch) {
+  ch.addEventListener('click', function () {
+    LI_FILTER = ch.getAttribute('data-lif');
+    document.querySelectorAll('#linkedin .chip[data-lif]').forEach(function (c) {
+      c.classList.toggle('active', c === ch);
+    });
+    renderLinkedin();
+  });
+});
+document.getElementById('li-q').addEventListener('input', function () { renderLinkedin(); });
 
 // --- rate card (loaded once, used for suggested values) --------
 
@@ -5015,6 +5131,7 @@ function gotoView(id) {
   if (id === 'dashboard') loadDashboard();
   if (id === 'brands') loadBrands('all');
   if (id === 'outreach') loadOutreach();
+  if (id === 'linkedin') loadLinkedin();
   if (id === 'shows') loadShows();
   if (id === 'sponsorships') loadSponsorships();
   if (id === 'needs') loadNeeds();
@@ -5127,7 +5244,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'action-panel', 'req-list', 'bd-activity'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'action-panel', 'req-list', 'bd-activity'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;

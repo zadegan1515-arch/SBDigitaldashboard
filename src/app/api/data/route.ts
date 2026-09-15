@@ -1732,6 +1732,45 @@ const handlers: Record<string, Handler> = {
     return { count: missing.length, total: brands.length, brands: missing }
   },
 
+  // -------- LinkedIn work view --------
+
+  // One flat list built for a LinkedIn session: every brand with its
+  // people and their saved profile links, plus each person's outreach
+  // status so already-contacted people are visible at a glance. The
+  // company-People-page and title-search URLs are built client-side.
+  async linkedinPeople() {
+    const brands = await prisma.brand.findMany({
+      include: {
+        contacts: {
+          select: {
+            id: true, name: true, title: true, linkedinUrl: true,
+            isDecisionMaker: true,
+            // One target per contact (unique constraint), so take 1 is exact.
+            targets: { select: { status: true, shelved: true }, take: 1 },
+          },
+          orderBy: [{ isDecisionMaker: 'desc' }, { name: 'asc' }],
+        },
+      },
+      orderBy: { name: 'asc' },
+    })
+    const rows = brands.map(b => ({
+      id: b.id, name: b.name, category: b.category, tier: b.tier,
+      linkedinUrl: b.linkedinUrl,
+      contacts: b.contacts.map(c => ({
+        id: c.id, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl,
+        isDecisionMaker: c.isDecisionMaker,
+        status: c.targets[0]?.status ?? null,
+        shelved: c.targets[0]?.shelved ?? false,
+      })),
+    }))
+    // Workable brands first: saved profile links, then any contact at
+    // all, then the brands where someone still has to be found.
+    const rank = (b: (typeof rows)[number]) =>
+      b.contacts.some(c => c.linkedinUrl) ? 0 : b.contacts.length ? 1 : 2
+    rows.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name))
+    return { brands: rows }
+  },
+
   async listDeals() {
     const deals = await prisma.deal.findMany({
       include: {
