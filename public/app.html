@@ -6495,50 +6495,6 @@ document.getElementById('att-q').addEventListener('input', function () {
   window.__attT = setTimeout(loadAttendees, 350);
 });
 
-// --- quick-stats bar -------------------------------------------
-
-// A slim always-visible strip in the sticky header: today's numbers that
-// decide what to work on next. Filled from the dashboard payload plus two
-// cheap lookups; each stat clicks through to its tab.
-var QB = { room: null, replied: null, pending: null, views: null, deals: null };
-function renderQuickbar() {
-  var bar = document.getElementById('quickbar');
-  if (!bar) return;
-  function st(go, label, val, hot) {
-    if (val == null) return '';
-    return '<button class="qstat" data-go="' + go + '"><span class="ql">' + label +
-      '</span><b' + (hot ? ' class="hot"' : '') + '>' + val + '</b></button>';
-  }
-  var h = st('outreach', 'Emails left today', QB.room) +
-          st('outreach', 'Replies waiting', QB.replied, QB.replied > 0) +
-          st('board', 'Access requests', QB.pending, QB.pending > 0) +
-          st('talks', 'Board views · 7d', QB.views) +
-          st('pipeline', 'Open deals', QB.deals);
-  bar.innerHTML = h;
-  bar.hidden = !h;
-}
-function refreshQuickbar(dash) {
-  if (dash) {
-    QB.replied = (dash.counts || {}).replied || 0;
-    QB.views = dash.boardViews7d || 0;
-    QB.deals = ((dash.sponsorship || {}).confirmedCount || 0) +
-               ((dash.sponsorship || {}).proposedCount || 0);
-    renderQuickbar();
-  }
-  api('getEmailStatus').then(function (s) {
-    QB.room = s && s.configured ? Math.max(0, (s.cap || 0) - (s.sentToday || 0)) : null;
-    renderQuickbar();
-  }).catch(function () {});
-  api('listAccessRequests').then(function (r) {
-    QB.pending = r && r.pending ? r.pending.length : 0;
-    renderQuickbar();
-  }).catch(function () {});
-}
-document.getElementById('quickbar').addEventListener('click', function (e) {
-  var b = e.target.closest('.qstat[data-go]');
-  if (b) gotoView(b.getAttribute('data-go'));
-});
-
 // --- sidebar collapse ------------------------------------------
 
 (function () {
