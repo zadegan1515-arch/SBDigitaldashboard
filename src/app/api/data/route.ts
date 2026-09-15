@@ -1852,7 +1852,7 @@ const handlers: Record<string, Handler> = {
   // makers first), revives or creates their target, unshelves it, and
   // stamps queuedFor so it surfaces in Today immediately — a deliberate
   // pick always jumps the line, cap or no cap.
-  async queueBrandTargets({ brandId }: any) {
+  async queueBrandTargets({ brandId, force }: any) {
     const brand = await prisma.brand.findUnique({
       where: { id: brandId },
       include: {
@@ -1873,9 +1873,11 @@ const handlers: Record<string, Handler> = {
     // Two people per brand can be in play at once (Leo's rule): a
     // second thread doubles the odds without reading as a blast. Queue
     // is a no-op only once both slots are taken.
+    // force (the row's "+ Person" button) deliberately goes past the
+    // two-slot default — an explicit click, not an auto-pick.
     const WORK_PER_BRAND = 2
     const live = brand.targets.filter(t => !t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied'].includes(t.status))
-    if (live.length >= WORK_PER_BRAND) {
+    if (!force && live.length >= WORK_PER_BRAND) {
       return {
         queued: false, reason: 'full',
         contactName: live.map(t => t.contact.name).join(' and '), status: 'in play',

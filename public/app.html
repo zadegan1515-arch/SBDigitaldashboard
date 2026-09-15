@@ -2762,8 +2762,11 @@ function targetRow(t) {
         ? '<button class="btn-ghost" data-act="replied" title="They wrote back">Replied</button>' : '') +
       (t.status === 'replied' ? '<button class="btn-ghost" data-act="nextstep">Next step</button>' : '') +
       (t.status === 'replied' ? '<button class="btn-ghost" data-act="won">Won</button>' : '') +
-      (d ? '<button class="btn-ghost" data-act="toggle">' + (open ? 'Close draft' : 'Edit draft') + '</button>' : '') +
-      (isPre ? '<button class="btn-ghost" data-act="draft">' + (d ? 'Redraft' : 'Draft') + '</button>' : '') +
+      // Edit/Redraft dropped from the row for space (drafts are
+      // templates; edit from the brand page if ever needed). Draft only
+      // shows when a row somehow has none.
+      (!d && isPre ? '<button class="btn-ghost" data-act="draft">Draft</button>' : '') +
+      '<button class="btn-ghost" data-act="addperson" title="Queue another person at this brand — the next decision maker steps in">+ Person</button>' +
       '<button class="btn-ghost" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
       (isPre ? '<button class="btn-ghost" data-act="unqueue" title="Take them off the queue — nothing is deleted, promote them back anytime from the brand page">Off queue</button>' : '') +
       (t.status !== 'declined' && t.status !== 'dead' && t.status !== 'converted'
@@ -6237,10 +6240,21 @@ document.getElementById('targets').addEventListener('click', function (e) {
     return;
   }
 
+  // Queue one more person at this brand — explicit, so it works even
+  // past the two-slot default.
+  if (act === 'addperson') {
+    var apBrand = TARGET_CACHE[id] && TARGET_CACHE[id].brandId;
+    if (!apBrand) return;
+    btn.disabled = true;
+    api('queueBrandTargets', { brandId: apBrand, force: true })
+      .then(function (r) { queueToast(r); return loadOutreach(); })
+      .catch(function (err) { toast(err.message); btn.disabled = false; });
+    return;
+  }
+
   if (act === 'draft') {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Writing…';
-    OPEN_DRAFTS[id] = true;   // a fresh draft always opens
     api('generateDrafts', { targetId: id })
       .then(function () { return loadOutreach(); })
       .catch(function (err) { toast(err.message); btn.disabled = false; btn.textContent = 'Draft'; });
