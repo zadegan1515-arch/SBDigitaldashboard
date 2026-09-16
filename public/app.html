@@ -2436,6 +2436,15 @@ function schedRefreshDays() {
   }).catch(function () {});
 }
 
+// Clickable brand name (opens the brand card) plus LinkedIn / website
+// links — shared by the day previews and the side bench.
+function schedBrandName(b) {
+  var siteHref = b.website ? (/^https?:/i.test(b.website) ? b.website : 'https://' + b.website) : '';
+  return '<a href="#" data-sopen="' + esc(b.id) + '" style="font-size:13px;font-weight:700;color:var(--ink-1);text-decoration:none">' + esc(b.name) + '</a>' +
+    (b.linkedinUrl ? ' <a href="' + esc(b.linkedinUrl) + '" target="_blank" rel="noopener" title="LinkedIn page" style="font-size:11.5px;color:var(--ink-3);text-decoration:none">in ↗</a>' : '') +
+    (siteHref ? ' <a href="' + esc(siteHref) + '" target="_blank" rel="noopener" title="Website" style="font-size:11.5px;color:var(--ink-3);text-decoration:none">site ↗</a>' : '');
+}
+
 // Take a brand out of every local list (day previews + side bench) —
 // what Add and Pass both do before their API call lands.
 function schedDropBrand(bid) {
@@ -2463,7 +2472,7 @@ function renderBench() {
   box.innerHTML = rows.length ? rows.slice(0, 60).map(function (b) {
     return '<div data-brow="' + esc(b.id) + '" style="padding:8px 0;border-top:1px solid var(--border)">' +
       '<div style="display:flex;gap:8px;align-items:baseline">' +
-        '<b style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.name) + '</b>' +
+        '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + schedBrandName(b) + '</span>' +
         '<span style="font-size:11.5px;color:var(--ink-3);white-space:nowrap">' + b.people + (b.people === 1 ? ' person' : ' people') + (b.inQueue ? '' : ' · not queued yet') + '</span>' +
       '</div>' +
       '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">' +
@@ -2519,7 +2528,7 @@ function renderSchedule() {
             '</div>' +
             prev.brands.map(function (b) {
               return '<div data-srow="' + esc(b.id) + '" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border)">' +
-                '<b style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.name) + '</b>' +
+                '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + schedBrandName(b) + '</span>' +
                 '<span style="font-size:12px;color:var(--ink-3)">' + b.people + (b.people === 1 ? ' person' : ' people') + '</span>' +
                 '<button class="btn-draft" data-spin="' + esc(key) + '" data-sb="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 13px;font-size:12px">+ Add</button>' +
                 '<button class="btn-ghost danger" data-spass="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 12px;font-size:12px">Pass</button>' +
@@ -2597,6 +2606,8 @@ document.getElementById('sched-list').addEventListener('input', function (e) {
 });
 
 document.getElementById('sched-list').addEventListener('click', function (e) {
+  var open = e.target.closest('[data-sopen]');
+  if (open) { e.preventDefault(); loadBrand(open.getAttribute('data-sopen')); return; }
   var add = e.target.closest('[data-sadd]');
   if (add) {
     var key = add.getAttribute('data-sadd');
@@ -2694,6 +2705,8 @@ document.getElementById('sched-side').addEventListener('change', function (e) {
 });
 
 document.getElementById('sched-side').addEventListener('click', function (e) {
+  var open = e.target.closest('[data-sopen]');
+  if (open) { e.preventDefault(); loadBrand(open.getAttribute('data-sopen')); return; }
   var pass = e.target.closest('[data-bpass]');
   if (!pass) return;
   var bid = pass.getAttribute('data-bpass');

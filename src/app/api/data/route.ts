@@ -2080,13 +2080,13 @@ const handlers: Record<string, Handler> = {
       where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: { passedAt: null } },
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: 300,
-      select: { fitScore: true, brand: { select: { id: true, name: true, category: true } } },
+      select: { fitScore: true, brand: { select: { id: true, name: true, category: true, website: true, linkedinUrl: true } } },
     })
-    const byBrand = new Map<string, { id: string; name: string; category: string | null; people: number; fit: number }>()
+    const byBrand = new Map<string, { id: string; name: string; category: string | null; website: string | null; linkedinUrl: string | null; people: number; fit: number }>()
     for (const c of candidates) {
       const b = byBrand.get(c.brand.id)
       if (b) { b.people += 1; b.fit = Math.max(b.fit, c.fitScore) }
-      else byBrand.set(c.brand.id, { id: c.brand.id, name: c.brand.name, category: c.brand.category, people: 1, fit: c.fitScore })
+      else byBrand.set(c.brand.id, { id: c.brand.id, name: c.brand.name, category: c.brand.category, website: c.brand.website, linkedinUrl: c.brand.linkedinUrl, people: 1, fit: c.fitScore })
     }
     const cats = [...new Set([...byBrand.values()].map(b => b.category).filter(Boolean))].sort() as string[]
     const planned = new Set(Object.values(plan).flatMap((d: any) => d?.brandIds ?? []))
@@ -2097,7 +2097,7 @@ const handlers: Record<string, Handler> = {
     const allBrands = await prisma.brand.findMany({
       where: { passedAt: null, doNotEmail: false, contacts: { some: {} } },
       select: {
-        id: true, name: true, category: true,
+        id: true, name: true, category: true, website: true, linkedinUrl: true,
         _count: { select: { contacts: true } },
         targets: { select: { status: true, shelved: true, sentAt: true } },
       },
@@ -2122,22 +2122,22 @@ const handlers: Record<string, Handler> = {
         auto: !plan[key]?.category,
         ready: Math.max(0, Math.min(DAILY_SEND_LIMIT, totalPool - DAILY_SEND_LIMIT * i)),
         brands: inCat.sort((a, b) => b.fit - a.fit).slice(0, 8)
-          .map(b => ({ id: b.id, name: b.name, people: b.people })),
+          .map(b => ({ id: b.id, name: b.name, people: b.people, website: b.website, linkedinUrl: b.linkedinUrl })),
         // Same-category brands whose people are NOT in the queue yet —
         // the day's note offers to put them all in.
         missing: theme
           ? untouched.filter(b => b.category === theme).slice(0, 20)
-              .map(b => ({ id: b.id, name: b.name, people: b._count.contacts }))
+              .map(b => ({ id: b.id, name: b.name, people: b._count.contacts, website: b.website, linkedinUrl: b.linkedinUrl }))
           : [],
       }
     })
 
-    const bench: { id: string; name: string; category: string | null; people: number; inQueue: boolean }[] = []
+    const bench: { id: string; name: string; category: string | null; website: string | null; linkedinUrl: string | null; people: number; inQueue: boolean }[] = []
     for (const b of [...byBrand.values()].sort((a, b) => b.fit - a.fit)) {
-      if (!planned.has(b.id)) bench.push({ id: b.id, name: b.name, category: b.category, people: b.people, inQueue: true })
+      if (!planned.has(b.id)) bench.push({ id: b.id, name: b.name, category: b.category, website: b.website, linkedinUrl: b.linkedinUrl, people: b.people, inQueue: true })
     }
     for (const b of untouched) {
-      bench.push({ id: b.id, name: b.name, category: b.category, people: b._count.contacts, inQueue: false })
+      bench.push({ id: b.id, name: b.name, category: b.category, website: b.website, linkedinUrl: b.linkedinUrl, people: b._count.contacts, inQueue: false })
     }
 
     return {
