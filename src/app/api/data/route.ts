@@ -1946,7 +1946,9 @@ const handlers: Record<string, Handler> = {
   // makers first), revives or creates their target, unshelves it, and
   // stamps queuedFor so it surfaces in Today immediately — a deliberate
   // pick always jumps the line, cap or no cap.
-  async queueBrandTargets({ brandId, force }: any) {
+  // stamp:false queues into the pool without the today-stamp, so the
+  // brand waits for its category day instead of jumping into Today.
+  async queueBrandTargets({ brandId, force, stamp = true }: any) {
     const brand = await prisma.brand.findUnique({
       where: { id: brandId },
       include: {
@@ -1987,7 +1989,7 @@ const handlers: Record<string, Handler> = {
     if (revivable) {
       await prisma.target.update({
         where: { id: revivable.id },
-        data: { shelved: false, queuedFor: new Date() },
+        data: { shelved: false, queuedFor: stamp ? new Date() : null },
       })
       return { queued: true, contactName: revivable.contact.name, revived: true, second }
     }
@@ -2015,7 +2017,7 @@ const handlers: Record<string, Handler> = {
         brandId, contactId: pick.id,
         fitScore: scoreFit(pick.title, brand.tier),
         assignedTo: brand.owner ?? null,
-        queuedFor: new Date(),
+        queuedFor: stamp ? new Date() : null,
       },
     })
     // Queued, but the email drafter will skip this one until the
@@ -2024,6 +2026,18 @@ const handlers: Record<string, Handler> = {
       queued: true, contactName: pick.name, targetId: t.id, second,
       ...(pick.email ? {} : { warning: `${pick.name} has no email address yet — add one on the contact or the email drafter will skip ${brand.name}.` }),
     }
+  },
+
+  // "Put them in" (Schedule tab): queue a list of brands into the pool
+  // in one call. No today-stamp — each brand surfaces on its category
+  // day through the normal rotation.
+  async queueBrands({ brandIds }: any) {
+    const results: any[] = []
+    for (const bid of (Array.isArray(brandIds) ? brandIds : []).slice(0, 40)) {
+      try { results.push(await (handlers.queueBrandTargets as Handler)({ brandId: bid, stamp: false })) }
+      catch (e: any) { results.push({ queued: false, reason: e?.message || 'error', brandId: bid }) }
+    }
+    return { queued: results.filter(r => r?.queued).length, total: results.length, results }
   },
 
   // Pass a whole brand: it disappears from the queue, auto-picks and
@@ -2076,6 +2090,25 @@ const handlers: Record<string, Handler> = {
     }
     const cats = [...new Set([...byBrand.values()].map(b => b.category).filter(Boolean))].sort() as string[]
     const planned = new Set(Object.values(plan).flatMap((d: any) => d?.brandIds ?? []))
+    const totalPool = candidates.length
+
+    // Untouched brands (people on file, nothing queued or sent): the
+    // side-list bench, and each day's "category not fully in" note.
+    const allBrands = await prisma.brand.findMany({
+      where: { passedAt: null, doNotEmail: false, contacts: { some: {} } },
+      select: {
+        id: true, name: true, category: true,
+        _count: { select: { contacts: true } },
+        targets: { select: { status: true, shelved: true, sentAt: true } },
+      },
+    })
+    const untouched = allBrands.filter(b =>
+      !planned.has(b.id) && !byBrand.has(b.id) &&
+      !b.targets.some(t => t.sentAt ||
+        (!t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied', 'converted'].includes(t.status))))
+
+    // Coverage vs the 20/day cap: the pool is shared, so day N only has
+    // people left after days 0..N-1 each took a full cap's worth.
     const days = Array.from({ length: 7 }, (_, i) => {
       const at = new Date(Date.now() + i * 24 * 60 * 60 * 1000)
       const key = localDayKey(at)
@@ -2087,12 +2120,31 @@ const handlers: Record<string, Handler> = {
         date: key,
         category: theme,
         auto: !plan[key]?.category,
+        ready: Math.max(0, Math.min(DAILY_SEND_LIMIT, totalPool - DAILY_SEND_LIMIT * i)),
         brands: inCat.sort((a, b) => b.fit - a.fit).slice(0, 8)
           .map(b => ({ id: b.id, name: b.name, people: b.people })),
+        // Same-category brands whose people are NOT in the queue yet —
+        // the day's note offers to put them all in.
+        missing: theme
+          ? untouched.filter(b => b.category === theme).slice(0, 20)
+              .map(b => ({ id: b.id, name: b.name, people: b._count.contacts }))
+          : [],
       }
     })
 
-    return { plan, brands, today: localDayKey(), days }
+    const bench: { id: string; name: string; category: string | null; people: number; inQueue: boolean }[] = []
+    for (const b of [...byBrand.values()].sort((a, b) => b.fit - a.fit)) {
+      if (!planned.has(b.id)) bench.push({ id: b.id, name: b.name, category: b.category, people: b.people, inQueue: true })
+    }
+    for (const b of untouched) {
+      bench.push({ id: b.id, name: b.name, category: b.category, people: b._count.contacts, inQueue: false })
+    }
+
+    return {
+      plan, brands, today: localDayKey(), days,
+      pool: { total: totalPool, cap: DAILY_SEND_LIMIT },
+      bench: bench.slice(0, 120),
+    }
   },
 
   async setOutreachPlanDay({ date, category, brandIds }: any) {

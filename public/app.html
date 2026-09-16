@@ -599,7 +599,15 @@
       <div class="eyebrow">Outreach</div>
       <h1>Schedule</h1>
       <div class="sub">Plan the next week of LinkedIn outreach: pick a category per day, add specific brands, and Today builds itself from the plan.</div>
-      <div id="sched-list" style="margin-top:18px"></div>
+      <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-top:18px">
+        <div id="sched-list" style="flex:2;min-width:340px"></div>
+        <div id="sched-side" class="panel panel-pad" style="flex:1;min-width:260px;position:sticky;top:16px">
+          <b style="font-size:13.5px">More brands</b>
+          <div class="hint" style="margin:4px 0 10px">Pick a day to put a brand on the schedule, or pass it. Brands not in the queue yet get queued the morning of their day.</div>
+          <input class="field-box" id="sched-bq" placeholder="Search brands…" autocomplete="off" style="width:100%;margin-bottom:8px">
+          <div id="sched-bench" style="max-height:520px;overflow:auto"></div>
+        </div>
+      </div>
     </section>
 
     <!-- PASSED BRANDS -->
@@ -2401,7 +2409,7 @@ document.getElementById('reached-list').addEventListener('click', function (e) {
 // Plan the week: a category and/or specific brands per day, saved to
 // Setting `outreachPlan`. Today's queue reads the plan server-side.
 
-var SCHED = { plan: {}, names: {}, days: {} };
+var SCHED = { plan: {}, names: {}, days: {}, bench: [], pool: null, benchQ: '' };
 
 function schedDayKey(offset) {
   var dt = new Date(); dt.setDate(dt.getDate() + offset);
@@ -2421,8 +2429,51 @@ function schedRefreshDays() {
   return api('getOutreachPlan').then(function (d) {
     SCHED.days = {};
     (d.days || []).forEach(function (day) { SCHED.days[day.date] = day; });
+    SCHED.bench = d.bench || [];
+    SCHED.pool = d.pool || null;
     renderSchedule();
+    renderBench();
   }).catch(function () {});
+}
+
+// Take a brand out of every local list (day previews + side bench) —
+// what Add and Pass both do before their API call lands.
+function schedDropBrand(bid) {
+  Object.keys(SCHED.days).forEach(function (k) {
+    SCHED.days[k].brands = SCHED.days[k].brands.filter(function (b) { return b.id !== bid; });
+  });
+  SCHED.bench = (SCHED.bench || []).filter(function (b) { return b.id !== bid; });
+}
+
+// The side list: every brand that could still go on a day.
+function renderBench() {
+  var box = document.getElementById('sched-bench');
+  if (!box) return;
+  var q = (SCHED.benchQ || '').toLowerCase();
+  var rows = (SCHED.bench || []).filter(function (b) {
+    return !q || b.name.toLowerCase().indexOf(q) !== -1 || (b.category || '').toLowerCase().indexOf(q) !== -1;
+  });
+  var dayOpts = '';
+  for (var i = 0; i < 7; i++) {
+    var k = schedDayKey(i);
+    var lbl = i === 0 ? 'Today' : i === 1 ? 'Tomorrow'
+      : new Date(k + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    dayOpts += '<option value="' + esc(k) + '">' + esc(lbl) + '</option>';
+  }
+  box.innerHTML = rows.length ? rows.slice(0, 60).map(function (b) {
+    return '<div data-brow="' + esc(b.id) + '" style="padding:8px 0;border-top:1px solid var(--border)">' +
+      '<div style="display:flex;gap:8px;align-items:baseline">' +
+        '<b style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.name) + '</b>' +
+        '<span style="font-size:11.5px;color:var(--ink-3);white-space:nowrap">' + b.people + (b.people === 1 ? ' person' : ' people') + (b.inQueue ? '' : ' · not queued yet') + '</span>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">' +
+        (b.category ? '<span style="font-size:11.5px;color:var(--ink-3)">' + esc(CAT_NAMES[b.category] || b.category) + '</span>' : '') +
+        '<span style="flex:1"></span>' +
+        '<select class="field-box" data-bday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="width:auto;padding:4px 8px;font-size:12px"><option value="">Add to…</option>' + dayOpts + '</select>' +
+        '<button class="btn-ghost danger" data-bpass="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:4px 11px;font-size:12px">Pass</button>' +
+      '</div>' +
+    '</div>';
+  }).join('') : '<div class="hint" style="margin-top:8px">' + (q ? 'No brand matches.' : 'Nothing left to add — every brand with people is planned or already queued.') + '</div>';
 }
 
 function renderSchedule() {
@@ -2441,25 +2492,46 @@ function renderSchedule() {
     // The specific brands this day would actually work (from its
     // category), each with Add (pin to the day) and Pass.
     var prev = SCHED.days[key];
+    var cap = (SCHED.pool && SCHED.pool.cap) || 20;
+    var badge = '';
+    if (prev && typeof prev.ready === 'number') {
+      var full = prev.ready >= cap;
+      badge = '<span class="status" title="' + (full ? 'Enough people queued to fill this day.' : 'The queue runs out before this day fills — add brands from the side list.') + '" style="font-size:11.5px;padding:4px 10px;color:' + (full ? '#8fd6a8' : '#f0b86b') + '">' +
+        (full ? cap + ' ready ✓' : 'only ' + prev.ready + ' of ' + cap + ' ready') + '</span>';
+    }
     var sugg = '';
-    if (prev && prev.brands.length) {
+    if (prev && (prev.brands.length || (prev.missing || []).length)) {
+      var missNote = '';
+      if ((prev.missing || []).length) {
+        var mnames = prev.missing.slice(0, 3).map(function (m) { return m.name; }).join(', ') +
+          (prev.missing.length > 3 ? ' +' + (prev.missing.length - 3) + ' more' : '');
+        missNote = '<div style="display:flex;gap:10px;align-items:center;margin-top:8px;padding:8px 12px;border:1px solid var(--border);border-radius:10px">' +
+          '<span style="font-size:12.5px;color:#f0b86b;flex:1">' + prev.missing.length +
+            (prev.missing.length === 1 ? ' brand' : ' brands') + ' in ' + esc(CAT_NAMES[prev.category] || prev.category || 'this category') +
+            ' ' + (prev.missing.length === 1 ? 'isn’t' : 'aren’t') + ' in the queue yet: ' + esc(mnames) + '</span>' +
+          '<button class="btn-draft" data-sfill="' + esc(key) + '" style="padding:5px 13px;font-size:12px;white-space:nowrap">Put them in</button>' +
+        '</div>';
+      }
       sugg = '<div style="margin-top:10px">' +
-        '<div class="hint" style="margin:0 0 6px">' +
-          (prev.category ? 'Up that day — ' + esc(CAT_NAMES[prev.category] || prev.category) + (prev.auto ? ' (rotation)' : '') : 'Up that day') + ':' +
-        '</div>' +
-        prev.brands.map(function (b) {
-          return '<div data-srow="' + esc(b.id) + '" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border)">' +
-            '<b style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.name) + '</b>' +
-            '<span style="font-size:12px;color:var(--ink-3)">' + b.people + (b.people === 1 ? ' person' : ' people') + '</span>' +
-            '<button class="btn-draft" data-spin="' + esc(key) + '" data-sb="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 13px;font-size:12px">+ Add</button>' +
-            '<button class="btn-ghost danger" data-spass="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 12px;font-size:12px">Pass</button>' +
-          '</div>';
-        }).join('') +
+        (prev.brands.length
+          ? '<div class="hint" style="margin:0 0 6px">' +
+              (prev.category ? 'Up that day — ' + esc(CAT_NAMES[prev.category] || prev.category) + (prev.auto ? ' (rotation)' : '') : 'Up that day') + ':' +
+            '</div>' +
+            prev.brands.map(function (b) {
+              return '<div data-srow="' + esc(b.id) + '" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border)">' +
+                '<b style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.name) + '</b>' +
+                '<span style="font-size:12px;color:var(--ink-3)">' + b.people + (b.people === 1 ? ' person' : ' people') + '</span>' +
+                '<button class="btn-draft" data-spin="' + esc(key) + '" data-sb="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 13px;font-size:12px">+ Add</button>' +
+                '<button class="btn-ghost danger" data-spass="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 12px;font-size:12px">Pass</button>' +
+              '</div>';
+            }).join('')
+          : '') +
+        missNote +
       '</div>';
     }
     return '<div class="panel panel-pad" style="margin-bottom:10px" data-sday="' + esc(key) + '">' +
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
-        '<b style="font-size:13.5px;min-width:150px">' + label + '</b>' +
+        '<b style="font-size:13.5px;min-width:150px">' + label + '</b>' + badge +
         '<select class="field-box" data-scat="' + esc(key) + '" style="width:auto;padding:6px 10px;font-size:12.5px">' +
           '<option value=""' + (day.category ? '' : ' selected') + '>Category: automatic rotation</option>' +
           CAT_KEYS.map(function (k) {
@@ -2488,7 +2560,10 @@ function loadSchedule() {
     (d.brands || []).forEach(function (b) { SCHED.names[b.id] = b.name; });
     SCHED.days = {};
     (d.days || []).forEach(function (day) { SCHED.days[day.date] = day; });
+    SCHED.bench = d.bench || [];
+    SCHED.pool = d.pool || null;
     renderSchedule();
+    renderBench();
   }).catch(function (e) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
   });
@@ -2529,10 +2604,9 @@ document.getElementById('sched-list').addEventListener('click', function (e) {
     SCHED.names[bid] = add.getAttribute('data-sn');
     SCHED.plan[key] = SCHED.plan[key] || { category: null, brandIds: [] };
     if (SCHED.plan[key].brandIds.indexOf(bid) === -1) SCHED.plan[key].brandIds.push(bid);
-    Object.keys(SCHED.days).forEach(function (k) {
-      SCHED.days[k].brands = SCHED.days[k].brands.filter(function (b) { return b.id !== bid; });
-    });
+    schedDropBrand(bid);
     renderSchedule();
+    renderBench();
     schedSave(key);
     return;
   }
@@ -2555,11 +2629,32 @@ document.getElementById('sched-list').addEventListener('click', function (e) {
     SCHED.names[pbid] = pin.getAttribute('data-sn');
     SCHED.plan[pkey] = SCHED.plan[pkey] || { category: null, brandIds: [] };
     if (SCHED.plan[pkey].brandIds.indexOf(pbid) === -1) SCHED.plan[pkey].brandIds.push(pbid);
-    Object.keys(SCHED.days).forEach(function (k) {
-      SCHED.days[k].brands = SCHED.days[k].brands.filter(function (b) { return b.id !== pbid; });
-    });
+    schedDropBrand(pbid);
     renderSchedule();
+    renderBench();
     schedSave(pkey);
+    return;
+  }
+  // "Put them in": queue every not-yet-queued brand of the day's
+  // category. In place — they join the day's list right away.
+  var fill = e.target.closest('[data-sfill]');
+  if (fill) {
+    var fkey = fill.getAttribute('data-sfill');
+    var fday = SCHED.days[fkey];
+    if (!fday || !(fday.missing || []).length) return;
+    var ids = fday.missing.map(function (m) { return m.id; });
+    fday.missing.forEach(function (m) {
+      fday.brands.push({ id: m.id, name: m.name, people: m.people });
+      SCHED.bench = (SCHED.bench || []).filter(function (b) { return b.id !== m.id; });
+    });
+    fday.missing = [];
+    renderSchedule();
+    renderBench();
+    toast('Queueing ' + ids.length + (ids.length === 1 ? ' brand' : ' brands') + '…');
+    api('queueBrands', { brandIds: ids }).then(function (r) {
+      toast(r.queued + ' of ' + r.total + ' queued — they’ll come up on their category day');
+      schedRefreshDays();
+    }).catch(function (err) { toast(err.message); loadSchedule(); });
     return;
   }
   // Pass on a previewed brand: same as passing anywhere else — off the
@@ -2568,14 +2663,47 @@ document.getElementById('sched-list').addEventListener('click', function (e) {
   if (pass) {
     var xbid = pass.getAttribute('data-spass');
     var xname = pass.getAttribute('data-sn');
-    Object.keys(SCHED.days).forEach(function (k) {
-      SCHED.days[k].brands = SCHED.days[k].brands.filter(function (b) { return b.id !== xbid; });
-    });
+    schedDropBrand(xbid);
     renderSchedule();
+    renderBench();
     toast('Passed ' + xname + ' — bring back any time from the Passed tab');
     api('setBrandPassed', { brandId: xbid, passed: true })
       .catch(function (err) { toast(err.message); loadSchedule(); });
   }
+});
+
+// --- schedule side list ("More brands") ------------------------
+
+document.getElementById('sched-bq').addEventListener('input', function (e) {
+  SCHED.benchQ = e.target.value.trim();
+  renderBench();
+});
+
+document.getElementById('sched-side').addEventListener('change', function (e) {
+  var sel = e.target.closest('[data-bday]');
+  if (!sel || !sel.value) return;
+  var key = sel.value;
+  var bid = sel.getAttribute('data-bday');
+  SCHED.names[bid] = sel.getAttribute('data-sn');
+  SCHED.plan[key] = SCHED.plan[key] || { category: null, brandIds: [] };
+  if (SCHED.plan[key].brandIds.indexOf(bid) === -1) SCHED.plan[key].brandIds.push(bid);
+  schedDropBrand(bid);
+  renderSchedule();
+  renderBench();
+  schedSave(key);
+});
+
+document.getElementById('sched-side').addEventListener('click', function (e) {
+  var pass = e.target.closest('[data-bpass]');
+  if (!pass) return;
+  var bid = pass.getAttribute('data-bpass');
+  var name = pass.getAttribute('data-sn');
+  schedDropBrand(bid);
+  renderSchedule();
+  renderBench();
+  toast('Passed ' + name + ' — bring back any time from the Passed tab');
+  api('setBrandPassed', { brandId: bid, passed: true })
+    .catch(function (err) { toast(err.message); loadSchedule(); });
 });
 
 // --- passed brands ---------------------------------------------
