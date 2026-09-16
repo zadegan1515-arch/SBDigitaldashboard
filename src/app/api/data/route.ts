@@ -681,7 +681,7 @@ const handlers: Record<string, Handler> = {
       include,
       orderBy: { queuedFor: 'desc' },
     })
-    if (room === 0) return ensureTemplateDrafts(handPicked)
+    if (room === 0) return { theme: null, targets: await ensureTemplateDrafts(handPicked) }
 
     // Older stamps still not sent — yesterday's leftovers. Shelved
     // targets (parked by the per-brand cap) never enter the queue.
@@ -693,19 +693,29 @@ const handlers: Record<string, Handler> = {
       take: roomLeft,
     })
     if (handPicked.length + carried.length >= room) {
-      return ensureTemplateDrafts([...handPicked, ...carried])
+      return { theme: null, targets: await ensureTemplateDrafts([...handPicked, ...carried]) }
     }
 
     // Includes 'drafted': drafting from the All-targets tab sets the
     // status without stamping queuedFor, and those rows used to match
     // neither branch and never surface in Today again.
-    const picks = await prisma.target.findMany({
+    // Category day (Leo's rule): the day's fresh picks come from ONE
+    // category, rotating daily through every category that still has
+    // people to invite — alcohol day, fintech day, and so on. When the
+    // day's category runs short, the best of the rest top it up.
+    const candidates = await prisma.target.findMany({
       where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: { passedAt: null } },
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
-      take: room - handPicked.length - carried.length,
-      select: { id: true },
+      take: 300,
+      select: { id: true, brand: { select: { category: true } } },
     })
-    if (picks.length === 0) return ensureTemplateDrafts([...handPicked, ...carried])
+    const cats = [...new Set(candidates.map(c => c.brand.category).filter(Boolean))].sort() as string[]
+    const theme = cats.length ? cats[Math.floor(Date.now() / 86400000) % cats.length] : null
+    const ordered = theme
+      ? [...candidates.filter(c => c.brand.category === theme), ...candidates.filter(c => c.brand.category !== theme)]
+      : candidates
+    const picks = ordered.slice(0, room - handPicked.length - carried.length)
+    if (picks.length === 0) return { theme, targets: await ensureTemplateDrafts([...handPicked, ...carried]) }
 
     await prisma.target.updateMany({
       where: { id: { in: picks.map(p => p.id) } },
@@ -718,7 +728,7 @@ const handlers: Record<string, Handler> = {
       orderBy: { fitScore: 'desc' },
     })
 
-    return ensureTemplateDrafts([...handPicked, ...[...carried, ...fresh].sort((a, b) => b.fitScore - a.fitScore)])
+    return { theme, targets: await ensureTemplateDrafts([...handPicked, ...[...carried, ...fresh].sort((a, b) => b.fitScore - a.fitScore)]) }
   },
 
   async listTargets({ status, category, search, take = 200, shelved = false }: any) {

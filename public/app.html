@@ -3006,9 +3006,13 @@ function loadOutreach() {
           var weekAgo = Date.now() - 7 * 864e5;
           var sentToday = (r[2] || []).filter(function (t) { return t.sentAt && new Date(t.sentAt) >= midnight; });
           var stale = (r[2] || []).filter(function (t) { return t.sentAt && new Date(t.sentAt).getTime() <= weekAgo; });
-          return { accepted: r[0] || [], list: r[1] || [], sentToday: sentToday, stale: stale };
+          // getTodayQueue returns { theme, targets }; plain arrays from
+          // an older deploy still work.
+          var tq = r[1] || {};
+          var list = tq.targets || (tq.length !== undefined ? tq : []);
+          return { accepted: r[0] || [], list: list, theme: tq.theme || null, sentToday: sentToday, stale: stale };
         })
-    : api('listTargets', { status: statusFilter }).then(function (l) { return { accepted: [], list: l || [], sentToday: [], stale: [] }; });
+    : api('listTargets', { status: statusFilter }).then(function (l) { return { accepted: [], list: l || [], theme: null, sentToday: [], stale: [] }; });
 
   return call.then(function (r) {
     var list = r.list;
@@ -3016,7 +3020,7 @@ function loadOutreach() {
     r.sentToday.forEach(function (t) { TARGET_CACHE[t.id] = t; });
     (list || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
     document.getElementById('queue-head').innerHTML = mode === 'today'
-      ? 'To send today <span class="n">' + list.length + '</span>'
+      ? 'To send today' + (r.theme ? ' — ' + esc(CAT_NAMES[r.theme] || r.theme) + ' day' : '') + ' <span class="n">' + list.length + '</span>'
       : 'All targets <span class="n">' + list.length + '</span>';
     document.getElementById('c-' + (mode === 'today' ? 'today' : 'all')).textContent = list.length;
     document.getElementById('status-filters').style.display = mode === 'all' ? 'flex' : 'none';
