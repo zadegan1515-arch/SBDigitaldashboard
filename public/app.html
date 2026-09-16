@@ -1414,6 +1414,7 @@ function loadBrand(brandId) {
           '<div class="t-actions">' +
             (c.linkedinUrl ? '<a class="btn-ghost" href="' + esc(c.linkedinUrl) +
               '" target="_blank" rel="noopener">↗ LinkedIn</a>' : '') +
+            '<button class="btn-ghost" data-cedit="' + esc(c.id) + '" title="Fix their name, title, LinkedIn or email — a rename regenerates their drafts">✎ Edit</button>' +
           '</div></div>';
       }).join('')
       : '<div class="panel"><div class="empty"><h3>No people yet</h3>' +
@@ -1590,6 +1591,16 @@ function loadBrand(brandId) {
     document.getElementById('b-addcontact').onclick = function () {
       openContactForm(b.id, document.getElementById('b-contact-slot'));
     };
+
+    box.querySelectorAll('[data-cedit]').forEach(function (btn) {
+      btn.onclick = function () {
+        var c = (b.contacts || []).filter(function (x) { return x.id === btn.getAttribute('data-cedit'); })[0];
+        if (!c) return;
+        var cslot = document.getElementById('b-contact-slot');
+        openContactForm(b.id, cslot, null, c);
+        cslot.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      };
+    });
 
     document.getElementById('b-workpeople').onchange = function () {
       var v = this.value;
@@ -1886,24 +1897,30 @@ function openSponsorEditor(s, row) {
 
 // --- add a person ----------------------------------------------
 
-function openContactForm(brandId, slot, onDone) {
+// Add a person, or edit one when `existing` is passed (prefilled; a
+// rename regenerates their un-edited drafts server-side).
+function openContactForm(brandId, slot, onDone, existing) {
+  var ex = existing || {};
   slot.innerHTML =
     '<div class="panel panel-pad" style="margin-bottom:10px">' +
+      (ex.id ? '<div style="font-size:13px;font-weight:600;margin-bottom:10px">Edit ' + esc(ex.name || 'person') + '</div>' : '') +
       '<div class="row2" style="margin-bottom:10px">' +
-        '<div><label class="lbl">Name</label><input class="field-box" id="nc-name"></div>' +
-        '<div><label class="lbl">Title</label><input class="field-box" id="nc-title"></div>' +
+        '<div><label class="lbl">Name</label><input class="field-box" id="nc-name" value="' + esc(ex.name || '') + '"></div>' +
+        '<div><label class="lbl">Title</label><input class="field-box" id="nc-title" value="' + esc(ex.title || '') + '"></div>' +
       '</div>' +
       '<div class="row2" style="margin-bottom:10px">' +
-        '<div><label class="lbl">LinkedIn URL</label><input class="field-box" id="nc-li"></div>' +
-        '<div><label class="lbl">Email</label><input class="field-box" id="nc-email"></div>' +
+        '<div><label class="lbl">LinkedIn URL</label><input class="field-box" id="nc-li" value="' + esc(ex.linkedinUrl || '') + '"></div>' +
+        '<div><label class="lbl">Email</label><input class="field-box" id="nc-email" value="' + esc(ex.email || '') + '"></div>' +
       '</div>' +
       '<div class="row2" style="margin-bottom:10px">' +
-        '<div><label class="lbl">Phone</label><input class="field-box" id="nc-phone"></div>' +
-        '<div><label class="lbl">Location</label><input class="field-box" id="nc-loc"></div>' +
+        '<div><label class="lbl">Phone</label><input class="field-box" id="nc-phone" value="' + esc(ex.phone || '') + '"></div>' +
+        '<div><label class="lbl">Location</label><input class="field-box" id="nc-loc" value="' + esc(ex.location || '') + '"></div>' +
       '</div>' +
-      '<div style="display:flex;gap:8px"><button class="btn-solid" id="nc-save">Add person</button>' +
+      '<div style="display:flex;gap:8px"><button class="btn-solid" id="nc-save">' + (ex.id ? 'Save changes' : 'Add person') + '</button>' +
         '<button class="btn-ghost" id="nc-cancel">Cancel</button></div>' +
-      '<div class="hint" style="margin:10px 0 0">A decision-maker title plus a LinkedIn URL queues them for outreach automatically.</div>' +
+      '<div class="hint" style="margin:10px 0 0">' + (ex.id
+        ? 'Fixing the name also rewrites their queued note and DM with the corrected name.'
+        : 'A decision-maker title plus a LinkedIn URL queues them for outreach automatically.') + '</div>' +
     '</div>';
 
   slot.querySelector('#nc-cancel').onclick = function () { slot.innerHTML = ''; };
@@ -1912,6 +1929,7 @@ function openContactForm(brandId, slot, onDone) {
     if (!name) { toast('Name is required'); return; }
     this.disabled = true;
     api('upsertContact', {
+      id: ex.id || undefined,
       brandId: brandId,
       name: name,
       title: slot.querySelector('#nc-title').value || null,
@@ -1920,7 +1938,7 @@ function openContactForm(brandId, slot, onDone) {
       phone: slot.querySelector('#nc-phone').value || null,
       location: slot.querySelector('#nc-loc').value || null
     }).then(function () {
-      toast('Added');
+      toast(ex.id ? 'Saved — drafts regenerate with the corrected name' : 'Added');
       if (onDone) onDone();
       else loadBrand(brandId);
     }).catch(function (e) { toast(e.message); });

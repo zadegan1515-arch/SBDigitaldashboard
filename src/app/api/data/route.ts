@@ -1823,10 +1823,18 @@ const handlers: Record<string, Handler> = {
   // rule as the bulk import: decision-maker title plus a LinkedIn URL.
   async upsertContact({ id, brandId, name, title, email, phone, location, linkedinUrl, isDecisionMaker }: any) {
     if (id) {
-      return prisma.contact.update({
+      const before = await prisma.contact.findUnique({ where: { id } })
+      const updated = await prisma.contact.update({
         where: { id },
         data: { name, title, email, phone, location, linkedinUrl, isDecisionMaker },
       })
+      // A renamed person needs re-personalized messages (the Ellen /
+      // "Elle" case): drop their never-hand-edited drafts so the queue
+      // regenerates them with the corrected name on next load.
+      if (before && name && before.name !== name) {
+        await prisma.draft.deleteMany({ where: { editedByHuman: false, target: { contactId: id } } })
+      }
+      return updated
     }
     if (!brandId || !name) throw new Error('Brand and name required')
 
