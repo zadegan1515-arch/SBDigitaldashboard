@@ -1429,18 +1429,37 @@ function loadBrand(brandId) {
           'Promote or shelve anyone here.</div>' +
         b.targets.map(function (t) {
           var canSend = t.status === 'queued' || t.status === 'drafted';
-          return '<div class="target"' + (t.shelved ? ' style="opacity:.62"' : '') + '>' +
+          var dr = (t.drafts || [])[0];
+          return '<div class="target"' + (t.shelved ? ' style="opacity:.62"' : '') + ' style="align-items:flex-start">' +
             '<div class="t-main"><div class="t-line">' +
             '<span class="t-brand">' + esc(t.contact.name) + '</span>' +
             (t.contact.title ? '<span class="t-sep">·</span><span class="t-title">' +
               esc(t.contact.title) + '</span>' : '') + '</div>' +
+            // The whole story per person: status, when the invite went
+            // out, when they answered — plus the exact note & DM below.
             '<div class="t-meta">' +
             (t.shelved ? '<span class="status declined">shelved</span>'
                        : '<span class="status ' + t.status + '">' + t.status + '</span>') +
-            '<span>· fit ' + t.fitScore + '</span>' +
-            (t.drafts.length ? '<span>· ' + t.drafts.length + ' draft' +
-              (t.drafts.length === 1 ? '' : 's') + '</span>' : '') + '</div></div>' +
+            (t.sentAt ? '<span>· invited ' + shortDate(t.sentAt) + '</span>' : '') +
+            (t.repliedAt ? '<span>· replied ' + shortDate(t.repliedAt) + '</span>' : '') +
+            '</div>' +
+            (dr
+              ? '<details style="margin-top:7px"><summary style="cursor:pointer;font-size:12px;color:var(--ink-3)">' +
+                  (t.sentAt ? 'The note that went out' : 'Note & DM ready to send') + '</summary>' +
+                  '<div style="font-size:12.5px;color:var(--ink-2);margin-top:6px;white-space:pre-wrap"><b style="color:var(--ink-3);font-size:11px">INVITE NOTE</b><br>' + esc(dr.connectionNote) + '</div>' +
+                  '<div style="font-size:12.5px;color:var(--ink-2);margin-top:8px;white-space:pre-wrap"><b style="color:var(--ink-3);font-size:11px">FIRST DM</b><br>' + esc(dr.firstMessage) + '</div>' +
+                '</details>'
+              : '') +
+            '</div>' +
             '<div class="t-actions">' +
+            (t.status === 'sent'
+              ? '<button class="btn-draft" data-bract="accepted" data-brt="' + esc(t.id) + '" title="Did they accept the invite?">Accepted?</button>' +
+                '<button class="btn-ghost" data-bract="replied" data-brt="' + esc(t.id) + '" title="Did they write back?">Replied?</button>' : '') +
+            (t.status === 'accepted'
+              ? '<span class="status accepted" style="font-size:12px;padding:5px 12px">Accepted ✓</span>' +
+                '<button class="btn-ghost" data-bract="replied" data-brt="' + esc(t.id) + '" title="Did they write back?">Replied?</button>' : '') +
+            (t.status === 'replied' || t.status === 'converted'
+              ? '<span class="status replied" style="font-size:12px;padding:5px 12px">Replied ✓</span>' : '') +
             (canSend ? '<button class="btn-ghost" data-shelf="' + esc(t.id) + '" data-to="' +
               (t.shelved ? '0' : '1') + '">' + (t.shelved ? 'Promote' : 'Shelve') + '</button>' : '') +
             (t.contact.linkedinUrl ? '<a class="btn-ghost" href="' + esc(t.contact.linkedinUrl) +
@@ -5980,6 +5999,18 @@ document.getElementById('brand-body').addEventListener('click', function (e) {
     toast(btn.getAttribute('data-to') === '1' ? 'Shelved' : 'Promoted to queue');
     if (CURRENT_BRAND) loadBrand(CURRENT_BRAND.brand.id);
   }).catch(function (err) { toast(err.message); btn.disabled = false; });
+});
+
+// Accepted? / Replied? on the brand card's outreach rows.
+document.getElementById('brand-body').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-bract]');
+  if (!btn) return;
+  btn.disabled = true;
+  api('setTargetStatus', { targetId: btn.getAttribute('data-brt'), status: btn.getAttribute('data-bract'), actor: ME.owner || null })
+    .then(function () {
+      toast(btn.getAttribute('data-bract') === 'replied' ? 'Reply logged' : 'Accepted logged');
+      if (CURRENT_BRAND) loadBrand(CURRENT_BRAND.brand.id);
+    }).catch(function (err) { toast(err.message); btn.disabled = false; });
 });
 
 document.getElementById('brand-crumb').addEventListener('click', function () {
