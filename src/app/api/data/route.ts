@@ -235,6 +235,21 @@ function looksLikeDecisionMaker(title: string | null): boolean {
   return /college|campus|field marketing|experiential|sponsorship|partnerships|sports marketing|brand marketing|founder|ceo|cmo/i.test(title)
 }
 
+// How many people to work at a brand when Leo hasn't chosen — rules
+// only, mirrored on the brand page client-side. Established orgs get
+// three threads (nobody knows who owns campus), growth two, founder-led
+// one (a second message just annoys a founder); never more than the
+// reachable bench.
+function recommendWorkPeople(
+  brand: { tier: string | null },
+  contacts: Array<{ title: string | null; email: string | null; linkedinUrl: string | null }>
+): number {
+  const reachable = contacts.filter(c => c.email || c.linkedinUrl).length
+  const founderLed = contacts.some(c => /founder|co-founder|\bceo\b/i.test(c.title ?? ''))
+  const n = brand.tier === 'established' ? 3 : brand.tier === 'growth' ? 2 : founderLed ? 1 : 2
+  return Math.max(1, Math.min(n, Math.max(reachable, 1)))
+}
+
 // ---------------------------------------------------------------
 // LinkedIn draft templates — no model call, no spend, never blocks
 // ---------------------------------------------------------------
@@ -1879,9 +1894,9 @@ const handlers: Record<string, Handler> = {
     // second thread doubles the odds without reading as a blast. Queue
     // is a no-op only once both slots are taken.
     // force (the row's "+ Person" button) deliberately goes past the
-    // brand's slot count — an explicit click, not an auto-pick. The
-    // brand's own "people to work" setting wins over the default of 2.
-    const WORK_PER_BRAND = brand.workPeople ?? 2
+    // brand's slot count — an explicit click, not an auto-pick. Leo's
+    // explicit setting wins; otherwise the rules-based recommendation.
+    const WORK_PER_BRAND = brand.workPeople ?? recommendWorkPeople(brand, brand.contacts)
     const live = brand.targets.filter(t => !t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied'].includes(t.status))
     if (!force && live.length >= WORK_PER_BRAND) {
       return {
@@ -2640,7 +2655,7 @@ const handlers: Record<string, Handler> = {
           score += Math.min(25, rate)
           if (rate > 0) why.push('category replies at ' + rate + '%')
         }
-        if (b.workPeople) why.push('work ' + b.workPeople)
+        why.push(b.workPeople ? 'work ' + b.workPeople : 'suggest working ' + recommendWorkPeople(b, b.contacts))
         return { id: b.id, name: b.name, category: b.category, tier: b.tier, contacts: b._count.contacts, score, why }
       })
       .sort((a, b) => b.score - a.score)

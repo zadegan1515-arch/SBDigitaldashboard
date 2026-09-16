@@ -1312,12 +1312,24 @@ function loadBrand(brandId) {
           (b.doNotEmail
             ? '<button class="btn-ghost" id="b-dne" style="border-color:var(--accent);color:var(--accent)" title="This brand is excluded from all outreach emails — click to allow again">Do not email</button>'
             : '<button class="btn-ghost" id="b-dne" title="Exclude this brand from all outreach emails (intros and follow-ups)">Emails on</button>') +
-          '<select class="field-box" id="b-workpeople" style="width:auto;padding:6px 10px;font-size:12px" title="How many people to work at once at this brand — the queue fills this many; + Person can still exceed it">' +
-            '<option value=""' + (b.workPeople ? '' : ' selected') + '>Work: 2 (default)</option>' +
-            [1, 2, 3].map(function (n) {
-              return '<option value="' + n + '"' + (b.workPeople === n ? ' selected' : '') + '>Work: ' + n + ' ' + (n === 1 ? 'person' : 'people') + '</option>';
-            }).join('') +
-          '</select>' +
+          // Same rule as the server: established 3, growth 2,
+          // founder-led 1, capped by the reachable bench.
+          (function () {
+            var reach = (b.contacts || []).filter(function (c) { return c.email || c.linkedinUrl; }).length;
+            var founder = (b.contacts || []).some(function (c) { return /founder|co-founder|\bceo\b/i.test(c.title || ''); });
+            var sug = b.tier === 'established' ? 3 : b.tier === 'growth' ? 2 : founder ? 1 : 2;
+            sug = Math.max(1, Math.min(sug, Math.max(reach, 1)));
+            var why = b.tier === 'established' ? 'big org — several possible buyers'
+              : b.tier === 'growth' ? 'growth brand — two threads is the sweet spot'
+              : founder ? 'founder-led — one thread, straight to the top'
+              : 'no strong signal — two is the safe default';
+            return '<select class="field-box" id="b-workpeople" style="width:auto;padding:6px 10px;font-size:12px" title="How many people to work at once at this brand. Auto follows the suggestion: ' + why + '. + Person can always exceed it.">' +
+              '<option value=""' + (b.workPeople ? '' : ' selected') + '>Work: auto — suggests ' + sug + '</option>' +
+              [1, 2, 3].map(function (n) {
+                return '<option value="' + n + '"' + (b.workPeople === n ? ' selected' : '') + '>Work: ' + n + ' ' + (n === 1 ? 'person' : 'people') + '</option>';
+              }).join('') +
+            '</select>';
+          })() +
           (b.passedAt
             ? '<button class="btn-ghost" id="b-pass" style="border-color:var(--warn);color:var(--warn)" title="Passed — hidden from all outreach. Click to bring it back.">Passed — bring back</button>'
             : '<button class="btn-ghost" id="b-pass" title="Hide this brand from all outreach (queue, picks, next-best) until you bring it back">Pass brand</button>') +
