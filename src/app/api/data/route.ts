@@ -302,8 +302,12 @@ async function ensureTemplateDrafts(targets: any[]) {
     // the whole queue speaks the current voice; hand-edited drafts and
     // rows with current variants are left alone.
     if (t.drafts && t.drafts.length) {
+      // Stale = written before Zach's man/woman templates and never
+      // hand-edited — whether it came from the old templates OR the old
+      // AI drafter (the model check that used to be here silently kept
+      // every AI-era draft on its old wording).
       const stale = t.drafts.every((d: any) =>
-        d.model === 'template' && !d.editedByHuman && d.variant !== 'man' && d.variant !== 'woman')
+        !d.editedByHuman && d.variant !== 'man' && d.variant !== 'woman')
       if (!stale) continue
       await prisma.draft.deleteMany({ where: { targetId: t.id } })
     }
