@@ -76,8 +76,10 @@ const CONNECTION_NOTE_MAX = 300
 const FIRST_MESSAGE_MAX = 600
 
 // One LinkedIn account caps near 100 connection requests a week.
-// Ten a day keeps a comfortable margin under that.
-const DAILY_SEND_LIMIT = 10
+// Twenty a day, weekdays only, sits exactly at that ceiling — Leo's
+// call (Sep 2026). If LinkedIn ever shows the weekly-limit warning or
+// asks to verify the account, drop this back to 10 for a week.
+const DAILY_SEND_LIMIT = 20
 
 // Vercel functions run in UTC, so a naive setHours(0,0,0,0) makes "today"
 // start at 7 or 8pm the previous evening for anyone on the east coast —
