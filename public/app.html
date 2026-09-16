@@ -2365,26 +2365,36 @@ document.getElementById('reached-list').addEventListener('change', function (e) 
   var call = dealId
     ? api('setDealStage', { id: dealId, stage: sel.value })
     : api('upsertDeal', { brandId: sel.getAttribute('data-rcbrand'), name: sel.getAttribute('data-rcname'), stage: sel.value });
-  call.then(function () {
+  call.then(function (resp) {
+    // In place: pin the new stage on the cached brand and re-render.
+    var bId = sel.getAttribute('data-rcbrand');
+    RC_DATA.forEach(function (g) {
+      if (g.brand.id === bId) {
+        g.deal = { id: dealId || (resp && resp.id), stage: sel.value, source: (g.deal && g.deal.source) || 'manual' };
+      }
+    });
+    renderReached();
     toast(dealId ? 'Deal moved to ' + sel.value : 'Deal created at ' + sel.value + ' — it’s on the Deals board');
-    RC_DATA = [];
-    loadReached();
   }).catch(function (err) { toast(err.message); sel.disabled = false; });
 });
 
 document.getElementById('reached-list').addEventListener('click', function (e) {
   var btn = e.target.closest('[data-rcact]');
   if (!btn) return;
-  btn.disabled = true;
   var status = btn.getAttribute('data-rcact');
-  api('setTargetStatus', { targetId: btn.getAttribute('data-rct'), status: status, actor: ME.owner || null })
-    .then(function () {
-      toast(status === 'replied' ? 'Reply logged — they’re on your Home needs-action list'
-        : status === 'withdrawn' ? 'Logged as withdrawn — Re-queue them from the LinkedIn tab (All targets) anytime'
-        : 'Accepted — DM them from the LinkedIn tab');
-      RC_DATA = [];
-      loadReached();
-    }).catch(function (err) { toast(err.message); btn.disabled = false; });
+  var tid = btn.getAttribute('data-rct');
+  // In place: mutate the cached person and re-render — no re-fetch.
+  RC_DATA.forEach(function (g) {
+    (g.people || []).forEach(function (p) {
+      if (p.linkedin && p.linkedin.targetId === tid) p.linkedin.status = status;
+    });
+  });
+  renderReached();
+  toast(status === 'replied' ? 'Reply logged — they’re on your Home needs-action list'
+    : status === 'withdrawn' ? 'Logged as withdrawn — Re-queue them from the LinkedIn tab (All targets) anytime'
+    : 'Accepted — DM them from the LinkedIn tab');
+  api('setTargetStatus', { targetId: tid, status: status, actor: ME.owner || null })
+    .catch(function (err) { toast(err.message); RC_DATA = []; loadReached(); });
 });
 
 // --- outreach schedule -----------------------------------------
@@ -2532,10 +2542,12 @@ function loadPassed() {
 document.getElementById('passed-list').addEventListener('click', function (e) {
   var btn = e.target.closest('[data-unpass]');
   if (!btn) return;
-  btn.disabled = true;
+  // In place: the card leaves the Passed list immediately.
+  var pRow = btn.closest('.target');
+  if (pRow) pRow.remove();
+  toast('Back in outreach');
   api('setBrandPassed', { brandId: btn.getAttribute('data-unpass'), passed: false })
-    .then(function (r) { toast(r.name + ' is back in outreach'); return loadPassed(); })
-    .catch(function (err) { toast(err.message); btn.disabled = false; });
+    .catch(function (err) { toast(err.message); loadPassed(); });
 });
 
 // --- rate card (loaded once, used for suggested values) --------
@@ -3956,9 +3968,14 @@ function openDealRoom(dealId) {
     };
     slot.querySelectorAll('[data-rmdeliv]').forEach(function (cb) {
       cb.addEventListener('change', function () {
+        // In place: strike or unstrike immediately; save behind it.
+        var lbl = cb.nextElementSibling;
+        if (lbl) {
+          lbl.style.color = cb.checked ? 'var(--ink-3)' : '';
+          lbl.style.textDecoration = cb.checked ? 'line-through' : '';
+        }
         api('updateDeliverable', { id: cb.getAttribute('data-rmdeliv'), done: cb.checked })
-          .then(function () { openDealRoom(dealId); })
-          .catch(function (e) { toast(e.message); });
+          .catch(function (e) { toast(e.message); openDealRoom(dealId); });
       });
     });
     var seed = slot.querySelector('#rm-seed');
@@ -6154,16 +6171,31 @@ document.getElementById('brand-body').addEventListener('click', function (e) {
   }).catch(function (err) { toast(err.message); btn.disabled = false; });
 });
 
-// Accepted? / Replied? on the brand card's outreach rows.
+// Accepted? / Replied? on the brand card's outreach rows — the button
+// swaps to its checked pill in place, no page reload.
 document.getElementById('brand-body').addEventListener('click', function (e) {
   var btn = e.target.closest('[data-bract]');
   if (!btn) return;
-  btn.disabled = true;
-  api('setTargetStatus', { targetId: btn.getAttribute('data-brt'), status: btn.getAttribute('data-bract'), actor: ME.owner || null })
-    .then(function () {
-      toast(btn.getAttribute('data-bract') === 'replied' ? 'Reply logged' : 'Accepted logged');
-      if (CURRENT_BRAND) loadBrand(CURRENT_BRAND.brand.id);
-    }).catch(function (err) { toast(err.message); btn.disabled = false; });
+  var actn = btn.getAttribute('data-bract');
+  var tid = btn.getAttribute('data-brt');
+  var wrap = btn.parentElement;
+  wrap.querySelectorAll('[data-bract]').forEach(function (x) { x.remove(); });
+  var pill = document.createElement('span');
+  pill.className = 'status ' + (actn === 'replied' ? 'replied' : 'accepted');
+  pill.style.cssText = 'font-size:12px;padding:5px 12px';
+  pill.textContent = actn === 'replied' ? 'Replied ✓' : 'Accepted ✓';
+  wrap.prepend(pill);
+  if (actn === 'accepted') {
+    var rbtn = document.createElement('button');
+    rbtn.className = 'btn-ghost';
+    rbtn.setAttribute('data-bract', 'replied');
+    rbtn.setAttribute('data-brt', tid);
+    rbtn.textContent = 'Replied?';
+    pill.after(rbtn);
+  }
+  toast(actn === 'replied' ? 'Reply logged' : 'Accepted logged');
+  api('setTargetStatus', { targetId: tid, status: actn, actor: ME.owner || null })
+    .catch(function (err) { toast(err.message); if (CURRENT_BRAND) loadBrand(CURRENT_BRAND.brand.id); });
 });
 
 document.getElementById('brand-crumb').addEventListener('click', function () {
@@ -6697,10 +6729,13 @@ document.getElementById('targets').addEventListener('click', function (e) {
 
   // Off the queue without passing: shelve the target. It stays on the
   // brand page and can be promoted back; the brand returns to next-best.
+  // In place: the row just disappears.
   if (act === 'unqueue') {
+    var uqRow = document.querySelector('#targets .target[data-id="' + id + '"]');
+    if (uqRow) uqRow.remove();
+    toast('Off the queue — still on the brand page');
     api('setTargetShelved', { targetId: id, shelved: true })
-      .then(function () { toast('Off the queue — still on the brand page'); return loadOutreach(); })
-      .catch(function (err) { toast(err.message); });
+      .catch(function (err) { toast(err.message); loadOutreach(); });
     return;
   }
 
@@ -6714,12 +6749,17 @@ document.getElementById('targets').addEventListener('click', function (e) {
 
   // Pass = the whole brand moves to the Passed tab (nothing deleted)
   // and stays out of all outreach until brought back there.
+  // In place: every row of the passed brand vanishes immediately.
   if (act === 'pass') {
     var pBrandId = TARGET_CACHE[id] && TARGET_CACHE[id].brandId;
     if (!pBrandId) return;
+    document.querySelectorAll('#targets .target[data-id]').forEach(function (row) {
+      var rt = TARGET_CACHE[row.getAttribute('data-id')];
+      if (rt && rt.brandId === pBrandId) row.remove();
+    });
+    toast('Moved to the Passed tab');
     api('setBrandPassed', { brandId: pBrandId, passed: true })
-      .then(function (r) { toast(r.name + ' moved to the Passed tab'); return loadOutreach(); })
-      .catch(function (err) { toast(err.message); });
+      .catch(function (err) { toast(err.message); loadOutreach(); });
   }
 });
 
