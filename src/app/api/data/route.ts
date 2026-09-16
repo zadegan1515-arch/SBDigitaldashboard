@@ -84,6 +84,14 @@ const DAILY_SEND_LIMIT = 10
 // which silently handed out a second day's queue every evening.
 const WORK_TZ = 'America/New_York'
 
+// Today's date as YYYY-MM-DD in the working timezone — the key the
+// outreach schedule (Setting `outreachPlan`) is stored under.
+function localDayKey(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: WORK_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(now)
+}
+
 function startOfLocalDay(now: Date = new Date()): Date {
   // Find today's date in WORK_TZ, then search for the UTC instant whose
   // local rendering is midnight on that date. Subtracting elapsed
@@ -676,12 +684,24 @@ const handlers: Record<string, Handler> = {
     // + Person, Queue on next-best) — it always shows, newest first, on
     // top of the list and past the daily cap. Before this, a hand-pick
     // beyond row 10 queued fine but never rendered.
+    // Today's planned brands (Schedule tab) queue themselves — each
+    // lands as a hand-pick. Idempotent: an already-live brand is a
+    // no-op inside queueBrandTargets.
+    const planRow = await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })
+    let planDay: any = null
+    try { planDay = planRow ? (JSON.parse(planRow.value)[localDayKey()] ?? null) : null } catch { planDay = null }
+    if (planDay?.brandIds?.length) {
+      for (const bid of planDay.brandIds) {
+        try { await (handlers.queueBrandTargets as Handler)({ brandId: bid }) } catch { /* one bad brand never blocks the queue */ }
+      }
+    }
+
     const handPicked = await prisma.target.findMany({
       where: { queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } },
       include,
       orderBy: { queuedFor: 'desc' },
     })
-    if (room === 0) return { theme: null, targets: await ensureTemplateDrafts(handPicked) }
+    if (room === 0) return { theme: planDay?.category ?? null, targets: await ensureTemplateDrafts(handPicked) }
 
     // Older stamps still not sent — yesterday's leftovers. Shelved
     // targets (parked by the per-brand cap) never enter the queue.
@@ -693,7 +713,7 @@ const handlers: Record<string, Handler> = {
       take: roomLeft,
     })
     if (handPicked.length + carried.length >= room) {
-      return { theme: null, targets: await ensureTemplateDrafts([...handPicked, ...carried]) }
+      return { theme: planDay?.category ?? null, targets: await ensureTemplateDrafts([...handPicked, ...carried]) }
     }
 
     // Includes 'drafted': drafting from the All-targets tab sets the
@@ -710,7 +730,9 @@ const handlers: Record<string, Handler> = {
       select: { id: true, brand: { select: { category: true } } },
     })
     const cats = [...new Set(candidates.map(c => c.brand.category).filter(Boolean))].sort() as string[]
-    const theme = cats.length ? cats[Math.floor(Date.now() / 86400000) % cats.length] : null
+    // A planned category (Schedule tab) beats the automatic rotation.
+    const theme = planDay?.category
+      ?? (cats.length ? cats[Math.floor(Date.now() / 86400000) % cats.length] : null)
     const ordered = theme
       ? [...candidates.filter(c => c.brand.category === theme), ...candidates.filter(c => c.brand.category !== theme)]
       : candidates
@@ -771,7 +793,8 @@ const handlers: Record<string, Handler> = {
         ...(status === 'sent' && !before.sentAt ? { sentAt: now } : {}),
         // Undo for a mis-clicked "Mark sent": back to the queue with the
         // send stamp wiped so today's cap and Reached don't count it.
-        ...(clearSent ? { sentAt: null } : {}),
+        // A withdrawn invite is uncounted the same way.
+        ...(clearSent || status === 'withdrawn' ? { sentAt: null } : {}),
         ...(status === 'replied' && !before.repliedAt ? { repliedAt: now } : {}),
         // Follow-up layer. clearFollowUp wipes it (e.g. when a deal closes);
         // otherwise set whatever was passed.
@@ -2017,6 +2040,45 @@ const handlers: Record<string, Handler> = {
       })
     }
     return { id: brand.id, name: brand.name, passed: !!brand.passedAt }
+  },
+
+  // -------- outreach schedule --------
+
+  // The plan lives in Setting `outreachPlan` as { "YYYY-MM-DD":
+  // { category, brandIds } }. getTodayQueue reads today's entry:
+  // category overrides the rotation, brandIds are auto-queued.
+  async getOutreachPlan() {
+    const row = await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })
+    let plan: Record<string, any> = {}
+    try { plan = row ? JSON.parse(row.value) : {} } catch { plan = {} }
+    const ids = [...new Set(Object.values(plan).flatMap((d: any) => d?.brandIds ?? []))] as string[]
+    const brands = ids.length
+      ? await prisma.brand.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
+      : []
+    return { plan, brands, today: localDayKey() }
+  },
+
+  async setOutreachPlanDay({ date, category, brandIds }: any) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) throw new Error('Bad date')
+    const row = await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })
+    let plan: Record<string, any> = {}
+    try { plan = row ? JSON.parse(row.value) : {} } catch { plan = {} }
+    const clean = {
+      category: category || null,
+      brandIds: Array.isArray(brandIds) ? brandIds.slice(0, 30) : [],
+    }
+    if (!clean.category && !clean.brandIds.length) delete plan[date]
+    else plan[date] = clean
+    // Past days age out so the setting never grows unbounded.
+    const today = localDayKey()
+    for (const k of Object.keys(plan)) if (k < today) delete plan[k]
+    const value = JSON.stringify(plan)
+    await prisma.setting.upsert({
+      where: { key: 'outreachPlan' },
+      create: { key: 'outreachPlan', value },
+      update: { value },
+    })
+    return { ok: true, plan }
   },
 
   // The Passed tab: every brand currently passed, newest first, so a

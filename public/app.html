@@ -182,6 +182,7 @@
   .status{font-weight:700;padding:2px 9px;border-radius:999px;font-size:10.5px;letter-spacing:.02em;background:var(--surface-2);color:var(--ink-2)}
   .status.sent{background:rgba(97,165,250,.14);color:#82b6fb}
   .status.accepted{background:rgba(67,198,232,.15);color:#6cd6f0}
+  .status.withdrawn{background:rgba(232,182,76,.14);color:#eec777}
   .status.replied,.status.confirmed,.status.converted{background:rgba(62,207,142,.13);color:#55d9a2}
   .status.drafted,.status.proposed{background:rgba(138,123,255,.15);color:#ab9fff}
   .status.requested{background:rgba(246,143,94,.14);color:#f8a077}
@@ -593,6 +594,14 @@
       <div id="reached-list" style="margin-top:14px"></div>
     </section>
 
+    <!-- OUTREACH SCHEDULE -->
+    <section class="view page" id="schedule">
+      <div class="eyebrow">Outreach</div>
+      <h1>Schedule</h1>
+      <div class="sub">Plan the next week of LinkedIn outreach: pick a category per day, add specific brands, and Today builds itself from the plan.</div>
+      <div id="sched-list" style="margin-top:18px"></div>
+    </section>
+
     <!-- PASSED BRANDS -->
     <section class="view page" id="passed">
       <div class="eyebrow">Outreach</div>
@@ -844,7 +853,7 @@ var CAT_NAMES = {
   unresolved:'Needs Clarification'
 };
 var CAT_KEYS = Object.keys(CAT_NAMES);
-var TARGET_STATUSES = ['all','queued','drafted','sent','accepted','replied','converted','declined','dead'];
+var TARGET_STATUSES = ['all','queued','drafted','sent','accepted','withdrawn','replied','converted','declined','dead'];
 var ME = { owner: null };
 var OWNERS = [];
 
@@ -969,7 +978,7 @@ function refreshAfterSponsorChange() {
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
   brands: [['brands', 'All brands'], ['discover', 'Discover'], ['needs', 'Needs contacts']],
-  outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['email-out', 'Email'], ['linkedin', 'People'], ['passed', 'Passed'], ['results', 'Email stats']],
+  outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['schedule', 'Schedule'], ['email-out', 'Email'], ['linkedin', 'People'], ['passed', 'Passed'], ['results', 'Email stats']],
   board: [['board', 'Overview'], ['talks', 'In talks'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
   audience: [['audience', 'Events'], ['attendees', 'Attendees'], ['segments', 'Segments']],
@@ -977,7 +986,7 @@ var SUBTABS = {
 };
 var GROUP_OF = {
   brands: 'brands', brand: 'brands', discover: 'brands', needs: 'brands',
-  outreach: 'outreach', 'email-out': 'outreach', reached: 'outreach', linkedin: 'outreach', results: 'outreach', passed: 'outreach',
+  outreach: 'outreach', 'email-out': 'outreach', reached: 'outreach', schedule: 'outreach', linkedin: 'outreach', results: 'outreach', passed: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
   pipeline: 'pipeline', sponsorships: 'pipeline',
   audience: 'audience', attendees: 'audience', segments: 'audience',
@@ -2274,6 +2283,7 @@ function renderReached() {
         if (p.linkedin.status === 'sent') {
           bits.push('<button class="btn-draft" data-rcact="accepted" data-rct="' + esc(p.linkedin.targetId) + '" title="Did they accept the invite? Click when they do">Accepted?</button>');
           bits.push('<button class="btn-ghost" data-rcact="replied" data-rct="' + esc(p.linkedin.targetId) + '" title="Did they write back? Click when they do">Replied?</button>');
+          bits.push('<button class="btn-ghost mini" data-rcact="withdrawn" data-rct="' + esc(p.linkedin.targetId) + '" title="Withdrew the invite on LinkedIn? Logs it and uncounts the send">Withdrew</button>');
         } else if (p.linkedin.status === 'accepted') {
           bits.push('<span class="status accepted" style="font-size:12px;padding:5px 12px">Accepted ✓</span>');
           bits.push('<button class="btn-ghost" data-rcact="replied" data-rct="' + esc(p.linkedin.targetId) + '" title="Did they write back? Click when they do">Replied?</button>');
@@ -2369,10 +2379,127 @@ document.getElementById('reached-list').addEventListener('click', function (e) {
   var status = btn.getAttribute('data-rcact');
   api('setTargetStatus', { targetId: btn.getAttribute('data-rct'), status: status, actor: ME.owner || null })
     .then(function () {
-      toast(status === 'replied' ? 'Reply logged — they’re on your Home needs-action list' : 'Accepted — DM them from the LinkedIn tab');
+      toast(status === 'replied' ? 'Reply logged — they’re on your Home needs-action list'
+        : status === 'withdrawn' ? 'Logged as withdrawn — Re-queue them from the LinkedIn tab (All targets) anytime'
+        : 'Accepted — DM them from the LinkedIn tab');
       RC_DATA = [];
       loadReached();
     }).catch(function (err) { toast(err.message); btn.disabled = false; });
+});
+
+// --- outreach schedule -----------------------------------------
+// Plan the week: a category and/or specific brands per day, saved to
+// Setting `outreachPlan`. Today's queue reads the plan server-side.
+
+var SCHED = { plan: {}, names: {} };
+
+function schedDayKey(offset) {
+  var dt = new Date(); dt.setDate(dt.getDate() + offset);
+  return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+}
+
+function schedSave(key) {
+  var day = SCHED.plan[key] || {};
+  api('setOutreachPlanDay', { date: key, category: day.category || null, brandIds: day.brandIds || [] })
+    .then(function () { toast('Plan saved for ' + shortDate(key + 'T12:00:00')); })
+    .catch(function (e) { toast(e.message); });
+}
+
+function renderSchedule() {
+  var box = document.getElementById('sched-list');
+  var days = [];
+  for (var i = 0; i < 7; i++) days.push(schedDayKey(i));
+  box.innerHTML = days.map(function (key, i) {
+    var day = SCHED.plan[key] || { category: null, brandIds: [] };
+    var label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow'
+      : new Date(key + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    var chips = (day.brandIds || []).map(function (bid) {
+      return '<span class="status" style="display:inline-flex;gap:6px;align-items:center;font-size:12px;padding:5px 11px">' +
+        esc(SCHED.names[bid] || 'brand') +
+        '<a href="#" data-sdel="' + esc(key) + '" data-sb="' + esc(bid) + '" style="text-decoration:none;color:var(--accent-hi);font-weight:700">×</a></span>';
+    }).join(' ');
+    return '<div class="panel panel-pad" style="margin-bottom:10px" data-sday="' + esc(key) + '">' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+        '<b style="font-size:13.5px;min-width:150px">' + label + '</b>' +
+        '<select class="field-box" data-scat="' + esc(key) + '" style="width:auto;padding:6px 10px;font-size:12.5px">' +
+          '<option value=""' + (day.category ? '' : ' selected') + '>Category: automatic rotation</option>' +
+          CAT_KEYS.map(function (k) {
+            return '<option value="' + k + '"' + (day.category === k ? ' selected' : '') + '>' + esc(CAT_NAMES[k]) + '</option>';
+          }).join('') +
+        '</select>' +
+        '<div style="position:relative;flex:1;min-width:200px">' +
+          '<input class="field-box" data-sq="' + esc(key) + '" placeholder="+ Add a specific brand…" autocomplete="off" style="width:100%">' +
+          '<div data-sdrop="' + esc(key) + '" style="position:absolute;top:100%;left:0;right:0;z-index:30;display:none;background:var(--surface-1);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:220px;overflow:auto;margin-top:4px"></div>' +
+        '</div>' +
+      '</div>' +
+      (chips ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">' + chips + '</div>' : '') +
+    '</div>';
+  }).join('') +
+  '<div class="hint">Each day sends its planned brands first, then fills the rest from the day’s category. Days with nothing planned follow the automatic category rotation.</div>';
+}
+
+function loadSchedule() {
+  showView('schedule');
+  var box = document.getElementById('sched-list');
+  box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  return api('getOutreachPlan').then(function (d) {
+    SCHED.plan = d.plan || {};
+    SCHED.names = {};
+    (d.brands || []).forEach(function (b) { SCHED.names[b.id] = b.name; });
+    renderSchedule();
+  }).catch(function (e) {
+    box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+}
+
+document.getElementById('sched-list').addEventListener('change', function (e) {
+  var sel = e.target.closest('[data-scat]');
+  if (!sel) return;
+  var key = sel.getAttribute('data-scat');
+  SCHED.plan[key] = SCHED.plan[key] || { category: null, brandIds: [] };
+  SCHED.plan[key].category = sel.value || null;
+  schedSave(key);
+});
+
+document.getElementById('sched-list').addEventListener('input', function (e) {
+  var inp = e.target.closest('[data-sq]');
+  if (!inp) return;
+  var key = inp.getAttribute('data-sq');
+  var drop = document.querySelector('[data-sdrop="' + key + '"]');
+  var q = inp.value.trim();
+  clearTimeout(inp._t);
+  if (q.length < 2) { drop.style.display = 'none'; return; }
+  inp._t = setTimeout(function () {
+    api('listBrands', { search: q, take: 8 }).then(function (brands) {
+      drop.innerHTML = brands.length ? brands.map(function (b) {
+        return '<div data-sadd="' + esc(key) + '" data-sb="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:9px 12px;font-size:13px;cursor:pointer"><b>' + esc(b.name) + '</b> <span style="color:var(--ink-3)">' + b._count.contacts + ' contacts</span></div>';
+      }).join('') : '<div style="padding:9px 12px;font-size:13px;color:var(--ink-3)">No brand found.</div>';
+      drop.style.display = 'block';
+    });
+  }, 250);
+});
+
+document.getElementById('sched-list').addEventListener('click', function (e) {
+  var add = e.target.closest('[data-sadd]');
+  if (add) {
+    var key = add.getAttribute('data-sadd');
+    var bid = add.getAttribute('data-sb');
+    SCHED.names[bid] = add.getAttribute('data-sn');
+    SCHED.plan[key] = SCHED.plan[key] || { category: null, brandIds: [] };
+    if (SCHED.plan[key].brandIds.indexOf(bid) === -1) SCHED.plan[key].brandIds.push(bid);
+    renderSchedule();
+    schedSave(key);
+    return;
+  }
+  var del = e.target.closest('[data-sdel]');
+  if (del) {
+    e.preventDefault();
+    var dkey = del.getAttribute('data-sdel');
+    var dbid = del.getAttribute('data-sb');
+    SCHED.plan[dkey].brandIds = (SCHED.plan[dkey].brandIds || []).filter(function (x) { return x !== dbid; });
+    renderSchedule();
+    schedSave(dkey);
+  }
 });
 
 // --- passed brands ---------------------------------------------
@@ -2883,6 +3010,8 @@ function targetRow(t) {
         ? '<span class="status replied" style="font-size:12px;padding:5px 12px">Replied ✓</span>' : '') +
       (t.status === 'accepted' && d
         ? '<button class="btn-draft" data-act="copymsg" title="Copy the DM and paste it into your LinkedIn chat with them">Copy DM</button>' : '') +
+      (t.status === 'withdrawn'
+        ? '<button class="btn-draft" data-act="requeue" title="Put them back in the queue to re-send">Re-queue</button>' : '') +
       (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">Profile ↗</a>' : '') +
       (isPre ? '<button class="btn-ghost" data-act="sent" title="Log that the invite went out">Mark sent ✓</button>' : '') +
       (t.status === 'sent' || t.status === 'accepted'
@@ -2892,7 +3021,8 @@ function targetRow(t) {
       (!d && isPre ? '<button class="btn-ghost" data-act="draft">Draft</button>' : '') +
       '<span style="width:1px;height:16px;background:var(--border);margin:0 3px;flex:none"></span>' +
       (t.status === 'sent'
-        ? '<button class="btn-ghost mini" data-act="unsend" title="Hit Mark sent by mistake? Puts them back in the queue and uncounts the send">↩ Undo</button>' : '') +
+        ? '<button class="btn-ghost mini" data-act="unsend" title="Hit Mark sent by mistake? Puts them back in the queue and uncounts the send">↩ Undo</button>' +
+          '<button class="btn-ghost mini" data-act="withdrew" title="Withdrew the invite on LinkedIn? Logs it and uncounts the send — Re-queue brings them back">Withdrew</button>' : '') +
       '<button class="btn-ghost mini" data-act="addperson" title="Queue another person at this brand — the next decision maker steps in">+ Person</button>' +
       '<button class="btn-ghost mini" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
       (isPre ? '<button class="btn-ghost mini" data-act="unqueue" title="Take them off the queue — nothing is deleted, promote them back anytime from the brand page">Off queue</button>' : '') +
@@ -5809,6 +5939,7 @@ function gotoView(id) {
   if (id === 'outreach') loadOutreach();
   if (id === 'email-out') loadEmailOutreach();
   if (id === 'reached') loadReached();
+  if (id === 'schedule') loadSchedule();
   if (id === 'passed') loadPassed();
   if (id === 'linkedin') loadLinkedin();
   if (id === 'shows') loadShows();
@@ -6545,6 +6676,22 @@ document.getElementById('targets').addEventListener('click', function (e) {
     if (ut) { ut.status = 'drafted'; ut.sentAt = null; refreshRow(id); }
     toast('Back in the queue — that send is uncounted');
     api('setTargetStatus', { targetId: id, status: 'drafted', clearSent: true, actor: ME.owner || null })
+      .catch(function (err) { toast(err.message); loadOutreach(); });
+  }
+
+  if (act === 'withdrew') {
+    var wt = TARGET_CACHE[id];
+    if (wt) { wt.status = 'withdrawn'; wt.sentAt = null; refreshRow(id); }
+    toast('Logged as withdrawn — Re-queue when you want another go');
+    api('setTargetStatus', { targetId: id, status: 'withdrawn', actor: ME.owner || null })
+      .catch(function (err) { toast(err.message); loadOutreach(); });
+  }
+
+  if (act === 'requeue') {
+    var rt = TARGET_CACHE[id];
+    if (rt) { rt.status = 'drafted'; refreshRow(id); }
+    toast('Back in the queue');
+    api('setTargetStatus', { targetId: id, status: 'drafted', actor: ME.owner || null })
       .catch(function (err) { toast(err.message); loadOutreach(); });
   }
 

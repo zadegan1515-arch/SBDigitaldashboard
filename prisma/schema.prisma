@@ -146,6 +146,9 @@ enum TargetStatus {
   sent
   // LinkedIn: they accepted the connection request — DM them now.
   accepted
+  // LinkedIn: the invite was withdrawn (wrong person, typo, second
+  // thoughts) — the send is uncounted and the row can be re-queued.
+  withdrawn
   replied
   converted
   declined
