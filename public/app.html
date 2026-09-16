@@ -2450,6 +2450,7 @@ function schedBrandName(b) {
 function schedDropBrand(bid) {
   Object.keys(SCHED.days).forEach(function (k) {
     SCHED.days[k].brands = SCHED.days[k].brands.filter(function (b) { return b.id !== bid; });
+    SCHED.days[k].missing = (SCHED.days[k].missing || []).filter(function (b) { return b.id !== bid; });
   });
   SCHED.bench = (SCHED.bench || []).filter(function (b) { return b.id !== bid; });
 }
@@ -2505,30 +2506,39 @@ function renderSchedule() {
     var badge = '';
     if (prev && typeof prev.ready === 'number') {
       var full = prev.ready >= cap;
-      badge = '<span class="status" title="' + (full ? 'Enough people queued to fill this day.' : 'The queue runs out before this day fills — add brands from the side list.') + '" style="font-size:11.5px;padding:4px 10px;color:' + (full ? '#8fd6a8' : '#f0b86b') + '">' +
-        (full ? cap + ' ready ✓' : 'only ' + prev.ready + ' of ' + cap + ' ready') + '</span>';
+      badge = '<span class="status" title="' + (full ? 'Enough people queued to fill this day.' : 'The queue runs out before this day fills — put more brands in below or from the side list.') + '" style="font-size:11.5px;padding:4px 10px;color:' + (full ? '#8fd6a8' : '#f0b86b') + '">' +
+        (full ? cap + ' people ready ✓' : 'only ' + prev.ready + ' of ' + cap + ' people ready') + '</span>';
     }
     var sugg = '';
     if (prev && (prev.brands.length || (prev.missing || []).length)) {
       var missNote = '';
       if ((prev.missing || []).length) {
-        var mnames = prev.missing.slice(0, 3).map(function (m) { return m.name; }).join(', ') +
-          (prev.missing.length > 3 ? ' +' + (prev.missing.length - 3) + ' more' : '');
-        missNote = '<div style="display:flex;gap:10px;align-items:center;margin-top:8px;padding:8px 12px;border:1px solid var(--border);border-radius:10px">' +
-          '<span style="font-size:12.5px;color:#f0b86b;flex:1">' + prev.missing.length +
-            (prev.missing.length === 1 ? ' brand' : ' brands') + ' in ' + esc(CAT_NAMES[prev.category] || prev.category || 'this category') +
-            ' ' + (prev.missing.length === 1 ? 'isn’t' : 'aren’t') + ' in the queue yet: ' + esc(mnames) + '</span>' +
-          '<button class="btn-draft" data-sfill="' + esc(key) + '" style="padding:5px 13px;font-size:12px;white-space:nowrap">Put them in</button>' +
+        missNote = '<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px">' +
+          '<div style="display:flex;gap:10px;align-items:center;margin-bottom:2px">' +
+            '<span style="font-size:12.5px;font-weight:700;color:#f0b86b;flex:1">Add more — ' + prev.missing.length + ' ' +
+              esc(CAT_NAMES[prev.category] || prev.category || '') + (prev.missing.length === 1 ? ' brand' : ' brands') + ' not in the queue yet</span>' +
+            (prev.missing.length > 1 ? '<button class="btn-draft" data-sfill="' + esc(key) + '" style="padding:5px 13px;font-size:12px;white-space:nowrap">Put all in</button>' : '') +
+          '</div>' +
+          prev.missing.map(function (m) {
+            return '<div data-smrow="' + esc(m.id) + '" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border)">' +
+              '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + schedBrandName(m) + '</span>' +
+              '<span style="font-size:12px;color:var(--ink-3)">' + m.people + (m.people === 1 ? ' person' : ' people') + '</span>' +
+              '<button class="btn-draft" data-sput="' + esc(key) + '" data-sb="' + esc(m.id) + '" style="padding:5px 13px;font-size:12px">Put in</button>' +
+              '<button class="btn-ghost danger" data-spass="' + esc(m.id) + '" data-sn="' + esc(m.name) + '" style="padding:5px 12px;font-size:12px">Pass</button>' +
+            '</div>';
+          }).join('') +
         '</div>';
       }
       sugg = '<div style="margin-top:10px">' +
         (prev.brands.length
           ? '<div class="hint" style="margin:0 0 6px">' +
-              (prev.category ? 'Up that day — ' + esc(CAT_NAMES[prev.category] || prev.category) + (prev.auto ? ' (rotation)' : '') : 'Up that day') + ':' +
+              (prev.category ? 'Going out that day — ' + esc(CAT_NAMES[prev.category] || prev.category) + (prev.auto ? ' (rotation)' : '') + ', topped up from other categories where short' : 'Going out that day') + ':' +
             '</div>' +
             prev.brands.map(function (b) {
               return '<div data-srow="' + esc(b.id) + '" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border)">' +
-                '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + schedBrandName(b) + '</span>' +
+                '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + schedBrandName(b) +
+                  (b.topUp ? ' <span style="font-size:11px;color:var(--ink-3)">top-up · ' + esc(CAT_NAMES[b.category] || b.category || 'other') + '</span>' : '') +
+                '</span>' +
                 '<span style="font-size:12px;color:var(--ink-3)">' + b.people + (b.people === 1 ? ' person' : ' people') + '</span>' +
                 '<button class="btn-draft" data-spin="' + esc(key) + '" data-sb="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 13px;font-size:12px">+ Add</button>' +
                 '<button class="btn-ghost danger" data-spass="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 12px;font-size:12px">Pass</button>' +
@@ -2646,7 +2656,27 @@ document.getElementById('sched-list').addEventListener('click', function (e) {
     schedSave(pkey);
     return;
   }
-  // "Put them in": queue every not-yet-queued brand of the day's
+  // "Put in" on one Add-more brand: queue just that one. In place — it
+  // moves up into the day's list right away.
+  var put = e.target.closest('[data-sput]');
+  if (put) {
+    var pdkey = put.getAttribute('data-sput');
+    var pdid = put.getAttribute('data-sb');
+    var pday = SCHED.days[pdkey];
+    var m = pday && (pday.missing || []).filter(function (x) { return x.id === pdid; })[0];
+    if (!m) return;
+    pday.missing = pday.missing.filter(function (x) { return x.id !== pdid; });
+    pday.brands.push(m);
+    SCHED.bench = (SCHED.bench || []).filter(function (b) { return b.id !== pdid; });
+    renderSchedule();
+    renderBench();
+    api('queueBrands', { brandIds: [pdid] }).then(function (r) {
+      toast(r.queued ? m.name + ' is in the queue' : 'Could not queue ' + m.name);
+      schedRefreshDays();
+    }).catch(function (err) { toast(err.message); loadSchedule(); });
+    return;
+  }
+  // "Put all in": queue every not-yet-queued brand of the day's
   // category. In place — they join the day's list right away.
   var fill = e.target.closest('[data-sfill]');
   if (fill) {

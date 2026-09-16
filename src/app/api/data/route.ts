@@ -2107,24 +2107,51 @@ const handlers: Record<string, Handler> = {
       !b.targets.some(t => t.sentAt ||
         (!t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied', 'converted'].includes(t.status))))
 
-    // Coverage vs the 20/day cap: the pool is shared, so day N only has
-    // people left after days 0..N-1 each took a full cap's worth.
+    // True preview of each day's sends: the same picking order the real
+    // queue uses (day's category first by fit, then the best of the
+    // rest to top up to the cap), simulated forward so a person shown
+    // on Monday is not shown again on Wednesday. The count is exactly
+    // the people that would go out.
+    let available = candidates.filter(c => !planned.has(c.brand.id))
     const days = Array.from({ length: 7 }, (_, i) => {
       const at = new Date(Date.now() + i * 24 * 60 * 60 * 1000)
       const key = localDayKey(at)
       const theme = plan[key]?.category
         ?? (cats.length ? cats[Math.floor(at.getTime() / 86400000) % cats.length] : null)
-      const pool = [...byBrand.values()].filter(b => !planned.has(b.id))
-      const inCat = theme ? pool.filter(b => b.category === theme) : pool
+      // Hand-planned brands send that day too — their queued people
+      // count toward the 20 but render as chips, not preview rows.
+      const dayPlannedIds = new Set<string>(plan[key]?.brandIds ?? [])
+      const plannedCount = candidates.filter(c => dayPlannedIds.has(c.brand.id)).length
+      const room = Math.max(0, DAILY_SEND_LIMIT - plannedCount)
+      const take = [
+        ...available.filter(c => theme && c.brand.category === theme),
+        ...available.filter(c => !(theme && c.brand.category === theme)),
+      ].slice(0, room)
+      const taken = new Set(take)
+      available = available.filter(c => !taken.has(c))
+      const rows: { id: string; name: string; people: number; website: string | null; linkedinUrl: string | null; topUp: boolean; category: string | null }[] = []
+      const rowByBrand = new Map<string, (typeof rows)[number]>()
+      for (const t of take) {
+        const r = rowByBrand.get(t.brand.id)
+        if (r) r.people += 1
+        else {
+          const row = {
+            id: t.brand.id, name: t.brand.name, people: 1,
+            website: t.brand.website, linkedinUrl: t.brand.linkedinUrl,
+            topUp: !!theme && t.brand.category !== theme, category: t.brand.category,
+          }
+          rowByBrand.set(t.brand.id, row)
+          rows.push(row)
+        }
+      }
       return {
         date: key,
         category: theme,
         auto: !plan[key]?.category,
-        ready: Math.max(0, Math.min(DAILY_SEND_LIMIT, totalPool - DAILY_SEND_LIMIT * i)),
-        brands: inCat.sort((a, b) => b.fit - a.fit).slice(0, 8)
-          .map(b => ({ id: b.id, name: b.name, people: b.people, website: b.website, linkedinUrl: b.linkedinUrl })),
+        ready: Math.min(DAILY_SEND_LIMIT, take.length + plannedCount),
+        brands: rows,
         // Same-category brands whose people are NOT in the queue yet —
-        // the day's note offers to put them all in.
+        // the day's Add-more section offers to put them in.
         missing: theme
           ? untouched.filter(b => b.category === theme).slice(0, 20)
               .map(b => ({ id: b.id, name: b.name, people: b._count.contacts, website: b.website, linkedinUrl: b.linkedinUrl }))
