@@ -1958,9 +1958,13 @@ const handlers: Record<string, Handler> = {
         (b.email ? 1 : 0) - (a.email ? 1 : 0) ||
         scoreFit(b.title, brand.tier) - scoreFit(a.title, brand.tier))[0]
     if (!pick) {
-      throw new Error(brand.contacts.length === 0
-        ? `${brand.name} has no contacts with an email or LinkedIn URL yet — add one first.`
-        : `${brand.name} has no one left to queue — everyone reachable was already contacted.`)
+      // Not an error: the UI opens the add-person form on 'nocontact'
+      // so "queue this brand" always leads somewhere actionable.
+      return {
+        queued: false,
+        reason: brand.contacts.length === 0 ? 'nocontact' : 'exhausted',
+        brandId: brand.id, brandName: brand.name,
+      }
     }
     const t = await prisma.target.create({
       data: {

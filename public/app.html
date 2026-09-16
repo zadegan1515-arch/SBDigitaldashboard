@@ -6141,12 +6141,39 @@ function queueToast(r) {
   if (r.queued) {
     toast(r.contactName + (r.revived ? ' brought back' : ' added to the queue') +
       (r.second ? ' — two people now in play at this brand' : ''));
+  } else if (r.reason === 'nocontact') {
+    // Nobody reachable on file — open the add-person form right here
+    // instead of dead-ending on a toast.
+    toast(r.brandName + ' has nobody on file yet — add their person below');
+    openPersonForBrand(r.brandId, r.brandName);
+  } else if (r.reason === 'exhausted') {
+    toast(r.brandName + ': everyone reachable was already contacted — add a new person below');
+    openPersonForBrand(r.brandId, r.brandName);
   } else if (r.reason === 'full') {
     toast('Both slots at this brand are in play — ' + r.contactName);
   } else {
     toast('Already in play — ' + r.contactName + ' is ' + r.status);
   }
   if (r.warning) toast(r.warning);
+}
+
+// Queueing a brand with nobody (reachable) on file lands here: the
+// person form opens on the LinkedIn tab, and saving queues them.
+function openPersonForBrand(brandId, brandName) {
+  var slot = document.getElementById('oq-new-slot');
+  slot.innerHTML =
+    '<div class="panel panel-pad" style="margin-top:10px">' +
+      '<div style="font-size:13px;font-weight:600;margin-bottom:4px">' + esc(brandName) + ' — add their person</div>' +
+      '<div class="hint" style="margin:0 0 10px">Name + LinkedIn URL is enough; they jump straight into Today.</div>' +
+      '<div id="opb-slot"></div>' +
+    '</div>';
+  openContactForm(brandId, slot.querySelector('#opb-slot'), function () {
+    api('queueBrandTargets', { brandId: brandId, force: true })
+      .then(function (q) { if (q.queued) toast(q.contactName + ' added to the queue'); })
+      .catch(function () {})
+      .then(function () { slot.innerHTML = ''; loadOutreach(); });
+  });
+  slot.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 // Add a brand-new brand from the LinkedIn tab: create it, add their
@@ -6261,7 +6288,10 @@ document.getElementById('oq-new').addEventListener('click', function () { openNe
       var q = box.value.trim();
       hide(); box.value = '';
       // Create right away — no second Create click; the form opens
-      // already at the add-their-person step.
+      // already at the add-their-person step. Clear the slot first: if
+      // the form was already open, openNewBrandForm would just toggle
+      // it closed and the add silently did nothing.
+      document.getElementById('oq-new-slot').innerHTML = '';
       openNewBrandForm(q);
       var ncBtn = document.querySelector('#oq-new-slot #ob-create');
       if (ncBtn) ncBtn.click();
