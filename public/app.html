@@ -2795,9 +2795,11 @@ function targetRow(t) {
       '<button class="btn-ghost" data-act="addperson" title="Queue another person at this brand — the next decision maker steps in">+ Person</button>' +
       '<button class="btn-ghost" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
       (isPre ? '<button class="btn-ghost" data-act="unqueue" title="Take them off the queue — nothing is deleted, promote them back anytime from the brand page">Off queue</button>' : '') +
+      // One Pass only: passes this person (never deletes anything) and
+      // the next decision maker steps in. Passing a whole brand lives
+      // on the brand page.
       (t.status !== 'declined' && t.status !== 'dead' && t.status !== 'converted'
-        ? '<button class="btn-ghost danger" data-act="pass" title="Pass this person — the brand’s next decision maker steps into their place">Pass</button>' +
-          '<button class="btn-ghost danger" data-act="passbrand" title="Pass the whole brand — hidden from all outreach until you bring it back on the brand page">⃠ Brand</button>' : '') +
+        ? '<button class="btn-ghost danger" data-act="pass" title="Pass this person — nothing is deleted; the brand’s next decision maker steps into their place">Pass</button>' : '') +
     '</div>' +
   '</div>' +
   (open ? draftBlock(t) : '');
