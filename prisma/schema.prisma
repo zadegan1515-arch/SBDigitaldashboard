@@ -66,6 +66,10 @@ model Brand {
   // next-best until someone brings it back from the brand page.
   passedAt DateTime?
 
+  // How many people to work at once at this brand (1-3). Null = the
+  // default of 2. Set on the brand page; "+ Person" can still exceed it.
+  workPeople Int?
+
   // Access code for the public Show Board (the whole board is gated).
   // Generated per brand from the brand page. Indexed but deliberately
   // NOT unique — a unique constraint makes `prisma db push` demand

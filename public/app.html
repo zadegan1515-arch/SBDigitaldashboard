@@ -1312,6 +1312,12 @@ function loadBrand(brandId) {
           (b.doNotEmail
             ? '<button class="btn-ghost" id="b-dne" style="border-color:var(--accent);color:var(--accent)" title="This brand is excluded from all outreach emails — click to allow again">Do not email</button>'
             : '<button class="btn-ghost" id="b-dne" title="Exclude this brand from all outreach emails (intros and follow-ups)">Emails on</button>') +
+          '<select class="field-box" id="b-workpeople" style="width:auto;padding:6px 10px;font-size:12px" title="How many people to work at once at this brand — the queue fills this many; + Person can still exceed it">' +
+            '<option value=""' + (b.workPeople ? '' : ' selected') + '>Work: 2 (default)</option>' +
+            [1, 2, 3].map(function (n) {
+              return '<option value="' + n + '"' + (b.workPeople === n ? ' selected' : '') + '>Work: ' + n + ' ' + (n === 1 ? 'person' : 'people') + '</option>';
+            }).join('') +
+          '</select>' +
           (b.passedAt
             ? '<button class="btn-ghost" id="b-pass" style="border-color:var(--warn);color:var(--warn)" title="Passed — hidden from all outreach. Click to bring it back.">Passed — bring back</button>'
             : '<button class="btn-ghost" id="b-pass" title="Hide this brand from all outreach (queue, picks, next-best) until you bring it back">Pass brand</button>') +
@@ -1528,6 +1534,13 @@ function loadBrand(brandId) {
 
     document.getElementById('b-addcontact').onclick = function () {
       openContactForm(b.id, document.getElementById('b-contact-slot'));
+    };
+
+    document.getElementById('b-workpeople').onchange = function () {
+      var v = this.value;
+      api('updateBrand', { brandId: b.id, workPeople: v || '' })
+        .then(function () { toast(v ? 'The queue will work ' + v + ' ' + (v === '1' ? 'person' : 'people') + ' at ' + b.name : 'Back to the default (2)'); })
+        .catch(function (e) { toast(e.message); });
     };
 
     document.getElementById('b-pass').onclick = function () {
@@ -2735,6 +2748,7 @@ function targetRow(t) {
       (t.brand.category ? '<span>' + esc(CAT_NAMES[t.brand.category] || t.brand.category) + '</span>' : '') +
       (t.brand.tier ? '<span>·</span><span>' + esc(t.brand.tier) + '</span>' : '') +
       '<span>·</span><span class="fit">fit ' + t.fitScore + '</span>' +
+      (t.brand.workPeople ? '<span>·</span><span class="fit" title="This brand’s people-to-work setting (brand page)">work ' + t.brand.workPeople + '</span>' : '') +
       (t.nextStep ? '<span>·</span><span class="fit">▸ ' + esc(t.nextStep) +
         (t.followUpAt ? ' (' + shortDate(t.followUpAt) + ')' : '') + '</span>' : '') +
       '</div>' +

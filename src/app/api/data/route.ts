@@ -1547,6 +1547,11 @@ const handlers: Record<string, Handler> = {
       if (fields[key] !== undefined) data[key] = fields[key] === '' ? null : fields[key]
     }
     if (fields.doNotEmail !== undefined) data.doNotEmail = !!fields.doNotEmail
+    // People to work at once at this brand: 1-3, or null for the default (2).
+    if (fields.workPeople !== undefined) {
+      const n = Number(fields.workPeople)
+      data.workPeople = n >= 1 && n <= 3 ? Math.round(n) : null
+    }
     // Renaming is allowed but never to empty; a clash with an existing
     // brand means it's a duplicate — merge, don't rename over it.
     if (fields.name !== undefined) {
@@ -1874,8 +1879,9 @@ const handlers: Record<string, Handler> = {
     // second thread doubles the odds without reading as a blast. Queue
     // is a no-op only once both slots are taken.
     // force (the row's "+ Person" button) deliberately goes past the
-    // two-slot default — an explicit click, not an auto-pick.
-    const WORK_PER_BRAND = 2
+    // brand's slot count — an explicit click, not an auto-pick. The
+    // brand's own "people to work" setting wins over the default of 2.
+    const WORK_PER_BRAND = brand.workPeople ?? 2
     const live = brand.targets.filter(t => !t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied'].includes(t.status))
     if (!force && live.length >= WORK_PER_BRAND) {
       return {
@@ -2634,6 +2640,7 @@ const handlers: Record<string, Handler> = {
           score += Math.min(25, rate)
           if (rate > 0) why.push('category replies at ' + rate + '%')
         }
+        if (b.workPeople) why.push('work ' + b.workPeople)
         return { id: b.id, name: b.name, category: b.category, tier: b.tier, contacts: b._count.contacts, score, why }
       })
       .sort((a, b) => b.score - a.score)
