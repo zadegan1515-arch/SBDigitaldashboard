@@ -969,7 +969,7 @@ function refreshAfterSponsorChange() {
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
   brands: [['brands', 'All brands'], ['discover', 'Discover'], ['needs', 'Needs contacts']],
-  outreach: [['outreach', 'LinkedIn'], ['email-out', 'Email'], ['reached', 'Results'], ['linkedin', 'People'], ['passed', 'Passed'], ['results', 'Email stats']],
+  outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['email-out', 'Email'], ['linkedin', 'People'], ['passed', 'Passed'], ['results', 'Email stats']],
   board: [['board', 'Overview'], ['talks', 'In talks'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
   audience: [['audience', 'Events'], ['attendees', 'Attendees'], ['segments', 'Segments']],
@@ -2228,28 +2228,33 @@ function renderReached() {
   box.innerHTML = rows.map(function (g) {
     var tag = [CAT_NAMES[g.brand.category] || g.brand.category, g.brand.tier].filter(Boolean).join(' · ');
     var people = g.people.map(function (p) {
+      // Full-size row per person: readable text, buttons big enough to
+      // hit without aiming. Question form until clicked; checked pill
+      // once it's a fact.
       var bits = [];
       if (p.linkedin) {
-        bits.push('<span class="status ' + esc(p.linkedin.status) + '">in · ' + esc(p.linkedin.status) + '</span>');
-        if (p.linkedin.sentAt) bits.push('<span>invited ' + shortDate(p.linkedin.sentAt) + '</span>');
-        // Log progress from right here — no trip back to the queue.
+        if (p.linkedin.sentAt) bits.push('<span style="color:var(--ink-3)">invited ' + shortDate(p.linkedin.sentAt) + '</span>');
         if (p.linkedin.status === 'sent') {
-          bits.push('<button class="btn-ghost" data-rcact="accepted" data-rct="' + esc(p.linkedin.targetId) + '" style="padding:3px 10px;font-size:11.5px">They accepted ✓</button>');
-        }
-        if (p.linkedin.status === 'sent' || p.linkedin.status === 'accepted') {
-          bits.push('<button class="btn-ghost" data-rcact="replied" data-rct="' + esc(p.linkedin.targetId) + '" style="padding:3px 10px;font-size:11.5px">Replied ✓</button>');
+          bits.push('<button class="btn-draft" data-rcact="accepted" data-rct="' + esc(p.linkedin.targetId) + '" title="Did they accept the invite? Click when they do">Accepted?</button>');
+          bits.push('<button class="btn-ghost" data-rcact="replied" data-rct="' + esc(p.linkedin.targetId) + '" title="Did they write back? Click when they do">Replied?</button>');
+        } else if (p.linkedin.status === 'accepted') {
+          bits.push('<span class="status accepted" style="font-size:12px;padding:5px 12px">Accepted ✓</span>');
+          bits.push('<button class="btn-ghost" data-rcact="replied" data-rct="' + esc(p.linkedin.targetId) + '" title="Did they write back? Click when they do">Replied?</button>');
+        } else if (p.linkedin.status === 'replied' || p.linkedin.status === 'converted') {
+          bits.push('<span class="status replied" style="font-size:12px;padding:5px 12px">Replied ✓</span>');
+        } else {
+          bits.push('<span class="status ' + esc(p.linkedin.status) + '" style="font-size:12px;padding:5px 12px">' + esc(p.linkedin.status) + '</span>');
         }
       }
       if (p.email) {
-        bits.push('<span class="status sent">✉ ' + p.email.count + '×' + (p.email.opened ? ' · opened' : '') + '</span>');
-        if (p.email.lastAt) bits.push('<span>last ' + shortDate(p.email.lastAt) + '</span>');
+        bits.push('<span class="status sent" style="font-size:12px;padding:5px 12px">✉ ' + p.email.count + '×' + (p.email.opened ? ' · opened' : '') + '</span>');
       }
-      return '<div class="t-meta" style="margin-top:7px">' +
+      return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--border-soft);font-size:13.5px">' +
         (p.linkedinUrl
-          ? '<a class="btn-ghost" href="' + esc(p.linkedinUrl) + '" target="_blank" rel="noopener" style="padding:3px 10px;font-size:12px">' + esc(p.name) + ' ↗</a>'
-          : '<span style="color:var(--ink-1)">' + esc(p.name) + '</span>') +
+          ? '<a class="btn-ghost" href="' + esc(p.linkedinUrl) + '" target="_blank" rel="noopener" style="font-size:13px">' + esc(p.name) + ' ↗</a>'
+          : '<span style="color:var(--ink-1);font-weight:600">' + esc(p.name) + '</span>') +
         (p.title ? '<span class="t-title">— ' + esc(p.title) + '</span>' : '') +
-        bits.join('') +
+        '<span style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">' + bits.join('') + '</span>' +
       '</div>';
     }).join('');
     // Deal stage, right on the card: pick a stage and the brand's deal
@@ -2831,14 +2836,20 @@ function targetRow(t) {
         ? '<button class="btn-draft" data-act="copynote" data-variant="man" title="Copy the invite note written for a man — then on their profile: Connect → Add a note → paste">Note · M</button>' +
           '<button class="btn-draft" data-act="copynote" data-variant="woman" title="Copy the invite note written for a woman — same flow">Note · W</button>'
         : '') +
+      // Question form until clicked, checked pill after — "Accepted?"
+      // is a thing to answer; "Accepted ✓" is a fact.
       (t.status === 'sent'
-        ? '<button class="btn-draft" data-act="accepted" title="They accepted your invite — next you DM them">They accepted ✓</button>' : '') +
+        ? '<button class="btn-draft" data-act="accepted" title="Did they accept your invite? Click when they do">Accepted?</button>' : '') +
+      (t.status === 'accepted'
+        ? '<span class="status accepted" style="font-size:12px;padding:5px 12px">Accepted ✓</span>' : '') +
+      (t.status === 'replied' || t.status === 'converted'
+        ? '<span class="status replied" style="font-size:12px;padding:5px 12px">Replied ✓</span>' : '') +
       (t.status === 'accepted' && d
         ? '<button class="btn-draft" data-act="copymsg" title="Copy the DM and paste it into your LinkedIn chat with them">Copy DM</button>' : '') +
       (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">Profile ↗</a>' : '') +
       (isPre ? '<button class="btn-ghost" data-act="sent" title="Log that the invite went out">Mark sent ✓</button>' : '') +
       (t.status === 'sent' || t.status === 'accepted'
-        ? '<button class="btn-ghost" data-act="replied" title="They wrote back">Replied</button>' : '') +
+        ? '<button class="btn-ghost" data-act="replied" title="Did they write back? Click when they do">Replied?</button>' : '') +
       (t.status === 'replied' ? '<button class="btn-ghost" data-act="nextstep">Next step</button>' : '') +
       (t.status === 'replied' ? '<button class="btn-ghost" data-act="won">Won</button>' : '') +
       (!d && isPre ? '<button class="btn-ghost" data-act="draft">Draft</button>' : '') +
