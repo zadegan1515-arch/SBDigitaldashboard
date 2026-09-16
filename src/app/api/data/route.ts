@@ -662,7 +662,6 @@ const handlers: Record<string, Handler> = {
 
     const sentToday = await prisma.target.count({ where: { sentAt: { gte: startOfDay } } })
     const room = Math.max(0, DAILY_SEND_LIMIT - sentToday)
-    if (room === 0) return []
 
     const include = {
       brand: true,
@@ -672,15 +671,29 @@ const handlers: Record<string, Handler> = {
       drafts: { orderBy: { createdAt: 'desc' as const }, take: 2 },
     }
 
-    // Already stamped and still not sent — yesterday's leftovers included.
-    // Shelved targets (parked by the per-brand cap) never enter the queue.
+    // Anything stamped TODAY was put there on purpose (the search box,
+    // + Person, Queue on next-best) — it always shows, newest first, on
+    // top of the list and past the daily cap. Before this, a hand-pick
+    // beyond row 10 queued fine but never rendered.
+    const handPicked = await prisma.target.findMany({
+      where: { queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } },
+      include,
+      orderBy: { queuedFor: 'desc' },
+    })
+    if (room === 0) return ensureTemplateDrafts(handPicked)
+
+    // Older stamps still not sent — yesterday's leftovers. Shelved
+    // targets (parked by the per-brand cap) never enter the queue.
+    const roomLeft = Math.max(0, room - handPicked.length)
     const carried = await prisma.target.findMany({
-      where: { queuedFor: { not: null }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } },
+      where: { queuedFor: { not: null, lt: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } },
       include,
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
-      take: room,
+      take: roomLeft,
     })
-    if (carried.length >= room) return ensureTemplateDrafts(carried)
+    if (handPicked.length + carried.length >= room) {
+      return ensureTemplateDrafts([...handPicked, ...carried])
+    }
 
     // Includes 'drafted': drafting from the All-targets tab sets the
     // status without stamping queuedFor, and those rows used to match
@@ -688,10 +701,10 @@ const handlers: Record<string, Handler> = {
     const picks = await prisma.target.findMany({
       where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: { passedAt: null } },
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
-      take: room - carried.length,
+      take: room - handPicked.length - carried.length,
       select: { id: true },
     })
-    if (picks.length === 0) return ensureTemplateDrafts(carried)
+    if (picks.length === 0) return ensureTemplateDrafts([...handPicked, ...carried])
 
     await prisma.target.updateMany({
       where: { id: { in: picks.map(p => p.id) } },
@@ -704,11 +717,11 @@ const handlers: Record<string, Handler> = {
       orderBy: { fitScore: 'desc' },
     })
 
-    return ensureTemplateDrafts([...carried, ...fresh].sort((a, b) => b.fitScore - a.fitScore))
+    return ensureTemplateDrafts([...handPicked, ...[...carried, ...fresh].sort((a, b) => b.fitScore - a.fitScore)])
   },
 
   async listTargets({ status, category, search, take = 200, shelved = false }: any) {
-    return prisma.target.findMany({
+    const rows = await prisma.target.findMany({
       where: {
         // Shelved targets (parked by the per-brand cap) are hidden unless
         // explicitly asked for, so the outreach list shows the real queue.
@@ -728,6 +741,11 @@ const handlers: Record<string, Handler> = {
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take,
     })
+    // The sent / accepted / stale sections read through here, and their
+    // copy buttons must serve the current templates too — refresh any
+    // never-hand-edited draft that predates them.
+    await ensureTemplateDrafts(rows.filter(t => !['declined', 'dead', 'converted'].includes(t.status)))
+    return rows
   },
 
   async setTargetStatus({ targetId, status, actor, nextStep, followUpAt, clearFollowUp, clearSent }: any) {
