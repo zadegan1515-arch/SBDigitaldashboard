@@ -2874,6 +2874,18 @@ function groupedTargetRows(list) {
   }).join('');
 }
 
+// Swap one queue row's DOM for its re-rendered self (from the cache) —
+// the instant path for status flips. Falls back to a full load if the
+// row isn't on screen.
+function refreshRow(id) {
+  var t = TARGET_CACHE[id];
+  var row = document.querySelector('#targets .target[data-id="' + id + '"]');
+  if (!t || !row) return loadOutreach();
+  var tmp = document.createElement('div');
+  tmp.innerHTML = targetRow(t);
+  row.replaceWith(tmp.firstChild);
+}
+
 function plus3Days() { var d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().slice(0, 10); }
 function isoDate(x) { return new Date(x).toISOString().slice(0, 10); }
 function shortDate(x) { return new Date(x).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
@@ -6444,22 +6456,32 @@ document.getElementById('targets').addEventListener('click', function (e) {
       .catch(function (err) { toast(err.message); btn.disabled = false; btn.textContent = 'Draft'; });
   }
 
+  // The three per-row status flips update the row IN PLACE instantly —
+  // no full reload (that re-fetched three endpoints and made every
+  // click feel like a page refresh). The list re-sorts into its
+  // sections on the next natural load.
   if (act === 'sent') {
+    var st = TARGET_CACHE[id];
+    if (st) { st.status = 'sent'; st.sentAt = st.sentAt || new Date().toISOString(); refreshRow(id); }
+    toast('Invite logged — press “They accepted” when it lands');
     api('setTargetStatus', { targetId: id, status: 'sent', actor: ME.owner || null })
-      .then(function () { toast('Invite logged — press “They accepted” when it lands'); return loadOutreach(); })
-      .catch(function (err) { toast(err.message); });
+      .catch(function (err) { toast(err.message); loadOutreach(); });
   }
 
   if (act === 'accepted') {
+    var at = TARGET_CACHE[id];
+    if (at) { at.status = 'accepted'; at.updatedAt = new Date().toISOString(); refreshRow(id); }
+    toast('Accepted 🎉 — now hit “Copy DM” and message them');
     api('setTargetStatus', { targetId: id, status: 'accepted', actor: ME.owner || null })
-      .then(function () { toast('Accepted 🎉 — now hit “Copy DM” and message them'); return loadOutreach(); })
-      .catch(function (err) { toast(err.message); });
+      .catch(function (err) { toast(err.message); loadOutreach(); });
   }
 
   if (act === 'unsend') {
+    var ut = TARGET_CACHE[id];
+    if (ut) { ut.status = 'drafted'; ut.sentAt = null; refreshRow(id); }
+    toast('Back in the queue — that send is uncounted');
     api('setTargetStatus', { targetId: id, status: 'drafted', clearSent: true, actor: ME.owner || null })
-      .then(function () { toast('Back in the queue — that send is uncounted'); return loadOutreach(); })
-      .catch(function (err) { toast(err.message); });
+      .catch(function (err) { toast(err.message); loadOutreach(); });
   }
 
   // Off the queue without passing: shelve the target. It stays on the
