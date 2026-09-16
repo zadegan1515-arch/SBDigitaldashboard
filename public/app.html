@@ -195,6 +195,9 @@
     font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:none}
   .btn-ghost:hover{border-color:#3a3a46;color:var(--ink-1);background:rgba(255,255,255,.03)}
   .btn-ghost.danger:hover{border-color:rgba(240,113,107,.5);color:#f2918c}
+  /* rare row actions: smaller and dimmer than the flow buttons */
+  .t-actions .mini{padding:4px 9px;font-size:11px;opacity:.7}
+  .t-actions .mini:hover{opacity:1}
   .btn-draft{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;border-radius:999px;border:none;
     background:var(--draft);color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
   .btn-draft:hover{background:var(--accent-hi)}
@@ -548,7 +551,7 @@
             <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">
               <b style="color:var(--accent)">3 · Log it</b><br>
               <b>Mark sent</b> after each invite, <b>Replied</b> when they answer.
-              History lives in Reached.</div>
+              History lives in Results.</div>
           </div>
         </div>
       </div>
@@ -581,7 +584,7 @@
     <!-- REACHED — everyone we've contacted, grouped by brand -->
     <section class="view page" id="reached">
       <div class="eyebrow">Outreach</div>
-      <h1>Reached</h1>
+      <h1>Results</h1>
       <div class="sub" id="rc-sub">Everyone we've contacted on LinkedIn or by email, grouped by brand.</div>
       <div class="kpi-row" id="rc-kpis"></div>
       <div style="display:flex;gap:8px;margin-top:18px;max-width:420px">
@@ -966,7 +969,7 @@ function refreshAfterSponsorChange() {
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
   brands: [['brands', 'All brands'], ['discover', 'Discover'], ['needs', 'Needs contacts']],
-  outreach: [['outreach', 'LinkedIn'], ['email-out', 'Email'], ['reached', 'Reached'], ['linkedin', 'People'], ['results', 'Results'], ['passed', 'Passed']],
+  outreach: [['outreach', 'LinkedIn'], ['email-out', 'Email'], ['reached', 'Results'], ['linkedin', 'People'], ['passed', 'Passed'], ['results', 'Email stats']],
   board: [['board', 'Overview'], ['talks', 'In talks'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
   audience: [['audience', 'Events'], ['attendees', 'Attendees'], ['segments', 'Segments']],
@@ -2815,48 +2818,38 @@ function targetRow(t) {
       (t.status === 'accepted' && t.updatedAt && (Date.now() - new Date(t.updatedAt).getTime()) > 3 * 864e5
         ? '<span class="status declined">DM overdue</span>' : '') +
       (t.brand.category ? '<span>' + esc(CAT_NAMES[t.brand.category] || t.brand.category) + '</span>' : '') +
-      (t.brand.tier ? '<span>·</span><span>' + esc(t.brand.tier) + '</span>' : '') +
-      '<span>·</span><span class="fit">fit ' + t.fitScore + '</span>' +
       (t.brand.workPeople ? '<span>·</span><span class="fit" title="This brand’s people-to-work setting (brand page)">work ' + t.brand.workPeople + '</span>' : '') +
       (t.nextStep ? '<span>·</span><span class="fit">▸ ' + esc(t.nextStep) +
         (t.followUpAt ? ' (' + shortDate(t.followUpAt) + ')' : '') + '</span>' : '') +
       '</div>' +
     '</div>' +
-    // Buttons show only the steps that make sense for this person's
-    // stage, numbered without gaps, current step highlighted.
-    // Before the invite: 1 copy note · 2 profile · 3 mark sent.
-    // Invite out: They accepted ✓ (or undo). Accepted: Copy DM.
+    // The row reads left to right as the work itself: copy → profile →
+    // mark sent (then accepted → DM → replied). Rare actions sit at the
+    // end, smaller and dimmer, so the flow buttons are what you see.
     '<div class="t-actions">' +
-      // Two equal buttons — the rep picks which template fits the
-      // person; nothing here is a guess about who they are.
       (isPre && d
-        ? '<span style="font-size:11px;font-weight:700;color:var(--ink-3);letter-spacing:.04em">1 · COPY NOTE</span>' +
-          '<button class="btn-draft" data-act="copynote" data-variant="man" title="Copy the invite note written for a man — then on their profile: Connect → Add a note → paste">Man</button>' +
-          '<button class="btn-draft" data-act="copynote" data-variant="woman" title="Copy the invite note written for a woman — then on their profile: Connect → Add a note → paste">Woman</button>'
+        ? '<button class="btn-draft" data-act="copynote" data-variant="man" title="Copy the invite note written for a man — then on their profile: Connect → Add a note → paste">Note · M</button>' +
+          '<button class="btn-draft" data-act="copynote" data-variant="woman" title="Copy the invite note written for a woman — same flow">Note · W</button>'
         : '') +
-      (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">' + (isPre ? '2 · Profile ↗' : 'Profile ↗') + '</a>' : '') +
-      (isPre ? '<button class="btn-ghost" data-act="sent" title="Log that the invite went out">3 · Mark sent</button>' : '') +
       (t.status === 'sent'
-        ? '<button class="btn-draft" data-act="accepted" title="They accepted your invite — next you DM them">They accepted ✓</button>' +
-          '<button class="btn-ghost" data-act="unsend" title="Hit Mark sent by mistake? Puts them back in the queue and uncounts the send">↩ Not sent</button>' : '') +
+        ? '<button class="btn-draft" data-act="accepted" title="They accepted your invite — next you DM them">They accepted ✓</button>' : '') +
       (t.status === 'accepted' && d
         ? '<button class="btn-draft" data-act="copymsg" title="Copy the DM and paste it into your LinkedIn chat with them">Copy DM</button>' : '') +
+      (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">Profile ↗</a>' : '') +
+      (isPre ? '<button class="btn-ghost" data-act="sent" title="Log that the invite went out">Mark sent ✓</button>' : '') +
       (t.status === 'sent' || t.status === 'accepted'
         ? '<button class="btn-ghost" data-act="replied" title="They wrote back">Replied</button>' : '') +
       (t.status === 'replied' ? '<button class="btn-ghost" data-act="nextstep">Next step</button>' : '') +
       (t.status === 'replied' ? '<button class="btn-ghost" data-act="won">Won</button>' : '') +
-      // Edit/Redraft dropped from the row for space (drafts are
-      // templates; edit from the brand page if ever needed). Draft only
-      // shows when a row somehow has none.
       (!d && isPre ? '<button class="btn-ghost" data-act="draft">Draft</button>' : '') +
-      '<button class="btn-ghost" data-act="addperson" title="Queue another person at this brand — the next decision maker steps in">+ Person</button>' +
-      '<button class="btn-ghost" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
-      (isPre ? '<button class="btn-ghost" data-act="unqueue" title="Take them off the queue — nothing is deleted, promote them back anytime from the brand page">Off queue</button>' : '') +
-      // One Pass only: passes this person (never deletes anything) and
-      // the next decision maker steps in. Passing a whole brand lives
-      // on the brand page.
+      '<span style="width:1px;height:16px;background:var(--border);margin:0 3px;flex:none"></span>' +
+      (t.status === 'sent'
+        ? '<button class="btn-ghost mini" data-act="unsend" title="Hit Mark sent by mistake? Puts them back in the queue and uncounts the send">↩ Undo</button>' : '') +
+      '<button class="btn-ghost mini" data-act="addperson" title="Queue another person at this brand — the next decision maker steps in">+ Person</button>' +
+      '<button class="btn-ghost mini" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
+      (isPre ? '<button class="btn-ghost mini" data-act="unqueue" title="Take them off the queue — nothing is deleted, promote them back anytime from the brand page">Off queue</button>' : '') +
       (t.status !== 'declined' && t.status !== 'dead' && t.status !== 'converted'
-        ? '<button class="btn-ghost danger" data-act="pass" title="Pass this brand — it moves to the Passed tab (nothing deleted) until you bring it back">Pass</button>' : '') +
+        ? '<button class="btn-ghost mini danger" data-act="pass" title="Pass this brand — it moves to the Passed tab (nothing deleted) until you bring it back">Pass</button>' : '') +
     '</div>' +
   '</div>' +
   (open ? draftBlock(t) : '');
