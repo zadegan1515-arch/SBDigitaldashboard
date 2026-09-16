@@ -2401,7 +2401,7 @@ document.getElementById('reached-list').addEventListener('click', function (e) {
 // Plan the week: a category and/or specific brands per day, saved to
 // Setting `outreachPlan`. Today's queue reads the plan server-side.
 
-var SCHED = { plan: {}, names: {} };
+var SCHED = { plan: {}, names: {}, days: {} };
 
 function schedDayKey(offset) {
   var dt = new Date(); dt.setDate(dt.getDate() + offset);
@@ -2410,9 +2410,19 @@ function schedDayKey(offset) {
 
 function schedSave(key) {
   var day = SCHED.plan[key] || {};
-  api('setOutreachPlanDay', { date: key, category: day.category || null, brandIds: day.brandIds || [] })
+  return api('setOutreachPlanDay', { date: key, category: day.category || null, brandIds: day.brandIds || [] })
     .then(function () { toast('Plan saved for ' + shortDate(key + 'T12:00:00')); })
     .catch(function (e) { toast(e.message); });
+}
+
+// True up the per-day brand previews without touching the rest of the
+// tab — used after a category change, when the day's list is new.
+function schedRefreshDays() {
+  return api('getOutreachPlan').then(function (d) {
+    SCHED.days = {};
+    (d.days || []).forEach(function (day) { SCHED.days[day.date] = day; });
+    renderSchedule();
+  }).catch(function () {});
 }
 
 function renderSchedule() {
@@ -2428,6 +2438,25 @@ function renderSchedule() {
         esc(SCHED.names[bid] || 'brand') +
         '<a href="#" data-sdel="' + esc(key) + '" data-sb="' + esc(bid) + '" style="text-decoration:none;color:var(--accent-hi);font-weight:700">×</a></span>';
     }).join(' ');
+    // The specific brands this day would actually work (from its
+    // category), each with Add (pin to the day) and Pass.
+    var prev = SCHED.days[key];
+    var sugg = '';
+    if (prev && prev.brands.length) {
+      sugg = '<div style="margin-top:10px">' +
+        '<div class="hint" style="margin:0 0 6px">' +
+          (prev.category ? 'Up that day — ' + esc(CAT_NAMES[prev.category] || prev.category) + (prev.auto ? ' (rotation)' : '') : 'Up that day') + ':' +
+        '</div>' +
+        prev.brands.map(function (b) {
+          return '<div data-srow="' + esc(b.id) + '" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border)">' +
+            '<b style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(b.name) + '</b>' +
+            '<span style="font-size:12px;color:var(--ink-3)">' + b.people + (b.people === 1 ? ' person' : ' people') + '</span>' +
+            '<button class="btn-draft" data-spin="' + esc(key) + '" data-sb="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 13px;font-size:12px">+ Add</button>' +
+            '<button class="btn-ghost danger" data-spass="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 12px;font-size:12px">Pass</button>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+    }
     return '<div class="panel panel-pad" style="margin-bottom:10px" data-sday="' + esc(key) + '">' +
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
         '<b style="font-size:13.5px;min-width:150px">' + label + '</b>' +
@@ -2443,6 +2472,7 @@ function renderSchedule() {
         '</div>' +
       '</div>' +
       (chips ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">' + chips + '</div>' : '') +
+      sugg +
     '</div>';
   }).join('') +
   '<div class="hint">Each day sends its planned brands first, then fills the rest from the day’s category. Days with nothing planned follow the automatic category rotation.</div>';
@@ -2456,6 +2486,8 @@ function loadSchedule() {
     SCHED.plan = d.plan || {};
     SCHED.names = {};
     (d.brands || []).forEach(function (b) { SCHED.names[b.id] = b.name; });
+    SCHED.days = {};
+    (d.days || []).forEach(function (day) { SCHED.days[day.date] = day; });
     renderSchedule();
   }).catch(function (e) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
@@ -2468,7 +2500,7 @@ document.getElementById('sched-list').addEventListener('change', function (e) {
   var key = sel.getAttribute('data-scat');
   SCHED.plan[key] = SCHED.plan[key] || { category: null, brandIds: [] };
   SCHED.plan[key].category = sel.value || null;
-  schedSave(key);
+  schedSave(key).then(schedRefreshDays);
 });
 
 document.getElementById('sched-list').addEventListener('input', function (e) {
@@ -2497,6 +2529,9 @@ document.getElementById('sched-list').addEventListener('click', function (e) {
     SCHED.names[bid] = add.getAttribute('data-sn');
     SCHED.plan[key] = SCHED.plan[key] || { category: null, brandIds: [] };
     if (SCHED.plan[key].brandIds.indexOf(bid) === -1) SCHED.plan[key].brandIds.push(bid);
+    Object.keys(SCHED.days).forEach(function (k) {
+      SCHED.days[k].brands = SCHED.days[k].brands.filter(function (b) { return b.id !== bid; });
+    });
     renderSchedule();
     schedSave(key);
     return;
@@ -2508,7 +2543,38 @@ document.getElementById('sched-list').addEventListener('click', function (e) {
     var dbid = del.getAttribute('data-sb');
     SCHED.plan[dkey].brandIds = (SCHED.plan[dkey].brandIds || []).filter(function (x) { return x !== dbid; });
     renderSchedule();
-    schedSave(dkey);
+    schedSave(dkey).then(schedRefreshDays);
+    return;
+  }
+  // + Add on a previewed brand: pin it to that day. In place — the row
+  // becomes a chip, and the brand leaves every other day's preview.
+  var pin = e.target.closest('[data-spin]');
+  if (pin) {
+    var pkey = pin.getAttribute('data-spin');
+    var pbid = pin.getAttribute('data-sb');
+    SCHED.names[pbid] = pin.getAttribute('data-sn');
+    SCHED.plan[pkey] = SCHED.plan[pkey] || { category: null, brandIds: [] };
+    if (SCHED.plan[pkey].brandIds.indexOf(pbid) === -1) SCHED.plan[pkey].brandIds.push(pbid);
+    Object.keys(SCHED.days).forEach(function (k) {
+      SCHED.days[k].brands = SCHED.days[k].brands.filter(function (b) { return b.id !== pbid; });
+    });
+    renderSchedule();
+    schedSave(pkey);
+    return;
+  }
+  // Pass on a previewed brand: same as passing anywhere else — off the
+  // schedule, the queue and next-best until brought back (Passed tab).
+  var pass = e.target.closest('[data-spass]');
+  if (pass) {
+    var xbid = pass.getAttribute('data-spass');
+    var xname = pass.getAttribute('data-sn');
+    Object.keys(SCHED.days).forEach(function (k) {
+      SCHED.days[k].brands = SCHED.days[k].brands.filter(function (b) { return b.id !== xbid; });
+    });
+    renderSchedule();
+    toast('Passed ' + xname + ' — bring back any time from the Passed tab');
+    api('setBrandPassed', { brandId: xbid, passed: true })
+      .catch(function (err) { toast(err.message); loadSchedule(); });
   }
 });
 

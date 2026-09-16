@@ -2057,7 +2057,42 @@ const handlers: Record<string, Handler> = {
     const brands = ids.length
       ? await prisma.brand.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
       : []
-    return { plan, brands, today: localDayKey() }
+
+    // Preview the week: for each of the next 7 days, the category that
+    // day will actually run (planned beats rotation — same formula as
+    // getTodayQueue) and the specific brands it would work, so the
+    // Schedule tab can offer Add / Pass on each before the day arrives.
+    const candidates = await prisma.target.findMany({
+      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: { passedAt: null } },
+      orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
+      take: 300,
+      select: { fitScore: true, brand: { select: { id: true, name: true, category: true } } },
+    })
+    const byBrand = new Map<string, { id: string; name: string; category: string | null; people: number; fit: number }>()
+    for (const c of candidates) {
+      const b = byBrand.get(c.brand.id)
+      if (b) { b.people += 1; b.fit = Math.max(b.fit, c.fitScore) }
+      else byBrand.set(c.brand.id, { id: c.brand.id, name: c.brand.name, category: c.brand.category, people: 1, fit: c.fitScore })
+    }
+    const cats = [...new Set([...byBrand.values()].map(b => b.category).filter(Boolean))].sort() as string[]
+    const planned = new Set(Object.values(plan).flatMap((d: any) => d?.brandIds ?? []))
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const at = new Date(Date.now() + i * 24 * 60 * 60 * 1000)
+      const key = localDayKey(at)
+      const theme = plan[key]?.category
+        ?? (cats.length ? cats[Math.floor(at.getTime() / 86400000) % cats.length] : null)
+      const pool = [...byBrand.values()].filter(b => !planned.has(b.id))
+      const inCat = theme ? pool.filter(b => b.category === theme) : pool
+      return {
+        date: key,
+        category: theme,
+        auto: !plan[key]?.category,
+        brands: inCat.sort((a, b) => b.fit - a.fit).slice(0, 8)
+          .map(b => ({ id: b.id, name: b.name, people: b.people })),
+      }
+    })
+
+    return { plan, brands, today: localDayKey(), days }
   },
 
   async setOutreachPlanDay({ date, category, brandIds }: any) {
