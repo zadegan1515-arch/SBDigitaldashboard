@@ -1456,12 +1456,20 @@ const handlers: Record<string, Handler> = {
       else if (s.status === 'proposed') money.proposedCents += s.valueCents
     }
 
-    const [boardViewCount, lastVisit] = await Promise.all([
+    const [boardViewCount, lastVisit, recentVisits] = await Promise.all([
       prisma.boardVisit.count({ where: { brandId } }),
       prisma.boardVisit.findFirst({ where: { brandId }, orderBy: { createdAt: 'desc' } }),
+      // The visit log for the brand page: who opened the board with this
+      // brand's code and when, newest first.
+      prisma.boardVisit.findMany({
+        where: { brandId },
+        orderBy: { createdAt: 'desc' },
+        take: 15,
+        select: { email: true, createdAt: true, lastSeenAt: true },
+      }),
     ])
 
-    return { brand, events, money, boardViews: { count: boardViewCount, last: lastVisit } }
+    return { brand, events, money, boardViews: { count: boardViewCount, last: lastVisit, recent: recentVisits } }
   },
 
   // Generate (or clear) a brand's Show Board access code. Uniqueness is
@@ -1964,6 +1972,22 @@ const handlers: Record<string, Handler> = {
       })
     }
     return { id: brand.id, name: brand.name, passed: !!brand.passedAt }
+  },
+
+  // The Passed tab: every brand currently passed, newest first, so a
+  // pass is always one click from being cancelled.
+  async listPassedBrands() {
+    const brands = await prisma.brand.findMany({
+      where: { passedAt: { not: null } },
+      orderBy: { passedAt: 'desc' },
+      include: { _count: { select: { contacts: true, targets: true } } },
+    })
+    return {
+      brands: brands.map(b => ({
+        id: b.id, name: b.name, category: b.category, tier: b.tier,
+        passedAt: b.passedAt, contacts: b._count.contacts,
+      })),
+    }
   },
 
   // Flip one target in or out of the queue by hand. Promoting past the

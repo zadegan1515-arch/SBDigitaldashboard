@@ -590,6 +590,14 @@
       <div id="reached-list" style="margin-top:14px"></div>
     </section>
 
+    <!-- PASSED BRANDS -->
+    <section class="view page" id="passed">
+      <div class="eyebrow">Outreach</div>
+      <h1>Passed</h1>
+      <div class="sub" id="ps-sub">Brands you passed on — hidden from all outreach until you bring them back.</div>
+      <div id="passed-list" style="margin-top:18px"></div>
+    </section>
+
     <!-- LINKEDIN PEOPLE DIRECTORY -->
     <section class="view page" id="linkedin">
       <div class="eyebrow">Outreach</div>
@@ -958,7 +966,7 @@ function refreshAfterSponsorChange() {
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
   brands: [['brands', 'All brands'], ['discover', 'Discover'], ['needs', 'Needs contacts']],
-  outreach: [['outreach', 'LinkedIn'], ['email-out', 'Email'], ['reached', 'Reached'], ['linkedin', 'People'], ['results', 'Results']],
+  outreach: [['outreach', 'LinkedIn'], ['email-out', 'Email'], ['reached', 'Reached'], ['linkedin', 'People'], ['results', 'Results'], ['passed', 'Passed']],
   board: [['board', 'Overview'], ['talks', 'In talks'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
   audience: [['audience', 'Events'], ['attendees', 'Attendees'], ['segments', 'Segments']],
@@ -966,7 +974,7 @@ var SUBTABS = {
 };
 var GROUP_OF = {
   brands: 'brands', brand: 'brands', discover: 'brands', needs: 'brands',
-  outreach: 'outreach', 'email-out': 'outreach', reached: 'outreach', linkedin: 'outreach', results: 'outreach',
+  outreach: 'outreach', 'email-out': 'outreach', reached: 'outreach', linkedin: 'outreach', results: 'outreach', passed: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
   pipeline: 'pipeline', sponsorships: 'pipeline',
   audience: 'audience', attendees: 'audience', segments: 'audience',
@@ -1478,8 +1486,21 @@ function loadBrand(brandId) {
             (d.boardViews && d.boardViews.count
               ? '<div class="hint" style="margin:6px 0 0">Board opened <b>' + d.boardViews.count + '×</b>' +
                 (d.boardViews.last ? ' · last ' + shortDate(d.boardViews.last.createdAt) +
-                  (d.boardViews.last.email ? ' by ' + esc(d.boardViews.last.email) : '') : '') + '</div>'
-              : '')
+                  (d.boardViews.last.email ? ' by ' + esc(d.boardViews.last.email) : '') : '') + '</div>' +
+                // The visit log: every open of the board with this
+                // brand's code — who (the email typed at the gate, when
+                // there was one) and how long they looked.
+                '<div style="margin-top:10px;border-top:1px solid var(--border-soft);padding-top:8px">' +
+                  (d.boardViews.recent || []).map(function (v) {
+                    var mins = v.lastSeenAt ? Math.max(1, Math.round((new Date(v.lastSeenAt) - new Date(v.createdAt)) / 60000)) : null;
+                    return '<div class="t-meta" style="margin-top:4px">' +
+                      '<span style="color:var(--ink-1)">' + (v.email ? esc(v.email) : 'someone with the link') + '</span>' +
+                      '<span>· ' + new Date(v.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + '</span>' +
+                      (mins ? '<span>· ~' + mins + ' min on the board</span>' : '') +
+                    '</div>';
+                  }).join('') +
+                '</div>'
+              : '<div class="hint" style="margin:8px 0 0">No opens yet — copy the board link above and send it; every open lands here with who and when.</div>')
           : '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
               '<span style="font-size:13px;color:var(--ink-2)">No access code yet — needed only when the board gate is on (SPONSOR_GATE=1 in Vercel); a code in the link also ties their requests to this brand.</span>' +
               '<button class="btn-solid" id="b-code-gen">Generate code</button></div>') +
@@ -2309,6 +2330,42 @@ document.getElementById('reached-list').addEventListener('click', function (e) {
     }).catch(function (err) { toast(err.message); btn.disabled = false; });
 });
 
+// --- passed brands ---------------------------------------------
+
+function loadPassed() {
+  showView('passed');
+  var box = document.getElementById('passed-list');
+  box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  return api('listPassedBrands').then(function (d) {
+    var rows = d.brands || [];
+    document.getElementById('ps-sub').textContent = rows.length
+      ? rows.length + ' brand' + (rows.length === 1 ? '' : 's') + ' passed — hidden from all outreach until you bring them back.'
+      : 'Brands you passed on land here — nothing passed right now.';
+    box.innerHTML = rows.length ? rows.map(function (b) {
+      var tag = [CAT_NAMES[b.category] || b.category, b.tier].filter(Boolean).join(' · ');
+      return '<div class="target" data-brand="' + esc(b.id) + '">' +
+        '<div class="t-main">' +
+          '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(b.name) + '</span>' +
+            (tag ? '<span class="t-sep">·</span><span class="t-title">' + esc(tag) + '</span>' : '') + '</div>' +
+          '<div class="t-meta"><span>passed ' + shortDate(b.passedAt) + '</span><span>· ' + b.contacts + ' contact' + (b.contacts === 1 ? '' : 's') + '</span></div>' +
+        '</div>' +
+        '<div class="t-actions"><button class="btn-draft" data-unpass="' + esc(b.id) + '">Bring back</button></div>' +
+      '</div>';
+    }).join('') : '<div class="panel"><div class="empty"><h3>Nothing passed</h3><p>Hit Pass on a queue row or a brand page and the brand shows up here.</p></div></div>';
+  }).catch(function (e) {
+    box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+}
+
+document.getElementById('passed-list').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-unpass]');
+  if (!btn) return;
+  btn.disabled = true;
+  api('setBrandPassed', { brandId: btn.getAttribute('data-unpass'), passed: false })
+    .then(function (r) { toast(r.name + ' is back in outreach'); return loadPassed(); })
+    .catch(function (err) { toast(err.message); btn.disabled = false; });
+});
+
 // --- rate card (loaded once, used for suggested values) --------
 
 var RATE_CARD = { perAttendeeCents: 0, packages: [] };
@@ -2799,7 +2856,7 @@ function targetRow(t) {
       // the next decision maker steps in. Passing a whole brand lives
       // on the brand page.
       (t.status !== 'declined' && t.status !== 'dead' && t.status !== 'converted'
-        ? '<button class="btn-ghost danger" data-act="pass" title="Pass this person — nothing is deleted; the brand’s next decision maker steps into their place">Pass</button>' : '') +
+        ? '<button class="btn-ghost danger" data-act="pass" title="Pass this brand — it moves to the Passed tab (nothing deleted) until you bring it back">Pass</button>' : '') +
     '</div>' +
   '</div>' +
   (open ? draftBlock(t) : '');
@@ -5676,6 +5733,7 @@ function gotoView(id) {
   if (id === 'outreach') loadOutreach();
   if (id === 'email-out') loadEmailOutreach();
   if (id === 'reached') loadReached();
+  if (id === 'passed') loadPassed();
   if (id === 'linkedin') loadLinkedin();
   if (id === 'shows') loadShows();
   if (id === 'sponsorships') loadSponsorships();
@@ -5792,12 +5850,12 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'reached-list', 'nextbest', 'action-panel', 'req-list', 'bd-activity'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
     if (e.target.closest('a')) return;   // let real links through
-    if (e.target.closest('[data-nbq]') || e.target.closest('[data-nbp]') || e.target.closest('[data-rcact]') || e.target.closest('[data-rcstage]')) return;   // controls with their own handlers
+    if (e.target.closest('[data-nbq]') || e.target.closest('[data-nbp]') || e.target.closest('[data-rcact]') || e.target.closest('[data-rcstage]') || e.target.closest('[data-unpass]')) return;   // controls with their own handlers
     loadBrand(el.getAttribute('data-brand'));
   });
 });
@@ -6323,31 +6381,13 @@ document.getElementById('targets').addEventListener('click', function (e) {
       .catch(function (err) { toast(err.message); });
   }
 
-  // Pass one person → the brand's next decision maker steps in
-  // automatically (queueBrandTargets picks best-fit, decision makers
-  // first). If nobody's left, the pass still lands.
+  // Pass = the whole brand moves to the Passed tab (nothing deleted)
+  // and stays out of all outreach until brought back there.
   if (act === 'pass') {
     var pBrandId = TARGET_CACHE[id] && TARGET_CACHE[id].brandId;
-    api('setTargetStatus', { targetId: id, status: 'declined', actor: ME.owner || null, clearFollowUp: true })
-      .then(function () {
-        if (!pBrandId) { toast('Passed'); return loadOutreach(); }
-        return api('queueBrandTargets', { brandId: pBrandId })
-          .then(function (r) {
-            toast(r.queued ? 'Passed — ' + r.contactName + ' is next in line' : 'Passed');
-            return loadOutreach();
-          })
-          .catch(function () { toast('Passed — nobody left to queue at this brand'); return loadOutreach(); });
-      })
-      .catch(function (err) { toast(err.message); });
-  }
-
-  // Pass the whole brand: gone from the queue, picks and next-best
-  // until brought back from its brand page.
-  if (act === 'passbrand') {
-    var pbId = TARGET_CACHE[id] && TARGET_CACHE[id].brandId;
-    if (!pbId) return;
-    api('setBrandPassed', { brandId: pbId, passed: true })
-      .then(function (r) { toast(r.name + ' passed — bring it back from its brand page if needed'); return loadOutreach(); })
+    if (!pBrandId) return;
+    api('setBrandPassed', { brandId: pBrandId, passed: true })
+      .then(function (r) { toast(r.name + ' moved to the Passed tab'); return loadOutreach(); })
       .catch(function (err) { toast(err.message); });
   }
 });
