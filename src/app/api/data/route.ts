@@ -2660,6 +2660,18 @@ const handlers: Record<string, Handler> = {
       b.targets.some(t => t.sentAt ||
         (!t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied', 'converted'].includes(t.status)))
 
+    // Freshly added brands with nobody on file yet surface FIRST with an
+    // "add their person" prompt — otherwise a brand added from the
+    // LinkedIn tab vanished until someone remembered Needs Contacts.
+    const twoWeeks = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
+    const fresh = brands
+      .filter(b => !b.contacts.length && !touched(b) && b.createdAt >= twoWeeks)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .map(b => ({
+        id: b.id, name: b.name, category: b.category, tier: b.tier,
+        contacts: 0, score: 0, why: ['just added — add their person'], needsPerson: true,
+      }))
+
     const rows = brands
       .filter(b => b.contacts.length && !touched(b))
       .map(b => {
@@ -2684,7 +2696,7 @@ const handlers: Record<string, Handler> = {
       })
       .sort((a, b) => b.score - a.score)
       .slice(0, Math.min(Number(take) || 15, 50))
-    return { brands: rows }
+    return { brands: [...fresh.slice(0, 10), ...rows] }
   },
 
   // -------- results / analytics --------

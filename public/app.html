@@ -2855,6 +2855,25 @@ function targetRow(t) {
   (open ? draftBlock(t) : '');
 }
 
+// Rows for the same brand render bunched under one brand header, so
+// working two or three people at a brand reads as one block of work.
+// Single-person brands stay plain rows (the row already names the brand).
+function groupedTargetRows(list) {
+  var byBrand = {}, order = [];
+  (list || []).forEach(function (t) {
+    if (!byBrand[t.brandId]) { byBrand[t.brandId] = []; order.push(t.brandId); }
+    byBrand[t.brandId].push(t);
+  });
+  return order.map(function (bid) {
+    var rows = byBrand[bid];
+    if (rows.length === 1) return targetRow(rows[0]);
+    return '<div style="margin:16px 0 6px;display:flex;align-items:baseline;gap:8px">' +
+        '<span style="font-size:13px;font-weight:700;font-family:var(--display)" data-brand="' + esc(bid) + '"><span class="t-brand" style="cursor:pointer">' + esc(rows[0].brand.name) + '</span></span>' +
+        '<span class="n">' + rows.length + ' people</span></div>' +
+      '<div style="border-left:2px solid var(--border);padding-left:10px">' + rows.map(targetRow).join('') + '</div>';
+  }).join('');
+}
+
 function plus3Days() { var d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().slice(0, 10); }
 function isoDate(x) { return new Date(x).toISOString().slice(0, 10); }
 function shortDate(x) { return new Date(x).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
@@ -2962,22 +2981,22 @@ function loadOutreach() {
 
     var acceptedBlock = r.accepted.length
       ? '<div class="count-head" style="color:var(--good)">They accepted — send the DM <span class="n">' + r.accepted.length + '</span></div>' +
-        r.accepted.map(targetRow).join('') +
+        groupedTargetRows(r.accepted) +
         (list.length ? '<div class="count-head" style="margin-top:20px">New invites</div>' : '')
       : '';
     var sentBlock = r.sentToday.length
       ? '<div class="count-head" style="margin-top:20px">Sent today — waiting on accepts <span class="n">' + r.sentToday.length + '</span></div>' +
-        r.sentToday.map(targetRow).join('')
+        groupedTargetRows(r.sentToday)
       : '';
     (r.stale || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
     var staleBlock = (r.stale || []).length
       ? '<div class="count-head" style="margin-top:20px;color:var(--warn)">Going stale — invited 7+ days ago, no accept <span class="n">' + r.stale.length + '</span></div>' +
         '<div class="hint" style="margin:2px 0 10px">Press “They accepted” if they did, try their email instead, or Pass and free the slot.</div>' +
-        r.stale.map(targetRow).join('')
+        groupedTargetRows(r.stale)
       : '';
 
     box.innerHTML = list.length || r.accepted.length || r.sentToday.length || (r.stale || []).length
-      ? acceptedBlock + list.map(targetRow).join('') + sentBlock + staleBlock
+      ? acceptedBlock + groupedTargetRows(list) + sentBlock + staleBlock
       : '<div class="panel"><div class="empty"><h3>Nothing here</h3>' +
         '<p>' + (mode === 'all'
           ? (statusFilter !== 'all'
@@ -5848,7 +5867,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
     if (e.target.closest('a')) return;   // let real links through
-    if (e.target.closest('[data-nbq]') || e.target.closest('[data-nbp]') || e.target.closest('[data-rcact]') || e.target.closest('[data-rcstage]') || e.target.closest('[data-unpass]')) return;   // controls with their own handlers
+    if (e.target.closest('[data-nbq]') || e.target.closest('[data-nbp]') || e.target.closest('[data-nbperson]') || e.target.closest('[data-nbslot]') || e.target.closest('[data-rcact]') || e.target.closest('[data-rcstage]') || e.target.closest('[data-unpass]')) return;   // controls with their own handlers
     loadBrand(el.getAttribute('data-brand'));
   });
 });
@@ -6072,16 +6091,32 @@ function renderNextBest() {
             '<div class="t-meta"><span>' + esc((b.why || []).join(' · ')) + '</span></div>' +
           '</div>' +
           '<div class="t-actions">' +
-            '<span class="fit">' + b.contacts + ' contact' + (b.contacts === 1 ? '' : 's') + '</span>' +
-            '<button class="btn-draft" data-nbq="' + esc(b.id) + '">Queue</button>' +
+            (b.needsPerson
+              ? '<button class="btn-draft" data-nbperson="' + esc(b.id) + '" title="Add their person right here — a decision-maker title + LinkedIn queues them">+ Add person</button>'
+              : '<span class="fit">' + b.contacts + ' contact' + (b.contacts === 1 ? '' : 's') + '</span>' +
+                '<button class="btn-draft" data-nbq="' + esc(b.id) + '">Queue</button>') +
             '<button class="btn-ghost danger" data-nbp="' + esc(b.id) + '" title="Pass this brand — never suggested again unless you bring it back on its brand page">Pass</button>' +
           '</div>' +
-        '</div>';
+        '</div>' +
+        (b.needsPerson ? '<div data-nbslot="' + esc(b.id) + '"></div>' : '');
       }).join('');
   }).catch(function () { slot.innerHTML = ''; });
 }
 
 document.getElementById('nextbest').addEventListener('click', function (e) {
+  var addP = e.target.closest('[data-nbperson]');
+  if (addP) {
+    var nbBrand = addP.getAttribute('data-nbperson');
+    var nbSlot = document.querySelector('[data-nbslot="' + nbBrand + '"]');
+    if (!nbSlot) return;
+    if (nbSlot.innerHTML) { nbSlot.innerHTML = ''; return; }
+    openContactForm(nbBrand, nbSlot, function () {
+      api('queueBrandTargets', { brandId: nbBrand }).then(function (q) { queueToast(q); })
+        .catch(function () { toast('Person added'); })
+        .then(function () { loadOutreach(); });
+    });
+    return;
+  }
   var pass = e.target.closest('[data-nbp]');
   if (pass) {
     pass.disabled = true;
@@ -6127,10 +6162,46 @@ function openNewBrandForm(prefill) {
         '<button class="btn-solid" id="ob-create">Create</button>' +
         '<button class="btn-ghost" id="ob-cancel">Cancel</button>' +
       '</div>' +
-      '<div class="hint" style="margin:8px 0 0">Step 2 opens right here: add their person (a decision-maker title + LinkedIn URL) and they land in the queue.</div>' +
+      '<div class="hint" style="margin:8px 0 0">Step 2 opens right here: add their person (a decision-maker title + LinkedIn URL) and they land in the queue. ' +
+        'Adding a bunch? <a href="#" id="ob-many" style="color:var(--accent-hi)">Paste a list</a>.</div>' +
+      '<div id="ob-manybox" hidden style="margin-top:10px">' +
+        '<textarea class="field-box" id="ob-list" rows="5" placeholder="One brand per line — paste straight from a spreadsheet or notes:&#10;Poppi&#10;Olipop&#10;Graza"></textarea>' +
+        '<div style="display:flex;gap:8px;margin-top:8px;align-items:center">' +
+          '<button class="btn-solid" id="ob-createall">Create all</button>' +
+          '<span class="hint" style="margin:0">They land in Next best / Needs contacts to get their people.</span>' +
+        '</div>' +
+      '</div>' +
       '<div id="ob-contact" style="margin-top:10px"></div>' +
     '</div>';
   slot.querySelector('#ob-cancel').onclick = function () { slot.innerHTML = ''; };
+  slot.querySelector('#ob-many').onclick = function (ev) {
+    ev.preventDefault();
+    var box = slot.querySelector('#ob-manybox');
+    box.hidden = !box.hidden;
+    if (!box.hidden) slot.querySelector('#ob-list').focus();
+  };
+  slot.querySelector('#ob-createall').onclick = function () {
+    var names = slot.querySelector('#ob-list').value.split('\n')
+      .map(function (s) { return s.trim(); })
+      .filter(function (s) { return s.length >= 2; });
+    if (!names.length) { toast('Paste at least one brand name'); return; }
+    var btn = this; btn.disabled = true;
+    var created = 0, existed = 0, failed = 0;
+    // One at a time, in order — tens of brands, not thousands.
+    (function next(i) {
+      if (i >= names.length) {
+        toast(created + ' created' + (existed ? ', ' + existed + ' already existed' : '') + (failed ? ', ' + failed + ' failed' : ''));
+        slot.innerHTML = '';
+        loadOutreach();
+        return;
+      }
+      btn.textContent = 'Creating… ' + (i + 1) + '/' + names.length;
+      api('createBrand', { name: names[i], hint: 'pasted list on the LinkedIn tab' })
+        .then(function (r) { if (r.created === false) existed++; else created++; })
+        .catch(function () { failed++; })
+        .then(function () { next(i + 1); });
+    })(0);
+  };
   slot.querySelector('#ob-create').onclick = function () {
     var name = slot.querySelector('#ob-name').value.trim();
     if (name.length < 2) { toast('Type the brand name first'); return; }
@@ -6189,7 +6260,11 @@ document.getElementById('oq-new').addEventListener('click', function () { openNe
     if (addNew) {
       var q = box.value.trim();
       hide(); box.value = '';
+      // Create right away — no second Create click; the form opens
+      // already at the add-their-person step.
       openNewBrandForm(q);
+      var ncBtn = document.querySelector('#oq-new-slot #ob-create');
+      if (ncBtn) ncBtn.click();
       return;
     }
     var row = e.target.closest('.oq-row');
