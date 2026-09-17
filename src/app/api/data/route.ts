@@ -219,9 +219,13 @@ const TITLE_SIGNALS: Array<[RegExp, number]> = [
   [/sports marketing|entertainment marketing/i, 25],
   [/brand marketing|brand director/i, 15],
   [/^(cmo|chief marketing)/i, 12],
-  [/marketing/i, 8],
-  [/founder|co-founder|ceo/i, 10], // small brands: the founder IS the buyer
+  [/marketing|event/i, 8],
 ]
+
+// C-suite / owner titles, excluding marketing chiefs (a CMO is the
+// right person). These only make sense to contact at a really small
+// brand, where the founder IS the buyer.
+const EXEC_TITLE = /founder|co-founder|\bceo\b|chief executive|\bcoo\b|chief operating|\bcfo\b|president|owner/i
 
 const TIER_BONUS: Record<string, number> = {
   emerging: 20,   // hungriest for awareness, fastest yes
@@ -234,6 +238,11 @@ function scoreFit(title: string | null, tier: string | null): number {
   if (title) {
     for (const [pattern, points] of TITLE_SIGNALS) {
       if (pattern.test(title)) { score += points; break }
+    }
+    // Leo's rule: don't reach the C-suite unless the brand is really
+    // small — at anything bigger, marketing/events people buy this.
+    if (EXEC_TITLE.test(title) && !/marketing/i.test(title)) {
+      score += tier === 'emerging' ? 10 : -20
     }
   }
   if (tier && TIER_BONUS[tier] !== undefined) score += TIER_BONUS[tier]
@@ -2237,6 +2246,70 @@ const handlers: Record<string, Handler> = {
         passedAt: b.passedAt, contacts: b._count.contacts,
       })),
     }
+  },
+
+  // Brand page (Leo): pick exactly WHO goes into the queue. Queue one
+  // specific person into today, whatever the auto-pick would have done.
+  async queueContact({ contactId }: any) {
+    const contact = await prisma.contact.findUnique({
+      where: { id: contactId },
+      include: { brand: true, targets: true },
+    })
+    if (!contact) throw new Error('Person not found')
+    if (contact.brand.passedAt) throw new Error(`${contact.brand.name} is passed — bring it back first.`)
+    const t = contact.targets[0]
+    if (t && ['sent', 'accepted', 'replied', 'converted'].includes(t.status)) {
+      return { queued: false, reason: 'inplay', contactName: contact.name, status: t.status }
+    }
+    if (t) {
+      await prisma.target.update({
+        where: { id: t.id },
+        data: {
+          status: ['queued', 'drafted'].includes(t.status) ? t.status : 'queued',
+          shelved: false, queuedFor: new Date(),
+        },
+      })
+      return { queued: true, contactName: contact.name, revived: true }
+    }
+    const created = await prisma.target.create({
+      data: {
+        brandId: contact.brandId, contactId: contact.id,
+        fitScore: scoreFit(contact.title, contact.brand.tier),
+        assignedTo: contact.brand.owner ?? null,
+        queuedFor: new Date(),
+      },
+    })
+    return { queued: true, contactName: contact.name, targetId: created.id }
+  },
+
+  // Skip one specific person: their target goes to status 'passed' (or
+  // is created that way), so the auto-pick never suggests them again.
+  // Queue on the brand page brings them back.
+  async passContact({ contactId }: any) {
+    const contact = await prisma.contact.findUnique({
+      where: { id: contactId },
+      include: { brand: true, targets: true },
+    })
+    if (!contact) throw new Error('Person not found')
+    const t = contact.targets[0]
+    if (t && ['sent', 'accepted', 'replied', 'converted'].includes(t.status)) {
+      return { passed: false, reason: 'inplay', contactName: contact.name, status: t.status }
+    }
+    if (t) {
+      await prisma.target.update({
+        where: { id: t.id },
+        data: { status: 'passed', queuedFor: null },
+      })
+    } else {
+      await prisma.target.create({
+        data: {
+          brandId: contact.brandId, contactId: contact.id,
+          fitScore: scoreFit(contact.title, contact.brand.tier),
+          status: 'passed',
+        },
+      })
+    }
+    return { passed: true, contactName: contact.name }
   },
 
   // "Off queue" is company-wide (Leo): every queued/drafted person at

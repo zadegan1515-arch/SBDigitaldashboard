@@ -1414,12 +1414,19 @@ function loadBrand(brandId) {
         : '<div class="panel"><div class="empty"><h3>Not attached to any show</h3>' +
           '<p>Attach this brand to a confirmed show and a pipeline deal is created for it automatically.</p></div></div>');
 
-    // contacts
+    // contacts — Leo picks exactly who goes into the outreach queue:
+    // each person shows their queue state with Queue / Skip controls.
+    var tByContact = {};
+    (b.targets || []).forEach(function (t) { tByContact[t.contactId] = t; });
     var contacts =
       '<div class="section-head">People <span class="n">' + b.contacts.length + '</span>' +
         '<button class="btn-ghost" id="b-addcontact" style="margin-left:auto">+ Add person</button></div>' +
       '<div id="b-contact-slot"></div>' +
       (b.contacts.length ? b.contacts.map(function (c) {
+        var ct = tByContact[c.id];
+        var inQ = ct && !ct.shelved && (ct.status === 'queued' || ct.status === 'drafted');
+        var inPlay = ct && ['sent', 'accepted', 'replied', 'converted'].indexOf(ct.status) !== -1;
+        var skipped = ct && ct.status === 'passed';
         return '<div class="target"><div class="t-main">' +
           '<div class="t-line"><span class="t-brand">' + esc(c.name) + '</span>' +
             (c.title ? '<span class="t-sep">·</span><span class="t-title">' + esc(c.title) + '</span>' : '') + '</div>' +
@@ -1430,6 +1437,13 @@ function loadBrand(brandId) {
             (c.location ? '<span>· ' + esc(c.location) + '</span>' : '') +
           '</div></div>' +
           '<div class="t-actions">' +
+            (inQ ? '<span class="status queued" data-cstate style="font-size:12px;padding:5px 12px">in queue ✓</span>' : '') +
+            (inPlay ? '<span class="status ' + ct.status + '" data-cstate style="font-size:12px;padding:5px 12px">' + ct.status + '</span>' : '') +
+            (skipped ? '<span class="status passed" data-cstate style="font-size:12px;padding:5px 12px">skipped</span>' : '') +
+            (!inQ && !inPlay
+              ? '<button class="btn-draft" data-cqueue="' + esc(c.id) + '" title="Put this exact person into today’s queue">→ Queue</button>' : '') +
+            (!inPlay && !skipped
+              ? '<button class="btn-ghost danger" data-cskip="' + esc(c.id) + '" title="Skip this person — out of the queue and the auto-pick will never suggest them; Queue brings them back">Skip</button>' : '') +
             (c.linkedinUrl ? '<a class="btn-ghost" href="' + esc(c.linkedinUrl) +
               '" target="_blank" rel="noopener">↗ LinkedIn</a>' : '') +
             '<button class="btn-ghost" data-cedit="' + esc(c.id) + '" title="Fix their name, title, LinkedIn or email — a rename regenerates their drafts">✎ Edit</button>' +
@@ -1634,6 +1648,41 @@ function loadBrand(brandId) {
           loadBrand(b.id);
         }).catch(function (e) { toast(e.message); });
     };
+
+    // Per-person queue controls (Leo picks who goes in) — in place:
+    // the buttons swap to a state pill, no page reload.
+    box.querySelectorAll('[data-cqueue]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var acts = btn.closest('.t-actions');
+        btn.disabled = true;
+        api('queueContact', { contactId: btn.getAttribute('data-cqueue') }).then(function (r) {
+          if (r.queued) {
+            acts.querySelectorAll('[data-cqueue],[data-cskip],[data-cstate]').forEach(function (x) { x.remove(); });
+            acts.insertAdjacentHTML('afterbegin', '<span class="status queued" data-cstate style="font-size:12px;padding:5px 12px">in queue ✓</span>');
+            toast(r.contactName + ' is in today’s queue');
+          } else {
+            toast(r.contactName + ' is already in play (' + r.status + ')');
+            btn.disabled = false;
+          }
+        }).catch(function (e) { toast(e.message); btn.disabled = false; });
+      });
+    });
+    box.querySelectorAll('[data-cskip]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var acts = btn.closest('.t-actions');
+        btn.disabled = true;
+        api('passContact', { contactId: btn.getAttribute('data-cskip') }).then(function (r) {
+          if (r.passed) {
+            acts.querySelectorAll('[data-cqueue],[data-cskip],[data-cstate]').forEach(function (x) { x.remove(); });
+            acts.insertAdjacentHTML('afterbegin', '<span class="status passed" data-cstate style="font-size:12px;padding:5px 12px">skipped</span>');
+            toast(r.contactName + ' skipped — the auto-pick will leave them alone');
+          } else {
+            toast(r.contactName + ' is already in play (' + r.status + ')');
+            btn.disabled = false;
+          }
+        }).catch(function (e) { toast(e.message); btn.disabled = false; });
+      });
+    });
 
     document.getElementById('b-dne').onclick = function () {
       api('updateBrand', { brandId: b.id, doNotEmail: !b.doNotEmail })
