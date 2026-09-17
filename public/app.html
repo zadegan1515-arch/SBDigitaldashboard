@@ -2534,7 +2534,7 @@ function renderSchedule() {
       sugg = '<div style="margin-top:10px">' +
         (prev.brands.length
           ? '<div class="hint" style="margin:0 0 6px">' +
-              (prev.category ? 'Going out that day — ' + esc(CAT_NAMES[prev.category] || prev.category) + (prev.auto ? ' (rotation)' : '') + ', topped up from other categories where short' : 'Going out that day') + ':' +
+              (prev.category ? 'Going out that day — ' + esc(CAT_NAMES[prev.category] || prev.category) + (prev.auto ? ' (rotation)' : '') + ' only' : 'Going out that day') + ':' +
             '</div>' +
             prev.brands.map(function (b) {
               return '<div data-srow="' + esc(b.id) + '" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border)">' +

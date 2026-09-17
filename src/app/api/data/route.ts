@@ -727,13 +727,12 @@ const handlers: Record<string, Handler> = {
     const theme = planDay?.category
       ?? (cats.length ? cats[Math.floor(Date.now() / 86400000) % cats.length] : null)
 
-    // The day is ONE category: its people fill first (best fit), and
-    // only when the category runs short do the best of the rest top the
-    // day up to the cap (labeled as top-ups client-side).
+    // The day is ONE category, strictly (Leo): no topping up from other
+    // categories. A short day stays short — the Schedule tab's Add-more
+    // and side list are how it gets filled.
     const themed = theme ? candidates.filter(c => c.brand.category === theme) : candidates
-    const rest = theme ? candidates.filter(c => c.brand.category !== theme) : []
     const roomLeft = Math.max(0, room - handPicked.length)
-    const picks = [...themed, ...rest].slice(0, roomLeft)
+    const picks = themed.slice(0, roomLeft)
 
     if (picks.length) {
       await prisma.target.updateMany({
@@ -744,10 +743,7 @@ const handlers: Record<string, Handler> = {
     const fresh = picks.length
       ? await prisma.target.findMany({ where: { id: { in: picks.map(p => p.id) } }, include })
       : []
-    // Theme rows before top-ups, best fit first within each.
-    fresh.sort((a, b) =>
-      ((b.brand.category === theme ? 1 : 0) - (a.brand.category === theme ? 1 : 0)) ||
-      b.fitScore - a.fitScore)
+    fresh.sort((a, b) => b.fitScore - a.fitScore)
 
     // "The rest in that category" — everyone in today's category beyond
     // the cap, ready to send if there's room. Not stamped: sending one
@@ -2153,10 +2149,8 @@ const handlers: Record<string, Handler> = {
       const alreadyIn = i === 0 ? stampedToday.filter(t => !dayPlannedIds.has(t.brand.id)) : []
       const alreadyPlanned = i === 0 ? stampedToday.length - alreadyIn.length : 0
       const room = Math.max(0, DAILY_SEND_LIMIT - plannedCount - sentUsed - stampedToday.length * (i === 0 ? 1 : 0))
-      const take = [
-        ...available.filter(c => theme && c.brand.category === theme),
-        ...available.filter(c => !(theme && c.brand.category === theme)),
-      ].slice(0, room)
+      // Strictly the day's category — no cross-category top-ups (Leo).
+      const take = (theme ? available.filter(c => c.brand.category === theme) : available).slice(0, room)
       const taken = new Set(take)
       available = available.filter(c => !taken.has(c))
       const rows: { id: string; name: string; people: number; website: string | null; linkedinUrl: string | null; topUp: boolean; inQueue: boolean; category: string | null }[] = []
