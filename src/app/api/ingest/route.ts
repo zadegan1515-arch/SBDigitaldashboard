@@ -18,6 +18,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
+import { readMisses, writeMisses, addMiss, type HeldRow } from '@/lib/brand-match'
 
 const prisma = new PrismaClient()
 
@@ -111,6 +112,9 @@ export async function POST(req: NextRequest) {
   const rows: any[] = Array.isArray(body.rows) ? body.rows : []
   const result = { contactsCreated: 0, targetsCreated: 0, targetsShelved: 0, skipped: 0, failed: 0, brandsMissing: [] as string[], errors: [] as string[] }
   const touched = new Set<string>()
+  // SponsorUnited name -> the people captured under it that matched no
+  // brand of ours. Written to the miss log once, after the loop.
+  const missed = new Map<string, { externalId: string | null; rows: HeldRow[] }>()
 
   for (const row of rows) {
     try {
@@ -123,7 +127,21 @@ export async function POST(req: NextRequest) {
       const suId = row.brandExternalId ?? body.brandExternalId ?? null
       const brand = await findBrandForCapture(row.brandName, suId)
       if (!brand) {
+        // Unknown name — hold the person rather than dropping them. The
+        // Needs-contacts tab lists these; attaching one to a brand adds
+        // the name as an "also known as" and replays these rows.
         if (!result.brandsMissing.includes(row.brandName)) result.brandsMissing.push(row.brandName)
+        const held = missed.get(row.brandName) ?? { externalId: suId, rows: [] as HeldRow[] }
+        held.externalId = held.externalId || suId
+        held.rows.push({
+          name: row.name,
+          title: row.title ?? null,
+          email: row.email ?? null,
+          phone: row.phone ?? null,
+          location: row.location ?? null,
+          linkedinUrl: row.linkedinUrl ?? null,
+        })
+        missed.set(row.brandName, held)
         result.skipped++
         continue
       }
@@ -188,6 +206,18 @@ export async function POST(req: NextRequest) {
   // Apply the per-brand cap to every brand this batch touched.
   for (const brandId of touched) {
     try { result.targetsShelved += await reconcileBrandTargets(brandId) } catch { /* skip */ }
+  }
+
+  // Park the unmatched names and their people for the dashboard. A
+  // failure here must not fail a capture that otherwise worked.
+  if (missed.size) {
+    try {
+      let misses = await readMisses(prisma)
+      for (const [name, held] of missed) misses = addMiss(misses, name, held.externalId, held.rows)
+      await writeMisses(prisma, misses)
+    } catch (err: any) {
+      result.errors.push(`miss log: ${err?.message ?? 'unknown error'}`)
+    }
   }
 
   return NextResponse.json({ ok: true, ...result }, { headers: cors })
