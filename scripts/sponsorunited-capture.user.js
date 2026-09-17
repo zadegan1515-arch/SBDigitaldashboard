@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — SponsorUnited Contact Capture
 // @namespace    sbagency.command-center
-// @version      2.1
+// @version      2.2
 // @description  Adds a "Capture to SB dashboard" button on SponsorUnited brand pages. Reads the brand's contact cards + its SponsorUnited ID and imports them into the SB Command Center.
 // @match        https://pro.sponsorunited.com/*
 // @run-at       document-idle
@@ -27,39 +27,72 @@
   var INGEST_URL   = 'https://sb-digitaldashboard.vercel.app/api/ingest';
   var INGEST_TOKEN = 'PASTE_INGEST_TOKEN_HERE';
 
-  function scrapeContacts() {
-    var anchors = [].slice.call(
-      document.querySelectorAll('a[href*="linkedin.com/in"], a[href*="linkedin.com/pub"]')
-    );
-    var seen = [];
-    var rows = [];
-    anchors.forEach(function (a) {
-      var card = a;
-      for (var i = 0; i < 8 && card; i++) {
-        card = card.parentElement;
-        if (card && card.querySelector('a[href^="mailto:"]')) break;
-      }
-      if (!card || seen.indexOf(card) !== -1) return;
-      seen.push(card);
+  var LI_SEL = 'a[href*="linkedin.com/in"], a[href*="linkedin.com/pub"]';
 
-      var li = a.getAttribute('href');
+  // Pull the name / title / location out of a card's visible text.
+  function readCard(card, email) {
+    var lines = card.innerText.split('\n')
+      .map(function (s) { return s.trim(); })
+      .filter(Boolean)
+      .filter(function (l) { return !/^(suggested|new|more details|verified|follow|following)$/i.test(l); })
+      .filter(function (l) { return l !== email; });
+
+    var name = lines[0] || null;
+    var title = lines[1] || null;
+    var location = null;
+    for (var j = lines.length - 1; j >= 2; j--) {
+      if (/,/.test(lines[j])) { location = lines[j]; break; }
+    }
+    return { name: name, title: title, location: location };
+  }
+
+  // Walk up from an anchor to the block that holds one person: stop just
+  // before the ancestor starts covering a second person's link, and don't
+  // balloon into the whole list.
+  function cardAround(el) {
+    while (el.parentElement && el.parentElement !== document.body) {
+      var p = el.parentElement;
+      if (p.querySelectorAll(LI_SEL).length > 1) break;
+      if (p.querySelectorAll('a[href^="mailto:"]').length > 1) break;
+      el = p;
+      if ((el.innerText || '').split('\n').filter(Boolean).length > 12) break;
+    }
+    return el;
+  }
+
+  function scrapeContacts() {
+    // Every link that marks a person: a LinkedIn profile or an address.
+    // Rooting on both is what picks up contacts SponsorUnited lists with
+    // an email and no profile — they used to be invisible here.
+    var roots = [].slice.call(document.querySelectorAll(LI_SEL + ', a[href^="mailto:"]'));
+    var cards = [];
+    var rows = [];
+
+    roots.forEach(function (a) {
+      var card = cardAround(a);
+      // One person's LinkedIn link and address land on the same card;
+      // take the card once.
+      if (cards.indexOf(card) !== -1) return;
+      if (cards.some(function (c) { return c.contains(card) || card.contains(c); })) return;
+      cards.push(card);
+
       var em = card.querySelector('a[href^="mailto:"]');
       var email = em ? em.getAttribute('href').replace(/^mailto:/, '') : null;
+      var li = card.querySelector(LI_SEL);
+      var got = readCard(card, email);
 
-      var lines = card.innerText.split('\n')
-        .map(function (s) { return s.trim(); })
-        .filter(Boolean)
-        .filter(function (l) { return !/^(suggested|new|more details|verified|follow|following)$/i.test(l); })
-        .filter(function (l) { return l !== email; });
+      if (!got.name || got.name.indexOf('@') !== -1 || got.name.length > 70) return;
+      if (rows.some(function (r) { return r.name === got.name; })) return;
 
-      var name = lines[0] || null;
-      var title = lines[1] || null;
-      var location = null;
-      for (var j = lines.length - 1; j >= 2; j--) {
-        if (/,/.test(lines[j])) { location = lines[j]; break; }
-      }
-      if (name) rows.push({ name: name, title: title, location: location, email: email, linkedinUrl: li });
+      rows.push({
+        name: got.name,
+        title: got.title,
+        location: got.location,
+        email: email,
+        linkedinUrl: li ? li.getAttribute('href') : null,
+      });
     });
+
     return rows;
   }
 
@@ -100,7 +133,11 @@
     if (!rows.length) {
       panel.innerHTML =
         '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><div style="width:22px;height:22px;border-radius:6px;background:#111;color:#fff;font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center">SB</div><b style="flex:1">No contacts found</b><span id="sbx" style="cursor:pointer;color:#999;font-size:16px">×</span></div>' +
-        '<div style="color:#555">Open a brand\'s <b>Contacts</b> tab first, then click Capture. If the list is long, scroll down so they all load.</div>';
+        '<div style="color:#555">Open a brand\'s <b>Contacts</b> tab first, then click Capture. If the list is long, scroll down so they all load.</div>' +
+        '<div style="color:#999;font-size:11px;margin-top:8px">On this page: ' +
+          document.querySelectorAll(LI_SEL).length + ' LinkedIn link(s), ' +
+          document.querySelectorAll('a[href^="mailto:"]').length + ' email link(s). ' +
+          'If both are 0 you are not on the Contacts tab.</div>';
       document.body.appendChild(panel);
       panel.querySelector('#sbx').onclick = closePanel;
       return;
