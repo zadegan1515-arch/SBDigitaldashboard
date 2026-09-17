@@ -1551,16 +1551,29 @@ function loadBrand(brandId) {
                 '</details>'
               : '') +
             '</div>' +
+            // The brand card runs the whole flow now: copy the note,
+            // mark it sent, then accepted / DM'd / replied — the same
+            // actions as the LinkedIn tab, writing through the same
+            // handler so nothing can drift.
             '<div class="t-actions">' +
+            (canSend && !t.shelved && dr
+              ? '<button class="btn-draft" data-bcopy="' + esc(t.id) + '" data-variant="man" title="Copy the invite note written for a man">Note · M</button>' +
+                '<button class="btn-draft" data-bcopy="' + esc(t.id) + '" data-variant="woman" title="Copy the invite note written for a woman">Note · W</button>'
+              : '') +
+            (canSend && !t.shelved
+              ? '<button class="btn-ghost" data-bract="sent" data-brt="' + esc(t.id) + '" title="Log that the invite went out">Mark sent ✓</button>' : '') +
             (t.status === 'sent'
               ? '<button class="btn-draft" data-bract="accepted" data-brt="' + esc(t.id) + '" title="Did they accept the invite?">Accepted?</button>' +
-                '<button class="btn-ghost" data-bract="replied" data-brt="' + esc(t.id) + '" title="Did they write back?">Replied?</button>' : '') +
+                '<button class="btn-ghost" data-bract="replied" data-brt="' + esc(t.id) + '" title="Did they write back?">Replied?</button>' +
+                '<button class="btn-ghost mini" data-bract="unsend" data-brt="' + esc(t.id) + '" title="Hit Mark sent by mistake? Puts them back in the queue and uncounts the send">↩ Undo</button>' : '') +
             (t.status === 'accepted'
               ? '<span class="status accepted" style="font-size:12px;padding:5px 12px">Accepted ✓</span>' +
+                (dr ? '<button class="btn-draft" data-bcopy="' + esc(t.id) + '" data-variant="dm" title="Copy the first DM">Copy DM</button>' : '') +
+                (t.dmSentAt ? '' : '<button class="btn-ghost" data-bract="dmsent" data-brt="' + esc(t.id) + '" title="Logged: the DM went out">DM sent ✓</button>') +
                 '<button class="btn-ghost" data-bract="replied" data-brt="' + esc(t.id) + '" title="Did they write back?">Replied?</button>' : '') +
             (t.status === 'replied' || t.status === 'converted'
               ? '<span class="status replied" style="font-size:12px;padding:5px 12px">Replied ✓</span>' : '') +
-            (canSend ? '<button class="btn-ghost" data-shelf="' + esc(t.id) + '" data-to="' +
+            (canSend ? '<button class="btn-ghost mini" data-shelf="' + esc(t.id) + '" data-to="' +
               (t.shelved ? '0' : '1') + '">' + (t.shelved ? 'Promote' : 'Shelve') + '</button>' : '') +
             (t.contact.linkedinUrl ? '<a class="btn-ghost" href="' + esc(t.contact.linkedinUrl) +
               '" target="_blank" rel="noopener">↗</a>' : '') + '</div></div>';
@@ -2627,7 +2640,7 @@ document.getElementById('reached-list').addEventListener('click', function (e) {
 // Plan the week: a category and/or specific brands per day, saved to
 // Setting `outreachPlan`. Today's queue reads the plan server-side.
 
-var SCHED = { plan: {}, names: {}, days: {}, bench: [], pool: null, benchQ: '' };
+var SCHED = { plan: {}, names: {}, days: {}, bench: [], pool: null, benchQ: '', past: [] };
 
 function schedDayKey(offset) {
   var dt = new Date(); dt.setDate(dt.getDate() + offset);
@@ -2649,6 +2662,7 @@ function schedRefreshDays() {
     (d.days || []).forEach(function (day) { SCHED.days[day.date] = day; });
     SCHED.bench = d.bench || [];
     SCHED.pool = d.pool || null;
+    SCHED.past = d.past || [];
     renderSchedule();
     renderBench();
   }).catch(function () {});
@@ -2704,6 +2718,38 @@ function renderBench() {
   }).join('') : '<div class="hint" style="margin-top:8px">' + (q ? 'No brand matches.' : 'Nothing left to add — every brand with people is planned or already queued.') + '</div>';
 }
 
+
+// What actually went out on a day: brand · person with live status
+// buttons, so the Schedule is the same source of truth as the
+// LinkedIn tab (both write through setTargetStatus).
+function schedSentRow(p) {
+  var done = p.status === 'replied' || p.status === 'converted';
+  return '<div data-sentrow="' + esc(p.id) + '" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border)">' +
+    '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+      '<a href="#" data-sopen="' + esc(p.brandId) + '" style="font-size:13px;font-weight:700;color:var(--ink-1);text-decoration:none">' + esc(p.brand) + '</a>' +
+      ' <span style="font-size:12.5px;color:var(--ink-2)">' + esc(p.person) + '</span>' +
+      (p.title ? ' <span style="font-size:11.5px;color:var(--ink-3)">— ' + esc(p.title) + '</span>' : '') +
+    '</span>' +
+    (done
+      ? '<span class="status replied" style="font-size:12px;padding:4px 11px">Replied ✓</span>'
+      : (p.status === 'accepted'
+          ? '<span class="status accepted" style="font-size:12px;padding:4px 11px">Accepted ✓</span>' +
+            (p.dmSentAt ? '' : '<button class="btn-ghost" data-sact="dmsent" data-st="' + esc(p.id) + '" style="padding:4px 11px;font-size:12px">DM sent ✓</button>') +
+            '<button class="btn-ghost" data-sact="replied" data-st="' + esc(p.id) + '" style="padding:4px 11px;font-size:12px">Replied?</button>'
+          : '<button class="btn-draft" data-sact="accepted" data-st="' + esc(p.id) + '" style="padding:4px 12px;font-size:12px">Accepted?</button>' +
+            '<button class="btn-ghost" data-sact="replied" data-st="' + esc(p.id) + '" style="padding:4px 11px;font-size:12px">Replied?</button>')) +
+  '</div>';
+}
+
+function schedSentBlock(people) {
+  if (!people || !people.length) return '';
+  return '<div style="margin-top:10px">' +
+    '<div class="hint" style="margin:0 0 2px;color:#8fd6a8">Sent that day — ' + people.length +
+      (people.length === 1 ? ' invite' : ' invites') + ':</div>' +
+    people.map(schedSentRow).join('') +
+  '</div>';
+}
+
 function renderSchedule() {
   var box = document.getElementById('sched-list');
   var days = [];
@@ -2734,8 +2780,8 @@ function renderSchedule() {
       if ((prev.missing || []).length) {
         missNote = '<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px">' +
           '<div style="display:flex;gap:10px;align-items:center;margin-bottom:2px">' +
-            '<span style="font-size:12.5px;font-weight:700;color:#f0b86b;flex:1">Add more — ' + prev.missing.length + ' ' +
-              esc(CAT_NAMES[prev.category] || prev.category || '') + (prev.missing.length === 1 ? ' brand' : ' brands') + ' not in the queue yet</span>' +
+            '<span style="font-size:12.5px;font-weight:700;color:#f0b86b;flex:1">Add more — ' + prev.missing.length + ' more ' +
+              esc(CAT_NAMES[prev.category] || prev.category || '') + (prev.missing.length === 1 ? ' brand' : ' brands') + ' you can still add</span>' +
             (prev.missing.length > 1 ? '<button class="btn-draft" data-sfill="' + esc(key) + '" style="padding:5px 13px;font-size:12px;white-space:nowrap">Put all in</button>' : '') +
           '</div>' +
           prev.missing.map(function (m) {
@@ -2783,9 +2829,23 @@ function renderSchedule() {
         '</div>' +
       '</div>' +
       (chips ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">' + chips + '</div>' : '') +
+      schedSentBlock(prev && prev.sentPeople) +
       sugg +
     '</div>';
   }).join('') +
+  (SCHED.past && SCHED.past.length
+    ? '<div class="count-head" style="margin-top:22px">Already sent — the past week</div>' +
+      SCHED.past.map(function (d) {
+        var lbl = new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+        return '<div class="panel panel-pad" style="margin-bottom:10px">' +
+          '<div style="display:flex;gap:10px;align-items:baseline">' +
+            '<b style="font-size:13.5px">' + lbl + '</b>' +
+            '<span class="n">' + d.people.length + ' sent</span>' +
+          '</div>' +
+          d.people.map(schedSentRow).join('') +
+        '</div>';
+      }).join('')
+    : '') +
   '<div class="hint">Each day sends its planned brands first, then fills the rest from the day’s category. Days with nothing planned follow the automatic category rotation.</div>';
 }
 
@@ -2801,6 +2861,7 @@ function loadSchedule() {
     (d.days || []).forEach(function (day) { SCHED.days[day.date] = day; });
     SCHED.bench = d.bench || [];
     SCHED.pool = d.pool || null;
+    SCHED.past = d.past || [];
     renderSchedule();
     renderBench();
   }).catch(function (e) {
@@ -2838,6 +2899,38 @@ document.getElementById('sched-list').addEventListener('input', function (e) {
 document.getElementById('sched-list').addEventListener('click', function (e) {
   var open = e.target.closest('[data-sopen]');
   if (open) { e.preventDefault(); loadBrand(open.getAttribute('data-sopen')); return; }
+
+  // Status buttons on a sent row — same write path as the LinkedIn tab
+  // (setTargetStatus), so the two tabs can never disagree. In place.
+  var sact = e.target.closest('[data-sact]');
+  if (sact) {
+    var act = sact.getAttribute('data-sact');
+    var tid = sact.getAttribute('data-st');
+    var wrap = sact.parentNode;
+    wrap.querySelectorAll('[data-sact]').forEach(function (x) { x.remove(); });
+    var pill = document.createElement('span');
+    pill.className = 'status ' + (act === 'replied' ? 'replied' : 'accepted');
+    pill.style.cssText = 'font-size:12px;padding:4px 11px';
+    pill.textContent = act === 'replied' ? 'Replied ✓' : act === 'dmsent' ? 'DM sent ✓' : 'Accepted ✓';
+    wrap.appendChild(pill);
+    if (act === 'accepted') {
+      ['dmsent', 'replied'].forEach(function (k) {
+        var b2 = document.createElement('button');
+        b2.className = 'btn-ghost';
+        b2.setAttribute('data-sact', k);
+        b2.setAttribute('data-st', tid);
+        b2.style.cssText = 'padding:4px 11px;font-size:12px';
+        b2.textContent = k === 'dmsent' ? 'DM sent ✓' : 'Replied?';
+        wrap.appendChild(b2);
+      });
+    }
+    toast(act === 'replied' ? 'Reply logged' : act === 'dmsent' ? 'DM logged' : 'Accepted logged');
+    api('setTargetStatus', act === 'dmsent'
+      ? { targetId: tid, dmSent: true, actor: ME.owner || null }
+      : { targetId: tid, status: act, actor: ME.owner || null })
+      .catch(function (err) { toast(err.message); loadSchedule(); });
+    return;
+  }
   var add = e.target.closest('[data-sadd]');
   if (add) {
     var key = add.getAttribute('data-sadd');
@@ -6745,14 +6838,50 @@ document.getElementById('brand-body').addEventListener('click', function (e) {
   }).catch(function (err) { toast(err.message); btn.disabled = false; });
 });
 
-// Accepted? / Replied? on the brand card's outreach rows — the button
-// swaps to its checked pill in place, no page reload.
+// Copy the invite note / DM straight from the brand card.
+document.getElementById('brand-body').addEventListener('click', function (e) {
+  var cb = e.target.closest('[data-bcopy]');
+  if (!cb) return;
+  var tid = cb.getAttribute('data-bcopy');
+  var want = cb.getAttribute('data-variant');
+  var tgt = ((CURRENT_BRAND && CURRENT_BRAND.brand.targets) || []).filter(function (x) { return x.id === tid; })[0];
+  var drafts = (tgt && tgt.drafts) || [];
+  var d = want === 'dm' ? drafts[0]
+    : drafts.filter(function (x) { return x.variant === want; })[0] || drafts[0];
+  var text = d && (want === 'dm' ? d.firstMessage : d.connectionNote);
+  if (!text) { toast('Nothing drafted for that yet'); return; }
+  navigator.clipboard.writeText(text).then(function () {
+    toast(want === 'dm' ? 'First DM copied — paste it into your LinkedIn chat'
+      : 'Invite note copied — on their profile: Connect → Add a note → paste');
+  }, function () { toast('Could not copy'); });
+});
+
+// Status buttons on the brand card's outreach rows — Mark sent,
+// Accepted, DM sent, Replied, Undo. Same handler the LinkedIn tab
+// uses, so the brand card is a full outreach console. In place.
 document.getElementById('brand-body').addEventListener('click', function (e) {
   var btn = e.target.closest('[data-bract]');
   if (!btn) return;
   var actn = btn.getAttribute('data-bract');
   var tid = btn.getAttribute('data-brt');
   var wrap = btn.parentElement;
+
+  // Mark sent / Undo change which buttons belong on the row, so they
+  // reload the brand card rather than patching pills by hand.
+  if (actn === 'sent' || actn === 'unsend' || actn === 'dmsent') {
+    btn.disabled = true;
+    var args = actn === 'sent' ? { targetId: tid, status: 'sent', actor: ME.owner || null }
+      : actn === 'unsend' ? { targetId: tid, status: 'drafted', clearSent: true, actor: ME.owner || null }
+      : { targetId: tid, dmSent: true, actor: ME.owner || null };
+    toast(actn === 'sent' ? 'Invite logged — press “Accepted?” when it lands'
+      : actn === 'unsend' ? 'Back in the queue — that send is uncounted'
+      : 'DM logged');
+    api('setTargetStatus', args)
+      .then(function () { if (CURRENT_BRAND) loadBrand(CURRENT_BRAND.brand.id); })
+      .catch(function (err) { toast(err.message); btn.disabled = false; });
+    return;
+  }
+
   wrap.querySelectorAll('[data-bract]').forEach(function (x) { x.remove(); });
   var pill = document.createElement('span');
   pill.className = 'status ' + (actn === 'replied' ? 'replied' : 'accepted');
