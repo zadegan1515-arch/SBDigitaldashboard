@@ -1144,8 +1144,19 @@ function loadBrands(category) {
     '<button class="chip' + (category === 'all' ? ' active' : '') + '" data-bcat="all">All</button>' +
     CAT_KEYS.map(function (k) {
       return '<button class="chip' + (k === category ? ' active' : '') + '" data-bcat="' + k + '">' +
-        esc(CAT_NAMES[k]) + '</button>';
+        esc(CAT_NAMES[k]) + '<span class="n" data-creach="' + k + '"></span></button>';
     }).join('');
+  // How far through each category the outreach is — reached / total.
+  api('categoryReach').then(function (cr) {
+    Object.keys(cr.categories || {}).forEach(function (k) {
+      var el = document.querySelector('[data-creach="' + k + '"]');
+      if (!el) return;
+      var row = cr.categories[k];
+      el.textContent = row.reached + '/' + row.total;
+      el.title = row.reached + ' of ' + row.total + ' brands invited' +
+        (row.passed ? ' · ' + row.passed + ' passed' : '');
+    });
+  }).catch(function () {});
   document.getElementById('brands-sub').textContent = 'Loading…';
   var box = document.getElementById('brands-list');
   box.innerHTML = '';
@@ -1163,7 +1174,25 @@ function loadBrands(category) {
           '</div>';
       }).join('');
 
-      return '<div class="target clickable" data-brand="' + esc(b.id) + '" data-name="' + esc(b.name) + '">' +
+      // Where this brand stands, right on the card: invited / replied
+      // with dates, so you never open a brand to find that out.
+      var o = b.outreach || {};
+      var state = '';
+      if (o.replied) {
+        state = '<span class="status replied" title="' + esc(o.lastRepliedAt || '') + '">Replied' +
+          (o.lastRepliedAt ? ' ' + shortDate(o.lastRepliedAt) : '') + '</span>';
+      } else if (o.invited) {
+        state = '<span class="status sent" title="' + esc(o.lastSentAt || '') + '">Invite sent' +
+          (o.lastSentAt ? ' ' + shortDate(o.lastSentAt) : '') + '</span>' +
+          '<span class="fit">no reply yet</span>';
+      } else if (o.queued) {
+        state = '<span class="status queued">' + o.queued + ' queued — not sent</span>';
+      } else {
+        state = '<span class="fit">not contacted</span>';
+      }
+
+      return '<div class="target clickable" data-brand="' + esc(b.id) + '" data-name="' + esc(b.name) + '"' +
+          (b.passedAt ? ' style="opacity:.55"' : '') + '>' +
         '<div class="t-main">' +
           '<div class="t-line"><span class="t-brand">' + esc(b.name) + '</span>' +
             (b.tier ? '<span class="t-sep">·</span><span class="t-title">' + esc(b.tier) + '</span>' : '') +
@@ -1172,8 +1201,12 @@ function loadBrands(category) {
             : (people || '<div class="t-meta"><span>No contacts yet</span></div>')) +
         '</div>' +
         '<div class="t-actions">' +
+          (b.passedAt ? '<span class="status passed">passed</span>' : state) +
           '<span class="fit" title="contacts">' + b._count.contacts + ' contacts</span>' +
-          (b._count.targets ? '<span class="status">' + b._count.targets + ' queued</span>' : '') +
+          '<button class="btn-ghost' + (b.passedAt ? '' : ' danger') + '" data-blpass="' + esc(b.id) + '"' +
+            ' data-passed="' + (b.passedAt ? '1' : '') + '" data-name="' + esc(b.name) + '"' +
+            ' title="' + (b.passedAt ? 'Bring this brand back into outreach' : 'Don’t outreach — moves the brand to the Passed tab') + '">' +
+            (b.passedAt ? 'Bring back' : 'Don’t outreach') + '</button>' +
           '<button class="btn-ghost" data-act="open">Open →</button>' +
         '</div>' +
       '</div>';
@@ -1184,6 +1217,29 @@ function loadBrands(category) {
       esc(e.message) + '</p></div></div>';
   });
 }
+
+// Pass / bring back straight from the brands list — no need to open
+// the brand. In place: the card dims and the button flips.
+document.getElementById('brands-list').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-blpass]');
+  if (!btn) return;
+  e.stopPropagation();
+  var id = btn.getAttribute('data-blpass');
+  var name = btn.getAttribute('data-name');
+  var wasPassed = !!btn.getAttribute('data-passed');
+  var card = btn.closest('.target');
+  btn.disabled = true;
+  api('setBrandPassed', { brandId: id, passed: !wasPassed }).then(function (r) {
+    btn.disabled = false;
+    btn.setAttribute('data-passed', r.passed ? '1' : '');
+    btn.textContent = r.passed ? 'Bring back' : 'Don’t outreach';
+    btn.classList.toggle('danger', !r.passed);
+    if (card) card.style.opacity = r.passed ? '.55' : '';
+    var pill = card && card.querySelector('.t-actions .status');
+    if (pill && r.passed) { pill.className = 'status passed'; pill.textContent = 'passed'; }
+    toast(r.passed ? name + ' passed — hidden from outreach until brought back' : name + ' is back in outreach');
+  }).catch(function (err) { toast(err.message); btn.disabled = false; });
+});
 
 // --- merging duplicate brands ----------------------------------
 // Manual only, from the "Merge duplicate…" button on a brand page.
@@ -6476,7 +6532,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
     if (e.target.closest('a')) return;   // let real links through
-    if (e.target.closest('[data-nbq]') || e.target.closest('[data-nbp]') || e.target.closest('[data-nbperson]') || e.target.closest('[data-nbslot]') || e.target.closest('[data-rcact]') || e.target.closest('[data-rcstage]') || e.target.closest('[data-unpass]')) return;   // controls with their own handlers
+    if (e.target.closest('[data-nbq]') || e.target.closest('[data-nbp]') || e.target.closest('[data-nbperson]') || e.target.closest('[data-nbslot]') || e.target.closest('[data-rcact]') || e.target.closest('[data-rcstage]') || e.target.closest('[data-unpass]') || e.target.closest('[data-blpass]')) return;   // controls with their own handlers
     loadBrand(el.getAttribute('data-brand'));
   });
 });
@@ -6775,8 +6831,14 @@ document.getElementById('nextbest').addEventListener('click', function (e) {
 // brand can be in play at once; the server says when both slots are.
 function queueToast(r) {
   if (r.queued) {
-    toast(r.contactName + (r.revived ? ' brought back' : ' added to the queue') +
+    toast(r.contactName + (r.promoted ? ' moved into today’s list' : r.revived ? ' brought back' : ' added to the queue') +
       (r.second ? ' — two people now in play at this brand' : ''));
+  } else if (r.reason === 'already') {
+    // Queued ≠ contacted. They are already in today's list; offer the
+    // next person instead of dead-ending.
+    toast(r.contactName + ' — already in today’s list (no invite sent yet). Use “+ Person” to add another.');
+  } else if (r.reason === 'contacted') {
+    toast(r.contactName + ' already got an invite (' + r.status + ') — track them in Results, or “+ Person” for someone else.');
   } else if (r.reason === 'nocontact') {
     // Nobody reachable on file — open the add-person form right here
     // instead of dead-ending on a toast.
@@ -6786,7 +6848,7 @@ function queueToast(r) {
     toast(r.brandName + ': everyone reachable was already contacted — add a new person below');
     openPersonForBrand(r.brandId, r.brandName);
   } else if (r.reason === 'full') {
-    toast('Already in play (invites out): ' + r.contactName + ' — track them in Results. Want someone else? Use → Queue on the brand page.');
+    toast(r.contactName + ' — already in play at this brand. “+ Person” adds another.');
   } else {
     toast('Already in play — ' + r.contactName + ' is ' + r.status);
   }

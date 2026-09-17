@@ -1088,6 +1088,8 @@ const handlers: Record<string, Handler> = {
           select: { name: true, title: true, linkedinUrl: true },
           take: 3,
         },
+        // Outreach state for the card: invited / replied and when.
+        targets: { select: { status: true, sentAt: true, repliedAt: true, shelved: true } },
       },
       take,
     })
@@ -1096,7 +1098,7 @@ const handlers: Record<string, Handler> = {
     // Then by tier, emerging ahead of established: hungrier for
     // awareness, faster to say yes.
     const tierRank: Record<string, number> = { emerging: 0, growth: 1, established: 2 }
-    return brands.sort((a, b) => {
+    const sorted = brands.sort((a, b) => {
       const aHas = a._count.contacts > 0 ? 0 : 1
       const bHas = b._count.contacts > 0 ? 0 : 1
       if (aHas !== bHas) return aHas - bHas
@@ -1105,6 +1107,49 @@ const handlers: Record<string, Handler> = {
       if (at !== bt) return at - bt
       return a.name.localeCompare(b.name)
     })
+    // Flatten each brand's targets into the card's outreach summary —
+    // invited / replied and the dates, so the list answers "where does
+    // this brand stand?" without opening it.
+    return sorted.map(b => {
+      const ts = b.targets
+      const sent = ts.filter(t => t.sentAt)
+      const replied = ts.filter(t => t.repliedAt)
+      const last = (xs: Date[]) => xs.length ? new Date(Math.max(...xs.map(d => d.getTime()))) : null
+      const { targets, ...rest } = b
+      return {
+        ...rest,
+        outreach: {
+          queued: ts.filter(t => !t.shelved && ['queued', 'drafted'].includes(t.status)).length,
+          invited: sent.length,
+          replied: replied.length,
+          lastSentAt: last(sent.map(t => t.sentAt!)),
+          lastRepliedAt: last(replied.map(t => t.repliedAt!)),
+        },
+      }
+    })
+  },
+
+  // Per-category reach for the Brands tab chips: how many brands in
+  // each category anyone has actually invited (sentAt), out of how
+  // many exist. Passed brands are counted separately, not as reach.
+  async categoryReach() {
+    const brands = await prisma.brand.findMany({
+      select: {
+        category: true, passedAt: true,
+        targets: { select: { sentAt: true } },
+      },
+    })
+    const out: Record<string, { total: number; reached: number; passed: number }> = {}
+    let all = { total: 0, reached: 0, passed: 0 }
+    for (const b of brands) {
+      const key = b.category ?? 'uncategorised'
+      const row = (out[key] ??= { total: 0, reached: 0, passed: 0 })
+      const reached = b.targets.some(t => t.sentAt)
+      row.total += 1; all.total += 1
+      if (reached) { row.reached += 1; all.reached += 1 }
+      if (b.passedAt) { row.passed += 1; all.passed += 1 }
+    }
+    return { categories: out, all }
   },
 
   // -------- shows (read live from sb-crm) --------
@@ -1991,11 +2036,40 @@ const handlers: Record<string, Handler> = {
     // brand's slot count — an explicit click, not an auto-pick. Leo's
     // explicit setting wins; otherwise the rules-based recommendation.
     const WORK_PER_BRAND = brand.workPeople ?? recommendWorkPeople(brand, brand.contacts)
+    // Queued is NOT contacted. Lumping the two together was the bug
+    // behind "invite already sent out" on a brand nobody had written
+    // to: one person merely sitting in the queue filled the brand's
+    // only slot, and the search dead-ended instead of surfacing them.
     const live = brand.targets.filter(t => !t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied'].includes(t.status))
+    const pending = live.filter(t => ['queued', 'drafted'].includes(t.status))
+    const contacted = live.filter(t => ['sent', 'accepted', 'replied'].includes(t.status))
+
+    // Already queued but waiting in the pool (no today stamp): asking
+    // for this brand again means "I want them today" — promote them
+    // instead of refusing. This is what makes a brand added from the
+    // Schedule show up when you search for it.
+    const startOfDay = startOfLocalDay()
+    const pooled = pending.filter(t => !t.queuedFor || t.queuedFor < startOfDay)
+    if (stamp && pooled.length) {
+      await prisma.target.updateMany({
+        where: { id: { in: pooled.map(t => t.id) } },
+        data: { queuedFor: new Date() },
+      })
+      return {
+        queued: true, promoted: true,
+        contactName: pooled.map(t => t.contact.name).join(' and '),
+      }
+    }
+    // Everyone this brand works is already in today's list — say so
+    // plainly, and never call a queued person "sent".
     if (!force && live.length >= WORK_PER_BRAND) {
       return {
-        queued: false, reason: 'full',
-        contactName: live.map(t => t.contact.name).join(' and '), status: 'in play',
+        queued: false,
+        reason: contacted.length >= WORK_PER_BRAND ? 'contacted' : 'already',
+        contactName: live.map(t => t.contact.name).join(' and '),
+        pending: pending.length, contacted: contacted.length,
+        brandId: brand.id, brandName: brand.name,
+        status: contacted.length ? contacted[0].status : 'in today’s list',
       }
     }
     const second = live.length === 1
