@@ -243,6 +243,21 @@ const NOT_IN_CONVERSATION = {
   targets: { none: { status: { in: ['replied', 'converted'] as TargetStatus[] } } },
 } as const
 
+// "Passed for today" wears off at midnight on its own — there is no undo
+// to remember. Spread into a brand `where` alongside NOT_IN_CONVERSATION.
+function notPassedToday() {
+  const start = startOfLocalDay()
+  return { OR: [{ passedTodayAt: null }, { passedTodayAt: { lt: start } }] }
+}
+
+// A brand we have already reached out to. Leo's rule: once an invite has
+// gone to anyone there, the brand stops being offered as something to
+// add to an upcoming day — the conversation is live, and a second cold
+// approach from a different person reads badly.
+function alreadyContacted(b: { targets: { sentAt: Date | null }[] }) {
+  return b.targets.some(t => t.sentAt)
+}
+
 function scoreFit(title: string | null, tier: string | null): number {
   let score = 30
   if (title) {
@@ -780,7 +795,7 @@ const handlers: Record<string, Handler> = {
     // status without stamping queuedFor, and those rows used to match
     // neither branch and never surface in Today again.
     const candidates = await prisma.target.findMany({
-      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: NOT_IN_CONVERSATION },
+      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: { ...NOT_IN_CONVERSATION, ...notPassedToday() } },
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: 300,
       select: { id: true, fitScore: true, brand: { select: { category: true } } },
@@ -2278,7 +2293,7 @@ const handlers: Record<string, Handler> = {
     // Untouched brands (people on file, nothing queued or sent): the
     // side-list bench, and each day's "category not fully in" note.
     const allBrands = await prisma.brand.findMany({
-      where: { ...NOT_IN_CONVERSATION, doNotEmail: false, contacts: { some: {} } },
+      where: { ...NOT_IN_CONVERSATION, ...notPassedToday(), doNotEmail: false, contacts: { some: {} } },
       select: {
         id: true, name: true, category: true, website: true, linkedinUrl: true,
         _count: { select: { contacts: true } },
@@ -2299,7 +2314,7 @@ const handlers: Record<string, Handler> = {
         const taken = new Set(b.targets.map(t => t.contactId))
         return { ...b, spare: Math.max(0, b._count.contacts - taken.size) }
       })
-      .filter(b => !planned.has(b.id) && b.spare > 0)
+      .filter(b => !planned.has(b.id) && b.spare > 0 && !alreadyContacted(b))
 
     // True preview of each day's sends: the same picking order the real
     // queue uses (day's category first by fit, then the best of the
@@ -2543,7 +2558,7 @@ const handlers: Record<string, Handler> = {
 
     const brands = await prisma.brand.findMany({
       where: {
-        passedAt: null, doNotEmail: false, contacts: { some: {} },
+        passedAt: null, ...notPassedToday(), doNotEmail: false, contacts: { some: {} },
         ...(theme ? { category: theme } : {}),
       },
       select: {
@@ -2616,6 +2631,16 @@ const handlers: Record<string, Handler> = {
       where: { id: targetId },
       data: { shelved: !!shelved },
     })
+  },
+
+  // Pass for today: keep a brand out of today's suggestions without
+  // archiving it. Nothing to undo — it comes back by itself tomorrow.
+  async passBrandToday({ brandId, on = true }: any) {
+    const brand = await prisma.brand.update({
+      where: { id: brandId },
+      data: { passedTodayAt: on ? new Date() : null },
+    })
+    return { id: brand.id, name: brand.name, passedToday: !!brand.passedTodayAt }
   },
 
   // -------- brands with no contacts --------
@@ -3369,7 +3394,7 @@ const handlers: Record<string, Handler> = {
   async nextBestBrands({ take = 15 }: any = {}) {
     const [brands, sent, replies] = await Promise.all([
       prisma.brand.findMany({
-        where: { doNotEmail: false, passedAt: null },
+        where: { doNotEmail: false, passedAt: null, ...notPassedToday() },
         include: {
           contacts: { select: { title: true, linkedinUrl: true, email: true, isDecisionMaker: true } },
           targets: { select: { status: true, sentAt: true, shelved: true } },

@@ -615,8 +615,8 @@
     <!-- PASSED BRANDS -->
     <section class="view page" id="passed">
       <div class="eyebrow">Outreach</div>
-      <h1>Passed</h1>
-      <div class="sub" id="ps-sub">Brands you passed on — hidden from all outreach until you bring them back.</div>
+      <h1>Archived</h1>
+      <div class="sub" id="ps-sub">Brands taken off outreach — hidden from the queue, the schedule and next best until you bring them back. Passing a brand for the day is separate: it wears off overnight and never lands here.</div>
       <div id="passed-list" style="margin-top:18px"></div>
     </section>
 
@@ -990,7 +990,7 @@ function refreshAfterSponsorChange() {
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
   brands: [['brands', 'All brands'], ['discover', 'Discover'], ['needs', 'Needs contacts']],
-  outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['schedule', 'Schedule'], ['email-out', 'Email'], ['linkedin', 'People'], ['passed', 'Passed'], ['results', 'Email stats']],
+  outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['schedule', 'Schedule'], ['email-out', 'Email'], ['linkedin', 'People'], ['passed', 'Archived'], ['results', 'Email stats']],
   board: [['board', 'Overview'], ['talks', 'In talks'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
   audience: [['audience', 'Events'], ['attendees', 'Attendees'], ['segments', 'Segments']],
@@ -1203,12 +1203,12 @@ function loadBrands(category) {
             : (people || '<div class="t-meta"><span>No contacts yet</span></div>')) +
         '</div>' +
         '<div class="t-actions">' +
-          (b.passedAt ? '<span class="status passed">passed</span>' : state) +
+          (b.passedAt ? '<span class="status passed">archived</span>' : state) +
           '<span class="fit" title="contacts">' + b._count.contacts + ' contacts</span>' +
           '<button class="btn-ghost' + (b.passedAt ? '' : ' danger') + '" data-blpass="' + esc(b.id) + '"' +
             ' data-passed="' + (b.passedAt ? '1' : '') + '" data-name="' + esc(b.name) + '"' +
-            ' title="' + (b.passedAt ? 'Bring this brand back into outreach' : 'Don’t outreach — moves the brand to the Passed tab') + '">' +
-            (b.passedAt ? 'Bring back' : 'Don’t outreach') + '</button>' +
+            ' title="' + (b.passedAt ? 'Bring this brand back into outreach' : 'Take off outreach for good — moves the brand to the Archived tab. To skip it just for today, use Pass on the schedule or next best.') + '">' +
+            (b.passedAt ? 'Bring back' : 'Archive') + '</button>' +
           '<button class="btn-ghost" data-act="open">Open →</button>' +
         '</div>' +
       '</div>';
@@ -1419,8 +1419,8 @@ function loadBrand(brandId) {
             '</select>';
           })() +
           (b.passedAt
-            ? '<button class="btn-ghost" id="b-pass" style="border-color:var(--warn);color:var(--warn)" title="Passed — hidden from all outreach. Click to bring it back.">Passed — bring back</button>'
-            : '<button class="btn-ghost" id="b-pass" title="Hide this brand from all outreach (queue, picks, next-best) until you bring it back">Pass brand</button>') +
+            ? '<button class="btn-ghost" id="b-pass" style="border-color:var(--warn);color:var(--warn)" title="Archived — hidden from all outreach. Click to bring it back.">Archived — bring back</button>'
+            : '<button class="btn-ghost" id="b-pass" title="Take this brand off outreach (queue, picks, schedule, next best) until you bring it back">Archive brand</button>') +
           '<button class="btn-ghost" id="b-merge">Merge duplicate…</button>' +
           '<button class="btn-ghost danger" id="b-delete" style="margin-left:auto">Delete brand</button>' +
         '</div>' +
@@ -2731,7 +2731,8 @@ function renderBench() {
         (b.category ? '<span style="font-size:11.5px;color:var(--ink-3)">' + esc(CAT_NAMES[b.category] || b.category) + '</span>' : '') +
         '<span style="flex:1"></span>' +
         '<select class="field-box" data-bday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="width:auto;padding:4px 8px;font-size:12px"><option value="">Add to…</option>' + dayOpts + '</select>' +
-        '<button class="btn-ghost danger" data-bpass="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:4px 11px;font-size:12px">Pass</button>' +
+        '<button class="btn-ghost" data-btoday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:4px 11px;font-size:12px" title="Not today — back on its own tomorrow">Pass</button>' +
+        '<button class="btn-ghost danger" data-bpass="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:4px 11px;font-size:12px" title="Archive — off outreach entirely until you bring it back">Archive</button>' +
       '</div>' +
     '</div>';
   }).join('') : '<div class="hint" style="margin-top:8px">' + (q ? 'No brand matches.' : 'Nothing left to add — every brand with people is planned or already queued.') + '</div>';
@@ -2808,7 +2809,8 @@ function renderSchedule() {
               '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + schedBrandName(m) + '</span>' +
               '<span style="font-size:12px;color:var(--ink-3)">' + m.people + (m.people === 1 ? ' person' : ' people') + '</span>' +
               '<button class="btn-draft" data-sput="' + esc(key) + '" data-sb="' + esc(m.id) + '" style="padding:5px 13px;font-size:12px">Put in</button>' +
-              '<button class="btn-ghost danger" data-spass="' + esc(m.id) + '" data-sn="' + esc(m.name) + '" style="padding:5px 12px;font-size:12px">Pass</button>' +
+              '<button class="btn-ghost" data-stoday="' + esc(m.id) + '" data-sn="' + esc(m.name) + '" style="padding:5px 12px;font-size:12px" title="Not today — off today’s suggestions, back on its own tomorrow">Pass</button>' +
+              '<button class="btn-ghost danger" data-spass="' + esc(m.id) + '" data-sn="' + esc(m.name) + '" style="padding:5px 12px;font-size:12px" title="Archive — off outreach entirely until you bring it back">Archive</button>' +
             '</div>';
           }).join('') +
         '</div>';
@@ -2826,7 +2828,8 @@ function renderSchedule() {
                 '</span>' +
                 '<span style="font-size:12px;color:var(--ink-3)">' + b.people + (b.people === 1 ? ' person' : ' people') + '</span>' +
                 '<button class="btn-draft" data-spin="' + esc(key) + '" data-sb="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 13px;font-size:12px">+ Add</button>' +
-                '<button class="btn-ghost danger" data-spass="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 12px;font-size:12px">Pass</button>' +
+                '<button class="btn-ghost" data-stoday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 12px;font-size:12px" title="Not today — off today’s suggestions, back on its own tomorrow">Pass</button>' +
+                '<button class="btn-ghost danger" data-spass="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 12px;font-size:12px" title="Archive — off outreach entirely until you bring it back">Archive</button>' +
               '</div>';
             }).join('')
           : '') +
@@ -3030,8 +3033,23 @@ document.getElementById('sched-list').addEventListener('click', function (e) {
     }).catch(function (err) { toast(err.message); loadSchedule(); });
     return;
   }
-  // Pass on a previewed brand: same as passing anywhere else — off the
-  // schedule, the queue and next-best until brought back (Passed tab).
+  // Pass for today: off today's suggestions only. No undo to remember —
+  // it comes back by itself tomorrow, which is the whole point of it
+  // being separate from Archive.
+  var today = e.target.closest('[data-stoday]');
+  if (today) {
+    var tbid = today.getAttribute('data-stoday');
+    var tname = today.getAttribute('data-sn');
+    schedDropBrand(tbid);
+    renderSchedule();
+    renderBench();
+    toast('Passed ' + tname + ' for today — back tomorrow');
+    api('passBrandToday', { brandId: tbid })
+      .catch(function (err) { toast(err.message); loadSchedule(); });
+    return;
+  }
+  // Archive: off the schedule, the queue and next best until brought
+  // back by hand (Archived tab).
   var pass = e.target.closest('[data-spass]');
   if (pass) {
     var xbid = pass.getAttribute('data-spass');
@@ -3039,7 +3057,7 @@ document.getElementById('sched-list').addEventListener('click', function (e) {
     schedDropBrand(xbid);
     renderSchedule();
     renderBench();
-    toast('Passed ' + xname + ' — bring back any time from the Passed tab');
+    toast('Archived ' + xname + ' — bring back any time from the Archived tab');
     api('setBrandPassed', { brandId: xbid, passed: true })
       .catch(function (err) { toast(err.message); loadSchedule(); });
   }
@@ -3069,6 +3087,18 @@ document.getElementById('sched-side').addEventListener('change', function (e) {
 document.getElementById('sched-side').addEventListener('click', function (e) {
   var open = e.target.closest('[data-sopen]');
   if (open) { e.preventDefault(); loadBrand(open.getAttribute('data-sopen')); return; }
+  var btoday = e.target.closest('[data-btoday]');
+  if (btoday) {
+    var tb = btoday.getAttribute('data-btoday');
+    var tn = btoday.getAttribute('data-sn');
+    schedDropBrand(tb);
+    renderSchedule();
+    renderBench();
+    toast('Passed ' + tn + ' for today — back tomorrow');
+    api('passBrandToday', { brandId: tb })
+      .catch(function (err) { toast(err.message); loadSchedule(); });
+    return;
+  }
   var pass = e.target.closest('[data-bpass]');
   if (!pass) return;
   var bid = pass.getAttribute('data-bpass');
@@ -3076,7 +3106,7 @@ document.getElementById('sched-side').addEventListener('click', function (e) {
   schedDropBrand(bid);
   renderSchedule();
   renderBench();
-  toast('Passed ' + name + ' — bring back any time from the Passed tab');
+  toast('Archived ' + name + ' — bring back any time from the Archived tab');
   api('setBrandPassed', { brandId: bid, passed: true })
     .catch(function (err) { toast(err.message); loadSchedule(); });
 });
@@ -3098,11 +3128,11 @@ function loadPassed() {
         '<div class="t-main">' +
           '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(b.name) + '</span>' +
             (tag ? '<span class="t-sep">·</span><span class="t-title">' + esc(tag) + '</span>' : '') + '</div>' +
-          '<div class="t-meta"><span>passed ' + shortDate(b.passedAt) + '</span><span>· ' + b.contacts + ' contact' + (b.contacts === 1 ? '' : 's') + '</span></div>' +
+          '<div class="t-meta"><span>archived ' + shortDate(b.passedAt) + '</span><span>· ' + b.contacts + ' contact' + (b.contacts === 1 ? '' : 's') + '</span></div>' +
         '</div>' +
         '<div class="t-actions"><button class="btn-draft" data-unpass="' + esc(b.id) + '">Bring back</button></div>' +
       '</div>';
-    }).join('') : '<div class="panel"><div class="empty"><h3>Nothing passed</h3><p>Hit Pass on a queue row or a brand page and the brand shows up here.</p></div></div>';
+    }).join('') : '<div class="panel"><div class="empty"><h3>Nothing archived</h3><p>Hit Archive on a brand and it shows up here. Pass only skips the brand for the day.</p></div></div>';
   }).catch(function (e) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
   });
@@ -6747,7 +6777,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
     if (e.target.closest('a')) return;   // let real links through
-    if (e.target.closest('[data-nbq]') || e.target.closest('[data-nbp]') || e.target.closest('[data-nbperson]') || e.target.closest('[data-nbslot]') || e.target.closest('[data-rcact]') || e.target.closest('[data-rcstage]') || e.target.closest('[data-unpass]') || e.target.closest('[data-blpass]')) return;   // controls with their own handlers
+    if (e.target.closest('[data-nbq]') || e.target.closest('[data-nbp]') || e.target.closest('[data-nbtoday]') || e.target.closest('[data-nbperson]') || e.target.closest('[data-nbslot]') || e.target.closest('[data-rcact]') || e.target.closest('[data-rcstage]') || e.target.closest('[data-unpass]') || e.target.closest('[data-blpass]')) return;   // controls with their own handlers
     loadBrand(el.getAttribute('data-brand'));
   });
 });
@@ -7068,7 +7098,8 @@ function renderNextBest() {
               ? '<button class="btn-draft" data-nbperson="' + esc(b.id) + '" title="Add their person right here — a decision-maker title + LinkedIn queues them">+ Add person</button>'
               : '<span class="fit">' + b.contacts + ' contact' + (b.contacts === 1 ? '' : 's') + '</span>' +
                 '<button class="btn-draft" data-nbq="' + esc(b.id) + '">Queue</button>') +
-            '<button class="btn-ghost danger" data-nbp="' + esc(b.id) + '" title="Pass this brand — never suggested again unless you bring it back on its brand page">Pass</button>' +
+            '<button class="btn-ghost" data-nbtoday="' + esc(b.id) + '" title="Not today — off today’s suggestions, back on its own tomorrow">Pass</button>' +
+            '<button class="btn-ghost danger" data-nbp="' + esc(b.id) + '" title="Archive — never suggested again unless you bring it back on its brand page">Archive</button>' +
           '</div>' +
         '</div>' +
         (b.needsPerson ? '<div data-nbslot="' + esc(b.id) + '"></div>' : '');
@@ -7090,11 +7121,20 @@ document.getElementById('nextbest').addEventListener('click', function (e) {
     });
     return;
   }
+  var nbToday = e.target.closest('[data-nbtoday]');
+  if (nbToday) {
+    nbToday.disabled = true;
+    api('passBrandToday', { brandId: nbToday.getAttribute('data-nbtoday') }).then(function (r) {
+      toast(r.name + ' passed for today — back tomorrow');
+      renderNextBest();
+    }).catch(function (err) { toast(err.message); nbToday.disabled = false; });
+    return;
+  }
   var pass = e.target.closest('[data-nbp]');
   if (pass) {
     pass.disabled = true;
     api('setBrandPassed', { brandId: pass.getAttribute('data-nbp'), passed: true }).then(function (r) {
-      toast(r.name + ' passed — it won’t be suggested again');
+      toast(r.name + ' archived — it won’t be suggested again');
       renderNextBest();
     }).catch(function (err) { toast(err.message); pass.disabled = false; });
     return;

@@ -62,9 +62,18 @@ model Brand {
   // Also honored implicitly when the notes contain the word "skip".
   doNotEmail Boolean @default(false)
 
-  // Passed on outreach entirely: hidden from the queue, auto-picks and
-  // next-best until someone brings it back from the brand page.
+  // Archived: off outreach entirely — hidden from the queue, auto-picks,
+  // the schedule and next-best until someone brings it back by hand.
+  // (The column keeps its old name; renaming one with data in it is a
+  // destructive migration for no gain. "Passed" in the UI now means the
+  // one-day skip below.)
   passedAt DateTime?
+
+  // Passed for today only: kept out of today's suggestions — the
+  // schedule's Add-more, next best and fill-queue — and back on its own
+  // tomorrow. Nobody has to remember to undo it, which is the whole
+  // difference from archiving.
+  passedTodayAt DateTime?
 
   // How many people to work at once at this brand (1-3). Null = the
   // default of 2. Set on the brand page; "+ Person" can still exceed it.
