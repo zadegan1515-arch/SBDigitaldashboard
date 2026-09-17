@@ -3284,6 +3284,28 @@ var OPEN_DRAFTS = {};
 var TARGET_CACHE = {};
 // Today's category — queued rows outside it render a "top-up" tag.
 var QUEUE_THEME = null;
+// Stale-tab guard: remember which build served this page, re-check on
+// focus, and offer one reload when a new deploy lands — so the tab
+// never keeps running yesterday's UI without saying so.
+var APP_SHA = null, APP_SHA_CHECKED = 0;
+function checkAppVersion() {
+  if (Date.now() - APP_SHA_CHECKED < 60000) return;
+  APP_SHA_CHECKED = Date.now();
+  api('appVersion').then(function (v) {
+    if (!v || !v.sha) return;
+    if (APP_SHA === null) { APP_SHA = v.sha; return; }
+    if (v.sha === APP_SHA || document.getElementById('ver-bar')) return;
+    var bar = document.createElement('div');
+    bar.id = 'ver-bar';
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--accent);color:#fff;padding:9px 16px;text-align:center;font-size:13px;cursor:pointer';
+    bar.textContent = 'The site was updated — click here to load the new version';
+    bar.onclick = function () { location.reload(); };
+    document.body.appendChild(bar);
+  }).catch(function () {});
+}
+window.addEventListener('focus', checkAppVersion);
+setTimeout(checkAppVersion, 3000);
+
 // The "Sent today: N / cap" chip state — Mark sent / Undo / Withdrew
 // tick it in place, no reload.
 var SENT_TODAY = { count: 0, cap: 20 };
@@ -3386,9 +3408,15 @@ function refreshRow(id) {
   var t = TARGET_CACHE[id];
   var row = document.querySelector('#targets .target[data-id="' + id + '"]');
   if (!t || !row) return loadOutreach();
+  // The open note/DM fold renders as a sibling panel after the row —
+  // swap it together with the row so toggling stays in place.
+  var fold = document.querySelector('#targets [data-fold="' + id + '"]');
+  if (fold) fold.remove();
   var tmp = document.createElement('div');
   tmp.innerHTML = targetRow(t);
-  row.replaceWith(tmp.firstChild);
+  var frag = document.createDocumentFragment();
+  while (tmp.firstChild) frag.appendChild(tmp.firstChild);
+  row.replaceWith(frag);
 }
 
 function plus3Days() { var d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().slice(0, 10); }
@@ -3418,13 +3446,22 @@ function openNextStepForm(id, row) {
       targetId: id, status: 'replied', actor: ME.owner || null,
       nextStep: wrap.querySelector('#ns-step').value || null,
       followUpAt: wrap.querySelector('#ns-date').value || null
-    }).then(function () { toast('Saved — it\'s on your dashboard'); loadOutreach(); })
-      .catch(function (e) { toast(e.message); });
+    }).then(function () {
+      var ct = TARGET_CACHE[id];
+      if (ct) {
+        ct.status = 'replied';
+        ct.nextStep = wrap.querySelector('#ns-step').value || null;
+        ct.followUpAt = wrap.querySelector('#ns-date').value || null;
+      }
+      wrap.remove();
+      if (ct) refreshRow(id);
+      toast('Saved — it\'s on your dashboard');
+    }).catch(function (e) { toast(e.message); });
   };
 }
 
 function draftBlock(t) {
-  return '<div class="panel" style="margin:-4px 0 10px">' + (t.drafts || []).map(function (d) {
+  return '<div class="panel" data-fold="' + esc(t.id) + '" style="margin:-4px 0 10px">' + (t.drafts || []).map(function (d) {
     return '<div class="tmpl">' +
       '<div class="tmpl-name">' +
         (d.variant === 'man' ? 'For a man' : d.variant === 'woman' ? 'For a woman'
@@ -7001,7 +7038,7 @@ document.getElementById('targets').addEventListener('click', function (e) {
   if (act === 'toggle') {
     if (OPEN_DRAFTS[id]) delete OPEN_DRAFTS[id];
     else OPEN_DRAFTS[id] = true;
-    loadOutreach();
+    refreshRow(id);
     return;
   }
 
@@ -7039,7 +7076,14 @@ document.getElementById('targets').addEventListener('click', function (e) {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Writing…';
     api('generateDrafts', { targetId: id })
-      .then(function () { return loadOutreach(); })
+      .then(function (drafts) {
+        var t = TARGET_CACHE[id];
+        if (t) {
+          t.drafts = (drafts || []).concat(t.drafts || []).slice(0, 2);
+          if (t.status === 'queued') t.status = 'drafted';
+          refreshRow(id);
+        } else loadOutreach();
+      })
       .catch(function (err) { toast(err.message); btn.disabled = false; btn.textContent = 'Draft'; });
   }
 

@@ -2361,6 +2361,13 @@ const handlers: Record<string, Handler> = {
     return { added, shortBy: Math.max(0, need - added), theme }
   },
 
+  // Which build is serving — the client compares on window focus and
+  // shows a "site updated, reload" bar, so an open tab never keeps
+  // running yesterday's UI silently.
+  async appVersion() {
+    return { sha: process.env.VERCEL_GIT_COMMIT_SHA || 'dev' }
+  },
+
   // Daily send counts for the LinkedIn tab strip — invites logged per
   // local day (undo/withdraw uncounts them, since sentAt is cleared).
   async sentByDay({ days = 14 }: any = {}) {
