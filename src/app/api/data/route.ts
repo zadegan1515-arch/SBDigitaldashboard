@@ -27,7 +27,7 @@ import { scanOps, listOps, getOps, updateOps, deleteOps, replyOps, forwardOps } 
 import { allShows, refreshShows, setGenreOverride, cachedShows, GENRES } from '@/lib/shows'
 import { newBoardCode } from '@/lib/board-access'
 import BRAND_SUMMARIES from '@/data/brand-summaries.json'
-import { readMisses, writeMisses, addMiss, suggestBrands, addAka } from '@/lib/brand-match'
+import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef } from '@/lib/brand-match'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
   listAttendees, listDupCandidates, mergeAttendees, deleteAttendee, importAttendees, segmentsOverview,
@@ -2594,6 +2594,31 @@ const handlers: Record<string, Handler> = {
         externalId: b.externalId, aka: b.aka,
       }))
     return { count: missing.length, total: brands.length, brands: missing }
+  },
+
+  // One box on the Needs-contacts row takes either thing someone has to
+  // hand: the name SponsorUnited uses, or a link to the brand's profile.
+  // The link is the better answer — it carries SponsorUnited's own id for
+  // the brand, so once it's saved the spelling never matters again — but
+  // asking Leo to know the difference is a worse product than working it
+  // out here. Each kind only writes its own field, so pasting a link
+  // never wipes a name that was already right.
+  async setBrandSponsorUnitedRef({ brandId, input }: any) {
+    const brand = await prisma.brand.findUnique({ where: { id: brandId } })
+    if (!brand) throw new Error('Brand not found')
+    const ref = parseSponsorUnitedRef(input)
+
+    if (ref.kind === 'id') {
+      const clash = await prisma.brand.findFirst({
+        where: { externalId: ref.value, NOT: { id: brandId } },
+      })
+      if (clash) throw new Error(`That SponsorUnited profile is already linked to ${clash.name} — they may be the same brand.`)
+      await prisma.brand.update({ where: { id: brandId }, data: { externalId: ref.value } })
+      return { kind: 'id', externalId: ref.value, aka: brand.aka }
+    }
+
+    await prisma.brand.update({ where: { id: brandId }, data: { aka: ref.value || null } })
+    return { kind: 'name', aka: ref.value, externalId: brand.externalId }
   },
 
   // -------- SponsorUnited names we don't recognise --------

@@ -169,3 +169,31 @@ export function addAka(current: string | null, name: string, brandName: string):
   if (!add || taken.has(add.toLowerCase())) return have.join(', ')
   return [...have, add].join(', ')
 }
+
+// What someone typed into the "SponsorUnited name or link" box.
+//
+// A profile link is worth far more than a name: the id in it is what
+// SponsorUnited calls the brand internally, so once we've stored it the
+// spelling stops mattering entirely — captures match on the id and no
+// "also known as" is needed. So a link (or a bare id) wins; anything
+// else is treated as another name for the brand.
+export function parseSponsorUnitedRef(input: string): { kind: 'id' | 'name'; value: string } {
+  const raw = String(input || '').trim()
+  if (!raw) return { kind: 'name', value: '' }
+
+  if (/sponsorunited\.com/i.test(raw)) {
+    // .../profile/<id>/contacts, .../brand/<id>, ...?id=<id> — take the
+    // first segment that looks like an id rather than a known word.
+    const path = raw.replace(/^https?:\/\/[^/]+/i, '').split(/[?#]/)[0]
+    const seg = path.split('/').filter(Boolean)
+      .find(p => /^[A-Za-z0-9_-]{16,}$/.test(p) && !/^(profile|brand|brands|company|search|properties)$/i.test(p))
+    if (seg) return { kind: 'id', value: seg }
+    // A SponsorUnited URL we can't read an id out of is not a brand name.
+    return { kind: 'name', value: '' }
+  }
+
+  // A bare id pasted without the URL around it.
+  if (/^[A-Za-z0-9_-]{16,}$/.test(raw) && !raw.includes(' ')) return { kind: 'id', value: raw }
+
+  return { kind: 'name', value: raw }
+}

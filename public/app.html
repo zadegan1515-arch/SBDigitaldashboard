@@ -2361,11 +2361,15 @@ function loadNeeds() {
             // The usual reason a brand sits here with nobody: SponsorUnited
             // files it under another name, so captures never find it. Fixing
             // that used to mean the brand page; it's this box now.
-            '<div style="margin-top:7px">' +
+            '<div style="margin-top:7px;display:flex;gap:7px;align-items:center;flex-wrap:wrap">' +
               '<input class="inp" data-akabox="' + esc(b.id) + '" value="' + esc(b.aka || '') + '" ' +
-                'placeholder="Name on SponsorUnited (if different)" autocomplete="off" ' +
-                'title="SponsorUnited captures land on this brand when they match its name or any of these. Comma-separate several." ' +
-                'style="width:100%;max-width:340px;font-size:12.5px;padding:5px 9px"></div>' +
+                'placeholder="SponsorUnited name or profile link" autocomplete="off" ' +
+                'title="Either one. A name is saved as an \u201calso known as\u201d; a profile link saves SponsorUnited\u2019s own id for the brand, which beats any spelling." ' +
+                'style="flex:1;min-width:220px;max-width:340px;font-size:12.5px;padding:5px 9px">' +
+              '<span data-sulink="' + esc(b.id) + '" class="status sent" ' +
+                'style="' + (b.externalId ? '' : 'display:none') + '" ' +
+                'title="Captures for this brand match on its SponsorUnited profile, whatever it is called there">profile linked</span>' +
+            '</div>' +
           '</div>' +
           '<div class="t-actions">' +
             // Deep-links to the brand's SponsorUnited profile when we know
@@ -6707,9 +6711,21 @@ document.getElementById('needs-list').addEventListener('change', function (e) {
   var box = e.target.closest('[data-akabox]');
   if (!box) return;
   var val = box.value.trim();
+  var brandId = box.getAttribute('data-akabox');
   box.disabled = true;
-  api('updateBrand', { brandId: box.getAttribute('data-akabox'), aka: val })
-    .then(function () { toast(val ? 'Saved \u2014 captures for \u201c' + val + '\u201d land here now' : 'Cleared'); })
+  api('setBrandSponsorUnitedRef', { brandId: brandId, input: val })
+    .then(function (r) {
+      if (r.kind === 'id') {
+        // The link is the stronger match, so say so and put the name back
+        // in the box — the profile id isn't something to look at.
+        var chip = document.querySelector('[data-sulink="' + brandId + '"]');
+        if (chip) chip.style.display = '';
+        box.value = r.aka || '';
+        toast('Linked to the SponsorUnited profile \u2014 the name no longer matters');
+      } else {
+        toast(val ? 'Saved \u2014 captures for \u201c' + val + '\u201d land here now' : 'Cleared');
+      }
+    })
     .catch(function (err) { toast(err.message); })
     .then(function () { box.disabled = false; });
 });
