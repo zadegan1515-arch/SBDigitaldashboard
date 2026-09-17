@@ -1425,7 +1425,14 @@ function loadBrand(brandId) {
       '<div id="b-contact-slot"></div>' +
       (b.contacts.length ? b.contacts.map(function (c) {
         var ct = tByContact[c.id];
-        var inQ = ct && !ct.shelved && (ct.status === 'queued' || ct.status === 'drafted');
+        var live = ct && !ct.shelved && (ct.status === 'queued' || ct.status === 'drafted');
+        // "In queue" splits in two: stamped into TODAY's list, or just
+        // waiting in the pool for their category day. Only the first
+        // shows on the LinkedIn tab right now — → Queue promotes the
+        // second into today.
+        var todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+        var inToday = live && ct.queuedFor && new Date(ct.queuedFor) >= todayStart;
+        var pooled = live && !inToday;
         var inPlay = ct && ['sent', 'accepted', 'replied', 'converted'].indexOf(ct.status) !== -1;
         var skipped = ct && ct.status === 'passed';
         return '<div class="target"><div class="t-main">' +
@@ -1438,11 +1445,12 @@ function loadBrand(brandId) {
             (c.location ? '<span>· ' + esc(c.location) + '</span>' : '') +
           '</div></div>' +
           '<div class="t-actions">' +
-            (inQ ? '<span class="status queued" data-cstate style="font-size:12px;padding:5px 12px">in queue ✓</span>' : '') +
+            (inToday ? '<span class="status queued" data-cstate style="font-size:12px;padding:5px 12px">in today’s list ✓</span>' : '') +
+            (pooled ? '<span class="status" data-cstate title="Queued, but waiting for their category day — → Queue puts them in today" style="font-size:12px;padding:5px 12px;color:var(--ink-3)">in pool</span>' : '') +
             (inPlay ? '<span class="status ' + ct.status + '" data-cstate style="font-size:12px;padding:5px 12px">' + ct.status + '</span>' : '') +
             (skipped ? '<span class="status passed" data-cstate style="font-size:12px;padding:5px 12px">skipped</span>' : '') +
-            (!inQ && !inPlay
-              ? '<button class="btn-draft" data-cqueue="' + esc(c.id) + '" title="Put this exact person into today’s queue">→ Queue</button>' : '') +
+            (!inToday && !inPlay
+              ? '<button class="btn-draft" data-cqueue="' + esc(c.id) + '" title="Put this exact person into TODAY’s list, past the cap if needed">→ Queue</button>' : '') +
             (!inPlay && !skipped
               ? '<button class="btn-ghost danger" data-cskip="' + esc(c.id) + '" title="Skip this person — out of the queue and the auto-pick will never suggest them; Queue brings them back">Skip</button>' : '') +
             (c.linkedinUrl ? '<a class="btn-ghost" href="' + esc(c.linkedinUrl) +
@@ -1659,8 +1667,8 @@ function loadBrand(brandId) {
         api('queueContact', { contactId: btn.getAttribute('data-cqueue') }).then(function (r) {
           if (r.queued) {
             acts.querySelectorAll('[data-cqueue],[data-cskip],[data-cstate]').forEach(function (x) { x.remove(); });
-            acts.insertAdjacentHTML('afterbegin', '<span class="status queued" data-cstate style="font-size:12px;padding:5px 12px">in queue ✓</span>');
-            toast(r.contactName + ' is in today’s queue');
+            acts.insertAdjacentHTML('afterbegin', '<span class="status queued" data-cstate style="font-size:12px;padding:5px 12px">in today’s list ✓</span>');
+            toast(r.contactName + ' is in today’s list — top of the LinkedIn tab');
           } else {
             toast(r.contactName + ' is already in play (' + r.status + ')');
             btn.disabled = false;
