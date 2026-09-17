@@ -234,6 +234,15 @@ const TIER_BONUS: Record<string, number> = {
   established: 5, // biggest budgets, slowest process
 }
 
+// A brand where someone already wrote back is in conversation, not in
+// the cold-outreach pool: pitching a second person there reads as a
+// blast and steps on the live thread. Leo's rule. Hand-picking is
+// still allowed — that is the follow-up case.
+const NOT_IN_CONVERSATION = {
+  passedAt: null,
+  targets: { none: { status: { in: ['replied', 'converted'] as TargetStatus[] } } },
+} as const
+
 function scoreFit(title: string | null, tier: string | null): number {
   let score = 30
   if (title) {
@@ -771,7 +780,7 @@ const handlers: Record<string, Handler> = {
     // status without stamping queuedFor, and those rows used to match
     // neither branch and never surface in Today again.
     const candidates = await prisma.target.findMany({
-      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: { passedAt: null } },
+      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: NOT_IN_CONVERSATION },
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: 300,
       select: { id: true, fitScore: true, brand: { select: { category: true } } },
@@ -2099,6 +2108,18 @@ const handlers: Record<string, Handler> = {
     if (!brand) throw new Error('Brand not found')
     if (brand.passedAt) throw new Error(`${brand.name} is passed — bring it back from its brand page first.`)
 
+    // Someone at this brand already wrote back: stop cold-pitching it.
+    // A deliberate click (force) still goes through — that is a
+    // follow-up, not a recommendation.
+    const answered = brand.targets.find(t => ['replied', 'converted'].includes(t.status))
+    if (answered && !force) {
+      return {
+        queued: false, reason: 'inconversation',
+        contactName: answered.contact.name, status: answered.status,
+        brandId: brand.id, brandName: brand.name,
+      }
+    }
+
     // Two people per brand can be in play at once (Leo's rule): a
     // second thread doubles the odds without reading as a blast. Queue
     // is a no-op only once both slots are taken.
@@ -2239,7 +2260,7 @@ const handlers: Record<string, Handler> = {
     // getTodayQueue) and the specific brands it would work, so the
     // Schedule tab can offer Add / Pass on each before the day arrives.
     const candidates = await prisma.target.findMany({
-      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: { passedAt: null } },
+      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: NOT_IN_CONVERSATION },
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: 300,
       select: { fitScore: true, brand: { select: { id: true, name: true, category: true, website: true, linkedinUrl: true } } },
@@ -2257,17 +2278,28 @@ const handlers: Record<string, Handler> = {
     // Untouched brands (people on file, nothing queued or sent): the
     // side-list bench, and each day's "category not fully in" note.
     const allBrands = await prisma.brand.findMany({
-      where: { passedAt: null, doNotEmail: false, contacts: { some: {} } },
+      where: { ...NOT_IN_CONVERSATION, doNotEmail: false, contacts: { some: {} } },
       select: {
         id: true, name: true, category: true, website: true, linkedinUrl: true,
         _count: { select: { contacts: true } },
-        targets: { select: { status: true, shelved: true, sentAt: true } },
+        targets: { select: { status: true, shelved: true, sentAt: true, contactId: true } },
       },
     })
     const untouched = allBrands.filter(b =>
       !planned.has(b.id) && !byBrand.has(b.id) &&
       !b.targets.some(t => t.sentAt ||
         (!t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied', 'converted'].includes(t.status))))
+
+    // "Add more" means the REST of the category, not only brands with
+    // nothing queued: a category whose brands each hold one queued
+    // person still has spare people to add, and those brands belong in
+    // the day's Add-more list too. `spare` = people not yet targeted.
+    const addable = allBrands
+      .map(b => {
+        const taken = new Set(b.targets.map(t => t.contactId))
+        return { ...b, spare: Math.max(0, b._count.contacts - taken.size) }
+      })
+      .filter(b => !planned.has(b.id) && b.spare > 0)
 
     // True preview of each day's sends: the same picking order the real
     // queue uses (day's category first by fit, then the best of the
@@ -2278,14 +2310,36 @@ const handlers: Record<string, Handler> = {
     // queue (stamped today) and invites already sent both count, so the
     // Schedule's Today row always matches the actual queue.
     const startToday = startOfLocalDay()
-    const [sentTodayN, stampedToday] = await Promise.all([
+    // What actually went out, per day, for the last two weeks — the
+    // Schedule shows plan AND actuals so it never drifts from the
+    // LinkedIn tab.
+    const sinceLog = new Date(startToday.getTime() - 13 * 864e5)
+    const [sentTodayN, stampedToday, sentLog] = await Promise.all([
       prisma.target.count({ where: { sentAt: { gte: startToday } } }),
       prisma.target.findMany({
         where: { queuedFor: { gte: startToday }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } },
         orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
         select: { fitScore: true, brand: { select: { id: true, name: true, category: true, website: true, linkedinUrl: true } } },
       }),
+      prisma.target.findMany({
+        where: { sentAt: { gte: sinceLog } },
+        orderBy: { sentAt: 'desc' },
+        select: {
+          id: true, status: true, sentAt: true, repliedAt: true, dmSentAt: true,
+          brand: { select: { id: true, name: true, category: true } },
+          contact: { select: { name: true, title: true } },
+        },
+      }),
     ])
+    // dayKey -> the invites logged that day.
+    const sentByDay: Record<string, any[]> = {}
+    for (const t of sentLog) {
+      (sentByDay[localDayKey(t.sentAt!)] ??= []).push({
+        id: t.id, status: t.status, brandId: t.brand.id, brand: t.brand.name,
+        category: t.brand.category, person: t.contact.name, title: t.contact.title,
+        repliedAt: t.repliedAt, dmSentAt: t.dmSentAt,
+      })
+    }
     let available = candidates.filter(c => !planned.has(c.brand.id))
     const days = Array.from({ length: 7 }, (_, i) => {
       const at = new Date(Date.now() + i * 24 * 60 * 60 * 1000)
@@ -2328,12 +2382,13 @@ const handlers: Record<string, Handler> = {
         auto: !plan[key]?.category,
         ready: Math.min(DAILY_SEND_LIMIT, sentUsed + alreadyIn.length + alreadyPlanned + plannedCount + take.length),
         sent: sentUsed,
+        sentPeople: sentByDay[key] ?? [],
         brands: rows,
         // Same-category brands whose people are NOT in the queue yet —
         // the day's Add-more section offers to put them in.
         missing: theme
-          ? untouched.filter(b => b.category === theme).slice(0, 20)
-              .map(b => ({ id: b.id, name: b.name, people: b._count.contacts, website: b.website, linkedinUrl: b.linkedinUrl }))
+          ? addable.filter(b => b.category === theme && !rowByBrand.has(b.id)).slice(0, 30)
+              .map(b => ({ id: b.id, name: b.name, people: b.spare, website: b.website, linkedinUrl: b.linkedinUrl }))
           : [],
       }
     })
@@ -2346,8 +2401,13 @@ const handlers: Record<string, Handler> = {
       bench.push({ id: b.id, name: b.name, category: b.category, website: b.website, linkedinUrl: b.linkedinUrl, people: b._count.contacts, inQueue: false })
     }
 
+    const past = Array.from({ length: 7 }, (_, i) => {
+      const key = localDayKey(new Date(startToday.getTime() - (i + 1) * 864e5))
+      return { date: key, people: sentByDay[key] ?? [] }
+    }).filter(d => d.people.length)
+
     return {
-      plan, brands, today: localDayKey(), days,
+      plan, brands, today: localDayKey(), days, past,
       pool: { total: totalPool, cap: DAILY_SEND_LIMIT },
       bench: bench.slice(0, 120),
     }
@@ -2468,7 +2528,7 @@ const handlers: Record<string, Handler> = {
       prisma.target.count({ where: { queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } } }),
       prisma.setting.findUnique({ where: { key: 'outreachPlan' } }),
       prisma.target.findMany({
-        where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: { passedAt: null } },
+        where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: NOT_IN_CONVERSATION },
         select: { brand: { select: { category: true } } },
       }),
     ])
