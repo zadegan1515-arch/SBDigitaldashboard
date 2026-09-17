@@ -149,6 +149,9 @@ enum TargetStatus {
   // LinkedIn: the invite was withdrawn (wrong person, typo, second
   // thoughts) — the send is uncounted and the row can be re-queued.
   withdrawn
+  // Passed on THIS person only — the brand stays in play and another
+  // person can take the slot. Re-queue brings them back.
+  passed
   replied
   converted
   declined

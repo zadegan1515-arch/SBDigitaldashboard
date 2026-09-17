@@ -789,7 +789,7 @@ const handlers: Record<string, Handler> = {
     // The sent / accepted / stale sections read through here, and their
     // copy buttons must serve the current templates too — refresh any
     // never-hand-edited draft that predates them.
-    await ensureTemplateDrafts(rows.filter(t => !['declined', 'dead', 'converted'].includes(t.status)))
+    await ensureTemplateDrafts(rows.filter(t => !['declined', 'dead', 'converted', 'passed'].includes(t.status)))
     return rows
   },
 
@@ -2243,6 +2243,19 @@ const handlers: Record<string, Handler> = {
         passedAt: b.passedAt, contacts: b._count.contacts,
       })),
     }
+  },
+
+  // "Off queue" is company-wide (Leo): every queued/drafted person at
+  // the brand is shelved in one go. Nothing deleted — the brand page
+  // promotes them back, and the brand returns to next-best.
+  async unqueueBrand({ brandId }: any) {
+    const brand = await prisma.brand.findUnique({ where: { id: brandId }, select: { name: true } })
+    if (!brand) throw new Error('Brand not found')
+    const r = await prisma.target.updateMany({
+      where: { brandId, status: { in: ['queued', 'drafted'] }, shelved: false },
+      data: { shelved: true, queuedFor: null },
+    })
+    return { brandName: brand.name, count: r.count }
   },
 
   // Flip one target in or out of the queue by hand. Promoting past the

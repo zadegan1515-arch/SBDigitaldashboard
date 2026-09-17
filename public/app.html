@@ -183,6 +183,7 @@
   .status.sent{background:rgba(97,165,250,.14);color:#82b6fb}
   .status.accepted{background:rgba(67,198,232,.15);color:#6cd6f0}
   .status.withdrawn{background:rgba(232,182,76,.14);color:#eec777}
+  .status.passed{background:rgba(255,255,255,.07);color:var(--ink-3)}
   .status.replied,.status.confirmed,.status.converted{background:rgba(62,207,142,.13);color:#55d9a2}
   .status.drafted,.status.proposed{background:rgba(138,123,255,.15);color:#ab9fff}
   .status.requested{background:rgba(246,143,94,.14);color:#f8a077}
@@ -861,7 +862,7 @@ var CAT_NAMES = {
   unresolved:'Needs Clarification'
 };
 var CAT_KEYS = Object.keys(CAT_NAMES);
-var TARGET_STATUSES = ['all','queued','drafted','sent','accepted','withdrawn','replied','converted','declined','dead'];
+var TARGET_STATUSES = ['all','queued','drafted','sent','accepted','withdrawn','passed','replied','converted','declined','dead'];
 var ME = { owner: null };
 var OWNERS = [];
 
@@ -3267,7 +3268,7 @@ function targetRow(t) {
         ? '<button class="btn-draft" data-act="copymsg" title="Copy the DM and paste it into your LinkedIn chat with them">Copy DM</button>' : '') +
       (t.status === 'accepted' && !t.dmSentAt
         ? '<button class="btn-ghost" data-act="dmsent" title="Logged: the DM went out — clears them from today’s send-the-DM list">DM sent ✓</button>' : '') +
-      (t.status === 'withdrawn'
+      (t.status === 'withdrawn' || t.status === 'passed'
         ? '<button class="btn-draft" data-act="requeue" title="Put them back in the queue to re-send">Re-queue</button>' : '') +
       (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">Profile ↗</a>' : '') +
       (isPre ? '<button class="btn-ghost" data-act="sent" title="Log that the invite went out">Mark sent ✓</button>' : '') +
@@ -3282,9 +3283,9 @@ function targetRow(t) {
           '<button class="btn-ghost mini" data-act="withdrew" title="Withdrew the invite on LinkedIn? Logs it and uncounts the send — Re-queue brings them back">Withdrew</button>' : '') +
       '<button class="btn-ghost mini" data-act="addperson" title="Queue another person at this brand — the next decision maker steps in">+ Person</button>' +
       '<button class="btn-ghost mini" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
-      (isPre ? '<button class="btn-ghost mini" data-act="unqueue" title="Take them off the queue — nothing is deleted, promote them back anytime from the brand page">Off queue</button>' : '') +
-      (t.status !== 'declined' && t.status !== 'dead' && t.status !== 'converted'
-        ? '<button class="btn-ghost mini danger" data-act="pass" title="Pass this brand — it moves to the Passed tab (nothing deleted) until you bring it back">Pass</button>' : '') +
+      (isPre ? '<button class="btn-ghost mini" data-act="unqueue" title="Take the whole company off the queue — nobody deleted, promote them back from the brand page">Off queue</button>' : '') +
+      (t.status !== 'declined' && t.status !== 'dead' && t.status !== 'converted' && t.status !== 'passed'
+        ? '<button class="btn-ghost mini danger" data-act="pass" title="Pass on THIS person only — the brand stays in play and another person can take the slot">Pass</button>' : '') +
     '</div>' +
   '</div>' +
   (open ? draftBlock(t) : '');
@@ -6997,14 +6998,18 @@ document.getElementById('targets').addEventListener('click', function (e) {
       .catch(function (err) { toast(err.message); loadOutreach(); });
   }
 
-  // Off the queue without passing: shelve the target. It stays on the
-  // brand page and can be promoted back; the brand returns to next-best.
-  // In place: the row just disappears.
+  // Off queue = the whole COMPANY steps out of the queue (Leo). Nobody
+  // deleted — the brand page promotes them back. In place: every row
+  // of the brand vanishes.
   if (act === 'unqueue') {
-    var uqRow = document.querySelector('#targets .target[data-id="' + id + '"]');
-    if (uqRow) uqRow.remove();
-    toast('Off the queue — still on the brand page');
-    api('setTargetShelved', { targetId: id, shelved: true })
+    var uqBrand = TARGET_CACHE[id] && TARGET_CACHE[id].brandId;
+    if (!uqBrand) return;
+    document.querySelectorAll('#targets .target[data-id]').forEach(function (r2) {
+      var t2 = TARGET_CACHE[r2.getAttribute('data-id')];
+      if (t2 && t2.brandId === uqBrand && (t2.status === 'queued' || t2.status === 'drafted')) r2.remove();
+    });
+    toast('Company off the queue — still on the brand page');
+    api('unqueueBrand', { brandId: uqBrand })
       .catch(function (err) { toast(err.message); loadOutreach(); });
     return;
   }
@@ -7017,18 +7022,18 @@ document.getElementById('targets').addEventListener('click', function (e) {
       .catch(function (err) { toast(err.message); });
   }
 
-  // Pass = the whole brand moves to the Passed tab (nothing deleted)
-  // and stays out of all outreach until brought back there.
-  // In place: every row of the passed brand vanishes immediately.
+  // Pass = THIS person only (Leo). The brand stays fully in play;
+  // Re-queue (All targets → passed) brings the person back. Passing a
+  // whole brand lives on the brand page and the Schedule tab.
   if (act === 'pass') {
-    var pBrandId = TARGET_CACHE[id] && TARGET_CACHE[id].brandId;
-    if (!pBrandId) return;
-    document.querySelectorAll('#targets .target[data-id]').forEach(function (row) {
-      var rt = TARGET_CACHE[row.getAttribute('data-id')];
-      if (rt && rt.brandId === pBrandId) row.remove();
-    });
-    toast('Moved to the Passed tab');
-    api('setBrandPassed', { brandId: pBrandId, passed: true })
+    var pt = TARGET_CACHE[id];
+    if (!pt) return;
+    pt.status = 'passed';
+    if (mode === 'today' && row) row.remove();
+    else refreshRow(id);
+    toast('Passed on ' + (pt.contact && pt.contact.name ? pt.contact.name : 'them') + ' — ' +
+      (pt.brand && pt.brand.name ? pt.brand.name : 'the brand') + ' stays in play');
+    api('setTargetStatus', { targetId: id, status: 'passed', actor: ME.owner || null })
       .catch(function (err) { toast(err.message); loadOutreach(); });
   }
 });
