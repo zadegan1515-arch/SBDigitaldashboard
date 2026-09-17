@@ -639,7 +639,9 @@
       <div class="eyebrow">Gaps</div>
       <h1>Needs contact info</h1>
       <div class="sub" id="needs-sub">Loading…</div>
+      <div id="needs-misses" style="margin-top:18px"></div>
       <div id="needs-list" style="margin-top:18px"></div>
+      <datalist id="miss-brands"></datalist>
     </section>
 
     <!-- MATERIALS -->
@@ -2223,10 +2225,103 @@ function confirmDeleteBrand(brandId, onDone) {
 
 // --- needs contact info ----------------------------------------
 
+// Names SponsorUnited used that matched no brand of ours. The capture
+// endpoint parks them with the people that came with them; attaching one
+// to a brand saves the name as an "also known as" and lands those people
+// straight away, so the same name never has to be captured twice.
+var MISS_BRAND_ID = {};
+
+function loadNeedsMisses() {
+  var box = document.getElementById('needs-misses');
+  return api('listBrandMisses').then(function (d) {
+    MISS_BRAND_ID = {};
+    (d.brands || []).forEach(function (b) { MISS_BRAND_ID[b.name.toLowerCase()] = b.id; });
+    document.getElementById('miss-brands').innerHTML =
+      (d.brands || []).map(function (b) { return '<option value="' + esc(b.name) + '">'; }).join('');
+
+    if (!d.misses.length) { box.innerHTML = ''; return; }
+
+    box.innerHTML =
+      '<div class="panel panel-pad" style="border-color:var(--warn)">' +
+        '<div class="section-head" style="margin:0 0 4px">Captured under a name we don\u2019t have ' +
+          '<span class="n">' + d.misses.length + '</span></div>' +
+        '<div class="hint" style="margin:0 0 12px">SponsorUnited files some brands under another name ' +
+          '(\u201c818 Tequila\u201d for our \u201c818 Spirits\u201d), so the capture had nowhere to put these people. ' +
+          'Point each one at the right brand \u2014 the name is saved as an \u201calso known as\u201d, the people land now, ' +
+          'and the next capture finds the brand by itself.</div>' +
+        d.misses.map(function (m) {
+          return '<div data-missrow="' + esc(m.name) + '" style="border-top:1px solid var(--border-soft);padding:10px 0">' +
+            '<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">' +
+              '<b style="font-size:14px">' + esc(m.name) + '</b>' +
+              '<span class="t-meta" style="margin:0">' + m.people + ' ' +
+                (m.people === 1 ? 'person' : 'people') + ' waiting \u00b7 ' + esc(timeAgo(m.lastAt)) + '</span>' +
+            '</div>' +
+            '<div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:8px">' +
+              m.suggestions.map(function (sg) {
+                return '<button class="btn-draft" data-missact="attach" data-brand="' + esc(sg.id) + '">\u2192 ' +
+                  esc(sg.name) + '</button>';
+              }).join('') +
+              '<input class="inp" data-missbrand list="miss-brands" placeholder="' +
+                (m.suggestions.length ? 'or another brand\u2026' : 'Which brand is this?') +
+                '" autocomplete="off" style="width:220px;font-size:12.5px;padding:5px 9px">' +
+              '<button class="btn-ghost" data-missact="attach">Attach</button>' +
+              '<button class="btn-ghost danger" data-missact="dismiss" style="margin-left:auto">Not ours</button>' +
+            '</div>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+  }).catch(function () {
+    // The worklist is a bonus on this page — never let it hide the gaps.
+    box.innerHTML = '';
+  });
+}
+
+document.getElementById('needs-misses').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-missact]');
+  if (!btn) return;
+  var row = btn.closest('[data-missrow]');
+  var missName = row.getAttribute('data-missrow');
+
+  if (btn.getAttribute('data-missact') === 'dismiss') {
+    if (!window.confirm('Drop \u201c' + missName + '\u201d and the people captured with it?\n\n' +
+      'Nothing already saved in Brands or Contacts changes. If it turns up in another capture it comes back.')) return;
+    btn.disabled = true;
+    api('dismissBrandMiss', { missName: missName })
+      .then(function () { toast('Dropped'); loadNeedsMisses(); })
+      .catch(function (err) { btn.disabled = false; toast(err.message); });
+    return;
+  }
+
+  // Attach: either a suggestion button (brand id on the button) or the
+  // typed box next to it.
+  var brandId = btn.getAttribute('data-brand');
+  if (!brandId) {
+    var typed = (row.querySelector('[data-missbrand]').value || '').trim();
+    if (!typed) { toast('Type or pick the brand this is'); return; }
+    brandId = MISS_BRAND_ID[typed.toLowerCase()];
+    if (!brandId) { toast('No brand called \u201c' + typed + '\u201d \u2014 pick one from the list'); return; }
+  }
+  var brandName = btn.getAttribute('data-brand')
+    ? btn.textContent.replace(/^\u2192\s*/, '')
+    : (row.querySelector('[data-missbrand]').value || '').trim();
+
+  if (!window.confirm('Save \u201c' + missName + '\u201d as another name for ' + brandName + '?\n\n' +
+    '\u2022 the people captured under it are added to ' + brandName + '\n' +
+    '\u2022 future SponsorUnited captures of that name land there by themselves')) return;
+
+  btn.disabled = true;
+  api('attachBrandMiss', { missName: missName, brandId: brandId }).then(function (r) {
+    toast(r.contactsCreated + ' contact' + (r.contactsCreated === 1 ? '' : 's') + ' added to ' + r.brandName);
+    loadNeeds();
+  }).catch(function (err) { btn.disabled = false; toast(err.message); });
+});
+
 function loadNeeds() {
   showView('needs');
   var box = document.getElementById('needs-list');
   box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+
+  loadNeedsMisses();
 
   return api('listNeedsContact').then(function (d) {
     document.getElementById('needs-sub').textContent =
@@ -2248,6 +2343,14 @@ function loadNeeds() {
             '<div class="t-line"><span class="t-brand" data-brand="' + esc(b.id) + '" style="cursor:pointer">' +
               esc(b.name) + '</span></div>' +
             (tag ? '<div class="t-meta"><span>' + esc(tag) + '</span></div>' : '') +
+            // The usual reason a brand sits here with nobody: SponsorUnited
+            // files it under another name, so captures never find it. Fixing
+            // that used to mean the brand page; it's this box now.
+            '<div style="margin-top:7px">' +
+              '<input class="inp" data-akabox="' + esc(b.id) + '" value="' + esc(b.aka || '') + '" ' +
+                'placeholder="Name on SponsorUnited (if different)" autocomplete="off" ' +
+                'title="SponsorUnited captures land on this brand when they match its name or any of these. Comma-separate several." ' +
+                'style="width:100%;max-width:340px;font-size:12.5px;padding:5px 9px"></div>' +
           '</div>' +
           '<div class="t-actions">' +
             // Deep-links to the brand's SponsorUnited profile when we know
@@ -6558,7 +6661,11 @@ document.getElementById('needs-list').addEventListener('click', function (e) {
     if (suId) {
       window.open('https://pro.sponsorunited.com/profile/' + encodeURIComponent(suId) + '/contacts', '_blank', 'noopener');
     } else {
-      var nm = suBtn.getAttribute('data-suname');
+      // Whatever is in the SponsorUnited-name box right now wins, so a
+      // name typed a second ago is what gets searched.
+      var box = suBtn.closest('[data-needs]').querySelector('[data-akabox]');
+      var typed = box && box.value ? box.value.split(/[,;]/)[0].trim() : '';
+      var nm = typed || suBtn.getAttribute('data-suname');
       navigator.clipboard.writeText(nm);
       toast('“' + nm + '” copied — paste it into SponsorUnited search');
       window.open('https://pro.sponsorunited.com/search/smart', '_blank', 'noopener');
@@ -6576,6 +6683,20 @@ document.getElementById('needs-list').addEventListener('click', function (e) {
     var brandId = delBtn.closest('[data-needs]').getAttribute('data-needs');
     confirmDeleteBrand(brandId, function () { toast('Brand deleted'); loadNeeds(); });
   }
+});
+
+// The SponsorUnited-name box on each Needs-contacts row saves straight to
+// the brand's "also known as" — same field as the brand page, so the two
+// can't disagree.
+document.getElementById('needs-list').addEventListener('change', function (e) {
+  var box = e.target.closest('[data-akabox]');
+  if (!box) return;
+  var val = box.value.trim();
+  box.disabled = true;
+  api('updateBrand', { brandId: box.getAttribute('data-akabox'), aka: val })
+    .then(function () { toast(val ? 'Saved \u2014 captures for \u201c' + val + '\u201d land here now' : 'Cleared'); })
+    .catch(function (err) { toast(err.message); })
+    .then(function () { box.disabled = false; });
 });
 
 // Proposal / recap document actions on the brand page.

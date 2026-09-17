@@ -27,6 +27,7 @@ import { scanOps, listOps, getOps, updateOps, deleteOps, replyOps, forwardOps } 
 import { allShows, refreshShows, setGenreOverride, cachedShows, GENRES } from '@/lib/shows'
 import { newBoardCode } from '@/lib/board-access'
 import BRAND_SUMMARIES from '@/data/brand-summaries.json'
+import { readMisses, writeMisses, suggestBrands, addAka } from '@/lib/brand-match'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
   listAttendees, listDupCandidates, mergeAttendees, deleteAttendee, importAttendees, segmentsOverview,
@@ -2524,6 +2525,105 @@ const handlers: Record<string, Handler> = {
         externalId: b.externalId, aka: b.aka,
       }))
     return { count: missing.length, total: brands.length, brands: missing }
+  },
+
+  // -------- SponsorUnited names we don't recognise --------
+
+  // Captures whose brand name matched nothing of ours are parked in
+  // Setting["brandMisses"] with the people that came with them (see
+  // src/lib/brand-match.ts). This is the worklist: each unknown name with
+  // our best guesses at which brand it really is.
+  async listBrandMisses() {
+    const misses = await readMisses(prisma)
+    if (!misses.length) return { misses: [], brands: [] }
+    const brands = await prisma.brand.findMany({
+      select: { id: true, name: true, aka: true },
+      orderBy: { name: 'asc' },
+    })
+    return {
+      misses: misses.map(m => ({
+        name: m.name,
+        externalId: m.externalId,
+        people: m.rows.length,
+        lastAt: m.lastAt,
+        suggestions: suggestBrands(m.name, brands),
+      })),
+      brands: brands.map(b => ({ id: b.id, name: b.name })),
+    }
+  },
+
+  // "This SponsorUnited name is actually that brand." Adds the name to
+  // the brand's "also known as" so future captures land by themselves,
+  // then replays the people held with the miss — same rules as a live
+  // capture, so nothing arrives differently for having waited.
+  async attachBrandMiss({ missName, brandId }: any) {
+    const misses = await readMisses(prisma)
+    const miss = misses.find(m => m.name.toLowerCase() === String(missName).trim().toLowerCase())
+    if (!miss) throw new Error('That name is no longer in the list — reload the page.')
+    const brand = await prisma.brand.findUnique({ where: { id: brandId } })
+    if (!brand) throw new Error('Brand not found')
+
+    const data: Record<string, any> = { aka: addAka(brand.aka, miss.name, brand.name) || null }
+    // Also keep the SponsorUnited profile ID when we learn it here, so
+    // the brand's "SponsorUnited" button deep-links from now on. Never
+    // overwrite one we already have, and a clash on the unique column
+    // must not lose the attach.
+    if (miss.externalId && !brand.externalId) data.externalId = miss.externalId
+    try {
+      await prisma.brand.update({ where: { id: brand.id }, data })
+    } catch {
+      await prisma.brand.update({ where: { id: brand.id }, data: { aka: data.aka } })
+    }
+
+    let contactsCreated = 0, targetsCreated = 0, skipped = 0
+    for (const row of miss.rows) {
+      try {
+        const dupe = await prisma.contact.findFirst({ where: { brandId: brand.id, name: row.name } })
+        if (dupe) { skipped++; continue }
+        const dm = looksLikeDecisionMaker(row.title ?? null)
+        const contact = await prisma.contact.create({
+          data: {
+            brandId: brand.id,
+            name: row.name,
+            title: row.title ?? null,
+            email: row.email ?? null,
+            phone: row.phone ?? null,
+            location: row.location ?? null,
+            linkedinUrl: row.linkedinUrl ?? null,
+            source: 'sponsorunited',
+            isDecisionMaker: dm,
+          },
+        })
+        contactsCreated++
+        if (dm && contact.linkedinUrl) {
+          await prisma.target.create({
+            data: {
+              brandId: brand.id,
+              contactId: contact.id,
+              fitScore: scoreFit(contact.title, brand.tier),
+              assignedTo: brand.owner ?? null,
+            },
+          })
+          targetsCreated++
+        }
+      } catch { skipped++ }
+    }
+    let targetsShelved = 0
+    try { targetsShelved = (await reconcileBrandTargets(brand.id)).shelvedNow } catch { /* non-fatal */ }
+
+    await writeMisses(prisma, misses.filter(m => m !== miss))
+    return { brandName: brand.name, aka: data.aka, contactsCreated, targetsCreated, targetsShelved, skipped }
+  },
+
+  // "Not one of ours" — drop the name and the people held with it. Only
+  // the parked copy goes; nothing in the brand or contact tables is
+  // touched, and a later capture of the same name simply re-parks it.
+  async dismissBrandMiss({ missName }: any) {
+    const misses = await readMisses(prisma)
+    const want = String(missName).trim().toLowerCase()
+    const left = misses.filter(m => m.name.toLowerCase() !== want)
+    await writeMisses(prisma, left)
+    return { removed: misses.length - left.length }
   },
 
   // -------- LinkedIn work view --------
