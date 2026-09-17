@@ -2248,7 +2248,8 @@ function loadNeedsMisses() {
         '<div class="hint" style="margin:0 0 12px">SponsorUnited files some brands under another name ' +
           '(\u201c818 Tequila\u201d for our \u201c818 Spirits\u201d), so the capture had nowhere to put these people. ' +
           'Point each one at the right brand \u2014 the name is saved as an \u201calso known as\u201d, the people land now, ' +
-          'and the next capture finds the brand by itself.</div>' +
+          'and the next capture finds the brand by itself. If it really is a brand we don\u2019t have yet, ' +
+          '\u201c+ New brand\u201d adds it under this name.</div>' +
         d.misses.map(function (m) {
           return '<div data-missrow="' + esc(m.name) + '" style="border-top:1px solid var(--border-soft);padding:10px 0">' +
             '<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">' +
@@ -2265,6 +2266,7 @@ function loadNeedsMisses() {
                 (m.suggestions.length ? 'or another brand\u2026' : 'Which brand is this?') +
                 '" autocomplete="off" style="width:220px;font-size:12.5px;padding:5px 9px">' +
               '<button class="btn-ghost" data-missact="attach">Attach</button>' +
+              '<button class="btn-ghost" data-missact="create" title="None of our brands \u2014 add it as a new one under this name and land these people on it">+ New brand</button>' +
               '<button class="btn-ghost danger" data-missact="dismiss" style="margin-left:auto">Not ours</button>' +
             '</div>' +
           '</div>';
@@ -2281,6 +2283,19 @@ document.getElementById('needs-misses').addEventListener('click', function (e) {
   if (!btn) return;
   var row = btn.closest('[data-missrow]');
   var missName = row.getAttribute('data-missrow');
+
+  if (btn.getAttribute('data-missact') === 'create') {
+    if (!window.confirm('Add \u201c' + missName + '\u201d as a new brand?\n\n' +
+      'Only do this if it isn\u2019t one of our brands under another name \u2014 otherwise you end up with two ' +
+      'records for the same company. The people captured with it go on the new brand.')) return;
+    btn.disabled = true;
+    api('createBrandFromMiss', { missName: missName }).then(function (r) {
+      toast(r.brandName + ' added \u2014 ' + r.contactsCreated + ' contact' +
+        (r.contactsCreated === 1 ? '' : 's'));
+      loadNeeds();
+    }).catch(function (err) { btn.disabled = false; toast(err.message); });
+    return;
+  }
 
   if (btn.getAttribute('data-missact') === 'dismiss') {
     if (!window.confirm('Drop \u201c' + missName + '\u201d and the people captured with it?\n\n' +

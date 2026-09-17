@@ -27,7 +27,7 @@ import { scanOps, listOps, getOps, updateOps, deleteOps, replyOps, forwardOps } 
 import { allShows, refreshShows, setGenreOverride, cachedShows, GENRES } from '@/lib/shows'
 import { newBoardCode } from '@/lib/board-access'
 import BRAND_SUMMARIES from '@/data/brand-summaries.json'
-import { readMisses, writeMisses, suggestBrands, addAka } from '@/lib/brand-match'
+import { readMisses, writeMisses, addMiss, suggestBrands, addAka } from '@/lib/brand-match'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
   listAttendees, listDupCandidates, mergeAttendees, deleteAttendee, importAttendees, segmentsOverview,
@@ -562,6 +562,50 @@ async function platformFetch(path: string, init: RequestInit = {}): Promise<any>
   return j
 }
 
+// Land people that were held with an unmatched SponsorUnited name onto a
+// brand, under exactly the rules a live capture uses: skip anyone already
+// on the brand, queue the decision-makers who have a LinkedIn URL, then
+// apply the per-brand cap. Shared by attachBrandMiss and
+// createBrandFromMiss so "existing brand" and "new brand" behave alike.
+async function landMissRows(brand: { id: string; tier: string | null; owner: string | null }, rows: any[]) {
+  let contactsCreated = 0, targetsCreated = 0, skipped = 0
+  for (const row of rows) {
+    try {
+      const dupe = await prisma.contact.findFirst({ where: { brandId: brand.id, name: row.name } })
+      if (dupe) { skipped++; continue }
+      const dm = looksLikeDecisionMaker(row.title ?? null)
+      const contact = await prisma.contact.create({
+        data: {
+          brandId: brand.id,
+          name: row.name,
+          title: row.title ?? null,
+          email: row.email ?? null,
+          phone: row.phone ?? null,
+          location: row.location ?? null,
+          linkedinUrl: row.linkedinUrl ?? null,
+          source: 'sponsorunited',
+          isDecisionMaker: dm,
+        },
+      })
+      contactsCreated++
+      if (dm && contact.linkedinUrl) {
+        await prisma.target.create({
+          data: {
+            brandId: brand.id,
+            contactId: contact.id,
+            fitScore: scoreFit(contact.title, brand.tier),
+            assignedTo: brand.owner ?? null,
+          },
+        })
+        targetsCreated++
+      }
+    } catch { skipped++ }
+  }
+  let targetsShelved = 0
+  try { targetsShelved = (await reconcileBrandTargets(brand.id)).shelvedNow } catch { /* non-fatal */ }
+  return { contactsCreated, targetsCreated, targetsShelved, skipped }
+}
+
 const handlers: Record<string, Handler> = {
 
   // -------- dashboard --------
@@ -978,8 +1022,11 @@ const handlers: Record<string, Handler> = {
   async importContacts({ rows }: any) {
     const result = {
       brandsCreated: 0, contactsCreated: 0, targetsCreated: 0, targetsShelved: 0,
-      skipped: 0, failed: 0, errors: [] as string[],
+      skipped: 0, failed: 0, heldForReview: 0, errors: [] as string[],
     }
+    // Rows whose brand name matched nothing — parked for Needs contacts
+    // rather than turned into brands. Same map shape as /api/ingest.
+    const missed = new Map<string, { externalId: string | null; rows: any[] }>()
 
     // Every brand a row touched, so the cap can be applied once per brand
     // at the end rather than after each contact.
@@ -1008,10 +1055,22 @@ const handlers: Record<string, Handler> = {
         ) ?? null
       }
       if (!brand) {
-        brand = await prisma.brand.create({
-          data: { name: row.brandName, category: row.category ?? null, tier: row.tier ?? null, source: 'sponsorunited' },
+        // Don't invent a brand from a name we don't recognise — that's
+        // how a second "818" gets created next to the real one. Park the
+        // person with the name instead; Needs contacts asks which brand
+        // it is, or lets it become a new brand on purpose. Same worklist
+        // the userscript capture feeds.
+        const held = missed.get(row.brandName) ?? { externalId: null as string | null, rows: [] as any[] }
+        held.rows.push({
+          name: row.name,
+          title: row.title ?? null,
+          email: row.email ?? null,
+          location: row.location ?? null,
+          linkedinUrl: row.linkedinUrl ?? null,
         })
-        result.brandsCreated++
+        missed.set(row.brandName, held)
+        result.heldForReview++
+        continue
       }
       touched.add(brand.id)
 
@@ -1065,6 +1124,16 @@ const handlers: Record<string, Handler> = {
         const r = await reconcileBrandTargets(brandId)
         result.targetsShelved += r.shelvedNow
       } catch { /* one brand's cap failing must not fail the import */ }
+    }
+
+    if (missed.size) {
+      try {
+        let misses = await readMisses(prisma)
+        for (const [name, held] of missed) misses = addMiss(misses, name, held.externalId, held.rows)
+        await writeMisses(prisma, misses)
+      } catch (err: any) {
+        result.errors.push(`miss log: ${err?.message ?? 'unknown error'}`)
+      }
     }
 
     return result
@@ -2575,44 +2644,42 @@ const handlers: Record<string, Handler> = {
       await prisma.brand.update({ where: { id: brand.id }, data: { aka: data.aka } })
     }
 
-    let contactsCreated = 0, targetsCreated = 0, skipped = 0
-    for (const row of miss.rows) {
-      try {
-        const dupe = await prisma.contact.findFirst({ where: { brandId: brand.id, name: row.name } })
-        if (dupe) { skipped++; continue }
-        const dm = looksLikeDecisionMaker(row.title ?? null)
-        const contact = await prisma.contact.create({
-          data: {
-            brandId: brand.id,
-            name: row.name,
-            title: row.title ?? null,
-            email: row.email ?? null,
-            phone: row.phone ?? null,
-            location: row.location ?? null,
-            linkedinUrl: row.linkedinUrl ?? null,
-            source: 'sponsorunited',
-            isDecisionMaker: dm,
-          },
-        })
-        contactsCreated++
-        if (dm && contact.linkedinUrl) {
-          await prisma.target.create({
-            data: {
-              brandId: brand.id,
-              contactId: contact.id,
-              fitScore: scoreFit(contact.title, brand.tier),
-              assignedTo: brand.owner ?? null,
-            },
-          })
-          targetsCreated++
-        }
-      } catch { skipped++ }
-    }
-    let targetsShelved = 0
-    try { targetsShelved = (await reconcileBrandTargets(brand.id)).shelvedNow } catch { /* non-fatal */ }
+    const landed = await landMissRows(brand, miss.rows)
 
     await writeMisses(prisma, misses.filter(m => m !== miss))
-    return { brandName: brand.name, aka: data.aka, contactsCreated, targetsCreated, targetsShelved, skipped }
+    return { brandName: brand.name, aka: data.aka, ...landed }
+  },
+
+  // The other answer to "which brand is this?": none of them, it's new.
+  // Creates the brand under the name SponsorUnited used and lands the
+  // held people on it. Deliberately a button someone presses rather than
+  // something an import does by itself — that's what used to leave two
+  // records for the same brand side by side.
+  async createBrandFromMiss({ missName, category, tier }: any) {
+    const misses = await readMisses(prisma)
+    const miss = misses.find(m => m.name.toLowerCase() === String(missName).trim().toLowerCase())
+    if (!miss) throw new Error('That name is no longer in the list — reload the page.')
+
+    // A brand by that name appearing between the miss and this click
+    // means attach, not create — never end up with two.
+    const clash = await prisma.brand.findFirst({
+      where: { name: { equals: miss.name, mode: 'insensitive' } },
+    })
+    if (clash) throw new Error(`"${clash.name}" already exists — use Attach instead.`)
+
+    const brand = await prisma.brand.create({
+      data: {
+        name: miss.name,
+        category: category ?? null,
+        tier: tier ?? null,
+        source: 'sponsorunited',
+        externalId: miss.externalId ?? null,
+      },
+    })
+    const landed = await landMissRows(brand, miss.rows)
+
+    await writeMisses(prisma, misses.filter(m => m !== miss))
+    return { brandName: brand.name, brandId: brand.id, created: true, ...landed }
   },
 
   // "Not one of ours" — drop the name and the people held with it. Only
