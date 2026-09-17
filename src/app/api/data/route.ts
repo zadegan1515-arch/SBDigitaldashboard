@@ -234,6 +234,15 @@ const TIER_BONUS: Record<string, number> = {
   established: 5, // biggest budgets, slowest process
 }
 
+// A brand where someone already wrote back is in conversation, not in
+// the cold-outreach pool: pitching a second person there reads as a
+// blast and steps on the live thread. Leo's rule. Hand-picking is
+// still allowed — that is the follow-up case.
+const NOT_IN_CONVERSATION = {
+  passedAt: null,
+  targets: { none: { status: { in: ['replied', 'converted'] as TargetStatus[] } } },
+} as const
+
 function scoreFit(title: string | null, tier: string | null): number {
   let score = 30
   if (title) {
@@ -727,7 +736,7 @@ const handlers: Record<string, Handler> = {
     // status without stamping queuedFor, and those rows used to match
     // neither branch and never surface in Today again.
     const candidates = await prisma.target.findMany({
-      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: { passedAt: null } },
+      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: NOT_IN_CONVERSATION },
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: 300,
       select: { id: true, fitScore: true, brand: { select: { category: true } } },
@@ -2030,6 +2039,18 @@ const handlers: Record<string, Handler> = {
     if (!brand) throw new Error('Brand not found')
     if (brand.passedAt) throw new Error(`${brand.name} is passed — bring it back from its brand page first.`)
 
+    // Someone at this brand already wrote back: stop cold-pitching it.
+    // A deliberate click (force) still goes through — that is a
+    // follow-up, not a recommendation.
+    const answered = brand.targets.find(t => ['replied', 'converted'].includes(t.status))
+    if (answered && !force) {
+      return {
+        queued: false, reason: 'inconversation',
+        contactName: answered.contact.name, status: answered.status,
+        brandId: brand.id, brandName: brand.name,
+      }
+    }
+
     // Two people per brand can be in play at once (Leo's rule): a
     // second thread doubles the odds without reading as a blast. Queue
     // is a no-op only once both slots are taken.
@@ -2170,7 +2191,7 @@ const handlers: Record<string, Handler> = {
     // getTodayQueue) and the specific brands it would work, so the
     // Schedule tab can offer Add / Pass on each before the day arrives.
     const candidates = await prisma.target.findMany({
-      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: { passedAt: null } },
+      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: NOT_IN_CONVERSATION },
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: 300,
       select: { fitScore: true, brand: { select: { id: true, name: true, category: true, website: true, linkedinUrl: true } } },
@@ -2188,7 +2209,7 @@ const handlers: Record<string, Handler> = {
     // Untouched brands (people on file, nothing queued or sent): the
     // side-list bench, and each day's "category not fully in" note.
     const allBrands = await prisma.brand.findMany({
-      where: { passedAt: null, doNotEmail: false, contacts: { some: {} } },
+      where: { ...NOT_IN_CONVERSATION, doNotEmail: false, contacts: { some: {} } },
       select: {
         id: true, name: true, category: true, website: true, linkedinUrl: true,
         _count: { select: { contacts: true } },
@@ -2438,7 +2459,7 @@ const handlers: Record<string, Handler> = {
       prisma.target.count({ where: { queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } } }),
       prisma.setting.findUnique({ where: { key: 'outreachPlan' } }),
       prisma.target.findMany({
-        where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: { passedAt: null } },
+        where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: NOT_IN_CONVERSATION },
         select: { brand: { select: { category: true } } },
       }),
     ])

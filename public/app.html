@@ -7083,6 +7083,9 @@ function queueToast(r) {
   if (r.queued) {
     toast(r.contactName + (r.promoted ? ' moved into today’s list' : r.revived ? ' brought back' : ' added to the queue') +
       (r.second ? ' — two people now in play at this brand' : ''));
+  } else if (r.reason === 'inconversation') {
+    // Replied already — that is a follow-up, not new outreach.
+    toast(r.brandName + ' already replied (' + r.contactName + ') — open the brand card to follow up instead of sending a new invite.');
   } else if (r.reason === 'already') {
     // Queued ≠ contacted. They are already in today's list; offer the
     // next person instead of dead-ending.
