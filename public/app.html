@@ -3472,7 +3472,19 @@ function loadOutreach() {
           var lbl = new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
           return '<span class="status" style="font-size:11.5px;padding:4px 10px;color:var(--ink-3)"' +
             ' title="' + esc(d.date) + '">' + lbl + ' ' + d.count + '</span>';
-        }).join('');
+        }).join('') +
+        (atCap ? '' : '<button class="btn-ghost" id="fill20" title="Queue the best untouched brands in today’s category until 20 people are in" style="padding:4px 12px;font-size:12px">Fill queue to 20</button>');
+      var fb = document.getElementById('fill20');
+      if (fb) fb.onclick = function () {
+        fb.disabled = true; fb.textContent = 'Filling…';
+        api('fillToday').then(function (f) {
+          if (f.already) toast('Today is already covered to ' + SENT_TODAY.cap);
+          else if (f.shortBy > 0) toast('Added ' + f.added + ' — still ' + f.shortBy + ' short: ' +
+            (f.theme ? esc(CAT_NAMES[f.theme] || f.theme) + ' is out of new brands with people. Add some on the Schedule tab.' : 'add brands on the Schedule tab.'));
+          else toast('Added ' + f.added + ' — today is full at ' + SENT_TODAY.cap);
+          loadOutreach();
+        }).catch(function (e) { toast(e.message); fb.disabled = false; fb.textContent = 'Fill queue to 20'; });
+      };
     }).catch(function () { sdBox.innerHTML = ''; });
   } else sdBox.innerHTML = '';
 
@@ -6729,7 +6741,7 @@ function queueToast(r) {
     toast(r.brandName + ': everyone reachable was already contacted — add a new person below');
     openPersonForBrand(r.brandId, r.brandName);
   } else if (r.reason === 'full') {
-    toast('Both slots at this brand are in play — ' + r.contactName);
+    toast('Already in play (invites out): ' + r.contactName + ' — track them in Results. Want someone else? Use → Queue on the brand page.');
   } else {
     toast('Already in play — ' + r.contactName + ' is ' + r.status);
   }

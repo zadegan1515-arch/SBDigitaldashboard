@@ -2312,6 +2312,55 @@ const handlers: Record<string, Handler> = {
     return { passed: true, contactName: contact.name }
   },
 
+  // "Fill queue to 20": when today's category can't reach the cap from
+  // the existing pool, queue the best untouched same-category brands
+  // (one person each, straight into today) until it can. Strictly the
+  // day's category — a shortfall is reported, never topped up from
+  // elsewhere.
+  async fillToday() {
+    const startOfDay = startOfLocalDay()
+    const [sentToday, stamped, planRow, candidates] = await Promise.all([
+      prisma.target.count({ where: { sentAt: { gte: startOfDay } } }),
+      prisma.target.count({ where: { queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } } }),
+      prisma.setting.findUnique({ where: { key: 'outreachPlan' } }),
+      prisma.target.findMany({
+        where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: { passedAt: null } },
+        select: { brand: { select: { category: true } } },
+      }),
+    ])
+    let planDay: any = null
+    try { planDay = planRow ? (JSON.parse(planRow.value)[localDayKey()] ?? null) : null } catch { planDay = null }
+    const cats = [...new Set(candidates.map(c => c.brand.category).filter(Boolean))].sort() as string[]
+    const theme = planDay?.category
+      ?? (cats.length ? cats[Math.floor(Date.now() / 86400000) % cats.length] : null)
+    const themePool = theme ? candidates.filter(c => c.brand.category === theme).length : candidates.length
+    let need = DAILY_SEND_LIMIT - sentToday - stamped - themePool
+    if (need <= 0) return { added: 0, shortBy: 0, theme, already: true }
+
+    const brands = await prisma.brand.findMany({
+      where: {
+        passedAt: null, doNotEmail: false, contacts: { some: {} },
+        ...(theme ? { category: theme } : {}),
+      },
+      select: {
+        id: true,
+        targets: { select: { status: true, shelved: true, sentAt: true } },
+      },
+    })
+    const untouched = brands.filter(b =>
+      !b.targets.some(t => t.sentAt ||
+        (!t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied', 'converted'].includes(t.status))))
+    let added = 0
+    for (const b of untouched) {
+      if (added >= need) break
+      try {
+        const r: any = await (handlers.queueBrandTargets as Handler)({ brandId: b.id })
+        if (r?.queued) added++
+      } catch { /* one bad brand never stops the fill */ }
+    }
+    return { added, shortBy: Math.max(0, need - added), theme }
+  },
+
   // Daily send counts for the LinkedIn tab strip — invites logged per
   // local day (undo/withdraw uncounts them, since sentAt is cleared).
   async sentByDay({ days = 14 }: any = {}) {
