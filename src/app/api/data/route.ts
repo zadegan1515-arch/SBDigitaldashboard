@@ -793,7 +793,7 @@ const handlers: Record<string, Handler> = {
     return rows
   },
 
-  async setTargetStatus({ targetId, status, actor, nextStep, followUpAt, clearFollowUp, clearSent }: any) {
+  async setTargetStatus({ targetId, status, actor, nextStep, followUpAt, clearFollowUp, clearSent, dmSent }: any) {
     const before = await prisma.target.findUnique({ where: { id: targetId } })
     if (!before) throw new Error('Target not found')
 
@@ -807,6 +807,9 @@ const handlers: Record<string, Handler> = {
         // send stamp wiped so today's cap and Reached don't count it.
         // A withdrawn invite is uncounted the same way.
         ...(clearSent || status === 'withdrawn' ? { sentAt: null } : {}),
+        // "DM sent ✓" on an accepted row — clears them from Today's
+        // send-the-DM list without touching the status.
+        ...(dmSent ? { dmSentAt: now } : {}),
         ...(status === 'replied' && !before.repliedAt ? { repliedAt: now } : {}),
         // Follow-up layer. clearFollowUp wipes it (e.g. when a deal closes);
         // otherwise set whatever was passed.
@@ -2122,6 +2125,18 @@ const handlers: Record<string, Handler> = {
     // rest to top up to the cap), simulated forward so a person shown
     // on Monday is not shown again on Wednesday. The count is exactly
     // the people that would go out.
+    // Today is special: people the LinkedIn tab already moved into the
+    // queue (stamped today) and invites already sent both count, so the
+    // Schedule's Today row always matches the actual queue.
+    const startToday = startOfLocalDay()
+    const [sentTodayN, stampedToday] = await Promise.all([
+      prisma.target.count({ where: { sentAt: { gte: startToday } } }),
+      prisma.target.findMany({
+        where: { queuedFor: { gte: startToday }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } },
+        orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
+        select: { fitScore: true, brand: { select: { id: true, name: true, category: true, website: true, linkedinUrl: true } } },
+      }),
+    ])
     let available = candidates.filter(c => !planned.has(c.brand.id))
     const days = Array.from({ length: 7 }, (_, i) => {
       const at = new Date(Date.now() + i * 24 * 60 * 60 * 1000)
@@ -2132,23 +2147,29 @@ const handlers: Record<string, Handler> = {
       // count toward the 20 but render as chips, not preview rows.
       const dayPlannedIds = new Set<string>(plan[key]?.brandIds ?? [])
       const plannedCount = candidates.filter(c => dayPlannedIds.has(c.brand.id)).length
-      const room = Math.max(0, DAILY_SEND_LIMIT - plannedCount)
+      // Today only: what's already stamped into the queue and what
+      // already went out both take up room before the simulation fills.
+      const sentUsed = i === 0 ? sentTodayN : 0
+      const alreadyIn = i === 0 ? stampedToday.filter(t => !dayPlannedIds.has(t.brand.id)) : []
+      const alreadyPlanned = i === 0 ? stampedToday.length - alreadyIn.length : 0
+      const room = Math.max(0, DAILY_SEND_LIMIT - plannedCount - sentUsed - stampedToday.length * (i === 0 ? 1 : 0))
       const take = [
         ...available.filter(c => theme && c.brand.category === theme),
         ...available.filter(c => !(theme && c.brand.category === theme)),
       ].slice(0, room)
       const taken = new Set(take)
       available = available.filter(c => !taken.has(c))
-      const rows: { id: string; name: string; people: number; website: string | null; linkedinUrl: string | null; topUp: boolean; category: string | null }[] = []
+      const rows: { id: string; name: string; people: number; website: string | null; linkedinUrl: string | null; topUp: boolean; inQueue: boolean; category: string | null }[] = []
       const rowByBrand = new Map<string, (typeof rows)[number]>()
-      for (const t of take) {
+      for (const t of [...alreadyIn.map(a => ({ ...a, _inQueue: true })), ...take.map(c => ({ ...c, _inQueue: false }))]) {
         const r = rowByBrand.get(t.brand.id)
         if (r) r.people += 1
         else {
           const row = {
             id: t.brand.id, name: t.brand.name, people: 1,
             website: t.brand.website, linkedinUrl: t.brand.linkedinUrl,
-            topUp: !!theme && t.brand.category !== theme, category: t.brand.category,
+            topUp: !!theme && t.brand.category !== theme,
+            inQueue: t._inQueue, category: t.brand.category,
           }
           rowByBrand.set(t.brand.id, row)
           rows.push(row)
@@ -2158,7 +2179,8 @@ const handlers: Record<string, Handler> = {
         date: key,
         category: theme,
         auto: !plan[key]?.category,
-        ready: Math.min(DAILY_SEND_LIMIT, take.length + plannedCount),
+        ready: Math.min(DAILY_SEND_LIMIT, sentUsed + alreadyIn.length + alreadyPlanned + plannedCount + take.length),
+        sent: sentUsed,
         brands: rows,
         // Same-category brands whose people are NOT in the queue yet —
         // the day's Add-more section offers to put them in.

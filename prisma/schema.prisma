@@ -186,6 +186,10 @@ model Target {
   nextStep   String?
   followUpAt DateTime?
 
+  // When the first DM after an accept actually went out — clears the
+  // person from Today's "They accepted — send the DM" list.
+  dmSentAt DateTime?
+
   // Set when it lands in a day's send list, so "Today" is stable
   // and doesn't reshuffle mid-session.
   queuedFor DateTime?
