@@ -698,61 +698,71 @@ const handlers: Record<string, Handler> = {
       }
     }
 
+    // Category day is strict now (Leo): yesterday's unsent stamps from
+    // other days don't carry over — they go back to the pool and come
+    // up again on their own category's day. Nothing is lost, only
+    // unstamped. Today's hand-picks (stamped today) always stay.
+    await prisma.target.updateMany({
+      where: { queuedFor: { not: null, lt: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false },
+      data: { queuedFor: null },
+    })
+
     const handPicked = await prisma.target.findMany({
       where: { queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } },
       include,
       orderBy: { queuedFor: 'desc' },
     })
-    if (room === 0) return { theme: planDay?.category ?? null, targets: await ensureTemplateDrafts(handPicked) }
-
-    // Older stamps still not sent — yesterday's leftovers. Shelved
-    // targets (parked by the per-brand cap) never enter the queue.
-    const roomLeft = Math.max(0, room - handPicked.length)
-    const carried = await prisma.target.findMany({
-      where: { queuedFor: { not: null, lt: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } },
-      include,
-      orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
-      take: roomLeft,
-    })
-    if (handPicked.length + carried.length >= room) {
-      return { theme: planDay?.category ?? null, targets: await ensureTemplateDrafts([...handPicked, ...carried]) }
-    }
 
     // Includes 'drafted': drafting from the All-targets tab sets the
     // status without stamping queuedFor, and those rows used to match
     // neither branch and never surface in Today again.
-    // Category day (Leo's rule): the day's fresh picks come from ONE
-    // category, rotating daily through every category that still has
-    // people to invite — alcohol day, fintech day, and so on. When the
-    // day's category runs short, the best of the rest top it up.
     const candidates = await prisma.target.findMany({
       where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: { passedAt: null } },
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: 300,
-      select: { id: true, brand: { select: { category: true } } },
+      select: { id: true, fitScore: true, brand: { select: { category: true } } },
     })
     const cats = [...new Set(candidates.map(c => c.brand.category).filter(Boolean))].sort() as string[]
     // A planned category (Schedule tab) beats the automatic rotation.
     const theme = planDay?.category
       ?? (cats.length ? cats[Math.floor(Date.now() / 86400000) % cats.length] : null)
-    const ordered = theme
-      ? [...candidates.filter(c => c.brand.category === theme), ...candidates.filter(c => c.brand.category !== theme)]
-      : candidates
-    const picks = ordered.slice(0, room - handPicked.length - carried.length)
-    if (picks.length === 0) return { theme, targets: await ensureTemplateDrafts([...handPicked, ...carried]) }
 
-    await prisma.target.updateMany({
-      where: { id: { in: picks.map(p => p.id) } },
-      data: { queuedFor: new Date() },
-    })
+    // The day is ONE category: its people fill first (best fit), and
+    // only when the category runs short do the best of the rest top the
+    // day up to the cap (labeled as top-ups client-side).
+    const themed = theme ? candidates.filter(c => c.brand.category === theme) : candidates
+    const rest = theme ? candidates.filter(c => c.brand.category !== theme) : []
+    const roomLeft = Math.max(0, room - handPicked.length)
+    const picks = [...themed, ...rest].slice(0, roomLeft)
 
-    const fresh = await prisma.target.findMany({
-      where: { id: { in: picks.map(p => p.id) } },
-      include,
-      orderBy: { fitScore: 'desc' },
-    })
+    if (picks.length) {
+      await prisma.target.updateMany({
+        where: { id: { in: picks.map(p => p.id) } },
+        data: { queuedFor: new Date() },
+      })
+    }
+    const fresh = picks.length
+      ? await prisma.target.findMany({ where: { id: { in: picks.map(p => p.id) } }, include })
+      : []
+    // Theme rows before top-ups, best fit first within each.
+    fresh.sort((a, b) =>
+      ((b.brand.category === theme ? 1 : 0) - (a.brand.category === theme ? 1 : 0)) ||
+      b.fitScore - a.fitScore)
 
-    return { theme, targets: await ensureTemplateDrafts([...handPicked, ...[...carried, ...fresh].sort((a, b) => b.fitScore - a.fitScore)]) }
+    // "The rest in that category" — everyone in today's category beyond
+    // the cap, ready to send if there's room. Not stamped: sending one
+    // still counts toward the 20 via sentAt.
+    const pickedIds = new Set(picks.map(p => p.id))
+    const moreIds = themed.filter(c => !pickedIds.has(c.id)).slice(0, 40).map(c => c.id)
+    const more = moreIds.length
+      ? await prisma.target.findMany({ where: { id: { in: moreIds } }, include, orderBy: { fitScore: 'desc' } })
+      : []
+
+    return {
+      theme,
+      targets: await ensureTemplateDrafts([...handPicked, ...fresh]),
+      more: await ensureTemplateDrafts(more),
+    }
   },
 
   async listTargets({ status, category, search, take = 200, shelved = false }: any) {

@@ -3221,6 +3221,8 @@ var mode = 'today', statusFilter = 'all';
 // Remembered for the session only.
 var OPEN_DRAFTS = {};
 var TARGET_CACHE = {};
+// Today's category — queued rows outside it render a "top-up" tag.
+var QUEUE_THEME = null;
 
 function targetRow(t) {
   var d = (t.drafts || [])[0];
@@ -3236,6 +3238,8 @@ function targetRow(t) {
       (t.status === 'accepted' && t.updatedAt && (Date.now() - new Date(t.updatedAt).getTime()) > 3 * 864e5
         ? '<span class="status declined">DM overdue</span>' : '') +
       (t.brand.category ? '<span>' + esc(CAT_NAMES[t.brand.category] || t.brand.category) + '</span>' : '') +
+      (isPre && QUEUE_THEME && t.brand.category && t.brand.category !== QUEUE_THEME
+        ? '<span class="fit" title="Not today’s category — filling the day up to 20">top-up</span>' : '') +
       (t.brand.workPeople ? '<span>·</span><span class="fit" title="This brand’s people-to-work setting (brand page)">work ' + t.brand.workPeople + '</span>' : '') +
       (t.nextStep ? '<span>·</span><span class="fit">▸ ' + esc(t.nextStep) +
         (t.followUpAt ? ' (' + shortDate(t.followUpAt) + ')' : '') + '</span>' : '') +
@@ -3407,14 +3411,16 @@ function loadOutreach() {
           // an older deploy still work.
           var tq = r[1] || {};
           var list = tq.targets || (tq.length !== undefined ? tq : []);
-          return { accepted: r[0] || [], list: list, theme: tq.theme || null, sentToday: sentToday, stale: stale };
+          return { accepted: r[0] || [], list: list, theme: tq.theme || null, more: tq.more || [], sentToday: sentToday, stale: stale };
         })
-    : api('listTargets', { status: statusFilter }).then(function (l) { return { accepted: [], list: l || [], theme: null, sentToday: [], stale: [] }; });
+    : api('listTargets', { status: statusFilter }).then(function (l) { return { accepted: [], list: l || [], theme: null, more: [], sentToday: [], stale: [] }; });
 
   return call.then(function (r) {
     var list = r.list;
+    QUEUE_THEME = r.theme || null;
     r.accepted.forEach(function (t) { TARGET_CACHE[t.id] = t; });
     r.sentToday.forEach(function (t) { TARGET_CACHE[t.id] = t; });
+    (r.more || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
     (list || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
     document.getElementById('queue-head').innerHTML = mode === 'today'
       ? 'To send today' + (r.theme ? ' — ' + esc(CAT_NAMES[r.theme] || r.theme) + ' day' : '') + ' <span class="n">' + list.length + '</span>'
@@ -3427,6 +3433,13 @@ function loadOutreach() {
         groupedTargetRows(r.accepted) +
         (list.length ? '<div class="count-head" style="margin-top:20px">New invites</div>' : '')
       : '';
+    // "The rest in that category" — ready rows past today's 20, in
+    // case there's room. Mark sent still counts toward the cap.
+    var moreBlock = (r.more || []).length
+      ? '<div class="count-head" style="margin-top:20px">More in ' + (r.theme ? esc(CAT_NAMES[r.theme] || r.theme) : 'this category') + ' — ready if you have room <span class="n">' + r.more.length + '</span></div>' +
+        '<div class="hint" style="margin:2px 0 10px">Beyond today’s 20. Sending one still counts toward the daily cap.</div>' +
+        groupedTargetRows(r.more)
+      : '';
     var sentBlock = r.sentToday.length
       ? '<div class="count-head" style="margin-top:20px">Sent today — waiting on accepts <span class="n">' + r.sentToday.length + '</span></div>' +
         groupedTargetRows(r.sentToday)
@@ -3438,14 +3451,14 @@ function loadOutreach() {
         groupedTargetRows(r.stale)
       : '';
 
-    box.innerHTML = list.length || r.accepted.length || r.sentToday.length || (r.stale || []).length
-      ? acceptedBlock + groupedTargetRows(list) + sentBlock + staleBlock
+    box.innerHTML = list.length || r.accepted.length || (r.more || []).length || r.sentToday.length || (r.stale || []).length
+      ? acceptedBlock + groupedTargetRows(list) + moreBlock + sentBlock + staleBlock
       : '<div class="panel"><div class="empty"><h3>Nothing here</h3>' +
         '<p>' + (mode === 'all'
           ? (statusFilter !== 'all'
               ? 'No targets with status “' + esc(statusFilter) + '”.'
               : 'Import contacts from SponsorUnited and targets appear here, ordered by fit.')
-          : 'Either nothing is queued, or you have already sent 10 today — ' +
+          : 'Either nothing is queued, or you have already sent 20 today — ' +
             'the daily cap that keeps the LinkedIn account out of trouble. ' +
             'All targets shows everything regardless.') +
         '</p></div></div>';
