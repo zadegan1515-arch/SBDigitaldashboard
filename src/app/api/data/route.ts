@@ -2312,6 +2312,29 @@ const handlers: Record<string, Handler> = {
     return { passed: true, contactName: contact.name }
   },
 
+  // Daily send counts for the LinkedIn tab strip — invites logged per
+  // local day (undo/withdraw uncounts them, since sentAt is cleared).
+  async sentByDay({ days = 14 }: any = {}) {
+    const n = Math.max(1, Math.min(31, days))
+    const since = new Date(startOfLocalDay().getTime() - (n - 1) * 864e5)
+    const rows = await prisma.target.findMany({
+      where: { sentAt: { gte: since } },
+      select: { sentAt: true },
+    })
+    const counts: Record<string, number> = {}
+    for (const r of rows) {
+      const k = localDayKey(r.sentAt!)
+      counts[k] = (counts[k] ?? 0) + 1
+    }
+    return {
+      cap: DAILY_SEND_LIMIT,
+      days: Array.from({ length: n }, (_, i) => {
+        const key = localDayKey(new Date(Date.now() - (n - 1 - i) * 864e5))
+        return { date: key, count: counts[key] ?? 0 }
+      }),
+    }
+  },
+
   // "Off queue" is company-wide (Leo): every queued/drafted person at
   // the brand is shelved in one go. Nothing deleted — the brand page
   // promotes them back, and the brand returns to next-best.

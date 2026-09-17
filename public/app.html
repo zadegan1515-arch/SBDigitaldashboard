@@ -571,6 +571,7 @@
       </div>
       <div id="oq-new-slot" style="max-width:560px"></div>
       <div id="status-filters" class="chips" style="display:none"></div>
+      <div id="sent-days" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 12px"></div>
       <div class="count-head" id="queue-head">To send today <span class="n"></span></div>
       <div id="targets"></div>
       <div id="nextbest"></div>
@@ -3275,6 +3276,17 @@ var OPEN_DRAFTS = {};
 var TARGET_CACHE = {};
 // Today's category — queued rows outside it render a "top-up" tag.
 var QUEUE_THEME = null;
+// The "Sent today: N / cap" chip state — Mark sent / Undo / Withdrew
+// tick it in place, no reload.
+var SENT_TODAY = { count: 0, cap: 20 };
+function bumpSentToday(d) {
+  SENT_TODAY.count = Math.max(0, SENT_TODAY.count + d);
+  var chip = document.getElementById('sent-today-chip');
+  if (!chip) return;
+  var atCap = SENT_TODAY.count >= SENT_TODAY.cap;
+  chip.style.color = atCap ? '#8fd6a8' : 'var(--ink-1)';
+  chip.textContent = 'Sent today: ' + SENT_TODAY.count + ' / ' + SENT_TODAY.cap + (atCap ? ' ✓' : '');
+}
 
 function targetRow(t) {
   var d = (t.drafts || [])[0];
@@ -3442,6 +3454,27 @@ function loadOutreach() {
   var box = document.getElementById('targets');
   box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   renderStatusFilters();
+
+  // Sends per day — today first and bold against the cap, then the
+  // last week, so pace is visible at a glance.
+  var sdBox = document.getElementById('sent-days');
+  if (mode === 'today') {
+    api('sentByDay', { days: 8 }).then(function (r) {
+      var ds = r.days || [];
+      if (!ds.length) { sdBox.innerHTML = ''; return; }
+      var today = ds[ds.length - 1];
+      SENT_TODAY.count = today.count; SENT_TODAY.cap = r.cap;
+      var atCap = today.count >= r.cap;
+      sdBox.innerHTML =
+        '<span class="status" id="sent-today-chip" style="font-size:12px;padding:5px 12px;font-weight:700;color:' + (atCap ? '#8fd6a8' : 'var(--ink-1)') + '">' +
+          'Sent today: ' + today.count + ' / ' + r.cap + (atCap ? ' ✓' : '') + '</span>' +
+        ds.slice(0, -1).map(function (d) {
+          var lbl = new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+          return '<span class="status" style="font-size:11.5px;padding:4px 10px;color:var(--ink-3)"' +
+            ' title="' + esc(d.date) + '">' + lbl + ' ' + d.count + '</span>';
+        }).join('');
+    }).catch(function () { sdBox.innerHTML = ''; });
+  } else sdBox.innerHTML = '';
 
   // The queue count lives here in the subtitle, not on the top nav.
   api('countQueued').then(function (r) {
@@ -6997,6 +7030,7 @@ document.getElementById('targets').addEventListener('click', function (e) {
   if (act === 'sent') {
     var st = TARGET_CACHE[id];
     if (st) { st.status = 'sent'; st.sentAt = st.sentAt || new Date().toISOString(); refreshRow(id); }
+    bumpSentToday(1);
     toast('Invite logged — press “They accepted” when it lands');
     api('setTargetStatus', { targetId: id, status: 'sent', actor: ME.owner || null })
       .catch(function (err) { toast(err.message); loadOutreach(); });
@@ -7026,6 +7060,7 @@ document.getElementById('targets').addEventListener('click', function (e) {
   if (act === 'unsend') {
     var ut = TARGET_CACHE[id];
     if (ut) { ut.status = 'drafted'; ut.sentAt = null; refreshRow(id); }
+    bumpSentToday(-1);
     toast('Back in the queue — that send is uncounted');
     api('setTargetStatus', { targetId: id, status: 'drafted', clearSent: true, actor: ME.owner || null })
       .catch(function (err) { toast(err.message); loadOutreach(); });
@@ -7034,6 +7069,7 @@ document.getElementById('targets').addEventListener('click', function (e) {
   if (act === 'withdrew') {
     var wt = TARGET_CACHE[id];
     if (wt) { wt.status = 'withdrawn'; wt.sentAt = null; refreshRow(id); }
+    bumpSentToday(-1);
     toast('Logged as withdrawn — Re-queue when you want another go');
     api('setTargetStatus', { targetId: id, status: 'withdrawn', actor: ME.owner || null })
       .catch(function (err) { toast(err.message); loadOutreach(); });
