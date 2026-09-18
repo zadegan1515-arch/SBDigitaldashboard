@@ -2639,6 +2639,54 @@ const handlers: Record<string, Handler> = {
     return { sha: process.env.VERCEL_GIT_COMMIT_SHA || 'dev' }
   },
 
+  // Everyone who wrote back, plus the brand-level rollup: how many of
+  // the people invited at a brand have answered ("1 of 3 from Yerba").
+  async repliedOverview() {
+    const replied = await prisma.target.findMany({
+      where: { status: { in: ['replied', 'converted'] } },
+      orderBy: [{ repliedAt: 'desc' }, { updatedAt: 'desc' }],
+      select: {
+        id: true, status: true, sentAt: true, repliedAt: true,
+        nextStep: true, followUpAt: true,
+        brand: { select: { id: true, name: true, category: true } },
+        contact: { select: { name: true, title: true, linkedinUrl: true } },
+      },
+    })
+
+    // Invited-per-brand for the denominator: anyone an invite went to.
+    const invited = await prisma.target.findMany({
+      where: { sentAt: { not: null } },
+      select: { brandId: true },
+    })
+    const invitedBy: Record<string, number> = {}
+    for (const t of invited) invitedBy[t.brandId] = (invitedBy[t.brandId] ?? 0) + 1
+
+    const byBrand = new Map<string, { id: string; name: string; category: string | null; replied: number; invited: number; lastAt: Date | null }>()
+    for (const t of replied) {
+      const row = byBrand.get(t.brand.id) ?? {
+        id: t.brand.id, name: t.brand.name, category: t.brand.category,
+        replied: 0, invited: invitedBy[t.brand.id] ?? 0, lastAt: null,
+      }
+      row.replied += 1
+      const at = t.repliedAt
+      if (at && (!row.lastAt || at > row.lastAt)) row.lastAt = at
+      byBrand.set(t.brand.id, row)
+    }
+
+    return {
+      people: replied.map(t => ({
+        id: t.id, status: t.status,
+        brandId: t.brand.id, brand: t.brand.name,
+        person: t.contact.name, title: t.contact.title,
+        linkedinUrl: t.contact.linkedinUrl,
+        sentAt: t.sentAt, repliedAt: t.repliedAt,
+        nextStep: t.nextStep, followUpAt: t.followUpAt,
+      })),
+      brands: [...byBrand.values()].sort((a, b) =>
+        b.replied - a.replied || (b.lastAt?.getTime() ?? 0) - (a.lastAt?.getTime() ?? 0)),
+    }
+  },
+
   // Daily send counts for the LinkedIn tab strip — invites logged per
   // local day (undo/withdraw uncounts them, since sentAt is cleared).
   async sentByDay({ days = 14 }: any = {}) {

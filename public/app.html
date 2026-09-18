@@ -590,6 +590,8 @@
       <div class="sub" id="rc-sub">Everyone we've contacted on LinkedIn or by email, grouped by brand.</div>
       <div class="kpi-row" id="rc-kpis"></div>
       <div id="rc-accepted"></div>
+      <div id="rc-replied"></div>
+      <div id="rc-responded"></div>
       <div id="rc-days"></div>
       <div style="display:flex;gap:8px;margin-top:18px;max-width:420px">
         <input class="inp" id="rc-q" placeholder="Filter by brand or person…" style="width:100%" autocomplete="off">
@@ -2650,6 +2652,76 @@ document.getElementById('rc-accepted').addEventListener('click', function (e) {
     .catch(function (err) { toast(err.message); loadReached(); });
 });
 
+// Everyone who wrote back, and which brands they came from. Same shape
+// as the accepted list above it, so the follow-up work reads as one
+// column: accepted → replied → who is actually talking to us.
+function renderReplied() {
+  var pBox = document.getElementById('rc-replied');
+  var bBox = document.getElementById('rc-responded');
+  if (!pBox || !bBox) return;
+  api('repliedOverview').then(function (d) {
+    var people = d.people || [];
+    pBox.innerHTML = people.length
+      ? '<div class="count-head" style="margin-top:18px;color:var(--blue)">They replied — keep it moving <span class="n">' + people.length + '</span></div>' +
+        people.map(function (t) {
+          return '<div class="target" data-repliedrow="' + esc(t.id) + '">' +
+            '<div class="t-main"><div class="t-line">' +
+              '<span class="t-brand" data-brand="' + esc(t.brandId) + '" style="cursor:pointer">' + esc(t.brand) + '</span>' +
+              '<span class="t-sep">·</span>' + esc(t.person) +
+              (t.title ? ' <span class="t-title">— ' + esc(t.title) + '</span>' : '') +
+            '</div>' +
+            '<div class="t-meta">' +
+              '<span class="status ' + esc(t.status) + '">' + esc(t.status === 'converted' ? 'won' : 'replied') + '</span>' +
+              (t.repliedAt ? '<span>· replied ' + shortDate(t.repliedAt) + '</span>' : '') +
+              (t.nextStep ? '<span>· <span class="fit">▸ ' + esc(t.nextStep) +
+                (t.followUpAt ? ' (' + shortDate(t.followUpAt) + ')' : '') + '</span></span>' : '') +
+            '</div></div>' +
+            '<div class="t-actions">' +
+              (t.linkedinUrl ? '<a class="btn-ghost" href="' + esc(t.linkedinUrl) + '" target="_blank" rel="noopener">Profile ↗</a>' : '') +
+              '<button class="btn-ghost" data-repact="nextstep" data-rpt="' + esc(t.id) + '" title="What happens next, and when">Next step</button>' +
+              (t.status === 'converted'
+                ? '<span class="status converted" style="font-size:12px;padding:5px 12px">Won ✓</span>'
+                : '<button class="btn-draft" data-repact="won" data-rpt="' + esc(t.id) + '" title="Closed it">Won</button>') +
+            '</div></div>';
+        }).join('')
+      : '';
+
+    var brands = d.brands || [];
+    bBox.innerHTML = brands.length
+      ? '<div class="count-head" style="margin-top:18px">Brands that responded <span class="n">' + brands.length + '</span></div>' +
+        '<div class="panel panel-pad">' +
+        brands.map(function (b) {
+          return '<div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--border)">' +
+            '<span data-brand="' + esc(b.id) + '" style="cursor:pointer;font-size:13px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+              esc(b.name) + '</span>' +
+            (b.category ? '<span style="font-size:11.5px;color:var(--ink-3)">' + esc(CAT_NAMES[b.category] || b.category) + '</span>' : '') +
+            '<span class="status replied" style="font-size:12px;padding:4px 11px">' +
+              b.replied + ' of ' + (b.invited || b.replied) + ' replied</span>' +
+            (b.lastAt ? '<span style="font-size:11.5px;color:var(--ink-3);white-space:nowrap">' + shortDate(b.lastAt) + '</span>' : '') +
+          '</div>';
+        }).join('') + '</div>'
+      : '';
+  }).catch(function () { pBox.innerHTML = ''; bBox.innerHTML = ''; });
+}
+
+document.getElementById('rc-replied').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-repact]');
+  if (!btn) return;
+  var tid = btn.getAttribute('data-rpt');
+  var row = btn.closest('[data-repliedrow]');
+  if (btn.getAttribute('data-repact') === 'won') {
+    btn.replaceWith(Object.assign(document.createElement('span'), {
+      className: 'status converted', textContent: 'Won ✓',
+    }));
+    toast('Marked won 🎉');
+    api('setTargetStatus', { targetId: tid, status: 'converted', actor: ME.owner || null, clearFollowUp: true })
+      .catch(function (err) { toast(err.message); loadReached(); });
+    return;
+  }
+  // Next step: reuse the same form the queue uses, anchored to this row.
+  if (row) openNextStepForm(tid, row);
+});
+
 function renderSentDays() {
   var box = document.getElementById('rc-days');
   if (!box) return;
@@ -2703,6 +2775,7 @@ function loadReached() {
       '<div class="kpi money"><div class="kpi-label">Replied</div><div class="kpi-value">' + tt.replied + '</div><div class="kpi-note">' + pct(tt.replied) + ' reply rate</div></div>' +
       '<div class="kpi"><div class="kpi-label">Sent today</div><div class="kpi-value" id="rc-today">—</div><div class="kpi-note">of ' + SENT_TODAY.cap + ' a day</div></div>';
     renderAcceptedDms();
+    renderReplied();
     renderSentDays();
     renderReached();
   }).catch(function (e) {
@@ -3879,8 +3952,12 @@ function openNextStepForm(id, row) {
         ct.nextStep = wrap.querySelector('#ns-step').value || null;
         ct.followUpAt = wrap.querySelector('#ns-date').value || null;
       }
+      var inQueue = !!document.querySelector('#targets .target[data-id="' + id + '"]');
       wrap.remove();
-      if (ct) refreshRow(id);
+      // Called from Results too, where there is no queue row to swap —
+      // refresh that list instead of bouncing to the LinkedIn tab.
+      if (ct && inQueue) refreshRow(id);
+      else if (typeof renderReplied === 'function' && document.getElementById('rc-replied')) renderReplied();
       toast('Saved — it\'s on your dashboard');
     }).catch(function (e) { toast(e.message); });
   };
