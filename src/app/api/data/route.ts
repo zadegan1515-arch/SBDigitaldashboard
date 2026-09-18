@@ -851,7 +851,7 @@ const handlers: Record<string, Handler> = {
       : []
 
     return {
-      plannedSkipped,
+      plannedSkipped, sentToday, cap: DAILY_SEND_LIMIT,
       theme,
       targets: await ensureTemplateDrafts([...handPicked, ...fresh]),
       more: await ensureTemplateDrafts(more),

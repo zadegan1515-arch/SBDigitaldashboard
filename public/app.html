@@ -589,6 +589,7 @@
       <h1>Results</h1>
       <div class="sub" id="rc-sub">Everyone we've contacted on LinkedIn or by email, grouped by brand.</div>
       <div class="kpi-row" id="rc-kpis"></div>
+      <div id="rc-accepted"></div>
       <div id="rc-days"></div>
       <div style="display:flex;gap:8px;margin-top:18px;max-width:420px">
         <input class="inp" id="rc-q" placeholder="Filter by brand or person…" style="width:100%" autocomplete="off">
@@ -2591,6 +2592,64 @@ function renderReached() {
 
 // Invites per day for the last two weeks — pace and consistency. Lives
 // in Results; the LinkedIn tab keeps only today's number.
+// Accepted invites still waiting on their DM. This is the follow-up
+// list, so it belongs with the results, not in the send queue.
+var RC_ACCEPTED = {};
+function renderAcceptedDms() {
+  var box = document.getElementById('rc-accepted');
+  if (!box) return;
+  api('listTargets', { status: 'accepted' }).then(function (rows) {
+    var waiting = (rows || []).filter(function (t) { return !t.dmSentAt; });
+    waiting.forEach(function (t) { RC_ACCEPTED[t.id] = t; });
+    if (!waiting.length) { box.innerHTML = ''; return; }
+    box.innerHTML =
+      '<div class="count-head" style="margin-top:18px;color:var(--good)">They accepted — send the DM <span class="n">' + waiting.length + '</span></div>' +
+      waiting.map(function (t) {
+        var d = (t.drafts || [])[0];
+        return '<div class="target" data-rcrow="' + esc(t.id) + '">' +
+          '<div class="t-main"><div class="t-line">' +
+            '<span class="t-brand" data-brand="' + esc(t.brandId) + '" style="cursor:pointer">' + esc(t.brand.name) + '</span>' +
+            '<span class="t-sep">·</span>' + esc(t.contact.name) +
+            (t.contact.title ? ' <span class="t-title">— ' + esc(t.contact.title) + '</span>' : '') +
+          '</div>' +
+          '<div class="t-meta"><span class="status accepted">accepted</span>' +
+            (t.sentAt ? '<span>· invited ' + shortDate(t.sentAt) + '</span>' : '') + '</div>' +
+          '</div>' +
+          '<div class="t-actions">' +
+            (d ? '<button class="btn-draft" data-rcdm="copy" data-rct="' + esc(t.id) + '" title="Copy the DM and paste it into your LinkedIn chat">Copy DM</button>' : '') +
+            '<button class="btn-ghost" data-rcdm="dmsent" data-rct="' + esc(t.id) + '" title="Logged: the DM went out">DM sent ✓</button>' +
+            (t.contact.linkedinUrl ? '<a class="btn-ghost" href="' + esc(t.contact.linkedinUrl) + '" target="_blank" rel="noopener">Profile ↗</a>' : '') +
+            '<button class="btn-ghost" data-rcdm="replied" data-rct="' + esc(t.id) + '" title="Did they write back?">Replied?</button>' +
+          '</div></div>';
+      }).join('');
+  }).catch(function () { box.innerHTML = ''; });
+}
+
+document.getElementById('rc-accepted').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-rcdm]');
+  if (!btn) return;
+  var act = btn.getAttribute('data-rcdm');
+  var tid = btn.getAttribute('data-rct');
+  var t = RC_ACCEPTED[tid] || {};
+
+  if (act === 'copy') {
+    var d = (t.drafts || [])[0] || {};
+    if (!d.firstMessage) { toast('Nothing drafted yet'); return; }
+    navigator.clipboard.writeText(d.firstMessage).then(function () {
+      toast('First DM copied — paste it into your LinkedIn chat');
+    }, function () { toast('Could not copy'); });
+    return;
+  }
+  // Both outcomes take the row off this list, in place.
+  var row = btn.closest('[data-rcrow]');
+  if (row) row.remove();
+  toast(act === 'dmsent' ? 'DM logged — tracked in the list below until they reply' : 'Reply logged');
+  api('setTargetStatus', act === 'dmsent'
+    ? { targetId: tid, dmSent: true, actor: ME.owner || null }
+    : { targetId: tid, status: 'replied', actor: ME.owner || null })
+    .catch(function (err) { toast(err.message); loadReached(); });
+});
+
 function renderSentDays() {
   var box = document.getElementById('rc-days');
   if (!box) return;
@@ -2643,6 +2702,7 @@ function loadReached() {
       '<div class="kpi"><div class="kpi-label">Accepted</div><div class="kpi-value">' + tt.accepted + '</div><div class="kpi-note">' + pct(tt.accepted) + ' accept rate</div></div>' +
       '<div class="kpi money"><div class="kpi-label">Replied</div><div class="kpi-value">' + tt.replied + '</div><div class="kpi-note">' + pct(tt.replied) + ' reply rate</div></div>' +
       '<div class="kpi"><div class="kpi-label">Sent today</div><div class="kpi-value" id="rc-today">—</div><div class="kpi-note">of ' + SENT_TODAY.cap + ' a day</div></div>';
+    renderAcceptedDms();
     renderSentDays();
     renderReached();
   }).catch(function (e) {
@@ -3680,8 +3740,8 @@ function bumpSentToday(d) {
   var chip = document.getElementById('sent-today-chip');
   if (!chip) return;
   var atCap = SENT_TODAY.count >= SENT_TODAY.cap;
-  chip.style.color = atCap ? '#8fd6a8' : 'var(--ink-1)';
-  chip.textContent = 'Sent today: ' + SENT_TODAY.count + ' / ' + SENT_TODAY.cap + (atCap ? ' ✓' : '');
+  chip.style.color = atCap ? '#8fd6a8' : 'var(--ink-3)';
+  chip.textContent = SENT_TODAY.count + ' of ' + SENT_TODAY.cap + ' sent today' + (atCap ? ' ✓' : '');
 }
 
 function targetRow(t) {
@@ -3878,7 +3938,7 @@ function loadOutreach() {
   // waiting on their DM (first), and everyone marked sent today (last,
   // so a mis-click is one “↩ Not sent” away instead of vanishing).
   var call = mode === 'today'
-    ? Promise.all([api('listTargets', { status: 'accepted' }), api('getTodayQueue'), api('listTargets', { status: 'sent' })])
+    ? Promise.all([Promise.resolve([]), api('getTodayQueue'), api('listTargets', { status: 'sent' })])
         .then(function (r) {
           var midnight = new Date(); midnight.setHours(0, 0, 0, 0);
           var weekAgo = Date.now() - 7 * 864e5;
@@ -3890,8 +3950,9 @@ function loadOutreach() {
           var list = tq.targets || (tq.length !== undefined ? tq : []);
           // Accepted people whose DM already went out are done here —
           // they live on in Results until the reply comes.
-          var awaitingDm = (r[0] || []).filter(function (t) { return !t.dmSentAt; });
-          return { accepted: awaitingDm, list: list, theme: tq.theme || null, more: tq.more || [], sentToday: sentToday, stale: stale };
+          SENT_TODAY.count = tq.sentToday || 0;
+          SENT_TODAY.cap = tq.cap || SENT_TODAY.cap;
+          return { accepted: [], list: list, theme: tq.theme || null, more: tq.more || [], sentToday: sentToday, stale: stale };
         })
     : api('listTargets', { status: statusFilter }).then(function (l) { return { accepted: [], list: l || [], theme: null, more: [], sentToday: [], stale: [] }; });
 
@@ -3904,6 +3965,9 @@ function loadOutreach() {
     (list || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
     document.getElementById('queue-head').innerHTML = mode === 'today'
       ? 'To send today' + (r.theme ? ' — ' + esc(CAT_NAMES[r.theme] || r.theme) + ' day' : '') + ' <span class="n">' + list.length + '</span>' +
+        '<span id="sent-today-chip" style="margin-left:10px;font-size:12px;font-weight:600;color:' +
+          (SENT_TODAY.count >= SENT_TODAY.cap ? '#8fd6a8' : 'var(--ink-3)') + '">' +
+          SENT_TODAY.count + ' of ' + SENT_TODAY.cap + ' sent today' + (SENT_TODAY.count >= SENT_TODAY.cap ? ' ✓' : '') + '</span>' +
         '<button class="btn-ghost" id="fill20" title="Queue the best brands in today’s category until 20 people are in" style="margin-left:10px;padding:3px 11px;font-size:11.5px;font-weight:500">Fill to 20</button>'
       : 'All targets <span class="n">' + list.length + '</span>';
     var fb = document.getElementById('fill20');
@@ -3920,11 +3984,7 @@ function loadOutreach() {
     document.getElementById('c-' + (mode === 'today' ? 'today' : 'all')).textContent = list.length;
     document.getElementById('status-filters').style.display = mode === 'all' ? 'flex' : 'none';
 
-    var acceptedBlock = r.accepted.length
-      ? '<div class="count-head" style="color:var(--good)">They accepted — send the DM <span class="n">' + r.accepted.length + '</span></div>' +
-        groupedTargetRows(r.accepted) +
-        (list.length ? '<div class="count-head" style="margin-top:20px">New invites</div>' : '')
-      : '';
+    // "They accepted — send the DM" lives on the Results tab now.
     // "The rest in that category" — ready rows past today's 20, in
     // case there's room. Mark sent still counts toward the cap.
     var moreBlock = (r.more || []).length
@@ -3944,7 +4004,7 @@ function loadOutreach() {
       : '';
 
     box.innerHTML = list.length || r.accepted.length || (r.more || []).length || r.sentToday.length || (r.stale || []).length
-      ? acceptedBlock + groupedTargetRows(list) + moreBlock + sentBlock + staleBlock
+      ? groupedTargetRows(list) + moreBlock + sentBlock + staleBlock
       : '<div class="panel"><div class="empty"><h3>Nothing here</h3>' +
         '<p>' + (mode === 'all'
           ? (statusFilter !== 'all'
