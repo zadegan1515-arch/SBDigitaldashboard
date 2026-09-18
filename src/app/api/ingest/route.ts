@@ -86,6 +86,14 @@ async function reconcileBrandTargets(brandId: string, perBrand = TARGET_CAP_PER_
   return shelve.length
 }
 
+// How many people we keep per brand. Leo's rule (Sep 2026): a brand
+// with fewer than 25 people listed comes in whole — take everyone. A
+// brand with 25 or more comes in 25 deep, best-fit titles first, so a
+// company like Amazon contributes its partnership people instead of
+// seven hundred engineers. Nothing already in the database is removed
+// by this; the cap only stops new rows once a brand is at 25.
+const CONTACT_CAP_PER_BRAND = 25
+
 // CORS so the SponsorUnited tab (a different origin) can POST here.
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -120,31 +128,43 @@ export async function POST(req: NextRequest) {
   // ones the sweep can do on its own tomorrow.
   // -----------------------------------------------------------------
   if (body.action === 'list') {
-    const scope = body.scope === 'all' ? 'all' : 'missing'
+    const scope = body.scope === 'all' ? 'all' : 'thin'
     const limit = Math.max(1, Math.min(500, Number(body.limit) || 100))
-    const brands = await prisma.brand.findMany({
-      where: {
-        externalId: { not: null },
-        doNotEmail: false,
-        passedAt: null,
-        ...(scope === 'missing' ? { contacts: { none: {} } } : {}),
-      },
+    // "thin" = under the per-brand cap, i.e. a brand we can still add
+    // people to. It used to mean "no contacts at all", which is why a
+    // brand that got two people on its first capture was never visited
+    // again: two is not zero, so the sweep skipped it forever. Under
+    // the cap, a brand keeps coming back until it has its 25.
+    // Prisma can't compare a relation count in `where`, so the count
+    // comes back with each row and the filter happens here. Brand
+    // count is in the hundreds — one query, no pagination worries.
+    const all = await prisma.brand.findMany({
+      where: { externalId: { not: null }, doNotEmail: false, passedAt: null },
       select: { id: true, name: true, externalId: true, aka: true, _count: { select: { contacts: true } } },
       orderBy: { name: 'asc' },
-      take: limit,
     })
+    // Emptiest first, so a sweep that stops at the limit has spent its
+    // run on the brands with the least, not on topping up a brand that
+    // already has twenty.
+    const brands = (scope === 'all'
+      ? all
+      : all.filter(x => x._count.contacts < CONTACT_CAP_PER_BRAND)
+           .sort((x, y) => x._count.contacts - y._count.contacts || x.name.localeCompare(y.name))
+    ).slice(0, limit)
     // How many are out of reach for a sweep, so the panel can say so
     // instead of quietly capturing less than Leo expects.
-    const noProfile = await prisma.brand.count({
-      where: {
-        externalId: null, doNotEmail: false, passedAt: null,
-        ...(scope === 'missing' ? { contacts: { none: {} } } : {}),
-      },
+    const withoutProfile = await prisma.brand.findMany({
+      where: { externalId: null, doNotEmail: false, passedAt: null },
+      select: { _count: { select: { contacts: true } } },
     })
+    const noProfile = scope === 'all'
+      ? withoutProfile.length
+      : withoutProfile.filter(b => b._count.contacts < CONTACT_CAP_PER_BRAND).length
     return NextResponse.json({
       ok: true,
       scope,
       noProfile,
+      cap: CONTACT_CAP_PER_BRAND,
       brands: brands.map(b => ({
         id: b.id,
         name: b.name,
@@ -156,9 +176,20 @@ export async function POST(req: NextRequest) {
     }, { headers: cors })
   }
 
-  const rows: any[] = Array.isArray(body.rows) ? body.rows : []
-  const result = { contactsCreated: 0, targetsCreated: 0, targetsShelved: 0, skipped: 0, failed: 0, brandsMissing: [] as string[], errors: [] as string[] }
+  // Best titles first. When a brand has room for only some of what was
+  // captured, the people who stay are the partnership, campus and
+  // marketing ones — not whoever SponsorUnited happened to render first.
+  // Array.prototype.sort is stable, so rows for different brands keep
+  // their relative order and each brand is still processed as a group.
+  const rows: any[] = (Array.isArray(body.rows) ? body.rows : [])
+    .slice()
+    .sort((a: any, b: any) => scoreFit(b?.title ?? null, null) - scoreFit(a?.title ?? null, null))
+  const result = { contactsCreated: 0, targetsCreated: 0, targetsShelved: 0, skipped: 0, capped: 0, failed: 0, brandsMissing: [] as string[], errors: [] as string[] }
   const touched = new Set<string>()
+  // brandId -> how many more people this brand can take in this batch.
+  // Counted once per brand from what is already stored, then kept in
+  // step as rows land, so a 40-person capture doesn't need 40 counts.
+  const room = new Map<string, number>()
   // SponsorUnited name -> the people captured under it that matched no
   // brand of ours. Written to the miss log once, after the loop.
   const missed = new Map<string, { externalId: string | null; rows: HeldRow[] }>()
@@ -217,6 +248,14 @@ export async function POST(req: NextRequest) {
       const dupe = await prisma.contact.findFirst({ where: { brandId: brand.id, name: row.name } })
       if (dupe) { result.skipped++; continue }
 
+      // The cap. Checked after the duplicate check, so re-capturing a
+      // brand we already hold doesn't report its own people as capped.
+      if (!room.has(brand.id)) {
+        const have = await prisma.contact.count({ where: { brandId: brand.id } })
+        room.set(brand.id, Math.max(0, CONTACT_CAP_PER_BRAND - have))
+      }
+      if ((room.get(brand.id) ?? 0) <= 0) { result.capped++; continue }
+
       const dm = looksLikeDecisionMaker(row.title ?? null)
       const contact = await prisma.contact.create({
         data: {
@@ -232,6 +271,7 @@ export async function POST(req: NextRequest) {
         },
       })
       result.contactsCreated++
+      room.set(brand.id, (room.get(brand.id) ?? 1) - 1)
 
       if (dm && contact.linkedinUrl) {
         await prisma.target.create({
