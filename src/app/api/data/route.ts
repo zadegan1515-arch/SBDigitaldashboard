@@ -252,21 +252,6 @@ function coldPoolBrand(): Prisma.BrandWhereInput {
 
 // "Passed for today" wears off at midnight on its own — there is no undo
 // to remember. Spread into a brand `where` alongside NOT_IN_CONVERSATION.
-// The planner covers WORKING days only — nobody sends LinkedIn invites
-// into a Saturday. Today is always included (so the Schedule's Today
-// row still mirrors the live queue), then the next weekdays fill it.
-function planningDays(count = 7): Date[] {
-  const out: Date[] = [new Date()]
-  const cur = new Date()
-  while (out.length < count) {
-    cur.setDate(cur.getDate() + 1)
-    const dow = cur.getDay()
-    if (dow === 0 || dow === 6) continue
-    out.push(new Date(cur))
-  }
-  return out
-}
-
 function notPassedToday() {
   const start = startOfLocalDay()
   return { OR: [{ passedTodayAt: null }, { passedTodayAt: { lt: start } }] }
@@ -403,6 +388,15 @@ async function ensureTemplateDrafts(targets: any[]) {
 // brand. The rest are "shelved" — kept, visible, promotable, just not
 // queued. Leo's call: top 3 by fit.
 const TARGET_CAP_PER_BRAND = 3
+
+// How many people we keep on file per brand — a different question from
+// how many we write to. Leo's rule (Sep 2026): a brand with fewer than
+// 25 people listed comes in whole; a brand with 25 or more comes in 25
+// deep, best titles first, so a company like Amazon contributes its
+// partnership people instead of seven hundred engineers. Nothing
+// already stored is removed — the cap only stops new rows once a brand
+// is at 25. Mirrored in /api/ingest.
+const CONTACT_CAP_PER_BRAND = 25
 
 // Enforces the cap for one brand. Among the currently-active targets
 // (queued/drafted, not already shelved), keeps the highest-fit few and
@@ -1077,11 +1071,20 @@ const handlers: Record<string, Handler> = {
 
   // Bulk-loads contacts pulled from SponsorUnited, creating a queued
   // target for anyone who looks like a decision maker.
-  async importContacts({ rows }: any) {
+  async importContacts({ rows: incoming }: any) {
     const result = {
       brandsCreated: 0, contactsCreated: 0, targetsCreated: 0, targetsShelved: 0,
-      skipped: 0, failed: 0, heldForReview: 0, errors: [] as string[],
+      skipped: 0, capped: 0, failed: 0, heldForReview: 0, errors: [] as string[],
     }
+    // Best titles first, so a brand with room for only some of the list
+    // keeps its partnership and campus people. Stable sort, so rows for
+    // one brand stay together. Mirrors /api/ingest.
+    const rows: any[] = (Array.isArray(incoming) ? incoming : [])
+      .slice()
+      .sort((a: any, b: any) => scoreFit(b?.title ?? null, null) - scoreFit(a?.title ?? null, null))
+    // brandId -> how many more people this brand can take. See
+    // CONTACT_CAP_PER_BRAND.
+    const room = new Map<string, number>()
     // Rows whose brand name matched nothing — parked for Needs contacts
     // rather than turned into brands. Same map shape as /api/ingest.
     const missed = new Map<string, { externalId: string | null; rows: any[] }>()
@@ -1137,6 +1140,14 @@ const handlers: Record<string, Handler> = {
       })
       if (dupe) { result.skipped++; continue }
 
+      // The per-brand cap, checked after the duplicate check so people
+      // we already hold are never reported as capped.
+      if (!room.has(brand.id)) {
+        const have = await prisma.contact.count({ where: { brandId: brand.id } })
+        room.set(brand.id, Math.max(0, CONTACT_CAP_PER_BRAND - have))
+      }
+      if ((room.get(brand.id) ?? 0) <= 0) { result.capped++; continue }
+
       const decisionMaker = looksLikeDecisionMaker(row.title ?? null)
       const contact = await prisma.contact.create({
         data: {
@@ -1152,6 +1163,7 @@ const handlers: Record<string, Handler> = {
         },
       })
       result.contactsCreated++
+      room.set(brand.id, (room.get(brand.id) ?? 1) - 1)
 
       // Only queue people with a LinkedIn URL — outreach is LinkedIn-first,
       // so a contact without one can't be actioned.
@@ -2390,7 +2402,8 @@ const handlers: Record<string, Handler> = {
       })
     }
     let available = candidates.filter(c => !planned.has(c.brand.id))
-    const days = planningDays(7).map((at, i) => {
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const at = new Date(Date.now() + i * 24 * 60 * 60 * 1000)
       const key = localDayKey(at)
       const theme = plan[key]?.category
         ?? (cats.length ? cats[Math.floor(at.getTime() / 86400000) % cats.length] : null)
