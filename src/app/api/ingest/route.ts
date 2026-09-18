@@ -109,6 +109,53 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401, headers: cors })
   }
 
+  // -----------------------------------------------------------------
+  // action: "list" — the worklist for an unattended run. The capture
+  // script asks which brands to visit rather than being told by hand,
+  // so a whole sweep is one click instead of one click per brand.
+  //
+  // Only brands whose SponsorUnited profile id we already know can be
+  // visited directly. Every successful capture saves that id, so the
+  // list grows itself: the brands Leo captures by hand today are the
+  // ones the sweep can do on its own tomorrow.
+  // -----------------------------------------------------------------
+  if (body.action === 'list') {
+    const scope = body.scope === 'all' ? 'all' : 'missing'
+    const limit = Math.max(1, Math.min(500, Number(body.limit) || 100))
+    const brands = await prisma.brand.findMany({
+      where: {
+        externalId: { not: null },
+        doNotEmail: false,
+        passedAt: null,
+        ...(scope === 'missing' ? { contacts: { none: {} } } : {}),
+      },
+      select: { id: true, name: true, externalId: true, aka: true, _count: { select: { contacts: true } } },
+      orderBy: { name: 'asc' },
+      take: limit,
+    })
+    // How many are out of reach for a sweep, so the panel can say so
+    // instead of quietly capturing less than Leo expects.
+    const noProfile = await prisma.brand.count({
+      where: {
+        externalId: null, doNotEmail: false, passedAt: null,
+        ...(scope === 'missing' ? { contacts: { none: {} } } : {}),
+      },
+    })
+    return NextResponse.json({
+      ok: true,
+      scope,
+      noProfile,
+      brands: brands.map(b => ({
+        id: b.id,
+        name: b.name,
+        externalId: b.externalId,
+        // The name SponsorUnited uses, when we know it differs.
+        suName: (b.aka ?? '').split(/[,;]/)[0].trim() || b.name,
+        contacts: b._count.contacts,
+      })),
+    }, { headers: cors })
+  }
+
   const rows: any[] = Array.isArray(body.rows) ? body.rows : []
   const result = { contactsCreated: 0, targetsCreated: 0, targetsShelved: 0, skipped: 0, failed: 0, brandsMissing: [] as string[], errors: [] as string[] }
   const touched = new Set<string>()
