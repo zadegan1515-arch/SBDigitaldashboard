@@ -252,6 +252,21 @@ function coldPoolBrand(): Prisma.BrandWhereInput {
 
 // "Passed for today" wears off at midnight on its own — there is no undo
 // to remember. Spread into a brand `where` alongside NOT_IN_CONVERSATION.
+// The planner covers WORKING days only — nobody sends LinkedIn invites
+// into a Saturday. Today is always included (so the Schedule's Today
+// row still mirrors the live queue), then the next weekdays fill it.
+function planningDays(count = 7): Date[] {
+  const out: Date[] = [new Date()]
+  const cur = new Date()
+  while (out.length < count) {
+    cur.setDate(cur.getDate() + 1)
+    const dow = cur.getDay()
+    if (dow === 0 || dow === 6) continue
+    out.push(new Date(cur))
+  }
+  return out
+}
+
 function notPassedToday() {
   const start = startOfLocalDay()
   return { OR: [{ passedTodayAt: null }, { passedTodayAt: { lt: start } }] }
@@ -2375,8 +2390,7 @@ const handlers: Record<string, Handler> = {
       })
     }
     let available = candidates.filter(c => !planned.has(c.brand.id))
-    const days = Array.from({ length: 7 }, (_, i) => {
-      const at = new Date(Date.now() + i * 24 * 60 * 60 * 1000)
+    const days = planningDays(7).map((at, i) => {
       const key = localDayKey(at)
       const theme = plan[key]?.category
         ?? (cats.length ? cats[Math.floor(at.getTime() / 86400000) % cats.length] : null)

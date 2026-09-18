@@ -535,28 +535,6 @@
     <section class="view page" id="outreach">
       <div class="eyebrow">Outreach</div>
       <h1>LinkedIn outreach</h1>
-      <div class="sub" id="outreach-sub">Loading…</div>
-      <div class="panel panel-pad" style="margin-top:18px">
-        <div style="display:flex;align-items:center;gap:8px;cursor:pointer" id="li-guide-toggle">
-          <b style="font-size:13px">How LinkedIn outreach works</b>
-          <span style="margin-left:auto;color:var(--ink-3)" id="li-guide-arrow">▾</span>
-        </div>
-        <div id="li-guide-body" style="margin-top:10px">
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;font-size:12.5px;line-height:1.55">
-            <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">
-              <b style="color:var(--accent)">1 · Connect</b><br>
-              <b>Copy note</b>, open <b>Profile ↗</b>, click <b>Connect → Add a note</b>, paste, send,
-              then <b>Mark sent</b>. Max ~10 a day.</div>
-            <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">
-              <b style="color:var(--accent)">2 · They accept</b><br>
-              Hit <b>They accepted</b>, then <b>Copy DM</b> and send it the same day.</div>
-            <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px">
-              <b style="color:var(--accent)">3 · Log it</b><br>
-              <b>Mark sent</b> after each invite, <b>Replied</b> when they answer.
-              History lives in Results.</div>
-          </div>
-        </div>
-      </div>
       <div class="chips" style="margin-top:22px;align-items:center">
         <button class="chip active" data-mode="today">Today <span class="n" id="c-today">0</span></button>
         <button class="chip" data-mode="all">All targets <span class="n" id="c-all">0</span></button>
@@ -2893,6 +2871,23 @@ function schedDayKey(offset) {
   return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
 }
 
+// Working days only — the planner never offers a Saturday or Sunday.
+// Today always counts, so the Today row survives a weekend visit.
+function schedDayKeys(count) {
+  count = count || 7;
+  var server = Object.keys(SCHED.days || {}).sort();
+  if (server.length) return server.slice(0, count);
+  var out = [schedDayKey(0)];
+  var dt = new Date();
+  while (out.length < count) {
+    dt.setDate(dt.getDate() + 1);
+    var dow = dt.getDay();
+    if (dow === 0 || dow === 6) continue;
+    out.push(dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0'));
+  }
+  return out;
+}
+
 function schedSave(key) {
   var day = SCHED.plan[key] || {};
   return api('setOutreachPlanDay', { date: key, category: day.category || null, brandIds: day.brandIds || [] })
@@ -2942,12 +2937,12 @@ function renderBench() {
     return !q || b.name.toLowerCase().indexOf(q) !== -1 || (b.category || '').toLowerCase().indexOf(q) !== -1;
   });
   var dayOpts = '';
-  for (var i = 0; i < 7; i++) {
-    var k = schedDayKey(i);
-    var lbl = i === 0 ? 'Today' : i === 1 ? 'Tomorrow'
+  var today0 = schedDayKey(0);
+  schedDayKeys(7).forEach(function (k, i) {
+    var lbl = k === today0 ? 'Today'
       : new Date(k + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     dayOpts += '<option value="' + esc(k) + '">' + esc(lbl) + '</option>';
-  }
+  });
   box.innerHTML = rows.length ? rows.slice(0, 60).map(function (b) {
     return '<div data-brow="' + esc(b.id) + '" style="padding:8px 0;border-top:1px solid var(--border)">' +
       '<div style="display:flex;gap:8px;align-items:baseline">' +
@@ -3027,11 +3022,12 @@ function schedAddBrand(key, brandId, brandName) {
 
 function renderSchedule() {
   var box = document.getElementById('sched-list');
-  var days = [];
-  for (var i = 0; i < 7; i++) days.push(schedDayKey(i));
+  var days = schedDayKeys(7);
   box.innerHTML = days.map(function (key, i) {
     var day = SCHED.plan[key] || { category: null, brandIds: [] };
-    var label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow'
+    var tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
+    var tmrKey = tmr.getFullYear() + '-' + String(tmr.getMonth() + 1).padStart(2, '0') + '-' + String(tmr.getDate()).padStart(2, '0');
+    var label = key === schedDayKey(0) ? 'Today' : key === tmrKey ? 'Tomorrow'
       : new Date(key + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
     var chips = (day.brandIds || []).map(function (bid) {
       return '<span class="status" style="display:inline-flex;gap:6px;align-items:center;font-size:12px;padding:5px 11px">' +
@@ -4060,14 +4056,6 @@ function loadOutreach() {
   box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   renderStatusFilters();
 
-  // The queue count lives here in the subtitle, not on the top nav.
-  api('countQueued').then(function (r) {
-    document.getElementById('outreach-sub').textContent =
-      (r.queued || 0) + ' in the queue · Email has its own tab.';
-  }).catch(function () {
-    document.getElementById('outreach-sub').textContent = 'Email has its own tab.';
-  });
-
   // Today also surfaces everyone who accepted an invite and is still
   // waiting on their DM (first), and everyone marked sent today (last,
   // so a mis-click is one “↩ Not sent” away instead of vanishing).
@@ -4311,23 +4299,6 @@ function lintDraft(subject, body) {
   return warns;
 }
 
-// The LinkedIn cheat-sheet collapses (and remembers) like the email one.
-(function () {
-  var body = document.getElementById('li-guide-body');
-  var arrow = document.getElementById('li-guide-arrow');
-  var head = document.getElementById('li-guide-toggle');
-  if (!body || !head) return;
-  var open = true;
-  try { open = localStorage.getItem('liGuideOpen') !== '0'; } catch (e) {}
-  body.style.display = open ? 'block' : 'none';
-  arrow.textContent = open ? '▾' : '▸';
-  head.onclick = function () {
-    open = !open;
-    body.style.display = open ? 'block' : 'none';
-    arrow.textContent = open ? '▾' : '▸';
-    try { localStorage.setItem('liGuideOpen', open ? '1' : '0'); } catch (e) {}
-  };
-})();
 
 // The Email tab — its own view, fully separate from the LinkedIn queue.
 function loadEmailOutreach() {
