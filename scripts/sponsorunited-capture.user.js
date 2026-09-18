@@ -232,8 +232,8 @@
       if (!j || !j.ok) throw new Error((j && j.error) || 'Could not get the list');
       if (!j.brands.length) {
         renderMessage('Nothing to sweep',
-          scope === 'missing'
-            ? 'Every brand whose SponsorUnited profile we know already has contacts.'
+          scope !== 'all'
+            ? 'Every brand whose SponsorUnited profile we know is already at 25 people.'
             : 'No brands have a saved SponsorUnited profile yet.',
           j.noProfile);
         return;
@@ -300,7 +300,7 @@
             (problems.length > 20 ? '<br>…and ' + (problems.length - 20) + ' more' : '') +
           '</div>'
         : '<div style="font-size:11.5px;color:#137333">No problems.</div>') +
-      '<div style="color:#999;font-size:11px;margin-top:10px">Anything "held for review" is waiting in Brands → Needs contacts.</div>';
+      '<div style="color:#999;font-size:11px;margin-top:10px">Anything "held for review" is waiting in Brands → Needs contacts. A brand already holding 25 people is left as it is.</div>';
     p.querySelector('#sbx').onclick = closePanel;
   }
 
@@ -311,12 +311,15 @@
       (here
         ? '<button id="sbone" style="width:100%;background:#111;color:#fff;border:0;border-radius:7px;padding:9px 12px;cursor:pointer;font-weight:600;margin-bottom:8px">Capture this brand</button>'
         : '<div style="color:#555;margin-bottom:8px">Open a brand\'s Contacts tab to capture just that one.</div>') +
-      '<button id="sbmissing" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;font-weight:600;margin-bottom:6px">Capture all brands missing contacts</button>' +
+      '<button id="sbmissing" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;font-weight:600;margin-bottom:6px">Capture all brands under 25 people</button>' +
       '<button id="sball" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;margin-bottom:8px">Refresh every brand</button>' +
       '<div style="color:#999;font-size:11px">A sweep walks brands one at a time in this tab, pausing between each. Only brands whose SponsorUnited profile the dashboard already knows can be swept.</div>';
     p.querySelector('#sbx').onclick = closePanel;
     if (here) p.querySelector('#sbone').onclick = openPanel;
-    p.querySelector('#sbmissing').onclick = function () { startSweep('missing'); };
+    // "thin" = under the dashboard's per-brand cap of 25. It used to be
+    // "missing" (no contacts at all), which skipped forever any brand
+    // whose first capture found two people.
+    p.querySelector('#sbmissing').onclick = function () { startSweep('thin'); };
     p.querySelector('#sball').onclick = function () { startSweep('all'); };
   }
 
