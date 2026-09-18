@@ -10,7 +10,7 @@
 // wrong field name builds clean here and fails on Vercel.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient, TargetStatus } from '@prisma/client'
+import { Prisma, PrismaClient, TargetStatus } from '@prisma/client'
 import { getServerSession } from 'next-auth'
 import Anthropic from '@anthropic-ai/sdk'
 import { authOptions, allowlist } from '@/lib/auth'
@@ -238,10 +238,17 @@ const TIER_BONUS: Record<string, number> = {
 // the cold-outreach pool: pitching a second person there reads as a
 // blast and steps on the live thread. Leo's rule. Hand-picking is
 // still allowed — that is the follow-up case.
-const NOT_IN_CONVERSATION = {
+const NOT_IN_CONVERSATION: Prisma.BrandWhereInput = {
   passedAt: null,
   targets: { none: { status: { in: ['replied', 'converted'] as TargetStatus[] } } },
-} as const
+}
+
+// Both brand-level guards at once: not in conversation, and not passed
+// for today. Typed as one where-input so Prisma can narrow it — two
+// spread objects left it guessing between its filter shapes.
+function coldPoolBrand(): Prisma.BrandWhereInput {
+  return { ...NOT_IN_CONVERSATION, ...notPassedToday() }
+}
 
 // "Passed for today" wears off at midnight on its own — there is no undo
 // to remember. Spread into a brand `where` alongside NOT_IN_CONVERSATION.
@@ -770,9 +777,20 @@ const handlers: Record<string, Handler> = {
     const planRow = await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })
     let planDay: any = null
     try { planDay = planRow ? (JSON.parse(planRow.value)[localDayKey()] ?? null) : null } catch { planDay = null }
+    // Planned brands queue themselves. A brand that cannot be queued is
+    // reported rather than swallowed — that silence was why a brand
+    // added on the Schedule could simply never appear.
+    const plannedSkipped: { brandId: string; brandName: string; reason: string }[] = []
     if (planDay?.brandIds?.length) {
       for (const bid of planDay.brandIds) {
-        try { await (handlers.queueBrandTargets as Handler)({ brandId: bid }) } catch { /* one bad brand never blocks the queue */ }
+        try {
+          const r: any = await (handlers.queueBrandTargets as Handler)({ brandId: bid })
+          if (r && r.queued === false && r.reason !== 'already') {
+            plannedSkipped.push({ brandId: bid, brandName: r.brandName ?? '', reason: r.reason ?? 'unknown' })
+          }
+        } catch (e: any) {
+          plannedSkipped.push({ brandId: bid, brandName: '', reason: e?.message ?? 'error' })
+        }
       }
     }
 
@@ -795,7 +813,7 @@ const handlers: Record<string, Handler> = {
     // status without stamping queuedFor, and those rows used to match
     // neither branch and never surface in Today again.
     const candidates = await prisma.target.findMany({
-      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: { ...NOT_IN_CONVERSATION, ...notPassedToday() } },
+      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: coldPoolBrand() },
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: 300,
       select: { id: true, fitScore: true, brand: { select: { category: true } } },
@@ -833,6 +851,7 @@ const handlers: Record<string, Handler> = {
       : []
 
     return {
+      plannedSkipped,
       theme,
       targets: await ensureTemplateDrafts([...handPicked, ...fresh]),
       more: await ensureTemplateDrafts(more),
@@ -2426,6 +2445,39 @@ const handlers: Record<string, Handler> = {
       pool: { total: totalPool, cap: DAILY_SEND_LIMIT },
       bench: bench.slice(0, 120),
     }
+  },
+
+  // Adding a brand to a day from the Schedule used to only write the
+  // plan; the actual queueing happened later inside getTodayQueue's
+  // try/catch, so a brand that could not be queued (nobody on file,
+  // slots taken, archived) vanished with no explanation. Now the add
+  // queues straight away when the day is today and hands back the
+  // reason when it can't.
+  async planAddBrand({ date, brandId }: any) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) throw new Error('Bad date')
+    const brand = await prisma.brand.findUnique({ where: { id: brandId }, select: { id: true, name: true } })
+    if (!brand) throw new Error('Brand not found')
+
+    const row = await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })
+    let plan: Record<string, any> = {}
+    try { plan = row ? JSON.parse(row.value) : {} } catch { plan = {} }
+    const day = plan[date] ?? { category: null, brandIds: [] }
+    if (!day.brandIds.includes(brandId)) day.brandIds = [...day.brandIds, brandId].slice(0, 30)
+    plan[date] = day
+    const today = localDayKey()
+    for (const k of Object.keys(plan)) if (k < today) delete plan[k]
+    const value = JSON.stringify(plan)
+    await prisma.setting.upsert({
+      where: { key: 'outreachPlan' },
+      create: { key: 'outreachPlan', value },
+      update: { value },
+    })
+
+    // A future day is just a plan — it queues itself on the morning.
+    if (date !== today) return { planned: true, forToday: false, brandName: brand.name }
+
+    const queued: any = await (handlers.queueBrandTargets as Handler)({ brandId })
+    return { planned: true, forToday: true, brandName: brand.name, ...queued }
   },
 
   async setOutreachPlanDay({ date, category, brandIds }: any) {
