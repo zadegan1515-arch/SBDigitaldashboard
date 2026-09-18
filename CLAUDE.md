@@ -42,6 +42,14 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   **Activations** is its own workspace (sidebar + tabs swap in), entered from the left sidebar or the
   Home "Jump to" card — not in the top nav. Deep links: `#activations/<id>/<tab>`, `#operations/<id>`.
 - `src/app/api/data/route.ts` — every server function. Add a handler = add a key to `handlers`.
+- `src/app/api/ingest/route.ts` + `scripts/sponsorunited-capture.user.js` — SponsorUnited contact
+  capture (INGEST_TOKEN-gated, CORS-open). **Two different caps, don't confuse them:**
+  `CONTACT_CAP_PER_BRAND = 25` (ingest + `importContacts`) is how many people we keep *on file* per
+  brand — under 25 a brand imports whole, at 25 it stops taking new rows; best titles first, nothing
+  existing is removed. `TARGET_CAP_PER_BRAND = 3` is how many we *write to* per brand. The sweep's
+  worklist (`action:'list'`, scope `thin`, emptiest brand first) is every brand under the contact
+  cap — it used to be brands with zero contacts, which permanently skipped any brand whose first
+  capture found one or two people. Old userscripts sending scope `missing` get `thin` too.
 - `src/lib/email.ts` — outreach: drafting, cap/ramp (`roomToday`), sending via Gmail API, replies, warmup stats, signature (hosted images, LinkedIn/IG as text links).
 - `src/lib/google.ts` — OAuth (gmail / drive / ops grants), Gmail read+send, Drive/Sheets/Docs create.
 - `src/lib/shows.ts` — **the show list** for the Shows tab and the public sponsor page. Reads the
