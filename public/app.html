@@ -2594,6 +2594,20 @@ function renderReached() {
 
 // Invites per day for the last two weeks — pace and consistency. Lives
 // in Results; the LinkedIn tab keeps only today's number.
+// "Accepted" counts everyone who ever accepted — including people who
+// have since replied, and people whose DM is already logged. The list
+// below only shows those still waiting on a DM, so the tile spells the
+// split out rather than leaving the two looking contradictory.
+var RC_FUNNEL = { accepted: 0, awaiting: null, replied: null, rate: '' };
+function updateAcceptedNote() {
+  var el = document.getElementById('rc-acc-note');
+  if (!el) return;
+  var bits = [RC_FUNNEL.rate];
+  if (RC_FUNNEL.awaiting !== null) bits.push(RC_FUNNEL.awaiting + ' awaiting DM');
+  if (RC_FUNNEL.replied) bits.push(RC_FUNNEL.replied + ' since replied');
+  el.textContent = bits.filter(Boolean).join(' · ');
+}
+
 // Accepted invites still waiting on their DM. This is the follow-up
 // list, so it belongs with the results, not in the send queue.
 var RC_ACCEPTED = {};
@@ -2603,9 +2617,12 @@ function renderAcceptedDms() {
   api('listTargets', { status: 'accepted' }).then(function (rows) {
     var waiting = (rows || []).filter(function (t) { return !t.dmSentAt; });
     waiting.forEach(function (t) { RC_ACCEPTED[t.id] = t; });
+    RC_FUNNEL.awaiting = waiting.length;
+    updateAcceptedNote();
     if (!waiting.length) { box.innerHTML = ''; return; }
     box.innerHTML =
       '<div class="count-head" style="margin-top:18px;color:var(--good)">They accepted — send the DM <span class="n">' + waiting.length + '</span></div>' +
+      '<div class="hint" style="margin:2px 0 8px">Still waiting on a DM. People whose DM is logged, or who already replied, drop off this list.</div>' +
       waiting.map(function (t) {
         var d = (t.drafts || [])[0];
         return '<div class="target" data-rcrow="' + esc(t.id) + '">' +
@@ -2661,6 +2678,8 @@ function renderReplied() {
   if (!pBox || !bBox) return;
   api('repliedOverview').then(function (d) {
     var people = d.people || [];
+    RC_FUNNEL.replied = people.length;
+    updateAcceptedNote();
     pBox.innerHTML = people.length
       ? '<div class="count-head" style="margin-top:18px;color:var(--blue)">They replied — keep it moving <span class="n">' + people.length + '</span></div>' +
         people.map(function (t) {
@@ -2769,9 +2788,11 @@ function loadReached() {
     // The LinkedIn funnel: is the note working, are DMs landing?
     var tt = d.totals || { invited: 0, accepted: 0, replied: 0 };
     var pct = function (n) { return tt.invited ? Math.round((n / tt.invited) * 100) + '%' : '—'; };
+    RC_FUNNEL.accepted = tt.accepted;
+    RC_FUNNEL.rate = pct(tt.accepted) + ' accept rate';
     document.getElementById('rc-kpis').innerHTML =
       '<div class="kpi"><div class="kpi-label">Invites sent</div><div class="kpi-value">' + tt.invited + '</div><div class="kpi-note">LinkedIn, all-time</div></div>' +
-      '<div class="kpi"><div class="kpi-label">Accepted</div><div class="kpi-value">' + tt.accepted + '</div><div class="kpi-note">' + pct(tt.accepted) + ' accept rate</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Accepted</div><div class="kpi-value">' + tt.accepted + '</div><div class="kpi-note" id="rc-acc-note">' + pct(tt.accepted) + ' accept rate</div></div>' +
       '<div class="kpi money"><div class="kpi-label">Replied</div><div class="kpi-value">' + tt.replied + '</div><div class="kpi-note">' + pct(tt.replied) + ' reply rate</div></div>' +
       '<div class="kpi"><div class="kpi-label">Sent today</div><div class="kpi-value" id="rc-today">—</div><div class="kpi-note">of ' + SENT_TODAY.cap + ' a day</div></div>';
     renderAcceptedDms();
