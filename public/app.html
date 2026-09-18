@@ -2610,12 +2610,13 @@ function renderReached() {
 // have since replied, and people whose DM is already logged. The list
 // below only shows those still waiting on a DM, so the tile spells the
 // split out rather than leaving the two looking contradictory.
-var RC_FUNNEL = { accepted: 0, awaiting: null, replied: null, rate: '' };
+var RC_FUNNEL = { accepted: 0, awaiting: null, dmSent: 0, replied: null, rate: '' };
 function updateAcceptedNote() {
   var el = document.getElementById('rc-acc-note');
   if (!el) return;
   var bits = [RC_FUNNEL.rate];
   if (RC_FUNNEL.awaiting !== null) bits.push(RC_FUNNEL.awaiting + ' awaiting DM');
+  if (RC_FUNNEL.dmSent) bits.push(RC_FUNNEL.dmSent + ' DM sent');
   if (RC_FUNNEL.replied) bits.push(RC_FUNNEL.replied + ' since replied');
   el.textContent = bits.filter(Boolean).join(' · ');
 }
@@ -2627,28 +2628,38 @@ function renderAcceptedDms() {
   var box = document.getElementById('rc-accepted');
   if (!box) return;
   api('listTargets', { status: 'accepted' }).then(function (rows) {
-    var waiting = (rows || []).filter(function (t) { return !t.dmSentAt; });
-    waiting.forEach(function (t) { RC_ACCEPTED[t.id] = t; });
+    var all = (rows || []).slice();
+    all.forEach(function (t) { RC_ACCEPTED[t.id] = t; });
+    // Waiting first, then the ones whose DM is already logged — they
+    // stay on the card so the section shows every accept, not just the
+    // outstanding ones.
+    all.sort(function (a, b) { return (a.dmSentAt ? 1 : 0) - (b.dmSentAt ? 1 : 0); });
+    var waiting = all.filter(function (t) { return !t.dmSentAt; });
     RC_FUNNEL.awaiting = waiting.length;
+    RC_FUNNEL.dmSent = all.length - waiting.length;
     updateAcceptedNote();
-    if (!waiting.length) { box.innerHTML = ''; return; }
+    if (!all.length) { box.innerHTML = ''; return; }
     box.innerHTML =
-      '<div class="count-head" style="margin-top:18px;color:var(--good)">They accepted — send the DM <span class="n">' + waiting.length + '</span></div>' +
-      '<div class="hint" style="margin:2px 0 8px">Still waiting on a DM. People whose DM is logged, or who already replied, drop off this list.</div>' +
-      waiting.map(function (t) {
+      '<div class="count-head" style="margin-top:18px;color:var(--good)">They accepted — send the DM <span class="n">' +
+        waiting.length + ' of ' + all.length + ' left</span></div>' +
+      '<div class="hint" style="margin:2px 0 8px">Everyone who accepted. DM-logged people stay here, marked; they move down to “They replied” once they answer.</div>' +
+      all.map(function (t) {
         var d = (t.drafts || [])[0];
-        return '<div class="target" data-rcrow="' + esc(t.id) + '">' +
+        return '<div class="target" data-rcrow="' + esc(t.id) + '"' + (t.dmSentAt ? ' style="opacity:.72"' : '') + '>' +
           '<div class="t-main"><div class="t-line">' +
             '<span class="t-brand" data-brand="' + esc(t.brandId) + '" style="cursor:pointer">' + esc(t.brand.name) + '</span>' +
             '<span class="t-sep">·</span>' + esc(t.contact.name) +
             (t.contact.title ? ' <span class="t-title">— ' + esc(t.contact.title) + '</span>' : '') +
           '</div>' +
           '<div class="t-meta"><span class="status accepted">accepted</span>' +
-            (t.sentAt ? '<span>· invited ' + shortDate(t.sentAt) + '</span>' : '') + '</div>' +
+            (t.sentAt ? '<span>· invited ' + shortDate(t.sentAt) + '</span>' : '') +
+            (t.dmSentAt ? '<span>· DM sent ' + shortDate(t.dmSentAt) + '</span>' : '') + '</div>' +
           '</div>' +
           '<div class="t-actions">' +
             (d ? '<button class="btn-draft" data-rcdm="copy" data-rct="' + esc(t.id) + '" title="Copy the DM and paste it into your LinkedIn chat">Copy DM</button>' : '') +
-            '<button class="btn-ghost" data-rcdm="dmsent" data-rct="' + esc(t.id) + '" title="Logged: the DM went out">DM sent ✓</button>' +
+            (t.dmSentAt
+              ? '<span class="status accepted" style="font-size:12px;padding:5px 12px">DM sent ✓</span>'
+              : '<button class="btn-ghost" data-rcdm="dmsent" data-rct="' + esc(t.id) + '" title="Logged: the DM went out">DM sent ✓</button>') +
             (t.contact.linkedinUrl ? '<a class="btn-ghost" href="' + esc(t.contact.linkedinUrl) + '" target="_blank" rel="noopener">Profile ↗</a>' : '') +
             '<button class="btn-ghost" data-rcdm="replied" data-rct="' + esc(t.id) + '" title="Did they write back?">Replied?</button>' +
           '</div></div>';
@@ -2671,10 +2682,23 @@ document.getElementById('rc-accepted').addEventListener('click', function (e) {
     }, function () { toast('Could not copy'); });
     return;
   }
-  // Both outcomes take the row off this list, in place.
   var row = btn.closest('[data-rcrow]');
-  if (row) row.remove();
-  toast(act === 'dmsent' ? 'DM logged — tracked in the list below until they reply' : 'Reply logged');
+  if (act === 'dmsent') {
+    // Stays on the card, marked — only a reply moves someone off.
+    if (t) t.dmSentAt = new Date().toISOString();
+    var pill = document.createElement('span');
+    pill.className = 'status accepted';
+    pill.style.cssText = 'font-size:12px;padding:5px 12px';
+    pill.textContent = 'DM sent ✓';
+    btn.replaceWith(pill);
+    if (row) row.style.opacity = '.72';
+    RC_FUNNEL.awaiting = Math.max(0, (RC_FUNNEL.awaiting || 0) - 1);
+    RC_FUNNEL.dmSent = (RC_FUNNEL.dmSent || 0) + 1;
+    updateAcceptedNote();
+  } else if (row) {
+    row.remove();
+  }
+  toast(act === 'dmsent' ? 'DM logged — still here until they reply' : 'Reply logged');
   api('setTargetStatus', act === 'dmsent'
     ? { targetId: tid, dmSent: true, actor: ME.owner || null }
     : { targetId: tid, status: 'replied', actor: ME.owner || null })
