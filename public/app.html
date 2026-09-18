@@ -1526,7 +1526,11 @@ function loadBrand(brandId) {
     var activeCount = b.targets.filter(function (t) { return !t.shelved; }).length;
     var outreach = b.targets.length
       ? '<div class="section-head">Outreach <span class="n">' + activeCount + ' in queue' +
-          (b.targets.length > activeCount ? ' · ' + (b.targets.length - activeCount) + ' shelved' : '') +
+          (b.targets.length > activeCount
+            ? ' · ' + (b.targets.length - activeCount) + ' shelved' +
+              (b.targets.filter(function (t) { return t.shelved && !t.sentAt; }).length === (b.targets.length - activeCount)
+                ? ' (none contacted)' : '')
+            : '') +
         '</span><button class="btn-ghost" id="b-draftintro" style="margin-left:auto">Draft intro email</button></div>' +
         '<div class="hint" style="margin:-6px 0 10px">Only the top ' + TARGET_CAP + ' by fit per brand go in the queue. ' +
           'Promote or shelve anyone here.</div>' +
@@ -1541,8 +1545,16 @@ function loadBrand(brandId) {
             // The whole story per person: status, when the invite went
             // out, when they answered — plus the exact note & DM below.
             '<div class="t-meta">' +
-            (t.shelved ? '<span class="status declined">shelved</span>'
-                       : '<span class="status ' + t.status + '">' + t.status + '</span>') +
+            // Shelved says where someone sits, not whether we wrote to
+            // them — reading it as "already contacted" is the mistake it
+            // used to invite, because the pill replaced the status and
+            // an unsent person showed nothing at all. So a shelved row
+            // now always says which it is.
+            (t.shelved
+              ? '<span class="status declined" title="Shelved means not in the queue — it says nothing about whether an invite went out. Promote to put them back.">shelved</span>' +
+                (t.sentAt ? '<span class="t-sep">·</span><span class="status ' + t.status + '">' + t.status + '</span>'
+                          : '<span>· never contacted</span>')
+              : '<span class="status ' + t.status + '">' + t.status + '</span>') +
             (t.sentAt ? '<span>· invited ' + shortDate(t.sentAt) + '</span>' : '') +
             (t.repliedAt ? '<span>· replied ' + shortDate(t.repliedAt) + '</span>' : '') +
             '</div>' +
