@@ -571,7 +571,6 @@
       </div>
       <div id="oq-new-slot" style="max-width:560px"></div>
       <div id="status-filters" class="chips" style="display:none"></div>
-      <div id="sent-days" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 12px"></div>
       <div class="count-head" id="queue-head">To send today <span class="n"></span></div>
       <div id="targets"></div>
       <div id="nextbest"></div>
@@ -2598,6 +2597,13 @@ function renderSentDays() {
   api('sentByDay', { days: 14 }).then(function (r) {
     var ds = r.days || [];
     if (!ds.length) { box.innerHTML = ''; return; }
+    var todayCell = document.getElementById('rc-today');
+    if (todayCell) {
+      var t0 = ds[ds.length - 1];
+      SENT_TODAY.count = t0.count; SENT_TODAY.cap = r.cap;
+      todayCell.textContent = t0.count;
+      todayCell.style.color = t0.count >= r.cap ? '#8fd6a8' : '';
+    }
     var max = Math.max.apply(null, ds.map(function (d) { return d.count; }).concat([r.cap]));
     box.innerHTML =
       '<div class="count-head" style="margin-top:18px">Invites per day <span class="n">last 14 days</span></div>' +
@@ -2635,7 +2641,8 @@ function loadReached() {
     document.getElementById('rc-kpis').innerHTML =
       '<div class="kpi"><div class="kpi-label">Invites sent</div><div class="kpi-value">' + tt.invited + '</div><div class="kpi-note">LinkedIn, all-time</div></div>' +
       '<div class="kpi"><div class="kpi-label">Accepted</div><div class="kpi-value">' + tt.accepted + '</div><div class="kpi-note">' + pct(tt.accepted) + ' accept rate</div></div>' +
-      '<div class="kpi money"><div class="kpi-label">Replied</div><div class="kpi-value">' + tt.replied + '</div><div class="kpi-note">' + pct(tt.replied) + ' reply rate</div></div>';
+      '<div class="kpi money"><div class="kpi-label">Replied</div><div class="kpi-value">' + tt.replied + '</div><div class="kpi-note">' + pct(tt.replied) + ' reply rate</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Sent today</div><div class="kpi-value" id="rc-today">—</div><div class="kpi-note">of ' + SENT_TODAY.cap + ' a day</div></div>';
     renderSentDays();
     renderReached();
   }).catch(function (e) {
@@ -3859,36 +3866,6 @@ function loadOutreach() {
   box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   renderStatusFilters();
 
-  // Sends per day — today first and bold against the cap, then the
-  // last week, so pace is visible at a glance.
-  var sdBox = document.getElementById('sent-days');
-  if (mode === 'today') {
-    api('sentByDay', { days: 8 }).then(function (r) {
-      var ds = r.days || [];
-      if (!ds.length) { sdBox.innerHTML = ''; return; }
-      var today = ds[ds.length - 1];
-      SENT_TODAY.count = today.count; SENT_TODAY.cap = r.cap;
-      var atCap = today.count >= r.cap;
-      // The week's history lives in Results now — the work tab keeps
-      // only today's number and the one action.
-      sdBox.innerHTML =
-        '<span class="status" id="sent-today-chip" style="font-size:12px;padding:5px 12px;font-weight:700;color:' + (atCap ? '#8fd6a8' : 'var(--ink-1)') + '">' +
-          'Sent today: ' + today.count + ' / ' + r.cap + (atCap ? ' ✓' : '') + '</span>' +
-        (atCap ? '' : '<button class="btn-ghost" id="fill20" title="Queue the best untouched brands in today’s category until 20 people are in" style="padding:4px 12px;font-size:12px">Fill queue to 20</button>');
-      var fb = document.getElementById('fill20');
-      if (fb) fb.onclick = function () {
-        fb.disabled = true; fb.textContent = 'Filling…';
-        api('fillToday').then(function (f) {
-          if (f.already) toast('Today is already covered to ' + SENT_TODAY.cap);
-          else if (f.shortBy > 0) toast('Added ' + f.added + ' — still ' + f.shortBy + ' short: ' +
-            (f.theme ? esc(CAT_NAMES[f.theme] || f.theme) + ' is out of new brands with people. Add some on the Schedule tab.' : 'add brands on the Schedule tab.'));
-          else toast('Added ' + f.added + ' — today is full at ' + SENT_TODAY.cap);
-          loadOutreach();
-        }).catch(function (e) { toast(e.message); fb.disabled = false; fb.textContent = 'Fill queue to 20'; });
-      };
-    }).catch(function () { sdBox.innerHTML = ''; });
-  } else sdBox.innerHTML = '';
-
   // The queue count lives here in the subtitle, not on the top nav.
   api('countQueued').then(function (r) {
     document.getElementById('outreach-sub').textContent =
@@ -3926,8 +3903,20 @@ function loadOutreach() {
     (r.more || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
     (list || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
     document.getElementById('queue-head').innerHTML = mode === 'today'
-      ? 'To send today' + (r.theme ? ' — ' + esc(CAT_NAMES[r.theme] || r.theme) + ' day' : '') + ' <span class="n">' + list.length + '</span>'
+      ? 'To send today' + (r.theme ? ' — ' + esc(CAT_NAMES[r.theme] || r.theme) + ' day' : '') + ' <span class="n">' + list.length + '</span>' +
+        '<button class="btn-ghost" id="fill20" title="Queue the best brands in today’s category until 20 people are in" style="margin-left:10px;padding:3px 11px;font-size:11.5px;font-weight:500">Fill to 20</button>'
       : 'All targets <span class="n">' + list.length + '</span>';
+    var fb = document.getElementById('fill20');
+    if (fb) fb.onclick = function () {
+      fb.disabled = true; fb.textContent = 'Filling…';
+      api('fillToday').then(function (f) {
+        if (f.already) toast('Today is already covered to ' + SENT_TODAY.cap);
+        else if (f.shortBy > 0) toast('Added ' + f.added + ' — still ' + f.shortBy + ' short: ' +
+          (f.theme ? esc(CAT_NAMES[f.theme] || f.theme) + ' is out of brands with people. Add some on the Schedule tab.' : 'add brands on the Schedule tab.'));
+        else toast('Added ' + f.added + ' — today is full at ' + SENT_TODAY.cap);
+        loadOutreach();
+      }).catch(function (e) { toast(e.message); fb.disabled = false; fb.textContent = 'Fill to 20'; });
+    };
     document.getElementById('c-' + (mode === 'today' ? 'today' : 'all')).textContent = list.length;
     document.getElementById('status-filters').style.display = mode === 'all' ? 'flex' : 'none';
 
