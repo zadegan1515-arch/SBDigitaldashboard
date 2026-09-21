@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         SB Dashboard — SponsorUnited Contact Capture
 // @namespace    sbagency.command-center
-// @version      3.3
+// @version      3.4
 // @description  Capture contacts from SponsorUnited into the SB Command Center, and find the profile ids of brands we cannot reach yet.
 // @match        https://pro.sponsorunited.com/*
 // @run-at       document-idle
 // @grant        none
+// @updateURL    https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/sponsorunited-capture.user.js
+// @downloadURL  https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/sponsorunited-capture.user.js
 // ==/UserScript==
 
 // -------------------------------------------------------------------
@@ -13,19 +15,53 @@
 // it survives a cleared browser or a new laptop — the copy in the
 // browser is the one that runs, this one is the backup and the record.
 //
-// TO INSTALL: Tampermonkey → Dashboard → + (new script) → paste this in
-// → put the real INGEST_TOKEN on the line below → save.
+// TO INSTALL (once): Tampermonkey -> Dashboard -> + (new script) ->
+// paste this in -> save. Then open SponsorUnited, click the SB pill, and
+// paste the ingest token into the box it shows. That's the whole setup.
 //
-// The token is deliberately NOT in this file. It's the same value as
-// INGEST_TOKEN in Vercel. Anyone holding it can write contacts into the
-// dashboard, so it never goes in the repo, in a screenshot or in chat.
+// After that Tampermonkey updates this script from GitHub on its own,
+// and the token stays where you put it — so a new version never means
+// pasting the token again. (Auto-update reads the repo over https; if
+// the repo is ever made private, updates stop silently and you go back
+// to pasting the file in by hand.)
+//
+// The token is NOT in this file and must never be put in it. It's the
+// same value as INGEST_TOKEN in Vercel. Anyone holding it can write
+// contacts into the dashboard, so it stays out of the repo, out of
+// screenshots and out of chat. The script keeps it in this browser's own
+// storage and sends it to exactly one place: the dashboard's ingest URL.
 // -------------------------------------------------------------------
 
 (function () {
   'use strict';
 
   var INGEST_URL   = 'https://sb-digitaldashboard.vercel.app/api/ingest';
-  var INGEST_TOKEN = 'PASTE_INGEST_TOKEN_HERE';
+
+  // Older installs had the token pasted on a line here. It now lives in
+  // this browser's storage instead, so updating the script doesn't wipe
+  // it. Leave this line as it is — an old inline token migrates across
+  // by itself the first time the new version runs.
+  var LEGACY_TOKEN = 'PASTE_INGEST_TOKEN_HERE';
+  var TOKEN_KEY = 'sbIngestToken';
+
+  function token() {
+    try {
+      var t = localStorage.getItem(TOKEN_KEY);
+      if (t) return t;
+    } catch (e) {}
+    return LEGACY_TOKEN.indexOf('PASTE_') === 0 ? '' : LEGACY_TOKEN;
+  }
+  function saveToken(t) {
+    try { localStorage.setItem(TOKEN_KEY, String(t || '').trim()); } catch (e) {}
+  }
+  function forgetToken() {
+    try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+  }
+  (function migrate() {
+    try {
+      if (!localStorage.getItem(TOKEN_KEY) && LEGACY_TOKEN.indexOf('PASTE_') !== 0) saveToken(LEGACY_TOKEN);
+    } catch (e) {}
+  })();
 
   var LI_SEL = 'a[href*="linkedin.com/in"], a[href*="linkedin.com/pub"]';
 
@@ -145,6 +181,9 @@
   }
 
   function post(payload) {
+    // No token yet — fail here rather than throwing 401s at the
+    // dashboard every four seconds until someone notices.
+    if (!token()) return Promise.reject(new Error('No ingest token saved yet'));
     return fetch(INGEST_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -191,7 +230,7 @@
           return next(job);
         }
         return post({
-          token: INGEST_TOKEN,
+          token: token(),
           brandExternalId: item.externalId,
           rows: rows.map(function (r) {
             return { brandName: item.suName || item.name, name: r.name, title: r.title, email: r.email, linkedinUrl: r.linkedinUrl, location: r.location };
@@ -232,7 +271,7 @@
   function startSweep(scope, opts) {
     var auto = !!(opts && opts.auto);
     renderJobPanel(null, 'Asking the dashboard what to capture…');
-    post({ token: INGEST_TOKEN, action: 'list', scope: scope, limit: 200 }).then(function (j) {
+    post({ token: token(), action: 'list', scope: scope, limit: 200 }).then(function (j) {
       if (!j || !j.ok) throw new Error((j && j.error) || 'Could not get the list');
       if (!j.brands.length) {
         renderMessage('Nothing to sweep',
@@ -385,7 +424,7 @@
       return;
     }
     renderMatchPanel(null, 'Asking the dashboard which brands are missing a profile…');
-    post({ token: INGEST_TOKEN, action: 'needProfile', limit: 300 }).then(function (j) {
+    post({ token: token(), action: 'needProfile', limit: 300 }).then(function (j) {
       if (!j || !j.ok) throw new Error((j && j.error) || 'Could not get the list');
       if (!j.items.length) {
         saveMatch(null);
@@ -428,7 +467,7 @@
     runSearch(item.name).then(function (r) {
       if (r.error) { job.failed += 1; return nextMatch(job); }
       return post({
-        token: INGEST_TOKEN, action: 'matched',
+        token: token(), action: 'matched',
         brandId: item.brandId, candidates: r.results || [],
       }).then(function (res) {
         if (res && res.outcome === 'attached') job.attached += 1;
@@ -529,6 +568,7 @@
   }
 
   function maybeAutoFill() {
+    if (!token()) return;
     if (!autoOn()) return;
     if (loadJob() || loadMatch()) return;            // something already walking
     if (document.hidden) return;                     // background tab, leave it
@@ -568,9 +608,10 @@
   }
 
   function pollJobs() {
+    if (!token()) return;
     if (polling || loadJob() || loadMatch()) return;
     polling = true;
-    post({ token: INGEST_TOKEN, action: 'searchJob' }).then(function (j) {
+    post({ token: token(), action: 'searchJob' }).then(function (j) {
       polling = false;
       if (!j || !j.ok || !j.job) return;
       // Something is happening — stay attentive for the next minute.
@@ -584,7 +625,7 @@
   function answerSearch(job) {
     runSearch(job.q).then(function (r) {
       post({
-        token: INGEST_TOKEN, action: 'searchResults',
+        token: token(), action: 'searchResults',
         id: job.id, results: r.results || [], error: r.error || null,
       });
     });
@@ -600,11 +641,11 @@
     setTimeout(function () {
       waitForContacts().then(function (rows) {
         var done = function () {
-          post({ token: INGEST_TOKEN, action: 'captureDone', brandId: job.brandId });
+          post({ token: token(), action: 'captureDone', brandId: job.brandId });
         };
         if (!rows.length) return done();
         post({
-          token: INGEST_TOKEN,
+          token: token(),
           brandExternalId: job.externalId,
           rows: rows.map(function (r) {
             return { brandName: job.brandName, name: r.name, title: r.title, email: r.email, linkedinUrl: r.linkedinUrl, location: r.location };
@@ -681,6 +722,7 @@
   }
 
   function openMenu() {
+    if (!token()) return openSetup();
     var p = freshPanel();
     var here = onBrandPage();
     p.innerHTML = head('SB capture', 'sbx') +
@@ -697,7 +739,8 @@
       '<label style="display:flex;gap:7px;align-items:flex-start;font-size:11.5px;color:#555;border-top:1px solid #eee;padding-top:9px;cursor:pointer">' +
         '<input type="checkbox" id="sbauto"' + (autoOn() ? ' checked' : '') + ' style="margin-top:2px">' +
         '<span>Fill by itself when I\'m not using this tab<br><span style="color:#999">Starts after two idle minutes, waits half an hour between runs, and stops the moment you touch the page.</span></span>' +
-      '</label>';
+      '</label>' +
+      '<div style="margin-top:8px"><a href="#" id="sbkey" style="color:#999;font-size:11px">Change the ingest token</a></div>';
     p.querySelector('#sbx').onclick = closePanel;
     if (here) p.querySelector('#sbone').onclick = openPanel;
     // "thin" = under the dashboard's per-brand cap of 25. It used to be
@@ -708,12 +751,45 @@
     p.querySelector('#sball').onclick = function () { startSweep('all'); };
     p.querySelector('#sbfind').onclick = function () { startMatchSweep(); };
     p.querySelector('#sbtest').onclick = testSearch;
+    p.querySelector('#sbkey').onclick = function () { forgetToken(); openSetup(); };
     p.querySelector('#sbauto').onchange = function () {
       setAuto(this.checked);
       // Turning it on shouldn't hijack the page a moment later; the
       // normal idle wait still applies from here.
       markAuto();
     };
+  }
+
+  // Setup. The token is typed here once and kept in this browser, so
+  // updating the script never asks for it again. It is a password field
+  // and is never printed, logged or shown back.
+  function openSetup() {
+    var p = freshPanel();
+    p.innerHTML = head('Connect to the SB dashboard', 'sbx') +
+      '<div style="color:#555;font-size:12px;margin-bottom:10px">Paste the ingest token — the same value as INGEST_TOKEN in Vercel. It stays in this browser and is only ever sent to the dashboard.</div>' +
+      '<input id="sbtok" type="password" autocomplete="off" spellcheck="false" placeholder="Ingest token" style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #ccc;border-radius:6px;margin-bottom:10px;font:13px system-ui">' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+        '<button id="sbtoksave" style="background:#111;color:#fff;border:0;border-radius:7px;padding:7px 12px;cursor:pointer;font-weight:600">Save</button>' +
+        '<span id="sbtokmsg" style="font-size:11.5px;flex:1"></span>' +
+      '</div>';
+    p.querySelector('#sbx').onclick = closePanel;
+    var save = function () {
+      var v = (p.querySelector('#sbtok').value || '').trim();
+      if (!v) { p.querySelector('#sbtokmsg').textContent = 'Paste the token first.'; return; }
+      saveToken(v);
+      p.querySelector('#sbtokmsg').innerHTML = '<span style="color:#137333">Checking…</span>';
+      // Prove it works now rather than failing silently in a sweep.
+      post({ token: token(), action: 'searchJob' }).then(function (j) {
+        if (j && j.ok) { closePanel(); openMenu(); return; }
+        forgetToken();
+        p.querySelector('#sbtokmsg').innerHTML = '<span style="color:#b00">' + esc((j && j.error) || 'The dashboard rejected that token.') + '</span>';
+      }).catch(function (e) {
+        forgetToken();
+        p.querySelector('#sbtokmsg').innerHTML = '<span style="color:#b00">' + esc(e.message) + '</span>';
+      });
+    };
+    p.querySelector('#sbtoksave').onclick = save;
+    p.querySelector('#sbtok').onkeydown = function (e) { if (e.key === 'Enter') save(); };
   }
 
   // A dry run: type one name, show what came back, save nothing. If
@@ -799,7 +875,7 @@
     if (!brand) { msg.textContent = 'Enter the brand name.'; return; }
 
     var payload = {
-      token: INGEST_TOKEN,
+      token: token(),
       brandExternalId: brandUlid(),
       // Leo typed and confirmed this name, so the dashboard makes the
       // brand if it doesn't have it. Only this panel sends the flag —

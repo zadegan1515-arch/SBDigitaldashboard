@@ -148,6 +148,26 @@ function chromeAt() {
   if (!sawRows) fail('it opened the profile but never sent any contacts');
   console.log('auto-fill ran on its own: needProfile -> matched -> list(thin) -> contacts posted');
 
+  // 3. an install with no token saved asks for one and stays silent —
+  //    it must not sit there firing rejected writes at the dashboard.
+  // The first tab is still mid-sweep; close it or its calls get counted
+  // against the silent one.
+  await ctx.close();
+  const bare = await browser.newContext();
+  const q = await bare.newPage();
+  q.on('pageerror', e => fail('page error (no token): ' + e.message));
+  await q.addInitScript({ content: SCRIPT.replace("'test-token'", "'PASTE_INGEST_TOKEN_HERE'") });
+  await q.goto('http://127.0.0.1:4612/');
+  await q.evaluate(() => { localStorage.setItem('sbActivityAt', String(Date.now() - 3600000)); });
+  const quietFrom = calls.length;
+  await q.waitForTimeout(25000);
+  if (calls.length !== quietFrom) fail('it called the dashboard with no token saved');
+  await q.click('button');  // the SB pill
+  const asks = await q.evaluate(() => !!document.querySelector('#sbtok'));
+  if (!asks) fail('with no token saved, the pill did not ask for one');
+  await bare.close();
+  console.log('with no token: silent, and asks for one when opened');
+
   console.log('SU SMOKE OK');
   await browser.close();
   api.close(); site.close();
