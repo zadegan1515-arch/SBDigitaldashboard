@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         SB Dashboard — SponsorUnited Contact Capture
 // @namespace    sbagency.command-center
-// @version      3.0
-// @description  Adds a "Capture to SB dashboard" button on SponsorUnited brand pages. Reads the brand's contact cards + its SponsorUnited ID and imports them into the SB Command Center.
+// @version      3.1
+// @description  Capture contacts from SponsorUnited into the SB Command Center, and find the profile ids of brands we cannot reach yet.
 // @match        https://pro.sponsorunited.com/*
 // @run-at       document-idle
 // @grant        none
