@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — SponsorUnited Contact Capture
 // @namespace    sbagency.command-center
-// @version      3.2
+// @version      3.3
 // @description  Capture contacts from SponsorUnited into the SB Command Center, and find the profile ids of brands we cannot reach yet.
 // @match        https://pro.sponsorunited.com/*
 // @run-at       document-idle
@@ -171,6 +171,9 @@
     if (!job || job.paused) return;
     var item = job.items[job.at];
     if (!item) { finishJob(job); return; }
+    // He's back and clicking around — don't yank the page. Check again
+    // in a moment; the worklist keeps.
+    if (autoHold(job)) { setTimeout(runStep, 5000); return; }
 
     // Not on this brand's page yet — go there; the script restarts on
     // load and lands back here with the page it needs.
@@ -226,7 +229,8 @@
     renderDonePanel(done);
   }
 
-  function startSweep(scope) {
+  function startSweep(scope, opts) {
+    var auto = !!(opts && opts.auto);
     renderJobPanel(null, 'Asking the dashboard what to capture…');
     post({ token: INGEST_TOKEN, action: 'list', scope: scope, limit: 200 }).then(function (j) {
       if (!j || !j.ok) throw new Error((j && j.error) || 'Could not get the list');
@@ -238,7 +242,7 @@
           j.noProfile);
         return;
       }
-      var job = { scope: scope, items: j.brands, at: 0, results: [], noProfile: j.noProfile, startedAt: Date.now() };
+      var job = { scope: scope, items: j.brands, at: 0, results: [], noProfile: j.noProfile, auto: auto, startedAt: Date.now() };
       saveJob(job);
       runStep();
     }).catch(function (e) { renderMessage('Could not start', e.message, 0); });
@@ -374,6 +378,7 @@
   // ("fill the rest in"), so the menu offers it as one button.
   function startMatchSweep(opts) {
     var thenFill = !!(opts && opts.thenFill);
+    var auto = !!(opts && opts.auto);
     if (!findSearchInput()) {
       renderMessage('No search box here',
         'This page has no SponsorUnited search bar. Open their home or Discovery page and try again.', 0);
@@ -384,11 +389,11 @@
       if (!j || !j.ok) throw new Error((j && j.error) || 'Could not get the list');
       if (!j.items.length) {
         saveMatch(null);
-        if (thenFill) { startSweep('thin'); return; }
+        if (thenFill) { startSweep('thin', { auto: auto }); return; }
         renderMessage('Nothing to look up', 'Every brand already has a SponsorUnited profile saved.', 0);
         return;
       }
-      var job = { items: j.items, at: 0, attached: 0, parked: 0, failed: 0, fill: thenFill, startedAt: Date.now() };
+      var job = { items: j.items, at: 0, attached: 0, parked: 0, failed: 0, fill: thenFill, auto: auto, startedAt: Date.now() };
       saveMatch(job);
       matchStep();
     }).catch(function (e) { saveMatch(null); renderMessage('Could not start', e.message, 0); });
@@ -400,6 +405,7 @@
     var item = job.items[job.at];
     if (!item) {
       var fill = job.fill;
+      var auto = job.auto;
       var found = job.attached;
       saveMatch(null);
       if (fill) {
@@ -407,7 +413,7 @@
         // useless until somebody walks those profiles.
         renderMessage('Found ' + found + ' more profiles — now filling contacts…',
           'Leave this tab open. Anything that needed your eye is waiting in the dashboard under Brands.', 0);
-        setTimeout(function () { startSweep('thin'); }, 1500);
+        setTimeout(function () { startSweep('thin', { auto: auto }); }, 1500);
         return;
       }
       renderMessage('Finished looking up profiles',
@@ -415,6 +421,9 @@
         'The ones needing your eye are in the dashboard under Brands.', 0);
       return;
     }
+    // Typing into their search bar while he's using it is the same
+    // rudeness as navigating — wait him out.
+    if (autoHold(job)) { setTimeout(matchStep, 5000); return; }
     renderMatchPanel(job, 'Searching ' + item.name + '…');
     runSearch(item.name).then(function (r) {
       if (r.error) { job.failed += 1; return nextMatch(job); }
@@ -451,6 +460,90 @@
     if (x) x.onclick = closePanel;
     var stop = p.querySelector('#sbmstop');
     if (stop) stop.onclick = function () { saveMatch(null); closePanel(); };
+  }
+
+  // ---- filling by itself ----
+  //
+  // Leo's rule: every brand should sit at 25 people on file, and he
+  // shouldn't have to remember to press a button for that. So whenever a
+  // SponsorUnited tab is open and he isn't using it, the script does the
+  // same two halves on its own — look up the profile ids we're missing,
+  // then top up every brand under 25.
+  //
+  // Three guards, because this drives the tab he's logged into:
+  //   · it only starts after the tab has been left alone for a while, so
+  //     a page never jumps out from under him mid-read;
+  //   · it waits out a cooldown between runs, so a run that finds
+  //     nothing to do doesn't ask again every four seconds;
+  //   · Stop, and the off switch in the menu, both hold it off.
+  // Nothing it does is destructive: captures only ever add people, and
+  // the 25 cap is enforced by the dashboard, not here.
+
+  var AUTO_KEY = 'sbAutoFill';       // '0' = off. Unset = on.
+  var AUTO_AT_KEY = 'sbAutoAt';      // when the last auto run started
+  var AUTO_IDLE_MS = 120000;         // hands off the tab this long first
+  var AUTO_COOLDOWN_MS = 30 * 60000; // between auto runs
+  var AUTO_QUIET_MS = 30000;         // don't navigate this soon after a click
+
+  // "When did a human last touch this tab" has to outlive a page load,
+  // because a sweep navigates constantly: keeping it in a variable would
+  // reset it on every hop and make the script think it had just been
+  // clicked. So it lives in localStorage, written at most every couple
+  // of seconds. The script's own navigation writes nothing, which is
+  // exactly the distinction we need.
+  var ACT_KEY = 'sbActivityAt';
+  var lastWrite = 0;
+  function noteActivity(e) {
+    // Only a real person counts. The script types into their search box
+    // with dispatched events; if those ever grew a keydown, counting
+    // them would make the script think a human had arrived and freeze
+    // itself mid-sweep.
+    if (e && e.isTrusted === false) return;
+    var now = Date.now();
+    if (now - lastWrite < 2000) return;
+    lastWrite = now;
+    try { localStorage.setItem(ACT_KEY, String(now)); } catch (e) {}
+  }
+  ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart'].forEach(function (ev) {
+    window.addEventListener(ev, noteActivity, { passive: true, capture: true });
+  });
+  function idleFor() {
+    var at = 0;
+    try { at = Number(localStorage.getItem(ACT_KEY) || 0); } catch (e) {}
+    return Date.now() - at;
+  }
+
+  function autoOn() {
+    try { return localStorage.getItem(AUTO_KEY) !== '0'; } catch (e) { return true; }
+  }
+  function setAuto(on) {
+    try { on ? localStorage.removeItem(AUTO_KEY) : localStorage.setItem(AUTO_KEY, '0'); } catch (e) {}
+  }
+  function autoLast() {
+    try { return Number(localStorage.getItem(AUTO_AT_KEY) || 0); } catch (e) { return 0; }
+  }
+  // Also called when a run is stopped, so stopping buys the same quiet
+  // half hour that finishing does.
+  function markAuto() {
+    try { localStorage.setItem(AUTO_AT_KEY, String(Date.now())); } catch (e) {}
+  }
+
+  function maybeAutoFill() {
+    if (!autoOn()) return;
+    if (loadJob() || loadMatch()) return;            // something already walking
+    if (document.hidden) return;                     // background tab, leave it
+    if (idleFor() < AUTO_IDLE_MS) return;            // he's using this tab
+    if (Date.now() - autoLast() < AUTO_COOLDOWN_MS) return;
+    if (!findSearchInput()) return;                  // no search bar on this page
+    markAuto();
+    startMatchSweep({ thenFill: true, auto: true });
+  }
+
+  // A run that started itself yields to a returning human: it finishes
+  // the brand it is on, then waits rather than navigating away from a
+  // page he just clicked into.
+  function autoHold(job) {
+    return job && job.auto && idleFor() < AUTO_QUIET_MS;
   }
 
   // ---- answering the dashboard's own search box ----
@@ -561,7 +654,13 @@
       '<div style="color:#555;font-size:12px;margin-bottom:10px">' + esc(status || '') + '</div>' +
       '<div style="color:#999;font-size:11px;margin-bottom:10px">Leave this tab open. It pauses between brands on purpose.</div>' +
       '<button id="sbstop" style="background:#fff;color:#b00;border:1px solid #e0c4c4;border-radius:7px;padding:6px 11px;cursor:pointer;font-weight:600">Stop</button>';
-    var stop = function () { stopJob(); renderMessage('Stopped', 'Nothing already captured is undone. Start again any time — it skips brands that now have contacts.', 0); };
+    var stop = function () {
+      // Stopping a run it started itself also means "not for a while" —
+      // otherwise it would be back two minutes later.
+      markAuto();
+      stopJob();
+      renderMessage('Stopped', 'Nothing already captured is undone. Start again any time — it skips brands that now have contacts.', 0);
+    };
     p.querySelector('#sbstop').onclick = stop;
     p.querySelector('#sbstopx').onclick = stop;
   }
@@ -594,7 +693,11 @@
       '<button id="sball" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;margin-bottom:8px">Refresh every brand</button>' +
       '<button id="sbfind" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;margin-bottom:6px;font-weight:600">Find profile ids for the rest</button>' +
       '<button id="sbtest" style="width:100%;background:#fff;color:#555;border:1px solid #eee;border-radius:7px;padding:7px 12px;cursor:pointer;margin-bottom:8px;font-size:12px">Test the search on this page</button>' +
-      '<div style="color:#999;font-size:11px">A sweep walks brands one at a time in this tab, pausing between each. Brands without a saved profile can\'t be swept — "Find profile ids" searches for them and attaches the obvious ones.</div>';
+      '<div style="color:#999;font-size:11px;margin-bottom:10px">A sweep walks brands one at a time in this tab, pausing between each. Brands without a saved profile can\'t be swept — "Find profile ids" searches for them and attaches the obvious ones.</div>' +
+      '<label style="display:flex;gap:7px;align-items:flex-start;font-size:11.5px;color:#555;border-top:1px solid #eee;padding-top:9px;cursor:pointer">' +
+        '<input type="checkbox" id="sbauto"' + (autoOn() ? ' checked' : '') + ' style="margin-top:2px">' +
+        '<span>Fill by itself when I\'m not using this tab<br><span style="color:#999">Starts after two idle minutes, waits half an hour between runs, and stops the moment you touch the page.</span></span>' +
+      '</label>';
     p.querySelector('#sbx').onclick = closePanel;
     if (here) p.querySelector('#sbone').onclick = openPanel;
     // "thin" = under the dashboard's per-brand cap of 25. It used to be
@@ -605,6 +708,12 @@
     p.querySelector('#sball').onclick = function () { startSweep('all'); };
     p.querySelector('#sbfind').onclick = function () { startMatchSweep(); };
     p.querySelector('#sbtest').onclick = testSearch;
+    p.querySelector('#sbauto').onchange = function () {
+      setAuto(this.checked);
+      // Turning it on shouldn't hijack the page a moment later; the
+      // normal idle wait still applies from here.
+      markAuto();
+    };
   }
 
   // A dry run: type one name, show what came back, save nothing. If
@@ -752,4 +861,8 @@
   // Answer whatever the dashboard is waiting on, quietly, and only
   // while nothing else is walking pages.
   setTimeout(function () { pollJobs(); schedulePoll(); }, 1500);
+  // The by-itself fill. Checked on a slow timer of its own: the guards
+  // inside decide whether this is a moment to start, and almost always
+  // the answer is no.
+  setInterval(maybeAutoFill, 20000);
 })();
