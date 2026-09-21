@@ -799,6 +799,11 @@
         <label class="lbl" for="nb-name">Brand name</label>
         <input class="field-box" id="nb-name" type="text" placeholder="e.g. Alani Nu" autocomplete="off">
       </div>
+      <div style="display:flex;gap:8px;align-items:center;margin:-4px 0 12px">
+        <button class="btn-ghost" id="nb-su" style="padding:5px 12px;font-size:12px">Find on SponsorUnited</button>
+        <span class="hint" style="margin:0">Pulls their people in with the brand. Needs a signed-in SponsorUnited tab.</span>
+      </div>
+      <div id="nb-su-results"></div>
       <div id="nb-guess"></div>
       <div class="row2" style="margin-bottom:12px">
         <div><label class="lbl" for="nb-cat">Category</label>
@@ -3942,6 +3947,9 @@ function openAddBrand() {
   document.getElementById('nb-guess').innerHTML = '';
   document.getElementById('nb-msg').textContent = '';
   ['nb-name', 'nb-site', 'nb-notes'].forEach(function (id) { document.getElementById(id).value = ''; });
+  NB_PICK = null;
+  var sub = document.getElementById('nb-su-results');
+  if (sub) sub.innerHTML = '';
   document.getElementById('nb-tier').value = '';
   lastGuessed = '';
   setTimeout(function () { document.getElementById('nb-name').focus(); }, 30);
@@ -8021,6 +8029,64 @@ document.getElementById('nb-name').addEventListener('input', function () {
   guessTimer = setTimeout(function () { guessFor(v); }, 500);
 });
 
+// "Find on SponsorUnited" inside the Add-a-brand box. Same relay as the
+// Brands tab: the question goes to the capture script in Leo's
+// logged-in tab, because we are not allowed to call their API. Picking
+// a match only remembers it — the brand is still created by the Add
+// button below, so the category, owner and notes he typed all survive.
+var NB_PICK = null;
+
+function nbSuBox() { return document.getElementById('nb-su-results'); }
+
+function nbSuFind() {
+  var name = document.getElementById('nb-name').value.trim();
+  if (name.length < 2) { toast('Type the name first'); return; }
+  NB_PICK = null;
+  nbSuBox().innerHTML = '<div class="hint" style="margin:0 0 12px">Searching SponsorUnited in your other tab…</div>';
+  api('suFindStart', { q: name }).then(function (r) {
+    var tries = 0;
+    (function poll() {
+      tries += 1;
+      api('suFindPoll', { id: r.id }).then(function (p) {
+        if (p.status === 'waiting' && tries < 18) return setTimeout(poll, 1600);
+        if (p.status === 'done') return nbSuRender(p.results || []);
+        nbSuBox().innerHTML = '<div class="hint" style="margin:0 0 12px;color:#f0b86b">' +
+          'No SponsorUnited tab answered. Open one, signed in, and try again — or just add the brand without it.</div>';
+      }).catch(function () { nbSuBox().innerHTML = ''; });
+    })();
+  }).catch(function (e) { toast(e.message); nbSuBox().innerHTML = ''; });
+}
+
+function nbSuRender(results) {
+  var box = nbSuBox();
+  if (!results.length) {
+    box.innerHTML = '<div class="hint" style="margin:0 0 12px">No SponsorUnited match for that spelling. Add the brand anyway, or try their spelling.</div>';
+    return;
+  }
+  box.innerHTML = '<div style="border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:12px">' +
+    '<div class="hint" style="margin:0 0 4px">SponsorUnited matches — pick one to attach its profile and pull its people:</div>' +
+    results.map(function (r) {
+      return '<div style="display:flex;gap:8px;align-items:center;padding:5px 0">' +
+        '<span style="flex:1;font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.name) + '</span>' +
+        '<button class="btn-ghost" data-nbsu="' + esc(r.externalId) + '" data-nbsuname="' + esc(r.name) + '" style="padding:4px 11px;font-size:12px">Use</button>' +
+      '</div>';
+    }).join('') + '</div>';
+  box.querySelectorAll('[data-nbsu]').forEach(function (btn) {
+    btn.onclick = function () {
+      NB_PICK = { externalId: btn.getAttribute('data-nbsu'), suName: btn.getAttribute('data-nbsuname') };
+      box.querySelectorAll('[data-nbsu]').forEach(function (b) {
+        b.textContent = b === btn ? 'Using ✓' : 'Use';
+        b.classList.toggle('btn-draft', b === btn);
+      });
+      // Their spelling is usually the better one to store.
+      var nameEl = document.getElementById('nb-name');
+      if (!nameEl.value.trim()) nameEl.value = NB_PICK.suName;
+    };
+  });
+}
+
+document.getElementById('nb-su').addEventListener('click', nbSuFind);
+
 document.getElementById('nb-save').addEventListener('click', function () {
   var name = document.getElementById('nb-name').value.trim();
   if (!name) { toast('Name is required'); return; }
@@ -8042,7 +8108,12 @@ document.getElementById('nb-save').addEventListener('click', function () {
     btn.textContent = 'Add brand';
     closeAddBrand();
     if (!r.created) toast(name + ' was already in here — opening it');
-    else toast('Added ' + name);
+    else toast('Added ' + name + (NB_PICK ? ' — pulling its people in' : ''));
+    if (NB_PICK) {
+      api('suPick', { brandId: r.brand.id, externalId: NB_PICK.externalId, suName: NB_PICK.suName })
+        .catch(function (err) { toast(err.message); });
+      NB_PICK = null;
+    }
     loadBrand(r.brand.id);
   }).catch(function (e) {
     btn.disabled = false;
