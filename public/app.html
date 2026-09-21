@@ -1328,7 +1328,7 @@ function suNoTab(name, why) {
       '<button class="btn-ghost" id="su-open">Open SponsorUnited</button> ' +
       '<button class="btn-ghost" id="su-retry">Try again</button></div>';
   document.getElementById('su-open').onclick = function () {
-    window.open('https://pro.sponsorunited.com/search/smart', '_blank', 'noopener');
+    window.open('https://pro.sponsorunited.com/', '_blank', 'noopener');
   };
   document.getElementById('su-retry').onclick = function () { suFind(name); };
 }
@@ -1457,12 +1457,12 @@ function loadBrand(brandId) {
       ('https://www.linkedin.com/search/results/companies/?keywords=' + encodeURIComponent(b.name));
     // Deep-link straight to this brand's SponsorUnited profile when we have
     // its SponsorUnited ID. We don't for most brands yet (they were imported
-    // by name only), and SponsorUnited's search is a live autocomplete with
-    // no linkable URL — so without the ID the best we can do is open the
-    // search page for you to type the name.
+    // by name only), and SponsorUnited's search is a live autocomplete in
+    // their banner with no linkable URL — so without the ID the best we can
+    // do is open their app for you to type the name into that bar.
     var suUrl = b.externalId
       ? ('https://pro.sponsorunited.com/profile/' + encodeURIComponent(b.externalId) + '/contacts')
-      : 'https://pro.sponsorunited.com/search/smart';
+      : 'https://pro.sponsorunited.com/';
     var suLabel = b.externalId ? 'SponsorUnited ↗' : 'SponsorUnited (search) ↗';
 
     var head =
@@ -7189,7 +7189,7 @@ document.getElementById('needs-list').addEventListener('click', function (e) {
       var nm = typed || suBtn.getAttribute('data-suname');
       navigator.clipboard.writeText(nm);
       toast('“' + nm + '” copied — paste it into SponsorUnited search');
-      window.open('https://pro.sponsorunited.com/search/smart', '_blank', 'noopener');
+      window.open('https://pro.sponsorunited.com/', '_blank', 'noopener');
     }
     return;
   }
@@ -8068,8 +8068,12 @@ function nbSuFind() {
           return setTimeout(poll, 700);
         }
         if (p.status === 'done') return nbSuRender(p.results || []);
-        nbSuBox().innerHTML = '<div class="hint" style="margin:0 0 12px;color:#f0b86b">' +
-          'No SponsorUnited tab answered. Open one, signed in, and try again — or just add the brand without it.</div>';
+        // Say which of the two went wrong: no tab at all, or a tab that
+        // tried and couldn't. They need different fixes.
+        var why = p.status === 'failed' && p.error
+          ? esc(p.error) + ' — open their home page (where the search bar is) and try again.'
+          : 'No SponsorUnited tab answered. Open one, signed in, and try again — or just add the brand without it.';
+        nbSuBox().innerHTML = '<div class="hint" style="margin:0 0 12px;color:#f0b86b">' + why + '</div>';
       }).catch(function () { nbSuBox().innerHTML = ''; });
     })();
   }).catch(function (e) { toast(e.message); nbSuBox().innerHTML = ''; });

@@ -126,6 +126,33 @@ async function attachProfileId(
   }))
 }
 
+// A capture Leo ran by hand, on a brand the dashboard doesn't have yet.
+// The unattended sweep must never invent brands — a misread name would
+// litter the roster — but a name Leo typed and confirmed in the panel is
+// a decision, so `createIfMissing` makes the brand there and then and the
+// people land on it instead of sitting in Needs-contacts waiting for the
+// same decision to be made twice.
+async function createBrandForCapture(name: string, externalId: string | null) {
+  const clean = String(name || '').trim().slice(0, 120)
+  if (!clean) return null
+  // The profile id is unique across brands: if another brand already
+  // claims it, this is the same company under a second spelling — use
+  // that brand rather than creating a near-duplicate.
+  if (externalId) {
+    const owner = await prisma.brand.findFirst({ where: { externalId } })
+    if (owner) return owner
+  }
+  try {
+    return await prisma.brand.create({
+      data: { name: clean, externalId: externalId || null, source: 'sponsorunited' },
+    })
+  } catch {
+    // Lost a race, or the name clashes case-differently — take whatever
+    // is there now rather than failing the capture.
+    return await findBrandForCapture(clean, externalId)
+  }
+}
+
 // CORS so the SponsorUnited tab (a different origin) can POST here.
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -319,7 +346,9 @@ export async function POST(req: NextRequest) {
   const rows: any[] = (Array.isArray(body.rows) ? body.rows : [])
     .slice()
     .sort((a: any, b: any) => scoreFit(b?.title ?? null, null) - scoreFit(a?.title ?? null, null))
-  const result = { contactsCreated: 0, targetsCreated: 0, targetsShelved: 0, skipped: 0, capped: 0, failed: 0, brandsMissing: [] as string[], errors: [] as string[] }
+  const result = { contactsCreated: 0, targetsCreated: 0, targetsShelved: 0, skipped: 0, capped: 0, failed: 0, brandsCreated: [] as string[], brandsMissing: [] as string[], errors: [] as string[] }
+  // Only a hand-run capture from the panel may create a brand.
+  const createIfMissing = body.createIfMissing === true
   const touched = new Set<string>()
   // brandId -> how many more people this brand can take in this batch.
   // Counted once per brand from what is already stored, then kept in
@@ -333,12 +362,17 @@ export async function POST(req: NextRequest) {
     try {
       if (!row.brandName || !row.name) { result.skipped++; continue }
 
-      // Brands must already exist — this endpoint does not invent brands,
-      // so a typo can't silently create a junk brand. Matches the name
+      // An unattended sweep may not invent brands, so a misread name
+      // can't litter the roster; a hand-run capture (createIfMissing)
+      // may, because Leo confirmed the name. Matches the name
       // (case-insensitive, so "ESPN BET" matches "ESPN Bet"), then the
       // SponsorUnited profile ID, then any "also known as" name.
       const suId = row.brandExternalId ?? body.brandExternalId ?? null
-      const brand = await findBrandForCapture(row.brandName, suId)
+      let brand = await findBrandForCapture(row.brandName, suId)
+      if (!brand && createIfMissing) {
+        brand = await createBrandForCapture(row.brandName, suId)
+        if (brand && !result.brandsCreated.includes(brand.name)) result.brandsCreated.push(brand.name)
+      }
       if (!brand) {
         // Unknown name — hold the person rather than dropping them. The
         // Needs-contacts tab lists these; attaching one to a brand adds

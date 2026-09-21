@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — SponsorUnited Contact Capture
 // @namespace    sbagency.command-center
-// @version      3.1
+// @version      3.2
 // @description  Capture contacts from SponsorUnited into the SB Command Center, and find the profile ids of brands we cannot reach yet.
 // @match        https://pro.sponsorunited.com/*
 // @run-at       document-idle
@@ -260,35 +260,41 @@
   //     the server judge each result.
   // -------------------------------------------------------------
 
-  var SEARCH_URL = 'https://pro.sponsorunited.com/search/smart';
   var SEARCH_SETTLE_MS = 500;    // let the autocomplete catch up
   var SEARCH_WAIT_MS = 9000;     // give slow results this long
   var MATCH_GAP_MS = 3500;       // between brands in a batch run
 
-  function onSearchPage() {
-    return /\/search\b/.test(location.pathname);
-  }
+  // Their search sits in the banner of every page — "SUrface deals,
+  // contacts, profiles and more" — so there is no search page to go to
+  // and no navigation to wait through. (An earlier version looked for
+  // the word "search" in the placeholder, which that wording does not
+  // contain, and sent the tab to /search for nothing.)
+  function onSearchPage() { return !!findSearchInput(); }
 
-  // Their search box, whatever they happen to call it today. Ordered
-  // from the most specific guess to the most general, so a redesign
-  // degrades to "the first visible text box" rather than breaking.
+  // Score every visible text box and take the best: their banner box is
+  // wide and near the top. Naming-based guesses come first, but a
+  // redesign only has to keep a wide box up top for this to survive.
   function findSearchInput() {
-    var tries = [
-      'input[type="search"]',
-      'input[placeholder*="search" i]',
-      'input[aria-label*="search" i]',
-      'input[name*="search" i]',
-      'input[type="text"]',
-    ];
-    for (var i = 0; i < tries.length; i++) {
-      var list = [].slice.call(document.querySelectorAll(tries[i]));
-      for (var j = 0; j < list.length; j++) {
-        var el = list[j];
-        var r = el.getBoundingClientRect();
-        if (r.width > 80 && r.height > 10) return el;
-      }
+    var best = null, bestScore = -1;
+    var inputs = [].slice.call(document.querySelectorAll('input[type="search"], input[type="text"], input:not([type])'));
+    for (var i = 0; i < inputs.length; i++) {
+      var el = inputs[i];
+      var r = el.getBoundingClientRect();
+      if (r.width < 120 || r.height < 14) continue;          // too small to be it
+      if (r.top > 260) continue;                              // not in the banner
+      if (el.closest('[aria-hidden="true"]')) continue;
+      var hint = ((el.getAttribute('placeholder') || '') + ' ' +
+                  (el.getAttribute('aria-label') || '') + ' ' +
+                  (el.getAttribute('name') || '')).toLowerCase();
+      var score = r.width / 100;
+      if (/surface|profiles|deals, contacts/.test(hint)) score += 40;
+      else if (/search/.test(hint)) score += 25;
+      if (el.type === 'search') score += 10;
+      // The contacts tab has its own "Search contacts" box — never that.
+      if (/search contacts|filter/.test(hint)) score -= 60;
+      if (score > bestScore) { bestScore = score; best = el; }
     }
-    return null;
+    return best;
   }
 
   // React keeps its own copy of an input's value, so assigning .value
@@ -363,22 +369,26 @@
     try { j ? localStorage.setItem(MATCH_KEY, JSON.stringify(j)) : localStorage.removeItem(MATCH_KEY); } catch (e) {}
   }
 
-  function startMatchSweep() {
-    if (!onSearchPage()) {
-      // Remember the intent and come back once their search page is up.
-      saveMatch({ pending: true });
-      location.href = SEARCH_URL;
+  // opts.thenFill: when the lookup finishes, go straight on to capturing
+  // every brand under 25. That pair is the whole job Leo actually wants
+  // ("fill the rest in"), so the menu offers it as one button.
+  function startMatchSweep(opts) {
+    var thenFill = !!(opts && opts.thenFill);
+    if (!findSearchInput()) {
+      renderMessage('No search box here',
+        'This page has no SponsorUnited search bar. Open their home or Discovery page and try again.', 0);
       return;
     }
     renderMatchPanel(null, 'Asking the dashboard which brands are missing a profile…');
     post({ token: INGEST_TOKEN, action: 'needProfile', limit: 300 }).then(function (j) {
       if (!j || !j.ok) throw new Error((j && j.error) || 'Could not get the list');
       if (!j.items.length) {
-        renderMessage('Nothing to look up', 'Every brand already has a SponsorUnited profile saved.', 0);
         saveMatch(null);
+        if (thenFill) { startSweep('thin'); return; }
+        renderMessage('Nothing to look up', 'Every brand already has a SponsorUnited profile saved.', 0);
         return;
       }
-      var job = { items: j.items, at: 0, attached: 0, parked: 0, failed: 0, startedAt: Date.now() };
+      var job = { items: j.items, at: 0, attached: 0, parked: 0, failed: 0, fill: thenFill, startedAt: Date.now() };
       saveMatch(job);
       matchStep();
     }).catch(function (e) { saveMatch(null); renderMessage('Could not start', e.message, 0); });
@@ -386,10 +396,20 @@
 
   function matchStep() {
     var job = loadMatch();
-    if (!job || job.pending) return;
+    if (!job) return;
     var item = job.items[job.at];
     if (!item) {
+      var fill = job.fill;
+      var found = job.attached;
       saveMatch(null);
+      if (fill) {
+        // Straight on to the capture half: the ids we just attached are
+        // useless until somebody walks those profiles.
+        renderMessage('Found ' + found + ' more profiles — now filling contacts…',
+          'Leave this tab open. Anything that needed your eye is waiting in the dashboard under Brands.', 0);
+        setTimeout(function () { startSweep('thin'); }, 1500);
+        return;
+      }
       renderMessage('Finished looking up profiles',
         job.attached + ' attached · ' + job.parked + ' need your eye · ' + job.failed + ' failed. ' +
         'The ones needing your eye are in the dashboard under Brands.', 0);
@@ -469,12 +489,6 @@
   }
 
   function answerSearch(job) {
-    if (!onSearchPage()) {
-      // Their search only exists on the search page; go there and the
-      // next poll after the reload picks the question back up.
-      location.href = SEARCH_URL;
-      return;
-    }
     runSearch(job.q).then(function (r) {
       post({
         token: INGEST_TOKEN, action: 'searchResults',
@@ -574,7 +588,9 @@
       (here
         ? '<button id="sbone" style="width:100%;background:#111;color:#fff;border:0;border-radius:7px;padding:9px 12px;cursor:pointer;font-weight:600;margin-bottom:8px">Capture this brand</button>'
         : '<div style="color:#555;margin-bottom:8px">Open a brand\'s Contacts tab to capture just that one.</div>') +
-      '<button id="sbmissing" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;font-weight:600;margin-bottom:6px">Capture all brands under 25 people</button>' +
+      '<button id="sbfill" style="width:100%;background:#111;color:#fff;border:0;border-radius:7px;padding:9px 12px;cursor:pointer;font-weight:600;margin-bottom:6px">Fill every brand to 25 people</button>' +
+      '<div style="color:#999;font-size:11px;margin-bottom:10px">Looks up the brands we have no profile for, then walks every brand under 25 and tops it up. One click, runs on its own.</div>' +
+      '<button id="sbmissing" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;margin-bottom:6px">Capture only (skip the lookup)</button>' +
       '<button id="sball" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;margin-bottom:8px">Refresh every brand</button>' +
       '<button id="sbfind" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;margin-bottom:6px;font-weight:600">Find profile ids for the rest</button>' +
       '<button id="sbtest" style="width:100%;background:#fff;color:#555;border:1px solid #eee;border-radius:7px;padding:7px 12px;cursor:pointer;margin-bottom:8px;font-size:12px">Test the search on this page</button>' +
@@ -584,9 +600,10 @@
     // "thin" = under the dashboard's per-brand cap of 25. It used to be
     // "missing" (no contacts at all), which skipped forever any brand
     // whose first capture found two people.
+    p.querySelector('#sbfill').onclick = function () { startMatchSweep({ thenFill: true }); };
     p.querySelector('#sbmissing').onclick = function () { startSweep('thin'); };
     p.querySelector('#sball').onclick = function () { startSweep('all'); };
-    p.querySelector('#sbfind').onclick = startMatchSweep;
+    p.querySelector('#sbfind').onclick = function () { startMatchSweep(); };
     p.querySelector('#sbtest').onclick = testSearch;
   }
 
@@ -594,9 +611,9 @@
   // SponsorUnited redesigns their search, this says so in one click
   // instead of a sweep quietly parking two hundred brands.
   function testSearch() {
-    if (!onSearchPage()) {
-      renderMessage('Open the search page first',
-        'This checks the search box itself. Go to SponsorUnited\'s search page, then try again.', 0);
+    if (!findSearchInput()) {
+      renderMessage('No search box here',
+        'This page has no SponsorUnited search bar. Open their home or Discovery page and try again.', 0);
       return;
     }
     var q = prompt('Type a brand name to test the search:', 'Red Bull');
@@ -675,6 +692,10 @@
     var payload = {
       token: INGEST_TOKEN,
       brandExternalId: brandUlid(),
+      // Leo typed and confirmed this name, so the dashboard makes the
+      // brand if it doesn't have it. Only this panel sends the flag —
+      // the unattended sweep still parks unknown names for review.
+      createIfMissing: true,
       rows: rows.map(function (r) {
         return { brandName: brand, name: r.name, title: r.title, email: r.email, linkedinUrl: r.linkedinUrl, location: r.location };
       })
@@ -686,13 +707,16 @@
       .then(function (j) {
         btn.disabled = false; btn.textContent = 'Send to SB dashboard';
         if (j.ok && (!j.brandsMissing || !j.brandsMissing.length)) {
-          msg.innerHTML = '<span style="color:#137333">Done — ' + j.contactsCreated + ' added, ' + j.skipped + ' already there.</span>';
+          var made = (j.brandsCreated && j.brandsCreated.length)
+            ? ' <b>New brand created.</b>' : '';
+          var cap = j.capped ? ' ' + j.capped + ' over the 25 cap.' : '';
+          msg.innerHTML = '<span style="color:#137333">Done — ' + j.contactsCreated + ' added, ' +
+            j.skipped + ' already there.' + cap + made + '</span>';
         } else if (j.ok) {
-          // A name the dashboard doesn't have no longer throws these
-          // people away — they're parked with the name. Say where they
-          // went instead of asking for a resend that isn't needed.
-          msg.innerHTML = '<span style="color:#946200">Held for review — the dashboard has no brand called "' + esc(brand) +
-            '". Open <b>Brands → Needs contacts</b> and point the name at the right brand; these people land then.</span>';
+          // Shouldn't happen from this panel any more (the dashboard
+          // creates the brand), so say what actually went wrong.
+          msg.innerHTML = '<span style="color:#946200">Couldn\'t file these under "' + esc(brand) +
+            '". Open <b>Brands → Needs contacts</b> — they\'re parked there, not lost.</span>';
         } else {
           msg.innerHTML = '<span style="color:#b00">' + esc(j.error || 'Failed') + '</span>';
         }
@@ -717,10 +741,9 @@
       if (loadJob()) setTimeout(runStep, 1200);
       else {
         var mj = loadMatch();
-        // "Find profile ids" pressed from another page: it parked the
-        // intent and sent us to the search page, so start it here.
-        if (mj && mj.pending) { saveMatch(null); setTimeout(startMatchSweep, 1500); }
-        else if (mj) setTimeout(matchStep, 1500);
+        // A lookup run in progress — the page moved under it (a result
+        // click, a back button) but the worklist survives, so pick it up.
+        if (mj) setTimeout(matchStep, 1500);
       }
     }
   }
