@@ -1153,9 +1153,15 @@ function loadBrands(category) {
 
   return api('listBrands', { category: category }).then(function (list) {
     var withContacts = list.filter(function (b) { return b._count.contacts > 0; }).length;
+    // How the roster actually splits: how many are full (at the 25 we
+    // keep on file), how many can sustain a three-person approach, and
+    // how many have nobody at all.
+    var atCap = list.filter(function (b) { return b._count.contacts >= 25; }).length;
+    var workable = list.filter(function (b) { return b._count.contacts >= 3; }).length;
     document.getElementById('brands-sub').textContent =
       list.length + ' brands · ' + withContacts + ' with contacts · ' +
-      (list.length - withContacts) + ' still need research';
+      (list.length - withContacts) + ' still need research · ' +
+      atCap + ' full at 25 · ' + workable + ' with 3+ people';
 
     box.innerHTML = list.map(function (b) {
       var people = (b.contacts || []).map(function (p) {
@@ -1296,7 +1302,15 @@ function suFind(name) {
     (function poll() {
       tries += 1;
       api('suFindPoll', { id: r.id }).then(function (p) {
-        if (p.status === 'waiting' && tries < 18) return setTimeout(poll, 1600);
+        if (p.status === 'waiting' && tries < 40) {
+          if (tries === 4) {
+            var b = document.getElementById('su-find');
+            if (b) b.innerHTML = '<div class="panel panel-pad" style="margin-top:12px">' +
+              '<b style="font-size:13px">Waiting on your SponsorUnited tab…</b>' +
+              '<div class="hint" style="margin:6px 0 0">It checks every couple of seconds. Make sure a signed-in SponsorUnited tab is open.</div></div>';
+          }
+          return setTimeout(poll, 700);
+        }
         if (p.status === 'done') return suRenderResults(name, p.results || []);
         if (p.status === 'failed') return suNoTab(name, p.error || 'The search did not run.');
         return suNoTab(name, 'No SponsorUnited tab answered.');
@@ -8048,7 +8062,11 @@ function nbSuFind() {
     (function poll() {
       tries += 1;
       api('suFindPoll', { id: r.id }).then(function (p) {
-        if (p.status === 'waiting' && tries < 18) return setTimeout(poll, 1600);
+        if (p.status === 'waiting' && tries < 40) {
+          if (tries === 4) nbSuBox().innerHTML =
+            '<div class="hint" style="margin:0 0 12px">Waiting on your SponsorUnited tab — it checks every couple of seconds…</div>';
+          return setTimeout(poll, 700);
+        }
         if (p.status === 'done') return nbSuRender(p.results || []);
         nbSuBox().innerHTML = '<div class="hint" style="margin:0 0 12px;color:#f0b86b">' +
           'No SponsorUnited tab answered. Open one, signed in, and try again — or just add the brand without it.</div>';

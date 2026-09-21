@@ -261,7 +261,7 @@
   // -------------------------------------------------------------
 
   var SEARCH_URL = 'https://pro.sponsorunited.com/search/smart';
-  var SEARCH_SETTLE_MS = 1500;   // let the autocomplete catch up
+  var SEARCH_SETTLE_MS = 500;    // let the autocomplete catch up
   var SEARCH_WAIT_MS = 9000;     // give slow results this long
   var MATCH_GAP_MS = 3500;       // between brands in a batch run
 
@@ -348,7 +348,7 @@
         if (Date.now() - started > SEARCH_WAIT_MS) {
           return resolve({ results: now, note: now.length ? 'unchanged' : 'no results' });
         }
-        setTimeout(look, 600);
+        setTimeout(look, 300);
       }, SEARCH_SETTLE_MS);
     });
   }
@@ -439,8 +439,20 @@
   // could call. Quiet, and it stands down entirely while a sweep is
   // walking pages so the two never fight over navigation.
 
-  var POLL_MS = 6000;
+  // Idles slowly, then leans in: once a question has been seen, the
+  // next one is usually seconds behind it, and waiting six seconds to
+  // notice was most of what made a lookup feel slow.
+  var POLL_IDLE_MS = 4000;
+  var POLL_BUSY_MS = 1200;
+  var POLL_BUSY_UNTIL = 0;
   var polling = false;
+  var pollTimer = null;
+
+  function schedulePoll() {
+    clearTimeout(pollTimer);
+    var gap = Date.now() < POLL_BUSY_UNTIL ? POLL_BUSY_MS : POLL_IDLE_MS;
+    pollTimer = setTimeout(function () { pollJobs(); schedulePoll(); }, gap);
+  }
 
   function pollJobs() {
     if (polling || loadJob() || loadMatch()) return;
@@ -448,6 +460,9 @@
     post({ token: INGEST_TOKEN, action: 'searchJob' }).then(function (j) {
       polling = false;
       if (!j || !j.ok || !j.job) return;
+      // Something is happening — stay attentive for the next minute.
+      POLL_BUSY_UNTIL = Date.now() + 60000;
+      schedulePoll();
       if (j.job.kind === 'search') return answerSearch(j.job);
       if (j.job.kind === 'capture') return captureQueued(j.job);
     }).catch(function () { polling = false; });
@@ -713,6 +728,5 @@
   setInterval(tick, 1500);
   // Answer whatever the dashboard is waiting on, quietly, and only
   // while nothing else is walking pages.
-  setTimeout(pollJobs, 4000);
-  setInterval(pollJobs, POLL_MS);
+  setTimeout(function () { pollJobs(); schedulePoll(); }, 1500);
 })();
