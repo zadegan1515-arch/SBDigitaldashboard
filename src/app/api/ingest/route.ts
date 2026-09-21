@@ -72,7 +72,9 @@ async function findBrandForCapture(name: string, externalId: string | null) {
 // Mirror of reconcileBrandTargets in /api/data: keep only the top few
 // (by fit) queued per brand, shelving the rest. Already-contacted people
 // count against the cap. Nothing is deleted.
-const TARGET_CAP_PER_BRAND = 3
+// Four per brand in the send queue, matching /api/data — a cold brand now
+// opens with up to four threads. Not the 25-contact file cap above.
+const TARGET_CAP_PER_BRAND = 4
 async function reconcileBrandTargets(brandId: string, perBrand = TARGET_CAP_PER_BRAND) {
   const worked = await prisma.target.count({ where: { brandId, sentAt: { not: null } } })
   const room = Math.max(0, perBrand - worked)

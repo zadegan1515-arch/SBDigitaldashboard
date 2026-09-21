@@ -308,12 +308,37 @@ function looksLikeDecisionMaker(title: string | null): boolean {
 // reachable bench.
 function recommendWorkPeople(
   brand: { tier: string | null },
-  contacts: Array<{ title: string | null; email: string | null; linkedinUrl: string | null }>
+  contacts: Array<{ title: string | null; email: string | null; linkedinUrl: string | null }>,
+  cold = false,
 ): number {
   const reachable = contacts.filter(c => c.email || c.linkedinUrl).length
   const founderLed = contacts.some(c => /founder|co-founder|\bceo\b/i.test(c.title ?? ''))
-  const n = brand.tier === 'established' ? 3 : brand.tier === 'growth' ? 2 : founderLed ? 1 : 2
+  // Leo's rule: a brand nobody has written to yet opens with three or
+  // four threads, four at the big ones — a first approach is where the
+  // extra thread is worth most, and there is no live conversation for a
+  // second name to cut across. Once someone has been written to the old
+  // narrower counts apply, so we don't pile onto a thread in motion.
+  // Either way the brand's reachable people are the real ceiling.
+  const n = cold
+    ? (brand.tier === 'established' ? 4 : 3)
+    : (brand.tier === 'established' ? 3 : brand.tier === 'growth' ? 2 : founderLed ? 1 : 2)
   return Math.max(1, Math.min(n, Math.max(reachable, 1)))
+}
+
+// Leo's rule, as a filter rather than only a scoring nudge: at anything
+// bigger than an emerging brand the chief executive is the wrong door —
+// marketing and partnerships people buy this. scoreFit already docks
+// those titles, but a dock still picks them when they sort first, so
+// they come out of the running entirely while anyone else is reachable.
+function dropExecsAtBigBrands<T extends { title: string | null }>(
+  contacts: T[],
+  tier: string | null,
+): T[] {
+  if (tier === 'emerging') return contacts
+  const notExec = contacts.filter(c => !(c.title && EXEC_TITLE.test(c.title) && !/marketing/i.test(c.title)))
+  // A brand whose only reachable people are executives still gets
+  // worked — a worse door beats no door.
+  return notExec.length ? notExec : contacts
 }
 
 // ---------------------------------------------------------------
@@ -402,7 +427,12 @@ async function ensureTemplateDrafts(targets: any[]) {
 // outreach stays focused and the weekly LinkedIn cap isn't blown on one
 // brand. The rest are "shelved" — kept, visible, promotable, just not
 // queued. Leo's call: top 3 by fit.
-const TARGET_CAP_PER_BRAND = 3
+// How many people per brand can sit in the send queue at once. Four,
+// because a cold brand now opens with up to four threads and a cap of
+// three would shelve the fourth the moment it was created. NOT the
+// contact cap — that one is CONTACT_CAP_PER_BRAND = 25, how many people
+// we keep on file.
+const TARGET_CAP_PER_BRAND = 4
 
 // How many people we keep on file per brand — a different question from
 // how many we write to. Leo's rule (Sep 2026): a brand with fewer than
@@ -1745,7 +1775,25 @@ const handlers: Record<string, Handler> = {
       }),
     ])
 
-    return { brand, events, money, boardViews: { count: boardViewCount, last: lastVisit, recent: recentVisits } }
+    // A Show Board access request waiting on a decision for this brand.
+    // Approving is the same call the Show Board queue makes; it just
+    // wasn't reachable from the place you look the brand up. Pending
+    // rows carry no brandId (it is stamped when decided), so they are
+    // matched by the company the requester typed — against our name or
+    // any "also known as".
+    const names = [brand.name, ...((brand.aka ?? '').split(/[,;]/))]
+      .map(x => x.trim().toLowerCase()).filter(Boolean)
+    const pendingAccess = (await prisma.boardAccessRequest.findMany({
+      where: { status: 'pending' },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    })).filter(r => r.brandId === brand.id || names.includes(r.company.trim().toLowerCase()))
+
+    return {
+      brand, events, money,
+      accessRequests: pendingAccess,
+      boardViews: { count: boardViewCount, last: lastVisit, recent: recentVisits },
+    }
   },
 
   // Generate (or clear) a brand's Show Board access code. Uniqueness is
@@ -1846,10 +1894,11 @@ const handlers: Record<string, Handler> = {
       if (fields[key] !== undefined) data[key] = fields[key] === '' ? null : fields[key]
     }
     if (fields.doNotEmail !== undefined) data.doNotEmail = !!fields.doNotEmail
-    // People to work at once at this brand: 1-3, or null for the default (2).
+    // People to work at once at this brand: 1-4, or null to follow the
+    // suggestion (which opens wider on a brand nobody has written to).
     if (fields.workPeople !== undefined) {
       const n = Number(fields.workPeople)
-      data.workPeople = n >= 1 && n <= 3 ? Math.round(n) : null
+      data.workPeople = n >= 1 && n <= 4 ? Math.round(n) : null
     }
     // Renaming is allowed but never to empty; a clash with an existing
     // brand means it's a duplicate — merge, don't rename over it.
@@ -2202,7 +2251,8 @@ const handlers: Record<string, Handler> = {
     // force (the row's "+ Person" button) deliberately goes past the
     // brand's slot count — an explicit click, not an auto-pick. Leo's
     // explicit setting wins; otherwise the rules-based recommendation.
-    const WORK_PER_BRAND = brand.workPeople ?? recommendWorkPeople(brand, brand.contacts)
+    const coldBrand = !brand.targets.some(t => t.sentAt)
+    const WORK_PER_BRAND = brand.workPeople ?? recommendWorkPeople(brand, brand.contacts, coldBrand)
     // Queued is NOT contacted. Lumping the two together was the bug
     // behind "invite already sent out" on a brand nobody had written
     // to: one person merely sitting in the queue filled the brand's
@@ -2257,8 +2307,7 @@ const handlers: Record<string, Handler> = {
     const targeted = new Set(brand.targets.map(t => t.contactId))
     // Best fit first, but anyone with an email address outranks anyone
     // without one — a target we can't email can't enter the email queue.
-    const pick = brand.contacts
-      .filter(c => !targeted.has(c.id))
+    const pick = dropExecsAtBigBrands(brand.contacts.filter(c => !targeted.has(c.id)), brand.tier)
       .sort((a, b) =>
         (b.email ? 1 : 0) - (a.email ? 1 : 0) ||
         scoreFit(b.title, brand.tier) - scoreFit(a.title, brand.tier))[0]

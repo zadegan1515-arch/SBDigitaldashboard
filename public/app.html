@@ -1341,6 +1341,24 @@ function loadBrand(brandId) {
             esc(b.about) + (/[.!?]$/.test(b.about) ? '' : '.') +
             (b.topProducts ? ' Known for ' + esc(b.topProducts) + '.' : '') + '</div>'
         : '<div class="hint" style="margin:8px 0 0">No summary yet — open “Details &amp; notes” below and fill in “What they do”.</div>') +
+      // A Show Board access request waiting on a decision. Same two
+      // actions as the Show Board queue — this is just the other place
+      // you'd naturally look for the brand that asked.
+      ((d.accessRequests || []).length
+        ? '<div class="panel panel-pad" style="margin-top:16px;border-color:var(--warn)">' +
+            (d.accessRequests || []).map(function (r) {
+              return '<div data-acc="' + esc(r.id) + '">' +
+                '<div style="font-size:12.5px;font-weight:700;color:#f0b86b;margin-bottom:4px">Asked for Show Board access</div>' +
+                '<div style="font-size:13.5px">' + esc(r.name) + ' · ' + esc(r.email) + '</div>' +
+                '<div class="t-meta" style="margin:2px 0 10px"><span>as “' + esc(r.company) + '”</span>' +
+                  '<span>· ' + esc(when(r.createdAt)) + '</span></div>' +
+                '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+                  '<button class="btn-solid" data-baccact="approve">Approve — email code</button>' +
+                  '<button class="btn-ghost danger" data-baccact="deny">Deny</button>' +
+                '</div></div>';
+            }).join('<hr style="border:0;border-top:1px solid var(--border-soft);margin:12px 0">') +
+          '</div>'
+        : '') +
       '<div class="kpi-row">' +
         '<div class="kpi money"><div class="kpi-label">Confirmed</div><div class="kpi-value">' +
           money(d.money.confirmedCents) + '</div><div class="kpi-note">sponsorship revenue</div></div>' +
@@ -1386,15 +1404,26 @@ function loadBrand(brandId) {
           (function () {
             var reach = (b.contacts || []).filter(function (c) { return c.email || c.linkedinUrl; }).length;
             var founder = (b.contacts || []).some(function (c) { return /founder|co-founder|\bceo\b/i.test(c.title || ''); });
-            var sug = b.tier === 'established' ? 3 : b.tier === 'growth' ? 2 : founder ? 1 : 2;
+            // Mirror of recommendWorkPeople on the server. A brand nobody
+            // has written to yet opens wider — three, or four at a big
+            // one; the narrower counts are for brands with a thread
+            // already running.
+            var cold = !(b.targets || []).some(function (t) { return t.sentAt; });
+            var sug = cold
+              ? (b.tier === 'established' ? 4 : 3)
+              : (b.tier === 'established' ? 3 : b.tier === 'growth' ? 2 : founder ? 1 : 2);
             sug = Math.max(1, Math.min(sug, Math.max(reach, 1)));
-            var why = b.tier === 'established' ? 'big org — several possible buyers'
+            var why = cold
+              ? (b.tier === 'established'
+                  ? 'nobody written to yet — open four threads at a big brand'
+                  : 'nobody written to yet — open three threads')
+              : b.tier === 'established' ? 'big org — several possible buyers'
               : b.tier === 'growth' ? 'growth brand — two threads is the sweet spot'
               : founder ? 'founder-led — one thread, straight to the top'
               : 'no strong signal — two is the safe default';
             return '<select class="field-box" id="b-workpeople" style="width:auto;padding:6px 10px;font-size:12px" title="How many people to work at once at this brand. Auto follows the suggestion: ' + why + '. + Person can always exceed it.">' +
               '<option value=""' + (b.workPeople ? '' : ' selected') + '>Work: auto — suggests ' + sug + '</option>' +
-              [1, 2, 3].map(function (n) {
+              [1, 2, 3, 4].map(function (n) {
                 return '<option value="' + n + '"' + (b.workPeople === n ? ' selected' : '') + '>Work: ' + n + ' ' + (n === 1 ? 'person' : 'people') + '</option>';
               }).join('') +
             '</select>';
@@ -7063,6 +7092,32 @@ document.getElementById('needs-list').addEventListener('change', function (e) {
 });
 
 // Proposal / recap document actions on the brand page.
+// Approve / deny a Show Board access request from the brand page. Both
+// go through the same handlers the Show Board queue uses, so a request
+// can't end up decided one way in one place and another elsewhere.
+document.getElementById('brand-body').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-baccact]');
+  if (!btn) return;
+  var row = btn.closest('[data-acc]');
+  var id = row.getAttribute('data-acc');
+  if (btn.getAttribute('data-baccact') === 'deny') {
+    if (!window.confirm('Deny this request? They are not notified.')) return;
+    btn.disabled = true;
+    api('denyAccessRequest', { id: id })
+      .then(function () { toast('Denied'); if (CURRENT_BRAND) loadBrand(CURRENT_BRAND.brand.id); })
+      .catch(function (err) { btn.disabled = false; toast(err.message); });
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Approving…';
+  api('approveAccessRequest', { id: id }).then(function (r) {
+    toast(r.emailed ? 'Approved — code emailed' : 'Approved — email failed, copy the code from this page');
+    if (CURRENT_BRAND) loadBrand(CURRENT_BRAND.brand.id);
+  }).catch(function (err) {
+    btn.disabled = false; btn.textContent = 'Approve — email code'; toast(err.message);
+  });
+});
+
 document.getElementById('brand-body').addEventListener('click', function (e) {
   var btn = e.target.closest('[data-docact]');
   if (!btn) return;

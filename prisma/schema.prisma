@@ -75,8 +75,10 @@ model Brand {
   // difference from archiving.
   passedTodayAt DateTime?
 
-  // How many people to work at once at this brand (1-3). Null = the
-  // default of 2. Set on the brand page; "+ Person" can still exceed it.
+  // How many people to work at once at this brand (1-4). Null = follow
+  // recommendWorkPeople, which opens three or four threads at a brand
+  // nobody has written to yet and narrows once one is running. Set on
+  // the brand page; "+ Person" can still exceed it.
   workPeople Int?
 
   // Access code for the public Show Board (the whole board is gated).
