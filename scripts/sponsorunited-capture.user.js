@@ -244,6 +244,254 @@
     }).catch(function (e) { renderMessage('Could not start', e.message, 0); });
   }
 
+  // -------------------------------------------------------------
+  // Finding profile ids
+  //
+  // A brand can only be swept once we know its SponsorUnited profile
+  // id, and that id only exists behind their search — which is an
+  // autocomplete inside the app, not a linkable URL. So the search has
+  // to be performed here, in the logged-in tab, by typing into their own
+  // box and reading what comes back. Nothing calls their API.
+  //
+  // Two ways in, one mechanism:
+  //   · the dashboard asks a question ("who is Yerba Madre?") and this
+  //     script answers it while Leo watches the dashboard;
+  //   · "Find profile ids" walks every brand we cannot reach and lets
+  //     the server judge each result.
+  // -------------------------------------------------------------
+
+  var SEARCH_URL = 'https://pro.sponsorunited.com/search/smart';
+  var SEARCH_SETTLE_MS = 1500;   // let the autocomplete catch up
+  var SEARCH_WAIT_MS = 9000;     // give slow results this long
+  var MATCH_GAP_MS = 3500;       // between brands in a batch run
+
+  function onSearchPage() {
+    return /\/search\b/.test(location.pathname);
+  }
+
+  // Their search box, whatever they happen to call it today. Ordered
+  // from the most specific guess to the most general, so a redesign
+  // degrades to "the first visible text box" rather than breaking.
+  function findSearchInput() {
+    var tries = [
+      'input[type="search"]',
+      'input[placeholder*="search" i]',
+      'input[aria-label*="search" i]',
+      'input[name*="search" i]',
+      'input[type="text"]',
+    ];
+    for (var i = 0; i < tries.length; i++) {
+      var list = [].slice.call(document.querySelectorAll(tries[i]));
+      for (var j = 0; j < list.length; j++) {
+        var el = list[j];
+        var r = el.getBoundingClientRect();
+        if (r.width > 80 && r.height > 10) return el;
+      }
+    }
+    return null;
+  }
+
+  // React keeps its own copy of an input's value, so assigning .value
+  // alone changes the pixels and nothing else. Go through the native
+  // setter and fire the events their handler is listening for.
+  function typeInto(el, text) {
+    var proto = Object.getPrototypeOf(el);
+    var desc = Object.getOwnPropertyDescriptor(proto, 'value');
+    if (desc && desc.set) desc.set.call(el, text);
+    else el.value = text;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'e' }));
+  }
+
+  // Every profile link currently on the page, newest render wins.
+  // Deduped by id, because a result often links its logo and its name.
+  function readResultLinks() {
+    var seen = {};
+    var out = [];
+    var links = [].slice.call(document.querySelectorAll('a[href*="/profile/"]'));
+    for (var i = 0; i < links.length; i++) {
+      var href = links[i].getAttribute('href') || '';
+      var m = href.match(/\/profile\/([^\/?#]+)/);
+      if (!m) continue;
+      var id = m[1];
+      var label = (links[i].textContent || '').replace(/\s+/g, ' ').trim();
+      if (!label) {
+        // A logo link: borrow the name from its row.
+        var row = links[i].closest('li, tr, [role="option"], div');
+        label = row ? (row.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80) : '';
+      }
+      if (!label) continue;
+      if (seen[id]) continue;
+      seen[id] = 1;
+      out.push({ externalId: id, name: label });
+      if (out.length >= 8) break;
+    }
+    return out;
+  }
+
+  // Type a name and wait for the results to change. Resolves with
+  // whatever was on screen when it settled — judging them is the
+  // server's job, not this script's.
+  function runSearch(query) {
+    return new Promise(function (resolve) {
+      var box = findSearchInput();
+      if (!box) return resolve({ error: 'Could not find the search box on this page' });
+      var before = readResultLinks().map(function (r) { return r.externalId; }).join(',');
+      box.focus();
+      typeInto(box, query);
+      var started = Date.now();
+      setTimeout(function look() {
+        var now = readResultLinks();
+        var key = now.map(function (r) { return r.externalId; }).join(',');
+        if (now.length && key !== before) return resolve({ results: now });
+        if (Date.now() - started > SEARCH_WAIT_MS) {
+          return resolve({ results: now, note: now.length ? 'unchanged' : 'no results' });
+        }
+        setTimeout(look, 600);
+      }, SEARCH_SETTLE_MS);
+    });
+  }
+
+  // ---- batch: work through every brand we cannot reach ----
+
+  var MATCH_KEY = 'sbMatchJob';
+  function loadMatch() {
+    try { return JSON.parse(localStorage.getItem(MATCH_KEY) || 'null'); } catch (e) { return null; }
+  }
+  function saveMatch(j) {
+    try { j ? localStorage.setItem(MATCH_KEY, JSON.stringify(j)) : localStorage.removeItem(MATCH_KEY); } catch (e) {}
+  }
+
+  function startMatchSweep() {
+    if (!onSearchPage()) {
+      // Remember the intent and come back once their search page is up.
+      saveMatch({ pending: true });
+      location.href = SEARCH_URL;
+      return;
+    }
+    renderMatchPanel(null, 'Asking the dashboard which brands are missing a profile…');
+    post({ token: INGEST_TOKEN, action: 'needProfile', limit: 300 }).then(function (j) {
+      if (!j || !j.ok) throw new Error((j && j.error) || 'Could not get the list');
+      if (!j.items.length) {
+        renderMessage('Nothing to look up', 'Every brand already has a SponsorUnited profile saved.', 0);
+        saveMatch(null);
+        return;
+      }
+      var job = { items: j.items, at: 0, attached: 0, parked: 0, failed: 0, startedAt: Date.now() };
+      saveMatch(job);
+      matchStep();
+    }).catch(function (e) { saveMatch(null); renderMessage('Could not start', e.message, 0); });
+  }
+
+  function matchStep() {
+    var job = loadMatch();
+    if (!job || job.pending) return;
+    var item = job.items[job.at];
+    if (!item) {
+      saveMatch(null);
+      renderMessage('Finished looking up profiles',
+        job.attached + ' attached · ' + job.parked + ' need your eye · ' + job.failed + ' failed. ' +
+        'The ones needing your eye are in the dashboard under Brands.', 0);
+      return;
+    }
+    renderMatchPanel(job, 'Searching ' + item.name + '…');
+    runSearch(item.name).then(function (r) {
+      if (r.error) { job.failed += 1; return nextMatch(job); }
+      return post({
+        token: INGEST_TOKEN, action: 'matched',
+        brandId: item.brandId, candidates: r.results || [],
+      }).then(function (res) {
+        if (res && res.outcome === 'attached') job.attached += 1;
+        else if (res && res.ok) job.parked += 1;
+        else job.failed += 1;
+        nextMatch(job);
+      });
+    }).catch(function () { job.failed += 1; nextMatch(job); });
+  }
+
+  function nextMatch(job) {
+    job.at += 1;
+    saveMatch(job);
+    setTimeout(function () { if (loadMatch()) matchStep(); }, MATCH_GAP_MS);
+  }
+
+  function renderMatchPanel(job, note) {
+    var p = freshPanel();
+    var total = job ? job.items.length : 0;
+    var at = job ? job.at : 0;
+    p.innerHTML = head('Finding profiles', 'sbmx') +
+      '<div style="font-size:12.5px;margin-bottom:6px">' + esc(note || '') + '</div>' +
+      (job
+        ? '<div style="font-size:11.5px;color:#555">' + at + ' of ' + total + ' · ' +
+            job.attached + ' attached · ' + job.parked + ' for review</div>' +
+          '<button id="sbmstop" style="width:100%;margin-top:10px;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:8px 12px;cursor:pointer">Stop</button>'
+        : '');
+    var x = p.querySelector('#sbmx');
+    if (x) x.onclick = closePanel;
+    var stop = p.querySelector('#sbmstop');
+    if (stop) stop.onclick = function () { saveMatch(null); closePanel(); };
+  }
+
+  // ---- answering the dashboard's own search box ----
+  //
+  // Polled rather than pushed: this tab has no address the dashboard
+  // could call. Quiet, and it stands down entirely while a sweep is
+  // walking pages so the two never fight over navigation.
+
+  var POLL_MS = 6000;
+  var polling = false;
+
+  function pollJobs() {
+    if (polling || loadJob() || loadMatch()) return;
+    polling = true;
+    post({ token: INGEST_TOKEN, action: 'searchJob' }).then(function (j) {
+      polling = false;
+      if (!j || !j.ok || !j.job) return;
+      if (j.job.kind === 'search') return answerSearch(j.job);
+      if (j.job.kind === 'capture') return captureQueued(j.job);
+    }).catch(function () { polling = false; });
+  }
+
+  function answerSearch(job) {
+    if (!onSearchPage()) {
+      // Their search only exists on the search page; go there and the
+      // next poll after the reload picks the question back up.
+      location.href = SEARCH_URL;
+      return;
+    }
+    runSearch(job.q).then(function (r) {
+      post({
+        token: INGEST_TOKEN, action: 'searchResults',
+        id: job.id, results: r.results || [], error: r.error || null,
+      });
+    });
+  }
+
+  // A brand whose id was just attached: read its people straight away,
+  // which is what makes "pull their people now" true.
+  function captureQueued(job) {
+    if (brandUlid() !== job.externalId) {
+      location.href = profileUrl(job.externalId);
+      return;
+    }
+    setTimeout(function () {
+      waitForContacts().then(function (rows) {
+        var done = function () {
+          post({ token: INGEST_TOKEN, action: 'captureDone', brandId: job.brandId });
+        };
+        if (!rows.length) return done();
+        post({
+          token: INGEST_TOKEN,
+          brandExternalId: job.externalId,
+          rows: rows.map(function (r) {
+            return { brandName: job.brandName, name: r.name, title: r.title, email: r.email, linkedinUrl: r.linkedinUrl, location: r.location };
+          }),
+        }).then(done, done);
+      });
+    }, SETTLE_MS);
+  }
+
   var pill, panel;
 
   var PANEL_CSS = 'position:fixed;bottom:16px;right:16px;z-index:2147483647;background:#fff;color:#111;border:1px solid #d9d9d6;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:14px 16px;font:13px/1.45 system-ui,-apple-system,sans-serif;width:330px';
@@ -313,7 +561,9 @@
         : '<div style="color:#555;margin-bottom:8px">Open a brand\'s Contacts tab to capture just that one.</div>') +
       '<button id="sbmissing" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;font-weight:600;margin-bottom:6px">Capture all brands under 25 people</button>' +
       '<button id="sball" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;margin-bottom:8px">Refresh every brand</button>' +
-      '<div style="color:#999;font-size:11px">A sweep walks brands one at a time in this tab, pausing between each. Only brands whose SponsorUnited profile the dashboard already knows can be swept.</div>';
+      '<button id="sbfind" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;margin-bottom:6px;font-weight:600">Find profile ids for the rest</button>' +
+      '<button id="sbtest" style="width:100%;background:#fff;color:#555;border:1px solid #eee;border-radius:7px;padding:7px 12px;cursor:pointer;margin-bottom:8px;font-size:12px">Test the search on this page</button>' +
+      '<div style="color:#999;font-size:11px">A sweep walks brands one at a time in this tab, pausing between each. Brands without a saved profile can\'t be swept — "Find profile ids" searches for them and attaches the obvious ones.</div>';
     p.querySelector('#sbx').onclick = closePanel;
     if (here) p.querySelector('#sbone').onclick = openPanel;
     // "thin" = under the dashboard's per-brand cap of 25. It used to be
@@ -321,6 +571,31 @@
     // whose first capture found two people.
     p.querySelector('#sbmissing').onclick = function () { startSweep('thin'); };
     p.querySelector('#sball').onclick = function () { startSweep('all'); };
+    p.querySelector('#sbfind').onclick = startMatchSweep;
+    p.querySelector('#sbtest').onclick = testSearch;
+  }
+
+  // A dry run: type one name, show what came back, save nothing. If
+  // SponsorUnited redesigns their search, this says so in one click
+  // instead of a sweep quietly parking two hundred brands.
+  function testSearch() {
+    if (!onSearchPage()) {
+      renderMessage('Open the search page first',
+        'This checks the search box itself. Go to SponsorUnited\'s search page, then try again.', 0);
+      return;
+    }
+    var q = prompt('Type a brand name to test the search:', 'Red Bull');
+    if (!q) return;
+    renderMatchPanel(null, 'Searching ' + q + '…');
+    runSearch(q).then(function (r) {
+      var rows = r.results || [];
+      renderMessage('Search test',
+        r.error ? r.error
+          : rows.length
+            ? 'Found ' + rows.length + ': ' + rows.map(function (x) { return x.name; }).join(' · ')
+            : 'The box was found but no results appeared. Their layout may have changed.',
+        0);
+    });
   }
 
   function ensureUI() {
@@ -425,8 +700,19 @@
     if (!resumed) {
       resumed = true;
       if (loadJob()) setTimeout(runStep, 1200);
+      else {
+        var mj = loadMatch();
+        // "Find profile ids" pressed from another page: it parked the
+        // intent and sent us to the search page, so start it here.
+        if (mj && mj.pending) { saveMatch(null); setTimeout(startMatchSweep, 1500); }
+        else if (mj) setTimeout(matchStep, 1500);
+      }
     }
   }
   tick();
   setInterval(tick, 1500);
+  // Answer whatever the dashboard is waiting on, quietly, and only
+  // while nothing else is walking pages.
+  setTimeout(pollJobs, 4000);
+  setInterval(pollJobs, POLL_MS);
 })();

@@ -19,6 +19,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import { readMisses, writeMisses, addMiss, type HeldRow } from '@/lib/brand-match'
+import {
+  readSearch, writeSearch, readProposals, writeProposals, upsertProposal,
+  readCaptureQueue, writeCaptureQueue, queueCapture, decideMatch,
+  type SuCandidate,
+} from '@/lib/su-match'
 
 const prisma = new PrismaClient()
 
@@ -96,6 +101,31 @@ async function reconcileBrandTargets(brandId: string, perBrand = TARGET_CAP_PER_
 // by this; the cap only stops new rows once a brand is at 25.
 const CONTACT_CAP_PER_BRAND = 25
 
+// Save a brand's SponsorUnited profile id, and remember SponsorUnited's
+// own spelling as an "also known as" so later captures match by name as
+// well as by id. Queues the brand for an immediate capture: an id with
+// nobody behind it is the whole problem we are solving.
+async function attachProfileId(
+  brandId: string,
+  brandName: string,
+  aka: string | null,
+  pick: { externalId: string; name: string },
+) {
+  const akaList = String(aka || '').split(/[,;]/).map(s => s.trim()).filter(Boolean)
+  const known = new Set(akaList.map(s => s.toLowerCase()))
+  if (pick.name.toLowerCase() !== brandName.toLowerCase() && !known.has(pick.name.toLowerCase())) {
+    akaList.push(pick.name)
+  }
+  await prisma.brand.update({
+    where: { id: brandId },
+    data: { externalId: pick.externalId, aka: akaList.length ? akaList.join(', ') : null },
+  })
+  const queue = await readCaptureQueue(prisma)
+  await writeCaptureQueue(prisma, queueCapture(queue, {
+    brandId, externalId: pick.externalId, brandName, at: Date.now(),
+  }))
+}
+
 // CORS so the SponsorUnited tab (a different origin) can POST here.
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -129,6 +159,109 @@ export async function POST(req: NextRequest) {
   // list grows itself: the brands Leo captures by hand today are the
   // ones the sweep can do on its own tomorrow.
   // -----------------------------------------------------------------
+  // -----------------------------------------------------------------
+  // The profile-id half of the script. Brands without a SponsorUnited
+  // profile id can never be swept, and the id can only be found inside
+  // the logged-in tab, so these four actions let the script do the
+  // looking and hand back what it saw.
+  // -----------------------------------------------------------------
+
+  // action: "needProfile" — brands we cannot reach yet. Emptiest first,
+  // so a run that stops early spent itself on the brands with nobody.
+  if (body.action === 'needProfile') {
+    const limit = Math.max(1, Math.min(300, Number(body.limit) || 50))
+    const rows = await prisma.brand.findMany({
+      where: { externalId: null, doNotEmail: false, passedAt: null },
+      select: { id: true, name: true, aka: true, _count: { select: { contacts: true } } },
+      orderBy: { name: 'asc' },
+    })
+    const items = rows
+      .sort((a, b) => a._count.contacts - b._count.contacts || a.name.localeCompare(b.name))
+      .slice(0, limit)
+      .map(b => ({ brandId: b.id, name: b.name, aka: b.aka, contacts: b._count.contacts }))
+    return NextResponse.json({ ok: true, items, total: rows.length }, { headers: cors })
+  }
+
+  // action: "matched" — what the script saw when it searched one brand.
+  // It does not decide anything itself: the server applies the rule, so
+  // the same judgement holds however the search was started. One clean
+  // name match is attached; anything else waits for Leo.
+  if (body.action === 'matched') {
+    const brandId = String(body.brandId || '')
+    const candidates: SuCandidate[] = (Array.isArray(body.candidates) ? body.candidates : [])
+      .map((c: any) => ({ externalId: String(c?.externalId || ''), name: String(c?.name || '') }))
+      .filter((c: SuCandidate) => c.externalId && c.name)
+    const brand = await prisma.brand.findUnique({
+      where: { id: brandId },
+      select: { id: true, name: true, aka: true, externalId: true },
+    })
+    if (!brand) return NextResponse.json({ ok: false, error: 'Brand not found' }, { status: 404, headers: cors })
+    if (brand.externalId) {
+      return NextResponse.json({ ok: true, outcome: 'already', externalId: brand.externalId }, { headers: cors })
+    }
+
+    const { pick, reason } = decideMatch(brand.name, brand.aka, candidates)
+    if (!pick) {
+      // Nothing obvious — park it for Leo rather than guessing. A wrong
+      // id quietly fills a brand with another company's people.
+      const list = await readProposals(prisma)
+      await writeProposals(prisma, upsertProposal(list, {
+        brandId: brand.id, brandName: brand.name, candidates, at: Date.now(),
+      }))
+      return NextResponse.json({ ok: true, outcome: reason, candidates: candidates.length }, { headers: cors })
+    }
+
+    // externalId is unique — another brand may already hold this one.
+    const taken = await prisma.brand.findFirst({ where: { externalId: pick.externalId }, select: { name: true } })
+    if (taken) {
+      return NextResponse.json({ ok: true, outcome: 'taken', by: taken.name }, { headers: cors })
+    }
+    await attachProfileId(brand.id, brand.name, brand.aka, pick)
+    return NextResponse.json({ ok: true, outcome: 'attached', externalId: pick.externalId, name: pick.name }, { headers: cors })
+  }
+
+  // action: "searchJob" — the script's poll. Returns the one thing it
+  // should do next: answer a search the dashboard asked for, or capture
+  // a brand whose id was just attached ("pull their people now").
+  if (body.action === 'searchJob') {
+    const req = await readSearch(prisma)
+    if (req && req.status === 'pending') {
+      return NextResponse.json({ ok: true, job: { kind: 'search', id: req.id, q: req.q } }, { headers: cors })
+    }
+    const queue = await readCaptureQueue(prisma)
+    if (queue.length) {
+      return NextResponse.json({ ok: true, job: { kind: 'capture', ...queue[0] } }, { headers: cors })
+    }
+    return NextResponse.json({ ok: true, job: null }, { headers: cors })
+  }
+
+  // action: "searchResults" — the answer to a dashboard search.
+  if (body.action === 'searchResults') {
+    const req = await readSearch(prisma)
+    if (!req || req.id !== String(body.id || '')) {
+      return NextResponse.json({ ok: true, stale: true }, { headers: cors })
+    }
+    const results: SuCandidate[] = (Array.isArray(body.results) ? body.results : [])
+      .map((c: any) => ({ externalId: String(c?.externalId || ''), name: String(c?.name || '') }))
+      .filter((c: SuCandidate) => c.externalId && c.name)
+    await writeSearch(prisma, {
+      ...req,
+      status: body.error ? 'failed' : 'done',
+      results,
+      error: body.error ? String(body.error).slice(0, 200) : undefined,
+    })
+    return NextResponse.json({ ok: true }, { headers: cors })
+  }
+
+  // action: "captureDone" — take a brand off the capture queue once the
+  // script has read its people (or found none).
+  if (body.action === 'captureDone') {
+    const brandId = String(body.brandId || '')
+    const queue = await readCaptureQueue(prisma)
+    await writeCaptureQueue(prisma, queue.filter(x => x.brandId !== brandId))
+    return NextResponse.json({ ok: true }, { headers: cors })
+  }
+
   if (body.action === 'list') {
     const scope = body.scope === 'all' ? 'all' : 'thin'
     const limit = Math.max(1, Math.min(500, Number(body.limit) || 100))

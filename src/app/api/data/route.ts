@@ -11,6 +11,10 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { Prisma, PrismaClient, TargetStatus } from '@prisma/client'
+import {
+  readSearch, writeSearch, readProposals, writeProposals,
+  readCaptureQueue, writeCaptureQueue, queueCapture,
+} from '@/lib/su-match'
 import { getServerSession } from 'next-auth'
 import Anthropic from '@anthropic-ai/sdk'
 import { authOptions, allowlist } from '@/lib/auth'
@@ -2775,6 +2779,115 @@ const handlers: Record<string, Handler> = {
       brands: [...byBrand.values()].sort((a, b) =>
         b.replied - a.replied || (b.lastAt?.getTime() ?? 0) - (a.lastAt?.getTime() ?? 0)),
     }
+  },
+
+  // -------- SponsorUnited profile lookup --------
+  //
+  // The dashboard cannot search SponsorUnited itself — that is their
+  // private API and off limits. So a search here is a question left for
+  // the capture script running in Leo's logged-in tab, which answers it
+  // and writes the matches back. These handlers are just the two ends
+  // of that exchange plus the picking.
+
+  // Ask. Replaces any earlier question: only the latest one matters.
+  async suFindStart({ q, brandId }: any) {
+    const query = String(q || '').trim()
+    if (query.length < 2) throw new Error('Type at least two letters')
+    const id = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
+    await writeSearch(prisma, {
+      id, q: query, status: 'pending', at: Date.now(), brandId: brandId || null,
+    })
+    return { id, q: query }
+  },
+
+  // Poll. 'waiting' means no SponsorUnited tab has picked it up yet —
+  // the UI says so rather than spinning forever.
+  async suFindPoll({ id }: any) {
+    const req = await readSearch(prisma)
+    if (!req || req.id !== String(id || '')) return { status: 'gone' }
+    const stale = Date.now() - req.at > 60_000
+    if (req.status === 'pending') return { status: stale ? 'timeout' : 'waiting', q: req.q }
+    return { status: req.status, q: req.q, results: req.results ?? [], error: req.error ?? null }
+  },
+
+  // Pick one of the matches: attach it to the brand the search came
+  // from, or create the brand when the search was for something new.
+  // Either way the brand is queued for an immediate capture, so its
+  // people arrive without anyone starting a sweep.
+  async suPick({ externalId, suName, brandId, name, category, tier }: any) {
+    const extId = String(externalId || '').trim()
+    const spelled = String(suName || '').trim()
+    if (!extId) throw new Error('No profile id on that result')
+
+    const clash = await prisma.brand.findFirst({
+      where: { externalId: extId },
+      select: { id: true, name: true },
+    })
+    if (clash && clash.id !== brandId) {
+      return { ok: false, reason: 'taken', by: clash.name, brandId: clash.id }
+    }
+
+    let brand = brandId
+      ? await prisma.brand.findUnique({ where: { id: brandId } })
+      : await prisma.brand.findFirst({ where: { name: { equals: String(name || spelled), mode: 'insensitive' } } })
+
+    if (!brand) {
+      brand = await prisma.brand.create({
+        data: {
+          name: String(name || spelled),
+          category: category || null,
+          tier: tier || null,
+          source: 'sponsorunited',
+        },
+      })
+    }
+
+    // SponsorUnited's spelling becomes an "also known as" so a later
+    // capture under that name lands on this brand too.
+    const akaList = String(brand.aka || '').split(/[,;]/).map((x: string) => x.trim()).filter(Boolean)
+    if (spelled && spelled.toLowerCase() !== brand.name.toLowerCase() &&
+        !akaList.some((a: string) => a.toLowerCase() === spelled.toLowerCase())) {
+      akaList.push(spelled)
+    }
+    await prisma.brand.update({
+      where: { id: brand.id },
+      data: { externalId: extId, aka: akaList.length ? akaList.join(', ') : null },
+    })
+
+    const queue = await readCaptureQueue(prisma)
+    await writeCaptureQueue(prisma, queueCapture(queue, {
+      brandId: brand.id, externalId: extId, brandName: brand.name, at: Date.now(),
+    }))
+
+    // The question is answered; clear it so the script stops offering it.
+    const req = await readSearch(prisma)
+    if (req) await writeSearch(prisma, null)
+
+    return { ok: true, brandId: brand.id, brandName: brand.name, created: !brandId }
+  },
+
+  // The sweep's leftovers: brands it searched but could not call.
+  async suMatchQueue() {
+    const [proposals, missing, queue] = await Promise.all([
+      readProposals(prisma),
+      prisma.brand.count({ where: { externalId: null, doNotEmail: false, passedAt: null } }),
+      readCaptureQueue(prisma),
+    ])
+    return { proposals, missing, capturePending: queue.length }
+  },
+
+  // Resolve one: attach the chosen candidate, or drop the proposal.
+  async suResolveMatch({ brandId, externalId, suName, dismiss }: any) {
+    const list = await readProposals(prisma)
+    const rest = list.filter(p => p.brandId !== brandId)
+    if (dismiss) {
+      await writeProposals(prisma, rest)
+      return { ok: true, dismissed: true }
+    }
+    const picked: any = await (handlers.suPick as Handler)({ externalId, suName, brandId })
+    if (picked && picked.ok === false) return picked
+    await writeProposals(prisma, rest)
+    return picked
   },
 
   // Daily send counts for the LinkedIn tab strip — invites logged per

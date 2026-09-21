@@ -478,7 +478,9 @@
         <button class="btn-solid" id="bq-add" hidden>Add + find on SponsorUnited</button>
         <button class="btn-ghost" id="bq-fill" title="Fills empty brand summaries from a built-in list of known brands — never overwrites anything you typed">Fill summaries</button>
       </div>
+      <div id="su-find"></div>
       <div class="chips" id="brand-cat-chips" style="margin-top:12px"></div>
+      <div id="su-proposals"></div>
       <div id="brands-list"></div>
     </section>
 
@@ -1195,6 +1197,7 @@ function loadBrands(category) {
       '</div>';
     }).join('') || '<div class="panel"><div class="empty"><h3>No brands here</h3></div></div>';
     applyBrandFilter();
+    renderSuProposals();
   }).catch(function (e) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
       esc(e.message) + '</p></div></div>';
@@ -1270,20 +1273,136 @@ function applyBrandFilter() {
     if (name === ql) exact = true;
   });
   add.hidden = !(q.length >= 3 && !exact);
-  if (!add.hidden) add.textContent = 'Add "' + q + '" + find on SponsorUnited';
+  if (!add.hidden) add.textContent = 'Find "' + q + '" on SponsorUnited';
 }
 document.getElementById('bq').addEventListener('input', applyBrandFilter);
-document.getElementById('bq-add').addEventListener('click', function () {
-  var add = this, name = document.getElementById('bq').value.trim();
-  if (name.length < 3) return;
-  add.disabled = true; add.textContent = 'Adding…';
-  api('createBrand', { name: name, hint: 'added from the Brands tab search' }).then(function (r) {
-    try { navigator.clipboard.writeText(name); } catch (e) {}
+// "Find on SponsorUnited" — the dashboard cannot search them directly
+// (their private API is off limits), so it leaves the question for the
+// capture script running in Leo's logged-in tab and shows the matches
+// when they come back.
+function suFind(name) {
+  var box = document.getElementById('su-find');
+  if (!name || name.length < 3) return;
+  box.innerHTML = '<div class="panel panel-pad" style="margin-top:12px">' +
+    '<b style="font-size:13px">Looking up “' + esc(name) + '” in SponsorUnited…</b>' +
+    '<div class="hint" style="margin:6px 0 0">Your SponsorUnited tab is doing the search. Keep one open and signed in.</div></div>';
+  api('suFindStart', { q: name }).then(function (r) {
+    var tries = 0;
+    (function poll() {
+      tries += 1;
+      api('suFindPoll', { id: r.id }).then(function (p) {
+        if (p.status === 'waiting' && tries < 18) return setTimeout(poll, 1600);
+        if (p.status === 'done') return suRenderResults(name, p.results || []);
+        if (p.status === 'failed') return suNoTab(name, p.error || 'The search did not run.');
+        return suNoTab(name, 'No SponsorUnited tab answered.');
+      }).catch(function (e) { suNoTab(name, e.message); });
+    })();
+  }).catch(function (e) { toast(e.message); box.innerHTML = ''; });
+}
+
+function suNoTab(name, why) {
+  document.getElementById('su-find').innerHTML =
+    '<div class="panel panel-pad" style="margin-top:12px">' +
+      '<b style="font-size:13px">Could not search SponsorUnited</b>' +
+      '<div class="hint" style="margin:6px 0 10px">' + esc(why) +
+        ' Open SponsorUnited, signed in, with the capture script running — then try again.</div>' +
+      '<button class="btn-ghost" id="su-open">Open SponsorUnited</button> ' +
+      '<button class="btn-ghost" id="su-retry">Try again</button></div>';
+  document.getElementById('su-open').onclick = function () {
     window.open('https://pro.sponsorunited.com/search/smart', '_blank', 'noopener');
-    toast(r.created === false ? 'That brand already existed — opening it' : 'Brand added · name copied — paste it into SponsorUnited search');
-    document.getElementById('bq').value = '';
-    loadBrand(r.brand.id);
-  }).catch(function (e) { toast(e.message); }).then(function () { add.disabled = false; });
+  };
+  document.getElementById('su-retry').onclick = function () { suFind(name); };
+}
+
+function suRenderResults(name, results) {
+  var box = document.getElementById('su-find');
+  if (!results.length) {
+    box.innerHTML = '<div class="panel panel-pad" style="margin-top:12px">' +
+      '<b style="font-size:13px">No matches for “' + esc(name) + '”</b>' +
+      '<div class="hint" style="margin:6px 0 0">SponsorUnited returned nothing for that spelling. Try their name as SponsorUnited writes it.</div></div>';
+    return;
+  }
+  box.innerHTML = '<div class="panel panel-pad" style="margin-top:12px">' +
+    '<b style="font-size:13px">SponsorUnited matches for “' + esc(name) + '”</b>' +
+    '<div class="hint" style="margin:4px 0 8px">Picking one saves its profile and pulls its people in.</div>' +
+    results.map(function (r) {
+      return '<div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--border)">' +
+        '<span style="flex:1;font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.name) + '</span>' +
+        '<button class="btn-draft" data-supick="' + esc(r.externalId) + '" data-suname="' + esc(r.name) + '" style="padding:5px 13px;font-size:12px">Use this</button>' +
+      '</div>';
+    }).join('') + '</div>';
+  box.querySelectorAll('[data-supick]').forEach(function (btn) {
+    btn.onclick = function () {
+      btn.disabled = true; btn.textContent = 'Saving…';
+      api('suPick', {
+        externalId: btn.getAttribute('data-supick'),
+        suName: btn.getAttribute('data-suname'),
+        name: name,
+      }).then(function (r) {
+        if (r.ok === false && r.reason === 'taken') {
+          toast('That SponsorUnited profile is already on ' + r.by);
+          btn.disabled = false; btn.textContent = 'Use this';
+          return;
+        }
+        box.innerHTML = '';
+        document.getElementById('bq').value = '';
+        toast(r.brandName + ' saved — its people are being pulled in now');
+        loadBrand(r.brandId);
+      }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Use this'; });
+    };
+  });
+}
+
+// Brands the batch run searched but could not call on its own.
+function renderSuProposals() {
+  var box = document.getElementById('su-proposals');
+  if (!box) return;
+  api('suMatchQueue').then(function (d) {
+    var list = d.proposals || [];
+    if (!list.length) { box.innerHTML = ''; return; }
+    box.innerHTML = '<div class="count-head" style="margin-top:16px;color:#f0b86b">Profiles needing your eye <span class="n">' + list.length + '</span></div>' +
+      '<div class="hint" style="margin:2px 0 8px">The lookup found more than one possible match for these, so it left them. Pick the right one and their people come in.</div>' +
+      list.map(function (p) {
+        return '<div class="panel panel-pad" data-suprow="' + esc(p.brandId) + '" style="margin-bottom:8px">' +
+          '<div style="display:flex;gap:10px;align-items:center">' +
+            '<b style="font-size:13px;flex:1">' + esc(p.brandName) + '</b>' +
+            '<button class="btn-ghost mini" data-sudismiss="' + esc(p.brandId) + '">Not on SponsorUnited</button>' +
+          '</div>' +
+          (p.candidates.length
+            ? p.candidates.map(function (c) {
+                return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border)">' +
+                  '<span style="flex:1;font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</span>' +
+                  '<button class="btn-draft" data-suuse="' + esc(p.brandId) + '" data-suid="' + esc(c.externalId) + '" data-suname="' + esc(c.name) + '" style="padding:4px 12px;font-size:12px">Use this</button>' +
+                '</div>';
+              }).join('')
+            : '<div class="hint" style="margin-top:6px">No matches came back for this name.</div>') +
+        '</div>';
+      }).join('');
+  }).catch(function () { box.innerHTML = ''; });
+}
+
+document.getElementById('su-proposals').addEventListener('click', function (e) {
+  var use = e.target.closest('[data-suuse]');
+  var drop = e.target.closest('[data-sudismiss]');
+  if (!use && !drop) return;
+  var brandId = (use || drop).getAttribute(use ? 'data-suuse' : 'data-sudismiss');
+  var row = document.querySelector('[data-suprow="' + brandId + '"]');
+  if (row) row.remove();
+  if (use) {
+    toast('Saved — pulling their people in');
+    api('suResolveMatch', {
+      brandId: brandId,
+      externalId: use.getAttribute('data-suid'),
+      suName: use.getAttribute('data-suname'),
+    }).catch(function (err) { toast(err.message); renderSuProposals(); });
+  } else {
+    api('suResolveMatch', { brandId: brandId, dismiss: true })
+      .catch(function (err) { toast(err.message); renderSuProposals(); });
+  }
+});
+
+document.getElementById('bq-add').addEventListener('click', function () {
+  suFind(document.getElementById('bq').value.trim());
 });
 
 // Fill empty brand summaries from the built-in list (no API calls).
