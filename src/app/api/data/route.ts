@@ -2543,11 +2543,14 @@ const handlers: Record<string, Handler> = {
     // suggestions, so a brand passed for today has to drop out of them.
     // Without it Pass only removed the row on screen and the next
     // refresh put it straight back.
+    // Not coldPoolBrand(): "passed for today" wears off at midnight, so
+    // it must not hold a brand out of TOMORROW's preview. It is applied
+    // per day below, to today only.
     const candidates = await prisma.target.findMany({
-      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: coldPoolBrand() },
+      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: NOT_IN_CONVERSATION },
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: 300,
-      select: { fitScore: true, brand: { select: { id: true, name: true, category: true, website: true, linkedinUrl: true } } },
+      select: { fitScore: true, brand: { select: { id: true, name: true, category: true, website: true, linkedinUrl: true, passedTodayAt: true } } },
     })
     const byBrand = new Map<string, { id: string; name: string; category: string | null; website: string | null; linkedinUrl: string | null; people: number; fit: number }>()
     for (const c of candidates) {
@@ -2586,8 +2589,10 @@ const handlers: Record<string, Handler> = {
     const passedToday = (b: (typeof everyBrand)[number]) =>
       !!b.passedTodayAt && b.passedTodayAt >= dayStart
     // What the query used to filter out.
+    // passedToday is NOT filtered here: it is a today-only state, and
+    // these rows feed every day's preview.
     const allBrands = everyBrand.filter(b =>
-      !b.passedAt && !inConversation(b) && !passedToday(b) && !b.doNotEmail && b.contacts.length > 0)
+      !b.passedAt && !inConversation(b) && !b.doNotEmail && b.contacts.length > 0)
     const untouched = allBrands.filter(b =>
       !planned.has(b.id) && !byBrand.has(b.id) &&
       !b.targets.some(t => t.sentAt ||
@@ -2617,14 +2622,18 @@ const handlers: Record<string, Handler> = {
 
     // The one gate each brand is stuck behind, in the order the queue
     // itself would hit them. Null means the brand is available.
-    const blockedBy = (b: (typeof everyBrand)[number]): string | null => {
+    // `forToday` decides whether "passed for today" counts as a gate:
+    // it blocks today and nothing after it, and a brand can be stuck
+    // behind a second gate underneath it, so the two cases are computed
+    // separately rather than one being patched into the other.
+    const blockedBy = (b: (typeof everyBrand)[number], forToday: boolean): string | null => {
       if (b.passedAt) return 'archived'
       if (b.doNotEmail) return 'donotemail'
       if (!b.contacts.length) return 'nopeople'
       if (!b.contacts.some(c => c.email || c.linkedinUrl)) return 'unreachable'
       if (inConversation(b)) return 'inconversation'
       if (b.targets.some(t => t.sentAt)) return 'contacted'
-      if (passedToday(b)) return 'passedtoday'
+      if (forToday && passedToday(b)) return 'passedtoday'
       const taken = new Set(b.targets.map(t => t.contactId))
       if (!b.contacts.some(c => (c.email || c.linkedinUrl) && !taken.has(c.id))) return 'exhausted'
       if (!hasRoomToWork(b)) return 'full'
@@ -2634,15 +2643,21 @@ const handlers: Record<string, Handler> = {
     // ones are unavailable. Computed once, read by whichever day picked
     // that category.
     type HealthBrand = { id: string; name: string; contacts: number }
-    const categoryHealth = new Map<string, { total: number; blocked: Record<string, HealthBrand[]> }>()
-    for (const b of everyBrand) {
-      if (!b.category) continue
-      const h = categoryHealth.get(b.category) ?? { total: 0, blocked: {} }
-      h.total += 1
-      const why = blockedBy(b)
-      if (why) (h.blocked[why] ??= []).push({ id: b.id, name: b.name, contacts: b.contacts.length })
-      categoryHealth.set(b.category, h)
+    type CatHealth = Map<string, { total: number; blocked: Record<string, HealthBrand[]> }>
+    const buildHealth = (forToday: boolean): CatHealth => {
+      const out: CatHealth = new Map()
+      for (const b of everyBrand) {
+        if (!b.category) continue
+        const h = out.get(b.category) ?? { total: 0, blocked: {} }
+        h.total += 1
+        const why = blockedBy(b, forToday)
+        if (why) (h.blocked[why] ??= []).push({ id: b.id, name: b.name, contacts: b.contacts.length })
+        out.set(b.category, h)
+      }
+      return out
     }
+    const healthToday = buildHealth(true)
+    const healthLater = buildHealth(false)
 
     // True preview of each day's sends: the same picking order the real
     // queue uses (day's category first by fit, then the best of the
@@ -2704,7 +2719,12 @@ const handlers: Record<string, Handler> = {
       const alreadyPlanned = isToday ? stampedToday.length - alreadyIn.length : 0
       const room = Math.max(0, DAILY_SEND_LIMIT - plannedCount - sentUsed - (isToday ? stampedToday.length : 0))
       // Strictly the day's category — no cross-category top-ups (Leo).
-      const inTheme = theme ? available.filter(c => c.brand.category === theme) : available
+      // A brand passed for today is out of today's preview and back in
+      // every later day's.
+      const usable = isToday
+        ? available.filter(c => !(c.brand.passedTodayAt && c.brand.passedTodayAt >= dayStart))
+        : available
+      const inTheme = theme ? usable.filter(c => c.brand.category === theme) : usable
       const take = inTheme.slice(0, room)
       // The rest of the category. It used to be cut here and vanish, so
       // a day with thirty ready people looked like it had twenty and
@@ -2765,17 +2785,32 @@ const handlers: Record<string, Handler> = {
         // when the roster holds a dozen reads as the category not having
         // transferred — so the day lists every brand in it, and the ones
         // it can't work say what is wrong with them.
-        health: theme && categoryHealth.has(theme) ? {
-          total: categoryHealth.get(theme)!.total,
-          blocked: Object.fromEntries(
-            Object.entries(categoryHealth.get(theme)!.blocked)
-              .map(([why, brands]) => [why, { count: brands.length, brands: brands.slice(0, 25) }]),
-          ),
-        } : null,
+        health: theme && (isToday ? healthToday : healthLater).has(theme) ? (() => {
+          const h = (isToday ? healthToday : healthLater).get(theme)!
+          // A brand the day is already showing is not a brand the day
+          // can't use. Zyn appeared as the day's one row AND under
+          // "everyone reachable is already queued", which made the panel
+          // contradict itself and inflated the count.
+          const onScreen = new Set<string>([
+            ...rowByBrand.keys(),
+            ...spillByBrand.keys(),
+            ...(theme ? addable.filter(b => b.category === theme && !(isToday && passedToday(b))).map(b => b.id) : []),
+          ])
+          const blocked: Record<string, { count: number; brands: HealthBrand[] }> = {}
+          let blockedTotal = 0
+          for (const [why, brands] of Object.entries(h.blocked)) {
+            const rest = brands.filter(b => !onScreen.has(b.id))
+            if (!rest.length) continue
+            blocked[why] = { count: rest.length, brands: rest.slice(0, 25) }
+            blockedTotal += rest.length
+          }
+          return { total: h.total, shown: h.total - blockedTotal, blockedTotal, blocked }
+        })() : null,
         // Same-category brands whose people are NOT in the queue yet —
         // the day's Add-more section offers to put them in.
         missing: theme
-          ? addable.filter(b => b.category === theme && !rowByBrand.has(b.id) && !spillByBrand.has(b.id)).slice(0, 30)
+          ? addable.filter(b => b.category === theme && !rowByBrand.has(b.id) && !spillByBrand.has(b.id) &&
+              !(isToday && passedToday(b))).slice(0, 30)
               .map(b => ({ id: b.id, name: b.name, people: b.spare, website: b.website, linkedinUrl: b.linkedinUrl }))
           : [],
       }

@@ -3418,54 +3418,66 @@ function renderSchedule() {
       // "Only 1 of 20 ready" with nothing under it reads as broken when
       // you know the roster holds more brands than that. Say which gate
       // the rest of the category is stuck behind.
-      // Picking a category and seeing one brand, when the roster holds a
-      // dozen in it, reads as the category not having transferred. So
-      // the whole category is listed: the ones the day can't work are
-      // named too, each with what is actually wrong with it, and the fix
-      // is one click from the row.
+      // The rest of the category. Three bands, because they are three
+      // different things and lumping them together read as five
+      // problems when there was one: brands that need people (fixable,
+      // and the SponsorUnited fill is the fix), brands already in play
+      // (nothing wrong, just spoken for), and brands set aside by hand.
+      // A brand the day is already showing is never listed here.
       var healthNote = '';
-      if (prev.health) {
+      if (prev.health && prev.health.blockedTotal) {
         var WHY = {
-          nopeople: 'no people on file',
-          unreachable: 'nobody reachable — no email or LinkedIn',
-          exhausted: 'everyone reachable is already queued',
+          nopeople: 'nobody on file',
+          unreachable: 'no email or LinkedIn for anyone there',
+          exhausted: 'everyone there is already in the queue',
+          full: 'already running all their threads',
           contacted: 'already contacted',
           inconversation: 'already replied — follow up instead',
-          full: 'already running all their threads',
           passedtoday: 'passed for today',
           archived: 'archived',
           donotemail: 'marked do-not-email'
         };
-        // Missing people first: that is the one Leo can actually fix, and
-        // the fix is the same SponsorUnited fill either way.
-        var ORDER = ['nopeople', 'unreachable', 'exhausted', 'full', 'passedtoday', 'contacted', 'inconversation', 'archived', 'donotemail'];
+        var BANDS = [
+          { key: 'needs', title: 'Need people before they can go out', color: '#f0b86b',
+            reasons: ['nopeople', 'unreachable'],
+            note: 'This is what the SponsorUnited fill is for.' },
+          { key: 'inplay', title: 'Already in play', color: 'var(--ink-3)',
+            reasons: ['exhausted', 'full', 'contacted', 'inconversation'],
+            note: 'Nothing to do — they are spoken for.' },
+          { key: 'aside', title: 'Set aside', color: 'var(--ink-3)',
+            reasons: ['passedtoday', 'archived', 'donotemail'],
+            note: 'Open one to bring it back.' }
+        ];
         var blocked = prev.health.blocked || {};
-        var groups = ORDER.filter(function (w) { return blocked[w] && blocked[w].count; });
-        var blockedTotal = groups.reduce(function (n, w) { return n + blocked[w].count; }, 0);
-        if (groups.length) {
-          healthNote = '<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px">' +
-            '<div style="font-size:12.5px;font-weight:700;color:#f0b86b;margin-bottom:2px">' +
-              blockedTotal + ' more ' + esc(CAT_NAMES[prev.category] || prev.category || '') +
-              (blockedTotal === 1 ? ' brand the day can’t use yet' : ' brands the day can’t use yet') +
-            '</div>' +
-            '<div class="hint" style="margin:0 0 6px">' + prev.health.total + ' in this category altogether.' +
-              ((blocked.nopeople || blocked.unreachable) ? ' The missing-people ones are what the SponsorUnited fill is for.' : '') +
-            '</div>' +
+        var bands = BANDS.map(function (band) {
+          var groups = band.reasons.filter(function (w) { return blocked[w] && blocked[w].count; });
+          if (!groups.length) return '';
+          var n = groups.reduce(function (t, w) { return t + blocked[w].count; }, 0);
+          return '<div style="border-top:1px solid var(--border);padding:8px 0 4px">' +
+            '<div style="font-size:12px;font-weight:700;color:' + band.color + '">' + n + ' · ' + esc(band.title) + '</div>' +
+            '<div class="hint" style="margin:0 0 5px">' + esc(band.note) + '</div>' +
             groups.map(function (why) {
               var g = blocked[why];
-              return '<div style="border-top:1px solid var(--border);padding:6px 0">' +
-                '<div style="font-size:11.5px;color:var(--ink-3);margin-bottom:3px">' + g.count + ' · ' + esc(WHY[why] || why) + '</div>' +
-                '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
-                  g.brands.map(function (b) {
-                    return '<a href="#" data-sopen="' + esc(b.id) + '" class="status" style="font-size:11.5px;padding:4px 10px;text-decoration:none" ' +
-                      'title="Open ' + esc(b.name) + (b.contacts ? ' — ' + b.contacts + ' on file' : ' — nobody on file') + '">' + esc(b.name) + '</a>';
-                  }).join('') +
-                  (g.count > g.brands.length ? '<span class="hint" style="margin:0;align-self:center">…and ' + (g.count - g.brands.length) + ' more</span>' : '') +
-                '</div>' +
+              return '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:3px 0">' +
+                '<span style="font-size:11px;color:var(--ink-3);min-width:150px">' + esc(WHY[why] || why) + '</span>' +
+                g.brands.map(function (b) {
+                  return '<a href="#" data-sopen="' + esc(b.id) + '" class="status" style="font-size:11.5px;padding:4px 10px;text-decoration:none" ' +
+                    'title="Open ' + esc(b.name) + (b.contacts ? ' — ' + b.contacts + ' on file' : ' — nobody on file') + '">' + esc(b.name) + '</a>';
+                }).join('') +
+                (g.count > g.brands.length ? '<span class="hint" style="margin:0">…and ' + (g.count - g.brands.length) + ' more</span>' : '') +
               '</div>';
             }).join('') +
           '</div>';
-        }
+        }).join('');
+        healthNote = '<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px">' +
+          '<div style="font-size:12.5px;font-weight:700">' +
+            prev.health.total + ' ' + esc(CAT_NAMES[prev.category] || prev.category || '') +
+            (prev.health.total === 1 ? ' brand in this category' : ' brands in this category') +
+            ' <span style="color:var(--ink-3);font-weight:400">· ' + prev.health.shown + ' on this day · ' +
+            prev.health.blockedTotal + ' not available</span>' +
+          '</div>' +
+          bands +
+        '</div>';
       }
       // Ready, in this category, past the day's 20. Previously these were
       // cut off the list entirely, so a category with thirty people
