@@ -3386,6 +3386,92 @@ const handlers: Record<string, Handler> = {
   // held people on it. Deliberately a button someone presses rather than
   // something an import does by itself — that's what used to leave two
   // records for the same brand side by side.
+  // Adding brands one modal at a time is the slowest thing on the site:
+  // a list of thirty names off a spreadsheet, a conference roster or a
+  // newsletter is thirty round trips. Paste the list instead.
+  //
+  // Categories are guessed from keywords only — never a model call, so a
+  // 200-name paste costs nothing. Anything the keywords can't place
+  // lands in "unresolved", which is the honest answer and is already
+  // where the Brands tab expects to find work to do.
+  //
+  // Previews first. Nothing is written until `apply` is set, so the
+  // confirm can show exactly which names are new and which are already
+  // on the roster under that name or an "also known as".
+  async addBrandsBulk({ text, apply, category, tier }: any) {
+    const MAX = 200
+    // One name per line. A comma or tab splits off a website, which is
+    // what a paste from a spreadsheet usually carries.
+    const parsed: { name: string; website: string | null }[] = []
+    const seen = new Set<string>()
+    for (const raw of String(text ?? '').split(/[\r\n]+/)) {
+      const line = raw.trim().replace(/^[-•*\d.)\s]+/, '').trim()
+      if (!line) continue
+      const parts = line.split(/\s*[,\t|]\s*/)
+      const name = (parts[0] ?? '').trim().slice(0, 120)
+      if (!name) continue
+      const key = name.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      const maybeSite = parts.slice(1).find(x => /\.[a-z]{2,}(\/|$)/i.test(x))
+      parsed.push({ name, website: maybeSite ? maybeSite.replace(/^https?:\/\//, '').slice(0, 300) : null })
+      if (parsed.length >= MAX) break
+    }
+    if (!parsed.length) throw new Error('Nothing to add — paste one brand name per line.')
+
+    // Match the way a capture matches: the name, or any "also known as".
+    const all = await prisma.brand.findMany({ select: { id: true, name: true, aka: true } })
+    const byName = new Map<string, { id: string; name: string }>()
+    for (const b of all) {
+      byName.set(b.name.trim().toLowerCase(), b)
+      for (const a of String(b.aka ?? '').split(/[,;]/)) {
+        const k = a.trim().toLowerCase()
+        if (k) byName.set(k, b)
+      }
+    }
+
+    const existing: { name: string; asName: string; id: string }[] = []
+    const fresh: { name: string; website: string | null; category: string }[] = []
+    for (const row of parsed) {
+      const hit = byName.get(row.name.toLowerCase())
+      if (hit) existing.push({ name: row.name, asName: hit.name, id: hit.id })
+      else fresh.push({ ...row, category: category || guessCategory(row.name, row.website) })
+    }
+
+    if (!apply) {
+      return {
+        preview: true,
+        create: fresh,
+        existing,
+        // Worth calling out: these are the ones that will need a category
+        // set by hand before a day can offer them.
+        unresolved: fresh.filter(f => f.category === 'unresolved').length,
+      }
+    }
+
+    const created: { id: string; name: string; category: string }[] = []
+    const failed: { name: string; reason: string }[] = []
+    for (const row of fresh) {
+      try {
+        const b = await prisma.brand.create({
+          data: {
+            name: row.name,
+            category: row.category,
+            tier: tier || null,
+            website: row.website,
+            source: 'manual',
+          },
+        })
+        created.push({ id: b.id, name: b.name, category: b.category ?? 'unresolved' })
+      } catch (e: any) {
+        // A name that clashes on the unique index between preview and
+        // apply is not a failure worth stopping the batch for.
+        failed.push({ name: row.name, reason: e?.message ?? 'could not create' })
+      }
+    }
+    return { created, existing, failed, unresolved: created.filter(c => c.category === 'unresolved').length }
+  },
+
   async createBrandFromMiss({ missName, category, tier }: any) {
     const misses = await readMisses(prisma)
     const miss = misses.find(m => m.name.toLowerCase() === String(missName).trim().toLowerCase())

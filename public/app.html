@@ -800,6 +800,19 @@
         <input class="field-box" id="nb-name" type="text" placeholder="e.g. Alani Nu" autocomplete="off">
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin:-4px 0 12px">
+        <button class="btn-ghost" id="nb-bulk-open" style="padding:5px 12px;font-size:12px">Paste a list instead</button>
+        <span class="hint" style="margin:0">A whole spreadsheet column at once — one name per line.</span>
+      </div>
+      <div id="nb-bulk" hidden style="margin-bottom:12px">
+        <label class="lbl" for="nb-bulk-text">One brand per line. A comma after the name is taken as their website.</label>
+        <textarea class="field-box" id="nb-bulk-text" rows="7" placeholder="Alani Nu&#10;Celsius, celsius.com&#10;Poppi"></textarea>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+          <button class="btn-solid" id="nb-bulk-check" style="padding:6px 14px;font-size:12.5px">Check the list</button>
+          <span class="hint" style="margin:0">Shows what's new and what you already have before anything is added.</span>
+        </div>
+        <div id="nb-bulk-prev"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin:-4px 0 12px">
         <button class="btn-ghost" id="nb-su" style="padding:5px 12px;font-size:12px">Find on SponsorUnited</button>
         <span class="hint" style="margin:0">Pulls their people in with the brand. Needs a signed-in SponsorUnited tab.</span>
       </div>
@@ -3134,6 +3147,90 @@ function schedDayKeys(count) {
   return out;
 }
 
+// --- dragging a brand onto a day -------------------------------
+//
+// Everything on this tab moved through dropdowns and + Add buttons,
+// which is fine for one brand and miserable for rearranging a week.
+// Any brand on the page — a day's row, the overflow, Add-more, a pinned
+// chip, or the bench on the right — can be dropped onto a day.
+//
+// Dropping pins the brand to that day, which is exactly what + Add
+// does, so both paths share schedAddBrand and the same optimistic
+// render. Dragging a pinned chip off its own day moves it: the source
+// day drops it in the same gesture. The buttons all still work; this is
+// a faster way to the same calls, not a replacement for them.
+
+var SCHED_DRAG = null;
+
+function schedDragStart(e) {
+  var row = e.target.closest('[data-dragb]');
+  if (!row) return;
+  SCHED_DRAG = {
+    id: row.getAttribute('data-dragb'),
+    name: row.getAttribute('data-dragn'),
+    from: row.getAttribute('data-dragfrom') || '',
+  };
+  row.style.opacity = '0.45';
+  try {
+    e.dataTransfer.effectAllowed = 'move';
+    // Some browsers refuse the drag without data set.
+    e.dataTransfer.setData('text/plain', SCHED_DRAG.id);
+  } catch (err) {}
+}
+
+function schedDragEnd(e) {
+  var row = e.target.closest('[data-dragb]');
+  if (row) row.style.opacity = '';
+  document.querySelectorAll('[data-drop]').forEach(function (d) { d.style.outline = ''; });
+  SCHED_DRAG = null;
+}
+
+function schedDragOver(e) {
+  if (!SCHED_DRAG) return;
+  var day = e.target.closest('[data-drop]');
+  if (!day) return;
+  // Without preventDefault the browser refuses the drop entirely.
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  if (day.getAttribute('data-drop') === SCHED_DRAG.from) return;
+  day.style.outline = '2px solid var(--accent-hi)';
+}
+
+function schedDragLeave(e) {
+  var day = e.target.closest('[data-drop]');
+  if (day && !day.contains(e.relatedTarget)) day.style.outline = '';
+}
+
+function schedDrop(e) {
+  var day = e.target.closest('[data-drop]');
+  if (!day || !SCHED_DRAG) return;
+  e.preventDefault();
+  day.style.outline = '';
+  var key = day.getAttribute('data-drop');
+  var drag = SCHED_DRAG;
+  SCHED_DRAG = null;
+  if (key === drag.from) return;
+
+  SCHED.names[drag.id] = drag.name;
+  SCHED.plan[key] = SCHED.plan[key] || { category: null, brandIds: [] };
+  if (SCHED.plan[key].brandIds.indexOf(drag.id) === -1) SCHED.plan[key].brandIds.push(drag.id);
+  // Moved off another day, not copied.
+  if (drag.from && SCHED.plan[drag.from]) {
+    SCHED.plan[drag.from].brandIds = (SCHED.plan[drag.from].brandIds || [])
+      .filter(function (x) { return x !== drag.id; });
+  }
+  schedDropBrand(drag.id);
+  renderSchedule();
+  renderBench();
+  toast(drag.name + (drag.from ? ' moved to ' : ' pinned to ') + shortDate(key + 'T12:00:00'));
+
+  var work = drag.from && SCHED.plan[drag.from] ? schedSave(drag.from) : Promise.resolve();
+  work
+    .then(function () { return schedAddBrand(key, drag.id, drag.name); })
+    .then(schedRefreshDays)
+    .catch(function (err) { toast(err.message); loadSchedule(); });
+}
+
 function schedSave(key) {
   var day = SCHED.plan[key] || {};
   return api('setOutreachPlanDay', { date: key, category: day.category || null, brandIds: day.brandIds || [] })
@@ -3170,6 +3267,9 @@ function schedDropBrand(bid) {
   Object.keys(SCHED.days).forEach(function (k) {
     SCHED.days[k].brands = SCHED.days[k].brands.filter(function (b) { return b.id !== bid; });
     SCHED.days[k].missing = (SCHED.days[k].missing || []).filter(function (b) { return b.id !== bid; });
+    // The overflow is a preview too — a brand pinned to a day should
+    // not still be sitting in another day's "rest of the category".
+    SCHED.days[k].overflow = (SCHED.days[k].overflow || []).filter(function (b) { return b.id !== bid; });
   });
   SCHED.bench = (SCHED.bench || []).filter(function (b) { return b.id !== bid; });
 }
@@ -3190,7 +3290,7 @@ function renderBench() {
     dayOpts += '<option value="' + esc(k) + '">' + esc(lbl) + '</option>';
   });
   box.innerHTML = rows.length ? rows.slice(0, 60).map(function (b) {
-    return '<div data-brow="' + esc(b.id) + '" style="padding:8px 0;border-top:1px solid var(--border)">' +
+    return '<div data-brow="' + esc(b.id) + '" draggable="true" data-dragb="' + esc(b.id) + '" data-dragn="' + esc(b.name) + '" data-dragfrom="" style="padding:8px 0;border-top:1px solid var(--border);cursor:grab">' +
       '<div style="display:flex;gap:8px;align-items:baseline">' +
         '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + schedBrandName(b) + '</span>' +
         '<span style="font-size:11.5px;color:var(--ink-3);white-space:nowrap">' + b.people + (b.people === 1 ? ' person' : ' people') + (b.inQueue ? '' : ' · not queued yet') + '</span>' +
@@ -3279,7 +3379,7 @@ function renderSchedule() {
     // say which day it is rather than leaving a gap unexplained.
     if (i === 0 && key !== schedDayKey(0) && key !== tmrKey) label = 'Next up · ' + label;
     var chips = (day.brandIds || []).map(function (bid) {
-      return '<span class="status" style="display:inline-flex;gap:6px;align-items:center;font-size:12px;padding:5px 11px">' +
+      return '<span class="status" draggable="true" data-dragb="' + esc(bid) + '" data-dragn="' + esc(SCHED.names[bid] || 'brand') + '" data-dragfrom="' + esc(key) + '" style="display:inline-flex;gap:6px;align-items:center;font-size:12px;padding:5px 11px;cursor:grab">' +
         esc(SCHED.names[bid] || 'brand') +
         '<a href="#" data-sdel="' + esc(key) + '" data-sb="' + esc(bid) + '" style="text-decoration:none;color:var(--accent-hi);font-weight:700">×</a></span>';
     }).join(' ');
@@ -3305,7 +3405,7 @@ function renderSchedule() {
             (prev.missing.length > 1 ? '<button class="btn-draft" data-sfill="' + esc(key) + '" style="padding:5px 13px;font-size:12px;white-space:nowrap">Put all in</button>' : '') +
           '</div>' +
           prev.missing.map(function (m) {
-            return '<div data-smrow="' + esc(m.id) + '" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border)">' +
+            return '<div data-smrow="' + esc(m.id) + '" draggable="true" data-dragb="' + esc(m.id) + '" data-dragn="' + esc(m.name) + '" data-dragfrom="" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border);cursor:grab">' +
               '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + schedBrandName(m) + '</span>' +
               '<span style="font-size:12px;color:var(--ink-3)">' + m.people + (m.people === 1 ? ' person' : ' people') + '</span>' +
               '<button class="btn-draft" data-sput="' + esc(key) + '" data-sb="' + esc(m.id) + '" style="padding:5px 13px;font-size:12px">Put in</button>' +
@@ -3358,7 +3458,7 @@ function renderSchedule() {
           '</div>' +
           '<div class="hint" style="margin:0 0 4px">Ready to go, just beyond the day’s cap. They come up on the next day in this category — or pin one here to work it today.</div>' +
           prev.overflow.map(function (b) {
-            return '<div data-sorow="' + esc(b.id) + '" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border)">' +
+            return '<div data-sorow="' + esc(b.id) + '" draggable="true" data-dragb="' + esc(b.id) + '" data-dragn="' + esc(b.name) + '" data-dragfrom="" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border);cursor:grab">' +
               '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + schedBrandName(b) + '</span>' +
               '<span style="font-size:12px;color:var(--ink-3)">' + b.people + (b.people === 1 ? ' person' : ' people') + '</span>' +
               '<button class="btn-draft" data-spin="' + esc(key) + '" data-sb="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 13px;font-size:12px">+ Add</button>' +
@@ -3386,7 +3486,7 @@ function renderSchedule() {
               })() +
             '</div>' +
             prev.brands.map(function (b) {
-              return '<div data-srow="' + esc(b.id) + '" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border)">' +
+              return '<div data-srow="' + esc(b.id) + '" draggable="true" data-dragb="' + esc(b.id) + '" data-dragn="' + esc(b.name) + '" data-dragfrom="" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border);cursor:grab">' +
                 '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + schedBrandName(b) +
                   (b.topUp ? ' <span style="font-size:11px;color:var(--ink-3)">top-up · ' + esc(CAT_NAMES[b.category] || b.category || 'other') + '</span>' : '') +
                   (b.inQueue ? ' <span style="font-size:11px;color:#8fd6a8">in today’s queue</span>' : '') +
@@ -3403,7 +3503,7 @@ function renderSchedule() {
         healthNote +
       '</div>';
     }
-    return '<div class="panel panel-pad" style="margin-bottom:10px" data-sday="' + esc(key) + '">' +
+    return '<div class="panel panel-pad" style="margin-bottom:10px" data-sday="' + esc(key) + '" data-drop="' + esc(key) + '">' +
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
         '<b style="font-size:13.5px;min-width:150px">' + label + '</b>' + badge +
         '<select class="field-box" data-scat="' + esc(key) + '" style="width:auto;padding:6px 10px;font-size:12.5px">' +
@@ -3435,7 +3535,7 @@ function renderSchedule() {
         '</div>';
       }).join('')
     : '') +
-  '<div class="hint">Each day sends its planned brands first, then fills the rest from the day’s category. Days with nothing planned follow the automatic category rotation.</div>';
+  '<div class="hint">Each day sends its planned brands first, then fills the rest from the day’s category. Days with nothing planned follow the automatic category rotation. <b>Drag any brand onto a day</b> to pin it there — drag a pinned one to another day to move it.</div>';
 }
 
 function loadSchedule() {
@@ -3484,6 +3584,16 @@ document.getElementById('sched-list').addEventListener('input', function (e) {
     });
   }, 250);
 });
+
+['sched-list', 'sched-bench'].forEach(function (id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('dragstart', schedDragStart);
+  el.addEventListener('dragend', schedDragEnd);
+});
+document.getElementById('sched-list').addEventListener('dragover', schedDragOver);
+document.getElementById('sched-list').addEventListener('dragleave', schedDragLeave);
+document.getElementById('sched-list').addEventListener('drop', schedDrop);
 
 document.getElementById('sched-list').addEventListener('click', function (e) {
   var open = e.target.closest('[data-sopen]');
@@ -8324,6 +8434,68 @@ function nbSuRender(results) {
 }
 
 document.getElementById('nb-su').addEventListener('click', nbSuFind);
+
+// Paste a list. Thirty names off a spreadsheet was thirty trips through
+// this modal; now it is one paste, one look at what would change, one
+// click. Categories are keyword-guessed server-side — no model call.
+document.getElementById('nb-bulk-open').addEventListener('click', function () {
+  var box = document.getElementById('nb-bulk');
+  box.hidden = !box.hidden;
+  this.textContent = box.hidden ? 'Paste a list instead' : 'Add one at a time instead';
+  if (!box.hidden) document.getElementById('nb-bulk-text').focus();
+});
+
+document.getElementById('nb-bulk-check').addEventListener('click', function () {
+  var text = document.getElementById('nb-bulk-text').value;
+  var prev = document.getElementById('nb-bulk-prev');
+  if (!text.trim()) { toast('Paste some names first'); return; }
+  var btn = this;
+  btn.disabled = true;
+  api('addBrandsBulk', { text: text }).then(function (p) {
+    btn.disabled = false;
+    var bits = '';
+    if (p.create.length) {
+      bits += '<div style="font-size:12.5px;font-weight:600;margin-bottom:4px">' + p.create.length + ' new</div>' +
+        '<div style="max-height:150px;overflow:auto;margin-bottom:8px">' +
+          p.create.map(function (c) {
+            return '<div style="font-size:12.5px;padding:2px 0">' + esc(c.name) +
+              ' <span style="color:var(--ink-3)">' + esc(CAT_NAMES[c.category] || c.category) + '</span></div>';
+          }).join('') +
+        '</div>';
+    }
+    if (p.existing.length) {
+      bits += '<div class="hint" style="margin:0 0 8px">Already on the roster (skipped): ' +
+        p.existing.map(function (x) {
+          // Show the roster's own spelling whenever it differs at all —
+          // "poppi → Poppi" is how you learn what it is filed under.
+          return esc(x.name) + (x.asName !== x.name ? ' → ' + esc(x.asName) : '');
+        }).join(', ') + '</div>';
+    }
+    if (p.unresolved) {
+      bits += '<div class="hint" style="margin:0 0 8px;color:#f0b86b">' + p.unresolved +
+        ' could not be placed in a category — they land in “Needs Clarification”, set them from the brand page.</div>';
+    }
+    prev.innerHTML = '<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:10px">' +
+      bits +
+      (p.create.length
+        ? '<button class="btn-solid" id="nb-bulk-go" style="padding:6px 14px;font-size:12.5px">Add ' + p.create.length + ' ' + (p.create.length === 1 ? 'brand' : 'brands') + '</button>'
+        : '<div class="hint" style="margin:0">Nothing new in that list.</div>') +
+    '</div>';
+    var go = document.getElementById('nb-bulk-go');
+    if (go) go.onclick = function () {
+      go.disabled = true; go.textContent = 'Adding…';
+      api('addBrandsBulk', { text: text, apply: true }).then(function (r) {
+        toast(r.created.length + ' added' +
+          (r.existing.length ? ' · ' + r.existing.length + ' already there' : '') +
+          (r.failed.length ? ' · ' + r.failed.length + ' failed' : ''));
+        document.getElementById('nb-bulk-text').value = '';
+        prev.innerHTML = '';
+        closeAddBrand();
+        loadBrands();
+      }).catch(function (e) { toast(e.message); go.disabled = false; });
+    };
+  }).catch(function (e) { btn.disabled = false; toast(e.message); });
+});
 
 document.getElementById('nb-save').addEventListener('click', function () {
   var name = document.getElementById('nb-name').value.trim();
