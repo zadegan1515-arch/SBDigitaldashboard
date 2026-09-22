@@ -259,13 +259,26 @@ function coldPoolBrand(): Prisma.BrandWhereInput {
 // The planner covers WORKING days only — nobody sends LinkedIn invites
 // into a Saturday. Today is always included (so the Schedule's Today
 // row still mirrors the live queue), then the next weekdays fill it.
-function planningDays(count = 7): Date[] {
-  const out: Date[] = [new Date()]
+// Leo's outreach week: Tuesday, Wednesday, Thursday. Nothing goes out on
+// a Monday or a Friday, so the planner doesn't offer those days at all —
+// including today, when today is one of them.
+const OUTREACH_DOWS = [2, 3, 4]
+
+function isOutreachDay(d: Date): boolean {
+  return OUTREACH_DOWS.includes(d.getDay())
+}
+
+// The next `count` days we actually send on. Today is included only if
+// it is one of them, which means the first day in the list is not
+// necessarily today — anything keyed off "today" has to compare dates,
+// not positions.
+function planningDays(count = 3): Date[] {
+  const out: Date[] = []
   const cur = new Date()
+  if (isOutreachDay(cur)) out.push(new Date(cur))
   while (out.length < count) {
     cur.setDate(cur.getDate() + 1)
-    const dow = cur.getDay()
-    if (dow === 0 || dow === 6) continue
+    if (!isOutreachDay(cur)) continue
     out.push(new Date(cur))
   }
   return out
@@ -2470,8 +2483,13 @@ const handlers: Record<string, Handler> = {
       })
     }
     let available = candidates.filter(c => !planned.has(c.brand.id))
-    const days = planningDays(7).map((at, i) => {
+    const todayKey = localDayKey(new Date())
+    const days = planningDays(3).map(at => {
       const key = localDayKey(at)
+      // Not "the first row" any more: on a Monday or Friday none of the
+      // planned days is today, and today's queue must not be charged
+      // against Tuesday.
+      const isToday = key === todayKey
       const theme = plan[key]?.category
         ?? (cats.length ? cats[Math.floor(at.getTime() / 86400000) % cats.length] : null)
       // Hand-planned brands send that day too — their queued people
@@ -2480,10 +2498,10 @@ const handlers: Record<string, Handler> = {
       const plannedCount = candidates.filter(c => dayPlannedIds.has(c.brand.id)).length
       // Today only: what's already stamped into the queue and what
       // already went out both take up room before the simulation fills.
-      const sentUsed = i === 0 ? sentTodayN : 0
-      const alreadyIn = i === 0 ? stampedToday.filter(t => !dayPlannedIds.has(t.brand.id)) : []
-      const alreadyPlanned = i === 0 ? stampedToday.length - alreadyIn.length : 0
-      const room = Math.max(0, DAILY_SEND_LIMIT - plannedCount - sentUsed - stampedToday.length * (i === 0 ? 1 : 0))
+      const sentUsed = isToday ? sentTodayN : 0
+      const alreadyIn = isToday ? stampedToday.filter(t => !dayPlannedIds.has(t.brand.id)) : []
+      const alreadyPlanned = isToday ? stampedToday.length - alreadyIn.length : 0
+      const room = Math.max(0, DAILY_SEND_LIMIT - plannedCount - sentUsed - (isToday ? stampedToday.length : 0))
       // Strictly the day's category — no cross-category top-ups (Leo).
       const take = (theme ? available.filter(c => c.brand.category === theme) : available).slice(0, room)
       const taken = new Set(take)
@@ -2506,6 +2524,8 @@ const handlers: Record<string, Handler> = {
       }
       return {
         date: key,
+        // The client used to assume day one was today; now it's told.
+        today: isToday,
         category: theme,
         auto: !plan[key]?.category,
         ready: Math.min(DAILY_SEND_LIMIT, sentUsed + alreadyIn.length + alreadyPlanned + plannedCount + take.length),
@@ -2683,6 +2703,12 @@ const handlers: Record<string, Handler> = {
   // day's category — a shortfall is reported, never topped up from
   // elsewhere.
   async fillToday() {
+    // Monday and Friday are not sending days, so there is no "today" to
+    // fill — say which day is next instead of quietly queueing people
+    // for a day nothing goes out on.
+    if (!isOutreachDay(new Date())) {
+      return { added: 0, shortBy: 0, theme: null, offDay: true, nextDay: localDayKey(planningDays(1)[0]) }
+    }
     const startOfDay = startOfLocalDay()
     const [sentToday, stamped, planRow, candidates] = await Promise.all([
       prisma.target.count({ where: { sentAt: { gte: startOfDay } } }),

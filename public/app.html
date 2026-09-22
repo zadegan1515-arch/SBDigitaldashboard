@@ -3038,18 +3038,21 @@ function schedDayKey(offset) {
   return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
 }
 
-// Working days only — the planner never offers a Saturday or Sunday.
-// Today always counts, so the Today row survives a weekend visit.
+// Leo sends on Tuesday, Wednesday and Thursday only. Mirrors
+// OUTREACH_DOWS on the server; today appears only if today is one of
+// them, so on a Monday the first row is Tuesday, not "Today".
+var OUTREACH_DOWS = [2, 3, 4];
+
 function schedDayKeys(count) {
-  count = count || 7;
+  count = count || 3;
   var server = Object.keys(SCHED.days || {}).sort();
   if (server.length) return server.slice(0, count);
-  var out = [schedDayKey(0)];
+  var out = [];
   var dt = new Date();
+  if (OUTREACH_DOWS.indexOf(dt.getDay()) !== -1) out.push(schedDayKey(0));
   while (out.length < count) {
     dt.setDate(dt.getDate() + 1);
-    var dow = dt.getDay();
-    if (dow === 0 || dow === 6) continue;
+    if (OUTREACH_DOWS.indexOf(dt.getDay()) === -1) continue;
     out.push(dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0'));
   }
   return out;
@@ -3105,7 +3108,7 @@ function renderBench() {
   });
   var dayOpts = '';
   var today0 = schedDayKey(0);
-  schedDayKeys(7).forEach(function (k, i) {
+  schedDayKeys(3).forEach(function (k, i) {
     var lbl = k === today0 ? 'Today'
       : new Date(k + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     dayOpts += '<option value="' + esc(k) + '">' + esc(lbl) + '</option>';
@@ -3189,13 +3192,16 @@ function schedAddBrand(key, brandId, brandName) {
 
 function renderSchedule() {
   var box = document.getElementById('sched-list');
-  var days = schedDayKeys(7);
+  var days = schedDayKeys(3);
   box.innerHTML = days.map(function (key, i) {
     var day = SCHED.plan[key] || { category: null, brandIds: [] };
     var tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
     var tmrKey = tmr.getFullYear() + '-' + String(tmr.getMonth() + 1).padStart(2, '0') + '-' + String(tmr.getDate()).padStart(2, '0');
     var label = key === schedDayKey(0) ? 'Today' : key === tmrKey ? 'Tomorrow'
       : new Date(key + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    // Tue/Wed/Thu only, so the next sending day is often not tomorrow —
+    // say which day it is rather than leaving a gap unexplained.
+    if (i === 0 && key !== schedDayKey(0) && key !== tmrKey) label = 'Next up · ' + label;
     var chips = (day.brandIds || []).map(function (bid) {
       return '<span class="status" style="display:inline-flex;gap:6px;align-items:center;font-size:12px;padding:5px 11px">' +
         esc(SCHED.names[bid] || 'brand') +
@@ -4255,18 +4261,27 @@ function loadOutreach() {
     r.sentToday.forEach(function (t) { TARGET_CACHE[t.id] = t; });
     (r.more || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
     (list || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
+    // Mondays and Fridays are not sending days. Say so at the top of the
+    // queue rather than letting the day look like any other.
+    var offDay = OUTREACH_DOWS.indexOf(new Date().getDay()) === -1;
+    var offNote = offDay
+      ? '<div class="hint" style="margin:6px 0 0;color:#f0b86b">No outreach today — you send Tuesday, Wednesday and Thursday. Next up: ' +
+        esc(shortDate(schedDayKeys(1)[0] + 'T12:00:00')) + '. Plan it on the Schedule tab.</div>'
+      : '';
     document.getElementById('queue-head').innerHTML = mode === 'today'
       ? 'To send today' + (r.theme ? ' — ' + esc(CAT_NAMES[r.theme] || r.theme) + ' day' : '') + ' <span class="n">' + list.length + '</span>' +
         '<span id="sent-today-chip" style="margin-left:10px;font-size:12px;font-weight:600;color:' +
           (SENT_TODAY.count >= SENT_TODAY.cap ? '#8fd6a8' : 'var(--ink-3)') + '">' +
           SENT_TODAY.count + ' of ' + SENT_TODAY.cap + ' sent today' + (SENT_TODAY.count >= SENT_TODAY.cap ? ' ✓' : '') + '</span>' +
-        '<button class="btn-ghost" id="fill20" title="Queue the best brands in today’s category until 20 people are in" style="margin-left:10px;padding:3px 11px;font-size:11.5px;font-weight:500">Fill to 20</button>'
+        '<button class="btn-ghost" id="fill20" title="Queue the best brands in today’s category until 20 people are in" style="margin-left:10px;padding:3px 11px;font-size:11.5px;font-weight:500">Fill to 20</button>' +
+        offNote
       : 'All targets <span class="n">' + list.length + '</span>';
     var fb = document.getElementById('fill20');
     if (fb) fb.onclick = function () {
       fb.disabled = true; fb.textContent = 'Filling…';
       api('fillToday').then(function (f) {
-        if (f.already) toast('Today is already covered to ' + SENT_TODAY.cap);
+        if (f.offDay) toast('No outreach on Mondays or Fridays. Next sending day: ' + shortDate(f.nextDay + 'T12:00:00') + ' — plan it on the Schedule tab.');
+        else if (f.already) toast('Today is already covered to ' + SENT_TODAY.cap);
         else if (f.shortBy > 0) toast('Added ' + f.added + ' — still ' + f.shortBy + ' short: ' +
           (f.theme ? esc(CAT_NAMES[f.theme] || f.theme) + ' is out of brands with people. Add some on the Schedule tab.' : 'add brands on the Schedule tab.'));
         else toast('Added ' + f.added + ' — today is full at ' + SENT_TODAY.cap);

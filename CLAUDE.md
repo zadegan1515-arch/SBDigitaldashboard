@@ -105,6 +105,11 @@ SPONSOR_HOST (brand page host), SPONSOR_REQUEST_TO (who gets sponsor requests), 
 board), CRM_SHEET_ID, CRM_SHEET_GID.
 
 ## Conventions
+- **Outreach runs Tuesday / Wednesday / Thursday only** — no Mondays, no Fridays, no weekends.
+  `OUTREACH_DOWS = [2,3,4]` in both `src/app/api/data/route.ts` (`planningDays`, `isOutreachDay`)
+  and `public/app.html` (`schedDayKeys`); the planner shows the next three sending days, and on an
+  off day "today" is absent from the schedule and `fillToday` refuses. Anything keyed off "today"
+  compares day keys — never "the first row".
 - Cents everywhere; `money()` formats on the client, `parseMoney()` parses "$1,750".
 - Activations: "current cost" = sum of `finalCents` only; estimate is the sheet. A staff-section line is a people line (slots) unless it's travel/labour (`isPeopleLine`, same regex client+server).
 - EventStaff `status`: invited · onboarding · ready · confirmed · declined · no_show · done. Local confirmed/declined/no_show/done are never overwritten by a platform sync.
