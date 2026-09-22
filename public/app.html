@@ -3277,9 +3277,12 @@ function meetingAsks(t) {
   var brand = t.brand || 'you';
   return [
     {
-      label: 'Direct',
-      text: 'Thanks ' + first + '! Would 15 minutes on Zoom work this week? ' +
-        'Happy to work around whatever time is easiest for you, just send over a couple that suit and I\'ll be there.'
+      // Leo's own wording, the same message the Nudge buttons send, so
+      // the follow-up and the reply say the same thing in his voice.
+      label: 'Standard',
+      text: 'Hey ' + first + ', great to be connected. Would love to share ideas and put something together with ' + brand + '. ' +
+        'Would you have 15 minutes for a quick chat later this week? ' +
+        'I have also attached our deck for you to check out in the meantime. Thanks!'
     },
     {
       label: 'With the dates',

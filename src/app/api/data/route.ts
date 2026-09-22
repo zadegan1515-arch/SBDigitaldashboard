@@ -413,15 +413,15 @@ function templateLinkedInDraft(target: { brand: any; contact: any }, variant: st
   const firstMessage =
     `Thanks for connecting, ${first}! Quick context: SB Agency runs 500+ college shows a year — packed student crowds across 100+ tier-1 markets, with in-house photo and video on every show. For ${brand}, the natural fit is ${hook}.\n\n` +
     `Happy to send this semester's show list, or grab 15 minutes if that's easier — what works best?`
-  // Sent right after someone accepts the invite. Leo's rules for it:
-  // thank them for accepting first, no dashes anywhere, plain words, and
-  // one ask only, which is a short call online this week. It does not
-  // restate the pitch, because they have already read it.
-  const nudge = variant === 'woman'
-    ? `Thanks so much for accepting, ${first}, great to connect! We book artists for fraternity and sorority events all over the country, and I think ${brand} could do something really fun at a few of the shows we have this semester.\n\n` +
-      `Would you have 15 minutes this week for a quick Zoom? Happy to work around whatever time is easiest for you.`
-    : `Appreciate the accept ${first}, good to connect man. We book artists for fraternity and sorority events all over the country, and I think ${brand} could do something really fun at a few of the shows we have this semester.\n\n` +
-      `Any chance you have 15 minutes this week for a quick Zoom? Happy to work around whatever time is easiest for you.`
+  // Leo's own words, used as written. Both voices send the same thing
+  // for now: he wrote one message and asked for it on both buttons, and
+  // editing his copy to invent a second version is not our call.
+  // The deck it mentions is the one-pager in public/materials, attached
+  // by hand in the LinkedIn chat.
+  const nudge =
+    `Hey ${first}, great to be connected. Would love to share ideas and put something together with ${brand}. ` +
+    `Would you have 15 minutes for a quick chat later this week? ` +
+    `I have also attached our deck for you to check out in the meantime. Thanks!`
   return { connectionNote, firstMessage, nudge }
 }
 
