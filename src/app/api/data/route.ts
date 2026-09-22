@@ -2492,12 +2492,15 @@ const handlers: Record<string, Handler> = {
     const planned = new Set(Object.values(plan).flatMap((d: any) => d?.brandIds ?? []))
     const totalPool = candidates.length
 
-    // Untouched brands (people on file, nothing queued or sent): the
-    // side-list bench, and each day's "category not fully in" note.
-    const allBrands = await prisma.brand.findMany({
-      where: { ...NOT_IN_CONVERSATION, ...notPassedToday(), doNotEmail: false, contacts: { some: {} } },
+    // Every brand, filtered in JS rather than in the query. The same
+    // rows answer two questions: which brands a day can still offer,
+    // and — for the ones it can't — what is stopping each of them.
+    // "Only 1 of 20 ready" with nothing underneath is unanswerable from
+    // the screen when you know the roster has more brands than that.
+    const everyBrand = await prisma.brand.findMany({
       select: {
         id: true, name: true, category: true, website: true, linkedinUrl: true,
+        passedAt: true, passedTodayAt: true, doNotEmail: true,
         // tier and workPeople decide how many threads this brand runs at
         // once, which is the other reason a queue can refuse.
         tier: true, workPeople: true,
@@ -2510,6 +2513,14 @@ const handlers: Record<string, Handler> = {
         targets: { select: { status: true, shelved: true, sentAt: true, contactId: true } },
       },
     })
+    const dayStart = startOfLocalDay()
+    const inConversation = (b: (typeof everyBrand)[number]) =>
+      b.targets.some(t => ['replied', 'converted'].includes(t.status))
+    const passedToday = (b: (typeof everyBrand)[number]) =>
+      !!b.passedTodayAt && b.passedTodayAt >= dayStart
+    // What the query used to filter out.
+    const allBrands = everyBrand.filter(b =>
+      !b.passedAt && !inConversation(b) && !passedToday(b) && !b.doNotEmail && b.contacts.length > 0)
     const untouched = allBrands.filter(b =>
       !planned.has(b.id) && !byBrand.has(b.id) &&
       !b.targets.some(t => t.sentAt ||
@@ -2536,6 +2547,34 @@ const handlers: Record<string, Handler> = {
     const addable = allBrands
       .map(b => ({ ...b, spare: reachableSpare(b) }))
       .filter(b => !planned.has(b.id) && b.spare > 0 && !alreadyContacted(b) && hasRoomToWork(b))
+
+    // The one gate each brand is stuck behind, in the order the queue
+    // itself would hit them. Null means the brand is available.
+    const blockedBy = (b: (typeof everyBrand)[number]): string | null => {
+      if (b.passedAt) return 'archived'
+      if (b.doNotEmail) return 'donotemail'
+      if (!b.contacts.length) return 'nopeople'
+      if (!b.contacts.some(c => c.email || c.linkedinUrl)) return 'unreachable'
+      if (inConversation(b)) return 'inconversation'
+      if (b.targets.some(t => t.sentAt)) return 'contacted'
+      if (passedToday(b)) return 'passedtoday'
+      const taken = new Set(b.targets.map(t => t.contactId))
+      if (!b.contacts.some(c => (c.email || c.linkedinUrl) && !taken.has(c.id))) return 'exhausted'
+      if (!hasRoomToWork(b)) return 'full'
+      return null
+    }
+    // Per category: how many brands it holds, and why the unavailable
+    // ones are unavailable. Computed once, read by whichever day picked
+    // that category.
+    const categoryHealth = new Map<string, { total: number; blocked: Record<string, string[]> }>()
+    for (const b of everyBrand) {
+      if (!b.category) continue
+      const h = categoryHealth.get(b.category) ?? { total: 0, blocked: {} }
+      h.total += 1
+      const why = blockedBy(b)
+      if (why) (h.blocked[why] ??= []).push(b.name)
+      categoryHealth.set(b.category, h)
+    }
 
     // True preview of each day's sends: the same picking order the real
     // queue uses (day's category first by fit, then the best of the
@@ -2652,6 +2691,15 @@ const handlers: Record<string, Handler> = {
         // hidden — the day is full, the people are real, and they carry
         // over to the next day in this category on their own.
         overflow: spillRows,
+        // Why this category can't fill the day. Only sent when it
+        // can't: a full day needs no explanation.
+        health: theme && categoryHealth.has(theme) ? {
+          total: categoryHealth.get(theme)!.total,
+          blocked: Object.fromEntries(
+            Object.entries(categoryHealth.get(theme)!.blocked)
+              .map(([why, names]) => [why, { count: names.length, names: names.slice(0, 4) }]),
+          ),
+        } : null,
         // Same-category brands whose people are NOT in the queue yet —
         // the day's Add-more section offers to put them in.
         missing: theme

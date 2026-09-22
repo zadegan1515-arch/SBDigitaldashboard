@@ -3219,7 +3219,7 @@ function renderSchedule() {
         (full ? cap + ' people ready ✓' : 'only ' + prev.ready + ' of ' + cap + ' people ready') + sentBit + '</span>';
     }
     var sugg = '';
-    if (prev && (prev.brands.length || (prev.missing || []).length || (prev.overflow || []).length)) {
+    if (prev && (prev.brands.length || (prev.missing || []).length || (prev.overflow || []).length || prev.health)) {
       var missNote = '';
       if ((prev.missing || []).length) {
         missNote = '<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px">' +
@@ -3238,6 +3238,36 @@ function renderSchedule() {
             '</div>';
           }).join('') +
         '</div>';
+      }
+      // "Only 1 of 20 ready" with nothing under it reads as broken when
+      // you know the roster holds more brands than that. Say which gate
+      // the rest of the category is stuck behind.
+      var healthNote = '';
+      if (prev.health && prev.ready < cap) {
+        var WHY = {
+          nopeople: 'no people on file',
+          unreachable: 'nobody reachable (no email or LinkedIn)',
+          exhausted: 'everyone reachable already queued',
+          contacted: 'already contacted',
+          inconversation: 'already replied — follow up instead',
+          full: 'already running all their threads',
+          passedtoday: 'passed for today',
+          archived: 'archived',
+          donotemail: 'do-not-email'
+        };
+        var bits = Object.keys(prev.health.blocked || {}).map(function (why) {
+          var b = prev.health.blocked[why];
+          return b.count + ' ' + (WHY[why] || why) +
+            (b.count <= 3 ? ' (' + b.names.map(esc).join(', ') + ')' : '');
+        });
+        if (bits.length) {
+          healthNote = '<div class="hint" style="margin:8px 0 0;color:#f0b86b">' +
+            prev.health.total + ' ' + esc(CAT_NAMES[prev.category] || prev.category || '') +
+            (prev.health.total === 1 ? ' brand on file' : ' brands on file') + ' — ' + bits.join(' · ') + '.' +
+            (prev.health.blocked.unreachable || prev.health.blocked.nopeople
+              ? ' Run the SponsorUnited fill to get people for those.' : '') +
+          '</div>';
+        }
       }
       // Ready, in this category, past the day's 20. Previously these were
       // cut off the list entirely, so a category with thirty people
@@ -3294,6 +3324,7 @@ function renderSchedule() {
           : '') +
         overNote +
         missNote +
+        healthNote +
       '</div>';
     }
     return '<div class="panel panel-pad" style="margin-bottom:10px" data-sday="' + esc(key) + '">' +
