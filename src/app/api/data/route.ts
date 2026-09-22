@@ -264,8 +264,16 @@ function coldPoolBrand(): Prisma.BrandWhereInput {
 // including today, when today is one of them.
 const OUTREACH_DOWS = [2, 3, 4]
 
+// The weekday has to be read in WORK_TZ like every other date here.
+// d.getDay() is the server's own timezone — UTC on Vercel — so between
+// 8pm and midnight in New York the two disagreed about what day it was:
+// the planner built its list for tomorrow while the date keys still said
+// today, which shifted every panel by a day and stamped "in today's
+// queue" onto the one labelled Tomorrow.
+const NY_WEEKDAY = new Intl.DateTimeFormat('en-US', { timeZone: WORK_TZ, weekday: 'short' })
+const DOW_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
 function isOutreachDay(d: Date): boolean {
-  return OUTREACH_DOWS.includes(d.getDay())
+  return OUTREACH_DOWS.includes(DOW_INDEX[NY_WEEKDAY.format(d)] ?? -1)
 }
 
 // The next `count` days we actually send on. Today is included only if
@@ -2401,8 +2409,12 @@ const handlers: Record<string, Handler> = {
     // day will actually run (planned beats rotation — same formula as
     // getTodayQueue) and the specific brands it would work, so the
     // Schedule tab can offer Add / Pass on each before the day arrives.
+    // coldPoolBrand, not NOT_IN_CONVERSATION: these rows are the day's
+    // suggestions, so a brand passed for today has to drop out of them.
+    // Without it Pass only removed the row on screen and the next
+    // refresh put it straight back.
     const candidates = await prisma.target.findMany({
-      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: NOT_IN_CONVERSATION },
+      where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: coldPoolBrand() },
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: 300,
       select: { fitScore: true, brand: { select: { id: true, name: true, category: true, website: true, linkedinUrl: true } } },
@@ -2969,7 +2981,25 @@ const handlers: Record<string, Handler> = {
       where: { id: brandId },
       data: { passedTodayAt: on ? new Date() : null },
     })
-    return { id: brand.id, name: brand.name, passedToday: !!brand.passedTodayAt }
+    // Passing has to actually empty the day, not just stop suggesting.
+    // People already stamped into today's queue are what the Schedule
+    // reads back as "in today's queue", so leaving them stamped meant a
+    // passed brand reappeared on the next refresh — and would still have
+    // been written to. Un-stamping returns them to the pool: nothing is
+    // shelved, nothing deleted, and they come up again another day.
+    let unqueued = 0
+    if (on) {
+      const r = await prisma.target.updateMany({
+        where: {
+          brandId,
+          status: { in: ['queued', 'drafted'] },
+          queuedFor: { gte: startOfLocalDay() },
+        },
+        data: { queuedFor: null },
+      })
+      unqueued = r.count
+    }
+    return { id: brand.id, name: brand.name, passedToday: !!brand.passedTodayAt, unqueued }
   },
 
   // -------- brands with no contacts --------
