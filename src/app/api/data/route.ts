@@ -2842,7 +2842,7 @@ const handlers: Record<string, Handler> = {
       const spill = inTheme.slice(room)
       const taken = new Set(take)
       available = available.filter(c => !taken.has(c))
-      type DayRow = { id: string; name: string; people: number; website: string | null; linkedinUrl: string | null; topUp: boolean; inQueue: boolean; category: string | null }
+      type DayRow = { id: string; name: string; people: number; later?: number; website: string | null; linkedinUrl: string | null; topUp: boolean; inQueue: boolean; category: string | null }
       const rows: DayRow[] = []
       const rowByBrand = new Map<string, DayRow>()
       for (const t of [...alreadyIn.map(a => ({ ...a, _inQueue: true })), ...take.map(c => ({ ...c, _inQueue: false }))]) {
@@ -2859,10 +2859,16 @@ const handlers: Record<string, Handler> = {
           rows.push(row)
         }
       }
-      // Same shape as the day's own rows, one entry per brand.
+      // Same shape as the day's own rows, one entry per brand. People are
+      // picked by fit, so a brand's first two can make the 20 and its
+      // third miss it — that brand then showed twice, once going out and
+      // once under "the rest". Its leftover people ride on its day row as
+      // `later` instead; only brands wholly past the cap get a row here.
       const spillRows: DayRow[] = []
       const spillByBrand = new Map<string, DayRow>()
       for (const t of spill) {
+        const going = rowByBrand.get(t.brand.id)
+        if (going) { going.later = (going.later ?? 0) + 1; continue }
         const r = spillByBrand.get(t.brand.id)
         if (r) { r.people += 1; continue }
         const row: DayRow = {
