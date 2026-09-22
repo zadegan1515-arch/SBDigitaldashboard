@@ -473,6 +473,7 @@
       <div class="eyebrow">Category</div>
       <h1 id="brands-title">Brands</h1>
       <div class="sub" id="brands-sub">Loading…</div>
+      <div id="fill-progress"></div>
       <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
         <input class="field-box" id="bq" placeholder="Search brands — or type a new name to add one…" style="flex:1;min-width:240px" autocomplete="off">
         <button class="btn-solid" id="bq-add" hidden>Add + find on SponsorUnited</button>
@@ -1133,6 +1134,63 @@ function loadDashboard() {
 
 var lastCategory = null;
 
+// Where the fill-to-25 stands. The sweep runs in Leo's own browser, so
+// "is it actually working" can only be answered by what it has added —
+// a day with nothing new means nothing is running, and that is worth
+// saying out loud rather than leaving the roster to look stalled.
+function renderFillProgress() {
+  var box = document.getElementById('fill-progress');
+  if (!box) return;
+  api('fillProgress').then(function (p) {
+    var pct = p.brands ? Math.round((p.atCap / p.brands) * 100) : 0;
+    var stale = !p.addedToday;
+    var ago = p.lastAt
+      ? Math.round((Date.now() - new Date(p.lastAt).getTime()) / 36e5)
+      : null;
+    var lastLine = p.lastAt
+      ? 'Last person captured ' + (ago < 1 ? 'in the last hour' : ago < 48 ? ago + 'h ago' : Math.round(ago / 24) + ' days ago') +
+        (p.lastBrand ? ' (' + esc(p.lastBrand) + ')' : '')
+      : 'Nothing has ever been captured from SponsorUnited.';
+
+    box.innerHTML =
+      '<div class="panel panel-pad" style="margin-top:14px">' +
+        '<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px">' +
+          '<b style="font-size:13px">Filling to ' + p.cap + ' people per brand</b>' +
+          '<span class="n">' + p.atCap + ' of ' + p.brands + ' full</span>' +
+          '<span style="flex:1"></span>' +
+          '<span style="font-size:12px;color:' + (stale ? '#f0b86b' : '#8fd6a8') + '">' +
+            (p.addedToday ? '+' + p.addedToday + ' people today' : 'nothing added today') +
+          '</span>' +
+        '</div>' +
+        '<div style="height:6px;background:var(--border);border-radius:99px;overflow:hidden;margin-bottom:8px">' +
+          '<div style="height:100%;width:' + pct + '%;background:#8fd6a8"></div></div>' +
+        '<div class="hint" style="margin:0 0 4px">' +
+          p.peopleOnFile + ' people on file · ' + p.under + ' brands under ' + p.cap +
+          ' · ' + p.empty + ' with nobody · ' + p.addedWeek + ' added this week.' +
+        '</div>' +
+        '<div class="hint" style="margin:0 0 4px">' + lastLine + '</div>' +
+        (p.underNoId
+          ? '<div class="hint" style="margin:0 0 4px;color:#f0b86b"><b>' + p.underNoId + '</b> of those have no SponsorUnited profile saved — the sweep cannot reach them until the lookup finds one. That is the first half of “Fill every brand to 25”.</div>'
+          : '') +
+        (p.roomReachable
+          ? '<div class="hint" style="margin:0 0 4px">' + p.roomReachable + ' more people are reachable right now without any lookup.</div>'
+          : '') +
+        (p.nextUp.length
+          ? '<div class="hint" style="margin:6px 0 0">Next up: ' + p.nextUp.map(function (b) {
+              return '<a href="#" data-bopen="' + esc(b.id) + '" style="text-decoration:none">' + esc(b.name) + '</a> (' + b.contacts + ')';
+            }).join(' · ') + '</div>'
+          : '') +
+        (stale
+          ? '<div class="hint" style="margin:8px 0 0;color:#f0b86b">Nothing captured today. Open SponsorUnited in a tab, signed in, and leave it alone — the script starts on its own after two idle minutes. If it still does nothing, click the SB pill → “Test the search on this page”.</div>'
+          : '') +
+      '</div>';
+
+    box.querySelectorAll('[data-bopen]').forEach(function (a) {
+      a.onclick = function (e) { e.preventDefault(); loadBrand(a.getAttribute('data-bopen')); };
+    });
+  }).catch(function () { box.innerHTML = ''; });
+}
+
 function loadBrands(category) {
   showView('brands');
   category = category || 'all';
@@ -1175,6 +1233,8 @@ function loadBrands(category) {
       list.length + ' brands · ' + withContacts + ' with contacts · ' +
       (list.length - withContacts) + ' still need research · ' +
       atCap + ' full at 25 · ' + workable + ' with 3+ people';
+
+    renderFillProgress();
 
     box.innerHTML = list.map(function (b) {
       var people = (b.contacts || []).map(function (p) {
@@ -1640,7 +1700,9 @@ function loadBrand(brandId) {
     (b.targets || []).forEach(function (t) { tByContact[t.contactId] = t; });
     var contacts =
       '<div class="section-head">People <span class="n">' + b.contacts.length + '</span>' +
-        '<button class="btn-ghost" id="b-addcontact" style="margin-left:auto">+ Add person</button></div>' +
+        '<button class="btn-ghost" id="b-split" style="margin-left:auto" title="Two companies filed under one name — move some of these people onto their own brand">Split into two brands…</button>' +
+        '<button class="btn-ghost" id="b-addcontact">+ Add person</button></div>' +
+      '<div id="b-split-slot"></div>' +
       '<div id="b-contact-slot"></div>' +
       (b.contacts.length ? b.contacts.map(function (c) {
         var ct = tByContact[c.id];
@@ -1876,6 +1938,8 @@ function loadBrand(brandId) {
     document.getElementById('b-attach').onclick = function () {
       openShowPicker(b.id, b.name, document.getElementById('b-attach-slot'));
     };
+
+    document.getElementById('b-split').onclick = function () { openSplitBrand(b); };
 
     document.getElementById('b-addcontact').onclick = function () {
       openContactForm(b.id, document.getElementById('b-contact-slot'));
@@ -2273,6 +2337,118 @@ function openContactForm(brandId, slot, onDone, existing) {
       if (onDone) onDone();
       else loadBrand(brandId);
     }).catch(function (e) { toast(e.message); });
+  };
+}
+
+// Two companies filed under one name — "On!" the nicotine pouch brand
+// and "On" the running brand arrived on one record, 42 people deep.
+// Tick the ones that belong to the other company and they leave together.
+//
+// Email domains do the tedious part: @on-running.com is not the same
+// company as whoever is selling pouches, so one click selects a whole
+// domain instead of 42 individual ticks.
+function openSplitBrand(b) {
+  var slot = document.getElementById('b-split-slot');
+  var contacts = b.contacts || [];
+  if (contacts.length < 2) { toast('Nothing to split — this brand has one person.'); return; }
+
+  var domains = {};
+  contacts.forEach(function (c) {
+    var d = (c.email || '').split('@')[1];
+    if (d) domains[d.toLowerCase()] = (domains[d.toLowerCase()] || 0) + 1;
+  });
+  var domainKeys = Object.keys(domains).sort(function (a, z) { return domains[z] - domains[a]; });
+
+  slot.innerHTML =
+    '<div class="panel panel-pad" style="margin-bottom:10px">' +
+      '<div style="font-size:13px;font-weight:600;margin-bottom:4px">Split ' + esc(b.name) + ' into two brands</div>' +
+      '<div class="hint" style="margin:0 0 10px">Tick the people who belong to the other company. They move together; everyone unticked stays on ' + esc(b.name) + '.</div>' +
+      // One domain is the useful case too: ticking every @on-running.com
+      // in one click is the whole point, even when the other company's
+      // people have no email on file.
+      (domainKeys.length
+        ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center">' +
+            '<span class="hint" style="margin:0">Tick by email domain:</span>' +
+            domainKeys.map(function (d) {
+              return '<button class="btn-ghost" data-spdom="' + esc(d) + '" style="padding:4px 10px;font-size:11.5px">@' + esc(d) + ' (' + domains[d] + ')</button>';
+            }).join('') +
+          '</div>'
+        : '') +
+      '<div style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:6px 10px;margin-bottom:10px">' +
+        contacts.map(function (c) {
+          return '<label style="display:flex;gap:8px;align-items:baseline;padding:4px 0;cursor:pointer">' +
+            '<input type="checkbox" data-spc="' + esc(c.id) + '" data-spmail="' + esc((c.email || '').toLowerCase()) + '">' +
+            '<span style="flex:1;min-width:0"><b style="font-weight:600">' + esc(c.name) + '</b>' +
+              (c.title ? ' <span style="color:var(--ink-3);font-size:12px">— ' + esc(c.title) + '</span>' : '') +
+              (c.email ? '<br><span style="color:var(--ink-3);font-size:11.5px">' + esc(c.email) + '</span>' : '') +
+            '</span></label>';
+        }).join('') +
+      '</div>' +
+      '<div class="row2" style="margin-bottom:10px">' +
+        '<div><label class="lbl">Their brand name</label>' +
+          '<input class="field-box" id="sp-name" placeholder="e.g. On Running"></div>' +
+        '<div><label class="lbl">Category</label><select class="field-box" id="sp-cat"></select></div>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+        '<button class="btn-solid" id="sp-check">Check the split</button>' +
+        '<button class="btn-ghost" id="sp-cancel">Cancel</button>' +
+        '<span id="sp-count" class="hint" style="margin:0"></span>' +
+      '</div>' +
+      '<div id="sp-prev"></div>' +
+    '</div>';
+
+  document.getElementById('sp-cat').innerHTML = catOptions(null);
+  slot.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  var count = function () {
+    var n = slot.querySelectorAll('[data-spc]:checked').length;
+    document.getElementById('sp-count').textContent = n
+      ? n + ' of ' + contacts.length + ' moving · ' + (contacts.length - n) + ' staying'
+      : '';
+  };
+  slot.addEventListener('change', count);
+  slot.querySelectorAll('[data-spdom]').forEach(function (btn) {
+    btn.onclick = function () {
+      var d = '@' + btn.getAttribute('data-spdom');
+      slot.querySelectorAll('[data-spc]').forEach(function (cb) {
+        if ((cb.getAttribute('data-spmail') || '').indexOf(d) !== -1) cb.checked = true;
+      });
+      count();
+    };
+  });
+  document.getElementById('sp-cancel').onclick = function () { slot.innerHTML = ''; };
+
+  document.getElementById('sp-check').onclick = function () {
+    var ids = [].slice.call(slot.querySelectorAll('[data-spc]:checked')).map(function (cb) { return cb.getAttribute('data-spc'); });
+    var name = document.getElementById('sp-name').value.trim();
+    if (!ids.length) { toast('Tick the people who are moving'); return; }
+    if (!name) { toast('Name the brand they are moving to'); return; }
+    var btn = this;
+    btn.disabled = true;
+    api('splitBrand', { fromBrandId: b.id, contactIds: ids, toName: name, category: document.getElementById('sp-cat').value || null })
+      .then(function (p) {
+        btn.disabled = false;
+        var lines = [
+          '<b>' + p.moving.length + '</b> ' + (p.moving.length === 1 ? 'person moves' : 'people move') + ' to ' + esc(p.toBrandName) +
+            (p.toIsNew ? ' <span style="color:var(--ink-3)">(new brand)</span>' : ' <span style="color:var(--ink-3)">(brand already exists)</span>') + '.',
+          '<b>' + p.staying + '</b> stay on ' + esc(p.fromBrandName) + '.'
+        ];
+        if (p.historyStays) lines.push('<b>' + p.historyStays + '</b> already-sent ' + (p.historyStays === 1 ? 'thread stays' : 'threads stay') + ' on ' + esc(p.fromBrandName) + ' — that outreach happened there.');
+        if (p.queuedDropped) lines.push('<b>' + p.queuedDropped + '</b> not-yet-sent ' + (p.queuedDropped === 1 ? 'thread comes' : 'threads come') + ' off the queue with its draft — written for the wrong company.');
+        document.getElementById('sp-prev').innerHTML =
+          '<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:10px">' +
+            '<div class="hint" style="margin:0 0 10px">' + lines.join('<br>') + '</div>' +
+            '<button class="btn-solid" id="sp-go">Split them out</button>' +
+          '</div>';
+        document.getElementById('sp-go').onclick = function () {
+          this.disabled = true; this.textContent = 'Splitting…';
+          api('splitBrand', { fromBrandId: b.id, contactIds: ids, toName: name, category: document.getElementById('sp-cat').value || null, apply: true })
+            .then(function (r) {
+              toast(r.moving.length + ' moved to ' + r.toBrandName);
+              loadBrand(r.toBrandId);
+            }).catch(function (e) { toast(e.message); });
+        };
+      }).catch(function (e) { btn.disabled = false; toast(e.message); });
   };
 }
 

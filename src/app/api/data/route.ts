@@ -2198,6 +2198,94 @@ const handlers: Record<string, Handler> = {
     return contact
   },
 
+  // Two companies under one name. "On!" is Altria's nicotine pouch brand
+  // and "On" is the Swiss running brand, and SponsorUnited's capture put
+  // both sets of people on one record — 42 contacts, some @on.com, some
+  // selling nicotine. Moving them one at a time through moveContact is
+  // 42 round trips, so this takes a selection at once.
+  //
+  // Same rule as a single move, for the same reason: a conversation that
+  // happened under the old record stays there, and anything not yet sent
+  // comes off the queue with its draft, because the draft was written
+  // for the wrong company.
+  async splitBrand({ fromBrandId, contactIds, toBrandId, toName, category, tier, apply }: any) {
+    const from = await prisma.brand.findUnique({
+      where: { id: fromBrandId },
+      select: { id: true, name: true, _count: { select: { contacts: true } } },
+    })
+    if (!from) throw new Error('Brand not found')
+    const ids: string[] = Array.isArray(contactIds) ? contactIds.slice(0, 500) : []
+    if (!ids.length) throw new Error('Pick at least one person to move')
+
+    const moving = await prisma.contact.findMany({
+      where: { id: { in: ids }, brandId: from.id },
+      select: {
+        id: true, name: true, title: true, email: true,
+        targets: { select: { id: true, status: true, sentAt: true } },
+      },
+    })
+    if (!moving.length) throw new Error('None of those people are at this brand')
+    if (moving.length >= from._count.contacts) {
+      throw new Error(`That is everyone at ${from.name} — rename the brand instead of splitting it.`)
+    }
+
+    // Where they are going: an existing brand, or a new one by name.
+    let target = toBrandId
+      ? await prisma.brand.findUnique({ where: { id: toBrandId }, select: { id: true, name: true } })
+      : null
+    const wantedName = String(toName ?? '').trim()
+    if (!target && wantedName) {
+      target = await prisma.brand.findFirst({
+        where: { name: { equals: wantedName, mode: 'insensitive' } },
+        select: { id: true, name: true },
+      })
+    }
+    if (!target && !wantedName) throw new Error('Name the brand they are moving to')
+    if (target && target.id === from.id) throw new Error('That is the same brand')
+
+    const isWorked = (t: { status: string; sentAt: Date | null }) =>
+      !!t.sentAt || ['sent', 'accepted', 'replied', 'converted', 'declined'].includes(t.status)
+    const pendingIds = moving.flatMap(c => c.targets.filter(t => !isWorked(t)).map(t => t.id))
+    const workedCount = moving.reduce((n, c) => n + c.targets.filter(isWorked).length, 0)
+
+    const summary = {
+      fromBrandId: from.id,
+      fromBrandName: from.name,
+      toBrandId: target?.id ?? null,
+      toBrandName: target?.name ?? wantedName,
+      toIsNew: !target,
+      moving: moving.map(c => ({ id: c.id, name: c.name, title: c.title, email: c.email })),
+      staying: from._count.contacts - moving.length,
+      historyStays: workedCount,
+      queuedDropped: pendingIds.length,
+    }
+    if (!apply) return { preview: true, ...summary }
+
+    const created = target
+      ? target
+      : await prisma.brand.create({
+          data: {
+            name: wantedName,
+            category: category || guessCategory(wantedName),
+            tier: tier || null,
+            source: 'manual',
+          },
+          select: { id: true, name: true },
+        })
+
+    await prisma.$transaction(async tx => {
+      if (pendingIds.length) {
+        await tx.draft.deleteMany({ where: { targetId: { in: pendingIds } } })
+        await tx.target.updateMany({ where: { id: { in: pendingIds } }, data: { shelved: true, queuedFor: null } })
+      }
+      await tx.contact.updateMany({
+        where: { id: { in: moving.map(c => c.id) } },
+        data: { brandId: created.id },
+      })
+    })
+    return { split: true, ...summary, toBrandId: created.id, toBrandName: created.name }
+  },
+
   // People change jobs, and SponsorUnited keeps listing them at the old
   // company for months. Moving them by hand meant deleting and retyping,
   // which threw away everything already known about them.
@@ -3426,6 +3514,63 @@ const handlers: Record<string, Handler> = {
   // held people on it. Deliberately a button someone presses rather than
   // something an import does by itself — that's what used to leave two
   // records for the same brand side by side.
+  // Where the fill-to-25 actually stands. Built because the answer was
+  // otherwise unknowable from outside the database: the sweep runs in
+  // Leo's browser, and "is it working" has to be answerable by looking
+  // at the dashboard, not by asking.
+  //
+  // The number that matters is contacts created recently: the sweep only
+  // ever adds people, so a day with nothing new means it is not running.
+  async fillProgress() {
+    const CAP = 25
+    const now = Date.now()
+    const dayAgo = new Date(now - 864e5)
+    const weekAgo = new Date(now - 7 * 864e5)
+    const [brands, addedToday, addedWeek, lastContact] = await Promise.all([
+      prisma.brand.findMany({
+        where: { passedAt: null, doNotEmail: false },
+        select: { id: true, name: true, externalId: true, _count: { select: { contacts: true } } },
+      }),
+      prisma.contact.count({ where: { source: 'sponsorunited', createdAt: { gte: dayAgo } } }),
+      prisma.contact.count({ where: { source: 'sponsorunited', createdAt: { gte: weekAgo } } }),
+      prisma.contact.findFirst({
+        where: { source: 'sponsorunited' },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true, brand: { select: { name: true } } },
+      }),
+    ])
+    const atCap = brands.filter(b => b._count.contacts >= CAP)
+    const under = brands.filter(b => b._count.contacts < CAP)
+    // The sweep can only visit a brand whose SponsorUnited profile id we
+    // know. Everything else has to go through the lookup first, which is
+    // the half that stalls.
+    const underNoId = under.filter(b => !b.externalId)
+    const empty = brands.filter(b => b._count.contacts === 0)
+    const peopleOnFile = brands.reduce((n, b) => n + b._count.contacts, 0)
+    // How many people the fill would add if it finished everything it
+    // can currently reach.
+    const roomReachable = under.filter(b => b.externalId).reduce((n, b) => n + (CAP - b._count.contacts), 0)
+    return {
+      cap: CAP,
+      brands: brands.length,
+      atCap: atCap.length,
+      under: under.length,
+      underNoId: underNoId.length,
+      empty: empty.length,
+      peopleOnFile,
+      roomReachable,
+      addedToday,
+      addedWeek,
+      lastAt: lastContact?.createdAt ?? null,
+      lastBrand: lastContact?.brand?.name ?? null,
+      // The emptiest reachable brands — what the sweep would do next.
+      nextUp: under.filter(b => b.externalId)
+        .sort((a, b) => a._count.contacts - b._count.contacts)
+        .slice(0, 6)
+        .map(b => ({ id: b.id, name: b.name, contacts: b._count.contacts })),
+    }
+  },
+
   // Adding brands one modal at a time is the slowest thing on the site:
   // a list of thirty names off a spreadsheet, a conference roster or a
   // newsletter is thirty round trips. Paste the list instead.
