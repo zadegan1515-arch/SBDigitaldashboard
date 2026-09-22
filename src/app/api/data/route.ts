@@ -2739,6 +2739,45 @@ const handlers: Record<string, Handler> = {
   // (one person each, straight into today) until it can. Strictly the
   // day's category — a shortfall is reported, never topped up from
   // elsewhere.
+  // Change today's category and the people already stamped into today
+  // stay stamped — they are the real queue, so the Schedule shows them
+  // whatever category is picked. That is right, but it left no way to
+  // actually change today's mind: the header said "Nicotine only" over
+  // six Betting rows. This unstamps the ones outside today's category.
+  //
+  // Nothing is deleted and nothing is shelved: queuedFor goes back to
+  // null, which returns those people to the pool to come up on their own
+  // category's day. Anyone already written to (sent/accepted/replied) is
+  // never touched — that thread is running.
+  async clearTodayOffCategory({ preview = false }: any = {}) {
+    const startOfDay = startOfLocalDay()
+    const planRow = await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })
+    let planDay: any = null
+    try { planDay = planRow ? (JSON.parse(planRow.value)[localDayKey()] ?? null) : null } catch { planDay = null }
+    const theme: string | null = planDay?.category ?? null
+    if (!theme) return { cleared: 0, theme: null, brands: [], reason: 'no category set for today' }
+
+    // Hand-pinned brands are an explicit choice for today — leave them.
+    const pinned = new Set<string>(planDay?.brandIds ?? [])
+    const stamped = await prisma.target.findMany({
+      where: {
+        queuedFor: { gte: startOfDay },
+        status: { in: ['queued', 'drafted'] },
+        shelved: false,
+      },
+      select: { id: true, brand: { select: { id: true, name: true, category: true } } },
+    })
+    const off = stamped.filter(t => t.brand.category !== theme && !pinned.has(t.brand.id))
+    const brands = [...new Set(off.map(t => t.brand.name))]
+    if (preview || !off.length) return { cleared: 0, theme, brands, people: off.length, preview: true }
+
+    await prisma.target.updateMany({
+      where: { id: { in: off.map(t => t.id) } },
+      data: { queuedFor: null },
+    })
+    return { cleared: off.length, theme, brands }
+  },
+
   async fillToday() {
     // Monday and Friday are not sending days, so there is no "today" to
     // fill — say which day is next instead of quietly queueing people

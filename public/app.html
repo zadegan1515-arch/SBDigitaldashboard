@@ -3242,7 +3242,19 @@ function renderSchedule() {
       sugg = '<div style="margin-top:10px">' +
         (prev.brands.length
           ? '<div class="hint" style="margin:0 0 6px">' +
-              (prev.category ? 'Going out that day — ' + esc(CAT_NAMES[prev.category] || prev.category) + (prev.auto ? ' (rotation)' : '') + ' only' : 'Going out that day') + ':' +
+              (function () {
+                if (!prev.category) return 'Going out that day:';
+                var catName = esc(CAT_NAMES[prev.category] || prev.category) + (prev.auto ? ' (rotation)' : '');
+                // People already stamped into today's queue show here
+                // whatever category is picked — so don't say "only" over
+                // them, and offer the way out.
+                var off = (prev.brands || []).filter(function (b) { return b.topUp && b.inQueue; });
+                if (!off.length) return 'Going out that day — ' + catName + ' only:';
+                return 'Going out that day — ' + catName + ', plus ' + off.length +
+                  ' already in today’s queue from other categories:' +
+                  ' <button class="btn-ghost" data-sclearoff="1" style="padding:2px 9px;font-size:11.5px;margin-left:6px" ' +
+                  'title="Take those people back out of today — they return to the pool and come up on their own category’s day">Clear them</button>';
+              })() +
             '</div>' +
             prev.brands.map(function (b) {
               return '<div data-srow="' + esc(b.id) + '" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border)">' +
@@ -3437,6 +3449,25 @@ document.getElementById('sched-list').addEventListener('click', function (e) {
   }
   // "Put all in": queue every not-yet-queued brand of the day's
   // category. In place — they join the day's list right away.
+  var clearOff = e.target.closest('[data-sclearoff]');
+  if (clearOff) {
+    clearOff.disabled = true;
+    api('clearTodayOffCategory', { preview: true }).then(function (p) {
+      if (!p.people) { toast('Nothing to clear'); clearOff.disabled = false; return; }
+      var names = (p.brands || []).join(', ');
+      if (!window.confirm('Take ' + p.people + ' ' + (p.people === 1 ? 'person' : 'people') +
+        ' back out of today?\n\n' + names +
+        '\n\nThey are not in ' + (CAT_NAMES[p.theme] || p.theme) + '. Nobody is deleted — they go back to the pool and come up on their own category’s day. Anyone already invited is left alone.')) {
+        clearOff.disabled = false; return;
+      }
+      return api('clearTodayOffCategory', {}).then(function (r) {
+        toast('Cleared ' + r.cleared + ' from today');
+        schedRefreshDays();
+      });
+    }).catch(function (err) { clearOff.disabled = false; toast(err.message); });
+    return;
+  }
+
   var fill = e.target.closest('[data-sfill]');
   if (fill) {
     var fkey = fill.getAttribute('data-sfill');
