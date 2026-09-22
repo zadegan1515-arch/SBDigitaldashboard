@@ -257,6 +257,11 @@ model Draft {
   connectionNote String
   firstMessage   String
 
+  // The follow-up for someone who accepted the invite and then went
+  // quiet on the first message. Same two voices, and it asks for a
+  // 15-minute call rather than restating the pitch.
+  nudge String?
+
   // Which voice profile generated it
   voice         String?
   model         String?

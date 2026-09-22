@@ -413,7 +413,16 @@ function templateLinkedInDraft(target: { brand: any; contact: any }, variant: st
   const firstMessage =
     `Thanks for connecting, ${first}! Quick context: SB Agency runs 500+ college shows a year — packed student crowds across 100+ tier-1 markets, with in-house photo and video on every show. For ${brand}, the natural fit is ${hook}.\n\n` +
     `Happy to send this semester's show list, or grab 15 minutes if that's easier — what works best?`
-  return { connectionNote, firstMessage }
+  // They accepted and then went quiet. This does not restate the pitch —
+  // it asks for one specific, small thing: fifteen minutes on a call.
+  // Virtual on purpose (Leo): nobody is flying anywhere for a first
+  // conversation, and naming the format removes a reason to stall.
+  const nudge = variant === 'woman'
+    ? `Hey ${first} — following up on this, I know this time of year gets busy! Our show list is locked in for the semester and I think ${brand} would be a natural fit at a few of them — ${hook}.\n\n` +
+      `Would you have 15 minutes for a quick Zoom this week or next? Totally happy to work around your schedule. Or if it's easier, I can send the list over first and you can tell me if anything jumps out.`
+    : `${first} — circling back on this man, I know it's a busy season. We've got the show list locked in for the semester and I think ${brand} would land well at a few of them — ${hook}.\n\n` +
+      `Any chance you've got 15 minutes for a quick Zoom this week or next? Happy to work around you. Or I can send the list over first if you'd rather look before we talk.`
+  return { connectionNote, firstMessage, nudge }
 }
 
 // Every target headed for the Today queue arrives pre-drafted, so a
@@ -432,14 +441,26 @@ async function ensureTemplateDrafts(targets: any[]) {
       // man/woman drafts are worth preserving.
       const stale = t.drafts.every((d: any) =>
         d.variant !== 'man' && d.variant !== 'woman')
-      if (!stale) continue
+      if (!stale) {
+        // The follow-up is newer than these drafts. Fill only that field
+        // in — deleting and regenerating would throw away hand edits to
+        // the note and the first message, which are the two things Leo
+        // has actually tuned.
+        for (const d of t.drafts) {
+          if (d.nudge || (d.variant !== 'man' && d.variant !== 'woman')) continue
+          const made = templateLinkedInDraft(t, d.variant)
+          await prisma.draft.update({ where: { id: d.id }, data: { nudge: made.nudge } })
+          d.nudge = made.nudge
+        }
+        continue
+      }
       await prisma.draft.deleteMany({ where: { targetId: t.id } })
     }
     const created = []
     for (const variant of ['man', 'woman']) {
       const made = templateLinkedInDraft(t, variant)
       created.push(await prisma.draft.create({
-        data: { targetId: t.id, variant, connectionNote: made.connectionNote, firstMessage: made.firstMessage, model: 'template' },
+        data: { targetId: t.id, variant, connectionNote: made.connectionNote, firstMessage: made.firstMessage, nudge: made.nudge, model: 'template' },
       }))
     }
     t.drafts = created

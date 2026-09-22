@@ -3176,6 +3176,13 @@ function renderAcceptedDms() {
           // accept is visible rather than looking finished.
           '<div class="t-actions">' +
             (d ? '<button class="btn-draft" data-rcdm="copy" data-rct="' + esc(t.id) + '" title="Copy the DM and paste it into your LinkedIn chat">Copy DM</button>' : '') +
+            // They accepted, got the note, and went quiet — this is the
+            // follow-up, in either voice. Only shown once the first
+            // message has actually gone out.
+            (t.dmSentAt && (t.drafts || []).some(function (x) { return x.nudge; })
+              ? '<button class="btn-ghost" data-rcdm="nudgem" data-rct="' + esc(t.id) + '" title="Follow-up asking for a call — written for a man">Nudge · M</button>' +
+                '<button class="btn-ghost" data-rcdm="nudgew" data-rct="' + esc(t.id) + '" title="Follow-up asking for a call — written for a woman">Nudge · W</button>'
+              : '') +
             (t.dmSentAt
               ? '<span class="status accepted" style="font-size:12px;padding:5px 12px">LinkedIn ✓</span>'
               : '<button class="btn-ghost" data-rcdm="dmsent" data-rct="' + esc(t.id) + '" title="Logged: your LinkedIn reply went out">LinkedIn sent ✓</button>') +
@@ -3204,6 +3211,16 @@ document.getElementById('rc-accepted').addEventListener('click', function (e) {
     if (!d.firstMessage) { toast('Nothing drafted yet'); return; }
     navigator.clipboard.writeText(d.firstMessage).then(function () {
       toast('First DM copied — paste it into your LinkedIn chat');
+    }, function () { toast('Could not copy'); });
+    return;
+  }
+  if (act === 'nudgem' || act === 'nudgew') {
+    var want = act === 'nudgew' ? 'woman' : 'man';
+    var nd = (t.drafts || []).filter(function (x) { return x.variant === want && x.nudge; })[0]
+      || (t.drafts || []).filter(function (x) { return x.nudge; })[0];
+    if (!nd) { toast('No follow-up drafted yet — reload the page'); return; }
+    navigator.clipboard.writeText(nd.nudge).then(function () {
+      toast('Follow-up copied (' + want + ') — paste it into your LinkedIn chat');
     }, function () { toast('Could not copy'); });
     return;
   }
@@ -3261,19 +3278,19 @@ function meetingAsks(t) {
   return [
     {
       label: 'Direct',
-      text: 'Thanks ' + first + '! Would 15 minutes this week or early next work for a quick call? ' +
+      text: 'Thanks ' + first + '! Would 15 minutes on Zoom this week or early next work? ' +
         'Happy to work around your schedule — send over a couple of times that suit you and I\'ll make them work.'
     },
     {
       label: 'With the dates',
       text: 'Appreciate you getting back, ' + first + '. I\'d love to walk you through the shows we have booked ' +
-        'this semester and where ' + brand + ' could fit — it\'s easier to show than to type. ' +
-        'Any chance you have 15 minutes this week? I can send a calendar link or just work off two times that suit you.'
+        'this semester and where ' + brand + ' could fit — it\'s much easier to show than to type. ' +
+        'Any chance you have 15 minutes for a quick Zoom this week? I can send a link or just work off two times that suit you.'
     },
     {
       label: 'Low commitment',
       text: 'Thanks ' + first + '! No pressure at all — if it\'s easier I can send over the one-pager and a few dates first, ' +
-        'and we only jump on a call if it looks like a fit. What works better for you?'
+        'and we only jump on a quick Zoom if it looks like a fit. What works better for you?'
     }
   ];
 }
