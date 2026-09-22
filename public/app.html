@@ -3452,7 +3452,20 @@ document.getElementById('sched-list').addEventListener('click', function (e) {
     renderBench();
     toast('Queueing ' + ids.length + (ids.length === 1 ? ' brand' : ' brands') + '…');
     api('queueBrands', { brandIds: ids }).then(function (r) {
-      toast(r.queued + ' of ' + r.total + ' queued — they’ll come up on their category day');
+      // "0 of 3" on its own leaves you clicking each brand to find out
+      // why. The server groups the refusals; say the reason, and name
+      // the brands when there are few enough to read.
+      if (r.queued === r.total) {
+        toast(r.queued + ' of ' + r.total + ' queued — they’ll come up on their category day');
+      } else {
+        var parts = [];
+        Object.keys(r.failed || {}).forEach(function (why) {
+          var names = r.failed[why];
+          parts.push(names.length + ' ' + (QUEUE_FAIL[why] || why) +
+            (names.length <= 3 ? ' (' + names.join(', ') + ')' : ''));
+        });
+        toast(r.queued + ' of ' + r.total + ' queued — ' + parts.join('; '));
+      }
       schedRefreshDays();
     }).catch(function (err) { toast(err.message); loadSchedule(); });
     return;
@@ -7570,6 +7583,16 @@ document.getElementById('nextbest').addEventListener('click', function (e) {
 
 // One message for every "add to queue" path. Up to two people per
 // brand can be in play at once; the server says when both slots are.
+// Why a brand refused to queue, in Leo's words rather than the handler's.
+// Mirrors the reasons queueBrandTargets returns.
+var QUEUE_FAIL = {
+  nocontact: 'have nobody reachable — no email or LinkedIn on file',
+  exhausted: 'have nobody left — everyone reachable is already a target',
+  already: 'already have their people in the list',
+  contacted: 'already got an invite',
+  inconversation: 'already replied — follow up on the brand card instead',
+};
+
 function queueToast(r) {
   if (r.queued) {
     toast(r.contactName + (r.promoted ? ' moved into today’s list' : r.revived ? ' brought back' : ' added to the queue') +

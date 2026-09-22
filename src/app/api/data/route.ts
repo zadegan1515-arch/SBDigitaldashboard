@@ -2365,12 +2365,31 @@ const handlers: Record<string, Handler> = {
   // in one call. No today-stamp — each brand surfaces on its category
   // day through the normal rotation.
   async queueBrands({ brandIds }: any) {
+    const ids = (Array.isArray(brandIds) ? brandIds : []).slice(0, 40)
+    // Names up front, so every result can say which brand it is about
+    // even on the paths that throw before reading one.
+    const named = new Map(
+      (await prisma.brand.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }))
+        .map(b => [b.id, b.name]),
+    )
     const results: any[] = []
-    for (const bid of (Array.isArray(brandIds) ? brandIds : []).slice(0, 40)) {
-      try { results.push(await (handlers.queueBrandTargets as Handler)({ brandId: bid, stamp: false })) }
-      catch (e: any) { results.push({ queued: false, reason: e?.message || 'error', brandId: bid }) }
+    for (const bid of ids) {
+      try {
+        const r = await (handlers.queueBrandTargets as Handler)({ brandId: bid, stamp: false })
+        results.push({ brandName: named.get(bid) ?? 'brand', ...r })
+      } catch (e: any) {
+        results.push({ queued: false, reason: e?.message || 'error', brandId: bid, brandName: named.get(bid) ?? 'brand' })
+      }
     }
-    return { queued: results.filter(r => r?.queued).length, total: results.length, results }
+    // Grouped so "0 of 3" can say what actually stopped it rather than
+    // leaving Leo to click each brand to find out.
+    const failed: Record<string, string[]> = {}
+    for (const r of results) {
+      if (r?.queued) continue
+      const key = String(r?.reason ?? 'unknown')
+      ;(failed[key] ??= []).push(r?.brandName ?? 'brand')
+    }
+    return { queued: results.filter(r => r?.queued).length, total: results.length, failed, results }
   },
 
   // Pass a whole brand: it disappears from the queue, auto-picks and
@@ -2436,6 +2455,11 @@ const handlers: Record<string, Handler> = {
       select: {
         id: true, name: true, category: true, website: true, linkedinUrl: true,
         _count: { select: { contacts: true } },
+        // Reachability, not just a headcount: queueBrandTargets can only
+        // pick someone with an email or a LinkedIn URL, so counting every
+        // contact made "Add more" offer brands it could not queue —
+        // "3 people" then came back as 0 of 3.
+        contacts: { select: { id: true, email: true, linkedinUrl: true } },
         targets: { select: { status: true, shelved: true, sentAt: true, contactId: true } },
       },
     })
@@ -2448,11 +2472,12 @@ const handlers: Record<string, Handler> = {
     // nothing queued: a category whose brands each hold one queued
     // person still has spare people to add, and those brands belong in
     // the day's Add-more list too. `spare` = people not yet targeted.
+    const reachableSpare = (b: (typeof allBrands)[number]) => {
+      const taken = new Set(b.targets.map(t => t.contactId))
+      return b.contacts.filter(c => (c.email || c.linkedinUrl) && !taken.has(c.id)).length
+    }
     const addable = allBrands
-      .map(b => {
-        const taken = new Set(b.targets.map(t => t.contactId))
-        return { ...b, spare: Math.max(0, b._count.contacts - taken.size) }
-      })
+      .map(b => ({ ...b, spare: reachableSpare(b) }))
       .filter(b => !planned.has(b.id) && b.spare > 0 && !alreadyContacted(b))
 
     // True preview of each day's sends: the same picking order the real
@@ -2558,7 +2583,7 @@ const handlers: Record<string, Handler> = {
       if (!planned.has(b.id)) bench.push({ id: b.id, name: b.name, category: b.category, website: b.website, linkedinUrl: b.linkedinUrl, people: b.people, inQueue: true })
     }
     for (const b of untouched) {
-      bench.push({ id: b.id, name: b.name, category: b.category, website: b.website, linkedinUrl: b.linkedinUrl, people: b._count.contacts, inQueue: false })
+      bench.push({ id: b.id, name: b.name, category: b.category, website: b.website, linkedinUrl: b.linkedinUrl, people: reachableSpare(b), inQueue: false })
     }
 
     const past = Array.from({ length: 7 }, (_, i) => {
