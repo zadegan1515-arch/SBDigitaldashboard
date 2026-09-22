@@ -3163,6 +3163,52 @@ const handlers: Record<string, Handler> = {
 
   // Everyone who wrote back, plus the brand-level rollup: how many of
   // the people invited at a brand have answered ("1 of 3 from Yerba").
+  // An accept usually ends in "email me" — so an accept is an email
+  // waiting to be written, and that list needs to exist somewhere other
+  // than Leo's head. Logged by hand: the mail goes out of his own
+  // mailbox, so nothing here touches the email machine or its daily cap.
+  async markEmailed({ targetId, on = true }: any) {
+    const t = await prisma.target.update({
+      where: { id: targetId },
+      data: { emailedAt: on ? new Date() : null },
+      include: { contact: { select: { name: true } } },
+    })
+    return { emailedAt: t.emailedAt, contactName: t.contact.name }
+  },
+
+  // Everyone who accepted and has not been emailed yet, oldest accept
+  // first — an accept going cold is the expensive kind of nothing.
+  async toEmail() {
+    const rows = await prisma.target.findMany({
+      where: { status: 'accepted', shelved: false },
+      include: {
+        brand: { select: { id: true, name: true } },
+        contact: { select: { id: true, name: true, title: true, email: true, phone: true, linkedinUrl: true } },
+      },
+      orderBy: [{ sentAt: 'asc' }, { createdAt: 'asc' }],
+      take: 200,
+    })
+    const waiting = rows.filter(t => !t.emailedAt)
+    return {
+      accepted: rows.length,
+      done: rows.length - waiting.length,
+      noAddress: waiting.filter(t => !t.contact.email).length,
+      people: waiting.map(t => ({
+        targetId: t.id,
+        brandId: t.brand.id,
+        brandName: t.brand.name,
+        contactId: t.contact.id,
+        name: t.contact.name,
+        title: t.contact.title,
+        email: t.contact.email,
+        phone: t.contact.phone,
+        linkedinUrl: t.contact.linkedinUrl,
+        acceptedFor: t.sentAt,
+        dmSentAt: t.dmSentAt,
+      })),
+    }
+  },
+
   async repliedOverview() {
     const replied = await prisma.target.findMany({
       where: { status: { in: ['replied', 'converted'] } },

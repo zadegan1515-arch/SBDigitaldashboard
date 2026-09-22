@@ -209,6 +209,12 @@ model Target {
   // person from Today's "They accepted — send the DM" list.
   dmSentAt DateTime?
 
+  // When an email went to this person by hand, out of Leo's own mailbox.
+  // Accepts usually end in "email me" — this is what clears them off the
+  // to-email list, and it is deliberately separate from the email
+  // machine's own EmailMessage rows, which the daily cap governs.
+  emailedAt DateTime?
+
   // Set when it lands in a day's send list, so "Today" is stable
   // and doesn't reshuffle mid-session.
   queuedFor DateTime?

@@ -570,6 +570,7 @@
       <h1>Results</h1>
       <div class="sub" id="rc-sub">Everyone we've contacted on LinkedIn or by email, grouped by brand.</div>
       <div class="kpi-row" id="rc-kpis"></div>
+      <div id="rc-toemail"></div>
       <div id="rc-accepted"></div>
       <div id="rc-replied"></div>
       <div id="rc-responded"></div>
@@ -3031,6 +3032,107 @@ function updateAcceptedNote() {
   el.textContent = bits.filter(Boolean).join(' · ');
 }
 
+// An accept is two jobs, in order: reply to them on LinkedIn, then get
+// them onto email — because what an accept usually turns into is "email
+// me". Both are ticked by hand on the row, and whoever still owes an
+// email collects in the to-do list above.
+
+// The mail goes out of Leo's own mailbox, not the app's email machine,
+// so this is a mailto: — no cap, no drafting, no send path. Short on
+// purpose: he edits it in his own client before sending.
+function mailtoFor(p) {
+  var first = String(p.name || '').split(/\s+/)[0] || 'there';
+  var subject = 'SB Agency × ' + (p.brandName || '');
+  var body = 'Hi ' + first + ',\n\n' +
+    'Thanks for connecting on LinkedIn.\n\n' +
+    'I run SB Agency — we book artists and DJs for fraternity and sorority events and build ' +
+    'brand activations around those shows. Worth a quick look at whether ' + (p.brandName || 'you') +
+    ' fits one this season?\n\n' +
+    'Happy to send the one-pager and a few dates.\n\n' +
+    'Zach';
+  return 'mailto:' + encodeURIComponent(p.email || '') +
+    '?subject=' + encodeURIComponent(subject) +
+    '&body=' + encodeURIComponent(body);
+}
+
+// The to-do list: everyone who accepted and has not been emailed.
+function renderToEmail() {
+  var box = document.getElementById('rc-toemail');
+  if (!box) return;
+  api('toEmail').then(function (r) {
+    if (!r.people.length) {
+      box.innerHTML = r.accepted
+        ? '<div class="count-head" style="margin-top:18px">To email — they accepted <span class="n">all done</span></div>' +
+          '<div class="hint" style="margin:2px 0 8px">All ' + r.accepted + ' accepts have been emailed.</div>'
+        : '';
+      return;
+    }
+    var withMail = r.people.filter(function (p) { return p.email; });
+    box.innerHTML =
+      '<div class="count-head" style="margin-top:18px;color:#f0b86b">To email — they accepted <span class="n">' + r.people.length + '</span></div>' +
+      '<div class="hint" style="margin:2px 0 8px">An accept usually turns into “email me”. ' +
+        r.done + ' of ' + r.accepted + ' done' +
+        (r.noAddress ? ' · ' + r.noAddress + ' have no address on file yet' : '') + '.' +
+        (withMail.length > 1 ? ' <a href="#" id="rc-copyall">Copy all ' + withMail.length + ' addresses</a>' : '') +
+      '</div>' +
+      r.people.map(function (p) {
+        return '<div class="target" data-temrow="' + esc(p.targetId) + '">' +
+          '<div class="t-main"><div class="t-line">' +
+            '<span class="t-brand" data-brand="' + esc(p.brandId) + '" style="cursor:pointer">' + esc(p.brandName) + '</span>' +
+            '<span class="t-sep">·</span>' + esc(p.name) +
+            (p.title ? ' <span class="t-title">— ' + esc(p.title) + '</span>' : '') +
+          '</div>' +
+          '<div class="t-meta">' +
+            (p.dmSentAt
+              ? '<span class="status accepted">LinkedIn reply sent</span>'
+              : '<span class="status" style="color:#f0b86b">LinkedIn reply still due</span>') +
+            (p.email ? '<span>· ' + esc(p.email) + '</span>' : '<span style="color:#f0b86b">· no email address on file</span>') +
+            (p.acceptedFor ? '<span>· invited ' + shortDate(p.acceptedFor) + '</span>' : '') +
+          '</div></div>' +
+          '<div class="t-actions">' +
+            (p.email
+              ? '<a class="btn-draft" href="' + esc(mailtoFor(p)) + '" data-temmail="' + esc(p.targetId) + '">Email ↗</a>' +
+                '<button class="btn-ghost" data-temcopy="' + esc(p.email) + '" title="Copy just the address">Copy address</button>'
+              : '<button class="btn-ghost" data-temfix="' + esc(p.brandId) + '" title="Open the brand to add their email">Add an email</button>') +
+            (p.phone ? '<a class="btn-ghost" href="sms:' + esc(p.phone) + '">Text</a>' : '') +
+            '<button class="btn-ghost" data-temdone="' + esc(p.targetId) + '" title="Logged: the email went out">Email sent ✓</button>' +
+          '</div></div>';
+      }).join('');
+
+    var copyAll = document.getElementById('rc-copyall');
+    if (copyAll) copyAll.onclick = function (e) {
+      e.preventDefault();
+      navigator.clipboard.writeText(withMail.map(function (p) { return p.email; }).join(', '));
+      toast(withMail.length + ' addresses copied');
+    };
+  }).catch(function () { box.innerHTML = ''; });
+}
+
+document.getElementById('rc-toemail').addEventListener('click', function (e) {
+  var copy = e.target.closest('[data-temcopy]');
+  if (copy) {
+    navigator.clipboard.writeText(copy.getAttribute('data-temcopy'));
+    toast('Address copied');
+    return;
+  }
+  var fix = e.target.closest('[data-temfix]');
+  if (fix) { loadBrand(fix.getAttribute('data-temfix')); return; }
+  var brand = e.target.closest('[data-brand]');
+  if (brand) { loadBrand(brand.getAttribute('data-brand')); return; }
+  // Opening the mail client is the same intent as "I emailed them", but
+  // it is not proof — so the row stays, marked, and one click clears it.
+  var done = e.target.closest('[data-temdone]');
+  if (!done) return;
+  var row = done.closest('[data-temrow]');
+  done.disabled = true;
+  api('markEmailed', { targetId: done.getAttribute('data-temdone') }).then(function (r) {
+    toast('Emailed ' + r.contactName + ' — logged');
+    if (row) row.remove();
+    renderToEmail();
+    renderAcceptedDms();
+  }).catch(function (err) { toast(err.message); done.disabled = false; });
+});
+
 // Accepted invites still waiting on their DM. This is the follow-up
 // list, so it belongs with the results, not in the send queue.
 var RC_ACCEPTED = {};
@@ -3052,7 +3154,10 @@ function renderAcceptedDms() {
     box.innerHTML =
       '<div class="count-head" style="margin-top:18px;color:var(--good)">They accepted — send the DM <span class="n">' +
         waiting.length + ' of ' + all.length + ' left</span></div>' +
-      '<div class="hint" style="margin:2px 0 8px">Everyone who accepted. DM-logged people stay here, marked; they move down to “They replied” once they answer.</div>' +
+      '<div class="hint" style="margin:2px 0 8px">Two steps each: reply on LinkedIn, then email them. ' +
+        all.filter(function (x) { return x.dmSentAt; }).length + ' of ' + all.length + ' replied to · ' +
+        all.filter(function (x) { return x.emailedAt; }).length + ' of ' + all.length + ' emailed. ' +
+        'They move down to “They replied” once they answer.</div>' +
       all.map(function (t) {
         var d = (t.drafts || [])[0];
         return '<div class="target" data-rcrow="' + esc(t.id) + '"' + (t.dmSentAt ? ' style="opacity:.72"' : '') + '>' +
@@ -3063,13 +3168,23 @@ function renderAcceptedDms() {
           '</div>' +
           '<div class="t-meta"><span class="status accepted">accepted</span>' +
             (t.sentAt ? '<span>· invited ' + shortDate(t.sentAt) + '</span>' : '') +
-            (t.dmSentAt ? '<span>· DM sent ' + shortDate(t.dmSentAt) + '</span>' : '') + '</div>' +
+            (t.dmSentAt ? '<span>· LinkedIn reply ' + shortDate(t.dmSentAt) + '</span>' : '') +
+            (t.emailedAt ? '<span>· emailed ' + shortDate(t.emailedAt) + '</span>' : '') + '</div>' +
           '</div>' +
+          // Two steps in the order they happen: reply on LinkedIn, then
+          // get them onto email. Each is its own tick, so a half-done
+          // accept is visible rather than looking finished.
           '<div class="t-actions">' +
             (d ? '<button class="btn-draft" data-rcdm="copy" data-rct="' + esc(t.id) + '" title="Copy the DM and paste it into your LinkedIn chat">Copy DM</button>' : '') +
             (t.dmSentAt
-              ? '<span class="status accepted" style="font-size:12px;padding:5px 12px">DM sent ✓</span>'
-              : '<button class="btn-ghost" data-rcdm="dmsent" data-rct="' + esc(t.id) + '" title="Logged: the DM went out">DM sent ✓</button>') +
+              ? '<span class="status accepted" style="font-size:12px;padding:5px 12px">LinkedIn ✓</span>'
+              : '<button class="btn-ghost" data-rcdm="dmsent" data-rct="' + esc(t.id) + '" title="Logged: your LinkedIn reply went out">LinkedIn sent ✓</button>') +
+            (t.contact.email
+              ? '<a class="btn-ghost" href="' + esc(mailtoFor({ name: t.contact.name, brandName: t.brand.name, email: t.contact.email })) + '" title="Open this in your mail client">Email ↗</a>'
+              : '') +
+            (t.emailedAt
+              ? '<span class="status accepted" style="font-size:12px;padding:5px 12px">Email ✓</span>'
+              : '<button class="btn-ghost" data-rcdm="emailed" data-rct="' + esc(t.id) + '" title="Logged: you emailed them">Email sent ✓</button>') +
             (t.contact.linkedinUrl ? '<a class="btn-ghost" href="' + esc(t.contact.linkedinUrl) + '" target="_blank" rel="noopener">Profile ↗</a>' : '') +
             '<button class="btn-ghost" data-rcdm="replied" data-rct="' + esc(t.id) + '" title="Did they write back?">Replied?</button>' +
           '</div></div>';
@@ -3093,13 +3208,30 @@ document.getElementById('rc-accepted').addEventListener('click', function (e) {
     return;
   }
   var row = btn.closest('[data-rcrow]');
+
+  // The email tick is its own step and its own write — an accept is not
+  // finished when the LinkedIn reply goes out.
+  if (act === 'emailed') {
+    if (t) t.emailedAt = new Date().toISOString();
+    var epill = document.createElement('span');
+    epill.className = 'status accepted';
+    epill.style.cssText = 'font-size:12px;padding:5px 12px';
+    epill.textContent = 'Email ✓';
+    btn.replaceWith(epill);
+    toast('Email logged');
+    api('markEmailed', { targetId: tid })
+      .then(function () { renderToEmail(); })
+      .catch(function (err) { toast(err.message); loadReached(); });
+    return;
+  }
+
   if (act === 'dmsent') {
     // Stays on the card, marked — only a reply moves someone off.
     if (t) t.dmSentAt = new Date().toISOString();
     var pill = document.createElement('span');
     pill.className = 'status accepted';
     pill.style.cssText = 'font-size:12px;padding:5px 12px';
-    pill.textContent = 'DM sent ✓';
+    pill.textContent = 'LinkedIn ✓';
     btn.replaceWith(pill);
     if (row) row.style.opacity = '.72';
     RC_FUNNEL.awaiting = Math.max(0, (RC_FUNNEL.awaiting || 0) - 1);
@@ -3108,12 +3240,78 @@ document.getElementById('rc-accepted').addEventListener('click', function (e) {
   } else if (row) {
     row.remove();
   }
-  toast(act === 'dmsent' ? 'DM logged — still here until they reply' : 'Reply logged');
+  toast(act === 'dmsent' ? 'LinkedIn reply logged — still here until they answer' : 'Reply logged');
   api('setTargetStatus', act === 'dmsent'
     ? { targetId: tid, dmSent: true, actor: ME.owner || null }
     : { targetId: tid, status: 'replied', actor: ME.owner || null })
+    .then(function () { if (act === 'dmsent') renderToEmail(); })
     .catch(function (err) { toast(err.message); loadReached(); });
 });
+
+var REPLIED_BY_ID = {};
+
+// A reply is not the goal — a time on the calendar is. These are the
+// three ways that ask tends to land, written out so the next message is
+// a paste instead of a blank box. Templates, not a model call: the names
+// and the brand are the only things that change, and Leo edits the rest
+// before it goes.
+function meetingAsks(t) {
+  var first = String(t.person || '').split(/\s+/)[0] || 'there';
+  var brand = t.brand || 'you';
+  return [
+    {
+      label: 'Direct',
+      text: 'Thanks ' + first + '! Would 15 minutes this week or early next work for a quick call? ' +
+        'Happy to work around your schedule — send over a couple of times that suit you and I\'ll make them work.'
+    },
+    {
+      label: 'With the dates',
+      text: 'Appreciate you getting back, ' + first + '. I\'d love to walk you through the shows we have booked ' +
+        'this semester and where ' + brand + ' could fit — it\'s easier to show than to type. ' +
+        'Any chance you have 15 minutes this week? I can send a calendar link or just work off two times that suit you.'
+    },
+    {
+      label: 'Low commitment',
+      text: 'Thanks ' + first + '! No pressure at all — if it\'s easier I can send over the one-pager and a few dates first, ' +
+        'and we only jump on a call if it looks like a fit. What works better for you?'
+    }
+  ];
+}
+
+function openMeetingAsk(t, row) {
+  var open = document.querySelector('[data-meetfold="' + t.id + '"]');
+  if (open) { open.remove(); return; }
+  var asks = meetingAsks(t);
+  var fold = document.createElement('div');
+  fold.setAttribute('data-meetfold', t.id);
+  fold.className = 'panel panel-pad';
+  fold.style.cssText = 'margin:0 0 10px';
+  fold.innerHTML =
+    '<div style="font-size:13px;font-weight:600;margin-bottom:2px">Ask ' + esc(t.person) + ' for a time</div>' +
+    '<div class="hint" style="margin:0 0 10px">Three angles. Edit any of them before you copy — they are a starting point, not a script.</div>' +
+    asks.map(function (a, i) {
+      return '<div style="margin-bottom:10px">' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">' +
+          '<span style="font-size:11.5px;color:var(--ink-3);flex:1">' + esc(a.label) + '</span>' +
+          '<button class="btn-ghost" data-meetcopy="' + i + '" style="padding:4px 11px;font-size:12px">Copy</button>' +
+        '</div>' +
+        '<textarea class="field-box" data-meettext="' + i + '" rows="3">' + esc(a.text) + '</textarea>' +
+      '</div>';
+    }).join('') +
+    '<button class="btn-ghost" data-meetclose style="padding:5px 12px;font-size:12px">Close</button>';
+  row.insertAdjacentElement('afterend', fold);
+  fold.querySelector('[data-meetclose]').onclick = function () { fold.remove(); };
+  fold.querySelectorAll('[data-meetcopy]').forEach(function (btn) {
+    btn.onclick = function () {
+      var i = btn.getAttribute('data-meetcopy');
+      var box = fold.querySelector('[data-meettext="' + i + '"]');
+      navigator.clipboard.writeText(box.value).then(function () {
+        btn.textContent = 'Copied ✓';
+        setTimeout(function () { btn.textContent = 'Copy'; }, 1600);
+      }, function () { toast('Could not copy'); });
+    };
+  });
+}
 
 // Everyone who wrote back, and which brands they came from. Same shape
 // as the accepted list above it, so the follow-up work reads as one
@@ -3124,6 +3322,8 @@ function renderReplied() {
   if (!pBox || !bBox) return;
   api('repliedOverview').then(function (d) {
     var people = d.people || [];
+    REPLIED_BY_ID = {};
+    people.forEach(function (p) { REPLIED_BY_ID[p.id] = p; });
     RC_FUNNEL.replied = people.length;
     updateAcceptedNote();
     pBox.innerHTML = people.length
@@ -3142,6 +3342,7 @@ function renderReplied() {
                 (t.followUpAt ? ' (' + shortDate(t.followUpAt) + ')' : '') + '</span></span>' : '') +
             '</div></div>' +
             '<div class="t-actions">' +
+              '<button class="btn-draft" data-repact="meet" data-rpt="' + esc(t.id) + '" title="Draft a LinkedIn reply asking for a time">Ask for a time</button>' +
               (t.linkedinUrl ? '<a class="btn-ghost" href="' + esc(t.linkedinUrl) + '" target="_blank" rel="noopener">Profile ↗</a>' : '') +
               '<button class="btn-ghost" data-repact="nextstep" data-rpt="' + esc(t.id) + '" title="What happens next, and when">Next step</button>' +
               (t.status === 'converted'
@@ -3174,6 +3375,11 @@ document.getElementById('rc-replied').addEventListener('click', function (e) {
   if (!btn) return;
   var tid = btn.getAttribute('data-rpt');
   var row = btn.closest('[data-repliedrow]');
+  if (btn.getAttribute('data-repact') === 'meet') {
+    var person = (REPLIED_BY_ID || {})[tid];
+    if (person && row) openMeetingAsk(person, row);
+    return;
+  }
   if (btn.getAttribute('data-repact') === 'won') {
     btn.replaceWith(Object.assign(document.createElement('span'), {
       className: 'status converted', textContent: 'Won ✓',
@@ -3241,6 +3447,7 @@ function loadReached() {
       '<div class="kpi"><div class="kpi-label">Accepted</div><div class="kpi-value">' + tt.accepted + '</div><div class="kpi-note" id="rc-acc-note">' + pct(tt.accepted) + ' accept rate</div></div>' +
       '<div class="kpi money"><div class="kpi-label">Replied</div><div class="kpi-value">' + tt.replied + '</div><div class="kpi-note">' + pct(tt.replied) + ' reply rate</div></div>' +
       '<div class="kpi"><div class="kpi-label">Sent today</div><div class="kpi-value" id="rc-today">—</div><div class="kpi-note">of ' + SENT_TODAY.cap + ' a day</div></div>';
+    renderToEmail();
     renderAcceptedDms();
     renderReplied();
     renderSentDays();
