@@ -2145,12 +2145,14 @@ const handlers: Record<string, Handler> = {
   // Add a person by hand — for brands where SponsorUnited has nothing
   // and the name came off LinkedIn instead. Queues a target on the same
   // rule as the bulk import: decision-maker title plus a LinkedIn URL.
-  async upsertContact({ id, brandId, name, title, email, phone, location, linkedinUrl, isDecisionMaker }: any) {
+  async upsertContact({ id, brandId, name, title, email, phone, location, linkedinUrl, isDecisionMaker, notes }: any) {
     if (id) {
       const before = await prisma.contact.findUnique({ where: { id } })
       const updated = await prisma.contact.update({
         where: { id },
-        data: { name, title, email, phone, location, linkedinUrl, isDecisionMaker },
+        // notes is optional on the way in: the quick note box sends only
+        // that field, and undefined leaves the rest alone.
+        data: { name, title, email, phone, location, linkedinUrl, isDecisionMaker, notes },
       })
       // A renamed person needs re-personalized messages (the Ellen /
       // "Elle" case): drop their never-hand-edited drafts so the queue
@@ -2175,6 +2177,7 @@ const handlers: Record<string, Handler> = {
         location: location || null,
         linkedinUrl: linkedinUrl || null,
         isDecisionMaker: dm,
+        notes: notes || null,
         source: 'manual',
       },
     })
@@ -2193,6 +2196,70 @@ const handlers: Record<string, Handler> = {
       // bulk pulls, not a hand-picked contact. They can be shelved later.
     }
     return contact
+  },
+
+  // People change jobs, and SponsorUnited keeps listing them at the old
+  // company for months. Moving them by hand meant deleting and retyping,
+  // which threw away everything already known about them.
+  //
+  // What follows the person and what stays behind is the whole question.
+  // A conversation that happened at Celsius happened at Celsius — that
+  // history stays on the old brand, or the brand card starts lying about
+  // who it has spoken to. Anything not yet sent moves with them, and the
+  // drafts go: a note written for Celsius is wrong at Poppi.
+  //
+  // Previews first. Nothing changes until `apply` is set.
+  async moveContact({ contactId, toBrandId, apply }: any) {
+    const contact = await prisma.contact.findUnique({
+      where: { id: contactId },
+      include: {
+        brand: { select: { id: true, name: true } },
+        targets: { select: { id: true, status: true, sentAt: true, shelved: true } },
+      },
+    })
+    if (!contact) throw new Error('Person not found')
+    const to = await prisma.brand.findUnique({ where: { id: toBrandId }, select: { id: true, name: true, tier: true, owner: true } })
+    if (!to) throw new Error('Brand not found')
+    if (to.id === contact.brandId) throw new Error(`${contact.name} is already at ${to.name}`)
+
+    // Worked = an invite went out, or they answered. That belongs to the
+    // old brand for good.
+    const worked = contact.targets.filter(t => t.sentAt || ['sent', 'accepted', 'replied', 'converted', 'declined'].includes(t.status))
+    const pending = contact.targets.filter(t => !worked.includes(t))
+    const duplicate = await prisma.contact.findFirst({
+      where: { brandId: to.id, name: { equals: contact.name, mode: 'insensitive' } },
+      select: { id: true, name: true },
+    })
+
+    const summary = {
+      contactId: contact.id,
+      contactName: contact.name,
+      fromBrandId: contact.brand.id,
+      fromBrandName: contact.brand.name,
+      toBrandId: to.id,
+      toBrandName: to.name,
+      // Stays on the old brand as history.
+      historyStays: worked.length,
+      // Comes off the queue: it was queued against the old company.
+      queuedDropped: pending.length,
+      duplicateAt: duplicate ? duplicate.name : null,
+    }
+    if (!apply) return { preview: true, ...summary }
+
+    await prisma.$transaction(async tx => {
+      // Un-sent work was aimed at the old company — shelve it rather
+      // than delete it, and bin the drafts that named the old brand.
+      if (pending.length) {
+        const ids = pending.map(t => t.id)
+        await tx.draft.deleteMany({ where: { targetId: { in: ids } } })
+        await tx.target.updateMany({ where: { id: { in: ids } }, data: { shelved: true, queuedFor: null } })
+      }
+      await tx.contact.update({
+        where: { id: contact.id },
+        data: { brandId: to.id, source: 'manual' },
+      })
+    })
+    return { moved: true, ...summary }
   },
 
   // -------- per-brand target cap --------

@@ -1649,7 +1649,11 @@ function loadBrand(brandId) {
             (c.email ? '<span>' + esc(c.email) + '</span>' : '') +
             (c.phone ? '<span>· ' + esc(c.phone) + '</span>' : '') +
             (c.location ? '<span>· ' + esc(c.location) + '</span>' : '') +
-          '</div></div>' +
+          '</div>' +
+          // A note is only useful if you can see it without opening a
+          // form first.
+          (c.notes ? '<div class="t-meta" style="color:var(--ink-2);white-space:pre-wrap">' + esc(c.notes) + '</div>' : '') +
+          '</div>' +
           '<div class="t-actions">' +
             (inToday ? '<span class="status queued" data-cstate style="font-size:12px;padding:5px 12px">in today’s list ✓</span>' : '') +
             (pooled ? '<span class="status" data-cstate title="Queued, but waiting for their category day — → Queue puts them in today" style="font-size:12px;padding:5px 12px;color:var(--ink-3)">in pool</span>' : '') +
@@ -2223,14 +2227,20 @@ function openContactForm(brandId, slot, onDone, existing) {
         '<div><label class="lbl">Phone</label><input class="field-box" id="nc-phone" value="' + esc(ex.phone || '') + '"></div>' +
         '<div><label class="lbl">Location</label><input class="field-box" id="nc-loc" value="' + esc(ex.location || '') + '"></div>' +
       '</div>' +
+      '<div style="margin-bottom:10px"><label class="lbl">Notes</label>' +
+        '<textarea class="field-box" id="nc-notes" rows="2" placeholder="What they said, who they report to, when to come back…">' + esc(ex.notes || '') + '</textarea></div>' +
       '<div style="display:flex;gap:8px"><button class="btn-solid" id="nc-save">' + (ex.id ? 'Save changes' : 'Add person') + '</button>' +
-        '<button class="btn-ghost" id="nc-cancel">Cancel</button></div>' +
+        '<button class="btn-ghost" id="nc-cancel">Cancel</button>' +
+        (ex.id ? '<span style="flex:1"></span><button class="btn-ghost" id="nc-move" title="They changed jobs — move them to their new company, keeping everything we know about them">They moved company →</button>' : '') +
+      '</div>' +
+      '<div id="nc-move-slot"></div>' +
       '<div class="hint" style="margin:10px 0 0">' + (ex.id
         ? 'Fixing the name also rewrites their queued note and DM with the corrected name.'
         : 'A decision-maker title plus a LinkedIn URL queues them for outreach automatically.') + '</div>' +
     '</div>';
 
   slot.querySelector('#nc-cancel').onclick = function () { slot.innerHTML = ''; };
+  if (ex.id) slot.querySelector('#nc-move').onclick = function () { openMoveContact(ex, brandId, slot); };
   slot.querySelector('#nc-save').onclick = function () {
     var name = slot.querySelector('#nc-name').value.trim();
     if (!name) { toast('Name is required'); return; }
@@ -2243,11 +2253,77 @@ function openContactForm(brandId, slot, onDone, existing) {
       linkedinUrl: slot.querySelector('#nc-li').value || null,
       email: slot.querySelector('#nc-email').value || null,
       phone: slot.querySelector('#nc-phone').value || null,
-      location: slot.querySelector('#nc-loc').value || null
+      location: slot.querySelector('#nc-loc').value || null,
+      notes: slot.querySelector('#nc-notes').value || null
     }).then(function () {
       toast(ex.id ? 'Saved — drafts regenerate with the corrected name' : 'Added');
       if (onDone) onDone();
       else loadBrand(brandId);
+    }).catch(function (e) { toast(e.message); });
+  };
+}
+
+// Someone changed jobs. Find their new company, see exactly what moves
+// and what stays, then move them — nothing is retyped and nothing about
+// them is lost.
+function openMoveContact(contact, fromBrandId, slot) {
+  var box = slot.querySelector('#nc-move-slot');
+  box.innerHTML =
+    '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">' +
+      '<label class="lbl">Where does ' + esc(contact.name) + ' work now?</label>' +
+      '<div style="position:relative">' +
+        '<input class="field-box" id="nc-mq" placeholder="Search brands…" autocomplete="off">' +
+        '<div id="nc-mdrop" style="position:absolute;top:100%;left:0;right:0;z-index:30;display:none;background:var(--surface-1);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:220px;overflow:auto;margin-top:4px"></div>' +
+      '</div>' +
+      '<div id="nc-mprev" style="margin-top:10px"></div>' +
+    '</div>';
+
+  var q = box.querySelector('#nc-mq');
+  var drop = box.querySelector('#nc-mdrop');
+  q.focus();
+  q.oninput = function () {
+    var v = q.value.trim();
+    clearTimeout(q._t);
+    if (v.length < 2) { drop.style.display = 'none'; return; }
+    q._t = setTimeout(function () {
+      api('listBrands', { search: v, take: 8 }).then(function (brands) {
+        var rows = brands.filter(function (b) { return b.id !== fromBrandId; });
+        drop.innerHTML = rows.length ? rows.map(function (b) {
+          return '<div data-mpick="' + esc(b.id) + '" data-mn="' + esc(b.name) + '" style="padding:9px 12px;font-size:13px;cursor:pointer"><b>' + esc(b.name) + '</b> ' +
+            '<span style="color:var(--ink-3)">' + b._count.contacts + ' contacts</span></div>';
+        }).join('') : '<div style="padding:9px 12px;font-size:13px;color:var(--ink-3)">No brand found — add it first from Brands.</div>';
+        drop.style.display = 'block';
+      }).catch(function (e) { toast(e.message); });
+    }, 250);
+  };
+
+  drop.onclick = function (e) {
+    var pick = e.target.closest('[data-mpick]');
+    if (!pick) return;
+    drop.style.display = 'none';
+    q.value = pick.getAttribute('data-mn');
+    // Preview first — nothing changes until the confirm below.
+    api('moveContact', { contactId: contact.id, toBrandId: pick.getAttribute('data-mpick') }).then(function (p) {
+      var lines = [];
+      if (p.historyStays) lines.push('<b>' + p.historyStays + '</b> already-sent ' + (p.historyStays === 1 ? 'thread stays' : 'threads stay') + ' on ' + esc(p.fromBrandName) + ' — that conversation happened there.');
+      if (p.queuedDropped) lines.push('<b>' + p.queuedDropped + '</b> not-yet-sent ' + (p.queuedDropped === 1 ? 'thread comes' : 'threads come') + ' off the queue, and its draft is deleted — it was written for ' + esc(p.fromBrandName) + '.');
+      if (p.duplicateAt) lines.push('<span style="color:#f0b86b">' + esc(p.toBrandName) + ' already has someone called ' + esc(p.duplicateAt) + ' — check you are not making a duplicate.</span>');
+      lines.push('Their name, title, email, LinkedIn and notes move with them.');
+      box.querySelector('#nc-mprev').innerHTML =
+        '<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px">' +
+          '<div style="font-size:13px;font-weight:600;margin-bottom:6px">' + esc(p.contactName) + ': ' + esc(p.fromBrandName) + ' → ' + esc(p.toBrandName) + '</div>' +
+          '<div class="hint" style="margin:0 0 10px">' + lines.join('<br>') + '</div>' +
+          '<button class="btn-solid" id="nc-mgo" data-mto="' + esc(p.toBrandId) + '">Move ' + esc(p.contactName) + '</button> ' +
+          '<button class="btn-ghost" id="nc-mcancel">Cancel</button>' +
+        '</div>';
+      box.querySelector('#nc-mcancel').onclick = function () { box.querySelector('#nc-mprev').innerHTML = ''; };
+      box.querySelector('#nc-mgo').onclick = function () {
+        this.disabled = true;
+        api('moveContact', { contactId: contact.id, toBrandId: p.toBrandId, apply: true }).then(function (r) {
+          toast(r.contactName + ' moved to ' + r.toBrandName);
+          loadBrand(fromBrandId);
+        }).catch(function (e) { toast(e.message); });
+      };
     }).catch(function (e) { toast(e.message); });
   };
 }

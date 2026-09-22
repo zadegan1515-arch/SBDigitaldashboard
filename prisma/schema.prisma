@@ -138,6 +138,11 @@ model Contact {
   // Set by a heuristic on import, editable by hand.
   isDecisionMaker Boolean @default(false)
 
+  // Anything worth remembering about this person: what they said on a
+  // call, who they report to, when they said to come back. Free text —
+  // it is a notepad, not a field to report on.
+  notes String?
+
   targets Target[]
 
   createdAt DateTime @default(now())
