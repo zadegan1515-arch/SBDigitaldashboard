@@ -2454,12 +2454,15 @@ const handlers: Record<string, Handler> = {
       where: { ...NOT_IN_CONVERSATION, ...notPassedToday(), doNotEmail: false, contacts: { some: {} } },
       select: {
         id: true, name: true, category: true, website: true, linkedinUrl: true,
+        // tier and workPeople decide how many threads this brand runs at
+        // once, which is the other reason a queue can refuse.
+        tier: true, workPeople: true,
         _count: { select: { contacts: true } },
         // Reachability, not just a headcount: queueBrandTargets can only
         // pick someone with an email or a LinkedIn URL, so counting every
         // contact made "Add more" offer brands it could not queue —
         // "3 people" then came back as 0 of 3.
-        contacts: { select: { id: true, email: true, linkedinUrl: true } },
+        contacts: { select: { id: true, title: true, email: true, linkedinUrl: true } },
         targets: { select: { status: true, shelved: true, sentAt: true, contactId: true } },
       },
     })
@@ -2476,9 +2479,19 @@ const handlers: Record<string, Handler> = {
       const taken = new Set(b.targets.map(t => t.contactId))
       return b.contacts.filter(c => (c.email || c.linkedinUrl) && !taken.has(c.id)).length
     }
+    // A brand is only worth offering if queueBrandTargets would actually
+    // take it. Spare people are not enough: a brand already running its
+    // full number of threads refuses the next one, so it was being
+    // listed and then answering "Could not queue" on the click.
+    const hasRoomToWork = (b: (typeof allBrands)[number]) => {
+      const live = b.targets.filter(t =>
+        !t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied'].includes(t.status))
+      const limit = b.workPeople ?? recommendWorkPeople(b, b.contacts, !alreadyContacted(b))
+      return live.length < limit
+    }
     const addable = allBrands
       .map(b => ({ ...b, spare: reachableSpare(b) }))
-      .filter(b => !planned.has(b.id) && b.spare > 0 && !alreadyContacted(b))
+      .filter(b => !planned.has(b.id) && b.spare > 0 && !alreadyContacted(b) && hasRoomToWork(b))
 
     // True preview of each day's sends: the same picking order the real
     // queue uses (day's category first by fit, then the best of the

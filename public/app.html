@@ -3442,7 +3442,17 @@ document.getElementById('sched-list').addEventListener('click', function (e) {
     renderSchedule();
     renderBench();
     api('queueBrands', { brandIds: [pdid] }).then(function (r) {
-      toast(r.queued ? m.name + ' is in the queue' : 'Could not queue ' + m.name);
+      if (r.queued) {
+        toast(m.name + ' is in the queue');
+      } else {
+        // "Could not queue X" was a dead end — it threw away the reason
+        // the server had already worked out, so the only way to find out
+        // was to open the brand. Say it.
+        var why = Object.keys(r.failed || {})[0];
+        toast(why
+          ? m.name + ' — ' + (QUEUE_FAIL[why] || why)
+          : 'Could not queue ' + m.name);
+      }
       schedRefreshDays();
     }).catch(function (err) { toast(err.message); loadSchedule(); });
     return;
@@ -3492,7 +3502,7 @@ document.getElementById('sched-list').addEventListener('click', function (e) {
         var parts = [];
         Object.keys(r.failed || {}).forEach(function (why) {
           var names = r.failed[why];
-          parts.push(names.length + ' ' + (QUEUE_FAIL[why] || why) +
+          parts.push(names.length + ' with ' + (QUEUE_FAIL[why] || why) +
             (names.length <= 3 ? ' (' + names.join(', ') + ')' : ''));
         });
         toast(r.queued + ' of ' + r.total + ' queued — ' + parts.join('; '));
@@ -7616,12 +7626,15 @@ document.getElementById('nextbest').addEventListener('click', function (e) {
 // brand can be in play at once; the server says when both slots are.
 // Why a brand refused to queue, in Leo's words rather than the handler's.
 // Mirrors the reasons queueBrandTargets returns.
+// Noun phrases, so the same string reads in both places: after a brand
+// name ("White Claw — their people already in the list") and after a
+// count ("2 with nobody reachable").
 var QUEUE_FAIL = {
-  nocontact: 'have nobody reachable — no email or LinkedIn on file',
-  exhausted: 'have nobody left — everyone reachable is already a target',
-  already: 'already have their people in the list',
-  contacted: 'already got an invite',
-  inconversation: 'already replied — follow up on the brand card instead',
+  nocontact: 'nobody reachable — no email or LinkedIn on file',
+  exhausted: 'nobody left — everyone reachable is already a target',
+  already: 'their people already in the list',
+  contacted: 'an invite already sent',
+  inconversation: 'a reply already in — follow up on the brand card',
 };
 
 function queueToast(r) {
