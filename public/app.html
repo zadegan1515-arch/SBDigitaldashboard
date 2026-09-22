@@ -3495,9 +3495,11 @@ document.getElementById('sched-list').addEventListener('click', function (e) {
     api('queueBrands', { brandIds: ids }).then(function (r) {
       // "0 of 3" on its own leaves you clicking each brand to find out
       // why. The server groups the refusals; say the reason, and name
-      // the brands when there are few enough to read.
+      // the brands when there are few enough to read. People, not just
+      // brands — one brand is three or four threads now.
+      var who = r.people ? ' (' + r.people + (r.people === 1 ? ' person' : ' people') + ')' : '';
       if (r.queued === r.total) {
-        toast(r.queued + ' of ' + r.total + ' queued — they’ll come up on their category day');
+        toast(r.queued + ' of ' + r.total + ' queued' + who + ' — they’ll come up on their category day');
       } else {
         var parts = [];
         Object.keys(r.failed || {}).forEach(function (why) {
@@ -3505,7 +3507,7 @@ document.getElementById('sched-list').addEventListener('click', function (e) {
           parts.push(names.length + ' with ' + (QUEUE_FAIL[why] || why) +
             (names.length <= 3 ? ' (' + names.join(', ') + ')' : ''));
         });
-        toast(r.queued + ' of ' + r.total + ' queued — ' + parts.join('; '));
+        toast(r.queued + ' of ' + r.total + ' queued' + who + ' — ' + parts.join('; '));
       }
       schedRefreshDays();
     }).catch(function (err) { toast(err.message); loadSchedule(); });
@@ -7639,8 +7641,9 @@ var QUEUE_FAIL = {
 
 function queueToast(r) {
   if (r.queued) {
+    var n = r.count || 1;
     toast(r.contactName + (r.promoted ? ' moved into today’s list' : r.revived ? ' brought back' : ' added to the queue') +
-      (r.second ? ' — two people now in play at this brand' : ''));
+      (n > 1 ? ' — ' + n + ' people in play at this brand' : r.second ? ' — two people now in play at this brand' : ''));
   } else if (r.reason === 'inconversation') {
     // Replied already — that is a follow-up, not new outreach.
     toast(r.brandName + ' already replied (' + r.contactName + ') — open the brand card to follow up instead of sending a new invite.');

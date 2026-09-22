@@ -331,6 +331,13 @@ function looksLikeDecisionMaker(title: string | null): boolean {
 // three threads (nobody knows who owns campus), growth two, founder-led
 // one (a second message just annoys a founder); never more than the
 // reachable bench.
+// Names for a toast: "Dana", "Dana and Sam", "Dana, Sam and Alex".
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? ''
+  if (names.length === 2) return `${names[0]} and ${names[1]}`
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
 function recommendWorkPeople(
   brand: { tier: string | null },
   contacts: Array<{ title: string | null; email: string | null; linkedinUrl: string | null }>,
@@ -2292,19 +2299,20 @@ const handlers: Record<string, Handler> = {
     // Schedule show up when you search for it.
     const startOfDay = startOfLocalDay()
     const pooled = pending.filter(t => !t.queuedFor || t.queuedFor < startOfDay)
+    const promotedNames: string[] = []
     if (stamp && pooled.length) {
       await prisma.target.updateMany({
         where: { id: { in: pooled.map(t => t.id) } },
         data: { queuedFor: new Date() },
       })
-      return {
-        queued: true, promoted: true,
-        contactName: pooled.map(t => t.contact.name).join(' and '),
-      }
+      promotedNames.push(...pooled.map(t => t.contact.name))
     }
     // Everyone this brand works is already in today's list — say so
     // plainly, and never call a queued person "sent".
     if (!force && live.length >= WORK_PER_BRAND) {
+      if (promotedNames.length) {
+        return { queued: true, promoted: true, count: promotedNames.length, contactName: joinNames(promotedNames) }
+      }
       return {
         queued: false,
         reason: contacted.length >= WORK_PER_BRAND ? 'contacted' : 'already',
@@ -2316,27 +2324,56 @@ const handlers: Record<string, Handler> = {
     }
     const second = live.length === 1
 
-    // A shelved target to revive, best fit first.
-    const revivable = brand.targets
-      .filter(t => t.shelved && ['queued', 'drafted'].includes(t.status))
-      .sort((a, b) => b.fitScore - a.fitScore)[0]
-    if (revivable) {
-      await prisma.target.update({
-        where: { id: revivable.id },
-        data: { shelved: false, queuedFor: stamp ? new Date() : null },
-      })
-      return { queued: true, contactName: revivable.contact.name, revived: true, second }
+    // How many more this brand should have in play. A cold brand's
+    // recommendation is three or four people, but this used to add one
+    // per call and nothing called it again — so every brand opened with
+    // a single thread no matter what the recommendation said. Fill the
+    // slots in one go. "+ Person" (force) still adds exactly one,
+    // because that is a deliberate click past the brand's count.
+    const room = force ? 1 : Math.max(0, WORK_PER_BRAND - live.length)
+    if (room === 0) {
+      return promotedNames.length
+        ? { queued: true, promoted: true, count: promotedNames.length, contactName: joinNames(promotedNames) }
+        : { queued: false, reason: 'already', contactName: live.map(t => t.contact.name).join(' and '), brandId: brand.id, brandName: brand.name }
     }
 
-    // No target yet — create one from the best reachable contact.
+    // Shelved targets come back before new ones are made — they were
+    // picked once already and reviving costs nothing.
+    const revivable = brand.targets
+      .filter(t => t.shelved && ['queued', 'drafted'].includes(t.status))
+      .sort((a, b) => b.fitScore - a.fitScore)
+      .slice(0, room)
+    if (revivable.length) {
+      await prisma.target.updateMany({
+        where: { id: { in: revivable.map(t => t.id) } },
+        data: { shelved: false, queuedFor: stamp ? new Date() : null },
+      })
+    }
+
+    // Then fill what's left from the best reachable contacts nobody has
+    // a target for. Best fit first, but anyone with an email address
+    // outranks anyone without one — a target we can't email can't enter
+    // the email queue.
     const targeted = new Set(brand.targets.map(t => t.contactId))
-    // Best fit first, but anyone with an email address outranks anyone
-    // without one — a target we can't email can't enter the email queue.
-    const pick = dropExecsAtBigBrands(brand.contacts.filter(c => !targeted.has(c.id)), brand.tier)
+    const picks = dropExecsAtBigBrands(brand.contacts.filter(c => !targeted.has(c.id)), brand.tier)
       .sort((a, b) =>
         (b.email ? 1 : 0) - (a.email ? 1 : 0) ||
-        scoreFit(b.title, brand.tier) - scoreFit(a.title, brand.tier))[0]
-    if (!pick) {
+        scoreFit(b.title, brand.tier) - scoreFit(a.title, brand.tier))
+      .slice(0, room - revivable.length)
+
+    for (const pick of picks) {
+      await prisma.target.create({
+        data: {
+          brandId, contactId: pick.id,
+          fitScore: scoreFit(pick.title, brand.tier),
+          assignedTo: brand.owner ?? null,
+          queuedFor: stamp ? new Date() : null,
+        },
+      })
+    }
+
+    const names = [...promotedNames, ...revivable.map(t => t.contact.name), ...picks.map(p => p.name)]
+    if (!names.length) {
       // Not an error: the UI opens the add-person form on 'nocontact'
       // so "queue this brand" always leads somewhere actionable.
       return {
@@ -2345,19 +2382,18 @@ const handlers: Record<string, Handler> = {
         brandId: brand.id, brandName: brand.name,
       }
     }
-    const t = await prisma.target.create({
-      data: {
-        brandId, contactId: pick.id,
-        fitScore: scoreFit(pick.title, brand.tier),
-        assignedTo: brand.owner ?? null,
-        queuedFor: stamp ? new Date() : null,
-      },
-    })
-    // Queued, but the email drafter will skip this one until the
-    // contact has an address. Say so now rather than later.
+    // Queued, but the email drafter will skip anyone without an
+    // address. Say so now rather than later.
+    const noEmail = picks.filter(p => !p.email).map(p => p.name)
     return {
-      queued: true, contactName: pick.name, targetId: t.id, second,
-      ...(pick.email ? {} : { warning: `${pick.name} has no email address yet — add one on the contact or the email drafter will skip ${brand.name}.` }),
+      queued: true,
+      count: names.length,
+      contactName: joinNames(names),
+      second,
+      revived: revivable.length > 0 && !picks.length,
+      ...(noEmail.length
+        ? { warning: `${joinNames(noEmail)} ${noEmail.length === 1 ? 'has' : 'have'} no email address yet — add one on the contact or the email drafter will skip ${brand.name}.` }
+        : {}),
     }
   },
 
@@ -2389,7 +2425,15 @@ const handlers: Record<string, Handler> = {
       const key = String(r?.reason ?? 'unknown')
       ;(failed[key] ??= []).push(r?.brandName ?? 'brand')
     }
-    return { queued: results.filter(r => r?.queued).length, total: results.length, failed, results }
+    return {
+      queued: results.filter(r => r?.queued).length,
+      // People, not brands: a cold brand now opens three or four
+      // threads, so "4 brands queued" undercounts the day badly.
+      people: results.reduce((n, r) => n + (r?.queued ? (r.count ?? 1) : 0), 0),
+      total: results.length,
+      failed,
+      results,
+    }
   },
 
   // Pass a whole brand: it disappears from the queue, auto-picks and
@@ -2835,7 +2879,7 @@ const handlers: Record<string, Handler> = {
       if (added >= need) break
       try {
         const r: any = await (handlers.queueBrandTargets as Handler)({ brandId: b.id })
-        if (r?.queued) added++
+        if (r?.queued) added += r.count ?? 1
       } catch { /* one bad brand never stops the fill */ }
     }
     return { added, shortBy: Math.max(0, need - added), theme }
