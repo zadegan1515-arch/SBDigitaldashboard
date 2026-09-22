@@ -2597,11 +2597,19 @@ const handlers: Record<string, Handler> = {
       const alreadyPlanned = isToday ? stampedToday.length - alreadyIn.length : 0
       const room = Math.max(0, DAILY_SEND_LIMIT - plannedCount - sentUsed - (isToday ? stampedToday.length : 0))
       // Strictly the day's category — no cross-category top-ups (Leo).
-      const take = (theme ? available.filter(c => c.brand.category === theme) : available).slice(0, room)
+      const inTheme = theme ? available.filter(c => c.brand.category === theme) : available
+      const take = inTheme.slice(0, room)
+      // The rest of the category. It used to be cut here and vanish, so
+      // a day with thirty ready people looked like it had twenty and
+      // the other ten were nowhere. They are shown as their own section
+      // instead — and deliberately NOT consumed, so a later day with
+      // the same category still gets them.
+      const spill = inTheme.slice(room)
       const taken = new Set(take)
       available = available.filter(c => !taken.has(c))
-      const rows: { id: string; name: string; people: number; website: string | null; linkedinUrl: string | null; topUp: boolean; inQueue: boolean; category: string | null }[] = []
-      const rowByBrand = new Map<string, (typeof rows)[number]>()
+      type DayRow = { id: string; name: string; people: number; website: string | null; linkedinUrl: string | null; topUp: boolean; inQueue: boolean; category: string | null }
+      const rows: DayRow[] = []
+      const rowByBrand = new Map<string, DayRow>()
       for (const t of [...alreadyIn.map(a => ({ ...a, _inQueue: true })), ...take.map(c => ({ ...c, _inQueue: false }))]) {
         const r = rowByBrand.get(t.brand.id)
         if (r) r.people += 1
@@ -2616,6 +2624,20 @@ const handlers: Record<string, Handler> = {
           rows.push(row)
         }
       }
+      // Same shape as the day's own rows, one entry per brand.
+      const spillRows: DayRow[] = []
+      const spillByBrand = new Map<string, DayRow>()
+      for (const t of spill) {
+        const r = spillByBrand.get(t.brand.id)
+        if (r) { r.people += 1; continue }
+        const row: DayRow = {
+          id: t.brand.id, name: t.brand.name, people: 1,
+          website: t.brand.website, linkedinUrl: t.brand.linkedinUrl,
+          topUp: false, inQueue: false, category: t.brand.category,
+        }
+        spillByBrand.set(t.brand.id, row)
+        spillRows.push(row)
+      }
       return {
         date: key,
         // The client used to assume day one was today; now it's told.
@@ -2626,10 +2648,14 @@ const handlers: Record<string, Handler> = {
         sent: sentUsed,
         sentPeople: sentByDay[key] ?? [],
         brands: rows,
+        // Ready and in this category, but past the day's 20. Shown, not
+        // hidden — the day is full, the people are real, and they carry
+        // over to the next day in this category on their own.
+        overflow: spillRows,
         // Same-category brands whose people are NOT in the queue yet —
         // the day's Add-more section offers to put them in.
         missing: theme
-          ? addable.filter(b => b.category === theme && !rowByBrand.has(b.id)).slice(0, 30)
+          ? addable.filter(b => b.category === theme && !rowByBrand.has(b.id) && !spillByBrand.has(b.id)).slice(0, 30)
               .map(b => ({ id: b.id, name: b.name, people: b.spare, website: b.website, linkedinUrl: b.linkedinUrl }))
           : [],
       }
