@@ -413,15 +413,15 @@ function templateLinkedInDraft(target: { brand: any; contact: any }, variant: st
   const firstMessage =
     `Thanks for connecting, ${first}! Quick context: SB Agency runs 500+ college shows a year — packed student crowds across 100+ tier-1 markets, with in-house photo and video on every show. For ${brand}, the natural fit is ${hook}.\n\n` +
     `Happy to send this semester's show list, or grab 15 minutes if that's easier — what works best?`
-  // They accepted and then went quiet. This does not restate the pitch —
-  // it asks for one specific, small thing: fifteen minutes on a call.
-  // Virtual on purpose (Leo): nobody is flying anywhere for a first
-  // conversation, and naming the format removes a reason to stall.
+  // Sent right after someone accepts the invite. Leo's rules for it:
+  // thank them for accepting first, no dashes anywhere, plain words, and
+  // one ask only, which is a short call online this week. It does not
+  // restate the pitch, because they have already read it.
   const nudge = variant === 'woman'
-    ? `Hey ${first} — following up on this, I know this time of year gets busy! Our show list is locked in for the semester and I think ${brand} would be a natural fit at a few of them — ${hook}.\n\n` +
-      `Would you have 15 minutes for a quick Zoom this week or next? Totally happy to work around your schedule. Or if it's easier, I can send the list over first and you can tell me if anything jumps out.`
-    : `${first} — circling back on this man, I know it's a busy season. We've got the show list locked in for the semester and I think ${brand} would land well at a few of them — ${hook}.\n\n` +
-      `Any chance you've got 15 minutes for a quick Zoom this week or next? Happy to work around you. Or I can send the list over first if you'd rather look before we talk.`
+    ? `Thanks so much for accepting, ${first}, great to connect! We book artists for fraternity and sorority events all over the country, and I think ${brand} could do something really fun at a few of the shows we have this semester.\n\n` +
+      `Would you have 15 minutes this week for a quick Zoom? Happy to work around whatever time is easiest for you.`
+    : `Appreciate the accept ${first}, good to connect man. We book artists for fraternity and sorority events all over the country, and I think ${brand} could do something really fun at a few of the shows we have this semester.\n\n` +
+      `Any chance you have 15 minutes this week for a quick Zoom? Happy to work around whatever time is easiest for you.`
   return { connectionNote, firstMessage, nudge }
 }
 
