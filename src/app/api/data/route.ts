@@ -413,14 +413,13 @@ function templateLinkedInDraft(target: { brand: any; contact: any }, variant: st
   const firstMessage =
     `Thanks for connecting, ${first}! Quick context: SB Agency runs 500+ college shows a year — packed student crowds across 100+ tier-1 markets, with in-house photo and video on every show. For ${brand}, the natural fit is ${hook}.\n\n` +
     `Happy to send this semester's show list, or grab 15 minutes if that's easier — what works best?`
-  // Leo's own words, used as written. Both voices send the same thing
-  // for now: he wrote one message and asked for it on both buttons, and
-  // editing his copy to invent a second version is not our call.
-  // The deck it mentions is the one-pager in public/materials, attached
-  // by hand in the LinkedIn chat.
+  // Leo's own words, used exactly as he wrote them. One message for
+  // everyone: he asked for it unisex, so the note and the first message
+  // keep their two voices and this one does not have any.
+  // The deck it mentions is attached by hand in the LinkedIn chat.
   const nudge =
     `Hey ${first}, great to be connected. Would love to share ideas and put something together with ${brand}. ` +
-    `Would you have 15 minutes for a quick chat later this week? ` +
+    `Do you have 15 minutes for a quick chat later this week? ` +
     `I have also attached our deck for you to check out in the meantime. Thanks!`
   return { connectionNote, firstMessage, nudge }
 }

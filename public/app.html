@@ -3176,12 +3176,11 @@ function renderAcceptedDms() {
           // accept is visible rather than looking finished.
           '<div class="t-actions">' +
             (d ? '<button class="btn-draft" data-rcdm="copy" data-rct="' + esc(t.id) + '" title="Copy the DM and paste it into your LinkedIn chat">Copy DM</button>' : '') +
-            // They accepted, got the note, and went quiet — this is the
-            // follow-up, in either voice. Only shown once the first
-            // message has actually gone out.
+            // They accepted, got the note, and went quiet. One follow-up
+            // for everyone (Leo wrote it unisex), so one button. Only
+            // shown once the first message has actually gone out.
             (t.dmSentAt && (t.drafts || []).some(function (x) { return x.nudge; })
-              ? '<button class="btn-ghost" data-rcdm="nudgem" data-rct="' + esc(t.id) + '" title="Follow-up asking for a call — written for a man">Nudge · M</button>' +
-                '<button class="btn-ghost" data-rcdm="nudgew" data-rct="' + esc(t.id) + '" title="Follow-up asking for a call — written for a woman">Nudge · W</button>'
+              ? '<button class="btn-ghost" data-rcdm="nudge" data-rct="' + esc(t.id) + '" title="Copy the follow-up asking for a quick chat this week">Copy follow-up</button>'
               : '') +
             (t.dmSentAt
               ? '<span class="status accepted" style="font-size:12px;padding:5px 12px">LinkedIn ✓</span>'
@@ -3214,13 +3213,11 @@ document.getElementById('rc-accepted').addEventListener('click', function (e) {
     }, function () { toast('Could not copy'); });
     return;
   }
-  if (act === 'nudgem' || act === 'nudgew') {
-    var want = act === 'nudgew' ? 'woman' : 'man';
-    var nd = (t.drafts || []).filter(function (x) { return x.variant === want && x.nudge; })[0]
-      || (t.drafts || []).filter(function (x) { return x.nudge; })[0];
-    if (!nd) { toast('No follow-up drafted yet — reload the page'); return; }
+  if (act === 'nudge') {
+    var nd = (t.drafts || []).filter(function (x) { return x.nudge; })[0];
+    if (!nd) { toast('No follow-up drafted yet, reload the page'); return; }
     navigator.clipboard.writeText(nd.nudge).then(function () {
-      toast('Follow-up copied (' + want + ') — paste it into your LinkedIn chat');
+      toast('Follow-up copied, paste it into your LinkedIn chat');
     }, function () { toast('Could not copy'); });
     return;
   }
@@ -3281,7 +3278,7 @@ function meetingAsks(t) {
       // the follow-up and the reply say the same thing in his voice.
       label: 'Standard',
       text: 'Hey ' + first + ', great to be connected. Would love to share ideas and put something together with ' + brand + '. ' +
-        'Would you have 15 minutes for a quick chat later this week? ' +
+        'Do you have 15 minutes for a quick chat later this week? ' +
         'I have also attached our deck for you to check out in the meantime. Thanks!'
     },
     {
