@@ -2633,13 +2633,14 @@ const handlers: Record<string, Handler> = {
     // Per category: how many brands it holds, and why the unavailable
     // ones are unavailable. Computed once, read by whichever day picked
     // that category.
-    const categoryHealth = new Map<string, { total: number; blocked: Record<string, string[]> }>()
+    type HealthBrand = { id: string; name: string; contacts: number }
+    const categoryHealth = new Map<string, { total: number; blocked: Record<string, HealthBrand[]> }>()
     for (const b of everyBrand) {
       if (!b.category) continue
       const h = categoryHealth.get(b.category) ?? { total: 0, blocked: {} }
       h.total += 1
       const why = blockedBy(b)
-      if (why) (h.blocked[why] ??= []).push(b.name)
+      if (why) (h.blocked[why] ??= []).push({ id: b.id, name: b.name, contacts: b.contacts.length })
       categoryHealth.set(b.category, h)
     }
 
@@ -2760,11 +2761,15 @@ const handlers: Record<string, Handler> = {
         overflow: spillRows,
         // Why this category can't fill the day. Only sent when it
         // can't: a full day needs no explanation.
+        // Named, not counted. Picking a category and seeing one brand
+        // when the roster holds a dozen reads as the category not having
+        // transferred — so the day lists every brand in it, and the ones
+        // it can't work say what is wrong with them.
         health: theme && categoryHealth.has(theme) ? {
           total: categoryHealth.get(theme)!.total,
           blocked: Object.fromEntries(
             Object.entries(categoryHealth.get(theme)!.blocked)
-              .map(([why, names]) => [why, { count: names.length, names: names.slice(0, 4) }]),
+              .map(([why, brands]) => [why, { count: brands.length, brands: brands.slice(0, 25) }]),
           ),
         } : null,
         // Same-category brands whose people are NOT in the queue yet —
