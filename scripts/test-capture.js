@@ -80,6 +80,22 @@ const page = (title, extra) => `<!doctype html><html><body style="margin:0">
 <input style="width:200px;height:28px" placeholder="Search contacts">
 ${extra || ''}</main></body></html>`;
 
+// Their search is an icon on some pages and a live box on others. The
+// icon version is what "No search box here" was really reporting.
+const hiddenSearchPage = () => `<!doctype html><html><body style="margin:0">
+<header style="height:56px;display:flex;align-items:center;padding:0 16px;background:#111">
+  <button aria-label="Search" id="searchbtn" style="width:32px;height:32px">S</button>
+  <div id="searchslot"></div>
+</header>
+<main style="padding:20px"><h1>Discovery</h1></main>
+<script>
+  document.getElementById('searchbtn').addEventListener('click', function () {
+    document.getElementById('searchslot').innerHTML =
+      '<input id="banner" style="width:420px;height:32px" placeholder="SUrface deals, contacts, profiles and more">';
+  });
+</script>
+</body></html>`;
+
 const site = http.createServer((req, res) => {
   res.writeHead(200, { 'content-type': 'text/html' });
   if (req.url.startsWith('/profile/')) {
@@ -92,6 +108,7 @@ const site = http.createServer((req, res) => {
     return res.end(page('Yerba Madre',
       card('Dana Reyes', 'Director, Campus Marketing') + card('Sam Okafor', 'Partnerships Manager')));
   }
+  if (req.url.startsWith('/hidden')) return res.end(hiddenSearchPage());
   res.end(page('Home'));
 });
 
@@ -167,6 +184,31 @@ function chromeAt() {
   if (!asks) fail('with no token saved, the pill did not ask for one');
   await bare.close();
   console.log('with no token: silent, and asks for one when opened');
+
+  // 4. a page whose search is behind an icon. This is what Leo hit:
+  //    the script said "No search box here" because there was no box on
+  //    the page yet. It must open the search and use it.
+  const iconCtx = await browser.newContext();
+  const ic = await iconCtx.newPage();
+  ic.on('pageerror', e => fail('page error (icon search): ' + e.message));
+  // "Test the search on this page" asks for a name with prompt().
+  ic.on('dialog', d => d.accept('Red Bull'));
+  await ic.addInitScript({ content: SCRIPT });
+  await ic.goto('http://127.0.0.1:4612/hidden');
+  await ic.waitForTimeout(1200);
+  if (await ic.locator('#banner').count()) fail('fixture wrong: the box should start hidden');
+
+  // Open the SB menu and run the search test.
+  await ic.click('#sbpill');
+  await ic.waitForTimeout(300);
+  await ic.click('#sbtest');
+  await ic.waitForTimeout(2500);
+
+  if (!(await ic.locator('#banner').count())) fail('the script did not open the search behind the icon');
+  const typed = await ic.inputValue('#banner').catch(() => '');
+  if (typed !== 'Red Bull') fail('the search box was opened but nothing was typed into it: ' + JSON.stringify(typed));
+  await iconCtx.close();
+  console.log('search behind an icon: opened and used');
 
   console.log('SU SMOKE OK');
   await browser.close();

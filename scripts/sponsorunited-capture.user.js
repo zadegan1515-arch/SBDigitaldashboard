@@ -388,7 +388,11 @@
   // redesign only has to keep a wide box up top for this to survive.
   function findSearchInput() {
     var best = null, bestScore = -1;
-    var inputs = [].slice.call(document.querySelectorAll('input[type="search"], input[type="text"], input:not([type])'));
+    // Not always an <input>: their newer pages render the banner search
+    // as a combobox, and some overlays use a contenteditable div.
+    var inputs = [].slice.call(document.querySelectorAll(
+      'input[type="search"], input[type="text"], input:not([type]), ' +
+      '[role="searchbox"], [role="combobox"] input, [contenteditable="true"]'));
     for (var i = 0; i < inputs.length; i++) {
       var el = inputs[i];
       var r = el.getBoundingClientRect();
