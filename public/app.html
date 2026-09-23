@@ -4872,11 +4872,15 @@ function groupedTargetRows(list) {
   });
   return order.map(function (bid) {
     var rows = byBrand[bid];
-    if (rows.length === 1) return targetRow(rows[0]);
+    // A brand with one person gets no header, so its row used to sit
+    // directly under the previous brand's indented block and read as
+    // part of it — Skims' row looked like one of Rhoback's two. The gap
+    // closes the block off.
+    if (rows.length === 1) return '<div style="margin-top:16px">' + targetRow(rows[0]) + '</div>';
     return '<div style="margin:16px 0 6px;display:flex;align-items:baseline;gap:8px">' +
         '<span style="font-size:13px;font-weight:700;font-family:var(--display)" data-brand="' + esc(bid) + '"><span class="t-brand" style="cursor:pointer">' + esc(rows[0].brand.name) + '</span></span>' +
         '<span class="n">' + rows.length + ' people</span></div>' +
-      '<div style="border-left:2px solid var(--border);padding-left:10px">' + rows.map(targetRow).join('') + '</div>';
+      '<div style="border-left:2px solid var(--border);padding-left:10px;margin-bottom:16px">' + rows.map(targetRow).join('') + '</div>';
   }).join('');
 }
 
