@@ -148,20 +148,30 @@
      never carries it alone: every row states the days in words, which is
      also what makes the amber/green pair legal for protan viewers, where
      they sit at the bottom of the separation band. */
-  .rw-row{display:grid;grid-template-columns:minmax(96px,1.1fr) minmax(90px,2fr) auto;gap:14px;
-    align-items:center;padding:9px 10px;border-radius:9px;transition:background .12s ease}
+  .rw-row{display:grid;grid-template-columns:1fr auto;gap:3px 10px;align-items:center;
+    padding:8px;border-radius:9px;cursor:pointer;transition:background .12s ease}
+  .rw-row:hover,.rw-row.rw-on{background:var(--surface-2)}
+  .rw-track{grid-column:1 / -1}
+  .rw-sub{grid-column:1 / -1}
+  .rw-open{padding:2px 8px 12px}
+  .rw-col-h{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--ink-3);margin-bottom:4px}
+  .rw-col-h .n{color:var(--ink-3);font-weight:500;margin-left:5px;text-transform:none;letter-spacing:0}
+  .rw-brand{display:flex;gap:8px;align-items:baseline;padding:3px 0;font-size:12.5px}
+  .rw-brand a{color:var(--ink-1);text-decoration:none;flex:1;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rw-brand a:hover{color:var(--accent-hi)}
+  .rw-tag{font-size:11px;color:var(--ink-3);white-space:nowrap}
+  .rw-empty{font-size:12px;color:var(--ink-3);padding:2px 0}
   .rw-row:hover{background:var(--surface-2)}
   .rw-name{font-size:13px;color:var(--ink-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .rw-sub{font-size:11px;color:var(--ink-3);margin-top:2px}
   /* Track is the surface one step up; the fill is the only loud thing. */
   .rw-track{position:relative;height:8px;border-radius:5px;background:var(--surface-2);overflow:visible}
-  .rw-fill{height:100%;border-radius:0 4px 4px 0;min-width:3px}
+  .rw-fill{height:100%;border-radius:0 4px 4px 0;background:var(--accent);transition:width .2s ease}
   /* One day's worth, as a hairline — the threshold that decides whether
      a category can carry a whole day on its own. */
-  .rw-mark{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--ink-3);opacity:.55}
   .rw-val{font-size:12px;color:var(--ink-2);text-align:right;white-space:nowrap}
-  .rw-days{font-size:11px;color:var(--ink-3);display:flex;align-items:center;gap:5px;justify-content:flex-end;margin-top:2px}
-  .rw-dot{width:7px;height:7px;border-radius:50%;flex:none}
   .count-head{font-size:14px;font-weight:600;margin-bottom:2px}
   /* activations budget sheet — reads as a table, edits in place */
   .sheet{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
@@ -607,12 +617,15 @@
       <h1>Schedule</h1>
       <div class="sub">Plan the next week of LinkedIn outreach: pick a category per day, add specific brands, and Today builds itself from the plan.</div>
       <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-top:18px">
-        <div style="flex:2;min-width:340px"><div id="sched-runway"></div><div id="sched-list"></div></div>
-        <div id="sched-side" class="panel panel-pad" style="flex:1;min-width:260px;position:sticky;top:16px">
+        <div id="sched-list" style="flex:2;min-width:340px"></div>
+        <div style="flex:1;min-width:260px;position:sticky;top:16px;display:flex;flex-direction:column;gap:12px">
+        <div id="sched-runway"></div>
+        <div id="sched-side" class="panel panel-pad">
           <b style="font-size:13.5px">More brands</b>
           <div class="hint" style="margin:4px 0 10px">Pick a day to put a brand on the schedule, or pass it. Brands not in the queue yet get queued the morning of their day.</div>
           <input class="field-box" id="sched-bq" placeholder="Search brands…" autocomplete="off" style="width:100%;margin-bottom:8px">
           <div id="sched-bench" style="max-height:520px;overflow:auto"></div>
+        </div>
         </div>
       </div>
     </section>
@@ -3868,51 +3881,84 @@ function schedAddBrand(key, brandId, brandName) {
 // How many sending days each category can still fill. The Schedule
 // could say a day was short but never which category to go and capture
 // more of, so the answer was always "run the sweep and hope".
+// Opening a category answers "have we worked this one yet" — which
+// brands are recommended next, and which have already been written to.
+// Kept in memory so a refresh of the schedule does not fold them shut.
+var RW_OPEN = {};
+document.addEventListener('click', function (e) {
+  // A brand link inside an open category opens the brand, not a toggle.
+  if (e.target.closest('#sched-runway [data-sopen]')) return;
+  var row = e.target.closest('#sched-runway [data-rwcat]');
+  if (!row) return;
+  var key = row.getAttribute('data-rwcat');
+  RW_OPEN[key] = !RW_OPEN[key];
+  renderRunway();
+});
+
 function renderRunway() {
   var box = document.getElementById('sched-runway');
   if (!box) return;
-  var rows = (SCHED.runway || []).filter(function (r) { return r.people > 0; });
+  var rows = (SCHED.runway || []).map(function (r) {
+    var total = (r.doneCount || 0) + (r.brands || 0);
+    return Object.assign({}, r, { total: total, pct: total ? Math.round((r.doneCount || 0) / total * 100) : 0 });
+  }).filter(function (r) { return r.total > 0; });
   if (!rows.length) { box.innerHTML = ''; return; }
   var cap = (SCHED.pool && SCHED.pool.cap) || 20;
-  var max = rows.reduce(function (m, r) { return Math.max(m, r.people); }, 0) || 1;
-  var thin = rows.filter(function (r) { return r.people < cap; });
 
-  // Status, not decoration: the question a category answers is whether it
-  // can still carry a day. Each row says so in words as well, so the
-  // colour is never the only channel.
-  var band = function (r) {
-    if (r.people < cap) return { c: 'var(--bad)', t: 'under a day' };
-    if (r.days < 3) return { c: 'var(--warn)', t: r.days + (r.days === 1 ? ' day' : ' days') };
-    return { c: 'var(--good)', t: r.days + ' days' };
-  };
+  // The bar is how far through a category we are: brands written to, out
+  // of brands worth writing to. That is progress, so it is one hue at
+  // one weight — a red/amber/green ramp would imply a judgement the
+  // number does not make, and a category being early is not a fault.
+  // Most left to do first, because that is where the work is.
+  rows.sort(function (a, b) { return (b.brands - a.brands) || (a.pct - b.pct); });
 
+  var left = rows.reduce(function (n, r) { return n + r.brands; }, 0);
   box.innerHTML =
-    '<details class="fold" style="margin-bottom:10px"' + (thin.length ? ' open' : '') + '>' +
-      '<summary class="section-head">Category runway <span class="n">' + rows.length + '</span>' +
-        (thin.length
-          ? ' <span style="color:var(--bad);font-weight:600;font-size:12px">· ' + thin.length + ' under a day</span>'
-          : '') +
+    '<details class="fold" open>' +
+      '<summary class="section-head">Category progress <span class="n">' + rows.length + '</span>' +
+        '<span style="color:var(--ink-3);font-weight:500;font-size:12px"> · ' + left + ' brands to go</span>' +
       '</summary>' +
       '<div class="panel panel-pad">' +
-        '<div class="hint" style="margin:0 0 6px">People left to work in each category. The hairline is one day\u2019s ' +
-          cap + '. Thinnest first \u2014 those are the ones to point the SponsorUnited sweep at.</div>' +
+        '<div class="hint" style="margin:0 0 8px">How far through each category we are \u2014 brands already ' +
+          'written to, out of the ones worth writing to. Click one to see which. Most left to do first.</div>' +
+        '<div style="max-height:430px;overflow:auto;margin:0 -4px;padding:0 4px">' +
         rows.map(function (r) {
-          var b = band(r);
-          var pct = Math.max(2, Math.round((r.people / max) * 100));
-          var markPct = Math.round((cap / max) * 100);
+          var key = r.category || 'uncategorised';
           var name = esc(CAT_NAMES[r.category] || r.category || 'Uncategorised');
-          return '<div class="rw-row" title="' + name + ' \u2014 ' + r.people + ' people across ' + r.brands +
-              (r.brands === 1 ? ' brand' : ' brands') + ', about ' + b.t + ' of sending at ' + cap + ' a day">' +
-            '<div><div class="rw-name">' + name + '</div>' +
-              '<div class="rw-sub">' + r.brands + (r.brands === 1 ? ' brand' : ' brands') + '</div></div>' +
-            '<div class="rw-track">' +
-              '<div class="rw-fill" style="width:' + pct + '%;background:' + b.c + '"></div>' +
-              (markPct < 99 ? '<div class="rw-mark" style="left:' + markPct + '%"></div>' : '') +
+          var open = !!RW_OPEN[key];
+          var list = function (items, empty, done) {
+            if (!items.length) return '<div class="rw-empty">' + empty + '</div>';
+            return items.map(function (b) {
+              return '<div class="rw-brand">' +
+                '<a href="#" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
+                (done
+                  ? (b.replied ? '<span class="rw-tag" style="color:var(--good)">replied</span>' : '')
+                  : '<span class="rw-tag">' + b.people + (b.people === 1 ? ' person' : ' people') + '</span>') +
+              '</div>';
+            }).join('');
+          };
+          return '<div class="rw-row' + (open ? ' rw-on' : '') + '" data-rwcat="' + esc(key) + '" role="button" tabindex="0">' +
+              '<div class="rw-name">' + name + '</div>' +
+              '<div class="rw-val">' + (r.doneCount || 0) + ' of ' + r.total + '</div>' +
+              '<div class="rw-track"><div class="rw-fill" style="width:' + r.pct + '%"></div></div>' +
+              '<div class="rw-sub">' + r.brands + (r.brands === 1 ? ' brand' : ' brands') +
+                ' recommended \u00b7 ' + r.people + (r.people === 1 ? ' person' : ' people') + ' in them' +
+                (r.days >= 1 ? ' \u00b7 about ' + r.days + (r.days === 1 ? ' day' : ' days') + ' of sending' : '') +
+              '</div>' +
             '</div>' +
-            '<div><div class="rw-val">' + r.people + (r.people === 1 ? ' person' : ' people') + '</div>' +
-              '<div class="rw-days"><span class="rw-dot" style="background:' + b.c + '"></span>' + esc(b.t) + '</div></div>' +
-          '</div>';
+            (open
+              ? '<div class="rw-open">' +
+                  '<div class="rw-col-h">Recommended next <span class="n">' + r.brands +
+                    (r.brands === 1 ? ' brand' : ' brands') + ' \u00b7 ' + r.people +
+                    (r.people === 1 ? ' person' : ' people') + '</span></div>' +
+                  list(r.todo || [], 'Nothing left in this category.', false) +
+                  '<div class="rw-col-h" style="margin-top:10px">Already reached out <span class="n">' + (r.doneCount || 0) +
+                    ((r.doneCount || 0) === 1 ? ' brand' : ' brands') + '</span></div>' +
+                  list(r.done || [], 'None yet.', true) +
+                '</div>'
+              : '');
         }).join('') +
+        '</div>' +
       '</div></details>';
 }
 

@@ -2973,25 +2973,61 @@ const handlers: Record<string, Handler> = {
     // that would accept another thread (addable already applies the same
     // rules the queue does, so this cannot promise people the queue
     // would refuse).
-    const runwayBy = new Map<string, { brands: Set<string>; people: number }>()
-    const bump = (cat: string | null, brandId: string, people: number) => {
+    const runwayBy = new Map<string, { todo: Map<string, { id: string; name: string; people: number }>; people: number }>()
+    const bump = (cat: string | null, brandId: string, name: string, people: number) => {
       const key = cat ?? 'uncategorised'
-      const row = runwayBy.get(key) ?? { brands: new Set<string>(), people: 0 }
-      row.brands.add(brandId)
+      const row = runwayBy.get(key) ?? { todo: new Map<string, { id: string; name: string; people: number }>(), people: 0 }
+      const had = row.todo.get(brandId)
+      if (had) had.people += people
+      else row.todo.set(brandId, { id: brandId, name, people })
       row.people += people
       runwayBy.set(key, row)
     }
-    for (const b of byBrand.values()) bump(b.category, b.id, b.people)
-    for (const b of addable) bump(b.category, b.id, b.spare)
+    for (const b of byBrand.values()) bump(b.category, b.id, b.name, b.people)
+    for (const b of addable) bump(b.category, b.id, b.name, b.spare)
+
+    // The other half of the picture: brands in this category we have
+    // already written to. A category is not only "how much is left" —
+    // opening one should show what has been done as well as what has
+    // not, which is the question "have we worked this category yet".
+    // Queried on its own because allBrands deliberately drops anyone in
+    // conversation, and those are the most worked of all.
+    const contacted = await prisma.brand.findMany({
+      where: { targets: { some: { sentAt: { not: null } } } },
+      select: {
+        id: true, name: true, category: true,
+        targets: { where: { sentAt: { not: null } }, select: { status: true, repliedAt: true } },
+      },
+      orderBy: { name: 'asc' },
+    })
+    const doneBy = new Map<string, Array<{ id: string; name: string; replied: boolean }>>()
+    for (const b of contacted) {
+      const key = b.category ?? 'uncategorised'
+      const list = doneBy.get(key) ?? []
+      list.push({ id: b.id, name: b.name, replied: b.targets.some(t => t.repliedAt) })
+      doneBy.set(key, list)
+    }
+    for (const key of doneBy.keys()) {
+      if (!runwayBy.has(key)) runwayBy.set(key, { todo: new Map(), people: 0 })
+    }
 
     const runway = [...runwayBy.entries()]
-      .map(([category, v]) => ({
-        category: category === 'uncategorised' ? null : category,
-        brands: v.brands.size,
-        people: v.people,
-        // Whole sending days this category could fill on its own.
-        days: Math.floor(v.people / DAILY_SEND_LIMIT),
-      }))
+      .map(([category, v]) => {
+        const done = doneBy.get(category) ?? []
+        return {
+          category: category === 'uncategorised' ? null : category,
+          brands: v.todo.size,
+          people: v.people,
+          // Whole sending days this category could fill on its own.
+          days: Math.floor(v.people / DAILY_SEND_LIMIT),
+          doneCount: done.length,
+          // Capped: these only fill a panel someone opened, and a
+          // category with two hundred brands does not need all of them
+          // in every schedule load.
+          todo: [...v.todo.values()].sort((a, b) => b.people - a.people).slice(0, 40),
+          done: done.slice(0, 40),
+        }
+      })
       .sort((a, b) => a.people - b.people)
 
     return {
