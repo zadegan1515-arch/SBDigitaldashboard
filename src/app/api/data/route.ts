@@ -3634,10 +3634,12 @@ const handlers: Record<string, Handler> = {
     const peopleOnFile = brands.reduce((n, b) => n + b._count.contacts, 0)
     // How many people the fill would add if it finished everything it
     // can currently reach.
-    const roomReachable = under.filter(b => b.externalId).reduce((n, b) => n + (CAP - b._count.contacts), 0)
     // Reachable, under the cap, but the last visit found nobody new —
-    // the sweep leaves these alone for a fortnight and moves on.
+    // the sweep leaves these alone for a fortnight and moves on. Their
+    // empty seats are not "reachable right now": SponsorUnited has
+    // nobody to fill them with.
     const resting = under.filter(b => b.externalId && isResting(sweepLog[b.id]))
+    const roomReachable = under.filter(b => b.externalId && !isResting(sweepLog[b.id])).reduce((n, b) => n + (CAP - b._count.contacts), 0)
     return {
       resting: resting.length,
       restDays: SWEEP_REST_DAYS,
