@@ -2393,6 +2393,17 @@ function openSplitBrand(b) {
           '<input class="field-box" id="sp-name" placeholder="e.g. On Running"></div>' +
         '<div><label class="lbl">Category</label><select class="field-box" id="sp-cat"></select></div>' +
       '</div>' +
+      // The saved SponsorUnited profile belongs to one of the two
+      // companies. If the people being moved are the ones the sweep
+      // captured from it, it goes with them — or the next sweep puts
+      // their colleagues back on the wrong record.
+      (b.externalId
+        ? '<label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:10px;cursor:pointer;font-size:12.5px">' +
+            '<input type="checkbox" id="sp-profile" style="margin-top:3px">' +
+            '<span>The SponsorUnited profile saved on ' + esc(b.name) + ' is theirs — move it with them.' +
+              '<br><span class="hint" style="margin:0">Tick this if the people you ticked are the ones the sweep pulled in. Otherwise the next sweep lands their colleagues back here.</span></span>' +
+          '</label>'
+        : '') +
       '<div style="display:flex;gap:8px;align-items:center">' +
         '<button class="btn-solid" id="sp-check">Check the split</button>' +
         '<button class="btn-ghost" id="sp-cancel">Cancel</button>' +
@@ -2429,7 +2440,8 @@ function openSplitBrand(b) {
     if (!name) { toast('Name the brand they are moving to'); return; }
     var btn = this;
     btn.disabled = true;
-    api('splitBrand', { fromBrandId: b.id, contactIds: ids, toName: name, category: document.getElementById('sp-cat').value || null })
+    var moveProfile = !!(document.getElementById('sp-profile') && document.getElementById('sp-profile').checked);
+    api('splitBrand', { fromBrandId: b.id, contactIds: ids, toName: name, category: document.getElementById('sp-cat').value || null, moveProfile: moveProfile })
       .then(function (p) {
         btn.disabled = false;
         var lines = [
@@ -2439,6 +2451,7 @@ function openSplitBrand(b) {
         ];
         if (p.historyStays) lines.push('<b>' + p.historyStays + '</b> already-sent ' + (p.historyStays === 1 ? 'thread stays' : 'threads stay') + ' on ' + esc(p.fromBrandName) + ' — that outreach happened there.');
         if (p.queuedDropped) lines.push('<b>' + p.queuedDropped + '</b> not-yet-sent ' + (p.queuedDropped === 1 ? 'thread comes' : 'threads come') + ' off the queue with its draft — written for the wrong company.');
+        if (p.profileMoves) lines.push('The SponsorUnited profile moves to ' + esc(p.toBrandName) + '; ' + esc(p.fromBrandName) + ' will need its own found by the lookup.');
         document.getElementById('sp-prev').innerHTML =
           '<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:10px">' +
             '<div class="hint" style="margin:0 0 10px">' + lines.join('<br>') + '</div>' +
@@ -2446,7 +2459,7 @@ function openSplitBrand(b) {
           '</div>';
         document.getElementById('sp-go').onclick = function () {
           this.disabled = true; this.textContent = 'Splitting…';
-          api('splitBrand', { fromBrandId: b.id, contactIds: ids, toName: name, category: document.getElementById('sp-cat').value || null, apply: true })
+          api('splitBrand', { fromBrandId: b.id, contactIds: ids, toName: name, category: document.getElementById('sp-cat').value || null, moveProfile: moveProfile, apply: true })
             .then(function (r) {
               toast(r.moving.length + ' moved to ' + r.toBrandName);
               loadBrand(r.toBrandId);

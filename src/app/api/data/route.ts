@@ -2229,10 +2229,10 @@ const handlers: Record<string, Handler> = {
   // happened under the old record stays there, and anything not yet sent
   // comes off the queue with its draft, because the draft was written
   // for the wrong company.
-  async splitBrand({ fromBrandId, contactIds, toBrandId, toName, category, tier, apply }: any) {
+  async splitBrand({ fromBrandId, contactIds, toBrandId, toName, category, tier, moveProfile, apply }: any) {
     const from = await prisma.brand.findUnique({
       where: { id: fromBrandId },
-      select: { id: true, name: true, _count: { select: { contacts: true } } },
+      select: { id: true, name: true, externalId: true, _count: { select: { contacts: true } } },
     })
     if (!from) throw new Error('Brand not found')
     const ids: string[] = Array.isArray(contactIds) ? contactIds.slice(0, 500) : []
@@ -2269,12 +2269,18 @@ const handlers: Record<string, Handler> = {
     const pendingIds = moving.flatMap(c => c.targets.filter(t => !isWorked(t)).map(t => t.id))
     const workedCount = moving.reduce((n, c) => n + c.targets.filter(isWorked).length, 0)
 
+    // The saved SponsorUnited profile is one company's, and when the
+    // people being moved came from a capture of it, it is theirs: left
+    // behind, the next sweep would land their colleagues on the wrong
+    // record again. Only offered when there is a profile to move.
+    const profileMoves = !!moveProfile && !!from.externalId
     const summary = {
       fromBrandId: from.id,
       fromBrandName: from.name,
       toBrandId: target?.id ?? null,
       toBrandName: target?.name ?? wantedName,
       toIsNew: !target,
+      profileMoves,
       moving: moving.map(c => ({ id: c.id, name: c.name, title: c.title, email: c.email })),
       staying: from._count.contacts - moving.length,
       historyStays: workedCount,
@@ -2303,6 +2309,11 @@ const handlers: Record<string, Handler> = {
         where: { id: { in: moving.map(c => c.id) } },
         data: { brandId: created.id },
       })
+      if (profileMoves) {
+        // externalId is unique: clear it here before setting it there.
+        await tx.brand.update({ where: { id: from.id }, data: { externalId: null } })
+        await tx.brand.update({ where: { id: created.id }, data: { externalId: from.externalId } })
+      }
     })
     return { split: true, ...summary, toBrandId: created.id, toBrandName: created.name }
   },
