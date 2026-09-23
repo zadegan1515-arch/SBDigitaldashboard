@@ -245,6 +245,32 @@ function chromeAt() {
   await restCtx.close();
   console.log('resting brands: explained, and overridable');
 
+  // 6. a sweep that finishes with nothing to show must not dead-end:
+  //    193 brands with no profile is the actual job, so the panel says
+  //    so and starts it.
+  ALL_RESTING = false;
+  const doneCtx = await browser.newContext();
+  const dc = await doneCtx.newPage();
+  dc.on('pageerror', e => fail('page error (done panel): ' + e.message));
+  await dc.addInitScript({ content: SCRIPT });
+  await dc.goto('http://127.0.0.1:4612/');
+  await dc.waitForTimeout(1200);
+  await dc.click('#sbpill');
+  await dc.waitForTimeout(300);
+  await dc.click('#sbmissing');
+  // One brand, then the profile page, then finished.
+  await dc.waitForTimeout(9000);
+  const doneText = await dc.evaluate(() => document.body.innerText);
+  if (doneText.indexOf('Sweep finished') === -1) fail('the sweep did not finish: ' + doneText.slice(0, 200));
+  if (doneText.indexOf('220') === -1) fail('the finish panel does not say how many brands have no profile');
+  if (!(await dc.locator('#sbnext').count())) fail('the finish panel offers no next step');
+  const beforeNeed = calls.filter(c => c.action === 'needProfile').length;
+  await dc.click('#sbnext');
+  await dc.waitForTimeout(1500);
+  if (calls.filter(c => c.action === 'needProfile').length <= beforeNeed) fail('the next step did not start the lookup');
+  await doneCtx.close();
+  console.log('a finished sweep points at the real blocker');
+
   console.log('SU SMOKE OK');
   await browser.close();
   api.close(); site.close();

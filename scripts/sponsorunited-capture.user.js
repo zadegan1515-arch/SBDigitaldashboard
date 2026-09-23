@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — SponsorUnited Contact Capture
 // @namespace    sbagency.command-center
-// @version      3.7
+// @version      3.8
 // @description  Capture contacts from SponsorUnited into the SB Command Center, and find the profile ids of brands we cannot reach yet.
 // @match        https://pro.sponsorunited.com/*
 // @run-at       document-idle
@@ -329,7 +329,8 @@
 
   function finishJob(job) {
     var added = job.results.reduce(function (n, r) { return n + r.added; }, 0);
-    var done = { finishedAt: Date.now(), added: added, results: job.results, total: job.items.length };
+    var done = { finishedAt: Date.now(), added: added, results: job.results, total: job.items.length,
+      noProfile: job.noProfile || 0, resting: job.resting || 0, ignoredRest: !!job.ignoredRest };
     stopJob();
     try { localStorage.setItem('sbCaptureLast', JSON.stringify(done)); } catch (e) {}
     renderDonePanel(done);
@@ -863,8 +864,27 @@
             (problems.length > 20 ? '<br>…and ' + (problems.length - 20) + ' more' : '') +
           '</div>'
         : '<div style="font-size:11.5px;color:#137333">No problems.</div>') +
+      // "0 across 1 brand" is only the whole story if nothing is
+      // waiting. Usually something is, and the next click is right here
+      // rather than back in the menu.
+      (done.noProfile
+        ? '<div style="margin-top:12px;padding-top:10px;border-top:1px solid #eee">' +
+            '<div style="font-size:12.5px;margin-bottom:6px"><b>' + done.noProfile + ' brands</b> have no SponsorUnited profile saved, so this sweep could never reach them. That is the bigger half of the job.</div>' +
+            '<button id="sbnext" style="width:100%;background:#111;color:#fff;border:0;border-radius:7px;padding:9px 12px;cursor:pointer;font-weight:600">Find their profiles now</button>' +
+          '</div>'
+        : '') +
+      (!done.noProfile && done.resting && !done.ignoredRest
+        ? '<div style="margin-top:12px;padding-top:10px;border-top:1px solid #eee">' +
+            '<div style="font-size:12.5px;margin-bottom:6px"><b>' + done.resting + ' brands</b> were skipped because SponsorUnited had nobody new for them last time.</div>' +
+            '<button id="sbnextrest" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer">Go through those anyway</button>' +
+          '</div>'
+        : '') +
       '<div style="color:#999;font-size:11px;margin-top:10px">Anything "held for review" is waiting in Brands → Needs contacts. A brand already holding 25 people is left as it is. A brand with nothing new rests for two weeks before the sweep opens it again.</div>';
     p.querySelector('#sbx').onclick = closePanel;
+    var nx = p.querySelector('#sbnext');
+    if (nx) nx.onclick = function () { startMatchSweep({ thenFill: true }); };
+    var nr = p.querySelector('#sbnextrest');
+    if (nr) nr.onclick = function () { startSweep('thin', { ignoreRest: true }); };
   }
 
   function openMenu() {
@@ -875,7 +895,8 @@
       (here
         ? '<button id="sbone" style="width:100%;background:#111;color:#fff;border:0;border-radius:7px;padding:9px 12px;cursor:pointer;font-weight:600;margin-bottom:8px">Capture this brand</button>'
         : '<div style="color:#555;margin-bottom:8px">Open a brand\'s Contacts tab to capture just that one.</div>') +
-      '<button id="sbfill" style="width:100%;background:#111;color:#fff;border:0;border-radius:7px;padding:9px 12px;cursor:pointer;font-weight:600;margin-bottom:6px">Fill every brand to 25 people</button>' +
+      '<button id="sbfill" style="width:100%;background:#111;color:#fff;border:0;border-radius:7px;padding:9px 12px;cursor:pointer;font-weight:600;margin-bottom:2px">Fill every brand to 25 people</button>' +
+      '<div style="color:#999;font-size:11px;margin-bottom:10px">Start here. Looks up the brands with no SponsorUnited profile first, then captures. The buttons below each do only one half.</div>' +
       '<div style="color:#999;font-size:11px;margin-bottom:10px">Looks up the brands we have no profile for, then walks every brand under 25 and tops it up. One click, runs on its own.</div>' +
       '<button id="sbmissing" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;margin-bottom:6px">Capture only (skip the lookup)</button>' +
       '<button id="sbwakeall" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;margin-bottom:6px">Capture, including resting brands</button>' +
