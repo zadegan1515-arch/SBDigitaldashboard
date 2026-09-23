@@ -947,6 +947,8 @@
   function ensureUI() {
     if (pill || !document.body) return;
     pill = document.createElement('button');
+    // Named so a test can find it without guessing at "the first button".
+    pill.id = 'sbpill';
     pill.textContent = 'SB ⬇ Capture contacts';
     pill.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:2147483647;background:#111;color:#fff;border:0;border-radius:999px;padding:11px 16px;font:600 13px system-ui,-apple-system,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.28);cursor:pointer';
     pill.onclick = openMenu;

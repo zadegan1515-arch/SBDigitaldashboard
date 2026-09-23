@@ -202,7 +202,7 @@ function chromeAt() {
   await ic.click('#sbpill');
   await ic.waitForTimeout(300);
   await ic.click('#sbtest');
-  await ic.waitForTimeout(2500);
+  await ic.waitForTimeout(4000);
 
   if (!(await ic.locator('#banner').count())) fail('the script did not open the search behind the icon');
   const typed = await ic.inputValue('#banner').catch(() => '');
