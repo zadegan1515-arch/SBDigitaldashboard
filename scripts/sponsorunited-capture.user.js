@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — SponsorUnited Contact Capture
 // @namespace    sbagency.command-center
-// @version      3.4
+// @version      3.5
 // @description  Capture contacts from SponsorUnited into the SB Command Center, and find the profile ids of brands we cannot reach yet.
 // @match        https://pro.sponsorunited.com/*
 // @run-at       document-idle
@@ -324,11 +324,13 @@
       var el = inputs[i];
       var r = el.getBoundingClientRect();
       if (r.width < 120 || r.height < 14) continue;          // too small to be it
-      if (r.top > 260) continue;                              // not in the banner
       if (el.closest('[aria-hidden="true"]')) continue;
       var hint = ((el.getAttribute('placeholder') || '') + ' ' +
                   (el.getAttribute('aria-label') || '') + ' ' +
                   (el.getAttribute('name') || '')).toLowerCase();
+      // Not in the banner — unless it names itself their search, which
+      // is what a box pushed down by a notice bar or a narrow window does.
+      if (r.top > 260 && !/surface|profiles|deals, contacts/.test(hint)) continue;
       var score = r.width / 100;
       if (/surface|profiles|deals, contacts/.test(hint)) score += 40;
       else if (/search/.test(hint)) score += 25;
@@ -338,6 +340,47 @@
       if (score > bestScore) { bestScore = score; best = el; }
     }
     return best;
+  }
+
+  // Some pages render their search as an icon or a fake box that only
+  // becomes a real input once clicked. Scroll up, try again, then click
+  // whatever up top calls itself search, and look once more.
+  function ensureSearchInput() {
+    return new Promise(function (resolve) {
+      var el = findSearchInput();
+      if (el) return resolve(el);
+      try { window.scrollTo(0, 0); } catch (e) {}
+      setTimeout(function () {
+        el = findSearchInput();
+        if (el) return resolve(el);
+        var cands = [].slice.call(document.querySelectorAll('button, [role="button"], [role="search"], [role="combobox"], div, span'));
+        var trigger = null;
+        for (var i = 0; i < cands.length && !trigger; i++) {
+          var c = cands[i];
+          if ((pill && pill.contains(c)) || (panel && panel.contains(c))) continue;
+          var r = c.getBoundingClientRect();
+          if (!r.width || r.top > 260 || r.top < 0) continue;
+          var label = ((c.getAttribute('aria-label') || '') + ' ' + (c.getAttribute('title') || '') + ' ' +
+                       (c.getAttribute('placeholder') || '') + ' ' +
+                       (c.children.length ? '' : (c.textContent || ''))).toLowerCase();
+          if (/surface|search/.test(label) && !/search contacts|filter/.test(label)) trigger = c;
+        }
+        if (!trigger) return resolve(null);
+        try { trigger.click(); } catch (e) {}
+        setTimeout(function () { resolve(findSearchInput()); }, 700);
+      }, 300);
+    });
+  }
+
+  // What the page has instead, so a screenshot of the message says why.
+  function describeInputs() {
+    var inputs = [].slice.call(document.querySelectorAll('input'));
+    if (!inputs.length) return 'No text boxes on this page at all.';
+    return 'Text boxes seen: ' + inputs.slice(0, 6).map(function (el) {
+      var r = el.getBoundingClientRect();
+      return '"' + (el.getAttribute('placeholder') || el.getAttribute('aria-label') || el.type || '?').slice(0, 40) +
+        '" ' + Math.round(r.width) + 'px wide at ' + Math.round(r.top) + 'px';
+    }).join(' · ');
   }
 
   // React keeps its own copy of an input's value, so assigning .value
@@ -418,11 +461,17 @@
   function startMatchSweep(opts) {
     var thenFill = !!(opts && opts.thenFill);
     var auto = !!(opts && opts.auto);
-    if (!findSearchInput()) {
+    ensureSearchInput().then(function (box) {
+      if (box) return beginMatchSweep(thenFill, auto);
+      // The lookup needs their search box; the capture does not. Rather
+      // than stopping, fill every brand whose profile we already know.
+      if (thenFill) { startSweep('thin', { auto: auto }); return; }
       renderMessage('No search box here',
-        'This page has no SponsorUnited search bar. Open their home or Discovery page and try again.', 0);
-      return;
-    }
+        'Could not find SponsorUnited\u2019s search bar on this page, so profiles can\u2019t be looked up. ' +
+        '\u201cCapture only (skip the lookup)\u201d still works from here. ' + describeInputs(), 0);
+    });
+  }
+  function beginMatchSweep(thenFill, auto) {
     renderMatchPanel(null, 'Asking the dashboard which brands are missing a profile…');
     post({ token: token(), action: 'needProfile', limit: 300 }).then(function (j) {
       if (!j || !j.ok) throw new Error((j && j.error) || 'Could not get the list');
@@ -574,8 +623,9 @@
     if (document.hidden) return;                     // background tab, leave it
     if (idleFor() < AUTO_IDLE_MS) return;            // he's using this tab
     if (Date.now() - autoLast() < AUTO_COOLDOWN_MS) return;
-    if (!findSearchInput()) return;                  // no search bar on this page
     markAuto();
+    // No search bar on this page just means no lookup: the capture
+    // half still runs (startMatchSweep falls through to it).
     startMatchSweep({ thenFill: true, auto: true });
   }
 
@@ -796,11 +846,16 @@
   // SponsorUnited redesigns their search, this says so in one click
   // instead of a sweep quietly parking two hundred brands.
   function testSearch() {
-    if (!findSearchInput()) {
-      renderMessage('No search box here',
-        'This page has no SponsorUnited search bar. Open their home or Discovery page and try again.', 0);
-      return;
-    }
+    ensureSearchInput().then(function (box) {
+      if (!box) {
+        renderMessage('No search box here',
+          'Could not find SponsorUnited\u2019s search bar on this page. ' + describeInputs(), 0);
+        return;
+      }
+      testSearchWith();
+    });
+  }
+  function testSearchWith() {
     var q = prompt('Type a brand name to test the search:', 'Red Bull');
     if (!q) return;
     renderMatchPanel(null, 'Searching ' + q + '…');
