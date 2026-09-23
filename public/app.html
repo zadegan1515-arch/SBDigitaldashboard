@@ -1728,6 +1728,12 @@ function loadBrand(brandId) {
             (c.email ? '<span>' + esc(c.email) + '</span>' : '') +
             (c.phone ? '<span>· ' + esc(c.phone) + '</span>' : '') +
             (c.location ? '<span>· ' + esc(c.location) + '</span>' : '') +
+            // Not a filter — a note. SB sells US college shows, so an
+            // EMEA or overseas contact is rarely the buyer; the call is
+            // still Leo's and Queue still works.
+            (c.region ? '<span class="status declined" style="margin-left:6px" title="SB books US college shows — this person looks like they cover ' +
+              esc(c.region) + ', so they are probably not the buyer. Nothing is blocked; queue them if you disagree.">' +
+              esc(c.region) + '</span>' : '') +
           '</div>' +
           // A note is only useful if you can see it without opening a
           // form first.

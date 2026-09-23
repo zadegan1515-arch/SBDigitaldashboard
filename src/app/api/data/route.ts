@@ -32,6 +32,7 @@ import { scanOps, listOps, getOps, updateOps, deleteOps, replyOps, forwardOps } 
 import { allShows, refreshShows, setGenreOverride, cachedShows, GENRES } from '@/lib/shows'
 import { newBoardCode } from '@/lib/board-access'
 import BRAND_SUMMARIES from '@/data/brand-summaries.json'
+import { regionFlag } from '@/lib/region'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef } from '@/lib/brand-match'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
@@ -1828,6 +1829,15 @@ const handlers: Record<string, Handler> = {
       }),
     ])
 
+    // Flag, never filter (Leo): SB sells US college shows, so a contact
+    // running EMEA or sitting in Zürich is almost never the buyer — but
+    // the call stays his. Nothing is hidden or un-queued; the row just
+    // says so.
+    const brandOut = {
+      ...brand,
+      contacts: brand.contacts.map(c => ({ ...c, region: regionFlag(c.location, c.title)?.label ?? null })),
+    }
+
     // A Show Board access request waiting on a decision for this brand.
     // Approving is the same call the Show Board queue makes; it just
     // wasn't reachable from the place you look the brand up. Pending
@@ -1843,7 +1853,7 @@ const handlers: Record<string, Handler> = {
     })).filter(r => r.brandId === brand.id || names.includes(r.company.trim().toLowerCase()))
 
     return {
-      brand, events, money,
+      brand: brandOut, events, money,
       accessRequests: pendingAccess,
       boardViews: { count: boardViewCount, last: lastVisit, recent: recentVisits },
     }
