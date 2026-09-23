@@ -3486,6 +3486,68 @@ const handlers: Record<string, Handler> = {
     return { id: brand.id, name: brand.name, passedToday: !!brand.passedTodayAt, unqueued }
   },
 
+  // -------- follow-ups that nothing else surfaces --------
+
+  // Results already shows "they accepted, send the DM" and "they
+  // replied". The gap is the middle: a thread where the DM went out and
+  // nobody answered just goes quiet, and an invite that was never
+  // accepted sits forever. Both are invisible until someone goes
+  // looking, which is how a warm lead dies.
+  //
+  // Read-only: this only surfaces rows. Every action on them already
+  // exists on the brand card and the Results list.
+  async followUpsDue({ nudgeAfterDays = 7, staleAfterDays = 14 }: any = {}) {
+    const now = Date.now()
+    const nudgeBefore = new Date(now - nudgeAfterDays * 864e5)
+    const staleBefore = new Date(now - staleAfterDays * 864e5)
+    const days = (d: Date) => Math.floor((now - d.getTime()) / 864e5)
+
+    const [nudge, stale] = await Promise.all([
+      // DM'd and no answer. The nudge is already written on the draft.
+      prisma.target.findMany({
+        where: {
+          status: 'accepted',
+          dmSentAt: { not: null, lte: nudgeBefore },
+          repliedAt: null,
+        },
+        orderBy: { dmSentAt: 'asc' },
+        take: 60,
+        include: {
+          brand: { select: { id: true, name: true } },
+          contact: { select: { name: true, title: true, linkedinUrl: true } },
+          drafts: { orderBy: { createdAt: 'desc' }, take: 1 },
+        },
+      }),
+      // Invited and never accepted.
+      prisma.target.findMany({
+        where: { status: 'sent', sentAt: { not: null, lte: staleBefore } },
+        orderBy: { sentAt: 'asc' },
+        take: 60,
+        include: {
+          brand: { select: { id: true, name: true } },
+          contact: { select: { name: true, title: true, linkedinUrl: true } },
+        },
+      }),
+    ])
+
+    return {
+      nudgeAfterDays, staleAfterDays,
+      nudge: nudge.map(t => ({
+        id: t.id, brandId: t.brand.id, brandName: t.brand.name,
+        contactName: t.contact.name, title: t.contact.title,
+        linkedinUrl: t.contact.linkedinUrl,
+        dmSentAt: t.dmSentAt, days: days(t.dmSentAt!),
+        nudge: t.drafts[0]?.nudge ?? null,
+      })),
+      stale: stale.map(t => ({
+        id: t.id, brandId: t.brand.id, brandName: t.brand.name,
+        contactName: t.contact.name, title: t.contact.title,
+        linkedinUrl: t.contact.linkedinUrl,
+        sentAt: t.sentAt, days: days(t.sentAt!),
+      })),
+    }
+  },
+
   // -------- brands with no contacts --------
 
   // The "Needs contact info" tab: brands where we have nobody to reach.

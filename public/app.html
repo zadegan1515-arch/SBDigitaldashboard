@@ -572,6 +572,7 @@
       <div class="kpi-row" id="rc-kpis"></div>
       <div id="rc-toemail"></div>
       <div id="rc-accepted"></div>
+      <div id="rc-followups"></div>
       <div id="rc-replied"></div>
       <div id="rc-responded"></div>
       <div id="rc-days"></div>
@@ -3152,7 +3153,61 @@ document.getElementById('rc-toemail').addEventListener('click', function (e) {
     if (row) row.remove();
     renderToEmail();
     renderAcceptedDms();
+    renderFollowUps();
   }).catch(function (err) { toast(err.message); done.disabled = false; });
+});
+
+// The two stages nothing else shows: a DM that got no answer, and an
+// invite that was never accepted. Both go quiet on their own, so without
+// a list they are only found by accident.
+function renderFollowUps() {
+  var box = document.getElementById('rc-followups');
+  if (!box) return;
+  api('followUpsDue', {}).then(function (d) {
+    var rows = function (list, kind) {
+      return list.map(function (t) {
+        return '<div class="target" data-fu="' + esc(t.id) + '">' +
+          '<div class="t-main"><div class="t-line">' +
+            '<span class="t-brand" data-brand="' + esc(t.brandId) + '" style="cursor:pointer">' + esc(t.brandName) + '</span>' +
+            '<span class="t-sep">·</span>' + esc(t.contactName) +
+            (t.title ? ' <span class="t-title">— ' + esc(t.title) + '</span>' : '') +
+          '</div>' +
+          '<div class="t-meta">' +
+            (kind === 'nudge'
+              ? '<span class="status accepted">no reply</span><span>· DM\u2019d ' + esc(shortDate(t.dmSentAt)) + ' · ' + t.days + ' days ago</span>'
+              : '<span class="status sent">no accept</span><span>· invited ' + esc(shortDate(t.sentAt)) + ' · ' + t.days + ' days ago</span>') +
+          '</div></div>' +
+          '<div class="t-actions">' +
+            (kind === 'nudge' && t.nudge
+              ? '<button class="btn-draft" data-funudge="' + esc(t.id) + '" title="Copy the nudge and paste it into the LinkedIn chat">Copy nudge</button>' : '') +
+            (t.linkedinUrl ? '<a class="btn-ghost" href="' + esc(t.linkedinUrl) + '" target="_blank" rel="noopener">Profile \u2197</a>' : '') +
+          '</div></div>';
+      }).join('');
+    };
+    FU_NUDGE = {};
+    d.nudge.forEach(function (t) { FU_NUDGE[t.id] = t.nudge; });
+    box.innerHTML =
+      (d.nudge.length
+        ? '<div class="count-head" style="margin-top:18px;color:#f0b86b">DM\u2019d, no answer <span class="n">' + d.nudge.length + '</span></div>' +
+          '<div class="hint" style="margin:2px 0 8px">Accepted and messaged, quiet for ' + d.nudgeAfterDays +
+            '+ days. The nudge is already written \u2014 copy it and send.</div>' + rows(d.nudge, 'nudge')
+        : '') +
+      (d.stale.length
+        ? '<div class="count-head" style="margin-top:18px;color:var(--ink-3)">Invite never accepted <span class="n">' + d.stale.length + '</span></div>' +
+          '<div class="hint" style="margin:2px 0 8px">Sent ' + d.staleAfterDays +
+            '+ days ago and still pending. Withdraw on the brand card to free the slot, or leave them.</div>' + rows(d.stale, 'stale')
+        : '');
+  }).catch(function () { box.innerHTML = ''; });
+}
+
+var FU_NUDGE = {};
+document.getElementById('rc-followups').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-funudge]');
+  if (!btn) return;
+  var text = FU_NUDGE[btn.getAttribute('data-funudge')];
+  if (!text) { toast('No nudge written for this one'); return; }
+  navigator.clipboard.writeText(text);
+  toast('Nudge copied \u2014 paste it into the LinkedIn chat');
 });
 
 // Accepted invites still waiting on their DM. This is the follow-up
@@ -3488,6 +3543,7 @@ function loadReached() {
       '<div class="kpi"><div class="kpi-label">Sent today</div><div class="kpi-value" id="rc-today">—</div><div class="kpi-note">of ' + SENT_TODAY.cap + ' a day</div></div>';
     renderToEmail();
     renderAcceptedDms();
+    renderFollowUps();
     renderReplied();
     renderSentDays();
     renderReached();
