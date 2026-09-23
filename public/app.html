@@ -1204,7 +1204,8 @@ function renderFillProgress() {
         '</div>' +
         '<div class="hint" style="margin:0 0 4px">' + lastLine + '</div>' +
         (p.underNoId
-          ? '<div class="hint" style="margin:0 0 4px;color:#f0b86b"><b>' + p.underNoId + '</b> of those have no SponsorUnited profile saved — the sweep cannot reach them until the lookup finds one. That is the first half of “Fill every brand to 25”.</div>'
+          ? '<div class="hint" style="margin:0 0 4px;color:#f0b86b"><b>' + p.underNoId + '</b> of those have no SponsorUnited profile saved — the sweep cannot reach them until the lookup finds one. That is the first half of “Fill every brand to 25”. ' +
+            '<a href="#" id="fp-see">See them</a> (most have contacts already, so they are not in Needs contacts).</div>'
           : '') +
         (p.roomReachable
           ? '<div class="hint" style="margin:0 0 4px">' + p.roomReachable + ' more people are reachable right now without any lookup.</div>'
@@ -1225,7 +1226,40 @@ function renderFillProgress() {
     box.querySelectorAll('[data-bopen]').forEach(function (a) {
       a.onclick = function (e) { e.preventDefault(); loadBrand(a.getAttribute('data-bopen')); };
     });
+    var see = document.getElementById('fp-see');
+    if (see) see.onclick = function (e) { e.preventDefault(); loadBrandsNoProfile(); };
   }).catch(function () { box.innerHTML = ''; });
+}
+
+// The brands the sweep cannot reach. Not the same list as Needs
+// contacts: most of these have people on file, they just were never
+// matched to a SponsorUnited page, so nothing else in the site shows
+// them as a group.
+function loadBrandsNoProfile() {
+  showView('brands');
+  var box = document.getElementById('brands-list');
+  document.getElementById('brands-sub').textContent = 'Loading…';
+  document.getElementById('fill-progress').innerHTML = '';
+  box.innerHTML = '';
+  api('listBrands', { noProfile: true }).then(function (list) {
+    document.getElementById('brands-sub').innerHTML =
+      list.length + ' brands have no SponsorUnited profile saved, so the sweep cannot fill them. ' +
+      'The lookup searches each name in SponsorUnited and attaches what it finds. ' +
+      '<a href="#" id="fp-back">Back to all brands</a>';
+    document.getElementById('fp-back').onclick = function (e) { e.preventDefault(); loadBrands(); };
+    box.innerHTML = list.map(function (b) {
+      return '<div class="panel panel-pad" style="margin-bottom:8px;display:flex;gap:10px;align-items:center">' +
+        '<span style="flex:1;min-width:0"><b>' + esc(b.name) + '</b>' +
+          (b.category ? ' <span class="hint" style="margin:0">' + esc(CAT_NAMES[b.category] || b.category) + '</span>' : '') +
+        '</span>' +
+        '<span class="hint" style="margin:0">' + b._count.contacts + (b._count.contacts === 1 ? ' person' : ' people') + ' on file</span>' +
+        '<button class="btn-ghost" data-bopen2="' + esc(b.id) + '">Open</button>' +
+      '</div>';
+    }).join('') || '<div class="panel"><div class="empty"><h3>All matched</h3><p>Every brand has a SponsorUnited profile saved.</p></div></div>';
+    box.querySelectorAll('[data-bopen2]').forEach(function (btn) {
+      btn.onclick = function () { loadBrand(btn.getAttribute('data-bopen2')); };
+    });
+  }).catch(function (e) { toast(e.message); });
 }
 
 function loadBrands(category) {

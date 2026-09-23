@@ -238,6 +238,9 @@ function chromeAt() {
   if (restText.indexOf('resting') === -1) fail('the panel did not say why there was nothing to sweep');
   if (!(await rc.locator('#sbwake').count())) fail('no way to override the rest period');
   if (restText.indexOf('220') === -1) fail('the panel did not say how many brands have no profile saved');
+  // 193 unreachable beats 18 resting: the lookup must be the primary
+  // button here, not an afterthought behind the resting override.
+  if (!(await rc.locator('#sbfindnow').count())) fail('nothing-to-sweep offers no way to start the lookup');
   const before = calls.filter(c => c.action === 'list' && c.ignoreRest).length;
   await rc.click('#sbwake');
   await rc.waitForTimeout(1500);

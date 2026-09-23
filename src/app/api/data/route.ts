@@ -1312,11 +1312,16 @@ const handlers: Record<string, Handler> = {
 
   // Powers the category drill-down. Counts come from the DB rather than
   // being computed client-side, so the numbers can't drift.
-  async listBrands({ category, search, take = 500 }: any) {
+  // `noProfile`: only brands with no SponsorUnited profile id. These
+  // are invisible everywhere else — Needs contacts lists brands with
+  // nobody on file, which is a different and much smaller set, so "193
+  // have no profile" had nowhere to be looked at.
+  async listBrands({ category, search, take = 500, noProfile }: any) {
     const brands = await prisma.brand.findMany({
       where: {
         ...(category && category !== 'all' ? { category } : {}),
         ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
+        ...(noProfile ? { externalId: null, passedAt: null, doNotEmail: false } : {}),
       },
       include: {
         _count: { select: { contacts: true, targets: true } },

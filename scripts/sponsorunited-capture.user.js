@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — SponsorUnited Contact Capture
 // @namespace    sbagency.command-center
-// @version      3.8
+// @version      3.9
 // @description  Capture contacts from SponsorUnited into the SB Command Center, and find the profile ids of brands we cannot reach yet.
 // @match        https://pro.sponsorunited.com/*
 // @run-at       document-idle
@@ -808,14 +808,22 @@
   // `wake`: {scope, resting} when a run was skipped only because those
   // brands are resting. Resting is a guess, so Leo gets to overrule it
   // from the same panel that told him about it.
+  //
+  // When brands have no profile saved at all, that is the bigger number
+  // and the real work, so it gets the primary button and the resting
+  // override drops to secondary. Telling him 193 brands are out of
+  // reach and then offering only the 18 is the wrong way round.
   function renderMessage(title, body, noProfile, wake) {
     var p = freshPanel();
     p.innerHTML = head(title, 'sbx') + '<div style="color:#555">' + esc(body) + '</div>' +
       (noProfile ? '<div style="color:#946200;font-size:11.5px;margin-top:8px">' + noProfile +
-        ' brand(s) have no saved SponsorUnited profile, so a sweep can\'t reach them. Capture one by hand, or paste its profile link on the brand\'s row in Needs contacts, and the sweep picks it up next time.</div>' : '') +
-      (wake ? '<button id="sbwake" style="margin-top:10px;background:#111;color:#fff;border:0;border-radius:7px;padding:8px 12px;cursor:pointer;font-weight:600">Go through the ' +
+        ' brand(s) have no saved SponsorUnited profile, so a sweep can\'t reach them. The lookup finds those by searching each name.</div>' +
+        '<button id="sbfindnow" style="width:100%;margin-top:10px;background:#111;color:#fff;border:0;border-radius:7px;padding:9px 12px;cursor:pointer;font-weight:600">Find the ' + noProfile + ' missing profiles now</button>' : '') +
+      (wake ? '<button id="sbwake" style="width:100%;margin-top:8px;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:8px 12px;cursor:pointer">Go through the ' +
         wake.resting + ' resting ones anyway</button>' : '');
     p.querySelector('#sbx').onclick = closePanel;
+    var fn = p.querySelector('#sbfindnow');
+    if (fn) fn.onclick = function () { startMatchSweep({ thenFill: true }); };
     if (wake) {
       p.querySelector('#sbwake').onclick = function () {
         startSweep(wake.scope, { ignoreRest: true });
