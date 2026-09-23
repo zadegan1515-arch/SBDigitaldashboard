@@ -39,6 +39,8 @@ const SCRIPT = fs.readFileSync(path.join(__dirname, 'sponsorunited-capture.user.
   .replace(/'https:\/\/pro\.sponsorunited\.com\/profile\/'/g, "'http://127.0.0.1:4612/profile/'");
 
 const calls = [];
+// Flipped on for the resting case; see below.
+let ALL_RESTING = false;
 
 // --- the fake dashboard -------------------------------------------------
 const CORS = {
@@ -61,7 +63,15 @@ const api = http.createServer((req, res) => {
     }
     if (j.action === 'matched') return res.end(JSON.stringify({ ok: true, outcome: 'attached' }));
     if (j.action === 'list') {
-      return res.end(JSON.stringify({ ok: true, scope: j.scope, noProfile: 0, cap: 25,
+      // Everything rests until the override asks for them anyway. This
+      // is the state Leo hit: a worklist of almost nothing. Only the
+      // resting case turns it on, so the earlier cases still capture.
+      if (ALL_RESTING && !j.ignoreRest) {
+        return res.end(JSON.stringify({ ok: true, scope: j.scope, noProfile: 220, resting: 16,
+          underCap: 17, eligible: 0, cap: 25, brands: [] }));
+      }
+      return res.end(JSON.stringify({ ok: true, scope: j.scope, noProfile: 220, resting: 16,
+        underCap: 17, eligible: 17, ignoredRest: true, cap: 25,
         brands: [{ id: 'b1', name: 'Yerba Madre', externalId: 'ULID1', suName: 'Yerba Madre', contacts: 2 }] }));
     }
     if (j.action === 'searchJob') return res.end(JSON.stringify({ ok: true, job: null }));
@@ -209,6 +219,31 @@ function chromeAt() {
   if (typed !== 'Red Bull') fail('the search box was opened but nothing was typed into it: ' + JSON.stringify(typed));
   await iconCtx.close();
   console.log('search behind an icon: opened and used');
+
+  // 5. everything resting: the panel says so AND offers to go through
+  //    them anyway, which is the only way Leo gets those brands walked
+  //    before the fortnight is up.
+  ALL_RESTING = true;
+  const restCtx = await browser.newContext();
+  const rc = await restCtx.newPage();
+  rc.on('pageerror', e => fail('page error (resting): ' + e.message));
+  await rc.addInitScript({ content: SCRIPT });
+  await rc.goto('http://127.0.0.1:4612/');
+  await rc.waitForTimeout(1200);
+  await rc.click('#sbpill');
+  await rc.waitForTimeout(300);
+  await rc.click('#sbmissing');
+  await rc.waitForTimeout(1500);
+  const restText = await rc.evaluate(() => document.body.innerText);
+  if (restText.indexOf('resting') === -1) fail('the panel did not say why there was nothing to sweep');
+  if (!(await rc.locator('#sbwake').count())) fail('no way to override the rest period');
+  if (restText.indexOf('220') === -1) fail('the panel did not say how many brands have no profile saved');
+  const before = calls.filter(c => c.action === 'list' && c.ignoreRest).length;
+  await rc.click('#sbwake');
+  await rc.waitForTimeout(1500);
+  if (calls.filter(c => c.action === 'list' && c.ignoreRest).length <= before) fail('the override did not reach the dashboard');
+  await restCtx.close();
+  console.log('resting brands: explained, and overridable');
 
   console.log('SU SMOKE OK');
   await browser.close();

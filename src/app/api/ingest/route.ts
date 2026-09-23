@@ -324,9 +324,16 @@ export async function POST(req: NextRequest) {
     // A brand whose last visit found nobody new rests for a fortnight
     // (see su-match's sweep log) — otherwise the emptiest-first order
     // opens the same handful of stalled brands every single run.
-    const sweepLog = scope === 'all' ? {} : await readSweepLog(prisma)
+    // Leo can override the rest: "nothing new last time" is a guess
+    // about SponsorUnited, not a fact, and when he has just added
+    // profile ids by hand he wants those brands walked now.
+    const ignoreRest = body.ignoreRest === true
+    const sweepLog = scope === 'all' || ignoreRest ? {} : await readSweepLog(prisma)
     const underCap = all.filter(x => x._count.contacts < CONTACT_CAP_PER_BRAND)
-    const resting = scope === 'all' ? 0 : underCap.filter(x => isResting(sweepLog[x.id])).length
+    // Reported even when overridden, so the panel can say what it just
+    // chose to include.
+    const restLog = scope === 'all' ? {} : await readSweepLog(prisma)
+    const resting = scope === 'all' ? 0 : underCap.filter(x => isResting(restLog[x.id])).length
     const brands = (scope === 'all'
       ? all
       : underCap.filter(x => !isResting(sweepLog[x.id]))
@@ -347,6 +354,11 @@ export async function POST(req: NextRequest) {
       noProfile,
       // Under the cap but skipped this run: nothing new last time.
       resting,
+      ignoredRest: ignoreRest,
+      // Under the cap and eligible, before the limit trimmed the list —
+      // so "2 of 240" can be explained rather than just shown.
+      eligible: scope === 'all' ? all.length : underCap.filter(x => ignoreRest || !isResting(restLog[x.id])).length,
+      underCap: underCap.length,
       cap: CONTACT_CAP_PER_BRAND,
       brands: brands.map(b => ({
         id: b.id,

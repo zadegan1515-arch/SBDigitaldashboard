@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — SponsorUnited Contact Capture
 // @namespace    sbagency.command-center
-// @version      3.6
+// @version      3.7
 // @description  Capture contacts from SponsorUnited into the SB Command Center, and find the profile ids of brands we cannot reach yet.
 // @match        https://pro.sponsorunited.com/*
 // @run-at       document-idle
@@ -335,22 +335,29 @@
     renderDonePanel(done);
   }
 
+  // opts.ignoreRest: walk the brands that are resting too. Resting is a
+  // guess about SponsorUnited, not a fact, and after adding profile ids
+  // by hand Leo wants those brands visited now rather than in a
+  // fortnight.
   function startSweep(scope, opts) {
     var auto = !!(opts && opts.auto);
+    var ignoreRest = !!(opts && opts.ignoreRest);
     renderJobPanel(null, 'Asking the dashboard what to capture…');
-    post({ token: token(), action: 'list', scope: scope, limit: 200 }).then(function (j) {
+    post({ token: token(), action: 'list', scope: scope, limit: 200, ignoreRest: ignoreRest }).then(function (j) {
       if (!j || !j.ok) throw new Error((j && j.error) || 'Could not get the list');
       if (!j.brands.length) {
         renderMessage('Nothing to sweep',
           scope !== 'all'
             ? (j.resting
-                ? 'Every reachable brand is either at 25 or resting (' + j.resting + ' had nobody new last time — they come back after two weeks).'
+                ? 'Every reachable brand is either at 25 or resting (' + j.resting + ' had nobody new last time, they come back after two weeks).'
                 : 'Every brand whose SponsorUnited profile we know is already at 25 people.')
             : 'No brands have a saved SponsorUnited profile yet.',
-          j.noProfile);
+          j.noProfile, j.resting && !ignoreRest ? { scope: scope, resting: j.resting } : null);
         return;
       }
-      var job = { scope: scope, items: j.brands, at: 0, results: [], noProfile: j.noProfile, resting: j.resting || 0, auto: auto, startedAt: Date.now() };
+      var job = { scope: scope, items: j.brands, at: 0, results: [], noProfile: j.noProfile,
+        resting: (ignoreRest ? 0 : j.resting) || 0, underCap: j.underCap || 0,
+        ignoredRest: ignoreRest, auto: auto, startedAt: Date.now() };
       saveJob(job);
       runStep();
     }).catch(function (e) { renderMessage('Could not start', e.message, 0); });
@@ -797,12 +804,22 @@
       '<span id="' + closeId + '" style="cursor:pointer;color:#999;font-size:16px">×</span></div>';
   }
 
-  function renderMessage(title, body, noProfile) {
+  // `wake`: {scope, resting} when a run was skipped only because those
+  // brands are resting. Resting is a guess, so Leo gets to overrule it
+  // from the same panel that told him about it.
+  function renderMessage(title, body, noProfile, wake) {
     var p = freshPanel();
     p.innerHTML = head(title, 'sbx') + '<div style="color:#555">' + esc(body) + '</div>' +
       (noProfile ? '<div style="color:#946200;font-size:11.5px;margin-top:8px">' + noProfile +
-        ' brand(s) have no saved SponsorUnited profile, so a sweep can\'t reach them. Capture one by hand, or paste its profile link on the brand\'s row in Needs contacts, and the sweep picks it up next time.</div>' : '');
+        ' brand(s) have no saved SponsorUnited profile, so a sweep can\'t reach them. Capture one by hand, or paste its profile link on the brand\'s row in Needs contacts, and the sweep picks it up next time.</div>' : '') +
+      (wake ? '<button id="sbwake" style="margin-top:10px;background:#111;color:#fff;border:0;border-radius:7px;padding:8px 12px;cursor:pointer;font-weight:600">Go through the ' +
+        wake.resting + ' resting ones anyway</button>' : '');
     p.querySelector('#sbx').onclick = closePanel;
+    if (wake) {
+      p.querySelector('#sbwake').onclick = function () {
+        startSweep(wake.scope, { ignoreRest: true });
+      };
+    }
   }
 
   function renderJobPanel(job, status) {
@@ -817,7 +834,12 @@
         '<div style="height:100%;width:' + pct + '%;background:#111"></div></div>' +
       '<div style="color:#555;font-size:12px;margin-bottom:10px">' + esc(status || '') + '</div>' +
       '<div style="color:#999;font-size:11px;margin-bottom:10px">Leave this tab open. It pauses between brands on purpose.' +
-        (job && job.resting ? ' ' + job.resting + ' brands are resting (nothing new last time).' : '') + '</div>' +
+        // Where the rest of the roster went. Without this, "1 of 2" on a
+        // 240-brand roster reads as the sweep being lazy.
+        (job && job.underCap ? ' ' + job.underCap + ' brands are under 25.' : '') +
+        (job && job.resting ? ' ' + job.resting + ' are resting (nothing new last time).' : '') +
+        (job && job.noProfile ? ' ' + job.noProfile + ' have no SponsorUnited profile saved, so they cannot be visited until the lookup finds one.' : '') +
+      '</div>' +
       '<button id="sbstop" style="background:#fff;color:#b00;border:1px solid #e0c4c4;border-radius:7px;padding:6px 11px;cursor:pointer;font-weight:600">Stop</button>';
     var stop = function () {
       // Stopping a run it started itself also means "not for a while" —
@@ -856,6 +878,7 @@
       '<button id="sbfill" style="width:100%;background:#111;color:#fff;border:0;border-radius:7px;padding:9px 12px;cursor:pointer;font-weight:600;margin-bottom:6px">Fill every brand to 25 people</button>' +
       '<div style="color:#999;font-size:11px;margin-bottom:10px">Looks up the brands we have no profile for, then walks every brand under 25 and tops it up. One click, runs on its own.</div>' +
       '<button id="sbmissing" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;margin-bottom:6px">Capture only (skip the lookup)</button>' +
+      '<button id="sbwakeall" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;margin-bottom:6px">Capture, including resting brands</button>' +
       '<button id="sball" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;margin-bottom:8px">Refresh every brand</button>' +
       '<button id="sbfind" style="width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:9px 12px;cursor:pointer;margin-bottom:6px;font-weight:600">Find profile ids for the rest</button>' +
       '<button id="sbtest" style="width:100%;background:#fff;color:#555;border:1px solid #eee;border-radius:7px;padding:7px 12px;cursor:pointer;margin-bottom:8px;font-size:12px">Test the search on this page</button>' +
@@ -872,6 +895,7 @@
     // whose first capture found two people.
     p.querySelector('#sbfill').onclick = function () { startMatchSweep({ thenFill: true }); };
     p.querySelector('#sbmissing').onclick = function () { startSweep('thin'); };
+    p.querySelector('#sbwakeall').onclick = function () { startSweep('thin', { ignoreRest: true }); };
     p.querySelector('#sball').onclick = function () { startSweep('all'); };
     p.querySelector('#sbfind').onclick = function () { startMatchSweep(); };
     p.querySelector('#sbtest').onclick = testSearch;
