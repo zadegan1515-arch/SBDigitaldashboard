@@ -143,6 +143,25 @@
   .chip.active{background:var(--accent-soft);color:#aac6ff;border-color:rgba(79,131,247,.5);font-weight:600}
   .chip .n{opacity:.6;margin-left:5px;font-variant-numeric:tabular-nums}
   .hint{font-size:12.5px;color:var(--ink-3);margin:-8px 0 14px}
+  /* Category runway meters. One series, so no legend — the heading says
+     what is plotted. Colour is a status read (running dry / fine) and
+     never carries it alone: every row states the days in words, which is
+     also what makes the amber/green pair legal for protan viewers, where
+     they sit at the bottom of the separation band. */
+  .rw-row{display:grid;grid-template-columns:minmax(96px,1.1fr) minmax(90px,2fr) auto;gap:14px;
+    align-items:center;padding:9px 10px;border-radius:9px;transition:background .12s ease}
+  .rw-row:hover{background:var(--surface-2)}
+  .rw-name{font-size:13px;color:var(--ink-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rw-sub{font-size:11px;color:var(--ink-3);margin-top:2px}
+  /* Track is the surface one step up; the fill is the only loud thing. */
+  .rw-track{position:relative;height:8px;border-radius:5px;background:var(--surface-2);overflow:visible}
+  .rw-fill{height:100%;border-radius:0 4px 4px 0;min-width:3px}
+  /* One day's worth, as a hairline — the threshold that decides whether
+     a category can carry a whole day on its own. */
+  .rw-mark{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--ink-3);opacity:.55}
+  .rw-val{font-size:12px;color:var(--ink-2);text-align:right;white-space:nowrap}
+  .rw-days{font-size:11px;color:var(--ink-3);display:flex;align-items:center;gap:5px;justify-content:flex-end;margin-top:2px}
+  .rw-dot{width:7px;height:7px;border-radius:50%;flex:none}
   .count-head{font-size:14px;font-weight:600;margin-bottom:2px}
   /* activations budget sheet — reads as a table, edits in place */
   .sheet{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
@@ -3855,29 +3874,43 @@ function renderRunway() {
   var rows = (SCHED.runway || []).filter(function (r) { return r.people > 0; });
   if (!rows.length) { box.innerHTML = ''; return; }
   var cap = (SCHED.pool && SCHED.pool.cap) || 20;
-  // Thinnest first — the ones about to run out are the ones worth
-  // capturing, and they are what the eye should land on.
+  var max = rows.reduce(function (m, r) { return Math.max(m, r.people); }, 0) || 1;
   var thin = rows.filter(function (r) { return r.people < cap; });
+
+  // Status, not decoration: the question a category answers is whether it
+  // can still carry a day. Each row says so in words as well, so the
+  // colour is never the only channel.
+  var band = function (r) {
+    if (r.people < cap) return { c: 'var(--bad)', t: 'under a day' };
+    if (r.days < 3) return { c: 'var(--warn)', t: r.days + (r.days === 1 ? ' day' : ' days') };
+    return { c: 'var(--good)', t: r.days + ' days' };
+  };
+
   box.innerHTML =
     '<details class="fold" style="margin-bottom:10px"' + (thin.length ? ' open' : '') + '>' +
-      '<summary class="section-head">How much each category has left ' +
-        '<span class="n">' + rows.length + '</span>' +
-        (thin.length ? ' <span style="color:#f0b86b;font-weight:600;font-size:12px">· ' + thin.length +
-          ' under a full day</span>' : '') + '</summary>' +
+      '<summary class="section-head">Category runway <span class="n">' + rows.length + '</span>' +
+        (thin.length
+          ? ' <span style="color:var(--bad);font-weight:600;font-size:12px">· ' + thin.length + ' under a day</span>'
+          : '') +
+      '</summary>' +
       '<div class="panel panel-pad">' +
-        '<div class="hint" style="margin:0 0 10px">A day sends ' + cap + ' people. Categories are listed ' +
-          'thinnest first — those are the ones to point the SponsorUnited sweep at.</div>' +
+        '<div class="hint" style="margin:0 0 6px">People left to work in each category. The hairline is one day\u2019s ' +
+          cap + '. Thinnest first \u2014 those are the ones to point the SponsorUnited sweep at.</div>' +
         rows.map(function (r) {
-          var short = r.people < cap;
-          return '<div style="display:flex;gap:10px;align-items:baseline;padding:5px 0;border-top:1px solid var(--border-soft)">' +
-            '<span style="flex:1;min-width:0;font-size:13px' + (short ? ';color:#f0b86b' : '') + '">' +
-              esc(CAT_NAMES[r.category] || r.category || 'Uncategorised') + '</span>' +
-            '<span style="font-size:12px;color:var(--ink-3)">' + r.brands +
-              (r.brands === 1 ? ' brand' : ' brands') + '</span>' +
-            '<span style="font-size:12px;color:var(--ink-3);min-width:78px;text-align:right">' + r.people +
-              (r.people === 1 ? ' person' : ' people') + '</span>' +
-            '<span style="font-size:12px;min-width:74px;text-align:right' + (short ? ';color:#f0b86b' : ';color:var(--ink-3)') + '">' +
-              (r.days >= 1 ? r.days + (r.days === 1 ? ' day' : ' days') : 'under a day') + '</span>' +
+          var b = band(r);
+          var pct = Math.max(2, Math.round((r.people / max) * 100));
+          var markPct = Math.round((cap / max) * 100);
+          var name = esc(CAT_NAMES[r.category] || r.category || 'Uncategorised');
+          return '<div class="rw-row" title="' + name + ' \u2014 ' + r.people + ' people across ' + r.brands +
+              (r.brands === 1 ? ' brand' : ' brands') + ', about ' + b.t + ' of sending at ' + cap + ' a day">' +
+            '<div><div class="rw-name">' + name + '</div>' +
+              '<div class="rw-sub">' + r.brands + (r.brands === 1 ? ' brand' : ' brands') + '</div></div>' +
+            '<div class="rw-track">' +
+              '<div class="rw-fill" style="width:' + pct + '%;background:' + b.c + '"></div>' +
+              (markPct < 99 ? '<div class="rw-mark" style="left:' + markPct + '%"></div>' : '') +
+            '</div>' +
+            '<div><div class="rw-val">' + r.people + (r.people === 1 ? ' person' : ' people') + '</div>' +
+              '<div class="rw-days"><span class="rw-dot" style="background:' + b.c + '"></span>' + esc(b.t) + '</div></div>' +
           '</div>';
         }).join('') +
       '</div></details>';
