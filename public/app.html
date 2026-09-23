@@ -1176,6 +1176,9 @@ function renderFillProgress() {
         (p.roomReachable
           ? '<div class="hint" style="margin:0 0 4px">' + p.roomReachable + ' more people are reachable right now without any lookup.</div>'
           : '') +
+        (p.resting
+          ? '<div class="hint" style="margin:0 0 4px">' + p.resting + (p.resting === 1 ? ' brand is' : ' brands are') + ' resting — SponsorUnited had nobody new for them last time, so the sweep skips them for ' + (p.restDays || 14) + ' days and gets on with the rest.</div>'
+          : '') +
         (p.nextUp.length
           ? '<div class="hint" style="margin:6px 0 0">Next up: ' + p.nextUp.map(function (b) {
               return '<a href="#" data-bopen="' + esc(b.id) + '" style="text-decoration:none">' + esc(b.name) + '</a> (' + b.contacts + ')';

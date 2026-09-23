@@ -22,6 +22,7 @@ import { readMisses, writeMisses, addMiss, type HeldRow } from '@/lib/brand-matc
 import {
   readSearch, writeSearch, readProposals, writeProposals, upsertProposal,
   readCaptureQueue, writeCaptureQueue, queueCapture, decideMatch,
+  readSweepLog, markSwept, isResting,
   type SuCandidate,
 } from '@/lib/su-match'
 
@@ -289,6 +290,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true }, { headers: cors })
   }
 
+  // action: "swept" — the script visited a brand and found nothing to
+  // send (no contacts listed). Recorded so the brand rests instead of
+  // being opened again on the next run; a visit that sends rows is
+  // recorded on the rows POST below.
+  if (body.action === 'swept') {
+    const brandId = String(body.brandId || '')
+    if (brandId) {
+      try { await markSwept(prisma, brandId, Number(body.seen) || 0, Number(body.added) || 0) } catch { /* non-fatal */ }
+    }
+    return NextResponse.json({ ok: true }, { headers: cors })
+  }
+
   if (body.action === 'list') {
     const scope = body.scope === 'all' ? 'all' : 'thin'
     const limit = Math.max(1, Math.min(500, Number(body.limit) || 100))
@@ -308,9 +321,15 @@ export async function POST(req: NextRequest) {
     // Emptiest first, so a sweep that stops at the limit has spent its
     // run on the brands with the least, not on topping up a brand that
     // already has twenty.
+    // A brand whose last visit found nobody new rests for a fortnight
+    // (see su-match's sweep log) — otherwise the emptiest-first order
+    // opens the same handful of stalled brands every single run.
+    const sweepLog = scope === 'all' ? {} : await readSweepLog(prisma)
+    const underCap = all.filter(x => x._count.contacts < CONTACT_CAP_PER_BRAND)
+    const resting = scope === 'all' ? 0 : underCap.filter(x => isResting(sweepLog[x.id])).length
     const brands = (scope === 'all'
       ? all
-      : all.filter(x => x._count.contacts < CONTACT_CAP_PER_BRAND)
+      : underCap.filter(x => !isResting(sweepLog[x.id]))
            .sort((x, y) => x._count.contacts - y._count.contacts || x.name.localeCompare(y.name))
     ).slice(0, limit)
     // How many are out of reach for a sweep, so the panel can say so
@@ -326,6 +345,8 @@ export async function POST(req: NextRequest) {
       ok: true,
       scope,
       noProfile,
+      // Under the cap but skipped this run: nothing new last time.
+      resting,
       cap: CONTACT_CAP_PER_BRAND,
       brands: brands.map(b => ({
         id: b.id,
@@ -474,6 +495,14 @@ export async function POST(req: NextRequest) {
     } catch (err: any) {
       result.errors.push(`miss log: ${err?.message ?? 'unknown error'}`)
     }
+  }
+
+  // A single-brand capture (the sweep and "Capture this brand" both send
+  // one brand per POST, named by its profile id) goes in the sweep log,
+  // so the next worklist knows whether this brand is worth opening again.
+  if (body.brandExternalId && touched.size === 1) {
+    const [brandId] = touched
+    try { await markSwept(prisma, brandId, rows.length, result.contactsCreated) } catch { /* non-fatal */ }
   }
 
   return NextResponse.json({ ok: true, ...result }, { headers: cors })

@@ -179,3 +179,47 @@ export function decideMatch(
   if (exact.length === 1) return { pick: exact[0], reason: 'exact' }
   return { pick: null, reason: 'ambiguous' }
 }
+
+// ---------------- the sweep log ----------------
+//
+// What the last capture of each brand found. The sweep's worklist is
+// "emptiest brand first", and a brand SponsorUnited has nothing new for
+// stays emptiest forever — so every run opened the same few brands,
+// added nobody, and never got to the rest. A brand that yielded nothing
+// new now rests for a fortnight before the sweep offers it again.
+// Stored as JSON in Setting["suSweepLog"], brandId -> last outcome.
+
+export const SWEEP_KEY = 'suSweepLog'
+export const SWEEP_REST_DAYS = 14
+const SWEEP_KEEP_DAYS = 60
+
+export type SweepMark = { at: string; seen: number; added: number }
+export type SweepLog = Record<string, SweepMark>
+
+export async function readSweepLog(db: SettingStore): Promise<SweepLog> {
+  const log = await readJson<SweepLog>(db, SWEEP_KEY, {})
+  return log && typeof log === 'object' && !Array.isArray(log) ? log : {}
+}
+
+export async function writeSweepLog(db: SettingStore, log: SweepLog) {
+  const cutoff = Date.now() - SWEEP_KEEP_DAYS * 864e5
+  const kept: SweepLog = {}
+  for (const [id, m] of Object.entries(log)) {
+    if (m && Date.parse(m.at) >= cutoff) kept[id] = m
+  }
+  await writeJson(db, SWEEP_KEY, kept)
+}
+
+export async function markSwept(db: SettingStore, brandId: string, seen: number, added: number) {
+  const log = await readSweepLog(db)
+  log[brandId] = { at: new Date().toISOString(), seen, added }
+  await writeSweepLog(db, log)
+}
+
+// Resting = the last visit found nobody new, and it was recent. A visit
+// that added someone never rests the brand: there may be more.
+export function isResting(mark: SweepMark | undefined, now = Date.now()): boolean {
+  if (!mark || mark.added > 0) return false
+  const at = Date.parse(mark.at)
+  return Number.isFinite(at) && now - at < SWEEP_REST_DAYS * 864e5
+}

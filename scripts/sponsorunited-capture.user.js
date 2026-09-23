@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — SponsorUnited Contact Capture
 // @namespace    sbagency.command-center
-// @version      3.5
+// @version      3.6
 // @description  Capture contacts from SponsorUnited into the SB Command Center, and find the profile ids of brands we cannot reach yet.
 // @match        https://pro.sponsorunited.com/*
 // @run-at       document-idle
@@ -205,6 +205,62 @@
     });
   }
 
+  // Their contacts tab shows a first screen and loads the rest as you
+  // scroll or click "load more". Reading just the first screen is why a
+  // brand with three people on file never got a fourth: the same three
+  // were the only ones on screen, every visit. Scroll and click until
+  // the list stops growing, then read it once.
+  var EXPAND_ROUNDS = 8;
+  var EXPAND_WAIT_MS = 1100;
+  function expandContacts(rows) {
+    return new Promise(function (resolve) {
+      var round = 0;
+      // Union across rounds, by name: a paginated list swaps page one out
+      // for page two, so reading only what is on screen at the end would
+      // lose the first page.
+      var seen = {};
+      var all = [];
+      var merge = function (list) {
+        var grew = false;
+        list.forEach(function (r) { if (!seen[r.name]) { seen[r.name] = 1; all.push(r); grew = true; } });
+        return grew;
+      };
+      merge(rows);
+      (function more() {
+        if (round++ >= EXPAND_ROUNDS) return resolve(all);
+        var clicked = false;
+        var btns = [].slice.call(document.querySelectorAll('button, [role="button"], a'));
+        for (var i = 0; i < btns.length; i++) {
+          var b = btns[i];
+          if ((pill && pill.contains(b)) || (panel && panel.contains(b))) continue;
+          if (b.disabled || b.getAttribute('aria-disabled') === 'true') continue;
+          var t = (b.textContent || '').replace(/\s+/g, ' ').trim();
+          if (!/^((load|show|see|view) (more|all)( contacts)?|more contacts|next)$/i.test(t)) continue;
+          var href = b.getAttribute('href');
+          if (href && !/^(#|javascript:)/.test(href)) continue;   // a real link would navigate away
+          if (!b.getBoundingClientRect().width) continue;
+          try { b.click(); clicked = true; } catch (e) {}
+          break;
+        }
+        // Scroll the page and any scrollable list to the bottom.
+        try { window.scrollTo(0, document.documentElement.scrollHeight); } catch (e) {}
+        var boxes = [].slice.call(document.querySelectorAll('div, main, section, ul'));
+        for (var k = 0; k < boxes.length; k++) {
+          var el = boxes[k];
+          if (el.scrollHeight > el.clientHeight + 40 && el.clientHeight > 150) {
+            var ov = getComputedStyle(el).overflowY;
+            if (ov === 'auto' || ov === 'scroll') el.scrollTop = el.scrollHeight;
+          }
+        }
+        setTimeout(function () {
+          var grew = merge(scrapeContacts());
+          if (grew || clicked) return more();
+          resolve(all);
+        }, EXPAND_WAIT_MS);
+      })();
+    });
+  }
+
   function runStep() {
     var job = loadJob();
     if (!job || job.paused) return;
@@ -224,11 +280,19 @@
 
     renderJobPanel(job, 'Reading ' + item.name + '…');
     setTimeout(function () {
-      waitForContacts().then(function (rows) {
+      waitForContacts().then(function (first) {
+        if (!first.length) return [];
+        renderJobPanel(job, 'Loading the whole list for ' + item.name + '…');
+        return expandContacts(first);
+      }).then(function (rows) {
         if (!rows.length) {
           job.results.push({ name: item.name, added: 0, note: 'no contacts listed' });
+          // Tell the dashboard, so this brand rests instead of being
+          // opened again next run.
+          post({ token: token(), action: 'swept', brandId: item.id, seen: 0, added: 0 }).catch(function () {});
           return next(job);
         }
+        renderJobPanel(job, 'Sending ' + rows.length + ' people from ' + item.name + '…');
         return post({
           token: token(),
           brandExternalId: item.externalId,
@@ -236,11 +300,14 @@
             return { brandName: item.suName || item.name, name: r.name, title: r.title, email: r.email, linkedinUrl: r.linkedinUrl, location: r.location };
           }),
         }).then(function (j) {
+          var added = (j && j.contactsCreated) || 0;
           job.results.push({
             name: item.name,
-            added: (j && j.contactsCreated) || 0,
+            added: added,
             note: !j || !j.ok ? ((j && j.error) || 'failed')
               : (j.brandsMissing && j.brandsMissing.length) ? 'held for review'
+              : (!added && j.capped) ? 'already holds 25'
+              : !added ? 'nothing new — all ' + rows.length + ' on file already'
               : '',
           });
           next(job);
@@ -276,12 +343,14 @@
       if (!j.brands.length) {
         renderMessage('Nothing to sweep',
           scope !== 'all'
-            ? 'Every brand whose SponsorUnited profile we know is already at 25 people.'
+            ? (j.resting
+                ? 'Every reachable brand is either at 25 or resting (' + j.resting + ' had nobody new last time — they come back after two weeks).'
+                : 'Every brand whose SponsorUnited profile we know is already at 25 people.')
             : 'No brands have a saved SponsorUnited profile yet.',
           j.noProfile);
         return;
       }
-      var job = { scope: scope, items: j.brands, at: 0, results: [], noProfile: j.noProfile, auto: auto, startedAt: Date.now() };
+      var job = { scope: scope, items: j.brands, at: 0, results: [], noProfile: j.noProfile, resting: j.resting || 0, auto: auto, startedAt: Date.now() };
       saveJob(job);
       runStep();
     }).catch(function (e) { renderMessage('Could not start', e.message, 0); });
@@ -743,7 +812,8 @@
       '<div style="height:6px;background:#eee;border-radius:99px;overflow:hidden;margin-bottom:8px">' +
         '<div style="height:100%;width:' + pct + '%;background:#111"></div></div>' +
       '<div style="color:#555;font-size:12px;margin-bottom:10px">' + esc(status || '') + '</div>' +
-      '<div style="color:#999;font-size:11px;margin-bottom:10px">Leave this tab open. It pauses between brands on purpose.</div>' +
+      '<div style="color:#999;font-size:11px;margin-bottom:10px">Leave this tab open. It pauses between brands on purpose.' +
+        (job && job.resting ? ' ' + job.resting + ' brands are resting (nothing new last time).' : '') + '</div>' +
       '<button id="sbstop" style="background:#fff;color:#b00;border:1px solid #e0c4c4;border-radius:7px;padding:6px 11px;cursor:pointer;font-weight:600">Stop</button>';
     var stop = function () {
       // Stopping a run it started itself also means "not for a while" —
@@ -767,7 +837,7 @@
             (problems.length > 20 ? '<br>…and ' + (problems.length - 20) + ' more' : '') +
           '</div>'
         : '<div style="font-size:11.5px;color:#137333">No problems.</div>') +
-      '<div style="color:#999;font-size:11px;margin-top:10px">Anything "held for review" is waiting in Brands → Needs contacts. A brand already holding 25 people is left as it is.</div>';
+      '<div style="color:#999;font-size:11px;margin-top:10px">Anything "held for review" is waiting in Brands → Needs contacts. A brand already holding 25 people is left as it is. A brand with nothing new rests for two weeks before the sweep opens it again.</div>';
     p.querySelector('#sbx').onclick = closePanel;
   }
 

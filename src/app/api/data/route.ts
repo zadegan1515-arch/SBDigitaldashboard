@@ -14,6 +14,7 @@ import { Prisma, PrismaClient, TargetStatus } from '@prisma/client'
 import {
   readSearch, writeSearch, readProposals, writeProposals,
   readCaptureQueue, writeCaptureQueue, queueCapture,
+  readSweepLog, isResting, SWEEP_REST_DAYS,
 } from '@/lib/su-match'
 import { getServerSession } from 'next-auth'
 import Anthropic from '@anthropic-ai/sdk'
@@ -3598,7 +3599,7 @@ const handlers: Record<string, Handler> = {
     const now = Date.now()
     const dayAgo = new Date(now - 864e5)
     const weekAgo = new Date(now - 7 * 864e5)
-    const [brands, addedToday, addedWeek, lastContact] = await Promise.all([
+    const [brands, addedToday, addedWeek, lastContact, sweepLog] = await Promise.all([
       prisma.brand.findMany({
         where: { passedAt: null, doNotEmail: false },
         select: { id: true, name: true, externalId: true, _count: { select: { contacts: true } } },
@@ -3610,6 +3611,7 @@ const handlers: Record<string, Handler> = {
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true, brand: { select: { name: true } } },
       }),
+      readSweepLog(prisma),
     ])
     const atCap = brands.filter(b => b._count.contacts >= CAP)
     const under = brands.filter(b => b._count.contacts < CAP)
@@ -3622,7 +3624,12 @@ const handlers: Record<string, Handler> = {
     // How many people the fill would add if it finished everything it
     // can currently reach.
     const roomReachable = under.filter(b => b.externalId).reduce((n, b) => n + (CAP - b._count.contacts), 0)
+    // Reachable, under the cap, but the last visit found nobody new —
+    // the sweep leaves these alone for a fortnight and moves on.
+    const resting = under.filter(b => b.externalId && isResting(sweepLog[b.id]))
     return {
+      resting: resting.length,
+      restDays: SWEEP_REST_DAYS,
       cap: CAP,
       brands: brands.length,
       atCap: atCap.length,
@@ -3636,7 +3643,7 @@ const handlers: Record<string, Handler> = {
       lastAt: lastContact?.createdAt ?? null,
       lastBrand: lastContact?.brand?.name ?? null,
       // The emptiest reachable brands — what the sweep would do next.
-      nextUp: under.filter(b => b.externalId)
+      nextUp: under.filter(b => b.externalId && !isResting(sweepLog[b.id]))
         .sort((a, b) => a._count.contacts - b._count.contacts)
         .slice(0, 6)
         .map(b => ({ id: b.id, name: b.name, contacts: b._count.contacts })),
