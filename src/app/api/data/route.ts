@@ -2965,9 +2965,39 @@ const handlers: Record<string, Handler> = {
       return { date: key, people: sentByDay[key] ?? [] }
     }).filter(d => d.people.length)
 
+    // How long each category can keep feeding days before it runs dry.
+    // The Schedule could say a day was short but never why, and never
+    // which category to go capture more of — so the answer was always
+    // "run the sweep and hope". Two sources of people: those already
+    // queued and waiting in the pool, and the spare people on brands
+    // that would accept another thread (addable already applies the same
+    // rules the queue does, so this cannot promise people the queue
+    // would refuse).
+    const runwayBy = new Map<string, { brands: Set<string>; people: number }>()
+    const bump = (cat: string | null, brandId: string, people: number) => {
+      const key = cat ?? 'uncategorised'
+      const row = runwayBy.get(key) ?? { brands: new Set<string>(), people: 0 }
+      row.brands.add(brandId)
+      row.people += people
+      runwayBy.set(key, row)
+    }
+    for (const b of byBrand.values()) bump(b.category, b.id, b.people)
+    for (const b of addable) bump(b.category, b.id, b.spare)
+
+    const runway = [...runwayBy.entries()]
+      .map(([category, v]) => ({
+        category: category === 'uncategorised' ? null : category,
+        brands: v.brands.size,
+        people: v.people,
+        // Whole sending days this category could fill on its own.
+        days: Math.floor(v.people / DAILY_SEND_LIMIT),
+      }))
+      .sort((a, b) => a.people - b.people)
+
     return {
       plan, brands, today: localDayKey(), days, past,
       pool: { total: totalPool, cap: DAILY_SEND_LIMIT },
+      runway,
       bench: bench.slice(0, 120),
     }
   },
