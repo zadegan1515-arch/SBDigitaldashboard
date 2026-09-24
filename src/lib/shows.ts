@@ -3,11 +3,11 @@
 // The sellable show list — what the Shows tab and the public sponsor
 // page (/sponsor.html) both read.
 //
-// Source of truth is the team's "SB AGENCY - FULL BUILT CRM" Google
-// Sheet, read-only through the Drive grant. A row counts as a confirmed
-// show only when it has ALL of: a real date, an artist, and a school —
-// and a status that means booked (Offer Confirmed / Signed / Show
-// Confirmed). That rule is what keeps half-filled "confirmed" leads out.
+// Source of truth is the CONTRACTING tab of the team's "SB AGENCY - FULL
+// BUILT CRM" Google Sheet, read-only through the Drive grant. A row counts
+// as a confirmed show only when it has ALL of: a real date, an artist, and
+// a school — and a status that means booked (Offer Confirmed / Signed /
+// Show Confirmed). That rule is what keeps half-filled "confirmed" leads out.
 //
 // Past shows come from the website archive (src/data/show-archive.json,
 // the same 450+ shows the Past Shows map on sboyagency.com uses).
@@ -22,20 +22,18 @@ import ARCHIVE from '@/data/show-archive.json'
 const prisma = new PrismaClient()
 
 export const CRM_SHEET_ID = process.env.CRM_SHEET_ID || '1MFMIiI65SBKb51mqtHqT72S5mjUJf4p0jVf9QWovRyo'
-// The tab Leo pointed at (…#gid=1397302046). Other tabs with the same
-// table shape are still read, but this one wins when a show is in both.
-const PREFERRED_GID = Number(process.env.CRM_SHEET_GID || 1397302046)
-// A tab the team has marked old ("OLD ACCOUNTING - DO NOT TOUCH") no longer
-// gets edits: its Sep 24 Chainsmokers row still says Sigma Nu, not Theta
-// Chi. It still lists the shows only it has, but its copy of a show never
-// beats another tab's, even when it is the pointed-at tab.
-const OLD_TAB = /^\s*old\b/i
+// Shows come from this one tab and nowhere else (Leo, Sep 24: "only use
+// what is in this new tab"). "OLD ACCOUNTING - DO NOT TOUCH" went stale —
+// declined shows still marked Signed, old dates, old chapters — and the
+// rep and school tabs aren't show lists.
+export const DEALS_TAB = 'CONTRACTING'
+const isDealsTab = (title: string) => String(title || '').trim().toUpperCase() === DEALS_TAB
 const CACHE_KEY = 'crmShows'
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000
 // Bumped when parseSheet changes what it lists: a cache written by an older
 // parser counts as stale, so the next read rebuilds it from the sheet (the
 // old list stays up if the sheet can't be read).
-const PARSER_VERSION = 3
+const PARSER_VERSION = 4
 
 export type Show = {
   id: string
@@ -271,18 +269,9 @@ export type SheetParse = { shows: Show[]; tables: number; rowsSeen: number; reje
 
 export function parseSheet(tabs: { title: string; gid?: number; rows: string[][] }[], overrides: Record<string, string> = {}): SheetParse {
   const byKey = new Map<string, Show>()
-  const fromPreferred = new Set<string>()
-  // A show copied into two tabs can have its chapter written differently
-  // ("…, Theta Chi, …" in one, "…, Sigma Nu, …" in the other), which gives
-  // it a second id. Across tabs, same school + date + artist is the same
-  // show, so the later copy competes for the first copy's slot.
-  const firstCopy = new Map<string, { key: string; tab: string }>()
   const rejected: SheetParse['rejected'] = []
   let tables = 0, rowsSeen = 0
-  const rank = (t: { title: string; gid?: number }) => OLD_TAB.test(t.title) ? 0 : t.gid === PREFERRED_GID ? 2 : 1
-  const ordered = [...tabs].sort((a, b) => rank(b) - rank(a))
-  for (const tab of ordered) {
-    const old = rank(tab) === 0, preferred = rank(tab) === 2
+  for (const tab of tabs.filter(t => isDealsTab(t.title))) {
     for (let r = 0; r < tab.rows.length; r++) {
       const hdr = tab.rows[r]
       if (!hdr || !HEADER_HINT(hdr)) continue
@@ -313,12 +302,14 @@ export function parseSheet(tabs: { title: string; gid?: number; rows: string[][]
           school, schoolName: info.name, city: info.city, state: info.state, chapter,
           status, rep: get(cRep), source: 'sheet',
         }
-        const twin = firstCopy.get(sameShow(show))
-        const key = twin && twin.tab !== tab.title ? twin.key : id
-        if (!twin) firstCopy.set(sameShow(show), { key: id, tab: tab.title })
-        const prev = byKey.get(key)
-        // the preferred tab always wins and an old tab never does; otherwise keep the copy that has the type column
-        if (!prev || (!fromPreferred.has(key) && !old && (preferred || (!prev.type && show.type)))) { byKey.set(key, show); if (preferred) fromPreferred.add(key) }
+        const prev = byKey.get(id)
+        if (!prev) { byKey.set(id, show); continue }
+        // Same school + chapter + date is one party. A second act on the
+        // bill joins that listing instead of vanishing (Leo: "use
+        // everything in that tab").
+        if (!prev.type) prev.type = type
+        if (!prev.artist.toLowerCase().includes(artist.toLowerCase())) prev.artist += ' + ' + artist
+        prev.genre = genreFor(prev.artist, prev.type, overrides)
       }
     }
   }
@@ -365,9 +356,9 @@ export async function setGenreOverride(artist: string, genre: string) {
 export async function refreshShows(): Promise<{ ok: boolean; at: string; count: number; tables: number; rowsSeen: number; rejected: SheetParse['rejected']; error?: string }> {
   const st = await driveStatus()
   if (!st.connected) return { ok: false, at: new Date().toISOString(), count: 0, tables: 0, rowsSeen: 0, rejected: [], error: 'Google Drive is not connected (Activations → Connect Google Drive, then approve the read-only Sheets permission).' }
-  const tabs = await sheetsReadAll(CRM_SHEET_ID)
+  const tabs = await sheetsReadAll(CRM_SHEET_ID, isDealsTab)
   const parsed = parseSheet(tabs, await genreOverrides())
-  if (parsed.tables === 0) return { ok: false, at: new Date().toISOString(), count: 0, tables: 0, rowsSeen: 0, rejected: [], error: 'No deals table found in the sheet (looked for a header with Show Date · Status · School · Confirmed Artist).' }
+  if (parsed.tables === 0) return { ok: false, at: new Date().toISOString(), count: 0, tables: 0, rowsSeen: 0, rejected: [], error: `No deals table found in the ${DEALS_TAB} tab (looked for a tab with that name and a header with Show Date · Status · School · Confirmed Artist).` }
   const at = new Date().toISOString()
   const value = JSON.stringify({ v: PARSER_VERSION, at, shows: parsed.shows, rejected: parsed.rejected.slice(0, 200), tables: parsed.tables, rowsSeen: parsed.rowsSeen })
   await prisma.setting.upsert({ where: { key: CACHE_KEY }, create: { key: CACHE_KEY, value }, update: { value } })

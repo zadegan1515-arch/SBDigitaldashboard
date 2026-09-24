@@ -391,15 +391,16 @@ async function driveAccessToken(): Promise<string> {
   return j.access_token
 }
 
-// Read every tab of a spreadsheet as raw cell values. Used for the CRM
+// Read the tabs of a spreadsheet as raw cell values — every tab, or only
+// those `only` accepts (one request per tab read). Used for the CRM
 // sheet; needs the spreadsheets.readonly scope (reconnect Drive once).
-export async function sheetsReadAll(spreadsheetId: string): Promise<{ title: string; gid: number; rows: string[][] }[]> {
+export async function sheetsReadAll(spreadsheetId: string, only?: (title: string) => boolean): Promise<{ title: string; gid: number; rows: string[][] }[]> {
   const token = await driveAccessToken()
   const meta = await gapi(token, `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties(title,sheetId,gridProperties)`)
   const out: { title: string; gid: number; rows: string[][] }[] = []
   for (const sh of meta.sheets || []) {
     const title = sh.properties?.title
-    if (!title) continue
+    if (!title || (only && !only(title))) continue
     const v = await gapi(token, `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent("'" + title.replace(/'/g, "''") + "'")}?valueRenderOption=FORMATTED_VALUE`)
     out.push({ title, gid: Number(sh.properties?.sheetId ?? -1), rows: (v.values || []) as string[][] })
   }

@@ -78,13 +78,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   script expands the contacts list (scroll / "load more") before reading it.
 - `src/lib/email.ts` — outreach: drafting, cap/ramp (`roomToday`), sending via Gmail API, replies, warmup stats, signature (hosted images, LinkedIn/IG as text links).
 - `src/lib/google.ts` — OAuth (gmail / drive / ops grants), Gmail read+send, Drive/Sheets/Docs create.
-- `src/lib/shows.ts` — **the show list** for the Shows tab and the public sponsor page. Reads the
-  "SB AGENCY - FULL BUILT CRM" Google Sheet (read-only, tab gid 1397302046 preferred) via the Drive
-  grant; a row is a confirmed show only with a booked status **and** date **and** artist **and** school.
-  Deals live in two tabs: CONTRACTING (current) and "OLD ACCOUNTING - DO NOT TOUCH" (stale; a few
-  shows exist only there). A show in both lists once (same school + date + artist, chapter
-  ignored), and a tab whose name starts with OLD never beats another tab's copy (`OLD_TAB`).
-  Bump `PARSER_VERSION` when the parse changes so the cache rebuilds on the next read.
+- `src/lib/shows.ts` — **the show list** for the Shows tab and the public sponsor page. Reads **only
+  the CONTRACTING tab** (`DEALS_TAB`) of the "SB AGENCY - FULL BUILT CRM" Google Sheet (read-only)
+  via the Drive grant — Leo's call; "OLD ACCOUNTING - DO NOT TOUCH" went stale and every other tab
+  is ignored. A row is a confirmed show only with a booked status **and** date **and** artist **and**
+  school (Declined Pivot never shows). Two acts at the same school + chapter + date are one listing
+  ("A + B"). Bump `PARSER_VERSION` when the parse changes so the cache rebuilds on the next read.
   Past shows from `src/data/show-archive.json`. School abbreviations → name/city/state in `SCHOOL_TABLE`;
   genre auto-tags in `GENRE_ARTISTS` (overrides in Setting `artistGenres`). Cache in Setting `crmShows`
   (6 h; daily cron; ↻ Sheet button). Show ids: `sh_<hash>` / `ar_<hash>`. sb-crm's DB is no longer the source.
@@ -132,7 +131,7 @@ AMBASSADOR_PLATFORM_URL · AMBASSADOR_PLATFORM_TOKEN (= platform INTEGRATION_TOK
 optional: SIGNATURE_LINKEDIN_URL, SIGNATURE_INSTAGRAM_URL, SIGNATURE_EMBED=1, SIGNATURE_ICONS=1, OPS_BACKFILL_DAYS,
 SPONSOR_HOST (brand page host), SPONSOR_REQUEST_TO (who gets sponsor requests), SPONSOR_GATE=1
 (turn the Show Board access-code gate on), SPONSOR_MASTER_CODE (team code that always opens the
-board), CRM_SHEET_ID, CRM_SHEET_GID.
+board), CRM_SHEET_ID.
 
 ## Conventions
 - **Outreach runs Tuesday / Wednesday / Thursday only** — no Mondays, no Fridays, no weekends.
