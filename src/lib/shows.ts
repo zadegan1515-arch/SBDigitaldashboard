@@ -27,6 +27,10 @@ export const CRM_SHEET_ID = process.env.CRM_SHEET_ID || '1MFMIiI65SBKb51mqtHqT72
 const PREFERRED_GID = Number(process.env.CRM_SHEET_GID || 1397302046)
 const CACHE_KEY = 'crmShows'
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000
+// Bumped when parseSheet changes what it lists: a cache written by an older
+// parser counts as stale, so the next read rebuilds it from the sheet (the
+// old list stays up if the sheet can't be read).
+const PARSER_VERSION = 2
 
 export type Show = {
   id: string
@@ -241,6 +245,10 @@ export function showId(school: string, chapter: string, date: string, prefix = '
   const key = [school, chapter, date].map(x => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()).join('|')
   return prefix + '_' + createHash('sha1').update(key).digest('hex').slice(0, 12)
 }
+// One show however it was filed: school + date + artist.
+function sameShow(s: { schoolName: string; date: string; artist: string }) {
+  return [s.schoolName, s.date, s.artist].join('|').toLowerCase().replace(/[^a-z0-9|]+/g, '')
+}
 
 // ---- the sheet ---------------------------------------------------------------
 const BOOKED = /^(offer confirmed|signed|show confirmed|confirmed|completed|contract signed)$/i
@@ -259,6 +267,11 @@ export type SheetParse = { shows: Show[]; tables: number; rowsSeen: number; reje
 export function parseSheet(tabs: { title: string; gid?: number; rows: string[][] }[], overrides: Record<string, string> = {}): SheetParse {
   const byKey = new Map<string, Show>()
   const fromPreferred = new Set<string>()
+  // A show copied into two tabs can have its chapter written differently
+  // ("…, Theta Chi, …" in one, "…, Sigma Nu, …" in the other), which gives
+  // it a second id. Across tabs, same school + date + artist is the same
+  // show, so the later copy competes for the first copy's slot.
+  const firstCopy = new Map<string, { key: string; tab: string }>()
   const rejected: SheetParse['rejected'] = []
   let tables = 0, rowsSeen = 0
   const ordered = [...tabs].sort((a, b) => Number(b.gid === PREFERRED_GID) - Number(a.gid === PREFERRED_GID))
@@ -294,9 +307,12 @@ export function parseSheet(tabs: { title: string; gid?: number; rows: string[][]
           school, schoolName: info.name, city: info.city, state: info.state, chapter,
           status, rep: get(cRep), source: 'sheet',
         }
-        const prev = byKey.get(id)
+        const twin = firstCopy.get(sameShow(show))
+        const key = twin && twin.tab !== tab.title ? twin.key : id
+        if (!twin) firstCopy.set(sameShow(show), { key: id, tab: tab.title })
+        const prev = byKey.get(key)
         // the preferred tab always wins; otherwise keep the copy that has the type column
-        if (!prev || (!fromPreferred.has(id) && (preferred || (!prev.type && show.type)))) { byKey.set(id, show); if (preferred) fromPreferred.add(id) }
+        if (!prev || (!fromPreferred.has(key) && (preferred || (!prev.type && show.type)))) { byKey.set(key, show); if (preferred) fromPreferred.add(key) }
       }
     }
   }
@@ -347,7 +363,7 @@ export async function refreshShows(): Promise<{ ok: boolean; at: string; count: 
   const parsed = parseSheet(tabs, await genreOverrides())
   if (parsed.tables === 0) return { ok: false, at: new Date().toISOString(), count: 0, tables: 0, rowsSeen: 0, rejected: [], error: 'No deals table found in the sheet (looked for a header with Show Date · Status · School · Confirmed Artist).' }
   const at = new Date().toISOString()
-  const value = JSON.stringify({ at, shows: parsed.shows, rejected: parsed.rejected.slice(0, 200), tables: parsed.tables, rowsSeen: parsed.rowsSeen })
+  const value = JSON.stringify({ v: PARSER_VERSION, at, shows: parsed.shows, rejected: parsed.rejected.slice(0, 200), tables: parsed.tables, rowsSeen: parsed.rowsSeen })
   await prisma.setting.upsert({ where: { key: CACHE_KEY }, create: { key: CACHE_KEY, value }, update: { value } })
   return { ok: true, at, count: parsed.shows.length, tables: parsed.tables, rowsSeen: parsed.rowsSeen, rejected: parsed.rejected }
 }
@@ -355,7 +371,7 @@ export async function refreshShows(): Promise<{ ok: boolean; at: string; count: 
 export async function cachedShows(): Promise<{ at: string | null; shows: Show[]; rejected: SheetParse['rejected']; stale: boolean }> {
   let cache: any = null
   try { cache = JSON.parse((await getSetting(CACHE_KEY)) || 'null') } catch { cache = null }
-  const stale = !cache || Date.now() - new Date(cache.at).getTime() > CACHE_TTL_MS
+  const stale = !cache || cache.v !== PARSER_VERSION || Date.now() - new Date(cache.at).getTime() > CACHE_TTL_MS
   if (stale) {
     // refresh in the request when we can; fall back to whatever we had
     try { const r = await refreshShows(); if (r.ok) cache = JSON.parse((await getSetting(CACHE_KEY)) || 'null') } catch { /* keep old */ }
@@ -372,9 +388,8 @@ export async function allShows(): Promise<{ at: string | null; shows: Show[]; up
   const [c, overrides] = await Promise.all([cachedShows(), genreOverrides()])
   const seen = new Set<string>()
   const out: Show[] = []
-  const key = (s: Show) => [s.schoolName, s.date, s.artist].join('|').toLowerCase().replace(/[^a-z0-9|]+/g, '')
-  for (const s of c.shows) { seen.add(key(s)); out.push({ ...s, genre: genreFor(s.artist, s.type, overrides) }) }
-  for (const s of archiveShows(overrides)) { const k = key(s); if (seen.has(k)) continue; seen.add(k); out.push(s) }
+  for (const s of c.shows) { seen.add(sameShow(s)); out.push({ ...s, genre: genreFor(s.artist, s.type, overrides) }) }
+  for (const s of archiveShows(overrides)) { const k = sameShow(s); if (seen.has(k)) continue; seen.add(k); out.push(s) }
   out.sort((a, b) => a.date.localeCompare(b.date))
   return { at: c.at, shows: out, upcoming: out.filter(s => !s.past).length, past: out.filter(s => s.past).length }
 }
