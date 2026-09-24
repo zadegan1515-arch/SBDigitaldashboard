@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — SponsorUnited Contact Capture
 // @namespace    sbagency.command-center
-// @version      4.1
+// @version      4.3
 // @description  Capture contacts from SponsorUnited into the SB Command Center, and find the profile ids of brands we cannot reach yet.
 // @match        https://pro.sponsorunited.com/*
 // @run-at       document-idle
@@ -482,52 +482,101 @@
     el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'e' }));
   }
 
-  // Every profile link currently on the page, newest render wins.
-  // Deduped by id, because a result often links its logo and its name.
-  function readResultLinks() {
-    var seen = {};
-    var out = [];
-    var links = [].slice.call(document.querySelectorAll('a[href*="/profile/"]'));
-    for (var i = 0; i < links.length; i++) {
-      var href = links[i].getAttribute('href') || '';
-      var m = href.match(/\/profile\/([^\/?#]+)/);
-      if (!m) continue;
-      var id = m[1];
-      var label = (links[i].textContent || '').replace(/\s+/g, ' ').trim();
-      if (!label) {
-        // A logo link: borrow the name from its row.
-        var row = links[i].closest('li, tr, [role="option"], div');
-        label = row ? (row.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80) : '';
-      }
-      if (!label) continue;
-      if (seen[id]) continue;
-      seen[id] = 1;
-      out.push({ externalId: id, name: label });
-      if (out.length >= 8) break;
-    }
-    return out;
+  function profileLinks() {
+    return [].slice.call(document.querySelectorAll('a[href*="/profile/"]'));
+  }
+  function profileIdOf(a) {
+    var m = (a.getAttribute('href') || '').match(/\/profile\/([^\/?#]+)/);
+    return m ? m[1] : null;
   }
 
-  // Type a name and wait for the results to change. Resolves with
-  // whatever was on screen when it settled — judging them is the
-  // server's job, not this script's.
+  // The tag their dropdown puts on each result ("Brand", "Property").
+  var KIND_RX = /^(brand|property|agency|team|league|venue|event|person|people|contact|company)$/i;
+  function textLines(el) {
+    return String((el && el.innerText) || '').split('\n')
+      .map(function (s) { return s.replace(/\s+/g, ' ').trim(); })
+      .filter(Boolean);
+  }
+  // The row a result link sits in: a list item if there is one, else the
+  // widest box around the link that still points at this profile only
+  // (a row often links its logo and its name separately).
+  function rowOf(a) {
+    var li = a.closest('li, tr, [role="option"]');
+    if (li) return li;
+    var id = profileIdOf(a), el = a;
+    while (el.parentElement && el.parentElement !== document.body) {
+      var inside = el.parentElement.querySelectorAll('a[href*="/profile/"]'), other = false;
+      for (var i = 0; i < inside.length && !other; i++) other = profileIdOf(inside[i]) !== id;
+      if (other) break;
+      el = el.parentElement;
+    }
+    return el;
+  }
+  // One result: the profile id from its link, the name — first line only,
+  // because the row also carries the category ("Beverage - Non-Alcoholic
+  // Tea") — and the Brand / Property tag when the row shows one.
+  function readResult(a) {
+    var id = profileIdOf(a);
+    if (!id) return null;
+    var row = rowOf(a), around = textLines(row), own = textLines(a);
+    var name = (own.length ? own : around).filter(function (l) { return !KIND_RX.test(l); })[0] || '';
+    var kind = '';
+    for (var i = 0; i < around.length; i++) if (KIND_RX.test(around[i])) { kind = around[i].toLowerCase(); break; }
+    return name ? { externalId: id, name: name.slice(0, 120), kind: kind } : null;
+  }
+
+  // Result links that appeared after typing: a link element that wasn't
+  // on the page before, or one their list re-used for a new profile.
+  // Deduped by id. Brands only — the same search also returns teams,
+  // venues and agencies, and those are never the answer for a brand.
+  function freshResults(wasThere) {
+    var seen = {}, out = [];
+    var links = profileLinks();
+    for (var i = 0; i < links.length; i++) {
+      var a = links[i];
+      if (wasThere(a)) continue;
+      var box = a.getBoundingClientRect();
+      if (!box.width || !box.height) continue;
+      var r = readResult(a);
+      if (!r || seen[r.externalId]) continue;
+      seen[r.externalId] = 1;
+      out.push(r);
+    }
+    return out.filter(function (r) { return !r.kind || r.kind === 'brand'; }).slice(0, 8);
+  }
+
+  // Type a name and read what their dropdown shows. Only links that came
+  // with the search count: the page has profile links of its own (the
+  // dashboard lists eight brands), and reading those as results gave
+  // every brand the same eight "matches" and attached nothing. Judging
+  // the results is the server's job, not this script's.
   function runSearch(query) {
     return new Promise(function (resolve) {
       var box = findSearchInput();
       if (!box) return resolve({ error: 'Could not find the search box on this page' });
-      var before = readResultLinks().map(function (r) { return r.externalId; }).join(',');
       box.focus();
-      typeInto(box, query);
-      var started = Date.now();
-      setTimeout(function look() {
-        var now = readResultLinks();
-        var key = now.map(function (r) { return r.externalId; }).join(',');
-        if (now.length && key !== before) return resolve({ results: now });
-        if (Date.now() - started > SEARCH_WAIT_MS) {
-          return resolve({ results: now, note: now.length ? 'unchanged' : 'no results' });
-        }
-        setTimeout(look, 300);
-      }, SEARCH_SETTLE_MS);
+      typeInto(box, '');                       // close the last search's dropdown first
+      setTimeout(function () {
+        // Every profile link on the page now, and where it points.
+        var prior = profileLinks().map(function (a) { return { el: a, href: a.getAttribute('href') }; });
+        var wasThere = function (a) {
+          for (var i = 0; i < prior.length; i++) if (prior[i].el === a) return prior[i].href === a.getAttribute('href');
+          return false;
+        };
+        typeInto(box, query);
+        var started = Date.now(), lastKey = null;
+        setTimeout(function look() {
+          var now = freshResults(wasThere);
+          var key = now.map(function (r) { return r.externalId; }).join(',');
+          // Settled = the same results on two looks in a row.
+          if (now.length && key === lastKey) return resolve({ results: now });
+          lastKey = key;
+          if (Date.now() - started > SEARCH_WAIT_MS) {
+            return resolve({ results: now, note: now.length ? 'unsettled' : 'no results' });
+          }
+          setTimeout(look, 300);
+        }, SEARCH_SETTLE_MS);
+      }, 400);
     });
   }
 
@@ -585,7 +634,7 @@
         renderMessage('Nothing to look up', 'Every brand already has a SponsorUnited profile saved.', 0);
         return;
       }
-      var job = { items: j.items, at: 0, attached: 0, parked: 0, failed: 0, fill: thenFill, auto: auto, startedAt: Date.now() };
+      var job = { items: j.items, at: 0, attached: 0, parked: 0, missing: 0, failed: 0, fill: thenFill, auto: auto, startedAt: Date.now() };
       saveMatch(job);
       matchStep();
     }).catch(function (e) { saveMatch(null); renderMessage('Could not start', e.message, 0); });
@@ -609,7 +658,7 @@
         return;
       }
       renderMessage('Finished looking up profiles',
-        job.attached + ' attached · ' + job.parked + ' need your eye · ' + job.failed + ' failed. ' +
+        job.attached + ' attached · ' + job.parked + ' need your eye · ' + (job.missing || 0) + ' not found · ' + job.failed + ' failed. ' +
         'The ones needing your eye are in the dashboard under Brands.', 0);
       return;
     }
@@ -623,9 +672,13 @@
         token: token(), action: 'matched',
         brandId: item.brandId, candidates: r.results || [],
       }).then(function (res) {
+        // Only 'ambiguous' leaves a question on the dashboard. 'none'
+        // (no results, or only pages Leo turned down) parks nothing, so
+        // it is counted apart instead of inflating "for review".
         if (res && res.outcome === 'attached') job.attached += 1;
-        else if (res && res.ok) job.parked += 1;
-        else job.failed += 1;
+        else if (res && res.outcome === 'ambiguous') job.parked += 1;
+        else if (res && res.outcome === 'none') job.missing = (job.missing || 0) + 1;
+        else if (!res || !res.ok) job.failed += 1;
         nextMatch(job);
       });
     }).catch(function () { job.failed += 1; nextMatch(job); });
@@ -645,7 +698,7 @@
       '<div style="font-size:12.5px;margin-bottom:6px">' + esc(note || '') + '</div>' +
       (job
         ? '<div style="font-size:11.5px;color:#555">' + at + ' of ' + total + ' · ' +
-            job.attached + ' attached · ' + job.parked + ' for review</div>' +
+            job.attached + ' attached · ' + job.parked + ' for review · ' + (job.missing || 0) + ' not found</div>' +
           '<button id="sbmstop" style="width:100%;margin-top:10px;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:8px 12px;cursor:pointer">Stop</button>'
         : '');
     var x = p.querySelector('#sbmx');
@@ -1015,9 +1068,25 @@
         r.error ? r.error
           : rows.length
             ? 'Found ' + rows.length + ': ' + rows.map(function (x) { return x.name; }).join(' · ')
-            : 'The box was found but no results appeared. Their layout may have changed.',
+            : 'The box was found but no brand results were read. ' + describeDropdown(),
         0);
     });
+  }
+
+  // When a search reads nothing, say what their dropdown rows are made
+  // of, so a screenshot of the test is enough to fix the reader.
+  function describeDropdown() {
+    var tags = [].slice.call(document.querySelectorAll('body *')).filter(function (el) {
+      return !el.children.length && KIND_RX.test((el.textContent || '').trim()) &&
+        el.getBoundingClientRect().height > 0 && !(panel && panel.contains(el));
+    }).slice(0, 3);
+    if (!tags.length) return 'No Brand / Property tags on screen either.';
+    return 'Rows seen: ' + tags.map(function (t) {
+      var row = t.closest('a, li, [role="option"]') || t.parentElement;
+      var link = row.matches('a') ? row : row.querySelector('a');
+      return '"' + textLines(row).join(' / ').slice(0, 60) + '" — ' +
+        (link ? 'links to ' + (link.getAttribute('href') || 'nowhere') : 'no link (' + row.tagName.toLowerCase() + ')');
+    }).join(' · ');
   }
 
   function ensureUI() {

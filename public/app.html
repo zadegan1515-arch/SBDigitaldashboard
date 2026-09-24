@@ -1100,7 +1100,13 @@
         <button class="chip active" data-lif="all">All brands</button>
         <button class="chip" data-lif="profiles">Saved profiles</button>
         <button class="chip" data-lif="none">Nobody yet</button>
+        <button class="chip" data-lif="thin" title="Brands with room under the 25-people cap, emptiest first \u2014 open People \u2197 and press the SB pill">Under 25</button>
         <input class="inp" id="li-q" placeholder="Filter brands…" autocomplete="off" style="margin-left:auto;width:220px">
+      </div>
+      <div class="hint" id="li-script-hint" style="margin-top:10px;display:none">
+        People \u2197 opens a brand's LinkedIn People tab. With the
+        <a href="https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js" target="_blank" rel="noopener">LinkedIn capture script</a>
+        in Tampermonkey (Leo's LinkedIn, not Zach's), press the SB pill there: it reads that page, shows who it found, and adds the marketing and partnership people when you say so.
       </div>
       <div id="li-list" style="margin-top:14px"></div>
     </section>
@@ -3192,50 +3198,69 @@ function suRenderResults(name, results) {
   });
 }
 
-// Brands the batch run searched but could not call on its own.
-function renderSuProposals() {
+// Brands the lookup searched on SponsorUnited but could not match on its
+// own: more than one page there looks like them. Only pages whose name
+// resembles the brand come back from the server, so each card is a real
+// "which of these is it?" and not SponsorUnited's dashboard tiles.
+var SU_PROPOSALS_SHOWN = 6;
+function renderSuProposals(showAll) {
   var box = document.getElementById('su-proposals');
   if (!box) return;
   api('suMatchQueue').then(function (d) {
     var list = d.proposals || [];
     if (!list.length) { box.innerHTML = ''; return; }
-    box.innerHTML = '<div class="count-head" style="margin-top:16px;color:#f0b86b">Profiles needing your eye <span class="n">' + list.length + '</span></div>' +
-      '<div class="hint" style="margin:2px 0 8px">The lookup found more than one possible match for these, so it left them. Pick the right one and their people come in.</div>' +
-      list.map(function (p) {
+    var shown = showAll ? list : list.slice(0, SU_PROPOSALS_SHOWN);
+    box.innerHTML = '<div class="count-head" style="margin-top:16px;color:#f0b86b">Which SponsorUnited page is theirs? <span class="n">' + list.length + '</span></div>' +
+      '<div class="hint" style="margin:2px 0 8px;max-width:720px">We look each brand up on SponsorUnited so its people can be pulled in automatically. ' +
+        'For these it couldn’t tell for sure which page is theirs. Click <b>Use this</b> on the right one and their contacts start coming in. ' +
+        'If none of them is the brand, click <b>None of these</b> and those pages won’t be suggested for it again. <b>View ↗</b> opens the page on SponsorUnited to check.</div>' +
+      shown.map(function (p) {
         return '<div class="panel panel-pad" data-suprow="' + esc(p.brandId) + '" style="margin-bottom:8px">' +
           '<div style="display:flex;gap:10px;align-items:center">' +
             '<b style="font-size:13px;flex:1">' + esc(p.brandName) + '</b>' +
-            '<button class="btn-ghost mini" data-sudismiss="' + esc(p.brandId) + '">Not on SponsorUnited</button>' +
+            '<button class="btn-ghost mini" data-sudismiss="' + esc(p.brandId) + '" title="None of these SponsorUnited pages is this brand — they won’t be suggested for it again">None of these</button>' +
           '</div>' +
-          (p.candidates.length
-            ? p.candidates.map(function (c) {
-                return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border)">' +
-                  '<span style="flex:1;font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</span>' +
-                  '<button class="btn-draft" data-suuse="' + esc(p.brandId) + '" data-suid="' + esc(c.externalId) + '" data-suname="' + esc(c.name) + '" style="padding:4px 12px;font-size:12px">Use this</button>' +
-                '</div>';
-              }).join('')
-            : '<div class="hint" style="margin-top:6px">No matches came back for this name.</div>') +
+          p.candidates.map(function (c) {
+            return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border)" data-sucand="' + esc(c.externalId) + '">' +
+              '<span style="flex:1;font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(c.name) + '">' + esc(c.name) + '</span>' +
+              '<a class="btn-ghost mini" href="https://pro.sponsorunited.com/profile/' + encodeURIComponent(c.externalId) + '" target="_blank" rel="noopener" style="flex:none">View ↗</a>' +
+              '<button class="btn-draft" data-suuse="' + esc(p.brandId) + '" data-suid="' + esc(c.externalId) + '" data-suname="' + esc(c.name) + '" style="padding:4px 12px;font-size:12px;flex:none">Use this</button>' +
+            '</div>';
+          }).join('') +
         '</div>';
-      }).join('');
+      }).join('') +
+      (list.length > shown.length
+        ? '<button class="btn-ghost" data-suall style="margin-bottom:8px">Show all ' + list.length + '</button>' : '');
   }).catch(function () { box.innerHTML = ''; });
 }
 
 document.getElementById('su-proposals').addEventListener('click', function (e) {
+  if (e.target.closest('[data-suall]')) { renderSuProposals(true); return; }
   var use = e.target.closest('[data-suuse]');
   var drop = e.target.closest('[data-sudismiss]');
   if (!use && !drop) return;
   var brandId = (use || drop).getAttribute(use ? 'data-suuse' : 'data-sudismiss');
   var row = document.querySelector('[data-suprow="' + brandId + '"]');
+  // Exactly the pages this card showed — those are what "None of these"
+  // turns down.
+  var shownIds = row ? [].map.call(row.querySelectorAll('[data-sucand]'), function (el) { return el.getAttribute('data-sucand'); }) : null;
   if (row) row.remove();
   if (use) {
-    toast('Saved — pulling their people in');
     api('suResolveMatch', {
       brandId: brandId,
       externalId: use.getAttribute('data-suid'),
       suName: use.getAttribute('data-suname'),
+    }).then(function (r) {
+      if (r && r.ok === false && r.reason === 'taken') {
+        toast('That SponsorUnited page is already saved on ' + r.by + ' — probably the same company twice. Open ' + r.by + ' and merge them.');
+        renderSuProposals();
+        return;
+      }
+      toast('Saved — pulling their people in');
     }).catch(function (err) { toast(err.message); renderSuProposals(); });
   } else {
-    api('suResolveMatch', { brandId: brandId, dismiss: true })
+    api('suResolveMatch', { brandId: brandId, dismiss: true, rejectIds: shownIds || undefined })
+      .then(function () { toast('Got it — those pages won’t be suggested for this brand again'); })
       .catch(function (err) { toast(err.message); renderSuProposals(); });
   }
 });
@@ -3263,6 +3288,40 @@ document.getElementById('bq-fill').addEventListener('click', function () {
 
 var CURRENT_BRAND = null;
 
+// Where one person stands, in words, one channel at a time. The brand
+// card used to print the raw status, and "sent" read as "the email went
+// out" on someone just added and right after an intro was drafted. It is
+// the LinkedIn invite, logged by hand; email is its own line, and a
+// draft always says it has not gone.
+function liWords(t) {
+  switch (t.status) {
+    case 'queued': case 'drafted': return 'LinkedIn · not sent yet';
+    case 'sent': return 'LinkedIn · invite sent' + (t.sentAt ? ' ' + shortDate(t.sentAt) : '');
+    case 'accepted': return 'LinkedIn · accepted';
+    case 'withdrawn': return 'LinkedIn · invite withdrawn';
+    case 'replied': return 'replied' + (t.repliedAt ? ' ' + shortDate(t.repliedAt) : '');
+    case 'converted': return 'won';
+    case 'passed': return 'skipped';
+    case 'declined': return 'declined';
+    case 'dead': return 'went cold';
+  }
+  return t.status;
+}
+// The newest email to this person (getBrand sends them newest first).
+function emailWords(t) {
+  var e = (t.emails || [])[0];
+  if (!e) return null;
+  var w = e.status === 'draft' ? { cls: 'drafted', pending: true, state: 'drafted, not sent' }
+    : e.status === 'approved' ? { cls: 'drafted', pending: true, state: 'scheduled, not sent yet' }
+    : e.status === 'failed' ? { cls: 'declined', state: 'failed to send' }
+    : e.status === 'sent' ? { cls: 'sent', state: 'sent ' + shortDate(e.sentAt || e.createdAt) + (e.opens ? ' · opened' : '') }
+    : null;
+  if (!w) return null;
+  w.what = e.kind === 'intro' ? 'intro' : e.kind === 'response' ? 'reply' : 'follow-up';
+  w.text = 'Email · ' + w.what + ' ' + w.state;
+  return w;
+}
+
 function loadBrand(brandId) {
   showView('brand');
   var box = document.getElementById('brand-body');
@@ -3273,8 +3332,9 @@ function loadBrand(brandId) {
     var b = d.brand;
     rememberSponsors(b.shows);
     (b.documents || []).forEach(function (dc) { DOC_BY_ID[dc.id] = dc; });
-    var liCompany = b.linkedinUrl ||
-      ('https://www.linkedin.com/search/results/companies/?keywords=' + encodeURIComponent(b.name));
+    // The People tab, where the LinkedIn capture script's pill lives;
+    // a company search when we don't have their page yet.
+    var liCompany = liPeopleUrl(b);
     // Deep-link straight to this brand's SponsorUnited profile when we have
     // its SponsorUnited ID. We don't for most brands yet (they were imported
     // by name only), and SponsorUnited's search is a live autocomplete in
@@ -3352,7 +3412,7 @@ function loadBrand(brandId) {
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
           '<button class="btn-solid" id="b-enrich">Auto-fill from the web</button>' +
           '<button class="btn-ghost" id="b-edit-toggle">Edit</button>' +
-          '<a class="btn-ghost" href="' + esc(liCompany) + '" target="_blank" rel="noopener">LinkedIn ↗</a>' +
+          '<a class="btn-ghost" href="' + esc(liCompany) + '" target="_blank" rel="noopener" title="Their LinkedIn People tab \u2014 press the SB pill there to add the buyers">LinkedIn people ↗</a>' +
           '<a class="btn-ghost" href="' + esc(suUrl) + '" target="_blank" rel="noopener">' + suLabel + '</a>' +
           (b.doNotEmail
             ? '<button class="btn-ghost" id="b-dne" style="border-color:var(--accent);color:var(--accent)" title="This brand is excluded from all outreach emails — click to allow again">Do not email</button>'
@@ -3463,11 +3523,17 @@ function loadBrand(brandId) {
         var pooled = live && !inToday;
         var inPlay = ct && ['sent', 'accepted', 'replied', 'converted'].indexOf(ct.status) !== -1;
         var skipped = ct && ct.status === 'passed';
+        var shelvedFresh = ct && ct.shelved && (ct.status === 'queued' || ct.status === 'drafted');
+        // Anything past a send that isn't "in play" (withdrawn, declined,
+        // went cold) still says what happened.
+        var otherState = ct && !live && !inPlay && !skipped && !shelvedFresh;
+        var em = ct ? emailWords(ct) : null;
         return '<div class="target"><div class="t-main">' +
           '<div class="t-line"><span class="t-brand">' + esc(c.name) + '</span>' +
             (c.title ? '<span class="t-sep">·</span><span class="t-title">' + esc(c.title) + '</span>' : '') + '</div>' +
           '<div class="t-meta">' +
             (c.isDecisionMaker ? '<span class="status replied">decision maker</span>' : '') +
+            (c.source === 'linkedin' ? '<span title="Found on their LinkedIn People page \u2014 no email on file">from LinkedIn</span>' : '') +
             (c.email ? '<span>' + esc(c.email) + '</span>' : '') +
             (c.phone ? '<span>· ' + esc(c.phone) + '</span>' : '') +
             (c.location ? '<span>· ' + esc(c.location) + '</span>' : '') +
@@ -3483,10 +3549,16 @@ function loadBrand(brandId) {
           (c.notes ? '<div class="t-meta" style="color:var(--ink-2);white-space:pre-wrap">' + esc(c.notes) + '</div>' : '') +
           '</div>' +
           '<div class="t-actions">' +
-            (inToday ? '<span class="status queued" data-cstate style="font-size:12px;padding:5px 12px">in today’s list ✓</span>' : '') +
-            (pooled ? '<span class="status" data-cstate title="Queued, but waiting for their category day — → Queue puts them in today" style="font-size:12px;padding:5px 12px;color:var(--ink-3)">in pool</span>' : '') +
-            (inPlay ? '<span class="status ' + ct.status + '" data-cstate style="font-size:12px;padding:5px 12px">' + ct.status + '</span>' : '') +
+            // Nothing has gone to a person until someone logs it: a new
+            // or queued person says "not sent yet", never a status word
+            // that reads like the opposite.
+            (!ct ? '<span class="status" data-cstate title="Nobody has written to them — → Queue puts them in today’s LinkedIn list" style="font-size:12px;padding:5px 12px;color:var(--ink-3)">not contacted</span>' : '') +
+            (inToday ? '<span class="status queued" data-cstate style="font-size:12px;padding:5px 12px">in today’s list · not sent yet</span>' : '') +
+            (pooled ? '<span class="status" data-cstate title="Queued, but waiting for their category day — → Queue puts them in today" style="font-size:12px;padding:5px 12px;color:var(--ink-3)">in pool · not sent yet</span>' : '') +
+            (shelvedFresh ? '<span class="status" data-cstate title="Shelved and never contacted — → Queue brings them back" style="font-size:12px;padding:5px 12px;color:var(--ink-3)">shelved · not contacted</span>' : '') +
+            (inPlay || otherState ? '<span class="status ' + esc(ct.status) + '" data-cstate style="font-size:12px;padding:5px 12px">' + esc(liWords(ct)) + '</span>' : '') +
             (skipped ? '<span class="status passed" data-cstate style="font-size:12px;padding:5px 12px">skipped</span>' : '') +
+            (em ? '<span class="status ' + em.cls + '" style="font-size:12px;padding:5px 12px">' + esc(em.text) + '</span>' : '') +
             (!inToday && !inPlay
               ? '<button class="btn-draft" data-cqueue="' + esc(c.id) + '" title="Put this exact person into TODAY’s list, past the cap if needed">→ Queue</button>' : '') +
             (!inPlay && !skipped
@@ -3499,21 +3571,48 @@ function loadBrand(brandId) {
       : '<div class="panel"><div class="empty"><h3>No people yet</h3>' +
         '<p>Pull them from SponsorUnited, or add one by hand from LinkedIn.</p></div></div>');
 
-    // outreach
+    // outreach — the header counts who is still waiting to be written to
+    // apart from who has been, instead of calling everyone "in queue".
     var activeCount = b.targets.filter(function (t) { return !t.shelved; }).length;
+    var waitingCount = b.targets.filter(function (t) {
+      return !t.shelved && (t.status === 'queued' || t.status === 'drafted');
+    }).length;
+    var reachedCount = b.targets.filter(function (t) {
+      return t.sentAt || ['sent', 'accepted', 'replied', 'converted'].indexOf(t.status) !== -1;
+    }).length;
+    var outreachCounts = [
+      waitingCount ? waitingCount + ' not sent yet' : '',
+      reachedCount ? reachedCount + ' contacted' : '',
+      b.targets.length > activeCount
+        ? (b.targets.length - activeCount) + ' shelved' +
+          (b.targets.filter(function (t) { return t.shelved && !t.sentAt; }).length === (b.targets.length - activeCount)
+            ? ' (none contacted)' : '')
+        : ''
+    ].filter(Boolean).join(' · ') || activeCount + ' in play';
+    // One email thread per brand (the server refuses a second), so once
+    // there is one the button becomes that email's state: drafted stays
+    // "not sent" until it actually goes.
+    var brandEmail = null;
+    b.targets.forEach(function (t) {
+      var e = (t.emails || [])[0];
+      if (e && (!brandEmail || new Date(e.createdAt) > new Date(brandEmail.e.createdAt))) brandEmail = { e: e, t: t };
+    });
+    var brandEmailWords = brandEmail ? emailWords(brandEmail.t) : null;
+    var introControl = brandEmailWords
+      ? '<button class="btn-ghost" id="b-openemail" style="margin-left:auto" title="Open Outreach → Email' +
+          (brandEmailWords.pending ? ' — review it there, then Send. Nothing goes out until you do.' : '') + '">' +
+          'Email to ' + esc((brandEmail.t.contact.name || '').split(' ')[0]) + ' — ' +
+          esc(brandEmailWords.what + ' ' + brandEmailWords.state) + ' →</button>'
+      : '<button class="btn-ghost" id="b-draftintro" style="margin-left:auto" title="Writes an intro email for review in Outreach → Email. It does not send.">Draft intro email</button>';
     var outreach = b.targets.length
-      ? '<div class="section-head">Outreach <span class="n">' + activeCount + ' in queue' +
-          (b.targets.length > activeCount
-            ? ' · ' + (b.targets.length - activeCount) + ' shelved' +
-              (b.targets.filter(function (t) { return t.shelved && !t.sentAt; }).length === (b.targets.length - activeCount)
-                ? ' (none contacted)' : '')
-            : '') +
-        '</span><button class="btn-ghost" id="b-draftintro" style="margin-left:auto">Draft intro email</button></div>' +
+      ? '<div class="section-head">Outreach <span class="n">' + esc(outreachCounts) + '</span>' +
+        introControl + '</div>' +
         '<div class="hint" style="margin:-6px 0 10px">Only the top ' + TARGET_CAP + ' by fit per brand go in the queue. ' +
           'Promote or shelve anyone here.</div>' +
         b.targets.map(function (t) {
           var canSend = t.status === 'queued' || t.status === 'drafted';
           var dr = (t.drafts || [])[0];
+          var em = emailWords(t);
           return '<div class="target"' + (t.shelved ? ' style="opacity:.62"' : '') + ' style="align-items:flex-start">' +
             '<div class="t-main"><div class="t-line">' +
             '<span class="t-brand">' + esc(t.contact.name) + '</span>' +
@@ -3527,17 +3626,21 @@ function loadBrand(brandId) {
             // used to invite, because the pill replaced the status and
             // an unsent person showed nothing at all. So a shelved row
             // now always says which it is.
+            // LinkedIn and email each get their own words: "LinkedIn ·
+            // invite sent Sep 16" is something someone logged; "Email ·
+            // intro drafted, not sent" is waiting in Outreach → Email.
             (t.shelved
               ? '<span class="status declined" title="Shelved means not in the queue — it says nothing about whether an invite went out. Promote to put them back.">shelved</span>' +
-                (t.sentAt ? '<span class="t-sep">·</span><span class="status ' + t.status + '">' + t.status + '</span>'
+                (t.sentAt || !canSend ? '<span class="t-sep">·</span><span class="status ' + esc(t.status) + '">' + esc(liWords(t)) + '</span>'
                           : '<span>· never contacted</span>')
-              : '<span class="status ' + t.status + '">' + t.status + '</span>') +
-            (t.sentAt ? '<span>· invited ' + shortDate(t.sentAt) + '</span>' : '') +
-            (t.repliedAt ? '<span>· replied ' + shortDate(t.repliedAt) + '</span>' : '') +
+              : '<span class="status ' + (canSend ? 'queued' : esc(t.status)) + '">' + esc(liWords(t)) + '</span>') +
+            (t.sentAt && t.status !== 'sent' ? '<span>· invited ' + shortDate(t.sentAt) + '</span>' : '') +
+            (t.repliedAt && t.status !== 'replied' ? '<span>· replied ' + shortDate(t.repliedAt) + '</span>' : '') +
+            (em ? '<span class="t-sep">·</span><span class="status ' + em.cls + '">' + esc(em.text) + '</span>' : '') +
             '</div>' +
             (dr
               ? '<details style="margin-top:7px"><summary style="cursor:pointer;font-size:12px;color:var(--ink-3)">' +
-                  (t.sentAt ? 'The note that went out' : 'Note & DM ready to send') + '</summary>' +
+                  (t.sentAt ? 'The LinkedIn note that went out' : 'LinkedIn note & DM — not sent yet') + '</summary>' +
                   '<div style="font-size:12.5px;color:var(--ink-2);margin-top:6px;white-space:pre-wrap"><b style="color:var(--ink-3);font-size:11px">INVITE NOTE</b><br>' + esc(dr.connectionNote) + '</div>' +
                   '<div style="font-size:12.5px;color:var(--ink-2);margin-top:8px;white-space:pre-wrap"><b style="color:var(--ink-3);font-size:11px">FIRST DM</b><br>' + esc(dr.firstMessage) + '</div>' +
                 '</details>'
@@ -3547,17 +3650,21 @@ function loadBrand(brandId) {
             // mark it sent, then accepted / DM'd / replied — the same
             // actions as the LinkedIn tab, writing through the same
             // handler so nothing can drift.
+            // Copying the note comes first. The log button says exactly
+            // what it records: a freshly added person used to show only
+            // "Mark sent ✓", and one click made them "sent" when nothing
+            // had gone anywhere.
             '<div class="t-actions">' +
             (canSend && !t.shelved && dr
               ? '<button class="btn-draft" data-bcopy="' + esc(t.id) + '" data-variant="man" title="Copy the invite note written for a man">Note · M</button>' +
                 '<button class="btn-draft" data-bcopy="' + esc(t.id) + '" data-variant="woman" title="Copy the invite note written for a woman">Note · W</button>'
               : '') +
             (canSend && !t.shelved
-              ? '<button class="btn-ghost" data-bract="sent" data-brt="' + esc(t.id) + '" title="Log that the invite went out">Mark sent ✓</button>' : '') +
+              ? '<button class="btn-ghost" data-bract="sent" data-brt="' + esc(t.id) + '" title="Click only after you have sent the connection request on LinkedIn — this logs it; nothing is sent from here">Invite sent on LinkedIn ✓</button>' : '') +
             (t.status === 'sent'
               ? '<button class="btn-draft" data-bract="accepted" data-brt="' + esc(t.id) + '" title="Did they accept the invite?">Accepted?</button>' +
                 '<button class="btn-ghost" data-bract="replied" data-brt="' + esc(t.id) + '" title="Did they write back?">Replied?</button>' +
-                '<button class="btn-ghost mini" data-bract="unsend" data-brt="' + esc(t.id) + '" title="Hit Mark sent by mistake? Puts them back in the queue and uncounts the send">↩ Undo</button>' : '') +
+                '<button class="btn-ghost mini" data-bract="unsend" data-brt="' + esc(t.id) + '" title="No invite actually went out? Puts them back as not sent and uncounts it">↩ Undo</button>' : '') +
             (t.status === 'accepted'
               ? '<span class="status accepted" style="font-size:12px;padding:5px 12px">Accepted ✓</span>' +
                 (dr ? '<button class="btn-draft" data-bcopy="' + esc(t.id) + '" data-variant="dm" title="Copy the first DM">Copy DM</button>' : '') +
@@ -3732,7 +3839,7 @@ function loadBrand(brandId) {
         api('queueContact', { contactId: btn.getAttribute('data-cqueue') }).then(function (r) {
           if (r.queued) {
             acts.querySelectorAll('[data-cqueue],[data-cskip],[data-cstate]').forEach(function (x) { x.remove(); });
-            acts.insertAdjacentHTML('afterbegin', '<span class="status queued" data-cstate style="font-size:12px;padding:5px 12px">in today’s list ✓</span>');
+            acts.insertAdjacentHTML('afterbegin', '<span class="status queued" data-cstate style="font-size:12px;padding:5px 12px">in today’s list · not sent yet</span>');
             toast(r.contactName + ' is in today’s list — top of the LinkedIn tab');
           } else {
             toast(r.contactName + ' is already in play (' + r.status + ')');
@@ -3810,14 +3917,18 @@ function loadBrand(brandId) {
       openProposalForm(b.id);
     };
 
+    // Drafting writes the email and stops there — the card reloads so it
+    // shows as drafted, not sent, until someone sends it from the Email tab.
     var di = document.getElementById('b-draftintro');
     if (di) di.onclick = function () {
       var btn = di; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Drafting…';
       api('draftBrandIntro', { brandId: b.id }).then(function (r) {
-        toast('Intro drafted to ' + r.to + ' — it\'s waiting in Outreach → Email');
-        btn.disabled = false; btn.textContent = 'Draft intro email';
+        toast('Intro drafted to ' + r.contact + ' (' + r.to + ') — NOT sent. Review it and hit Send in Outreach → Email.');
+        loadBrand(b.id);
       }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Draft intro email'; });
     };
+    var oe = document.getElementById('b-openemail');
+    if (oe) oe.onclick = function () { loadEmailOutreach(); };
 
     document.getElementById('b-callprep').onclick = function () {
       var btn = this; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Prepping…';
@@ -4554,8 +4665,7 @@ function loadNeeds() {
 
     box.innerHTML = d.brands.map(function (b) {
       var tag = [CAT_NAMES[b.category] || b.category, b.tier].filter(Boolean).join(' · ');
-      var liSearch = b.linkedinUrl ||
-        ('https://www.linkedin.com/search/results/companies/?keywords=' + encodeURIComponent(b.name));
+      var liSearch = liPeopleUrl(b);
       return '<div data-needs="' + esc(b.id) + '" style="margin-bottom:7px">' +
         '<div class="target" style="margin-bottom:0">' +
           '<div class="t-main">' +
@@ -4602,6 +4712,8 @@ function loadNeeds() {
 
 var LI_DATA = [];
 var LI_FILTER = 'all';
+// Same number as CONTACT_CAP_PER_BRAND in /api/ingest: people on file per brand.
+var LI_CAP = 25;
 
 // The titles Leo targets on LinkedIn: partnership/sponsorship buyers,
 // brand & field marketing, and marketing leadership for smaller brands.
@@ -4636,8 +4748,17 @@ function renderLinkedin() {
     if (q && b.name.toLowerCase().indexOf(q) === -1) return false;
     if (LI_FILTER === 'profiles') return b.contacts.some(function (c) { return c.linkedinUrl; });
     if (LI_FILTER === 'none') return !b.contacts.length;
+    if (LI_FILTER === 'thin') return b.contacts.length < LI_CAP && !b.archived && !b.doNotEmail;
     return true;
   });
+  // The worklist reads emptiest first, like the SponsorUnited sweep.
+  if (LI_FILTER === 'thin') {
+    rows = rows.slice().sort(function (a, b) {
+      return a.contacts.length - b.contacts.length || a.name.localeCompare(b.name);
+    });
+  }
+  var hint = document.getElementById('li-script-hint');
+  if (hint) hint.style.display = (LI_FILTER === 'thin' || LI_FILTER === 'none') ? '' : 'none';
 
   if (!rows.length) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>No brands here</h3>' +
@@ -4646,7 +4767,8 @@ function renderLinkedin() {
   }
 
   box.innerHTML = rows.map(function (b) {
-    var tag = [CAT_NAMES[b.category] || b.category, b.tier].filter(Boolean).join(' · ');
+    var tag = [CAT_NAMES[b.category] || b.category, b.tier, b.contacts.length + '/' + LI_CAP + ' on file']
+      .filter(Boolean).join(' · ');
     var people = b.contacts.map(function (c) {
       return '<div class="t-meta" style="margin-top:7px">' +
         (c.linkedinUrl
@@ -4660,7 +4782,7 @@ function renderLinkedin() {
       '<div class="t-main">' +
         '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(b.name) + '</span>' +
           (tag ? '<span class="t-sep">·</span><span class="t-title">' + esc(tag) + '</span>' : '') + '</div>' +
-        (people || '<div class="t-meta" style="margin-top:7px"><span>Nobody saved yet — use Find buyer ↗, then add them on the brand page.</span></div>') +
+        (people || '<div class="t-meta" style="margin-top:7px"><span>Nobody saved yet — open People ↗ and press the SB pill there.</span></div>') +
       '</div>' +
       '<div class="t-actions">' +
         '<a class="btn-ghost" href="' + esc(liPeopleUrl(b)) + '" target="_blank" rel="noopener">People ↗</a>' +
@@ -7815,7 +7937,9 @@ function renderEmailMode(box) {
                 '<span data-emarrow style="color:var(--ink-3);flex:none">▸</span>' +
                 '<b style="flex:none">' + esc(d.target.brand.name) + '</b><span class="t-sep">·</span>' +
                 '<span style="flex:none">' + esc(d.target.contact.name) + '</span>' +
-                '<span class="status ' + (d.kind === 'intro' ? 'sent' : 'proposed') + '">' + d.kind + '</span>' +
+                // Every row here is unsent, so none of them wears the
+                // blue "sent" pill — an intro draft used to.
+                '<span class="status drafted" title="Drafted — nothing has been sent yet">' + esc(d.kind) + ' · draft</span>' +
                 (d.status === 'approved' ? '<span class="status replied">scheduled 9am</span>' : '') +
                 (warns.length ? '<span class="status declined" title="' + esc(warns.join('\n')) + '">⚠</span>' : '') +
                 '<span style="color:var(--ink-3);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:40px">' + esc(d.subject || '') + '</span>' +

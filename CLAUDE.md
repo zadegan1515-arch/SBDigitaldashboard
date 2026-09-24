@@ -41,6 +41,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   cron scan and the generateContract/Invoice handlers still exist server-side).
   **Activations** is its own workspace (sidebar + tabs swap in), entered from the left sidebar or the
   Home "Jump to" card — not in the top nav. Deep links: `#activations/<id>/<tab>`, `#operations/<id>`.
+- **Brand page people/outreach wording** (`liWords`, `emailWords` in app.html): never a bare status
+  word. LinkedIn and email are separate lines — "LinkedIn · invite sent Sep 16" (logged by hand with
+  **Invite sent on LinkedIn ✓**), "LinkedIn · not sent yet", "Email · intro drafted, not sent" /
+  "sent <date> · opened". `getBrand` returns each target's outbound emails and fills the free template
+  notes for anyone not yet contacted, so a newly added person gets Note · M/W instead of only the log
+  button. **Draft intro email** only drafts; the card reloads and the header shows that email's state.
 - **Home → For Zach to do** (`zachTodo` + `renderZachTodo`; deep link `app.html#zach`) — **everyone who
   accepted a LinkedIn invite** until they're finished (`HAND_WAITING` in `route.ts`: accepted/replied,
   no `callAt`, no `handSkippedAt`). Replied by email still shows (Email step ticked, "replied by
@@ -75,12 +81,35 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   capture found one or two people. Old userscripts sending scope `missing` get `thin` too. A brand
   whose last visit added nobody **rests 14 days** (Setting `suSweepLog`, `isResting` in
   `src/lib/su-match.ts`) so emptiest-first doesn't reopen the same stalled brands every run; the
-  script expands the contacts list (scroll / "load more") before reading it.
+  script expands the contacts list (scroll / "load more") before reading it. Profile lookup
+  (`needProfile` → `matched`, and the Brands → Find search) reads only profile links that appear
+  after typing into their search (the dashboard's own cards are not results), first line = name,
+  Property results dropped; `node scripts/test-capture.js` covers it. Proposals from script ≤4.1
+  have no `v` and stay hidden (`PROPOSAL_VERSION`). The review list (Brands → "Which SponsorUnited
+  page is theirs?") only shows brands with something to pick: a search with no results answers
+  `none` and parks nothing. **None of these** remembers the pages turned down per brand (Setting
+  `suRejected`, `candidatesToOffer`) so a later lookup can't offer them again;
+  `node scripts/test-su-match.mjs`.
+- `scripts/linkedin-capture.user.js` — **LinkedIn People capture** (second Tampermonkey script, same
+  INGEST_TOKEN, kept in GM storage; requests go via `GM_xmlhttpRequest` because LinkedIn's CSP blocks
+  page fetches). Leo's calls (Sep 2026): **Leo's LinkedIn account, never Zach's** (Zach's sends the
+  connection requests); **one click per brand — it never browses on its own** (no sweep, no
+  auto-next: LinkedIn flags that); buyer titles only, **inside the same 25 cap**; no emails — people
+  go to the LinkedIn queue (`source: 'linkedin'`, target created, `reconcileBrandTargets` applies).
+  On a company's People tab the SB pill scrolls that one page (≤150 people, human-paced), posts
+  `action:'liPreview'` (nothing saved; verdicts add/full/dupe/elsewhere/notBuyer), then
+  `liCapture` on "Add". Brand match: typed name → saved `Brand.linkedinUrl` slug → page name/aka;
+  never creates a brand; saves the page fill-if-empty unless another brand has it. Buyer rules +
+  headline→title in `src/lib/li-capture.ts` (`node scripts/test-li-capture.mjs`); script tested by
+  `scripts/test-li-script.js` (fake People page). Worklist: Outreach → People → "Under 25".
 - `src/lib/email.ts` — outreach: drafting, cap/ramp (`roomToday`), sending via Gmail API, replies, warmup stats, signature (hosted images, LinkedIn/IG as text links).
 - `src/lib/google.ts` — OAuth (gmail / drive / ops grants), Gmail read+send, Drive/Sheets/Docs create.
-- `src/lib/shows.ts` — **the show list** for the Shows tab and the public sponsor page. Reads the
-  "SB AGENCY - FULL BUILT CRM" Google Sheet (read-only, tab gid 1397302046 preferred) via the Drive
-  grant; a row is a confirmed show only with a booked status **and** date **and** artist **and** school.
+- `src/lib/shows.ts` — **the show list** for the Shows tab and the public sponsor page. Reads **only
+  the CONTRACTING tab** (`DEALS_TAB`) of the "SB AGENCY - FULL BUILT CRM" Google Sheet (read-only)
+  via the Drive grant — Leo's call; "OLD ACCOUNTING - DO NOT TOUCH" went stale and every other tab
+  is ignored. A row is a confirmed show only with a booked status **and** date **and** artist **and**
+  school (Declined Pivot never shows). Two acts at the same school + chapter + date are one listing
+  ("A + B"). Bump `PARSER_VERSION` when the parse changes so the cache rebuilds on the next read.
   Past shows from `src/data/show-archive.json`. School abbreviations → name/city/state in `SCHOOL_TABLE`;
   genre auto-tags in `GENRE_ARTISTS` (overrides in Setting `artistGenres`). Cache in Setting `crmShows`
   (6 h; daily cron; ↻ Sheet button). Show ids: `sh_<hash>` / `ar_<hash>`. sb-crm's DB is no longer the source.
@@ -128,7 +157,7 @@ AMBASSADOR_PLATFORM_URL · AMBASSADOR_PLATFORM_TOKEN (= platform INTEGRATION_TOK
 optional: SIGNATURE_LINKEDIN_URL, SIGNATURE_INSTAGRAM_URL, SIGNATURE_EMBED=1, SIGNATURE_ICONS=1, OPS_BACKFILL_DAYS,
 SPONSOR_HOST (brand page host), SPONSOR_REQUEST_TO (who gets sponsor requests), SPONSOR_GATE=1
 (turn the Show Board access-code gate on), SPONSOR_MASTER_CODE (team code that always opens the
-board), CRM_SHEET_ID, CRM_SHEET_GID.
+board), CRM_SHEET_ID.
 
 ## Conventions
 - **Outreach runs Tuesday / Wednesday / Thursday only** — no Mondays, no Fridays, no weekends.
