@@ -159,7 +159,10 @@ t('industry is the first part of the line', () => {
   assert.equal(industryOf('12K followers'), '')
 })
 t('consumer industries map to our categories; the rest don\'t', () => {
-  assert.equal(categoryFromIndustry('Wine & Spirits'), 'alcohol')
+  assert.equal(categoryFromIndustry('Wine & Spirits'), 'spirits')
+  assert.equal(categoryFromIndustry('Breweries'), 'rtd')
+  assert.equal(categoryFromIndustry('Wineries'), 'alcohol')
+  assert.equal(categoryFromIndustry('Sporting Goods Manufacturing'), 'athletic')
   assert.equal(categoryFromIndustry('Beverage Manufacturing'), 'beverage')
   assert.equal(categoryFromIndustry('Food and Beverage Services'), 'beverage')
   assert.equal(categoryFromIndustry('Food Production'), 'cpg')

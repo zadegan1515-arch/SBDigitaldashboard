@@ -259,12 +259,17 @@ export function industryOf(subtitle: string | null | undefined): string {
 // matters: spirits before the general beverage line. Anything not here
 // (software, agencies, wholesale, finance…) is not a brand we'd add
 // from a suggestion.
+// Breweries, distilleries and sporting goods go straight to Leo's lanes
+// (rtd, spirits, athletic — src/lib/stock.ts); wine has no lane of its own.
 const INDUSTRY_CATEGORY: Array<[RegExp, string]> = [
-  [/wine|spirit|brewer|distiller|alcohol/i, 'alcohol'],
+  [/brewer/i, 'rtd'],
+  [/spirit|distiller/i, 'spirits'],
+  [/wine|alcohol/i, 'alcohol'],
   [/beverage/i, 'beverage'],
   [/tobacco/i, 'nicotine'],
   [/food|dairy|bakery|snack|confection/i, 'cpg'],
-  [/apparel|fashion|footwear|textile|sporting goods|luxury goods|jewelry/i, 'apparel'],
+  [/sporting goods/i, 'athletic'],
+  [/apparel|fashion|footwear|textile|luxury goods|jewelry/i, 'apparel'],
   [/cosmetic|personal care|beauty/i, 'beauty'],
   [/wellness|fitness|nutrition|supplement/i, 'wellness'],
   [/restaurant/i, 'qsr'],
