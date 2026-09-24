@@ -14,7 +14,7 @@ import { Prisma, PrismaClient, TargetStatus } from '@prisma/client'
 import {
   readSearch, writeSearch, readProposals, writeProposals,
   readCaptureQueue, writeCaptureQueue, queueCapture,
-  readSweepLog, isResting, SWEEP_REST_DAYS,
+  readSweepLog, isResting, SWEEP_REST_DAYS, PROPOSAL_VERSION,
 } from '@/lib/su-match'
 import { getServerSession } from 'next-auth'
 import Anthropic from '@anthropic-ai/sdk'
@@ -3828,11 +3828,19 @@ const handlers: Record<string, Handler> = {
 
   // The sweep's leftovers: brands it searched but could not call.
   async suMatchQueue() {
-    const [proposals, missing, queue] = await Promise.all([
+    const [all, missing, queue] = await Promise.all([
       readProposals(prisma),
       prisma.brand.count({ where: { externalId: null, doNotEmail: false, passedAt: null } }),
       readCaptureQueue(prisma),
     ])
+    // Only proposals from the fixed reader, and only for brands still
+    // without a profile (one may have been attached since).
+    const current = all.filter(p => p.v === PROPOSAL_VERSION)
+    const settled = new Set((await prisma.brand.findMany({
+      where: { id: { in: current.map(p => p.brandId) }, externalId: { not: null } },
+      select: { id: true },
+    })).map(b => b.id))
+    const proposals = current.filter(p => !settled.has(p.brandId))
     return { proposals, missing, capturePending: queue.length }
   },
 

@@ -41,6 +41,8 @@ const SCRIPT = fs.readFileSync(path.join(__dirname, 'sponsorunited-capture.user.
 const calls = [];
 // Flipped on for the resting case; see below.
 let ALL_RESTING = false;
+// Set for the dropdown case: the brands the lookup is asked to find.
+let NEED_ITEMS = null;
 
 // --- the fake dashboard -------------------------------------------------
 const CORS = {
@@ -59,7 +61,7 @@ const api = http.createServer((req, res) => {
     calls.push(j);
     res.writeHead(200, Object.assign({ 'content-type': 'application/json' }, CORS));
     if (j.action === 'needProfile') {
-      return res.end(JSON.stringify({ ok: true, items: [{ brandId: 'b1', name: 'Yerba Madre', aka: null, contacts: 2 }] }));
+      return res.end(JSON.stringify({ ok: true, items: NEED_ITEMS || [{ brandId: 'b1', name: 'Yerba Madre', aka: null, contacts: 2 }] }));
     }
     if (j.action === 'matched') return res.end(JSON.stringify({ ok: true, outcome: 'attached' }));
     if (j.action === 'list') {
@@ -106,8 +108,62 @@ const hiddenSearchPage = () => `<!doctype html><html><body style="margin:0">
 </script>
 </body></html>`;
 
+// Their dashboard as Leo's screenshots show it: eight brand cards of its
+// own (name over category), and a search whose dropdown is drawn after
+// them — each result a link holding the name, the category and a Brand /
+// Property tag. The list re-uses its rows between searches and only hides
+// itself when the box is cleared, the way a React list does. Reading the
+// cards as results is what gave every brand the same eight "matches".
+const DASH_CARDS = [
+  ['ESKA1', 'ESKA Water', 'Beverage - Non-Alcoholic Water & Specialty Water'],
+  ['APO1', 'Apothekary', 'Healthcare Pharma & Over the Counter'],
+  ['HALF1', 'Halfday Iced Tea', 'Beverage - Non-Alcoholic Tea'],
+  ['HIMS1', 'Hims', 'Healthcare Pharma & Over the Counter'],
+  ['SIP1', 'Sip Elixirs', 'Healthcare Cannabis (CBD, Hemp, THC)'],
+  ['SALT1', 'Salt Air and Electric', 'Construction & Industrial Electrical'],
+  ['BLOOM1', 'Bloom', 'Technology Web / App (Visual, Social & Collaboration)'],
+  ['GATO1', 'Gatorade', 'Beverage - Non-Alcoholic Sports Drink'],
+];
+const DASH_RESULTS = {
+  'velo': [['VELO1', 'Velo', 'Tobacco & Nicotine', 'Brand'],
+    ['VELOC', 'Velo Charities', "Other Charities, PBC's & Non-Profits", 'Brand'],
+    ['VARENA', 'Velo Arena', 'Venues', 'Property']],
+  'good culture': [['GC1', 'Good Culture', 'Food - Dairy', 'Brand'], ['GCCLUB', 'Good Culture Club', 'Clubs', 'Property']],
+};
+const dashPage = () => `<!doctype html><html><body style="margin:0">
+<header style="height:56px;background:#111"></header>
+<main style="padding:20px">
+  <textarea id="banner" style="width:860px;height:60px" placeholder="SUrface deals, contacts, profiles and more"></textarea>
+  <div>${DASH_CARDS.map(c => `<a href="/profile/${c[0]}" style="display:block;padding:8px;color:#111">
+    <div>${c[1]}</div><div style="color:#888">${c[2]}</div></a>`).join('')}</div>
+</main>
+<script>
+  var RESULTS = ${JSON.stringify(DASH_RESULTS)};
+  var dd = document.createElement('div');
+  dd.style.cssText = 'position:absolute;top:150px;left:20px;width:700px;background:#fff;border:1px solid #ccc;display:none';
+  document.body.appendChild(dd);
+  var t = null;
+  document.getElementById('banner').addEventListener('input', function (e) {
+    var q = e.target.value.trim().toLowerCase();
+    clearTimeout(t);
+    if (!q) { dd.style.display = 'none'; return; }
+    t = setTimeout(function () {
+      var rows = RESULTS[q] || [];
+      while (dd.children.length > rows.length) dd.removeChild(dd.lastChild);
+      rows.forEach(function (r, i) {
+        var a = dd.children[i] || dd.appendChild(document.createElement('a'));
+        a.setAttribute('href', '/profile/' + r[0]);
+        a.style.cssText = 'display:flex;justify-content:space-between;padding:10px;color:#111';
+        a.innerHTML = '<div><div>' + r[1] + '</div><div style="color:#888">' + r[2] + '</div></div><span>' + r[3] + '</span>';
+      });
+      dd.style.display = rows.length ? 'block' : 'none';
+    }, 300);
+  });
+</script></body></html>`;
+
 const site = http.createServer((req, res) => {
   res.writeHead(200, { 'content-type': 'text/html' });
+  if (req.url.startsWith('/dash')) return res.end(dashPage());
   if (req.url.startsWith('/profile/')) {
     // Two people, laid out the way their contacts tab lays them out:
     // a card with the name, title and a LinkedIn link.
@@ -335,6 +391,62 @@ function chromeAt() {
   }
   await taCtx.close();
   console.log('a textarea search box is found and used');
+
+  // 9. the dropdown, not the page: a search reads only what came up
+  //    under the box — name without its category, brands only — and
+  //    never the dashboard's own eight cards.
+  const ddCtx = await browser.newContext();
+  const dp = await ddCtx.newPage();
+  dp.on('pageerror', e => fail('page error (dropdown): ' + e.message));
+  dp.on('dialog', d => d.accept('Velo'));
+  await dp.addInitScript({ content: SCRIPT });
+  await dp.goto('http://127.0.0.1:4612/dash');
+  await dp.waitForTimeout(1200);
+  await dp.click('#sbpill');
+  await dp.waitForTimeout(300);
+  await dp.click('#sbtest');
+  await dp.waitForTimeout(4000);
+  // The SB panel only — the page itself shows the cards and the dropdown.
+  const testText = await dp.evaluate(() => {
+    const el = [].slice.call(document.body.children).reverse().find(d => /Search test/.test(d.innerText || ''));
+    return el ? el.innerText : '';
+  });
+  if (testText.indexOf('Found 2: Velo · Velo Charities') === -1) {
+    fail('the search test did not read the dropdown: ' + (testText.match(/Found[^\n]*|no brand results[^\n]*/) || ['(nothing)'])[0]);
+  }
+  if (/ESKA|Arena|Tobacco/.test(testText)) fail('the search test read page cards, a Property or a category as results');
+  await ddCtx.close();
+  console.log('search test reads the dropdown: names only, brands only, no page cards');
+
+  // 10. the batch lookup across three brands, one of which SponsorUnited
+  //     has nothing for: each gets its own results, and the empty one
+  //     gets none — not the page's cards, not the last brand's leftovers.
+  NEED_ITEMS = [
+    { brandId: 'bv', name: 'Velo', aka: null, contacts: 0 },
+    { brandId: 'bh', name: 'Henkel Consumer Goods', aka: null, contacts: 0 },
+    { brandId: 'bg', name: 'Good Culture', aka: null, contacts: 0 },
+  ];
+  const batchCtx = await browser.newContext();
+  const bp = await batchCtx.newPage();
+  bp.on('pageerror', e => fail('page error (batch lookup): ' + e.message));
+  await bp.addInitScript({ content: SCRIPT });
+  await bp.goto('http://127.0.0.1:4612/dash');
+  await bp.waitForTimeout(1200);
+  const fromCall = calls.length;
+  await bp.click('#sbpill');
+  await bp.waitForTimeout(300);
+  await bp.click('#sbfind');
+  const got = () => calls.slice(fromCall).filter(c => c.action === 'matched');
+  const t0 = Date.now();
+  while (got().length < 3 && Date.now() - t0 < 60000) await bp.waitForTimeout(1000);
+  const ids = id => ((got().find(c => c.brandId === id) || {}).candidates || []).map(c => c.externalId + ':' + c.name).join(', ');
+  if (got().length < 3) fail('the lookup searched ' + got().length + ' of 3 brands');
+  if (ids('bv') !== 'VELO1:Velo, VELOC:Velo Charities') fail('Velo got: ' + ids('bv'));
+  if (ids('bh') !== '') fail('Henkel (no results) got: ' + ids('bh'));
+  if (ids('bg') !== 'GC1:Good Culture') fail('Good Culture got: ' + ids('bg'));
+  await batchCtx.close();
+  NEED_ITEMS = null;
+  console.log('batch lookup: each brand gets its own results, an empty search gets none');
 
   console.log('SU SMOKE OK');
   await browser.close();

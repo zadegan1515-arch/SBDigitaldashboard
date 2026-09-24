@@ -22,7 +22,7 @@ import { readMisses, writeMisses, addMiss, type HeldRow } from '@/lib/brand-matc
 import {
   readSearch, writeSearch, readProposals, writeProposals, upsertProposal,
   readCaptureQueue, writeCaptureQueue, queueCapture, decideMatch,
-  readSweepLog, markSwept, isResting,
+  readSweepLog, markSwept, isResting, PROPOSAL_VERSION,
   type SuCandidate,
 } from '@/lib/su-match'
 
@@ -234,7 +234,7 @@ export async function POST(req: NextRequest) {
       // id quietly fills a brand with another company's people.
       const list = await readProposals(prisma)
       await writeProposals(prisma, upsertProposal(list, {
-        brandId: brand.id, brandName: brand.name, candidates, at: Date.now(),
+        brandId: brand.id, brandName: brand.name, candidates, at: Date.now(), v: PROPOSAL_VERSION,
       }))
       return NextResponse.json({ ok: true, outcome: reason, candidates: candidates.length }, { headers: cors })
     }
@@ -245,6 +245,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, outcome: 'taken', by: taken.name }, { headers: cors })
     }
     await attachProfileId(brand.id, brand.name, brand.aka, pick)
+    // Settled: an older proposal for this brand has nothing left to ask.
+    const left = await readProposals(prisma)
+    if (left.some(p => p.brandId === brand.id)) await writeProposals(prisma, left.filter(p => p.brandId !== brand.id))
     return NextResponse.json({ ok: true, outcome: 'attached', externalId: pick.externalId, name: pick.name }, { headers: cors })
   }
 

@@ -65,7 +65,12 @@ export type SuProposal = {
   brandName: string
   candidates: SuCandidate[]
   at: number
+  // Script 4.1 and older read the page's own profile links as results
+  // (every brand got the same eight "matches"); their proposals carry no
+  // v and stay hidden. Kept, not deleted: a re-search replaces each one.
+  v?: number
 }
+export const PROPOSAL_VERSION = 2
 
 // A brand whose people should be captured on the script's next pass —
 // written when a profile id is attached, so "pull their people now"

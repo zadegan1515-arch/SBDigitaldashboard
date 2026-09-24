@@ -75,7 +75,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   capture found one or two people. Old userscripts sending scope `missing` get `thin` too. A brand
   whose last visit added nobody **rests 14 days** (Setting `suSweepLog`, `isResting` in
   `src/lib/su-match.ts`) so emptiest-first doesn't reopen the same stalled brands every run; the
-  script expands the contacts list (scroll / "load more") before reading it.
+  script expands the contacts list (scroll / "load more") before reading it. Profile lookup
+  (`needProfile` → `matched`, and the Brands → Find search) reads only profile links that appear
+  after typing into their search (the dashboard's own cards are not results), first line = name,
+  Property results dropped; `node scripts/test-capture.js` covers it. Proposals from script ≤4.1
+  have no `v` and stay hidden (`PROPOSAL_VERSION`).
 - `src/lib/email.ts` — outreach: drafting, cap/ramp (`roomToday`), sending via Gmail API, replies, warmup stats, signature (hosted images, LinkedIn/IG as text links).
 - `src/lib/google.ts` — OAuth (gmail / drive / ops grants), Gmail read+send, Drive/Sheets/Docs create.
 - `src/lib/shows.ts` — **the show list** for the Shows tab and the public sponsor page. Reads **only
