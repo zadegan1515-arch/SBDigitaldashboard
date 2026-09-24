@@ -17,6 +17,11 @@
 //      localStorage.
 //   5. It still opens on a page that enforces Trusted Types, where a
 //      plain innerHTML write throws and the click would do nothing.
+//   7. It still works where the page allows only its OWN Trusted Types
+//      policy and that policy scrubs inserted HTML — what LinkedIn did to
+//      the first real run: our policy was refused, the page's scrubber
+//      stripped the panel's buttons and ids, and the click failed with
+//      "Cannot set properties of null (setting 'onclick')".
 //   6. The pill sits bottom-left, clear of LinkedIn's Messaging bar; the
 //      Tampermonkey menu opens the same panel; and a copy running without
 //      its @grant lines (pasted under Tampermonkey's sample) says so.
@@ -114,6 +119,16 @@ const server = http.createServer((req, res) => {
   if (/^\/company\/tt-brand\/people\/?/.test(req.url)) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "require-trusted-types-for 'script'" });
     return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">TT Brand</h1><ul>' + FIRST + '</ul></main></body></html>');
+  }
+  // The page only permits its own "default" policy, and that policy
+  // scrubs: ids and buttons come out of anything inserted as HTML.
+  if (/^\/company\/scrub-brand\/people\/?/.test(req.url)) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "require-trusted-types-for 'script'; trusted-types default" });
+    return res.end('<!doctype html><html><head><script>' +
+      'trustedTypes.createPolicy("default", { createHTML: function (s) {' +
+      '  return s.replace(/\\sid="[^"]*"/g, "").replace(/<button[^>]*>[\\s\\S]*?<\\/button>/g, "").replace(/<input[^>]*>/g, "");' +
+      '} });' +
+      '</script></head><body><main><h1 class="org-top-card-summary__title">Scrub Brand</h1><ul>' + FIRST + '</ul></main></body></html>');
   }
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   if (/^\/company\/liquid-death\/people\/?/.test(req.url)) return res.end(page(true));
@@ -256,6 +271,36 @@ const GM_SHIM = `
     await tt.waitForSelector('#sbliadd', { timeout: 20000 });
     assert.deepEqual(ttErrors, []);
     ok('opens and reads on a page that enforces Trusted Types');
+
+    // 7. A page whose own policy scrubs inserted HTML. First the setup
+    // panel (no token yet), then a full read with a token.
+    for (const withToken of [false, true]) {
+      const sc = await browser.newPage();
+      const scErrors = [];
+      sc.on('pageerror', e => scErrors.push(e.message));
+      sc.on('dialog', d => { scErrors.push('alert: ' + d.message()); d.dismiss(); });
+      await sc.addInitScript((withToken ? GM_SHIM : GM_SHIM.replace("{ sbIngestToken: 'test-token' }", '{}')) + '\n' + SCRIPT);
+      await sc.goto('http://127.0.0.1:4622/company/scrub-brand/people/');
+      const scrubs = await sc.evaluate(() => { const d = document.createElement('div'); d.innerHTML = '<button id="x">b</button>'; return !d.querySelector('#x'); });
+      assert.equal(scrubs, true, 'the test page must really scrub inserted HTML');
+      await sc.waitForSelector('#sblipill', { state: 'visible' });
+      await sc.click('#sblipill');
+      if (!withToken) {
+        await sc.waitForSelector('#sbli-panel input[type="password"]', { timeout: 5000 });
+        await sc.fill('#sbli-panel input[type="password"]', 'test-token');
+        await sc.click('#sbli-panel button');
+        // Saved, checked against the dashboard, and on to reading the page.
+        await sc.waitForSelector('#sbliadd', { timeout: 20000 });
+      } else {
+        await sc.waitForSelector('#sbliadd', { timeout: 20000 });
+        await sc.click('#sbliadd');
+        await sc.waitForFunction(() => /Saved/.test(document.getElementById('sbli-panel').innerText));
+      }
+      assert.deepEqual(scErrors, []);
+      assert.ok(!/Something went wrong/.test(await sc.evaluate(() => document.getElementById('sbli-panel').innerText)));
+      await sc.close();
+    }
+    ok('works where the page scrubs inserted HTML (setup, read and save)');
 
     // 6. No @grant lines: runs, shows the pill, says to reinstall.
     const bare = await browser.newPage();

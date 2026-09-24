@@ -109,8 +109,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   sample script, or its header wins and the script never runs on LinkedIn (a copy running without
   its @grant lines says "Reinstall"). The pill shows on every LinkedIn page, **bottom-left** (the
   Messaging bar owns bottom-right), on `<html>` with `all:initial`; the Tampermonkey icon's menu
-  has "Open the SB capture panel" as a second way in. Off a company page it only says where to go; panel HTML goes through a Trusted Types policy
-  (`setHTML`) and clicks are wrapped (`guard`) so a failure shows a message, never nothing.
+  has "Open the SB capture panel" as a second way in. Off a company page it only says where to go; panels are built node by node (`h()`,
+  createElement) — **never innerHTML**: LinkedIn allows only its own Trusted Types policy and it
+  scrubs inserted HTML (stripped the panel's buttons/ids on the first real run). Clicks are wrapped
+  (`guard`) so a failure shows a message, never nothing.
 - `src/lib/email.ts` — outreach: drafting, cap/ramp (`roomToday`), sending via Gmail API, replies, warmup stats, signature (hosted images, LinkedIn/IG as text links).
 - `src/lib/google.ts` — OAuth (gmail / drive / ops grants), Gmail read+send, Drive/Sheets/Docs create.
 - `src/lib/shows.ts` — **the show list** for the Shows tab and the public sponsor page. Reads **only

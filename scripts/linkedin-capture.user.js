@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.2
+// @version      1.3
 // @description  On a brand's LinkedIn People page, send its marketing and partnership people to the SB Command Center. One click, one page — nothing browses on its own.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -56,7 +56,7 @@
   var INGEST_URL = 'https://sb-digitaldashboard.vercel.app/api/ingest';
   var DASH_URL = 'https://sb-digitaldashboard.vercel.app/app.html';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.2';
+  var VERSION = '1.3';
 
   // The header's @grant lines are what give this script Tampermonkey's
   // storage and requests. A paste that lost the header (the usual cause:
@@ -106,20 +106,6 @@
     });
   }
 
-  // If LinkedIn enforces Trusted Types, a plain innerHTML write throws
-  // and the panel never opens — the "click and nothing happens" case. A
-  // policy of our own keeps it working. Everything passed in is built
-  // here from escaped values.
-  var ttPolicy = null;
-  try {
-    if (window.trustedTypes && window.trustedTypes.createPolicy) {
-      ttPolicy = window.trustedTypes.createPolicy('sb-li-capture', { createHTML: function (s) { return s; } });
-    }
-  } catch (e) { ttPolicy = null; }
-  function setHTML(el, html) {
-    el.innerHTML = ttPolicy ? ttPolicy.createHTML(html) : html;
-  }
-
   // A click that fails says so, instead of doing nothing.
   function report(e) {
     var msg = (e && e.message) || String(e);
@@ -132,11 +118,6 @@
     };
   }
 
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
   function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   function rand(a, b) { return a + Math.floor(Math.random() * (b - a)); }
 
@@ -292,19 +273,47 @@
   }
 
   // ---- UI ------------------------------------------------------------
+  //
+  // Every panel is built node by node — no HTML strings, no innerHTML.
+  // LinkedIn only lets its own Trusted Types policy through, and that
+  // policy scrubs inserted HTML: on the first real run it stripped the
+  // panel's buttons and ids, and the click died with "Cannot set
+  // properties of null". Nodes made with createElement never pass through
+  // it, and styles go through the style object, which no page policy
+  // touches.
 
   var pill, panel, busy = false, lastRead = null;
 
   var PANEL_CSS = 'all:initial;display:block;box-sizing:border-box;position:fixed;bottom:64px;left:16px;z-index:2147483647;background:#fff;color:#111;border:1px solid #d9d9d6;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:14px 16px;font:13px/1.45 system-ui,-apple-system,sans-serif;width:340px;max-height:80vh;overflow:auto;text-align:left';
-  var BTN = 'width:100%;background:#111;color:#fff;border:0;border-radius:7px;padding:9px 12px;cursor:pointer;font-weight:600;font:600 13px system-ui';
-  var BTN2 = 'width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:8px 12px;cursor:pointer;font:13px system-ui';
+  var BTN = 'display:block;box-sizing:border-box;width:100%;background:#111;color:#fff;border:0;border-radius:7px;padding:9px 12px;cursor:pointer;font:600 13px system-ui,-apple-system,sans-serif';
+  var BTN2 = 'display:block;box-sizing:border-box;width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:8px 12px;cursor:pointer;font:13px system-ui,-apple-system,sans-serif;text-align:center;text-decoration:none';
+  var MUTED = 'color:#555;margin-bottom:8px';
+  var SMALL = 'color:#999;font-size:11px;margin-top:8px';
 
-  function freshPanel() {
+  // h('div', { style: '…', text: '…', id: '…', onclick: fn }, [children])
+  // Children are nodes or plain strings (added as text, never as HTML).
+  function h(tag, props, kids) {
+    var el = document.createElement(tag);
+    Object.keys(props || {}).forEach(function (k) {
+      var v = props[k];
+      if (v == null || v === false) return;
+      if (k === 'style') el.style.cssText = v;
+      else if (k === 'text') el.textContent = v;
+      else if (k.indexOf('on') === 0) el[k] = v;
+      else if (k === 'value' || k === 'disabled' || k === 'open') el[k] = v;
+      else el.setAttribute(k, v);
+    });
+    (kids || []).forEach(function (c) {
+      if (c == null || c === false || c === '') return;
+      el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    });
+    return el;
+  }
+  function b(text) { return h('b', { text: text }); }
+
+  function freshPanel(kids) {
     if (panel) panel.remove();
-    panel = document.createElement('div');
-    panel.className = 'sb-li-ui';
-    panel.id = 'sbli-panel';
-    panel.style.cssText = PANEL_CSS;
+    panel = h('div', { id: 'sbli-panel', 'class': 'sb-li-ui', style: PANEL_CSS }, kids);
     // On <html>, not <body>: a transform or containment LinkedIn puts on
     // <body> would pin a fixed element to it, possibly off screen.
     document.documentElement.appendChild(panel);
@@ -313,63 +322,70 @@
   function closePanel() { if (panel) { panel.remove(); panel = null; } }
 
   function head(title) {
-    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
-      '<div style="width:22px;height:22px;border-radius:6px;background:#111;color:#fff;font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center">SB</div>' +
-      '<b style="flex:1">' + esc(title) + '</b>' +
-      '<span data-x style="cursor:pointer;color:#999;font-size:16px">×</span></div>';
-  }
-  function wireClose(p) {
-    var x = p.querySelector('[data-x]');
-    if (x) x.onclick = closePanel;
+    return h('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:8px' }, [
+      h('div', { style: 'width:22px;height:22px;border-radius:6px;background:#111;color:#fff;font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center', text: 'SB' }),
+      h('b', { style: 'flex:1', text: title }),
+      h('span', { style: 'cursor:pointer;color:#999;font-size:16px', text: '×', title: 'Close', onclick: closePanel }),
+    ]);
   }
 
   function keywordChips() {
     var base = companyBase();
-    if (!base) return '';
-    return '<div style="font-size:11.5px;color:#777;margin:10px 0 5px">Big company? Narrow the page first:</div>' +
-      '<div style="display:flex;flex-wrap:wrap;gap:5px">' +
-      KEYWORDS.map(function (k) {
-        return '<a href="' + esc(base + 'people/?keywords=' + encodeURIComponent(k)) + '" ' +
-          'style="border:1px solid #ddd;border-radius:99px;padding:3px 9px;color:#111;text-decoration:none;font-size:12px">' + esc(k) + '</a>';
-      }).join('') + '</div>';
+    if (!base) return null;
+    return h('div', {}, [
+      h('div', { style: 'font-size:11.5px;color:#777;margin:10px 0 5px', text: 'Big company? Narrow the page first:' }),
+      h('div', { style: 'display:flex;flex-wrap:wrap;gap:5px' }, KEYWORDS.map(function (k) {
+        return h('a', {
+          href: base + 'people/?keywords=' + encodeURIComponent(k),
+          style: 'border:1px solid #ddd;border-radius:99px;padding:3px 9px;color:#111;text-decoration:none;font-size:12px',
+          text: k,
+        });
+      })),
+    ]);
   }
 
   function tokenLink() {
-    return '<div style="margin-top:10px"><a href="#" data-key style="color:#999;font-size:11px">Change the token</a></div>';
-  }
-  function wireToken(p) {
-    var k = p.querySelector('[data-key]');
-    if (k) k.onclick = function (e) { e.preventDefault(); forgetToken(); openSetup(); };
+    return h('div', { style: 'margin-top:10px' }, [
+      h('a', {
+        href: '#', style: 'color:#999;font-size:11px', text: 'Change the token',
+        onclick: function (e) { e.preventDefault(); forgetToken(); openSetup(); },
+      }),
+    ]);
   }
 
   function openSetup() {
-    var p = freshPanel();
-    setHTML(p, head('Connect to the SB dashboard') +
-      '<div style="color:#555;font-size:12px;margin-bottom:10px">Paste the ingest token — the same value as INGEST_TOKEN in Vercel. Tampermonkey keeps it; LinkedIn can\'t read it; it only goes to the dashboard.</div>' +
-      '<input id="sblitok" type="password" autocomplete="off" spellcheck="false" placeholder="Ingest token" style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #ccc;border-radius:6px;margin-bottom:10px;font:13px system-ui">' +
-      '<div style="display:flex;gap:8px;align-items:center">' +
-        '<button id="sblitoksave" style="background:#111;color:#fff;border:0;border-radius:7px;padding:7px 12px;cursor:pointer;font-weight:600">Save</button>' +
-        '<span id="sblitokmsg" style="font-size:11.5px;flex:1"></span>' +
-      '</div>');
-    wireClose(p);
+    var input = h('input', {
+      id: 'sblitok', type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: 'Ingest token',
+      style: 'display:block;width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #ccc;border-radius:6px;margin-bottom:10px;font:13px system-ui;color:#111;background:#fff',
+    });
+    var msg = h('span', { id: 'sblitokmsg', style: 'font-size:11.5px;flex:1' });
+    var say = function (text, color) { msg.textContent = text; msg.style.color = color || '#555'; };
     var save = function () {
-      var v = (p.querySelector('#sblitok').value || '').trim();
-      var msg = p.querySelector('#sblitokmsg');
-      if (!v) { msg.textContent = 'Paste the token first.'; return; }
+      var v = (input.value || '').trim();
+      if (!v) return say('Paste the token first.', '#b00');
       saveToken(v);
-      setHTML(msg, '<span style="color:#137333">Checking…</span>');
+      say('Checking…', '#137333');
       // An empty preview: proves the token now, saves nothing.
       post({ action: 'liPreview', rows: [] }).then(function (j) {
         if (j && j.ok) { openMenu(); return; }
         forgetToken();
-        setHTML(msg, '<span style="color:#b00">' + esc((j && j.error) || 'The dashboard rejected that token.') + '</span>');
+        say((j && j.error) || 'The dashboard rejected that token.', '#b00');
       }).catch(function (e) {
         forgetToken();
-        setHTML(msg, '<span style="color:#b00">' + esc(e.message) + '</span>');
+        say(e.message, '#b00');
       });
     };
-    p.querySelector('#sblitoksave').onclick = save;
-    p.querySelector('#sblitok').onkeydown = function (e) { if (e.key === 'Enter') save(); };
+    input.onkeydown = function (e) { if (e.key === 'Enter') save(); };
+    freshPanel([
+      head('Connect to the SB dashboard'),
+      h('div', { style: 'color:#555;font-size:12px;margin-bottom:10px', text: 'Paste the ingest token — the same value as INGEST_TOKEN in Vercel. Tampermonkey keeps it; LinkedIn can\'t read it; it only goes to the dashboard.' }),
+      input,
+      h('div', { style: 'display:flex;gap:8px;align-items:center' }, [
+        h('button', { id: 'sblitoksave', style: 'background:#111;color:#fff;border:0;border-radius:7px;padding:7px 12px;cursor:pointer;font:600 13px system-ui', text: 'Save', onclick: save }),
+        msg,
+      ]),
+    ]);
+    input.focus();
   }
 
   function openMenu() {
@@ -378,52 +394,49 @@
     if (busy) return;
     if (!companyPath()) return openElsewhere();
     if (onPeoplePage()) return readPage();
-    var p = freshPanel();
-    setHTML(p, head(companyName() || 'LinkedIn') +
-      '<div style="color:#555;margin-bottom:10px">This reads a company\'s <b>People</b> tab. Open it, then press the SB pill again.</div>' +
-      '<button id="sblipeople" style="' + BTN + '">Open the People tab</button>' +
-      keywordChips() + tokenLink());
-    wireClose(p);
-    wireToken(p);
-    p.querySelector('#sblipeople').onclick = function () { location.href = companyBase() + 'people/'; };
+    freshPanel([
+      head(companyName() || 'LinkedIn'),
+      h('div', { style: 'color:#555;margin-bottom:10px' }, ['This reads a company\'s ', b('People'), ' tab. Open it, then press the SB pill again.']),
+      h('button', { id: 'sblipeople', style: BTN, text: 'Open the People tab', onclick: function () { location.href = companyBase() + 'people/'; } }),
+      keywordChips(),
+      tokenLink(),
+    ]);
   }
 
   function openBroken() {
-    var p = freshPanel();
-    setHTML(p, head('Reinstall this script') +
-      '<div style="color:#555;margin-bottom:8px">Tampermonkey is running this script without its settings lines, so it can\'t reach the dashboard. That happens when it was pasted <b>under</b> Tampermonkey\'s sample script.</div>' +
-      '<div style="color:#555">Tampermonkey → Dashboard → open this script → select everything (Ctrl/Cmd+A) → paste the script from GitHub over it → save.</div>');
-    wireClose(p);
+    freshPanel([
+      head('Reinstall this script'),
+      h('div', { style: MUTED }, ['Tampermonkey is running this script without its settings lines, so it can\'t reach the dashboard. That happens when it was pasted ', b('under'), ' Tampermonkey\'s sample script.']),
+      h('div', { style: 'color:#555', text: 'Tampermonkey → Dashboard → open this script → select everything (Ctrl/Cmd+A) → paste the script from GitHub over it → save.' }),
+    ]);
   }
 
   // The pill shows on every LinkedIn page, so a working install is
   // visible at once. Off a company page it only says where to go.
   function openElsewhere() {
-    var p = freshPanel();
     var search = /\/search\/results\/companies/.test(location.pathname);
-    setHTML(p, head('SB LinkedIn capture') +
-      (search
-        ? '<div style="color:#555;margin-bottom:8px">Click the brand\'s company in these results, then its <b>People</b> tab, then this pill again.</div>'
-        : '<div style="color:#555;margin-bottom:8px">This works on a brand\'s <b>company page</b> on LinkedIn. The easy way in: the dashboard\'s <b>Under 25</b> list, then <b>People ↗</b> on a brand.</div>') +
-      '<a href="' + esc(DASH_URL + '#people') + '" target="_blank" rel="noopener" style="display:block;' + BTN2 + ';text-align:center;text-decoration:none;box-sizing:border-box">Open the Under 25 list ↗</a>' +
-      tokenLink());
-    wireClose(p);
-    wireToken(p);
+    freshPanel([
+      head('SB LinkedIn capture'),
+      search
+        ? h('div', { style: MUTED }, ['Click the brand\'s company in these results, then its ', b('People'), ' tab, then this pill again.'])
+        : h('div', { style: MUTED }, ['This works on a brand\'s ', b('company page'), ' on LinkedIn. The easy way in: the dashboard\'s ', b('Under 25'), ' list, then ', b('People ↗'), ' on a brand.']),
+      h('a', { href: DASH_URL + '#people', target: '_blank', rel: 'noopener', style: BTN2, text: 'Open the Under 25 list ↗' }),
+      tokenLink(),
+    ]);
   }
 
   function readPage() {
     busy = true;
     var halt = { stopped: false };
-    var p = freshPanel();
-    setHTML(p, head('Reading this page') +
-      '<div id="sbliprog" style="color:#555;margin-bottom:10px">' + count() + ' people on screen…</div>' +
-      '<div style="color:#999;font-size:11px;margin-bottom:10px">Scrolling this one page, with pauses, up to ' + MAX_PEOPLE + ' people. Nothing is saved yet.</div>' +
-      '<button id="sblistop" style="' + BTN2 + '">Stop and use what\'s here</button>');
-    wireClose(p);
-    p.querySelector('#sblistop').onclick = function () { halt.stopped = true; };
+    var prog = h('div', { id: 'sbliprog', style: 'color:#555;margin-bottom:10px', text: count() + ' people on screen…' });
+    freshPanel([
+      head('Reading this page'),
+      prog,
+      h('div', { style: 'color:#999;font-size:11px;margin-bottom:10px', text: 'Scrolling this one page, with pauses, up to ' + MAX_PEOPLE + ' people. Nothing is saved yet.' }),
+      h('button', { id: 'sblistop', style: BTN2, text: 'Stop and use what\'s here', onclick: function () { halt.stopped = true; } }),
+    ]);
     expand(function (n) {
-      var el = document.getElementById('sbliprog');
-      if (el) el.textContent = n + ' people on screen…';
+      prog.textContent = n + ' people on screen…';
     }, halt).then(function () {
       window.scrollTo(0, 0);
       lastRead = { rows: scrape(), companyName: companyName(), companyUrl: location.href };
@@ -450,72 +463,89 @@
 
   function showError(msg) {
     busy = false;
-    var p = freshPanel();
-    setHTML(p, head('Something went wrong') + '<div style="color:#b00">' + esc(msg) + '</div>' + tokenLink());
-    wireClose(p);
-    wireToken(p);
+    freshPanel([
+      head('Something went wrong'),
+      h('div', { style: 'color:#b00', text: msg }),
+      tokenLink(),
+    ]);
   }
 
   function group(title, rows, open, color) {
-    if (!rows.length) return '';
-    var list = rows.map(function (r) {
-      return '<div style="padding:2px 0">' + esc(r.name) +
-        (r.role ? ' <span style="color:#777">— ' + esc(r.role) + '</span>' : '') +
-        (r.at ? ' <span style="color:#946200">(on file at ' + esc(r.at) + ')</span>' : '') + '</div>';
-    }).join('');
-    return '<details' + (open ? ' open' : '') + ' style="margin-top:8px">' +
-      '<summary style="cursor:pointer;font-weight:600;color:' + (color || '#111') + '">' + esc(title) + ' (' + rows.length + ')</summary>' +
-      '<div style="font-size:12px;margin-top:4px;max-height:180px;overflow:auto">' + list + '</div></details>';
+    if (!rows.length) return null;
+    return h('details', { open: !!open, style: 'display:block;margin-top:8px' }, [
+      h('summary', { style: 'display:list-item;cursor:pointer;font-weight:600;color:' + (color || '#111'), text: title + ' (' + rows.length + ')' }),
+      h('div', { style: 'font-size:12px;margin-top:4px;max-height:180px;overflow:auto' }, rows.map(function (r) {
+        return h('div', { style: 'padding:2px 0' }, [
+          r.name,
+          r.role ? h('span', { style: 'color:#777', text: ' — ' + r.role }) : null,
+          r.at ? h('span', { style: 'color:#946200', text: ' (on file at ' + r.at + ')' }) : null,
+        ]);
+      })),
+    ]);
   }
 
   function renderPreview(j, typed) {
     var by = function (v) { return j.rows.filter(function (r) { return r.verdict === v; }); };
     var adds = by('add'), waiting = by('noBrand');
-    var p = freshPanel();
+    var pickAndPreview = function (name) { preview(name).catch(function (e) { showError(e.message); }); };
+
     var brandLine;
     if (j.brand) {
-      brandLine = '<div style="margin-bottom:4px">For <b>' + esc(j.brand.name) + '</b> · ' + j.have + ' of ' + j.cap + ' on file' +
-        (j.room ? ', room for ' + j.room : ' — full') + '</div>' +
-        (j.pageMismatch ? '<div style="font-size:11.5px;color:#946200;margin-bottom:4px">This brand has a different LinkedIn page saved (maybe a parent or sister brand). Adding people here is fine; the saved page stays.</div>' : '');
+      brandLine = [
+        h('div', { style: 'margin-bottom:4px' }, ['For ', b(j.brand.name), ' · ' + j.have + ' of ' + j.cap + ' on file' + (j.room ? ', room for ' + j.room : ' — full')]),
+        j.pageMismatch ? h('div', { style: 'font-size:11.5px;color:#946200;margin-bottom:4px', text: 'This brand has a different LinkedIn page saved (maybe a parent or sister brand). Adding people here is fine; the saved page stays.' }) : null,
+      ];
     } else {
-      brandLine = '<div style="color:#946200;margin-bottom:4px">' +
-        (j.notFound ? 'No brand called "' + esc(j.notFound) + '" in the dashboard.' : 'Which dashboard brand is this? None matched "' + esc(lastRead.companyName) + '".') +
-        '</div>' +
-        (j.suggestions && j.suggestions.length
-          ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">' + j.suggestions.map(function (s) {
-              return '<button data-pick="' + esc(s) + '" style="border:1px solid #ddd;background:#fff;border-radius:99px;padding:3px 9px;cursor:pointer;font-size:12px">' + esc(s) + '</button>';
-            }).join('') + '</div>'
-          : '');
+      brandLine = [
+        h('div', { style: 'color:#946200;margin-bottom:4px', text: j.notFound
+          ? 'No brand called "' + j.notFound + '" in the dashboard.'
+          : 'Which dashboard brand is this? None matched "' + lastRead.companyName + '".' }),
+        j.suggestions && j.suggestions.length
+          ? h('div', { style: 'display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px' }, j.suggestions.map(function (s) {
+              return h('button', {
+                style: 'border:1px solid #ddd;background:#fff;color:#111;border-radius:99px;padding:3px 9px;cursor:pointer;font:12px system-ui',
+                text: s, onclick: function () { pickAndPreview(s); },
+              });
+            }))
+          : null,
+      ];
     }
-    setHTML(p, head(lastRead.companyName || 'LinkedIn') + brandLine +
-      '<div style="display:flex;gap:6px;margin:6px 0 4px">' +
-        '<input id="sblibrand" list="" value="' + esc(typed || (j.brand ? j.brand.name : '')) + '" placeholder="Dashboard brand name" ' +
-          'style="flex:1;min-width:0;padding:6px 8px;border:1px solid #ccc;border-radius:6px;font:12.5px system-ui">' +
-        '<button id="sblicheck" style="background:#fff;border:1px solid #ccc;border-radius:6px;padding:5px 10px;cursor:pointer;font:12.5px system-ui">' + (j.brand ? 'Change' : 'Check') + '</button>' +
-      '</div>' +
-      '<div style="font-size:12px;color:#555;margin-top:8px">' + lastRead.rows.length + ' people read from this page.</div>' +
-      group(j.brand ? 'Will add' : 'Buyers found', j.brand ? adds : waiting, true, '#137333') +
-      group('Over the ' + j.cap + ' cap', by('full'), false, '#946200') +
-      group('Already on file', by('dupe'), false, '#555') +
-      group('On file at another brand', by('elsewhere'), false, '#946200') +
-      group('Not a buyer title — left out', by('notBuyer'), false, '#999') +
-      (j.brand
-        ? '<button id="sbliadd" style="' + BTN + ';margin-top:12px"' + (adds.length ? '' : ' disabled') + '>' +
-            (adds.length ? 'Add ' + adds.length + ' to ' + esc(j.brand.name) : 'Nobody new to add') + '</button>'
-        : '') +
-      '<div style="color:#999;font-size:11px;margin-top:8px">No emails — LinkedIn doesn\'t show them. New people join the LinkedIn queue; it keeps the best 4 per brand in play.</div>' +
-      keywordChips() + tokenLink());
-    wireClose(p);
-    wireToken(p);
-    var box = p.querySelector('#sblibrand');
-    var check = function () { preview(box.value.trim()).catch(function (e) { showError(e.message); }); };
-    p.querySelector('#sblicheck').onclick = check;
-    box.onkeydown = function (e) { if (e.key === 'Enter') check(); };
-    [].slice.call(p.querySelectorAll('[data-pick]')).forEach(function (b) {
-      b.onclick = function () { preview(b.getAttribute('data-pick')).catch(function (e) { showError(e.message); }); };
+
+    var box = h('input', {
+      id: 'sblibrand', value: typed || (j.brand ? j.brand.name : ''), placeholder: 'Dashboard brand name',
+      style: 'flex:1;min-width:0;padding:6px 8px;border:1px solid #ccc;border-radius:6px;font:12.5px system-ui;color:#111;background:#fff',
     });
-    var add = p.querySelector('#sbliadd');
-    if (add && adds.length) add.onclick = function () { capture(typed, add); };
+    box.onkeydown = function (e) { if (e.key === 'Enter') pickAndPreview(box.value.trim()); };
+
+    var add = null;
+    if (j.brand) {
+      add = h('button', {
+        id: 'sbliadd', style: BTN + ';margin-top:12px', disabled: !adds.length,
+        text: adds.length ? 'Add ' + adds.length + ' to ' + j.brand.name : 'Nobody new to add',
+      });
+      if (adds.length) add.onclick = function () { capture(typed, add); };
+    }
+
+    freshPanel([head(lastRead.companyName || 'LinkedIn')].concat(brandLine, [
+      h('div', { style: 'display:flex;gap:6px;margin:6px 0 4px' }, [
+        box,
+        h('button', {
+          id: 'sblicheck', text: j.brand ? 'Change' : 'Check',
+          style: 'background:#fff;color:#111;border:1px solid #ccc;border-radius:6px;padding:5px 10px;cursor:pointer;font:12.5px system-ui',
+          onclick: function () { pickAndPreview(box.value.trim()); },
+        }),
+      ]),
+      h('div', { style: 'font-size:12px;color:#555;margin-top:8px', text: lastRead.rows.length + ' people read from this page.' }),
+      group(j.brand ? 'Will add' : 'Buyers found', j.brand ? adds : waiting, true, '#137333'),
+      group('Over the ' + j.cap + ' cap', by('full'), false, '#946200'),
+      group('Already on file', by('dupe'), false, '#555'),
+      group('On file at another brand', by('elsewhere'), false, '#946200'),
+      group('Not a buyer title — left out', by('notBuyer'), false, '#999'),
+      add,
+      h('div', { style: SMALL, text: 'No emails — LinkedIn doesn\'t show them. New people join the LinkedIn queue; it keeps the best 4 per brand in play.' }),
+      keywordChips(),
+      tokenLink(),
+    ]));
   }
 
   function capture(typed, btn) {
@@ -530,16 +560,16 @@
       rows: r.rows,
     }).then(function (j) {
       if (!j || !j.ok) return showError((j && j.error) || 'Nothing was saved.');
-      var p = freshPanel();
-      setHTML(p, head('Saved') +
-        '<div style="margin-bottom:6px"><b>' + j.added + '</b> added to <b>' + esc(j.brand.name) + '</b>. It now has ' + j.have + ' of ' + j.cap + ' people on file.</div>' +
-        (j.targetsShelved ? '<div style="font-size:12px;color:#555">' + j.targetsShelved + ' parked on the brand page — the queue keeps the best 4 per brand in play.</div>' : '') +
-        (j.savedPage ? '<div style="font-size:12px;color:#555">This page is now saved as the brand\'s LinkedIn page, so next time it matches by itself.</div>' : '') +
-        (j.failed ? '<div style="font-size:12px;color:#b00">' + j.failed + ' could not be saved: ' + esc((j.errors || []).join('; ')) + '</div>' : '') +
-        '<a href="' + esc(DASH_URL + '#brand/' + j.brand.id) + '" target="_blank" rel="noopener" style="display:block;margin-top:10px;' + BTN2 + ';text-align:center;text-decoration:none;box-sizing:border-box">Open the brand in the dashboard ↗</a>' +
-        '<div style="color:#999;font-size:11px;margin-top:8px">Still short? Try a keyword below, then press the SB pill again.</div>' +
-        keywordChips());
-      wireClose(p);
+      freshPanel([
+        head('Saved'),
+        h('div', { style: 'margin-bottom:6px' }, [b(String(j.added)), ' added to ', b(j.brand.name), '. It now has ' + j.have + ' of ' + j.cap + ' people on file.']),
+        j.targetsShelved ? h('div', { style: 'font-size:12px;color:#555', text: j.targetsShelved + ' parked on the brand page — the queue keeps the best 4 per brand in play.' }) : null,
+        j.savedPage ? h('div', { style: 'font-size:12px;color:#555', text: 'This page is now saved as the brand\'s LinkedIn page, so next time it matches by itself.' }) : null,
+        j.failed ? h('div', { style: 'font-size:12px;color:#b00', text: j.failed + ' could not be saved: ' + (j.errors || []).join('; ') }) : null,
+        h('a', { href: DASH_URL + '#brand/' + j.brand.id, target: '_blank', rel: 'noopener', style: BTN2 + ';margin-top:10px', text: 'Open the brand in the dashboard ↗' }),
+        h('div', { style: SMALL, text: 'Still short? Try a keyword below, then press the SB pill again.' }),
+        keywordChips(),
+      ]);
     }).catch(function (e) { showError(e.message); });
   }
 
