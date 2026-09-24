@@ -101,7 +101,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `liCapture` on "Add". Brand match: typed name → saved `Brand.linkedinUrl` slug → page name/aka;
   never creates a brand; saves the page fill-if-empty unless another brand has it. Buyer rules +
   headline→title in `src/lib/li-capture.ts` (`node scripts/test-li-capture.mjs`); script tested by
-  `scripts/test-li-script.js` (fake People page). Worklist: Outreach → People → "Under 25".
+  `scripts/test-li-script.js` (fake People page). Worklist: Outreach → People → "Under 25"
+  (deep link `app.html#people`). Install by **paste** (Tampermonkey → + → paste): opening the raw
+  GitHub link doesn't bring up the install page for Leo. The pill shows on every LinkedIn page
+  (off a company page it only says where to go); panel HTML goes through a Trusted Types policy
+  (`setHTML`) and clicks are wrapped (`guard`) so a failure shows a message, never nothing.
 - `src/lib/email.ts` — outreach: drafting, cap/ramp (`roomToday`), sending via Gmail API, replies, warmup stats, signature (hosted images, LinkedIn/IG as text links).
 - `src/lib/google.ts` — OAuth (gmail / drive / ops grants), Gmail read+send, Drive/Sheets/Docs create.
 - `src/lib/shows.ts` — **the show list** for the Shows tab and the public sponsor page. Reads **only
