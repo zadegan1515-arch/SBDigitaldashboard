@@ -22,6 +22,12 @@
 //      the first real run: our policy was refused, the page's scrubber
 //      stripped the panel's buttons and ids, and the click failed with
 //      "Cannot set properties of null (setting 'onclick')".
+//   8. A brand the dashboard doesn't have (Casamigos) can be added from
+//      the panel.
+//   9. "Fill brands by itself": finds a missing company page by search,
+//      reads each brand's People tab, saves by brandId, logs each visit,
+//      and finishes; a click in the tab pauses it and Continue resumes;
+//      LinkedIn's limit page pauses it before anything is saved.
 //   6. The pill sits bottom-left, clear of LinkedIn's Messaging bar; the
 //      Tampermonkey menu opens the same panel; and a copy running without
 //      its @grant lines (pasted under Tampermonkey's sample) says so.
@@ -78,10 +84,13 @@ const MORE = [
   card('kim-t', 'Kim Tran', 'Co-Founder & CEO', '1st'),
 ].join('');
 
-function page(people) {
-  return '<!doctype html><html><head><title>(3) Liquid Death: People | LinkedIn</title></head><body style="margin:0">' +
+function page(people, title, extra) {
+  title = title || 'Liquid Death';
+  return '<!doctype html><html><head><title>(3) ' + title + ': People | LinkedIn</title></head><body style="margin:0">' +
     '<header id="global-nav" style="height:50px"><a href="https://www.linkedin.com/in/leo-self/">Me</a></header>' +
-    '<main><h1 class="org-top-card-summary__title"> Liquid Death </h1>' +
+    '<main><h1 class="org-top-card-summary__title"> ' + title + ' </h1>' +
+    '<div class="org-top-card-summary-info-list"><div class="org-top-card-summary-info-list__info-item">Beverage Manufacturing</div></div>' +
+    (extra || '') +
     (people
       ? '<div style="height:1400px">associated members</div><ul id="grid">' + FIRST + '</ul>' +
         '<button id="more" onclick="document.getElementById(\'grid\').insertAdjacentHTML(\'beforeend\', window.__MORE); this.remove()">Show more results</button>' +
@@ -91,6 +100,8 @@ function page(people) {
 }
 
 const sent = [];
+// What liList hands the fill; each scenario sets its own.
+let fillItems = [];
 const server = http.createServer((req, res) => {
   const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
   if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
@@ -102,6 +113,28 @@ const server = http.createServer((req, res) => {
       sent.push(body);
       res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, cors));
       if (body.token !== 'test-token') { res.writeHead(401); return res.end('{}'); }
+      if (body.action === 'liPreview' && /casamigos/.test(body.companyUrl || '')) {
+        return res.end(JSON.stringify({
+          ok: true, brand: null, matchedBy: null, notFound: body.brandName || null, suggestions: [], createName: body.brandName || body.companyName,
+          cap: 25, have: 0, room: 25,
+          rows: body.rows.map(r => ({ name: r.name, role: r.headline, linkedinUrl: r.linkedinUrl, verdict: 'noBrand' })),
+        }));
+      }
+      if (body.action === 'liCapture' && body.createIfMissing) {
+        return res.end(JSON.stringify({ ok: true, brand: { id: 'bnew', name: body.companyName }, brandCreated: true, added: 3, have: 3, cap: 25, targetsShelved: 0 }));
+      }
+      if (body.action === 'liList') {
+        return res.end(JSON.stringify({ ok: true, items: fillItems, cap: 25, noPage: fillItems.filter(i => !i.linkedinUrl).length, resting: 0 }));
+      }
+      if (body.action === 'liMatched') {
+        const hit = (body.candidates || []).find(c => c.name === 'LMNT');
+        return res.end(JSON.stringify(hit
+          ? { ok: true, outcome: 'attached', how: 'exact', name: 'LMNT', linkedinUrl: 'https://www.linkedin.com/company/drinklmnt/' }
+          : { ok: true, outcome: 'unclear' }));
+      }
+      if (body.action === 'liCapture' && body.brandId) {
+        return res.end(JSON.stringify({ ok: true, brand: { id: body.brandId, name: body.companyName }, added: 2, have: 12, cap: 25, targetsShelved: 0 }));
+      }
       if (body.action === 'liPreview') {
         return res.end(JSON.stringify({
           ok: true, brand: { id: 'b1', name: 'Liquid Death' }, matchedBy: 'name', cap: 25, have: 20, room: 5,
@@ -132,6 +165,26 @@ const server = http.createServer((req, res) => {
   }
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   if (/^\/company\/liquid-death\/people\/?/.test(req.url)) return res.end(page(true));
+  if (/^\/company\/casamigos-tequila\/people\/?/.test(req.url)) return res.end(page(true, 'Casamigos Tequila'));
+  if (/^\/company\/drinklmnt\/people\/?/.test(req.url)) return res.end(page(true, 'LMNT'));
+  // LinkedIn telling a free account it has searched enough.
+  if (/^\/company\/limit-brand\/people\/?/.test(req.url)) {
+    return res.end(page(true, 'Limit Brand', '<div>You\'ve reached the commercial use limit on search.</div>'));
+  }
+  // People that take three seconds to appear — long enough to click.
+  if (/^\/company\/slow-brand\/people\/?/.test(req.url)) {
+    return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Slow Brand</h1><ul id="g"></ul></main>' +
+      '<script>setTimeout(function () { document.getElementById("g").insertAdjacentHTML("beforeend", ' + JSON.stringify(FIRST) + '); }, 3000)</script></body></html>');
+  }
+  // A company search, the way LinkedIn lays out results.
+  if (/^\/search\/results\/companies\/\?keywords=LMNT/.test(req.url)) {
+    return res.end('<!doctype html><html><body><main><ul>' +
+      '<li><a href="https://www.linkedin.com/company/drinklmnt/"><img alt=""></a>' +
+        '<a href="https://www.linkedin.com/company/drinklmnt/"><span>LMNT</span></a>' +
+        '<div>Food and Beverage Services • Austin, TX</div><div>40K followers</div><button>Follow</button></li>' +
+      '<li><a href="https://www.linkedin.com/company/lmnt-labs/">LMNT Labs</a><div>Software Development • Oslo</div></li>' +
+      '</ul></main></body></html>');
+  }
   if (/^\/company\/liquid-death\/?$/.test(req.url)) return res.end(page(false));
   // LinkedIn after a redesign: no class names left to lean on.
   if (/^\/company\/olipop\/people\/?/.test(req.url)) {
@@ -148,10 +201,19 @@ const server = http.createServer((req, res) => {
 // Tampermonkey's API, as far as the script uses it.
 const GM_SHIM = `
   (function () {
-    var store = { sbIngestToken: 'test-token' };
-    window.GM_getValue = function (k, d) { return k in store ? store[k] : d; };
-    window.GM_setValue = function (k, v) { store[k] = v; };
-    window.GM_deleteValue = function (k) { delete store[k]; };
+    // Backed by this tab's sessionStorage so it survives the fill's page
+    // loads, as Tampermonkey's own storage does. Seeded once per tab.
+    var seed = { sbIngestToken: 'test-token' };
+    var P = '__gm:';
+    try {
+      if (!sessionStorage.getItem('__gm_seeded')) {
+        Object.keys(seed).forEach(function (k) { sessionStorage.setItem(P + k, JSON.stringify(seed[k])); });
+        sessionStorage.setItem('__gm_seeded', '1');
+      }
+    } catch (e) {}
+    window.GM_getValue = function (k, d) { var v = sessionStorage.getItem(P + k); return v == null ? d : JSON.parse(v); };
+    window.GM_setValue = function (k, v) { sessionStorage.setItem(P + k, JSON.stringify(v)); };
+    window.GM_deleteValue = function (k) { sessionStorage.removeItem(P + k); };
     window.__sbMenu = [];
     window.GM_registerMenuCommand = function (name, fn) { window.__sbMenu.push({ name: name, fn: fn }); };
     window.GM_xmlhttpRequest = function (o) {
@@ -194,7 +256,7 @@ const GM_SHIM = `
 
     // The Tampermonkey menu entry opens the same panel.
     const menu = await pageObj.evaluate(() => window.__sbMenu.map(m => m.name));
-    assert.deepEqual(menu, ['Open the SB capture panel']);
+    assert.deepEqual(menu, ['Open the SB capture panel', 'Fill brands by itself']);
     await pageObj.evaluate(() => window.__sbMenu[0].fn());
     await pageObj.waitForSelector('#sblipeople');
     await pageObj.evaluate(() => document.getElementById('sbli-panel').remove());
@@ -301,6 +363,99 @@ const GM_SHIM = `
       await sc.close();
     }
     ok('works where the page scrubs inserted HTML (setup, read and save)');
+
+    // 8. Add a brand the dashboard doesn't have.
+    {
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/company/casamigos-tequila/people/');
+      await pg.waitForSelector('#sblipill', { state: 'visible' });
+      await pg.click('#sblipill');
+      await pg.waitForSelector('#sblicreate', { timeout: 20000 });
+      assert.match(await pg.textContent('#sblicreate'), /Add “Casamigos Tequila” as a new brand \+ 7 people/);
+      await pg.click('#sblicreate');
+      await pg.waitForFunction(() => /is now a brand in the dashboard/.test(document.getElementById('sbli-panel').innerText));
+      const made = sent.filter(b => b.action === 'liCapture' && b.createIfMissing).pop();
+      assert.equal(made.companyName, 'Casamigos Tequila');
+      assert.equal(made.companyIndustry, 'Beverage Manufacturing');
+      await pg.close();
+    }
+    ok('adds a brand the dashboard doesn\'t have (Casamigos), with LinkedIn\'s industry as a hint');
+
+    // 9a. A whole run: LMNT has no page (found by search), Liquid Death has one.
+    {
+      fillItems = [
+        { brandId: 'b-lmnt', name: 'LMNT', aka: null, category: 'beverage', linkedinUrl: null, contacts: 0, focus: true },
+        { brandId: 'b-ld', name: 'Liquid Death', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/liquid-death/', contacts: 3, focus: false },
+      ];
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.waitForSelector('#sblipill', { state: 'visible' });
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      assert.equal(await pg.inputValue('#sblifocus'), 'electrolyte');
+      await pg.click('#sblifilllook');
+      await pg.waitForSelector('#sblifillstart');
+      assert.match(await pg.textContent('#sbli-panel'), /First the 1 matching “electrolyte”: LMNT/);
+      await pg.click('#sblifillstart');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 60000 });
+      const run = sent.slice(before).map(b => b.action + (b.brandId ? ':' + b.brandId : ''));
+      assert.deepEqual(run, ['liList', 'liMatched:b-lmnt', 'liCapture:b-lmnt', 'liSwept:b-lmnt', 'liCapture:b-ld', 'liSwept:b-ld']);
+      const matched = sent.slice(before).find(b => b.action === 'liMatched');
+      assert.deepEqual(matched.candidates.map(c => c.name), ['LMNT', 'LMNT Labs']);
+      assert.match(matched.candidates[0].subtitle, /Food and Beverage Services/);
+      const caps = sent.slice(before).filter(b => b.action === 'liCapture');
+      assert.ok(caps.every(c => c.rows.length === 7), 'each brand read whole, including "Show more results"');
+      assert.match(await pg.textContent('#sbli-panel'), /4 people added across 2 brands/);
+      await pg.close();
+    }
+    ok('a run finds a missing page by search, reads each brand, saves by brandId and finishes');
+
+    // 9b. A click in the tab pauses it; Continue picks it back up.
+    {
+      fillItems = [{ brandId: 'b-slow', name: 'Slow Brand', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/slow-brand/', contacts: 0, focus: false }];
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      await pg.fill('#sblifocus', '');
+      await pg.click('#sblifilllook');
+      await pg.click('#sblifillstart');
+      await pg.waitForURL(/slow-brand\/people/);
+      await pg.waitForFunction(() => /Reading Slow Brand/.test((document.getElementById('sbli-panel') || {}).innerText || ''));
+      await pg.mouse.click(700, 300);
+      await pg.waitForFunction(() => /Paused: you clicked/.test(document.getElementById('sbli-panel').innerText));
+      await pg.waitForTimeout(4000);
+      assert.equal(sent.slice(before).filter(b => b.action === 'liCapture').length, 0, 'nothing saved while paused');
+      assert.match(pg.url(), /slow-brand\/people/);
+      await pg.click('#sblifillgo');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 60000 });
+      assert.equal(sent.slice(before).filter(b => b.action === 'liCapture').length, 1);
+      await pg.close();
+    }
+    ok('a click in the run\'s tab pauses it; Continue carries on');
+
+    // 9c. LinkedIn's limit page: paused, nothing saved.
+    {
+      fillItems = [{ brandId: 'b-limit', name: 'Limit Brand', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/limit-brand/', contacts: 0, focus: false }];
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      await pg.click('#sblifilllook');
+      await pg.click('#sblifillstart');
+      await pg.waitForFunction(() => /LinkedIn showed “.*commercial use limit/.test(((document.getElementById('sbli-panel') || {}).innerText) || ''), null, { timeout: 30000 });
+      await pg.waitForTimeout(1500);
+      assert.equal(sent.slice(before).filter(b => b.action === 'liCapture').length, 0);
+      await pg.close();
+    }
+    ok('LinkedIn\'s limit page pauses the run before anything is saved');
 
     // 6. No @grant lines: runs, shows the pill, says to reinstall.
     const bare = await browser.newPage();

@@ -95,23 +95,36 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - `scripts/linkedin-capture.user.js` — **LinkedIn People capture** (second Tampermonkey script, same
   INGEST_TOKEN, kept in GM storage; requests go via `GM_xmlhttpRequest` because LinkedIn's CSP blocks
   page fetches). Leo's calls (Sep 2026): **Leo's LinkedIn account, never Zach's** (Zach's sends the
-  connection requests); **one click per brand — it never browses on its own** (no sweep, no
-  auto-next: LinkedIn flags that); buyer titles only, **inside the same 25 cap**; no emails — people
-  go to the LinkedIn queue (`source: 'linkedin'`, target created, `reconcileBrandTargets` applies).
-  On a company's People tab the SB pill scrolls that one page (≤150 people, human-paced), posts
-  `action:'liPreview'` (nothing saved; verdicts add/full/dupe/elsewhere/notBuyer), then
-  `liCapture` on "Add". Brand match: typed name → saved `Brand.linkedinUrl` slug → page name/aka;
-  never creates a brand; saves the page fill-if-empty unless another brand has it. Buyer rules +
-  headline→title in `src/lib/li-capture.ts` (`node scripts/test-li-capture.mjs`); script tested by
-  `scripts/test-li-script.js` (fake People page). Worklist: Outreach → People → "Under 25"
-  (deep link `app.html#people`). Install by **paste** (Tampermonkey → + → paste): opening the raw
-  GitHub link doesn't bring up the install page for Leo; the paste must replace Tampermonkey's
-  sample script, or its header wins and the script never runs on LinkedIn (a copy running without
-  its @grant lines says "Reinstall"). The pill shows on every LinkedIn page, **bottom-left** (the
-  Messaging bar owns bottom-right), on `<html>` with `all:initial`; the Tampermonkey icon's menu
-  has "Open the SB capture panel" as a second way in. Off a company page it only says where to go; panels are built node by node (`h()`,
-  createElement) — **never innerHTML**: LinkedIn allows only its own Trusted Types policy and it
-  scrubs inserted HTML (stripped the panel's buttons/ids on the first real run). Clicks are wrapped
+  connection requests); buyer titles only, **inside the same 25 cap**; no emails — people go to the
+  LinkedIn queue (`source: 'linkedin'`, target created, `reconcileBrandTargets` applies).
+  **By hand:** on a company's People tab the SB pill scrolls that one page (≤150 people,
+  human-paced), posts `action:'liPreview'` (nothing saved; verdicts add/full/dupe/elsewhere/
+  notBuyer), then `liCapture` on "Add". Brand match: `brandId` → typed name → saved
+  `Brand.linkedinUrl` slug → page name/aka. A brand the dashboard lacks can be **added from the
+  panel** ("Add … as a new brand" → `createIfMissing`; category guessed from name + page name +
+  LinkedIn industry via `src/lib/category-hints.ts`). The page is saved fill-if-empty unless
+  another brand has it.
+  **By itself** (Leo asked for it after the one-click version worked, knowing LinkedIn restricts
+  script-like browsing): pill → "Fill brands by itself" (also in the Tampermonkey menu). Worklist
+  `liList`: brands under 25, not archived/do-not-email, not resting; a focus word first
+  (`focusTerms` — "electrolyte" expands to the hydration shelf by name), then emptiest. Per brand:
+  no page → LinkedIn company search → `liMatched` (`decideCompanyMatch`: exact name/aka, or a near
+  miss only in the top 3 with a fitting industry; else "unclear" → skipped with a note), then the
+  People tab (+ "marketing" and "partnerships" views if the tab never ran out), `liCapture` by
+  brandId, `liSwept` → Setting `liSweepLog` (`src/lib/li-sweep.ts`; nothing-new brands rest 30
+  days; notes show red on Outreach → People). Pace: **50 brands/day** (Leo's pick), 1–2½ min
+  between brands, 20–45 s between pages, then waits for 9am next day. One tab owns the run
+  (sessionStorage id); a click or key in it pauses; a login wall, check or "commercial use limit"
+  pauses it before any save. It never creates brands.
+  Rules + matching in `src/lib/li-capture.ts` (`node scripts/test-li-capture.mjs`); script tested by
+  `scripts/test-li-script.js` (fake People/search pages, incl. a run, pause/continue, limit page).
+  Worklist in the dashboard: Outreach → People → "Under 25" (deep link `app.html#people`).
+  Install by **paste** (Tampermonkey → + → paste over the sample; pasted under it, the sample's
+  header wins and it never runs on LinkedIn — a copy without its @grant lines says "Reinstall").
+  Chrome needs Tampermonkey's **Allow User Scripts** switch on. The pill shows on every LinkedIn page,
+  **bottom-left** (Messaging owns bottom-right), on `<html>` with `all:initial`. Panels are built
+  node by node (`h()`) — **never innerHTML**: LinkedIn allows only its own Trusted Types policy and
+  it scrubs inserted HTML (stripped the panel's buttons on the first real run). Clicks are wrapped
   (`guard`) so a failure shows a message, never nothing.
 - `src/lib/email.ts` — outreach: drafting, cap/ramp (`roomToday`), sending via Gmail API, replies, warmup stats, signature (hosted images, LinkedIn/IG as text links).
 - `src/lib/google.ts` — OAuth (gmail / drive / ops grants), Gmail read+send, Drive/Sheets/Docs create.

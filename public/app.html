@@ -1105,13 +1105,13 @@
         <button class="chip active" data-lif="all">All brands</button>
         <button class="chip" data-lif="profiles">Saved profiles</button>
         <button class="chip" data-lif="none">Nobody yet</button>
-        <button class="chip" data-lif="thin" title="Brands with room under the 25-people cap, emptiest first \u2014 open People \u2197 and press the SB pill">Under 25</button>
+        <button class="chip" data-lif="thin" title="Brands with room under the 25-people cap, emptiest first — open People ↗ and press the SB pill">Under 25</button>
         <input class="inp" id="li-q" placeholder="Filter brands…" autocomplete="off" style="margin-left:auto;width:220px">
       </div>
       <div class="hint" id="li-script-hint" style="margin-top:10px;display:none">
-        People \u2197 opens a brand's LinkedIn People tab. With the
+        People ↗ opens a brand's LinkedIn People tab. With the
         <a href="https://github.com/zadegan1515-arch/SBDigitaldashboard/blob/main/scripts/linkedin-capture.user.js" target="_blank" rel="noopener">LinkedIn capture script</a>
-        in Tampermonkey (copy it there, then Tampermonkey \u2192 + \u2192 paste \u2192 save; on Leo's LinkedIn, not Zach's), press the SB pill there: it reads that page, shows who it found, and adds the marketing and partnership people when you say so.
+        in Tampermonkey (copy it there, then Tampermonkey → + → paste → save; on Leo's LinkedIn, not Zach's), press the SB pill there: it reads that page, shows who it found, and adds the marketing and partnership people when you say so. Or let it go through this list by itself: pill → <b>Fill brands by itself</b> (about 50 brands a day). Brands it couldn't do carry a red LinkedIn note here.
       </div>
       <div id="li-list" style="margin-top:14px"></div>
     </section>
@@ -4788,6 +4788,8 @@ function renderLinkedin() {
         '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(b.name) + '</span>' +
           (tag ? '<span class="t-sep">·</span><span class="t-title">' + esc(tag) + '</span>' : '') + '</div>' +
         (people || '<div class="t-meta" style="margin-top:7px"><span>Nobody saved yet — open People ↗ and press the SB pill there.</span></div>') +
+        // Left by the LinkedIn fill when it couldn't do this brand itself.
+        (b.liNote ? '<div class="t-meta" style="margin-top:7px"><span class="status declined" title="From the LinkedIn fill\u2019s last visit">LinkedIn: ' + esc(b.liNote) + '</span></div>' : '') +
       '</div>' +
       '<div class="t-actions">' +
         '<a class="btn-ghost" href="' + esc(liPeopleUrl(b)) + '" target="_blank" rel="noopener">People ↗</a>' +
