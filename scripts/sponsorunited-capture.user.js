@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — SponsorUnited Contact Capture
 // @namespace    sbagency.command-center
-// @version      3.9
+// @version      4.0
 // @description  Capture contacts from SponsorUnited into the SB Command Center, and find the profile ids of brands we cannot reach yet.
 // @match        https://pro.sponsorunited.com/*
 // @run-at       document-idle
@@ -539,17 +539,35 @@
   // opts.thenFill: when the lookup finishes, go straight on to capturing
   // every brand under 25. That pair is the whole job Leo actually wants
   // ("fill the rest in"), so the menu offers it as one button.
+  var SEARCH_HOME = 'https://pro.sponsorunited.com/dashboard';
+
   function startMatchSweep(opts) {
     var thenFill = !!(opts && opts.thenFill);
     var auto = !!(opts && opts.auto);
     ensureSearchInput().then(function (box) {
       if (box) return beginMatchSweep(thenFill, auto);
-      // The lookup needs their search box; the capture does not. Rather
-      // than stopping, fill every brand whose profile we already know.
-      if (thenFill) { startSweep('thin', { auto: auto }); return; }
-      renderMessage('No search box here',
-        'Could not find SponsorUnited\u2019s search bar on this page, so profiles can\u2019t be looked up. ' +
-        '\u201cCapture only (skip the lookup)\u201d still works from here. ' + describeInputs(), 0);
+
+      // No search box here. This used to fall straight through to the
+      // capture, which then reported "nothing to sweep" — so pressing
+      // "Fill every brand to 25" looked like it ran and did nothing,
+      // every time, while the lookup silently never happened. That was
+      // the loop.
+      //
+      // Their search lives on the dashboard, so go there and pick the
+      // lookup back up on load rather than asking Leo to be on the
+      // right page. Parked in the same store the run itself uses, so a
+      // navigation cannot lose it.
+      if (location.pathname.indexOf('/dashboard') === -1) {
+        saveMatch({ pending: true, fill: thenFill, auto: auto });
+        renderMatchPanel(null, 'Opening SponsorUnited\u2019s search to look up the missing profiles…');
+        location.href = SEARCH_HOME;
+        return;
+      }
+      // Already on the dashboard and still no box: say so instead of
+      // quietly doing the other half of the job.
+      renderMessage('Could not reach the search',
+        'The script is on SponsorUnited\u2019s dashboard but cannot find their search bar, so profiles cannot be looked up. ' +
+        describeInputs(), 0);
     });
   }
   function beginMatchSweep(thenFill, auto) {
@@ -570,7 +588,7 @@
 
   function matchStep() {
     var job = loadMatch();
-    if (!job) return;
+    if (!job || job.pending) return;
     var item = job.items[job.at];
     if (!item) {
       var fill = job.fill;
@@ -1110,9 +1128,15 @@
       if (loadJob()) setTimeout(runStep, 1200);
       else {
         var mj = loadMatch();
+        // Parked before navigating to the search: start the lookup here.
+        if (mj && mj.pending) {
+          saveMatch(null);
+          var want = { thenFill: mj.fill, auto: mj.auto };
+          setTimeout(function () { startMatchSweep(want); }, 1500);
+        }
         // A lookup run in progress — the page moved under it (a result
         // click, a back button) but the worklist survives, so pick it up.
-        if (mj) setTimeout(matchStep, 1500);
+        else if (mj) setTimeout(matchStep, 1500);
       }
     }
   }

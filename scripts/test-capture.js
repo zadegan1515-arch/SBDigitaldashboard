@@ -119,6 +119,13 @@ const site = http.createServer((req, res) => {
       card('Dana Reyes', 'Director, Campus Marketing') + card('Sam Okafor', 'Partnerships Manager')));
   }
   if (req.url.startsWith('/hidden')) return res.end(hiddenSearchPage());
+  // No banner box and nothing that looks like search: the case where
+  // the lookup genuinely cannot run here.
+  if (req.url.startsWith('/nobox')) {
+    return res.end(`<!doctype html><html><body style="margin:0">
+      <header style="height:56px;background:#111"></header>
+      <main style="padding:20px"><h1>A profile page</h1></main></body></html>`);
+  }
   res.end(page('Home'));
 });
 
@@ -273,6 +280,27 @@ function chromeAt() {
   if (calls.filter(c => c.action === 'needProfile').length <= beforeNeed) fail('the next step did not start the lookup');
   await doneCtx.close();
   console.log('a finished sweep points at the real blocker');
+
+  // 7. "Fill every brand to 25" on a page with no search box must NOT
+  //    quietly become a capture run. That silent fall-through is why
+  //    Leo kept pressing it and getting "nothing to sweep".
+  ALL_RESTING = true;
+  const fallCtx = await browser.newContext();
+  const fc = await fallCtx.newPage();
+  fc.on('pageerror', e => fail('page error (fallthrough): ' + e.message));
+  await fc.addInitScript({ content: SCRIPT });
+  await fc.goto('http://127.0.0.1:4612/nobox');
+  await fc.waitForTimeout(1200);
+  const listsBefore = calls.filter(c => c.action === 'list').length;
+  await fc.click('#sbpill');
+  await fc.waitForTimeout(300);
+  await fc.click('#sbfill');
+  await fc.waitForTimeout(4000);
+  if (calls.filter(c => c.action === 'list').length > listsBefore) {
+    fail('the lookup silently fell through to a capture sweep');
+  }
+  await fallCtx.close();
+  console.log('no search box: the lookup does not silently become a capture');
 
   console.log('SU SMOKE OK');
   await browser.close();
