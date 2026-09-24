@@ -264,6 +264,9 @@
     border:1px dashed rgba(79,131,247,.55);background:var(--surface-1);color:var(--ink-1);font-family:inherit;font-size:13.5px;cursor:pointer;text-align:left}
   .zt-pick:hover{background:rgba(79,131,247,.08)}
   .zt-pick span{font-size:12px;color:var(--ink-3)}
+  .zt-pickcol{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+  .zt-pickcol .zt-pick{width:100%}
+  .zt-pick>svg{width:18px;height:18px}
   .zt-pick.on{border-style:solid;background:var(--accent-soft)}
   .zt-lin{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:4px;background:#0a66c2;color:#fff;font-size:11px;font-weight:800}
   .zt-mini{display:inline-flex;align-items:center}
@@ -1612,6 +1615,7 @@ function ztSince(p) {
 }
 function ztMatch(p, f) {
   var st = ztStage(p);
+  if (f !== 'waiting') f = 'todo';
   if (f === 'todo') return st !== 'waiting' && st !== 'soon';
   if (f === 'waiting') return st === 'waiting' || st === 'soon';
   if (f === 'text') return st === 'dm' || st === 'nudge';
@@ -1779,10 +1783,19 @@ function ztPanelHtml(p) {
         'When they answer, tick Replied, then pick how to keep talking.</div>' +
       '<div class="zt-acts">' + li + tick('replied', 'They replied ✓', 'They answered on LinkedIn.') + '</div>';
   } else if (panel === 'pick') {
-    out = h('They replied. How do they want to keep talking?', 'Pick one, or both') +
+    // Tapping a card logs that it went out; the link under it opens the
+    // drafted message first for anyone who wants to write it here.
+    var card = function (step, box, icon, label, doneAt) {
+      return '<div class="zt-pickcol">' + (doneAt
+        ? '<div class="zt-pick on">' + icon + '<b>' + label + '</b><span>✓ Sent ' + esc(shortDate(doneAt)) + '</span></div>'
+        : '<button class="zt-pick" data-ztact="step" data-step="' + step + '">' + icon + '<b>' + label + '</b>' +
+            '<span>Tap once the ' + (step === 'emailed' ? 'email' : 'DM') + ' is sent</span></button>' +
+          '<button class="zt-linkbtn" data-ztnode="' + box + '">Write it here first →</button>') + '</div>';
+    };
+    out = h('They replied. How do they want to keep talking?', 'Tap each one you’ve done, one or both') +
       '<div class="zt-picks">' +
-        '<button class="zt-pick' + (p.wantsEmailAt || p.emailedAt ? ' on' : '') + '" data-ztnode="email">' + ZT_ICON.mail + '<b>Email</b><span>They said “email me”</span></button>' +
-        '<button class="zt-pick' + (p.liPathAt || p.liSentAt ? ' on' : '') + '" data-ztnode="lidm"><span class="zt-lin">in</span><b>LinkedIn DM</b><span>Keep it in the chat</span></button>' +
+        card('emailed', 'email', ZT_ICON.mail, 'Email', p.emailedAt) +
+        card('liSent', 'lidm', '<span class="zt-lin">in</span>', 'LinkedIn DM', p.liSentAt) +
       '</div>' +
       '<div class="zt-acts">' + li + '</div>';
   } else if (panel === 'email') {
@@ -1891,7 +1904,7 @@ function ztHeadHtml(c) {
   var total = doneWeek + c.todo;
   var pct = total ? Math.round((doneWeek / total) * 100) : 0;
   var chip = function (key, label, n) {
-    if (key !== 'todo' && !n && ZT_FILTER !== key) return '';
+    if (key !== 'todo' && key !== 'waiting' && !n && ZT_FILTER !== key) return '';
     return '<button class="zt-chip' + (ZT_FILTER === key ? ' on' : '') + '" data-ztf="' + key + '" aria-pressed="' + (ZT_FILTER === key) + '">' +
       label + '<span>' + n + '</span></button>';
   };
@@ -1914,9 +1927,7 @@ function ztHeadHtml(c) {
           '<span class="zt-meter-lbl"><b>' + doneWeek + '</b> done this week · <b>' + c.todo + '</b> to do</span></div>'
       : '') +
     (c.all
-      ? '<div class="zt-filters">' + chip('todo', 'To do', c.todo) + chip('text', 'Text back', c.text) + chip('pick', 'Pick a path', c.pick) +
-          chip('email', 'Email', c.email) + chip('lidm', 'LinkedIn DM', c.lidm) + chip('call', 'Schedule call', c.call) +
-          chip('waiting', 'Waiting', c.waiting) + '</div>'
+      ? '<div class="zt-filters">' + chip('todo', 'To do', c.todo) + chip('waiting', 'Waiting', c.waiting) + '</div>'
       : '') +
   '</div>';
 }
@@ -2223,7 +2234,7 @@ function ztUndo(id, kind) {
       return renderZachTodo();
     })
     .then(function () {
-      if (ZT_BY_ID[id] && !ztMatch(ZT_BY_ID[id], ZT_FILTER)) { ZT_FILTER = ztStage(ZT_BY_ID[id]); ztRender(); }
+      if (ZT_BY_ID[id] && !ztMatch(ZT_BY_ID[id], ZT_FILTER)) { ZT_FILTER = 'waiting'; ztRender(); }
       renderActionPanel();
       toast('Undone');
     })
@@ -2374,7 +2385,7 @@ document.getElementById('zach-todo').addEventListener('change', function (e) {
       ztApply(p, 'wantsEmail', on);
       toast(on ? (p.emailedAt ? 'Marked: wants an email (already emailed)' : 'Marked: wants an email. Email first, then the call') : 'Unticked: no email needed');
       if (ztMatch(p, ZT_FILTER)) { ztRedrawOpen(id); ztRefreshHead(); }
-      else { ZT_FILTER = ztStage(p); ztRender(); }
+      else { ZT_FILTER = ZT_FILTER === 'waiting' ? 'todo' : 'waiting'; ztRender(); }
     }).catch(function (err) { el.checked = !on; el.disabled = false; toast(err.message); });
     return;
   }
