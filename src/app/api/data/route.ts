@@ -34,7 +34,7 @@ import { allShows, refreshShows, setGenreOverride, cachedShows, GENRES } from '@
 import { newBoardCode } from '@/lib/board-access'
 import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import { regionFlag } from '@/lib/region'
-import { guessCategory } from '@/lib/category-hints'
+import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hints'
 import { readLiLog } from '@/lib/li-sweep'
 import { buildStock, bestDealStage } from '@/lib/stock'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
@@ -138,14 +138,19 @@ function startOfLocalDay(now: Date = new Date()): Date {
 // is just assigning them something, not editing this file.
 const SEED_OWNERS = ['Leo', 'Zach', 'Elizabeth']
 
-// The category vocabulary the UI knows how to render. Auto-categorisation
-// must return one of these — a made-up key would render as a raw string
-// and drop the brand into an unlabelled bucket.
-const CATEGORY_KEYS = [
-  'beverage', 'nicotine', 'cpg', 'alcohol', 'apparel', 'tech', 'fintech',
-  'software', 'beauty', 'apps', 'betting', 'nightlife', 'wellness',
-  'qsr', 'home', 'entertainment', 'unresolved',
-] as const
+// The category vocabulary (CATEGORY_KEYS) lives in src/lib/category-hints.ts
+// so the page, this file and the capture all file brands from one list.
+
+// A category a person or a paste asked for. Empty means "no category"
+// and passes through as null; anything else must be a key the page can
+// name, because a made-up key saves fine and then renders as a raw
+// string in a bucket nobody browses.
+function checkCategory(category: unknown): string | null {
+  if (category === undefined || category === null || category === '') return null
+  const key = String(category)
+  if (!isCategoryKey(key)) throw new Error(`Unknown category: ${key}`)
+  return key
+}
 
 const TIER_KEYS = ['emerging', 'growth', 'established'] as const
 
@@ -2131,7 +2136,10 @@ const handlers: Record<string, Handler> = {
   async listBrands({ category, search, take = 500, noProfile }: any) {
     const brands = await prisma.brand.findMany({
       where: {
-        ...(category && category !== 'all' ? { category } : {}),
+        // "none" is the No category chip: brands from captures, sponsor-page
+        // requests, board approvals and Notion that nobody has filed yet.
+        ...(category === 'none' ? { category: null }
+          : category && category !== 'all' ? { category } : {}),
         ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
         ...(noProfile ? { externalId: null, passedAt: null, doNotEmail: false } : {}),
       },
@@ -2206,6 +2214,57 @@ const handlers: Record<string, Handler> = {
       if (b.passedAt) { row.passed += 1; all.passed += 1 }
     }
     return { categories: out, all }
+  },
+
+  // Brands tab bulk re-file: set the category and/or tier on many brands
+  // at once. Always previewed first (CLAUDE.md rule 6) — `preview: true`
+  // returns exactly which brands move from what to what and writes
+  // nothing. The apply recomputes the same list against the database, so
+  // a brand edited in between is judged on what it is now, and it only
+  // ever writes the one or two fields that actually change.
+  async setBrandsCategory({ ids, category, tier, preview }: any) {
+    const MAX = 300
+    const list = Array.from(new Set((Array.isArray(ids) ? ids : []).map((x: any) => String(x)).filter(Boolean)))
+    if (!list.length) throw new Error('Pick at least one brand')
+    if (list.length > MAX) throw new Error(`Up to ${MAX} brands at a time — you picked ${list.length}`)
+    // Empty means "leave as is". There is no "clear the category" here on
+    // purpose: the job of this tool is filing brands, not unfiling them.
+    const toCat = checkCategory(category)
+    let toTier: string | null = null
+    if (tier !== undefined && tier !== null && tier !== '') {
+      if (!(TIER_KEYS as readonly string[]).includes(String(tier))) throw new Error(`Unknown tier: ${tier}`)
+      toTier = String(tier)
+    }
+    if (!toCat && !toTier) throw new Error('Pick a category or a tier to change')
+
+    const brands = await prisma.brand.findMany({
+      where: { id: { in: list } },
+      select: { id: true, name: true, category: true, tier: true },
+    })
+    const changes = brands
+      .map(b => ({
+        id: b.id, name: b.name,
+        fromCategory: b.category, toCategory: toCat ?? b.category,
+        fromTier: b.tier, toTier: toTier ?? b.tier,
+      }))
+      .filter(c => c.fromCategory !== c.toCategory || c.fromTier !== c.toTier)
+      .sort((a, b) => a.name.localeCompare(b.name))
+    const unchanged = brands.length - changes.length
+    // Ids that no longer exist (deleted or merged since the list loaded).
+    const missing = list.length - brands.length
+
+    if (preview !== false) return { preview: true, changes, unchanged, missing }
+
+    // Two narrow writes, each limited to the brands whose value differs,
+    // so nothing else on a brand is touched and an already-right field
+    // isn't rewritten.
+    const catIds = toCat ? changes.filter(c => c.fromCategory !== toCat).map(c => c.id) : []
+    const tierIds = toTier ? changes.filter(c => c.fromTier !== toTier).map(c => c.id) : []
+    await prisma.$transaction([
+      ...(catIds.length ? [prisma.brand.updateMany({ where: { id: { in: catIds } }, data: { category: toCat } })] : []),
+      ...(tierIds.length ? [prisma.brand.updateMany({ where: { id: { in: tierIds } }, data: { tier: toTier } })] : []),
+    ])
+    return { preview: false, changes, unchanged, missing, applied: changes.length }
   },
 
   // Brands → Stock take: the whole roster in one read — every brand,
@@ -2838,6 +2897,15 @@ const handlers: Record<string, Handler> = {
     for (const key of allowed) {
       if (fields[key] !== undefined) data[key] = fields[key] === '' ? null : fields[key]
     }
+    // An unknown category is refused rather than saved. One exception: the
+    // brand page sends the category back on every Save, and imported data
+    // can already carry a non-standard one — re-sending the stored value
+    // is not a change, so it is dropped instead of blocking a notes edit.
+    if (data.category !== undefined && data.category !== null && !isCategoryKey(data.category)) {
+      const current = await prisma.brand.findUnique({ where: { id: brandId }, select: { category: true } })
+      if (current && current.category === data.category) delete data.category
+      else checkCategory(data.category)
+    }
     if (fields.doNotEmail !== undefined) data.doNotEmail = !!fields.doNotEmail
     // People to work at once at this brand: 1-4, or null to follow the
     // suggestion (which opens wider on a brand nobody has written to).
@@ -2876,12 +2944,15 @@ const handlers: Record<string, Handler> = {
   async createBrand({ name, category, tier, website, linkedinUrl, notes, owner, hint }: any) {
     const clean = String(name ?? '').trim()
     if (!clean) throw new Error('Name required')
+    // Checked before the duplicate lookup so a bad key is always an
+    // error, not only when the name happens to be new.
+    const askedCategory = checkCategory(category)
 
     const existing = await prisma.brand.findUnique({ where: { name: clean } })
     if (existing) return { brand: existing, created: false, inference: null }
 
     let inference: any = null
-    let finalCategory = category
+    let finalCategory: string | null = askedCategory
     let finalTier = tier
 
     if (!finalCategory) {
@@ -3129,6 +3200,9 @@ const handlers: Record<string, Handler> = {
     if (!from) throw new Error('Brand not found')
     const ids: string[] = Array.isArray(contactIds) ? contactIds.slice(0, 500) : []
     if (!ids.length) throw new Error('Pick at least one person to move')
+    // Checked before the preview so a bad key is refused up front, not
+    // after Leo has already read the summary and clicked Apply.
+    const askedCategory = checkCategory(category)
 
     const moving = await prisma.contact.findMany({
       where: { id: { in: ids }, brandId: from.id },
@@ -3185,7 +3259,7 @@ const handlers: Record<string, Handler> = {
       : await prisma.brand.create({
           data: {
             name: wantedName,
-            category: category || guessCategory(wantedName),
+            category: askedCategory || guessCategory(wantedName),
             tier: tier || null,
             source: 'manual',
           },
@@ -5144,7 +5218,7 @@ const handlers: Record<string, Handler> = {
       brand = await prisma.brand.create({
         data: {
           name: String(name || spelled),
-          category: category || null,
+          category: checkCategory(category),
           tier: tier || null,
           source: 'sponsorunited',
         },
@@ -5554,8 +5628,11 @@ const handlers: Record<string, Handler> = {
   // Previews first. Nothing is written until `apply` is set, so the
   // confirm can show exactly which names are new and which are already
   // on the roster under that name or an "also known as".
-  async addBrandsBulk({ text, apply, category, tier }: any) {
+  async addBrandsBulk({ text, apply, category: askedCategory, tier }: any) {
     const MAX = 200
+    // Refused up front, preview included, so the confirm never shows a
+    // category the apply would then write through.
+    const category = checkCategory(askedCategory)
     // One name per line. A comma or tab splits off a website, which is
     // what a paste from a spreadsheet usually carries.
     const parsed: { name: string; website: string | null }[] = []
@@ -5643,7 +5720,7 @@ const handlers: Record<string, Handler> = {
     const brand = await prisma.brand.create({
       data: {
         name: miss.name,
-        category: category ?? null,
+        category: checkCategory(category),
         tier: tier ?? null,
         source: 'sponsorunited',
         externalId: miss.externalId ?? null,
@@ -6643,7 +6720,9 @@ const handlers: Record<string, Handler> = {
     if (q.length < 3) throw new Error('Give me a real search — e.g. "venture-backed CPG brands"')
     if (NO_PAID_APIS) throw new Error('Discovery search is turned off — this site makes no paid API calls. Add brands by hand or via SponsorUnited.')
 
-    const CATS = 'beverage, alcohol, cpg, apparel, tech, fintech, software, beauty, apps, betting, nightlife, wellness, qsr, home, entertainment, retail, transport, conglomerate, nicotine'
+    // From the shared list, so a key added in category-hints.ts reaches
+    // Discover too. "unresolved" is ours to set, not the model's answer.
+    const CATS = CATEGORY_KEYS.filter(k => k !== 'unresolved').join(', ')
     const prompt = [
       `Find real, currently-operating brands matching this search, for a sponsorship sales team at SB Agency (they produce 500+ fraternity/sorority concerts a year at US colleges and sell brands activations there).`,
       ``,
@@ -6755,9 +6834,15 @@ const handlers: Record<string, Handler> = {
     if (!d) throw new Error('Not found')
     let brand = await prisma.brand.findFirst({ where: { name: { equals: d.name, mode: 'insensitive' } } })
     if (!brand) {
+      // The bench holds whatever the model or a Cowork import wrote
+      // ("Beverage", "energy drinks"). Saved as-is that brand sits under
+      // no chip at all, not even No category, so anything that isn't one
+      // of our keys goes through the keyword rules instead.
+      const benchCat = String(d.category ?? '').trim().toLowerCase()
+      const category = isCategoryKey(benchCat) ? benchCat : guessCategory(d.name, d.category)
       brand = await prisma.brand.create({
         data: {
-          name: d.name, category: d.category ?? null, tier,
+          name: d.name, category, tier,
           website: d.website ?? null, linkedinUrl: d.linkedinUrl ?? null,
           source: 'discover',
           notes: [d.reason ? `Discover: ${d.reason}` : '', (d as any).activation ? `Activation idea: ${(d as any).activation}` : ''].filter(Boolean).join('\n') || null,

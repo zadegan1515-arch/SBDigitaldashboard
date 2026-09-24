@@ -671,6 +671,12 @@
   .sd-bulk{position:sticky;bottom:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;padding:10px 14px;
     border-radius:12px;background:#1f1f28;border:1px solid rgba(79,131,247,.45);box-shadow:0 8px 30px rgba(0,0,0,.5);font-size:13px;z-index:5}
   @media (max-width:1100px){.sd-days,.sd-drill-cols{grid-template-columns:minmax(0,1fr)}}
+  /* The Brands re-file bar. A sticky box can't leave its parent, and
+     .sd-bulk's parent is exactly its own height, so the sticky goes on
+     #brands-bulk, whose parent (the Brands section) also holds the list.
+     Without this the bar sits under the last of ~500 rows, off screen. */
+  #brands-bulk{position:sticky;bottom:12px;z-index:5}
+  #brands-bulk .sd-bulk{position:relative}
   .count-head{font-size:14px;font-weight:600;margin-bottom:2px}
   /* Outreach > LinkedIn. One card per brand so a brand's people stay
      together (sent ones included) instead of scattering across lists.
@@ -755,6 +761,12 @@
   .status.drafted,.status.proposed{background:rgba(138,123,255,.15);color:#ab9fff}
   .status.requested{background:rgba(246,143,94,.14);color:#f8a077}
   .target.sel{outline:2px solid var(--accent);outline-offset:-2px}
+  /* The re-file checkbox makes a Brands row wider than a phone: let the
+     buttons drop to their own line instead of scrolling the page. */
+  @media (max-width:600px){
+    #brands-list .target{flex-wrap:wrap}
+    #brands-list .t-actions{flex-basis:100%;justify-content:flex-start}
+  }
   .status.dead,.status.declined{background:rgba(240,113,107,.12);color:#f2918c}
   .fit{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink-2)}
   .amount{font-variant-numeric:tabular-nums;font-weight:600;min-width:78px;text-align:right}
@@ -1050,7 +1062,9 @@
       <div id="su-find"></div>
       <div class="chips" id="brand-cat-chips" style="margin-top:12px"></div>
       <div id="su-proposals"></div>
+      <div id="brands-selbar" class="hint" style="margin:10px 0 8px"></div>
       <div id="brands-list"></div>
+      <div id="brands-bulk"></div>
     </section>
 
     <!-- BRAND DETAIL -->
@@ -3023,6 +3037,7 @@ function loadBrandsNoProfile() {
   document.getElementById('brands-sub').textContent = 'Loading…';
   document.getElementById('fill-progress').innerHTML = '';
   box.innerHTML = '';
+  bbReset();
   api('listBrands', { noProfile: true }).then(function (list) {
     document.getElementById('brands-sub').innerHTML =
       list.length + ' brands have no SponsorUnited profile saved, so the sweep cannot fill them. ' +
@@ -3052,14 +3067,23 @@ function loadBrands(category) {
   if (nav) nav.classList.add('active');
 
   document.getElementById('brands-title').textContent =
-    category === 'all' ? 'All brands' : (CAT_NAMES[category] || category);
+    category === 'all' ? 'All brands' : category === 'none' ? 'No category' : (CAT_NAMES[category] || category);
   // Category filter chips — flip between categories without leaving the page.
+  // "No category" sits after Needs Clarification: brands that arrived from
+  // a capture, a sponsor-page request, a board approval or Notion with no
+  // category at all, which no real chip would ever list. Its count comes
+  // from categoryReach's "uncategorised" row.
   document.getElementById('brand-cat-chips').innerHTML =
     '<button class="chip' + (category === 'all' ? ' active' : '') + '" data-bcat="all">All</button>' +
     CAT_KEYS.map(function (k) {
-      return '<button class="chip' + (k === category ? ' active' : '') + '" data-bcat="' + k + '">' +
-        esc(CAT_NAMES[k]) + '<span class="n" data-creach="' + k + '"></span></button>';
-    }).join('');
+      return '<button class="chip' + (k === category ? ' active' : '') + '" data-bcat="' + esc(k) + '">' +
+        esc(CAT_NAMES[k]) + '<span class="n" data-creach="' + esc(k) + '"></span></button>';
+    }).join('') +
+    '<button class="chip' + (category === 'none' ? ' active' : '') + '" data-bcat="none" title="Brands with no category set">' +
+      'No category<span class="n" data-creach="uncategorised"></span></button>';
+  // A fresh list is a fresh selection — ticks from another category
+  // must never ride along into a re-file.
+  bbReset();
   // How far through each category the outreach is — reached / total.
   api('categoryReach').then(function (cr) {
     Object.keys(cr.categories || {}).forEach(function (k) {
@@ -3115,6 +3139,10 @@ function loadBrands(category) {
 
       return '<div class="target clickable" data-brand="' + esc(b.id) + '" data-name="' + esc(b.name) + '"' +
           (b.passedAt ? ' style="opacity:.55"' : '') + '>' +
+        // Ticks the brand for the re-file bar. data-bsel keeps the click
+        // from opening the brand page (see the data-brand delegate).
+        '<label data-bsel="' + esc(b.id) + '" title="Select to re-file" style="display:flex;align-items:center;padding:6px;margin:-6px 0 -6px -8px;cursor:pointer">' +
+          '<input type="checkbox" data-bselcb="' + esc(b.id) + '" data-name="' + esc(b.name) + '"></label>' +
         '<div class="t-main">' +
           '<div class="t-line"><span class="t-brand">' + esc(b.name) + '</span>' +
             (b.tier ? '<span class="t-sep">·</span><span class="t-title">' + esc(b.tier) + '</span>' : '') +
@@ -3133,6 +3161,7 @@ function loadBrands(category) {
         '</div>' +
       '</div>';
     }).join('') || '<div class="panel"><div class="empty"><h3>No brands here</h3></div></div>';
+    bbRender();
     applyBrandFilter();
     renderSuProposals();
   }).catch(function (e) {
@@ -3162,6 +3191,162 @@ document.getElementById('brands-list').addEventListener('click', function (e) {
     if (pill && r.passed) { pill.className = 'status passed'; pill.textContent = 'passed'; }
     toast(r.passed ? name + ' passed — hidden from outreach until brought back' : name + ' is back in outreach');
   }).catch(function (err) { toast(err.message); btn.disabled = false; });
+});
+
+// --- re-filing many brands at once -----------------------------
+// Tick brands on the list, pick a category and/or a tier, and Preview
+// shows exactly which brands move from what to what. Only "Apply"
+// writes (CLAUDE.md rule 6). Any change to the ticks or the picks
+// throws the preview away, and Apply sends the exact args of the preview
+// on screen (BB.shown), so Apply can only ever do what is on screen.
+var BB = { sel: {}, cat: '', tier: '', preview: null, shown: null, busy: false };
+var BB_TIERS = ['emerging', 'growth', 'established'];
+var BB_MAX = 300;   // same cap as setBrandsCategory
+
+function bbReset() {
+  BB = { sel: {}, cat: '', tier: '', preview: null, shown: null, busy: false };
+  document.getElementById('brands-selbar').innerHTML = '';
+  document.getElementById('brands-bulk').innerHTML = '';
+}
+// The Preview args for the picks as they are right now. Ids sorted so
+// the same ticks always give the same key, whatever order they came in.
+function bbPreviewArgs() {
+  return { ids: Object.keys(BB.sel).sort(), category: BB.cat, tier: BB.tier, preview: true };
+}
+function bbCatName(k) { return k ? (CAT_NAMES[k] || k) : 'no category'; }
+function bbTierName(t) { return t || 'no tier'; }
+
+function bbRender() {
+  var ids = Object.keys(BB.sel), n = ids.length;
+  var hasRows = !!document.querySelector('#brands-list [data-bselcb]');
+  document.getElementById('brands-selbar').innerHTML = hasRows
+    ? '<a href="#" data-bball="1">Select all shown</a>' +
+      (n ? ' · <a href="#" data-bbclear="1">Clear</a>' : ' — tick brands to set their category or tier together')
+    : '';
+  var bar = document.getElementById('brands-bulk');
+  if (!n) { bar.innerHTML = ''; return; }
+
+  // Locked while a Preview or Apply is out, so the picks on screen are
+  // the ones the reply is about.
+  var lock = BB.busy ? ' disabled' : '';
+  var catSel = '<select class="inp" data-bbcat title="Category to file them under"' + lock + '>' +
+    '<option value=""' + (BB.cat ? '' : ' selected') + '>Leave as is</option>' +
+    CAT_KEYS.map(function (k) {
+      return '<option value="' + esc(k) + '"' + (BB.cat === k ? ' selected' : '') + '>' + esc(CAT_NAMES[k]) + '</option>';
+    }).join('') + '</select>';
+  var tierSel = '<select class="inp" data-bbtier title="Tier to set"' + lock + '>' +
+    '<option value=""' + (BB.tier ? '' : ' selected') + '>Leave as is</option>' +
+    BB_TIERS.map(function (t) {
+      return '<option value="' + esc(t) + '"' + (BB.tier === t ? ' selected' : '') + '>' + esc(t) + '</option>';
+    }).join('') + '</select>';
+  var picked = !!(BB.cat || BB.tier);
+
+  var html = '<div class="sd-bulk">' +
+    '<b>' + n + ' selected</b>' +
+    '<span>Category</span>' + catSel +
+    '<span>Tier</span>' + tierSel +
+    '<button class="btn-ghost" data-bbpreview="1"' + (picked && !BB.busy && n <= BB_MAX ? '' : ' disabled') +
+      ' title="' + (n > BB_MAX ? 'Up to ' + BB_MAX + ' brands at a time' : picked ? 'Show what would change — nothing is saved yet' : 'Pick a category or a tier first') + '">' +
+      (BB.busy && !BB.preview ? 'Checking…' : 'Preview') + '</button>' +
+    (n > BB_MAX ? '<span style="color:#f0b86b">Up to ' + BB_MAX + ' at a time</span>' : '');
+
+  var p = BB.preview;
+  if (p) {
+    var rows = p.changes.map(function (c) {
+      var parts = [];
+      if (c.fromCategory !== c.toCategory) parts.push(esc(bbCatName(c.fromCategory)) + ' → <b>' + esc(bbCatName(c.toCategory)) + '</b>');
+      if (c.fromTier !== c.toTier) parts.push(esc(bbTierName(c.fromTier)) + ' → <b>' + esc(bbTierName(c.toTier)) + '</b>');
+      return '<div class="sd-drow"><span style="flex:1;min-width:0">' + esc(c.name) + '</span>' +
+        '<span class="hint" style="margin:0">' + parts.join(' · ') + '</span></div>';
+    }).join('');
+    var notes = [];
+    if (p.unchanged) notes.push(p.unchanged + (p.unchanged === 1 ? ' brand already has' : ' brands already have') + ' that — left alone');
+    if (p.missing) notes.push(p.missing + (p.missing === 1 ? ' brand is' : ' brands are') + ' gone since the list loaded — reload to see why');
+    html += '<div style="flex-basis:100%;max-height:40vh;overflow:auto;border-top:1px solid var(--border-soft);padding-top:6px">' +
+      (rows || '<div class="hint" style="margin:0">Nothing would change.</div>') +
+      (notes.length ? '<div class="hint" style="margin:6px 0 0">' + esc(notes.join(' · ')) + '</div>' : '') +
+      '<div class="hint" style="margin:6px 0 0">Only the category and tier shown are changed — nothing else on these brands is touched.</div>' +
+    '</div>' +
+    (p.changes.length
+      ? '<button class="btn-solid" data-bbapply="1"' + (BB.busy ? ' disabled' : '') + '>' +
+          (BB.busy ? 'Saving…' : 'Apply ' + p.changes.length + (p.changes.length === 1 ? ' change' : ' changes')) + '</button>'
+      : '') +
+    '<button class="btn-ghost" data-bbcancel="1">Cancel</button>';
+  }
+  bar.innerHTML = html + '</div>';
+}
+
+function bbSetTick(cb, on) {
+  var id = cb.getAttribute('data-bselcb');
+  cb.checked = on;
+  if (on) BB.sel[id] = cb.getAttribute('data-name') || id; else delete BB.sel[id];
+  var card = cb.closest('.target');
+  if (card) card.classList.toggle('sel', on);
+}
+
+document.getElementById('brands-list').addEventListener('change', function (e) {
+  var cb = e.target.closest('input[data-bselcb]');
+  if (!cb) return;
+  bbSetTick(cb, cb.checked);
+  BB.preview = null; BB.shown = null;
+  bbRender();
+});
+
+// "Select all shown" respects the search box: rows it has hidden stay
+// unticked, so a filtered list re-files only what you can see.
+document.getElementById('brands-selbar').addEventListener('click', function (e) {
+  var all = e.target.closest('[data-bball]'), clear = e.target.closest('[data-bbclear]');
+  if (!all && !clear) return;
+  e.preventDefault();
+  document.querySelectorAll('#brands-list input[data-bselcb]').forEach(function (cb) {
+    if (clear) { bbSetTick(cb, false); return; }
+    var row = cb.closest('[data-brand]');
+    if (row && row.style.display === 'none') return;
+    bbSetTick(cb, true);
+  });
+  BB.preview = null; BB.shown = null;
+  bbRender();
+});
+
+document.getElementById('brands-bulk').addEventListener('change', function (e) {
+  var cat = e.target.closest('select[data-bbcat]'), tier = e.target.closest('select[data-bbtier]');
+  if (cat) BB.cat = cat.value;
+  else if (tier) BB.tier = tier.value;
+  else return;
+  BB.preview = null; BB.shown = null;
+  bbRender();
+});
+
+document.getElementById('brands-bulk').addEventListener('click', function (e) {
+  if (e.target.closest('[data-bbcancel]')) { BB.preview = null; BB.shown = null; bbRender(); return; }
+  var prev = e.target.closest('[data-bbpreview]'), apply = e.target.closest('[data-bbapply]');
+  if ((!prev && !apply) || BB.busy) return;
+  if (apply && (!BB.preview || !BB.shown)) return;
+  // Apply writes exactly what the shown preview listed: its own args,
+  // not the live picks, which may have moved since.
+  var args = prev ? bbPreviewArgs()
+    : { ids: BB.shown.ids, category: BB.shown.category, tier: BB.shown.tier, preview: false };
+  var key = JSON.stringify(args);
+  BB.busy = true;
+  if (prev) { BB.preview = null; BB.shown = null; }
+  bbRender();
+  api('setBrandsCategory', args).then(function (r) {
+    BB.busy = false;
+    if (prev) {
+      // A ticked box during the wait makes this reply about other
+      // picks: drop it rather than show a list Apply wouldn't match.
+      if (key === JSON.stringify(bbPreviewArgs())) { BB.preview = r; BB.shown = args; }
+      bbRender();
+      return;
+    }
+    toast('Re-filed ' + r.applied + (r.applied === 1 ? ' brand' : ' brands'));
+    // Reloads the list and the chip counts; loadBrands clears the ticks.
+    loadBrands(lastCategory);
+  }).catch(function (err) {
+    BB.busy = false;
+    bbRender();
+    toast(err.message);
+  });
 });
 
 // --- merging duplicate brands ----------------------------------
@@ -11512,7 +11697,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
     if (e.target.closest('a')) return;   // let real links through
-    if (e.target.closest('[data-nbq]') || e.target.closest('[data-nbp]') || e.target.closest('[data-nbtoday]') || e.target.closest('[data-nbperson]') || e.target.closest('[data-nbslot]') || e.target.closest('[data-rcact]') || e.target.closest('[data-rcstage]') || e.target.closest('[data-unpass]') || e.target.closest('[data-blpass]')) return;   // controls with their own handlers
+    if (e.target.closest('[data-nbq]') || e.target.closest('[data-nbp]') || e.target.closest('[data-nbtoday]') || e.target.closest('[data-nbperson]') || e.target.closest('[data-nbslot]') || e.target.closest('[data-rcact]') || e.target.closest('[data-rcstage]') || e.target.closest('[data-unpass]') || e.target.closest('[data-blpass]') || e.target.closest('[data-bsel]')) return;   // controls with their own handlers
     loadBrand(el.getAttribute('data-brand'));
   });
 });
