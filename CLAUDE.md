@@ -70,6 +70,14 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   so the cap isn't involved. Done fold (30 days) and Calls booked, each with Undo. No CC (Leo's call); one-pager is a download button. The email
   machine skips brands with an accepted/replied/hand-emailed person, and skips follow-ups to accepted
   or hand-emailed people. Results → "To email" is now a pointer here.
+- **Brands → Stock take** (`brandStock` + `src/lib/stock.ts`; deep link `app.html#stock`; linked from
+  Home → Categories) — the whole roster in one read. Leo's lanes (Electrolytes & hydration, Energy
+  drinks, Beer/seltzers/canned cocktails, Spirits, Nicotine, Athletic wear, Clothing & fashion) split
+  the stored categories by category + known names + words in name/aka/about/topProducts; **nothing is
+  re-filed**, every brand lands in exactly one row, the rest stay in their category rows. Brand state:
+  deal > off (archived / do-not-email) > replied > reached > has people > needs contacts. Priority
+  lanes carry ideas (known names not on the roster under any name or aka) that add through
+  `addBrandsBulk`'s preview. `LANE_GOAL = 15` in play per lane. `node scripts/test-stock.mjs`.
 - `src/app/api/data/route.ts` — every server function. Add a handler = add a key to `handlers`.
 - `src/app/api/ingest/route.ts` + `scripts/sponsorunited-capture.user.js` — SponsorUnited contact
   capture (INGEST_TOKEN-gated, CORS-open). **Two different caps, don't confuse them:**
