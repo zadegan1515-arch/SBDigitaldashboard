@@ -81,6 +81,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - `src/lib/shows.ts` — **the show list** for the Shows tab and the public sponsor page. Reads the
   "SB AGENCY - FULL BUILT CRM" Google Sheet (read-only, tab gid 1397302046 preferred) via the Drive
   grant; a row is a confirmed show only with a booked status **and** date **and** artist **and** school.
+  Deals live in two tabs: CONTRACTING (current) and "OLD ACCOUNTING - DO NOT TOUCH" (stale; a few
+  shows exist only there). A show in both lists once (same school + date + artist, chapter
+  ignored), and a tab whose name starts with OLD never beats another tab's copy (`OLD_TAB`).
+  Bump `PARSER_VERSION` when the parse changes so the cache rebuilds on the next read.
   Past shows from `src/data/show-archive.json`. School abbreviations → name/city/state in `SCHOOL_TABLE`;
   genre auto-tags in `GENRE_ARTISTS` (overrides in Setting `artistGenres`). Cache in Setting `crmShows`
   (6 h; daily cron; ↻ Sheet button). Show ids: `sh_<hash>` / `ar_<hash>`. sb-crm's DB is no longer the source.

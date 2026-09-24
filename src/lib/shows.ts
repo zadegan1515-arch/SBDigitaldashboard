@@ -25,12 +25,17 @@ export const CRM_SHEET_ID = process.env.CRM_SHEET_ID || '1MFMIiI65SBKb51mqtHqT72
 // The tab Leo pointed at (…#gid=1397302046). Other tabs with the same
 // table shape are still read, but this one wins when a show is in both.
 const PREFERRED_GID = Number(process.env.CRM_SHEET_GID || 1397302046)
+// A tab the team has marked old ("OLD ACCOUNTING - DO NOT TOUCH") no longer
+// gets edits: its Sep 24 Chainsmokers row still says Sigma Nu, not Theta
+// Chi. It still lists the shows only it has, but its copy of a show never
+// beats another tab's, even when it is the pointed-at tab.
+const OLD_TAB = /^\s*old\b/i
 const CACHE_KEY = 'crmShows'
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000
 // Bumped when parseSheet changes what it lists: a cache written by an older
 // parser counts as stale, so the next read rebuilds it from the sheet (the
 // old list stays up if the sheet can't be read).
-const PARSER_VERSION = 2
+const PARSER_VERSION = 3
 
 export type Show = {
   id: string
@@ -274,9 +279,10 @@ export function parseSheet(tabs: { title: string; gid?: number; rows: string[][]
   const firstCopy = new Map<string, { key: string; tab: string }>()
   const rejected: SheetParse['rejected'] = []
   let tables = 0, rowsSeen = 0
-  const ordered = [...tabs].sort((a, b) => Number(b.gid === PREFERRED_GID) - Number(a.gid === PREFERRED_GID))
+  const rank = (t: { title: string; gid?: number }) => OLD_TAB.test(t.title) ? 0 : t.gid === PREFERRED_GID ? 2 : 1
+  const ordered = [...tabs].sort((a, b) => rank(b) - rank(a))
   for (const tab of ordered) {
-    const preferred = tab.gid === PREFERRED_GID
+    const old = rank(tab) === 0, preferred = rank(tab) === 2
     for (let r = 0; r < tab.rows.length; r++) {
       const hdr = tab.rows[r]
       if (!hdr || !HEADER_HINT(hdr)) continue
@@ -311,8 +317,8 @@ export function parseSheet(tabs: { title: string; gid?: number; rows: string[][]
         const key = twin && twin.tab !== tab.title ? twin.key : id
         if (!twin) firstCopy.set(sameShow(show), { key: id, tab: tab.title })
         const prev = byKey.get(key)
-        // the preferred tab always wins; otherwise keep the copy that has the type column
-        if (!prev || (!fromPreferred.has(key) && (preferred || (!prev.type && show.type)))) { byKey.set(key, show); if (preferred) fromPreferred.add(key) }
+        // the preferred tab always wins and an old tab never does; otherwise keep the copy that has the type column
+        if (!prev || (!fromPreferred.has(key) && !old && (preferred || (!prev.type && show.type)))) { byKey.set(key, show); if (preferred) fromPreferred.add(key) }
       }
     }
   }
