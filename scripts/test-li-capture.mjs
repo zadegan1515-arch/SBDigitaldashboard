@@ -20,7 +20,8 @@ execSync(
 )
 const lib = await import(pathToFileURL(join(out, 'li-capture.js')).href)
 const { companySlug, profileSlug, profileUrl, cleanName, personKey, roleFromHeadline, isBuyer,
-  normalizeCompany, decideCompanyMatch, focusTerms, matchesFocus } = lib
+  normalizeCompany, decideCompanyMatch, focusTerms, matchesFocus,
+  parseFollowers, industryOf, categoryFromIndustry, judgeDiscovery } = lib
 
 let n = 0
 function t(name, fn) { fn(); n++; console.log('  ok — ' + name) }
@@ -144,6 +145,41 @@ t('electrolyte covers the hydration shelf', () => {
   assert.ok(!matchesFocus({ name: 'Red Bull', about: 'Energy drink' }, terms))
   assert.ok(!matchesFocus({ name: 'LMNT' }, []))
   assert.deepEqual(focusTerms('nicotine, betting'), ['nicotine', 'betting'])
+})
+
+// --- finding new brands ------------------------------------------------
+t('follower counts read the way LinkedIn writes them', () => {
+  assert.equal(parseFollowers('Beverage Manufacturing • 250,512 followers'), 250512)
+  assert.equal(parseFollowers('40K followers'), 40000)
+  assert.equal(parseFollowers('1.2M followers'), 1200000)
+  assert.equal(parseFollowers('Austin, TX'), null)
+})
+t('industry is the first part of the line', () => {
+  assert.equal(industryOf('Food and Beverage Services • Austin, TX • 40K followers'), 'Food and Beverage Services')
+  assert.equal(industryOf('12K followers'), '')
+})
+t('consumer industries map to our categories; the rest don\'t', () => {
+  assert.equal(categoryFromIndustry('Wine & Spirits'), 'alcohol')
+  assert.equal(categoryFromIndustry('Beverage Manufacturing'), 'beverage')
+  assert.equal(categoryFromIndustry('Food and Beverage Services'), 'beverage')
+  assert.equal(categoryFromIndustry('Food Production'), 'cpg')
+  assert.equal(categoryFromIndustry('Retail Apparel and Fashion'), 'apparel')
+  assert.equal(categoryFromIndustry('Personal Care Product Manufacturing'), 'beauty')
+  assert.equal(categoryFromIndustry('Wellness and Fitness Services'), 'wellness')
+  assert.equal(categoryFromIndustry('Wholesale Food and Beverage'), null)
+  assert.equal(categoryFromIndustry('Advertising Services'), null)
+  assert.equal(categoryFromIndustry('Software Development'), null)
+})
+t('a lookalike needs 5K followers and a consumer industry', () => {
+  const ok = judgeDiscovery({ name: 'Jose Cuervo', subtitle: 'Beverage Manufacturing • 250,512 followers' }, 'alcohol')
+  assert.equal(ok.ok, true); assert.equal(ok.category, 'alcohol', 'takes the source brand\'s category when it fits')
+  assert.equal(judgeDiscovery({ name: 'Liquid I.V.', subtitle: 'Food and Beverage Manufacturing • 90K followers' }).category, 'beverage')
+  assert.deepEqual(judgeDiscovery({ name: 'Tiny Co', subtitle: 'Beverage Manufacturing • 812 followers' }), { ok: false, reason: 'small' })
+  assert.deepEqual(judgeDiscovery({ name: 'No Count', subtitle: 'Beverage Manufacturing' }), { ok: false, reason: 'small' })
+  assert.deepEqual(judgeDiscovery({ name: 'Southern Glazer\'s', subtitle: 'Wholesale Alcohol • 300K followers' }, 'alcohol'), { ok: false, reason: 'industry' })
+  assert.deepEqual(judgeDiscovery({ name: 'Some Agency', subtitle: 'Advertising Services • 20K followers' }), { ok: false, reason: 'industry' })
+  assert.equal(judgeDiscovery({ name: 'Venmo', subtitle: 'Financial Services • 200K followers' }, 'fintech').ok, true, 'a fintech lookalike of a fintech brand')
+  assert.equal(judgeDiscovery({ name: 'Venmo', subtitle: 'Financial Services • 200K followers' }).ok, false, 'but not from a keyword search')
 })
 
 console.log(n + ' checks passed')

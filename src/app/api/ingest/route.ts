@@ -32,6 +32,7 @@ import {
 import {
   companySlug, companyPageUrl, profileSlug, profileUrl, cleanName, personKey,
   roleFromHeadline, isBuyer, decideCompanyMatch, focusTerms, matchesFocus,
+  normalizeCompany, judgeDiscovery, industryFits,
   type LiCompany,
 } from '@/lib/li-capture'
 import { readLiLog, markLiSwept, liResting } from '@/lib/li-sweep'
@@ -112,6 +113,11 @@ async function reconcileBrandTargets(brandId: string, perBrand = TARGET_CAP_PER_
 // seven hundred engineers. Nothing already in the database is removed
 // by this; the cap only stops new rows once a brand is at 25.
 const CONTACT_CAP_PER_BRAND = 25
+
+// New brands the LinkedIn run may add in a day (lookalikes and keyword
+// searches together). Lookalikes of lookalikes never end; this keeps the
+// roster growing at a pace outreach can use.
+const DISCOVER_CAP_PER_DAY = 50
 
 // Save a brand's SponsorUnited profile id, and remember SponsorUnited's
 // own spelling as an "also known as" so later captures match by name as
@@ -600,6 +606,93 @@ export async function POST(req: NextRequest) {
     const linkedinUrl = companyPageUrl(pick.slug)
     await prisma.brand.update({ where: { id: brand.id }, data: { linkedinUrl } })
     return NextResponse.json({ ok: true, outcome: 'attached', how: reason, name: pick.name, linkedinUrl }, { headers: cors })
+  }
+
+  // action: "liDiscover" — companies LinkedIn put in front of the run:
+  // the lookalikes next to a brand ("Pages people also viewed") or a
+  // company search for a word Leo gave. Leo's call (Sep 2026): straight
+  // into the dashboard, consumer industries and 5K+ followers only
+  // (judgeDiscovery). Anything already a brand, or dismissed on the
+  // Discover page before, is left alone. Each one also gets a Discover
+  // row (status "added") so the page shows where it came from.
+  if (body.action === 'liDiscover') {
+    const source = body.source === 'search' ? 'search' : 'lookalike'
+    const from = String(body.from || '').trim().slice(0, 80)
+    const fromBrand = body.fromBrandId
+      ? await prisma.brand.findUnique({ where: { id: String(body.fromBrandId) }, select: { name: true, category: true } })
+      : null
+    const label = source === 'search' ? `LinkedIn search: ${from}` : `LinkedIn: similar to ${fromBrand?.name || from}`
+
+    // Rolling day, so a run that crosses midnight can't add 100.
+    let room = DISCOVER_CAP_PER_DAY - await prisma.brand.count({
+      where: { source: 'linkedin-discover', createdAt: { gte: new Date(Date.now() - 864e5) } },
+    })
+
+    const brands = await prisma.brand.findMany({ select: { name: true, aka: true, linkedinUrl: true } })
+    const knownNames = new Set<string>()
+    const knownSlugs = new Set<string>()
+    for (const b of brands) {
+      knownNames.add(normalizeCompany(b.name))
+      for (const a of String(b.aka || '').split(/[,;]/)) if (a.trim()) knownNames.add(normalizeCompany(a))
+      const sl = companySlug(b.linkedinUrl)
+      if (sl) knownSlugs.add(sl)
+    }
+    const dismissed = await prisma.discoveredBrand.findMany({ where: { status: 'dismissed' }, select: { name: true, linkedinUrl: true } })
+    const dismissedNames = new Set(dismissed.map(d => normalizeCompany(d.name)))
+    const dismissedSlugs = new Set(dismissed.map(d => companySlug(d.linkedinUrl)).filter(Boolean) as string[])
+
+    const tally = { known: 0, dismissed: 0, small: 0, industry: 0, capped: 0 }
+    const created: Array<{ brandId: string; name: string; category: string; linkedinUrl: string }> = []
+    const seen = new Set<string>()
+    for (const raw of (Array.isArray(body.companies) ? body.companies : []).slice(0, 40)) {
+      const slug = companySlug(String(raw?.url || ''))
+      const name = String(raw?.name || '').replace(/\s+/g, ' ').trim().slice(0, 120)
+      const subtitle = String(raw?.subtitle || '').replace(/\s+/g, ' ').trim().slice(0, 200)
+      if (!slug || !name || seen.has(slug)) continue
+      seen.add(slug)
+      const key = normalizeCompany(name)
+      if (!key || knownSlugs.has(slug) || knownNames.has(key)) { tally.known++; continue }
+      if (dismissedSlugs.has(slug) || dismissedNames.has(key)) { tally.dismissed++; continue }
+      const verdict = judgeDiscovery({ name, subtitle }, fromBrand?.category ?? null)
+      if ('reason' in verdict) { tally[verdict.reason]++; continue }
+      if (room <= 0) { tally.capped++; continue }
+      // The name can say more than LinkedIn's industry line ("Casamigos
+      // Tequila" is alcohol, "Beverage Manufacturing" isn't specific) —
+      // taken only when it agrees with the industry.
+      const byName = guessCategory(name, '')
+      const category = byName !== 'unresolved' && byName !== verdict.category && industryFits(byName, verdict.industry)
+        ? byName : verdict.category
+      const how = source === 'search' ? `LinkedIn search for "${from}"` : `LinkedIn, similar to ${fromBrand?.name || from}`
+      let brand
+      try {
+        brand = await prisma.brand.create({
+          data: {
+            name,
+            linkedinUrl: companyPageUrl(slug),
+            source: 'linkedin-discover',
+            category,
+            notes: `Found by ${how} — ${verdict.industry}, ${verdict.followers.toLocaleString('en-US')} followers.`,
+          },
+        })
+      } catch {
+        // A name clash we didn't catch (different spelling, same name).
+        tally.known++
+        continue
+      }
+      knownNames.add(key); knownSlugs.add(slug); room--
+      try {
+        await prisma.discoveredBrand.upsert({
+          where: { query_name: { query: label, name } },
+          create: {
+            query: label, name, category, linkedinUrl: brand.linkedinUrl, status: 'added', brandId: brand.id,
+            reason: `${verdict.industry} · ${verdict.followers.toLocaleString('en-US')} followers`,
+          },
+          update: { status: 'added', brandId: brand.id },
+        })
+      } catch { /* the log row is a nicety */ }
+      created.push({ brandId: brand.id, name, category, linkedinUrl: brand.linkedinUrl! })
+    }
+    return NextResponse.json({ ok: true, label, created, ...tally, cap: DISCOVER_CAP_PER_DAY }, { headers: cors })
   }
 
   // action: "liSwept" — one brand visited: how many people were read,

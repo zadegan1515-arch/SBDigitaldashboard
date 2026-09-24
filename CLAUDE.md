@@ -123,7 +123,18 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   days; notes show red on Outreach → People). Pace: **50 brands/day** (Leo's pick), 1–2½ min
   between brands, 20–45 s between pages, then waits for 9am next day. One tab owns the run
   (sessionStorage id); a click or key in it pauses; a login wall, check or "commercial use limit"
-  pauses it before any save. It never creates brands.
+  pauses it before any save.
+  **Finding new brands** (Leo, Sep 2026: straight into the dashboard, not Discover review): the
+  run's setup has "Add brands LinkedIn shows as similar" (lookalike rail — "Pages people also
+  viewed" etc. — read off the People tab, else one stop at the company home) and "Search LinkedIn
+  for new brands" words (company search, up to 3 result pages each, before the first brand).
+  `liDiscover` judges each (`judgeDiscovery`: **5K+ followers**, consumer industry via
+  `categoryFromIndustry`, wholesale/agency/software out; a lookalike takes the source brand's
+  category when its industry fits), skips known brands (name/aka/page) and anything dismissed on
+  Discover, creates the Brand (`source: 'linkedin-discover'`, provenance in notes) plus a
+  DiscoveredBrand row (status added, query "LinkedIn: similar to X" / "LinkedIn search: w"), and
+  stops at **50 new brands per rolling day** (`DISCOVER_CAP_PER_DAY`). New brands join the same
+  run: keyword finds next in line, lookalikes at the end.
   Rules + matching in `src/lib/li-capture.ts` (`node scripts/test-li-capture.mjs`); script tested by
   `scripts/test-li-script.js` (fake People/search pages, incl. a run, pause/continue, limit page).
   Worklist in the dashboard: Outreach → People → "Under 25" (deep link `app.html#people`).
