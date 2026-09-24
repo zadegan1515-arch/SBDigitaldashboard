@@ -282,10 +282,12 @@
   .zt-row .zt-av{width:40px;height:40px;font-size:13px}
   .zt-row .zt-who b{font-size:15.5px}
   .zt-row .zt-who span{font-size:13.5px}
-  .zt-next{font-size:12.5px;padding:6px 13px}
-  .zt-mini i{width:9px;height:9px}
-  .zt-mini b{width:10px}
-  .zt-age{font-size:13px}
+  .zt-row .status.zt-next{font-size:14px;padding:8px 16px;letter-spacing:0}
+  .zt-mini i{width:13px;height:13px}
+  .zt-mini i.now{box-shadow:0 0 0 4px rgba(79,131,247,.28)}
+  .zt-mini b{width:14px;height:3px}
+  .zt-age{font-size:14px;min-width:40px}
+  .zt-chev{font-size:20px}
   .zt-comp{padding-left:74px}
   .zt-flowwrap{grid-template-columns:320px minmax(0,1fr)}
   .zt-callout.wait,.zt-callout.call{background:var(--surface-1);border:1px solid var(--border);color:var(--ink-2)}
@@ -1892,6 +1894,23 @@ function ztEmailHtml(p) {
 
 // The open row: who, a note, then what this step needs (the message to
 // copy, the email, or the day of the call), then the steps as buttons.
+// The most recent step ticked for this person, so "Back a step" knows
+// what to undo. Replied only counts while it's the latest thing (a path
+// picked after it goes back first); a reply that arrived by email isn't
+// something anyone ticked, so it can't be undone here.
+function ztLastStep(p) {
+  var c = [
+    ['dm', p.dmSentAt, 'Texted back'], ['nudge', p.nudgedAt, 'Followed up'],
+    ['replied', p.status === 'replied' ? p.repliedAt : null, 'Replied'],
+    ['wantsEmail', p.wantsEmailAt, 'They want email'], ['liPath', p.liPathAt, 'They want LinkedIn'],
+    ['emailed', p.emailedAt, 'Email sent'], ['liSent', p.liSentAt, 'DM sent']
+  ].map(function (x, i) { return x.concat([i]); }).filter(function (x) { return x[1]; });
+  // Latest first; a tie (picking a path logs the reply in the same
+  // moment) goes to the step further along the flow.
+  c.sort(function (a, b) { return (new Date(b[1]) - new Date(a[1])) || (b[3] - a[3]); });
+  return c[0] ? { step: c[0][0], label: c[0][2] } : null;
+}
+
 function ztCompHtml(p) {
   var g = p.brand || {};
   var site = g.website ? (/^https?:/i.test(g.website) ? g.website : 'https://' + g.website) : '';
@@ -1902,7 +1921,11 @@ function ztCompHtml(p) {
   ].filter(Boolean);
   return '<div class="zt-comp">' +
     '<div class="zt-meta">' + meta.join('<span class="zt-dot">•</span>') +
-      '<button class="zt-skip" data-ztact="step" data-step="skip" style="margin-left:auto" title="They said no, or it’s handled somewhere else: off the list">Not needed</button></div>' +
+      '<span class="zt-extra">' +
+        (function () { var l = ztLastStep(p); return l
+          ? '<button class="zt-skip" data-ztact="back" title="Undo “' + esc(l.label) + '”">← Back a step</button>' : ''; })() +
+        '<button class="zt-skip" data-ztact="step" data-step="skip" title="They said no, or it’s handled somewhere else: off the list">Not needed</button>' +
+      '</span></div>' +
     '<div class="zt-noteblock">' + ztNoteHtml(p) + '</div>' +
     '<div class="zt-flowwrap">' + ztFlowHtml(p) + '<div class="zt-panel">' + ztPanelHtml(p) + '</div></div>' +
   '</div>';
@@ -2326,6 +2349,19 @@ document.getElementById('zach-todo').addEventListener('click', function (e) {
   var id = item && item.getAttribute('data-zt'), p = id && ZT_BY_ID[id];
   if (!p) return;
   if (act === 'step') { ztDo(id, btn.getAttribute('data-step'), btn, btn.hasAttribute('data-off')); return; }
+  if (act === 'back') {
+    var last = ztLastStep(p);
+    if (!last) return;
+    btn.disabled = true;
+    api('handStep', { targetId: id, step: last.step, on: false }).then(function () {
+      ztApply(p, last.step, false);
+      delete ZT_PANEL[id];
+      toast('Back a step: “' + last.label + '” undone');
+      if (ztMatch(p, ZT_FILTER)) { ztRedrawOpen(id); ztRefreshHead(); }
+      else { ZT_FILTER = ZT_FILTER === 'waiting' ? 'todo' : 'waiting'; ztRender(); }
+    }).catch(function (err) { toast(err.message); btn.disabled = false; });
+    return;
+  }
   if (act === 'copylidm') {
     var lb = item.querySelector('[data-ztlidm]');
     ztCopy(lb ? lb.value : ztDmPathText(p), 'Copied. Paste it into the LinkedIn chat');

@@ -51,7 +51,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Replied → They want email → Email to send → Email sent, and/or They want LinkedIn → DM to send →
   DM sent (either or both; picking one logs the reply) →
   Call scheduled** (day picked; sets followUpAt so it shows in Needs action on the day; the end).
-  The stage is computed on the page (`ztStage`); every tick/undo is `handStep` (dm, nudge, replied,
+  "← Back a step" on an open card undoes the latest tick (`ztLastStep`). The stage is computed on
+  the page (`ztStage`); every tick/undo is `handStep` (dm, nudge, replied,
   wantsEmail, liPath, liSent, emailed, call, skip). Fields: `dmSentAt`, `nudgedAt`,
   `handWantsEmailAt`/`emailedAt`, `handLiPathAt`/`handLiSentAt`, `callAt`/`callBookedAt`,
   `handSkippedAt`. Two templates (Settings `handEmailTemplate`, `handDmTemplate`; placeholders
