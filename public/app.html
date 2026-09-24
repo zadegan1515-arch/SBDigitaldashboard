@@ -499,7 +499,10 @@
   @media (max-width:600px){.sd-check-item{flex-wrap:wrap;gap:4px 10px}}
   .sd-check-why{color:var(--ink-2);min-width:0}
   /* the three days */
-  .sd-days{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px;align-items:start}
+  /* As many columns as there are sending days (--sd-n, set by
+     renderSchedDays): today plus the next three, so up to four. */
+  .sd-days{display:grid;grid-template-columns:repeat(var(--sd-n,3),minmax(0,1fr));gap:16px;margin-top:16px;align-items:start}
+  @media (max-width:1500px){.sd-days{grid-template-columns:repeat(2,minmax(0,1fr))}.sd-days.sd-n1{grid-template-columns:minmax(0,1fr)}}
   .sd-day{min-width:0;overflow:visible;padding:16px 16px 18px;display:flex;flex-direction:column;gap:12px;transition:outline-color .1s}
   .sd-day.sd-over{outline:2px dashed var(--accent-hi);outline-offset:-2px;background:rgba(79,131,247,.05)}
   .sd-day-h{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -535,7 +538,15 @@
   .sd-empty{font-size:12.5px;color:var(--ink-3);padding:14px;border:1px dashed var(--border);border-radius:10px;text-align:center}
   .sd-open{border:1px solid rgba(232,182,76,.3);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
   .sd-open-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
-  .sd-orow{display:flex;gap:8px;align-items:center;padding:4px 0;border-top:1px solid var(--border-soft);min-width:0}
+  .sd-orow{display:flex;gap:8px;align-items:center;padding:4px 0;border-top:1px solid var(--border-soft);min-width:0;flex-wrap:wrap}
+  .sd-orow .sd-dim.warn{color:#eec777}
+  .sd-open-h .sd-catsel{max-width:190px}
+  .sd-open-f{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .sd-need{border-top:1px solid var(--border-soft);padding-top:4px}
+  /* extra sending days */
+  .sd-extra{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap;margin-top:14px;font-size:12.5px}
+  .sd-extra input[type=date]{padding:5px 8px;font-size:12.5px}
+  .sd-tag.extra{color:#c9b3ff;border-color:rgba(157,122,255,.45);background:rgba(157,122,255,.1)}
   .sd-sent-h{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-top:6px}
   .sd-tog{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:12px;padding:0 2px;font-family:inherit}
   .sd-tog:hover{color:var(--ink-1)}
@@ -1081,7 +1092,8 @@
     <section class="view page wide" id="schedule">
       <div class="eyebrow">Outreach</div>
       <h1>Schedule</h1>
-      <div class="sub">The next three sending days. 20 people a day, one category a day, and every brand says whether it has enough people.</div>
+      <div class="sub">Today and the next three sending days. 20 people a day, one category a day, and every brand says whether it has enough people.</div>
+      <div id="sched-extra"></div>
       <div id="sched-check"></div>
       <div id="sched-days" class="sd-days"></div>
       <div id="sched-cats"></div>
@@ -5435,7 +5447,24 @@ var SCHED = {
   // Bumped on every getOutreachPlan call. Two quick changes fire two
   // refreshes, and the older one can land last; only the newest is drawn,
   // or a brand just moved would show back on its old day.
-  refSeq: 0
+  refSeq: 0,
+  // When the schedule was last asked for, so coming back to the tab
+  // (after a capture on LinkedIn) re-reads it without doing so twice.
+  loadedAt: 0,
+  // One-off sending days on top of Tue/Wed/Thu (Setting
+  // outreachExtraDays), and the weekday the "+ Add a sending day" picker
+  // starts on.
+  extraDays: [], nextOffDay: '', extraOpen: false, extraDate: '', extraBusy: false,
+  // The "Fill <day>" box. fill[dateKey] = { cat, all, needOpen, summary,
+  // busy }. sug['date|cat'] = { data, gen }: suggestForDay answers, kept
+  // until the next schedule refresh (sugGen) and drawn while a fresh one
+  // loads. sugReq holds the newest request per key so an older answer
+  // landing late never replaces a newer one.
+  fill: {}, sug: {}, sugReq: {}, sugBusy: {}, sugGen: 0, sugSeq: 0,
+  // Plan calls and schedule reloads still in flight. While any is, the
+  // day numbers and suggestion lists on screen are about to change, so
+  // Fill to 20 waits (see sdFillReady).
+  busyN: 0
 };
 
 function schedDayKey(offset) {
@@ -5443,9 +5472,10 @@ function schedDayKey(offset) {
   return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
 }
 
-// Leo sends on Tuesday, Wednesday and Thursday only. Mirrors
-// OUTREACH_DOWS on the server; today appears only if today is one of
-// them, so on a Monday the first row is Tuesday, not "Today".
+// Leo sends on Tuesday, Wednesday and Thursday, plus any one-off day he
+// adds on the Schedule (outreachExtraDays). The server decides which
+// days those are; this copy of the weekdays is only the fallback for
+// when no schedule has been loaded yet, so it never knows the extras.
 var OUTREACH_DOWS = [2, 3, 4];
 
 function schedDayKeys(count) {
@@ -5541,6 +5571,110 @@ function sdOpenSU(suId, name) {
   window.open('https://pro.sponsorunited.com/', '_blank', 'noopener');
 }
 
+// The way to find people for a brand that is short of them: its
+// LinkedIn People tab, where the capture tool's SB pill saves the buyers
+// as contacts with a LinkedIn URL (so they count as reachable). A real
+// link, so a middle-click or a new tab works like any other.
+var SD_LI_TIP = 'Opens their LinkedIn People tab: press the SB pill there to add the buyers';
+// Blocked reasons a LinkedIn capture fixes. "Already invited" and the
+// rest are not about having too few people.
+var SD_LI_FIX = { nopeople: 1, unreachable: 1, exhausted: 1 };
+function sdLiLink(b) {
+  var url = liPeopleUrl({ name: b.name || '', linkedinUrl: b.linkedinUrl || null });
+  if (!/^https?:/i.test(url)) url = 'https://' + url.replace(/^\/+/, '');
+  return '<a class="btn-ghost sd-sm" href="' + esc(url) + '" target="_blank" rel="noopener" title="' + esc(SD_LI_TIP) + '">LinkedIn people ↗</a>';
+}
+function sdIsShort(label) { return !!label && (label.kind === 'thin' || label.kind === 'none'); }
+
+// A row's contacts label: the object the server sent with it, or the
+// schedule's own labels map when it sent only the kind.
+function sdLabelOf(b) {
+  if (b.label && typeof b.label === 'object') return b.label;
+  var known = SCHED.labels[b.id];
+  if (known) return known;
+  return b.label ? { kind: b.label, reachable: b.reachable || 0, need: b.need || 3, onFile: b.onFile || 0 } : null;
+}
+
+// --- extra sending days ----------------------------------------
+// Tue/Wed/Thu stay the rule; a one-off day (Leo doing a Friday) is added
+// here and shows as its own column until it has passed.
+
+function renderSchedExtra() {
+  var box = document.getElementById('sched-extra');
+  if (!box) return;
+  var extras = (SCHED.extraDays || []).slice().sort();
+  var min = SCHED.today || schedDayKey(0);
+  var val = SCHED.extraDate || SCHED.nextOffDay || '';
+  var tags = extras.map(function (k) {
+    return '<span class="sd-tag extra" title="A one-off sending day">' + esc(sdDayName(k)) +
+      ' <a href="#" class="sd-x" data-sdxrm="' + esc(k) + '" title="Remove this sending day">×</a></span>';
+  }).join(' ');
+  box.innerHTML = '<div class="sd-extra">' +
+    (SCHED.extraOpen
+      ? '<b>Add a sending day</b>' +
+        '<input type="date" class="inp" data-sdxdate="1" min="' + esc(min) + '" value="' + esc(val) + '">' +
+        '<button class="btn-draft sd-sm" data-sdxadd="1"' + (SCHED.extraBusy ? ' disabled' : '') + '>' + (SCHED.extraBusy ? 'Adding…' : 'Add day') + '</button>' +
+        '<a href="#" class="sd-link" data-sdxtoggle="1">Cancel</a>' +
+        '<span class="sd-dim">A one-off. Tuesday, Wednesday and Thursday stay the rule.</span>'
+      : '<button class="btn-ghost sd-sm" data-sdxtoggle="1" title="Send on a day that is not Tue, Wed or Thu, just this once">+ Add a sending day</button>') +
+    (extras.length ? '<span class="sd-dim">Extra days:</span> ' + tags : '') +
+  '</div>';
+}
+
+function sdAddExtraDay(date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) { toast('Pick a day first'); return; }
+  if (SCHED.today && date < SCHED.today) { toast('That day has passed'); return; }
+  SCHED.extraBusy = true;
+  renderSchedExtra();
+  // Through the plan queue: removing a day rewrites the plan, so it must
+  // not interleave with an add or a move.
+  sdPlanCall('setExtraSendingDay', { date: date, on: true }).then(function (r) {
+    SCHED.extraBusy = false;
+    SCHED.extraOpen = false;
+    SCHED.extraDate = '';
+    r = r || {};
+    // Not in the extras after an add means Tue/Wed/Thu already covers it.
+    var regular = r.already || (Array.isArray(r.extraDays) && r.extraDays.indexOf(date) === -1);
+    toast(r.message || (regular ? sdDayName(date) + ' is already a sending day' : sdDayName(date) + ' is a sending day now'));
+    return sdRefresh();
+  }).catch(function (e) { SCHED.extraBusy = false; renderSchedExtra(); toast(e.message); });
+}
+
+// The brands pinned to a day, by name, for the question before it goes.
+function sdPinnedNames(date) {
+  var day = SCHED.days[date];
+  if (day && day.pinned) return day.pinned.map(function (p) { return p.name || SCHED.names[p.id] || 'a brand'; });
+  return ((SCHED.plan[date] || {}).brandIds || []).map(function (id) { return SCHED.names[id] || 'a brand'; });
+}
+
+function sdRemoveExtraDay(date) {
+  var names = sdPinnedNames(date);
+  var isToday = date === SCHED.today;
+  var rotated = isToday ? ((SCHED.days[date] || {}).brands || []).filter(function (b) { return b.inQueue; }).length : 0;
+  var list = names.slice(0, 12).join(', ') + (names.length > 12 ? ' and ' + (names.length - 12) + ' more' : '');
+  if (!window.confirm('Remove ' + sdDayLabel(date) + ' as a sending day?' +
+      (names.length
+        ? '\n\n' + (names.length === 1 ? 'Its pinned brand goes' : 'Its ' + names.length + ' pinned brands go') + ' back to unscheduled: ' + list + '.' +
+          (isToday ? ' Their people not invited yet come back out of today’s queue.' : '')
+        : '') +
+      // The server only un-stamps the pinned brands' people. Whoever the
+      // rotation already put in today's queue stays there, so say so
+      // rather than let Leo think removing the day empties the queue.
+      (isToday && rotated
+        ? '\n\n' + sdPlural(rotated, 'brand', 'brands') + ' the rotation already queued for today ' + (rotated === 1 ? 'stays' : 'stay') +
+          ' in today’s queue. Use Pass today on ' + (rotated === 1 ? 'it' : 'them') + ' to take ' + (rotated === 1 ? 'it' : 'them') + ' out.'
+        : '') +
+      '\n\nNobody is deleted. Tuesday, Wednesday and Thursday are not affected.')) return;
+  sdPlanCall('setExtraSendingDay', { date: date, on: false }).then(function (r) {
+    var gone = (r && r.removedBrands) || [];
+    delete SCHED.fill[date];
+    toast(((r && r.message) || sdDayName(date) + ' is no longer a sending day') +
+      (gone.length ? ' · ' + sdPlural(gone.length, 'brand', 'brands') + ' back to unscheduled' : '') +
+      (r && r.unqueued ? ' · ' + sdPlural(r.unqueued, 'person', 'people') + ' back in the pool' : ''));
+    return sdRefresh();
+  }).catch(function (e) { toast(e.message); sdRefresh(); });
+}
+
 // --- loading ---------------------------------------------------
 
 function sdTake(d) {
@@ -5555,6 +5689,12 @@ function sdTake(d) {
   SCHED.past = d.past || [];
   SCHED.today = d.today || schedDayKey(0);
   SCHED.pool = d.pool || null;
+  SCHED.extraDays = d.extraDays || [];
+  SCHED.nextOffDay = d.nextOffDay || '';
+  // Fill-box suggestions are asked for again after every change too (a
+  // brand just added is no longer a suggestion), drawn from the old
+  // answer until the new one lands.
+  SCHED.sugGen += 1;
   // Category drill-ins are read again after every change: a brand just
   // added has a new "Pinned" tag, and one just reached moved columns.
   // The old answer stays on screen until the new one lands (catGen marks
@@ -5566,11 +5706,14 @@ function sdTake(d) {
 
 function sdRefresh() {
   var mine = ++SCHED.refSeq;
+  SCHED.loadedAt = Date.now();
+  sdBusy(1);
   return api('getOutreachPlan').then(function (d) {
+    sdBusy(-1);
     if (mine !== SCHED.refSeq) return;
     sdTake(d);
     renderSchedAll();
-  }).catch(function (e) { if (mine === SCHED.refSeq) toast(e.message); });
+  }).catch(function (e) { sdBusy(-1); if (mine === SCHED.refSeq) toast(e.message); });
 }
 
 function loadSchedule() {
@@ -5578,11 +5721,15 @@ function loadSchedule() {
   var box = document.getElementById('sched-days');
   if (!SCHED.order.length) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   var mine = ++SCHED.refSeq;
+  SCHED.loadedAt = Date.now();
+  sdBusy(1);
   return api('getOutreachPlan').then(function (d) {
+    sdBusy(-1);
     if (mine !== SCHED.refSeq) return;
     sdTake(d);
     renderSchedAll();
   }).catch(function (e) {
+    sdBusy(-1);
     if (mine !== SCHED.refSeq) return;
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
   });
@@ -5594,6 +5741,11 @@ function renderSchedAll() {
   Object.keys(SCHED.flash).forEach(function (id) {
     if (now - SCHED.flash[id].at > 90000) delete SCHED.flash[id];
   });
+  Object.keys(SCHED.fill).forEach(function (k) {
+    var f = SCHED.fill[k];
+    if (f.summary && now - (f.summaryAt || 0) > 90000) f.summary = '';
+  });
+  renderSchedExtra();
   renderSchedCheck();
   renderSchedDays();
   renderSchedCats();
@@ -5609,9 +5761,24 @@ function renderSchedAll() {
 // "added", only one stayed.
 var SD_Q = Promise.resolve();
 function sdPlanCall(fn, args) {
+  sdBusy(1);
   var run = SD_Q.then(function () { return api(fn, args); });
+  // Counted down before the caller's own .then runs (registered first),
+  // and that .then starts the refresh, which counts up again, so there is
+  // no gap where Fill to 20 wakes on the old numbers.
+  run.then(function () { sdBusy(-1); }, function () { sdBusy(-1); });
   SD_Q = run.catch(function () {});
   return run;
+}
+
+// Going busy redraws the Fill boxes at once so Fill to 20 greys out.
+// Going idle redraws a tick later, and only if nothing new started: a
+// plan call hands straight over to its refresh, and that refresh draws
+// the boxes itself when it lands.
+function sdBusy(d) {
+  SCHED.busyN = Math.max(0, SCHED.busyN + d);
+  if (d > 0) { sdRenderFills(); return; }
+  setTimeout(function () { if (!SCHED.busyN) sdRenderFills(); }, 0);
 }
 
 // Are this brand's people stamped into today's queue right now? Planning
@@ -5757,16 +5924,17 @@ function renderSchedCheck() {
       if (lab && n[lab.kind] != null) n[lab.kind] += 1;
       if (p.state === 'blocked') {
         blocked += 1;
-        list.push({ id: p.id, name: p.name, key: key, kind: 'blocked', why: 'Won’t go out — ' + (p.reasonText || SD_SHORT[p.reason] || 'nobody to invite') });
+        list.push({ id: p.id, name: p.name, key: key, kind: 'blocked', why: 'Won’t go out — ' + (p.reasonText || SD_SHORT[p.reason] || 'nobody to invite'),
+          linkedinUrl: p.linkedinUrl, li: !!SD_LI_FIX[p.reason] });
       } else if (lab && lab.kind !== 'ready') {
-        list.push({ id: p.id, name: p.name, key: key, kind: lab.kind, why: sdCheckWhy(lab) });
+        list.push({ id: p.id, name: p.name, key: key, kind: lab.kind, why: sdCheckWhy(lab), linkedinUrl: p.linkedinUrl, li: true });
       }
     });
     (day.brands || []).forEach(function (b) {
       var lab = SCHED.labels[b.id];
       if (!lab) return;
       if (n[lab.kind] != null) n[lab.kind] += 1;
-      if (lab.kind !== 'ready') list.push({ id: b.id, name: b.name, key: key, kind: lab.kind, why: sdCheckWhy(lab) });
+      if (lab.kind !== 'ready') list.push({ id: b.id, name: b.name, key: key, kind: lab.kind, why: sdCheckWhy(lab), linkedinUrl: b.linkedinUrl, li: true });
     });
   });
   var count = function (kind, word) {
@@ -5788,6 +5956,7 @@ function renderSchedCheck() {
             '<a href="#" class="sd-bname" data-sopen="' + esc(x.id) + '">' + esc(x.name) + '</a>' +
             '<span class="sd-dim">' + esc(sdDayTag(x.key)) + '</span>' +
             '<span class="sd-check-why' + (x.kind === 'blocked' ? ' bad' : '') + '">' + esc(x.why) + '</span>' +
+            (x.li ? '<span class="sd-sp"></span>' + sdLiLink(x) : '') +
           '</div>';
         }).join('') + '</div>'
       : '') +
@@ -5807,7 +5976,12 @@ function renderSchedDays() {
     box.innerHTML = '<div class="panel"><div class="empty"><p>No sending days to show.</p></div></div>';
     return;
   }
+  // One column per day (today plus the next three sending days, so up
+  // to four); the CSS drops to two, then one, on narrower screens.
+  box.style.setProperty('--sd-n', String(SCHED.order.length));
+  box.classList.toggle('sd-n1', SCHED.order.length === 1);
   box.innerHTML = SCHED.order.map(sdDayHtml).join('');
+  sdLoadFills();
 }
 
 // <option>s for a Move to / Add to menu: every planning day except
@@ -5857,6 +6031,9 @@ function sdCard(o) {
       '<span class="sd-sp"></span>' + sdLabel(SCHED.labels[o.id]) +
     '</div>' +
     o.body +
+    // Going out but short of people: the LinkedIn People tab is where more
+    // come from (a blocked card has the link among its own fix buttons).
+    (o.li && sdIsShort(SCHED.labels[o.id]) ? '<div class="sd-fix">' + sdLiLink(o) + '</div>' : '') +
     sdFlash(o.id) +
     '<div data-sdslot="1"></div>' +
     '<div class="sd-card-f">' + o.controls + '</div>' +
@@ -5876,6 +6053,7 @@ function sdPinnedCard(p, key) {
     body = '<div class="sd-line"><b class="bad">Won’t go out</b> · ' +
         esc(p.reasonText || SD_SHORT[p.reason] || 'Nobody to invite.') + '</div>' +
       '<div class="sd-fix">' +
+        (SD_LI_FIX[p.reason] ? sdLiLink(p) : '') +
         (fixable
           ? '<button class="btn-draft sd-sm" data-sdperson="' + esc(p.id) + '">+ Add a person</button>' +
             '<button class="btn-ghost sd-sm" data-sdsu="' + esc(p.externalId || '') + '" data-suname="' + esc(p.name) + '">SponsorUnited ↗</button>'
@@ -5884,7 +6062,7 @@ function sdPinnedCard(p, key) {
       '</div>';
   }
   return sdCard({
-    id: p.id, name: p.name, from: key, pinned: true, blocked: p.state === 'blocked', body: body,
+    id: p.id, name: p.name, from: key, pinned: true, blocked: p.state === 'blocked', body: body, li: p.state === 'going',
     linkedinUrl: p.linkedinUrl, website: p.website,
     controls: sdMoveSel(p.id, p.name, key, key, true) +
       '<span class="sd-sp"></span>' +
@@ -5911,7 +6089,7 @@ function sdAutoCard(b, key, isToday) {
       '<button class="btn-ghost sd-sm" data-stoday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" title="Not today — back on its own tomorrow">Pass today</button>';
   }
   controls += sdArchiveBtn(b.id, b.name, '');
-  return sdCard({ id: b.id, name: b.name, from: '', pinned: false, tags: tags, body: body, controls: controls,
+  return sdCard({ id: b.id, name: b.name, from: '', pinned: false, tags: tags, body: body, controls: controls, li: true,
     linkedinUrl: b.linkedinUrl, website: b.website });
 }
 
@@ -5951,7 +6129,12 @@ function sdDayHtml(key) {
   var ps = SCHED.paste[key];
   var html = '<div class="panel sd-day" data-drop="' + esc(key) + '">' +
     '<div class="sd-day-h">' +
-      '<div class="sd-day-t">' + esc(sdDayLabel(key)) + '</div>' + catSel +
+      '<div class="sd-day-t">' + esc(sdDayLabel(key)) + '</div>' +
+      (day.extra
+        ? '<span class="sd-tag extra" title="A one-off sending day, not one of Tue, Wed, Thu">Extra day</span>' +
+          '<button class="btn-ghost sd-sm" data-sdxrm="' + esc(key) + '" title="Stop sending on this day">Remove day</button>'
+        : '') +
+      catSel +
     '</div>' +
     '<div class="sd-day-n"><span><b>' + total + '</b> of ' + cap + ' people</span>' + status + '</div>' +
     '<div class="sd-meter' + (over > 0 ? ' bad' : open === 0 ? ' good' : '') + '"><i style="width:' + Math.min(100, total / cap * 100) + '%"></i></div>' +
@@ -5981,39 +6164,13 @@ function sdDayHtml(key) {
     html += '<div class="sd-empty">Nothing going out yet. Add a brand above, or pick a category.</div>';
   }
 
-  // Open spots, filled from the rest of the day's category.
-  var missing = day.missing || [];
-  if (open > 0 && missing.length) {
-    var fit = missing.filter(function (m) { return sdPeopleOf(m).n <= open; });
-    var shown = fit.slice(0, 6);
-    var left = open, allIds = [], allNames = [];
-    missing.forEach(function (m) {
-      var n = sdPeopleOf(m).n;
-      if (n > 0 && n <= left && allIds.length < 40) { allIds.push(m.id); allNames.push(m.name); left -= n; }
-    });
-    html += '<div class="sd-open">' +
-      '<div class="sd-open-h"><b class="warn">' + sdPlural(open, 'open spot', 'open spots') + '</b>' +
-        '<span class="sd-dim">More ' + esc(catName) + ' brands that fit</span><span class="sd-sp"></span>' +
-        (allIds.length > 1 ? '<button class="btn-draft sd-sm" data-sdfitall="' + esc(key) + '" data-ids="' + esc(allIds.join(',')) + '" title="' + esc(allNames.join(', ')) + '">Add all that fit (' + allIds.length + ')</button>' : '') +
-      '</div>' +
-      (shown.length
-        ? shown.map(function (m) {
-            // Draggable like a card: drop it on another day to pin it there.
-            return '<div class="sd-orow" draggable="true" data-dragb="' + esc(m.id) + '" data-dragn="' + esc(m.name) + '" data-dragfrom="">' +
-              '<a href="#" class="sd-bname" data-sopen="' + esc(m.id) + '">' + esc(m.name) + '</a>' +
-              sdExtLinks(m) +
-              sdLabel(SCHED.labels[m.id]) +
-              '<span class="sd-dim">' + sdPeopleOf(m).n + ' would go</span><span class="sd-sp"></span>' +
-              '<button class="btn-ghost sd-sm" data-sdmissadd="' + esc(m.id) + '" data-sdday="' + esc(key) + '">+ Add</button>' +
-              sdArchiveBtn(m.id, m.name, '') +
-            '</div>';
-          }).join('')
-        : '<div class="sd-dim">Every ' + esc(catName) + ' brand left has more people than the open spots.</div>') +
-      (missing.length > shown.length && day.category
-        ? '<a href="#" class="sd-link" data-sdseecat="' + esc(day.category) + '">See every ' + esc(catName) + ' brand</a>'
-        : '') +
-    '</div>';
-  }
+  // Open spots: the Fill box. Its suggestions come from suggestForDay,
+  // loaded after the day is drawn (sdLoadFills), so any category can fill
+  // the gap, not only the few same-category brands that happened to fit.
+  if (open > 0) html += '<div class="sd-open" data-sdfillbox="' + esc(key) + '">' + sdFillInner(key) + '</div>';
+  // A day Fill to 20 just filled has no box any more, so its summary
+  // gets a spot of its own (sdRenderFill writes it there too).
+  else html += '<div data-sdfillsum="' + esc(key) + '">' + sdFillSumHtml(key) + '</div>';
 
   // Ready people past the day's cap. They are not lost — they carry
   // to the next day in this category — so one line says so.
@@ -6034,6 +6191,227 @@ function sdDayHtml(key) {
 
   if (isToday) html += sdSentHtml(day);
   return html + '</div>';
+}
+
+// --- the Fill box ----------------------------------------------
+
+function sdOpenSpots(key) {
+  var day = SCHED.days[key] || {};
+  var total = typeof day.total === 'number' ? day.total : (day.ready || 0);
+  return Math.max(0, sdCap() - total);
+}
+
+function sdFillState(key) {
+  // cat stays null until Leo picks one in the box, so the box follows
+  // the day's category when the day's own category menu changes.
+  return SCHED.fill[key] || (SCHED.fill[key] = { cat: null, all: false, needOpen: false, summary: '', busy: false });
+}
+function sdFillCat(key) {
+  var f = sdFillState(key);
+  return f.cat != null ? f.cat : ((SCHED.days[key] || {}).category || '');
+}
+
+// Brands already on the day (pinned or from its rotation) are not
+// suggested for it again.
+function sdDayBrandIds(key) {
+  var day = SCHED.days[key] || {};
+  var ids = {};
+  (day.pinned || []).forEach(function (p) { ids[p.id] = 1; });
+  (day.brands || []).forEach(function (b) { ids[b.id] = 1; });
+  return ids;
+}
+
+function sdSugGoing(b) {
+  return typeof b.going === 'number' ? b.going : (b.people || []).length;
+}
+
+// What "Fill to 20" adds: suggestions in their order, each one only if
+// the whole brand fits in what is left, so a brand is never half-sent.
+// A brand too big is skipped and the fill keeps going with smaller ones.
+function sdFitPick(rows, open) {
+  var left = open, ids = [], names = [];
+  rows.forEach(function (b) {
+    var n = sdSugGoing(b);
+    if (n > 0 && n <= left && ids.length < 40) { ids.push(b.id); names.push(b.name); left -= n; }
+  });
+  return { ids: ids, names: names, people: open - left };
+}
+
+function sdFillSumHtml(key) {
+  var f = SCHED.fill[key];
+  return f && f.summary ? '<div class="sd-flash good">' + esc(f.summary) + '</div>' : '';
+}
+
+// Fill to 20 works only from a list and day numbers that are current:
+// this refresh's answer (not an older one drawn while the new one loads)
+// and no plan change or reload still on its way. Otherwise a brand just
+// added (still in the list, open spots not yet lowered) was picked again
+// on top of it and the day went over, or a brand since dragged to
+// another day was quietly moved back.
+function sdFillReady(key) {
+  var ck = key + '|' + sdFillCat(key);
+  var ent = SCHED.sug[ck];
+  return !!(ent && ent.data && !ent.err && ent.gen === SCHED.sugGen && SCHED.sugBusy[ck] == null &&
+    !SCHED.busyN && !sdFillState(key).busy);
+}
+
+function sdRenderFills() {
+  SCHED.order.forEach(sdRenderFill);
+}
+
+function sdFillRows(key) {
+  var ent = SCHED.sug[key + '|' + sdFillCat(key)];
+  var on = sdDayBrandIds(key);
+  return ((ent && ent.data && ent.data.brands) || []).filter(function (b) { return !on[b.id]; });
+}
+
+function sdSugRow(b, key, open, allCats) {
+  var n = sdSugGoing(b);
+  var lab = sdLabelOf(b);
+  var tooBig = n > open;
+  var who = (b.people || []).map(function (p) { return p.name + (p.title ? ' (' + p.title + ')' : ''); }).join(', ');
+  // Draggable like a card: drop it on another day to pin it there.
+  return '<div class="sd-orow" draggable="true" data-dragb="' + esc(b.id) + '" data-dragn="' + esc(b.name) + '" data-dragfrom="">' +
+    '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
+    (allCats ? '<span class="sd-tag">' + esc(sdCatName(b.category)) + '</span>' : '') +
+    sdExtLinks(b) +
+    sdLabel(lab) +
+    '<span class="sd-dim' + (tooBig ? ' warn' : '') + '" title="' + esc(tooBig ? 'More than the open spots: the day would go over ' + sdCap() : (who || b.text || '')) + '">' +
+      n + ' would go</span>' +
+    (lab && lab.kind === 'thin' ? sdLiLink(b) : '') +
+    '<span class="sd-sp"></span>' +
+    '<button class="btn-ghost sd-sm" data-sdmissadd="' + esc(b.id) + '" data-sdday="' + esc(key) + '">+ Add</button>' +
+  '</div>';
+}
+
+function sdNeedRow(b, allCats) {
+  var onFile = b.onFile || 0;
+  return '<div class="sd-orow">' + sdMark('none') +
+    '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
+    (allCats ? '<span class="sd-tag">' + esc(sdCatName(b.category)) + '</span>' : '') +
+    '<span class="sd-dim">' + (onFile ? esc(onFile + ' on file, no LinkedIn or email') : 'Nobody on file') + '</span>' +
+    '<span class="sd-sp"></span>' +
+    sdLiLink(b) +
+    '<button class="btn-ghost sd-sm" data-sdsu="' + esc(b.externalId || '') + '" data-suname="' + esc(b.name) + '">SponsorUnited ↗</button>' +
+  '</div>';
+}
+
+function sdFillInner(key) {
+  var f = sdFillState(key);
+  var cat = sdFillCat(key);
+  var open = sdOpenSpots(key);
+  var ent = SCHED.sug[key + '|' + cat];
+  var data = ent && ent.data;
+  var rows = sdFillRows(key);
+  var fit = sdFitPick(rows, open);
+  var allCats = !cat;
+  var dayWord = key === SCHED.today ? 'today' : sdDayName(key);
+  var known = !cat || CAT_KEYS.indexOf(cat) !== -1;
+  var sel = '<select class="inp sd-catsel" data-sdfillcat="' + esc(key) + '" title="Which category to suggest brands from">' +
+    '<option value=""' + (cat ? '' : ' selected') + '>All categories</option>' +
+    CAT_KEYS.map(function (k) {
+      return '<option value="' + esc(k) + '"' + (cat === k ? ' selected' : '') + '>' + esc(CAT_NAMES[k]) + '</option>';
+    }).join('') +
+    (known ? '' : '<option value="' + esc(cat) + '" selected>' + esc(sdCatName(cat)) + '</option>') +
+  '</select>';
+  var ready = sdFillReady(key);
+  var btnTip = !ready && !f.busy ? 'Waiting for the list to catch up with the last change'
+    : fit.ids.length
+    ? 'Adds ' + fit.names.join(', ') + ' (' + sdPlural(fit.people, 'person', 'people') + ')'
+    : 'Nothing in the list fits whole into the open spots';
+  var html = '<div class="sd-open-h"><b>Fill ' + esc(dayWord) + '</b>' +
+      '<b class="warn">' + sdPlural(open, 'open spot', 'open spots') + '</b><span class="sd-sp"></span>' +
+      '<button class="btn-draft sd-sm" data-sdfill20="' + esc(key) + '"' + (fit.ids.length && ready ? '' : ' disabled') + ' title="' + esc(btnTip) + '">' +
+        (f.busy ? 'Filling…' : 'Fill to ' + sdCap()) + '</button>' +
+    '</div>' +
+    '<div class="sd-open-f"><span class="sd-dim">Suggest from</span>' + sel + '</div>';
+  if (f.summary) html += '<div class="sd-flash good">' + esc(f.summary) + '</div>';
+  if (!data) {
+    html += '<div class="sd-dim">' + (ent && ent.err ? 'Could not load suggestions: ' + esc(ent.err) : 'Finding brands that fit…') + '</div>';
+  } else {
+    var shown = f.all ? rows : rows.slice(0, 8);
+    html += shown.length
+      ? shown.map(function (b) { return sdSugRow(b, key, open, allCats); }).join('') +
+        (rows.length > shown.length ? '<a href="#" class="sd-link" data-sdfillall="' + esc(key) + '">Show ' + (rows.length - shown.length) + ' more</a>' : '')
+      : '<div class="sd-dim">No ' + esc(cat ? sdCatName(cat) + ' ' : '') + 'brands left that can go out on ' + esc(dayWord) + '.' +
+          (cat ? ' Try All categories.' : '') + '</div>';
+    var need = data.needPeople || [];
+    // The server lists at most 8; the total can be far more. Say both,
+    // and point at the drill-in (which shows every one) for the rest.
+    var needTotal = Math.max(data.needPeopleTotal || 0, need.length);
+    if (need.length) {
+      html += '<div class="sd-need"><a href="#" class="sd-link" data-sdneed="' + esc(key) + '">' +
+          (f.needOpen ? '▾' : '▸') + ' Need people first (' + (needTotal > need.length ? need.length + ' of ' + needTotal : need.length) + ')</a>' +
+        (f.needOpen ? need.map(function (b) { return sdNeedRow(b, allCats); }).join('') +
+          (needTotal > need.length
+            ? '<div class="sd-dim">' + (needTotal - need.length) + ' more not listed here. ' +
+              (cat ? '<a href="#" class="sd-link" data-sdseecat="' + esc(cat) + '">See every ' + esc(sdCatName(cat)) + ' brand</a>'
+                : 'Pick a category above to see them by category.') + '</div>'
+            : '')
+          : '') +
+      '</div>';
+    }
+  }
+  if (cat) html += '<a href="#" class="sd-link" data-sdseecat="' + esc(cat) + '">See every ' + esc(sdCatName(cat)) + ' brand</a>';
+  return html;
+}
+
+function sdRenderFill(key) {
+  var box = document.querySelector('#sched-days [data-sdfillbox="' + key + '"]');
+  if (box) { box.innerHTML = sdFillInner(key); return; }
+  var spot = document.querySelector('#sched-days [data-sdfillsum="' + key + '"]');
+  if (spot) spot.innerHTML = sdFillSumHtml(key);
+}
+
+// Suggestions for one day's box, asked for only when the box is on
+// screen, once per schedule refresh and category.
+function sdLoadFill(key) {
+  var cat = sdFillCat(key);
+  var ck = key + '|' + cat;
+  var have = SCHED.sug[ck];
+  if (have && have.gen === SCHED.sugGen) return;
+  if (SCHED.sugBusy[ck] === SCHED.sugGen) return;
+  var gen = SCHED.sugGen;
+  var mine = ++SCHED.sugSeq;
+  SCHED.sugBusy[ck] = gen;
+  SCHED.sugReq[ck] = mine;
+  api('suggestForDay', { date: key, category: cat, take: 24 }).then(function (d) {
+    if (SCHED.sugReq[ck] !== mine) return;
+    SCHED.sugBusy[ck] = null;
+    SCHED.sug[ck] = { data: d || {}, gen: gen };
+    if (sdFillCat(key) === cat) sdRenderFill(key);
+  }).catch(function (e) {
+    if (SCHED.sugReq[ck] !== mine) return;
+    SCHED.sugBusy[ck] = null;
+    // Keeps the last good list; the error only shows when there is none.
+    // Marked with this gen so it is not retried in a loop.
+    SCHED.sug[ck] = { data: have && have.data, err: e.message, gen: gen };
+    toast(e.message);
+    if (sdFillCat(key) === cat) sdRenderFill(key);
+  });
+}
+
+function sdLoadFills() {
+  SCHED.order.forEach(function (key) {
+    if (document.querySelector('#sched-days [data-sdfillbox="' + key + '"]')) sdLoadFill(key);
+  });
+}
+
+function sdFillTo20(key) {
+  var f = sdFillState(key);
+  if (!sdFillReady(key)) { toast('One moment — the list is catching up with the last change'); return; }
+  var fit = sdFitPick(sdFillRows(key), sdOpenSpots(key));
+  if (!fit.ids.length) { toast('Nothing in the list fits whole into the open spots'); return; }
+  f.busy = true;
+  f.summary = '';
+  sdRenderFill(key);
+  sdAdd(key, fit.ids, { quiet: true }).then(function (sum) {
+    f.busy = false;
+    if (sum) { f.summary = sum; f.summaryAt = Date.now(); toast(sdDayTag(key) + ' — ' + sum); }
+    // sdAdd already redrew the day; this puts the summary in the box
+    // (or re-enables the button after an error).
+    sdRenderFill(key);
+  });
 }
 
 // --- invited today ---------------------------------------------
@@ -6316,7 +6694,8 @@ function renderSchedDrillBody() {
       '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' + tier(b) +
       '<span class="sd-dim">' + ((b.label && b.label.reachable) || 0) + ' reachable</span>' + pinTag(b) +
       (b.queued ? '<span class="sd-tag good">' + b.queued + ' queued</span>' : '') +
-      '<span class="sd-sp"></span>' + addTo(b) +
+      '<span class="sd-sp"></span>' +
+      (b.label && b.label.kind === 'thin' ? sdLiLink(b) : '') + addTo(b) +
     '</div>';
   };
   var needRow = function (b) {
@@ -6325,7 +6704,7 @@ function renderSchedDrillBody() {
       sdMark('none') +
       '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' + tier(b) +
       '<span class="sd-dim">' + (onFile ? onFile + ' on file, no LinkedIn or email' : 'Nobody on file') + '</span>' + pinTag(b) +
-      '<span class="sd-sp"></span>' +
+      '<span class="sd-sp"></span>' + sdLiLink(b) +
       '<button class="btn-ghost sd-sm" data-sdsu="' + esc(b.externalId || '') + '" data-suname="' + esc(b.name) + '">SponsorUnited ↗</button>' +
       '<button class="btn-ghost sd-sm" data-sdperson="' + esc(b.id) + '">+ Add a person</button>' +
     '</div><div data-sdslot="1"></div></div>';
@@ -6498,6 +6877,11 @@ var SCHED_DRAG = null;
   });
 
   sec.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target.matches && e.target.matches('[data-sdxdate]')) {
+      e.preventDefault();
+      sdAddExtraDay(e.target.value);
+      return;
+    }
     var inp = e.target.closest('[data-sdq]');
     if (!inp) return;
     var drop = inp.parentNode.querySelector('[data-sddrop]');
@@ -6530,6 +6914,17 @@ var SCHED_DRAG = null;
 
   sec.addEventListener('change', function (e) {
     var t = e.target;
+    if (t.matches('[data-sdfillcat]')) {
+      var fkey = t.getAttribute('data-sdfillcat');
+      var ff = sdFillState(fkey);
+      ff.cat = t.value;
+      ff.all = false;
+      ff.summary = '';
+      sdRenderFill(fkey);
+      sdLoadFill(fkey);
+      return;
+    }
+    if (t.matches('[data-sdxdate]')) { SCHED.extraDate = t.value; return; }
     if (t.matches('[data-sdcatsel]')) {
       var ckey = t.getAttribute('data-sdcatsel');
       t.disabled = true;
@@ -6678,11 +7073,36 @@ var SCHED_DRAG = null;
       sdAdd(t.getAttribute('data-sdday'), [t.getAttribute('data-sdmissadd')]);
       return;
     }
-    if ((t = e.target.closest('[data-sdfitall]'))) {
-      t.disabled = true;
-      sdAdd(t.getAttribute('data-sdfitall'), t.getAttribute('data-ids').split(','));
+    if ((t = e.target.closest('[data-sdfill20]'))) { t.disabled = true; sdFillTo20(t.getAttribute('data-sdfill20')); return; }
+    if ((t = e.target.closest('[data-sdfillall]'))) {
+      e.preventDefault();
+      sdFillState(t.getAttribute('data-sdfillall')).all = true;
+      sdRenderFill(t.getAttribute('data-sdfillall'));
       return;
     }
+    if ((t = e.target.closest('[data-sdneed]'))) {
+      e.preventDefault();
+      var nf = sdFillState(t.getAttribute('data-sdneed'));
+      nf.needOpen = !nf.needOpen;
+      sdRenderFill(t.getAttribute('data-sdneed'));
+      return;
+    }
+
+    // Extra sending days.
+    if ((t = e.target.closest('[data-sdxtoggle]'))) {
+      e.preventDefault();
+      SCHED.extraOpen = !SCHED.extraOpen;
+      if (!SCHED.extraOpen) SCHED.extraDate = '';
+      renderSchedExtra();
+      if (SCHED.extraOpen) { var dIn = sec.querySelector('[data-sdxdate]'); if (dIn) dIn.focus(); }
+      return;
+    }
+    if ((t = e.target.closest('[data-sdxadd]'))) {
+      var xIn = sec.querySelector('[data-sdxdate]');
+      sdAddExtraDay(xIn ? xIn.value : '');
+      return;
+    }
+    if ((t = e.target.closest('[data-sdxrm]'))) { e.preventDefault(); sdRemoveExtraDay(t.getAttribute('data-sdxrm')); return; }
     if ((t = e.target.closest('[data-sdseecat]'))) { e.preventDefault(); sdOpenCat(t.getAttribute('data-sdseecat'), true); return; }
     if ((t = e.target.closest('[data-sclearoff]'))) {
       var clearOff = t;
@@ -6851,6 +7271,27 @@ var SCHED_DRAG = null;
     if (key === drag.day) return;
     sdMove(drag.id, drag.name, drag.from, key);
   });
+
+  // --- back from LinkedIn ------------------------------------
+  //
+  // The capture tool saves a brand's buyers from its LinkedIn People tab
+  // in another browser tab. Coming back here re-reads the schedule, so a
+  // Thin or No one reachable label updates without a reload. The open
+  // drill-in stays open and re-reads its category (sdTake marks it out
+  // of date). Skipped while Leo is part-way through typing something a
+  // redraw would throw away: a contact form, the add box, a date.
+  function sdBackInView() {
+    if (document.visibilityState === 'hidden') return;
+    if (!sec.classList.contains('active') || !SCHED.order.length) return;
+    if (Date.now() - SCHED.loadedAt <= 5000) return;
+    var busy = [].some.call(sec.querySelectorAll('[data-sdslot]'), function (el) { return el.innerHTML.trim() !== ''; }) ||
+      [].some.call(sec.querySelectorAll('[data-sdq]'), function (el) { return el.value.trim() !== ''; }) ||
+      SCHED.extraBusy;
+    if (busy) return;
+    sdRefresh();
+  }
+  window.addEventListener('focus', sdBackInView);
+  document.addEventListener('visibilitychange', sdBackInView);
 })();
 
 // --- passed brands ---------------------------------------------
@@ -7482,6 +7923,17 @@ var OQ_LABELS = {};
 var OQ_DONE_OPEN = {};
 // Today's theme, for the rail's summary card.
 var OQ_THEME = null;
+// Is today a sending day? getTodayQueue.sendingDay says, extra days
+// included; null until it has answered (or from an older deploy).
+var OQ_SENDING = null;
+
+// The server's word first, then the Schedule's days if they are loaded,
+// and only then the plain Tue/Wed/Thu rule, which knows no extra days.
+function oqSendingToday() {
+  if (typeof OQ_SENDING === 'boolean') return OQ_SENDING;
+  if (SCHED.order.length && SCHED.today) return SCHED.order.indexOf(SCHED.today) !== -1;
+  return OUTREACH_DOWS.indexOf(new Date().getDay()) !== -1;
+}
 
 function oqIsPre(t) { return t && (t.status === 'queued' || t.status === 'drafted'); }
 // "Sent" for a card's count: the invite went out, whatever happened after.
@@ -7602,7 +8054,7 @@ function oqRenderRail() {
     oqBar(sent, cap) +
     '<div class="oq-sum-row"><span>Still to send</span><b>' + toSend + '</b></div>' +
     '<div class="oq-sum-row"><span>Open spots</span><b>' + open + '</b></div>' +
-    (open > 0 && OUTREACH_DOWS.indexOf(new Date().getDay()) > -1
+    (open > 0 && oqSendingToday()
       ? '<div class="hint" style="margin:10px 0 0">Fill to 20 tops the day up from ' +
         (OQ_THEME ? esc(CAT_NAMES[OQ_THEME] || OQ_THEME) : 'today’s category') + '.</div>' : '') +
   '</div>';
@@ -7701,12 +8153,19 @@ function loadOutreach() {
         .then(function (r) {
           var midnight = new Date(); midnight.setHours(0, 0, 0, 0);
           var weekAgo = Date.now() - 7 * 864e5;
-          var sentToday = (r[2] || []).filter(function (t) { return t.sentAt && new Date(t.sentAt) >= midnight; });
-          var stale = (r[2] || []).filter(function (t) { return t.sentAt && new Date(t.sentAt).getTime() <= weekAgo; });
           // getTodayQueue returns { theme, targets }; plain arrays from
           // an older deploy still work.
           var tq = r[1] || {};
           var list = tq.targets || (tq.length !== undefined ? tq : []);
+          // Sent today comes from the server (sentList: every invite sent
+          // today, whatever its status now). listTargets({status:'sent'})
+          // stops at 200 and drops anyone who has already accepted, so a
+          // brand's card lost the people who said yes fastest. It is still
+          // what Going stale reads: those are exactly the ones still "sent".
+          var sentToday = Array.isArray(tq.sentList) ? tq.sentList
+            : (r[2] || []).filter(function (t) { return t.sentAt && new Date(t.sentAt) >= midnight; });
+          var stale = (r[2] || []).filter(function (t) { return t.sentAt && new Date(t.sentAt).getTime() <= weekAgo; });
+          OQ_SENDING = typeof tq.sendingDay === 'boolean' ? tq.sendingDay : null;
           // Accepted people whose DM already went out are done here —
           // they live on in Results until the reply comes.
           SENT_TODAY.count = tq.sentToday || 0;
@@ -7724,12 +8183,13 @@ function loadOutreach() {
     r.sentToday.forEach(function (t) { TARGET_CACHE[t.id] = t; });
     (r.more || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
     (list || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
-    // Mondays and Fridays are not sending days. Say so at the top of the
-    // queue rather than letting the day look like any other.
-    var offDay = OUTREACH_DOWS.indexOf(new Date().getDay()) === -1;
+    // Not a sending day (not Tue/Wed/Thu, and not an extra day added on
+    // the Schedule). Say so at the top of the queue rather than letting
+    // the day look like any other.
+    var offDay = mode === 'today' && !oqSendingToday();
     var offNote = offDay
       ? '<div class="hint" style="margin:6px 0 0;color:#f0b86b">No outreach today — you send Tuesday, Wednesday and Thursday. Next up: ' +
-        esc(shortDate(schedDayKeys(1)[0] + 'T12:00:00')) + '. Plan it on the Schedule tab.</div>'
+        esc(shortDate(schedDayKeys(1)[0] + 'T12:00:00')) + '. Plan it on the Schedule tab, or add today there as an extra sending day.</div>'
       : '';
     document.getElementById('queue-head').innerHTML = mode === 'today'
       ? 'To send today' + (r.theme ? ' — ' + esc(CAT_NAMES[r.theme] || r.theme) + ' day' : '') + ' <span class="n">' + list.length + '</span>' +
@@ -7743,7 +8203,8 @@ function loadOutreach() {
     if (fb) fb.onclick = function () {
       fb.disabled = true; fb.textContent = 'Filling…';
       api('fillToday').then(function (f) {
-        if (f.offDay) toast('No outreach on Mondays or Fridays. Next sending day: ' + shortDate(f.nextDay + 'T12:00:00') + ' — plan it on the Schedule tab.');
+        if (f.offDay) toast('Today isn’t a sending day' + (f.nextDay ? '. Next one: ' + shortDate(f.nextDay + 'T12:00:00') : '') +
+          ' — to send today, add it as an extra day on the Schedule tab.');
         else if (f.already) toast('Today is already covered to ' + SENT_TODAY.cap);
         else if (f.shortBy > 0) toast('Added ' + f.added + ' — still ' + f.shortBy + ' short: ' +
           (f.theme ? esc(CAT_NAMES[f.theme] || f.theme) + ' is out of brands with people. Add some on the Schedule tab.' : 'add brands on the Schedule tab.'));
