@@ -1011,7 +1011,8 @@ const handlers: Record<string, Handler> = {
       where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: coldPoolBrand() },
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: 300,
-      select: { id: true, fitScore: true, brand: { select: { category: true } } },
+      // brandId comes back so the day can be filled a brand at a time.
+      select: { id: true, brandId: true, fitScore: true, brand: { select: { category: true } } },
     })
     const cats = [...new Set(candidates.map(c => c.brand.category).filter(Boolean))].sort() as string[]
     // A planned category (Schedule tab) beats the automatic rotation.
@@ -1023,7 +1024,39 @@ const handlers: Record<string, Handler> = {
     // and side list are how it gets filled.
     const themed = theme ? candidates.filter(c => c.brand.category === theme) : candidates
     const roomLeft = Math.max(0, room - handPicked.length)
-    const picks = themed.slice(0, roomLeft)
+
+    // Fill the day by BRAND, not by person. Slicing the best-fit list at
+    // twenty cut straight through a brand: two of Rhoback's people in
+    // today's list, the other two down in "the rest of the category",
+    // which is why the same company kept showing up in two places. You
+    // write to a brand's people in one sitting or not at all.
+    //
+    // Brands stay in best-fit order. One that doesn't fit the room left
+    // is skipped rather than ending the fill, so a four-person brand
+    // with three slots free doesn't leave the day three short — and a
+    // brand already part-worked today is counted so its remaining
+    // people join it rather than starting a second group.
+    const heldBrands = new Set(handPicked.map(t => t.brandId))
+    const themedByBrand = new Map<string, typeof themed>()
+    for (const c of themed) {
+      const list = themedByBrand.get(c.brandId) ?? []
+      list.push(c)
+      themedByBrand.set(c.brandId, list)
+    }
+    const picks: typeof themed = []
+    // A brand with someone already hand-picked for today goes first: its
+    // remaining people belong next to the ones already in the list.
+    const groups = [...themedByBrand.entries()].sort(
+      (a, b) => (heldBrands.has(b[0]) ? 1 : 0) - (heldBrands.has(a[0]) ? 1 : 0))
+    for (const [, group] of groups) {
+      if (picks.length >= roomLeft) break
+      if (picks.length + group.length <= roomLeft) picks.push(...group)
+    }
+    // Nothing fit whole — one brand is bigger than the room left. Take
+    // what fits from the best of them rather than showing an empty day.
+    if (!picks.length && roomLeft > 0 && themed.length) {
+      picks.push(...themed.slice(0, roomLeft))
+    }
 
     if (picks.length) {
       await prisma.target.updateMany({
