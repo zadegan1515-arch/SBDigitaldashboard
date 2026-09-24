@@ -25,6 +25,7 @@ import { readMisses, writeMisses, addMiss, type HeldRow } from '@/lib/brand-matc
 import {
   readSearch, writeSearch, readProposals, writeProposals, upsertProposal,
   readCaptureQueue, writeCaptureQueue, queueCapture, decideMatch,
+  candidatesToOffer, readRejected,
   readSweepLog, markSwept, isResting, PROPOSAL_VERSION,
   type SuCandidate,
 } from '@/lib/su-match'
@@ -382,15 +383,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, outcome: 'already', externalId: brand.externalId }, { headers: cors })
     }
 
-    const { pick, reason } = decideMatch(brand.name, brand.aka, candidates)
+    // Pages Leo already turned down for this brand ("None of these") are
+    // never offered or attached again.
+    const offered = candidatesToOffer(candidates, (await readRejected(prisma))[brand.id])
+    const { pick, reason } = decideMatch(brand.name, brand.aka, offered)
     if (!pick) {
+      // Nothing came back (or only pages he turned down): no question
+      // for Leo, so nothing is parked — the next lookup tries again.
+      if (!offered.length) {
+        return NextResponse.json({ ok: true, outcome: 'none', candidates: 0, ignored: candidates.length }, { headers: cors })
+      }
       // Nothing obvious — park it for Leo rather than guessing. A wrong
       // id quietly fills a brand with another company's people.
       const list = await readProposals(prisma)
       await writeProposals(prisma, upsertProposal(list, {
-        brandId: brand.id, brandName: brand.name, candidates, at: Date.now(), v: PROPOSAL_VERSION,
+        brandId: brand.id, brandName: brand.name, candidates: offered, at: Date.now(), v: PROPOSAL_VERSION,
       }))
-      return NextResponse.json({ ok: true, outcome: reason, candidates: candidates.length }, { headers: cors })
+      return NextResponse.json({ ok: true, outcome: reason, candidates: offered.length }, { headers: cors })
     }
 
     // externalId is unique — another brand may already hold this one.

@@ -185,6 +185,39 @@ export function decideMatch(
   return { pick: null, reason: 'ambiguous' }
 }
 
+// ---------------- "none of these" ----------------
+//
+// Dismissing a proposal used to only drop it, and the next lookup (the
+// script runs by itself when the tab is idle) searched the brand again
+// and parked the same pages right back. Now the pages Leo turned down
+// are remembered per brand and never offered for it again; a page
+// SponsorUnited adds later still is. Setting["suRejected"]:
+// brandId -> the profile ids that are not this brand.
+export const REJECTED_KEY = 'suRejected'
+const MAX_REJECTED_PER_BRAND = 40
+
+export type RejectedLog = Record<string, string[]>
+
+export async function readRejected(db: SettingStore): Promise<RejectedLog> {
+  const log = await readJson<RejectedLog>(db, REJECTED_KEY, {})
+  return log && typeof log === 'object' && !Array.isArray(log) ? log : {}
+}
+
+export async function rejectCandidates(db: SettingStore, brandId: string, externalIds: string[]) {
+  const log = await readRejected(db)
+  const had = Array.isArray(log[brandId]) ? log[brandId] : []
+  log[brandId] = Array.from(new Set([...had, ...externalIds.filter(Boolean)])).slice(-MAX_REJECTED_PER_BRAND)
+  await writeJson(db, REJECTED_KEY, log)
+}
+
+// What is still worth asking Leo about one brand: the results, less the
+// pages he already said are not it. Both come out of stored JSON, so a
+// bad row must not break the list.
+export function candidatesToOffer(candidates: SuCandidate[], rejected: string[] = []): SuCandidate[] {
+  const no = new Set(Array.isArray(rejected) ? rejected : [])
+  return (Array.isArray(candidates) ? candidates : []).filter(c => c && c.externalId && !no.has(c.externalId))
+}
+
 // ---------------- the sweep log ----------------
 //
 // What the last capture of each brand found. The sweep's worklist is

@@ -41,6 +41,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   cron scan and the generateContract/Invoice handlers still exist server-side).
   **Activations** is its own workspace (sidebar + tabs swap in), entered from the left sidebar or the
   Home "Jump to" card — not in the top nav. Deep links: `#activations/<id>/<tab>`, `#operations/<id>`.
+- **Brand page people/outreach wording** (`liWords`, `emailWords` in app.html): never a bare status
+  word. LinkedIn and email are separate lines — "LinkedIn · invite sent Sep 16" (logged by hand with
+  **Invite sent on LinkedIn ✓**), "LinkedIn · not sent yet", "Email · intro drafted, not sent" /
+  "sent <date> · opened". `getBrand` returns each target's outbound emails and fills the free template
+  notes for anyone not yet contacted, so a newly added person gets Note · M/W instead of only the log
+  button. **Draft intro email** only drafts; the card reloads and the header shows that email's state.
 - **Home → For Zach to do** (`zachTodo` + `renderZachTodo`; deep link `app.html#zach`) — **everyone who
   accepted a LinkedIn invite** until they're finished (`HAND_WAITING` in `route.ts`: accepted/replied,
   no `callAt`, no `handSkippedAt`). Replied by email still shows (Email step ticked, "replied by
@@ -79,7 +85,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (`needProfile` → `matched`, and the Brands → Find search) reads only profile links that appear
   after typing into their search (the dashboard's own cards are not results), first line = name,
   Property results dropped; `node scripts/test-capture.js` covers it. Proposals from script ≤4.1
-  have no `v` and stay hidden (`PROPOSAL_VERSION`).
+  have no `v` and stay hidden (`PROPOSAL_VERSION`). The review list (Brands → "Which SponsorUnited
+  page is theirs?") only shows brands with something to pick: a search with no results answers
+  `none` and parks nothing. **None of these** remembers the pages turned down per brand (Setting
+  `suRejected`, `candidatesToOffer`) so a later lookup can't offer them again;
+  `node scripts/test-su-match.mjs`.
 - `scripts/linkedin-capture.user.js` — **LinkedIn People capture** (second Tampermonkey script, same
   INGEST_TOKEN, kept in GM storage; requests go via `GM_xmlhttpRequest` because LinkedIn's CSP blocks
   page fetches). Leo's calls (Sep 2026): **Leo's LinkedIn account, never Zach's** (Zach's sends the

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — SponsorUnited Contact Capture
 // @namespace    sbagency.command-center
-// @version      4.2
+// @version      4.3
 // @description  Capture contacts from SponsorUnited into the SB Command Center, and find the profile ids of brands we cannot reach yet.
 // @match        https://pro.sponsorunited.com/*
 // @run-at       document-idle
@@ -634,7 +634,7 @@
         renderMessage('Nothing to look up', 'Every brand already has a SponsorUnited profile saved.', 0);
         return;
       }
-      var job = { items: j.items, at: 0, attached: 0, parked: 0, failed: 0, fill: thenFill, auto: auto, startedAt: Date.now() };
+      var job = { items: j.items, at: 0, attached: 0, parked: 0, missing: 0, failed: 0, fill: thenFill, auto: auto, startedAt: Date.now() };
       saveMatch(job);
       matchStep();
     }).catch(function (e) { saveMatch(null); renderMessage('Could not start', e.message, 0); });
@@ -658,7 +658,7 @@
         return;
       }
       renderMessage('Finished looking up profiles',
-        job.attached + ' attached · ' + job.parked + ' need your eye · ' + job.failed + ' failed. ' +
+        job.attached + ' attached · ' + job.parked + ' need your eye · ' + (job.missing || 0) + ' not found · ' + job.failed + ' failed. ' +
         'The ones needing your eye are in the dashboard under Brands.', 0);
       return;
     }
@@ -672,9 +672,13 @@
         token: token(), action: 'matched',
         brandId: item.brandId, candidates: r.results || [],
       }).then(function (res) {
+        // Only 'ambiguous' leaves a question on the dashboard. 'none'
+        // (no results, or only pages Leo turned down) parks nothing, so
+        // it is counted apart instead of inflating "for review".
         if (res && res.outcome === 'attached') job.attached += 1;
-        else if (res && res.ok) job.parked += 1;
-        else job.failed += 1;
+        else if (res && res.outcome === 'ambiguous') job.parked += 1;
+        else if (res && res.outcome === 'none') job.missing = (job.missing || 0) + 1;
+        else if (!res || !res.ok) job.failed += 1;
         nextMatch(job);
       });
     }).catch(function () { job.failed += 1; nextMatch(job); });
@@ -694,7 +698,7 @@
       '<div style="font-size:12.5px;margin-bottom:6px">' + esc(note || '') + '</div>' +
       (job
         ? '<div style="font-size:11.5px;color:#555">' + at + ' of ' + total + ' · ' +
-            job.attached + ' attached · ' + job.parked + ' for review</div>' +
+            job.attached + ' attached · ' + job.parked + ' for review · ' + (job.missing || 0) + ' not found</div>' +
           '<button id="sbmstop" style="width:100%;margin-top:10px;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:8px 12px;cursor:pointer">Stop</button>'
         : '');
     var x = p.querySelector('#sbmx');

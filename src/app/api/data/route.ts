@@ -15,6 +15,7 @@ import {
   readSearch, writeSearch, readProposals, writeProposals,
   readCaptureQueue, writeCaptureQueue, queueCapture,
   readSweepLog, isResting, SWEEP_REST_DAYS, PROPOSAL_VERSION,
+  candidatesToOffer, readRejected, rejectCandidates,
 } from '@/lib/su-match'
 import { getServerSession } from 'next-auth'
 import Anthropic from '@anthropic-ai/sdk'
@@ -1928,12 +1929,32 @@ const handlers: Record<string, Handler> = {
           include: {
             contact: { select: { id: true, name: true, title: true, linkedinUrl: true } },
             drafts: { orderBy: { createdAt: 'desc' }, take: 2 },
+            // The email side of each person, kept apart from the LinkedIn
+            // status: a drafted intro is not a sent one, and the card has
+            // to be able to say which.
+            emails: {
+              where: { direction: 'out', kind: { not: 'test' } },
+              orderBy: { createdAt: 'desc' },
+              select: { id: true, kind: true, status: true, sentAt: true, createdAt: true, opens: true, toEmail: true },
+            },
           },
           orderBy: { fitScore: 'desc' },
         },
       },
     })
     if (!brand) throw new Error('Brand not found')
+
+    // Someone just added has no note yet, and without one the card's only
+    // button was the one that logs an invite as sent. Same free template
+    // drafts every queue list writes; the brand is passed alongside, not
+    // hung on the target, so the response stays plain JSON.
+    const unwritten = brand.targets.filter(t => !t.shelved && ['queued', 'drafted'].includes(t.status) &&
+      !t.drafts.some(d => d.variant === 'man' || d.variant === 'woman'))
+    if (unwritten.length) {
+      const withBrand = unwritten.map(t => ({ ...t, brand: { name: brand.name, category: brand.category } }))
+      await ensureTemplateDrafts(withBrand)
+      withBrand.forEach((w, i) => { unwritten[i].drafts = w.drafts; unwritten[i].status = w.status })
+    }
 
     const events = await prisma.targetEvent.findMany({
       where: { target: { brandId } },
@@ -3828,10 +3849,11 @@ const handlers: Record<string, Handler> = {
 
   // The sweep's leftovers: brands it searched but could not call.
   async suMatchQueue() {
-    const [all, missing, queue] = await Promise.all([
+    const [all, missing, queue, rejected] = await Promise.all([
       readProposals(prisma),
       prisma.brand.count({ where: { externalId: null, doNotEmail: false, passedAt: null } }),
       readCaptureQueue(prisma),
+      readRejected(prisma),
     ])
     // Only proposals from the fixed reader, and only for brands still
     // without a profile (one may have been attached since).
@@ -3840,15 +3862,26 @@ const handlers: Record<string, Handler> = {
       where: { id: { in: current.map(p => p.brandId) }, externalId: { not: null } },
       select: { id: true },
     })).map(b => b.id))
-    const proposals = current.filter(p => !settled.has(p.brandId))
+    // Pages Leo already turned down stay down, and a brand with nothing
+    // left to choose from is no question at all — an empty "no matches"
+    // card was most of what the list used to be.
+    const proposals = current.filter(p => !settled.has(p.brandId)).flatMap(p => {
+      const candidates = candidatesToOffer(p.candidates, rejected[p.brandId])
+      return candidates.length ? [{ ...p, candidates }] : []
+    })
     return { proposals, missing, capturePending: queue.length }
   },
 
-  // Resolve one: attach the chosen candidate, or drop the proposal.
-  async suResolveMatch({ brandId, externalId, suName, dismiss }: any) {
+  // Resolve one: attach the chosen candidate, or turn them all down.
+  // "None of these" remembers the pages it was shown, so the next
+  // lookup cannot park the same ones for this brand again.
+  async suResolveMatch({ brandId, externalId, suName, dismiss, rejectIds }: any) {
     const list = await readProposals(prisma)
     const rest = list.filter(p => p.brandId !== brandId)
     if (dismiss) {
+      const shown = Array.isArray(rejectIds) ? rejectIds.map(String)
+        : (list.find(p => p.brandId === brandId)?.candidates ?? []).map(c => c.externalId)
+      await rejectCandidates(prisma, brandId, shown)
       await writeProposals(prisma, rest)
       return { ok: true, dismissed: true }
     }
