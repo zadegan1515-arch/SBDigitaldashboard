@@ -105,8 +105,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   headline→title in `src/lib/li-capture.ts` (`node scripts/test-li-capture.mjs`); script tested by
   `scripts/test-li-script.js` (fake People page). Worklist: Outreach → People → "Under 25"
   (deep link `app.html#people`). Install by **paste** (Tampermonkey → + → paste): opening the raw
-  GitHub link doesn't bring up the install page for Leo. The pill shows on every LinkedIn page
-  (off a company page it only says where to go); panel HTML goes through a Trusted Types policy
+  GitHub link doesn't bring up the install page for Leo; the paste must replace Tampermonkey's
+  sample script, or its header wins and the script never runs on LinkedIn (a copy running without
+  its @grant lines says "Reinstall"). The pill shows on every LinkedIn page, **bottom-left** (the
+  Messaging bar owns bottom-right), on `<html>` with `all:initial`; the Tampermonkey icon's menu
+  has "Open the SB capture panel" as a second way in. Off a company page it only says where to go; panel HTML goes through a Trusted Types policy
   (`setHTML`) and clicks are wrapped (`guard`) so a failure shows a message, never nothing.
 - `src/lib/email.ts` — outreach: drafting, cap/ramp (`roomToday`), sending via Gmail API, replies, warmup stats, signature (hosted images, LinkedIn/IG as text links).
 - `src/lib/google.ts` — OAuth (gmail / drive / ops grants), Gmail read+send, Drive/Sheets/Docs create.

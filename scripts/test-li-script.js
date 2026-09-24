@@ -17,6 +17,9 @@
 //      localStorage.
 //   5. It still opens on a page that enforces Trusted Types, where a
 //      plain innerHTML write throws and the click would do nothing.
+//   6. The pill sits bottom-left, clear of LinkedIn's Messaging bar; the
+//      Tampermonkey menu opens the same panel; and a copy running without
+//      its @grant lines (pasted under Tampermonkey's sample) says so.
 //
 // Run: node scripts/test-li-script.js   (needs playwright; ~10s)
 // If playwright is only installed globally:
@@ -134,6 +137,8 @@ const GM_SHIM = `
     window.GM_getValue = function (k, d) { return k in store ? store[k] : d; };
     window.GM_setValue = function (k, v) { store[k] = v; };
     window.GM_deleteValue = function (k) { delete store[k]; };
+    window.__sbMenu = [];
+    window.GM_registerMenuCommand = function (name, fn) { window.__sbMenu.push({ name: name, fn: fn }); };
     window.GM_xmlhttpRequest = function (o) {
       fetch(o.url, { method: o.method, headers: o.headers, body: o.data })
         .then(function (r) { return r.text().then(function (t) { o.onload({ status: r.status, responseText: t }); }); })
@@ -164,9 +169,21 @@ const GM_SHIM = `
     assert.equal(sent.length, 0);
     assert.match(pageObj.url(), /\/feed\/$/);
     ok('pill shows on the feed too, and there it only says where to go');
+    const box = await pageObj.locator('#sblipill').boundingBox();
+    const vw = pageObj.viewportSize().width;
+    assert.ok(box.x < vw / 2, 'pill is on the left, clear of Messaging (x=' + box.x + ')');
+    ok('pill sits bottom-left, clear of LinkedIn\'s Messaging bar');
     await load('/company/liquid-death/');
     await pageObj.waitForSelector('#sblipill', { state: 'visible' });
     ok('pill shows on a company page');
+
+    // The Tampermonkey menu entry opens the same panel.
+    const menu = await pageObj.evaluate(() => window.__sbMenu.map(m => m.name));
+    assert.deepEqual(menu, ['Open the SB capture panel']);
+    await pageObj.evaluate(() => window.__sbMenu[0].fn());
+    await pageObj.waitForSelector('#sblipeople');
+    await pageObj.evaluate(() => document.getElementById('sbli-panel').remove());
+    ok('the Tampermonkey menu opens the panel too');
 
     // Off the People tab it offers to open it and does nothing else.
     await pageObj.click('#sblipill');
@@ -239,6 +256,15 @@ const GM_SHIM = `
     await tt.waitForSelector('#sbliadd', { timeout: 20000 });
     assert.deepEqual(ttErrors, []);
     ok('opens and reads on a page that enforces Trusted Types');
+
+    // 6. No @grant lines: runs, shows the pill, says to reinstall.
+    const bare = await browser.newPage();
+    await bare.goto('http://127.0.0.1:4622/company/liquid-death/people/');
+    await bare.addScriptTag({ content: SCRIPT });
+    await bare.waitForSelector('#sblipill', { state: 'visible' });
+    await bare.click('#sblipill');
+    await bare.waitForFunction(() => /Reinstall/.test(document.getElementById('sbli-panel').innerText));
+    ok('a copy without its @grant lines says to reinstall');
 
     console.log(n + ' checks passed');
   } catch (e) {

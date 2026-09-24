@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.1
+// @version      1.2
 // @description  On a brand's LinkedIn People page, send its marketing and partnership people to the SB Command Center. One click, one page — nothing browses on its own.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -10,6 +10,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_deleteValue
+// @grant        GM_registerMenuCommand
 // @connect      sb-digitaldashboard.vercel.app
 // @updateURL    https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js
 // @downloadURL  https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js
@@ -36,7 +37,9 @@
 // LinkedIn doesn't show them, and these people go to the LinkedIn queue.
 //
 // TO INSTALL (once): Tampermonkey -> Dashboard -> + (new script) ->
-// paste this in -> save. (Opening the raw GitHub link does not always
+// select ALL of Tampermonkey's sample text and paste over it -> save.
+// (Pasted underneath the sample, Tampermonkey reads the sample's header
+// instead of this one and the script never runs on LinkedIn.) (Opening the raw GitHub link does not always
 // bring up Tampermonkey's install page — pasting always works.) The SB
 // pill then shows on every LinkedIn page; click it, paste the ingest
 // token. It updates itself from GitHub after that.
@@ -53,6 +56,13 @@
   var INGEST_URL = 'https://sb-digitaldashboard.vercel.app/api/ingest';
   var DASH_URL = 'https://sb-digitaldashboard.vercel.app/app.html';
   var TOKEN_KEY = 'sbIngestToken';
+  var VERSION = '1.2';
+
+  // The header's @grant lines are what give this script Tampermonkey's
+  // storage and requests. A paste that lost the header (the usual cause:
+  // pasted under Tampermonkey's sample script) runs without them — say
+  // so instead of failing quietly.
+  var HAS_GM = typeof GM_xmlhttpRequest === 'function' && typeof GM_getValue === 'function';
 
   // One press reads at most this much. A big company's People page never
   // ends; the keyword chips narrow it instead of scrolling forever.
@@ -285,7 +295,7 @@
 
   var pill, panel, busy = false, lastRead = null;
 
-  var PANEL_CSS = 'position:fixed;bottom:16px;right:16px;z-index:2147483647;background:#fff;color:#111;border:1px solid #d9d9d6;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:14px 16px;font:13px/1.45 system-ui,-apple-system,sans-serif;width:340px;max-height:80vh;overflow:auto;text-align:left';
+  var PANEL_CSS = 'all:initial;display:block;box-sizing:border-box;position:fixed;bottom:64px;left:16px;z-index:2147483647;background:#fff;color:#111;border:1px solid #d9d9d6;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:14px 16px;font:13px/1.45 system-ui,-apple-system,sans-serif;width:340px;max-height:80vh;overflow:auto;text-align:left';
   var BTN = 'width:100%;background:#111;color:#fff;border:0;border-radius:7px;padding:9px 12px;cursor:pointer;font-weight:600;font:600 13px system-ui';
   var BTN2 = 'width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:8px 12px;cursor:pointer;font:13px system-ui';
 
@@ -295,7 +305,9 @@
     panel.className = 'sb-li-ui';
     panel.id = 'sbli-panel';
     panel.style.cssText = PANEL_CSS;
-    document.body.appendChild(panel);
+    // On <html>, not <body>: a transform or containment LinkedIn puts on
+    // <body> would pin a fixed element to it, possibly off screen.
+    document.documentElement.appendChild(panel);
     return panel;
   }
   function closePanel() { if (panel) { panel.remove(); panel = null; } }
@@ -361,6 +373,7 @@
   }
 
   function openMenu() {
+    if (!HAS_GM) return openBroken();
     if (!token()) return openSetup();
     if (busy) return;
     if (!companyPath()) return openElsewhere();
@@ -373,6 +386,14 @@
     wireClose(p);
     wireToken(p);
     p.querySelector('#sblipeople').onclick = function () { location.href = companyBase() + 'people/'; };
+  }
+
+  function openBroken() {
+    var p = freshPanel();
+    setHTML(p, head('Reinstall this script') +
+      '<div style="color:#555;margin-bottom:8px">Tampermonkey is running this script without its settings lines, so it can\'t reach the dashboard. That happens when it was pasted <b>under</b> Tampermonkey\'s sample script.</div>' +
+      '<div style="color:#555">Tampermonkey → Dashboard → open this script → select everything (Ctrl/Cmd+A) → paste the script from GitHub over it → save.</div>');
+    wireClose(p);
   }
 
   // The pill shows on every LinkedIn page, so a working install is
@@ -522,15 +543,18 @@
     }).catch(function (e) { showError(e.message); });
   }
 
+  // Bottom-left: LinkedIn's Messaging bar sits bottom-right and would
+  // cover it. `all:initial` keeps LinkedIn's own button styles off it.
   function ensurePill() {
-    if ((pill && pill.isConnected) || !document.body) return;
+    if ((pill && pill.isConnected) || !document.documentElement) return;
     pill = document.createElement('button');
     pill.id = 'sblipill';
     pill.className = 'sb-li-ui';
     pill.textContent = 'SB ⬇ People';
-    pill.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:2147483646;background:#111;color:#fff;border:0;border-radius:999px;padding:11px 16px;font:600 13px system-ui,-apple-system,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.28);cursor:pointer';
+    pill.title = 'SB LinkedIn capture ' + VERSION;
+    pill.style.cssText = 'all:initial;display:block;position:fixed;bottom:16px;left:16px;z-index:2147483646;background:#111;color:#fff;border:0;border-radius:999px;padding:11px 16px;font:600 13px system-ui,-apple-system,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.28);cursor:pointer';
     pill.onclick = guard(openMenu);
-    document.body.appendChild(pill);
+    document.documentElement.appendChild(pill);
   }
 
   // LinkedIn is a single-page app: moving between a company's tabs, or
@@ -546,6 +570,13 @@
       lastPath = location.pathname;
     }
   }
+  // A second way in, from the Tampermonkey icon's menu — works even if
+  // something on the page hides the pill.
+  try {
+    if (typeof GM_registerMenuCommand === 'function') GM_registerMenuCommand('Open the SB capture panel', guard(openMenu));
+  } catch (e) {}
+  try { console.info('[SB] LinkedIn capture ' + VERSION + ' running' + (HAS_GM ? '' : ' WITHOUT its @grant lines — reinstall')); } catch (e) {}
+
   tick();
   setInterval(tick, 1500);
 })();
