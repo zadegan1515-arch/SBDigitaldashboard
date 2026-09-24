@@ -443,7 +443,189 @@
   /* One day's worth, as a hairline — the threshold that decides whether
      a category can carry a whole day on its own. */
   .rw-val{font-size:12px;color:var(--ink-2);text-align:right;white-space:nowrap}
+  /* Outreach > Schedule. Full page width: three sending days side by
+     side, one card per brand. The contacts label carries its meaning in
+     shape as well as colour (filled / half / ring) so it never depends
+     on telling the green from the amber. */
+  .page.wide{max-width:none}
+  .sd-dim{font-size:12px;color:var(--ink-3)}
+  .sd-dim.good,.sd-line.good{color:#55d9a2}
+  .sd-sp{flex:1}
+  .sd-check-why.bad,.sd-line b.bad{color:#f2918c}
+  .sd-open-h b.warn{color:#eec777}
+  .sd-sm{padding:4px 11px;font-size:11.5px}
+  .sd-mini{padding:4px 8px;font-size:12px;max-width:170px}
+  .sd-link{font-size:12px;color:var(--accent-hi);text-decoration:none;white-space:nowrap}
+  .sd-link:hover{text-decoration:underline}
+  .sd-x{color:var(--ink-3);text-decoration:none;font-weight:700;padding:0 4px}
+  .sd-x:hover{color:var(--ink-1)}
+  .sd-bname{font-size:13.5px;font-weight:700;color:var(--ink-1);text-decoration:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sd-bname:hover{color:var(--accent-hi)}
+  .sd-dimlink{color:var(--ink-2);text-decoration:none}
+  .sd-dimlink:hover{color:var(--accent-hi)}
+  .sd-tag{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--surface-1);border:1px solid var(--border);color:var(--ink-3);white-space:nowrap}
+  .sd-tag.good{color:#55d9a2;border-color:rgba(62,207,142,.3)}
+  .sd-tag.warn{color:#eec777;border-color:rgba(232,182,76,.35)}
+  .sd-tag.day{color:#aac6ff;border-color:rgba(79,131,247,.4);background:var(--accent-soft)}
+  .sd-lab{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;flex:none}
+  .sd-lab.ready{color:#55d9a2;background:rgba(62,207,142,.12)}
+  .sd-lab.thin{color:#eec777;background:rgba(232,182,76,.13)}
+  .sd-lab.none{color:#f2918c;background:rgba(240,113,107,.12)}
+  .sd-lab i,.sd-mk{display:inline-block;width:9px;height:9px;border-radius:50%;flex:none;box-sizing:border-box;vertical-align:-1px}
+  .sd-lab.ready i,.sd-mk.ready{background:var(--good)}
+  .sd-lab.thin i,.sd-mk.thin{border:1.5px solid var(--warn);background:linear-gradient(90deg,var(--warn) 50%,transparent 50%)}
+  .sd-lab.none i,.sd-mk.none{border:1.5px solid var(--bad);background:transparent}
+  .sd-mk{margin-right:5px}
+  .sd-meter{display:block;height:6px;border-radius:4px;background:var(--surface-2);overflow:hidden}
+  .sd-meter>i{display:block;height:100%;background:var(--accent);border-radius:0 3px 3px 0;transition:width .2s ease}
+  .sd-meter.good>i{background:var(--good)}
+  .sd-meter.bad>i{background:var(--bad)}
+  /* contacts check bar */
+  .sd-check{padding:14px 18px;margin-top:20px}
+  .sd-check-row{display:flex;gap:10px 18px;align-items:center;flex-wrap:wrap}
+  .sd-check-t{font-size:13.5px}
+  .sd-check-n{display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--ink-2);white-space:nowrap}
+  .sd-check-n b{font-family:var(--display);font-size:17px;color:var(--ink-1)}
+  .sd-check-n.bad b,.sd-check-n.bad{color:#f2918c}
+  .sd-legend{flex:1;min-width:260px;font-size:12px;color:var(--ink-3)}
+  .sd-check-list{margin-top:12px;border-top:1px solid var(--border-soft);padding-top:6px;max-height:320px;overflow:auto}
+  .sd-check-item{display:flex;gap:10px;align-items:center;padding:6px 0;font-size:12.5px;border-bottom:1px solid var(--border-soft)}
+  .sd-check-item .sd-mk{margin:0}
+  .sd-check-why{color:var(--ink-2);min-width:0}
+  /* the three days */
+  .sd-days{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px;align-items:start}
+  .sd-day{min-width:0;overflow:visible;padding:16px 16px 18px;display:flex;flex-direction:column;gap:12px;transition:outline-color .1s}
+  .sd-day.sd-over{outline:2px dashed var(--accent-hi);outline-offset:-2px;background:rgba(79,131,247,.05)}
+  .sd-day-h{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .sd-day-t{font-family:var(--display);font-weight:800;font-size:17px;letter-spacing:-.01em;flex:1;min-width:130px}
+  .sd-catsel{min-width:0;max-width:100%;font-size:12px;padding:5px 8px}
+  .sd-day-n{display:flex;align-items:baseline;gap:10px;justify-content:space-between;font-size:13px;color:var(--ink-2)}
+  .sd-day-n b{font-family:var(--display);font-size:26px;font-weight:800;color:var(--ink-1);letter-spacing:-.02em}
+  .sd-st{font-size:12.5px;font-weight:700;white-space:nowrap}
+  .sd-st.good{color:#55d9a2}.sd-st.warn{color:#eec777}.sd-st.bad{color:#f2918c}
+  .sd-addrow{display:flex;gap:10px;align-items:center}
+  .sd-add{position:relative;flex:1;min-width:0}
+  .sd-add .inp{width:100%}
+  .sd-drop{position:absolute;top:100%;left:0;right:0;z-index:30;display:none;background:var(--surface-1);border:1px solid var(--border);
+    border-radius:10px;box-shadow:var(--shadow);max-height:340px;overflow:auto;margin-top:4px;min-width:min(280px,100%)}
+  .sd-res{display:flex;gap:10px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--border-soft);font-size:13px}
+  .sd-res:last-child{border-bottom:0}
+  .sd-res-m{flex:1;min-width:0}
+  .sd-res-s{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:3px}
+  .sd-card{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:11px 13px;cursor:grab;display:flex;flex-direction:column;gap:7px}
+  .sd-card[draggable="false"],.sd-card.sd-sent{cursor:default}
+  .sd-card.blocked{border-color:rgba(240,113,107,.4)}
+  .sd-card.sd-dragging{opacity:.45}
+  .sd-card-h{display:flex;gap:6px 8px;align-items:center;min-width:0;flex-wrap:wrap}
+  .sd-card-f{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .sd-line{font-size:12.5px;color:var(--ink-2);line-height:1.5}
+  .sd-line b{color:var(--ink-1)}
+  .sd-line b.bad{color:#f2918c}
+  .sd-note{font-size:12px;color:var(--ink-3);line-height:1.5}
+  .sd-fix{display:flex;gap:6px;flex-wrap:wrap}
+  .sd-flash{font-size:12px;padding:6px 10px;border-radius:8px;line-height:1.45}
+  .sd-flash.good{background:rgba(62,207,142,.1);color:#8fe0bb}
+  .sd-flash.bad{background:rgba(240,113,107,.1);color:#f4a8a4}
+  .sd-empty{font-size:12.5px;color:var(--ink-3);padding:14px;border:1px dashed var(--border);border-radius:10px;text-align:center}
+  .sd-open{border:1px solid rgba(232,182,76,.3);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+  .sd-open-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+  .sd-orow{display:flex;gap:8px;align-items:center;padding:4px 0;border-top:1px solid var(--border-soft);min-width:0}
+  .sd-sent-h{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-top:6px}
+  .sd-tog{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:12px;padding:0 2px;font-family:inherit}
+  .sd-tog:hover{color:var(--ink-1)}
+  .sd-dots{display:inline-flex;gap:4px;vertical-align:-1px;margin-right:4px}
+  .sd-pd{display:inline-block;width:9px;height:9px;border-radius:50%;box-sizing:border-box}
+  .sd-pd.invited{border:1.5px solid var(--ink-3)}
+  .sd-pd.accepted{background:var(--blue)}
+  .sd-pd.replied{background:var(--good)}
+  .sd-people{border-top:1px solid var(--border-soft)}
+  .sd-prow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--border-soft)}
+  .sd-prow:last-child{border-bottom:0}
+  .sd-pname{flex:1;min-width:140px;font-size:12.5px}
+  .sd-prow .status{font-size:11px;padding:3px 9px}
+  /* paste a list */
+  .sd-paste{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--surface-2);display:flex;flex-direction:column;gap:8px}
+  .sd-paste-h{display:flex;align-items:center;font-size:13px}
+  .sd-paste textarea{font-size:13px;padding:8px 10px}
+  .sd-paste-f{display:flex;gap:8px;justify-content:flex-end}
+  .sd-plines{max-height:320px;overflow:auto;border-top:1px solid var(--border-soft)}
+  .sd-pl{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--border-soft);font-size:12.5px;cursor:pointer}
+  .sd-pl input{margin-top:3px;flex:none}
+  .sd-pin{flex:none;max-width:38%;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sd-pm{flex:1;min-width:0;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  /* categories */
+  .sd-cats-h{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;margin:36px 0 12px}
+  .sd-h2{font-family:var(--display);font-size:20px;font-weight:800;letter-spacing:-.02em}
+  .sd-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+  .sd-tile{display:flex;flex-direction:column;gap:7px;text-align:left;background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);
+    padding:14px 16px;cursor:pointer;font-family:inherit;color:var(--ink-1);box-shadow:var(--shadow);transition:border-color .15s}
+  .sd-tile:hover{border-color:#3a3a46}
+  .sd-tile.on{border-color:rgba(79,131,247,.6);background:var(--surface-2)}
+  .sd-tile span{display:block}
+  .sd-tile .sd-tile-h{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .sd-tile-name{font-size:13.5px;font-weight:700;flex:1;min-width:0}
+  .sd-tile .sd-tag{display:inline-block}
+  .sd-tile-big{font-size:12.5px;color:var(--ink-3)}
+  .sd-tile-big b{font-family:var(--display);font-size:24px;font-weight:800;color:var(--ink-1);margin-right:3px}
+  .sd-cap{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+  .sd-tile .sd-tile-n{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--ink-2)}
+  .sd-tile .sd-tile-n>span{display:inline-flex;align-items:center}
+  .sd-drill{margin-top:14px;overflow:visible}
+  .sd-drill-h{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  .sd-drill-t{font-family:var(--display);font-size:17px}
+  .sd-drill-h .inp{width:200px}
+  .sd-drill-cols{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:16px}
+  .sd-col-h{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);margin-bottom:8px}
+  .sd-dg{margin-bottom:16px}
+  .sd-dg-h{font-size:12.5px;font-weight:700;color:var(--ink-2);padding-bottom:4px;display:flex;gap:8px;align-items:baseline}
+  .sd-dg-h .n{color:var(--ink-3);font-weight:500}
+  .sd-drow{display:flex;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--border-soft);min-width:0;flex-wrap:wrap}
+  .sd-drow .status{font-size:10.5px}
+  .sd-pastp{flex:1;min-width:0;font-size:12px;color:var(--ink-2)}
+  .sd-pastday{margin-bottom:10px}
+  .sd-bulk{position:sticky;bottom:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;padding:10px 14px;
+    border-radius:12px;background:#1f1f28;border:1px solid rgba(79,131,247,.45);box-shadow:0 8px 30px rgba(0,0,0,.5);font-size:13px;z-index:5}
+  @media (max-width:1100px){.sd-days,.sd-drill-cols{grid-template-columns:minmax(0,1fr)}}
   .count-head{font-size:14px;font-weight:600;margin-bottom:2px}
+  /* Outreach > LinkedIn. One card per brand so a brand's people stay
+     together (sent ones included) instead of scattering across lists.
+     Rows inside a card go flat — the card is the box — and the right
+     rail (today's numbers + next best brands) only appears on screens
+     wide enough to hold it beside the queue. */
+  .oq-grid{display:block}
+  #oq-rail{margin-top:8px}
+  @media (min-width:1400px){
+    .oq-grid{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:28px;align-items:start}
+    #oq-rail{position:sticky;top:76px;margin-top:22px;max-height:calc(100vh - 96px);overflow:auto}
+    #oq-rail .target{flex-wrap:wrap;gap:10px;padding:14px 16px}
+    #oq-rail .t-main{flex:1 1 100%}
+    #oq-rail .t-actions{justify-content:flex-start}
+  }
+  .oq-main #queue-head{margin:22px 0 12px}
+  .oq-sum{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 18px}
+  .oq-sum-k{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+  .oq-sum-big{font-family:var(--display);font-size:24px;font-weight:700;margin:6px 0 8px;font-variant-numeric:tabular-nums}
+  .oq-sum-big span{font-size:13px;font-weight:500;color:var(--ink-3);margin-left:4px}
+  .oq-sum-row{display:flex;justify-content:space-between;font-size:12.5px;color:var(--ink-2);padding-top:8px;margin-top:10px;border-top:1px solid var(--border-soft)}
+  .oq-sum-row b{color:var(--ink-1);font-variant-numeric:tabular-nums}
+  .oq-bar{height:5px;border-radius:3px;background:var(--surface-2);overflow:hidden}
+  .oq-bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
+  .oq-bar.full i{background:var(--good)}
+  .oq-brand{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:18px}
+  .oq-bh{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 20px 13px}
+  .oq-bname{font-family:var(--display);font-size:15px;font-weight:700;cursor:pointer}
+  .oq-bname:hover{color:var(--accent-hi)}
+  .oq-bcat{font-size:12px;color:var(--ink-3)}
+  .oq-bprog{margin-left:auto;display:flex;align-items:center;gap:9px;font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .oq-bprog .oq-bar{width:110px}
+  .oq-brand .target{background:transparent;border:0;border-top:1px solid var(--border-soft);border-radius:0;box-shadow:none;margin:0;padding:19px 20px}
+  /* The card header already names the brand — don't repeat it per row. */
+  .oq-brand .t-line > .t-brand,.oq-brand .t-line > .t-brand + .t-sep{display:none}
+  .oq-brand [data-fold]{margin:0 16px 14px}
+  .oq-brand #nextstep-form{margin:0 16px 14px}
+  .oq-done .oq-bh{padding:11px 20px}
+  .oq-done .oq-ok{color:var(--good);font-weight:700}
+  .oq-done .oq-dsum{font-size:12.5px;color:var(--ink-2);min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* activations budget sheet — reads as a table, edits in place */
   .sheet{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
   .sheet th{position:sticky;top:0;z-index:1;text-align:left;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);padding:10px 10px;background:var(--surface-1);border-bottom:1px solid var(--border);white-space:nowrap}
@@ -836,9 +1018,11 @@
     </section>
 
     <!-- OUTREACH -->
-    <section class="view page" id="outreach">
+    <section class="view page wide" id="outreach">
       <div class="eyebrow">Outreach</div>
       <h1>LinkedIn outreach</h1>
+      <div class="oq-grid">
+      <div class="oq-main">
       <div class="chips" style="margin-top:22px;align-items:center">
         <button class="chip active" data-mode="today">Today <span class="n" id="c-today">0</span></button>
         <button class="chip" data-mode="all">All targets <span class="n" id="c-all">0</span></button>
@@ -855,7 +1039,12 @@
       <div id="status-filters" class="chips" style="display:none"></div>
       <div class="count-head" id="queue-head">To send today <span class="n"></span></div>
       <div id="targets"></div>
-      <div id="nextbest"></div>
+      </div>
+      <aside id="oq-rail">
+        <div id="oq-today"></div>
+        <div id="nextbest"></div>
+      </aside>
+      </div>
     </section>
 
     <!-- EMAIL OUTREACH -->
@@ -884,22 +1073,14 @@
     </section>
 
     <!-- OUTREACH SCHEDULE -->
-    <section class="view page" id="schedule">
+    <section class="view page wide" id="schedule">
       <div class="eyebrow">Outreach</div>
       <h1>Schedule</h1>
-      <div class="sub">Plan the next week of LinkedIn outreach: pick a category per day, add specific brands, and Today builds itself from the plan.</div>
-      <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-top:18px">
-        <div id="sched-list" style="flex:2;min-width:340px"></div>
-        <div style="flex:1;min-width:260px;position:sticky;top:16px;display:flex;flex-direction:column;gap:12px">
-        <div id="sched-runway"></div>
-        <div id="sched-side" class="panel panel-pad">
-          <b style="font-size:13.5px">More brands</b>
-          <div class="hint" style="margin:4px 0 10px">Pick a day to put a brand on the schedule, or pass it. Brands not in the queue yet get queued the morning of their day.</div>
-          <input class="field-box" id="sched-bq" placeholder="Search brands…" autocomplete="off" style="width:100%;margin-bottom:8px">
-          <div id="sched-bench" style="max-height:520px;overflow:auto"></div>
-        </div>
-        </div>
-      </div>
+      <div class="sub">The next three sending days. 20 people a day, one category a day, and every brand says whether it has enough people.</div>
+      <div id="sched-check"></div>
+      <div id="sched-days" class="sd-days"></div>
+      <div id="sched-cats"></div>
+      <div id="sched-past" style="margin-top:10px"></div>
     </section>
 
     <!-- PASSED BRANDS -->
@@ -1228,11 +1409,16 @@ function api(fn, args) {
   });
 }
 
+// One hide timer, cleared on every call. Each toast used to start its
+// own, so the first one's timer hid the second a moment after it
+// appeared and a quick follow-up message was cut short.
+var TOAST_T = null;
 function toast(msg) {
   var t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(function () { t.classList.remove('show'); }, 2600);
+  clearTimeout(TOAST_T);
+  TOAST_T = setTimeout(function () { t.classList.remove('show'); }, 2600);
 }
 
 function esc(s) {
@@ -5094,10 +5280,32 @@ document.getElementById('reached-list').addEventListener('click', function (e) {
 });
 
 // --- outreach schedule -----------------------------------------
-// Plan the week: a category and/or specific brands per day, saved to
-// Setting `outreachPlan`. Today's queue reads the plan server-side.
+// The next three sending days side by side, one card per brand with
+// its people inside, and every category underneath. The plan itself
+// still lives in Setting `outreachPlan`; every change goes through one
+// of the plan* handlers and then the tab re-reads getOutreachPlan, so
+// what is on screen is always what the server will actually do — the
+// old tab edited its own copy of the plan first and could drift.
 
-var SCHED = { plan: {}, names: {}, days: {}, bench: [], pool: null, benchQ: '', past: [] };
+var SCHED = {
+  plan: {}, names: {}, days: {}, order: [], labels: {}, categories: [], past: [],
+  today: '', pool: null,
+  // brandId -> { text, kind, at }: the outcome of the last add or move,
+  // shown on that brand's card after the refresh instead of a toast
+  // that is gone before it can be read.
+  flash: {},
+  // dateKey -> [{ name, text }]: adds the server refused. There is no
+  // card to put those on, so they sit under the day's add box.
+  notes: {},
+  // dateKey -> the "Paste a list" panel's state, so a refresh while it
+  // is open does not throw away what was pasted.
+  paste: {},
+  checkOpen: false,
+  // brandId -> open/closed for the "Invited today" cards.
+  sentOpen: {},
+  openCat: null, catCache: {}, catErr: {}, catBusy: {}, catGen: 0, catSel: {}, catQ: '',
+  pastOpen: false, qSeq: 0
+};
 
 function schedDayKey(offset) {
   var dt = new Date(); dt.setDate(dt.getDate() + offset);
@@ -5124,831 +5332,1241 @@ function schedDayKeys(count) {
   return out;
 }
 
-// --- dragging a brand onto a day -------------------------------
-//
-// Everything on this tab moved through dropdowns and + Add buttons,
-// which is fine for one brand and miserable for rearranging a week.
-// Any brand on the page — a day's row, the overflow, Add-more, a pinned
-// chip, or the bench on the right — can be dropped onto a day.
-//
-// Dropping pins the brand to that day, which is exactly what + Add
-// does, so both paths share schedAddBrand and the same optimistic
-// render. Dragging a pinned chip off its own day moves it: the source
-// day drops it in the same gesture. The buttons all still work; this is
-// a faster way to the same calls, not a replacement for them.
+// The short "why not" for summaries that list several brands at once.
+// The full sentence (reasonText) comes from the server and goes on the
+// card itself; these only have to fit inside a bracket.
+var SD_SHORT = {
+  nopeople: 'nobody on file',
+  unreachable: 'no LinkedIn or email',
+  inconversation: 'already in talks',
+  contacted: 'already invited',
+  exhausted: 'everyone already a target',
+  full: 'running all its threads',
+  archived: 'archived',
+  donotemail: 'do-not-email',
+  passedtoday: 'passed for today'
+};
 
-var SCHED_DRAG = null;
+// Blocked for a reason a new person would fix. The rest (archived,
+// in talks, passed for today) are fixed somewhere else, so the card
+// only offers to open the brand.
+var SD_FIXABLE = { nopeople: 1, unreachable: 1, exhausted: 1, contacted: 1 };
 
-function schedDragStart(e) {
-  var row = e.target.closest('[data-dragb]');
-  if (!row) return;
-  SCHED_DRAG = {
-    id: row.getAttribute('data-dragb'),
-    name: row.getAttribute('data-dragn'),
-    from: row.getAttribute('data-dragfrom') || '',
-  };
-  row.style.opacity = '0.45';
-  try {
-    e.dataTransfer.effectAllowed = 'move';
-    // Some browsers refuse the drag without data set.
-    e.dataTransfer.setData('text/plain', SCHED_DRAG.id);
-  } catch (err) {}
+var SD_LEGEND = 'Ready = at least 3 people we can reach (4 at a big brand). Thin = 1 or 2. ' +
+  'No one reachable = nobody on file with a LinkedIn or an email.';
+
+function sdCap() { return (SCHED.pool && SCHED.pool.cap) || 20; }
+
+// Day keys are America/New_York dates from the server; noon keeps the
+// browser's own timezone from sliding them onto the day before.
+function sdDayName(key) {
+  return new Date(key + 'T12:00:00')
+    .toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    .replace(',', '');
+}
+function sdDayLabel(key) { return key === SCHED.today ? 'Today · ' + sdDayName(key) : sdDayName(key); }
+function sdDayTag(key) { return key === SCHED.today ? 'Today' : sdDayName(key); }
+function sdCatName(c) { return c ? (CAT_NAMES[c] || c) : 'Uncategorised'; }
+function sdPlural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+
+// The contacts label. Shape as well as colour — filled, half, ring —
+// so it still reads for anyone who can't tell the green from the amber.
+function sdLabel(label) {
+  if (!label) return '';
+  var txt = label.kind === 'ready' ? 'Ready · ' + label.reachable + ' reachable'
+    : label.kind === 'thin' ? 'Thin · ' + label.reachable + ' reachable'
+    : 'No one reachable';
+  var tip = sdPlural(label.onFile || 0, 'person', 'people') + ' on file, ' + (label.reachable || 0) +
+    ' with a LinkedIn or an email. This brand works ' + (label.need || 3) + ' at a time.';
+  return '<span class="sd-lab ' + esc(label.kind) + '" title="' + esc(tip) + '"><i></i>' + esc(txt) + '</span>';
+}
+function sdMark(kind) { return '<i class="sd-mk ' + esc(kind) + '"></i>'; }
+
+// Auto rows used to carry `people` as a count; the new shape also names
+// who. Read either, so the tab never shows "undefined going out".
+function sdPeopleOf(row) {
+  var list = Array.isArray(row.people) ? row.people : (row.names || []);
+  var n = typeof row.people === 'number' ? row.people
+    : typeof row.count === 'number' ? row.count
+    : typeof row.going === 'number' ? row.going
+    : list.length;
+  return { n: n, names: list };
+}
+function sdNames(list) {
+  return (list || []).map(function (p) {
+    return '<span title="' + esc(p.title || '') + '">' + esc(p.name) + '</span>';
+  }).join(', ');
 }
 
-function schedDragEnd(e) {
-  var row = e.target.closest('[data-dragb]');
-  if (row) row.style.opacity = '';
-  document.querySelectorAll('[data-drop]').forEach(function (d) { d.style.outline = ''; });
-  SCHED_DRAG = null;
-}
-
-function schedDragOver(e) {
-  if (!SCHED_DRAG) return;
-  var day = e.target.closest('[data-drop]');
-  if (!day) return;
-  // Without preventDefault the browser refuses the drop entirely.
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  if (day.getAttribute('data-drop') === SCHED_DRAG.from) return;
-  day.style.outline = '2px solid var(--accent-hi)';
-}
-
-function schedDragLeave(e) {
-  var day = e.target.closest('[data-drop]');
-  if (day && !day.contains(e.relatedTarget)) day.style.outline = '';
-}
-
-function schedDrop(e) {
-  var day = e.target.closest('[data-drop]');
-  if (!day || !SCHED_DRAG) return;
-  e.preventDefault();
-  day.style.outline = '';
-  var key = day.getAttribute('data-drop');
-  var drag = SCHED_DRAG;
-  SCHED_DRAG = null;
-  if (key === drag.from) return;
-
-  SCHED.names[drag.id] = drag.name;
-  SCHED.plan[key] = SCHED.plan[key] || { category: null, brandIds: [] };
-  if (SCHED.plan[key].brandIds.indexOf(drag.id) === -1) SCHED.plan[key].brandIds.push(drag.id);
-  // Moved off another day, not copied.
-  if (drag.from && SCHED.plan[drag.from]) {
-    SCHED.plan[drag.from].brandIds = (SCHED.plan[drag.from].brandIds || [])
-      .filter(function (x) { return x !== drag.id; });
+function sdOpenSU(suId, name) {
+  if (suId) {
+    window.open('https://pro.sponsorunited.com/profile/' + encodeURIComponent(suId) + '/contacts', '_blank', 'noopener');
+    return;
   }
-  schedDropBrand(drag.id);
-  renderSchedule();
-  renderBench();
-  toast(drag.name + (drag.from ? ' moved to ' : ' pinned to ') + shortDate(key + 'T12:00:00'));
-
-  var work = drag.from && SCHED.plan[drag.from] ? schedSave(drag.from) : Promise.resolve();
-  work
-    .then(function () { return schedAddBrand(key, drag.id, drag.name); })
-    .then(schedRefreshDays)
-    .catch(function (err) { toast(err.message); loadSchedule(); });
+  // No saved profile: same move as the Needs page — copy the name so a
+  // paste into SponsorUnited's search is all it takes.
+  try { navigator.clipboard.writeText(name).catch(function () {}); } catch (e) {}
+  toast('“' + name + '” copied — paste it into SponsorUnited search');
+  window.open('https://pro.sponsorunited.com/', '_blank', 'noopener');
 }
 
-function schedSave(key) {
-  var day = SCHED.plan[key] || {};
-  return api('setOutreachPlanDay', { date: key, category: day.category || null, brandIds: day.brandIds || [] })
-    .then(function () { toast('Plan saved for ' + shortDate(key + 'T12:00:00')); })
-    .catch(function (e) { toast(e.message); });
+// --- loading ---------------------------------------------------
+
+function sdTake(d) {
+  SCHED.plan = d.plan || {};
+  SCHED.names = {};
+  (d.brands || []).forEach(function (b) { SCHED.names[b.id] = b.name; });
+  SCHED.days = {};
+  SCHED.order = [];
+  (d.days || []).forEach(function (day) { SCHED.days[day.date] = day; SCHED.order.push(day.date); });
+  SCHED.labels = d.labels || {};
+  SCHED.categories = d.categories || [];
+  SCHED.past = d.past || [];
+  SCHED.today = d.today || schedDayKey(0);
+  SCHED.pool = d.pool || null;
+  // Category drill-ins are read again after every change: a brand just
+  // added has a new "Pinned" tag, and one just reached moved columns.
+  SCHED.catCache = {};
+  SCHED.catErr = {};
+  SCHED.catGen += 1;
 }
 
-// True up the per-day brand previews without touching the rest of the
-// tab — used after a category change, when the day's list is new.
-function schedRefreshDays() {
+function sdRefresh() {
   return api('getOutreachPlan').then(function (d) {
-    SCHED.days = {};
-    (d.days || []).forEach(function (day) { SCHED.days[day.date] = day; });
-    SCHED.bench = d.bench || [];
-    SCHED.pool = d.pool || null;
-    SCHED.runway = d.runway || [];
-    SCHED.past = d.past || [];
-    renderSchedule();
-    renderRunway();
-    renderBench();
-  }).catch(function () {});
-}
-
-// Clickable brand name (opens the brand card) plus LinkedIn / website
-// links — shared by the day previews and the side bench.
-function schedBrandName(b) {
-  var siteHref = b.website ? (/^https?:/i.test(b.website) ? b.website : 'https://' + b.website) : '';
-  return '<a href="#" data-sopen="' + esc(b.id) + '" style="font-size:13px;font-weight:700;color:var(--ink-1);text-decoration:none">' + esc(b.name) + '</a>' +
-    (b.linkedinUrl ? ' <a href="' + esc(b.linkedinUrl) + '" target="_blank" rel="noopener" title="LinkedIn page" style="font-size:11.5px;color:var(--ink-3);text-decoration:none">in ↗</a>' : '') +
-    (siteHref ? ' <a href="' + esc(siteHref) + '" target="_blank" rel="noopener" title="Website" style="font-size:11.5px;color:var(--ink-3);text-decoration:none">site ↗</a>' : '');
-}
-
-// Take a brand out of every local list (day previews + side bench) —
-// what Add and Pass both do before their API call lands.
-function schedDropBrand(bid) {
-  Object.keys(SCHED.days).forEach(function (k) {
-    SCHED.days[k].brands = SCHED.days[k].brands.filter(function (b) { return b.id !== bid; });
-    SCHED.days[k].missing = (SCHED.days[k].missing || []).filter(function (b) { return b.id !== bid; });
-    // The overflow is a preview too — a brand pinned to a day should
-    // not still be sitting in another day's "rest of the category".
-    SCHED.days[k].overflow = (SCHED.days[k].overflow || []).filter(function (b) { return b.id !== bid; });
-  });
-  SCHED.bench = (SCHED.bench || []).filter(function (b) { return b.id !== bid; });
-}
-
-// The side list: every brand that could still go on a day.
-function renderBench() {
-  var box = document.getElementById('sched-bench');
-  if (!box) return;
-  var q = (SCHED.benchQ || '').toLowerCase();
-  var rows = (SCHED.bench || []).filter(function (b) {
-    return !q || b.name.toLowerCase().indexOf(q) !== -1 || (b.category || '').toLowerCase().indexOf(q) !== -1;
-  });
-  var dayOpts = '';
-  var today0 = schedDayKey(0);
-  schedDayKeys(3).forEach(function (k, i) {
-    var lbl = k === today0 ? 'Today'
-      : new Date(k + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    dayOpts += '<option value="' + esc(k) + '">' + esc(lbl) + '</option>';
-  });
-  box.innerHTML = rows.length ? rows.slice(0, 60).map(function (b) {
-    return '<div data-brow="' + esc(b.id) + '" draggable="true" data-dragb="' + esc(b.id) + '" data-dragn="' + esc(b.name) + '" data-dragfrom="" style="padding:8px 0;border-top:1px solid var(--border);cursor:grab">' +
-      '<div style="display:flex;gap:8px;align-items:baseline">' +
-        '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + schedBrandName(b) + '</span>' +
-        '<span style="font-size:11.5px;color:var(--ink-3);white-space:nowrap">' + b.people + (b.people === 1 ? ' person' : ' people') + (b.inQueue ? '' : ' · not queued yet') + '</span>' +
-      '</div>' +
-      '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">' +
-        (b.category ? '<span style="font-size:11.5px;color:var(--ink-3)">' + esc(CAT_NAMES[b.category] || b.category) + '</span>' : '') +
-        '<span style="flex:1"></span>' +
-        '<select class="field-box" data-bday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="width:auto;padding:4px 8px;font-size:12px"><option value="">Add to…</option>' + dayOpts + '</select>' +
-        '<button class="btn-ghost" data-btoday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:4px 11px;font-size:12px" title="Not today — back on its own tomorrow">Pass</button>' +
-        '<button class="btn-ghost danger" data-bpass="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:4px 11px;font-size:12px" title="Archive — off outreach entirely until you bring it back">Archive</button>' +
-      '</div>' +
-    '</div>';
-  }).join('') : '<div class="hint" style="margin-top:8px">' + (q ? 'No brand matches.' : 'Nothing left to add — every brand with people is planned or already queued.') + '</div>';
-}
-
-
-// What actually went out on a day: brand · person with live status
-// buttons, so the Schedule is the same source of truth as the
-// LinkedIn tab (both write through setTargetStatus).
-function schedSentRow(p) {
-  var done = p.status === 'replied' || p.status === 'converted';
-  return '<div data-sentrow="' + esc(p.id) + '" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border)">' +
-    '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
-      '<a href="#" data-sopen="' + esc(p.brandId) + '" style="font-size:13px;font-weight:700;color:var(--ink-1);text-decoration:none">' + esc(p.brand) + '</a>' +
-      ' <span style="font-size:12.5px;color:var(--ink-2)">' + esc(p.person) + '</span>' +
-      (p.title ? ' <span style="font-size:11.5px;color:var(--ink-3)">— ' + esc(p.title) + '</span>' : '') +
-    '</span>' +
-    (done
-      ? '<span class="status replied" style="font-size:12px;padding:4px 11px">Replied ✓</span>'
-      : (p.status === 'accepted'
-          ? '<span class="status accepted" style="font-size:12px;padding:4px 11px">Accepted ✓</span>' +
-            (p.dmSentAt ? '' : '<button class="btn-ghost" data-sact="dmsent" data-st="' + esc(p.id) + '" style="padding:4px 11px;font-size:12px">DM sent ✓</button>') +
-            '<button class="btn-ghost" data-sact="replied" data-st="' + esc(p.id) + '" style="padding:4px 11px;font-size:12px">Replied?</button>'
-          : '<button class="btn-draft" data-sact="accepted" data-st="' + esc(p.id) + '" style="padding:4px 12px;font-size:12px">Accepted?</button>' +
-            '<button class="btn-ghost" data-sact="replied" data-st="' + esc(p.id) + '" style="padding:4px 11px;font-size:12px">Replied?</button>')) +
-  '</div>';
-}
-
-function schedSentBlock(people) {
-  if (!people || !people.length) return '';
-  return '<div style="margin-top:10px">' +
-    '<div class="hint" style="margin:0 0 2px;color:#8fd6a8">Sent that day — ' + people.length +
-      (people.length === 1 ? ' invite' : ' invites') + ':</div>' +
-    people.map(schedSentRow).join('') +
-  '</div>';
-}
-
-// Adding a brand to a day: saves the plan and, when the day is today,
-// queues the brand right then. Reports the outcome — the old path
-// wrote the plan and hoped, which is why a brand could just never
-// turn up in the queue.
-function schedAddBrand(key, brandId, brandName) {
-  return api('planAddBrand', { date: key, brandId: brandId })
-    .then(function (r) {
-      if (!r.forToday) {
-        toast((r.brandName || brandName || 'Brand') + ' planned for ' + shortDate(key + 'T12:00:00'));
-        return r;
-      }
-      if (r.queued) {
-        toast((r.contactName || r.brandName || brandName) +
-          (r.promoted ? ' moved into today’s list' : r.revived ? ' brought back into today’s list' : ' added to today’s list'));
-      } else if (r.reason === 'already') {
-        toast((r.brandName || brandName) + ' is already in today’s list');
-      } else if (r.reason === 'nocontact' || r.reason === 'exhausted') {
-        // Actionable: the brand has nobody left to invite, so go add one.
-        toast((r.brandName || brandName) + ' has nobody left to invite — add a person here');
-        loadBrand(brandId);
-      } else {
-        queueToast(r);
-      }
-      return r;
-    })
-    .catch(function (e) { toast(e.message); });
-}
-
-// How many sending days each category can still fill. The Schedule
-// could say a day was short but never which category to go and capture
-// more of, so the answer was always "run the sweep and hope".
-// Opening a category answers "have we worked this one yet" — which
-// brands are recommended next, and which have already been written to.
-// Kept in memory so a refresh of the schedule does not fold them shut.
-var RW_OPEN = {};
-document.addEventListener('click', function (e) {
-  // A brand link inside an open category opens the brand, not a toggle.
-  if (e.target.closest('#sched-runway [data-sopen]')) return;
-  var row = e.target.closest('#sched-runway [data-rwcat]');
-  if (!row) return;
-  var key = row.getAttribute('data-rwcat');
-  RW_OPEN[key] = !RW_OPEN[key];
-  renderRunway();
-});
-
-function renderRunway() {
-  var box = document.getElementById('sched-runway');
-  if (!box) return;
-  var rows = (SCHED.runway || []).map(function (r) {
-    var total = (r.doneCount || 0) + (r.brands || 0);
-    return Object.assign({}, r, { total: total, pct: total ? Math.round((r.doneCount || 0) / total * 100) : 0 });
-  }).filter(function (r) { return r.total > 0; });
-  if (!rows.length) { box.innerHTML = ''; return; }
-  var cap = (SCHED.pool && SCHED.pool.cap) || 20;
-
-  // The bar is how far through a category we are: brands written to, out
-  // of brands worth writing to. That is progress, so it is one hue at
-  // one weight — a red/amber/green ramp would imply a judgement the
-  // number does not make, and a category being early is not a fault.
-  // Most left to do first, because that is where the work is.
-  rows.sort(function (a, b) { return (b.brands - a.brands) || (a.pct - b.pct); });
-
-  var left = rows.reduce(function (n, r) { return n + r.brands; }, 0);
-  box.innerHTML =
-    '<details class="fold" open>' +
-      '<summary class="section-head">Category progress <span class="n">' + rows.length + '</span>' +
-        '<span style="color:var(--ink-3);font-weight:500;font-size:12px"> · ' + left + ' brands to go</span>' +
-      '</summary>' +
-      '<div class="panel panel-pad">' +
-        '<div class="hint" style="margin:0 0 8px">How far through each category we are \u2014 brands already ' +
-          'written to, out of the ones worth writing to. Click one to see which. Most left to do first.</div>' +
-        '<div style="max-height:430px;overflow:auto;margin:0 -4px;padding:0 4px">' +
-        rows.map(function (r) {
-          var key = r.category || 'uncategorised';
-          var name = esc(CAT_NAMES[r.category] || r.category || 'Uncategorised');
-          var open = !!RW_OPEN[key];
-          var list = function (items, empty, done) {
-            if (!items.length) return '<div class="rw-empty">' + empty + '</div>';
-            return items.map(function (b) {
-              return '<div class="rw-brand">' +
-                '<a href="#" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
-                (done
-                  ? (b.replied ? '<span class="rw-tag" style="color:var(--good)">replied</span>' : '')
-                  : '<span class="rw-tag">' + b.people + (b.people === 1 ? ' person' : ' people') + '</span>') +
-              '</div>';
-            }).join('');
-          };
-          return '<div class="rw-row' + (open ? ' rw-on' : '') + '" data-rwcat="' + esc(key) + '" role="button" tabindex="0">' +
-              '<div class="rw-name">' + name + '</div>' +
-              '<div class="rw-val">' + (r.doneCount || 0) + ' of ' + r.total + '</div>' +
-              '<div class="rw-track"><div class="rw-fill" style="width:' + r.pct + '%"></div></div>' +
-              '<div class="rw-sub">' + r.brands + (r.brands === 1 ? ' brand' : ' brands') +
-                ' recommended \u00b7 ' + r.people + (r.people === 1 ? ' person' : ' people') + ' in them' +
-                (r.days >= 1 ? ' \u00b7 about ' + r.days + (r.days === 1 ? ' day' : ' days') + ' of sending' : '') +
-              '</div>' +
-            '</div>' +
-            (open
-              ? '<div class="rw-open">' +
-                  '<div class="rw-col-h">Recommended next <span class="n">' + r.brands +
-                    (r.brands === 1 ? ' brand' : ' brands') + ' \u00b7 ' + r.people +
-                    (r.people === 1 ? ' person' : ' people') + '</span></div>' +
-                  list(r.todo || [], 'Nothing left in this category.', false) +
-                  '<div class="rw-col-h" style="margin-top:10px">Already reached out <span class="n">' + (r.doneCount || 0) +
-                    ((r.doneCount || 0) === 1 ? ' brand' : ' brands') + '</span></div>' +
-                  list(r.done || [], 'None yet.', true) +
-                '</div>'
-              : '');
-        }).join('') +
-        '</div>' +
-      '</div></details>';
-}
-
-function renderSchedule() {
-  var box = document.getElementById('sched-list');
-  var days = schedDayKeys(3);
-  box.innerHTML = days.map(function (key, i) {
-    var day = SCHED.plan[key] || { category: null, brandIds: [] };
-    var tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
-    var tmrKey = tmr.getFullYear() + '-' + String(tmr.getMonth() + 1).padStart(2, '0') + '-' + String(tmr.getDate()).padStart(2, '0');
-    var label = key === schedDayKey(0) ? 'Today' : key === tmrKey ? 'Tomorrow'
-      : new Date(key + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-    // Tue/Wed/Thu only, so the next sending day is often not tomorrow —
-    // say which day it is rather than leaving a gap unexplained.
-    if (i === 0 && key !== schedDayKey(0) && key !== tmrKey) label = 'Next up · ' + label;
-    var chips = (day.brandIds || []).map(function (bid) {
-      return '<span class="status" draggable="true" data-dragb="' + esc(bid) + '" data-dragn="' + esc(SCHED.names[bid] || 'brand') + '" data-dragfrom="' + esc(key) + '" style="display:inline-flex;gap:6px;align-items:center;font-size:12px;padding:5px 11px;cursor:grab">' +
-        esc(SCHED.names[bid] || 'brand') +
-        '<a href="#" data-sdel="' + esc(key) + '" data-sb="' + esc(bid) + '" style="text-decoration:none;color:var(--accent-hi);font-weight:700">×</a></span>';
-    }).join(' ');
-    // The specific brands this day would actually work (from its
-    // category), each with Add (pin to the day) and Pass.
-    var prev = SCHED.days[key];
-    var cap = (SCHED.pool && SCHED.pool.cap) || 20;
-    var badge = '';
-    if (prev && typeof prev.ready === 'number') {
-      var full = prev.ready >= cap;
-      var sentBit = prev.sent ? ' · ' + prev.sent + ' already sent' : '';
-      // "Only 18 of 20 ready" never said why. When the day is short, the
-      // useful fact is how many people its category has left at all —
-      // that is the difference between "add a brand" and "go capture
-      // some, this category is nearly dry".
-      if (!full && prev.category) {
-        var rw = (SCHED.runway || []).filter(function (r) { return r.category === prev.category; })[0];
-        if (rw) sentBit += ' · ' + rw.people + ' left in ' + (CAT_NAMES[prev.category] || prev.category);
-      }
-      badge = '<span class="status" title="' + (full ? 'Enough people queued to fill this day.' : 'The queue runs out before this day fills — put more brands in below or from the side list.') + '" style="font-size:11.5px;padding:4px 10px;color:' + (full ? '#8fd6a8' : '#f0b86b') + '">' +
-        (full ? cap + ' people ready ✓' : 'only ' + prev.ready + ' of ' + cap + ' people ready') + sentBit + '</span>';
-    }
-    var sugg = '';
-    if (prev && (prev.brands.length || (prev.missing || []).length || (prev.overflow || []).length || prev.health)) {
-      var missNote = '';
-      if ((prev.missing || []).length) {
-        missNote = '<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px">' +
-          '<div style="display:flex;gap:10px;align-items:center;margin-bottom:2px">' +
-            '<span style="font-size:12.5px;font-weight:700;color:#f0b86b;flex:1">Add more — ' + prev.missing.length + ' more ' +
-              esc(CAT_NAMES[prev.category] || prev.category || '') + (prev.missing.length === 1 ? ' brand' : ' brands') + ' you can still add</span>' +
-            (prev.missing.length > 1 ? '<button class="btn-draft" data-sfill="' + esc(key) + '" style="padding:5px 13px;font-size:12px;white-space:nowrap">Put all in</button>' : '') +
-          '</div>' +
-          prev.missing.map(function (m) {
-            return '<div data-smrow="' + esc(m.id) + '" draggable="true" data-dragb="' + esc(m.id) + '" data-dragn="' + esc(m.name) + '" data-dragfrom="" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border);cursor:grab">' +
-              '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + schedBrandName(m) + '</span>' +
-              '<span style="font-size:12px;color:var(--ink-3)">' + m.people + (m.people === 1 ? ' person' : ' people') + '</span>' +
-              '<button class="btn-draft" data-sput="' + esc(key) + '" data-sb="' + esc(m.id) + '" style="padding:5px 13px;font-size:12px">Put in</button>' +
-              '<button class="btn-ghost" data-stoday="' + esc(m.id) + '" data-sn="' + esc(m.name) + '" style="padding:5px 12px;font-size:12px" title="Not today — off today’s suggestions, back on its own tomorrow">Pass</button>' +
-              '<button class="btn-ghost danger" data-spass="' + esc(m.id) + '" data-sn="' + esc(m.name) + '" style="padding:5px 12px;font-size:12px" title="Archive — off outreach entirely until you bring it back">Archive</button>' +
-            '</div>';
-          }).join('') +
-        '</div>';
-      }
-      // "Only 1 of 20 ready" with nothing under it reads as broken when
-      // you know the roster holds more brands than that. Say which gate
-      // the rest of the category is stuck behind.
-      // The rest of the category. Three bands, because they are three
-      // different things and lumping them together read as five
-      // problems when there was one: brands that need people (fixable,
-      // and the SponsorUnited fill is the fix), brands already in play
-      // (nothing wrong, just spoken for), and brands set aside by hand.
-      // A brand the day is already showing is never listed here.
-      var healthNote = '';
-      if (prev.health && prev.health.blockedTotal) {
-        var WHY = {
-          nopeople: 'nobody on file',
-          unreachable: 'no email or LinkedIn for anyone there',
-          exhausted: 'everyone there is already in the queue',
-          full: 'already running all their threads',
-          contacted: 'already contacted',
-          inconversation: 'already replied — follow up instead',
-          passedtoday: 'passed for today',
-          archived: 'archived',
-          donotemail: 'marked do-not-email'
-        };
-        var BANDS = [
-          { key: 'needs', title: 'Need people before they can go out', color: '#f0b86b',
-            reasons: ['nopeople', 'unreachable'],
-            note: 'This is what the SponsorUnited fill is for.' },
-          { key: 'inplay', title: 'Already in play', color: 'var(--ink-3)',
-            reasons: ['exhausted', 'full', 'contacted', 'inconversation'],
-            note: 'Nothing to do — they are spoken for.' },
-          { key: 'aside', title: 'Set aside', color: 'var(--ink-3)',
-            reasons: ['passedtoday', 'archived', 'donotemail'],
-            note: 'Open one to bring it back.' }
-        ];
-        var blocked = prev.health.blocked || {};
-        var bands = BANDS.map(function (band) {
-          var groups = band.reasons.filter(function (w) { return blocked[w] && blocked[w].count; });
-          if (!groups.length) return '';
-          var n = groups.reduce(function (t, w) { return t + blocked[w].count; }, 0);
-          return '<div style="border-top:1px solid var(--border);padding:8px 0 4px">' +
-            '<div style="font-size:12px;font-weight:700;color:' + band.color + '">' + n + ' · ' + esc(band.title) + '</div>' +
-            '<div class="hint" style="margin:0 0 5px">' + esc(band.note) + '</div>' +
-            groups.map(function (why) {
-              var g = blocked[why];
-              return '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:3px 0">' +
-                '<span style="font-size:11px;color:var(--ink-3);min-width:150px">' + esc(WHY[why] || why) + '</span>' +
-                g.brands.map(function (b) {
-                  return '<a href="#" data-sopen="' + esc(b.id) + '" class="status" style="font-size:11.5px;padding:4px 10px;text-decoration:none" ' +
-                    'title="Open ' + esc(b.name) + (b.contacts ? ' — ' + b.contacts + ' on file' : ' — nobody on file') + '">' + esc(b.name) + '</a>';
-                }).join('') +
-                (g.count > g.brands.length ? '<span class="hint" style="margin:0">…and ' + (g.count - g.brands.length) + ' more</span>' : '') +
-              '</div>';
-            }).join('') +
-          '</div>';
-        }).join('');
-        healthNote = '<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px">' +
-          '<div style="font-size:12.5px;font-weight:700">' +
-            prev.health.total + ' ' + esc(CAT_NAMES[prev.category] || prev.category || '') +
-            (prev.health.total === 1 ? ' brand in this category' : ' brands in this category') +
-            ' <span style="color:var(--ink-3);font-weight:400">· ' + prev.health.shown + ' on this day · ' +
-            prev.health.blockedTotal + ' not available</span>' +
-          '</div>' +
-          bands +
-        '</div>';
-      }
-      // Ready, in this category, past the day's 20. Previously these were
-      // cut off the list entirely, so a category with thirty people
-      // looked like it had twenty.
-      var overNote = '';
-      // A brand already going out that day keeps its leftover people on
-      // its own row ("+1 next time"), so it is never listed twice.
-      var laterPeople = (prev.brands || []).reduce(function (n, b) { return n + (b.later || 0); }, 0);
-      if ((prev.overflow || []).length) {
-        var overPeople = prev.overflow.reduce(function (n, b) { return n + b.people; }, 0) + laterPeople;
-        overNote = '<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px">' +
-          '<div style="font-size:12.5px;font-weight:700;color:var(--ink-3);margin-bottom:2px">' +
-            'The rest of ' + esc(CAT_NAMES[prev.category] || prev.category || 'this category') + ' — ' +
-            overPeople + (overPeople === 1 ? ' person' : ' people') + ' past today’s ' + cap +
-          '</div>' +
-          '<div class="hint" style="margin:0 0 4px">Ready to go, just beyond the day’s cap. They come up on the next day in this category — or pin one here to work it today.</div>' +
-          prev.overflow.map(function (b) {
-            return '<div data-sorow="' + esc(b.id) + '" draggable="true" data-dragb="' + esc(b.id) + '" data-dragn="' + esc(b.name) + '" data-dragfrom="" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border);cursor:grab">' +
-              '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + schedBrandName(b) + '</span>' +
-              '<span style="font-size:12px;color:var(--ink-3)">' + b.people + (b.people === 1 ? ' person' : ' people') + '</span>' +
-              '<button class="btn-draft" data-spin="' + esc(key) + '" data-sb="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 13px;font-size:12px">+ Add</button>' +
-              '<button class="btn-ghost" data-stoday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 12px;font-size:12px" title="Not today — off today’s suggestions, back on its own tomorrow">Pass</button>' +
-              '<button class="btn-ghost danger" data-spass="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 12px;font-size:12px" title="Archive — off outreach entirely until you bring it back">Archive</button>' +
-            '</div>';
-          }).join('') +
-        '</div>';
-      }
-      sugg = '<div style="margin-top:10px">' +
-        (prev.brands.length
-          ? '<div class="hint" style="margin:0 0 6px">' +
-              (function () {
-                if (!prev.category) return 'Going out that day:';
-                var catName = esc(CAT_NAMES[prev.category] || prev.category) + (prev.auto ? ' (rotation)' : '');
-                // People already stamped into today's queue show here
-                // whatever category is picked — so don't say "only" over
-                // them, and offer the way out.
-                var off = (prev.brands || []).filter(function (b) { return b.topUp && b.inQueue; });
-                if (!off.length) return 'Going out that day — ' + catName + ' only:';
-                return 'Going out that day — ' + catName + ', plus ' + off.length +
-                  ' already in today’s queue from other categories:' +
-                  ' <button class="btn-ghost" data-sclearoff="1" style="padding:2px 9px;font-size:11.5px;margin-left:6px" ' +
-                  'title="Take those people back out of today — they return to the pool and come up on their own category’s day">Clear them</button>';
-              })() +
-            '</div>' +
-            prev.brands.map(function (b) {
-              return '<div data-srow="' + esc(b.id) + '" draggable="true" data-dragb="' + esc(b.id) + '" data-dragn="' + esc(b.name) + '" data-dragfrom="" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border);cursor:grab">' +
-                '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + schedBrandName(b) +
-                  (b.topUp ? ' <span style="font-size:11px;color:var(--ink-3)">top-up · ' + esc(CAT_NAMES[b.category] || b.category || 'other') + '</span>' : '') +
-                  (b.inQueue ? ' <span style="font-size:11px;color:#8fd6a8">in today’s queue</span>' : '') +
-                '</span>' +
-                '<span style="font-size:12px;color:var(--ink-3)">' + b.people + (b.people === 1 ? ' person' : ' people') +
-                  (b.later ? ' <span title="Ready too, but past the day’s ' + cap + ' — they go out the next day in this category">+' + b.later + ' next time</span>' : '') + '</span>' +
-                '<button class="btn-draft" data-spin="' + esc(key) + '" data-sb="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 13px;font-size:12px">+ Add</button>' +
-                '<button class="btn-ghost" data-stoday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 12px;font-size:12px" title="Not today — off today’s suggestions, back on its own tomorrow">Pass</button>' +
-                '<button class="btn-ghost danger" data-spass="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:5px 12px;font-size:12px" title="Archive — off outreach entirely until you bring it back">Archive</button>' +
-              '</div>';
-            }).join('')
-          : '') +
-        overNote +
-        missNote +
-        healthNote +
-      '</div>';
-    }
-    return '<div class="panel panel-pad" style="margin-bottom:10px" data-sday="' + esc(key) + '" data-drop="' + esc(key) + '">' +
-      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
-        '<b style="font-size:13.5px;min-width:150px">' + label + '</b>' + badge +
-        '<select class="field-box" data-scat="' + esc(key) + '" style="width:auto;padding:6px 10px;font-size:12.5px">' +
-          '<option value=""' + (day.category ? '' : ' selected') + '>Category: automatic rotation</option>' +
-          CAT_KEYS.map(function (k) {
-            return '<option value="' + k + '"' + (day.category === k ? ' selected' : '') + '>' + esc(CAT_NAMES[k]) + '</option>';
-          }).join('') +
-        '</select>' +
-        '<div style="position:relative;flex:1;min-width:200px">' +
-          '<input class="field-box" data-sq="' + esc(key) + '" placeholder="+ Add a specific brand…" autocomplete="off" style="width:100%">' +
-          '<div data-sdrop="' + esc(key) + '" style="position:absolute;top:100%;left:0;right:0;z-index:30;display:none;background:var(--surface-1);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:220px;overflow:auto;margin-top:4px"></div>' +
-        '</div>' +
-      '</div>' +
-      (chips ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">' + chips + '</div>' : '') +
-      schedSentBlock(prev && prev.sentPeople) +
-      sugg +
-    '</div>';
-  }).join('') +
-  (SCHED.past && SCHED.past.length
-    ? '<div class="count-head" style="margin-top:22px">Already sent — the past week</div>' +
-      SCHED.past.map(function (d) {
-        var lbl = new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-        return '<div class="panel panel-pad" style="margin-bottom:10px">' +
-          '<div style="display:flex;gap:10px;align-items:baseline">' +
-            '<b style="font-size:13.5px">' + lbl + '</b>' +
-            '<span class="n">' + d.people.length + ' sent</span>' +
-          '</div>' +
-          d.people.map(schedSentRow).join('') +
-        '</div>';
-      }).join('')
-    : '') +
-  '<div class="hint">Each day sends its planned brands first, then fills the rest from the day’s category. Days with nothing planned follow the automatic category rotation. <b>Drag any brand onto a day</b> to pin it there — drag a pinned one to another day to move it.</div>';
+    sdTake(d);
+    renderSchedAll();
+  }).catch(function (e) { toast(e.message); });
 }
 
 function loadSchedule() {
   showView('schedule');
-  var box = document.getElementById('sched-list');
-  box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  var box = document.getElementById('sched-days');
+  if (!SCHED.order.length) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   return api('getOutreachPlan').then(function (d) {
-    SCHED.plan = d.plan || {};
-    SCHED.names = {};
-    (d.brands || []).forEach(function (b) { SCHED.names[b.id] = b.name; });
-    SCHED.days = {};
-    (d.days || []).forEach(function (day) { SCHED.days[day.date] = day; });
-    SCHED.bench = d.bench || [];
-    SCHED.pool = d.pool || null;
-    SCHED.runway = d.runway || [];
-    SCHED.past = d.past || [];
-    renderSchedule();
-    renderRunway();
-    renderBench();
+    sdTake(d);
+    renderSchedAll();
   }).catch(function (e) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
   });
 }
 
-document.getElementById('sched-list').addEventListener('change', function (e) {
-  var sel = e.target.closest('[data-scat]');
-  if (!sel) return;
-  var key = sel.getAttribute('data-scat');
-  SCHED.plan[key] = SCHED.plan[key] || { category: null, brandIds: [] };
-  SCHED.plan[key].category = sel.value || null;
-  schedSave(key).then(schedRefreshDays);
-});
+function renderSchedAll() {
+  // An outcome is worth showing once, not for the rest of the session.
+  var now = Date.now();
+  Object.keys(SCHED.flash).forEach(function (id) {
+    if (now - SCHED.flash[id].at > 90000) delete SCHED.flash[id];
+  });
+  renderSchedCheck();
+  renderSchedDays();
+  renderSchedCats();
+  renderSchedPast();
+}
 
-document.getElementById('sched-list').addEventListener('input', function (e) {
-  var inp = e.target.closest('[data-sq]');
-  if (!inp) return;
-  var key = inp.getAttribute('data-sq');
-  var drop = document.querySelector('[data-sdrop="' + key + '"]');
+// --- adding, moving, removing ----------------------------------
+
+// The sentence for one brand's outcome — what goes on its card.
+function sdOutcome(res) {
+  var moved = res.movedFrom ? ' Moved from ' + sdDayTag(res.movedFrom) + '.' : '';
+  var why = res.reasonText || SD_SHORT[res.reason] || 'nobody to invite';
+  if (!res.added) return 'Not added. ' + why;
+  if (res.state === 'going') return sdPlural(res.going || 0, 'person', 'people') + ' going out.' + moved;
+  if (res.state === 'sent') return 'Everyone here was invited today.' + moved;
+  return 'Added, but won’t go out: ' + why + moved;
+}
+
+// Several at once: "Added 6 · 1 can't go out (Olaplex, nobody on file)".
+function sdSummary(results) {
+  if (results.length === 1) return (results[0].brandName || 'Brand') + ': ' + sdOutcome(results[0]);
+  var added = results.filter(function (x) { return x.added; });
+  var refused = results.filter(function (x) { return !x.added; });
+  var blocked = added.filter(function (x) { return x.state === 'blocked'; });
+  var moved = added.filter(function (x) { return x.movedFrom; });
+  var list = function (rows) {
+    return rows.slice(0, 3).map(function (x) {
+      return (x.brandName || 'brand') + ', ' + (SD_SHORT[x.reason] || x.reason || 'nobody to invite');
+    }).join('; ') + (rows.length > 3 ? '; and ' + (rows.length - 3) + ' more' : '');
+  };
+  var parts = ['Added ' + added.length];
+  if (blocked.length) parts.push(blocked.length + ' can’t go out (' + list(blocked) + ')');
+  if (refused.length) parts.push(refused.length + ' not added (' + list(refused) + ')');
+  if (moved.length) parts.push(moved.length + ' moved from another day');
+  return parts.join(' · ');
+}
+
+function sdTakeResults(key, results) {
+  var now = Date.now();
+  results.forEach(function (res) {
+    var text = sdOutcome(res);
+    if (res.added) {
+      SCHED.flash[res.brandId] = { text: text, kind: res.state === 'blocked' ? 'bad' : 'good', at: now };
+    } else {
+      (SCHED.notes[key] = SCHED.notes[key] || []).push({ name: res.brandName || 'Brand', text: text });
+    }
+  });
+}
+
+// Every add on the tab goes through here: the typeahead, a pasted
+// list, "+ Add" in open spots, the drill-in's Add to…, the bulk bar.
+// One path, so they all report the same way. Resolves to the summary
+// (or null on an error, which has already been toasted).
+function sdAdd(key, ids, opts) {
+  opts = opts || {};
+  ids = (ids || []).filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+  if (!ids.length) return Promise.resolve(null);
+  if (ids.length > 40) { toast('40 at a time — adding the first 40'); ids = ids.slice(0, 40); }
+  SCHED.notes[key] = [];
+  return api('planAddBrands', { date: key, brandIds: ids }).then(function (r) {
+    var results = r.results || [];
+    sdTakeResults(key, results);
+    var sum = sdSummary(results);
+    if (!opts.quiet) toast(sdDayTag(key) + ' — ' + sum);
+    return sdRefresh().then(function () { return sum; });
+  }).catch(function (e) { toast(e.message); return null; });
+}
+
+// from = the day it is pinned to, or '' for an auto row. to = a day,
+// or '' to take it off the schedule.
+function sdMove(id, name, from, to) {
+  return api('planMoveBrand', { brandId: id, from: from || '', to: to || '' }).then(function (r) {
+    if (to) {
+      var res = r.result ? Object.assign({ brandId: id, brandName: name }, r.result) : null;
+      if (res) sdTakeResults(to, [res]);
+      toast(name + ' → ' + sdDayTag(to) + (res ? ': ' + sdOutcome(res) : ''));
+    } else {
+      toast(name + ' is off the schedule' +
+        (r.unqueued ? ' · ' + sdPlural(r.unqueued, 'person', 'people') + ' back in the pool' : ''));
+    }
+    return sdRefresh();
+  }).catch(function (e) { toast(e.message); sdRefresh(); });
+}
+
+// --- contacts check bar ----------------------------------------
+
+// Every brand still to go out on the three days, by label. Today's
+// already-sent brands are left out: nothing can be done about them.
+function renderSchedCheck() {
+  var box = document.getElementById('sched-check');
+  var n = { ready: 0, thin: 0, none: 0 };
+  var blocked = 0;
+  var list = [];
+  SCHED.order.forEach(function (key) {
+    var day = SCHED.days[key] || {};
+    (day.pinned || []).forEach(function (p) {
+      if (p.state === 'sent') return;
+      var lab = SCHED.labels[p.id];
+      if (lab && n[lab.kind] != null) n[lab.kind] += 1;
+      if (p.state === 'blocked') {
+        blocked += 1;
+        list.push({ id: p.id, name: p.name, key: key, kind: 'blocked', why: 'Won’t go out — ' + (p.reasonText || SD_SHORT[p.reason] || 'nobody to invite') });
+      } else if (lab && lab.kind !== 'ready') {
+        list.push({ id: p.id, name: p.name, key: key, kind: lab.kind, why: sdCheckWhy(lab) });
+      }
+    });
+    (day.brands || []).forEach(function (b) {
+      var lab = SCHED.labels[b.id];
+      if (!lab) return;
+      if (n[lab.kind] != null) n[lab.kind] += 1;
+      if (lab.kind !== 'ready') list.push({ id: b.id, name: b.name, key: key, kind: lab.kind, why: sdCheckWhy(lab) });
+    });
+  });
+  var count = function (kind, word) {
+    return '<span class="sd-check-n">' + sdMark(kind) + '<b>' + n[kind] + '</b> ' + word + '</span>';
+  };
+  box.innerHTML = '<div class="panel sd-check">' +
+    '<div class="sd-check-row">' +
+      '<b class="sd-check-t">Contacts check</b>' +
+      count('ready', 'ready') + count('thin', 'thin') + count('none', 'no one reachable') +
+      '<span class="sd-check-n' + (blocked ? ' bad' : '') + '"><b>' + blocked + '</b> can’t go out</span>' +
+      '<span class="sd-legend">' + esc(SD_LEGEND) + '</span>' +
+      (list.length
+        ? '<button class="btn-ghost" data-sdcheck="1">' + (SCHED.checkOpen ? 'Hide them' : 'Show them') + '</button>'
+        : '<span class="sd-dim good">Every brand has enough people ✓</span>') +
+    '</div>' +
+    (SCHED.checkOpen && list.length
+      ? '<div class="sd-check-list">' + list.map(function (x) {
+          return '<div class="sd-check-item">' + sdMark(x.kind === 'blocked' ? 'none' : x.kind) +
+            '<a href="#" class="sd-bname" data-sopen="' + esc(x.id) + '">' + esc(x.name) + '</a>' +
+            '<span class="sd-dim">' + esc(sdDayTag(x.key)) + '</span>' +
+            '<span class="sd-check-why' + (x.kind === 'blocked' ? ' bad' : '') + '">' + esc(x.why) + '</span>' +
+          '</div>';
+        }).join('') + '</div>'
+      : '') +
+  '</div>';
+}
+
+function sdCheckWhy(lab) {
+  if (lab.kind === 'none') return lab.onFile ? sdPlural(lab.onFile, 'person', 'people') + ' on file, none with a LinkedIn or an email' : 'Nobody on file';
+  return 'Thin · ' + lab.reachable + ' reachable, works ' + lab.need + ' at a time';
+}
+
+// --- the three days --------------------------------------------
+
+function renderSchedDays() {
+  var box = document.getElementById('sched-days');
+  if (!SCHED.order.length) {
+    box.innerHTML = '<div class="panel"><div class="empty"><p>No sending days to show.</p></div></div>';
+    return;
+  }
+  box.innerHTML = SCHED.order.map(sdDayHtml).join('');
+}
+
+// <option>s for a Move to / Add to menu: every planning day except
+// `skip`, plus "Off the schedule" when asked for.
+function sdDayOpts(skip, withOff) {
+  return SCHED.order.filter(function (k) { return k !== skip; }).map(function (k) {
+    return '<option value="' + esc(k) + '">' + esc(sdDayTag(k)) + '</option>';
+  }).join('') + (withOff ? '<option value="__off">Off the schedule</option>' : '');
+}
+
+function sdMoveSel(id, name, from, dayKey, withOff) {
+  return '<select class="inp sd-mini" data-sdmove="' + esc(id) + '" data-sdfrom="' + esc(from) + '" data-sdn="' + esc(name) + '" title="Move this brand to another day">' +
+    '<option value="">Move to…</option>' + sdDayOpts(dayKey, withOff) + '</select>';
+}
+
+function sdFlash(id) {
+  var f = SCHED.flash[id];
+  return f ? '<div class="sd-flash ' + esc(f.kind) + '">' + esc(f.text) + '</div>' : '';
+}
+
+// One card shell for pinned and auto brands, so they read alike.
+function sdCard(o) {
+  return '<div class="sd-card' + (o.blocked ? ' blocked' : '') + '" draggable="true" data-sdwrap="1"' +
+      ' data-dragb="' + esc(o.id) + '" data-dragn="' + esc(o.name) + '" data-dragfrom="' + esc(o.from) + '">' +
+    '<div class="sd-card-h">' +
+      '<a href="#" class="sd-bname" data-sopen="' + esc(o.id) + '">' + esc(o.name) + '</a>' +
+      (o.pinned ? '<span class="sd-tag">Pinned</span>' : '') +
+      (o.tags || '') +
+      '<span class="sd-sp"></span>' + sdLabel(SCHED.labels[o.id]) +
+    '</div>' +
+    o.body +
+    sdFlash(o.id) +
+    '<div data-sdslot="1"></div>' +
+    '<div class="sd-card-f">' + o.controls + '</div>' +
+  '</div>';
+}
+
+function sdPinnedCard(p, key) {
+  var body;
+  if (p.state === 'going') {
+    body = '<div class="sd-line"><b>' + (p.going || 0) + ' going out</b>' +
+        ((p.people || []).length ? ' · ' + sdNames(p.people) : '') + '</div>' +
+      (p.pendingQueue ? '<div class="sd-note">Goes into today’s queue when the LinkedIn tab opens</div>' : '');
+  } else if (p.state === 'sent') {
+    body = '<div class="sd-line good">' + (p.sentToday || 0) + ' invited today</div>';
+  } else {
+    var fixable = SD_FIXABLE[p.reason];
+    body = '<div class="sd-line"><b class="bad">Won’t go out</b> · ' +
+        esc(p.reasonText || SD_SHORT[p.reason] || 'Nobody to invite.') + '</div>' +
+      '<div class="sd-fix">' +
+        (fixable
+          ? '<button class="btn-draft sd-sm" data-sdperson="' + esc(p.id) + '">+ Add a person</button>' +
+            '<button class="btn-ghost sd-sm" data-sdsu="' + esc(p.externalId || '') + '" data-suname="' + esc(p.name) + '">SponsorUnited ↗</button>'
+          : '') +
+        '<button class="btn-ghost sd-sm" data-sopen="' + esc(p.id) + '">Open brand</button>' +
+      '</div>';
+  }
+  return sdCard({
+    id: p.id, name: p.name, from: key, pinned: true, blocked: p.state === 'blocked', body: body,
+    controls: sdMoveSel(p.id, p.name, key, key, true) +
+      '<span class="sd-sp"></span>' +
+      '<button class="btn-ghost sd-sm" data-sdunpin="' + esc(p.id) + '" data-sdday="' + esc(key) + '" data-sdn="' + esc(p.name) + '" title="Take it off this day">× Unpin</button>'
+  });
+}
+
+function sdAutoCard(b, key, isToday) {
+  var pp = sdPeopleOf(b);
+  var tags = (b.topUp ? '<span class="sd-tag">top-up · ' + esc(sdCatName(b.category)) + '</span>' : '') +
+    (b.inQueue ? '<span class="sd-tag good">in today’s queue</span>' : '');
+  var body = '<div class="sd-line"><b>' + pp.n + ' going out</b>' +
+    (pp.names.length ? ' · ' + sdNames(pp.names) : '') +
+    (b.later ? ' <span class="sd-dim" title="Ready too, but past the day’s ' + sdCap() + ' — they go out the next day in this category">+' + b.later + ' next time</span>' : '') +
+  '</div>';
+  // "Off the schedule" only means something for people already stamped
+  // into today's queue; anywhere else the rotation would just put the
+  // brand straight back.
+  var controls = sdMoveSel(b.id, b.name, '', key, isToday && b.inQueue) + '<span class="sd-sp"></span>';
+  if (isToday) {
+    controls +=
+      '<button class="btn-ghost sd-sm" data-stoday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" title="Not today — back on its own tomorrow">Pass today</button>' +
+      '<button class="btn-ghost danger sd-sm" data-spass="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" title="Archive — off outreach entirely until you bring it back">Archive</button>';
+  }
+  return sdCard({ id: b.id, name: b.name, from: '', pinned: false, tags: tags, body: body, controls: controls });
+}
+
+function sdDayHtml(key) {
+  var day = SCHED.days[key] || {};
+  var cap = sdCap();
+  var isToday = key === SCHED.today;
+  var total = typeof day.total === 'number' ? day.total : (day.ready || 0);
+  var over = typeof day.over === 'number' ? day.over : Math.max(0, total - cap);
+  var open = Math.max(0, cap - total);
+  var pinned = day.pinned || [];
+  var auto = day.brands || [];
+  var catName = sdCatName(day.category);
+
+  var status = over > 0 ? '<span class="sd-st bad">Over by ' + over + '</span>'
+    : open === 0 ? '<span class="sd-st good">Full ✓</span>'
+    : '<span class="sd-st warn">' + sdPlural(open, 'open spot', 'open spots') + '</span>';
+  var going = pinned.filter(function (p) { return p.state === 'going'; }).length + auto.length;
+  var sub = isToday
+    ? (day.sent || 0) + ' invited · ' + Math.max(0, total - (day.sent || 0)) + ' queued'
+    : sdPlural(going, 'brand', 'brands') + ' · ' + sdPlural(total, 'person', 'people') + ' going out';
+
+  var planned = (SCHED.plan[key] || {}).category || (day.auto ? '' : day.category) || '';
+  var catSel = '<select class="inp sd-catsel" data-sdcatsel="' + esc(key) + '" title="The category this day works">' +
+    '<option value=""' + (planned ? '' : ' selected') + '>Automatic rotation' +
+      (day.auto && day.category ? ' (' + esc(catName) + ')' : '') + '</option>' +
+    CAT_KEYS.map(function (k) {
+      return '<option value="' + esc(k) + '"' + (planned === k ? ' selected' : '') + '>' + esc(CAT_NAMES[k]) + '</option>';
+    }).join('') +
+  '</select>';
+
+  var notes = (SCHED.notes[key] || []).map(function (x, i) {
+    return '<div class="sd-flash bad"><b>' + esc(x.name) + '</b> · ' + esc(x.text) +
+      ' <a href="#" class="sd-x" data-sdnotex="' + esc(key) + '" data-i="' + i + '" title="Dismiss">×</a></div>';
+  }).join('');
+
+  var ps = SCHED.paste[key];
+  var html = '<div class="panel sd-day" data-drop="' + esc(key) + '">' +
+    '<div class="sd-day-h">' +
+      '<div class="sd-day-t">' + esc(sdDayLabel(key)) + '</div>' + catSel +
+    '</div>' +
+    '<div class="sd-day-n"><span><b>' + total + '</b> of ' + cap + ' people</span>' + status + '</div>' +
+    '<div class="sd-meter' + (over > 0 ? ' bad' : open === 0 ? ' good' : '') + '"><i style="width:' + Math.min(100, total / cap * 100) + '%"></i></div>' +
+    '<div class="sd-dim">' + esc(sub) + '</div>' +
+    '<div class="sd-addrow">' +
+      '<div class="sd-add" data-sdbox="' + esc(key) + '">' +
+        '<input class="inp" data-sdq="' + esc(key) + '" placeholder="+ Add a brand to ' + esc(isToday ? 'today' : sdDayName(key)) + '…" autocomplete="off">' +
+        '<div class="sd-drop" data-sddrop="' + esc(key) + '"></div>' +
+      '</div>' +
+      '<a href="#" class="sd-link" data-sdpaste="' + esc(key) + '">' + (ps && ps.open ? 'Close list' : 'Paste a list') + '</a>' +
+    '</div>' +
+    notes +
+    (ps && ps.open ? '<div data-sdpastebox="' + esc(key) + '">' + sdPasteHtml(key) + '</div>' : '') +
+    pinned.map(function (p) { return sdPinnedCard(p, key); }).join('');
+
+  // People already stamped into today's queue show whatever category is
+  // picked, so offer the way out when some of them are off-category.
+  if (isToday && auto.some(function (b) { return b.topUp && b.inQueue; })) {
+    var off = auto.filter(function (b) { return b.topUp && b.inQueue; }).length;
+    html += '<div class="sd-note">' + sdPlural(off, 'brand', 'brands') + ' in today’s queue ' + (off === 1 ? 'is' : 'are') +
+      ' from other categories. <button class="btn-ghost sd-sm" data-sclearoff="1" ' +
+      'title="Take those people back out of today — they return to the pool and come up on their own category’s day">Clear them</button></div>';
+  }
+  html += auto.map(function (b) { return sdAutoCard(b, key, isToday); }).join('');
+
+  if (!pinned.length && !auto.length) {
+    html += '<div class="sd-empty">Nothing going out yet. Add a brand above, or pick a category.</div>';
+  }
+
+  // Open spots, filled from the rest of the day's category.
+  var missing = day.missing || [];
+  if (open > 0 && missing.length) {
+    var fit = missing.filter(function (m) { return sdPeopleOf(m).n <= open; });
+    var shown = fit.slice(0, 6);
+    var left = open, allIds = [], allNames = [];
+    missing.forEach(function (m) {
+      var n = sdPeopleOf(m).n;
+      if (n > 0 && n <= left && allIds.length < 40) { allIds.push(m.id); allNames.push(m.name); left -= n; }
+    });
+    html += '<div class="sd-open">' +
+      '<div class="sd-open-h"><b class="warn">' + sdPlural(open, 'open spot', 'open spots') + '</b>' +
+        '<span class="sd-dim">More ' + esc(catName) + ' brands that fit</span><span class="sd-sp"></span>' +
+        (allIds.length > 1 ? '<button class="btn-draft sd-sm" data-sdfitall="' + esc(key) + '" data-ids="' + esc(allIds.join(',')) + '" title="' + esc(allNames.join(', ')) + '">Add all that fit (' + allIds.length + ')</button>' : '') +
+      '</div>' +
+      (shown.length
+        ? shown.map(function (m) {
+            return '<div class="sd-orow">' +
+              '<a href="#" class="sd-bname" data-sopen="' + esc(m.id) + '">' + esc(m.name) + '</a>' +
+              sdLabel(SCHED.labels[m.id]) +
+              '<span class="sd-dim">' + sdPeopleOf(m).n + ' would go</span><span class="sd-sp"></span>' +
+              '<button class="btn-ghost sd-sm" data-sdmissadd="' + esc(m.id) + '" data-sdday="' + esc(key) + '">+ Add</button>' +
+            '</div>';
+          }).join('')
+        : '<div class="sd-dim">Every ' + esc(catName) + ' brand left has more people than the open spots.</div>') +
+      (missing.length > shown.length && day.category
+        ? '<a href="#" class="sd-link" data-sdseecat="' + esc(day.category) + '">See every ' + esc(catName) + ' brand</a>'
+        : '') +
+    '</div>';
+  }
+
+  // Ready people past the day's cap. They are not lost — they carry
+  // to the next day in this category — so one line says so.
+  var overflow = day.overflow || [];
+  if (overflow.length) {
+    var later = auto.reduce(function (s, b) { return s + (b.later || 0); }, 0);
+    var overPeople = overflow.reduce(function (s, b) { return s + sdPeopleOf(b).n; }, 0) + later;
+    html += '<div class="sd-note">The rest of ' + esc(catName) + ': ' + sdPlural(overPeople, 'person', 'people') +
+      ' past the day’s ' + cap + ' come up on the next ' + esc(catName) + ' day. ' +
+      overflow.slice(0, 5).map(function (b) {
+        return '<a href="#" class="sd-dimlink" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>';
+      }).join(', ') +
+      (overflow.length > 5 ? ' and ' + (overflow.length - 5) + ' more' : '') + '.</div>';
+  }
+
+  if (isToday) html += sdSentHtml(day);
+  return html + '</div>';
+}
+
+// --- invited today ---------------------------------------------
+
+function sdSentHtml(day) {
+  var people = day.sentPeople || [];
+  if (!people.length) return '';
+  var groups = [], by = {};
+  people.forEach(function (p) {
+    if (!by[p.brandId]) { by[p.brandId] = { id: p.brandId, name: p.brand, people: [] }; groups.push(by[p.brandId]); }
+    by[p.brandId].people.push(p);
+  });
+  return '<div class="sd-sent-h">Invited today · ' + sdPlural(people.length, 'person', 'people') + ' at ' +
+      sdPlural(groups.length, 'brand', 'brands') + '</div>' +
+    groups.map(function (g) {
+      var acc = 0, rep = 0;
+      var dots = g.people.map(function (p) {
+        var k = p.status === 'replied' || p.status === 'converted' ? 'replied' : p.status === 'accepted' ? 'accepted' : 'invited';
+        if (k === 'replied') rep += 1;
+        if (k === 'accepted') acc += 1;
+        return '<i class="sd-pd ' + k + '" title="' + esc(p.person + ' · ' + k) + '"></i>';
+      }).join('');
+      // A brand where someone accepted or replied has a next step, so it
+      // opens by itself; after that it stays however Leo left it.
+      var isOpen = SCHED.sentOpen[g.id] != null ? SCHED.sentOpen[g.id] : (acc + rep > 0);
+      var sum = g.people.length + ' invited' + (acc ? ' · ' + acc + ' accepted' : '') + (rep ? ' · ' + rep + ' replied' : '');
+      return '<div class="sd-card sd-sent">' +
+        '<div class="sd-card-h">' +
+          '<button class="sd-tog" data-sdsent="' + esc(g.id) + '" data-open="' + (isOpen ? '1' : '') + '" title="' + (isOpen ? 'Hide people' : 'Show people') + '">' + (isOpen ? '▾' : '▸') + '</button>' +
+          '<a href="#" class="sd-bname" data-sopen="' + esc(g.id) + '">' + esc(g.name) + '</a>' +
+          '<span class="sd-sp"></span>' + sdLabel(SCHED.labels[g.id]) +
+        '</div>' +
+        '<div class="sd-line"><span class="sd-dots">' + dots + '</span> ' + esc(sum) + '</div>' +
+        (isOpen ? '<div class="sd-people">' + g.people.map(sdSentPersonRow).join('') + '</div>' : '') +
+      '</div>';
+    }).join('');
+}
+
+// Same buttons, same write path as the LinkedIn tab (setTargetStatus),
+// so the two tabs can never disagree.
+function sdSentPersonRow(p) {
+  var done = p.status === 'replied' || p.status === 'converted';
+  return '<div class="sd-prow">' +
+    '<span class="sd-pname"><b>' + esc(p.person) + '</b>' + (p.title ? ' <span class="sd-dim">— ' + esc(p.title) + '</span>' : '') + '</span>' +
+    (done
+      ? '<span class="status replied">Replied ✓</span>'
+      : (p.status === 'accepted'
+          ? '<span class="status accepted">Accepted ✓</span>' +
+            (p.dmSentAt ? '<span class="status accepted">DM sent ✓</span>' : '<button class="btn-ghost sd-sm" data-sact="dmsent" data-st="' + esc(p.id) + '">DM sent ✓</button>') +
+            '<button class="btn-ghost sd-sm" data-sact="replied" data-st="' + esc(p.id) + '">Replied?</button>'
+          : '<button class="btn-draft sd-sm" data-sact="accepted" data-st="' + esc(p.id) + '">Accepted?</button>' +
+            '<button class="btn-ghost sd-sm" data-sact="replied" data-st="' + esc(p.id) + '">Replied?</button>')) +
+  '</div>';
+}
+
+// --- paste a list ----------------------------------------------
+
+function sdPasteHtml(key) {
+  var ps = SCHED.paste[key];
+  var lines = ps.lines || [];
+  var ticked = sdPasteIds(key);
+  return '<div class="sd-paste">' +
+    '<div class="sd-paste-h"><b>Paste a list for ' + esc(sdDayTag(key)) + '</b><span class="sd-sp"></span>' +
+      '<a href="#" class="sd-x" data-sdpclose="' + esc(key) + '" title="Close">×</a></div>' +
+    '<textarea class="field-box" data-sdptext="' + esc(key) + '" rows="4" placeholder="One brand per line, or separated by commas">' + esc(ps.text || '') + '</textarea>' +
+    '<div class="sd-paste-f"><button class="btn-ghost sd-sm" data-sdpcheck="' + esc(key) + '"' + (ps.busy ? ' disabled' : '') + '>' + (ps.busy ? 'Checking…' : 'Check') + '</button></div>' +
+    (lines.length
+      ? '<div class="sd-plines">' + lines.map(function (ln, i) { return sdPasteLine(key, ln, i); }).join('') + '</div>' +
+        '<div class="sd-paste-f"><button class="btn-draft sd-sm" data-sdpadd="' + esc(key) + '"' + (ticked.length && !ps.busy ? '' : ' disabled') + '>Add ' + ticked.length + ' to ' + esc(sdDayTag(key)) + '</button></div>'
+      : '') +
+    (ps.summary ? '<div class="sd-flash good">' + esc(ps.summary) + '</div>' : '') +
+  '</div>';
+}
+
+function sdPasteLine(key, ln, i) {
+  var b = ln.brand;
+  var canTick = b && b.action !== 'none';
+  var pick = function (s, j) {
+    return '<button class="btn-ghost sd-sm" data-sdpswap="' + esc(key) + '" data-i="' + i + '" data-j="' + j + '">' + esc(s.name) + '</button>';
+  };
+  var matched = b && (ln.confidence === 'exact' || ln.picked);
+  var body;
+  if (matched) {
+    body = '<span class="sd-pm"><b>' + esc(b.name) + '</b> ' + sdLabel(b.label) + ' <span class="sd-dim">' + esc(b.text || '') + '</span></span>';
+  } else {
+    // A close match is only a guess, so it is offered like any other
+    // suggestion and never ticked until Leo picks it.
+    var opts = (b ? [b] : []).concat(ln.suggestions || []);
+    body = opts.length
+      ? '<span class="sd-pm"><span class="sd-dim">Did you mean</span> ' + opts.map(pick).join(' ') + '<span class="sd-dim">?</span></span>'
+      : '<span class="sd-pm"><span class="sd-dim">No brand called that</span> ' +
+          '<button class="btn-ghost sd-sm" data-sdpcreate="' + esc(key) + '" data-i="' + i + '"' + (ln.creating ? ' disabled' : '') + '>' + (ln.creating ? 'Creating…' : '+ Create') + '</button></span>';
+  }
+  return '<label class="sd-pl">' +
+    '<input type="checkbox" data-sdpck="' + esc(key) + '" data-i="' + i + '"' +
+      (matched && canTick && ln.ticked ? ' checked' : '') + (matched && canTick ? '' : ' disabled') + '>' +
+    '<span class="sd-pin" title="What was pasted">' + esc(ln.input) + '</span>' + body +
+  '</label>';
+}
+
+// The brands a pasted list would add: ticked, matched, allowed. Once each.
+function sdPasteIds(key) {
+  var ps = SCHED.paste[key];
+  var out = [];
+  (ps && ps.lines || []).forEach(function (ln) {
+    var b = ln.brand;
+    if (!b || !ln.ticked || b.action === 'none') return;
+    if (ln.confidence !== 'exact' && !ln.picked) return;
+    if (out.indexOf(b.id) === -1) out.push(b.id);
+  });
+  return out;
+}
+
+function sdPasteLineState(ln) {
+  // Exact and addable is ticked for Leo. "Add anyway" (already reached,
+  // or nobody reachable) is his call, so it starts unticked.
+  ln.ticked = ln.confidence === 'exact' && !!ln.brand && ln.brand.action === 'add';
+  return ln;
+}
+
+function sdRenderPaste(key) {
+  var box = document.querySelector('[data-sdpastebox="' + key + '"]');
+  if (box) box.innerHTML = sdPasteHtml(key);
+}
+
+function sdPasteCheck(key) {
+  var ps = SCHED.paste[key];
+  var text = (ps.text || '').trim();
+  if (!text) { toast('Paste some brand names first'); return; }
+  ps.busy = true; ps.summary = '';
+  sdRenderPaste(key);
+  api('matchBrandList', { text: text, date: key }).then(function (r) {
+    ps.busy = false;
+    ps.lines = (r.lines || []).map(sdPasteLineState);
+    if (!ps.lines.length) toast('No brand names found in that');
+    sdRenderPaste(key);
+  }).catch(function (e) { ps.busy = false; sdRenderPaste(key); toast(e.message); });
+}
+
+// --- categories ------------------------------------------------
+
+function sdCatKey(c) { return c || 'uncategorised'; }
+
+function renderSchedCats() {
+  var box = document.getElementById('sched-cats');
+  var cats = (SCHED.categories || []).filter(function (c) { return c.total > 0; });
+  if (!cats.length) { box.innerHTML = ''; return; }
+  var dayIdx = function (c) {
+    var ks = c.days && c.days.length ? c.days : SCHED.order.filter(function (k) { return (SCHED.days[k] || {}).category === c.category; });
+    var best = 99;
+    ks.forEach(function (k) { var i = SCHED.order.indexOf(k); if (i !== -1 && i < best) best = i; });
+    return best;
+  };
+  var left = function (c) { var n = c.notReached || {}; return (n.ready || 0) + (n.thin || 0) + (n.none || 0); };
+  // What the next three days work comes first, in day order; then the
+  // categories with the most still to reach, because that is the work.
+  cats = cats.slice().sort(function (a, b) {
+    return (dayIdx(a) - dayIdx(b)) || (left(b) - left(a)) || sdCatName(a.category).localeCompare(sdCatName(b.category));
+  });
+  box.innerHTML =
+    '<div class="sd-cats-h"><h2 class="sd-h2">Categories</h2><span class="sd-dim">Click one to see every brand in it, reached or not</span></div>' +
+    '<div class="sd-tiles">' + cats.map(function (c) {
+      var key = sdCatKey(c.category);
+      var n = c.notReached || {};
+      var ks = c.days && c.days.length ? c.days : SCHED.order.filter(function (k) { return (SCHED.days[k] || {}).category === c.category; });
+      var pct = c.total ? Math.round(c.reached / c.total * 100) : 0;
+      return '<button class="sd-tile' + (SCHED.openCat === key ? ' on' : '') + '" data-sdcat="' + esc(key) + '">' +
+        '<span class="sd-tile-h"><span class="sd-tile-name">' + esc(sdCatName(c.category)) + '</span>' +
+          ks.map(function (k) { return '<span class="sd-tag day">' + esc(sdDayTag(k)) + '</span>'; }).join('') + '</span>' +
+        '<span class="sd-tile-big"><b>' + (c.reached || 0) + '</b> of ' + c.total + ' reached</span>' +
+        '<span class="sd-meter"><i style="width:' + pct + '%"></i></span>' +
+        '<span class="sd-cap">Not reached yet</span>' +
+        '<span class="sd-tile-n">' +
+          '<span>' + sdMark('ready') + (n.ready || 0) + ' ready</span>' +
+          '<span>' + sdMark('thin') + (n.thin || 0) + ' thin</span>' +
+          '<span>' + sdMark('none') + (n.none || 0) + ' need people</span>' +
+        '</span>' +
+      '</button>';
+    }).join('') + '</div>' +
+    '<div id="sd-drill"></div>';
+  renderSchedDrill();
+}
+
+function sdLoadCat(key) {
+  if (SCHED.catCache[key] || SCHED.catErr[key] || SCHED.catBusy[key]) return;
+  SCHED.catBusy[key] = true;
+  var gen = SCHED.catGen;
+  api('categoryBrands', { category: key === 'uncategorised' ? null : key }).then(function (d) {
+    SCHED.catBusy[key] = false;
+    // The schedule refreshed while this was in flight, so the answer may
+    // already be out of date; drawing the drill-in again asks afresh.
+    if (gen === SCHED.catGen) SCHED.catCache[key] = d;
+    if (SCHED.openCat === key) renderSchedDrill();
+  }).catch(function (e) {
+    SCHED.catBusy[key] = false;
+    SCHED.catErr[key] = e.message;
+    toast(e.message);
+    if (SCHED.openCat === key) renderSchedDrill();
+  });
+}
+
+function sdDrillGroups(brands) {
+  var g = { ready: [], thin: [], none: [], reached: [], setAside: [] };
+  brands.forEach(function (b) {
+    if (b.group === 'reached') g.reached.push(b);
+    else if (b.group === 'setAside') g.setAside.push(b);
+    else g[(b.label && b.label.kind) || 'none'].push(b);
+  });
+  return g;
+}
+
+function renderSchedDrill() {
+  var box = document.getElementById('sd-drill');
+  if (!box) return;
+  var key = SCHED.openCat;
+  if (!key) { box.innerHTML = ''; return; }
+  var name = sdCatName(key === 'uncategorised' ? null : key);
+  var data = SCHED.catCache[key];
+  if (!data) {
+    box.innerHTML = '<div class="panel panel-pad sd-drill"><b>' + esc(name) + '</b><div class="sd-dim">' +
+      (SCHED.catErr[key] ? 'Could not load: ' + esc(SCHED.catErr[key]) : 'Loading…') + '</div></div>';
+    sdLoadCat(key);
+    return;
+  }
+  var all = data.brands || [];
+  var g = sdDrillGroups(all);
+  var notReached = g.ready.length + g.thin.length + g.none.length;
+  var pct = all.length ? Math.round(g.reached.length / all.length * 100) : 0;
+  box.innerHTML = '<div class="panel panel-pad sd-drill">' +
+    '<div class="sd-drill-h"><b class="sd-drill-t">' + esc(name) + '</b>' +
+      '<span class="sd-dim">' + sdPlural(all.length, 'brand', 'brands') + ' · ' + g.reached.length + ' reached · ' +
+        notReached + ' not reached yet · ' + g.setAside.length + ' set aside</span>' +
+      '<span class="sd-sp"></span>' +
+      '<input class="inp" data-sdcq="1" placeholder="Filter brands…" autocomplete="off" value="' + esc(SCHED.catQ) + '">' +
+      '<a href="#" class="sd-x" data-sdcat="' + esc(key) + '" title="Close">×</a>' +
+    '</div>' +
+    '<div class="sd-meter"><i style="width:' + pct + '%"></i></div>' +
+    '<div id="sd-drill-body"></div>' +
+    '<div id="sd-bulk"></div>' +
+  '</div>';
+  renderSchedDrillBody();
+}
+
+function renderSchedDrillBody() {
+  var box = document.getElementById('sd-drill-body');
+  var data = SCHED.catCache[SCHED.openCat];
+  if (!box || !data) return;
+  var q = (SCHED.catQ || '').toLowerCase();
+  var g = sdDrillGroups((data.brands || []).filter(function (b) { return !q || b.name.toLowerCase().indexOf(q) !== -1; }));
+  var addTo = function (b) {
+    return '<select class="inp sd-mini" data-sdaddto="' + esc(b.id) + '" data-sdn="' + esc(b.name) + '"><option value="">Add to…</option>' + sdDayOpts(null, false) + '</select>';
+  };
+  var pinTag = function (b) { return b.pinnedOn ? '<span class="sd-tag">Pinned ' + esc(sdDayTag(b.pinnedOn)) + '</span>' : ''; };
+  var tier = function (b) { return b.tier ? '<span class="sd-dim">' + esc(b.tier.charAt(0).toUpperCase() + b.tier.slice(1)) + '</span>' : ''; };
+  var goRow = function (b) {
+    return '<div class="sd-drow">' +
+      '<input type="checkbox" data-sdck="' + esc(b.id) + '"' + (SCHED.catSel[b.id] ? ' checked' : '') + '>' +
+      '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' + tier(b) +
+      '<span class="sd-dim">' + ((b.label && b.label.reachable) || 0) + ' reachable</span>' + pinTag(b) +
+      (b.queued ? '<span class="sd-tag good">' + b.queued + ' queued</span>' : '') +
+      '<span class="sd-sp"></span>' + addTo(b) +
+    '</div>';
+  };
+  var needRow = function (b) {
+    var onFile = (b.label && b.label.onFile) || 0;
+    return '<div data-sdwrap="1"><div class="sd-drow">' +
+      sdMark('none') +
+      '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' + tier(b) +
+      '<span class="sd-dim">' + (onFile ? onFile + ' on file, no LinkedIn or email' : 'Nobody on file') + '</span>' + pinTag(b) +
+      '<span class="sd-sp"></span>' +
+      '<button class="btn-ghost sd-sm" data-sdsu="' + esc(b.externalId || '') + '" data-suname="' + esc(b.name) + '">SponsorUnited ↗</button>' +
+      '<button class="btn-ghost sd-sm" data-sdperson="' + esc(b.id) + '">+ Add a person</button>' +
+    '</div><div data-sdslot="1"></div></div>';
+  };
+  var group = function (title, rows, fn, extra) {
+    if (!rows.length) return '';
+    return '<div class="sd-dg"><div class="sd-dg-h">' + esc(title) + ' <span class="n">' + rows.length + '</span>' + (extra || '') + '</div>' +
+      rows.map(fn).join('') + '</div>';
+  };
+  var STAGE = {
+    replied: { t: 'Replied', pill: 'replied' },
+    accepted: { t: 'Accepted', pill: 'accepted' },
+    invited: { t: 'Invited, waiting on an accept', pill: 'sent' },
+    emailed: { t: 'Emailed', pill: 'drafted' },
+    withdrawn: { t: 'Withdrawn', pill: 'withdrawn' }
+  };
+  var reachedRow = function (b) {
+    var o = b.outreach || {};
+    var st = STAGE[o.stage] || STAGE.invited;
+    return '<div class="sd-drow">' +
+      '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
+      '<span class="status ' + st.pill + '">' + esc(o.stage || 'reached') + '</span>' +
+      (o.stale ? '<span class="sd-tag warn">Going stale</span>' : '') +
+      '<span class="sd-dim">' + esc(o.detail || '') + '</span>' +
+      '<span class="sd-sp"></span>' +
+      '<span class="sd-dim">' + ((b.label && b.label.reachable) || 0) + ' reachable</span>' +
+    '</div>';
+  };
+  var asideRow = function (b) {
+    return '<div class="sd-drow">' +
+      '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
+      '<span class="sd-dim">' + (b.setAsideWhy === 'donotemail' ? 'Do-not-email' : 'Archived') + '</span>' +
+      '<span class="sd-sp"></span>' +
+      '<button class="btn-ghost sd-sm" data-sopen="' + esc(b.id) + '">Open brand</button>' +
+    '</div>';
+  };
+  var byStage = {};
+  g.reached.forEach(function (b) {
+    var s = (b.outreach && STAGE[b.outreach.stage]) ? b.outreach.stage : 'invited';
+    (byStage[s] = byStage[s] || []).push(b);
+  });
+  var left = group('Ready to go', g.ready, goRow,
+      g.ready.length ? ' <a href="#" class="sd-link" data-sdselready="1">Select all ready</a>' : '') +
+    group('Thin', g.thin, goRow) +
+    group('Need people', g.none, needRow);
+  var right = ['replied', 'accepted', 'invited', 'emailed', 'withdrawn'].map(function (s) {
+      return group(STAGE[s].t, byStage[s] || [], reachedRow);
+    }).join('') +
+    group('Set aside', g.setAside, asideRow);
+  box.innerHTML = '<div class="sd-drill-cols">' +
+    '<div><div class="sd-col-h">Not reached yet</div>' + (left || '<div class="sd-dim">Nothing here' + (q ? ' matches.' : '.') + '</div>') + '</div>' +
+    '<div><div class="sd-col-h">Reached</div>' + (right || '<div class="sd-dim">Nothing here' + (q ? ' matches.' : ' yet.') + '</div>') + '</div>' +
+  '</div>';
+  renderSchedBulk();
+}
+
+function renderSchedBulk() {
+  var box = document.getElementById('sd-bulk');
+  if (!box) return;
+  var ids = Object.keys(SCHED.catSel);
+  box.innerHTML = ids.length
+    ? '<div class="sd-bulk"><b>' + ids.length + ' selected</b> · Add to ' +
+        '<select class="inp sd-mini" data-sdbulkday="1">' + sdDayOpts(null, false) + '</select>' +
+        '<button class="btn-draft sd-sm" data-sdbulkadd="1">Add</button>' +
+        '<a href="#" class="sd-link" data-sdbulkclear="1">Clear</a></div>'
+    : '';
+}
+
+function sdOpenCat(key, scroll) {
+  if (SCHED.openCat !== key) { SCHED.catSel = {}; SCHED.catQ = ''; }
+  SCHED.openCat = key;
+  renderSchedCats();
+  if (scroll) {
+    var el = document.getElementById('sd-drill');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+// --- past week -------------------------------------------------
+
+function renderSchedPast() {
+  var box = document.getElementById('sched-past');
+  var days = SCHED.past || [];
+  if (!days.length) { box.innerHTML = ''; return; }
+  var n = days.reduce(function (s, d) { return s + d.people.length; }, 0);
+  box.innerHTML = '<details class="fold"' + (SCHED.pastOpen ? ' open' : '') + '>' +
+    '<summary class="section-head">Already sent, the past week <span class="n">' + sdPlural(n, 'person', 'people') + '</span></summary>' +
+    days.map(function (d) {
+      var groups = [], by = {};
+      d.people.forEach(function (p) {
+        if (!by[p.brandId]) { by[p.brandId] = { id: p.brandId, name: p.brand, people: [] }; groups.push(by[p.brandId]); }
+        by[p.brandId].people.push(p);
+      });
+      var lbl = new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+      return '<div class="panel panel-pad sd-pastday">' +
+        '<div class="sd-day-n"><b>' + esc(lbl) + '</b><span class="sd-dim">' + d.people.length + ' sent</span></div>' +
+        groups.map(function (g) {
+          return '<div class="sd-drow">' +
+            '<a href="#" class="sd-bname" data-sopen="' + esc(g.id) + '">' + esc(g.name) + '</a>' +
+            '<span class="sd-dim">' + sdPlural(g.people.length, 'person', 'people') + '</span>' +
+            '<span class="sd-pastp">' + g.people.map(function (p) {
+              return esc(p.person) + ' <span class="status ' + esc(p.status) + '">' + esc(p.status) + '</span>';
+            }).join(' ') + '</span>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+    }).join('') +
+  '</details>';
+  box.querySelector('details').addEventListener('toggle', function () { SCHED.pastOpen = this.open; });
+}
+
+// --- typeahead -------------------------------------------------
+
+function sdCloseDrops(except) {
+  document.querySelectorAll('[data-sddrop]').forEach(function (d) {
+    if (d !== except) { d.style.display = 'none'; d.innerHTML = ''; }
+  });
+}
+
+function sdResultRow(b, key) {
+  var btn = b.pinnedOn === key ? '<span class="sd-dim">On this day</span>'
+    : b.action === 'add' ? '<button class="btn-draft sd-sm" data-sdadd="' + esc(b.id) + '" data-sdday="' + esc(key) + '">Add</button>'
+    : b.action === 'addAnyway' ? '<button class="btn-ghost sd-sm" data-sdadd="' + esc(b.id) + '" data-sdday="' + esc(key) + '">Add anyway</button>'
+    : '';
+  return '<div class="sd-res">' +
+    '<div class="sd-res-m">' +
+      '<div><b>' + esc(b.name) + '</b> <span class="sd-dim">' + esc(b.category ? sdCatName(b.category) : '') + '</span></div>' +
+      '<div class="sd-res-s">' + sdLabel(b.label) + ' <span class="sd-dim">' + esc(b.text || '') + '</span></div>' +
+    '</div>' + btn +
+  '</div>';
+}
+
+function sdSearch(inp) {
+  var key = inp.getAttribute('data-sdq');
+  var drop = inp.parentNode.querySelector('[data-sddrop]');
   var q = inp.value.trim();
   clearTimeout(inp._t);
-  if (q.length < 2) { drop.style.display = 'none'; return; }
+  // Bumping the sequence here too means a reply to an older, longer
+  // query can't land after the box was cleared.
+  var mine = ++SCHED.qSeq;
+  inp._seq = mine;
+  if (q.length < 2) { drop.style.display = 'none'; drop.innerHTML = ''; return; }
   inp._t = setTimeout(function () {
-    api('listBrands', { search: q, take: 8 }).then(function (brands) {
-      drop.innerHTML = brands.length ? brands.map(function (b) {
-        return '<div data-sadd="' + esc(key) + '" data-sb="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" style="padding:9px 12px;font-size:13px;cursor:pointer"><b>' + esc(b.name) + '</b> <span style="color:var(--ink-3)">' + b._count.contacts + ' contacts</span></div>';
-      }).join('') : '<div style="padding:9px 12px;font-size:13px;color:var(--ink-3)">No brand found.</div>';
+    api('searchPlanBrands', { q: q, date: key }).then(function (r) {
+      if (inp._seq !== mine || !inp.isConnected) return;
+      var rows = r.brands || [];
+      drop.innerHTML = rows.length
+        ? rows.map(function (b) { return sdResultRow(b, key); }).join('')
+        : '<div class="sd-res sd-dim">No brand called that.</div>';
+      sdCloseDrops(drop);
       drop.style.display = 'block';
-    });
-  }, 250);
-});
+    }).catch(function (e) { if (inp._seq === mine) toast(e.message); });
+  }, 200);
+}
 
-['sched-list', 'sched-bench'].forEach(function (id) {
-  var el = document.getElementById(id);
-  if (!el) return;
-  el.addEventListener('dragstart', schedDragStart);
-  el.addEventListener('dragend', schedDragEnd);
-});
-document.getElementById('sched-list').addEventListener('dragover', schedDragOver);
-document.getElementById('sched-list').addEventListener('dragleave', schedDragLeave);
-document.getElementById('sched-list').addEventListener('drop', schedDrop);
+// --- events ----------------------------------------------------
 
-document.getElementById('sched-list').addEventListener('click', function (e) {
-  var open = e.target.closest('[data-sopen]');
-  if (open) { e.preventDefault(); loadBrand(open.getAttribute('data-sopen')); return; }
+var SCHED_DRAG = null;
 
-  // Status buttons on a sent row — same write path as the LinkedIn tab
-  // (setTargetStatus), so the two tabs can never disagree. In place.
-  var sact = e.target.closest('[data-sact]');
-  if (sact) {
-    var act = sact.getAttribute('data-sact');
-    var tid = sact.getAttribute('data-st');
-    var wrap = sact.parentNode;
-    wrap.querySelectorAll('[data-sact]').forEach(function (x) { x.remove(); });
-    var pill = document.createElement('span');
-    pill.className = 'status ' + (act === 'replied' ? 'replied' : 'accepted');
-    pill.style.cssText = 'font-size:12px;padding:4px 11px';
-    pill.textContent = act === 'replied' ? 'Replied ✓' : act === 'dmsent' ? 'DM sent ✓' : 'Accepted ✓';
-    wrap.appendChild(pill);
-    if (act === 'accepted') {
-      ['dmsent', 'replied'].forEach(function (k) {
-        var b2 = document.createElement('button');
-        b2.className = 'btn-ghost';
-        b2.setAttribute('data-sact', k);
-        b2.setAttribute('data-st', tid);
-        b2.style.cssText = 'padding:4px 11px;font-size:12px';
-        b2.textContent = k === 'dmsent' ? 'DM sent ✓' : 'Replied?';
-        wrap.appendChild(b2);
+(function () {
+  var sec = document.getElementById('schedule');
+  var daysEl = document.getElementById('sched-days');
+
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('[data-sdbox]')) sdCloseDrops(null);
+  });
+
+  sec.addEventListener('keydown', function (e) {
+    var inp = e.target.closest('[data-sdq]');
+    if (!inp) return;
+    var drop = inp.parentNode.querySelector('[data-sddrop]');
+    if (e.key === 'Escape') { drop.style.display = 'none'; drop.innerHTML = ''; inp.blur(); }
+    if (e.key === 'Enter') {
+      var first = drop.querySelector('[data-sdadd]');
+      if (first) { e.preventDefault(); first.click(); }
+    }
+  });
+
+  sec.addEventListener('input', function (e) {
+    var t = e.target;
+    if (t.matches('[data-sdq]')) { sdSearch(t); return; }
+    if (t.matches('[data-sdptext]')) {
+      var ps = SCHED.paste[t.getAttribute('data-sdptext')];
+      if (ps) ps.text = t.value;
+      return;
+    }
+    if (t.matches('[data-sdcq]')) { SCHED.catQ = t.value.trim(); renderSchedDrillBody(); }
+  });
+
+  sec.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.matches('[data-sdcatsel]')) {
+      var ckey = t.getAttribute('data-sdcatsel');
+      t.disabled = true;
+      api('planSetCategory', { date: ckey, category: t.value || null }).then(function () {
+        toast(sdDayTag(ckey) + ' → ' + (t.value ? CAT_NAMES[t.value] || t.value : 'automatic rotation'));
+        return sdRefresh();
+      }).catch(function (err) { toast(err.message); sdRefresh(); });
+      return;
+    }
+    if (t.matches('[data-sdmove]')) {
+      if (!t.value) return;
+      var to = t.value === '__off' ? '' : t.value;
+      t.disabled = true;
+      sdMove(t.getAttribute('data-sdmove'), t.getAttribute('data-sdn'), t.getAttribute('data-sdfrom'), to);
+      return;
+    }
+    if (t.matches('[data-sdaddto]')) {
+      if (!t.value) return;
+      t.disabled = true;
+      sdAdd(t.value, [t.getAttribute('data-sdaddto')]);
+      return;
+    }
+    if (t.matches('[data-sdck]')) {
+      var id = t.getAttribute('data-sdck');
+      if (t.checked) SCHED.catSel[id] = true; else delete SCHED.catSel[id];
+      renderSchedBulk();
+      return;
+    }
+    if (t.matches('[data-sdpck]')) {
+      var pkey = t.getAttribute('data-sdpck');
+      var ln = (SCHED.paste[pkey].lines || [])[+t.getAttribute('data-i')];
+      if (ln) ln.ticked = t.checked;
+      sdRenderPaste(pkey);
+    }
+  });
+
+  sec.addEventListener('click', function (e) {
+    var t;
+    if ((t = e.target.closest('[data-sdadd]'))) {
+      var akey = t.getAttribute('data-sdday');
+      var box = t.closest('[data-sdbox]');
+      if (box) { var inp = box.querySelector('[data-sdq]'); inp.value = ''; inp._seq = ++SCHED.qSeq; }
+      sdCloseDrops(null);
+      sdAdd(akey, [t.getAttribute('data-sdadd')]);
+      return;
+    }
+    if ((t = e.target.closest('[data-sopen]'))) { e.preventDefault(); loadBrand(t.getAttribute('data-sopen')); return; }
+    if ((t = e.target.closest('[data-sdcheck]'))) { SCHED.checkOpen = !SCHED.checkOpen; renderSchedCheck(); return; }
+    if ((t = e.target.closest('[data-sdnotex]'))) {
+      e.preventDefault();
+      (SCHED.notes[t.getAttribute('data-sdnotex')] || []).splice(+t.getAttribute('data-i'), 1);
+      renderSchedDays();
+      return;
+    }
+
+    // Paste a list.
+    if ((t = e.target.closest('[data-sdpaste]'))) {
+      e.preventDefault();
+      var k = t.getAttribute('data-sdpaste');
+      var ps = SCHED.paste[k] = SCHED.paste[k] || { text: '', lines: null, summary: '' };
+      ps.open = !ps.open;
+      renderSchedDays();
+      if (ps.open) { var ta = document.querySelector('[data-sdptext="' + k + '"]'); if (ta) ta.focus(); }
+      return;
+    }
+    if ((t = e.target.closest('[data-sdpclose]'))) {
+      e.preventDefault();
+      SCHED.paste[t.getAttribute('data-sdpclose')].open = false;
+      renderSchedDays();
+      return;
+    }
+    if ((t = e.target.closest('[data-sdpcheck]'))) { sdPasteCheck(t.getAttribute('data-sdpcheck')); return; }
+    if ((t = e.target.closest('[data-sdpswap]'))) {
+      e.preventDefault();
+      var skey = t.getAttribute('data-sdpswap');
+      var sln = SCHED.paste[skey].lines[+t.getAttribute('data-i')];
+      var opts = (sln.brand && sln.confidence !== 'exact' && !sln.picked ? [sln.brand] : []).concat(sln.suggestions || []);
+      var pick = opts[+t.getAttribute('data-j')];
+      if (!pick) return;
+      sln.brand = pick; sln.picked = true; sln.ticked = pick.action !== 'none';
+      sdRenderPaste(skey);
+      return;
+    }
+    if ((t = e.target.closest('[data-sdpcreate]'))) {
+      e.preventDefault();
+      var ckey = t.getAttribute('data-sdpcreate');
+      var ci = +t.getAttribute('data-i');
+      var cln = SCHED.paste[ckey].lines[ci];
+      cln.creating = true;
+      sdRenderPaste(ckey);
+      api('createBrand', { name: cln.input, hint: 'pasted on the Schedule' }).then(function () {
+        return api('matchBrandList', { text: cln.input, date: ckey });
+      }).then(function (r) {
+        var fresh = (r.lines || [])[0];
+        SCHED.paste[ckey].lines[ci] = fresh ? sdPasteLineState(fresh) : cln;
+        cln.creating = false;
+        sdRenderPaste(ckey);
+      }).catch(function (err) { cln.creating = false; sdRenderPaste(ckey); toast(err.message); });
+      return;
+    }
+    if ((t = e.target.closest('[data-sdpadd]'))) {
+      var dkey = t.getAttribute('data-sdpadd');
+      var dps = SCHED.paste[dkey];
+      var ids = sdPasteIds(dkey);
+      if (!ids.length) return;
+      dps.busy = true;
+      sdRenderPaste(dkey);
+      sdAdd(dkey, ids, { quiet: true }).then(function (sum) {
+        dps.busy = false;
+        if (sum) { dps.summary = sum; dps.lines = null; dps.text = ''; toast(sdDayTag(dkey) + ' — ' + sum); }
+        // sdAdd already re-rendered the day; this only restores the
+        // panel if the add failed and nothing re-rendered.
+        sdRenderPaste(dkey);
+      });
+      return;
+    }
+
+    // Cards.
+    if ((t = e.target.closest('[data-sdunpin]'))) {
+      var uname = t.getAttribute('data-sdn');
+      t.disabled = true;
+      api('planRemoveBrand', { date: t.getAttribute('data-sdday'), brandId: t.getAttribute('data-sdunpin') }).then(function (r) {
+        toast(uname + ' unpinned' + (r.unqueued ? ' · ' + sdPlural(r.unqueued, 'person', 'people') + ' back in the pool' : ''));
+        return sdRefresh();
+      }).catch(function (err) { toast(err.message); sdRefresh(); });
+      return;
+    }
+    if ((t = e.target.closest('[data-sdperson]'))) {
+      var wrap = t.closest('[data-sdwrap]');
+      var slot = wrap && wrap.querySelector('[data-sdslot]');
+      if (!slot) return;
+      // A draggable card swallows text selection in the form's inputs.
+      if (wrap.getAttribute('draggable')) wrap.setAttribute('draggable', 'false');
+      openContactForm(t.getAttribute('data-sdperson'), slot, function () { slot.innerHTML = ''; sdRefresh(); });
+      return;
+    }
+    if ((t = e.target.closest('[data-sdsu]'))) { sdOpenSU(t.getAttribute('data-sdsu'), t.getAttribute('data-suname')); return; }
+    if ((t = e.target.closest('[data-sdmissadd]'))) {
+      t.disabled = true;
+      sdAdd(t.getAttribute('data-sdday'), [t.getAttribute('data-sdmissadd')]);
+      return;
+    }
+    if ((t = e.target.closest('[data-sdfitall]'))) {
+      t.disabled = true;
+      sdAdd(t.getAttribute('data-sdfitall'), t.getAttribute('data-ids').split(','));
+      return;
+    }
+    if ((t = e.target.closest('[data-sdseecat]'))) { e.preventDefault(); sdOpenCat(t.getAttribute('data-sdseecat'), true); return; }
+    if ((t = e.target.closest('[data-sclearoff]'))) {
+      var clearOff = t;
+      clearOff.disabled = true;
+      api('clearTodayOffCategory', { preview: true }).then(function (p) {
+        if (!p.people) { toast('Nothing to clear'); clearOff.disabled = false; return; }
+        var names = (p.brands || []).join(', ');
+        if (!window.confirm('Take ' + p.people + ' ' + (p.people === 1 ? 'person' : 'people') +
+          ' back out of today?\n\n' + names +
+          '\n\nThey are not in ' + (CAT_NAMES[p.theme] || p.theme) + '. Nobody is deleted — they go back to the pool and come up on their own category’s day. Anyone already invited is left alone.')) {
+          clearOff.disabled = false; return;
+        }
+        return api('clearTodayOffCategory', {}).then(function (r) {
+          toast('Cleared ' + r.cleared + ' from today');
+          return sdRefresh();
+        });
+      }).catch(function (err) { clearOff.disabled = false; toast(err.message); });
+      return;
+    }
+    // Pass for today: off today's suggestions only, back by itself
+    // tomorrow — which is the whole point of it being separate from
+    // Archive.
+    if ((t = e.target.closest('[data-stoday]'))) {
+      var tname = t.getAttribute('data-sn');
+      t.disabled = true;
+      api('passBrandToday', { brandId: t.getAttribute('data-stoday') }).then(function () {
+        toast('Passed ' + tname + ' for today — back tomorrow');
+        return sdRefresh();
+      }).catch(function (err) { toast(err.message); sdRefresh(); });
+      return;
+    }
+    // Archive: off the schedule, the queue and next best until brought
+    // back by hand (Archived tab). Asks first — it is not a day's pass.
+    if ((t = e.target.closest('[data-spass]'))) {
+      var xname = t.getAttribute('data-sn');
+      if (!window.confirm('Archive ' + xname + '?\n\nIt comes off the schedule, the queue and next best until you bring it back from the Archived tab. Nobody is deleted.')) return;
+      t.disabled = true;
+      api('setBrandPassed', { brandId: t.getAttribute('data-spass'), passed: true }).then(function () {
+        toast('Archived ' + xname + ' — bring back any time from the Archived tab');
+        return sdRefresh();
+      }).catch(function (err) { toast(err.message); sdRefresh(); });
+      return;
+    }
+
+    // Invited today.
+    if ((t = e.target.closest('[data-sdsent]'))) {
+      SCHED.sentOpen[t.getAttribute('data-sdsent')] = !t.getAttribute('data-open');
+      renderSchedDays();
+      return;
+    }
+    if ((t = e.target.closest('[data-sact]'))) {
+      var act = t.getAttribute('data-sact');
+      var tid = t.getAttribute('data-st');
+      var today = SCHED.days[SCHED.today];
+      var p = today && (today.sentPeople || []).filter(function (x) { return x.id === tid; })[0];
+      if (p) {
+        if (act === 'dmsent') p.dmSentAt = new Date().toISOString();
+        else p.status = act;
+        SCHED.sentOpen[p.brandId] = true;
+        renderSchedDays();
+      }
+      toast(act === 'replied' ? 'Reply logged' : act === 'dmsent' ? 'DM logged' : 'Accepted logged');
+      api('setTargetStatus', act === 'dmsent'
+        ? { targetId: tid, dmSent: true, actor: ME.owner || null }
+        : { targetId: tid, status: act, actor: ME.owner || null })
+        .catch(function (err) { toast(err.message); sdRefresh(); });
+      return;
+    }
+
+    // Categories.
+    if ((t = e.target.closest('[data-sdcat]'))) {
+      e.preventDefault();
+      var catKey = t.getAttribute('data-sdcat');
+      if (SCHED.openCat === catKey) { SCHED.openCat = null; renderSchedCats(); }
+      else sdOpenCat(catKey, false);
+      return;
+    }
+    if ((t = e.target.closest('[data-sdselready]'))) {
+      e.preventDefault();
+      var data = SCHED.catCache[SCHED.openCat];
+      var q = (SCHED.catQ || '').toLowerCase();
+      ((data && data.brands) || []).forEach(function (b) {
+        if (b.group === 'notReached' && b.label && b.label.kind === 'ready' && (!q || b.name.toLowerCase().indexOf(q) !== -1)) SCHED.catSel[b.id] = true;
+      });
+      renderSchedDrillBody();
+      return;
+    }
+    if ((t = e.target.closest('[data-sdbulkclear]'))) { e.preventDefault(); SCHED.catSel = {}; renderSchedDrillBody(); return; }
+    if ((t = e.target.closest('[data-sdbulkadd]'))) {
+      var bkey = sec.querySelector('[data-sdbulkday]').value;
+      var bids = Object.keys(SCHED.catSel);
+      if (!bkey || !bids.length) return;
+      t.disabled = true;
+      sdAdd(bkey, bids).then(function (sum) {
+        if (sum) SCHED.catSel = {};
+        renderSchedBulk();
       });
     }
-    toast(act === 'replied' ? 'Reply logged' : act === 'dmsent' ? 'DM logged' : 'Accepted logged');
-    api('setTargetStatus', act === 'dmsent'
-      ? { targetId: tid, dmSent: true, actor: ME.owner || null }
-      : { targetId: tid, status: act, actor: ME.owner || null })
-      .catch(function (err) { toast(err.message); loadSchedule(); });
-    return;
-  }
-  var add = e.target.closest('[data-sadd]');
-  if (add) {
-    var key = add.getAttribute('data-sadd');
-    var bid = add.getAttribute('data-sb');
-    SCHED.names[bid] = add.getAttribute('data-sn');
-    SCHED.plan[key] = SCHED.plan[key] || { category: null, brandIds: [] };
-    if (SCHED.plan[key].brandIds.indexOf(bid) === -1) SCHED.plan[key].brandIds.push(bid);
-    schedDropBrand(bid);
-    renderSchedule();
-    renderRunway();
-    renderBench();
-    schedAddBrand(key, bid, add.getAttribute('data-sn')).then(schedRefreshDays);
-    return;
-  }
-  var del = e.target.closest('[data-sdel]');
-  if (del) {
+  });
+
+  // --- dragging a brand onto a day ----------------------------
+  //
+  // Drop a card on another day and it moves there — the same call as
+  // its Move to menu, so both report the outcome the same way. A card
+  // from the day's own rotation (not pinned) gets pinned to the new day.
+  daysEl.addEventListener('dragstart', function (e) {
+    var row = e.target.closest && e.target.closest('[data-dragb]');
+    if (!row || row.getAttribute('draggable') !== 'true') return;
+    var col = row.closest('[data-drop]');
+    SCHED_DRAG = {
+      id: row.getAttribute('data-dragb'),
+      name: row.getAttribute('data-dragn'),
+      from: row.getAttribute('data-dragfrom') || '',
+      day: col ? col.getAttribute('data-drop') : ''
+    };
+    row.classList.add('sd-dragging');
+    try {
+      e.dataTransfer.effectAllowed = 'move';
+      // Some browsers refuse the drag without data set.
+      e.dataTransfer.setData('text/plain', SCHED_DRAG.id);
+    } catch (err) {}
+  });
+  daysEl.addEventListener('dragend', function (e) {
+    var row = e.target.closest && e.target.closest('[data-dragb]');
+    if (row) row.classList.remove('sd-dragging');
+    daysEl.querySelectorAll('.sd-over').forEach(function (d) { d.classList.remove('sd-over'); });
+    SCHED_DRAG = null;
+  });
+  daysEl.addEventListener('dragover', function (e) {
+    if (!SCHED_DRAG) return;
+    var col = e.target.closest('[data-drop]');
+    if (!col || col.getAttribute('data-drop') === SCHED_DRAG.day) return;
+    // Without preventDefault the browser refuses the drop entirely.
     e.preventDefault();
-    var dkey = del.getAttribute('data-sdel');
-    var dbid = del.getAttribute('data-sb');
-    SCHED.plan[dkey].brandIds = (SCHED.plan[dkey].brandIds || []).filter(function (x) { return x !== dbid; });
-    renderSchedule();
-    schedSave(dkey).then(schedRefreshDays);
-    return;
-  }
-  // + Add on a previewed brand: pin it to that day. In place — the row
-  // becomes a chip, and the brand leaves every other day's preview.
-  var pin = e.target.closest('[data-spin]');
-  if (pin) {
-    var pkey = pin.getAttribute('data-spin');
-    var pbid = pin.getAttribute('data-sb');
-    SCHED.names[pbid] = pin.getAttribute('data-sn');
-    SCHED.plan[pkey] = SCHED.plan[pkey] || { category: null, brandIds: [] };
-    if (SCHED.plan[pkey].brandIds.indexOf(pbid) === -1) SCHED.plan[pkey].brandIds.push(pbid);
-    schedDropBrand(pbid);
-    renderSchedule();
-    renderRunway();
-    renderBench();
-    schedAddBrand(pkey, pbid, pin.getAttribute('data-sn')).then(schedRefreshDays);
-    return;
-  }
-  // "Put in" on one Add-more brand: queue just that one. In place — it
-  // moves up into the day's list right away.
-  var put = e.target.closest('[data-sput]');
-  if (put) {
-    var pdkey = put.getAttribute('data-sput');
-    var pdid = put.getAttribute('data-sb');
-    var pday = SCHED.days[pdkey];
-    var m = pday && (pday.missing || []).filter(function (x) { return x.id === pdid; })[0];
-    if (!m) return;
-    pday.missing = pday.missing.filter(function (x) { return x.id !== pdid; });
-    pday.brands.push(m);
-    SCHED.bench = (SCHED.bench || []).filter(function (b) { return b.id !== pdid; });
-    renderSchedule();
-    renderRunway();
-    renderBench();
-    api('queueBrands', { brandIds: [pdid] }).then(function (r) {
-      if (r.queued) {
-        toast(m.name + ' is in the queue');
-      } else {
-        // "Could not queue X" was a dead end — it threw away the reason
-        // the server had already worked out, so the only way to find out
-        // was to open the brand. Say it.
-        var why = Object.keys(r.failed || {})[0];
-        toast(why
-          ? m.name + ' — ' + (QUEUE_FAIL[why] || why)
-          : 'Could not queue ' + m.name);
-      }
-      schedRefreshDays();
-    }).catch(function (err) { toast(err.message); loadSchedule(); });
-    return;
-  }
-  // "Put all in": queue every not-yet-queued brand of the day's
-  // category. In place — they join the day's list right away.
-  var clearOff = e.target.closest('[data-sclearoff]');
-  if (clearOff) {
-    clearOff.disabled = true;
-    api('clearTodayOffCategory', { preview: true }).then(function (p) {
-      if (!p.people) { toast('Nothing to clear'); clearOff.disabled = false; return; }
-      var names = (p.brands || []).join(', ');
-      if (!window.confirm('Take ' + p.people + ' ' + (p.people === 1 ? 'person' : 'people') +
-        ' back out of today?\n\n' + names +
-        '\n\nThey are not in ' + (CAT_NAMES[p.theme] || p.theme) + '. Nobody is deleted — they go back to the pool and come up on their own category’s day. Anyone already invited is left alone.')) {
-        clearOff.disabled = false; return;
-      }
-      return api('clearTodayOffCategory', {}).then(function (r) {
-        toast('Cleared ' + r.cleared + ' from today');
-        schedRefreshDays();
-      });
-    }).catch(function (err) { clearOff.disabled = false; toast(err.message); });
-    return;
-  }
-
-  var fill = e.target.closest('[data-sfill]');
-  if (fill) {
-    var fkey = fill.getAttribute('data-sfill');
-    var fday = SCHED.days[fkey];
-    if (!fday || !(fday.missing || []).length) return;
-    var ids = fday.missing.map(function (m) { return m.id; });
-    fday.missing.forEach(function (m) {
-      fday.brands.push({ id: m.id, name: m.name, people: m.people });
-      SCHED.bench = (SCHED.bench || []).filter(function (b) { return b.id !== m.id; });
-    });
-    fday.missing = [];
-    renderSchedule();
-    renderRunway();
-    renderBench();
-    toast('Queueing ' + ids.length + (ids.length === 1 ? ' brand' : ' brands') + '…');
-    api('queueBrands', { brandIds: ids }).then(function (r) {
-      // "0 of 3" on its own leaves you clicking each brand to find out
-      // why. The server groups the refusals; say the reason, and name
-      // the brands when there are few enough to read. People, not just
-      // brands — one brand is three or four threads now.
-      var who = r.people ? ' (' + r.people + (r.people === 1 ? ' person' : ' people') + ')' : '';
-      if (r.queued === r.total) {
-        toast(r.queued + ' of ' + r.total + ' queued' + who + ' — they’ll come up on their category day');
-      } else {
-        var parts = [];
-        Object.keys(r.failed || {}).forEach(function (why) {
-          var names = r.failed[why];
-          parts.push(names.length + ' with ' + (QUEUE_FAIL[why] || why) +
-            (names.length <= 3 ? ' (' + names.join(', ') + ')' : ''));
-        });
-        toast(r.queued + ' of ' + r.total + ' queued' + who + ' — ' + parts.join('; '));
-      }
-      schedRefreshDays();
-    }).catch(function (err) { toast(err.message); loadSchedule(); });
-    return;
-  }
-  // Pass for today: off today's suggestions only. No undo to remember —
-  // it comes back by itself tomorrow, which is the whole point of it
-  // being separate from Archive.
-  var today = e.target.closest('[data-stoday]');
-  if (today) {
-    var tbid = today.getAttribute('data-stoday');
-    var tname = today.getAttribute('data-sn');
-    schedDropBrand(tbid);
-    renderSchedule();
-    renderRunway();
-    renderBench();
-    toast('Passed ' + tname + ' for today — back tomorrow');
-    api('passBrandToday', { brandId: tbid })
-      .catch(function (err) { toast(err.message); loadSchedule(); });
-    return;
-  }
-  // Archive: off the schedule, the queue and next best until brought
-  // back by hand (Archived tab).
-  var pass = e.target.closest('[data-spass]');
-  if (pass) {
-    var xbid = pass.getAttribute('data-spass');
-    var xname = pass.getAttribute('data-sn');
-    schedDropBrand(xbid);
-    renderSchedule();
-    renderRunway();
-    renderBench();
-    toast('Archived ' + xname + ' — bring back any time from the Archived tab');
-    api('setBrandPassed', { brandId: xbid, passed: true })
-      .catch(function (err) { toast(err.message); loadSchedule(); });
-  }
-});
-
-// --- schedule side list ("More brands") ------------------------
-
-document.getElementById('sched-bq').addEventListener('input', function (e) {
-  SCHED.benchQ = e.target.value.trim();
-  renderBench();
-});
-
-document.getElementById('sched-side').addEventListener('change', function (e) {
-  var sel = e.target.closest('[data-bday]');
-  if (!sel || !sel.value) return;
-  var key = sel.value;
-  var bid = sel.getAttribute('data-bday');
-  SCHED.names[bid] = sel.getAttribute('data-sn');
-  SCHED.plan[key] = SCHED.plan[key] || { category: null, brandIds: [] };
-  if (SCHED.plan[key].brandIds.indexOf(bid) === -1) SCHED.plan[key].brandIds.push(bid);
-  schedDropBrand(bid);
-  renderSchedule();
-  renderBench();
-  schedAddBrand(key, bid, sel.getAttribute('data-sn')).then(schedRefreshDays);
-});
-
-document.getElementById('sched-side').addEventListener('click', function (e) {
-  var open = e.target.closest('[data-sopen]');
-  if (open) { e.preventDefault(); loadBrand(open.getAttribute('data-sopen')); return; }
-  var btoday = e.target.closest('[data-btoday]');
-  if (btoday) {
-    var tb = btoday.getAttribute('data-btoday');
-    var tn = btoday.getAttribute('data-sn');
-    schedDropBrand(tb);
-    renderSchedule();
-    renderRunway();
-    renderBench();
-    toast('Passed ' + tn + ' for today — back tomorrow');
-    api('passBrandToday', { brandId: tb })
-      .catch(function (err) { toast(err.message); loadSchedule(); });
-    return;
-  }
-  var pass = e.target.closest('[data-bpass]');
-  if (!pass) return;
-  var bid = pass.getAttribute('data-bpass');
-  var name = pass.getAttribute('data-sn');
-  schedDropBrand(bid);
-  renderSchedule();
-  renderBench();
-  toast('Archived ' + name + ' — bring back any time from the Archived tab');
-  api('setBrandPassed', { brandId: bid, passed: true })
-    .catch(function (err) { toast(err.message); loadSchedule(); });
-});
+    e.dataTransfer.dropEffect = 'move';
+    col.classList.add('sd-over');
+  });
+  daysEl.addEventListener('dragleave', function (e) {
+    var col = e.target.closest('[data-drop]');
+    if (col && !col.contains(e.relatedTarget)) col.classList.remove('sd-over');
+  });
+  daysEl.addEventListener('drop', function (e) {
+    var col = e.target.closest('[data-drop]');
+    if (!col || !SCHED_DRAG) return;
+    e.preventDefault();
+    col.classList.remove('sd-over');
+    var key = col.getAttribute('data-drop');
+    var drag = SCHED_DRAG;
+    SCHED_DRAG = null;
+    if (key === drag.day) return;
+    sdMove(drag.id, drag.name, drag.from, key);
+  });
+})();
 
 // --- passed brands ---------------------------------------------
 
@@ -6459,6 +7077,7 @@ function bumpSentToday(d) {
   var atCap = SENT_TODAY.count >= SENT_TODAY.cap;
   chip.style.color = atCap ? '#8fd6a8' : 'var(--ink-3)';
   chip.textContent = SENT_TODAY.count + ' of ' + SENT_TODAY.cap + ' sent today' + (atCap ? ' ✓' : '');
+  oqRenderRail();
 }
 
 function targetRow(t) {
@@ -6564,6 +7183,132 @@ function refreshRow(id) {
   var frag = document.createDocumentFragment();
   while (tmp.firstChild) frag.appendChild(tmp.firstChild);
   row.replaceWith(frag);
+  refreshBrandCard(t.brandId);
+}
+
+// --- LinkedIn tab brand cards ----------------------------------
+// One card per brand: its people stay together whether they've been
+// sent or not, so "how far along is this brand" is one glance instead
+// of hunting across the to-send list and the sent-today list.
+
+// Labels from getTodayQueue ({ brandId: { kind, reachable, need, onFile } }).
+var OQ_LABELS = {};
+// Folded "Done today" cards Leo has opened — kept open across reloads.
+var OQ_DONE_OPEN = {};
+// Today's theme, for the rail's summary card.
+var OQ_THEME = null;
+
+function oqIsPre(t) { return t && (t.status === 'queued' || t.status === 'drafted'); }
+// "Sent" for a card's count: the invite went out, whatever happened after.
+function oqIsSent(t) {
+  return !!t && (!!t.sentAt || t.status === 'sent' || t.status === 'accepted' || t.status === 'replied' || t.status === 'converted');
+}
+
+// Group targets by brand in first-seen order.
+function oqGroup(list) {
+  var by = {}, order = [];
+  (list || []).forEach(function (t) {
+    if (!by[t.brandId]) { by[t.brandId] = []; order.push(t.brandId); }
+    by[t.brandId].push(t);
+  });
+  return order.map(function (bid) { return { brandId: bid, rows: by[bid] }; });
+}
+
+function oqBar(done, total) {
+  var pct = total ? Math.min(100, Math.round(done / total * 100)) : 0;
+  return '<div class="oq-bar' + (total && done >= total ? ' full' : '') + '"><i style="width:' + pct + '%"></i></div>';
+}
+
+function oqNames(rows) {
+  return rows.map(function (t) { return t.contact && t.contact.name ? t.contact.name : ''; })
+    .filter(Boolean).join(', ');
+}
+
+// The header's numbers, from the rows actually in the card.
+function oqHeadCounts(rows) {
+  var sent = rows.filter(oqIsSent);
+  return { sent: sent.length, total: rows.length, sentRows: sent };
+}
+
+// A full brand card. Only the brand name carries data-brand, so a click
+// anywhere else in the card (a button, a draft) never opens the brand page.
+function oqBrandCard(g) {
+  var rows = g.rows, b = rows[0].brand || {};
+  var c = oqHeadCounts(rows);
+  var cat = b.category ? (CAT_NAMES[b.category] || b.category) : '';
+  return '<div class="oq-brand" data-bcard="' + esc(g.brandId) + '">' +
+    '<div class="oq-bh">' +
+      '<span class="oq-bname" data-brand="' + esc(g.brandId) + '">' + esc(b.name || '') + '</span>' +
+      (cat ? '<span class="oq-bcat">' + esc(cat) + '</span>' : '') +
+      sdLabel(OQ_LABELS[g.brandId]) +
+      '<span class="oq-bprog"><span data-oqcount>' + c.sent + ' of ' + c.total + ' sent</span>' + oqBar(c.sent, c.total) + '</span>' +
+    '</div>' +
+    '<div class="oq-rows">' + rows.map(targetRow).join('') + '</div>' +
+  '</div>';
+}
+
+// A brand where everyone in the card went out today: one line, with the
+// people a click away (same rows, same buttons) for an Undo or an accept.
+function oqDoneCard(g) {
+  var rows = g.rows, b = rows[0].brand || {};
+  var c = oqHeadCounts(rows);
+  var open = !!OQ_DONE_OPEN[g.brandId];
+  return '<div class="oq-brand oq-done" data-bcard="' + esc(g.brandId) + '" data-done="1">' +
+    '<div class="oq-bh">' +
+      '<span class="oq-ok">✓</span>' +
+      '<span class="oq-bname" data-brand="' + esc(g.brandId) + '">' + esc(b.name || '') + '</span>' +
+      '<span class="oq-dsum" data-oqcount>' + esc(c.sent + ' invited today' + (c.sent ? ' · ' + oqNames(c.sentRows) : '')) + '</span>' +
+      '<button class="btn-ghost mini" data-oqfold="' + esc(g.brandId) + '">' + (open ? 'Hide people' : 'Show people') + '</button>' +
+    '</div>' +
+    '<div class="oq-rows"' + (open ? '' : ' style="display:none"') + '>' + rows.map(targetRow).join('') + '</div>' +
+  '</div>';
+}
+
+// Recompute a brand card's header after a row changed in place. Rows
+// never move between cards or sections here — that waits for the next
+// load, so nothing jumps out from under the mouse.
+function refreshBrandCard(brandId) {
+  if (!brandId) return;
+  document.querySelectorAll('#targets .oq-brand[data-bcard="' + brandId + '"]').forEach(function (card) {
+    var rows = [].slice.call(card.querySelectorAll('.target[data-id]')).map(function (r) {
+      return TARGET_CACHE[r.getAttribute('data-id')];
+    }).filter(Boolean);
+    // Everyone in it passed or taken off the queue — nothing left to show.
+    if (!rows.length) { card.remove(); return; }
+    var c = oqHeadCounts(rows);
+    var countEl = card.querySelector('[data-oqcount]');
+    if (card.getAttribute('data-done')) {
+      if (countEl) countEl.textContent = c.sent + ' invited today' + (c.sent ? ' · ' + oqNames(c.sentRows) : '');
+    } else {
+      if (countEl) countEl.textContent = c.sent + ' of ' + c.total + ' sent';
+      var bar = card.querySelector('.oq-bprog .oq-bar');
+      if (bar) bar.outerHTML = oqBar(c.sent, c.total);
+    }
+  });
+  oqRenderRail();
+}
+
+// The rail's Today card: how far along the day is, from what's on screen.
+function oqRenderRail() {
+  var slot = document.getElementById('oq-today');
+  if (!slot) return;
+  if (mode !== 'today') { slot.innerHTML = ''; return; }
+  var toSend = 0;
+  document.querySelectorAll('#targets [data-oqsec="today"] .target[data-id]').forEach(function (r) {
+    if (oqIsPre(TARGET_CACHE[r.getAttribute('data-id')])) toSend++;
+  });
+  var cap = SENT_TODAY.cap || 20, sent = SENT_TODAY.count || 0;
+  var open = Math.max(0, cap - sent - toSend);
+  slot.innerHTML = '<div class="oq-sum">' +
+    '<div class="oq-sum-k">Today' + (OQ_THEME ? ' · ' + esc(CAT_NAMES[OQ_THEME] || OQ_THEME) + ' day' : '') + '</div>' +
+    '<div class="oq-sum-big">' + sent + ' of ' + cap + '<span>sent</span></div>' +
+    oqBar(sent, cap) +
+    '<div class="oq-sum-row"><span>Still to send</span><b>' + toSend + '</b></div>' +
+    '<div class="oq-sum-row"><span>Open spots</span><b>' + open + '</b></div>' +
+    (open > 0 && OUTREACH_DOWS.indexOf(new Date().getDay()) > -1
+      ? '<div class="hint" style="margin:10px 0 0">Fill to 20 tops the day up from ' +
+        (OQ_THEME ? esc(CAT_NAMES[OQ_THEME] || OQ_THEME) : 'today’s category') + '.</div>' : '') +
+  '</div>';
 }
 
 function plus3Days() { var d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().slice(0, 10); }
@@ -6669,6 +7414,7 @@ function loadOutreach() {
           // they live on in Results until the reply comes.
           SENT_TODAY.count = tq.sentToday || 0;
           SENT_TODAY.cap = tq.cap || SENT_TODAY.cap;
+          OQ_LABELS = tq.labels || {};
           return { accepted: [], list: list, theme: tq.theme || null, more: tq.more || [], sentToday: sentToday, stale: stale };
         })
     : api('listTargets', { status: statusFilter }).then(function (l) { return { accepted: [], list: l || [], theme: null, more: [], sentToday: [], stale: [] }; });
@@ -6676,6 +7422,7 @@ function loadOutreach() {
   return call.then(function (r) {
     var list = r.list;
     QUEUE_THEME = r.theme || null;
+    OQ_THEME = r.theme || null;
     r.accepted.forEach(function (t) { TARGET_CACHE[t.id] = t; });
     r.sentToday.forEach(function (t) { TARGET_CACHE[t.id] = t; });
     (r.more || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
@@ -6711,27 +7458,9 @@ function loadOutreach() {
     document.getElementById('status-filters').style.display = mode === 'all' ? 'flex' : 'none';
 
     // "They accepted — send the DM" lives on the Results tab now.
-    // "The rest in that category" — ready rows past today's 20, in
-    // case there's room. Mark sent still counts toward the cap.
-    var moreBlock = (r.more || []).length
-      ? '<div class="count-head" style="margin-top:20px">More in ' + (r.theme ? esc(CAT_NAMES[r.theme] || r.theme) : 'this category') + ' — ready if you have room <span class="n">' + r.more.length + '</span></div>' +
-        '<div class="hint" style="margin:2px 0 10px">Beyond today’s 20. Sending one still counts toward the daily cap.</div>' +
-        groupedTargetRows(r.more)
-      : '';
-    var sentBlock = r.sentToday.length
-      ? '<div class="count-head" style="margin-top:20px">Sent today — waiting on accepts <span class="n">' + r.sentToday.length + '</span></div>' +
-        groupedTargetRows(r.sentToday)
-      : '';
     (r.stale || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
-    var staleBlock = (r.stale || []).length
-      ? '<div class="count-head" style="margin-top:20px;color:var(--warn)">Going stale — invited 7+ days ago, no accept <span class="n">' + r.stale.length + '</span></div>' +
-        '<div class="hint" style="margin:2px 0 10px">Press “They accepted” if they did, try their email instead, or Pass and free the slot.</div>' +
-        groupedTargetRows(r.stale)
-      : '';
-
-    box.innerHTML = list.length || r.accepted.length || (r.more || []).length || r.sentToday.length || (r.stale || []).length
-      ? groupedTargetRows(list) + moreBlock + sentBlock + staleBlock
-      : '<div class="panel"><div class="empty"><h3>Nothing here</h3>' +
+    var anything = list.length || r.accepted.length || (r.more || []).length || r.sentToday.length || (r.stale || []).length;
+    var empty = '<div class="panel"><div class="empty"><h3>Nothing here</h3>' +
         '<p>' + (mode === 'all'
           ? (statusFilter !== 'all'
               ? 'No targets with status “' + esc(statusFilter) + '”.'
@@ -6740,8 +7469,52 @@ function loadOutreach() {
             'the daily cap that keeps the LinkedIn account out of trouble. ' +
             'All targets shows everything regardless.') +
         '</p></div></div>';
-    if (mode === 'today') renderNextBest();
-    else document.getElementById('nextbest').innerHTML = '';
+
+    // All targets stays the flat list it always was.
+    if (mode !== 'today') {
+      box.innerHTML = anything ? groupedTargetRows(list) : empty;
+      document.getElementById('nextbest').innerHTML = '';
+      oqRenderRail();
+      return;
+    }
+
+    // Today: one card per brand. To-send and sent-today merge by brand
+    // (to-send order first, then brands that only have sends today), so
+    // a brand you've half done shows who went and who's left together.
+    var seenIds = {};
+    var merged = oqGroup(list.concat(r.sentToday).filter(function (t) {
+      if (seenIds[t.id]) return false;
+      seenIds[t.id] = true;
+      return true;
+    }));
+    var active = [], done = [];
+    merged.forEach(function (g) {
+      // Sent people lead the card; the ones still to send sit under them.
+      g.rows = g.rows.filter(oqIsSent).concat(g.rows.filter(function (t) { return !oqIsSent(t); }));
+      (g.rows.every(oqIsSent) ? done : active).push(g);
+    });
+    var todayBlock = '<div data-oqsec="today">' + active.map(oqBrandCard).join('') + '</div>';
+    var doneBlock = done.length
+      ? '<div class="count-head" style="margin-top:24px">Done today <span class="n">' + done.length + ' brand' + (done.length === 1 ? '' : 's') + '</span></div>' +
+        '<div class="hint" style="margin:2px 0 10px">Everyone at these brands got their invite. Show people for an Undo, or when an accept lands.</div>' +
+        '<div data-oqsec="done">' + done.map(oqDoneCard).join('') + '</div>'
+      : '';
+    // "The rest in that category" — ready rows past today's 20, in
+    // case there's room. Mark sent still counts toward the cap.
+    var moreBlock = (r.more || []).length
+      ? '<div class="count-head" style="margin-top:24px">More in ' + (r.theme ? esc(CAT_NAMES[r.theme] || r.theme) : 'this category') + ' — ready if you have room <span class="n">' + r.more.length + '</span></div>' +
+        '<div class="hint" style="margin:2px 0 10px">Beyond today’s 20. Sending one still counts toward the daily cap.</div>' +
+        '<div data-oqsec="more">' + oqGroup(r.more).map(oqBrandCard).join('') + '</div>'
+      : '';
+    var staleBlock = (r.stale || []).length
+      ? '<div class="count-head" style="margin-top:24px;color:var(--warn)">Going stale — invited 7+ days ago, no accept <span class="n">' + r.stale.length + '</span></div>' +
+        '<div class="hint" style="margin:2px 0 10px">Press “They accepted” if they did, try their email instead, or Pass and free the slot.</div>' +
+        '<div data-oqsec="stale">' + oqGroup(r.stale).map(oqBrandCard).join('') + '</div>'
+      : '';
+
+    box.innerHTML = anything ? todayBlock + doneBlock + moreBlock + staleBlock : empty;
+    oqRenderRail();
+    renderNextBest();
   }).catch(function (e) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
       esc(e.message) + '</p></div></div>';
@@ -10255,6 +11028,20 @@ document.getElementById('status-filters').addEventListener('click', function (e)
 
 // Outreach rows are re-rendered constantly — delegate.
 document.getElementById('targets').addEventListener('click', function (e) {
+  // A folded "Done today" card opens in place (and stays open on reload).
+  var fold = e.target.closest('[data-oqfold]');
+  if (fold) {
+    var fb = fold.getAttribute('data-oqfold');
+    var fcard = fold.closest('.oq-brand');
+    var frows = fcard && fcard.querySelector('.oq-rows');
+    if (!frows) return;
+    var nowOpen = frows.style.display === 'none';
+    frows.style.display = nowOpen ? '' : 'none';
+    fold.textContent = nowOpen ? 'Hide people' : 'Show people';
+    if (nowOpen) OQ_DONE_OPEN[fb] = true; else delete OQ_DONE_OPEN[fb];
+    return;
+  }
+
   var copyBtn = e.target.closest('[data-copy]');
   if (copyBtn) {
     var ref = copyBtn.getAttribute('data-copy').split(':');
@@ -10352,7 +11139,7 @@ document.getElementById('targets').addEventListener('click', function (e) {
   if (act === 'dmsent') {
     var dt = TARGET_CACHE[id];
     if (dt) dt.dmSentAt = new Date().toISOString();
-    if (mode === 'today' && row) row.remove();
+    if (mode === 'today' && row) { row.remove(); if (dt) refreshBrandCard(dt.brandId); }
     else refreshRow(id);
     toast('DM logged — they move to Results until the reply comes');
     api('setTargetStatus', { targetId: id, dmSent: true, actor: ME.owner || null })
@@ -10396,6 +11183,7 @@ document.getElementById('targets').addEventListener('click', function (e) {
       var t2 = TARGET_CACHE[r2.getAttribute('data-id')];
       if (t2 && t2.brandId === uqBrand && (t2.status === 'queued' || t2.status === 'drafted')) r2.remove();
     });
+    refreshBrandCard(uqBrand);
     toast('Company off the queue — still on the brand page');
     api('unqueueBrand', { brandId: uqBrand })
       .catch(function (err) { toast(err.message); loadOutreach(); });
@@ -10417,7 +11205,7 @@ document.getElementById('targets').addEventListener('click', function (e) {
     var pt = TARGET_CACHE[id];
     if (!pt) return;
     pt.status = 'passed';
-    if (mode === 'today' && row) row.remove();
+    if (mode === 'today' && row) { row.remove(); refreshBrandCard(pt.brandId); }
     else refreshRow(id);
     toast('Passed on ' + (pt.contact && pt.contact.name ? pt.contact.name : 'them') + ' — ' +
       (pt.brand && pt.brand.name ? pt.brand.name : 'the brand') + ' stays in play');
