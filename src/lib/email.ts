@@ -431,7 +431,11 @@ export async function draftDailyEmails(limit = 5) {
   const cutoff1 = new Date(Date.now() - FOLLOWUP_AFTER_DAYS * 24 * 60 * 60 * 1000)
   const followCandidates = await prisma.target.findMany({
     where: {
-      status: { notIn: ['replied', 'converted', 'declined', 'dead'] },
+      // Accepted on LinkedIn = on Zach's hand-email list; emailedAt = he
+      // already wrote. A templated "floating this back up" on top of his
+      // own note would be the second email in one conversation.
+      status: { notIn: ['replied', 'converted', 'declined', 'dead', 'accepted'] },
+      emailedAt: null,
       emails: { some: { direction: 'out', kind: 'intro', status: 'sent', sentAt: { lte: cutoff1 } } },
     },
     include: {
@@ -489,6 +493,13 @@ export async function draftDailyEmails(limit = 5) {
         select: { target: { select: { brandId: true } } },
       })).map(m => m.target.brandId)
     )
+    // A brand where someone accepted or answered on LinkedIn, or that
+    // Zach has emailed by hand, is being worked person to person (Home →
+    // For Zach to do). A cold intro to a colleague there lands on top.
+    for (const w of await prisma.target.findMany({
+      where: { OR: [{ status: { in: ['accepted', 'replied'] } }, { emailedAt: { not: null } }] },
+      select: { brandId: true },
+    })) emailedBrands.add(w.brandId)
     const fresh = await prisma.target.findMany({
       where: {
         status: { in: ['queued', 'drafted', 'sent'] },

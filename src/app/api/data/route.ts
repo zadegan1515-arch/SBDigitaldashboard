@@ -745,6 +745,82 @@ async function landMissRows(brand: { id: string; tier: string | null; owner: str
   return { contactsCreated, targetsCreated, targetsShelved, skipped }
 }
 
+// ---------------------------------------------------------------
+// For Zach to do — the Home page's hand-email list
+// ---------------------------------------------------------------
+//
+// A LinkedIn accept usually ends in "email me". Everyone who accepted
+// the invite or answered there sits on Zach's list until he emails them
+// from his own inbox (Emailed ✓) or someone marks "No email needed".
+// The mail leaves through Zach's Gmail, never through the email
+// machine, so nothing here touches its daily cap. One template for
+// everyone, filled per person; an edit made on a card stays on that card.
+
+// (NAME) = first name, (BRAND) = brand, (TITLE) = job title, the same
+// placeholders as Leo's intro template. Until he saves his own, the
+// stand-in is the "thanks for connecting" note the Results tab's Email
+// button already sent.
+const HAND_TEMPLATE_KEY = 'handEmailTemplate'
+const HAND_TEMPLATE_STANDIN = {
+  subject: 'SB Agency × (BRAND)',
+  body: [
+    'Hi (NAME),',
+    '',
+    'Thanks for connecting on LinkedIn.',
+    '',
+    'I run SB Agency — we book artists and DJs for fraternity and sorority events and build ' +
+      'brand activations around those shows. Worth a quick look at whether (BRAND) fits one this season?',
+    '',
+    'Happy to send the one-pager and a few dates.',
+    '',
+    'Zach',
+  ].join('\n'),
+}
+// How far back the Done list reaches.
+const HAND_DONE_DAYS = 30
+
+async function readHandTemplate() {
+  const row = await prisma.setting.findUnique({ where: { key: HAND_TEMPLATE_KEY } })
+  if (row) {
+    try {
+      const v = JSON.parse(row.value)
+      if (v && typeof v.body === 'string' && v.body.trim()) {
+        return { subject: String(v.subject ?? ''), body: v.body as string, standIn: false, savedAt: v.savedAt ?? null, savedBy: v.savedBy ?? null }
+      }
+    } catch { /* an unreadable row falls back to the stand-in */ }
+  }
+  return { ...HAND_TEMPLATE_STANDIN, standIn: true, savedAt: null, savedBy: null }
+}
+
+// Waiting on Zach: accepted the invite or answered on LinkedIn, not
+// emailed by hand yet, not marked "No email needed", and no email thread
+// already running. A reply by email means the conversation has moved to
+// the Email tab, so that person is not his to start.
+const HAND_WAITING: Prisma.TargetWhereInput = {
+  status: { in: ['accepted', 'replied'] },
+  emailedAt: null,
+  handSkippedAt: null,
+  emails: { none: { direction: 'in' } },
+}
+
+// An archived brand, or one marked do-not-email (the flag, or "skip" in
+// its notes — the email machine's rule), stays off Zach's list. The list
+// names what it held back, so nobody wonders where a brand went.
+function handBrandHold(b: { passedAt: Date | null; doNotEmail: boolean; notes: string | null }): string | null {
+  if (b.passedAt) return 'archived'
+  if (b.doNotEmail || /skip/i.test(b.notes ?? '')) return 'do not email'
+  return null
+}
+
+// The ids actually showing on Zach's list right now.
+async function handWaitingIds(): Promise<Set<string>> {
+  const rows = await prisma.target.findMany({
+    where: HAND_WAITING,
+    select: { id: true, brand: { select: { passedAt: true, doNotEmail: true, notes: true } } },
+  })
+  return new Set(rows.filter(t => !handBrandHold(t.brand)).map(t => t.id))
+}
+
 const handlers: Record<string, Handler> = {
 
   // -------- dashboard --------
@@ -1071,7 +1147,12 @@ const handlers: Record<string, Handler> = {
       take: 100,
     })
 
-    const items = targets.map(t => {
+    // A LinkedIn reply still waiting on Zach's email is already on the
+    // Home page's "For Zach to do" list; saying it twice on one page
+    // helps nobody. Once he emails (or it's marked no email needed) it
+    // comes back here for its next step. A due follow-up always shows.
+    const onZach = await handWaitingIds()
+    const items = targets.filter(t => t.followUpAt != null || !onZach.has(t.id)).map(t => {
       const due = t.followUpAt != null
       return {
         targetId: t.id,
@@ -3280,12 +3361,10 @@ const handlers: Record<string, Handler> = {
     return { sha: process.env.VERCEL_GIT_COMMIT_SHA || 'dev' }
   },
 
-  // Everyone who wrote back, plus the brand-level rollup: how many of
-  // the people invited at a brand have answered ("1 of 3 from Yerba").
-  // An accept usually ends in "email me" — so an accept is an email
-  // waiting to be written, and that list needs to exist somewhere other
-  // than Leo's head. Logged by hand: the mail goes out of his own
-  // mailbox, so nothing here touches the email machine or its daily cap.
+  // An accept is an email waiting to be written. Logged by hand ("Emailed
+  // ✓" on Zach's list or the Results tab): the mail goes out of Zach's
+  // own inbox, so nothing here touches the email machine or its cap.
+  // on: false is the Done list's Undo.
   async markEmailed({ targetId, on = true }: any) {
     const t = await prisma.target.update({
       where: { id: targetId },
@@ -3295,39 +3374,189 @@ const handlers: Record<string, Handler> = {
     return { emailedAt: t.emailedAt, contactName: t.contact.name }
   },
 
-  // Everyone who accepted and has not been emailed yet, oldest accept
-  // first — an accept going cold is the expensive kind of nothing.
-  async toEmail() {
-    const rows = await prisma.target.findMany({
-      where: { status: 'accepted', shelved: false },
-      include: {
-        brand: { select: { id: true, name: true } },
-        contact: { select: { id: true, name: true, title: true, email: true, phone: true, linkedinUrl: true } },
-      },
-      orderBy: [{ sentAt: 'asc' }, { createdAt: 'asc' }],
-      take: 200,
-    })
-    const waiting = rows.filter(t => !t.emailedAt)
-    return {
-      accepted: rows.length,
-      done: rows.length - waiting.length,
-      noAddress: waiting.filter(t => !t.contact.email).length,
-      people: waiting.map(t => ({
+  // -------- For Zach to do (Home) --------
+
+  // Zach's list, grouped by brand: a card per person, brands in the
+  // order of their oldest invite (an accept going cold is the expensive
+  // kind of nothing). Carries the template, the Done list for the last
+  // HAND_DONE_DAYS, and whatever brand rule held back.
+  async zachTodo() {
+    const since = new Date(Date.now() - HAND_DONE_DAYS * 24 * 60 * 60 * 1000)
+    const [template, rows, doneRows] = await Promise.all([
+      readHandTemplate(),
+      prisma.target.findMany({
+        where: HAND_WAITING,
+        include: {
+          brand: { select: { id: true, name: true, category: true, about: true, website: true, linkedinUrl: true, passedAt: true, doNotEmail: true, notes: true } },
+          contact: { select: { id: true, name: true, title: true, email: true, linkedinUrl: true } },
+          // An automatic intro that already reached this person: Zach
+          // should answer in that thread rather than start a second one.
+          emails: { where: { direction: 'out', status: 'sent' }, orderBy: { sentAt: 'desc' }, take: 1, select: { sentAt: true, subject: true } },
+          events: { where: { toStatus: 'accepted' }, orderBy: { createdAt: 'asc' }, take: 1, select: { createdAt: true } },
+        },
+        orderBy: [{ sentAt: 'asc' }, { createdAt: 'asc' }],
+        take: 300,
+      }),
+      prisma.target.findMany({
+        where: { OR: [{ emailedAt: { gte: since } }, { handSkippedAt: { gte: since } }] },
+        select: {
+          id: true, emailedAt: true, handSkippedAt: true,
+          brand: { select: { id: true, name: true } },
+          contact: { select: { name: true, email: true } },
+        },
+        take: 200,
+      }),
+    ])
+
+    const brands: any[] = []
+    const byBrand = new Map<string, any>()
+    const held = new Map<string, { brandId: string; brandName: string; reason: string; people: number }>()
+    for (const t of rows) {
+      const hold = handBrandHold(t.brand)
+      if (hold) {
+        const h = held.get(t.brand.id) ?? { brandId: t.brand.id, brandName: t.brand.name, reason: hold, people: 0 }
+        h.people += 1
+        held.set(t.brand.id, h)
+        continue
+      }
+      let g = byBrand.get(t.brand.id)
+      if (!g) {
+        g = {
+          id: t.brand.id, name: t.brand.name, category: t.brand.category, about: t.brand.about,
+          website: t.brand.website, linkedinUrl: t.brand.linkedinUrl, people: [],
+        }
+        byBrand.set(t.brand.id, g)
+        brands.push(g)
+      }
+      const auto = t.emails[0]
+      g.people.push({
         targetId: t.id,
-        brandId: t.brand.id,
-        brandName: t.brand.name,
+        status: t.status,
         contactId: t.contact.id,
         name: t.contact.name,
         title: t.contact.title,
         email: t.contact.email,
-        phone: t.contact.phone,
         linkedinUrl: t.contact.linkedinUrl,
-        acceptedFor: t.sentAt,
+        invitedAt: t.sentAt,
+        acceptedAt: t.events[0]?.createdAt ?? null,
+        repliedAt: t.repliedAt,
         dmSentAt: t.dmSentAt,
-      })),
+        autoEmailedAt: auto?.sentAt ?? null,
+        autoSubject: auto?.subject ?? null,
+        handSubject: t.handSubject,
+        handBody: t.handBody,
+        handNote: t.handNote,
+      })
+    }
+
+    // Emailed wins over skipped when a row carries both.
+    const done = doneRows
+      .map(t => ({
+        targetId: t.id,
+        brandId: t.brand.id,
+        brandName: t.brand.name,
+        name: t.contact.name,
+        email: t.contact.email,
+        kind: t.emailedAt ? 'emailed' : 'skipped',
+        at: (t.emailedAt ?? t.handSkippedAt) as Date,
+      }))
+      .sort((a, b) => b.at.getTime() - a.at.getTime())
+      .slice(0, 50)
+
+    const people = brands.reduce((n, g) => n + g.people.length, 0)
+    return {
+      template,
+      brands,
+      people,
+      noAddress: brands.reduce((n, g) => n + g.people.filter((p: any) => !p.email).length, 0),
+      held: [...held.values()],
+      done,
+      doneDays: HAND_DONE_DAYS,
     }
   },
 
+  async handTemplate() {
+    return readHandTemplate()
+  },
+
+  // The one template every untouched card follows. Cards someone edited
+  // keep their own version until "Reset to template" on that card.
+  async saveHandTemplate({ subject, body, __user }: any) {
+    const text = String(body ?? '').replace(/\r\n/g, '\n')
+    if (!text.trim()) throw new Error('The email is empty, nothing to save')
+    const value = JSON.stringify({
+      subject: String(subject ?? '').trim().slice(0, 200),
+      body: text.slice(0, 8000),
+      savedAt: new Date().toISOString(),
+      savedBy: __user ?? null,
+    })
+    await prisma.setting.upsert({
+      where: { key: HAND_TEMPLATE_KEY },
+      create: { key: HAND_TEMPLATE_KEY, value },
+      update: { value },
+    })
+    return readHandTemplate()
+  },
+
+  // One card's own version of the email, and the note for Zach. Every
+  // field is optional: a subject-only edit leaves the body following the
+  // template, and null hands one field back to it. reset hands back both.
+  async saveHandEmail({ targetId, subject, body, note, reset }: any) {
+    if (!targetId) throw new Error('Missing person')
+    const data: Prisma.TargetUpdateInput = {}
+    if (reset) { data.handSubject = null; data.handBody = null }
+    if (subject === null) data.handSubject = null
+    else if (typeof subject === 'string') data.handSubject = subject.slice(0, 300)
+    if (body === null) data.handBody = null
+    else if (typeof body === 'string') data.handBody = body.replace(/\r\n/g, '\n').slice(0, 10000)
+    if (note !== undefined) data.handNote = String(note ?? '').trim().slice(0, 2000) || null
+    return prisma.target.update({
+      where: { id: targetId },
+      data,
+      select: { id: true, handSubject: true, handBody: true, handNote: true },
+    })
+  },
+
+  // The address typed on Zach's card IS the person's email on file, so
+  // the brand page sees it too. A different address replaces the old one
+  // only after the old one is written into the person's notes, so nothing
+  // on file just vanishes. Blank is refused: clearing the box never wipes
+  // an address.
+  async setHandTo({ targetId, email }: any) {
+    const clean = String(email ?? '').trim()
+    if (!clean) throw new Error('Type an address. Clearing the box never removes the one on file.')
+    if (!/^[^\s@<>(),;:]+@[^\s@<>(),;:]+\.[a-z]{2,}$/i.test(clean)) throw new Error('That doesn’t look like an email address')
+    const t = await prisma.target.findUnique({ where: { id: targetId }, include: { contact: true } })
+    if (!t) throw new Error('Person not found')
+    const old = t.contact.email
+    if (old && old.toLowerCase() === clean.toLowerCase()) {
+      return { email: old, contactName: t.contact.name, replaced: null }
+    }
+    const stamp = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' })
+    const notes = old
+      ? [`Email was ${old} (replaced on Zach's list, ${stamp})`, t.contact.notes].filter(Boolean).join('\n')
+      : undefined
+    const c = await prisma.contact.update({
+      where: { id: t.contactId },
+      data: { email: clean, ...(notes !== undefined ? { notes } : {}) },
+      select: { email: true, name: true },
+    })
+    return { email: c.email, contactName: c.name, replaced: old }
+  },
+
+  // "No email needed" (a call already booked on LinkedIn, say): off
+  // Zach's list without pretending an email went out. on: false undoes.
+  async skipHandEmail({ targetId, on = true }: any) {
+    const t = await prisma.target.update({
+      where: { id: targetId },
+      data: { handSkippedAt: on ? new Date() : null },
+      include: { contact: { select: { name: true } } },
+    })
+    return { handSkippedAt: t.handSkippedAt, contactName: t.contact.name }
+  },
+
+  // Everyone who wrote back, plus the brand-level rollup: how many of
+  // the people invited at a brand have answered ("1 of 3 from Yerba").
   async repliedOverview() {
     const replied = await prisma.target.findMany({
       where: { status: { in: ['replied', 'converted'] } },

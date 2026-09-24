@@ -209,11 +209,24 @@ model Target {
   // person from Today's "They accepted — send the DM" list.
   dmSentAt DateTime?
 
-  // When an email went to this person by hand, out of Leo's own mailbox.
+  // When an email went to this person by hand, out of Zach's own mailbox.
   // Accepts usually end in "email me" — this is what clears them off the
-  // to-email list, and it is deliberately separate from the email
-  // machine's own EmailMessage rows, which the daily cap governs.
+  // Home page's "For Zach to do" list, and it is deliberately separate
+  // from the email machine's own EmailMessage rows, which the daily cap
+  // governs.
   emailedAt DateTime?
+
+  // Zach's hand email for this person, when someone edited it on their
+  // card. Null = follow the template (Setting handEmailTemplate), so a
+  // new template reaches every card nobody has touched.
+  handSubject String?
+  handBody    String?
+  // Leo's note for Zach about this person: what they said on LinkedIn,
+  // the address they gave, what to lead with.
+  handNote String?
+  // "No email needed" (a call got booked on LinkedIn, say): off Zach's
+  // list without claiming an email went out.
+  handSkippedAt DateTime?
 
   // Set when it lands in a day's send list, so "Today" is stable
   // and doesn't reshuffle mid-session.

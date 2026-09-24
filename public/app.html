@@ -95,6 +95,47 @@
     font-size:13.5px;font-weight:600;color:var(--ink-1);transition:border-color .15s}
   .go-card:hover{border-color:rgba(79,131,247,.55)}
   .go-card .arr{margin-left:auto;color:var(--ink-3);font-weight:400}
+
+  /* For Zach to do (Home): one group per brand, a card per person in
+     it. The rule down the left is what says "same brand". */
+  #zach-todo{scroll-margin-top:130px}
+  .zt-title{font-family:var(--display);font-size:18px;font-weight:700;letter-spacing:-.01em;color:var(--ink-1)}
+  .zt-tools{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+  .zt-brand{margin-bottom:20px}
+  .zt-bhead{display:flex;align-items:baseline;gap:4px 10px;flex-wrap:wrap;padding:0 2px 8px}
+  .zt-bname{font-family:var(--display);font-weight:700;font-size:16px;letter-spacing:-.01em;cursor:pointer}
+  .zt-bname:hover{color:var(--accent-hi)}
+  .zt-bmeta{font-size:12px;color:var(--ink-3)}
+  .zt-bmeta a{color:var(--ink-3)}
+  .zt-bmeta a:hover{color:var(--ink-1)}
+  .zt-babout{flex-basis:100%;font-size:12.5px;color:var(--ink-2)}
+  .zt-people{border-left:2px solid var(--border);padding-left:14px;margin-left:3px}
+  .zt-card{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);
+    padding:16px 18px;margin-bottom:10px;box-shadow:var(--shadow)}
+  .zt-top{display:flex;align-items:flex-start;gap:12px}
+  .zt-steps{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:12px}
+  .zt-steps .zt-lbl{margin-right:2px}
+  .zt-step{font-size:11px;color:var(--ink-3);border:1px solid var(--border);border-radius:999px;padding:2px 9px}
+  .zt-step.on{color:#55d9a2;border-color:rgba(62,207,142,.35);background:rgba(62,207,142,.08)}
+  .zt-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  .zt-lbl{font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);width:78px;flex:none;white-space:nowrap}
+  .zt-to{flex:1;min-width:0;max-width:420px}
+  .zt-note{flex:1;min-width:0;padding:7px 11px;font-size:13px;line-height:1.5}
+  .zt-editor{margin-top:12px;padding-top:12px;border-top:1px solid var(--border-soft)}
+  .zt-editor textarea{margin-top:8px;font-size:13px}
+  .zt-flag{font-size:12px;color:var(--warn)}
+  .zt-card .mini{padding:4px 9px;font-size:11px;opacity:.7}
+  .zt-card .mini:hover{opacity:1}
+  .zt-done-row{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border-soft);font-size:13px}
+  .zt-done-row:last-child{border-bottom:0}
+  @media (max-width:768px){
+    .zt-people{padding-left:10px;margin-left:0}
+    .zt-card{padding:14px}
+    .zt-top{flex-wrap:wrap}
+    .zt-lbl{width:100%}
+    .zt-steps .zt-lbl{width:auto}
+    .zt-to{max-width:none}
+  }
   .search-wrap{position:relative;flex:1;max-width:520px}
   .search-input{width:100%;padding:9px 12px 9px 34px;border-radius:999px;border:1px solid var(--border);
     background:var(--surface-1);font-family:inherit;font-size:13.5px;color:var(--ink-1)}
@@ -478,6 +519,7 @@
       <div class="eyebrow">Dashboard</div>
       <h1 id="today-date">—</h1>
       <div class="sub" id="dash-sub">Loading…</div>
+      <div id="zach-todo"></div>
       <div id="action-panel" style="margin-top:20px"></div>
       <div class="kpi-row" id="kpis"></div>
       <div class="section-head">Sponsorship revenue <span class="n">separate line from booking revenue</span></div>
@@ -1086,6 +1128,7 @@ function renderActionPanel() {
 
 function loadDashboard() {
   showView('dashboard');
+  renderZachTodo();
   renderActionPanel();
   document.getElementById('today-date').textContent =
     new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
@@ -1163,6 +1206,469 @@ function loadDashboard() {
       : '';
   });
 }
+
+// --- For Zach to do --------------------------------------------
+//
+// Everyone who accepted our LinkedIn invite or answered there, waiting
+// on an email from Zach's own inbox. Each brand is a group, each person
+// a card. Every email starts from one template (Edit email template);
+// an edit made on a card saves to that card only, and Reset to template
+// hands it back. Nothing here sends mail: Open in Gmail fills in a
+// compose window, Zach presses Send, then Emailed ✓ logs it.
+
+var ZT = null;             // last zachTodo payload
+var ZT_BY_ID = {};         // targetId -> person
+var ZT_OPEN = {};          // targetId -> draft editor open
+var ZT_SEEN = {};          // targetId -> LinkedIn opened (this visit)
+var ZT_SENT = {};          // targetId -> Gmail opened or email copied (this visit)
+var ZT_DRAFTED = {};       // targetId -> draft opened (this visit)
+var ZT_TPL_OPEN = false;
+var ZT_DONE_OPEN = false;
+var ZT_SHOW = 8;           // brand groups shown before "Show all"
+var ZT_SCROLL = location.hash === '#zach';
+var HAND_TPL = null;       // the template; the Results tab's Email button reads it too
+
+// (NAME) or (FIRST NAME) -> first name, (BRAND) or (COMPANY) -> brand,
+// (TITLE) -> job title. Case doesn't matter.
+function handFill(text, p) {
+  var first = String(p.name || '').trim().split(/\s+/)[0] || 'there';
+  return String(text || '')
+    .replace(/\((?:first\s*)?name\)/gi, first)
+    .replace(/\((?:brand|company)\)/gi, p.brandName || '')
+    .replace(/\(title\)/gi, p.title || '');
+}
+
+// This person's email as it stands: the card's own edit where there is
+// one, the template everywhere else.
+function handDraft(p) {
+  var tpl = HAND_TPL || { subject: '', body: '' };
+  return {
+    subject: p.handSubject != null ? p.handSubject : handFill(tpl.subject, p),
+    body: p.handBody != null ? p.handBody : handFill(tpl.body, p)
+  };
+}
+
+function handTplReady() {
+  if (HAND_TPL) return Promise.resolve(HAND_TPL);
+  return api('handTemplate').then(function (t) { HAND_TPL = t; return t; });
+}
+
+// A Gmail compose window with everything filled in. authuser picks the
+// Google account the dashboard is signed in with, so a personal Gmail
+// open in the same browser doesn't end up sending it.
+function gmailCompose(to, subject, body) {
+  return 'https://mail.google.com/mail/?view=cm&fs=1' +
+    (ME && ME.email ? '&authuser=' + encodeURIComponent(ME.email) : '') +
+    '&to=' + encodeURIComponent(to || '') +
+    '&su=' + encodeURIComponent(subject || '') +
+    '&body=' + encodeURIComponent(body || '');
+}
+
+function ztCopy(text, msg) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text).then(function () { toast(msg); }, function () { toast('Could not copy'); });
+  }
+  var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); toast(msg); } catch (e) { toast('Could not copy'); }
+  document.body.removeChild(ta);
+}
+
+function ztFirst(p) { return String(p.name || '').trim().split(/\s+/)[0] || 'them'; }
+function ztEdited(p) { return p.handSubject != null || p.handBody != null; }
+
+// The steps tick themselves as they happen. 1 and 4 only know about
+// this visit (the dashboard can't see LinkedIn or Gmail).
+function ztStepsHtml(p) {
+  var to = p._to != null ? p._to : p.email;
+  var steps = [
+    ['Read their LinkedIn chat', ZT_SEEN[p.targetId]],
+    ['Confirm the address', /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to || '')],
+    ['Draft the email', ZT_DRAFTED[p.targetId] || ztEdited(p)],
+    ['Send it from Gmail', ZT_SENT[p.targetId]],
+    ['Tap Emailed ✓', false]
+  ];
+  return '<span class="zt-lbl">Next steps</span>' + steps.map(function (s, i) {
+    return '<span class="zt-step' + (s[1] ? ' on' : '') + '">' + (s[1] ? '✓ ' : (i + 1) + ' · ') + esc(s[0]) + '</span>';
+  }).join('');
+}
+
+function ztEdStateHtml(p) {
+  return ztEdited(p)
+    ? '<span class="hint" style="margin:0">Edited for ' + esc(ztFirst(p)) + '</span>' +
+      '<button class="btn-ghost mini" data-ztact="reset" title="Throw away this card’s edits and use the template again">Reset to template</button>'
+    : '<span class="hint" style="margin:0">From the template. Edits here stay on this card.</span>';
+}
+
+function ztCardHtml(p) {
+  var open = !!ZT_OPEN[p.targetId];
+  var d = handDraft(p);
+  var hasLi = /^https?:\/\//i.test(p.linkedinUrl || '');
+  var li = hasLi ? p.linkedinUrl
+    : 'https://www.linkedin.com/search/results/people/?keywords=' + encodeURIComponent(p.name + ' ' + p.brandName);
+  var stage = p.status === 'replied'
+    ? '<span class="status replied">answered on LinkedIn' + (p.repliedAt ? ' ' + esc(shortDate(p.repliedAt)) : '') + '</span>'
+    : '<span class="status accepted">accepted' + (p.acceptedAt ? ' ' + esc(shortDate(p.acceptedAt)) : '') + '</span>';
+  var note = p.handNote || '';
+  var noteRows = Math.min(5, Math.max(1, note.split('\n').length + Math.floor(note.length / 90)));
+  return '<div class="zt-card" data-zt="' + esc(p.targetId) + '">' +
+    '<div class="zt-top"><div class="t-main">' +
+      '<div class="t-line"><span class="t-brand">' + esc(p.name) + '</span>' +
+        (p.title ? ' <span class="t-title">— ' + esc(p.title) + '</span>' : '') + '</div>' +
+      '<div class="t-meta">' + stage +
+        (p.invitedAt ? '<span>· invited ' + esc(shortDate(p.invitedAt)) + '</span>' : '') +
+        (p.dmSentAt ? '<span>· DM sent ' + esc(shortDate(p.dmSentAt)) + '</span>' : '') +
+      '</div>' +
+      (p.autoEmailedAt
+        ? '<div class="zt-flag" style="margin-top:6px">An automatic intro already reached ' + esc(ztFirst(p)) + ' on ' +
+          esc(shortDate(p.autoEmailedAt)) + (p.autoSubject ? ' (“' + esc(p.autoSubject) + '”)' : '') +
+          '. Reply in that thread instead of starting a new one.</div>'
+        : '') +
+    '</div>' +
+    '<a class="btn-ghost" style="flex:none" href="' + esc(li) + '" target="_blank" rel="noopener" data-ztli="' + esc(p.targetId) + '">' +
+      (hasLi ? 'LinkedIn ↗' : 'Find on LinkedIn ↗') + '</a>' +
+    '</div>' +
+    '<div class="zt-steps">' + ztStepsHtml(p) + '</div>' +
+    '<label class="zt-row"><span class="zt-lbl">Note</span>' +
+      '<textarea class="field-box zt-note" rows="' + noteRows + '" data-ztnote placeholder="e.g. she said email her about spring shows">' + esc(note) + '</textarea></label>' +
+    '<label class="zt-row"><span class="zt-lbl">To</span>' +
+      '<input class="inp zt-to" type="email" data-ztto value="' + esc(p.email || '') + '" placeholder="No email on file. Type the one they gave you" autocomplete="off"></label>' +
+    '<div class="zt-row">' +
+      '<button class="' + (open ? 'btn-ghost' : 'btn-draft') + '" data-ztact="draft">' + (open ? 'Hide draft' : ztEdited(p) ? 'Edit draft' : 'Draft email') + '</button>' +
+      '<button class="btn-ghost" data-ztact="emailed" title="Logged: the email went out. Moves them to Done.">Emailed ✓</button>' +
+      '<button class="btn-ghost mini" data-ztact="skip" title="A call is already booked, or they said no: off the list without logging an email">No email needed</button>' +
+    '</div>' +
+    (open
+      ? '<div class="zt-editor">' +
+          '<label class="zt-row" style="margin-top:0"><span class="zt-lbl">Subject</span>' +
+            '<input class="inp" style="flex:1;min-width:0" data-ztsubj value="' + esc(d.subject) + '"></label>' +
+          '<textarea class="field-box" rows="' + Math.min(18, Math.max(6, d.body.split('\n').length + 1)) + '" data-ztbody aria-label="Email to ' + esc(p.name) + '">' + esc(d.body) + '</textarea>' +
+          '<div class="zt-row">' +
+            '<button class="btn-draft" data-ztact="gmail" title="Opens a new Gmail message with the address, subject and email filled in. Nothing sends until you press Send.">Open in Gmail ↗</button>' +
+            '<button class="btn-ghost" data-ztact="copy">Copy email</button>' +
+            '<button class="btn-ghost" data-ztact="copysubj">Copy subject</button>' +
+            '<span class="zt-edstate" style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">' + ztEdStateHtml(p) + '</span>' +
+          '</div>' +
+        '</div>'
+      : '') +
+  '</div>';
+}
+
+function ztBrandHtml(g) {
+  var site = g.website ? (/^https?:/i.test(g.website) ? g.website : 'https://' + g.website) : '';
+  var meta = [];
+  if (g.category) meta.push(esc(CAT_NAMES[g.category] || g.category));
+  if (g.people.length > 1) meta.push(g.people.length + ' people');
+  if (site) meta.push('<a href="' + esc(site) + '" target="_blank" rel="noopener">website ↗</a>');
+  if (/^https?:\/\//i.test(g.linkedinUrl || '')) meta.push('<a href="' + esc(g.linkedinUrl) + '" target="_blank" rel="noopener">company page ↗</a>');
+  return '<div class="zt-brand">' +
+    '<div class="zt-bhead">' +
+      '<span class="zt-bname" data-ztbrand="' + esc(g.id) + '" title="Open the brand page">' + esc(g.name) + '</span>' +
+      (meta.length ? '<span class="zt-bmeta">' + meta.join(' · ') + '</span>' : '') +
+      (g.about ? '<div class="zt-babout">' + esc(g.about) + '</div>' : '') +
+    '</div>' +
+    '<div class="zt-people">' + g.people.map(ztCardHtml).join('') + '</div>' +
+  '</div>';
+}
+
+function ztTplHtml(tpl) {
+  return '<div class="panel panel-pad" style="margin:0 0 16px">' +
+    '<b style="font-size:13.5px">Email template</b>' +
+    '<div class="hint" style="margin:4px 0 12px">(NAME) becomes their first name, (BRAND) the brand, (TITLE) their job title. ' +
+      'Cards someone already edited keep their own version; Reset to template on a card picks this one up.</div>' +
+    '<label class="lbl" for="zt-tsubj">Subject</label>' +
+    '<input class="field-box" id="zt-tsubj" value="' + esc(tpl.subject) + '" style="margin-bottom:10px">' +
+    '<label class="lbl" for="zt-tbody">Email</label>' +
+    '<textarea class="field-box" id="zt-tbody" rows="12">' + esc(tpl.body) + '</textarea>' +
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px">' +
+      '<button class="btn-solid" data-ztact="tplsave">Save template</button>' +
+      '<button class="btn-ghost" data-ztact="tpl">Cancel</button>' +
+      '<span class="hint" style="margin:0">' + (tpl.standIn
+        ? 'This is the stand-in. Paste yours over it.'
+        : 'Last saved ' + esc(when(tpl.savedAt)) + (tpl.savedBy ? ' by ' + esc(tpl.savedBy) : '')) + '</span>' +
+    '</div></div>';
+}
+
+function ztRender() {
+  var box = document.getElementById('zach-todo');
+  if (!box || !ZT) return;
+  // A half-written template survives a re-render (a card ticked off
+  // while the editor is open redraws the whole section).
+  var ts = document.getElementById('zt-tsubj'), tb = document.getElementById('zt-tbody');
+  var keep = ZT_TPL_OPEN && ts && tb ? { subject: ts.value, body: tb.value } : null;
+
+  var brands = ZT.brands;
+  var people = 0, noAddr = 0;
+  brands.forEach(function (g) {
+    g.people.forEach(function (p) { people += 1; if (!p.email) noAddr += 1; });
+  });
+  var shown = brands.slice(0, ZT_SHOW);
+  var tpl = ZT.template;
+
+  var html =
+    '<div class="section-head" style="margin:26px 0 6px;flex-wrap:wrap"><span class="zt-title">For Zach to do</span>' +
+      '<span class="n">' + (people
+        ? people + (people === 1 ? ' person' : ' people') + ' at ' + brands.length + (brands.length === 1 ? ' brand' : ' brands')
+        : 'all caught up') + '</span>' +
+      '<span class="zt-tools">' +
+        '<button class="btn-ghost" data-ztact="tpl">' + (ZT_TPL_OPEN ? 'Close template' : 'Edit email template') + '</button>' +
+        '<a class="btn-ghost" href="/materials/sba-one-pager.pdf" download="SBA One Pager.pdf" title="Download the one-pager to attach">One-pager ↓</a>' +
+        '<button class="btn-ghost" data-ztact="link" title="Copy a link that opens straight to this list">Copy link for Zach</button>' +
+      '</span></div>' +
+    '<div class="hint" style="margin:0 0 12px">They accepted our LinkedIn invite or answered there, and most will have said “email me”. ' +
+      'Email each one from your own inbox, then tap Emailed ✓. Oldest invite first.' +
+      (noAddr ? ' ' + noAddr + (noAddr === 1 ? ' has' : ' have') + ' no address on file yet.' : '') + '</div>' +
+    (tpl.standIn
+      ? '<div class="zt-flag" style="margin:-4px 0 12px">Using the stand-in email until Leo saves his template. Edit email template to paste it in.</div>'
+      : '') +
+    (ZT_TPL_OPEN ? ztTplHtml(keep || tpl) : '') +
+    (brands.length
+      ? shown.map(ztBrandHtml).join('') +
+        (brands.length > shown.length
+          ? '<button class="btn-ghost" data-ztact="all" style="margin:-6px 0 8px">Show all ' + brands.length + ' brands (' +
+            (brands.length - shown.length) + ' more)</button>'
+          : '')
+      : '<div class="panel"><div class="empty" style="padding:26px"><h3>Nothing waiting</h3>' +
+        '<p>Everyone who accepted on LinkedIn has been emailed. New accepts land here on their own.</p></div></div>') +
+    ((ZT.held || []).length
+      ? '<div class="hint" style="margin:6px 0 0">Not shown: ' + ZT.held.map(function (h) {
+          return esc(h.brandName) + ' (' + esc(h.reason) + (h.people > 1 ? ', ' + h.people + ' people' : '') + ')';
+        }).join(', ') + '. Change that on the brand page to bring them back.</div>'
+      : '') +
+    ((ZT.done || []).length
+      ? '<details class="fold" id="zt-done"' + (ZT_DONE_OPEN ? ' open' : '') + '>' +
+          '<summary class="section-head" style="margin:14px 0 10px">Done <span class="n">' + ZT.done.length +
+            ' in the last ' + ZT.doneDays + ' days</span></summary>' +
+          '<div class="panel">' + ZT.done.map(function (x) {
+            return '<div class="zt-done-row">' +
+              '<div style="flex:1;min-width:0">' +
+                '<span class="t-brand" data-ztbrand="' + esc(x.brandId) + '" style="cursor:pointer">' + esc(x.brandName) + '</span>' +
+                '<span class="t-sep">·</span>' + esc(x.name) +
+                '<div class="t-meta" style="margin-top:3px">' +
+                  (x.kind === 'emailed'
+                    ? '<span class="status replied">emailed ' + esc(shortDate(x.at)) + '</span>' + (x.email ? '<span>· ' + esc(x.email) + '</span>' : '')
+                    : '<span class="status passed">no email needed · ' + esc(shortDate(x.at)) + '</span>') +
+                '</div></div>' +
+              '<button class="btn-ghost" data-ztundo="' + esc(x.targetId) + '" data-kind="' + esc(x.kind) + '" title="Put them back on the list">Undo</button>' +
+            '</div>';
+          }).join('') + '</div></details>'
+      : '');
+
+  box.innerHTML = html;
+  var dn = document.getElementById('zt-done');
+  if (dn) dn.addEventListener('toggle', function () { ZT_DONE_OPEN = dn.open; });
+}
+
+function renderZachTodo() {
+  var box = document.getElementById('zach-todo');
+  if (!box) return;
+  return api('zachTodo').then(function (r) {
+    ZT = r;
+    HAND_TPL = r.template;
+    ZT_BY_ID = {};
+    r.brands.forEach(function (g) {
+      g.people.forEach(function (p) { p.brandId = g.id; p.brandName = g.name; ZT_BY_ID[p.targetId] = p; });
+    });
+    ztRender();
+    if (ZT_SCROLL) { ZT_SCROLL = false; box.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  }).catch(function (e) {
+    box.innerHTML = '<div class="hint" style="margin:18px 0 0">Could not load Zach’s list: ' + esc(e.message) + '</div>';
+  });
+}
+
+// From elsewhere (the Results tab): open Home at Zach's list.
+function gotoZachList() {
+  ZT_SCROLL = true;
+  gotoView('dashboard');
+}
+
+function ztCardEl(id) { return document.querySelector('#zach-todo [data-zt="' + id + '"]'); }
+
+function ztRenderCard(id) {
+  var p = ZT_BY_ID[id], card = ztCardEl(id);
+  if (!p || !card) return;
+  var tmp = document.createElement('div');
+  tmp.innerHTML = ztCardHtml(p);
+  card.replaceWith(tmp.firstElementChild);
+}
+
+function ztSteps(id) {
+  var p = ZT_BY_ID[id], card = ztCardEl(id);
+  if (p && card) card.querySelector('.zt-steps').innerHTML = ztStepsHtml(p);
+}
+
+// What would go out right now: the To box, and the editor if it's open.
+function ztCurrent(card, p) {
+  var d = handDraft(p);
+  var s = card.querySelector('[data-ztsubj]'), b = card.querySelector('[data-ztbody]'), t = card.querySelector('[data-ztto]');
+  return { to: t ? t.value.trim() : (p.email || ''), subject: s ? s.value : d.subject, body: b ? b.value : d.body };
+}
+
+// Emailed / no email needed: off the list and onto Done, in place.
+function ztDone(id, kind) {
+  var p = ZT_BY_ID[id];
+  if (!p || !ZT) return;
+  ZT.brands.forEach(function (g) { g.people = g.people.filter(function (x) { return x.targetId !== id; }); });
+  ZT.brands = ZT.brands.filter(function (g) { return g.people.length; });
+  ZT.done.unshift({ targetId: id, brandId: p.brandId, brandName: p.brandName, name: p.name, email: p.email, kind: kind, at: new Date().toISOString() });
+  delete ZT_BY_ID[id];
+  delete ZT_OPEN[id];
+  ztRender();
+  renderActionPanel();
+}
+
+document.getElementById('zach-todo').addEventListener('click', function (e) {
+  var brand = e.target.closest('[data-ztbrand]');
+  if (brand) { loadBrand(brand.getAttribute('data-ztbrand')); return; }
+  var li = e.target.closest('[data-ztli]');
+  if (li) {   // the link opens as normal; this only ticks step 1
+    ZT_SEEN[li.getAttribute('data-ztli')] = true;
+    ztSteps(li.getAttribute('data-ztli'));
+    return;
+  }
+  var undo = e.target.closest('[data-ztundo]');
+  if (undo) {
+    var uid = undo.getAttribute('data-ztundo');
+    undo.disabled = true;
+    (undo.getAttribute('data-kind') === 'emailed'
+      ? api('markEmailed', { targetId: uid, on: false })
+      : api('skipHandEmail', { targetId: uid, on: false }))
+      .then(function () { toast('Undone'); renderZachTodo(); renderActionPanel(); })
+      .catch(function (err) { toast(err.message); undo.disabled = false; });
+    return;
+  }
+  var btn = e.target.closest('[data-ztact]');
+  if (!btn) return;
+  var act = btn.getAttribute('data-ztact');
+
+  if (act === 'tpl') { ZT_TPL_OPEN = !ZT_TPL_OPEN; ztRender(); return; }
+  if (act === 'all') { ZT_SHOW = Infinity; ztRender(); return; }
+  if (act === 'link') { ztCopy(location.origin + location.pathname + '#zach', 'Link copied. Send it to Zach'); return; }
+  if (act === 'tplsave') {
+    btn.disabled = true;
+    api('saveHandTemplate', {
+      subject: document.getElementById('zt-tsubj').value,
+      body: document.getElementById('zt-tbody').value
+    }).then(function (t) {
+      HAND_TPL = t;
+      ZT.template = t;
+      ZT_TPL_OPEN = false;
+      ztRender();
+      toast('Template saved. Every card nobody edited uses it now');
+    }).catch(function (err) { toast(err.message); btn.disabled = false; });
+    return;
+  }
+
+  var card = btn.closest('[data-zt]');
+  if (!card) return;
+  var id = card.getAttribute('data-zt');
+  var p = ZT_BY_ID[id];
+  if (!p) return;
+
+  if (act === 'draft') {
+    ZT_OPEN[id] = !ZT_OPEN[id];
+    if (ZT_OPEN[id]) ZT_DRAFTED[id] = true;
+    ztRenderCard(id);
+    return;
+  }
+  if (act === 'gmail' || act === 'copy' || act === 'copysubj') {
+    var cur = ztCurrent(card, p);
+    if (act === 'copysubj') { ztCopy(cur.subject, 'Subject copied'); return; }
+    if (act === 'gmail') {
+      window.open(gmailCompose(cur.to, cur.subject, cur.body), '_blank', 'noopener');
+      if (!cur.to) toast('No address yet. Add it in Gmail, or in To here');
+    } else {
+      ztCopy(cur.body, 'Email copied. Paste it into Gmail');
+    }
+    ZT_SENT[id] = true;
+    ztSteps(id);
+    return;
+  }
+  if (act === 'reset') {
+    btn.disabled = true;
+    api('saveHandEmail', { targetId: id, reset: true }).then(function () {
+      p.handSubject = null;
+      p.handBody = null;
+      ztRenderCard(id);
+      toast('Back to the template');
+    }).catch(function (err) { toast(err.message); btn.disabled = false; });
+    return;
+  }
+  if (act === 'emailed' || act === 'skip') {
+    btn.disabled = true;
+    (act === 'emailed' ? api('markEmailed', { targetId: id }) : api('skipHandEmail', { targetId: id }))
+      .then(function (r) {
+        toast(act === 'emailed' ? 'Emailed ' + r.contactName + '. Logged' : r.contactName + ' is off the list, no email logged');
+        ztDone(id, act === 'emailed' ? 'emailed' : 'skipped');
+      })
+      .catch(function (err) { toast(err.message); btn.disabled = false; });
+  }
+});
+
+document.getElementById('zach-todo').addEventListener('input', function (e) {
+  if (!e.target.hasAttribute('data-ztto')) return;
+  var card = e.target.closest('[data-zt]');
+  var p = card && ZT_BY_ID[card.getAttribute('data-zt')];
+  if (!p) return;
+  p._to = e.target.value.trim();
+  ztSteps(p.targetId);
+});
+
+// Everything on a card saves on change, like the rest of the site.
+// Nothing re-renders the card here: change fires on the way out of a
+// field, often on the way into the next one, and a redraw would drop
+// that focus.
+document.getElementById('zach-todo').addEventListener('change', function (e) {
+  var el = e.target;
+  var card = el.closest('[data-zt]');
+  if (!card) return;
+  var id = card.getAttribute('data-zt');
+  var p = ZT_BY_ID[id];
+  if (!p) return;
+
+  if (el.hasAttribute('data-ztnote')) {
+    var note = el.value.trim();
+    p.handNote = note || null;
+    api('saveHandEmail', { targetId: id, note: note })
+      .then(function () { toast('Note saved'); })
+      .catch(function (err) { toast(err.message); });
+    return;
+  }
+
+  if (el.hasAttribute('data-ztto')) {
+    var v = el.value.trim();
+    if (!v) {
+      p._to = null;
+      el.value = p.email || '';
+      ztSteps(id);
+      if (p.email) toast('Kept ' + p.email + '. Clearing the box never removes an address');
+      return;
+    }
+    api('setHandTo', { targetId: id, email: v }).then(function (r) {
+      p.email = r.email;
+      p._to = null;
+      if (el.isConnected && el.value.trim() === v) el.value = r.email;
+      ztSteps(id);
+      toast(r.replaced
+        ? 'Saved. The old address (' + r.replaced + ') is kept in ' + ztFirst(p) + '’s notes'
+        : 'Saved to ' + r.contactName + '’s contact');
+    }).catch(function (err) { toast(err.message); });
+    return;
+  }
+
+  if (el.hasAttribute('data-ztsubj') || el.hasAttribute('data-ztbody')) {
+    var isSubj = el.hasAttribute('data-ztsubj');
+    var tpl = HAND_TPL || { subject: '', body: '' };
+    var val = el.value.replace(/\r\n/g, '\n');
+    // Typed back to exactly the template: follow the template again.
+    var store = val === handFill(isSubj ? tpl.subject : tpl.body, p) ? null : val;
+    if (isSubj) p.handSubject = store; else p.handBody = store;
+    var args = { targetId: id };
+    args[isSubj ? 'subject' : 'body'] = store;
+    var ed = card.querySelector('.zt-edstate');
+    if (ed) ed.innerHTML = ztEdStateHtml(p);
+    api('saveHandEmail', args).catch(function (err) { toast(err.message); });
+  }
+});
 
 // --- brands (category drill-down) ------------------------------
 
@@ -3123,104 +3629,42 @@ function updateAcceptedNote() {
 
 // An accept is two jobs, in order: reply to them on LinkedIn, then get
 // them onto email — because what an accept usually turns into is "email
-// me". Both are ticked by hand on the row, and whoever still owes an
-// email collects in the to-do list above.
+// me". The LinkedIn half is ticked here; the email half is Zach's list
+// on Home, where the draft, the address and Emailed ✓ live.
 
-// The mail goes out of Leo's own mailbox, not the app's email machine,
-// so this is a mailto: — no cap, no drafting, no send path. Short on
-// purpose: he edits it in his own client before sending.
-function mailtoFor(p) {
-  var first = String(p.name || '').split(/\s+/)[0] || 'there';
-  var subject = 'SB Agency × ' + (p.brandName || '');
-  var body = 'Hi ' + first + ',\n\n' +
-    'Thanks for connecting on LinkedIn.\n\n' +
-    'I run SB Agency — we book artists and DJs for fraternity and sorority events and build ' +
-    'brand activations around those shows. Worth a quick look at whether ' + (p.brandName || 'you') +
-    ' fits one this season?\n\n' +
-    'Happy to send the one-pager and a few dates.\n\n' +
-    'Zach';
-  return 'mailto:' + encodeURIComponent(p.email || '') +
-    '?subject=' + encodeURIComponent(subject) +
-    '&body=' + encodeURIComponent(body);
+// The accepted list's Email button: the same email Zach's list would
+// draft for this person (their card's edit, or the template), opened in
+// Gmail. Nothing sends until someone presses Send there.
+function handComposeFor(t) {
+  var d = handDraft({
+    name: t.contact.name, title: t.contact.title, brandName: t.brand.name,
+    handSubject: t.handSubject, handBody: t.handBody
+  });
+  return gmailCompose(t.contact.email, d.subject, d.body);
 }
 
-// The to-do list: everyone who accepted and has not been emailed.
+// The to-email list moved to Home ("For Zach to do"). This says how
+// many are waiting there and takes you to it.
 function renderToEmail() {
   var box = document.getElementById('rc-toemail');
   if (!box) return;
-  api('toEmail').then(function (r) {
-    if (!r.people.length) {
-      box.innerHTML = r.accepted
-        ? '<div class="count-head" style="margin-top:18px">To email — they accepted <span class="n">all done</span></div>' +
-          '<div class="hint" style="margin:2px 0 8px">All ' + r.accepted + ' accepts have been emailed.</div>'
-        : '';
-      return;
-    }
-    var withMail = r.people.filter(function (p) { return p.email; });
+  api('zachTodo').then(function (r) {
+    HAND_TPL = r.template;
+    if (!r.people) { box.innerHTML = ''; return; }
     box.innerHTML =
-      '<div class="count-head" style="margin-top:18px;color:#f0b86b">To email — they accepted <span class="n">' + r.people.length + '</span></div>' +
-      '<div class="hint" style="margin:2px 0 8px">An accept usually turns into “email me”. ' +
-        r.done + ' of ' + r.accepted + ' done' +
-        (r.noAddress ? ' · ' + r.noAddress + ' have no address on file yet' : '') + '.' +
-        (withMail.length > 1 ? ' <a href="#" id="rc-copyall">Copy all ' + withMail.length + ' addresses</a>' : '') +
-      '</div>' +
-      r.people.map(function (p) {
-        return '<div class="target" data-temrow="' + esc(p.targetId) + '">' +
-          '<div class="t-main"><div class="t-line">' +
-            '<span class="t-brand" data-brand="' + esc(p.brandId) + '" style="cursor:pointer">' + esc(p.brandName) + '</span>' +
-            '<span class="t-sep">·</span>' + esc(p.name) +
-            (p.title ? ' <span class="t-title">— ' + esc(p.title) + '</span>' : '') +
-          '</div>' +
-          '<div class="t-meta">' +
-            (p.dmSentAt
-              ? '<span class="status accepted">LinkedIn reply sent</span>'
-              : '<span class="status" style="color:#f0b86b">LinkedIn reply still due</span>') +
-            (p.email ? '<span>· ' + esc(p.email) + '</span>' : '<span style="color:#f0b86b">· no email address on file</span>') +
-            (p.acceptedFor ? '<span>· invited ' + shortDate(p.acceptedFor) + '</span>' : '') +
-          '</div></div>' +
-          '<div class="t-actions">' +
-            (p.email
-              ? '<a class="btn-draft" href="' + esc(mailtoFor(p)) + '" data-temmail="' + esc(p.targetId) + '">Email ↗</a>' +
-                '<button class="btn-ghost" data-temcopy="' + esc(p.email) + '" title="Copy just the address">Copy address</button>'
-              : '<button class="btn-ghost" data-temfix="' + esc(p.brandId) + '" title="Open the brand to add their email">Add an email</button>') +
-            (p.phone ? '<a class="btn-ghost" href="sms:' + esc(p.phone) + '">Text</a>' : '') +
-            '<button class="btn-ghost" data-temdone="' + esc(p.targetId) + '" title="Logged: the email went out">Email sent ✓</button>' +
-          '</div></div>';
-      }).join('');
-
-    var copyAll = document.getElementById('rc-copyall');
-    if (copyAll) copyAll.onclick = function (e) {
-      e.preventDefault();
-      navigator.clipboard.writeText(withMail.map(function (p) { return p.email; }).join(', '));
-      toast(withMail.length + ' addresses copied');
-    };
+      '<div class="panel panel-pad" style="margin-top:18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
+        '<div style="flex:1;min-width:220px">' +
+          '<b style="font-size:13.5px">To email: ' + r.people + ' waiting on Zach</b>' +
+          '<div class="hint" style="margin:3px 0 0">Everyone who accepted or answered on LinkedIn is on Home → For Zach to do, ' +
+            'with the draft, their address and the Emailed ✓ tick.</div>' +
+        '</div>' +
+        '<button class="btn-draft" data-gozach>Open Zach’s list →</button>' +
+      '</div>';
   }).catch(function () { box.innerHTML = ''; });
 }
 
 document.getElementById('rc-toemail').addEventListener('click', function (e) {
-  var copy = e.target.closest('[data-temcopy]');
-  if (copy) {
-    navigator.clipboard.writeText(copy.getAttribute('data-temcopy'));
-    toast('Address copied');
-    return;
-  }
-  var fix = e.target.closest('[data-temfix]');
-  if (fix) { loadBrand(fix.getAttribute('data-temfix')); return; }
-  var brand = e.target.closest('[data-brand]');
-  if (brand) { loadBrand(brand.getAttribute('data-brand')); return; }
-  // Opening the mail client is the same intent as "I emailed them", but
-  // it is not proof — so the row stays, marked, and one click clears it.
-  var done = e.target.closest('[data-temdone]');
-  if (!done) return;
-  var row = done.closest('[data-temrow]');
-  done.disabled = true;
-  api('markEmailed', { targetId: done.getAttribute('data-temdone') }).then(function (r) {
-    toast('Emailed ' + r.contactName + ' — logged');
-    if (row) row.remove();
-    renderToEmail();
-    renderAcceptedDms();
-    renderFollowUps();
-  }).catch(function (err) { toast(err.message); done.disabled = false; });
+  if (e.target.closest('[data-gozach]')) gotoZachList();
 });
 
 // The two stages nothing else shows: a DM that got no answer, and an
@@ -3282,8 +3726,11 @@ var RC_ACCEPTED = {};
 function renderAcceptedDms() {
   var box = document.getElementById('rc-accepted');
   if (!box) return;
-  api('listTargets', { status: 'accepted' }).then(function (rows) {
-    var all = (rows || []).slice();
+  Promise.all([
+    api('listTargets', { status: 'accepted' }),
+    handTplReady().catch(function () { return null; })
+  ]).then(function (res) {
+    var all = (res[0] || []).slice();
     all.forEach(function (t) { RC_ACCEPTED[t.id] = t; });
     // Waiting first, then the ones whose DM is already logged — they
     // stay on the card so the section shows every accept, not just the
@@ -3329,7 +3776,7 @@ function renderAcceptedDms() {
               ? '<span class="status accepted" style="font-size:12px;padding:5px 12px">LinkedIn ✓</span>'
               : '<button class="btn-ghost" data-rcdm="dmsent" data-rct="' + esc(t.id) + '" title="Logged: your LinkedIn reply went out">LinkedIn sent ✓</button>') +
             (t.contact.email
-              ? '<a class="btn-ghost" href="' + esc(mailtoFor({ name: t.contact.name, brandName: t.brand.name, email: t.contact.email })) + '" title="Open this in your mail client">Email ↗</a>'
+              ? '<a class="btn-ghost" href="' + esc(handComposeFor(t)) + '" target="_blank" rel="noopener" title="Opens Gmail with the email from Zach’s list filled in">Email ↗</a>'
               : '') +
             (t.emailedAt
               ? '<span class="status accepted" style="font-size:12px;padding:5px 12px">Email ✓</span>'
