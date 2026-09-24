@@ -4329,6 +4329,8 @@ const handlers: Record<string, Handler> = {
     const rows = brands.map(b => ({
       id: b.id, name: b.name, category: b.category, tier: b.tier,
       linkedinUrl: b.linkedinUrl,
+      // So the "Under 25" worklist can leave out brands off outreach.
+      archived: !!b.passedAt, doNotEmail: b.doNotEmail,
       contacts: b.contacts.map(c => ({
         id: c.id, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl,
         isDecisionMaker: c.isDecisionMaker,

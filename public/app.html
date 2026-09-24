@@ -919,7 +919,13 @@
         <button class="chip active" data-lif="all">All brands</button>
         <button class="chip" data-lif="profiles">Saved profiles</button>
         <button class="chip" data-lif="none">Nobody yet</button>
+        <button class="chip" data-lif="thin" title="Brands with room under the 25-people cap, emptiest first \u2014 open People \u2197 and press the SB pill">Under 25</button>
         <input class="inp" id="li-q" placeholder="Filter brands…" autocomplete="off" style="margin-left:auto;width:220px">
+      </div>
+      <div class="hint" id="li-script-hint" style="margin-top:10px;display:none">
+        People \u2197 opens a brand's LinkedIn People tab. With the
+        <a href="https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js" target="_blank" rel="noopener">LinkedIn capture script</a>
+        in Tampermonkey (Leo's LinkedIn, not Zach's), press the SB pill there: it reads that page, shows who it found, and adds the marketing and partnership people when you say so.
       </div>
       <div id="li-list" style="margin-top:14px"></div>
     </section>
@@ -3087,8 +3093,9 @@ function loadBrand(brandId) {
     var b = d.brand;
     rememberSponsors(b.shows);
     (b.documents || []).forEach(function (dc) { DOC_BY_ID[dc.id] = dc; });
-    var liCompany = b.linkedinUrl ||
-      ('https://www.linkedin.com/search/results/companies/?keywords=' + encodeURIComponent(b.name));
+    // The People tab, where the LinkedIn capture script's pill lives;
+    // a company search when we don't have their page yet.
+    var liCompany = liPeopleUrl(b);
     // Deep-link straight to this brand's SponsorUnited profile when we have
     // its SponsorUnited ID. We don't for most brands yet (they were imported
     // by name only), and SponsorUnited's search is a live autocomplete in
@@ -3166,7 +3173,7 @@ function loadBrand(brandId) {
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
           '<button class="btn-solid" id="b-enrich">Auto-fill from the web</button>' +
           '<button class="btn-ghost" id="b-edit-toggle">Edit</button>' +
-          '<a class="btn-ghost" href="' + esc(liCompany) + '" target="_blank" rel="noopener">LinkedIn ↗</a>' +
+          '<a class="btn-ghost" href="' + esc(liCompany) + '" target="_blank" rel="noopener" title="Their LinkedIn People tab \u2014 press the SB pill there to add the buyers">LinkedIn people ↗</a>' +
           '<a class="btn-ghost" href="' + esc(suUrl) + '" target="_blank" rel="noopener">' + suLabel + '</a>' +
           (b.doNotEmail
             ? '<button class="btn-ghost" id="b-dne" style="border-color:var(--accent);color:var(--accent)" title="This brand is excluded from all outreach emails — click to allow again">Do not email</button>'
@@ -3282,6 +3289,7 @@ function loadBrand(brandId) {
             (c.title ? '<span class="t-sep">·</span><span class="t-title">' + esc(c.title) + '</span>' : '') + '</div>' +
           '<div class="t-meta">' +
             (c.isDecisionMaker ? '<span class="status replied">decision maker</span>' : '') +
+            (c.source === 'linkedin' ? '<span title="Found on their LinkedIn People page \u2014 no email on file">from LinkedIn</span>' : '') +
             (c.email ? '<span>' + esc(c.email) + '</span>' : '') +
             (c.phone ? '<span>· ' + esc(c.phone) + '</span>' : '') +
             (c.location ? '<span>· ' + esc(c.location) + '</span>' : '') +
@@ -4368,8 +4376,7 @@ function loadNeeds() {
 
     box.innerHTML = d.brands.map(function (b) {
       var tag = [CAT_NAMES[b.category] || b.category, b.tier].filter(Boolean).join(' · ');
-      var liSearch = b.linkedinUrl ||
-        ('https://www.linkedin.com/search/results/companies/?keywords=' + encodeURIComponent(b.name));
+      var liSearch = liPeopleUrl(b);
       return '<div data-needs="' + esc(b.id) + '" style="margin-bottom:7px">' +
         '<div class="target" style="margin-bottom:0">' +
           '<div class="t-main">' +
@@ -4416,6 +4423,8 @@ function loadNeeds() {
 
 var LI_DATA = [];
 var LI_FILTER = 'all';
+// Same number as CONTACT_CAP_PER_BRAND in /api/ingest: people on file per brand.
+var LI_CAP = 25;
 
 // The titles Leo targets on LinkedIn: partnership/sponsorship buyers,
 // brand & field marketing, and marketing leadership for smaller brands.
@@ -4450,8 +4459,17 @@ function renderLinkedin() {
     if (q && b.name.toLowerCase().indexOf(q) === -1) return false;
     if (LI_FILTER === 'profiles') return b.contacts.some(function (c) { return c.linkedinUrl; });
     if (LI_FILTER === 'none') return !b.contacts.length;
+    if (LI_FILTER === 'thin') return b.contacts.length < LI_CAP && !b.archived && !b.doNotEmail;
     return true;
   });
+  // The worklist reads emptiest first, like the SponsorUnited sweep.
+  if (LI_FILTER === 'thin') {
+    rows = rows.slice().sort(function (a, b) {
+      return a.contacts.length - b.contacts.length || a.name.localeCompare(b.name);
+    });
+  }
+  var hint = document.getElementById('li-script-hint');
+  if (hint) hint.style.display = (LI_FILTER === 'thin' || LI_FILTER === 'none') ? '' : 'none';
 
   if (!rows.length) {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>No brands here</h3>' +
@@ -4460,7 +4478,8 @@ function renderLinkedin() {
   }
 
   box.innerHTML = rows.map(function (b) {
-    var tag = [CAT_NAMES[b.category] || b.category, b.tier].filter(Boolean).join(' · ');
+    var tag = [CAT_NAMES[b.category] || b.category, b.tier, b.contacts.length + '/' + LI_CAP + ' on file']
+      .filter(Boolean).join(' · ');
     var people = b.contacts.map(function (c) {
       return '<div class="t-meta" style="margin-top:7px">' +
         (c.linkedinUrl
@@ -4474,7 +4493,7 @@ function renderLinkedin() {
       '<div class="t-main">' +
         '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(b.name) + '</span>' +
           (tag ? '<span class="t-sep">·</span><span class="t-title">' + esc(tag) + '</span>' : '') + '</div>' +
-        (people || '<div class="t-meta" style="margin-top:7px"><span>Nobody saved yet — use Find buyer ↗, then add them on the brand page.</span></div>') +
+        (people || '<div class="t-meta" style="margin-top:7px"><span>Nobody saved yet — open People ↗ and press the SB pill there.</span></div>') +
       '</div>' +
       '<div class="t-actions">' +
         '<a class="btn-ghost" href="' + esc(liPeopleUrl(b)) + '" target="_blank" rel="noopener">People ↗</a>' +

@@ -15,6 +15,9 @@
 //
 // This mirrors importContacts in /api/data exactly, so contacts and the
 // auto-queued outreach targets come out identical either way.
+//
+// The LinkedIn People capture (scripts/linkedin-capture.user.js) posts
+// here too, as actions liPreview / liCapture — see planLinkedin below.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
@@ -25,6 +28,10 @@ import {
   readSweepLog, markSwept, isResting, PROPOSAL_VERSION,
   type SuCandidate,
 } from '@/lib/su-match'
+import {
+  companySlug, companyPageUrl, profileSlug, profileUrl, cleanName, personKey,
+  roleFromHeadline, isBuyer,
+} from '@/lib/li-capture'
 
 const prisma = new PrismaClient()
 
@@ -151,6 +158,153 @@ async function createBrandForCapture(name: string, externalId: string | null) {
     // Lost a race, or the name clashes case-differently — take whatever
     // is there now rather than failing the capture.
     return await findBrandForCapture(clean, externalId)
+  }
+}
+
+// -------------------------------------------------------------------
+// LinkedIn People capture (scripts/linkedin-capture.user.js).
+//
+// Leo opens a brand's People page on LinkedIn and presses the button;
+// the script reads the cards on screen and asks here what would happen.
+// Nothing browses LinkedIn on its own — that is deliberate, because a
+// flagged account is worse than a thin brand.
+//
+// Leo's rules (Sep 2026): buyer titles only, inside the same 25-per-brand
+// file cap SponsorUnited uses, and no emails — LinkedIn people go into
+// the LinkedIn connection queue. Only brands that already exist; a
+// LinkedIn page never creates one.
+// -------------------------------------------------------------------
+
+type LiVerdict = 'add' | 'full' | 'dupe' | 'elsewhere' | 'notBuyer' | 'noBrand'
+type LiRow = { name: string; role: string | null; linkedinUrl: string; slug: string; verdict: LiVerdict; fit: number; at?: string }
+
+async function planLinkedin(body: any) {
+  const slug = companySlug(body.companyUrl)
+  const companyName = String(body.companyName || '').trim().slice(0, 120)
+  const typed = String(body.brandName || '').trim().slice(0, 120)
+
+  // Which brand. A name Leo typed is a decision and wins; otherwise the
+  // company page we saved for the brand, then the page's own name
+  // (including "also known as" names).
+  let brand: Awaited<ReturnType<typeof findBrandForCapture>> = null
+  let matchedBy: 'typed' | 'page' | 'name' | null = null
+  if (typed) {
+    brand = await findBrandForCapture(typed, null)
+    if (brand) matchedBy = 'typed'
+  } else {
+    if (slug) {
+      const withPage = await prisma.brand.findMany({ where: { linkedinUrl: { not: null } } })
+      brand = withPage.find(b => companySlug(b.linkedinUrl) === slug) ?? null
+      if (brand) matchedBy = 'page'
+    }
+    if (!brand && companyName) {
+      brand = await findBrandForCapture(companyName, null)
+      if (brand) matchedBy = 'name'
+    }
+  }
+
+  // Close names to offer when nothing matched, so Leo picks rather than
+  // guesses at how the dashboard spells it.
+  let suggestions: string[] = []
+  if (!brand) {
+    const word = (typed || companyName).toLowerCase().split(/\s+/).find(w => w.replace(/[^a-z0-9]/g, '').length >= 3) || ''
+    if (word) {
+      const hits = await prisma.brand.findMany({
+        where: {
+          passedAt: null,
+          OR: [
+            { name: { contains: word, mode: 'insensitive' } },
+            { aka: { contains: word, mode: 'insensitive' } },
+          ],
+        },
+        select: { name: true }, take: 6, orderBy: { name: 'asc' },
+      })
+      suggestions = hits.map(h => h.name)
+    }
+  }
+
+  // The cards: a real profile link and a real name, once each.
+  const seen = new Set<string>()
+  const cards: Array<{ name: string; headline: string; slug: string }> = []
+  for (const r of (Array.isArray(body.rows) ? body.rows : []).slice(0, 500)) {
+    const name = cleanName(r?.name)
+    const ps = profileSlug(r?.linkedinUrl)
+    if (!name || !ps || seen.has(ps)) continue
+    seen.add(ps)
+    cards.push({ name, headline: String(r?.headline || '').replace(/\s+/g, ' ').trim().slice(0, 300), slug: ps })
+  }
+
+  // Already on file: here by profile link or name, or at another brand
+  // by profile link (one person, one thread — and usually a job move
+  // or a parent company, which Leo should see rather than duplicate).
+  const mine = brand
+    ? await prisma.contact.findMany({ where: { brandId: brand.id }, select: { name: true, linkedinUrl: true } })
+    : []
+  const mineSlugs = new Set(mine.map(c => profileSlug(c.linkedinUrl)).filter(Boolean) as string[])
+  // An empty key (a name with no Latin letters) matches nothing.
+  const mineKeys = new Set(mine.map(c => personKey(c.name)).filter(Boolean))
+  const elsewhere = new Map<string, string>()
+  if (cards.length) {
+    const others = await prisma.contact.findMany({
+      where: {
+        ...(brand ? { brandId: { not: brand.id } } : {}),
+        OR: cards.map(c => ({ linkedinUrl: { contains: '/in/' + c.slug, mode: 'insensitive' as const } })),
+      },
+      select: { linkedinUrl: true, brand: { select: { name: true } } },
+    })
+    for (const o of others) {
+      const s = profileSlug(o.linkedinUrl)
+      if (s && seen.has(s)) elsewhere.set(s, o.brand.name)
+    }
+  }
+
+  const rows: LiRow[] = cards.map(c => {
+    const role = roleFromHeadline(c.headline, companyName || brand?.name || null)
+    const row: LiRow = { name: c.name, role, linkedinUrl: profileUrl(c.slug), slug: c.slug, verdict: 'add', fit: scoreFit(role, brand?.tier ?? null) }
+    const key = personKey(c.name)
+    if (mineSlugs.has(c.slug) || (key && mineKeys.has(key))) row.verdict = 'dupe'
+    else if (elsewhere.has(c.slug)) { row.verdict = 'elsewhere'; row.at = elsewhere.get(c.slug) }
+    else if (!isBuyer(role, c.headline)) row.verdict = 'notBuyer'
+    else if (!brand) row.verdict = 'noBrand'
+    return row
+  })
+
+  // The cap: best titles take the room first.
+  const have = mine.length
+  const room = Math.max(0, CONTACT_CAP_PER_BRAND - have)
+  const adds = rows.filter(r => r.verdict === 'add').sort((a, b) => b.fit - a.fit)
+  adds.slice(room).forEach(r => { r.verdict = 'full' })
+  const order: Record<LiVerdict, number> = { add: 0, noBrand: 0, full: 1, dupe: 2, elsewhere: 3, notBuyer: 4 }
+  rows.sort((a, b) => order[a.verdict] - order[b.verdict] || b.fit - a.fit || a.name.localeCompare(b.name))
+
+  const savedSlug = brand ? companySlug(brand.linkedinUrl) : null
+  return {
+    brand,
+    matchedBy,
+    notFound: !brand && typed ? typed : null,
+    suggestions,
+    slug,
+    // The brand already has a different company page saved — a parent
+    // company or a sister brand. Shown, never overwritten.
+    pageMismatch: !!(slug && savedSlug && savedSlug !== slug),
+    have,
+    room,
+    rows,
+  }
+}
+
+function liSummary(plan: Awaited<ReturnType<typeof planLinkedin>>) {
+  const b = plan.brand
+  return {
+    brand: b ? { id: b.id, name: b.name, linkedinUrl: b.linkedinUrl } : null,
+    matchedBy: plan.matchedBy,
+    notFound: plan.notFound,
+    suggestions: plan.suggestions,
+    pageMismatch: plan.pageMismatch,
+    cap: CONTACT_CAP_PER_BRAND,
+    have: plan.have,
+    room: plan.room,
+    rows: plan.rows.map(r => ({ name: r.name, role: r.role, linkedinUrl: r.linkedinUrl, verdict: r.verdict, at: r.at ?? null })),
   }
 }
 
@@ -303,6 +457,77 @@ export async function POST(req: NextRequest) {
       try { await markSwept(prisma, brandId, Number(body.seen) || 0, Number(body.added) || 0) } catch { /* non-fatal */ }
     }
     return NextResponse.json({ ok: true }, { headers: cors })
+  }
+
+  // action: "liPreview" — what a LinkedIn People page would add, without
+  // saving anything. The script shows this before Leo confirms.
+  if (body.action === 'liPreview') {
+    const plan = await planLinkedin(body)
+    return NextResponse.json({ ok: true, ...liSummary(plan) }, { headers: cors })
+  }
+
+  // action: "liCapture" — the same plan, saved. Re-planned here rather
+  // than trusting the preview, so two tabs or a stale panel can't push a
+  // brand past 25 or add someone twice.
+  if (body.action === 'liCapture') {
+    const plan = await planLinkedin(body)
+    const brand = plan.brand
+    if (!brand) {
+      return NextResponse.json({ ok: false, error: plan.notFound ? `No brand called "${plan.notFound}" in the dashboard.` : 'Pick the dashboard brand first.', ...liSummary(plan) }, { status: 400, headers: cors })
+    }
+    // Remember the company page, so the next visit matches on the page
+    // itself. Fill-if-empty, like every other capture field — and not
+    // when another brand already has this page (sister brands under one
+    // parent page), or the next visit would match whichever came first.
+    let savedPage = false
+    if (plan.slug && !brand.linkedinUrl) {
+      const others = await prisma.brand.findMany({
+        where: { linkedinUrl: { not: null }, id: { not: brand.id } },
+        select: { linkedinUrl: true },
+      })
+      if (!others.some(o => companySlug(o.linkedinUrl) === plan.slug)) {
+        try {
+          await prisma.brand.update({ where: { id: brand.id }, data: { linkedinUrl: companyPageUrl(plan.slug) } })
+          savedPage = true
+        } catch { /* non-fatal */ }
+      }
+    }
+    let added = 0, targetsCreated = 0, failed = 0
+    const errors: string[] = []
+    for (const r of plan.rows) {
+      if (r.verdict !== 'add') continue
+      try {
+        const contact = await prisma.contact.create({
+          data: {
+            brandId: brand.id,
+            name: r.name,
+            title: r.role,
+            linkedinUrl: r.linkedinUrl,
+            source: 'linkedin',
+            // Only buyer titles get this far.
+            isDecisionMaker: true,
+          },
+        })
+        added++
+        await prisma.target.create({
+          data: { brandId: brand.id, contactId: contact.id, fitScore: r.fit, assignedTo: brand.owner ?? null },
+        })
+        targetsCreated++
+      } catch (err: any) {
+        failed++
+        if (errors.length < 10) errors.push(`${r.name}: ${err?.message ?? 'error'}`)
+      }
+    }
+    let targetsShelved = 0
+    try { targetsShelved = await reconcileBrandTargets(brand.id) } catch { /* skip */ }
+    const have = await prisma.contact.count({ where: { brandId: brand.id } })
+    return NextResponse.json({
+      ok: true,
+      brand: { id: brand.id, name: brand.name },
+      added, targetsCreated, targetsShelved, failed, errors,
+      have, cap: CONTACT_CAP_PER_BRAND,
+      savedPage,
+    }, { headers: cors })
   }
 
   if (body.action === 'list') {

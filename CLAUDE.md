@@ -80,6 +80,18 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   after typing into their search (the dashboard's own cards are not results), first line = name,
   Property results dropped; `node scripts/test-capture.js` covers it. Proposals from script ≤4.1
   have no `v` and stay hidden (`PROPOSAL_VERSION`).
+- `scripts/linkedin-capture.user.js` — **LinkedIn People capture** (second Tampermonkey script, same
+  INGEST_TOKEN, kept in GM storage; requests go via `GM_xmlhttpRequest` because LinkedIn's CSP blocks
+  page fetches). Leo's calls (Sep 2026): **Leo's LinkedIn account, never Zach's** (Zach's sends the
+  connection requests); **one click per brand — it never browses on its own** (no sweep, no
+  auto-next: LinkedIn flags that); buyer titles only, **inside the same 25 cap**; no emails — people
+  go to the LinkedIn queue (`source: 'linkedin'`, target created, `reconcileBrandTargets` applies).
+  On a company's People tab the SB pill scrolls that one page (≤150 people, human-paced), posts
+  `action:'liPreview'` (nothing saved; verdicts add/full/dupe/elsewhere/notBuyer), then
+  `liCapture` on "Add". Brand match: typed name → saved `Brand.linkedinUrl` slug → page name/aka;
+  never creates a brand; saves the page fill-if-empty unless another brand has it. Buyer rules +
+  headline→title in `src/lib/li-capture.ts` (`node scripts/test-li-capture.mjs`); script tested by
+  `scripts/test-li-script.js` (fake People page). Worklist: Outreach → People → "Under 25".
 - `src/lib/email.ts` — outreach: drafting, cap/ramp (`roomToday`), sending via Gmail API, replies, warmup stats, signature (hosted images, LinkedIn/IG as text links).
 - `src/lib/google.ts` — OAuth (gmail / drive / ops grants), Gmail read+send, Drive/Sheets/Docs create.
 - `src/lib/shows.ts` — **the show list** for the Shows tab and the public sponsor page. Reads **only
