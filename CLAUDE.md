@@ -71,13 +71,21 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   machine skips brands with an accepted/replied/hand-emailed person, and skips follow-ups to accepted
   or hand-emailed people. Results → "To email" is now a pointer here.
 - **Brands → Stock take** (`brandStock` + `src/lib/stock.ts`; deep link `app.html#stock`; linked from
-  Home → Categories) — the whole roster in one read. Leo's lanes (Electrolytes & hydration, Energy
-  drinks, Beer/seltzers/canned cocktails, Spirits, Nicotine, Athletic wear, Clothing & fashion) split
-  the stored categories by category + known names + words in name/aka/about/topProducts; **nothing is
-  re-filed**, every brand lands in exactly one row, the rest stay in their category rows. Brand state:
-  deal > off (archived / do-not-email) > replied > reached > has people > needs contacts. Priority
-  lanes carry ideas (known names not on the roster under any name or aka) that add through
-  `addBrandsBulk`'s preview. `LANE_GOAL = 15` in play per lane. `node scripts/test-stock.mjs`.
+  Home → Categories) — the whole roster in one read, every brand in exactly one row. **Leo's lanes are
+  real categories** (his yes, Sep 2026): `electrolytes`, `energy`, `rtd` (beer/seltzers/canned
+  cocktails), `spirits`, `athletic` split out of the old broad `beverage` / `alcohol` / `apparel`,
+  which keep what's left (Soda, Water & Other Drinks / Alcohol (other) / Clothing & Fashion);
+  `nicotine` = pouches. The vocabulary lives in `CATEGORY_KEYS` (route.ts), `CAT_NAMES` (app.html),
+  `category-hints.ts`, `LI_HOOKS`, email `CATEGORY_ANGLES` and li-capture `INDUSTRY_FITS` — a new
+  category needs all six. `placeBrand` only ever sorts brands out of the old broad buckets (`SORTABLE`:
+  beverage, alcohol, apparel, wellness, nightlife, unresolved) by known name, then words; a specific
+  filing is never second-guessed. **Re-file**: `refileCategories` previews every move (+ planned
+  Schedule days whose category splits, `remapPlanDays`); apply moves only ticked moves a fresh preview
+  still makes the same way, one transaction, logged in Setting `categoryRefileLast`;
+  `undoCategoryRefile` puts it back. Brand state: deal > off (archived / do-not-email) > replied >
+  reached > has people > needs contacts. Priority lanes carry ideas (known names not on the roster
+  under any name or aka) that add through `addBrandsBulk`'s preview, filed under the lane.
+  `LANE_GOAL = 15` in play per lane. `node scripts/test-stock.mjs`.
 - `src/app/api/data/route.ts` — every server function. Add a handler = add a key to `handlers`.
 - `src/app/api/ingest/route.ts` + `scripts/sponsorunited-capture.user.js` — SponsorUnited contact
   capture (INGEST_TOKEN-gated, CORS-open). **Two different caps, don't confuse them:**

@@ -136,8 +136,13 @@ export function normalizeCompany(s: string | null | undefined): string {
 // this category. Only used to accept a near-miss name ("Casamigos
 // Tequila" for Casamigos); an exact name never needs it.
 const INDUSTRY_FITS: Record<string, RegExp> = {
+  electrolytes: /beverage|food|drink|consumer goods|consumer products|wellness|health|nutrition/i,
+  energy: /beverage|food|drink|consumer goods|consumer products|wellness|health|nutrition/i,
   beverage: /beverage|food|drink|consumer goods|consumer products|wellness|health|nutrition/i,
+  rtd: /beverage|wine|spirit|brew|distill|alcohol|liquor|food/i,
+  spirits: /beverage|wine|spirit|brew|distill|alcohol|liquor|food/i,
   alcohol: /beverage|wine|spirit|brew|distill|alcohol|liquor|food/i,
+  athletic: /apparel|fashion|retail|textile|sporting goods|sports|fitness|footwear/i,
   nicotine: /tobacco|nicotine|consumer goods|consumer products/i,
   cpg: /food|beverage|consumer goods|consumer products|snack|retail/i,
   apparel: /apparel|fashion|retail|textile|sporting goods|luxury|footwear/i,

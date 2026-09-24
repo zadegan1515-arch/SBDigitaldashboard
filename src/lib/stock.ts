@@ -1,19 +1,24 @@
 // src/lib/stock.ts
 //
-// Brands → Stock take: every brand on the site, sorted into the lanes SB
-// sells, with where each one stands.
+// Brands → Stock take, and the categories Leo sells by.
 //
 // Leo (Sep 2026): "I want to hit every category — electrolyte companies,
-// alcohol, nicotine, clothing, athletic wear, all of that." The stored
-// categories are coarser than that. Electrolytes sit in Energy Drinks &
-// Beverages or in Health & Wellness (Liquid I.V. and LMNT were seeded
-// there), athletic wear sits inside Apparel & Fashion, beer and tequila
-// share Alcohol & RTD. The lanes split those without touching a record:
-// this is a view, nothing here writes. Every brand lands in exactly one
-// row, so the rows add up to the roster.
+// alcohol, nicotine, clothing, athletic wear, all of that", then "yes" to
+// making those lanes real categories so the Schedule can run an
+// Electrolytes day or an Athletic wear day. The old categories were
+// coarser: Energy Drinks & Beverages held electrolytes, energy and soda
+// (and Liquid I.V. and LMNT were seeded under Health & Wellness), Alcohol
+// & RTD held beer and tequila, Apparel held gym wear and fashion.
 //
-// Pure — no database, no network. route.ts (brandStock) counts, this
-// sorts. scripts/test-stock.mjs pins where brands land.
+// So each lane below IS a category: its key is what Brand.category holds.
+// A brand still sitting in one of the old broad categories gets a
+// suggested one (by its name first, then by what it sells), and
+// refileMoves lists every brand that would move, for Leo to confirm on
+// the Stock take page before anything is written. A brand filed under a
+// specific category is never second-guessed: Leo's filing wins.
+//
+// Pure — no database, no network. route.ts counts and writes; this
+// decides. scripts/test-stock.mjs pins where brands land.
 
 export type StockState = 'business' | 'off' | 'replied' | 'reached' | 'ready' | 'needs'
 
@@ -44,26 +49,22 @@ export type StockBrand = {
 }
 
 export type Lane = {
+  // The category key — what Brand.category holds for this lane.
   key: string
   name: string
-  // Categories a brand has to be filed under to land here — by name or
-  // by words. Unfiled and "Needs Clarification" brands can land by name.
+  // Old broad categories whose brands can move here by what they sell
+  // (the words). A brand's name moves it from any old broad category.
   from: string[]
   // Words in the name, aka, about or top products that put a brand here.
   words?: RegExp
-  // Where whatever is left of this category goes once the lanes before
-  // have taken theirs (apparel that isn't athletic is clothing).
-  rest?: string
   // Brands that belong here by name. "A|B" = also known as. Doubles as
   // the "not on your list yet" ideas on the priority lanes.
   known: string[]
-  // A lane Leo named. These lead the page and carry ideas.
+  // A lane Leo named. These lead the Stock take and carry ideas.
   priority?: boolean
   // 21: the brand's own marketing code keeps it away from under-21
   // crowds, so these get pitched on 21+ shows.
   ageGate?: number
-  // The category brands added from this lane's ideas are filed under.
-  file: string
 }
 
 // How many brands a priority lane should have in play (not archived,
@@ -73,13 +74,18 @@ export type Lane = {
 // days of one lane before it repeats.
 export const LANE_GOAL = 15
 
+// The old broad categories — the only ones brands are ever sorted out
+// of. Every other category (the new specific ones, and betting, snacks,
+// beauty...) is a filing that stays as it is.
+export const SORTABLE = ['beverage', 'alcohol', 'apparel', 'wellness', 'nightlife', 'unresolved']
+
 // Order matters: a brand takes the first lane that fits. Names before
 // words, then electrolytes before energy (Prime makes both and sells as
 // hydration), cans before spirits (Cutwater and High Noon are vodka in a
 // can, and read as spirits by their words).
 export const LANES: Lane[] = [
   {
-    key: 'electrolytes', name: 'Electrolytes & hydration', priority: true, file: 'beverage',
+    key: 'electrolytes', name: 'Electrolytes & Hydration', priority: true,
     from: ['beverage', 'wellness'],
     words: /electrolyte|hydrat|sports drink/i,
     known: [
@@ -90,7 +96,7 @@ export const LANES: Lane[] = [
     ],
   },
   {
-    key: 'energy', name: 'Energy drinks', priority: true, file: 'beverage',
+    key: 'energy', name: 'Energy Drinks', priority: true,
     from: ['beverage'],
     words: /\benergy\b|caffeine/i,
     known: [
@@ -101,16 +107,16 @@ export const LANES: Lane[] = [
     ],
   },
   {
-    key: 'drinks', name: 'Soda, water & other drinks', file: 'beverage',
-    from: ['beverage', 'wellness', 'nightlife'],
-    rest: 'beverage',
+    // What is left of the old Energy Drinks & Beverages keeps its key.
+    key: 'beverage', name: 'Soda, Water & Other Drinks',
+    from: [],
     known: [
       'Poppi', 'Olipop', 'Culture Pop Soda|Culture Pop', 'Recess', 'Liquid Death',
       'Waterloo', 'Topo Chico', 'Spindrift', 'Zevia', 'AriZona|Arizona Iced Tea', 'A1R Water',
     ],
   },
   {
-    key: 'rtd', name: 'Beer, seltzers & canned cocktails', priority: true, ageGate: 21, file: 'alcohol',
+    key: 'rtd', name: 'Beer, Seltzers & Canned Cocktails', priority: true, ageGate: 21,
     from: ['alcohol', 'nightlife'],
     // Read against name/about/products. "Cocktails" alone isn't enough —
     // Malibu and Bacardi list canned cocktails among their products and
@@ -128,7 +134,7 @@ export const LANES: Lane[] = [
     ],
   },
   {
-    key: 'spirits', name: 'Spirits', priority: true, ageGate: 21, file: 'alcohol',
+    key: 'spirits', name: 'Spirits', priority: true, ageGate: 21,
     from: ['alcohol'],
     words: /tequila|vodka|whiske?y|bourbon|\brum\b|\bgin\b|mezcal|spirits|liqueur|cognac|scotch/i,
     known: [
@@ -140,16 +146,16 @@ export const LANES: Lane[] = [
     ],
   },
   {
-    key: 'nicotine', name: 'Nicotine', priority: true, ageGate: 21, file: 'nicotine',
-    from: ['nicotine'],
-    rest: 'nicotine',
+    // Leo: nicotine means pouches (Sep 2026).
+    key: 'nicotine', name: 'Nicotine Pouches', priority: true, ageGate: 21,
+    from: [],
     known: [
       'Zyn', 'Velo', 'On!|On! Nicotine', 'Rogue', 'Lucy|Lucy Nicotine', 'Sesh+', 'FRE',
       'Juice Head', 'Black Buffalo',
     ],
   },
   {
-    key: 'athletic', name: 'Athletic wear', priority: true, file: 'apparel',
+    key: 'athletic', name: 'Athletic Wear', priority: true,
     from: ['apparel'],
     words: /athletic|activewear|athleisure|sportswear|\bgym\b|fitness apparel|workout|training apparel|\byoga\b|running shoes|performance (apparel|polos?|wear)/i,
     known: [
@@ -159,9 +165,9 @@ export const LANES: Lane[] = [
     ],
   },
   {
-    key: 'clothing', name: 'Clothing & fashion', priority: true, file: 'apparel',
-    from: ['apparel'],
-    rest: 'apparel',
+    // What is left of the old Apparel & Fashion keeps its key.
+    key: 'apparel', name: 'Clothing & Fashion', priority: true,
+    from: [],
     known: [
       'Chubbies', 'True Classic', 'Vineyard Vines', 'Kulani Kinis', 'Revolve', 'Guess', 'Skims',
       'goodr', 'Fashion Nova', 'Princess Polly', 'White Fox|White Fox Boutique', 'Edikted',
@@ -173,11 +179,7 @@ export const LANES: Lane[] = [
   },
 ]
 
-// A leftover of a split category gets its own name, so "Alcohol & RTD"
-// doesn't read as if it still held every beer and tequila.
-const REST_NAMES: Record<string, string> = {
-  alcohol: 'Alcohol — not sorted yet',
-}
+export const LANE_KEYS = LANES.map(l => l.key)
 
 // Loose enough that "Liquid IV" meets "Liquid I.V." and "Nütrl" meets
 // "Nutrl"; strips the corporate tail so "BeatBox Beverages" meets
@@ -200,21 +202,74 @@ function keysOf(b: { name: string; aka: string | null }): string[] {
   return [b.name, ...String(b.aka ?? '').split(/[,;]/)].map(brandKey).filter(Boolean)
 }
 
-// The lane a brand sits in, or null when it stays in its category's row.
-export function laneOf(b: Pick<StockBrand, 'name' | 'aka' | 'category' | 'about' | 'topProducts'>): string | null {
+type Placeable = Pick<StockBrand, 'name' | 'aka' | 'category' | 'about' | 'topProducts'>
+
+// Where a brand belongs, and why: "filed" (its own filing stands),
+// "name" (a brand this lane knows by name) or "words" (what it sells —
+// `match` is the words that decided it).
+export function placeBrand(b: Placeable): { to: string | null; why: 'filed' | 'name' | 'words'; match: string | null } {
   const cat = b.category || 'unresolved'
-  const byName = cat === 'unresolved'
+  if (!SORTABLE.includes(cat)) return { to: b.category, why: 'filed', match: null }
   const keys = keysOf(b)
   for (const l of LANES) {
-    if (!byName && !l.from.includes(cat)) continue
-    if (keys.some(k => KNOWN[l.key].has(k))) return l.key
+    if (keys.some(k => KNOWN[l.key].has(k))) {
+      return l.key === b.category ? { to: b.category, why: 'filed', match: null } : { to: l.key, why: 'name', match: null }
+    }
   }
-  const text = [b.name, b.aka, b.about, b.topProducts].filter(Boolean).join(' · ')
-  for (const l of LANES) {
-    if (l.words && l.from.includes(cat) && l.words.test(text)) return l.key
+  // Words only for brands someone filed somewhere: an unfiled brand's
+  // description is too thin a reason to file it.
+  if (cat !== 'unresolved') {
+    const text = [b.name, b.aka, b.about, b.topProducts].filter(Boolean).join(' · ')
+    for (const l of LANES) {
+      if (!l.words || !l.from.includes(cat)) continue
+      const m = text.match(l.words)
+      if (m) return { to: l.key, why: 'words', match: m[0] }
+    }
   }
-  for (const l of LANES) if (l.rest === cat) return l.key
-  return null
+  return { to: b.category, why: 'filed', match: null }
+}
+
+export type RefileMove = {
+  id: string; name: string; from: string | null; to: string
+  why: 'name' | 'words'; match: string | null
+}
+
+// Every brand whose category would change, grouped by where it goes.
+// Applying these and asking again gives nothing: placeBrand keeps a
+// brand where these moves put it.
+export function refileMoves(brands: Array<Placeable & { id: string }>): RefileMove[] {
+  const out: RefileMove[] = []
+  for (const b of brands) {
+    const p = placeBrand(b)
+    if (p.why === 'filed' || !p.to || p.to === b.category) continue
+    out.push({ id: b.id, name: b.name, from: b.category ?? null, to: p.to, why: p.why, match: p.match })
+  }
+  const order = (k: string) => { const i = LANE_KEYS.indexOf(k); return i < 0 ? 99 : i }
+  return out.sort((a, b) => order(a.to) - order(b.to) || a.name.localeCompare(b.name))
+}
+
+// A planned Schedule day keeps meaning what Leo meant: a day set to a
+// category that is being split follows its biggest share, when more of
+// its brands leave for one category than stay behind (Alcohol & RTD →
+// Beer, Seltzers & Canned Cocktails; Apparel mostly stays Clothing).
+export function remapPlanDays(
+  plan: Record<string, { category: string | null }>,
+  moves: Array<{ from: string | null; to: string }>,
+  totals: Record<string, number>,
+  today: string,
+): Array<{ day: string; from: string; to: string; moving: number; staying: number }> {
+  const out: Array<{ day: string; from: string; to: string; moving: number; staying: number }> = []
+  for (const day of Object.keys(plan).sort()) {
+    const from = plan[day]?.category
+    if (day < today || !from) continue
+    const leaving: Record<string, number> = {}
+    let left = 0
+    for (const m of moves) if (m.from === from) { leaving[m.to] = (leaving[m.to] ?? 0) + 1; left++ }
+    const best = Object.entries(leaving).sort((a, b) => b[1] - a[1])[0]
+    const staying = (totals[from] ?? 0) - left
+    if (best && best[1] > staying) out.push({ day, from, to: best[0], moving: best[1], staying })
+  }
+  return out
 }
 
 // Where a brand stands. Doing business beats everything; then off
@@ -257,12 +312,13 @@ function tally(c: Counts, b: StockBrand, state: StockState) {
 }
 
 export type StockRow = {
+  // The category key the row holds ("uncategorised" for unfiled brands).
   key: string
   // Lane name; null on a plain category row (the page labels those).
   name: string | null
-  category: string | null
   priority: boolean
   ageGate: number | null
+  // Category that brands added from this row's ideas are filed under.
   file: string | null
   counts: Counts
   brands: Array<{
@@ -273,36 +329,37 @@ export type StockRow = {
   ideas: string[]
 }
 
+// Every brand in exactly one row: the category it belongs in (its own
+// filing, or where placeBrand would move it — the page tags those with
+// where they are filed today). Lanes lead, in Leo's order.
 export function buildStock(brands: StockBrand[]) {
   const rows = new Map<string, StockRow>()
-  const row = (key: string, init: () => Omit<StockRow, 'counts' | 'brands' | 'ideas'>) => {
+  const row = (key: string) => {
     let r = rows.get(key)
-    if (!r) { r = { ...init(), counts: zero(), brands: [], ideas: [] }; rows.set(key, r) }
+    if (!r) {
+      const l = LANES.find(x => x.key === key)
+      r = {
+        key, name: l?.name ?? null, priority: !!l?.priority, ageGate: l?.ageGate ?? null,
+        file: key === 'uncategorised' ? null : key, counts: zero(), brands: [], ideas: [],
+      }
+      rows.set(key, r)
+    }
     return r
   }
   // Lanes first and always, so an empty lane still shows as empty.
-  for (const l of LANES) {
-    row(l.key, () => ({
-      key: l.key, name: l.name, category: null, priority: !!l.priority,
-      ageGate: l.ageGate ?? null, file: l.file,
-    }))
-  }
+  for (const l of LANES) row(l.key)
 
   const totals = zero()
   const categories = new Set<string>()
   const onRoster = new Set<string>()
+  let refile = 0
   for (const b of brands) {
     for (const k of keysOf(b)) onRoster.add(k)
     if (b.category) categories.add(b.category)
     const state = stateOf(b)
-    const lane = laneOf(b)
-    const cat = b.category || 'uncategorised'
-    const r = lane
-      ? rows.get(lane)!
-      : row('cat:' + cat, () => ({
-          key: 'cat:' + cat, name: REST_NAMES[cat] ?? null, category: cat, priority: false,
-          ageGate: null, file: cat === 'uncategorised' ? null : cat,
-        }))
+    const p = placeBrand(b)
+    if (p.why !== 'filed' && p.to !== b.category) refile++
+    const r = row(p.to || 'uncategorised')
     tally(r.counts, b, state)
     tally(totals, b, state)
     r.brands.push({
@@ -328,15 +385,18 @@ export function buildStock(brands: StockBrand[]) {
   }
 
   const all = [...rows.values()]
-  const laneRows = all.filter(r => r.priority)
-  // Everything else: the non-priority lanes and category rows, biggest
-  // first; "Needs Clarification" and unfiled brands last.
-  const tail = (r: StockRow) => (r.category === 'unresolved' || r.category === 'uncategorised' ? 1 : 0)
+  const laneRows = LANES.filter(l => l.priority).map(l => rows.get(l.key)!)
+  // Everything else: the other categories, biggest first; "Needs
+  // Clarification" and unfiled brands last.
+  const tail = (r: StockRow) => (r.key === 'unresolved' || r.key === 'uncategorised' ? 1 : 0)
   const otherRows = all.filter(r => !r.priority && r.counts.total > 0)
     .sort((a, b) => tail(a) - tail(b) || b.counts.total - a.counts.total)
 
   return {
     goal: LANE_GOAL,
+    // How many brands the re-file would move (the list comes from
+    // refileCategories when Leo opens it).
+    refile,
     totals: { ...totals, categories: categories.size },
     lanes: laneRows,
     others: otherRows,

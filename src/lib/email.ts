@@ -235,6 +235,11 @@ export function templateFollowup2(t: any, intro: any): { subject: string; body: 
 
 // Per-category angles for the ✦ suggestion box — {brand} gets substituted.
 const CATEGORY_ANGLES: Record<string, { tip: string; insert: string }> = {
+  electrolytes: { tip: 'Hydration around long show nights is the native use case — pitch sampling at the doors and in the lines.', insert: 'Long nights on their feet are exactly when students reach for hydration — {brand} sampling at the doors puts product in hand right when it matters.' },
+  energy:    { tip: 'Sampling is the natural play — cold cans in hands at peak energy is exactly what energy brands buy.', insert: 'Concerts are a natural sampling moment for {brand} — thousands of students with a cold can in hand at peak energy, plus all the content that follows.' },
+  rtd:       { tip: 'Lead with compliant 21+ sampling — the compliance angle is usually their first question.', insert: 'Our 21+ events give {brand} a compliant way to put cans in hands in exactly the setting where trial converts.' },
+  spirits:   { tip: 'Lead with compliant 21+ bar moments — the compliance angle is usually their first question.', insert: 'Our 21+ events give {brand} a compliant bar moment in exactly the setting where trial converts.' },
+  athletic:  { tip: 'Athletic brands buy the look — pitch ambassador seeding so the students who set campus style wear it all night.', insert: 'Show nights are the most photographed nights on campus — {brand} on the students who set the look gets seen, tagged and worn all semester.' },
   beverage:  { tip: 'Sampling is the natural play — cold product in hands at peak energy is exactly what beverage brands buy.', insert: 'Concerts are a natural sampling moment for {brand} — thousands of students with product in hand at peak energy, plus all the content that follows.' },
   alcohol:   { tip: 'Lead with compliant 21+ sampling — the compliance angle is usually their first question.', insert: 'Our 21+ events give {brand} a compliant way to put product in hands in exactly the setting where trial converts.' },
   cpg:       { tip: 'Product seeding and house drops before show day put the product into daily student life, not just one night.', insert: 'Beyond show night, house drops across our Greek chapters would put {brand} into students\u2019 daily routines all semester.' },

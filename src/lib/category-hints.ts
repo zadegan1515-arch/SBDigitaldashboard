@@ -8,11 +8,21 @@
 // "unresolved" and let a human decide than confidently file a brand
 // under the wrong category, because a miscategorised brand is invisible
 // (nobody browses the category it landed in looking for it).
+//
+// Leo's lanes are categories of their own (src/lib/stock.ts), so the
+// specific drink, alcohol and apparel ones come before the broad ones
+// they split out of. Alcohol before soft drinks, so "hard iced tea" is a
+// can, not a tea; root and ginger beer stay soft drinks, and "cold brew"
+// is coffee, not a brewery.
 export const CATEGORY_HINTS: Array<[RegExp, string]> = [
-  [/energy drink|seltzer water|sparkling water|hydration|electrolyte|soda|coffee|tea\b|juice/i, 'beverage'],
+  [/electrolyte|hydration/i, 'electrolytes'],
+  [/energy drink|energy shot/i, 'energy'],
   [/nicotine|pouch|vape|tobacco|zyn/i, 'nicotine'],
-  [/vodka|tequila|whiskey|beer|hard seltzer|rtd|spirits|brewing|distill/i, 'alcohol'],
+  [/(?<!root |ginger )\bbeers?\b|brewing|brewery|breweries|hard seltzer|hard (iced )?tea|hard lemonade|\brtd\b|canned cocktail|\blager\b/i, 'rtd'],
+  [/vodka|tequila|whiske?y|bourbon|\brum\b|\bgin\b|mezcal|spirits|distill|liquor/i, 'spirits'],
+  [/seltzer water|sparkling water|soda|coffee|tea\b|juice|root beer|ginger beer/i, 'beverage'],
   [/snack|protein bar|jerky|chips|candy|cereal|granola/i, 'cpg'],
+  [/athletic|activewear|athleisure|sportswear|sporting goods|gym wear|yoga wear/i, 'athletic'],
   [/apparel|clothing|streetwear|sneaker|footwear|hoodie|denim/i, 'apparel'],
   [/sportsbook|betting|dfs|parlay|casino/i, 'betting'],
   [/bank|card|invest|trading|crypto|payments|fintech/i, 'fintech'],
