@@ -44,11 +44,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - **Home → For Zach to do** (`zachTodo` + `renderZachTodo`; deep link `app.html#zach`) — everyone who
   accepted a LinkedIn invite or answered there and still needs an email (`HAND_WAITING` in `route.ts`:
   accepted/replied, no `emailedAt`, no `handSkippedAt`, no inbound email; archived / do-not-email
-  brands are held back and named). Grouped by brand, a card per person: LinkedIn link, next-step
-  chips, Leo's note (`Target.handNote`), To (writes `Contact.email`; a replaced address goes into
-  the contact's notes; blank never clears one). Drafts come from one template (Setting
-  `handEmailTemplate`, placeholders (NAME) (BRAND) (TITLE); a stand-in until Leo saves his), and a
-  card's edits stay on that card (`Target.handSubject/handBody`, null = follow the template).
+  brands are held back and named). A queue, not forms: one-line rows under brand labels (avatar
+  colour follows the brand), one row open at a time. The open row is the email (To writes
+  `Contact.email`; a replaced address goes into the contact's notes; blank never clears one) plus
+  Leo's note (`Target.handNote`), and its next steps ARE the buttons: LinkedIn → Open in Gmail →
+  Mark emailed. Filter chips, a done-this-week meter, an Undo bar, auto-open of the next person,
+  keys ↑↓/j k · Enter · Esc · G · E. Drafts come from one template (Setting `handEmailTemplate`,
+  placeholders (NAME) (BRAND) (TITLE); a stand-in until Leo saves his; edited in a modal with a
+  live preview), and a row's edits stay with that person (`Target.handSubject/handBody`, null =
+  follow the template).
   Open in Gmail (compose URL, `authuser` = signed-in email) / Copy: **nothing sends from the site**,
   so the cap isn't involved. Emailed ✓ = `markEmailed`, No email needed = `handSkippedAt`; the Done
   fold covers 30 days, with Undo. No CC (Leo's call); one-pager is a download button. The email

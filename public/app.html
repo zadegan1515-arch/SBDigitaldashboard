@@ -96,45 +96,189 @@
   .go-card:hover{border-color:rgba(79,131,247,.55)}
   .go-card .arr{margin-left:auto;color:var(--ink-3);font-weight:400}
 
-  /* For Zach to do (Home): one group per brand, a card per person in
-     it. The rule down the left is what says "same brand". */
-  #zach-todo{scroll-margin-top:130px}
-  .zt-title{font-family:var(--display);font-size:18px;font-weight:700;letter-spacing:-.01em;color:var(--ink-1)}
-  .zt-tools{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
-  .zt-brand{margin-bottom:20px}
-  .zt-bhead{display:flex;align-items:baseline;gap:4px 10px;flex-wrap:wrap;padding:0 2px 8px}
-  .zt-bname{font-family:var(--display);font-weight:700;font-size:16px;letter-spacing:-.01em;cursor:pointer}
-  .zt-bname:hover{color:var(--accent-hi)}
-  .zt-bmeta{font-size:12px;color:var(--ink-3)}
-  .zt-bmeta a{color:var(--ink-3)}
-  .zt-bmeta a:hover{color:var(--ink-1)}
-  .zt-babout{flex-basis:100%;font-size:12.5px;color:var(--ink-2)}
-  .zt-people{border-left:2px solid var(--border);padding-left:14px;margin-left:3px}
-  .zt-card{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);
-    padding:16px 18px;margin-bottom:10px;box-shadow:var(--shadow)}
-  .zt-top{display:flex;align-items:flex-start;gap:12px}
-  .zt-steps{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:12px}
-  .zt-steps .zt-lbl{margin-right:2px}
-  .zt-step{font-size:11px;color:var(--ink-3);border:1px solid var(--border);border-radius:999px;padding:2px 9px}
-  .zt-step.on{color:#55d9a2;border-color:rgba(62,207,142,.35);background:rgba(62,207,142,.08)}
-  .zt-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
-  .zt-lbl{font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);width:78px;flex:none;white-space:nowrap}
-  .zt-to{flex:1;min-width:0;max-width:420px}
-  .zt-note{flex:1;min-width:0;padding:7px 11px;font-size:13px;line-height:1.5}
-  .zt-editor{margin-top:12px;padding-top:12px;border-top:1px solid var(--border-soft)}
-  .zt-editor textarea{margin-top:8px;font-size:13px}
-  .zt-flag{font-size:12px;color:var(--warn)}
-  .zt-card .mini{padding:4px 9px;font-size:11px;opacity:.7}
-  .zt-card .mini:hover{opacity:1}
-  .zt-done-row{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border-soft);font-size:13px}
+  /* For Zach to do (Home). A queue, not a stack of forms: every person
+     is one line, the one you open becomes the email, and its three next
+     steps are the buttons. People at one brand sit under one label and
+     share an avatar colour (colour follows the brand, never the order). */
+  #zach-todo{scroll-margin-top:130px;margin-top:30px}
+  .zt-head{display:flex;flex-direction:column;gap:14px;margin-bottom:14px}
+  .zt-head-top{display:flex;align-items:flex-start;gap:10px 16px;flex-wrap:wrap}
+  .zt-title{font-family:var(--display);font-size:24px;font-weight:800;letter-spacing:-.025em;line-height:1.15}
+  .zt-subline{font-size:13px;color:var(--ink-3);margin-top:4px}
+  .zt-tools{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .zt-standin{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;
+    border:1px solid rgba(232,182,76,.35);background:rgba(232,182,76,.1);color:#eec777;
+    font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer}
+  .zt-standin:hover{background:rgba(232,182,76,.16)}
+  .zt-standin:before{content:'';width:6px;height:6px;border-radius:50%;background:var(--warn)}
+  /* Progress: one series, so the words carry it and the bar is a glance.
+     Track is the same blue ramp, lighter. */
+  .zt-meter{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .zt-track{flex:1;min-width:140px;max-width:340px;height:6px;border-radius:999px;background:rgba(79,131,247,.16);overflow:hidden}
+  .zt-fill{height:100%;border-radius:999px;background:var(--accent);transition:width .6s cubic-bezier(.2,.8,.2,1)}
+  .zt-meter-lbl{font-size:12.5px;color:var(--ink-3)}
+  .zt-meter-lbl b{color:var(--ink-1);font-weight:700}
+  .zt-filters{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 -2px;padding:2px}
+  .zt-filters::-webkit-scrollbar{display:none}
+  .zt-chip{flex:none;display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;
+    border:1px solid var(--border);background:transparent;color:var(--ink-2);font-family:inherit;
+    font-size:12.5px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+  .zt-chip span{color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .zt-chip:hover{border-color:#3a3a46;color:var(--ink-1)}
+  .zt-chip.on{background:var(--accent-soft);border-color:rgba(79,131,247,.5);color:#dbe6ff}
+  .zt-chip.on span{color:#aac6ff}
+
+  .zt-list{background:var(--surface-1);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+  .zt-glabel{display:flex;align-items:baseline;gap:10px;padding:14px 18px 4px;font-size:11.5px;color:var(--ink-3)}
+  .zt-group+.zt-group .zt-glabel{border-top:1px solid var(--border-soft);margin-top:4px;padding-top:14px}
+  .zt-gname{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);cursor:pointer}
+  .zt-gname:hover{color:var(--accent-hi)}
+  .zt-item{display:grid;grid-template-rows:1fr;transition:grid-template-rows .3s ease,opacity .25s ease,background .2s}
+  .zt-item{scroll-margin:130px 0 24px}
+  .zt-item>.zt-inner{min-height:0;overflow:hidden}
+  .zt-item.leaving{grid-template-rows:0fr;opacity:0}
+  .zt-item.open{background:var(--surface-2);box-shadow:inset 3px 0 0 var(--c,var(--accent))}
+  .zt-row{display:flex;align-items:center;gap:12px;padding:10px 18px;cursor:pointer;outline:none;transition:background .12s}
+  .zt-row:hover{background:rgba(255,255,255,.03)}
+  .zt-row:focus-visible{box-shadow:inset 0 0 0 2px var(--ring)}
+  .zt-av{flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;
+    font-family:var(--display);font-size:11.5px;font-weight:700;letter-spacing:.02em;
+    color:var(--c,var(--accent-hi));background:rgba(255,255,255,.06);
+    background:color-mix(in srgb,var(--c,var(--accent)) 17%,transparent);
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--c,var(--accent)) 32%,transparent)}
+  .zt-who{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;white-space:nowrap;overflow:hidden}
+  .zt-who b{font-weight:600;font-size:14px;color:var(--ink-1);flex:none}
+  .zt-who span{font-size:12.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis}
+  .zt-flags{flex:none;display:flex;align-items:center;gap:8px;color:var(--ink-3)}
+  .zt-flags svg{display:block}
+  .zt-flags .warn{color:var(--warn)}
+  .zt-noaddr{font-size:10.5px;font-weight:700;color:#eec777;background:rgba(232,182,76,.12);border-radius:999px;padding:2px 8px}
+  .zt-age{flex:none;min-width:30px;text-align:right;font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .zt-side{flex:none;display:flex;align-items:center;gap:10px}
+  .zt-go{flex:none;max-width:0;overflow:hidden;opacity:0;font-size:12px;font-weight:600;color:var(--accent-hi);
+    white-space:nowrap;transition:max-width .2s ease,opacity .15s}
+  .zt-row:hover .zt-go,.zt-row:focus-visible .zt-go{max-width:96px;opacity:1}
+  .zt-chev{flex:none;color:var(--ink-3);font-size:16px;line-height:1;transition:transform .2s}
+  .zt-item.open .zt-chev{transform:rotate(90deg)}
+  .zt-item.open .zt-go{display:none}
+  .zt-exp{display:grid;grid-template-rows:0fr;transition:grid-template-rows .3s ease}
+  .zt-item.open .zt-exp{grid-template-rows:1fr}
+  .zt-exp>.zt-exp-in{min-height:0;overflow:hidden}
+  .zt-comp{padding:2px 18px 18px 62px}
+  .zt-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:12px;color:var(--ink-3);margin-bottom:12px}
+  .zt-meta a{color:var(--ink-2);text-decoration:none}
+  .zt-meta a:hover{color:var(--accent-hi)}
+  .zt-dot{color:var(--border)}
+  .zt-callout{border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.5;margin-bottom:12px}
+  .zt-callout.note{background:rgba(79,131,247,.08);border:1px solid rgba(79,131,247,.24);color:var(--ink-1);white-space:pre-wrap}
+  .zt-callout.warn{background:rgba(232,182,76,.08);border:1px solid rgba(232,182,76,.26);color:#eec777}
+  .zt-callout-h{display:flex;align-items:center;gap:10px;font-size:10px;font-weight:700;letter-spacing:.09em;
+    text-transform:uppercase;color:#9dbaff;margin-bottom:3px;white-space:normal}
+  .zt-notebox{width:100%;margin-bottom:12px;font-size:13px;padding:9px 12px;line-height:1.5}
+  .zt-linkbtn{background:none;border:none;padding:0;font-family:inherit;font-size:12.5px;font-weight:600;
+    color:var(--accent-hi);cursor:pointer;text-decoration:none}
+  .zt-linkbtn:hover{color:#9dbaff;text-decoration:underline}
+  .zt-addnote{display:inline-block;margin-bottom:12px}
+  .zt-mail{border:1px solid var(--border);border-radius:12px;background:var(--surface-1);overflow:hidden;transition:border-color .15s}
+  .zt-mail:focus-within{border-color:rgba(79,131,247,.45)}
+  .zt-field{display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--border-soft)}
+  .zt-flbl{flex:none;width:52px;font-size:12px;color:var(--ink-3)}
+  .zt-field input{flex:1;min-width:0;background:none;border:none;color:var(--ink-1);font-family:inherit;font-size:13.5px;padding:11px 0;outline:none}
+  .zt-field input::placeholder{color:var(--ink-3)}
+  .zt-fstate{flex:none;font-size:11px;font-weight:700;white-space:nowrap}
+  .zt-fstate.ok{color:#55d9a2}
+  .zt-fstate.miss{color:#eec777}
+  .zt-body{display:block;width:100%;border:none;background:none;color:var(--ink-1);font-family:inherit;font-size:13.5px;
+    line-height:1.65;padding:14px;resize:vertical;outline:none;min-height:150px}
+  .zt-mailfoot{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;padding:9px 14px;border-top:1px solid var(--border-soft);font-size:12px;color:var(--ink-3)}
+  .zt-edstate{display:inline-flex;align-items:center;gap:8px;margin-right:auto}
+  .zt-edited{color:#ab9fff;font-weight:600}
+  .zt-steps{display:flex;align-items:center;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .zt-step{display:inline-flex;align-items:center;gap:9px;padding:8px 14px 8px 9px;border-radius:12px;
+    border:1px solid var(--border);background:transparent;color:var(--ink-2);font-family:inherit;font-size:13px;
+    font-weight:600;line-height:1.2;cursor:pointer;text-decoration:none;transition:background .15s,border-color .15s,color .15s,box-shadow .15s}
+  .zt-step:hover{border-color:#3a3a46;color:var(--ink-1)}
+  .zt-step i{font-style:normal;flex:none;width:21px;height:21px;border-radius:50%;display:grid;place-items:center;
+    font-size:11px;font-weight:700;background:var(--surface-2);color:var(--ink-3);border:1px solid var(--border)}
+  .zt-step.now{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 0 18px rgba(79,131,247,.3)}
+  .zt-step.now:hover{background:var(--accent-hi);border-color:var(--accent-hi)}
+  .zt-step.now i{background:rgba(255,255,255,.22);border-color:transparent;color:#fff}
+  .zt-step.done{color:var(--ink-3)}
+  .zt-step.done i{background:rgba(62,207,142,.16);border-color:transparent;color:#55d9a2}
+  .zt-arrow{color:var(--ink-3);font-size:12px}
+  .zt-skip{margin-left:auto;background:none;border:none;color:var(--ink-3);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;padding:6px 2px}
+  .zt-skip:hover{color:var(--ink-1)}
+  .zt-more{display:block;width:100%;padding:13px;border:none;border-top:1px solid var(--border-soft);background:none;
+    color:var(--accent-hi);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+  .zt-more:hover{background:rgba(255,255,255,.03)}
+  .zt-none{padding:22px 18px;font-size:13px;color:var(--ink-3)}
+  .zt-empty{padding:36px 20px;text-align:center}
+  .zt-empty .zt-bigcheck{width:46px;height:46px;border-radius:50%;margin:0 auto 12px;display:grid;place-items:center;
+    background:rgba(62,207,142,.14);color:#55d9a2;font-size:20px;font-weight:700}
+  .zt-empty h3{font-size:15px;font-weight:700;margin-bottom:4px}
+  .zt-empty p{font-size:13px;color:var(--ink-3)}
+  .zt-foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;margin-top:12px;font-size:12px;color:var(--ink-3)}
+  .zt-done{margin-top:12px}
+  .zt-done>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--ink-2);user-select:none}
+  .zt-done>summary::-webkit-details-marker{display:none}
+  .zt-done>summary:before{content:'▸';color:var(--ink-3);font-size:11px}
+  .zt-done[open]>summary:before{content:'▾'}
+  .zt-done>summary .n{font-weight:500;color:var(--ink-3)}
+  .zt-done-list{margin-top:10px;background:var(--surface-1);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .zt-done-row{display:flex;align-items:center;gap:12px;padding:9px 16px;border-bottom:1px solid var(--border-soft);font-size:13px}
   .zt-done-row:last-child{border-bottom:0}
+  .zt-done-row .zt-av{width:26px;height:26px;font-size:12px;--c:var(--good)}
+  .zt-done-row .zt-who span{font-size:12px}
+  .zt-when{flex:none;font-size:12px;color:var(--ink-3)}
+  .zt-keys kbd{font-family:inherit;font-size:10.5px;border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;
+    padding:0 5px;margin:0 1px;background:var(--surface-2);color:var(--ink-2)}
+  .zt-undo{position:fixed;left:50%;bottom:22px;z-index:98;display:flex;align-items:center;gap:16px;
+    padding:8px 8px 8px 18px;border-radius:999px;background:#1f1f28;border:1px solid var(--border);
+    box-shadow:0 10px 34px rgba(0,0,0,.55);font-size:13px;color:var(--ink-1);
+    opacity:0;transform:translate(-50%,14px);pointer-events:none;transition:opacity .2s,transform .2s}
+  .zt-undo.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+  body.zt-undo-on .toast{bottom:78px}
+  .zt-undo button{border:none;border-radius:999px;background:rgba(79,131,247,.18);color:#aac6ff;font-family:inherit;
+    font-size:12.5px;font-weight:700;padding:6px 14px;cursor:pointer}
+  .zt-undo button:hover{background:rgba(79,131,247,.28)}
+  /* Template editor: write on the left, see it for a real person on the right. */
+  .zt-modal{max-width:880px}
+  .zt-tplgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
+  .zt-tokens{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:10px 0 12px;font-size:12px;color:var(--ink-3)}
+  .zt-token{border:1px dashed rgba(79,131,247,.5);background:rgba(79,131,247,.08);color:#aac6ff;border-radius:999px;
+    padding:3px 10px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer}
+  .zt-token:hover{background:rgba(79,131,247,.16)}
+  .zt-preview{border:1px solid var(--border);border-radius:12px;background:var(--surface-2);padding:14px 16px;min-width:0}
+  .zt-preview select{max-width:100%}
+  .zt-prev-subj{font-weight:700;font-size:14px;margin:12px 0 10px;padding-bottom:10px;border-bottom:1px solid var(--border-soft);overflow-wrap:anywhere}
+  .zt-prev-body{font-size:13.5px;line-height:1.65;white-space:pre-wrap;color:var(--ink-2);overflow-wrap:anywhere}
+  .zt-fill-tok{color:#dbe6ff;background:rgba(79,131,247,.16);border-radius:4px;padding:0 3px}
+  .zt-bad-tok{color:#f2918c;background:rgba(240,113,107,.12);border-radius:4px;padding:0 3px}
+  @media (hover:none){.zt-go,.zt-keys{display:none}}
+  @media (prefers-reduced-motion:reduce){
+    .zt-item,.zt-exp,.zt-fill,.zt-undo,.zt-go,.zt-chev,.zt-row,.zt-step{transition:none}
+  }
   @media (max-width:768px){
-    .zt-people{padding-left:10px;margin-left:0}
-    .zt-card{padding:14px}
-    .zt-top{flex-wrap:wrap}
-    .zt-lbl{width:100%}
-    .zt-steps .zt-lbl{width:auto}
-    .zt-to{max-width:none}
+    .zt-title{font-size:21px}
+    .zt-tools{margin-left:0}
+    .zt-row{display:grid;grid-template-columns:32px minmax(0,1fr) auto;column-gap:12px;row-gap:5px;padding:11px 14px}
+    .zt-av{grid-row:1 / span 2}
+    .zt-who{grid-column:2;grid-row:1}
+    .zt-who b{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+    .zt-side{grid-column:2;grid-row:2;flex-wrap:wrap;gap:8px}
+    .zt-side .zt-age{min-width:0;text-align:left}
+    .zt-go{display:none}
+    .zt-chev{grid-column:3;grid-row:1 / span 2}
+    .zt-keys{display:none}
+    .zt-filters{-webkit-mask-image:linear-gradient(to right,#000 86%,transparent);mask-image:linear-gradient(to right,#000 86%,transparent);padding-right:24px}
+    .zt-glabel{padding:12px 14px 2px}
+    .zt-comp{padding:2px 14px 16px}
+    .zt-steps{flex-direction:column;align-items:stretch}
+    .zt-step{padding:11px 14px 11px 10px}
+    .zt-arrow{display:none}
+    .zt-skip{margin:2px auto 0}
+    .zt-track{max-width:none}
+    .zt-tplgrid{grid-template-columns:1fr}
   }
   .search-wrap{position:relative;flex:1;max-width:520px}
   .search-input{width:100%;padding:9px 12px 9px 34px;border-radius:999px;border:1px solid var(--border);
@@ -864,6 +1008,41 @@
   </main>
 </div>
 
+<!-- ZACH'S EMAIL TEMPLATE -->
+<div class="scrim" id="zt-scrim">
+  <div class="modal zt-modal" role="dialog" aria-modal="true" aria-labelledby="zt-tpl-h">
+    <div class="modal-head">
+      <h2 id="zt-tpl-h">Email template</h2>
+      <p>Every card on Zach’s list starts from this. A card someone already edited keeps its own version.</p>
+    </div>
+    <div class="modal-body zt-tplgrid">
+      <div>
+        <label class="lbl" for="zt-tsubj">Subject</label>
+        <input class="field-box" id="zt-tsubj" autocomplete="off">
+        <div class="zt-tokens">Insert
+          <button type="button" class="zt-token" data-tok="(NAME)">First name</button>
+          <button type="button" class="zt-token" data-tok="(BRAND)">Brand</button>
+          <button type="button" class="zt-token" data-tok="(TITLE)">Job title</button>
+        </div>
+        <label class="lbl" for="zt-tbody">Email</label>
+        <textarea class="field-box" id="zt-tbody" rows="14"></textarea>
+      </div>
+      <div class="zt-preview">
+        <label class="lbl" for="zt-prev-who">Preview for</label>
+        <select class="inp" id="zt-prev-who"></select>
+        <div class="zt-prev-subj" id="zt-prev-subj"></div>
+        <div class="zt-prev-body" id="zt-prev-body"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="hint" id="zt-tmeta" style="margin:0 auto 0 0"></span>
+      <button class="btn-ghost" id="zt-tcancel">Cancel</button>
+      <button class="btn-solid" id="zt-tsave">Save template</button>
+    </div>
+  </div>
+</div>
+<div class="zt-undo" id="zt-undo" role="status" aria-live="polite"><span id="zt-undo-text"></span><button id="zt-undo-btn">Undo</button></div>
+
 <!-- ADD BRAND -->
 <div class="scrim" id="add-scrim">
   <div class="modal">
@@ -1210,21 +1389,24 @@ function loadDashboard() {
 // --- For Zach to do --------------------------------------------
 //
 // Everyone who accepted our LinkedIn invite or answered there, waiting
-// on an email from Zach's own inbox. Each brand is a group, each person
-// a card. Every email starts from one template (Edit email template);
-// an edit made on a card saves to that card only, and Reset to template
-// hands it back. Nothing here sends mail: Open in Gmail fills in a
-// compose window, Zach presses Send, then Emailed ✓ logs it.
+// on an email from Zach's own inbox. A queue rather than a stack of
+// forms: each person is one row under their brand. Opening a row drafts
+// their email from the one template, and its three next steps (read the
+// LinkedIn chat, open in Gmail, mark emailed) are the buttons. Finishing
+// one collapses it, offers Undo and opens the next. An edit made in a
+// row's email stays with that person; Reset hands it back to the
+// template. Nothing here sends mail.
 
 var ZT = null;             // last zachTodo payload
 var ZT_BY_ID = {};         // targetId -> person
-var ZT_OPEN = {};          // targetId -> draft editor open
+var ZT_CUR = null;         // the open person (one at a time)
 var ZT_SEEN = {};          // targetId -> LinkedIn opened (this visit)
 var ZT_SENT = {};          // targetId -> Gmail opened or email copied (this visit)
-var ZT_DRAFTED = {};       // targetId -> draft opened (this visit)
-var ZT_TPL_OPEN = false;
+var ZT_NOTE_EDIT = {};     // targetId -> note box open
+var ZT_FILTER = 'all';
+var ZT_SHOW = 8;           // brand groups shown before "Show more"
 var ZT_DONE_OPEN = false;
-var ZT_SHOW = 8;           // brand groups shown before "Show all"
+var ZT_PCT = null;         // last meter width, so progress visibly moves
 var ZT_SCROLL = location.hash === '#zach';
 var HAND_TPL = null;       // the template; the Results tab's Email button reads it too
 
@@ -1238,8 +1420,8 @@ function handFill(text, p) {
     .replace(/\(title\)/gi, p.title || '');
 }
 
-// This person's email as it stands: the card's own edit where there is
-// one, the template everywhere else.
+// This person's email as it stands: their own edit where there is one,
+// the template everywhere else.
 function handDraft(p) {
   var tpl = HAND_TPL || { subject: '', body: '' };
   return {
@@ -1273,189 +1455,284 @@ function ztCopy(text, msg) {
   document.body.removeChild(ta);
 }
 
+var ZT_ICON = {
+  note: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h11v7.5h-6L4.5 13v-2.5h-2z"/></svg>',
+  mail: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3.5" width="12" height="9" rx="1.5"/><path d="m2.5 4.5 5.5 4 5.5-4"/></svg>'
+};
+
 function ztFirst(p) { return String(p.name || '').trim().split(/\s+/)[0] || 'them'; }
 function ztEdited(p) { return p.handSubject != null || p.handBody != null; }
+function ztAddrOk(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v || ''); }
 
-// The steps tick themselves as they happen. 1 and 4 only know about
-// this visit (the dashboard can't see LinkedIn or Gmail).
-function ztStepsHtml(p) {
-  var to = p._to != null ? p._to : p.email;
-  var steps = [
-    ['Read their LinkedIn chat', ZT_SEEN[p.targetId]],
-    ['Confirm the address', /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to || '')],
-    ['Draft the email', ZT_DRAFTED[p.targetId] || ztEdited(p)],
-    ['Send it from Gmail', ZT_SENT[p.targetId]],
-    ['Tap Emailed ✓', false]
-  ];
-  return '<span class="zt-lbl">Next steps</span>' + steps.map(function (s, i) {
-    return '<span class="zt-step' + (s[1] ? ' on' : '') + '">' + (s[1] ? '✓ ' : (i + 1) + ' · ') + esc(s[0]) + '</span>';
-  }).join('');
+// Colour follows the brand, so everyone at one brand wears the same.
+function ztColor(id) {
+  var h = 0, s = String(id || '');
+  for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return CAT_COLORS[h % CAT_COLORS.length];
+}
+function ztInitials(name) {
+  var w = String(name || '').trim().split(/\s+/).filter(Boolean);
+  return ((w[0] || '?').charAt(0) + (w.length > 1 ? w[w.length - 1].charAt(0) : '')).toUpperCase();
+}
+// How long they've been waiting, counted from what put them on the list.
+function ztAge(p) {
+  var replied = p.status === 'replied' && p.repliedAt;
+  var at = replied ? p.repliedAt : (p.acceptedAt || p.invitedAt);
+  if (!at) return { short: '', title: '' };
+  var days = Math.floor((Date.now() - new Date(at).getTime()) / 864e5);
+  return {
+    short: days < 1 ? 'today' : days < 7 ? days + 'd' : days < 60 ? Math.floor(days / 7) + 'w' : Math.floor(days / 30) + 'mo',
+    title: (replied ? 'Answered on LinkedIn ' : p.acceptedAt ? 'Accepted ' : 'Invited ') + shortDate(at)
+  };
+}
+function ztMatch(p, f) {
+  return f === 'replied' ? p.status === 'replied' : f === 'noaddr' ? !p.email : f === 'note' ? !!p.handNote : true;
+}
+function ztLiUrl(p) {
+  return /^https?:\/\//i.test(p.linkedinUrl || '') ? p.linkedinUrl
+    : 'https://www.linkedin.com/search/results/people/?keywords=' + encodeURIComponent(p.name + ' ' + p.brandName);
+}
+
+function ztRowInner(p) {
+  var age = ztAge(p);
+  return '<span class="zt-av" aria-hidden="true">' + esc(ztInitials(p.name)) + '</span>' +
+    '<span class="zt-who"><b>' + esc(p.name) + '</b>' + (p.title ? '<span>' + esc(p.title) + '</span>' : '') + '</span>' +
+    '<span class="zt-side">' +
+      '<span class="zt-flags">' +
+        (p.handNote ? '<span title="Note: ' + esc(p.handNote) + '">' + ZT_ICON.note + '</span>' : '') +
+        (p.autoEmailedAt ? '<span class="warn" title="An automatic intro already reached them">' + ZT_ICON.mail + '</span>' : '') +
+        (p.email ? '' : '<span class="zt-noaddr">No email</span>') +
+      '</span>' +
+      (p.status === 'replied' ? '<span class="status replied">Answered</span>' : '<span class="status accepted">Accepted</span>') +
+      '<span class="zt-age" title="' + esc(age.title) + '">' + esc(age.short) + '</span>' +
+    '</span>' +
+    '<span class="zt-go">Draft email</span>' +
+    '<span class="zt-chev" aria-hidden="true">›</span>';
+}
+
+function ztItemHtml(p) {
+  var open = ZT_CUR === p.targetId;
+  return '<div class="zt-item' + (open ? ' open' : '') + '" data-zt="' + esc(p.targetId) + '"><div class="zt-inner">' +
+    '<div class="zt-row" tabindex="0" role="button" aria-expanded="' + open + '">' + ztRowInner(p) + '</div>' +
+    '<div class="zt-exp"><div class="zt-exp-in">' + (open ? ztCompHtml(p) : '') + '</div></div>' +
+  '</div></div>';
+}
+
+function ztNoteHtml(p) {
+  if (ZT_NOTE_EDIT[p.targetId]) {
+    return '<textarea class="field-box zt-notebox" data-ztnote rows="2" placeholder="What they said on LinkedIn, what to lead with">' +
+      esc(p.handNote || '') + '</textarea>';
+  }
+  if (p.handNote) {
+    return '<div class="zt-callout note"><div class="zt-callout-h">Note for Zach' +
+      '<button class="zt-linkbtn" data-ztact="note" style="font-size:11px">Edit</button></div>' + esc(p.handNote) + '</div>';
+  }
+  return '<button class="zt-linkbtn zt-addnote" data-ztact="note">+ Add a note for Zach</button>';
+}
+
+function ztAddrHtml(p, v) {
+  if (!v) return '<span class="zt-fstate miss">missing</span>';
+  if (!ztAddrOk(v)) return '<span class="zt-fstate miss">check it</span>';
+  return '<span class="zt-fstate ok">' + (v === p.email ? '✓ on file' : '✓') + '</span>';
 }
 
 function ztEdStateHtml(p) {
   return ztEdited(p)
-    ? '<span class="hint" style="margin:0">Edited for ' + esc(ztFirst(p)) + '</span>' +
-      '<button class="btn-ghost mini" data-ztact="reset" title="Throw away this card’s edits and use the template again">Reset to template</button>'
-    : '<span class="hint" style="margin:0">From the template. Edits here stay on this card.</span>';
+    ? '<span class="zt-edited">Edited for ' + esc(ztFirst(p)) + '</span>' +
+      '<button class="zt-linkbtn" data-ztact="reset" title="Throw away this email’s edits and use the template again">Reset to template</button>'
+    : '<span>From the template. Edit it right here</span>';
 }
 
-function ztCardHtml(p) {
-  var open = !!ZT_OPEN[p.targetId];
-  var d = handDraft(p);
+// The next steps ARE the buttons. The one to do now is lit; a later step
+// done first (Gmail before reading LinkedIn) moves "now" past it.
+function ztStepsHtml(p) {
+  var s1 = !!ZT_SEEN[p.targetId], s2 = !!ZT_SENT[p.targetId];
+  var now = s2 ? 3 : s1 ? 2 : 1;
+  var cls = function (n, done) { return 'zt-step' + (done ? ' done' : n === now ? ' now' : ''); };
+  var num = function (n, done) { return '<i>' + (done ? '✓' : n) + '</i>'; };
   var hasLi = /^https?:\/\//i.test(p.linkedinUrl || '');
-  var li = hasLi ? p.linkedinUrl
-    : 'https://www.linkedin.com/search/results/people/?keywords=' + encodeURIComponent(p.name + ' ' + p.brandName);
-  var stage = p.status === 'replied'
-    ? '<span class="status replied">answered on LinkedIn' + (p.repliedAt ? ' ' + esc(shortDate(p.repliedAt)) : '') + '</span>'
-    : '<span class="status accepted">accepted' + (p.acceptedAt ? ' ' + esc(shortDate(p.acceptedAt)) : '') + '</span>';
-  var note = p.handNote || '';
-  var noteRows = Math.min(5, Math.max(1, note.split('\n').length + Math.floor(note.length / 90)));
-  return '<div class="zt-card" data-zt="' + esc(p.targetId) + '">' +
-    '<div class="zt-top"><div class="t-main">' +
-      '<div class="t-line"><span class="t-brand">' + esc(p.name) + '</span>' +
-        (p.title ? ' <span class="t-title">— ' + esc(p.title) + '</span>' : '') + '</div>' +
-      '<div class="t-meta">' + stage +
-        (p.invitedAt ? '<span>· invited ' + esc(shortDate(p.invitedAt)) + '</span>' : '') +
-        (p.dmSentAt ? '<span>· DM sent ' + esc(shortDate(p.dmSentAt)) + '</span>' : '') +
+  return '<a class="' + cls(1, s1) + '" href="' + esc(ztLiUrl(p)) + '" target="_blank" rel="noopener" data-ztli>' +
+      num(1, s1) + (hasLi ? 'Read their LinkedIn' : 'Find them on LinkedIn') + '</a>' +
+    '<span class="zt-arrow" aria-hidden="true">→</span>' +
+    '<button class="' + cls(2, s2) + '" data-ztact="gmail" title="Opens a new Gmail message with the address, subject and email filled in. Nothing sends until you press Send. Shortcut: G">' +
+      num(2, s2) + 'Open in Gmail</button>' +
+    '<span class="zt-arrow" aria-hidden="true">→</span>' +
+    '<button class="' + cls(3, false) + '" data-ztact="emailed" title="Logged: the email went out. Shortcut: E">' + num(3, false) + 'Mark emailed</button>' +
+    '<button class="zt-skip" data-ztact="skip" title="A call is already booked, or they said no: off the list without logging an email">No email needed</button>';
+}
+
+function ztCompHtml(p) {
+  var d = handDraft(p);
+  var g = p.brand || {};
+  var site = g.website ? (/^https?:/i.test(g.website) ? g.website : 'https://' + g.website) : '';
+  var stage = p.status === 'replied' && p.repliedAt ? 'Answered on LinkedIn ' + shortDate(p.repliedAt)
+    : p.acceptedAt ? 'Accepted ' + shortDate(p.acceptedAt)
+    : p.invitedAt ? 'Invited ' + shortDate(p.invitedAt) : '';
+  var meta = [
+    '<a href="#" data-ztbrand="' + esc(p.brandId) + '" title="Open the brand page">' + esc(p.brandName) + ' →</a>',
+    site ? '<a href="' + esc(site) + '" target="_blank" rel="noopener">Website ↗</a>' : '',
+    /^https?:\/\//i.test(g.linkedinUrl || '') ? '<a href="' + esc(g.linkedinUrl) + '" target="_blank" rel="noopener">Company page ↗</a>' : '',
+    stage ? esc(stage) : '',
+    p.dmSentAt ? 'DM sent ' + esc(shortDate(p.dmSentAt)) : ''
+  ].filter(Boolean);
+  var rows = Math.min(16, Math.max(6, d.body.split('\n').length + 1));
+  return '<div class="zt-comp">' +
+    '<div class="zt-meta">' + meta.join('<span class="zt-dot">•</span>') + '</div>' +
+    '<div class="zt-noteblock">' + ztNoteHtml(p) + '</div>' +
+    (p.autoEmailedAt
+      ? '<div class="zt-callout warn">An automatic intro already reached ' + esc(ztFirst(p)) + ' on ' + esc(shortDate(p.autoEmailedAt)) +
+        (p.autoSubject ? ' (“' + esc(p.autoSubject) + '”)' : '') + '. Reply in that thread instead of starting a new one.</div>'
+      : '') +
+    '<div class="zt-mail">' +
+      '<label class="zt-field"><span class="zt-flbl">To</span>' +
+        '<input type="email" data-ztto value="' + esc(p.email || '') + '" placeholder="Their email address" autocomplete="off">' +
+        '<span class="zt-addr">' + ztAddrHtml(p, p.email || '') + '</span></label>' +
+      '<label class="zt-field"><span class="zt-flbl">Subject</span>' +
+        '<input data-ztsubj value="' + esc(d.subject) + '" autocomplete="off"></label>' +
+      '<textarea class="zt-body" data-ztbody rows="' + rows + '" aria-label="Email to ' + esc(p.name) + '">' + esc(d.body) + '</textarea>' +
+      '<div class="zt-mailfoot">' +
+        '<span class="zt-edstate">' + ztEdStateHtml(p) + '</span>' +
+        '<button class="zt-linkbtn" data-ztact="copy">Copy email</button>' +
+        '<button class="zt-linkbtn" data-ztact="copysubj">Copy subject</button>' +
+        '<a class="zt-linkbtn" href="/materials/sba-one-pager.pdf" download="SBA One Pager.pdf" title="Download the one-pager to attach">One-pager ↓</a>' +
       '</div>' +
-      (p.autoEmailedAt
-        ? '<div class="zt-flag" style="margin-top:6px">An automatic intro already reached ' + esc(ztFirst(p)) + ' on ' +
-          esc(shortDate(p.autoEmailedAt)) + (p.autoSubject ? ' (“' + esc(p.autoSubject) + '”)' : '') +
-          '. Reply in that thread instead of starting a new one.</div>'
-        : '') +
     '</div>' +
-    '<a class="btn-ghost" style="flex:none" href="' + esc(li) + '" target="_blank" rel="noopener" data-ztli="' + esc(p.targetId) + '">' +
-      (hasLi ? 'LinkedIn ↗' : 'Find on LinkedIn ↗') + '</a>' +
+    '<div class="zt-steps" role="group" aria-label="Next steps">' + ztStepsHtml(p) + '</div>' +
+  '</div>';
+}
+
+function ztCounts() {
+  var c = { all: 0, replied: 0, noaddr: 0, note: 0 };
+  ZT.brands.forEach(function (g) {
+    g.people.forEach(function (p) {
+      c.all += 1;
+      if (p.status === 'replied') c.replied += 1;
+      if (!p.email) c.noaddr += 1;
+      if (p.handNote) c.note += 1;
+    });
+  });
+  return c;
+}
+
+function ztHeadHtml(c) {
+  var weekAgo = Date.now() - 7 * 864e5;
+  var doneWeek = (ZT.done || []).filter(function (d) { return new Date(d.at).getTime() >= weekAgo; }).length;
+  var total = doneWeek + c.all;
+  var pct = total ? Math.round((doneWeek / total) * 100) : 0;
+  var chip = function (key, label, n) {
+    if (key !== 'all' && !n && ZT_FILTER !== key) return '';
+    return '<button class="zt-chip' + (ZT_FILTER === key ? ' on' : '') + '" data-ztf="' + key + '" aria-pressed="' + (ZT_FILTER === key) + '">' +
+      label + '<span>' + n + '</span></button>';
+  };
+  return '<div class="zt-head">' +
+    '<div class="zt-head-top">' +
+      '<div><h2 class="zt-title">For Zach to do</h2>' +
+        '<div class="zt-subline">Accepted or answered on LinkedIn. Open one, send it from Gmail, mark it emailed.</div></div>' +
+      '<div class="zt-tools">' +
+        (ZT.template.standIn
+          ? '<button class="zt-standin" data-ztact="tpl" title="Leo’s template isn’t saved yet, so every email starts from the stand-in">Stand-in email</button>'
+          : '') +
+        '<button class="btn-ghost" data-ztact="tpl">Email template</button>' +
+        '<button class="btn-ghost" data-ztact="link" title="Copy a link that opens straight to this list">Copy link for Zach</button>' +
+      '</div>' +
     '</div>' +
-    '<div class="zt-steps">' + ztStepsHtml(p) + '</div>' +
-    '<label class="zt-row"><span class="zt-lbl">Note</span>' +
-      '<textarea class="field-box zt-note" rows="' + noteRows + '" data-ztnote placeholder="e.g. she said email her about spring shows">' + esc(note) + '</textarea></label>' +
-    '<label class="zt-row"><span class="zt-lbl">To</span>' +
-      '<input class="inp zt-to" type="email" data-ztto value="' + esc(p.email || '') + '" placeholder="No email on file. Type the one they gave you" autocomplete="off"></label>' +
-    '<div class="zt-row">' +
-      '<button class="' + (open ? 'btn-ghost' : 'btn-draft') + '" data-ztact="draft">' + (open ? 'Hide draft' : ztEdited(p) ? 'Edit draft' : 'Draft email') + '</button>' +
-      '<button class="btn-ghost" data-ztact="emailed" title="Logged: the email went out. Moves them to Done.">Emailed ✓</button>' +
-      '<button class="btn-ghost mini" data-ztact="skip" title="A call is already booked, or they said no: off the list without logging an email">No email needed</button>' +
-    '</div>' +
-    (open
-      ? '<div class="zt-editor">' +
-          '<label class="zt-row" style="margin-top:0"><span class="zt-lbl">Subject</span>' +
-            '<input class="inp" style="flex:1;min-width:0" data-ztsubj value="' + esc(d.subject) + '"></label>' +
-          '<textarea class="field-box" rows="' + Math.min(18, Math.max(6, d.body.split('\n').length + 1)) + '" data-ztbody aria-label="Email to ' + esc(p.name) + '">' + esc(d.body) + '</textarea>' +
-          '<div class="zt-row">' +
-            '<button class="btn-draft" data-ztact="gmail" title="Opens a new Gmail message with the address, subject and email filled in. Nothing sends until you press Send.">Open in Gmail ↗</button>' +
-            '<button class="btn-ghost" data-ztact="copy">Copy email</button>' +
-            '<button class="btn-ghost" data-ztact="copysubj">Copy subject</button>' +
-            '<span class="zt-edstate" style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">' + ztEdStateHtml(p) + '</span>' +
-          '</div>' +
-        '</div>'
+    (total
+      ? '<div class="zt-meter" role="img" aria-label="' + doneWeek + ' done this week, ' + c.all + ' to go">' +
+          '<div class="zt-track"><div class="zt-fill" data-pct="' + pct + '" style="width:' + (ZT_PCT == null ? pct : ZT_PCT) + '%"></div></div>' +
+          '<span class="zt-meter-lbl"><b>' + doneWeek + '</b> done this week · <b>' + c.all + '</b> to go</span></div>'
+      : '') +
+    (c.all
+      ? '<div class="zt-filters">' + chip('all', 'All', c.all) + chip('replied', 'Answered on LinkedIn', c.replied) +
+          chip('noaddr', 'Need an address', c.noaddr) + chip('note', 'Has a note', c.note) + '</div>'
       : '') +
   '</div>';
 }
 
-function ztBrandHtml(g) {
-  var site = g.website ? (/^https?:/i.test(g.website) ? g.website : 'https://' + g.website) : '';
-  var meta = [];
-  if (g.category) meta.push(esc(CAT_NAMES[g.category] || g.category));
-  if (g.people.length > 1) meta.push(g.people.length + ' people');
-  if (site) meta.push('<a href="' + esc(site) + '" target="_blank" rel="noopener">website ↗</a>');
-  if (/^https?:\/\//i.test(g.linkedinUrl || '')) meta.push('<a href="' + esc(g.linkedinUrl) + '" target="_blank" rel="noopener">company page ↗</a>');
-  return '<div class="zt-brand">' +
-    '<div class="zt-bhead">' +
-      '<span class="zt-bname" data-ztbrand="' + esc(g.id) + '" title="Open the brand page">' + esc(g.name) + '</span>' +
-      (meta.length ? '<span class="zt-bmeta">' + meta.join(' · ') + '</span>' : '') +
-      (g.about ? '<div class="zt-babout">' + esc(g.about) + '</div>' : '') +
-    '</div>' +
-    '<div class="zt-people">' + g.people.map(ztCardHtml).join('') + '</div>' +
+function ztListHtml(c) {
+  if (!c.all) {
+    return '<div class="zt-list"><div class="zt-empty"><div class="zt-bigcheck">✓</div><h3>All caught up</h3>' +
+      '<p>Everyone who accepted on LinkedIn has been emailed. New accepts land here on their own.</p></div></div>';
+  }
+  var groups = [];
+  ZT.brands.forEach(function (g) {
+    var ppl = g.people.filter(function (p) { return ztMatch(p, ZT_FILTER); });
+    if (ppl.length) groups.push({ g: g, people: ppl });
+  });
+  if (!groups.length) {
+    return '<div class="zt-list"><div class="zt-none">Nobody here right now. <button class="zt-linkbtn" data-ztf="all">Show everyone</button></div></div>';
+  }
+  var shown = groups.slice(0, ZT_SHOW);
+  var rest = groups.length - shown.length;
+  return '<div class="zt-list">' + shown.map(function (x) {
+    var g = x.g;
+    var sub = [CAT_NAMES[g.category] || g.category || '', g.people.length > 1 ? g.people.length + ' people' : ''].filter(Boolean).join(' · ');
+    return '<div class="zt-group" style="--c:' + ztColor(g.id) + '">' +
+      '<div class="zt-glabel"><span class="zt-gname" data-ztbrand="' + esc(g.id) + '" title="Open the brand page">' + esc(g.name) + '</span>' +
+        (sub ? '<span>' + esc(sub) + '</span>' : '') + '</div>' +
+      x.people.map(ztItemHtml).join('') +
+    '</div>';
+  }).join('') +
+  (rest > 0 ? '<button class="zt-more" data-ztact="more">Show ' + rest + ' more ' + (rest === 1 ? 'brand' : 'brands') + '</button>' : '') +
   '</div>';
 }
 
-function ztTplHtml(tpl) {
-  return '<div class="panel panel-pad" style="margin:0 0 16px">' +
-    '<b style="font-size:13.5px">Email template</b>' +
-    '<div class="hint" style="margin:4px 0 12px">(NAME) becomes their first name, (BRAND) the brand, (TITLE) their job title. ' +
-      'Cards someone already edited keep their own version; Reset to template on a card picks this one up.</div>' +
-    '<label class="lbl" for="zt-tsubj">Subject</label>' +
-    '<input class="field-box" id="zt-tsubj" value="' + esc(tpl.subject) + '" style="margin-bottom:10px">' +
-    '<label class="lbl" for="zt-tbody">Email</label>' +
-    '<textarea class="field-box" id="zt-tbody" rows="12">' + esc(tpl.body) + '</textarea>' +
-    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px">' +
-      '<button class="btn-solid" data-ztact="tplsave">Save template</button>' +
-      '<button class="btn-ghost" data-ztact="tpl">Cancel</button>' +
-      '<span class="hint" style="margin:0">' + (tpl.standIn
-        ? 'This is the stand-in. Paste yours over it.'
-        : 'Last saved ' + esc(when(tpl.savedAt)) + (tpl.savedBy ? ' by ' + esc(tpl.savedBy) : '')) + '</span>' +
-    '</div></div>';
+function ztFootHtml(c) {
+  var done = ZT.done || [], held = ZT.held || [];
+  return (done.length
+      ? '<details class="zt-done" id="zt-done"' + (ZT_DONE_OPEN ? ' open' : '') + '>' +
+          '<summary>Done <span class="n">' + done.length + ' in the last ' + ZT.doneDays + ' days</span></summary>' +
+          '<div class="zt-done-list">' + done.map(function (x) {
+            return '<div class="zt-done-row">' +
+              '<span class="zt-av" aria-hidden="true">✓</span>' +
+              '<span class="zt-who"><b>' + esc(x.name) + '</b><span data-ztbrand="' + esc(x.brandId) + '" style="cursor:pointer">' + esc(x.brandName) + '</span></span>' +
+              '<span class="zt-when">' + (x.kind === 'emailed' ? 'Emailed ' : 'No email needed · ') + esc(shortDate(x.at)) + '</span>' +
+              '<button class="zt-linkbtn" data-ztundo="' + esc(x.targetId) + '" data-kind="' + esc(x.kind) + '" title="Put them back on the list">Undo</button>' +
+            '</div>';
+          }).join('') + '</div></details>'
+      : '') +
+    ((held.length || c.all)
+      ? '<div class="zt-foot">' +
+          (held.length
+            ? '<span>Hidden: ' + held.map(function (h) { return esc(h.brandName) + ' (' + esc(h.reason) + ')'; }).join(', ') +
+              '. Change that on the brand page.</span>'
+            : '') +
+          (c.all ? '<span class="zt-keys" style="margin-left:auto"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>Enter</kbd> open · <kbd>G</kbd> Gmail · <kbd>E</kbd> mark emailed</span>' : '') +
+        '</div>'
+      : '');
+}
+
+// The meter grows from where it last was, so finishing someone moves it.
+function ztGrowMeter(root) {
+  var fill = root.querySelector('.zt-fill');
+  if (!fill) return;
+  var pct = +fill.getAttribute('data-pct');
+  void fill.offsetWidth;
+  fill.style.width = pct + '%';
+  ZT_PCT = pct;
 }
 
 function ztRender() {
   var box = document.getElementById('zach-todo');
   if (!box || !ZT) return;
-  // A half-written template survives a re-render (a card ticked off
-  // while the editor is open redraws the whole section).
-  var ts = document.getElementById('zt-tsubj'), tb = document.getElementById('zt-tbody');
-  var keep = ZT_TPL_OPEN && ts && tb ? { subject: ts.value, body: tb.value } : null;
-
-  var brands = ZT.brands;
-  var people = 0, noAddr = 0;
-  brands.forEach(function (g) {
-    g.people.forEach(function (p) { people += 1; if (!p.email) noAddr += 1; });
-  });
-  var shown = brands.slice(0, ZT_SHOW);
-  var tpl = ZT.template;
-
-  var html =
-    '<div class="section-head" style="margin:26px 0 6px;flex-wrap:wrap"><span class="zt-title">For Zach to do</span>' +
-      '<span class="n">' + (people
-        ? people + (people === 1 ? ' person' : ' people') + ' at ' + brands.length + (brands.length === 1 ? ' brand' : ' brands')
-        : 'all caught up') + '</span>' +
-      '<span class="zt-tools">' +
-        '<button class="btn-ghost" data-ztact="tpl">' + (ZT_TPL_OPEN ? 'Close template' : 'Edit email template') + '</button>' +
-        '<a class="btn-ghost" href="/materials/sba-one-pager.pdf" download="SBA One Pager.pdf" title="Download the one-pager to attach">One-pager ↓</a>' +
-        '<button class="btn-ghost" data-ztact="link" title="Copy a link that opens straight to this list">Copy link for Zach</button>' +
-      '</span></div>' +
-    '<div class="hint" style="margin:0 0 12px">They accepted our LinkedIn invite or answered there, and most will have said “email me”. ' +
-      'Email each one from your own inbox, then tap Emailed ✓. Oldest invite first.' +
-      (noAddr ? ' ' + noAddr + (noAddr === 1 ? ' has' : ' have') + ' no address on file yet.' : '') + '</div>' +
-    (tpl.standIn
-      ? '<div class="zt-flag" style="margin:-4px 0 12px">Using the stand-in email until Leo saves his template. Edit email template to paste it in.</div>'
-      : '') +
-    (ZT_TPL_OPEN ? ztTplHtml(keep || tpl) : '') +
-    (brands.length
-      ? shown.map(ztBrandHtml).join('') +
-        (brands.length > shown.length
-          ? '<button class="btn-ghost" data-ztact="all" style="margin:-6px 0 8px">Show all ' + brands.length + ' brands (' +
-            (brands.length - shown.length) + ' more)</button>'
-          : '')
-      : '<div class="panel"><div class="empty" style="padding:26px"><h3>Nothing waiting</h3>' +
-        '<p>Everyone who accepted on LinkedIn has been emailed. New accepts land here on their own.</p></div></div>') +
-    ((ZT.held || []).length
-      ? '<div class="hint" style="margin:6px 0 0">Not shown: ' + ZT.held.map(function (h) {
-          return esc(h.brandName) + ' (' + esc(h.reason) + (h.people > 1 ? ', ' + h.people + ' people' : '') + ')';
-        }).join(', ') + '. Change that on the brand page to bring them back.</div>'
-      : '') +
-    ((ZT.done || []).length
-      ? '<details class="fold" id="zt-done"' + (ZT_DONE_OPEN ? ' open' : '') + '>' +
-          '<summary class="section-head" style="margin:14px 0 10px">Done <span class="n">' + ZT.done.length +
-            ' in the last ' + ZT.doneDays + ' days</span></summary>' +
-          '<div class="panel">' + ZT.done.map(function (x) {
-            return '<div class="zt-done-row">' +
-              '<div style="flex:1;min-width:0">' +
-                '<span class="t-brand" data-ztbrand="' + esc(x.brandId) + '" style="cursor:pointer">' + esc(x.brandName) + '</span>' +
-                '<span class="t-sep">·</span>' + esc(x.name) +
-                '<div class="t-meta" style="margin-top:3px">' +
-                  (x.kind === 'emailed'
-                    ? '<span class="status replied">emailed ' + esc(shortDate(x.at)) + '</span>' + (x.email ? '<span>· ' + esc(x.email) + '</span>' : '')
-                    : '<span class="status passed">no email needed · ' + esc(shortDate(x.at)) + '</span>') +
-                '</div></div>' +
-              '<button class="btn-ghost" data-ztundo="' + esc(x.targetId) + '" data-kind="' + esc(x.kind) + '" title="Put them back on the list">Undo</button>' +
-            '</div>';
-          }).join('') + '</div></details>'
-      : '');
-
-  box.innerHTML = html;
+  var c = ztCounts();
+  if (ZT_CUR && !ZT_BY_ID[ZT_CUR]) ZT_CUR = null;
+  box.innerHTML = ztHeadHtml(c) + ztListHtml(c) + ztFootHtml(c);
   var dn = document.getElementById('zt-done');
   if (dn) dn.addEventListener('toggle', function () { ZT_DONE_OPEN = dn.open; });
+  ztGrowMeter(box);
+  box.querySelectorAll('.zt-item.open .zt-body').forEach(ztFit);
+}
+
+// Header only: counts, meter, chips. Nothing in it takes typing, so it
+// can redraw while someone is mid-email below.
+function ztRefreshHead() {
+  var box = document.getElementById('zach-todo');
+  var head = box && box.querySelector('.zt-head');
+  if (!head || !ZT) return;
+  var tmp = document.createElement('div');
+  tmp.innerHTML = ztHeadHtml(ztCounts());
+  head.replaceWith(tmp.firstElementChild);
+  ztGrowMeter(box);
 }
 
 function renderZachTodo() {
@@ -1466,7 +1743,7 @@ function renderZachTodo() {
     HAND_TPL = r.template;
     ZT_BY_ID = {};
     r.brands.forEach(function (g) {
-      g.people.forEach(function (p) { p.brandId = g.id; p.brandName = g.name; ZT_BY_ID[p.targetId] = p; });
+      g.people.forEach(function (p) { p.brandId = g.id; p.brandName = g.name; p.brand = g; ZT_BY_ID[p.targetId] = p; });
     });
     ztRender();
     if (ZT_SCROLL) { ZT_SCROLL = false; box.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
@@ -1481,106 +1758,177 @@ function gotoZachList() {
   gotoView('dashboard');
 }
 
-function ztCardEl(id) { return document.querySelector('#zach-todo [data-zt="' + id + '"]'); }
+function ztItemEl(id) { return id ? document.querySelector('#zach-todo .zt-item[data-zt="' + id + '"]') : null; }
 
-function ztRenderCard(id) {
-  var p = ZT_BY_ID[id], card = ztCardEl(id);
-  if (!p || !card) return;
-  var tmp = document.createElement('div');
-  tmp.innerHTML = ztCardHtml(p);
-  card.replaceWith(tmp.firstElementChild);
+function ztFit(ta) {
+  if (!ta || !ta.scrollHeight) return;
+  ta.style.height = 'auto';
+  ta.style.height = Math.max(ta.scrollHeight + 2, 150) + 'px';
 }
 
-function ztSteps(id) {
-  var p = ZT_BY_ID[id], card = ztCardEl(id);
-  if (p && card) card.querySelector('.zt-steps').innerHTML = ztStepsHtml(p);
+function ztOpen(id) {
+  var p = ZT_BY_ID[id], item = ztItemEl(id);
+  if (!p || !item) return;
+  if (ZT_CUR && ZT_CUR !== id) ztClose();
+  ZT_CUR = id;
+  item.querySelector('.zt-exp-in').innerHTML = ztCompHtml(p);
+  ztFit(item.querySelector('.zt-body'));
+  void item.offsetHeight;   // start the height transition from closed
+  item.classList.add('open');
+  item.querySelector('.zt-row').setAttribute('aria-expanded', 'true');
+  setTimeout(function () { if (ZT_CUR === id) item.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, 320);
 }
 
-// What would go out right now: the To box, and the editor if it's open.
-function ztCurrent(card, p) {
+function ztClose() {
+  var id = ZT_CUR, item = ztItemEl(id);
+  ZT_CUR = null;
+  if (!item) return;
+  item.classList.remove('open');
+  item.querySelector('.zt-row').setAttribute('aria-expanded', 'false');
+  setTimeout(function () {
+    if (ZT_CUR !== id) { var inn = item.querySelector('.zt-exp-in'); if (inn) inn.innerHTML = ''; }
+  }, 320);
+}
+
+function ztToggle(id) { if (ZT_CUR === id) ztClose(); else ztOpen(id); }
+
+function ztRefreshSteps(id) {
+  var p = ZT_BY_ID[id], item = ztItemEl(id), el = item && item.querySelector('.zt-steps');
+  if (p && el) el.innerHTML = ztStepsHtml(p);
+}
+function ztRefreshRow(id) {
+  var p = ZT_BY_ID[id], item = ztItemEl(id), el = item && item.querySelector('.zt-row');
+  if (p && el) el.innerHTML = ztRowInner(p);
+}
+
+// What would go out right now: the open email's fields where it's open,
+// the draft everywhere else.
+function ztCurrent(item, p) {
   var d = handDraft(p);
-  var s = card.querySelector('[data-ztsubj]'), b = card.querySelector('[data-ztbody]'), t = card.querySelector('[data-ztto]');
+  var s = item && item.querySelector('[data-ztsubj]'), b = item && item.querySelector('[data-ztbody]'), t = item && item.querySelector('[data-ztto]');
   return { to: t ? t.value.trim() : (p.email || ''), subject: s ? s.value : d.subject, body: b ? b.value : d.body };
 }
 
-// Emailed / no email needed: off the list and onto Done, in place.
-function ztDone(id, kind) {
+function ztGmail(id) {
   var p = ZT_BY_ID[id];
-  if (!p || !ZT) return;
+  if (!p) return;
+  var cur = ztCurrent(ztItemEl(id), p);
+  window.open(gmailCompose(cur.to, cur.subject, cur.body), '_blank', 'noopener');
+  if (!cur.to) toast('No address yet. Add it in Gmail, or in To here');
+  ZT_SENT[id] = true;
+  ztRefreshSteps(id);
+}
+
+// Emailed / no email needed: the row folds away, Undo is offered, and
+// if it was the open one, the next person opens.
+function ztFinish(id, kind, btn) {
+  var p = ZT_BY_ID[id];
+  if (!p) return;
+  if (btn) btn.disabled = true;
+  (kind === 'emailed' ? api('markEmailed', { targetId: id }) : api('skipHandEmail', { targetId: id }))
+    .then(function (r) {
+      var ids = Array.prototype.map.call(document.querySelectorAll('#zach-todo .zt-item'), function (el) { return el.getAttribute('data-zt'); });
+      var i = ids.indexOf(id);
+      var next = ids[i + 1] || ids[i - 1] || null;
+      var wasOpen = ZT_CUR === id;
+      var item = ztItemEl(id);
+      if (item) item.classList.add('leaving');
+      ztUndoBar((kind === 'emailed' ? 'Emailed ' : 'No email needed: ') + (r.contactName || p.name), function () { ztUndo(id, kind); });
+      setTimeout(function () {
+        ztDrop(id, kind);
+        if (wasOpen) ZT_CUR = null;
+        ztRender();
+        if (wasOpen && next && ZT_BY_ID[next]) {
+          ztOpen(next);
+          var n = ztItemEl(next);
+          if (n) n.querySelector('.zt-row').focus({ preventScroll: true });
+        }
+        renderActionPanel();
+      }, 280);
+    })
+    .catch(function (err) { toast(err.message); if (btn) btn.disabled = false; });
+}
+
+function ztDrop(id, kind) {
+  var p = ZT_BY_ID[id];
+  if (!p) return;
   ZT.brands.forEach(function (g) { g.people = g.people.filter(function (x) { return x.targetId !== id; }); });
   ZT.brands = ZT.brands.filter(function (g) { return g.people.length; });
   ZT.done.unshift({ targetId: id, brandId: p.brandId, brandName: p.brandName, name: p.name, email: p.email, kind: kind, at: new Date().toISOString() });
   delete ZT_BY_ID[id];
-  delete ZT_OPEN[id];
-  ztRender();
-  renderActionPanel();
 }
 
+function ztUndo(id, kind) {
+  ztUndoHide();
+  (kind === 'emailed' ? api('markEmailed', { targetId: id, on: false }) : api('skipHandEmail', { targetId: id, on: false }))
+    .then(function () {
+      ZT_FILTER = 'all';
+      ZT_CUR = id;
+      return renderZachTodo();
+    })
+    .then(function () { renderActionPanel(); toast('Undone, they’re back on the list'); })
+    .catch(function (err) { toast(err.message); });
+}
+
+var ZT_UNDO_T = null, ZT_UNDO_FN = null;
+function ztUndoBar(text, fn) {
+  document.getElementById('zt-undo-text').textContent = text;
+  ZT_UNDO_FN = fn;
+  document.getElementById('zt-undo').classList.add('show');
+  document.body.classList.add('zt-undo-on');
+  clearTimeout(ZT_UNDO_T);
+  ZT_UNDO_T = setTimeout(ztUndoHide, 7000);
+}
+function ztUndoHide() {
+  clearTimeout(ZT_UNDO_T);
+  ZT_UNDO_FN = null;
+  document.getElementById('zt-undo').classList.remove('show');
+  document.body.classList.remove('zt-undo-on');
+}
+document.getElementById('zt-undo-btn').addEventListener('click', function () { if (ZT_UNDO_FN) ZT_UNDO_FN(); });
+
 document.getElementById('zach-todo').addEventListener('click', function (e) {
-  var brand = e.target.closest('[data-ztbrand]');
-  if (brand) { loadBrand(brand.getAttribute('data-ztbrand')); return; }
-  var li = e.target.closest('[data-ztli]');
-  if (li) {   // the link opens as normal; this only ticks step 1
-    ZT_SEEN[li.getAttribute('data-ztli')] = true;
-    ztSteps(li.getAttribute('data-ztli'));
+  var t = e.target;
+  var brand = t.closest('[data-ztbrand]');
+  if (brand) { e.preventDefault(); loadBrand(brand.getAttribute('data-ztbrand')); return; }
+  var f = t.closest('[data-ztf]');
+  if (f) { ZT_FILTER = f.getAttribute('data-ztf'); ZT_SHOW = 8; ztRender(); return; }
+  var undo = t.closest('[data-ztundo]');
+  if (undo) { undo.disabled = true; ztUndo(undo.getAttribute('data-ztundo'), undo.getAttribute('data-kind')); return; }
+  var li = t.closest('[data-ztli]');
+  if (li) {   // the link opens as normal; this only lights step 1
+    var lid = li.closest('[data-zt]').getAttribute('data-zt');
+    ZT_SEEN[lid] = true;
+    ztRefreshSteps(lid);
     return;
   }
-  var undo = e.target.closest('[data-ztundo]');
-  if (undo) {
-    var uid = undo.getAttribute('data-ztundo');
-    undo.disabled = true;
-    (undo.getAttribute('data-kind') === 'emailed'
-      ? api('markEmailed', { targetId: uid, on: false })
-      : api('skipHandEmail', { targetId: uid, on: false }))
-      .then(function () { toast('Undone'); renderZachTodo(); renderActionPanel(); })
-      .catch(function (err) { toast(err.message); undo.disabled = false; });
-    return;
-  }
-  var btn = e.target.closest('[data-ztact]');
+  var row = t.closest('.zt-row');
+  if (row) { ztToggle(row.closest('[data-zt]').getAttribute('data-zt')); return; }
+  var btn = t.closest('[data-ztact]');
   if (!btn) return;
   var act = btn.getAttribute('data-ztact');
-
-  if (act === 'tpl') { ZT_TPL_OPEN = !ZT_TPL_OPEN; ztRender(); return; }
-  if (act === 'all') { ZT_SHOW = Infinity; ztRender(); return; }
+  if (act === 'tpl') { ztOpenTpl(); return; }
   if (act === 'link') { ztCopy(location.origin + location.pathname + '#zach', 'Link copied. Send it to Zach'); return; }
-  if (act === 'tplsave') {
-    btn.disabled = true;
-    api('saveHandTemplate', {
-      subject: document.getElementById('zt-tsubj').value,
-      body: document.getElementById('zt-tbody').value
-    }).then(function (t) {
-      HAND_TPL = t;
-      ZT.template = t;
-      ZT_TPL_OPEN = false;
-      ztRender();
-      toast('Template saved. Every card nobody edited uses it now');
-    }).catch(function (err) { toast(err.message); btn.disabled = false; });
-    return;
-  }
+  if (act === 'more') { ZT_SHOW = Infinity; ztRender(); return; }
 
-  var card = btn.closest('[data-zt]');
-  if (!card) return;
-  var id = card.getAttribute('data-zt');
-  var p = ZT_BY_ID[id];
+  var item = btn.closest('[data-zt]');
+  var id = item && item.getAttribute('data-zt'), p = id && ZT_BY_ID[id];
   if (!p) return;
-
-  if (act === 'draft') {
-    ZT_OPEN[id] = !ZT_OPEN[id];
-    if (ZT_OPEN[id]) ZT_DRAFTED[id] = true;
-    ztRenderCard(id);
+  if (act === 'gmail') { ztGmail(id); return; }
+  if (act === 'copy' || act === 'copysubj') {
+    var cur = ztCurrent(item, p);
+    if (act === 'copysubj') { ztCopy(cur.subject, 'Subject copied'); return; }
+    ztCopy(cur.body, 'Email copied. Paste it into Gmail');
+    ZT_SENT[id] = true;
+    ztRefreshSteps(id);
     return;
   }
-  if (act === 'gmail' || act === 'copy' || act === 'copysubj') {
-    var cur = ztCurrent(card, p);
-    if (act === 'copysubj') { ztCopy(cur.subject, 'Subject copied'); return; }
-    if (act === 'gmail') {
-      window.open(gmailCompose(cur.to, cur.subject, cur.body), '_blank', 'noopener');
-      if (!cur.to) toast('No address yet. Add it in Gmail, or in To here');
-    } else {
-      ztCopy(cur.body, 'Email copied. Paste it into Gmail');
-    }
-    ZT_SENT[id] = true;
-    ztSteps(id);
+  if (act === 'note') {
+    ZT_NOTE_EDIT[id] = true;
+    var nb = item.querySelector('.zt-noteblock');
+    nb.innerHTML = ztNoteHtml(p);
+    var ta = nb.querySelector('textarea');
+    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
     return;
   }
   if (act === 'reset') {
@@ -1588,66 +1936,57 @@ document.getElementById('zach-todo').addEventListener('click', function (e) {
     api('saveHandEmail', { targetId: id, reset: true }).then(function () {
       p.handSubject = null;
       p.handBody = null;
-      ztRenderCard(id);
+      item.querySelector('.zt-exp-in').innerHTML = ztCompHtml(p);
+      ztFit(item.querySelector('.zt-body'));
       toast('Back to the template');
     }).catch(function (err) { toast(err.message); btn.disabled = false; });
     return;
   }
-  if (act === 'emailed' || act === 'skip') {
-    btn.disabled = true;
-    (act === 'emailed' ? api('markEmailed', { targetId: id }) : api('skipHandEmail', { targetId: id }))
-      .then(function (r) {
-        toast(act === 'emailed' ? 'Emailed ' + r.contactName + '. Logged' : r.contactName + ' is off the list, no email logged');
-        ztDone(id, act === 'emailed' ? 'emailed' : 'skipped');
-      })
-      .catch(function (err) { toast(err.message); btn.disabled = false; });
-  }
+  if (act === 'emailed' || act === 'skip') ztFinish(id, act === 'emailed' ? 'emailed' : 'skipped', btn);
 });
 
 document.getElementById('zach-todo').addEventListener('input', function (e) {
-  if (!e.target.hasAttribute('data-ztto')) return;
-  var card = e.target.closest('[data-zt]');
-  var p = card && ZT_BY_ID[card.getAttribute('data-zt')];
-  if (!p) return;
-  p._to = e.target.value.trim();
-  ztSteps(p.targetId);
+  var el = e.target;
+  if (el.hasAttribute('data-ztbody') || el.hasAttribute('data-ztnote')) { ztFit(el); return; }
+  if (!el.hasAttribute('data-ztto')) return;
+  var item = el.closest('[data-zt]'), p = item && ZT_BY_ID[item.getAttribute('data-zt')];
+  var a = item && item.querySelector('.zt-addr');
+  if (p && a) a.innerHTML = ztAddrHtml(p, el.value.trim());
 });
 
-// Everything on a card saves on change, like the rest of the site.
-// Nothing re-renders the card here: change fires on the way out of a
-// field, often on the way into the next one, and a redraw would drop
-// that focus.
+// Everything saves on change, like the rest of the site. Nothing here
+// redraws the open email: change fires on the way out of one field,
+// often on the way into the next, and a redraw would drop that focus.
 document.getElementById('zach-todo').addEventListener('change', function (e) {
-  var el = e.target;
-  var card = el.closest('[data-zt]');
-  if (!card) return;
-  var id = card.getAttribute('data-zt');
-  var p = ZT_BY_ID[id];
+  var el = e.target, item = el.closest('[data-zt]');
+  var id = item && item.getAttribute('data-zt'), p = id && ZT_BY_ID[id];
   if (!p) return;
 
   if (el.hasAttribute('data-ztnote')) {
     var note = el.value.trim();
+    if ((p.handNote || '') === note) return;
     p.handNote = note || null;
     api('saveHandEmail', { targetId: id, note: note })
-      .then(function () { toast('Note saved'); })
+      .then(function () { toast(note ? 'Note saved' : 'Note removed'); })
       .catch(function (err) { toast(err.message); });
     return;
   }
 
   if (el.hasAttribute('data-ztto')) {
     var v = el.value.trim();
+    var a = item.querySelector('.zt-addr');
     if (!v) {
-      p._to = null;
       el.value = p.email || '';
-      ztSteps(id);
+      if (a) a.innerHTML = ztAddrHtml(p, p.email || '');
       if (p.email) toast('Kept ' + p.email + '. Clearing the box never removes an address');
       return;
     }
     api('setHandTo', { targetId: id, email: v }).then(function (r) {
       p.email = r.email;
-      p._to = null;
       if (el.isConnected && el.value.trim() === v) el.value = r.email;
-      ztSteps(id);
+      if (a && a.isConnected) a.innerHTML = ztAddrHtml(p, r.email);
+      ztRefreshRow(id);
+      ztRefreshHead();
       toast(r.replaced
         ? 'Saved. The old address (' + r.replaced + ') is kept in ' + ztFirst(p) + '’s notes'
         : 'Saved to ' + r.contactName + '’s contact');
@@ -1664,10 +2003,140 @@ document.getElementById('zach-todo').addEventListener('change', function (e) {
     if (isSubj) p.handSubject = store; else p.handBody = store;
     var args = { targetId: id };
     args[isSubj ? 'subject' : 'body'] = store;
-    var ed = card.querySelector('.zt-edstate');
+    var ed = item.querySelector('.zt-edstate');
     if (ed) ed.innerHTML = ztEdStateHtml(p);
     api('saveHandEmail', args).catch(function (err) { toast(err.message); });
   }
+});
+
+// Leaving the note box puts the note back as a callout.
+document.getElementById('zach-todo').addEventListener('focusout', function (e) {
+  var el = e.target;
+  if (!el.hasAttribute || !el.hasAttribute('data-ztnote')) return;
+  var item = el.closest('[data-zt]'), id = item && item.getAttribute('data-zt'), p = id && ZT_BY_ID[id];
+  if (!p) return;
+  ZT_NOTE_EDIT[id] = false;
+  var nb = item.querySelector('.zt-noteblock');
+  if (nb) nb.innerHTML = ztNoteHtml(p);
+  ztRefreshRow(id);
+});
+
+// Keys, only while focus is in this list and not in a box being typed
+// in: up/down (or j/k) move, Enter opens, Esc closes, G opens Gmail,
+// E marks emailed.
+document.getElementById('zach-todo').addEventListener('keydown', function (e) {
+  if (e.altKey || e.metaKey || e.ctrlKey) return;
+  var el = e.target;
+  var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable;
+  var item = el.closest && el.closest('[data-zt]');
+  var id = item && item.getAttribute('data-zt');
+  if (e.key === 'Escape') {
+    if (typing) { el.blur(); return; }
+    if (ZT_CUR) {
+      var cid = ZT_CUR;
+      ztClose();
+      var ci = ztItemEl(cid);
+      if (ci) ci.querySelector('.zt-row').focus();
+    }
+    return;
+  }
+  if (typing) return;
+  var row = el.closest && el.closest('.zt-row');
+  if (row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); ztToggle(id); return; }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'j' || e.key === 'k') {
+    var rows = Array.prototype.slice.call(document.querySelectorAll('#zach-todo .zt-row'));
+    if (!rows.length) return;
+    var at = item ? rows.indexOf(item.querySelector('.zt-row')) : -1;
+    var step = (e.key === 'ArrowDown' || e.key === 'j') ? 1 : -1;
+    e.preventDefault();
+    (rows[Math.max(0, Math.min(rows.length - 1, at + step))] || rows[0]).focus();
+    return;
+  }
+  if (!id || !ZT_BY_ID[id]) return;
+  var k = e.key.toLowerCase();
+  if (k === 'e') { e.preventDefault(); ztFinish(id, 'emailed'); }
+  else if (k === 'g') { e.preventDefault(); ztGmail(id); }
+});
+
+// --- the template editor (modal) ---
+// Write on the left, see it for a real person on the right; the chips
+// drop a placeholder in wherever the cursor was.
+var ZT_TPL_FIELD = 'body';
+function ztTplPeople() {
+  var list = [];
+  if (ZT) ZT.brands.forEach(function (g) { g.people.forEach(function (p) { list.push(p); }); });
+  return list.length ? list.slice(0, 40) : [{ name: 'Sarah Kim', title: 'Brand Partnerships', brandName: 'Acme Soda' }];
+}
+function ztPrevHtml(text, p) {
+  var first = String(p.name || '').trim().split(/\s+/)[0] || 'there';
+  var tok = function (v, missing) {
+    return v ? '<span class="zt-fill-tok">' + esc(v) + '</span>' : '<span class="zt-bad-tok">' + missing + '</span>';
+  };
+  return esc(text)
+    .replace(/\((?:first\s*)?name\)/gi, function () { return tok(first, 'no name'); })
+    .replace(/\((?:brand|company)\)/gi, function () { return tok(p.brandName, 'no brand'); })
+    .replace(/\(title\)/gi, function () { return tok(p.title, 'no title on file'); });
+}
+function ztPreview() {
+  var ppl = ztTplPeople();
+  var p = ppl[+document.getElementById('zt-prev-who').value || 0] || ppl[0];
+  var subj = document.getElementById('zt-tsubj').value;
+  document.getElementById('zt-prev-subj').innerHTML = subj ? ztPrevHtml(subj, p) : '<span style="color:var(--ink-3)">No subject</span>';
+  document.getElementById('zt-prev-body').innerHTML = ztPrevHtml(document.getElementById('zt-tbody').value, p);
+}
+function ztOpenTpl() {
+  var t = (ZT && ZT.template) || HAND_TPL || { subject: '', body: '', standIn: true };
+  document.getElementById('zt-tsubj').value = t.subject || '';
+  document.getElementById('zt-tbody').value = t.body || '';
+  document.getElementById('zt-prev-who').innerHTML = ztTplPeople().map(function (p, i) {
+    return '<option value="' + i + '">' + esc(p.name + ' · ' + p.brandName) + '</option>';
+  }).join('');
+  document.getElementById('zt-tmeta').textContent = t.standIn
+    ? 'This is the stand-in. Paste yours over it.'
+    : 'Last saved ' + when(t.savedAt) + (t.savedBy ? ' by ' + t.savedBy : '');
+  ztPreview();
+  document.getElementById('zt-scrim').classList.add('open');
+  setTimeout(function () { document.getElementById('zt-tbody').focus(); }, 40);
+}
+function ztCloseTpl() { document.getElementById('zt-scrim').classList.remove('open'); }
+
+['zt-tsubj', 'zt-tbody'].forEach(function (fid) {
+  var el = document.getElementById(fid);
+  el.addEventListener('input', ztPreview);
+  el.addEventListener('focus', function () { ZT_TPL_FIELD = fid === 'zt-tsubj' ? 'subj' : 'body'; });
+});
+document.getElementById('zt-prev-who').addEventListener('change', ztPreview);
+var ztTokens = document.querySelector('#zt-scrim .zt-tokens');
+// mousedown would move focus off the field and lose the cursor position.
+ztTokens.addEventListener('mousedown', function (e) { if (e.target.closest('[data-tok]')) e.preventDefault(); });
+ztTokens.addEventListener('click', function (e) {
+  var b = e.target.closest('[data-tok]');
+  if (!b) return;
+  var el = document.getElementById(ZT_TPL_FIELD === 'subj' ? 'zt-tsubj' : 'zt-tbody');
+  var tok = b.getAttribute('data-tok');
+  var a = el.selectionStart != null ? el.selectionStart : el.value.length;
+  var z = el.selectionEnd != null ? el.selectionEnd : a;
+  el.value = el.value.slice(0, a) + tok + el.value.slice(z);
+  el.focus();
+  el.setSelectionRange(a + tok.length, a + tok.length);
+  ztPreview();
+});
+document.getElementById('zt-tcancel').addEventListener('click', ztCloseTpl);
+document.getElementById('zt-scrim').addEventListener('click', function (e) { if (e.target === this) ztCloseTpl(); });
+document.getElementById('zt-scrim').addEventListener('keydown', function (e) { if (e.key === 'Escape') ztCloseTpl(); });
+document.getElementById('zt-tsave').addEventListener('click', function () {
+  var btn = this;
+  btn.disabled = true;
+  api('saveHandTemplate', {
+    subject: document.getElementById('zt-tsubj').value,
+    body: document.getElementById('zt-tbody').value
+  }).then(function (t) {
+    btn.disabled = false;
+    HAND_TPL = t;
+    if (ZT) { ZT.template = t; ztRender(); }
+    ztCloseTpl();
+    toast('Template saved. Every email nobody edited uses it now');
+  }).catch(function (err) { btn.disabled = false; toast(err.message); });
 });
 
 // --- brands (category drill-down) ------------------------------
