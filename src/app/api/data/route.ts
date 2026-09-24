@@ -492,11 +492,15 @@ type PreviewPerson = { name: string; title: string | null }
 // (no executives at big brands, email first, best fit). The Schedule uses
 // it to say "3 going out · Dana, Sam, Alex" on a day that hasn't come yet,
 // and "Won't go out" with the reason when the answer is nobody.
+// explicitAdd = what an Add click would do. Adding a brand to today on
+// purpose lifts its "Pass today" (planAddCore clears it), so the add box
+// must not say "Nobody would go out" for a brand the click then queues.
 function previewBrandPicks(
   b: PlanBrand,
-  opts: { forToday: boolean; dayStart?: Date },
+  opts: { forToday: boolean; dayStart?: Date; explicitAdd?: boolean },
 ): { reason: OutreachReason | null; people: PreviewPerson[] } {
-  const gate = outreachGate(b, { forToday: opts.forToday, dayStart: opts.dayStart })
+  const dayStart = opts.dayStart ?? startOfLocalDay()
+  const gate = outreachGate(b, { forToday: opts.forToday && !opts.explicitAdd, dayStart })
   if (gate) return { reason: gate, people: [] }
 
   // Decision makers first, like the queue's own contact query — the sort
@@ -506,18 +510,25 @@ function previewBrandPicks(
   const cold = !b.targets.some(t => t.sentAt)
   const work = b.workPeople ?? recommendWorkPeople(b, reachable, cold)
   const live = b.targets.filter(t => !t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied'].includes(t.status))
-  const pending = live.filter(t => ['queued', 'drafted'].includes(t.status))
+  // On a later day, people already in TODAY's queue are going out today,
+  // not that day — they show on today's column. Counting them here too
+  // put the same three people on two days.
+  const inTodayQueue = (t: PlanBrand['targets'][number]) =>
+    !opts.forToday && !!t.queuedFor && t.queuedFor >= dayStart
+  const pending = live.filter(t => ['queued', 'drafted'].includes(t.status) && !inTodayQueue(t))
   const contacted = live.filter(t => ['sent', 'accepted', 'replied'].includes(t.status))
   const person = (t: PlanBrand['targets'][number]): PreviewPerson => ({ name: t.contact.name, title: t.contact.title })
   const sentContacts = new Set(b.targets.filter(t => t.sentAt).map(t => t.contactId))
-  // Nobody new would go: say "already invited" when that's the truth
-  // (everyone reachable has had an invite), otherwise "all taken".
+  // Nobody new would go: its threads are all in today's queue ("full"),
+  // everyone reachable has had an invite ("already invited"), or "all
+  // taken".
   const nobody = (): OutreachReason =>
-    contacted.length && reachable.every(c => sentContacts.has(c.id)) ? 'contacted' : 'exhausted'
+    live.some(inTodayQueue) ? 'full'
+    : contacted.length && reachable.every(c => sentContacts.has(c.id)) ? 'contacted' : 'exhausted'
 
   if (live.length >= work) {
     if (pending.length) return { reason: null, people: pending.map(person) }
-    return { reason: contacted.length >= work ? 'contacted' : nobody(), people: [] }
+    return { reason: contacted.length >= work && !live.some(inTodayQueue) ? 'contacted' : nobody(), people: [] }
   }
   const room = work - live.length
   const revivable = b.targets
@@ -727,6 +738,15 @@ async function planAddCore(plan: OutreachPlan, date: string, brandIds: unknown) 
       // Planned for later: anyone of theirs sitting in today's queue
       // goes back to wait for that day, or the brand would go out twice.
       result.unqueued = await unstampToday(b.id)
+      // Same change on the copy in hand: the preview leaves people
+      // stamped for today off a later day, and these were just
+      // un-stamped — without this the answer said "Already running all
+      // its threads" for a brand that had just moved.
+      if (result.unqueued) {
+        for (const t of b.targets) {
+          if (t.queuedFor && t.queuedFor >= dayStart && !t.sentAt && ['queued', 'drafted'].includes(t.status)) t.queuedFor = null
+        }
+      }
       const p = previewBrandPicks(b, { forToday: false, dayStart })
       result.going = p.people.length
       result.people = p.people.slice(0, 6)
@@ -734,6 +754,12 @@ async function planAddCore(plan: OutreachPlan, date: string, brandIds: unknown) 
       result.reason = p.reason
       result.reasonText = reasonText(p.reason, reasonCtx(b))
       continue
+    }
+    // Adding it to today on purpose overrides a "Pass today" from
+    // earlier — otherwise the brand queues now and the next LinkedIn-tab
+    // load skips it as passed.
+    if (b.passedTodayAt && b.passedTodayAt >= dayStart) {
+      await prisma.brand.update({ where: { id: b.id }, data: { passedTodayAt: null } })
     }
     let q: any = null
     let failure: string | null = null
@@ -801,7 +827,7 @@ function planBrandRow(b: PlanBrand, ctx: PlanRowCtx) {
   const action = ['archived', 'donotemail', 'inconversation'].includes(status) ? 'none'
     : status === 'reached' || status === 'none' ? 'addAnyway'
     : 'add'
-  const going = action === 'none' ? 0 : previewBrandPicks(b, { forToday: ctx.forToday, dayStart: ctx.dayStart }).people.length
+  const going = action === 'none' ? 0 : previewBrandPicks(b, { forToday: ctx.forToday, dayStart: ctx.dayStart, explicitAdd: true }).people.length
   const rc = reasonCtx(b)
   const lastTouch = rc.sentAt ?? b.targets.map(t => t.emailedAt).filter(Boolean).sort((x, y) => y!.getTime() - x!.getTime())[0] ?? null
   const text = status === 'archived' ? 'Archived'
@@ -1421,7 +1447,13 @@ const handlers: Record<string, Handler> = {
     // added on the Schedule could simply never appear.
     const plannedSkipped: { brandId: string; brandName: string; reason: string }[] = []
     if (planDay?.brandIds?.length) {
+      // "Pass today" wins over the plan for today: the Schedule card says
+      // "Passed for today", so the queue must not stamp it straight back.
+      const passedNow = new Set((await prisma.brand.findMany({
+        where: { id: { in: planDay.brandIds }, passedTodayAt: { gte: startOfDay } }, select: { id: true },
+      })).map(b => b.id))
       for (const bid of planDay.brandIds) {
+        if (passedNow.has(bid)) continue
         try {
           const r: any = await (handlers.queueBrandTargets as Handler)({ brandId: bid })
           if (r && r.queued === false && r.reason !== 'already') {
@@ -3513,9 +3545,13 @@ const handlers: Record<string, Handler> = {
         .reduce((n, p) => n + p.going, 0)
       // Today only: what's already stamped into the queue and what
       // already went out both take up room before the simulation fills.
-      // A brand pinned to ANY day is its own card, never an auto row.
+      // A brand pinned to today is its own card. One pinned to a LATER
+      // day but queued today by hand (LinkedIn tab) is going out today,
+      // so it shows here as an in-queue row — otherwise it was counted in
+      // today's total with no card, and counted again on its later day.
       const sentUsed = isToday ? sentTodayN : 0
-      const alreadyIn = isToday ? stampedToday.filter(t => !planned.has(t.brand.id)) : []
+      const todayPinned = new Set(plan[key]?.brandIds ?? [])
+      const alreadyIn = isToday ? stampedToday.filter(t => !todayPinned.has(t.brand.id)) : []
       const alreadyPlanned = isToday ? stampedToday.length - alreadyIn.length : 0
       const room = Math.max(0, DAILY_SEND_LIMIT - plannedCount - sentUsed - (isToday ? stampedToday.length : 0))
       // Strictly the day's category — no cross-category top-ups (Leo).
@@ -3823,6 +3859,18 @@ const handlers: Record<string, Handler> = {
     }
 
     const plan = await readPlan()
+    // A full target day refuses too — checked before anything changes,
+    // or the brand came off its day, landed nowhere, and the reply said ok.
+    const target = dst ? (plan[dst]?.brandIds ?? []) : []
+    if (dst && !target.includes(brand.id) && target.length >= PLAN_DAY_MAX) {
+      return {
+        ok: false, from: src, to: dst, unqueued: 0,
+        result: {
+          brandId: brand.id, brandName: brand.name, added: false, state: 'refused', going: 0,
+          reason: 'dayfull', reasonText: reasonText('dayfull'), movedFrom: null, people: [],
+        },
+      }
+    }
     for (const k of Object.keys(plan)) {
       if (src && k !== src) continue
       plan[k].brandIds = plan[k].brandIds.filter(x => x !== brand.id)
@@ -3835,7 +3883,16 @@ const handlers: Record<string, Handler> = {
       unqueued = result?.unqueued ?? 0
     } else {
       await writePlan(plan)
-      unqueued = await unstampToday(brand.id)
+      // Only a brand coming off TODAY leaves today's queue. Taking a
+      // Tuesday brand off the schedule used to pull people Leo had queued
+      // by hand today out of the LinkedIn list too.
+      if (src === today || !src) unqueued = await unstampToday(brand.id)
+      // An automatic row isn't pinned anywhere, so unstamping alone let
+      // the rotation pick it straight back up. Pass it for today, the
+      // same as "Pass today", so it stays off.
+      if (!src && unqueued > 0) {
+        await prisma.brand.update({ where: { id: brand.id }, data: { passedTodayAt: new Date() } })
+      }
     }
     return { ok: true, from: src, to: dst, unqueued, result }
   },
@@ -3906,7 +3963,9 @@ const handlers: Record<string, Handler> = {
     const seen = new Set<string>()
     const inputs: string[] = []
     for (const part of String(text ?? '').split(/[\n\r,;\t]+/)) {
-      const line = part.replace(/^\s*(?:\d+\s*[.)]|[-*•])\s*/, '').trim()
+      // A list number needs a space after it, so "5.11 Tactical" and
+      // "3.1 Phillip Lim" keep their names; "1. Nike" still loses the "1.".
+      const line = part.replace(/^\s*(?:\d+[.)]\s+|[-*•]\s*)/, '').trim()
       const key = nameKey(line)
       if (!line || !key || seen.has(key)) continue
       seen.add(key)
@@ -3917,18 +3976,32 @@ const handlers: Record<string, Handler> = {
 
     const all = await prisma.brand.findMany({ select: PLAN_BRAND_SELECT })
     const byId = new Map(all.map(b => [b.id, b]))
-    const byKey = new Map<string, PlanBrand>()
+    // Every brand under each key: nameKey drops words like "Holdings" and
+    // "Group", so "Celsius" and "Celsius Holdings" share one. Keeping only
+    // the first let database order pick which one came back as exact.
+    const byKey = new Map<string, PlanBrand[]>()
     for (const b of all) {
       const names = [b.name, ...(b.aka ?? '').split(/[,;]/)].map(s => s.trim()).filter(Boolean)
       for (const n of names) {
         const k = nameKey(n)
-        if (k && !byKey.has(k)) byKey.set(k, b)
+        if (!k) continue
+        const list = byKey.get(k) ?? []
+        if (!list.includes(b)) list.push(b)
+        byKey.set(k, list)
       }
     }
     const ctx = await planRowCtx(date)
     const lines = inputs.map(input => {
-      const exact = byKey.get(nameKey(input))
+      const same = (byKey.get(nameKey(input)) ?? []).slice().sort((a, b) => a.name.localeCompare(b.name))
+      // One brand, or one whose name is exactly what was pasted: exact.
+      // Several with nothing to tell them apart: close, the others as
+      // suggestions, so Leo picks instead of the database.
+      const exact = same.length === 1 ? same[0]
+        : same.find(b => b.name.trim().toLowerCase() === input.toLowerCase()) ?? null
       if (exact) return { input, confidence: 'exact', brand: planBrandRow(exact, ctx), suggestions: [] as any[] }
+      if (same.length > 1) {
+        return { input, confidence: 'close', brand: planBrandRow(same[0], ctx), suggestions: same.slice(1, 3).map(b => planBrandRow(b, ctx)) }
+      }
       const sugg = suggestBrands(input, all, 3)
       const rows = (list: typeof sugg) => list.map(s => byId.get(s.id)).filter((b): b is PlanBrand => !!b).map(b => planBrandRow(b, ctx))
       if (sugg.length && sugg[0].score >= 0.6) {
@@ -4182,18 +4255,26 @@ const handlers: Record<string, Handler> = {
       return { added: 0, shortBy: 0, theme: null, offDay: true, nextDay: localDayKey(planningDays(1)[0]) }
     }
     const startOfDay = startOfLocalDay()
-    const [sentToday, stamped, planRow, candidates] = await Promise.all([
+    const [sentToday, stamped, plan, allCandidates] = await Promise.all([
       prisma.target.count({ where: { sentAt: { gte: startOfDay } } }),
       prisma.target.count({ where: { queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } } }),
-      prisma.setting.findUnique({ where: { key: 'outreachPlan' } }),
+      readPlan(),
       prisma.target.findMany({
         where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: NOT_IN_CONVERSATION },
-        select: { brand: { select: { category: true } } },
+        select: { brandId: true, brand: { select: { category: true } } },
       }),
     ])
-    let planDay: any = null
-    try { planDay = planRow ? (JSON.parse(planRow.value)[localDayKey()] ?? null) : null } catch { planDay = null }
-    const cats = [...new Set(candidates.map(c => c.brand.category).filter(Boolean))].sort() as string[]
+    const todayKey = localDayKey()
+    const planDay: any = plan[todayKey] ?? null
+    // A brand pinned to a LATER day waits for that day, same rule as
+    // getTodayQueue's auto-fill: Fill to 20 used to queue it today, so it
+    // went out early and its own day counted it a second time.
+    const laterPinned = new Set<string>()
+    for (const [k, d] of Object.entries(plan)) if (k > todayKey) for (const id of d.brandIds) laterPinned.add(id)
+    const candidates = allCandidates.filter(c => !laterPinned.has(c.brandId))
+    // The rotation reads the whole pool, like getTodayQueue's, so both
+    // land on the same category.
+    const cats = [...new Set(allCandidates.map(c => c.brand.category).filter(Boolean))].sort() as string[]
     const theme = planDay?.category
       ?? (cats.length ? cats[Math.floor(Date.now() / 86400000) % cats.length] : null)
     const themePool = theme ? candidates.filter(c => c.brand.category === theme).length : candidates.length
@@ -4210,7 +4291,7 @@ const handlers: Record<string, Handler> = {
         targets: { select: { status: true, shelved: true, sentAt: true } },
       },
     })
-    const untouched = brands.filter(b =>
+    const untouched = brands.filter(b => !laterPinned.has(b.id) &&
       !b.targets.some(t => t.sentAt ||
         (!t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied', 'converted'].includes(t.status))))
     let added = 0

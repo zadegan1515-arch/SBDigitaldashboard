@@ -463,6 +463,8 @@
   .sd-bname:hover{color:var(--accent-hi)}
   .sd-dimlink{color:var(--ink-2);text-decoration:none}
   .sd-dimlink:hover{color:var(--accent-hi)}
+  .sd-ext{font-size:11.5px;color:var(--ink-3);text-decoration:none;white-space:nowrap}
+  .sd-ext:hover{color:var(--accent-hi)}
   .sd-tag{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--surface-1);border:1px solid var(--border);color:var(--ink-3);white-space:nowrap}
   .sd-tag.good{color:#55d9a2;border-color:rgba(62,207,142,.3)}
   .sd-tag.warn{color:#eec777;border-color:rgba(232,182,76,.35)}
@@ -491,6 +493,10 @@
   .sd-check-list{margin-top:12px;border-top:1px solid var(--border-soft);padding-top:6px;max-height:320px;overflow:auto}
   .sd-check-item{display:flex;gap:10px;align-items:center;padding:6px 0;font-size:12.5px;border-bottom:1px solid var(--border-soft)}
   .sd-check-item .sd-mk{margin:0}
+  /* On a phone the reason squeezed the brand name down to "Po…": the
+     name keeps its width and the reason wraps under it instead. */
+  .sd-check-item .sd-bname{flex:none;max-width:100%}
+  @media (max-width:600px){.sd-check-item{flex-wrap:wrap;gap:4px 10px}}
   .sd-check-why{color:var(--ink-2);min-width:0}
   /* the three days */
   .sd-days{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px;align-items:start}
@@ -581,7 +587,6 @@
   .sd-dg-h .n{color:var(--ink-3);font-weight:500}
   .sd-drow{display:flex;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--border-soft);min-width:0;flex-wrap:wrap}
   .sd-drow .status{font-size:10.5px}
-  .sd-pastp{flex:1;min-width:0;font-size:12px;color:var(--ink-2)}
   .sd-pastday{margin-bottom:10px}
   .sd-bulk{position:sticky;bottom:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;padding:10px 14px;
     border-radius:12px;background:#1f1f28;border:1px solid rgba(79,131,247,.45);box-shadow:0 8px 30px rgba(0,0,0,.5);font-size:13px;z-index:5}
@@ -5426,7 +5431,11 @@ var SCHED = {
   // brandId -> open/closed for the "Invited today" cards.
   sentOpen: {},
   openCat: null, catCache: {}, catErr: {}, catBusy: {}, catGen: 0, catSel: {}, catQ: '',
-  pastOpen: false, qSeq: 0
+  pastOpen: false, qSeq: 0,
+  // Bumped on every getOutreachPlan call. Two quick changes fire two
+  // refreshes, and the older one can land last; only the newest is drawn,
+  // or a brand just moved would show back on its old day.
+  refSeq: 0
 };
 
 function schedDayKey(offset) {
@@ -5548,26 +5557,33 @@ function sdTake(d) {
   SCHED.pool = d.pool || null;
   // Category drill-ins are read again after every change: a brand just
   // added has a new "Pinned" tag, and one just reached moved columns.
-  SCHED.catCache = {};
+  // The old answer stays on screen until the new one lands (catGen marks
+  // it out of date) — emptying it collapsed an open drill-in to
+  // "Loading…" on every add and the page jumped out from under Leo.
   SCHED.catErr = {};
   SCHED.catGen += 1;
 }
 
 function sdRefresh() {
+  var mine = ++SCHED.refSeq;
   return api('getOutreachPlan').then(function (d) {
+    if (mine !== SCHED.refSeq) return;
     sdTake(d);
     renderSchedAll();
-  }).catch(function (e) { toast(e.message); });
+  }).catch(function (e) { if (mine === SCHED.refSeq) toast(e.message); });
 }
 
 function loadSchedule() {
   showView('schedule');
   var box = document.getElementById('sched-days');
   if (!SCHED.order.length) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  var mine = ++SCHED.refSeq;
   return api('getOutreachPlan').then(function (d) {
+    if (mine !== SCHED.refSeq) return;
     sdTake(d);
     renderSchedAll();
   }).catch(function (e) {
+    if (mine !== SCHED.refSeq) return;
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
   });
 }
@@ -5586,9 +5602,33 @@ function renderSchedAll() {
 
 // --- adding, moving, removing ----------------------------------
 
+// Plan changes go to the server one at a time. Each plan handler reads
+// the whole plan, changes it and writes it all back, so two clicks a
+// moment apart (+ Add on two brands, a drag and a Move to) both read the
+// same plan and the second write wiped out the first brand — both said
+// "added", only one stayed.
+var SD_Q = Promise.resolve();
+function sdPlanCall(fn, args) {
+  var run = SD_Q.then(function () { return api(fn, args); });
+  SD_Q = run.catch(function () {});
+  return run;
+}
+
+// Are this brand's people stamped into today's queue right now? Planning
+// it for a later day takes them back out, so that is worth a question.
+// Answers with the brand's name (for the question), or '' when not.
+function sdInTodayQueue(id) {
+  var day = SCHED.days[SCHED.today];
+  if (!day) return '';
+  var hit = (day.pinned || []).filter(function (p) { return p.id === id && p.state === 'going' && !p.pendingQueue; })[0] ||
+    (day.brands || []).filter(function (b) { return b.id === id && b.inQueue; })[0];
+  return hit ? hit.name || SCHED.names[id] || 'a brand' : '';
+}
+
 // The sentence for one brand's outcome — what goes on its card.
 function sdOutcome(res) {
-  var moved = res.movedFrom ? ' Moved from ' + sdDayTag(res.movedFrom) + '.' : '';
+  var moved = (res.movedFrom ? ' Moved from ' + sdDayTag(res.movedFrom) + '.' : '') +
+    (res.unqueued ? ' ' + sdPlural(res.unqueued, 'person', 'people') + ' taken out of today’s queue.' : '');
   var why = res.reasonText || SD_SHORT[res.reason] || 'nobody to invite';
   if (!res.added) return 'Not added. ' + why;
   if (res.state === 'going') return sdPlural(res.going || 0, 'person', 'people') + ' going out.' + moved;
@@ -5603,6 +5643,7 @@ function sdSummary(results) {
   var refused = results.filter(function (x) { return !x.added; });
   var blocked = added.filter(function (x) { return x.state === 'blocked'; });
   var moved = added.filter(function (x) { return x.movedFrom; });
+  var unqueued = added.reduce(function (n, x) { return n + (x.unqueued || 0); }, 0);
   var list = function (rows) {
     return rows.slice(0, 3).map(function (x) {
       return (x.brandName || 'brand') + ', ' + (SD_SHORT[x.reason] || x.reason || 'nobody to invite');
@@ -5612,6 +5653,7 @@ function sdSummary(results) {
   if (blocked.length) parts.push(blocked.length + ' can’t go out (' + list(blocked) + ')');
   if (refused.length) parts.push(refused.length + ' not added (' + list(refused) + ')');
   if (moved.length) parts.push(moved.length + ' moved from another day');
+  if (unqueued) parts.push(sdPlural(unqueued, 'person', 'people') + ' taken out of today’s queue');
   return parts.join(' · ');
 }
 
@@ -5636,26 +5678,62 @@ function sdAdd(key, ids, opts) {
   ids = (ids || []).filter(function (x, i, a) { return x && a.indexOf(x) === i; });
   if (!ids.length) return Promise.resolve(null);
   if (ids.length > 40) { toast('40 at a time — adding the first 40'); ids = ids.slice(0, 40); }
+  // Planning a brand for a later day takes its people back out of
+  // today's queue (or it would go out twice). A bulk add can do that to
+  // several brands at once, so it asks first, like Clear them does.
+  if (key !== SCHED.today) {
+    var inToday = ids.filter(sdInTodayQueue);
+    if (inToday.length) {
+      var names = inToday.map(sdInTodayQueue);
+      var one = inToday.length === 1;
+      if (!window.confirm('Plan ' + names.slice(0, 8).join(', ') + (names.length > 8 ? ' and ' + (names.length - 8) + ' more' : '') +
+          ' for ' + sdDayTag(key) + '?\n\n' + (one ? 'It is' : 'They are') + ' in today’s queue. Planning ' + (one ? 'it' : 'them') +
+          ' for ' + sdDayTag(key) + ' takes those people back out of today. Nobody is deleted — they go back to the pool and go out on ' +
+          sdDayTag(key) + '. Anyone already invited is left alone.')) {
+        // Redraw so the control that was disabled for the add works again.
+        return sdRefresh().then(function () { return null; });
+      }
+    }
+  }
   SCHED.notes[key] = [];
-  return api('planAddBrands', { date: key, brandIds: ids }).then(function (r) {
+  return sdPlanCall('planAddBrands', { date: key, brandIds: ids }).then(function (r) {
     var results = r.results || [];
     sdTakeResults(key, results);
     var sum = sdSummary(results);
     if (!opts.quiet) toast(sdDayTag(key) + ' — ' + sum);
     return sdRefresh().then(function () { return sum; });
-  }).catch(function (e) { toast(e.message); return null; });
+  }).catch(function (e) {
+    toast(e.message);
+    // Redraw so the button or Add to… menu that was disabled for this
+    // add works again and Leo can retry.
+    return sdRefresh().then(function () { return null; });
+  });
 }
 
 // from = the day it is pinned to, or '' for an auto row. to = a day,
 // or '' to take it off the schedule.
 function sdMove(id, name, from, to) {
-  return api('planMoveBrand', { brandId: id, from: from || '', to: to || '' }).then(function (r) {
+  // Off the schedule from TODAY (an auto card is only ever offered this
+  // on today). Taking it off the plan alone puts its people back in the
+  // pool, and today's rotation picked them straight back up — the toast
+  // said "off", the card came back. Passing it for today is what keeps it
+  // off; it is back in the rotation tomorrow, and adding it to today
+  // again lifts the pass.
+  var offToday = !to && (!from || from === SCHED.today);
+  return sdPlanCall('planMoveBrand', { brandId: id, from: from || '', to: to || '' }).then(function (r) {
+    if (!offToday) return r;
+    return api('passBrandToday', { brandId: id }).then(function (p) {
+      r.unqueued = (r.unqueued || 0) + ((p && p.unqueued) || 0);
+      return r;
+    });
+  }).then(function (r) {
     if (to) {
       var res = r.result ? Object.assign({ brandId: id, brandName: name }, r.result) : null;
+      if (res && r.unqueued && !res.unqueued) res.unqueued = r.unqueued;
       if (res) sdTakeResults(to, [res]);
       toast(name + ' → ' + sdDayTag(to) + (res ? ': ' + sdOutcome(res) : ''));
     } else {
-      toast(name + ' is off the schedule' +
+      toast(name + (offToday ? ' is off today — back in the rotation tomorrow' : ' is off the schedule') +
         (r.unqueued ? ' · ' + sdPlural(r.unqueued, 'person', 'people') + ' back in the pool' : ''));
     }
     return sdRefresh();
@@ -5750,12 +5828,30 @@ function sdFlash(id) {
   return f ? '<div class="sd-flash ' + esc(f.kind) + '">' + esc(f.text) + '</div>' : '';
 }
 
+// The brand's LinkedIn page and website, a click from the Schedule
+// without opening the brand page first.
+function sdExtLinks(o) {
+  var href = function (u) { return /^https?:/i.test(u) ? u : 'https://' + u; };
+  return (o.linkedinUrl ? '<a class="sd-ext" href="' + esc(href(o.linkedinUrl)) + '" target="_blank" rel="noopener" title="LinkedIn page">in ↗</a>' : '') +
+    (o.website ? '<a class="sd-ext" href="' + esc(href(o.website)) + '" target="_blank" rel="noopener" title="Website">site ↗</a>' : '');
+}
+
+// Archive from the Schedule, on any day's card (Pass today is today
+// only). data-sdday unpins it too, so the day doesn't keep a card that
+// can no longer go out.
+function sdArchiveBtn(id, name, pinnedDay) {
+  return '<button class="btn-ghost danger sd-sm" data-spass="' + esc(id) + '" data-sn="' + esc(name) + '"' +
+    (pinnedDay ? ' data-sdday="' + esc(pinnedDay) + '"' : '') +
+    ' title="Archive — off outreach entirely until you bring it back">Archive</button>';
+}
+
 // One card shell for pinned and auto brands, so they read alike.
 function sdCard(o) {
   return '<div class="sd-card' + (o.blocked ? ' blocked' : '') + '" draggable="true" data-sdwrap="1"' +
       ' data-dragb="' + esc(o.id) + '" data-dragn="' + esc(o.name) + '" data-dragfrom="' + esc(o.from) + '">' +
     '<div class="sd-card-h">' +
       '<a href="#" class="sd-bname" data-sopen="' + esc(o.id) + '">' + esc(o.name) + '</a>' +
+      sdExtLinks(o) +
       (o.pinned ? '<span class="sd-tag">Pinned</span>' : '') +
       (o.tags || '') +
       '<span class="sd-sp"></span>' + sdLabel(SCHED.labels[o.id]) +
@@ -5789,9 +5885,11 @@ function sdPinnedCard(p, key) {
   }
   return sdCard({
     id: p.id, name: p.name, from: key, pinned: true, blocked: p.state === 'blocked', body: body,
+    linkedinUrl: p.linkedinUrl, website: p.website,
     controls: sdMoveSel(p.id, p.name, key, key, true) +
       '<span class="sd-sp"></span>' +
-      '<button class="btn-ghost sd-sm" data-sdunpin="' + esc(p.id) + '" data-sdday="' + esc(key) + '" data-sdn="' + esc(p.name) + '" title="Take it off this day">× Unpin</button>'
+      '<button class="btn-ghost sd-sm" data-sdunpin="' + esc(p.id) + '" data-sdday="' + esc(key) + '" data-sdn="' + esc(p.name) + '" title="Take it off this day">× Unpin</button>' +
+      sdArchiveBtn(p.id, p.name, key)
   });
 }
 
@@ -5803,16 +5901,18 @@ function sdAutoCard(b, key, isToday) {
     (pp.names.length ? ' · ' + sdNames(pp.names) : '') +
     (b.later ? ' <span class="sd-dim" title="Ready too, but past the day’s ' + sdCap() + ' — they go out the next day in this category">+' + b.later + ' next time</span>' : '') +
   '</div>';
-  // "Off the schedule" only means something for people already stamped
-  // into today's queue; anywhere else the rotation would just put the
-  // brand straight back.
+  // "Off the schedule" is offered on today's queued rows only, and there
+  // it passes the brand for today (see sdMove) — un-queueing alone let
+  // the rotation put it straight back. On a later day an auto row is the
+  // rotation itself, so there is nothing to take it off.
   var controls = sdMoveSel(b.id, b.name, '', key, isToday && b.inQueue) + '<span class="sd-sp"></span>';
   if (isToday) {
     controls +=
-      '<button class="btn-ghost sd-sm" data-stoday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" title="Not today — back on its own tomorrow">Pass today</button>' +
-      '<button class="btn-ghost danger sd-sm" data-spass="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" title="Archive — off outreach entirely until you bring it back">Archive</button>';
+      '<button class="btn-ghost sd-sm" data-stoday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" title="Not today — back on its own tomorrow">Pass today</button>';
   }
-  return sdCard({ id: b.id, name: b.name, from: '', pinned: false, tags: tags, body: body, controls: controls });
+  controls += sdArchiveBtn(b.id, b.name, '');
+  return sdCard({ id: b.id, name: b.name, from: '', pinned: false, tags: tags, body: body, controls: controls,
+    linkedinUrl: b.linkedinUrl, website: b.website });
 }
 
 function sdDayHtml(key) {
@@ -5898,11 +5998,14 @@ function sdDayHtml(key) {
       '</div>' +
       (shown.length
         ? shown.map(function (m) {
-            return '<div class="sd-orow">' +
+            // Draggable like a card: drop it on another day to pin it there.
+            return '<div class="sd-orow" draggable="true" data-dragb="' + esc(m.id) + '" data-dragn="' + esc(m.name) + '" data-dragfrom="">' +
               '<a href="#" class="sd-bname" data-sopen="' + esc(m.id) + '">' + esc(m.name) + '</a>' +
+              sdExtLinks(m) +
               sdLabel(SCHED.labels[m.id]) +
               '<span class="sd-dim">' + sdPeopleOf(m).n + ' would go</span><span class="sd-sp"></span>' +
               '<button class="btn-ghost sd-sm" data-sdmissadd="' + esc(m.id) + '" data-sdday="' + esc(key) + '">+ Add</button>' +
+              sdArchiveBtn(m.id, m.name, '') +
             '</div>';
           }).join('')
         : '<div class="sd-dim">Every ' + esc(catName) + ' brand left has more people than the open spots.</div>') +
@@ -5920,10 +6023,13 @@ function sdDayHtml(key) {
     var overPeople = overflow.reduce(function (s, b) { return s + sdPeopleOf(b).n; }, 0) + later;
     html += '<div class="sd-note">The rest of ' + esc(catName) + ': ' + sdPlural(overPeople, 'person', 'people') +
       ' past the day’s ' + cap + ' come up on the next ' + esc(catName) + ' day. ' +
+      // Each name drags onto another day to pin it there (the old rows
+      // could be pinned; this keeps that without a row per brand).
       overflow.slice(0, 5).map(function (b) {
-        return '<a href="#" class="sd-dimlink" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>';
+        return '<a href="#" class="sd-dimlink" data-sopen="' + esc(b.id) + '" draggable="true" data-dragb="' + esc(b.id) + '"' +
+          ' data-dragn="' + esc(b.name) + '" data-dragfrom="" title="Drag onto a day to pin it there">' + esc(b.name) + '</a>';
       }).join(', ') +
-      (overflow.length > 5 ? ' and ' + (overflow.length - 5) + ' more' : '') + '.</div>';
+      (overflow.length > 5 ? ' and ' + (overflow.length - 5) + ' more' : '') + '. Drag a name onto another day to pin it there.</div>';
   }
 
   if (isToday) html += sdSentHtml(day);
@@ -6071,8 +6177,23 @@ function sdPasteCheck(key) {
 
 function sdCatKey(c) { return c || 'uncategorised'; }
 
+// The drill-in's filter box is rebuilt on every redraw; these keep the
+// cursor in it so a refresh mid-typing doesn't throw Leo out of the box.
+function sdCqFocus() {
+  var ae = document.activeElement;
+  return ae && ae.matches && ae.matches('[data-sdcq]') ? { s: ae.selectionStart, e: ae.selectionEnd } : null;
+}
+function sdCqRestore(f) {
+  if (!f) return;
+  var inp = document.querySelector('[data-sdcq]');
+  if (!inp) return;
+  inp.focus();
+  try { inp.setSelectionRange(f.s, f.e); } catch (e) {}
+}
+
 function renderSchedCats() {
   var box = document.getElementById('sched-cats');
+  var focus = sdCqFocus();
   var cats = (SCHED.categories || []).filter(function (c) { return c.total > 0; });
   if (!cats.length) { box.innerHTML = ''; return; }
   var dayIdx = function (c) {
@@ -6108,18 +6229,21 @@ function renderSchedCats() {
       '</button>';
     }).join('') + '</div>' +
     '<div id="sd-drill"></div>';
-  renderSchedDrill();
+  renderSchedDrill(focus);
 }
 
 function sdLoadCat(key) {
-  if (SCHED.catCache[key] || SCHED.catErr[key] || SCHED.catBusy[key]) return;
+  var have = SCHED.catCache[key];
+  if ((have && have._gen === SCHED.catGen) || SCHED.catErr[key] || SCHED.catBusy[key]) return;
   SCHED.catBusy[key] = true;
   var gen = SCHED.catGen;
   api('categoryBrands', { category: key === 'uncategorised' ? null : key }).then(function (d) {
     SCHED.catBusy[key] = false;
-    // The schedule refreshed while this was in flight, so the answer may
-    // already be out of date; drawing the drill-in again asks afresh.
-    if (gen === SCHED.catGen) SCHED.catCache[key] = d;
+    // Kept even if the schedule refreshed while this was in flight: it is
+    // still newer than what is drawn. Its _gen says it may be out of
+    // date, so drawing the drill-in again asks afresh.
+    d._gen = gen;
+    SCHED.catCache[key] = d;
     if (SCHED.openCat === key) renderSchedDrill();
   }).catch(function (e) {
     SCHED.catBusy[key] = false;
@@ -6139,9 +6263,10 @@ function sdDrillGroups(brands) {
   return g;
 }
 
-function renderSchedDrill() {
+function renderSchedDrill(focus) {
   var box = document.getElementById('sd-drill');
   if (!box) return;
+  focus = focus || sdCqFocus();
   var key = SCHED.openCat;
   if (!key) { box.innerHTML = ''; return; }
   var name = sdCatName(key === 'uncategorised' ? null : key);
@@ -6169,6 +6294,9 @@ function renderSchedDrill() {
     '<div id="sd-bulk"></div>' +
   '</div>';
   renderSchedDrillBody();
+  sdCqRestore(focus);
+  // Drawn from the last answer; ask again if a change since made it stale.
+  if (data._gen !== SCHED.catGen) sdLoadCat(key);
 }
 
 function renderSchedDrillBody() {
@@ -6294,14 +6422,15 @@ function renderSchedPast() {
       var lbl = new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
       return '<div class="panel panel-pad sd-pastday">' +
         '<div class="sd-day-n"><b>' + esc(lbl) + '</b><span class="sd-dim">' + d.people.length + ' sent</span></div>' +
+        // Accepts usually land a day or more after the invite, so the
+        // past week keeps the same Accepted? / DM sent / Replied? buttons
+        // as today's cards.
         groups.map(function (g) {
           return '<div class="sd-drow">' +
             '<a href="#" class="sd-bname" data-sopen="' + esc(g.id) + '">' + esc(g.name) + '</a>' +
             '<span class="sd-dim">' + sdPlural(g.people.length, 'person', 'people') + '</span>' +
-            '<span class="sd-pastp">' + g.people.map(function (p) {
-              return esc(p.person) + ' <span class="status ' + esc(p.status) + '">' + esc(p.status) + '</span>';
-            }).join(' ') + '</span>' +
-          '</div>';
+          '</div>' +
+          '<div class="sd-people">' + g.people.map(sdSentPersonRow).join('') + '</div>';
         }).join('') +
       '</div>';
     }).join('') +
@@ -6339,11 +6468,14 @@ function sdSearch(inp) {
   // query can't land after the box was cleared.
   var mine = ++SCHED.qSeq;
   inp._seq = mine;
-  if (q.length < 2) { drop.style.display = 'none'; drop.innerHTML = ''; return; }
+  if (q.length < 2) { drop.style.display = 'none'; drop.innerHTML = ''; drop._q = ''; return; }
   inp._t = setTimeout(function () {
     api('searchPlanBrands', { q: q, date: key }).then(function (r) {
       if (inp._seq !== mine || !inp.isConnected) return;
       var rows = r.brands || [];
+      // What these results were for, so Enter can tell them from what's
+      // typed now (see the keydown handler).
+      drop._q = q;
       drop.innerHTML = rows.length
         ? rows.map(function (b) { return sdResultRow(b, key); }).join('')
         : '<div class="sd-res sd-dim">No brand called that.</div>';
@@ -6371,8 +6503,17 @@ var SCHED_DRAG = null;
     var drop = inp.parentNode.querySelector('[data-sddrop]');
     if (e.key === 'Escape') { drop.style.display = 'none'; drop.innerHTML = ''; inp.blur(); }
     if (e.key === 'Enter') {
-      var first = drop.querySelector('[data-sdadd]');
-      if (first) { e.preventDefault(); first.click(); }
+      e.preventDefault();
+      // Only the top row, and only of results for exactly what is typed.
+      // The last search's rows stay up while the next one runs, so Enter
+      // used to add a brand from "Red" when Leo had typed "Red Bull" — or
+      // skip a top row that can't be added and add the brand under it.
+      if (drop._q !== inp.value.trim()) return;
+      var top = drop.querySelector('.sd-res');
+      if (!top) return;
+      var btn = top.querySelector('[data-sdadd]');
+      if (btn) btn.click();
+      else toast(top.textContent.replace(/\s+/g, ' ').trim());
     }
   });
 
@@ -6392,7 +6533,7 @@ var SCHED_DRAG = null;
     if (t.matches('[data-sdcatsel]')) {
       var ckey = t.getAttribute('data-sdcatsel');
       t.disabled = true;
-      api('planSetCategory', { date: ckey, category: t.value || null }).then(function () {
+      sdPlanCall('planSetCategory', { date: ckey, category: t.value || null }).then(function () {
         toast(sdDayTag(ckey) + ' → ' + (t.value ? CAT_NAMES[t.value] || t.value : 'automatic rotation'));
         return sdRefresh();
       }).catch(function (err) { toast(err.message); sdRefresh(); });
@@ -6475,16 +6616,22 @@ var SCHED_DRAG = null;
     if ((t = e.target.closest('[data-sdpcreate]'))) {
       e.preventDefault();
       var ckey = t.getAttribute('data-sdpcreate');
-      var ci = +t.getAttribute('data-i');
-      var cln = SCHED.paste[ckey].lines[ci];
+      var cps = SCHED.paste[ckey];
+      var cln = cps.lines[+t.getAttribute('data-i')];
+      if (!cln) return;
       cln.creating = true;
       sdRenderPaste(ckey);
       api('createBrand', { name: cln.input, hint: 'pasted on the Schedule' }).then(function () {
         return api('matchBrandList', { text: cln.input, date: ckey });
       }).then(function (r) {
-        var fresh = (r.lines || [])[0];
-        SCHED.paste[ckey].lines[ci] = fresh ? sdPasteLineState(fresh) : cln;
         cln.creating = false;
+        // Found again by the line itself, not its old position: an Add or
+        // a fresh Check while this ran may have cleared or rebuilt the
+        // list, and a stale index wrote into the wrong line (or crashed).
+        var at = cps.lines ? cps.lines.indexOf(cln) : -1;
+        if (at === -1) { toast('Created ' + cln.input); return; }
+        var fresh = (r.lines || [])[0];
+        if (fresh) cps.lines[at] = sdPasteLineState(fresh);
         sdRenderPaste(ckey);
       }).catch(function (err) { cln.creating = false; sdRenderPaste(ckey); toast(err.message); });
       return;
@@ -6510,7 +6657,7 @@ var SCHED_DRAG = null;
     if ((t = e.target.closest('[data-sdunpin]'))) {
       var uname = t.getAttribute('data-sdn');
       t.disabled = true;
-      api('planRemoveBrand', { date: t.getAttribute('data-sdday'), brandId: t.getAttribute('data-sdunpin') }).then(function (r) {
+      sdPlanCall('planRemoveBrand', { date: t.getAttribute('data-sdday'), brandId: t.getAttribute('data-sdunpin') }).then(function (r) {
         toast(uname + ' unpinned' + (r.unqueued ? ' · ' + sdPlural(r.unqueued, 'person', 'people') + ' back in the pool' : ''));
         return sdRefresh();
       }).catch(function (err) { toast(err.message); sdRefresh(); });
@@ -6571,9 +6718,15 @@ var SCHED_DRAG = null;
     // back by hand (Archived tab). Asks first — it is not a day's pass.
     if ((t = e.target.closest('[data-spass]'))) {
       var xname = t.getAttribute('data-sn');
+      var xid = t.getAttribute('data-spass');
+      var xday = t.getAttribute('data-sdday');
       if (!window.confirm('Archive ' + xname + '?\n\nIt comes off the schedule, the queue and next best until you bring it back from the Archived tab. Nobody is deleted.')) return;
       t.disabled = true;
-      api('setBrandPassed', { brandId: t.getAttribute('data-spass'), passed: true }).then(function () {
+      api('setBrandPassed', { brandId: xid, passed: true }).then(function () {
+        // A pinned card would otherwise stay on its day as "Won't go
+        // out · Archived" — take it off the day too.
+        return xday ? sdPlanCall('planRemoveBrand', { date: xday, brandId: xid }) : null;
+      }).then(function () {
         toast('Archived ' + xname + ' — bring back any time from the Archived tab');
         return sdRefresh();
       }).catch(function (err) { toast(err.message); sdRefresh(); });
@@ -6591,11 +6744,21 @@ var SCHED_DRAG = null;
       var tid = t.getAttribute('data-st');
       var today = SCHED.days[SCHED.today];
       var p = today && (today.sentPeople || []).filter(function (x) { return x.id === tid; })[0];
+      var inPast = null;
+      if (!p) {
+        (SCHED.past || []).forEach(function (d) {
+          (d.people || []).forEach(function (x) { if (x.id === tid) inPast = x; });
+        });
+      }
       if (p) {
         if (act === 'dmsent') p.dmSentAt = new Date().toISOString();
         else p.status = act;
         SCHED.sentOpen[p.brandId] = true;
         renderSchedDays();
+      } else if (inPast) {
+        if (act === 'dmsent') inPast.dmSentAt = new Date().toISOString();
+        else inPast.status = act;
+        renderSchedPast();
       }
       toast(act === 'replied' ? 'Reply logged' : act === 'dmsent' ? 'DM logged' : 'Accepted logged');
       api('setTargetStatus', act === 'dmsent'
@@ -7322,8 +7485,12 @@ var OQ_THEME = null;
 
 function oqIsPre(t) { return t && (t.status === 'queued' || t.status === 'drafted'); }
 // "Sent" for a card's count: the invite went out, whatever happened after.
+// A row back in the queue is to send, even with an old sentAt: Pass and
+// Re-queue keep the date of an invite from last week, and counting that
+// folded a brand with someone still to send into Done today.
 function oqIsSent(t) {
-  return !!t && (!!t.sentAt || t.status === 'sent' || t.status === 'accepted' || t.status === 'replied' || t.status === 'converted');
+  return !!t && !oqIsPre(t) &&
+    (!!t.sentAt || t.status === 'sent' || t.status === 'accepted' || t.status === 'replied' || t.status === 'converted');
 }
 
 // Group targets by brand in first-seen order.
@@ -7400,7 +7567,13 @@ function refreshBrandCard(brandId) {
     var c = oqHeadCounts(rows);
     var countEl = card.querySelector('[data-oqcount]');
     if (card.getAttribute('data-done')) {
-      if (countEl) countEl.textContent = c.sent + ' invited today' + (c.sent ? ' · ' + oqNames(c.sentRows) : '');
+      // An Undo inside a done card puts someone back to send: say so, and
+      // drop the ✓ until they go again.
+      var left = c.total - c.sent;
+      if (countEl) countEl.textContent = c.sent + ' invited today' + (c.sent ? ' · ' + oqNames(c.sentRows) : '') +
+        (left ? ' · ' + left + ' to send' : '');
+      var ok = card.querySelector('.oq-ok');
+      if (ok) ok.style.visibility = left ? 'hidden' : '';
     } else {
       if (countEl) countEl.textContent = c.sent + ' of ' + c.total + ' sent';
       var bar = card.querySelector('.oq-bprog .oq-bar');
@@ -7416,7 +7589,9 @@ function oqRenderRail() {
   if (!slot) return;
   if (mode !== 'today') { slot.innerHTML = ''; return; }
   var toSend = 0;
-  document.querySelectorAll('#targets [data-oqsec="today"] .target[data-id]').forEach(function (r) {
+  // Done cards too: an Undo there puts a person back to send while the
+  // row stays where it is until the next load.
+  document.querySelectorAll('#targets [data-oqsec="today"] .target[data-id], #targets [data-oqsec="done"] .target[data-id]').forEach(function (r) {
     if (oqIsPre(TARGET_CACHE[r.getAttribute('data-id')])) toSend++;
   });
   var cap = SENT_TODAY.cap || 20, sent = SENT_TODAY.count || 0;
@@ -11263,7 +11438,10 @@ document.getElementById('targets').addEventListener('click', function (e) {
   if (act === 'dmsent') {
     var dt = TARGET_CACHE[id];
     if (dt) dt.dmSentAt = new Date().toISOString();
-    if (mode === 'today' && row) { row.remove(); if (dt) refreshBrandCard(dt.brandId); }
+    // Inside a brand card the row stays (it shows Accepted ✓, no DM
+    // button): removing it dropped the card's "sent" count, and a done
+    // brand with one person vanished though they were invited today.
+    if (mode === 'today' && row && !row.closest('.oq-brand')) { row.remove(); if (dt) refreshBrandCard(dt.brandId); }
     else refreshRow(id);
     toast('DM logged — they move to Results until the reply comes');
     api('setTargetStatus', { targetId: id, dmSent: true, actor: ME.owner || null })
@@ -11328,8 +11506,11 @@ document.getElementById('targets').addEventListener('click', function (e) {
   if (act === 'pass') {
     var pt = TARGET_CACHE[id];
     if (!pt) return;
+    // Someone already invited stays in their brand card as passed, so the
+    // card still counts the invite; only a never-sent row leaves.
+    var ptWasSent = oqIsSent(pt);
     pt.status = 'passed';
-    if (mode === 'today' && row) { row.remove(); refreshBrandCard(pt.brandId); }
+    if (mode === 'today' && row && !(ptWasSent && row.closest('.oq-brand'))) { row.remove(); refreshBrandCard(pt.brandId); }
     else refreshRow(id);
     toast('Passed on ' + (pt.contact && pt.contact.name ? pt.contact.name : 'them') + ' — ' +
       (pt.brand && pt.brand.name ? pt.brand.name : 'the brand') + ' stays in play');
