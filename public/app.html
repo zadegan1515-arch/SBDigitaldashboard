@@ -275,6 +275,19 @@
   .zt-mini i.now{background:var(--accent);box-shadow:0 0 0 3px rgba(79,131,247,.25)}
   .zt-mini b{width:8px;height:2px;background:#33333e}
   .zt-tabs{display:flex;gap:6px;margin-top:12px}
+  .zt-fl-col{display:flex;flex-direction:column;align-items:stretch}
+  .zt-fl-col .zt-node{justify-content:flex-start;width:100%}
+  /* Bigger rows and next-step tags (Leo: make each card bigger). */
+  .zt-row{padding:15px 20px;gap:14px}
+  .zt-row .zt-av{width:40px;height:40px;font-size:13px}
+  .zt-row .zt-who b{font-size:15.5px}
+  .zt-row .zt-who span{font-size:13.5px}
+  .zt-next{font-size:12.5px;padding:6px 13px}
+  .zt-mini i{width:9px;height:9px}
+  .zt-mini b{width:10px}
+  .zt-age{font-size:13px}
+  .zt-comp{padding-left:74px}
+  .zt-flowwrap{grid-template-columns:320px minmax(0,1fr)}
   .zt-callout.wait,.zt-callout.call{background:var(--surface-1);border:1px solid var(--border);color:var(--ink-2)}
   .zt-skip:hover{color:var(--ink-1)}
   .zt-more{display:block;width:100%;padding:13px;border:none;border-top:1px solid var(--border-soft);background:none;
@@ -330,7 +343,7 @@
   @media (max-width:768px){
     .zt-title{font-size:21px}
     .zt-tools{margin-left:0}
-    .zt-row{display:grid;grid-template-columns:32px minmax(0,1fr) auto;column-gap:12px;row-gap:5px;padding:11px 14px}
+    .zt-row{display:grid;grid-template-columns:40px minmax(0,1fr) auto;column-gap:12px;row-gap:5px;padding:11px 14px}
     .zt-av{grid-row:1 / span 2}
     .zt-who{grid-column:2;grid-row:1}
     .zt-who b{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
@@ -1554,16 +1567,16 @@ var ZT_STAGE = {
   dm:      { label: 'Text back on LinkedIn', cls: 'sent' },
   nudge:   { label: 'Send the follow-up', cls: 'withdrawn' },
   waiting: { label: 'Waiting on reply', cls: 'passed' },
-  pick:    { label: 'Replied: pick Email or DM', cls: 'replied' },
-  email:   { label: 'Email them', cls: 'drafted' },
-  lidm:    { label: 'Reply on LinkedIn', cls: 'sent' },
+  pick:    { label: 'Replied: email or LinkedIn?', cls: 'replied' },
+  email:   { label: 'Email to send', cls: 'drafted' },
+  lidm:    { label: 'DM to send', cls: 'sent' },
   call:    { label: 'Schedule the call', cls: 'replied' }
 };
 // The step E ticks for each stage (none while a path is still to pick).
 var ZT_FINAL = { soon: 'dm', dm: 'dm', nudge: 'nudge', waiting: 'replied', pick: null, email: 'emailed', lidm: 'liSent', call: 'call' };
 var ZT_DONE_TEXT = {
   dm: 'Texted back', nudge: 'Followed up', emailed: 'Emailed', liSent: 'Replied on LinkedIn', replied: 'They replied',
-  wantsEmail: 'Email path picked', liPath: 'LinkedIn DM path picked', skipped: 'Not needed', skip: 'Not needed', call: 'Call scheduled'
+  wantsEmail: 'They want email', liPath: 'They want LinkedIn', skipped: 'Not needed', skip: 'Not needed', call: 'Call scheduled'
 };
 var ZT_PANEL = {};         // targetId -> the box someone clicked in the flow
 
@@ -1715,8 +1728,11 @@ function ztFlowState(p) {
   return {
     msg: p.dmSentAt ? 'done' : replied ? 'off' : st === 'dm' ? 'now' : '',
     replied: replied ? 'done' : (st === 'waiting' || st === 'nudge') ? 'now' : '',
-    email: path(!!p.wantsEmailAt, !!ztEmailDone(p), 'email'),
-    lidm: path(!!p.liPathAt, !!p.liSentAt, 'lidm'),
+    // "They want email" / "They want LinkedIn": the choice after a reply.
+    wantEmail: (p.wantsEmailAt || ztEmailDone(p)) ? 'done' : st === 'pick' ? 'choice' : replied ? 'off' : '',
+    wantLi: (p.liPathAt || p.liSentAt) ? 'done' : st === 'pick' ? 'choice' : replied ? 'off' : '',
+    email: path(!!p.wantsEmailAt, !!ztEmailDone(p), 'email').replace('choice', 'off'),
+    lidm: path(!!p.liPathAt, !!p.liSentAt, 'lidm').replace('choice', 'off'),
     call: st === 'call' ? 'now' : ''
   };
 }
@@ -1747,11 +1763,20 @@ function ztFlowHtml(p) {
     '<div class="zt-fl-one">' + node(ztReplied(p) ? 'pick' : 'waiting', f.replied, 'Replied', p.repliedAt ? shortDate(p.repliedAt) : '', 2) + '</div>' +
     '<div class="zt-fl-stub"></div><div class="zt-fl-split"></div>' +
     '<div class="zt-fl-two">' +
-      node('email', f.email, 'Email', p.emailedAt ? 'Sent ' + shortDate(p.emailedAt) : p.emailReplyAt ? 'They replied ' + shortDate(p.emailReplyAt) : p.wantsEmailAt ? 'To send' : '', 3) +
-      node('lidm', f.lidm, 'LinkedIn DM', p.liSentAt ? 'Sent ' + shortDate(p.liSentAt) : p.liPathAt ? 'To send' : '', 3) +
+      '<div class="zt-fl-col">' +
+        node('wantEmail', f.wantEmail, 'They want email', p.wantsEmailAt ? shortDate(p.wantsEmailAt) : '', 3) +
+        '<div class="zt-fl-stub"></div>' +
+        node('email', f.email, p.emailedAt ? 'Email sent' : p.emailReplyAt ? 'Replied by email' : p.wantsEmailAt ? 'Email to send' : 'Email',
+          p.emailedAt ? shortDate(p.emailedAt) : p.emailReplyAt ? shortDate(p.emailReplyAt) : '', 4) +
+      '</div>' +
+      '<div class="zt-fl-col">' +
+        node('wantLi', f.wantLi, 'They want LinkedIn', p.liPathAt ? shortDate(p.liPathAt) : '', 3) +
+        '<div class="zt-fl-stub"></div>' +
+        node('lidm', f.lidm, p.liSentAt ? 'DM sent' : p.liPathAt ? 'DM to send' : 'LinkedIn DM', p.liSentAt ? shortDate(p.liSentAt) : '', 4) +
+      '</div>' +
     '</div>' +
     '<div class="zt-fl-join"></div><div class="zt-fl-stub"></div>' +
-    '<div class="zt-fl-one">' + node('call', f.call, 'Call scheduled', '', 4) + '</div>' +
+    '<div class="zt-fl-one">' + node('call', f.call, 'Call scheduled', '', 5) + '</div>' +
   '</div>';
 }
 
@@ -1785,32 +1810,26 @@ function ztPanelHtml(p) {
         'When they answer, tick Replied, then pick how to keep talking.</div>' +
       '<div class="zt-acts">' + li + tick('replied', 'They replied ✓', 'They answered on LinkedIn.') + '</div>';
   } else if (panel === 'pick') {
-    // Tapping a card logs that it went out; the link under it opens the
-    // drafted message first for anyone who wants to write it here.
-    var card = function (step, box, icon, label, doneAt) {
-      return '<div class="zt-pickcol">' + (doneAt
-        ? '<div class="zt-pick on">' + icon + '<b>' + label + '</b><span>✓ Sent ' + esc(shortDate(doneAt)) + '</span></div>'
-        : '<button class="zt-pick" data-ztact="step" data-step="' + step + '">' + icon + '<b>' + label + '</b>' +
-            '<span>Tap once the ' + (step === 'emailed' ? 'email' : 'DM') + ' is sent</span></button>' +
-          '<button class="zt-linkbtn" data-ztnode="' + box + '">Write it here first →</button>') + '</div>';
+    var card = function (box, icon, label, sub, on) {
+      return '<button class="zt-pick' + (on ? ' on' : '') + '" data-ztnode="' + box + '">' + icon + '<b>' + label + '</b><span>' + (on ? '✓ Picked' : sub) + '</span></button>';
     };
-    out = h('They replied. How do they want to keep talking?', 'Tap each one you’ve done, one or both') +
+    out = h('They replied. How do they want to keep talking?', 'Tap one, or both') +
       '<div class="zt-picks">' +
-        card('emailed', 'email', ZT_ICON.mail, 'Email', p.emailedAt) +
-        card('liSent', 'lidm', '<span class="zt-lin">in</span>', 'LinkedIn DM', p.liSentAt) +
+        card('wantEmail', ZT_ICON.mail, 'They want email', 'They said “email me”', !!(p.wantsEmailAt || ztEmailDone(p))) +
+        card('wantLi', '<span class="zt-lin">in</span>', 'They want LinkedIn', 'Keep it in the chat', !!(p.liPathAt || p.liSentAt)) +
       '</div>' +
       '<div class="zt-acts">' + li + '</div>';
   } else if (panel === 'email') {
-    out = h('Email them', p.emailedAt ? '✓ Emailed ' + esc(shortDate(p.emailedAt)) : '') +
+    out = h(p.emailedAt ? 'Email sent' : 'Email to send', p.emailedAt ? '✓ ' + esc(shortDate(p.emailedAt)) : 'Write it, open it in Gmail, send, then tap Email sent') +
       (p.brand && p.brand.hold === 'do not email' ? '<div class="zt-callout warn">This brand is marked “do not email” on its brand page. Check before you send.</div>' : '') +
       ztEmailHtml(p) +
       '<div class="zt-acts">' +
         '<button class="zt-step' + (p.emailedAt ? '' : ' now') + '" data-ztact="gmail" title="Opens a new Gmail message with everything filled in. Nothing sends until you press Send. Shortcut: G">Open in Gmail ↗</button>' +
-        (p.emailedAt ? '' : tick('emailed', 'Emailed ✓', 'Logged: the email went out.') + unpick('wantsEmail')) +
+        (p.emailedAt ? '' : tick('emailed', 'Email sent ✓', 'Logged: the email went out.') + unpick('wantsEmail')) +
       '</div>';
   } else if (panel === 'lidm') {
     var edited = p.handDm != null;
-    out = h('Reply on LinkedIn', p.liSentAt ? '✓ Sent ' + esc(shortDate(p.liSentAt)) : '') +
+    out = h(p.liSentAt ? 'DM sent' : 'DM to send', p.liSentAt ? '✓ ' + esc(shortDate(p.liSentAt)) : 'Copy it into the LinkedIn chat, send, then tap DM sent') +
       '<div class="zt-mail">' +
         '<textarea class="zt-body" style="min-height:0" rows="4" data-ztlidm aria-label="LinkedIn reply to ' + esc(p.name) + '">' + esc(ztDmPathText(p)) + '</textarea>' +
         '<div class="zt-mailfoot"><span class="zt-edstate">' + (edited
@@ -2288,8 +2307,10 @@ document.getElementById('zach-todo').addEventListener('click', function (e) {
     var key = nodeEl.getAttribute('data-ztnode');
     if (!np) return;
     // A path box not picked yet: tapping it picks it (and so logs the reply).
-    if (key === 'email' && !np.wantsEmailAt && !np.emailedAt) { ZT_PANEL[nid] = 'email'; ztDo(nid, 'wantsEmail'); return; }
-    if (key === 'lidm' && !np.liPathAt && !np.liSentAt) { ZT_PANEL[nid] = 'lidm'; ztDo(nid, 'liPath'); return; }
+    if ((key === 'wantEmail' || key === 'email') && !np.wantsEmailAt && !ztEmailDone(np)) { ZT_PANEL[nid] = 'email'; ztDo(nid, 'wantsEmail'); return; }
+    if ((key === 'wantLi' || key === 'lidm') && !np.liPathAt && !np.liSentAt) { ZT_PANEL[nid] = 'lidm'; ztDo(nid, 'liPath'); return; }
+    if (key === 'wantEmail') key = 'email';
+    if (key === 'wantLi') key = 'lidm';
     ZT_PANEL[nid] = key;
     ztRedrawOpen(nid);
     return;

@@ -48,7 +48,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   One-line rows under brand labels (avatar colour follows the brand,
   a 4-dot mini flow, the next step in words); one row open at a time shows the flow
   **Accepted → Text them on LinkedIn (due 24h after the accept; follow-up after 4 quiet days) →
-  Replied → Email and/or LinkedIn DM (either or both, each its own ✓; picking one logs the reply) →
+  Replied → They want email → Email to send → Email sent, and/or They want LinkedIn → DM to send →
+  DM sent (either or both; picking one logs the reply) →
   Call scheduled** (day picked; sets followUpAt so it shows in Needs action on the day; the end).
   The stage is computed on the page (`ztStage`); every tick/undo is `handStep` (dm, nudge, replied,
   wantsEmail, liPath, liSent, emailed, call, skip). Fields: `dmSentAt`, `nudgedAt`,
