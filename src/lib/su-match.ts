@@ -71,6 +71,11 @@ export type SuProposal = {
   v?: number
 }
 export const PROPOSAL_VERSION = 2
+// Which result reader the script uses, sent as `reader` on every lookup
+// call. Scripts up to 4.3 send none, and before 4.2 they read the page's
+// own links as results — the server can't tell those apart, so lookups
+// are taken only from scripts that say they read the search itself.
+export const LOOKUP_READER = 2
 
 // A brand whose people should be captured on the script's next pass —
 // written when a profile id is attached, so "pull their people now"

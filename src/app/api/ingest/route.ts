@@ -26,7 +26,7 @@ import {
   readSearch, writeSearch, readProposals, writeProposals, upsertProposal,
   readCaptureQueue, writeCaptureQueue, queueCapture, decideMatch,
   candidatesToOffer, readRejected,
-  readSweepLog, markSwept, isResting, PROPOSAL_VERSION,
+  readSweepLog, markSwept, isResting, PROPOSAL_VERSION, LOOKUP_READER,
   type SuCandidate,
 } from '@/lib/su-match'
 import {
@@ -348,6 +348,20 @@ export async function POST(req: NextRequest) {
   // the logged-in tab, so these four actions let the script do the
   // looking and hand back what it saw.
   // -----------------------------------------------------------------
+
+  // An old copy of the script still in a browser (it updates itself only
+  // about once a day, and runs the lookup by itself when the tab is idle)
+  // would park its page-link junk again. Turn its lookups away with the
+  // fix, which the script shows as "Could not start: …".
+  const LOOKUP_ACTIONS = ['needProfile', 'matched', 'searchResults']
+  if (LOOKUP_ACTIONS.includes(body.action) && Number(body.reader) !== LOOKUP_READER) {
+    const error = 'This copy of the SB script is out of date. Tampermonkey → Check for userscript updates, then reload this tab.'
+    if (body.action === 'searchResults') {
+      const req = await readSearch(prisma)
+      if (req && req.id === String(body.id || '')) await writeSearch(prisma, { ...req, status: 'failed', results: [], error })
+    }
+    return NextResponse.json({ ok: false, error, outdated: true }, { status: 426, headers: cors })
+  }
 
   // action: "needProfile" — brands we cannot reach yet. Emptiest first,
   // so a run that stops early spent itself on the brands with nobody.

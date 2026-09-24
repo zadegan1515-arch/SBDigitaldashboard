@@ -85,7 +85,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (`needProfile` → `matched`, and the Brands → Find search) reads only profile links that appear
   after typing into their search (the dashboard's own cards are not results), first line = name,
   Property results dropped; `node scripts/test-capture.js` covers it. Proposals from script ≤4.1
-  have no `v` and stay hidden (`PROPOSAL_VERSION`). The review list (Brands → "Which SponsorUnited
+  have no `v` and stay hidden (`PROPOSAL_VERSION`). Lookup calls must send `reader: 2`
+  (`LOOKUP_READER`, script ≥4.4); older copies get a 426 "out of date — Check for userscript
+  updates". The SB menu shows the version (`SCRIPT_VERSION`, keep = `@version`). The review list (Brands → "Which SponsorUnited
   page is theirs?") only shows brands with something to pick: a search with no results answers
   `none` and parks nothing. **None of these** remembers the pages turned down per brand (Setting
   `suRejected`, `candidatesToOffer`) so a later lookup can't offer them again;
