@@ -224,9 +224,25 @@ model Target {
   // Leo's note for Zach about this person: what they said on LinkedIn,
   // the address they gave, what to lead with.
   handNote String?
-  // "No email needed" (a call got booked on LinkedIn, say): off Zach's
+  // "Not needed" (they said no, or it's handled elsewhere): off Zach's
   // list without claiming an email went out.
   handSkippedAt DateTime?
+  // The two paths after a reply on Zach's list. Either or both can be
+  // picked: Email (handWantsEmailAt, done = emailedAt) and LinkedIn DM
+  // (handLiPathAt, done = handLiSentAt). handDm is this person's own
+  // edit of the DM-path template; null = follow the template.
+  handWantsEmailAt DateTime?
+  handLiPathAt     DateTime?
+  handLiSentAt     DateTime?
+  handDm           String?
+  // The LinkedIn follow-up (Draft.nudge) went out after the DM got no
+  // answer.
+  nudgedAt DateTime?
+  // A call booked from Zach's list: when it is, and when it was booked.
+  // Booking also sets followUpAt, so the call shows in "Needs action
+  // today" on the day.
+  callAt       DateTime?
+  callBookedAt DateTime?
 
   // Set when it lands in a day's send list, so "Today" is stable
   // and doesn't reshuffle mid-session.

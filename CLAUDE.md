@@ -44,18 +44,21 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - **Home → For Zach to do** (`zachTodo` + `renderZachTodo`; deep link `app.html#zach`) — everyone who
   accepted a LinkedIn invite or answered there and still needs an email (`HAND_WAITING` in `route.ts`:
   accepted/replied, no `emailedAt`, no `handSkippedAt`, no inbound email; archived / do-not-email
-  brands are held back and named). A queue, not forms: one-line rows under brand labels (avatar
-  colour follows the brand), one row open at a time. The open row is the email (To writes
-  `Contact.email`; a replaced address goes into the contact's notes; blank never clears one) plus
-  Leo's note (`Target.handNote`), and its next steps ARE the buttons: LinkedIn → Open in Gmail →
-  Mark emailed. Filter chips, a done-this-week meter, an Undo bar, auto-open of the next person,
-  keys ↑↓/j k · Enter · Esc · G · E. Drafts come from one template (Setting `handEmailTemplate`,
-  placeholders (NAME) (BRAND) (TITLE); a stand-in until Leo saves his; edited in a modal with a
-  live preview), and a row's edits stay with that person (`Target.handSubject/handBody`, null =
-  follow the template).
+  brands are held back and named). One-line rows under brand labels (avatar colour follows the brand,
+  a 4-dot mini flow, the next step in words); one row open at a time shows the flow
+  **Accepted → Text them on LinkedIn (due 24h after the accept; follow-up after 4 quiet days) →
+  Replied → Email and/or LinkedIn DM (either or both, each its own ✓; picking one logs the reply) →
+  Call scheduled** (day picked; sets followUpAt so it shows in Needs action on the day; the end).
+  The stage is computed on the page (`ztStage`); every tick/undo is `handStep` (dm, nudge, replied,
+  wantsEmail, liPath, liSent, emailed, call, skip). Fields: `dmSentAt`, `nudgedAt`,
+  `handWantsEmailAt`/`emailedAt`, `handLiPathAt`/`handLiSentAt`, `callAt`/`callBookedAt`,
+  `handSkippedAt`. Two templates (Settings `handEmailTemplate`, `handDmTemplate`; placeholders
+  (NAME) (BRAND) (TITLE); stand-ins until Leo saves his), edited in one modal with tabs and a live
+  preview; per-person edits in `Target.handSubject/handBody/handDm` (null = follow the template).
+  The first LinkedIn message and follow-up are the queue's own drafts (`saveDraft`). Leo's note is
+  `Target.handNote`; To writes `Contact.email` (old address kept in the contact's notes).
   Open in Gmail (compose URL, `authuser` = signed-in email) / Copy: **nothing sends from the site**,
-  so the cap isn't involved. Emailed ✓ = `markEmailed`, No email needed = `handSkippedAt`; the Done
-  fold covers 30 days, with Undo. No CC (Leo's call); one-pager is a download button. The email
+  so the cap isn't involved. Done fold (30 days) and Calls booked, each with Undo. No CC (Leo's call); one-pager is a download button. The email
   machine skips brands with an accepted/replied/hand-emailed person, and skips follow-ups to accepted
   or hand-emailed people. Results → "To email" is now a pointer here.
 - `src/app/api/data/route.ts` — every server function. Add a handler = add a key to `handlers`.

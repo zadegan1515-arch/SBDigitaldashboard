@@ -779,8 +779,18 @@ const HAND_TEMPLATE_STANDIN = {
 // How far back the Done list reaches.
 const HAND_DONE_DAYS = 30
 
-async function readHandTemplate() {
-  const row = await prisma.setting.findUnique({ where: { key: HAND_TEMPLATE_KEY } })
+// The LinkedIn DM path's message (they answered and want to keep it in
+// the chat). Body only. Leo's own goes in with the template editor.
+const HAND_DM_TEMPLATE_KEY = 'handDmTemplate'
+const HAND_DM_TEMPLATE_STANDIN = {
+  subject: '',
+  body: 'Great to hear from you, (NAME)! Would love to set up a quick call to walk through what we could build with (BRAND) this semester. What does your week look like?',
+}
+
+async function readHandTemplate(kind: 'email' | 'dm' = 'email') {
+  const key = kind === 'dm' ? HAND_DM_TEMPLATE_KEY : HAND_TEMPLATE_KEY
+  const standIn = kind === 'dm' ? HAND_DM_TEMPLATE_STANDIN : HAND_TEMPLATE_STANDIN
+  const row = await prisma.setting.findUnique({ where: { key } })
   if (row) {
     try {
       const v = JSON.parse(row.value)
@@ -789,19 +799,23 @@ async function readHandTemplate() {
       }
     } catch { /* an unreadable row falls back to the stand-in */ }
   }
-  return { ...HAND_TEMPLATE_STANDIN, standIn: true, savedAt: null, savedBy: null }
+  return { ...standIn, standIn: true, savedAt: null, savedBy: null }
 }
 
-// Waiting on Zach: accepted the invite or answered on LinkedIn, not
-// emailed by hand yet, not marked "No email needed", and no email thread
-// already running. A reply by email means the conversation has moved to
-// the Email tab, so that person is not his to start.
+// On Zach's list: accepted the invite or answered on LinkedIn, and the
+// follow-through isn't finished. It is finished when a call is booked or
+// someone marks it "Not needed". An email is a step on the way (email
+// first, then the call), not the end. No email thread already running:
+// a reply by email means the conversation has moved to the Email tab.
+// Which step a person is on is worked out on the page (ztStage).
 const HAND_WAITING: Prisma.TargetWhereInput = {
   status: { in: ['accepted', 'replied'] },
-  emailedAt: null,
   handSkippedAt: null,
+  callAt: null,
   emails: { none: { direction: 'in' } },
 }
+// A DM with no answer this long turns into "Send the follow-up".
+const HAND_NUDGE_DAYS = 4
 
 // An archived brand, or one marked do-not-email (the flag, or "skip" in
 // its notes — the email machine's rule), stays off Zach's list. The list
@@ -1209,11 +1223,13 @@ const handlers: Record<string, Handler> = {
     return drafts
   },
 
-  async saveDraft({ draftId, connectionNote, firstMessage }: any) {
+  // Any field left out stays as it is (Zach's list sends only the DM or
+  // only the follow-up).
+  async saveDraft({ draftId, connectionNote, firstMessage, nudge }: any) {
     return prisma.draft.update({
       where: { id: draftId },
       // Human edits are the training signal for improving prompts.
-      data: { connectionNote, firstMessage, editedByHuman: true },
+      data: { connectionNote, firstMessage, nudge, editedByHuman: true },
     })
   },
 
@@ -3382,8 +3398,9 @@ const handlers: Record<string, Handler> = {
   // HAND_DONE_DAYS, and whatever brand rule held back.
   async zachTodo() {
     const since = new Date(Date.now() - HAND_DONE_DAYS * 24 * 60 * 60 * 1000)
-    const [template, rows, doneRows] = await Promise.all([
+    const [template, dmTemplate, rows, doneRows] = await Promise.all([
       readHandTemplate(),
+      readHandTemplate('dm'),
       prisma.target.findMany({
         where: HAND_WAITING,
         include: {
@@ -3393,20 +3410,33 @@ const handlers: Record<string, Handler> = {
           // should answer in that thread rather than start a second one.
           emails: { where: { direction: 'out', status: 'sent' }, orderBy: { sentAt: 'desc' }, take: 1, select: { sentAt: true, subject: true } },
           events: { where: { toStatus: 'accepted' }, orderBy: { createdAt: 'asc' }, take: 1, select: { createdAt: true } },
+          // The LinkedIn DM and follow-up the queue already wrote for them.
+          drafts: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, firstMessage: true, nudge: true } },
         },
         orderBy: [{ sentAt: 'asc' }, { createdAt: 'asc' }],
         take: 300,
       }),
       prisma.target.findMany({
-        where: { OR: [{ emailedAt: { gte: since } }, { handSkippedAt: { gte: since } }] },
+        where: {
+          OR: [
+            { dmSentAt: { gte: since } }, { nudgedAt: { gte: since } }, { emailedAt: { gte: since } },
+            { handSkippedAt: { gte: since } }, { callBookedAt: { gte: since } }, { handLiSentAt: { gte: since } },
+          ],
+        },
         select: {
-          id: true, emailedAt: true, handSkippedAt: true,
+          id: true, dmSentAt: true, nudgedAt: true, emailedAt: true, handSkippedAt: true, callBookedAt: true, callAt: true, handLiSentAt: true,
           brand: { select: { id: true, name: true } },
           contact: { select: { name: true, email: true } },
         },
-        take: 200,
+        take: 300,
       }),
     ])
+    const calls = await prisma.target.findMany({
+      where: { callAt: { gte: startOfLocalDay() } },
+      select: { id: true, callAt: true, brand: { select: { id: true, name: true } }, contact: { select: { name: true, title: true } } },
+      orderBy: { callAt: 'asc' },
+      take: 40,
+    })
 
     const brands: any[] = []
     const byBrand = new Map<string, any>()
@@ -3429,6 +3459,10 @@ const handlers: Record<string, Handler> = {
         brands.push(g)
       }
       const auto = t.emails[0]
+      // No draft on file (added by hand, say): the same template the
+      // queue uses, unsaved, so there's still something to copy.
+      const dr = t.drafts[0] ?? null
+      const fallback = dr ? null : templateLinkedInDraft({ brand: t.brand, contact: t.contact }, 'man')
       g.people.push({
         targetId: t.id,
         status: t.status,
@@ -3446,42 +3480,115 @@ const handlers: Record<string, Handler> = {
         handSubject: t.handSubject,
         handBody: t.handBody,
         handNote: t.handNote,
+        emailedAt: t.emailedAt,
+        nudgedAt: t.nudgedAt,
+        wantsEmailAt: t.handWantsEmailAt,
+        liPathAt: t.handLiPathAt,
+        liSentAt: t.handLiSentAt,
+        handDm: t.handDm,
+        draftId: dr?.id ?? null,
+        dm: dr?.firstMessage ?? fallback?.firstMessage ?? '',
+        nudge: dr?.nudge ?? fallback?.nudge ?? '',
       })
     }
 
-    // Emailed wins over skipped when a row carries both.
-    const done = doneRows
-      .map(t => ({
-        targetId: t.id,
-        brandId: t.brand.id,
-        brandName: t.brand.name,
-        name: t.contact.name,
-        email: t.contact.email,
-        kind: t.emailedAt ? 'emailed' : 'skipped',
-        at: (t.emailedAt ?? t.handSkippedAt) as Date,
-      }))
-      .sort((a, b) => b.at.getTime() - a.at.getTime())
-      .slice(0, 50)
+    // Every step ticked in the window, newest first. One person can own
+    // several (texted back, then emailed, then call booked); each has its
+    // own Undo.
+    const done: { targetId: string; brandId: string; brandName: string; name: string; email: string | null; kind: string; at: Date; callAt?: Date | null }[] = []
+    for (const t of doneRows) {
+      const base = { targetId: t.id, brandId: t.brand.id, brandName: t.brand.name, name: t.contact.name, email: t.contact.email }
+      const steps: [string, Date | null][] = [['dm', t.dmSentAt], ['nudge', t.nudgedAt], ['emailed', t.emailedAt], ['liSent', t.handLiSentAt], ['skipped', t.handSkippedAt], ['call', t.callBookedAt]]
+      for (const [kind, at] of steps) {
+        if (at && at >= since) done.push({ ...base, kind, at, ...(kind === 'call' ? { callAt: t.callAt } : {}) })
+      }
+    }
+    done.sort((a, b) => b.at.getTime() - a.at.getTime())
 
     const people = brands.reduce((n, g) => n + g.people.length, 0)
     return {
       template,
+      dmTemplate,
       brands,
       people,
       noAddress: brands.reduce((n, g) => n + g.people.filter((p: any) => !p.email).length, 0),
       held: [...held.values()],
-      done,
+      done: done.slice(0, 60),
       doneDays: HAND_DONE_DAYS,
+      nudgeAfterDays: HAND_NUDGE_DAYS,
+      calls: calls.map(c => ({ targetId: c.id, brandId: c.brand.id, brandName: c.brand.name, name: c.contact.name, title: c.contact.title, callAt: c.callAt })),
     }
   },
 
-  async handTemplate() {
-    return readHandTemplate()
+  // One tick on Zach's list, or its Undo (on: false). Either of Zach or
+  // Leo can tick; the brand page's Activity says who.
+  //   dm         texted back on LinkedIn       (dmSentAt)
+  //   nudge      sent the LinkedIn follow-up   (nudgedAt)
+  //   replied    they answered on LinkedIn     (status, via setTargetStatus)
+  //   wantsEmail Email path picked             (handWantsEmailAt; implies replied)
+  //   liPath     LinkedIn DM path picked       (handLiPathAt; implies replied)
+  //   liSent     replied in the LinkedIn chat  (handLiSentAt)
+  //   emailed    Zach emailed them             (emailedAt)
+  //   call       call booked for `date`        (callAt; also followUpAt, so it
+  //                                             shows in Needs action on the day)
+  //   skip       not needed                    (handSkippedAt)
+  async handStep({ targetId, step, on = true, date, __user }: any) {
+    const t = await prisma.target.findUnique({ where: { id: targetId }, include: { contact: { select: { name: true } } } })
+    if (!t) throw new Error('Person not found')
+    const now = new Date()
+    const actor = __user ?? null
+    const callStep = `Call with ${t.contact.name}`
+    if (step === 'replied') {
+      if (on) {
+        if (t.status !== 'replied') await handlers.setTargetStatus({ targetId, status: 'replied', actor })
+      } else if (t.status === 'replied') {
+        await prisma.target.update({ where: { id: targetId }, data: { status: 'accepted', repliedAt: null } })
+        await prisma.targetEvent.create({ data: { targetId, kind: 'status', fromStatus: 'replied', toStatus: 'accepted', actor, detail: 'undone on Zach’s list' } })
+      }
+      return { contactName: t.contact.name }
+    }
+    // Picking a path means they answered: log the reply first.
+    if (on && (step === 'wantsEmail' || step === 'liPath') && t.status !== 'replied') {
+      await handlers.setTargetStatus({ targetId, status: 'replied', actor })
+    }
+    let data: Prisma.TargetUpdateInput
+    let label: string
+    switch (step) {
+      case 'dm': data = { dmSentAt: on ? now : null }; label = 'texted back on LinkedIn'; break
+      case 'liPath': data = { handLiPathAt: on ? now : null }; label = 'talking on LinkedIn'; break
+      case 'liSent': data = { handLiSentAt: on ? now : null }; label = 'replied on LinkedIn'; break
+      case 'nudge': data = { nudgedAt: on ? now : null }; label = 'sent the LinkedIn follow-up'; break
+      case 'wantsEmail': data = { handWantsEmailAt: on ? now : null }; label = 'wants an email'; break
+      case 'emailed': data = { emailedAt: on ? now : null }; label = 'emailed'; break
+      case 'skip': data = { handSkippedAt: on ? now : null }; label = 'no follow-up needed'; break
+      case 'call': {
+        label = 'call booked'
+        if (on) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date ?? ''))) throw new Error('Pick the day of the call')
+          // Midday UTC keeps the day the same in every US timezone.
+          const at = new Date(`${date}T16:00:00Z`)
+          data = { callAt: at, callBookedAt: now, followUpAt: at, nextStep: callStep }
+        } else {
+          // Only clear the follow-up if it's still the one booking set.
+          data = { callAt: null, callBookedAt: null, ...(t.nextStep === callStep ? { nextStep: null, followUpAt: null } : {}) }
+        }
+        break
+      }
+      default: throw new Error('Unknown step')
+    }
+    await prisma.target.update({ where: { id: targetId }, data })
+    if (on) await prisma.targetEvent.create({ data: { targetId, kind: label, actor, detail: step === 'call' ? String(date) : null } })
+    return { contactName: t.contact.name }
+  },
+
+  async handTemplate({ kind }: any = {}) {
+    return readHandTemplate(kind === 'dm' ? 'dm' : 'email')
   },
 
   // The one template every untouched card follows. Cards someone edited
   // keep their own version until "Reset to template" on that card.
-  async saveHandTemplate({ subject, body, __user }: any) {
+  async saveHandTemplate({ subject, body, kind, __user }: any) {
+    const isDm = kind === 'dm'
     const text = String(body ?? '').replace(/\r\n/g, '\n')
     if (!text.trim()) throw new Error('The email is empty, nothing to save')
     const value = JSON.stringify({
@@ -3490,18 +3597,15 @@ const handlers: Record<string, Handler> = {
       savedAt: new Date().toISOString(),
       savedBy: __user ?? null,
     })
-    await prisma.setting.upsert({
-      where: { key: HAND_TEMPLATE_KEY },
-      create: { key: HAND_TEMPLATE_KEY, value },
-      update: { value },
-    })
-    return readHandTemplate()
+    const key = isDm ? HAND_DM_TEMPLATE_KEY : HAND_TEMPLATE_KEY
+    await prisma.setting.upsert({ where: { key }, create: { key, value }, update: { value } })
+    return readHandTemplate(isDm ? 'dm' : 'email')
   },
 
   // One card's own version of the email, and the note for Zach. Every
   // field is optional: a subject-only edit leaves the body following the
   // template, and null hands one field back to it. reset hands back both.
-  async saveHandEmail({ targetId, subject, body, note, reset }: any) {
+  async saveHandEmail({ targetId, subject, body, note, dm, reset }: any) {
     if (!targetId) throw new Error('Missing person')
     const data: Prisma.TargetUpdateInput = {}
     if (reset) { data.handSubject = null; data.handBody = null }
@@ -3510,6 +3614,8 @@ const handlers: Record<string, Handler> = {
     if (body === null) data.handBody = null
     else if (typeof body === 'string') data.handBody = body.replace(/\r\n/g, '\n').slice(0, 10000)
     if (note !== undefined) data.handNote = String(note ?? '').trim().slice(0, 2000) || null
+    if (dm === null) data.handDm = null
+    else if (typeof dm === 'string') data.handDm = dm.slice(0, 3000)
     return prisma.target.update({
       where: { id: targetId },
       data,
