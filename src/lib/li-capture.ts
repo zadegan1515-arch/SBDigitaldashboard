@@ -136,8 +136,13 @@ export function normalizeCompany(s: string | null | undefined): string {
 // this category. Only used to accept a near-miss name ("Casamigos
 // Tequila" for Casamigos); an exact name never needs it.
 const INDUSTRY_FITS: Record<string, RegExp> = {
+  electrolytes: /beverage|food|drink|consumer goods|consumer products|wellness|health|nutrition/i,
+  energy: /beverage|food|drink|consumer goods|consumer products|wellness|health|nutrition/i,
   beverage: /beverage|food|drink|consumer goods|consumer products|wellness|health|nutrition/i,
+  rtd: /beverage|wine|spirit|brew|distill|alcohol|liquor|food/i,
+  spirits: /beverage|wine|spirit|brew|distill|alcohol|liquor|food/i,
   alcohol: /beverage|wine|spirit|brew|distill|alcohol|liquor|food/i,
+  athletic: /apparel|fashion|retail|textile|sporting goods|sports|fitness|footwear/i,
   nicotine: /tobacco|nicotine|consumer goods|consumer products/i,
   cpg: /food|beverage|consumer goods|consumer products|snack|retail/i,
   apparel: /apparel|fashion|retail|textile|sporting goods|luxury|footwear/i,
@@ -222,4 +227,82 @@ export function matchesFocus(
   if (!terms.length) return false
   const text = [b.name, b.aka, b.about, b.topProducts, b.notes].filter(Boolean).join(' ').toLowerCase()
   return terms.some(t => text.includes(t))
+}
+
+// -------------------------------------------------------------------
+// Finding new brands (Leo, Sep 2026): LinkedIn's lookalikes on each
+// brand page the run visits ("Pages people also viewed") and company
+// searches for words he gives. Straight into the dashboard — so the bar
+// is here: consumer industries only, and at least 5,000 followers.
+// -------------------------------------------------------------------
+
+export const DISCOVER_MIN_FOLLOWERS = 5000
+
+// "250,512 followers" / "12K followers" / "1.2M followers" → a number.
+export function parseFollowers(text: string | null | undefined): number | null {
+  const m = String(text || '').match(/([\d.,]+)\s*([KkMm])?\+?\s*followers/)
+  if (!m) return null
+  const n = parseFloat(m[1].replace(/,/g, ''))
+  if (!Number.isFinite(n)) return null
+  const mult = /k/i.test(m[2] || '') ? 1e3 : /m/i.test(m[2] || '') ? 1e6 : 1
+  return Math.round(n * mult)
+}
+
+// The industry is the first part of the line under a company's name:
+// "Food and Beverage Services • Austin, TX • 40K followers".
+export function industryOf(subtitle: string | null | undefined): string {
+  const first = String(subtitle || '').split(/\s*[•·]\s*/)[0].trim()
+  return /followers/i.test(first) ? '' : first
+}
+
+// LinkedIn industry → our category, for consumer industries only. Order
+// matters: spirits before the general beverage line. Anything not here
+// (software, agencies, wholesale, finance…) is not a brand we'd add
+// from a suggestion.
+// Breweries, distilleries and sporting goods go straight to Leo's lanes
+// (rtd, spirits, athletic — src/lib/stock.ts); wine has no lane of its own.
+const INDUSTRY_CATEGORY: Array<[RegExp, string]> = [
+  [/brewer/i, 'rtd'],
+  [/spirit|distiller/i, 'spirits'],
+  [/wine|alcohol/i, 'alcohol'],
+  [/beverage/i, 'beverage'],
+  [/tobacco/i, 'nicotine'],
+  [/food|dairy|bakery|snack|confection/i, 'cpg'],
+  [/sporting goods/i, 'athletic'],
+  [/apparel|fashion|footwear|textile|luxury goods|jewelry/i, 'apparel'],
+  [/cosmetic|personal care|beauty/i, 'beauty'],
+  [/wellness|fitness|nutrition|supplement/i, 'wellness'],
+  [/restaurant/i, 'qsr'],
+  [/gambling|casino/i, 'betting'],
+  [/furniture|home furnishing|housewares|appliance/i, 'home'],
+  [/consumer electronics/i, 'tech'],
+  [/entertainment|spectator sports|musicians|music|video games|computer games|movies/i, 'entertainment'],
+  [/consumer goods|consumer products|consumer services/i, 'cpg'],
+  [/^retail(?! .*wholesale)/i, 'retail'],
+]
+const NOT_A_BRAND = /wholesale|distribut|advertising|marketing services|public relations|staffing|recruit|consult|logistics|packaging|machinery|venture capital|investment|real estate/i
+
+export function categoryFromIndustry(industry: string | null | undefined): string | null {
+  const s = String(industry || '')
+  if (!s || NOT_A_BRAND.test(s)) return null
+  for (const [re, cat] of INDUSTRY_CATEGORY) if (re.test(s)) return cat
+  return null
+}
+
+// Whether a suggested company goes into the dashboard, and under which
+// category. A lookalike of a brand we have may take that brand's
+// category when its industry fits it ("Jose Cuervo" next to Clase Azul
+// is alcohol, not just "Beverage Manufacturing").
+export function judgeDiscovery(
+  c: { name: string; subtitle?: string | null },
+  sourceCategory?: string | null,
+): { ok: true; category: string; followers: number; industry: string } | { ok: false; reason: 'small' | 'industry' } {
+  const followers = parseFollowers(c.subtitle)
+  const industry = industryOf(c.subtitle)
+  if (followers == null || followers < DISCOVER_MIN_FOLLOWERS) return { ok: false, reason: 'small' }
+  if (!industry || NOT_A_BRAND.test(industry)) return { ok: false, reason: 'industry' }
+  if (sourceCategory && industryFits(sourceCategory, industry)) return { ok: true, category: sourceCategory, followers, industry }
+  const cat = categoryFromIndustry(industry)
+  if (!cat) return { ok: false, reason: 'industry' }
+  return { ok: true, category: cat, followers, industry }
 }

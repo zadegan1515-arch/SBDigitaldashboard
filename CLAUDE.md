@@ -31,7 +31,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 
 ## Where things live
 - `public/app.html` — the whole UI. Top nav is six groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
-  `showView`): Home · Brands (All brands / Discover / Needs contacts) · Outreach (Queue / Results) ·
+  `showView`): Home · Brands (All brands / Stock take / Discover / Needs contacts) · Outreach (LinkedIn / Results /
+  Schedule / Email / People / Archived / Email stats) ·
   **Show Board** (Overview = code lookup + access-request approve/deny queue + view stats +
   who's-opened feed / **In talks** = per-brand engagement cards (code, viewers, opens, timed minutes
   via the board's 60s heartbeat → `BoardVisit.lastSeenAt`, picked shows, visit log) / Requests /
@@ -70,14 +71,38 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   so the cap isn't involved. Done fold (30 days) and Calls booked, each with Undo. No CC (Leo's call); one-pager is a download button. The email
   machine skips brands with an accepted/replied/hand-emailed person, and skips follow-ups to accepted
   or hand-emailed people. Results → "To email" is now a pointer here.
+- **Outreach → Schedule** (`getOutreachPlan` + the `sd*` / `renderSched*` code; plan in Setting
+  `outreachPlan` = `{ "YYYY-MM-DD": { category, brandIds } }`, one brand on one day) — full width,
+  today (if a sending day) + the next 3 sending days as columns. Every brand carries a **contacts label**
+  (`contactLabel`, same on server and page): reachable = email OR LinkedIn; need = `workPeople` ??
+  (established 4 : 3); Ready ≥ need, Thin 1..need-1, No one reachable 0. A brand goes out **whole**,
+  opened to its thread count (`previewBrandPicks` mirrors `queueBrandTargets` without writing;
+  `fillWholeBrands` is shared by the preview and `getTodayQueue`, so what the Schedule says is what
+  the LinkedIn tab stamps; a day never passes 20). Pinned cards say who goes or exactly why not
+  (`outreachGate` + `reasonText`). Adding: day search (`searchPlanBrands`), **Paste a list**
+  (`matchBrandList`), the day's **Fill box** (`suggestForDay`, any category, Fill to 20 = whole brands
+  that fit), category drill-in with multi-select (`categoryBrands`). Moving: drag onto a day or
+  "Move to" (`planMoveBrand`; moving off today un-stamps unsent people, nothing shelved). Plan
+  writes go through `planAddBrands` / `planMoveBrand` / `planRemoveBrand` / `planSetCategory`.
+  Thin / no-one brands link "LinkedIn people ↗" (`liPeopleUrl`) for the LinkedIn capture script;
+  the tab refreshes on focus so a capture shows up. **Outreach → LinkedIn** = one card per brand
+  (sent people stay in their card, `getTodayQueue.sentList`; a finished brand folds to one line).
 - **Brands → Stock take** (`brandStock` + `src/lib/stock.ts`; deep link `app.html#stock`; linked from
-  Home → Categories) — the whole roster in one read. Leo's lanes (Electrolytes & hydration, Energy
-  drinks, Beer/seltzers/canned cocktails, Spirits, Nicotine, Athletic wear, Clothing & fashion) split
-  the stored categories by category + known names + words in name/aka/about/topProducts; **nothing is
-  re-filed**, every brand lands in exactly one row, the rest stay in their category rows. Brand state:
-  deal > off (archived / do-not-email) > replied > reached > has people > needs contacts. Priority
-  lanes carry ideas (known names not on the roster under any name or aka) that add through
-  `addBrandsBulk`'s preview. `LANE_GOAL = 15` in play per lane. `node scripts/test-stock.mjs`.
+  Home → Categories) — the whole roster in one read, every brand in exactly one row. **Leo's lanes are
+  real categories** (his yes, Sep 2026): `electrolytes`, `energy`, `rtd` (beer/seltzers/canned
+  cocktails), `spirits`, `athletic` split out of the old broad `beverage` / `alcohol` / `apparel`,
+  which keep what's left (Soda, Water & Other Drinks / Alcohol (other) / Clothing & Fashion);
+  `nicotine` = pouches. The vocabulary lives in `CATEGORY_KEYS` (route.ts), `CAT_NAMES` (app.html),
+  `category-hints.ts`, `LI_HOOKS`, email `CATEGORY_ANGLES` and li-capture `INDUSTRY_FITS` — a new
+  category needs all six. `placeBrand` only ever sorts brands out of the old broad buckets (`SORTABLE`:
+  beverage, alcohol, apparel, wellness, nightlife, unresolved) by known name, then words; a specific
+  filing is never second-guessed. **Re-file**: `refileCategories` previews every move (+ planned
+  Schedule days whose category splits, `remapPlanDays`); apply moves only ticked moves a fresh preview
+  still makes the same way, one transaction, logged in Setting `categoryRefileLast`;
+  `undoCategoryRefile` puts it back. Brand state: deal > off (archived / do-not-email) > replied >
+  reached > has people > needs contacts. Priority lanes carry ideas (known names not on the roster
+  under any name or aka) that add through `addBrandsBulk`'s preview, filed under the lane.
+  `LANE_GOAL = 15` in play per lane. `node scripts/test-stock.mjs`.
 - `src/app/api/data/route.ts` — every server function. Add a handler = add a key to `handlers`.
 - `src/app/api/ingest/route.ts` + `scripts/sponsorunited-capture.user.js` — SponsorUnited contact
   capture (INGEST_TOKEN-gated, CORS-open). **Two different caps, don't confuse them:**
@@ -123,7 +148,18 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   days; notes show red on Outreach → People). Pace: **50 brands/day** (Leo's pick), 1–2½ min
   between brands, 20–45 s between pages, then waits for 9am next day. One tab owns the run
   (sessionStorage id); a click or key in it pauses; a login wall, check or "commercial use limit"
-  pauses it before any save. It never creates brands.
+  pauses it before any save.
+  **Finding new brands** (Leo, Sep 2026: straight into the dashboard, not Discover review): the
+  run's setup has "Add brands LinkedIn shows as similar" (lookalike rail — "Pages people also
+  viewed" etc. — read off the People tab, else one stop at the company home) and "Search LinkedIn
+  for new brands" words (company search, up to 3 result pages each, before the first brand).
+  `liDiscover` judges each (`judgeDiscovery`: **5K+ followers**, consumer industry via
+  `categoryFromIndustry`, wholesale/agency/software out; a lookalike takes the source brand's
+  category when its industry fits), skips known brands (name/aka/page) and anything dismissed on
+  Discover, creates the Brand (`source: 'linkedin-discover'`, provenance in notes) plus a
+  DiscoveredBrand row (status added, query "LinkedIn: similar to X" / "LinkedIn search: w"), and
+  stops at **50 new brands per rolling day** (`DISCOVER_CAP_PER_DAY`). New brands join the same
+  run: keyword finds next in line, lookalikes at the end.
   Rules + matching in `src/lib/li-capture.ts` (`node scripts/test-li-capture.mjs`); script tested by
   `scripts/test-li-script.js` (fake People/search pages, incl. a run, pause/continue, limit page).
   Worklist in the dashboard: Outreach → People → "Under 25" (deep link `app.html#people`).
@@ -192,11 +228,18 @@ SPONSOR_HOST (brand page host), SPONSOR_REQUEST_TO (who gets sponsor requests), 
 board), CRM_SHEET_ID.
 
 ## Conventions
-- **Outreach runs Tuesday / Wednesday / Thursday only** — no Mondays, no Fridays, no weekends.
-  `OUTREACH_DOWS = [2,3,4]` in both `src/app/api/data/route.ts` (`planningDays`, `isOutreachDay`)
-  and `public/app.html` (`schedDayKeys`); the planner shows the next three sending days, and on an
-  off day "today" is absent from the schedule and `fillToday` refuses. Anything keyed off "today"
-  compares day keys — never "the first row".
+- **Outreach runs Tuesday / Wednesday / Thursday only** — no Mondays, no Fridays, no weekends —
+  **plus one-off extra days** Leo opens with "+ Add a sending day" (Setting `outreachExtraDays`,
+  `setExtraSendingDay`; past keys prune). `OUTREACH_DOWS = [2,3,4]` in `src/app/api/data/route.ts`
+  (`isOutreachDay(d, extras)`, `planningDays`) — every caller passes the extras; the page reads the
+  server's days / `getTodayQueue.sendingDay`, `OUTREACH_DOWS` in app.html is only a fallback. On an
+  off day "today" is absent from the schedule, the auto-fill picks nobody and `fillToday` refuses.
+  The email machine keeps its own Tue–Thu rule. Anything keyed off "today" compares day keys —
+  never "the first row".
+- **One category list:** `CATEGORY_KEYS` in `src/lib/category-hints.ts` (same keys, same order as
+  `CAT_NAMES` in app.html; used by route.ts, ingest, Stock take). Every path that files a brand
+  refuses an unknown key (`checkCategory`). Brands tab: "No category" chip (`listBrands({category:
+  'none'})`) and tick-to-re-file with a from → to preview (`setBrandsCategory`, category/tier only).
 - Cents everywhere; `money()` formats on the client, `parseMoney()` parses "$1,750".
 - Activations: "current cost" = sum of `finalCents` only; estimate is the sheet. A staff-section line is a people line (slots) unless it's travel/labour (`isPeopleLine`, same regex client+server).
 - EventStaff `status`: invited · onboarding · ready · confirmed · declined · no_show · done. Local confirmed/declined/no_show/done are never overwritten by a platform sync.

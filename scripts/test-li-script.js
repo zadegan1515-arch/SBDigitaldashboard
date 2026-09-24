@@ -28,6 +28,10 @@
 //      reads each brand's People tab, saves by brandId, logs each visit,
 //      and finishes; a click in the tab pauses it and Continue resumes;
 //      LinkedIn's limit page pauses it before anything is saved.
+//  10. Finding new brands: a keyword search adds Liquid I.V. to the front
+//      of the line, Clase Azul's lookalikes (on its home page) add Jose
+//      Cuervo at the end, and each new brand's people are read in the
+//      same run.
 //   6. The pill sits bottom-left, clear of LinkedIn's Messaging bar; the
 //      Tampermonkey menu opens the same panel; and a copy running without
 //      its @grant lines (pasted under Tampermonkey's sample) says so.
@@ -102,6 +106,17 @@ function page(people, title, extra) {
 const sent = [];
 // What liList hands the fill; each scenario sets its own.
 let fillItems = [];
+const discovered = new Set();
+
+// LinkedIn's "Pages people also viewed" rail.
+function rail(cos) {
+  return '<aside><section class="artdeco-card"><h2><span>Pages people also viewed</span></h2><ul>' +
+    cos.map(([slug, name, industry, followers]) =>
+      '<li><a href="https://www.linkedin.com/company/' + slug + '/"><img alt=""></a>' +
+      '<a href="https://www.linkedin.com/company/' + slug + '/"><span>' + name + '</span></a>' +
+      '<div>' + industry + '</div><div>' + followers + ' followers</div><button>Follow</button></li>').join('') +
+    '</ul></section></aside>';
+}
 const server = http.createServer((req, res) => {
   const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
   if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
@@ -122,6 +137,13 @@ const server = http.createServer((req, res) => {
       }
       if (body.action === 'liCapture' && body.createIfMissing) {
         return res.end(JSON.stringify({ ok: true, brand: { id: 'bnew', name: body.companyName }, brandCreated: true, added: 3, have: 3, cap: 25, targetsShelved: 0 }));
+      }
+      if (body.action === 'liDiscover') {
+        const make = { 'Liquid I.V.': 'b-liv', 'Jose Cuervo': 'b-jc' };
+        const created = (body.companies || [])
+          .filter(c => make[c.name] && !discovered.has(c.name))
+          .map(c => { discovered.add(c.name); return { brandId: make[c.name], name: c.name, category: 'beverage', linkedinUrl: c.url }; });
+        return res.end(JSON.stringify({ ok: true, created, known: 0, small: 0, industry: 0, capped: 0 }));
       }
       if (body.action === 'liList') {
         return res.end(JSON.stringify({ ok: true, items: fillItems, cap: 25, noPage: fillItems.filter(i => !i.linkedinUrl).length, resting: 0 }));
@@ -167,6 +189,18 @@ const server = http.createServer((req, res) => {
   if (/^\/company\/liquid-death\/people\/?/.test(req.url)) return res.end(page(true));
   if (/^\/company\/casamigos-tequila\/people\/?/.test(req.url)) return res.end(page(true, 'Casamigos Tequila'));
   if (/^\/company\/drinklmnt\/people\/?/.test(req.url)) return res.end(page(true, 'LMNT'));
+  // The discovery story's pages.
+  if (/^\/search\/results\/companies\/\?keywords=electrolyte/.test(req.url)) {
+    return res.end('<!doctype html><html><body><main><ul>' +
+      '<li><a href="https://www.linkedin.com/company/liquid-i-v/"><span>Liquid I.V.</span></a><div>Food and Beverage Manufacturing • Los Angeles</div><div>90K followers</div></li>' +
+      '<li><a href="https://www.linkedin.com/company/tiny-hydrate/"><span>Tiny Hydrate</span></a><div>Beverage Manufacturing • Austin</div><div>812 followers</div></li>' +
+      '</ul></main></body></html>');
+  }
+  if (/^\/company\/liquid-i-v\/people\/?/.test(req.url)) return res.end(page(true, 'Liquid I.V.', rail([['drinklmnt', 'LMNT', 'Food and Beverage Services', '40K']])));
+  if (/^\/company\/claseazul\/people\/?/.test(req.url)) return res.end(page(true, 'Clase Azul'));
+  if (/^\/company\/claseazul\/?$/.test(req.url)) return res.end(page(false, 'Clase Azul', rail([['jose-cuervo', 'Jose Cuervo', 'Beverage Manufacturing', '250,512'], ['patron', 'Tequila Patrón', 'Beverage Manufacturing', '33,483']])));
+  if (/^\/company\/jose-cuervo\/people\/?/.test(req.url)) return res.end(page(true, 'Jose Cuervo'));
+  if (/^\/company\/jose-cuervo\/?$/.test(req.url)) return res.end(page(false, 'Jose Cuervo', rail([['claseazul', 'Clase Azul México', 'Beverage Manufacturing', '64K']])));
   // LinkedIn telling a free account it has searched enough.
   if (/^\/company\/limit-brand\/people\/?/.test(req.url)) {
     return res.end(page(true, 'Limit Brand', '<div>You\'ve reached the commercial use limit on search.</div>'));
@@ -396,6 +430,8 @@ const GM_SHIM = `
       await pg.click('#sblipill');
       await pg.click('#sblifillopen');
       assert.equal(await pg.inputValue('#sblifocus'), 'electrolyte');
+      await pg.uncheck('#sblilook');
+      await pg.fill('#sbliwords', '');
       await pg.click('#sblifilllook');
       await pg.waitForSelector('#sblifillstart');
       assert.match(await pg.textContent('#sbli-panel'), /First the 1 matching “electrolyte”: LMNT/);
@@ -423,6 +459,8 @@ const GM_SHIM = `
       await pg.click('#sblipill');
       await pg.click('#sblifillopen');
       await pg.fill('#sblifocus', '');
+      await pg.uncheck('#sblilook');
+      await pg.fill('#sbliwords', '');
       await pg.click('#sblifilllook');
       await pg.click('#sblifillstart');
       await pg.waitForURL(/slow-brand\/people/);
@@ -448,6 +486,8 @@ const GM_SHIM = `
       await pg.goto('http://127.0.0.1:4622/feed/');
       await pg.click('#sblipill');
       await pg.click('#sblifillopen');
+      await pg.uncheck('#sblilook');
+      await pg.fill('#sbliwords', '');
       await pg.click('#sblifilllook');
       await pg.click('#sblifillstart');
       await pg.waitForFunction(() => /LinkedIn showed “.*commercial use limit/.test(((document.getElementById('sbli-panel') || {}).innerText) || ''), null, { timeout: 30000 });
@@ -456,6 +496,47 @@ const GM_SHIM = `
       await pg.close();
     }
     ok('LinkedIn\'s limit page pauses the run before anything is saved');
+
+    // 10. Finding new brands.
+    {
+      fillItems = [{ brandId: 'b-ca', name: 'Clase Azul', aka: null, category: 'alcohol', linkedinUrl: 'https://www.linkedin.com/company/claseazul/', contacts: 2, focus: false }];
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      assert.equal(await pg.isChecked('#sblilook'), true, 'lookalikes on by default');
+      assert.equal(await pg.inputValue('#sbliwords'), 'electrolyte');
+      await pg.fill('#sblifocus', '');
+      await pg.click('#sblifilllook');
+      await pg.click('#sblifillstart');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 90000 });
+      const run = sent.slice(before).map(b => b.action + (b.brandId ? ':' + b.brandId : '') + (b.action === 'liDiscover' ? ':' + b.source + ':' + b.from : ''));
+      assert.deepEqual(run, [
+        'liList',
+        'liDiscover:search:electrolyte',
+        'liCapture:b-liv', 'liDiscover:lookalike:Liquid I.V.', 'liSwept:b-liv',
+        'liCapture:b-ca', 'liDiscover:lookalike:Clase Azul', 'liSwept:b-ca',
+        'liCapture:b-jc', 'liDiscover:lookalike:Jose Cuervo', 'liSwept:b-jc',
+      ]);
+      const search = sent.slice(before).find(b => b.action === 'liDiscover' && b.source === 'search');
+      assert.deepEqual(search.companies.map(c => [c.name, c.subtitle]), [
+        ['Liquid I.V.', 'Food and Beverage Manufacturing • Los Angeles • 90K followers'],
+        ['Tiny Hydrate', 'Beverage Manufacturing • Austin • 812 followers'],
+      ]);
+      const ca = sent.slice(before).find(b => b.action === 'liDiscover' && b.from === 'Clase Azul');
+      assert.equal(ca.fromBrandId, 'b-ca');
+      assert.deepEqual(ca.companies.map(c => [c.name, c.subtitle]), [
+        ['Jose Cuervo', 'Beverage Manufacturing • 250,512 followers'],
+        ['Tequila Patrón', 'Beverage Manufacturing • 33,483 followers'],
+      ]);
+      const caPeople = sent.slice(before).find(b => b.action === 'liCapture' && b.brandId === 'b-ca');
+      assert.ok(!caPeople.rows.some(r => /company/.test(r.linkedinUrl)), 'the rail never reaches the people rows');
+      assert.match(await pg.textContent('#sbli-panel'), /2 new brands added/);
+      await pg.close();
+    }
+    ok('finds new brands by search and by lookalikes, and reads their people in the same run');
 
     // 6. No @grant lines: runs, shows the pill, says to reinstall.
     const bare = await browser.newPage();

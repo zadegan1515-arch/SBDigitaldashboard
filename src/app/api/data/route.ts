@@ -36,7 +36,7 @@ import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import { regionFlag } from '@/lib/region'
 import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hints'
 import { readLiLog } from '@/lib/li-sweep'
-import { buildStock, bestDealStage } from '@/lib/stock'
+import { buildStock, bestDealStage, refileMoves, remapPlanDays } from '@/lib/stock'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
@@ -782,6 +782,26 @@ async function writePlan(plan: OutreachPlan): Promise<void> {
   })
 }
 
+// The last category re-file (Brands → Stock take), kept so Undo can put
+// every brand and planned day back exactly where it was.
+const REFILE_KEY = 'categoryRefileLast'
+type RefileLog = {
+  at: string
+  by: string | null
+  moves: { id: string; from: string | null; to: string }[]
+  days: { day: string; from: string; to: string }[]
+}
+
+async function readRefileLog(): Promise<RefileLog | null> {
+  const row = await prisma.setting.findUnique({ where: { key: REFILE_KEY } })
+  if (!row) return null
+  try {
+    const v = JSON.parse(row.value)
+    if (!v || !Array.isArray(v.moves)) return null
+    return { at: String(v.at), by: v.by ?? null, moves: v.moves, days: Array.isArray(v.days) ? v.days : [] }
+  } catch { return null }
+}
+
 // brandId -> the (today or later) day it is pinned to.
 function pinnedDays(plan: OutreachPlan, today = localDayKey()): Map<string, string> {
   const out = new Map<string, string>()
@@ -975,8 +995,13 @@ function planBrandRow(b: PlanBrand, ctx: PlanRowCtx) {
 
 // One hook per category so the DM says something specific to the brand.
 const LI_HOOKS: Record<string, string> = {
+  electrolytes: 'show weekends, when students actually reach for hydration',
+  energy: 'product-in-hand sampling for thousands of students a night',
   beverage: 'product-in-hand sampling for thousands of students a night',
+  rtd: 'compliant 21+ sampling right where trial converts',
+  spirits: 'compliant 21+ sampling right where trial converts',
   alcohol: 'compliant 21+ sampling right where trial converts',
+  athletic: 'the most photographed nights on campus, on the students who set the look',
   cpg: 'sampling on show nights plus house drops across our Greek chapters',
   beauty: 'the getting-ready moment before every show, where routines form',
   betting: 'on-site signups from exactly the demo you are acquiring',
@@ -2294,7 +2319,8 @@ const handlers: Record<string, Handler> = {
     const emailedIds = new Set(emails.filter(m => m.direction === 'out').map(m => m.targetId))
     const answeredIds = new Set(emails.filter(m => m.direction === 'in').map(m => m.targetId))
     const LI_OUT = ['sent', 'accepted', 'replied', 'converted']
-    return buildStock(brands.map(b => {
+    const last = await readRefileLog()
+    const stock = buildStock(brands.map(b => {
       const ts = b.targets
       return {
         id: b.id, name: b.name, aka: b.aka, category: b.category, tier: b.tier,
@@ -2310,6 +2336,112 @@ const handlers: Record<string, Handler> = {
         activations: b._count.activations,
       }
     }))
+    return {
+      ...stock,
+      lastRefile: last ? { at: last.at, by: last.by, moved: last.moves.length, days: last.days.length } : null,
+    }
+  },
+
+  // Stock take → "Make the lanes real categories" (Leo said yes, Sep
+  // 2026). Without `apply`: every brand the re-file would move and the
+  // planned Schedule days whose category is being split — nothing
+  // written. With `apply`: only the moves Leo kept ({id, to}) that a
+  // fresh preview still makes the same way, each only if the brand is
+  // still filed where the preview saw it. So nothing moves that he
+  // didn't see, and a second click can't move anything twice. The
+  // moves are logged (Setting categoryRefileLast) for Undo.
+  async refileCategories({ apply = false, keep = [], days = [], __user }: any = {}) {
+    const brands = await prisma.brand.findMany({
+      select: { id: true, name: true, aka: true, category: true, about: true, topProducts: true },
+    })
+    const moves = refileMoves(brands)
+    const totals: Record<string, number> = {}
+    for (const b of brands) if (b.category) totals[b.category] = (totals[b.category] ?? 0) + 1
+    const plan = await readPlan()
+    const dayMoves = remapPlanDays(plan, moves, totals, localDayKey())
+    if (!apply) {
+      const last = await readRefileLog()
+      return {
+        moves, days: dayMoves,
+        last: last ? { at: last.at, by: last.by, moved: last.moves.length, days: last.days.length } : null,
+      }
+    }
+
+    const wanted = new Map<string, string>()
+    for (const k of Array.isArray(keep) ? keep : []) if (k && k.id && k.to) wanted.set(String(k.id), String(k.to))
+    const chosen = moves.filter(m => wanted.get(m.id) === m.to)
+    const keepDays = new Map<string, string>()
+    for (const d of Array.isArray(days) ? days : []) if (d && d.day && d.to) keepDays.set(String(d.day), String(d.to))
+    // Nothing to do must not overwrite the log — that would lose Undo
+    // for the re-file before.
+    if (!chosen.length && !keepDays.size) return { moved: 0, skipped: 0, days: 0 }
+    // One update per (from → to) pair, all or nothing, with the log.
+    const groups = new Map<string, { from: string | null; to: string; ids: string[] }>()
+    for (const m of chosen) {
+      const g = groups.get(m.from + '→' + m.to) ?? { from: m.from, to: m.to, ids: [] }
+      g.ids.push(m.id)
+      groups.set(m.from + '→' + m.to, g)
+    }
+    const log: RefileLog = { at: new Date().toISOString(), by: __user ?? null, moves: [], days: [] }
+    await prisma.$transaction(async tx => {
+      for (const g of groups.values()) {
+        const still = await tx.brand.findMany({ where: { id: { in: g.ids }, category: g.from }, select: { id: true } })
+        if (!still.length) continue
+        await tx.brand.updateMany({ where: { id: { in: still.map(s => s.id) }, category: g.from }, data: { category: g.to } })
+        for (const s of still) log.moves.push({ id: s.id, from: g.from, to: g.to })
+      }
+      if (log.moves.length) {
+        const value = JSON.stringify(log)
+        await tx.setting.upsert({ where: { key: REFILE_KEY }, create: { key: REFILE_KEY, value }, update: { value } })
+      }
+    }, { timeout: 20000 })
+
+    // Planned days Leo kept ticked follow their category.
+    const fresh = await readPlan()
+    for (const d of dayMoves) {
+      if (keepDays.get(d.day) !== d.to || fresh[d.day]?.category !== d.from) continue
+      fresh[d.day].category = d.to
+      log.days.push({ day: d.day, from: d.from, to: d.to })
+    }
+    if (log.days.length) {
+      await writePlan(fresh)
+      const value = JSON.stringify(log)
+      await prisma.setting.upsert({ where: { key: REFILE_KEY }, create: { key: REFILE_KEY, value }, update: { value } })
+    }
+    return { moved: log.moves.length, skipped: chosen.length - log.moves.length, days: log.days.length }
+  },
+
+  // Puts the last re-file back: every brand still where it was moved to
+  // goes back to where it came from, and so does every planned day. A
+  // brand re-filed by hand since is left alone.
+  async undoCategoryRefile() {
+    const log = await readRefileLog()
+    if (!log) throw new Error('Nothing to undo — no re-file on record.')
+    let back = 0
+    await prisma.$transaction(async tx => {
+      const groups = new Map<string, { from: string | null; to: string; ids: string[] }>()
+      for (const m of log.moves) {
+        const g = groups.get(m.from + '→' + m.to) ?? { from: m.from, to: m.to, ids: [] }
+        g.ids.push(m.id)
+        groups.set(m.from + '→' + m.to, g)
+      }
+      for (const g of groups.values()) {
+        const r = await tx.brand.updateMany({ where: { id: { in: g.ids }, category: g.to }, data: { category: g.from } })
+        back += r.count
+      }
+      await tx.setting.delete({ where: { key: REFILE_KEY } })
+    }, { timeout: 20000 })
+    let daysBack = 0
+    if (log.days.length) {
+      const plan = await readPlan()
+      for (const d of log.days) {
+        if (plan[d.day]?.category !== d.to) continue
+        plan[d.day].category = d.from
+        daysBack++
+      }
+      if (daysBack) await writePlan(plan)
+    }
+    return { back, of: log.moves.length, days: daysBack }
   },
 
   // -------- shows (read live from sb-crm) --------

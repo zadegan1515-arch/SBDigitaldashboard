@@ -512,6 +512,14 @@
   .st-idea-go{margin-top:10px}
   .st-prev{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:10px;font-size:12.5px;color:var(--ink-2)}
   .st-prev b{color:var(--ink-1)}
+  .st-refile{padding:16px 20px;margin-top:18px}
+  .st-refile-h{font-size:15px;font-weight:700;font-family:var(--display);letter-spacing:-.01em}
+  .st-refile-p{font-size:12.5px;color:var(--ink-2);margin-top:6px;max-width:780px}
+  .st-refile-last{font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .st-refile-p+.st-acts+.st-refile-last{margin-top:12px}
+  .st-rf-row{display:flex;flex-wrap:wrap;gap:1px 8px;align-items:baseline;padding:3px 0;font-size:12.5px;cursor:pointer}
+  .st-rf-row input{accent-color:var(--accent);margin:0;align-self:center}
+  .st-rf-name{color:var(--ink-1);font-weight:600}
   /* Outreach > Schedule. Full page width: three sending days side by
      side, one card per brand. The contacts label carries its meaning in
      shape as well as colour (filled / half / ring) so it never depends
@@ -1226,8 +1234,9 @@
       <div class="eyebrow">Brands</div>
       <h1>Stock take</h1>
       <div class="sub" id="st-sub">Loading…</div>
+      <div id="st-refile"></div>
       <div class="kpi-row" id="st-kpis"></div>
-      <div class="hint" style="margin:0 0 10px">Each brand sits in one row. The lane comes from its category, its name and what it sells. Nothing is re-filed by this page.</div>
+      <div class="hint" style="margin:0 0 10px">Each brand sits in one row: its category, or where the re-file above would move it (those say where they’re filed today).</div>
       <div class="st-legend" id="st-legend"></div>
       <div class="section-head">Your lanes <span class="n" id="st-lanes-n"></span></div>
       <div class="st-stack" id="st-lanes"></div>
@@ -1500,9 +1509,14 @@
 var CONNECTION_MAX = 300, MESSAGE_MAX = 600;
 var TARGET_CAP = 3;   // top-N contacts per brand kept in the send queue
 var CAT_COLORS = ['var(--cat-1)','var(--cat-2)','var(--cat-3)','var(--cat-4)','var(--cat-5)'];
+// Leo's lanes are categories of their own (src/lib/stock.ts, Sep 2026):
+// electrolytes, energy, rtd, spirits and athletic split out of beverage,
+// alcohol and apparel, which keep what's left. Order = the Stock take's.
 var CAT_NAMES = {
-  beverage:'Energy Drinks & Beverages', nicotine:'Nicotine & Alt-Tobacco', cpg:'Snacks & CPG Food',
-  alcohol:'Alcohol & RTD', apparel:'Apparel & Fashion', tech:'Tech & Gadgets', fintech:'Fintech',
+  electrolytes:'Electrolytes & Hydration', energy:'Energy Drinks', beverage:'Soda, Water & Other Drinks',
+  rtd:'Beer, Seltzers & Canned Cocktails', spirits:'Spirits', alcohol:'Alcohol (other)',
+  nicotine:'Nicotine Pouches', athletic:'Athletic Wear', apparel:'Clothing & Fashion',
+  cpg:'Snacks & CPG Food', tech:'Tech & Gadgets', fintech:'Fintech',
   software:'AI & Software', beauty:'Beauty & Grooming', apps:'Dating & Social Apps',
   betting:'Betting & DFS', nightlife:'Nightlife & DJ Culture', wellness:'Health & Wellness',
   qsr:'Food & QSR', home:'Home & Drinkware', entertainment:'Entertainment & Sports',
@@ -5020,9 +5034,8 @@ function stCardEl(key) {
 }
 
 function stLabel(r) {
-  if (r.name) return r.name;
-  if (r.category === 'uncategorised') return 'No category';
-  return CAT_NAMES[r.category] || r.category;
+  if (r.key === 'uncategorised') return 'No category';
+  return CAT_NAMES[r.key] || r.name || r.key;
 }
 
 function stCount(key, n) {
@@ -5192,10 +5205,138 @@ function renderStock() {
   document.getElementById('st-others-n').textContent = sum(d.others) + ' brands';
   document.getElementById('st-others').innerHTML = d.others.map(stLine).join('') ||
     '<div class="rw-empty" style="padding:14px 0">Every brand sits in one of your lanes.</div>';
+  renderRefile();
 }
+
+// --- stock take: make the lanes real categories -----------------
+// Leo said yes (Sep 2026). The page never re-files on its own: it asks
+// refileCategories for every brand that would move, shows them grouped
+// by where they'd go with the reason, and moves only what is still
+// ticked when he confirms. Undo puts the last re-file back.
+
+var ST_REFILE = null;   // the preview under review, or null
+// "From" uses the old broad names: until the move, 'beverage' still
+// holds the energy drinks, so its new label would misdescribe them.
+var ST_FROM = { beverage: 'Beverages', alcohol: 'Alcohol', apparel: 'Apparel' };
+
+function stFromName(c) { return c ? (ST_FROM[c] || CAT_NAMES[c] || c) : 'no category'; }
+
+function stDayName(key) {
+  return new Date(key + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function stMoveLabel(n) { return 'Move ' + n + (n === 1 ? ' brand' : ' brands'); }
+
+function renderRefile() {
+  var box = document.getElementById('st-refile');
+  var d = ST_DATA || {}, last = d.lastRefile;
+  var undo = last
+    ? '<div class="st-refile-last">Last re-file: ' + last.moved + (last.moved === 1 ? ' brand' : ' brands') +
+        ' moved ' + esc(shortDate(last.at)) + (last.by ? ' by ' + esc(last.by) : '') +
+        (last.days ? ' · ' + last.days + (last.days === 1 ? ' planned day' : ' planned days') + ' changed' : '') +
+        '<button class="btn-ghost sd-sm" data-strfundo>Undo</button></div>'
+    : '';
+  if (!ST_REFILE) {
+    if (!d.refile) { box.innerHTML = undo ? '<div class="panel st-refile">' + undo + '</div>' : ''; return; }
+    box.innerHTML = '<div class="panel st-refile">' +
+      '<div class="st-refile-h">Make the lanes real categories</div>' +
+      '<div class="st-refile-p">' + d.refile + (d.refile === 1 ? ' brand is' : ' brands are') +
+        ' still filed under an old broad category. Moving them makes each lane its own category, so the ' +
+        'Schedule can run an Electrolytes day or an Athletic Wear day. Nothing moves until you confirm, and it can be undone.</div>' +
+      '<div class="st-acts"><button class="btn-solid sd-sm" data-strfreview>Review the ' + d.refile +
+        (d.refile === 1 ? ' move' : ' moves') + '</button></div>' +
+      undo +
+    '</div>';
+    return;
+  }
+  var p = ST_REFILE, groups = {}, order = [];
+  p.moves.forEach(function (m) {
+    if (!groups[m.to]) { groups[m.to] = []; order.push(m.to); }
+    groups[m.to].push(m);
+  });
+  var html = order.map(function (to) {
+    return '<div class="st-group"><div class="rw-col-h">→ ' + esc(CAT_NAMES[to] || to) +
+        '<span class="n">' + groups[to].length + '</span></div>' +
+      groups[to].map(function (m) {
+        var why = m.why === 'name' ? 'by name' : 'says “' + (m.match || '') + '”';
+        return '<label class="st-rf-row"><input type="checkbox" checked data-rfid="' + esc(m.id) + '" data-rfto="' + esc(m.to) + '">' +
+          '<span class="st-rf-name">' + esc(m.name) + '</span>' +
+          '<span class="st-tag">from ' + esc(stFromName(m.from)) + ' · ' + esc(why) + '</span></label>';
+      }).join('') + '</div>';
+  }).join('');
+  var days = p.days.length
+    ? '<div class="st-group" style="margin-top:6px"><div class="rw-col-h">Planned Schedule days<span class="n">' + p.days.length + '</span></div>' +
+      p.days.map(function (x) {
+        return '<label class="st-rf-row"><input type="checkbox" checked data-rfday="' + esc(x.day) + '" data-rfto="' + esc(x.to) + '">' +
+          '<span class="st-rf-name">' + esc(stDayName(x.day)) + '</span>' +
+          '<span class="st-tag">' + esc(stFromName(x.from)) + ' → ' + esc(CAT_NAMES[x.to] || x.to) + ' · ' +
+            x.moving + ' of its brands go there, ' + x.staying + ' stay</span></label>';
+      }).join('') + '</div>'
+    : '';
+  box.innerHTML = '<div class="panel st-refile">' +
+    '<div class="st-refile-h">Review the moves</div>' +
+    '<div class="st-refile-p">Untick anything that’s filed right already. Only what’s ticked moves.</div>' +
+    '<div class="st-groups" style="margin-top:12px">' + html + '</div>' + days +
+    '<div class="st-acts"><button class="btn-solid sd-sm" data-strfgo>' + stMoveLabel(p.moves.length) + '</button>' +
+      '<button class="btn-ghost sd-sm" data-strfcancel>Cancel</button></div>' +
+  '</div>';
+}
+
+document.getElementById('st-refile').addEventListener('click', function (e) {
+  var b;
+  if ((b = e.target.closest('[data-strfreview]'))) {
+    b.disabled = true;
+    api('refileCategories').then(function (p) {
+      if (!p.moves.length) { toast('Nothing left to move'); ST_REFILE = null; loadStock(); return; }
+      ST_REFILE = p;
+      renderRefile();
+    }).catch(function (err) { b.disabled = false; toast(err.message); });
+    return;
+  }
+  if (e.target.closest('[data-strfcancel]')) { ST_REFILE = null; renderRefile(); return; }
+  if ((b = e.target.closest('[data-strfgo]'))) {
+    var box = document.getElementById('st-refile');
+    var keep = Array.prototype.map.call(box.querySelectorAll('[data-rfid]:checked'), function (i) {
+      return { id: i.getAttribute('data-rfid'), to: i.getAttribute('data-rfto') };
+    });
+    var days = Array.prototype.map.call(box.querySelectorAll('[data-rfday]:checked'), function (i) {
+      return { day: i.getAttribute('data-rfday'), to: i.getAttribute('data-rfto') };
+    });
+    if (!keep.length && !days.length) { toast('Nothing is ticked'); return; }
+    if (!window.confirm(stMoveLabel(keep.length) + ' to their new categories' +
+        (days.length ? ' and change ' + days.length + (days.length === 1 ? ' planned day' : ' planned days') : '') +
+        '? Undo puts everything back.')) return;
+    b.disabled = true; b.textContent = 'Moving…';
+    api('refileCategories', { apply: true, keep: keep, days: days }).then(function (r) {
+      toast('Moved ' + r.moved + (r.moved === 1 ? ' brand' : ' brands') +
+        (r.days ? ' · ' + r.days + (r.days === 1 ? ' planned day' : ' planned days') + ' changed' : '') +
+        (r.skipped ? ' · ' + r.skipped + ' changed since, left alone' : ''));
+      ST_REFILE = null;
+      loadStock();
+    }).catch(function (err) { b.disabled = false; b.textContent = 'Try again'; toast(err.message); });
+    return;
+  }
+  if ((b = e.target.closest('[data-strfundo]'))) {
+    if (!window.confirm('Put the last re-file back? Every brand it moved goes back to where it was, unless it has been re-filed by hand since.')) return;
+    b.disabled = true;
+    api('undoCategoryRefile').then(function (r) {
+      toast('Put back ' + r.back + ' of ' + r.of + (r.of === 1 ? ' brand' : ' brands') +
+        (r.days ? ' · ' + r.days + (r.days === 1 ? ' planned day' : ' planned days') : ''));
+      loadStock();
+    }).catch(function (err) { b.disabled = false; toast(err.message); });
+  }
+});
+
+// The button says how many will move as boxes are ticked and unticked.
+document.getElementById('st-refile').addEventListener('change', function (e) {
+  if (!e.target.hasAttribute('data-rfid')) return;
+  var go = document.querySelector('#st-refile [data-strfgo]');
+  if (go) go.textContent = stMoveLabel(document.querySelectorAll('#st-refile [data-rfid]:checked').length);
+});
 
 function loadStock() {
   showView('stock');
+  ST_REFILE = null;
   if (!ST_DATA) {
     document.getElementById('st-lanes').innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   }

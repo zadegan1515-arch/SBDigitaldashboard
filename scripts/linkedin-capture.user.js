@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.4
+// @version      1.5
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -28,7 +28,8 @@
 // Two ways to use it. By hand: open a People page, press the pill, see
 // who it found, save when you say so; a brand the dashboard doesn't have
 // can be added from the same panel. By itself ("Fill brands by itself"):
-// a slow run through every brand under 25, ~50 a day, which pauses the
+// a slow run through every brand under 25, ~50 a day, which can also add
+// new brands LinkedIn shows (lookalikes, keyword searches) and pauses the
 // moment LinkedIn shows a check — see "filling brands by itself" below.
 // Leo asked for the run knowing LinkedIn restricts accounts that browse
 // like a script; everything about its pace is there to look like a
@@ -59,7 +60,7 @@
   var INGEST_URL = 'https://sb-digitaldashboard.vercel.app/api/ingest';
   var DASH_URL = 'https://sb-digitaldashboard.vercel.app/app.html';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.4';
+  var VERSION = '1.5';
 
   // The header's @grant lines are what give this script Tampermonkey's
   // storage and requests. A paste that lost the header (the usual cause:
@@ -311,7 +312,7 @@
       if (k === 'style') el.style.cssText = v;
       else if (k === 'text') el.textContent = v;
       else if (k.indexOf('on') === 0) el[k] = v;
-      else if (k === 'value' || k === 'disabled' || k === 'open') el[k] = v;
+      else if (k === 'value' || k === 'disabled' || k === 'open' || k === 'checked') el[k] = v;
       else el.setAttribute(k, v);
     });
     (kids || []).forEach(function (c) {
@@ -620,8 +621,9 @@
   //   · 50 brands, then it waits for the next morning;
   //   · a login wall, security check or search limit pauses it at once.
   // People are saved through the same liCapture as a manual read, named
-  // by brandId, so buyers-only, the 25 cap and duplicates all hold. It
-  // only visits brands the dashboard already has; it never creates one.
+  // by brandId, so buyers-only, the 25 cap and duplicates all hold. New
+  // brands come only through liDiscover (see "new brands" below), which
+  // the server judges; the brand lookup itself never creates one.
 
   var FILL_KEY = 'sbLiFill';
   var DAILY_CAP = 50;
@@ -663,7 +665,14 @@
     if (!m) return null;
     return location.origin + '/' + m[1] + '/' + m[2] + '/people/' + (keyword ? '?keywords=' + encodeURIComponent(keyword) : '');
   }
+  function companyHome(linkedinUrl) {
+    var m = String(linkedinUrl || '').match(/linkedin\.com\/(company|showcase)\/([^\/?#]+)/i);
+    return m ? location.origin + '/' + m[1] + '/' + m[2] + '/' : null;
+  }
   function searchUrl(q) { return location.origin + '/search/results/companies/?keywords=' + encodeURIComponent(q); }
+  function pageParam() {
+    try { return parseInt(new URLSearchParams(location.search).get('page') || '1', 10) || 1; } catch (e) { return 1; }
+  }
   function kwParam() {
     try { return new URLSearchParams(location.search).get('keywords') || ''; } catch (e) { return ''; }
   }
@@ -693,14 +702,24 @@
     return m ? 'LinkedIn showed “' + m[0] + '”' : null;
   }
 
-  // Company results on a LinkedIn company search: page link, name, and
-  // the industry line under it (the server uses it to judge a near miss).
-  function searchCandidates() {
+  // A company card's lines, keeping "40K followers" (which lines() drops
+  // as people-card noise) — the follower count is what new brands are
+  // judged on.
+  function cardLines(el) {
+    return String(el.innerText || el.textContent || '').split('\n')
+      .map(function (x) { return x.replace(/\s+/g, ' ').trim(); })
+      .filter(function (x) { return x && !/^(\+ ?)?(follow|following|message|view page|visit website)$/i.test(x); });
+  }
+
+  // Company cards inside `root`: page link, name, and the lines under the
+  // name ("Beverage Manufacturing • 250,512 followers"). `skipAside`
+  // leaves out the right rail (a search's own results are in <main>).
+  function companyCards(root, skipAside, ownSlug) {
     var bySlug = {}, out = [];
-    [].slice.call(document.querySelectorAll('a[href*="/company/"], a[href*="/showcase/"]')).forEach(function (a) {
-      if (skipZone(a)) return;
+    [].slice.call(root.querySelectorAll('a[href*="/company/"], a[href*="/showcase/"]')).forEach(function (a) {
+      if (skipAside ? skipZone(a) : a.closest('.sb-li-ui')) return;
       var m = String(a.getAttribute('href') || '').match(/\/(company|showcase)\/([^\/?#]+)/);
-      if (!m) return;
+      if (!m || m[2] === ownSlug) return;
       var c = bySlug[m[2]];
       if (!c) {
         c = bySlug[m[2]] = { url: 'https://www.linkedin.com/' + m[1] + '/' + m[2] + '/', name: '', subtitle: '' };
@@ -710,24 +729,53 @@
       if (c.name || !name) return;
       c.name = name;
       var card = a.closest('li') || a.parentElement;
-      var ls = card ? lines(card) : [];
+      var ls = card ? cardLines(card) : [];
       var i = ls.indexOf(name);
-      c.subtitle = i === -1 ? '' : ls.slice(i + 1, i + 3).join(' • ');
+      c.subtitle = i === -1 ? '' : ls.slice(i + 1, i + 4).join(' • ');
     });
-    return out.filter(function (c) { return c.name; }).slice(0, 10);
+    return out.filter(function (c) { return c.name; });
   }
 
+  // "Pages people also viewed" and its cousins, next to a company page.
+  var LOOK_HEAD = /^(pages people also viewed|people also viewed|similar pages|similar companies|people also follow|affiliated pages)$/i;
+  function lookalikes() {
+    var own = (companyPath() || {}).slug;
+    var out = [], seen = {};
+    [].slice.call(document.querySelectorAll('h2, h3, h4, span, div, p')).forEach(function (el) {
+      if (el.children.length && !/^H[2-4]$/.test(el.tagName)) return;
+      if (!LOOK_HEAD.test(String(el.textContent || '').replace(/\s+/g, ' ').trim())) return;
+      if (el.closest('.sb-li-ui')) return;
+      var box = el.closest('section, aside, .artdeco-card') || (el.parentElement && el.parentElement.parentElement);
+      if (!box) return;
+      companyCards(box, false, own).forEach(function (c) {
+        if (seen[c.url]) return;
+        seen[c.url] = 1;
+        out.push(c);
+      });
+    });
+    return out.slice(0, 20);
+  }
+
+  // Company results on a LinkedIn company search: page link, name, and
+  // the lines under it (industry, place, followers).
+  function searchCandidates() {
+    return companyCards(document, true, null).slice(0, 10);
+  }
   var fillTimer = null, fillHalt = { stopped: false }, fillStatusEl = null;
   function later(fn, ms) {
     clearTimeout(fillTimer);
     fillTimer = setTimeout(function () { try { fn(); } catch (e) { fillError(e); } }, ms);
   }
 
-  function startFill(items, focus) {
+  // discover: { lookalikes: bool, words: [..] } — the new-brand half.
+  function startFill(items, focus, discover) {
+    discover = discover || {};
     saveFill({
       id: 'f' + Date.now().toString(36), owner: tabId(), focus: focus || '',
       items: items, at: 0, step: null, results: [], added: 0,
       day: todayKey(), doneToday: 0, nextAt: 0, pausedUntil: 0, paused: null,
+      lookalikes: !!discover.lookalikes, newBrands: [],
+      searches: (discover.words || []).map(function (q) { return { q: q, page: 1, navs: 0 }; }),
     });
     fillHalt = { stopped: false };
     runFill();
@@ -761,11 +809,14 @@
       return later(runFill, Math.min(job.pausedUntil - Date.now() + 1000, 60000));
     }
     if (job.pausedUntil) { job.pausedUntil = 0; saveFill(job); }
-    if (job.at >= job.items.length) return finishFill(job, false);
     if (Date.now() < job.nextAt) {
       renderFill(job, 'Next step in ' + Math.ceil((job.nextAt - Date.now()) / 1000) + ' s');
       return later(runFill, Math.min(1000, job.nextAt - Date.now()));
     }
+    // New brands first: the keyword searches run before the first brand,
+    // and what they find goes to the front of the line.
+    if (job.searches && job.searches.length) return discoverSearchStep(job);
+    if (job.at >= job.items.length) return finishFill(job, false);
     var item = job.items[job.at];
     if (!job.step) {
       job.step = { phase: peopleUrl(item.linkedinUrl, '') ? 'read' : 'search', pass: 0, triedAka: false, seen: 0, added: 0, navs: 0 };
@@ -781,6 +832,13 @@
         return fillSearch(item, q);
       }
       return go(job, searchUrl(q), 'Looking up ' + item.name + ' on LinkedIn');
+    }
+    if (st.phase === 'home') {
+      if (st.navs > 0 && companyPath() && !onPeoplePage()) {
+        st.navs = 0; saveFill(job);
+        return fillLookalikes(item);
+      }
+      return go(job, companyHome(item.linkedinUrl), 'Opening ' + item.name + '\'s page for similar brands');
     }
     var want = PASSES[st.pass];
     if (st.navs > 0 && onPeoplePage() && kwParam() === want) {
@@ -862,11 +920,107 @@
       job2.added = (job2.added || 0) + (r.added || 0);
       var full = r.have >= r.cap;
       var more = !full && st.pass < PASSES.length - 1 && (st.pass > 0 || capped);
-      if (!more) return finishBrand(job2, null);
+      if (!more) return afterPeople(job2, item);
       st.pass++; st.navs = 0;
       job2.nextAt = Date.now() + secs(BETWEEN_PAGES);
       saveFill(job2);
       runFill();
+    }).catch(fillError);
+  }
+
+  // ---- new brands ----
+  //
+  // Leo's call (Sep 2026): the run finds brands too, and they go straight
+  // into the dashboard. Two sources: LinkedIn's lookalikes next to each
+  // brand it visits, and company searches for the words he gives. The
+  // server judges each one (consumer industry, 5K+ followers, not known,
+  // not dismissed before, 50 a day) and makes the brand; the run then
+  // reads its people too — keyword finds next, lookalikes at the end.
+
+  function addNewBrands(job, created, front) {
+    var fresh = (created || []).map(function (c) {
+      return { brandId: c.brandId, name: c.name, aka: null, category: c.category, linkedinUrl: c.linkedinUrl, contacts: 0, focus: !!front, isNew: true };
+    });
+    if (!fresh.length) return;
+    job.newBrands = (job.newBrands || []).concat(fresh.map(function (c) { return c.name; }));
+    if (front) job.items.splice.apply(job.items, [job.at, 0].concat(fresh));
+    else job.items = job.items.concat(fresh);
+  }
+
+  function discoverSearchStep(job) {
+    var ds = job.searches[0];
+    if (ds.navs > 0 && /^\/search\/results\/companies/.test(location.pathname) && kwParam() === ds.q && pageParam() === ds.page) {
+      ds.navs = 0; saveFill(job);
+      return fillDiscoverSearch();
+    }
+    if (ds.navs >= 2) { job.searches.shift(); saveFill(job); return runFill(); }
+    ds.navs++;
+    saveFill(job);
+    renderFill(job, 'Searching LinkedIn for new “' + ds.q + '” brands' + (ds.page > 1 ? ' (page ' + ds.page + ')' : '') + '…');
+    var url = searchUrl(ds.q) + (ds.page > 1 ? '&page=' + ds.page : '');
+    later(function () { location.href = url; }, rand(1500, 3500));
+  }
+
+  function fillDiscoverSearch() {
+    var job = loadFill(), ds = job.searches[0], found = [];
+    renderFill(job, 'Reading LinkedIn\'s “' + ds.q + '” results');
+    waitFor(function () { return searchCandidates().length || /no results/i.test(pageText(5000)); }, 12000).then(function () {
+      var stop = linkedinSaysStop();
+      if (stop) return { halt: stop };
+      found = searchCandidates();
+      return post({ action: 'liDiscover', source: 'search', from: ds.q, companies: found });
+    }).then(function (r) {
+      var job2 = loadFill();
+      if (!ownsFill(job2) || job2.paused) return;
+      if (r && r.halt) return pauseFill(job2, r.halt + '. Leave LinkedIn alone for a day before pressing Continue.');
+      if (!r || !r.ok) return pauseFill(job2, (r && r.error) || 'the dashboard did not take the new brands');
+      addNewBrands(job2, r.created, true);
+      var d = job2.searches[0];
+      // A full page and room left today: the next page of results too,
+      // up to three.
+      if (found.length >= 8 && d.page < 3 && !r.capped) { d.page++; d.navs = 0; }
+      else job2.searches.shift();
+      job2.nextAt = Date.now() + secs(BETWEEN_PAGES);
+      saveFill(job2);
+      runFill();
+    }).catch(fillError);
+  }
+
+  // After a brand's people: its lookalikes, when the run looks for new
+  // brands. Read off the page it's on if LinkedIn shows them there,
+  // otherwise one more stop at the company's home page.
+  function afterPeople(job, item) {
+    if (!job.lookalikes) return finishBrand(job, null);
+    var here = lookalikes();
+    if (here.length) return saveLookalikes(item, here);
+    job.step.phase = 'home';
+    job.step.navs = 0;
+    job.nextAt = Date.now() + secs(BETWEEN_PAGES);
+    saveFill(job);
+    runFill();
+  }
+
+  function fillLookalikes(item) {
+    renderFill(loadFill(), 'Looking at brands similar to ' + item.name);
+    // The side rail draws late; a little scroll wakes it.
+    window.scrollTo(0, 600);
+    waitFor(function () { return lookalikes().length; }, 10000).then(function () {
+      window.scrollTo(0, 0);
+      saveLookalikes(item, lookalikes());
+    }).catch(fillError);
+  }
+
+  function saveLookalikes(item, found) {
+    var job = loadFill();
+    if (!ownsFill(job) || job.paused) return;
+    if (!found.length) return finishBrand(job, null);
+    var stop = linkedinSaysStop();
+    if (stop) return pauseFill(job, stop + '. Leave LinkedIn alone for a day before pressing Continue.');
+    post({ action: 'liDiscover', source: 'lookalike', from: item.name, fromBrandId: item.brandId, companies: found }).then(function (r) {
+      var job2 = loadFill();
+      if (!ownsFill(job2) || job2.paused) return;
+      if (r && r.ok) addNewBrands(job2, r.created, false);
+      finishBrand(job2, null);
     }).catch(fillError);
   }
 
@@ -892,6 +1046,12 @@
     freshPanel([
       head(stopped ? 'Run stopped' : 'Run finished'),
       h('div', { style: 'margin-bottom:6px' }, [b(String(job.added || 0)), ' people added across ' + (job.results || []).length + ' brands.']),
+      (job.newBrands || []).length
+        ? h('details', { style: 'display:block;margin-top:6px' }, [
+            h('summary', { style: 'display:list-item;cursor:pointer;font-weight:600;color:#137333', text: job.newBrands.length + ' new brands added' }),
+            h('div', { style: 'font-size:12px;margin-top:4px;max-height:160px;overflow:auto', text: job.newBrands.join(', ') }),
+          ])
+        : null,
       problems.length
         ? h('details', { open: true, style: 'display:block;margin-top:6px' }, [
             h('summary', { style: 'display:list-item;cursor:pointer;font-weight:600;color:#946200', text: 'Do these by hand (' + problems.length + ')' }),
@@ -943,7 +1103,7 @@
   // scroll count just update the status line.
   function renderFill(job, status) {
     if (!job) return;
-    var key = [job.at, job.added, job.doneToday, job.paused, job.pausedUntil].join('|');
+    var key = [job.at, job.added, job.doneToday, job.paused, job.pausedUntil, (job.newBrands || []).length, job.items.length].join('|');
     if (panel && panel.getAttribute('data-fill') === key && fillStatusEl && fillStatusEl.isConnected) {
       return setFillStatus(status);
     }
@@ -956,6 +1116,7 @@
       h('div', { style: 'margin-bottom:4px' }, [b(String(at)), ' of ' + n + ' brands · ', b(String(job.added || 0)), ' people added']),
       focusN ? h('div', { style: 'font-size:12px;color:#555', text: '“' + (job.focus || 'focus') + '” brands first: ' + Math.min(at, focusN) + ' of ' + focusN + ' done' }) : null,
       h('div', { style: 'font-size:12px;color:#555', text: 'Today: ' + job.doneToday + ' of ' + DAILY_CAP + ' brands' }),
+      (job.newBrands || []).length ? h('div', { style: 'font-size:12px;color:#137333', text: job.newBrands.length + ' new brand' + (job.newBrands.length === 1 ? '' : 's') + ' found and added' }) : null,
       h('div', { style: 'height:6px;background:#eee;border-radius:99px;overflow:hidden;margin-top:6px' }, [
         h('div', { style: 'height:100%;width:' + pct + '%;background:#111' }),
       ]),
@@ -984,6 +1145,17 @@
       id: 'sblifocus', value: 'electrolyte', placeholder: 'e.g. electrolyte — or leave empty',
       style: 'flex:1;min-width:0;padding:6px 8px;border:1px solid #ccc;border-radius:6px;font:12.5px system-ui;color:#111;background:#fff',
     });
+    var lookBox = h('input', { type: 'checkbox', id: 'sblilook', checked: true, style: 'margin:2px 0 0' });
+    var words = h('input', {
+      id: 'sbliwords', value: 'electrolyte', placeholder: 'e.g. electrolyte, tequila — or leave empty',
+      style: 'display:block;box-sizing:border-box;width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:6px;font:12.5px system-ui;color:#111;background:#fff;margin-top:4px',
+    });
+    var discoverNow = function () {
+      return {
+        lookalikes: lookBox.checked,
+        words: words.value.split(/[,;]/).map(function (w) { return w.trim(); }).filter(Boolean).slice(0, 5),
+      };
+    };
     var out = h('div', { style: 'margin-top:10px' });
     var look = function () {
       var f = focus.value.trim();
@@ -992,7 +1164,9 @@
         while (out.firstChild) out.removeChild(out.firstChild);
         if (!j || !j.ok) { out.textContent = (j && j.error) || 'Could not get the list.'; return; }
         if (!j.items.length) {
-          out.appendChild(h('div', { style: MUTED, text: 'Every brand is full, off outreach, or resting after a recent visit — nothing to do.' }));
+          var dn = discoverNow();
+          out.appendChild(h('div', { style: MUTED, text: 'Every brand is full, off outreach, or resting after a recent visit.' + (dn.words.length ? ' It can still search for new brands.' : ' Nothing to do.') }));
+          if (dn.words.length) out.appendChild(h('button', { id: 'sblifillstart', style: BTN, text: 'Search for new brands', onclick: function () { startFill([], f, discoverNow()); } }));
           return;
         }
         var first = j.items.filter(function (i) { return i.focus; });
@@ -1003,7 +1177,7 @@
         if (j.noPage) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.noPage + ' have no LinkedIn page saved; it searches LinkedIn for those and only uses a clear match.' }));
         if (j.resting) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.resting + ' left out: nothing new on their last visit (they rest a month).' }));
         out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:8px', text: 'At about ' + DAILY_CAP + ' a day that is roughly ' + Math.ceil(j.items.length / DAILY_CAP) + ' day(s).' }));
-        out.appendChild(h('button', { id: 'sblifillstart', style: BTN, text: 'Start', onclick: function () { startFill(j.items, f); } }));
+        out.appendChild(h('button', { id: 'sblifillstart', style: BTN, text: 'Start', onclick: function () { startFill(j.items, f, discoverNow()); } }));
       }).catch(function (e) { out.textContent = e.message; });
     };
     focus.onkeydown = function (e) { if (e.key === 'Enter') look(); };
@@ -1017,6 +1191,16 @@
           id: 'sblifilllook', text: 'See the list', onclick: look,
           style: 'background:#fff;color:#111;border:1px solid #ccc;border-radius:6px;padding:5px 10px;cursor:pointer;font:12.5px system-ui',
         }),
+      ]),
+      h('div', { style: 'margin-top:12px;padding-top:10px;border-top:1px solid #eee' }, [
+        h('div', { style: 'font-weight:600;margin-bottom:6px', text: 'Find new brands too' }),
+        h('label', { style: 'display:flex;gap:7px;align-items:flex-start;font-size:12px;color:#333;cursor:pointer' }, [
+          lookBox,
+          h('span', { text: 'Add brands LinkedIn shows as similar to each brand it visits' }),
+        ]),
+        h('div', { style: 'font-size:12px;color:#333;margin-top:8px', text: 'Search LinkedIn for new brands (comma-separated):' }),
+        words,
+        h('div', { style: 'font-size:11.5px;color:#777;margin-top:6px', text: 'New brands go straight into the dashboard — consumer industries with 5K+ LinkedIn followers, up to 50 a day — and their people are read in the same run.' }),
       ]),
       out,
       h('div', { style: SMALL, text: 'Use a tab you\'re not using — clicking or typing in it pauses the run.' }),
