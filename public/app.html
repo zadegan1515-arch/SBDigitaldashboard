@@ -443,6 +443,75 @@
   /* One day's worth, as a hairline — the threshold that decides whether
      a category can carry a whole day on its own. */
   .rw-val{font-size:12px;color:var(--ink-2);text-align:right;white-space:nowrap}
+  /* Brands > Stock take. Each bar is one ordered series (nobody on file
+     > people > reached > replied > deal), so it is one blue stepped dim
+     to bright, checked as an ordinal ramp against this surface, with
+     off-outreach in grey outside the order. The legend names the steps
+     and every bar is said in words under it, so colour never carries it
+     alone. 2px of card surface between segments, no strokes. */
+  #stock{--st-needs:#1c5cab;--st-ready:#2a78d6;--st-reached:#5598e7;--st-replied:#86b6ef;--st-business:#b7d3f6;--st-off:#383835}
+  .st-needs{background:var(--st-needs)}
+  .st-ready{background:var(--st-ready)}
+  .st-reached{background:var(--st-reached)}
+  .st-replied{background:var(--st-replied)}
+  .st-business{background:var(--st-business)}
+  .st-off{background:var(--st-off)}
+  .st-legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:4px 0 0;font-size:12px;color:var(--ink-2)}
+  .st-key{display:inline-flex;align-items:center;gap:6px}
+  .st-sw{width:10px;height:10px;border-radius:3px;flex:none}
+  /* One column, so an open lane unfolds in place and nothing reflows
+     around it. A lane is a card: bar and counts on the left, what it
+     needs next on the right. The rest are compact rows in one panel. */
+  .st-stack{display:flex;flex-direction:column;gap:12px}
+  .st-card{padding:16px 20px;min-width:0}
+  .st-body{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:0 32px;align-items:start}
+  .st-body>.st-next{grid-column:2;grid-row:1 / span 2}
+  .st-body>.st-acts{grid-column:1;grid-row:2}
+  .st-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .st-name{font-size:15px;font-weight:700;font-family:var(--display);letter-spacing:-.01em;min-width:0}
+  .st-total{font-size:12.5px;color:var(--ink-2);white-space:nowrap}
+  .st-lines{padding:2px 20px}
+  .st-line{padding:12px 0;border-bottom:1px solid var(--border-soft);min-width:0}
+  .st-line:last-child{border-bottom:none}
+  .st-line-top{display:grid;grid-template-columns:200px minmax(0,1fr) auto;gap:6px 22px;align-items:center}
+  .st-line-name{display:flex;flex-direction:column;min-width:0}
+  .st-line .st-name{font-size:14px}
+  .st-line .st-words{margin-top:6px}
+  .st-line .st-acts{margin-top:0}
+  @media (max-width:900px){
+    .st-body{grid-template-columns:minmax(0,1fr)}
+    .st-body>.st-next,.st-body>.st-acts{grid-column:1;grid-row:auto}
+    .st-body>.st-next{margin-top:10px}
+  }
+  @media (max-width:768px){
+    .st-card,.st-lines{padding-left:14px;padding-right:14px}
+    .st-line-top{grid-template-columns:minmax(0,1fr) auto}
+    .st-line-bar{grid-column:1 / -1;order:3}
+  }
+  .st-bar{display:flex;gap:2px;height:10px;border-radius:4px;overflow:hidden}
+  .st-bar.st-empty{background:var(--surface-2)}
+  .st-seg{min-width:3px;height:100%}
+  .st-words{font-size:12px;color:var(--ink-2);margin-top:8px}
+  .st-next{list-style:none;margin:0;padding:0;font-size:12.5px;color:var(--ink-2)}
+  .st-next li{padding:2px 0 2px 14px;position:relative}
+  .st-next li:before{content:'\203A';position:absolute;left:2px;color:var(--ink-3)}
+  .st-next b{color:var(--ink-1);font-weight:600}
+  .st-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+  .st-acts .btn-ghost.on{background:var(--accent-soft);border-color:rgba(79,131,247,.5);color:#aac6ff}
+  .st-open{margin-top:12px;padding-top:12px;border-top:1px solid var(--border-soft)}
+  .st-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:4px 24px}
+  .st-group{margin-bottom:10px;min-width:0}
+  .st-brand{display:flex;flex-wrap:wrap;gap:1px 8px;align-items:baseline;padding:3px 0;font-size:12.5px}
+  .st-bname{color:var(--ink-1);cursor:pointer;font-weight:600}
+  .st-bname:hover{color:var(--accent-hi)}
+  .st-tag{font-size:11px;color:var(--ink-3)}
+  .st-idea-list{display:flex;flex-wrap:wrap;gap:6px}
+  .st-idea{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border:1px solid var(--border);
+    border-radius:999px;font-size:12px;color:var(--ink-2);cursor:pointer;user-select:none}
+  .st-idea input{accent-color:var(--accent);margin:0}
+  .st-idea-go{margin-top:10px}
+  .st-prev{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:10px;font-size:12.5px;color:var(--ink-2)}
+  .st-prev b{color:var(--ink-1)}
   /* Outreach > Schedule. Full page width: three sending days side by
      side, one card per brand. The contacts label carries its meaning in
      shape as well as colour (filled / half / ring) so it never depends
@@ -953,7 +1022,7 @@
       <div class="section-head">Sponsorship revenue <span class="n">separate line from booking revenue</span></div>
       <div class="kpi-row" id="rev-kpis" style="margin-top:0"></div>
       <div id="owner-split"></div>
-      <div class="section-head">Categories</div>
+      <div class="section-head">Categories <a href="#stock" class="sd-link" id="go-stock">Stock take: every brand by lane &rarr;</a></div>
       <div class="card-grid" id="cat-cards" style="margin-top:0"></div>
       <div class="section-head" id="todos-head">Open todos</div>
       <div class="panel" id="todos"></div>
@@ -1117,13 +1186,13 @@
         <button class="chip active" data-lif="all">All brands</button>
         <button class="chip" data-lif="profiles">Saved profiles</button>
         <button class="chip" data-lif="none">Nobody yet</button>
-        <button class="chip" data-lif="thin" title="Brands with room under the 25-people cap, emptiest first \u2014 open People \u2197 and press the SB pill">Under 25</button>
+        <button class="chip" data-lif="thin" title="Brands with room under the 25-people cap, emptiest first — open People ↗ and press the SB pill">Under 25</button>
         <input class="inp" id="li-q" placeholder="Filter brands…" autocomplete="off" style="margin-left:auto;width:220px">
       </div>
       <div class="hint" id="li-script-hint" style="margin-top:10px;display:none">
-        People \u2197 opens a brand's LinkedIn People tab. With the
+        People ↗ opens a brand's LinkedIn People tab. With the
         <a href="https://github.com/zadegan1515-arch/SBDigitaldashboard/blob/main/scripts/linkedin-capture.user.js" target="_blank" rel="noopener">LinkedIn capture script</a>
-        in Tampermonkey (copy it there, then Tampermonkey \u2192 + \u2192 paste \u2192 save; on Leo's LinkedIn, not Zach's), press the SB pill there: it reads that page, shows who it found, and adds the marketing and partnership people when you say so.
+        in Tampermonkey (copy it there, then Tampermonkey → + → paste → save; on Leo's LinkedIn, not Zach's), press the SB pill there: it reads that page, shows who it found, and adds the marketing and partnership people when you say so. Or let it go through this list by itself: pill → <b>Fill brands by itself</b> (about 50 brands a day). Brands it couldn't do carry a red LinkedIn note here.
       </div>
       <div id="li-list" style="margin-top:14px"></div>
     </section>
@@ -1136,6 +1205,20 @@
       <div id="needs-misses" style="margin-top:18px"></div>
       <div id="needs-list" style="margin-top:18px"></div>
       <datalist id="miss-brands"></datalist>
+    </section>
+
+    <!-- STOCK TAKE — every brand sorted into the lanes SB sells -->
+    <section class="view page" id="stock">
+      <div class="eyebrow">Brands</div>
+      <h1>Stock take</h1>
+      <div class="sub" id="st-sub">Loading…</div>
+      <div class="kpi-row" id="st-kpis"></div>
+      <div class="hint" style="margin:0 0 10px">Each brand sits in one row. The lane comes from its category, its name and what it sells. Nothing is re-filed by this page.</div>
+      <div class="st-legend" id="st-legend"></div>
+      <div class="section-head">Your lanes <span class="n" id="st-lanes-n"></span></div>
+      <div class="st-stack" id="st-lanes"></div>
+      <div class="section-head">Everything else <span class="n" id="st-others-n"></span></div>
+      <div class="panel st-lines" id="st-others"></div>
     </section>
 
     <!-- MATERIALS -->
@@ -1542,7 +1625,7 @@ function refreshAfterSponsorChange() {
 // The top nav holds five groups; the views inside a group show as a
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
-  brands: [['brands', 'All brands'], ['discover', 'Discover'], ['needs', 'Needs contacts']],
+  brands: [['brands', 'All brands'], ['stock', 'Stock take'], ['discover', 'Discover'], ['needs', 'Needs contacts']],
   outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['schedule', 'Schedule'], ['email-out', 'Email'], ['linkedin', 'People'], ['passed', 'Archived'], ['results', 'Email stats']],
   board: [['board', 'Overview'], ['talks', 'In talks'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
@@ -1550,7 +1633,7 @@ var SUBTABS = {
   operations: [['materials', 'Materials'], ['team', 'Team']],
 };
 var GROUP_OF = {
-  brands: 'brands', brand: 'brands', discover: 'brands', needs: 'brands',
+  brands: 'brands', brand: 'brands', discover: 'brands', needs: 'brands', stock: 'brands',
   outreach: 'outreach', 'email-out': 'outreach', reached: 'outreach', schedule: 'outreach', linkedin: 'outreach', results: 'outreach', passed: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
   pipeline: 'pipeline', sponsorships: 'pipeline',
@@ -4722,6 +4805,286 @@ function loadNeeds() {
   });
 }
 
+// --- stock take ------------------------------------------------
+// Brands → Stock take: every brand sorted into the lanes SB sells and
+// where each one stands. The lane comes from src/lib/stock.ts (its
+// category, name and what it sells); looking never re-files anything.
+// Ideas are a lane's well-known brands that aren't on the roster under
+// any name. Adding them goes through addBrandsBulk's preview, same as the
+// paste box: nothing is created before the second click.
+
+var ST_STATES = [
+  // key, legend label, how a count reads in a sentence
+  ['needs', 'Needs contacts', 'need contacts'],
+  ['ready', 'Has people, not contacted', 'ready to contact'],
+  ['reached', 'Reached, no reply', 'reached, no reply'],
+  ['replied', 'Replied / talking', 'replied'],
+  ['business', 'Deal / partner', 'doing business'],
+  ['off', 'Off outreach', 'off outreach']
+];
+var ST_DATA = null;
+var ST_OPEN = {};      // row key -> 'brands' | 'ideas'
+var ST_PENDING = {};   // row key -> the names a preview was checked for
+
+function stRows() { return ST_DATA ? ST_DATA.lanes.concat(ST_DATA.others) : []; }
+function stRow(key) { return stRows().filter(function (r) { return r.key === key; })[0] || null; }
+function stCardEl(key) {
+  var els = document.querySelectorAll('#stock [data-strow]');
+  for (var i = 0; i < els.length; i++) if (els[i].getAttribute('data-strow') === key) return els[i];
+  return null;
+}
+
+function stLabel(r) {
+  if (r.name) return r.name;
+  if (r.category === 'uncategorised') return 'No category';
+  return CAT_NAMES[r.category] || r.category;
+}
+
+function stCount(key, n) {
+  if (key === 'needs') return n + (n === 1 ? ' needs contacts' : ' need contacts');
+  for (var i = 0; i < ST_STATES.length; i++) if (ST_STATES[i][0] === key) return n + ' ' + ST_STATES[i][2];
+  return n + ' ' + key;
+}
+
+function stWords(c) {
+  return ST_STATES.map(function (s) { return c[s[0]] ? stCount(s[0], c[s[0]]) : ''; })
+    .filter(Boolean).join(' · ') || 'No brands here yet';
+}
+
+function stBar(c) {
+  if (!c.total) return '<div class="st-bar st-empty" title="No brands here yet"></div>';
+  return '<div class="st-bar" role="img" aria-label="' + esc(stWords(c)) + '">' + ST_STATES.map(function (s) {
+    var n = c[s[0]] || 0;
+    return n ? '<span class="st-seg st-' + s[0] + '" style="flex:' + n + ' 1 0" title="' + esc(stCount(s[0], n)) + '"></span>' : '';
+  }).join('') + '</div>';
+}
+
+// What a lane needs next, in words. Only numbers go into these lines,
+// so the <b> is safe.
+function stNext(r, goal) {
+  var c = r.counts, inPlay = c.total - c.off, out = [];
+  if (inPlay < goal) {
+    out.push('<b>Thin:</b> ' + inPlay + ' of ' + goal + ' in play. Add ' + (goal - inPlay) + ' more' +
+      (r.ideas.length ? ', ideas below.' : '.'));
+  }
+  if (c.needs) out.push(c.needs + (c.needs === 1 ? ' brand has' : ' brands have') +
+    ' nobody on file. People ↗ opens their LinkedIn page for the SB pill.');
+  if (c.ready) out.push(c.ready + (c.ready === 1 ? ' brand has' : ' brands have') +
+    ' people nobody has contacted yet, ready for the schedule.');
+  if (!out.length) out.push('All ' + inPlay + ' in play have been contacted.');
+  return out;
+}
+
+function stBrands(r) {
+  var html = ST_STATES.map(function (s) {
+    var list = r.brands.filter(function (b) { return b.state === s[0]; });
+    if (!list.length) return '';
+    return '<div class="st-group"><div class="rw-col-h">' + esc(s[1]) + '<span class="n">' + list.length + '</span></div>' +
+      list.map(function (b) {
+        var tags = [b.people ? b.people + (b.people === 1 ? ' person' : ' people') : 'nobody on file'];
+        if (b.invited) tags.push(b.invited + ' invited');
+        if (b.accepted) tags.push(b.accepted + ' accepted');
+        if (b.emailed) tags.push(b.emailed + ' emailed');
+        if (b.replied) tags.push(b.replied + ' replied');
+        if (b.queued) tags.push(b.queued + ' queued');
+        if (b.dealStage) tags.push('deal: ' + b.dealStage);
+        if (b.archived) tags.push('archived');
+        if (b.doNotEmail) tags.push('do not email');
+        // A lane gathers brands from more than one category: say where
+        // this one is filed, so a re-file is one look away.
+        if (r.file && b.category !== r.file) {
+          tags.push('filed under ' + (b.category ? (CAT_NAMES[b.category] || b.category) : 'no category'));
+        }
+        return '<div class="st-brand">' +
+          '<span class="st-bname" data-brand="' + esc(b.id) + '">' + esc(b.name) + '</span>' +
+          '<span class="st-tag">' + esc(tags.join(' · ')) + '</span>' +
+          (b.state === 'needs' ? '<a class="sd-link" href="' + esc(liPeopleUrl(b)) + '" target="_blank" rel="noopener">People ↗</a>' : '') +
+        '</div>';
+      }).join('') + '</div>';
+  }).join('');
+  return html ? '<div class="st-groups">' + html + '</div>' : '<div class="rw-empty">No brands here yet.</div>';
+}
+
+function stIdeas(r) {
+  return '<div class="hint" style="margin:0 0 10px">Well-known names that aren’t on your list under any name. ' +
+      'Untick any you don’t want, then check. Nothing is added until you confirm. They go in under ' +
+      esc(CAT_NAMES[r.file] || r.file) + ' with nobody on file yet.</div>' +
+    '<div class="st-idea-list">' + r.ideas.map(function (n) {
+      return '<label class="st-idea"><input type="checkbox" checked value="' + esc(n) + '">' + esc(n) + '</label>';
+    }).join('') + '</div>' +
+    '<div class="st-idea-go"><button class="btn-ghost sd-sm" data-stcheck="' + esc(r.key) + '">Check these</button></div>' +
+    '<div class="st-idea-prev"></div>';
+}
+
+function stTotal(c) {
+  return '<span class="st-total">' + c.total + (c.total === 1 ? ' brand' : ' brands') + '</span>';
+}
+
+function stActs(r) {
+  var c = r.counts, open = ST_OPEN[r.key];
+  return '<div class="st-acts">' +
+    (c.total ? '<button class="btn-ghost sd-sm' + (open === 'brands' ? ' on' : '') + '" data-sttoggle="brands">' +
+      (open === 'brands' ? 'Hide brands' : 'Brands (' + c.total + ')') + '</button>' : '') +
+    (r.ideas.length ? '<button class="btn-ghost sd-sm' + (open === 'ideas' ? ' on' : '') + '" data-sttoggle="ideas">' +
+      (open === 'ideas' ? 'Hide ideas' : 'Ideas to add (' + r.ideas.length + ')') + '</button>' : '') +
+  '</div>';
+}
+
+function stOpenPart(r) {
+  var open = ST_OPEN[r.key];
+  if (open === 'brands') return '<div class="st-open">' + stBrands(r) + '</div>';
+  if (open === 'ideas') return '<div class="st-open">' + stIdeas(r) + '</div>';
+  return '';
+}
+
+// A lane Leo named: a card, what it needs next on the right.
+function stCard(r) {
+  var c = r.counts;
+  return '<div class="panel st-card" data-strow="' + esc(r.key) + '">' +
+    // Buttons are the body's own child so on a phone they drop below
+    // the next steps, right above what they open.
+    '<div class="st-body"><div>' +
+      '<div class="st-head">' +
+        '<span class="st-name">' + esc(stLabel(r)) + '</span>' +
+        (r.ageGate ? '<span class="sd-tag warn" title="Their own marketing code keeps them away from under-21 crowds, so pitch them 21+ shows">' + r.ageGate + '+</span>' : '') +
+        '<span class="sd-sp"></span>' + stTotal(c) +
+      '</div>' +
+      stBar(c) +
+      '<div class="st-words">' + esc(stWords(c)) + '</div>' +
+    '</div>' +
+    '<ul class="st-next">' + stNext(r, ST_DATA.goal).map(function (t) { return '<li>' + t + '</li>'; }).join('') + '</ul>' +
+    stActs(r) +
+    '</div>' +
+    stOpenPart(r) +
+  '</div>';
+}
+
+// Every other category: one compact row.
+function stLine(r) {
+  var c = r.counts;
+  return '<div class="st-line" data-strow="' + esc(r.key) + '">' +
+    '<div class="st-line-top">' +
+      '<div class="st-line-name"><span class="st-name">' + esc(stLabel(r)) + '</span>' + stTotal(c) + '</div>' +
+      '<div class="st-line-bar">' + stBar(c) + '<div class="st-words">' + esc(stWords(c)) + '</div></div>' +
+      stActs(r) +
+    '</div>' +
+    stOpenPart(r) +
+  '</div>';
+}
+
+function stDraw(r) { return r.priority ? stCard(r) : stLine(r); }
+
+function stRedraw(key) {
+  var el = stCardEl(key), r = stRow(key);
+  if (!el || !r) return;
+  var box = document.createElement('div');
+  box.innerHTML = stDraw(r);
+  el.parentNode.replaceChild(box.firstChild, el);
+}
+
+function renderStock() {
+  var d = ST_DATA, t = d.totals;
+  var sum = function (rows) { return rows.reduce(function (n, r) { return n + r.counts.total; }, 0); };
+  document.getElementById('st-sub').textContent =
+    t.total + ' brands across ' + t.categories + ' categories · ' + t.touched + ' reached so far · ' + stCount('needs', t.needs);
+  var kpis = [
+    ['Brands', t.total, t.categories + ' categories'],
+    ['Reached', t.touched, 'invited or emailed, ever'],
+    ['Replied', t.replied, t.business ? t.business + ' more doing business' : 'LinkedIn or email'],
+    ['Ready to contact', t.ready, 'people on file, nobody contacted'],
+    ['Needs contacts', t.needs, 'nobody on file'],
+    ['Off outreach', t.off, 'archived or do-not-email']
+  ];
+  document.getElementById('st-kpis').innerHTML = kpis.map(function (k) {
+    return '<div class="kpi"><div class="kpi-label">' + k[0] + '</div>' +
+      '<div class="kpi-value">' + k[1] + '</div><div class="kpi-note">' + esc(k[2]) + '</div></div>';
+  }).join('');
+  document.getElementById('st-legend').innerHTML = ST_STATES.map(function (s) {
+    return '<span class="st-key"><span class="st-sw st-' + s[0] + '"></span>' + esc(s[1]) + '</span>';
+  }).join('');
+  document.getElementById('st-lanes-n').textContent = sum(d.lanes) + ' brands · goal ' + d.goal + ' in play per lane';
+  document.getElementById('st-lanes').innerHTML = d.lanes.map(stCard).join('');
+  document.getElementById('st-others-n').textContent = sum(d.others) + ' brands';
+  document.getElementById('st-others').innerHTML = d.others.map(stLine).join('') ||
+    '<div class="rw-empty" style="padding:14px 0">Every brand sits in one of your lanes.</div>';
+}
+
+function loadStock() {
+  showView('stock');
+  if (!ST_DATA) {
+    document.getElementById('st-lanes').innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  }
+  return api('brandStock').then(function (d) { ST_DATA = d; renderStock(); }).catch(function (e) {
+    document.getElementById('st-sub').textContent = 'Could not load';
+    document.getElementById('st-lanes').innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
+      esc(e.message) + '</p></div></div>';
+  });
+}
+
+document.getElementById('stock').addEventListener('click', function (e) {
+  var b;
+  if ((b = e.target.closest('[data-sttoggle]'))) {
+    var key = b.closest('[data-strow]').getAttribute('data-strow');
+    var what = b.getAttribute('data-sttoggle');
+    ST_OPEN[key] = ST_OPEN[key] === what ? null : what;
+    stRedraw(key);
+    return;
+  }
+  if ((b = e.target.closest('[data-stcheck]'))) {
+    var ck = b.getAttribute('data-stcheck'), row = stRow(ck), card = stCardEl(ck);
+    if (!row || !card) return;
+    var names = Array.prototype.map.call(card.querySelectorAll('.st-idea input:checked'), function (i) { return i.value; });
+    if (!names.length) { toast('Tick at least one'); return; }
+    var text = names.join('\n');
+    b.disabled = true;
+    api('addBrandsBulk', { text: text, category: row.file }).then(function (p) {
+      b.disabled = false;
+      ST_PENDING[ck] = text;
+      card.querySelector('.st-idea-prev').innerHTML = '<div class="st-prev">' +
+        (p.create.length
+          ? '<div><b>' + p.create.length + ' new:</b> ' + esc(p.create.map(function (x) { return x.name; }).join(', ')) + '</div>' +
+            '<div class="sd-dim" style="margin-top:4px">Filed under ' + esc(CAT_NAMES[row.file] || row.file) +
+              ' with nobody on file, so they show as needing contacts.</div>'
+          : '') +
+        (p.existing.length
+          ? '<div class="sd-dim" style="margin-top:6px">Already on the list, skipped: ' + esc(p.existing.map(function (x) {
+              return x.name + (x.asName !== x.name ? ' → ' + x.asName : '');
+            }).join(', ')) + '</div>'
+          : '') +
+        (p.create.length
+          ? '<button class="btn-solid sd-sm" style="margin-top:10px" data-stadd="' + esc(ck) + '">Add ' +
+              p.create.length + (p.create.length === 1 ? ' brand' : ' brands') + '</button>'
+          : '<div class="sd-dim" style="margin-top:6px">Nothing new to add.</div>') +
+      '</div>';
+    }).catch(function (err) { b.disabled = false; toast(err.message); });
+    return;
+  }
+  if ((b = e.target.closest('[data-stadd]'))) {
+    var ak = b.getAttribute('data-stadd'), arow = stRow(ak), pending = ST_PENDING[ak];
+    if (!arow || !pending) { toast('Check the list again first'); return; }
+    b.disabled = true; b.textContent = 'Adding…';
+    api('addBrandsBulk', { text: pending, category: arow.file, apply: true }).then(function (res) {
+      toast(res.created.length + ' added to ' + stLabel(arow) +
+        (res.existing.length ? ' · ' + res.existing.length + ' already there' : '') +
+        (res.failed.length ? ' · ' + res.failed.length + ' failed' : ''));
+      delete ST_PENDING[ak];
+      ST_OPEN[ak] = 'brands';
+      loadStock();
+    }).catch(function (err) { b.disabled = false; b.textContent = 'Try again'; toast(err.message); });
+  }
+});
+
+// Ticking or unticking after a check makes the preview stale: clear it,
+// so "Add" can only ever add what the preview showed.
+document.getElementById('stock').addEventListener('change', function (e) {
+  if (!e.target.closest('.st-idea')) return;
+  var card = e.target.closest('[data-strow]');
+  if (!card) return;
+  delete ST_PENDING[card.getAttribute('data-strow')];
+  var prev = card.querySelector('.st-idea-prev');
+  if (prev) prev.innerHTML = '';
+});
+
 // --- LinkedIn work view ----------------------------------------
 // One column built for a LinkedIn session: each brand with its saved
 // profile links up front, plus the company People page and a
@@ -4800,6 +5163,8 @@ function renderLinkedin() {
         '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(b.name) + '</span>' +
           (tag ? '<span class="t-sep">·</span><span class="t-title">' + esc(tag) + '</span>' : '') + '</div>' +
         (people || '<div class="t-meta" style="margin-top:7px"><span>Nobody saved yet — open People ↗ and press the SB pill there.</span></div>') +
+        // Left by the LinkedIn fill when it couldn't do this brand itself.
+        (b.liNote ? '<div class="t-meta" style="margin-top:7px"><span class="status declined" title="From the LinkedIn fill\u2019s last visit">LinkedIn: ' + esc(b.liNote) + '</span></div>' : '') +
       '</div>' +
       '<div class="t-actions">' +
         '<a class="btn-ghost" href="' + esc(liPeopleUrl(b)) + '" target="_blank" rel="noopener">People ↗</a>' +
@@ -11006,6 +11371,7 @@ function gotoView(id) {
   if (id === 'shows') loadShows();
   if (id === 'sponsorships') loadSponsorships();
   if (id === 'needs') loadNeeds();
+  if (id === 'stock') loadStock();
   if (id === 'pipeline') loadPipeline();
   if (id === 'audience') loadAudience();
   if (id === 'attendees') loadAttendees();
@@ -11081,6 +11447,12 @@ function gotoView(id) {
   }, 50);
 })();
 
+// Deep link: #stock — Brands → Stock take.
+(function () {
+  if (!/^#stock/.test(location.hash || '')) return;
+  setTimeout(function () { loadStock(); }, 50);
+})();
+
 // Deep link: #operations or #operations/<id>
 (function () {
   var m = /^#operations(?:\/([^\/]+))?/.exec(location.hash || '');
@@ -11111,6 +11483,10 @@ document.getElementById('sub-tabs').addEventListener('click', function (e) {
 document.querySelectorAll('.go-card[data-goto]').forEach(function (c) {
   c.addEventListener('click', function () { gotoView(c.getAttribute('data-goto')); });
 });
+document.getElementById('go-stock').addEventListener('click', function (e) {
+  e.preventDefault();
+  gotoView('stock');
+});
 
 // Category nav items are rendered after load, so delegate from the sidebar.
 document.querySelector('.sidebar').addEventListener('click', function (e) {
@@ -11131,7 +11507,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity', 'st-lanes', 'st-others'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;

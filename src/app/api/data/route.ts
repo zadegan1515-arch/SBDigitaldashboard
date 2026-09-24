@@ -34,6 +34,9 @@ import { allShows, refreshShows, setGenreOverride, cachedShows, GENRES } from '@
 import { newBoardCode } from '@/lib/board-access'
 import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import { regionFlag } from '@/lib/region'
+import { guessCategory } from '@/lib/category-hints'
+import { readLiLog } from '@/lib/li-sweep'
+import { buildStock, bestDealStage } from '@/lib/stock'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
@@ -1118,36 +1121,8 @@ async function reconcileBrandTargets(brandId: string, perBrand = TARGET_CAP_PER_
 // Categorisation
 // ---------------------------------------------------------------
 
-// Keyword fallback. Deliberately conservative — it would rather return
-// "unresolved" and let a human decide than confidently file a brand
-// under the wrong category, because a miscategorised brand is invisible
-// (nobody browses the category it landed in looking for it).
-const CATEGORY_HINTS: Array<[RegExp, string]> = [
-  [/energy drink|seltzer water|sparkling water|hydration|electrolyte|soda|coffee|tea\b|juice/i, 'beverage'],
-  [/nicotine|pouch|vape|tobacco|zyn/i, 'nicotine'],
-  [/vodka|tequila|whiskey|beer|hard seltzer|rtd|spirits|brewing|distill/i, 'alcohol'],
-  [/snack|protein bar|jerky|chips|candy|cereal|granola/i, 'cpg'],
-  [/apparel|clothing|streetwear|sneaker|footwear|hoodie|denim/i, 'apparel'],
-  [/sportsbook|betting|dfs|parlay|casino/i, 'betting'],
-  [/bank|card|invest|trading|crypto|payments|fintech/i, 'fintech'],
-  [/dating|social app|messaging app/i, 'apps'],
-  [/skincare|grooming|deodorant|fragrance|cosmetic|beauty|haircare/i, 'beauty'],
-  [/supplement|creatine|fitness|gym|recovery|sleep|wellness|vitamin/i, 'wellness'],
-  [/pizza|burger|chicken|taco|restaurant|delivery|qsr|fast food/i, 'qsr'],
-  [/tumbler|drinkware|cooler|bottle|furniture|bedding|home/i, 'home'],
-  [/headphone|speaker|camera|charger|laptop|phone|gadget/i, 'tech'],
-  [/\bai\b|software|saas|platform|app builder/i, 'software'],
-  [/festival|concert|nightclub|dj\b|rave|edm/i, 'nightlife'],
-  [/label|studio|streaming|sports team|league|esports/i, 'entertainment'],
-]
-
-function guessCategory(name: string, hint?: string | null): string {
-  const text = `${name} ${hint ?? ''}`
-  for (const [pattern, key] of CATEGORY_HINTS) {
-    if (pattern.test(text)) return key
-  }
-  return 'unresolved'
-}
+// Keyword fallback: CATEGORY_HINTS / guessCategory in src/lib/category-hints.ts
+// (shared with the LinkedIn capture, which can create a brand).
 
 // Asks Claude to place a brand, then validates the answer against the
 // known vocabulary. An unrecognised category falls back to the keyword
@@ -2231,6 +2206,51 @@ const handlers: Record<string, Handler> = {
       if (b.passedAt) { row.passed += 1; all.passed += 1 }
     }
     return { categories: out, all }
+  },
+
+  // Brands → Stock take: the whole roster in one read — every brand,
+  // the lane it sits in (src/lib/stock.ts) and how far outreach got.
+  // Reached counts the way Results does (an invite out, or a sent
+  // email); a reply is per person, so someone who answered on LinkedIn
+  // and by email counts once. Read-only.
+  async brandStock() {
+    const [brands, emails] = await Promise.all([
+      prisma.brand.findMany({
+        select: {
+          id: true, name: true, aka: true, category: true, tier: true,
+          about: true, topProducts: true, linkedinUrl: true, externalId: true,
+          passedAt: true, doNotEmail: true,
+          _count: { select: { contacts: true, activations: true } },
+          targets: {
+            select: { id: true, status: true, sentAt: true, repliedAt: true, emailedAt: true, shelved: true },
+          },
+          deals: { select: { stage: true } },
+        },
+      }),
+      prisma.emailMessage.findMany({
+        where: { OR: [{ direction: 'out', status: 'sent' }, { direction: 'in' }] },
+        select: { direction: true, targetId: true },
+      }),
+    ])
+    const emailedIds = new Set(emails.filter(m => m.direction === 'out').map(m => m.targetId))
+    const answeredIds = new Set(emails.filter(m => m.direction === 'in').map(m => m.targetId))
+    const LI_OUT = ['sent', 'accepted', 'replied', 'converted']
+    return buildStock(brands.map(b => {
+      const ts = b.targets
+      return {
+        id: b.id, name: b.name, aka: b.aka, category: b.category, tier: b.tier,
+        about: b.about, topProducts: b.topProducts, linkedinUrl: b.linkedinUrl,
+        externalId: b.externalId, archived: !!b.passedAt, doNotEmail: b.doNotEmail,
+        people: b._count.contacts,
+        invited: ts.filter(t => t.sentAt || LI_OUT.includes(t.status)).length,
+        accepted: ts.filter(t => ['accepted', 'replied', 'converted'].includes(t.status)).length,
+        emailed: ts.filter(t => t.emailedAt || emailedIds.has(t.id)).length,
+        replied: ts.filter(t => t.repliedAt || t.status === 'replied' || t.status === 'converted' || answeredIds.has(t.id)).length,
+        queued: ts.filter(t => !t.shelved && (t.status === 'queued' || t.status === 'drafted')).length,
+        dealStage: bestDealStage(b.deals.map(d => d.stage)),
+        activations: b._count.activations,
+      }
+    }))
   },
 
   // -------- shows (read live from sb-crm) --------
@@ -5667,11 +5687,14 @@ const handlers: Record<string, Handler> = {
       },
       orderBy: { name: 'asc' },
     })
+    // What the LinkedIn fill found last time it visited each brand.
+    const liLog = await readLiLog(prisma)
     const rows = brands.map(b => ({
       id: b.id, name: b.name, category: b.category, tier: b.tier,
       linkedinUrl: b.linkedinUrl,
       // So the "Under 25" worklist can leave out brands off outreach.
       archived: !!b.passedAt, doNotEmail: b.doNotEmail,
+      liNote: liLog[b.id]?.note || null,
       contacts: b.contacts.map(c => ({
         id: c.id, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl,
         isDecisionMaker: c.isDecisionMaker,

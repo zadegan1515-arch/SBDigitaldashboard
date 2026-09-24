@@ -110,3 +110,116 @@ export function isBuyer(role: string | null | undefined, headline?: string | nul
   const h = String(headline || '')
   return GENERIC.test(r) && BUYER.test(h) && !NOT_BUYER.test(h.split(/\s*[|•·]\s*/).slice(0, 2).join(' '))
 }
+
+// -------------------------------------------------------------------
+// The unattended LinkedIn fill (Leo, Sep 2026: ~50 brands a day, saves
+// by itself, and finds the company page for brands that have none).
+// -------------------------------------------------------------------
+
+// A company name reduced to what identifies it: "Liquid I.V., Inc." and
+// "Liquid IV" are the same company; "The Coca-Cola Company" is "coca cola".
+const CORP_WORDS = /\b(?:the|inc|llc|ltd|limited|co|corp|corporation|company|usa|us|official|hq|global|international|gmbh|sa|de cv)\b/g
+export function normalizeCompany(s: string | null | undefined): string {
+  return String(s || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/&/g, ' and ')
+    .replace(/[.'’]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(CORP_WORDS, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// LinkedIn's industry line for a company that plausibly IS a brand of
+// this category. Only used to accept a near-miss name ("Casamigos
+// Tequila" for Casamigos); an exact name never needs it.
+const INDUSTRY_FITS: Record<string, RegExp> = {
+  beverage: /beverage|food|drink|consumer goods|consumer products|wellness|health|nutrition/i,
+  alcohol: /beverage|wine|spirit|brew|distill|alcohol|liquor|food/i,
+  nicotine: /tobacco|nicotine|consumer goods|consumer products/i,
+  cpg: /food|beverage|consumer goods|consumer products|snack|retail/i,
+  apparel: /apparel|fashion|retail|textile|sporting goods|luxury|footwear/i,
+  beauty: /cosmetic|beauty|personal care|consumer goods|consumer products|wellness/i,
+  wellness: /wellness|health|fitness|nutrition|supplement|pharma|consumer goods|beverage|food/i,
+  qsr: /restaurant|food|hospitality/i,
+  tech: /electronic|technology|computer|consumer goods|consumer products|appliance/i,
+  software: /software|technology|internet|information/i,
+  fintech: /financial|banking|fintech|investment|payment|insurance/i,
+  betting: /gambling|casino|gaming|sports/i,
+  apps: /internet|software|technology|online|social/i,
+  entertainment: /entertainment|media|music|sports|broadcast|film|gaming/i,
+  nightlife: /entertainment|events|music|hospitality|nightlife/i,
+  home: /furniture|home|housewares|consumer goods|consumer products|retail/i,
+  retail: /retail/i,
+  transport: /travel|transport|airline|automotive|mobility/i,
+}
+export function industryFits(category: string | null | undefined, subtitle: string | null | undefined): boolean {
+  const re = INDUSTRY_FITS[String(category || '')]
+  return !!re && re.test(String(subtitle || ''))
+}
+
+export type LiCompany = { slug: string; name: string; subtitle?: string | null }
+
+// Which search result is this brand's company page. Wrong is worse than
+// none — a wrong page fills a brand with another company's people — so:
+//   · an exact name (or "also known as") wins, the industry-fitting one
+//     if several share the name;
+//   · a near miss (one name starts with the other, "Casamigos" /
+//     "Casamigos Tequila") only among the top three results, and only
+//     when LinkedIn's industry fits the brand's category;
+//   · anything else is "unclear" and left for Leo.
+export function decideCompanyMatch(
+  brand: { name: string; aka?: string | null; category?: string | null },
+  candidates: LiCompany[],
+): { pick: LiCompany | null; reason: 'exact' | 'near' | 'unclear' | 'none' } {
+  const list = candidates.filter(c => c && c.slug && c.name)
+  if (!list.length) return { pick: null, reason: 'none' }
+  const names = [brand.name, ...String(brand.aka || '').split(/[,;]/)]
+    .map(normalizeCompany).filter(n => n.length >= 2)
+  const exact = list.filter(c => names.includes(normalizeCompany(c.name)))
+  if (exact.length === 1) return { pick: exact[0], reason: 'exact' }
+  if (exact.length > 1) {
+    const fit = exact.filter(c => industryFits(brand.category, c.subtitle))
+    if (fit.length >= 1) return { pick: fit[0], reason: 'exact' }
+    return { pick: null, reason: 'unclear' }
+  }
+  const near = list.slice(0, 3).find(c => {
+    const cn = normalizeCompany(c.name)
+    const hit = names.some(n => n.length >= 4 && (cn.startsWith(n + ' ') || n.startsWith(cn + ' ')))
+    return hit && industryFits(brand.category, c.subtitle)
+  })
+  if (near) return { pick: near, reason: 'near' }
+  return { pick: null, reason: 'unclear' }
+}
+
+// "Start with electrolyte companies": a focus word matches a brand's
+// name, "also known as", description, products or notes. Some words
+// stand for a whole shelf of brands whose descriptions may be empty.
+const FOCUS_SYNONYMS: Record<string, string[]> = {
+  electrolyte: ['electrolyte', 'hydration', 'hydrate', 'lmnt', 'liquid i.v', 'liquid iv', 'electrolit', 'pedialyte',
+    'nuun', 'dripdrop', 'drip drop', 'bodyarmor', 'body armor', 'gatorade', 'prime hydration', 'waterboy',
+    'cure hydration', 'ultima replenisher', 'skratch', 'hydrant', 'liquidiv', 'powerade', 'propel'],
+}
+FOCUS_SYNONYMS.electrolytes = FOCUS_SYNONYMS.electrolyte
+FOCUS_SYNONYMS.hydration = FOCUS_SYNONYMS.electrolyte
+
+export function focusTerms(q: string | null | undefined): string[] {
+  const out: string[] = []
+  for (const raw of String(q || '').toLowerCase().split(/[,;]/)) {
+    const w = raw.trim()
+    if (!w) continue
+    for (const t of FOCUS_SYNONYMS[w] || [w]) if (!out.includes(t)) out.push(t)
+  }
+  return out
+}
+
+export function matchesFocus(
+  b: { name?: string | null; aka?: string | null; about?: string | null; topProducts?: string | null; notes?: string | null },
+  terms: string[],
+): boolean {
+  if (!terms.length) return false
+  const text = [b.name, b.aka, b.about, b.topProducts, b.notes].filter(Boolean).join(' ').toLowerCase()
+  return terms.some(t => text.includes(t))
+}

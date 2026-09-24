@@ -31,8 +31,11 @@ import {
 } from '@/lib/su-match'
 import {
   companySlug, companyPageUrl, profileSlug, profileUrl, cleanName, personKey,
-  roleFromHeadline, isBuyer,
+  roleFromHeadline, isBuyer, decideCompanyMatch, focusTerms, matchesFocus,
+  type LiCompany,
 } from '@/lib/li-capture'
+import { readLiLog, markLiSwept, liResting } from '@/lib/li-sweep'
+import { guessCategory } from '@/lib/category-hints'
 
 const prisma = new PrismaClient()
 
@@ -184,12 +187,16 @@ async function planLinkedin(body: any) {
   const companyName = String(body.companyName || '').trim().slice(0, 120)
   const typed = String(body.brandName || '').trim().slice(0, 120)
 
-  // Which brand. A name Leo typed is a decision and wins; otherwise the
-  // company page we saved for the brand, then the page's own name
-  // (including "also known as" names).
+  // Which brand. The unattended fill names it outright (brandId); a
+  // name Leo typed is a decision and wins next; otherwise the company
+  // page we saved for the brand, then the page's own name (including
+  // "also known as" names).
   let brand: Awaited<ReturnType<typeof findBrandForCapture>> = null
-  let matchedBy: 'typed' | 'page' | 'name' | null = null
-  if (typed) {
+  let matchedBy: 'id' | 'typed' | 'page' | 'name' | null = null
+  if (body.brandId) {
+    brand = await prisma.brand.findUnique({ where: { id: String(body.brandId) } })
+    if (brand) matchedBy = 'id'
+  } else if (typed) {
     brand = await findBrandForCapture(typed, null)
     if (brand) matchedBy = 'typed'
   } else {
@@ -221,6 +228,13 @@ async function planLinkedin(body: any) {
         select: { name: true }, take: 6, orderBy: { name: 'asc' },
       })
       suggestions = hits.map(h => h.name)
+    }
+    // Leo typed a name we don't have, but this very page is saved on a
+    // brand under another name — that brand is the likeliest answer.
+    if (slug && typed) {
+      const withPage = await prisma.brand.findMany({ where: { linkedinUrl: { not: null } }, select: { name: true, linkedinUrl: true } })
+      const owner = withPage.find(b => companySlug(b.linkedinUrl) === slug)
+      if (owner && !suggestions.includes(owner.name)) suggestions.unshift(owner.name)
     }
   }
 
@@ -284,6 +298,9 @@ async function planLinkedin(body: any) {
     matchedBy,
     notFound: !brand && typed ? typed : null,
     suggestions,
+    // What "add it as a new brand" would call it: the name Leo typed,
+    // else the page's own name.
+    createName: !brand ? (typed || companyName || null) : null,
     slug,
     // The brand already has a different company page saved — a parent
     // company or a sister brand. Shown, never overwritten.
@@ -301,11 +318,43 @@ function liSummary(plan: Awaited<ReturnType<typeof planLinkedin>>) {
     matchedBy: plan.matchedBy,
     notFound: plan.notFound,
     suggestions: plan.suggestions,
+    createName: plan.createName,
     pageMismatch: plan.pageMismatch,
     cap: CONTACT_CAP_PER_BRAND,
     have: plan.have,
     room: plan.room,
     rows: plan.rows.map(r => ({ name: r.name, role: r.role, linkedinUrl: r.linkedinUrl, verdict: r.verdict, at: r.at ?? null })),
+  }
+}
+
+// A brand made from a LinkedIn page: the name Leo confirmed, the page
+// saved on it, and a category guessed from the name and LinkedIn's
+// industry line (outreach is scheduled by category, so "unresolved" is
+// better than nothing, and fixable on the brand page).
+async function createBrandFromLinkedin(name: string, slug: string | null, hint: string) {
+  const clean = name.trim().slice(0, 120)
+  if (!clean) return null
+  const existing = await findBrandForCapture(clean, null)
+  if (existing) return { brand: existing, created: false }
+  if (slug) {
+    const withPage = await prisma.brand.findMany({ where: { linkedinUrl: { not: null } } })
+    const owner = withPage.find(b => companySlug(b.linkedinUrl) === slug)
+    if (owner) return { brand: owner, created: false }
+  }
+  try {
+    const brand = await prisma.brand.create({
+      data: {
+        name: clean,
+        linkedinUrl: slug ? companyPageUrl(slug) : null,
+        source: 'linkedin',
+        category: guessCategory(clean, hint),
+      },
+    })
+    return { brand, created: true }
+  } catch {
+    // Lost a race, or the name clashes case-differently.
+    const b = await findBrandForCapture(clean, null)
+    return b ? { brand: b, created: false } : null
   }
 }
 
@@ -482,6 +531,94 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true }, { headers: cors })
   }
 
+  // -----------------------------------------------------------------
+  // The unattended LinkedIn fill. The script asks for its worklist,
+  // hands back the company-search results for brands with no page, and
+  // records each visit; saving people goes through liCapture above with
+  // the brandId, so every rule (buyers only, 25 cap, no duplicates)
+  // holds exactly as it does by hand.
+  // -----------------------------------------------------------------
+
+  // action: "liList" — every brand under the cap, off-outreach brands and
+  // resting ones left out. Brands matching `focus` ("electrolyte") come
+  // first, then emptiest first, like the SponsorUnited sweep.
+  if (body.action === 'liList') {
+    const terms = focusTerms(body.focus)
+    const log = await readLiLog(prisma)
+    const all = await prisma.brand.findMany({
+      where: { doNotEmail: false, passedAt: null },
+      select: {
+        id: true, name: true, aka: true, about: true, topProducts: true, notes: true,
+        category: true, linkedinUrl: true, _count: { select: { contacts: true } },
+      },
+    })
+    const underCap = all.filter(b => b._count.contacts < CONTACT_CAP_PER_BRAND)
+    const ignoreRest = body.ignoreRest === true
+    const resting = underCap.filter(b => liResting(log[b.id])).length
+    const items = underCap
+      .filter(b => ignoreRest || !liResting(log[b.id]))
+      .map(b => ({
+        brandId: b.id, name: b.name, aka: b.aka, category: b.category,
+        linkedinUrl: b.linkedinUrl, contacts: b._count.contacts, focus: matchesFocus(b, terms),
+      }))
+      .sort((a, b) => Number(b.focus) - Number(a.focus) || a.contacts - b.contacts || a.name.localeCompare(b.name))
+    return NextResponse.json({
+      ok: true,
+      items,
+      focusCount: items.filter(i => i.focus).length,
+      noPage: items.filter(i => !i.linkedinUrl).length,
+      resting,
+      underCap: underCap.length,
+      cap: CONTACT_CAP_PER_BRAND,
+    }, { headers: cors })
+  }
+
+  // action: "liMatched" — LinkedIn's company-search results for a brand
+  // with no page saved. The server decides (decideCompanyMatch): an exact
+  // name, or a near miss whose industry fits; anything unclear is left.
+  if (body.action === 'liMatched') {
+    const brand = await prisma.brand.findUnique({
+      where: { id: String(body.brandId || '') },
+      select: { id: true, name: true, aka: true, category: true, linkedinUrl: true },
+    })
+    if (!brand) return NextResponse.json({ ok: false, error: 'Brand not found' }, { status: 404, headers: cors })
+    if (brand.linkedinUrl) return NextResponse.json({ ok: true, outcome: 'already', linkedinUrl: brand.linkedinUrl }, { headers: cors })
+    const candidates: LiCompany[] = (Array.isArray(body.candidates) ? body.candidates : []).slice(0, 20)
+      .map((c: any) => ({
+        slug: companySlug(String(c?.url || '')) || '',
+        name: String(c?.name || '').replace(/\s+/g, ' ').trim().slice(0, 120),
+        subtitle: String(c?.subtitle || '').replace(/\s+/g, ' ').trim().slice(0, 200),
+      }))
+      .filter((c: LiCompany) => c.slug && c.name)
+    const { pick, reason } = decideCompanyMatch(brand, candidates)
+    if (!pick) return NextResponse.json({ ok: true, outcome: reason, candidates: candidates.length }, { headers: cors })
+    // Another brand already has this page: a sister brand or a duplicate.
+    // Not attached twice — the page would then match either.
+    const withPage = await prisma.brand.findMany({ where: { linkedinUrl: { not: null }, id: { not: brand.id } }, select: { name: true, linkedinUrl: true } })
+    const owner = withPage.find(b => companySlug(b.linkedinUrl) === pick.slug)
+    if (owner) return NextResponse.json({ ok: true, outcome: 'taken', by: owner.name }, { headers: cors })
+    const linkedinUrl = companyPageUrl(pick.slug)
+    await prisma.brand.update({ where: { id: brand.id }, data: { linkedinUrl } })
+    return NextResponse.json({ ok: true, outcome: 'attached', how: reason, name: pick.name, linkedinUrl }, { headers: cors })
+  }
+
+  // action: "liSwept" — one brand visited: how many people were read,
+  // how many added, and a note when something stopped it ("no clear
+  // LinkedIn page"). Drives the 30-day rest and the dashboard's note.
+  if (body.action === 'liSwept') {
+    const brandId = String(body.brandId || '')
+    if (brandId) {
+      try {
+        await markLiSwept(prisma, brandId, {
+          seen: Math.max(0, Number(body.seen) || 0),
+          added: Math.max(0, Number(body.added) || 0),
+          note: body.note ? String(body.note).slice(0, 160) : null,
+        })
+      } catch { /* non-fatal */ }
+    }
+    return NextResponse.json({ ok: true }, { headers: cors })
+  }
+
   // action: "liPreview" — what a LinkedIn People page would add, without
   // saving anything. The script shows this before Leo confirms.
   if (body.action === 'liPreview') {
@@ -493,7 +630,22 @@ export async function POST(req: NextRequest) {
   // than trusting the preview, so two tabs or a stale panel can't push a
   // brand past 25 or add someone twice.
   if (body.action === 'liCapture') {
-    const plan = await planLinkedin(body)
+    let plan = await planLinkedin(body)
+    // A brand the dashboard doesn't have yet, added from the panel — Leo
+    // pressed "Add … as a new brand", so the name is his decision (as a
+    // hand-run SponsorUnited capture may create one; the unattended fill
+    // only visits brands that exist, so it never creates any).
+    let brandCreated = false
+    if (!plan.brand && body.createIfMissing === true && plan.createName) {
+      // The page's own name is a hint too: "Casamigos" says nothing,
+      // "Casamigos Tequila" says alcohol.
+      const hint = [body.companyName, body.companyIndustry].filter(Boolean).map(String).join(' ')
+      const made = await createBrandFromLinkedin(plan.createName, plan.slug, hint)
+      if (made) {
+        brandCreated = made.created
+        plan = await planLinkedin({ ...body, brandId: made.brand.id })
+      }
+    }
     const brand = plan.brand
     if (!brand) {
       return NextResponse.json({ ok: false, error: plan.notFound ? `No brand called "${plan.notFound}" in the dashboard.` : 'Pick the dashboard brand first.', ...liSummary(plan) }, { status: 400, headers: cors })
@@ -548,7 +700,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       brand: { id: brand.id, name: brand.name },
       added, targetsCreated, targetsShelved, failed, errors,
-      have, cap: CONTACT_CAP_PER_BRAND,
+      have, cap: CONTACT_CAP_PER_BRAND, brandCreated,
       savedPage,
     }, { headers: cors })
   }
