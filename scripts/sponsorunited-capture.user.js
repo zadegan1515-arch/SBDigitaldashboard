@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — SponsorUnited Contact Capture
 // @namespace    sbagency.command-center
-// @version      4.0
+// @version      4.1
 // @description  Capture contacts from SponsorUnited into the SB Command Center, and find the profile ids of brands we cannot reach yet.
 // @match        https://pro.sponsorunited.com/*
 // @run-at       document-idle
@@ -399,7 +399,10 @@
     // Not always an <input>: their newer pages render the banner search
     // as a combobox, and some overlays use a contenteditable div.
     var inputs = [].slice.call(document.querySelectorAll(
-      'input[type="search"], input[type="text"], input:not([type]), ' +
+      // textarea included on purpose: SponsorUnited's banner search is
+      // a multi-line box, not an <input>, so every selector list that
+      // only named inputs looked straight past the one box that matters.
+      'input[type="search"], input[type="text"], input:not([type]), textarea, ' +
       '[role="searchbox"], [role="combobox"] input, [contenteditable="true"]'));
     for (var i = 0; i < inputs.length; i++) {
       var el = inputs[i];
@@ -455,7 +458,9 @@
 
   // What the page has instead, so a screenshot of the message says why.
   function describeInputs() {
-    var inputs = [].slice.call(document.querySelectorAll('input'));
+    // Same net as the finder, or the diagnostic reports that there is
+    // nothing here while the thing we want is sitting on the page.
+    var inputs = [].slice.call(document.querySelectorAll('input, textarea, [contenteditable="true"]'));
     if (!inputs.length) return 'No text boxes on this page at all.';
     return 'Text boxes seen: ' + inputs.slice(0, 6).map(function (el) {
       var r = el.getBoundingClientRect();

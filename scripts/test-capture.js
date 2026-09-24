@@ -121,6 +121,17 @@ const site = http.createServer((req, res) => {
   if (req.url.startsWith('/hidden')) return res.end(hiddenSearchPage());
   // No banner box and nothing that looks like search: the case where
   // the lookup genuinely cannot run here.
+  if (req.url.startsWith('/textarea')) {
+    return res.end(`<!doctype html><html><body style="margin:0">
+      <header style="height:56px;background:#111"></header>
+      <main style="padding:40px;text-align:center">
+        <h1>Surface quick insights now.</h1>
+        <textarea id="banner" style="width:860px;height:145px"
+          placeholder="SUrface deals, contacts, profiles and more"></textarea>
+        <input type="file" style="width:0">
+        ${[1, 2, 3, 4, 5].map(() => '<input type="checkbox">').join('')}
+      </main></body></html>`);
+  }
   if (req.url.startsWith('/nobox')) {
     return res.end(`<!doctype html><html><body style="margin:0">
       <header style="height:56px;background:#111"></header>
@@ -301,6 +312,29 @@ function chromeAt() {
   }
   await fallCtx.close();
   console.log('no search box: the lookup does not silently become a capture');
+
+  // 8. their real dashboard: the search is a TEXTAREA, well below the
+  //    banner, surrounded by checkboxes and a file input. Every
+  //    selector list that only named <input> walked straight past it,
+  //    which is what "Could not reach the search" was reporting.
+  ALL_RESTING = false;
+  const taCtx = await browser.newContext();
+  const ta = await taCtx.newPage();
+  ta.on('pageerror', e => fail('page error (textarea search): ' + e.message));
+  ta.on('dialog', d => d.accept('Red Bull'));
+  await ta.addInitScript({ content: SCRIPT });
+  await ta.goto('http://127.0.0.1:4612/textarea');
+  await ta.waitForTimeout(1200);
+  await ta.click('#sbpill');
+  await ta.waitForTimeout(300);
+  await ta.click('#sbtest');
+  await ta.waitForTimeout(3000);
+  const typedTa = await ta.inputValue('#banner').catch(() => '');
+  if (typedTa !== 'Red Bull') {
+    fail('the textarea search box was not found or not typed into: ' + JSON.stringify(typedTa));
+  }
+  await taCtx.close();
+  console.log('a textarea search box is found and used');
 
   console.log('SU SMOKE OK');
   await browser.close();
