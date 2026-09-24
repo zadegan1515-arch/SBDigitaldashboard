@@ -1,14 +1,16 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.0
+// @version      1.2
 // @description  On a brand's LinkedIn People page, send its marketing and partnership people to the SB Command Center. One click, one page — nothing browses on its own.
 // @match        https://www.linkedin.com/*
+// @match        https://linkedin.com/*
 // @run-at       document-idle
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_deleteValue
+// @grant        GM_registerMenuCommand
 // @connect      sb-digitaldashboard.vercel.app
 // @updateURL    https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js
 // @downloadURL  https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js
@@ -35,8 +37,12 @@
 // LinkedIn doesn't show them, and these people go to the LinkedIn queue.
 //
 // TO INSTALL (once): Tampermonkey -> Dashboard -> + (new script) ->
-// paste this in -> save. Open any company page on LinkedIn, click the SB
-// pill, paste the ingest token. It then updates itself from GitHub.
+// select ALL of Tampermonkey's sample text and paste over it -> save.
+// (Pasted underneath the sample, Tampermonkey reads the sample's header
+// instead of this one and the script never runs on LinkedIn.) (Opening the raw GitHub link does not always
+// bring up Tampermonkey's install page — pasting always works.) The SB
+// pill then shows on every LinkedIn page; click it, paste the ingest
+// token. It updates itself from GitHub after that.
 //
 // The token is NOT in this file and must never be put in it. It is the
 // same value as INGEST_TOKEN in Vercel. It is kept in Tampermonkey's own
@@ -50,6 +56,13 @@
   var INGEST_URL = 'https://sb-digitaldashboard.vercel.app/api/ingest';
   var DASH_URL = 'https://sb-digitaldashboard.vercel.app/app.html';
   var TOKEN_KEY = 'sbIngestToken';
+  var VERSION = '1.2';
+
+  // The header's @grant lines are what give this script Tampermonkey's
+  // storage and requests. A paste that lost the header (the usual cause:
+  // pasted under Tampermonkey's sample script) runs without them — say
+  // so instead of failing quietly.
+  var HAS_GM = typeof GM_xmlhttpRequest === 'function' && typeof GM_getValue === 'function';
 
   // One press reads at most this much. A big company's People page never
   // ends; the keyword chips narrow it instead of scrolling forever.
@@ -91,6 +104,32 @@
         ontimeout: function () { reject(new Error('The dashboard took too long to answer.')); },
       });
     });
+  }
+
+  // If LinkedIn enforces Trusted Types, a plain innerHTML write throws
+  // and the panel never opens — the "click and nothing happens" case. A
+  // policy of our own keeps it working. Everything passed in is built
+  // here from escaped values.
+  var ttPolicy = null;
+  try {
+    if (window.trustedTypes && window.trustedTypes.createPolicy) {
+      ttPolicy = window.trustedTypes.createPolicy('sb-li-capture', { createHTML: function (s) { return s; } });
+    }
+  } catch (e) { ttPolicy = null; }
+  function setHTML(el, html) {
+    el.innerHTML = ttPolicy ? ttPolicy.createHTML(html) : html;
+  }
+
+  // A click that fails says so, instead of doing nothing.
+  function report(e) {
+    var msg = (e && e.message) || String(e);
+    try { showError(msg); }
+    catch (e2) { alert('SB LinkedIn capture: ' + msg); }
+  }
+  function guard(fn) {
+    return function () {
+      try { return fn.apply(this, arguments); } catch (e) { report(e); }
+    };
   }
 
   function esc(s) {
@@ -256,7 +295,7 @@
 
   var pill, panel, busy = false, lastRead = null;
 
-  var PANEL_CSS = 'position:fixed;bottom:16px;right:16px;z-index:2147483647;background:#fff;color:#111;border:1px solid #d9d9d6;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:14px 16px;font:13px/1.45 system-ui,-apple-system,sans-serif;width:340px;max-height:80vh;overflow:auto;text-align:left';
+  var PANEL_CSS = 'all:initial;display:block;box-sizing:border-box;position:fixed;bottom:64px;left:16px;z-index:2147483647;background:#fff;color:#111;border:1px solid #d9d9d6;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:14px 16px;font:13px/1.45 system-ui,-apple-system,sans-serif;width:340px;max-height:80vh;overflow:auto;text-align:left';
   var BTN = 'width:100%;background:#111;color:#fff;border:0;border-radius:7px;padding:9px 12px;cursor:pointer;font-weight:600;font:600 13px system-ui';
   var BTN2 = 'width:100%;background:#fff;color:#111;border:1px solid #ccc;border-radius:7px;padding:8px 12px;cursor:pointer;font:13px system-ui';
 
@@ -266,7 +305,9 @@
     panel.className = 'sb-li-ui';
     panel.id = 'sbli-panel';
     panel.style.cssText = PANEL_CSS;
-    document.body.appendChild(panel);
+    // On <html>, not <body>: a transform or containment LinkedIn puts on
+    // <body> would pin a fixed element to it, possibly off screen.
+    document.documentElement.appendChild(panel);
     return panel;
   }
   function closePanel() { if (panel) { panel.remove(); panel = null; } }
@@ -303,28 +344,28 @@
 
   function openSetup() {
     var p = freshPanel();
-    p.innerHTML = head('Connect to the SB dashboard') +
+    setHTML(p, head('Connect to the SB dashboard') +
       '<div style="color:#555;font-size:12px;margin-bottom:10px">Paste the ingest token — the same value as INGEST_TOKEN in Vercel. Tampermonkey keeps it; LinkedIn can\'t read it; it only goes to the dashboard.</div>' +
       '<input id="sblitok" type="password" autocomplete="off" spellcheck="false" placeholder="Ingest token" style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #ccc;border-radius:6px;margin-bottom:10px;font:13px system-ui">' +
       '<div style="display:flex;gap:8px;align-items:center">' +
         '<button id="sblitoksave" style="background:#111;color:#fff;border:0;border-radius:7px;padding:7px 12px;cursor:pointer;font-weight:600">Save</button>' +
         '<span id="sblitokmsg" style="font-size:11.5px;flex:1"></span>' +
-      '</div>';
+      '</div>');
     wireClose(p);
     var save = function () {
       var v = (p.querySelector('#sblitok').value || '').trim();
       var msg = p.querySelector('#sblitokmsg');
       if (!v) { msg.textContent = 'Paste the token first.'; return; }
       saveToken(v);
-      msg.innerHTML = '<span style="color:#137333">Checking…</span>';
+      setHTML(msg, '<span style="color:#137333">Checking…</span>');
       // An empty preview: proves the token now, saves nothing.
       post({ action: 'liPreview', rows: [] }).then(function (j) {
         if (j && j.ok) { openMenu(); return; }
         forgetToken();
-        msg.innerHTML = '<span style="color:#b00">' + esc((j && j.error) || 'The dashboard rejected that token.') + '</span>';
+        setHTML(msg, '<span style="color:#b00">' + esc((j && j.error) || 'The dashboard rejected that token.') + '</span>');
       }).catch(function (e) {
         forgetToken();
-        msg.innerHTML = '<span style="color:#b00">' + esc(e.message) + '</span>';
+        setHTML(msg, '<span style="color:#b00">' + esc(e.message) + '</span>');
       });
     };
     p.querySelector('#sblitoksave').onclick = save;
@@ -332,27 +373,52 @@
   }
 
   function openMenu() {
+    if (!HAS_GM) return openBroken();
     if (!token()) return openSetup();
     if (busy) return;
+    if (!companyPath()) return openElsewhere();
     if (onPeoplePage()) return readPage();
     var p = freshPanel();
-    p.innerHTML = head(companyName() || 'LinkedIn') +
+    setHTML(p, head(companyName() || 'LinkedIn') +
       '<div style="color:#555;margin-bottom:10px">This reads a company\'s <b>People</b> tab. Open it, then press the SB pill again.</div>' +
       '<button id="sblipeople" style="' + BTN + '">Open the People tab</button>' +
-      keywordChips() + tokenLink();
+      keywordChips() + tokenLink());
     wireClose(p);
     wireToken(p);
     p.querySelector('#sblipeople').onclick = function () { location.href = companyBase() + 'people/'; };
+  }
+
+  function openBroken() {
+    var p = freshPanel();
+    setHTML(p, head('Reinstall this script') +
+      '<div style="color:#555;margin-bottom:8px">Tampermonkey is running this script without its settings lines, so it can\'t reach the dashboard. That happens when it was pasted <b>under</b> Tampermonkey\'s sample script.</div>' +
+      '<div style="color:#555">Tampermonkey → Dashboard → open this script → select everything (Ctrl/Cmd+A) → paste the script from GitHub over it → save.</div>');
+    wireClose(p);
+  }
+
+  // The pill shows on every LinkedIn page, so a working install is
+  // visible at once. Off a company page it only says where to go.
+  function openElsewhere() {
+    var p = freshPanel();
+    var search = /\/search\/results\/companies/.test(location.pathname);
+    setHTML(p, head('SB LinkedIn capture') +
+      (search
+        ? '<div style="color:#555;margin-bottom:8px">Click the brand\'s company in these results, then its <b>People</b> tab, then this pill again.</div>'
+        : '<div style="color:#555;margin-bottom:8px">This works on a brand\'s <b>company page</b> on LinkedIn. The easy way in: the dashboard\'s <b>Under 25</b> list, then <b>People ↗</b> on a brand.</div>') +
+      '<a href="' + esc(DASH_URL + '#people') + '" target="_blank" rel="noopener" style="display:block;' + BTN2 + ';text-align:center;text-decoration:none;box-sizing:border-box">Open the Under 25 list ↗</a>' +
+      tokenLink());
+    wireClose(p);
+    wireToken(p);
   }
 
   function readPage() {
     busy = true;
     var halt = { stopped: false };
     var p = freshPanel();
-    p.innerHTML = head('Reading this page') +
+    setHTML(p, head('Reading this page') +
       '<div id="sbliprog" style="color:#555;margin-bottom:10px">' + count() + ' people on screen…</div>' +
       '<div style="color:#999;font-size:11px;margin-bottom:10px">Scrolling this one page, with pauses, up to ' + MAX_PEOPLE + ' people. Nothing is saved yet.</div>' +
-      '<button id="sblistop" style="' + BTN2 + '">Stop and use what\'s here</button>';
+      '<button id="sblistop" style="' + BTN2 + '">Stop and use what\'s here</button>');
     wireClose(p);
     p.querySelector('#sblistop').onclick = function () { halt.stopped = true; };
     expand(function (n) {
@@ -383,8 +449,9 @@
   }
 
   function showError(msg) {
+    busy = false;
     var p = freshPanel();
-    p.innerHTML = head('Something went wrong') + '<div style="color:#b00">' + esc(msg) + '</div>' + tokenLink();
+    setHTML(p, head('Something went wrong') + '<div style="color:#b00">' + esc(msg) + '</div>' + tokenLink());
     wireClose(p);
     wireToken(p);
   }
@@ -420,7 +487,7 @@
             }).join('') + '</div>'
           : '');
     }
-    p.innerHTML = head(lastRead.companyName || 'LinkedIn') + brandLine +
+    setHTML(p, head(lastRead.companyName || 'LinkedIn') + brandLine +
       '<div style="display:flex;gap:6px;margin:6px 0 4px">' +
         '<input id="sblibrand" list="" value="' + esc(typed || (j.brand ? j.brand.name : '')) + '" placeholder="Dashboard brand name" ' +
           'style="flex:1;min-width:0;padding:6px 8px;border:1px solid #ccc;border-radius:6px;font:12.5px system-ui">' +
@@ -437,7 +504,7 @@
             (adds.length ? 'Add ' + adds.length + ' to ' + esc(j.brand.name) : 'Nobody new to add') + '</button>'
         : '') +
       '<div style="color:#999;font-size:11px;margin-top:8px">No emails — LinkedIn doesn\'t show them. New people join the LinkedIn queue; it keeps the best 4 per brand in play.</div>' +
-      keywordChips() + tokenLink();
+      keywordChips() + tokenLink());
     wireClose(p);
     wireToken(p);
     var box = p.querySelector('#sblibrand');
@@ -464,44 +531,52 @@
     }).then(function (j) {
       if (!j || !j.ok) return showError((j && j.error) || 'Nothing was saved.');
       var p = freshPanel();
-      p.innerHTML = head('Saved') +
+      setHTML(p, head('Saved') +
         '<div style="margin-bottom:6px"><b>' + j.added + '</b> added to <b>' + esc(j.brand.name) + '</b>. It now has ' + j.have + ' of ' + j.cap + ' people on file.</div>' +
         (j.targetsShelved ? '<div style="font-size:12px;color:#555">' + j.targetsShelved + ' parked on the brand page — the queue keeps the best 4 per brand in play.</div>' : '') +
         (j.savedPage ? '<div style="font-size:12px;color:#555">This page is now saved as the brand\'s LinkedIn page, so next time it matches by itself.</div>' : '') +
         (j.failed ? '<div style="font-size:12px;color:#b00">' + j.failed + ' could not be saved: ' + esc((j.errors || []).join('; ')) + '</div>' : '') +
         '<a href="' + esc(DASH_URL + '#brand/' + j.brand.id) + '" target="_blank" rel="noopener" style="display:block;margin-top:10px;' + BTN2 + ';text-align:center;text-decoration:none;box-sizing:border-box">Open the brand in the dashboard ↗</a>' +
         '<div style="color:#999;font-size:11px;margin-top:8px">Still short? Try a keyword below, then press the SB pill again.</div>' +
-        keywordChips();
+        keywordChips());
       wireClose(p);
     }).catch(function (e) { showError(e.message); });
   }
 
+  // Bottom-left: LinkedIn's Messaging bar sits bottom-right and would
+  // cover it. `all:initial` keeps LinkedIn's own button styles off it.
   function ensurePill() {
-    if (pill || !document.body) return;
+    if ((pill && pill.isConnected) || !document.documentElement) return;
     pill = document.createElement('button');
     pill.id = 'sblipill';
     pill.className = 'sb-li-ui';
     pill.textContent = 'SB ⬇ People';
-    pill.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:2147483646;background:#111;color:#fff;border:0;border-radius:999px;padding:11px 16px;font:600 13px system-ui,-apple-system,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.28);cursor:pointer';
-    pill.onclick = openMenu;
-    document.body.appendChild(pill);
+    pill.title = 'SB LinkedIn capture ' + VERSION;
+    pill.style.cssText = 'all:initial;display:block;position:fixed;bottom:16px;left:16px;z-index:2147483646;background:#111;color:#fff;border:0;border-radius:999px;padding:11px 16px;font:600 13px system-ui,-apple-system,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.28);cursor:pointer';
+    pill.onclick = guard(openMenu);
+    document.documentElement.appendChild(pill);
   }
 
   // LinkedIn is a single-page app: moving between a company's tabs, or
-  // to someone's profile, never reloads the page. So the pill follows
-  // the address on a timer — shown on company pages, gone elsewhere.
+  // to someone's profile, never reloads the page. So the panel follows
+  // the address on a timer, and the pill is put back if LinkedIn's own
+  // rendering ever removes it.
   var lastPath = '';
   function tick() {
-    var here = !!companyPath();
-    if (here) ensurePill();
-    if (pill) pill.style.display = here ? 'block' : 'none';
+    ensurePill();
     if (location.pathname !== lastPath) {
       // A different page: whatever the panel said is about the old one.
       if (lastPath && !busy) { closePanel(); lastRead = null; }
       lastPath = location.pathname;
     }
-    if (!here && panel && !busy) closePanel();
   }
+  // A second way in, from the Tampermonkey icon's menu — works even if
+  // something on the page hides the pill.
+  try {
+    if (typeof GM_registerMenuCommand === 'function') GM_registerMenuCommand('Open the SB capture panel', guard(openMenu));
+  } catch (e) {}
+  try { console.info('[SB] LinkedIn capture ' + VERSION + ' running' + (HAS_GM ? '' : ' WITHOUT its @grant lines — reinstall')); } catch (e) {}
+
   tick();
   setInterval(tick, 1500);
 })();

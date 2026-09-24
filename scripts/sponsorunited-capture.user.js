@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — SponsorUnited Contact Capture
 // @namespace    sbagency.command-center
-// @version      4.3
+// @version      4.4
 // @description  Capture contacts from SponsorUnited into the SB Command Center, and find the profile ids of brands we cannot reach yet.
 // @match        https://pro.sponsorunited.com/*
 // @run-at       document-idle
@@ -380,6 +380,13 @@
   //     the server judge each result.
   // -------------------------------------------------------------
 
+  // Keep in step with @version above; the menu shows it, so "which
+  // version are you on" is one look. scripts/test-capture.js checks.
+  var SCRIPT_VERSION = '4.4';
+  // Sent on every lookup call: this copy reads only what the search
+  // brings up. The dashboard turns away lookups without it, because
+  // copies before 4.2 read the page's own links as results.
+  var LOOKUP_READER = 2;
   var SEARCH_SETTLE_MS = 500;    // let the autocomplete catch up
   var SEARCH_WAIT_MS = 9000;     // give slow results this long
   var MATCH_GAP_MS = 3500;       // between brands in a batch run
@@ -626,7 +633,7 @@
   }
   function beginMatchSweep(thenFill, auto) {
     renderMatchPanel(null, 'Asking the dashboard which brands are missing a profile…');
-    post({ token: token(), action: 'needProfile', limit: 300 }).then(function (j) {
+    post({ token: token(), action: 'needProfile', limit: 300, reader: LOOKUP_READER }).then(function (j) {
       if (!j || !j.ok) throw new Error((j && j.error) || 'Could not get the list');
       if (!j.items.length) {
         saveMatch(null);
@@ -669,7 +676,7 @@
     runSearch(item.name).then(function (r) {
       if (r.error) { job.failed += 1; return nextMatch(job); }
       return post({
-        token: token(), action: 'matched',
+        token: token(), action: 'matched', reader: LOOKUP_READER,
         brandId: item.brandId, candidates: r.results || [],
       }).then(function (res) {
         // Only 'ambiguous' leaves a question on the dashboard. 'none'
@@ -832,7 +839,7 @@
   function answerSearch(job) {
     runSearch(job.q).then(function (r) {
       post({
-        token: token(), action: 'searchResults',
+        token: token(), action: 'searchResults', reader: LOOKUP_READER,
         id: job.id, results: r.results || [], error: r.error || null,
       });
     });
@@ -992,7 +999,9 @@
         '<input type="checkbox" id="sbauto"' + (autoOn() ? ' checked' : '') + ' style="margin-top:2px">' +
         '<span>Fill by itself when I\'m not using this tab<br><span style="color:#999">Starts after two idle minutes, waits half an hour between runs, and stops the moment you touch the page.</span></span>' +
       '</label>' +
-      '<div style="margin-top:8px"><a href="#" id="sbkey" style="color:#999;font-size:11px">Change the ingest token</a></div>';
+      '<div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center">' +
+        '<a href="#" id="sbkey" style="color:#999;font-size:11px">Change the ingest token</a>' +
+        '<span id="sbver" style="color:#bbb;font-size:11px">v' + SCRIPT_VERSION + '</span></div>';
     p.querySelector('#sbx').onclick = closePanel;
     if (here) p.querySelector('#sbone').onclick = openPanel;
     // "thin" = under the dashboard's per-brand cap of 25. It used to be

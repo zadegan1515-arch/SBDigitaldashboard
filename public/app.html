@@ -1110,8 +1110,8 @@
       </div>
       <div class="hint" id="li-script-hint" style="margin-top:10px;display:none">
         People \u2197 opens a brand's LinkedIn People tab. With the
-        <a href="https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js" target="_blank" rel="noopener">LinkedIn capture script</a>
-        in Tampermonkey (Leo's LinkedIn, not Zach's), press the SB pill there: it reads that page, shows who it found, and adds the marketing and partnership people when you say so.
+        <a href="https://github.com/zadegan1515-arch/SBDigitaldashboard/blob/main/scripts/linkedin-capture.user.js" target="_blank" rel="noopener">LinkedIn capture script</a>
+        in Tampermonkey (copy it there, then Tampermonkey \u2192 + \u2192 paste \u2192 save; on Leo's LinkedIn, not Zach's), press the SB pill there: it reads that page, shows who it found, and adds the marketing and partnership people when you say so.
       </div>
       <div id="li-list" style="margin-top:14px"></div>
     </section>
@@ -10605,6 +10605,19 @@ function gotoView(id) {
 (function () {
   if (!/^#board/.test(location.hash || '')) return;
   setTimeout(function () { loadBoard(); }, 50);
+})();
+
+// Deep link: #people — Outreach → People on the "Under 25" worklist
+// (the LinkedIn capture script's pill links here).
+(function () {
+  if (!/^#people/.test(location.hash || '')) return;
+  setTimeout(function () {
+    LI_FILTER = 'thin';
+    document.querySelectorAll('#linkedin .chip[data-lif]').forEach(function (c) {
+      c.classList.toggle('active', c.getAttribute('data-lif') === 'thin');
+    });
+    loadLinkedin();
+  }, 50);
 })();
 
 // Deep link: #operations or #operations/<id>

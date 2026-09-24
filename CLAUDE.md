@@ -85,7 +85,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (`needProfile` → `matched`, and the Brands → Find search) reads only profile links that appear
   after typing into their search (the dashboard's own cards are not results), first line = name,
   Property results dropped; `node scripts/test-capture.js` covers it. Proposals from script ≤4.1
-  have no `v` and stay hidden (`PROPOSAL_VERSION`). The review list (Brands → "Which SponsorUnited
+  have no `v` and stay hidden (`PROPOSAL_VERSION`). Lookup calls must send `reader: 2`
+  (`LOOKUP_READER`, script ≥4.4); older copies get a 426 "out of date — Check for userscript
+  updates". The SB menu shows the version (`SCRIPT_VERSION`, keep = `@version`). The review list (Brands → "Which SponsorUnited
   page is theirs?") only shows brands with something to pick: a search with no results answers
   `none` and parks nothing. **None of these** remembers the pages turned down per brand (Setting
   `suRejected`, `candidatesToOffer`) so a later lookup can't offer them again;
@@ -101,7 +103,14 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `liCapture` on "Add". Brand match: typed name → saved `Brand.linkedinUrl` slug → page name/aka;
   never creates a brand; saves the page fill-if-empty unless another brand has it. Buyer rules +
   headline→title in `src/lib/li-capture.ts` (`node scripts/test-li-capture.mjs`); script tested by
-  `scripts/test-li-script.js` (fake People page). Worklist: Outreach → People → "Under 25".
+  `scripts/test-li-script.js` (fake People page). Worklist: Outreach → People → "Under 25"
+  (deep link `app.html#people`). Install by **paste** (Tampermonkey → + → paste): opening the raw
+  GitHub link doesn't bring up the install page for Leo; the paste must replace Tampermonkey's
+  sample script, or its header wins and the script never runs on LinkedIn (a copy running without
+  its @grant lines says "Reinstall"). The pill shows on every LinkedIn page, **bottom-left** (the
+  Messaging bar owns bottom-right), on `<html>` with `all:initial`; the Tampermonkey icon's menu
+  has "Open the SB capture panel" as a second way in. Off a company page it only says where to go; panel HTML goes through a Trusted Types policy
+  (`setHTML`) and clicks are wrapped (`guard`) so a failure shows a message, never nothing.
 - `src/lib/email.ts` — outreach: drafting, cap/ramp (`roomToday`), sending via Gmail API, replies, warmup stats, signature (hosted images, LinkedIn/IG as text links).
 - `src/lib/google.ts` — OAuth (gmail / drive / ops grants), Gmail read+send, Drive/Sheets/Docs create.
 - `src/lib/shows.ts` — **the show list** for the Shows tab and the public sponsor page. Reads **only

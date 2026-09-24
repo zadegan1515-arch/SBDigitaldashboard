@@ -5,7 +5,8 @@
 // LinkedIn's own card markup, and a fake dashboard that records what the
 // script sends.
 //
-//   1. The pill shows on a company page and nowhere else.
+//   1. The pill shows on every LinkedIn page, so a working install is
+//      visible at once; off a company page it only says where to go.
 //   2. One press scrolls that page, clicks "Show more results", and
 //      reads every person — without the header's own "Me" link, without
 //      "LinkedIn Member" cards, and without LinkedIn's furniture ("View
@@ -14,6 +15,11 @@
 //      on its own.
 //   4. The token goes in the request body and never into LinkedIn's
 //      localStorage.
+//   5. It still opens on a page that enforces Trusted Types, where a
+//      plain innerHTML write throws and the click would do nothing.
+//   6. The pill sits bottom-left, clear of LinkedIn's Messaging bar; the
+//      Tampermonkey menu opens the same panel; and a copy running without
+//      its @grant lines (pasted under Tampermonkey's sample) says so.
 //
 // Run: node scripts/test-li-script.js   (needs playwright; ~10s)
 // If playwright is only installed globally:
@@ -104,6 +110,11 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  // A page that enforces Trusted Types, as LinkedIn may.
+  if (/^\/company\/tt-brand\/people\/?/.test(req.url)) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "require-trusted-types-for 'script'" });
+    return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">TT Brand</h1><ul>' + FIRST + '</ul></main></body></html>');
+  }
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   if (/^\/company\/liquid-death\/people\/?/.test(req.url)) return res.end(page(true));
   if (/^\/company\/liquid-death\/?$/.test(req.url)) return res.end(page(false));
@@ -126,6 +137,8 @@ const GM_SHIM = `
     window.GM_getValue = function (k, d) { return k in store ? store[k] : d; };
     window.GM_setValue = function (k, v) { store[k] = v; };
     window.GM_deleteValue = function (k) { delete store[k]; };
+    window.__sbMenu = [];
+    window.GM_registerMenuCommand = function (name, fn) { window.__sbMenu.push({ name: name, fn: fn }); };
     window.GM_xmlhttpRequest = function (o) {
       fetch(o.url, { method: o.method, headers: o.headers, body: o.data })
         .then(function (r) { return r.text().then(function (t) { o.onload({ status: r.status, responseText: t }); }); })
@@ -147,13 +160,30 @@ const GM_SHIM = `
   const ok = (name) => { n++; console.log('  ok — ' + name); };
 
   try {
-    // 1. Pill only on company pages.
+    // 1. Pill on every page; off a company page it only explains.
     await load('/feed/');
-    await pageObj.waitForTimeout(300);
-    assert.equal(await pageObj.locator('#sblipill').count() ? await pageObj.locator('#sblipill').isVisible() : false, false);
+    await pageObj.waitForSelector('#sblipill', { state: 'visible' });
+    await pageObj.click('#sblipill');
+    await pageObj.waitForFunction(() => /company page/.test(document.getElementById('sbli-panel').innerText));
+    assert.match(await pageObj.getAttribute('#sbli-panel a[href*="#people"]', 'href'), /app\.html#people$/);
+    assert.equal(sent.length, 0);
+    assert.match(pageObj.url(), /\/feed\/$/);
+    ok('pill shows on the feed too, and there it only says where to go');
+    const box = await pageObj.locator('#sblipill').boundingBox();
+    const vw = pageObj.viewportSize().width;
+    assert.ok(box.x < vw / 2, 'pill is on the left, clear of Messaging (x=' + box.x + ')');
+    ok('pill sits bottom-left, clear of LinkedIn\'s Messaging bar');
     await load('/company/liquid-death/');
     await pageObj.waitForSelector('#sblipill', { state: 'visible' });
-    ok('pill shows on a company page, not the feed');
+    ok('pill shows on a company page');
+
+    // The Tampermonkey menu entry opens the same panel.
+    const menu = await pageObj.evaluate(() => window.__sbMenu.map(m => m.name));
+    assert.deepEqual(menu, ['Open the SB capture panel']);
+    await pageObj.evaluate(() => window.__sbMenu[0].fn());
+    await pageObj.waitForSelector('#sblipeople');
+    await pageObj.evaluate(() => document.getElementById('sbli-panel').remove());
+    ok('the Tampermonkey menu opens the panel too');
 
     // Off the People tab it offers to open it and does nothing else.
     await pageObj.click('#sblipill');
@@ -211,6 +241,30 @@ const GM_SHIM = `
     const ls = await pageObj.evaluate(() => JSON.stringify(localStorage));
     assert.ok(!/test-token/.test(ls), 'token must not be in LinkedIn localStorage');
     ok('token travels in the request and stays out of LinkedIn\'s storage');
+
+    // 5. Trusted Types enforced. addInitScript runs outside the page's
+    // CSP, the way Tampermonkey injects.
+    const tt = await browser.newPage();
+    const ttErrors = [];
+    tt.on('pageerror', e => ttErrors.push(e.message));
+    await tt.addInitScript(GM_SHIM + '\n' + SCRIPT);
+    await tt.goto('http://127.0.0.1:4622/company/tt-brand/people/');
+    const enforced = await tt.evaluate(() => { try { document.createElement('div').innerHTML = '<b>x</b>'; return false; } catch (e) { return true; } });
+    assert.equal(enforced, true, 'the test page must really enforce Trusted Types');
+    await tt.waitForSelector('#sblipill', { state: 'visible' });
+    await tt.click('#sblipill');
+    await tt.waitForSelector('#sbliadd', { timeout: 20000 });
+    assert.deepEqual(ttErrors, []);
+    ok('opens and reads on a page that enforces Trusted Types');
+
+    // 6. No @grant lines: runs, shows the pill, says to reinstall.
+    const bare = await browser.newPage();
+    await bare.goto('http://127.0.0.1:4622/company/liquid-death/people/');
+    await bare.addScriptTag({ content: SCRIPT });
+    await bare.waitForSelector('#sblipill', { state: 'visible' });
+    await bare.click('#sblipill');
+    await bare.waitForFunction(() => /Reinstall/.test(document.getElementById('sbli-panel').innerText));
+    ok('a copy without its @grant lines says to reinstall');
 
     console.log(n + ' checks passed');
   } catch (e) {

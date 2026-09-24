@@ -60,6 +60,11 @@ const api = http.createServer((req, res) => {
     const j = body ? JSON.parse(body) : {};
     calls.push(j);
     res.writeHead(200, Object.assign({ 'content-type': 'application/json' }, CORS));
+    // Like the real dashboard: lookups only from a script that reads the
+    // search itself, so every lookup case below also proves it says so.
+    if (['needProfile', 'matched', 'searchResults'].indexOf(j.action) !== -1 && j.reader !== 2) {
+      return res.end(JSON.stringify({ ok: false, error: 'This copy of the SB script is out of date.' }));
+    }
     if (j.action === 'needProfile') {
       return res.end(JSON.stringify({ ok: true, items: NEED_ITEMS || [{ brandId: 'b1', name: 'Yerba Madre', aka: null, contacts: 2 }] }));
     }
@@ -441,12 +446,28 @@ function chromeAt() {
   while (got().length < 3 && Date.now() - t0 < 60000) await bp.waitForTimeout(1000);
   const ids = id => ((got().find(c => c.brandId === id) || {}).candidates || []).map(c => c.externalId + ':' + c.name).join(', ');
   if (got().length < 3) fail('the lookup searched ' + got().length + ' of 3 brands');
+  if (got().some(c => c.reader !== 2)) fail('a matched call did not say which reader it uses');
   if (ids('bv') !== 'VELO1:Velo, VELOC:Velo Charities') fail('Velo got: ' + ids('bv'));
   if (ids('bh') !== '') fail('Henkel (no results) got: ' + ids('bh'));
   if (ids('bg') !== 'GC1:Good Culture') fail('Good Culture got: ' + ids('bg'));
   await batchCtx.close();
   NEED_ITEMS = null;
   console.log('batch lookup: each brand gets its own results, an empty search gets none');
+
+  // 11. the menu names the version Tampermonkey installed, and it is the
+  //     one in the header — the number Leo reads out when asked.
+  const header = (SCRIPT.match(/@version\s+(\S+)/) || [])[1];
+  const verCtx = await browser.newContext();
+  const vp = await verCtx.newPage();
+  await vp.addInitScript({ content: SCRIPT });
+  await vp.goto('http://127.0.0.1:4612/');
+  await vp.waitForTimeout(1200);
+  await vp.click('#sbpill');
+  await vp.waitForTimeout(300);
+  const shown = await vp.evaluate(() => (document.getElementById('sbver') || {}).textContent || '');
+  if (shown !== 'v' + header) fail('the menu shows ' + JSON.stringify(shown) + ' but the header says ' + header);
+  await verCtx.close();
+  console.log('menu shows v' + header + ', same as the header');
 
   console.log('SU SMOKE OK');
   await browser.close();
