@@ -805,14 +805,14 @@ async function readHandTemplate(kind: 'email' | 'dm' = 'email') {
 // On Zach's list: accepted the invite or answered on LinkedIn, and the
 // follow-through isn't finished. It is finished when a call is booked or
 // someone marks it "Not needed". An email is a step on the way (email
-// first, then the call), not the end. No email thread already running:
-// a reply by email means the conversation has moved to the Email tab.
+// first, then the call), not the end. Someone who answered an automatic
+// email stays on too (Leo: Thomas Howley went missing that way): their
+// Email step shows as done, "replied by email", and the call is next.
 // Which step a person is on is worked out on the page (ztStage).
 const HAND_WAITING: Prisma.TargetWhereInput = {
   status: { in: ['accepted', 'replied'] },
   handSkippedAt: null,
   callAt: null,
-  emails: { none: { direction: 'in' } },
 }
 // A DM with no answer this long turns into "Send the follow-up".
 const HAND_NUDGE_DAYS = 4
@@ -826,13 +826,10 @@ function handBrandHold(b: { passedAt: Date | null; doNotEmail: boolean; notes: s
   return null
 }
 
-// The ids actually showing on Zach's list right now.
+// The ids showing on Zach's list right now (everyone waiting shows).
 async function handWaitingIds(): Promise<Set<string>> {
-  const rows = await prisma.target.findMany({
-    where: HAND_WAITING,
-    select: { id: true, brand: { select: { passedAt: true, doNotEmail: true, notes: true } } },
-  })
-  return new Set(rows.filter(t => !handBrandHold(t.brand)).map(t => t.id))
+  const rows = await prisma.target.findMany({ where: HAND_WAITING, select: { id: true } })
+  return new Set(rows.map(t => t.id))
 }
 
 const handlers: Record<string, Handler> = {
@@ -3406,15 +3403,19 @@ const handlers: Record<string, Handler> = {
         include: {
           brand: { select: { id: true, name: true, category: true, about: true, website: true, linkedinUrl: true, passedAt: true, doNotEmail: true, notes: true } },
           contact: { select: { id: true, name: true, title: true, email: true, linkedinUrl: true } },
-          // An automatic intro that already reached this person: Zach
-          // should answer in that thread rather than start a second one.
-          emails: { where: { direction: 'out', status: 'sent' }, orderBy: { sentAt: 'desc' }, take: 1, select: { sentAt: true, subject: true } },
+          // The automatic intro that reached them, and any reply to it:
+          // Zach answers in that thread rather than starting a second one.
+          emails: {
+            where: { OR: [{ direction: 'out', status: 'sent' }, { direction: 'in' }] },
+            orderBy: { createdAt: 'desc' }, take: 6,
+            select: { direction: true, sentAt: true, createdAt: true, subject: true },
+          },
           events: { where: { toStatus: 'accepted' }, orderBy: { createdAt: 'asc' }, take: 1, select: { createdAt: true } },
           // The LinkedIn DM and follow-up the queue already wrote for them.
           drafts: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, firstMessage: true, nudge: true } },
         },
         orderBy: [{ sentAt: 'asc' }, { createdAt: 'asc' }],
-        take: 300,
+        take: 1000,
       }),
       prisma.target.findMany({
         where: {
@@ -3442,23 +3443,20 @@ const handlers: Record<string, Handler> = {
     const byBrand = new Map<string, any>()
     const held = new Map<string, { brandId: string; brandName: string; reason: string; people: number }>()
     for (const t of rows) {
+      // Everyone who accepted shows (Leo's call). An archived or
+      // do-not-email brand is tagged on the card, not hidden.
       const hold = handBrandHold(t.brand)
-      if (hold) {
-        const h = held.get(t.brand.id) ?? { brandId: t.brand.id, brandName: t.brand.name, reason: hold, people: 0 }
-        h.people += 1
-        held.set(t.brand.id, h)
-        continue
-      }
       let g = byBrand.get(t.brand.id)
       if (!g) {
         g = {
           id: t.brand.id, name: t.brand.name, category: t.brand.category, about: t.brand.about,
-          website: t.brand.website, linkedinUrl: t.brand.linkedinUrl, people: [],
+          website: t.brand.website, linkedinUrl: t.brand.linkedinUrl, hold, people: [],
         }
         byBrand.set(t.brand.id, g)
         brands.push(g)
       }
-      const auto = t.emails[0]
+      const auto = t.emails.find(e => e.direction === 'out')
+      const inbound = t.emails.find(e => e.direction === 'in')
       // No draft on file (added by hand, say): the same template the
       // queue uses, unsaved, so there's still something to copy.
       const dr = t.drafts[0] ?? null
@@ -3476,6 +3474,7 @@ const handlers: Record<string, Handler> = {
         repliedAt: t.repliedAt,
         dmSentAt: t.dmSentAt,
         autoEmailedAt: auto?.sentAt ?? null,
+        emailReplyAt: inbound ? (inbound.sentAt ?? inbound.createdAt) : null,
         autoSubject: auto?.subject ?? null,
         handSubject: t.handSubject,
         handBody: t.handBody,

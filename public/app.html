@@ -1568,7 +1568,9 @@ var ZT_DONE_TEXT = {
 var ZT_PANEL = {};         // targetId -> the box someone clicked in the flow
 
 function ztNudgeDays() { return (ZT && ZT.nudgeAfterDays) || 4; }
-function ztReplied(p) { return p.status === 'replied' || !!(p.wantsEmailAt || p.liPathAt || p.emailedAt || p.liSentAt); }
+function ztReplied(p) { return p.status === 'replied' || !!(p.wantsEmailAt || p.liPathAt || p.emailedAt || p.liSentAt || p.emailReplyAt); }
+// Emailed by Zach, or they answered an email: the Email path is done.
+function ztEmailDone(p) { return p.emailedAt || p.emailReplyAt || null; }
 function ztStage(p, nudgeDays) {
   if (!ztReplied(p)) {
     if (!p.dmSentAt) {
@@ -1579,9 +1581,9 @@ function ztStage(p, nudgeDays) {
     var quiet = (Date.now() - new Date(p.dmSentAt).getTime()) / 864e5;
     return quiet >= (nudgeDays || ztNudgeDays()) ? 'nudge' : 'waiting';
   }
-  if (p.wantsEmailAt && !p.emailedAt) return 'email';
+  if (p.wantsEmailAt && !ztEmailDone(p)) return 'email';
   if (p.liPathAt && !p.liSentAt) return 'lidm';
-  if (!p.wantsEmailAt && !p.liPathAt && !p.emailedAt && !p.liSentAt) return 'pick';
+  if (!p.wantsEmailAt && !p.liPathAt && !ztEmailDone(p) && !p.liSentAt) return 'pick';
   return 'call';
 }
 
@@ -1634,7 +1636,7 @@ function ztToday() {
 // one they're on glows.
 function ztMiniHtml(p) {
   var st = ztStage(p), replied = ztReplied(p);
-  var pathDone = !!(p.emailedAt || p.liSentAt) && st === 'call';
+  var pathDone = !!(ztEmailDone(p) || p.liSentAt) && st === 'call';
   var dots = [
     ['done', 'Accepted'],
     [replied ? 'done' : (st === 'soon' ? '' : 'now'), 'Replied'],
@@ -1713,7 +1715,7 @@ function ztFlowState(p) {
   return {
     msg: p.dmSentAt ? 'done' : replied ? 'off' : st === 'dm' ? 'now' : '',
     replied: replied ? 'done' : (st === 'waiting' || st === 'nudge') ? 'now' : '',
-    email: path(!!p.wantsEmailAt, !!p.emailedAt, 'email'),
+    email: path(!!p.wantsEmailAt, !!ztEmailDone(p), 'email'),
     lidm: path(!!p.liPathAt, !!p.liSentAt, 'lidm'),
     call: st === 'call' ? 'now' : ''
   };
@@ -1745,7 +1747,7 @@ function ztFlowHtml(p) {
     '<div class="zt-fl-one">' + node(ztReplied(p) ? 'pick' : 'waiting', f.replied, 'Replied', p.repliedAt ? shortDate(p.repliedAt) : '', 2) + '</div>' +
     '<div class="zt-fl-stub"></div><div class="zt-fl-split"></div>' +
     '<div class="zt-fl-two">' +
-      node('email', f.email, 'Email', p.emailedAt ? 'Sent ' + shortDate(p.emailedAt) : p.wantsEmailAt ? 'To send' : '', 3) +
+      node('email', f.email, 'Email', p.emailedAt ? 'Sent ' + shortDate(p.emailedAt) : p.emailReplyAt ? 'They replied ' + shortDate(p.emailReplyAt) : p.wantsEmailAt ? 'To send' : '', 3) +
       node('lidm', f.lidm, 'LinkedIn DM', p.liSentAt ? 'Sent ' + shortDate(p.liSentAt) : p.liPathAt ? 'To send' : '', 3) +
     '</div>' +
     '<div class="zt-fl-join"></div><div class="zt-fl-stub"></div>' +
@@ -1799,7 +1801,9 @@ function ztPanelHtml(p) {
       '</div>' +
       '<div class="zt-acts">' + li + '</div>';
   } else if (panel === 'email') {
-    out = h('Email them', p.emailedAt ? '✓ Emailed ' + esc(shortDate(p.emailedAt)) : '') + ztEmailHtml(p) +
+    out = h('Email them', p.emailedAt ? '✓ Emailed ' + esc(shortDate(p.emailedAt)) : '') +
+      (p.brand && p.brand.hold === 'do not email' ? '<div class="zt-callout warn">This brand is marked “do not email” on its brand page. Check before you send.</div>' : '') +
+      ztEmailHtml(p) +
       '<div class="zt-acts">' +
         '<button class="zt-step' + (p.emailedAt ? '' : ' now') + '" data-ztact="gmail" title="Opens a new Gmail message with everything filled in. Nothing sends until you press Send. Shortcut: G">Open in Gmail ↗</button>' +
         (p.emailedAt ? '' : tick('emailed', 'Emailed ✓', 'Logged: the email went out.') + unpick('wantsEmail')) +
@@ -1818,9 +1822,11 @@ function ztPanelHtml(p) {
         (p.liSentAt ? '' : tick('liSent', 'DM sent ✓', 'Logged: the reply went out on LinkedIn.') + unpick('liPath')) +
       '</div>';
   } else {
-    var sent = [p.emailedAt ? 'Emailed ' + shortDate(p.emailedAt) : '', p.liSentAt ? 'Replied on LinkedIn ' + shortDate(p.liSentAt) : ''].filter(Boolean).join(' · ');
+    var sent = [p.emailedAt ? 'Emailed ' + shortDate(p.emailedAt) : '', p.emailReplyAt ? 'They replied by email ' + shortDate(p.emailReplyAt) : '',
+      p.liSentAt ? 'Replied on LinkedIn ' + shortDate(p.liSentAt) : ''].filter(Boolean).join(' · ');
     out = h('Schedule the call', sent ? esc(sent) : '') +
-      '<div class="zt-callout call">Once they give you a time, pick the day and tick it. The call then shows in Needs action today on the day.</div>' +
+      '<div class="zt-callout call">' + (p.emailReplyAt ? 'They answered by email: reply in that thread (Outreach → Email) to get a time. ' : '') +
+        'Once they give you a time, pick the day and tick it. The call then shows in Needs action today on the day.</div>' +
       '<div class="zt-acts">' +
         '<label class="zt-step zt-stepdate' + (ZT_DATE[id] ? ' done' : '') + '">Day' +
           '<input type="date" data-ztdate min="' + ztToday() + '" value="' + esc(ZT_DATE[id] || '') + '" aria-label="Day of the call"></label>' +
@@ -1954,7 +1960,8 @@ function ztListHtml(c) {
     var sub = [CAT_NAMES[g.category] || g.category || '', g.people.length > 1 ? g.people.length + ' people' : ''].filter(Boolean).join(' · ');
     return '<div class="zt-group" style="--c:' + ztColor(g.id) + '">' +
       '<div class="zt-glabel"><span class="zt-gname" data-ztbrand="' + esc(g.id) + '" title="Open the brand page">' + esc(g.name) + '</span>' +
-        (sub ? '<span>' + esc(sub) + '</span>' : '') + '</div>' +
+        (sub ? '<span>' + esc(sub) + '</span>' : '') +
+        (g.hold ? '<span class="zt-noaddr" title="Set on the brand page. They still show here because they accepted.">Brand ' + esc(g.hold) + '</span>' : '') + '</div>' +
       x.people.map(ztItemHtml).join('') +
     '</div>';
   }).join('') +

@@ -41,10 +41,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   cron scan and the generateContract/Invoice handlers still exist server-side).
   **Activations** is its own workspace (sidebar + tabs swap in), entered from the left sidebar or the
   Home "Jump to" card — not in the top nav. Deep links: `#activations/<id>/<tab>`, `#operations/<id>`.
-- **Home → For Zach to do** (`zachTodo` + `renderZachTodo`; deep link `app.html#zach`) — everyone who
-  accepted a LinkedIn invite or answered there and still needs an email (`HAND_WAITING` in `route.ts`:
-  accepted/replied, no `emailedAt`, no `handSkippedAt`, no inbound email; archived / do-not-email
-  brands are held back and named). One-line rows under brand labels (avatar colour follows the brand,
+- **Home → For Zach to do** (`zachTodo` + `renderZachTodo`; deep link `app.html#zach`) — **everyone who
+  accepted a LinkedIn invite** until they're finished (`HAND_WAITING` in `route.ts`: accepted/replied,
+  no `callAt`, no `handSkippedAt`). Replied by email still shows (Email step ticked, "replied by
+  email"); archived / do-not-email brands show with a tag, never hidden. Filters: To do / Waiting only.
+  One-line rows under brand labels (avatar colour follows the brand,
   a 4-dot mini flow, the next step in words); one row open at a time shows the flow
   **Accepted → Text them on LinkedIn (due 24h after the accept; follow-up after 4 quiet days) →
   Replied → Email and/or LinkedIn DM (either or both, each its own ✓; picking one logs the reply) →
