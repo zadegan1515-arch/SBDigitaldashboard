@@ -21,7 +21,7 @@ execSync(
 const lib = await import(pathToFileURL(join(out, 'li-capture.js')).href)
 const { companySlug, profileSlug, profileUrl, cleanName, personKey, roleFromHeadline, isBuyer,
   normalizeCompany, decideCompanyMatch, focusTerms, matchesFocus,
-  parseFollowers, industryOf, categoryFromIndustry, judgeDiscovery } = lib
+  parseFollowers, industryOf, categoryFromIndustry, judgeDiscovery, decideResearchMatch } = lib
 
 let n = 0
 function t(name, fn) { fn(); n++; console.log('  ok — ' + name) }
@@ -183,6 +183,17 @@ t('a lookalike needs 5K followers and a consumer industry', () => {
   assert.deepEqual(judgeDiscovery({ name: 'Some Agency', subtitle: 'Advertising Services • 20K followers' }), { ok: false, reason: 'industry' })
   assert.equal(judgeDiscovery({ name: 'Venmo', subtitle: 'Financial Services • 200K followers' }, 'fintech').ok, true, 'a fintech lookalike of a fintech brand')
   assert.equal(judgeDiscovery({ name: 'Venmo', subtitle: 'Financial Services • 200K followers' }).ok, false, 'but not from a keyword search')
+})
+
+// --- the research list -------------------------------------------------
+t('a list name needs a page whose industry fits its lane', () => {
+  const r = decideResearchMatch({ name: 'Powerade', category: 'beverage' }, [bev('Powerade', 'Food and Beverage Services • Atlanta • 150K followers')])
+  assert.equal(r.reason, 'exact')
+  assert.equal(decideResearchMatch({ name: 'NOS Energy', aka: 'NOS', category: 'beverage' }, [bev('NOS', 'Telecommunications • Lisbon')]).reason, 'unclear', 'NOS the telecom is not NOS the drink')
+  assert.equal(decideResearchMatch({ name: 'Hydrant', category: 'beverage' }, [bev('Hydrant', 'Industrial Machinery Manufacturing')]).reason, 'unclear')
+  const nuun = decideResearchMatch({ name: 'Nuun', category: 'beverage' }, [bev('Nuun Hydration', 'Food and Beverage Manufacturing • Seattle')])
+  assert.equal(nuun.reason, 'near'); assert.equal(nuun.pick.name, 'Nuun Hydration')
+  assert.equal(decideResearchMatch({ name: 'Nuun', category: 'beverage' }, []).reason, 'none')
 })
 
 console.log(n + ' checks passed')

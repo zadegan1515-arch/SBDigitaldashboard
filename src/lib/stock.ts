@@ -93,6 +93,11 @@ export const LANES: Lane[] = [
       'BodyArmor', 'Pedialyte', 'DripDrop', 'Nuun', 'Waterboy',
       'Cure Hydration|Cure', 'Propel', 'Skratch Labs', 'Ultima Replenisher|Ultima',
       'Humantra', 'Leisure Hydration',
+      // Added Sep 2026 as the LinkedIn run's research list (it looks each up).
+      'Powerade', 'Vitaminwater', 'Vita Coco', 'CORE Hydration|Core Water', 'Essentia Water|Essentia',
+      'Hydralyte', 'Hydrant', 'Tailwind Nutrition|Tailwind', 'Precision Fuel & Hydration',
+      'Redmond Re-Lyte|Re-Lyte', 'Buoy Hydration|Buoy', 'Recover 180', 'Cirkul',
+      'GoodSport Nutrition|GoodSport', 'SaltStick', 'Nooma', 'MiO',
     ],
   },
   {
@@ -104,6 +109,9 @@ export const LANES: Lane[] = [
       'Bloom Nutrition|Bloom', 'C4 Energy|C4', 'Reign|Reign Total Body Fuel',
       'Rockstar Energy|Rockstar', '5-hour Energy', 'Bang Energy|Bang',
       '3D Energy', 'ZOA Energy|ZOA', 'Raze Energy|Raze', 'Gorgie', 'Update',
+      'G Fuel|GFUEL', 'Bucked Up', 'Gorilla Mind', 'Kill Cliff', 'Jocko Fuel',
+      'Guayakí Yerba Mate|Guayaki', 'Yerbaé|Yerbae', 'NOS Energy|NOS', 'Uptime Energy|Uptime', 'Rip It',
+      'Proper Wild', 'Hiball Energy|Hiball', 'Xyience',
     ],
   },
   {
@@ -131,6 +139,9 @@ export const LANES: Lane[] = [
       'Bud Light', 'Michelob Ultra', 'Coors Light', 'Miller Lite', 'Busch Light',
       'Natural Light|Natty Light', 'Keystone Light', 'Modelo', 'Corona', 'Pacifico',
       'Dos Equis', 'Heineken', 'Stella Artois', 'Blue Moon', 'Yuengling',
+      'Vizzy', 'Smirnoff Ice', 'Pabst Blue Ribbon|PBR', 'Athletic Brewing', 'Lagunitas', 'Sierra Nevada',
+      'Goose Island', 'Kona Brewing|Kona', 'Dogfish Head', 'JuneShine', 'Arnold Palmer Spiked',
+      'Guinness', 'Samuel Adams|Sam Adams', 'Rolling Rock', 'Tecate', 'Estrella Jalisco',
     ],
   },
   {
@@ -143,6 +154,11 @@ export const LANES: Lane[] = [
       'Absolut', 'Grey Goose', 'Svedka', 'Malibu', 'Captain Morgan', 'Bacardi',
       "Jack Daniel's", 'Jim Beam', 'Fireball', 'Jägermeister', 'Crown Royal',
       'Jameson', 'Lobos 1707',
+      'Cîroc|Ciroc', 'Ketel One', "Maker's Mark", 'Hennessy', 'Rémy Martin|Remy Martin', 'Tanqueray',
+      "Hendrick's Gin|Hendrick's", 'Aperol', 'Campari', 'DeLeón Tequila|DeLeon', 'Clase Azul', 'Cincoro',
+      'Hornitos', '1800 Tequila|1800', 'Kraken Rum|Kraken', 'Deep Eddy Vodka|Deep Eddy', 'Buffalo Trace',
+      'Bulleit', 'Skrewball Whiskey|Skrewball', 'RumChata', 'Pink Whitney', 'Dos Hombres', 'Aviation Gin',
+      'Sauza', 'Pinnacle Vodka|Pinnacle', 'UV Vodka',
     ],
   },
   {
@@ -152,6 +168,7 @@ export const LANES: Lane[] = [
     known: [
       'Zyn', 'Velo', 'On!|On! Nicotine', 'Rogue', 'Lucy|Lucy Nicotine', 'Sesh+', 'FRE',
       'Juice Head', 'Black Buffalo',
+      'JUUL|Juul Labs', 'Vuse', 'NJOY', 'Grizzly', 'Copenhagen', 'ALP|Alp Pouch',
     ],
   },
   {
@@ -162,6 +179,9 @@ export const LANES: Lane[] = [
       'Nike', 'Adidas', 'Lululemon', 'Gymshark', 'Under Armour', 'New Balance', 'Vuori',
       'Alo Yoga|Alo', 'Rhoback', 'Rhone', 'Ten Thousand', 'On Running', 'Hoka', 'Puma',
       'Fabletics', 'Set Active', 'Outdoor Voices', 'Buffbunny', 'Alphalete', 'Young LA', 'Nobull',
+      'Reebok', 'ASICS', 'Brooks Running|Brooks', 'Saucony', 'Champion', 'Russell Athletic', 'Athleta',
+      'Beyond Yoga', 'Girlfriend Collective', 'Sweaty Betty', 'Jordan Brand', 'Darc Sport', 'Oner Active',
+      'Tracksmith',
     ],
   },
   {
@@ -175,6 +195,11 @@ export const LANES: Lane[] = [
       'Birddogs', 'Southern Tide', 'Lilly Pulitzer', 'Show Me Your Mumu', 'Kendra Scott',
       'Hello Molly', 'American Eagle', 'Aerie', 'Hollister', 'PacSun',
       'Abercrombie & Fitch|Abercrombie', 'Urban Outfitters', 'Madhappy',
+      'Brandy Melville', 'Aritzia', 'Free People', 'Lulus', 'Meshki', 'Oh Polly', 'Nasty Gal',
+      'PrettyLittleThing', 'Boohoo', "Tilly's", 'Zumiez', 'Stüssy|Stussy', 'Carhartt', "Levi's",
+      'Ralph Lauren', 'Tommy Hilfiger', 'Aviator Nation', 'Kith', 'Supreme', 'Fear of God',
+      'UGG', 'Dr. Martens', 'Vans', 'Converse', 'Birkenstock', 'Ray-Ban', 'Zara', 'H&M', 'Uniqlo',
+      'Garage Clothing|Garage',
     ],
   },
 ]

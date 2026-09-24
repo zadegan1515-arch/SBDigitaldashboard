@@ -32,10 +32,11 @@ import {
 import {
   companySlug, companyPageUrl, profileSlug, profileUrl, cleanName, personKey,
   roleFromHeadline, isBuyer, decideCompanyMatch, focusTerms, matchesFocus,
-  normalizeCompany, judgeDiscovery, industryFits,
+  normalizeCompany, judgeDiscovery, industryFits, decideResearchMatch,
   type LiCompany,
 } from '@/lib/li-capture'
-import { readLiLog, markLiSwept, liResting } from '@/lib/li-sweep'
+import { readLiLog, markLiSwept, liResting, readLiResearch, markLiResearch, researchResting } from '@/lib/li-sweep'
+import { LANES, brandKey } from '@/lib/stock'
 import { guessCategory } from '@/lib/category-hints'
 
 const prisma = new PrismaClient()
@@ -568,10 +569,44 @@ export async function POST(req: NextRequest) {
         linkedinUrl: b.linkedinUrl, contacts: b._count.contacts, focus: matchesFocus(b, terms),
       }))
       .sort((a, b) => Number(b.focus) - Number(a.focus) || a.contacts - b.contacts || a.name.localeCompare(b.name))
+
+    // The research list: Stock take's lane ideas — known brand names not
+    // on the roster under any name — for the run to look up on LinkedIn.
+    // A lane the focus word names goes first ("electrolyte" → the
+    // Electrolytes & hydration lane), ahead of the focus brands we have.
+    const research: any[] = []
+    let researchWaiting = 0
+    if (body.research === true) {
+      const rlog = await readLiResearch(prisma)
+      const roster = await prisma.brand.findMany({ select: { name: true, aka: true } })
+      const onRoster = new Set<string>()
+      for (const b of roster) for (const n of [b.name, ...String(b.aka || '').split(/[,;]/)]) if (n.trim()) onRoster.add(brandKey(n))
+      const words = String(body.focus || '').toLowerCase().split(/[,;]/).map(w => w.trim()).filter(Boolean)
+      for (const l of LANES) {
+        if (!l.priority) continue
+        const laneFocus = words.some(w => l.key.includes(w) || l.name.toLowerCase().includes(w) || !!(l.words && l.words.test(w)))
+        for (const k of l.known) {
+          const names = k.split('|').map(n => n.trim()).filter(Boolean)
+          if (!names.length || names.some(n => onRoster.has(brandKey(n)))) continue
+          if (researchResting(rlog[brandKey(names[0])])) { researchWaiting++; continue }
+          research.push({
+            research: true, name: names[0], aka: names.slice(1).join(', ') || null,
+            category: l.key, lane: l.name, linkedinUrl: null, contacts: 0, focus: laneFocus,
+          })
+        }
+      }
+    }
+    const ordered = [
+      ...research.filter(r => r.focus), ...items.filter(i => i.focus),
+      ...research.filter(r => !r.focus), ...items.filter(i => !i.focus),
+    ]
     return NextResponse.json({
       ok: true,
-      items,
-      focusCount: items.filter(i => i.focus).length,
+      items: ordered,
+      research: research.length,
+      researchFocus: research.filter(r => r.focus).length,
+      researchWaiting,
+      focusCount: ordered.filter(i => i.focus).length,
       noPage: items.filter(i => !i.linkedinUrl).length,
       resting,
       underCap: underCap.length,
@@ -693,6 +728,89 @@ export async function POST(req: NextRequest) {
       created.push({ brandId: brand.id, name, category, linkedinUrl: brand.linkedinUrl! })
     }
     return NextResponse.json({ ok: true, label, created, ...tally, cap: DISCOVER_CAP_PER_DAY }, { headers: cors })
+  }
+
+  // action: "liResearch" — a name from the research list, and LinkedIn's
+  // company-search results for it. A clear match whose industry fits the
+  // lane (decideResearchMatch) becomes a brand, and the run reads its
+  // people next. A name that turns out to be a brand we have already
+  // (another spelling) just points the run at it. `final` = the run has
+  // no other spelling to try, so an unclear answer is logged and the
+  // name rests a month.
+  if (body.action === 'liResearch') {
+    const name = String(body.name || '').trim().slice(0, 120)
+    const aka = String(body.aka || '').trim().slice(0, 200) || null
+    const category = String(body.category || '').trim().slice(0, 40) || 'unresolved'
+    const lane = String(body.lane || '').trim().slice(0, 60)
+    const key = brandKey(name)
+    if (!name || !key) return NextResponse.json({ ok: false, error: 'No name' }, { status: 400, headers: cors })
+
+    // Already ours under any spelling — the same loose key Stock take
+    // uses to decide what's an idea ("Liquid IV" is "Liquid I.V.").
+    const wanted = new Set([name, ...String(aka || '').split(/[,;]/)].map(x => brandKey(x.trim())).filter(Boolean))
+    const roster = await prisma.brand.findMany({ select: { id: true, name: true, aka: true, linkedinUrl: true } })
+    const have = roster.find(b => [b.name, ...String(b.aka || '').split(/[,;]/)].some(n => n.trim() && wanted.has(brandKey(n))))
+    if (have) {
+      await markLiResearch(prisma, key, { outcome: 'exists' })
+      return NextResponse.json({ ok: true, outcome: 'exists', brandId: have.id, name: have.name, linkedinUrl: have.linkedinUrl }, { headers: cors })
+    }
+
+    const candidates: LiCompany[] = (Array.isArray(body.candidates) ? body.candidates : []).slice(0, 20)
+      .map((c: any) => ({
+        slug: companySlug(String(c?.url || '')) || '',
+        name: String(c?.name || '').replace(/\s+/g, ' ').trim().slice(0, 120),
+        subtitle: String(c?.subtitle || '').replace(/\s+/g, ' ').trim().slice(0, 200),
+      }))
+      .filter((c: LiCompany) => c.slug && c.name)
+    const { pick, reason } = decideResearchMatch({ name, aka, category }, candidates)
+    if (!pick) {
+      if (body.final === true) await markLiResearch(prisma, key, { outcome: 'unclear', note: 'no clear LinkedIn page' })
+      return NextResponse.json({ ok: true, outcome: reason, candidates: candidates.length }, { headers: cors })
+    }
+
+    // The page is already on a brand of ours under another name: that
+    // brand is this one. Remember the list's spelling on it.
+    const withPage = await prisma.brand.findMany({ where: { linkedinUrl: { not: null } }, select: { id: true, name: true, aka: true, linkedinUrl: true } })
+    const owner = withPage.find(b => companySlug(b.linkedinUrl) === pick.slug)
+    if (owner) {
+      const akas = String(owner.aka || '').split(/[,;]/).map(x => x.trim()).filter(Boolean)
+      if (!akas.some(a => brandKey(a) === key) && brandKey(owner.name) !== key) {
+        try { await prisma.brand.update({ where: { id: owner.id }, data: { aka: [...akas, name].join(', ') } }) } catch { /* non-fatal */ }
+      }
+      await markLiResearch(prisma, key, { outcome: 'exists', note: `same page as ${owner.name}` })
+      return NextResponse.json({ ok: true, outcome: 'exists', brandId: owner.id, name: owner.name, linkedinUrl: owner.linkedinUrl }, { headers: cors })
+    }
+
+    // LinkedIn's own spelling joins the list's other names, so later
+    // captures and SponsorUnited both match it.
+    const akas = String(aka || '').split(/[,;]/).map(x => x.trim()).filter(Boolean)
+    if (normalizeCompany(pick.name) !== normalizeCompany(name) && !akas.some(a => normalizeCompany(a) === normalizeCompany(pick.name))) akas.push(pick.name)
+    let brand
+    try {
+      brand = await prisma.brand.create({
+        data: {
+          name,
+          aka: akas.length ? akas.join(', ') : null,
+          linkedinUrl: companyPageUrl(pick.slug),
+          source: 'research',
+          category,
+          notes: `From the research list (${lane || category}) — found on LinkedIn as ${pick.name}.`,
+        },
+      })
+    } catch {
+      const b = await findBrandForCapture(name, null)
+      if (!b) return NextResponse.json({ ok: false, error: `Could not add ${name}` }, { status: 409, headers: cors })
+      return NextResponse.json({ ok: true, outcome: 'exists', brandId: b.id, name: b.name, linkedinUrl: b.linkedinUrl }, { headers: cors })
+    }
+    await markLiResearch(prisma, key, { outcome: 'added' })
+    try {
+      await prisma.discoveredBrand.upsert({
+        where: { query_name: { query: `Research list: ${lane || category}`, name } },
+        create: { query: `Research list: ${lane || category}`, name, category, linkedinUrl: brand.linkedinUrl, status: 'added', brandId: brand.id, reason: `LinkedIn: ${pick.name}${pick.subtitle ? ' · ' + pick.subtitle : ''}`.slice(0, 300) },
+        update: { status: 'added', brandId: brand.id },
+      })
+    } catch { /* the log row is a nicety */ }
+    return NextResponse.json({ ok: true, outcome: 'added', how: reason, brandId: brand.id, name, linkedinUrl: brand.linkedinUrl }, { headers: cors })
   }
 
   // action: "liSwept" — one brand visited: how many people were read,

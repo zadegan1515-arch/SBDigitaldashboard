@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.5
+// @version      1.6
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -60,7 +60,7 @@
   var INGEST_URL = 'https://sb-digitaldashboard.vercel.app/api/ingest';
   var DASH_URL = 'https://sb-digitaldashboard.vercel.app/app.html';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.5';
+  var VERSION = '1.6';
 
   // The header's @grant lines are what give this script Tampermonkey's
   // storage and requests. A paste that lost the header (the usual cause:
@@ -819,19 +819,19 @@
     if (job.at >= job.items.length) return finishFill(job, false);
     var item = job.items[job.at];
     if (!job.step) {
-      job.step = { phase: peopleUrl(item.linkedinUrl, '') ? 'read' : 'search', pass: 0, triedAka: false, seen: 0, added: 0, navs: 0 };
+      job.step = { phase: item.research ? 'research' : peopleUrl(item.linkedinUrl, '') ? 'read' : 'search', pass: 0, triedAka: false, seen: 0, added: 0, navs: 0 };
       saveFill(job);
     }
     var st = job.step;
     // Only a page this run opened itself counts (navs > 0) — never the
     // page Leo happened to be on when he pressed Start.
-    if (st.phase === 'search') {
+    if (st.phase === 'search' || st.phase === 'research') {
       var q = st.triedAka ? akaName(item) : item.name;
-      if (st.navs > 0 && /^\/search\/results\/companies/.test(location.pathname) && kwParam() === q) {
+      if (st.navs > 0 && /^\/search\/results\/companies/.test(location.pathname) && kwParam() === q && pageParam() === 1) {
         st.navs = 0; saveFill(job);
-        return fillSearch(item, q);
+        return st.phase === 'research' ? fillResearch(item, q) : fillSearch(item, q);
       }
-      return go(job, searchUrl(q), 'Looking up ' + item.name + ' on LinkedIn');
+      return go(job, searchUrl(q), 'Looking up ' + item.name + ' on LinkedIn' + (item.research ? ' (research list)' : ''));
     }
     if (st.phase === 'home') {
       if (st.navs > 0 && companyPath() && !onPeoplePage()) {
@@ -888,6 +888,42 @@
       finishBrand(job2, r && r.outcome === 'taken'
         ? 'its LinkedIn page is saved on ' + r.by
         : 'no clear LinkedIn page — do it by hand');
+    }).catch(fillError);
+  }
+
+  // A name from the research list: the server decides whether one of
+  // LinkedIn's results is that brand (industry must fit its lane), makes
+  // the brand, and the run reads its people next.
+  function fillResearch(item, q) {
+    var job = loadFill();
+    renderFill(job, 'Reading LinkedIn\'s results for “' + q + '” (research list)');
+    var final = job.step.triedAka || !akaName(item);
+    waitFor(function () { return searchCandidates().length || /no results/i.test(pageText(5000)); }, 12000).then(function () {
+      var stop = linkedinSaysStop();
+      if (stop) return { halt: stop };
+      return post({ action: 'liResearch', name: item.name, aka: item.aka || '', category: item.category, lane: item.lane || '', candidates: searchCandidates(), final: final });
+    }).then(function (r) {
+      var job2 = loadFill();
+      if (!ownsFill(job2) || job2.paused) return;
+      if (r && r.halt) return pauseFill(job2, r.halt + '. Leave LinkedIn alone for a day before pressing Continue.');
+      var st = job2.step, it = job2.items[job2.at];
+      if (r && r.ok && (r.outcome === 'added' || r.outcome === 'exists')) {
+        it.research = false;
+        it.brandId = r.brandId;
+        it.linkedinUrl = r.linkedinUrl;
+        if (r.outcome === 'added') job2.newBrands = (job2.newBrands || []).concat([r.name]);
+        job2.step = { phase: peopleUrl(r.linkedinUrl, '') ? 'read' : 'search', pass: 0, triedAka: false, seen: 0, added: 0, navs: 0 };
+        job2.nextAt = Date.now() + rand(4000, 9000);
+        saveFill(job2);
+        return runFill();
+      }
+      if (!final) {
+        st.triedAka = true; st.navs = 0;
+        job2.nextAt = Date.now() + rand(8000, 15000);
+        saveFill(job2);
+        return runFill();
+      }
+      finishBrand(job2, 'research list: no clear LinkedIn page');
     }).catch(fillError);
   }
 
@@ -1027,7 +1063,8 @@
   function finishBrand(job, note) {
     var item = job.items[job.at];
     var st = job.step || { seen: 0, added: 0 };
-    post({ action: 'liSwept', brandId: item.brandId, seen: st.seen, added: st.added, note: note || '' }).catch(function () {});
+    // A research name that never became a brand is logged by liResearch.
+    if (item.brandId) post({ action: 'liSwept', brandId: item.brandId, seen: st.seen, added: st.added, note: note || '' }).catch(function () {});
     job.results.push({ name: item.name, added: st.added, note: note || null });
     job.at++;
     job.step = null;
@@ -1048,7 +1085,7 @@
       h('div', { style: 'margin-bottom:6px' }, [b(String(job.added || 0)), ' people added across ' + (job.results || []).length + ' brands.']),
       (job.newBrands || []).length
         ? h('details', { style: 'display:block;margin-top:6px' }, [
-            h('summary', { style: 'display:list-item;cursor:pointer;font-weight:600;color:#137333', text: job.newBrands.length + ' new brands added' }),
+            h('summary', { style: 'display:list-item;cursor:pointer;font-weight:600;color:#137333', text: job.newBrands.length + (job.newBrands.length === 1 ? ' new brand added' : ' new brands added') }),
             h('div', { style: 'font-size:12px;margin-top:4px;max-height:160px;overflow:auto', text: job.newBrands.join(', ') }),
           ])
         : null,
@@ -1145,9 +1182,13 @@
       id: 'sblifocus', value: 'electrolyte', placeholder: 'e.g. electrolyte — or leave empty',
       style: 'flex:1;min-width:0;padding:6px 8px;border:1px solid #ccc;border-radius:6px;font:12.5px system-ui;color:#111;background:#fff',
     });
+    var researchBox = h('input', { type: 'checkbox', id: 'sbliresearch', checked: true, style: 'margin:2px 0 0' });
     var lookBox = h('input', { type: 'checkbox', id: 'sblilook', checked: true, style: 'margin:2px 0 0' });
+    // Off by default: LinkedIn's keyword search turns up small pages, not
+    // the big names (Leo: "the big electrolyte brands don't come up when
+    // you search electrolyte") — the research list is how those come in.
     var words = h('input', {
-      id: 'sbliwords', value: 'electrolyte', placeholder: 'e.g. electrolyte, tequila — or leave empty',
+      id: 'sbliwords', value: '', placeholder: 'optional, e.g. electrolyte drink',
       style: 'display:block;box-sizing:border-box;width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:6px;font:12.5px system-ui;color:#111;background:#fff;margin-top:4px',
     });
     var discoverNow = function () {
@@ -1160,7 +1201,7 @@
     var look = function () {
       var f = focus.value.trim();
       out.textContent = 'Getting the list…';
-      post({ action: 'liList', focus: f }).then(function (j) {
+      post({ action: 'liList', focus: f, research: researchBox.checked }).then(function (j) {
         while (out.firstChild) out.removeChild(out.firstChild);
         if (!j || !j.ok) { out.textContent = (j && j.error) || 'Could not get the list.'; return; }
         if (!j.items.length) {
@@ -1170,12 +1211,15 @@
           return;
         }
         var first = j.items.filter(function (i) { return i.focus; });
-        out.appendChild(h('div', { style: MUTED }, [b(String(j.items.length)), ' brands under ' + j.cap + ' people.']));
+        var have = j.items.length - (j.research || 0);
+        out.appendChild(h('div', { style: MUTED }, [b(String(have)), ' brands under ' + j.cap + ' people' +
+          (j.research ? ', plus ' : '.'), j.research ? b(String(j.research)) : null, j.research ? ' names from the research list to find on LinkedIn.' : null]));
         if (f) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: first.length
           ? 'First the ' + first.length + ' matching “' + f + '”: ' + first.slice(0, 15).map(function (i) { return i.name; }).join(', ') + (first.length > 15 ? '…' : '') + '. Then everything else, emptiest first.'
           : 'None match “' + f + '” — it goes emptiest first.' }));
         if (j.noPage) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.noPage + ' have no LinkedIn page saved; it searches LinkedIn for those and only uses a clear match.' }));
         if (j.resting) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.resting + ' left out: nothing new on their last visit (they rest a month).' }));
+        if (j.researchWaiting) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.researchWaiting + ' research names left out: LinkedIn had no clear page for them last month.' }));
         out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:8px', text: 'At about ' + DAILY_CAP + ' a day that is roughly ' + Math.ceil(j.items.length / DAILY_CAP) + ' day(s).' }));
         out.appendChild(h('button', { id: 'sblifillstart', style: BTN, text: 'Start', onclick: function () { startFill(j.items, f, discoverNow()); } }));
       }).catch(function (e) { out.textContent = e.message; });
@@ -1194,13 +1238,17 @@
       ]),
       h('div', { style: 'margin-top:12px;padding-top:10px;border-top:1px solid #eee' }, [
         h('div', { style: 'font-weight:600;margin-bottom:6px', text: 'Find new brands too' }),
+        h('label', { style: 'display:flex;gap:7px;align-items:flex-start;font-size:12px;color:#333;cursor:pointer;margin-bottom:6px' }, [
+          researchBox,
+          h('span', { text: 'Look up the research list — the well-known brands on Stock take we don\'t have yet (Powerade, Vita Coco…). Added when LinkedIn clearly has them.' }),
+        ]),
         h('label', { style: 'display:flex;gap:7px;align-items:flex-start;font-size:12px;color:#333;cursor:pointer' }, [
           lookBox,
           h('span', { text: 'Add brands LinkedIn shows as similar to each brand it visits' }),
         ]),
-        h('div', { style: 'font-size:12px;color:#333;margin-top:8px', text: 'Search LinkedIn for new brands (comma-separated):' }),
+        h('div', { style: 'font-size:12px;color:#333;margin-top:8px', text: 'Also search LinkedIn for these words (finds small brands, not big ones):' }),
         words,
-        h('div', { style: 'font-size:11.5px;color:#777;margin-top:6px', text: 'New brands go straight into the dashboard — consumer industries with 5K+ LinkedIn followers, up to 50 a day — and their people are read in the same run.' }),
+        h('div', { style: 'font-size:11.5px;color:#777;margin-top:6px', text: 'New brands go straight into the dashboard and their people are read in the same run. Lookalikes and searches: consumer industries with 5K+ LinkedIn followers, up to 50 a day. Press See the list again after changing these.' }),
       ]),
       out,
       h('div', { style: SMALL, text: 'Use a tab you\'re not using — clicking or typing in it pauses the run.' }),

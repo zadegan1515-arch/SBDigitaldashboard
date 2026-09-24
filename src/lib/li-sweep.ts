@@ -51,3 +51,38 @@ export function liResting(mark: LiMark | undefined, now = Date.now()): boolean {
   const at = Date.parse(mark.at)
   return Number.isFinite(at) && now - at < LI_REST_DAYS * 864e5
 }
+
+// ---- the research list ----
+//
+// Names from Stock take's lane ideas that the run looked up on LinkedIn.
+// Keyed by brandKey of the list name. "added" names are brands now and
+// drop off the ideas by themselves; an "unclear" one waits a month
+// before the run tries it again, and Stock take shows the note.
+
+export const LI_RESEARCH_KEY = 'liResearchLog'
+
+export type LiResearchMark = { at: string; outcome: 'added' | 'exists' | 'unclear' | 'taken'; note?: string | null }
+export type LiResearchLog = Record<string, LiResearchMark>
+
+export async function readLiResearch(db: SettingStore): Promise<LiResearchLog> {
+  try {
+    const row = await db.setting.findUnique({ where: { key: LI_RESEARCH_KEY } })
+    const parsed = row ? JSON.parse(row.value) : {}
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+export async function markLiResearch(db: SettingStore, key: string, mark: Omit<LiResearchMark, 'at'>) {
+  const log = await readLiResearch(db)
+  log[key] = { at: new Date().toISOString(), ...mark }
+  const v = JSON.stringify(log)
+  await db.setting.upsert({ where: { key: LI_RESEARCH_KEY }, create: { key: LI_RESEARCH_KEY, value: v }, update: { value: v } })
+}
+
+export function researchResting(mark: LiResearchMark | undefined, now = Date.now()): boolean {
+  if (!mark || mark.outcome === 'added' || mark.outcome === 'exists') return false
+  const at = Date.parse(mark.at)
+  return Number.isFinite(at) && now - at < LI_REST_DAYS * 864e5
+}

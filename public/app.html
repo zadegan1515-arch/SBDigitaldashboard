@@ -5107,8 +5107,11 @@ function stIdeas(r) {
   return '<div class="hint" style="margin:0 0 10px">Well-known names that aren’t on your list under any name. ' +
       'Untick any you don’t want, then check. Nothing is added until you confirm. They go in under ' +
       esc(CAT_NAMES[r.file] || r.file) + ' with nobody on file yet.</div>' +
+    '<div class="hint" style="margin:0 0 10px">These are also the LinkedIn run\u2019s research list: with \u201cLook up the research list\u201d on, it finds each one\u2019s LinkedIn page, adds the brand and reads its people. A note says when it couldn\u2019t place one.</div>' +
     '<div class="st-idea-list">' + r.ideas.map(function (n) {
-      return '<label class="st-idea"><input type="checkbox" checked value="' + esc(n) + '">' + esc(n) + '</label>';
+      var note = r.ideaNotes && r.ideaNotes[n];
+      return '<label class="st-idea"' + (note ? ' title="LinkedIn run: ' + esc(note) + '"' : '') + '><input type="checkbox" checked value="' + esc(n) + '">' + esc(n) +
+        (note ? ' <span style="color:var(--ink-3);font-size:11px">· ' + esc(note) + '</span>' : '') + '</label>';
     }).join('') + '</div>' +
     '<div class="st-idea-go"><button class="btn-ghost sd-sm" data-stcheck="' + esc(r.key) + '">Check these</button></div>' +
     '<div class="st-idea-prev"></div>';

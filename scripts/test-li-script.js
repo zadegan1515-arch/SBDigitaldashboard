@@ -32,6 +32,9 @@
 //      of the line, Clase Azul's lookalikes (on its home page) add Jose
 //      Cuervo at the end, and each new brand's people are read in the
 //      same run.
+//  11. The research list: Powerade is found on LinkedIn, becomes a brand
+//      and gets its people read; "NOS Energy" (and then "NOS") only turns
+//      up a telecom, so it's left with a note after both spellings.
 //   6. The pill sits bottom-left, clear of LinkedIn's Messaging bar; the
 //      Tampermonkey menu opens the same panel; and a copy running without
 //      its @grant lines (pasted under Tampermonkey's sample) says so.
@@ -145,8 +148,14 @@ const server = http.createServer((req, res) => {
           .map(c => { discovered.add(c.name); return { brandId: make[c.name], name: c.name, category: 'beverage', linkedinUrl: c.url }; });
         return res.end(JSON.stringify({ ok: true, created, known: 0, small: 0, industry: 0, capped: 0 }));
       }
+      if (body.action === 'liResearch') {
+        const hit = (body.candidates || []).find(c => c.name === body.name && /Beverage/.test(c.subtitle));
+        return res.end(JSON.stringify(hit
+          ? { ok: true, outcome: 'added', brandId: 'b-pow', name: body.name, linkedinUrl: 'https://www.linkedin.com/company/powerade/' }
+          : { ok: true, outcome: 'unclear' }));
+      }
       if (body.action === 'liList') {
-        return res.end(JSON.stringify({ ok: true, items: fillItems, cap: 25, noPage: fillItems.filter(i => !i.linkedinUrl).length, resting: 0 }));
+        return res.end(JSON.stringify({ ok: true, items: fillItems, cap: 25, noPage: fillItems.filter(i => !i.linkedinUrl && !i.research).length, resting: 0, research: fillItems.filter(i => i.research).length }));
       }
       if (body.action === 'liMatched') {
         const hit = (body.candidates || []).find(c => c.name === 'LMNT');
@@ -189,6 +198,18 @@ const server = http.createServer((req, res) => {
   if (/^\/company\/liquid-death\/people\/?/.test(req.url)) return res.end(page(true));
   if (/^\/company\/casamigos-tequila\/people\/?/.test(req.url)) return res.end(page(true, 'Casamigos Tequila'));
   if (/^\/company\/drinklmnt\/people\/?/.test(req.url)) return res.end(page(true, 'LMNT'));
+  // The research list's searches.
+  if (/^\/search\/results\/companies\/\?keywords=Powerade/.test(req.url)) {
+    return res.end('<!doctype html><html><body><main><ul>' +
+      '<li><a href="https://www.linkedin.com/company/powerade/"><span>Powerade</span></a><div>Beverage Manufacturing • Atlanta</div><div>150K followers</div></li>' +
+      '</ul></main></body></html>');
+  }
+  if (/^\/search\/results\/companies\/\?keywords=NOS(%20Energy)?(&|$)/.test(req.url)) {
+    return res.end('<!doctype html><html><body><main><ul>' +
+      '<li><a href="https://www.linkedin.com/company/nos-sgps/"><span>NOS</span></a><div>Telecommunications • Lisbon</div><div>300K followers</div></li>' +
+      '</ul></main></body></html>');
+  }
+  if (/^\/company\/powerade\/people\/?/.test(req.url)) return res.end(page(true, 'Powerade'));
   // The discovery story's pages.
   if (/^\/search\/results\/companies\/\?keywords=electrolyte/.test(req.url)) {
     return res.end('<!doctype html><html><body><main><ul>' +
@@ -507,7 +528,9 @@ const GM_SHIM = `
       await pg.click('#sblipill');
       await pg.click('#sblifillopen');
       assert.equal(await pg.isChecked('#sblilook'), true, 'lookalikes on by default');
-      assert.equal(await pg.inputValue('#sbliwords'), 'electrolyte');
+      assert.equal(await pg.inputValue('#sbliwords'), '', 'keyword search off by default');
+      await pg.fill('#sbliwords', 'electrolyte');
+      await pg.uncheck('#sbliresearch');
       await pg.fill('#sblifocus', '');
       await pg.click('#sblifilllook');
       await pg.click('#sblifillstart');
@@ -537,6 +560,40 @@ const GM_SHIM = `
       await pg.close();
     }
     ok('finds new brands by search and by lookalikes, and reads their people in the same run');
+
+    // 11. The research list.
+    {
+      fillItems = [
+        { research: true, name: 'Powerade', aka: null, category: 'beverage', lane: 'Electrolytes & hydration', linkedinUrl: null, contacts: 0, focus: true },
+        { research: true, name: 'NOS Energy', aka: 'NOS', category: 'beverage', lane: 'Energy drinks', linkedinUrl: null, contacts: 0, focus: false },
+      ];
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      assert.equal(await pg.isChecked('#sbliresearch'), true, 'research list on by default');
+      await pg.uncheck('#sblilook');
+      await pg.click('#sblifilllook');
+      await pg.waitForSelector('#sblifillstart');
+      assert.match(await pg.textContent('#sbli-panel'), /2 names from the research list/);
+      const listCall = sent.slice(before).find(b => b.action === 'liList');
+      assert.equal(listCall.research, true);
+      await pg.click('#sblifillstart');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 60000 });
+      const run = sent.slice(before).map(b => b.action + (b.brandId ? ':' + b.brandId : '') + (b.action === 'liResearch' ? ':' + b.name + (b.final ? ':final' : '') : ''));
+      assert.deepEqual(run, [
+        'liList',
+        'liResearch:Powerade:final', 'liCapture:b-pow', 'liSwept:b-pow',
+        'liResearch:NOS Energy', 'liResearch:NOS Energy:final',
+      ]);
+      const text = await pg.textContent('#sbli-panel');
+      assert.match(text, /1 new brand added/);
+      assert.match(text, /NOS Energy — research list: no clear LinkedIn page/);
+      await pg.close();
+    }
+    ok('the research list: a clear match becomes a brand and gets its people; a telecom called NOS doesn\'t');
 
     // 6. No @grant lines: runs, shows the pill, says to reinstall.
     const bare = await browser.newPage();

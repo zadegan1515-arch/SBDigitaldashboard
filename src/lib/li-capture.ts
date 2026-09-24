@@ -306,3 +306,18 @@ export function judgeDiscovery(
   if (!cat) return { ok: false, reason: 'industry' }
   return { ok: true, category: cat, followers, industry }
 }
+
+// A name from the research list (Stock take's lane ideas) looked up on
+// LinkedIn. Stricter than a brand we already have: the page's industry
+// must fit the lane's category even for an exact name, because a list
+// name is only a word until LinkedIn shows it's the brand ("NOS" is also
+// a telecom; "Hydrant" also sells fire hydrants).
+export function decideResearchMatch(
+  item: { name: string; aka?: string | null; category: string },
+  candidates: LiCompany[],
+): { pick: LiCompany | null; reason: 'exact' | 'near' | 'unclear' | 'none' } {
+  if (!candidates.length) return { pick: null, reason: 'none' }
+  const fitting = candidates.filter(c => industryFits(item.category, c.subtitle))
+  if (!fitting.length) return { pick: null, reason: 'unclear' }
+  return decideCompanyMatch(item, fitting)
+}

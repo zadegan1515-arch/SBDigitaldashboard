@@ -159,7 +159,18 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Discover, creates the Brand (`source: 'linkedin-discover'`, provenance in notes) plus a
   DiscoveredBrand row (status added, query "LinkedIn: similar to X" / "LinkedIn search: w"), and
   stops at **50 new brands per rolling day** (`DISCOVER_CAP_PER_DAY`). New brands join the same
-  run: keyword finds next in line, lookalikes at the end.
+  run: keyword finds next in line, lookalikes at the end. Keyword search is **off by default** (Leo:
+  it surfaces small pages, not the big names).
+  **Research list** (on by default; Leo: "generate a list of brands to research then it can go find
+  them"): the priority lanes' `known` names in `src/lib/stock.ts` (expanded Sep 2026 — Stock take's
+  ideas) that aren't on the roster under any spelling (`brandKey`). `liList` with `research: true`
+  puts the focus lane's names first, then focus brands, other lanes' names, the rest. Per name: a
+  LinkedIn company search → `liResearch` (`decideResearchMatch`: the page's industry must fit the
+  lane even for an exact name — "NOS" the telecom isn't NOS Energy; second spelling tried before
+  giving up) → creates the Brand (`source: 'research'`, filed under the lane's own category, LinkedIn's spelling added to
+  aka, Discover row "Research list: <lane>") and the run reads its people next; a page already on
+  another brand adds the name as that brand's aka instead. Outcomes in Setting `liResearchLog`
+  (`li-sweep.ts`); unclear names rest 30 days and show their note on Stock take's ideas.
   Rules + matching in `src/lib/li-capture.ts` (`node scripts/test-li-capture.mjs`); script tested by
   `scripts/test-li-script.js` (fake People/search pages, incl. a run, pause/continue, limit page).
   Worklist in the dashboard: Outreach → People → "Under 25" (deep link `app.html#people`).

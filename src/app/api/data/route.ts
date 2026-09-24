@@ -35,8 +35,8 @@ import { newBoardCode } from '@/lib/board-access'
 import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import { regionFlag } from '@/lib/region'
 import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hints'
-import { readLiLog } from '@/lib/li-sweep'
-import { buildStock, bestDealStage, refileMoves, remapPlanDays } from '@/lib/stock'
+import { readLiLog, readLiResearch } from '@/lib/li-sweep'
+import { buildStock, bestDealStage, refileMoves, remapPlanDays, brandKey } from '@/lib/stock'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
@@ -2336,6 +2336,14 @@ const handlers: Record<string, Handler> = {
         activations: b._count.activations,
       }
     }))
+    // The ideas are the LinkedIn run's research list; say what it found
+    // for the ones it couldn't place ("no clear LinkedIn page").
+    const rlog = await readLiResearch(prisma)
+    for (const r of stock.lanes) {
+      const notes: Record<string, string> = {}
+      for (const n of r.ideas) { const m = rlog[brandKey(n)]; if (m?.note) notes[n] = m.note }
+      ;(r as any).ideaNotes = notes
+    }
     return {
       ...stock,
       lastRefile: last ? { at: last.at, by: last.by, moved: last.moves.length, days: last.days.length } : null,
