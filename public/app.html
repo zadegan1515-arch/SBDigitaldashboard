@@ -1147,7 +1147,9 @@
         <input class="field-box" id="bq" placeholder="Search brands — or type a new name to add one…" style="flex:1;min-width:240px" autocomplete="off">
         <button class="btn-solid" id="bq-add" hidden>Add + find on SponsorUnited</button>
         <button class="btn-ghost" id="bq-fill" title="Fills empty brand summaries from a built-in list of known brands — never overwrites anything you typed">Fill summaries</button>
+        <button class="btn-ghost" id="bq-dups" title="Brands that look like the same company: the same name, LinkedIn page or website">Duplicates</button>
       </div>
+      <div id="dup-panel"></div>
       <div id="su-find"></div>
       <div class="chips" id="brand-cat-chips" style="margin-top:12px"></div>
       <div id="su-proposals"></div>
@@ -3167,7 +3169,8 @@ function loadBrands(category) {
   if (nav) nav.classList.add('active');
 
   document.getElementById('brands-title').textContent =
-    category === 'all' ? 'All brands' : category === 'none' ? 'No category' : (CAT_NAMES[category] || category);
+    category === 'all' ? 'All brands' : category === 'none' ? 'No category' : category === 'new' ? 'New from LinkedIn'
+      : (CAT_NAMES[category] || category);
   // Category filter chips — flip between categories without leaving the page.
   // "No category" sits after Needs Clarification: brands that arrived from
   // a capture, a sponsor-page request, a board approval or Notion with no
@@ -3175,6 +3178,10 @@ function loadBrands(category) {
   // from categoryReach's "uncategorised" row.
   document.getElementById('brand-cat-chips').innerHTML =
     '<button class="chip' + (category === 'all' ? ' active' : '') + '" data-bcat="all">All</button>' +
+    // What the LinkedIn run added on its own in the last two weeks and
+    // nobody has looked at: Keep, Archive or re-file them from here.
+    '<button class="chip' + (category === 'new' ? ' active' : '') + '" data-bcat="new" title="Brands the LinkedIn run added in the last 14 days that nobody has looked at yet">' +
+      'New from LinkedIn<span class="n" data-creach="new"></span></button>' +
     CAT_KEYS.map(function (k) {
       return '<button class="chip' + (k === category ? ' active' : '') + '" data-bcat="' + esc(k) + '">' +
         esc(CAT_NAMES[k]) + '<span class="n" data-creach="' + esc(k) + '"></span></button>';
@@ -3185,7 +3192,13 @@ function loadBrands(category) {
   // must never ride along into a re-file.
   bbReset();
   // How far through each category the outreach is — reached / total.
+  dupLoad();
   api('categoryReach').then(function (cr) {
+    var nl = document.querySelector('[data-creach="new"]');
+    if (nl) {
+      nl.textContent = String(cr.newFromLinkedIn || 0);
+      nl.title = (cr.newFromLinkedIn || 0) + ' to look at';
+    }
     Object.keys(cr.categories || {}).forEach(function (k) {
       var el = document.querySelector('[data-creach="' + k + '"]');
       if (!el) return;
@@ -3206,10 +3219,14 @@ function loadBrands(category) {
     // how many have nobody at all.
     var atCap = list.filter(function (b) { return b._count.contacts >= 25; }).length;
     var workable = list.filter(function (b) { return b._count.contacts >= 3; }).length;
-    document.getElementById('brands-sub').textContent =
-      list.length + ' brands · ' + withContacts + ' with contacts · ' +
-      (list.length - withContacts) + ' still need research · ' +
-      atCap + ' full at 25 · ' + workable + ' with 3+ people';
+    document.getElementById('brands-sub').textContent = category === 'new'
+      ? (list.length
+          ? list.length + (list.length === 1 ? ' brand' : ' brands') + ' the LinkedIn run added in the last 14 days that nobody has looked at. ' +
+            'Tick them, then Keep the good ones, Archive the misses, or re-file them — each leaves this list.'
+          : 'Nothing new to look at — everything the LinkedIn run added has been kept, archived or re-filed.')
+      : list.length + ' brands · ' + withContacts + ' with contacts · ' +
+        (list.length - withContacts) + ' still need research · ' +
+        atCap + ' full at 25 · ' + workable + ' with 3+ people';
 
     renderFillProgress();
 
@@ -3247,6 +3264,12 @@ function loadBrands(category) {
           '<div class="t-line"><span class="t-brand">' + esc(b.name) + '</span>' +
             (b.tier ? '<span class="t-sep">·</span><span class="t-title">' + esc(b.tier) + '</span>' : '') +
           '</div>' +
+          (category === 'new'
+            ? '<div class="t-meta"><span>' + esc(b.source === 'research' ? 'Research list' : 'LinkedIn run') +
+                (b.category ? ' · ' + esc(CAT_NAMES[b.category] || b.category) : ' · no category') +
+                ' · added ' + esc(shortDate(b.createdAt)) + '</span></div>' +
+              (b.notes ? '<div class="t-meta"><span>' + esc(b.notes) + '</span></div>' : '')
+            : '') +
           (b.about ? '<div class="t-meta"><span>' + esc(b.about) + '</span></div>'
             : (people || '<div class="t-meta"><span>No contacts yet</span></div>')) +
         '</div>' +
@@ -3343,6 +3366,11 @@ function bbRender() {
 
   var html = '<div class="sd-bulk">' +
     '<b>' + n + ' selected</b>' +
+    (lastCategory === 'new'
+      ? '<button class="btn-solid" data-bbkeep="1"' + lock + ' title="Looked at, fine as they are — off this list, nothing on them changes">Keep ' + n + '</button>' +
+        '<button class="btn-ghost danger" data-bbarchive="1"' + lock + ' title="Not a fit — off outreach for good, onto the Archived tab (Bring back anytime)">Archive ' + n + '…</button>' +
+        '<span class="hint" style="margin:0">or re-file:</span>'
+      : '') +
     '<span>Category</span>' + catSel +
     '<span>Tier</span>' + tierSel +
     '<button class="btn-ghost" data-bbpreview="1"' + (picked && !BB.busy && n <= BB_MAX ? '' : ' disabled') +
@@ -3440,6 +3468,12 @@ document.getElementById('brands-bulk').addEventListener('click', function (e) {
       return;
     }
     toast('Re-filed ' + r.applied + (r.applied === 1 ? ' brand' : ' brands'));
+    if (lastCategory === 'new') {
+      // Re-filing one is looking at it: it leaves New from LinkedIn.
+      api('reviewNewBrands', { ids: args.ids, action: 'keep' }).catch(function () {})
+        .then(function () { loadBrands(lastCategory); });
+      return;
+    }
     // Reloads the list and the chip counts; loadBrands clears the ticks.
     loadBrands(lastCategory);
   }).catch(function (err) {
@@ -3449,10 +3483,172 @@ document.getElementById('brands-bulk').addEventListener('click', function (e) {
   });
 });
 
+// --- New from LinkedIn: Keep / Archive in bulk -----------------
+function bbReview(action) {
+  var ids = Object.keys(BB.sel).sort();
+  if (!ids.length || BB.busy) return;
+  BB.busy = true;
+  bbRender();
+  var go = function () {
+    return api('reviewNewBrands', { ids: ids, action: action }).then(function (r) {
+      BB.busy = false;
+      toast(action === 'keep'
+        ? 'Kept ' + r.reviewed + (r.reviewed === 1 ? ' brand' : ' brands') + ' — off the new list'
+        : 'Archived ' + r.archived + (r.archived === 1 ? ' brand' : ' brands') + ' — off outreach, on the Archived tab');
+      loadBrands(lastCategory);
+    });
+  };
+  var run = action === 'archive'
+    ? api('reviewNewBrands', { ids: ids, action: 'archive', preview: true }).then(function (pv) {
+        var names = pv.willArchive || [];
+        if (names.length && !window.confirm('Archive ' + names.length + (names.length === 1 ? ' brand' : ' brands') + '?\n\n' +
+            names.slice(0, 25).join(', ') + (names.length > 25 ? ' and ' + (names.length - 25) + ' more' : '') +
+            '\n\nThey come off outreach (anyone queued is shelved) and move to the Archived tab. Bring back anytime. Nothing is deleted.')) {
+          BB.busy = false;
+          bbRender();
+          return;
+        }
+        return go();
+      })
+    : go();
+  run.catch(function (e) { BB.busy = false; bbRender(); toast(e.message); });
+}
+document.getElementById('brands-bulk').addEventListener('click', function (e) {
+  if (e.target.closest('[data-bbkeep]')) { bbReview('keep'); return; }
+  if (e.target.closest('[data-bbarchive]')) { bbReview('archive'); }
+});
+
+// --- duplicates ------------------------------------------------
+// Brands → Duplicates suggests brands that look like one company: the
+// same name (or also-known-as), LinkedIn page or website — never an
+// email domain, because brands under one parent company share one and
+// stay separate (Leo's call). Nothing merges on its own: Merge runs the
+// same preview + confirm as the brand page, and "Not duplicates" makes
+// the finder stop offering that group.
+var DUP = { open: false, data: null, busy: false, keep: {}, err: '' };
+var DUP_WHY = { name: 'Same name', linkedin: 'Same LinkedIn page', website: 'Same website' };
+// Where a brand came from, in words (Brand.source).
+var BRAND_SOURCE = {
+  'linkedin-discover': 'LinkedIn run', research: 'research list', linkedin: 'LinkedIn capture',
+  sponsorunited: 'SponsorUnited', 'sponsor-page': 'sponsor page', request: 'sponsor page', 'board-access': 'Show Board',
+  notion: 'Notion', sheet: 'the CRM sheet', discover: 'Discover', import: 'an import', archive: 'past shows'
+};
+
+function dupLoad() {
+  if (DUP.busy) return;
+  DUP.busy = true;
+  api('findDuplicates').then(function (d) {
+    DUP.busy = false;
+    DUP.data = d;
+    DUP.err = '';
+    dupRender();
+  }).catch(function (e) { DUP.busy = false; DUP.err = e.message; dupRender(); });
+}
+
+function dupRender() {
+  var btn = document.getElementById('bq-dups');
+  var d = DUP.data;
+  if (btn) {
+    btn.textContent = d ? 'Duplicates (' + (d.total || 0) + ')' : 'Duplicates';
+    btn.classList.toggle('active', DUP.open);
+  }
+  var box = document.getElementById('dup-panel');
+  if (!box) return;
+  if (!DUP.open) { box.innerHTML = ''; return; }
+  if (!d) {
+    box.innerHTML = '<div class="panel osp"><div class="sd-empty">' + (DUP.err ? 'Could not check: ' + esc(DUP.err) : 'Checking…') + '</div></div>';
+    return;
+  }
+  var groups = d.groups || [];
+  var html = '<div class="panel osp dup">' +
+    '<div class="osp-h"><h2>Possible duplicates</h2>' +
+      '<span class="sd-dim">' + (groups.length
+        ? sdPlural(d.total, 'group', 'groups') + ' with the same name, LinkedIn page or website. Nothing merges until you confirm; brands under one parent company can share a website, so check those.'
+        : 'None found — no two brands share a name, a LinkedIn page or a website.') + '</span>' +
+      '<span class="osp-sp"></span><a href="#" class="sd-link" data-dupclose="1">Close</a></div>';
+  html += groups.map(function (g, gi) {
+    var why = {};
+    g.pairs.forEach(function (p) { p.why.forEach(function (w) { why[w] = true; }); });
+    var weak = !why.name && !why.linkedin;
+    var keepId = DUP.keep[g.members.map(function (m) { return m.id; }).join('|')] || g.keep;
+    var keeper = g.members.filter(function (m) { return m.id === keepId; })[0] || g.members[0];
+    return '<div class="osp-b" data-dupg="' + gi + '">' +
+      '<div class="osp-bh"><b>' + esc(Object.keys(why).map(function (w) { return DUP_WHY[w]; }).join(' · ')) + '</b>' +
+        (weak ? '<span class="sd-tag warn" title="A parent company’s site can cover several brands">Check: website only</span>' : '') +
+        '<span class="osp-sp"></span>' +
+        '<button class="btn-ghost sd-sm" data-dupnot="' + gi + '" title="These are different companies — stop suggesting them together">Not duplicates</button></div>' +
+      g.members.map(function (m) {
+        var isKeep = m.id === keeper.id;
+        var facts = [
+          m.category ? (CAT_NAMES[m.category] || m.category) : 'no category',
+          sdPlural(m.contacts, 'person', 'people'),
+          m.targets ? m.targets + ' in outreach' : '',
+          m.deals ? sdPlural(m.deals, 'deal', 'deals') : '',
+          m.shows ? sdPlural(m.shows, 'show', 'shows') : '',
+          'added ' + shortDate(m.createdAt) + (m.source && m.source !== 'manual' ? ' from ' + (BRAND_SOURCE[m.source] || m.source) : ''),
+          m.archived ? 'archived' : ''
+        ].filter(Boolean).join(' · ');
+        return '<div class="osp-p">' +
+          '<label title="The brand everything is merged into"><input type="radio" name="dupkeep-' + gi + '" data-dupkeep="' + gi + '" value="' + esc(m.id) + '"' + (isKeep ? ' checked' : '') + '> ' +
+            '<span class="n">' + esc(m.name) + '</span><span class="sd-dim">' + esc(facts) + '</span></label>' +
+          '<a href="#" class="sd-link" data-dupopen="' + esc(m.id) + '">Open</a>' +
+          (isKeep
+            ? '<span class="sd-tag good">Keep</span>'
+            : '<button class="btn-draft sd-sm" data-dupmerge="' + esc(m.id) + '" data-dupinto="' + esc(keeper.id) + '">Merge into ' + esc(keeper.name) + '</button>') +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }).join('');
+  box.innerHTML = html + '</div>';
+}
+
+document.getElementById('bq-dups').addEventListener('click', function () {
+  DUP.open = !DUP.open;
+  if (DUP.open && !DUP.data) dupLoad();
+  dupRender();
+});
+
+document.getElementById('dup-panel').addEventListener('change', function (e) {
+  var r = e.target.closest('[data-dupkeep]');
+  if (!r || !DUP.data) return;
+  var g = DUP.data.groups[+r.getAttribute('data-dupkeep')];
+  if (!g) return;
+  DUP.keep[g.members.map(function (m) { return m.id; }).join('|')] = r.value;
+  dupRender();
+});
+
+document.getElementById('dup-panel').addEventListener('click', function (e) {
+  var t;
+  if ((t = e.target.closest('[data-dupclose]'))) { e.preventDefault(); DUP.open = false; dupRender(); return; }
+  if ((t = e.target.closest('[data-dupopen]'))) { e.preventDefault(); loadBrand(t.getAttribute('data-dupopen')); return; }
+  if ((t = e.target.closest('[data-dupmerge]'))) {
+    var btn = t;
+    btn.disabled = true;
+    confirmMergeBrands(btn.getAttribute('data-dupmerge'), btn.getAttribute('data-dupinto'), function () {
+      DUP.data = null;
+      dupLoad();
+      loadBrands(lastCategory);
+    }).then(function () { btn.disabled = false; });
+    return;
+  }
+  if ((t = e.target.closest('[data-dupnot]'))) {
+    var g = DUP.data && DUP.data.groups[+t.getAttribute('data-dupnot')];
+    if (!g) return;
+    var names = g.members.map(function (m) { return m.name; });
+    if (!window.confirm('Mark ' + names.join(', ') + ' as different companies?\n\nThe finder stops suggesting them together. Nothing on the brands changes.')) return;
+    t.disabled = true;
+    api('dismissDuplicates', { ids: g.members.map(function (m) { return m.id; }) }).then(function () {
+      toast('Got it — not suggested together again');
+      dupLoad();
+    }).catch(function (err) { t.disabled = false; toast(err.message); });
+  }
+});
+
 // --- merging duplicate brands ----------------------------------
-// Manual only, from the "Merge duplicate…" button on a brand page.
-// No auto-detection: brands under one parent company legitimately
-// share an email domain and stay separate (Leo's call).
+// From the "Merge duplicate…" button on a brand page, and from Brands →
+// Duplicates, which only suggests (see above). Brands under one parent
+// company legitimately share an email domain and stay separate (Leo's
+// call), so nothing here ever merges on its own.
 
 // Two-step like confirmDeleteBrand: preview exactly what moves, merge
 // only on a real confirmation. onDone runs after a successful merge.

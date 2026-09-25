@@ -121,6 +121,17 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   reached > has people > needs contacts. Priority lanes carry ideas (known names not on the roster
   under any name or aka) that add through `addBrandsBulk`'s preview, filed under the lane.
   `LANE_GOAL = 15` in play per lane. `node scripts/test-stock.mjs`.
+- **Brands → New from LinkedIn** (chip after All; `listBrands({ category: 'new' })`, count from
+  `categoryReach.newFromLinkedIn`): brands the LinkedIn run added itself (`source` linkedin-discover /
+  research) in the last 14 days that nobody has looked at. Tick → **Keep** (off the list, nothing
+  changes), **Archive…** (named first; same as Archive: passedAt + queued people shelved, one
+  transaction) or re-file with the usual bar — each leaves the list (`reviewNewBrands`; looked-at ids in
+  Setting `newBrandsReviewed`). **Brands → Duplicates** (`findDuplicates`, rules in
+  `src/lib/duplicates.ts`, `node scripts/test-duplicates.mjs`): the same name / also-known-as, LinkedIn
+  page or website — never an email domain (parent companies share one; Leo's call), and a website 4+
+  brands share or a platform link (linktr.ee, Instagram…) is no signal. Suggestions only: Merge runs the
+  brand page's `mergeBrands` preview + confirm (the keeper now takes the merged brand's names as
+  also-known-as); **Not duplicates** is remembered per pair (Setting `dupNotSame`).
 - `src/app/api/data/route.ts` — every server function. Add a handler = add a key to `handlers`.
 - `src/app/api/ingest/route.ts` + `scripts/sponsorunited-capture.user.js` — SponsorUnited contact
   capture (INGEST_TOKEN-gated, CORS-open). **Two different caps, don't confuse them:**

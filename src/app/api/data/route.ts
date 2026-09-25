@@ -37,6 +37,7 @@ import { regionFlag } from '@/lib/region'
 import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hints'
 import { readLiLog, readLiResearch } from '@/lib/li-sweep'
 import { LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR, linkedinWindows, acceptRates, planWeekDays, type AcceptRates } from '@/lib/plan-week'
+import { findDuplicateGroups, pairKey } from '@/lib/duplicates'
 import { buildStock, bestDealStage, refileMoves, remapPlanDays, brandKey } from '@/lib/stock'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import {
@@ -1074,6 +1075,49 @@ async function recentAcceptRates(): Promise<AcceptRates> {
 // The Monday (New York) of the week a day key falls in.
 function mondayKey(key: string): string {
   return addDaysKey(key, -((dayKeyDow(key) + 6) % 7))
+}
+
+// Brands the LinkedIn run added on its own (lookalikes / search, and the
+// research list) that nobody has looked at yet — Brands → "New from
+// LinkedIn". Looked-at ids live in Setting newBrandsReviewed.
+const NEW_BRAND_SOURCES = ['linkedin-discover', 'research']
+const NEW_BRAND_DAYS = 14
+const REVIEWED_KEY = 'newBrandsReviewed'
+async function readReviewedNew(): Promise<Set<string>> {
+  const row = await prisma.setting.findUnique({ where: { key: REVIEWED_KEY } })
+  try {
+    const v = row ? JSON.parse(row.value) : []
+    return new Set((Array.isArray(v) ? v : []).map(String))
+  } catch { return new Set() }
+}
+// Only ids of brands still young enough to be listed are kept, so the
+// setting never grows past a fortnight's worth.
+async function writeReviewedNew(ids: Iterable<string>): Promise<void> {
+  const recent = await prisma.brand.findMany({
+    where: { createdAt: { gte: new Date(Date.now() - (NEW_BRAND_DAYS + 1) * 864e5) } },
+    select: { id: true },
+  })
+  const keep = new Set(recent.map(b => b.id))
+  const value = JSON.stringify([...new Set(ids)].filter(id => keep.has(id)))
+  await prisma.setting.upsert({ where: { key: REVIEWED_KEY }, create: { key: REVIEWED_KEY, value }, update: { value } })
+}
+function newBrandWhere(reviewed: ReadonlySet<string>): Prisma.BrandWhereInput {
+  return {
+    source: { in: NEW_BRAND_SOURCES },
+    createdAt: { gte: new Date(Date.now() - NEW_BRAND_DAYS * 864e5) },
+    ...(reviewed.size ? { id: { notIn: [...reviewed] } } : {}),
+  }
+}
+
+// Pairs of brands Leo said are NOT the same company (Brands → Duplicates),
+// as pairKey strings, so the finder never offers them again.
+const DUP_DISMISSED_KEY = 'dupNotSame'
+async function readDismissedDupes(): Promise<Set<string>> {
+  const row = await prisma.setting.findUnique({ where: { key: DUP_DISMISSED_KEY } })
+  try {
+    const v = row ? JSON.parse(row.value) : []
+    return new Set((Array.isArray(v) ? v : []).map(String))
+  } catch { return new Set() }
 }
 
 // Plan my week's undo: what the last applied plan added and changed, so
@@ -2277,11 +2321,15 @@ const handlers: Record<string, Handler> = {
   // nobody on file, which is a different and much smaller set, so "193
   // have no profile" had nowhere to be looked at.
   async listBrands({ category, search, take = 500, noProfile }: any) {
+    const reviewed = category === 'new' ? await readReviewedNew() : null
     const brands = await prisma.brand.findMany({
       where: {
         // "none" is the No category chip: brands from captures, sponsor-page
         // requests, board approvals and Notion that nobody has filed yet.
+        // "new" is New from LinkedIn: what the LinkedIn run added on its
+        // own in the last two weeks that nobody has looked at yet.
         ...(category === 'none' ? { category: null }
+          : category === 'new' ? newBrandWhere(reviewed!)
           : category && category !== 'all' ? { category } : {}),
         ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
         ...(noProfile ? { externalId: null, passedAt: null, doNotEmail: false } : {}),
@@ -2340,12 +2388,19 @@ const handlers: Record<string, Handler> = {
   // each category anyone has actually invited (sentAt), out of how
   // many exist. Passed brands are counted separately, not as reach.
   async categoryReach() {
-    const brands = await prisma.brand.findMany({
-      select: {
-        category: true, passedAt: true,
-        targets: { select: { sentAt: true } },
-      },
-    })
+    const [brands, reviewed] = await Promise.all([
+      prisma.brand.findMany({
+        select: {
+          id: true, category: true, passedAt: true, source: true, createdAt: true,
+          targets: { select: { sentAt: true } },
+        },
+      }),
+      readReviewedNew(),
+    ])
+    // New from LinkedIn: the same test listBrands({ category: 'new' }) uses.
+    const newSince = Date.now() - NEW_BRAND_DAYS * 864e5
+    const newFromLinkedIn = brands.filter(b =>
+      NEW_BRAND_SOURCES.includes(b.source) && b.createdAt.getTime() >= newSince && !reviewed.has(b.id)).length
     const out: Record<string, { total: number; reached: number; passed: number }> = {}
     let all = { total: 0, reached: 0, passed: 0 }
     for (const b of brands) {
@@ -2356,7 +2411,92 @@ const handlers: Record<string, Handler> = {
       if (reached) { row.reached += 1; all.reached += 1 }
       if (b.passedAt) { row.passed += 1; all.passed += 1 }
     }
-    return { categories: out, all }
+    return { categories: out, all, newFromLinkedIn }
+  },
+
+  // New from LinkedIn, handled in bulk. keep = looked at, fine as it is
+  // (off the list; nothing on the brands changes). archive = off outreach
+  // for good, exactly like Archive on a brand (passedAt set, queued
+  // people shelved), in one transaction — previewed first with the names.
+  // Either way the brands leave the list.
+  async reviewNewBrands({ ids, action, preview = false }: any) {
+    const list = [...new Set((Array.isArray(ids) ? ids : []).map(String).filter(Boolean))].slice(0, 300)
+    if (!list.length) throw new Error('Pick at least one brand')
+    if (action !== 'keep' && action !== 'archive') throw new Error('Keep or archive?')
+    const brands = await prisma.brand.findMany({ where: { id: { in: list } }, select: { id: true, name: true, passedAt: true } })
+    const willArchive = action === 'archive' ? brands.filter(b => !b.passedAt) : []
+    if (preview) {
+      return {
+        preview: true, action,
+        brands: brands.map(b => ({ id: b.id, name: b.name, archived: !!b.passedAt })),
+        willArchive: willArchive.map(b => b.name),
+      }
+    }
+    if (willArchive.length) {
+      const archiveIds = willArchive.map(b => b.id)
+      await prisma.$transaction([
+        prisma.brand.updateMany({ where: { id: { in: archiveIds }, passedAt: null }, data: { passedAt: new Date() } }),
+        prisma.target.updateMany({
+          where: { brandId: { in: archiveIds }, status: { in: ['queued', 'drafted'] } },
+          data: { shelved: true, queuedFor: null },
+        }),
+      ])
+    }
+    const reviewed = await readReviewedNew()
+    for (const b of brands) reviewed.add(b.id)
+    await writeReviewedNew(reviewed)
+    return { ok: true, action, reviewed: brands.length, archived: willArchive.length }
+  },
+
+  // Brands → Duplicates: groups of brands that look like one company (the
+  // same name or also-known-as, LinkedIn page or website — never an email
+  // domain; src/lib/duplicates.ts). Suggestions only: merging is the brand
+  // page's own mergeBrands, previewed and confirmed. The suggested keeper
+  // is the one with the most on it (deals, shows, people, outreach), then
+  // the oldest.
+  async findDuplicates() {
+    const [brands, dismissed] = await Promise.all([
+      prisma.brand.findMany({
+        select: {
+          id: true, name: true, aka: true, website: true, linkedinUrl: true, category: true, source: true,
+          createdAt: true, passedAt: true, externalId: true,
+          _count: { select: { contacts: true, targets: true, deals: true, shows: true } },
+        },
+      }),
+      readDismissedDupes(),
+    ])
+    const groups = findDuplicateGroups(brands, dismissed)
+    const byId = new Map(brands.map(b => [b.id, b]))
+    const weight = (b: (typeof brands)[number]) =>
+      b._count.deals * 1000 + b._count.shows * 100 + b._count.contacts * 2 + b._count.targets * 3 + (b.externalId ? 1 : 0)
+    return {
+      total: groups.length,
+      groups: groups.slice(0, 100).map(g => {
+        const members = g.ids.map(id => byId.get(id)!).sort((x, y) =>
+          weight(y) - weight(x) || x.createdAt.getTime() - y.createdAt.getTime())
+        return {
+          keep: members[0].id,
+          members: members.map(b => ({
+            id: b.id, name: b.name, aka: b.aka, category: b.category, source: b.source,
+            website: b.website, linkedinUrl: b.linkedinUrl, createdAt: b.createdAt, archived: !!b.passedAt,
+            contacts: b._count.contacts, targets: b._count.targets, deals: b._count.deals, shows: b._count.shows,
+          })),
+          pairs: g.pairs.map(p => ({ a: p.a, b: p.b, why: p.why })),
+        }
+      }),
+    }
+  },
+
+  // "Not duplicates": every pair in the group is remembered as different,
+  // so the finder never offers them together again.
+  async dismissDuplicates({ ids }: any) {
+    const list = [...new Set((Array.isArray(ids) ? ids : []).map(String).filter(Boolean))].slice(0, 20)
+    if (list.length < 2) throw new Error('Pick the brands that are different')
+    const have = await readDismissedDupes()
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) have.add(pairKey(list[i], list[j]))
+    const value = JSON.stringify([...have].slice(-5000))
+    await prisma.setting.upsert({ where: { key: DUP_DISMISSED_KEY }, create: { key: DUP_DISMISSED_KEY, value }, update: { value } })
+    return { ok: true, pairs: have.size }
   },
 
   // Brands tab bulk re-file: set the category and/or tier on many brands
@@ -2924,6 +3064,14 @@ const handlers: Record<string, Handler> = {
       if (!to[k] && from[k]) fill[k] = from[k]
     }
     if (from.doNotEmail && !to.doNotEmail) fill.doNotEmail = true
+    // The keeper answers to the duplicate's names from now on, so the
+    // next capture or paste under the old name finds it instead of making
+    // the brand again.
+    let aka = to.aka ?? null
+    for (const n of [from.name, ...String(from.aka ?? '').split(/[,;]/)].map(x => x.trim()).filter(Boolean)) {
+      aka = addAka(aka, n, to.name) || null
+    }
+    if (aka !== (to.aka ?? null)) fill.aka = aka
     const moveExternalId = !to.externalId && !!from.externalId ? from.externalId : null
 
     await prisma.$transaction(async tx => {
