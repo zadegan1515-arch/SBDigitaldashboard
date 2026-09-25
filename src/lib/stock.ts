@@ -204,6 +204,14 @@ export const LANES: Lane[] = [
   },
 ]
 
+// Brands Leo asked for by name that don't sit in a lane (Huel is meal
+// shakes, not any of the seven). The LinkedIn run's research list looks
+// these up first, and files them under \`category\` when LinkedIn clearly
+// has them. Add a line to add a brand.
+export const RESEARCH_EXTRA: Array<{ name: string; category: string }> = [
+  { name: 'Huel', category: 'wellness' },
+]
+
 export const LANE_KEYS = LANES.map(l => l.key)
 
 // Loose enough that "Liquid IV" meets "Liquid I.V." and "Nütrl" meets

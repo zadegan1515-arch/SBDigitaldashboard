@@ -144,14 +144,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   no page → LinkedIn company search → `liMatched` (`decideCompanyMatch`: exact name/aka, or a near
   miss only in the top 3 with a fitting industry; else "unclear" → skipped with a note), then the
   People tab (+ "marketing" and "partnerships" views if the tab never ran out), `liCapture` by
-  brandId, `liSwept` → Setting `liSweepLog` (`src/lib/li-sweep.ts`; nothing-new brands rest 30
-  days; notes show red on Outreach → People). Pace: **50 brands/day** (Leo's pick), 1–2½ min
-  between brands, 20–45 s between pages, then waits for 9am next day. One tab owns the run
+  brandId, `liSwept` → Setting `liSweepLog` (`src/lib/li-sweep.ts`; any brand read by a current
+  reader rests 30 days, people or not, so a restarted run doesn't redo it; notes show red on
+  Outreach → People). Pace (Leo, "faster without being sketchy"): **75 brands/day**, 35–75 s between
+  brands, 8–18 s between a brand's pages, same scrolling; then waits for 9am next day. One tab owns the run
   (sessionStorage id); a click or key in it pauses; a login wall, check or "commercial use limit"
   pauses it before any save.
   **Finding new brands** (Leo, Sep 2026: straight into the dashboard, not Discover review): the
   run's setup has "Add brands LinkedIn shows as similar" (lookalike rail — "Pages people also
-  viewed" etc. — read off the People tab, else one stop at the company home) and "Search LinkedIn
+  viewed" etc. — read **only when the People tab shows it**; the extra company-home stop is gone) and "Search LinkedIn
   for new brands" words (company search, up to 3 result pages each, before the first brand).
   `liDiscover` judges each (`judgeDiscovery`: **5K+ followers**, consumer industry via
   `categoryFromIndustry`, wholesale/agency/software out; a lookalike takes the source brand's
@@ -171,6 +172,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   aka, Discover row "Research list: <lane>") and the run reads its people next; a page already on
   another brand adds the name as that brand's aka instead. Outcomes in Setting `liResearchLog`
   (`li-sweep.ts`); unclear names rest 30 days and show their note on Stock take's ideas.
+  Brands Leo names that fit no lane go in `RESEARCH_EXTRA` (stock.ts: `{ name, category }`, e.g.
+  Huel → wellness); `liList` puts them first of all ("Asked for by name").
   Rules + matching in `src/lib/li-capture.ts` (`node scripts/test-li-capture.mjs`); script tested by
   `scripts/test-li-script.js` (fake People/search pages, incl. a run, pause/continue, limit page).
   Worklist in the dashboard: Outreach → People → "Under 25" (deep link `app.html#people`).

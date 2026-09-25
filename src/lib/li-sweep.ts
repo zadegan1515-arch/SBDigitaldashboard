@@ -50,10 +50,13 @@ export async function markLiSwept(db: SettingStore, brandId: string, mark: Omit<
   await db.setting.upsert({ where: { key: LI_SWEEP_KEY }, create: { key: LI_SWEEP_KEY, value: v }, update: { value: v } })
 }
 
-// Resting = the last visit added nobody, and it was recent. A visit that
-// added someone never rests the brand: there may be more next time.
+// Resting = read by a current reader within the last month. A full read
+// of a brand's People tab (plus its marketing / partnerships views) is
+// everything LinkedIn will show; a visit a week later finds the same
+// people, so a brand rests whether or not it gave anyone — which is what
+// lets Leo stop and restart a run without redoing what it just did.
 export function liResting(mark: LiMark | undefined, now = Date.now()): boolean {
-  if (!mark || mark.added > 0) return false
+  if (!mark) return false
   if (!mark.v || mark.v < LI_READER) return false
   const at = Date.parse(mark.at)
   return Number.isFinite(at) && now - at < LI_REST_DAYS * 864e5

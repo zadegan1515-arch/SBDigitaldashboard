@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.10
+// @version      1.11
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -79,7 +79,7 @@
   var INGEST_URL = 'https://sb-digitaldashboard.vercel.app/api/ingest';
   var DASH_URL = 'https://sb-digitaldashboard.vercel.app/app.html';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.10';
+  var VERSION = '1.11';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -698,15 +698,17 @@
   // ---- filling brands by itself ---------------------------------------
   //
   // Leo's call (Sep 2026), once the one-click read worked: go through
-  // every brand on its own, electrolyte brands first, about 50 a day,
+  // every brand on its own, electrolyte brands first, about 75 a day,
   // saving as it goes, and find the company page for brands that have
   // none. LinkedIn restricts accounts that browse like a script, so this
   // is built to move and stop like a person:
   //   · one tab — the run belongs to the tab it started in, and any click
   //     or key in that tab pauses it;
-  //   · 1–2½ minutes between brands, 20–45 s between one brand's pages,
-  //     the same unhurried scrolling as a manual read;
-  //   · 50 brands, then it waits for the next morning;
+  //   · 35–75 s between brands, 8–18 s between one brand's pages, the
+  //     same unhurried scrolling as a manual read (Leo, Sep 2026: faster
+  //     without being sketchy — the gaps were longer than a person's, and
+  //     it's pages per day LinkedIn watches, which is the cap below);
+  //   · 75 brands, then it waits for the next morning;
   //   · a login wall, security check or search limit pauses it at once.
   // People are saved through the same liCapture as a manual read, named
   // by brandId, so buyers-only, the 25 cap and duplicates all hold. New
@@ -714,9 +716,9 @@
   // the server judges; the brand lookup itself never creates one.
 
   var FILL_KEY = 'sbLiFill';
-  var DAILY_CAP = 50;
-  var BETWEEN_BRANDS = [60, 150];   // seconds
-  var BETWEEN_PAGES = [20, 45];
+  var DAILY_CAP = 75;
+  var BETWEEN_BRANDS = [35, 75];   // seconds
+  var BETWEEN_PAGES = [8, 18];
   // A small company is read whole on its People tab; a big one (the tab
   // never ran out) also gets these two keyword views.
   var PASSES = ['', 'marketing', 'partnerships'];
@@ -767,10 +769,6 @@
     var m = String(linkedinUrl || '').match(/linkedin\.com\/(company|showcase)\/([^\/?#]+)/i);
     if (!m) return null;
     return location.origin + '/' + m[1] + '/' + m[2] + '/people/' + (keyword ? '?keywords=' + encodeURIComponent(keyword) : '');
-  }
-  function companyHome(linkedinUrl) {
-    var m = String(linkedinUrl || '').match(/linkedin\.com\/(company|showcase)\/([^\/?#]+)/i);
-    return m ? location.origin + '/' + m[1] + '/' + m[2] + '/' : null;
   }
   function searchUrl(q) { return location.origin + '/search/results/companies/?keywords=' + encodeURIComponent(q); }
   function pageParam() {
@@ -938,13 +936,9 @@
       }
       return go(job, searchUrl(q), 'Looking up ' + item.name + ' on LinkedIn' + (item.research ? ' (research list)' : ''));
     }
-    if (st.phase === 'home') {
-      if (st.navs > 0 && companyPath() && !onPeoplePage()) {
-        st.navs = 0; saveFill(job);
-        return fillLookalikes(item);
-      }
-      return go(job, companyHome(item.linkedinUrl), 'Opening ' + item.name + '\'s page for similar brands');
-    }
+    // A step saved by an older copy on its way to the company home page
+    // for similar brands; that stop is gone, so the brand is done.
+    if (st.phase === 'home') return finishBrand(job, null);
     var want = PASSES[st.pass];
     if (st.navs > 0 && onPeoplePage() && kwParam() === want) {
       st.navs = 0; saveFill(job);
@@ -1129,27 +1123,14 @@
   }
 
   // After a brand's people: its lookalikes, when the run looks for new
-  // brands. Read off the page it's on if LinkedIn shows them there,
-  // otherwise one more stop at the company's home page.
+  // brands — only when LinkedIn shows them on the page it's already on.
+  // The extra stop at every company's home page to find them cost a page
+  // and most of a minute per brand (Leo, Sep 2026: "only when free").
   function afterPeople(job, item) {
     if (!job.lookalikes) return finishBrand(job, null);
     var here = lookalikes();
     if (here.length) return saveLookalikes(item, here);
-    job.step.phase = 'home';
-    job.step.navs = 0;
-    job.nextAt = Date.now() + secs(BETWEEN_PAGES);
-    saveFill(job);
-    runFill();
-  }
-
-  function fillLookalikes(item) {
-    renderFill(loadFill(), 'Looking at brands similar to ' + item.name);
-    // The side rail draws late; a little scroll wakes it.
-    window.scrollTo(0, 600);
-    waitFor(function () { return lookalikes().length; }, 10000).then(function () {
-      window.scrollTo(0, 0);
-      saveLookalikes(item, lookalikes());
-    }).catch(fillError);
+    finishBrand(job, null);
   }
 
   function saveLookalikes(item, found) {
@@ -1268,7 +1249,7 @@
       fillStatusEl,
       job.paused ? h('button', { id: 'sblifillgo', style: BTN, text: 'Continue', onclick: continueFill }) : null,
       h('button', { id: 'sblifillstop', style: BTN2 + ';margin-top:6px;color:#b00', text: 'Stop the run', onclick: stopFill }),
-      h('div', { style: SMALL, text: 'Runs in this tab only; clicking or typing here pauses it. About ' + DAILY_CAP + ' brands a day, 1–2½ minutes apart. It pauses if LinkedIn shows a check or a limit.' }),
+      h('div', { style: SMALL, text: 'Runs in this tab only; clicking or typing here pauses it. About ' + DAILY_CAP + ' brands a day, under a minute apart. It pauses if LinkedIn shows a check or a limit.' }),
     ]);
     p.setAttribute('data-fill', key);
   }
@@ -1342,7 +1323,7 @@
     focus.onkeydown = function (e) { if (e.key === 'Enter') look(); };
     freshPanel([
       head('Fill brands by itself'),
-      h('div', { style: MUTED, text: 'Goes through every brand under 25 people, one at a time in this tab, and saves the buyers it finds. About ' + DAILY_CAP + ' brands a day, 1–2½ minutes apart. It pauses if LinkedIn shows a check or a limit.' }),
+      h('div', { style: MUTED, text: 'Goes through every brand under 25 people, one at a time in this tab, and saves the buyers it finds. About ' + DAILY_CAP + ' brands a day, under a minute apart. It pauses if LinkedIn shows a check or a limit.' }),
       h('div', { style: 'font-size:12px;color:#555;margin-bottom:4px', text: 'Start with brands matching (optional):' }),
       h('div', { style: 'display:flex;gap:6px' }, [
         focus,

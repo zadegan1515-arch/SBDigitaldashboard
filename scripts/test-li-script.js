@@ -29,9 +29,10 @@
 //      and finishes; a click in the tab pauses it and Continue resumes;
 //      LinkedIn's limit page pauses it before anything is saved.
 //  10. Finding new brands: a keyword search adds Liquid I.V. to the front
-//      of the line, Clase Azul's lookalikes (on its home page) add Jose
+//      of the line, Clase Azul's lookalikes (on its People page) add Jose
 //      Cuervo at the end, and each new brand's people are read in the
-//      same run.
+//      same run. A brand whose People page shows no lookalikes costs no
+//      extra page (the home-page stop is gone).
 //  11. The research list: Powerade is found on LinkedIn, becomes a brand
 //      and gets its people read; "NOS Energy" (and then "NOS") only turns
 //      up a telecom, so it's left with a note after both spellings.
@@ -124,6 +125,7 @@ const sent = [];
 // What liList hands the fill; each scenario sets its own.
 let fillItems = [];
 const discovered = new Set();
+const homeVisits = [];
 
 // LinkedIn's "Pages people also viewed" rail.
 function rail(cos) {
@@ -244,10 +246,10 @@ const server = http.createServer((req, res) => {
       '</ul></main></body></html>');
   }
   if (/^\/company\/liquid-i-v\/people\/?/.test(req.url)) return res.end(page(true, 'Liquid I.V.', rail([['drinklmnt', 'LMNT', 'Food and Beverage Services', '40K']])));
-  if (/^\/company\/claseazul\/people\/?/.test(req.url)) return res.end(page(true, 'Clase Azul'));
-  if (/^\/company\/claseazul\/?$/.test(req.url)) return res.end(page(false, 'Clase Azul', rail([['jose-cuervo', 'Jose Cuervo', 'Beverage Manufacturing', '250,512'], ['patron', 'Tequila Patrón', 'Beverage Manufacturing', '33,483']])));
+  if (/^\/company\/claseazul\/people\/?/.test(req.url)) return res.end(page(true, 'Clase Azul', rail([['jose-cuervo', 'Jose Cuervo', 'Beverage Manufacturing', '250,512'], ['patron', 'Tequila Patrón', 'Beverage Manufacturing', '33,483']])));
   if (/^\/company\/jose-cuervo\/people\/?/.test(req.url)) return res.end(page(true, 'Jose Cuervo'));
-  if (/^\/company\/jose-cuervo\/?$/.test(req.url)) return res.end(page(false, 'Jose Cuervo', rail([['claseazul', 'Clase Azul México', 'Beverage Manufacturing', '64K']])));
+  // A company home page: the run must never need one now.
+  if (/^\/company\/(claseazul|jose-cuervo|liquid-i-v)\/?$/.test(req.url)) { homeVisits.push(req.url); return res.end(page(false, 'Home')); }
   // LinkedIn telling a free account it has searched enough.
   if (/^\/company\/limit-brand\/people\/?/.test(req.url)) {
     return res.end(page(true, 'Limit Brand', '<div>You\'ve reached the commercial use limit on search.</div>'));
@@ -570,8 +572,9 @@ const GM_SHIM = `
         'liDiscover:search:electrolyte',
         'liCapture:b-liv', 'liDiscover:lookalike:Liquid I.V.', 'liSwept:b-liv',
         'liCapture:b-ca', 'liDiscover:lookalike:Clase Azul', 'liSwept:b-ca',
-        'liCapture:b-jc', 'liDiscover:lookalike:Jose Cuervo', 'liSwept:b-jc',
+        'liCapture:b-jc', 'liSwept:b-jc',
       ]);
+      assert.deepEqual(homeVisits, [], 'no stop at a company home page');
       const search = sent.slice(before).find(b => b.action === 'liDiscover' && b.source === 'search');
       assert.deepEqual(search.companies.map(c => [c.name, c.subtitle]), [
         ['Liquid I.V.', 'Food and Beverage Manufacturing • Los Angeles • 90K followers'],

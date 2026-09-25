@@ -36,7 +36,7 @@ import {
   type LiCompany,
 } from '@/lib/li-capture'
 import { readLiLog, markLiSwept, liResting, readLiResearch, markLiResearch, researchResting, LI_READER } from '@/lib/li-sweep'
-import { LANES, brandKey } from '@/lib/stock'
+import { LANES, RESEARCH_EXTRA, brandKey } from '@/lib/stock'
 import { guessCategory } from '@/lib/category-hints'
 
 const prisma = new PrismaClient()
@@ -606,6 +606,24 @@ export async function POST(req: NextRequest) {
           })
         }
       }
+    }
+    // Brands Leo asked for by name go before everything else.
+    if (body.research === true) {
+      const rlog = await readLiResearch(prisma)
+      const roster = await prisma.brand.findMany({ select: { name: true, aka: true } })
+      const onRoster = new Set<string>()
+      for (const b of roster) for (const n of [b.name, ...String(b.aka || '').split(/[,;]/)]) if (n.trim()) onRoster.add(brandKey(n))
+      const asked: any[] = []
+      for (const x of RESEARCH_EXTRA) {
+        const names = x.name.split('|').map(n => n.trim()).filter(Boolean)
+        if (!names.length || names.some(n => onRoster.has(brandKey(n)))) continue
+        if (researchResting(rlog[brandKey(names[0])])) { researchWaiting++; continue }
+        asked.push({
+          research: true, name: names[0], aka: names.slice(1).join(', ') || null,
+          category: x.category, lane: 'Asked for by name', linkedinUrl: null, contacts: 0, focus: true,
+        })
+      }
+      research.unshift(...asked)
     }
     const ordered = [
       ...research.filter(r => r.focus), ...items.filter(i => i.focus),
