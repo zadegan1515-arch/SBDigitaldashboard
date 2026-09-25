@@ -185,7 +185,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   name; LinkedIn's badge comes as "· 2nd" **or "• 3rd+"** (bullet) — reader 1 missed the bullet, read
   it as everyone's title and added nobody. Every call sends `reader` (`LI_READER = 2` in
   `li-sweep.ts`); ingest answers 426 "out of date" to older scripts, and visit marks from older readers
-  never rest a brand. Menu / preview link **"Copy a sample for Claude"** copies what the reader made of
+  never rest a brand. **One-click start**: Outreach → People's "Start the LinkedIn fill ↗" opens
+  `linkedin.com/feed/#sb-fill`; the script strips the hash and starts a run in that tab with the
+  panel's defaults (electrolyte first, research list + lookalikes on) — Claude can't run it from the
+  cloud; it needs Leo's browser and LinkedIn login. Menu / preview link **"Copy a sample for Claude"** copies what the reader made of
   the first three cards (+ trimmed markup) for Leo to paste when LinkedIn changes its cards again.
 - `src/lib/email.ts` — outreach: drafting, cap/ramp (`roomToday`), sending via Gmail API, replies, warmup stats, signature (hosted images, LinkedIn/IG as text links).
 - `src/lib/google.ts` — OAuth (gmail / drive / ops grants), Gmail read+send, Drive/Sheets/Docs create.

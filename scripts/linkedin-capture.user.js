@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.7
+// @version      1.8
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -61,7 +61,7 @@
   var INGEST_URL = 'https://sb-digitaldashboard.vercel.app/api/ingest';
   var DASH_URL = 'https://sb-digitaldashboard.vercel.app/app.html';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.7';
+  var VERSION = '1.8';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1235,7 +1235,10 @@
     p.setAttribute('data-fill', key);
   }
 
-  function openFillSetup() {
+  // opts.auto: opened by the dashboard's "Start the LinkedIn fill" — load
+  // the list and start with what's on the panel, no further click.
+  function openFillSetup(opts) {
+    var startNow = !!(opts && opts.auto);
     if (!HAS_GM) return openBroken();
     if (!token()) return openSetup();
     var job = loadFill();
@@ -1278,6 +1281,8 @@
           var dn = discoverNow();
           out.appendChild(h('div', { style: MUTED, text: 'Every brand is full, off outreach, or resting after a recent visit.' + (dn.words.length ? ' It can still search for new brands.' : ' Nothing to do.') }));
           if (dn.words.length) out.appendChild(h('button', { id: 'sblifillstart', style: BTN, text: 'Search for new brands', onclick: function () { startFill([], f, discoverNow()); } }));
+          else startNow = false;
+          if (startNow) { startNow = false; startFill([], f, discoverNow()); }
           return;
         }
         var first = j.items.filter(function (i) { return i.focus; });
@@ -1292,6 +1297,7 @@
         if (j.researchWaiting) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.researchWaiting + ' research names left out: LinkedIn had no clear page for them last month.' }));
         out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:8px', text: 'At about ' + DAILY_CAP + ' a day that is roughly ' + Math.ceil(j.items.length / DAILY_CAP) + ' day(s).' }));
         out.appendChild(h('button', { id: 'sblifillstart', style: BTN, text: 'Start', onclick: function () { startFill(j.items, f, discoverNow()); } }));
+        if (startNow) { startNow = false; startFill(j.items, f, discoverNow()); }
       }).catch(function (e) { out.textContent = e.message; });
     };
     focus.onkeydown = function (e) { if (e.key === 'Enter') look(); };
@@ -1323,6 +1329,7 @@
       out,
       h('div', { style: SMALL, text: 'Use a tab you\'re not using — clicking or typing in it pauses the run.' }),
     ]);
+    if (startNow) look();
   }
 
   function fillLink() {
@@ -1378,4 +1385,13 @@
   // A run's tab picks the run back up on every page load, once LinkedIn
   // has had a moment to draw the page.
   if (fillHere()) later(runFill, rand(2500, 4000));
+
+  // The dashboard's "Start the LinkedIn fill" button opens LinkedIn at
+  // #sb-fill: the run starts in that new tab with the panel's defaults.
+  // The mark comes off the address first, so a reload doesn't start
+  // another; a run already going in another tab is shown, not doubled.
+  if (/^#sb-fill\b/.test(location.hash) && !fillHere()) {
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    later(function () { openFillSetup({ auto: true }); }, rand(1500, 2500));
+  }
 })();

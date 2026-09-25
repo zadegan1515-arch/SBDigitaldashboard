@@ -40,6 +40,9 @@
 //      the name link — and there's no subtitle class. Names come out clean
 //      and every headline is read, so the founder is a buyer. The copied
 //      sample for Claude says what the reader made of each card.
+//  13. The dashboard's "Start the LinkedIn fill" opens LinkedIn at
+//      #sb-fill: the run starts and finishes with no click at all, with
+//      the defaults (electrolyte first, research list on).
 //   6. The pill sits bottom-left, clear of LinkedIn's Messaging bar; the
 //      Tampermonkey menu opens the same panel; and a copy running without
 //      its @grant lines (pasted under Tampermonkey's sample) says so.
@@ -637,6 +640,21 @@ const GM_SHIM = `
       await pg.close();
     }
     ok('LinkedIn\'s real cards: bullet badges stripped, every headline read; the sample copies for Claude');
+
+    // 13. One click from the dashboard.
+    {
+      fillItems = [{ brandId: 'b-ld', name: 'Liquid Death', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/liquid-death/', contacts: 3, focus: false }];
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/#sb-fill');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 90000 });
+      const list = sent.slice(before).find(b => b.action === 'liList');
+      assert.equal(list.research, true); assert.equal(list.focus, 'electrolyte');
+      assert.ok(sent.slice(before).some(b => b.action === 'liCapture' && b.brandId === 'b-ld'));
+      await pg.close();
+    }
+    ok('#sb-fill from the dashboard starts the run by itself with the defaults');
 
     // 6. No @grant lines: runs, shows the pill, says to reinstall.
     const bare = await browser.newPage();
