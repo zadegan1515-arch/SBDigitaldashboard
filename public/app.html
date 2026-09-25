@@ -626,6 +626,68 @@
   .sd-extra{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap;margin-top:14px;font-size:12.5px}
   .sd-extra input[type=date]{padding:5px 8px;font-size:12.5px}
   .sd-tag.extra{color:#c9b3ff;border-color:rgba(157,122,255,.45);background:rgba(157,122,255,.1)}
+  /* LinkedIn's weekly limit: the line in the top row, and a day's note */
+  .sd-liw{font-size:12px;color:var(--ink-3)}
+  .sd-liw b{color:var(--ink-1);font-weight:700}
+  .sd-liw.warn,.sd-liw.warn b{color:#eec777}
+  .sd-liw.bad,.sd-liw.bad b{color:#f2918c}
+  .sd-liwarn{font-size:12px;line-height:1.45;padding:6px 10px;border-radius:8px}
+  .sd-liwarn.ok{padding:0;color:var(--ink-3)}
+  .sd-liwarn.warn{background:rgba(232,182,76,.1);color:#eec777}
+  .sd-liwarn.bad{background:rgba(240,113,107,.1);color:#f4a8a4}
+  /* Plan my week */
+  .sd-pw{margin-top:14px;padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+  .sd-pw.sd-stale .sd-pwdays{opacity:.55;pointer-events:none;transition:opacity .15s}
+  .sd-pw-h{display:flex;gap:6px 14px;align-items:baseline;flex-wrap:wrap}
+  .sd-pwdays{display:grid;grid-template-columns:repeat(var(--sd-n,3),minmax(0,1fr));gap:14px;align-items:start}
+  @media (max-width:1100px){.sd-pwdays{grid-template-columns:minmax(0,1fr)}}
+  .sd-pwday{background:var(--surface-2);padding:14px;display:flex;flex-direction:column;gap:9px;min-width:0}
+  .sd-pwrow{display:flex;gap:9px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--border-soft)}
+  .sd-pwrow input{margin-top:3px;flex:none}
+  .sd-pwrow.off .sd-pwm{opacity:.45}
+  .sd-pwm{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+  .sd-pwppl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sd-pwkept{display:flex;flex-wrap:wrap;gap:6px}
+  .sd-pwk{font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--surface-1);border:1px solid var(--border)}
+  .sd-pwk.bad{border-color:rgba(240,113,107,.4)}
+  .sd-pw-f{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--border-soft);padding-top:12px}
+  .sd-pwdone{margin-top:12px}
+  /* Coverage: categories x the last six weeks. One blue, brighter with
+     more invites (the dark-surface steps of the sequential ramp; ink
+     flips to dark on the two brightest). */
+  .sd-covp{padding:14px 16px}
+  .sd-covwrap{overflow-x:auto;margin-top:10px}
+  .sd-cov{width:100%;border-collapse:separate;border-spacing:2px;font-size:12.5px;min-width:780px}
+  .sd-cov th,.sd-cov td{padding:0;text-align:center;font-weight:500;color:var(--ink-2);vertical-align:middle}
+  .sd-cov thead th{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);padding:2px 4px 8px;white-space:nowrap}
+  .sd-cov .sd-cov-c{text-align:left;padding:4px 12px 4px 0;white-space:nowrap;font-weight:600;color:var(--ink-1)}
+  .sd-cov .sd-cov-c a{color:inherit}
+  .sd-cov .sd-cov-sum{padding:0 8px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .sd-cov .sd-cov-last{text-align:left;padding:0 0 0 8px;white-space:nowrap;font-size:12px}
+  .sd-cov .sd-cov-tot{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .sd-cov tr.gap .sd-cov-c a{color:var(--ink-2)}
+  .sd-cov tfoot th,.sd-cov tfoot td{padding-top:8px;border-top:1px solid var(--border-soft);font-weight:700;color:var(--ink-1)}
+  .sd-covgap{color:#eec777;font-weight:600}
+  .sd-cell{display:flex;flex-direction:column;gap:2px;min-width:46px;outline:none;cursor:default}
+  .sd-cell b{display:block;height:28px;line-height:28px;border-radius:4px;font-variant-numeric:tabular-nums;font-weight:700;color:#fff;font-size:12.5px;text-align:center}
+  .sd-cov thead th.wk{width:8.5%}
+  .sd-cell.s0 b{color:var(--ink-3);font-weight:500;background:transparent}
+  .sd-cell.s1 b{background:#0d366b}
+  .sd-cell.s2 b{background:#184f95}
+  .sd-cell.s3 b{background:#256abf}
+  .sd-cell.s4 b{background:#3987e5;color:#0b0b0f}
+  .sd-cell.s5 b{background:#6da7ec;color:#0b0b0f}
+  .sd-cell i{display:block;height:3px;border-radius:2px;background:var(--surface-2);overflow:hidden}
+  .sd-cell i.none{background:transparent}
+  .sd-cell u,.sd-cov-keyline u{display:block;height:100%;background:var(--good);border-radius:2px;text-decoration:none}
+  .sd-cell:not(.key):hover b,.sd-cell:not(.key):focus-visible b{box-shadow:inset 0 0 0 2px rgba(255,255,255,.6)}
+  .sd-cov-legend{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11.5px;color:var(--ink-3)}
+  .sd-cov-legend .sd-cell.key{min-width:44px}
+  .sd-cov-legend .sd-cell.key b{height:20px;line-height:20px;font-size:11px}
+  .sd-cov-keyline{display:inline-flex;gap:6px;align-items:center;margin-left:10px}
+  .sd-cov-keyline i{display:inline-block;width:40px;height:3px;border-radius:2px;background:var(--surface-2);overflow:hidden}
+  .sd-tip{position:absolute;z-index:200;pointer-events:none;background:#23232c;border:1px solid var(--border);color:var(--ink-1);font-size:12px;
+    padding:6px 10px;border-radius:8px;box-shadow:var(--shadow);max-width:320px;display:none}
   .sd-sent-h{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-top:6px}
   .sd-tog{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:12px;padding:0 2px;font-family:inherit}
   .sd-tog:hover{color:var(--ink-1)}
@@ -1187,9 +1249,11 @@
       <h1>Schedule</h1>
       <div class="sub">Today and the next three sending days. 20 people a day, one category a day, and every brand says whether it has enough people.</div>
       <div id="sched-extra"></div>
+      <div id="sched-plan"></div>
       <div id="sched-check"></div>
       <div id="sched-days" class="sd-days"></div>
       <div id="sched-cats"></div>
+      <div id="sched-cov"></div>
       <div id="sched-past" style="margin-top:10px"></div>
     </section>
 
@@ -6164,7 +6228,20 @@ var SCHED = {
   // Plan calls and schedule reloads still in flight. While any is, the
   // day numbers and suggestion lists on screen are about to change, so
   // Fill to 20 waits (see sdFillReady).
-  busyN: 0
+  busyN: 0,
+  // LinkedIn's weekly limit (getOutreachPlan.linkedinWeek): invites in
+  // the last seven days, and per day the seven days ending on it.
+  linkedinWeek: null,
+  // Plan my week. pw = the preview panel: data (planWeek's answer),
+  // cats[date] = a category Leo picked in the preview ('__pick' = let the
+  // plan choose over his own), off['date|id'] = unticked, exclude = brand
+  // ids a refill must leave out. pwDone = what the last Apply did, and
+  // planWeekLast = the server's record of it, which keeps Undo alive
+  // across reloads.
+  pw: { open: false, busy: false, seq: 0, data: null, cats: {}, off: {}, exclude: [], err: '', applying: false },
+  pwDone: null, planWeekLast: null,
+  // Coverage, last six weeks (categoryCoverage).
+  cov: null, covBusy: false, covErr: ''
 };
 
 function schedDayKey(offset) {
@@ -6309,7 +6386,11 @@ function renderSchedExtra() {
     return '<span class="sd-tag extra" title="A one-off sending day">' + esc(sdDayName(k)) +
       ' <a href="#" class="sd-x" data-sdxrm="' + esc(k) + '" title="Remove this sending day">×</a></span>';
   }).join(' ');
+  var pwOn = SCHED.pw && SCHED.pw.open;
   box.innerHTML = '<div class="sd-extra">' +
+    '<button class="btn-draft sd-sm" data-sdpw="1"' + (pwOn ? ' disabled' : '') +
+      ' title="Picks a category for each of the next three sending days and fills them to ' + sdCap() + ' with whole brands. You see it all before anything changes.">Plan my week</button>' +
+    (SCHED.planWeekLast && !pwOn ? '<a href="#" class="sd-link" data-sdpwundo="1" title="Take the last Plan my week back off">Undo the week plan</a>' : '') +
     (SCHED.extraOpen
       ? '<b>Add a sending day</b>' +
         '<input type="date" class="inp" data-sdxdate="1" min="' + esc(min) + '" value="' + esc(val) + '">' +
@@ -6318,7 +6399,321 @@ function renderSchedExtra() {
         '<span class="sd-dim">A one-off. Tuesday, Wednesday and Thursday stay the rule.</span>'
       : '<button class="btn-ghost sd-sm" data-sdxtoggle="1" title="Send on a day that is not Tue, Wed or Thu, just this once">+ Add a sending day</button>') +
     (extras.length ? '<span class="sd-dim">Extra days:</span> ' + tags : '') +
+    '<span class="sd-sp"></span>' + sdLiWeekChip() +
   '</div>';
+}
+
+// LinkedIn's weekly limit, in one line: invites in the last seven days,
+// and a warning when a day on the schedule would take its own seven days
+// close to or past it. Words carry the state; the colour only backs them.
+function sdLiWeekChip() {
+  var w = SCHED.linkedinWeek;
+  if (!w) return '';
+  var worst = null;
+  SCHED.order.forEach(function (k) {
+    var x = (w.days || {})[k];
+    if (x && (!worst || x.count > worst.count)) worst = { key: k, count: x.count, over: x.over };
+  });
+  var state = worst && worst.count > w.limit ? 'bad' : worst && worst.count > w.near ? 'warn' : '';
+  var tail = state === 'bad' ? ' · <b>' + esc(sdDayTag(worst.key)) + ' goes over</b> (' + worst.count + ')'
+    : state === 'warn' ? ' · <b>close on ' + esc(sdDayTag(worst.key)) + '</b> (' + worst.count + ')'
+    : '';
+  return '<span class="sd-liw' + (state ? ' ' + state : '') + '" title="LinkedIn stops an account at roughly ' + w.limit +
+    ' connection invites a week, counted over the last seven days. Each day on the Schedule counts the seven days ending on it.">' +
+    'LinkedIn: <b>' + w.sentLast7 + '</b> invites in the last 7 days · about ' + w.limit + ' a week allowed' + tail + '</span>';
+}
+
+// The same, for one day's column: only when that day is close or over.
+function sdLiDayWarn(key) {
+  var w = SCHED.linkedinWeek;
+  var x = w && w.days && w.days[key];
+  if (!x || !x.near) return '';
+  var over = x.count > w.limit;
+  return '<div class="sd-liwarn ' + (over ? 'bad' : 'warn') + '">' +
+    '<b>' + (over ? 'Over LinkedIn’s weekly limit' : 'Close to LinkedIn’s weekly limit') + '</b> · ' +
+    x.count + ' invites in the 7 days to ' + esc(sdDayTag(key)) + ', about ' + w.limit + ' allowed' +
+    (over ? '. Move ' + sdPlural(x.over, 'person', 'people') + ' to a later day.' : '.') +
+  '</div>';
+}
+
+// --- Plan my week ----------------------------------------------
+//
+// One click plans the next three sending days: planWeek picks each
+// day's category (the one whose ready, never-reached brands can fill it,
+// never the day before's, least recently worked first) and fills it to
+// 20 with whole brands, keeping whatever Leo already pinned or set.
+// Nothing is written until Apply; unticked brands stay out, and Refill
+// finds others for the gaps.
+
+function sdPwKeyDays() {
+  var d = SCHED.pw.data;
+  return d && d.days ? d.days : [];
+}
+
+function sdPwOpen() {
+  SCHED.pw = { open: true, busy: true, seq: 0, data: null, cats: {}, off: {}, exclude: [], err: '', applying: false };
+  SCHED.pwDone = null;
+  renderSchedExtra();
+  sdPwLoad();
+}
+
+function sdPwClose() {
+  SCHED.pw = { open: false, busy: false, seq: 0, data: null, cats: {}, off: {}, exclude: [], err: '', applying: false };
+  renderSchedExtra();
+  renderSchedPlan();
+}
+
+// Unticked brands leave for good once the plan is asked again — a
+// category change or Refill must not quietly put them back.
+function sdPwFoldOff() {
+  var pw = SCHED.pw;
+  Object.keys(pw.off).forEach(function (k) {
+    if (!pw.off[k]) return;
+    var id = k.split('|')[1];
+    if (id && pw.exclude.indexOf(id) === -1) pw.exclude.push(id);
+  });
+  pw.off = {};
+}
+
+function sdPwLoad() {
+  var pw = SCHED.pw;
+  var mine = ++pw.seq;
+  sdPwFoldOff();
+  pw.busy = true;
+  pw.err = '';
+  renderSchedPlan();
+  api('planWeek', { categories: pw.cats, exclude: pw.exclude }).then(function (d) {
+    if (SCHED.pw !== pw || mine !== pw.seq) return;
+    pw.busy = false;
+    pw.data = d;
+    renderSchedPlan();
+  }).catch(function (e) {
+    if (SCHED.pw !== pw || mine !== pw.seq) return;
+    pw.busy = false;
+    pw.err = e.message;
+    renderSchedPlan();
+  });
+}
+
+function sdPwTicked(day) {
+  var pw = SCHED.pw;
+  return (day.add || []).filter(function (b) { return !pw.off[day.date + '|' + b.id]; });
+}
+
+// A day key n days on, for the seven-day LinkedIn count.
+function sdAddDays(key, n) {
+  var dt = new Date(key + 'T12:00:00Z');
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
+}
+
+// The plan's seven-day LinkedIn count for a day, less whatever Leo has
+// unticked on it or on the days before it in the same seven days.
+function sdPwWindow(day) {
+  var lw = day.linkedin;
+  if (!lw) return null;
+  var from = sdAddDays(day.date, -6);
+  var off = 0;
+  sdPwKeyDays().forEach(function (e) {
+    if (e.date < from || e.date > day.date) return;
+    (e.add || []).forEach(function (b) { if (SCHED.pw.off[e.date + '|' + b.id]) off += b.going; });
+  });
+  return lw.count - off;
+}
+
+function sdPwCatSel(day) {
+  var d = SCHED.pw.data || {};
+  var stock = d.stock || {};
+  var opts = '';
+  if (day.categoryBefore) {
+    opts += '<option value=""' + (day.source === 'yours' ? ' selected' : '') + '>' + esc(sdCatName(day.categoryBefore)) + ' (yours)</option>';
+  }
+  opts += '<option value="__pick"' + (day.source === 'picked' || day.source === 'none' || day.source === 'full' ? ' selected' : '') + '>' +
+    (day.source === 'picked' && day.category ? 'Picked: ' + esc(sdCatName(day.category)) : 'Let the plan pick') + '</option>';
+  opts += CAT_KEYS.map(function (k) {
+    var st = stock[k];
+    var sel = day.source === 'asked' && day.category === k;
+    return '<option value="' + esc(k) + '"' + (sel ? ' selected' : '') + '>' + esc(CAT_NAMES[k]) +
+      (st ? ' · ' + st.ready + ' ready' : ' · none left') + '</option>';
+  }).join('');
+  return '<select class="inp sd-catsel" data-pwcat="' + esc(day.date) + '" title="The category this day works"' +
+    (SCHED.pw.busy || SCHED.pw.applying ? ' disabled' : '') + '>' + opts + '</select>';
+}
+
+function sdPwDayHtml(day) {
+  var pw = SCHED.pw;
+  var cap = sdCap();
+  var ticked = sdPwTicked(day);
+  var total = (day.keptPeople || 0) + ticked.reduce(function (s, b) { return s + b.going; }, 0);
+  var open = Math.max(0, cap - total);
+  var over = Math.max(0, total - cap);
+  var status = over > 0 ? '<span class="sd-st bad">Over by ' + over + '</span>'
+    : open === 0 ? '<span class="sd-st good">Full ✓</span>'
+    : '<span class="sd-st warn">' + sdPlural(open, 'open spot', 'open spots') + '</span>';
+  var lwN = sdPwWindow(day);
+  var lim = (pw.data && pw.data.linkedin) || { limit: 100, near: 80 };
+  var lwState = lwN == null ? '' : lwN > lim.limit ? 'bad' : lwN > lim.near ? 'warn' : 'ok';
+  var html = '<div class="panel sd-pwday">' +
+    '<div class="sd-day-h"><div class="sd-day-t">' + esc(sdDayName(day.date)) + '</div>' + sdPwCatSel(day) + '</div>' +
+    '<div class="sd-dim">' + esc(day.why || '') + '</div>' +
+    '<div class="sd-day-n"><span><b>' + total + '</b> of ' + cap + ' people</span>' + status + '</div>' +
+    '<div class="sd-meter' + (over > 0 ? ' bad' : open === 0 ? ' good' : '') + '"><i style="width:' + Math.min(100, total / cap * 100) + '%"></i></div>' +
+    (lwN != null
+      ? '<div class="sd-liwarn ' + lwState + '">' +
+          (lwState === 'bad' ? '<b>Over LinkedIn’s weekly limit</b> · ' : lwState === 'warn' ? '<b>Close to LinkedIn’s weekly limit</b> · ' : 'LinkedIn: ') +
+          lwN + ' invites in the 7 days to ' + esc(sdDayName(day.date)) + ', about ' + lim.limit + ' allowed</div>'
+      : '');
+  if ((day.kept || []).length) {
+    html += '<div class="sd-open-sub">Already on this day</div>' +
+      '<div class="sd-pwkept">' + day.kept.map(function (k) {
+        return '<span class="sd-pwk' + (k.going ? '' : ' bad') + '" title="' + esc(k.reasonText || '') + '">' + esc(k.name) +
+          ' <span class="sd-dim">' + (k.going ? k.going + ' going' : 'won’t go out') + '</span></span>';
+      }).join('') + '</div>';
+  }
+  var adds = day.add || [];
+  if (adds.length) {
+    html += '<div class="sd-open-sub">The plan adds</div>' + adds.map(function (b) {
+      var k = day.date + '|' + b.id;
+      var on = !pw.off[k];
+      var from = b.from !== 'day' && b.category ? '<span class="sd-tag" title="' + (b.from === 'related' ? 'A related category, topping the day up' : 'Another category, topping the day up') + '">' + esc(sdCatName(b.category)) + '</span>' : '';
+      return '<div class="sd-pwrow' + (on ? '' : ' off') + '">' +
+        '<input type="checkbox" data-pwtick="' + esc(k) + '"' + (on ? ' checked' : '') + (pw.applying ? ' disabled' : '') + ' aria-label="Include ' + esc(b.name) + '">' +
+        '<div class="sd-pwm">' +
+          '<div class="sd-card-h"><a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
+            sdLabel(b.label) + '<span class="sd-dim">' + b.going + ' going</span>' + from + '</div>' +
+          (b.people && b.people.length ? '<div class="sd-dim sd-pwppl">' + esc(b.people.map(function (p) { return p.name; }).join(', ')) +
+            (b.going > b.people.length ? ' +' + (b.going - b.people.length) : '') + '</div>' : '') +
+        '</div>' +
+      '</div>';
+    }).join('');
+  } else if (!(day.kept || []).length) {
+    html += '<div class="sd-empty">' + (day.source === 'full' ? 'Full already.' : 'Nothing the plan could add. The Fill box on the day can reach other categories, or capture more people.') + '</div>';
+  } else if (open > 0) {
+    html += '<div class="sd-note">Nothing else fits whole in the ' + sdPlural(open, 'spot', 'spots') + ' left.</div>';
+  }
+  return html + '</div>';
+}
+
+function renderSchedPlan() {
+  var box = document.getElementById('sched-plan');
+  if (!box) return;
+  var pw = SCHED.pw;
+  if (!pw || !pw.open) { box.innerHTML = sdPwDoneHtml(); return; }
+  var days = sdPwKeyDays();
+  var d = pw.data;
+  var range = days.length ? sdDayName(days[0].date) + (days.length > 1 ? ' to ' + sdDayName(days[days.length - 1].date) : '') : '';
+  var nBrands = 0, nPeople = 0, nOff = 0;
+  days.forEach(function (day) {
+    sdPwTicked(day).forEach(function (b) { nBrands += 1; nPeople += b.going; });
+    (day.add || []).forEach(function (b) { if (pw.off[day.date + '|' + b.id]) nOff += 1; });
+  });
+  var body;
+  if (!d) {
+    body = pw.err
+      ? '<div class="sd-flash bad">Could not plan the week: ' + esc(pw.err) + ' <a href="#" class="sd-link" data-pwretry="1">Try again</a></div>'
+      : '<div class="sd-empty">Working out the week…</div>';
+  } else if (!days.length) {
+    body = '<div class="sd-empty">No sending days ahead to plan.</div>';
+  } else {
+    body = (pw.err ? '<div class="sd-flash bad">' + esc(pw.err) + '</div>' : '') +
+      '<div class="sd-pwdays" style="--sd-n:' + days.length + '">' + days.map(sdPwDayHtml).join('') + '</div>';
+  }
+  var canApply = d && days.length && !pw.busy && !pw.applying && days.some(function (day) {
+    return sdPwTicked(day).length || ((day.source === 'picked' || day.source === 'asked') && day.category && day.category !== day.categoryBefore);
+  });
+  box.innerHTML = '<div class="panel sd-pw' + (pw.busy && d ? ' sd-stale' : '') + '">' +
+    '<div class="sd-pw-h">' +
+      '<h2 class="sd-h2">Plan my week</h2>' +
+      '<span class="sd-dim">' + (range ? esc(range) + ' · ' : '') + 'Nothing changes until you press Apply.</span>' +
+      '<span class="sd-sp"></span>' +
+      '<a href="#" class="sd-link" data-pwclose="1">Cancel</a>' +
+    '</div>' +
+    body +
+    (d && days.length
+      ? '<div class="sd-pw-f">' +
+          '<span class="sd-dim">' + (nBrands ? 'Adds ' + sdPlural(nBrands, 'brand', 'brands') + ' · ' + sdPlural(nPeople, 'person', 'people') : 'Nothing ticked to add') +
+            (nOff ? ' · ' + nOff + ' left out' : '') + '</span>' +
+          '<span class="sd-sp"></span>' +
+          (nOff ? '<button class="btn-ghost sd-sm" data-pwrefill="1"' + (pw.busy || pw.applying ? ' disabled' : '') + ' title="Plan again without the unticked brands, finding others for their spots">Refill the gaps</button>' : '') +
+          '<button class="btn-draft" data-pwapply="1"' + (canApply ? '' : ' disabled') + '>' + (pw.applying ? 'Applying…' : 'Apply the plan') + '</button>' +
+        '</div>'
+      : '') +
+  '</div>';
+}
+
+// What the last Apply did, until the next plan or a dismiss.
+function sdPwDoneHtml() {
+  var r = SCHED.pwDone;
+  if (!r) return '';
+  return '<div class="sd-flash ' + (r.refused.length ? 'bad' : 'good') + ' sd-pwdone">' + esc(r.text) +
+    (r.refused.length ? '<br>Couldn’t add: ' + r.refused.map(function (x) { return '<b>' + esc(x.name) + '</b> (' + esc(x.text || 'refused') + ')'; }).join(', ') : '') +
+    ' <a href="#" class="sd-link" data-sdpwundo="1">Undo</a>' +
+    ' <a href="#" class="sd-x" data-pwdonex="1" title="Dismiss">×</a></div>';
+}
+
+function sdPwApply() {
+  var pw = SCHED.pw;
+  var days = sdPwKeyDays().map(function (day) {
+    var out = { date: day.date, brandIds: sdPwTicked(day).map(function (b) { return b.id; }) };
+    if ((day.source === 'picked' || day.source === 'asked') && day.category && day.category !== day.categoryBefore) out.category = day.category;
+    return out;
+  }).filter(function (x) { return x.brandIds.length || x.category; });
+  if (!days.length) { toast('Nothing ticked to add'); return; }
+  pw.applying = true;
+  renderSchedPlan();
+  sdPlanCall('planWeek', { apply: true, days: days }).then(function (r) {
+    var res = (r && r.days) || [];
+    var added = 0, people = 0, refused = [];
+    res.forEach(function (x) {
+      added += x.added || 0;
+      people += x.people || 0;
+      (x.refused || []).forEach(function (f) { refused.push(f); });
+      if (!x.ok && x.error) refused.push({ name: sdDayName(x.date), text: x.error });
+    });
+    var names = res.filter(function (x) { return x.ok; }).map(function (x) { return sdDayTag(x.date); });
+    SCHED.pwDone = {
+      text: 'Planned ' + (names.join(', ') || 'the week') + ': ' + sdPlural(added, 'brand', 'brands') + ', ' + sdPlural(people, 'person', 'people') + '.',
+      refused: refused
+    };
+    SCHED.pw = { open: false, busy: false, seq: 0, data: null, cats: {}, off: {}, exclude: [], err: '', applying: false };
+    toast(SCHED.pwDone.text);
+    return sdRefresh();
+  }).catch(function (e) {
+    pw.applying = false;
+    pw.err = e.message;
+    renderSchedPlan();
+    sdRefresh();
+  });
+}
+
+// Undo asks the server what it would take back first and says so.
+function sdPwUndo() {
+  api('undoPlanWeek', { preview: true }).then(function (p) {
+    if (!p || !p.ok) { toast((p && p.message) || 'Nothing to undo'); SCHED.planWeekLast = null; renderSchedExtra(); return; }
+    var by = {};
+    var order = [];
+    (p.brands || []).forEach(function (b) {
+      if (!by[b.date]) { by[b.date] = []; order.push(b.date); }
+      by[b.date].push(b.name);
+    });
+    var lines = order.map(function (k) { return sdDayTag(k) + ': ' + by[k].join(', '); });
+    var cats = (p.categories || []).map(function (c) {
+      return sdDayTag(c.date) + ' back to ' + (c.to ? sdCatName(c.to) : 'automatic rotation');
+    });
+    var moved = (p.movedBack || []).map(function (m) { return m.name + ' back to ' + sdDayTag(m.to); });
+    if (!lines.length && !cats.length) { toast('Nothing left to undo — those brands have moved since'); return; }
+    if (!window.confirm('Undo the last Plan my week?\n\n' +
+        (lines.length ? 'Takes ' + sdPlural((p.brands || []).length, 'brand', 'brands') + ' back off their days:\n' + lines.join('\n') : 'No brands to take off.') +
+        (moved.length ? '\n\nPuts back: ' + moved.join(', ') : '') +
+        (cats.length ? '\n\nCategories: ' + cats.join(', ') : '') +
+        '\n\nNobody is deleted. Brands you moved since are left where you put them.')) return;
+    return sdPlanCall('undoPlanWeek', {}).then(function (r) {
+      SCHED.pwDone = null;
+      SCHED.planWeekLast = null;
+      toast('Week plan undone · ' + sdPlural(((r && r.brands) || []).length, 'brand', 'brands') + ' off');
+      return sdRefresh();
+    });
+  }).catch(function (e) { toast(e.message); });
 }
 
 function sdAddExtraDay(date) {
@@ -6391,6 +6786,8 @@ function sdTake(d) {
   SCHED.pool = d.pool || null;
   SCHED.extraDays = d.extraDays || [];
   SCHED.nextOffDay = d.nextOffDay || '';
+  SCHED.linkedinWeek = d.linkedinWeek || null;
+  SCHED.planWeekLast = d.planWeekLast || null;
   // Fill-box suggestions are asked for again after every change too (a
   // brand just added is no longer a suggestion), drawn from the old
   // answer until the new one lands.
@@ -6420,6 +6817,7 @@ function loadSchedule() {
   showView('schedule');
   var box = document.getElementById('sched-days');
   if (!SCHED.order.length) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  sdLoadCoverage();
   var mine = ++SCHED.refSeq;
   SCHED.loadedAt = Date.now();
   sdBusy(1);
@@ -6446,9 +6844,11 @@ function renderSchedAll() {
     if (f.summary && now - (f.summaryAt || 0) > 90000) f.summary = '';
   });
   renderSchedExtra();
+  renderSchedPlan();
   renderSchedCheck();
   renderSchedDays();
   renderSchedCats();
+  renderSchedCov();
   renderSchedPast();
 }
 
@@ -6839,6 +7239,7 @@ function sdDayHtml(key) {
     '<div class="sd-day-n"><span><b>' + total + '</b> of ' + cap + ' people</span>' + status + '</div>' +
     '<div class="sd-meter' + (over > 0 ? ' bad' : open === 0 ? ' good' : '') + '"><i style="width:' + Math.min(100, total / cap * 100) + '%"></i></div>' +
     '<div class="sd-dim">' + esc(sub) + '</div>' +
+    sdLiDayWarn(key) +
     '<div class="sd-addrow">' +
       '<div class="sd-add" data-sdbox="' + esc(key) + '">' +
         '<input class="inp" data-sdq="' + esc(key) + '" placeholder="+ Add a brand to ' + esc(isToday ? 'today' : sdDayName(key)) + '…" autocomplete="off">' +
@@ -7588,6 +7989,142 @@ function renderSchedPast() {
   box.querySelector('details').addEventListener('toggle', function () { SCHED.pastOpen = this.open; });
 }
 
+// --- coverage over time ---------------------------------------
+//
+// Every category against the last six weeks: how many invites went out
+// each week, and how many got through. A heat grid, one blue that gets
+// brighter with more invites (numbers in every cell, so it is its own
+// table); the thin line under a number is the share accepted. The rows
+// with nothing in them are the point — a category nobody has worked.
+
+function sdLoadCoverage() {
+  if (SCHED.covBusy) return;
+  SCHED.covBusy = true;
+  api('categoryCoverage', { weeks: 6 }).then(function (d) {
+    SCHED.covBusy = false;
+    SCHED.cov = d;
+    SCHED.covErr = '';
+    renderSchedCov();
+  }).catch(function (e) {
+    SCHED.covBusy = false;
+    SCHED.covErr = e.message;
+    renderSchedCov();
+  });
+}
+
+// Invites in a week -> one of five steps. Fixed steps, not relative to
+// the busiest cell, so a quiet week looks quiet next month too.
+var SD_COV_STEPS = [
+  { min: 1, max: 4, label: '1–4' },
+  { min: 5, max: 9, label: '5–9' },
+  { min: 10, max: 19, label: '10–19' },
+  { min: 20, max: 39, label: '20–39' },
+  { min: 40, max: Infinity, label: '40+' }
+];
+function sdCovStep(n) {
+  for (var i = 0; i < SD_COV_STEPS.length; i++) if (n >= SD_COV_STEPS[i].min && n <= SD_COV_STEPS[i].max) return i + 1;
+  return 0;
+}
+function sdPct(x) { return x == null ? '—' : Math.round(x * 100) + '%'; }
+
+function sdCovCell(c, tip) {
+  var step = sdCovStep(c.invites);
+  var share = c.invites ? Math.round(c.accepted / c.invites * 100) : 0;
+  return '<span class="sd-cell s' + step + '" tabindex="0" data-tip="' + esc(tip) + '">' +
+    '<b>' + (c.invites || '–') + '</b>' +
+    (c.invites ? '<i><u style="width:' + share + '%"></u></i>' : '<i class="none"></i>') +
+  '</span>';
+}
+
+function renderSchedCov() {
+  var box = document.getElementById('sched-cov');
+  if (!box) return;
+  var d = SCHED.cov;
+  if (!d) {
+    box.innerHTML = SCHED.covErr ? '<div class="sd-note" style="margin-top:24px">Coverage could not load: ' + esc(SCHED.covErr) + '</div>' : '';
+    return;
+  }
+  var tiles = {};
+  (SCHED.categories || []).forEach(function (c) { tiles[sdCatKey(c.category)] = c; });
+  var rows = (d.rows || []).filter(function (r) { return r.brands > 0 || r.invites > 0; });
+  var worked = rows.filter(function (r) { return r.invites > 0; }).length;
+  var weeks = d.weeks || [];
+  var wkName = function (w) { return w.current ? 'This week' : w.label; };
+  var head = '<tr><th scope="col" class="sd-cov-c">Category</th>' +
+    weeks.map(function (w) { return '<th scope="col" class="wk">' + esc(wkName(w)) + '</th>'; }).join('') +
+    '<th scope="col" class="sd-cov-sum">6 weeks</th><th scope="col" class="sd-cov-sum">Accepted</th><th scope="col" class="sd-cov-last">Last invite</th></tr>';
+  var body = rows.map(function (r) {
+    var key = sdCatKey(r.category);
+    var name = sdCatName(r.category);
+    var t = tiles[key];
+    var ready = t && t.notReached ? (t.notReached.ready || 0) : 0;
+    var cells = r.cells.map(function (c, i) {
+      var w = weeks[i] || {};
+      var tip = name + ' · ' + (w.current ? 'this week' : 'week of ' + w.label) + ' · ' + sdPlural(c.invites, 'invite', 'invites') +
+        (c.invites ? ' · ' + c.accepted + ' accepted (' + Math.round(c.accepted / c.invites * 100) + '%)' : '');
+      return '<td>' + sdCovCell(c, tip) + '</td>';
+    }).join('');
+    var last = r.invites
+      ? (r.lastSent ? esc(shortDate(r.lastSent)) : '')
+      : '<span class="sd-covgap">' + (r.lastSent ? 'Not in 6 weeks · last ' + esc(shortDate(r.lastSent)) : 'Never worked') + '</span>' +
+        (ready ? '<span class="sd-dim"> · ' + ready + ' ready</span>' : '');
+    return '<tr' + (r.invites ? '' : ' class="gap"') + '>' +
+      '<th scope="row" class="sd-cov-c"><a href="#" class="sd-dimlink" data-sdseecat="' + esc(key) + '">' + esc(name) + '</a>' +
+        '<span class="sd-dim"> · ' + r.brands + '</span></th>' +
+      cells +
+      '<td class="sd-cov-sum">' + (r.invites || '–') + '</td>' +
+      '<td class="sd-cov-sum">' + (r.invites ? sdPct(r.rate) + '<span class="sd-dim"> of ' + r.invites + '</span>' : '–') + '</td>' +
+      '<td class="sd-cov-last">' + last + '</td>' +
+    '</tr>';
+  }).join('');
+  var foot = '<tr><th scope="row" class="sd-cov-c">All categories</th>' +
+    (d.totals || []).map(function (c, i) {
+      var w = weeks[i] || {};
+      return '<td class="sd-cov-tot">' + (c.invites || '–') +
+        (c.invites ? '<span class="sd-dim"> · ' + sdPct(c.accepted / c.invites) + '</span>' : '') + '</td>';
+    }).join('') +
+    '<td class="sd-cov-sum">' + (d.invites || '–') + '</td>' +
+    '<td class="sd-cov-sum">' + (d.invites ? sdPct(d.rate) : '–') + '</td><td></td></tr>';
+  var legend = '<span class="sd-cov-legend" aria-hidden="true">Invites a week ' +
+    SD_COV_STEPS.map(function (st, i) { return '<span class="sd-cell s' + (i + 1) + ' key"><b>' + st.label + '</b></span>'; }).join('') +
+    '<span class="sd-cov-keyline"><i><u style="width:60%"></u></i> share accepted</span></span>';
+  box.innerHTML =
+    '<div class="sd-cats-h"><h2 class="sd-h2">Coverage</h2>' +
+      '<span class="sd-dim">The last 6 weeks · ' + worked + ' of ' + rows.length + ' categories worked · ' + sdPct(d.rate) + ' of invites accepted. The newest weeks are still filling in: accepts land days after the invite.</span></div>' +
+    '<div class="panel sd-covp">' + legend +
+      '<div class="sd-covwrap"><table class="sd-cov"><thead>' + head + '</thead><tbody>' + body + '</tbody><tfoot>' + foot + '</tfoot></table></div>' +
+    '</div>';
+}
+
+// One tooltip for the grid's cells, on hover and on keyboard focus. The
+// text goes in with textContent: category names are data.
+(function () {
+  var tip = null;
+  function show(el) {
+    var text = el.getAttribute('data-tip');
+    if (!text) return;
+    if (!tip) { tip = document.createElement('div'); tip.className = 'sd-tip'; document.body.appendChild(tip); }
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = el.getBoundingClientRect();
+    var w = tip.offsetWidth;
+    var left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+    tip.style.left = (left + window.scrollX) + 'px';
+    tip.style.top = (r.top + window.scrollY - tip.offsetHeight - 8) + 'px';
+  }
+  function hide() { if (tip) tip.style.display = 'none'; }
+  document.addEventListener('pointerover', function (e) {
+    var el = e.target.closest && e.target.closest('#sched-cov [data-tip]');
+    if (el) show(el); else hide();
+  });
+  document.addEventListener('focusin', function (e) {
+    var el = e.target.closest && e.target.closest('#sched-cov [data-tip]');
+    if (el) show(el); else hide();
+  });
+  document.addEventListener('focusout', hide);
+  window.addEventListener('scroll', hide, { passive: true });
+})();
+
 // --- typeahead -------------------------------------------------
 
 function sdCloseDrops(except) {
@@ -7697,6 +8234,23 @@ var SCHED_DRAG = null;
       return;
     }
     if (t.matches('[data-sdxdate]')) { SCHED.extraDate = t.value; return; }
+    if (t.matches('[data-pwtick]')) {
+      var tk = t.getAttribute('data-pwtick');
+      if (t.checked) delete SCHED.pw.off[tk]; else SCHED.pw.off[tk] = true;
+      renderSchedPlan();
+      var again = document.querySelector('[data-pwtick="' + tk.replace(/"/g, '\\"') + '"]');
+      if (again) again.focus();
+      return;
+    }
+    if (t.matches('[data-pwcat]')) {
+      var pdate = t.getAttribute('data-pwcat');
+      var pday = sdPwKeyDays().filter(function (x) { return x.date === pdate; })[0] || {};
+      if (t.value === '') delete SCHED.pw.cats[pdate];
+      else if (t.value === '__pick') { if (pday.categoryBefore) SCHED.pw.cats[pdate] = '__pick'; else delete SCHED.pw.cats[pdate]; }
+      else SCHED.pw.cats[pdate] = t.value;
+      sdPwLoad();
+      return;
+    }
     if (t.matches('[data-sdcatsel]')) {
       var ckey = t.getAttribute('data-sdcatsel');
       t.disabled = true;
@@ -7876,6 +8430,15 @@ var SCHED_DRAG = null;
       sdRenderFill(t.getAttribute('data-sdneed'));
       return;
     }
+
+    // Plan my week.
+    if ((t = e.target.closest('[data-sdpw]'))) { sdPwOpen(); return; }
+    if ((t = e.target.closest('[data-sdpwundo]'))) { e.preventDefault(); sdPwUndo(); return; }
+    if ((t = e.target.closest('[data-pwclose]'))) { e.preventDefault(); sdPwClose(); return; }
+    if ((t = e.target.closest('[data-pwretry]'))) { e.preventDefault(); sdPwLoad(); return; }
+    if ((t = e.target.closest('[data-pwrefill]'))) { sdPwLoad(); return; }
+    if ((t = e.target.closest('[data-pwapply]'))) { sdPwApply(); return; }
+    if ((t = e.target.closest('[data-pwdonex]'))) { e.preventDefault(); SCHED.pwDone = null; renderSchedPlan(); return; }
 
     // Extra sending days.
     if ((t = e.target.closest('[data-sdxtoggle]'))) {
@@ -8075,9 +8638,10 @@ var SCHED_DRAG = null;
     if (Date.now() - SCHED.loadedAt <= 5000) return;
     var busy = [].some.call(sec.querySelectorAll('[data-sdslot]'), function (el) { return el.innerHTML.trim() !== ''; }) ||
       [].some.call(sec.querySelectorAll('[data-sdq]'), function (el) { return el.value.trim() !== ''; }) ||
-      SCHED.extraBusy;
+      SCHED.extraBusy || (SCHED.pw && SCHED.pw.applying);
     if (busy) return;
     sdRefresh();
+    sdLoadCoverage();
   }
   window.addEventListener('focus', sdBackInView);
   document.addEventListener('visibilitychange', sdBackInView);

@@ -85,7 +85,18 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   "Move to" (`planMoveBrand`; moving off today un-stamps unsent people, nothing shelved). Plan
   writes go through `planAddBrands` / `planMoveBrand` / `planRemoveBrand` / `planSetCategory`.
   Thin / no-one brands link "LinkedIn people ↗" (`liPeopleUrl`) for the LinkedIn capture script;
-  the tab refreshes on focus so a capture shows up. **Outreach → LinkedIn** = one card per brand
+  the tab refreshes on focus so a capture shows up. "The rest of …" rows (past a day's 20) have
+  **Add** (pins to that day; the fill makes room) and "Other day…". **Plan my week** (`planWeek`
+  preview → apply, `undoPlanWeek` via Setting `planWeekLast`; the rules are pure in
+  `src/lib/plan-week.ts`, `node scripts/test-plan-week.mjs`): the next 3 sending days — keeps pins
+  and Leo's categories, gives each open day a category that can fill it (never the day before's,
+  least recently worked first, then accept rate), fills to 20 with whole brands (category →
+  `RELATED_CATEGORIES` → the rest), never takes a brand in today's queue; nothing is written until
+  Apply. **LinkedIn weekly limit**: ~100 invites per rolling 7 days (`LINKEDIN_WEEK_LIMIT`, warns
+  from 80; `getOutreachPlan.linkedinWeek`) — top-right line + a note on any day that would pass it;
+  it only warns. **Coverage** (`categoryCoverage`): categories × the last 6 weeks (Mon–Sun, New York),
+  invites per week + share accepted (accepted/replied, withdrawn uncounted); 90-day accept rates
+  (smoothed, cached 10 min) also order the Fill box's other categories. **Outreach → LinkedIn** = one card per brand
   (sent people stay in their card, `getTodayQueue.sentList`; a finished brand folds to one line).
 - **Brands → Stock take** (`brandStock` + `src/lib/stock.ts`; deep link `app.html#stock`; linked from
   Home → Categories) — the whole roster in one read, every brand in exactly one row. **Leo's lanes are

@@ -36,6 +36,7 @@ import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import { regionFlag } from '@/lib/region'
 import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hints'
 import { readLiLog, readLiResearch } from '@/lib/li-sweep'
+import { LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR, linkedinWindows, acceptRates, planWeekDays, type AcceptRates } from '@/lib/plan-week'
 import { buildStock, bestDealStage, refileMoves, remapPlanDays, brandKey } from '@/lib/stock'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import {
@@ -1016,6 +1017,90 @@ function planBrandRow(b: PlanBrand, ctx: PlanRowCtx) {
     : going > 0 ? `${going} would go out`
     : 'Nobody would go out'
   return { id: b.id, name: b.name, category: b.category, externalId: b.externalId, label, pinnedOn, status, action, text, going }
+}
+
+// The order open brands are offered in, wherever the Schedule suggests
+// them (the Fill box, Plan my week): people ready to write to first,
+// small brands first (they answer), a decision maker we can find on
+// LinkedIn, more reachable people, then the name.
+const TIER_ORDER = ['emerging', 'growth', 'established']
+function tierRank(t: string | null): number {
+  const i = TIER_ORDER.indexOf(t ?? '')
+  return i < 0 ? TIER_ORDER.length : i
+}
+function dmOnLinkedIn(b: PlanBrand): boolean {
+  return b.contacts.some(c => c.isDecisionMaker && !!c.linkedinUrl)
+}
+const LABEL_RANK: Record<ContactsLabel['kind'], number> = { ready: 0, thin: 1, none: 2 }
+function compareOpenBrands(x: { b: PlanBrand; label: ContactsLabel }, y: { b: PlanBrand; label: ContactsLabel }): number {
+  return LABEL_RANK[x.label.kind] - LABEL_RANK[y.label.kind] ||
+    tierRank(x.b.tier) - tierRank(y.b.tier) ||
+    Number(dmOnLinkedIn(y.b)) - Number(dmOnLinkedIn(x.b)) ||
+    y.label.reachable - x.label.reachable ||
+    x.b.name.localeCompare(y.b.name)
+}
+
+// Invites since `since`, one row each, with whether it got through: they
+// accepted, or answered (a reply means they saw it). A withdrawn invite
+// has its sentAt cleared, so it is not in here — it never counted.
+async function invitesSince(since: Date): Promise<Array<{ at: Date; category: string | null; accepted: boolean }>> {
+  const rows = await prisma.target.findMany({
+    where: { sentAt: { gte: since } },
+    select: {
+      sentAt: true, status: true,
+      brand: { select: { category: true } },
+      // Accepted and then declined still accepted.
+      events: { where: { toStatus: 'accepted' }, take: 1, select: { id: true } },
+    },
+  })
+  return rows.map(t => ({
+    at: t.sentAt!,
+    category: t.brand.category ?? null,
+    accepted: ['accepted', 'replied', 'converted'].includes(t.status) || t.events.length > 0,
+  }))
+}
+
+// The last 90 days' accept rates, kept for ten minutes: the Schedule
+// asks for them once per Fill box on every refresh, and they move by a
+// handful of accepts a day.
+let acceptRateMemo: { at: number; rates: AcceptRates } | null = null
+async function recentAcceptRates(): Promise<AcceptRates> {
+  if (acceptRateMemo && Date.now() - acceptRateMemo.at < 10 * 60e3) return acceptRateMemo.rates
+  const rates = acceptRates(await invitesSince(new Date(Date.now() - 90 * 864e5)))
+  acceptRateMemo = { at: Date.now(), rates }
+  return rates
+}
+
+// The Monday (New York) of the week a day key falls in.
+function mondayKey(key: string): string {
+  return addDaysKey(key, -((dayKeyDow(key) + 6) % 7))
+}
+
+// Plan my week's undo: what the last applied plan added and changed, so
+// one click can take it back off (Setting planWeekLast).
+const PLAN_WEEK_KEY = 'planWeekLast'
+type PlanWeekLog = {
+  at: string
+  by: string | null
+  days: { date: string; categoryBefore: string | null; categoryAfter: string | null; added: string[]; moved: { id: string; from: string }[] }[]
+}
+async function readPlanWeekLog(): Promise<PlanWeekLog | null> {
+  const row = await prisma.setting.findUnique({ where: { key: PLAN_WEEK_KEY } })
+  if (!row) return null
+  try {
+    const v = JSON.parse(row.value)
+    if (!v || !Array.isArray(v.days)) return null
+    return {
+      at: String(v.at), by: v.by ?? null,
+      days: v.days.filter((d: any) => isDayKey(d?.date)).map((d: any) => ({
+        date: d.date,
+        categoryBefore: d.categoryBefore ?? null,
+        categoryAfter: d.categoryAfter ?? null,
+        added: Array.isArray(d.added) ? d.added.map(String) : [],
+        moved: Array.isArray(d.moved) ? d.moved.filter((m: any) => m?.id && isDayKey(m?.from)).map((m: any) => ({ id: String(m.id), from: m.from })) : [],
+      })),
+    }
+  } catch { return null }
 }
 
 // ---------------------------------------------------------------
@@ -4343,8 +4428,35 @@ const handlers: Record<string, Handler> = {
     }
     const categories = [...tiles.values()]
 
+    // LinkedIn's weekly limit, per day: the seven days ending on it,
+    // with what already went out and what the schedule sends.
+    const sentCount = new Map<string, number>()
+    for (const [k, list] of Object.entries(sentByDay)) sentCount.set(k, list.length)
+    const windows = linkedinWindows(days.map(d => d.date), new Map(days.map(d => [d.date, d.total])), sentCount, todayKey)
+    const last7Keys = Array.from({ length: 7 }, (_, i) => addDaysKey(todayKey, -i))
+    const linkedinWeek = {
+      limit: LINKEDIN_WEEK_LIMIT,
+      near: LINKEDIN_WEEK_NEAR,
+      // The seven days ending today, today included.
+      sentLast7: last7Keys.reduce((n, k) => n + (sentCount.get(k) ?? 0), 0),
+      // Those seven days one by one (Plan my week counts them too).
+      sentByDay: Object.fromEntries(last7Keys.map(k => [k, sentCount.get(k) ?? 0])),
+      days: windows,
+    }
+
+    // The last Plan my week, while any of its days is still ahead, so its
+    // Undo survives a reload.
+    const pw = await readPlanWeekLog()
+    const planWeekLast = pw && pw.days.some(d => d.date >= todayKey)
+      ? {
+          at: pw.at,
+          days: pw.days.map(d => ({ date: d.date, added: d.added.length, categoryBefore: d.categoryBefore, categoryAfter: d.categoryAfter })),
+        }
+      : null
+
     return {
       plan, brands, today: localDayKey(), days, past,
+      linkedinWeek, planWeekLast,
       extraDays: [...extras].sort(),
       // The add-a-day picker's default: the next weekday nothing goes
       // out on.
@@ -4479,6 +4591,256 @@ const handlers: Record<string, Handler> = {
     return { ok: true }
   },
 
+  // "Plan my week": the next three sending days, planned in one go.
+  // Each day keeps the brands Leo already pinned to it and the category
+  // he set. A day with no category gets one: the category whose ready,
+  // never-reached brands can fill it, never the one the day before
+  // worked, one not used earlier in the plan, least recently worked
+  // first (then the ones that accept more). Then the day fills to 20
+  // with whole brands — its category first, the related categories
+  // next, then the rest. Nothing is written until apply: the preview
+  // names every brand, who goes, and what LinkedIn's weekly limit looks
+  // like afterwards.
+  //
+  // categories: { date: key } forces a day's category ('__pick' lets the
+  // plan pick over Leo's own). exclude: brand ids to leave out (unticked
+  // in the preview) so a re-plan finds others instead.
+  // apply: days = [{ date, category?, brandIds }] — what the preview
+  // showed, minus whatever Leo unticked. A category is only sent for a
+  // day whose category the plan (or Leo, in the preview) changed.
+  async planWeek({ apply = false, days: picks, categories, exclude, __user }: any = {}) {
+    const today = localDayKey()
+    const extras = await readExtraDays()
+
+    if (apply) {
+      const list = (Array.isArray(picks) ? picks : []).slice(0, 7)
+      if (!list.length) throw new Error('Nothing to plan')
+      const plan = await readPlan()
+      const log: PlanWeekLog = { at: new Date().toISOString(), by: __user ?? null, days: [] }
+      const results: any[] = []
+      for (const d of list) {
+        const date = String(d?.date ?? '')
+        if (!isDayKey(date) || date <= today || !isSendingKey(date, extras)) {
+          results.push({ date, ok: false, error: 'Not an upcoming sending day', added: 0, people: 0, refused: [] })
+          continue
+        }
+        const categoryBefore = plan[date]?.category ?? null
+        const cat = d?.category ? checkCategory(d.category) : null
+        if (cat && cat !== categoryBefore) plan[date] = { category: cat, brandIds: plan[date]?.brandIds ?? [] }
+        const onDay = new Set(plan[date]?.brandIds ?? [])
+        const ids = (Array.isArray(d?.brandIds) ? d.brandIds : []).map(String)
+        // Writes the plan (the category above rides along with it).
+        const core = await planAddCore(plan, date, ids)
+        const added = core.results.filter(r => r.added && !onDay.has(r.brandId))
+        log.days.push({
+          date, categoryBefore, categoryAfter: plan[date]?.category ?? null,
+          added: added.map(r => r.brandId),
+          moved: added.filter(r => r.movedFrom).map(r => ({ id: r.brandId, from: r.movedFrom })),
+        })
+        results.push({
+          date, ok: true, category: plan[date]?.category ?? null,
+          added: added.length,
+          people: added.reduce((n, r) => n + (r.going || 0), 0),
+          refused: core.results.filter(r => !r.added).map(r => ({ name: r.brandName, text: r.reasonText })),
+        })
+      }
+      const changed = log.days.some(x => x.added.length || x.categoryBefore !== x.categoryAfter)
+      if (changed) {
+        const value = JSON.stringify(log)
+        await prisma.setting.upsert({ where: { key: PLAN_WEEK_KEY }, create: { key: PLAN_WEEK_KEY, value }, update: { value } })
+      }
+      return { ok: true, days: results, undo: changed }
+    }
+
+    const weekDays = planningDays(3, extras, { afterToday: true })
+    const [plan, brands, rates, cur] = await Promise.all([
+      readPlan(),
+      prisma.brand.findMany({ select: PLAN_BRAND_SELECT }) as Promise<PlanBrand[]>,
+      recentAcceptRates(),
+      // The Schedule as it stands: today's number and the invites of the
+      // last few days, for LinkedIn's seven-day count.
+      (handlers.getOutreachPlan as Handler)({}),
+    ])
+    const dayStart = startOfLocalDay()
+    const pinnedOn = pinnedDays(plan, today)
+    const excluded = new Set((Array.isArray(exclude) ? exclude : []).map(String))
+    const forced: Record<string, string> = {}
+    for (const [k, v] of Object.entries(categories && typeof categories === 'object' ? categories : {})) {
+      if (!isDayKey(k) || typeof v !== 'string' || !v) continue
+      forced[k] = v === '__pick' ? v : checkCategory(v)!
+    }
+    const brandById = new Map(brands.map(b => [b.id, b]))
+    // The last invite per category, all time: "least recently worked".
+    const lastSent = new Map<string, number>()
+    for (const b of brands) {
+      if (!b.category) continue
+      for (const t of b.targets) {
+        if (t.sentAt && t.sentAt.getTime() > (lastSent.get(b.category) ?? 0)) lastSent.set(b.category, t.sentAt.getTime())
+      }
+    }
+
+    // Everyone the plan could put on a day: never reached, not set aside,
+    // not in talks, not pinned anywhere yet, and somebody who would go
+    // out on a later day. A brand with people in today's queue is going
+    // out today: planning it for a later day would pull them back out of
+    // today's list, which the plan must never do behind Leo's back.
+    const inTodayQueue = (b: PlanBrand) => b.targets.some(t =>
+      !!t.queuedFor && t.queuedFor >= dayStart && !t.sentAt && !t.shelved && ['queued', 'drafted'].includes(t.status))
+    type Cand = { b: PlanBrand; label: ContactsLabel; people: PreviewPerson[] }
+    const cands: Cand[] = brands
+      .filter(b => !isReached(b) && !b.passedAt && !b.doNotEmail && !inConversation(b) && !pinnedOn.has(b.id) && !excluded.has(b.id) && !inTodayQueue(b))
+      .map(b => ({ b, label: contactLabel(b, b.contacts), people: previewBrandPicks(b, { forToday: false, dayStart }).people }))
+      .filter(c => c.people.length > 0)
+      .sort(compareOpenBrands)
+    const byCat = new Map<string, Cand[]>()
+    for (const c of cands) {
+      const k = c.b.category ?? ''
+      const list = byCat.get(k) ?? []
+      list.push(c)
+      byCat.set(k, list)
+    }
+    // What each category holds before the plan takes anything; the
+    // preview's category menus show it.
+    const stock: Record<string, { brands: number; people: number; ready: number }> = {}
+    for (const [k, list] of byCat) {
+      if (!k) continue
+      stock[k] = {
+        brands: list.length,
+        people: list.reduce((n, c) => n + c.people.length, 0),
+        ready: list.filter(c => c.label.kind === 'ready').length,
+      }
+    }
+
+    // "The day before" the first planned day: today's category when today
+    // sends, otherwise whatever was worked last.
+    const todayRow = ((cur?.days ?? []) as any[]).find(d => d.date === today)
+    let prev: string | null = todayRow?.category ?? null
+    if (!prev) {
+      let latest = 0
+      for (const [k, at] of lastSent) if (at > latest) { latest = at; prev = k }
+    }
+    const candById = new Map(cands.map(c => [c.b.id, c]))
+    const keptOf = (key: string) => (plan[key]?.brandIds ?? [])
+      .map(id => brandById.get(id))
+      .filter((b): b is PlanBrand => !!b)
+      .map(b => {
+        const p = previewBrandPicks(b, { forToday: false, dayStart })
+        return {
+          id: b.id, name: b.name, category: b.category, going: p.people.length,
+          reasonText: p.people.length ? null : reasonText(p.reason, reasonCtx(b)),
+        }
+      })
+    const kept = new Map(weekDays.map(d => [d.key, keptOf(d.key)]))
+    const plannedDays = planWeekDays({
+      days: weekDays.map(d => ({ date: d.key, kept: kept.get(d.key)!, category: plan[d.key]?.category ?? null })),
+      cands: cands.map(c => ({ id: c.b.id, category: c.b.category, ready: c.label.kind === 'ready', size: c.people.length })),
+      cap: DAILY_SEND_LIMIT,
+      forced, prev, lastSent,
+      rateOf: rates.of,
+      related: RELATED_CATEGORIES,
+    })
+    const cap = DAILY_SEND_LIMIT
+    const out = plannedDays.map(d => {
+      const last = d.category ? lastSent.get(d.category) : undefined
+      const r = d.category ? rates.raw.get(d.category) : undefined
+      const why = d.source === 'yours' ? 'Your pick for this day'
+        : d.source === 'asked' ? 'Your pick'
+        : d.source === 'full' ? 'Full already'
+        : d.source === 'none' ? 'Nothing left that could go out'
+        : [
+            `${d.readyNow} ready brand${d.readyNow === 1 ? '' : 's'} not reached yet`,
+            last ? `last worked ${shortDate(new Date(last))}` : 'not worked yet',
+            r && r.invites >= 5 ? `${Math.round(r.accepted / r.invites * 100)}% accept` : null,
+          ].filter(Boolean).join(' · ')
+      return {
+        date: d.date, label: dayLabel(d.date), category: d.category, source: d.source, why,
+        categoryBefore: plan[d.date]?.category ?? null,
+        kept: kept.get(d.date) ?? [], keptPeople: d.keptPeople,
+        add: d.add.map(a => {
+          const c = candById.get(a.id)!
+          return {
+            id: c.b.id, name: c.b.name, category: c.b.category, tier: c.b.tier, label: c.label, from: a.from,
+            going: c.people.length,
+            people: c.people.slice(0, 4).map(p => ({ name: p.name, title: p.title })),
+            linkedinUrl: c.b.linkedinUrl,
+          }
+        }),
+        addPeople: d.addPeople, total: d.total,
+        open: Math.max(0, cap - d.total),
+        over: Math.max(0, d.total - cap),
+      }
+    })
+
+    // LinkedIn's seven-day count with the plan in: the Schedule's own
+    // numbers for today and its other days, the plan's for its days.
+    const sent = new Map<string, number>(Object.entries(cur?.linkedinWeek?.sentByDay ?? {}) as Array<[string, number]>)
+    const planned = new Map<string, number>()
+    for (const d of (cur?.days ?? []) as any[]) planned.set(d.date, d.total)
+    for (const d of out) planned.set(d.date, d.total)
+    const windows = linkedinWindows(out.map(d => d.date), planned, sent, today)
+    return {
+      today,
+      days: out.map(d => ({ ...d, linkedin: windows[d.date] })),
+      linkedin: { limit: LINKEDIN_WEEK_LIMIT, near: LINKEDIN_WEEK_NEAR },
+      stock,
+      // Brands that could go out on these days at all.
+      open: cands.length,
+    }
+  },
+
+  // Takes the last Plan my week back off: the brands it pinned come off
+  // their days (only while they are still there — one Leo has moved
+  // since is his now), a brand it moved goes back to its old day, and a
+  // day's category goes back if the plan set it and nobody has changed
+  // it since. preview = say exactly what would change, change nothing.
+  async undoPlanWeek({ preview = false }: any = {}) {
+    const log = await readPlanWeekLog()
+    if (!log) return { ok: false, message: 'Nothing to undo' }
+    const today = localDayKey()
+    const plan = await readPlan()
+    const off: { date: string; id: string }[] = []
+    const back: { id: string; to: string }[] = []
+    const cats: { date: string; from: string | null; to: string | null }[] = []
+    for (const d of log.days) {
+      if (d.date < today) continue
+      const day = plan[d.date]
+      for (const id of d.added) if (day?.brandIds.includes(id)) off.push({ date: d.date, id })
+      for (const m of d.moved) {
+        if (m.from >= today && day?.brandIds.includes(m.id)) back.push({ id: m.id, to: m.from })
+      }
+      if (d.categoryAfter !== d.categoryBefore && (day?.category ?? null) === d.categoryAfter) {
+        cats.push({ date: d.date, from: d.categoryAfter, to: d.categoryBefore })
+      }
+    }
+    const ids = [...new Set(off.map(x => x.id))]
+    const named = ids.length ? await prisma.brand.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : []
+    const nameOf = new Map(named.map(b => [b.id, b.name]))
+    const summary = {
+      brands: off.map(x => ({ date: x.date, id: x.id, name: nameOf.get(x.id) ?? 'a brand' })),
+      categories: cats,
+      movedBack: back.map(m => ({ name: nameOf.get(m.id) ?? 'a brand', to: m.to })),
+    }
+    if (preview) return { ok: true, preview: true, ...summary }
+
+    for (const x of off) {
+      const day = plan[x.date]
+      if (day) day.brandIds = day.brandIds.filter(id => id !== x.id)
+    }
+    for (const m of back) {
+      const day = plan[m.to] ?? { category: null, brandIds: [] }
+      if (!day.brandIds.includes(m.id)) day.brandIds.push(m.id)
+      plan[m.to] = day
+    }
+    for (const c of cats) if (plan[c.date]) plan[c.date].category = c.to
+    await writePlan(plan)
+    // A day of the plan that has since become today: its people come
+    // back out of today's queue, as planRemoveBrand does.
+    let unqueued = 0
+    for (const x of off) if (x.date === today) unqueued += await unstampToday(x.id)
+    await prisma.setting.delete({ where: { key: PLAN_WEEK_KEY } }).catch(() => null)
+    return { ok: true, ...summary, unqueued }
+  },
+
   // Open (or close) one extra sending day. Leo's week stays Tuesday to
   // Thursday; this is for "let's do outreach this Friday too". Closing a
   // day takes its plan with it: the brands pinned there go back to
@@ -4555,11 +4917,13 @@ const handlers: Record<string, Handler> = {
     // the lanes split out) still has to offer something — Leo: "you should
     // be able to fill in other brands". The rest of the roster rides along
     // as `others`, related categories first.
-    const brands: PlanBrand[] = await prisma.brand.findMany({ select: PLAN_BRAND_SELECT })
+    // Other categories are ranked by how often they accept (last 90
+    // days), so a top-up leans on the kinds of brand that say yes.
+    const [brands, rates] = await Promise.all([
+      prisma.brand.findMany({ select: PLAN_BRAND_SELECT }) as Promise<PlanBrand[]>,
+      cat === '' ? Promise.resolve(acceptRates([])) : recentAcceptRates(),
+    ])
     const inCat = (b: PlanBrand) => cat === '' || b.category === cat
-    const TIER_ORDER = ['emerging', 'growth', 'established']
-    const tierRank = (t: string | null) => { const i = TIER_ORDER.indexOf(t ?? ''); return i < 0 ? TIER_ORDER.length : i }
-    const dmOnLinkedIn = (b: PlanBrand) => b.contacts.some(c => c.isDecisionMaker && !!c.linkedinUrl)
     // Open to suggest at all: never reached, not set aside, not in talks,
     // and not already planned for some day.
     const open = brands.filter(b =>
@@ -4580,14 +4944,12 @@ const handlers: Record<string, Handler> = {
       })
       .filter(x => x.people.length > 0)
       .sort((x, y) => {
-        const kind = (k: string) => (k === 'ready' ? 0 : k === 'thin' ? 1 : 2)
         const near = (b: PlanBrand) => (relatedFirst && b.category && related.has(b.category) ? 0 : 1)
-        return near(x.b) - near(y.b) ||
-          kind(x.label.kind) - kind(y.label.kind) ||
-          tierRank(x.b.tier) - tierRank(y.b.tier) ||
-          Number(dmOnLinkedIn(y.b)) - Number(dmOnLinkedIn(x.b)) ||
-          y.label.reachable - x.label.reachable ||
-          x.b.name.localeCompare(y.b.name)
+        // Rounded to five points, so a hair's difference between two
+        // categories doesn't outrank a brand that is ready over one that
+        // is thin.
+        const rate = (b: PlanBrand) => (relatedFirst ? Math.round(rates.of(b.category) * 20) : 0)
+        return near(x.b) - near(y.b) || rate(y.b) - rate(x.b) || compareOpenBrands(x, y)
       })
       .slice(0, limit)
       .map(({ b, label, people }) => ({
@@ -4710,6 +5072,74 @@ const handlers: Record<string, Handler> = {
       return { input, confidence: 'none', brand: null, suggestions: rows(sugg) }
     })
     return { lines }
+  },
+
+  // Coverage over time, for the Schedule: every category against the
+  // last six weeks (Monday to Sunday, New York) — how many invites went
+  // out, and how many of them got through (accepted, or answered). The
+  // point is the gaps: a category with brands and no invites in weeks
+  // shows as a row of empty cells instead of not showing at all.
+  async categoryCoverage({ weeks }: any = {}) {
+    const n = Math.max(1, Math.min(12, Number(weeks) || 6))
+    const today = localDayKey()
+    const thisMonday = mondayKey(today)
+    const firstMonday = addDaysKey(thisMonday, -7 * (n - 1))
+    const since = startOfLocalDay(new Date(`${firstMonday}T12:00:00Z`))
+    const [invites, brands] = await Promise.all([
+      invitesSince(since),
+      prisma.brand.findMany({
+        select: {
+          category: true,
+          // Each brand's latest invite, for "last invite" all time.
+          targets: { where: { sentAt: { not: null } }, orderBy: { sentAt: 'desc' }, take: 1, select: { sentAt: true } },
+        },
+      }),
+    ])
+    const weekKeys = Array.from({ length: n }, (_, i) => addDaysKey(firstMonday, 7 * i))
+    type Cell = { invites: number; accepted: number }
+    type Row = { category: string | null; brands: number; cells: Cell[]; invites: number; accepted: number; lastSent: Date | null }
+    const rows = new Map<string, Row>()
+    const rowOf = (cat: string | null): Row => {
+      const k = cat ?? ''
+      let r = rows.get(k)
+      if (!r) {
+        r = { category: cat, brands: 0, cells: weekKeys.map(() => ({ invites: 0, accepted: 0 })), invites: 0, accepted: 0, lastSent: null }
+        rows.set(k, r)
+      }
+      return r
+    }
+    for (const b of brands) {
+      const r = rowOf(b.category ?? null)
+      r.brands += 1
+      const at = b.targets[0]?.sentAt ?? null
+      if (at && (!r.lastSent || at > r.lastSent)) r.lastSent = at
+    }
+    const start = Date.parse(`${firstMonday}T12:00:00Z`)
+    for (const t of invites) {
+      const wk = Math.floor((Date.parse(`${localDayKey(t.at)}T12:00:00Z`) - start) / (7 * 864e5))
+      if (wk < 0 || wk >= n) continue
+      const r = rowOf(t.category)
+      r.cells[wk].invites += 1
+      r.invites += 1
+      if (t.accepted) { r.cells[wk].accepted += 1; r.accepted += 1 }
+    }
+    // The page's own order (the lanes first), no category last.
+    const keys = CATEGORY_KEYS as readonly string[]
+    const rank = (k: string | null) => { const i = k ? keys.indexOf(k) : -1; return i < 0 ? keys.length : i }
+    const list = [...rows.values()].sort((a, b) =>
+      rank(a.category) - rank(b.category) || String(a.category ?? '').localeCompare(String(b.category ?? '')))
+    const totals = weekKeys.map((_, i) => list.reduce(
+      (acc, r) => ({ invites: acc.invites + r.cells[i].invites, accepted: acc.accepted + r.cells[i].accepted }),
+      { invites: 0, accepted: 0 }))
+    const all = list.reduce((acc, r) => ({ invites: acc.invites + r.invites, accepted: acc.accepted + r.accepted }), { invites: 0, accepted: 0 })
+    return {
+      weeks: weekKeys.map(k => ({ key: k, label: shortDate(new Date(`${k}T12:00:00Z`)), current: k === thisMonday })),
+      rows: list.map(r => ({ ...r, rate: r.invites ? r.accepted / r.invites : null })),
+      totals,
+      invites: all.invites,
+      accepted: all.accepted,
+      rate: all.invites ? all.accepted / all.invites : null,
+    }
   },
 
   // A category tile, opened: every brand in it, split Not reached /
