@@ -6884,7 +6884,7 @@ function sdDayHtml(key) {
     var overShown = overAll ? overflow : overflow.slice(0, 5);
     html += '<div class="sd-rest">' +
       '<div class="sd-note">The rest of ' + esc(catName) + ': ' + sdPlural(overPeople, 'person', 'people') +
-        ' past the day’s ' + cap + '. They come up on the next ' + esc(catName) + ' day, or add them to another day now.</div>' +
+        ' past the day’s ' + cap + '. Add puts one on this day, Other day… on another; the rest come up on the next ' + esc(catName) + ' day.</div>' +
       overShown.map(function (b) { return sdOverRow(b, key); }).join('') +
       (overflow.length > overShown.length
         ? '<a href="#" class="sd-link" data-sdoverall="' + esc(key) + '">Show all ' + overflow.length + '</a>' : '') +
@@ -6900,13 +6900,22 @@ function sdDayHtml(key) {
 // that day through planAddBrands, like every other add.
 function sdOverRow(b, key) {
   var n = sdPeopleOf(b).n;
+  var isToday = key === SCHED.today;
+  // Add = this day (Leo: "there should just be a button next to it that
+  // says add"). Pinned, it goes first: on a later day the fill makes room
+  // and whatever no longer fits moves down to this list; today queues it
+  // straight away, so today can go over (the header says by how much).
+  var addTitle = isToday
+    ? 'Queue ' + b.name + ' for today. Today can go past ' + sdCap() + '; the header says by how much.'
+    : 'Put ' + b.name + ' on ' + sdDayTag(key) + '. The day still stops at ' + sdCap() + ': whatever no longer fits moves down to this list.';
   return '<div class="sd-orow" draggable="true" data-dragb="' + esc(b.id) + '" data-dragn="' + esc(b.name) + '" data-dragfrom="">' +
     '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
     sdLabel(SCHED.labels[b.id]) +
     '<span class="sd-dim">' + n + ' would go</span>' +
     '<span class="sd-sp"></span>' +
+    '<button class="btn-draft sd-sm" data-sdoadd="' + esc(b.id) + '" data-sdday="' + esc(key) + '" title="' + esc(addTitle) + '">Add</button>' +
     '<select class="inp sd-mini" data-sdaddto="' + esc(b.id) + '" title="Add ' + esc(b.name) + ' to another day">' +
-      '<option value="">Add to…</option>' + sdAddToOpts(key, n) +
+      '<option value="">Other day…</option>' + sdAddToOpts(key, n) +
     '</select>' +
   '</div>';
 }
@@ -7841,6 +7850,11 @@ var SCHED_DRAG = null;
       e.preventDefault();
       sdFillState(t.getAttribute('data-sdfillall')).all = true;
       sdRenderFill(t.getAttribute('data-sdfillall'));
+      return;
+    }
+    if ((t = e.target.closest('[data-sdoadd]'))) {
+      t.disabled = true;
+      sdAdd(t.getAttribute('data-sdday'), [t.getAttribute('data-sdoadd')]);
       return;
     }
     if ((t = e.target.closest('[data-sdoverall]'))) {
