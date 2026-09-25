@@ -180,7 +180,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   **bottom-left** (Messaging owns bottom-right), on `<html>` with `all:initial`. Panels are built
   node by node (`h()`) — **never innerHTML**: LinkedIn allows only its own Trusted Types policy and
   it scrubs inserted HTML (stripped the panel's buttons on the first real run). Clicks are wrapped
-  (`guard`) so a failure shows a message, never nothing.
+  (`guard`) so a failure shows a message, never nothing. **Top page only** (`@noframes` + a
+  `window.top` check): LinkedIn's same-origin frames each ran a copy that shared the tab's run and
+  worked the same brand twice ("reading 'seen'" error). One page is in charge (`job.runner` =
+  `PAGE_NONCE`, claimed by each page load in the run's tab / Start / Continue); every async step
+  re-checks `sameStep` (same brand, still ours) before writing.
   **Card reader** (`readCard`): name = the profile link's text, headline = first real line after the
   name; LinkedIn's badge comes as "· 2nd" **or "• 3rd+"** (bullet) — reader 1 missed the bullet, read
   it as everyone's title and added nobody. Every call sends `reader` (`LI_READER = 2` in

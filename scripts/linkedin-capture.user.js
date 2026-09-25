@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.9
+// @version      1.10
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
 // @run-at       document-start
+// @noframes
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -58,6 +59,13 @@
 (function () {
   'use strict';
 
+  // Top page only. LinkedIn pages carry same-origin frames, and a copy of
+  // the script in each one shared the tab's run: two readers worked the
+  // same brand and one found it already finished ("Cannot read properties
+  // of null (reading 'seen')", Sep 2026). @noframes says the same to
+  // Tampermonkey; this holds even where that's ignored.
+  if (window.top !== window.self) return;
+
   // The dashboard's "Start the LinkedIn fill" opens LinkedIn at #sb-fill.
   // LinkedIn tidies its own address while it loads and the mark was gone
   // by the time a page-ready script looked (Leo: the button started
@@ -71,7 +79,7 @@
   var INGEST_URL = 'https://sb-digitaldashboard.vercel.app/api/ingest';
   var DASH_URL = 'https://sb-digitaldashboard.vercel.app/app.html';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.9';
+  var VERSION = '1.10';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -738,6 +746,14 @@
     } catch (e) { return 'no-session'; }
   }
   function ownsFill(job) { return !!job && !job.done && job.owner === tabId(); }
+  // One page is in charge of the run at a time: the latest page load in
+  // the run's tab claims it. A duplicated tab (which copies the tab's id)
+  // or a stray second copy then stands down instead of working the same
+  // brand in parallel.
+  var PAGE_NONCE = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  function inCharge(job) { return ownsFill(job) && job.runner === PAGE_NONCE; }
+  // Still on the brand this step started on, and still ours to do.
+  function sameStep(job, at) { return inCharge(job) && !job.paused && job.at === at && !!job.step; }
   function fillHere() { return HAS_GM && ownsFill(loadFill()); }
 
   function todayKey() { var d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
@@ -858,7 +874,7 @@
   function startFill(items, focus, discover) {
     discover = discover || {};
     saveFill({
-      id: 'f' + Date.now().toString(36), owner: tabId(), focus: focus || '',
+      id: 'f' + Date.now().toString(36), owner: tabId(), runner: PAGE_NONCE, focus: focus || '',
       items: items, at: 0, step: null, results: [], added: 0,
       day: todayKey(), doneToday: 0, nextAt: 0, pausedUntil: 0, paused: null,
       lookalikes: !!discover.lookalikes, newBrands: [],
@@ -887,6 +903,7 @@
   function runFill() {
     var job = loadFill();
     if (!ownsFill(job)) return;
+    if (!inCharge(job)) return renderFill(job, 'This run carries on in another copy of this tab.');
     if (Date.now() - (job.touchedAt || 0) > 60000) saveFill(job);
     var stop = linkedinSaysStop();
     if (stop) return pauseFill(job, stop + '. Leave LinkedIn alone for a day before pressing Continue.');
@@ -949,7 +966,7 @@
   }
 
   function fillSearch(item, q) {
-    var job = loadFill();
+    var job = loadFill(), at0 = job.at;
     renderFill(job, 'Reading LinkedIn\'s results for “' + q + '”');
     waitFor(function () { return searchCandidates().length || /no results/i.test(pageText(5000)); }, 12000).then(function () {
       var stop = linkedinSaysStop();
@@ -957,7 +974,7 @@
       return post({ action: 'liMatched', brandId: item.brandId, candidates: searchCandidates() });
     }).then(function (r) {
       var job2 = loadFill();
-      if (!ownsFill(job2) || job2.paused) return;
+      if (!sameStep(job2, at0)) return;
       if (r && r.halt) return pauseFill(job2, r.halt + '. Leave LinkedIn alone for a day before pressing Continue.');
       var st = job2.step;
       if (r && r.ok && (r.outcome === 'attached' || r.outcome === 'already')) {
@@ -983,7 +1000,7 @@
   // LinkedIn's results is that brand (industry must fit its lane), makes
   // the brand, and the run reads its people next.
   function fillResearch(item, q) {
-    var job = loadFill();
+    var job = loadFill(), at0 = job.at;
     renderFill(job, 'Reading LinkedIn\'s results for “' + q + '” (research list)');
     var final = job.step.triedAka || !akaName(item);
     waitFor(function () { return searchCandidates().length || /no results/i.test(pageText(5000)); }, 12000).then(function () {
@@ -992,7 +1009,7 @@
       return post({ action: 'liResearch', name: item.name, aka: item.aka || '', category: item.category, lane: item.lane || '', candidates: searchCandidates(), final: final });
     }).then(function (r) {
       var job2 = loadFill();
-      if (!ownsFill(job2) || job2.paused) return;
+      if (!sameStep(job2, at0)) return;
       if (r && r.halt) return pauseFill(job2, r.halt + '. Leave LinkedIn alone for a day before pressing Continue.');
       var st = job2.step, it = job2.items[job2.at];
       if (r && r.ok && (r.outcome === 'added' || r.outcome === 'exists')) {
@@ -1016,7 +1033,7 @@
   }
 
   function fillRead(item) {
-    var job = loadFill();
+    var job = loadFill(), at0 = job.at;
     var label = item.name + (PASSES[job.step.pass] ? ' — ' + PASSES[job.step.pass] : '');
     renderFill(job, 'Reading ' + label);
     fillHalt = { stopped: false };
@@ -1026,7 +1043,7 @@
     }).then(function (res) {
       capped = !!(res && res.capped);
       var job1 = loadFill();
-      if (!ownsFill(job1) || job1.paused) return null;
+      if (!sameStep(job1, at0)) return null;
       var stop = linkedinSaysStop();
       if (stop) return { halt: stop };
       rows = scrape();
@@ -1035,7 +1052,7 @@
     }).then(function (r) {
       if (!r) return;
       var job2 = loadFill();
-      if (!ownsFill(job2) || job2.paused) return;
+      if (!sameStep(job2, at0)) return;
       if (r.halt) return pauseFill(job2, r.halt + '. Leave LinkedIn alone for a day before pressing Continue.');
       if (!r.ok) return finishBrand(job2, r.error || 'the dashboard did not save');
       var st = job2.step;
@@ -1095,7 +1112,8 @@
       return post({ action: 'liDiscover', source: 'search', from: ds.q, companies: found });
     }).then(function (r) {
       var job2 = loadFill();
-      if (!ownsFill(job2) || job2.paused) return;
+      var d0 = job2 && job2.searches && job2.searches[0];
+      if (!inCharge(job2) || job2.paused || !d0 || d0.q !== ds.q || d0.page !== ds.page) return;
       if (r && r.halt) return pauseFill(job2, r.halt + '. Leave LinkedIn alone for a day before pressing Continue.');
       if (!r || !r.ok) return pauseFill(job2, (r && r.error) || 'the dashboard did not take the new brands');
       addNewBrands(job2, r.created, true);
@@ -1136,13 +1154,14 @@
 
   function saveLookalikes(item, found) {
     var job = loadFill();
-    if (!ownsFill(job) || job.paused) return;
+    if (!job || !sameStep(job, job.at) || job.items[job.at].brandId !== item.brandId) return;
+    var at0 = job.at;
     if (!found.length) return finishBrand(job, null);
     var stop = linkedinSaysStop();
     if (stop) return pauseFill(job, stop + '. Leave LinkedIn alone for a day before pressing Continue.');
     post({ action: 'liDiscover', source: 'lookalike', from: item.name, fromBrandId: item.brandId, companies: found }).then(function (r) {
       var job2 = loadFill();
-      if (!ownsFill(job2) || job2.paused) return;
+      if (!sameStep(job2, at0)) return;
       if (r && r.ok) addNewBrands(job2, r.created, false);
       finishBrand(job2, null);
     }).catch(fillError);
@@ -1201,6 +1220,7 @@
     var job = loadFill();
     if (!job) return closePanel();
     job.owner = tabId();
+    job.runner = PAGE_NONCE;
     job.paused = null;
     if (job.step) job.step.navs = 0;
     job.nextAt = 0;
@@ -1409,7 +1429,12 @@
 
     // A run's tab picks the run back up on every page load, once LinkedIn
     // has had a moment to draw the page.
-    if (fillHere()) later(runFill, rand(2500, 4000));
+    if (fillHere()) {
+      var claim = loadFill();
+      claim.runner = PAGE_NONCE;
+      saveFill(claim);
+      later(runFill, rand(2500, 4000));
+    }
 
     // Opened from the dashboard's button (AUTO_FILL, caught at the top):
     // start a run in this tab with the panel's defaults. A live run in

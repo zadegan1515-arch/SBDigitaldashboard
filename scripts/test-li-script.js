@@ -106,6 +106,9 @@ function page(people, title, extra) {
   title = title || 'Liquid Death';
   return '<!doctype html><html><head><title>(3) ' + title + ': People | LinkedIn</title></head><body style="margin:0">' +
     '<header id="global-nav" style="height:50px"><a href="https://www.linkedin.com/in/leo-self/">Me</a></header>' +
+    // LinkedIn pages carry same-origin frames; the script must act only
+    // in the top page, or a second copy runs the same brand.
+    '<iframe src="/company/frame-probe/" style="width:10px;height:10px;border:0"></iframe>' +
     '<main><h1 class="org-top-card-summary__title"> ' + title + ' </h1>' +
     '<div class="org-top-card-summary-info-list"><div class="org-top-card-summary-info-list__info-item">Beverage Manufacturing</div></div>' +
     (extra || '') +
