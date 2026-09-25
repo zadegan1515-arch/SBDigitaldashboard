@@ -1952,7 +1952,11 @@ const handlers: Record<string, Handler> = {
       where: { id: targetId },
       data: {
         ...(status ? { status } : {}),
-        ...(status === 'sent' && !before.sentAt ? { sentAt: now } : {}),
+        // A send out of the queue is a new invite, dated now — even when
+        // the row still carries the date of an earlier one (Pass or a
+        // withdrawn invite, then Re-queue). Keeping the old date left the
+        // new send out of today's 20.
+        ...(status === 'sent' && (!before.sentAt || ['queued', 'drafted'].includes(before.status)) ? { sentAt: now } : {}),
         // Undo for a mis-clicked "Mark sent": back to the queue with the
         // send stamp wiped so today's cap and Reached don't count it.
         // A withdrawn invite is uncounted the same way.
@@ -5174,7 +5178,9 @@ const handlers: Record<string, Handler> = {
       const stage =
         has(t => ['replied', 'converted'].includes(t.status)) ? 'replied'
         : has(t => t.status === 'accepted') ? 'accepted'
-        : has(t => !!t.sentAt) ? 'invited'
+        // A withdrawn invite keeps its send date (the clean-up keeps it
+        // for the stats), but it is not an invite waiting any more.
+        : has(t => !!t.sentAt && t.status !== 'withdrawn') ? 'invited'
         : has(t => !!t.emailedAt || t._count.emails > 0) ? 'emailed'
         : has(t => t.status === 'withdrawn') ? 'withdrawn'
         : null
@@ -5190,7 +5196,7 @@ const handlers: Record<string, Handler> = {
         if (t.status === 'accepted' || t.status === 'withdrawn') stamps.push(t.updatedAt.getTime())
       }
       const lastMs = stamps.length ? Math.max(...stamps) : null
-      const lastSent = ts.filter(t => t.sentAt).map(t => t.sentAt!.getTime())
+      const lastSent = ts.filter(t => t.sentAt && t.status !== 'withdrawn').map(t => t.sentAt!.getTime())
       const stale = stage === 'invited' && lastSent.length > 0 && Math.max(...lastSent) <= staleBefore
       const people = touched.length
       return {
@@ -6040,6 +6046,101 @@ const handlers: Record<string, Handler> = {
         linkedinUrl: t.contact.linkedinUrl,
         sentAt: t.sentAt, days: days(t.sentAt!),
       })),
+    }
+  },
+
+  // Old invites nobody answered, for the LinkedIn tab's clean-up: still
+  // "sent" after `days` (three weeks by default), grouped by brand, oldest
+  // first. Withdrawing them on LinkedIn keeps the pending list short (it
+  // counts against the account), and once they're logged here the brand
+  // has room to try someone else — `next` is who that would be.
+  async staleInvites({ days = 21 }: any = {}) {
+    const n = Math.max(7, Math.min(90, Number(days) || 21))
+    const before = new Date(Date.now() - n * 864e5)
+    const rows = await prisma.target.findMany({
+      where: { status: 'sent', sentAt: { not: null, lte: before } },
+      orderBy: { sentAt: 'asc' },
+      take: 300,
+      select: {
+        id: true, sentAt: true, brandId: true,
+        contact: { select: { name: true, title: true, linkedinUrl: true } },
+      },
+    })
+    const brandIds = [...new Set(rows.map(t => t.brandId))]
+    const brands = brandIds.length
+      ? await prisma.brand.findMany({ where: { id: { in: brandIds } }, select: PLAN_BRAND_SELECT })
+      : []
+    const byId = new Map(brands.map(b => [b.id, b]))
+    const now = Date.now()
+    const staleIds = new Set(rows.map(t => t.id))
+    const out = brandIds.map(id => {
+      const b = byId.get(id)
+      const people = rows.filter(t => t.brandId === id).map(t => ({
+        targetId: t.id, name: t.contact.name, title: t.contact.title, linkedinUrl: t.contact.linkedinUrl,
+        sentAt: t.sentAt, days: Math.floor((now - t.sentAt!.getTime()) / 864e5),
+      }))
+      // Who the brand would open with next once these are withdrawn: the
+      // same pick an Add on the Schedule makes, on a copy with them marked.
+      let next: PreviewPerson[] = []
+      let nextWhy: string | null = null
+      if (b) {
+        const sim = { ...b, targets: b.targets.map(t => (staleIds.has(t.id) ? { ...t, status: 'withdrawn' as TargetStatus } : t)) }
+        const p = previewBrandPicks(sim, { forToday: false, explicitAdd: true })
+        next = p.people.slice(0, 4)
+        nextWhy = p.people.length ? null : reasonText(p.reason, reasonCtx(sim))
+      }
+      return {
+        id, name: b?.name ?? 'Unknown brand', category: b?.category ?? null, linkedinUrl: b?.linkedinUrl ?? null,
+        people, next, nextWhy,
+      }
+    })
+    return { days: n, total: rows.length, brands: out }
+  },
+
+  // Log invites Leo withdrew on LinkedIn, in bulk. preview = who would
+  // change (and who has moved on since, say accepted), nothing written.
+  // Unlike the row's "Withdrew" (a mistake taken back, so the send is
+  // uncounted), these went out and were ignored: sentAt stays, so the
+  // Schedule's coverage and accept rates keep counting them, and the
+  // brand still reads as reached. Their threads stop being live, which is
+  // what lets the brand try its next person. One transaction, with a
+  // TargetEvent per person.
+  async markInvitesWithdrawn({ targetIds, preview = false, __user }: any) {
+    const ids = [...new Set((Array.isArray(targetIds) ? targetIds : []).map(String).filter(Boolean))].slice(0, 300)
+    if (!ids.length) throw new Error('Nothing ticked')
+    const load = (db: Prisma.TransactionClient | PrismaClient) => db.target.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, status: true, sentAt: true, brandId: true, contact: { select: { name: true } }, brand: { select: { name: true } } },
+    })
+    const rows = await load(prisma)
+    const skipped = rows.filter(t => t.status !== 'sent').map(t => ({ name: t.contact.name, brand: t.brand.name, status: t.status }))
+    if (preview) {
+      return {
+        preview: true,
+        will: rows.filter(t => t.status === 'sent').map(t => ({ id: t.id, name: t.contact.name, brand: t.brand.name, sentAt: t.sentAt })),
+        skipped,
+      }
+    }
+    const done = await prisma.$transaction(async tx => {
+      // Read again inside: an accept logged since the preview is left alone.
+      const still = (await load(tx)).filter(t => t.status === 'sent')
+      if (!still.length) return still
+      await tx.target.updateMany({ where: { id: { in: still.map(t => t.id) }, status: 'sent' }, data: { status: 'withdrawn' } })
+      await tx.targetEvent.createMany({
+        data: still.map(t => ({
+          targetId: t.id, kind: 'status', fromStatus: 'sent', toStatus: 'withdrawn', actor: __user ?? null,
+          detail: `Invite from ${shortDate(t.sentAt)} withdrawn on LinkedIn — no answer`,
+        })),
+      })
+      return still
+    })
+    return {
+      ok: true,
+      withdrawn: done.length,
+      skipped,
+      brands: [...new Map(done.map(t => [t.brandId, { id: t.brandId, name: t.brand.name }])).values()],
+      // Where "Plan them" puts those brands: the next sending day.
+      nextDay: planningDays(1, await readExtraDays(), { afterToday: true })[0]?.key ?? null,
     }
   },
 

@@ -771,6 +771,23 @@
   .oq-sum-big span{font-size:13px;font-weight:500;color:var(--ink-3);margin-left:4px}
   .oq-sum-row{display:flex;justify-content:space-between;font-size:12.5px;color:var(--ink-2);padding-top:8px;margin-top:10px;border-top:1px solid var(--border-soft)}
   .oq-sum-row b{color:var(--ink-1);font-variant-numeric:tabular-nums}
+  /* Old invites: the rail card and the clean-up panel */
+  #oq-stale .oq-sum{margin-top:14px}
+  #oq-stale .oq-sum .btn-ghost{margin-top:10px}
+  .oq-stale-ok{font-size:12px;color:var(--ink-3);margin-top:12px;padding:0 4px}
+  .osp{margin:14px 0 4px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+  .osp-h{display:flex;gap:6px 12px;align-items:baseline;flex-wrap:wrap}
+  .osp-h h2{font-family:var(--display);font-size:18px;font-weight:800;letter-spacing:-.01em}
+  .osp-how{font-size:12.5px;color:var(--ink-2);line-height:1.5}
+  .osp-b{border-top:1px solid var(--border-soft);padding-top:10px}
+  .osp-bh{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+  .osp-bh b{font-size:13.5px}
+  .osp-p{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:5px 0 5px 4px;font-size:12.5px}
+  .osp-p label{display:flex;gap:9px;align-items:center;cursor:pointer;min-width:0;flex:1}
+  .osp-p .n{font-weight:600}
+  .osp-next{font-size:12px;color:var(--ink-3);padding:2px 0 0 4px}
+  .osp-f{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--border-soft);padding-top:12px}
+  .osp-sp{flex:1}
   .oq-bar{height:5px;border-radius:3px;background:var(--surface-2);overflow:hidden}
   .oq-bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
   .oq-bar.full i{background:var(--good)}
@@ -1207,12 +1224,14 @@
         <button class="btn-solid" id="oq-new" style="flex:none">+ New brand</button>
       </div>
       <div id="oq-new-slot" style="max-width:560px"></div>
+      <div id="oq-stale-slot"></div>
       <div id="status-filters" class="chips" style="display:none"></div>
       <div class="count-head" id="queue-head">To send today <span class="n"></span></div>
       <div id="targets"></div>
       </div>
       <aside id="oq-rail">
         <div id="oq-today"></div>
+        <div id="oq-stale"></div>
         <div id="nextbest"></div>
       </aside>
       </div>
@@ -9413,6 +9432,239 @@ function oqRenderRail() {
   '</div>';
 }
 
+// --- old invites: log the ones withdrawn on LinkedIn --------------
+//
+// Invites still "sent" after three weeks. Leo (or Zach) withdraws them on
+// the LinkedIn account that sent them — a long pending list counts
+// against the account — then ticks them here: markInvitesWithdrawn logs
+// them in one go. They still count as sent in the stats; each brand's
+// thread stops being live, so the brand can try its next person, and
+// the panel offers to plan those brands for the next sending day.
+var OQ_STALE = { data: null, busy: false, open: false, ticks: {}, applying: false, result: null, err: '' };
+var LI_SENT_INVITES = 'https://www.linkedin.com/mynetwork/invitation-manager/sent/';
+
+function oqLoadStale() {
+  if (OQ_STALE.busy) return;
+  OQ_STALE.busy = true;
+  api('staleInvites', { days: 21 }).then(function (d) {
+    OQ_STALE.busy = false;
+    OQ_STALE.data = d;
+    OQ_STALE.err = '';
+    // Ticks for people no longer on the list (accepted since) go.
+    var live = {};
+    (d.brands || []).forEach(function (b) { b.people.forEach(function (p) { live[p.targetId] = true; }); });
+    Object.keys(OQ_STALE.ticks).forEach(function (id) { if (!live[id]) delete OQ_STALE.ticks[id]; });
+    oqRenderStaleRail();
+    oqRenderStale();
+  }).catch(function (e) {
+    OQ_STALE.busy = false;
+    OQ_STALE.err = e.message;
+    oqRenderStaleRail();
+  });
+}
+
+function oqStaleCounts() {
+  var d = OQ_STALE.data || {};
+  return { people: d.total || 0, brands: (d.brands || []).length };
+}
+
+function oqRenderStaleRail() {
+  var slot = document.getElementById('oq-stale');
+  if (!slot) return;
+  if (mode !== 'today' || !OQ_STALE.data) { slot.innerHTML = ''; return; }
+  var c = oqStaleCounts();
+  if (!c.people) {
+    slot.innerHTML = '<div class="oq-stale-ok">No invites waiting 3+ weeks ✓</div>';
+    return;
+  }
+  slot.innerHTML = '<div class="oq-sum">' +
+    '<div class="oq-sum-k">Old invites</div>' +
+    '<div class="oq-sum-big">' + c.people + '<span>waiting 3+ weeks</span></div>' +
+    '<div class="hint" style="margin:0">' + sdPlural(c.brands, 'brand', 'brands') + ', no accept. Withdraw them on LinkedIn to keep the pending list short, then log them here — their brands can try someone new.</div>' +
+    '<button class="btn-ghost" data-oqstale="toggle">' + (OQ_STALE.open ? 'Hide the list' : 'Clean up') + '</button>' +
+  '</div>';
+}
+
+function oqStaleTicked() {
+  var out = [];
+  ((OQ_STALE.data || {}).brands || []).forEach(function (b) {
+    b.people.forEach(function (p) { if (OQ_STALE.ticks[p.targetId]) out.push({ id: p.targetId, name: p.name, brand: b.name }); });
+  });
+  return out;
+}
+
+function oqRenderStale() {
+  var slot = document.getElementById('oq-stale-slot');
+  if (!slot) return;
+  if (mode !== 'today' || !OQ_STALE.open) { slot.innerHTML = ''; return; }
+  var d = OQ_STALE.data;
+  var r = OQ_STALE.result;
+  var html = '<div class="panel osp">' +
+    '<div class="osp-h"><h2>Old invites</h2>' +
+      '<span class="sd-dim">' + (!d ? 'Loading…'
+        : !d.total ? 'All cleared'
+        : sdPlural(d.total, 'person', 'people') + ' at ' + sdPlural((d.brands || []).length, 'brand', 'brands') + ', invited ' + (d.days || 21) + '+ days ago, no accept') + '</span>' +
+      '<span class="osp-sp"></span><a href="#" class="sd-link" data-oqstale="toggle">Close</a></div>';
+  if (r) {
+    html += '<div class="sd-flash ' + (r.planned === false ? 'bad' : 'good') + '">' + esc(r.text) + '</div>';
+    if (r.room && r.room.length && r.nextDay && !r.planned) {
+      html += '<div class="osp-f" style="border:0;padding:0">' +
+        '<span class="sd-dim">' + esc(r.room.map(function (b) { return b.name; }).join(', ')) + ' can try someone new.</span>' +
+        '<button class="btn-draft" data-oqstale="plan"' + (OQ_STALE.applying ? ' disabled' : '') + '>Plan ' + (r.room.length === 1 ? 'it' : 'them') + ' for ' + esc(sdDayName(r.nextDay)) + '</button>' +
+      '</div>';
+    }
+  }
+  if (!d) { slot.innerHTML = html + '</div>'; return; }
+  if (!(d.brands || []).length) {
+    slot.innerHTML = html + '<div class="sd-empty">Nothing left waiting 3+ weeks.</div></div>';
+    return;
+  }
+  html += '<div class="osp-how">On the LinkedIn account that sent them (Zach’s), withdraw each one: ' +
+    '<a class="sd-link" href="' + LI_SENT_INVITES + '" target="_blank" rel="noopener">Sent invitations ↗</a>' +
+    ' lists them all, oldest at the bottom, or open a person’s profile. Tick the ones you withdrew, then log them. Nothing is deleted.</div>' +
+    '<div><a href="#" class="sd-link" data-oqstale="all">Tick all</a> · <a href="#" class="sd-link" data-oqstale="none">Untick all</a></div>';
+  html += d.brands.map(function (b) {
+    var allOn = b.people.every(function (p) { return OQ_STALE.ticks[p.targetId]; });
+    return '<div class="osp-b" data-osb="' + esc(b.id) + '">' +
+      '<div class="osp-bh"><b><a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a></b>' +
+        (b.category ? '<span class="sd-dim">' + esc(CAT_NAMES[b.category] || b.category) + '</span>' : '') +
+        '<span class="osp-sp"></span>' +
+        (b.people.length > 1 ? '<a href="#" class="sd-link" data-oqstalebrand="' + esc(b.id) + '">' + (allOn ? 'Untick brand' : 'Tick brand') + '</a>' : '') +
+      '</div>' +
+      b.people.map(function (p) {
+        var on = !!OQ_STALE.ticks[p.targetId];
+        return '<div class="osp-p"><label><input type="checkbox" data-oqstaletick="' + esc(p.targetId) + '"' + (on ? ' checked' : '') + (OQ_STALE.applying ? ' disabled' : '') + '>' +
+          '<span class="n">' + esc(p.name) + '</span>' + (p.title ? '<span class="sd-dim">' + esc(p.title) + '</span>' : '') +
+          '<span class="sd-dim">· invited ' + esc(shortDate(p.sentAt)) + ', ' + p.days + ' days</span></label>' +
+          (p.linkedinUrl ? '<a class="sd-ext" href="' + esc(p.linkedinUrl) + '" target="_blank" rel="noopener">Profile ↗</a>' : '<span class="sd-dim">no LinkedIn on file</span>') +
+        '</div>';
+      }).join('') +
+      '<div class="osp-next">' + (b.next && b.next.length
+        ? 'Next up once logged: ' + esc(b.next.map(function (x) { return x.name + (x.title ? ' (' + x.title + ')' : ''); }).join(', '))
+        : 'Nobody else to try' + (b.nextWhy ? ': ' + esc(b.nextWhy) : '')) + '</div>' +
+    '</div>';
+  }).join('');
+  var n = oqStaleTicked().length;
+  html += '<div class="osp-f"><span class="sd-dim">' + (n ? sdPlural(n, 'invite', 'invites') + ' ticked' : 'Tick the ones you withdrew on LinkedIn') + '</span>' +
+    '<span class="osp-sp"></span>' +
+    '<button class="btn-draft" data-oqstale="log"' + (n && !OQ_STALE.applying ? '' : ' disabled') + '>' + (OQ_STALE.applying ? 'Logging…' : 'Log ' + (n || '') + ' as withdrawn') + '</button></div>';
+  slot.innerHTML = html + '</div>';
+}
+
+function oqStaleLog() {
+  var ticked = oqStaleTicked();
+  if (!ticked.length) { toast('Tick the ones you withdrew first'); return; }
+  var ids = ticked.map(function (t) { return t.id; });
+  OQ_STALE.applying = true;
+  oqRenderStale();
+  api('markInvitesWithdrawn', { targetIds: ids, preview: true }).then(function (p) {
+    var will = (p && p.will) || [];
+    var skipped = (p && p.skipped) || [];
+    if (!will.length) {
+      OQ_STALE.applying = false;
+      toast('Nothing to log — ' + (skipped.length ? 'they have moved on since (accepted or replied)' : 'none still pending'));
+      oqLoadStale();
+      return;
+    }
+    var names = will.map(function (w) { return w.name + ' (' + w.brand + ')'; });
+    if (!window.confirm('Log ' + sdPlural(will.length, 'invite', 'invites') + ' as withdrawn on LinkedIn?\n\n' +
+        names.slice(0, 15).join(', ') + (names.length > 15 ? ' and ' + (names.length - 15) + ' more' : '') +
+        (skipped.length ? '\n\nLeft alone (they moved on since): ' + skipped.map(function (x) { return x.name + ' — ' + x.status; }).join(', ') : '') +
+        '\n\nThey still count as sent in the stats. Their brands can try someone new. Nothing is deleted.')) {
+      OQ_STALE.applying = false;
+      oqRenderStale();
+      return;
+    }
+    return api('markInvitesWithdrawn', { targetIds: ids }).then(function (r) {
+      OQ_STALE.applying = false;
+      ids.forEach(function (id) { delete OQ_STALE.ticks[id]; });
+      // Brands with someone new to try, from the list as it was.
+      var nextOf = {};
+      ((OQ_STALE.data || {}).brands || []).forEach(function (b) { nextOf[b.id] = b.next && b.next.length; });
+      var room = (r.brands || []).filter(function (b) { return nextOf[b.id]; });
+      OQ_STALE.result = {
+        text: 'Logged ' + sdPlural(r.withdrawn || 0, 'invite', 'invites') + ' as withdrawn' +
+          ((r.skipped || []).length ? ' · ' + r.skipped.length + ' left alone (moved on since)' : '') + '.',
+        room: room, nextDay: r.nextDay || null, planned: null
+      };
+      toast(OQ_STALE.result.text);
+      oqLoadStale();
+    });
+  }).catch(function (e) { OQ_STALE.applying = false; toast(e.message); oqRenderStale(); });
+}
+
+// The brands that can try someone new, pinned to the next sending day
+// through the Schedule's own add, which says who goes or why not.
+function oqStalePlan() {
+  var r = OQ_STALE.result;
+  if (!r || !r.room || !r.room.length || !r.nextDay) return;
+  OQ_STALE.applying = true;
+  oqRenderStale();
+  api('planAddBrands', { date: r.nextDay, brandIds: r.room.map(function (b) { return b.id; }) }).then(function (a) {
+    OQ_STALE.applying = false;
+    var res = (a && a.results) || [];
+    var going = res.filter(function (x) { return x.added && x.state === 'going'; });
+    var not = res.filter(function (x) { return !x.added || x.state !== 'going'; });
+    r.planned = true;
+    r.text = 'Planned for ' + sdDayName(r.nextDay) + ': ' +
+      (going.length ? going.map(function (x) { return x.brandName + ' (' + x.going + ')'; }).join(', ') : 'nobody could go') +
+      (not.length ? '. Not going: ' + not.map(function (x) { return x.brandName + ' — ' + (x.reasonText || SD_SHORT[x.reason] || 'can’t go'); }).join('; ') : '') + '.';
+    oqRenderStale();
+  }).catch(function (e) { OQ_STALE.applying = false; r.planned = false; r.text = 'Could not plan them: ' + e.message; oqRenderStale(); });
+}
+
+(function () {
+  var sec = document.getElementById('outreach');
+  if (!sec) return;
+  sec.addEventListener('click', function (e) {
+    var t;
+    if ((t = e.target.closest('[data-oqstale]'))) {
+      e.preventDefault();
+      var what = t.getAttribute('data-oqstale');
+      if (what === 'toggle' || what === 'open') {
+        OQ_STALE.open = what === 'open' ? true : !OQ_STALE.open;
+        if (!OQ_STALE.open) OQ_STALE.result = null;
+        oqRenderStaleRail();
+        oqRenderStale();
+        if (!OQ_STALE.data) oqLoadStale();
+        var sl = document.getElementById('oq-stale-slot');
+        if (OQ_STALE.open && sl && sl.scrollIntoView) sl.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        return;
+      }
+      if (what === 'all' || what === 'none') {
+        ((OQ_STALE.data || {}).brands || []).forEach(function (b) {
+          b.people.forEach(function (p) { if (what === 'all') OQ_STALE.ticks[p.targetId] = true; else delete OQ_STALE.ticks[p.targetId]; });
+        });
+        oqRenderStale();
+        return;
+      }
+      if (what === 'log') { oqStaleLog(); return; }
+      if (what === 'plan') { oqStalePlan(); return; }
+      return;
+    }
+    if ((t = e.target.closest('[data-oqstalebrand]'))) {
+      e.preventDefault();
+      var bid = t.getAttribute('data-oqstalebrand');
+      var b = ((OQ_STALE.data || {}).brands || []).filter(function (x) { return x.id === bid; })[0];
+      if (!b) return;
+      var allOn = b.people.every(function (p) { return OQ_STALE.ticks[p.targetId]; });
+      b.people.forEach(function (p) { if (allOn) delete OQ_STALE.ticks[p.targetId]; else OQ_STALE.ticks[p.targetId] = true; });
+      oqRenderStale();
+      return;
+    }
+    if ((t = e.target.closest('#oq-stale-slot [data-sopen]'))) { e.preventDefault(); loadBrand(t.getAttribute('data-sopen')); }
+  });
+  sec.addEventListener('change', function (e) {
+    var t = e.target;
+    if (!t.matches || !t.matches('[data-oqstaletick]')) return;
+    var id = t.getAttribute('data-oqstaletick');
+    if (t.checked) OQ_STALE.ticks[id] = true; else delete OQ_STALE.ticks[id];
+    oqRenderStale();
+    var again = document.querySelector('[data-oqstaletick="' + id.replace(/"/g, '') + '"]');
+    if (again) again.focus();
+  });
+})();
+
 function plus3Days() { var d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().slice(0, 10); }
 function isoDate(x) { return new Date(x).toISOString().slice(0, 10); }
 function shortDate(x) { return new Date(x).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
@@ -9497,6 +9749,9 @@ function loadOutreach() {
   var box = document.getElementById('targets');
   box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   renderStatusFilters();
+  // Old invites: the rail card and, if open, the clean-up list (today only).
+  if (mode === 'today') oqLoadStale();
+  else { oqRenderStaleRail(); oqRenderStale(); }
 
   // Today also surfaces everyone who accepted an invite and is still
   // waiting on their DM (first), and everyone marked sent today (last,
@@ -9617,9 +9872,11 @@ function loadOutreach() {
         '<div class="hint" style="margin:2px 0 10px">Beyond today’s 20. Sending one still counts toward the daily cap.</div>' +
         '<div data-oqsec="more">' + oqGroup(r.more).map(oqBrandCard).join('') + '</div>'
       : '';
+    var old21 = (r.stale || []).filter(function (t) { return Date.now() - new Date(t.sentAt).getTime() >= 21 * 864e5; }).length;
     var staleBlock = (r.stale || []).length
       ? '<div class="count-head" style="margin-top:24px;color:var(--warn)">Going stale — invited 7+ days ago, no accept <span class="n">' + r.stale.length + '</span></div>' +
-        '<div class="hint" style="margin:2px 0 10px">Press “They accepted” if they did, try their email instead, or Pass and free the slot.</div>' +
+        '<div class="hint" style="margin:2px 0 10px">Press “They accepted” if they did, try their email instead, or Pass and free the slot.' +
+          (old21 ? ' <a href="#" class="sd-link" data-oqstale="open">' + old21 + ' of them are 3+ weeks old — clean those up in one go</a>' : '') + '</div>' +
         '<div data-oqsec="stale">' + oqGroup(r.stale).map(oqBrandCard).join('') + '</div>'
       : '';
 
@@ -13256,7 +13513,9 @@ document.getElementById('targets').addEventListener('click', function (e) {
   // sections on the next natural load.
   if (act === 'sent') {
     var st = TARGET_CACHE[id];
-    if (st) { st.status = 'sent'; st.sentAt = st.sentAt || new Date().toISOString(); refreshRow(id); }
+    // Out of the queue it is a new invite, dated now (the server does the
+    // same), even on a row still carrying an earlier invite's date.
+    if (st) { var wasPre = oqIsPre(st); st.status = 'sent'; st.sentAt = wasPre || !st.sentAt ? new Date().toISOString() : st.sentAt; refreshRow(id); }
     bumpSentToday(1);
     toast('Invite logged — press “They accepted” when it lands');
     api('setTargetStatus', { targetId: id, status: 'sent', actor: ME.owner || null })

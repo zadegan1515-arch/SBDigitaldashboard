@@ -98,6 +98,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   invites per week + share accepted (accepted/replied, withdrawn uncounted); 90-day accept rates
   (smoothed, cached 10 min) also order the Fill box's other categories. **Outreach → LinkedIn** = one card per brand
   (sent people stay in their card, `getTodayQueue.sentList`; a finished brand folds to one line).
+  **Old invites** (rail card + clean-up panel; `staleInvites` = still "sent" after 21 days, by brand,
+  with who the brand would try next; `markInvitesWithdrawn` preview → one transaction + a
+  TargetEvent each): withdrawn on Zach's LinkedIn, ticked here. They keep `sentAt` (coverage and
+  accept rates still count them; the brand stays reached) — unlike the row's **Withdrew**, which
+  is a mistake taken back and uncounts the send. "Plan them" pins brands with someone new to the
+  next sending day. A send out of the queue is always dated now (`setTargetStatus`), even on a row
+  carrying an earlier invite's date.
 - **Brands → Stock take** (`brandStock` + `src/lib/stock.ts`; deep link `app.html#stock`; linked from
   Home → Categories) — the whole roster in one read, every brand in exactly one row. **Leo's lanes are
   real categories** (his yes, Sep 2026): `electrolytes`, `energy`, `rtd` (beer/seltzers/canned
