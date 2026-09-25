@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.6
+// @version      1.7
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -11,6 +11,7 @@
 // @grant        GM_setValue
 // @grant        GM_deleteValue
 // @grant        GM_registerMenuCommand
+// @grant        GM_setClipboard
 // @connect      sb-digitaldashboard.vercel.app
 // @updateURL    https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js
 // @downloadURL  https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js
@@ -60,7 +61,11 @@
   var INGEST_URL = 'https://sb-digitaldashboard.vercel.app/api/ingest';
   var DASH_URL = 'https://sb-digitaldashboard.vercel.app/app.html';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.6';
+  var VERSION = '1.7';
+  // Which card reader this is. The dashboard refuses LinkedIn calls from
+  // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
+  // copy can't quietly rest brands for a month.
+  var READER = 2;
 
   // The header's @grant lines are what give this script Tampermonkey's
   // storage and requests. A paste that lost the header (the usual cause:
@@ -95,7 +100,7 @@
         method: 'POST',
         url: INGEST_URL,
         headers: { 'Content-Type': 'application/json' },
-        data: JSON.stringify(Object.assign({ token: token() }, payload)),
+        data: JSON.stringify(Object.assign({ token: token(), reader: READER }, payload)),
         timeout: 45000,
         onload: function (r) {
           if (r.status === 401) return reject(new Error('The dashboard did not accept the token. Use "Change the token" below.'));
@@ -184,7 +189,15 @@
   }
 
   // Lines on a card that are LinkedIn's furniture, not the person.
-  var NOISE = /^(connect|follow|following|message|pending|more|send inmail|view profile|·)$|degree connection|^·\s*(1st|2nd|3rd)|^(1st|2nd|3rd\+?)$|mutual connection|^view .*profile$|^status is|followers$|^open to work$/i;
+  // LinkedIn writes the connection badge with a bullet ("• 3rd+") as well
+  // as a middle dot ("· 2nd"); on the first real reads the bullet form got
+  // glued onto names and read as people's titles, so nobody was a buyer.
+  var NOISE = /^(connect|follow|following|message|pending|more|send inmail|view profile|[·•])$|degree connection|^[·•]\s*(1st|2nd|3rd\+?)$|^(1st|2nd|3rd\+?)$|mutual connection|^view .*profile$|^status is|followers$|^open to work$|^linkedin member$|^\(?(she|he|they)\s*\/\s*(her|him|them)\)?$/i;
+  var DEGREE_TAIL = /\s*[·•]\s*(1st|2nd|3rd\+?)\s*$/i;
+  var PRONOUN_TAIL = /\s*\((she|he|they)\s*\/\s*(her|him|them)\)\s*$/i;
+  function personName(s) {
+    return String(s || '').replace(DEGREE_TAIL, '').replace(PRONOUN_TAIL, '').replace(/\s+/g, ' ').trim();
+  }
   function lines(el) {
     return String(el.innerText || el.textContent || '').split('\n')
       .map(function (s) { return s.replace(/\s+/g, ' ').trim(); })
@@ -206,21 +219,30 @@
     return el;
   }
 
+  // One person's name and headline. Class names come and go on LinkedIn,
+  // so the text decides: the name is the profile link that carries text
+  // (badge stripped), and the headline is the first real line after the
+  // name — LinkedIn's subtitle element only when it actually has text.
   function readCard(card) {
-    var nameEl = card.querySelector('.artdeco-entity-lockup__title, .org-people-profile-card__profile-title');
-    var subEl = card.querySelector('.artdeco-entity-lockup__subtitle');
-    var name = nameEl ? lines(nameEl)[0] : null;
-    if (!name) {
-      // The profile link that carries text is the name link.
-      var named = profileLinks(card).map(function (a) { return lines(a)[0]; }).filter(Boolean);
-      name = named[0] || null;
-    }
     var all = lines(card);
-    if (!name) name = all[0] || null;
-    var headline = subEl ? lines(subEl).join(' ') : '';
+    var name = null;
+    profileLinks(card).forEach(function (a) { if (!name) name = personName(lines(a)[0]) || null; });
+    if (!name) {
+      var nameEl = card.querySelector('.artdeco-entity-lockup__title, .org-people-profile-card__profile-title');
+      if (nameEl) name = personName(lines(nameEl)[0]) || null;
+    }
+    if (!name) name = personName(all[0]) || null;
+    var subEl = card.querySelector('.artdeco-entity-lockup__subtitle');
+    var headline = subEl ? personName(lines(subEl).join(' ')) : '';
     if (!headline && name) {
-      var i = all.indexOf(name);
-      headline = i !== -1 ? (all[i + 1] || '') : '';
+      var at = -1;
+      for (var i = 0; i < all.length; i++) {
+        if (personName(all[i]) === name || all[i].indexOf(name) === 0) { at = i; break; }
+      }
+      for (var j = at + 1; j < all.length && !headline; j++) {
+        var l = personName(all[j]);
+        if (l && l !== name) headline = l;
+      }
     }
     return { name: name, headline: headline };
   }
@@ -574,6 +596,7 @@
       create ? h('div', { style: SMALL, text: 'Already in the dashboard under another name? Pick it above or type that name and press Check instead.' }) : null,
       h('div', { style: SMALL, text: 'No emails — LinkedIn doesn\'t show them. New people join the LinkedIn queue; it keeps the best 4 per brand in play.' }),
       keywordChips(),
+      sampleLink(),
       fillLink(),
       tokenLink(),
     ]));
@@ -605,6 +628,53 @@
         keywordChips(),
       ]);
     }).catch(function (e) { showError(e.message); });
+  }
+
+  // ---- a sample for Claude ----
+  //
+  // When names or titles come out wrong, LinkedIn has changed its cards
+  // again. This copies what the reader saw on the first three cards —
+  // what it made of each, their lines, and trimmed markup (no images,
+  // no tracking attributes) — for Leo to paste into the chat.
+  function copySample() {
+    var cards = [], seen = {};
+    profileLinks().forEach(function (a) {
+      var slug = slugOf(a.getAttribute('href'));
+      if (seen[slug] || cards.length >= 3) return;
+      seen[slug] = 1;
+      cards.push(cardFor(a));
+    });
+    var out = ['SB LinkedIn sample · script ' + VERSION + ' · ' + location.pathname + ' · ' + count() + ' people on screen'];
+    cards.forEach(function (c, i) {
+      out.push('--- card ' + (i + 1) + ' read as ' + JSON.stringify(readCard(c)));
+      out.push('lines ' + JSON.stringify(cardLines(c).slice(0, 14)));
+      out.push(String(c.outerHTML || '')
+        .replace(/<img[^>]*>/g, '<img>')
+        .replace(/<svg[\s\S]*?<\/svg>/g, '<svg/>')
+        .replace(/\s(src|srcset|style|data-[\w-]+|aria-[\w-]+|tabindex|role)="[^"]*"/g, '')
+        .replace(/\s+/g, ' ')
+        .slice(0, 2500));
+    });
+    if (!cards.length) out.push('No profile links found on this page.');
+    var text = out.join('\n');
+    var copied = false;
+    try { GM_setClipboard(text, 'text'); copied = true; } catch (e) {}
+    var box = h('textarea', { style: 'display:block;box-sizing:border-box;width:100%;height:120px;font:11px monospace;margin-top:8px;color:#111;background:#fff;border:1px solid #ccc;border-radius:6px', value: text });
+    freshPanel([
+      head(copied ? 'Copied' : 'Copy this'),
+      h('div', { style: MUTED, text: copied ? 'Paste it into the chat with Claude.' : 'Select all in the box and copy it, then paste it into the chat with Claude.' }),
+      box,
+    ]);
+    box.select();
+  }
+
+  function sampleLink() {
+    return h('div', { style: 'margin-top:6px' }, [
+      h('a', {
+        href: '#', style: 'color:#999;font-size:11px', text: 'Names or titles look wrong? Copy a sample for Claude',
+        onclick: function (e) { e.preventDefault(); copySample(); },
+      }),
+    ]);
   }
 
   // ---- filling brands by itself ---------------------------------------
@@ -1297,6 +1367,7 @@
     if (typeof GM_registerMenuCommand === 'function') {
       GM_registerMenuCommand('Open the SB capture panel', guard(openMenu));
       GM_registerMenuCommand('Fill brands by itself', guard(openFillSetup));
+      GM_registerMenuCommand('Copy a sample of this page for Claude', guard(copySample));
     }
   } catch (e) {}
   try { console.info('[SB] LinkedIn capture ' + VERSION + ' running' + (HAS_GM ? '' : ' WITHOUT its @grant lines — reinstall')); } catch (e) {}

@@ -13,7 +13,13 @@ export const LI_SWEEP_KEY = 'liSweepLog'
 export const LI_REST_DAYS = 30
 const LI_KEEP_DAYS = 120
 
-export type LiMark = { at: string; seen: number; added: number; note?: string | null }
+// The script's card reader. Reader 1 misread LinkedIn's "• 3rd+" badge as
+// people's titles and added nobody, so its visits prove nothing: a mark
+// from an older reader never rests a brand. The ingest route refuses
+// LinkedIn calls from older readers altogether.
+export const LI_READER = 2
+
+export type LiMark = { at: string; seen: number; added: number; note?: string | null; v?: number }
 export type LiLog = Record<string, LiMark>
 
 type SettingStore = {
@@ -48,6 +54,7 @@ export async function markLiSwept(db: SettingStore, brandId: string, mark: Omit<
 // added someone never rests the brand: there may be more next time.
 export function liResting(mark: LiMark | undefined, now = Date.now()): boolean {
   if (!mark || mark.added > 0) return false
+  if (!mark.v || mark.v < LI_READER) return false
   const at = Date.parse(mark.at)
   return Number.isFinite(at) && now - at < LI_REST_DAYS * 864e5
 }

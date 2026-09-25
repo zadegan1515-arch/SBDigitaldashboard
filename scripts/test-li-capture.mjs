@@ -45,6 +45,11 @@ t('profile slug ignores tracking params and case', () => {
 })
 
 // --- names ------------------------------------------------------
+t('LinkedIn\'s badge and pronouns come off a name', () => {
+  assert.equal(cleanName('Holly Thaggard • 3rd+'), 'Holly Thaggard')
+  assert.equal(cleanName('James Kase · 2nd'), 'James Kase')
+  assert.equal(cleanName('Judy Lee (She/Her)'), 'Judy Lee')
+})
 t('"LinkedIn Member" and junk are not people', () => {
   assert.equal(cleanName('LinkedIn Member'), null)
   assert.equal(cleanName('jane@brand.com'), null)

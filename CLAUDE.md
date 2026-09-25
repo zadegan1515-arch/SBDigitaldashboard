@@ -181,6 +181,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   node by node (`h()`) — **never innerHTML**: LinkedIn allows only its own Trusted Types policy and
   it scrubs inserted HTML (stripped the panel's buttons on the first real run). Clicks are wrapped
   (`guard`) so a failure shows a message, never nothing.
+  **Card reader** (`readCard`): name = the profile link's text, headline = first real line after the
+  name; LinkedIn's badge comes as "· 2nd" **or "• 3rd+"** (bullet) — reader 1 missed the bullet, read
+  it as everyone's title and added nobody. Every call sends `reader` (`LI_READER = 2` in
+  `li-sweep.ts`); ingest answers 426 "out of date" to older scripts, and visit marks from older readers
+  never rest a brand. Menu / preview link **"Copy a sample for Claude"** copies what the reader made of
+  the first three cards (+ trimmed markup) for Leo to paste when LinkedIn changes its cards again.
 - `src/lib/email.ts` — outreach: drafting, cap/ramp (`roomToday`), sending via Gmail API, replies, warmup stats, signature (hosted images, LinkedIn/IG as text links).
 - `src/lib/google.ts` — OAuth (gmail / drive / ops grants), Gmail read+send, Drive/Sheets/Docs create.
 - `src/lib/shows.ts` — **the show list** for the Shows tab and the public sponsor page. Reads **only

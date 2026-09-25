@@ -35,6 +35,11 @@
 //  11. The research list: Powerade is found on LinkedIn, becomes a brand
 //      and gets its people read; "NOS Energy" (and then "NOS") only turns
 //      up a telecom, so it's left with a note after both spellings.
+//  12. LinkedIn's real People cards (Supergoop, Sep 2026): the badge is a
+//      bullet ("• 3rd+") — on the name's line, on its own line, or inside
+//      the name link — and there's no subtitle class. Names come out clean
+//      and every headline is read, so the founder is a buyer. The copied
+//      sample for Claude says what the reader made of each card.
 //   6. The pill sits bottom-left, clear of LinkedIn's Messaging bar; the
 //      Tampermonkey menu opens the same panel; and a copy running without
 //      its @grant lines (pasted under Tampermonkey's sample) says so.
@@ -198,6 +203,18 @@ const server = http.createServer((req, res) => {
   if (/^\/company\/liquid-death\/people\/?/.test(req.url)) return res.end(page(true));
   if (/^\/company\/casamigos-tequila\/people\/?/.test(req.url)) return res.end(page(true, 'Casamigos Tequila'));
   if (/^\/company\/drinklmnt\/people\/?/.test(req.url)) return res.end(page(true, 'LMNT'));
+  // LinkedIn's real People cards, as they came through for Supergoop.
+  if (/^\/company\/supergoop\/people\/?/.test(req.url)) {
+    return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Supergoop!</h1><ul>' +
+      '<li><section><a href="https://www.linkedin.com/in/holly-t/"><img alt=""></a>' +
+        '<div class="artdeco-entity-lockup__title"><a href="https://www.linkedin.com/in/holly-t/">Holly Thaggard</a> <span>• 3rd+</span></div>' +
+        '<div>Founder and Chief Executive Officer at Supergoop!</div><button>Follow</button></section></li>' +
+      '<li><section><a href="https://www.linkedin.com/in/caitlin-f/"><div>Caitlin Feroleto</div></a>' +
+        '<div><span>• 2nd</span></div><div>Senior Director, Brand Marketing</div><div>12 mutual connections</div><button>Connect</button></section></li>' +
+      '<li><section><a href="https://www.linkedin.com/in/judy-l/"><span>Judy Lee</span><span> • 3rd+</span></a>' +
+        '<div>Software Engineer at Supergoop!</div><button>Connect</button></section></li>' +
+      '</ul></main></body></html>');
+  }
   // The research list's searches.
   if (/^\/search\/results\/companies\/\?keywords=Powerade/.test(req.url)) {
     return res.end('<!doctype html><html><body><main><ul>' +
@@ -271,6 +288,7 @@ const GM_SHIM = `
     window.GM_deleteValue = function (k) { sessionStorage.removeItem(P + k); };
     window.__sbMenu = [];
     window.GM_registerMenuCommand = function (name, fn) { window.__sbMenu.push({ name: name, fn: fn }); };
+    window.GM_setClipboard = function (t) { window.__sbClip = t; };
     window.GM_xmlhttpRequest = function (o) {
       fetch(o.url, { method: o.method, headers: o.headers, body: o.data })
         .then(function (r) { return r.text().then(function (t) { o.onload({ status: r.status, responseText: t }); }); })
@@ -311,7 +329,7 @@ const GM_SHIM = `
 
     // The Tampermonkey menu entry opens the same panel.
     const menu = await pageObj.evaluate(() => window.__sbMenu.map(m => m.name));
-    assert.deepEqual(menu, ['Open the SB capture panel', 'Fill brands by itself']);
+    assert.deepEqual(menu, ['Open the SB capture panel', 'Fill brands by itself', 'Copy a sample of this page for Claude']);
     await pageObj.evaluate(() => window.__sbMenu[0].fn());
     await pageObj.waitForSelector('#sblipeople');
     await pageObj.evaluate(() => document.getElementById('sbli-panel').remove());
@@ -594,6 +612,31 @@ const GM_SHIM = `
       await pg.close();
     }
     ok('the research list: a clear match becomes a brand and gets its people; a telecom called NOS doesn\'t');
+
+    // 12. The real card shapes.
+    {
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/company/supergoop/people/');
+      await pg.waitForSelector('#sblipill', { state: 'visible' });
+      await pg.click('#sblipill');
+      await pg.waitForSelector('#sbliadd', { timeout: 20000 });
+      const rows = sent.slice(before).find(b => b.action === 'liPreview').rows;
+      assert.deepEqual(rows.map(r => [r.name, r.headline]), [
+        ['Holly Thaggard', 'Founder and Chief Executive Officer at Supergoop!'],
+        ['Caitlin Feroleto', 'Senior Director, Brand Marketing'],
+        ['Judy Lee', 'Software Engineer at Supergoop!'],
+      ]);
+      assert.ok(sent.slice(before).every(b => b.reader === 2), 'every call names its reader');
+      await pg.click('text=Copy a sample for Claude');
+      await pg.waitForFunction(() => /Copied/.test(document.getElementById('sbli-panel').innerText));
+      const clip = await pg.evaluate(() => window.__sbClip);
+      assert.match(clip, /card 1 read as \{"name":"Holly Thaggard","headline":"Founder and Chief Executive Officer at Supergoop!"\}/);
+      assert.ok(!/<img [^>]/.test(clip), 'images stripped from the sample');
+      await pg.close();
+    }
+    ok('LinkedIn\'s real cards: bullet badges stripped, every headline read; the sample copies for Claude');
 
     // 6. No @grant lines: runs, shows the pill, says to reinstall.
     const bare = await browser.newPage();

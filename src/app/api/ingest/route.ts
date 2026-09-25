@@ -35,7 +35,7 @@ import {
   normalizeCompany, judgeDiscovery, industryFits, decideResearchMatch,
   type LiCompany,
 } from '@/lib/li-capture'
-import { readLiLog, markLiSwept, liResting, readLiResearch, markLiResearch, researchResting } from '@/lib/li-sweep'
+import { readLiLog, markLiSwept, liResting, readLiResearch, markLiResearch, researchResting, LI_READER } from '@/lib/li-sweep'
 import { LANES, brandKey } from '@/lib/stock'
 import { guessCategory } from '@/lib/category-hints'
 
@@ -386,6 +386,17 @@ export async function POST(req: NextRequest) {
   try { body = await req.json() } catch { body = null }
   if (!body || body.token !== configured) {
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401, headers: cors })
+  }
+
+  // LinkedIn calls from an out-of-date script are refused (script 1.6
+  // and older read LinkedIn's "• 3rd+" badge as people's titles, so it
+  // added nobody and rested every brand it visited). The panel shows
+  // this message; the fix is pasting in the current script.
+  if (typeof body.action === 'string' && /^li[A-Z]/.test(body.action) && (Number(body.reader) || 0) < LI_READER) {
+    return NextResponse.json({
+      ok: false,
+      error: 'Your LinkedIn script is out of date — it misread people\'s titles. Paste in the latest version: Tampermonkey → Dashboard → the script → select all → paste → save.',
+    }, { status: 426, headers: cors })
   }
 
   // -----------------------------------------------------------------
@@ -824,6 +835,7 @@ export async function POST(req: NextRequest) {
           seen: Math.max(0, Number(body.seen) || 0),
           added: Math.max(0, Number(body.added) || 0),
           note: body.note ? String(body.note).slice(0, 160) : null,
+          v: Number(body.reader) || 0,
         })
       } catch { /* non-fatal */ }
     }

@@ -51,6 +51,9 @@ export function cleanName(raw: string | null | undefined): string | null {
     .replace(/[​-‍﻿]/g, '')
     // Emoji and pictographs people put in their names.
     .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '')
+    // LinkedIn's connection badge and pronouns, when they ride along.
+    .replace(/\s*[·•]\s*(1st|2nd|3rd\+?)\s*$/i, '')
+    .replace(/\s*\((she|he|they)\s*\/\s*(her|him|them)\)\s*$/i, '')
     .replace(/\s+/g, ' ')
     .trim()
   if (!s || s.length > 80 || s.indexOf('@') !== -1) return null
