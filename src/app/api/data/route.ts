@@ -152,6 +152,35 @@ function checkCategory(category: unknown): string | null {
   return key
 }
 
+// Which categories fill a day whose own one has run short — the Schedule's
+// Fill box lists these first under "From other categories". Mostly the
+// lanes and the broad buckets they split out of, both ways round.
+const RELATED_CATEGORIES: Partial<Record<string, string[]>> = {
+  electrolytes: ['energy', 'beverage', 'wellness'],
+  energy: ['electrolytes', 'beverage'],
+  beverage: ['energy', 'electrolytes', 'cpg'],
+  rtd: ['spirits', 'alcohol'],
+  spirits: ['rtd', 'alcohol'],
+  alcohol: ['rtd', 'spirits'],
+  athletic: ['apparel', 'wellness'],
+  apparel: ['athletic', 'beauty'],
+  cpg: ['qsr', 'beverage'],
+  qsr: ['cpg', 'beverage'],
+  wellness: ['electrolytes', 'athletic', 'beauty'],
+  beauty: ['wellness', 'apparel'],
+  tech: ['software', 'apps'],
+  software: ['tech', 'apps'],
+  apps: ['software', 'tech', 'entertainment'],
+  fintech: ['apps', 'betting'],
+  betting: ['fintech', 'entertainment'],
+  nightlife: ['entertainment', 'rtd', 'spirits'],
+  entertainment: ['nightlife', 'apps'],
+  home: ['retail'],
+  retail: ['home', 'apparel'],
+  transport: ['apps'],
+  conglomerate: ['cpg', 'beverage'],
+}
+
 const TIER_KEYS = ['emerging', 'growth', 'established'] as const
 
 // Which Claude model writes the drafts.
@@ -4521,10 +4550,13 @@ const handlers: Record<string, Handler> = {
     const ctx = await planRowCtx(date)
     const cat = category === 'uncategorised' ? null : (category ? String(category) : '')
     const limit = Math.max(1, Math.min(40, Number(take) || 12))
-    const brands: PlanBrand[] = await prisma.brand.findMany({
-      where: cat === '' ? {} : { category: cat },
-      select: PLAN_BRAND_SELECT,
-    })
+    // Every brand, not just the category's: a category that can't fill the
+    // day on its own (Tuesday's "Alcohol (other)" had one brand left once
+    // the lanes split out) still has to offer something — Leo: "you should
+    // be able to fill in other brands". The rest of the roster rides along
+    // as `others`, related categories first.
+    const brands: PlanBrand[] = await prisma.brand.findMany({ select: PLAN_BRAND_SELECT })
+    const inCat = (b: PlanBrand) => cat === '' || b.category === cat
     const TIER_ORDER = ['emerging', 'growth', 'established']
     const tierRank = (t: string | null) => { const i = TIER_ORDER.indexOf(t ?? ''); return i < 0 ? TIER_ORDER.length : i }
     const dmOnLinkedIn = (b: PlanBrand) => b.contacts.some(c => c.isDecisionMaker && !!c.linkedinUrl)
@@ -4533,7 +4565,10 @@ const handlers: Record<string, Handler> = {
     const open = brands.filter(b =>
       !isReached(b) && !b.passedAt && !b.doNotEmail && !inConversation(b) && !ctx.pinnedOn.has(b.id))
 
-    const ranked = open
+    // Nearest neighbours of a category: what fills an alcohol day that
+    // ran dry is spirits and cans, not dating apps.
+    const related = new Set<string>(cat ? RELATED_CATEGORIES[cat] ?? [] : [])
+    const rankRows = (list: PlanBrand[], relatedFirst: boolean) => list
       .map(b => {
         // On today a brand already in today's queue is on the day
         // already — it is not a suggestion for it.
@@ -4546,7 +4581,9 @@ const handlers: Record<string, Handler> = {
       .filter(x => x.people.length > 0)
       .sort((x, y) => {
         const kind = (k: string) => (k === 'ready' ? 0 : k === 'thin' ? 1 : 2)
-        return kind(x.label.kind) - kind(y.label.kind) ||
+        const near = (b: PlanBrand) => (relatedFirst && b.category && related.has(b.category) ? 0 : 1)
+        return near(x.b) - near(y.b) ||
+          kind(x.label.kind) - kind(y.label.kind) ||
           tierRank(x.b.tier) - tierRank(y.b.tier) ||
           Number(dmOnLinkedIn(y.b)) - Number(dmOnLinkedIn(x.b)) ||
           y.label.reachable - x.label.reachable ||
@@ -4559,11 +4596,18 @@ const handlers: Record<string, Handler> = {
         people: people.slice(0, 4).map(p => ({ name: p.name, title: p.title })),
         linkedinUrl: b.linkedinUrl, externalId: b.externalId,
         text: `${people.length} would go out`,
+        related: !!(b.category && related.has(b.category)),
       }))
+
+    const ranked = rankRows(open.filter(inCat), false)
+    // Only when a category was asked for: with "All categories" the main
+    // list already is everything.
+    const others = cat === '' ? [] : rankRows(open.filter(b => !inCat(b)), true)
 
     // Worth working, nobody to write to yet. Small brands first, then
     // ones we can open on LinkedIn or SponsorUnited straight away.
     const needAll = open
+      .filter(inCat)
       .filter(b => !b.contacts.some(isReachable))
       .sort((x, y) =>
         tierRank(x.tier) - tierRank(y.tier) ||
@@ -4574,7 +4618,7 @@ const handlers: Record<string, Handler> = {
       linkedinUrl: b.linkedinUrl, externalId: b.externalId, onFile: b.contacts.length,
     }))
 
-    return { date: ctx.date, category: cat === '' ? '' : cat, brands: ranked, needPeople, needPeopleTotal: needAll.length }
+    return { date: ctx.date, category: cat === '' ? '' : cat, brands: ranked, others, needPeople, needPeopleTotal: needAll.length }
   },
 
   // The Schedule's "+ Add a brand to <day>" box. Every result says what

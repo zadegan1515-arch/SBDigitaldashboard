@@ -620,6 +620,8 @@
   .sd-open-h .sd-catsel{max-width:190px}
   .sd-open-f{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .sd-need{border-top:1px solid var(--border-soft);padding-top:4px}
+  .sd-rest{display:flex;flex-direction:column;gap:4px}
+  .sd-open-sub{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin-top:6px}
   /* extra sending days */
   .sd-extra{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap;margin-top:14px;font-size:12.5px}
   .sd-extra input[type=date]{padding:5px 8px;font-size:12.5px}
@@ -6137,6 +6139,9 @@ var SCHED = {
   checkOpen: false,
   // brandId -> open/closed for the "Invited today" cards.
   sentOpen: {},
+  // dateKey -> true when that day's "The rest of …" list shows every
+  // brand instead of the first few.
+  overOpen: {},
   openCat: null, catCache: {}, catErr: {}, catBusy: {}, catGen: 0, catSel: {}, catQ: '',
   pastOpen: false, qSeq: 0,
   // Bumped on every getOutreachPlan call. Two quick changes fire two
@@ -6868,24 +6873,52 @@ function sdDayHtml(key) {
   else html += '<div data-sdfillsum="' + esc(key) + '">' + sdFillSumHtml(key) + '</div>';
 
   // Ready people past the day's cap. They are not lost — they carry
-  // to the next day in this category — so one line says so.
+  // to the next day in this category — but a day with open spots can
+  // take them now: each one has an Add to… menu (Leo: "make sure these
+  // are able to add"), and still drags onto a day like before.
   var overflow = day.overflow || [];
   if (overflow.length) {
     var later = auto.reduce(function (s, b) { return s + (b.later || 0); }, 0);
     var overPeople = overflow.reduce(function (s, b) { return s + sdPeopleOf(b).n; }, 0) + later;
-    html += '<div class="sd-note">The rest of ' + esc(catName) + ': ' + sdPlural(overPeople, 'person', 'people') +
-      ' past the day’s ' + cap + ' come up on the next ' + esc(catName) + ' day. ' +
-      // Each name drags onto another day to pin it there (the old rows
-      // could be pinned; this keeps that without a row per brand).
-      overflow.slice(0, 5).map(function (b) {
-        return '<a href="#" class="sd-dimlink" data-sopen="' + esc(b.id) + '" draggable="true" data-dragb="' + esc(b.id) + '"' +
-          ' data-dragn="' + esc(b.name) + '" data-dragfrom="" title="Drag onto a day to pin it there">' + esc(b.name) + '</a>';
-      }).join(', ') +
-      (overflow.length > 5 ? ' and ' + (overflow.length - 5) + ' more' : '') + '. Drag a name onto another day to pin it there.</div>';
+    var overAll = !!SCHED.overOpen[key];
+    var overShown = overAll ? overflow : overflow.slice(0, 5);
+    html += '<div class="sd-rest">' +
+      '<div class="sd-note">The rest of ' + esc(catName) + ': ' + sdPlural(overPeople, 'person', 'people') +
+        ' past the day’s ' + cap + '. They come up on the next ' + esc(catName) + ' day, or add them to another day now.</div>' +
+      overShown.map(function (b) { return sdOverRow(b, key); }).join('') +
+      (overflow.length > overShown.length
+        ? '<a href="#" class="sd-link" data-sdoverall="' + esc(key) + '">Show all ' + overflow.length + '</a>' : '') +
+    '</div>';
   }
 
   if (isToday) html += sdSentHtml(day);
   return html + '</div>';
+}
+
+// One brand from "The rest of …": who would go, and a menu of the
+// other days (with their open spots) to add it to. Adding pins it to
+// that day through planAddBrands, like every other add.
+function sdOverRow(b, key) {
+  var n = sdPeopleOf(b).n;
+  return '<div class="sd-orow" draggable="true" data-dragb="' + esc(b.id) + '" data-dragn="' + esc(b.name) + '" data-dragfrom="">' +
+    '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
+    sdLabel(SCHED.labels[b.id]) +
+    '<span class="sd-dim">' + n + ' would go</span>' +
+    '<span class="sd-sp"></span>' +
+    '<select class="inp sd-mini" data-sdaddto="' + esc(b.id) + '" title="Add ' + esc(b.name) + ' to another day">' +
+      '<option value="">Add to…</option>' + sdAddToOpts(key, n) +
+    '</select>' +
+  '</div>';
+}
+
+// The other days, each saying how much room it has, so it is clear
+// before picking whether the brand fits there whole.
+function sdAddToOpts(skip, n) {
+  return SCHED.order.filter(function (k) { return k !== skip; }).map(function (k) {
+    var open = sdOpenSpots(k);
+    var room = open <= 0 ? 'full' : open < n ? open + ' open, would go over' : open + ' open';
+    return '<option value="' + esc(k) + '">' + esc(sdDayTag(k)) + ' · ' + esc(room) + '</option>';
+  }).join('');
 }
 
 // --- the Fill box ----------------------------------------------
@@ -6899,7 +6932,7 @@ function sdOpenSpots(key) {
 function sdFillState(key) {
   // cat stays null until Leo picks one in the box, so the box follows
   // the day's category when the day's own category menu changes.
-  return SCHED.fill[key] || (SCHED.fill[key] = { cat: null, all: false, needOpen: false, summary: '', busy: false });
+  return SCHED.fill[key] || (SCHED.fill[key] = { cat: null, all: false, allOthers: false, needOpen: false, summary: '', busy: false });
 }
 function sdFillCat(key) {
   var f = sdFillState(key);
@@ -6960,6 +6993,21 @@ function sdFillRows(key) {
   return ((ent && ent.data && ent.data.brands) || []).filter(function (b) { return !on[b.id]; });
 }
 
+// The best brands from every OTHER category (related ones first), sent
+// along whenever the box is on one category. A day whose category has
+// run dry still fills: Leo, "you should be able to fill in other brands".
+function sdFillOthers(key) {
+  var ent = SCHED.sug[key + '|' + sdFillCat(key)];
+  var on = sdDayBrandIds(key);
+  return ((ent && ent.data && ent.data.others) || []).filter(function (b) { return !on[b.id]; });
+}
+
+// What Fill to 20 works through: the day's own category first, then the
+// others, so a short category is topped up rather than left short.
+function sdFillPool(key) {
+  return sdFillRows(key).concat(sdFillOthers(key));
+}
+
 function sdSugRow(b, key, open, allCats) {
   var n = sdSugGoing(b);
   var lab = sdLabelOf(b);
@@ -6998,7 +7046,9 @@ function sdFillInner(key) {
   var ent = SCHED.sug[key + '|' + cat];
   var data = ent && ent.data;
   var rows = sdFillRows(key);
-  var fit = sdFitPick(rows, open);
+  var others = sdFillOthers(key);
+  var own = sdFitPick(rows, open);
+  var fit = sdFitPick(rows.concat(others), open);
   var allCats = !cat;
   var dayWord = key === SCHED.today ? 'today' : sdDayName(key);
   var known = !cat || CAT_KEYS.indexOf(cat) !== -1;
@@ -7024,12 +7074,29 @@ function sdFillInner(key) {
   if (!data) {
     html += '<div class="sd-dim">' + (ent && ent.err ? 'Could not load suggestions: ' + esc(ent.err) : 'Finding brands that fit…') + '</div>';
   } else {
+    // Say what the button will do before it is pressed, other categories
+    // included — nothing lands on the day unannounced.
+    if (fit.ids.length && ready && !f.busy) {
+      html += '<div class="sd-dim">Fill to ' + sdCap() + ' adds ' + esc(fit.names.join(', ')) +
+        ' (' + sdPlural(fit.people, 'person', 'people') + ')' +
+        (cat && fit.ids.length > own.ids.length ? ', topping up from other categories' : '') + '.</div>';
+    }
     var shown = f.all ? rows : rows.slice(0, 8);
-    html += shown.length
+    html += (cat ? '<div class="sd-open-sub">From ' + esc(sdCatName(cat)) + '</div>' : '') +
+      (shown.length
       ? shown.map(function (b) { return sdSugRow(b, key, open, allCats); }).join('') +
         (rows.length > shown.length ? '<a href="#" class="sd-link" data-sdfillall="' + esc(key) + '">Show ' + (rows.length - shown.length) + ' more</a>' : '')
-      : '<div class="sd-dim">No ' + esc(cat ? sdCatName(cat) + ' ' : '') + 'brands left that can go out on ' + esc(dayWord) + '.' +
-          (cat ? ' Try All categories.' : '') + '</div>';
+      : '<div class="sd-dim">No ' + esc(cat ? sdCatName(cat) + ' ' : '') + 'brands left that can go out on ' + esc(dayWord) + '.</div>');
+    // When the day's own category can't fill the open spots, the rest of
+    // the roster is right here — no need to find "All categories" in the
+    // menu first. Related categories (spirits and cans for an alcohol
+    // day) come first.
+    if (cat && others.length && own.people < open) {
+      var oShown = f.allOthers ? others : others.slice(0, 6);
+      html += '<div class="sd-open-sub">From other categories</div>' +
+        oShown.map(function (b) { return sdSugRow(b, key, open, true); }).join('') +
+        (others.length > oShown.length ? '<a href="#" class="sd-link" data-sdfillothers="' + esc(key) + '">Show ' + (others.length - oShown.length) + ' more</a>' : '');
+    }
     var need = data.needPeople || [];
     // The server lists at most 8; the total can be far more. Say both,
     // and point at the drill-in (which shows every one) for the rest.
@@ -7095,7 +7162,7 @@ function sdLoadFills() {
 function sdFillTo20(key) {
   var f = sdFillState(key);
   if (!sdFillReady(key)) { toast('One moment — the list is catching up with the last change'); return; }
-  var fit = sdFitPick(sdFillRows(key), sdOpenSpots(key));
+  var fit = sdFitPick(sdFillPool(key), sdOpenSpots(key));
   if (!fit.ids.length) { toast('Nothing in the list fits whole into the open spots'); return; }
   f.busy = true;
   f.summary = '';
@@ -7614,6 +7681,7 @@ var SCHED_DRAG = null;
       var ff = sdFillState(fkey);
       ff.cat = t.value;
       ff.all = false;
+      ff.allOthers = false;
       ff.summary = '';
       sdRenderFill(fkey);
       sdLoadFill(fkey);
@@ -7773,6 +7841,18 @@ var SCHED_DRAG = null;
       e.preventDefault();
       sdFillState(t.getAttribute('data-sdfillall')).all = true;
       sdRenderFill(t.getAttribute('data-sdfillall'));
+      return;
+    }
+    if ((t = e.target.closest('[data-sdoverall]'))) {
+      e.preventDefault();
+      SCHED.overOpen[t.getAttribute('data-sdoverall')] = true;
+      renderSchedDays();
+      return;
+    }
+    if ((t = e.target.closest('[data-sdfillothers]'))) {
+      e.preventDefault();
+      sdFillState(t.getAttribute('data-sdfillothers')).allOthers = true;
+      sdRenderFill(t.getAttribute('data-sdfillothers'));
       return;
     }
     if ((t = e.target.closest('[data-sdneed]'))) {
