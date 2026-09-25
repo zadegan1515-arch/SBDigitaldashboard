@@ -42,7 +42,10 @@
 //      sample for Claude says what the reader made of each card.
 //  13. The dashboard's "Start the LinkedIn fill" opens LinkedIn at
 //      #sb-fill: the run starts and finishes with no click at all, with
-//      the defaults (electrolyte first, research list on).
+//      the defaults (electrolyte first, research list on) — even though
+//      the feed wipes the mark from the address as it loads. A run left
+//      behind by a closed tab doesn't block it; a live run in another
+//      tab is shown instead of doubled.
 //   6. The pill sits bottom-left, clear of LinkedIn's Messaging bar; the
 //      Tampermonkey menu opens the same panel; and a copy running without
 //      its @grant lines (pasted under Tampermonkey's sample) says so.
@@ -270,7 +273,9 @@ const server = http.createServer((req, res) => {
         '<div>3rd+ degree connection</div><div>Campus Partnerships Lead</div><button>Connect</button></li>' +
       '</ul></main></body></html>');
   }
-  res.end('<!doctype html><html><body><main><h1>Feed</h1></main></body></html>');
+  // The feed tidies its own address as it loads, the way LinkedIn does —
+  // which is what hid #sb-fill from a page-ready script.
+  res.end('<!doctype html><html><head><script>history.replaceState(null, "", location.pathname)</script></head><body><main><h1>Feed</h1></main></body></html>');
 });
 
 // Tampermonkey's API, as far as the script uses it.
@@ -654,7 +659,37 @@ const GM_SHIM = `
       assert.ok(sent.slice(before).some(b => b.action === 'liCapture' && b.brandId === 'b-ld'));
       await pg.close();
     }
-    ok('#sb-fill from the dashboard starts the run by itself with the defaults');
+    ok('#sb-fill from the dashboard starts the run by itself, though the feed wipes the mark');
+
+    // A run left behind by a closed tab (no heartbeat) is replaced.
+    const seedJob = (touchedAt) => `
+      if (!sessionStorage.getItem('__seededJob')) {
+        sessionStorage.setItem('__seededJob', '1');
+        sessionStorage.setItem('__gm:sbLiFill', JSON.stringify({ id: 'old', owner: 'some-other-tab', items: [{ brandId: 'x', name: 'Old Brand' }], at: 0, results: [], added: 0, doneToday: 0, touchedAt: ${touchedAt} }));
+      }`;
+    {
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + seedJob('null') + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/#sb-fill');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 90000 });
+      assert.ok(sent.slice(before).some(b => b.action === 'liList'), 'a fresh run started');
+      await pg.close();
+    }
+    ok('a run left behind by a closed tab doesn\'t block the button');
+
+    // A live run in another tab is shown, not doubled.
+    {
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + seedJob('Date.now()') + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/#sb-fill');
+      await pg.waitForFunction(() => /A run is going in another tab/.test(((document.getElementById('sbli-panel') || {}).innerText) || ''), null, { timeout: 20000 });
+      await pg.waitForTimeout(1500);
+      assert.equal(sent.slice(before).filter(b => b.action === 'liList').length, 0, 'no second run');
+      await pg.close();
+    }
+    ok('a live run in another tab is shown, not doubled');
 
     // 6. No @grant lines: runs, shows the pill, says to reinstall.
     const bare = await browser.newPage();

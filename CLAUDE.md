@@ -186,8 +186,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   it as everyone's title and added nobody. Every call sends `reader` (`LI_READER = 2` in
   `li-sweep.ts`); ingest answers 426 "out of date" to older scripts, and visit marks from older readers
   never rest a brand. **One-click start**: Outreach → People's "Start the LinkedIn fill ↗" opens
-  `linkedin.com/feed/#sb-fill`; the script strips the hash and starts a run in that tab with the
-  panel's defaults (electrolyte first, research list + lookalikes on) — Claude can't run it from the
+  `linkedin.com/feed/#sb-fill`; the script runs at **document-start** only to catch that hash
+  (LinkedIn rewrites its address while loading), the rest waits for DOM ready (`whenReady`), and it
+  starts a run in that tab with the panel's defaults. A run untouched for 10 min (`staleFill`; live
+  tabs heartbeat `touchedAt` each minute) no longer blocks a new one (electrolyte first, research list + lookalikes on) — Claude can't run it from the
   cloud; it needs Leo's browser and LinkedIn login. Menu / preview link **"Copy a sample for Claude"** copies what the reader made of
   the first three cards (+ trimmed markup) for Leo to paste when LinkedIn changes its cards again.
 - `src/lib/email.ts` — outreach: drafting, cap/ramp (`roomToday`), sending via Gmail API, replies, warmup stats, signature (hosted images, LinkedIn/IG as text links).

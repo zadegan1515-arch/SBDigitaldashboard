@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.8
+// @version      1.9
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
-// @run-at       document-idle
+// @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -58,10 +58,20 @@
 (function () {
   'use strict';
 
+  // The dashboard's "Start the LinkedIn fill" opens LinkedIn at #sb-fill.
+  // LinkedIn tidies its own address while it loads and the mark was gone
+  // by the time a page-ready script looked (Leo: the button started
+  // nothing). So the script runs at document-start just to catch it,
+  // and everything else waits for the page (whenReady, at the bottom).
+  var AUTO_FILL = /^#sb-fill\b/.test(location.hash);
+  if (AUTO_FILL) {
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  }
+
   var INGEST_URL = 'https://sb-digitaldashboard.vercel.app/api/ingest';
   var DASH_URL = 'https://sb-digitaldashboard.vercel.app/app.html';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.8';
+  var VERSION = '1.9';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -704,7 +714,14 @@
   var PASSES = ['', 'marketing', 'partnerships'];
 
   function loadFill() { try { return GM_getValue(FILL_KEY, null); } catch (e) { return null; } }
-  function saveFill(job) { try { GM_setValue(FILL_KEY, job); } catch (e) {} }
+  function saveFill(job) {
+    if (job) job.touchedAt = Date.now();
+    try { GM_setValue(FILL_KEY, job); } catch (e) {}
+  }
+  // A run nobody has touched for ten minutes has lost its tab (closed, or
+  // a copy from an older script). It shouldn't block starting a new one.
+  // A live run's tab touches it at least once a minute (runFill).
+  function staleFill(job) { return !!job && (!job.touchedAt || Date.now() - job.touchedAt > 10 * 60000); }
   function clearFill() { try { GM_deleteValue(FILL_KEY); } catch (e) {} }
 
   // This tab's own id. sessionStorage lives exactly as long as the tab,
@@ -870,6 +887,7 @@
   function runFill() {
     var job = loadFill();
     if (!ownsFill(job)) return;
+    if (Date.now() - (job.touchedAt || 0) > 60000) saveFill(job);
     var stop = linkedinSaysStop();
     if (stop) return pauseFill(job, stop + '. Leave LinkedIn alone for a day before pressing Continue.');
     if (job.paused) return renderFill(job, 'Paused: ' + job.paused);
@@ -1242,6 +1260,7 @@
     if (!HAS_GM) return openBroken();
     if (!token()) return openSetup();
     var job = loadFill();
+    if (job && !job.done && !ownsFill(job) && staleFill(job)) job = null;
     if (job && !job.done) {
       if (ownsFill(job)) return renderFill(job, job.paused ? 'Paused: ' + job.paused : 'Running.');
       return freshPanel([
@@ -1379,19 +1398,22 @@
   } catch (e) {}
   try { console.info('[SB] LinkedIn capture ' + VERSION + ' running' + (HAS_GM ? '' : ' WITHOUT its @grant lines — reinstall')); } catch (e) {}
 
-  tick();
-  setInterval(tick, 1500);
-
-  // A run's tab picks the run back up on every page load, once LinkedIn
-  // has had a moment to draw the page.
-  if (fillHere()) later(runFill, rand(2500, 4000));
-
-  // The dashboard's "Start the LinkedIn fill" button opens LinkedIn at
-  // #sb-fill: the run starts in that new tab with the panel's defaults.
-  // The mark comes off the address first, so a reload doesn't start
-  // another; a run already going in another tab is shown, not doubled.
-  if (/^#sb-fill\b/.test(location.hash) && !fillHere()) {
-    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
-    later(function () { openFillSetup({ auto: true }); }, rand(1500, 2500));
+  function whenReady(fn) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
+    else fn();
   }
+
+  whenReady(function () {
+    tick();
+    setInterval(tick, 1500);
+
+    // A run's tab picks the run back up on every page load, once LinkedIn
+    // has had a moment to draw the page.
+    if (fillHere()) later(runFill, rand(2500, 4000));
+
+    // Opened from the dashboard's button (AUTO_FILL, caught at the top):
+    // start a run in this tab with the panel's defaults. A live run in
+    // another tab is shown, not doubled; a stale one is replaced.
+    else if (AUTO_FILL) later(function () { openFillSetup({ auto: true }); }, rand(1500, 2500));
+  });
 })();
