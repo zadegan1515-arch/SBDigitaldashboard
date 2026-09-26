@@ -185,7 +185,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   for new brands" words (company search, up to 3 result pages each, before the first brand).
   `liDiscover` judges each (`judgeDiscovery`: **5K+ followers**, consumer industry via
   `categoryFromIndustry`, wholesale/agency/software out; a lookalike takes the source brand's
-  category when its industry fits), skips known brands (name/aka/page) and anything dismissed on
+  category when its industry fits), skips known brands (name/aka/page; a longer LinkedIn name counts, "Waterloo Sparkling Water" = Waterloo — `nearName`) and anything dismissed on
   Discover, creates the Brand (`source: 'linkedin-discover'`, provenance in notes) plus a
   DiscoveredBrand row (status added, query "LinkedIn: similar to X" / "LinkedIn search: w"), and
   stops at **50 new brands per rolling day** (`DISCOVER_CAP_PER_DAY`). New brands join the same

@@ -21,7 +21,7 @@ execSync(
 const lib = await import(pathToFileURL(join(out, 'li-capture.js')).href)
 const { companySlug, profileSlug, profileUrl, cleanName, personKey, roleFromHeadline, isBuyer,
   normalizeCompany, decideCompanyMatch, focusTerms, matchesFocus,
-  parseFollowers, industryOf, categoryFromIndustry, judgeDiscovery, decideResearchMatch } = lib
+  parseFollowers, industryOf, categoryFromIndustry, judgeDiscovery, decideResearchMatch, nearName } = lib
 
 let n = 0
 function t(name, fn) { fn(); n++; console.log('  ok — ' + name) }
@@ -188,6 +188,16 @@ t('a lookalike needs 5K followers and a consumer industry', () => {
   assert.deepEqual(judgeDiscovery({ name: 'Some Agency', subtitle: 'Advertising Services • 20K followers' }), { ok: false, reason: 'industry' })
   assert.equal(judgeDiscovery({ name: 'Venmo', subtitle: 'Financial Services • 200K followers' }, 'fintech').ok, true, 'a fintech lookalike of a fintech brand')
   assert.equal(judgeDiscovery({ name: 'Venmo', subtitle: 'Financial Services • 200K followers' }).ok, false, 'but not from a keyword search')
+})
+
+t('a lookalike whose LinkedIn name adds what it sells is already on the roster', () => {
+  const k = (s) => normalizeCompany(s)
+  assert.equal(nearName(k('Waterloo'), k('Waterloo Sparkling Water')), true, 'the end-to-end run added Waterloo twice')
+  assert.equal(nearName(k('Casamigos Tequila'), k('Casamigos')), true)
+  assert.equal(nearName(k('Poppi'), k('Poppi')), true)
+  assert.equal(nearName(k('Red'), k('Red Bull')), false, 'too short to claim a longer name')
+  assert.equal(nearName(k('Body'), k('BodyArmor')), false, 'whole words only')
+  assert.equal(nearName(k('Olipop'), k('Hoplark')), false)
 })
 
 // --- the research list -------------------------------------------------

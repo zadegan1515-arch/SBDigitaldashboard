@@ -589,6 +589,11 @@ const GM_SHIM = `
       const caPeople = sent.slice(before).find(b => b.action === 'liCapture' && b.brandId === 'b-ca');
       assert.ok(!caPeople.rows.some(r => /company/.test(r.linkedinUrl)), 'the rail never reaches the people rows');
       assert.match(await pg.textContent('#sbli-panel'), /2 new brands added/);
+      // A brand whose page showed lookalikes still logs what it added
+      // (the end-to-end run found it logging 0 and the total short).
+      const swept = sent.slice(before).filter(b => b.action === 'liSwept').map(b => [b.brandId, b.added]);
+      assert.deepEqual(swept, [['b-liv', 2], ['b-ca', 2], ['b-jc', 2]]);
+      assert.match(await pg.textContent('#sbli-panel'), /6 people added across 3 brands/);
       await pg.close();
     }
     ok('finds new brands by search and by lookalikes, and reads their people in the same run');
