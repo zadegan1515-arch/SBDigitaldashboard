@@ -116,6 +116,8 @@ const fillCat = (cat, n, size = 4, prefix = cat) => Array.from({ length: n }, (_
   // …unless it is the only one with anybody left.
   const only = planWeekDays(base({ cands: fillCat('energy', 10), prev: 'energy', days: [day(DAYS[0])] }))
   is('the day before only when nothing else can go', only[0].category, 'energy')
+  is('and it says so', only[0].repeat, true)
+  is('a normal pick is no repeat', p[0].repeat, false)
 }
 
 {

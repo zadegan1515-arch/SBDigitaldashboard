@@ -5129,6 +5129,7 @@ const handlers: Record<string, Handler> = {
         : d.source === 'full' ? 'Full already'
         : d.source === 'none' ? 'Nothing left that could go out'
         : [
+            d.repeat ? 'Same as the day before — nothing else has anyone left to send' : null,
             `${d.readyNow} ready brand${d.readyNow === 1 ? '' : 's'} not reached yet`,
             last ? `last worked ${shortDate(new Date(last))}` : 'not worked yet',
             r && r.invites >= 5 ? `${Math.round(r.accepted / r.invites * 100)}% accept` : null,

@@ -85,6 +85,9 @@ export type WeekDayOut = {
   source: WeekSource
   // Ready brands the day's category still had when the day was planned.
   readyNow: number
+  // The plan gave it the day before's category: nothing else had anyone
+  // left to send.
+  repeat: boolean
   keptPeople: number
   add: Array<{ id: string; from: 'day' | 'related' | 'other'; size: number }>
   addPeople: number
@@ -140,6 +143,7 @@ export function planWeekDays(opts: {
     const room = Math.max(0, cap - keptPeople)
     let category = day.category
     let source: WeekSource = category ? 'yours' : room === 0 ? 'full' : 'none'
+    const before = prev
     const f = forced[day.date]
     if (f && f !== '__pick') {
       category = f
@@ -198,6 +202,7 @@ export function planWeekDays(opts: {
     if (category) chosen.push(category)
     prev = category ?? prev
     const addPeople = add.reduce((n, a) => n + a.size, 0)
-    return { date: day.date, category, source, readyNow, keptPeople, add, addPeople, total: keptPeople + addPeople }
+    const repeat = source === 'picked' && category !== null && category === before
+    return { date: day.date, category, source, readyNow, repeat, keptPeople, add, addPeople, total: keptPeople + addPeople }
   })
 }
