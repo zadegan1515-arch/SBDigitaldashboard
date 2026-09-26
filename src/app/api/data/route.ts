@@ -949,40 +949,45 @@ async function carryBrands(unsent: Map<string, Unsent>, to: string, plan: Outrea
 
 // The morning roll. The first read of a new day does it (readPlan) over
 // the days since the last roll (rollWindow: the last week on the very
-// first run). Idempotent: two requests racing into a new day pin the same
-// brands to the same day.
+// first run). Setting outreachCarryDone = { day, through, running }: day =
+// the last day a roll finished, through = the last day it looked at,
+// running = { day, at } while one is under way. One request claims the
+// roll in a single conditional write; any other that arrives meanwhile
+// waits for it to finish before reading the plan, so none of them works
+// from the plan as it was before the roll. A claim older than 30 s is a
+// roll that died, and the next request takes over.
 let carryCheckedFor = ''
 async function rollOverUnsent(): Promise<void> {
   const today = localDayKey()
   if (carryCheckedFor === today) return
-  const row = await prisma.setting.findUnique({ where: { key: CARRY_DONE_KEY } })
-  let done: { day?: unknown; through?: unknown } = {}
-  try { done = row ? JSON.parse(row.value) : {} } catch { done = {} }
-  if (done.day === today) { carryCheckedFor = today; return }
-  const days = rollWindow(today, done)
-  // Claim today's roll first, in one conditional write, so a second
-  // request racing into the new day skips it instead of writing the plan
-  // over the first one's result. If the roll then fails, `through` still
-  // points at the old day and tomorrow's roll looks at the missed days.
-  const claim = JSON.stringify({ day: today, through: isDayKey(done.through) ? done.through : null })
+  const read = async () => {
+    const row = await prisma.setting.findUnique({ where: { key: CARRY_DONE_KEY } })
+    let v: any = {}
+    try { v = row ? JSON.parse(row.value) : {} } catch { v = {} }
+    return { row, v: (v && typeof v === 'object' ? v : {}) as { day?: unknown; through?: unknown; running?: { day?: unknown; at?: unknown } } }
+  }
+  const busy = (v: { running?: { day?: unknown; at?: unknown } }) =>
+    v.running?.day === today && Date.now() - Date.parse(String(v.running?.at)) < 30e3
+  const waitForRoll = async () => {
+    for (let i = 0; i < 25; i++) {
+      await new Promise(r => setTimeout(r, 200))
+      const now = await read()
+      if (now.v.day === today) { carryCheckedFor = today; return }
+      if (!busy(now.v)) return
+    }
+  }
+  const { row, v } = await read()
+  if (v.day === today) { carryCheckedFor = today; return }
+  if (busy(v)) { await waitForRoll(); return }
+  const claim = JSON.stringify({
+    day: isDayKey(v.day) ? v.day : null, through: isDayKey(v.through) ? v.through : null,
+    running: { day: today, at: new Date().toISOString() },
+  })
   const claimed = row
     ? (await prisma.setting.updateMany({ where: { key: CARRY_DONE_KEY, value: row.value }, data: { value: claim } })).count === 1
     : await prisma.setting.create({ data: { key: CARRY_DONE_KEY, value: claim } }).then(() => true, () => false)
-  if (!claimed) {
-    // Another request is rolling. Wait for it (up to 3 s) before reading
-    // on: getTodayQueue clears yesterday's stamps right after this, and
-    // must not do it before the roll has read them.
-    const through = addDaysKey(today, -1)
-    for (let i = 0; i < 15; i++) {
-      await new Promise(r => setTimeout(r, 200))
-      const now = await prisma.setting.findUnique({ where: { key: CARRY_DONE_KEY } })
-      let v: any = {}
-      try { v = now ? JSON.parse(now.value) : {} } catch { v = {} }
-      if (v.day === today && v.through === through) break
-    }
-    carryCheckedFor = today
-    return
-  }
+  if (!claimed) { await waitForRoll(); return }
+  const days = rollWindow(today, v)
   if (days.length) {
     const plan = await readPlanRaw()
     const unsent = await unsentOn(days, plan)
@@ -995,7 +1000,7 @@ async function rollOverUnsent(): Promise<void> {
       }
     }
   }
-  const value = JSON.stringify({ day: today, through: addDaysKey(today, -1) })
+  const value = JSON.stringify({ day: today, through: addDaysKey(today, -1), running: null })
   await prisma.setting.upsert({ where: { key: CARRY_DONE_KEY }, create: { key: CARRY_DONE_KEY, value }, update: { value } })
   carryCheckedFor = today
 }

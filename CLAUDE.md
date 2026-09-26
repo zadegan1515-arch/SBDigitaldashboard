@@ -304,7 +304,8 @@ board), CRM_SHEET_ID.
   with why: archived / do-not-email / in talks, passed that day, planned for another day, nobody left.
   Rules pure in `src/lib/carry.ts` (`node scripts/test-carry.mjs`); last roll in Setting
   `outreachCarry` (Schedule "Carried over" note + "From <day>" tags, **Move them to…** =
-  `moveCarried`), `outreachCarryDone` = { day, through }. Today's column has **Move what's left
+  `moveCarried`), `outreachCarryDone` = { day, through, running } (one request claims the roll with a
+  conditional write; others wait for it; a claim older than 30 s is taken over). Today's column has **Move what's left
   to…** (`moveUnsent`, previewed) — it closes today to automatic picks (Setting `outreachDayClosed`;
   hand-adds still go). Both menus offer the next off weekday "(adds it as a sending day)".
 - **One category list:** `CATEGORY_KEYS` in `src/lib/category-hints.ts` (same keys, same order as
