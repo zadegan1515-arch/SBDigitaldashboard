@@ -626,6 +626,11 @@
   .sd-extra{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap;margin-top:14px;font-size:12.5px}
   .sd-extra input[type=date]{padding:5px 8px;font-size:12.5px}
   .sd-tag.extra{color:#c9b3ff;border-color:rgba(157,122,255,.45);background:rgba(157,122,255,.1)}
+  /* Unsent work rolled to a later day */
+  .sd-carry{display:flex;gap:6px 12px;align-items:center;flex-wrap:wrap;margin-top:12px;padding:10px 14px;border-radius:10px;
+    background:rgba(79,131,247,.08);border:1px solid rgba(79,131,247,.3);font-size:12.5px}
+  .sd-tag.carried{color:#aac6ff;border-color:rgba(79,131,247,.4);background:var(--accent-soft)}
+  .sd-left{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--border-soft);padding-top:10px}
   /* LinkedIn's weekly limit: the line in the top row, and a day's note */
   .sd-liw{font-size:12px;color:var(--ink-3)}
   .sd-liw b{color:var(--ink-1);font-weight:700}
@@ -1271,6 +1276,7 @@
       <div class="sub">Today and the next three sending days. 20 people a day, one category a day, and every brand says whether it has enough people.</div>
       <div id="sched-extra"></div>
       <div id="sched-plan"></div>
+      <div id="sched-carry"></div>
       <div id="sched-check"></div>
       <div id="sched-days" class="sd-days"></div>
       <div id="sched-cats"></div>
@@ -6455,6 +6461,9 @@ var SCHED = {
   // across reloads.
   pw: { open: false, busy: false, seq: 0, data: null, cats: {}, off: {}, exclude: [], err: '', applying: false },
   pwDone: null, planWeekLast: null,
+  // The last roll of unsent work (getOutreachPlan.carry): the brands that
+  // didn't go out on their day and now sit on a later one.
+  carry: null,
   // Coverage, last six weeks (categoryCoverage).
   cov: null, covBusy: false, covErr: ''
 };
@@ -7003,6 +7012,7 @@ function sdTake(d) {
   SCHED.nextOffDay = d.nextOffDay || '';
   SCHED.linkedinWeek = d.linkedinWeek || null;
   SCHED.planWeekLast = d.planWeekLast || null;
+  SCHED.carry = d.carry || null;
   // Fill-box suggestions are asked for again after every change too (a
   // brand just added is no longer a suggestion), drawn from the old
   // answer until the new one lands.
@@ -7060,6 +7070,7 @@ function renderSchedAll() {
   });
   renderSchedExtra();
   renderSchedPlan();
+  renderSchedCarry();
   renderSchedCheck();
   renderSchedDays();
   renderSchedCats();
@@ -7379,6 +7390,9 @@ function sdPinnedCard(p, key) {
   return sdCard({
     id: p.id, name: p.name, from: key, pinned: true, blocked: p.state === 'blocked', body: body, li: p.state === 'going',
     linkedinUrl: p.linkedinUrl, website: p.website,
+    tags: p.carriedFrom
+      ? '<span class="sd-tag carried" title="Didn’t go out on ' + esc(sdDayName(p.carriedFrom)) + ', so it moved here">From ' + esc(sdDayName(p.carriedFrom)) + '</span>'
+      : '',
     controls: sdMoveSel(p.id, p.name, key, key, true) +
       '<span class="sd-sp"></span>' +
       '<button class="btn-ghost sd-sm" data-sdunpin="' + esc(p.id) + '" data-sdday="' + esc(key) + '" data-sdn="' + esc(p.name) + '" title="Take it off this day">× Unpin</button>' +
@@ -7507,8 +7521,59 @@ function sdDayHtml(key) {
     '</div>';
   }
 
+  if (isToday && day.closedTo) {
+    html += '<div class="sd-note">What was left today moved to ' + esc(sdDayName(day.closedTo)) +
+      '. Nothing else is picked for today — anything you add by hand still goes.</div>';
+  }
+  // What hasn't gone out today moves to the next sending day on its own
+  // tomorrow morning; this moves it now, to any later day (Leo: "move
+  // that to monday").
+  if (isToday && (pinned.some(function (p) { return p.state === 'going'; }) || auto.length)) {
+    html += '<div class="sd-left"><span class="sd-dim">Not getting to all of it?</span>' +
+      '<select class="inp sd-mini" data-sdleft="' + esc(key) + '" title="Moves what hasn’t gone out today to a later day. Left alone, it moves to the next sending day on its own tomorrow morning.">' +
+        '<option value="">Move what’s left to…</option>' + sdLaterTargets(key) +
+      '</select></div>';
+  }
+
   if (isToday) html += sdSentHtml(day);
   return html + '</div>';
+}
+
+// Days a batch of brands can move to: the Schedule's other days, plus the
+// next weekday nothing goes out on (moving there opens it as a sending
+// day). `skip` = the day they are on now.
+function sdLaterTargets(skip) {
+  var list = SCHED.order.filter(function (k) { return k !== skip && k >= SCHED.today; }).map(function (k) { return { key: k, add: false }; });
+  var off = SCHED.nextOffDay;
+  if (off && off !== skip && off > SCHED.today && SCHED.order.indexOf(off) === -1) list.push({ key: off, add: true });
+  list.sort(function (a, b) { return a.key < b.key ? -1 : a.key > b.key ? 1 : 0; });
+  return list.map(function (x) {
+    return '<option value="' + esc(x.key) + '"' + (x.add ? ' data-add="1"' : '') + '>' +
+      esc(x.add ? sdDayName(x.key) + ' (adds it as a sending day)' : sdDayTag(x.key)) + '</option>';
+  }).join('');
+}
+
+// Brands that didn't go out on their day and rolled to a later one.
+function renderSchedCarry() {
+  var box = document.getElementById('sched-carry');
+  if (!box) return;
+  var c = SCHED.carry;
+  if (!c || !c.brands || !c.brands.length) { box.innerHTML = ''; return; }
+  var froms = [];
+  c.brands.forEach(function (b) { if (froms.indexOf(b.from) === -1) froms.push(b.from); });
+  froms.sort();
+  var people = c.brands.reduce(function (n, b) { return n + (b.people || 0); }, 0);
+  var names = c.brands.map(function (b) { return b.name; });
+  box.innerHTML = '<div class="sd-carry">' +
+    '<b>Carried over</b>' +
+    '<span>' + sdPlural(c.brands.length, 'brand', 'brands') + ' (' + sdPlural(people, 'person', 'people') + ') that didn’t go out on ' +
+      esc(froms.map(sdDayName).join(', ')) + ' ' + (c.brands.length === 1 ? 'is' : 'are') + ' now on ' + esc(c.to === SCHED.today ? 'today' : sdDayName(c.to)) + ':</span>' +
+    '<span class="sd-dim">' + esc(names.slice(0, 8).join(', ') + (names.length > 8 ? ' +' + (names.length - 8) + ' more' : '')) + '</span>' +
+    '<span class="sd-sp"></span>' +
+    '<select class="inp sd-mini" data-sdcarry="1" title="Move all of them to another day">' +
+      '<option value="">Move them to…</option>' + sdLaterTargets(c.to) +
+    '</select>' +
+  '</div>';
 }
 
 // One brand from "The rest of …": who would go, and a menu of the
@@ -8449,6 +8514,52 @@ var SCHED_DRAG = null;
       return;
     }
     if (t.matches('[data-sdxdate]')) { SCHED.extraDate = t.value; return; }
+    if (t.matches('[data-sdcarry]')) {
+      if (!t.value) return;
+      var cto = t.value;
+      var cadd = !!(t.selectedOptions[0] && t.selectedOptions[0].getAttribute('data-add'));
+      var cb = (SCHED.carry && SCHED.carry.brands) || [];
+      if (!window.confirm('Move ' + sdPlural(cb.length, 'carried-over brand', 'carried-over brands') + ' to ' + sdDayName(cto) + '?\n\n' +
+          cb.map(function (b) { return b.name; }).join(', ') +
+          (cadd ? '\n\n' + sdDayName(cto) + ' becomes a sending day (a one-off, like an extra Friday).' : '') +
+          '\n\nNobody is deleted.')) { t.value = ''; return; }
+      t.disabled = true;
+      sdPlanCall('moveCarried', { to: cto, addDay: cadd }).then(function (r) {
+        toast(r && r.ok === false ? (r.message || 'Nothing moved')
+          : 'Moved ' + sdPlural((r && r.moved) || 0, 'brand', 'brands') + ' to ' + sdDayTag(cto) + (r && r.opened ? ' · ' + sdDayName(cto) + ' is a sending day now' : ''));
+        return sdRefresh();
+      }).catch(function (err) { toast(err.message); sdRefresh(); });
+      return;
+    }
+    if (t.matches('[data-sdleft]')) {
+      if (!t.value) return;
+      var lto = t.value;
+      var ladd = !!(t.selectedOptions[0] && t.selectedOptions[0].getAttribute('data-add'));
+      var lsel = t;
+      lsel.disabled = true;
+      api('moveUnsent', { to: lto, addDay: ladd, preview: true }).then(function (pv) {
+        var moved = (pv && pv.moved) || [], stay = (pv && pv.left) || [];
+        var reset = function () { lsel.value = ''; lsel.disabled = false; };
+        if (!moved.length) {
+          toast('Nothing left to move' + (stay.length ? ' — ' + stay.map(function (x) { return x.name + ': ' + x.why; }).join('; ') : ''));
+          reset();
+          return;
+        }
+        var people = moved.reduce(function (n, m) { return n + (m.people || 0); }, 0);
+        if (!window.confirm('Move what’s left of today to ' + sdDayName(lto) + '?\n\n' +
+            moved.map(function (m) { return m.name + ' (' + m.people + ')'; }).join(', ') +
+            '\n\n' + sdPlural(people, 'person', 'people') + ' come out of today’s queue and go out on ' + sdDayName(lto) + ' instead.' +
+            (pv.opening ? ' ' + sdDayName(lto) + ' becomes a sending day.' : '') +
+            (stay.length ? '\n\nStaying put: ' + stay.map(function (x) { return x.name + ' — ' + x.why; }).join('; ') : '') +
+            '\n\nNobody is deleted. Anyone already invited today is left alone.')) { reset(); return; }
+        return sdPlanCall('moveUnsent', { to: lto, addDay: ladd }).then(function (r) {
+          toast('Moved ' + sdPlural(((r && r.moved) || []).length, 'brand', 'brands') + ' to ' + sdDayTag(lto) +
+            (r && r.opened ? ' · ' + sdDayName(lto) + ' is a sending day now' : ''));
+          return sdRefresh();
+        });
+      }).catch(function (err) { toast(err.message); sdRefresh(); });
+      return;
+    }
     if (t.matches('[data-pwtick]')) {
       var tk = t.getAttribute('data-pwtick');
       if (t.checked) delete SCHED.pw.off[tk]; else SCHED.pw.off[tk] = true;
@@ -9494,6 +9605,9 @@ var OQ_THEME = null;
 // Is today a sending day? getTodayQueue.sendingDay says, extra days
 // included; null until it has answered (or from an older deploy).
 var OQ_SENDING = null;
+// Today's leftovers were moved on ("Move what's left" on the Schedule): the
+// day that got them. Null otherwise.
+var OQ_CLOSED_TO = null;
 
 // The server's word first, then the Schedule's days if they are loaded,
 // and only then the plain Tue/Wed/Thu rule, which knows no extra days.
@@ -9970,6 +10084,7 @@ function loadOutreach() {
             : (r[2] || []).filter(function (t) { return t.sentAt && new Date(t.sentAt) >= midnight; });
           var stale = (r[2] || []).filter(function (t) { return t.sentAt && new Date(t.sentAt).getTime() <= weekAgo; });
           OQ_SENDING = typeof tq.sendingDay === 'boolean' ? tq.sendingDay : null;
+          OQ_CLOSED_TO = tq.closedTo || null;
           // Accepted people whose DM already went out are done here —
           // they live on in Results until the reply comes.
           SENT_TODAY.count = tq.sentToday || 0;
@@ -9991,10 +10106,14 @@ function loadOutreach() {
     // the Schedule). Say so at the top of the queue rather than letting
     // the day look like any other.
     var offDay = mode === 'today' && !oqSendingToday();
-    var offNote = offDay
+    var closedNote = mode === 'today' && !offDay && OQ_CLOSED_TO
+      ? '<div class="hint" style="margin:6px 0 0;color:#aac6ff">What was left today moved to ' + esc(sdDayName(OQ_CLOSED_TO)) +
+        '. Nothing else is picked for today — anything you add by hand still goes.</div>'
+      : '';
+    var offNote = closedNote + (offDay
       ? '<div class="hint" style="margin:6px 0 0;color:#f0b86b">No outreach today — you send Tuesday, Wednesday and Thursday. Next up: ' +
         esc(shortDate(schedDayKeys(1)[0] + 'T12:00:00')) + '. Plan it on the Schedule tab, or add today there as an extra sending day.</div>'
-      : '';
+      : '');
     document.getElementById('queue-head').innerHTML = mode === 'today'
       ? 'To send today' + (r.theme ? ' — ' + esc(CAT_NAMES[r.theme] || r.theme) + ' day' : '') + ' <span class="n">' + list.length + '</span>' +
         '<span id="sent-today-chip" style="margin-left:10px;font-size:12px;font-weight:600;color:' +

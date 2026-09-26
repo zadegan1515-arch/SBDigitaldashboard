@@ -294,6 +294,19 @@ board), CRM_SHEET_ID.
   off day "today" is absent from the schedule, the auto-fill picks nobody and `fillToday` refuses.
   The email machine keeps its own Tue–Thu rule. Anything keyed off "today" compares day keys —
   never "the first row".
+- **Unsent work rolls forward** (Leo, Sep 26: "anything that i dont send out one day i want it to
+  move to the next" — replaces the old rule that sent a day's unsent people back to the pool).
+  `readPlan` runs `rollOverUnsent` once a day before anything reads the plan (`readPlanRaw` is the
+  bare read): every brand due on a past day that didn't go out — people stamped into that day's
+  queue and never sent, or a brand pinned there / shown there by the rotation (Setting
+  `outreachDayRows`, written by `getOutreachPlan`) that sent nobody — is pinned to the next sending
+  day and its stamped people go back to the pool so that day's queue stamps them again. Stays put,
+  with why: archived / do-not-email / in talks, passed that day, planned for another day, nobody left.
+  Rules pure in `src/lib/carry.ts` (`node scripts/test-carry.mjs`); last roll in Setting
+  `outreachCarry` (Schedule "Carried over" note + "From <day>" tags, **Move them to…** =
+  `moveCarried`), `outreachCarryDone` = { day, through }. Today's column has **Move what's left
+  to…** (`moveUnsent`, previewed) — it closes today to automatic picks (Setting `outreachDayClosed`;
+  hand-adds still go). Both menus offer the next off weekday "(adds it as a sending day)".
 - **One category list:** `CATEGORY_KEYS` in `src/lib/category-hints.ts` (same keys, same order as
   `CAT_NAMES` in app.html; used by route.ts, ingest, Stock take). Every path that files a brand
   refuses an unknown key (`checkCategory`). Brands tab: "No category" chip (`listBrands({category:

@@ -38,6 +38,7 @@ import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hint
 import { readLiLog, readLiResearch } from '@/lib/li-sweep'
 import { LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR, linkedinWindows, acceptRates, planWeekDays, type AcceptRates } from '@/lib/plan-week'
 import { findDuplicateGroups, pairKey } from '@/lib/duplicates'
+import { rollWindow, findUnsent, planCarry, type Unsent, type CarryFacts } from '@/lib/carry'
 import { buildStock, bestDealStage, refileMoves, remapPlanDays, brandKey } from '@/lib/stock'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import {
@@ -781,7 +782,9 @@ function isDayKey(s: unknown): s is string {
   return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
 }
 
-async function readPlan(): Promise<OutreachPlan> {
+// The plan as stored. Everything else reads it through readPlan, which
+// first rolls yesterday's unsent work forward (rollOverUnsent).
+async function readPlanRaw(): Promise<OutreachPlan> {
   const row = await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })
   let raw: any = {}
   try { raw = row ? JSON.parse(row.value) : {} } catch { raw = {} }
@@ -811,6 +814,196 @@ async function writePlan(plan: OutreachPlan): Promise<void> {
     create: { key: 'outreachPlan', value },
     update: { value },
   })
+}
+
+// ---------------------------------------------------------------
+// Unsent work rolls forward. Leo (Sep 26): "anything that i dont send out
+// one day i want it to move to the next". It replaces the strict rule
+// where a day's unsent people just went back to the pool and waited for
+// their category's day. Once a day, before anything reads the plan,
+// every brand that was due on a past day and didn't go out — pinned
+// there, shown there by the rotation, or with people stamped into that
+// day's queue who were never sent — is pinned to the next sending day,
+// and its stamped people go back to the pool so that day's queue stamps
+// the same people again.
+// ---------------------------------------------------------------
+
+// New York midnight at the start of a day key.
+function dayStartOf(key: string): Date {
+  return startOfLocalDay(new Date(`${key}T12:00:00Z`))
+}
+
+// The last roll (automatic or "Move what's left"): which brands moved,
+// from which day, and the day they are on now. The Schedule shows it and
+// tags those brands' cards.
+const CARRY_KEY = 'outreachCarry'
+// { day, through }: the day the roll last ran, and the last day it
+// looked at.
+const CARRY_DONE_KEY = 'outreachCarryDone'
+// What the Schedule showed going out today from the rotation, so a day
+// the LinkedIn tab was never opened on still carries what it said.
+const DAY_ROWS_KEY = 'outreachDayRows'
+type CarryLog = { at: string; to: string; brands: { id: string; name: string; people: number; from: string }[] }
+
+// "Move what's left" closes today to automatic picks: the room it frees
+// must not fill straight back up from the rotation (and roll again
+// tomorrow). Brands added by hand still go. { day, to }.
+const DAY_CLOSED_KEY = 'outreachDayClosed'
+async function readTodayClosed(): Promise<{ to: string } | null> {
+  const row = await prisma.setting.findUnique({ where: { key: DAY_CLOSED_KEY } })
+  try {
+    const v = row ? JSON.parse(row.value) : null
+    return v && v.day === localDayKey() && isDayKey(v.to) ? { to: v.to } : null
+  } catch { return null }
+}
+
+async function readCarryLog(): Promise<CarryLog | null> {
+  const row = await prisma.setting.findUnique({ where: { key: CARRY_KEY } })
+  if (!row) return null
+  try {
+    const v = JSON.parse(row.value)
+    if (!v || !isDayKey(v.to) || !Array.isArray(v.brands)) return null
+    return {
+      at: String(v.at), to: v.to,
+      brands: v.brands.filter((b: any) => b && b.id && isDayKey(b.from)).map((b: any) => ({
+        id: String(b.id), name: String(b.name ?? ''), people: Number(b.people) || 0, from: b.from,
+      })),
+    }
+  } catch { return null }
+}
+
+async function writeCarryLog(log: CarryLog): Promise<void> {
+  const value = JSON.stringify(log)
+  await prisma.setting.upsert({ where: { key: CARRY_KEY }, create: { key: CARRY_KEY, value }, update: { value } })
+}
+
+// Brands with work left on `days` (src/lib/carry.ts findUnsent): people
+// stamped into one of those days' queue and never sent, and brands pinned
+// to the day or shown on it by the rotation that sent nobody that day.
+async function unsentOn(days: string[], plan: OutreachPlan): Promise<Map<string, Unsent>> {
+  if (!days.length) return new Map()
+  const sorted = [...days].sort()
+  const start = dayStartOf(sorted[0])
+  const end = dayStartOf(addDaysKey(sorted[sorted.length - 1], 1))
+  const [stamped, sent, rowsRow] = await Promise.all([
+    prisma.target.findMany({
+      where: { queuedFor: { gte: start, lt: end }, status: { in: ['queued', 'drafted'] }, shelved: false, sentAt: null },
+      select: { id: true, brandId: true, queuedFor: true },
+    }),
+    prisma.target.findMany({ where: { sentAt: { gte: start, lt: end } }, select: { brandId: true, sentAt: true } }),
+    prisma.setting.findUnique({ where: { key: DAY_ROWS_KEY } }),
+  ])
+  let shown: any = null
+  try { shown = rowsRow ? JSON.parse(rowsRow.value) : null } catch { shown = null }
+  return findUnsent({
+    days,
+    stamped: stamped.map(t => ({ id: t.id, brandId: t.brandId, day: localDayKey(t.queuedFor!) })),
+    sent: sent.map(t => ({ brandId: t.brandId, day: localDayKey(t.sentAt!) })),
+    pins: Object.fromEntries(days.map(d => [d, plan[d]?.brandIds ?? []])),
+    shown,
+  })
+}
+
+// Pins the unsent brands to `to` and sends their stamped people back to
+// the pool (the queue on `to` stamps them again). What stays where it is,
+// and why, is planCarry's call (src/lib/carry.ts). Mutates and writes
+// `plan` unless dryRun.
+async function carryBrands(unsent: Map<string, Unsent>, to: string, plan: OutreachPlan, opts: { dryRun?: boolean } = {}) {
+  const ids = [...unsent.keys()]
+  const brands = ids.length ? await prisma.brand.findMany({ where: { id: { in: ids } }, select: PLAN_BRAND_SELECT }) : []
+  const today = localDayKey()
+  const fromDays = new Set([...unsent.values()].map(u => u.from))
+  const pinnedOn = new Map<string, string>()
+  for (const k of Object.keys(plan).sort()) {
+    if (k < today || fromDays.has(k)) continue
+    for (const id of plan[k].brandIds) if (!pinnedOn.has(id)) pinnedOn.set(id, k)
+  }
+  const facts = new Map<string, CarryFacts>()
+  for (const b of brands) {
+    const no = planRefusal(b)
+    const u = unsent.get(b.id)!
+    const on = pinnedOn.get(b.id) ?? null
+    facts.set(b.id, {
+      name: b.name,
+      refusal: no ? (reasonText(no, reasonCtx(b)) ?? no) : null,
+      passedOn: b.passedTodayAt ? localDayKey(b.passedTodayAt) : null,
+      pinnedOn: on,
+      pinnedLabel: on ? dayLabel(on) : undefined,
+      // Only asked when nobody was stamped: who would go if it moved.
+      people: u.stamped.length ? 0 : previewBrandPicks(b, { forToday: false }).people.length,
+    })
+  }
+  const r = planCarry(unsent, facts, to, plan[to]?.brandIds ?? [], PLAN_DAY_MAX)
+  if (opts.dryRun) return { moved: r.moved, left: r.left }
+  const movedIds = new Set(r.moved.map(m => m.id))
+  for (const k of Object.keys(plan)) {
+    if (k !== to) plan[k].brandIds = plan[k].brandIds.filter(x => !movedIds.has(x))
+  }
+  plan[to] = { category: plan[to]?.category ?? null, brandIds: r.dayIds }
+  await writePlan(plan)
+  if (r.unstamp.length) {
+    await prisma.target.updateMany({ where: { id: { in: r.unstamp }, sentAt: null }, data: { queuedFor: null } })
+  }
+  return { moved: r.moved, left: r.left }
+}
+
+// The morning roll. The first read of a new day does it (readPlan) over
+// the days since the last roll (rollWindow: the last week on the very
+// first run). Idempotent: two requests racing into a new day pin the same
+// brands to the same day.
+let carryCheckedFor = ''
+async function rollOverUnsent(): Promise<void> {
+  const today = localDayKey()
+  if (carryCheckedFor === today) return
+  const row = await prisma.setting.findUnique({ where: { key: CARRY_DONE_KEY } })
+  let done: { day?: unknown; through?: unknown } = {}
+  try { done = row ? JSON.parse(row.value) : {} } catch { done = {} }
+  if (done.day === today) { carryCheckedFor = today; return }
+  const days = rollWindow(today, done)
+  // Claim today's roll first, in one conditional write, so a second
+  // request racing into the new day skips it instead of writing the plan
+  // over the first one's result. If the roll then fails, `through` still
+  // points at the old day and tomorrow's roll looks at the missed days.
+  const claim = JSON.stringify({ day: today, through: isDayKey(done.through) ? done.through : null })
+  const claimed = row
+    ? (await prisma.setting.updateMany({ where: { key: CARRY_DONE_KEY, value: row.value }, data: { value: claim } })).count === 1
+    : await prisma.setting.create({ data: { key: CARRY_DONE_KEY, value: claim } }).then(() => true, () => false)
+  if (!claimed) {
+    // Another request is rolling. Wait for it (up to 3 s) before reading
+    // on: getTodayQueue clears yesterday's stamps right after this, and
+    // must not do it before the roll has read them.
+    const through = addDaysKey(today, -1)
+    for (let i = 0; i < 15; i++) {
+      await new Promise(r => setTimeout(r, 200))
+      const now = await prisma.setting.findUnique({ where: { key: CARRY_DONE_KEY } })
+      let v: any = {}
+      try { v = now ? JSON.parse(now.value) : {} } catch { v = {} }
+      if (v.day === today && v.through === through) break
+    }
+    carryCheckedFor = today
+    return
+  }
+  if (days.length) {
+    const plan = await readPlanRaw()
+    const unsent = await unsentOn(days, plan)
+    if (unsent.size) {
+      const extras = await readExtraDays()
+      const to = isSendingKey(today, extras) ? today : planningDays(1, extras, { afterToday: true })[0]?.key
+      if (to) {
+        const { moved } = await carryBrands(unsent, to, plan)
+        if (moved.length) await writeCarryLog({ at: new Date().toISOString(), to, brands: moved })
+      }
+    }
+  }
+  const value = JSON.stringify({ day: today, through: addDaysKey(today, -1) })
+  await prisma.setting.upsert({ where: { key: CARRY_DONE_KEY }, create: { key: CARRY_DONE_KEY, value }, update: { value } })
+  carryCheckedFor = today
+}
+
+async function readPlan(): Promise<OutreachPlan> {
+  // A failed roll never stops the read; tomorrow's first read tries again.
+  try { await rollOverUnsent() } catch (e) { console.error('[rollOverUnsent]', e) }
+  return readPlanRaw()
 }
 
 // The last category re-file (Brands → Stock take), kept so Undo can put
@@ -1753,10 +1946,11 @@ const handlers: Record<string, Handler> = {
       }
     }
 
-    // Category day is strict now (Leo): yesterday's unsent stamps from
-    // other days don't carry over — they go back to the pool and come
-    // up again on their own category's day. Nothing is lost, only
-    // unstamped. Today's hand-picks (stamped today) always stay.
+    // Stamps from earlier days come off. Their brands are not lost:
+    // readPlan above has already rolled every unsent brand forward to
+    // the next sending day (rollOverUnsent — Leo: "anything that i dont
+    // send out one day i want it to move to the next"), and that day's
+    // queue stamps the same people again. Today's stamps always stay.
     await prisma.target.updateMany({
       where: { queuedFor: { not: null, lt: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false },
       data: { queuedFor: null },
@@ -1791,7 +1985,10 @@ const handlers: Record<string, Handler> = {
     // Not a sending day (no Tuesday-Thursday, no extra day opened): no
     // automatic picks. Hand-picks still show — they were stamped on
     // purpose — but the rotation doesn't queue a day nothing goes out on.
-    const roomLeft = sendingDay ? Math.max(0, room - handPicked.length) : 0
+    // Nor after "Move what's left" closed today (readTodayClosed): the
+    // room it freed must not fill straight back up from the rotation.
+    const closedToday = await readTodayClosed()
+    const roomLeft = sendingDay && !closedToday ? Math.max(0, room - handPicked.length) : 0
 
     // Fill the day by BRAND, filled to its thread count (fillWholeBrands,
     // the same rule the Schedule's preview uses). Most brands had one old
@@ -1952,6 +2149,8 @@ const handlers: Record<string, Handler> = {
     return {
       plannedSkipped, sentToday, cap: DAILY_SEND_LIMIT,
       theme, sendingDay,
+      // What was left today moved to this day ("Move what's left").
+      closedTo: closedToday?.to ?? null,
       targets: await ensureTemplateDrafts([...handPicked, ...fresh]),
       more: await ensureTemplateDrafts(more),
       sentList: await ensureTemplateDrafts(sentList),
@@ -4269,6 +4468,12 @@ const handlers: Record<string, Handler> = {
       stampedByBrand.set(t.brand.id, list)
     }
     const leftover = new Map<string, { size: number; people: PreviewPerson[] }>()
+    // The last roll of unsent work, while its brands still sit on the day
+    // they were moved to: the Schedule says so and offers to move them.
+    const [carryLog, closedToday] = await Promise.all([readCarryLog(), readTodayClosed()])
+    const carryTo = carryLog && carryLog.to >= todayKey ? carryLog.to : null
+    const carryLive = carryLog && carryTo ? carryLog.brands.filter(b => (plan[carryTo]?.brandIds ?? []).includes(b.id)) : []
+    const carriedFrom = new Map(carryLive.map(b => [b.id, b.from]))
     const days = dayList.map(({ key, at }) => {
       // Not "the first row" any more: on a Monday or Friday none of the
       // planned days is today, and today's queue must not be charged
@@ -4284,7 +4489,7 @@ const handlers: Record<string, Handler> = {
       const pinned = ((plan[key]?.brandIds ?? []) as string[])
         .map(id => brandById.get(id))
         .filter((b): b is PlanBrand => !!b)
-        .map(b => pinnedCard(b, isToday))
+        .map(b => ({ ...pinnedCard(b, isToday), carriedFrom: key === carryTo ? carriedFrom.get(b.id) ?? null : null }))
       const plannedCount = pinned
         .filter(p => p.state === 'going' && (!isToday || p.pendingQueue))
         .reduce((n, p) => n + p.going, 0)
@@ -4305,7 +4510,10 @@ const handlers: Record<string, Handler> = {
       const usable = isToday
         ? available.filter(c => !(c.brand.passedTodayAt && c.brand.passedTodayAt >= dayStart))
         : available
-      const inTheme = theme ? usable.filter(c => c.brand.category === theme) : usable
+      // Today closed by "Move what's left": no automatic picks at all, so
+      // no rest-of-category list either.
+      const inTheme = isToday && closedToday ? []
+        : theme ? usable.filter(c => c.brand.category === theme) : usable
       // Whole brands, filled to their thread count — fillWholeBrands, the
       // rule getTodayQueue fills today by, so the day says what will
       // really go out. Slicing this list by person cut brands in half:
@@ -4424,6 +4632,9 @@ const handlers: Record<string, Handler> = {
         today: isToday,
         // Only a sending day because Leo opened it (Remove day undoes it).
         extra: extras.has(key) && !isRegularSendingKey(key),
+        // What was left of today went to this day (Move what's left);
+        // nothing else goes out today unless added by hand.
+        closedTo: isToday && closedToday ? closedToday.to : null,
         category: theme,
         auto: !plan[key]?.category,
         ready: Math.min(DAILY_SEND_LIMIT, total),
@@ -4580,6 +4791,18 @@ const handlers: Record<string, Handler> = {
     }
     const categories = [...tiles.values()]
 
+    // What today's column says goes out from the rotation, kept so that
+    // if the LinkedIn tab is never opened today tomorrow's roll still
+    // carries it (unsentOn). Written only when it changes.
+    const todayCol = days.find(d => d.today)
+    if (todayCol) {
+      const snap = JSON.stringify({ day: todayKey, brandIds: todayCol.brands.map(r => r.id).sort() })
+      const had = await prisma.setting.findUnique({ where: { key: DAY_ROWS_KEY } })
+      if (had?.value !== snap) {
+        await prisma.setting.upsert({ where: { key: DAY_ROWS_KEY }, create: { key: DAY_ROWS_KEY, value: snap }, update: { value: snap } })
+      }
+    }
+
     // LinkedIn's weekly limit, per day: the seven days ending on it,
     // with what already went out and what the schedule sends.
     const sentCount = new Map<string, number>()
@@ -4609,6 +4832,7 @@ const handlers: Record<string, Handler> = {
     return {
       plan, brands, today: localDayKey(), days, past,
       linkedinWeek, planWeekLast,
+      carry: carryTo && carryLive.length ? { at: carryLog!.at, to: carryTo, brands: carryLive } : null,
       extraDays: [...extras].sort(),
       // The add-a-day picker's default: the next weekday nothing goes
       // out on.
@@ -5046,6 +5270,65 @@ const handlers: Record<string, Handler> = {
       removedBrands: ids.map(id => nameOf.get(id)).filter((n): n is string => !!n),
       message: `${dayLabel(date)} is no longer a sending day.`,
     }
+  },
+
+  // "Didn't get to it": what's left of today — pinned brands with nothing
+  // sent today, the rotation's rows, people in today's queue not sent —
+  // moves to a later day now, the same move the morning roll makes on
+  // its own. addDay opens `to` as a sending day first (Leo: "move that to
+  // Monday"). preview = what would move and what can't, nothing written.
+  async moveUnsent({ to, addDay = false, preview = false }: any) {
+    const today = localDayKey()
+    if (!isDayKey(to) || to <= today) throw new Error('Pick a later day')
+    const extras = await readExtraDays()
+    const opening = !isSendingKey(to, extras)
+    if (opening && !addDay) throw new Error(`${dayLabel(to)} is not a sending day`)
+    const plan = await readPlan()
+    const unsent = await unsentOn([today], plan)
+    if (preview) {
+      const { moved, left } = await carryBrands(unsent, to, plan, { dryRun: true })
+      return { preview: true, to, opening, moved, left }
+    }
+    if (opening) {
+      if (extras.size >= EXTRA_DAYS_MAX) throw new Error('Too many extra days open already')
+      extras.add(to)
+      await writeExtraDays(extras)
+    }
+    const { moved, left } = await carryBrands(unsent, to, plan)
+    if (moved.length) {
+      await writeCarryLog({ at: new Date().toISOString(), to, brands: moved })
+      const value = JSON.stringify({ day: today, to })
+      await prisma.setting.upsert({ where: { key: DAY_CLOSED_KEY }, create: { key: DAY_CLOSED_KEY, value }, update: { value } })
+    }
+    return { ok: true, to, opened: opening, moved, left }
+  },
+
+  // The Schedule's "Carried over" note: move the brands that rolled
+  // forward to another day (addDay opens it as a sending day). Brands
+  // planned somewhere else since stay where Leo put them.
+  async moveCarried({ to, addDay = false }: any) {
+    const today = localDayKey()
+    if (!isDayKey(to) || to < today) throw new Error('Pick a day from today on')
+    const log = await readCarryLog()
+    if (!log) return { ok: false, message: 'Nothing carried over' }
+    const extras = await readExtraDays()
+    const opening = !isSendingKey(to, extras)
+    if (opening && !addDay) throw new Error(`${dayLabel(to)} is not a sending day`)
+    const plan = await readPlan()
+    const ids = log.brands.map(b => b.id).filter(id => (plan[log.to]?.brandIds ?? []).includes(id))
+    if (!ids.length) return { ok: false, message: 'Those brands have moved since' }
+    if (to === log.to) return { ok: true, to, opened: false, moved: 0, results: [] }
+    if (opening) {
+      if (extras.size >= EXTRA_DAYS_MAX) throw new Error('Too many extra days open already')
+      extras.add(to)
+      await writeExtraDays(extras)
+    }
+    // planAddCore takes each brand off its old day as it lands on the new
+    // one; a refused brand stays on its old day.
+    const core = await planAddCore(plan, to, ids)
+    const movedIds = new Set(core.results.filter((r: any) => r.added).map((r: any) => r.brandId))
+    await writeCarryLog({ ...log, to, brands: log.brands.filter(b => movedIds.has(b.id)) })
+    return { ok: true, to, opened: opening, moved: movedIds.size, results: core.results }
   },
 
   // The Schedule's "Fill <day>" box: the best brands to add to one day.
