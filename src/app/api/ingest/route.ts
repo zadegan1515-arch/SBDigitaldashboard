@@ -32,7 +32,7 @@ import {
 import {
   companySlug, companyPageUrl, profileSlug, profileUrl, cleanName, personKey,
   roleFromHeadline, isBuyer, decideCompanyMatch, focusTerms, matchesFocus,
-  normalizeCompany, judgeDiscovery, industryFits, decideResearchMatch,
+  normalizeCompany, judgeDiscovery, industryFits, decideResearchMatch, nearName,
   type LiCompany,
 } from '@/lib/li-capture'
 import { readLiLog, markLiSwept, liResting, readLiResearch, markLiResearch, researchResting, LI_READER } from '@/lib/li-sweep'
@@ -715,8 +715,12 @@ export async function POST(req: NextRequest) {
       if (!slug || !name || seen.has(slug)) continue
       seen.add(slug)
       const key = normalizeCompany(name)
-      if (!key || knownSlugs.has(slug) || knownNames.has(key)) { tally.known++; continue }
-      if (dismissedSlugs.has(slug) || dismissedNames.has(key)) { tally.dismissed++; continue }
+      // LinkedIn's name often carries what the brand sells ("Waterloo
+      // Sparkling Water" for the roster's Waterloo): a near name counts as
+      // known, or an archived brand would come back as a new one.
+      const nearKnown = (set: Set<string>) => set.has(key) || Array.from(set).some(n => nearName(n, key))
+      if (!key || knownSlugs.has(slug) || nearKnown(knownNames)) { tally.known++; continue }
+      if (dismissedSlugs.has(slug) || nearKnown(dismissedNames)) { tally.dismissed++; continue }
       const verdict = judgeDiscovery({ name, subtitle }, fromBrand?.category ?? null)
       if ('reason' in verdict) { tally[verdict.reason]++; continue }
       if (room <= 0) { tally.capped++; continue }

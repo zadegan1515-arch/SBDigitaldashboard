@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.11
+// @version      1.12
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -79,7 +79,7 @@
   var INGEST_URL = 'https://sb-digitaldashboard.vercel.app/api/ingest';
   var DASH_URL = 'https://sb-digitaldashboard.vercel.app/app.html';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.11';
+  var VERSION = '1.12';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1129,7 +1129,9 @@
   function afterPeople(job, item) {
     if (!job.lookalikes) return finishBrand(job, null);
     var here = lookalikes();
-    if (here.length) return saveLookalikes(item, here);
+    // saveLookalikes re-reads the run, so this brand's counts must be
+    // saved first (they weren't: a brand with lookalikes logged 0 added).
+    if (here.length) { saveFill(job); return saveLookalikes(item, here); }
     finishBrand(job, null);
   }
 

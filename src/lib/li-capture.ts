@@ -202,6 +202,15 @@ export function decideCompanyMatch(
   return { pick: null, reason: 'unclear' }
 }
 
+// Discovery's "already on the roster" test: one name is the other plus
+// words ("Waterloo" / "Waterloo Sparkling Water"). Takes normalizeCompany'd
+// names; the shorter must be 4+ letters so "Red" doesn't claim "Red Bull".
+export function nearName(a: string, b: string): boolean {
+  if (!a || !b || a === b) return !!a && a === b
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a]
+  return short.length >= 4 && long.startsWith(short + ' ')
+}
+
 // "Start with electrolyte companies": a focus word matches a brand's
 // name, "also known as", description, products or notes. Some words
 // stand for a whole shelf of brands whose descriptions may be empty.
