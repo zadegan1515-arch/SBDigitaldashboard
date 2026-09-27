@@ -17,7 +17,7 @@ If `../CLAUDE.md` (the SB Agency workspace file) exists it applies too. The rule
 - Leo chose: **push straight to `main`**. Both hosts auto-deploy, so after every push **check the build went green** (Vercel dashboard or `vercel` CLI; Railway deployments tab) and re-check the live page.
 - Vercel Hobby limits: **2 cron jobs, daily only**; 1 concurrent build. Don't add crons — fold new scheduled work into `/api/cron/email` (11:00 UTC) or `/api/cron/send` (15:00 UTC).
 - Prisma schema changes deploy themselves (`prisma db push` runs in the Vercel build). Still: additive changes only; never drop columns with data.
-- Test before pushing: `npm run build` (Next) / `npx tsc --noEmit`, and for `public/app.html` a Playwright smoke run with mocked `/api/data`.
+- Test before pushing: `npm run build` (Next) / `npx tsc --noEmit`, and for `public/app.html` a Playwright smoke run with mocked `/api/data` (`NODE_PATH=$(npm root -g) node scripts/test-keep-place.js` is one).
 - Google OAuth: one Google Cloud client (`GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`) serves three grants — outreach mailbox (`state=gmail`), Drive (`state=drive`), ops mailbox (`state=ops`). Scopes stay narrow: gmail.send + gmail.readonly, drive.file. Never request mail.google.com or modify/delete scopes.
 
 
@@ -385,6 +385,13 @@ characters, the same value in the Claude cloud environment's settings).
 - EventStaff `status`: invited · onboarding · ready · confirmed · declined · no_show · done. Local confirmed/declined/no_show/done are never overwritten by a platform sync.
 - Ops: rules classify, a hand edit (`reviewedAt`) is never overwritten by rescan. Paid vendor invoice linked to a budget line → sets that line's final cost.
 - UI edits save on `change`; re-render after money/status edits.
+- **Keep my place** (Leo, Sep 2026: buttons "reload the page"): a loader re-run for the screen already
+  showing is a refresh — `showView(id)` returns true, so skip the "Loading…" placeholder and guard the
+  draw with `viewTurn(id)`. `keepPlace` (showView runs it) holds the clicked thing where it was on
+  screen, re-opens `<details>`, keeps the cursor and typed text, and keeps `[data-scroll]` boxes'
+  sideways scroll. Only navigation starts at the top: `gotoView`, or `showView(id, true)` for new
+  content in the same view (another brand / category / query). Cards opened by hand keep their open
+  state in page state (`OPEN_DRAFTS`, `EM_OPEN`, `BRAND_EDIT_OPEN`, `ST_OPEN`…). `node scripts/test-keep-place.js`.
 
 ## Dev loop
 ```
