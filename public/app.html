@@ -1789,7 +1789,283 @@ var GROUP_OF = {
   materials: 'operations', team: 'operations',
 };
 
-function showView(id) {
+// --- keep my place ---------------------------------------------
+// Leo: "when i click a button on the site and it does an action it
+// reloads the page". The browser page never reloaded, but most buttons
+// end by running their screen's loader again, and every loader began
+// with showView (straight to the top) and a "Loading…" that emptied the
+// screen before drawing it again with every section shut. Now only
+// going somewhere starts at the top: a tab (gotoView), another brand,
+// another list, a new search. A loader run for the screen already
+// showing is a refresh: showView answers true, the loader leaves the old
+// content up until the new lands (no "Loading…"), and keepPlace holds
+// the place across the redraw. What was clicked stays where it was on
+// screen (or, if it's gone, what was around it), open <details> stay
+// open, the box with the cursor keeps it and anything typed in it, and
+// a [data-scroll] box (the Deals board) keeps its sideways scroll.
+// Cards a screen opens by hand keep that in its own state (OPEN_DRAFTS,
+// OQ_DONE_OPEN, EM_OPEN, BRAND_EDIT_OPEN).
+var PLACE = null;       // the refresh being held (keepPlace)
+var PLACE_HIT = null;   // the last click or change inside a screen
+var NAV_FRESH = false;  // true while gotoView runs: a tab starts at the top
+var VIEW_TURN = {};
+
+// The old content stays clickable while a refresh is out, so two can be
+// in flight: only the one started last may draw.
+function viewTurn(id) {
+  var n = VIEW_TURN[id] = (VIEW_TURN[id] || 0) + 1;
+  return function () { return VIEW_TURN[id] === n; };
+}
+
+function placeHit(e) {
+  var t = e.target;
+  if (t && t.nodeType === 1 && t.closest('.view')) PLACE_HIT = { el: t, at: Date.now() };
+}
+document.addEventListener('click', placeHit, true);
+document.addEventListener('change', placeHit, true);
+
+// An element's own name as a selector: its id, else its first data-*
+// attribute with a value (they carry the ids: data-brand, data-em, …).
+function placeOwn(el) {
+  if (el.id) return '#' + CSS.escape(el.id);
+  var a = el.attributes;
+  for (var i = 0; a && i < a.length; i++) {
+    if (a[i].name.lastIndexOf('data-', 0) === 0 && a[i].value && a[i].value.length < 200) {
+      return '[' + CSS.escape(a[i].name) + '="' + CSS.escape(a[i].value) + '"]';
+    }
+  }
+  return '';
+}
+
+// A selector that finds the element again after a redraw: its own name,
+// or that inside its nearest named ancestor. '' when neither is unique.
+function placeSel(el, view) {
+  var own = placeOwn(el);
+  if (!own) return '';
+  if (view.querySelectorAll(own).length === 1) return own;
+  for (var p = el.parentElement; p && p !== view; p = p.parentElement) {
+    var up = placeOwn(p);
+    if (up) return view.querySelectorAll(up + ' ' + own).length === 1 ? up + ' ' + own : '';
+  }
+  return '';
+}
+
+function placeFind(view, sel) {
+  var list = sel ? view.querySelectorAll(sel) : [];
+  return list.length === 1 && list[0].getClientRects().length ? list[0] : null;
+}
+
+// Sticky and fixed boxes (the LinkedIn rail, the tick bars) sit still
+// while the page moves under them: they say nothing about the place.
+function placePinned(el, view) {
+  for (; el && el !== view; el = el.parentElement) {
+    var pos = getComputedStyle(el).position;
+    if (pos === 'sticky' || pos === 'fixed') return true;
+  }
+  return false;
+}
+
+// Each <details> by its named ancestor and its summary's words, numbers
+// dropped ("Documents 3" is still Documents once a fourth lands).
+function placeDetails(view) {
+  var seen = {}, out = [];
+  view.querySelectorAll('details').forEach(function (d) {
+    var s = d.querySelector('summary');
+    var k = (s ? s.textContent : '').replace(/\d+/g, '#').replace(/\s+/g, ' ').trim().slice(0, 80);
+    for (var p = d.parentElement; p && p !== view; p = p.parentElement) {
+      var o = placeOwn(p);
+      if (o) { k = o + '|' + k; break; }
+    }
+    seen[k] = (seen[k] || 0) + 1;
+    out.push({ key: k + '#' + seen[k], el: d });
+  });
+  return out;
+}
+
+// Where the screen is now. `chain`: the thing last clicked, if it's on
+// screen, and its named ancestors, innermost first. `spots`: named
+// elements under a grid of points below the sticky header.
+function placeMarks(view) {
+  var head = document.querySelector('.header-stick');
+  var top = head ? Math.max(0, head.getBoundingClientRect().bottom) : 0;
+  var h = window.innerHeight, chain = [], spots = [], got = {};
+  var hit = PLACE_HIT && Date.now() - PLACE_HIT.at < 120000 && PLACE_HIT.el.isConnected &&
+    view.contains(PLACE_HIT.el) ? PLACE_HIT.el : null;
+  if (hit) {
+    var hr = hit.getBoundingClientRect();
+    if (hr.bottom > top && hr.top < h && !placePinned(hit, view)) {
+      for (var e = hit; e && e !== view; e = e.parentElement) {
+        var s = placeSel(e, view);
+        if (s && !got[s]) { got[s] = 1; chain.push({ sel: s, el: e, top: e.getBoundingClientRect().top }); }
+      }
+    }
+  }
+  var vr = view.getBoundingClientRect();
+  var left = Math.max(vr.left, 0), right = Math.min(vr.right, window.innerWidth);
+  if (right - left > 40 && h - top > 80) {
+    [0.3, 0.65].forEach(function (fx) {
+      for (var i = 0; i < 6; i++) {
+        var el = document.elementFromPoint(left + (right - left) * fx, top + 20 + (h - top - 40) * i / 5);
+        if (!el || el === view || !view.contains(el) || placePinned(el, view)) continue;
+        for (; el && el !== view; el = el.parentElement) {
+          var sel = placeSel(el, view);
+          if (!sel) continue;
+          if (!got[sel]) { got[sel] = 1; spots.push({ sel: sel, el: el, top: el.getBoundingClientRect().top }); }
+          break;
+        }
+      }
+    });
+  }
+  return { chain: chain, spots: spots };
+}
+
+function placeFocus(P, el) {
+  if (!el || el.nodeType !== 1 || !P.view.contains(el) || !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+  var sel = placeSel(el, P.view);
+  var f = P.focus = sel ? { sel: sel, el: el, committed: false } : null;
+  // Chrome hands a typed-in box's text to the page (a change event) as
+  // the redraw removes it; then there's nothing left to hand over later.
+  if (f) el.addEventListener('change', function () { f.committed = true; }, { once: true });
+}
+
+// Hold the place in `view` across the redraw a refresh is about to do.
+function keepPlace(view) {
+  placeEnd();
+  var m = placeMarks(view);
+  var P = PLACE = {
+    view: view, y: window.scrollY, ownY: window.scrollY, chain: m.chain, spots: m.spots,
+    details: placeDetails(view), known: new WeakSet(), boxes: [], focus: null, swapped: false, timer: 0,
+  };
+  P.details.forEach(function (d) { P.known.add(d.el); });
+  view.querySelectorAll('[data-scroll]').forEach(function (el) {
+    var sel = placeSel(el, view);
+    if (sel) P.boxes.push({ sel: sel, el: el, left: el.scrollLeft, top: el.scrollTop });
+  });
+  placeFocus(P, document.activeElement);
+  // Scrolling while the refresh is out moves the place to keep; once the
+  // new content is up, a scroll is Leo's own and the hold lets go.
+  P.onScroll = function () {
+    if (PLACE !== P || Math.abs(window.scrollY - P.ownY) < 1) return;
+    if (P.swapped) { placeEnd(); return; }
+    var mm = placeMarks(view);
+    P.chain = mm.chain; P.spots = mm.spots;
+    P.y = P.ownY = window.scrollY;
+  };
+  P.onFocus = function (e) { placeFocus(P, e.target); };
+  P.onBox = function (e) {
+    P.boxes.forEach(function (b) { if (b.el === e.target) { b.left = b.el.scrollLeft; b.top = b.el.scrollTop; } });
+  };
+  P.obs = new MutationObserver(placeApply);
+  P.obs.observe(view, { childList: true, subtree: true });
+  window.addEventListener('scroll', P.onScroll, { passive: true });
+  view.addEventListener('focusin', P.onFocus);
+  view.addEventListener('scroll', P.onBox, true);
+  P.timer = setTimeout(placeEnd, 15000);
+}
+
+function placeEnd() {
+  var P = PLACE;
+  if (!P) return;
+  PLACE = null;
+  P.obs.disconnect();
+  clearTimeout(P.timer);
+  window.removeEventListener('scroll', P.onScroll);
+  P.view.removeEventListener('focusin', P.onFocus);
+  P.view.removeEventListener('scroll', P.onBox, true);
+}
+
+function placeCommitOnLeave(el) {
+  var native = false;
+  el.addEventListener('change', function () { native = true; }, { once: true });
+  el.addEventListener('blur', function () {
+    setTimeout(function () {
+      if (!native && el.isConnected && el.value !== el.defaultValue) el.dispatchEvent(new Event('change', { bubbles: true }));
+    }, 0);
+  }, { once: true });
+}
+
+// Runs on every change the redraw makes, before the browser paints it.
+function placeApply(recs) {
+  var P = PLACE;
+  if (!P) return;
+  var view = P.view;
+  if (!P.swapped) {
+    var marks = P.chain.concat(P.spots);
+    P.swapped = marks.length
+      ? marks.some(function (x) { return !x.el.isConnected; })
+      : recs.some(function (r) { return [].some.call(r.removedNodes, function (n) { return n.nodeType === 1; }); });
+    // Late pieces (the brand page's Schedule line) land within a moment.
+    if (P.swapped) { clearTimeout(P.timer); P.timer = setTimeout(placeEnd, 2500); }
+  }
+  // Sections open or shut as they were.
+  if (P.details.length) {
+    var was = {};
+    P.details.forEach(function (d) { was[d.key] = d.el.open; });
+    placeDetails(view).forEach(function (d) {
+      if (P.known.has(d.el)) return;
+      P.known.add(d.el);
+      if (d.key in was && d.el.open !== was[d.key]) d.el.open = was[d.key];
+    });
+  }
+  // Sideways scroll.
+  P.boxes.forEach(function (b) {
+    var nu = placeFind(view, b.sel);
+    if (!nu || nu === b.el) return;
+    b.el = nu;
+    nu.scrollLeft = b.left; nu.scrollTop = b.top;
+  });
+  // The box with the cursor, and what was typed in it that the new copy
+  // doesn't have (only when the saved value underneath didn't change).
+  var f = P.focus;
+  if (f && !f.done && !f.el.isConnected) {
+    var ae = document.activeElement;
+    if (ae && ae !== document.body && ae !== document.documentElement) f.done = true;
+    else {
+      var nu = placeFind(view, f.sel);
+      if (nu) {
+        f.done = true;
+        var old = f.el, texty = /^(textarea|text|search|email|url|tel)$/.test(old.type || '');
+        if (texty && old.value !== old.defaultValue && nu.defaultValue === old.defaultValue) {
+          nu.value = old.value;
+          // Text put back by script never fires the change that saves it.
+          // If the browser didn't hand it over as the old box went, fire
+          // it when this one is left — unless typing more fires its own.
+          if (!f.committed) placeCommitOnLeave(nu);
+        }
+        try { nu.focus({ preventScroll: true }); } catch (e) {}
+        if (texty) try { nu.setSelectionRange(old.selectionStart, old.selectionEnd); } catch (e) {}
+      }
+    }
+  }
+  // The page: the clicked thing back where it was on screen (or the
+  // nearest of its ancestors still there), else the middle of where the
+  // on-screen rows went, else the same scroll.
+  var d = null, i;
+  for (i = 0; i < P.chain.length && d === null; i++) {
+    var c = placeFind(view, P.chain[i].sel);
+    if (c) d = c.getBoundingClientRect().top - P.chain[i].top;
+  }
+  if (d === null) {
+    var ds = [];
+    P.spots.forEach(function (s) {
+      var el = placeFind(view, s.sel);
+      if (el) ds.push(el.getBoundingClientRect().top - s.top);
+    });
+    if (ds.length) { ds.sort(function (a, b) { return a - b; }); d = ds[ds.length >> 1]; }
+  }
+  if (d !== null) { if (Math.abs(d) >= 1) window.scrollBy(0, d); }
+  else if (P.swapped && Math.abs(window.scrollY - P.y) >= 1) window.scrollTo(0, P.y);
+  P.ownY = window.scrollY;
+}
+
+// Shows a view. Answers true when that view was already showing and
+// isn't being opened fresh — a refresh: the caller keeps its content up
+// (no "Loading…") and the place is held. `fresh` = going somewhere new
+// inside the same view (another brand, another list).
+function showView(id, fresh) {
+  var view = document.getElementById(id);
+  var again = !fresh && !NAV_FRESH && !!view && view.classList.contains('active');
+  if (again) keepPlace(view); else placeEnd();
   document.querySelectorAll('.nav-item').forEach(function (b) { if (!b.closest('#act-tabs') && !b.closest('#sub-tabs')) b.classList.remove('active'); });
   document.querySelectorAll('.view').forEach(function (v) { v.classList.toggle('active', v.id === id); });
   var group = GROUP_OF[id] || id;
@@ -1803,7 +2079,8 @@ function showView(id) {
       return '<button class="nav-item' + (t[0] === id ? ' active' : '') + '" data-view="' + t[0] + '">' + t[1] + '</button>';
     }).join('');
   } else { bar.style.display = 'none'; bar.innerHTML = ''; }
-  window.scrollTo(0, 0);
+  if (!again) window.scrollTo(0, 0);
+  return again;
 }
 
 // --- dashboard -------------------------------------------------
@@ -3188,7 +3465,8 @@ function renderFillProgress() {
 // matched to a SponsorUnited page, so nothing else in the site shows
 // them as a group.
 function loadBrandsNoProfile() {
-  showView('brands');
+  showView('brands', true);
+  BRANDS_SHOWN = 'noprofile';
   var box = document.getElementById('brands-list');
   document.getElementById('brands-sub').textContent = 'Loading…';
   document.getElementById('fill-progress').innerHTML = '';
@@ -3215,9 +3493,14 @@ function loadBrandsNoProfile() {
   }).catch(function (e) { toast(e.message); });
 }
 
+// Which list the Brands tab is showing: a category key, or 'noprofile'.
+// The same list again is a refresh (kept in place); another opens fresh.
+var BRANDS_SHOWN = '';
+
 function loadBrands(category) {
-  showView('brands');
   category = category || 'all';
+  var again = showView('brands', BRANDS_SHOWN !== category);
+  BRANDS_SHOWN = category;
   lastCategory = category;
   var nav = document.querySelector('.nav-item[data-category="' + category + '"]');
   if (nav) nav.classList.add('active');
@@ -3243,8 +3526,10 @@ function loadBrands(category) {
     '<button class="chip' + (category === 'none' ? ' active' : '') + '" data-bcat="none" title="Brands with no category set">' +
       'No category<span class="n" data-creach="uncategorised"></span></button>';
   // A fresh list is a fresh selection — ticks from another category
-  // must never ride along into a re-file.
+  // must never ride along into a re-file. (A refresh keeps the old rows
+  // up until the new ones land; their ticks go now, with the selection.)
   bbReset();
+  if (again) document.querySelectorAll('#brands-list [data-bselcb]').forEach(function (cb) { cb.checked = false; });
   // How far through each category the outreach is — reached / total.
   dupLoad();
   api('categoryReach').then(function (cr) {
@@ -3262,11 +3547,15 @@ function loadBrands(category) {
         (row.passed ? ' · ' + row.passed + ' passed' : '');
     });
   }).catch(function () {});
-  document.getElementById('brands-sub').textContent = 'Loading…';
   var box = document.getElementById('brands-list');
-  box.innerHTML = '';
+  if (!again) {
+    document.getElementById('brands-sub').textContent = 'Loading…';
+    box.innerHTML = '';
+  }
+  var mine = viewTurn('brands');
 
   return api('listBrands', { category: category }).then(function (list) {
+    if (!mine()) return;
     var withContacts = list.filter(function (b) { return b._count.contacts > 0; }).length;
     // How the roster actually splits: how many are full (at the 25 we
     // keep on file), how many can sustain a three-person approach, and
@@ -3342,6 +3631,8 @@ function loadBrands(category) {
     applyBrandFilter();
     renderSuProposals();
   }).catch(function (e) {
+    if (!mine()) return;
+    if (again) { toast('Could not refresh: ' + e.message); return; }
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
       esc(e.message) + '</p></div></div>';
   });
@@ -4153,6 +4444,9 @@ document.getElementById('bq-fill').addEventListener('click', function () {
 // --- brand detail ----------------------------------------------
 
 var CURRENT_BRAND = null;
+// The brand whose Details & notes edit form is open: it stays open when
+// a button on the page refreshes it (a different brand opens it shut).
+var BRAND_EDIT_OPEN = null;
 
 // Where one person stands, in words, one channel at a time. The brand
 // card used to print the raw status, and "sent" read as "the email went
@@ -4346,11 +4640,18 @@ document.getElementById('brand-body').addEventListener('click', function (e) {
 });
 
 function loadBrand(brandId) {
-  showView('brand');
+  // The brand already on screen again = a button on its page finished:
+  // refresh in place. Another brand opens at the top.
+  var again = showView('brand', !(CURRENT_BRAND && CURRENT_BRAND.brand && CURRENT_BRAND.brand.id === brandId));
   var box = document.getElementById('brand-body');
-  box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  if (!again) {
+    box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+    BRAND_EDIT_OPEN = null;
+  }
+  var mine = viewTurn('brand');
 
   return api('getBrand', { brandId: brandId }).then(function (d) {
+    if (!mine()) return;
     CURRENT_BRAND = d;
     var b = d.brand;
     rememberSponsors(b.shows);
@@ -4479,7 +4780,7 @@ function loadBrand(brandId) {
           '<button class="btn-ghost danger" id="b-delete" style="margin-left:auto">Delete brand</button>' +
         '</div>' +
         '<div id="b-merge-slot"></div>' +
-        '<div id="b-edit" hidden style="margin-top:14px;border-top:1px solid var(--border-soft);padding-top:14px">' +
+        '<div id="b-edit"' + (BRAND_EDIT_OPEN === b.id ? '' : ' hidden') + ' style="margin-top:14px;border-top:1px solid var(--border-soft);padding-top:14px">' +
           '<div class="row2" style="margin-bottom:4px">' +
             '<div><label class="lbl">Name</label>' +
               '<input class="field-box" data-bfield="name" value="' + esc(b.name) + '"></div>' +
@@ -4772,6 +5073,7 @@ function loadBrand(brandId) {
 
     box.querySelector('#b-edit-toggle').onclick = function () {
       var f = box.querySelector('#b-edit'); f.hidden = !f.hidden;
+      BRAND_EDIT_OPEN = f.hidden ? null : b.id;
     };
     var enrich = box.querySelector('#b-enrich');
     enrich.onclick = function () {
@@ -4965,6 +5267,9 @@ function loadBrand(brandId) {
       }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = '📞 Call prep'; });
     };
   }).catch(function (e) {
+    if (!mine()) return;
+    // A refresh that fails leaves the page as it was.
+    if (again) { toast('Could not refresh: ' + e.message); return; }
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
       esc(e.message) + '</p></div></div>';
   });
@@ -5486,9 +5791,9 @@ function applyShowFilters() {
 }
 
 function loadShows() {
-  showView('shows');
+  var again = showView('shows');
   var box = document.getElementById('shows-list');
-  box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  if (!again) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
 
   // "All leads" — the full sb-crm booking pipeline, every stage, read-only.
   if (showsFilter === 'leads') {
@@ -5674,9 +5979,9 @@ document.getElementById('needs-misses').addEventListener('click', function (e) {
 });
 
 function loadNeeds() {
-  showView('needs');
+  var again = showView('needs');
   var box = document.getElementById('needs-list');
-  box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  if (!again) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
 
   loadNeedsMisses();
 
@@ -9622,9 +9927,9 @@ var SCHED_DRAG = null;
 // --- passed brands ---------------------------------------------
 
 function loadPassed() {
-  showView('passed');
+  var again = showView('passed');
   var box = document.getElementById('passed-list');
-  box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  if (!again) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   return api('listPassedBrands').then(function (d) {
     var rows = d.brands || [];
     document.getElementById('ps-sub').textContent = rows.length
@@ -9950,9 +10255,9 @@ function rememberSponsors(rows) {
 }
 
 function loadSponsorships() {
-  showView('sponsorships');
+  var again = showView('sponsorships');
   var box = document.getElementById('spon-list');
-  box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  if (!again) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
 
   return api('listSponsorships', { status: sponFilter, owner: sponOwner }).then(function (d) {
     rememberSponsors(d.rows);
@@ -9974,9 +10279,13 @@ function loadSponsorships() {
 // --- search ----------------------------------------------------
 
 var searchTimer = null;
+var SEARCH_SHOWN = '';
 
 function runSearch(q) {
-  showView('search');
+  // A new query starts at the top; the same one again (after an edit
+  // from its results) keeps the place.
+  showView('search', q !== SEARCH_SHOWN);
+  SEARCH_SHOWN = q;
   document.getElementById('search-title').textContent = '“' + q + '”';
   document.getElementById('search-sub').textContent = 'Searching…';
   var box = document.getElementById('search-results');
@@ -10701,9 +11010,10 @@ function renderStatusFilters() {
 // The LinkedIn queue: connection-note + first-message drafts, sent by
 // hand on LinkedIn. Email lives in its own tab (loadEmailOutreach).
 function loadOutreach() {
-  showView('outreach');
+  var again = showView('outreach');
   var box = document.getElementById('targets');
-  box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  if (!again) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  var mine = viewTurn('outreach');
   renderStatusFilters();
   // Old invites: the rail card and, if open, the clean-up list (today only).
   if (mode === 'today') oqLoadStale();
@@ -10715,6 +11025,7 @@ function loadOutreach() {
   var call = mode === 'today'
     ? Promise.all([Promise.resolve([]), api('getTodayQueue'), api('listTargets', { status: 'sent' })])
         .then(function (r) {
+          if (!mine()) return null;
           var midnight = new Date(); midnight.setHours(0, 0, 0, 0);
           var weekAgo = Date.now() - 7 * 864e5;
           // getTodayQueue returns { theme, targets }; plain arrays from
@@ -10741,6 +11052,7 @@ function loadOutreach() {
     : api('listTargets', { status: statusFilter }).then(function (l) { return { accepted: [], list: l || [], theme: null, more: [], sentToday: [], stale: [] }; });
 
   return call.then(function (r) {
+    if (!r || !mine()) return;
     var list = r.list;
     QUEUE_THEME = r.theme || null;
     OQ_THEME = r.theme || null;
@@ -10845,6 +11157,8 @@ function loadOutreach() {
     oqRenderRail();
     renderNextBest();
   }).catch(function (e) {
+    if (!mine()) return;
+    if (again) { toast('Could not refresh: ' + e.message); return; }
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
       esc(e.message) + '</p></div></div>';
   });
@@ -11007,15 +11321,21 @@ function lintDraft(subject, body) {
 
 
 // The Email tab — its own view, fully separate from the LinkedIn queue.
+// Draft cards opened by hand (by id): a change to To / CC or Suggest
+// angle refreshes the tab, and the draft stays open under the cursor.
+var EM_OPEN = {};
+
 function loadEmailOutreach() {
-  showView('email-out');
+  var again = showView('email-out');
   var box = document.getElementById('email-box');
-  box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
-  return renderEmailMode(box);
+  if (!again) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  return renderEmailMode(box, again);
 }
 
-function renderEmailMode(box) {
+function renderEmailMode(box, again) {
+  var mine = viewTurn('email-out');
   return api('getEmailStatus').then(function (st) {
+    if (!mine()) return;
     if (!st.configured) {
       box.innerHTML =
         '<div class="panel panel-pad">' +
@@ -11031,6 +11351,7 @@ function renderEmailMode(box) {
       return;
     }
     return api('listEmailQueue').then(function (q) {
+      if (!mine()) return;
       var head =
         '<div class="panel panel-pad" style="margin-bottom:12px">' +
           '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
@@ -11139,9 +11460,10 @@ function renderEmailMode(box) {
                 '</select>' +
               '</div>';
             var warns = lintDraft(d.subject, d.body);
+            var emOpen = !!EM_OPEN[d.id];
             return '<div class="panel panel-pad" style="margin-bottom:10px" data-em="' + esc(d.id) + '">' +
               '<div data-emtoggle style="display:flex;gap:8px;align-items:center;font-size:13px;cursor:pointer">' +
-                '<span data-emarrow style="color:var(--ink-3);flex:none">▸</span>' +
+                '<span data-emarrow style="color:var(--ink-3);flex:none">' + (emOpen ? '▾' : '▸') + '</span>' +
                 '<b style="flex:none">' + esc(d.target.brand.name) + '</b><span class="t-sep">·</span>' +
                 '<span style="flex:none">' + esc(d.target.contact.name) + '</span>' +
                 // Every row here is unsent, so none of them wears the
@@ -11152,7 +11474,7 @@ function renderEmailMode(box) {
                 '<span style="color:var(--ink-3);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:40px">' + esc(d.subject || '') + '</span>' +
                 '<button class="btn-ghost danger" data-emact="del" style="flex:none">Skip</button>' +
                 '<button class="btn-solid" data-emact="sendone" style="flex:none">Send</button></div>' +
-              '<div data-embody style="display:none;margin-top:10px">' +
+              '<div data-embody style="display:' + (emOpen ? 'block' : 'none') + ';margin-top:10px">' +
               '<div style="color:var(--ink-3);font-size:11.5px;margin-bottom:6px">📎 SBA One Pager.pdf attached</div>' +
               recip +
               '<input class="field-box" data-emfield="subject" value="' + esc(d.subject || '') + '" style="margin-bottom:8px;font-weight:600">' +
@@ -11227,6 +11549,8 @@ function renderEmailMode(box) {
           var open = bd.style.display !== 'none';
           bd.style.display = open ? 'none' : 'block';
           h.querySelector('[data-emarrow]').textContent = open ? '▸' : '▾';
+          if (open) delete EM_OPEN[card.getAttribute('data-em')];
+          else EM_OPEN[card.getAttribute('data-em')] = true;
         });
       });
 
@@ -11495,6 +11819,8 @@ function renderEmailMode(box) {
       };
     });
   }).catch(function (e) {
+    if (!mine()) return;
+    if (again) { toast('Could not refresh: ' + e.message); return; }
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
   });
 }
@@ -11506,10 +11832,19 @@ var STAGE_ORDER = ['conversation', 'proposal', 'verbal', 'closed', 'lost'];
 // The deal room: everything needed to close one deal on one panel —
 // the people, the show and its deliverables, board heat, and a
 // follow-up date that shows up as "follow-up due" on the card.
+var DEAL_ROOM_ID = null;
 function openDealRoom(dealId) {
   var slot = document.getElementById('deal-room-slot');
-  slot.innerHTML = '<div class="panel panel-pad">Loading…</div>';
-  window.scrollTo(0, 0);
+  // The room already open for this deal (one of its buttons finished):
+  // refresh it in place. Opening a room scrolls up to it.
+  var pipe = document.getElementById('pipeline');
+  var again = DEAL_ROOM_ID === dealId && !!slot.innerHTML && pipe.classList.contains('active');
+  DEAL_ROOM_ID = dealId;
+  if (again) keepPlace(pipe);
+  else {
+    slot.innerHTML = '<div class="panel panel-pad">Loading…</div>';
+    window.scrollTo(0, 0);
+  }
   api('getDealRoom', { dealId: dealId }).then(function (r) {
     var deal = r.deal, b = deal.brand, sp = deal.showSponsor;
     var heat = r.boardViews14d
@@ -11651,7 +11986,7 @@ function loadPipeline() {
     var STAGE_LABEL = { conversation: 'Conversation', proposal: 'Proposal sent', verbal: 'Verbal yes', closed: 'Won', lost: 'Lost' };
 
     el.innerHTML =
-      '<div style="display:grid;grid-auto-flow:column;grid-auto-columns:minmax(225px,1fr);gap:12px;overflow-x:auto;align-items:start;padding-bottom:6px">' +
+      '<div data-scroll="deals" style="display:grid;grid-auto-flow:column;grid-auto-columns:minmax(225px,1fr);gap:12px;overflow-x:auto;align-items:start;padding-bottom:6px">' +
       STAGE_ORDER.map(function (s) {
         var col = stages[s] || [];
         var sum = col.reduce(function (a, x) { return a + x.valueCents; }, 0);
@@ -12056,9 +12391,9 @@ function renderDiscoverRows(body, rows, selectedQuery) {
 // for sends and the theme blue (var(--blue)) for replies.
 
 function loadResults() {
-  showView('results');
+  var again = showView('results');
   var body = document.getElementById('res-body');
-  body.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  if (!again) body.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   return Promise.all([api('getOutreachAnalytics'), api('listDeals')]).then(function (both) {
     var a = both[0], dl = both[1];
     document.getElementById('res-kpis').innerHTML =
@@ -12163,9 +12498,9 @@ function loadCRM() {
 // --- team ------------------------------------------------------
 
 function loadTeam() {
-  showView('team');
+  var again = showView('team');
   var box = document.getElementById('team-body');
-  box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  if (!again) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
 
   return api('listTeam').then(function (d) {
     var out = '<div class="section-head">Founding members <span class="n">always have access</span></div>';
@@ -12411,13 +12746,19 @@ function actNewForm() {
 }
 
 function openActivation(id, tab) {
-  actOpenId = id; actTab = tab || actTab || 'overview';
+  tab = tab || actTab || 'overview';
+  // The same activation on the same tab = an edit on it finished (a cost,
+  // a person, a status): redraw in place. Anything else opens at the top.
+  var view = document.getElementById('activations');
+  var again = !!actCur && actCur.id === id && tab === actTab && view.classList.contains('active');
+  actOpenId = id; actTab = tab;
+  if (again) keepPlace(view);
   return api('getActivation', { id: id }).then(function (a) {
     actCur = a;
     renderActSidebar();
     renderActivation();
     actHash();
-    window.scrollTo(0, 0);
+    if (!again) window.scrollTo(0, 0);
   }).catch(function (e) { toast(e.message); });
 }
 
@@ -12581,7 +12922,7 @@ function renderActBudget(a) {
       '<span><b>' + s.ordered + '/' + e.lines.length + '</b> booked · estimate ' + money(s.estimate) + '</span>' +
     '</div>';
     h += '<div style="font-size:12px;color:var(--ink-3);margin:4px 0 6px">Click any cell to edit · <b>Estimate</b> is the sheet, <b>Final</b> is what it actually cost · tick ✓ when it\'s ordered or confirmed · staff lines open in People</div>';
-    h += '<div style="overflow-x:auto"><table class="sheet" style="min-width:860px">' +
+    h += '<div data-scroll="sheet" style="overflow-x:auto"><table class="sheet" style="min-width:860px">' +
       '<colgroup><col style="width:19%"><col style="width:22%"><col style="width:6%"><col style="width:10%"><col style="width:11%"><col style="width:11%"><col style="width:7%"><col style="width:auto"><col style="width:36px"><col style="width:36px"></colgroup>' +
       '<thead><tr><th>Item</th><th>Description</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Estimate</th><th class="r">Final</th><th class="r">Var</th><th>Notes / timing</th><th title="Ordered / confirmed">✓</th><th></th></tr></thead><tbody>';
     ACT_SECTIONS.forEach(function (sec) {
@@ -13565,6 +13906,10 @@ opsBody.addEventListener('change', function (ev) {
 });
 
 function gotoView(id) {
+  NAV_FRESH = true;
+  try { gotoViewNow(id); } finally { NAV_FRESH = false; }
+}
+function gotoViewNow(id) {
   if (id !== 'activations') actMode(false);
   if (id === 'dashboard') loadDashboard();
   if (id === 'brands') loadBrands('all');
