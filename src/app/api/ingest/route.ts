@@ -41,6 +41,7 @@ import { LANES, RESEARCH_EXTRA, brandKey } from '@/lib/stock'
 import { logLinkedInPerson, personOnFile, undoLinkedInLog, checkNewPerson } from '@/lib/li-log-db'
 import { nameFromSlug, isLogStage } from '@/lib/li-log'
 import { guessCategory } from '@/lib/category-hints'
+import { dueDays, shortOnPeople, plannedFirst } from '@/lib/planned-first'
 
 const prisma = new PrismaClient()
 
@@ -638,9 +639,30 @@ export async function POST(req: NextRequest) {
       }
       research.unshift(...asked)
     }
+    // First of all: brands the Schedule has on its coming days that are
+    // short on people (Leo: "planned brands first"), so they have
+    // someone to invite by their day — soonest day first. `planned` is
+    // that day.
+    const [planRow, shownRow] = await Promise.all([
+      prisma.setting.findUnique({ where: { key: 'outreachPlan' } }),
+      prisma.setting.findUnique({ where: { key: 'outreachShownDays' } }),
+    ])
+    const parse = (row: { value: string } | null) => { try { return row ? JSON.parse(row.value) : null } catch { return null } }
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+    const due = dueDays({ plan: parse(planRow), shown: parse(shownRow), today })
+    const dueIds = items.map(i => i.brandId).filter(id => due.has(id))
+    const dueBrands = dueIds.length
+      ? await prisma.brand.findMany({
+          where: { id: { in: dueIds } },
+          select: { id: true, tier: true, workPeople: true, contacts: { select: { email: true, linkedinUrl: true } } },
+        })
+      : []
+    const short = new Set(dueBrands.filter(shortOnPeople).map(b => b.id))
+    const { first: planned, rest } = plannedFirst(items, due, short)
     const ordered = [
-      ...research.filter(r => r.focus), ...items.filter(i => i.focus),
-      ...research.filter(r => !r.focus), ...items.filter(i => !i.focus),
+      ...planned,
+      ...research.filter(r => r.focus), ...rest.filter(i => i.focus),
+      ...research.filter(r => !r.focus), ...rest.filter(i => !i.focus),
     ]
     return NextResponse.json({
       ok: true,
@@ -649,6 +671,7 @@ export async function POST(req: NextRequest) {
       researchFocus: research.filter(r => r.focus).length,
       researchWaiting,
       focusCount: ordered.filter(i => i.focus).length,
+      planned: planned.length,
       noPage: items.filter(i => !i.linkedinUrl).length,
       resting,
       underCap: underCap.length,

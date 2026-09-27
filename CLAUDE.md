@@ -116,6 +116,24 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   sends exactly the previewed ids. Days = `planDayChoices` = the Schedule's columns
   (`scheduleDays`, shared with `getOutreachPlan`) + the next off weekday, which `addDay` opens as
   a sending day; `planAddBrands` refuses a non-sending day without it.
+  **Who goes first** (Leo, Sep 2026): a day's planned brands go out in their plan order
+  (`plan[day].brandIds`) — numbered on the cards, ↑ ↓ or drag a card within its day
+  (`planReorderDay`). Whole brands in that order while they fit in the day's 20 (after anyone sent
+  or already in today's list); one that doesn't fit **waits** (a smaller one after it can still go)
+  and the morning roll moves it to the next sending day like anything unsent. The same cut is in
+  the day preview (`waits` on pinned cards, not counted in the day), add results and previews
+  (`waitingOnDay` — an add goes last), the brand page line, and today's queue:
+  `queuePlannedToday` (getTodayQueue, and after a reorder of today; `dryRun` for the brand page)
+  stamps today's planned brands in order and never takes anyone out; the LinkedIn tab lists them
+  first, in that order, and names who waits (`plannedWaiting`, `waitingTo`). A waiting card on
+  today has **Send today anyway** (queueBrandTargets). Adding to today still goes straight in.
+  **Categories chart** (Leo: "a chart that shows what category of brands we have reached out
+  to and u can click on it"): replaced the tiles. One bar per category, length = brands in play
+  (set aside left out), steps Replied / Accepted / Invited or emailed / Not reached (one blue
+  ramp, validated as ordinal on #14141a; grey track) from `getOutreachPlan.categories[].stages`
+  (`brandStage`, shared with the `categoryBrands` drill-in). Sort Most reached / Most brands /
+  Least reached, a Table view, tooltips on hover and focus; a click opens the drill-in, whose
+  header also gives the last invite and the 6-week accept rate (from Coverage).
   Thin / no-one brands link "LinkedIn people ↗" (`liPeopleUrl`) for the LinkedIn capture script;
   the tab refreshes on focus so a capture shows up. "The rest of …" rows (past a day's 20) have
   **Add** (pins to that day; the fill makes room) and "Other day…". **Plan my week** (`planWeek`
@@ -200,7 +218,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   another brand has it.
   **By itself** (Leo asked for it after the one-click version worked, knowing LinkedIn restricts
   script-like browsing): pill → "Fill brands by itself" (also in the Tampermonkey menu). Worklist
-  `liList`: brands under 25, not archived/do-not-email, not resting; a focus word first
+  `liList`: brands under 25, not archived/do-not-email, not resting; **first the brands the
+  Schedule has on its coming days that are short on people** (plan pins from the last week +
+  Setting `outreachShownDays`, written by `getOutreachPlan`; short = reachable < `workNeed`, the
+  same rule as the Schedule's labels; soonest day first; `src/lib/planned-first.ts`,
+  `node scripts/test-planned-first.mjs`; the Schedule's contacts check links "Start the LinkedIn
+  fill ↗ — it does these first"), then a focus word
   (`focusTerms` — "electrolyte" expands to the hydration shelf by name), then emptiest. Per brand:
   no page → LinkedIn company search → `liMatched` (`decideCompanyMatch`: exact name/aka, or a near
   miss only in the top 3 with a fitting industry; else "unclear" → skipped with a note), then the
