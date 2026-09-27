@@ -23,6 +23,12 @@
 //     wrong, with a sample — readable at /api/reports/linkedin;
 //   · leave nothing for a second run (every brand rests a month).
 //
+// Then the logging-only script for Zach's LinkedIn (linkedin-log.user.js)
+// on someone's profile: "They accepted" for someone new lands them under
+// their brand, accepted with no invite date and out of every queue; Undo
+// takes them off again; "Invite sent" for someone the run just queued
+// dates it now.
+//
 // Needs a throwaway LOCAL Postgres — it is wiped:
 //   E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-li-e2e.js
 // (If playwright is only installed globally: NODE_PATH=$(npm root -g) …)
@@ -58,6 +64,9 @@ const SCRIPT = fs.readFileSync(path.join(__dirname, 'linkedin-capture.user.js'),
   .replace(/function rand\(a, b\) \{[^}]*\}/, 'function rand() { return 30; }');
 assert.ok(SCRIPT.includes(BASE + '/api/ingest'), 'ingest address swapped in');
 const VERSION = SCRIPT.match(/@version\s+(\S+)/)[1];
+const LOG_SCRIPT = fs.readFileSync(path.join(__dirname, 'linkedin-log.user.js'), 'utf8')
+  .replace("'https://sb-digitaldashboard.vercel.app/api/ingest'", "'" + BASE + "/api/ingest'");
+assert.ok(LOG_SCRIPT.includes(BASE + '/api/ingest'), 'ingest address swapped into the log script');
 
 // ---- fake LinkedIn -------------------------------------------------
 const person = (slug, name, badge, headline) =>
@@ -99,12 +108,31 @@ const SEARCH = {
   Powerade: [['powerade', 'Powerade', 'Beverage Manufacturing • Atlanta, GA', '150K'], ['powerade-events', 'Powerade Events Co', 'Events Services', '300']],
   Olipop: [['drinkolipop', 'OLIPOP', 'Beverage Manufacturing • Oakland, CA', '180K'], ['olipop-studio', 'Olipop Studio', 'Design Services', '90']],
 };
+// A profile: name in the <h1>, pronouns and badge on their own line,
+// the headline, LinkedIn's "Current company" button, the first job.
+const PROFILES = {
+  'jane-doe-4b21a': ['Jane Doe', 'Head of Partnerships at Liquid Death', 'Liquid Death'],
+  'ea-ld': ['Erin Alvarez', 'Director of Experiential Marketing', 'Liquid Death'],
+};
+function profilePage(slug) {
+  const [name, headline, co] = PROFILES[slug];
+  return '<!doctype html><html><head><title>(2) ' + name + ' | LinkedIn</title></head><body>' +
+    '<header><a href="https://www.linkedin.com/in/leo-self/">Me</a></header>' +
+    '<main><section><div><a href="#"><h1>' + name + '</h1></a></div><span>She/Her</span><span> · 2nd</span>' +
+    '<div>' + headline + '</div>' +
+    '<ul><li><button aria-label="Current company: ' + co + '. Click to skip to experience card"><span>' + co + '</span></button></li></ul>' +
+    '<span>Los Angeles, California</span><button>Message</button><button>More</button></section>' +
+    '<section><div id="experience"></div><ul><li><a href="https://www.linkedin.com/company/12345/"><img alt="' + co + ' logo"></a>' +
+    '<span>' + headline.split(' at ')[0] + '</span><span>' + co + ' · Full-time</span></li></ul></section></main></body></html>';
+}
 const visits = [];
 const linkedin = http.createServer((req, res) => {
   if (!/favicon|frame-probe/.test(req.url)) visits.push(req.url);
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   const m = req.url.match(/^\/company\/([^/?]+)\/people\/?/);
   if (m && STAFF[m[1]]) return res.end(peoplePage(m[1]));
+  const pm = req.url.match(/^\/in\/([^/?]+)\/?$/);
+  if (pm && PROFILES[pm[1]]) return res.end(profilePage(pm[1]));
   // Cards the reader gets wrong: the profile link holds only a photo.
   if (m && m[1] === 'blank-cards') {
     return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Blank Cards</h1><ul>' +
@@ -252,6 +280,45 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.match(run.samples[0].problem, /every title came out blank/);
     assert.match(run.samples[0].sample, /\/in\/q1\//);
     ok('the run\'s report — Blank Cards\' unreadable cards with a sample — reads back through /api/reports/linkedin');
+
+    // Zach's logging-only script on a profile: They accepted, for someone new.
+    const pp = await browser.newPage();
+    pp.on('pageerror', e => errors.push(String(e)));
+    await pp.addInitScript(GM_SHIM + '\n' + LOG_SCRIPT);
+    await pp.goto('http://127.0.0.1:' + LI_PORT + '/in/jane-doe-4b21a/');
+    await pp.waitForFunction(() => /Log them/.test((document.getElementById('sblogpill') || {}).textContent || ''));
+    await pp.click('#sblogpill');
+    await pp.waitForSelector('#sblogacc', { timeout: 60000 });
+    assert.match(await pp.evaluate(() => document.getElementById('sblog-panel').innerText), /Goes under Liquid Death/);
+    assert.equal(await pp.inputValue('#sblogtitle'), 'Head of Partnerships');
+    await pp.click('#sblogacc');
+    await pp.waitForFunction(() => /Logged/.test(document.getElementById('sblog-panel').innerText), null, { timeout: 60000 });
+    const jane = await prisma.contact.findFirst({ where: { name: 'Jane Doe' }, include: { targets: { include: { events: true } } } });
+    assert.deepEqual([jane.brandId, jane.source, jane.linkedinUrl, jane.title], ['b_ld', 'manual', 'https://www.linkedin.com/in/jane-doe-4b21a/', 'Head of Partnerships']);
+    const jt = jane.targets[0];
+    assert.deepEqual([jt.status, jt.sentAt, jt.queuedFor, jt.shelved], ['accepted', null, null, false]);
+    assert.deepEqual(jt.events.map(e => [e.toStatus, e.actor]), [['accepted', 'SB pill']]);
+    ok('Zach\'s log script on a profile: They accepted puts someone new under their brand, accepted, no invite date, no queue');
+
+    await pp.click('#sblogundo');
+    await pp.waitForFunction(() => /Undone/.test(document.getElementById('sblog-panel').innerText), null, { timeout: 60000 });
+    assert.equal(await prisma.contact.count({ where: { name: 'Jane Doe' } }), 0);
+    ok('Undo takes them off again');
+
+    // Someone the run just queued: Invite sent, dated now.
+    await pp.goto('http://127.0.0.1:' + LI_PORT + '/in/ea-ld/');
+    await pp.waitForSelector('#sblogpill', { state: 'visible' });
+    await pp.click('#sblogpill');
+    await pp.waitForSelector('#sblogsent', { timeout: 60000 });
+    assert.match(await pp.evaluate(() => document.getElementById('sblog-panel').innerText), /On file at Liquid Death/);
+    await pp.click('#sblogsent');
+    await pp.waitForFunction(() => /Logged/.test(document.getElementById('sblog-panel').innerText), null, { timeout: 60000 });
+    const erin = await prisma.target.findFirst({ where: { contact: { name: 'Erin Alvarez' } } });
+    assert.equal(erin.status, 'sent');
+    assert.ok(erin.sentAt && Date.now() - erin.sentAt.getTime() < 120000, 'dated now');
+    assert.equal(await prisma.contact.count({ where: { name: 'Erin Alvarez' } }), 1, 'no second copy');
+    assert.deepEqual(errors, [], 'no page errors');
+    ok('Invite sent for someone on file: dated now, no second copy');
 
     console.log(n + ' checks passed');
   } catch (e) {

@@ -371,6 +371,15 @@ const GM_SHIM = `
     const vw = pageObj.viewportSize().width;
     assert.ok(box.x < vw / 2, 'pill is on the left, clear of Messaging (x=' + box.x + ')');
     ok('pill sits bottom-left, clear of LinkedIn\'s Messaging bar');
+    // On someone's profile this script logs nobody: that's the SB · Log
+    // script (linkedin-log.user.js, Zach's browser).
+    await load('/in/jane-doe-4b21a/');
+    await pageObj.waitForSelector('#sblipill', { state: 'visible' });
+    await pageObj.click('#sblipill');
+    await pageObj.waitForFunction(() => /SB · Log/.test(document.getElementById('sbli-panel').innerText));
+    assert.equal(sent.length, 0, 'nothing sent from a profile');
+    assert.match(await pageObj.textContent('#sblipill'), /People/);
+    ok('on a profile it logs nobody and points to the SB · Log pill');
     await load('/company/liquid-death/');
     await pageObj.waitForSelector('#sblipill', { state: 'visible' });
     ok('pill shows on a company page');

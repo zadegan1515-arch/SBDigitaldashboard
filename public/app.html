@@ -325,6 +325,31 @@
   .zt-undo button{border:none;border-radius:999px;background:rgba(79,131,247,.18);color:#aac6ff;font-family:inherit;
     font-size:12.5px;font-weight:700;padding:6px 14px;cursor:pointer}
   .zt-undo button:hover{background:rgba(79,131,247,.28)}
+  /* Add from LinkedIn (Zach's list): find them on file or add them, then
+     one click to "Invite sent" or "They accepted". */
+  .lil-modal{max-width:640px}
+  .lil-sub{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);margin:18px 0 8px}
+  .lil-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--border-soft)}
+  .lil-row:first-child{border-top:0}
+  .lil-who{flex:1;min-width:0;font-size:13px;line-height:1.45}
+  .lil-who small{display:block;color:var(--ink-3);font-size:12px}
+  .lil-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;flex:none}
+  .lil-opts{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 2px}
+  .lil-opt{border:1px solid var(--border);background:var(--surface-2);color:var(--ink-2);border-radius:999px;
+    padding:5px 12px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer}
+  .lil-opt:hover{border-color:rgba(79,131,247,.5);color:var(--ink-1)}
+  .lil-opt small{font-weight:500;color:var(--ink-3);margin-left:5px}
+  .lil-picked{display:flex;align-items:center;gap:10px;margin:8px 0 2px;font-size:13px}
+  .lil-picked b{font-weight:600}
+  .lil-field{margin-bottom:12px}
+  .lil-field .lbl span{text-transform:none;letter-spacing:0;font-weight:500}
+  .lil-go{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
+  .lil-note{font-size:12.5px;color:var(--ink-3);margin-top:8px}
+  .lil-note.bad{color:var(--bad)}
+  .lil-done{margin-top:16px;border-top:1px solid var(--border-soft);padding-top:10px}
+  .lil-done .lil-row{padding:6px 0;border:0;font-size:12.5px}
+  .lil-done .lil-row.undone .lil-who{text-decoration:line-through;color:var(--ink-3)}
+  @media (max-width:600px){ .lil-row{flex-wrap:wrap} .lil-acts{flex-basis:100%;justify-content:flex-start} }
   /* Template editor: write on the left, see it for a real person on the right. */
   .zt-modal{max-width:880px}
   .zt-tplgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
@@ -1560,6 +1585,47 @@
 </div>
 <div class="zt-undo" id="zt-undo" role="status" aria-live="polite"><span id="zt-undo-text"></span><button id="zt-undo-btn">Undo</button></div>
 
+<!-- ADD FROM LINKEDIN — someone invited straight from LinkedIn -->
+<div class="scrim" id="lil-scrim">
+  <div class="modal lil-modal" role="dialog" aria-modal="true" aria-labelledby="lil-h">
+    <div class="modal-head">
+      <h2 id="lil-h">Add from LinkedIn</h2>
+      <p>Someone you invited straight from LinkedIn. Log the invite, or that they accepted. Nothing goes through today’s list.</p>
+    </div>
+    <div class="modal-body">
+      <label class="lbl" for="lil-q">Their LinkedIn link, or a name</label>
+      <input class="field-box" id="lil-q" autocomplete="off" spellcheck="false" placeholder="linkedin.com/in/jane-doe-4b21a — or Jane Doe">
+      <div id="lil-found"></div>
+      <div id="lil-new" hidden>
+        <div class="lil-sub" id="lil-new-h">Not on file — add them</div>
+        <div class="lil-field">
+          <label class="lbl" for="lil-brand">Brand</label>
+          <input class="field-box" id="lil-brand" autocomplete="off" placeholder="Type the brand">
+          <div id="lil-brands"></div>
+        </div>
+        <div class="row2 lil-field">
+          <div><label class="lbl" for="lil-name">Name</label><input class="field-box" id="lil-name" autocomplete="off"></div>
+          <div><label class="lbl" for="lil-title">Title <span>(optional)</span></label><input class="field-box" id="lil-title" autocomplete="off"></div>
+        </div>
+        <div class="lil-field">
+          <label class="lbl" for="lil-url">LinkedIn link <span>(optional)</span></label>
+          <input class="field-box" id="lil-url" autocomplete="off" spellcheck="false" placeholder="linkedin.com/in/…">
+        </div>
+        <div class="lil-go">
+          <button class="btn-ghost" data-lilnew="sent" title="You just sent the invite on LinkedIn. It counts in today’s sends; press They accepted when it lands.">Invite sent</button>
+          <button class="btn-solid" data-lilnew="accepted" title="Straight onto Zach’s list. The invite went out unlogged, so it isn’t counted in the weekly limit or accept rates.">They accepted</button>
+        </div>
+        <div class="lil-note" id="lil-new-msg"></div>
+      </div>
+      <div class="lil-done" id="lil-done" hidden></div>
+    </div>
+    <div class="modal-foot">
+      <span class="hint" style="margin:0 auto 0 0">They accepted → straight onto Zach’s list. Invite sent → counts today; They accepted later.</span>
+      <button class="btn-ghost" id="lil-close">Done</button>
+    </div>
+  </div>
+</div>
+
 <!-- ADD BRAND -->
 <div class="scrim" id="add-scrim">
   <div class="modal">
@@ -2699,6 +2765,7 @@ function ztHeadHtml(c) {
           ? '<button class="zt-standin" data-ztact="tpl" data-kind="' + (ZT.template.standIn ? 'email' : 'dm') + '" title="Leo’s templates aren’t all saved yet, so those messages start from a stand-in">Stand-in ' +
             (ZT.template.standIn && ZT.dmTemplate && ZT.dmTemplate.standIn ? 'templates' : ZT.template.standIn ? 'email' : 'DM') + '</button>'
           : '') +
+        '<button class="btn-ghost" data-ztact="lilog" title="Invited someone straight from LinkedIn? Log the invite, or that they accepted: no queue, no extra steps">+ Add from LinkedIn</button>' +
         '<button class="btn-ghost" data-ztact="tpl">Templates</button>' +
         '<button class="btn-ghost" data-ztact="link" title="Copy a link that opens straight to this list">Copy link for Zach</button>' +
       '</div>' +
@@ -3083,6 +3150,7 @@ document.getElementById('zach-todo').addEventListener('click', function (e) {
   if (act === 'tpl') { ztOpenTpl(btn.getAttribute('data-kind') || 'email'); return; }
   if (act === 'link') { ztCopy(location.origin + location.pathname + '#zach', 'Link copied. Send it to Zach'); return; }
   if (act === 'more') { ZT_SHOW = Infinity; ztRender(); return; }
+  if (act === 'lilog') { lilOpen(); return; }
 
   var item = btn.closest('[data-zt]');
   var id = item && item.getAttribute('data-zt'), p = id && ZT_BY_ID[id];
@@ -3376,6 +3444,267 @@ document.querySelector('#zt-scrim .zt-tabs').addEventListener('click', function 
 });
 document.getElementById('zt-scrim').addEventListener('click', function (e) { if (e.target === this) ztCloseTpl(); });
 document.getElementById('zt-scrim').addEventListener('keydown', function (e) { if (e.key === 'Escape') ztCloseTpl(); });
+
+// --- add from LinkedIn ----------------------------------------------
+//
+// Leo (Sep 2026): invites often go out straight from LinkedIn, unlogged,
+// and an accept then meant Add person → Queue → Invite sent → Accepted.
+// Now one step (rules in src/lib/li-log.ts): find them on file or add
+// them, then "Invite sent" (dated now, counts like any send) or "They
+// accepted" (straight onto Zach's list; no invite date, so the weekly
+// limit and accept rates leave it out). Nothing touches today's list.
+// Here (Zach's list → + Add from LinkedIn), on the brand page's People
+// rows and + Add person, and the SB · Log pill on a LinkedIn profile
+// (scripts/linkedin-log.user.js, Zach's browser).
+
+// What a log can still do for someone, by their LinkedIn row's status
+// (null = none yet). Mirror of logChoices in src/lib/li-log.ts.
+function lilChoices(status) {
+  if (!status || ['queued', 'drafted', 'passed', 'withdrawn', 'declined', 'dead'].indexOf(status) !== -1) return ['sent', 'accepted'];
+  if (status === 'sent') return ['accepted'];
+  return [];
+}
+
+// A name to start the form with: …/in/jane-doe-4b21a → "Jane Doe". One
+// word or a long slug gives nothing. Mirror of nameFromSlug in li-log.ts.
+function lilNameFromLink(v) {
+  var m = String(v || '').match(/\/(?:in|pub)\/([^\/?#\s]+)/i);
+  if (!m) return '';
+  var s = m[1];
+  try { s = decodeURIComponent(s); } catch (e) {}
+  var words = s.toLowerCase().split(/[-_.]+/).filter(function (w) { return w && !/\d/.test(w); });
+  while (words.length > 2 && /^(mba|phd|cpa|pmp|msc|ms|ma|bs|ba|jd|md|cfa|esq|jr|sr|ii|iii)$/.test(words[words.length - 1])) words.pop();
+  if (words.length < 2 || words.length > 5) return '';
+  return words.map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
+}
+
+function lilOnBrand(id) {
+  return document.getElementById('brand').classList.contains('active') &&
+    !!CURRENT_BRAND && CURRENT_BRAND.brand && CURRENT_BRAND.brand.id === id;
+}
+
+// One log, then the Undo bar. `after(r)` runs once it's saved, and again
+// (with r.undone) if it's undone.
+function lilLog(args, after) {
+  return api('logLinkedInPerson', args).then(function (r) {
+    if (r.noop) {
+      toast(r.name + (r.noop === 'already-sent' ? ': the invite is already logged'
+        : r.noop === 'already-accepted' ? ' already accepted: they’re on Zach’s list'
+        : r.noop === 'already-replied' ? ' already replied' : ' is already a win'));
+    } else {
+      ztUndoBar(r.name + ' · ' + r.brand.name + ': ' + (r.status === 'accepted' ? 'accepted, on Zach’s list' : 'invite logged'),
+        function () { lilUndo(r, after); });
+    }
+    if (after) after(r);
+    if (!r.noop && document.getElementById('dashboard').classList.contains('active')) renderZachTodo();
+    return r;
+  });
+}
+function lilUndo(r, after) {
+  ztUndoHide();
+  api('undoLinkedInLog', { undo: r.undo }).then(function (u) {
+    toast(u.removed ? r.name + ' taken off again' : r.name + ' is back as before');
+    r.undone = true;
+    if (after) after(r);
+    if (document.getElementById('dashboard').classList.contains('active')) renderZachTodo();
+  }).catch(function (e) {
+    toast(e.message);
+    var ub = document.querySelector('[data-lilundo="' + r.targetId + '"]');
+    if (ub) ub.disabled = false;
+  });
+}
+
+var LIL = { brand: null, newBrand: null, nameAuto: '', urlAuto: '', seq: 0, bseq: 0, busy: false, done: {} };
+var LIL_T = null, LIL_BT = null;
+
+function lilState(p) {
+  return p.status ? liWords({ status: p.status, sentAt: p.sentAt }) : 'not contacted';
+}
+function lilRowHtml(p) {
+  var acts = p.choices.length
+    ? p.choices.map(function (s) {
+        return s === 'accepted'
+          ? '<button class="btn-draft" data-lillog="accepted" data-cid="' + esc(p.contactId) + '">They accepted</button>'
+          : '<button class="btn-ghost" data-lillog="sent" data-cid="' + esc(p.contactId) + '">Invite sent</button>';
+      }).join('')
+    : '<span class="status ' + esc(p.status) + '">' + (p.status === 'accepted' ? 'on Zach’s list' : esc(lilState(p))) + '</span>';
+  return '<div class="lil-row"><div class="lil-who"><b>' + esc(p.name) + '</b>' + (p.title ? ' · ' + esc(p.title) : '') +
+    '<small>' + esc(p.brand.name) + (p.brand.archived ? ' (archived)' : '') + ' · ' + esc(lilState(p)) + '</small></div>' +
+    '<div class="lil-acts">' + acts + '</div></div>';
+}
+
+function lilOpen() {
+  LIL.brand = null; LIL.newBrand = null; LIL.nameAuto = ''; LIL.urlAuto = ''; LIL.busy = false;
+  ['lil-q', 'lil-brand', 'lil-name', 'lil-title', 'lil-url'].forEach(function (id) { document.getElementById(id).value = ''; });
+  ['lil-found', 'lil-brands', 'lil-done'].forEach(function (id) { document.getElementById(id).innerHTML = ''; });
+  document.getElementById('lil-new').hidden = true;
+  document.getElementById('lil-done').hidden = true;
+  lilSay('');
+  document.getElementById('lil-scrim').classList.add('open');
+  setTimeout(function () { document.getElementById('lil-q').focus(); }, 40);
+}
+function lilClose() { document.getElementById('lil-scrim').classList.remove('open'); }
+function lilSay(text, bad) {
+  var m = document.getElementById('lil-new-msg');
+  m.textContent = text || '';
+  m.className = 'lil-note' + (bad ? ' bad' : '');
+}
+
+// Who the box could be: people on file first, then the form for someone new.
+function lilSearch() {
+  var q = document.getElementById('lil-q').value.trim();
+  var found = document.getElementById('lil-found');
+  var seq = ++LIL.seq;
+  if (!q) { found.innerHTML = ''; document.getElementById('lil-new').hidden = true; return; }
+  api('findLinkedInPerson', { q: q }).then(function (r) {
+    if (seq !== LIL.seq) return;
+    if (r.notProfile) {
+      found.innerHTML = '<div class="lil-note bad">That link isn’t a person’s profile. It should look like linkedin.com/in/their-name.</div>';
+      document.getElementById('lil-new').hidden = true;
+      return;
+    }
+    found.innerHTML = r.people.length ? '<div class="lil-sub">On file</div>' + r.people.map(lilRowHtml).join('') : '';
+    // The new-person form starts from what was typed; anything typed into
+    // it by hand stays.
+    var nameBox = document.getElementById('lil-name'), urlBox = document.getElementById('lil-url');
+    var name = r.nameGuess || '';
+    if (!nameBox.value.trim() || nameBox.value === LIL.nameAuto) { nameBox.value = name; LIL.nameAuto = name; }
+    var url = r.url || '';
+    if (!urlBox.value.trim() || urlBox.value === LIL.urlAuto) { urlBox.value = url; LIL.urlAuto = url; }
+    document.getElementById('lil-new-h').textContent = r.people.length ? 'Someone else? Add them' : 'Not on file — add them';
+    document.getElementById('lil-new').hidden = false;
+  }).catch(function (e) {
+    if (seq === LIL.seq) found.innerHTML = '<div class="lil-note bad">' + esc(e.message) + '</div>';
+  });
+}
+
+function lilBrandSearch() {
+  var q = document.getElementById('lil-brand').value.trim();
+  var box = document.getElementById('lil-brands');
+  var seq = ++LIL.bseq;
+  if (q.length < 2) { box.innerHTML = ''; return; }
+  api('brandLookup', { q: q }).then(function (r) {
+    if (seq !== LIL.bseq) return;
+    LIL.hits = r.brands;
+    LIL.catGuess = r.categoryGuess || 'unresolved';
+    box.innerHTML = '<div class="lil-opts">' + r.brands.map(function (b) {
+        return '<button type="button" class="lil-opt" data-lilbrand="' + esc(b.id) + '">' + esc(b.name) +
+          '<small>' + esc(CAT_NAMES[b.category] || b.category || '') + (b.archived ? ' · archived' : '') + '</small></button>';
+      }).join('') +
+      (r.exact ? '' : '<button type="button" class="lil-opt" data-lilbrandnew="1">+ Add “' + esc(q) + '” as a new brand</button>') +
+      '</div>' +
+      (r.brands.length || r.exact ? '' : '<div class="lil-note">No brand by that name in the dashboard.</div>');
+  }).catch(function (e) { if (seq === LIL.bseq) box.innerHTML = '<div class="lil-note bad">' + esc(e.message) + '</div>'; });
+}
+
+function lilPickBrand(b) {
+  LIL.brand = b; LIL.newBrand = null;
+  document.getElementById('lil-brand').value = b.name;
+  document.getElementById('lil-brands').innerHTML = '<div class="lil-picked">✓ <b>' + esc(b.name) + '</b>' +
+    '<small style="color:var(--ink-3)">' + esc(CAT_NAMES[b.category] || b.category || '') + (b.archived ? ' · archived' : '') + '</small></div>';
+  lilSay('');
+}
+function lilPickNewBrand() {
+  var name = document.getElementById('lil-brand').value.trim();
+  if (!name) return;
+  LIL.brand = null; LIL.newBrand = { name: name };
+  document.getElementById('lil-brands').innerHTML =
+    '<div class="lil-picked">✓ New brand <b>' + esc(name) + '</b>' +
+      '<select class="inp" id="lil-cat" title="Its category (a guess from the name — change it if it’s wrong)">' +
+        CAT_KEYS.map(function (k) { return '<option value="' + k + '"' + (k === LIL.catGuess ? ' selected' : '') + '>' + esc(CAT_NAMES[k]) + '</option>'; }).join('') +
+      '</select></div>';
+  lilSay('');
+}
+
+// A log from this box: the running list gets a line with its own Undo,
+// and the box clears for the next person (the brand stays picked).
+function lilGo(args, btn) {
+  if (LIL.busy) return;
+  LIL.busy = true;
+  if (btn) btn.disabled = true;
+  lilSay('');
+  lilLog(args, lilDoneLine).then(function (r) {
+    LIL.busy = false;
+    if (btn) btn.disabled = false;
+    if (r.brandCreated && !r.undone) lilPickBrand({ id: r.brand.id, name: r.brand.name, category: args.newBrand ? args.newBrand.category : null });
+    if (r.noop) { lilSearch(); return; }
+    LIL.nameAuto = ''; LIL.urlAuto = '';
+    ['lil-q', 'lil-name', 'lil-title', 'lil-url'].forEach(function (id) { document.getElementById(id).value = ''; });
+    document.getElementById('lil-found').innerHTML = '';
+    document.getElementById('lil-new').hidden = true;
+    document.getElementById('lil-q').focus();
+  }).catch(function (e) {
+    LIL.busy = false;
+    if (btn) btn.disabled = false;
+    if (args.contactId) toast(e.message);
+    else lilSay(e.message, true);
+  });
+}
+function lilDoneLine(r) {
+  if (r.noop) return;
+  var box = document.getElementById('lil-done');
+  LIL.done[r.targetId] = r;
+  box.hidden = false;
+  var html = '<div class="lil-who">' + (r.undone ? '' : '✓ ') + esc(r.name) + ' · ' + esc(r.brand.name) +
+      (r.brandCreated ? ' (new brand)' : '') + ' — ' + (r.status === 'accepted' ? 'accepted, on Zach’s list' : 'invite sent') + '</div>' +
+    (r.undone ? '<span class="lil-note" style="margin:0">undone</span>'
+      : '<button class="btn-ghost" style="padding:3px 11px;font-size:11px" data-lilundo="' + esc(r.targetId) + '">Undo</button>');
+  var el = document.getElementById('lil-d-' + r.targetId);
+  if (el) { el.innerHTML = html; el.classList.toggle('undone', !!r.undone); }
+  else box.insertAdjacentHTML('afterbegin', '<div class="lil-row" id="lil-d-' + esc(r.targetId) + '">' + html + '</div>');
+}
+
+document.getElementById('lil-q').addEventListener('input', function () {
+  clearTimeout(LIL_T);
+  LIL_T = setTimeout(lilSearch, 250);
+});
+document.getElementById('lil-brand').addEventListener('input', function () {
+  LIL.brand = null; LIL.newBrand = null;
+  clearTimeout(LIL_BT);
+  LIL_BT = setTimeout(lilBrandSearch, 200);
+});
+document.getElementById('lil-url').addEventListener('input', function () {
+  var nameBox = document.getElementById('lil-name');
+  var guess = lilNameFromLink(this.value);
+  if (guess && (!nameBox.value.trim() || nameBox.value === LIL.nameAuto)) { nameBox.value = guess; LIL.nameAuto = guess; }
+});
+document.getElementById('lil-found').addEventListener('click', function (e) {
+  var b = e.target.closest('[data-lillog]');
+  if (b) lilGo({ contactId: b.getAttribute('data-cid'), stage: b.getAttribute('data-lillog') }, b);
+});
+document.getElementById('lil-new').addEventListener('click', function (e) {
+  var pick = e.target.closest('[data-lilbrand]');
+  if (pick) {
+    var id = pick.getAttribute('data-lilbrand');
+    var hit = (LIL.hits || []).filter(function (x) { return x.id === id; })[0];
+    if (hit) lilPickBrand(hit);
+    return;
+  }
+  if (e.target.closest('[data-lilbrandnew]')) { lilPickNewBrand(); return; }
+  var go = e.target.closest('[data-lilnew]');
+  if (!go) return;
+  var name = document.getElementById('lil-name').value.trim();
+  if (!LIL.brand && !LIL.newBrand) { lilSay('Pick the brand first: type it above and choose it.', true); document.getElementById('lil-brand').focus(); return; }
+  if (!name) { lilSay('Their name, please.', true); document.getElementById('lil-name').focus(); return; }
+  var cat = document.getElementById('lil-cat');
+  lilGo({
+    brandId: LIL.brand ? LIL.brand.id : null,
+    newBrand: LIL.newBrand ? { name: LIL.newBrand.name, category: cat ? cat.value : null } : null,
+    name: name,
+    title: document.getElementById('lil-title').value.trim() || null,
+    linkedinUrl: document.getElementById('lil-url').value.trim() || null,
+    stage: go.getAttribute('data-lilnew')
+  }, go);
+});
+document.getElementById('lil-done').addEventListener('click', function (e) {
+  var b = e.target.closest('[data-lilundo]');
+  if (!b) return;
+  var r = LIL.done[b.getAttribute('data-lilundo')];
+  if (r) { b.disabled = true; lilUndo(r, lilDoneLine); }
+});
+document.getElementById('lil-close').addEventListener('click', lilClose);
+document.getElementById('lil-scrim').addEventListener('click', function (e) { if (e.target === this) lilClose(); });
+document.getElementById('lil-scrim').addEventListener('keydown', function (e) { if (e.key === 'Escape') lilClose(); });
 document.getElementById('zt-tsave').addEventListener('click', function () {
   var btn = this;
   btn.disabled = true;
@@ -4753,7 +5082,9 @@ function loadBrand(brandId) {
             // has written to yet opens wider — three, or four at a big
             // one; the narrower counts are for brands with a thread
             // already running.
-            var cold = !(b.targets || []).some(function (t) { return t.sentAt; });
+            var cold = !(b.targets || []).some(function (t) {
+              return t.sentAt || ['sent', 'accepted', 'replied', 'converted'].indexOf(t.status) !== -1;
+            });
             var sug = cold
               ? (b.tier === 'established' ? 4 : 3)
               : (b.tier === 'established' ? 3 : b.tier === 'growth' ? 2 : founder ? 1 : 2);
@@ -4890,6 +5221,16 @@ function loadBrand(brandId) {
               ? '<button class="btn-draft" data-cqueue="' + esc(c.id) + '" title="Put this exact person into TODAY’s list, past the cap if needed">→ Queue</button>' : '') +
             (!inPlay && !skipped
               ? '<button class="btn-ghost danger" data-cskip="' + esc(c.id) + '" title="Skip this person — out of the queue and the auto-pick will never suggest them; Queue brings them back">Skip</button>' : '') +
+            // Sent straight from LinkedIn, not through the queue: one click
+            // logs it (src/lib/li-log.ts) — no → Queue, no "Invite sent"
+            // first. Accepted goes onto Zach's list with no invite date.
+            lilChoices(ct ? ct.status : null).map(function (s) {
+              return s === 'accepted'
+                ? '<button class="btn-ghost' + (ct && ct.status === 'sent' ? '' : ' mini') + '" data-clog="accepted" data-cid="' + esc(c.id) +
+                  '" title="They accepted on LinkedIn: straight onto Zach’s list, no queue">They accepted ✓</button>'
+                : '<button class="btn-ghost mini" data-clog="sent" data-cid="' + esc(c.id) +
+                  '" title="You sent the invite straight from LinkedIn: logs it, dated today, without the queue">Invite sent ✓</button>';
+            }).join('') +
             (c.linkedinUrl ? '<a class="btn-ghost" href="' + esc(c.linkedinUrl) +
               '" target="_blank" rel="noopener">↗ LinkedIn</a>' : '') +
             '<button class="btn-ghost" data-cedit="' + esc(c.id) + '" title="Fix their name, title, LinkedIn or email — a rename regenerates their drafts">✎ Edit</button>' +
@@ -4962,15 +5303,27 @@ function loadBrand(brandId) {
                           : '<span>· never contacted</span>')
               : '<span class="status ' + (canSend ? 'queued' : esc(t.status)) + '">' + esc(liWords(t)) + '</span>') +
             (t.sentAt && t.status !== 'sent' ? '<span>· invited ' + shortDate(t.sentAt) + '</span>' : '') +
+            // Logged straight to accepted (li-log.ts): the invite went
+            // out from LinkedIn on a day nobody logged.
+            (!t.sentAt && ['accepted', 'replied', 'converted'].indexOf(t.status) !== -1
+              ? '<span title="Logged by hand. The invite went out from LinkedIn, not the queue, so it isn’t in the weekly limit or accept rates">· invited outside the queue</span>' : '') +
             (t.repliedAt && t.status !== 'replied' ? '<span>· replied ' + shortDate(t.repliedAt) + '</span>' : '') +
             (em ? '<span class="t-sep">·</span><span class="status ' + em.cls + '">' + esc(em.text) + '</span>' : '') +
             '</div>' +
             (dr
-              ? '<details style="margin-top:7px"><summary style="cursor:pointer;font-size:12px;color:var(--ink-3)">' +
-                  (t.sentAt ? 'The LinkedIn note that went out' : 'LinkedIn note & DM — not sent yet') + '</summary>' +
-                  '<div style="font-size:12.5px;color:var(--ink-2);margin-top:6px;white-space:pre-wrap"><b style="color:var(--ink-3);font-size:11px">INVITE NOTE</b><br>' + esc(dr.connectionNote) + '</div>' +
-                  '<div style="font-size:12.5px;color:var(--ink-2);margin-top:8px;white-space:pre-wrap"><b style="color:var(--ink-3);font-size:11px">FIRST DM</b><br>' + esc(dr.firstMessage) + '</div>' +
-                '</details>'
+              ? (function () {
+                  // A note written after the invite went — a hand-logged
+                  // invite went out from LinkedIn in Leo's own words — is
+                  // only the DM to use, never "the note that went out".
+                  var went = t.sentAt && new Date(dr.createdAt) <= new Date(t.sentAt);
+                  return '<details style="margin-top:7px"><summary style="cursor:pointer;font-size:12px;color:var(--ink-3)">' +
+                    (went ? 'The LinkedIn note that went out' : canSend ? 'LinkedIn note & DM — not sent yet' : 'The first DM, ready to copy') + '</summary>' +
+                    (went || canSend
+                      ? '<div style="font-size:12.5px;color:var(--ink-2);margin-top:6px;white-space:pre-wrap"><b style="color:var(--ink-3);font-size:11px">INVITE NOTE</b><br>' + esc(dr.connectionNote) + '</div>'
+                      : '') +
+                    '<div style="font-size:12.5px;color:var(--ink-2);margin-top:8px;white-space:pre-wrap"><b style="color:var(--ink-3);font-size:11px">FIRST DM</b><br>' + esc(dr.firstMessage) + '</div>' +
+                  '</details>';
+                })()
               : '') +
             '</div>' +
             // The brand card runs the whole flow now: copy the note,
@@ -5190,6 +5543,16 @@ function loadBrand(brandId) {
             toast(r.contactName + ' is already in play (' + r.status + ')');
             btn.disabled = false;
           }
+        }).catch(function (e) { toast(e.message); btn.disabled = false; });
+      });
+    });
+    // Invite sent / They accepted, logged in one click (lilLog). The card
+    // redraws after, and again on Undo while this brand is still open.
+    box.querySelectorAll('[data-clog]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        btn.disabled = true;
+        lilLog({ contactId: btn.getAttribute('data-cid'), stage: btn.getAttribute('data-clog') }, function () {
+          if (lilOnBrand(b.id)) loadBrand(b.id);
         }).catch(function (e) { toast(e.message); btn.disabled = false; });
       });
     });
@@ -5502,22 +5865,74 @@ function openContactForm(brandId, slot, onDone, existing) {
       '</div>' +
       '<div style="margin-bottom:10px"><label class="lbl">Notes</label>' +
         '<textarea class="field-box" id="nc-notes" rows="2" placeholder="What they said, who they report to, when to come back…">' + esc(ex.notes || '') + '</textarea></div>' +
+      // Invited straight from LinkedIn? Say so here and they skip the
+      // queue (src/lib/li-log.ts): no → Queue, no "Invite sent" after.
+      (ex.id ? '' :
+        '<div style="margin-bottom:12px"><label class="lbl">On LinkedIn</label>' +
+          '<div class="chips" style="margin:0" id="nc-stage">' +
+            '<button type="button" class="chip active" data-ncstage="">Not contacted yet</button>' +
+            '<button type="button" class="chip" data-ncstage="sent" title="You just sent the invite from LinkedIn: logged today, counts like any send">Invite sent</button>' +
+            '<button type="button" class="chip" data-ncstage="accepted" title="They accepted an invite you sent from LinkedIn: straight onto Zach’s list">They accepted</button>' +
+          '</div></div>') +
       '<div style="display:flex;gap:8px"><button class="btn-solid" id="nc-save">' + (ex.id ? 'Save changes' : 'Add person') + '</button>' +
         '<button class="btn-ghost" id="nc-cancel">Cancel</button>' +
         (ex.id ? '<span style="flex:1"></span><button class="btn-ghost" id="nc-move" title="They changed jobs — move them to their new company, keeping everything we know about them">They moved company →</button>' : '') +
       '</div>' +
       '<div id="nc-move-slot"></div>' +
-      '<div class="hint" style="margin:10px 0 0">' + (ex.id
+      '<div class="hint" id="nc-hint" style="margin:10px 0 0">' + (ex.id
         ? 'Fixing the name also rewrites their queued note and DM with the corrected name.'
         : 'A decision-maker title plus a LinkedIn URL queues them for outreach automatically.') + '</div>' +
     '</div>';
+
+  var stage = '';
+  var HINTS = {
+    '': 'A decision-maker title plus a LinkedIn URL queues them for outreach automatically.',
+    sent: 'Logged as invited today, without the queue. Press They accepted when it lands.',
+    accepted: 'Straight onto Zach’s list. The invite went out unlogged, so it stays out of the weekly limit and accept rates.'
+  };
+  var SAVES = { '': 'Add person', sent: 'Add, invite sent', accepted: 'Add as accepted' };
+  var stageBox = slot.querySelector('#nc-stage');
+  if (stageBox) stageBox.onclick = function (e) {
+    var c = e.target.closest('[data-ncstage]');
+    if (!c) return;
+    stage = c.getAttribute('data-ncstage');
+    stageBox.querySelectorAll('[data-ncstage]').forEach(function (x) { x.classList.toggle('active', x === c); });
+    slot.querySelector('#nc-hint').textContent = HINTS[stage];
+    slot.querySelector('#nc-save').textContent = SAVES[stage];
+  };
+  // A pasted profile link starts the name ("…/in/jane-doe-4b21a" → Jane
+  // Doe) — only into an empty box, or over its own earlier guess.
+  var nameAuto = '';
+  if (!ex.id) slot.querySelector('#nc-li').addEventListener('input', function () {
+    var nb = slot.querySelector('#nc-name'), guess = lilNameFromLink(this.value);
+    if (guess && (!nb.value.trim() || nb.value === nameAuto)) { nb.value = guess; nameAuto = guess; }
+  });
 
   slot.querySelector('#nc-cancel').onclick = function () { slot.innerHTML = ''; };
   if (ex.id) slot.querySelector('#nc-move').onclick = function () { openMoveContact(ex, brandId, slot); };
   slot.querySelector('#nc-save').onclick = function () {
     var name = slot.querySelector('#nc-name').value.trim();
     if (!name) { toast('Name is required'); return; }
-    this.disabled = true;
+    var saveBtn = this;
+    saveBtn.disabled = true;
+    if (!ex.id && stage) {
+      lilLog({
+        brandId: brandId,
+        name: name,
+        title: slot.querySelector('#nc-title').value || null,
+        linkedinUrl: slot.querySelector('#nc-li').value || null,
+        email: slot.querySelector('#nc-email').value || null,
+        phone: slot.querySelector('#nc-phone').value || null,
+        location: slot.querySelector('#nc-loc').value || null,
+        notes: slot.querySelector('#nc-notes').value || null,
+        stage: stage
+      }, function (r) {
+        if (!r.undone) slot.innerHTML = '';
+        if (onDone) onDone();
+        else if (lilOnBrand(brandId)) loadBrand(brandId);
+      }).catch(function (e) { toast(e.message); saveBtn.disabled = false; });
+      return;
+    }
     api('upsertContact', {
       id: ex.id || undefined,
       brandId: brandId,
@@ -5532,7 +5947,7 @@ function openContactForm(brandId, slot, onDone, existing) {
       toast(ex.id ? 'Saved — drafts regenerate with the corrected name' : 'Added');
       if (onDone) onDone();
       else loadBrand(brandId);
-    }).catch(function (e) { toast(e.message); });
+    }).catch(function (e) { toast(e.message); saveBtn.disabled = false; });
   };
 }
 

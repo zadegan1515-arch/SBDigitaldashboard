@@ -38,6 +38,8 @@ import {
 import { readLiLog, markLiSwept, liResting, readLiResearch, markLiResearch, researchResting, LI_READER, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
 import { recordRun } from '@/lib/li-report'
 import { LANES, RESEARCH_EXTRA, brandKey } from '@/lib/stock'
+import { logLinkedInPerson, personOnFile, undoLinkedInLog, checkNewPerson } from '@/lib/li-log-db'
+import { nameFromSlug, isLogStage } from '@/lib/li-log'
 import { guessCategory } from '@/lib/category-hints'
 
 const prisma = new PrismaClient()
@@ -96,7 +98,10 @@ async function findBrandForCapture(name: string, externalId: string | null) {
 // opens with up to four threads. Not the 25-contact file cap above.
 const TARGET_CAP_PER_BRAND = 4
 async function reconcileBrandTargets(brandId: string, perBrand = TARGET_CAP_PER_BRAND) {
-  const worked = await prisma.target.count({ where: { brandId, sentAt: { not: null } } })
+  // Anyone written to — an accept logged with no invite date too.
+  const worked = await prisma.target.count({
+    where: { brandId, OR: [{ sentAt: { not: null } }, { status: { in: ['sent', 'accepted', 'replied', 'converted'] } }] },
+  })
   const room = Math.max(0, perBrand - worked)
   const active = await prisma.target.findMany({
     where: { brandId, status: { in: ['queued', 'drafted'] }, shelved: false },
@@ -190,7 +195,9 @@ async function createBrandForCapture(name: string, externalId: string | null) {
 type LiVerdict = 'add' | 'full' | 'dupe' | 'elsewhere' | 'notBuyer' | 'noBrand'
 type LiRow = { name: string; role: string | null; linkedinUrl: string; slug: string; verdict: LiVerdict; fit: number; at?: string }
 
-async function planLinkedin(body: any) {
+// Which dashboard brand a LinkedIn company is — for a People page, and
+// for the person on a profile page (their current company).
+async function resolveLinkedinBrand(body: any) {
   const slug = companySlug(body.companyUrl)
   const companyName = String(body.companyName || '').trim().slice(0, 120)
   const typed = String(body.brandName || '').trim().slice(0, 120)
@@ -245,6 +252,11 @@ async function planLinkedin(body: any) {
       if (owner && !suggestions.includes(owner.name)) suggestions.unshift(owner.name)
     }
   }
+  return { brand, matchedBy, suggestions, slug, companyName, typed }
+}
+
+async function planLinkedin(body: any) {
+  const { brand, matchedBy, suggestions, slug, companyName, typed } = await resolveLinkedinBrand(body)
 
   // The cards: a real profile link and a real name, once each.
   const seen = new Set<string>()
@@ -901,6 +913,89 @@ export async function POST(req: NextRequest) {
   if (body.action === 'liPreview') {
     const plan = await planLinkedin(body)
     return NextResponse.json({ ok: true, ...liSummary(plan) }, { headers: cors })
+  }
+
+  // -----------------------------------------------------------------
+  // The SB · Log pill (scripts/linkedin-log.user.js, Zach's browser) on
+  // someone's LinkedIn profile (Leo, Sep 2026: invites
+  // often go out straight from LinkedIn, unlogged). One click logs them
+  // as "invite sent" or "accepted" — never through a day's queue. The
+  // rules are src/lib/li-log.ts, the same as Zach's list and the brand
+  // page use.
+  // -----------------------------------------------------------------
+
+  // action: "liPerson" — are they on file, and under which brand would
+  // they go? Nothing is saved.
+  if (body.action === 'liPerson') {
+    const slug = profileSlug(body.url)
+    if (!slug) return NextResponse.json({ ok: false, error: 'Open their LinkedIn profile first (linkedin.com/in/…).' }, { status: 400, headers: cors })
+    const r = await resolveLinkedinBrand(body)
+    const nameGuess = cleanName(body.name) ?? nameFromSlug(slug)
+    const person = await personOnFile(prisma, { url: profileUrl(slug), name: nameGuess, brandId: r.brand?.id ?? null })
+    const b = r.brand
+    return NextResponse.json({
+      ok: true,
+      url: profileUrl(slug),
+      person,
+      brand: b ? { id: b.id, name: b.name, category: b.category, archived: !!b.passedAt } : null,
+      matchedBy: r.matchedBy,
+      notFound: !b && r.typed ? r.typed : null,
+      suggestions: r.suggestions,
+      createName: !b ? (r.typed || r.companyName || null) : null,
+      nameGuess,
+      titleGuess: roleFromHeadline(body.headline, r.companyName || b?.name || null),
+    }, { headers: cors })
+  }
+
+  // action: "liPersonLog" — the log itself: { stage: 'sent' | 'accepted' }
+  // for someone on file (contactId), or for the profile's person under a
+  // brand (picked, typed, matched, or — Leo pressed "Add … as a new
+  // brand" — created here).
+  if (body.action === 'liPersonLog') {
+    const helpers = { fit: scoreFit, decisionMaker: looksLikeDecisionMaker }
+    try {
+      if (body.contactId) {
+        const done = await logLinkedInPerson(prisma, { contactId: String(body.contactId), stage: body.stage, actor: 'SB pill' }, helpers)
+        return NextResponse.json({ ok: true, ...done, brandCreated: false }, { headers: cors })
+      }
+      const slug = profileSlug(body.url)
+      if (!slug) return NextResponse.json({ ok: false, error: 'Open their LinkedIn profile first (linkedin.com/in/…).' }, { status: 400, headers: cors })
+      const r = await resolveLinkedinBrand(body)
+      let brand = r.brand
+      let brandCreated = false
+      const createName = r.typed || r.companyName
+      if (!brand && body.createIfMissing === true && createName) {
+        // The person first: a new brand only once they're sound.
+        if (!isLogStage(body.stage)) throw new Error('Pick “Invite sent” or “They accepted”.')
+        checkNewPerson({ name: body.name || nameFromSlug(slug), linkedinUrl: profileUrl(slug) })
+        const made = await createBrandFromLinkedin(createName, r.slug, [body.companyName, body.headline].filter(Boolean).map(String).join(' '))
+        if (made) { brand = made.brand; brandCreated = made.created }
+      }
+      if (!brand) {
+        return NextResponse.json({ ok: false, error: r.typed ? `No brand called "${r.typed}" in the dashboard.` : 'Pick the dashboard brand first.' }, { status: 400, headers: cors })
+      }
+      const done = await logLinkedInPerson(prisma, {
+        brandId: brand.id,
+        name: body.name,
+        title: body.title,
+        linkedinUrl: profileUrl(slug),
+        stage: body.stage,
+        actor: 'SB pill',
+      }, helpers)
+      return NextResponse.json({ ok: true, ...done, brandCreated }, { headers: cors })
+    } catch (err: any) {
+      return NextResponse.json({ ok: false, error: err?.message ?? 'Could not log that.' }, { status: 400, headers: cors })
+    }
+  }
+
+  // action: "liPersonUndo" — the panel's Undo, straight after a log.
+  if (body.action === 'liPersonUndo') {
+    try {
+      const done = await undoLinkedInLog(prisma, body.undo, 'SB pill')
+      return NextResponse.json({ ok: true, ...done }, { headers: cors })
+    } catch (err: any) {
+      return NextResponse.json({ ok: false, error: err?.message ?? 'Could not undo that.' }, { status: 400, headers: cors })
+    }
   }
 
   // action: "liCapture" — the same plan, saved. Re-planned here rather

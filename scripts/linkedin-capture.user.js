@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.13
+// @version      1.15
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -25,7 +25,9 @@
 //
 // Run it on LEO'S LinkedIn account, not Zach's. Zach's account sends the
 // connection requests; if LinkedIn ever objects to this, it should be
-// Leo's account that hears about it.
+// Leo's account that hears about it. Zach's browser gets only
+// linkedin-log.user.js, which logs an invite or an accept from someone's
+// profile and nothing else.
 //
 // Two ways to use it. By hand: open a People page, press the pill, see
 // who it found, save when you say so; a brand the dashboard doesn't have
@@ -81,7 +83,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.13';
+  var VERSION = '1.15';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -531,8 +533,14 @@
   // visible at once. Off a company page it only says where to go.
   function openElsewhere() {
     var search = /\/search\/results\/companies/.test(location.pathname);
+    var profile = /^\/in\//.test(location.pathname);
     freshPanel([
       head('SB LinkedIn capture'),
+      // Logging someone you invited is the SB Log script's job (Zach's
+      // browser); from anywhere, Zach's list takes their link.
+      profile
+        ? h('div', { style: MUTED }, ['Logging someone you invited? That\'s the ', b('SB · Log'), ' pill (Zach\'s browser), or paste their link into ', b('Zach\'s list → + Add from LinkedIn'), '.'])
+        : null,
       search
         ? h('div', { style: MUTED }, ['Click the brand\'s company in these results, then its ', b('People'), ' tab, then this pill again.'])
         : h('div', { style: MUTED }, ['This works on a brand\'s ', b('company page'), ' on LinkedIn. The easy way in: the dashboard\'s ', b('Under 25'), ' list, then ', b('People ↗'), ' on a brand.']),
