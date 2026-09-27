@@ -388,11 +388,41 @@ function planningDays(count: number, extras: ExtraDays, opts: { afterToday?: boo
   return out
 }
 
+// The Schedule's columns: today when it is a sending day, then the next
+// three sending days after it — an extra day Leo opened counts, so a
+// week with an extra Friday shows four columns. A later day Leo already
+// planned (brands pinned or a category set) stays on screen even when an
+// extra day pushes it past the next three: dropped, its pinned brands
+// were still held out of every other day and the suggestions, with no
+// card to move or unpin them. The "Put on a day" menus (brand page,
+// Brands list) offer these same days, so a brand is never put somewhere
+// the Schedule doesn't show.
+function scheduleDays(plan: Record<string, { brandIds?: string[]; category?: string | null } | undefined>, extras: ExtraDays): SendingDay[] {
+  const todayKey = localDayKey()
+  const list: SendingDay[] = [
+    ...(isSendingKey(todayKey, extras) ? [{ key: todayKey, at: new Date() }] : []),
+    ...planningDays(3, extras, { afterToday: true }),
+  ]
+  const shown = new Set(list.map(d => d.key))
+  const noonOf = (k: string) => Date.parse(`${k}T12:00:00Z`)
+  for (const k of Object.keys(plan).sort()) {
+    const d = plan[k]
+    if (k <= todayKey || shown.has(k) || !isSendingKey(k, extras)) continue
+    if (!(d?.brandIds?.length || d?.category)) continue
+    const ahead = Math.round((noonOf(k) - noonOf(todayKey)) / 864e5)
+    list.push({ key: k, at: new Date(Date.now() + ahead * 864e5) })
+    shown.add(k)
+  }
+  return list.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+}
+
 // The default for the Schedule's "+ Add a sending day" picker: the next
 // Monday-to-Friday day, from today on, that nothing goes out on yet.
-function nextOffWeekday(extras: ExtraDays): string | null {
+// afterToday skips today (the "Put on a day" menus: an off today is not
+// a column on the Schedule, so nothing is put there from elsewhere).
+function nextOffWeekday(extras: ExtraDays, opts: { afterToday?: boolean } = {}): string | null {
   const todayKey = localDayKey()
-  for (let k = 0; k < 30; k++) {
+  for (let k = opts.afterToday ? 1 : 0; k < 30; k++) {
     const key = addDaysKey(todayKey, k)
     const dow = dayKeyDow(key)
     if (dow >= 1 && dow <= 5 && !isSendingKey(key, extras)) return key
@@ -1174,6 +1204,83 @@ async function planAddCore(plan: OutreachPlan, date: string, brandIds: unknown) 
     }
   }
   return { forToday, results, raw }
+}
+
+// What planAddCore WOULD do, nothing written: the Brands list's "Put on a
+// day" shows this before its Add button (CLAUDE.md rule 6 — ticked
+// brands can come off other days and out of today's queue). Same order
+// and the same answers: refused (archived, do-not-email, in talks, day
+// full), moved from another day, people taken out of today's queue, and
+// who would go out — today from the queue's own preview, a later day
+// from the preview after those people are back in the pool.
+async function planAddPreview(plan: OutreachPlan, date: string, brandIds: unknown) {
+  const today = localDayKey()
+  const forToday = date === today
+  const ids = [...new Set((Array.isArray(brandIds) ? brandIds : []).map(String).filter(Boolean))].slice(0, 40)
+  const brands = ids.length
+    ? await prisma.brand.findMany({ where: { id: { in: ids } }, select: PLAN_BRAND_SELECT })
+    : []
+  const byId = new Map(brands.map(b => [b.id, b]))
+  const dayIds = (plan[date]?.brandIds ?? []).slice()
+  const dayStart = startOfLocalDay()
+  const results: any[] = []
+  const refused = (id: string, name: string, reason: string, ctx: ReasonCtx = {}) => ({
+    brandId: id, brandName: name, added: false, state: 'refused', going: 0,
+    reason, reasonText: reasonText(reason, ctx), movedFrom: null, people: [] as PreviewPerson[], unqueued: 0,
+  })
+  for (const id of ids) {
+    const b = byId.get(id)
+    if (!b) { results.push(refused(id, '', 'notfound')); continue }
+    const no = planRefusal(b)
+    if (no) { results.push(refused(id, b.name, no, reasonCtx(b))); continue }
+    if (!dayIds.includes(id)) {
+      if (dayIds.length >= PLAN_DAY_MAX) { results.push(refused(id, b.name, 'dayfull')); continue }
+      dayIds.push(id)
+    }
+    const movedFrom = Object.keys(plan).sort().find(k => k !== date && k >= today && (plan[k]?.brandIds ?? []).includes(id)) ?? null
+    const inToday = (t: PlanBrand['targets'][number]) =>
+      !!t.queuedFor && t.queuedFor >= dayStart && !t.sentAt && ['queued', 'drafted'].includes(t.status)
+    const unqueued = forToday ? 0 : b.targets.filter(inToday).length
+    const sim: PlanBrand = unqueued
+      ? { ...b, targets: b.targets.map(t => (inToday(t) ? { ...t, queuedFor: null } : t)) }
+      : b
+    const p = previewBrandPicks(sim, { forToday, dayStart, explicitAdd: forToday })
+    const sentToday = forToday && !p.people.length && b.targets.some(t => t.sentAt && t.sentAt >= dayStart)
+    results.push({
+      brandId: id, brandName: b.name, added: true,
+      state: p.people.length ? 'going' : sentToday ? 'sent' : 'blocked',
+      going: p.people.length, people: p.people.slice(0, 6),
+      reason: p.people.length ? null : p.reason,
+      reasonText: p.people.length ? null : reasonText(p.reason, reasonCtx(b)),
+      movedFrom, unqueued,
+    })
+  }
+  // The people the day holds already, leaving out the brands being added
+  // (their own number is in the results): today, everyone invited or in
+  // the queue; a later day, who its pinned brands put in play. The page
+  // warns when the add takes the day past the day's 20 — what doesn't
+  // fit goes out on the next sending day.
+  let dayPeople = 0
+  if (forToday) {
+    const [queued, sent] = await Promise.all([
+      prisma.target.count({ where: {
+        brandId: { notIn: ids }, status: { in: ['queued', 'drafted'] }, shelved: false,
+        queuedFor: { gte: dayStart }, sentAt: null,
+      } }),
+      prisma.target.count({ where: { brandId: { notIn: ids }, sentAt: { gte: dayStart } } }),
+    ])
+    dayPeople = queued + sent
+  } else {
+    const kept = (plan[date]?.brandIds ?? []).filter(id => !ids.includes(id))
+    const on = kept.length
+      ? await prisma.brand.findMany({ where: { id: { in: kept } }, select: PLAN_BRAND_SELECT })
+      : []
+    for (const b of on) {
+      if (planRefusal(b)) continue
+      dayPeople += previewBrandPicks(b, { forToday: false, dayStart }).people.length
+    }
+  }
+  return { forToday, results, dayPeople, cap: DAILY_SEND_LIMIT }
 }
 
 type PlanRowCtx = { date: string; forToday: boolean; pinnedOn: Map<string, string>; dayStart: Date }
@@ -2798,6 +2905,16 @@ const handlers: Record<string, Handler> = {
         activations: b._count.activations,
       }
     }))
+    // Which Schedule day each brand is planned for, so a lane's "Put
+    // them on a day" can say so (and leave those unticked).
+    const pinned = pinnedDays(await readPlan())
+    for (const r of [...stock.lanes, ...stock.others]) {
+      for (const b of r.brands) {
+        const on = pinned.get(b.id) ?? null
+        ;(b as any).plannedOn = on
+        ;(b as any).plannedLabel = on ? dayLabel(on) : null
+      }
+    }
     // The ideas are the LinkedIn run's research list; say what it found
     // for the ones it couldn't place ("no clear LinkedIn page").
     const rlog = await readLiResearch(prisma)
@@ -4442,28 +4559,7 @@ const handlers: Record<string, Handler> = {
       }
     }
 
-    // Today when it is a sending day, then the next three sending days
-    // after it — an extra day Leo opened counts, so a week with an extra
-    // Friday shows four columns.
-    const dayList: SendingDay[] = [
-      ...(isSendingKey(todayKey, extras) ? [{ key: todayKey, at: new Date() }] : []),
-      ...planningDays(3, extras, { afterToday: true }),
-    ]
-    // A later day Leo already planned (brands pinned or a category set)
-    // stays on screen even when an extra day pushes it past the next
-    // three. Dropped, its pinned brands were still held out of every
-    // other day and the suggestions, with no card to move or unpin them.
-    const shownKeys = new Set(dayList.map(d => d.key))
-    const noonOf = (k: string) => Date.parse(`${k}T12:00:00Z`)
-    for (const k of Object.keys(plan).sort()) {
-      const d: any = plan[k]
-      if (k <= todayKey || shownKeys.has(k) || !isSendingKey(k, extras)) continue
-      if (!(d?.brandIds?.length || d?.category)) continue
-      const ahead = Math.round((noonOf(k) - noonOf(todayKey)) / 864e5)
-      dayList.push({ key: k, at: new Date(Date.now() + ahead * 864e5) })
-      shownKeys.add(k)
-    }
-    dayList.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+    const dayList = scheduleDays(plan, extras)
     // brandId -> names of its people already stamped into today's queue,
     // and whatever a partial fill left of a brand for its next day.
     const stampedByBrand = new Map<string, string[]>()
@@ -4857,12 +4953,75 @@ const handlers: Record<string, Handler> = {
   // comes back with what will happen: who goes, or exactly why not.
   // Today queues straight away; a later day answers from the preview.
   // The plan is read once and written once, however long the list.
-  async planAddBrands({ date, brandIds }: any) {
+  // preview = the same answers with nothing written (planAddPreview).
+  // A day nothing goes out on is refused unless addDay opens it as a
+  // sending day first (the "Put on a day" menus' "adds it as a sending
+  // day") — pinned there otherwise, a brand sat on a day the Schedule
+  // never shows until the morning roll carried it off.
+  async planAddBrands({ date, brandIds, preview = false, addDay = false }: any) {
     if (!isDayKey(date)) throw new Error('Bad date')
     if (date < localDayKey()) throw new Error('That day has passed')
+    const extras = await readExtraDays()
+    const opening = !isSendingKey(date, extras)
+    if (opening && !addDay) throw new Error(`${dayLabel(date)} is not a sending day`)
     const plan = await readPlan()
+    if (preview) {
+      const p = await planAddPreview(plan, date, brandIds)
+      return {
+        preview: true, date, label: dayLabel(date), opening, forToday: p.forToday,
+        added: p.results.filter(r => r.added).length, results: p.results,
+        dayPeople: p.dayPeople, cap: p.cap,
+      }
+    }
+    if (opening) {
+      if (extras.size >= EXTRA_DAYS_MAX) throw new Error('Too many extra days open already')
+      extras.add(date)
+      await writeExtraDays(extras)
+    }
     const { forToday, results } = await planAddCore(plan, date, brandIds)
-    return { date, forToday, added: results.filter(r => r.added).length, results }
+    return { date, forToday, opened: opening, added: results.filter(r => r.added).length, results }
+  },
+
+  // The "Put on a day" menus outside the Schedule (brand page, Brands
+  // list): the Schedule's own days (scheduleDays) and the next weekday
+  // nothing goes out on, which picking opens as a sending day. With a
+  // brandId, where that brand stands: the day it is planned for and who
+  // goes then, people already in today's queue, or why it can't be
+  // planned at all.
+  async planDayChoices({ brandId }: any = {}) {
+    const today = localDayKey()
+    const [plan, extras] = await Promise.all([readPlan(), readExtraDays()])
+    const days = scheduleDays(plan, extras).map(d => ({
+      key: d.key, label: dayLabel(d.key), today: d.key === today, extra: extras.has(d.key),
+      category: plan[d.key]?.category ?? null,
+    }))
+    const off = nextOffWeekday(extras, { afterToday: true })
+    const offDay = off && !days.some(d => d.key === off) ? { key: off, label: dayLabel(off) } : null
+    if (!brandId) return { today, days, offDay }
+    const b = await prisma.brand.findUnique({ where: { id: String(brandId) }, select: PLAN_BRAND_SELECT })
+    if (!b) throw new Error('Brand not found')
+    const dayStart = startOfLocalDay()
+    const pinnedOn = pinnedDays(plan, today).get(b.id) ?? null
+    const no = planRefusal(b)
+    const inTodayQueue = b.targets.filter(t =>
+      !!t.queuedFor && t.queuedFor >= dayStart && !t.sentAt && ['queued', 'drafted'].includes(t.status)).length
+    const sentToday = b.targets.filter(t => t.sentAt && t.sentAt >= dayStart).length
+    let going = 0
+    let why: string | null = null
+    if (pinnedOn && !no) {
+      const p = previewBrandPicks(b, { forToday: pinnedOn === today, dayStart, explicitAdd: pinnedOn === today })
+      going = p.people.length
+      why = going ? null : reasonText(p.reason, reasonCtx(b))
+    }
+    return {
+      today, days, offDay,
+      brand: {
+        id: b.id, name: b.name,
+        refusal: no ? reasonText(no, reasonCtx(b)) : null, refusalReason: no,
+        pinnedOn, pinnedLabel: pinnedOn ? dayLabel(pinnedOn) : null,
+        going, why, inTodayQueue, sentToday,
+      },
+    }
   },
 
   // The old single-brand add, kept for anything still calling it. Same

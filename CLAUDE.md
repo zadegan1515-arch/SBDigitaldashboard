@@ -82,11 +82,22 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   opened to its thread count (`previewBrandPicks` mirrors `queueBrandTargets` without writing;
   `fillWholeBrands` is shared by the preview and `getTodayQueue`, so what the Schedule says is what
   the LinkedIn tab stamps; a day never passes 20). Pinned cards say who goes or exactly why not
-  (`outreachGate` + `reasonText`). Adding: day search (`searchPlanBrands`), **Paste a list**
-  (`matchBrandList`), the day's **Fill box** (`suggestForDay`, any category, Fill to 20 = whole brands
-  that fit), category drill-in with multi-select (`categoryBrands`). Moving: drag onto a day or
-  "Move to" (`planMoveBrand`; moving off today un-stamps unsent people, nothing shelved). Plan
+  (`outreachGate` + `reasonText`). Adding: day search (`searchPlanBrands`; Enter adds the top match
+  and the cursor stays in the box for the next one — a redraw keeps the focused box's text, a box
+  Leo left clears), **Paste a list** (`matchBrandList`; a list pasted straight into a day's add box
+  opens it and checks at once), the day's **Fill box** (`suggestForDay`, any category, Fill to 20 =
+  whole brands that fit), category drill-in with multi-select (`categoryBrands`). Moving: drag onto a
+  day or "Move to" (`planMoveBrand`; moving off today un-stamps unsent people, nothing shelved). Plan
   writes go through `planAddBrands` / `planMoveBrand` / `planRemoveBrand` / `planSetCategory`.
+  **Put on a day outside the Schedule** (Leo: "make sure adding brands to days is easy"): the brand
+  page's Schedule line (`bpLoad`: where it stands — on a day and who goes, in today's queue, or why
+  it can't — plus Put on a day / Move to… / Take off; off today also passes it for today), the
+  Brands list's tick bar and Stock take's lanes ("Put on a day (N ready)", a day's worth pre-ticked)
+  share one picker (`pdCtx`/`pdHtml`): pick a day → `planAddBrands({ preview: true })` shows who
+  goes, what moves off another day or out of today's queue, and a warning past the day's 20 → Add
+  sends exactly the previewed ids. Days = `planDayChoices` = the Schedule's columns
+  (`scheduleDays`, shared with `getOutreachPlan`) + the next off weekday, which `addDay` opens as
+  a sending day; `planAddBrands` refuses a non-sending day without it.
   Thin / no-one brands link "LinkedIn people ↗" (`liPeopleUrl`) for the LinkedIn capture script;
   the tab refreshes on focus so a capture shows up. "The rest of …" rows (past a day's 20) have
   **Add** (pins to that day; the fill makes room) and "Other day…". **Plan my week** (`planWeek`
