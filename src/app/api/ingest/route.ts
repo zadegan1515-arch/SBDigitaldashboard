@@ -35,7 +35,8 @@ import {
   normalizeCompany, judgeDiscovery, industryFits, decideResearchMatch, nearName,
   type LiCompany,
 } from '@/lib/li-capture'
-import { readLiLog, markLiSwept, liResting, readLiResearch, markLiResearch, researchResting, LI_READER } from '@/lib/li-sweep'
+import { readLiLog, markLiSwept, liResting, readLiResearch, markLiResearch, researchResting, LI_READER, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
+import { recordRun } from '@/lib/li-report'
 import { LANES, RESEARCH_EXTRA, brandKey } from '@/lib/stock'
 import { guessCategory } from '@/lib/category-hints'
 
@@ -640,6 +641,7 @@ export async function POST(req: NextRequest) {
       resting,
       underCap: underCap.length,
       cap: CONTACT_CAP_PER_BRAND,
+      latest: LI_SCRIPT_VERSION,
     }, { headers: cors })
   }
 
@@ -861,7 +863,37 @@ export async function POST(req: NextRequest) {
         })
       } catch { /* non-fatal */ }
     }
-    return NextResponse.json({ ok: true }, { headers: cors })
+    // The run's report (li-report.ts). Research names that never became
+    // a brand come through here too, with no brandId.
+    if (body.run) {
+      try {
+        await recordRun(prisma, {
+          kind: 'brand', run: String(body.run), script: body.script, reader: Number(body.reader) || 0,
+          name: body.name, brandId: brandId || null, seen: body.seen, added: body.added,
+          note: body.note || null, problem: body.problem || null, sample: body.sample || null,
+        })
+      } catch { /* the report is a nicety; the sweep log above is what counts */ }
+    }
+    return NextResponse.json({ ok: true, latest: LI_SCRIPT_VERSION }, { headers: cors })
+  }
+
+  // action: "liRun" — a run started, paused, carried on or ended.
+  if (body.action === 'liRun') {
+    const kind = ['start', 'pause', 'resume', 'finish'].includes(body.kind) ? body.kind : null
+    if (!kind || !body.run) return NextResponse.json({ ok: false, error: 'kind and run needed' }, { status: 400, headers: cors })
+    try {
+      await recordRun(prisma, {
+        kind, run: String(body.run), script: body.script, reader: Number(body.reader) || 0,
+        focus: body.focus, items: body.items, why: body.why, stopped: !!body.stopped, newBrands: body.newBrands,
+      })
+    } catch { /* non-fatal */ }
+    return NextResponse.json({ ok: true, latest: LI_SCRIPT_VERSION }, { headers: cors })
+  }
+
+  // action: "liVersion" — the current script, so an older copy can offer
+  // the update without waiting for Tampermonkey's daily check.
+  if (body.action === 'liVersion') {
+    return NextResponse.json({ ok: true, latest: LI_SCRIPT_VERSION }, { headers: cors })
   }
 
   // action: "liPreview" — what a LinkedIn People page would add, without
