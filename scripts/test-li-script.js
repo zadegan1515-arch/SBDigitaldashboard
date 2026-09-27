@@ -47,6 +47,15 @@
 //      the feed wipes the mark from the address as it loads. A run left
 //      behind by a closed tab doesn't block it; a live run in another
 //      tab is shown instead of doubled.
+//  14. On someone's profile the pill logs them (Leo, Sep 2026: invites go
+//      out straight from LinkedIn, unlogged): it reads the name from the
+//      <h1>, the headline, and the current company (the top card's
+//      "Current company", else the first job's logo), asks the dashboard
+//      who they are, and logs "They accepted" / "Invite sent" in one click
+//      — for someone on file only what's left (a logged invite offers only
+//      They accepted), a new brand only when asked, Undo right after. A
+//      profile's subpage points back to the profile; the sample for Claude
+//      copies the top card.
 //   6. The pill sits bottom-left, clear of LinkedIn's Messaging bar; the
 //      Tampermonkey menu opens the same panel; and a copy running without
 //      its @grant lines (pasted under Tampermonkey's sample) says so.
@@ -121,6 +130,34 @@ function page(people, title, extra) {
     '</main></body></html>';
 }
 
+// A LinkedIn profile, as its top card and Experience section come:
+// the name in an <h1>, pronouns and badges around it, the headline, the
+// "Current company" button (when LinkedIn shows one), and the first job
+// with its company logo.
+function profile(o) {
+  return '<!doctype html><html><head><title>(2) ' + o.name + ' | LinkedIn</title></head><body style="margin:0">' +
+    '<header id="global-nav" style="height:50px"><a href="https://www.linkedin.com/in/leo-self/">Me</a><h1>Global nav</h1></header>' +
+    '<main><section class="artdeco-card"><div class="ph5">' +
+      '<div><a href="' + o.url + 'overlay/about-this-profile/"><h1 class="text-heading-xlarge">' + o.name + '</h1></a></div>' +
+      '<span class="text-body-small">She/Her</span><span>· 2nd</span>' +
+      '<div class="text-body-medium break-words">' + o.headline + '</div>' +
+      (o.current ? '<ul><li><button aria-label="Current company: ' + o.current + '. Click to skip to experience card"><img alt=""><span>' + o.current + '</span></button></li></ul>' : '') +
+      '<span>Los Angeles, California, United States</span><a href="#">Contact info</a>' +
+      '<span>500+ connections</span><button>Connect</button><button>Message</button><button>More</button>' +
+    '</div></section>' +
+    '<section><div id="experience" class="pv-profile-card__anchor"></div><h2>Experience</h2><ul><li>' +
+      '<a href="https://www.linkedin.com/company/' + o.coSlug + '/"><img alt="' + o.co + ' logo"></a>' +
+      '<div><span>' + o.role + '</span><span>' + o.co + ' · Full-time</span><span>Jan 2024 - Present</span></div>' +
+    '</li></ul></section></main>' +
+    '<aside><h2>People also viewed</h2><a href="https://www.linkedin.com/in/someone-else/">Someone Else</a></aside>' +
+    '</body></html>';
+}
+const PROFILES = {
+  'jane-doe-4b21a': { name: 'Jane Doe', headline: 'Senior Brand Manager at Liquid Death | ex-Red Bull', current: 'Liquid Death', co: 'Liquid Death', coSlug: '12345', role: 'Senior Brand Manager' },
+  'sam-lee-7': { name: 'Sam Lee', headline: 'Partnerships Lead', current: null, co: 'Olipop', coSlug: 'olipop', role: 'Partnerships Lead' },
+  'nia-cole-9': { name: 'Nia Cole', headline: 'Head of Marketing', current: 'Casamigos', co: 'Casamigos', coSlug: 'casamigos-tequila', role: 'Head of Marketing' },
+};
+
 const sent = [];
 // What liList hands the fill; each scenario sets its own.
 let fillItems = [];
@@ -147,6 +184,25 @@ const server = http.createServer((req, res) => {
       sent.push(body);
       res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, cors));
       if (body.token !== 'test-token') { res.writeHead(401); return res.end('{}'); }
+      if (body.action === 'liPerson') {
+        if (/sam-lee-7/.test(body.url)) {
+          return res.end(JSON.stringify({ ok: true, url: body.url, nameGuess: 'Sam Lee', titleGuess: 'Partnerships Lead',
+            person: { contactId: 'c-sam', name: 'Sam Lee', title: 'Partnerships Lead', brand: { id: 'b-ol', name: 'Olipop', archived: false }, status: 'sent', sentAt: '2026-09-20T15:00:00Z', choices: ['accepted'], by: 'link' },
+            brand: { id: 'b-ol', name: 'Olipop' } }));
+        }
+        if (/casamigos/i.test(body.companyName || '') && !body.brandName) {
+          return res.end(JSON.stringify({ ok: true, url: body.url, person: null, brand: null, suggestions: ['Casa Azul'], createName: body.companyName, nameGuess: body.name, titleGuess: body.headline }));
+        }
+        return res.end(JSON.stringify({ ok: true, url: body.url, person: null, brand: { id: 'b1', name: 'Liquid Death', archived: false }, matchedBy: 'name', nameGuess: body.name, titleGuess: 'Senior Brand Manager' }));
+      }
+      if (body.action === 'liPersonLog') {
+        const brand = body.contactId ? { id: 'b-ol', name: 'Olipop' } : body.createIfMissing ? { id: 'b-new', name: body.companyName } : { id: 'b1', name: 'Liquid Death' };
+        return res.end(JSON.stringify({ ok: true, contactId: body.contactId || 'c-new', targetId: 't-1', name: body.name || 'Sam Lee', brand, status: body.stage, noop: null, madeContact: !body.contactId, brandCreated: !!body.createIfMissing,
+          undo: { targetId: 't-1', stage: body.stage, before: null, madeContact: !body.contactId } }));
+      }
+      if (body.action === 'liPersonUndo') {
+        return res.end(JSON.stringify({ ok: true, undone: true, name: 'Jane Doe', removed: true }));
+      }
       if (body.action === 'liPreview' && /casamigos/.test(body.companyUrl || '')) {
         return res.end(JSON.stringify({
           ok: true, brand: null, matchedBy: null, notFound: body.brandName || null, suggestions: [], createName: body.brandName || body.companyName,
@@ -194,6 +250,14 @@ const server = http.createServer((req, res) => {
       res.end('{"ok":true}');
     });
     return;
+  }
+  {
+    const m = req.url.match(/^\/in\/([^\/?#]+)\/(.*)$/);
+    if (m && PROFILES[m[1]]) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      if (m[2]) return res.end('<!doctype html><html><head><title>Experience | LinkedIn</title></head><body><main><h1>Experience</h1></main></body></html>');
+      return res.end(profile(Object.assign({ url: 'https://www.linkedin.com/in/' + m[1] + '/' }, PROFILES[m[1]])));
+    }
   }
   // A page that enforces Trusted Types, as LinkedIn may.
   if (/^\/company\/tt-brand\/people\/?/.test(req.url)) {
@@ -701,6 +765,91 @@ const GM_SHIM = `
       await pg.close();
     }
     ok('a live run in another tab is shown, not doubled');
+
+    // 14. A profile: log them in one click.
+    {
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/in/jane-doe-4b21a/');
+      await pg.waitForSelector('#sblipill', { state: 'visible' });
+      await pg.waitForFunction(() => document.getElementById('sblipill').textContent === 'SB · Log them');
+      await pg.click('#sblipill');
+      await pg.waitForSelector('#sbliacc', { timeout: 20000 });
+      const ask = sent.slice(before).filter(b => b.action === 'liPerson').pop();
+      assert.equal(ask.url, 'https://www.linkedin.com/in/jane-doe-4b21a/');
+      assert.equal(ask.name, 'Jane Doe');
+      assert.equal(ask.headline, 'Senior Brand Manager at Liquid Death | ex-Red Bull');
+      assert.equal(ask.companyName, 'Liquid Death');
+      assert.equal(ask.reader, 2);
+      const panelText = await pg.evaluate(() => document.getElementById('sbli-panel').innerText);
+      assert.match(panelText, /Goes under Liquid Death/);
+      assert.equal(await pg.inputValue('#sbliname'), 'Jane Doe');
+      assert.equal(await pg.inputValue('#sblititle'), 'Senior Brand Manager');
+      assert.ok(await pg.$('#sblisent'), 'someone new can be logged as invite sent too');
+      assert.equal(sent.slice(before).filter(b => b.action === 'liPersonLog').length, 0, 'nothing saved before a click');
+      ok('a profile: reads name, headline and current company; nothing saved yet');
+
+      await pg.fill('#sblititle', 'Sr. Brand Manager');
+      await pg.click('#sbliacc');
+      await pg.waitForFunction(() => /Logged/.test(document.getElementById('sbli-panel').innerText));
+      const log = sent.slice(before).filter(b => b.action === 'liPersonLog').pop();
+      assert.deepEqual([log.stage, log.brandId, log.name, log.title, log.url, !!log.createIfMissing],
+        ['accepted', 'b1', 'Jane Doe', 'Sr. Brand Manager', 'https://www.linkedin.com/in/jane-doe-4b21a/', false]);
+      assert.match(await pg.evaluate(() => document.getElementById('sbli-panel').innerText), /on Zach's list/);
+      assert.match(await pg.getAttribute('#sbli-panel a[href*="app.html"]', 'href'), /app\.html#zach$/);
+      assert.match(pg.url(), /\/in\/jane-doe-4b21a\/$/);
+      ok('They accepted: one click, with the edited title, and it never navigated');
+
+      await pg.click('#sbliundo');
+      await pg.waitForFunction(() => /Undone/.test(document.getElementById('sbli-panel').innerText));
+      const und = sent.slice(before).filter(b => b.action === 'liPersonUndo').pop();
+      assert.deepEqual(und.undo, { targetId: 't-1', stage: 'accepted', before: null, madeContact: true });
+      ok('Undo right after takes it back');
+
+      // Someone on file with a logged invite: only They accepted.
+      await pg.goto('http://127.0.0.1:4622/in/sam-lee-7/');
+      await pg.waitForSelector('#sblipill', { state: 'visible' });
+      await pg.click('#sblipill');
+      await pg.waitForSelector('#sbliacc', { timeout: 20000 });
+      const ask2 = sent.slice(before).filter(b => b.action === 'liPerson').pop();
+      assert.equal(ask2.companyName, 'Olipop', 'no Current company line: the first job\'s logo names it');
+      assert.match(ask2.companyUrl, /\/company\/olipop\/$/);
+      assert.match(await pg.evaluate(() => document.getElementById('sbli-panel').innerText), /On file at Olipop · invite sent/);
+      assert.equal(await pg.$('#sblisent'), null, 'a logged invite is not offered again');
+      await pg.click('#sbliacc');
+      await pg.waitForFunction(() => /Logged/.test(document.getElementById('sbli-panel').innerText));
+      const log2 = sent.slice(before).filter(b => b.action === 'liPersonLog').pop();
+      assert.deepEqual([log2.contactId, log2.stage], ['c-sam', 'accepted']);
+      ok('on file with a logged invite: They accepted only, by contactId');
+
+      // No such brand: added only when asked.
+      await pg.goto('http://127.0.0.1:4622/in/nia-cole-9/');
+      await pg.waitForSelector('#sblipill', { state: 'visible' });
+      await pg.click('#sblipill');
+      await pg.waitForSelector('#sblisent', { timeout: 20000 });
+      assert.match(await pg.textContent('#sblisent'), /New brand \+ Invite sent/);
+      await pg.click('#sblisent');
+      await pg.waitForFunction(() => /is now a brand in the dashboard/.test(document.getElementById('sbli-panel').innerText));
+      const log3 = sent.slice(before).filter(b => b.action === 'liPersonLog').pop();
+      assert.deepEqual([log3.stage, log3.createIfMissing, log3.companyName], ['sent', true, 'Casamigos']);
+      ok('a brand the dashboard doesn\'t have is added only from its own button');
+
+      // A subpage points back to the profile; the sample copies the top card.
+      await pg.goto('http://127.0.0.1:4622/in/jane-doe-4b21a/details/experience/');
+      await pg.waitForSelector('#sblipill', { state: 'visible' });
+      await pg.click('#sblipill');
+      await pg.waitForFunction(() => /open their main profile/.test(document.getElementById('sbli-panel').innerText));
+      await pg.goto('http://127.0.0.1:4622/in/jane-doe-4b21a/');
+      await pg.waitForSelector('#sblipill', { state: 'visible' });
+      await pg.evaluate(() => window.__sbMenu.filter(m => /Copy a sample/.test(m.name))[0].fn());
+      await pg.waitForFunction(() => /Copied/.test(document.getElementById('sbli-panel').innerText));
+      const clip = await pg.evaluate(() => window.__sbClip);
+      assert.match(clip, /SB LinkedIn profile sample/);
+      assert.match(clip, /"name":"Jane Doe"/);
+      await pg.close();
+      ok('a profile subpage points to the profile; the sample for Claude copies the top card');
+    }
 
     // 6. No @grant lines: runs, shows the pill, says to reinstall.
     const bare = await browser.newPage();

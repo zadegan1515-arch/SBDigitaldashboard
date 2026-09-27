@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.12
-// @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
+// @version      1.13
+// @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand — and log someone you invited from their profile.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
 // @run-at       document-start
@@ -27,9 +27,11 @@
 // connection requests; if LinkedIn ever objects to this, it should be
 // Leo's account that hears about it.
 //
-// Two ways to use it. By hand: open a People page, press the pill, see
-// who it found, save when you say so; a brand the dashboard doesn't have
-// can be added from the same panel. By itself ("Fill brands by itself"):
+// Three ways to use it. On someone's profile: press the pill to log an
+// invite you sent them from LinkedIn, or that they accepted — one click,
+// no queue (see "a person's profile" below). By hand: open a People page,
+// press the pill, see who it found, save when you say so; a brand the
+// dashboard doesn't have can be added from the same panel. By itself ("Fill brands by itself"):
 // a slow run through every brand under 25, ~50 a day, which can also add
 // new brands LinkedIn shows (lookalikes, keyword searches) and pauses the
 // moment LinkedIn shows a check — see "filling brands by itself" below.
@@ -79,7 +81,7 @@
   var INGEST_URL = 'https://sb-digitaldashboard.vercel.app/api/ingest';
   var DASH_URL = 'https://sb-digitaldashboard.vercel.app/app.html';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.12';
+  var VERSION = '1.13';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -446,6 +448,8 @@
     var fj = loadFill();
     if (ownsFill(fj)) return renderFill(fj, fj.paused ? 'Paused: ' + fj.paused : 'Running.');
     if (busy) return;
+    if (profilePath()) return openProfile();
+    if (profileSubpage()) return openProfileSubpage();
     if (!companyPath()) return openElsewhere();
     if (onPeoplePage()) return readPage();
     freshPanel([
@@ -474,7 +478,7 @@
       head('SB LinkedIn capture'),
       search
         ? h('div', { style: MUTED }, ['Click the brand\'s company in these results, then its ', b('People'), ' tab, then this pill again.'])
-        : h('div', { style: MUTED }, ['This works on a brand\'s ', b('company page'), ' on LinkedIn. The easy way in: the dashboard\'s ', b('Under 25'), ' list, then ', b('People ↗'), ' on a brand.']),
+        : h('div', { style: MUTED }, ['This works on a brand\'s ', b('company page'), ' on LinkedIn. The easy way in: the dashboard\'s ', b('Under 25'), ' list, then ', b('People ↗'), ' on a brand. On someone\'s ', b('profile'), ' it logs an invite you sent them, or that they accepted.']),
       h('a', { href: DASH_URL + '#people', target: '_blank', rel: 'noopener', style: BTN2, text: 'Open the Under 25 list ↗' }),
       h('button', { id: 'sblifillopen', style: BTN + ';margin-top:6px', text: 'Fill brands by itself…', onclick: openFillSetup }),
       tokenLink(),
@@ -655,6 +659,7 @@
   // what it made of each, their lines, and trimmed markup (no images,
   // no tracking attributes) — for Leo to paste into the chat.
   function copySample() {
+    if (profilePath()) return copyProfileSample();
     var cards = [], seen = {};
     profileLinks().forEach(function (a) {
       var slug = slugOf(a.getAttribute('href'));
@@ -691,6 +696,323 @@
       h('a', {
         href: '#', style: 'color:#999;font-size:11px', text: 'Names or titles look wrong? Copy a sample for Claude',
         onclick: function (e) { e.preventDefault(); copySample(); },
+      }),
+    ]);
+  }
+
+  // ---- a person's profile: log them ------------------------------------
+  //
+  // Leo (Sep 2026): invites often go straight out from LinkedIn, unlogged,
+  // and an accept then meant four steps in the dashboard. On someone's
+  // profile the pill logs them in one: "Invite sent" (dated now, counts
+  // like any send) or "They accepted" (straight onto Zach's list). Never
+  // through a day's queue. The dashboard decides (src/lib/li-log.ts);
+  // this only reads the page Leo is on — one page, no scrolling, so it's
+  // fine on whichever account sent the invite.
+
+  var lastProfile = null;
+
+  // The profile's own page: /in/<slug>/ (not its Experience / Contact
+  // info subpages, whose <h1> isn't the name).
+  function profilePath() {
+    var m = location.pathname.match(/^\/in\/([^\/?#]+)\/?$/);
+    return m ? m[1] : null;
+  }
+  function profileSubpage() {
+    var m = location.pathname.match(/^\/in\/([^\/?#]+)\/.+/);
+    return m ? m[1] : null;
+  }
+  function openProfileSubpage() {
+    freshPanel([
+      head('SB LinkedIn'),
+      h('div', { style: MUTED, text: 'To log this person, open their main profile page and press the pill there.' }),
+      h('a', { href: location.origin + '/in/' + profileSubpage() + '/', style: BTN2, text: 'Open their profile' }),
+      tokenLink(),
+    ]);
+  }
+
+  // Lines in the top card that aren't the person: LinkedIn's badges,
+  // buttons and counts.
+  var PROFILE_NOISE = /^(verified|contact info|hiring|provides services|premium|\d[\d,]*\+?\s+(connections|followers))$|^(she|he|they)\s*\/\s*(her|him|them)$/i;
+
+  // Their current company, as a first guess the panel lets Leo change:
+  // LinkedIn's "Current company" line in the top card, else the first
+  // company named in Experience, else "… at Company" in the headline.
+  var EMPLOYMENT = /^(.+?)\s[·•]\s(?:full-time|part-time|contract|self-employed|freelance|internship|seasonal|apprenticeship)\b/i;
+  function currentCompany(headline) {
+    // "Current company: Liquid I.V.. Click to skip to experience card"
+    var cur = document.querySelector('[aria-label^="Current company"]');
+    if (cur && !skipZone(cur)) {
+      var al = cur.getAttribute('aria-label') || '';
+      var m = al.match(/^Current company:\s*(.+?)(?:\.\s*Click\b.*)?$/i);
+      var name = (m ? m[1] : (lines(cur)[0] || '')).trim();
+      var a = cur.closest('a[href*="/company/"]') || cur.querySelector('a[href*="/company/"]');
+      if (name) return { name: name.slice(0, 120), url: a ? a.href : '' };
+    }
+    var anchor = document.getElementById('experience');
+    var sec = anchor ? (anchor.closest('section') || anchor.parentElement) : null;
+    if (sec) {
+      // The first job's logo says the company ("Liquid I.V. logo").
+      var logo = sec.querySelector('a[href*="/company/"] img[alt]');
+      var alt = logo ? String(logo.getAttribute('alt') || '').replace(/\s*logo\s*$/i, '').trim() : '';
+      if (alt) return { name: alt.slice(0, 120), url: logo.closest('a').href };
+      // "Liquid I.V. · Full-time" names it too; a bare first line is as
+      // likely the job title, so it's left alone.
+      var links = [].slice.call(sec.querySelectorAll('a[href*="/company/"]'));
+      for (var i = 0; i < links.length; i++) {
+        var ls = lines(links[i]);
+        for (var k = 0; k < ls.length; k++) {
+          var em = ls[k].match(EMPLOYMENT);
+          if (em) return { name: em[1].trim().slice(0, 120), url: links[i].href };
+        }
+      }
+      if (links.length) return { name: '', url: links[0].href };
+    }
+    var hm = String(headline || '').match(/\s(?:at|@)\s+([^|•·,]+)/i);
+    return { name: hm ? hm[1].trim().slice(0, 120) : '', url: '' };
+  }
+
+  // Name, headline, profile link and current company. LinkedIn's class
+  // names change, so the text decides: the name is the page's <h1> (else
+  // the tab title), the headline the first real line after it.
+  function readProfile() {
+    var slug = profilePath();
+    var h1 = [].slice.call(document.querySelectorAll('main h1, h1')).filter(function (x) { return !skipZone(x); })[0] || null;
+    var name = h1 ? personName(lines(h1)[0] || '') : '';
+    if (!name) name = personName(document.title.replace(/^\(\d+\+?\)\s*/, '').split('|')[0]);
+    var headline = '';
+    var box = h1 ? (h1.closest('section') || h1.parentElement) : null;
+    if (box) {
+      var all = lines(box);
+      var at = -1;
+      for (var i = 0; i < all.length; i++) {
+        if (personName(all[i]) === name || (name && all[i].indexOf(name) === 0)) { at = i; break; }
+      }
+      // Pronouns and the "· 2nd" badge ride on their own line ("She/Her
+      // · 2nd"): cleaned first, then skipped.
+      for (var j = at + 1; j < all.length && !headline; j++) {
+        var l = personName(all[j]);
+        if (l && l !== name && !PROFILE_NOISE.test(l) && !NOISE.test(l)) headline = l;
+      }
+    }
+    var co = currentCompany(headline);
+    return {
+      url: slug ? 'https://www.linkedin.com/in/' + slug + '/' : '',
+      name: name.slice(0, 80),
+      headline: headline.slice(0, 300),
+      companyName: co.name,
+      companyUrl: co.url,
+    };
+  }
+
+  function openProfile() {
+    lastProfile = readProfile();
+    freshPanel([
+      head(lastProfile.name || 'This profile'),
+      h('div', { id: 'sbliprof', style: MUTED, text: 'Checking the dashboard…' }),
+    ]);
+    return lookupProfile({});
+  }
+
+  function lookupProfile(pick) {
+    var p = lastProfile;
+    return post({
+      action: 'liPerson',
+      url: p.url, name: p.name, headline: p.headline,
+      companyName: p.companyName, companyUrl: p.companyUrl,
+      brandName: pick.brandName || '', brandId: pick.brandId || '',
+    }).then(function (j) {
+      if (!j || !j.ok) return showError((j && j.error) || 'The dashboard could not read that.');
+      renderProfile(j, pick.brandName || '');
+    }).catch(function (e) { showError(e.message); });
+  }
+
+  // "LinkedIn · invite sent Sep 20" — where someone on file stands.
+  function stateWords(p) {
+    var d = p.sentAt ? new Date(p.sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+    switch (p.status) {
+      case null: case undefined: case '': return 'not contacted yet';
+      case 'queued': case 'drafted': return 'in the LinkedIn queue, not sent yet';
+      case 'sent': return 'invite sent' + (d ? ' ' + d : '');
+      case 'accepted': return 'accepted';
+      case 'replied': return 'replied';
+      case 'converted': return 'won';
+      case 'passed': return 'skipped';
+      case 'withdrawn': return 'invite withdrawn';
+      default: return p.status;
+    }
+  }
+
+  function stageButtons(choices, onPick, prefix) {
+    return choices.map(function (s) {
+      var accepted = s === 'accepted';
+      var btn = h('button', {
+        id: accepted ? 'sbliacc' : 'sblisent',
+        style: (accepted ? BTN : BTN2) + ';margin-top:8px',
+        text: (prefix || '') + (accepted ? 'They accepted ✓' : 'Invite sent ✓'),
+        title: accepted
+          ? 'Straight onto Zach\'s list. The invite went out unlogged, so it stays out of the weekly limit and accept rates.'
+          : 'You just sent the invite from LinkedIn: logged today, counts like any send. Press the pill again when they accept.',
+      });
+      btn.onclick = guard(function () { onPick(s, btn); });
+      return btn;
+    });
+  }
+
+  function renderProfile(j, typed) {
+    var p = lastProfile;
+    var nameBox = h('input', { id: 'sbliname', value: j.nameGuess || p.name || '', placeholder: 'Name', style: 'display:block;width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #ccc;border-radius:6px;font:12.5px system-ui;color:#111;background:#fff;margin-bottom:6px' });
+    var titleBox = h('input', { id: 'sblititle', value: j.titleGuess || '', placeholder: 'Title (optional)', style: 'display:block;width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #ccc;border-radius:6px;font:12.5px system-ui;color:#111;background:#fff' });
+
+    // On file already (by profile link, or by name at the brand).
+    if (j.person) {
+      var pp = j.person;
+      var kids = [
+        head(pp.name),
+        h('div', { style: 'margin-bottom:4px' }, ['On file at ', b(pp.brand.name), pp.brand.archived ? ' (archived)' : '', ' · ' + stateWords(pp)]),
+        pp.title ? h('div', { style: 'font-size:12px;color:#555', text: pp.title }) : null,
+      ];
+      if (pp.choices && pp.choices.length) {
+        kids = kids.concat(stageButtons(pp.choices, function (stage, btn) { logProfile({ contactId: pp.contactId, stage: stage }, btn); }));
+      } else {
+        kids.push(h('div', { style: 'margin-top:8px;color:#137333', text: pp.status === 'accepted' ? 'Already accepted: they\'re on Zach\'s list.' : 'Already ' + stateWords(pp) + '. Nothing to log.' }));
+      }
+      kids.push(h('a', { href: DASH_URL + '#brand/' + pp.brand.id, target: '_blank', rel: 'noopener', style: BTN2 + ';margin-top:10px', text: 'Open ' + pp.brand.name + ' in the dashboard ↗' }));
+      kids.push(profileSampleLink());
+      kids.push(tokenLink());
+      freshPanel(kids);
+      return;
+    }
+
+    // Not on file: which brand, then the two buttons.
+    var brandBox = h('input', {
+      id: 'sblibrand', value: typed || (j.brand ? j.brand.name : ''), placeholder: 'Dashboard brand name',
+      style: 'flex:1;min-width:0;padding:6px 8px;border:1px solid #ccc;border-radius:6px;font:12.5px system-ui;color:#111;background:#fff',
+    });
+    var check = function () { lookupProfile({ brandName: brandBox.value.trim() }); };
+    brandBox.onkeydown = function (e) { if (e.key === 'Enter') check(); };
+    var brandLine = j.brand
+      ? h('div', { style: 'margin-bottom:4px' }, ['Goes under ', b(j.brand.name), j.brand.archived ? ' (archived)' : ''])
+      : h('div', { style: 'color:#946200;margin-bottom:4px', text: j.notFound
+          ? 'No brand called "' + j.notFound + '" in the dashboard.'
+          : 'Which dashboard brand? ' + (p.companyName ? 'None matched "' + p.companyName + '".' : 'Type it below.') });
+    var chips = !j.brand && j.suggestions && j.suggestions.length
+      ? h('div', { style: 'display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px' }, j.suggestions.map(function (s) {
+          return h('button', {
+            style: 'border:1px solid #ddd;background:#fff;color:#111;border-radius:99px;padding:3px 9px;cursor:pointer;font:12px system-ui',
+            text: s, onclick: guard(function () { lookupProfile({ brandName: s }); }),
+          });
+        }))
+      : null;
+    var fields = function () { return { name: nameBox.value.trim(), title: titleBox.value.trim() }; };
+    var send = function (stage, btn, create) {
+      var f = fields();
+      if (!f.name) { nameBox.focus(); return; }
+      logProfile({
+        stage: stage, url: p.url, name: f.name, title: f.title,
+        brandId: j.brand ? j.brand.id : '', brandName: j.brand ? '' : (typed || ''),
+        createIfMissing: !!create,
+        companyName: p.companyName, companyUrl: p.companyUrl, headline: p.headline,
+      }, btn);
+    };
+    var go = j.brand
+      ? stageButtons(['sent', 'accepted'], function (stage, btn) { send(stage, btn, false); })
+      : j.createName
+        ? [h('div', { style: 'font-size:12px;color:#555;margin-top:10px' }, ['Not a brand in the dashboard yet? Add ', b(j.createName), ':'])]
+            .concat(stageButtons(['sent', 'accepted'], function (stage, btn) { send(stage, btn, true); }, 'New brand + '))
+        : [];
+
+    freshPanel([
+      head(p.name || 'This profile'),
+      h('div', { style: 'font-size:12px;color:#555;margin-bottom:8px', text: 'Not in the dashboard yet.' + (p.headline ? ' ' + p.headline : '') }),
+      brandLine,
+      chips,
+      h('div', { style: 'display:flex;gap:6px;margin:6px 0 8px' }, [
+        brandBox,
+        h('button', {
+          id: 'sblicheck', text: j.brand ? 'Change' : 'Check',
+          style: 'background:#fff;color:#111;border:1px solid #ccc;border-radius:6px;padding:5px 10px;cursor:pointer;font:12.5px system-ui',
+          onclick: guard(check),
+        }),
+      ]),
+      nameBox,
+      titleBox,
+    ].concat(go, [
+      h('div', { style: SMALL, text: 'Nothing goes through today\'s LinkedIn list. They accepted = straight onto Zach\'s list.' }),
+      profileSampleLink(),
+      tokenLink(),
+    ]));
+  }
+
+  function logProfile(payload, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    return post(Object.assign({ action: 'liPersonLog' }, payload)).then(function (j) {
+      if (!j || !j.ok) return showError((j && j.error) || 'Nothing was saved.');
+      renderLogged(j);
+    }).catch(function (e) { showError(e.message); });
+  }
+
+  function renderLogged(j) {
+    var what = j.noop
+      ? (j.noop === 'already-accepted' ? 'already accepted: they\'re on Zach\'s list. Nothing changed.'
+        : j.noop === 'already-sent' ? 'the invite is already logged. Nothing changed.'
+        : 'already further along. Nothing changed.')
+      : j.status === 'accepted' ? 'accepted. They\'re on Zach\'s list.'
+      : 'invite sent, logged today. Press the pill again when they accept.';
+    var undo = null;
+    if (j.undo) {
+      undo = h('button', { id: 'sbliundo', style: BTN2 + ';margin-top:8px', text: 'Undo' });
+      undo.onclick = guard(function () {
+        undo.disabled = true;
+        post({ action: 'liPersonUndo', undo: j.undo }).then(function (u) {
+          if (!u || !u.ok) return showError((u && u.error) || 'Could not undo that.');
+          freshPanel([head('Undone'), h('div', { style: MUTED, text: u.removed ? j.name + ' is off the dashboard again.' : j.name + ' is back as before.' })]);
+        }).catch(function (e) { showError(e.message); });
+      });
+    }
+    freshPanel([
+      head(j.noop ? 'Already logged' : 'Logged'),
+      j.brandCreated ? h('div', { style: 'margin-bottom:6px;color:#137333' }, [b(j.brand.name), ' is now a brand in the dashboard. Its category is a guess — check it on the brand page.']) : null,
+      h('div', { style: 'margin-bottom:6px' }, [b(j.name), ' · ' + j.brand.name + ': ' + what]),
+      undo,
+      h('a', {
+        href: DASH_URL + (j.status === 'accepted' ? '#zach' : '#brand/' + j.brand.id), target: '_blank', rel: 'noopener',
+        style: BTN2 + ';margin-top:8px', text: j.status === 'accepted' ? 'Open Zach\'s list ↗' : 'Open ' + j.brand.name + ' in the dashboard ↗',
+      }),
+    ]);
+  }
+
+  // A profile's version of "Copy a sample for Claude": what the reader
+  // made of the top card, for when LinkedIn changes it.
+  function copyProfileSample() {
+    var p = readProfile();
+    var h1 = document.querySelector('main h1, h1');
+    var box = h1 ? (h1.closest('section') || h1.parentElement) : null;
+    var out = ['SB LinkedIn profile sample · script ' + VERSION + ' · ' + location.pathname,
+      'read as ' + JSON.stringify(p),
+      'lines ' + JSON.stringify(box ? lines(box).slice(0, 20) : []),
+      String(box ? box.outerHTML : 'no <h1> on this page')
+        .replace(/<img[^>]*>/g, '<img>')
+        .replace(/<svg[\s\S]*?<\/svg>/g, '<svg/>')
+        .replace(/\s(src|srcset|style|data-[\w-]+|tabindex|role)="[^"]*"/g, '')
+        .replace(/\s+/g, ' ')
+        .slice(0, 4000)];
+    var text = out.join('\n');
+    var copied = false;
+    try { GM_setClipboard(text, 'text'); copied = true; } catch (e) {}
+    var ta = h('textarea', { style: 'display:block;box-sizing:border-box;width:100%;height:120px;font:11px monospace;margin-top:8px;color:#111;background:#fff;border:1px solid #ccc;border-radius:6px', value: text });
+    freshPanel([
+      head(copied ? 'Copied' : 'Copy this'),
+      h('div', { style: MUTED, text: copied ? 'Paste it into the chat with Claude.' : 'Select all in the box and copy it, then paste it into the chat with Claude.' }),
+      ta,
+    ]);
+    ta.select();
+  }
+  function profileSampleLink() {
+    return h('div', { style: 'margin-top:6px' }, [
+      h('a', {
+        href: '#', style: 'color:#999;font-size:11px', text: 'Name or company wrong? Copy a sample for Claude',
+        onclick: function (e) { e.preventDefault(); copyProfileSample(); },
       }),
     ]);
   }
@@ -1384,6 +1706,8 @@
   var lastPath = '';
   function tick() {
     ensurePill();
+    var label = profilePath() ? 'SB · Log them' : 'SB ⬇ People';
+    if (pill && pill.textContent !== label) pill.textContent = label;
     if (location.pathname !== lastPath) {
       // A different page: whatever the panel said is about the old one.
       if (lastPath && !busy && !fillHere()) { closePanel(); lastRead = null; }

@@ -74,6 +74,24 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   so the cap isn't involved. Done fold (30 days) and Calls booked, each with Undo. No CC (Leo's call); one-pager is a download button. The email
   machine skips brands with an accepted/replied/hand-emailed person, and skips follow-ups to accepted
   or hand-emailed people. Results → "To email" is now a pointer here.
+- **Invites sent straight from LinkedIn** (Leo, Sep 2026: an unlogged invite that got accepted meant
+  Add person → Queue → Invite sent → Accepted). Now one step, **never through a day's queue**: rules pure
+  in `src/lib/li-log.ts` (`node scripts/test-li-log.mjs`), writes in `src/lib/li-log-db.ts` (shared by
+  /api/data and /api/ingest). **Invite sent** = sentAt now (counts in the day's 20, the weekly limit,
+  accept rates; They accepted later). **They accepted** = status accepted with **no sentAt** (Leo's call:
+  only accepts get logged this way, so they stay out of the weekly limit, coverage and accept rates);
+  its TargetEvent is Zach's list's acceptedAt ("Text them" due 24h after the log). Because of that,
+  "was this brand/person contacted" must use `wasInvited` / `INVITED_WHERE` in route.ts (sentAt OR status
+  sent/accepted/replied/converted), **never sentAt alone**. A log never moves anyone backwards; the person
+  is found by profile link anywhere or by name at the brand (no second copy; on file at another brand →
+  refused, naming it); a new brand always gets a category (keyword `guessCategory`, never a model call).
+  Where: Home → Zach's list **+ Add from LinkedIn** (`findLinkedInPerson`, `brandLookup`,
+  `logLinkedInPerson`; a pasted link fills the name via `nameFromSlug`), brand page People rows
+  (**Invite sent ✓ / They accepted ✓**), **+ Add person**'s "On LinkedIn" chips, and the SB pill on a
+  LinkedIn profile. Every log has an Undo (`undoLinkedInLog`: 30 min, only while nothing happened since;
+  removes a person the log made). The brand card says "invited outside the queue" for an accept with no
+  invite date, and a draft written after the send is "The first DM, ready to copy", never "the note that
+  went out".
 - **Outreach → Schedule** (`getOutreachPlan` + the `sd*` / `renderSched*` code; plan in Setting
   `outreachPlan` = `{ "YYYY-MM-DD": { category, brandIds } }`, one brand on one day) — full width,
   today (if a sending day) + the next 3 sending days as columns. Every brand carries a **contacts label**
@@ -209,6 +227,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Rules + matching in `src/lib/li-capture.ts` (`node scripts/test-li-capture.mjs`); script tested by
   `scripts/test-li-script.js` (fake People/search pages, incl. a run, pause/continue, limit page).
   Worklist in the dashboard: Outreach → People → "Under 25" (deep link `app.html#people`).
+  **On a profile** (`/in/<slug>/`, script 1.13; the pill reads "SB · Log them"): logs that person as
+  Invite sent / They accepted (the section above). Reads name (`<h1>`, else the tab title), headline, and
+  current company ("Current company" aria-label, else the first job's logo alt, else "at X" in the
+  headline) → `liPerson` (who they are, which brand; nothing saved) → `liPersonLog` (by contactId, or
+  under the brand; "New brand + …" = `createIfMissing`) → Undo = `liPersonUndo`. One page, no scrolling,
+  so it's fine on whichever account sent the invite. Subpages point back to the profile; "Copy a sample
+  for Claude" copies the top card there.
   Install by **paste** (Tampermonkey → + → paste over the sample; pasted under it, the sample's
   header wins and it never runs on LinkedIn — a copy without its @grant lines says "Reinstall").
   Chrome needs Tampermonkey's **Allow User Scripts** switch on. The pill shows on every LinkedIn page,

@@ -38,6 +38,8 @@ import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hint
 import { readLiLog, readLiResearch } from '@/lib/li-sweep'
 import { LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR, linkedinWindows, acceptRates, planWeekDays, type AcceptRates } from '@/lib/plan-week'
 import { findDuplicateGroups, pairKey } from '@/lib/duplicates'
+import { findLinkedInPeople, logLinkedInPerson, undoLinkedInLog, checkNewPerson } from '@/lib/li-log-db'
+import { isLogStage } from '@/lib/li-log'
 import { rollWindow, findUnsent, planCarry, type Unsent, type CarryFacts } from '@/lib/carry'
 import { buildStock, bestDealStage, refileMoves, remapPlanDays, brandKey } from '@/lib/stock'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
@@ -405,12 +407,27 @@ function notPassedToday() {
   return { OR: [{ passedTodayAt: null }, { passedTodayAt: { lt: start } }] }
 }
 
+// Written to on LinkedIn: an invite with its date, or a row past the
+// invite. Someone logged straight to "accepted" (the invite went out
+// from LinkedIn unlogged, src/lib/li-log.ts) has no invite date — so the
+// weekly limit and accept rates leave them out — but was reached all the
+// same, so "has this brand / person been contacted" asks this, never
+// sentAt alone.
+const WRITTEN_TO = ['sent', 'accepted', 'replied', 'converted']
+function wasInvited(t: { sentAt: Date | null; status: string }): boolean {
+  return !!t.sentAt || WRITTEN_TO.includes(t.status)
+}
+// The same test as a query, for counts.
+const INVITED_WHERE: Prisma.TargetWhereInput = {
+  OR: [{ sentAt: { not: null } }, { status: { in: ['sent', 'accepted', 'replied', 'converted'] } }],
+}
+
 // A brand we have already reached out to. Leo's rule: once an invite has
 // gone to anyone there, the brand stops being offered as something to
 // add to an upcoming day — the conversation is live, and a second cold
 // approach from a different person reads badly.
-function alreadyContacted(b: { targets: { sentAt: Date | null }[] }) {
-  return b.targets.some(t => t.sentAt)
+function alreadyContacted(b: { targets: { sentAt: Date | null; status: string }[] }) {
+  return b.targets.some(wasInvited)
 }
 
 function scoreFit(title: string | null, tier: string | null): number {
@@ -584,7 +601,7 @@ function outreachGate(
   if (!b.contacts.length) return 'nopeople'
   if (!b.contacts.some(isReachable)) return 'unreachable'
   if (inConversation(b)) return 'inconversation'
-  if (opts.sentBlocks && b.targets.some(t => t.sentAt)) return 'contacted'
+  if (opts.sentBlocks && b.targets.some(wasInvited)) return 'contacted'
   if (opts.forToday && b.passedTodayAt && b.passedTodayAt >= (opts.dayStart ?? startOfLocalDay())) return 'passedtoday'
   return null
 }
@@ -612,7 +629,7 @@ function previewBrandPicks(
   // below is stable, so this breaks its ties the same way.
   const reachable = b.contacts.filter(isReachable)
     .sort((x, y) => Number(y.isDecisionMaker) - Number(x.isDecisionMaker))
-  const cold = !b.targets.some(t => t.sentAt)
+  const cold = !b.targets.some(wasInvited)
   const work = b.workPeople ?? recommendWorkPeople(b, reachable, cold)
   const live = b.targets.filter(t => !t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied'].includes(t.status))
   // On a later day, people already in TODAY's queue are going out today,
@@ -623,7 +640,7 @@ function previewBrandPicks(
   const pending = live.filter(t => ['queued', 'drafted'].includes(t.status) && !inTodayQueue(t))
   const contacted = live.filter(t => ['sent', 'accepted', 'replied'].includes(t.status))
   const person = (t: PlanBrand['targets'][number]): PreviewPerson => ({ name: t.contact.name, title: t.contact.title })
-  const sentContacts = new Set(b.targets.filter(t => t.sentAt).map(t => t.contactId))
+  const sentContacts = new Set(b.targets.filter(wasInvited).map(t => t.contactId))
   // Nobody new would go: its threads are all in today's queue ("full"),
   // everyone reachable has had an invite ("already invited"), or "all
   // taken".
@@ -1208,10 +1225,13 @@ function planBrandRow(b: PlanBrand, ctx: PlanRowCtx) {
   const going = action === 'none' ? 0 : previewBrandPicks(b, { forToday: ctx.forToday, dayStart: ctx.dayStart, explicitAdd: true }).people.length
   const rc = reasonCtx(b)
   const lastTouch = rc.sentAt ?? b.targets.map(t => t.emailedAt).filter(Boolean).sort((x, y) => y!.getTime() - x!.getTime())[0] ?? null
+  // Logged straight to "accepted" (invite sent from LinkedIn, no date).
+  const connected = !rc.sentAt && b.targets.some(t => t.status === 'accepted')
   const text = status === 'archived' ? 'Archived'
     : status === 'donotemail' ? 'Marked do-not-email'
     : status === 'inconversation' ? `Replied${rc.repliedAt ? ' ' + shortDate(rc.repliedAt) : ''} · in talks`
     : pinnedOn ? `On ${dayLabel(pinnedOn)} already`
+    : status === 'reached' && connected ? 'Accepted on LinkedIn · already reached'
     : status === 'reached' ? `${rc.sentAt ? 'Invited' : 'Emailed'}${lastTouch ? ' ' + shortDate(lastTouch) : ''} · already reached`
     : going > 0 ? `${going} would go out`
     : 'Nobody would go out'
@@ -1483,7 +1503,7 @@ const CONTACT_CAP_PER_BRAND = 25
 // Promoting is always an explicit act (setTargetShelved). Idempotent.
 async function reconcileBrandTargets(brandId: string, perBrand = TARGET_CAP_PER_BRAND) {
   const worked = await prisma.target.count({
-    where: { brandId, sentAt: { not: null } },
+    where: { brandId, ...INVITED_WHERE },
   })
   const room = Math.max(0, perBrand - worked)
 
@@ -2571,7 +2591,7 @@ const handlers: Record<string, Handler> = {
     // this brand stand?" without opening it.
     return sorted.map(b => {
       const ts = b.targets
-      const sent = ts.filter(t => t.sentAt)
+      const sent = ts.filter(wasInvited)
       const replied = ts.filter(t => t.repliedAt)
       const last = (xs: Date[]) => xs.length ? new Date(Math.max(...xs.map(d => d.getTime()))) : null
       const { targets, ...rest } = b
@@ -2581,7 +2601,7 @@ const handlers: Record<string, Handler> = {
           queued: ts.filter(t => !t.shelved && ['queued', 'drafted'].includes(t.status)).length,
           invited: sent.length,
           replied: replied.length,
-          lastSentAt: last(sent.map(t => t.sentAt!)),
+          lastSentAt: last(sent.filter(t => t.sentAt).map(t => t.sentAt!)),
           lastRepliedAt: last(replied.map(t => t.repliedAt!)),
         },
       }
@@ -2596,7 +2616,7 @@ const handlers: Record<string, Handler> = {
       prisma.brand.findMany({
         select: {
           id: true, category: true, passedAt: true, source: true, createdAt: true,
-          targets: { select: { sentAt: true } },
+          targets: { select: { sentAt: true, status: true } },
         },
       }),
       readReviewedNew(),
@@ -2610,7 +2630,7 @@ const handlers: Record<string, Handler> = {
     for (const b of brands) {
       const key = b.category ?? 'uncategorised'
       const row = (out[key] ??= { total: 0, reached: 0, passed: 0 })
-      const reached = b.targets.some(t => t.sentAt)
+      const reached = b.targets.some(wasInvited)
       row.total += 1; all.total += 1
       if (reached) { row.reached += 1; all.reached += 1 }
       if (b.passedAt) { row.passed += 1; all.passed += 1 }
@@ -3346,8 +3366,12 @@ const handlers: Record<string, Handler> = {
     // button was the one that logs an invite as sent. Same free template
     // drafts every queue list writes; the brand is passed alongside, not
     // hung on the target, so the response stays plain JSON.
-    const unwritten = brand.targets.filter(t => !t.shelved && ['queued', 'drafted'].includes(t.status) &&
-      !t.drafts.some(d => d.variant === 'man' || d.variant === 'woman'))
+    // An accept logged from the SB pill (no queue, no drafts) gets its
+    // first DM the same way — only when it has none at all, so nothing
+    // already written is replaced.
+    const unwritten = brand.targets.filter(t => (!t.shelved && ['queued', 'drafted'].includes(t.status) &&
+      !t.drafts.some(d => d.variant === 'man' || d.variant === 'woman')) ||
+      (t.status === 'accepted' && !t.drafts.length))
     if (unwritten.length) {
       const withBrand = unwritten.map(t => ({ ...t, brand: { name: brand.name, category: brand.category } }))
       await ensureTemplateDrafts(withBrand)
@@ -3973,7 +3997,7 @@ const handlers: Record<string, Handler> = {
 
     for (const b of brands) {
       const worked = await prisma.target.count({
-        where: { brandId: b.id, sentAt: { not: null } },
+        where: { brandId: b.id, ...INVITED_WHERE },
       })
       const room = Math.max(0, cap - worked)
       const openActive = await prisma.target.count({
@@ -4046,7 +4070,7 @@ const handlers: Record<string, Handler> = {
     // force (the row's "+ Person" button) deliberately goes past the
     // brand's slot count — an explicit click, not an auto-pick. Leo's
     // explicit setting wins; otherwise the rules-based recommendation.
-    const coldBrand = !brand.targets.some(t => t.sentAt)
+    const coldBrand = !brand.targets.some(wasInvited)
     const WORK_PER_BRAND = brand.workPeople ?? recommendWorkPeople(brand, brand.contacts, coldBrand)
     // Queued is NOT contacted. Lumping the two together was the bug
     // behind "invite already sent out" on a brand nobody had written
@@ -4726,10 +4750,10 @@ const handlers: Record<string, Handler> = {
     // Queried on its own because allBrands deliberately drops anyone in
     // conversation, and those are the most worked of all.
     const contacted = await prisma.brand.findMany({
-      where: { targets: { some: { sentAt: { not: null } } } },
+      where: { targets: { some: INVITED_WHERE } },
       select: {
         id: true, name: true, category: true,
-        targets: { where: { sentAt: { not: null } }, select: { status: true, repliedAt: true } },
+        targets: { where: INVITED_WHERE, select: { status: true, repliedAt: true } },
       },
       orderBy: { name: 'asc' },
     })
@@ -5776,6 +5800,86 @@ const handlers: Record<string, Handler> = {
     return { passed: true, contactName: contact.name }
   },
 
+  // -------- logging LinkedIn people by hand (src/lib/li-log.ts) --------
+  // An invite sent straight from LinkedIn, or an accept for one that was
+  // never logged, in one step — never through a day's queue. Zach's list
+  // (+ Add from LinkedIn), the brand page and the SB pill on a LinkedIn
+  // profile (/api/ingest) all write through li-log-db.ts.
+
+  // Who a pasted profile link or a typed name could be, among everyone
+  // on file, with what a log can still do for each.
+  async findLinkedInPerson({ q }: any) {
+    return findLinkedInPeople(prisma, q)
+  },
+
+  // Brands for the same box: name or also-known-as. The category guess
+  // for a new one is the keyword rules only — never a model call.
+  async brandLookup({ q }: any) {
+    const query = String(q ?? '').trim().slice(0, 120)
+    if (query.length < 2) return { brands: [], exact: false, categoryGuess: null }
+    const brands = await prisma.brand.findMany({
+      where: {
+        OR: [
+          { name: { contains: query, mode: 'insensitive' } },
+          { aka: { contains: query, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, name: true, aka: true, category: true, passedAt: true, doNotEmail: true },
+      orderBy: { name: 'asc' },
+      take: 8,
+    })
+    const want = query.toLowerCase()
+    const exact = brands.some(b => b.name.toLowerCase() === want ||
+      (b.aka ?? '').split(/[,;]/).some(a => a.trim().toLowerCase() === want))
+    return {
+      brands: brands.map(b => ({ id: b.id, name: b.name, category: b.category, archived: !!b.passedAt, doNotEmail: b.doNotEmail })),
+      exact,
+      categoryGuess: guessCategory(query),
+    }
+  },
+
+  // One log: { contactId } for someone on file, else { brandId | newBrand,
+  // name, title, linkedinUrl, … }, and stage 'sent' | 'accepted'.
+  async logLinkedInPerson({ contactId, brandId, newBrand, name, title, linkedinUrl, email, phone, location, notes, stage, __user }: any) {
+    let bid = brandId ? String(brandId) : null
+    let brandCreated = false
+    if (!contactId && !bid && newBrand?.name) {
+      if (!isLogStage(stage)) throw new Error('Pick “Invite sent” or “They accepted”.')
+      checkNewPerson({ name, linkedinUrl })
+      const clean = String(newBrand.name).trim()
+      // Checked first so a bad key is an error, not a silent guess.
+      const category = checkCategory(newBrand.category) ?? guessCategory(clean)
+      const same = await prisma.brand.findFirst({ where: { name: { equals: clean, mode: 'insensitive' } } })
+      if (same) bid = same.id
+      else {
+        // Always with a category, so createBrand never asks a model.
+        const made = await handlers.createBrand({ name: clean, category })
+        bid = made.brand.id
+        brandCreated = made.created
+      }
+    }
+    const r = await logLinkedInPerson(prisma, {
+      contactId, brandId: bid, name, title, linkedinUrl, email, phone, location, notes, stage, actor: __user ?? null,
+    }, { fit: scoreFit, decisionMaker: looksLikeDecisionMaker })
+    // The free template first DM and follow-up for an accept, so the brand
+    // page can copy the DM for someone who never came through the queue
+    // (an invite logged as sent went out in Leo's own words — nothing to
+    // write for it yet).
+    if (!r.noop && r.status === 'accepted') {
+      const t = await prisma.target.findUnique({
+        where: { id: r.targetId },
+        include: { brand: { select: { name: true, category: true } }, contact: true, drafts: true },
+      })
+      if (t && !t.drafts.length) await ensureTemplateDrafts([t])
+    }
+    return { ...r, brandCreated }
+  },
+
+  // The Undo on a log, while nothing has happened since.
+  async undoLinkedInLog({ undo, __user }: any) {
+    return undoLinkedInLog(prisma, undo, __user ?? null)
+  },
+
   // "Fill queue to 20": when today's category can't reach the cap from
   // the existing pool, queue the best untouched same-category brands
   // (one person each, straight into today) until it can. Strictly the
@@ -6187,9 +6291,11 @@ const handlers: Record<string, Handler> = {
       },
     })
 
-    // Invited-per-brand for the denominator: anyone an invite went to.
+    // Invited-per-brand for the denominator: anyone an invite went to —
+    // an accept logged with no invite date too, or a reply from one of
+    // them would put a brand over 100%.
     const invited = await prisma.target.findMany({
-      where: { sentAt: { not: null } },
+      where: INVITED_WHERE,
       select: { brandId: true },
     })
     const invitedBy: Record<string, number> = {}
