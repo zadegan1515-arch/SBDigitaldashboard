@@ -53,7 +53,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   no `callAt`, no `handSkippedAt`). Replied by email still shows (Email step ticked, "replied by
   email"); archived / do-not-email brands show with a tag, never hidden. Filters: To do / Waiting only.
   One-line rows under brand labels (avatar colour follows the brand,
-  a 4-dot mini flow, the next step in words); one row open at a time shows the flow
+  a 4-dot mini flow, the next step in words), **earliest step first** (Leo: "the earlier the stage,
+  the higher up it should be" — `ztCompare`: text back → follow-up → reply to answer → email/DM to
+  send → call; longest-waiting first within a step; a brand sits where its earliest person sits and
+  keeps its people together); one row open at a time shows the flow
   **Accepted → Text them on LinkedIn (due 24h after the accept; follow-up after 4 quiet days) →
   Replied → They want email → Email to send → Email sent, and/or They want LinkedIn → DM to send →
   DM sent (either or both; picking one logs the reply) →

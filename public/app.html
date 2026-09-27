@@ -2030,13 +2030,30 @@ function ztInitials(name) {
   var w = String(name || '').trim().split(/\s+/).filter(Boolean);
   return ((w[0] || '?').charAt(0) + (w.length > 1 ? w[w.length - 1].charAt(0) : '')).toUpperCase();
 }
-// When the current step started, and how long it's been sitting.
-function ztSince(p) {
+// When the current step started: [date, what happened then].
+function ztStepStart(p) {
   var st = ztStage(p);
-  var pick = st === 'soon' || st === 'dm' ? [p.acceptedAt || p.invitedAt, 'Accepted ']
+  return st === 'soon' || st === 'dm' ? [p.acceptedAt || p.invitedAt, 'Accepted ']
     : st === 'waiting' || st === 'nudge' ? [p.nudgedAt || p.dmSentAt, p.nudgedAt ? 'Followed up ' : 'Texted back ']
     : st === 'call' ? [p.liSentAt || p.emailedAt || p.repliedAt, 'Last step ']
     : [p.repliedAt || p.wantsEmailAt || p.liPathAt, 'Replied '];
+}
+// The list's order (Leo: "the earlier the stage, the higher up it should
+// be"): text back on LinkedIn, the follow-up, a reply to answer, an email
+// or DM to send, and last the call to book. Inside one step, whoever has
+// waited longest goes first.
+var ZT_ORDER = { soon: 0, dm: 1, nudge: 2, waiting: 3, pick: 4, email: 5, lidm: 5, call: 6 };
+function ztCompare(a, b) {
+  var ra = ZT_ORDER[ztStage(a)], rb = ZT_ORDER[ztStage(b)];
+  if (ra !== rb) return ra - rb;
+  var ta = ztStepStart(a)[0], tb = ztStepStart(b)[0];
+  ta = ta ? new Date(ta).getTime() : Infinity;
+  tb = tb ? new Date(tb).getTime() : Infinity;
+  return ta - tb;
+}
+// When the current step started, and how long it's been sitting.
+function ztSince(p) {
+  var pick = ztStepStart(p);
   if (!pick[0]) return { short: '', title: '' };
   var days = Math.floor((Date.now() - new Date(pick[0]).getTime()) / 864e5);
   return {
@@ -2399,10 +2416,15 @@ function ztListHtml(c) {
     return '<div class="zt-list"><div class="zt-empty"><div class="zt-bigcheck">✓</div><h3>All caught up</h3>' +
       '<p>Everyone who accepted on LinkedIn has been followed through. New accepts land here on their own.</p></div></div>';
   }
+  // Earliest step first (ztCompare). A brand's people stay together, the
+  // brand sitting where its earliest person sits.
   var groups = [];
   ZT.brands.forEach(function (g) {
-    var ppl = g.people.filter(function (p) { return ztMatch(p, ZT_FILTER); });
+    var ppl = g.people.filter(function (p) { return ztMatch(p, ZT_FILTER); }).sort(ztCompare);
     if (ppl.length) groups.push({ g: g, people: ppl });
+  });
+  groups.sort(function (a, b) {
+    return ztCompare(a.people[0], b.people[0]) || String(a.g.name).localeCompare(String(b.g.name));
   });
   if (!groups.length) {
     return '<div class="zt-list"><div class="zt-none">' + (ZT_FILTER === 'todo'
