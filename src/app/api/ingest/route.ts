@@ -916,7 +916,8 @@ export async function POST(req: NextRequest) {
   }
 
   // -----------------------------------------------------------------
-  // The SB pill on someone's LinkedIn profile (Leo, Sep 2026: invites
+  // The SB · Log pill (scripts/linkedin-log.user.js, Zach's browser) on
+  // someone's LinkedIn profile (Leo, Sep 2026: invites
   // often go out straight from LinkedIn, unlogged). One click logs them
   // as "invite sent" or "accepted" — never through a day's queue. The
   // rules are src/lib/li-log.ts, the same as Zach's list and the brand

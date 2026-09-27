@@ -4,7 +4,8 @@
 // invites straight from LinkedIn without logging them, so when they
 // accept I have to add the person, put them in the queue, mark the invite
 // sent, then accepted." Now one step, from Zach's list (+ Add from
-// LinkedIn), the brand page, or the SB pill on their LinkedIn profile:
+// LinkedIn), the brand page, or the SB · Log pill on their LinkedIn profile
+// (scripts/linkedin-log.user.js, Zach's browser):
 //
 //   · Invite sent — logged the day it goes out, dated now, so it counts
 //     like any send (the day's 20, LinkedIn's weekly limit, accept rates).

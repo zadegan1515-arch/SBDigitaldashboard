@@ -23,11 +23,11 @@
 //     wrong, with a sample — readable at /api/reports/linkedin;
 //   · leave nothing for a second run (every brand rests a month).
 //
-// Then the pill on someone's profile (invites sent straight from
-// LinkedIn): "They accepted" for someone new lands them under their
-// brand, accepted with no invite date and out of every queue; Undo takes
-// them off again; "Invite sent" for someone the run just queued dates it
-// now.
+// Then the logging-only script for Zach's LinkedIn (linkedin-log.user.js)
+// on someone's profile: "They accepted" for someone new lands them under
+// their brand, accepted with no invite date and out of every queue; Undo
+// takes them off again; "Invite sent" for someone the run just queued
+// dates it now.
 //
 // Needs a throwaway LOCAL Postgres — it is wiped:
 //   E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-li-e2e.js
@@ -64,6 +64,9 @@ const SCRIPT = fs.readFileSync(path.join(__dirname, 'linkedin-capture.user.js'),
   .replace(/function rand\(a, b\) \{[^}]*\}/, 'function rand() { return 30; }');
 assert.ok(SCRIPT.includes(BASE + '/api/ingest'), 'ingest address swapped in');
 const VERSION = SCRIPT.match(/@version\s+(\S+)/)[1];
+const LOG_SCRIPT = fs.readFileSync(path.join(__dirname, 'linkedin-log.user.js'), 'utf8')
+  .replace("'https://sb-digitaldashboard.vercel.app/api/ingest'", "'" + BASE + "/api/ingest'");
+assert.ok(LOG_SCRIPT.includes(BASE + '/api/ingest'), 'ingest address swapped into the log script');
 
 // ---- fake LinkedIn -------------------------------------------------
 const person = (slug, name, badge, headline) =>
@@ -278,38 +281,38 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.match(run.samples[0].sample, /\/in\/q1\//);
     ok('the run\'s report — Blank Cards\' unreadable cards with a sample — reads back through /api/reports/linkedin');
 
-    // The pill on a profile: They accepted, for someone new.
+    // Zach's logging-only script on a profile: They accepted, for someone new.
     const pp = await browser.newPage();
     pp.on('pageerror', e => errors.push(String(e)));
-    await pp.addInitScript(GM_SHIM + '\n' + SCRIPT);
+    await pp.addInitScript(GM_SHIM + '\n' + LOG_SCRIPT);
     await pp.goto('http://127.0.0.1:' + LI_PORT + '/in/jane-doe-4b21a/');
-    await pp.waitForFunction(() => /Log them/.test((document.getElementById('sblipill') || {}).textContent || ''));
-    await pp.click('#sblipill');
-    await pp.waitForSelector('#sbliacc', { timeout: 60000 });
-    assert.match(await pp.evaluate(() => document.getElementById('sbli-panel').innerText), /Goes under Liquid Death/);
-    assert.equal(await pp.inputValue('#sblititle'), 'Head of Partnerships');
-    await pp.click('#sbliacc');
-    await pp.waitForFunction(() => /Logged/.test(document.getElementById('sbli-panel').innerText), null, { timeout: 60000 });
+    await pp.waitForFunction(() => /Log them/.test((document.getElementById('sblogpill') || {}).textContent || ''));
+    await pp.click('#sblogpill');
+    await pp.waitForSelector('#sblogacc', { timeout: 60000 });
+    assert.match(await pp.evaluate(() => document.getElementById('sblog-panel').innerText), /Goes under Liquid Death/);
+    assert.equal(await pp.inputValue('#sblogtitle'), 'Head of Partnerships');
+    await pp.click('#sblogacc');
+    await pp.waitForFunction(() => /Logged/.test(document.getElementById('sblog-panel').innerText), null, { timeout: 60000 });
     const jane = await prisma.contact.findFirst({ where: { name: 'Jane Doe' }, include: { targets: { include: { events: true } } } });
     assert.deepEqual([jane.brandId, jane.source, jane.linkedinUrl, jane.title], ['b_ld', 'manual', 'https://www.linkedin.com/in/jane-doe-4b21a/', 'Head of Partnerships']);
     const jt = jane.targets[0];
     assert.deepEqual([jt.status, jt.sentAt, jt.queuedFor, jt.shelved], ['accepted', null, null, false]);
     assert.deepEqual(jt.events.map(e => [e.toStatus, e.actor]), [['accepted', 'SB pill']]);
-    ok('pill on a profile: They accepted puts someone new under their brand, accepted, no invite date, no queue');
+    ok('Zach\'s log script on a profile: They accepted puts someone new under their brand, accepted, no invite date, no queue');
 
-    await pp.click('#sbliundo');
-    await pp.waitForFunction(() => /Undone/.test(document.getElementById('sbli-panel').innerText), null, { timeout: 60000 });
+    await pp.click('#sblogundo');
+    await pp.waitForFunction(() => /Undone/.test(document.getElementById('sblog-panel').innerText), null, { timeout: 60000 });
     assert.equal(await prisma.contact.count({ where: { name: 'Jane Doe' } }), 0);
     ok('Undo takes them off again');
 
     // Someone the run just queued: Invite sent, dated now.
     await pp.goto('http://127.0.0.1:' + LI_PORT + '/in/ea-ld/');
-    await pp.waitForSelector('#sblipill', { state: 'visible' });
-    await pp.click('#sblipill');
-    await pp.waitForSelector('#sblisent', { timeout: 60000 });
-    assert.match(await pp.evaluate(() => document.getElementById('sbli-panel').innerText), /On file at Liquid Death/);
-    await pp.click('#sblisent');
-    await pp.waitForFunction(() => /Logged/.test(document.getElementById('sbli-panel').innerText), null, { timeout: 60000 });
+    await pp.waitForSelector('#sblogpill', { state: 'visible' });
+    await pp.click('#sblogpill');
+    await pp.waitForSelector('#sblogsent', { timeout: 60000 });
+    assert.match(await pp.evaluate(() => document.getElementById('sblog-panel').innerText), /On file at Liquid Death/);
+    await pp.click('#sblogsent');
+    await pp.waitForFunction(() => /Logged/.test(document.getElementById('sblog-panel').innerText), null, { timeout: 60000 });
     const erin = await prisma.target.findFirst({ where: { contact: { name: 'Erin Alvarez' } } });
     assert.equal(erin.status, 'sent');
     assert.ok(erin.sentAt && Date.now() - erin.sentAt.getTime() < 120000, 'dated now');

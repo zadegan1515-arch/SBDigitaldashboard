@@ -5963,7 +5963,7 @@ const handlers: Record<string, Handler> = {
   // -------- logging LinkedIn people by hand (src/lib/li-log.ts) --------
   // An invite sent straight from LinkedIn, or an accept for one that was
   // never logged, in one step — never through a day's queue. Zach's list
-  // (+ Add from LinkedIn), the brand page and the SB pill on a LinkedIn
+  // (+ Add from LinkedIn), the brand page and the SB · Log pill on a LinkedIn
   // profile (/api/ingest) all write through li-log-db.ts.
 
   // Who a pasted profile link or a typed name could be, among everyone
