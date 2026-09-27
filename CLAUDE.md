@@ -208,6 +208,23 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Huel → wellness); `liList` puts them first of all ("Asked for by name").
   Rules + matching in `src/lib/li-capture.ts` (`node scripts/test-li-capture.mjs`); script tested by
   `scripts/test-li-script.js` (fake People/search pages, incl. a run, pause/continue, limit page).
+  **Updates, tests, reports** (Leo, Sep 2026: "a way for you to update and test runs"; yes to reports
+  Claude can read + a daily check that fixes and pushes): **one version in three places** — `@version`,
+  `VERSION` and `LI_SCRIPT_VERSION` (`li-sweep.ts`); the script test fails if they drift, so bump all three
+  on every script change. Tampermonkey pulls `@downloadURL` (raw GitHub main; the repo is public) about
+  daily; li replies carry `latest` (`liVersion` asked ≤ every 6 h), so an older copy turns the pill orange
+  and every panel offers "Update now ↗". **Run reports** (`src/lib/li-report.ts`, Setting `liRunReports`,
+  last 10 runs, `node scripts/test-li-report.mjs`): `liRun` start/pause/resume/finish + every item's
+  `liSwept` (with `run`; research names too, brandId null); a page the reader gets wrong
+  (`readingProblem`: people on screen but none read, every title blank/the same, badges in names) sends
+  `problem` + a card `sample` (≤3 per run). Shown on Outreach → People ("Last LinkedIn run");
+  read-only for Claude at `GET /api/reports/linkedin` (Bearer `REPORT_TOKEN`, no contacts). **Full chain**:
+  `scripts/test-li-e2e.js` — the real script → real `/api/ingest` (`next dev`) → a throwaway local
+  Postgres, fake LinkedIn (`E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) NODE_PATH=$(npm root -g) node
+  scripts/test-li-e2e.js`; refuses any non-local database — it wipes it). GitHub Actions **LinkedIn tool**
+  (`.github/workflows/linkedin-tool.yml`) runs types + all four on every push touching the tool. A daily
+  Routine ("LinkedIn run check", 7:58 New York) reads the reports and fixes/pushes LinkedIn-tool bugs
+  only; needs `REPORT_TOKEN` + `sb-digitaldashboard.vercel.app` allowed in the cloud environment.
   Worklist in the dashboard: Outreach → People → "Under 25" (deep link `app.html#people`).
   Install by **paste** (Tampermonkey → + → paste over the sample; pasted under it, the sample's
   header wins and it never runs on LinkedIn — a copy without its @grant lines says "Reinstall").
@@ -286,7 +303,8 @@ AMBASSADOR_PLATFORM_URL · AMBASSADOR_PLATFORM_TOKEN (= platform INTEGRATION_TOK
 optional: SIGNATURE_LINKEDIN_URL, SIGNATURE_INSTAGRAM_URL, SIGNATURE_EMBED=1, SIGNATURE_ICONS=1, OPS_BACKFILL_DAYS,
 SPONSOR_HOST (brand page host), SPONSOR_REQUEST_TO (who gets sponsor requests), SPONSOR_GATE=1
 (turn the Show Board access-code gate on), SPONSOR_MASTER_CODE (team code that always opens the
-board), CRM_SHEET_ID.
+board), CRM_SHEET_ID, REPORT_TOKEN (read-only LinkedIn run reports for Claude's morning check; 24+
+characters, the same value in the Claude cloud environment's settings).
 
 ## Conventions
 - **Outreach runs Tuesday / Wednesday / Thursday only** — no Mondays, no Fridays, no weekends —

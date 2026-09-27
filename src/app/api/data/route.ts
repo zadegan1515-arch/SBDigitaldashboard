@@ -35,7 +35,8 @@ import { newBoardCode } from '@/lib/board-access'
 import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import { regionFlag } from '@/lib/region'
 import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hints'
-import { readLiLog, readLiResearch } from '@/lib/li-sweep'
+import { readLiLog, readLiResearch, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
+import { readRuns } from '@/lib/li-report'
 import { LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR, linkedinWindows, acceptRates, planWeekDays, type AcceptRates } from '@/lib/plan-week'
 import { findDuplicateGroups, pairKey } from '@/lib/duplicates'
 import { rollWindow, findUnsent, planCarry, type Unsent, type CarryFacts } from '@/lib/carry'
@@ -6936,7 +6937,11 @@ const handlers: Record<string, Handler> = {
     const rank = (b: (typeof rows)[number]) =>
       b.contacts.some(c => c.linkedinUrl) ? 0 : b.contacts.length ? 1 : 2
     rows.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name))
-    return { brands: rows }
+    // The last few runs of the LinkedIn fill, as the script reported them
+    // (li-report.ts). The card samples stay server-side: they're for the
+    // morning check, not this page.
+    const runs = (await readRuns(prisma)).slice(0, 3).map(r => ({ ...r, samples: r.samples.map(x => ({ at: x.at, name: x.name, problem: x.problem })) }))
+    return { brands: rows, runs, latestScript: LI_SCRIPT_VERSION }
   },
 
   async listDeals() {

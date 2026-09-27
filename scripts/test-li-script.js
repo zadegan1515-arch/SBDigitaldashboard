@@ -47,6 +47,12 @@
 //      the feed wipes the mark from the address as it loads. A run left
 //      behind by a closed tab doesn't block it; a live run in another
 //      tab is shown instead of doubled.
+//  14. Updates: the script's version is the one the dashboard expects;
+//      when the dashboard names a newer one, the pill turns orange and the
+//      panel links to Tampermonkey's update page; asked at most every 6 h.
+//  15. The run's report: start and finish go to the dashboard, every
+//      brand's visit carries the run, and a page whose cards the reader
+//      gets wrong sends the problem with a sample of the cards.
 //   6. The pill sits bottom-left, clear of LinkedIn's Messaging bar; the
 //      Tampermonkey menu opens the same panel; and a copy running without
 //      its @grant lines (pasted under Tampermonkey's sample) says so.
@@ -122,6 +128,10 @@ function page(people, title, extra) {
 }
 
 const sent = [];
+const versionAsks = [];
+const runEvents = [];
+// What the fake dashboard says the current script is.
+let latestVersion = null;
 // What liList hands the fill; each scenario sets its own.
 let fillItems = [];
 const discovered = new Set();
@@ -144,8 +154,12 @@ const server = http.createServer((req, res) => {
     req.on('data', c => { raw += c; });
     req.on('end', () => {
       const body = JSON.parse(raw);
-      sent.push(body);
       res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, cors));
+      // The version check and the run's report aren't captures; they're
+      // kept apart so "nothing was sent" still means nothing was saved.
+      if (body.action === 'liVersion') { versionAsks.push(body); return res.end(JSON.stringify({ ok: true, latest: latestVersion })); }
+      if (body.action === 'liRun') { runEvents.push(body); return res.end(JSON.stringify({ ok: true, latest: latestVersion })); }
+      sent.push(body);
       if (body.token !== 'test-token') { res.writeHead(401); return res.end('{}'); }
       if (body.action === 'liPreview' && /casamigos/.test(body.companyUrl || '')) {
         return res.end(JSON.stringify({
@@ -224,6 +238,13 @@ const server = http.createServer((req, res) => {
         '<div><span>• 2nd</span></div><div>Senior Director, Brand Marketing</div><div>12 mutual connections</div><button>Connect</button></section></li>' +
       '<li><section><a href="https://www.linkedin.com/in/judy-l/"><span>Judy Lee</span><span> • 3rd+</span></a>' +
         '<div>Software Engineer at Supergoop!</div><button>Connect</button></section></li>' +
+      '</ul></main></body></html>');
+  }
+  // Cards the reader gets wrong: the profile link holds only a photo, so
+  // each "name" is the title and every title comes out blank.
+  if (/^\/company\/blank-cards\/people\/?/.test(req.url)) {
+    return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Blank Cards</h1><ul>' +
+      ['q1', 'q2', 'q3'].map(q => '<li><section><a href="https://www.linkedin.com/in/' + q + '/"><img alt=""></a><div>Brand Manager</div><button>Connect</button></section></li>').join('') +
       '</ul></main></body></html>');
   }
   // The research list's searches.
@@ -311,8 +332,22 @@ const GM_SHIM = `
 `;
 
 (async () => {
+  // 14a. One version everywhere: the header, the script's own VERSION and
+  // what the dashboard tells older copies (li-sweep.ts).
+  {
+    const raw = fs.readFileSync(path.join(__dirname, 'linkedin-capture.user.js'), 'utf8');
+    const header = raw.match(/@version\s+(\S+)/)[1];
+    const inner = raw.match(/var VERSION = '([^']+)'/)[1];
+    const server = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'li-sweep.ts'), 'utf8').match(/LI_SCRIPT_VERSION = '([^']+)'/)[1];
+    assert.equal(inner, header, '@version and VERSION match');
+    assert.equal(server, header, 'LI_SCRIPT_VERSION in li-sweep.ts matches @version — bump both');
+    const dl = raw.match(/@downloadURL\s+(\S+)/)[1];
+    assert.ok(raw.includes("var DOWNLOAD_URL = '" + dl + "'"), 'the update link is the @downloadURL');
+    console.log('  ok — one version: @version = VERSION = LI_SCRIPT_VERSION (' + header + ')');
+  }
   await new Promise(r => server.listen(4622, '127.0.0.1', r));
-  const browser = await chromium.launch(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { executablePath: '/opt/pw-browsers/chromium' });
+  // Claude's cloud sessions keep Chromium in /opt/pw-browsers; CI installs its own.
+  const browser = await chromium.launch(process.env.PLAYWRIGHT_BROWSERS_PATH || !fs.existsSync('/opt/pw-browsers/chromium') ? {} : { executablePath: '/opt/pw-browsers/chromium' });
   const pageObj = await browser.newPage();
   await pageObj.addInitScript(GM_SHIM);
   const load = async (url) => {
@@ -623,8 +658,12 @@ const GM_SHIM = `
       assert.deepEqual(run, [
         'liList',
         'liResearch:Powerade:final', 'liCapture:b-pow', 'liSwept:b-pow',
-        'liResearch:NOS Energy', 'liResearch:NOS Energy:final',
+        // A name that never became a brand still goes in the run's report
+        // (no brandId, so it rests nothing).
+        'liResearch:NOS Energy', 'liResearch:NOS Energy:final', 'liSwept',
       ]);
+      const nos = sent.slice(before).filter(b => b.action === 'liSwept').pop();
+      assert.equal(nos.brandId, null); assert.equal(nos.name, 'NOS Energy'); assert.match(nos.note, /no clear LinkedIn page/);
       const text = await pg.textContent('#sbli-panel');
       assert.match(text, /1 new brand added/);
       assert.match(text, /NOS Energy — research list: no clear LinkedIn page/);
@@ -702,6 +741,68 @@ const GM_SHIM = `
     }
     ok('a live run in another tab is shown, not doubled');
 
+    // 14. The dashboard names a newer version.
+    {
+      latestVersion = '99.0';
+      const asks = versionAsks.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.waitForFunction(() => /update/.test((document.getElementById('sblipill') || {}).textContent || ''), null, { timeout: 10000 });
+      assert.equal(versionAsks.length, asks + 1, 'asked the dashboard once');
+      assert.match(await pg.getAttribute('#sblipill', 'title'), /99\.0 is out/);
+      await pg.click('#sblipill');
+      await pg.waitForSelector('#sbliupdate');
+      assert.match(await pg.getAttribute('#sbliupdate a', 'href'), /raw\.githubusercontent\.com\/.+\/linkedin-capture\.user\.js$/);
+      await pg.goto('http://127.0.0.1:4622/company/liquid-death/');
+      await pg.waitForSelector('#sblipill', { state: 'visible' });
+      await pg.waitForTimeout(500);
+      assert.equal(versionAsks.length, asks + 1, 'not asked again within 6 hours');
+      await pg.close();
+      // The dashboard naming this same version: nothing changes.
+      latestVersion = SCRIPT.match(/@version\s+(\S+)/)[1];
+      const pg2 = await browser.newPage();
+      await pg2.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg2.goto('http://127.0.0.1:4622/feed/');
+      await pg2.waitForSelector('#sblipill', { state: 'visible' });
+      await pg2.waitForFunction(n => window.sessionStorage.getItem('__gm:sbLiLatest'), null, { timeout: 5000 });
+      assert.equal(await pg2.textContent('#sblipill'), 'SB ⬇ People');
+      await pg2.close();
+      latestVersion = null;
+    }
+    ok('a newer version turns the pill orange and links to the update; asked at most every 6 h');
+
+    // 15. The run's report.
+    {
+      fillItems = [{ brandId: 'b-blank', name: 'Blank Cards', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/blank-cards/', contacts: 0, focus: false }];
+      const before = sent.length, ev0 = runEvents.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      await pg.uncheck('#sbliresearch');
+      await pg.uncheck('#sblilook');
+      await pg.fill('#sblifocus', '');
+      await pg.click('#sblifilllook');
+      await pg.click('#sblifillstart');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 60000 });
+      await pg.waitForTimeout(300);
+      const evs = runEvents.slice(ev0);
+      assert.deepEqual(evs.map(e => e.kind), ['start', 'finish']);
+      assert.equal(evs[0].items, 1); assert.equal(evs[0].script, evs[1].script);
+      assert.equal(evs[1].stopped, false);
+      const swept = sent.slice(before).find(b => b.action === 'liSwept');
+      assert.equal(swept.run, evs[0].run, 'the visit names its run');
+      assert.equal(swept.brandId, 'b-blank'); assert.equal(swept.name, 'Blank Cards');
+      assert.match(swept.problem, /every title came out blank \(3 people\)/);
+      assert.match(swept.sample, /card 1 read as \{"name":"Brand Manager","headline":""\}/);
+      assert.match(swept.sample, /\/in\/q1\//);
+      assert.ok(swept.sample.length < 6500, 'the sample stays small');
+      await pg.close();
+    }
+    ok('the run reports its start, end and every brand; unreadable cards come with a sample');
+
     // 6. No @grant lines: runs, shows the pill, says to reinstall.
     const bare = await browser.newPage();
     await bare.goto('http://127.0.0.1:4622/company/liquid-death/people/');
@@ -713,7 +814,7 @@ const GM_SHIM = `
 
     console.log(n + ' checks passed');
   } catch (e) {
-    console.error('FAILED:', e.message);
+    console.error('FAILED:', e.stack || e.message);
     process.exitCode = 1;
   } finally {
     await browser.close();

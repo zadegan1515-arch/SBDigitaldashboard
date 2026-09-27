@@ -1308,8 +1308,9 @@
       <div class="hint" id="li-script-hint" style="margin-top:10px;display:none">
         People ↗ opens a brand's LinkedIn People tab. With the
         <a href="https://github.com/zadegan1515-arch/SBDigitaldashboard/blob/main/scripts/linkedin-capture.user.js" target="_blank" rel="noopener">LinkedIn capture script</a>
-        in Tampermonkey (copy it there, then Tampermonkey → + → paste → save; on Leo's LinkedIn, not Zach's), press the SB pill there: it reads that page, shows who it found, and adds the marketing and partnership people when you say so. Or let it go through this list by itself: pill → <b>Fill brands by itself</b> (about 50 brands a day). Brands it couldn't do carry a red LinkedIn note here.
+        in Tampermonkey (copy it there, then Tampermonkey → + → paste → save; on Leo's LinkedIn, not Zach's), press the SB pill there: it reads that page, shows who it found, and adds the marketing and partnership people when you say so. Or let it go through this list by itself: pill → <b>Fill brands by itself</b> (about 75 brands a day). Brands it couldn't do carry a red LinkedIn note here.
       </div>
+      <div id="li-runs" style="margin-top:14px;display:none"></div>
       <div id="li-list" style="margin-top:14px"></div>
     </section>
 
@@ -5820,6 +5821,7 @@ function loadLinkedin() {
 
   return api('linkedinPeople').then(function (d) {
     LI_DATA = d.brands || [];
+    renderLiRuns(d.runs || [], d.latestScript || null);
     var profiles = 0, brandsWith = 0;
     LI_DATA.forEach(function (b) {
       var n = b.contacts.filter(function (c) { return c.linkedinUrl; }).length;
@@ -5833,6 +5835,59 @@ function loadLinkedin() {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
       esc(e.message) + '</p></div></div>';
   });
+}
+
+// What the LinkedIn fill reported about its last runs (li-report.ts):
+// the latest in full — people added, where it paused, pages the reader
+// couldn't make out — and a line each for the two before. The same
+// reports feed Claude's morning check.
+function liVersionBehind(v, latest) {
+  var a = String(v || '').split('.'), b = String(latest || '').split('.');
+  for (var i = 0; i < Math.max(a.length, b.length); i++) {
+    var x = Number(a[i]) || 0, y = Number(b[i]) || 0;
+    if (x !== y) return x < y;
+  }
+  return false;
+}
+function renderLiRuns(runs, latest) {
+  var box = document.getElementById('li-runs');
+  if (!box) return;
+  if (!runs.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.style.display = '';
+  var when = function (iso) {
+    return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  };
+  var STATUS = { running: 'running', paused: 'paused', finished: 'finished', stopped: 'stopped' };
+  var r = runs[0];
+  var skipped = r.brands.filter(function (x) { return x.note && !x.problem; });
+  var problems = r.brands.filter(function (x) { return x.problem; });
+  var lastPause = r.status === 'paused' && r.pauses.length ? r.pauses[r.pauses.length - 1] : null;
+  var html = '<div class="panel" style="padding:14px 16px">' +
+    '<div class="t-line"><b>Last LinkedIn run</b><span class="t-sep">·</span>' +
+      '<span class="t-title">started ' + esc(when(r.startedAt)) + (r.script ? ' · script ' + esc(r.script) : '') + '</span>' +
+      '<span class="status ' + (r.status === 'paused' ? 'declined' : r.status === 'finished' ? 'accepted' : 'sent') + '" style="margin-left:8px">' + esc(STATUS[r.status] || r.status) + '</span></div>' +
+    '<div class="t-meta" style="margin-top:6px">' + r.brands.length + ' brand' + (r.brands.length === 1 ? '' : 's') + ' done · ' +
+      r.added + ' people added' + (r.newBrands ? ' · ' + r.newBrands + ' new brand' + (r.newBrands === 1 ? '' : 's') : '') +
+      ' · last word ' + esc(when(r.lastAt)) + '</div>' +
+    (lastPause ? '<div class="t-meta" style="margin-top:6px;color:var(--bad)">Paused: ' + esc(lastPause.why) + '</div>' : '') +
+    (latest && r.script && liVersionBehind(r.script, latest)
+      ? '<div class="t-meta" style="margin-top:6px;color:var(--warn)">This run used script ' + esc(r.script) + ' — ' + esc(latest) + ' is out. The pill on LinkedIn turns orange; one click there updates it.</div>' : '') +
+    (problems.length
+      ? '<div style="margin-top:8px">' + problems.map(function (x) {
+          return '<div class="t-meta" style="margin-top:4px"><span class="status declined" title="The script sent what it saw; Claude\u2019s morning check picks it up">' +
+            esc(x.name) + ': ' + esc(x.problem) + '</span></div>';
+        }).join('') + '</div>' : '') +
+    (skipped.length
+      ? '<details style="margin-top:8px"><summary class="t-meta" style="cursor:pointer">' + skipped.length + ' brand' + (skipped.length === 1 ? '' : 's') + ' skipped, and why</summary>' +
+          skipped.map(function (x) { return '<div class="t-meta" style="margin-top:4px">' + esc(x.name) + ' — ' + esc(x.note) + '</div>'; }).join('') +
+        '</details>' : '') +
+    runs.slice(1).map(function (p) {
+      return '<div class="t-meta" style="margin-top:8px;color:var(--ink-3)">Before: ' + esc(when(p.startedAt)) + ' · ' +
+        p.brands.length + ' brands · ' + p.added + ' people · ' + esc(STATUS[p.status] || p.status) +
+        (p.problems ? ' · ' + p.problems + ' unreadable page' + (p.problems === 1 ? '' : 's') : '') + '</div>';
+    }).join('') +
+  '</div>';
+  box.innerHTML = html;
 }
 
 document.querySelectorAll('#linkedin .chip[data-lif]').forEach(function (ch) {

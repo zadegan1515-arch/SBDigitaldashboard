@@ -1,0 +1,66 @@
+# The LinkedIn fill, tested on every push that could break it: its rules,
+# the script against a fake dashboard, and the whole chain — the real
+# script in Chromium → the real /api/ingest → Postgres — against fake
+# LinkedIn pages. Nothing here reaches LinkedIn, Vercel or the live
+# database; Postgres is a throwaway service container.
+name: LinkedIn tool
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/linkedin-capture.user.js'
+      - 'scripts/test-li-*'
+      - 'src/lib/**'
+      - 'src/app/api/ingest/**'
+      - 'src/app/api/reports/**'
+      - 'prisma/schema.prisma'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/linkedin-tool.yml'
+  pull_request:
+    paths:
+      - 'scripts/linkedin-capture.user.js'
+      - 'scripts/test-li-*'
+      - 'src/lib/**'
+      - 'src/app/api/ingest/**'
+      - 'src/app/api/reports/**'
+      - 'prisma/schema.prisma'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/linkedin-tool.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: e2e
+          POSTGRES_DB: sbe2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Playwright + Chromium
+        run: npm i --no-save playwright@1.56.1 && npx playwright install --with-deps chromium
+      - name: Types
+        run: npx tsc --noEmit
+      - name: Rules
+        run: node scripts/test-li-capture.mjs && node scripts/test-li-report.mjs
+      - name: Script against a fake dashboard
+        run: node scripts/test-li-script.js
+      - name: Whole chain against fake LinkedIn
+        run: node scripts/test-li-e2e.js
+        env:
+          E2E_DATABASE_URL: postgresql://postgres:e2e@localhost:5432/sbe2e
