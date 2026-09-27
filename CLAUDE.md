@@ -100,11 +100,22 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   opened to its thread count (`previewBrandPicks` mirrors `queueBrandTargets` without writing;
   `fillWholeBrands` is shared by the preview and `getTodayQueue`, so what the Schedule says is what
   the LinkedIn tab stamps; a day never passes 20). Pinned cards say who goes or exactly why not
-  (`outreachGate` + `reasonText`). Adding: day search (`searchPlanBrands`), **Paste a list**
-  (`matchBrandList`), the day's **Fill box** (`suggestForDay`, any category, Fill to 20 = whole brands
-  that fit), category drill-in with multi-select (`categoryBrands`). Moving: drag onto a day or
-  "Move to" (`planMoveBrand`; moving off today un-stamps unsent people, nothing shelved). Plan
+  (`outreachGate` + `reasonText`). Adding: day search (`searchPlanBrands`; Enter adds the top match
+  and the cursor stays in the box for the next one — a redraw keeps the focused box's text, a box
+  Leo left clears), **Paste a list** (`matchBrandList`; a list pasted straight into a day's add box
+  opens it and checks at once), the day's **Fill box** (`suggestForDay`, any category, Fill to 20 =
+  whole brands that fit), category drill-in with multi-select (`categoryBrands`). Moving: drag onto a
+  day or "Move to" (`planMoveBrand`; moving off today un-stamps unsent people, nothing shelved). Plan
   writes go through `planAddBrands` / `planMoveBrand` / `planRemoveBrand` / `planSetCategory`.
+  **Put on a day outside the Schedule** (Leo: "make sure adding brands to days is easy"): the brand
+  page's Schedule line (`bpLoad`: where it stands — on a day and who goes, in today's queue, or why
+  it can't — plus Put on a day / Move to… / Take off; off today also passes it for today), the
+  Brands list's tick bar and Stock take's lanes ("Put on a day (N ready)", a day's worth pre-ticked)
+  share one picker (`pdCtx`/`pdHtml`): pick a day → `planAddBrands({ preview: true })` shows who
+  goes, what moves off another day or out of today's queue, and a warning past the day's 20 → Add
+  sends exactly the previewed ids. Days = `planDayChoices` = the Schedule's columns
+  (`scheduleDays`, shared with `getOutreachPlan`) + the next off weekday, which `addDay` opens as
+  a sending day; `planAddBrands` refuses a non-sending day without it.
   Thin / no-one brands link "LinkedIn people ↗" (`liPeopleUrl`) for the LinkedIn capture script;
   the tab refreshes on focus so a capture shows up. "The rest of …" rows (past a day's 20) have
   **Add** (pins to that day; the fill makes room) and "Other day…". **Plan my week** (`planWeek`
@@ -226,14 +237,34 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Huel → wellness); `liList` puts them first of all ("Asked for by name").
   Rules + matching in `src/lib/li-capture.ts` (`node scripts/test-li-capture.mjs`); script tested by
   `scripts/test-li-script.js` (fake People/search pages, incl. a run, pause/continue, limit page).
+  **Updates, tests, reports** (Leo, Sep 2026: "a way for you to update and test runs"; yes to reports
+  Claude can read + a daily check that fixes and pushes): **one version in three places** — `@version`,
+  `VERSION` and `LI_SCRIPT_VERSION` (`li-sweep.ts`); the script test fails if they drift, so bump all three
+  on every script change. Tampermonkey pulls `@downloadURL` (raw GitHub main; the repo is public) about
+  daily; li replies carry `latest` (`liVersion` asked ≤ every 6 h), so an older copy turns the pill orange
+  and every panel offers "Update now ↗". **Run reports** (`src/lib/li-report.ts`, Setting `liRunReports`,
+  last 10 runs, `node scripts/test-li-report.mjs`): `liRun` start/pause/resume/finish + every item's
+  `liSwept` (with `run`; research names too, brandId null); a page the reader gets wrong
+  (`readingProblem`: people on screen but none read, every title blank/the same, badges in names) sends
+  `problem` + a card `sample` (≤3 per run). Shown on Outreach → People ("Last LinkedIn run");
+  read-only for Claude at `GET /api/reports/linkedin` (Bearer `REPORT_TOKEN`, no contacts). **Full chain**:
+  `scripts/test-li-e2e.js` — the real script → real `/api/ingest` (`next dev`) → a throwaway local
+  Postgres, fake LinkedIn (`E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) NODE_PATH=$(npm root -g) node
+  scripts/test-li-e2e.js`; refuses any non-local database — it wipes it). GitHub Actions **LinkedIn tool**
+  (`.github/workflows/linkedin-tool.yml`) runs types + all four on every push touching the tool. A daily
+  Routine ("LinkedIn run check", 7:58 New York) wakes the cloud session "LinkedIn run check (daily)" —
+  it has the repo attached; a session a routine makes fresh has no repo and can't push — which reads
+  the reports and fixes/pushes LinkedIn-tool bugs only; needs `REPORT_TOKEN` +
+  `sb-digitaldashboard.vercel.app` allowed in the cloud environment.
   Worklist in the dashboard: Outreach → People → "Under 25" (deep link `app.html#people`).
-  **On a profile** (`/in/<slug>/`, script 1.13; the pill reads "SB · Log them"): logs that person as
+  **On a profile** (`/in/<slug>/`, script 1.14; the pill reads "SB · Log them"): logs that person as
   Invite sent / They accepted (the section above). Reads name (`<h1>`, else the tab title), headline, and
   current company ("Current company" aria-label, else the first job's logo alt, else "at X" in the
   headline) → `liPerson` (who they are, which brand; nothing saved) → `liPersonLog` (by contactId, or
   under the brand; "New brand + …" = `createIfMissing`) → Undo = `liPersonUndo`. One page, no scrolling,
   so it's fine on whichever account sent the invite. Subpages point back to the profile; "Copy a sample
-  for Claude" copies the top card there.
+  for Claude" copies the top card there. Covered by `test-li-script.js` (fake dashboard) and
+  `test-li-e2e.js` (real dashboard + throwaway Postgres: accepted, Undo, invite sent).
   Install by **paste** (Tampermonkey → + → paste over the sample; pasted under it, the sample's
   header wins and it never runs on LinkedIn — a copy without its @grant lines says "Reinstall").
   Chrome needs Tampermonkey's **Allow User Scripts** switch on. The pill shows on every LinkedIn page,
@@ -311,7 +342,8 @@ AMBASSADOR_PLATFORM_URL · AMBASSADOR_PLATFORM_TOKEN (= platform INTEGRATION_TOK
 optional: SIGNATURE_LINKEDIN_URL, SIGNATURE_INSTAGRAM_URL, SIGNATURE_EMBED=1, SIGNATURE_ICONS=1, OPS_BACKFILL_DAYS,
 SPONSOR_HOST (brand page host), SPONSOR_REQUEST_TO (who gets sponsor requests), SPONSOR_GATE=1
 (turn the Show Board access-code gate on), SPONSOR_MASTER_CODE (team code that always opens the
-board), CRM_SHEET_ID.
+board), CRM_SHEET_ID, REPORT_TOKEN (read-only LinkedIn run reports for Claude's morning check; 24+
+characters, the same value in the Claude cloud environment's settings).
 
 ## Conventions
 - **Outreach runs Tuesday / Wednesday / Thursday only** — no Mondays, no Fridays, no weekends —

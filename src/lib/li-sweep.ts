@@ -19,6 +19,12 @@ const LI_KEEP_DAYS = 120
 // LinkedIn calls from older readers altogether.
 export const LI_READER = 2
 
+// The current LinkedIn script, = its @version. The dashboard tells older
+// copies there's an update (the pill turns orange; one click takes it),
+// since Tampermonkey on its own only checks about once a day.
+// scripts/test-li-script.js fails when the two drift apart.
+export const LI_SCRIPT_VERSION = '1.14'
+
 export type LiMark = { at: string; seen: number; added: number; note?: string | null; v?: number }
 export type LiLog = Record<string, LiMark>
 

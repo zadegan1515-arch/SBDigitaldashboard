@@ -779,6 +779,31 @@
      Without this the bar sits under the last of ~500 rows, off screen. */
   #brands-bulk{position:sticky;bottom:12px;z-index:5}
   #brands-bulk .sd-bulk{position:relative}
+  /* "Put on a day" (Brands bar, Stock take lanes, brand page): a day
+     menu, then who would go out before anything is added. */
+  .pd-sep{width:1px;align-self:stretch;background:var(--border-soft);margin:0 2px}
+  .pd-sel{max-width:280px}
+  .pd-box{flex-basis:100%;min-width:0;border-top:1px solid var(--border-soft);padding-top:8px;margin-top:2px}
+  .pd-sum{font-size:13px;margin-bottom:4px}
+  .pd-rows{max-height:34vh;overflow:auto}
+  .pd-name{flex:0 1 auto;min-width:0;font-weight:600;color:var(--ink-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40%}
+  .pd-what{flex:1 1 220px;min-width:0;font-size:12.5px;color:var(--ink-2);text-align:right}
+  .pd-no{color:#f4a8a4}
+  .pd-warn{color:#eec777}
+  .pd-notes{font-size:12px;color:#eec777;line-height:1.45;margin-top:6px}
+  .pd-notes div+div{margin-top:3px}
+  .pd-go{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+  .pd-done{font-size:12.5px;color:#8fe0bb;background:rgba(62,207,142,.1);border-radius:8px;padding:6px 10px;margin-bottom:8px;line-height:1.45}
+  .pd-done a{color:var(--accent-hi)}
+  .pd-done.bad{color:#f4a8a4;background:rgba(240,113,107,.1)}
+  .b-plan{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;margin:12px 0 0;font-size:13px;color:var(--ink-2)}
+  .b-plan-k{font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+  .b-plan b{color:var(--ink-1)}
+  .b-plan .pd-done{flex-basis:100%;margin:0}
+  .st-plan{margin-top:4px}
+  .st-plan .sd-drow{border-top:0;padding:3px 0}
+  .st-plan-go{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+  @media (max-width:640px){.pd-what{text-align:left}.pd-name{max-width:none}}
   .count-head{font-size:14px;font-weight:600;margin-bottom:2px}
   /* Outreach > LinkedIn. One card per brand so a brand's people stay
      together (sent ones included) instead of scattering across lists.
@@ -1333,8 +1358,9 @@
       <div class="hint" id="li-script-hint" style="margin-top:10px;display:none">
         People ↗ opens a brand's LinkedIn People tab. With the
         <a href="https://github.com/zadegan1515-arch/SBDigitaldashboard/blob/main/scripts/linkedin-capture.user.js" target="_blank" rel="noopener">LinkedIn capture script</a>
-        in Tampermonkey (copy it there, then Tampermonkey → + → paste → save; on Leo's LinkedIn, not Zach's), press the SB pill there: it reads that page, shows who it found, and adds the marketing and partnership people when you say so. Or let it go through this list by itself: pill → <b>Fill brands by itself</b> (about 50 brands a day). Brands it couldn't do carry a red LinkedIn note here.
+        in Tampermonkey (copy it there, then Tampermonkey → + → paste → save; on Leo's LinkedIn, not Zach's), press the SB pill there: it reads that page, shows who it found, and adds the marketing and partnership people when you say so. Or let it go through this list by itself: pill → <b>Fill brands by itself</b> (about 75 brands a day). Brands it couldn't do carry a red LinkedIn note here.
       </div>
+      <div id="li-runs" style="margin-top:14px;display:none"></div>
       <div id="li-list" style="margin-top:14px"></div>
     </section>
 
@@ -3672,6 +3698,204 @@ document.getElementById('brands-list').addEventListener('click', function (e) {
   }).catch(function (err) { toast(err.message); btn.disabled = false; });
 });
 
+// --- Put on a day (Brands list, Stock take) --------------------
+// Leo: "make sure adding brands to days is easy". Wherever brands are
+// ticked, they can go onto one of the Schedule's days: pick the day, see
+// who would go out (planAddBrands' preview — nothing is written), then
+// Add. Add sends exactly the brands and day of the preview on screen,
+// so it can only do what was shown. The days are the Schedule's own,
+// plus the next weekday nothing goes out on ("adds it as a sending
+// day"). Each place registers a context: which brands are ticked, how
+// to redraw itself, and what to do once they are added.
+var PD_DAYS = { data: null, at: 0, p: null, err: '' };
+var PD = {};
+
+// The day menu's days, fetched once a minute at most (force = now).
+function pdDays(force) {
+  if (!force && PD_DAYS.data && Date.now() - PD_DAYS.at < 60000) return Promise.resolve(PD_DAYS.data);
+  if (PD_DAYS.p) return PD_DAYS.p;
+  PD_DAYS.p = api('planDayChoices').then(function (r) {
+    PD_DAYS.data = r; PD_DAYS.at = Date.now(); PD_DAYS.p = null; PD_DAYS.err = '';
+    return r;
+  }, function (e) { PD_DAYS.p = null; PD_DAYS.err = e.message || 'error'; throw e; });
+  return PD_DAYS.p;
+}
+
+// opts: ids() -> ticked brand ids; render() redraws the place; done(r)
+// after an add; locked() -> true while the place is busy elsewhere.
+function pdCtx(name, opts) {
+  var s = PD[name] || (PD[name] = { key: '', addDay: false, prev: null, shown: null, busy: false, seq: 0, err: '', t: 0 });
+  s.opts = opts;
+  return s;
+}
+
+function pdDayWord(key) {
+  var d = PD_DAYS.data;
+  if (d && key === d.today) return 'today';
+  var hit = d && (d.days || []).concat(d.offDay ? [d.offDay] : []).filter(function (x) { return x.key === key; })[0];
+  return hit ? hit.label : sdDayName(key);
+}
+
+// Ticks changed: the preview on screen is about other brands now. It
+// goes at once (so Add can't send the old set) and comes back for the
+// new ticks a moment later.
+function pdTicksChanged(name) {
+  var s = PD[name];
+  if (!s) return;
+  s.prev = null; s.shown = null; s.err = '';
+  s.seq++;
+  clearTimeout(s.t);
+  if (s.key) s.t = setTimeout(function () { pdPreview(name); }, 300);
+}
+
+function pdPreview(name) {
+  var s = PD[name];
+  if (!s) return;
+  var ids = s.opts.ids().slice().sort();
+  s.prev = null; s.shown = null; s.err = '';
+  if (!s.key || !ids.length || ids.length > 40) { s.busy = false; s.opts.render(); return; }
+  var args = { date: s.key, brandIds: ids, addDay: s.addDay, preview: true };
+  var mine = ++s.seq;
+  s.busy = true;
+  s.opts.render();
+  api('planAddBrands', args).then(function (r) {
+    if (mine !== s.seq) return;
+    s.busy = false;
+    s.prev = r;
+    s.shown = { date: args.date, brandIds: args.brandIds, addDay: args.addDay };
+    s.opts.render();
+  }).catch(function (e) {
+    if (mine !== s.seq) return;
+    s.busy = false;
+    s.err = e.message;
+    s.opts.render();
+  });
+}
+
+function pdApply(name) {
+  var s = PD[name];
+  if (!s || !s.shown || s.busy) return;
+  var args = s.shown;
+  s.busy = true;
+  s.opts.render();
+  api('planAddBrands', { date: args.date, brandIds: args.brandIds, addDay: args.addDay }).then(function (r) {
+    s.busy = false;
+    var word = pdDayWord(args.date);
+    var sum = sdSummary(r.results || []);
+    var text = (word === 'today' ? 'Today' : word) + ' — ' + sum + (r.opened ? ' · ' + word + ' is a sending day now' : '');
+    toast(text);
+    s.key = ''; s.addDay = false; s.prev = null; s.shown = null; s.err = '';
+    pdDays(true).catch(function () {});
+    s.opts.done(r, text);
+  }).catch(function (e) {
+    s.busy = false;
+    s.err = e.message;
+    s.opts.render();
+  });
+}
+
+// One brand's line in the preview: who goes, or exactly why not, plus
+// what else the add does to it (off another day, out of today's queue).
+function pdRow(x) {
+  var what = !x.added ? '<span class="pd-no">Not added · ' + esc(x.reasonText || SD_SHORT[x.reason] || 'can’t go out') + '</span>'
+    : x.state === 'going' ? sdPlural(x.going || 0, 'person', 'people') + ' going out' +
+        ((x.people || []).length ? ' <span class="sd-dim">· ' + esc(x.people.slice(0, 3).map(function (p) { return p.name; }).join(', ')) +
+          (x.going > 3 ? ' +' + (x.going - 3) : '') + '</span>' : '')
+    : x.state === 'sent' ? 'Everyone here was invited today'
+    : '<span class="pd-warn">Added, won’t go out · ' + esc(x.reasonText || SD_SHORT[x.reason] || 'nobody to invite') + '</span>';
+  var also = [];
+  if (x.movedFrom) also.push('moves from ' + pdDayWord(x.movedFrom));
+  if (x.unqueued) also.push(sdPlural(x.unqueued, 'person', 'people') + ' come out of today’s queue');
+  return '<div class="sd-drow"><span class="pd-name">' + esc(x.brandName || 'Brand') + '</span>' +
+    '<span class="pd-what">' + what + (also.length ? ' <span class="sd-dim">· ' + esc(also.join(' · ')) + '</span>' : '') + '</span></div>';
+}
+
+// The menu, and under it the preview and Add. `n` = how many are ticked.
+function pdHtml(name) {
+  var s = PD[name];
+  if (!s) return '';
+  var n = s.opts.ids().length;
+  var d = PD_DAYS.data;
+  if (!d) {
+    if (PD_DAYS.err) {
+      return '<span class="pd-no">The Schedule’s days didn’t load · <a href="#" data-pdretry="' + esc(name) + '">Try again</a></span>';
+    }
+    var again = function () { if (PD[name]) PD[name].opts.render(); };
+    pdDays().then(again, again);
+    return '<span class="sd-dim">Loading days…</span>';
+  }
+  var locked = s.busy || (s.opts.locked && s.opts.locked());
+  var opt = function (key, label, add) {
+    return '<option value="' + esc(key) + '"' + (add ? ' data-add="1"' : '') + (s.key === key ? ' selected' : '') + '>' + esc(label) + '</option>';
+  };
+  var opts = (d.days || []).map(function (x) {
+    return opt(x.key, (x.today ? 'Today · ' : '') + x.label + (x.category ? ' · ' + (CAT_NAMES[x.category] || x.category) : '') + (x.extra ? ' (extra day)' : ''), false);
+  }).join('') + (d.offDay ? opt(d.offDay.key, d.offDay.label + ' (adds it as a sending day)', true) : '');
+  var html = '<span>Put on a day</span><select class="inp pd-sel" data-pdday="' + esc(name) + '"' + (locked || !n || n > 40 ? ' disabled' : '') +
+      ' title="' + (n > 40 ? 'Up to 40 brands at a time' : 'Put the ticked brands on one of the Schedule’s days — you see who goes out before anything is added') + '">' +
+    '<option value="">Pick a day…</option>' + opts + '</select>' +
+    (n > 40 ? '<span class="pd-warn">Up to 40 at a time</span>' : '');
+  if (!s.key) return html;
+  if (s.err) {
+    return html + '<div class="pd-box"><span class="pd-no">' + esc(s.err) + '</span> ' +
+      '<button class="btn-ghost sd-sm" data-pdcancel="' + esc(name) + '">Cancel</button></div>';
+  }
+  if (!s.prev) return html + '<span class="sd-dim">' + (s.busy ? 'Checking who would go out…' : '') + '</span>';
+
+  var p = s.prev, res = p.results || [];
+  var word = pdDayWord(p.date);
+  var Word = word === 'today' ? 'Today' : word;
+  var added = res.filter(function (x) { return x.added; });
+  var going = added.filter(function (x) { return x.state === 'going'; });
+  var people = going.reduce(function (t, x) { return t + (x.going || 0); }, 0);
+  var after = (p.dayPeople || 0) + people;
+  var notes = [];
+  if (p.opening) notes.push(Word + ' isn’t a sending day yet. Adding opens it as one (a one-off, like an extra Friday); the rest of it fills from the rotation like any sending day.');
+  if (after > (p.cap || 20)) {
+    notes.push('That makes ' + after + ' people on ' + word + ' (' + (p.dayPeople || 0) + ' already + ' + people + '). A day sends ' + (p.cap || 20) +
+      ' — whoever doesn’t fit goes out on the next sending day.');
+  }
+  var unq = added.reduce(function (t, x) { return t + (x.unqueued || 0); }, 0);
+  if (unq) notes.push(sdPlural(unq, 'person', 'people') + ' in today’s queue go back to wait for ' + word + '. Nobody is deleted.');
+  return html + '<div class="pd-box">' +
+    '<div class="pd-sum"><b>' + esc(Word) + '</b> · ' + sdPlural(going.length, 'brand', 'brands') + ' going out (' + sdPlural(people, 'person', 'people') + ')' +
+      (added.length > going.length ? ' · ' + (added.length - going.length) + ' added but won’t go out' : '') +
+      (res.length > added.length ? ' · ' + (res.length - added.length) + ' can’t be added' : '') + '</div>' +
+    '<div class="pd-rows">' + res.map(pdRow).join('') + '</div>' +
+    (notes.length ? '<div class="pd-notes">' + notes.map(function (t) { return '<div>' + esc(t) + '</div>'; }).join('') + '</div>' : '') +
+    '<div class="pd-go">' +
+      (added.length
+        ? '<button class="btn-solid sd-sm" data-pdapply="' + esc(name) + '"' + (s.busy ? ' disabled' : '') + '>' +
+            (s.busy ? 'Adding…' : 'Add ' + added.length + ' to ' + esc(Word)) + '</button>'
+        : '<span class="sd-dim">Nothing here can go on a day.</span>') +
+      '<button class="btn-ghost sd-sm" data-pdcancel="' + esc(name) + '">Cancel</button>' +
+    '</div>' +
+  '</div>';
+}
+
+document.addEventListener('change', function (e) {
+  var sel = e.target.closest && e.target.closest('[data-pdday]');
+  if (!sel) return;
+  var s = PD[sel.getAttribute('data-pdday')];
+  if (!s) return;
+  s.key = sel.value;
+  s.addDay = !!(sel.selectedOptions[0] && sel.selectedOptions[0].getAttribute('data-add'));
+  if (s.opts.picked) s.opts.picked();
+  pdPreview(sel.getAttribute('data-pdday'));
+});
+document.addEventListener('click', function (e) {
+  var t = e.target.closest && e.target.closest('[data-pdapply],[data-pdcancel],[data-pdretry]');
+  if (!t) return;
+  e.preventDefault();
+  var name = t.getAttribute('data-pdapply') || t.getAttribute('data-pdcancel') || t.getAttribute('data-pdretry');
+  var s = PD[name];
+  if (!s) return;
+  if (t.hasAttribute('data-pdretry')) { PD_DAYS.err = ''; s.opts.render(); return; }
+  if (t.hasAttribute('data-pdapply')) { pdApply(name); return; }
+  s.key = ''; s.addDay = false; s.prev = null; s.shown = null; s.err = ''; s.seq++;
+  s.opts.render();
+});
+
 // --- re-filing many brands at once -----------------------------
 // Tick brands on the list, pick a category and/or a tier, and Preview
 // shows exactly which brands move from what to what. Only "Apply"
@@ -3681,12 +3905,31 @@ document.getElementById('brands-list').addEventListener('click', function (e) {
 var BB = { sel: {}, cat: '', tier: '', preview: null, shown: null, busy: false };
 var BB_TIERS = ['emerging', 'growth', 'established'];
 var BB_MAX = 300;   // same cap as setBrandsCategory
+// What the last "Put on a day" did, shown over the list it was done on
+// until the next tick.
+var BB_NOTE = null;
 
 function bbReset() {
   BB = { sel: {}, cat: '', tier: '', preview: null, shown: null, busy: false };
+  // The day picker's preview was for the old ticks.
+  if (PD.brands) { PD.brands.key = ''; PD.brands.addDay = false; PD.brands.prev = null; PD.brands.shown = null; PD.brands.err = ''; PD.brands.seq++; }
   document.getElementById('brands-selbar').innerHTML = '';
   document.getElementById('brands-bulk').innerHTML = '';
 }
+
+// Ticked brands onto a Schedule day, from the same bar as the re-file.
+// One preview at a time: picking a day drops a re-file preview, and a
+// re-file Preview drops the day's.
+pdCtx('brands', {
+  ids: function () { return Object.keys(BB.sel); },
+  render: function () { bbRender(); },
+  locked: function () { return BB.busy; },
+  picked: function () { BB.preview = null; BB.shown = null; },
+  done: function (r, text) {
+    BB_NOTE = { text: text, cat: lastCategory };
+    loadBrands(lastCategory);
+  },
+});
 // The Preview args for the picks as they are right now. Ids sorted so
 // the same ticks always give the same key, whatever order they came in.
 function bbPreviewArgs() {
@@ -3698,10 +3941,14 @@ function bbTierName(t) { return t || 'no tier'; }
 function bbRender() {
   var ids = Object.keys(BB.sel), n = ids.length;
   var hasRows = !!document.querySelector('#brands-list [data-bselcb]');
-  document.getElementById('brands-selbar').innerHTML = hasRows
-    ? '<a href="#" data-bball="1">Select all shown</a>' +
-      (n ? ' · <a href="#" data-bbclear="1">Clear</a>' : ' — tick brands to set their category or tier together')
+  var note = BB_NOTE && BB_NOTE.cat === lastCategory && !n
+    ? '<div class="pd-done">✓ ' + esc(BB_NOTE.text) + ' · <a href="#" data-bbsched="1">Open the Schedule →</a>' +
+        ' <a href="#" class="sd-x" data-bbnotex="1" title="Dismiss">×</a></div>'
     : '';
+  document.getElementById('brands-selbar').innerHTML = note + (hasRows
+    ? '<a href="#" data-bball="1">Select all shown</a>' +
+      (n ? ' · <a href="#" data-bbclear="1">Clear</a>' : ' — tick brands to re-file them or put them on a Schedule day')
+    : '');
   var bar = document.getElementById('brands-bulk');
   if (!n) { bar.innerHTML = ''; return; }
 
@@ -3732,7 +3979,8 @@ function bbRender() {
     '<button class="btn-ghost" data-bbpreview="1"' + (picked && !BB.busy && n <= BB_MAX ? '' : ' disabled') +
       ' title="' + (n > BB_MAX ? 'Up to ' + BB_MAX + ' brands at a time' : picked ? 'Show what would change — nothing is saved yet' : 'Pick a category or a tier first') + '">' +
       (BB.busy && !BB.preview ? 'Checking…' : 'Preview') + '</button>' +
-    (n > BB_MAX ? '<span style="color:#f0b86b">Up to ' + BB_MAX + ' at a time</span>' : '');
+    (n > BB_MAX ? '<span style="color:#f0b86b">Up to ' + BB_MAX + ' at a time</span>' : '') +
+    '<span class="pd-sep" aria-hidden="true"></span>' + pdHtml('brands');
 
   var p = BB.preview;
   if (p) {
@@ -3772,16 +4020,20 @@ document.getElementById('brands-list').addEventListener('change', function (e) {
   var cb = e.target.closest('input[data-bselcb]');
   if (!cb) return;
   bbSetTick(cb, cb.checked);
-  BB.preview = null; BB.shown = null;
+  BB.preview = null; BB.shown = null; BB_NOTE = null;
+  pdTicksChanged('brands');
   bbRender();
 });
 
 // "Select all shown" respects the search box: rows it has hidden stay
 // unticked, so a filtered list re-files only what you can see.
 document.getElementById('brands-selbar').addEventListener('click', function (e) {
+  if (e.target.closest('[data-bbsched]')) { e.preventDefault(); BB_NOTE = null; gotoView('schedule'); return; }
+  if (e.target.closest('[data-bbnotex]')) { e.preventDefault(); BB_NOTE = null; bbRender(); return; }
   var all = e.target.closest('[data-bball]'), clear = e.target.closest('[data-bbclear]');
   if (!all && !clear) return;
   e.preventDefault();
+  BB_NOTE = null;
   document.querySelectorAll('#brands-list input[data-bselcb]').forEach(function (cb) {
     if (clear) { bbSetTick(cb, false); return; }
     var row = cb.closest('[data-brand]');
@@ -3789,6 +4041,7 @@ document.getElementById('brands-selbar').addEventListener('click', function (e) 
     bbSetTick(cb, true);
   });
   BB.preview = null; BB.shown = null;
+  pdTicksChanged('brands');
   bbRender();
 });
 
@@ -3812,7 +4065,11 @@ document.getElementById('brands-bulk').addEventListener('click', function (e) {
     : { ids: BB.shown.ids, category: BB.shown.category, tier: BB.shown.tier, preview: false };
   var key = JSON.stringify(args);
   BB.busy = true;
-  if (prev) { BB.preview = null; BB.shown = null; }
+  if (prev) {
+    BB.preview = null; BB.shown = null;
+    var pds = PD.brands;
+    if (pds) { pds.key = ''; pds.addDay = false; pds.prev = null; pds.shown = null; pds.err = ''; pds.seq++; }
+  }
   bbRender();
   api('setBrandsCategory', args).then(function (r) {
     BB.busy = false;
@@ -4259,6 +4516,163 @@ function emailWords(t) {
   return w;
 }
 
+// --- brand page: Put on a day -----------------------------------
+// Where this brand stands on the Schedule, and one menu to put it on a
+// day or move it (Leo: "make sure adding brands to days is easy"). The
+// days are the Schedule's own plus the next weekday nothing goes out on.
+// The add is the Schedule's planAddBrands, so it answers the same way:
+// who goes out, or exactly why not.
+var BP = { id: null, data: null, seq: 0, busy: false, note: null, pending: null };
+
+function bpLoad(brandId, note) {
+  var mine = ++BP.seq;
+  BP.id = brandId;
+  BP.busy = false;
+  // A note left by the change that reloaded the whole page (see bpDone).
+  var carried = BP.pending && BP.pending.id === brandId ? BP.pending : null;
+  BP.pending = null;
+  BP.note = note || carried;
+  if (BP.data && (!BP.data.brand || BP.data.brand.id !== brandId)) BP.data = null;
+  bpRender();
+  api('planDayChoices', { brandId: brandId }).then(function (r) {
+    if (mine !== BP.seq) return;
+    BP.data = r;
+    // Same days as the Brands list's menu: share them.
+    PD_DAYS.data = { today: r.today, days: r.days, offDay: r.offDay };
+    PD_DAYS.at = Date.now();
+    bpRender();
+  }).catch(function (e) {
+    if (mine !== BP.seq) return;
+    var slot = document.getElementById('b-plan');
+    if (slot) slot.innerHTML = '<span class="b-plan-k">Schedule</span><span class="sd-dim">Couldn’t load it (' + esc(e.message) + ')</span>';
+  });
+}
+
+function bpWord(key) {
+  var r = BP.data;
+  if (r && key === r.today) return 'today';
+  var hit = r && (r.days || []).concat(r.offDay ? [r.offDay] : []).filter(function (x) { return x.key === key; })[0];
+  return hit ? hit.label : sdDayName(key);
+}
+
+function bpRender() {
+  var slot = document.getElementById('b-plan');
+  if (!slot) return;
+  var r = BP.data;
+  var html = '<span class="b-plan-k">Schedule</span>';
+  if (!r || !r.brand || r.brand.id !== BP.id) { slot.innerHTML = html + '<span class="sd-dim">…</span>'; return; }
+  var b = r.brand;
+  if (b.refusal) {
+    slot.innerHTML = html + '<span class="sd-dim">' +
+      esc(b.refusalReason === 'archived' ? 'Archived — bring it back to put it on a day.' : b.refusal) + '</span>';
+    return;
+  }
+  var where;
+  if (b.pinnedOn) {
+    where = 'On <b>' + esc(bpWord(b.pinnedOn)) + '</b> · ' + (b.going
+      ? sdPlural(b.going, 'person', 'people') + ' going out'
+      : '<span class="pd-warn">won’t go out: ' + esc(b.why || 'nobody to invite') + '</span>');
+  } else if (b.inTodayQueue) {
+    where = '<b>' + sdPlural(b.inTodayQueue, 'person', 'people') + '</b> in today’s queue, not sent yet';
+  } else if (b.sentToday) {
+    where = sdPlural(b.sentToday, 'person', 'people') + ' invited today';
+  } else {
+    where = 'Not on a day';
+  }
+  var opts = (r.days || []).filter(function (d) { return d.key !== b.pinnedOn; }).map(function (d) {
+    return '<option value="' + esc(d.key) + '">' +
+      esc((d.today ? 'Today · ' : '') + d.label + (d.category ? ' · ' + (CAT_NAMES[d.category] || d.category) : '') + (d.extra ? ' (extra day)' : '')) + '</option>';
+  }).join('') +
+    (r.offDay ? '<option value="' + esc(r.offDay.key) + '" data-add="1">' + esc(r.offDay.label + ' (adds it as a sending day)') + '</option>' : '');
+  var moving = !!(b.pinnedOn || b.inTodayQueue);
+  var lock = BP.busy ? ' disabled' : '';
+  html += '<span>' + where + '</span>' +
+    (opts
+      ? '<select class="inp sd-mini" style="max-width:260px" data-bpday' + lock + ' title="' +
+          (moving ? 'Move it to another day' : 'Put it on one of the Schedule’s days') + '">' +
+          '<option value="">' + (BP.busy ? 'Saving…' : moving ? 'Move to…' : 'Put on a day…') + '</option>' + opts + '</select>'
+      : '') +
+    (b.pinnedOn ? '<button class="btn-ghost sd-sm" data-bpoff' + lock + ' title="Take it off ' + esc(bpWord(b.pinnedOn)) + ' — nothing is deleted">Take off</button>' : '') +
+    '<a href="#" class="sd-link" data-bpsched>Open the Schedule →</a>';
+  if (BP.note) html += '<div class="pd-done' + (BP.note.bad ? ' bad' : '') + '">' + esc(BP.note.text) + '</div>';
+  slot.innerHTML = html;
+}
+
+// After a change: a quick redraw of the line, or the whole page when
+// today's queue changed under the People list (so each person says
+// where they are). The note survives either way.
+function bpDone(id, text, bad, whole) {
+  pdDays(true).catch(function () {});
+  if (whole) {
+    BP.pending = { id: id, text: text, bad: bad };
+    loadBrand(id);
+    return;
+  }
+  bpLoad(id, { text: text, bad: bad });
+}
+
+function bpPut(key, addDay) {
+  var r = BP.data, b = r && r.brand;
+  if (!b || BP.busy) return;
+  var W = bpWord(key);
+  var asks = [];
+  if (addDay) asks.push(W + ' isn’t a sending day. This opens it as one (a one-off, like an extra Friday); the rest of it fills from the rotation like any sending day.');
+  if (key !== r.today && b.inTodayQueue) {
+    asks.push(sdPlural(b.inTodayQueue, 'person', 'people') + ' here ' + (b.inTodayQueue === 1 ? 'is' : 'are') +
+      ' in today’s queue. Putting it on ' + W + ' takes them back out of today — nobody is deleted, they go out on ' + W + ' instead.');
+  }
+  if (asks.length && !window.confirm('Put ' + b.name + ' on ' + W + '?\n\n' + asks.join('\n\n'))) { bpRender(); return; }
+  BP.busy = true;
+  bpRender();
+  var id = b.id, name = b.name;
+  api('planAddBrands', { date: key, brandIds: [id], addDay: !!addDay }).then(function (a) {
+    var res = (a.results || [])[0];
+    var ok = !!(res && res.added);
+    var text = (ok ? 'On ' + W + ': ' : '') + (res ? sdOutcome(res) : 'Done.') + (a.opened ? ' ' + W + ' is a sending day now.' : '');
+    toast(name + ' — ' + text);
+    bpDone(id, text, !ok, ok && (key === r.today || !!(res && res.unqueued)));
+  }).catch(function (e) {
+    toast(e.message);
+    bpDone(id, e.message, true, false);
+  });
+}
+
+// Off its day. Off TODAY also passes it for today, the same as the
+// Schedule's "Off the schedule": unpinned alone, today's rotation put
+// its people straight back in the queue.
+function bpOff() {
+  var r = BP.data, b = r && r.brand;
+  if (!b || !b.pinnedOn || BP.busy) return;
+  var key = b.pinnedOn, W = bpWord(key), id = b.id, name = b.name;
+  var today = key === r.today;
+  BP.busy = true;
+  bpRender();
+  api('planRemoveBrand', { date: key, brandId: id }).then(function (x) {
+    return today ? api('passBrandToday', { brandId: id }).then(function (p) {
+      x.unqueued = (x.unqueued || 0) + ((p && p.unqueued) || 0);
+      return x;
+    }) : x;
+  }).then(function (x) {
+    var text = today ? 'Off today — back in the rotation tomorrow' : 'Off ' + W;
+    text += x.unqueued ? ' · ' + sdPlural(x.unqueued, 'person', 'people') + ' back in the pool.' : '.';
+    toast(name + ' — ' + text);
+    bpDone(id, text, false, !!x.unqueued);
+  }).catch(function (e) {
+    toast(e.message);
+    bpDone(id, e.message, true, false);
+  });
+}
+
+document.getElementById('brand-body').addEventListener('change', function (e) {
+  var sel = e.target.closest('[data-bpday]');
+  if (!sel || !sel.value) return;
+  bpPut(sel.value, !!(sel.selectedOptions[0] && sel.selectedOptions[0].getAttribute('data-add')));
+});
+document.getElementById('brand-body').addEventListener('click', function (e) {
+  if (e.target.closest('[data-bpoff]')) { bpOff(); return; }
+  if (e.target.closest('[data-bpsched]')) { e.preventDefault(); gotoView('schedule'); }
+});
+
 function loadBrand(brandId) {
   showView('brand');
   var box = document.getElementById('brand-body');
@@ -4296,6 +4710,9 @@ function loadBrand(brandId) {
             esc(b.about) + (/[.!?]$/.test(b.about) ? '' : '.') +
             (b.topProducts ? ' Known for ' + esc(b.topProducts) + '.' : '') + '</div>'
         : '<div class="hint" style="margin:8px 0 0">No summary yet — open “Details &amp; notes” below and fill in “What they do”.</div>') +
+      // Where it stands on the Schedule, and a menu to put it on a day
+      // (filled by bpLoad once the page is up).
+      '<div id="b-plan" class="b-plan"></div>' +
       // A Show Board access request waiting on a decision. Same two
       // actions as the Show Board queue — this is just the other place
       // you'd naturally look for the brand that asked.
@@ -4703,6 +5120,7 @@ function loadBrand(brandId) {
 
     // Essentials open (people, outreach, shows); everything else folded.
     box.innerHTML = head + contacts + outreach + shows + details + boardAccess + docs + activity;
+    bpLoad(b.id);
 
     box.querySelector('#b-edit-toggle').onclick = function () {
       var f = box.querySelector('#b-edit'); f.hidden = !f.hidden;
@@ -5746,7 +6164,9 @@ var ST_STATES = [
   ['off', 'Off outreach', 'off outreach']
 ];
 var ST_DATA = null;
-var ST_OPEN = {};      // row key -> 'brands' | 'ideas'
+var ST_OPEN = {};      // row key -> 'brands' | 'ideas' | 'plan'
+var ST_PLAN_SEL = {};  // row key -> { brandId: true } ticked for "Put on a day"
+var ST_PLAN_NOTE = {}; // row key -> what the last "Put on a day" did
 var ST_PENDING = {};   // row key -> the names a preview was checked for
 
 function stRows() { return ST_DATA ? ST_DATA.lanes.concat(ST_DATA.others) : []; }
@@ -5850,6 +6270,8 @@ function stActs(r) {
   return '<div class="st-acts">' +
     (c.total ? '<button class="btn-ghost sd-sm' + (open === 'brands' ? ' on' : '') + '" data-sttoggle="brands">' +
       (open === 'brands' ? 'Hide brands' : 'Brands (' + c.total + ')') + '</button>' : '') +
+    (c.ready ? '<button class="btn-ghost sd-sm' + (open === 'plan' ? ' on' : '') + '" data-sttoggle="plan" title="Put brands with people nobody has contacted yet on a Schedule day">' +
+      (open === 'plan' ? 'Hide ready brands' : 'Put on a day (' + c.ready + ' ready)') + '</button>' : '') +
     (r.ideas.length ? '<button class="btn-ghost sd-sm' + (open === 'ideas' ? ' on' : '') + '" data-sttoggle="ideas">' +
       (open === 'ideas' ? 'Hide ideas' : 'Ideas to add (' + r.ideas.length + ')') + '</button>' : '') +
   '</div>';
@@ -5857,9 +6279,69 @@ function stActs(r) {
 
 function stOpenPart(r) {
   var open = ST_OPEN[r.key];
-  if (open === 'brands') return '<div class="st-open">' + stBrands(r) + '</div>';
-  if (open === 'ideas') return '<div class="st-open">' + stIdeas(r) + '</div>';
-  return '';
+  var note = ST_PLAN_NOTE[r.key]
+    ? '<div class="pd-done" style="margin:10px 0 0">✓ ' + esc(ST_PLAN_NOTE[r.key]) + ' · <a href="#" data-stsched="1">Open the Schedule →</a>' +
+        ' <a href="#" class="sd-x" data-stnotex="' + esc(r.key) + '" title="Dismiss">×</a></div>'
+    : '';
+  if (open === 'brands') return note + '<div class="st-open">' + stBrands(r) + '</div>';
+  if (open === 'ideas') return note + '<div class="st-open">' + stIdeas(r) + '</div>';
+  if (open === 'plan') return note + '<div class="st-open">' + stPlan(r) + '</div>';
+  return note;
+}
+
+// A lane's "Put on a day": its brands with people nobody has contacted
+// yet, each with its ticks, and the shared day menu (pdHtml) under them.
+// Ticked to start with: about one day's worth (whole brands up to 20
+// people, three or four threads each, the most people first), leaving
+// out any already on a day. The preview then says exactly who goes.
+function stPlanList(r) {
+  return r.brands.filter(function (b) { return b.state === 'ready'; }).sort(function (x, y) {
+    return Number(!!x.plannedOn) - Number(!!y.plannedOn) || y.people - x.people || x.name.localeCompare(y.name);
+  });
+}
+function stPlanGuess(b) { return Math.min(b.people, b.tier === 'established' ? 4 : 3); }
+function stPlanIds(key) {
+  var sel = ST_PLAN_SEL[key] || {};
+  return Object.keys(sel).filter(function (id) { return sel[id]; });
+}
+function stPlan(r) {
+  var list = stPlanList(r);
+  if (!ST_PLAN_SEL[r.key]) {
+    var sel = {}, room = 20;
+    list.forEach(function (b) {
+      var n = stPlanGuess(b);
+      if (b.plannedOn || n > room) return;
+      sel[b.id] = true;
+      room -= n;
+    });
+    ST_PLAN_SEL[r.key] = sel;
+  }
+  pdCtx('st:' + r.key, {
+    ids: function () { return stPlanIds(r.key); },
+    render: function () { stRedraw(r.key); },
+    done: function (res, text) {
+      ST_PLAN_NOTE[r.key] = text;
+      ST_OPEN[r.key] = null;
+      ST_PLAN_SEL[r.key] = null;
+      loadStock();
+    },
+  });
+  if (!list.length) return '<div class="hint" style="margin:0">Nothing here is ready for a day right now.</div>';
+  var ticked = ST_PLAN_SEL[r.key];
+  var n = stPlanIds(r.key).length;
+  return '<div class="hint" style="margin:0 0 8px">Brands here with people nobody has contacted yet. Ticked: about a day’s worth (20 people). ' +
+      'Pick a day and you see who would go out before anything is added.</div>' +
+    '<div class="st-plan">' + list.map(function (b) {
+      var tags = [b.people + (b.people === 1 ? ' person' : ' people') + ' on file'];
+      if (b.queued) tags.push(b.queued + ' queued');
+      if (b.plannedOn) tags.push('on ' + b.plannedLabel + ' already');
+      return '<label class="sd-drow" style="cursor:pointer"><input type="checkbox" data-stpck="' + esc(r.key) + '" value="' + esc(b.id) + '"' +
+          (ticked[b.id] ? ' checked' : '') + ' style="accent-color:var(--accent);margin:0">' +
+        '<span class="pd-name">' + esc(b.name) + '</span>' +
+        '<span class="st-tag">' + esc(tags.join(' · ')) + '</span></label>';
+    }).join('') + '</div>' +
+    '<div class="st-plan-go"><span class="sd-dim">' + n + ' ticked · <a href="#" data-stpall="' + esc(r.key) + '">all</a> · ' +
+      '<a href="#" data-stpnone="' + esc(r.key) + '">none</a></span>' + pdHtml('st:' + r.key) + '</div>';
 }
 
 // A lane Leo named: a card, what it needs next on the right.
@@ -6074,8 +6556,36 @@ function loadStock() {
   });
 }
 
+document.getElementById('stock').addEventListener('change', function (e) {
+  var cb = e.target.closest('[data-stpck]');
+  if (!cb) return;
+  var key = cb.getAttribute('data-stpck');
+  var sel = ST_PLAN_SEL[key] || (ST_PLAN_SEL[key] = {});
+  if (cb.checked) sel[cb.value] = true; else delete sel[cb.value];
+  pdTicksChanged('st:' + key);
+  stRedraw(key);
+});
+
 document.getElementById('stock').addEventListener('click', function (e) {
   var b;
+  if ((b = e.target.closest('[data-stpall],[data-stpnone]'))) {
+    e.preventDefault();
+    var pk = b.getAttribute('data-stpall') || b.getAttribute('data-stpnone');
+    var prow = stRow(pk);
+    var psel = ST_PLAN_SEL[pk] = {};
+    if (b.hasAttribute('data-stpall') && prow) stPlanList(prow).forEach(function (x) { psel[x.id] = true; });
+    pdTicksChanged('st:' + pk);
+    stRedraw(pk);
+    return;
+  }
+  if ((b = e.target.closest('[data-stnotex]'))) {
+    e.preventDefault();
+    var nk = b.getAttribute('data-stnotex');
+    delete ST_PLAN_NOTE[nk];
+    stRedraw(nk);
+    return;
+  }
+  if (e.target.closest('[data-stsched]')) { e.preventDefault(); gotoView('schedule'); return; }
   if ((b = e.target.closest('[data-sttoggle]'))) {
     var key = b.closest('[data-strow]').getAttribute('data-strow');
     var what = b.getAttribute('data-sttoggle');
@@ -6234,6 +6744,7 @@ function loadLinkedin() {
 
   return api('linkedinPeople').then(function (d) {
     LI_DATA = d.brands || [];
+    renderLiRuns(d.runs || [], d.latestScript || null);
     var profiles = 0, brandsWith = 0;
     LI_DATA.forEach(function (b) {
       var n = b.contacts.filter(function (c) { return c.linkedinUrl; }).length;
@@ -6247,6 +6758,59 @@ function loadLinkedin() {
     box.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
       esc(e.message) + '</p></div></div>';
   });
+}
+
+// What the LinkedIn fill reported about its last runs (li-report.ts):
+// the latest in full — people added, where it paused, pages the reader
+// couldn't make out — and a line each for the two before. The same
+// reports feed Claude's morning check.
+function liVersionBehind(v, latest) {
+  var a = String(v || '').split('.'), b = String(latest || '').split('.');
+  for (var i = 0; i < Math.max(a.length, b.length); i++) {
+    var x = Number(a[i]) || 0, y = Number(b[i]) || 0;
+    if (x !== y) return x < y;
+  }
+  return false;
+}
+function renderLiRuns(runs, latest) {
+  var box = document.getElementById('li-runs');
+  if (!box) return;
+  if (!runs.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.style.display = '';
+  var when = function (iso) {
+    return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  };
+  var STATUS = { running: 'running', paused: 'paused', finished: 'finished', stopped: 'stopped' };
+  var r = runs[0];
+  var skipped = r.brands.filter(function (x) { return x.note && !x.problem; });
+  var problems = r.brands.filter(function (x) { return x.problem; });
+  var lastPause = r.status === 'paused' && r.pauses.length ? r.pauses[r.pauses.length - 1] : null;
+  var html = '<div class="panel" style="padding:14px 16px">' +
+    '<div class="t-line"><b>Last LinkedIn run</b><span class="t-sep">·</span>' +
+      '<span class="t-title">started ' + esc(when(r.startedAt)) + (r.script ? ' · script ' + esc(r.script) : '') + '</span>' +
+      '<span class="status ' + (r.status === 'paused' ? 'declined' : r.status === 'finished' ? 'accepted' : 'sent') + '" style="margin-left:8px">' + esc(STATUS[r.status] || r.status) + '</span></div>' +
+    '<div class="t-meta" style="margin-top:6px">' + r.brands.length + ' brand' + (r.brands.length === 1 ? '' : 's') + ' done · ' +
+      r.added + ' people added' + (r.newBrands ? ' · ' + r.newBrands + ' new brand' + (r.newBrands === 1 ? '' : 's') : '') +
+      ' · last word ' + esc(when(r.lastAt)) + '</div>' +
+    (lastPause ? '<div class="t-meta" style="margin-top:6px;color:var(--bad)">Paused: ' + esc(lastPause.why) + '</div>' : '') +
+    (latest && r.script && liVersionBehind(r.script, latest)
+      ? '<div class="t-meta" style="margin-top:6px;color:var(--warn)">This run used script ' + esc(r.script) + ' — ' + esc(latest) + ' is out. The pill on LinkedIn turns orange; one click there updates it.</div>' : '') +
+    (problems.length
+      ? '<div style="margin-top:8px">' + problems.map(function (x) {
+          return '<div class="t-meta" style="margin-top:4px"><span class="status declined" title="The script sent what it saw; Claude\u2019s morning check picks it up">' +
+            esc(x.name) + ': ' + esc(x.problem) + '</span></div>';
+        }).join('') + '</div>' : '') +
+    (skipped.length
+      ? '<details style="margin-top:8px"><summary class="t-meta" style="cursor:pointer">' + skipped.length + ' brand' + (skipped.length === 1 ? '' : 's') + ' skipped, and why</summary>' +
+          skipped.map(function (x) { return '<div class="t-meta" style="margin-top:4px">' + esc(x.name) + ' — ' + esc(x.note) + '</div>'; }).join('') +
+        '</details>' : '') +
+    runs.slice(1).map(function (p) {
+      return '<div class="t-meta" style="margin-top:8px;color:var(--ink-3)">Before: ' + esc(when(p.startedAt)) + ' · ' +
+        p.brands.length + ' brands · ' + p.added + ' people · ' + esc(STATUS[p.status] || p.status) +
+        (p.problems ? ' · ' + p.problems + ' unreadable page' + (p.problems === 1 ? '' : 's') : '') + '</div>';
+    }).join('') +
+  '</div>';
+  box.innerHTML = html;
 }
 
 document.querySelectorAll('#linkedin .chip[data-lif]').forEach(function (ch) {
@@ -7742,7 +8306,33 @@ function renderSchedDays() {
   // to four); the CSS drops to two, then one, on narrower screens.
   box.style.setProperty('--sd-n', String(SCHED.order.length));
   box.classList.toggle('sd-n1', SCHED.order.length === 1);
+  // A redraw (an add landing, a refresh) rebuilds the add boxes. The
+  // one Leo is in keeps its cursor and what he has typed so far, so he
+  // can add brand after brand without clicking back into the box. A box
+  // he has left clears, as before (text left in one holds off the
+  // refresh when he comes back from LinkedIn).
+  var focus = null;
+  var ae = document.activeElement;
+  if (ae && ae.matches && ae.matches('[data-sdq]') && box.contains(ae)) {
+    focus = { k: ae.getAttribute('data-sdq'), v: ae.value, s: ae.selectionStart, e: ae.selectionEnd };
+  }
+  // After an Add from a box, back into that box — unless Leo has moved
+  // on to something else in the meantime.
+  if (SCHED.refocus) {
+    if (!focus && (!ae || ae === document.body || box.contains(ae))) focus = { k: SCHED.refocus, v: '', s: 0, e: 0 };
+    SCHED.refocus = '';
+  }
   box.innerHTML = SCHED.order.map(sdDayHtml).join('');
+  if (focus) {
+    var fin = box.querySelector('[data-sdq="' + focus.k + '"]');
+    if (fin) {
+      fin.value = focus.v;
+      fin.focus();
+      try { fin.setSelectionRange(focus.s, focus.e); } catch (e) {}
+      // Its results went with the old box.
+      if (fin.value.trim().length >= 2) sdSearch(fin);
+    }
+  }
   sdLoadFills();
 }
 
@@ -7907,7 +8497,8 @@ function sdDayHtml(key) {
     sdLiDayWarn(key) +
     '<div class="sd-addrow">' +
       '<div class="sd-add" data-sdbox="' + esc(key) + '">' +
-        '<input class="inp" data-sdq="' + esc(key) + '" placeholder="+ Add a brand to ' + esc(isToday ? 'today' : sdDayName(key)) + '…" autocomplete="off">' +
+        '<input class="inp" data-sdq="' + esc(key) + '" placeholder="+ Add a brand to ' + esc(isToday ? 'today' : sdDayName(key)) + '…" autocomplete="off"' +
+          ' title="Type a name: Enter adds the top match and leaves you here for the next one. Paste a list (one per line, or commas) to check them all at once.">' +
         '<div class="sd-drop" data-sddrop="' + esc(key) + '"></div>' +
       '</div>' +
       '<a href="#" class="sd-link" data-sdpaste="' + esc(key) + '">' + (ps && ps.open ? 'Close list' : 'Paste a list') + '</a>' +
@@ -8925,6 +9516,31 @@ var SCHED_DRAG = null;
     }
   });
 
+  // A list pasted into a day's add box (a column from a sheet, names
+  // with commas) goes to that day's Paste a list and is checked at
+  // once. Left to the box, the line breaks vanished and the names ran
+  // together into one search that matched nothing.
+  sec.addEventListener('paste', function (e) {
+    var inp = e.target.closest && e.target.closest('[data-sdq]');
+    if (!inp) return;
+    var cd = e.clipboardData || window.clipboardData;
+    var text = cd ? cd.getData('text') || '' : '';
+    var names = text.split(/[\n\r,;\t]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+    if (names.length < 2) return;
+    e.preventDefault();
+    var key = inp.getAttribute('data-sdq');
+    inp.value = '';
+    inp._seq = ++SCHED.qSeq;
+    sdCloseDrops(null);
+    var ps = SCHED.paste[key] = SCHED.paste[key] || { text: '', lines: null, summary: '' };
+    ps.open = true;
+    ps.text = names.join('\n');
+    ps.lines = null;
+    ps.summary = '';
+    renderSchedDays();
+    sdPasteCheck(key);
+  });
+
   sec.addEventListener('input', function (e) {
     var t = e.target;
     if (t.matches('[data-sdq]')) { sdSearch(t); return; }
@@ -9054,7 +9670,15 @@ var SCHED_DRAG = null;
     if ((t = e.target.closest('[data-sdadd]'))) {
       var akey = t.getAttribute('data-sdday');
       var box = t.closest('[data-sdbox]');
-      if (box) { var inp = box.querySelector('[data-sdq]'); inp.value = ''; inp._seq = ++SCHED.qSeq; }
+      if (box) {
+        var inp = box.querySelector('[data-sdq]');
+        inp.value = '';
+        inp._seq = ++SCHED.qSeq;
+        // Straight back into the box for the next brand; the redraw
+        // after the add keeps it there.
+        inp.focus();
+        SCHED.refocus = akey;
+      }
       sdCloseDrops(null);
       sdAdd(akey, [t.getAttribute('data-sdadd')]);
       return;

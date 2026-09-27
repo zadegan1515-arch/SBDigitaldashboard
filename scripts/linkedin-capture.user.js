@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.13
+// @version      1.14
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand — and log someone you invited from their profile.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -80,8 +80,10 @@
 
   var INGEST_URL = 'https://sb-digitaldashboard.vercel.app/api/ingest';
   var DASH_URL = 'https://sb-digitaldashboard.vercel.app/app.html';
+  // = @downloadURL: opening it brings up Tampermonkey's update page.
+  var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.13';
+  var VERSION = '1.14';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -127,12 +129,53 @@
           var j = null;
           try { j = JSON.parse(r.responseText); } catch (e) {}
           if (!j) return reject(new Error('The dashboard answered ' + r.status + '.'));
+          if (j.latest) noteLatest(j.latest);
           resolve(j);
         },
         onerror: function () { reject(new Error('Could not reach the dashboard.')); },
         ontimeout: function () { reject(new Error('The dashboard took too long to answer.')); },
       });
     });
+  }
+
+  // ---- updates ----
+  //
+  // Tampermonkey fetches a new copy of this script about once a day.
+  // The dashboard's replies say which version is current, so a copy that
+  // is behind knows at once: the pill turns orange and every panel offers
+  // the update (Tampermonkey's own update page — one click). A run keeps
+  // going meanwhile; the new copy takes over at its next page.
+  var LATEST_KEY = 'sbLiLatest';
+  function newer(a, b) {
+    var x = String(a || '').split('.'), y = String(b || '').split('.');
+    for (var i = 0; i < Math.max(x.length, y.length); i++) {
+      var p = Number(x[i]) || 0, q = Number(y[i]) || 0;
+      if (p !== q) return p > q;
+    }
+    return false;
+  }
+  function latest() {
+    try { var l = GM_getValue(LATEST_KEY, null); return l && l.v ? l : null; } catch (e) { return null; }
+  }
+  function behind() { var l = latest(); return !!l && newer(l.v, VERSION); }
+  function noteLatest(v) {
+    if (typeof v !== 'string' || !/^\d+(\.\d+)*$/.test(v)) return;
+    try { GM_setValue(LATEST_KEY, { v: v, at: Date.now() }); } catch (e) {}
+    paintPill();
+  }
+  // Asked at most every 6 hours; any other reply refreshes it for free.
+  function checkLatest() {
+    var l = latest();
+    if (!HAS_GM || !token() || (l && Date.now() - l.at < 6 * 3600000)) return;
+    post({ action: 'liVersion' }).catch(function () {});
+  }
+  function updateLine() {
+    if (!behind()) return null;
+    return h('div', { id: 'sbliupdate', style: 'margin:0 0 10px;padding:8px 10px;border-radius:8px;background:#fff4e5;color:#7a4b00;font-size:12px' }, [
+      'Version ' + latest().v + ' is out (this is ' + VERSION + '). ',
+      h('a', { href: DOWNLOAD_URL, target: '_blank', rel: 'noopener', style: 'color:#7a4b00;font-weight:600;text-decoration:underline', text: 'Update now ↗' }),
+      ' — press Update on the page that opens.',
+    ]);
   }
 
   // A click that fails says so, instead of doing nothing.
@@ -281,6 +324,22 @@
     return rows;
   }
 
+  // When the reader looks broken on a page — the ways it has gone wrong
+  // on LinkedIn's real pages: people on screen and none made out, or
+  // everyone's title blank or the same (the "• 3rd+" badge read as the
+  // title, Sep 2026). The run reports it with a sample of the cards.
+  function readingProblem(rows) {
+    var shown = count();
+    if (!rows.length) return shown >= 3 ? 'LinkedIn showed ' + shown + ' people but the reader made out none' : null;
+    if (rows.length < 3) return null;
+    var heads = rows.map(function (r) { return String(r.headline || '').trim().toLowerCase(); });
+    if (heads.every(function (x) { return !x; })) return 'every title came out blank (' + rows.length + ' people)';
+    if (heads.every(function (x) { return x === heads[0]; })) return 'every title came out the same: “' + String(rows[0].headline).slice(0, 40) + '”';
+    var badged = rows.filter(function (r) { return /[·•]|\b(1st|2nd|3rd)\b/.test(r.name); }).length;
+    if (badged * 2 >= rows.length) return 'names came out with LinkedIn\'s badge on them';
+    return null;
+  }
+
   function moreButton() {
     var bs = [].slice.call(document.querySelectorAll('button'));
     for (var i = 0; i < bs.length; i++) {
@@ -367,6 +426,8 @@
 
   function freshPanel(kids) {
     if (panel) panel.remove();
+    var up = updateLine();
+    if (up) kids = kids.slice(0, 1).concat([up], kids.slice(1));
     panel = h('div', { id: 'sbli-panel', 'class': 'sb-li-ui', style: PANEL_CSS }, kids);
     // On <html>, not <body>: a transform or containment LinkedIn puts on
     // <body> would pin a fixed element to it, possibly off screen.
@@ -658,8 +719,7 @@
   // again. This copies what the reader saw on the first three cards —
   // what it made of each, their lines, and trimmed markup (no images,
   // no tracking attributes) — for Leo to paste into the chat.
-  function copySample() {
-    if (profilePath()) return copyProfileSample();
+  function sampleText(markupChars) {
     var cards = [], seen = {};
     profileLinks().forEach(function (a) {
       var slug = slugOf(a.getAttribute('href'));
@@ -676,10 +736,14 @@
         .replace(/<svg[\s\S]*?<\/svg>/g, '<svg/>')
         .replace(/\s(src|srcset|style|data-[\w-]+|aria-[\w-]+|tabindex|role)="[^"]*"/g, '')
         .replace(/\s+/g, ' ')
-        .slice(0, 2500));
+        .slice(0, markupChars || 2500));
     });
     if (!cards.length) out.push('No profile links found on this page.');
-    var text = out.join('\n');
+    return out.join('\n');
+  }
+  function copySample() {
+    if (profilePath()) return copyProfileSample();
+    var text = sampleText(2500);
     var copied = false;
     try { GM_setClipboard(text, 'text'); copied = true; } catch (e) {}
     var box = h('textarea', { style: 'display:block;box-sizing:border-box;width:100%;height:120px;font:11px monospace;margin-top:8px;color:#111;background:#fff;border:1px solid #ccc;border-radius:6px', value: text });
@@ -1191,6 +1255,12 @@
   }
 
   // discover: { lookalikes: bool, words: [..] } — the new-brand half.
+  // The run's own report: started, paused (and why), carried on, ended.
+  function runEvent(job, kind, extra) {
+    if (!job || !job.id) return;
+    post(Object.assign({ action: 'liRun', kind: kind, run: job.id, script: VERSION }, extra || {})).catch(function () {});
+  }
+
   function startFill(items, focus, discover) {
     discover = discover || {};
     saveFill({
@@ -1200,6 +1270,7 @@
       lookalikes: !!discover.lookalikes, newBrands: [],
       searches: (discover.words || []).map(function (q) { return { q: q, page: 1, navs: 0 }; }),
     });
+    runEvent(loadFill(), 'start', { focus: focus || '', items: items.length });
     fillHalt = { stopped: false };
     runFill();
   }
@@ -1209,6 +1280,7 @@
     clearTimeout(fillTimer);
     job.paused = reason;
     saveFill(job);
+    runEvent(job, 'pause', { why: reason });
     renderFill(job, 'Paused: ' + reason);
   }
   function fillError(e) {
@@ -1353,7 +1425,7 @@
     var label = item.name + (PASSES[job.step.pass] ? ' — ' + PASSES[job.step.pass] : '');
     renderFill(job, 'Reading ' + label);
     fillHalt = { stopped: false };
-    var capped = false, rows = [];
+    var capped = false, rows = [], problem = null, sample = null;
     waitFor(function () { return count() > 0 || /no results|0 associated members/i.test(pageText(5000)); }, 12000).then(function () {
       return expand(function (n) { setFillStatus('Reading ' + label + ' — ' + n + ' people on screen'); }, fillHalt);
     }).then(function (res) {
@@ -1363,6 +1435,8 @@
       var stop = linkedinSaysStop();
       if (stop) return { halt: stop };
       rows = scrape();
+      problem = readingProblem(rows);
+      if (problem) sample = sampleText(1500);
       window.scrollTo(0, 0);
       return post({ action: 'liCapture', brandId: item.brandId, companyUrl: location.href, companyName: companyName(), rows: rows });
     }).then(function (r) {
@@ -1374,6 +1448,7 @@
       var st = job2.step;
       st.seen += rows.length;
       st.added += r.added || 0;
+      if (problem && !st.problem) { st.problem = problem; st.sample = sample; }
       job2.added = (job2.added || 0) + (r.added || 0);
       var full = r.have >= r.cap;
       var more = !full && st.pass < PASSES.length - 1 && (st.pass > 0 || capped);
@@ -1475,8 +1550,13 @@
   function finishBrand(job, note) {
     var item = job.items[job.at];
     var st = job.step || { seen: 0, added: 0 };
-    // A research name that never became a brand is logged by liResearch.
-    if (item.brandId) post({ action: 'liSwept', brandId: item.brandId, seen: st.seen, added: st.added, note: note || '' }).catch(function () {});
+    // Every item goes in the run's report; the server's visit log (which
+    // rests brands) only takes the ones with a brandId — a research name
+    // that never became a brand is logged by liResearch.
+    post({
+      action: 'liSwept', brandId: item.brandId || null, run: job.id, script: VERSION, name: item.name,
+      seen: st.seen, added: st.added, note: note || '', problem: st.problem || null, sample: st.sample || null,
+    }).catch(function () {});
     job.results.push({ name: item.name, added: st.added, note: note || null });
     job.at++;
     job.step = null;
@@ -1491,6 +1571,7 @@
     clearTimeout(fillTimer);
     fillHalt.stopped = true;
     clearFill();
+    runEvent(job, 'finish', { stopped: !!stopped, newBrands: (job.newBrands || []).length });
     var problems = (job.results || []).filter(function (r) { return r.note; });
     freshPanel([
       head(stopped ? 'Run stopped' : 'Run finished'),
@@ -1530,6 +1611,7 @@
     if (job.step) job.step.navs = 0;
     job.nextAt = 0;
     saveFill(job);
+    runEvent(job, 'resume');
     fillHalt = { stopped: false };
     runFill();
   }
@@ -1697,6 +1779,19 @@
     pill.style.cssText = 'all:initial;display:block;position:fixed;bottom:16px;left:16px;z-index:2147483646;background:#111;color:#fff;border:0;border-radius:999px;padding:11px 16px;font:600 13px system-ui,-apple-system,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.28);cursor:pointer';
     pill.onclick = guard(openMenu);
     document.documentElement.appendChild(pill);
+    paintPill();
+  }
+  // What the pill does here (a profile logs its person), and whether
+  // there's an update.
+  function pillLabel() {
+    return (profilePath() ? 'SB · Log them' : 'SB ⬇ People') + (behind() ? ' · update' : '');
+  }
+  function paintPill() {
+    if (!pill) return;
+    var up = behind();
+    pill.textContent = pillLabel();
+    pill.style.background = up ? '#c2410c' : '#111';
+    pill.title = 'SB LinkedIn capture ' + VERSION + (up ? ' — ' + latest().v + ' is out; open the panel to update' : '');
   }
 
   // LinkedIn is a single-page app: moving between a company's tabs, or
@@ -1706,8 +1801,7 @@
   var lastPath = '';
   function tick() {
     ensurePill();
-    var label = profilePath() ? 'SB · Log them' : 'SB ⬇ People';
-    if (pill && pill.textContent !== label) pill.textContent = label;
+    if (pill && pill.textContent !== pillLabel()) paintPill();
     if (location.pathname !== lastPath) {
       // A different page: whatever the panel said is about the old one.
       if (lastPath && !busy && !fillHere()) { closePanel(); lastRead = null; }
@@ -1733,6 +1827,7 @@
   whenReady(function () {
     tick();
     setInterval(tick, 1500);
+    checkLatest();
 
     // A run's tab picks the run back up on every page load, once LinkedIn
     // has had a moment to draw the page.
