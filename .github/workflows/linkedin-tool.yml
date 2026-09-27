@@ -1,5 +1,6 @@
 # The LinkedIn fill, tested on every push that could break it: its rules,
-# the script against a fake dashboard, and the whole chain — the real
+# both scripts (People capture, and Zach's logging-only one) against a
+# fake dashboard, and the whole chain — the real
 # script in Chromium → the real /api/ingest → Postgres — against fake
 # LinkedIn pages. Nothing here reaches LinkedIn, Vercel or the live
 # database; Postgres is a throwaway service container.
@@ -10,6 +11,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/linkedin-capture.user.js'
+      - 'scripts/linkedin-log.user.js'
       - 'scripts/test-li-*'
       - 'src/lib/**'
       - 'src/app/api/ingest/**'
@@ -21,6 +23,7 @@ on:
   pull_request:
     paths:
       - 'scripts/linkedin-capture.user.js'
+      - 'scripts/linkedin-log.user.js'
       - 'scripts/test-li-*'
       - 'src/lib/**'
       - 'src/app/api/ingest/**'
@@ -57,9 +60,11 @@ jobs:
       - name: Types
         run: npx tsc --noEmit
       - name: Rules
-        run: node scripts/test-li-capture.mjs && node scripts/test-li-report.mjs
+        run: node scripts/test-li-capture.mjs && node scripts/test-li-report.mjs && node scripts/test-li-log.mjs
       - name: Script against a fake dashboard
         run: node scripts/test-li-script.js
+      - name: Zach's logging-only script against a fake dashboard
+        run: node scripts/test-li-log-script.js
       - name: Whole chain against fake LinkedIn
         run: node scripts/test-li-e2e.js
         env:

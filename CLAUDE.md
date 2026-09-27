@@ -17,7 +17,7 @@ If `../CLAUDE.md` (the SB Agency workspace file) exists it applies too. The rule
 - Leo chose: **push straight to `main`**. Both hosts auto-deploy, so after every push **check the build went green** (Vercel dashboard or `vercel` CLI; Railway deployments tab) and re-check the live page.
 - Vercel Hobby limits: **2 cron jobs, daily only**; 1 concurrent build. Don't add crons — fold new scheduled work into `/api/cron/email` (11:00 UTC) or `/api/cron/send` (15:00 UTC).
 - Prisma schema changes deploy themselves (`prisma db push` runs in the Vercel build). Still: additive changes only; never drop columns with data.
-- Test before pushing: `npm run build` (Next) / `npx tsc --noEmit`, and for `public/app.html` a Playwright smoke run with mocked `/api/data`.
+- Test before pushing: `npm run build` (Next) / `npx tsc --noEmit`, and for `public/app.html` a Playwright smoke run with mocked `/api/data` (`NODE_PATH=$(npm root -g) node scripts/test-keep-place.js` is one).
 - Google OAuth: one Google Cloud client (`GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`) serves three grants — outreach mailbox (`state=gmail`), Drive (`state=drive`), ops mailbox (`state=ops`). Scopes stay narrow: gmail.send + gmail.readonly, drive.file. Never request mail.google.com or modify/delete scopes.
 
 
@@ -87,8 +87,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   refused, naming it); a new brand always gets a category (keyword `guessCategory`, never a model call).
   Where: Home → Zach's list **+ Add from LinkedIn** (`findLinkedInPerson`, `brandLookup`,
   `logLinkedInPerson`; a pasted link fills the name via `nameFromSlug`), brand page People rows
-  (**Invite sent ✓ / They accepted ✓**), **+ Add person**'s "On LinkedIn" chips, and the SB pill on a
-  LinkedIn profile. Every log has an Undo (`undoLinkedInLog`: 30 min, only while nothing happened since;
+  (**Invite sent ✓ / They accepted ✓**), **+ Add person**'s "On LinkedIn" chips, and the **SB · Log**
+  pill on a LinkedIn profile (`scripts/linkedin-log.user.js`, Zach's browser — below). Every log has an Undo (`undoLinkedInLog`: 30 min, only while nothing happened since;
   removes a person the log made). The brand card says "invited outside the queue" for an accept with no
   invite date, and a draft written after the send is "The first DM, ready to copy", never "the note that
   went out".
@@ -207,7 +207,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - `scripts/linkedin-capture.user.js` — **LinkedIn People capture** (second Tampermonkey script, same
   INGEST_TOKEN, kept in GM storage; requests go via `GM_xmlhttpRequest` because LinkedIn's CSP blocks
   page fetches). Leo's calls (Sep 2026): **Leo's LinkedIn account, never Zach's** (Zach's sends the
-  connection requests); buyer titles only, **inside the same 25 cap**; no emails — people go to the
+  connection requests; Zach's browser has only `linkedin-log.user.js` — Leo: "get rid of everything but
+  the logging people on Zach's LinkedIn"); buyer titles only, **inside the same 25 cap**; no emails — people go to the
   LinkedIn queue (`source: 'linkedin'`, target created, `reconcileBrandTargets` applies).
   **By hand:** on a company's People tab the SB pill scrolls that one page (≤150 people,
   human-paced), posts `action:'liPreview'` (nothing saved; verdicts add/full/dupe/elsewhere/
@@ -280,14 +281,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   the reports and fixes/pushes LinkedIn-tool bugs only; needs `REPORT_TOKEN` +
   `sb-digitaldashboard.vercel.app` allowed in the cloud environment.
   Worklist in the dashboard: Outreach → People → "Under 25" (deep link `app.html#people`).
-  **On a profile** (`/in/<slug>/`, script 1.14; the pill reads "SB · Log them"): logs that person as
-  Invite sent / They accepted (the section above). Reads name (`<h1>`, else the tab title), headline, and
-  current company ("Current company" aria-label, else the first job's logo alt, else "at X" in the
-  headline) → `liPerson` (who they are, which brand; nothing saved) → `liPersonLog` (by contactId, or
-  under the brand; "New brand + …" = `createIfMissing`) → Undo = `liPersonUndo`. One page, no scrolling,
-  so it's fine on whichever account sent the invite. Subpages point back to the profile; "Copy a sample
-  for Claude" copies the top card there. Covered by `test-li-script.js` (fake dashboard) and
-  `test-li-e2e.js` (real dashboard + throwaway Postgres: accepted, Undo, invite sent).
+  On a profile this script logs nobody: its panel points to the SB · Log pill / Zach's list.
   Install by **paste** (Tampermonkey → + → paste over the sample; pasted under it, the sample's
   header wins and it never runs on LinkedIn — a copy without its @grant lines says "Reinstall").
   Chrome needs Tampermonkey's **Allow User Scripts** switch on. The pill shows on every LinkedIn page,
@@ -310,6 +304,20 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   tabs heartbeat `touchedAt` each minute) no longer blocks a new one (electrolyte first, research list + lookalikes on) — Claude can't run it from the
   cloud; it needs Leo's browser and LinkedIn login. Menu / preview link **"Copy a sample for Claude"** copies what the reader made of
   the first three cards (+ trimmed markup) for Leo to paste when LinkedIn changes its cards again.
+- `scripts/linkedin-log.user.js` — **SB · Log**, the logging-only script for the browser signed in
+  to **Zach's** LinkedIn (Leo, Sep 2026). Nothing but the section "Invites sent straight from LinkedIn":
+  on a profile (`/in/<slug>/`, pill "SB · Log them") it reads the name (`<h1>`, else the tab title),
+  headline and current company ("Current company" aria-label, else the first job's logo alt, else "at X"
+  in the headline) → `liPerson` (who they are, which brand; nothing saved) → `liPersonLog` (by contactId,
+  or under the brand; "New brand + …" = `createIfMissing`) → Undo = `liPersonUndo`. Only ever reads the
+  one page that's open: no People capture, no fill, no `#sb-fill`, no scrolling — those stay in
+  `linkedin-capture.user.js`, which must never be installed in Zach's browser. Same INGEST_TOKEN (its own
+  GM storage), sends `reader: 2` so the li* gate lets it through, `@version` = `VERSION` (its own track,
+  from 1.0; it ignores `latest`, Tampermonkey's daily update keeps it current). Pill bottom-left, or just
+  above the People pill if both are installed. Same install by paste, same Trusted Types rules (`h()`,
+  never innerHTML). Tests: `node scripts/test-li-log-script.js` (fake LinkedIn + fake dashboard: logs
+  only, never reads a People page or starts a run) and `test-li-e2e.js` (real dashboard + throwaway
+  Postgres: accepted, Undo, invite sent).
 - `src/lib/email.ts` — outreach: drafting, cap/ramp (`roomToday`), sending via Gmail API, replies, warmup stats, signature (hosted images, LinkedIn/IG as text links).
 - `src/lib/google.ts` — OAuth (gmail / drive / ops grants), Gmail read+send, Drive/Sheets/Docs create.
 - `src/lib/shows.ts` — **the show list** for the Shows tab and the public sponsor page. Reads **only
@@ -400,6 +408,13 @@ characters, the same value in the Claude cloud environment's settings).
 - EventStaff `status`: invited · onboarding · ready · confirmed · declined · no_show · done. Local confirmed/declined/no_show/done are never overwritten by a platform sync.
 - Ops: rules classify, a hand edit (`reviewedAt`) is never overwritten by rescan. Paid vendor invoice linked to a budget line → sets that line's final cost.
 - UI edits save on `change`; re-render after money/status edits.
+- **Keep my place** (Leo, Sep 2026: buttons "reload the page"): a loader re-run for the screen already
+  showing is a refresh — `showView(id)` returns true, so skip the "Loading…" placeholder and guard the
+  draw with `viewTurn(id)`. `keepPlace` (showView runs it) holds the clicked thing where it was on
+  screen, re-opens `<details>`, keeps the cursor and typed text, and keeps `[data-scroll]` boxes'
+  sideways scroll. Only navigation starts at the top: `gotoView`, or `showView(id, true)` for new
+  content in the same view (another brand / category / query). Cards opened by hand keep their open
+  state in page state (`OPEN_DRAFTS`, `EM_OPEN`, `BRAND_EDIT_OPEN`, `ST_OPEN`…). `node scripts/test-keep-place.js`.
 
 ## Dev loop
 ```

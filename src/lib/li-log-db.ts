@@ -2,7 +2,7 @@
 //
 // The writes behind logging a LinkedIn person by hand (the rules are in
 // li-log.ts). Shared by /api/data (Zach's list, the brand page) and
-// /api/ingest (the SB pill on a LinkedIn profile), so all three log the
+// /api/ingest (the SB · Log pill on a LinkedIn profile), so all three log the
 // same way: one step to "invite sent" or "accepted", never through a
 // day's queue.
 
