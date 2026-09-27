@@ -234,8 +234,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Postgres, fake LinkedIn (`E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) NODE_PATH=$(npm root -g) node
   scripts/test-li-e2e.js`; refuses any non-local database — it wipes it). GitHub Actions **LinkedIn tool**
   (`.github/workflows/linkedin-tool.yml`) runs types + all four on every push touching the tool. A daily
-  Routine ("LinkedIn run check", 7:58 New York) reads the reports and fixes/pushes LinkedIn-tool bugs
-  only; needs `REPORT_TOKEN` + `sb-digitaldashboard.vercel.app` allowed in the cloud environment.
+  Routine ("LinkedIn run check", 7:58 New York) wakes the cloud session "LinkedIn run check (daily)" —
+  it has the repo attached; a session a routine makes fresh has no repo and can't push — which reads
+  the reports and fixes/pushes LinkedIn-tool bugs only; needs `REPORT_TOKEN` +
+  `sb-digitaldashboard.vercel.app` allowed in the cloud environment.
   Worklist in the dashboard: Outreach → People → "Under 25" (deep link `app.html#people`).
   Install by **paste** (Tampermonkey → + → paste over the sample; pasted under it, the sample's
   header wins and it never runs on LinkedIn — a copy without its @grant lines says "Reinstall").
