@@ -8,7 +8,7 @@
 // (scripts/linkedin-log.user.js, Zach's browser):
 //
 //   · Invite sent — logged the day it goes out, dated now, so it counts
-//     like any send (the day's 20, LinkedIn's weekly limit, accept rates).
+//     like any send (the day's 30, LinkedIn's weekly limit, accept rates).
 //     "They accepted" is then one click wherever they show.
 //   · Accepted — the invite went out unlogged on a day nobody knows. The
 //     row goes straight to accepted with NO invite date: it stays out of

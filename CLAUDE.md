@@ -77,7 +77,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - **Invites sent straight from LinkedIn** (Leo, Sep 2026: an unlogged invite that got accepted meant
   Add person → Queue → Invite sent → Accepted). Now one step, **never through a day's queue**: rules pure
   in `src/lib/li-log.ts` (`node scripts/test-li-log.mjs`), writes in `src/lib/li-log-db.ts` (shared by
-  /api/data and /api/ingest). **Invite sent** = sentAt now (counts in the day's 20, the weekly limit,
+  /api/data and /api/ingest). **Invite sent** = sentAt now (counts in the day's 30, the weekly limit,
   accept rates; They accepted later). **They accepted** = status accepted with **no sentAt** (Leo's call:
   only accepts get logged this way, so they stay out of the weekly limit, coverage and accept rates);
   its TargetEvent is Zach's list's acceptedAt ("Text them" due 24h after the log). Because of that,
@@ -99,11 +99,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (established 4 : 3); Ready ≥ need, Thin 1..need-1, No one reachable 0. A brand goes out **whole**,
   opened to its thread count (`previewBrandPicks` mirrors `queueBrandTargets` without writing;
   `fillWholeBrands` is shared by the preview and `getTodayQueue`, so what the Schedule says is what
-  the LinkedIn tab stamps; a day never passes 20). Pinned cards say who goes or exactly why not
+  the LinkedIn tab stamps; a day never passes 30 — `DAILY_SEND_LIMIT` in route.ts, Leo's call Sep 28
+  2026, up from 20; the page shows the server's number via `sdCap()` / `SENT_TODAY.cap`, never a literal). Pinned cards say who goes or exactly why not
   (`outreachGate` + `reasonText`). Adding: day search (`searchPlanBrands`; Enter adds the top match
   and the cursor stays in the box for the next one — a redraw keeps the focused box's text, a box
   Leo left clears), **Paste a list** (`matchBrandList`; a list pasted straight into a day's add box
-  opens it and checks at once), the day's **Fill box** (`suggestForDay`, any category, Fill to 20 =
+  opens it and checks at once), the day's **Fill box** (`suggestForDay`, any category, Fill to 30 =
   whole brands that fit), category drill-in with multi-select (`categoryBrands`). Moving: drag onto a
   day or "Move to" (`planMoveBrand`; moving off today un-stamps unsent people, nothing shelved). Plan
   writes go through `planAddBrands` / `planMoveBrand` / `planRemoveBrand` / `planSetCategory`.
@@ -112,13 +113,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   it can't — plus Put on a day / Move to… / Take off; off today also passes it for today), the
   Brands list's tick bar and Stock take's lanes ("Put on a day (N ready)", a day's worth pre-ticked)
   share one picker (`pdCtx`/`pdHtml`): pick a day → `planAddBrands({ preview: true })` shows who
-  goes, what moves off another day or out of today's queue, and a warning past the day's 20 → Add
+  goes, what moves off another day or out of today's queue, and a warning past the day's 30 → Add
   sends exactly the previewed ids. Days = `planDayChoices` = the Schedule's columns
   (`scheduleDays`, shared with `getOutreachPlan`) + the next off weekday, which `addDay` opens as
   a sending day; `planAddBrands` refuses a non-sending day without it.
   **Who goes first** (Leo, Sep 2026): a day's planned brands go out in their plan order
   (`plan[day].brandIds`) — numbered on the cards, ↑ ↓ or drag a card within its day
-  (`planReorderDay`). Whole brands in that order while they fit in the day's 20 (after anyone sent
+  (`planReorderDay`). Whole brands in that order while they fit in the day's 30 (after anyone sent
   or already in today's list); one that doesn't fit **waits** (a smaller one after it can still go)
   and the morning roll moves it to the next sending day like anything unsent. The same cut is in
   the day preview (`waits` on pinned cards, not counted in the day), add results and previews
@@ -135,16 +136,17 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Least reached, a Table view, tooltips on hover and focus; a click opens the drill-in, whose
   header also gives the last invite and the 6-week accept rate (from Coverage).
   Thin / no-one brands link "LinkedIn people ↗" (`liPeopleUrl`) for the LinkedIn capture script;
-  the tab refreshes on focus so a capture shows up. "The rest of …" rows (past a day's 20) have
+  the tab refreshes on focus so a capture shows up. "The rest of …" rows (past a day's 30) have
   **Add** (pins to that day; the fill makes room) and "Other day…". **Plan my week** (`planWeek`
   preview → apply, `undoPlanWeek` via Setting `planWeekLast`; the rules are pure in
   `src/lib/plan-week.ts`, `node scripts/test-plan-week.mjs`): the next 3 sending days — keeps pins
   and Leo's categories, gives each open day a category that can fill it (never the day before's,
-  least recently worked first, then accept rate), fills to 20 with whole brands (category →
+  least recently worked first, then accept rate), fills to 30 with whole brands (category →
   `RELATED_CATEGORIES` → the rest), never takes a brand in today's queue; nothing is written until
   Apply. **LinkedIn weekly limit**: ~100 invites per rolling 7 days (`LINKEDIN_WEEK_LIMIT`, warns
   from 80; `getOutreachPlan.linkedinWeek`) — top-right line + a note on any day that would pass it;
-  it only warns. **Coverage** (`categoryCoverage`): categories × the last 6 weeks (Mon–Sun, New York),
+  it only warns. At 30 a day, Tue–Thu is 90: the 80 note shows most weeks, and an extra sending day
+  passes 100. **Coverage** (`categoryCoverage`): categories × the last 6 weeks (Mon–Sun, New York),
   invites per week + share accepted (accepted/replied, withdrawn uncounted); 90-day accept rates
   (smoothed, cached 10 min) also order the Fill box's other categories. **Outreach → LinkedIn** = one card per brand
   (sent people stay in their card, `getTodayQueue.sentList`; a finished brand folds to one line).

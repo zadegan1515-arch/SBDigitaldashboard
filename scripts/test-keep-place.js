@@ -19,7 +19,8 @@
 //      closes the list up under the cursor instead of jumping.
 //   4. LinkedIn queue and Brands list: a refresh keeps the rows on screen
 //      where they were, even when rows above them went. Another category
-//      and a nav tab still start at the top.
+//      and a nav tab still start at the top. The LinkedIn tab's "Fill to
+//      30" and "of 30 sent today" are the server's number, not a literal.
 //   5. Deals board: it keeps its sideways scroll when a deal moves, and
 //      an open deal room refreshes where it is.
 //   6. Out of order: a slow refresh that answers after a newer one never
@@ -57,6 +58,7 @@ const S = {
   finals: {},            // budget line id -> final cents
   notes: {},             // budget line id -> notes
   saves: [],             // upsertBudgetLine calls
+  dayCap: 30,            // the server's DAILY_SEND_LIMIT (LinkedIn people a day)
   calls: [],             // every fn called, in order
   delay: {},             // fn -> ms before answering
   hold: {},              // fn -> [ms, ms, …] per call (overrides delay)
@@ -184,7 +186,7 @@ const H = {
   },
   deleteEmailDraft: ({ id }) => { S.drafts = S.drafts.filter((x) => x.id !== id); return { ok: true }; },
   getTodayQueue: () => ({
-    targets: S.queue, sentList: [], more: [], theme: 'energy', labels: {}, sendingDay: true, sentToday: 0, cap: 20,
+    targets: S.queue, sentList: [], more: [], theme: 'energy', labels: {}, sendingDay: true, sentToday: 0, cap: S.dayCap,
   }),
   listTargets: () => [],
   listBrands: () => S.list,
@@ -422,6 +424,17 @@ async function main() {
   const rowTop2 = await topOf('#targets .target[data-id="q14"]');
   assert.ok(Math.abs(rowTop2 - rowTop) <= 2, 'LinkedIn refresh: the rows on screen stay put (' + rowTop + ' → ' + rowTop2 + ')');
   console.log('✓ 4a LinkedIn queue refreshes in place');
+
+  // The day's number is the server's, never a literal 20 on the page.
+  assert.equal(await page.textContent('#fill20'), 'Fill to 30', 'the Fill button says the server\'s 30');
+  assert.match(await page.textContent('#sent-today-chip'), /of 30 sent today/, 'the sent chip counts of 30');
+  S.dayCap = 25;
+  n = count('getTodayQueue');
+  await page.evaluate(() => loadOutreach());
+  await answered('getTodayQueue', n);
+  assert.equal(await page.textContent('#fill20'), 'Fill to 25', 'another server number shows as it is');
+  S.dayCap = 30;
+  console.log('✓ 4c the LinkedIn tab shows the server\'s people-a-day number');
 
   await page.evaluate(() => gotoView('brands'));
   await page.waitForSelector('#brands-list [data-brand="lb50"]');

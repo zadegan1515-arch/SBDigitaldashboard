@@ -94,10 +94,12 @@ const CONNECTION_NOTE_MAX = 300
 const FIRST_MESSAGE_MAX = 600
 
 // One LinkedIn account caps near 100 connection requests a week.
-// Twenty a day, weekdays only, sits exactly at that ceiling — Leo's
-// call (Sep 2026). If LinkedIn ever shows the weekly-limit warning or
-// asks to verify the account, drop this back to 10 for a week.
-const DAILY_SEND_LIMIT = 20
+// Thirty a day on the three sending days (Tue–Thu) is 90 — Leo's call
+// (Sep 28 2026, up from 20). An extra sending day takes the week past
+// 100, which the Schedule warns about. If LinkedIn ever shows the
+// weekly-limit warning or asks to verify the account, drop this back
+// to 10 for a week.
+const DAILY_SEND_LIMIT = 30
 
 // Vercel functions run in UTC, so a naive setHours(0,0,0,0) makes "today"
 // start at 7 or 8pm the previous evening for anyone on the east coast —
@@ -724,7 +726,7 @@ function previewBrandPicks(
 // Filling a day by BRAND, not by person — the one rule the Schedule's
 // preview and the real queue (getTodayQueue) both use, so the number the
 // Schedule shows is the number that goes out. Slicing a best-fit list of
-// people at twenty cut straight through brands: a brand's first person
+// people at the day's limit cut straight through brands: a brand's first person
 // made the day and the rest said "+2 next time". You write to a brand's
 // people in one sitting or not at all.
 //
@@ -840,7 +842,7 @@ function reasonText(reason: string | null | undefined, ctx: ReasonCtx = {}): str
 type PlanDay = { category: string | null; brandIds: string[] }
 type OutreachPlan = Record<string, PlanDay>
 
-// Most brands one day can hold by hand. Twenty people a day means this
+// Most brands one day can hold by hand. Thirty people a day means this
 // is never the real limit — it only stops a runaway paste.
 const PLAN_DAY_MAX = 40
 
@@ -1126,7 +1128,7 @@ async function unstampToday(brandId: string): Promise<number> {
 }
 
 // Which of a later day's planned brands wait: the day's order, whole
-// brands while they fit in the day's 20 — the rule getOutreachPlan shows
+// brands while they fit in the day's 30 — the rule getOutreachPlan shows
 // and queuePlannedToday stamps by. A brand added to a day goes last, so
 // only brands being added can end up waiting because of an add.
 function waitingOnDay(order: string[], sizeOf: (id: string) => number): Set<string> {
@@ -1258,7 +1260,7 @@ async function planAddCore(plan: OutreachPlan, date: string, brandIds: unknown) 
       result.reasonText = reasonText(why, { ...reasonCtx(b), message: failure ?? undefined })
     }
   }
-  // A later day: an added brand past the day's 20 (in the day's order)
+  // A later day: an added brand past the day's 30 (in the day's order)
   // waits, and the answer says so instead of "3 going out". Today's adds
   // go straight into today's list — adding to today is sending today.
   if (!forToday && addedBrands.length) {
@@ -1327,7 +1329,7 @@ async function planAddPreview(plan: OutreachPlan, date: string, brandIds: unknow
   // The people the day holds already, leaving out the brands being added
   // (their own number is in the results): today, everyone invited or in
   // the queue; a later day, who its pinned brands put in play. The page
-  // warns when the add takes the day past the day's 20 — what doesn't
+  // warns when the add takes the day past the day's 30 — what doesn't
   // fit goes out on the next sending day.
   let dayPeople = 0
   if (forToday) {
@@ -1351,7 +1353,7 @@ async function planAddPreview(plan: OutreachPlan, date: string, brandIds: unknow
       dayPeople += n
     }
     for (const r of results) if (r.added) size.set(r.brandId, r.state === 'going' ? r.going : 0)
-    // In the day's order, the added ones last: the ones past the 20 wait.
+    // In the day's order, the added ones last: the ones past the 30 wait.
     const waiting = waitingOnDay(dayIds, id => size.get(id) ?? 0)
     if (waiting.size) {
       const to = nextSendingAfter(date, await readExtraDays()) ?? 'later'
@@ -1364,7 +1366,7 @@ async function planAddPreview(plan: OutreachPlan, date: string, brandIds: unknow
 // Today's planned brands (Schedule) into today's queue, in the order Leo
 // set on the Schedule (Leo: "set who goes first"). A brand already in
 // today's list or already worked today is in. The rest go whole, in
-// order, while they fit in the day's 20 — counting everyone already sent
+// order, while they fit in the day's 30 — counting everyone already sent
 // or in the list; one that doesn't fit waits (a smaller one after it can
 // still go), and the morning roll moves it to the next sending day like
 // anything unsent. Nothing already in the list is taken out. A brand
@@ -2191,7 +2193,7 @@ const handlers: Record<string, Handler> = {
     // Planned brands queue themselves. A brand that cannot be queued is
     // reported rather than swallowed — that silence was why a brand
     // added on the Schedule could simply never appear.
-    // In the order set on the Schedule, while they fit in the day's 20
+    // In the order set on the Schedule, while they fit in the day's 30
     // (queuePlannedToday); the ones that don't fit wait for the next
     // sending day.
     const { skipped: plannedSkipped, waiting: plannedWaiting } = await queuePlannedToday(planDay)
@@ -2317,7 +2319,7 @@ const handlers: Record<string, Handler> = {
       if (used + got.length > roomLeft) {
         // The estimate was short and the brand came out bigger than the
         // room. Send its new stamps back to the pool rather than go past
-        // twenty or cut the brand in half; it goes whole on its next day.
+        // the day's limit or cut the brand in half; it goes whole on its next day.
         await prisma.target.updateMany({ where: { id: { in: got } }, data: { queuedFor: null } })
         trimmed.push(...got)
         continue
@@ -2360,7 +2362,7 @@ const handlers: Record<string, Handler> = {
 
     // "The rest in that category" — everyone in today's category beyond
     // the cap, ready to send if there's room. Not stamped: sending one
-    // still counts toward the 20 via sentAt. A brand queued above is
+    // still counts toward the 30 via sentAt. A brand queued above is
     // whole in today's list, so none of its people show here — except
     // the ones a partial fill sent back to the pool.
     const moreIds = [...new Set([
@@ -2402,7 +2404,7 @@ const handlers: Record<string, Handler> = {
 
     return {
       plannedSkipped, sentToday, cap: DAILY_SEND_LIMIT,
-      // Planned for today but past the day's 20 in the Schedule's order:
+      // Planned for today but past the day's 30 in the Schedule's order:
       // they move to the next sending day tomorrow morning.
       plannedWaiting,
       waitingTo: plannedWaiting.length ? nextSendingAfter(todayKey, await readExtraDays()) : null,
@@ -2456,7 +2458,7 @@ const handlers: Record<string, Handler> = {
         // A send out of the queue is a new invite, dated now — even when
         // the row still carries the date of an earlier one (Pass or a
         // withdrawn invite, then Re-queue). Keeping the old date left the
-        // new send out of today's 20.
+        // new send out of today's 30.
         ...(status === 'sent' && (!before.sentAt || ['queued', 'drafted'].includes(before.status)) ? { sentAt: now } : {}),
         // Undo for a mis-clicked "Mark sent": back to the queue with the
         // send stamp wiped so today's cap and Reached don't count it.
@@ -4539,7 +4541,7 @@ const handlers: Record<string, Handler> = {
     // Every brand, filtered in JS rather than in the query. The same
     // rows answer two questions: which brands a day can still offer,
     // and — for the ones it can't — what is stopping each of them.
-    // "Only 1 of 20 ready" with nothing underneath is unanswerable from
+    // "Only 1 of 30 ready" with nothing underneath is unanswerable from
     // the screen when you know the roster has more brands than that.
     // PLAN_BRAND_SELECT carries tier and workPeople (how many threads a
     // brand runs at once, the other reason a queue can refuse) and each
@@ -4733,13 +4735,13 @@ const handlers: Record<string, Handler> = {
       const theme = plan[key]?.category
         ?? (cats.length ? cats[Math.floor(at.getTime() / 86400000) % cats.length] : null)
       // Hand-planned brands send that day too, as their own cards. Their
-      // people count toward the 20: on a later day from the preview (it
+      // people count toward the 30: on a later day from the preview (it
       // used to count only people already waiting in the pool, so a
       // pinned brand nobody had queued yet added nothing to the day), and
       // today from the preview too until the LinkedIn tab stamps them.
       // Who goes first is the order the brands sit in on the day (Leo
       // sets it on the Schedule): whole brands in that order while they
-      // fit in the day's 20, after anyone already sent or in today's
+      // fit in the day's 30, after anyone already sent or in today's
       // list. One that doesn't fit waits — shown, not counted — and the
       // morning roll moves it to the next sending day like anything
       // unsent. The same rule queuePlannedToday stamps today's queue by.
@@ -4894,7 +4896,7 @@ const handlers: Record<string, Handler> = {
       }
       // Everyone the day would send, uncapped: a day with too much
       // pinned onto it has to be able to say "Over by 3", which a number
-      // capped at 20 never can.
+      // capped at the day's limit never can.
       const total = sentUsed + alreadyIn.length + alreadyPlanned + plannedCount + autoGoing
       return {
         date: key,
@@ -4914,7 +4916,7 @@ const handlers: Record<string, Handler> = {
         sentPeople: sentByDay[key] ?? [],
         pinned,
         brands: rows,
-        // Ready and in this category, but past the day's 20. Shown, not
+        // Ready and in this category, but past the day's 30. Shown, not
         // hidden — the day is full, the people are real, and they carry
         // over to the next day in this category on their own.
         overflow: spillRows,
@@ -5199,7 +5201,7 @@ const handlers: Record<string, Handler> = {
     const sentToday = b.targets.filter(t => t.sentAt && t.sentAt >= dayStart).length
     let going = 0
     let why: string | null = null
-    // Past its day's 20 in the day's order: the day it goes out instead.
+    // Past its day's 30 in the day's order: the day it goes out instead.
     let waits: string | null = null
     if (pinnedOn && !no) {
       const p = previewBrandPicks(b, { forToday: pinnedOn === today, dayStart, explicitAdd: pinnedOn === today })
@@ -5367,7 +5369,7 @@ const handlers: Record<string, Handler> = {
   // he set. A day with no category gets one: the category whose ready,
   // never-reached brands can fill it, never the one the day before
   // worked, one not used earlier in the plan, least recently worked
-  // first (then the ones that accept more). Then the day fills to 20
+  // first (then the ones that accept more). Then the day fills to 30
   // with whole brands — its category first, the related categories
   // next, then the rest. Nothing is written until apply: the preview
   // names every brand, who goes, and what LinkedIn's weekly limit looks
@@ -6237,7 +6239,7 @@ const handlers: Record<string, Handler> = {
     return undoLinkedInLog(prisma, undo, __user ?? null)
   },
 
-  // "Fill queue to 20": when today's category can't reach the cap from
+  // "Fill to 30": when today's category can't reach the cap from
   // the existing pool, queue the best untouched same-category brands
   // (one person each, straight into today) until it can. Strictly the
   // day's category — a shortfall is reported, never topped up from
@@ -6303,7 +6305,7 @@ const handlers: Record<string, Handler> = {
     const todayKey = localDayKey()
     const planDay: any = plan[todayKey] ?? null
     // A brand pinned to a LATER day waits for that day, same rule as
-    // getTodayQueue's auto-fill: Fill to 20 used to queue it today, so it
+    // getTodayQueue's auto-fill: the Fill button used to queue it today, so it
     // went out early and its own day counted it a second time.
     const laterPinned = new Set<string>()
     for (const [k, d] of Object.entries(plan)) if (k > todayKey) for (const id of d.brandIds) laterPinned.add(id)

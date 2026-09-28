@@ -636,7 +636,7 @@
   .sd-fix{display:flex;gap:6px;flex-wrap:wrap}
   .sd-flash{font-size:12px;padding:6px 10px;border-radius:8px;line-height:1.45}
   /* Who goes first: the order number, the arrows, a brand waiting past
-     the day's 20, and the line a dragged card will land on. */
+     the day's 30, and the line a dragged card will land on. */
   .sd-ord{flex:none;min-width:20px;height:20px;padding:0 5px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);
     color:var(--ink-2);font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
   .sd-ordb{padding:2px 8px;font-size:12px;line-height:1.2}
@@ -1371,7 +1371,7 @@
     <section class="view page wide" id="schedule">
       <div class="eyebrow">Outreach</div>
       <h1>Schedule</h1>
-      <div class="sub">Today and the next three sending days. 20 people a day, one category a day, and every brand says whether it has enough people.</div>
+      <div class="sub">Today and the next three sending days. <span data-daycap>30</span> people a day, one category a day, and every brand says whether it has enough people.</div>
       <div id="sched-extra"></div>
       <div id="sched-plan"></div>
       <div id="sched-carry"></div>
@@ -4138,7 +4138,7 @@ function pdApply(name) {
 // what else the add does to it (off another day, out of today's queue).
 function pdRow(x) {
   var what = !x.added ? '<span class="pd-no">Not added · ' + esc(x.reasonText || SD_SHORT[x.reason] || 'can’t go out') + '</span>'
-    : x.state === 'going' && x.waits ? '<span class="pd-warn">Waits · past the day’s 20' +
+    : x.state === 'going' && x.waits ? '<span class="pd-warn">Waits · past the day’s ' + sdCap() +
         (x.waits !== 'later' ? ', goes out ' + esc(pdDayWord(x.waits)) : '') + '</span>'
     : x.state === 'going' ? sdPlural(x.going || 0, 'person', 'people') + ' going out' +
         ((x.people || []).length ? ' <span class="sd-dim">· ' + esc(x.people.slice(0, 3).map(function (p) { return p.name; }).join(', ')) +
@@ -4195,11 +4195,11 @@ function pdHtml(name) {
   var notes = [];
   if (p.opening) notes.push(Word + ' isn’t a sending day yet. Adding opens it as one (a one-off, like an extra Friday); the rest of it fills from the rotation like any sending day.');
   if (waiting.length) {
-    notes.push(sdPlural(waiting.length, 'brand waits', 'brands wait') + ': ' + word + ' already has ' + (p.dayPeople || 0) + ' of its ' + (p.cap || 20) +
+    notes.push(sdPlural(waiting.length, 'brand waits', 'brands wait') + ': ' + word + ' already has ' + (p.dayPeople || 0) + ' of its ' + (p.cap || sdCap()) +
       '. Brands go out in the day’s order, so ' + (waiting.length === 1 ? 'it goes' : 'they go') +
       (waiting[0].waits !== 'later' ? ' out ' + pdDayWord(waiting[0].waits) : ' out later') + ' unless you move ' + (waiting.length === 1 ? 'it' : 'them') + ' up on the Schedule.');
-  } else if (p.forToday && after > (p.cap || 20)) {
-    notes.push('That makes ' + after + ' people today (' + (p.dayPeople || 0) + ' already + ' + people + '), past the ' + (p.cap || 20) +
+  } else if (p.forToday && after > (p.cap || sdCap())) {
+    notes.push('That makes ' + after + ' people today (' + (p.dayPeople || 0) + ' already + ' + people + '), past the ' + (p.cap || sdCap()) +
       '. They all go into today’s LinkedIn list; anyone not sent moves to the next sending day tomorrow morning.');
   }
   var unq = added.reduce(function (t, x) { return t + (x.unqueued || 0); }, 0);
@@ -4920,7 +4920,7 @@ function bpRender() {
   }
   var where;
   if (b.pinnedOn && b.going && b.waits) {
-    where = 'On <b>' + esc(bpWord(b.pinnedOn)) + '</b> · <span class="pd-warn">waits: past the day’s 20' +
+    where = 'On <b>' + esc(bpWord(b.pinnedOn)) + '</b> · <span class="pd-warn">waits: past the day’s ' + sdCap() +
       (b.waitsLabel ? ', goes out ' + esc(b.waitsLabel) : '') + ' unless you move it up on the Schedule</span>';
   } else if (b.pinnedOn) {
     where = 'On <b>' + esc(bpWord(b.pinnedOn)) + '</b> · ' + (b.going
@@ -6656,7 +6656,7 @@ function stOpenPart(r) {
 
 // A lane's "Put on a day": its brands with people nobody has contacted
 // yet, each with its ticks, and the shared day menu (pdHtml) under them.
-// Ticked to start with: about one day's worth (whole brands up to 20
+// Ticked to start with: about one day's worth (whole brands up to the day's
 // people, three or four threads each, the most people first), leaving
 // out any already on a day. The preview then says exactly who goes.
 function stPlanList(r) {
@@ -6672,7 +6672,7 @@ function stPlanIds(key) {
 function stPlan(r) {
   var list = stPlanList(r);
   if (!ST_PLAN_SEL[r.key]) {
-    var sel = {}, room = 20;
+    var sel = {}, room = sdCap();
     list.forEach(function (b) {
       var n = stPlanGuess(b);
       if (b.plannedOn || n > room) return;
@@ -6694,7 +6694,7 @@ function stPlan(r) {
   if (!list.length) return '<div class="hint" style="margin:0">Nothing here is ready for a day right now.</div>';
   var ticked = ST_PLAN_SEL[r.key];
   var n = stPlanIds(r.key).length;
-  return '<div class="hint" style="margin:0 0 8px">Brands here with people nobody has contacted yet. Ticked: about a day’s worth (20 people). ' +
+  return '<div class="hint" style="margin:0 0 8px">Brands here with people nobody has contacted yet. Ticked: about a day’s worth (' + sdCap() + ' people). ' +
       'Pick a day and you see who would go out before anything is added.</div>' +
     '<div class="st-plan">' + list.map(function (b) {
       var tags = [b.people + (b.people === 1 ? ' person' : ' people') + ' on file'];
@@ -7813,7 +7813,7 @@ var SCHED = {
   fill: {}, sug: {}, sugReq: {}, sugBusy: {}, sugGen: 0, sugSeq: 0,
   // Plan calls and schedule reloads still in flight. While any is, the
   // day numbers and suggestion lists on screen are about to change, so
-  // Fill to 20 waits (see sdFillReady).
+  // Fill to 30 waits (see sdFillReady).
   busyN: 0,
   // LinkedIn's weekly limit (getOutreachPlan.linkedinWeek): invites in
   // the last seven days, and per day the seven days ending on it.
@@ -7882,7 +7882,9 @@ var SD_FIXABLE = { nopeople: 1, unreachable: 1, exhausted: 1, contacted: 1 };
 var SD_LEGEND = 'Ready = at least 3 people we can reach (4 at a big brand). Thin = 1 or 2. ' +
   'No one reachable = nobody on file with a LinkedIn or an email.';
 
-function sdCap() { return (SCHED.pool && SCHED.pool.cap) || 20; }
+// People a day on LinkedIn: the server's DAILY_SEND_LIMIT, from whichever
+// reply carried it last (the Schedule's pool, else the LinkedIn tab's).
+function sdCap() { return (SCHED.pool && SCHED.pool.cap) || SENT_TODAY.cap; }
 
 // Day keys are America/New_York dates from the server; noon keeps the
 // browser's own timezone from sliding them onto the day before.
@@ -8030,7 +8032,7 @@ function sdLiDayWarn(key) {
 // One click plans the next three sending days: planWeek picks each
 // day's category (the one whose ready, never-reached brands can fill it,
 // never the day before's, least recently worked first) and fills it to
-// 20 with whole brands, keeping whatever Leo already pinned or set.
+// 30 with whole brands, keeping whatever Leo already pinned or set.
 // Nothing is written until Apply; unticked brands stay out, and Refill
 // finds others for the gaps.
 
@@ -8373,6 +8375,7 @@ function sdTake(d) {
   SCHED.past = d.past || [];
   SCHED.today = d.today || schedDayKey(0);
   SCHED.pool = d.pool || null;
+  document.querySelectorAll('[data-daycap]').forEach(function (el) { el.textContent = sdCap(); });
   SCHED.extraDays = d.extraDays || [];
   SCHED.nextOffDay = d.nextOffDay || '';
   SCHED.linkedinWeek = d.linkedinWeek || null;
@@ -8456,13 +8459,13 @@ function sdPlanCall(fn, args) {
   var run = SD_Q.then(function () { return api(fn, args); });
   // Counted down before the caller's own .then runs (registered first),
   // and that .then starts the refresh, which counts up again, so there is
-  // no gap where Fill to 20 wakes on the old numbers.
+  // no gap where Fill to 30 wakes on the old numbers.
   run.then(function () { sdBusy(-1); }, function () { sdBusy(-1); });
   SD_Q = run.catch(function () {});
   return run;
 }
 
-// Going busy redraws the Fill boxes at once so Fill to 20 greys out.
+// Going busy redraws the Fill boxes at once so Fill to 30 greys out.
 // Going idle redraws a tick later, and only if nothing new started: a
 // plan call hands straight over to its refresh, and that refresh draws
 // the boxes itself when it lands.
@@ -8750,7 +8753,7 @@ function sdMoveSel(id, name, from, dayKey, withOff) {
     '<option value="">Move to…</option>' + sdDayOpts(dayKey, withOff) + '</select>';
 }
 
-// waits: the card is past its day's 20 now — a "going out" note from
+// waits: the card is past its day's 30 now — a "going out" note from
 // when it was added (or before a reorder) would say the opposite.
 function sdFlash(id, waits) {
   var f = SCHED.flash[id];
@@ -8806,9 +8809,9 @@ function sdPinnedCard(p, key, i, n) {
   if (p.state === 'going' && p.waits) {
     body = '<div class="sd-line"><b class="warn">Waits</b> · ' + sdPlural(p.going || 0, 'person', 'people') +
         ((p.people || []).length ? ' · ' + sdNames(p.people) : '') + '</div>' +
-      '<div class="sd-note">' + (isToday ? 'Today’s 20 are taken. ' : 'Past the day’s ' + sdCap() + '. ') +
+      '<div class="sd-note">' + (isToday ? 'Today’s ' + sdCap() + ' are taken. ' : 'Past the day’s ' + sdCap() + '. ') +
         (p.waits !== 'later' ? 'Goes out ' + esc(sdDayName(p.waits)) + ' unless you move it up.' : 'Move it up to send it first.') +
-        (isToday ? ' <button class="btn-ghost sd-sm" data-sdsendnow="' + esc(p.id) + '" data-sdn="' + esc(p.name) + '" title="Put its people in today’s LinkedIn list now, past the 20">Send today anyway</button>' : '') +
+        (isToday ? ' <button class="btn-ghost sd-sm" data-sdsendnow="' + esc(p.id) + '" data-sdn="' + esc(p.name) + '" title="Put its people in today’s LinkedIn list now, past the ' + sdCap() + '">Send today anyway</button>' : '') +
       '</div>';
   } else if (p.state === 'going') {
     body = '<div class="sd-line"><b>' + (p.going || 0) + ' going out</b>' +
@@ -8952,7 +8955,7 @@ function sdDayHtml(key) {
   // loaded after the day is drawn (sdLoadFills), so any category can fill
   // the gap, not only the few same-category brands that happened to fit.
   if (open > 0) html += '<div class="sd-open" data-sdfillbox="' + esc(key) + '">' + sdFillInner(key) + '</div>';
-  // A day Fill to 20 just filled has no box any more, so its summary
+  // A day Fill to 30 just filled has no box any more, so its summary
   // gets a spot of its own (sdRenderFill writes it there too).
   else html += '<div data-sdfillsum="' + esc(key) + '">' + sdFillSumHtml(key) + '</div>';
 
@@ -9097,7 +9100,7 @@ function sdSugGoing(b) {
   return typeof b.going === 'number' ? b.going : (b.people || []).length;
 }
 
-// What "Fill to 20" adds: suggestions in their order, each one only if
+// What "Fill to 30" adds: suggestions in their order, each one only if
 // the whole brand fits in what is left, so a brand is never half-sent.
 // A brand too big is skipped and the fill keeps going with smaller ones.
 function sdFitPick(rows, open) {
@@ -9114,7 +9117,7 @@ function sdFillSumHtml(key) {
   return f && f.summary ? '<div class="sd-flash good">' + esc(f.summary) + '</div>' : '';
 }
 
-// Fill to 20 works only from a list and day numbers that are current:
+// Fill to 30 works only from a list and day numbers that are current:
 // this refresh's answer (not an older one drawn while the new one loads)
 // and no plan change or reload still on its way. Otherwise a brand just
 // added (still in the list, open spots not yet lowered) was picked again
@@ -9146,7 +9149,7 @@ function sdFillOthers(key) {
   return ((ent && ent.data && ent.data.others) || []).filter(function (b) { return !on[b.id]; });
 }
 
-// What Fill to 20 works through: the day's own category first, then the
+// What Fill to 30 works through: the day's own category first, then the
 // others, so a short category is topped up rather than left short.
 function sdFillPool(key) {
   return sdFillRows(key).concat(sdFillOthers(key));
@@ -11108,7 +11111,8 @@ setTimeout(checkAppVersion, 3000);
 
 // The "Sent today: N / cap" chip state — Mark sent / Undo / Withdrew
 // tick it in place, no reload.
-var SENT_TODAY = { count: 0, cap: 20 };
+// cap = the server's DAILY_SEND_LIMIT; every queue load sets it (30 until then).
+var SENT_TODAY = { count: 0, cap: 30 };
 function bumpSentToday(d) {
   SENT_TODAY.count = Math.max(0, SENT_TODAY.count + d);
   var chip = document.getElementById('sent-today-chip');
@@ -11134,7 +11138,7 @@ function targetRow(t) {
         ? '<span class="status declined">DM overdue</span>' : '') +
       (t.brand.category ? '<span>' + esc(CAT_NAMES[t.brand.category] || t.brand.category) + '</span>' : '') +
       (isPre && QUEUE_THEME && t.brand.category && t.brand.category !== QUEUE_THEME
-        ? '<span class="fit" title="Not today’s category — filling the day up to 20">top-up</span>' : '') +
+        ? '<span class="fit" title="Not today’s category — filling the day up to ' + SENT_TODAY.cap + '">top-up</span>' : '') +
       (t.brand.workPeople ? '<span>·</span><span class="fit" title="This brand’s people-to-work setting (brand page)">work ' + t.brand.workPeople + '</span>' : '') +
       (t.nextStep ? '<span>·</span><span class="fit">▸ ' + esc(t.nextStep) +
         (t.followUpAt ? ' (' + shortDate(t.followUpAt) + ')' : '') + '</span>' : '') +
@@ -11242,7 +11246,7 @@ var OQ_SENDING = null;
 // Today's leftovers were moved on ("Move what's left" on the Schedule): the
 // day that got them. Null otherwise.
 var OQ_CLOSED_TO = null;
-// Today's planned brands past the day's 20 (getTodayQueue.plannedWaiting).
+// Today's planned brands past the day's 30 (getTodayQueue.plannedWaiting).
 var OQ_WAITING = { list: [], to: null };
 
 // The server's word first, then the Schedule's days if they are loaded,
@@ -11364,7 +11368,7 @@ function oqRenderRail() {
   document.querySelectorAll('#targets [data-oqsec="today"] .target[data-id], #targets [data-oqsec="done"] .target[data-id]').forEach(function (r) {
     if (oqIsPre(TARGET_CACHE[r.getAttribute('data-id')])) toSend++;
   });
-  var cap = SENT_TODAY.cap || 20, sent = SENT_TODAY.count || 0;
+  var cap = SENT_TODAY.cap, sent = SENT_TODAY.count || 0;
   var open = Math.max(0, cap - sent - toSend);
   slot.innerHTML = '<div class="oq-sum">' +
     '<div class="oq-sum-k">Today' + (OQ_THEME ? ' · ' + esc(CAT_NAMES[OQ_THEME] || OQ_THEME) + ' day' : '') + '</div>' +
@@ -11373,7 +11377,7 @@ function oqRenderRail() {
     '<div class="oq-sum-row"><span>Still to send</span><b>' + toSend + '</b></div>' +
     '<div class="oq-sum-row"><span>Open spots</span><b>' + open + '</b></div>' +
     (open > 0 && oqSendingToday()
-      ? '<div class="hint" style="margin:10px 0 0">Fill to 20 tops the day up from ' +
+      ? '<div class="hint" style="margin:10px 0 0">Fill to ' + cap + ' tops the day up from ' +
         (OQ_THEME ? esc(CAT_NAMES[OQ_THEME] || OQ_THEME) : 'today’s category') + '.</div>' : '') +
   '</div>';
 }
@@ -11750,10 +11754,10 @@ function loadOutreach() {
       ? '<div class="hint" style="margin:6px 0 0;color:#aac6ff">What was left today moved to ' + esc(sdDayName(OQ_CLOSED_TO)) +
         '. Nothing else is picked for today — anything you add by hand still goes.</div>'
       : '';
-    // Planned for today but past the day's 20 in the Schedule's order.
+    // Planned for today but past the day's 30 in the Schedule's order.
     var waitNote = mode === 'today' && !offDay && OQ_WAITING.list.length
       ? '<div class="hint" style="margin:6px 0 0;color:#eec777">' + sdPlural(OQ_WAITING.list.length, 'planned brand waits', 'planned brands wait') +
-        ' — today’s 20 are taken: ' + esc(OQ_WAITING.list.map(function (w) { return w.brandName; }).join(', ')) + '. ' +
+        ' — today’s ' + SENT_TODAY.cap + ' are taken: ' + esc(OQ_WAITING.list.map(function (w) { return w.brandName; }).join(', ')) + '. ' +
         (OQ_WAITING.to ? 'They move to ' + esc(sdDayName(OQ_WAITING.to)) + ' tomorrow morning. ' : '') +
         'Change who goes first on the Schedule.</div>'
       : '';
@@ -11766,7 +11770,7 @@ function loadOutreach() {
         '<span id="sent-today-chip" style="margin-left:10px;font-size:12px;font-weight:600;color:' +
           (SENT_TODAY.count >= SENT_TODAY.cap ? '#8fd6a8' : 'var(--ink-3)') + '">' +
           SENT_TODAY.count + ' of ' + SENT_TODAY.cap + ' sent today' + (SENT_TODAY.count >= SENT_TODAY.cap ? ' ✓' : '') + '</span>' +
-        '<button class="btn-ghost" id="fill20" title="Queue the best brands in today’s category until 20 people are in" style="margin-left:10px;padding:3px 11px;font-size:11.5px;font-weight:500">Fill to 20</button>' +
+        '<button class="btn-ghost" id="fill20" title="Queue the best brands in today’s category until ' + SENT_TODAY.cap + ' people are in" style="margin-left:10px;padding:3px 11px;font-size:11.5px;font-weight:500">Fill to ' + SENT_TODAY.cap + '</button>' +
         offNote
       : 'All targets <span class="n">' + list.length + '</span>';
     var fb = document.getElementById('fill20');
@@ -11780,7 +11784,7 @@ function loadOutreach() {
           (f.theme ? esc(CAT_NAMES[f.theme] || f.theme) + ' is out of brands with people. Add some on the Schedule tab.' : 'add brands on the Schedule tab.'));
         else toast('Added ' + f.added + ' — today is full at ' + SENT_TODAY.cap);
         loadOutreach();
-      }).catch(function (e) { toast(e.message); fb.disabled = false; fb.textContent = 'Fill to 20'; });
+      }).catch(function (e) { toast(e.message); fb.disabled = false; fb.textContent = 'Fill to ' + SENT_TODAY.cap; });
     };
     document.getElementById('c-' + (mode === 'today' ? 'today' : 'all')).textContent = list.length;
     document.getElementById('status-filters').style.display = mode === 'all' ? 'flex' : 'none';
@@ -11793,7 +11797,7 @@ function loadOutreach() {
           ? (statusFilter !== 'all'
               ? 'No targets with status “' + esc(statusFilter) + '”.'
               : 'Import contacts from SponsorUnited and targets appear here, ordered by fit.')
-          : 'Either nothing is queued, or you have already sent 20 today — ' +
+          : 'Either nothing is queued, or you have already sent ' + SENT_TODAY.cap + ' today — ' +
             'the daily cap that keeps the LinkedIn account out of trouble. ' +
             'All targets shows everything regardless.') +
         '</p></div></div>';
@@ -11827,11 +11831,11 @@ function loadOutreach() {
         '<div class="hint" style="margin:2px 0 10px">Everyone at these brands got their invite. Show people for an Undo, or when an accept lands.</div>' +
         '<div data-oqsec="done">' + done.map(oqDoneCard).join('') + '</div>'
       : '';
-    // "The rest in that category" — ready rows past today's 20, in
+    // "The rest in that category" — ready rows past today's 30, in
     // case there's room. Mark sent still counts toward the cap.
     var moreBlock = (r.more || []).length
       ? '<div class="count-head" style="margin-top:24px">More in ' + (r.theme ? esc(CAT_NAMES[r.theme] || r.theme) : 'this category') + ' — ready if you have room <span class="n">' + r.more.length + '</span></div>' +
-        '<div class="hint" style="margin:2px 0 10px">Beyond today’s 20. Sending one still counts toward the daily cap.</div>' +
+        '<div class="hint" style="margin:2px 0 10px">Beyond today’s ' + SENT_TODAY.cap + '. Sending one still counts toward the daily cap.</div>' +
         '<div data-oqsec="more">' + oqGroup(r.more).map(oqBrandCard).join('') + '</div>'
       : '';
     var old21 = (r.stale || []).filter(function (t) { return Date.now() - new Date(t.sentAt).getTime() >= 21 * 864e5; }).length;
