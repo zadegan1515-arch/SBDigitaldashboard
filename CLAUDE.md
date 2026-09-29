@@ -157,6 +157,16 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   is a mistake taken back and uncounts the send. "Plan them" pins brands with someone new to the
   next sending day. A send out of the queue is always dated now (`setTargetStatus`), even on a row
   carrying an earlier invite's date.
+- **Outreach lists** (Leo, Sep 2026: "the list i have planned out so i can send to zach for approval" +
+  "a list of companies and the number of people i reached"): **Plan for Zach** / **What went out** buttons
+  on Outreach → LinkedIn's header and the Schedule's top row open one window (`olOpen`, `ol*` in app.html)
+  that only builds text to copy — **Leo sends it himself** (his call; no email, no approve button). Plan =
+  the Schedule's days read fresh (`getOutreachPlan`; `olPlanDay`: pinned brands going + the rotation's
+  rows, and on today the invites already sent (`sentPeople`), noted as sent; a brand that waits is named,
+  a blocked one left out), day chips tick days in/out. What went out = `sentByCompany({ from, to })`:
+  LinkedIn invites dated in those New York days, any status (the LinkedIn tab's "sent today" count;
+  Withdrew clears the date), by company in send order — **LinkedIn only** (his call); Today / Yesterday /
+  This week / Last week or typed dates. `node scripts/test-outreach-lists.js`.
 - **Brands → Stock take** (`brandStock` + `src/lib/stock.ts`; deep link `app.html#stock`; linked from
   Home → Categories) — the whole roster in one read, every brand in exactly one row. **Leo's lanes are
   real categories** (his yes, Sep 2026): `electrolytes`, `energy`, `rtd` (beer/seltzers/canned

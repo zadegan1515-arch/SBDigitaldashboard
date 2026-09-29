@@ -6951,6 +6951,35 @@ const handlers: Record<string, Handler> = {
     }
   },
 
+  // "What went out" (Outreach → Schedule / LinkedIn), the list Leo sends
+  // on after a day: every LinkedIn invite dated from `from` to `to` (New
+  // York days, both included; today when left out), by company, in the
+  // order they went out. The same count as the LinkedIn tab's "sent
+  // today": any invite dated in the range, whatever happened since. The
+  // row's Withdrew clears the date, so a mistake taken back is not in it;
+  // an accept logged with no invite date has no day to fall on. LinkedIn
+  // only (Leo's call, Sep 2026).
+  async sentByCompany({ from, to }: any = {}) {
+    const a = isDayKey(from) ? from : localDayKey()
+    const b = isDayKey(to) ? to : a
+    const [lo, hi] = a <= b ? [a, b] : [b, a]
+    if (Date.parse(`${hi}T12:00:00Z`) - Date.parse(`${lo}T12:00:00Z`) > 92 * 864e5) {
+      throw new Error('Pick three months or less')
+    }
+    const rows = await prisma.target.findMany({
+      where: { sentAt: { gte: dayStartOf(lo), lt: dayStartOf(addDaysKey(hi, 1)) } },
+      select: { brandId: true, sentAt: true, brand: { select: { name: true } } },
+      orderBy: { sentAt: 'asc' },
+    })
+    const byBrand = new Map<string, { brandId: string; name: string; people: number }>()
+    for (const r of rows) {
+      const row = byBrand.get(r.brandId)
+      if (row) row.people += 1
+      else byBrand.set(r.brandId, { brandId: r.brandId, name: r.brand.name, people: 1 })
+    }
+    return { from: lo, to: hi, total: rows.length, companies: [...byBrand.values()] }
+  },
+
   // Old invites nobody answered, for the LinkedIn tab's clean-up: still
   // "sent" after `days` (three weeks by default), grouped by brand, oldest
   // first. Withdrawing them on LinkedIn keeps the pending list short (it

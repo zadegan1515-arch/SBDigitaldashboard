@@ -1022,6 +1022,14 @@
   .modal-foot{padding:14px 22px;border-top:1px solid var(--border-soft);background:var(--surface-2);
     display:flex;gap:8px;justify-content:flex-end;align-items:center}
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  /* Outreach lists: plain text, exactly what Copy puts on the clipboard */
+  .ol-modal{max-width:600px}
+  .ol-ctrl{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .ol-ctrl .inp{width:auto;padding:5px 8px;font-size:12.5px}
+  .ol-ctrl .chip{font-size:12px}
+  .ol-text{white-space:pre-wrap;font-size:13px;line-height:1.6;margin-top:12px;padding:12px 14px;
+    background:var(--surface-2);border:1px solid var(--border-soft);border-radius:10px;max-height:52vh;overflow:auto;
+    user-select:text;-webkit-user-select:text}
   /* Phone pass: sidebar becomes a wrapping chip bar, pages lose the wide
      gutters, two-column forms stack. Nothing else changes shape. */
   @media (max-width:768px){
@@ -1731,6 +1739,26 @@
       <span id="nb-msg" style="margin-right:auto;font-size:12.5px;color:var(--ink-3)"></span>
       <button class="btn-ghost" id="nb-cancel">Cancel</button>
       <button class="btn-solid" id="nb-save">Add brand</button>
+    </div>
+  </div>
+</div>
+
+<!-- OUTREACH LISTS — the planned days for Zach, and what went out -->
+<div class="scrim" id="ol-scrim">
+  <div class="modal ol-modal" role="dialog" aria-modal="true" aria-labelledby="ol-h">
+    <div class="modal-head">
+      <h2 id="ol-h">Outreach lists</h2>
+      <p>Copy a list and send it yourself. Nothing is sent from here.</p>
+      <div class="zt-tabs"><button class="chip" data-oltab="plan">Plan for Zach</button><button class="chip" data-oltab="sent">What went out</button></div>
+    </div>
+    <div class="modal-body">
+      <div class="ol-ctrl" id="ol-ctrl"></div>
+      <div class="ol-text" id="ol-text"></div>
+    </div>
+    <div class="modal-foot">
+      <span class="hint" id="ol-meta" style="margin:0 auto 0 0"></span>
+      <button class="btn-ghost" id="ol-close">Close</button>
+      <button class="btn-solid" id="ol-copy">Copy</button>
     </div>
   </div>
 </div>
@@ -7982,6 +8010,8 @@ function renderSchedExtra() {
     '<button class="btn-draft sd-sm" data-sdpw="1"' + (pwOn ? ' disabled' : '') +
       ' title="Picks a category for each of the next three sending days and fills them to ' + sdCap() + ' with whole brands. You see it all before anything changes.">Plan my week</button>' +
     (SCHED.planWeekLast && !pwOn ? '<a href="#" class="sd-link" data-sdpwundo="1" title="Take the last Plan my week back off">Undo the week plan</a>' : '') +
+    '<button class="btn-ghost sd-sm" data-olopen="plan" title="The planned days as a list to copy: each company and how many people go out">Plan for Zach</button>' +
+    '<button class="btn-ghost sd-sm" data-olopen="sent" title="Who went out: each company and how many people were invited on LinkedIn, for a day or a range">What went out</button>' +
     (SCHED.extraOpen
       ? '<b>Add a sending day</b>' +
         '<input type="date" class="inp" data-sdxdate="1" min="' + esc(min) + '" value="' + esc(val) + '">' +
@@ -8013,6 +8043,226 @@ function sdLiWeekChip() {
     ' connection invites a week, counted over the last seven days. Each day on the Schedule counts the seven days ending on it.">' +
     'LinkedIn: <b>' + w.sentLast7 + '</b> invites in the last 7 days · about ' + w.limit + ' a week allowed' + tail + '</span>';
 }
+
+// --- outreach lists --------------------------------------------
+// Leo (Sep 2026): "a button on the outreach tab for the list i have
+// planned out so i can send to zach for approval … the number of people
+// we plan to outreach that day per company, then once things are sent out
+// … a list of companies and the number of people i reached". He sends
+// them himself (his call), so this only builds text to copy. Plan for
+// Zach = the Schedule's days, read fresh (getOutreachPlan — the numbers
+// the columns show), each company with how many people go out. What went
+// out = LinkedIn invites dated in a day or a range, by company
+// (sentByCompany; LinkedIn only, his call). What's on screen is exactly
+// what Copy takes.
+var OL = { tab: 'plan', plan: null, planErr: '', off: {}, sent: null, sentErr: '', from: '', to: '', seq: 0, text: '' };
+
+function olOpen(tab) {
+  OL.tab = tab === 'sent' ? 'sent' : 'plan';
+  document.getElementById('ol-scrim').classList.add('open');
+  olLoad();
+}
+function olClose() { document.getElementById('ol-scrim').classList.remove('open'); }
+
+function olKey(key, n) {
+  var dt = new Date(key + 'T12:00:00');
+  dt.setDate(dt.getDate() + n);
+  return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+}
+function olToday() { return SCHED.today || schedDayKey(0); }
+
+function olLoad() {
+  var mine = ++OL.seq;
+  if (OL.tab === 'plan') {
+    OL.plan = null; OL.planErr = '';
+    olRender();
+    api('getOutreachPlan').then(function (d) {
+      if (mine !== OL.seq) return;
+      OL.plan = d;
+      olRender();
+    }).catch(function (e) { if (mine === OL.seq) { OL.planErr = e.message; olRender(); } });
+    return;
+  }
+  if (!OL.from) OL.from = OL.to = olToday();
+  OL.sent = null; OL.sentErr = '';
+  olRender();
+  api('sentByCompany', { from: OL.from, to: OL.to }).then(function (d) {
+    if (mine !== OL.seq) return;
+    OL.sent = d;
+    OL.from = d.from; OL.to = d.to;
+    olRender();
+  }).catch(function (e) { if (mine === OL.seq) { OL.sentErr = e.message; olRender(); } });
+}
+
+// One Schedule day as companies in the order they go out (planned
+// brands, then the rotation's), each with its people. On today a card's
+// count is who is still to go, so who already went (sentPeople) is added
+// in. A planned brand that waits for a later day is named, not counted.
+function olPlanDay(day) {
+  var rows = [], by = {}, waits = [];
+  function row(id, name) {
+    if (!by[id]) { by[id] = { name: name, people: 0, sent: 0 }; rows.push(by[id]); }
+    return by[id];
+  }
+  (day.pinned || []).forEach(function (p) {
+    if (p.state === 'going' && p.waits) waits.push(p.name);
+    else if (p.state === 'going') row(p.id, p.name).people += p.going || 0;
+    else if (p.state === 'sent') row(p.id, p.name);
+  });
+  (day.brands || []).forEach(function (b) { row(b.id, b.name).people += sdPeopleOf(b).n; });
+  (day.sentPeople || []).forEach(function (t) {
+    var r = row(t.brandId, t.brand);
+    r.people += 1; r.sent += 1;
+  });
+  rows = rows.filter(function (r) { return r.people > 0; });
+  return {
+    rows: rows, waits: waits,
+    people: rows.reduce(function (n, r) { return n + r.people; }, 0),
+    sent: rows.reduce(function (n, r) { return n + r.sent; }, 0),
+  };
+}
+
+function olPlanText(d) {
+  var out = [], people = 0, cos = 0, days = 0;
+  (d.days || []).forEach(function (day) {
+    if (OL.off[day.date]) return;
+    var x = olPlanDay(day);
+    days += 1; people += x.people; cos += x.rows.length;
+    var head = sdDayName(day.date) + (day.date === d.today ? ' (today)' : '') +
+      (day.category ? ' · ' + sdCatName(day.category) : '') + ' — ' +
+      (x.rows.length ? sdPlural(x.people, 'person', 'people') + ', ' + sdPlural(x.rows.length, 'company', 'companies') +
+        (x.sent ? ' (' + x.sent + ' already sent)' : '') : 'nothing planned yet');
+    out.push(head);
+    x.rows.forEach(function (r) {
+      out.push('• ' + r.name + ' — ' + r.people + (r.sent ? ' (' + r.sent + ' sent)' : ''));
+    });
+    if (x.waits.length) out.push('Waiting for a later day: ' + x.waits.join(', '));
+    out.push('');
+  });
+  if (!days) return { text: '', meta: 'Tick a day to list it.' };
+  if (days > 1) out.push('Total: ' + sdPlural(people, 'person', 'people') + ', ' + sdPlural(cos, 'company', 'companies'));
+  return {
+    text: ('LinkedIn outreach plan\n\n' + out.join('\n')).replace(/\n+$/, ''),
+    meta: sdPlural(days, 'day', 'days') + ' · ' + sdPlural(people, 'person', 'people') + ' · ' + sdPlural(cos, 'company', 'companies'),
+  };
+}
+
+function olSentText(d) {
+  var when = sdDayName(d.from) + (d.to !== d.from ? ' to ' + sdDayName(d.to) : '');
+  if (!d.total) return { text: '', meta: 'No LinkedIn invites went out ' + (d.to !== d.from ? 'from ' : 'on ') + when + '.' };
+  var cos = d.companies || [];
+  return {
+    text: 'LinkedIn outreach, ' + when + '\n' +
+      sdPlural(d.total, 'person', 'people') + ', ' + sdPlural(cos.length, 'company', 'companies') + '\n\n' +
+      cos.map(function (c) { return '• ' + c.name + ' — ' + c.people; }).join('\n'),
+    meta: sdPlural(d.total, 'person', 'people') + ' · ' + sdPlural(cos.length, 'company', 'companies'),
+  };
+}
+
+// The quick ranges, in New York days like the Schedule's.
+function olRange(which) {
+  var today = olToday();
+  var monday = olKey(today, -((new Date(today + 'T12:00:00').getDay() + 6) % 7));
+  return which === 'today' ? [today, today]
+    : which === 'yesterday' ? [olKey(today, -1), olKey(today, -1)]
+    : which === 'week' ? [monday, today]
+    : [olKey(monday, -7), olKey(monday, -1)];
+}
+function olPreset(which) {
+  var r = olRange(which);
+  OL.from = r[0]; OL.to = r[1];
+}
+
+function olRender() {
+  document.querySelectorAll('#ol-scrim [data-oltab]').forEach(function (b) {
+    b.classList.toggle('active', b.getAttribute('data-oltab') === OL.tab);
+  });
+  var ctrl = document.getElementById('ol-ctrl');
+  var box = document.getElementById('ol-text');
+  var meta = document.getElementById('ol-meta');
+  var built = null;
+  if (OL.tab === 'plan') {
+    var d = OL.plan;
+    ctrl.innerHTML = d && (d.days || []).length
+      ? '<span class="hint" style="margin:0">Days:</span>' + d.days.map(function (day) {
+          return '<button class="chip' + (OL.off[day.date] ? '' : ' active') + '" data-olday="' + esc(day.date) + '"' +
+            ' title="Tick or untick this day in the list">' + esc(sdDayName(day.date)) + ' · ' + olPlanDay(day).people + '</button>';
+        }).join('')
+      : '';
+    if (d) built = olPlanText(d);
+    box.textContent = built ? (built.text || 'Nothing on the days ticked.')
+      : OL.planErr ? 'Could not load the plan: ' + OL.planErr : 'Loading the plan…';
+  } else {
+    var today = olToday();
+    ctrl.innerHTML =
+      '<input type="date" class="inp" data-olfrom="1" value="' + esc(OL.from) + '" max="' + esc(today) + '" title="From">' +
+      '<span class="hint" style="margin:0">to</span>' +
+      '<input type="date" class="inp" data-olto="1" value="' + esc(OL.to) + '" max="' + esc(today) + '" title="To">' +
+      [['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'This week'], ['lastweek', 'Last week']].map(function (p) {
+        var r = olRange(p[0]);
+        return '<button class="chip' + (r[0] === OL.from && r[1] === OL.to ? ' active' : '') + '" data-olpreset="' + p[0] + '">' + p[1] + '</button>';
+      }).join('');
+    if (OL.sent) built = olSentText(OL.sent);
+    box.textContent = built ? (built.text || built.meta)
+      : OL.sentErr ? 'Could not load: ' + OL.sentErr : 'Loading…';
+  }
+  OL.text = built ? built.text : '';
+  meta.textContent = built && built.text ? built.meta : '';
+  document.getElementById('ol-copy').disabled = !OL.text;
+}
+
+function olCopy() {
+  var text = OL.text;
+  if (!text) return;
+  var done = function () { toast('Copied — paste it wherever you’re sending it'); };
+  var fallback = function () {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+    if (ok) done(); else toast('Could not copy — select the text and copy it');
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+  else fallback();
+}
+
+document.addEventListener('click', function (e) {
+  var b = e.target.closest && e.target.closest('[data-olopen]');
+  if (b) { e.preventDefault(); olOpen(b.getAttribute('data-olopen')); }
+});
+(function () {
+  var scrim = document.getElementById('ol-scrim');
+  scrim.addEventListener('click', function (e) {
+    var t;
+    if (e.target === scrim) { olClose(); return; }
+    if ((t = e.target.closest('[data-oltab]'))) {
+      if (OL.tab !== t.getAttribute('data-oltab')) { OL.tab = t.getAttribute('data-oltab'); olLoad(); }
+      return;
+    }
+    if ((t = e.target.closest('[data-olday]'))) {
+      var k = t.getAttribute('data-olday');
+      OL.off[k] = !OL.off[k];
+      olRender();
+      return;
+    }
+    if ((t = e.target.closest('[data-olpreset]'))) { olPreset(t.getAttribute('data-olpreset')); olLoad(); }
+  });
+  scrim.addEventListener('change', function (e) {
+    var t = e.target;
+    if (!t.matches('[data-olfrom],[data-olto]') || !/^\d{4}-\d{2}-\d{2}$/.test(t.value)) return;
+    if (t.matches('[data-olfrom]')) OL.from = t.value; else OL.to = t.value;
+    olLoad();
+  });
+  document.getElementById('ol-close').addEventListener('click', olClose);
+  document.getElementById('ol-copy').addEventListener('click', olCopy);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && scrim.classList.contains('open')) olClose();
+  });
+})();
 
 // The same, for one day's column: only when that day is close or over.
 function sdLiDayWarn(key) {
@@ -11771,6 +12021,8 @@ function loadOutreach() {
           (SENT_TODAY.count >= SENT_TODAY.cap ? '#8fd6a8' : 'var(--ink-3)') + '">' +
           SENT_TODAY.count + ' of ' + SENT_TODAY.cap + ' sent today' + (SENT_TODAY.count >= SENT_TODAY.cap ? ' ✓' : '') + '</span>' +
         '<button class="btn-ghost" id="fill20" title="Queue the best brands in today’s category until ' + SENT_TODAY.cap + ' people are in" style="margin-left:10px;padding:3px 11px;font-size:11.5px;font-weight:500">Fill to ' + SENT_TODAY.cap + '</button>' +
+        '<button class="btn-ghost" data-olopen="plan" title="The planned days as a list to copy: each company and how many people go out" style="margin-left:6px;padding:3px 11px;font-size:11.5px;font-weight:500">Plan for Zach</button>' +
+        '<button class="btn-ghost" data-olopen="sent" title="Who went out: each company and how many people were invited on LinkedIn, for a day or a range" style="margin-left:6px;padding:3px 11px;font-size:11.5px;font-weight:500">What went out</button>' +
         offNote
       : 'All targets <span class="n">' + list.length + '</span>';
     var fb = document.getElementById('fill20');
