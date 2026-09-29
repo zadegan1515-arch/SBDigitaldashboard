@@ -53,6 +53,10 @@
 //  15. The run's report: start and finish go to the dashboard, every
 //      brand's visit carries the run, and a page whose cards the reader
 //      gets wrong sends the problem with a sample of the cards.
+//  16. A window of its own: time with the window hidden (Chrome slows it)
+//      is counted into the brand's report, and #sb-fill arriving on a page
+//      that's already loaded (the dashboard's button on a window already
+//      at the feed) still starts the run.
 //   6. The pill sits bottom-left, clear of LinkedIn's Messaging bar; the
 //      Tampermonkey menu opens the same panel; and a copy running without
 //      its @grant lines (pasted under Tampermonkey's sample) says so.
@@ -811,6 +815,37 @@ const GM_SHIM = `
       await pg.close();
     }
     ok('the run reports its start, end and every brand; unreadable cards come with a sample');
+
+    // 16. The run's own window, hidden for a while, then back.
+    {
+      fillItems = [{ brandId: 'b-slow', name: 'Slow Brand', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/slow-brand/', contacts: 0, focus: false }];
+      const before = sent.length, ev0 = runEvents.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.waitForSelector('#sblipill', { state: 'visible' });
+      // The dashboard's button again, on a window already at the feed.
+      await pg.evaluate(() => { location.hash = '#sb-fill'; });
+      await pg.waitForURL(/\/company\/slow-brand\/people\//, { timeout: 20000 });
+      const setHidden = (v) => pg.evaluate((hidden) => {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => hidden ? 'hidden' : 'visible' });
+        document.dispatchEvent(new Event('visibilitychange'));
+      }, v);
+      await setHidden(true);
+      await pg.waitForTimeout(1300);
+      await setHidden(false);
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 60000 });
+      await pg.waitForTimeout(300);
+      assert.ok(sent.slice(before).some(b => b.action === 'liList'), 'the #mark on a loaded page started the run');
+      const swept = sent.slice(before).find(b => b.action === 'liSwept' && b.brandId === 'b-slow');
+      assert.ok(swept.hiddenMs >= 1200 && swept.hiddenMs < 5000, 'hidden time counted: ' + swept.hiddenMs);
+      assert.ok(swept.ms >= swept.hiddenMs, 'the brand\'s time includes it');
+      const fin = runEvents.slice(ev0).find(e => e.kind === 'finish');
+      assert.ok(fin.hiddenMs >= 1200, 'the run\'s end carries it too');
+      await pg.close();
+    }
+    ok('hidden time goes into the report; #sb-fill on a loaded page starts the run');
 
     // 6. No @grant lines: runs, shows the pill, says to reinstall.
     const bare = await browser.newPage();

@@ -27,6 +27,10 @@ export type RunBrand = {
   added: number
   note?: string | null
   problem?: string | null
+  // How long the brand took, and how much of that its window was hidden
+  // (Chrome slows a hidden window to about a step a minute).
+  ms?: number | null
+  hiddenMs?: number
 }
 export type RunReport = {
   id: string
@@ -43,6 +47,7 @@ export type RunReport = {
   problems: number
   samples: Array<{ at: string; name: string; problem: string; sample: string }>
   newBrands: number
+  hiddenMs?: number
 }
 
 export type RunEvent = {
@@ -62,6 +67,8 @@ export type RunEvent = {
   why?: string | null
   stopped?: boolean
   newBrands?: number
+  ms?: number | null
+  hiddenMs?: number
 }
 
 const str = (v: unknown, n: number) => (v == null || v === '' ? null : String(v).slice(0, n))
@@ -100,9 +107,12 @@ export function applyRunEvent(reports: RunReport[], ev: RunEvent, now = new Date
       added: num(ev.added),
       note: str(ev.note, 160),
       problem: str(ev.problem, 200),
+      ms: ev.ms == null ? null : num(ev.ms),
+      hiddenMs: num(ev.hiddenMs),
     }
     if (run.brands.length < KEEP_BRANDS) run.brands.push(b)
     run.added += b.added
+    run.hiddenMs = (run.hiddenMs || 0) + (b.hiddenMs || 0)
     if (b.problem) {
       run.problems++
       const sample = str(ev.sample, SAMPLE_CHARS)
@@ -149,6 +159,8 @@ export async function recordRun(db: SettingStore & { $transaction?: any }, ev: R
     const v = JSON.stringify(next)
     await tx.setting.upsert({ where: { key: LI_RUNS_KEY }, create: { key: LI_RUNS_KEY, value: v }, update: { value: v } })
   }
-  if (typeof db.$transaction === 'function') await db.$transaction(write)
+  // Generous waits: a cold serverless start can take seconds to get a
+  // connection, and a dropped event is a hole in the report.
+  if (typeof db.$transaction === 'function') await db.$transaction(write, { maxWait: 10000, timeout: 20000 })
   else await write(db)
 }

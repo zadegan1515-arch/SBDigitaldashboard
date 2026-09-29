@@ -158,8 +158,12 @@ const GM_SHIM = `(function () {
   window.GM_deleteValue = function (k) { sessionStorage.removeItem(P + k); };
   window.GM_registerMenuCommand = function () {};
   window.GM_setClipboard = function (t) { window.__sbClip = t; };
+  // keepalive: like Tampermonkey's own requests (sent by the extension),
+  // a call still finishes when the page moves on — the run's sped-up clock
+  // navigates 30 ms after a fire-and-forget report, and a cold dev server
+  // lost those calls (Huel's visit mark, the run's start).
   window.GM_xmlhttpRequest = function (o) {
-    fetch(o.url, { method: o.method, headers: o.headers, body: o.data })
+    fetch(o.url, { method: o.method, headers: o.headers, body: o.data, keepalive: true })
       .then(function (r) { return r.text().then(function (t) { o.onload({ status: r.status, responseText: t }); }); })
       .catch(function () { o.onerror(); });
   };

@@ -1408,7 +1408,7 @@
         <button class="chip" data-lif="profiles">Saved profiles</button>
         <button class="chip" data-lif="none">Nobody yet</button>
         <button class="chip" data-lif="thin" title="Brands with room under the 25-people cap, emptiest first — open People ↗ and press the SB pill">Under 25</button>
-        <a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" style="text-decoration:none;margin-left:6px" title="Opens LinkedIn in a new tab and starts the fill there by itself — electrolytes first, the research list and lookalikes on. Needs the LinkedIn capture script in Tampermonkey. Leave that tab alone while it runs.">Start the LinkedIn fill ↗</a>
+        <a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" style="text-decoration:none;margin-left:6px" title="Opens LinkedIn in a window of its own and starts the fill there by itself — electrolytes first, the research list and lookalikes on. Keep working here; leave that window alone, with a corner of it in view (minimized or fully covered, Chrome slows it). Needs the LinkedIn capture script in Tampermonkey.">Start the LinkedIn fill ↗</a>
         <input class="inp" id="li-q" placeholder="Filter brands…" autocomplete="off" style="margin-left:auto;width:220px">
       </div>
       <div class="hint" id="li-script-hint" style="margin-top:10px;display:none">
@@ -7185,6 +7185,18 @@ function renderLiRuns(runs, latest) {
     '<div class="t-meta" style="margin-top:6px">' + r.brands.length + ' brand' + (r.brands.length === 1 ? '' : 's') + ' done · ' +
       r.added + ' people added' + (r.newBrands ? ' · ' + r.newBrands + ' new brand' + (r.newBrands === 1 ? '' : 's') : '') +
       ' · last word ' + esc(when(r.lastAt)) + '</div>' +
+    (function () {
+      // How long a brand takes, and whether a hidden window slowed it
+      // (Chrome runs a minimized or fully covered window at a crawl).
+      var timed = r.brands.filter(function (x) { return x.ms; });
+      var avg = timed.length ? Math.round(timed.reduce(function (t, x) { return t + x.ms; }, 0) / timed.length / 60000 * 10) / 10 : null;
+      var hid = Math.round((r.hiddenMs || 0) / 60000);
+      if (avg == null && hid < 2) return '';
+      return '<div class="t-meta" style="margin-top:6px' + (hid >= 2 ? ';color:var(--warn)' : '') + '">' +
+        (avg != null ? 'About ' + avg + ' min a brand' : '') +
+        (hid >= 2 ? (avg != null ? ' · ' : '') + hid + ' min with its window hidden, which slows it — keep the LinkedIn window in view (a corner is enough).' : '') +
+        '</div>';
+    })() +
     (lastPause ? '<div class="t-meta" style="margin-top:6px;color:var(--bad)">Paused: ' + esc(lastPause.why) + '</div>' : '') +
     (latest && r.script && liVersionBehind(r.script, latest)
       ? '<div class="t-meta" style="margin-top:6px;color:var(--warn)">This run used script ' + esc(r.script) + ' — ' + esc(latest) + ' is out. The pill on LinkedIn turns orange; one click there updates it.</div>' : '') +
@@ -7205,6 +7217,32 @@ function renderLiRuns(runs, latest) {
   '</div>';
   box.innerHTML = html;
 }
+
+// "Start the LinkedIn fill" opens LinkedIn in a window of its own (Leo,
+// Sep 2026: let it run while he goes through brands here). Every #sb-fill
+// link, wherever it sits, uses the one named window: a second click
+// brings the run's window back to the feed, where the script picks the
+// run up again (or starts one if the last has finished). Sized to sit
+// beside the dashboard; Chrome slows a window that's minimized or fully
+// covered, so it opens where a corner of it can stay in view. A blocked
+// popup falls back to the link's own new tab.
+var LI_FILL_WINDOW = 'sbLinkedinFill';
+document.addEventListener('click', function (e) {
+  var a = e.target && e.target.closest ? e.target.closest('a[href*="#sb-fill"]') : null;
+  if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  var sw = window.screen.availWidth || 1280, sh = window.screen.availHeight || 800;
+  var w = Math.min(1100, sw), hgt = Math.min(820, sh);
+  var win = null;
+  try {
+    win = window.open(a.href, LI_FILL_WINDOW, 'popup=yes,width=' + w + ',height=' + hgt + ',left=' + Math.max(0, sw - w) + ',top=0');
+  } catch (err) { win = null; }
+  if (!win) return;
+  e.preventDefault();
+  // opener stays: clearing it stops the next click finding this window by
+  // name (it opened a second one). If LinkedIn cuts the link itself, a
+  // second window just shows the run going in the first.
+  try { win.focus(); } catch (err) {}
+});
 
 document.querySelectorAll('#linkedin .chip[data-lif]').forEach(function (ch) {
   ch.addEventListener('click', function () {

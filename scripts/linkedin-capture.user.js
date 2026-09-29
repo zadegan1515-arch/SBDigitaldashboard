@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.15
+// @version      1.16
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -83,7 +83,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.15';
+  var VERSION = '1.16';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -797,9 +797,29 @@
 
   function loadFill() { try { return GM_getValue(FILL_KEY, null); } catch (e) { return null; } }
   function saveFill(job) {
-    if (job) job.touchedAt = Date.now();
+    if (job) { flushHidden(job); job.touchedAt = Date.now(); }
     try { GM_setValue(FILL_KEY, job); } catch (e) {}
   }
+
+  // Time the run's window spent hidden. Leo runs the fill in a window of
+  // its own beside the dashboard (Sep 2026); Chrome slows a window it
+  // treats as hidden (minimized, or fully covered) to about one step a
+  // minute, so a hidden run crawls. Counted per brand and for the run,
+  // shown in the panel and sent with the report.
+  var hiddenAt = document.hidden ? Date.now() : 0;
+  function flushHidden(job) {
+    if (!hiddenAt || job.runner !== PAGE_NONCE) return;
+    var now = Date.now(), gone = now - hiddenAt;
+    hiddenAt = document.hidden ? now : 0;
+    job.hiddenMs = (job.hiddenMs || 0) + gone;
+    if (job.step) job.step.hiddenMs = (job.step.hiddenMs || 0) + gone;
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { if (!hiddenAt) hiddenAt = Date.now(); return; }
+    var job = loadFill();
+    if (hiddenAt && job && inCharge(job)) { saveFill(job); renderFill(job, 'Back in view.'); }
+    else hiddenAt = 0;
+  });
   // A run nobody has touched for ten minutes has lost its tab (closed, or
   // a copy from an older script). It shouldn't block starting a new one.
   // A live run's tab touches it at least once a minute (runFill).
@@ -1002,7 +1022,7 @@
     if (job.at >= job.items.length) return finishFill(job, false);
     var item = job.items[job.at];
     if (!job.step) {
-      job.step = { phase: item.research ? 'research' : peopleUrl(item.linkedinUrl, '') ? 'read' : 'search', pass: 0, triedAka: false, seen: 0, added: 0, navs: 0 };
+      job.step = { phase: item.research ? 'research' : peopleUrl(item.linkedinUrl, '') ? 'read' : 'search', pass: 0, triedAka: false, seen: 0, added: 0, navs: 0, startedAt: Date.now(), hiddenMs: 0 };
       saveFill(job);
     }
     var st = job.step;
@@ -1234,6 +1254,7 @@
   }
 
   function finishBrand(job, note) {
+    flushHidden(job);
     var item = job.items[job.at];
     var st = job.step || { seen: 0, added: 0 };
     // Every item goes in the run's report; the server's visit log (which
@@ -1242,6 +1263,7 @@
     post({
       action: 'liSwept', brandId: item.brandId || null, run: job.id, script: VERSION, name: item.name,
       seen: st.seen, added: st.added, note: note || '', problem: st.problem || null, sample: st.sample || null,
+      ms: st.startedAt ? Date.now() - st.startedAt : null, hiddenMs: st.hiddenMs || 0,
     }).catch(function () {});
     job.results.push({ name: item.name, added: st.added, note: note || null });
     job.at++;
@@ -1257,7 +1279,7 @@
     clearTimeout(fillTimer);
     fillHalt.stopped = true;
     clearFill();
-    runEvent(job, 'finish', { stopped: !!stopped, newBrands: (job.newBrands || []).length });
+    runEvent(job, 'finish', { stopped: !!stopped, newBrands: (job.newBrands || []).length, hiddenMs: job.hiddenMs || 0 });
     var problems = (job.results || []).filter(function (r) { return r.note; });
     freshPanel([
       head(stopped ? 'Run stopped' : 'Run finished'),
@@ -1321,7 +1343,8 @@
   // scroll count just update the status line.
   function renderFill(job, status) {
     if (!job) return;
-    var key = [job.at, job.added, job.doneToday, job.paused, job.pausedUntil, (job.newBrands || []).length, job.items.length].join('|');
+    var hiddenMin = Math.floor((job.hiddenMs || 0) / 60000);
+    var key = [job.at, job.added, job.doneToday, job.paused, job.pausedUntil, (job.newBrands || []).length, job.items.length, hiddenMin].join('|');
     if (panel && panel.getAttribute('data-fill') === key && fillStatusEl && fillStatusEl.isConnected) {
       return setFillStatus(status);
     }
@@ -1339,6 +1362,9 @@
         h('div', { style: 'height:100%;width:' + pct + '%;background:#111' }),
       ]),
       fillStatusEl,
+      hiddenMin >= 2
+        ? h('div', { id: 'sblihidden', style: 'font-size:12px;margin:0 0 8px;padding:6px 8px;border-radius:6px;background:#fff4e5;color:#7a4b00', text: 'Slowed while this window was hidden: ' + hiddenMin + ' min so far. Keep it in view — a corner showing is enough; minimized or fully covered, Chrome slows it.' })
+        : null,
       job.paused ? h('button', { id: 'sblifillgo', style: BTN, text: 'Continue', onclick: continueFill }) : null,
       h('button', { id: 'sblifillstop', style: BTN2 + ';margin-top:6px;color:#b00', text: 'Stop the run', onclick: stopFill }),
       h('div', { style: SMALL, text: 'Runs in this tab only; clicking or typing here pauses it. About ' + DAILY_CAP + ' brands a day, under a minute apart. It pauses if LinkedIn shows a check or a limit.' }),
@@ -1514,6 +1540,10 @@
     if (fillHere()) {
       var claim = loadFill();
       claim.runner = PAGE_NONCE;
+      // The dashboard's button brought the run's window back to the feed:
+      // that trip was Leo's, not the run's, so it doesn't count as one of
+      // the brand's two tries at opening its page.
+      if (AUTO_FILL && claim.step) claim.step.navs = 0;
       saveFill(claim);
       later(runFill, rand(2500, 4000));
     }
@@ -1522,5 +1552,14 @@
     // start a run in this tab with the panel's defaults. A live run in
     // another tab is shown, not doubled; a stale one is replaced.
     else if (AUTO_FILL) later(function () { openFillSetup({ auto: true }); }, rand(1500, 2500));
+
+    // The dashboard's button again, on a window already at the feed: only
+    // the #mark changes, so there's no page load to catch it. Same rules.
+    window.addEventListener('hashchange', guard(function () {
+      if (!/^#sb-fill\b/.test(location.hash)) return;
+      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+      if (fillHere()) { var job = loadFill(); return renderFill(job, job.paused ? 'Paused: ' + job.paused : 'Running.'); }
+      openFillSetup({ auto: true });
+    }));
   });
 })();

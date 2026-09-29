@@ -312,7 +312,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   never rest a brand. **One-click start**: Outreach → People's "Start the LinkedIn fill ↗" opens
   `linkedin.com/feed/#sb-fill`; the script runs at **document-start** only to catch that hash
   (LinkedIn rewrites its address while loading), the rest waits for DOM ready (`whenReady`), and it
-  starts a run in that tab with the panel's defaults. A run untouched for 10 min (`staleFill`; live
+  starts a run in that tab with the panel's defaults. **A window of its own** (Leo, Sep 29: "run when I'm
+  not on LinkedIn but I can go through brands"): every `#sb-fill` link in app.html opens LinkedIn in one
+  named popup (`LI_FILL_WINDOW`, 1100×820 at the right edge; `opener` kept — clearing it made the next
+  click open a second window); a second click brings that window back to the feed, where the run picks up
+  (the trip doesn't count against the brand's two page tries), and a `#sb-fill` arriving on an
+  already-loaded feed is caught by `hashchange`. Chrome slows a minimized or fully covered window to ~a
+  step a minute, so the script counts hidden time (`flushHidden` on every save → `hiddenMs` per brand
+  and run, plus each brand's `ms`), warns in its panel from 2 min, and the "Last LinkedIn run" card shows
+  minutes a brand and hidden minutes. It still needs Leo's computer awake with that window open. A run untouched for 10 min (`staleFill`; live
   tabs heartbeat `touchedAt` each minute) no longer blocks a new one (electrolyte first, research list + lookalikes on) — Claude can't run it from the
   cloud; it needs Leo's browser and LinkedIn login. Menu / preview link **"Copy a sample for Claude"** copies what the reader made of
   the first three cards (+ trimmed markup) for Leo to paste when LinkedIn changes its cards again.

@@ -906,6 +906,7 @@ export async function POST(req: NextRequest) {
           kind: 'brand', run: String(body.run), script: body.script, reader: Number(body.reader) || 0,
           name: body.name, brandId: brandId || null, seen: body.seen, added: body.added,
           note: body.note || null, problem: body.problem || null, sample: body.sample || null,
+          ms: body.ms ?? null, hiddenMs: body.hiddenMs,
         })
       } catch { /* the report is a nicety; the sweep log above is what counts */ }
     }

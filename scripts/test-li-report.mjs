@@ -40,6 +40,14 @@ t('a run: start, brands, a pause, carry on, finish', () => {
   assert.equal(run.startedAt, at(0).toISOString()); assert.equal(run.lastAt, at(5).toISOString())
 })
 
+t('each brand keeps its time and hidden time; the run adds up the hidden minutes', () => {
+  let r = applyRunEvent([], { kind: 'brand', run: 'f3', name: 'A', seen: 5, added: 1, ms: 90000, hiddenMs: 0 }, at(0))
+  r = applyRunEvent(r, { kind: 'brand', run: 'f3', name: 'B', seen: 5, added: 1, ms: 840000, hiddenMs: 720000 }, at(1))
+  r = applyRunEvent(r, { kind: 'brand', run: 'f3', name: 'C', seen: 5, added: 1 }, at(2))
+  assert.equal(r[0].hiddenMs, 720000)
+  assert.deepEqual(r[0].brands.map(b => [b.ms, b.hiddenMs]), [[90000, 0], [840000, 720000], [null, 0]])
+})
+
 t('an unreadable page is counted and keeps a small sample — three at most', () => {
   let r = []
   for (let i = 0; i < 5; i++) {
