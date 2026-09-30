@@ -242,9 +242,20 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   that fits the category** — Native the deodorant had a home-care agency's page — most followers wins,
   so it's never just the first result; or a near miss only in the top 3 with a fitting industry; else
   "unclear" → skipped and put on Leo's list, below), then the
-  People tab — **only companies with under 100 people** (Leo, Sep 2026: skip Microsoft and the like): the
-  tab's "N associated members" at 100+ skips the brand before any reading (`BIG_COMPANY`, note "too big — …",
-  rests a year: `LI_BIG_REST_DAYS`) — (+ "marketing" and "partnerships" views if the tab never ran out), `liCapture` by
+  People tab (+ "marketing" and "partnerships" views if the tab never ran out). **Big companies** (the tab's
+  "N associated members" ≥ `BIG_COMPANY` = 100): not read whole — Leo, Sep 30, after the 1.17–1.19 skip lost
+  Bang, Tito's, Bacardi and Nike — but searched: `BIG_PASSES` partnerships / sponsorship / brand manager
+  (+ marketing only if those found < 3), a `SHORT_READ` of each; old "too big" marks don't rest
+  (`isTooBig` → due). **Parent companies** (`src/lib/parents.ts`, `node scripts/test-li-capture.mjs`):
+  brands whose people sit under a parent's page (Ketel One → Diageo, Jameson → Pernod Ricard, Fireball →
+  Sazerac, Bang → Monster…; only ownership we're sure of — a wrong parent costs a search, never a wrong
+  person). `liList` items carry `parent` {name, search, slug}; when a brand's own page gives nobody (no
+  page, unclear, won't open, nobody readable, nobody new) the run searches the parent's People tab for the
+  brand's name, once (`tryParent`/`endBrand`, mark `parentTried`); a research name with no page of its own
+  but a parent becomes a brand (`liResearch` outcome `parent`, linkedinUrl null). The parent's page is found
+  once (`liParent`, `decideParentPage`: exact name, most followed) and kept in Setting `liParentPages`;
+  parent reads send `viaParent` (never saved as the brand's page, no page check) and report `via`. A brand
+  or research name read before this existed, with nobody added, is due again. Then `liCapture` by
   brandId, `liSwept` → Setting `liSweepLog` (`src/lib/li-sweep.ts`; any brand read by a current
   reader rests 30 days, people or not, so a restarted run doesn't redo it; notes show red on
   Outreach → People). Pace (Leo, Sep 30, on free LinkedIn — faster hits its monthly "commercial use

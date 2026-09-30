@@ -37,6 +37,7 @@ import {
 } from '@/lib/li-capture'
 import { readLiLog, markLiSwept, liResting, readLiResearch, markLiResearch, researchResting, LI_READER, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
 import { recordRun } from '@/lib/li-report'
+import { PARENTS, parentOf, decideParentPage, LI_PARENT_PAGES_KEY } from '@/lib/parents'
 import {
   addToReview, sameMember, readJsonSetting, writeJsonSetting,
   LI_REVIEW_KEY, LI_CONFIRMED_KEY, LI_OWNER_KEY, type Review, type Confirmed, type LiOwner,
@@ -423,7 +424,7 @@ export async function POST(req: NextRequest) {
   // before anything is read or saved. Zach's log script (liPerson*) is
   // not part of this. A script that can't tell who's signed in isn't
   // blocked on a guess.
-  const OWNED_ACTIONS = ['liList', 'liPreview', 'liCapture', 'liMatched', 'liSwept', 'liDiscover', 'liResearch', 'liRun']
+  const OWNED_ACTIONS = ['liList', 'liPreview', 'liCapture', 'liMatched', 'liSwept', 'liDiscover', 'liResearch', 'liRun', 'liParent']
   if (OWNED_ACTIONS.includes(body.action) && body.me && (body.me.slug || body.me.name)) {
     const me = {
       slug: String(body.me.slug || '').trim().slice(0, 100) || null,
@@ -618,15 +619,29 @@ export async function POST(req: NextRequest) {
     })
     const underCap = all.filter(b => b._count.contacts < CONTACT_CAP_PER_BRAND)
     const ignoreRest = body.ignoreRest === true
-    const resting = underCap.filter(b => liResting(log[b.id])).length
+    // Brands whose people are under a parent company (parents.ts): the run
+    // looks there when the brand's own page gives nobody. One read before
+    // that existed, with nobody added, doesn't rest the brand.
+    const parentPages = await readJsonSetting<Record<string, string>>(prisma, LI_PARENT_PAGES_KEY, {})
+    const parentFor = (name: string, aka: string | null) => {
+      const p = parentOf(name, aka)
+      return p ? { name: p.name, search: p.search, slug: parentPages[p.name] || null } : null
+    }
+    const restsNow = (b: { id: string; name: string; aka: string | null }) => {
+      const m = log[b.id]
+      if (!liResting(m)) return false
+      return !(m && !m.added && !m.parentTried && parentOf(b.name, b.aka))
+    }
+    const resting = underCap.filter(restsNow).length
     // Brands Leo said have no LinkedIn page ("None of these") aren't searched again.
     const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
     const items = underCap
-      .filter(b => ignoreRest || !liResting(log[b.id]))
-      .filter(b => b.linkedinUrl || confirmed[b.id] !== 'none')
+      .filter(b => ignoreRest || !restsNow(b))
+      .filter(b => b.linkedinUrl || confirmed[b.id] !== 'none' || parentOf(b.name, b.aka))
       .map(b => ({
         brandId: b.id, name: b.name, aka: b.aka, category: b.category,
         linkedinUrl: b.linkedinUrl, contacts: b._count.contacts, focus: matchesFocus(b, terms),
+        parent: parentFor(b.name, b.aka),
       }))
       .sort((a, b) => Number(b.focus) - Number(a.focus) || a.contacts - b.contacts || a.name.localeCompare(b.name))
 
@@ -648,10 +663,15 @@ export async function POST(req: NextRequest) {
         for (const k of l.known) {
           const names = k.split('|').map(n => n.trim()).filter(Boolean)
           if (!names.length || names.some(n => onRoster.has(brandKey(n)))) continue
-          if (researchResting(rlog[brandKey(names[0])])) { researchWaiting++; continue }
+          const akaList = names.slice(1).join(', ') || null
+          // A name that found no page of its own before the parent route
+          // existed gets its parent looked at now.
+          const mark = rlog[brandKey(names[0])]
+          if (researchResting(mark) && !(parentOf(names[0], akaList) && mark?.note === 'no clear LinkedIn page')) { researchWaiting++; continue }
           research.push({
-            research: true, name: names[0], aka: names.slice(1).join(', ') || null,
+            research: true, name: names[0], aka: akaList,
             category: l.key, lane: l.name, linkedinUrl: null, contacts: 0, focus: laneFocus,
+            parent: parentFor(names[0], akaList),
           })
         }
       }
@@ -891,6 +911,37 @@ export async function POST(req: NextRequest) {
       }))
       .filter((c: LiCompany) => c.slug && c.name)
     const { pick, reason } = decideResearchMatch({ name, aka, category }, candidates)
+    // No page of its own, but a parent we know (Ketel One → Diageo): it
+    // becomes a brand anyway and the run reads its people at the parent.
+    const parent = !pick && body.final === true ? parentOf(name, aka) : null
+    if (parent) {
+      let brand
+      try {
+        brand = await prisma.brand.create({
+          data: {
+            name, aka, linkedinUrl: null, source: 'research', category,
+            notes: `From the research list (${lane || category}) — no LinkedIn page of its own; its people are under ${parent.name}.`,
+          },
+        })
+      } catch {
+        const b = await findBrandForCapture(name, null)
+        if (!b) return NextResponse.json({ ok: false, error: `Could not add ${name}` }, { status: 409, headers: cors })
+        return NextResponse.json({ ok: true, outcome: 'exists', brandId: b.id, name: b.name, linkedinUrl: b.linkedinUrl }, { headers: cors })
+      }
+      await markLiResearch(prisma, key, { outcome: 'added', note: `under ${parent.name}` })
+      try {
+        await prisma.discoveredBrand.upsert({
+          where: { query_name: { query: `Research list: ${lane || category}`, name } },
+          create: { query: `Research list: ${lane || category}`, name, category, linkedinUrl: null, status: 'added', brandId: brand.id, reason: `No page of its own — people under ${parent.name}` },
+          update: { status: 'added', brandId: brand.id },
+        })
+      } catch { /* the log row is a nicety */ }
+      const pages = await readJsonSetting<Record<string, string>>(prisma, LI_PARENT_PAGES_KEY, {})
+      return NextResponse.json({
+        ok: true, outcome: 'parent', brandId: brand.id, name,
+        parent: { name: parent.name, search: parent.search, slug: pages[parent.name] || null },
+      }, { headers: cors })
+    }
     if (!pick) {
       if (body.final === true) await markLiResearch(prisma, key, { outcome: 'unclear', note: 'no clear LinkedIn page' })
       return NextResponse.json({ ok: true, outcome: reason, candidates: candidates.length }, { headers: cors })
@@ -953,6 +1004,7 @@ export async function POST(req: NextRequest) {
           added: Math.max(0, Number(body.added) || 0),
           note: body.note ? String(body.note).slice(0, 160) : null,
           v: Number(body.reader) || 0,
+          parentTried: body.parentTried === true,
         })
       } catch { /* non-fatal */ }
     }
@@ -964,7 +1016,7 @@ export async function POST(req: NextRequest) {
           kind: 'brand', run: String(body.run), script: body.script, reader: Number(body.reader) || 0,
           name: body.name, brandId: brandId || null, seen: body.seen, added: body.added,
           note: body.note || null, problem: body.problem || null, sample: body.sample || null,
-          ms: body.ms ?? null, hiddenMs: body.hiddenMs,
+          ms: body.ms ?? null, hiddenMs: body.hiddenMs, via: body.via || null, members: body.members ?? null,
         })
       } catch { /* the report is a nicety; the sweep log above is what counts */ }
     }
@@ -982,6 +1034,27 @@ export async function POST(req: NextRequest) {
       })
     } catch { /* non-fatal */ }
     return NextResponse.json({ ok: true, latest: LI_SCRIPT_VERSION }, { headers: cors })
+  }
+
+  // action: "liParent" — which search result is a parent company's own
+  // page (parents.ts). Remembered in Setting liParentPages, so each parent
+  // is searched for once.
+  if (body.action === 'liParent') {
+    const parent = PARENTS.find(p => p.name === String(body.parent || ''))
+    if (!parent) return NextResponse.json({ ok: false, error: 'Unknown parent company' }, { status: 400, headers: cors })
+    const candidates: LiCompany[] = (Array.isArray(body.candidates) ? body.candidates : []).slice(0, 20)
+      .map((c: any) => ({
+        slug: companySlug(String(c?.url || '')) || '',
+        name: String(c?.name || '').replace(/\s+/g, ' ').trim().slice(0, 120),
+        subtitle: String(c?.subtitle || '').replace(/\s+/g, ' ').trim().slice(0, 200),
+      }))
+      .filter((c: LiCompany) => c.slug && c.name)
+    const pick = decideParentPage(parent, candidates)
+    if (!pick) return NextResponse.json({ ok: true, slug: null, candidates: candidates.length }, { headers: cors })
+    const pages = await readJsonSetting<Record<string, string>>(prisma, LI_PARENT_PAGES_KEY, {})
+    pages[parent.name] = pick.slug
+    await writeJsonSetting(prisma, LI_PARENT_PAGES_KEY, pages)
+    return NextResponse.json({ ok: true, slug: pick.slug, name: pick.name }, { headers: cors })
   }
 
   // action: "liVersion" — the current script, so an older copy can offer
@@ -1125,7 +1198,7 @@ export async function POST(req: NextRequest) {
     // when another brand already has this page (sister brands under one
     // parent page), or the next visit would match whichever came first.
     let savedPage = false
-    if (plan.slug && !brand.linkedinUrl) {
+    if (plan.slug && !brand.linkedinUrl && body.viaParent !== true) {
       const others = await prisma.brand.findMany({
         where: { linkedinUrl: { not: null }, id: { not: brand.id } },
         select: { linkedinUrl: true },

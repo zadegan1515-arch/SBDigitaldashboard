@@ -7531,7 +7531,7 @@ const handlers: Record<string, Handler> = {
       run: { id: run.id, startedAt: run.startedAt, lastAt: run.lastAt, status: run.status, script: run.script, added: run.added },
       brands: run.brands.map(b => ({
         name: b.name, brandId: b.brandId || null, added: b.added, seen: b.seen, note: b.note || null, problem: b.problem || null,
-        ms: b.ms ?? null, isNew: !!(b.brandId && madeIds.has(b.brandId)),
+        ms: b.ms ?? null, isNew: !!(b.brandId && madeIds.has(b.brandId)), via: b.via || null, members: b.members ?? null,
         people: people.filter(p => p.brandId === b.brandId).map(p => ({ name: p.name, title: p.title, linkedinUrl: p.linkedinUrl })),
       })),
       newBrands: made.map(b => ({ name: b.name, category: b.category, how: b.source === 'research' ? 'research list' : 'similar pages' })),

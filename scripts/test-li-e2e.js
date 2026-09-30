@@ -110,6 +110,8 @@ const SEARCH = {
   Powerade: [['powerade', 'Powerade', 'Beverage Manufacturing • Atlanta, GA', '150K'], ['powerade-events', 'Powerade Events Co', 'Events Services', '300']],
   Olipop: [['drinkolipop', 'OLIPOP', 'Beverage Manufacturing • Oakland, CA', '180K'], ['olipop-studio', 'Olipop Studio', 'Design Services', '90']],
   Native: [['native-co.', 'Native', 'Individual and Family Services • Phoenix, AZ', '1K'], ['native-cos', 'Native', 'Personal Care Product Manufacturing • San Francisco', '60K']],
+  // Tanqueray has no page of its own; its people are at Diageo.
+  Diageo: [['diageo-bar-academy', 'Diageo Bar Academy', 'Education', '20K'], ['diageo', 'Diageo', 'Beverage Manufacturing • London', '2M']],
 };
 // A profile: name in the <h1>, pronouns and badge on their own line,
 // the headline, LinkedIn's "Current company" button, the first job.
@@ -153,6 +155,21 @@ const linkedin = http.createServer((req, res) => {
     return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Native</h1>' +
       '<div class="org-top-card-summary-info-list"><div class="org-top-card-summary-info-list__info-item">Individual and Family Services</div></div><ul>' +
       person('cg-1', 'Carla Gray', '• 3rd+', 'Director of Marketing') + '</ul></main></body></html>');
+  }
+  // A big brand: 423 on its People tab, so only its targeted views are read.
+  if (m && m[1] === 'big-bev') {
+    const kw = new URL(req.url, 'http://x').searchParams.get('keywords');
+    const who = { partnerships: [['np-bb', 'Nina Park', 'Head of Partnerships']], sponsorship: [['od-bb', 'Omar Diaz', 'Sponsorship Manager']],
+      'brand manager': [['lc-bb', 'Lia Chen', 'Senior Brand Manager'], ['sr-bb', 'Sam Roe', 'Software Engineer']] }[kw] || [['xx-bb', 'Xavi Xu', 'Accountant']];
+    return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Big Bev</h1><h2>423 associated members</h2><ul>' +
+      who.map((w, i) => person(w[0], w[1], i % 2 ? '• 3rd+' : '· 2nd', w[2])).join('') + '</ul></main></body></html>');
+  }
+  // Diageo's People tab searched for a brand of theirs.
+  if (m && m[1] === 'diageo') {
+    const kw = new URL(req.url, 'http://x').searchParams.get('keywords');
+    const who = kw === 'Tanqueray' ? [['gl-dg', 'Grace Lin', 'Brand Manager, Tanqueray'], ['ta-dg', 'Tom Ade', 'Data Engineer']] : [];
+    return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Diageo</h1><h2>31,402 associated members</h2><ul>' +
+      who.map((w, i) => person(w[0], w[1], i % 2 ? '• 3rd+' : '· 2nd', w[2])).join('') + '</ul></main></body></html>');
   }
   const s = req.url.match(/^\/search\/results\/companies\/\?keywords=([^&]+)/);
   if (s) {
@@ -224,13 +241,15 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await prisma.brand.create({ data: { id: 'b_blank', name: 'Blank Cards', category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/blank-cards/' } });
     await prisma.brand.create({ data: { name: 'Waterloo', category: 'beverage', passedAt: new Date() } });
     await prisma.brand.create({ data: { id: 'b_nat', name: 'Native', category: 'beauty', linkedinUrl: 'https://www.linkedin.com/company/native-co./' } });
+    await prisma.brand.create({ data: { id: 'b_big', name: 'Big Bev', category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/big-bev/' } });
     const before = (await ingest({ action: 'liList', focus: 'electrolyte', research: true })).j;
-    const onRoster = before.items.filter(i => i.research && !['Huel', 'Powerade'].includes(i.name)).map(i => i.name);
+    const onRoster = before.items.filter(i => i.research && !['Huel', 'Powerade', 'Tanqueray'].includes(i.name)).map(i => i.name);
     assert.ok(onRoster.length > 20, 'the research list is long');
     await prisma.brand.createMany({ data: onRoster.map(name => ({ name, category: 'unresolved', passedAt: new Date() })), skipDuplicates: true });
     const list = (await ingest({ action: 'liList', focus: 'electrolyte', research: true })).j;
     assert.deepEqual(list.items.map(i => i.name).slice(0, 2), ['Huel', 'Powerade'], 'asked-for names first, then the focus lane');
-    assert.deepEqual(list.items.slice(2).map(i => i.name).sort(), ['Blank Cards', 'Liquid Death', 'Native', 'Olipop']);
+    assert.deepEqual(list.items.slice(2).map(i => i.name).sort(), ['Big Bev', 'Blank Cards', 'Liquid Death', 'Native', 'Olipop', 'Tanqueray']);
+    assert.deepEqual(list.items.find(i => i.name === 'Tanqueray').parent, { name: 'Diageo', search: 'Diageo', slug: null }, 'the worklist knows whose page its people are under');
     assert.equal(list.latest, VERSION, 'the dashboard expects this script version');
 
     // The run, started the way the dashboard's button starts it.
@@ -244,13 +263,30 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished|Paused/.test(p.innerText); }, null, { timeout: 240000 });
     const panel = await pg.evaluate(() => document.getElementById('sbli-panel').innerText);
     assert.match(panel, /Run finished/, panel);
-    assert.match(panel, /12 people added across 7 brands/);
+    assert.match(panel, /16 people added across 9 brands/);
+    assert.match(panel, /Big Bev — 3 added \(big company, 423 people: searched partnerships, sponsorship, brand manager\)/);
+    assert.match(panel, /Tanqueray — 1 added \(via Diageo\)/);
     assert.match(panel, /What it did/);
     assert.match(panel, /Native — its saved LinkedIn page looks like another company/);
-    assert.match(panel, /3 new brands added/);
+    assert.match(panel, /4 new brands added/);
     assert.deepEqual(errors, [], 'no page errors');
     assert.ok(!visits.some(v => /waterloo|tiny-seltzer|loud-agency/.test(v)), 'no visits to brands it shouldn\'t add');
-    ok('the run started from #sb-fill and finished by itself: 12 people, 7 brands, 3 new, and a list of what it did');
+    ok('the run started from #sb-fill and finished by itself: 16 people, 9 brands, 4 new, and a list of what it did');
+
+    // A big brand: its targeted views, not the whole tab (Leo, Sep 30).
+    const bigPeople = await prisma.contact.findMany({ where: { brandId: 'b_big' }, select: { name: true, title: true } });
+    assert.deepEqual(bigPeople.map(p => p.name + ' — ' + p.title).sort(), ['Lia Chen — Senior Brand Manager', 'Nina Park — Head of Partnerships', 'Omar Diaz — Sponsorship Manager']);
+    assert.ok(visits.some(v => /big-bev\/people\/\?keywords=partnerships/.test(v)) && !visits.some(v => /big-bev\/people\/\?keywords=marketing/.test(v)), 'three views; marketing not needed');
+    ok('a big brand is searched — partnerships, sponsorship, brand manager — and its buyers saved');
+
+    // Tanqueray: no page of its own — a brand now, its people read at Diageo.
+    const tq = await prisma.brand.findFirst({ where: { name: 'Tanqueray' }, include: { contacts: true } });
+    assert.equal(tq.source, 'research'); assert.equal(tq.category, 'spirits');
+    assert.equal(tq.linkedinUrl, null, 'Diageo\'s page is never saved on the brand');
+    assert.deepEqual(tq.contacts.map(c => c.name + ' — ' + c.title), ['Grace Lin — Brand Manager']);
+    const parentPages = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liParentPages' } })).value);
+    assert.equal(parentPages.Diageo, 'diageo', 'the real Diageo page, not the bar academy — and remembered');
+    ok('a brand under a parent company: made a brand, its people found on Diageo\'s People tab by its name');
 
     const brands = await prisma.brand.findMany({ where: { passedAt: null }, include: { contacts: true } });
     const by = Object.fromEntries(brands.map(b => [b.name, b]));
@@ -274,7 +310,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     ok('Olipop\'s page found by search and saved');
 
     const contacts = await prisma.contact.findMany({ include: { targets: true } });
-    assert.equal(contacts.length, 12);
+    assert.equal(contacts.length, 16);
     assert.ok(contacts.every(c => c.source === 'linkedin' && c.linkedinUrl && c.targets.length === 1), 'each from LinkedIn, with a profile and a place in the queue');
     assert.ok(!contacts.some(c => /[·•🌱]|3rd|2nd/.test(c.name)), 'names clean');
     ok('buyers only, clean names, each one queued');
@@ -295,8 +331,10 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(rep.latest, VERSION);
     const run = rep.runs[0];
     assert.equal(run.status, 'finished'); assert.equal(run.script, VERSION); assert.equal(run.focus, 'electrolyte');
-    assert.equal(run.added, 12); assert.equal(run.newBrands, 3);
-    assert.deepEqual(run.brands.map(b => b.name).sort(), ['Blank Cards', 'Hoplark', 'Huel', 'Liquid Death', 'Native', 'Olipop', 'Powerade']);
+    assert.equal(run.added, 16); assert.equal(run.newBrands, 4);
+    assert.deepEqual(run.brands.map(b => b.name).sort(), ['Big Bev', 'Blank Cards', 'Hoplark', 'Huel', 'Liquid Death', 'Native', 'Olipop', 'Powerade', 'Tanqueray']);
+    assert.equal(run.brands.find(b => b.name === 'Tanqueray').via, 'via Diageo');
+    assert.equal(run.brands.find(b => b.name === 'Big Bev').members, 423);
     assert.equal(run.problems, 1);
     assert.equal(run.samples[0].name, 'Blank Cards');
     assert.match(run.samples[0].problem, /every title came out blank/);
@@ -333,7 +371,8 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual(ld.people.map(p => p.name).sort(), ['Erin Alvarez', 'Hana Sato', 'Mike Cessario']);
     assert.match(detail.brands.find(b => b.name === 'Native').note, /looks like another company/);
     assert.equal(detail.brands.find(b => b.name === 'Hoplark').isNew, true);
-    assert.deepEqual(detail.newBrands.map(b => b.name).sort(), ['Hoplark', 'Huel', 'Powerade']);
+    assert.deepEqual(detail.newBrands.map(b => b.name).sort(), ['Hoplark', 'Huel', 'Powerade', 'Tanqueray']);
+    assert.equal(detail.brands.find(b => b.name === 'Tanqueray').via, 'via Diageo');
     ok('the full list of what the run did: every brand, the people it added, what it skipped and why');
 
     // Leo's LinkedIn only: the run remembered his account; Zach's is refused.

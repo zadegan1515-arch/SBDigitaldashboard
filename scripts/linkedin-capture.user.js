@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.19
+// @version      1.20
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -83,7 +83,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.19';
+  var VERSION = '1.20';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -408,12 +408,13 @@
   // Scroll the way a person would: to the bottom, a pause, "Show more
   // results" if it is there, a longer pause. Stops when the list stops
   // growing, at MAX_PEOPLE, or when Stop is pressed.
-  function expand(onProgress, halt) {
+  function expand(onProgress, halt, limits) {
+    var maxRounds = (limits && limits.rounds) || MAX_ROUNDS, maxPeople = (limits && limits.people) || MAX_PEOPLE;
     return new Promise(function (resolve) {
       var rounds = 0, still = 0, last = count();
       function step() {
         if (halt.stopped) return resolve({ capped: false });
-        if (rounds >= MAX_ROUNDS || last >= MAX_PEOPLE) return resolve({ capped: true });
+        if (rounds >= maxRounds || last >= maxPeople) return resolve({ capped: true });
         rounds++;
         // Both, because LinkedIn has moved which element scrolls before.
         var links = profileLinks();
@@ -855,6 +856,13 @@
   // count, before any scrolling or reading.
   // Its own name: `var MAX_PEOPLE` here re-set the by-hand scroll cap (150) too.
   var BIG_COMPANY = 100;
+  // Leo (Sep 30, after a run that skipped Bang, Tito's, Bacardi and Nike):
+  // a big company isn't skipped any more — too big to read whole, its
+  // People tab is searched for the people who buy, a short read of each
+  // (LinkedIn puts the closest matches first); "marketing" only when the
+  // first three found fewer than three.
+  var BIG_PASSES = ['partnerships', 'sponsorship', 'brand manager', 'marketing'];
+  var SHORT_READ = { rounds: 6, people: 60 };
 
   function loadFill() { try { return GM_getValue(FILL_KEY, null); } catch (e) { return null; } }
   function saveFill(job) {
@@ -1110,27 +1118,88 @@
     // A step saved by an older copy on its way to the company home page
     // for similar brands; that stop is gone, so the brand is done.
     if (st.phase === 'home') return finishBrand(job, null);
-    var want = PASSES[st.pass];
+    // The parent's own page, found once per parent (then remembered).
+    if (st.phase === 'parent-find') {
+      var pq = item.parent.search;
+      if (st.navs > 0 && /^\/search\/results\/companies/.test(location.pathname) && kwParam() === pq && pageParam() === 1) {
+        st.navs = 0; saveFill(job);
+        return fillParentFind(item, pq);
+      }
+      return go(job, searchUrl(pq), 'Finding ' + item.parent.name + ' on LinkedIn — ' + item.name + '\'s people are there');
+    }
+    var want = stepPasses(st)[st.pass];
     if (st.navs > 0 && onPeoplePage() && kwParam() === want) {
       st.navs = 0; saveFill(job);
       return fillRead(item);
     }
-    return go(job, peopleUrl(item.linkedinUrl, want), 'Opening ' + item.name + (want ? ' — ' + want : ''));
+    return go(job, peopleUrl(stepPage(item, st), want), 'Opening ' + item.name +
+      (st.kind === 'parent' ? ' at ' + item.parent.name : want ? ' — ' + want : ''));
   }
 
   function go(job, url, status) {
     var st = job.step;
-    if (!url) return finishBrand(job, 'no LinkedIn page');
+    if (!url) return endBrand(job, 'no LinkedIn page');
     if (leoIsElsewhere(job)) {
       renderFill(job, 'You\'re using this window — it carries on a minute after you stop.');
       return later(runFill, 5000);
     }
     // Twice asked, twice landed somewhere else: the page is gone or
     // renamed. Move on rather than loop.
-    if (st.navs >= 2) return finishBrand(job, 'its LinkedIn page would not open');
+    if (st.navs >= 2) return endBrand(job, (st.kind === 'parent' ? job.items[job.at].parent.name + '\'s' : 'its') + ' LinkedIn page would not open');
     st.navs++;
     renderFill(job, status + '…');
     goTo(job, url);
+  }
+
+  // What a brand's read looks at: its own People tab (whole, then the
+  // marketing / partnerships views if it never ran out), a big company's
+  // targeted views, or its parent's People tab searched for its name.
+  function stepPasses(st) { return st.passes || PASSES; }
+  function stepPage(item, st) {
+    return st.kind === 'parent' ? 'https://www.linkedin.com/company/' + item.parent.slug + '/' : item.linkedinUrl;
+  }
+
+  // A brand whose own page gave nobody, and whose people are under a
+  // parent company (Captain Morgan → Diageo): its parent's People tab,
+  // searched for its name, once.
+  function tryParent(job, note) {
+    var item = job.items[job.at], st = job.step || {};
+    if (!item || !item.parent || !item.brandId || st.parentTried || st.added) return false;
+    var why = note || (st.kind === 'big' ? 'nobody new in its big-company searches' : st.seen ? 'nobody new on its own page' : 'nobody readable on its own page');
+    job.step = {
+      phase: item.parent.slug ? 'read' : 'parent-find', kind: 'parent', passes: [item.name], pass: 0,
+      parentTried: true, ownNote: why, triedAka: true, seen: st.seen || 0, added: 0, navs: 0,
+      startedAt: st.startedAt || Date.now(), hiddenMs: st.hiddenMs || 0, members: st.members || null,
+    };
+    job.nextAt = Date.now() + secs(BETWEEN_PAGES);
+    saveFill(job);
+    runFill();
+    return true;
+  }
+  function endBrand(job, note) {
+    if (tryParent(job, note)) return;
+    finishBrand(job, note);
+  }
+
+  function fillParentFind(item, q) {
+    var job = loadFill(), at0 = job.at;
+    renderFill(job, 'Reading LinkedIn\'s results for “' + q + '”');
+    waitFor(function () { return searchCandidates().length || /no results/i.test(pageText(5000)); }, 12000).then(function () {
+      var stop = linkedinSaysStop();
+      if (stop) return { halt: stop };
+      return post({ action: 'liParent', parent: item.parent.name, candidates: searchCandidates() });
+    }).then(function (r) {
+      var job2 = loadFill();
+      if (!sameStep(job2, at0)) return;
+      if (r && r.halt) return pauseFill(job2, r.halt + '. Leave LinkedIn alone for a day before pressing Continue.');
+      var st = job2.step;
+      if (!r || !r.ok || !r.slug) return finishBrand(job2, (st.ownNote ? st.ownNote + '; ' : '') + 'could not find ' + item.parent.name + ' on LinkedIn');
+      job2.items.forEach(function (i) { if (i.parent && i.parent.name === item.parent.name) i.parent.slug = r.slug; });
+      st.phase = 'read'; st.navs = 0;
+      job2.nextAt = Date.now() + secs(BETWEEN_PAGES);
+      saveFill(job2);
+      runFill();
+    }).catch(fillError);
   }
 
   function fillSearch(item, q) {
@@ -1158,11 +1227,10 @@
         saveFill(job2);
         return runFill();
       }
-      finishBrand(job2, r && r.outcome === 'taken'
-        ? 'its LinkedIn page is saved on ' + r.by
-        : r && r.outcome === 'review'
-          ? 'its saved LinkedIn page looks like another company — pick the right one on Outreach → People'
-          : 'no clear LinkedIn page — pick it on Outreach → People');
+      if (r && r.outcome === 'taken') return finishBrand(job2, 'its LinkedIn page is saved on ' + r.by);
+      endBrand(job2, r && r.outcome === 'review'
+        ? 'its saved LinkedIn page looks like another company — pick the right one on Outreach → People'
+        : 'no clear LinkedIn page — pick it on Outreach → People');
     }).catch(fillError);
   }
 
@@ -1192,6 +1260,15 @@
         saveFill(job2);
         return runFill();
       }
+      if (r && r.ok && r.outcome === 'parent') {
+        it.research = false;
+        it.brandId = r.brandId;
+        it.linkedinUrl = null;
+        it.parent = r.parent;
+        job2.newBrands = (job2.newBrands || []).concat([r.name]);
+        if (tryParent(job2, 'no LinkedIn page of its own')) return;
+        return finishBrand(job2, 'no LinkedIn page of its own');
+      }
       if (!final) {
         st.triedAka = true; st.navs = 0;
         job2.nextAt = Date.now() + rand(3000, 6000);
@@ -1204,21 +1281,28 @@
 
   function fillRead(item) {
     var job = loadFill(), at0 = job.at;
-    var label = item.name + (PASSES[job.step.pass] ? ' — ' + PASSES[job.step.pass] : '');
+    var kind = job.step.kind || 'own', passes = stepPasses(job.step);
+    var label = item.name + (kind === 'parent' ? ' at ' + item.parent.name : passes[job.step.pass] ? ' — ' + passes[job.step.pass] : '');
     renderFill(job, 'Reading ' + label);
     fillHalt = { stopped: false };
     var capped = false, rows = [], problem = null, sample = null;
     var tooBig = null;
     readPath = location.pathname;
     waitFor(function () { return count() > 0 || /no results|0 associated members/i.test(pageText(5000)); }, 12000).then(function () {
-      var n = job.step.pass === 0 ? peopleCount() : null;
+      var n = kind === 'own' && job.step.pass === 0 ? peopleCount() : null;
       if (n != null && n >= BIG_COMPANY) { tooBig = n; return { skip: true }; }
-      return expand(function (n) { setFillStatus('Reading ' + label + ' — ' + n + ' people on screen'); }, fillHalt);
+      return expand(function (n) { setFillStatus('Reading ' + label + ' — ' + n + ' people on screen'); }, fillHalt, kind === 'own' ? null : SHORT_READ);
     }).then(function (res) {
+      // Too big to read whole: its People tab's targeted views instead.
       if (tooBig != null) {
         var jobB = loadFill();
+        readPath = null;
         if (!sameStep(jobB, at0)) return null;
-        finishBrand(jobB, 'too big — ' + tooBig.toLocaleString('en-US') + ' people on LinkedIn (skips 100+)', true);
+        var sb = jobB.step;
+        sb.kind = 'big'; sb.passes = BIG_PASSES; sb.pass = 0; sb.navs = 0; sb.members = tooBig;
+        jobB.nextAt = Date.now() + secs(BETWEEN_PAGES);
+        saveFill(jobB);
+        runFill();
         return null;
       }
       capped = !!(res && res.capped);
@@ -1233,8 +1317,10 @@
       if (problem) sample = sampleText(1500);
       window.scrollTo(0, 0);
       return post({
-        action: 'liCapture', brandId: item.brandId, companyUrl: location.href, companyName: companyName(),
-        companyIndustry: companyIndustry(), checkPage: true, rows: rows,
+        action: 'liCapture', brandId: item.brandId, companyUrl: location.href,
+        // At a parent the people are the brand's (never the parent's page).
+        companyName: kind === 'parent' ? item.name : companyName(),
+        companyIndustry: companyIndustry(), checkPage: kind !== 'parent', viaParent: kind === 'parent', rows: rows,
       });
     }).then(function (r) {
       if (!r) return;
@@ -1258,7 +1344,10 @@
       if (problem && !st.problem) { st.problem = problem; st.sample = sample; }
       job2.added = (job2.added || 0) + (r.added || 0);
       var full = r.have >= r.cap;
-      var more = !full && st.pass < PASSES.length - 1 && (st.pass > 0 || capped);
+      var ps = stepPasses(st);
+      var more = st.kind === 'parent' ? false
+        : st.kind === 'big' ? !full && st.pass < ps.length - 1 && !(ps[st.pass + 1] === 'marketing' && st.added >= 3)
+        : !full && st.pass < ps.length - 1 && (st.pass > 0 || capped);
       if (!more) return afterPeople(job2, item);
       st.pass++; st.navs = 0;
       job2.nextAt = Date.now() + secs(BETWEEN_PAGES);
@@ -1333,26 +1422,26 @@
   // The extra stop at every company's home page to find them cost a page
   // and most of a minute per brand (Leo, Sep 2026: "only when free").
   function afterPeople(job, item) {
-    if (!job.lookalikes) return finishBrand(job, null);
+    if (!job.lookalikes || (job.step && job.step.kind === 'parent')) return endBrand(job, null);
     var here = lookalikes();
     // saveLookalikes re-reads the run, so this brand's counts must be
     // saved first (they weren't: a brand with lookalikes logged 0 added).
     if (here.length) { saveFill(job); return saveLookalikes(item, here); }
-    finishBrand(job, null);
+    endBrand(job, null);
   }
 
   function saveLookalikes(item, found) {
     var job = loadFill();
     if (!job || !sameStep(job, job.at) || job.items[job.at].brandId !== item.brandId) return;
     var at0 = job.at;
-    if (!found.length) return finishBrand(job, null);
+    if (!found.length) return endBrand(job, null);
     var stop = linkedinSaysStop();
     if (stop) return pauseFill(job, stop + '. Leave LinkedIn alone for a day before pressing Continue.');
     post({ action: 'liDiscover', source: 'lookalike', from: item.name, fromBrandId: item.brandId, companies: found }).then(function (r) {
       var job2 = loadFill();
       if (!sameStep(job2, at0)) return;
       if (r && r.ok) addNewBrands(job2, r.created, false);
-      finishBrand(job2, null);
+      endBrand(job2, null);
     }).catch(fillError);
   }
 
@@ -1360,6 +1449,17 @@
     flushHidden(job);
     var item = job.items[job.at];
     var st = job.step || { seen: 0, added: 0 };
+    // How its people were found — and, when none were, where it looked.
+    var via = null;
+    if (st.kind === 'parent' && item.parent) {
+      via = 'via ' + item.parent.name;
+      if (!st.added && !note) note = (st.ownNote ? st.ownNote + '; ' : '') + 'nobody at ' + item.parent.name + ' mentions it';
+    } else if (st.kind === 'big') {
+      var searched = (st.passes || []).slice(0, (st.pass || 0) + 1).join(', ');
+      var size = (st.members || 0).toLocaleString('en-US') + ' people';
+      via = 'big company, ' + size + ': searched ' + searched;
+      if (!st.added && !note) note = 'big company (' + size + ') — nobody new in its ' + searched + ' searches';
+    }
     // Every item goes in the run's report; the server's visit log (which
     // rests brands) only takes the ones with a brandId — a research name
     // that never became a brand is logged by liResearch.
@@ -1367,8 +1467,9 @@
       action: 'liSwept', brandId: item.brandId || null, run: job.id, script: VERSION, name: item.name,
       seen: st.seen, added: st.added, note: note || '', problem: st.problem || null, sample: st.sample || null,
       ms: st.startedAt ? Date.now() - st.startedAt : null, hiddenMs: st.hiddenMs || 0,
+      via: via, members: st.members || null, parentTried: !!st.parentTried,
     }).catch(function () {});
-    job.results.push({ name: item.name, added: st.added, note: note || null });
+    job.results.push({ name: item.name, added: st.added, note: note || null, via: via });
     job.at++;
     job.step = null;
     job.doneToday++;
@@ -1396,7 +1497,7 @@
             h('div', { id: 'sblidid', style: 'font-size:12px;margin-top:4px;max-height:220px;overflow:auto' }, results.map(function (r) {
               return h('div', { style: 'padding:2px 0' }, [
                 r.name,
-                h('span', { style: 'color:' + (r.added ? '#137333' : '#777'), text: ' — ' + (r.added ? r.added + ' added' : r.note || 'nobody new') }),
+                h('span', { style: 'color:' + (r.added ? '#137333' : '#777'), text: ' — ' + (r.added ? r.added + ' added' + (r.via ? ' (' + r.via + ')' : '') : r.note || 'nobody new') }),
               ]);
             })),
           ])

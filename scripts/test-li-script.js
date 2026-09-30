@@ -200,6 +200,18 @@ const server = http.createServer((req, res) => {
           .map(c => { discovered.add(c.name); return { brandId: make[c.name], name: c.name, category: 'beverage', linkedinUrl: c.url }; });
         return res.end(JSON.stringify({ ok: true, created, known: 0, small: 0, industry: 0, capped: 0 }));
       }
+      if (body.action === 'liResearch' && body.name === 'Ketel One') {
+        return res.end(JSON.stringify(body.final
+          ? { ok: true, outcome: 'parent', brandId: 'b-ko', name: 'Ketel One', parent: { name: 'Diageo', search: 'Diageo', slug: null } }
+          : { ok: true, outcome: 'unclear' }));
+      }
+      if (body.action === 'liParent') {
+        const hit = (body.candidates || []).find(c => c.name === 'Diageo');
+        return res.end(JSON.stringify(hit ? { ok: true, slug: 'diageo', name: 'Diageo' } : { ok: true, slug: null }));
+      }
+      if (body.action === 'liCapture' && body.brandId === 'b-cm' && /empty-co/.test(body.companyUrl || '')) {
+        return res.end(JSON.stringify({ ok: true, brand: { id: 'b-cm', name: 'Captain Morgan' }, added: 0, have: 0, cap: 25 }));
+      }
       if (body.action === 'liResearch') {
         const hit = (body.candidates || []).find(c => c.name === body.name && /Beverage/.test(c.subtitle));
         return res.end(JSON.stringify(hit
@@ -287,6 +299,16 @@ const server = http.createServer((req, res) => {
       '</ul></main></body></html>');
   }
   // Leo (Sep 2026): only companies with under 100 people on LinkedIn.
+  if (/^\/search\/results\/companies\/\?keywords=(Ketel%20One|Diageo)(&|$)/.test(req.url)) {
+    return res.end('<!doctype html><html><body><main><ul>' + (/Diageo/.test(req.url)
+      ? '<li><a href="https://www.linkedin.com/company/diageo/"><span>Diageo</span></a><div>Beverage Manufacturing • London</div><div>2M followers</div></li>'
+      : '<li>No results found</li>') + '</ul></main></body></html>');
+  }
+  if (/^\/company\/diageo\/people\/\?keywords=/.test(req.url)) return res.end(page(true, 'Diageo', '<h2>31,000 associated members</h2>'));
+  if (/^\/company\/empty-co\/people\/?/.test(req.url)) {
+    return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Captain Morgan</h1><h2>12 associated members</h2><ul>' +
+      '<li><section><div>LinkedIn Member</div><div>Marketing</div></section></li></ul></main></body></html>');
+  }
   if (/^\/company\/big-co\/people\/?/.test(req.url)) return res.end(page(true, 'Big Co', '<h2>12,345 associated members</h2>'));
   if (/^\/company\/small-co\/people\/?/.test(req.url)) return res.end(page(true, 'Small Co', '<h2>48 associated members</h2>'));
   // Cards the reader gets wrong: the profile link holds only a photo, so
@@ -979,7 +1001,8 @@ const GM_SHIM = `
     }
     ok('a saved page that\'s another company\'s saves nobody and goes on Leo\'s list; the panel says why a brand is next');
 
-    // 19. Big companies are skipped: 100+ people on the People tab.
+    // 19. Big companies (100+ on the People tab): not skipped any more —
+    // searched instead (Leo, Sep 30: the skip lost Bang, Tito's, Nike).
     {
       fillItems = [
         { brandId: 'b-big', name: 'Big Co', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/big-co/', contacts: 0, focus: false },
@@ -998,14 +1021,60 @@ const GM_SHIM = `
       await pg.click('#sblifillstart');
       await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 90000 });
       await pg.waitForTimeout(300);
-      const run = sent.slice(before).filter(b => /^li(Capture|Swept)$/.test(b.action)).map(b => b.action + ':' + b.brandId);
-      assert.deepEqual(run.filter(r => /b-(big|small)/.test(r)), ['liSwept:b-big', 'liCapture:b-small', 'liSwept:b-small']);
+      const run = sent.slice(before).filter(b => /^li(Capture|Swept)$/.test(b.action)).map(b => b.action + ':' + b.brandId + (b.action === 'liCapture' ? ':' + (new URL(b.companyUrl).searchParams.get('keywords') || 'all') : ''));
+      // Three targeted views; "marketing" only if those found fewer than three (they found 6).
+      assert.deepEqual(run.filter(r => /b-(big|small)/.test(r)), [
+        'liCapture:b-big:partnerships', 'liCapture:b-big:sponsorship', 'liCapture:b-big:brand manager', 'liSwept:b-big',
+        'liCapture:b-small:all', 'liSwept:b-small',
+      ]);
       const big = sent.slice(before).find(b => b.action === 'liSwept' && b.brandId === 'b-big');
-      assert.match(big.note, /12,345 people on LinkedIn/);
-      assert.equal(big.seen, 0);
+      assert.equal(big.note, '');
+      assert.equal(big.members, 12345);
+      assert.equal(big.via, 'big company, 12,345 people: searched partnerships, sponsorship, brand manager');
+      assert.equal(big.added, 6);
+      assert.match(await pg.textContent('#sblidid'), /Big Co — 6 added \(big company, 12,345 people: searched partnerships, sponsorship, brand manager\)/);
       await pg.close();
     }
-    ok('a company with 100+ people on LinkedIn is skipped before any reading');
+    ok('a company with 100+ people on LinkedIn gets targeted searches — partnerships, sponsorship, brand manager — not the whole tab');
+
+    // 20. People under a parent company: a research name with no page of
+    // its own becomes a brand and is read on the parent's People tab
+    // searched for its name; the parent's page is found once, and the
+    // parent's page is never saved on the brand.
+    {
+      fillItems = [
+        { research: true, name: 'Ketel One', aka: null, category: 'spirits', lane: 'Spirits', linkedinUrl: null, contacts: 0, focus: false, parent: { name: 'Diageo', search: 'Diageo', slug: null } },
+        { brandId: 'b-cm', name: 'Captain Morgan', aka: null, category: 'spirits', linkedinUrl: 'https://www.linkedin.com/company/empty-co/', contacts: 0, focus: false, parent: { name: 'Diageo', search: 'Diageo', slug: null } },
+      ];
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      await pg.uncheck('#sblilook');
+      await pg.fill('#sblifocus', '');
+      await pg.click('#sblifilllook');
+      await pg.click('#sblifillstart');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 90000 });
+      await pg.waitForTimeout(300);
+      const calls = sent.slice(before).filter(b => /^li(Research|Parent|Capture|Swept)$/.test(b.action));
+      const run = calls.map(b => b.action + (b.brandId ? ':' + b.brandId : '') + (b.action === 'liCapture' ? ':' + new URL(b.companyUrl).pathname + '?' + (new URL(b.companyUrl).searchParams.get('keywords') || '') : ''));
+      assert.deepEqual(run, [
+        'liResearch', 'liParent', 'liCapture:b-ko:/company/diageo/people/?Ketel One', 'liSwept:b-ko',
+        'liCapture:b-cm:/company/empty-co/people/?', 'liCapture:b-cm:/company/diageo/people/?Captain Morgan', 'liSwept:b-cm',
+      ], 'Diageo is found once; Captain Morgan\'s empty own page, then Diageo');
+      const viaParent = calls.filter(b => b.action === 'liCapture' && /diageo/.test(b.companyUrl));
+      assert.ok(viaParent.every(b => b.viaParent === true && b.checkPage === false), 'read as the brand\'s people, page not checked or saved');
+      assert.deepEqual(viaParent.map(b => b.companyName), ['Ketel One', 'Captain Morgan']);
+      const ko = calls.find(b => b.action === 'liSwept' && b.brandId === 'b-ko');
+      assert.equal(ko.via, 'via Diageo'); assert.equal(ko.parentTried, true); assert.equal(ko.added, 2);
+      const text = await pg.textContent('#sblidid');
+      assert.match(text, /Ketel One — 2 added \(via Diageo\)/);
+      assert.match(text, /Captain Morgan — 2 added \(via Diageo\)/);
+      await pg.close();
+    }
+    ok('brands under a parent company are read on the parent\'s People tab, searched for their name');
 
     // 6. No @grant lines: runs, shows the pill, says to reinstall.
     const bare = await browser.newPage();

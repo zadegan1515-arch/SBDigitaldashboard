@@ -28,9 +28,9 @@ export const LI_READER = 2
 // copies there's an update (the pill turns orange; one click takes it),
 // since Tampermonkey on its own only checks about once a day.
 // scripts/test-li-script.js fails when the two drift apart.
-export const LI_SCRIPT_VERSION = '1.19'
+export const LI_SCRIPT_VERSION = '1.20'
 
-export type LiMark = { at: string; seen: number; added: number; note?: string | null; v?: number }
+export type LiMark = { at: string; seen: number; added: number; note?: string | null; v?: number; parentTried?: boolean }
 export type LiLog = Record<string, LiMark>
 
 type SettingStore = {
@@ -70,6 +70,9 @@ export async function markLiSwept(db: SettingStore, brandId: string, mark: Omit<
 export function liResting(mark: LiMark | undefined, now = Date.now()): boolean {
   if (!mark) return false
   if (!mark.v || mark.v < LI_READER) return false
+  // Skipped as "too big" by script 1.17–1.19, never read: big brands get
+  // targeted searches now (Leo, Sep 30), so they're due at once.
+  if (isTooBig(mark)) return false
   const at = Date.parse(mark.at)
   return Number.isFinite(at) && now - at < (isTooBig(mark) ? LI_BIG_REST_DAYS : LI_REST_DAYS) * 864e5
 }

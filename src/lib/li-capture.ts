@@ -209,7 +209,7 @@ export function decideCompanyMatch(
 }
 
 // The first of the most-followed; results with no count lose to any count.
-function mostFollowed(list: LiCompany[]): LiCompany {
+export function mostFollowed(list: LiCompany[]): LiCompany {
   let best = list[0], bestN = parseFollowers(best.subtitle) ?? -1
   for (const c of list.slice(1)) {
     const n = parseFollowers(c.subtitle) ?? -1

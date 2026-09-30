@@ -6,7 +6,7 @@
 // the rules. Run: node scripts/test-li-capture.mjs
 
 import { execSync } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -14,11 +14,14 @@ import assert from 'node:assert/strict'
 
 const out = mkdtempSync(join(tmpdir(), 'li-test-'))
 execSync(
-  'npx tsc src/lib/li-capture.ts --outDir ' + out +
+  'npx tsc src/lib/li-capture.ts src/lib/parents.ts --outDir ' + out +
   ' --target es2020 --module esnext --moduleResolution bundler --skipLibCheck',
   { stdio: 'inherit' },
 )
+// Node wants the extension the bundler doesn't.
+writeFileSync(join(out, 'parents.js'), readFileSync(join(out, 'parents.js'), 'utf8').replace("from './li-capture'", "from './li-capture.js'"))
 const lib = await import(pathToFileURL(join(out, 'li-capture.js')).href)
+const { parentOf, decideParentPage, PARENTS } = await import(pathToFileURL(join(out, 'parents.js')).href)
 const { companySlug, profileSlug, profileUrl, cleanName, personKey, roleFromHeadline, isBuyer,
   normalizeCompany, decideCompanyMatch, focusTerms, matchesFocus,
   parseFollowers, industryOf, categoryFromIndustry, judgeDiscovery, decideResearchMatch, nearName, pageLooksWrong } = lib
@@ -215,6 +218,27 @@ t('an exact name needs a fitting industry too (Native the deodorant, not the car
   assert.equal(pageLooksWrong('unresolved', 'Individual and Family Services'), false)
 })
 
+t('parent companies: the brands whose people are under them, by any spelling', () => {
+  assert.equal(parentOf('Ketel One').name, 'Diageo')
+  assert.equal(parentOf('Ciroc').name, 'Diageo', 'Cîroc without the accent')
+  assert.equal(parentOf('Some Brand', 'Captain Morgan').name, 'Diageo', 'by also-known-as')
+  assert.equal(parentOf("Jameson").name, 'Pernod Ricard')
+  assert.equal(parentOf('Fireball').name, 'Sazerac')
+  assert.equal(parentOf('Bang').name, 'Monster Beverage')
+  assert.equal(parentOf('Liquid Death'), null)
+  const all = PARENTS.flatMap(p => p.brands.flatMap(b => b.split('|')))
+  assert.equal(new Set(all.map(x => x.toLowerCase())).size, all.length, 'no brand under two parents')
+})
+
+t("a parent's own page: its exact name, the most followed", () => {
+  const diageo = PARENTS.find(p => p.name === 'Diageo')
+  const c = (slug, name, subtitle) => ({ slug, name, subtitle })
+  assert.equal(decideParentPage(diageo, [c('diageo-fans', 'Diageo', 'Beverage • 300 followers'), c('diageo', 'Diageo', 'Beverage Manufacturing • 2M followers')]).slug, 'diageo')
+  assert.equal(decideParentPage(diageo, [c('diageo-bar', 'Diageo Bar Academy', 'Education')]), null)
+  const beam = PARENTS.find(p => p.name === 'Suntory Global Spirits')
+  assert.equal(decideParentPage(beam, [c('beam-suntory', 'Beam Suntory', 'Beverage Manufacturing • 500K followers')]).slug, 'beam-suntory', 'its old name')
+})
+
 // --- the research list -------------------------------------------------
 t('a list name needs a page whose industry fits its lane', () => {
   const r = decideResearchMatch({ name: 'Powerade', category: 'beverage' }, [bev('Powerade', 'Food and Beverage Services • Atlanta • 150K followers')])
@@ -233,12 +257,12 @@ execSync(
   { stdio: 'inherit' },
 )
 const sweep = await import(pathToFileURL(join(out, 'li-sweep.js')).href)
-t('a company skipped as too big rests a year; others a month', () => {
+t('a brand the old scripts skipped as too big is due at once (big brands are searched now); others rest a month', () => {
   const now = Date.parse('2026-10-01T00:00:00Z')
   const ago = d => new Date(now - d * 864e5).toISOString()
   const v = sweep.LI_READER
-  assert.equal(sweep.liResting({ at: ago(40), seen: 0, added: 0, note: 'too big — 12,345 people on LinkedIn (skips 100+)', v }, now), true)
-  assert.equal(sweep.liResting({ at: ago(400), seen: 0, added: 0, note: 'too big — 12,345 people on LinkedIn (skips 100+)', v }, now), false)
+  assert.equal(sweep.liResting({ at: ago(1), seen: 0, added: 0, note: 'too big — 12,345 people on LinkedIn (skips 100+)', v }, now), false)
+  assert.equal(sweep.liResting({ at: ago(40), seen: 0, added: 0, note: 'too big — 12,345 people on LinkedIn (skips 100+)', v }, now), false)
   assert.equal(sweep.liResting({ at: ago(40), seen: 3, added: 1, note: '', v }, now), false)
   assert.equal(sweep.liResting({ at: ago(10), seen: 3, added: 1, note: '', v }, now), true)
 })

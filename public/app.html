@@ -7241,6 +7241,7 @@ function liRunDetailHtml(d) {
       '<b style="color:var(--ink-1)">' + esc(b.name) + '</b>' +
       (b.isNew ? ' <span class="status accepted" title="The run added this brand">new</span>' : '') +
       ' — <span style="color:' + (b.added ? 'var(--good)' : b.problem ? 'var(--bad)' : 'var(--ink-3)') + '">' + esc(what) + '</span>' +
+      (b.added && b.via ? ' <span style="color:var(--ink-3)">(' + esc(b.via) + ')</span>' : '') +
       (b.people.length
         ? '<div style="margin-top:3px;padding-left:10px">' + b.people.map(function (p) {
             return (p.linkedinUrl ? '<a href="' + esc(p.linkedinUrl) + '" target="_blank" rel="noopener">' + esc(p.name) + ' ↗</a>' : esc(p.name)) +
@@ -7263,7 +7264,7 @@ function liRunDetailText(d) {
   var lines = ['LinkedIn run, ' + when + ': ' + added + ' people across ' + d.brands.length + ' brands'];
   d.brands.forEach(function (b) {
     lines.push('- ' + b.name + (b.isNew ? ' (new)' : '') + ': ' + (b.added
-      ? b.added + ' added — ' + b.people.map(function (p) { return p.name + (p.title ? ' (' + p.title + ')' : ''); }).join(', ')
+      ? b.added + ' added' + (b.via ? ' (' + b.via + ')' : '') + ' — ' + b.people.map(function (p) { return p.name + (p.title ? ' (' + p.title + ')' : ''); }).join(', ')
       : (b.problem || b.note || 'nobody new')));
   });
   if (d.newBrands.length) lines.push('New brands: ' + d.newBrands.map(function (b) { return b.name; }).join(', '));

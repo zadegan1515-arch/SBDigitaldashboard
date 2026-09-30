@@ -31,6 +31,10 @@ export type RunBrand = {
   // (Chrome slows a hidden window to about a step a minute).
   ms?: number | null
   hiddenMs?: number
+  // "via Diageo" (the parent's People tab) or "big company: searched …"
+  via?: string | null
+  // LinkedIn's "N associated members" for a big brand
+  members?: number | null
 }
 export type RunReport = {
   id: string
@@ -69,6 +73,8 @@ export type RunEvent = {
   newBrands?: number
   ms?: number | null
   hiddenMs?: number
+  via?: string | null
+  members?: number | null
 }
 
 const str = (v: unknown, n: number) => (v == null || v === '' ? null : String(v).slice(0, n))
@@ -109,6 +115,8 @@ export function applyRunEvent(reports: RunReport[], ev: RunEvent, now = new Date
       problem: str(ev.problem, 200),
       ms: ev.ms == null ? null : num(ev.ms),
       hiddenMs: num(ev.hiddenMs),
+      via: str(ev.via, 120),
+      members: ev.members == null ? null : num(ev.members),
     }
     if (run.brands.length < KEEP_BRANDS) run.brands.push(b)
     run.added += b.added
