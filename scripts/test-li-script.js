@@ -286,6 +286,9 @@ const server = http.createServer((req, res) => {
         '<div>Software Engineer at Supergoop!</div><button>Connect</button></section></li>' +
       '</ul></main></body></html>');
   }
+  // Leo (Sep 2026): only companies with under 100 people on LinkedIn.
+  if (/^\/company\/big-co\/people\/?/.test(req.url)) return res.end(page(true, 'Big Co', '<h2>12,345 associated members</h2>'));
+  if (/^\/company\/small-co\/people\/?/.test(req.url)) return res.end(page(true, 'Small Co', '<h2>48 associated members</h2>'));
   // Cards the reader gets wrong: the profile link holds only a photo, so
   // each "name" is the title and every title comes out blank.
   if (/^\/company\/blank-cards\/people\/?/.test(req.url)) {
@@ -975,6 +978,34 @@ const GM_SHIM = `
       await pg.close();
     }
     ok('a saved page that\'s another company\'s saves nobody and goes on Leo\'s list; the panel says why a brand is next');
+
+    // 19. Big companies are skipped: 100+ people on the People tab.
+    {
+      fillItems = [
+        { brandId: 'b-big', name: 'Big Co', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/big-co/', contacts: 0, focus: false },
+        { brandId: 'b-small', name: 'Small Co', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/small-co/', contacts: 0, focus: false },
+      ];
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      await pg.uncheck('#sbliresearch');
+      await pg.uncheck('#sblilook');
+      await pg.fill('#sblifocus', '');
+      await pg.click('#sblifilllook');
+      await pg.click('#sblifillstart');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 90000 });
+      await pg.waitForTimeout(300);
+      const run = sent.slice(before).filter(b => /^li(Capture|Swept)$/.test(b.action)).map(b => b.action + ':' + b.brandId);
+      assert.deepEqual(run.filter(r => /b-(big|small)/.test(r)), ['liSwept:b-big', 'liCapture:b-small', 'liSwept:b-small']);
+      const big = sent.slice(before).find(b => b.action === 'liSwept' && b.brandId === 'b-big');
+      assert.match(big.note, /12,345 people on LinkedIn/);
+      assert.equal(big.seen, 0);
+      await pg.close();
+    }
+    ok('a company with 100+ people on LinkedIn is skipped before any reading');
 
     // 6. No @grant lines: runs, shows the pill, says to reinstall.
     const bare = await browser.newPage();

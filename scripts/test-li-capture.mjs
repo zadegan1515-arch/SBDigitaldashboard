@@ -226,4 +226,21 @@ t('a list name needs a page whose industry fits its lane', () => {
   assert.equal(decideResearchMatch({ name: 'Nuun', category: 'beverage' }, []).reason, 'none')
 })
 
+// --- resting (li-sweep.ts) ---------------------------------------
+execSync(
+  'npx tsc src/lib/li-sweep.ts --outDir ' + out +
+  ' --target es2020 --module esnext --moduleResolution bundler --skipLibCheck',
+  { stdio: 'inherit' },
+)
+const sweep = await import(pathToFileURL(join(out, 'li-sweep.js')).href)
+t('a company skipped as too big rests a year; others a month', () => {
+  const now = Date.parse('2026-10-01T00:00:00Z')
+  const ago = d => new Date(now - d * 864e5).toISOString()
+  const v = sweep.LI_READER
+  assert.equal(sweep.liResting({ at: ago(40), seen: 0, added: 0, note: 'too big — 12,345 people on LinkedIn (skips 100+)', v }, now), true)
+  assert.equal(sweep.liResting({ at: ago(400), seen: 0, added: 0, note: 'too big — 12,345 people on LinkedIn (skips 100+)', v }, now), false)
+  assert.equal(sweep.liResting({ at: ago(40), seen: 3, added: 1, note: '', v }, now), false)
+  assert.equal(sweep.liResting({ at: ago(10), seen: 3, added: 1, note: '', v }, now), true)
+})
+
 console.log(n + ' checks passed')

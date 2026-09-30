@@ -242,7 +242,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   that fits the category** — Native the deodorant had a home-care agency's page — most followers wins,
   so it's never just the first result; or a near miss only in the top 3 with a fitting industry; else
   "unclear" → skipped and put on Leo's list, below), then the
-  People tab (+ "marketing" and "partnerships" views if the tab never ran out), `liCapture` by
+  People tab — **only companies with under 100 people** (Leo, Sep 2026: skip Microsoft and the like): the
+  tab's "N associated members" at 100+ skips the brand before any reading (`BIG_COMPANY`, note "too big — …",
+  rests a year: `LI_BIG_REST_DAYS`) — (+ "marketing" and "partnerships" views if the tab never ran out), `liCapture` by
   brandId, `liSwept` → Setting `liSweepLog` (`src/lib/li-sweep.ts`; any brand read by a current
   reader rests 30 days, people or not, so a restarted run doesn't redo it; notes show red on
   Outreach → People). Pace (Leo, Sep 30, on free LinkedIn — faster hits its monthly "commercial use

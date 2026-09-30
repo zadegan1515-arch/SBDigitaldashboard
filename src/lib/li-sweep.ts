@@ -12,6 +12,11 @@ export const LI_SWEEP_KEY = 'liSweepLog'
 // (or had no clear company page) waits a month before the next visit.
 export const LI_REST_DAYS = 30
 const LI_KEEP_DAYS = 120
+// Leo (Sep 2026): only companies with under 100 people on LinkedIn. The
+// script skips a bigger one on its People tab's count ("too big — …");
+// a company doesn't shrink under 100 in a month, so it rests a year.
+export const LI_BIG_REST_DAYS = 365
+export const isTooBig = (mark: { note?: string | null } | undefined) => /^too big\b/i.test(String(mark?.note || ''))
 
 // The script's card reader. Reader 1 misread LinkedIn's "• 3rd+" badge as
 // people's titles and added nobody, so its visits prove nothing: a mark
@@ -23,7 +28,7 @@ export const LI_READER = 2
 // copies there's an update (the pill turns orange; one click takes it),
 // since Tampermonkey on its own only checks about once a day.
 // scripts/test-li-script.js fails when the two drift apart.
-export const LI_SCRIPT_VERSION = '1.17'
+export const LI_SCRIPT_VERSION = '1.18'
 
 export type LiMark = { at: string; seen: number; added: number; note?: string | null; v?: number }
 export type LiLog = Record<string, LiMark>
@@ -51,7 +56,8 @@ export async function markLiSwept(db: SettingStore, brandId: string, mark: Omit<
   log[brandId] = { at: new Date().toISOString(), ...mark }
   const cutoff = Date.now() - LI_KEEP_DAYS * 864e5
   const kept: LiLog = {}
-  for (const [id, m] of Object.entries(log)) if (m && Date.parse(m.at) >= cutoff) kept[id] = m
+  const bigCutoff = Date.now() - LI_BIG_REST_DAYS * 864e5
+  for (const [id, m] of Object.entries(log)) if (m && Date.parse(m.at) >= (isTooBig(m) ? bigCutoff : cutoff)) kept[id] = m
   const v = JSON.stringify(kept)
   await db.setting.upsert({ where: { key: LI_SWEEP_KEY }, create: { key: LI_SWEEP_KEY, value: v }, update: { value: v } })
 }
@@ -65,7 +71,7 @@ export function liResting(mark: LiMark | undefined, now = Date.now()): boolean {
   if (!mark) return false
   if (!mark.v || mark.v < LI_READER) return false
   const at = Date.parse(mark.at)
-  return Number.isFinite(at) && now - at < LI_REST_DAYS * 864e5
+  return Number.isFinite(at) && now - at < (isTooBig(mark) ? LI_BIG_REST_DAYS : LI_REST_DAYS) * 864e5
 }
 
 // ---- the research list ----
