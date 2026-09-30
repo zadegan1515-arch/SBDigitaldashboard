@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.18
+// @version      1.19
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -83,7 +83,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.18';
+  var VERSION = '1.19';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -829,13 +829,11 @@
   // saving as it goes, and find the company page for brands that have
   // none. LinkedIn restricts accounts that browse like a script, so this
   // is built to move and stop like a person:
-  //   · one tab — the run belongs to the tab it started in, and any click
-  //     or key in that tab pauses it;
-  //   · 35–75 s between brands, 8–18 s between one brand's pages, the
-  //     same unhurried scrolling as a manual read (Leo, Sep 2026: faster
-  //     without being sketchy — the gaps were longer than a person's, and
-  //     it's pages per day LinkedIn watches, which is the cap below);
-  //   · 75 brands, then it waits for the next morning;
+  //   · one tab — the run belongs to the tab it started in; only its
+  //     Pause button pauses it;
+  //   · BETWEEN_BRANDS / BETWEEN_PAGES below (Leo keeps asking for
+  //     faster; it's pages per day LinkedIn watches, which is the cap);
+  //   · DAILY_CAP brands, then it waits for the next morning;
   //   · a login wall, security check or search limit pauses it at once.
   // People are saved through the same liCapture as a manual read, named
   // by brandId, so buyers-only, the 25 cap and duplicates all hold. New
@@ -844,8 +842,11 @@
 
   var FILL_KEY = 'sbLiFill';
   var DAILY_CAP = 100;
-  var BETWEEN_BRANDS = [20, 40];   // seconds
-  var BETWEEN_PAGES = [6, 12];
+  // Leo (Sep 30): "why are the steps so long between each" — 8-15 s
+  // between brands, 3-6 s between a brand's pages, and a brand skipped
+  // before any reading (too big) moves on after only a page's wait.
+  var BETWEEN_BRANDS = [8, 15];   // seconds
+  var BETWEEN_PAGES = [3, 6];
   // A small company is read whole on its People tab; a big one (the tab
   // never ran out) also gets these two keyword views.
   var PASSES = ['', 'marketing', 'partnerships'];
@@ -1147,13 +1148,13 @@
       if (r && r.ok && (r.outcome === 'attached' || r.outcome === 'already')) {
         job2.items[job2.at].linkedinUrl = r.linkedinUrl;
         job2.step = { phase: 'read', pass: 0, triedAka: st.triedAka, seen: 0, added: 0, navs: 0, startedAt: st.startedAt, hiddenMs: st.hiddenMs || 0 };
-        job2.nextAt = Date.now() + rand(4000, 9000);
+        job2.nextAt = Date.now() + rand(2000, 4000);
         saveFill(job2);
         return runFill();
       }
       if (r && r.outcome !== 'review' && !st.triedAka && akaName(item)) {
         st.triedAka = true; st.navs = 0;
-        job2.nextAt = Date.now() + rand(8000, 15000);
+        job2.nextAt = Date.now() + rand(3000, 6000);
         saveFill(job2);
         return runFill();
       }
@@ -1187,13 +1188,13 @@
         it.linkedinUrl = r.linkedinUrl;
         if (r.outcome === 'added') job2.newBrands = (job2.newBrands || []).concat([r.name]);
         job2.step = { phase: peopleUrl(r.linkedinUrl, '') ? 'read' : 'search', pass: 0, triedAka: false, seen: 0, added: 0, navs: 0 };
-        job2.nextAt = Date.now() + rand(4000, 9000);
+        job2.nextAt = Date.now() + rand(2000, 4000);
         saveFill(job2);
         return runFill();
       }
       if (!final) {
         st.triedAka = true; st.navs = 0;
-        job2.nextAt = Date.now() + rand(8000, 15000);
+        job2.nextAt = Date.now() + rand(3000, 6000);
         saveFill(job2);
         return runFill();
       }
@@ -1217,7 +1218,7 @@
       if (tooBig != null) {
         var jobB = loadFill();
         if (!sameStep(jobB, at0)) return null;
-        finishBrand(jobB, 'too big — ' + tooBig.toLocaleString('en-US') + ' people on LinkedIn (skips 100+)');
+        finishBrand(jobB, 'too big — ' + tooBig.toLocaleString('en-US') + ' people on LinkedIn (skips 100+)', true);
         return null;
       }
       capped = !!(res && res.capped);
@@ -1355,7 +1356,7 @@
     }).catch(fillError);
   }
 
-  function finishBrand(job, note) {
+  function finishBrand(job, note, quick) {
     flushHidden(job);
     var item = job.items[job.at];
     var st = job.step || { seen: 0, added: 0 };
@@ -1371,7 +1372,7 @@
     job.at++;
     job.step = null;
     job.doneToday++;
-    job.nextAt = Date.now() + secs(BETWEEN_BRANDS);
+    job.nextAt = Date.now() + secs(quick ? BETWEEN_PAGES : BETWEEN_BRANDS);
     if (job.doneToday >= DAILY_CAP && job.at < job.items.length) job.pausedUntil = tomorrowMorning();
     saveFill(job);
     runFill();

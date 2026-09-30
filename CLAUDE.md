@@ -248,8 +248,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   brandId, `liSwept` → Setting `liSweepLog` (`src/lib/li-sweep.ts`; any brand read by a current
   reader rests 30 days, people or not, so a restarted run doesn't redo it; notes show red on
   Outreach → People). Pace (Leo, Sep 30, on free LinkedIn — faster hits its monthly "commercial use
-  limit" sooner): **100 brands/day**, 20–40 s between brands, 6–12 s between a brand's pages, shorter
-  scroll pauses; then waits for 9am next day. One tab owns the run (sessionStorage id). **Clicks, keys and
+  limit" sooner): **100 brands/day**, 8–15 s between brands, 3–6 s between a brand's pages (Leo, Sep 30: "why are the
+  steps so long"; a brand skipped as too big moves on after 3–6 s), shorter scroll pauses; then waits for 9am next day. One tab owns the run (sessionStorage id). **Clicks, keys and
   scrolling never pause it** (Leo: "it keeps stopping every time I click") — only its **Pause** button
   (`pauseByHand`) does; they're noted (`sbLiHuman`, per tab), and if Leo has taken the window to a page
   the run didn't open (`navPath` ≠ here) and used it in the last minute, the run waits
