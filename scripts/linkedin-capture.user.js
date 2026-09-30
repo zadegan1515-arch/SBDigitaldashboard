@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.16
+// @version      1.17
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -83,7 +83,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.16';
+  var VERSION = '1.17';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -794,6 +794,10 @@
   // A small company is read whole on its People tab; a big one (the tab
   // never ran out) also gets these two keyword views.
   var PASSES = ['', 'marketing', 'partnerships'];
+  // Leo (Sep 2026): only companies with under 100 people on LinkedIn.
+  // A bigger one (Microsoft and the like) is skipped on its People tab's
+  // count, before any scrolling or reading.
+  var MAX_PEOPLE = 100;
 
   function loadFill() { try { return GM_getValue(FILL_KEY, null); } catch (e) { return null; } }
   function saveFill(job) {
@@ -881,6 +885,16 @@
       })();
     });
   }
+  // The People tab's "12,345 associated members"; null when it's not shown.
+  function peopleCount() {
+    var m = /([\d][\d,.]*)\s*([KM])?\+?\s+associated members?/i.exec(pageText(8000));
+    if (!m) return null;
+    var n = parseFloat(m[1].replace(/,/g, ''));
+    if (!isFinite(n)) return null;
+    if (m[2]) n *= /k/i.test(m[2]) ? 1e3 : 1e6;
+    return Math.round(n);
+  }
+
   function pageText(n) {
     try { return String(document.body ? document.body.innerText : '').slice(0, n || 20000); } catch (e) { return ''; }
   }
@@ -1132,9 +1146,18 @@
     renderFill(job, 'Reading ' + label);
     fillHalt = { stopped: false };
     var capped = false, rows = [], problem = null, sample = null;
+    var tooBig = null;
     waitFor(function () { return count() > 0 || /no results|0 associated members/i.test(pageText(5000)); }, 12000).then(function () {
+      var n = job.step.pass === 0 ? peopleCount() : null;
+      if (n != null && n >= MAX_PEOPLE) { tooBig = n; return { skip: true }; }
       return expand(function (n) { setFillStatus('Reading ' + label + ' — ' + n + ' people on screen'); }, fillHalt);
     }).then(function (res) {
+      if (tooBig != null) {
+        var jobB = loadFill();
+        if (!sameStep(jobB, at0)) return null;
+        finishBrand(jobB, 'too big — ' + tooBig.toLocaleString('en-US') + ' people on LinkedIn (skips 100+)');
+        return null;
+      }
       capped = !!(res && res.capped);
       var job1 = loadFill();
       if (!sameStep(job1, at0)) return null;

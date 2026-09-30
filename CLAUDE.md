@@ -240,7 +240,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (`focusTerms` — "electrolyte" expands to the hydration shelf by name), then emptiest. Per brand:
   no page → LinkedIn company search → `liMatched` (`decideCompanyMatch`: exact name/aka, or a near
   miss only in the top 3 with a fitting industry; else "unclear" → skipped with a note), then the
-  People tab (+ "marketing" and "partnerships" views if the tab never ran out), `liCapture` by
+  People tab — **only companies with under 100 people** (Leo, Sep 2026: skip Microsoft and the like): the
+  tab's "N associated members" at 100+ skips the brand before any reading (`MAX_PEOPLE`, note "too big — …",
+  rests a year: `LI_BIG_REST_DAYS`) — (+ "marketing" and "partnerships" views if the tab never ran out), `liCapture` by
   brandId, `liSwept` → Setting `liSweepLog` (`src/lib/li-sweep.ts`; any brand read by a current
   reader rests 30 days, people or not, so a restarted run doesn't redo it; notes show red on
   Outreach → People). Pace (Leo, "faster without being sketchy"): **75 brands/day**, 35–75 s between
