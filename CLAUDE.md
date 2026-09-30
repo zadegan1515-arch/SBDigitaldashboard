@@ -238,15 +238,38 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `node scripts/test-planned-first.mjs`; the Schedule's contacts check links "Start the LinkedIn
   fill ↗ — it does these first"), then a focus word
   (`focusTerms` — "electrolyte" expands to the hydration shelf by name), then emptiest. Per brand:
-  no page → LinkedIn company search → `liMatched` (`decideCompanyMatch`: exact name/aka, or a near
-  miss only in the top 3 with a fitting industry; else "unclear" → skipped with a note), then the
+  no page → LinkedIn company search → `liMatched` (`decideCompanyMatch`: exact name/aka **in an industry
+  that fits the category** — Native the deodorant had a home-care agency's page — most followers wins,
+  so it's never just the first result; or a near miss only in the top 3 with a fitting industry; else
+  "unclear" → skipped and put on Leo's list, below), then the
   People tab (+ "marketing" and "partnerships" views if the tab never ran out), `liCapture` by
   brandId, `liSwept` → Setting `liSweepLog` (`src/lib/li-sweep.ts`; any brand read by a current
   reader rests 30 days, people or not, so a restarted run doesn't redo it; notes show red on
-  Outreach → People). Pace (Leo, "faster without being sketchy"): **75 brands/day**, 35–75 s between
-  brands, 8–18 s between a brand's pages, same scrolling; then waits for 9am next day. One tab owns the run
-  (sessionStorage id); a click or key in it pauses; a login wall, check or "commercial use limit"
-  pauses it before any save.
+  Outreach → People). Pace (Leo, Sep 30, on free LinkedIn — faster hits its monthly "commercial use
+  limit" sooner): **100 brands/day**, 20–40 s between brands, 6–12 s between a brand's pages, shorter
+  scroll pauses; then waits for 9am next day. One tab owns the run (sessionStorage id). **Clicks, keys and
+  scrolling never pause it** (Leo: "it keeps stopping every time I click") — only its **Pause** button
+  (`pauseByHand`) does; they're noted (`sbLiHuman`, per tab), and if Leo has taken the window to a page
+  the run didn't open (`navPath` ≠ here) and used it in the last minute, the run waits
+  (`leoIsElsewhere`), then goes back; a read whose page changed under it is dropped and redone
+  (`readPath`). A login wall, check or "commercial use limit" pauses it before any save. The panel says
+  why the current brand is next (`whyItem`: on the Schedule for <day> and short on people — Schedule
+  brands go first, which is why Native came before the electrolyte brands — research list, focus word,
+  emptiest), and the end of a run lists every brand and what happened ("What it did").
+  **Which LinkedIn page is theirs?** (`src/lib/li-review.ts`, Setting `liPageReview`; top of Outreach →
+  People): brands the search wasn't sure of (unclear / none, with the top results, the fitting one
+  first) and brands whose **saved page is another company's** — the run sends `checkPage` +
+  `companyIndustry` with every read, and `liCapture` saves nobody when the page's industry doesn't fit
+  (`pageLooksWrong`), then the run searches again with `recheck` (never swaps a saved page itself).
+  Leo picks a result, pastes a link, or "None of these" (`liPagePick` / `liPageNone`; Setting
+  `liPageConfirmed` = slug the check never questions, or "none" = don't look again; a wrong saved
+  page goes on None, named in the confirm). A pick clears the brand's rest so the next run reads it.
+  **Leo's LinkedIn only** (his call, Sep 30): every call carries `me` (from LinkedIn's own
+  `/voyager/api/me`, csrf = JSESSIONID, cached 30 min per tab; else the nav photo's alt); ingest
+  claims the first account into Setting `liOwner` and answers 403 `notOwner` to any other on the fill /
+  capture actions (not Zach's `liPerson*`); not knowing never blocks. Outreach → People names it, with
+  "Wrong account? Reset" (`liOwnerReset`). **What it did**: the run card's "See everything it did" →
+  `liRunDetail` (the run's brands, the contacts saved at each during the run, brands it made) with Copy.
   **Finding new brands** (Leo, Sep 2026: straight into the dashboard, not Discover review): the
   run's setup has "Add brands LinkedIn shows as similar" (lookalike rail — "Pages people also
   viewed" etc. — read **only when the People tab shows it**; the extra company-home stop is gone) and "Search LinkedIn

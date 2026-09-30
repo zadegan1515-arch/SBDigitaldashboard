@@ -21,7 +21,7 @@ execSync(
 const lib = await import(pathToFileURL(join(out, 'li-capture.js')).href)
 const { companySlug, profileSlug, profileUrl, cleanName, personKey, roleFromHeadline, isBuyer,
   normalizeCompany, decideCompanyMatch, focusTerms, matchesFocus,
-  parseFollowers, industryOf, categoryFromIndustry, judgeDiscovery, decideResearchMatch, nearName } = lib
+  parseFollowers, industryOf, categoryFromIndustry, judgeDiscovery, decideResearchMatch, nearName, pageLooksWrong } = lib
 
 let n = 0
 function t(name, fn) { fn(); n++; console.log('  ok — ' + name) }
@@ -198,6 +198,21 @@ t('a lookalike whose LinkedIn name adds what it sells is already on the roster',
   assert.equal(nearName(k('Red'), k('Red Bull')), false, 'too short to claim a longer name')
   assert.equal(nearName(k('Body'), k('BodyArmor')), false, 'whole words only')
   assert.equal(nearName(k('Olipop'), k('Hoplark')), false)
+})
+
+t('an exact name needs a fitting industry too (Native the deodorant, not the care agency)', () => {
+  const c = (slug, name, subtitle) => ({ slug, name, subtitle })
+  const agency = c('native-co.', 'Native', 'Individual and Family Services • Phoenix, AZ • 1K followers')
+  const deo = c('native-cos', 'Native', 'Personal Care Product Manufacturing • San Francisco • 60K followers')
+  assert.deepEqual(decideCompanyMatch({ name: 'Native', category: 'beauty' }, [agency]), { pick: null, reason: 'unclear' })
+  assert.equal(decideCompanyMatch({ name: 'Native', category: 'beauty' }, [agency, deo]).pick.slug, 'native-cos', 'not the first result')
+  const small = c('native-mini', 'Native', 'Personal Care Product Manufacturing • 900 followers')
+  assert.equal(decideCompanyMatch({ name: 'Native', category: 'beauty' }, [small, deo]).pick.slug, 'native-cos', 'most followed wins')
+  assert.equal(decideCompanyMatch({ name: 'Native', category: 'unresolved' }, [agency]).pick.slug, 'native-co.', 'uncheckable category: the old rule')
+  assert.equal(pageLooksWrong('beauty', 'Individual and Family Services'), true)
+  assert.equal(pageLooksWrong('beauty', 'Personal Care Product Manufacturing'), false)
+  assert.equal(pageLooksWrong('beauty', ''), false, 'no industry shown: no verdict')
+  assert.equal(pageLooksWrong('unresolved', 'Individual and Family Services'), false)
 })
 
 // --- the research list -------------------------------------------------

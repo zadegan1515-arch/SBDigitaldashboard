@@ -172,12 +172,17 @@ export type LiCompany = { slug: string; name: string; subtitle?: string | null }
 
 // Which search result is this brand's company page. Wrong is worse than
 // none — a wrong page fills a brand with another company's people — so:
-//   · an exact name (or "also known as") wins, the industry-fitting one
-//     if several share the name;
+//   · an exact name (or "also known as") wins only in an industry that
+//     fits the brand's category (Leo, Sep 2026: "Native" the deodorant
+//     brand had been given a home-care agency's page); several fitting →
+//     the most followed;
 //   · a near miss (one name starts with the other, "Casamigos" /
 //     "Casamigos Tequila") only among the top three results, and only
 //     when LinkedIn's industry fits the brand's category;
-//   · anything else is "unclear" and left for Leo.
+//   · anything else is "unclear" and goes on the dashboard's "Which
+//     LinkedIn page is theirs?" list for Leo.
+// A brand filed where industries can't be checked (unresolved, other…)
+// keeps the old rule: one exact name, or unclear.
 export function decideCompanyMatch(
   brand: { name: string; aka?: string | null; category?: string | null },
   candidates: LiCompany[],
@@ -186,20 +191,43 @@ export function decideCompanyMatch(
   if (!list.length) return { pick: null, reason: 'none' }
   const names = [brand.name, ...String(brand.aka || '').split(/[,;]/)]
     .map(normalizeCompany).filter(n => n.length >= 2)
+  const checkable = industryCheckable(brand.category)
+  const fits = (c: LiCompany) => industryFits(brand.category, industryOf(c.subtitle))
   const exact = list.filter(c => names.includes(normalizeCompany(c.name)))
-  if (exact.length === 1) return { pick: exact[0], reason: 'exact' }
-  if (exact.length > 1) {
-    const fit = exact.filter(c => industryFits(brand.category, c.subtitle))
-    if (fit.length >= 1) return { pick: fit[0], reason: 'exact' }
-    return { pick: null, reason: 'unclear' }
+  if (exact.length) {
+    if (!checkable) return exact.length === 1 ? { pick: exact[0], reason: 'exact' } : { pick: null, reason: 'unclear' }
+    const fit = exact.filter(fits)
+    return fit.length ? { pick: mostFollowed(fit), reason: 'exact' } : { pick: null, reason: 'unclear' }
   }
-  const near = list.slice(0, 3).find(c => {
+  const near = list.slice(0, 3).filter(c => {
     const cn = normalizeCompany(c.name)
     const hit = names.some(n => n.length >= 4 && (cn.startsWith(n + ' ') || n.startsWith(cn + ' ')))
-    return hit && industryFits(brand.category, c.subtitle)
+    return hit && fits(c)
   })
-  if (near) return { pick: near, reason: 'near' }
+  if (near.length) return { pick: mostFollowed(near), reason: 'near' }
   return { pick: null, reason: 'unclear' }
+}
+
+// The first of the most-followed; results with no count lose to any count.
+function mostFollowed(list: LiCompany[]): LiCompany {
+  let best = list[0], bestN = parseFollowers(best.subtitle) ?? -1
+  for (const c of list.slice(1)) {
+    const n = parseFollowers(c.subtitle) ?? -1
+    if (n > bestN) { best = c; bestN = n }
+  }
+  return best
+}
+
+// Whether a brand's category says which LinkedIn industries fit it.
+export function industryCheckable(category: string | null | undefined): boolean {
+  return !!INDUSTRY_FITS[String(category || '')]
+}
+
+// A saved page, checked on its own People tab: wrong only when the
+// category can be checked, LinkedIn shows an industry, and it doesn't fit.
+export function pageLooksWrong(category: string | null | undefined, industry: string | null | undefined): boolean {
+  const ind = String(industry || '').trim()
+  return industryCheckable(category) && !!ind && !industryFits(category, ind)
 }
 
 // Discovery's "already on the roster" test: one name is the other plus

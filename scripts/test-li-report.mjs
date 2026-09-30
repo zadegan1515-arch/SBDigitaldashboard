@@ -13,11 +13,12 @@ import assert from 'node:assert/strict'
 
 const out = mkdtempSync(join(tmpdir(), 'li-report-'))
 execSync(
-  'npx tsc src/lib/li-report.ts --outDir ' + out +
+  'npx tsc src/lib/li-report.ts src/lib/li-review.ts --outDir ' + out +
   ' --target es2020 --module esnext --moduleResolution bundler --skipLibCheck',
   { stdio: 'inherit' },
 )
 const { applyRunEvent } = await import(pathToFileURL(join(out, 'li-report.js')).href)
+const { addToReview, sameMember } = await import(pathToFileURL(join(out, 'li-review.js')).href)
 
 let n = 0
 function t(name, fn) { fn(); n++; console.log('  ok — ' + name) }
@@ -71,6 +72,29 @@ t('newest run first, last ten kept; junk ignored', () => {
   assert.equal(applyRunEvent(r, { kind: 'brand', run: '' }), r, 'no run id, nothing changes')
   const neg = applyRunEvent([], { kind: 'brand', run: 'z', name: 'Z', seen: -4, added: 'lots' }, at(0))
   assert.equal(neg[0].brands[0].seen, 0); assert.equal(neg[0].brands[0].added, 0)
+})
+
+t('"Which LinkedIn page is theirs?": findings add up, and a wrong saved page stays the reason', () => {
+  const c = (slug, name) => ({ slug, name, subtitle: '' })
+  let r = addToReview({}, 'b1', { why: 'none' }, at(0))
+  assert.equal(r.b1.why, 'none'); assert.deepEqual(r.b1.candidates, [])
+  r = addToReview(r, 'b1', { why: 'unclear', candidates: [c('a', 'A'), c('b', 'B')] }, at(1))
+  r = addToReview(r, 'b1', { why: 'unclear', candidates: [c('b', 'B'), c('c', 'C')] }, at(2))
+  assert.deepEqual(r.b1.candidates.map(x => x.slug), ['a', 'b', 'c'], 'no repeats, first seen first')
+  assert.equal(r.b1.why, 'unclear')
+  r = addToReview(r, 'b2', { why: 'wrong', saved: 'https://www.linkedin.com/company/native-co./', pageIndustry: 'Individual and Family Services' }, at(3))
+  r = addToReview(r, 'b2', { why: 'unclear', candidates: [c('native-cos', 'Native')] }, at(4))
+  assert.equal(r.b2.why, 'wrong'); assert.equal(r.b2.saved, 'https://www.linkedin.com/company/native-co./')
+  assert.equal(r.b2.pageIndustry, 'Individual and Family Services'); assert.equal(r.b2.candidates[0].slug, 'native-cos')
+})
+
+t('same LinkedIn member: profile links when both known, else names; nothing to go on is no verdict', () => {
+  assert.equal(sameMember({ slug: 'leo-z' }, { slug: 'LEO-Z', name: 'Someone' }), true)
+  assert.equal(sameMember({ slug: 'leo-z' }, { slug: 'zach-q' }), false)
+  assert.equal(sameMember({ name: 'Leo Zadegan' }, { slug: 'x', name: 'Léo  Zadegan' }), true)
+  assert.equal(sameMember({ name: 'Leo Z' }, { name: 'Zach Q' }), false)
+  assert.equal(sameMember({ slug: 'leo-z' }, { name: 'Leo Z' }), null)
+  assert.equal(sameMember(null, { slug: 'leo-z' }), null)
 })
 
 console.log(n + ' checks passed')

@@ -1416,6 +1416,7 @@
         <a href="https://github.com/zadegan1515-arch/SBDigitaldashboard/blob/main/scripts/linkedin-capture.user.js" target="_blank" rel="noopener">LinkedIn capture script</a>
         in Tampermonkey (copy it there, then Tampermonkey → + → paste → save; on Leo's LinkedIn, not Zach's), press the SB pill there: it reads that page, shows who it found, and adds the marketing and partnership people when you say so. Or let it go through this list by itself: pill → <b>Fill brands by itself</b> (about 75 brands a day). Brands it couldn't do carry a red LinkedIn note here.
       </div>
+      <div id="li-review" style="margin-top:14px;display:none"></div>
       <div id="li-runs" style="margin-top:14px;display:none"></div>
       <div id="li-list" style="margin-top:14px"></div>
     </section>
@@ -7137,7 +7138,8 @@ function loadLinkedin() {
 
   return api('linkedinPeople').then(function (d) {
     LI_DATA = d.brands || [];
-    renderLiRuns(d.runs || [], d.latestScript || null);
+    renderLiReview(d.pageReview || []);
+    renderLiRuns(d.runs || [], d.latestScript || null, d.liOwner || null);
     var profiles = 0, brandsWith = 0;
     LI_DATA.forEach(function (b) {
       var n = b.contacts.filter(function (c) { return c.linkedinUrl; }).length;
@@ -7165,7 +7167,7 @@ function liVersionBehind(v, latest) {
   }
   return false;
 }
-function renderLiRuns(runs, latest) {
+function renderLiRuns(runs, latest, owner) {
   var box = document.getElementById('li-runs');
   if (!box) return;
   if (!runs.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
@@ -7209,14 +7211,168 @@ function renderLiRuns(runs, latest) {
       ? '<details style="margin-top:8px"><summary class="t-meta" style="cursor:pointer">' + skipped.length + ' brand' + (skipped.length === 1 ? '' : 's') + ' skipped, and why</summary>' +
           skipped.map(function (x) { return '<div class="t-meta" style="margin-top:4px">' + esc(x.name) + ' — ' + esc(x.note) + '</div>'; }).join('') +
         '</details>' : '') +
+    // Everything it did, brand by brand, with the people's names (Leo:
+    // "after every run I want a list of what it did").
+    '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
+      '<button class="btn-ghost" data-lirun-detail="' + esc(r.id) + '">See everything it did</button>' +
+    '</div>' +
+    '<div data-lirun-box="' + esc(r.id) + '"></div>' +
     runs.slice(1).map(function (p) {
       return '<div class="t-meta" style="margin-top:8px;color:var(--ink-3)">Before: ' + esc(when(p.startedAt)) + ' · ' +
         p.brands.length + ' brands · ' + p.added + ' people · ' + esc(STATUS[p.status] || p.status) +
-        (p.problems ? ' · ' + p.problems + ' unreadable page' + (p.problems === 1 ? '' : 's') : '') + '</div>';
+        (p.problems ? ' · ' + p.problems + ' unreadable page' + (p.problems === 1 ? '' : 's') : '') +
+        ' · <a href="#" class="sd-link" data-lirun-detail="' + esc(p.id) + '">what it did</a></div>' +
+        '<div data-lirun-box="' + esc(p.id) + '"></div>';
     }).join('') +
+    // Whose LinkedIn it runs on (Leo: only his). The first run claimed it.
+    (owner
+      ? '<div class="t-meta" style="margin-top:10px;color:var(--ink-3)">Runs only on ' + esc(owner.name || owner.slug) + '\u2019s LinkedIn — any other account is turned away. ' +
+        '<a href="#" class="sd-link" data-liowner-reset="1" title="The next run remembers whichever LinkedIn it runs on">Wrong account? Reset</a></div>'
+      : '') +
   '</div>';
   box.innerHTML = html;
 }
+
+function liRunDetailHtml(d) {
+  var when = new Date(d.run.startedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  var rows = d.brands.map(function (b) {
+    var what = b.added ? b.added + ' added' : (b.problem || b.note || 'nobody new');
+    return '<div class="t-meta" style="padding:7px 0;border-top:1px solid var(--border-soft)">' +
+      '<b style="color:var(--ink-1)">' + esc(b.name) + '</b>' +
+      (b.isNew ? ' <span class="status accepted" title="The run added this brand">new</span>' : '') +
+      ' — <span style="color:' + (b.added ? 'var(--good)' : b.problem ? 'var(--bad)' : 'var(--ink-3)') + '">' + esc(what) + '</span>' +
+      (b.people.length
+        ? '<div style="margin-top:3px;padding-left:10px">' + b.people.map(function (p) {
+            return (p.linkedinUrl ? '<a href="' + esc(p.linkedinUrl) + '" target="_blank" rel="noopener">' + esc(p.name) + ' ↗</a>' : esc(p.name)) +
+              (p.title ? ' <span style="color:var(--ink-3)">· ' + esc(p.title) + '</span>' : '');
+          }).join('<br>') + '</div>'
+        : '') +
+    '</div>';
+  }).join('');
+  return '<div style="margin-top:10px">' +
+    '<div class="t-line" style="justify-content:space-between"><span class="t-meta">Run of ' + esc(when) + ' · ' + d.brands.length + ' brands, in the order it did them</span>' +
+      '<button class="btn-ghost mini" data-lirun-copy="' + esc(d.run.id) + '">Copy the list</button></div>' +
+    (rows || '<div class="t-meta">It hasn\u2019t finished a brand yet.</div>') +
+    (d.newBrands.length ? '<div class="t-meta" style="padding-top:7px;border-top:1px solid var(--border-soft)">New brands it added: ' +
+      d.newBrands.map(function (b) { return esc(b.name) + ' <span style="color:var(--ink-3)">(' + esc(b.how) + ')</span>'; }).join(', ') + '</div>' : '') +
+  '</div>';
+}
+function liRunDetailText(d) {
+  var when = new Date(d.run.startedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  var added = d.brands.reduce(function (t, b) { return t + (b.added || 0); }, 0);
+  var lines = ['LinkedIn run, ' + when + ': ' + added + ' people across ' + d.brands.length + ' brands'];
+  d.brands.forEach(function (b) {
+    lines.push('- ' + b.name + (b.isNew ? ' (new)' : '') + ': ' + (b.added
+      ? b.added + ' added — ' + b.people.map(function (p) { return p.name + (p.title ? ' (' + p.title + ')' : ''); }).join(', ')
+      : (b.problem || b.note || 'nobody new')));
+  });
+  if (d.newBrands.length) lines.push('New brands: ' + d.newBrands.map(function (b) { return b.name; }).join(', '));
+  return lines.join('\n');
+}
+
+// "Which LinkedIn page is theirs?" — brands the fill wasn't sure of: its
+// search found no page that clearly fits (an exact name in the wrong
+// industry, near misses, nothing), or the page it had saved turned out to
+// be another company's. It skipped them; Leo picks the page here (or
+// pastes its link, or says there's none) and the next run reads it.
+var LI_REVIEW = [];
+function renderLiReview(list) {
+  LI_REVIEW = list;
+  var box = document.getElementById('li-review');
+  if (!box) return;
+  if (!list.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.style.display = '';
+  var WHY = {
+    wrong: function (e) { return 'The page it had saved looks like another company' + (e.pageIndustry ? ' (' + e.pageIndustry + ')' : '') + '.'; },
+    unclear: function () { return 'LinkedIn\u2019s results didn\u2019t clearly match — none in a fitting industry, or several.'; },
+    none: function () { return 'LinkedIn\u2019s search found nothing under this name.'; },
+  };
+  box.innerHTML = '<div class="panel" style="padding:14px 16px">' +
+    '<div class="t-line"><b>Which LinkedIn page is theirs?</b><span class="t-sep">·</span>' +
+      '<span class="t-title">' + list.length + ' brand' + (list.length === 1 ? '' : 's') + ' the fill skipped because it wasn\u2019t sure</span></div>' +
+    list.map(function (e) {
+      var search = 'https://www.linkedin.com/search/results/companies/?keywords=' + encodeURIComponent(e.name);
+      return '<div data-lirv="' + esc(e.brandId) + '" style="padding:10px 0;border-top:1px solid var(--border-soft);margin-top:8px">' +
+        '<div class="t-line"><span class="t-brand">' + esc(e.name) + '</span>' +
+          (e.category ? '<span class="t-sep">·</span><span class="t-title">' + esc(CAT_NAMES[e.category] || e.category) + '</span>' : '') +
+          (e.website ? '<span class="t-sep">·</span><a class="sd-link" href="' + esc(/^https?:/.test(e.website) ? e.website : 'https://' + e.website) + '" target="_blank" rel="noopener">website ↗</a>' : '') + '</div>' +
+        '<div class="t-meta" style="margin-top:4px">' + esc((WHY[e.why] || WHY.unclear)(e)) +
+          (e.saved ? ' Saved now: <a href="' + esc(e.saved) + '" target="_blank" rel="noopener">' + esc(e.saved.replace(/^https:\/\/www\.linkedin\.com/, '')) + ' ↗</a>' : '') + '</div>' +
+        (e.candidates || []).map(function (c) {
+          var url = 'https://www.linkedin.com/company/' + c.slug + '/';
+          return '<div class="t-meta" style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+            '<a href="' + esc(url) + '" target="_blank" rel="noopener"><b>' + esc(c.name) + '</b> ↗</a>' +
+            '<span style="color:var(--ink-3)">' + esc(c.subtitle || '') + '</span>' +
+            '<button class="btn-draft mini" data-lirv-pick="' + esc(c.slug) + '">This one</button></div>';
+        }).join('') +
+        '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
+          '<input class="inp" data-lirv-url placeholder="or paste their LinkedIn page link" style="flex:1;min-width:200px">' +
+          '<button class="btn-ghost" data-lirv-save="1">Save</button>' +
+          '<a class="btn-ghost" href="' + esc(search) + '" target="_blank" rel="noopener">Search LinkedIn ↗</a>' +
+          '<button class="btn-ghost" data-lirv-none="1" title="' + (e.why === 'wrong' && e.saved ? 'Also removes the page it had saved' : 'The fill stops looking for this brand') + '">None of these</button>' +
+        '</div>' +
+      '</div>';
+    }).join('') +
+  '</div>';
+}
+
+document.getElementById('linkedin').addEventListener('click', function (e) {
+  var t = e.target;
+  var det = t.closest('[data-lirun-detail]');
+  if (det) {
+    e.preventDefault();
+    var id = det.getAttribute('data-lirun-detail');
+    var spot = document.querySelector('#li-runs [data-lirun-box="' + id + '"]');
+    if (!spot) return;
+    if (spot.innerHTML) { spot.innerHTML = ''; return; }
+    spot.innerHTML = '<div class="t-meta" style="margin-top:8px">Loading…</div>';
+    api('liRunDetail', { id: id }).then(function (d) {
+      spot.innerHTML = liRunDetailHtml(d);
+      spot.__detail = d;
+    }).catch(function (err) { spot.innerHTML = '<div class="t-meta" style="color:var(--bad)">' + esc(err.message) + '</div>'; });
+    return;
+  }
+  var cp = t.closest('[data-lirun-copy]');
+  if (cp) {
+    var box = document.querySelector('#li-runs [data-lirun-box="' + cp.getAttribute('data-lirun-copy') + '"]');
+    var text = box && box.__detail ? liRunDetailText(box.__detail) : '';
+    if (!text) return;
+    (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function () { toast('List copied'); }).catch(function () { window.prompt('Copy the list:', text); });
+    return;
+  }
+  if (t.closest('[data-liowner-reset]')) {
+    e.preventDefault();
+    if (!confirm('Forget which LinkedIn account the fill runs on? The next run remembers the account it runs on.')) return;
+    api('liOwnerReset', {}).then(function () { toast('Reset — the next run remembers its account'); loadLinkedin(); }).catch(function (err) { toast(err.message); });
+    return;
+  }
+  var row = t.closest('[data-lirv]');
+  if (!row) return;
+  var brandId = row.getAttribute('data-lirv');
+  var entry = LI_REVIEW.filter(function (x) { return x.brandId === brandId; })[0] || {};
+  var done = function (msg) { toast(msg); loadLinkedin(); };
+  var fail = function (err) { toast(err.message || String(err)); };
+  var pick = t.closest('[data-lirv-pick]');
+  if (pick) {
+    api('liPagePick', { brandId: brandId, url: 'https://www.linkedin.com/company/' + pick.getAttribute('data-lirv-pick') + '/' })
+      .then(function () { done(entry.name + '\u2019s page saved — the next run reads it'); }).catch(fail);
+    return;
+  }
+  if (t.closest('[data-lirv-save]')) {
+    var url = (row.querySelector('[data-lirv-url]').value || '').trim();
+    if (!url) return toast('Paste their LinkedIn company page link first');
+    api('liPagePick', { brandId: brandId, url: url })
+      .then(function () { done(entry.name + '\u2019s page saved — the next run reads it'); }).catch(fail);
+    return;
+  }
+  if (t.closest('[data-lirv-none]')) {
+    var msg = entry.why === 'wrong' && entry.saved
+      ? 'Remove ' + entry.name + '\u2019s saved LinkedIn page (' + entry.saved + ') and stop looking for one?'
+      : 'Stop looking for ' + entry.name + '\u2019s LinkedIn page?';
+    if (!confirm(msg)) return;
+    api('liPageNone', { brandId: brandId }).then(function () { done('Done — the fill stops looking for ' + entry.name); }).catch(fail);
+  }
+});
 
 // "Start the LinkedIn fill" opens LinkedIn in a window of its own (Leo,
 // Sep 2026: let it run while he goes through brands here). Every #sb-fill

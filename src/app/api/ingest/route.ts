@@ -32,11 +32,15 @@ import {
 import {
   companySlug, companyPageUrl, profileSlug, profileUrl, cleanName, personKey,
   roleFromHeadline, isBuyer, decideCompanyMatch, focusTerms, matchesFocus,
-  normalizeCompany, judgeDiscovery, industryFits, decideResearchMatch, nearName,
+  normalizeCompany, judgeDiscovery, industryFits, decideResearchMatch, nearName, pageLooksWrong,
   type LiCompany,
 } from '@/lib/li-capture'
 import { readLiLog, markLiSwept, liResting, readLiResearch, markLiResearch, researchResting, LI_READER, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
 import { recordRun } from '@/lib/li-report'
+import {
+  addToReview, sameMember, readJsonSetting, writeJsonSetting,
+  LI_REVIEW_KEY, LI_CONFIRMED_KEY, LI_OWNER_KEY, type Review, type Confirmed, type LiOwner,
+} from '@/lib/li-review'
 import { LANES, RESEARCH_EXTRA, brandKey } from '@/lib/stock'
 import { logLinkedInPerson, personOnFile, undoLinkedInLog, checkNewPerson } from '@/lib/li-log-db'
 import { nameFromSlug, isLogStage } from '@/lib/li-log'
@@ -413,6 +417,34 @@ export async function POST(req: NextRequest) {
     }, { status: 426, headers: cors })
   }
 
+  // The People capture and the fill run on Leo's LinkedIn only (his call,
+  // Sep 2026). The script says who's signed in (`me`); the first run
+  // remembers that account (Setting liOwner) and any other is refused
+  // before anything is read or saved. Zach's log script (liPerson*) is
+  // not part of this. A script that can't tell who's signed in isn't
+  // blocked on a guess.
+  const OWNED_ACTIONS = ['liList', 'liPreview', 'liCapture', 'liMatched', 'liSwept', 'liDiscover', 'liResearch', 'liRun']
+  if (OWNED_ACTIONS.includes(body.action) && body.me && (body.me.slug || body.me.name)) {
+    const me = {
+      slug: String(body.me.slug || '').trim().slice(0, 100) || null,
+      name: String(body.me.name || '').replace(/\s+/g, ' ').trim().slice(0, 100) || null,
+    }
+    const owner = await readJsonSetting<LiOwner | null>(prisma, LI_OWNER_KEY, null)
+    if (!owner || (!owner.slug && !owner.name)) {
+      await writeJsonSetting(prisma, LI_OWNER_KEY, { ...me, at: new Date().toISOString() })
+    } else {
+      const same = sameMember(owner, me)
+      if (same === false) {
+        return NextResponse.json({
+          ok: false, notOwner: true,
+          error: `This isn't the LinkedIn account the fill runs on — it runs only on ${owner.name || owner.slug}'s${me.name ? `, and this is ${me.name}'s` : ''}. Nothing was read or saved.`,
+        }, { status: 403, headers: cors })
+      }
+      // Remember the profile link once it's known.
+      if (same && !owner.slug && me.slug) await writeJsonSetting(prisma, LI_OWNER_KEY, { ...owner, slug: me.slug })
+    }
+  }
+
   // -----------------------------------------------------------------
   // action: "list" — the worklist for an unattended run. The capture
   // script asks which brands to visit rather than being told by hand,
@@ -587,8 +619,11 @@ export async function POST(req: NextRequest) {
     const underCap = all.filter(b => b._count.contacts < CONTACT_CAP_PER_BRAND)
     const ignoreRest = body.ignoreRest === true
     const resting = underCap.filter(b => liResting(log[b.id])).length
+    // Brands Leo said have no LinkedIn page ("None of these") aren't searched again.
+    const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
     const items = underCap
       .filter(b => ignoreRest || !liResting(log[b.id]))
+      .filter(b => b.linkedinUrl || confirmed[b.id] !== 'none')
       .map(b => ({
         brandId: b.id, name: b.name, aka: b.aka, category: b.category,
         linkedinUrl: b.linkedinUrl, contacts: b._count.contacts, focus: matchesFocus(b, terms),
@@ -689,7 +724,10 @@ export async function POST(req: NextRequest) {
       select: { id: true, name: true, aka: true, category: true, linkedinUrl: true },
     })
     if (!brand) return NextResponse.json({ ok: false, error: 'Brand not found' }, { status: 404, headers: cors })
-    if (brand.linkedinUrl) return NextResponse.json({ ok: true, outcome: 'already', linkedinUrl: brand.linkedinUrl }, { headers: cors })
+    // recheck: the saved page's People tab showed another industry
+    // (liCapture's pageMismatch), and the run searched again.
+    const recheck = body.recheck === true
+    if (brand.linkedinUrl && !recheck) return NextResponse.json({ ok: true, outcome: 'already', linkedinUrl: brand.linkedinUrl }, { headers: cors })
     const candidates: LiCompany[] = (Array.isArray(body.candidates) ? body.candidates : []).slice(0, 20)
       .map((c: any) => ({
         slug: companySlug(String(c?.url || '')) || '',
@@ -698,7 +736,24 @@ export async function POST(req: NextRequest) {
       }))
       .filter((c: LiCompany) => c.slug && c.name)
     const { pick, reason } = decideCompanyMatch(brand, candidates)
-    if (!pick) return NextResponse.json({ ok: true, outcome: reason, candidates: candidates.length }, { headers: cors })
+    const review = async (why: 'unclear' | 'none' | 'wrong') => {
+      const list = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
+      await writeJsonSetting(prisma, LI_REVIEW_KEY, addToReview(list, brand.id, {
+        why, saved: recheck ? brand.linkedinUrl : null,
+        candidates: (pick ? [pick, ...candidates.filter(c => c.slug !== pick.slug)] : candidates)
+          .slice(0, 6).map(c => ({ slug: c.slug, name: c.name, subtitle: c.subtitle || '' })),
+      }))
+    }
+    // A saved page is never swapped by the run itself: the results go on
+    // Leo's list, the one that fits first.
+    if (recheck) {
+      await review('wrong')
+      return NextResponse.json({ ok: true, outcome: 'review', suggested: pick?.name || null, candidates: candidates.length }, { headers: cors })
+    }
+    if (!pick) {
+      await review(reason === 'none' ? 'none' : 'unclear')
+      return NextResponse.json({ ok: true, outcome: reason, candidates: candidates.length }, { headers: cors })
+    }
     // Another brand already has this page: a sister brand or a duplicate.
     // Not attached twice — the page would then match either.
     const withPage = await prisma.brand.findMany({ where: { linkedinUrl: { not: null }, id: { not: brand.id } }, select: { name: true, linkedinUrl: true } })
@@ -706,6 +761,9 @@ export async function POST(req: NextRequest) {
     if (owner) return NextResponse.json({ ok: true, outcome: 'taken', by: owner.name }, { headers: cors })
     const linkedinUrl = companyPageUrl(pick.slug)
     await prisma.brand.update({ where: { id: brand.id }, data: { linkedinUrl } })
+    // Found under its other name after the first try went on the list.
+    const list = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
+    if (list[brand.id]) { delete list[brand.id]; await writeJsonSetting(prisma, LI_REVIEW_KEY, list) }
     return NextResponse.json({ ok: true, outcome: 'attached', how: reason, name: pick.name, linkedinUrl }, { headers: cors })
   }
 
@@ -1026,6 +1084,22 @@ export async function POST(req: NextRequest) {
   // than trusting the preview, so two tabs or a stale panel can't push a
   // brand past 25 or add someone twice.
   if (body.action === 'liCapture') {
+    // The run's reads (checkPage) first check the page is the brand's:
+    // a saved page whose industry doesn't fit (Native had a home-care
+    // agency's page) saves nobody and goes on Leo's list, unless he
+    // picked that page himself.
+    if (body.checkPage === true && body.brandId) {
+      const b = await prisma.brand.findUnique({ where: { id: String(body.brandId) }, select: { id: true, category: true, linkedinUrl: true } })
+      // The run reads the brand's saved page; its address says which.
+      const pageSlug = companySlug(String(body.companyUrl || '')) || companySlug(b?.linkedinUrl)
+      const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
+      if (b && pageSlug && confirmed[b.id] !== pageSlug && pageLooksWrong(b.category, body.companyIndustry)) {
+        const industry = String(body.companyIndustry).replace(/\s+/g, ' ').trim().slice(0, 120)
+        const list = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
+        await writeJsonSetting(prisma, LI_REVIEW_KEY, addToReview(list, b.id, { why: 'wrong', saved: b.linkedinUrl || companyPageUrl(pageSlug), pageIndustry: industry }))
+        return NextResponse.json({ ok: true, pageMismatch: true, industry, added: 0, have: 0, cap: CONTACT_CAP_PER_BRAND }, { headers: cors })
+      }
+    }
     let plan = await planLinkedin(body)
     // A brand the dashboard doesn't have yet, added from the panel — Leo
     // pressed "Add … as a new brand", so the name is his decision (as a

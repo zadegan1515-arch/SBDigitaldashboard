@@ -58,6 +58,8 @@ const LI_PORT = 4641;
 const BASE = 'http://127.0.0.1:' + PORT;
 const TOKEN = 'e2e-ingest-token';
 const REPORT_TOKEN = 'e2e-report-token-0123456789abcdef';
+// Lets the test call the dashboard's own handlers (/api/data) like the page does.
+const DASHBOARD_TOKEN = 'e2e-dashboard-token-0123456789abcdef';
 
 const SCRIPT = fs.readFileSync(path.join(__dirname, 'linkedin-capture.user.js'), 'utf8')
   .replace("'https://sb-digitaldashboard.vercel.app/api/ingest'", "'" + BASE + "/api/ingest'")
@@ -107,6 +109,7 @@ const SEARCH = {
   Huel: [['huel', 'Huel', 'Food and Beverage Manufacturing • London', '250K']],
   Powerade: [['powerade', 'Powerade', 'Beverage Manufacturing • Atlanta, GA', '150K'], ['powerade-events', 'Powerade Events Co', 'Events Services', '300']],
   Olipop: [['drinkolipop', 'OLIPOP', 'Beverage Manufacturing • Oakland, CA', '180K'], ['olipop-studio', 'Olipop Studio', 'Design Services', '90']],
+  Native: [['native-co.', 'Native', 'Individual and Family Services • Phoenix, AZ', '1K'], ['native-cos', 'Native', 'Personal Care Product Manufacturing • San Francisco', '60K']],
 };
 // A profile: name in the <h1>, pronouns and badge on their own line,
 // the headline, LinkedIn's "Current company" button, the first job.
@@ -128,6 +131,12 @@ function profilePage(slug) {
 const visits = [];
 const linkedin = http.createServer((req, res) => {
   if (!/favicon|frame-probe/.test(req.url)) visits.push(req.url);
+  // LinkedIn's own "who am I": Leo is signed in.
+  if (req.url === '/voyager/api/me') {
+    if (!/JSESSIONID/.test(req.headers.cookie || '') || !req.headers['csrf-token']) { res.writeHead(401); return res.end('{}'); }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ plainId: 7, miniProfile: { firstName: 'Leo', lastName: 'Z', publicIdentifier: 'leo-z' } }));
+  }
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   const m = req.url.match(/^\/company\/([^/?]+)\/people\/?/);
   if (m && STAFF[m[1]]) return res.end(peoplePage(m[1]));
@@ -138,6 +147,12 @@ const linkedin = http.createServer((req, res) => {
     return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Blank Cards</h1><ul>' +
       ['q1', 'q2', 'q3'].map(q => '<li><section><a href="https://www.linkedin.com/in/' + q + '/"><img alt=""></a><div>Brand Manager</div><button>Connect</button></section></li>').join('') +
       '</ul></main></body></html>');
+  }
+  // Native the deodorant brand, saved with a home-care agency's page.
+  if (m && m[1] === 'native-co.') {
+    return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Native</h1>' +
+      '<div class="org-top-card-summary-info-list"><div class="org-top-card-summary-info-list__info-item">Individual and Family Services</div></div><ul>' +
+      person('cg-1', 'Carla Gray', '• 3rd+', 'Director of Marketing') + '</ul></main></body></html>');
   }
   const s = req.url.match(/^\/search\/results\/companies\/\?keywords=([^&]+)/);
   if (s) {
@@ -189,7 +204,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     // The dashboard, for real.
     server = spawn('npx', ['next', 'dev', '-p', String(PORT)], {
       cwd: ROOT, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...env, INGEST_TOKEN: TOKEN, REPORT_TOKEN, NEXTAUTH_SECRET: 'e2e-only', NEXT_TELEMETRY_DISABLED: '1' },
+      env: { ...env, INGEST_TOKEN: TOKEN, REPORT_TOKEN, DASHBOARD_TOKEN, NEXTAUTH_SECRET: 'e2e-only', NEXT_TELEMETRY_DISABLED: '1' },
     });
     let log = '';
     server.stdout.on('data', d => { log += d; });
@@ -208,13 +223,14 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await prisma.brand.create({ data: { id: 'b_oli', name: 'Olipop', category: 'beverage' } });
     await prisma.brand.create({ data: { id: 'b_blank', name: 'Blank Cards', category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/blank-cards/' } });
     await prisma.brand.create({ data: { name: 'Waterloo', category: 'beverage', passedAt: new Date() } });
+    await prisma.brand.create({ data: { id: 'b_nat', name: 'Native', category: 'beauty', linkedinUrl: 'https://www.linkedin.com/company/native-co./' } });
     const before = (await ingest({ action: 'liList', focus: 'electrolyte', research: true })).j;
     const onRoster = before.items.filter(i => i.research && !['Huel', 'Powerade'].includes(i.name)).map(i => i.name);
     assert.ok(onRoster.length > 20, 'the research list is long');
     await prisma.brand.createMany({ data: onRoster.map(name => ({ name, category: 'unresolved', passedAt: new Date() })), skipDuplicates: true });
     const list = (await ingest({ action: 'liList', focus: 'electrolyte', research: true })).j;
     assert.deepEqual(list.items.map(i => i.name).slice(0, 2), ['Huel', 'Powerade'], 'asked-for names first, then the focus lane');
-    assert.deepEqual(list.items.slice(2).map(i => i.name).sort(), ['Blank Cards', 'Liquid Death', 'Olipop']);
+    assert.deepEqual(list.items.slice(2).map(i => i.name).sort(), ['Blank Cards', 'Liquid Death', 'Native', 'Olipop']);
     assert.equal(list.latest, VERSION, 'the dashboard expects this script version');
 
     // The run, started the way the dashboard's button starts it.
@@ -223,16 +239,18 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const pg = await browser.newPage();
     const errors = [];
     pg.on('pageerror', e => errors.push(String(e)));
-    await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+    await pg.addInitScript('document.cookie = "JSESSIONID=\\"ajax:77\\"; path=/";\n' + GM_SHIM + '\n' + SCRIPT);
     await pg.goto('http://127.0.0.1:' + LI_PORT + '/feed/#sb-fill');
     await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished|Paused/.test(p.innerText); }, null, { timeout: 240000 });
     const panel = await pg.evaluate(() => document.getElementById('sbli-panel').innerText);
     assert.match(panel, /Run finished/, panel);
-    assert.match(panel, /12 people added across 6 brands/);
+    assert.match(panel, /12 people added across 7 brands/);
+    assert.match(panel, /What it did/);
+    assert.match(panel, /Native — its saved LinkedIn page looks like another company/);
     assert.match(panel, /3 new brands added/);
     assert.deepEqual(errors, [], 'no page errors');
     assert.ok(!visits.some(v => /waterloo|tiny-seltzer|loud-agency/.test(v)), 'no visits to brands it shouldn\'t add');
-    ok('the run started from #sb-fill and finished by itself: 12 people, 6 brands, 3 new');
+    ok('the run started from #sb-fill and finished by itself: 12 people, 7 brands, 3 new, and a list of what it did');
 
     const brands = await prisma.brand.findMany({ where: { passedAt: null }, include: { contacts: true } });
     const by = Object.fromEntries(brands.map(b => [b.name, b]));
@@ -278,12 +296,54 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const run = rep.runs[0];
     assert.equal(run.status, 'finished'); assert.equal(run.script, VERSION); assert.equal(run.focus, 'electrolyte');
     assert.equal(run.added, 12); assert.equal(run.newBrands, 3);
-    assert.deepEqual(run.brands.map(b => b.name).sort(), ['Blank Cards', 'Hoplark', 'Huel', 'Liquid Death', 'Olipop', 'Powerade']);
+    assert.deepEqual(run.brands.map(b => b.name).sort(), ['Blank Cards', 'Hoplark', 'Huel', 'Liquid Death', 'Native', 'Olipop', 'Powerade']);
     assert.equal(run.problems, 1);
     assert.equal(run.samples[0].name, 'Blank Cards');
     assert.match(run.samples[0].problem, /every title came out blank/);
     assert.match(run.samples[0].sample, /\/in\/q1\//);
     ok('the run\'s report — Blank Cards\' unreadable cards with a sample — reads back through /api/reports/linkedin');
+
+    // Native: its saved page was a home-care agency's. Nobody saved; it's
+    // on "Which LinkedIn page is theirs?" with the right page first.
+    const data = async (fn, args) => {
+      const r = await fetch(BASE + '/api/data', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + DASHBOARD_TOKEN }, body: JSON.stringify({ fn, args: args || {} }) });
+      const j = await r.json();
+      if (!j.ok) throw new Error(fn + ': ' + (j.error || r.status));
+      return j.data;
+    };
+    assert.equal(await prisma.contact.count({ where: { brandId: 'b_nat' } }), 0, 'nobody from the care agency');
+    assert.ok(visits.some(v => /keywords=Native/.test(v)), 'looked Native up again');
+    const lp = await data('linkedinPeople');
+    const nat = lp.pageReview.find(e => e.brandId === 'b_nat');
+    assert.equal(nat.why, 'wrong'); assert.equal(nat.pageIndustry, 'Individual and Family Services');
+    assert.equal(nat.saved, 'https://www.linkedin.com/company/native-co./');
+    assert.equal(nat.candidates[0].slug, 'native-cos', 'the page that fits first');
+    assert.equal((await prisma.brand.findUnique({ where: { id: 'b_nat' } })).linkedinUrl, 'https://www.linkedin.com/company/native-co./', 'the run never swaps a saved page itself');
+    const picked = await data('liPagePick', { brandId: 'b_nat', url: 'https://www.linkedin.com/company/native-cos/' });
+    assert.equal(picked.linkedinUrl, 'https://www.linkedin.com/company/native-cos/');
+    assert.equal((await prisma.brand.findUnique({ where: { id: 'b_nat' } })).linkedinUrl, 'https://www.linkedin.com/company/native-cos/');
+    assert.ok(!(await data('linkedinPeople')).pageReview.some(e => e.brandId === 'b_nat'), 'off the list');
+    const again = (await ingest({ action: 'liList', focus: 'electrolyte', research: true, me: { slug: 'leo-z', name: 'Leo Z' } })).j;
+    assert.deepEqual(again.items.map(i => [i.name, i.linkedinUrl]), [['Native', 'https://www.linkedin.com/company/native-cos/']], 'the next run reads it');
+    ok('Native\'s wrong page: nobody saved, on Leo\'s list with the right page first; picking it sends it to the next run');
+
+    // Everything the run did, with the people's names.
+    const detail = await data('liRunDetail', { id: run.id });
+    const ld = detail.brands.find(b => b.name === 'Liquid Death');
+    assert.deepEqual(ld.people.map(p => p.name).sort(), ['Erin Alvarez', 'Hana Sato', 'Mike Cessario']);
+    assert.match(detail.brands.find(b => b.name === 'Native').note, /looks like another company/);
+    assert.equal(detail.brands.find(b => b.name === 'Hoplark').isNew, true);
+    assert.deepEqual(detail.newBrands.map(b => b.name).sort(), ['Hoplark', 'Huel', 'Powerade']);
+    ok('the full list of what the run did: every brand, the people it added, what it skipped and why');
+
+    // Leo's LinkedIn only: the run remembered his account; Zach's is refused.
+    const owner = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liOwner' } })).value);
+    assert.deepEqual([owner.slug, owner.name], ['leo-z', 'Leo Z']);
+    const zach = await ingest({ action: 'liList', focus: '', me: { slug: 'zach-q', name: 'Zach Q' } });
+    assert.equal(zach.status, 403); assert.equal(zach.j.notOwner, true);
+    assert.match(zach.j.error, /runs only on Leo Z's/);
+    assert.equal((await data('linkedinPeople')).liOwner.slug, 'leo-z');
+    ok('the fill runs on Leo\'s LinkedIn only: the first run remembered it, another account is refused');
 
     // Zach's logging-only script on a profile: They accepted, for someone new.
     const pp = await browser.newPage();

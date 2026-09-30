@@ -35,8 +35,13 @@ import { newBoardCode } from '@/lib/board-access'
 import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import { regionFlag } from '@/lib/region'
 import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hints'
-import { readLiLog, readLiResearch, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
+import { readLiLog, readLiResearch, LI_SCRIPT_VERSION, LI_SWEEP_KEY } from '@/lib/li-sweep'
 import { readRuns } from '@/lib/li-report'
+import { companySlug, companyPageUrl } from '@/lib/li-capture'
+import {
+  readJsonSetting, writeJsonSetting, LI_REVIEW_KEY, LI_CONFIRMED_KEY, LI_OWNER_KEY,
+  type Review, type Confirmed, type LiOwner,
+} from '@/lib/li-review'
 import { LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR, linkedinWindows, acceptRates, planWeekDays, type AcceptRates } from '@/lib/plan-week'
 import { findDuplicateGroups, pairKey } from '@/lib/duplicates'
 import { findLinkedInPeople, logLinkedInPerson, undoLinkedInLog, checkNewPerson } from '@/lib/li-log-db'
@@ -7434,7 +7439,103 @@ const handlers: Record<string, Handler> = {
     // (li-report.ts). The card samples stay server-side: they're for the
     // morning check, not this page.
     const runs = (await readRuns(prisma)).slice(0, 3).map(r => ({ ...r, samples: r.samples.map(x => ({ at: x.at, name: x.name, problem: x.problem })) }))
-    return { brands: rows, runs, latestScript: LI_SCRIPT_VERSION }
+    // "Which LinkedIn page is theirs?" — brands the fill wasn't sure of.
+    const review = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
+    const byId = new Map(brands.map(b => [b.id, b]))
+    const pageReview = Object.entries(review)
+      .filter(([id]) => byId.has(id))
+      .map(([id, e]) => {
+        const b = byId.get(id)!
+        return { brandId: id, name: b.name, category: b.category, website: b.website, ...e }
+      })
+      .sort((a, b) => b.at.localeCompare(a.at))
+    const owner = await readJsonSetting<LiOwner | null>(prisma, LI_OWNER_KEY, null)
+    return { brands: rows, runs, latestScript: LI_SCRIPT_VERSION, pageReview, liOwner: owner && (owner.name || owner.slug) ? owner : null }
+  },
+
+  // Leo picks a brand's LinkedIn page off the "Which LinkedIn page is
+  // theirs?" list (or pastes its link). It replaces whatever page was
+  // saved (the list said which), the industry check never questions it
+  // again, and the brand is read on the next run.
+  async liPagePick({ brandId, url }: { brandId: string; url: string }) {
+    const slug = companySlug(String(url || ''))
+    if (!slug) throw new Error('That isn\'t a LinkedIn company page link (linkedin.com/company/…).')
+    const brand = await prisma.brand.findUnique({ where: { id: String(brandId) }, select: { id: true, name: true, linkedinUrl: true } })
+    if (!brand) throw new Error('Brand not found')
+    const others = await prisma.brand.findMany({ where: { linkedinUrl: { not: null }, id: { not: brand.id } }, select: { name: true, linkedinUrl: true } })
+    const owner = others.find(o => companySlug(o.linkedinUrl) === slug)
+    if (owner) throw new Error(`That page is already saved on ${owner.name}. Merge the two brands, or pick another page.`)
+    const linkedinUrl = companyPageUrl(slug)
+    await prisma.brand.update({ where: { id: brand.id }, data: { linkedinUrl } })
+    const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
+    confirmed[brand.id] = slug
+    await writeJsonSetting(prisma, LI_CONFIRMED_KEY, confirmed)
+    const review = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
+    delete review[brand.id]
+    await writeJsonSetting(prisma, LI_REVIEW_KEY, review)
+    // Its last visit rests it for a month; a page Leo just picked should
+    // be read on the next run instead.
+    const log = await readLiLog(prisma)
+    if (log[brand.id]) { delete log[brand.id]; await writeJsonSetting(prisma, LI_SWEEP_KEY, log) }
+    return { ok: true, name: brand.name, linkedinUrl, was: brand.linkedinUrl }
+  },
+
+  // "None of these": the brand has no LinkedIn page. The fill stops
+  // looking, and a wrong page it had saved (named on the button) goes.
+  async liPageNone({ brandId }: { brandId: string }) {
+    const brand = await prisma.brand.findUnique({ where: { id: String(brandId) }, select: { id: true, name: true, linkedinUrl: true } })
+    if (!brand) throw new Error('Brand not found')
+    const review = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
+    const entry = review[brand.id]
+    if (entry?.why === 'wrong' && brand.linkedinUrl) {
+      await prisma.brand.update({ where: { id: brand.id }, data: { linkedinUrl: null } })
+    }
+    const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
+    confirmed[brand.id] = 'none'
+    await writeJsonSetting(prisma, LI_CONFIRMED_KEY, confirmed)
+    delete review[brand.id]
+    await writeJsonSetting(prisma, LI_REVIEW_KEY, review)
+    return { ok: true, name: brand.name, removedPage: entry?.why === 'wrong' ? brand.linkedinUrl : null }
+  },
+
+  // The fill runs on one LinkedIn account (the first one it ran on).
+  // "Not you?" clears it; the next run remembers the account it runs on.
+  async liOwnerReset() {
+    await writeJsonSetting(prisma, LI_OWNER_KEY, {})
+    return { ok: true }
+  },
+
+  // Everything one run did, brand by brand: who it added (from the
+  // contacts it saved during the run), what it skipped and why, and the
+  // brands it made. For "See the full list" on Outreach → People.
+  async liRunDetail({ id }: { id: string }) {
+    const run = (await readRuns(prisma)).find(r => r.id === String(id))
+    if (!run) throw new Error('That run isn\'t in the last ten.')
+    const from = new Date(Date.parse(run.startedAt) - 60e3)
+    const to = new Date(Date.parse(run.lastAt) + 5 * 60e3)
+    const ids = Array.from(new Set(run.brands.map(b => b.brandId).filter(Boolean) as string[]))
+    const people = ids.length
+      ? await prisma.contact.findMany({
+          where: { brandId: { in: ids }, source: 'linkedin', createdAt: { gte: from, lte: to } },
+          select: { brandId: true, name: true, title: true, linkedinUrl: true },
+          orderBy: { createdAt: 'asc' },
+        })
+      : []
+    const made = await prisma.brand.findMany({
+      where: { source: { in: ['linkedin-discover', 'research'] }, createdAt: { gte: from, lte: to } },
+      select: { id: true, name: true, category: true, source: true },
+      orderBy: { createdAt: 'asc' },
+    })
+    const madeIds = new Set(made.map(b => b.id))
+    return {
+      run: { id: run.id, startedAt: run.startedAt, lastAt: run.lastAt, status: run.status, script: run.script, added: run.added },
+      brands: run.brands.map(b => ({
+        name: b.name, brandId: b.brandId || null, added: b.added, seen: b.seen, note: b.note || null, problem: b.problem || null,
+        ms: b.ms ?? null, isNew: !!(b.brandId && madeIds.has(b.brandId)),
+        people: people.filter(p => p.brandId === b.brandId).map(p => ({ name: p.name, title: p.title, linkedinUrl: p.linkedinUrl })),
+      })),
+      newBrands: made.map(b => ({ name: b.name, category: b.category, how: b.source === 'research' ? 'research list' : 'similar pages' })),
+    }
   },
 
   async listDeals() {

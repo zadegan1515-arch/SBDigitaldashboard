@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.16
+// @version      1.17
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -83,7 +83,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.16';
+  var VERSION = '1.17';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -117,6 +117,9 @@
   // LinkedIn's content security policy blocks a page-level fetch to any
   // other site, so the request goes through Tampermonkey instead.
   function post(payload) {
+    return meReady().then(function (me) { return send(Object.assign(me ? { me: me } : {}, payload)); });
+  }
+  function send(payload) {
     return new Promise(function (resolve, reject) {
       GM_xmlhttpRequest({
         method: 'POST',
@@ -129,6 +132,8 @@
           var j = null;
           try { j = JSON.parse(r.responseText); } catch (e) {}
           if (!j) return reject(new Error('The dashboard answered ' + r.status + '.'));
+          // Another LinkedIn account than the one the fill runs on.
+          if (j.notOwner) return reject(new Error(j.error));
           if (j.latest) noteLatest(j.latest);
           resolve(j);
         },
@@ -136,6 +141,56 @@
         ontimeout: function () { reject(new Error('The dashboard took too long to answer.')); },
       });
     });
+  }
+
+  // ---- whose LinkedIn this is ----
+  //
+  // The fill runs on Leo's LinkedIn only (his call, Sep 2026). Every call
+  // says who's signed in; the dashboard remembers the first account and
+  // refuses any other before anything is read or saved. Asked of LinkedIn
+  // the way its own pages ask (/voyager/api/me, once per half hour per
+  // tab), else read off the header's photo. Not knowing never blocks.
+  var ME_KEY = 'sbLiMe';
+  var mePromise = null;
+  function findMember(o, depth) {
+    if (!o || typeof o !== 'object' || depth > 6) return null;
+    if (typeof o.publicIdentifier === 'string') {
+      return { slug: o.publicIdentifier, name: [o.firstName, o.lastName].filter(function (x) { return typeof x === 'string'; }).join(' ') || null };
+    }
+    var keys = Object.keys(o);
+    for (var i = 0; i < keys.length; i++) {
+      var hit = findMember(o[keys[i]], depth + 1);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  function meFromPage() {
+    var img = document.querySelector('img.global-nav__me-photo[alt], .global-nav__me img[alt]');
+    var name = img ? String(img.getAttribute('alt') || '').replace(/\s+/g, ' ').trim() : '';
+    return name && !/^(me|photo|profile)/i.test(name) ? { slug: null, name: name } : null;
+  }
+  function whoAmI() {
+    try {
+      var c = JSON.parse(sessionStorage.getItem(ME_KEY) || 'null');
+      if (c && Date.now() - c.at < 30 * 60000) return Promise.resolve(c.me);
+    } catch (e) {}
+    var m = document.cookie.match(/JSESSIONID="?([^";]+)"?/);
+    var ask = m && typeof fetch === 'function'
+      ? fetch('/voyager/api/me', { credentials: 'include', headers: { 'csrf-token': m[1], accept: 'application/json' } })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (j) { return j ? findMember(j, 0) : null; })
+          .catch(function () { return null; })
+      : Promise.resolve(null);
+    var timeout = new Promise(function (res) { setTimeout(function () { res(null); }, 6000); });
+    return Promise.race([ask, timeout]).then(function (me) {
+      me = me || meFromPage();
+      if (me) { try { sessionStorage.setItem(ME_KEY, JSON.stringify({ me: me, at: Date.now() })); } catch (e) {} }
+      return me;
+    });
+  }
+  function meReady() {
+    if (!mePromise) mePromise = whoAmI().catch(function () { return null; });
+    return mePromise;
   }
 
   // ---- updates ----
@@ -364,11 +419,11 @@
         var links = profileLinks();
         if (links.length) links[links.length - 1].scrollIntoView({ block: 'end' });
         window.scrollTo(0, document.body.scrollHeight);
-        wait(rand(1200, 2200)).then(function () {
+        wait(rand(900, 1600)).then(function () {
           if (halt.stopped) return;
           var more = moreButton();
           if (more) more.click();
-          return wait(more ? rand(1800, 3000) : rand(600, 1200));
+          return wait(more ? rand(1300, 2200) : rand(500, 900));
         }).then(function () {
           var n = count();
           onProgress(n);
@@ -788,9 +843,9 @@
   // the server judges; the brand lookup itself never creates one.
 
   var FILL_KEY = 'sbLiFill';
-  var DAILY_CAP = 75;
-  var BETWEEN_BRANDS = [35, 75];   // seconds
-  var BETWEEN_PAGES = [8, 18];
+  var DAILY_CAP = 100;
+  var BETWEEN_BRANDS = [20, 40];   // seconds
+  var BETWEEN_PAGES = [6, 12];
   // A small company is read whole on its People tab; a big one (the tab
   // never ran out) also gets these two keyword views.
   var PASSES = ['', 'marketing', 'partnerships'];
@@ -1050,13 +1105,16 @@
   function go(job, url, status) {
     var st = job.step;
     if (!url) return finishBrand(job, 'no LinkedIn page');
+    if (leoIsElsewhere(job)) {
+      renderFill(job, 'You\'re using this window — it carries on a minute after you stop.');
+      return later(runFill, 5000);
+    }
     // Twice asked, twice landed somewhere else: the page is gone or
     // renamed. Move on rather than loop.
     if (st.navs >= 2) return finishBrand(job, 'its LinkedIn page would not open');
     st.navs++;
-    saveFill(job);
     renderFill(job, status + '…');
-    later(function () { location.href = url; }, rand(1500, 3500));
+    goTo(job, url);
   }
 
   function fillSearch(item, q) {
@@ -1065,7 +1123,7 @@
     waitFor(function () { return searchCandidates().length || /no results/i.test(pageText(5000)); }, 12000).then(function () {
       var stop = linkedinSaysStop();
       if (stop) return { halt: stop };
-      return post({ action: 'liMatched', brandId: item.brandId, candidates: searchCandidates() });
+      return post({ action: 'liMatched', brandId: item.brandId, recheck: !!loadFill().step.recheck, candidates: searchCandidates() });
     }).then(function (r) {
       var job2 = loadFill();
       if (!sameStep(job2, at0)) return;
@@ -1073,12 +1131,12 @@
       var st = job2.step;
       if (r && r.ok && (r.outcome === 'attached' || r.outcome === 'already')) {
         job2.items[job2.at].linkedinUrl = r.linkedinUrl;
-        job2.step = { phase: 'read', pass: 0, triedAka: st.triedAka, seen: 0, added: 0, navs: 0 };
+        job2.step = { phase: 'read', pass: 0, triedAka: st.triedAka, seen: 0, added: 0, navs: 0, startedAt: st.startedAt, hiddenMs: st.hiddenMs || 0 };
         job2.nextAt = Date.now() + rand(4000, 9000);
         saveFill(job2);
         return runFill();
       }
-      if (!st.triedAka && akaName(item)) {
+      if (r && r.outcome !== 'review' && !st.triedAka && akaName(item)) {
         st.triedAka = true; st.navs = 0;
         job2.nextAt = Date.now() + rand(8000, 15000);
         saveFill(job2);
@@ -1086,7 +1144,9 @@
       }
       finishBrand(job2, r && r.outcome === 'taken'
         ? 'its LinkedIn page is saved on ' + r.by
-        : 'no clear LinkedIn page — do it by hand');
+        : r && r.outcome === 'review'
+          ? 'its saved LinkedIn page looks like another company — pick the right one on Outreach → People'
+          : 'no clear LinkedIn page — pick it on Outreach → People');
     }).catch(fillError);
   }
 
@@ -1132,19 +1192,25 @@
     renderFill(job, 'Reading ' + label);
     fillHalt = { stopped: false };
     var capped = false, rows = [], problem = null, sample = null;
+    readPath = location.pathname;
     waitFor(function () { return count() > 0 || /no results|0 associated members/i.test(pageText(5000)); }, 12000).then(function () {
       return expand(function (n) { setFillStatus('Reading ' + label + ' — ' + n + ' people on screen'); }, fillHalt);
     }).then(function (res) {
       capped = !!(res && res.capped);
       var job1 = loadFill();
       if (!sameStep(job1, at0)) return null;
+      if (location.pathname !== readPath) { readPath = null; later(runFill, 3000); return null; }
+      readPath = null;
       var stop = linkedinSaysStop();
       if (stop) return { halt: stop };
       rows = scrape();
       problem = readingProblem(rows);
       if (problem) sample = sampleText(1500);
       window.scrollTo(0, 0);
-      return post({ action: 'liCapture', brandId: item.brandId, companyUrl: location.href, companyName: companyName(), rows: rows });
+      return post({
+        action: 'liCapture', brandId: item.brandId, companyUrl: location.href, companyName: companyName(),
+        companyIndustry: companyIndustry(), checkPage: true, rows: rows,
+      });
     }).then(function (r) {
       if (!r) return;
       var job2 = loadFill();
@@ -1152,6 +1218,16 @@
       if (r.halt) return pauseFill(job2, r.halt + '. Leave LinkedIn alone for a day before pressing Continue.');
       if (!r.ok) return finishBrand(job2, r.error || 'the dashboard did not save');
       var st = job2.step;
+      // The saved page is another company's (its industry doesn't fit):
+      // nobody saved; look the brand up again, and the results go on the
+      // dashboard's "Which LinkedIn page is theirs?" list.
+      if (r.pageMismatch) {
+        if (st.recheck) return finishBrand(job2, 'its saved LinkedIn page looks like another company (' + r.industry + ') — pick the right one on Outreach → People');
+        job2.step = { phase: 'search', recheck: true, pass: 0, triedAka: false, seen: st.seen, added: st.added, navs: 0, startedAt: st.startedAt, hiddenMs: st.hiddenMs || 0 };
+        job2.nextAt = Date.now() + secs(BETWEEN_PAGES);
+        saveFill(job2);
+        return runFill();
+      }
       st.seen += rows.length;
       st.added += r.added || 0;
       if (problem && !st.problem) { st.problem = problem; st.sample = sample; }
@@ -1192,11 +1268,13 @@
       return fillDiscoverSearch();
     }
     if (ds.navs >= 2) { job.searches.shift(); saveFill(job); return runFill(); }
+    if (leoIsElsewhere(job)) {
+      renderFill(job, 'You\'re using this window — it carries on a minute after you stop.');
+      return later(runFill, 5000);
+    }
     ds.navs++;
-    saveFill(job);
     renderFill(job, 'Searching LinkedIn for new “' + ds.q + '” brands' + (ds.page > 1 ? ' (page ' + ds.page + ')' : '') + '…');
-    var url = searchUrl(ds.q) + (ds.page > 1 ? '&page=' + ds.page : '');
-    later(function () { location.href = url; }, rand(1500, 3500));
+    goTo(job, searchUrl(ds.q) + (ds.page > 1 ? '&page=' + ds.page : ''));
   }
 
   function fillDiscoverSearch() {
@@ -1280,10 +1358,24 @@
     fillHalt.stopped = true;
     clearFill();
     runEvent(job, 'finish', { stopped: !!stopped, newBrands: (job.newBrands || []).length, hiddenMs: job.hiddenMs || 0 });
-    var problems = (job.results || []).filter(function (r) { return r.note; });
+    var results = job.results || [];
+    var problems = results.filter(function (r) { return r.note; });
     freshPanel([
       head(stopped ? 'Run stopped' : 'Run finished'),
-      h('div', { style: 'margin-bottom:6px' }, [b(String(job.added || 0)), ' people added across ' + (job.results || []).length + ' brands.']),
+      h('div', { style: 'margin-bottom:6px' }, [b(String(job.added || 0)), ' people added across ' + results.length + ' brands.']),
+      // Every brand it went through, in order (Leo: "after every run I
+      // want a list of what it did"). Names of the people: the dashboard.
+      results.length
+        ? h('details', { open: true, style: 'display:block;margin-top:6px' }, [
+            h('summary', { style: 'display:list-item;cursor:pointer;font-weight:600', text: 'What it did' }),
+            h('div', { id: 'sblidid', style: 'font-size:12px;margin-top:4px;max-height:220px;overflow:auto' }, results.map(function (r) {
+              return h('div', { style: 'padding:2px 0' }, [
+                r.name,
+                h('span', { style: 'color:' + (r.added ? '#137333' : '#777'), text: ' — ' + (r.added ? r.added + ' added' : r.note || 'nobody new') }),
+              ]);
+            })),
+          ])
+        : null,
       (job.newBrands || []).length
         ? h('details', { style: 'display:block;margin-top:6px' }, [
             h('summary', { style: 'display:list-item;cursor:pointer;font-weight:600;color:#137333', text: job.newBrands.length + (job.newBrands.length === 1 ? ' new brand added' : ' new brands added') }),
@@ -1298,11 +1390,16 @@
             })),
           ])
         : null,
-      h('a', { href: DASH_URL + '#people', target: '_blank', rel: 'noopener', style: BTN2 + ';margin-top:10px', text: 'Open the Under 25 list ↗' }),
+      h('a', { href: DASH_URL + '#people', target: '_blank', rel: 'noopener', style: BTN2 + ';margin-top:10px', text: 'The full list, with names, on the dashboard ↗' }),
       h('div', { style: SMALL, text: stopped
         ? 'Nothing saved is undone. Start again any time — brands it finished are skipped for a month if they gave nothing new.'
         : 'Brands it couldn\'t do are still in Under 25 — open their People tab and press the pill.' }),
     ]);
+  }
+
+  function pauseByHand() {
+    var job = loadFill();
+    if (job && ownsFill(job) && !job.paused) pauseFill(job, 'you paused it. Press Continue to carry on.');
   }
 
   function stopFill() {
@@ -1324,23 +1421,59 @@
     runFill();
   }
 
-  // Any click or key in the run's tab (outside our own panel) is a person
-  // who wants the tab back.
+  // Leo using the run's window (Sep 2026: "it keeps stopping every time I
+  // click"). Clicks, keys, scrolling never pause the run now — only its
+  // Pause button does. They're only noted (for this tab, across page
+  // loads): while Leo used the window in the last minute, the run doesn't
+  // take it to another page, and a read whose page he moved away from is
+  // dropped and redone when he's done.
+  var HUMAN_KEY = 'sbLiHuman';
+  var IDLE_MS = 60000;
   function onHuman(e) {
     if (!e.isTrusted) return;
     var t = e.target;
     if (t && t.closest && t.closest('.sb-li-ui')) return;
-    var job = loadFill();
-    if (!ownsFill(job) || job.paused) return;
-    pauseFill(job, 'you clicked or typed in this tab. Press Continue to carry on — or start it in a tab you leave alone.');
+    try { sessionStorage.setItem(HUMAN_KEY, String(Date.now())); } catch (err) {}
   }
-  document.addEventListener('mousedown', onHuman, true);
-  document.addEventListener('keydown', onHuman, true);
+  function humanBusy() {
+    var at = 0;
+    try { at = Number(sessionStorage.getItem(HUMAN_KEY)) || 0; } catch (e) {}
+    return Date.now() - at < IDLE_MS;
+  }
+  // Leo has taken the window somewhere the run didn't send it, and used it
+  // in the last minute: leave him be. On the run's own page (he only
+  // clicked or scrolled) the run carries straight on.
+  function leoIsElsewhere(job) {
+    return !!(job && job.navPath) && location.pathname !== job.navPath && humanBusy();
+  }
+  function goTo(job, url) {
+    try { job.navPath = new URL(url, location.href).pathname; } catch (e) { job.navPath = null; }
+    saveFill(job);
+    later(function () { location.href = url; }, rand(1500, 3500));
+  }
+  ['mousedown', 'keydown', 'wheel', 'touchstart'].forEach(function (ev) {
+    document.addEventListener(ev, onHuman, { capture: true, passive: true });
+  });
+  // The page a read started on; if it changes under the read, stop it.
+  var readPath = null;
 
   function setFillStatus(text) { if (fillStatusEl) fillStatusEl.textContent = text; }
 
   // Rebuilt only when something visible changes; the countdown and the
   // scroll count just update the status line.
+  // Why a brand is where it is in the line (Leo, Sep 2026: "why is Native
+  // under electrolyte brands" — it was on the Schedule, which goes first).
+  function whyItem(job, item) {
+    if (!item) return '';
+    if (item.planned) {
+      var d = new Date(item.planned + 'T12:00:00');
+      return 'on the Schedule for ' + d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' and short on people';
+    }
+    if (item.research) return 'from the research list' + (item.lane ? ' (' + item.lane + ')' : '');
+    if (item.focus) return 'a “' + (job.focus || 'focus') + '” brand';
+    return 'under 25 people, emptiest first';
+  }
+
   function renderFill(job, status) {
     if (!job) return;
     var hiddenMin = Math.floor((job.hiddenMs || 0) / 60000);
@@ -1349,13 +1482,18 @@
       return setFillStatus(status);
     }
     var n = job.items.length, at = Math.min(job.at, n);
-    var focusN = job.items.filter(function (i) { return i.focus; }).length;
+    var focusN = job.items.filter(function (i) { return i.focus && !i.planned; }).length;
+    var plannedN = job.items.filter(function (i) { return i.planned; }).length;
+    var doneOf = function (test) { return job.items.slice(0, at).filter(test).length; };
     var pct = n ? Math.round(at / n * 100) : 100;
+    var cur = at < n ? job.items[at] : null;
     fillStatusEl = h('div', { style: 'font-size:12px;margin:8px 0;color:' + (job.paused ? '#b00' : '#555'), text: status });
     var p = freshPanel([
       head('Filling brands from LinkedIn'),
       h('div', { style: 'margin-bottom:4px' }, [b(String(at)), ' of ' + n + ' brands · ', b(String(job.added || 0)), ' people added']),
-      focusN ? h('div', { style: 'font-size:12px;color:#555', text: '“' + (job.focus || 'focus') + '” brands first: ' + Math.min(at, focusN) + ' of ' + focusN + ' done' }) : null,
+      plannedN ? h('div', { style: 'font-size:12px;color:#555', text: 'First, the Schedule\'s brands that are short on people: ' + doneOf(function (i) { return i.planned; }) + ' of ' + plannedN + ' done' }) : null,
+      focusN ? h('div', { style: 'font-size:12px;color:#555', text: (plannedN ? 'Then ' : '') + '“' + (job.focus || 'focus') + '” brands: ' + doneOf(function (i) { return i.focus && !i.planned; }) + ' of ' + focusN + ' done' }) : null,
+      cur ? h('div', { id: 'sblinow', style: 'font-size:12px;color:#111;margin-top:4px' }, [b(cur.name), ' — ' + whyItem(job, cur)]) : null,
       h('div', { style: 'font-size:12px;color:#555', text: 'Today: ' + job.doneToday + ' of ' + DAILY_CAP + ' brands' }),
       (job.newBrands || []).length ? h('div', { style: 'font-size:12px;color:#137333', text: job.newBrands.length + ' new brand' + (job.newBrands.length === 1 ? '' : 's') + ' found and added' }) : null,
       h('div', { style: 'height:6px;background:#eee;border-radius:99px;overflow:hidden;margin-top:6px' }, [
@@ -1365,9 +1503,11 @@
       hiddenMin >= 2
         ? h('div', { id: 'sblihidden', style: 'font-size:12px;margin:0 0 8px;padding:6px 8px;border-radius:6px;background:#fff4e5;color:#7a4b00', text: 'Slowed while this window was hidden: ' + hiddenMin + ' min so far. Keep it in view — a corner showing is enough; minimized or fully covered, Chrome slows it.' })
         : null,
-      job.paused ? h('button', { id: 'sblifillgo', style: BTN, text: 'Continue', onclick: continueFill }) : null,
+      job.paused
+        ? h('button', { id: 'sblifillgo', style: BTN, text: 'Continue', onclick: continueFill })
+        : h('button', { id: 'sblifillpause', style: BTN2, text: 'Pause', onclick: pauseByHand }),
       h('button', { id: 'sblifillstop', style: BTN2 + ';margin-top:6px;color:#b00', text: 'Stop the run', onclick: stopFill }),
-      h('div', { style: SMALL, text: 'Runs in this tab only; clicking or typing here pauses it. About ' + DAILY_CAP + ' brands a day, under a minute apart. It pauses if LinkedIn shows a check or a limit.' }),
+      h('div', { style: SMALL, text: 'Clicking, scrolling or typing here doesn\'t stop it; if you open another page in this window, it waits until you\'ve left it alone for a minute, then goes back. About ' + DAILY_CAP + ' brands a day. It pauses by itself if LinkedIn shows a check or a limit.' }),
     ]);
     p.setAttribute('data-fill', key);
   }
@@ -1508,6 +1648,8 @@
   var lastPath = '';
   function tick() {
     ensurePill();
+    // Leo moved the run's window to another page mid-read: stop scrolling.
+    if (readPath && location.pathname !== readPath && fillHalt) fillHalt.stopped = true;
     if (location.pathname !== lastPath) {
       // A different page: whatever the panel said is about the old one.
       if (lastPath && !busy && !fillHere()) { closePanel(); lastRead = null; }

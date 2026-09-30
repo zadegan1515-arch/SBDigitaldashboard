@@ -26,8 +26,11 @@
 //      the panel.
 //   9. "Fill brands by itself": finds a missing company page by search,
 //      reads each brand's People tab, saves by brandId, logs each visit,
-//      and finishes; a click in the tab pauses it and Continue resumes;
-//      LinkedIn's limit page pauses it before anything is saved.
+//      and finishes; a click in the tab no longer pauses it (Leo, Sep 30:
+//      "it keeps stopping every time I click"), its Pause button does, and
+//      Continue resumes; if Leo takes the window to another page it waits
+//      until he's left it alone, then goes back; LinkedIn's limit page
+//      pauses it before anything is saved.
 //  10. Finding new brands: a keyword search adds Liquid I.V. to the front
 //      of the line, Clase Azul's lookalikes (on its People page) add Jose
 //      Cuervo at the end, and each new brand's people are read in the
@@ -57,6 +60,13 @@
 //      is counted into the brand's report, and #sb-fill arriving on a page
 //      that's already loaded (the dashboard's button on a window already
 //      at the feed) still starts the run.
+//  17. Leo's LinkedIn only: every call says who's signed in (asked of
+//      LinkedIn's /voyager/api/me), and the dashboard turning an account
+//      away stops the run before it starts.
+//  18. A saved page that's another company's (Native had a home-care
+//      agency's): nobody saved, the brand is looked up again with
+//      recheck, and it's left for Leo's list; the end of the run lists
+//      every brand and what happened.
 //   6. The pill sits bottom-left, clear of LinkedIn's Messaging bar; the
 //      Tampermonkey menu opens the same panel; and a copy running without
 //      its @grant lines (pasted under Tampermonkey's sample) says so.
@@ -79,7 +89,9 @@ catch (e) {
 const SCRIPT = fs.readFileSync(path.join(__dirname, 'linkedin-capture.user.js'), 'utf8')
   .replace("'https://sb-digitaldashboard.vercel.app/api/ingest'", "'http://127.0.0.1:4622/api/ingest'")
   // The pauses are for LinkedIn, not for a test.
-  .replace(/function rand\(a, b\) \{[^}]*\}/, 'function rand() { return 30; }');
+  .replace(/function rand\(a, b\) \{[^}]*\}/, 'function rand() { return 30; }')
+  // A minute's quiet after Leo is too long for a test.
+  .replace('var IDLE_MS = 60000;', 'var IDLE_MS = 3000;');
 
 // ---- fake LinkedIn ------------------------------------------------
 function card(slug, name, headline, degree) {
@@ -132,6 +144,8 @@ function page(people, title, extra) {
 }
 
 const sent = [];
+// Who the fake LinkedIn says is signed in (null: nobody it will say).
+let signedIn = null;
 const versionAsks = [];
 const runEvents = [];
 // What the fake dashboard says the current script is.
@@ -165,6 +179,10 @@ const server = http.createServer((req, res) => {
       if (body.action === 'liRun') { runEvents.push(body); return res.end(JSON.stringify({ ok: true, latest: latestVersion })); }
       sent.push(body);
       if (body.token !== 'test-token') { res.writeHead(401); return res.end('{}'); }
+      // Like the dashboard: another LinkedIn account is refused before anything.
+      if (body.me && body.me.slug === 'zach-q' && /^li(List|Capture|Preview|Matched|Swept|Discover|Research)$/.test(body.action)) {
+        return res.end(JSON.stringify({ ok: false, notOwner: true, error: 'This isn\'t the LinkedIn account the fill runs on — it runs only on Leo Z\'s, and this is Zach Q\'s. Nothing was read or saved.' }));
+      }
       if (body.action === 'liPreview' && /casamigos/.test(body.companyUrl || '')) {
         return res.end(JSON.stringify({
           ok: true, brand: null, matchedBy: null, notFound: body.brandName || null, suggestions: [], createName: body.brandName || body.companyName,
@@ -191,11 +209,17 @@ const server = http.createServer((req, res) => {
       if (body.action === 'liList') {
         return res.end(JSON.stringify({ ok: true, items: fillItems, cap: 25, noPage: fillItems.filter(i => !i.linkedinUrl && !i.research).length, resting: 0, research: fillItems.filter(i => i.research).length }));
       }
+      if (body.action === 'liMatched' && body.recheck) {
+        return res.end(JSON.stringify({ ok: true, outcome: 'review', suggested: 'Native', candidates: 2 }));
+      }
       if (body.action === 'liMatched') {
         const hit = (body.candidates || []).find(c => c.name === 'LMNT');
         return res.end(JSON.stringify(hit
           ? { ok: true, outcome: 'attached', how: 'exact', name: 'LMNT', linkedinUrl: 'https://www.linkedin.com/company/drinklmnt/' }
           : { ok: true, outcome: 'unclear' }));
+      }
+      if (body.action === 'liCapture' && body.brandId === 'b-nat' && body.checkPage) {
+        return res.end(JSON.stringify({ ok: true, pageMismatch: true, industry: body.companyIndustry, added: 0, have: 0, cap: 25 }));
       }
       if (body.action === 'liCapture' && body.brandId) {
         return res.end(JSON.stringify({ ok: true, brand: { id: body.brandId, name: body.companyName }, added: 2, have: 12, cap: 25, targetsShelved: 0 }));
@@ -228,7 +252,25 @@ const server = http.createServer((req, res) => {
       '} });' +
       '</script></head><body><main><h1 class="org-top-card-summary__title">Scrub Brand</h1><ul>' + FIRST + '</ul></main></body></html>');
   }
+  // LinkedIn's own "who am I" call, answered for whoever the test signs in.
+  if (req.url === '/voyager/api/me') {
+    if (!signedIn || !/JSESSIONID/.test(req.headers.cookie || '') || !req.headers['csrf-token']) { res.writeHead(401); return res.end('{}'); }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ plainId: 1, miniProfile: { firstName: signedIn.first, lastName: signedIn.last, publicIdentifier: signedIn.slug } }));
+  }
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  if (/^\/company\/native-co\.\/people\/?/.test(req.url)) {
+    return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Native</h1>' +
+      '<div class="org-top-card-summary-info-list"><div class="org-top-card-summary-info-list__info-item">Individual and Family Services</div></div><ul>' +
+      '<li><section><a href="https://www.linkedin.com/in/cg-1/">Carla Gray</a> <span>• 3rd+</span><div>Caregiver</div></section></li>' +
+      '</ul></main></body></html>');
+  }
+  if (/^\/search\/results\/companies\/\?keywords=Native(&|$)/.test(req.url)) {
+    return res.end('<!doctype html><html><body><main><ul>' +
+      '<li><a href="https://www.linkedin.com/company/native-co./"><span>Native</span></a><div>Individual and Family Services • Phoenix</div><div>1K followers</div></li>' +
+      '<li><a href="https://www.linkedin.com/company/native-cos/"><span>Native</span></a><div>Personal Care Product Manufacturing • San Francisco</div><div>60K followers</div></li>' +
+      '</ul></main></body></html>');
+  }
   if (/^\/company\/liquid-death\/people\/?/.test(req.url)) return res.end(page(true));
   if (/^\/company\/casamigos-tequila\/people\/?/.test(req.url)) return res.end(page(true, 'Casamigos Tequila'));
   if (/^\/company\/drinklmnt\/people\/?/.test(req.url)) return res.end(page(true, 'LMNT'));
@@ -549,33 +591,67 @@ const GM_SHIM = `
     }
     ok('a run finds a missing page by search, reads each brand, saves by brandId and finishes');
 
-    // 9b. A click in the tab pauses it; Continue picks it back up.
+    // 9b. Clicks don't stop it; the Pause button does; leaving the page waits.
     {
       fillItems = [{ brandId: 'b-slow', name: 'Slow Brand', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/slow-brand/', contacts: 0, focus: false }];
-      const before = sent.length;
-      const pg = await browser.newPage();
+      const startRun = async (pg) => {
+        await pg.goto('http://127.0.0.1:4622/feed/');
+        await pg.click('#sblipill');
+        await pg.click('#sblifillopen');
+        await pg.fill('#sblifocus', '');
+        await pg.uncheck('#sblilook');
+        await pg.fill('#sbliwords', '');
+        await pg.click('#sblifilllook');
+        await pg.click('#sblifillstart');
+        await pg.waitForURL(/slow-brand\/people/);
+        await pg.waitForFunction(() => /Reading Slow Brand/.test((document.getElementById('sbli-panel') || {}).innerText || ''));
+      };
+      const finished = (pg) => pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 60000 });
+
+      // A click (and a scroll) on the page: it just carries on.
+      let before = sent.length;
+      let pg = await browser.newPage();
       await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
-      await pg.goto('http://127.0.0.1:4622/feed/');
-      await pg.click('#sblipill');
-      await pg.click('#sblifillopen');
-      await pg.fill('#sblifocus', '');
-      await pg.uncheck('#sblilook');
-      await pg.fill('#sbliwords', '');
-      await pg.click('#sblifilllook');
-      await pg.click('#sblifillstart');
-      await pg.waitForURL(/slow-brand\/people/);
-      await pg.waitForFunction(() => /Reading Slow Brand/.test((document.getElementById('sbli-panel') || {}).innerText || ''));
+      await startRun(pg);
       await pg.mouse.click(700, 300);
-      await pg.waitForFunction(() => /Paused: you clicked/.test(document.getElementById('sbli-panel').innerText));
+      await pg.mouse.wheel(0, 200);
+      await finished(pg);
+      assert.equal(sent.slice(before).filter(b => b.action === 'liCapture').length, 1, 'a click didn\'t stop it');
+      assert.match(await pg.textContent('#sbli-panel'), /What it did/);
+      assert.match(await pg.textContent('#sblidid'), /Slow Brand — 2 added/);
+      await pg.close();
+
+      // Its Pause button pauses it; Continue carries on.
+      before = sent.length;
+      pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await startRun(pg);
+      await pg.click('#sblifillpause');
+      await pg.waitForFunction(() => /Paused: you paused it/.test(document.getElementById('sbli-panel').innerText));
       await pg.waitForTimeout(4000);
       assert.equal(sent.slice(before).filter(b => b.action === 'liCapture').length, 0, 'nothing saved while paused');
-      assert.match(pg.url(), /slow-brand\/people/);
       await pg.click('#sblifillgo');
-      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 60000 });
+      await finished(pg);
       assert.equal(sent.slice(before).filter(b => b.action === 'liCapture').length, 1);
       await pg.close();
+
+      // Leo takes the window to another page mid-read: that read is
+      // dropped, the run waits while he's busy there, then goes back.
+      before = sent.length;
+      pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await startRun(pg);
+      await pg.mouse.click(700, 300);
+      await pg.goto('http://127.0.0.1:4622/company/liquid-death/');
+      await pg.waitForFunction(() => /You.re using this window/.test((document.getElementById('sbli-panel') || {}).innerText || ''), null, { timeout: 15000 });
+      assert.match(pg.url(), /liquid-death\/$/, 'it left Leo where he was');
+      await pg.waitForURL(/slow-brand\/people/, { timeout: 20000 });
+      await finished(pg);
+      assert.equal(sent.slice(before).filter(b => b.action === 'liCapture').length, 1, 'read once, on the right page');
+      assert.ok(sent.slice(before).filter(b => b.action === 'liCapture').every(b => /slow-brand/.test(b.companyUrl)));
+      await pg.close();
     }
-    ok('a click in the run\'s tab pauses it; Continue carries on');
+    ok('clicks don\'t stop the run; Pause does; if Leo takes the window elsewhere it waits, then goes back');
 
     // 9c. LinkedIn's limit page: paused, nothing saved.
     {
@@ -846,6 +922,59 @@ const GM_SHIM = `
       await pg.close();
     }
     ok('hidden time goes into the report; #sb-fill on a loaded page starts the run');
+
+    // 17. Leo's LinkedIn only.
+    {
+      fillItems = [{ brandId: 'b-ld', name: 'Liquid Death', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/liquid-death/', contacts: 3, focus: false }];
+      const cookie = 'document.cookie = "JSESSIONID=\\"ajax:123\\"; path=/";';
+      signedIn = { first: 'Leo', last: 'Z', slug: 'leo-z' };
+      let before = sent.length;
+      let pg = await browser.newPage();
+      await pg.addInitScript(cookie + '\n' + GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/#sb-fill');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 60000 });
+      const calls = sent.slice(before);
+      assert.ok(calls.length && calls.every(b => b.me && b.me.slug === 'leo-z' && b.me.name === 'Leo Z'), 'every call says who\'s signed in');
+      await pg.close();
+
+      signedIn = { first: 'Zach', last: 'Q', slug: 'zach-q' };
+      before = sent.length;
+      pg = await browser.newPage();
+      await pg.addInitScript(cookie + '\n' + GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/#sb-fill');
+      await pg.waitForFunction(() => /isn.t the LinkedIn account the fill runs on/.test((document.getElementById('sbli-panel') || {}).innerText || ''), null, { timeout: 20000 });
+      assert.equal(sent.slice(before).filter(b => b.action === 'liCapture').length, 0);
+      assert.match(pg.url(), /\/feed\//, 'went nowhere');
+      await pg.close();
+      signedIn = null;
+    }
+    ok('every call says whose LinkedIn it is; another account is turned away before anything runs');
+
+    // 18. A saved page that's another company's.
+    {
+      fillItems = [{ brandId: 'b-nat', name: 'Native', aka: null, category: 'beauty', linkedinUrl: 'https://www.linkedin.com/company/native-co./', contacts: 0, focus: false, planned: '2026-09-30' }];
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      await pg.uncheck('#sbliresearch');
+      await pg.uncheck('#sblilook');
+      await pg.click('#sblifilllook');
+      await pg.click('#sblifillstart');
+      await pg.waitForFunction(() => /Native — on the Schedule for/.test((document.getElementById('sblinow') || {}).textContent || ''), null, { timeout: 15000 });
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 60000 });
+      const run = sent.slice(before).filter(b => /^li(Capture|Matched|Swept)$/.test(b.action)).map(b => b.action + (b.checkPage ? ':checkPage' : '') + (b.recheck ? ':recheck' : ''));
+      assert.deepEqual(run, ['liCapture:checkPage', 'liMatched:recheck', 'liSwept']);
+      const cap = sent.slice(before).find(b => b.action === 'liCapture');
+      assert.equal(cap.companyIndustry, 'Individual and Family Services');
+      const swept = sent.slice(before).find(b => b.action === 'liSwept');
+      assert.match(swept.note, /looks like another company — pick the right one on Outreach → People/);
+      assert.match(await pg.textContent('#sblidid'), /Native — its saved LinkedIn page looks like another company/);
+      await pg.close();
+    }
+    ok('a saved page that\'s another company\'s saves nobody and goes on Leo\'s list; the panel says why a brand is next');
 
     // 6. No @grant lines: runs, shows the pill, says to reinstall.
     const bare = await browser.newPage();
