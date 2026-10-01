@@ -253,7 +253,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   page, unclear, won't open, nobody readable, nobody new) the run searches the parent's People tab for the
   brand's name, once (`tryParent`/`endBrand`, mark `parentTried`); a research name with no page of its own
   but a parent becomes a brand (`liResearch` outcome `parent`, linkedinUrl null). The parent's page is found
-  once (`liParent`, `decideParentPage`: exact name, most followed) and kept in Setting `liParentPages`;
+  once (`liParent`, `decideParentPage`: exact name or aka — Monster Beverage's page is "Monster Energy" — most followed) and kept in Setting `liParentPages`;
+  not found → the note names what LinkedIn showed (`shown`) and the brand stays due for the next run;
   parent reads send `viaParent` (never saved as the brand's page, no page check) and report `via`. A brand
   or research name read before this existed, with nobody added, is due again. Then `liCapture` by
   brandId, `liSwept` → Setting `liSweepLog` (`src/lib/li-sweep.ts`; any brand read by a current

@@ -237,6 +237,8 @@ t("a parent's own page: its exact name, the most followed", () => {
   assert.equal(decideParentPage(diageo, [c('diageo-bar', 'Diageo Bar Academy', 'Education')]), null)
   const beam = PARENTS.find(p => p.name === 'Suntory Global Spirits')
   assert.equal(decideParentPage(beam, [c('beam-suntory', 'Beam Suntory', 'Beverage Manufacturing • 500K followers')]).slug, 'beam-suntory', 'its old name')
+  const monster = PARENTS.find(p => p.name === 'Monster Beverage')
+  assert.equal(decideParentPage(monster, [c('monster-energy', 'Monster Energy', 'Food and Beverage Services • 1M followers')]).slug, 'monster-energy', 'its page goes by Monster Energy')
 })
 
 // --- the research list -------------------------------------------------

@@ -207,10 +207,10 @@ const server = http.createServer((req, res) => {
       }
       if (body.action === 'liParent') {
         const hit = (body.candidates || []).find(c => c.name === 'Diageo');
-        return res.end(JSON.stringify(hit ? { ok: true, slug: 'diageo', name: 'Diageo' } : { ok: true, slug: null }));
+        return res.end(JSON.stringify(hit ? { ok: true, slug: 'diageo', name: 'Diageo' } : { ok: true, slug: null, shown: (body.candidates || []).slice(0, 3).map(c => c.name) }));
       }
-      if (body.action === 'liCapture' && body.brandId === 'b-cm' && /empty-co/.test(body.companyUrl || '')) {
-        return res.end(JSON.stringify({ ok: true, brand: { id: 'b-cm', name: 'Captain Morgan' }, added: 0, have: 0, cap: 25 }));
+      if (body.action === 'liCapture' && /^b-(cm|rg)$/.test(body.brandId) && /empty-co/.test(body.companyUrl || '')) {
+        return res.end(JSON.stringify({ ok: true, brand: { id: body.brandId, name: 'Captain Morgan' }, added: 0, have: 0, cap: 25 }));
       }
       if (body.action === 'liResearch') {
         const hit = (body.candidates || []).find(c => c.name === body.name && /Beverage/.test(c.subtitle));
@@ -303,6 +303,12 @@ const server = http.createServer((req, res) => {
     return res.end('<!doctype html><html><body><main><ul>' + (/Diageo/.test(req.url)
       ? '<li><a href="https://www.linkedin.com/company/diageo/"><span>Diageo</span></a><div>Beverage Manufacturing • London</div><div>2M followers</div></li>'
       : '<li>No results found</li>') + '</ul></main></body></html>');
+  }
+  // A parent whose LinkedIn page goes by another name (Monster Beverage = "Monster Energy").
+  if (/^\/search\/results\/companies\/\?keywords=Monster%20Beverage/.test(req.url)) {
+    return res.end('<!doctype html><html><body><main><ul>' +
+      '<li><a href="https://www.linkedin.com/company/monster-energy/"><span>Monster Energy</span></a><div>Food and Beverage Services • Corona</div><div>1M followers</div></li>' +
+      '</ul></main></body></html>');
   }
   if (/^\/company\/diageo\/people\/\?keywords=/.test(req.url)) return res.end(page(true, 'Diageo', '<h2>31,000 associated members</h2>'));
   if (/^\/company\/empty-co\/people\/?/.test(req.url)) {
@@ -1075,6 +1081,32 @@ const GM_SHIM = `
       await pg.close();
     }
     ok('brands under a parent company are read on the parent\'s People tab, searched for their name');
+
+    // 21. A parent the search can't place: the note names what LinkedIn
+    // showed, and the brand isn't marked as tried, so the next run retries.
+    {
+      fillItems = [
+        { brandId: 'b-rg', name: 'Reign', aka: null, category: 'energy', linkedinUrl: 'https://www.linkedin.com/company/empty-co/', contacts: 0, focus: false, parent: { name: 'Monster Beverage', search: 'Monster Beverage Corporation', slug: null } },
+      ];
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      await pg.uncheck('#sbliresearch');
+      await pg.uncheck('#sblilook');
+      await pg.fill('#sblifocus', '');
+      await pg.click('#sblifilllook');
+      await pg.click('#sblifillstart');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 90000 });
+      await pg.waitForTimeout(300);
+      const sw = sent.slice(before).find(b => b.action === 'liSwept' && b.brandId === 'b-rg');
+      assert.match(sw.note, /could not find Monster Beverage on LinkedIn \(LinkedIn showed: Monster Energy\)/);
+      assert.equal(sw.parentTried, false, 'not tried: the next run looks again');
+      await pg.close();
+    }
+    ok('a parent page the search can\'t place names what LinkedIn showed and is retried');
 
     // 6. No @grant lines: runs, shows the pill, says to reinstall.
     const bare = await browser.newPage();

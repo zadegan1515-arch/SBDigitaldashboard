@@ -44,7 +44,7 @@ export const PARENTS: Parent[] = [
   { name: 'Constellation Brands', search: 'Constellation Brands', brands: ['Modelo', 'Corona', 'Pacifico'] },
   { name: 'HEINEKEN USA', search: 'HEINEKEN USA', aka: ['Heineken'], brands: ['Heineken', 'Dos Equis', 'Tecate'] },
   { name: 'Boston Beer Company', search: 'The Boston Beer Company', aka: ['Boston Beer'], brands: ['Truly', 'Twisted Tea', 'Samuel Adams|Sam Adams', 'Dogfish Head'] },
-  { name: 'Monster Beverage', search: 'Monster Beverage Corporation', aka: ['Monster Beverage'], brands: ['Monster Energy|Monster', 'Reign|Reign Total Body Fuel', 'NOS Energy|NOS', 'Bang Energy|Bang'] },
+  { name: 'Monster Beverage', search: 'Monster Beverage Corporation', aka: ['Monster Beverage', 'Monster Energy'], brands: ['Monster Energy|Monster', 'Reign|Reign Total Body Fuel', 'NOS Energy|NOS', 'Bang Energy|Bang'] },
   { name: 'PepsiCo', search: 'PepsiCo', brands: ['Rockstar Energy|Rockstar', 'Gatorade', 'Propel'] },
   { name: 'The Coca-Cola Company', search: 'The Coca-Cola Company', aka: ['Coca-Cola'], brands: ['Powerade', 'BodyArmor', 'Vitaminwater', 'Smartwater'] },
   { name: 'Keurig Dr Pepper', search: 'Keurig Dr Pepper', brands: ['CORE Hydration|Core Water', 'Ghost Energy|Ghost'] },

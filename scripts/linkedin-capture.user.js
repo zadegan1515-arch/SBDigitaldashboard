@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.20
+// @version      1.21
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -83,7 +83,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.20';
+  var VERSION = '1.21';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1193,7 +1193,13 @@
       if (!sameStep(job2, at0)) return;
       if (r && r.halt) return pauseFill(job2, r.halt + '. Leave LinkedIn alone for a day before pressing Continue.');
       var st = job2.step;
-      if (!r || !r.ok || !r.slug) return finishBrand(job2, (st.ownNote ? st.ownNote + '; ' : '') + 'could not find ' + item.parent.name + ' on LinkedIn');
+      if (!r || !r.ok || !r.slug) {
+        // Not tried: the parent's page wasn't found, so the next run looks
+        // again; the note says what LinkedIn showed, for the morning check.
+        st.parentTried = false;
+        var shown = r && r.shown && r.shown.length ? ' (LinkedIn showed: ' + r.shown.slice(0, 3).join(', ') + ')' : '';
+        return finishBrand(job2, (st.ownNote ? st.ownNote + '; ' : '') + 'could not find ' + item.parent.name + ' on LinkedIn' + shown);
+      }
       job2.items.forEach(function (i) { if (i.parent && i.parent.name === item.parent.name) i.parent.slug = r.slug; });
       st.phase = 'read'; st.navs = 0;
       job2.nextAt = Date.now() + secs(BETWEEN_PAGES);

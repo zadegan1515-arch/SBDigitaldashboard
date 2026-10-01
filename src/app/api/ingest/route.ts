@@ -630,6 +630,8 @@ export async function POST(req: NextRequest) {
     const restsNow = (b: { id: string; name: string; aka: string | null }) => {
       const m = log[b.id]
       if (!liResting(m)) return false
+      // A parent whose page wasn't found (script ≤1.20 marked it tried anyway).
+      if (m && !m.added && /could not find .+ on LinkedIn/.test(m.note || '') && parentOf(b.name, b.aka)) return false
       return !(m && !m.added && !m.parentTried && parentOf(b.name, b.aka))
     }
     const resting = underCap.filter(restsNow).length
@@ -1050,7 +1052,7 @@ export async function POST(req: NextRequest) {
       }))
       .filter((c: LiCompany) => c.slug && c.name)
     const pick = decideParentPage(parent, candidates)
-    if (!pick) return NextResponse.json({ ok: true, slug: null, candidates: candidates.length }, { headers: cors })
+    if (!pick) return NextResponse.json({ ok: true, slug: null, candidates: candidates.length, shown: candidates.slice(0, 3).map(c => c.name) }, { headers: cors })
     const pages = await readJsonSetting<Record<string, string>>(prisma, LI_PARENT_PAGES_KEY, {})
     pages[parent.name] = pick.slug
     await writeJsonSetting(prisma, LI_PARENT_PAGES_KEY, pages)
