@@ -17,15 +17,14 @@ export async function GET(req: Request) {
     const code = params.get('code')
     const who = await brandForCode(code)
     if (!who) return NextResponse.json({ ok: false, error: 'code' }, { status: 401 })
-    // With the gate on, a work email is required too, and every open is
-    // logged (who's viewing = that email + the code's brand).
-    let visitId: string | null = null
-    if (gateEnabled()) {
-      const email = String(params.get('email') || '').trim()
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ ok: false, error: 'email' }, { status: 401 })
-      const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || null
-      visitId = await logBoardVisit({ brandId: who.brand?.id, email, code, ip })
-    }
+    // With the gate on, a work email is required too. Every open is logged
+    // either way (gate off: the code's brand if a link carried one, else an
+    // anonymous visitor) so the Show Board tab can count total visits.
+    const email = String(params.get('email') || '').trim()
+    const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    if (gateEnabled() && !validEmail) return NextResponse.json({ ok: false, error: 'email' }, { status: 401 })
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || null
+    const visitId = await logBoardVisit({ brandId: who.brand?.id, email: validEmail ? email : null, code, ip })
     const r = await allShows()
     const shows = r.shows.map(publicShow)
     return NextResponse.json(

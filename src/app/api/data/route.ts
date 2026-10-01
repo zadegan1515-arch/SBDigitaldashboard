@@ -7566,7 +7566,8 @@ const handlers: Record<string, Handler> = {
     const ny = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
     const dayStart = new Date(now.getTime() -
       (ny.getHours() * 3600e3 + ny.getMinutes() * 60e3 + ny.getSeconds() * 1e3))
-    const [visits, brandsTodayRows, last7, requestCount, picked] = await Promise.all([
+    const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    const [visitRows, brandsTodayRows, last7, requestCount, picked, total, today, recent, people] = await Promise.all([
       prisma.boardVisit.findMany({
         orderBy: { createdAt: 'desc' },
         take: Math.min(Number(limit) || 50, 200),
@@ -7585,7 +7586,28 @@ const handlers: Record<string, Handler> = {
         where: { notes: { contains: 'sponsor page' } },
         select: { crmLeadId: true, artist: true, school: true, eventDate: true },
       }),
+      prisma.boardVisit.count(),
+      prisma.boardVisit.count({ where: { createdAt: { gte: dayStart } } }),
+      prisma.boardVisit.findMany({ where: { createdAt: { gt: monthAgo } }, select: { createdAt: true, lastSeenAt: true } }),
+      // Unique visitors, all time: an email when we have one, else the IP.
+      prisma.boardVisit.findMany({ select: { email: true, ip: true, brandId: true }, distinct: ['email', 'ip', 'brandId'] }),
     ])
+    // Visits per New York day, oldest first, for the 30-day chart.
+    const nyKey = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+    const perDay = new Map<string, number>()
+    for (const v of recent) perDay.set(nyKey(v.createdAt), (perDay.get(nyKey(v.createdAt)) || 0) + 1)
+    const daily: { day: string; n: number }[] = []
+    const todayNoon = Date.parse(nyKey(now) + 'T12:00:00Z')
+    for (let i = 29; i >= 0; i--) {
+      const k = new Date(todayNoon - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      daily.push({ day: k, n: perDay.get(k) || 0 })
+    }
+    // Average time on the board, heartbeat-timed visits only (last 30 days).
+    const timed = recent.filter(v => v.lastSeenAt).map(v => Math.max(1, (+v.lastSeenAt! - +v.createdAt) / 60000))
+    const avgMinutes = timed.length ? Math.round(timed.reduce((a, b) => a + b, 0) / timed.length) : null
+    const uniq = new Set(people.map(p => p.email || p.ip || p.brandId || '?'))
+    // The IP stays server-side.
+    const visits = visitRows.map(({ ip, ...v }) => v)
     const byShow = new Map<string, { artist: string; school: string | null; eventDate: string | null; count: number }>()
     for (const s of picked) {
       const k = s.crmLeadId || `${s.artist}|${s.school}|${s.eventDate}`
@@ -7594,7 +7616,7 @@ const handlers: Record<string, Handler> = {
       byShow.set(k, row)
     }
     const topShows = [...byShow.values()].sort((a, b) => b.count - a.count).slice(0, 10)
-    return { visits, brandsToday: brandsTodayRows.length, last7, requestCount, topShows }
+    return { visits, brandsToday: brandsTodayRows.length, last7, requestCount, topShows, total, today, uniqueVisitors: uniq.size, daily, avgMinutes }
   },
 
   // The "In talks" cards: every brand holding a board code, with its

@@ -413,6 +413,43 @@
   .kpi-value{font-size:26px;font-weight:800;letter-spacing:-.02em;margin-top:5px;font-variant-numeric:tabular-nums;font-family:var(--display)}
   .kpi-note{font-size:11px;color:var(--ink-3);margin-top:3px}
   .kpi.money{border-left:3px solid var(--good)}
+  /* Show Board overview */
+  .bd-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:28px 0 14px}
+  .bd-stat{position:relative;background:linear-gradient(180deg,var(--surface-2),var(--surface-1));border:1px solid var(--border);border-radius:14px;padding:16px 18px;overflow:hidden}
+  .bd-stat.hero{border-color:rgba(79,131,247,.45);background:linear-gradient(160deg,rgba(79,131,247,.18),var(--surface-1) 70%)}
+  .bd-stat-label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+  .bd-stat-value{font-family:var(--display);font-size:30px;font-weight:800;letter-spacing:-.02em;margin-top:6px;font-variant-numeric:tabular-nums;color:var(--ink-1)}
+  .bd-stat-note{font-size:12px;color:var(--ink-3);margin-top:2px}
+  .bd-card{background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:18px 20px 14px;margin-bottom:8px}
+  .bd-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px}
+  .bd-card-title{font-size:14px;font-weight:600;color:var(--ink-1)}
+  .bd-card-sub{font-size:12px;color:var(--ink-3)}
+  .bd-chart{position:relative}
+  .bd-bars{display:flex;align-items:flex-end;gap:2px;height:120px;border-bottom:1px solid var(--border);background:repeating-linear-gradient(to top,transparent 0,transparent 39px,var(--border-soft) 39px,var(--border-soft) 40px)}
+  .bd-bar{flex:1;height:100%;display:flex;align-items:flex-end;cursor:default;outline:none}
+  .bd-bar i{display:block;width:100%;background:var(--accent);border-radius:4px 4px 0 0;min-height:0;transition:background .12s}
+  .bd-bar.zero i{background:var(--border);height:2px!important;border-radius:1px}
+  .bd-bar:hover i,.bd-bar:focus i{background:var(--accent-hi)}
+  .bd-axis{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-3);margin-top:6px;font-variant-numeric:tabular-nums}
+  .bd-tip{position:absolute;pointer-events:none;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:6px 9px;font-size:12px;color:var(--ink-1);white-space:nowrap;box-shadow:var(--shadow);transform:translate(-50%,-100%);z-index:2}
+  .bd-tip b{font-variant-numeric:tabular-nums}
+  .bd-feed{background:var(--surface-1);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+  .bd-day{padding:10px 18px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);background:var(--surface-0);border-top:1px solid var(--border-soft)}
+  .bd-day:first-child{border-top:0}
+  .bd-visit{display:flex;align-items:center;gap:14px;padding:12px 18px;border-top:1px solid var(--border-soft)}
+  .bd-visit[data-brand]{cursor:pointer}
+  .bd-visit[data-brand]:hover{background:var(--surface-2)}
+  .bd-av{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:700;color:#fff;background:var(--accent)}
+  .bd-av.team{background:#3a3a48}
+  .bd-av.anon{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--border)}
+  .bd-who{flex:1;min-width:0}
+  .bd-who-name{font-size:14px;font-weight:600;color:var(--ink-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bd-who-mail{font-size:12px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bd-dur{flex:none;font-size:12px;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:3px 9px;font-variant-numeric:tabular-nums}
+  .bd-when{flex:none;text-align:right;min-width:92px}
+  .bd-when-t{font-size:13px;color:var(--ink-1);font-variant-numeric:tabular-nums}
+  .bd-when-ago{font-size:11px;color:var(--ink-3)}
+  @media (max-width:640px){.bd-dur{display:none}.bd-visit{padding:12px 14px}}
   .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(276px,1fr));gap:14px;margin-top:26px}
   .cat-card{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);
     padding:16px 18px;box-shadow:var(--shadow);border-left:3px solid var(--c,var(--cat-1));cursor:pointer;transition:border-color .15s}
@@ -1497,10 +1534,15 @@
       </div>
       <div class="section-head" id="bd-req-head" hidden>Access requests <span class="n" id="bd-req-n"></span></div>
       <div id="bd-reqs"></div>
-      <div class="kpi-row" id="bd-kpis"></div>
+      <div class="bd-stats" id="bd-kpis"></div>
+      <div class="bd-card" id="bd-chart-card" hidden>
+        <div class="bd-card-head"><div><div class="bd-card-title">Visits</div><div class="bd-card-sub">last 30 days · New York time</div></div>
+          <div class="bd-card-sub" id="bd-chart-sum"></div></div>
+        <div class="bd-chart" id="bd-chart"></div>
+      </div>
       <div class="section-head" id="bd-top-head" hidden>Most requested shows</div>
       <div id="bd-top"></div>
-      <div class="section-head">Who's opened the board</div>
+      <div class="section-head">Who's opened the board <span class="n" id="bd-act-n"></span></div>
       <div id="bd-activity"></div>
     </section>
 
@@ -13368,11 +13410,20 @@ function loadBoard() {
     });
   }).catch(function () {});
 
-  return api('listBoardActivity', { limit: 50 }).then(function (d) {
+  return api('listBoardActivity', { limit: 100 }).then(function (d) {
+    var n = function (x) { return (x || 0).toLocaleString('en-US'); };
+    var stat = function (label, value, note, hero) {
+      return '<div class="bd-stat' + (hero ? ' hero' : '') + '"><div class="bd-stat-label">' + label + '</div>' +
+        '<div class="bd-stat-value">' + value + '</div><div class="bd-stat-note">' + note + '</div></div>';
+    };
     document.getElementById('bd-kpis').innerHTML =
-      '<div class="kpi"><div class="kpi-label">Views</div><div class="kpi-value">' + (d.last7 || 0) + '</div><div class="kpi-note">last 7 days</div></div>' +
-      '<div class="kpi"><div class="kpi-label">Brands today</div><div class="kpi-value">' + (d.brandsToday || 0) + '</div><div class="kpi-note">viewed the board</div></div>' +
-      '<div class="kpi"><div class="kpi-label">Requests</div><div class="kpi-value">' + (d.requestCount || 0) + '</div><div class="kpi-note">from the board</div></div>';
+      stat('Total visits', n(d.total), 'all time', true) +
+      stat('Today', n(d.today), (d.brandsToday || 0) + ' brand' + (d.brandsToday === 1 ? '' : 's') + ' with a code') +
+      stat('Last 7 days', n(d.last7), 'visits') +
+      stat('Unique visitors', n(d.uniqueVisitors), 'all time') +
+      stat('Avg. time on board', d.avgMinutes == null ? '—' : d.avgMinutes + ' min', 'last 30 days') +
+      stat('Requests', n(d.requestCount), 'sent from the board');
+    renderBoardChart(d.daily || []);
     var top = d.topShows || [];
     document.getElementById('bd-top-head').hidden = !top.length;
     document.getElementById('bd-top').innerHTML = top.map(function (s) {
@@ -13384,16 +13435,79 @@ function loadBoard() {
         '<span class="fit" title="times picked in requests">' + s.count + '×</span></div>';
     }).join('');
     var visits = d.visits || [];
-    document.getElementById('bd-activity').innerHTML = visits.length ? visits.map(function (v) {
-      return '<div class="target"' + (v.brand ? ' data-brand="' + esc(v.brand.id) + '" style="cursor:pointer"' : '') + '>' +
-        '<div class="t-main"><div class="t-line">' +
-          '<span class="t-brand">' + esc(v.brand ? v.brand.name : 'Team code') + '</span>' +
-          (v.email ? '<span class="t-sep">·</span>' + esc(v.email) : '') + '</div></div>' +
-        '<div style="font-size:12px;color:var(--ink-3)">' + shortDate(v.createdAt) + '</div></div>';
-    }).join('') : '<div class="panel"><div class="empty"><h3>No opens yet</h3><p>Every visit through the gate lands here with the brand and email.</p></div></div>';
+    document.getElementById('bd-act-n').textContent = visits.length ? 'latest ' + visits.length : '';
+    document.getElementById('bd-activity').innerHTML = visits.length ? '<div class="bd-feed">' + boardFeedHtml(visits) + '</div>' :
+      '<div class="panel"><div class="empty"><h3>No opens yet</h3><p>Every visit to the board lands here with the time, the brand and how long they stayed.</p></div></div>';
   }).catch(function (e) {
     document.getElementById('bd-activity').innerHTML =
       '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+}
+
+// Show Board times are New York time, like the rest of the team's day.
+var BD_TZ = 'America/New_York';
+function bdDayKey(x) { return new Date(x).toLocaleDateString('en-CA', { timeZone: BD_TZ }); }
+function bdDayLabel(key) {
+  var today = bdDayKey(Date.now()), yest = bdDayKey(Date.now() - 864e5);
+  var d = new Date(key + 'T12:00:00');
+  var full = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  return key === today ? 'Today · ' + full : key === yest ? 'Yesterday · ' + full : full;
+}
+function bdTime(x) { return new Date(x).toLocaleTimeString('en-US', { timeZone: BD_TZ, hour: 'numeric', minute: '2-digit' }); }
+
+// The feed: grouped by day, each open with its exact time, how long ago
+// and (heartbeat-timed) how long the board stayed open.
+function boardFeedHtml(visits) {
+  var out = [], lastDay = '';
+  visits.forEach(function (v) {
+    var key = bdDayKey(v.createdAt);
+    if (key !== lastDay) { out.push('<div class="bd-day">' + esc(bdDayLabel(key)) + '</div>'); lastDay = key; }
+    var name = v.brand ? v.brand.name : v.email ? 'Team code' : 'Visitor';
+    var cls = v.brand ? '' : v.email ? ' team' : ' anon';
+    var initials = v.brand ? name.replace(/[^A-Za-z0-9 ]/g, '').split(/\s+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0]; }).join('').toUpperCase() || '?' : v.email ? 'SB' : '?';
+    var mins = v.lastSeenAt ? Math.max(1, Math.round((new Date(v.lastSeenAt) - new Date(v.createdAt)) / 60000)) : null;
+    var full = new Date(v.createdAt).toLocaleString('en-US', { timeZone: BD_TZ, weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET';
+    out.push('<div class="bd-visit"' + (v.brand ? ' data-brand="' + esc(v.brand.id) + '"' : '') + '>' +
+      '<div class="bd-av' + cls + '">' + esc(initials) + '</div>' +
+      '<div class="bd-who"><div class="bd-who-name">' + esc(name) + '</div>' +
+        '<div class="bd-who-mail">' + (v.email ? esc(v.email) : v.brand ? 'opened from their link' : 'no code, no email') + '</div></div>' +
+      (mins ? '<span class="bd-dur" title="time the board stayed open">' + (mins >= 60 ? Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min' : mins + ' min') + '</span>' : '') +
+      '<div class="bd-when" title="' + esc(full) + '"><div class="bd-when-t">' + esc(bdTime(v.createdAt)) + '</div>' +
+        '<div class="bd-when-ago">' + esc(timeAgo(v.createdAt)) + '</div></div></div>');
+  });
+  return out.join('');
+}
+
+// 30 bars, one per New York day; hover or focus a bar for its count.
+function renderBoardChart(daily) {
+  var card = document.getElementById('bd-chart-card');
+  card.hidden = !daily.length;
+  if (!daily.length) return;
+  var max = Math.max.apply(null, daily.map(function (x) { return x.n; }).concat([1]));
+  var sum = daily.reduce(function (a, x) { return a + x.n; }, 0);
+  var label = function (k) { return new Date(k + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
+  document.getElementById('bd-chart-sum').textContent = sum.toLocaleString('en-US') + ' visit' + (sum === 1 ? '' : 's') + ' · busiest day ' + max;
+  var box = document.getElementById('bd-chart');
+  box.innerHTML = '<div class="bd-bars" role="img" aria-label="Board visits per day, last 30 days">' + daily.map(function (x) {
+    return '<div class="bd-bar' + (x.n ? '' : ' zero') + '" tabindex="0" data-day="' + esc(x.day) + '" data-n="' + x.n + '" aria-label="' + esc(label(x.day)) + ': ' + x.n + ' visits">' +
+      '<i style="height:' + (x.n / max * 100).toFixed(1) + '%"></i></div>';
+  }).join('') + '</div>' +
+    '<div class="bd-axis"><span>' + esc(label(daily[0].day)) + '</span><span>' + esc(label(daily[Math.floor(daily.length / 2)].day)) + '</span><span>Today</span></div>';
+  var tip = document.createElement('div'); tip.className = 'bd-tip'; tip.hidden = true; box.appendChild(tip);
+  var show = function (bar) {
+    var n = +bar.getAttribute('data-n');
+    tip.innerHTML = esc(label(bar.getAttribute('data-day'))) + ' · <b>' + n + '</b> visit' + (n === 1 ? '' : 's');
+    var br = bar.getBoundingClientRect(), cr = box.getBoundingClientRect();
+    var fill = bar.firstChild.getBoundingClientRect();
+    tip.style.left = Math.min(Math.max(br.left - cr.left + br.width / 2, 60), cr.width - 60) + 'px';
+    tip.style.top = (Math.min(fill.top, br.bottom - 2) - cr.top - 6) + 'px';
+    tip.hidden = false;
+  };
+  box.querySelectorAll('.bd-bar').forEach(function (bar) {
+    bar.addEventListener('mouseenter', function () { show(bar); });
+    bar.addEventListener('focus', function () { show(bar); });
+    bar.addEventListener('mouseleave', function () { tip.hidden = true; });
+    bar.addEventListener('blur', function () { tip.hidden = true; });
   });
 }
 
