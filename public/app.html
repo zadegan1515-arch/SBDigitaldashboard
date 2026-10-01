@@ -1652,9 +1652,9 @@
 <div class="scrim" id="zt-scrim">
   <div class="modal zt-modal" role="dialog" aria-modal="true" aria-labelledby="zt-tpl-h">
     <div class="modal-head">
-      <h2 id="zt-tpl-h">Email template</h2>
+      <h2 id="zt-tpl-h">Templates</h2>
       <p>Every card on Zach’s list starts from this. A card someone already edited keeps its own version.</p>
-      <div class="zt-tabs"><button class="chip active" data-tpltab="email">Email</button><button class="chip" data-tpltab="dm">LinkedIn DM</button></div>
+      <div class="zt-tabs"><button class="chip active" data-tpltab="email">Email</button><button class="chip" data-tpltab="first">First LinkedIn message</button><button class="chip" data-tpltab="dm">LinkedIn DM</button></div>
     </div>
     <div class="modal-body zt-tplgrid">
       <div>
@@ -2776,14 +2776,26 @@ function ztPanelHtml(p) {
   return out;
 }
 
+// The first LinkedIn message: their own edit where someone rewrote it on
+// the card, Leo's template everywhere else.
+function ztFirstText(p) {
+  if (p.dmOwn) return p.dm || '';
+  return handFill(((ZT && ZT.firstTemplate) || { body: '' }).body, p);
+}
+
 function ztMsgHtml(p, kind) {
-  var text = kind === 'dm' ? p.dm : p.nudge;
+  var text = kind === 'dm' ? ztFirstText(p) : p.nudge;
   var rows = Math.min(10, Math.max(3, String(text || '').split('\n').length + 1));
   return '<div class="zt-mail">' +
     '<div class="zt-field"><span class="zt-flbl" style="width:auto">' + (kind === 'dm' ? 'LinkedIn message' : 'LinkedIn follow-up') + '</span></div>' +
     '<textarea class="zt-body" style="min-height:0" rows="' + rows + '" ' + (kind === 'dm' ? 'data-ztdm' : 'data-ztnudge') +
       ' aria-label="' + (kind === 'dm' ? 'LinkedIn message' : 'LinkedIn follow-up') + ' to ' + esc(p.name) + '">' + esc(text || '') + '</textarea>' +
-    '<div class="zt-mailfoot"><span class="zt-edstate">' + (p.draftId ? 'Edits here save for next time' : 'From the LinkedIn template') + '</span>' +
+    '<div class="zt-mailfoot"><span class="zt-edstate">' + (kind === 'dm'
+        ? (p.dmOwn
+          ? '<span class="zt-edited">Edited for ' + esc(ztFirst(p)) + '</span><button class="zt-linkbtn" data-ztact="firstreset" title="Throw away this card’s edits and use the template again">Reset to template</button>'
+          : '<span>From your template' + (p.draftId ? '. Edit it right here' : '') + '</span>') +
+          '<button class="zt-linkbtn" data-ztact="tpl" data-kind="first" title="Paste in the message every card starts from">Edit template</button>'
+        : (p.draftId ? 'Edits here save for next time' : 'From the LinkedIn template')) + '</span>' +
       '<button class="zt-linkbtn" data-ztact="' + (kind === 'dm' ? 'copydm' : 'copynudge') + '">Copy</button></div>' +
   '</div>';
 }
@@ -3293,6 +3305,12 @@ document.getElementById('zach-todo').addEventListener('click', function (e) {
     ztCopy(lb ? lb.value : ztDmPathText(p), 'Copied. Paste it into the LinkedIn chat');
     return;
   }
+  if (act === 'firstreset') {
+    if (!p.draftId) return;
+    api('saveDraft', { draftId: p.draftId, firstMessage: '' }).then(function () { p.dmOwn = false; p.dm = null; ztRedrawOpen(id); toast('Back to the template'); })
+      .catch(function (err) { toast(err.message); });
+    return;
+  }
   if (act === 'dmreset') {
     api('saveHandEmail', { targetId: id, dm: null }).then(function () { p.handDm = null; ztRedrawOpen(id); toast('Back to the template'); })
       .catch(function (err) { toast(err.message); });
@@ -3301,7 +3319,7 @@ document.getElementById('zach-todo').addEventListener('click', function (e) {
   if (act === 'gmail') { ztGmail(id); return; }
   if (act === 'copydm' || act === 'copynudge') {
     var box = item.querySelector(act === 'copydm' ? '[data-ztdm]' : '[data-ztnudge]');
-    var text = box ? box.value : (act === 'copydm' ? p.dm : p.nudge);
+    var text = box ? box.value : (act === 'copydm' ? ztFirstText(p) : p.nudge);
     if (!text) { toast('No message written for them yet'); return; }
     ztCopy(text, 'Copied. Paste it into the LinkedIn chat');
     ZT_SENT[id] = true;
@@ -3382,7 +3400,12 @@ document.getElementById('zach-todo').addEventListener('change', function (e) {
 
   if (el.hasAttribute('data-ztdm') || el.hasAttribute('data-ztnudge')) {
     var isDm = el.hasAttribute('data-ztdm');
-    if (isDm) p.dm = el.value; else p.nudge = el.value;
+    if (isDm) {
+      // Unchanged from the template: nothing to keep for this card.
+      if (el.value === ztFirstText(p)) return;
+      if (!p.draftId) { toast('This card can’t keep its own edit. Copy it, or change the template'); return; }
+      p.dm = el.value; p.dmOwn = !!el.value.trim();
+    } else p.nudge = el.value;
     if (!p.draftId) return;
     var dargs = { draftId: p.draftId };
     dargs[isDm ? 'firstMessage' : 'nudge'] = el.value;
@@ -3513,13 +3536,17 @@ function ztPreview() {
 }
 var ZT_TPL_KIND = 'email';
 function ztOpenTpl(kind) {
-  ZT_TPL_KIND = kind === 'dm' ? 'dm' : 'email';
+  ZT_TPL_KIND = kind === 'dm' || kind === 'first' ? kind : 'email';
+  var noSubj = ZT_TPL_KIND !== 'email';
   document.querySelectorAll('#zt-scrim [data-tpltab]').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-tpltab') === ZT_TPL_KIND); });
-  document.getElementById('zt-tsubj-wrap').hidden = ZT_TPL_KIND === 'dm';
-  document.getElementById('zt-prev-subj').hidden = ZT_TPL_KIND === 'dm';
-  document.getElementById('zt-tbody-lbl').textContent = ZT_TPL_KIND === 'dm' ? 'LinkedIn message (when they want to keep it in the chat)' : 'Email';
+  document.getElementById('zt-tsubj-wrap').hidden = noSubj;
+  document.getElementById('zt-prev-subj').hidden = noSubj;
+  document.getElementById('zt-tbody-lbl').textContent = ZT_TPL_KIND === 'dm' ? 'LinkedIn message (when they want to keep it in the chat)'
+    : ZT_TPL_KIND === 'first' ? 'First LinkedIn message (Text them on LinkedIn, after they accept)' : 'Email';
   var t = ZT_TPL_KIND === 'dm'
     ? ((ZT && ZT.dmTemplate) || { subject: '', body: '', standIn: true })
+    : ZT_TPL_KIND === 'first'
+    ? ((ZT && ZT.firstTemplate) || { subject: '', body: '' })
     : ((ZT && ZT.template) || HAND_TPL || { subject: '', body: '', standIn: true });
   document.getElementById('zt-tsubj').value = t.subject || '';
   document.getElementById('zt-tbody').value = t.body || '';
@@ -3528,6 +3555,7 @@ function ztOpenTpl(kind) {
   }).join('');
   document.getElementById('zt-tmeta').textContent = t.standIn
     ? 'This is the stand-in. Paste yours over it.'
+    : !t.savedAt ? 'Paste a new one over it to change it.'
     : 'Last saved ' + when(t.savedAt) + (t.savedBy ? ' by ' + t.savedBy : '');
   ztPreview();
   document.getElementById('zt-scrim').classList.add('open');
@@ -3830,14 +3858,15 @@ document.getElementById('zt-tsave').addEventListener('click', function () {
   var kind = ZT_TPL_KIND;
   api('saveHandTemplate', {
     kind: kind,
-    subject: kind === 'dm' ? '' : document.getElementById('zt-tsubj').value,
+    subject: kind === 'email' ? document.getElementById('zt-tsubj').value : '',
     body: document.getElementById('zt-tbody').value
   }).then(function (t) {
     btn.disabled = false;
     if (kind === 'dm') { if (ZT) { ZT.dmTemplate = t; ztRender(); } }
+    else if (kind === 'first') { if (ZT) { ZT.firstTemplate = t; ztRender(); } }
     else { HAND_TPL = t; if (ZT) { ZT.template = t; ztRender(); } }
     ztCloseTpl();
-    toast('Template saved. Every email nobody edited uses it now');
+    toast(kind === 'email' ? 'Template saved. Every email nobody edited uses it now' : 'Template saved. Every card nobody edited uses it now');
   }).catch(function (err) { btn.disabled = false; toast(err.message); });
 });
 

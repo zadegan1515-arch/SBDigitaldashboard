@@ -69,7 +69,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `handSkippedAt`. Two templates (Settings `handEmailTemplate`, `handDmTemplate`; placeholders
   (NAME) (BRAND) (TITLE); stand-ins until Leo saves his), edited in one modal with tabs and a live
   preview; per-person edits in `Target.handSubject/handBody/handDm` (null = follow the template).
-  The first LinkedIn message and follow-up are the queue's own drafts (`saveDraft`). Leo's note is
+  The first LinkedIn message ("Text them on LinkedIn") follows a third template, Setting
+  `handFirstDmTemplate` (Leo's pasted text is the default; "Edit template" on the card or the modal's
+  First LinkedIn message tab); a card keeps its own text only when someone really rewrote it (draft
+  `firstMessage` edited and ≠ the queue's stock text; Reset to template clears it). The follow-up is
+  the queue's draft (`saveDraft`). Leo's note is
   `Target.handNote`; To writes `Contact.email` (old address kept in the contact's notes).
   Open in Gmail (compose URL, `authuser` = signed-in email) / Copy: **nothing sends from the site**,
   so the cap isn't involved. Done fold (30 days) and Calls booked, each with Undo. No CC (Leo's call); one-pager is a download button. The email

@@ -2001,8 +2001,35 @@ const HAND_DM_TEMPLATE_STANDIN = {
   body: 'Great to hear from you, (NAME)! Would love to set up a quick call to walk through what we could build with (BRAND) this semester. What does your week look like?',
 }
 
-async function readHandTemplate(kind: 'email' | 'dm' = 'email') {
-  const key = kind === 'dm' ? HAND_DM_TEMPLATE_KEY : HAND_TEMPLATE_KEY
+// The first LinkedIn message after they accept ("Text them on
+// LinkedIn"). Leo pasted his own (Oct 2026), so it's the default, not a
+// stand-in; he can paste a new one over it in the template editor.
+// A card someone edited by hand keeps its own text.
+const HAND_FIRST_TEMPLATE_KEY = 'handFirstDmTemplate'
+const HAND_FIRST_TEMPLATE_DEFAULT = {
+  subject: '',
+  body: 'Hey (NAME), great to be connected. Would love to share ideas and put something together with (BRAND). ' +
+    'Do you have 15 minutes for a quick chat later this week? ' +
+    'I have also attached our deck for you to check out in the meantime. Thanks!',
+}
+
+type HandTemplateKind = 'email' | 'dm' | 'first'
+function handTemplateKind(kind: any): HandTemplateKind {
+  return kind === 'dm' || kind === 'first' ? kind : 'email'
+}
+
+async function readHandTemplate(kind: HandTemplateKind = 'email') {
+  const key = kind === 'dm' ? HAND_DM_TEMPLATE_KEY : kind === 'first' ? HAND_FIRST_TEMPLATE_KEY : HAND_TEMPLATE_KEY
+  if (kind === 'first') {
+    const row = await prisma.setting.findUnique({ where: { key } })
+    try {
+      const v = row ? JSON.parse(row.value) : null
+      if (v && typeof v.body === 'string' && v.body.trim()) {
+        return { subject: '', body: v.body as string, standIn: false, savedAt: v.savedAt ?? null, savedBy: v.savedBy ?? null }
+      }
+    } catch { /* fall through to Leo's default */ }
+    return { ...HAND_FIRST_TEMPLATE_DEFAULT, standIn: false, savedAt: null, savedBy: null }
+  }
   const standIn = kind === 'dm' ? HAND_DM_TEMPLATE_STANDIN : HAND_TEMPLATE_STANDIN
   const row = await prisma.setting.findUnique({ where: { key } })
   if (row) {
@@ -6376,9 +6403,10 @@ const handlers: Record<string, Handler> = {
   // HAND_DONE_DAYS, and whatever brand rule held back.
   async zachTodo() {
     const since = new Date(Date.now() - HAND_DONE_DAYS * 24 * 60 * 60 * 1000)
-    const [template, dmTemplate, rows, doneRows] = await Promise.all([
+    const [template, dmTemplate, firstTemplate, rows, doneRows] = await Promise.all([
       readHandTemplate(),
       readHandTemplate('dm'),
+      readHandTemplate('first'),
       prisma.target.findMany({
         where: HAND_WAITING,
         include: {
@@ -6393,7 +6421,7 @@ const handlers: Record<string, Handler> = {
           },
           events: { where: { toStatus: 'accepted' }, orderBy: { createdAt: 'asc' }, take: 1, select: { createdAt: true } },
           // The LinkedIn DM and follow-up the queue already wrote for them.
-          drafts: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, firstMessage: true, nudge: true } },
+          drafts: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, variant: true, firstMessage: true, nudge: true, editedByHuman: true } },
         },
         orderBy: [{ sentAt: 'asc' }, { createdAt: 'asc' }],
         take: 1000,
@@ -6442,6 +6470,11 @@ const handlers: Record<string, Handler> = {
       // queue uses, unsaved, so there's still something to copy.
       const dr = t.drafts[0] ?? null
       const fallback = dr ? null : templateLinkedInDraft({ brand: t.brand, contact: t.contact }, 'man')
+      // The first message follows Leo's template unless someone really
+      // rewrote it on the card (the queue's autosave marks untouched
+      // drafts edited too, so an unchanged queue text doesn't count).
+      const dmOwn = !!(dr && dr.editedByHuman && dr.firstMessage?.trim() &&
+        dr.firstMessage !== templateLinkedInDraft({ brand: t.brand, contact: t.contact }, dr.variant).firstMessage)
       g.people.push({
         targetId: t.id,
         status: t.status,
@@ -6467,7 +6500,8 @@ const handlers: Record<string, Handler> = {
         liSentAt: t.handLiSentAt,
         handDm: t.handDm,
         draftId: dr?.id ?? null,
-        dm: dr?.firstMessage ?? fallback?.firstMessage ?? '',
+        dmOwn,
+        dm: dmOwn ? dr!.firstMessage : null,
         nudge: dr?.nudge ?? fallback?.nudge ?? '',
       })
     }
@@ -6489,6 +6523,7 @@ const handlers: Record<string, Handler> = {
     return {
       template,
       dmTemplate,
+      firstTemplate,
       brands,
       people,
       noAddress: brands.reduce((n, g) => n + g.people.filter((p: any) => !p.email).length, 0),
@@ -6562,24 +6597,24 @@ const handlers: Record<string, Handler> = {
   },
 
   async handTemplate({ kind }: any = {}) {
-    return readHandTemplate(kind === 'dm' ? 'dm' : 'email')
+    return readHandTemplate(handTemplateKind(kind))
   },
 
   // The one template every untouched card follows. Cards someone edited
   // keep their own version until "Reset to template" on that card.
   async saveHandTemplate({ subject, body, kind, __user }: any) {
-    const isDm = kind === 'dm'
+    const k = handTemplateKind(kind)
     const text = String(body ?? '').replace(/\r\n/g, '\n')
     if (!text.trim()) throw new Error('The email is empty, nothing to save')
     const value = JSON.stringify({
-      subject: String(subject ?? '').trim().slice(0, 200),
+      subject: k === 'email' ? String(subject ?? '').trim().slice(0, 200) : '',
       body: text.slice(0, 8000),
       savedAt: new Date().toISOString(),
       savedBy: __user ?? null,
     })
-    const key = isDm ? HAND_DM_TEMPLATE_KEY : HAND_TEMPLATE_KEY
+    const key = k === 'dm' ? HAND_DM_TEMPLATE_KEY : k === 'first' ? HAND_FIRST_TEMPLATE_KEY : HAND_TEMPLATE_KEY
     await prisma.setting.upsert({ where: { key }, create: { key, value }, update: { value } })
-    return readHandTemplate(isDm ? 'dm' : 'email')
+    return readHandTemplate(k)
   },
 
   // One card's own version of the email, and the note for Zach. Every
