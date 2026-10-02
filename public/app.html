@@ -2463,7 +2463,7 @@ var ZT_ICON = {
 
 // Where each person is in the flow, and so what to do next:
 //
-//   Accepted ─(text them on LinkedIn, 24h after the accept;
+//   Accepted ─(text them on LinkedIn, 1–4 days after the accept;
 //             │  follow up after 4 quiet days)
 //   Replied ──┬── Email ───────┐   either path, or both; each gets
 //             └── LinkedIn DM ─┤   its own tick
@@ -2499,11 +2499,21 @@ function ztNudgeDays() { return (ZT && ZT.nudgeAfterDays) || 4; }
 function ztReplied(p) { return p.status === 'replied' || !!(p.wantsEmailAt || p.liPathAt || p.emailedAt || p.liSentAt || p.emailReplyAt); }
 // Emailed by Zach, or they answered an email: the Email path is done.
 function ztEmailDone(p) { return p.emailedAt || p.emailReplyAt || null; }
+// The first message after an accept goes out 1 to 4 days after it
+// (Leo, Oct 2026): it shows from day 1, is due by day 4, late after that.
+var ZT_DM_FROM_DAYS = 1, ZT_DM_BY_DAYS = 4;
+function ztDmWindow(p) {
+  if (!p.acceptedAt) return null;
+  var acc = new Date(p.acceptedAt).getTime();
+  return { from: new Date(acc + ZT_DM_FROM_DAYS * 864e5), by: new Date(acc + ZT_DM_BY_DAYS * 864e5),
+    late: Date.now() > acc + ZT_DM_BY_DAYS * 864e5 };
+}
+
 function ztStage(p, nudgeDays) {
   if (!ztReplied(p)) {
     if (!p.dmSentAt) {
       var acc = p.acceptedAt ? new Date(p.acceptedAt).getTime() : 0;
-      return acc && Date.now() - acc < 864e5 ? 'soon' : 'dm';
+      return acc && Date.now() - acc < ZT_DM_FROM_DAYS * 864e5 ? 'soon' : 'dm';
     }
     if (p.nudgedAt || !p.nudge) return 'waiting';
     var quiet = (Date.now() - new Date(p.dmSentAt).getTime()) / 864e5;
@@ -2680,10 +2690,11 @@ function ztFlowHtml(p) {
     return '<button class="zt-node ' + state + (panel === key ? ' sel' : '') + '" data-ztnode="' + key + '">' +
       '<i>' + (state === 'done' ? '✓' : num) + '</i><span>' + esc(label) + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span></button>';
   };
-  var ready = p.acceptedAt ? new Date(new Date(p.acceptedAt).getTime() + 864e5) : null;
+  var win = ztDmWindow(p);
   var msgSub = p.dmSentAt ? 'Texted ' + shortDate(p.dmSentAt) + (p.nudgedAt ? ' · followed up ' + shortDate(p.nudgedAt) : '')
-    : st === 'soon' && ready ? 'From ' + ready.toLocaleString('en-US', { weekday: 'short', hour: 'numeric' })
-    : st === 'nudge' ? 'Follow-up due' : ztReplied(p) ? 'Skipped, they replied' : 'Due now';
+    : st === 'soon' && win ? 'From ' + win.from.toLocaleString('en-US', { weekday: 'short', hour: 'numeric' })
+    : st === 'nudge' ? 'Follow-up due' : ztReplied(p) ? 'Skipped, they replied'
+    : win && win.late ? 'Late, send today' : win ? 'Send by ' + win.by.toLocaleString('en-US', { weekday: 'short' }) : 'Due now';
   var msgKey = st === 'nudge' || (p.dmSentAt && !ztReplied(p) && panel === 'nudge') ? 'nudge' : 'dm';
   return '<div class="zt-flow" role="group" aria-label="Where ' + esc(p.name) + ' is">' +
     '<div class="zt-fl-one"><span class="zt-node done static"><i>✓</i><span>Accepted' +
@@ -2724,9 +2735,13 @@ function ztPanelHtml(p) {
   var unpick = function (step) { return '<button class="zt-skip" data-ztact="step" data-step="' + step + '" data-off="1" title="Not this path after all">Not this path</button>'; };
   var out;
   if (panel === 'dm' || panel === 'nudge') {
-    var ready = p.acceptedAt ? new Date(new Date(p.acceptedAt).getTime() + 864e5) : null;
+    var w = ztDmWindow(p), wd = function (d) { return d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); };
     out = h(panel === 'dm' ? 'Text them on LinkedIn' : 'Send the follow-up',
-        panel === 'dm' && st === 'soon' && ready ? 'Due ' + esc(ready.toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })) + ', 24 hours after they accepted' : '') +
+        panel === 'dm' && w && !p.dmSentAt
+          ? (w.late ? 'Late: the window was 1–4 days after they accepted (' + esc(wd(w.from)) + ' to ' + esc(wd(w.by)) + '). Send it today'
+            : st === 'soon' ? 'Send between ' + esc(wd(w.from)) + ' and ' + esc(wd(w.by)) + ', 1–4 days after they accepted'
+            : 'Send by ' + esc(wd(w.by)) + ', within 4 days of the accept')
+          : '') +
       ztMsgHtml(p, panel) +
       '<div class="zt-acts">' + li +
         (panel === 'dm' && p.dmSentAt ? '<span class="zt-okline">✓ Texted ' + esc(shortDate(p.dmSentAt)) + '</span>'

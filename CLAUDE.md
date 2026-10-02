@@ -58,7 +58,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   the higher up it should be" — `ztCompare`: text back → follow-up → reply to answer → email/DM to
   send → call; longest-waiting first within a step; a brand sits where its earliest person sits and
   keeps its people together); one row open at a time shows the flow
-  **Accepted → Text them on LinkedIn (due 24h after the accept; follow-up after 4 quiet days) →
+  **Accepted → Text them on LinkedIn (1–4 days after the accept, late after day 4 — `ztDmWindow`; follow-up after 4 quiet days) →
   Replied → They want email → Email to send → Email sent, and/or They want LinkedIn → DM to send →
   DM sent (either or both; picking one logs the reply) →
   Call scheduled** (day picked; sets followUpAt so it shows in Needs action on the day; the end).
