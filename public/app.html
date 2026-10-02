@@ -449,6 +449,12 @@
   .bd-when{flex:none;text-align:right;min-width:92px}
   .bd-when-t{font-size:13px;color:var(--ink-1);font-variant-numeric:tabular-nums}
   .bd-when-ago{font-size:11px;color:var(--ink-3)}
+  .bd-sheet{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px;padding:12px 16px;border:1px solid var(--border);border-radius:12px;background:var(--surface-1);font-size:13px;color:var(--ink-2)}
+  .bd-sheet .dot{width:8px;height:8px;border-radius:50%;background:var(--good);flex:none}
+  .bd-sheet.old .dot{background:var(--warn)}
+  .bd-sheet.bad .dot{background:var(--bad)}
+  .bd-sheet b{color:var(--ink-1)}
+  .bd-sheet a{color:var(--accent)}
   @media (max-width:640px){.bd-dur{display:none}.bd-visit{padding:12px 14px}}
   .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(276px,1fr));gap:14px;margin-top:26px}
   .cat-card{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);
@@ -1524,8 +1530,13 @@
     <!-- SHOW BOARD OVERVIEW -->
     <section class="view page wide" id="board">
       <div class="eyebrow">Show Board</div>
-      <h1>Show Board</h1>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <h1>Show Board</h1>
+        <div style="display:flex;align-items:center;gap:10px"><span class="bd-card-sub" id="bd-updated"></span>
+          <button class="btn-ghost" id="bd-refresh" title="Re-read the Google Sheet and load the latest visits">↻ Refresh</button></div>
+      </div>
       <div class="sub" id="bd-sub">The brand-facing board — gated by access codes.</div>
+      <div class="bd-sheet" id="bd-sheet" hidden></div>
       <div class="section-head" style="margin-top:24px">Access codes <span class="n">look up a brand, hand out a code</span></div>
       <div class="panel panel-pad">
         <input class="field-box" id="bd-q" placeholder="Type a brand name…" autocomplete="off" style="width:100%;max-width:440px">
@@ -13440,6 +13451,7 @@ function loadBoard() {
   }).catch(function () {});
 
   return api('listBoardActivity', { limit: 100 }).then(function (d) {
+    document.getElementById('bd-updated').textContent = 'Updated ' + bdTime(Date.now());
     var n = function (x) { return (x || 0).toLocaleString('en-US'); };
     var stat = function (label, value, note, hero) {
       return '<div class="bd-stat' + (hero ? ' hero' : '') + '"><div class="bd-stat-label">' + label + '</div>' +
@@ -13453,6 +13465,7 @@ function loadBoard() {
       stat('Avg. time on board', d.avgMinutes == null ? '—' : d.avgMinutes + ' min', 'last 30 days') +
       stat('Requests', n(d.requestCount), 'sent from the board');
     renderBoardChart(d.daily || []);
+    renderSheetLine(d.sheet);
     var top = d.topShows || [];
     document.getElementById('bd-top-head').hidden = !top.length;
     document.getElementById('bd-top').innerHTML = top.map(function (s) {
@@ -13539,6 +13552,47 @@ function renderBoardChart(daily) {
     bar.addEventListener('blur', function () { tip.hidden = true; });
   });
 }
+
+// Where the board's show list stands against the Google Sheet. The public
+// board re-reads the sheet once its copy is an hour old; Refresh reads now.
+var BD_SHEET_ERR = '';
+function renderSheetLine(sh) {
+  var box = document.getElementById('bd-sheet');
+  box.hidden = false;
+  if (BD_SHEET_ERR) {
+    box.className = 'bd-sheet bad';
+    box.innerHTML = '<span class="dot"></span><span>Couldn’t read the Google Sheet: ' + esc(BD_SHEET_ERR) + '</span>' +
+      (sh && sh.at ? '<span style="color:var(--ink-3)">· the board still shows the copy from ' + esc(timeAgo(sh.at)) + '</span>' : '');
+    return;
+  }
+  if (!sh || !sh.at) {
+    box.className = 'bd-sheet bad';
+    box.innerHTML = '<span class="dot"></span><span>The board hasn’t read the Google Sheet yet — press <b>↻ Refresh</b>.</span>';
+    return;
+  }
+  var old = Date.now() - new Date(sh.at).getTime() > 60 * 60 * 1000;
+  box.className = 'bd-sheet' + (old ? ' old' : '');
+  box.innerHTML = '<span class="dot"></span><span>Show list from the Google Sheet · <b>' + sh.upcoming + '</b> upcoming show' + (sh.upcoming === 1 ? '' : 's') +
+    ' · read <b>' + esc(timeAgo(sh.at)) + '</b> (' + esc(bdTime(sh.at)) + ')</span>' +
+    '<span style="color:var(--ink-3)">· ' + (old ? 'the next board visit re-reads it' : 're-reads every hour') + '</span>' +
+    (sh.skipped ? '<a href="#" data-bd-skipped>' + sh.skipped + ' sheet row' + (sh.skipped === 1 ? '' : 's') + ' not counted →</a>' : '');
+  var a = box.querySelector('[data-bd-skipped]');
+  if (a) a.onclick = function (e) { e.preventDefault(); gotoView('shows'); };
+}
+
+// Refresh: re-read the Google Sheet now, then the newest visits — same
+// screen, same place (keep-my-place keeps the scroll).
+document.getElementById('bd-refresh').addEventListener('click', function () {
+  var btn = this;
+  btn.disabled = true; btn.textContent = '↻ Reading sheet…';
+  api('refreshShows', {}).then(function (r) {
+    BD_SHEET_ERR = r.ok ? '' : (r.error || 'unknown error');
+    if (r.ok) toast('Sheet read — ' + r.count + ' confirmed shows');
+  }).catch(function (e) { BD_SHEET_ERR = e.message; }).then(function () {
+    btn.textContent = '↻ Refreshing…';
+    return loadBoard();
+  }).catch(function () {}).then(function () { btn.disabled = false; btn.textContent = '↻ Refresh'; });
+});
 
 // Code lookup: filter the cached brand list, pick one, mint/copy codes.
 document.getElementById('bd-q').addEventListener('input', function () {

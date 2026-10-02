@@ -390,7 +390,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   ("A + B"). Bump `PARSER_VERSION` when the parse changes so the cache rebuilds on the next read.
   Past shows from `src/data/show-archive.json`. School abbreviations → name/city/state in `SCHOOL_TABLE`;
   genre auto-tags in `GENRE_ARTISTS` (overrides in Setting `artistGenres`). Cache in Setting `crmShows`
-  (6 h; daily cron; ↻ Sheet button). Show ids: `sh_<hash>` / `ar_<hash>`. sb-crm's DB is no longer the source.
+  (1 h — the first board open after that re-reads; daily cron; ↻ Sheet button on Shows; the Overview's
+  ↻ Refresh re-reads the sheet too and its sheet line (`sheetStatus`) says when it was last read). Show ids: `sh_<hash>` / `ar_<hash>`. sb-crm's DB is no longer the source.
 - `public/sponsor.html` + `src/app/api/public/{shows,request}` — **brand-facing Show Board**, no
   sign-in. Optional access-code gate: **on only when `SPONSOR_GATE=1`** (currently off — board is
   open). Per-brand codes (`Brand.boardCode`, minted on the brand page; `src/lib/board-access.ts`;

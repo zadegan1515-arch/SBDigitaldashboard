@@ -29,7 +29,9 @@ export const CRM_SHEET_ID = process.env.CRM_SHEET_ID || '1MFMIiI65SBKb51mqtHqT72
 export const DEALS_TAB = 'CONTRACTING'
 const isDealsTab = (title: string) => String(title || '').trim().toUpperCase() === DEALS_TAB
 const CACHE_KEY = 'crmShows'
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000
+// An hour: the public board re-reads the sheet on the first open after it
+// goes stale, so an edit to the sheet shows within the hour.
+const CACHE_TTL_MS = 60 * 60 * 1000
 // Bumped when parseSheet changes what it lists: a cache written by an older
 // parser counts as stale, so the next read rebuilds it from the sheet (the
 // old list stays up if the sheet can't be read).
@@ -363,6 +365,21 @@ export async function refreshShows(): Promise<{ ok: boolean; at: string; count: 
   const value = JSON.stringify({ v: PARSER_VERSION, at, shows: parsed.shows, rejected: parsed.rejected.slice(0, 200), tables: parsed.tables, rowsSeen: parsed.rowsSeen })
   await prisma.setting.upsert({ where: { key: CACHE_KEY }, create: { key: CACHE_KEY, value }, update: { value } })
   return { ok: true, at, count: parsed.shows.length, tables: parsed.tables, rowsSeen: parsed.rowsSeen, rejected: parsed.rejected }
+}
+
+// How the cached copy of the sheet stands, without reading the sheet —
+// for the Show Board overview's "from the Google Sheet" line.
+export async function sheetStatus(): Promise<{ at: string | null; upcoming: number; skipped: number; nextReadAt: string | null }> {
+  let cache: any = null
+  try { cache = JSON.parse((await getSetting(CACHE_KEY)) || 'null') } catch { cache = null }
+  if (!cache?.at) return { at: null, upcoming: 0, skipped: 0, nextReadAt: null }
+  const t = today()
+  return {
+    at: cache.at,
+    upcoming: (cache.shows || []).filter((x: Show) => x.date >= t).length,
+    skipped: (cache.rejected || []).length,
+    nextReadAt: new Date(new Date(cache.at).getTime() + CACHE_TTL_MS).toISOString(),
+  }
 }
 
 export async function cachedShows(): Promise<{ at: string | null; shows: Show[]; rejected: SheetParse['rejected']; stale: boolean }> {

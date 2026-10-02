@@ -30,7 +30,7 @@ import {
 import { syncNotionDeals } from '@/lib/notion'
 import { googleStatus, googleDisconnect, driveStatus, driveDisconnect, driveCreateActivationDocs, opsStatus, opsDisconnect, opsSend } from '@/lib/google'
 import { scanOps, listOps, getOps, updateOps, deleteOps, replyOps, forwardOps } from '@/lib/ops'
-import { allShows, refreshShows, setGenreOverride, cachedShows, GENRES } from '@/lib/shows'
+import { allShows, refreshShows, setGenreOverride, cachedShows, sheetStatus, GENRES } from '@/lib/shows'
 import { newBoardCode } from '@/lib/board-access'
 import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import { regionFlag } from '@/lib/region'
@@ -7602,7 +7602,7 @@ const handlers: Record<string, Handler> = {
     const dayStart = new Date(now.getTime() -
       (ny.getHours() * 3600e3 + ny.getMinutes() * 60e3 + ny.getSeconds() * 1e3))
     const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-    const [visitRows, brandsTodayRows, last7, requestCount, picked, total, today, recent, people] = await Promise.all([
+    const [visitRows, brandsTodayRows, last7, requestCount, picked, total, today, recent, people, sheet] = await Promise.all([
       prisma.boardVisit.findMany({
         orderBy: { createdAt: 'desc' },
         take: Math.min(Number(limit) || 50, 200),
@@ -7626,6 +7626,7 @@ const handlers: Record<string, Handler> = {
       prisma.boardVisit.findMany({ where: { createdAt: { gt: monthAgo } }, select: { createdAt: true, lastSeenAt: true } }),
       // Unique visitors, all time: an email when we have one, else the IP.
       prisma.boardVisit.findMany({ select: { email: true, ip: true, brandId: true }, distinct: ['email', 'ip', 'brandId'] }),
+      sheetStatus(),
     ])
     // Visits per New York day, oldest first, for the 30-day chart.
     const nyKey = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
@@ -7651,7 +7652,7 @@ const handlers: Record<string, Handler> = {
       byShow.set(k, row)
     }
     const topShows = [...byShow.values()].sort((a, b) => b.count - a.count).slice(0, 10)
-    return { visits, brandsToday: brandsTodayRows.length, last7, requestCount, topShows, total, today, uniqueVisitors: uniq.size, daily, avgMinutes }
+    return { visits, brandsToday: brandsTodayRows.length, last7, requestCount, topShows, total, today, uniqueVisitors: uniq.size, daily, avgMinutes, sheet }
   },
 
   // The "In talks" cards: every brand holding a board code, with its
