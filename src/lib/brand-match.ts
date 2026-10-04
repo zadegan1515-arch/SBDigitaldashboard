@@ -53,6 +53,7 @@ export function nameKey(s: string): string {
     .toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/&/g, ' and ')
+    .replace(/\.(?:com|net|io)\b/g, ' ')
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\b(inc|llc|ltd|co|corp|company|the|brands?|group|holdings?)\b/g, ' ')
     .replace(/\s+/g, ' ')

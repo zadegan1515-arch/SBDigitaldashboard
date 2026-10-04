@@ -227,6 +227,19 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   connection requests; Zach's browser has only `linkedin-log.user.js` — Leo: "get rid of everything but
   the logging people on Zach's LinkedIn"); buyer titles only, **inside the same 25 cap**; no emails — people go to the
   LinkedIn queue (`source: 'linkedin'`, target created, `reconcileBrandTargets` applies).
+  **Who's a buyer** (`isBuyer`, li-capture.ts; stricter since Oct 2026 after the Sep 30 run let in ~1 in 6
+  wrong people): never students / new grads / a headline that's only a school, store staff, investors /
+  board / advisers / consultants, HR's "people partners", campus recruiting, wholesale, creators
+  (`STUDENT`/`STORE`/`OUTSIDE`/`OTHER_JOB`), nor "CEO of <another company>" on the brand's page
+  (`leaderElsewhere`, given the brand's + parent's names). A brand with a parent never takes someone
+  whose current title names a **sister brand** (`siblingNamed`, parents.ts — `brands` + `others` lists;
+  "Bacardi"/"Campari" = the company, never held against a sister; "ex-…" ignored). **Clean-up**
+  (top of Outreach → People, `liCleanup` preview → apply, `liCleanupUndo`; Setting `liCleanupLast`):
+  saved LinkedIn people at brands in play that these rules now leave out (`whyLeaveOut`), grouped by
+  why, all ticked; **never anyone written to** (invited/emailed/DM'd — counted as kept); plus roster
+  brands that sell sponsorships (`looksLikeSeller`: league / association / sports management…, or a
+  Spectator Sports discovery note) offered for Archive. Apply = only ticked ids a fresh preview still
+  lists, one transaction, freed slots reconciled; Undo recreates them.
   **By hand:** on a company's People tab the SB pill scrolls that one page (≤150 people,
   human-paced), posts `action:'liPreview'` (nothing saved; verdicts add/full/dupe/elsewhere/
   notBuyer), then `liCapture` on "Add". Brand match: `brandId` → typed name → saved
@@ -294,7 +307,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   viewed" etc. — read **only when the People tab shows it**; the extra company-home stop is gone) and "Search LinkedIn
   for new brands" words (company search, up to 3 result pages each, before the first brand).
   `liDiscover` judges each (`judgeDiscovery`: **5K+ followers**, consumer industry via
-  `categoryFromIndustry`, wholesale/agency/software out; a lookalike takes the source brand's
+  `categoryFromIndustry`, wholesale/agency/software out, leagues / teams / sports agencies out — they
+  sell sponsorships (MLB's lookalikes were NFL, NBA, NHL); names lose ", Inc." / "Co." / ".com"
+  (`cleanBrandName`; name keys treat "X.com" as X); a lookalike takes the source brand's
   category when its industry fits), skips known brands (name/aka/page; a longer LinkedIn name counts, "Waterloo Sparkling Water" = Waterloo — `nearName`) and anything dismissed on
   Discover, creates the Brand (`source: 'linkedin-discover'`, provenance in notes) plus a
   DiscoveredBrand row (status added, query "LinkedIn: similar to X" / "LinkedIn search: w"), and

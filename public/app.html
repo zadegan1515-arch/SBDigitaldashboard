@@ -1457,8 +1457,9 @@
       <div class="hint" id="li-script-hint" style="margin-top:10px;display:none">
         People ↗ opens a brand's LinkedIn People tab. With the
         <a href="https://github.com/zadegan1515-arch/SBDigitaldashboard/blob/main/scripts/linkedin-capture.user.js" target="_blank" rel="noopener">LinkedIn capture script</a>
-        in Tampermonkey (copy it there, then Tampermonkey → + → paste → save; on Leo's LinkedIn, not Zach's), press the SB pill there: it reads that page, shows who it found, and adds the marketing and partnership people when you say so. Or let it go through this list by itself: pill → <b>Fill brands by itself</b> (about 75 brands a day). Brands it couldn't do carry a red LinkedIn note here.
+        in Tampermonkey (copy it there, then Tampermonkey → + → paste → save; on Leo's LinkedIn, not Zach's), press the SB pill there: it reads that page, shows who it found, and adds the marketing and partnership people when you say so. Or let it go through this list by itself: pill → <b>Fill brands by itself</b> (about 100 brands a day). Brands it couldn't do carry a red LinkedIn note here.
       </div>
+      <div id="li-clean" style="margin-top:14px;display:none"></div>
       <div id="li-review" style="margin-top:14px;display:none"></div>
       <div id="li-runs" style="margin-top:14px;display:none"></div>
       <div id="li-list" style="margin-top:14px"></div>
@@ -7237,6 +7238,7 @@ function loadLinkedin() {
     LI_DATA = d.brands || [];
     renderLiReview(d.pageReview || []);
     renderLiRuns(d.runs || [], d.latestScript || null, d.liOwner || null);
+    loadLiClean();
     var profiles = 0, brandsWith = 0;
     LI_DATA.forEach(function (b) {
       var n = b.contacts.filter(function (c) { return c.linkedinUrl; }).length;
@@ -7414,8 +7416,117 @@ function renderLiReview(list) {
   '</div>';
 }
 
+// People the October rules leave out (Leo, Oct 2026: "is it getting the
+// right people"): LinkedIn people saved before the stricter rules —
+// students, store staff, investors and board members, people on a sister
+// brand — and brands that are really sellers (leagues, sports agencies).
+// Everything starts ticked; Leo unticks anyone to keep. Nobody already
+// written to is ever listed. Remove = one transaction, with Undo.
+var LI_CLEAN = null, LI_CLEAN_OFF = {}, LI_CLEAN_OPEN = false;
+var LI_CLEAN_WHY = {
+  student: 'Students and new grads',
+  store: 'Store staff',
+  outside: 'Investors, board members, advisers, other companies\u2019 leaders',
+  notMarketing: 'Not in marketing (HR, recruiting, wholesale, creators)',
+  sibling: 'Works on another brand of the same company',
+};
+function loadLiClean() {
+  return api('liCleanup', { preview: true }).then(renderLiClean).catch(function () { /* the card is extra */ });
+}
+function renderLiClean(d) {
+  LI_CLEAN = d;
+  var box = document.getElementById('li-clean');
+  if (!box) return;
+  var people = d.people || [], brands = d.brands || [];
+  if (!people.length && !brands.length && !d.last) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.style.display = '';
+  var tick = function (kind, id) {
+    return '<input type="checkbox" data-lic-' + kind + '="' + esc(id) + '"' + (LI_CLEAN_OFF[id] ? '' : ' checked') + ' style="margin:0">';
+  };
+  var groups = Object.keys(LI_CLEAN_WHY).map(function (k) {
+    var rows = people.filter(function (p) { return p.why === k; });
+    if (!rows.length) return '';
+    return '<div style="margin-top:12px"><div class="t-meta" style="margin-top:0"><b style="color:var(--ink-2)">' + esc(LI_CLEAN_WHY[k]) + '</b> · ' + rows.length + '</div>' +
+      rows.map(function (p) {
+        return '<label style="display:flex;gap:8px;align-items:baseline;padding:4px 0;font-size:12.5px;cursor:pointer">' + tick('p', p.id) +
+          '<span><b>' + esc(p.name) + '</b>' + (p.linkedinUrl ? ' <a href="' + esc(p.linkedinUrl) + '" target="_blank" rel="noopener">↗</a>' : '') +
+          ' <span style="color:var(--ink-3)">· ' + esc(p.title || '') + ' · ' + esc(p.brand) +
+          (p.other ? ' · works on ' + esc(p.other) : '') + '</span></span></label>';
+      }).join('') + '</div>';
+  }).join('');
+  var sellers = brands.length
+    ? '<div style="margin-top:12px"><div class="t-meta" style="margin-top:0"><b style="color:var(--ink-2)">Leagues and agencies — they sell sponsorships, archive them?</b> · ' + brands.length + '</div>' +
+      brands.map(function (b) {
+        return '<label style="display:flex;gap:8px;align-items:baseline;padding:4px 0;font-size:12.5px;cursor:pointer">' + tick('b', b.id) +
+          '<span><b>' + esc(b.name) + '</b> <span style="color:var(--ink-3)">· ' + b.people + ' on file' + (b.contacted ? ' · already contacted' : '') + '</span></span></label>';
+      }).join('') + '</div>'
+    : '';
+  var brandCount = {};
+  people.forEach(function (p) { brandCount[p.brandId] = 1; });
+  var head = people.length || brands.length
+    ? people.length + ' saved ' + (people.length === 1 ? 'person' : 'people') + ' at ' + Object.keys(brandCount).length + ' brands' +
+      (brands.length ? ' · ' + brands.length + ' league' + (brands.length === 1 ? '' : 's') + ' or agenc' + (brands.length === 1 ? 'y' : 'ies') : '')
+    : 'Nothing left to clean up';
+  box.innerHTML = '<div class="panel" style="padding:14px 16px">' +
+    '<details data-lic-details' + (LI_CLEAN_OPEN ? ' open' : '') + '>' +
+      '<summary style="cursor:pointer"><span class="t-line"><b>People the new rules leave out</b><span class="t-sep">·</span><span class="t-title">' + esc(head) + '</span></span></summary>' +
+      (people.length || brands.length
+        ? '<div class="t-meta">The LinkedIn fill now skips these. Nobody here has been written to' +
+            (d.kept ? ' (' + d.kept + ' more match but were already contacted — kept)' : '') + '. Untick anyone to keep.</div>' +
+          groups + sellers +
+          '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+            '<button class="btn-solid" data-lic-go="1"></button>' +
+          '</div>'
+        : '') +
+    '</details>' +
+    (d.last ? '<div class="t-meta">Last clean-up ' + esc(shortDate(d.last.at)) + ': removed ' + d.last.people + ', archived ' + d.last.brands +
+      ' · <a href="#" data-lic-undo="1">Undo</a></div>' : '') +
+  '</div>';
+  liCleanButton();
+}
+function liCleanButton() {
+  var btn = document.querySelector('#li-clean [data-lic-go]');
+  if (!btn || !LI_CLEAN) return;
+  var nP = (LI_CLEAN.people || []).filter(function (p) { return !LI_CLEAN_OFF[p.id]; }).length;
+  var nB = (LI_CLEAN.brands || []).filter(function (b) { return !LI_CLEAN_OFF[b.id]; }).length;
+  btn.textContent = 'Remove ' + nP + ' ' + (nP === 1 ? 'person' : 'people') +
+    ((LI_CLEAN.brands || []).length ? ' · archive ' + nB + ' brand' + (nB === 1 ? '' : 's') : '');
+  btn.disabled = !(nP || nB);
+}
+document.getElementById('linkedin').addEventListener('toggle', function (e) {
+  if (e.target && e.target.matches && e.target.matches('[data-lic-details]')) LI_CLEAN_OPEN = e.target.open;
+}, true);
+document.getElementById('linkedin').addEventListener('change', function (e) {
+  var t = e.target, id = t.getAttribute && (t.getAttribute('data-lic-p') || t.getAttribute('data-lic-b'));
+  if (!id || !LI_CLEAN) return;
+  if (t.checked) delete LI_CLEAN_OFF[id]; else LI_CLEAN_OFF[id] = 1;
+  liCleanButton();
+});
+
 document.getElementById('linkedin').addEventListener('click', function (e) {
   var t = e.target;
+  if (t.closest('[data-lic-go]') && LI_CLEAN) {
+    var ids = (LI_CLEAN.people || []).filter(function (p) { return !LI_CLEAN_OFF[p.id]; });
+    var bs = (LI_CLEAN.brands || []).filter(function (b) { return !LI_CLEAN_OFF[b.id]; });
+    if (!ids.length && !bs.length) return;
+    var msg = (ids.length ? 'Remove ' + ids.length + ' ' + (ids.length === 1 ? 'person' : 'people') + ' from ' +
+        Object.keys(ids.reduce(function (m, p) { m[p.brand] = 1; return m; }, {})).length + ' brands' : '') +
+      (ids.length && bs.length ? ' and ' : '') +
+      (bs.length ? 'archive ' + bs.map(function (b) { return b.name; }).join(', ') : '') +
+      '?\n\nNobody here has been written to. Undo puts them back.';
+    if (!confirm(msg)) return;
+    api('liCleanup', { preview: false, contactIds: ids.map(function (p) { return p.id; }), brandIds: bs.map(function (b) { return b.id; }) })
+      .then(function (r) { LI_CLEAN_OFF = {}; toast('Removed ' + r.removed + (r.archived ? ', archived ' + r.archived : '')); loadLinkedin(); })
+      .catch(function (err) { toast(err.message || String(err)); });
+    return;
+  }
+  if (t.closest('[data-lic-undo]')) {
+    e.preventDefault();
+    if (!confirm('Put back everyone the last clean-up removed, and un-archive its brands?')) return;
+    api('liCleanupUndo', {}).then(function (r) { toast('Put back ' + r.back + (r.brands ? ', un-archived ' + r.brands : '')); loadLinkedin(); })
+      .catch(function (err) { toast(err.message || String(err)); });
+    return;
+  }
   var det = t.closest('[data-lirun-detail]');
   if (det) {
     e.preventDefault();

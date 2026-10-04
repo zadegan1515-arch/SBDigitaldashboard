@@ -160,14 +160,16 @@ const linkedin = http.createServer((req, res) => {
   if (m && m[1] === 'big-bev') {
     const kw = new URL(req.url, 'http://x').searchParams.get('keywords');
     const who = { partnerships: [['np-bb', 'Nina Park', 'Head of Partnerships']], sponsorship: [['od-bb', 'Omar Diaz', 'Sponsorship Manager']],
-      'brand manager': [['lc-bb', 'Lia Chen', 'Senior Brand Manager'], ['sr-bb', 'Sam Roe', 'Software Engineer']] }[kw] || [['xx-bb', 'Xavi Xu', 'Accountant']];
+      'brand manager': [['lc-bb', 'Lia Chen', 'Senior Brand Manager'], ['sr-bb', 'Sam Roe', 'Software Engineer'], ['mm-bb', 'Max Moss', 'Marketing Major at UCLA']] }[kw] || [['xx-bb', 'Xavi Xu', 'Accountant']];
     return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Big Bev</h1><h2>423 associated members</h2><ul>' +
       who.map((w, i) => person(w[0], w[1], i % 2 ? '• 3rd+' : '· 2nd', w[2])).join('') + '</ul></main></body></html>');
   }
   // Diageo's People tab searched for a brand of theirs.
   if (m && m[1] === 'diageo') {
     const kw = new URL(req.url, 'http://x').searchParams.get('keywords');
-    const who = kw === 'Tanqueray' ? [['gl-dg', 'Grace Lin', 'Brand Manager, Tanqueray'], ['ta-dg', 'Tom Ade', 'Data Engineer']] : [];
+    // Cara works on a sister brand: LinkedIn's keyword search matched her
+    // profile, but she isn't Tanqueray's.
+    const who = kw === 'Tanqueray' ? [['gl-dg', 'Grace Lin', 'Brand Manager, Tanqueray'], ['ta-dg', 'Tom Ade', 'Data Engineer'], ['cr-dg', 'Cara Reed', 'Senior Brand Manager, Crown Royal']] : [];
     return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Diageo</h1><h2>31,402 associated members</h2><ul>' +
       who.map((w, i) => person(w[0], w[1], i % 2 ? '• 3rd+' : '· 2nd', w[2])).join('') + '</ul></main></body></html>');
   }
@@ -277,7 +279,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const bigPeople = await prisma.contact.findMany({ where: { brandId: 'b_big' }, select: { name: true, title: true } });
     assert.deepEqual(bigPeople.map(p => p.name + ' — ' + p.title).sort(), ['Lia Chen — Senior Brand Manager', 'Nina Park — Head of Partnerships', 'Omar Diaz — Sponsorship Manager']);
     assert.ok(visits.some(v => /big-bev\/people\/\?keywords=partnerships/.test(v)) && !visits.some(v => /big-bev\/people\/\?keywords=marketing/.test(v)), 'three views; marketing not needed');
-    ok('a big brand is searched — partnerships, sponsorship, brand manager — and its buyers saved');
+    ok('a big brand is searched — partnerships, sponsorship, brand manager — and its buyers saved (not the marketing major)');
 
     // Tanqueray: no page of its own — a brand now, its people read at Diageo.
     const tq = await prisma.brand.findFirst({ where: { name: 'Tanqueray' }, include: { contacts: true } });
@@ -286,7 +288,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual(tq.contacts.map(c => c.name + ' — ' + c.title), ['Grace Lin — Brand Manager']);
     const parentPages = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liParentPages' } })).value);
     assert.equal(parentPages.Diageo, 'diageo', 'the real Diageo page, not the bar academy — and remembered');
-    ok('a brand under a parent company: made a brand, its people found on Diageo\'s People tab by its name');
+    ok('a brand under a parent company: made a brand, its people found on Diageo\'s People tab by its name (not Crown Royal\'s)');
 
     const brands = await prisma.brand.findMany({ where: { passedAt: null }, include: { contacts: true } });
     const by = Object.fromEntries(brands.map(b => [b.name, b]));
@@ -422,6 +424,34 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(await prisma.contact.count({ where: { name: 'Erin Alvarez' } }), 1, 'no second copy');
     assert.deepEqual(errors, [], 'no page errors');
     ok('Invite sent for someone on file: dated now, no second copy');
+
+    // The clean-up of people saved before the October rules: a new grad
+    // nobody wrote to is listed, a store manager already invited is kept,
+    // a league on the roster is offered for Archive. Remove, then Undo.
+    const ldBrand = await prisma.brand.findFirst({ where: { name: 'Liquid Death' } });
+    const grad = await prisma.contact.create({ data: { brandId: ldBrand.id, name: 'Riley Grad', title: 'Recent graduate from UCLA', linkedinUrl: 'https://www.linkedin.com/in/riley-grad/', source: 'linkedin', isDecisionMaker: true } });
+    await prisma.target.create({ data: { brandId: ldBrand.id, contactId: grad.id, fitScore: 40 } });
+    const store = await prisma.contact.create({ data: { brandId: ldBrand.id, name: 'Stan Store', title: 'Assistant Store Manager', linkedinUrl: 'https://www.linkedin.com/in/stan-store/', source: 'linkedin' } });
+    await prisma.target.create({ data: { brandId: ldBrand.id, contactId: store.id, status: 'sent', sentAt: new Date() } });
+    const nhl = await prisma.brand.create({ data: { name: 'National Hockey League (NHL)', category: 'entertainment', source: 'linkedin-discover' } });
+    let clean = await data('liCleanup', { preview: true });
+    assert.deepEqual(clean.people.map(p => p.name + ' — ' + p.why), ['Riley Grad — student'], 'only the grad: the run\'s own people are all buyers, and Stan was written to');
+    assert.equal(clean.kept, 1);
+    assert.deepEqual(clean.brands.map(b => b.name), ['National Hockey League (NHL)']);
+    const done = await data('liCleanup', { preview: false, contactIds: [grad.id, store.id], brandIds: [nhl.id] });
+    assert.deepEqual([done.removed, done.archived], [1, 1], 'Stan was never on the list, so never removed');
+    assert.equal(await prisma.contact.count({ where: { name: 'Riley Grad' } }), 0);
+    assert.equal(await prisma.contact.count({ where: { name: 'Stan Store' } }), 1);
+    assert.ok((await prisma.brand.findUnique({ where: { id: nhl.id } })).passedAt, 'the league is archived');
+    clean = await data('liCleanup', { preview: true });
+    assert.deepEqual([clean.people.length, clean.brands.length, clean.last.people, clean.last.brands], [0, 0, 1, 1]);
+    const undo = await data('liCleanupUndo', {});
+    assert.deepEqual([undo.back, undo.brands], [1, 1]);
+    const back = await prisma.contact.findFirst({ where: { name: 'Riley Grad' }, include: { targets: true } });
+    assert.ok(back && back.targets.length === 1 && back.targets[0].fitScore === 40, 'back, with a place in the queue');
+    assert.equal((await prisma.brand.findUnique({ where: { id: nhl.id } })).passedAt, null);
+    await assert.rejects(data('liCleanupUndo', {}), /No clean-up to undo/);
+    ok('clean-up: lists who the new rules leave out (never anyone written to), removes only that, archives the league; Undo puts it back');
 
     console.log(n + ' checks passed');
   } catch (e) {

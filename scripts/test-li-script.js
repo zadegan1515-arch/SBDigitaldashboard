@@ -784,6 +784,10 @@ const GM_SHIM = `
       ]);
       const nos = sent.slice(before).filter(b => b.action === 'liSwept').pop();
       assert.equal(nos.brandId, null); assert.equal(nos.name, 'NOS Energy'); assert.match(nos.note, /no clear LinkedIn page/);
+      // A name that became a brand keeps its clock (1.21 sent none, so the
+      // report's minutes-a-brand were blank for every research brand).
+      const pow = sent.slice(before).find(b => b.action === 'liSwept' && b.brandId === 'b-pow');
+      assert.equal(typeof pow.ms, 'number'); assert.ok(pow.ms > 0, 'Powerade took some time');
       const text = await pg.textContent('#sbli-panel');
       assert.match(text, /1 new brand added/);
       assert.match(text, /NOS Energy — research list: no clear LinkedIn page/);

@@ -21,10 +21,11 @@ execSync(
 // Node wants the extension the bundler doesn't.
 writeFileSync(join(out, 'parents.js'), readFileSync(join(out, 'parents.js'), 'utf8').replace("from './li-capture'", "from './li-capture.js'"))
 const lib = await import(pathToFileURL(join(out, 'li-capture.js')).href)
-const { parentOf, decideParentPage, PARENTS } = await import(pathToFileURL(join(out, 'parents.js')).href)
+const { parentOf, decideParentPage, PARENTS, siblingNamed, whyLeaveOut } = await import(pathToFileURL(join(out, 'parents.js')).href)
 const { companySlug, profileSlug, profileUrl, cleanName, personKey, roleFromHeadline, isBuyer,
   normalizeCompany, decideCompanyMatch, focusTerms, matchesFocus,
-  parseFollowers, industryOf, categoryFromIndustry, judgeDiscovery, decideResearchMatch, nearName, pageLooksWrong } = lib
+  parseFollowers, industryOf, categoryFromIndustry, judgeDiscovery, decideResearchMatch, nearName, pageLooksWrong,
+  looksLikeSeller, cleanBrandName } = lib
 
 let n = 0
 function t(name, fn) { fn(); n++; console.log('  ok — ' + name) }
@@ -267,6 +268,86 @@ t('a brand the old scripts skipped as too big is due at once (big brands are sea
   assert.equal(sweep.liResting({ at: ago(40), seen: 0, added: 0, note: 'too big — 12,345 people on LinkedIn (skips 100+)', v }, now), false)
   assert.equal(sweep.liResting({ at: ago(40), seen: 3, added: 1, note: '', v }, now), false)
   assert.equal(sweep.liResting({ at: ago(10), seen: 3, added: 1, note: '', v }, now), true)
+})
+
+// --- the October rules (the Sep 30 run's wrong people) --------------
+t('students, new grads and store staff are left on LinkedIn', () => {
+  for (const r of ['Marketing Major', 'Recent graduate from The University of Florida', 'Communications Studies Major',
+    'University of Michigan Ross School of Business Alum', 'Pursuing a Bachelor\u2019s degree in Integrated Marketing Communications',
+    'B.S. in Integrated Marketing Communications', 'Virginia Tech Pamplin College of Business', 'Chapman University',
+    'Goldstein Marketing Scholar', 'Pre-Med & Marketing', 'Marketing Co-Chair', 'First-Year Communications Major',
+    'MPH Graduate from Emory University', 'Marketing Communications MSc',
+    'Assistant Store Manager - Events', 'Assistant Manager', 'National Retail Event Producer & ATX Assistant Manager',
+    'Marketing & Sales, Stylist, Clientele Management, Hiring', 'Leasing Marketing Assistant position']) {
+    assert.equal(isBuyer(r, r), false, r)
+  }
+})
+t('investors, board members, HR and the CEO\u2019s office are left too', () => {
+  for (const r of ['General Partner, Co-Head of Growth Equity', 'Global Retail Executive & Board Member / Start-Up to Fortune 500',
+    'Head of People Partnerships (VP)', 'Project Manager, Office of the CEO', 'University Relations Manager',
+    'Senior Director of Wholesale Partnerships & B2B', 'Social Media Content Creator', 'I help brands and organizations achieve stronger engagement']) {
+    assert.equal(isBuyer(r, r), false, r)
+  }
+})
+t('another company\u2019s leader on the brand\u2019s page is an outsider; the brand\u2019s own is not', () => {
+  assert.equal(isBuyer('Founder & CEO of Lendi', '', ['Princess Polly']), false)
+  assert.equal(isBuyer('Co-founder of Rapha', '', ['Tracksmith']), false)
+  assert.equal(isBuyer('Global Consumer/Consumer Tech CEO \u2726CEO of Sleep Number \u2726Ex Blue Apron', '', ['Ralph Lauren']), false)
+  assert.equal(isBuyer('Co-Founder of Oner Active', '', ['Oner Active']), true)
+  assert.equal(isBuyer('President of Global Marketing', '', ['Crocs']), true)
+  assert.equal(isBuyer('Founder & CEO', '', ['Shinesty']), true)
+  assert.equal(isBuyer('Co-founder of PRIME', '', ['Prime Hydration']), true)
+  assert.equal(isBuyer('CEO of Liquid Death Mountain Water', '', ['Liquid Death']), true)
+  assert.equal(isBuyer('Co-Founder & CEO of OLIPOP', '', ['Olipop']), true)
+  assert.equal(isBuyer('CEO of Liquid IV', '', ['Liquid I.V.']), true)
+  assert.equal(isBuyer('Founder & CEO of Lendi', ''), true, 'no names given: not judged')
+})
+t('the real buyers from that run stay buyers', () => {
+  for (const r of ['Corporate Partnerships Manager', 'Senior Brand Manager', 'College Ambassador Program Associate',
+    'Head of College Marketing', 'Retail Marketing Coordinator', 'Retail Brand Manager', 'Influencer & Collabs specialist',
+    'Senior Influencer Talent Manager', 'Assistant Manager, Shopper Marketing', 'Shopper & In-Store Marketing Manager',
+    'Brand Partnerships and Sports Sponsorships', 'Chief Marketing Officer', 'Director, Business Partnerships']) {
+    assert.equal(isBuyer(r, r, ['Brand']), true, r)
+  }
+})
+t('at a parent, someone on a sister brand is named; the brand\u2019s own, the parent\u2019s and history are not', () => {
+  assert.equal(siblingNamed('Senior Brand Manager, Crown Royal', 'Ketel One'), 'Crown Royal')
+  assert.equal(siblingNamed('Brand Manager, Guinness', 'DeLeón Tequila'), 'Guinness')
+  assert.equal(siblingNamed('Brand Manager, D\u2019USSÉ Cognac', 'Grey Goose'), "D'USSÉ")
+  assert.equal(siblingNamed('Global Brand Director of Smirnoff Vodka', 'Bulleit'), 'Smirnoff')
+  assert.equal(siblingNamed('Brand Manager, Ketel One & Crown Royal', 'Ketel One'), null)
+  assert.equal(siblingNamed('AMEA Executive Marketing Leader, Bacardi', 'Grey Goose'), null)
+  assert.equal(siblingNamed('Category Marketing Lead - Campari', 'Espolòn'), null)
+  assert.equal(siblingNamed('VP Marketing, PepsiCo', 'Propel'), null)
+  assert.equal(siblingNamed('Brand Manager, Busch', 'Busch Light'), null)
+  assert.equal(siblingNamed('Solutions Lead', 'Heineken'), null)
+  assert.equal(siblingNamed('Brand Manager, Crown Royal', 'Liquid Death'), null, 'no parent: nothing to judge')
+})
+t('the clean-up says why a saved title is out', () => {
+  assert.deepEqual(whyLeaveOut('Marketing Major', 'Hollister'), { why: 'student' })
+  assert.deepEqual(whyLeaveOut('Assistant Store Manager - Events', 'Kendra Scott'), { why: 'store' })
+  assert.deepEqual(whyLeaveOut('Founder & CEO of Lendi', 'Princess Polly'), { why: 'outside' })
+  assert.deepEqual(whyLeaveOut('Head of People Partnerships (VP)', 'Ralph Lauren'), { why: 'notMarketing' })
+  assert.deepEqual(whyLeaveOut('Brand Director, Guinness US', 'Aviation Gin'), { why: 'sibling', other: 'Guinness' })
+  assert.equal(whyLeaveOut('President and Chief Executive Officer, Suntory Global Spirits', "Maker's Mark"), null)
+  assert.equal(whyLeaveOut('Associate Manager', 'Aerie'), null, 'a bare generic title is not judged on its own')
+  assert.equal(whyLeaveOut('Senior Brand Manager', 'Crocs'), null)
+})
+t('leagues, teams and sports agencies aren\u2019t added as lookalikes', () => {
+  assert.equal(judgeDiscovery({ name: 'National Football League (NFL)', subtitle: 'Spectator Sports • 3M followers' }).ok, false)
+  assert.equal(judgeDiscovery({ name: 'Athletes Unlimited', subtitle: 'Spectator Sports • 40K followers' }).ok, false)
+  assert.equal(judgeDiscovery({ name: 'Excel Sports Management', subtitle: 'Entertainment Providers • 60K followers' }).ok, false)
+  assert.equal(judgeDiscovery({ name: 'Crocs', subtitle: 'Retail Apparel and Fashion • 300K followers' }).ok, true)
+  assert.equal(looksLikeSeller('Major League Baseball (MLB)'), true)
+  assert.equal(looksLikeSeller('Some Club', 'Found by LinkedIn, similar to MLB — Spectator Sports, 40,000 followers.'), true)
+  assert.equal(looksLikeSeller('Liquid Death', 'Found by LinkedIn — Beverage Manufacturing, 1,000,000 followers.'), false)
+})
+t('page names lose their company suffix and web address', () => {
+  assert.equal(cleanBrandName('Abercrombie & Fitch Co.'), 'Abercrombie & Fitch')
+  assert.equal(cleanBrandName('PrettyLittleThing.com'), 'PrettyLittleThing')
+  assert.equal(cleanBrandName('Aerie by AEO, Inc.'), 'Aerie by AEO')
+  assert.equal(cleanBrandName('The Coca-Cola Company'), 'The Coca-Cola Company')
+  assert.equal(normalizeCompany('PrettyLittleThing.com'), normalizeCompany('PrettyLittleThing'))
 })
 
 console.log(n + ' checks passed')

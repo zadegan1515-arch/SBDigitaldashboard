@@ -222,6 +222,7 @@ export function brandKey(s: string | null | undefined): string {
     .toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/&/g, ' and ')
+    .replace(/\.(?:com|net|io)\b/g, ' ')
     .replace(/\b(inc|llc|ltd|co|corp|company|the|brands?|group|holdings?|beverages?)\b/g, ' ')
     .replace(/[^a-z0-9]+/g, '')
 }

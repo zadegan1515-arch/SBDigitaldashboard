@@ -37,7 +37,8 @@ import { regionFlag } from '@/lib/region'
 import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hints'
 import { readLiLog, readLiResearch, LI_SCRIPT_VERSION, LI_SWEEP_KEY } from '@/lib/li-sweep'
 import { readRuns } from '@/lib/li-report'
-import { companySlug, companyPageUrl } from '@/lib/li-capture'
+import { companySlug, companyPageUrl, profileSlug, looksLikeSeller } from '@/lib/li-capture'
+import { whyLeaveOut } from '@/lib/parents'
 import {
   readJsonSetting, writeJsonSetting, LI_REVIEW_KEY, LI_CONFIRMED_KEY, LI_OWNER_KEY,
   type Review, type Confirmed, type LiOwner,
@@ -1748,6 +1749,50 @@ const CONTACT_CAP_PER_BRAND = 25
 // Shelve-only by design: it never auto-promotes a shelved person, so a
 // deliberate manual shelve is never silently undone by a later retrim.
 // Promoting is always an explicit act (setTargetShelved). Idempotent.
+// For liCleanup: saved LinkedIn people at brands still in play whose
+// title the October rules leave out (whyLeaveOut), split into those Leo
+// can remove and those already written to (kept, counted); and roster
+// brands that are sellers. Also the last clean-up, for Undo.
+const LI_CLEANUP_KEY = 'liCleanupLast'
+async function liCleanupCandidates() {
+  const contacts = await prisma.contact.findMany({
+    where: { source: 'linkedin', brand: { passedAt: null } },
+    select: {
+      id: true, name: true, title: true, linkedinUrl: true, brandId: true, createdAt: true,
+      brand: { select: { name: true, aka: true } },
+      targets: {
+        select: {
+          status: true, sentAt: true, emailedAt: true, dmSentAt: true, repliedAt: true,
+          _count: { select: { emails: true } },
+        },
+      },
+    },
+  })
+  const people: Array<{ id: string; name: string; title: string | null; linkedinUrl: string | null; brandId: string; brand: string; why: string; other: string | null }> = []
+  let kept = 0
+  for (const c of contacts) {
+    const w = whyLeaveOut(c.title, c.brand.name, c.brand.aka)
+    if (!w) continue
+    const t = c.targets[0]
+    if (t && (wasInvited(t) || t.emailedAt || t.dmSentAt || t.repliedAt || t._count.emails)) { kept++; continue }
+    people.push({ id: c.id, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl, brandId: c.brandId, brand: c.brand.name, why: w.why, other: w.other || null })
+  }
+  people.sort((a, b) => a.brand.localeCompare(b.brand) || a.name.localeCompare(b.name))
+  const roster = await prisma.brand.findMany({
+    where: { passedAt: null },
+    select: { id: true, name: true, notes: true, _count: { select: { contacts: true } }, targets: { select: { sentAt: true, status: true } } },
+  })
+  const brands = roster
+    .filter(b => looksLikeSeller(b.name, b.notes))
+    .map(b => ({ id: b.id, name: b.name, people: b._count.contacts, contacted: b.targets.some(wasInvited) }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+  const last = await readJsonSetting<any>(prisma, LI_CLEANUP_KEY, null)
+  return {
+    people, kept, brands,
+    last: last && !last.undone ? { at: last.at, people: (last.people || []).length, brands: (last.brands || []).length } : null,
+  }
+}
+
 async function reconcileBrandTargets(brandId: string, perBrand = TARGET_CAP_PER_BRAND) {
   const worked = await prisma.target.count({
     where: { brandId, ...INVITED_WHERE },
@@ -7538,6 +7583,92 @@ const handlers: Record<string, Handler> = {
   async liOwnerReset() {
     await writeJsonSetting(prisma, LI_OWNER_KEY, {})
     return { ok: true }
+  },
+
+  // LinkedIn people saved before the October rules (Leo, Oct 2026: "is
+  // it getting the right people" — the Sep 30 run let in students, store
+  // staff, investors and people on a sister brand). The preview lists who
+  // the rules now leave out at brands still in play, never anyone already
+  // written to, plus brands that are really sellers (leagues, sports
+  // agencies). Apply removes only ticked ids a fresh preview still lists,
+  // archives ticked sellers (as Archive does: passedAt, queued people
+  // shelved), in one transaction, and keeps a copy for Undo.
+  async liCleanup({ preview = true, contactIds, brandIds }: any) {
+    const found = await liCleanupCandidates()
+    if (preview) return found
+    const wantP = new Set((Array.isArray(contactIds) ? contactIds : []).map(String))
+    const wantB = new Set((Array.isArray(brandIds) ? brandIds : []).map(String))
+    const people = found.people.filter(p => wantP.has(p.id))
+    const sellers = found.brands.filter(b => wantB.has(b.id))
+    if (!people.length && !sellers.length) throw new Error('Nothing ticked is still on the list — reload and look again')
+    const contacts = await prisma.contact.findMany({
+      where: { id: { in: people.map(p => p.id) } },
+      include: { targets: { select: { fitScore: true, assignedTo: true } } },
+    })
+    const sellerIds = sellers.map(b => b.id)
+    const shelve = sellerIds.length
+      ? (await prisma.target.findMany({
+          where: { brandId: { in: sellerIds }, status: { in: ['queued', 'drafted'] }, shelved: false }, select: { id: true },
+        })).map(t => t.id)
+      : []
+    const copy = {
+      at: new Date().toISOString(),
+      people: contacts.map(c => ({
+        brandId: c.brandId, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl, source: c.source,
+        isDecisionMaker: c.isDecisionMaker, notes: c.notes, createdAt: c.createdAt.toISOString(),
+        fitScore: c.targets[0]?.fitScore ?? null, assignedTo: c.targets[0]?.assignedTo ?? null,
+      })),
+      brands: sellerIds,
+      shelved: shelve,
+    }
+    const v = JSON.stringify(copy)
+    await prisma.$transaction([
+      prisma.contact.deleteMany({ where: { id: { in: contacts.map(c => c.id) } } }),
+      prisma.brand.updateMany({ where: { id: { in: sellerIds }, passedAt: null }, data: { passedAt: new Date() } }),
+      prisma.target.updateMany({ where: { id: { in: shelve } }, data: { shelved: true, queuedFor: null } }),
+      prisma.setting.upsert({ where: { key: LI_CLEANUP_KEY }, create: { key: LI_CLEANUP_KEY, value: v }, update: { value: v } }),
+    ])
+    // A freed slot goes to the next person at that brand.
+    for (const id of new Set(contacts.map(c => c.brandId))) {
+      if (sellerIds.includes(id)) continue
+      try { await reconcileBrandTargets(id) } catch { /* non-fatal */ }
+    }
+    return { ok: true, removed: contacts.length, archived: sellers.length }
+  },
+
+  // Puts the last clean-up back: the people (with their places in the
+  // queue — a slot taken since is sorted out by the usual reconcile) and
+  // the archived brands. Someone saved again since is not made twice.
+  async liCleanupUndo() {
+    const last = await readJsonSetting<any>(prisma, LI_CLEANUP_KEY, null)
+    if (!last || last.undone) throw new Error('No clean-up to undo')
+    let back = 0
+    const touched = new Set<string>()
+    for (const p of Array.isArray(last.people) ? last.people : []) {
+      const brand = await prisma.brand.findUnique({ where: { id: p.brandId }, select: { id: true } })
+      if (!brand) continue
+      const slug = profileSlug(p.linkedinUrl)
+      if (slug && await prisma.contact.findFirst({ where: { linkedinUrl: { contains: '/in/' + slug, mode: 'insensitive' } }, select: { id: true } })) continue
+      const c = await prisma.contact.create({
+        data: {
+          brandId: p.brandId, name: p.name, title: p.title, linkedinUrl: p.linkedinUrl, source: p.source || 'linkedin',
+          isDecisionMaker: !!p.isDecisionMaker, notes: p.notes ?? null, createdAt: p.createdAt ? new Date(p.createdAt) : undefined,
+        },
+      })
+      await prisma.target.create({ data: { brandId: p.brandId, contactId: c.id, fitScore: p.fitScore ?? 50, assignedTo: p.assignedTo ?? null } })
+      touched.add(p.brandId)
+      back++
+    }
+    const brands = Array.isArray(last.brands) ? last.brands.map(String) : []
+    if (brands.length) {
+      await prisma.$transaction([
+        prisma.brand.updateMany({ where: { id: { in: brands } }, data: { passedAt: null } }),
+        prisma.target.updateMany({ where: { id: { in: (last.shelved || []).map(String) } }, data: { shelved: false } }),
+      ])
+    }
+    for (const id of touched) { try { await reconcileBrandTargets(id) } catch { /* non-fatal */ } }
+    await writeJsonSetting(prisma, LI_CLEANUP_KEY, { ...last, undone: new Date().toISOString() })
+    return { ok: true, back, brands: brands.length }
   },
 
   // Everything one run did, brand by brand: who it added (from the

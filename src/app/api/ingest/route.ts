@@ -32,12 +32,12 @@ import {
 import {
   companySlug, companyPageUrl, profileSlug, profileUrl, cleanName, personKey,
   roleFromHeadline, isBuyer, decideCompanyMatch, focusTerms, matchesFocus,
-  normalizeCompany, judgeDiscovery, industryFits, decideResearchMatch, nearName, pageLooksWrong,
+  normalizeCompany, cleanBrandName, judgeDiscovery, industryFits, decideResearchMatch, nearName, pageLooksWrong,
   type LiCompany,
 } from '@/lib/li-capture'
 import { readLiLog, markLiSwept, liResting, readLiResearch, markLiResearch, researchResting, LI_READER, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
 import { recordRun } from '@/lib/li-report'
-import { PARENTS, parentOf, decideParentPage, LI_PARENT_PAGES_KEY } from '@/lib/parents'
+import { PARENTS, parentOf, decideParentPage, siblingNamed, LI_PARENT_PAGES_KEY } from '@/lib/parents'
 import {
   addToReview, sameMember, readJsonSetting, writeJsonSetting,
   LI_REVIEW_KEY, LI_CONFIRMED_KEY, LI_OWNER_KEY, type Review, type Confirmed, type LiOwner,
@@ -261,6 +261,13 @@ async function resolveLinkedinBrand(body: any) {
   return { brand, matchedBy, suggestions, slug, companyName, typed }
 }
 
+// A headline's first two parts minus history ("ex-Smirnoff", "formerly
+// at…"): what someone works on now.
+function currentWork(headline: string): string {
+  return headline.split(/\s*[|•·]\s*/).slice(0, 2)
+    .filter(p => !/^(?:ex\b|ex-|former|formerly|previously|prev\b)/i.test(p)).join(' | ')
+}
+
 async function planLinkedin(body: any) {
   const { brand, matchedBy, suggestions, slug, companyName, typed } = await resolveLinkedinBrand(body)
 
@@ -299,13 +306,23 @@ async function planLinkedin(body: any) {
     }
   }
 
+  // The brand's own names (and its parent's), so "CEO of <another
+  // company>" on its page reads as an outsider, and — when the brand has
+  // a parent — so someone working on a sister brand is left out.
+  const parent = brand ? parentOf(brand.name, brand.aka) : null
+  const ownNames = brand
+    ? [brand.name, ...String(brand.aka || '').split(/[,;]/).map(x => x.trim()).filter(Boolean),
+        ...(parent ? [parent.name, parent.search, ...(parent.aka || [])] : [])]
+    : null
+
   const rows: LiRow[] = cards.map(c => {
     const role = roleFromHeadline(c.headline, companyName || brand?.name || null)
     const row: LiRow = { name: c.name, role, linkedinUrl: profileUrl(c.slug), slug: c.slug, verdict: 'add', fit: scoreFit(role, brand?.tier ?? null) }
     const key = personKey(c.name)
     if (mineSlugs.has(c.slug) || (key && mineKeys.has(key))) row.verdict = 'dupe'
     else if (elsewhere.has(c.slug)) { row.verdict = 'elsewhere'; row.at = elsewhere.get(c.slug) }
-    else if (!isBuyer(role, c.headline)) row.verdict = 'notBuyer'
+    else if (!isBuyer(role, c.headline, ownNames)) row.verdict = 'notBuyer'
+    else if (brand && parent && siblingNamed(currentWork(c.headline), brand.name, brand.aka)) row.verdict = 'notBuyer'
     else if (!brand) row.verdict = 'noBrand'
     return row
   })
@@ -827,7 +844,7 @@ export async function POST(req: NextRequest) {
     const seen = new Set<string>()
     for (const raw of (Array.isArray(body.companies) ? body.companies : []).slice(0, 40)) {
       const slug = companySlug(String(raw?.url || ''))
-      const name = String(raw?.name || '').replace(/\s+/g, ' ').trim().slice(0, 120)
+      const name = cleanBrandName(raw?.name).slice(0, 120)
       const subtitle = String(raw?.subtitle || '').replace(/\s+/g, ' ').trim().slice(0, 200)
       if (!slug || !name || seen.has(slug)) continue
       seen.add(slug)

@@ -105,13 +105,100 @@ const GENERIC = /^(?:senior |sr\.? |associate |assistant |group |global |regiona
 // RUNS the student or ambassador program is the opposite — that is the
 // college buyer — so those two words only disqualify on their own.
 const NOT_BUYER = /\bintern(?:ship)?\b|\bstudent\b(?!\s+(?:marketing|engagement|programs?|partnerships?|activation))|ambassador(?!\s+(?:programs?|marketing|manager|lead|director|coordinator))|recruit|talent acquisition|human resources|\bhr\b|people (?:&|and) culture|designer|engineer|developer|accountant|accounting|\bfinance\b|\blegal\b|counsel|attorney|paralegal|supply chain|logistics|warehouse|driver|merchandiser|cashier|retired|seeking|open to work|looking for|aspiring|volunteer/i
+// What the Sep 30 run let in through the big-company searches (Leo, Oct
+// 2026: "is it getting the right people"): students and new grads whose
+// headline is their degree ("Marketing Major", "Recent graduate from…"),
+// store staff, investors / board members / advisers on the brand's page,
+// HR's "people partners", campus recruiting, wholesale, creators.
+const anyOf = (parts: string[]) => new RegExp(parts.join('|'), 'i')
+// studying, or just finished
+const STUDENT = anyOf([
+  String.raw`\bmajor(?:ing)?\b(?!\s+(?:league|accounts?|gifts?|brands?|events?))`,
+  String.raw`\bminor\b`, String.raw`\bgraduate\b`, String.raw`\b(?:recent|new) grad\b`, String.raw`\bgrad student\b`,
+  String.raw`\balum(?:na|nus|nae|ni)?\b`, String.raw`\bpursuing\b`, String.raw`\bcandidate\b`, String.raw`\bscholar\b`,
+  String.raw`\bbachelor'?s?\b`, String.raw`\bb\.?\s?[sa]\.?\s+in\b`, String.raw`\b(?:bba|bsba|msc|m\.sc|phd)\b`, String.raw`\bclass of\b`,
+  String.raw`\b(?:first|second|third|fourth|final)[- ]year\b`, String.raw`\b(?:freshman|sophomore|undergrad(?:uate)?)\b`,
+  String.raw`\bpre-?(?:med|law|business|dental|pharmacy|health)\b`, String.raw`\bco-?chair\b`,
+])
+// store and front-line retail
+const STORE = anyOf([
+  String.raw`\b(?:co-?|assistant |general )?store (?:manager|lead|associate|supervisor|director|employee|team)\b`,
+  String.raw`\bsales associate\b`, String.raw`\bstylist\b`, String.raw`\bkey ?holder\b`, String.raw`\bleasing\b`,
+  String.raw`\bassistant (?:general )?manager\b(?!\s*[,\-–—]\s*\w)`,
+])
+// on the brand's page, but not working there: investors, the board,
+// advisers, consultants
+const OUTSIDE = anyOf([
+  String.raw`\b(?:general|managing|venture|limited) partner\b`, String.raw`\b(?:growth|private) equity\b`, String.raw`\binvest(?:or|ment|ing)\b`,
+  String.raw`\bboard (?:member|director|of directors|advis[oe]r)\b`, String.raw`\badvis[oe]ry? board\b`, String.raw`\badvis[oe]r\b`,
+  String.raw`\bconsult(?:ant|ing)\b`, String.raw`\bfractional\b`, String.raw`^(?:i help|helping)\b`,
+])
+// at the brand, not in marketing: HR's "people partners", campus
+// recruiting, wholesale, the CEO's office, creators
+const OTHER_JOB = anyOf([
+  String.raw`\bpeople (?:partner|partnerships?|operations|ops|experience|business partner)\b`,
+  String.raw`\buniversity relations\b`, String.raw`\bearly careers?\b`, String.raw`\bwholesale\b`,
+  String.raw`\bexecutive assistant\b`, String.raw`\bassistant to\b`, String.raw`\boffice of the\b`, String.raw`\bchief of staff\b`,
+  String.raw`\bcontent creator\b`, String.raw`\bugc\b`,
+])
+// A headline that is only a school ("Chapman University", "Pamplin
+// College of Business") — no job in it — is a student's.
+const SCHOOL = /\buniversity\b|\b(?:school|college|institute) of\b/i
+const JOB = /\b(?:manager|director|head|lead|vp|vice president|president|officer|chief|coordinator|specialist|associate|executive|strategist|analyst|partner|founder|owner|marketer|producer|planner|supervisor|representative|rep)\b/i
+// "Founder & CEO of Lendi", "CEO of Sleep Number", "Co-founder of Rapha":
+// a leader somewhere else, sitting on this brand's page as an investor or
+// board member. Only judged when the brand's names are known.
+const LEADER_OF = /\b(?:co-?founder|founder|ceo|chief executive(?: officer)?|owner|(?<!vice[ -])president)\b(?:\s*(?:&|and|\/)\s*(?:co-?founder|founder|ceo|chief executive(?: officer)?|owner|president))*\s+(?:of|at|@)\s+([^,|•·✦/]+)/i
+const NOT_A_COMPANY = /\b(?:sales|operations|division|region|north america|americas|emea|apac|international|global|us|usa|the board)\b/i
 
-export function isBuyer(role: string | null | undefined, headline?: string | null): boolean {
+export type NotBuyerWhy = 'student' | 'store' | 'outside' | 'notMarketing'
+function whyNot(r: string): NotBuyerWhy | null {
+  if (STUDENT.test(r) || (SCHOOL.test(r) && !JOB.test(r))) return 'student'
+  if (STORE.test(r)) return 'store'
+  if (OUTSIDE.test(r)) return 'outside'
+  if (OTHER_JOB.test(r)) return 'notMarketing'
+  return null
+}
+function notBuyerRole(r: string): boolean {
+  return NOT_BUYER.test(r) || !!whyNot(r)
+}
+
+// Names that are the brand's own: its name, also-known-as, its parent —
+// either way round ("CEO of Liquid Death Mountain Water" for Liquid Death,
+// "Co-founder of PRIME" for Prime Hydration).
+function namesThis(text: string, names: string[]): boolean {
+  const tk = normalizeCompany(text), t = ' ' + tk + ' '
+  return names.some(n => {
+    const k = normalizeCompany(n)
+    return !!k && (t.includes(' ' + k + ' ') || (tk.length >= 3 && (' ' + k + ' ').includes(t)))
+  })
+}
+
+export function leaderElsewhere(role: string, names?: string[] | null): string | null {
+  if (!names || !names.length) return null
+  const m = String(role || '').match(LEADER_OF)
+  if (!m) return null
+  const co = m[1].trim()
+  if (!co || BUYER.test(co) || NOT_A_COMPANY.test(co) || namesThis(co, names)) return null
+  return co
+}
+
+// Why the October rules turn a saved title away — for the clean-up of
+// people saved before them (a title alone; the headline isn't kept).
+// null = these rules have nothing against it.
+export function refusedWhy(title: string | null | undefined, names?: string[] | null): NotBuyerWhy | null {
+  const r = String(title || '').trim()
+  if (!r) return null
+  return whyNot(r) || (leaderElsewhere(r, names) ? 'outside' : null)
+}
+
+export function isBuyer(role: string | null | undefined, headline?: string | null, names?: string[] | null): boolean {
   const r = String(role || '').trim()
-  if (!r || NOT_BUYER.test(r)) return false
+  if (!r || notBuyerRole(r)) return false
+  if (leaderElsewhere(r, names)) return false
   if (BUYER.test(r) || LEADER.test(r)) return true
   const h = String(headline || '')
-  return GENERIC.test(r) && BUYER.test(h) && !NOT_BUYER.test(h.split(/\s*[|•·]\s*/).slice(0, 2).join(' '))
+  return GENERIC.test(r) && BUYER.test(h) && !notBuyerRole(h.split(/\s*[|•·]\s*/).slice(0, 2).join(' '))
 }
 
 // -------------------------------------------------------------------
@@ -128,6 +215,7 @@ export function normalizeCompany(s: string | null | undefined): string {
     .toLowerCase()
     .replace(/\([^)]*\)/g, ' ')
     .replace(/&/g, ' and ')
+    .replace(/\.(?:com|net|io)\b/g, ' ')
     .replace(/[.'’]/g, '')
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(CORP_WORDS, ' ')
@@ -333,6 +421,18 @@ export function categoryFromIndustry(industry: string | null | undefined): strin
 // category. A lookalike of a brand we have may take that brand's
 // category when its industry fits it ("Jose Cuervo" next to Clase Azul
 // is alcohol, not just "Beverage Manufacturing").
+// Leagues, teams and sports agencies sell sponsorships; they don't buy
+// them. The Sep 30 run took NFL, NBA, NHL, Athletes Unlimited and Excel
+// Sports Management as "similar to MLB".
+const SELLS_SPONSORSHIP = /spectator sports|sports teams|talent (?:agenc|management)|athlete management/i
+const SELLER_NAME = /\b(?:league|association|federation|conference|ncaa|sports management|talent agency|athletes unlimited)\b/i
+
+// A brand on the roster that is really a seller (a league, a sports
+// agency): by name, or by the industry its discovery note recorded.
+export function looksLikeSeller(name: string | null | undefined, notes?: string | null): boolean {
+  return SELLER_NAME.test(String(name || '')) || /(?:—|,)\s*(?:spectator sports|sports teams)/i.test(String(notes || ''))
+}
+
 export function judgeDiscovery(
   c: { name: string; subtitle?: string | null },
   sourceCategory?: string | null,
@@ -341,10 +441,24 @@ export function judgeDiscovery(
   const industry = industryOf(c.subtitle)
   if (followers == null || followers < DISCOVER_MIN_FOLLOWERS) return { ok: false, reason: 'small' }
   if (!industry || NOT_A_BRAND.test(industry)) return { ok: false, reason: 'industry' }
+  if (SELLS_SPONSORSHIP.test(industry) || SELLER_NAME.test(c.name)) return { ok: false, reason: 'industry' }
   if (sourceCategory && industryFits(sourceCategory, industry)) return { ok: true, category: sourceCategory, followers, industry }
   const cat = categoryFromIndustry(industry)
   if (!cat) return { ok: false, reason: 'industry' }
   return { ok: true, category: cat, followers, industry }
+}
+
+// A LinkedIn page name as a brand name: without its company suffix or
+// web address ("Abercrombie & Fitch Co." → "Abercrombie & Fitch",
+// "PrettyLittleThing.com" → "PrettyLittleThing").
+export function cleanBrandName(name: string | null | undefined): string {
+  let s = String(name || '').replace(/\s+/g, ' ').trim()
+  for (let i = 0; i < 3; i++) {
+    const t = s.replace(/,?\s+(?:inc\.?|llc\.?|ltd\.?|co\.|corp\.?)$/i, '').replace(/\.(?:com|net|io)$/i, '').trim()
+    if (t === s) break
+    s = t
+  }
+  return s || String(name || '').trim()
 }
 
 // A name from the research list (Stock take's lane ideas) looked up on
