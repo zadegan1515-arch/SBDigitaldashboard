@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.22
+// @version      1.23
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -83,7 +83,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.22';
+  var VERSION = '1.23';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1470,7 +1470,7 @@
     // Every item goes in the run's report; the server's visit log (which
     // rests brands) only takes the ones with a brandId — a research name
     // that never became a brand is logged by liResearch.
-    post({
+    var swept = post({
       action: 'liSwept', brandId: item.brandId || null, run: job.id, script: VERSION, name: item.name,
       seen: st.seen, added: st.added, note: note || '', problem: st.problem || null, sample: st.sample || null,
       ms: st.startedAt ? Date.now() - st.startedAt : null, hiddenMs: st.hiddenMs || 0,
@@ -1483,7 +1483,11 @@
     job.nextAt = Date.now() + secs(quick ? BETWEEN_PAGES : BETWEEN_BRANDS);
     if (job.doneToday >= DAILY_CAP && job.at < job.items.length) job.pausedUntil = tomorrowMorning();
     saveFill(job);
-    runFill();
+    // The last brand's visit mark lands before the run says it's finished
+    // (up to 15 s): a run started right after would otherwise redo it.
+    if (job.at >= job.items.length) {
+      Promise.race([swept, new Promise(function (r) { setTimeout(r, 15000); })]).then(function () { runFill(); });
+    } else runFill();
   }
 
   function finishFill(job, stopped) {
