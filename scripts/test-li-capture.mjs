@@ -297,6 +297,15 @@ t('another company\u2019s leader on the brand\u2019s page is an outsider; the br
   assert.equal(isBuyer('President of Global Marketing', '', ['Crocs']), true)
   assert.equal(isBuyer('Founder & CEO', '', ['Shinesty']), true)
   assert.equal(isBuyer('Co-founder of PRIME', '', ['Prime Hydration']), true)
+  // founders who also invest or advise are still the founder
+  assert.equal(isBuyer('Founder, CEO, Advisor, Investor', '', ['Drink LMNT']), true)
+  assert.equal(isBuyer('CEO Ten Thousand, Strategic Advisor & Angel Investor', '', ['Ten Thousand']), true)
+  assert.equal(isBuyer('Chief of Staff & Senior Director of Partnerships', '', ['Kith']), true)
+  // a firm or a board seat is not
+  assert.equal(isBuyer('Co-Founder and General Partner True Beauty Ventures', '', ['Vacation Sunscreen']), false)
+  assert.equal(isBuyer('Partner - Highland Europe (Growth equity)', '', ['Huel']), false)
+  assert.equal(isBuyer('Active board chair, investor, mentor, public speaker', '', ['Maurten']), false)
+  assert.equal(isBuyer('Performance Marketer, Growth Consultant', '', ['Buoy']), false)
   assert.equal(isBuyer('CEO of Liquid Death Mountain Water', '', ['Liquid Death']), true)
   assert.equal(isBuyer('Co-Founder & CEO of OLIPOP', '', ['Olipop']), true)
   assert.equal(isBuyer('CEO of Liquid IV', '', ['Liquid I.V.']), true)

@@ -228,9 +228,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   the logging people on Zach's LinkedIn"); buyer titles only, **inside the same 25 cap**; no emails — people go to the
   LinkedIn queue (`source: 'linkedin'`, target created, `reconcileBrandTargets` applies).
   **Who's a buyer** (`isBuyer`, li-capture.ts; stricter since Oct 2026 after the Sep 30 run let in ~1 in 6
-  wrong people): never students / new grads / a headline that's only a school, store staff, investors /
-  board / advisers / consultants, HR's "people partners", campus recruiting, wholesale, creators
-  (`STUDENT`/`STORE`/`OUTSIDE`/`OTHER_JOB`), nor "CEO of <another company>" on the brand's page
+  wrong people): never students / new grads / a headline that's only a school, store staff, a firm or
+  board seat (ventures, capital, growth equity, board member — `OUTSIDE_FIRM`), investors / advisers /
+  partners / consultants unless the title also says founder/CEO or names the brand (`OUTSIDE_SOFT` —
+  "Founder, CEO, Advisor, Investor" is the founder), HR's "people partners", campus recruiting,
+  wholesale, creators (`STUDENT`/`STORE`/`OTHER_JOB`), nor "CEO of <another company>" on the brand's page
   (`leaderElsewhere`, given the brand's + parent's names). A brand with a parent never takes someone
   whose current title names a **sister brand** (`siblingNamed`, parents.ts — `brands` + `others` lists;
   "Bacardi"/"Campari" = the company, never held against a sister; "ex-…" ignored). **Clean-up**

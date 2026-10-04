@@ -126,11 +126,17 @@ const STORE = anyOf([
   String.raw`\bsales associate\b`, String.raw`\bstylist\b`, String.raw`\bkey ?holder\b`, String.raw`\bleasing\b`,
   String.raw`\bassistant (?:general )?manager\b(?!\s*[,\-–—]\s*\w)`,
 ])
-// on the brand's page, but not working there: investors, the board,
-// advisers, consultants
-const OUTSIDE = anyOf([
-  String.raw`\b(?:general|managing|venture|limited) partner\b`, String.raw`\b(?:growth|private) equity\b`, String.raw`\binvest(?:or|ment|ing)\b`,
-  String.raw`\bboard (?:member|director|of directors|advis[oe]r)\b`, String.raw`\badvis[oe]ry? board\b`, String.raw`\badvis[oe]r\b`,
+// on the brand's page, but not working there. A firm or a board seat is
+// never the brand's buyer; investor / adviser / partner / consultant is
+// only an outsider when nothing else says they run the brand ("Founder,
+// CEO, Advisor, Investor" is the founder; "CEO Ten Thousand, Strategic
+// Advisor & Angel Investor" is Ten Thousand's CEO).
+const OUTSIDE_FIRM = anyOf([
+  String.raw`\b(?:growth|private) equity\b`, String.raw`\bventures?\b`, String.raw`\bcapital\b`, String.raw`\bfund\b`,
+  String.raw`\bboard (?:member|chair|director|of directors|advis[oe]r)\b`, String.raw`\badvis[oe]ry? board\b`,
+])
+const OUTSIDE_SOFT = anyOf([
+  String.raw`\b(?:general|managing|venture|limited) partner\b`, String.raw`\binvest(?:or|ment|ing)\b`, String.raw`\badvis[oe]r\b`,
   String.raw`\bconsult(?:ant|ing)\b`, String.raw`\bfractional\b`, String.raw`^(?:i help|helping)\b`,
 ])
 // at the brand, not in marketing: HR's "people partners", campus
@@ -138,7 +144,7 @@ const OUTSIDE = anyOf([
 const OTHER_JOB = anyOf([
   String.raw`\bpeople (?:partner|partnerships?|operations|ops|experience|business partner)\b`,
   String.raw`\buniversity relations\b`, String.raw`\bearly careers?\b`, String.raw`\bwholesale\b`,
-  String.raw`\bexecutive assistant\b`, String.raw`\bassistant to\b`, String.raw`\boffice of the\b`, String.raw`\bchief of staff\b`,
+  String.raw`\bexecutive assistant\b`, String.raw`\bassistant to\b`, String.raw`\boffice of the\b`,
   String.raw`\bcontent creator\b`, String.raw`\bugc\b`,
 ])
 // A headline that is only a school ("Chapman University", "Pamplin
@@ -152,15 +158,17 @@ const LEADER_OF = /\b(?:co-?founder|founder|ceo|chief executive(?: officer)?|own
 const NOT_A_COMPANY = /\b(?:sales|operations|division|region|north america|americas|emea|apac|international|global|us|usa|the board)\b/i
 
 export type NotBuyerWhy = 'student' | 'store' | 'outside' | 'notMarketing'
-function whyNot(r: string): NotBuyerWhy | null {
+function whyNot(r: string, names?: string[] | null): NotBuyerWhy | null {
   if (STUDENT.test(r) || (SCHOOL.test(r) && !JOB.test(r))) return 'student'
   if (STORE.test(r)) return 'store'
-  if (OUTSIDE.test(r)) return 'outside'
+  const theirs = !!names && names.length > 0 && namesThis(r, names)
+  if (OUTSIDE_FIRM.test(r) && !theirs) return 'outside'
+  if (OUTSIDE_SOFT.test(r) && !LEADER.test(r) && !theirs) return 'outside'
   if (OTHER_JOB.test(r)) return 'notMarketing'
   return null
 }
-function notBuyerRole(r: string): boolean {
-  return NOT_BUYER.test(r) || !!whyNot(r)
+function notBuyerRole(r: string, names?: string[] | null): boolean {
+  return NOT_BUYER.test(r) || !!whyNot(r, names)
 }
 
 // Names that are the brand's own: its name, also-known-as, its parent —
@@ -189,16 +197,16 @@ export function leaderElsewhere(role: string, names?: string[] | null): string |
 export function refusedWhy(title: string | null | undefined, names?: string[] | null): NotBuyerWhy | null {
   const r = String(title || '').trim()
   if (!r) return null
-  return whyNot(r) || (leaderElsewhere(r, names) ? 'outside' : null)
+  return whyNot(r, names) || (leaderElsewhere(r, names) ? 'outside' : null)
 }
 
 export function isBuyer(role: string | null | undefined, headline?: string | null, names?: string[] | null): boolean {
   const r = String(role || '').trim()
-  if (!r || notBuyerRole(r)) return false
+  if (!r || notBuyerRole(r, names)) return false
   if (leaderElsewhere(r, names)) return false
   if (BUYER.test(r) || LEADER.test(r)) return true
   const h = String(headline || '')
-  return GENERIC.test(r) && BUYER.test(h) && !notBuyerRole(h.split(/\s*[|•·]\s*/).slice(0, 2).join(' '))
+  return GENERIC.test(r) && BUYER.test(h) && !notBuyerRole(h.split(/\s*[|•·]\s*/).slice(0, 2).join(' '), names)
 }
 
 // -------------------------------------------------------------------
