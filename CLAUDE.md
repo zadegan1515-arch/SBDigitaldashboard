@@ -352,7 +352,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   the reports and fixes/pushes LinkedIn-tool bugs only; needs `REPORT_TOKEN` +
   `sb-digitaldashboard.vercel.app` allowed in the cloud environment.
   Worklist in the dashboard: Outreach → People → "Under 25" (deep link `app.html#people`).
-  On a profile this script logs nobody: its panel points to the SB · Log pill / Zach's list.
+  On a profile (`/in/<slug>/`) the pill is **Send to dashboard** (Leo, Oct 2026: "it should just be send
+  this contact to dashboard"): reads name / headline / current company (the SB · Log reader), the company
+  box is editable, one click → `liCapture` with `handPicked` (one row; skips the buyer-title filter, keeps
+  dupe / elsewhere / the 25 cap) + `createIfMissing` → the brand's LinkedIn queue. Logs no invite — that
+  stays SB · Log / Zach's list.
   Install by **paste** (Tampermonkey → + → paste over the sample; pasted under it, the sample's
   header wins and it never runs on LinkedIn — a copy without its @grant lines says "Reinstall").
   Chrome needs Tampermonkey's **Allow User Scripts** switch on. The pill shows on every LinkedIn page,

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.23
+// @version      1.24
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -83,7 +83,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.23';
+  var VERSION = '1.24';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -320,6 +320,69 @@
     return String(el.innerText || el.textContent || '').split('\n')
       .map(function (s) { return s.replace(/\s+/g, ' ').trim(); })
       .filter(function (s) { return s && !NOISE.test(s); });
+  }
+
+  // ---- one profile (Leo, Oct 2026: "why can't I just add from this") --
+  //
+  // On someone's own profile page the pill adds that one person to their
+  // brand's LinkedIn queue — the same preview → Add as a People page, one
+  // row. It logs no invite: that stays the SB · Log pill / Zach's list.
+  // The reader is the SB · Log script's (linkedin-log.user.js).
+  function profilePath() {
+    var m = location.pathname.match(/^\/in\/([^\/?#]+)\/?$/);
+    return m ? m[1] : null;
+  }
+  var PROFILE_NOISE = /^(verified|contact info|hiring|provides services|premium|\d[\d,]*\+?\s+(connections|followers))$|^(she|he|they)\s*\/\s*(her|him|them)$/i;
+  var EMPLOYMENT = /^(.+?)\s[·•]\s(?:full-time|part-time|contract|self-employed|freelance|internship|seasonal|apprenticeship)\b/i;
+  function companyLink(a) {
+    return a && /\/company\//.test(a.href) ? a.href : '';
+  }
+  function currentCompany(headline) {
+    var cur = document.querySelector('[aria-label^="Current company"]');
+    if (cur && !skipZone(cur)) {
+      var al = cur.getAttribute('aria-label') || '';
+      var m = al.match(/^Current company:\s*(.+?)(?:\.\s*Click\b.*)?$/i);
+      var name = (m ? m[1] : (lines(cur)[0] || '')).trim();
+      var a = cur.closest('a[href*="/company/"]') || cur.querySelector('a[href*="/company/"]');
+      if (name) return { name: name.slice(0, 120), url: companyLink(a) };
+    }
+    var anchor = document.getElementById('experience');
+    var sec = anchor ? (anchor.closest('section') || anchor.parentElement) : null;
+    if (sec) {
+      var logo = sec.querySelector('a[href*="/company/"] img[alt]');
+      var alt = logo ? String(logo.getAttribute('alt') || '').replace(/\s*logo\s*$/i, '').trim() : '';
+      if (alt) return { name: alt.slice(0, 120), url: companyLink(logo.closest('a')) };
+      var links = [].slice.call(sec.querySelectorAll('a[href*="/company/"]'));
+      for (var i = 0; i < links.length; i++) {
+        var ls = lines(links[i]);
+        for (var k = 0; k < ls.length; k++) {
+          var em = ls[k].match(EMPLOYMENT);
+          if (em) return { name: em[1].trim().slice(0, 120), url: companyLink(links[i]) };
+        }
+      }
+    }
+    var hm = String(headline || '').match(/\s(?:at|@)\s+([^|•·,]+)/i);
+    return { name: hm ? hm[1].trim().slice(0, 120) : '', url: '' };
+  }
+  function readProfile() {
+    var slug = profilePath();
+    var h1 = [].slice.call(document.querySelectorAll('main h1, h1')).filter(function (x) { return !skipZone(x); })[0] || null;
+    var name = h1 ? personName(lines(h1)[0] || '') : '';
+    if (!name) name = personName(document.title.replace(/^\(\d+\+?\)\s*/, '').split('|')[0]);
+    var headline = '';
+    var box = h1 ? (h1.closest('section') || h1.parentElement) : null;
+    if (box) {
+      var all = lines(box);
+      var at = -1;
+      for (var i = 0; i < all.length; i++) {
+        if (personName(all[i]) === name || (name && all[i].indexOf(name) === 0)) { at = i; break; }
+      }
+      for (var j = at + 1; j < all.length && !headline; j++) {
+        var l = personName(all[j]);
+        if (l && l !== name && !PROFILE_NOISE.test(l) && !NOISE.test(l)) headline = l;
+      }
+    }
+    return { name: name.slice(0, 80), headline: headline.slice(0, 300), slug: slug, company: currentCompany(headline) };
   }
 
   // The block that holds one person: their <li> when it holds only them,
@@ -565,6 +628,7 @@
     var fj = loadFill();
     if (ownsFill(fj)) return renderFill(fj, fj.paused ? 'Paused: ' + fj.paused : 'Running.');
     if (busy) return;
+    if (profilePath()) return readOneProfile();
     if (!companyPath()) return openElsewhere();
     if (onPeoplePage()) return readPage();
     freshPanel([
@@ -604,6 +668,64 @@
       h('button', { id: 'sblifillopen', style: BTN + ';margin-top:6px', text: 'Fill brands by itself…', onclick: openFillSetup }),
       tokenLink(),
     ]);
+  }
+
+  // One button: Send to dashboard. Their current company is the brand
+  // (made if the dashboard lacks it); Leo picked them, so the buyer-title
+  // filter doesn't apply (handPicked). Joins the LinkedIn queue — no
+  // invite is logged.
+  function readOneProfile() {
+    var p = readProfile();
+    if (!p.name) return openElsewhere();
+    var box = h('input', {
+      id: 'sbliprofbrand', value: p.company.name, placeholder: 'Their company (dashboard brand)',
+      style: 'display:block;box-sizing:border-box;width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:6px;font:12.5px system-ui;color:#111;background:#fff;margin:4px 0 10px',
+    });
+    var btn = h('button', { id: 'sblisend', style: BTN, text: 'Send to dashboard' });
+    btn.onclick = guard(function () { sendProfile(p, box.value.trim(), btn); });
+    box.onkeydown = function (e) { if (e.key === 'Enter') btn.click(); };
+    freshPanel([
+      head(p.name),
+      p.headline ? h('div', { style: MUTED, text: p.headline }) : null,
+      h('div', { style: 'font-size:12px;color:#555', text: 'Brand' }),
+      box,
+      btn,
+      h('div', { style: SMALL, text: 'Adds them to the brand\'s LinkedIn queue. Logging an invite is the SB · Log pill / Zach\'s list.' }),
+      tokenLink(),
+    ]);
+  }
+
+  function sendProfile(p, brand, btn) {
+    if (!brand) return showError('Type their company first.');
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    var sameCo = brand.toLowerCase() === String(p.company.name || '').toLowerCase();
+    return post({
+      action: 'liCapture',
+      handPicked: true,
+      createIfMissing: true,
+      companyName: brand,
+      // Their company's page, only when it is the brand being sent to:
+      // the brand may save it as its LinkedIn page.
+      companyUrl: sameCo ? p.company.url : '',
+      brandName: brand,
+      rows: [{ name: p.name, headline: p.headline, linkedinUrl: 'https://www.linkedin.com/in/' + p.slug + '/' }],
+    }).then(function (j) {
+      if (!j || !j.ok) return showError((j && j.error) || 'Nothing was saved.');
+      var v = (j.verdicts || [])[0] || {};
+      var why = v.verdict === 'dupe' ? 'Already on file at ' + j.brand.name + '.'
+        : v.verdict === 'elsewhere' ? 'Already on file at ' + v.at + ' — not added again.'
+        : v.verdict === 'full' ? j.brand.name + ' already has ' + j.cap + ' people on file (the cap).'
+        : null;
+      freshPanel([
+        head(j.added ? 'Sent' : 'Not added'),
+        j.brandCreated ? h('div', { style: 'margin-bottom:6px;color:#137333' }, [b(j.brand.name), ' is now a brand in the dashboard. Its category is a guess — check it on the brand page.']) : null,
+        j.added
+          ? h('div', { style: 'margin-bottom:6px' }, [b(p.name), ' is in ', b(j.brand.name), '\'s LinkedIn queue (' + j.have + ' of ' + j.cap + ' on file).'])
+          : h('div', { style: 'margin-bottom:6px;color:#946200', text: why || (j.errors || []).join('; ') || 'Nothing was saved.' }),
+        h('a', { href: DASH_URL + '#brand/' + j.brand.id, target: '_blank', rel: 'noopener', style: BTN2 + ';margin-top:10px', text: 'Open ' + j.brand.name + ' in the dashboard ↗' }),
+      ]);
+    }).catch(function (e) { showError(e.message); });
   }
 
   function readPage() {
@@ -788,6 +910,15 @@
       cards.push(cardFor(a));
     });
     var out = ['SB LinkedIn sample · script ' + VERSION + ' · ' + location.pathname + ' · ' + count() + ' people on screen'];
+    // Where every profile link on the page is, read or skipped: when the
+    // count is short, this says which wrapper hid the rest.
+    var zones = {};
+    [].slice.call(document.querySelectorAll(PROFILE_SEL)).forEach(function (a) {
+      var z = a.closest('#global-nav, header, nav, aside, [role="dialog"], .sb-li-ui');
+      var k = z ? 'skipped:' + z.tagName.toLowerCase() + (z.id ? '#' + z.id : '') + (z.getAttribute('role') ? '[role=' + z.getAttribute('role') + ']' : '') : 'read';
+      zones[k] = (zones[k] || 0) + 1;
+    });
+    out.push('profile links ' + JSON.stringify(zones));
     cards.forEach(function (c, i) {
       out.push('--- card ' + (i + 1) + ' read as ' + JSON.stringify(readCard(c)));
       out.push('lines ' + JSON.stringify(cardLines(c).slice(0, 14)));

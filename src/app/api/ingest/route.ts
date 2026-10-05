@@ -281,6 +281,7 @@ async function planLinkedin(body: any) {
     seen.add(ps)
     cards.push({ name, headline: String(r?.headline || '').replace(/\s+/g, ' ').trim().slice(0, 300), slug: ps })
   }
+  const handPicked = body.handPicked === true && cards.length === 1
 
   // Already on file: here by profile link or name, or at another brand
   // by profile link (one person, one thread — and usually a job move
@@ -321,6 +322,8 @@ async function planLinkedin(body: any) {
     const key = personKey(c.name)
     if (mineSlugs.has(c.slug) || (key && mineKeys.has(key))) row.verdict = 'dupe'
     else if (elsewhere.has(c.slug)) { row.verdict = 'elsewhere'; row.at = elsewhere.get(c.slug) }
+    // One person Leo sent from their profile is his pick: no title filter.
+    else if (handPicked) { if (!brand) row.verdict = 'noBrand' }
     else if (!isBuyer(role, c.headline, ownNames)) row.verdict = 'notBuyer'
     else if (brand && parent && siblingNamed(currentWork(c.headline), brand.name, brand.aka)) row.verdict = 'notBuyer'
     else if (!brand) row.verdict = 'noBrand'
@@ -1264,6 +1267,7 @@ export async function POST(req: NextRequest) {
       added, targetsCreated, targetsShelved, failed, errors,
       have, cap: CONTACT_CAP_PER_BRAND, brandCreated,
       savedPage,
+      verdicts: plan.rows.map(r => ({ name: r.name, verdict: r.verdict, at: r.at ?? null })),
     }, { headers: cors })
   }
 

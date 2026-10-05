@@ -190,6 +190,9 @@ const server = http.createServer((req, res) => {
           rows: body.rows.map(r => ({ name: r.name, role: r.headline, linkedinUrl: r.linkedinUrl, verdict: 'noBrand' })),
         }));
       }
+      if (body.action === 'liCapture' && body.handPicked) {
+        return res.end(JSON.stringify({ ok: true, brand: { id: 'bsnag', name: body.brandName }, brandCreated: true, added: 1, have: 1, cap: 25, verdicts: [{ name: 'Mason Cohen', verdict: 'add' }] }));
+      }
       if (body.action === 'liCapture' && body.createIfMissing) {
         return res.end(JSON.stringify({ ok: true, brand: { id: 'bnew', name: body.companyName }, brandCreated: true, added: 3, have: 3, cap: 25, targetsShelved: 0 }));
       }
@@ -265,6 +268,14 @@ const server = http.createServer((req, res) => {
       '</script></head><body><main><h1 class="org-top-card-summary__title">Scrub Brand</h1><ul>' + FIRST + '</ul></main></body></html>');
   }
   // LinkedIn's own "who am I" call, answered for whoever the test signs in.
+  // Someone's own profile (Mason at Snag, Oct 2026).
+  if (/^\/in\/mason-cohen\/?$/.test(req.url)) {
+    return res.end('<!doctype html><html><head><meta charset="utf-8"><title>Mason Cohen | LinkedIn</title></head><body>' +
+      '<header id="global-nav"><a href="https://www.linkedin.com/in/leo-self/">Me</a></header><main><section>' +
+      '<h1>Mason Cohen</h1><div>· 3rd</div><div>Cofounder at Snag</div><div>Austin, Texas, United States</div><div>Contact info</div>' +
+      '<a aria-label="Current company: Snag. Click to skip to experience card" href="https://www.linkedin.com/company/snag-sampling/"><span>Snag</span></a>' +
+      '<div>500+ connections</div><button>Message</button></section></main></body></html>');
+  }
   if (req.url === '/voyager/api/me') {
     if (!signedIn || !/JSESSIONID/.test(req.headers.cookie || '') || !req.headers['csrf-token']) { res.writeHead(401); return res.end('{}'); }
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -448,15 +459,28 @@ const GM_SHIM = `
     const vw = pageObj.viewportSize().width;
     assert.ok(box.x < vw / 2, 'pill is on the left, clear of Messaging (x=' + box.x + ')');
     ok('pill sits bottom-left, clear of LinkedIn\'s Messaging bar');
-    // On someone's profile this script logs nobody: that's the SB · Log
-    // script (linkedin-log.user.js, Zach's browser).
-    await load('/in/jane-doe-4b21a/');
+    // On someone's profile: one button sends that person to their
+    // company's brand (made if missing). It logs no invite — that's the
+    // SB · Log script (linkedin-log.user.js, Zach's browser).
+    await load('/in/mason-cohen/');
     await pageObj.waitForSelector('#sblipill', { state: 'visible' });
     await pageObj.click('#sblipill');
-    await pageObj.waitForFunction(() => /SB · Log/.test(document.getElementById('sbli-panel').innerText));
-    assert.equal(sent.length, 0, 'nothing sent from a profile');
-    assert.match(await pageObj.textContent('#sblipill'), /People/);
-    ok('on a profile it logs nobody and points to the SB · Log pill');
+    await pageObj.waitForSelector('#sblisend');
+    assert.equal(sent.length, 0, 'nothing sent before the button');
+    assert.equal(await pageObj.inputValue('#sbliprofbrand'), 'Snag');
+    assert.match(await pageObj.innerText('#sbli-panel'), /Cofounder at Snag/);
+    await pageObj.click('#sblisend');
+    await pageObj.waitForFunction(() => /Sent/.test(document.getElementById('sbli-panel').innerText));
+    const cap1 = sent.filter(b => b.action === 'liCapture');
+    assert.equal(cap1.length, 1);
+    assert.equal(cap1[0].handPicked, true);
+    assert.equal(cap1[0].createIfMissing, true);
+    assert.equal(cap1[0].brandName, 'Snag');
+    assert.match(cap1[0].companyUrl, /\/company\/snag-sampling\/$/);
+    assert.deepEqual(cap1[0].rows, [{ name: 'Mason Cohen', headline: 'Cofounder at Snag', linkedinUrl: 'https://www.linkedin.com/in/mason-cohen/' }]);
+    assert.ok(!sent.some(b => /^liPerson/.test(b.action)), 'logs no invite');
+    sent.length = 0;
+    ok('on a profile, "Send to dashboard" adds that one person under their company');
     await load('/company/liquid-death/');
     await pageObj.waitForSelector('#sblipill', { state: 'visible' });
     ok('pill shows on a company page');
