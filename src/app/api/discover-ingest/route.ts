@@ -115,8 +115,15 @@ export async function POST(req: NextRequest) {
       left -= 1
     } catch (err: any) {
       // Same name under today's label already (a second run): not new.
-      if (err?.code === 'P2002') skipped.push({ name: v.row.name, why: 'already known' })
-      else throw err
+      if (err?.code === 'P2002') { skipped.push({ name: v.row.name, why: 'already known' }); continue }
+      // Anything else: say what failed (never a bare 500) and stop — the
+      // same error would hit every row after it.
+      const msg = String(err?.message || err).split('\n').filter(Boolean).slice(-2).join(' ').slice(0, 300)
+      console.error('discover-ingest save failed', err?.code, msg)
+      return NextResponse.json({
+        ok: false, error: 'Save failed' + (err?.code ? ' (' + err.code + ')' : '') + ': ' + msg,
+        label: query, saved: saved.length, savedNames: saved, leftToday: left, skipped,
+      }, { status: 500 })
     }
   }
 
