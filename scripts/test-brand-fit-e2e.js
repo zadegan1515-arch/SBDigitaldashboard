@@ -82,7 +82,15 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await prisma.brand.create({ data: { id: 'b_mid', name: 'Middle Snacks', category: 'cpg' } });
     await prisma.brand.create({ data: { id: 'b_euro', name: 'Euro Only Soda', category: 'beverage' } });
     await prisma.brand.create({ data: { id: 'b_talk', name: 'In Talks Co', category: 'energy', usStatus: 'no' } });
-    for (const id of ['b_big', 'b_tiny', 'b_poor', 'b_mid', 'b_euro', 'b_talk']) await prisma.contact.createMany({ data: people(id, 4) });
+    await prisma.brand.create({ data: { id: 'b_nous', name: 'NoUS Energy', category: 'energy', usStatus: 'no' } });
+    await prisma.brand.create({ data: { id: 'b_shut', name: 'Shut Down Drinks', category: 'energy', bizStatus: 'closed' } });
+    await prisma.brand.create({ data: { id: 'b_kid', name: 'Ketel One', category: 'spirits', liMembers: 4 } });
+    for (const id of ['b_big', 'b_tiny', 'b_poor', 'b_mid', 'b_euro', 'b_talk', 'b_nous', 'b_shut', 'b_kid']) await prisma.contact.createMany({ data: people(id, 4) });
+    // Queued pool people at the brand confirmed not in the US: the daily
+    // rotation must never pick them.
+    for (const c of await prisma.contact.findMany({ where: { brandId: 'b_nous' } })) {
+      await prisma.target.create({ data: { brandId: 'b_nous', contactId: c.id, status: 'queued' } });
+    }
     const talker = await prisma.contact.findFirst({ where: { brandId: 'b_talk' } });
     await prisma.target.create({ data: { brandId: 'b_talk', contactId: talker.id, status: 'replied', sentAt: new Date(), repliedAt: new Date() } });
     const euroP = await prisma.contact.findFirst({ where: { brandId: 'b_euro' } });
@@ -99,6 +107,9 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(list.find(b => b.id === 'b_mid').fit.tooSmall, false, 'nothing known = not hidden');
     assert.equal(list.find(b => b.id === 'b_mid').fit.usUnknown, true);
     assert.equal((await data('listBrands', {}))[0].fit, undefined, 'the pickers don\'t pay for fit');
+    assert.equal(list.find(b => b.id === 'b_kid').fit.tooSmall, false, 'a parent company\'s brand is never too small by its own page');
+    assert.deepEqual([list.find(b => b.id === 'b_shut').fit.ruledOut, list.find(b => b.id === 'b_shut').fit.bizNote], [null, 'out of business']);
+    assert.equal(list.find(b => b.id === 'b_nous').fit.ruledOut, 'not sold in the US');
     ok('Brands list: fit on every row, money as numbers, too small by sales or headcount');
 
     // 2. Brand page: reasons + facts edit through the research rules.
@@ -122,6 +133,11 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(mid.researchedAt.getTime(), stamped, 'nothing changed → not stamped again');
     assert.equal(mid.salesCents, 1234567850n, 'round trip is exact');
     await assert.rejects(data('updateBrand', { brandId: 'b_mid', facts: { sales: 'lots' } }), /not an amount/);
+    await data('updateBrand', { brandId: 'b_big', facts: { sponsorNote: 'Rolling Loud' } });
+    const bigNow = await prisma.brand.findUnique({ where: { id: 'b_big' } });
+    assert.ok(bigNow.researchedAt, 'money + sponsorships known → researched');
+    await data('updateBrand', { brandId: 'b_tiny', facts: { us: 'yes' } });
+    assert.equal((await prisma.brand.findUnique({ where: { id: 'b_tiny' } })).researchedAt, null, 'one fact in passing is not research');
     ok('brand page: reasons, facts saved exactly, a re-save changes nothing, junk refused');
 
     // 3. Stock take: hide too small.
@@ -140,7 +156,21 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.ok(ids(fill0).includes('b_tiny'), 'shown with the switch off');
     assert.ok(!ids(fill1).includes('b_tiny') && !ids(fill1).includes('b_poor'), 'hidden with it on');
     assert.equal(fill1.hiddenSmall, 2);
-    assert.ok(!ids(fill0).includes('b_talk'), 'a ruled-out brand is never offered');
+    assert.ok(!ids(fill0).includes('b_talk') && !ids(fill0).includes('b_nous'), 'a ruled-out brand is never offered');
+    assert.ok(ids(fill0).includes('b_shut'), 'out of business is Leo\'s call on the Archive list, not hidden');
+    const m = await data('matchBrandList', { text: 'NoUS Energy' });
+    assert.deepEqual([m.lines[0].brand.status, m.lines[0].brand.action], ['notus', 'none'], 'the add box refuses it');
+    // Today as an energy sending day, so the rotation really runs.
+    const todayKey = nyKey(new Date());
+    await data('setExtraSendingDay', { date: todayKey, on: true });
+    await data('planSetCategory', { date: todayKey, category: 'energy' });
+    const plan0 = await data('getOutreachPlan');
+    const rotation = plan0.days.flatMap(d => (d.brands || []).map(b => b.id));
+    assert.ok(!rotation.includes('b_nous'), 'the rotation never shows it');
+    const tq = await data('getTodayQueue');
+    assert.equal(tq.sendingDay, true, 'today is a sending day for this check');
+    assert.ok(!(tq.targets || []).some(t => t.brandId === 'b_nous'), 'today\'s queue never stamps it');
+    assert.equal(await prisma.target.count({ where: { brandId: 'b_nous', queuedFor: { not: null } } }), 0);
     assert.equal(fill0.brands[0].id, 'b_big', 'best fit first');
     assert.ok(fill0.brands[0].fit && typeof fill0.brands[0].fit.score === 'number');
     const pw = await data('planWeek', { hideSmall: true });
@@ -151,33 +181,63 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
 
     // 5. Research: list → staged → reviewed import → Undo.
     const tomorrow = nyKey(new Date(Date.now() + 36 * 3600e3));
-    await prisma.setting.create({ data: { key: 'outreachPlan', value: JSON.stringify({ [tomorrow]: { category: null, brandIds: ['b_euro'] } }) } });
+    const planVal = JSON.stringify({ [tomorrow]: { category: null, brandIds: ['b_euro'] } });
+    await prisma.setting.upsert({ where: { key: 'outreachPlan' }, create: { key: 'outreachPlan', value: planVal }, update: { value: planVal } });
     const rl = await data('researchList', {});
     assert.deepEqual(rl.rows.map(r => r.id), ['b_euro'], 'the Schedule\'s next two weeks, not researched');
     assert.match(rl.text, /Euro Only Soda/);
     assert.match(rl.text, /"id":"b_euro"/);
     const more = await data('researchList', { scope: 'more' });
     assert.ok(!more.rows.some(r => r.id === 'b_mid'), 'researched brands are skipped');
-    const st = await data('researchStage', { rows: [
+    const sig = (r) => JSON.stringify(r.changes.map(c => [c.field, c.raw]));
+    let st = await data('researchStage', { rows: [
+      { id: 'b_euro', name: 'Euro Only Soda', us: 'yes' },
+      { name: 'Bad Row', sales: 'loads' },
+      { name: 'Bad Month', lastRound: '2024-13' },
+    ] });
+    assert.deepEqual([st.staged, st.errors.length], [1, 2], 'bad money and an impossible month are refused row by row');
+    st = await data('researchStage', { rows: [
       { id: 'b_euro', name: 'Euro Only Soda', us: 'no', note: 'only sold in the EU' },
       { name: 'tiny seltzer', sales: '$300K', sponsorsCollege: 'no' },
       { name: 'Nobody Brand', sales: '$5M' },
-      { name: 'Bad Row', sales: 'loads' },
+      { name: 'Middle Snacks', funding: '$30M' },
     ] });
-    assert.equal(st.staged, 3); assert.equal(st.errors.length, 1);
+    assert.equal(st.waiting, 4, 'joins the waiting batch; Euro\'s newer row replaces its older one');
     let rv = await data('researchImport', { staged: true });
-    assert.equal(rv.rows.length, 2);
+    assert.equal(rv.rows.length, 3);
     assert.deepEqual(rv.unmatched.map(u => u.name), ['Nobody Brand']);
     const euroRow = rv.rows.find(r => r.brandId === 'b_euro');
     assert.deepEqual(euroRow.changes.map(c => c.label + ':' + c.from + '→' + c.to), ['In the US:—→no', 'Sources:—→only sold in the EU']);
-    // Leo unticks Tiny Seltzer.
-    const res = await data('researchImport', { staged: true, preview: false, keep: ['b_euro'] });
-    assert.equal(res.updated, 1);
+    const midRow = rv.rows.find(r => r.brandId === 'b_mid');
+    assert.deepEqual(midRow.changes, [], 'Middle Snacks: nothing new');
+    const expect = { b_euro: sig(euroRow), b_mid: sig(midRow) };
+    // More research lands while Leo is looking: his Save is refused.
+    const seenAt = rv.staged.at;
+    await data('researchStage', { rows: [{ id: 'b_euro', name: 'Euro Only Soda', us: 'yes' }] });
+    await assert.rejects(data('researchImport', { staged: true, preview: false, stagedAt: seenAt, keep: ['b_euro'], expect }), /look again/);
+    rv = await data('researchImport', { staged: true });
+    const euro2 = rv.rows.find(r => r.brandId === 'b_euro');
+    // An out-of-date signature (what he saw before) writes nothing for that brand.
+    await assert.rejects(data('researchImport', { staged: true, preview: false, stagedAt: rv.staged.at, keep: ['b_euro'], expect }), /changed/);
+    assert.equal((await prisma.brand.findUnique({ where: { id: 'b_euro' } })).usStatus, null);
+    // Back to "no" for the rest of the test, reviewed properly.
+    await data('researchStage', { rows: [{ id: 'b_euro', name: 'Euro Only Soda', us: 'no', note: 'only sold in the EU' }] });
+    rv = await data('researchImport', { staged: true });
+    const keepIds = ['b_euro', 'b_mid']; // Leo unticks Tiny Seltzer.
+    const exp = Object.fromEntries(rv.rows.filter(r => keepIds.includes(r.brandId)).map(r => [r.brandId, sig(r)]));
+    const midBefore = (await prisma.brand.findUnique({ where: { id: 'b_mid' } })).researchedAt.getTime();
+    const res = await data('researchImport', { staged: true, preview: false, stagedAt: rv.staged.at, keep: keepIds, expect: exp });
+    assert.equal(res.updated, 2);
+    assert.ok(euro2, 'saw the newer row');
     assert.equal((await prisma.brand.findUnique({ where: { id: 'b_euro' } })).usStatus, 'no');
+    assert.ok((await prisma.brand.findUnique({ where: { id: 'b_mid' } })).researchedAt.getTime() > midBefore, 'nothing new, ticked → marked researched');
     assert.equal((await prisma.brand.findUnique({ where: { id: 'b_tiny' } })).salesCents, null, 'unticked = untouched');
     rv = await data('researchImport', { staged: true });
     assert.equal(rv.staged, null, 'the staged research is used up');
-    assert.equal(rv.last.count, 1);
+    assert.equal(rv.last.count, 2);
+    await data('researchStage', { rows: [{ name: 'Tiny Seltzer', sponsorsCollege: 'no' }] });
+    await data('researchDismiss', {});
+    assert.equal((await data('researchImport', { staged: true })).staged, null, 'dismissed');
     // Pasted research works the same way.
     const pasted = await data('researchImport', { text: '```json\n[{"name":"Middle Snacks","sponsorsCollege":"yes"}]\n```' });
     assert.equal(pasted.rows[0].changes[0].to, 'yes');
@@ -185,9 +245,10 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
 
     // 6. Suggest Archive → Undo.
     let fa = await data('fitArchive', {});
-    assert.deepEqual(fa.brands.map(b => b.id), ['b_euro'], 'not in the US; In Talks Co never (it replied)');
-    assert.equal(fa.brands[0].plannedOn, tomorrow);
-    assert.equal(fa.brands[0].queued, 1);
+    assert.deepEqual(fa.brands.map(b => b.id).sort(), ['b_euro', 'b_nous', 'b_shut'], 'not in the US, out of business; In Talks Co never (it replied)');
+    const euroA = fa.brands.find(b => b.id === 'b_euro');
+    assert.equal(euroA.plannedOn, tomorrow);
+    assert.equal(euroA.queued, 1);
     await assert.rejects(data('fitArchive', { preview: false, brandIds: ['b_big'] }), /Nothing ticked/);
     const arch = await data('fitArchive', { preview: false, brandIds: ['b_euro'] });
     assert.deepEqual([arch.archived, arch.shelved, arch.offDays], [1, 1, 1]);
@@ -196,7 +257,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const planNow = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value);
     assert.ok(!(planNow[tomorrow] && planNow[tomorrow].brandIds.includes('b_euro')), 'off the Schedule');
     fa = await data('fitArchive', {});
-    assert.equal(fa.brands.length, 0); assert.equal(fa.last.count, 1);
+    assert.ok(!fa.brands.some(b => b.id === 'b_euro')); assert.equal(fa.last.count, 1);
     const undo = await data('fitArchiveUndo', { preview: false });
     assert.deepEqual(undo.back, ['Euro Only Soda']);
     assert.equal((await prisma.brand.findUnique({ where: { id: 'b_euro' } })).passedAt, null);
@@ -206,9 +267,10 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
 
     // 7. Research Undo puts the old values back.
     const ru = await data('researchUndo', { preview: false });
-    assert.equal(ru.back, 1);
+    assert.equal(ru.back, 2);
     const euro = await prisma.brand.findUnique({ where: { id: 'b_euro' } });
     assert.deepEqual([euro.usStatus, euro.researchNote, euro.researchedAt], [null, null, null]);
+    assert.equal((await prisma.brand.findUnique({ where: { id: 'b_mid' } })).researchedAt.getTime(), midBefore, 'its earlier stamp is back');
     ok('research Undo: the old values are back');
 
     console.log(n + ' checks passed');

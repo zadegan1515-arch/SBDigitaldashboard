@@ -169,24 +169,35 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   says more ($5M+ raised = "a lot"; a round in the last 2 years adds); no money known → LinkedIn size
   (`brand-size.ts`) stands in; then already sponsors college / music, an 18–24 category
   (`YOUTH_CATEGORIES`: drinks, nicotine & betting, apparel / athletic / beauty), people we can reach,
-  the category's 90-day accept rate. **Ruled out** (never planned or suggested): confirmed not sold in the
-  US, closed, acquired; US unknown = kept, tagged "US?". **Too small** = sales under $1M, or (sales not
-  known) under 20 people on LinkedIn **measured** — a size guessed from tier never hides. **Hide too small**
+  the category's 90-day accept rate; while sales aren't known the stronger of funding and the size
+  estimate counts. **Ruled out** = confirmed not sold in the US only (Leo's one hard no): never planned,
+  suggested or auto-queued — `NOT_IN_CONVERSATION` (the rotation's pool), `outreachGate` /
+  `planRefusal` reason `notus`; a hand-pick on the brand page still works. US unknown = kept, tagged
+  "US?". Out of business / acquired (`bizNote`) only go on suggest Archive — Leo decides. **Too small** =
+  sales under $1M, or (sales not known) under 20 people on LinkedIn **measured** — a size guessed from tier
+  never hides, and a brand with a parent company (`parentOf`) is never small by its own page. **Hide too small**
   is one per-browser switch (`HIDE_SMALL`, localStorage `sb.hideSmall`, on by default) on Brands, Stock
-  take, the Fill box and Plan my week (the Brands list filters `listBrands({ fit: true })` rows on the
-  page; `brandStock`, `suggestForDay`, `planWeek` take `hideSmall`); it only hides brands nobody has contacted. `compareOpenBrands` puts the
+  take, the Fill box and Plan my week (the Brands list draws `listBrands({ fit: true })` rows and hides them
+  on the page — a search still finds them; `brandStock`, `suggestForDay`, `planWeek` take `hideSmall`); it
+  only hides brands nobody has contacted (invited, emailed or replied). `compareOpenBrands` puts the
   higher fit first after the contacts label (replaced "small brands first"). Facts live on Brand
   (`salesCents`/`fundingCents` **BigInt** cents — `src/lib/bigint-json.ts` makes them JSON numbers and is
   imported by every API route; `lastRoundAt`, `usStatus`, `sponsorsCollege`, `sponsorNote`, `bizStatus`,
-  `acquiredBy`, `researchedAt`, `researchNote`); edited on the brand page (`updateBrand({ facts })`, same
-  parser as the import; only real changes stamp `researchedAt`). **Research** ("Claude researches once"):
+  `acquiredBy`, `researchedAt`, `researchNote`); edited on the brand page (`updateBrand({ facts })` — the
+  page sends only the facts Leo changed; same parser as the import; it stamps `researchedAt` once money
+  and college / music are both known). **Research** ("Claude researches once"):
   `researchList` (the Schedule's next 2 weeks first, `scope:'more'` = the rest by fit; skips brands
   researched in 90 days) gives text to paste to Claude; Claude can also pull it with
-  `node scripts/cc.mjs researchList` and put findings in with `researchStage({ rows })` (a Setting only);
-  Leo reviews on Stock take → Brand Fit (each from → to, ticked) → `researchImport` apply (ticked ∩ fresh
-  preview, one transaction, Undo `researchUndo`). Never write facts without that review. **Suggest
-  Archive** (`fitArchive` preview → apply, Undo `fitArchiveUndo`; Setting `fitArchiveLast`): confirmed not
-  US, closed/acquired, or researched with no signal and a low score; never a brand in talks (reply, deal,
+  `node scripts/cc.mjs researchList` and put findings in with `researchStage({ rows })` (a Setting only,
+  `researchStaged`; rows join a batch Leo hasn't reviewed, a brand's newer row replacing its older one);
+  Leo reviews on Stock take → Brand Fit (each from → to, ticked; a ticked brand with nothing new is
+  marked researched; Dismiss = `researchDismiss`) → `researchImport` apply writes only what he saw: the
+  page sends the batch stamp (`stagedAt`) and each brand's change signature (`expect`, `changeSig`), and
+  anything that changed since is skipped and named. One transaction, Undo `researchUndo` (only fields
+  still as the import left them). Never write facts without that review. **Suggest Archive**
+  (`fitArchive` preview → apply, Undo `fitArchiveUndo`; Setting `fitArchiveLast`): confirmed not US,
+  closed/acquired, or researched with every signal known to be absent (money looked up and under the
+  bars, no college / music found, not 18–24) and a low score; never a brand in talks (reply, deal,
   activation); apply = the usual archive (passedAt + queued people shelved) and takes them off upcoming
   Schedule days. Tests: `test-brand-fit.mjs`, `test-stock.mjs`, `test-brand-fit-ui.js` (page, fake
   /api/data), `test-brand-fit-e2e.js` (real handlers, throwaway Postgres:

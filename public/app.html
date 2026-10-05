@@ -1953,6 +1953,7 @@ function fitTags(f, opts) {
   var cls = f.score >= 60 ? 'good' : f.score < 35 ? 'warn' : '';
   return '<span class="sd-tag ' + cls + '" title="Brand Fit ' + f.score + ' of 100 — budget and venture money weigh most; open the brand for the reasons">Fit ' + f.score + '</span>' +
     (f.ruledOut ? '<span class="sd-tag bad" title="Ruled out — never planned or suggested">' + esc(f.ruledOut) + '</span>' : '') +
+    (f.bizNote ? '<span class="sd-tag warn" title="On Stock take’s Suggest Archive list — your call">' + esc(f.bizNote) + '</span>' : '') +
     (f.tooSmall ? '<span class="sd-tag warn" title="' + esc(f.tooSmallWhy || '') + '">too small</span>' : '') +
     (f.usUnknown && !opts.noUs ? '<span class="sd-tag" title="Not known yet whether it sells in the US">US?</span>' : '');
 }
@@ -1961,7 +1962,6 @@ function bFitLine(f) {
   if (!f) return '';
   var mark = function (r) { return r.good === true ? '<span class="y">✓</span>' : r.good === false ? '<span class="n">✗</span>' : '?'; };
   return '<div id="b-fit" class="b-plan"><span class="b-plan-k">Brand Fit</span>' + fitTags(f) +
-    (f.archiveWhy && !f.ruledOut ? '<span class="sd-tag warn" title="On Stock take’s Suggest Archive list">suggest archive</span>' : '') +
     '<div class="fit-why" style="flex-basis:100%">' + (f.reasons || []).map(function (r) {
       return '<span title="' + r.points + ' points">' + mark(r) + ' ' + esc(r.text) + '</span>';
     }).join('') + '</div></div>';
@@ -4142,15 +4142,20 @@ function loadBrands(category) {
     if (!mine()) return;
     // Hide too small: only brands nobody has contacted yet — a reached
     // brand always shows.
+    // Contacted = invited on LinkedIn, emailed, or replied.
     var small = function (b) {
       var o = b.outreach || {};
-      return !!(b.fit && b.fit.tooSmall && !o.invited && !o.replied);
+      return !!(b.fit && b.fit.tooSmall && !o.invited && !o.emailed && !o.replied);
     };
-    var list = HIDE_SMALL ? all.filter(function (b) { return !small(b); }) : all.slice();
-    var hiddenSmall = all.length - list.length;
+    // Hidden rows are still drawn (display:none, data-small) so a search
+    // finds them and never offers to add a brand that is already here.
+    var hideRow = function (b) { return HIDE_SMALL && small(b); };
+    var drawn = all.slice();
     if (BRANDS_SORT === 'fit') {
-      list.sort(function (a, b) { return (b.fit ? b.fit.score : 0) - (a.fit ? a.fit.score : 0); });
+      drawn.sort(function (a, b) { return (b.fit ? b.fit.score : 0) - (a.fit ? a.fit.score : 0); });
     }
+    var list = drawn.filter(function (b) { return !hideRow(b); });
+    var hiddenSmall = drawn.length - list.length;
     var withContacts = list.filter(function (b) { return b._count.contacts > 0; }).length;
     // How the roster actually splits: how many are full (at the 25 we
     // keep on file), how many can sustain a three-person approach, and
@@ -4173,7 +4178,7 @@ function loadBrands(category) {
 
     renderFillProgress();
 
-    box.innerHTML = list.map(function (b) {
+    box.innerHTML = drawn.map(function (b) {
       var people = (b.contacts || []).map(function (p) {
         return '<div style="font-size:12.5px;color:var(--ink-2);margin-top:3px">' +
           esc(p.name) + (p.title ? ' — <span style="color:var(--ink-3)">' + esc(p.title) + '</span>' : '') +
@@ -4198,6 +4203,7 @@ function loadBrands(category) {
       }
 
       return '<div class="target clickable" data-brand="' + esc(b.id) + '" data-name="' + esc(b.name) + '"' +
+          (hideRow(b) ? ' data-small="1"' : '') +
           (b.passedAt ? ' style="opacity:.55"' : '') + '>' +
         // Ticks the brand for the re-file bar. data-bsel keeps the click
         // from opening the brand page (see the data-brand delegate).
@@ -4817,8 +4823,10 @@ document.addEventListener('change', function (e) {
   var where = cb.getAttribute('data-hidesmall');
   if (where === 'brands') loadBrands(BRANDS_SHOWN === 'noprofile' ? 'all' : (BRANDS_SHOWN || 'all'));
   else if (where === 'stock') loadStock();
-  else if (where === 'sched') sdHideSmallChanged();
-  else if (where === 'planweek') sdPwLoad();
+  else if (where === 'sched' || where === 'planweek') {
+    sdHideSmallChanged();
+    if (SCHED.pw && SCHED.pw.open) sdPwLoad();
+  }
 });
 
 document.getElementById('bq-dups').addEventListener('click', function () {
@@ -4906,7 +4914,8 @@ function applyBrandFilter() {
   var exact = false;
   document.querySelectorAll('#brands-list [data-brand]').forEach(function (r) {
     var name = (r.getAttribute('data-name') || '').toLowerCase();
-    r.style.display = !ql || name.indexOf(ql) >= 0 ? '' : 'none';
+    // A too-small brand hidden by the switch still turns up in a search.
+    r.style.display = ql ? (name.indexOf(ql) >= 0 ? '' : 'none') : (r.hasAttribute('data-small') ? 'none' : '');
     if (name === ql) exact = true;
   });
   add.hidden = !(q.length >= 3 && !exact);
@@ -5833,9 +5842,14 @@ function loadBrand(brandId) {
       box.querySelectorAll('[data-bfield]').forEach(function (el) {
         payload[el.getAttribute('data-bfield')] = el.value;
       });
+      // Only the facts Leo changed: the form was filled when the page
+      // loaded, and research saved since must not be overwritten by it.
       var facts = {};
       box.querySelectorAll('[data-bfact]').forEach(function (el) {
-        facts[el.getAttribute('data-bfact')] = el.value.trim();
+        var was = el.tagName === 'SELECT'
+          ? ([].filter.call(el.options, function (o) { return o.defaultSelected; })[0] || el.options[0] || {}).value
+          : el.defaultValue;
+        if (el.value.trim() !== String(was == null ? '' : was).trim()) facts[el.getAttribute('data-bfact')] = el.value.trim();
       });
       if (Object.keys(facts).length) payload.facts = facts;
       var btn = this;
@@ -6972,7 +6986,7 @@ function stOpenPart(r) {
 // people, three or four threads each, the most people first), leaving
 // out any already on a day. The preview then says exactly who goes.
 function stPlanList(r) {
-  return r.brands.filter(function (b) { return b.state === 'ready'; }).sort(function (x, y) {
+  return r.brands.filter(function (b) { return b.state === 'ready' && !(b.fit && b.fit.ruledOut); }).sort(function (x, y) {
     return Number(!!x.plannedOn) - Number(!!y.plannedOn) || y.people - x.people || x.name.localeCompare(y.name);
   });
 }
@@ -7278,7 +7292,12 @@ function fitReview() {
 function fitResearchTicked() {
   var rv = fitReview();
   if (!rv) return [];
-  return rv.d.rows.filter(function (r) { return r.changes.length && !FIT.roff[r.brandId]; });
+  return rv.d.rows.filter(function (r) { return !FIT.roff[r.brandId]; });
+}
+// What the review showed for a brand, in the server's terms (changeSig in
+// route.ts): Save writes a brand only while this still matches.
+function fitSig(changes) {
+  return JSON.stringify((changes || []).map(function (c) { return [c.field, c.raw === undefined ? null : c.raw]; }));
 }
 function fitArchiveTicked() {
   var a = FIT.archive;
@@ -7303,15 +7322,15 @@ function fitRender() {
     review = '<div class="fit-panel"><b>' + (rv.src === 'staged'
         ? 'Research from Claude' + (d.staged ? ' · ' + esc(when(d.staged.at)) : '')
         : 'Pasted research') + '</b> — ' + d.rows.length + (d.rows.length === 1 ? ' brand' : ' brands') +
-        ', ' + d.rows.filter(function (r) { return r.changes.length; }).length + ' with something new. Tick what to keep.' +
+        ', ' + d.rows.filter(function (r) { return r.changes.length; }).length + ' with something new. Tick what to keep — a ticked brand with nothing new is marked researched.' +
       d.rows.map(function (r) {
         var none = !r.changes.length;
         return '<label class="fit-row"><input type="checkbox" data-fitr="' + esc(r.brandId) + '"' +
-            (none ? ' disabled' : FIT.roff[r.brandId] ? '' : ' checked') + '>' +
+            (FIT.roff[r.brandId] ? '' : ' checked') + '>' +
           '<span class="grow"><a href="#" data-fitopen="' + esc(r.brandId) + '"><b>' + esc(r.brandName) + '</b></a>' +
             (r.input && r.input.toLowerCase() !== r.brandName.toLowerCase() ? ' <span class="hint" style="margin:0">(“' + esc(r.input) + '”)</span>' : '') +
             (r.archived ? ' <span class="sd-tag">archived</span>' : '') +
-            '<div class="fit-chg">' + (none ? 'Nothing new — matches what’s saved'
+            '<div class="fit-chg">' + (none ? 'Nothing new — matches what’s saved (marks it researched)'
               : r.changes.map(function (c) {
                   return '<b>' + esc(c.label) + '</b> ' + esc(c.from) + ' → ' + esc(c.to);
                 }).join(' · ')) + '</div></span></label>';
@@ -7321,11 +7340,14 @@ function fitRender() {
       (d.errors.length ? '<div class="hint" style="margin:6px 0 0;color:#f2918c">Skipped: ' + d.errors.map(esc).join(' · ') + '</div>' : '') +
       '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">' +
         '<button class="btn-solid" data-fitact="apply"' + (ticked && !FIT.busy ? '' : ' disabled') + '>Save facts to ' + ticked + (ticked === 1 ? ' brand' : ' brands') + '</button>' +
-        (rv.src === 'pasted' ? '<button class="btn-ghost" data-fitact="paste-clear">Clear pasted</button>' : '') +
+        (rv.src === 'pasted' ? '<button class="btn-ghost" data-fitact="paste-clear">Clear pasted</button>'
+          : '<button class="btn-ghost" data-fitact="dismiss" title="Take this research off the list; no brand changes">Dismiss this research</button>') +
       '</div></div>';
   }
   var researchSum = 'Research <span class="hint" style="margin:0 0 0 6px">' + esc(rHead) + (rv ? ' · research waiting for you' : '') + '</span>';
-  var research =
+  var stagedErr = FIT.staged && FIT.staged.error
+    ? '<div class="hint" style="margin:8px 0;color:#f2918c">Research from Claude could not be read: ' + esc(FIT.staged.error) + '</div>' : '';
+  var research = stagedErr +
     '<div class="hint" style="margin:8px 0">Claude looks up sales, venture money, US distribution and college / music sponsorships. ' +
       'Copy the list into the Claude chat; what comes back shows here for you to tick — nothing is saved before that.</div>' +
     '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
@@ -7434,7 +7456,8 @@ document.getElementById('st-fit').addEventListener('click', function (e) {
     var text = (document.getElementById('fit-paste') || {}).value || '';
     FIT.pasteText = text;
     api('researchImport', { text: text, preview: true }).then(function (d) {
-      FIT.pasted = d; FIT.roff = {}; FIT.open.paste = false; fitRender();
+      // Save sends this exact text, whatever the box holds later.
+      FIT.pasted = d; FIT.pastedText = text; FIT.roff = {}; FIT.open.paste = false; fitRender();
     }).catch(function (err) { toast(err.message); });
     return;
   }
@@ -7443,18 +7466,28 @@ document.getElementById('st-fit').addEventListener('click', function (e) {
     var rv = fitReview();
     var keep = fitResearchTicked();
     if (!rv || !keep.length || FIT.busy) return;
-    if (!window.confirm('Save the ticked facts to ' + keep.length + (keep.length === 1 ? ' brand' : ' brands') + '?\n\n' +
+    if (!window.confirm('Save the ticked research for ' + keep.length + (keep.length === 1 ? ' brand' : ' brands') + '?\n\n' +
       keep.slice(0, 25).map(function (r) { return r.brandName; }).join(', ') + (keep.length > 25 ? ' and ' + (keep.length - 25) + ' more' : '') +
       '\n\nOnly the changes shown are written. Undo puts the old values back.')) return;
     FIT.busy = true; fitRender();
-    var args = rv.src === 'staged' ? { staged: true } : { text: FIT.pasteText };
+    var args = rv.src === 'staged' ? { staged: true, stagedAt: rv.d.staged.at } : { text: FIT.pastedText };
     args.preview = false;
     args.keep = keep.map(function (r) { return r.brandId; });
+    args.expect = {};
+    keep.forEach(function (r) { args.expect[r.brandId] = fitSig(r.changes); });
     api('researchImport', args).then(function (res) {
-      toast('Saved facts to ' + res.updated + (res.updated === 1 ? ' brand' : ' brands'));
+      toast('Saved ' + res.updated + (res.updated === 1 ? ' brand' : ' brands') +
+        (res.changedSince && res.changedSince.length ? ' · changed since you looked, left alone: ' + res.changedSince.join(', ') : ''));
       FIT.pasted = null; FIT.roff = {}; FIT.busy = false;
       loadStock();
-    }).catch(fail);
+    }).catch(function (err) { FIT.busy = false; toast(err.message); fitLoad(); });
+    return;
+  }
+  if (act === 'dismiss') {
+    var st = FIT.staged && FIT.staged.staged;
+    if (!st || !window.confirm('Dismiss this research from Claude? No brand changes — it just leaves the list.')) return;
+    api('researchDismiss', { stagedAt: st.at }).then(function () { toast('Dismissed'); FIT.roff = {}; fitLoad(); })
+      .catch(function (err) { toast(err.message); fitLoad(); });
     return;
   }
   if (act === 'rundo') {
@@ -8744,6 +8777,7 @@ var SD_SHORT = {
   full: 'running all its threads',
   archived: 'archived',
   donotemail: 'do-not-email',
+  notus: 'not sold in the US',
   passedtoday: 'passed for today'
 };
 

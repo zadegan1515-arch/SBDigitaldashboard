@@ -94,8 +94,9 @@ const H = {
   researchList: () => ({ scope: 'schedule', total: 1, shown: 1, scheduled: 1, rows: [{ id: 'b_euro', name: 'Euro Co' }], text: 'Research these brands…\n- {"id":"b_euro"}' }),
   researchImport: (a) => (a.preview === false ? { ok: true, updated: a.keep.length, names: [] } : {
     rows: [
-      { brandId: 'b_euro', brandName: 'Euro Co', input: 'Euro Co', archived: false, row: {}, changes: [{ field: 'usStatus', label: 'In the US', from: '—', to: 'no' }] },
-      { brandId: 'b_tiny', brandName: 'Tiny Hidden Co', input: 'tiny', archived: false, row: {}, changes: [{ field: 'salesCents', label: 'Sales', from: '—', to: '$300K' }] },
+      { brandId: 'b_euro', brandName: 'Euro Co', input: 'Euro Co', archived: false, row: {}, changes: [{ field: 'usStatus', label: 'In the US', from: '—', to: 'no', raw: 'no' }] },
+      { brandId: 'b_tiny', brandName: 'Tiny Hidden Co', input: 'tiny', archived: false, row: {}, changes: [{ field: 'salesCents', label: 'Sales', from: '—', to: '$300K', raw: 30000000 }] },
+      { brandId: 'b_same', brandName: 'Same Co', input: 'Same Co', archived: false, row: {}, changes: [] },
     ],
     unmatched: [{ name: 'Nobody Brand', several: [] }], errors: [], staged: { at: NOW, rows: 3 }, last: null,
   }),
@@ -157,7 +158,7 @@ async function main() {
     await page.evaluate(() => gotoView('brands'));
     await page.waitForSelector('#brands-list [data-brand="b_high"]');
     assert.equal(last('listBrands').args.fit, true);
-    let order = await page.$$eval('#brands-list [data-brand]', (els) => els.map((e) => e.getAttribute('data-brand')));
+    let order = await page.$$eval('#brands-list [data-brand]', (els) => els.filter((e) => e.style.display !== 'none').map((e) => e.getAttribute('data-brand')));
     assert.deepEqual(order, ['b_high', 'b_low', 'b_tinysent'], 'best fit first; the uncontacted tiny brand hidden');
     assert.match(await page.textContent('#brands-sub'), /1 too small hidden/);
     assert.match(await page.textContent('#brands-list [data-brand="b_high"]'), /Fit 88/);
@@ -167,7 +168,13 @@ async function main() {
     assert.equal(await page.isChecked('#bq-small'), false, 'the switch went off');
     assert.equal(await page.evaluate(() => localStorage.getItem('sb.hideSmall')), '0', 'remembered');
     await page.check('#bq-small');
-    await page.waitForFunction(() => !document.querySelector('#brands-list [data-brand="b_tiny"]'));
+    await page.waitForFunction(() => document.querySelector('#brands-list [data-brand="b_tiny"]').style.display === 'none');
+    // A search still finds a brand the switch hides — and doesn't offer to add it again.
+    await page.fill('#bq', 'Tiny Hidden Co');
+    await page.waitForFunction(() => document.querySelector('#brands-list [data-brand="b_tiny"]').style.display === '');
+    assert.equal(await page.isHidden('#bq-add'), true);
+    await page.fill('#bq', '');
+    await page.waitForFunction(() => document.querySelector('#brands-list [data-brand="b_tiny"]').style.display === 'none');
     await page.selectOption('#bq-sort', '');
     await page.waitForFunction(() => document.querySelector('#brands-list [data-brand]').getAttribute('data-brand') === 'b_low');
     await page.selectOption('#bq-sort', 'fit');
@@ -191,11 +198,9 @@ async function main() {
     await page.waitForFunction(() => true);
     await page.waitForTimeout(200);
     const save = last('updateBrand').args;
-    assert.deepEqual(save.facts, {
-      sales: '12,345,678.5', funding: '30,000,000', lastRound: '2024-03-01', us: 'yes', sponsorsCollege: 'no',
-      sponsorNote: 'Rolling Loud', status: 'active', acquiredBy: '', note: 'Crunchbase',
-    });
-    ok('brand page: Fit line with reasons, facts prefilled exactly and sent back as facts');
+    assert.deepEqual(save.facts, { sponsorsCollege: 'no' }, 'only the fact Leo changed');
+    await page.waitForSelector('#b-edit-toggle');
+    ok('brand page: Fit line with reasons, facts prefilled exactly, Save sends only what changed');
 
     // 3. Stock take.
     await page.evaluate(() => gotoView('stock'));
@@ -212,7 +217,8 @@ async function main() {
     await page.waitForFunction(() => true);
     await page.waitForTimeout(200);
     const imp = calls.filter((c) => c.fn === 'researchImport' && c.args.preview === false)[0];
-    assert.deepEqual([imp.args.staged, imp.args.keep], [true, ['b_euro']], 'only the ticked brand is saved');
+    assert.deepEqual([imp.args.staged, imp.args.stagedAt, imp.args.keep], [true, NOW, ['b_euro', 'b_same']], 'only ticked brands, from the batch Leo saw');
+    assert.deepEqual(imp.args.expect, { b_euro: '[["usStatus","no"]]', b_same: '[]' }, 'with exactly what was shown');
     // Suggest Archive.
     await page.waitForSelector('[data-fitsec="archive"]');
     await page.evaluate(() => { document.querySelector('[data-fitsec="archive"]').open = true; });

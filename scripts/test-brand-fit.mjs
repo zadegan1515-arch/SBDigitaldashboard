@@ -102,12 +102,28 @@ t('score stays 0..100 and every point has a reason', () => {
   assert.equal(bottom.score, 0)
 })
 
-t('ruled out: confirmed not in the US, closed, acquired → suggest Archive', () => {
+t('ruled out: only confirmed not in the US; closed / acquired go to suggest Archive', () => {
   assert.equal(scoreBrand({ ...base, usStatus: 'no' }).ruledOut, 'not sold in the US')
   assert.equal(scoreBrand({ ...base, usStatus: 'no' }).archiveWhy, 'not sold in the US')
-  assert.equal(scoreBrand({ ...base, bizStatus: 'closed' }).ruledOut, 'out of business')
-  assert.equal(scoreBrand({ ...base, bizStatus: 'acquired', acquiredBy: 'PepsiCo' }).ruledOut, 'acquired by PepsiCo')
+  const closed = scoreBrand({ ...base, bizStatus: 'closed' })
+  assert.deepEqual([closed.ruledOut, closed.bizNote, closed.archiveWhy], [null, 'out of business', 'out of business'])
+  const bought = scoreBrand({ ...base, bizStatus: 'acquired', acquiredBy: 'PepsiCo' })
+  assert.deepEqual([bought.ruledOut, bought.archiveWhy], [null, 'acquired by PepsiCo'])
   assert.equal(scoreBrand({ ...base, usStatus: 'yes' }).ruledOut, null)
+})
+
+t('a parent company\'s brand is never too small by its own page', () => {
+  assert.equal(isTooSmall({ liMembers: 6, hasParent: true }).tooSmall, false)
+  assert.equal(isTooSmall({ liMembers: 6, hasParent: true, salesCents: 50_000 * 100 }).tooSmall, true, 'known sales still count')
+})
+
+t('learning a little never scores below knowing nothing', () => {
+  const target = scoreBrand({ ...base, liMembers: 200 })
+  const smallRound = scoreBrand({ ...base, liMembers: 200, fundingCents: 2 * M })
+  assert.ok(smallRound.score >= target.score, smallRound.score + ' vs ' + target.score)
+  const unknown = scoreBrand({ ...base })
+  const sales = scoreBrand({ ...base, salesCents: 2 * M })
+  assert.ok(sales.score >= unknown.score)
 })
 
 t('US unknown: kept, tagged US?', () => {
@@ -121,6 +137,9 @@ t('low fit + no signal → suggested only once researched', () => {
   const weak = { category: 'software', reachable: 0, need: 3, acceptRate: 0.05, now, salesCents: 300_000 * 100, sponsorsCollege: false }
   assert.equal(scoreBrand(weak).archiveWhy, null, 'not researched → never suggested on score')
   assert.match(scoreBrand({ ...weak, researchedAt: '2026-10-05' }).archiveWhy, /low fit/)
+  // Research that found nothing is not "no signal".
+  assert.equal(scoreBrand({ ...weak, researchedAt: '2026-10-05', salesCents: null }).archiveWhy, null, 'money not found')
+  assert.equal(scoreBrand({ ...weak, researchedAt: '2026-10-05', sponsorsCollege: null }).archiveWhy, null, 'sponsorships not found')
   // Any one signal keeps it off the list.
   assert.equal(scoreBrand({ ...weak, researchedAt: '2026-10-05', sponsorsCollege: true }).archiveWhy, null)
   assert.equal(scoreBrand({ ...weak, researchedAt: '2026-10-05', category: 'energy' }).archiveWhy, null)
@@ -140,6 +159,10 @@ t('research rows: dollars parsed, unknown fields left alone, bad values refused'
   assert.equal(partial.usStatus, null)
   assert.match(cleanResearchRow({ name: 'X', sales: 'lots' }).error, /not an amount/)
   assert.match(cleanResearchRow({ name: 'X', lastRound: 'spring 2024' }).error, /YYYY-MM/)
+  assert.match(cleanResearchRow({ name: 'X', lastRound: '2024-13' }).error, /YYYY-MM/, 'no month 13')
+  assert.match(cleanResearchRow({ name: 'X', lastRound: '2024-00' }).error, /YYYY-MM/)
+  assert.match(cleanResearchRow({ name: 'X', lastRound: '2024-02-30' }).error, /YYYY-MM/, 'not rolled into March')
+  assert.equal(cleanResearchRow({ name: 'X', lastRound: '2024-02-29' }).row.lastRoundAt, '2024-02-29')
   assert.match(cleanResearchRow({ name: 'X', us: 'maybe' }).error, /yes \/ no/)
   assert.match(cleanResearchRow({ sales: 1 }).error, /no name/)
 })

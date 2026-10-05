@@ -12,11 +12,12 @@
 //     to 18–24 (drinks, nicotine & betting, apparel / athletic / beauty),
 //     people we can reach on file, and how well the category converts.
 //   - Ruled out: confirmed not sold in the US. Unknown → kept, tagged "US?".
+//     Out of business / acquired → suggested for Archive, Leo decides.
 //   - Too small (a switch, on by default): sales under $1M; sales not
 //     known → under 20 people on LinkedIn, measured (brand-size.ts's
 //     SMALL_BELOW). A size guessed from tier never hides a brand.
 //   - Suggest Archive: confirmed not in the US, out of business / acquired,
-//     or researched and none of the signals above.
+//     or researched and every signal above known to be absent.
 //
 // Money is integer cents (CLAUDE.md rule 1). Sales and funding totals pass
 // $21M, past Postgres Int in cents, so the columns are BigInt; callers
@@ -69,7 +70,8 @@ export interface FitResult {
   size: BrandSize
   tooSmall: boolean
   tooSmallWhy: string | null
-  ruledOut: string | null // not in the US / closed / acquired
+  ruledOut: string | null // confirmed not sold in the US: never planned or suggested
+  bizNote: string | null // out of business / acquired: suggested for Archive, Leo decides
   archiveWhy: string | null // why it's on the suggest-Archive list
   usUnknown: boolean // the "US?" tag
   reasons: FitReason[]
@@ -128,10 +130,11 @@ export function isTooSmall(b: { salesCents?: number | null; liMembers?: number |
       ? { tooSmall: true, why: 'sales ' + shortMoney(b.salesCents) + ' a year (under $1M)', size }
       : { tooSmall: false, why: null, size }
   }
-  // Only a measured headcount hides a brand: brandSize's tier / parent
-  // fallback is a guess, and hiding a real buyer costs more than showing
-  // an extra row.
-  if (sizeFromMembers(b.liMembers) === 'small') {
+  // Only a measured headcount hides a brand: brandSize's tier fallback is
+  // a guess, and hiding a real buyer costs more than showing an extra
+  // row. A brand owned by a parent company (Ketel One → Diageo) often has
+  // a tiny page of its own while the parent's people run it — never small.
+  if (!b.hasParent && sizeFromMembers(b.liMembers) === 'small') {
     return { tooSmall: true, why: b.liMembers + ' people on LinkedIn (under 20)', size }
   }
   return { tooSmall: false, why: null, size }
@@ -142,7 +145,7 @@ function salesPoints(c: number): number {
   if (c >= 100_000_000 * 100) return 40
   if (c >= 25_000_000 * 100) return 34
   if (c >= 10_000_000 * 100) return 28
-  if (c >= TOO_SMALL_SALES_CENTS) return 18
+  if (c >= TOO_SMALL_SALES_CENTS) return 20
   return 0
 }
 function fundingPoints(c: number, recent: boolean): number {
@@ -168,19 +171,31 @@ export function scoreBrand(b: FitInput): FitResult {
   const sp = b.salesCents != null ? salesPoints(b.salesCents) : null
   const fp = b.fundingCents != null ? fundingPoints(b.fundingCents, recent) : null
   const size = brandSize(b)
-  if (sp == null && fp == null) {
-    const p = SIZE_POINTS[size]
-    add(size === 'small' ? false : null,
-      'money not known — ' + (b.liMembers != null ? b.liMembers + ' people on LinkedIn' : size === 'unknown' ? 'size not known' : size + ' (by ' + (b.hasParent ? 'parent company' : 'tier') + ')'),
-      p)
-  } else {
-    if (sp != null) add(sp >= 18, 'sales ' + shortMoney(b.salesCents!) + ' a year', (sp >= (fp ?? -1)) ? sp : 0)
-    if (fp != null) {
-      const big = b.fundingCents! >= BIG_FUNDING_CENTS
-      add(big, 'raised ' + shortMoney(b.fundingCents!) + (last ? ' · last round ' + last.toISOString().slice(0, 7) : '') + (big ? '' : ' (under $5M)'),
-        fp > (sp ?? -1) ? fp : 0)
-    }
+  // Whichever says the most counts: sales, venture money, or — while sales
+  // aren't known — the LinkedIn size estimate, so learning a little (a
+  // small round) never scores below knowing nothing.
+  const sizeText = b.liMembers != null && !(b.hasParent && size === 'big') ? b.liMembers + ' people on LinkedIn'
+    : size === 'unknown' ? 'size not known'
+    : size + ' (by ' + (b.hasParent ? 'parent company' : 'tier') + ')'
+  const money: Array<{ good: boolean | null; text: string; pts: number }> = []
+  if (sp != null) money.push({ good: sp >= 20, text: 'sales ' + shortMoney(b.salesCents!) + ' a year', pts: sp })
+  if (fp != null) {
+    const big = b.fundingCents! >= BIG_FUNDING_CENTS
+    money.push({
+      good: big,
+      text: 'raised ' + shortMoney(b.fundingCents!) + (last ? ' · last round ' + last.toISOString().slice(0, 7) : '') + (big ? '' : ' (under $5M)'),
+      pts: fp,
+    })
   }
+  if (sp == null) {
+    money.push({
+      good: size === 'small' ? false : null,
+      text: (fp == null ? 'money not known — ' : 'size: ') + sizeText,
+      pts: SIZE_POINTS[size],
+    })
+  }
+  const best = money.reduce((a, m) => (m.pts > a.pts ? m : a), money[0])
+  for (const m of money) add(m.good, m.text, m === best ? m.pts : 0)
 
   // 2. Already sponsors college / music.
   if (b.sponsorsCollege === true) add(true, 'already sponsors college / music', 20)
@@ -207,19 +222,24 @@ export function scoreBrand(b: FitInput): FitResult {
 
   const us = normUs(b.usStatus)
   const biz = normBiz(b.bizStatus)
-  let ruledOut: string | null = null
-  if (us === 'no') ruledOut = 'not sold in the US'
-  else if (biz === 'closed') ruledOut = 'out of business'
-  else if (biz === 'acquired') ruledOut = 'acquired' + (b.acquiredBy ? ' by ' + b.acquiredBy : '')
+  // The one hard no Leo picked: confirmed not sold in the US.
+  const ruledOut: string | null = us === 'no' ? 'not sold in the US' : null
+  // Out of business / acquired: on the suggest-Archive list for Leo to
+  // decide, never hidden on its own.
+  const bizNote: string | null = biz === 'closed' ? 'out of business'
+    : biz === 'acquired' ? 'acquired' + (b.acquiredBy ? ' by ' + b.acquiredBy : '') : null
 
-  // Researched and nothing speaks for it: no money signal, no college /
-  // music sponsorships, not an 18–24 category. Unknowns are not "no" —
-  // a brand nobody has researched is never suggested on score alone.
+  // Researched and nothing speaks for it — each signal known to be absent:
+  // money looked up and under the bars, no college / music sponsorships
+  // found, not an 18–24 category. Unknowns are not "no": research that
+  // found nothing never puts a brand on the list.
+  const moneyKnown = b.salesCents != null || b.fundingCents != null
   const moneySignal = (b.salesCents != null && b.salesCents >= TOO_SMALL_SALES_CENTS)
     || (b.fundingCents != null && b.fundingCents >= BIG_FUNDING_CENTS)
   const youth = !!b.category && YOUTH_CATEGORIES.includes(b.category)
-  const noSignals = !!toDate(b.researchedAt) && !moneySignal && b.sponsorsCollege !== true && !youth
-  const archiveWhy = ruledOut ?? (noSignals && score < LOW_FIT ? 'low fit (' + score + '), no signal: no budget or funding, no college / music sponsorships, not 18–24' : null)
+  const noSignals = !!toDate(b.researchedAt) && moneyKnown && !moneySignal && b.sponsorsCollege === false && !youth
+  const archiveWhy = ruledOut ?? bizNote ??
+    (noSignals && score < LOW_FIT ? 'low fit (' + score + '), no signal: no budget or funding, no college / music sponsorships, not 18–24' : null)
 
   const small = isTooSmall({ ...b })
   return {
@@ -228,6 +248,7 @@ export function scoreBrand(b: FitInput): FitResult {
     tooSmall: small.tooSmall,
     tooSmallWhy: small.why,
     ruledOut,
+    bizNote,
     archiveWhy,
     usUnknown: us == null,
     reasons,
@@ -279,8 +300,15 @@ export function cleanResearchRow(raw: any): { row: ResearchRow | null; error: st
   if (has('lastRound')) {
     const s = raw.lastRound == null ? '' : String(raw.lastRound).trim()
     if (!s) row.lastRoundAt = null
-    else if (/^\d{4}-\d{2}(-\d{2})?$/.test(s)) row.lastRoundAt = s.length === 7 ? s + '-01' : s
-    else return { row: null, error: name + ': lastRound "' + s + '" — use YYYY-MM' }
+    else {
+      const day = /^\d{4}-\d{2}(-\d{2})?$/.test(s) ? (s.length === 7 ? s + '-01' : s) : ''
+      const d = day ? new Date(day + 'T00:00:00Z') : null
+      // A real calendar day: "2024-13" or "2024-02-30" is refused, not rolled over.
+      if (!d || isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== day) {
+        return { row: null, error: name + ': lastRound "' + s + '" — use YYYY-MM' }
+      }
+      row.lastRoundAt = day
+    }
   }
   if (has('us')) {
     const u = raw.us == null || raw.us === '' || String(raw.us).toLowerCase() === 'unknown' ? null : normUs(raw.us)

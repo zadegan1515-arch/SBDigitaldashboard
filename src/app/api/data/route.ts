@@ -302,6 +302,9 @@ const TIER_BONUS: Record<string, number> = {
 const NOT_IN_CONVERSATION: Prisma.BrandWhereInput = {
   passedAt: null,
   targets: { none: { status: { in: ['replied', 'converted'] as TargetStatus[] } } },
+  // Brand Fit's one hard no: confirmed not sold in the US (null-safe —
+  // a plain `not` would drop every brand nobody has checked).
+  AND: [{ OR: [{ usStatus: null }, { usStatus: { not: 'no' } }] }],
 }
 
 // Both brand-level guards at once: not in conversation, and not passed
@@ -575,7 +578,7 @@ type PlanBrand = Prisma.BrandGetPayload<{ select: typeof PLAN_BRAND_SELECT }>
 // speak it, so a brand never says one thing in one place and another
 // somewhere else.
 type OutreachReason =
-  | 'archived' | 'donotemail' | 'nopeople' | 'unreachable' | 'inconversation'
+  | 'archived' | 'donotemail' | 'notus' | 'nopeople' | 'unreachable' | 'inconversation'
   | 'contacted' | 'exhausted' | 'full' | 'passedtoday'
 
 type ContactsLabel = { kind: 'ready' | 'thin' | 'none'; reachable: number; need: number; onFile: number }
@@ -643,6 +646,7 @@ function brandStage(b: PlanBrand): BrandStage | null {
 function planRefusal(b: PlanBrand): OutreachReason | null {
   if (b.passedAt) return 'archived'
   if (b.doNotEmail) return 'donotemail'
+  if (b.usStatus === 'no') return 'notus'
   if (inConversation(b)) return 'inconversation'
   return null
 }
@@ -653,7 +657,7 @@ function planRefusal(b: PlanBrand): OutreachReason | null {
 // don't use it, because a deliberate pick can still open more threads.
 function outreachGate(
   b: {
-    passedAt: Date | null; passedTodayAt: Date | null; doNotEmail: boolean
+    passedAt: Date | null; passedTodayAt: Date | null; doNotEmail: boolean; usStatus?: string | null
     contacts: Array<{ email: string | null; linkedinUrl: string | null }>
     targets: Array<{ status: string; sentAt: Date | null }>
   },
@@ -661,6 +665,7 @@ function outreachGate(
 ): OutreachReason | null {
   if (b.passedAt) return 'archived'
   if (b.doNotEmail) return 'donotemail'
+  if (b.usStatus === 'no') return 'notus'
   if (!b.contacts.length) return 'nopeople'
   if (!b.contacts.some(isReachable)) return 'unreachable'
   if (inConversation(b)) return 'inconversation'
@@ -829,6 +834,7 @@ function reasonText(reason: string | null | undefined, ctx: ReasonCtx = {}): str
   switch (reason) {
     case 'archived': return 'Archived. Bring it back from its brand page first.'
     case 'donotemail': return 'Marked do-not-email.'
+    case 'notus': return 'Not sold in the US — ruled out. Change it on the brand page if that’s wrong.'
     case 'nopeople': return 'Nobody on file yet.'
     case 'unreachable': {
       const n = ctx.onFile ?? 0
@@ -1467,13 +1473,14 @@ function planBrandRow(b: PlanBrand, ctx: PlanRowCtx) {
   const reached = isReached(b)
   const status = b.passedAt ? 'archived'
     : b.doNotEmail ? 'donotemail'
+    : b.usStatus === 'no' ? 'notus'
     : inConversation(b) ? 'inconversation'
     : reached ? 'reached'
     : label.kind
   // Archived, do-not-email and in-talks brands can't be added at all;
   // a reached brand or one with nobody reachable can, but it's a choice
   // Leo makes on purpose ("Add anyway").
-  const action = ['archived', 'donotemail', 'inconversation'].includes(status) ? 'none'
+  const action = ['archived', 'donotemail', 'notus', 'inconversation'].includes(status) ? 'none'
     : status === 'reached' || status === 'none' ? 'addAnyway'
     : 'add'
   const going = action === 'none' ? 0 : previewBrandPicks(b, { forToday: ctx.forToday, dayStart: ctx.dayStart, explicitAdd: true }).people.length
@@ -1483,6 +1490,7 @@ function planBrandRow(b: PlanBrand, ctx: PlanRowCtx) {
   const connected = !rc.sentAt && b.targets.some(t => t.status === 'accepted')
   const text = status === 'archived' ? 'Archived'
     : status === 'donotemail' ? 'Marked do-not-email'
+    : status === 'notus' ? 'Not sold in the US — ruled out'
     : status === 'inconversation' ? `Replied${rc.repliedAt ? ' ' + shortDate(rc.repliedAt) : ''} · in talks`
     : pinnedOn ? `On ${dayLabel(pinnedOn)} already`
     : status === 'reached' && connected ? 'Accepted on LinkedIn · already reached'
@@ -1583,7 +1591,7 @@ function brandFit(b: FitFacts, reachable: number, rates: AcceptRates | null, now
 function fitBrief(f: FitResult) {
   return {
     score: f.score, size: f.size, tooSmall: f.tooSmall, tooSmallWhy: f.tooSmallWhy,
-    ruledOut: f.ruledOut, archiveWhy: f.archiveWhy, usUnknown: f.usUnknown,
+    ruledOut: f.ruledOut, bizNote: f.bizNote, archiveWhy: f.archiveWhy, usUnknown: f.usUnknown,
   }
 }
 function planBrandFit(b: PlanBrand, rates: AcceptRates | null): FitResult {
@@ -1717,7 +1725,7 @@ async function researchPreview(raws: any[]) {
   }
   const rows: Array<{
     brandId: string; brandName: string; input: string; archived: boolean; researchedAt: Date | null
-    row: ResearchRow; changes: Array<{ field: string; label: string; from: string; to: string }>
+    row: ResearchRow; changes: Array<{ field: string; label: string; from: string; to: string; raw: string | number | boolean | null }>
   }> = []
   const unmatched: Array<{ name: string; several: string[] }> = []
   const errors: string[] = []
@@ -1738,10 +1746,23 @@ async function researchPreview(raws: any[]) {
     rows.push({
       brandId: b.id, brandName: b.name, input: row.name, archived: !!b.passedAt, researchedAt: b.researchedAt,
       row,
-      changes: factChanges(b, row).map(c => ({ field: c.field, label: c.label, from: c.from, to: c.toText })),
+      changes: factChanges(b, row).map(c => ({ field: c.field, label: c.label, from: c.from, to: c.toText, raw: rawFact(c.to) })),
     })
   }
   return { rows, unmatched, errors }
+}
+
+// A change's value in plain JSON terms, and a review's changes as one
+// string: the page sends back the signature of what it showed, and apply
+// writes a brand only while its fresh changes still match it exactly.
+function rawFact(v: any): string | number | boolean | null {
+  if (v == null) return null
+  if (v instanceof Date) return v.toISOString().slice(0, 10)
+  if (typeof v === 'bigint') return Number(v)
+  return v
+}
+function changeSig(changes: Array<{ field: string; raw: any }>): string {
+  return JSON.stringify(changes.map(c => [c.field, c.raw]))
 }
 
 async function researchLastBrief() {
@@ -3093,8 +3114,14 @@ const handlers: Record<string, Handler> = {
           select: { name: true, title: true, linkedinUrl: true },
           take: 3,
         },
-        // Outreach state for the card: invited / replied and when.
-        targets: { select: { status: true, sentAt: true, repliedAt: true, shelved: true } },
+        // Outreach state for the card: invited / replied and when, and
+        // emailed (by hand or by the machine) — "contacted" either way.
+        targets: {
+          select: {
+            status: true, sentAt: true, repliedAt: true, shelved: true, emailedAt: true,
+            _count: { select: { emails: { where: { direction: 'out', status: 'sent' } } } },
+          },
+        },
       },
       take,
     })
@@ -3144,6 +3171,7 @@ const handlers: Record<string, Handler> = {
         outreach: {
           queued: ts.filter(t => !t.shelved && ['queued', 'drafted'].includes(t.status)).length,
           invited: sent.length,
+          emailed: ts.filter(t => t.emailedAt || t._count.emails > 0).length,
           replied: replied.length,
           lastSentAt: last(sent.filter(t => t.sentAt).map(t => t.sentAt!)),
           lastRepliedAt: last(replied.map(t => t.repliedAt!)),
@@ -3510,6 +3538,9 @@ const handlers: Record<string, Handler> = {
   // Research Claude found, waiting for Leo: written from Claude's side
   // (scripts/cc.mjs researchStage) so Leo never pastes JSON. Only a
   // Setting — no brand changes. Bad rows are refused with the reason.
+  // Rows join a batch Leo hasn't looked at yet (a brand's newer row
+  // replaces its older one) rather than wiping it; the batch gets a new
+  // stamp, so a review opened on the old one has to be looked at again.
   async researchStage({ rows, by }: any = {}) {
     const list = Array.isArray(rows) ? rows.slice(0, 500) : []
     if (!list.length) throw new Error('No rows')
@@ -3520,24 +3551,46 @@ const handlers: Record<string, Handler> = {
       if (error || !row) { errors.push(error ?? 'unreadable row'); continue }
       ok.push(raw)
     }
-    await writeJsonSetting(prisma, RESEARCH_STAGED_KEY, { at: new Date().toISOString(), by: by ?? 'Claude', rows: ok })
-    return { staged: ok.length, errors }
+    const prev = await readJsonSetting<any>(prisma, RESEARCH_STAGED_KEY, null)
+    const pending = prev && !prev.appliedAt && !prev.dismissedAt && Array.isArray(prev.rows) ? prev.rows : []
+    const keyOf = (r: any) => (r?.id ? 'id:' + String(r.id) : 'n:' + nameKey(String(r?.name ?? r?.brand ?? '')))
+    const merged = new Map<string, any>()
+    for (const r of pending) merged.set(keyOf(r), r)
+    for (const r of ok) merged.set(keyOf(r), r)
+    const all = [...merged.values()].slice(0, 500)
+    await writeJsonSetting(prisma, RESEARCH_STAGED_KEY, { at: new Date().toISOString(), by: by ?? 'Claude', rows: all })
+    return { staged: ok.length, waiting: all.length, errors }
+  },
+
+  // Leo turns the waiting research down (or it had nothing new): it
+  // leaves the review, nothing about any brand changes.
+  async researchDismiss({ stagedAt }: any = {}) {
+    const st = await readJsonSetting<any>(prisma, RESEARCH_STAGED_KEY, null)
+    if (!st || st.appliedAt || st.dismissedAt) return { ok: true }
+    if (stagedAt && st.at !== stagedAt) throw new Error('More research came in since you looked — look again')
+    await writeJsonSetting(prisma, RESEARCH_STAGED_KEY, { ...st, dismissedAt: new Date().toISOString() })
+    return { ok: true }
   },
 
   // The review + apply. Rows come from the staged research (staged: true)
   // or a pasted JSON array (text). Preview: each row matched to one brand
   // (by id, else exact name / also-known-as) with its from → to changes.
-  // Apply: only the ticked brand ids (keep) whose changes a fresh preview
-  // still shows, one transaction, an Undo copy of every old value.
-  async researchImport({ staged, text, preview = true, keep, __user }: any = {}) {
+  // Apply writes only what Leo saw: the staged batch must be the one he
+  // reviewed (stagedAt), and each ticked brand (keep) only when a fresh
+  // preview still shows exactly the changes he ticked (expect: brandId →
+  // signature) — anything else is skipped and named. A ticked brand with
+  // nothing new is stamped researched. One transaction, an Undo copy of
+  // every old value.
+  async researchImport({ staged, text, preview = true, keep, expect, stagedAt: seenAt, __user }: any = {}) {
     let raws: any[] = []
     let stagedAt: string | null = null
     if (staged) {
       const st = await readJsonSetting<any>(prisma, RESEARCH_STAGED_KEY, null)
-      if (!st || st.appliedAt || !Array.isArray(st.rows)) {
+      if (!st || st.appliedAt || st.dismissedAt || !Array.isArray(st.rows)) {
         if (preview) return { rows: [], unmatched: [], errors: [], staged: null, last: await researchLastBrief() }
         throw new Error('No research waiting')
       }
+      if (!preview && st.at !== seenAt) throw new Error('More research came in since you looked — look again')
       raws = st.rows
       stagedAt = st.at
     } else {
@@ -3550,18 +3603,25 @@ const handlers: Record<string, Handler> = {
     if (preview) return { ...found, staged: stagedAt ? { at: stagedAt, rows: raws.length } : null, last: await researchLastBrief() }
 
     const want = new Set((Array.isArray(keep) ? keep : []).map(String))
-    const pick = found.rows.filter(r => want.has(r.brandId) && r.changes.length)
-    if (!pick.length) throw new Error('Nothing ticked has a change left — reload and look again')
-    const log: ResearchLog = { at: new Date().toISOString(), by: __user ?? null, brands: [] }
+    const seen: Record<string, string> = expect && typeof expect === 'object' ? expect : {}
+    const changedSince: string[] = []
+    const pick = found.rows.filter(r => {
+      if (!want.has(r.brandId)) return false
+      if (seen[r.brandId] !== changeSig(r.changes)) { changedSince.push(r.brandName); return false }
+      return true
+    })
+    if (!pick.length) throw new Error('Nothing ticked still matches what you saw — look again' + (changedSince.length ? ' (' + changedSince.join(', ') + ' changed)' : ''))
+    const stamp = new Date()
+    const log: ResearchLog = { at: stamp.toISOString(), by: __user ?? null, brands: [] }
     await prisma.$transaction(async tx => {
       for (const r of pick) {
         const cur = await tx.brand.findUnique({ where: { id: r.brandId }, select: { ...FIT_COLUMNS_SELECT, researchedAt: true } })
         if (!cur) continue
         const changes = factChanges(cur, r.row)
-        if (!changes.length) continue
-        const data: Record<string, any> = { researchedAt: new Date() }
+        if (changeSig(changes.map(c => ({ field: c.field, raw: rawFact(c.to) }))) !== seen[r.brandId]) { changedSince.push(r.brandName); continue }
+        const data: Record<string, any> = { researchedAt: stamp }
         const before: Record<string, any> = { researchedAt: cur.researchedAt }
-        const after: Record<string, any> = {}
+        const after: Record<string, any> = { researchedAt: stamp }
         for (const c of changes) { data[c.field] = c.to; before[c.field] = cur[c.field]; after[c.field] = c.to }
         await tx.brand.update({ where: { id: r.brandId }, data })
         log.brands.push({ id: r.brandId, name: r.brandName, before, after })
@@ -3574,33 +3634,33 @@ const handlers: Record<string, Handler> = {
     }, { timeout: 30000 })
     if (staged) {
       const st = await readJsonSetting<any>(prisma, RESEARCH_STAGED_KEY, null)
-      if (st) await writeJsonSetting(prisma, RESEARCH_STAGED_KEY, { ...st, appliedAt: log.at })
+      if (st && st.at === stagedAt) await writeJsonSetting(prisma, RESEARCH_STAGED_KEY, { ...st, appliedAt: log.at })
     }
-    return { ok: true, updated: log.brands.length, names: log.brands.map(b => b.name) }
+    return { ok: true, updated: log.brands.length, names: log.brands.map(b => b.name), changedSince }
   },
 
   // Undo the last research import: puts back each old value, but only
-  // where the field still holds what the import wrote.
+  // where the field still holds what the import wrote (researchedAt too —
+  // a later hand edit's stamp stays).
   async researchUndo({ preview = true }: any = {}) {
     const last = await readJsonSetting<ResearchLog | null>(prisma, RESEARCH_LAST_KEY, null)
     if (!last || last.undone || !Array.isArray(last.brands) || !last.brands.length) throw new Error('Nothing to undo')
     if (preview) return { at: last.at, brands: last.brands.map(b => b.name) }
     let back = 0
+    const norm = (field: string, v: any) => v == null ? null
+      : field === 'lastRoundAt' || field === 'researchedAt' ? new Date(v).toISOString()
+      : field === 'salesCents' || field === 'fundingCents' ? Number(v) : v
     await prisma.$transaction(async tx => {
       for (const b of last.brands) {
         const cur = await tx.brand.findUnique({ where: { id: b.id }, select: { ...FIT_COLUMNS_SELECT, researchedAt: true } })
         if (!cur) continue
         const data: Record<string, any> = {}
-        for (const [f, v] of Object.entries(b.after)) {
-          const field = f as FactField
-          const now = cur[field] == null ? null : (field === 'lastRoundAt' ? new Date(cur[field] as any).toISOString().slice(0, 10) : field === 'salesCents' || field === 'fundingCents' ? Number(cur[field]) : cur[field])
-          const wrote = v == null ? null : (field === 'lastRoundAt' ? new Date(v).toISOString().slice(0, 10) : field === 'salesCents' || field === 'fundingCents' ? Number(v) : v)
-          if (now !== wrote) continue // changed since — leave it
+        for (const [field, v] of Object.entries(b.after)) {
+          if (norm(field, (cur as any)[field]) !== norm(field, v)) continue // changed since — leave it
           const old = b.before[field]
-          data[field] = old == null ? null : field === 'lastRoundAt' ? new Date(old) : old
+          data[field] = old == null ? null : field === 'lastRoundAt' || field === 'researchedAt' ? new Date(old) : old
         }
         if (!Object.keys(data).length) continue
-        data.researchedAt = b.before.researchedAt ? new Date(b.before.researchedAt) : null
         await tx.brand.update({ where: { id: b.id }, data })
         back++
       }
@@ -4314,9 +4374,11 @@ const handlers: Record<string, Handler> = {
     const allowed = ['category', 'tier', 'owner', 'notes', 'goals', 'website', 'linkedinUrl', 'hq', 'externalId', 'about', 'topProducts', 'aka'] as const
     const data: Record<string, any> = {}
     // Brand Fit facts from the brand page (sales, funding, US, …), parsed
-    // by the same rules as a research import. Only what really changed is
-    // written, and that stamps researchedAt — the page sends every field
-    // on every Save.
+    // by the same rules as a research import. The page sends only the
+    // facts Leo changed; only real changes are written. They count as
+    // "researched" (off the research list for 90 days) once the big
+    // questions are answered — money and college / music sponsorships —
+    // not for one fact typed in passing.
     if (facts && typeof facts === 'object') {
       const { row, error } = cleanResearchRow({ ...facts, name: 'brand' })
       if (error || !row) throw new Error((error ?? 'Could not read the facts').replace(/^brand: /, ''))
@@ -4325,7 +4387,8 @@ const handlers: Record<string, Handler> = {
       const changed = factChanges(current, row)
       if (changed.length) {
         for (const c of changed) data[c.field] = c.to
-        data.researchedAt = new Date()
+        const after = { ...current, ...data }
+        if ((after.salesCents != null || after.fundingCents != null) && after.sponsorsCollege != null) data.researchedAt = new Date()
       }
     }
     for (const key of allowed) {
