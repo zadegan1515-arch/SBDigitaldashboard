@@ -242,8 +242,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   brands that sell sponsorships (`looksLikeSeller`: league / association / sports management…, or a
   Spectator Sports discovery note) offered for Archive. Apply = only ticked ids a fresh preview still
   lists, one transaction, freed slots reconciled; Undo recreates them.
-  **By hand:** on a company's People tab the SB pill scrolls that one page (≤150 people,
-  human-paced), posts `action:'liPreview'` (nothing saved; verdicts add/full/dupe/elsewhere/
+  **By hand:** on a company's People tab the SB pill scrolls the whole list (≤150 people,
+  human-paced), then opens the tab's "marketing" and "partnerships" views itself (`HAND_PASSES`; state
+  in sessionStorage `sbLiHand`, picked up on each load by `handHere`; a `?keywords=` view Leo opened is
+  read alone), merges them (one row per profile) and posts one `action:'liPreview'` (nothing saved; verdicts add/full/dupe/elsewhere/
   notBuyer), then `liCapture` on "Add". Brand match: `brandId` → typed name → saved
   `Brand.linkedinUrl` slug → page name/aka. A brand the dashboard lacks can be **added from the
   panel** ("Add … as a new brand" → `createIfMissing`; category guessed from name + page name +
@@ -262,7 +264,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   that fits the category** — Native the deodorant had a home-care agency's page — most followers wins,
   so it's never just the first result; or a near miss only in the top 3 with a fitting industry; else
   "unclear" → skipped and put on Leo's list, below), then the
-  People tab (+ "marketing" and "partnerships" views if the tab never ran out). **Big companies** (the tab's
+  People tab, then its "marketing" and "partnerships" views — **always** (Leo, Oct 2026: "make sure all
+  partnerships/marketing people are accounted for"; a stalled scroll looks like the end), skipped only when the
+  whole list showed nobody or the brand is full; `seen` counts each person once across views. **Big companies** (the tab's
   "N associated members" ≥ `BIG_COMPANY` = 100): not read whole — Leo, Sep 30, after the 1.17–1.19 skip lost
   Bang, Tito's, Bacardi and Nike — but searched: `BIG_PASSES` partnerships / sponsorship / brand manager
   (+ marketing only if those found < 3), a `SHORT_READ` of each; old "too big" marks don't rest

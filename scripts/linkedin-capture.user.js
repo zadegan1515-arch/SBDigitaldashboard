@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.25
+// @version      1.26
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -83,7 +83,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.25';
+  var VERSION = '1.26';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -742,23 +742,80 @@
     }).catch(function (e) { showError(e.message); });
   }
 
+  // A hand scan reads the whole People tab, then its "marketing" and
+  // "partnerships" views (Leo, Oct 2026: "make sure that all partnerships/
+  // marketing people are accounted for"): the views surface the company's
+  // marketers wherever they sit in the list, past the 150 a scroll reads
+  // and past a scroll LinkedIn stopped feeding. Each view is its own page
+  // load, so the scan's state rides in this tab's sessionStorage; one
+  // preview at the end covers everyone. A view Leo opened himself
+  // (?keywords=) is read alone — he has narrowed it already.
+  var HAND_KEY = 'sbLiHand';
+  var HAND_PASSES = ['', 'marketing', 'partnerships'];
+  function loadHand() {
+    try {
+      var j = JSON.parse(sessionStorage.getItem(HAND_KEY) || 'null');
+      return j && Date.now() - j.at < 10 * 60 * 1000 ? j : null;
+    } catch (e) { return null; }
+  }
+  function saveHand(j) {
+    try { if (j) { j.at = Date.now(); sessionStorage.setItem(HAND_KEY, JSON.stringify(j)); } else sessionStorage.removeItem(HAND_KEY); } catch (e) {}
+  }
+  function keywordOfPage() {
+    try { return new URLSearchParams(location.search).get('keywords') || ''; } catch (e) { return ''; }
+  }
+  function handPassUrl(hs, i) {
+    return hs.base + 'people/' + (hs.passes[i] ? '?keywords=' + encodeURIComponent(hs.passes[i]) : '');
+  }
+  // This page is the scan's next view: carry on without a click.
+  function handHere() {
+    var hs = loadHand();
+    if (!hs || !onPeoplePage() || companyBase() !== hs.base) return null;
+    return keywordOfPage() === (hs.passes[hs.pass] || '') ? hs : null;
+  }
+
   function readPage() {
+    var hs = handHere();
+    if (!hs) {
+      var kw = keywordOfPage();
+      hs = {
+        base: companyBase(), passes: kw ? [kw] : HAND_PASSES, pass: 0, rows: [], hidden: 0,
+        companyName: companyName(), companyUrl: location.href, industry: companyIndustry(),
+      };
+    }
+    saveHand(hs);
     busy = true;
     var halt = { stopped: false };
+    var many = hs.passes.length > 1;
+    var where = many ? (hs.passes[hs.pass] ? 'the “' + hs.passes[hs.pass] + '” view' : 'the whole list') + ' (' + (hs.pass + 1) + ' of ' + hs.passes.length + ')' : 'this page';
     var prog = h('div', { id: 'sbliprog', style: 'color:#555;margin-bottom:10px', text: count() + ' people on screen…' });
     freshPanel([
-      head('Reading this page'),
+      head('Reading ' + where),
       prog,
-      h('div', { style: 'color:#999;font-size:11px;margin-bottom:10px', text: 'Scrolling this one page, with pauses, up to ' + MAX_PEOPLE + ' people. Nothing is saved yet.' }),
+      h('div', { style: 'color:#999;font-size:11px;margin-bottom:10px', text: (many ? 'Then the marketing and partnerships views, so no marketer is missed. ' + hs.rows.length + ' people so far. ' : '') + 'Up to ' + MAX_PEOPLE + ' people a page, with pauses. Nothing is saved yet.' }),
       h('button', { id: 'sblistop', style: BTN2, text: 'Stop and use what\'s here', onclick: function () { halt.stopped = true; } }),
     ]);
-    expand(function (n) {
-      prog.textContent = n + ' people on screen…';
-    }, halt).then(function () {
+    // A view LinkedIn just loaded may draw its cards a moment later.
+    waitFor(function () { return count() > 0 || /no results/i.test(pageText(5000)); }, 8000).then(function () {
+      return expand(function (n) { prog.textContent = n + ' people on screen…'; }, halt);
+    }).then(function () {
       window.scrollTo(0, 0);
-      lastRead = { rows: scrape(), hidden: hiddenMembers(), companyName: companyName(), companyUrl: location.href, industry: companyIndustry() };
+      var have = {};
+      hs.rows.forEach(function (r) { have[r.linkedinUrl] = 1; });
+      scrape().forEach(function (r) { if (!have[r.linkedinUrl]) { have[r.linkedinUrl] = 1; hs.rows.push(r); } });
+      if (hs.pass === 0) hs.hidden = hiddenMembers();
+      if (!halt.stopped && hs.pass < hs.passes.length - 1) {
+        hs.pass++;
+        saveHand(hs);
+        prog.textContent = 'Opening the “' + hs.passes[hs.pass] + '” view…';
+        return wait(rand(1500, 3000)).then(function () { location.href = handPassUrl(hs, hs.pass); });
+      }
+      saveHand(null);
+      lastRead = { rows: hs.rows, hidden: hs.hidden, views: hs.passes.length, companyName: hs.companyName, companyUrl: hs.companyUrl, industry: hs.industry };
+      busy = false;
       return preview('');
     }).catch(function (e) {
+      saveHand(null);
       showError(e.message);
     }).then(function () { busy = false; });
   }
@@ -864,7 +921,7 @@
           onclick: function () { pickAndPreview(box.value.trim()); },
         }),
       ]),
-      h('div', { style: 'font-size:12px;color:#555;margin-top:8px', text: lastRead.rows.length + ' people read from this page.' +
+      h('div', { style: 'font-size:12px;color:#555;margin-top:8px', text: lastRead.rows.length + (lastRead.views > 1 ? ' people read from the whole list + the marketing and partnerships views.' : ' people read from this page.') +
         (lastRead.hidden ? ' ' + lastRead.hidden + ' more show as "LinkedIn Member" — LinkedIn hides their name and profile (outside your network), so they can\'t be read.' : '') }),
       group(j.brand ? 'Will add' : 'Buyers found', j.brand ? adds : waiting, true, '#137333'),
       group('Over the ' + j.cap + ' cap', by('full'), false, '#946200'),
@@ -1314,7 +1371,7 @@
     var why = note || (st.kind === 'big' ? 'nobody new in its big-company searches' : st.seen ? 'nobody new on its own page' : 'nobody readable on its own page');
     job.step = {
       phase: item.parent.slug ? 'read' : 'parent-find', kind: 'parent', passes: [item.name], pass: 0,
-      parentTried: true, ownNote: why, triedAka: true, seen: st.seen || 0, added: 0, navs: 0,
+      parentTried: true, ownNote: why, triedAka: true, seen: st.seen || 0, seenUrls: st.seenUrls || [], added: 0, navs: 0,
       startedAt: st.startedAt || Date.now(), hiddenMs: st.hiddenMs || 0, members: st.members || null,
     };
     job.nextAt = Date.now() + secs(BETWEEN_PAGES);
@@ -1492,7 +1549,11 @@
         saveFill(job2);
         return runFill();
       }
-      st.seen += rows.length;
+      // Each person once, however many views they turn up in.
+      var seenUrls = st.seenUrls || [];
+      rows.forEach(function (r) { if (seenUrls.indexOf(r.linkedinUrl) < 0) seenUrls.push(r.linkedinUrl); });
+      st.seenUrls = seenUrls;
+      st.seen = Math.max(st.seen || 0, seenUrls.length);
       st.added += r.added || 0;
       if (problem && !st.problem) { st.problem = problem; st.sample = sample; }
       job2.added = (job2.added || 0) + (r.added || 0);
@@ -1500,7 +1561,10 @@
       var ps = stepPasses(st);
       var more = st.kind === 'parent' ? false
         : st.kind === 'big' ? !full && st.pass < ps.length - 1 && !(ps[st.pass + 1] === 'marketing' && st.added >= 3)
-        : !full && st.pass < ps.length - 1 && (st.pass > 0 || capped);
+        // The marketing / partnerships views run even when the scroll
+        // seemed to reach the end: a stalled scroll looks the same. A page
+        // with nobody on it at all has no views worth opening.
+        : !full && st.pass < ps.length - 1 && (st.pass > 0 || rows.length > 0);
       if (!more) return afterPeople(job2, item);
       st.pass++; st.navs = 0;
       job2.nextAt = Date.now() + secs(BETWEEN_PAGES);
@@ -1977,6 +2041,9 @@
     // start a run in this tab with the panel's defaults. A live run in
     // another tab is shown, not doubled; a stale one is replaced.
     else if (AUTO_FILL) later(function () { openFillSetup({ auto: true }); }, rand(1500, 2500));
+
+    // A hand scan's next view (marketing / partnerships) just loaded.
+    else if (handHere()) later(guard(function () { if (!busy && handHere()) readPage(); }), rand(1500, 2500));
 
     // The dashboard's button again, on a window already at the feed: only
     // the #mark changes, so there's no page load to catch it. Same rules.

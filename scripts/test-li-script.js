@@ -237,7 +237,10 @@ const server = http.createServer((req, res) => {
         return res.end(JSON.stringify({ ok: true, pageMismatch: true, industry: body.companyIndustry, added: 0, have: 0, cap: 25 }));
       }
       if (body.action === 'liCapture' && body.brandId) {
-        return res.end(JSON.stringify({ ok: true, brand: { id: body.brandId, name: body.companyName }, added: 2, have: 12, cap: 25, targetsShelved: 0 }));
+        // The whole list adds two; the marketing / partnerships views find
+        // the same people again (nobody new), so totals stay readable.
+        const view = /[?&]keywords=(marketing|partnerships)$/.test(body.companyUrl || '') && body.brandId !== 'b-big';
+        return res.end(JSON.stringify({ ok: true, brand: { id: body.brandId, name: body.companyName }, added: view ? 0 : 2, have: 12, cap: 25, targetsShelved: 0 }));
       }
       if (body.action === 'liPreview') {
         return res.end(JSON.stringify({
@@ -293,6 +296,10 @@ const server = http.createServer((req, res) => {
       '<li><a href="https://www.linkedin.com/company/native-co./"><span>Native</span></a><div>Individual and Family Services • Phoenix</div><div>1K followers</div></li>' +
       '<li><a href="https://www.linkedin.com/company/native-cos/"><span>Native</span></a><div>Personal Care Product Manufacturing • San Francisco</div><div>60K followers</div></li>' +
       '</ul></main></body></html>');
+  }
+  // Its marketing view turns up someone the whole list didn't show.
+  if (/^\/company\/liquid-death\/people\/\?keywords=marketing$/.test(req.url)) {
+    return res.end(page(true, 'Liquid Death', '<ul>' + card('quinn-r', 'Quinn Ray', 'Partnerships Manager at Liquid Death', '3rd') + '</ul>'));
   }
   if (/^\/company\/liquid-death\/people\/?/.test(req.url)) return res.end(page(true));
   if (/^\/company\/casamigos-tequila\/people\/?/.test(req.url)) return res.end(page(true, 'Casamigos Tequila'));
@@ -437,10 +444,11 @@ const GM_SHIM = `
   // Claude's cloud sessions keep Chromium in /opt/pw-browsers; CI installs its own.
   const browser = await chromium.launch(process.env.PLAYWRIGHT_BROWSERS_PATH || !fs.existsSync('/opt/pw-browsers/chromium') ? {} : { executablePath: '/opt/pw-browsers/chromium' });
   const pageObj = await browser.newPage();
-  await pageObj.addInitScript(GM_SHIM);
+  // On every page load, the way Tampermonkey injects — a hand scan opens
+  // its marketing / partnerships views itself.
+  await pageObj.addInitScript(GM_SHIM + '\n' + SCRIPT);
   const load = async (url) => {
     await pageObj.goto('http://127.0.0.1:4622' + url);
-    await pageObj.addScriptTag({ content: SCRIPT });
   };
   let n = 0;
   const ok = (name) => { n++; console.log('  ok — ' + name); };
@@ -508,8 +516,11 @@ const GM_SHIM = `
     assert.equal(previews.length, 1);
     const rows = previews[0].rows;
     const names = rows.map(r => r.name).sort();
-    assert.deepEqual(names, ['Ali Rahman 🚀', 'Dee Okafor', 'Jane Doe', 'Kim Tran', 'Max Vogel', 'Pat Kim', 'Sam Lee'].sort());
-    ok('reads the first screen and the "Show more results" batch: ' + rows.length + ' people');
+    assert.deepEqual(names, ['Ali Rahman 🚀', 'Dee Okafor', 'Jane Doe', 'Kim Tran', 'Max Vogel', 'Pat Kim', 'Quinn Ray', 'Sam Lee'].sort());
+    ok('reads the first screen and the "Show more results" batch, then the marketing and partnerships views (one copy each): ' + rows.length + ' people');
+    assert.match(pageObj.url(), /\/company\/liquid-death\/people\/\?keywords=partnerships$/);
+    assert.match(await pageObj.innerText('#sbli-panel'), /whole list \+ the marketing and partnerships views/);
+    ok('the scan opens the marketing and partnerships views by itself and previews once at the end');
     assert.ok(!rows.some(r => /leo-self/.test(r.linkedinUrl)), 'header link is not an employee');
     assert.ok(!rows.some(r => /member/i.test(r.name)), 'LinkedIn Member is skipped');
     ok('skips the header\'s own profile link and "LinkedIn Member"');
@@ -521,9 +532,8 @@ const GM_SHIM = `
     assert.match(previews[0].companyUrl, /\/company\/liquid-death\/people\//);
     ok('sends the company name and page');
 
-    // 3. Nothing saved until Add; no navigation of its own.
+    // 3. Nothing saved until Add; after the views, no navigation of its own.
     assert.equal(sent.filter(b => b.action === 'liCapture').length, 0);
-    assert.match(pageObj.url(), /\/company\/liquid-death\/people\/$/);
     assert.match(await pageObj.innerText('#sbli-panel'), /1 more show as "LinkedIn Member"/);
     ok('says how many "LinkedIn Member" cards LinkedIn hid');
     const addText = await pageObj.textContent('#sbliadd');
@@ -531,7 +541,7 @@ const GM_SHIM = `
     await pageObj.click('#sbliadd');
     await pageObj.waitForFunction(() => /Saved/.test(document.getElementById('sbli-panel').innerText));
     assert.equal(sent.filter(b => b.action === 'liCapture').length, 1);
-    assert.match(pageObj.url(), /\/company\/liquid-death\/people\/$/);
+    assert.match(pageObj.url(), /\/company\/liquid-death\/people\/\?keywords=partnerships$/);
     ok('saves only on "Add", and never navigated by itself');
 
     // A layout with no LinkedIn class names still reads.
@@ -637,12 +647,13 @@ const GM_SHIM = `
       await pg.click('#sblifillstart');
       await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 60000 });
       const run = sent.slice(before).map(b => b.action + (b.brandId ? ':' + b.brandId : ''));
-      assert.deepEqual(run, ['liList', 'liMatched:b-lmnt', 'liCapture:b-lmnt', 'liSwept:b-lmnt', 'liCapture:b-ld', 'liSwept:b-ld']);
+      // Each brand: the whole list, then its marketing and partnerships views.
+      assert.deepEqual(run, ['liList', 'liMatched:b-lmnt', 'liCapture:b-lmnt', 'liCapture:b-lmnt', 'liCapture:b-lmnt', 'liSwept:b-lmnt', 'liCapture:b-ld', 'liCapture:b-ld', 'liCapture:b-ld', 'liSwept:b-ld']);
       const matched = sent.slice(before).find(b => b.action === 'liMatched');
       assert.deepEqual(matched.candidates.map(c => c.name), ['LMNT', 'LMNT Labs']);
       assert.match(matched.candidates[0].subtitle, /Food and Beverage Services/);
       const caps = sent.slice(before).filter(b => b.action === 'liCapture');
-      assert.ok(caps.every(c => c.rows.length === 7), 'each brand read whole, including "Show more results"');
+      assert.ok(caps.filter(c => !/keywords=/.test(c.companyUrl)).every(c => c.rows.length === 7), 'each brand read whole, including "Show more results"');
       assert.match(await pg.textContent('#sbli-panel'), /4 people added across 2 brands/);
       await pg.close();
     }
@@ -673,7 +684,7 @@ const GM_SHIM = `
       await pg.mouse.click(700, 300);
       await pg.mouse.wheel(0, 200);
       await finished(pg);
-      assert.equal(sent.slice(before).filter(b => b.action === 'liCapture').length, 1, 'a click didn\'t stop it');
+      assert.equal(sent.slice(before).filter(b => b.action === 'liCapture').length, 3, 'a click didn\'t stop it');
       assert.match(await pg.textContent('#sbli-panel'), /What it did/);
       assert.match(await pg.textContent('#sblidid'), /Slow Brand — 2 added/);
       await pg.close();
@@ -689,7 +700,7 @@ const GM_SHIM = `
       assert.equal(sent.slice(before).filter(b => b.action === 'liCapture').length, 0, 'nothing saved while paused');
       await pg.click('#sblifillgo');
       await finished(pg);
-      assert.equal(sent.slice(before).filter(b => b.action === 'liCapture').length, 1);
+      assert.equal(sent.slice(before).filter(b => b.action === 'liCapture').length, 3);
       await pg.close();
 
       // Leo takes the window to another page mid-read: that read is
@@ -704,7 +715,7 @@ const GM_SHIM = `
       assert.match(pg.url(), /liquid-death\/$/, 'it left Leo where he was');
       await pg.waitForURL(/slow-brand\/people/, { timeout: 20000 });
       await finished(pg);
-      assert.equal(sent.slice(before).filter(b => b.action === 'liCapture').length, 1, 'read once, on the right page');
+      assert.equal(sent.slice(before).filter(b => b.action === 'liCapture').length, 3, 'read once, on the right page');
       assert.ok(sent.slice(before).filter(b => b.action === 'liCapture').every(b => /slow-brand/.test(b.companyUrl)));
       await pg.close();
     }
@@ -751,9 +762,9 @@ const GM_SHIM = `
       assert.deepEqual(run, [
         'liList',
         'liDiscover:search:electrolyte',
-        'liCapture:b-liv', 'liDiscover:lookalike:Liquid I.V.', 'liSwept:b-liv',
-        'liCapture:b-ca', 'liDiscover:lookalike:Clase Azul', 'liSwept:b-ca',
-        'liCapture:b-jc', 'liSwept:b-jc',
+        'liCapture:b-liv', 'liCapture:b-liv', 'liCapture:b-liv', 'liDiscover:lookalike:Liquid I.V.', 'liSwept:b-liv',
+        'liCapture:b-ca', 'liCapture:b-ca', 'liCapture:b-ca', 'liDiscover:lookalike:Clase Azul', 'liSwept:b-ca',
+        'liCapture:b-jc', 'liCapture:b-jc', 'liCapture:b-jc', 'liSwept:b-jc',
       ]);
       assert.deepEqual(homeVisits, [], 'no stop at a company home page');
       const search = sent.slice(before).find(b => b.action === 'liDiscover' && b.source === 'search');
@@ -803,7 +814,7 @@ const GM_SHIM = `
       const run = sent.slice(before).map(b => b.action + (b.brandId ? ':' + b.brandId : '') + (b.action === 'liResearch' ? ':' + b.name + (b.final ? ':final' : '') : ''));
       assert.deepEqual(run, [
         'liList',
-        'liResearch:Powerade:final', 'liCapture:b-pow', 'liSwept:b-pow',
+        'liResearch:Powerade:final', 'liCapture:b-pow', 'liCapture:b-pow', 'liCapture:b-pow', 'liSwept:b-pow',
         // A name that never became a brand still goes in the run's report
         // (no brandId, so it rests nothing).
         'liResearch:NOS Energy', 'liResearch:NOS Energy:final', 'liSwept',
@@ -1061,7 +1072,7 @@ const GM_SHIM = `
       // Three targeted views; "marketing" only if those found fewer than three (they found 6).
       assert.deepEqual(run.filter(r => /b-(big|small)/.test(r)), [
         'liCapture:b-big:partnerships', 'liCapture:b-big:sponsorship', 'liCapture:b-big:brand manager', 'liSwept:b-big',
-        'liCapture:b-small:all', 'liSwept:b-small',
+        'liCapture:b-small:all', 'liCapture:b-small:marketing', 'liCapture:b-small:partnerships', 'liSwept:b-small',
       ]);
       const big = sent.slice(before).find(b => b.action === 'liSwept' && b.brandId === 'b-big');
       assert.equal(big.note, '');
