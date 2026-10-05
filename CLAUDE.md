@@ -216,14 +216,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Stock take (lanes, ideas, re-file) and Needs contacts (SponsorUnited worklist) left the sub-tabs and
   are header buttons; their views and deep links still work. `node scripts/test-brands-table.js`.
 - **Daily Claude brand hunt** (Leo, Oct 2026: "a process for Claude to find new brands … it shouldn't
-  necessarily be through LinkedIn"). Routine "Discover: daily brand hunt" (6:00 New York, fresh cloud
-  session, subscription — no API spend) searches the open web (launch / funding news, sponsorship
+  necessarily be through LinkedIn"). Routine "Discover: daily brand hunt (web)" (5:52 New York, a fresh
+  session in the Claude Code cloud environment that holds `REPORT_TOKEN` — the old Cowork routine of the
+  same name had no token and is paused; subscription, no API spend) searches the open web (launch / funding news, sponsorship
   announcements, retailer shelves, trend coverage) and posts to `/api/discover-ingest` (Bearer
   `REPORT_TOKEN`; the old body `token` = INGEST_TOKEN still accepted). `GET` = lanes, `leftToday`, every
   known name (brands + aka + earlier finds; names only). Rules pure in `src/lib/claude-hunt.ts`
   (`node scripts/test-claude-hunt.mjs`): **priority lanes only**, a website or source link (LinkedIn
   page optional), at least one sign — `sponsors` college/music, `genz` 18–24, `midsize` growing —
-  never a known brand, **50 a rolling day**. Rows land on Brands → Discover under "Claude hunt · <date>"
+  never a known brand, **50 a rolling day**. A failed save answers 500 with the database's reason. Rows land on Brands → Discover under "Claude hunt · <date>"
   (sign tags + Source ↗) for Leo to Add / Dismiss; it never makes a Brand itself.
 - **Brands → New from LinkedIn** (chip after All; `listBrands({ category: 'new' })`, count from
   `categoryReach.newFromLinkedIn`): brands the LinkedIn run added itself (`source` linkedin-discover /
