@@ -60,7 +60,7 @@ jobs:
       - name: Types
         run: npx tsc --noEmit
       - name: Rules
-        run: node scripts/test-li-capture.mjs && node scripts/test-li-report.mjs && node scripts/test-li-log.mjs
+        run: node scripts/test-li-capture.mjs && node scripts/test-li-report.mjs && node scripts/test-li-log.mjs && node scripts/test-brand-size.mjs
       - name: Script against a fake dashboard
         run: node scripts/test-li-script.js
       - name: Zach's logging-only script against a fake dashboard

@@ -337,6 +337,27 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual(run.brands.map(b => b.name).sort(), ['Big Bev', 'Blank Cards', 'Hoplark', 'Huel', 'Liquid Death', 'Native', 'Olipop', 'Powerade', 'Tanqueray']);
     assert.equal(run.brands.find(b => b.name === 'Tanqueray').via, 'via Diageo');
     assert.equal(run.brands.find(b => b.name === 'Big Bev').members, 423);
+    // The headcount is saved on the brand: 423 is a target (mid-size) brand.
+    const bigBev = await prisma.brand.findUnique({ where: { id: 'b_big' } });
+    assert.equal(bigBev.liMembers, 423);
+    assert.ok(bigBev.liMembersAt instanceof Date);
+    ok('the People tab\'s headcount is saved on the brand');
+    {
+      // The fill's order by size: target, not measured, small, big.
+      await prisma.brand.createMany({ data: [
+        { id: 'sz_big', name: 'Size Big', category: 'beverage', liMembers: 2400 },
+        { id: 'sz_small', name: 'Size Small', category: 'beverage', liMembers: 7 },
+        { id: 'sz_none', name: 'Size None', category: 'beverage' },
+        { id: 'sz_mid', name: 'Size Mid', category: 'beverage', liMembers: 120 },
+        { id: 'sz_tier', name: 'Size Tier', category: 'beverage', tier: 'growth' },
+      ] });
+      const l = (await ingest({ action: 'liList' })).j;
+      const order = l.items.filter(i => /^Size /.test(i.name)).map(i => i.name + ':' + i.size);
+      assert.deepEqual(order, ['Size Mid:target', 'Size Tier:target', 'Size None:unknown', 'Size Small:small', 'Size Big:big']);
+      assert.equal(l.sizes.target, 2);
+      await prisma.brand.deleteMany({ where: { id: { startsWith: 'sz_' } } });
+    }
+    ok('the fill goes target brands first, then not measured, small, big last');
     assert.equal(run.problems, 1);
     assert.equal(run.samples[0].name, 'Blank Cards');
     assert.match(run.samples[0].problem, /every title came out blank/);

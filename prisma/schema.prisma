@@ -34,6 +34,12 @@ model Brand {
   // "emerging" | "growth" | "established" — drives prioritisation
   tier     String?
 
+  // People on its LinkedIn page (the People tab's "N associated members"),
+  // saved by the LinkedIn fill / a hand scan; sizes the brand for the
+  // fill's order (src/lib/brand-size.ts). Null = never measured.
+  liMembers   Int?
+  liMembersAt DateTime?
+
   // Where this record came from: "sponsorunited" | "manual" | "import"
   source      String  @default("manual")
   // SponsorUnited profile ULID, so we can re-sync without duplicating

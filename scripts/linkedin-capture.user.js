@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.26
+// @version      1.27
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -83,7 +83,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.26';
+  var VERSION = '1.27';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -803,7 +803,7 @@
       var have = {};
       hs.rows.forEach(function (r) { have[r.linkedinUrl] = 1; });
       scrape().forEach(function (r) { if (!have[r.linkedinUrl]) { have[r.linkedinUrl] = 1; hs.rows.push(r); } });
-      if (hs.pass === 0) hs.hidden = hiddenMembers();
+      if (hs.pass === 0) { hs.hidden = hiddenMembers(); hs.members = peopleCount(); }
       if (!halt.stopped && hs.pass < hs.passes.length - 1) {
         hs.pass++;
         saveHand(hs);
@@ -811,7 +811,7 @@
         return wait(rand(1500, 3000)).then(function () { location.href = handPassUrl(hs, hs.pass); });
       }
       saveHand(null);
-      lastRead = { rows: hs.rows, hidden: hs.hidden, views: hs.passes.length, companyName: hs.companyName, companyUrl: hs.companyUrl, industry: hs.industry };
+      lastRead = { rows: hs.rows, hidden: hs.hidden, views: hs.passes.length, members: hs.passes[0] ? null : hs.members, companyName: hs.companyName, companyUrl: hs.companyUrl, industry: hs.industry };
       busy = false;
       return preview('');
     }).catch(function (e) {
@@ -950,6 +950,7 @@
       companyIndustry: r.industry || '',
       brandName: typed || '',
       createIfMissing: !!(opts && opts.create),
+      members: r.members == null ? null : r.members,
       rows: r.rows,
     }).then(function (j) {
       if (!j || !j.ok) return showError((j && j.error) || 'Nothing was saved.');
@@ -1498,8 +1499,11 @@
     var capped = false, rows = [], problem = null, sample = null;
     var tooBig = null;
     readPath = location.pathname;
+    var headcount = null;
     waitFor(function () { return count() > 0 || /no results|0 associated members/i.test(pageText(5000)); }, 12000).then(function () {
       var n = kind === 'own' && job.step.pass === 0 ? peopleCount() : null;
+      // The brand's LinkedIn headcount sizes it for the next run's order.
+      headcount = n;
       if (n != null && n >= BIG_COMPANY) { tooBig = n; return { skip: true }; }
       return expand(function (n) { setFillStatus('Reading ' + label + ' — ' + n + ' people on screen'); }, fillHalt, kind === 'own' ? null : SHORT_READ);
     }).then(function (res) {
@@ -1522,6 +1526,7 @@
       readPath = null;
       var stop = linkedinSaysStop();
       if (stop) return { halt: stop };
+      if (headcount != null) { job1.step.members = headcount; saveFill(job1); }
       rows = scrape();
       problem = readingProblem(rows);
       if (problem) sample = sampleText(1500);
@@ -1818,6 +1823,8 @@
     }
     if (item.research) return 'from the research list' + (item.lane ? ' (' + item.lane + ')' : '');
     if (item.focus) return 'a “' + (job.focus || 'focus') + '” brand';
+    var sz = { target: 'a target brand (mid-size)', small: 'a small brand', big: 'a big company — they go last' }[item.size];
+    if (sz) return sz + (item.members != null ? ', ' + item.members.toLocaleString('en-US') + ' on LinkedIn' : '');
     return 'under 25 people, emptiest first';
   }
 
@@ -1917,6 +1924,7 @@
         if (f) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: first.length
           ? 'First the ' + first.length + ' matching “' + f + '”: ' + first.slice(0, 15).map(function (i) { return i.name; }).join(', ') + (first.length > 15 ? '…' : '') + '. Then everything else, emptiest first.'
           : 'None match “' + f + '” — it goes emptiest first.' }));
+        if (j.sizes) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: 'Then by size: ' + j.sizes.target + ' target (mid-size, 20–499 on LinkedIn), ' + j.sizes.unknown + ' not measured yet, ' + j.sizes.small + ' small, ' + j.sizes.big + ' big companies last.' }));
         if (j.noPage) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.noPage + ' have no LinkedIn page saved; it searches LinkedIn for those and only uses a clear match.' }));
         if (j.resting) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.resting + ' left out: nothing new on their last visit (they rest a month).' }));
         if (j.researchWaiting) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.researchWaiting + ' research names left out: LinkedIn had no clear page for them last month.' }));

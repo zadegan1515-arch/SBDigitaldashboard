@@ -47,6 +47,7 @@ import { logLinkedInPerson, personOnFile, undoLinkedInLog, checkNewPerson } from
 import { nameFromSlug, isLogStage } from '@/lib/li-log'
 import { guessCategory } from '@/lib/category-hints'
 import { dueDays, shortOnPeople, plannedFirst } from '@/lib/planned-first'
+import { brandSize, sizeRank, cleanMembers } from '@/lib/brand-size'
 
 const prisma = new PrismaClient()
 
@@ -373,6 +374,14 @@ function liSummary(plan: Awaited<ReturnType<typeof planLinkedin>>) {
   }
 }
 
+// The brand's LinkedIn headcount, as its own People tab showed it — what
+// sizes it for the fill's order (brand-size.ts). Never from a parent's page.
+async function saveMembers(brandId: string, raw: unknown) {
+  const n = cleanMembers(raw)
+  if (n == null) return
+  try { await prisma.brand.update({ where: { id: brandId }, data: { liMembers: n, liMembersAt: new Date() } }) } catch { /* non-fatal */ }
+}
+
 // A brand made from a LinkedIn page: the name Leo confirmed, the page
 // saved on it, and a category guessed from the name and LinkedIn's
 // industry line (outreach is scheduled by category, so "unresolved" is
@@ -634,7 +643,7 @@ export async function POST(req: NextRequest) {
       where: { doNotEmail: false, passedAt: null },
       select: {
         id: true, name: true, aka: true, about: true, topProducts: true, notes: true,
-        category: true, linkedinUrl: true, _count: { select: { contacts: true } },
+        category: true, linkedinUrl: true, tier: true, liMembers: true, _count: { select: { contacts: true } },
       },
     })
     const underCap = all.filter(b => b._count.contacts < CONTACT_CAP_PER_BRAND)
@@ -664,8 +673,12 @@ export async function POST(req: NextRequest) {
         brandId: b.id, name: b.name, aka: b.aka, category: b.category,
         linkedinUrl: b.linkedinUrl, contacts: b._count.contacts, focus: matchesFocus(b, terms),
         parent: parentFor(b.name, b.aka),
+        // Target (mid-size) brands first, then not yet measured, small, big
+        // (brand-size.ts; Leo, Oct 2026).
+        size: brandSize({ liMembers: b.liMembers, tier: b.tier, hasParent: !!parentOf(b.name, b.aka) }),
+        members: b.liMembers ?? null,
       }))
-      .sort((a, b) => Number(b.focus) - Number(a.focus) || a.contacts - b.contacts || a.name.localeCompare(b.name))
+      .sort((a, b) => Number(b.focus) - Number(a.focus) || sizeRank(a.size) - sizeRank(b.size) || a.contacts - b.contacts || a.name.localeCompare(b.name))
 
     // The research list: Stock take's lane ideas — known brand names not
     // on the roster under any name — for the run to look up on LinkedIn.
@@ -736,10 +749,14 @@ export async function POST(req: NextRequest) {
       : []
     const short = new Set(dueBrands.filter(shortOnPeople).map(b => b.id))
     const { first: planned, rest } = plannedFirst(items, due, short)
+    // After the focus word: target brands, then the research list's names,
+    // then the rest by size (unknown, small, big).
+    const others = rest.filter(i => !i.focus)
     const ordered = [
       ...planned,
       ...research.filter(r => r.focus), ...rest.filter(i => i.focus),
-      ...research.filter(r => !r.focus), ...rest.filter(i => !i.focus),
+      ...others.filter(i => i.size === 'target'),
+      ...research.filter(r => !r.focus), ...others.filter(i => i.size !== 'target'),
     ]
     return NextResponse.json({
       ok: true,
@@ -749,6 +766,7 @@ export async function POST(req: NextRequest) {
       researchWaiting,
       focusCount: ordered.filter(i => i.focus).length,
       planned: planned.length,
+      sizes: { target: items.filter(i => i.size === 'target').length, unknown: items.filter(i => i.size === 'unknown').length, small: items.filter(i => i.size === 'small').length, big: items.filter(i => i.size === 'big').length },
       noPage: items.filter(i => !i.linkedinUrl).length,
       resting,
       underCap: underCap.length,
@@ -1029,6 +1047,7 @@ export async function POST(req: NextRequest) {
           parentTried: body.parentTried === true,
         })
       } catch { /* non-fatal */ }
+      await saveMembers(brandId, body.members)
     }
     // The run's report (li-report.ts). Research names that never became
     // a brand come through here too, with no brandId.
@@ -1258,6 +1277,7 @@ export async function POST(req: NextRequest) {
         if (errors.length < 10) errors.push(`${r.name}: ${err?.message ?? 'error'}`)
       }
     }
+    if (body.viaParent !== true) await saveMembers(brand.id, body.members)
     let targetsShelved = 0
     try { targetsShelved = await reconcileBrandTargets(brand.id) } catch { /* skip */ }
     const have = await prisma.contact.count({ where: { brandId: brand.id } })

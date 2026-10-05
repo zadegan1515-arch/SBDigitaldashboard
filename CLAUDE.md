@@ -259,7 +259,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   same rule as the Schedule's labels; soonest day first; `src/lib/planned-first.ts`,
   `node scripts/test-planned-first.mjs`; the Schedule's contacts check links "Start the LinkedIn
   fill ↗ — it does these first"), then a focus word
-  (`focusTerms` — "electrolyte" expands to the hydration shelf by name), then emptiest. Per brand:
+  (`focusTerms` — "electrolyte" expands to the hydration shelf by name), then **by size** (Leo, Oct 2026: "classify
+  mid-sized brands as target brands and do those"; `src/lib/brand-size.ts`, `node scripts/test-brand-size.mjs`):
+  target brands → the research list → size unknown → small → big, emptiest first within each. Size =
+  `Brand.liMembers` (the People tab's "N associated members", saved by every fill read and hand scan of the
+  brand's own page, never a parent's; small < 20, target 20–499, big 500+), else a known parent → big, else
+  tier (established big / growth target / emerging small), else unknown. `liList` items carry `size` +
+  `members`; the setup panel shows the counts, `whyItem` names the size. Per brand:
   no page → LinkedIn company search → `liMatched` (`decideCompanyMatch`: exact name/aka **in an industry
   that fits the category** — Native the deodorant had a home-care agency's page — most followers wins,
   so it's never just the first result; or a near miss only in the top 3 with a fitting industry; else
