@@ -9,6 +9,7 @@
 // Auth matches /api/cron/email: CRON_SECRET bearer when set, otherwise
 // Vercel's cron user-agent.
 
+import '@/lib/bigint-json'
 import { NextRequest, NextResponse } from 'next/server'
 import { sendScheduledEmails } from '@/lib/email'
 

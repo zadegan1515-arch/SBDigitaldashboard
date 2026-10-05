@@ -49,11 +49,11 @@ t('too small: sales under $1M; sales known wins over headcount', () => {
   assert.equal(isTooSmall({ salesCents: 500_000 * 100, liMembers: 300 }).tooSmall, true)
 })
 
-t('too small: sales unknown → under 20 people on LinkedIn (brandSize small)', () => {
+t('too small: sales unknown → under 20 people on LinkedIn, measured only', () => {
   assert.equal(isTooSmall({ liMembers: 19 }).tooSmall, true)
   assert.equal(isTooSmall({ liMembers: 20 }).tooSmall, false)
-  assert.equal(isTooSmall({ tier: 'emerging' }).tooSmall, true)
-  assert.equal(isTooSmall({ tier: 'emerging', hasParent: true }).tooSmall, false)
+  assert.equal(isTooSmall({ tier: 'emerging' }).tooSmall, false, 'a size guessed from tier never hides')
+  assert.equal(isTooSmall({ liMembers: 5, tier: 'established' }).tooSmall, true, 'measured wins over tier')
   assert.equal(isTooSmall({}).tooSmall, false, 'unknown size is never hidden')
   assert.match(isTooSmall({ liMembers: 7 }).why, /7 people/)
 })

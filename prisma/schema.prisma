@@ -40,6 +40,21 @@ model Brand {
   liMembers   Int?
   liMembersAt DateTime?
 
+  // Brand Fit (src/lib/brand-fit.ts — which brands to reach out to). Filled
+  // by hand on the brand page or by a reviewed research import; null =
+  // not known. Money is integer cents; sales and funding pass $21M, past
+  // Int cents, so BigInt (src/lib/bigint-json.ts lets it reach the page).
+  salesCents      BigInt?   // annual sales
+  fundingCents    BigInt?   // venture funding raised, total
+  lastRoundAt     DateTime? // date of the last funding round
+  usStatus        String?   // "yes" | "no" (sold in the US); null = unknown
+  sponsorsCollege Boolean?  // already sponsors college / music; null = unknown
+  sponsorNote     String?   // what they sponsor ("Coachella, college athletics")
+  bizStatus       String?   // "active" | "closed" | "acquired"
+  acquiredBy      String?
+  researchedAt    DateTime? // last time these facts were looked up
+  researchNote    String?   // where the facts came from (sources, one line)
+
   // Where this record came from: "sponsorunited" | "manual" | "import"
   source      String  @default("manual")
   // SponsorUnited profile ULID, so we can re-sync without duplicating

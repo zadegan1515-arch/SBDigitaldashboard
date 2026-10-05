@@ -8,6 +8,7 @@
 // abuse. Always answers with the pixel, even for junk ids, so mail
 // clients never see a broken image.
 
+import '@/lib/bigint-json'
 import { NextRequest, NextResponse } from 'next/server'
 import { recordOpen } from '@/lib/email'
 

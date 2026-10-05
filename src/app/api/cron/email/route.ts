@@ -9,6 +9,7 @@
 // bearer token (Vercel Cron does this automatically). Without the secret,
 // only requests bearing Vercel's cron user-agent are accepted.
 
+import '@/lib/bigint-json'
 import { NextRequest, NextResponse } from 'next/server'
 import { draftDailyEmails, checkReplies } from '@/lib/email'
 import { syncNotionDeals } from '@/lib/notion'

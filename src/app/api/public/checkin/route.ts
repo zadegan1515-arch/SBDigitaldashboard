@@ -8,6 +8,7 @@
 // Staff auth is the event's PIN — door staff aren't on the Google
 // allowlist. Wrong PIN answers are rate-limited harder than the rest.
 
+import '@/lib/bigint-json'
 import { NextResponse } from 'next/server'
 import { selfCheckin, doorList, doorCheckin } from '@/lib/audience'
 

@@ -13,7 +13,8 @@
 //     people we can reach on file, and how well the category converts.
 //   - Ruled out: confirmed not sold in the US. Unknown → kept, tagged "US?".
 //   - Too small (a switch, on by default): sales under $1M; sales not
-//     known → under 20 people on LinkedIn (brandSize 'small').
+//     known → under 20 people on LinkedIn, measured (brand-size.ts's
+//     SMALL_BELOW). A size guessed from tier never hides a brand.
 //   - Suggest Archive: confirmed not in the US, out of business / acquired,
 //     or researched and none of the signals above.
 //
@@ -21,7 +22,7 @@
 // $21M, past Postgres Int in cents, so the columns are BigInt; callers
 // hand this file plain numbers (exact up to ~$90 trillion).
 
-import { brandSize, type BrandSize } from './brand-size'
+import { brandSize, sizeFromMembers, type BrandSize } from './brand-size'
 
 export const TOO_SMALL_SALES_CENTS = 1_000_000 * 100 // $1M
 export const BIG_FUNDING_CENTS = 5_000_000 * 100 // $5M raised = "a lot of venture money"
@@ -127,12 +128,11 @@ export function isTooSmall(b: { salesCents?: number | null; liMembers?: number |
       ? { tooSmall: true, why: 'sales ' + shortMoney(b.salesCents) + ' a year (under $1M)', size }
       : { tooSmall: false, why: null, size }
   }
-  if (size === 'small') {
-    return {
-      tooSmall: true,
-      why: b.liMembers != null ? b.liMembers + ' people on LinkedIn (under 20)' : 'small brand (emerging, not measured)',
-      size,
-    }
+  // Only a measured headcount hides a brand: brandSize's tier / parent
+  // fallback is a guess, and hiding a real buyer costs more than showing
+  // an extra row.
+  if (sizeFromMembers(b.liMembers) === 'small') {
+    return { tooSmall: true, why: b.liMembers + ' people on LinkedIn (under 20)', size }
   }
   return { tooSmall: false, why: null, size }
 }

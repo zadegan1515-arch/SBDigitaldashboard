@@ -1,0 +1,69 @@
+# Brand Fit — which brands to reach out to (src/lib/brand-fit.ts), tested
+# on every push that could break it: the rules, Stock take's hiding, the
+# page against a fake /api/data, and the real /api/data handlers on a
+# throwaway Postgres (BigInt money, Hide too small, research import and
+# suggest Archive with their Undos). Nothing here reaches Vercel or the
+# live database; Postgres is a service container.
+name: Brand Fit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/lib/brand-fit.ts'
+      - 'src/lib/brand-size.ts'
+      - 'src/lib/stock.ts'
+      - 'src/lib/bigint-json.ts'
+      - 'src/app/api/data/**'
+      - 'public/app.html'
+      - 'scripts/test-brand-fit*'
+      - 'scripts/test-stock.mjs'
+      - 'prisma/schema.prisma'
+      - '.github/workflows/brand-fit.yml'
+  pull_request:
+    paths:
+      - 'src/lib/brand-fit.ts'
+      - 'src/lib/brand-size.ts'
+      - 'src/lib/stock.ts'
+      - 'src/lib/bigint-json.ts'
+      - 'src/app/api/data/**'
+      - 'public/app.html'
+      - 'scripts/test-brand-fit*'
+      - 'scripts/test-stock.mjs'
+      - 'prisma/schema.prisma'
+      - '.github/workflows/brand-fit.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: e2e
+          POSTGRES_DB: sbe2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Playwright + Chromium
+        run: npm i --no-save playwright@1.56.1 && npx playwright install --with-deps chromium
+      - name: Types
+        run: npx tsc --noEmit
+      - name: Rules
+        run: node scripts/test-brand-fit.mjs && node scripts/test-brand-size.mjs && node scripts/test-stock.mjs
+      - name: The page against a fake dashboard
+        run: node scripts/test-brand-fit-ui.js
+      - name: The handlers on a real database
+        run: node scripts/test-brand-fit-e2e.js
+        env:
+          E2E_DATABASE_URL: postgresql://postgres:e2e@localhost:5432/sbe2e

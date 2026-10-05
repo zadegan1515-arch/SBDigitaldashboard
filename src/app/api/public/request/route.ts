@@ -5,6 +5,7 @@
 // emails the team. Public, so: strict input checks, a honeypot field,
 // a per-IP limit, and nothing is ever deleted or overwritten.
 
+import '@/lib/bigint-json'
 import { NextResponse } from 'next/server'
 import { createSponsorRequest } from '@/lib/sponsor-request'
 import { brandForCode } from '@/lib/board-access'

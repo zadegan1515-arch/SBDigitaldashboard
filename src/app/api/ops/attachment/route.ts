@@ -2,6 +2,7 @@
 // Streams one attachment from the ops mailbox to a signed-in user.
 // Nothing is cached server-side; Gmail stays the system of record.
 
+import '@/lib/bigint-json'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { PrismaClient } from '@prisma/client'

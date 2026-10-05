@@ -614,6 +614,19 @@
   .sd-tag.good{color:#55d9a2;border-color:rgba(62,207,142,.3)}
   .sd-tag.warn{color:#eec777;border-color:rgba(232,182,76,.35)}
   .sd-tag.day{color:#aac6ff;border-color:rgba(79,131,247,.4);background:var(--accent-soft)}
+  .sd-tag.bad{color:#f2918c;border-color:rgba(240,113,107,.4)}
+  .hs-switch{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-2);white-space:nowrap;cursor:pointer;user-select:none}
+  .hs-switch input{margin:0}
+  .fit-why{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--ink-3);margin-top:6px}
+  .fit-why .y{color:#55d9a2}
+  .fit-why .n{color:#f2918c}
+  .fit-panel{margin-top:14px}
+  .fit-panel h3{font-size:14px;margin:0 0 6px}
+  .fit-row{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--border);font-size:13px}
+  .fit-row:first-child{border-top:0}
+  .fit-row .grow{flex:1;min-width:0}
+  .fit-chg{font-size:12px;color:var(--ink-3);margin-top:2px}
+  .fit-chg b{color:var(--ink-2);font-weight:600}
   .sd-lab{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;flex:none}
   .sd-lab.ready{color:#55d9a2;background:rgba(62,207,142,.12)}
   .sd-lab.thin{color:#eec777;background:rgba(232,182,76,.13)}
@@ -1303,6 +1316,16 @@
         <button class="btn-ghost" id="bq-fill" title="Fills empty brand summaries from a built-in list of known brands — never overwrites anything you typed">Fill summaries</button>
         <button class="btn-ghost" id="bq-dups" title="Brands that look like the same company: the same name, LinkedIn page or website">Duplicates</button>
       </div>
+      <div style="display:flex;gap:14px;margin-top:10px;flex-wrap:wrap;align-items:center">
+        <label class="hs-switch" title="Too small = sales under $1M, or (sales not known) under 20 people on LinkedIn. Brands already contacted always show.">
+          <input type="checkbox" id="bq-small" data-hidesmall="brands" checked> Hide too small</label>
+        <label class="hs-switch">Order
+          <select class="field-box" id="bq-sort" style="padding:4px 8px;font-size:12.5px">
+            <option value="fit">Best fit first</option>
+            <option value="">People on file first</option>
+          </select></label>
+        <a href="#" id="bq-fittools" class="hint" style="margin:0">Brand Fit: research &amp; suggest Archive →</a>
+      </div>
       <div id="dup-panel"></div>
       <div id="su-find"></div>
       <div class="chips" id="brand-cat-chips" style="margin-top:12px"></div>
@@ -1480,7 +1503,12 @@
       <div class="eyebrow">Brands</div>
       <h1>Stock take</h1>
       <div class="sub" id="st-sub">Loading…</div>
+      <div style="margin:-4px 0 10px">
+        <label class="hs-switch" title="Too small = sales under $1M, or (sales not known) under 20 people on LinkedIn. Only brands nobody has contacted are hidden.">
+          <input type="checkbox" id="st-small" data-hidesmall="stock" checked> Hide too small</label>
+      </div>
       <div id="st-refile"></div>
+      <div id="st-fit"></div>
       <div class="kpi-row" id="st-kpis"></div>
       <div class="hint" style="margin:0 0 10px">Each brand sits in one row: its category, or where the re-file above would move it (those say where they’re filed today).</div>
       <div class="st-legend" id="st-legend"></div>
@@ -1899,6 +1927,54 @@ function parseMoney(raw) {
   // a value past it would fail with a raw database error instead of this.
   if (!isFinite(n) || n < 0 || n > 20000000) return null;
   return Math.round(n * 100);
+}
+
+// ── Brand Fit (src/lib/brand-fit.ts) ─────────────────────────────────
+// Which brands to reach out to: a 0–100 score with its reasons, a "too
+// small" call and "US?" when nobody knows whether it sells in the US.
+// "Hide too small" is one switch for Brands, Stock take and the
+// Schedule's Fill box / Plan my week — on by default, remembered per
+// browser.
+var HIDE_SMALL = true;
+try { HIDE_SMALL = localStorage.getItem('sb.hideSmall') !== '0'; } catch (e) {}
+function setHideSmall(on) {
+  HIDE_SMALL = !!on;
+  try { localStorage.setItem('sb.hideSmall', HIDE_SMALL ? '1' : '0'); } catch (e) {}
+  document.querySelectorAll('input[data-hidesmall]').forEach(function (cb) { cb.checked = HIDE_SMALL; });
+}
+function hideSmallBox(where) {
+  return '<label class="hs-switch" title="Too small = sales under $1M, or (sales not known) under 20 people on LinkedIn">' +
+    '<input type="checkbox" data-hidesmall="' + esc(where) + '"' + (HIDE_SMALL ? ' checked' : '') + '> Hide too small</label>';
+}
+// The tags a brand row carries. `f` may be missing (old payloads).
+function fitTags(f, opts) {
+  if (!f) return '';
+  opts = opts || {};
+  var cls = f.score >= 60 ? 'good' : f.score < 35 ? 'warn' : '';
+  return '<span class="sd-tag ' + cls + '" title="Brand Fit ' + f.score + ' of 100 — budget and venture money weigh most; open the brand for the reasons">Fit ' + f.score + '</span>' +
+    (f.ruledOut ? '<span class="sd-tag bad" title="Ruled out — never planned or suggested">' + esc(f.ruledOut) + '</span>' : '') +
+    (f.tooSmall ? '<span class="sd-tag warn" title="' + esc(f.tooSmallWhy || '') + '">too small</span>' : '') +
+    (f.usUnknown && !opts.noUs ? '<span class="sd-tag" title="Not known yet whether it sells in the US">US?</span>' : '');
+}
+// The brand page's Fit line: the score, its tags and every reason.
+function bFitLine(f) {
+  if (!f) return '';
+  var mark = function (r) { return r.good === true ? '<span class="y">✓</span>' : r.good === false ? '<span class="n">✗</span>' : '?'; };
+  return '<div id="b-fit" class="b-plan"><span class="b-plan-k">Brand Fit</span>' + fitTags(f) +
+    (f.archiveWhy && !f.ruledOut ? '<span class="sd-tag warn" title="On Stock take’s Suggest Archive list">suggest archive</span>' : '') +
+    '<div class="fit-why" style="flex-basis:100%">' + (f.reasons || []).map(function (r) {
+      return '<span title="' + r.points + ' points">' + mark(r) + ' ' + esc(r.text) + '</span>';
+    }).join('') + '</div></div>';
+}
+// Cents → "$1.2M" (Brand Fit facts can pass $21M; money() has no cap but
+// spells every digit).
+function shortMoney(cents) {
+  var d = Number(cents) / 100;
+  var t = function (n) { return n >= 100 ? String(Math.round(n)) : String(Math.round(n * 10) / 10); };
+  if (d >= 1e9) return '$' + t(d / 1e9) + 'B';
+  if (d >= 1e6) return '$' + t(d / 1e6) + 'M';
+  if (d >= 1e3) return '$' + t(d / 1e3) + 'K';
+  return '$' + Math.round(d);
 }
 
 function when(iso) {
@@ -4000,6 +4076,10 @@ function loadBrandsNoProfile() {
 // Which list the Brands tab is showing: a category key, or 'noprofile'.
 // The same list again is a refresh (kept in place); another opens fresh.
 var BRANDS_SHOWN = '';
+// Brands order: 'fit' = best Brand Fit first (default), '' = the server's
+// order (people on file, then tier, then name). Remembered per browser.
+var BRANDS_SORT = 'fit';
+try { if (localStorage.getItem('sb.brandSort') === '') BRANDS_SORT = ''; } catch (e) {}
 
 function loadBrands(category) {
   category = category || 'all';
@@ -4058,8 +4138,19 @@ function loadBrands(category) {
   }
   var mine = viewTurn('brands');
 
-  return api('listBrands', { category: category }).then(function (list) {
+  return api('listBrands', { category: category, fit: true }).then(function (all) {
     if (!mine()) return;
+    // Hide too small: only brands nobody has contacted yet — a reached
+    // brand always shows.
+    var small = function (b) {
+      var o = b.outreach || {};
+      return !!(b.fit && b.fit.tooSmall && !o.invited && !o.replied);
+    };
+    var list = HIDE_SMALL ? all.filter(function (b) { return !small(b); }) : all.slice();
+    var hiddenSmall = all.length - list.length;
+    if (BRANDS_SORT === 'fit') {
+      list.sort(function (a, b) { return (b.fit ? b.fit.score : 0) - (a.fit ? a.fit.score : 0); });
+    }
     var withContacts = list.filter(function (b) { return b._count.contacts > 0; }).length;
     // How the roster actually splits: how many are full (at the 25 we
     // keep on file), how many can sustain a three-person approach, and
@@ -4074,6 +4165,11 @@ function loadBrands(category) {
       : list.length + ' brands · ' + withContacts + ' with contacts · ' +
         (list.length - withContacts) + ' still need research · ' +
         atCap + ' full at 25 · ' + workable + ' with 3+ people';
+    if (hiddenSmall) {
+      var sub = document.getElementById('brands-sub');
+      sub.innerHTML = esc(sub.textContent) + ' · <a href="#" id="bq-showsmall" title="Turn off Hide too small">' +
+        hiddenSmall + ' too small hidden — show them</a>';
+    }
 
     renderFillProgress();
 
@@ -4122,6 +4218,7 @@ function loadBrands(category) {
         '</div>' +
         '<div class="t-actions">' +
           (b.passedAt ? '<span class="status passed">archived</span>' : state) +
+          fitTags(b.fit) +
           '<span class="fit" title="contacts">' + b._count.contacts + ' contacts</span>' +
           '<button class="btn-ghost' + (b.passedAt ? '' : ' danger') + '" data-blpass="' + esc(b.id) + '"' +
             ' data-passed="' + (b.passedAt ? '1' : '') + '" data-name="' + esc(b.name) + '"' +
@@ -4690,6 +4787,40 @@ function dupRender() {
   box.innerHTML = html + '</div>';
 }
 
+// Brand Fit controls on the Brands tab. The Hide too small switch itself
+// is one handler for every view (data-hidesmall, below).
+(function () {
+  var sel = document.getElementById('bq-sort');
+  sel.value = BRANDS_SORT;
+  document.getElementById('bq-small').checked = HIDE_SMALL;
+  sel.addEventListener('change', function () {
+    BRANDS_SORT = sel.value;
+    try { localStorage.setItem('sb.brandSort', BRANDS_SORT); } catch (e) {}
+    loadBrands(BRANDS_SHOWN === 'noprofile' ? 'all' : BRANDS_SHOWN);
+  });
+  document.getElementById('brands-sub').addEventListener('click', function (e) {
+    if (!e.target.closest('#bq-showsmall')) return;
+    e.preventDefault();
+    setHideSmall(false);
+    loadBrands(BRANDS_SHOWN === 'noprofile' ? 'all' : BRANDS_SHOWN);
+  });
+  document.getElementById('bq-fittools').addEventListener('click', function (e) {
+    e.preventDefault();
+    FIT.goto = true;
+    gotoView('stock');
+  });
+})();
+document.addEventListener('change', function (e) {
+  var cb = e.target && e.target.closest ? e.target.closest('input[data-hidesmall]') : null;
+  if (!cb) return;
+  setHideSmall(cb.checked);
+  var where = cb.getAttribute('data-hidesmall');
+  if (where === 'brands') loadBrands(BRANDS_SHOWN === 'noprofile' ? 'all' : (BRANDS_SHOWN || 'all'));
+  else if (where === 'stock') loadStock();
+  else if (where === 'sched') sdHideSmallChanged();
+  else if (where === 'planweek') sdPwLoad();
+});
+
 document.getElementById('bq-dups').addEventListener('click', function () {
   DUP.open = !DUP.open;
   if (DUP.open && !DUP.data) dupLoad();
@@ -5201,6 +5332,8 @@ function loadBrand(brandId) {
       // Where it stands on the Schedule, and a menu to put it on a day
       // (filled by bpLoad once the page is up).
       '<div id="b-plan" class="b-plan"></div>' +
+      // Brand Fit: the score and every reason (src/lib/brand-fit.ts).
+      bFitLine(d.fit) +
       // A Show Board access request waiting on a decision. Same two
       // actions as the Show Board queue — this is just the other place
       // you'd naturally look for the brand that asked.
@@ -5246,7 +5379,16 @@ function loadBrand(brandId) {
       factLine('Best sellers', b.topProducts ? esc(b.topProducts) : '') +
       factLine('Website', b.website ? '<a href="' + esc(siteHref) + '" target="_blank" rel="noopener">' + esc(b.website.replace(/^https?:\/\//i, '')) + '</a>' : '') +
       factLine('Wants', b.goals ? esc(b.goals) : '') +
-      factLine('Notes', b.notes ? esc(b.notes) : '');
+      factLine('Notes', b.notes ? esc(b.notes) : '') +
+      // Brand Fit facts — sales, money raised, US, sponsorships.
+      factLine('Sales', b.salesCents != null ? esc(shortMoney(b.salesCents)) + ' a year' : '') +
+      factLine('Raised', b.fundingCents != null ? esc(shortMoney(b.fundingCents)) +
+        (b.lastRoundAt ? ' · last round ' + esc(String(b.lastRoundAt).slice(0, 7)) : '') : '') +
+      factLine('In the US', b.usStatus === 'yes' ? 'Yes' : b.usStatus === 'no' ? 'No — not sold in the US' : '') +
+      factLine('College / music', b.sponsorsCollege === true ? 'Sponsors' + (b.sponsorNote ? ': ' + esc(b.sponsorNote) : '')
+        : b.sponsorsCollege === false ? 'None found' + (b.sponsorNote ? ' · ' + esc(b.sponsorNote) : '') : (b.sponsorNote ? esc(b.sponsorNote) : '')) +
+      factLine('Status', b.bizStatus && b.bizStatus !== 'active' ? esc(b.bizStatus) + (b.acquiredBy ? ' by ' + esc(b.acquiredBy) : '') : '') +
+      factLine('Researched', b.researchedAt ? esc(shortDate(b.researchedAt)) + (b.researchNote ? ' · ' + esc(b.researchNote) : '') : '');
     var details =
       '<details class="fold"><summary class="section-head">Details &amp; notes</summary>' +
       '<div class="panel panel-pad">' +
@@ -5330,6 +5472,43 @@ function loadBrand(brandId) {
             '<textarea class="field-box" rows="2" data-bfield="goals">' + esc(b.goals || '') + '</textarea></div>' +
           '<div style="margin-bottom:12px"><label class="lbl">Notes</label>' +
             '<textarea class="field-box" rows="2" data-bfield="notes">' + esc(b.notes || '') + '</textarea></div>' +
+          // Brand Fit facts. Money in whole dollars ("12,000,000" or
+          // "$12M"); blank = not known. Saved through the research rules,
+          // so a change stamps "Researched".
+          '<div class="b-plan-k" style="margin:4px 0 8px">Brand Fit facts — blank = not known</div>' +
+          (function () {
+            var dollars = function (c) { return c == null ? '' : (Number(c) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 }); };
+            var opt = function (v, cur, label) { return '<option value="' + v + '"' + (v === cur ? ' selected' : '') + '>' + label + '</option>'; };
+            var us = b.usStatus || '';
+            var sc = b.sponsorsCollege === true ? 'yes' : b.sponsorsCollege === false ? 'no' : '';
+            var st = b.bizStatus || '';
+            return '<div class="row2" style="margin-bottom:10px">' +
+                '<div><label class="lbl">Sales a year ($)</label>' +
+                  '<input class="field-box" data-bfact="sales" value="' + esc(dollars(b.salesCents)) + '" placeholder="e.g. 12,000,000 or $12M"></div>' +
+                '<div><label class="lbl">Venture money raised ($)</label>' +
+                  '<input class="field-box" data-bfact="funding" value="' + esc(dollars(b.fundingCents)) + '" placeholder="total raised, e.g. $30M"></div>' +
+              '</div>' +
+              '<div class="row2" style="margin-bottom:10px">' +
+                '<div><label class="lbl">Last round</label>' +
+                  '<input class="field-box" data-bfact="lastRound" value="' + esc(b.lastRoundAt ? String(b.lastRoundAt).slice(0, 10) : '') + '" placeholder="YYYY-MM"></div>' +
+                '<div><label class="lbl">Sold in the US</label><select class="field-box" data-bfact="us">' +
+                  opt('', us, 'Not known') + opt('yes', us, 'Yes') + opt('no', us, 'No — rules it out') + '</select></div>' +
+              '</div>' +
+              '<div class="row2" style="margin-bottom:10px">' +
+                '<div><label class="lbl">Sponsors college / music</label><select class="field-box" data-bfact="sponsorsCollege">' +
+                  opt('', sc, 'Not known') + opt('yes', sc, 'Yes') + opt('no', sc, 'No') + '</select></div>' +
+                '<div><label class="lbl">What they sponsor</label>' +
+                  '<input class="field-box" data-bfact="sponsorNote" maxlength="500" value="' + esc(b.sponsorNote || '') + '" placeholder="e.g. Rolling Loud, SEC athletics"></div>' +
+              '</div>' +
+              '<div class="row2" style="margin-bottom:10px">' +
+                '<div><label class="lbl">Status</label><select class="field-box" data-bfact="status">' +
+                  opt('', st, 'Not known') + opt('active', st, 'Active') + opt('closed', st, 'Out of business') + opt('acquired', st, 'Acquired') + '</select></div>' +
+                '<div><label class="lbl">Acquired by</label>' +
+                  '<input class="field-box" data-bfact="acquiredBy" maxlength="120" value="' + esc(b.acquiredBy || '') + '"></div>' +
+              '</div>' +
+              '<div style="margin-bottom:12px"><label class="lbl">Where the facts came from</label>' +
+                '<input class="field-box" data-bfact="note" maxlength="1000" value="' + esc(b.researchNote || '') + '" placeholder="e.g. Crunchbase, press release Mar 2025"></div>';
+          })() +
           '<button class="btn-solid" id="b-save">Save</button>' +
         '</div>' +
       '</div></details>';
@@ -5654,6 +5833,11 @@ function loadBrand(brandId) {
       box.querySelectorAll('[data-bfield]').forEach(function (el) {
         payload[el.getAttribute('data-bfield')] = el.value;
       });
+      var facts = {};
+      box.querySelectorAll('[data-bfact]').forEach(function (el) {
+        facts[el.getAttribute('data-bfact')] = el.value.trim();
+      });
+      if (Object.keys(facts).length) payload.facts = facts;
       var btn = this;
       btn.disabled = true;
       api('updateBrand', payload).then(function () {
@@ -6732,6 +6916,7 @@ function stBrands(r) {
         return '<div class="st-brand">' +
           '<span class="st-bname" data-brand="' + esc(b.id) + '">' + esc(b.name) + '</span>' +
           '<span class="st-tag">' + esc(tags.join(' · ')) + '</span>' +
+          (b.fit ? fitTags(b.fit, { noUs: true }) : '') +
           (b.state === 'needs' ? '<a class="sd-link" href="' + esc(liPeopleUrl(b)) + '" target="_blank" rel="noopener">People ↗</a>' : '') +
         '</div>';
       }).join('') + '</div>';
@@ -6885,7 +7070,8 @@ function renderStock() {
   var d = ST_DATA, t = d.totals;
   var sum = function (rows) { return rows.reduce(function (n, r) { return n + r.counts.total; }, 0); };
   document.getElementById('st-sub').textContent =
-    t.total + ' brands across ' + t.categories + ' categories · ' + t.touched + ' reached so far · ' + stCount('needs', t.needs);
+    t.total + ' brands across ' + t.categories + ' categories · ' + t.touched + ' reached so far · ' + stCount('needs', t.needs) +
+    (t.small ? ' · ' + t.small + ' too small hidden' : '');
   var kpis = [
     ['Brands', t.total, t.categories + ' categories'],
     ['Reached', t.touched, 'invited or emailed, ever'],
@@ -7036,17 +7222,273 @@ document.getElementById('st-refile').addEventListener('change', function (e) {
 });
 
 function loadStock() {
-  showView('stock');
+  var again = showView('stock');
+  var mine = viewTurn('stock');
   ST_REFILE = null;
+  document.getElementById('st-small').checked = HIDE_SMALL;
   if (!ST_DATA) {
     document.getElementById('st-lanes').innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   }
-  return api('brandStock').then(function (d) { ST_DATA = d; renderStock(); }).catch(function (e) {
+  fitLoad();
+  return api('brandStock', { hideSmall: HIDE_SMALL }).then(function (d) {
+    if (!mine()) return;
+    ST_DATA = d; renderStock();
+    if (FIT.goto) { FIT.goto = false; var el = document.getElementById('st-fit'); if (el) el.scrollIntoView({ block: 'start' }); }
+  }).catch(function (e) {
+    if (!mine()) return;
+    if (again && ST_DATA) { toast('Could not refresh: ' + e.message); return; }
     document.getElementById('st-sub').textContent = 'Could not load';
     document.getElementById('st-lanes').innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' +
       esc(e.message) + '</p></div></div>';
   });
 }
+
+// --- Brand Fit panel (Stock take) ---------------------------------
+// Research: the list Claude researches (the Schedule's next two weeks
+// first), Claude's findings waiting for review (researchStage), or a
+// pasted JSON array — each brand's from → to, ticked, applied only when
+// Leo says so, with Undo. Suggest Archive: brands confirmed not in the US,
+// closed / acquired, or researched with no signal — ticked, archived on
+// Leo's click, with Undo. Nothing changes a brand until a button here.
+var FIT = {
+  goto: false, list: null, staged: null, pasted: null, pasteText: '', archive: null,
+  roff: {}, aoff: {}, open: { research: false, archive: false, paste: false }, busy: false, seq: 0
+};
+
+function fitLoad() {
+  var seq = ++FIT.seq;
+  var soft = function (p) { return p.catch(function (e) { return { error: e.message }; }); };
+  return Promise.all([
+    soft(api('researchList', { scope: 'schedule', take: 60 })),
+    soft(api('researchImport', { staged: true, preview: true })),
+    soft(api('fitArchive', { preview: true }))
+  ]).then(function (r) {
+    if (seq !== FIT.seq) return;
+    FIT.list = r[0]; FIT.staged = r[1]; FIT.archive = r[2];
+    fitRender();
+  });
+}
+
+// What the research review shows: a pasted array wins over the staged one.
+function fitReview() {
+  if (FIT.pasted) return { src: 'pasted', d: FIT.pasted };
+  if (FIT.staged && !FIT.staged.error && FIT.staged.staged) return { src: 'staged', d: FIT.staged };
+  return null;
+}
+function fitResearchTicked() {
+  var rv = fitReview();
+  if (!rv) return [];
+  return rv.d.rows.filter(function (r) { return r.changes.length && !FIT.roff[r.brandId]; });
+}
+function fitArchiveTicked() {
+  var a = FIT.archive;
+  if (!a || a.error) return [];
+  return a.brands.filter(function (b) { return !FIT.aoff[b.id]; });
+}
+
+function fitRender() {
+  var box = document.getElementById('st-fit');
+  if (!box) return;
+  var L = FIT.list, A = FIT.archive, rv = fitReview();
+  var last = (FIT.staged && FIT.staged.last) || (FIT.pasted && FIT.pasted.last) || null;
+
+  // Research
+  var rHead = L && !L.error
+    ? (L.scheduled ? L.total + ' of the brands on the Schedule’s next two weeks not researched yet' : 'Nothing planned on the next two weeks')
+    : 'Research list could not load' + (L && L.error ? ': ' + L.error : '');
+  var review = '';
+  if (rv) {
+    var d = rv.d;
+    var ticked = fitResearchTicked().length;
+    review = '<div class="fit-panel"><b>' + (rv.src === 'staged'
+        ? 'Research from Claude' + (d.staged ? ' · ' + esc(when(d.staged.at)) : '')
+        : 'Pasted research') + '</b> — ' + d.rows.length + (d.rows.length === 1 ? ' brand' : ' brands') +
+        ', ' + d.rows.filter(function (r) { return r.changes.length; }).length + ' with something new. Tick what to keep.' +
+      d.rows.map(function (r) {
+        var none = !r.changes.length;
+        return '<label class="fit-row"><input type="checkbox" data-fitr="' + esc(r.brandId) + '"' +
+            (none ? ' disabled' : FIT.roff[r.brandId] ? '' : ' checked') + '>' +
+          '<span class="grow"><a href="#" data-fitopen="' + esc(r.brandId) + '"><b>' + esc(r.brandName) + '</b></a>' +
+            (r.input && r.input.toLowerCase() !== r.brandName.toLowerCase() ? ' <span class="hint" style="margin:0">(“' + esc(r.input) + '”)</span>' : '') +
+            (r.archived ? ' <span class="sd-tag">archived</span>' : '') +
+            '<div class="fit-chg">' + (none ? 'Nothing new — matches what’s saved'
+              : r.changes.map(function (c) {
+                  return '<b>' + esc(c.label) + '</b> ' + esc(c.from) + ' → ' + esc(c.to);
+                }).join(' · ')) + '</div></span></label>';
+      }).join('') +
+      (d.unmatched.length ? '<div class="hint" style="margin:8px 0 0">Not matched to a brand (left out): ' +
+        d.unmatched.map(function (u) { return esc(u.name) + (u.several.length ? ' (several: ' + esc(u.several.join(', ')) + ')' : ''); }).join(' · ') + '</div>' : '') +
+      (d.errors.length ? '<div class="hint" style="margin:6px 0 0;color:#f2918c">Skipped: ' + d.errors.map(esc).join(' · ') + '</div>' : '') +
+      '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">' +
+        '<button class="btn-solid" data-fitact="apply"' + (ticked && !FIT.busy ? '' : ' disabled') + '>Save facts to ' + ticked + (ticked === 1 ? ' brand' : ' brands') + '</button>' +
+        (rv.src === 'pasted' ? '<button class="btn-ghost" data-fitact="paste-clear">Clear pasted</button>' : '') +
+      '</div></div>';
+  }
+  var researchSum = 'Research <span class="hint" style="margin:0 0 0 6px">' + esc(rHead) + (rv ? ' · research waiting for you' : '') + '</span>';
+  var research =
+    '<div class="hint" style="margin:8px 0">Claude looks up sales, venture money, US distribution and college / music sponsorships. ' +
+      'Copy the list into the Claude chat; what comes back shows here for you to tick — nothing is saved before that.</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<button class="btn-ghost" data-fitact="copy"' + (L && L.shown ? '' : ' disabled') + '>Copy list for Claude (' + (L && L.shown || 0) + ')</button>' +
+      '<button class="btn-ghost" data-fitact="more" title="Every brand in play not researched yet, best fit first">Copy more brands…</button>' +
+      '<button class="btn-ghost" data-fitact="paste-open">Paste research…</button>' +
+    '</div>' +
+    (FIT.open.paste ? '<div style="margin-top:10px"><textarea class="field-box" id="fit-paste" rows="5" style="width:100%" placeholder="Paste the JSON array Claude gave back">' + esc(FIT.pasteText) + '</textarea>' +
+      '<button class="btn-ghost" data-fitact="paste-check" style="margin-top:6px">Check it</button></div>' : '') +
+    review +
+    (last ? '<div class="hint" style="margin:10px 0 0">Last saved: ' + last.count + (last.count === 1 ? ' brand' : ' brands') + ' · ' + esc(when(last.at)) +
+      (last.by ? ' by ' + esc(last.by) : '') + ' · <a href="#" data-fitact="rundo">Undo</a></div>' : '');
+
+  // Suggest Archive
+  var aRows = A && !A.error ? A.brands : [];
+  var aTicked = fitArchiveTicked().length;
+  var archiveSum = 'Suggest Archive <span class="n">' + (A && !A.error ? aRows.length : '–') + '</span>' +
+      '<span class="hint" style="margin:0 0 0 6px">' + (A && A.error ? 'could not load: ' + esc(A.error)
+        : 'not sold in the US, closed or acquired, or researched with nothing going for it') + '</span>';
+  var archive =
+    (aRows.length
+      ? aRows.map(function (b) {
+          var notes = [];
+          if (b.contacted) notes.push('written to before');
+          if (b.queued) notes.push(b.queued + ' queued — shelved too');
+          if (b.plannedLabel) notes.push('on the Schedule ' + b.plannedLabel + ' — comes off');
+          return '<label class="fit-row"><input type="checkbox" data-fita="' + esc(b.id) + '"' + (FIT.aoff[b.id] ? '' : ' checked') + '>' +
+            '<span class="grow"><a href="#" data-fitopen="' + esc(b.id) + '"><b>' + esc(b.name) + '</b></a>' +
+              (b.category ? ' <span class="hint" style="margin:0">' + esc(CAT_NAMES[b.category] || b.category) + '</span>' : '') +
+              ' <span class="sd-tag' + (b.ruledOut ? ' bad' : '') + '">' + esc(b.why) + '</span>' +
+              (notes.length ? '<div class="fit-chg">' + esc(notes.join(' · ')) + '</div>' : '') +
+            '</span></label>';
+        }).join('') +
+        '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn-ghost danger" data-fitact="archive"' + (aTicked && !FIT.busy ? '' : ' disabled') + '>Archive ' + aTicked + (aTicked === 1 ? ' brand' : ' brands') + '</button></div>'
+      : '<div class="hint" style="margin:8px 0 0">Nothing to suggest. Brands land here once research shows they’re out of the US, closed, or have nothing going for them.</div>') +
+    (A && A.last ? '<div class="hint" style="margin:10px 0 0">Last archived: ' + A.last.count + ' · ' + esc(when(A.last.at)) +
+      (A.last.by ? ' by ' + esc(A.last.by) : '') + ' · <a href="#" data-fitact="aundo">Undo</a></div>' : '');
+
+  // The two sections are built once and only their insides change: a
+  // redrawn <details> is a new element, and keep-my-place would shut it
+  // again whenever it was shut when the screen last refreshed.
+  if (!box.querySelector('[data-fitsec]')) {
+    box.innerHTML = '<div class="panel panel-pad fit-panel" style="margin-bottom:14px">' +
+      '<h3>Brand Fit — which brands to reach out to</h3>' +
+      '<div class="hint" style="margin:0 0 8px">Each brand scores 0–100: budget and venture money weigh most ($5M+ raised is strong), then college / music sponsorships, ' +
+        'an 18–24 category, people we can reach and how the category accepts. Plan my week and the Fill box take the best fit first. Open a brand for its reasons.</div>' +
+      ['research', 'archive'].map(function (k) {
+        return '<details class="fold" data-fitsec="' + k + '"' + (FIT.open[k] ? ' open' : '') + '>' +
+          '<summary data-fitsum="' + k + '"></summary><div data-fitbody="' + k + '"></div></details>';
+      }).join('') + '</div>';
+  }
+  box.querySelector('[data-fitsum="research"]').innerHTML = researchSum;
+  box.querySelector('[data-fitbody="research"]').innerHTML = research;
+  box.querySelector('[data-fitsum="archive"]').innerHTML = archiveSum;
+  box.querySelector('[data-fitbody="archive"]').innerHTML = archive;
+  // Research waiting for Leo opens its section, once per batch.
+  var batch = rv ? (rv.src + '|' + (rv.d.staged ? rv.d.staged.at : FIT.pasteText.length)) : '';
+  if (batch && FIT.shownBatch !== batch) {
+    FIT.shownBatch = batch;
+    box.querySelector('[data-fitsec="research"]').open = true;
+  }
+}
+
+document.getElementById('st-fit').addEventListener('toggle', function (e) {
+  var d = e.target.closest && e.target.closest('[data-fitsec]');
+  if (d) FIT.open[d.getAttribute('data-fitsec')] = d.open;
+}, true);
+document.getElementById('st-fit').addEventListener('input', function (e) {
+  if (e.target.id === 'fit-paste') FIT.pasteText = e.target.value;
+});
+// A tick only relabels its button — redrawing the panel would close the
+// section under Leo's cursor.
+function fitButtons() {
+  var r = fitResearchTicked().length, a = fitArchiveTicked().length;
+  var rb = document.querySelector('#st-fit [data-fitact="apply"]');
+  if (rb) { rb.textContent = 'Save facts to ' + r + (r === 1 ? ' brand' : ' brands'); rb.disabled = !r || FIT.busy; }
+  var ab = document.querySelector('#st-fit [data-fitact="archive"]');
+  if (ab) { ab.textContent = 'Archive ' + a + (a === 1 ? ' brand' : ' brands'); ab.disabled = !a || FIT.busy; }
+}
+document.getElementById('st-fit').addEventListener('change', function (e) {
+  var r = e.target.closest('[data-fitr]'), a = e.target.closest('[data-fita]');
+  if (r) FIT.roff[r.getAttribute('data-fitr')] = !r.checked;
+  if (a) FIT.aoff[a.getAttribute('data-fita')] = !a.checked;
+  if (r || a) fitButtons();
+});
+document.getElementById('st-fit').addEventListener('click', function (e) {
+  var open = e.target.closest('[data-fitopen]');
+  if (open) { e.preventDefault(); loadBrand(open.getAttribute('data-fitopen')); return; }
+  var btn = e.target.closest('[data-fitact]');
+  if (!btn) return;
+  e.preventDefault();
+  var act = btn.getAttribute('data-fitact');
+  var done = function () { FIT.busy = false; fitRender(); };
+  var fail = function (err) { FIT.busy = false; fitRender(); toast(err.message); };
+  if (act === 'copy') { if (FIT.list && FIT.list.text) copyText(FIT.list.text); return; }
+  if (act === 'more') {
+    api('researchList', { scope: 'more', take: 60 }).then(function (d) {
+      if (!d.shown) { toast('Every brand in play is researched'); return; }
+      copyText(d.text);
+      toast('Copied ' + d.shown + ' of ' + d.total + ' brands — paste into the Claude chat');
+    }).catch(function (err) { toast(err.message); });
+    return;
+  }
+  if (act === 'paste-open') { FIT.open.paste = !FIT.open.paste; fitRender(); return; }
+  if (act === 'paste-check') {
+    var text = (document.getElementById('fit-paste') || {}).value || '';
+    FIT.pasteText = text;
+    api('researchImport', { text: text, preview: true }).then(function (d) {
+      FIT.pasted = d; FIT.roff = {}; FIT.open.paste = false; fitRender();
+    }).catch(function (err) { toast(err.message); });
+    return;
+  }
+  if (act === 'paste-clear') { FIT.pasted = null; FIT.roff = {}; fitRender(); return; }
+  if (act === 'apply') {
+    var rv = fitReview();
+    var keep = fitResearchTicked();
+    if (!rv || !keep.length || FIT.busy) return;
+    if (!window.confirm('Save the ticked facts to ' + keep.length + (keep.length === 1 ? ' brand' : ' brands') + '?\n\n' +
+      keep.slice(0, 25).map(function (r) { return r.brandName; }).join(', ') + (keep.length > 25 ? ' and ' + (keep.length - 25) + ' more' : '') +
+      '\n\nOnly the changes shown are written. Undo puts the old values back.')) return;
+    FIT.busy = true; fitRender();
+    var args = rv.src === 'staged' ? { staged: true } : { text: FIT.pasteText };
+    args.preview = false;
+    args.keep = keep.map(function (r) { return r.brandId; });
+    api('researchImport', args).then(function (res) {
+      toast('Saved facts to ' + res.updated + (res.updated === 1 ? ' brand' : ' brands'));
+      FIT.pasted = null; FIT.roff = {}; FIT.busy = false;
+      loadStock();
+    }).catch(fail);
+    return;
+  }
+  if (act === 'rundo') {
+    api('researchUndo', { preview: true }).then(function (p) {
+      if (!window.confirm('Put back the old facts on ' + p.brands.length + (p.brands.length === 1 ? ' brand' : ' brands') + '?\n\n' +
+        p.brands.slice(0, 25).join(', ') + '\n\nA fact changed since stays as it is.')) return;
+      return api('researchUndo', { preview: false }).then(function (r) { toast('Put back ' + r.back); loadStock(); });
+    }).catch(function (err) { toast(err.message); });
+    return;
+  }
+  if (act === 'archive') {
+    var pick = fitArchiveTicked();
+    if (!pick.length || FIT.busy) return;
+    if (!window.confirm('Archive ' + pick.length + (pick.length === 1 ? ' brand' : ' brands') + '?\n\n' +
+      pick.slice(0, 25).map(function (b) { return b.name; }).join(', ') + (pick.length > 25 ? ' and ' + (pick.length - 25) + ' more' : '') +
+      '\n\nQueued people are shelved and they come off upcoming Schedule days. Bring back anytime (Undo, or the Archived tab). Nothing is deleted.')) return;
+    FIT.busy = true; fitRender();
+    api('fitArchive', { preview: false, brandIds: pick.map(function (b) { return b.id; }) }).then(function (r) {
+      toast('Archived ' + r.archived + (r.offDays ? ' · ' + r.offDays + ' off the Schedule' : ''));
+      FIT.aoff = {}; FIT.busy = false;
+      loadStock();
+    }).catch(fail);
+    return;
+  }
+  if (act === 'aundo') {
+    api('fitArchiveUndo', { preview: true }).then(function (p) {
+      if (!p.brands.length) { toast('Those brands were already brought back'); return; }
+      if (!window.confirm('Bring back ' + p.brands.length + (p.brands.length === 1 ? ' brand' : ' brands') + '?\n\n' + p.brands.slice(0, 25).join(', ') +
+        '\n\nTheir shelved people go back in the pool. They don’t go back on a Schedule day.')) return;
+      return api('fitArchiveUndo', { preview: false }).then(function (r) { toast('Brought back ' + r.back.length); loadStock(); });
+    }).catch(function (err) { toast(err.message); });
+    return;
+  }
+});
 
 document.getElementById('stock').addEventListener('change', function (e) {
   var cb = e.target.closest('[data-stpck]');
@@ -8726,7 +9168,7 @@ function sdPwLoad() {
   pw.busy = true;
   pw.err = '';
   renderSchedPlan();
-  api('planWeek', { categories: pw.cats, exclude: pw.exclude }).then(function (d) {
+  api('planWeek', { categories: pw.cats, exclude: pw.exclude, hideSmall: HIDE_SMALL }).then(function (d) {
     if (SCHED.pw !== pw || mine !== pw.seq) return;
     pw.busy = false;
     pw.data = d;
@@ -8824,7 +9266,7 @@ function sdPwDayHtml(day) {
         '<input type="checkbox" data-pwtick="' + esc(k) + '"' + (on ? ' checked' : '') + (pw.applying ? ' disabled' : '') + ' aria-label="Include ' + esc(b.name) + '">' +
         '<div class="sd-pwm">' +
           '<div class="sd-card-h"><a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
-            sdLabel(b.label) + '<span class="sd-dim">' + b.going + ' going</span>' + from + '</div>' +
+            sdLabel(b.label) + fitTags(b.fit, { noUs: true }) + '<span class="sd-dim">' + b.going + ' going</span>' + from + '</div>' +
           (b.people && b.people.length ? '<div class="sd-dim sd-pwppl">' + esc(b.people.map(function (p) { return p.name; }).join(', ')) +
             (b.going > b.people.length ? ' +' + (b.going - b.people.length) : '') + '</div>' : '') +
         '</div>' +
@@ -8868,8 +9310,10 @@ function renderSchedPlan() {
   box.innerHTML = '<div class="panel sd-pw' + (pw.busy && d ? ' sd-stale' : '') + '">' +
     '<div class="sd-pw-h">' +
       '<h2 class="sd-h2">Plan my week</h2>' +
-      '<span class="sd-dim">' + (range ? esc(range) + ' · ' : '') + 'Nothing changes until you press Apply.</span>' +
+      '<span class="sd-dim">' + (range ? esc(range) + ' · ' : '') + 'Best Brand Fit first. Nothing changes until you press Apply.</span>' +
       '<span class="sd-sp"></span>' +
+      hideSmallBox('planweek') +
+      (d && d.hiddenSmall ? '<span class="sd-dim" title="Sales under $1M, or under 20 people on LinkedIn">' + d.hiddenSmall + ' too small left out</span>' : '') +
       '<a href="#" class="sd-link" data-pwclose="1">Cancel</a>' +
     '</div>' +
     body +
@@ -9817,6 +10261,7 @@ function sdSugRow(b, key, open, allCats) {
   return '<div class="sd-orow" draggable="true" data-dragb="' + esc(b.id) + '" data-dragn="' + esc(b.name) + '" data-dragfrom="">' +
     '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
     (allCats ? '<span class="sd-tag">' + esc(sdCatName(b.category)) + '</span>' : '') +
+    fitTags(b.fit, { noUs: true }) +
     sdExtLinks(b) +
     sdLabel(lab) +
     '<span class="sd-dim' + (tooBig ? ' warn' : '') + '" title="' + esc(tooBig ? 'More than the open spots: the day would go over ' + sdCap() : (who || b.text || '')) + '">' +
@@ -9832,6 +10277,7 @@ function sdNeedRow(b, allCats) {
   return '<div class="sd-orow">' + sdMark('none') +
     '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
     (allCats ? '<span class="sd-tag">' + esc(sdCatName(b.category)) + '</span>' : '') +
+    fitTags(b.fit, { noUs: true }) +
     '<span class="sd-dim">' + (onFile ? esc(onFile + ' on file, no LinkedIn or email') : 'Nobody on file') + '</span>' +
     '<span class="sd-sp"></span>' +
     sdLiLink(b) +
@@ -9869,7 +10315,9 @@ function sdFillInner(key) {
       '<button class="btn-draft sd-sm" data-sdfill20="' + esc(key) + '"' + (fit.ids.length && ready ? '' : ' disabled') + ' title="' + esc(btnTip) + '">' +
         (f.busy ? 'Filling…' : 'Fill to ' + sdCap()) + '</button>' +
     '</div>' +
-    '<div class="sd-open-f"><span class="sd-dim">Suggest from</span>' + sel + '</div>';
+    '<div class="sd-open-f"><span class="sd-dim">Suggest from</span>' + sel + hideSmallBox('sched') +
+      (data && data.hiddenSmall ? '<span class="sd-dim" title="Sales under $1M, or under 20 people on LinkedIn">' + data.hiddenSmall + ' too small hidden</span>' : '') +
+    '</div>';
   if (f.summary) html += '<div class="sd-flash good">' + esc(f.summary) + '</div>';
   if (!data) {
     html += '<div class="sd-dim">' + (ent && ent.err ? 'Could not load suggestions: ' + esc(ent.err) : 'Finding brands that fit…') + '</div>';
@@ -9937,7 +10385,7 @@ function sdLoadFill(key) {
   var mine = ++SCHED.sugSeq;
   SCHED.sugBusy[ck] = gen;
   SCHED.sugReq[ck] = mine;
-  api('suggestForDay', { date: key, category: cat, take: 24 }).then(function (d) {
+  api('suggestForDay', { date: key, category: cat, take: 24, hideSmall: HIDE_SMALL }).then(function (d) {
     if (SCHED.sugReq[ck] !== mine) return;
     SCHED.sugBusy[ck] = null;
     SCHED.sug[ck] = { data: d || {}, gen: gen };
@@ -9951,6 +10399,15 @@ function sdLoadFill(key) {
     toast(e.message);
     if (sdFillCat(key) === cat) sdRenderFill(key);
   });
+}
+
+// "Hide too small" flipped in a Fill box: every box asks again (a new
+// generation, so the cached lists don't stand in), the old rows stay up
+// until the new ones land.
+function sdHideSmallChanged() {
+  SCHED.sugGen += 1;
+  SCHED.order.forEach(function (key) { sdRenderFill(key); });
+  sdLoadFills();
 }
 
 function sdLoadFills() {

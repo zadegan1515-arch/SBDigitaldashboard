@@ -4,6 +4,7 @@
 // unguessable cuid returned by /api/public/shows; nothing is readable
 // from here and stale ids are ignored.
 
+import '@/lib/bigint-json'
 import { NextResponse } from 'next/server'
 import { touchBoardVisit } from '@/lib/board-access'
 

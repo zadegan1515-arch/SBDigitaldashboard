@@ -19,6 +19,7 @@
 // The LinkedIn People capture (scripts/linkedin-capture.user.js) posts
 // here too, as actions liPreview / liCapture — see planLinkedin below.
 
+import '@/lib/bigint-json'
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import { readMisses, writeMisses, addMiss, type HeldRow } from '@/lib/brand-match'

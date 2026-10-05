@@ -162,6 +162,36 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   is a mistake taken back and uncounts the send. "Plan them" pins brands with someone new to the
   next sending day. A send out of the queue is always dated now (`setTargetStatus`), even on a row
   carrying an earlier invite's date.
+- **Brand Fit** (Leo, Oct 2026: "a filter process to determine which brands we should reach out to").
+  Rules pure in `src/lib/brand-fit.ts` (`node scripts/test-brand-fit.mjs`), computed on the fly (never
+  stored; `Target.fitScore` is the per-person score, a different thing). Score 0–100, every point with a
+  reason: **money weighs most** (Leo: rank by budget, any size) — annual sales or venture money, whichever
+  says more ($5M+ raised = "a lot"; a round in the last 2 years adds); no money known → LinkedIn size
+  (`brand-size.ts`) stands in; then already sponsors college / music, an 18–24 category
+  (`YOUTH_CATEGORIES`: drinks, nicotine & betting, apparel / athletic / beauty), people we can reach,
+  the category's 90-day accept rate. **Ruled out** (never planned or suggested): confirmed not sold in the
+  US, closed, acquired; US unknown = kept, tagged "US?". **Too small** = sales under $1M, or (sales not
+  known) under 20 people on LinkedIn **measured** — a size guessed from tier never hides. **Hide too small**
+  is one per-browser switch (`HIDE_SMALL`, localStorage `sb.hideSmall`, on by default) on Brands, Stock
+  take, the Fill box and Plan my week (the Brands list filters `listBrands({ fit: true })` rows on the
+  page; `brandStock`, `suggestForDay`, `planWeek` take `hideSmall`); it only hides brands nobody has contacted. `compareOpenBrands` puts the
+  higher fit first after the contacts label (replaced "small brands first"). Facts live on Brand
+  (`salesCents`/`fundingCents` **BigInt** cents — `src/lib/bigint-json.ts` makes them JSON numbers and is
+  imported by every API route; `lastRoundAt`, `usStatus`, `sponsorsCollege`, `sponsorNote`, `bizStatus`,
+  `acquiredBy`, `researchedAt`, `researchNote`); edited on the brand page (`updateBrand({ facts })`, same
+  parser as the import; only real changes stamp `researchedAt`). **Research** ("Claude researches once"):
+  `researchList` (the Schedule's next 2 weeks first, `scope:'more'` = the rest by fit; skips brands
+  researched in 90 days) gives text to paste to Claude; Claude can also pull it with
+  `node scripts/cc.mjs researchList` and put findings in with `researchStage({ rows })` (a Setting only);
+  Leo reviews on Stock take → Brand Fit (each from → to, ticked) → `researchImport` apply (ticked ∩ fresh
+  preview, one transaction, Undo `researchUndo`). Never write facts without that review. **Suggest
+  Archive** (`fitArchive` preview → apply, Undo `fitArchiveUndo`; Setting `fitArchiveLast`): confirmed not
+  US, closed/acquired, or researched with no signal and a low score; never a brand in talks (reply, deal,
+  activation); apply = the usual archive (passedAt + queued people shelved) and takes them off upcoming
+  Schedule days. Tests: `test-brand-fit.mjs`, `test-stock.mjs`, `test-brand-fit-ui.js` (page, fake
+  /api/data), `test-brand-fit-e2e.js` (real handlers, throwaway Postgres:
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-brand-fit-e2e.js`); GitHub Actions
+  **Brand Fit** runs them.
 - **Outreach lists** (Leo, Sep 2026: "the list i have planned out so i can send to zach for approval" +
   "a list of companies and the number of people i reached"): **Plan for Zach** / **What went out** buttons
   on Outreach → LinkedIn's header and the Schedule's top row open one window (`olOpen`, `ol*` in app.html)

@@ -9,6 +9,7 @@
 // before pushing. esbuild compiles this without type-checking, so a
 // wrong field name builds clean here and fails on Vercel.
 
+import '@/lib/bigint-json'
 import { NextRequest, NextResponse } from 'next/server'
 import { Prisma, PrismaClient, TargetStatus } from '@prisma/client'
 import {
@@ -38,7 +39,7 @@ import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hint
 import { readLiLog, readLiResearch, LI_SCRIPT_VERSION, LI_SWEEP_KEY } from '@/lib/li-sweep'
 import { readRuns } from '@/lib/li-report'
 import { companySlug, companyPageUrl, profileSlug, looksLikeSeller } from '@/lib/li-capture'
-import { whyLeaveOut } from '@/lib/parents'
+import { whyLeaveOut, parentOf } from '@/lib/parents'
 import {
   readJsonSetting, writeJsonSetting, LI_REVIEW_KEY, LI_CONFIRMED_KEY, LI_OWNER_KEY,
   type Review, type Confirmed, type LiOwner,
@@ -48,7 +49,8 @@ import { findDuplicateGroups, pairKey } from '@/lib/duplicates'
 import { findLinkedInPeople, logLinkedInPerson, undoLinkedInLog, checkNewPerson } from '@/lib/li-log-db'
 import { isLogStage } from '@/lib/li-log'
 import { rollWindow, findUnsent, planCarry, type Unsent, type CarryFacts } from '@/lib/carry'
-import { workNeed } from '@/lib/planned-first'
+import { workNeed, dueDays } from '@/lib/planned-first'
+import { scoreBrand, dollarsToCents, normUs, normBiz, cleanResearchRow, shortMoney, type FitResult, type ResearchRow } from '@/lib/brand-fit'
 import { buildStock, bestDealStage, refileMoves, remapPlanDays, brandKey } from '@/lib/stock'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import {
@@ -550,6 +552,10 @@ const PLAN_BRAND_SELECT = Prisma.validator<Prisma.BrandSelect>()({
   id: true, name: true, aka: true, category: true, tier: true, workPeople: true,
   website: true, linkedinUrl: true, externalId: true,
   passedAt: true, passedTodayAt: true, doNotEmail: true,
+  // Brand Fit facts (brandFit below) — the Fill box and Plan my week rank
+  // and hide by them.
+  liMembers: true, salesCents: true, fundingCents: true, lastRoundAt: true, usStatus: true,
+  sponsorsCollege: true, bizStatus: true, acquiredBy: true, researchedAt: true,
   contacts: { select: { id: true, name: true, title: true, email: true, linkedinUrl: true, isDecisionMaker: true } },
   targets: {
     select: {
@@ -1488,8 +1494,9 @@ function planBrandRow(b: PlanBrand, ctx: PlanRowCtx) {
 
 // The order open brands are offered in, wherever the Schedule suggests
 // them (the Fill box, Plan my week): people ready to write to first,
-// small brands first (they answer), a decision maker we can find on
-// LinkedIn, more reachable people, then the name.
+// then the higher Brand Fit (Leo, Oct 2026: rank by budget, money weighs
+// most — this replaced "small brands first"), then small brands first, a
+// decision maker we can find on LinkedIn, more reachable people, the name.
 const TIER_ORDER = ['emerging', 'growth', 'established']
 function tierRank(t: string | null): number {
   const i = TIER_ORDER.indexOf(t ?? '')
@@ -1499,8 +1506,9 @@ function dmOnLinkedIn(b: PlanBrand): boolean {
   return b.contacts.some(c => c.isDecisionMaker && !!c.linkedinUrl)
 }
 const LABEL_RANK: Record<ContactsLabel['kind'], number> = { ready: 0, thin: 1, none: 2 }
-function compareOpenBrands(x: { b: PlanBrand; label: ContactsLabel }, y: { b: PlanBrand; label: ContactsLabel }): number {
+function compareOpenBrands(x: { b: PlanBrand; label: ContactsLabel; fit?: number }, y: { b: PlanBrand; label: ContactsLabel; fit?: number }): number {
   return LABEL_RANK[x.label.kind] - LABEL_RANK[y.label.kind] ||
+    (y.fit ?? 0) - (x.fit ?? 0) ||
     tierRank(x.b.tier) - tierRank(y.b.tier) ||
     Number(dmOnLinkedIn(y.b)) - Number(dmOnLinkedIn(x.b)) ||
     y.label.reachable - x.label.reachable ||
@@ -1536,6 +1544,210 @@ async function recentAcceptRates(): Promise<AcceptRates> {
   const rates = acceptRates(await invitesSince(new Date(Date.now() - 90 * 864e5)))
   acceptRateMemo = { at: Date.now(), rates }
   return rates
+}
+
+// ── Brand Fit ─────────────────────────────────────────────────────────
+// Which brands are worth reaching out to: rules in src/lib/brand-fit.ts,
+// computed on the fly (accept rates and reachable people move daily, so
+// nothing is stored). `Target.fitScore` is the per-person score — a
+// different thing; the brand's is `fit` in every response.
+const FIT_SELECT = {
+  liMembers: true, salesCents: true, fundingCents: true, lastRoundAt: true, usStatus: true,
+  sponsorsCollege: true, bizStatus: true, acquiredBy: true, researchedAt: true,
+} as const
+type FitFacts = {
+  name: string; aka: string | null; category: string | null; tier: string | null; workPeople: number | null
+  liMembers: number | null; salesCents: bigint | null; fundingCents: bigint | null; lastRoundAt: Date | null
+  usStatus: string | null; sponsorsCollege: boolean | null; bizStatus: string | null; acquiredBy: string | null
+  researchedAt: Date | null
+}
+function centsNum(v: bigint | number | null | undefined): number | null {
+  return v == null ? null : Number(v)
+}
+// A category's accept rate, or null while it has never been invited (the
+// smoothed rate would otherwise read as a real number).
+function rateOrNull(rates: AcceptRates | null, category: string | null): number | null {
+  if (!rates || !category || !rates.raw.has(category)) return null
+  return rates.of(category)
+}
+function brandFit(b: FitFacts, reachable: number, rates: AcceptRates | null, now = new Date()): FitResult {
+  return scoreBrand({
+    category: b.category, tier: b.tier, liMembers: b.liMembers, hasParent: !!parentOf(b.name, b.aka),
+    salesCents: centsNum(b.salesCents), fundingCents: centsNum(b.fundingCents), lastRoundAt: b.lastRoundAt,
+    usStatus: b.usStatus, sponsorsCollege: b.sponsorsCollege, bizStatus: b.bizStatus, acquiredBy: b.acquiredBy,
+    researchedAt: b.researchedAt,
+    reachable, need: workNeed(b), acceptRate: rateOrNull(rates, b.category), now,
+  })
+}
+// What a list row carries (the reasons only go to the brand page).
+function fitBrief(f: FitResult) {
+  return {
+    score: f.score, size: f.size, tooSmall: f.tooSmall, tooSmallWhy: f.tooSmallWhy,
+    ruledOut: f.ruledOut, archiveWhy: f.archiveWhy, usUnknown: f.usUnknown,
+  }
+}
+function planBrandFit(b: PlanBrand, rates: AcceptRates | null): FitResult {
+  return brandFit(b, b.contacts.filter(isReachable).length, rates)
+}
+
+// The fact columns a research row / the brand page can set, and how each
+// is shown in a from → to preview.
+const FIT_COLUMNS_SELECT = {
+  salesCents: true, fundingCents: true, lastRoundAt: true, usStatus: true, sponsorsCollege: true,
+  sponsorNote: true, bizStatus: true, acquiredBy: true, researchNote: true,
+} as const
+type FactField = keyof typeof FIT_COLUMNS_SELECT
+type FactChange = { field: FactField; label: string; from: string; to: any; toText: string }
+const FACT_LABELS: Record<FactField, string> = {
+  salesCents: 'Sales', fundingCents: 'Raised', lastRoundAt: 'Last round', usStatus: 'In the US',
+  sponsorsCollege: 'Sponsors college / music', sponsorNote: 'What they sponsor', bizStatus: 'Status',
+  acquiredBy: 'Acquired by', researchNote: 'Sources',
+}
+function factText(field: FactField, v: any): string {
+  if (v == null || v === '') return '—'
+  if (field === 'salesCents' || field === 'fundingCents') return shortMoney(Number(v))
+  if (field === 'lastRoundAt') return new Date(v).toISOString().slice(0, 7)
+  if (field === 'sponsorsCollege') return v ? 'yes' : 'no'
+  return String(v)
+}
+// What a cleaned research row would change on a brand: only keys the row
+// actually carries, only values that differ. Money compares as numbers
+// (the column is BigInt), the round date by its day.
+function factChanges(current: Record<FactField, any>, row: ResearchRow): FactChange[] {
+  const next: Partial<Record<FactField, any>> = {}
+  if ('salesCents' in row) next.salesCents = row.salesCents
+  if ('fundingCents' in row) next.fundingCents = row.fundingCents
+  if ('lastRoundAt' in row) next.lastRoundAt = row.lastRoundAt ? new Date(row.lastRoundAt + 'T00:00:00Z') : null
+  if ('usStatus' in row) next.usStatus = row.usStatus
+  if ('sponsorsCollege' in row) next.sponsorsCollege = row.sponsorsCollege
+  if ('sponsorNote' in row) next.sponsorNote = row.sponsorNote
+  if ('bizStatus' in row) next.bizStatus = row.bizStatus
+  if ('acquiredBy' in row) next.acquiredBy = row.acquiredBy
+  if ('note' in row) next.researchNote = row.note
+  const same = (f: FactField, a: any, b: any) => {
+    if (a == null || b == null) return a == null && b == null
+    if (f === 'salesCents' || f === 'fundingCents') return Number(a) === Number(b)
+    if (f === 'lastRoundAt') return new Date(a).toISOString().slice(0, 10) === new Date(b).toISOString().slice(0, 10)
+    return a === b
+  }
+  const out: FactChange[] = []
+  for (const f of Object.keys(next) as FactField[]) {
+    if (same(f, current[f], next[f])) continue
+    out.push({ field: f, label: FACT_LABELS[f], from: factText(f, current[f]), to: next[f], toText: factText(f, next[f]) })
+  }
+  return out
+}
+
+// ── Brand Fit: suggest Archive + research import (handlers fitArchive*,
+// research*). Settings: the last archive (Undo), Claude's staged
+// research, the last research import (Undo).
+const FIT_ARCHIVE_KEY = 'fitArchiveLast'
+const RESEARCH_STAGED_KEY = 'researchStaged'
+const RESEARCH_LAST_KEY = 'researchImportLast'
+type FitArchiveLog = {
+  at: string; by: string | null; brands: string[]; names: string[]; shelved: string[]
+  days: Array<{ id: string; day: string }>; undone?: string
+}
+type ResearchLog = {
+  at: string; by: string | null; undone?: string
+  brands: Array<{ id: string; name: string; before: Record<string, any>; after: Record<string, any> }>
+}
+
+async function fitArchiveCandidates() {
+  const [brands, rates, plan, last] = await Promise.all([
+    prisma.brand.findMany({
+      where: { passedAt: null },
+      select: {
+        id: true, name: true, aka: true, category: true, tier: true, workPeople: true, ...FIT_SELECT,
+        contacts: { select: { email: true, linkedinUrl: true } },
+        targets: { select: { status: true, sentAt: true, shelved: true } },
+        deals: { select: { stage: true } },
+        _count: { select: { activations: true } },
+      },
+    }),
+    recentAcceptRates(),
+    readPlan(),
+    readJsonSetting<FitArchiveLog | null>(prisma, FIT_ARCHIVE_KEY, null),
+  ])
+  const pinned = pinnedDays(plan)
+  const now = new Date()
+  const out: Array<{
+    id: string; name: string; category: string | null; score: number; why: string; ruledOut: boolean
+    contacted: boolean; queued: number; plannedOn: string | null; plannedLabel: string | null
+  }> = []
+  for (const b of brands) {
+    // In talks — a reply, a deal, an activation — never suggested.
+    if (b.targets.some(t => t.status === 'replied' || t.status === 'converted')) continue
+    if (bestDealStage(b.deals.map(d => d.stage)) || b._count.activations) continue
+    const f = brandFit(b, b.contacts.filter(isReachable).length, rates, now)
+    if (!f.archiveWhy) continue
+    const on = pinned.get(b.id) ?? null
+    out.push({
+      id: b.id, name: b.name, category: b.category, score: f.score, why: f.archiveWhy, ruledOut: !!f.ruledOut,
+      contacted: b.targets.some(wasInvited),
+      queued: b.targets.filter(t => !t.shelved && (t.status === 'queued' || t.status === 'drafted')).length,
+      plannedOn: on, plannedLabel: on ? dayLabel(on) : null,
+    })
+  }
+  out.sort((a, b) => Number(b.ruledOut) - Number(a.ruledOut) || a.score - b.score || a.name.localeCompare(b.name))
+  return {
+    brands: out,
+    last: last && !last.undone && Array.isArray(last.brands)
+      ? { at: last.at, by: last.by, count: last.brands.length, names: last.names.slice(0, 8) } : null,
+  }
+}
+
+// Each research row matched to one brand — by id when Claude carried it
+// back, else the exact name / also-known-as (nameKey; several brands
+// under one key and none named exactly = unmatched, Leo picks by hand).
+async function researchPreview(raws: any[]) {
+  const brands = await prisma.brand.findMany({
+    select: { id: true, name: true, aka: true, passedAt: true, ...FIT_COLUMNS_SELECT, researchedAt: true },
+  })
+  const byId = new Map(brands.map(b => [b.id, b]))
+  const byKey = new Map<string, typeof brands>()
+  for (const b of brands) {
+    for (const n of [b.name, ...(b.aka ?? '').split(/[,;]/)].map(s => s.trim()).filter(Boolean)) {
+      const k = nameKey(n)
+      if (!k) continue
+      const list = byKey.get(k) ?? []
+      if (!list.includes(b)) list.push(b)
+      byKey.set(k, list)
+    }
+  }
+  const rows: Array<{
+    brandId: string; brandName: string; input: string; archived: boolean; researchedAt: Date | null
+    row: ResearchRow; changes: Array<{ field: string; label: string; from: string; to: string }>
+  }> = []
+  const unmatched: Array<{ name: string; several: string[] }> = []
+  const errors: string[] = []
+  const seen = new Set<string>()
+  for (const raw of raws) {
+    const { row, error } = cleanResearchRow(raw)
+    if (error || !row) { errors.push(error ?? 'unreadable row'); continue }
+    let b = raw?.id ? byId.get(String(raw.id)) : undefined
+    let several: string[] = []
+    if (!b) {
+      const same = byKey.get(nameKey(row.name)) ?? []
+      b = same.length === 1 ? same[0] : same.find(x => x.name.trim().toLowerCase() === row.name.toLowerCase())
+      if (!b && same.length > 1) several = same.map(x => x.name)
+    }
+    if (!b) { unmatched.push({ name: row.name, several }); continue }
+    if (seen.has(b.id)) { errors.push(row.name + ': ' + b.name + ' is listed twice — the first one counts'); continue }
+    seen.add(b.id)
+    rows.push({
+      brandId: b.id, brandName: b.name, input: row.name, archived: !!b.passedAt, researchedAt: b.researchedAt,
+      row,
+      changes: factChanges(b, row).map(c => ({ field: c.field, label: c.label, from: c.from, to: c.toText })),
+    })
+  }
+  return { rows, unmatched, errors }
+}
+
+async function researchLastBrief() {
+  const last = await readJsonSetting<ResearchLog | null>(prisma, RESEARCH_LAST_KEY, null)
+  if (!last || last.undone || !Array.isArray(last.brands) || !last.brands.length) return null
+  return { at: last.at, by: last.by, count: last.brands.length, names: last.brands.slice(0, 8).map(b => b.name) }
 }
 
 // The Monday (New York) of the week a day key falls in.
@@ -2856,7 +3068,9 @@ const handlers: Record<string, Handler> = {
   // are invisible everywhere else — Needs contacts lists brands with
   // nobody on file, which is a different and much smaller set, so "193
   // have no profile" had nowhere to be looked at.
-  async listBrands({ category, search, take = 500, noProfile }: any) {
+  // `fit: true` (the Brands tab) adds each brand's Brand Fit; the pickers
+  // that also call this leave it off and stay as they were.
+  async listBrands({ category, search, take = 500, noProfile, fit }: any) {
     const reviewed = category === 'new' ? await readReviewedNew() : null
     const brands = await prisma.brand.findMany({
       where: {
@@ -2898,6 +3112,23 @@ const handlers: Record<string, Handler> = {
       if (at !== bt) return at - bt
       return a.name.localeCompare(b.name)
     })
+    // Brand Fit needs the reachable count (the include keeps only three
+    // people) and the category accept rates.
+    let reach: Map<string, number> | null = null
+    let rates: AcceptRates | null = null
+    if (fit && sorted.length) {
+      const [rows, r] = await Promise.all([
+        prisma.contact.groupBy({
+          by: ['brandId'],
+          where: { brandId: { in: sorted.map(b => b.id) }, OR: [{ email: { not: null } }, { linkedinUrl: { not: null } }] },
+          _count: { _all: true },
+        }),
+        recentAcceptRates(),
+      ])
+      reach = new Map(rows.map(r => [r.brandId, r._count._all]))
+      rates = r
+    }
+    const now = new Date()
     // Flatten each brand's targets into the card's outreach summary —
     // invited / replied and the dates, so the list answers "where does
     // this brand stand?" without opening it.
@@ -2909,6 +3140,7 @@ const handlers: Record<string, Handler> = {
       const { targets, ...rest } = b
       return {
         ...rest,
+        ...(reach ? { fit: fitBrief(brandFit(b, reach.get(b.id) ?? 0, rates, now)) } : {}),
         outreach: {
           queued: ts.filter(t => !t.shelved && ['queued', 'drafted'].includes(t.status)).length,
           invited: sent.length,
@@ -3090,14 +3322,16 @@ const handlers: Record<string, Handler> = {
   // the lane it sits in (src/lib/stock.ts) and how far outreach got.
   // Reached counts the way Results does (an invite out, or a sent
   // email); a reply is per person, so someone who answered on LinkedIn
-  // and by email counts once. Read-only.
-  async brandStock() {
-    const [brands, emails] = await Promise.all([
+  // and by email counts once. Read-only. hideSmall: the page's "Hide too
+  // small" switch (buildStock leaves those brands out of the rows).
+  async brandStock({ hideSmall = false }: any = {}) {
+    const [brands, emails, rates] = await Promise.all([
       prisma.brand.findMany({
         select: {
           id: true, name: true, aka: true, category: true, tier: true,
           about: true, topProducts: true, linkedinUrl: true, externalId: true,
-          passedAt: true, doNotEmail: true,
+          passedAt: true, doNotEmail: true, workPeople: true, ...FIT_SELECT,
+          contacts: { select: { email: true, linkedinUrl: true } },
           _count: { select: { contacts: true, activations: true } },
           targets: {
             select: { id: true, status: true, sentAt: true, repliedAt: true, emailedAt: true, shelved: true },
@@ -3109,14 +3343,18 @@ const handlers: Record<string, Handler> = {
         where: { OR: [{ direction: 'out', status: 'sent' }, { direction: 'in' }] },
         select: { direction: true, targetId: true },
       }),
+      recentAcceptRates(),
     ])
+    const now = new Date()
     const emailedIds = new Set(emails.filter(m => m.direction === 'out').map(m => m.targetId))
     const answeredIds = new Set(emails.filter(m => m.direction === 'in').map(m => m.targetId))
     const LI_OUT = ['sent', 'accepted', 'replied', 'converted']
     const last = await readRefileLog()
     const stock = buildStock(brands.map(b => {
       const ts = b.targets
+      const f = brandFit(b, b.contacts.filter(isReachable).length, rates, now)
       return {
+        fit: { score: f.score, tooSmall: f.tooSmall, usUnknown: f.usUnknown, ruledOut: f.ruledOut },
         id: b.id, name: b.name, aka: b.aka, category: b.category, tier: b.tier,
         about: b.about, topProducts: b.topProducts, linkedinUrl: b.linkedinUrl,
         externalId: b.externalId, archived: !!b.passedAt, doNotEmail: b.doNotEmail,
@@ -3129,7 +3367,7 @@ const handlers: Record<string, Handler> = {
         dealStage: bestDealStage(b.deals.map(d => d.stage)),
         activations: b._count.activations,
       }
-    }))
+    }), { hideSmall: !!hideSmall })
     // Which Schedule day each brand is planned for, so a lane's "Put
     // them on a day" can say so (and leave those unticked).
     const pinned = pinnedDays(await readPlan())
@@ -3152,6 +3390,223 @@ const handlers: Record<string, Handler> = {
       ...stock,
       lastRefile: last ? { at: last.at, by: last.by, moved: last.moves.length, days: last.days.length } : null,
     }
+  },
+
+  // ── Brand Fit: suggest Archive ───────────────────────────────────────
+  // Brands Leo said should go (Oct 2026): confirmed not sold in the US,
+  // out of business / acquired, or researched with no signal and a low
+  // score (brand-fit.ts archiveWhy). Never a brand in talks — a reply, a
+  // deal or an activation. Preview lists them all ticked; apply archives
+  // only ticked ids a fresh preview still lists (the same archive as
+  // everywhere: passedAt + queued people shelved, one transaction), takes
+  // them off upcoming Schedule days, and keeps an Undo copy.
+  async fitArchive({ preview = true, brandIds, __user }: any = {}) {
+    const found = await fitArchiveCandidates()
+    if (preview) return found
+    const want = new Set((Array.isArray(brandIds) ? brandIds : []).map(String))
+    const pick = found.brands.filter(b => want.has(b.id))
+    if (!pick.length) throw new Error('Nothing ticked is still on the list — reload and look again')
+    let log: FitArchiveLog | null = null
+    await prisma.$transaction(async tx => {
+      const still = await tx.brand.findMany({ where: { id: { in: pick.map(b => b.id) }, passedAt: null }, select: { id: true, name: true } })
+      const ids = still.map(b => b.id)
+      if (!ids.length) return
+      const shelve = (await tx.target.findMany({
+        where: { brandId: { in: ids }, status: { in: ['queued', 'drafted'] }, shelved: false }, select: { id: true },
+      })).map(t => t.id)
+      const at = new Date()
+      await tx.brand.updateMany({ where: { id: { in: ids }, passedAt: null }, data: { passedAt: at } })
+      await tx.target.updateMany({ where: { id: { in: shelve } }, data: { shelved: true, queuedFor: null } })
+      log = { at: at.toISOString(), by: __user ?? null, brands: ids, names: still.map(b => b.name), shelved: shelve, days: [] }
+    }, { timeout: 20000 })
+    if (!log) throw new Error('Those brands are archived already')
+    const done = log as FitArchiveLog
+    // Off the Schedule's upcoming days too, so they don't sit there as
+    // "Archived" cards. Undo doesn't put them back on a day.
+    const plan = await readPlan()
+    const gone = new Set(done.brands)
+    for (const [day, d] of Object.entries(plan)) {
+      const keep = (d?.brandIds ?? []).filter(id => !gone.has(id))
+      if (keep.length !== (d?.brandIds ?? []).length) {
+        for (const id of d.brandIds) if (gone.has(id)) done.days.push({ id, day })
+        d.brandIds = keep
+      }
+    }
+    if (done.days.length) await writePlan(plan)
+    await writeJsonSetting(prisma, FIT_ARCHIVE_KEY, done)
+    return { ok: true, archived: done.brands.length, names: done.names, shelved: done.shelved.length, offDays: done.days.length }
+  },
+
+  // Undo the last suggest-Archive: brings back only brands still archived
+  // at that same moment (one archived by hand since stays archived) and
+  // un-shelves exactly the people it shelved.
+  async fitArchiveUndo({ preview = true }: any = {}) {
+    const last = await readJsonSetting<FitArchiveLog | null>(prisma, FIT_ARCHIVE_KEY, null)
+    if (!last || last.undone || !Array.isArray(last.brands)) throw new Error('Nothing to undo')
+    const still = await prisma.brand.findMany({
+      where: { id: { in: last.brands }, passedAt: new Date(last.at) }, select: { id: true, name: true },
+    })
+    if (preview) return { brands: still.map(b => b.name), at: last.at, total: last.brands.length }
+    const ids = still.map(b => b.id)
+    await prisma.$transaction([
+      prisma.brand.updateMany({ where: { id: { in: ids }, passedAt: new Date(last.at) }, data: { passedAt: null } }),
+      prisma.target.updateMany({ where: { id: { in: last.shelved }, brandId: { in: ids } }, data: { shelved: false } }),
+    ])
+    await writeJsonSetting(prisma, FIT_ARCHIVE_KEY, { ...last, undone: new Date().toISOString() })
+    return { ok: true, back: still.map(b => b.name) }
+  },
+
+  // ── Brand Fit: research ──────────────────────────────────────────────
+  // "Claude researches once" (Leo): the list to research and a reviewed
+  // import of what came back. Nothing about a brand changes until Leo
+  // has seen each from → to and ticked it.
+
+  // The brands to research: on the Schedule in the next two weeks first
+  // (Leo's pick), then — scope 'more' — the rest in play by Brand Fit.
+  // Brands researched in the last 90 days are skipped. `text` is ready to
+  // paste to Claude.
+  async researchList({ scope = 'schedule', take = 60 }: any = {}) {
+    const today = localDayKey()
+    const until = addDaysKey(today, 13)
+    const [plan, shown, rates] = await Promise.all([
+      readPlan(), readJsonSetting(prisma, SHOWN_DAYS_KEY, {}), recentAcceptRates(),
+    ])
+    const due = dueDays({ plan, shown, today })
+    const onDays = new Map([...due].filter(([, d]) => d >= today && d <= until))
+    const fresh = new Date(Date.now() - 90 * 864e5)
+    const brands = await prisma.brand.findMany({
+      where: {
+        passedAt: null, doNotEmail: false,
+        OR: [{ researchedAt: null }, { researchedAt: { lt: fresh } }],
+        ...(scope === 'schedule' ? { id: { in: [...onDays.keys()] } } : {}),
+      },
+      select: {
+        id: true, name: true, aka: true, website: true, linkedinUrl: true, category: true, tier: true, workPeople: true,
+        ...FIT_SELECT, contacts: { select: { email: true, linkedinUrl: true } },
+      },
+    })
+    const now = new Date()
+    const rows = brands.map(b => ({
+      id: b.id, name: b.name, aka: b.aka, website: b.website, linkedinUrl: b.linkedinUrl,
+      category: b.category, day: onDays.get(b.id) ?? null,
+      fit: brandFit(b, b.contacts.filter(isReachable).length, rates, now).score,
+    }))
+    rows.sort((a, b) => (a.day ?? '9999').localeCompare(b.day ?? '9999') || b.fit - a.fit || a.name.localeCompare(b.name))
+    const list = rows.slice(0, Math.max(1, Math.min(200, Number(take) || 60)))
+    const lines = list.map(r => '- ' + JSON.stringify({ id: r.id, name: r.name, aka: r.aka || undefined, website: r.website || undefined, linkedin: r.linkedinUrl || undefined, category: r.category || undefined }))
+    const text = [
+      'Research these brands for SB Agency\'s Brand Fit (college-show sponsorships, US market).',
+      'For each brand return one JSON object; leave a key out when you could not find it (never guess):',
+      '{ "id", "name", "sales": annual revenue in US dollars ("$12M"), "funding": total venture money raised ("$30M"),',
+      '  "lastRound": "YYYY-MM", "us": "yes" | "no" (sold in the US), "sponsorsCollege": "yes" | "no" (college, festival or music sponsorships),',
+      '  "sponsorNote": what they sponsor, "status": "active" | "closed" | "acquired", "acquiredBy", "note": sources in one line }',
+      'Answer with one JSON array only.',
+      '',
+      ...lines,
+    ].join('\n')
+    return { scope, total: rows.length, shown: list.length, scheduled: onDays.size, rows: list, text }
+  },
+
+  // Research Claude found, waiting for Leo: written from Claude's side
+  // (scripts/cc.mjs researchStage) so Leo never pastes JSON. Only a
+  // Setting — no brand changes. Bad rows are refused with the reason.
+  async researchStage({ rows, by }: any = {}) {
+    const list = Array.isArray(rows) ? rows.slice(0, 500) : []
+    if (!list.length) throw new Error('No rows')
+    const ok: any[] = []
+    const errors: string[] = []
+    for (const raw of list) {
+      const { row, error } = cleanResearchRow(raw)
+      if (error || !row) { errors.push(error ?? 'unreadable row'); continue }
+      ok.push(raw)
+    }
+    await writeJsonSetting(prisma, RESEARCH_STAGED_KEY, { at: new Date().toISOString(), by: by ?? 'Claude', rows: ok })
+    return { staged: ok.length, errors }
+  },
+
+  // The review + apply. Rows come from the staged research (staged: true)
+  // or a pasted JSON array (text). Preview: each row matched to one brand
+  // (by id, else exact name / also-known-as) with its from → to changes.
+  // Apply: only the ticked brand ids (keep) whose changes a fresh preview
+  // still shows, one transaction, an Undo copy of every old value.
+  async researchImport({ staged, text, preview = true, keep, __user }: any = {}) {
+    let raws: any[] = []
+    let stagedAt: string | null = null
+    if (staged) {
+      const st = await readJsonSetting<any>(prisma, RESEARCH_STAGED_KEY, null)
+      if (!st || st.appliedAt || !Array.isArray(st.rows)) {
+        if (preview) return { rows: [], unmatched: [], errors: [], staged: null, last: await researchLastBrief() }
+        throw new Error('No research waiting')
+      }
+      raws = st.rows
+      stagedAt = st.at
+    } else {
+      let parsed: any
+      try { parsed = JSON.parse(String(text ?? '').trim().replace(/^```(?:json)?|```$/g, '')) } catch { throw new Error('That is not JSON — paste the array Claude gave back') }
+      raws = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.rows) ? parsed.rows : []
+      if (!raws.length) throw new Error('No rows in that JSON')
+    }
+    const found = await researchPreview(raws.slice(0, 500))
+    if (preview) return { ...found, staged: stagedAt ? { at: stagedAt, rows: raws.length } : null, last: await researchLastBrief() }
+
+    const want = new Set((Array.isArray(keep) ? keep : []).map(String))
+    const pick = found.rows.filter(r => want.has(r.brandId) && r.changes.length)
+    if (!pick.length) throw new Error('Nothing ticked has a change left — reload and look again')
+    const log: ResearchLog = { at: new Date().toISOString(), by: __user ?? null, brands: [] }
+    await prisma.$transaction(async tx => {
+      for (const r of pick) {
+        const cur = await tx.brand.findUnique({ where: { id: r.brandId }, select: { ...FIT_COLUMNS_SELECT, researchedAt: true } })
+        if (!cur) continue
+        const changes = factChanges(cur, r.row)
+        if (!changes.length) continue
+        const data: Record<string, any> = { researchedAt: new Date() }
+        const before: Record<string, any> = { researchedAt: cur.researchedAt }
+        const after: Record<string, any> = {}
+        for (const c of changes) { data[c.field] = c.to; before[c.field] = cur[c.field]; after[c.field] = c.to }
+        await tx.brand.update({ where: { id: r.brandId }, data })
+        log.brands.push({ id: r.brandId, name: r.brandName, before, after })
+      }
+      await tx.setting.upsert({
+        where: { key: RESEARCH_LAST_KEY },
+        create: { key: RESEARCH_LAST_KEY, value: JSON.stringify(log) },
+        update: { value: JSON.stringify(log) },
+      })
+    }, { timeout: 30000 })
+    if (staged) {
+      const st = await readJsonSetting<any>(prisma, RESEARCH_STAGED_KEY, null)
+      if (st) await writeJsonSetting(prisma, RESEARCH_STAGED_KEY, { ...st, appliedAt: log.at })
+    }
+    return { ok: true, updated: log.brands.length, names: log.brands.map(b => b.name) }
+  },
+
+  // Undo the last research import: puts back each old value, but only
+  // where the field still holds what the import wrote.
+  async researchUndo({ preview = true }: any = {}) {
+    const last = await readJsonSetting<ResearchLog | null>(prisma, RESEARCH_LAST_KEY, null)
+    if (!last || last.undone || !Array.isArray(last.brands) || !last.brands.length) throw new Error('Nothing to undo')
+    if (preview) return { at: last.at, brands: last.brands.map(b => b.name) }
+    let back = 0
+    await prisma.$transaction(async tx => {
+      for (const b of last.brands) {
+        const cur = await tx.brand.findUnique({ where: { id: b.id }, select: { ...FIT_COLUMNS_SELECT, researchedAt: true } })
+        if (!cur) continue
+        const data: Record<string, any> = {}
+        for (const [f, v] of Object.entries(b.after)) {
+          const field = f as FactField
+          const now = cur[field] == null ? null : (field === 'lastRoundAt' ? new Date(cur[field] as any).toISOString().slice(0, 10) : field === 'salesCents' || field === 'fundingCents' ? Number(cur[field]) : cur[field])
+          const wrote = v == null ? null : (field === 'lastRoundAt' ? new Date(v).toISOString().slice(0, 10) : field === 'salesCents' || field === 'fundingCents' ? Number(v) : v)
+          if (now !== wrote) continue // changed since — leave it
+          const old = b.before[field]
+          data[field] = old == null ? null : field === 'lastRoundAt' ? new Date(old) : old
+        }
+        if (!Object.keys(data).length) continue
+        data.researchedAt = b.before.researchedAt ? new Date(b.before.researchedAt) : null
+        await tx.brand.update({ where: { id: b.id }, data })
+        back++
+      }
+    }, { timeout: 30000 })
+    await writeJsonSetting(prisma, RESEARCH_LAST_KEY, { ...last, undone: new Date().toISOString() })
+    return { ok: true, back }
   },
 
   // Stock take → "Make the lanes real categories" (Leo said yes, Sep
@@ -3610,6 +4065,11 @@ const handlers: Record<string, Handler> = {
       if (!to[k] && from[k]) fill[k] = from[k]
     }
     if (from.doNotEmail && !to.doNotEmail) fill.doNotEmail = true
+    // Brand Fit facts and the LinkedIn headcount: fill-if-empty too, by
+    // null (a $0 or a "no" is a fact, not an empty field).
+    for (const k of ['liMembers', 'liMembersAt', 'salesCents', 'fundingCents', 'lastRoundAt', 'usStatus', 'sponsorsCollege', 'sponsorNote', 'bizStatus', 'acquiredBy', 'researchedAt', 'researchNote'] as const) {
+      if (to[k] == null && from[k] != null) fill[k] = from[k]
+    }
     // The keeper answers to the duplicate's names from now on, so the
     // next capture or paste under the old name finds it instead of making
     // the brand again.
@@ -3749,8 +4209,11 @@ const handlers: Record<string, Handler> = {
       take: 200,
     })).filter(r => r.brandId === brand.id || names.includes(r.company.trim().toLowerCase()))
 
+    // Brand Fit with every reason, for the brand page's Fit line.
+    const fit = brandFit(brand, brand.contacts.filter(isReachable).length, await recentAcceptRates())
+
     return {
-      brand: brandOut, events, money,
+      brand: brandOut, events, money, fit,
       accessRequests: pendingAccess,
       boardViews: { count: boardViewCount, last: lastVisit, recent: recentVisits },
     }
@@ -3847,9 +4310,24 @@ const handlers: Record<string, Handler> = {
     return { filled, unmatched }
   },
 
-  async updateBrand({ brandId, ...fields }: any) {
+  async updateBrand({ brandId, facts, ...fields }: any) {
     const allowed = ['category', 'tier', 'owner', 'notes', 'goals', 'website', 'linkedinUrl', 'hq', 'externalId', 'about', 'topProducts', 'aka'] as const
     const data: Record<string, any> = {}
+    // Brand Fit facts from the brand page (sales, funding, US, …), parsed
+    // by the same rules as a research import. Only what really changed is
+    // written, and that stamps researchedAt — the page sends every field
+    // on every Save.
+    if (facts && typeof facts === 'object') {
+      const { row, error } = cleanResearchRow({ ...facts, name: 'brand' })
+      if (error || !row) throw new Error((error ?? 'Could not read the facts').replace(/^brand: /, ''))
+      const current = await prisma.brand.findUnique({ where: { id: brandId }, select: FIT_COLUMNS_SELECT })
+      if (!current) throw new Error('Brand not found')
+      const changed = factChanges(current, row)
+      if (changed.length) {
+        for (const c of changed) data[c.field] = c.to
+        data.researchedAt = new Date()
+      }
+    }
     for (const key of allowed) {
       if (fields[key] !== undefined) data[key] = fields[key] === '' ? null : fields[key]
     }
@@ -3876,7 +4354,10 @@ const handlers: Record<string, Handler> = {
       if (!clean) throw new Error('The brand name cannot be empty')
       data.name = clean
     }
-    if (Object.keys(data).length === 0) throw new Error('Nothing to update')
+    if (Object.keys(data).length === 0) {
+      if (facts) return { id: brandId, unchanged: true }
+      throw new Error('Nothing to update')
+    }
     try {
       return await prisma.brand.update({ where: { id: brandId }, data })
     } catch (err: any) {
@@ -5458,7 +5939,10 @@ const handlers: Record<string, Handler> = {
   // apply: days = [{ date, category?, brandIds }] — what the preview
   // showed, minus whatever Leo unticked. A category is only sent for a
   // day whose category the plan (or Leo, in the preview) changed.
-  async planWeek({ apply = false, days: picks, categories, exclude, __user }: any = {}) {
+  // hideSmall: leave out brands brand-fit.ts calls too small (the page's
+  // switch, on by default). Ruled-out brands (not in the US, closed,
+  // acquired) are never planned. Fit orders each category's brands.
+  async planWeek({ apply = false, days: picks, categories, exclude, hideSmall, __user }: any = {}) {
     const today = localDayKey()
     const extras = await readExtraDays()
 
@@ -5536,11 +6020,16 @@ const handlers: Record<string, Handler> = {
     // today's list, which the plan must never do behind Leo's back.
     const inTodayQueue = (b: PlanBrand) => b.targets.some(t =>
       !!t.queuedFor && t.queuedFor >= dayStart && !t.sentAt && !t.shelved && ['queued', 'drafted'].includes(t.status))
-    type Cand = { b: PlanBrand; label: ContactsLabel; people: PreviewPerson[] }
+    type Cand = { b: PlanBrand; label: ContactsLabel; people: PreviewPerson[]; fit: number; f: FitResult }
+    let hiddenSmall = 0
     const cands: Cand[] = brands
       .filter(b => !isReached(b) && !b.passedAt && !b.doNotEmail && !inConversation(b) && !pinnedOn.has(b.id) && !excluded.has(b.id) && !inTodayQueue(b))
-      .map(b => ({ b, label: contactLabel(b, b.contacts), people: previewBrandPicks(b, { forToday: false, dayStart }).people }))
+      .map(b => ({ b, f: planBrandFit(b, rates) }))
+      .filter(({ f }) => !f.ruledOut)
+      .map(({ b, f }) => ({ b, f, fit: f.score, label: contactLabel(b, b.contacts), people: previewBrandPicks(b, { forToday: false, dayStart }).people }))
       .filter(c => c.people.length > 0)
+      // Counted only when someone there would have gone out.
+      .filter(c => { if (hideSmall && c.f.tooSmall) { hiddenSmall++; return false } return true })
       .sort(compareOpenBrands)
     const byCat = new Map<string, Cand[]>()
     for (const c of cands) {
@@ -5611,6 +6100,7 @@ const handlers: Record<string, Handler> = {
           const c = candById.get(a.id)!
           return {
             id: c.b.id, name: c.b.name, category: c.b.category, tier: c.b.tier, label: c.label, from: a.from,
+            fit: fitBrief(c.f),
             going: c.people.length,
             people: c.people.slice(0, 4).map(p => ({ name: p.name, title: p.title })),
             linkedinUrl: c.b.linkedinUrl,
@@ -5636,6 +6126,7 @@ const handlers: Record<string, Handler> = {
       stock,
       // Brands that could go out on these days at all.
       open: cands.length,
+      hiddenSmall, hideSmall: !!hideSmall,
     }
   },
 
@@ -5815,7 +6306,10 @@ const handlers: Record<string, Handler> = {
   // first (they answer), a decision maker we can find on LinkedIn.
   // needPeople is the other half — brands worth working that have
   // nobody reachable yet, so the next capture has somewhere to go.
-  async suggestForDay({ date, category, take }: any) {
+  // hideSmall (the page's "Hide too small" switch, on by default there)
+  // leaves out brands brand-fit.ts calls too small. Brands ruled out —
+  // confirmed not sold in the US, closed, acquired — are never offered.
+  async suggestForDay({ date, category, take, hideSmall }: any) {
     const today = localDayKey()
     if (date && !isDayKey(date)) throw new Error('Bad date')
     if (isDayKey(date) && date < today) throw new Error('That day has passed')
@@ -5829,15 +6323,26 @@ const handlers: Record<string, Handler> = {
     // as `others`, related categories first.
     // Other categories are ranked by how often they accept (last 90
     // days), so a top-up leans on the kinds of brand that say yes.
-    const [brands, rates] = await Promise.all([
+    const [brands, fitRates] = await Promise.all([
       prisma.brand.findMany({ select: PLAN_BRAND_SELECT }) as Promise<PlanBrand[]>,
-      cat === '' ? Promise.resolve(acceptRates([])) : recentAcceptRates(),
+      recentAcceptRates(),
     ])
+    // "All categories" ranks without the category lean (the main list is
+    // everything); the Brand Fit always reads the real rates.
+    const rates = cat === '' ? acceptRates([]) : fitRates
     const inCat = (b: PlanBrand) => cat === '' || b.category === cat
     // Open to suggest at all: never reached, not set aside, not in talks,
     // and not already planned for some day.
-    const open = brands.filter(b =>
+    const openAll = brands.filter(b =>
       !isReached(b) && !b.passedAt && !b.doNotEmail && !inConversation(b) && !ctx.pinnedOn.has(b.id))
+    const fits = new Map(openAll.map(b => [b.id, planBrandFit(b, fitRates)]))
+    let hiddenSmall = 0, ruledOut = 0
+    const open = openAll.filter(b => {
+      const f = fits.get(b.id)!
+      if (f.ruledOut) { if (inCat(b)) ruledOut++; return false }
+      if (hideSmall && f.tooSmall) { if (inCat(b)) hiddenSmall++; return false }
+      return true
+    })
 
     // Nearest neighbours of a category: what fills an alcohol day that
     // ran dry is spirits and cans, not dating apps.
@@ -5850,7 +6355,7 @@ const handlers: Record<string, Handler> = {
           !!t.queuedFor && t.queuedFor >= ctx.dayStart && !t.shelved && ['queued', 'drafted'].includes(t.status))
         const p = inTodayQueue ? { reason: 'full' as OutreachReason, people: [] as PreviewPerson[] }
           : previewBrandPicks(b, { forToday: ctx.forToday, dayStart: ctx.dayStart })
-        return { b, label: contactLabel(b, b.contacts), people: p.people }
+        return { b, label: contactLabel(b, b.contacts), people: p.people, fit: fits.get(b.id)!.score }
       })
       .filter(x => x.people.length > 0)
       .sort((x, y) => {
@@ -5864,6 +6369,7 @@ const handlers: Record<string, Handler> = {
       .slice(0, limit)
       .map(({ b, label, people }) => ({
         id: b.id, name: b.name, category: b.category, tier: b.tier, label,
+        fit: fitBrief(fits.get(b.id)!),
         going: people.length,
         people: people.slice(0, 4).map(p => ({ name: p.name, title: p.title })),
         linkedinUrl: b.linkedinUrl, externalId: b.externalId,
@@ -5876,21 +6382,26 @@ const handlers: Record<string, Handler> = {
     // list already is everything.
     const others = cat === '' ? [] : rankRows(open.filter(b => !inCat(b)), true)
 
-    // Worth working, nobody to write to yet. Small brands first, then
+    // Worth working, nobody to write to yet. Best Brand Fit first, then
     // ones we can open on LinkedIn or SponsorUnited straight away.
     const needAll = open
       .filter(inCat)
       .filter(b => !b.contacts.some(isReachable))
       .sort((x, y) =>
+        fits.get(y.id)!.score - fits.get(x.id)!.score ||
         tierRank(x.tier) - tierRank(y.tier) ||
         Number(!!y.linkedinUrl || !!y.externalId) - Number(!!x.linkedinUrl || !!x.externalId) ||
         x.name.localeCompare(y.name))
     const needPeople = needAll.slice(0, 8).map(b => ({
       id: b.id, name: b.name, category: b.category, label: contactLabel(b, b.contacts),
+      fit: fitBrief(fits.get(b.id)!),
       linkedinUrl: b.linkedinUrl, externalId: b.externalId, onFile: b.contacts.length,
     }))
 
-    return { date: ctx.date, category: cat === '' ? '' : cat, brands: ranked, others, needPeople, needPeopleTotal: needAll.length }
+    return {
+      date: ctx.date, category: cat === '' ? '' : cat, brands: ranked, others, needPeople, needPeopleTotal: needAll.length,
+      hiddenSmall, ruledOut, hideSmall: !!hideSmall,
+    }
   },
 
   // The Schedule's "+ Add a brand to <day>" box. Every result says what

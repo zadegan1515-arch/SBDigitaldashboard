@@ -7,6 +7,7 @@
 // Public, so: strict input checks (in lib/audience), a honeypot field,
 // and a per-IP limit. Responses never contain another person's data.
 
+import '@/lib/bigint-json'
 import { NextResponse } from 'next/server'
 import { publicEvent, createRsvp, ticketByToken } from '@/lib/audience'
 

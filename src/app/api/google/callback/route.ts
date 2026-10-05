@@ -2,6 +2,7 @@
 // We trade it for a refresh token (stored server-side only) and bounce
 // them to the Outreach page with a friendly result.
 
+import '@/lib/bigint-json'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'

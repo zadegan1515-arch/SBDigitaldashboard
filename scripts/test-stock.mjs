@@ -245,5 +245,28 @@ for (const l of LANES) for (const k of new Set(l.known.flatMap(x => x.split('|')
   else { seen.set(k, l.key); pass++ }
 }
 
+// --- Hide too small (Brand Fit) --------------------------------------
+{
+  const small = { score: 20, tooSmall: true, usUnknown: true, ruledOut: null }
+  const fine = { score: 70, tooSmall: false, usUnknown: false, ruledOut: null }
+  const r2 = [
+    brand('Tiny Seltzer', 'rtd', { people: 2, fit: small }),
+    brand('Tiny Reached', 'rtd', { people: 2, invited: 1, fit: small }),
+    brand('Big Seltzer', 'rtd', { people: 3, fit: fine }),
+    brand('Mid Seltzer', 'rtd', { people: 3, fit: { ...fine, score: 40 } }),
+    brand('White Claw', 'rtd', { people: 0, fit: small }),
+  ]
+  const off = buildStock(r2)
+  const on = buildStock(r2, { hideSmall: true })
+  const rtd = x => x.lanes.find(r => r.key === 'rtd')
+  is('hide off: every brand shows', rtd(off).brands.length, 5)
+  is('hide on: small unreached brands leave the row', rtd(on).brands.map(b => b.name).sort(), ['Big Seltzer', 'Mid Seltzer', 'Tiny Reached'])
+  is('hide on: counted as small, not in total', [rtd(on).counts.small, rtd(on).counts.total, on.totals.small], [2, 3, 2])
+  is('hide on: a hidden brand is still on the roster (no idea)', rtd(on).ideas.includes('White Claw'), false)
+  is('hide on: row list still matches counts', [...on.lanes, ...on.others].every(r => r.brands.length === r.counts.total), true)
+  is('within a state, best fit first', rtd(off).brands.filter(b => b.state === 'ready').map(b => b.name), ['Big Seltzer', 'Mid Seltzer', 'Tiny Seltzer'])
+  is('fit rides along on the row brand', rtd(off).brands.find(b => b.name === 'Big Seltzer').fit.score, 70)
+}
+
 console.log(`${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

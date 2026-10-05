@@ -46,7 +46,11 @@ export type StockBrand = {
   queued: number        // waiting in the send queue, nothing sent yet
   dealStage: string | null
   activations: number
+  // Brand Fit (brand-fit.ts), filled by route.ts; absent in old callers.
+  fit?: StockFit
 }
+
+export type StockFit = { score: number; tooSmall: boolean; usUnknown: boolean; ruledOut: string | null }
 
 export type Lane = {
   // The category key — what Brand.category holds for this lane.
@@ -327,11 +331,13 @@ export function bestDealStage(stages: string[]): string | null {
 
 type Counts = Record<StockState, number> & {
   total: number; people: number; under25: number; noProfile: number; touched: number
+  // Not-yet-reached brands left out by "Hide too small" (not in total).
+  small: number
 }
 
 const zero = (): Counts => ({
   business: 0, replied: 0, reached: 0, ready: 0, needs: 0, off: 0,
-  total: 0, people: 0, under25: 0, noProfile: 0, touched: 0,
+  total: 0, people: 0, under25: 0, noProfile: 0, touched: 0, small: 0,
 })
 
 function tally(c: Counts, b: StockBrand, state: StockState) {
@@ -359,6 +365,7 @@ export type StockRow = {
     id: string; name: string; category: string | null; tier: string | null; state: StockState
     people: number; invited: number; accepted: number; emailed: number; replied: number; queued: number
     dealStage: string | null; linkedinUrl: string | null; archived: boolean; doNotEmail: boolean
+    fit: StockFit | null
   }>
   ideas: string[]
 }
@@ -366,7 +373,12 @@ export type StockRow = {
 // Every brand in exactly one row: the category it belongs in (its own
 // filing, or where placeBrand would move it — the page tags those with
 // where they are filed today). Lanes lead, in Leo's order.
-export function buildStock(brands: StockBrand[]) {
+// hideSmall ("Hide too small", on by default on the page): a brand nobody
+// has reached yet that brand-fit.ts calls too small is left out of its
+// row and counted in counts.small instead. It still counts as on the
+// roster, so it never comes back as an idea to add. Reached brands, deals
+// and refile counts are never touched by it.
+export function buildStock(brands: StockBrand[], opts: { hideSmall?: boolean } = {}) {
   const rows = new Map<string, StockRow>()
   const row = (key: string) => {
     let r = rows.get(key)
@@ -394,6 +406,11 @@ export function buildStock(brands: StockBrand[]) {
     const p = placeBrand(b)
     if (p.why !== 'filed' && p.to !== b.category) refile++
     const r = row(p.to || 'uncategorised')
+    if (opts.hideSmall && b.fit?.tooSmall && (state === 'ready' || state === 'needs')) {
+      r.counts.small += 1
+      totals.small += 1
+      continue
+    }
     tally(r.counts, b, state)
     tally(totals, b, state)
     r.brands.push({
@@ -401,6 +418,7 @@ export function buildStock(brands: StockBrand[]) {
       people: b.people, invited: b.invited, accepted: b.accepted, emailed: b.emailed,
       replied: b.replied, queued: b.queued, dealStage: b.dealStage,
       linkedinUrl: b.linkedinUrl, archived: b.archived, doNotEmail: b.doNotEmail,
+      fit: b.fit ?? null,
     })
   }
 
@@ -415,7 +433,8 @@ export function buildStock(brands: StockBrand[]) {
 
   const rank = (s: StockState) => STATES.indexOf(s)
   for (const r of rows.values()) {
-    r.brands.sort((a, b) => rank(a.state) - rank(b.state) || a.name.localeCompare(b.name))
+    // Within a state, the best Brand Fit first.
+    r.brands.sort((a, b) => rank(a.state) - rank(b.state) || (b.fit?.score ?? 0) - (a.fit?.score ?? 0) || a.name.localeCompare(b.name))
   }
 
   const all = [...rows.values()]

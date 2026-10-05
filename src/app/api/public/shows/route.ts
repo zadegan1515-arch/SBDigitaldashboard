@@ -4,6 +4,7 @@
 // a brand may see leave here (see publicShow in lib/shows.ts): no reps,
 // no statuses, no money.
 
+import '@/lib/bigint-json'
 import { NextResponse } from 'next/server'
 import { allShows, publicShow } from '@/lib/shows'
 import { brandForCode, gateEnabled, logBoardVisit } from '@/lib/board-access'

@@ -7,6 +7,7 @@
 // run reports, the script version the dashboard expects, and which
 // brands the fill left a note on — no contacts, no emails.
 
+import '@/lib/bigint-json'
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import { timingSafeEqual } from 'crypto'

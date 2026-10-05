@@ -15,6 +15,7 @@
 // seen — not in the Brand table, not in any previous discovery. That's
 // what makes the daily feed "new brands", not reruns.
 
+import '@/lib/bigint-json'
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 
