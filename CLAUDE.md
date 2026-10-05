@@ -199,6 +199,16 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (`upsertContact`); the name opens the brand page. The tick bar (re-file, Put on a day) is unchanged.
   Stock take (lanes, ideas, re-file) and Needs contacts (SponsorUnited worklist) left the sub-tabs and
   are header buttons; their views and deep links still work. `node scripts/test-brands-table.js`.
+- **Daily Claude brand hunt** (Leo, Oct 2026: "a process for Claude to find new brands … it shouldn't
+  necessarily be through LinkedIn"). Routine "Discover: daily brand hunt" (6:00 New York, fresh cloud
+  session, subscription — no API spend) searches the open web (launch / funding news, sponsorship
+  announcements, retailer shelves, trend coverage) and posts to `/api/discover-ingest` (Bearer
+  `REPORT_TOKEN`; the old body `token` = INGEST_TOKEN still accepted). `GET` = lanes, `leftToday`, every
+  known name (brands + aka + earlier finds; names only). Rules pure in `src/lib/claude-hunt.ts`
+  (`node scripts/test-claude-hunt.mjs`): **priority lanes only**, a website or source link (LinkedIn
+  page optional), at least one sign — `sponsors` college/music, `genz` 18–24, `midsize` growing —
+  never a known brand, **50 a rolling day**. Rows land on Brands → Discover under "Claude hunt · <date>"
+  (sign tags + Source ↗) for Leo to Add / Dismiss; it never makes a Brand itself.
 - **Brands → New from LinkedIn** (chip after All; `listBrands({ category: 'new' })`, count from
   `categoryReach.newFromLinkedIn`): brands the LinkedIn run added itself (`source` linkedin-discover /
   research) in the last 14 days that nobody has looked at. Tick → **Keep** (off the list, nothing
@@ -480,8 +490,9 @@ AMBASSADOR_PLATFORM_URL · AMBASSADOR_PLATFORM_TOKEN (= platform INTEGRATION_TOK
 optional: SIGNATURE_LINKEDIN_URL, SIGNATURE_INSTAGRAM_URL, SIGNATURE_EMBED=1, SIGNATURE_ICONS=1, OPS_BACKFILL_DAYS,
 SPONSOR_HOST (brand page host), SPONSOR_REQUEST_TO (who gets sponsor requests), SPONSOR_GATE=1
 (turn the Show Board access-code gate on), SPONSOR_MASTER_CODE (team code that always opens the
-board), CRM_SHEET_ID, REPORT_TOKEN (read-only LinkedIn run reports for Claude's morning check; 24+
-characters, the same value in the Claude cloud environment's settings).
+board), CRM_SHEET_ID, REPORT_TOKEN (Claude's cloud token: reads the LinkedIn run reports, and may add
+Discover review rows for the daily brand hunt — never brands; 24+ characters, the same value in the Claude
+cloud environment's settings).
 
 ## Conventions
 - **Outreach runs Tuesday / Wednesday / Thursday only** — no Mondays, no Fridays, no weekends —

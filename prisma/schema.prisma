@@ -655,6 +655,10 @@ model DiscoveredBrand {
   activation  String?
   website     String?
   linkedinUrl String?
+  // The daily Claude hunt (src/lib/claude-hunt.ts): where it found the
+  // brand, and which of Leo's signs it has ("sponsors,genz,midsize").
+  sourceUrl   String?
+  signals     String?
 
   // "new" | "added" (promoted to Brand, or already existed) | "dismissed"
   status  String  @default("new")

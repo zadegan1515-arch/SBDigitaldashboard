@@ -14004,6 +14004,9 @@ function loadDiscover(selectedQuery) {
   document.getElementById('disc-q').onkeydown = function (ev) { if (ev.key === 'Enter') go.onclick(); };
 }
 
+// The daily Claude hunt's signs (src/lib/claude-hunt.ts HUNT_SIGNALS).
+var DISC_SIGNALS = { sponsors: 'Sponsors college / music', genz: 'Aims at 18–24', midsize: 'Mid-size, growing' };
+
 function renderDiscoverRows(body, rows, selectedQuery) {
   var live = rows.filter(function (r) { return r.status !== 'dismissed'; });
   if (!live.length) {
@@ -14024,18 +14027,22 @@ function renderDiscoverRows(body, rows, selectedQuery) {
         (r.category ? '<span class="status">' + esc(CAT_NAMES[r.category] || r.category) + '</span>' : '') +
         badge +
         '<span style="margin-left:auto"></span>' +
-        '<a class="btn-ghost" href="' + esc(r.linkedinUrl) + '" target="_blank" rel="noopener" style="padding:3px 9px;font-size:12px">in ↗</a>' +
+        (r.linkedinUrl ? '<a class="btn-ghost" href="' + esc(r.linkedinUrl) + '" target="_blank" rel="noopener" style="padding:3px 9px;font-size:12px">in ↗</a>' : '') +
+        (r.sourceUrl ? '<a class="btn-ghost" href="' + esc(r.sourceUrl) + '" target="_blank" rel="noopener" style="padding:3px 9px;font-size:12px" title="Where Claude found it">Source ↗</a>' : '') +
         (r.website ? '<a class="btn-ghost" href="' + esc(r.website) + '" target="_blank" rel="noopener" style="padding:3px 9px;font-size:12px">🌐</a>' : '') +
         '<button class="btn-ghost" data-discact="su" style="padding:3px 9px;font-size:12px" title="Copies the name and opens SponsorUnited — use the capture script on the brand page">SU ↗</button>' +
         (r.inSystem ? '' : '<button class="btn-solid" data-discact="add" style="padding:3px 11px;font-size:12px">+ Add</button>') +
         '<button class="btn-ghost danger" data-discact="dismiss" style="padding:3px 9px;font-size:12px">×</button>' +
       '</div>' +
+      (r.signals ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' + String(r.signals).split(',').map(function (k) {
+        return DISC_SIGNALS[k] ? '<span class="status replied">' + esc(DISC_SIGNALS[k]) + '</span>' : '';
+      }).join('') + '</div>' : '') +
       (r.reason ? '<div style="font-size:12.5px;color:var(--ink-2);margin-top:5px">' + esc(r.reason) + '</div>' : '') +
       (r.activation ? '<div style="font-size:12.5px;margin-top:5px;padding:7px 10px;background:var(--accent-soft,#fdf0ec);border-radius:6px">' +
         '<b style="color:var(--accent)">Activation idea:</b> ' + esc(r.activation) + '</div>' : '') +
     '</div>';
   }).join('') +
-  '<div class="hint" style="margin-top:8px">SU ↗ copies the brand name and opens SponsorUnited — search it there and the capture script pulls contacts straight in; this list updates on the next load. + Add saves a brand with its LinkedIn so it lands in Needs Contacts.</div>';
+  '<div class="hint" style="margin-top:8px">SU ↗ copies the brand name and opens SponsorUnited — search it there and the capture script pulls contacts straight in; this list updates on the next load. + Add saves it as a brand (with its website and LinkedIn when known) so it shows on All brands under Needs people.</div>';
 
   body.querySelectorAll('a[data-brand]').forEach(function (a) {
     a.onclick = function (ev) { ev.preventDefault(); loadBrand(a.getAttribute('data-brand')); };

@@ -8797,7 +8797,8 @@ const handlers: Record<string, Handler> = {
           name: d.name, category, tier,
           website: d.website ?? null, linkedinUrl: d.linkedinUrl ?? null,
           source: 'discover',
-          notes: [d.reason ? `Discover: ${d.reason}` : '', (d as any).activation ? `Activation idea: ${(d as any).activation}` : ''].filter(Boolean).join('\n') || null,
+          notes: [d.reason ? `Discover: ${d.reason}` : '', (d as any).activation ? `Activation idea: ${(d as any).activation}` : '',
+            d.sourceUrl ? `Found in: ${d.sourceUrl}` : ''].filter(Boolean).join('\n') || null,
         },
       })
     }
@@ -8813,7 +8814,9 @@ const handlers: Record<string, Handler> = {
     if (!q) throw new Error('query required')
     let saved = 0, skipped = 0
     for (const r of rows.slice(0, 40)) {
-      if (!r?.name || !/linkedin\.com\/company\//i.test(String(r.linkedinUrl ?? ''))) { skipped++; continue }
+      // Proof it's real: a LinkedIn company page or its own website.
+      const hasLi = /linkedin\.com\/company\//i.test(String(r?.linkedinUrl ?? ''))
+      if (!r?.name || (!hasLi && !/^https?:\/\/\S+\.\S+/i.test(String(r.website ?? '')))) { skipped++; continue }
       const name = String(r.name).trim().slice(0, 120)
       const existing = await prisma.brand.findFirst({
         where: { name: { equals: name, mode: 'insensitive' } }, select: { id: true },
@@ -8826,7 +8829,7 @@ const handlers: Record<string, Handler> = {
           reason: r.reason ? String(r.reason).slice(0, 300) : null,
           activation: r.activation ? String(r.activation).slice(0, 300) : null,
           website: r.website ? String(r.website).slice(0, 300) : null,
-          linkedinUrl: String(r.linkedinUrl).slice(0, 300),
+          linkedinUrl: hasLi ? String(r.linkedinUrl).slice(0, 300) : null,
           ...(existing ? { status: 'added', brandId: existing.id } : {}),
         },
         update: {

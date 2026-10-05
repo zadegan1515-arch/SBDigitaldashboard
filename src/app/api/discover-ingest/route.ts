@@ -1,75 +1,124 @@
 // src/app/api/discover-ingest/route.ts
 //
-// The delivery door for the daily brand hunt. A scheduled Claude session
-// researches new/trending brands each morning (free — no API credits),
-// verifies their LinkedIn company pages, and POSTs them here. Rows land
-// on the Discover page under the hunt's query label, exactly like a
-// search run from the page.
+// The delivery door for the daily brand hunt (Leo, Oct 2026: "a process
+// for Claude to find new brands … it shouldn't necessarily be through
+// LinkedIn"). A scheduled Claude session searches the open web each
+// morning (free — no API credits) and POSTs what it found here. Rows land
+// on Brands → Discover under "Claude hunt · <date>" for Leo to Add or
+// Dismiss — this door can only add DiscoveredBrand rows, never brands,
+// contacts or anything else. Rules in src/lib/claude-hunt.ts: priority
+// lanes only, a website or source link (no LinkedIn page needed), at
+// least one of Leo's signs, never a brand already known, 50 a day.
 //
-// Security mirrors /api/ingest: gated by the same INGEST_TOKEN shared
-// secret; disabled entirely when the env var is missing. Write-only —
-// it can only add DiscoveredBrand rows (never brands, contacts, or
-// anything else) and reads nothing back beyond a save count.
+// Auth: Bearer REPORT_TOKEN (the Claude cloud environment's token, 24+
+// characters). The old body `token` = INGEST_TOKEN still works so an
+// older routine prompt doesn't fail. No token configured → closed.
 //
-// Novelty rule: this endpoint only accepts brands the system has NEVER
-// seen — not in the Brand table, not in any previous discovery. That's
-// what makes the daily feed "new brands", not reruns.
+// GET (same auth) = what the hunt needs before it searches: the lanes,
+// how many it may still add today, and every name already known (brand
+// names, also-known-as, earlier finds) so it doesn't research repeats.
+// Brand names only — no contacts, no notes.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
+import { timingSafeEqual } from 'crypto'
+import { HUNT_LANES, HUNT_PER_DAY, HUNT_PER_POST, HUNT_SIGNALS, HUNT_LABEL, huntLabel, judgeHuntRow, knownKeys, type HuntRow } from '@/lib/claude-hunt'
+
+export const dynamic = 'force-dynamic'
 
 const prisma = new PrismaClient()
 
-export async function POST(req: NextRequest) {
-  const configured = process.env.INGEST_TOKEN
-  if (!configured) {
-    return NextResponse.json({ ok: false, error: 'Ingest disabled — set INGEST_TOKEN in Vercel.' }, { status: 503 })
-  }
+function same(a: string, b: string): boolean {
+  const x = Buffer.from(a), y = Buffer.from(b)
+  return x.length === y.length && timingSafeEqual(x, y)
+}
 
+function allowed(req: NextRequest, bodyToken?: unknown): boolean {
+  const report = process.env.REPORT_TOKEN || ''
+  if (report.length >= 24 && same(req.headers.get('authorization') || '', `Bearer ${report}`)) return true
+  const ingest = process.env.INGEST_TOKEN || ''
+  return !!ingest && typeof bodyToken === 'string' && same(bodyToken, ingest)
+}
+
+async function usedToday(): Promise<number> {
+  return (prisma as any).discoveredBrand.count({
+    where: {
+      createdAt: { gte: new Date(Date.now() - 864e5) },
+      OR: [{ query: { startsWith: HUNT_LABEL } }, { query: { startsWith: '🔥' } }],
+    },
+  })
+}
+
+async function known() {
+  const [brands, found] = await Promise.all([
+    prisma.brand.findMany({ select: { name: true, aka: true } }),
+    (prisma as any).discoveredBrand.findMany({ select: { name: true } }) as Promise<{ name: string }[]>,
+  ])
+  return { brands, found }
+}
+
+export async function GET(req: NextRequest) {
+  if (!allowed(req)) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
+  const [used, k] = await Promise.all([usedToday(), known()])
+  const names = new Set<string>()
+  for (const b of k.brands) {
+    names.add(b.name)
+    for (const a of String(b.aka ?? '').split(/[,;]/)) if (a.trim()) names.add(a.trim())
+  }
+  for (const d of k.found) names.add(d.name)
+  return NextResponse.json({
+    ok: true,
+    lanes: HUNT_LANES,
+    signals: HUNT_SIGNALS,
+    perDay: HUNT_PER_DAY,
+    leftToday: Math.max(0, HUNT_PER_DAY - used),
+    label: huntLabel(),
+    known: [...names].sort((a, b) => a.localeCompare(b)),
+  })
+}
+
+export async function POST(req: NextRequest) {
   let body: any
   try { body = await req.json() } catch {
     return NextResponse.json({ ok: false, error: 'Bad JSON' }, { status: 400 })
   }
-  if (body?.token !== configured) {
-    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
+  if (!process.env.REPORT_TOKEN && !process.env.INGEST_TOKEN) {
+    return NextResponse.json({ ok: false, error: 'Closed — set REPORT_TOKEN in Vercel.' }, { status: 503 })
   }
+  if (!allowed(req, body?.token)) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
 
-  const query = String(body.query ?? '').trim().slice(0, 120)
-  const rows: any[] = Array.isArray(body.rows) ? body.rows.slice(0, 30) : []
-  if (!query || rows.length === 0) {
-    return NextResponse.json({ ok: false, error: 'query and rows required' }, { status: 400 })
-  }
+  const rows: any[] = Array.isArray(body?.rows) ? body.rows.slice(0, HUNT_PER_POST) : []
+  if (!rows.length) return NextResponse.json({ ok: false, error: 'rows required' }, { status: 400 })
 
-  let saved = 0
-  const skipped: string[] = []
+  const query = huntLabel()
+  let left = Math.max(0, HUNT_PER_DAY - await usedToday())
+  const k = await known()
+  const keys = knownKeys(k.brands, k.found)
+
+  const saved: string[] = []
+  const skipped: { name: string; why: string }[] = []
   for (const r of rows) {
-    const name = String(r?.name ?? '').trim().slice(0, 120)
-    const linkedinUrl = String(r?.linkedinUrl ?? '').trim()
-    // The house rule: no verified LinkedIn company page, no row.
-    if (!name || !/linkedin\.com\/company\//i.test(linkedinUrl)) { if (name) skipped.push(name); continue }
-
-    // Novelty check — already a brand, or already discovered under ANY
-    // query? Then it isn't new; skip it.
-    const asBrand = await prisma.brand.findFirst({
-      where: { name: { equals: name, mode: 'insensitive' } }, select: { id: true },
-    })
-    const asDiscovery = await (prisma as any).discoveredBrand.findFirst({
-      where: { name: { equals: name, mode: 'insensitive' } }, select: { id: true },
-    })
-    if (asBrand || asDiscovery) { skipped.push(name); continue }
-
-    await (prisma as any).discoveredBrand.create({
-      data: {
-        query, name,
-        category: r.category ? String(r.category).slice(0, 40) : null,
-        reason: r.reason ? String(r.reason).slice(0, 300) : null,
-        activation: r.activation ? String(r.activation).slice(0, 300) : null,
-        website: r.website ? String(r.website).slice(0, 300) : null,
-        linkedinUrl: linkedinUrl.slice(0, 300),
-      },
-    })
-    saved++
+    const verdict = judgeHuntRow(r, keys)
+    if (!verdict.ok) { const no = verdict as { name: string; why: string }; skipped.push({ name: no.name, why: no.why }); continue }
+    const v = verdict as { ok: true; row: HuntRow }
+    if (left <= 0) { skipped.push({ name: v.row.name, why: 'daily limit of ' + HUNT_PER_DAY + ' reached' }); continue }
+    try {
+      await (prisma as any).discoveredBrand.create({
+        data: {
+          query, name: v.row.name, category: v.row.category,
+          reason: v.row.reason, activation: v.row.activation,
+          website: v.row.website, linkedinUrl: v.row.linkedinUrl,
+          sourceUrl: v.row.sourceUrl, signals: v.row.signals.join(','),
+        },
+      })
+      saved.push(v.row.name)
+      left -= 1
+    } catch (err: any) {
+      // Same name under today's label already (a second run): not new.
+      if (err?.code === 'P2002') skipped.push({ name: v.row.name, why: 'already known' })
+      else throw err
+    }
   }
 
-  return NextResponse.json({ ok: true, saved, skippedCount: skipped.length, skipped: skipped.slice(0, 20) })
+  return NextResponse.json({ ok: true, label: query, saved: saved.length, savedNames: saved, leftToday: left, skipped })
 }
