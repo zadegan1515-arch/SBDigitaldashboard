@@ -194,6 +194,16 @@ async function main() {
   await page.waitForTimeout(400);
   st = await page.evaluate(() => ({ f: ZT_FILTER, cur: ZT_CUR }));
   assert.deepEqual(st, { f: 'todo', cur: 'tE' });
+  // A call on the right shows its row in the left "Calls booked" fold.
+  await page.evaluate(() => { document.getElementById('zt-calls').open = false; });
+  await page.click('#zach-todo .zs-row[data-zscall="tK"]');
+  await page.waitForTimeout(100);
+  assert.equal(await page.evaluate(() => document.getElementById('zt-calls').open), true);
+  assert.equal(await page.$eval('#zt-calls [data-ztundo="tK"]', (b) => b.closest('.zt-done-row').classList.contains('zs-flash')), true);
+  // Arrow keys on the right stay on the right (they used to jump to the list).
+  await page.focus('#zach-todo .zs-row[data-zsopen="tD"]');
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.evaluate(() => !!document.activeElement.closest('.zs')), true);
   console.log('ok 3 - a brand on the right opens its person on the left, under their filter');
 
   // 4. The final reach-out's own template ------------------------------
@@ -236,6 +246,19 @@ async function main() {
   });
   assert.deepEqual(narrow, { below: true, pos: 'static', scrollX: false });
   console.log('ok 5 - narrow screen: the right side stacks under the list');
+
+  // 6. Everyone left went quiet: To do points at No response, not an empty Waiting.
+  await page.evaluate(() => {
+    ZT.brands = ZT.brands.filter((g) => g.id === 'bG');
+    ZT_BY_ID = { tG: ZT.brands[0].people[0] };
+    ZT_FILTER = 'todo'; ZT_CUR = null; ztRender();
+  });
+  const none = await page.textContent('#zach-todo .zt-none');
+  assert.match(none, /1 went quiet after the final reach-out/);
+  await page.click('#zach-todo .zt-none [data-ztf="noreply"]');
+  assert.equal(await page.evaluate(() => ZT_FILTER), 'noreply');
+  assert.ok(await page.$('#zach-todo .zt-item[data-zt="tG"]'));
+  console.log('ok 6 - To do with only No response left links to it');
 
   assert.deepEqual(errors, []);
   if (process.env.SHOT) {

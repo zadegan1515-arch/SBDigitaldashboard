@@ -16,7 +16,7 @@
 //     people who accept ever get logged this way, so counting them would
 //     make a category look better than it is). The brand still counts as
 //     reached (status, not date), and Zach's list picks them up with
-//     "Text them" due 24h after the log, as for any accept.
+//     "Text them" due 2 days after the log (HAND_DM_DAYS), as for any accept.
 //
 // Neither ever stamps a day's queue. The rules are pure here so
 // node scripts/test-li-log.mjs can pin them; the writes are in

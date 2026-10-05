@@ -101,7 +101,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   /api/data and /api/ingest). **Invite sent** = sentAt now (counts in the day's 30, the weekly limit,
   accept rates; They accepted later). **They accepted** = status accepted with **no sentAt** (Leo's call:
   only accepts get logged this way, so they stay out of the weekly limit, coverage and accept rates);
-  its TargetEvent is Zach's list's acceptedAt ("Text them" due 24h after the log). Because of that,
+  its TargetEvent is Zach's list's acceptedAt ("Text them" due 2 days after the log, `HAND_DM_DAYS`). Because of that,
   "was this brand/person contacted" must use `wasInvited` / `INVITED_WHERE` in route.ts (sentAt OR status
   sent/accepted/replied/converted), **never sentAt alone**. A log never moves anyone backwards; the person
   is found by profile link anywhere or by name at the brand (no second copy; on file at another brand →

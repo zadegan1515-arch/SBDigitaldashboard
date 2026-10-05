@@ -7034,7 +7034,9 @@ const handlers: Record<string, Handler> = {
   // exists on the brand card and the Results list.
   async followUpsDue({ nudgeAfterDays = HAND_NUDGE_DAYS, staleAfterDays = 14 }: any = {}) {
     const now = Date.now()
-    const nudgeBefore = new Date(now - nudgeAfterDays * 864e5)
+    // Whole New York days, like Zach's list: a DM sent any time on Sep 25
+    // has its final reach-out due all of Oct 5.
+    const nudgeBefore = dayStartOf(addDaysKey(localDayKey(), -(Number(nudgeAfterDays) - 1)))
     const staleBefore = new Date(now - staleAfterDays * 864e5)
     const days = (d: Date) => Math.floor((now - d.getTime()) / 864e5)
 
@@ -7044,9 +7046,16 @@ const handlers: Record<string, Handler> = {
       // Zach's list has on "Send the final reach-out", with the same text.
       prisma.target.findMany({
         where: {
+          // Not answered by any road Zach's list counts (ztReplied): an
+          // email Zach sent puts them on "set up the call", not here.
           status: 'accepted',
-          dmSentAt: { not: null, lte: nudgeBefore },
+          dmSentAt: { not: null, lt: nudgeBefore },
           repliedAt: null,
+          emailedAt: null,
+          handWantsEmailAt: null,
+          handLiPathAt: null,
+          handLiSentAt: null,
+          emails: { none: { direction: 'in' } },
           nudgedAt: null,
           handSkippedAt: null,
           callAt: null,

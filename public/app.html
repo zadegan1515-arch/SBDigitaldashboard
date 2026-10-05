@@ -393,6 +393,8 @@
   .zs-when.today{color:var(--accent-hi)}
   .zs-when.soon{color:var(--ink-2)}
   .zs-when.todo{color:var(--good)}
+  .zt-done-row.zs-flash{animation:zs-flash 1.6s ease-out}
+  @keyframes zs-flash{from{background:var(--accent-soft)}to{background:transparent}}
   .zs-more{display:block;margin:2px 16px 4px;padding:4px 0;border:0;background:none;color:var(--accent-hi);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer}
   .zs-more:hover{text-decoration:underline}
   @media (min-width:1360px){
@@ -2608,8 +2610,9 @@ function ztEmailDone(p) { return p.emailedAt || p.emailReplyAt || null; }
 // The day each next step is due, or null when it doesn't apply:
 // the first message (2 days after the accept), the final reach-out (10
 // days after the message), and No response (7 days after the final).
-// An accept with no date on file is due now.
-function ztMsgDue(p) { return p.acceptedAt ? ztAddDays(p.acceptedAt, ZT_DAYS.dm) : null; }
+// An accept with no date on file (old rows) counts from the invite, so
+// the oldest show as late; with neither, it's due now.
+function ztMsgDue(p) { var a = p.acceptedAt || p.invitedAt; return a ? ztAddDays(a, ZT_DAYS.dm) : null; }
 function ztFinalDue(p) { return p.dmSentAt ? ztAddDays(p.dmSentAt, ZT_DAYS.final) : null; }
 function ztQuietDay(p) { return p.nudgedAt ? ztAddDays(p.nudgedAt, ZT_DAYS.quiet) : null; }
 function ztDmWindow(p) {
@@ -3103,7 +3106,9 @@ function ztListHtml(c) {
   });
   if (!groups.length) {
     return '<div class="zt-list"><div class="zt-none">' + (ZT_FILTER === 'todo'
-      ? 'Nothing to do right now: everyone left is waiting on a reply. <button class="zt-linkbtn" data-ztf="waiting">See who</button>'
+      ? (c.waiting ? 'Nothing to do right now: everyone left is waiting on a reply. <button class="zt-linkbtn" data-ztf="waiting">See who</button>'
+        : c.noreply ? 'Nothing to do right now: ' + c.noreply + ' went quiet after the final reach-out. <button class="zt-linkbtn" data-ztf="noreply">See who</button>'
+        : 'Nothing to do right now.')
       : ZT_FILTER === 'noreply' ? 'Nobody has gone quiet after the final reach-out. <button class="zt-linkbtn" data-ztf="todo">Back to To do</button>'
       : 'Nobody here right now. <button class="zt-linkbtn" data-ztf="todo">Back to To do</button>') + '</div></div>';
   }
@@ -3261,7 +3266,7 @@ function zsRowHtml(r, grp) {
   var lead = r.lead, who = lead.p ? lead.p.name : lead.c.name;
   var more = r.people.length > 1 ? ' +' + (r.people.length - 1) : '';
   var small = esc(who) + more + (lead.p ? ' · ' + esc(zsLast(lead.p, grp)) : '');
-  var attr = lead.p ? 'data-zsopen="' + esc(lead.p.targetId) + '"' : 'data-ztbrand="' + esc(r.g.id) + '"';
+  var attr = lead.p ? 'data-zsopen="' + esc(lead.p.targetId) + '"' : 'data-zscall="' + esc(lead.c.targetId) + '"';
   var all = r.people.map(function (x) { return (x.p ? x.p.name : x.c.name) + ': ' + x.w.title; }).join('\n');
   return '<button class="zs-row" ' + attr + ' style="--c:' + ztColor(r.g.id) + '" title="' + esc(all) + '">' +
     '<i class="zs-dot" aria-hidden="true"></i>' +
@@ -3313,6 +3318,18 @@ function zsRefresh() {
   side.hidden = !html;
   var cols = box.querySelector('.zt-cols');
   if (cols) cols.classList.toggle('has-side', !!html);
+}
+// A call on the right: its row in the left "Calls booked" fold.
+function zsCall(id) {
+  var fold = document.getElementById('zt-calls');
+  var undo = fold && fold.querySelector('[data-ztundo="' + id + '"]');
+  var row = undo && undo.closest('.zt-done-row');
+  if (!row) return;
+  fold.open = true;
+  row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  row.classList.remove('zs-flash');
+  void row.offsetWidth;
+  row.classList.add('zs-flash');
 }
 // A brand on the right: its person, open on the left, under whichever
 // filter they're in.
@@ -3598,7 +3615,17 @@ document.getElementById('zach-todo').addEventListener('click', function (e) {
   var zs = t.closest('[data-zsopen]');
   if (zs) { zsOpen(zs.getAttribute('data-zsopen')); return; }
   var zm = t.closest('[data-zsmore]');
-  if (zm) { ZS_MORE[zm.getAttribute('data-zsmore')] = true; zsRefresh(); return; }
+  if (zm) {
+    var zk = zm.getAttribute('data-zsmore');
+    ZS_MORE[zk] = true;
+    zsRefresh();
+    // Keyboard focus goes to the first row that just appeared.
+    var nx = document.querySelectorAll('#zach-todo .zs-' + zk + ' .zs-row')[ZS_SHOW];
+    if (nx) nx.focus();
+    return;
+  }
+  var zc = t.closest('[data-zscall]');
+  if (zc) { zsCall(zc.getAttribute('data-zscall')); return; }
   var brand = t.closest('[data-ztbrand]');
   if (brand) { e.preventDefault(); loadBrand(brand.getAttribute('data-ztbrand')); return; }
   var f = t.closest('[data-ztf]');
@@ -3762,6 +3789,7 @@ document.getElementById('zach-todo').addEventListener('change', function (e) {
     var fin = el.value.replace(/\r\n/g, '\n');
     var tplFin = handFill(((ZT && ZT.finalTemplate) || { body: '' }).body, p);
     var fv = fin === tplFin || !fin.trim() ? null : fin;
+    if (!fin.trim()) { el.value = tplFin; ztFit(el); }
     if (fv === (p.final == null ? null : p.final)) return;
     p.final = fv;
     var fe = item.querySelector('[data-ztnudge]');
@@ -3866,6 +3894,8 @@ document.getElementById('zach-todo').addEventListener('keydown', function (e) {
     return;
   }
   if (typing) return;
+  // The right side is a list of links: arrows scroll it, Tab moves.
+  if (el.closest && el.closest('.zs')) return;
   var row = el.closest && el.closest('.zt-row');
   if (row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); ztToggle(id); return; }
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'j' || e.key === 'k') {
@@ -8379,12 +8409,9 @@ function renderAcceptedDms() {
           // accept is visible rather than looking finished.
           '<div class="t-actions">' +
             (d ? '<button class="btn-draft" data-rcdm="copy" data-rct="' + esc(t.id) + '" title="Copy the DM and paste it into your LinkedIn chat">Copy DM</button>' : '') +
-            // They accepted, got the note, and went quiet. One follow-up
-            // for everyone (Leo wrote it unisex), so one button. Only
-            // shown once the first message has actually gone out.
-            (t.dmSentAt && (t.drafts || []).some(function (x) { return x.nudge; })
-              ? '<button class="btn-ghost" data-rcdm="nudge" data-rct="' + esc(t.id) + '" title="Copy the follow-up asking for a quick chat this week">Copy follow-up</button>'
-              : '') +
+            // No follow-up button here: the second touch is the final
+            // reach-out, 10 days after the message (Leo, Oct 5 2026). It
+            // shows under "DM'd, no answer" below and on Zach's list.
             (t.dmSentAt
               ? '<span class="status accepted" style="font-size:12px;padding:5px 12px">LinkedIn ✓</span>'
               : '<button class="btn-ghost" data-rcdm="dmsent" data-rct="' + esc(t.id) + '" title="Logged: your LinkedIn reply went out">LinkedIn sent ✓</button>') +
@@ -8413,14 +8440,6 @@ document.getElementById('rc-accepted').addEventListener('click', function (e) {
     if (!d.firstMessage) { toast('Nothing drafted yet'); return; }
     navigator.clipboard.writeText(d.firstMessage).then(function () {
       toast('First DM copied — paste it into your LinkedIn chat');
-    }, function () { toast('Could not copy'); });
-    return;
-  }
-  if (act === 'nudge') {
-    var nd = (t.drafts || []).filter(function (x) { return x.nudge; })[0];
-    if (!nd) { toast('No follow-up drafted yet, reload the page'); return; }
-    navigator.clipboard.writeText(nd.nudge).then(function () {
-      toast('Follow-up copied, paste it into your LinkedIn chat');
     }, function () { toast('Could not copy'); });
     return;
   }
