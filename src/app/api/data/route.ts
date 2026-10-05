@@ -299,12 +299,14 @@ const TIER_BONUS: Record<string, number> = {
 // the cold-outreach pool: pitching a second person there reads as a
 // blast and steps on the live thread. Leo's rule. Hand-picking is
 // still allowed — that is the follow-up case.
+// Brand Fit's one hard no: confirmed not sold in the US. Null-safe — a
+// plain `not` would drop every brand nobody has checked. Put it under AND
+// so it never collides with another OR in the same where.
+const SOLD_IN_US: Prisma.BrandWhereInput = { OR: [{ usStatus: null }, { usStatus: { not: 'no' } }] }
 const NOT_IN_CONVERSATION: Prisma.BrandWhereInput = {
   passedAt: null,
   targets: { none: { status: { in: ['replied', 'converted'] as TargetStatus[] } } },
-  // Brand Fit's one hard no: confirmed not sold in the US (null-safe —
-  // a plain `not` would drop every brand nobody has checked).
-  AND: [{ OR: [{ usStatus: null }, { usStatus: { not: 'no' } }] }],
+  AND: [SOLD_IN_US],
 }
 
 // Both brand-level guards at once: not in conversation, and not passed
@@ -1417,6 +1419,10 @@ async function queuePlannedToday(planDay: PlanDay | null, opts: { dryRun?: boole
     // "Pass today" wins over the plan for today: the Schedule card says
     // "Passed for today", so the queue must not stamp it straight back.
     if (b.passedTodayAt && b.passedTodayAt >= dayStart) continue
+    // Archived / do-not-email / not sold in the US since it was planned:
+    // the card already says why; never stamp it.
+    const refused = planRefusal(b)
+    if (refused && refused !== 'inconversation') { skipped.push({ brandId: bid, brandName: b.name, reason: refused }); continue }
     const inList = b.targets.filter(t =>
       t.queuedFor && t.queuedFor >= dayStart && ['queued', 'drafted'].includes(t.status) && !t.shelved).length
     const sentHere = b.targets.filter(t => t.sentAt && t.sentAt >= dayStart).length
@@ -1605,7 +1611,7 @@ const FIT_COLUMNS_SELECT = {
   sponsorNote: true, bizStatus: true, acquiredBy: true, researchNote: true,
 } as const
 type FactField = keyof typeof FIT_COLUMNS_SELECT
-type FactChange = { field: FactField; label: string; from: string; to: any; toText: string }
+type FactChange = { field: FactField; label: string; from: string; fromRaw: string | number | boolean | null; to: any; toText: string }
 const FACT_LABELS: Record<FactField, string> = {
   salesCents: 'Sales', fundingCents: 'Raised', lastRoundAt: 'Last round', usStatus: 'In the US',
   sponsorsCollege: 'Sponsors college / music', sponsorNote: 'What they sponsor', bizStatus: 'Status',
@@ -1641,7 +1647,7 @@ function factChanges(current: Record<FactField, any>, row: ResearchRow): FactCha
   const out: FactChange[] = []
   for (const f of Object.keys(next) as FactField[]) {
     if (same(f, current[f], next[f])) continue
-    out.push({ field: f, label: FACT_LABELS[f], from: factText(f, current[f]), to: next[f], toText: factText(f, next[f]) })
+    out.push({ field: f, label: FACT_LABELS[f], from: factText(f, current[f]), fromRaw: rawFact(current[f]), to: next[f], toText: factText(f, next[f]) })
   }
   return out
 }
@@ -1708,12 +1714,12 @@ async function fitArchiveCandidates() {
 // Each research row matched to one brand — by id when Claude carried it
 // back, else the exact name / also-known-as (nameKey; several brands
 // under one key and none named exactly = unmatched, Leo picks by hand).
-async function researchPreview(raws: any[]) {
-  const brands = await prisma.brand.findMany({
-    select: { id: true, name: true, aka: true, passedAt: true, ...FIT_COLUMNS_SELECT, researchedAt: true },
-  })
+// Which brand a research row is about: its id when Claude carried it
+// back, else the exact name / also-known-as (nameKey). Several brands
+// under one key and none named exactly = no match (Leo picks by hand).
+function researchMatcher<B extends { id: string; name: string; aka: string | null }>(brands: B[]) {
   const byId = new Map(brands.map(b => [b.id, b]))
-  const byKey = new Map<string, typeof brands>()
+  const byKey = new Map<string, B[]>()
   for (const b of brands) {
     for (const n of [b.name, ...(b.aka ?? '').split(/[,;]/)].map(s => s.trim()).filter(Boolean)) {
       const k = nameKey(n)
@@ -1723,32 +1729,45 @@ async function researchPreview(raws: any[]) {
       byKey.set(k, list)
     }
   }
-  const rows: Array<{
+  return (raw: any, name: string): { brand: B | null; several: string[] } => {
+    const byIdHit = raw?.id ? byId.get(String(raw.id)) : undefined
+    if (byIdHit) return { brand: byIdHit, several: [] }
+    const same = byKey.get(nameKey(name)) ?? []
+    const hit = same.length === 1 ? same[0] : same.find(x => x.name.trim().toLowerCase() === name.toLowerCase())
+    return { brand: hit ?? null, several: !hit && same.length > 1 ? same.map(x => x.name) : [] }
+  }
+}
+
+async function researchPreview(raws: any[]) {
+  const brands = await prisma.brand.findMany({
+    select: { id: true, name: true, aka: true, passedAt: true, ...FIT_COLUMNS_SELECT, researchedAt: true },
+  })
+  const match = researchMatcher(brands)
+  type Row = {
     brandId: string; brandName: string; input: string; archived: boolean; researchedAt: Date | null
-    row: ResearchRow; changes: Array<{ field: string; label: string; from: string; to: string; raw: string | number | boolean | null }>
-  }> = []
+    row: ResearchRow; rawIndex: number
+    changes: Array<{ field: string; label: string; from: string; fromRaw: string | number | boolean | null; to: string; raw: string | number | boolean | null }>
+  }
+  const rows: Row[] = []
   const unmatched: Array<{ name: string; several: string[] }> = []
   const errors: string[] = []
-  const seen = new Set<string>()
-  for (const raw of raws) {
+  const at = new Map<string, number>()
+  raws.forEach((raw, rawIndex) => {
     const { row, error } = cleanResearchRow(raw)
-    if (error || !row) { errors.push(error ?? 'unreadable row'); continue }
-    let b = raw?.id ? byId.get(String(raw.id)) : undefined
-    let several: string[] = []
-    if (!b) {
-      const same = byKey.get(nameKey(row.name)) ?? []
-      b = same.length === 1 ? same[0] : same.find(x => x.name.trim().toLowerCase() === row.name.toLowerCase())
-      if (!b && same.length > 1) several = same.map(x => x.name)
-    }
-    if (!b) { unmatched.push({ name: row.name, several }); continue }
-    if (seen.has(b.id)) { errors.push(row.name + ': ' + b.name + ' is listed twice — the first one counts'); continue }
-    seen.add(b.id)
-    rows.push({
+    if (error || !row) { errors.push(error ?? 'unreadable row'); return }
+    const { brand: b, several } = match(raw, row.name)
+    if (!b) { unmatched.push({ name: row.name, several }); return }
+    const next: Row = {
       brandId: b.id, brandName: b.name, input: row.name, archived: !!b.passedAt, researchedAt: b.researchedAt,
-      row,
-      changes: factChanges(b, row).map(c => ({ field: c.field, label: c.label, from: c.from, to: c.toText, raw: rawFact(c.to) })),
-    })
-  }
+      row, rawIndex,
+      changes: factChanges(b, row).map(c => ({ field: c.field, label: c.label, from: c.from, fromRaw: c.fromRaw, to: c.toText, raw: rawFact(c.to) })),
+    }
+    // Listed twice: the later row is the newer research — it counts.
+    const had = at.get(b.id)
+    if (had != null) { errors.push(b.name + ' is listed twice — the later one counts'); rows[had] = next; return }
+    at.set(b.id, rows.length)
+    rows.push(next)
+  })
   return { rows, unmatched, errors }
 }
 
@@ -1761,8 +1780,10 @@ function rawFact(v: any): string | number | boolean | null {
   if (typeof v === 'bigint') return Number(v)
   return v
 }
-function changeSig(changes: Array<{ field: string; raw: any }>): string {
-  return JSON.stringify(changes.map(c => [c.field, c.raw]))
+// [field, what it is now, what it becomes]: a value edited by hand after
+// the review changes the signature too, so it's never overwritten unseen.
+function changeSig(changes: Array<{ field: string; fromRaw: any; raw: any }>): string {
+  return JSON.stringify(changes.map(c => [c.field, c.fromRaw ?? null, c.raw ?? null]))
 }
 
 async function researchLastBrief() {
@@ -2519,7 +2540,9 @@ const handlers: Record<string, Handler> = {
     })
 
     const handPicked = await prisma.target.findMany({
-      where: { queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } },
+      // A brand marked not sold in the US after its people were stamped
+      // today drops out of the list (they stay in the pool, untouched).
+      where: { queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null, AND: [SOLD_IN_US] } },
       include,
       orderBy: { queuedFor: 'desc' },
     })
@@ -3106,7 +3129,7 @@ const handlers: Record<string, Handler> = {
         ...(noProfile ? { externalId: null, passedAt: null, doNotEmail: false } : {}),
       },
       include: {
-        _count: { select: { contacts: true, targets: true } },
+        _count: { select: { contacts: true, targets: true, deals: true, activations: true } },
         // Decision-makers first, but never pretend a brand with contacts
         // has none — that read as "No contacts yet" next to "5 contacts".
         contacts: {
@@ -3165,13 +3188,22 @@ const handlers: Record<string, Handler> = {
       const replied = ts.filter(t => t.repliedAt)
       const last = (xs: Date[]) => xs.length ? new Date(Math.max(...xs.map(d => d.getTime()))) : null
       const { targets, ...rest } = b
+      const f = reach ? brandFit(b, reach.get(b.id) ?? 0, rates, now) : null
+      const emailed = ts.filter(t => t.emailedAt || t._count.emails > 0).length
       return {
         ...rest,
-        ...(reach ? { fit: fitBrief(brandFit(b, reach.get(b.id) ?? 0, rates, now)) } : {}),
+        ...(f ? {
+          fit: fitBrief(f),
+          // What "Hide too small" may hide: the same as Stock take — too
+          // small and nobody's touched it (no invite, email, reply, deal,
+          // activation), not archived or do-not-email.
+          hideSmall: f.tooSmall && !b.passedAt && !b.doNotEmail && !sent.length && !emailed && !replied.length &&
+            !b._count.deals && !b._count.activations,
+        } : {}),
         outreach: {
           queued: ts.filter(t => !t.shelved && ['queued', 'drafted'].includes(t.status)).length,
           invited: sent.length,
-          emailed: ts.filter(t => t.emailedAt || t._count.emails > 0).length,
+          emailed,
           replied: replied.length,
           lastSentAt: last(sent.filter(t => t.sentAt).map(t => t.sentAt!)),
           lastRepliedAt: last(replied.map(t => t.repliedAt!)),
@@ -3382,7 +3414,7 @@ const handlers: Record<string, Handler> = {
       const ts = b.targets
       const f = brandFit(b, b.contacts.filter(isReachable).length, rates, now)
       return {
-        fit: { score: f.score, tooSmall: f.tooSmall, usUnknown: f.usUnknown, ruledOut: f.ruledOut },
+        fit: { score: f.score, tooSmall: f.tooSmall, tooSmallWhy: f.tooSmallWhy, usUnknown: f.usUnknown, ruledOut: f.ruledOut, bizNote: f.bizNote },
         id: b.id, name: b.name, aka: b.aka, category: b.category, tier: b.tier,
         about: b.about, topProducts: b.topProducts, linkedinUrl: b.linkedinUrl,
         externalId: b.externalId, archived: !!b.passedAt, doNotEmail: b.doNotEmail,
@@ -3506,6 +3538,8 @@ const handlers: Record<string, Handler> = {
       where: {
         passedAt: null, doNotEmail: false,
         OR: [{ researchedAt: null }, { researchedAt: { lt: fresh } }],
+        // Known not sold in the US: nothing left to find out.
+        AND: [SOLD_IN_US],
         ...(scope === 'schedule' ? { id: { in: [...onDays.keys()] } } : {}),
       },
       select: {
@@ -3525,7 +3559,7 @@ const handlers: Record<string, Handler> = {
     const text = [
       'Research these brands for SB Agency\'s Brand Fit (college-show sponsorships, US market).',
       'For each brand return one JSON object; leave a key out when you could not find it (never guess):',
-      '{ "id", "name", "sales": annual revenue in US dollars ("$12M"), "funding": total venture money raised ("$30M"),',
+      '{ "id", "name", "sales": annual revenue in US dollars ("$12M"), "funding": total venture money raised ("$30M"; "$0" only if you can tell it never raised outside money),',
       '  "lastRound": "YYYY-MM", "us": "yes" | "no" (sold in the US), "sponsorsCollege": "yes" | "no" (college, festival or music sponsorships),',
       '  "sponsorNote": what they sponsor, "status": "active" | "closed" | "acquired", "acquiredBy", "note": sources in one line }',
       'Answer with one JSON array only.',
@@ -3553,13 +3587,20 @@ const handlers: Record<string, Handler> = {
     }
     const prev = await readJsonSetting<any>(prisma, RESEARCH_STAGED_KEY, null)
     const pending = prev && !prev.appliedAt && !prev.dismissedAt && Array.isArray(prev.rows) ? prev.rows : []
-    const keyOf = (r: any) => (r?.id ? 'id:' + String(r.id) : 'n:' + nameKey(String(r?.name ?? r?.brand ?? '')))
-    const merged = new Map<string, any>()
-    for (const r of pending) merged.set(keyOf(r), r)
-    for (const r of ok) merged.set(keyOf(r), r)
-    const all = [...merged.values()].slice(0, 500)
+    // One row per brand — matched the way the review will match it, so a
+    // row by id and one by name for the same brand are the same brand.
+    const match = researchMatcher(await prisma.brand.findMany({ select: { id: true, name: true, aka: true } }))
+    const keyOf = (r: any) => {
+      const name = String(r?.name ?? r?.brand ?? '')
+      return match(r, name).brand?.id ?? 'n:' + nameKey(name)
+    }
+    const newKeys = new Set(ok.map(keyOf))
+    let all = [...pending.filter((r: any) => !newKeys.has(keyOf(r))), ...ok]
+    // Past 500 the oldest waiting rows go, never the ones just sent.
+    const dropped = Math.max(0, all.length - 500)
+    if (dropped) all = all.slice(dropped)
     await writeJsonSetting(prisma, RESEARCH_STAGED_KEY, { at: new Date().toISOString(), by: by ?? 'Claude', rows: all })
-    return { staged: ok.length, waiting: all.length, errors }
+    return { staged: ok.length, waiting: all.length, dropped, errors }
   },
 
   // Leo turns the waiting research down (or it had nothing new): it
@@ -3618,7 +3659,7 @@ const handlers: Record<string, Handler> = {
         const cur = await tx.brand.findUnique({ where: { id: r.brandId }, select: { ...FIT_COLUMNS_SELECT, researchedAt: true } })
         if (!cur) continue
         const changes = factChanges(cur, r.row)
-        if (changeSig(changes.map(c => ({ field: c.field, raw: rawFact(c.to) }))) !== seen[r.brandId]) { changedSince.push(r.brandName); continue }
+        if (changeSig(changes.map(c => ({ field: c.field, fromRaw: c.fromRaw, raw: rawFact(c.to) }))) !== seen[r.brandId]) { changedSince.push(r.brandName); continue }
         const data: Record<string, any> = { researchedAt: stamp }
         const before: Record<string, any> = { researchedAt: cur.researchedAt }
         const after: Record<string, any> = { researchedAt: stamp }
@@ -3634,7 +3675,15 @@ const handlers: Record<string, Handler> = {
     }, { timeout: 30000 })
     if (staged) {
       const st = await readJsonSetting<any>(prisma, RESEARCH_STAGED_KEY, null)
-      if (st && st.at === stagedAt) await writeJsonSetting(prisma, RESEARCH_STAGED_KEY, { ...st, appliedAt: log.at })
+      if (st && st.at === stagedAt) {
+        // Brands skipped because they changed since Leo looked stay
+        // waiting (a fresh stamp — he looks again); the rest is done.
+        const skipped = new Set(changedSince)
+        const left = found.rows.filter(r => skipped.has(r.brandName)).map(r => raws[r.rawIndex])
+        await writeJsonSetting(prisma, RESEARCH_STAGED_KEY, left.length
+          ? { at: new Date().toISOString(), by: st.by ?? null, rows: left }
+          : { ...st, appliedAt: log.at })
+      }
     }
     return { ok: true, updated: log.brands.length, names: log.brands.map(b => b.name), changedSince }
   },
@@ -4269,8 +4318,13 @@ const handlers: Record<string, Handler> = {
       take: 200,
     })).filter(r => r.brandId === brand.id || names.includes(r.company.trim().toLowerCase()))
 
-    // Brand Fit with every reason, for the brand page's Fit line.
-    const fit = brandFit(brand, brand.contacts.filter(isReachable).length, await recentAcceptRates())
+    // Brand Fit with every reason, for the brand page's Fit line, and
+    // whether it's on Stock take's Suggest Archive list (same exclusions
+    // as fitArchiveCandidates: not archived, not in talks).
+    const fitRes = brandFit(brand, brand.contacts.filter(isReachable).length, await recentAcceptRates())
+    const inTalks = brand.targets.some(t => t.status === 'replied' || t.status === 'converted') ||
+      !!bestDealStage(brand.deals.map(d => d.stage)) || (await prisma.activation.count({ where: { brandId } })) > 0
+    const fit = { ...fitRes, onArchiveList: !!fitRes.archiveWhy && !brand.passedAt && !inTalks }
 
     return {
       brand: brandOut, events, money, fit,
@@ -4917,6 +4971,12 @@ const handlers: Record<string, Handler> = {
     })
     if (!brand) throw new Error('Brand not found')
     if (brand.passedAt) throw new Error(`${brand.name} is passed — bring it back from its brand page first.`)
+    // Brand Fit's hard no: nobody at a brand confirmed not sold in the US
+    // goes in the queue — not by the rotation, the plan, Fill to 30, Next
+    // best, nor a click. Change "Sold in the US" on the brand page first.
+    if (brand.usStatus === 'no') {
+      return { queued: false, reason: 'notus', brandId: brand.id, brandName: brand.name }
+    }
 
     // Someone at this brand already wrote back: stop cold-pitching it.
     // A deliberate click (force) still goes through — that is a
@@ -6652,7 +6712,7 @@ const handlers: Record<string, Handler> = {
     const rows = brands.map(b => {
       const label = contactLabel(b, b.contacts)
       const reached = isReached(b)
-      const group = reached ? 'reached' : (b.passedAt || b.doNotEmail) ? 'setAside' : 'notReached'
+      const group = reached ? 'reached' : (b.passedAt || b.doNotEmail || b.usStatus === 'no') ? 'setAside' : 'notReached'
       const ts = b.targets
       const stage = brandStage(b)
       // People we have actually written to there (a withdrawn invite is
@@ -6674,7 +6734,7 @@ const handlers: Record<string, Handler> = {
         id: b.id, name: b.name, tier: b.tier, externalId: b.externalId,
         website: b.website, linkedinUrl: b.linkedinUrl,
         label, group,
-        setAsideWhy: group === 'setAside' ? (b.passedAt ? 'archived' : 'donotemail') : null,
+        setAsideWhy: group === 'setAside' ? (b.passedAt ? 'archived' : b.doNotEmail ? 'donotemail' : 'notus') : null,
         outreach: {
           stage, stale, people,
           lastAt: lastMs ? new Date(lastMs).toISOString() : null,
@@ -6972,7 +7032,7 @@ const handlers: Record<string, Handler> = {
 
     const brands = await prisma.brand.findMany({
       where: {
-        passedAt: null, ...notPassedToday(), doNotEmail: false, contacts: { some: {} },
+        passedAt: null, ...notPassedToday(), doNotEmail: false, contacts: { some: {} }, AND: [SOLD_IN_US],
         ...(theme ? { category: theme } : {}),
       },
       select: {
@@ -8853,7 +8913,7 @@ const handlers: Record<string, Handler> = {
   async nextBestBrands({ take = 15 }: any = {}) {
     const [brands, sent, replies] = await Promise.all([
       prisma.brand.findMany({
-        where: { doNotEmail: false, passedAt: null, ...notPassedToday() },
+        where: { doNotEmail: false, passedAt: null, ...notPassedToday(), AND: [SOLD_IN_US] },
         include: {
           contacts: { select: { title: true, linkedinUrl: true, email: true, isDecisionMaker: true } },
           targets: { select: { status: true, sentAt: true, shelved: true } },

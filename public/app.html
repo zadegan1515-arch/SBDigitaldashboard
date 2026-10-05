@@ -1962,6 +1962,7 @@ function bFitLine(f) {
   if (!f) return '';
   var mark = function (r) { return r.good === true ? '<span class="y">✓</span>' : r.good === false ? '<span class="n">✗</span>' : '?'; };
   return '<div id="b-fit" class="b-plan"><span class="b-plan-k">Brand Fit</span>' + fitTags(f) +
+    (f.onArchiveList && !f.ruledOut && !f.bizNote ? '<span class="sd-tag warn" title="' + esc(f.archiveWhy || '') + '">on Suggest Archive</span>' : '') +
     '<div class="fit-why" style="flex-basis:100%">' + (f.reasons || []).map(function (r) {
       return '<span title="' + r.points + ' points">' + mark(r) + ' ' + esc(r.text) + '</span>';
     }).join('') + '</div></div>';
@@ -4143,10 +4144,9 @@ function loadBrands(category) {
     // Hide too small: only brands nobody has contacted yet — a reached
     // brand always shows.
     // Contacted = invited on LinkedIn, emailed, or replied.
-    var small = function (b) {
-      var o = b.outreach || {};
-      return !!(b.fit && b.fit.tooSmall && !o.invited && !o.emailed && !o.replied);
-    };
+    // The server says which (too small, nobody's touched it — the same
+    // rule as Stock take). New from LinkedIn is a review list: never hidden.
+    var small = function (b) { return category !== 'new' && !!b.hideSmall; };
     // Hidden rows are still drawn (display:none, data-small) so a search
     // finds them and never offers to add a brand that is already here.
     var hideRow = function (b) { return HIDE_SMALL && small(b); };
@@ -4823,10 +4823,9 @@ document.addEventListener('change', function (e) {
   var where = cb.getAttribute('data-hidesmall');
   if (where === 'brands') loadBrands(BRANDS_SHOWN === 'noprofile' ? 'all' : (BRANDS_SHOWN || 'all'));
   else if (where === 'stock') loadStock();
-  else if (where === 'sched' || where === 'planweek') {
-    sdHideSmallChanged();
-    if (SCHED.pw && SCHED.pw.open) sdPwLoad();
-  }
+  else if (where === 'sched' || where === 'planweek') sdHideSmallChanged();
+  // An open Plan my week asks again whichever switch was flipped.
+  if (typeof SCHED !== 'undefined' && SCHED && SCHED.pw && SCHED.pw.open) sdPwLoad();
 });
 
 document.getElementById('bq-dups').addEventListener('click', function () {
@@ -5849,7 +5848,10 @@ function loadBrand(brandId) {
         var was = el.tagName === 'SELECT'
           ? ([].filter.call(el.options, function (o) { return o.defaultSelected; })[0] || el.options[0] || {}).value
           : el.defaultValue;
-        if (el.value.trim() !== String(was == null ? '' : was).trim()) facts[el.getAttribute('data-bfact')] = el.value.trim();
+        // A one-line box drops line breaks a researched note may hold;
+        // that alone is not a change.
+        var flat = function (v) { return String(v == null ? '' : v).replace(/[\r\n]+/g, '').trim(); };
+        if (flat(el.value) !== flat(was)) facts[el.getAttribute('data-bfact')] = el.value.trim();
       });
       if (Object.keys(facts).length) payload.facts = facts;
       var btn = this;
@@ -6901,7 +6903,8 @@ function stNext(r, goal) {
   }
   if (c.needs) out.push(c.needs + (c.needs === 1 ? ' brand has' : ' brands have') +
     ' nobody on file. People ↗ opens their LinkedIn page for the SB pill.');
-  if (c.ready) out.push(c.ready + (c.ready === 1 ? ' brand has' : ' brands have') +
+  var ready = stPlanList(r).length;
+  if (ready) out.push(ready + (ready === 1 ? ' brand has' : ' brands have') +
     ' people nobody has contacted yet, ready for the schedule.');
   if (!out.length) out.push('All ' + inPlay + ' in play have been contacted.');
   return out;
@@ -6958,11 +6961,13 @@ function stTotal(c) {
 
 function stActs(r) {
   var c = r.counts, open = ST_OPEN[r.key];
+  // Ready for a day = what the picker lists (never a brand ruled out).
+  var ready = stPlanList(r).length;
   return '<div class="st-acts">' +
     (c.total ? '<button class="btn-ghost sd-sm' + (open === 'brands' ? ' on' : '') + '" data-sttoggle="brands">' +
       (open === 'brands' ? 'Hide brands' : 'Brands (' + c.total + ')') + '</button>' : '') +
-    (c.ready ? '<button class="btn-ghost sd-sm' + (open === 'plan' ? ' on' : '') + '" data-sttoggle="plan" title="Put brands with people nobody has contacted yet on a Schedule day">' +
-      (open === 'plan' ? 'Hide ready brands' : 'Put on a day (' + c.ready + ' ready)') + '</button>' : '') +
+    (ready ? '<button class="btn-ghost sd-sm' + (open === 'plan' ? ' on' : '') + '" data-sttoggle="plan" title="Put brands with people nobody has contacted yet on a Schedule day">' +
+      (open === 'plan' ? 'Hide ready brands' : 'Put on a day (' + ready + ' ready)') + '</button>' : '') +
     (r.ideas.length ? '<button class="btn-ghost sd-sm' + (open === 'ideas' ? ' on' : '') + '" data-sttoggle="ideas">' +
       (open === 'ideas' ? 'Hide ideas' : 'Ideas to add (' + r.ideas.length + ')') + '</button>' : '') +
   '</div>';
@@ -7275,10 +7280,14 @@ function fitLoad() {
   return Promise.all([
     soft(api('researchList', { scope: 'schedule', take: 60 })),
     soft(api('researchImport', { staged: true, preview: true })),
-    soft(api('fitArchive', { preview: true }))
+    soft(api('fitArchive', { preview: true })),
+    // A pasted review is checked again too, so it never shows stale
+    // from → to after a brand was edited.
+    FIT.pasted && FIT.pastedText ? soft(api('researchImport', { text: FIT.pastedText, preview: true })) : Promise.resolve(null)
   ]).then(function (r) {
     if (seq !== FIT.seq) return;
     FIT.list = r[0]; FIT.staged = r[1]; FIT.archive = r[2];
+    if (FIT.pasted && r[3] && !r[3].error) FIT.pasted = r[3];
     fitRender();
   });
 }
@@ -7297,7 +7306,9 @@ function fitResearchTicked() {
 // What the review showed for a brand, in the server's terms (changeSig in
 // route.ts): Save writes a brand only while this still matches.
 function fitSig(changes) {
-  return JSON.stringify((changes || []).map(function (c) { return [c.field, c.raw === undefined ? null : c.raw]; }));
+  return JSON.stringify((changes || []).map(function (c) {
+    return [c.field, c.fromRaw === undefined ? null : c.fromRaw, c.raw === undefined ? null : c.raw];
+  }));
 }
 function fitArchiveTicked() {
   var a = FIT.archive;
@@ -10877,7 +10888,7 @@ function renderSchedDrillBody() {
   var asideRow = function (b) {
     return '<div class="sd-drow">' +
       '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
-      '<span class="sd-dim">' + (b.setAsideWhy === 'donotemail' ? 'Do-not-email' : 'Archived') + '</span>' +
+      '<span class="sd-dim">' + (b.setAsideWhy === 'donotemail' ? 'Do-not-email' : b.setAsideWhy === 'notus' ? 'Not sold in the US' : 'Archived') + '</span>' +
       '<span class="sd-sp"></span>' +
       '<button class="btn-ghost sd-sm" data-sopen="' + esc(b.id) + '">Open brand</button>' +
     '</div>';
@@ -16427,6 +16438,7 @@ var QUEUE_FAIL = {
   already: 'their people already in the list',
   contacted: 'an invite already sent',
   inconversation: 'a reply already in — follow up on the brand card',
+  notus: 'not sold in the US — ruled out',
 };
 
 function queueToast(r) {
@@ -16434,6 +16446,8 @@ function queueToast(r) {
     var n = r.count || 1;
     toast(r.contactName + (r.promoted ? ' moved into today’s list' : r.revived ? ' brought back' : ' added to the queue') +
       (n > 1 ? ' — ' + n + ' people in play at this brand' : r.second ? ' — two people now in play at this brand' : ''));
+  } else if (r.reason === 'notus') {
+    toast(r.brandName + ' is marked not sold in the US — change “Sold in the US” on its brand page to reach out.');
   } else if (r.reason === 'inconversation') {
     // Replied already — that is a follow-up, not new outreach.
     toast(r.brandName + ' already replied (' + r.contactName + ') — open the brand card to follow up instead of sending a new invite.');

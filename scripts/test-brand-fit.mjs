@@ -117,6 +117,13 @@ t('a parent company\'s brand is never too small by its own page', () => {
   assert.equal(isTooSmall({ liMembers: 6, hasParent: true, salesCents: 50_000 * 100 }).tooSmall, true, 'known sales still count')
 })
 
+t('a parent company\'s brand keeps the parent\'s size in its score', () => {
+  const unmeasured = scoreBrand({ ...base, hasParent: true })
+  const tinyPage = scoreBrand({ ...base, hasParent: true, liMembers: 6 })
+  assert.equal(tinyPage.score, unmeasured.score)
+  assert.equal(tinyPage.size, 'big')
+})
+
 t('learning a little never scores below knowing nothing', () => {
   const target = scoreBrand({ ...base, liMembers: 200 })
   const smallRound = scoreBrand({ ...base, liMembers: 200, fundingCents: 2 * M })
@@ -134,11 +141,12 @@ t('US unknown: kept, tagged US?', () => {
 })
 
 t('low fit + no signal → suggested only once researched', () => {
-  const weak = { category: 'software', reachable: 0, need: 3, acceptRate: 0.05, now, salesCents: 300_000 * 100, sponsorsCollege: false }
+  const weak = { category: 'software', reachable: 0, need: 3, acceptRate: 0.05, now, salesCents: 300_000 * 100, fundingCents: 0, sponsorsCollege: false }
   assert.equal(scoreBrand(weak).archiveWhy, null, 'not researched → never suggested on score')
   assert.match(scoreBrand({ ...weak, researchedAt: '2026-10-05' }).archiveWhy, /low fit/)
   // Research that found nothing is not "no signal".
-  assert.equal(scoreBrand({ ...weak, researchedAt: '2026-10-05', salesCents: null }).archiveWhy, null, 'money not found')
+  assert.equal(scoreBrand({ ...weak, researchedAt: '2026-10-05', salesCents: null }).archiveWhy, null, 'sales not found')
+  assert.equal(scoreBrand({ ...weak, researchedAt: '2026-10-05', fundingCents: null, liMembers: 3000 }).archiveWhy, null, 'funding not found: not "no budget"')
   assert.equal(scoreBrand({ ...weak, researchedAt: '2026-10-05', sponsorsCollege: null }).archiveWhy, null, 'sponsorships not found')
   // Any one signal keeps it off the list.
   assert.equal(scoreBrand({ ...weak, researchedAt: '2026-10-05', sponsorsCollege: true }).archiveWhy, null)

@@ -50,7 +50,10 @@ export type StockBrand = {
   fit?: StockFit
 }
 
-export type StockFit = { score: number; tooSmall: boolean; usUnknown: boolean; ruledOut: string | null }
+export type StockFit = {
+  score: number; tooSmall: boolean; tooSmallWhy?: string | null; usUnknown: boolean
+  ruledOut: string | null; bizNote?: string | null
+}
 
 export type Lane = {
   // The category key — what Brand.category holds for this lane.

@@ -454,6 +454,8 @@ export async function draftDailyEmails(limit = 5) {
     if (drafted >= limit || room === 0) break
     if (t.emails.some(e => e.direction === 'in') || !t.contact.email) continue
     if ((t.brand as any).doNotEmail || /skip/i.test(t.brand.notes ?? '')) continue
+    // Brand Fit's hard no: confirmed not sold in the US — no follow-ups.
+    if ((t.brand as any).usStatus === 'no') continue
     const intro = t.emails.find(e => e.kind === 'intro' && e.status === 'sent')
     const f1 = t.emails.find(e => e.kind === 'followup')
     const hasF2 = t.emails.some(e => e.kind === 'followup2')
@@ -516,6 +518,8 @@ export async function draftDailyEmails(limit = 5) {
         brand: {
           doNotEmail: false,
           NOT: { notes: { contains: 'skip', mode: 'insensitive' } },
+          // Brand Fit's hard no: confirmed not sold in the US (null-safe).
+          AND: [{ OR: [{ usStatus: null }, { usStatus: { not: 'no' } }] }],
         } as any,
       },
       include: { brand: true, contact: true },

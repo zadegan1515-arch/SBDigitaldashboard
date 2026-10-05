@@ -170,7 +170,9 @@ export function scoreBrand(b: FitInput): FitResult {
   const recent = !!last && (b.now.getTime() - last.getTime()) / 86_400_000 <= RECENT_ROUND_DAYS
   const sp = b.salesCents != null ? salesPoints(b.salesCents) : null
   const fp = b.fundingCents != null ? fundingPoints(b.fundingCents, recent) : null
-  const size = brandSize(b)
+  // A parent company's brand keeps the parent's size even when its own
+  // LinkedIn page is tiny (Ketel One's people sit under Diageo).
+  const size: BrandSize = b.hasParent && sizeFromMembers(b.liMembers) === 'small' ? 'big' : brandSize(b)
   // Whichever says the most counts: sales, venture money, or — while sales
   // aren't known — the LinkedIn size estimate, so learning a little (a
   // small round) never scores below knowing nothing.
@@ -233,7 +235,7 @@ export function scoreBrand(b: FitInput): FitResult {
   // money looked up and under the bars, no college / music sponsorships
   // found, not an 18–24 category. Unknowns are not "no": research that
   // found nothing never puts a brand on the list.
-  const moneyKnown = b.salesCents != null || b.fundingCents != null
+  const moneyKnown = b.salesCents != null && b.fundingCents != null
   const moneySignal = (b.salesCents != null && b.salesCents >= TOO_SMALL_SALES_CENTS)
     || (b.fundingCents != null && b.fundingCents >= BIG_FUNDING_CENTS)
   const youth = !!b.category && YOUTH_CATEGORIES.includes(b.category)

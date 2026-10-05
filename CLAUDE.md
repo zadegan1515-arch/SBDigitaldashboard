@@ -170,15 +170,18 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (`brand-size.ts`) stands in; then already sponsors college / music, an 18–24 category
   (`YOUTH_CATEGORIES`: drinks, nicotine & betting, apparel / athletic / beauty), people we can reach,
   the category's 90-day accept rate; while sales aren't known the stronger of funding and the size
-  estimate counts. **Ruled out** = confirmed not sold in the US only (Leo's one hard no): never planned,
-  suggested or auto-queued — `NOT_IN_CONVERSATION` (the rotation's pool), `outreachGate` /
-  `planRefusal` reason `notus`; a hand-pick on the brand page still works. US unknown = kept, tagged
-  "US?". Out of business / acquired (`bizNote`) only go on suggest Archive — Leo decides. **Too small** =
+  estimate counts (a parent company's brand keeps the parent's size). **Ruled out** = confirmed not sold
+  in the US only (Leo's one hard no): nobody there is ever queued or emailed — `SOLD_IN_US` guard in
+  `NOT_IN_CONVERSATION` (the rotation's pool), `fillToday`, `nextBestBrands`, today's list, the email
+  machine (`draftDailyEmails`); `queueBrandTargets` refuses (`notus`, even a click), `outreachGate` /
+  `planRefusal` / `queuePlannedToday` skip it, category drill-in sets it aside. To reach out, change "Sold
+  in the US" on the brand page. US unknown = kept, tagged "US?". Out of business / acquired (`bizNote`) only go on suggest Archive — Leo decides. **Too small** =
   sales under $1M, or (sales not known) under 20 people on LinkedIn **measured** — a size guessed from tier
   never hides, and a brand with a parent company (`parentOf`) is never small by its own page. **Hide too small**
   is one per-browser switch (`HIDE_SMALL`, localStorage `sb.hideSmall`, on by default) on Brands, Stock
-  take, the Fill box and Plan my week (the Brands list draws `listBrands({ fit: true })` rows and hides them
-  on the page — a search still finds them; `brandStock`, `suggestForDay`, `planWeek` take `hideSmall`); it
+  take, the Fill box and Plan my week (the Brands list draws `listBrands({ fit: true })` rows and hides
+  those the server flags `hideSmall` — too small and untouched, the same rule as Stock take; a search
+  still finds them; New from LinkedIn never hides; `brandStock`, `suggestForDay`, `planWeek` take `hideSmall`); it
   only hides brands nobody has contacted (invited, emailed or replied). `compareOpenBrands` puts the
   higher fit first after the contacts label (replaced "small brands first"). Facts live on Brand
   (`salesCents`/`fundingCents` **BigInt** cents — `src/lib/bigint-json.ts` makes them JSON numbers and is
@@ -192,12 +195,14 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `researchStaged`; rows join a batch Leo hasn't reviewed, a brand's newer row replacing its older one);
   Leo reviews on Stock take → Brand Fit (each from → to, ticked; a ticked brand with nothing new is
   marked researched; Dismiss = `researchDismiss`) → `researchImport` apply writes only what he saw: the
-  page sends the batch stamp (`stagedAt`) and each brand's change signature (`expect`, `changeSig`), and
-  anything that changed since is skipped and named. One transaction, Undo `researchUndo` (only fields
+  page sends the batch stamp (`stagedAt`) and each brand's change signature (`expect`, `changeSig` =
+  [field, value now, new value] — a hand edit after the review counts as a change), and anything that
+  changed since is skipped, named, and left waiting in the batch. Rows match by id, else exact name / aka
+  (`researchMatcher`); a brand listed twice — the later row wins. One transaction, Undo `researchUndo` (only fields
   still as the import left them). Never write facts without that review. **Suggest Archive**
   (`fitArchive` preview → apply, Undo `fitArchiveUndo`; Setting `fitArchiveLast`): confirmed not US,
-  closed/acquired, or researched with every signal known to be absent (money looked up and under the
-  bars, no college / music found, not 18–24) and a low score; never a brand in talks (reply, deal,
+  closed/acquired, or researched with every signal known to be absent (sales AND funding looked up and
+  under the bars, no college / music found, not 18–24) and a low score; never a brand in talks (reply, deal,
   activation); apply = the usual archive (passedAt + queued people shelved) and takes them off upcoming
   Schedule days. Tests: `test-brand-fit.mjs`, `test-stock.mjs`, `test-brand-fit-ui.js` (page, fake
   /api/data), `test-brand-fit-e2e.js` (real handlers, throwaway Postgres:

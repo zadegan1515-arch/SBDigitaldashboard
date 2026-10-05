@@ -35,11 +35,12 @@ const fit = (score, extra) => ({ score, size: 'target', tooSmall: false, tooSmal
 const row = (id, name, f, outreach) => ({
   id, name, tier: 'growth', passedAt: null, category: 'energy', about: name + ' makes things', contacts: [],
   _count: { contacts: 3 }, outreach: outreach || {}, source: null, createdAt: NOW, notes: null, fit: f,
+  hideSmall: false, // the server's call: too small and nobody's touched it
 });
 const LIST = [
   row('b_low', 'Low Fit Co', fit(30)),
   row('b_high', 'High Fit Co', fit(88, { usUnknown: false })),
-  row('b_tiny', 'Tiny Hidden Co', fit(20, { tooSmall: true, tooSmallWhy: '6 people on LinkedIn (under 20)' })),
+  { ...row('b_tiny', 'Tiny Hidden Co', fit(20, { tooSmall: true, tooSmallWhy: '6 people on LinkedIn (under 20)' })), hideSmall: true },
   row('b_tinysent', 'Tiny Invited Co', fit(25, { tooSmall: true }), { invited: 1, lastSentAt: NOW }),
 ];
 
@@ -94,8 +95,8 @@ const H = {
   researchList: () => ({ scope: 'schedule', total: 1, shown: 1, scheduled: 1, rows: [{ id: 'b_euro', name: 'Euro Co' }], text: 'Research these brands…\n- {"id":"b_euro"}' }),
   researchImport: (a) => (a.preview === false ? { ok: true, updated: a.keep.length, names: [] } : {
     rows: [
-      { brandId: 'b_euro', brandName: 'Euro Co', input: 'Euro Co', archived: false, row: {}, changes: [{ field: 'usStatus', label: 'In the US', from: '—', to: 'no', raw: 'no' }] },
-      { brandId: 'b_tiny', brandName: 'Tiny Hidden Co', input: 'tiny', archived: false, row: {}, changes: [{ field: 'salesCents', label: 'Sales', from: '—', to: '$300K', raw: 30000000 }] },
+      { brandId: 'b_euro', brandName: 'Euro Co', input: 'Euro Co', archived: false, row: {}, changes: [{ field: 'usStatus', label: 'In the US', from: '—', fromRaw: null, to: 'no', raw: 'no' }] },
+      { brandId: 'b_tiny', brandName: 'Tiny Hidden Co', input: 'tiny', archived: false, row: {}, changes: [{ field: 'salesCents', label: 'Sales', from: '—', fromRaw: null, to: '$300K', raw: 30000000 }] },
       { brandId: 'b_same', brandName: 'Same Co', input: 'Same Co', archived: false, row: {}, changes: [] },
     ],
     unmatched: [{ name: 'Nobody Brand', several: [] }], errors: [], staged: { at: NOW, rows: 3 }, last: null,
@@ -218,7 +219,7 @@ async function main() {
     await page.waitForTimeout(200);
     const imp = calls.filter((c) => c.fn === 'researchImport' && c.args.preview === false)[0];
     assert.deepEqual([imp.args.staged, imp.args.stagedAt, imp.args.keep], [true, NOW, ['b_euro', 'b_same']], 'only ticked brands, from the batch Leo saw');
-    assert.deepEqual(imp.args.expect, { b_euro: '[["usStatus","no"]]', b_same: '[]' }, 'with exactly what was shown');
+    assert.deepEqual(imp.args.expect, { b_euro: '[["usStatus",null,"no"]]', b_same: '[]' }, 'with exactly what was shown');
     // Suggest Archive.
     await page.waitForSelector('[data-fitsec="archive"]');
     await page.evaluate(() => { document.querySelector('[data-fitsec="archive"]').open = true; });
