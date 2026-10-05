@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.24
+// @version      1.25
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -83,7 +83,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.24';
+  var VERSION = '1.25';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -442,6 +442,20 @@
     return rows;
   }
 
+  // "LinkedIn Member" cards: people outside Leo's network, whose name and
+  // profile LinkedIn hides — nothing on them to read. Counted so the panel
+  // can say so instead of looking like it missed them.
+  function hiddenMembers() {
+    var seen = [];
+    [].slice.call(document.querySelectorAll('main *')).forEach(function (el) {
+      if (el.children.length || skipZone(el)) return;
+      if (!/^linkedin member$/i.test(String(el.textContent || '').trim())) return;
+      var c = el.closest('li') || el.parentElement;
+      if (seen.indexOf(c) < 0) seen.push(c);
+    });
+    return seen.length;
+  }
+
   // When the reader looks broken on a page — the ways it has gone wrong
   // on LinkedIn's real pages: people on screen and none made out, or
   // everyone's title blank or the same (the "• 3rd+" badge read as the
@@ -742,7 +756,7 @@
       prog.textContent = n + ' people on screen…';
     }, halt).then(function () {
       window.scrollTo(0, 0);
-      lastRead = { rows: scrape(), companyName: companyName(), companyUrl: location.href, industry: companyIndustry() };
+      lastRead = { rows: scrape(), hidden: hiddenMembers(), companyName: companyName(), companyUrl: location.href, industry: companyIndustry() };
       return preview('');
     }).catch(function (e) {
       showError(e.message);
@@ -850,7 +864,8 @@
           onclick: function () { pickAndPreview(box.value.trim()); },
         }),
       ]),
-      h('div', { style: 'font-size:12px;color:#555;margin-top:8px', text: lastRead.rows.length + ' people read from this page.' }),
+      h('div', { style: 'font-size:12px;color:#555;margin-top:8px', text: lastRead.rows.length + ' people read from this page.' +
+        (lastRead.hidden ? ' ' + lastRead.hidden + ' more show as "LinkedIn Member" — LinkedIn hides their name and profile (outside your network), so they can\'t be read.' : '') }),
       group(j.brand ? 'Will add' : 'Buyers found', j.brand ? adds : waiting, true, '#137333'),
       group('Over the ' + j.cap + ' cap', by('full'), false, '#946200'),
       group('Already on file', by('dupe'), false, '#555'),

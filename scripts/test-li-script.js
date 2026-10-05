@@ -524,6 +524,8 @@ const GM_SHIM = `
     // 3. Nothing saved until Add; no navigation of its own.
     assert.equal(sent.filter(b => b.action === 'liCapture').length, 0);
     assert.match(pageObj.url(), /\/company\/liquid-death\/people\/$/);
+    assert.match(await pageObj.innerText('#sbli-panel'), /1 more show as "LinkedIn Member"/);
+    ok('says how many "LinkedIn Member" cards LinkedIn hid');
     const addText = await pageObj.textContent('#sbliadd');
     assert.match(addText, /Add 2 to Liquid Death/);
     await pageObj.click('#sbliadd');

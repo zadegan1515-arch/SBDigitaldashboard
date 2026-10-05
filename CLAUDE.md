@@ -351,6 +351,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   it has the repo attached; a session a routine makes fresh has no repo and can't push — which reads
   the reports and fixes/pushes LinkedIn-tool bugs only; needs `REPORT_TOKEN` +
   `sb-digitaldashboard.vercel.app` allowed in the cloud environment.
+  **"LinkedIn Member" cards** (out of Leo's network, name + profile hidden by LinkedIn) can't be read by
+  anything; the preview counts them (`hiddenMembers`) and says so, so a short read doesn't look broken.
   Worklist in the dashboard: Outreach → People → "Under 25" (deep link `app.html#people`).
   On a profile (`/in/<slug>/`) the pill is **Send to dashboard** (Leo, Oct 2026: "it should just be send
   this contact to dashboard"): reads name / headline / current company (the SB · Log reader), the company
