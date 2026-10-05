@@ -50,6 +50,7 @@ import { isLogStage } from '@/lib/li-log'
 import { rollWindow, findUnsent, planCarry, type Unsent, type CarryFacts } from '@/lib/carry'
 import { workNeed } from '@/lib/planned-first'
 import { buildStock, bestDealStage, refileMoves, remapPlanDays, brandKey } from '@/lib/stock'
+import { buyerKind, isBuyerTitle, countBuyers } from '@/lib/buyers'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
@@ -2874,15 +2875,16 @@ const handlers: Record<string, Handler> = {
         _count: { select: { contacts: true, targets: true } },
         // Decision-makers first, but never pretend a brand with contacts
         // has none — that read as "No contacts yet" next to "5 contacts".
+        // Everyone on file (≤ 25 a brand): the table counts the buyers
+        // (src/lib/buyers.ts) and who has an email / a LinkedIn link.
         contacts: {
-          orderBy: { isDecisionMaker: 'desc' },
-          select: { name: true, title: true, linkedinUrl: true },
-          take: 3,
+          orderBy: [{ isDecisionMaker: 'desc' }, { name: 'asc' }],
+          select: { id: true, name: true, title: true, email: true, linkedinUrl: true },
         },
         // Outreach state for the card: invited / replied and when.
         targets: { select: { status: true, sentAt: true, repliedAt: true, shelved: true } },
       },
-      take,
+      take: Math.min(Math.max(Number(take) || 500, 1), 5000),
     })
 
     // Brands with contacts first — those are the actionable ones.
@@ -2906,9 +2908,19 @@ const handlers: Record<string, Handler> = {
       const sent = ts.filter(wasInvited)
       const replied = ts.filter(t => t.repliedAt)
       const last = (xs: Date[]) => xs.length ? new Date(Math.max(...xs.map(d => d.getTime()))) : null
-      const { targets, ...rest } = b
+      const { targets, contacts, ...rest } = b
+      const buyers = contacts.filter(c => isBuyerTitle(c.title))
       return {
         ...rest,
+        // First three for the old card shape (searches, pickers).
+        contacts: contacts.slice(0, 3).map(c => ({ name: c.name, title: c.title, linkedinUrl: c.linkedinUrl })),
+        buyers: countBuyers(contacts.map(c => c.title)),
+        buyerPeople: buyers.slice(0, 12).map(c => ({
+          id: c.id, name: c.name, title: c.title, kind: buyerKind(c.title),
+          email: !!c.email, linkedin: !!c.linkedinUrl,
+        })),
+        withEmail: contacts.filter(c => !!c.email).length,
+        withLinkedin: contacts.filter(c => !!c.linkedinUrl).length,
         outreach: {
           queued: ts.filter(t => !t.shelved && ['queued', 'drafted'].includes(t.status)).length,
           invited: sent.length,

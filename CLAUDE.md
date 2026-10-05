@@ -31,7 +31,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 
 ## Where things live
 - `public/app.html` — the whole UI. Top nav is six groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
-  `showView`): Home · Brands (All brands / Stock take / Discover / Needs contacts) · Outreach (LinkedIn / Results /
+  `showView`): Home · Brands (All brands / Discover — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
   Schedule / Email / People / Archived / Email stats) ·
   **Show Board** (Overview = code lookup + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
@@ -188,6 +188,17 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   reached > has people > needs contacts. Priority lanes carry ideas (known names not on the roster
   under any name or aka) that add through `addBrandsBulk`'s preview, filed under the lane.
   `LANE_GOAL = 15` in play per lane. `node scripts/test-stock.mjs`.
+- **Brands → All brands = the one roster table** (Leo, Oct 2026: "aggregate all the brands … make sure
+  we have sufficient contacts for each brand"; `brRender`, `BR_*` in app.html). One row per brand:
+  Category · Tier · **Buyers** · People · Email · LinkedIn · Last touch. **Buyers** = people on file
+  whose title is partnerships/sponsorship, events/experiential, marketing/brand or founder/CEO
+  (`src/lib/buyers.ts`, counted in `listBrands` → `buyers`, `buyerPeople`; `node scripts/test-buyers.mjs`);
+  a brand is covered at **1** (`BR_TARGET`, Leo's call). Filters All / Needs people / Has enough,
+  Hide archived, sort (fewest buyers first by default), search by name or aka. A row opens in place:
+  category, tier, website, LinkedIn page, aka, notes save on change (`updateBrand`); **Add a person**
+  (`upsertContact`); the name opens the brand page. The tick bar (re-file, Put on a day) is unchanged.
+  Stock take (lanes, ideas, re-file) and Needs contacts (SponsorUnited worklist) left the sub-tabs and
+  are header buttons; their views and deep links still work. `node scripts/test-brands-table.js`.
 - **Brands → New from LinkedIn** (chip after All; `listBrands({ category: 'new' })`, count from
   `categoryReach.newFromLinkedIn`): brands the LinkedIn run added itself (`source` linkedin-discover /
   research) in the last 14 days that nobody has looked at. Tick → **Keep** (off the list, nothing

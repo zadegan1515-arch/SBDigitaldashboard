@@ -976,6 +976,53 @@
   .sheet td.del button{padding:4px 8px;line-height:1}
   .sheet .field-box{padding:5px 8px;font-size:13px}
   .count-head .n{color:var(--ink-3);font-weight:500;margin-left:6px}
+  /* Brands table (loadBrands → brRender) */
+  .br-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 10px}
+  .br-bar .chip .n{margin-left:6px;color:var(--ink-3);font-weight:500}
+  .br-chk{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-2)}
+  .br-chk .inp{padding:5px 9px;font-size:12.5px}
+  .br-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-1)}
+  .br-table{width:100%;border-collapse:collapse;font-size:13px}
+  .br-table th{position:sticky;top:0;background:var(--surface-2);text-align:left;font-size:10.5px;font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);padding:9px 10px;white-space:nowrap}
+  .br-table td{padding:9px 10px;border-top:1px solid var(--border-soft);vertical-align:middle}
+  .br-row{cursor:pointer}
+  .br-row:hover td{background:rgba(255,255,255,.025)}
+  .br-row.is-open td{background:var(--accent-soft)}
+  .br-row.sel td{background:rgba(79,131,247,.08)}
+  .br-row.off{opacity:.55}
+  .br-tick{width:30px}
+  .br-tick label{display:flex;align-items:center;padding:4px;cursor:pointer}
+  .br-name{min-width:170px}
+  .br-caret{color:var(--ink-3);font-size:10px;margin-right:6px}
+  .br-link{cursor:pointer}
+  .br-link:hover{color:var(--accent-hi);text-decoration:underline}
+  .br-sub{font-size:11.5px;color:var(--ink-3);margin-top:2px}
+  .br-cat,.br-tier,.br-touch{color:var(--ink-2);white-space:nowrap}
+  .br-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .br-buy{font-weight:700}
+  .br-buy.ok{color:var(--good)}
+  .br-buy.low{color:var(--warn)}
+  .br-go{text-align:right;white-space:nowrap}
+  .br-open>td{background:var(--surface-2);padding:14px 16px}
+  .br-edit{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
+  .br-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:start}
+  .br-f{display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--ink-3)}
+  .br-f.wide{grid-column:1/-1}
+  .br-f .inp{width:100%;font-size:13px;padding:6px 9px;font-family:inherit}
+  .br-h{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px}
+  .br-people{list-style:none;display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--ink-2)}
+  .br-kind{font-size:10.5px;color:var(--accent-hi);margin-left:4px}
+  .br-has{font-size:10.5px;color:var(--ink-3)}
+  .br-add{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .br-add .inp{font-size:12.5px;padding:6px 9px;width:100%}
+  .br-add button{justify-self:start}
+  .br-links{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px;font-size:12.5px}
+  .br-links a{color:var(--accent-hi)}
+  @media (max-width:760px){
+    .br-opt{display:none}
+    .br-edit,.br-fields,.br-add{grid-template-columns:1fr}
+  }
   .target{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);
     padding:17px 20px;margin-bottom:10px;display:flex;align-items:center;gap:16px;box-shadow:var(--shadow);
     transition:border-color .15s}
@@ -1302,6 +1349,8 @@
         <button class="btn-solid" id="bq-add" hidden>Add + find on SponsorUnited</button>
         <button class="btn-ghost" id="bq-fill" title="Fills empty brand summaries from a built-in list of known brands — never overwrites anything you typed">Fill summaries</button>
         <button class="btn-ghost" id="bq-dups" title="Brands that look like the same company: the same name, LinkedIn page or website">Duplicates</button>
+        <button class="btn-ghost" id="bq-stock" title="Every brand in the lanes SB sells, brand ideas to add, and Re-file categories">Lanes, ideas &amp; re-file</button>
+        <button class="btn-ghost" id="bq-needs" title="Brands with nobody on file: SponsorUnited names, Find on LinkedIn, Add contact">SponsorUnited worklist</button>
       </div>
       <div id="dup-panel"></div>
       <div id="su-find"></div>
@@ -1970,7 +2019,7 @@ function refreshAfterSponsorChange() {
 // The top nav holds five groups; the views inside a group show as a
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
-  brands: [['brands', 'All brands'], ['stock', 'Stock take'], ['discover', 'Discover'], ['needs', 'Needs contacts']],
+  brands: [['brands', 'All brands'], ['discover', 'Discover']],
   outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['schedule', 'Schedule'], ['email-out', 'Email'], ['linkedin', 'People'], ['passed', 'Archived'], ['results', 'Email stats']],
   board: [['board', 'Overview'], ['talks', 'In talks'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
@@ -4058,79 +4107,20 @@ function loadBrands(category) {
   }
   var mine = viewTurn('brands');
 
-  return api('listBrands', { category: category }).then(function (list) {
+  return api('listBrands', { category: category, take: 5000 }).then(function (list) {
     if (!mine()) return;
-    var withContacts = list.filter(function (b) { return b._count.contacts > 0; }).length;
-    // How the roster actually splits: how many are full (at the 25 we
-    // keep on file), how many can sustain a three-person approach, and
-    // how many have nobody at all.
-    var atCap = list.filter(function (b) { return b._count.contacts >= 25; }).length;
-    var workable = list.filter(function (b) { return b._count.contacts >= 3; }).length;
+    BR_LIST = list;
+    var covered = list.filter(brCovered).length;
     document.getElementById('brands-sub').textContent = category === 'new'
       ? (list.length
           ? list.length + (list.length === 1 ? ' brand' : ' brands') + ' the LinkedIn run added in the last 14 days that nobody has looked at. ' +
             'Tick them, then Keep the good ones, Archive the misses, or re-file them — each leaves this list.'
           : 'Nothing new to look at — everything the LinkedIn run added has been kept, archived or re-filed.')
-      : list.length + ' brands · ' + withContacts + ' with contacts · ' +
-        (list.length - withContacts) + ' still need research · ' +
-        atCap + ' full at 25 · ' + workable + ' with 3+ people';
+      : list.length + ' brands · ' + covered + ' have a marketing / partnerships person on file · ' +
+        (list.length - covered) + ' still need one';
 
     renderFillProgress();
-
-    box.innerHTML = list.map(function (b) {
-      var people = (b.contacts || []).map(function (p) {
-        return '<div style="font-size:12.5px;color:var(--ink-2);margin-top:3px">' +
-          esc(p.name) + (p.title ? ' — <span style="color:var(--ink-3)">' + esc(p.title) + '</span>' : '') +
-          '</div>';
-      }).join('');
-
-      // Where this brand stands, right on the card: invited / replied
-      // with dates, so you never open a brand to find that out.
-      var o = b.outreach || {};
-      var state = '';
-      if (o.replied) {
-        state = '<span class="status replied" title="' + esc(o.lastRepliedAt || '') + '">Replied' +
-          (o.lastRepliedAt ? ' ' + shortDate(o.lastRepliedAt) : '') + '</span>';
-      } else if (o.invited) {
-        state = '<span class="status sent" title="' + esc(o.lastSentAt || '') + '">Invite sent' +
-          (o.lastSentAt ? ' ' + shortDate(o.lastSentAt) : '') + '</span>' +
-          '<span class="fit">no reply yet</span>';
-      } else if (o.queued) {
-        state = '<span class="status queued">' + o.queued + ' queued — not sent</span>';
-      } else {
-        state = '<span class="fit">not contacted</span>';
-      }
-
-      return '<div class="target clickable" data-brand="' + esc(b.id) + '" data-name="' + esc(b.name) + '"' +
-          (b.passedAt ? ' style="opacity:.55"' : '') + '>' +
-        // Ticks the brand for the re-file bar. data-bsel keeps the click
-        // from opening the brand page (see the data-brand delegate).
-        '<label data-bsel="' + esc(b.id) + '" title="Select to re-file" style="display:flex;align-items:center;padding:6px;margin:-6px 0 -6px -8px;cursor:pointer">' +
-          '<input type="checkbox" data-bselcb="' + esc(b.id) + '" data-name="' + esc(b.name) + '"></label>' +
-        '<div class="t-main">' +
-          '<div class="t-line"><span class="t-brand">' + esc(b.name) + '</span>' +
-            (b.tier ? '<span class="t-sep">·</span><span class="t-title">' + esc(b.tier) + '</span>' : '') +
-          '</div>' +
-          (category === 'new'
-            ? '<div class="t-meta"><span>' + esc(b.source === 'research' ? 'Research list' : 'LinkedIn run') +
-                (b.category ? ' · ' + esc(CAT_NAMES[b.category] || b.category) : ' · no category') +
-                ' · added ' + esc(shortDate(b.createdAt)) + '</span></div>' +
-              (b.notes ? '<div class="t-meta"><span>' + esc(b.notes) + '</span></div>' : '')
-            : '') +
-          (b.about ? '<div class="t-meta"><span>' + esc(b.about) + '</span></div>'
-            : (people || '<div class="t-meta"><span>No contacts yet</span></div>')) +
-        '</div>' +
-        '<div class="t-actions">' +
-          (b.passedAt ? '<span class="status passed">archived</span>' : state) +
-          '<span class="fit" title="contacts">' + b._count.contacts + ' contacts</span>' +
-          '<button class="btn-ghost' + (b.passedAt ? '' : ' danger') + '" data-blpass="' + esc(b.id) + '"' +
-            ' data-passed="' + (b.passedAt ? '1' : '') + '" data-name="' + esc(b.name) + '"' +
-            ' title="' + (b.passedAt ? 'Bring this brand back into outreach' : 'Take off outreach for good — moves the brand to the Archived tab. To skip it just for today, use Pass on the schedule or next best.') + '">' +
-            (b.passedAt ? 'Bring back' : 'Archive') + '</button>' +
-          '<button class="btn-ghost" data-act="open">Open →</button>' +
-        '</div>' +
-      '</div>';
-    }).join('') || '<div class="panel"><div class="empty"><h3>No brands here</h3></div></div>';
+    brRender();
     bbRender();
     applyBrandFilter();
     renderSuProposals();
@@ -4142,28 +4132,263 @@ function loadBrands(category) {
   });
 }
 
-// Pass / bring back straight from the brands list — no need to open
-// the brand. In place: the card dims and the button flips.
+// --- the Brands table -------------------------------------------
+// Leo, Oct 2026: one page for every brand — "make sure we have sufficient
+// contacts for each brand". One row per brand; BUYERS = people on file
+// whose title is partnerships / sponsorship, marketing / brand, events /
+// experiential or founder / CEO (src/lib/buyers.ts, counted server-side).
+// A brand is covered with one (BR_TARGET). A row opens in place to edit
+// its category, tier, links, also-known-as and notes and to add a person;
+// the name opens the full brand page. Needs contacts and Stock take
+// folded in: "Needs people" is a filter here, and the lanes / ideas /
+// re-file and the SponsorUnited worklist are buttons in the header.
+var BR_LIST = [];
+var BR_TARGET = 1;
+var BR = { show: 'all', sort: 'fewest', hideArchived: false };
+var BR_OPEN = {};   // brand id -> true while its edit row is open
+var BR_KIND = { partnerships: 'Partnerships', events: 'Events', marketing: 'Marketing', founder: 'Founder / CEO' };
+
+function brBuyers(b) { return (b.buyers && b.buyers.total) || 0; }
+function brCovered(b) { return brBuyers(b) >= BR_TARGET; }
+function brPeople(b) { return (b._count && b._count.contacts) || 0; }
+function brTouch(b) {
+  var o = b.outreach || {}, a = o.lastSentAt ? +new Date(o.lastSentAt) : 0, r = o.lastRepliedAt ? +new Date(o.lastRepliedAt) : 0;
+  return Math.max(a, r);
+}
+function brMatches(b, ql) {
+  if (!ql) return true;
+  return (b.name || '').toLowerCase().indexOf(ql) >= 0 || (b.aka || '').toLowerCase().indexOf(ql) >= 0;
+}
+function brShown() {
+  var ql = (document.getElementById('bq').value || '').trim().toLowerCase();
+  var rows = BR_LIST.filter(function (b) {
+    if (BR.hideArchived && b.passedAt) return false;
+    if (BR.show === 'need' && brCovered(b)) return false;
+    if (BR.show === 'enough' && !brCovered(b)) return false;
+    return brMatches(b, ql);
+  });
+  var by = BR.sort;
+  rows.sort(function (x, y) {
+    if (by === 'name') return x.name.localeCompare(y.name);
+    if (by === 'most') return (brBuyers(y) - brBuyers(x)) || (brPeople(y) - brPeople(x)) || x.name.localeCompare(y.name);
+    if (by === 'people') return (brPeople(y) - brPeople(x)) || x.name.localeCompare(y.name);
+    if (by === 'touch') return (brTouch(y) - brTouch(x)) || x.name.localeCompare(y.name);
+    // Fewest buyers: the brands that need work first; archived last.
+    return (!!x.passedAt - !!y.passedAt) || (brBuyers(x) - brBuyers(y)) || (brPeople(x) - brPeople(y)) || x.name.localeCompare(y.name);
+  });
+  return rows;
+}
+
+function brState(b) {
+  if (b.passedAt) return '<span class="status passed">archived</span>';
+  var o = b.outreach || {};
+  if (o.replied) return '<span class="status replied">replied</span>';
+  if (o.invited) return '<span class="status sent">reached</span>';
+  if (o.queued) return '<span class="status queued">queued</span>';
+  return '';
+}
+
+function brBuyerCell(b) {
+  var k = b.buyers || {}, n = brBuyers(b);
+  var tip = n ? ['partnerships', 'events', 'marketing', 'founder'].filter(function (x) { return k[x]; })
+      .map(function (x) { return k[x] + ' ' + BR_KIND[x].toLowerCase(); }).join(' · ')
+    : 'No marketing / partnerships person on file';
+  return '<span class="br-buy ' + (n >= BR_TARGET ? 'ok' : 'low') + '" title="' + esc(tip) + '">' +
+    n + ' <span aria-hidden="true">' + (n >= BR_TARGET ? '✓' : '⚠') + '</span></span>';
+}
+
+function brEditRow(b) {
+  var f = function (key, label, val, ph, wide) {
+    return '<label class="br-f' + (wide ? ' wide' : '') + '"><span>' + label + '</span>' +
+      '<input class="inp" data-bredit="' + key + '" value="' + esc(val || '') + '" placeholder="' + esc(ph || '') + '" autocomplete="off"></label>';
+  };
+  var cat = '<label class="br-f"><span>Category</span><select class="inp" data-bredit="category">' +
+    '<option value=""' + (b.category ? '' : ' selected') + '>No category</option>' +
+    CAT_KEYS.map(function (k) { return '<option value="' + esc(k) + '"' + (b.category === k ? ' selected' : '') + '>' + esc(CAT_NAMES[k]) + '</option>'; }).join('') +
+    (b.category && !CAT_NAMES[b.category] ? '<option value="' + esc(b.category) + '" selected>' + esc(b.category) + '</option>' : '') +
+    '</select></label>';
+  var tier = '<label class="br-f"><span>Tier</span><select class="inp" data-bredit="tier">' +
+    '<option value=""' + (b.tier ? '' : ' selected') + '>No tier</option>' +
+    BB_TIERS.map(function (t) { return '<option value="' + t + '"' + (b.tier === t ? ' selected' : '') + '>' + t + '</option>'; }).join('') +
+    '</select></label>';
+  var people = (b.buyerPeople || []).map(function (p) {
+    return '<li><b>' + esc(p.name) + '</b>' + (p.title ? ' — ' + esc(p.title) : '') +
+      ' <span class="br-kind">' + esc(BR_KIND[p.kind] || '') + '</span>' +
+      (p.email ? ' <span class="br-has" title="Has an email">✉</span>' : '') +
+      (p.linkedin ? ' <span class="br-has" title="Has a LinkedIn link">in</span>' : '') + '</li>';
+  }).join('');
+  var others = brPeople(b) - brBuyers(b);
+  return '<tr class="br-open" data-bropen="' + esc(b.id) + '"><td colspan="10"><div class="br-edit">' +
+    '<div class="br-fields">' + cat + tier +
+      f('website', 'Website', b.website, 'brand.com') +
+      f('linkedinUrl', 'LinkedIn page', b.linkedinUrl, 'linkedin.com/company/…') +
+      f('aka', 'Also known as', b.aka, 'Other names, comma-separated', true) +
+      '<label class="br-f wide"><span>Notes</span><textarea class="inp" rows="2" data-bredit="notes" placeholder="Anything worth remembering">' + esc(b.notes || '') + '</textarea></label>' +
+    '</div>' +
+    '<div class="br-side">' +
+      '<div class="br-h">Marketing / partnerships people on file (' + brBuyers(b) + ')</div>' +
+      (people ? '<ul class="br-people">' + people + '</ul>' : '<div class="hint" style="margin:0">Nobody yet.</div>') +
+      (others > 0 ? '<div class="hint" style="margin:4px 0 0">+ ' + others + (others === 1 ? ' other person' : ' other people') + ' on file with other titles</div>' : '') +
+      '<div class="br-h" style="margin-top:12px">Add a person</div>' +
+      '<div class="br-add">' +
+        '<input class="inp" data-bradd="name" placeholder="Name" autocomplete="off">' +
+        '<input class="inp" data-bradd="title" placeholder="Title (e.g. Brand Partnerships Manager)" autocomplete="off">' +
+        '<input class="inp" data-bradd="email" placeholder="Email" autocomplete="off">' +
+        '<input class="inp" data-bradd="linkedinUrl" placeholder="LinkedIn profile link" autocomplete="off">' +
+        '<button class="btn-draft" data-bract="add">Add</button>' +
+      '</div>' +
+      '<div class="br-links">' +
+        '<a href="' + esc(liBuyerUrl(b)) + '" target="_blank" rel="noopener">Find marketing people on LinkedIn ↗</a>' +
+        '<a href="#" data-bract="page">Open brand page →</a>' +
+        '<button class="btn-ghost' + (b.passedAt ? '' : ' danger') + '" data-blpass="' + esc(b.id) + '" data-passed="' + (b.passedAt ? '1' : '') + '" data-name="' + esc(b.name) + '"' +
+          ' title="' + (b.passedAt ? 'Bring this brand back into outreach' : 'Take off outreach for good — moves the brand to the Archived tab') + '">' +
+          (b.passedAt ? 'Bring back' : 'Archive') + '</button>' +
+      '</div>' +
+    '</div>' +
+  '</div></td></tr>';
+}
+
+function brRow(b) {
+  var newNote = lastCategory === 'new'
+    ? '<div class="br-sub">' + esc(b.source === 'research' ? 'Research list' : 'LinkedIn run') + ' · added ' + esc(shortDate(b.createdAt)) + '</div>' : '';
+  var t = brTouch(b);
+  var open = !!BR_OPEN[b.id];
+  return '<tr class="br-row' + (b.passedAt ? ' off' : '') + (BB.sel[b.id] ? ' sel' : '') + (open ? ' is-open' : '') + '" data-brow="' + esc(b.id) + '" data-name="' + esc(b.name) + '">' +
+    '<td class="br-tick"><label data-bsel="' + esc(b.id) + '" title="Select to re-file or put on a day">' +
+      '<input type="checkbox" data-bselcb="' + esc(b.id) + '" data-name="' + esc(b.name) + '"' + (BB.sel[b.id] ? ' checked' : '') + '></label></td>' +
+    '<td class="br-name"><span class="br-caret" aria-hidden="true">' + (open ? '▾' : '▸') + '</span>' +
+      '<span class="t-brand br-link" data-brand="' + esc(b.id) + '" title="Open the brand page">' + esc(b.name) + '</span> ' + brState(b) + newNote + '</td>' +
+    '<td class="br-cat">' + esc(b.category ? (CAT_NAMES[b.category] || b.category) : '—') + '</td>' +
+    '<td class="br-tier">' + esc(b.tier || '—') + '</td>' +
+    '<td class="br-num">' + brBuyerCell(b) + '</td>' +
+    '<td class="br-num">' + brPeople(b) + '</td>' +
+    '<td class="br-num br-opt">' + (b.withEmail || 0) + '</td>' +
+    '<td class="br-num br-opt">' + (b.withLinkedin || 0) + '</td>' +
+    '<td class="br-touch br-opt">' + (t ? esc(shortDate(t)) : '—') + '</td>' +
+    '<td class="br-go"><button class="btn-ghost sd-sm" data-bract="toggle">' + (open ? 'Close' : 'Edit') + '</button></td>' +
+  '</tr>' + (open ? brEditRow(b) : '');
+}
+
+function brRender() {
+  var box = document.getElementById('brands-list');
+  var rows = brShown();
+  var need = BR_LIST.filter(function (b) { return !brCovered(b); }).length;
+  var chip = function (key, label, n) {
+    return '<button class="chip' + (BR.show === key ? ' active' : '') + '" data-brshow="' + key + '">' + label + '<span class="n">' + n + '</span></button>';
+  };
+  var sorts = [['fewest', 'Fewest buyers first'], ['most', 'Most buyers first'], ['people', 'Most people'], ['touch', 'Last touched'], ['name', 'Name A–Z']];
+  var bar = '<div class="br-bar">' +
+    chip('all', 'All', BR_LIST.length) + chip('need', 'Needs people', need) + chip('enough', 'Has enough', BR_LIST.length - need) +
+    '<label class="br-chk"><input type="checkbox" data-brarch' + (BR.hideArchived ? ' checked' : '') + '> Hide archived</label>' +
+    '<span style="flex:1"></span>' +
+    '<label class="br-chk">Sort <select class="inp" data-brsort>' + sorts.map(function (s) {
+      return '<option value="' + s[0] + '"' + (BR.sort === s[0] ? ' selected' : '') + '>' + s[1] + '</option>';
+    }).join('') + '</select></label>' +
+  '</div>';
+  var head = '<tr><th class="br-tick"></th><th>Brand</th><th>Category</th><th>Tier</th>' +
+    '<th class="br-num" title="Partnerships, marketing, events or founder / CEO titles on file">Buyers</th>' +
+    '<th class="br-num">People</th><th class="br-num br-opt">Email</th><th class="br-num br-opt">LinkedIn</th>' +
+    '<th class="br-opt">Last touch</th><th></th></tr>';
+  box.innerHTML = bar + (rows.length
+    ? '<div class="br-wrap" data-scroll="brands-table"><table class="br-table"><thead>' + head + '</thead><tbody>' +
+        rows.map(brRow).join('') + '</tbody></table></div>'
+    : '<div class="panel"><div class="empty"><h3>' + (BR_LIST.length ? 'No brands match' : 'No brands here') + '</h3></div></div>');
+}
+
+function brById(id) { return BR_LIST.filter(function (b) { return b.id === id; })[0]; }
+
 document.getElementById('brands-list').addEventListener('click', function (e) {
-  var btn = e.target.closest('[data-blpass]');
-  if (!btn) return;
-  e.stopPropagation();
-  var id = btn.getAttribute('data-blpass');
-  var name = btn.getAttribute('data-name');
-  var wasPassed = !!btn.getAttribute('data-passed');
-  var card = btn.closest('.target');
-  btn.disabled = true;
-  api('setBrandPassed', { brandId: id, passed: !wasPassed }).then(function (r) {
-    btn.disabled = false;
-    btn.setAttribute('data-passed', r.passed ? '1' : '');
-    btn.textContent = r.passed ? 'Bring back' : 'Don’t outreach';
-    btn.classList.toggle('danger', !r.passed);
-    if (card) card.style.opacity = r.passed ? '.55' : '';
-    var pill = card && card.querySelector('.t-actions .status');
-    if (pill && r.passed) { pill.className = 'status passed'; pill.textContent = 'passed'; }
-    toast(r.passed ? name + ' passed — hidden from outreach until brought back' : name + ' is back in outreach');
-  }).catch(function (err) { toast(err.message); btn.disabled = false; });
+  var show = e.target.closest('[data-brshow]');
+  if (show) { BR.show = show.getAttribute('data-brshow'); brRender(); applyBrandFilter(); return; }
+  var pass = e.target.closest('[data-blpass]');
+  if (pass) {
+    e.stopPropagation();
+    var pid = pass.getAttribute('data-blpass'), pname = pass.getAttribute('data-name');
+    var was = !!pass.getAttribute('data-passed');
+    if (!was && !confirm('Archive ' + pname + '? It comes off outreach and its queued people are shelved. Bring back anytime from the Archived tab.')) return;
+    pass.disabled = true;
+    api('setBrandPassed', { brandId: pid, passed: !was }).then(function (r) {
+      toast(r.passed ? pname + ' archived — off outreach until brought back' : pname + ' is back in outreach');
+      loadBrands(lastCategory);
+    }).catch(function (err) { toast(err.message); pass.disabled = false; });
+    return;
+  }
+  var act = e.target.closest('[data-bract]');
+  var row = e.target.closest('[data-brow]') || e.target.closest('[data-bropen]');
+  var id = row && (row.getAttribute('data-brow') || row.getAttribute('data-bropen'));
+  if (act && id) {
+    var what = act.getAttribute('data-bract');
+    e.preventDefault();
+    if (what === 'page') { loadBrand(id); return; }
+    if (what === 'add') { brAddPerson(id, row); return; }
+    if (what === 'toggle') { brToggle(id); return; }
+  }
+  // Anywhere else on a row (not the name, the tick or a control) opens it.
+  if (row && row.hasAttribute('data-brow') && !e.target.closest('[data-brand]') && !e.target.closest('[data-bsel]') &&
+      !e.target.closest('a,button,input,select,textarea,label')) brToggle(id);
 });
+
+function brToggle(id) {
+  if (BR_OPEN[id]) delete BR_OPEN[id]; else BR_OPEN[id] = true;
+  brRender();
+  applyBrandFilter();
+  if (BR_OPEN[id]) {
+    var first = document.querySelector('#brands-list [data-bropen="' + CSS.escape(id) + '"] [data-bradd="name"]');
+    if (first && first.scrollIntoView) first.closest('tr').scrollIntoView({ block: 'nearest' });
+  }
+}
+
+// Brand fields save on change, like everywhere else in the site.
+document.getElementById('brands-list').addEventListener('change', function (e) {
+  var sort = e.target.closest('[data-brsort]');
+  if (sort) { BR.sort = sort.value; brRender(); applyBrandFilter(); return; }
+  var arch = e.target.closest('[data-brarch]');
+  if (arch) { BR.hideArchived = arch.checked; brRender(); applyBrandFilter(); return; }
+  var ed = e.target.closest('[data-bredit]');
+  if (!ed) return;
+  var row = ed.closest('[data-bropen]'), id = row && row.getAttribute('data-bropen');
+  var b = id && brById(id);
+  if (!b) return;
+  var key = ed.getAttribute('data-bredit'), val = ed.value.trim();
+  if ((b[key] || '') === val) return;
+  var args = { brandId: id };
+  args[key] = val;
+  ed.disabled = true;
+  api('updateBrand', args).then(function () {
+    ed.disabled = false;
+    b[key] = val || null;
+    toast('Saved · ' + b.name);
+    if (key === 'category' || key === 'tier') {
+      var cell = document.querySelector('#brands-list [data-brow="' + CSS.escape(id) + '"] .br-' + (key === 'category' ? 'cat' : 'tier'));
+      if (cell) cell.textContent = key === 'category' ? (val ? (CAT_NAMES[val] || val) : '—') : (val || '—');
+    }
+  }).catch(function (err) { ed.disabled = false; ed.value = b[key] || ''; toast(err.message); });
+});
+
+// Enter in an "Add a person" box adds them.
+document.getElementById('brands-list').addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter' || !e.target.closest('[data-bradd]')) return;
+  e.preventDefault();
+  var row = e.target.closest('[data-bropen]');
+  if (row) brAddPerson(row.getAttribute('data-bropen'), row);
+});
+
+function brAddPerson(id, row) {
+  var get = function (k) { var el = row.querySelector('[data-bradd="' + k + '"]'); return el ? el.value.trim() : ''; };
+  var name = get('name');
+  if (!name) { toast('Type their name first'); var n = row.querySelector('[data-bradd="name"]'); if (n) n.focus(); return; }
+  var email = get('email');
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast('That email doesn’t look right'); return; }
+  var btn = row.querySelector('[data-bract="add"]');
+  if (btn) btn.disabled = true;
+  api('upsertContact', { brandId: id, name: name, title: get('title') || null, email: email || null, linkedinUrl: get('linkedinUrl') || null }).then(function () {
+    var b = brById(id);
+    toast('Added ' + name + (b ? ' to ' + b.name : ''));
+    row.querySelectorAll('[data-bradd]').forEach(function (el) { el.value = ''; });
+    BR_OPEN[id] = true;
+    loadBrands(lastCategory);
+  }).catch(function (err) { if (btn) btn.disabled = false; toast(err.message); });
+}
 
 // --- Put on a day (Brands list, Stock take) --------------------
 // Leo: "make sure adding brands to days is easy". Wherever brands are
@@ -4487,7 +4712,7 @@ function bbSetTick(cb, on) {
   var id = cb.getAttribute('data-bselcb');
   cb.checked = on;
   if (on) BB.sel[id] = cb.getAttribute('data-name') || id; else delete BB.sel[id];
-  var card = cb.closest('.target');
+  var card = cb.closest('.br-row') || cb.closest('.target');
   if (card) card.classList.toggle('sel', on);
 }
 
@@ -4511,8 +4736,6 @@ document.getElementById('brands-selbar').addEventListener('click', function (e) 
   BB_NOTE = null;
   document.querySelectorAll('#brands-list input[data-bselcb]').forEach(function (cb) {
     if (clear) { bbSetTick(cb, false); return; }
-    var row = cb.closest('[data-brand]');
-    if (row && row.style.display === 'none') return;
     bbSetTick(cb, true);
   });
   BB.preview = null; BB.shown = null;
@@ -4690,6 +4913,8 @@ function dupRender() {
   box.innerHTML = html + '</div>';
 }
 
+document.getElementById('bq-stock').addEventListener('click', function () { gotoView('stock'); });
+document.getElementById('bq-needs').addEventListener('click', function () { gotoView('needs'); });
 document.getElementById('bq-dups').addEventListener('click', function () {
   DUP.open = !DUP.open;
   if (DUP.open && !DUP.data) dupLoad();
@@ -4772,16 +4997,11 @@ function confirmMergeBrands(fromId, toId, onDone) {
 function applyBrandFilter() {
   var input = document.getElementById('bq'), add = document.getElementById('bq-add');
   var q = input.value.trim(), ql = q.toLowerCase();
-  var exact = false;
-  document.querySelectorAll('#brands-list [data-brand]').forEach(function (r) {
-    var name = (r.getAttribute('data-name') || '').toLowerCase();
-    r.style.display = !ql || name.indexOf(ql) >= 0 ? '' : 'none';
-    if (name === ql) exact = true;
-  });
+  var exact = BR_LIST.some(function (b) { return (b.name || '').toLowerCase() === ql; });
   add.hidden = !(q.length >= 3 && !exact);
   if (!add.hidden) add.textContent = 'Find "' + q + '" on SponsorUnited';
 }
-document.getElementById('bq').addEventListener('input', applyBrandFilter);
+document.getElementById('bq').addEventListener('input', function () { if (BRANDS_SHOWN !== 'noprofile') brRender(); applyBrandFilter(); });
 // "Find on SponsorUnited" — the dashboard cannot search them directly
 // (their private API is off limits), so it leaves the question for the
 // capture script running in Leo's logged-in tab and shows the matches
