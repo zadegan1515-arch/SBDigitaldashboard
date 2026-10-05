@@ -58,10 +58,24 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   the higher up it should be" — `ztCompare`: text back → follow-up → reply to answer → email/DM to
   send → call; longest-waiting first within a step; a brand sits where its earliest person sits and
   keeps its people together); one row open at a time shows the flow
-  **Accepted → Text them on LinkedIn (1–4 days after the accept, late after day 4 — `ztDmWindow`; follow-up after 4 quiet days) →
-  Replied → They want email → Email to send → Email sent, and/or They want LinkedIn → DM to send →
-  DM sent (either or both; picking one logs the reply) →
+  **Accepted → Text them on LinkedIn (due 2 days after the accept, calendar days; waits until then as
+  "Text them <day>", late after) → no answer 10 days after that message: Send the final reach-out → still
+  quiet 7 days after the final: No response → Replied → They want email → Email to send → Email sent,
+  and/or They want LinkedIn → DM to send → DM sent (either or both; picking one logs the reply) →
   Call scheduled** (day picked; sets followUpAt so it shows in Needs action on the day; the end).
+  **Cadence** (Leo, Oct 5 2026): `HAND_DM_DAYS = 2`, `HAND_NUDGE_DAYS = 10`, `HAND_QUIET_DAYS = 7` in
+  route.ts, sent with zachTodo (`ZT_DAYS` on the page: `ztMsgDue` / `ztFinalDue` / `ztQuietDay`,
+  `ztDaysTo`). **No response** is worked out on the page (stage `noreply`, nothing written): off To do
+  and Waiting into its own filter chip; a reply any time brings them back. Results → "DM'd, no answer"
+  (`followUpsDue`) uses the same 10 days and the same final text, and drops anyone already sent the final.
+  **Where every brand stands** (Leo: "view where we are at with our outreach and what status all the
+  brands are at so we dont forget to maintain comms"): the right side of Zach's list (`zs*` in app.html;
+  beside the list from 1360px wide, sticky; under it on narrower screens). Every brand with someone on
+  the list + every call booked, grouped Accepted (first message due) / Messaged (final reach-out due) /
+  Final sent / Replied-emailed / Call booked / No response; a row per brand per stage (a brand with people
+  at two stages shows under both), its most urgent person leads, countdown "in 3d / today / 2d late";
+  "N late · N due today · N brands" on top. A click opens that person on the left under their filter
+  (`zsOpen`); a call opens the brand page. Read-only. `node scripts/test-zach-status.js`.
   "← Back a step" on an open card undoes the latest tick (`ztLastStep`). The stage is computed on
   the page (`ztStage`); every tick/undo is `handStep` (dm, nudge, replied,
   wantsEmail, liPath, liSent, emailed, call, skip). Fields: `dmSentAt`, `nudgedAt`,
@@ -72,8 +86,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   The first LinkedIn message ("Text them on LinkedIn") follows a third template, Setting
   `handFirstDmTemplate` (Leo's pasted text is the default; "Edit template" on the card or the modal's
   First LinkedIn message tab); a card keeps its own text only when someone really rewrote it (draft
-  `firstMessage` edited and ≠ the queue's stock text; Reset to template clears it). The follow-up is
-  the queue's draft (`saveDraft`). Leo's note is
+  `firstMessage` edited and ≠ the queue's stock text; Reset to template clears it). The **final
+  reach-out** follows a fourth, Setting `handFinalTemplate` (stand-in until Leo saves his; the modal's
+  Final reach-out tab); a card's edit is `Target.handFinal` (null = the template; `saveHandEmail`
+  `final`), no longer the queue draft's nudge. Leo's note is
   `Target.handNote`; To writes `Contact.email` (old address kept in the contact's notes).
   Open in Gmail (compose URL, `authuser` = signed-in email) / Copy: **nothing sends from the site**,
   so the cap isn't involved. Done fold (30 days) and Calls booked, each with Undo. No CC (Leo's call); one-pager is a download button. The email
