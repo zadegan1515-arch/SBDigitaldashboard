@@ -62,7 +62,7 @@ function recap(day) {
 
 const H = {
   getMe: () => ({ email: 'leo@example.com', name: 'Leo', owner: 'Leo', role: 'admin' }),
-  listOwners: () => [], listActivations: () => [], getRateCard: () => ({}),
+  listOwners: () => [], listActivations: () => [], getRateCard: () => ({}), listBrands: () => ({ brands: [], total: 0 }),
   zachTodo: () => ({ template: {}, dmTemplate: {}, firstTemplate: {}, finalTemplate: {}, brands: [], people: 0, noAddress: 0, held: [], done: [], doneDays: 30,
     dmAfterDays: 2, nudgeAfterDays: 10, quietAfterDays: 7, calls: [] }),
   getActionQueue: () => ({ count: 0, items: [] }),
@@ -206,6 +206,20 @@ async function main() {
   assert.ok(over <= 1, 'no sideways scroll on a phone: ' + over);
   if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
   console.log('ok 5 - phone width fits');
+
+  // 7 ---------------------------------------------------------------
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('about:blank');
+  await page.goto(base + '/app.html#stock');
+  await page.waitForTimeout(800);
+  assert.equal(await page.evaluate(() => location.hash), '', 'a reopened screen is dropped');
+  assert.equal(await page.evaluate(() => document.getElementById('dashboard').classList.contains('active')), true, 'opens on Home');
+  await page.evaluate(() => gotoView('brands'));
+  await page.waitForTimeout(300);
+  await page.click('#logo-home');
+  await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => document.getElementById('dashboard').classList.contains('active')), true, 'the SB logo goes Home');
+  console.log('ok 7 - opening the site lands on Home; the SB logo goes Home');
 
   assert.deepEqual(errors, [], 'no page errors');
   await browser.close();

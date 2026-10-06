@@ -663,6 +663,10 @@ cloud environment's settings).
   refuses an unknown key (`checkCategory`). Brands tab: "No category" chip (`listBrands({category:
   'none'})`) and tick-to-re-file with a from → to preview (`setBrandsCategory`, category/tier only).
 - **Full width** (Leo, Oct 6 2026: "every space is taken up on the screen"): `.page` has no max-width on any view; don't cap a page's width again (narrow inputs / modals are fine).
+- **Home is the front door** (Leo, Oct 6 2026): the SB logo (`#logo-home`) goes Home from anywhere; opening,
+  reloading or a bookmark always starts on Home (the hash is dropped on load) — only a link clicked from another
+  site keeps its deep link. **Readable text**: no font size under 11.5px; small print is 12.5–13.5px. Keep help
+  text to one short line.
 - Cents everywhere; `money()` formats on the client, `parseMoney()` parses "$1,750".
 - Activations: "current cost" = sum of `finalCents` only; estimate is the sheet. A staff-section line is a people line (slots) unless it's travel/labour (`isPeopleLine`, same regex client+server).
 - EventStaff `status`: invited · onboarding · ready · confirmed · declined · no_show · done. Local confirmed/declined/no_show/done are never overwritten by a platform sync.
