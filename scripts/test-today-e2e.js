@@ -181,6 +181,32 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual(order, ['Rich Pop', 'Poor Fizz'], 'both categories, best fit first: ' + JSON.stringify((day.brands || []).map(b => b.name)))
     ok('a Best fit day takes every category, the best Brand Fit first')
 
+    // 9. A category change reshapes a day full of planned brands.
+    const opd = await data('getOutreachPlan', {})
+    const fut = opd.days.filter(d => d.date > opd.today)
+    const dayA = fut[0].date
+    await data('planSetCategory', { date: dayA, category: null })
+    await data('planAddBrands', { date: dayA, brandIds: ['bf_poor', 'bf_rich'] })
+    let pv2 = await data('planApplyCategory', { date: dayA, category: 'energy' })
+    assert.deepEqual(pv2.moves.map(m => m.name), ['Rich Pop'], 'only the other category moves')
+    const plan0 = await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })
+    assert.ok(JSON.parse(plan0.value)[dayA].brandIds.includes('bf_rich'), 'a preview moves nothing')
+    const ap = await data('planApplyCategory', { date: dayA, category: 'energy', preview: false })
+    assert.equal(ap.moved, 1)
+    let planNow = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value)
+    assert.deepEqual(planNow[dayA].brandIds, ['bf_poor'])
+    assert.ok(planNow[ap.to].brandIds.includes('bf_rich'), 'moved to the next sending day')
+    // Best fit: the planned brands in fit order.
+    await data('planMoveBrand', { brandId: 'bf_rich', from: ap.to, to: dayA })
+    planNow = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value)
+    assert.deepEqual(planNow[dayA].brandIds, ['bf_poor', 'bf_rich'])
+    pv2 = await data('planApplyCategory', { date: dayA, category: 'bestfit' })
+    assert.deepEqual(pv2.order.map(o => o.name), ['Rich Pop', 'Poor Fizz'])
+    await data('planApplyCategory', { date: dayA, category: 'bestfit', preview: false })
+    planNow = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value)
+    assert.deepEqual(planNow[dayA].brandIds, ['bf_rich', 'bf_poor'])
+    ok('a category change moves other categories on; Best fit puts planned brands in fit order (preview first)')
+
     console.log(n + ' checks passed');
   } catch (e) {
     console.error('FAILED:', e.stack || e.message);

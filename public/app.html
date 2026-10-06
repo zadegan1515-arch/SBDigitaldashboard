@@ -13063,9 +13063,31 @@ var SCHED_DRAG = null;
     if (t.matches('[data-sdcatsel]')) {
       var ckey = t.getAttribute('data-sdcatsel');
       t.disabled = true;
-      sdPlanCall('planSetCategory', { date: ckey, category: t.value || null }).then(function () {
-        toast(sdDayTag(ckey) + ' → ' + (t.value ? CAT_NAMES[t.value] || t.value : 'automatic rotation'));
-        return sdRefresh();
+      var cval = t.value;
+      sdPlanCall('planSetCategory', { date: ckey, category: cval || null }).then(function () {
+        toast(sdDayTag(ckey) + ' → ' + (cval ? CAT_NAMES[cval] || cval : 'automatic rotation'));
+        if (!cval) return sdRefresh();
+        // A day full of planned brands leaves the category nothing to
+        // fill (Leo, Oct 6: "why does this not update"). Offer to make the
+        // day follow it: move other categories' brands on, or, for Best
+        // fit, put the planned brands in fit order.
+        return api('planApplyCategory', { date: ckey, category: cval }).then(function (pv) {
+          var ask = null;
+          if (pv.moves && pv.moves.length) {
+            ask = sdPlural(pv.moves.length, 'planned brand isn’t', 'planned brands aren’t') + ' ' + (CAT_NAMES[cval] || cval) + ': ' +
+              pv.moves.map(function (m) { return m.name; }).join(', ') + '.\n\nMove ' + (pv.moves.length === 1 ? 'it' : 'them') + ' to ' + sdDayName(pv.to) +
+              ' so ' + sdDayTag(ckey) + ' fills with ' + (CAT_NAMES[cval] || cval) + ' brands?';
+          } else if (pv.order && pv.order.length) {
+            ask = 'Put ' + sdDayTag(ckey) + '’s ' + pv.order.length + ' planned brands in best-fit order?\n\n' +
+              pv.order.slice(0, 12).map(function (o, i) { return (i + 1) + '. ' + o.name + ' (fit ' + o.fit + ')'; }).join('\n') +
+              '\n\nThe lowest fits wait for the next day if the day is full.';
+          }
+          if (!ask || !confirm(ask)) return sdRefresh();
+          return api('planApplyCategory', { date: ckey, category: cval, preview: false }).then(function (r) {
+            toast(r.reordered ? 'Planned brands put in best-fit order' : r.moved + ' moved to ' + sdDayName(r.to));
+            return sdRefresh();
+          });
+        });
       }).catch(function (err) { toast(err.message); sdRefresh(); });
       return;
     }

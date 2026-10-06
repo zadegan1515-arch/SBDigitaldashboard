@@ -177,6 +177,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   category)** = `BEST_FIT_DAY` ('bestfit'; `inDayTheme` / `isCategoryTheme` in route.ts): every category, the fill
   ordered by Brand Fit score (`brandFit`) instead of person fit — getTodayQueue, getOutreachPlan, fillToday;
   clearTodayOffCategory does nothing on it. `CAT_NAMES.bestfit` is added after `CAT_KEYS` so it never files a brand.
+  **A category change reshapes the day** (Leo, Oct 6: "why does this not update when i do a new category" — a day
+  full of planned brands left the category nothing to fill): after `planSetCategory` the page asks
+  `planApplyCategory({ date, category })` (preview) and on Leo's confirm applies it — a category day moves its
+  planned brands of other categories to the next sending day (`planMoveBrand`); a Best fit day reorders its planned
+  brands by Brand Fit (`planReorderDay`). Brands that already sent someone today stay put.
   **Pass brand** on a LinkedIn-tab brand card = `passBrandToday` (whole brand off today; unsent people back to the pool).
   **Who goes first** (Leo, Sep 2026): a day's planned brands go out in their plan order
   (`plan[day].brandIds`) — numbered on the cards, ↑ ↓ or drag a card within its day

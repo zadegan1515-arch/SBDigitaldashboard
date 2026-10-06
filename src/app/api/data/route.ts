@@ -6435,6 +6435,54 @@ const handlers: Record<string, Handler> = {
     return { ok: true, unqueued }
   },
 
+  // Leo, Oct 6 2026: "why does this not update when i do a new category".
+  // A day full of planned brands left the category nothing to fill. After
+  // a category change the page asks this (preview) and, on Leo's yes,
+  // applies it: a category day moves its planned brands of other
+  // categories to the next sending day, so the day fills with the new
+  // category; a Best fit day puts its planned brands in Brand Fit order
+  // (best first — the lowest wait if the day is full). Brands that already
+  // sent someone today stay put either way.
+  async planApplyCategory({ date, category, preview = true }: any) {
+    if (!isDayKey(date)) throw new Error('Bad date')
+    const today = localDayKey()
+    if (date < today) throw new Error('That day has passed')
+    const [plan, extras] = await Promise.all([readPlan(), readExtraDays()])
+    const ids = plan[date]?.brandIds ?? []
+    const cat = category ? String(category) : null
+    if (!ids.length || !cat) return { moves: [], order: null, to: null }
+    const brands = await prisma.brand.findMany({ where: { id: { in: ids } }, select: PLAN_BRAND_SELECT })
+    const byId = new Map(brands.map(b => [b.id, b]))
+    const started = new Set<string>()
+    if (date === today) {
+      const sent = await prisma.target.findMany({ where: { brandId: { in: ids }, sentAt: { gte: startOfLocalDay() } }, select: { brandId: true } })
+      for (const t of sent) started.add(t.brandId)
+    }
+    const to = nextSendingAfter(date, extras)
+    if (cat === BEST_FIT_DAY) {
+      const rates = await recentAcceptRates()
+      const score = (id: string) => { const b = byId.get(id); return b ? brandFit(b, b.contacts.filter(isReachable).length, rates).score : -1 }
+      const order = [...ids].sort((a, b) => Number(started.has(b)) - Number(started.has(a)) || score(b) - score(a))
+      const changed = order.join('|') !== ids.join('|')
+      if (!changed) return { moves: [], order: null, to }
+      if (preview) return { moves: [], order: order.map(id => ({ id, name: byId.get(id)?.name ?? id, fit: score(id) })), to }
+      const r = await handlers.planReorderDay({ date, brandIds: order })
+      return { applied: true, reordered: true, waiting: r.waiting ?? [] }
+    }
+    const moves = ids
+      .map(id => byId.get(id))
+      .filter((b): b is NonNullable<typeof b> => !!b && b.category !== cat && !started.has(b.id))
+      .map(b => ({ id: b.id, name: b.name, category: b.category }))
+    if (!moves.length || !to) return { moves: [], order: null, to }
+    if (preview) return { moves, order: null, to }
+    let moved = 0
+    for (const m of moves) {
+      const r = await handlers.planMoveBrand({ brandId: m.id, from: date, to })
+      if (r?.ok !== false) moved++
+    }
+    return { applied: true, moved, to }
+  },
+
   // Change one day's category without touching the brands pinned to it.
   // "" / null = back to the automatic rotation.
   async planSetCategory({ date, category }: any) {
