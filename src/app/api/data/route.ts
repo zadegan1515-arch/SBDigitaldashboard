@@ -1674,6 +1674,9 @@ function factChanges(current: Record<FactField, any>, row: ResearchRow): FactCha
 const FIT_ARCHIVE_KEY = 'fitArchiveLast'
 const RESEARCH_STAGED_KEY = 'researchStaged'
 const BUILD_PICKS_KEY = 'buildIdeaPicks'
+const WEEKLY_GOALS_KEY = 'weeklyGoals'
+// Starting goals for the weekly scoreboard; Leo edits them on Home.
+const WEEKLY_GOALS_DEFAULT: Record<string, number> = { invites: 90, accepts: 25, replies: 8, calls: 3, deals: 1, brands: 50 }
 
 // A pasted NEED that points at one of the dashboard's own review queues
 // is done once that queue is empty — Leo did it on the page, so it
@@ -2468,11 +2471,15 @@ const handlers: Record<string, Handler> = {
   // "YYYY-MM-DD", New York; default today). Read-only. Who we reached =
   // LinkedIn invites dated that day (sentByCompany's rule) + emails sent
   // + Zach's list steps; found = Discover rows + brands created that day.
-  async dayRecap({ day }: any = {}) {
+  // `to` (a later day key) makes it a range — the Friday wrap-up reads
+  // Monday..today this way; a range has no to-do and no "last sending day".
+  async dayRecap({ day, to }: any = {}) {
     const today = localDayKey()
     const d = isDayKey(day) ? day : today
+    const end = isDayKey(to) && to > d ? (to > today ? today : to) : d
+    const range = end !== d
     const lo = dayStartOf(d)
-    const hi = dayStartOf(addDaysKey(d, 1))
+    const hi = dayStartOf(addDaysKey(end, 1))
     const inDay = { gte: lo, lt: hi }
     const who = { brandId: true, brand: { select: { name: true } }, contact: { select: { name: true } } } as const
     const [invites, accepts, emails, replies, hand, finds, made, logs, picks, logDays] = await Promise.all([
@@ -2492,7 +2499,7 @@ const handlers: Record<string, Handler> = {
         select: { id: true, name: true, category: true, query: true, status: true, signals: true, reason: true, sourceUrl: true, website: true, brandId: true },
       }),
       prisma.brand.findMany({ where: { createdAt: inDay }, orderBy: { createdAt: 'desc' }, take: 200, select: { id: true, name: true, category: true, source: true } }),
-      prisma.workLog.findMany({ where: { day: d }, orderBy: { createdAt: 'asc' } }),
+      prisma.workLog.findMany({ where: { day: { gte: d, lte: end } }, orderBy: { createdAt: 'asc' } }),
       readJsonSetting<Record<string, { at: string; by: string | null }>>(prisma, BUILD_PICKS_KEY, {}),
       prisma.workLog.groupBy({ by: ['day'], _count: { _all: true }, orderBy: { day: 'desc' }, take: 60 }),
     ])
@@ -2519,7 +2526,7 @@ const handlers: Record<string, Handler> = {
     // Early on a sending day nothing has gone out yet: say what the last
     // day that sent anything did, so the first card isn't just "nothing".
     let previous: { day: string; total: number; companies: number } | null = null
-    if (d === today && !invites.length) {
+    if (d === today && !range && !invites.length) {
       const last = await prisma.target.findFirst({ where: { sentAt: { lt: lo } }, orderBy: { sentAt: 'desc' }, select: { sentAt: true } })
       if (last?.sentAt) {
         const k = localDayKey(last.sentAt)
@@ -2531,7 +2538,7 @@ const handlers: Record<string, Handler> = {
     // What's on today (only for today): the Schedule's brands, people
     // still in today's queue, follow-ups, calls.
     let todo: any = null
-    if (d === today) {
+    if (d === today && !range) {
       const [extras, plan, queued, action, calls] = await Promise.all([
         readExtraDays(),
         readPlan(),
@@ -2578,6 +2585,7 @@ const handlers: Record<string, Handler> = {
       : 0
     ask('lipage', reviewLeft, 'brands: which LinkedIn page is theirs?', 'linkedin')
     ask('clarify', clarify, 'brands: which SponsorUnited page is theirs?', 'clarify')
+    try { ask('stale', (await handlers.staleDeals({})).deals.length, 'deals gone quiet for 14+ days', 'pipeline') } catch { /* never blocks the recap */ }
 
     const chats = logs.map(l => {
       let parsed: any = {}
@@ -2595,7 +2603,7 @@ const handlers: Record<string, Handler> = {
     })
 
     return {
-      day: d, today, isToday: d === today,
+      day: d, to: end, range, today, isToday: d === today && !range,
       reached: {
         invites: invites.length, companies: [...byBrand.values()],
         accepted: accepts.map(a => person(a.target)),
@@ -2663,6 +2671,152 @@ const handlers: Record<string, Handler> = {
     const people = out.reduce((n, b) => n + b.people.length, 0)
     const flagged = out.reduce((n, b) => n + b.people.filter(p => p.problem || p.better).length, 0)
     return { day: localDayKey(), sendingDay: q.sendingDay, cap: q.cap, sentToday: q.sentToday, brands: out, people, flagged }
+  },
+
+  // ---- Leo's picked ideas (Oct 6 2026) — src/lib/build-ideas.ts ----
+
+  // Weekly scoreboard: invites → accepts → replies → calls → deals per
+  // New York week (Mon–Sun), newest last, against goals Leo sets
+  // (Setting weeklyGoals). Read-only.
+  async weeklyScore({ weeks = 8 }: any = {}) {
+    const n = Math.max(2, Math.min(26, Number(weeks) || 8))
+    const today = localDayKey()
+    const monday = addDaysKey(today, -((dayKeyDow(today) + 6) % 7))
+    const starts = Array.from({ length: n }, (_, i) => addDaysKey(monday, -7 * (n - 1 - i)))
+    const since = dayStartOf(starts[0])
+    const [inv, acc, rep, calls, deals, brands, goals] = await Promise.all([
+      prisma.target.findMany({ where: { sentAt: { gte: since } }, select: { sentAt: true } }),
+      prisma.targetEvent.findMany({ where: { createdAt: { gte: since }, toStatus: 'accepted' }, select: { createdAt: true } }),
+      prisma.target.findMany({ where: { repliedAt: { gte: since } }, select: { repliedAt: true } }),
+      prisma.target.findMany({ where: { callBookedAt: { gte: since } }, select: { callBookedAt: true } }),
+      prisma.deal.findMany({ where: { createdAt: { gte: since } }, select: { createdAt: true } }),
+      prisma.brand.findMany({ where: { createdAt: { gte: since } }, select: { createdAt: true } }),
+      readJsonSetting<Record<string, number>>(prisma, WEEKLY_GOALS_KEY, {}),
+    ])
+    const weekOf = (t: Date | null) => {
+      if (!t) return -1
+      const k = localDayKey(t)
+      for (let i = starts.length - 1; i >= 0; i--) if (k >= starts[i]) return i
+      return -1
+    }
+    const rows = starts.map(start => ({ start, invites: 0, accepts: 0, replies: 0, calls: 0, deals: 0, brands: 0 }))
+    const tally = (list: Array<Date | null>, key: 'invites' | 'accepts' | 'replies' | 'calls' | 'deals' | 'brands') => {
+      for (const t of list) { const i = weekOf(t); if (i >= 0) rows[i][key]++ }
+    }
+    tally(inv.map(x => x.sentAt), 'invites')
+    tally(acc.map(x => x.createdAt), 'accepts')
+    tally(rep.map(x => x.repliedAt), 'replies')
+    tally(calls.map(x => x.callBookedAt), 'calls')
+    tally(deals.map(x => x.createdAt), 'deals')
+    tally(brands.map(x => x.createdAt), 'brands')
+    return { weeks: rows, today, goals: { ...WEEKLY_GOALS_DEFAULT, ...goals } }
+  },
+
+  async setWeeklyGoals({ goals }: any) {
+    const clean: Record<string, number> = {}
+    for (const k of Object.keys(WEEKLY_GOALS_DEFAULT)) {
+      const v = Math.round(Number(goals?.[k]))
+      if (Number.isFinite(v) && v >= 0 && v <= 10000) clean[k] = v
+    }
+    await writeJsonSetting(prisma, WEEKLY_GOALS_KEY, clean)
+    return { goals: { ...WEEKLY_GOALS_DEFAULT, ...clean } }
+  },
+
+  // One timeline per brand: every touch, newest first — people added,
+  // invites / accepts / replies / Zach's list steps (TargetEvents), emails
+  // out and in, Show Board opens, deals, show requests. Read-only.
+  async brandTimeline({ brandId }: any) {
+    const id = String(brandId || '')
+    const brand = await prisma.brand.findUnique({ where: { id }, select: { id: true, name: true, createdAt: true, source: true, passedAt: true } })
+    if (!brand) throw new Error('Brand not found')
+    const [events, emails, visits, deals, shows, contacts] = await Promise.all([
+      prisma.targetEvent.findMany({
+        where: { target: { brandId: id } }, orderBy: { createdAt: 'desc' }, take: 300,
+        select: { createdAt: true, kind: true, fromStatus: true, toStatus: true, actor: true, detail: true, target: { select: { contact: { select: { name: true } } } } },
+      }),
+      prisma.emailMessage.findMany({
+        where: { target: { brandId: id }, OR: [{ direction: 'in' }, { status: 'sent' }] }, orderBy: { createdAt: 'desc' }, take: 100,
+        select: { direction: true, kind: true, subject: true, sentAt: true, createdAt: true, opens: true, target: { select: { contact: { select: { name: true } } } } },
+      }),
+      prisma.boardVisit.findMany({ where: { brandId: id }, orderBy: { createdAt: 'desc' }, take: 100, select: { createdAt: true, email: true, lastSeenAt: true } }),
+      prisma.deal.findMany({ where: { brandId: id }, select: { createdAt: true, updatedAt: true, name: true, stage: true, valueCents: true, source: true } }),
+      prisma.showSponsor.findMany({ where: { brandId: id }, select: { createdAt: true, school: true, artist: true, eventDate: true, status: true } }),
+      prisma.contact.findMany({ where: { brandId: id }, select: { createdAt: true, source: true } }),
+    ])
+    type Item = { at: Date; kind: string; text: string }
+    const out: Item[] = []
+    const STEP: Record<string, string> = {
+      sent: 'LinkedIn invite sent', accepted: 'accepted on LinkedIn', replied: 'replied', converted: 'became a deal',
+      declined: 'declined', withdrawn: 'invite withdrawn', passed: 'passed', queued: 'queued',
+    }
+    for (const e of events) {
+      const who = e.target.contact.name
+      if (e.kind === 'status' && e.toStatus) out.push({ at: e.createdAt, kind: e.toStatus, text: who + ' — ' + (STEP[e.toStatus] || e.toStatus) })
+      else if (e.kind && e.kind !== 'status' && e.kind !== 'drafted') out.push({ at: e.createdAt, kind: 'step', text: who + ' — ' + e.kind + (e.detail && e.kind !== 'note' ? ' (' + e.detail + ')' : e.kind === 'note' && e.detail ? ': ' + e.detail : '') })
+    }
+    for (const m of emails) {
+      const who = m.target.contact.name
+      out.push(m.direction === 'in'
+        ? { at: m.createdAt, kind: 'reply', text: who + ' emailed back' + (m.subject ? ': ' + m.subject : '') }
+        : { at: m.sentAt ?? m.createdAt, kind: 'email', text: 'Email to ' + who + (m.subject ? ': ' + m.subject : '') + (m.opens ? ' · opened' : '') })
+    }
+    for (const v of visits) {
+      const mins = v.lastSeenAt ? Math.round((v.lastSeenAt.getTime() - v.createdAt.getTime()) / 60000) : 0
+      out.push({ at: v.createdAt, kind: 'board', text: 'Opened the Show Board' + (v.email ? ' (' + v.email + ')' : '') + (mins > 0 ? ' · ' + mins + ' min' : '') })
+    }
+    for (const d of deals) out.push({ at: d.createdAt, kind: 'deal', text: 'Deal: ' + d.name + ' · ' + d.stage + (d.source === 'request' ? ' (from a show request)' : '') })
+    for (const s of shows) out.push({ at: s.createdAt, kind: 'show', text: 'Show ' + s.status + ': ' + [s.artist, s.school, s.eventDate].filter(Boolean).join(' · ') })
+    // People added, one line per day and source.
+    const added = new Map<string, { at: Date; n: number; source: string }>()
+    for (const c of contacts) {
+      const k = localDayKey(c.createdAt) + '|' + (c.source || 'hand')
+      const g = added.get(k)
+      if (g) g.n++
+      else added.set(k, { at: c.createdAt, n: 1, source: c.source || 'by hand' })
+    }
+    for (const g of added.values()) out.push({ at: g.at, kind: 'people', text: g.n + (g.n === 1 ? ' person' : ' people') + ' added (' + g.source + ')' })
+    out.push({ at: brand.createdAt, kind: 'brand', text: 'Brand added (' + brand.source + ')' })
+    if (brand.passedAt) out.push({ at: brand.passedAt, kind: 'archived', text: 'Archived' })
+    out.sort((a, b) => b.at.getTime() - a.at.getTime())
+    return { brandId: id, name: brand.name, items: out.slice(0, 250) }
+  },
+
+  // Deals gone quiet: open deals (not closed / lost) with nothing at the
+  // brand — the deal itself, an invite step, an email, a board open — in
+  // `days` (14). Home shows them with the last thing that happened.
+  async staleDeals({ days = 14 }: any = {}) {
+    const n = Math.max(3, Math.min(90, Number(days) || 14))
+    const cutoff = Date.now() - n * 864e5
+    const deals = await prisma.deal.findMany({
+      where: { stage: { notIn: ['closed', 'lost'] } },
+      select: { id: true, name: true, stage: true, valueCents: true, nextStep: true, followUpAt: true, updatedAt: true, brandId: true, brand: { select: { name: true, passedAt: true } } },
+    })
+    const ids = [...new Set(deals.map(d => d.brandId))]
+    if (!ids.length) return { days: n, deals: [] }
+    const [ev, em, bv] = await Promise.all([
+      prisma.targetEvent.groupBy({ by: ['targetId'], where: { target: { brandId: { in: ids } } }, _max: { createdAt: true } }),
+      prisma.emailMessage.findMany({ where: { target: { brandId: { in: ids } } }, select: { createdAt: true, target: { select: { brandId: true } } }, orderBy: { createdAt: 'desc' }, take: 2000 }),
+      prisma.boardVisit.groupBy({ by: ['brandId'], where: { brandId: { in: ids } }, _max: { createdAt: true } }),
+    ])
+    const tIds = ev.map(e => e.targetId)
+    const tBrand = new Map((tIds.length ? await prisma.target.findMany({ where: { id: { in: tIds } }, select: { id: true, brandId: true } }) : []).map(t => [t.id, t.brandId]))
+    const last = new Map<string, { at: number; what: string }>()
+    const bump = (brandId: string | null | undefined, at: Date | null | undefined, what: string) => {
+      if (!brandId || !at) return
+      const cur = last.get(brandId)
+      if (!cur || at.getTime() > cur.at) last.set(brandId, { at: at.getTime(), what })
+    }
+    for (const e of ev) bump(tBrand.get(e.targetId), e._max.createdAt, 'outreach step')
+    for (const m of em) bump(m.target.brandId, m.createdAt, 'email')
+    for (const v of bv) bump(v.brandId, v._max.createdAt, 'opened the Show Board')
+    const out = deals.filter(d => !d.brand.passedAt).map(d => {
+      const b = last.get(d.brandId)
+      const lastAt = Math.max(d.updatedAt.getTime(), b?.at ?? 0)
+      const what = b && b.at > d.updatedAt.getTime() ? b.what : 'deal updated'
+      return { dealId: d.id, brandId: d.brandId, brandName: d.brand.name, name: d.name, stage: d.stage, valueCents: d.valueCents,
+        nextStep: d.nextStep, followUpAt: d.followUpAt, lastAt: new Date(lastAt), lastWhat: what, quietDays: Math.floor((Date.now() - lastAt) / 864e5) }
+    }).filter(d => d.lastAt.getTime() < cutoff).sort((a, b) => b.valueCents - a.valueCents || b.quietDays - a.quietDays)
+    return { days: n, deals: out }
   },
 
   // Paste one or more Claude Code reports (a line of --- between chats).

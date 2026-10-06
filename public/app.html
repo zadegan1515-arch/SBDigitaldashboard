@@ -431,6 +431,39 @@
   .hm-tile .s{font-size:13px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   details.hm-more{margin-top:34px;border-top:1px solid var(--border-soft);padding-top:4px}
   .oq-bpass{margin-left:10px;padding:4px 11px;font-size:12.5px}
+  /* Weekly scoreboard, deals gone quiet, brand timeline, Zach on a phone */
+  .ws-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+  .ws-t{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+  .ws-t .k{font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+  .ws-t .v{font-size:26px;font-weight:800;font-family:var(--display);font-variant-numeric:tabular-nums}
+  .ws-t .v span{font-size:14px;font-weight:600;color:var(--ink-3)}
+  .ws-t .s{font-size:12.5px;color:var(--ink-3)}
+  .ws-t .inp{margin-top:6px;width:90px}
+  .ws-bar{height:5px;background:var(--border);border-radius:99px;overflow:hidden}
+  .ws-bar div{height:100%;background:var(--accent)}
+  .ws-bar div.done{background:var(--good)}
+  .ws-spark{display:flex;align-items:flex-end;gap:3px;height:30px;margin-top:4px}
+  .ws-spark i{flex:1;background:rgba(111,157,255,.28);border-radius:2px 2px 0 0}
+  .ws-spark i.on{background:var(--accent-hi)}
+  #hm-stale .sd-row{display:flex;gap:12px;align-items:center;padding:12px 18px;border-bottom:1px solid var(--border-soft)}
+  #hm-stale .sd-row:last-child{border-bottom:0}
+  .btl-body{padding:6px 18px 14px;max-height:520px;overflow:auto}
+  .btl-day{font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin:14px 0 4px}
+  .btl-it{display:flex;gap:10px;align-items:baseline;padding:4px 0;font-size:13.5px}
+  .btl-ic{width:18px;text-align:center;color:var(--accent-hi);flex:none}
+  .btl-it.k-accepted .btl-ic,.btl-it.k-replied .btl-ic,.btl-it.k-reply .btl-ic,.btl-it.k-deal .btl-ic{color:var(--good)}
+  .btl-it.k-board .btl-ic{color:var(--warn)}
+  .btl-tx{flex:1;color:var(--ink-2)}
+  .btl-tm{color:var(--ink-3);font-size:12.5px;white-space:nowrap}
+  .zach-back{display:none}
+  #dashboard.zach-only .hm-glance,#dashboard.zach-only #hm-send,#dashboard.zach-only #action-panel,#dashboard.zach-only #hm-stale,
+  #dashboard.zach-only #hm-score,#dashboard.zach-only #day-log,#dashboard.zach-only .hm-more,#dashboard.zach-only #todos-head,
+  #dashboard.zach-only #todos,#dashboard.zach-only .hm-btns,#dashboard.zach-only #zach-todo .zs{display:none!important}
+  #dashboard.zach-only .zach-back{display:block;margin-top:18px}
+  @media (max-width:640px){
+    .zt-item{min-height:52px}
+    .ws-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
   /* Today's send list */
   #hm-send .sl{margin:14px 0 6px}
   .sl-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--border-soft)}
@@ -485,6 +518,8 @@
   .need.done .nl{text-decoration:line-through;color:var(--ink-3)}
   .need ol{margin:4px 0 0 18px;font-size:13.5px;color:var(--ink-2)}
   .need.done ol{display:none}
+  .need ol li{padding-left:2px}
+  .need ol li:before{display:none}
   .need .from{font-size:13px;color:var(--ink-3)}
 
   /* The recap: full screen, one card per section, scroll or click through */
@@ -1674,13 +1709,17 @@
         <div class="hm-btns">
           <button class="btn-ghost" id="hm-sendlist" title="Today’s LinkedIn invites by company, checked for people who don’t fit — copy it for Zach">Today’s list for Zach</button>
           <button class="btn-ghost" id="hm-paste" title="Paste what your Claude Code chats did — saved under today">+ Paste what Claude did</button>
+          <button class="btn-ghost" id="hm-week" title="The week so far: who went out, who answered, what got found — with Copy for Zach">This week ▸</button>
           <button class="btn-solid" id="hm-recap">Today’s recap ▸</button>
         </div>
       </div>
       <div class="hm-glance" id="hm-glance"></div>
       <div id="hm-send"></div>
       <div id="zach-todo"></div>
+      <div class="zach-back"><button class="btn-ghost" data-zachall>Show the whole Home ↓</button></div>
       <div id="action-panel" style="margin-top:20px"></div>
+      <div id="hm-stale"></div>
+      <div id="hm-score"></div>
       <div id="day-log"></div>
       <details class="fold hm-more" id="hm-more">
         <summary class="section-head">Numbers &amp; categories <span class="n">targets, sponsorship revenue, brands by category</span></summary>
@@ -1737,6 +1776,7 @@
     <section class="view page" id="brand">
       <div class="eyebrow"><span class="crumb" id="brand-crumb">← Back</span></div>
       <div id="brand-body"></div>
+      <div id="brand-timeline"></div>
     </section>
 
     <!-- SHOWS — read live from sb-crm -->
@@ -2815,6 +2855,7 @@ function loadDashboard() {
   showView('dashboard');
   renderZachTodo();
   renderActionPanel();
+  loadScore(); loadStale();
   loadToday().catch(function (e) { var g = document.getElementById('hm-glance'); if (g) g.innerHTML = '<div class="hint">Could not load today: ' + esc(e.message) + '</div>'; });
   document.getElementById('today-date').textContent =
     new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
@@ -3041,8 +3082,9 @@ function rcCards(r) {
         '<span class="rc-tag ' + m[2] + '">' + esc(m[1]) + '</span></div>';
     }).join('') + '</div>' + (moves.length > 12 ? '<div class="rc-more">+ ' + (moves.length - 12) + ' more</div>' : '');
   }
-  cards.push({ key: 'reached', step: 'Reached out', title: r.isToday ? 'Who we reached today' : 'Who we reached', body: h,
-    acts: '<button class="btn-ghost" data-rc-go="outreach">LinkedIn queue</button><button class="btn-ghost" data-rc-go="reached">Results</button>' });
+  cards.push({ key: 'reached', step: 'Reached out', title: r.isToday ? 'Who we reached today' : r.range ? 'Who we reached this week' : 'Who we reached', body: h,
+    acts: (r.range ? '<button class="btn-solid" data-rc-copyweek>Copy the week for Zach</button>' : '') +
+      '<button class="btn-ghost" data-rc-go="outreach">LinkedIn queue</button><button class="btn-ghost" data-rc-go="reached">Results</button>' });
 
   // 2. What to do today (today only)
   if (r.isToday) {
@@ -3171,7 +3213,7 @@ function drawRecap(at, data) {
   var start = typeof at === 'string' ? Math.max(0, cards.findIndex(function (c) { return c.key === at; })) : (at || 0);
   var box = document.getElementById('recap');
   box.innerHTML =
-    '<div class="rc-top"><span class="rc-day">' + esc(keyLabel(r.day, true)) + (r.isToday ? ' · today' : '') + '</span>' +
+    '<div class="rc-top"><span class="rc-day">' + (r.range ? 'Week of ' + esc(keyLabel(r.day, true)) + ' – ' + esc(keyLabel(r.to)) : esc(keyLabel(r.day, true)) + (r.isToday ? ' · today' : '')) + '</span>' +
       '<button class="rc-x" data-rc-close title="Close (Esc)" aria-label="Close">✕</button></div>' +
     '<div class="rc-dots">' + cards.map(function (c, i) { return '<button class="rc-dot" data-rc-dot="' + i + '" title="' + esc(c.title) + '" aria-label="' + esc(c.title) + '"></button>'; }).join('') + '</div>' +
     '<div class="rc-track" id="rc-track">' + cards.map(function (c, i) {
@@ -3410,7 +3452,8 @@ function maybeAutoRecap() {
   if (!asked && (RC_DAYS.indexOf(keyDow(today)) < 0 || lsGet('sb.recapSeen') === today)) return;
   // Give Zach's list a moment so "What to do today" can count it, and let
   // the opening logo animation (#sb-intro) finish first.
-  var go = function () { openRecap(0); };
+  // Friday's recap is the week (the Friday wrap-up).
+  var go = function () { if (keyDow(today) === 5 && !asked) { lsSet('sb.recapSeen', today); openWeekRecap(); } else openRecap(0); };
   var introGone = new Promise(function (res) {
     var n = 0;
     (function wait() { if (!document.getElementById('sb-intro') || ++n > 40) res(); else setTimeout(wait, 200); })();
@@ -3552,6 +3595,191 @@ document.addEventListener('click', function (ev) {
     loadOutreach();
   }).catch(function (err) { el.disabled = false; toast(err.message); });
 });
+
+// --- Leo's picked ideas (Oct 6 2026; src/lib/build-ideas.ts) ---------
+
+// Weekly scoreboard (Home): this week against Leo's goals, with the last
+// 8 weeks as small bars. weeklyScore / setWeeklyGoals.
+var WS = null, WS_EDIT = false;
+var WS_KEYS = [['invites', 'Invites'], ['accepts', 'Accepted'], ['replies', 'Replied'], ['calls', 'Calls booked'], ['deals', 'Deals'], ['brands', 'Brands added']];
+function loadScore() {
+  return api('weeklyScore', { weeks: 8 }).then(function (r) { WS = r; renderScore(); }).catch(function () {});
+}
+function renderScore() {
+  var box = document.getElementById('hm-score');
+  if (!box || !WS || !WS.weeks) return;
+  var w = WS.weeks, cur = w[w.length - 1], prev = w[w.length - 2] || {}, g = WS.goals;
+  var tiles = WS_KEYS.map(function (k) {
+    var key = k[0], v = cur[key] || 0, goal = g[key] || 0;
+    var pct = goal ? Math.min(100, Math.round(v / goal * 100)) : 0;
+    var max = Math.max.apply(null, w.map(function (x) { return x[key] || 0; }).concat([goal, 1]));
+    var bars = w.map(function (x, i) {
+      var h = Math.max(2, Math.round((x[key] || 0) / max * 28));
+      return '<i style="height:' + h + 'px" class="' + (i === w.length - 1 ? 'on' : '') + '" title="Week of ' + esc(keyLabel(x.start)) + ': ' + (x[key] || 0) + '"></i>';
+    }).join('');
+    return '<div class="ws-t"><div class="k">' + k[1] + '</div>' +
+      '<div class="v">' + v + (goal ? '<span> / ' + goal + '</span>' : '') + '</div>' +
+      (goal ? '<div class="ws-bar"><div style="width:' + pct + '%" class="' + (pct >= 100 ? 'done' : '') + '"></div></div>' : '') +
+      '<div class="ws-spark">' + bars + '</div>' +
+      '<div class="s">last week ' + (prev[key] || 0) + '</div>' +
+      (WS_EDIT ? '<input class="inp" type="number" min="0" data-wsgoal="' + key + '" value="' + goal + '" title="Weekly goal">' : '') +
+    '</div>';
+  }).join('');
+  var rate = cur.invites ? Math.round(cur.accepts / cur.invites * 100) : null;
+  box.innerHTML = '<div class="section-head">This week <span class="n">week of ' + esc(keyLabel(cur.start)) +
+    (rate != null ? ' · ' + rate + '% of invites accepted' : '') + '</span>' +
+    '<span style="margin-left:auto;display:flex;gap:6px">' +
+    (WS_EDIT ? '<button class="btn-solid" data-wssave>Save goals</button><button class="btn-ghost" data-wsedit="0">Cancel</button>'
+      : '<button class="btn-ghost" data-wsedit="1">Set goals</button>') + '</span></div>' +
+    '<div class="ws-grid">' + tiles + '</div>';
+}
+
+// Deals gone quiet (Home): open deals with nothing at the brand in 14 days.
+function loadStale() {
+  var box = document.getElementById('hm-stale');
+  if (!box) return;
+  return api('staleDeals', {}).then(function (r) {
+    if (!r.deals.length) { box.innerHTML = ''; return; }
+    box.innerHTML = '<div class="section-head">Deals gone quiet <span class="n">' + r.deals.length + ' with nothing in ' + r.days + '+ days</span></div>' +
+      '<div class="panel">' + r.deals.slice(0, 8).map(function (d) {
+        return '<div class="sd-row"><div style="flex:1;min-width:0"><a href="#" class="sl-bn" data-rc-brand2="' + esc(d.brandId) + '">' + esc(d.brandName) + '</a>' +
+          ' <span class="sl-title">· ' + esc(d.name) + ' · ' + esc(d.stage) + (d.valueCents ? ' · ' + money(d.valueCents) : '') + '</span>' +
+          '<div class="sl-why">Last: ' + esc(d.lastWhat) + ', ' + d.quietDays + ' days ago' +
+          (d.nextStep ? ' · next: ' + esc(d.nextStep) : ' · no next step set') + '</div></div>' +
+          '<button class="btn-ghost" data-rc-brand2="' + esc(d.brandId) + '">Open →</button></div>';
+      }).join('') + (r.deals.length > 8 ? '<div class="dl-empty">+ ' + (r.deals.length - 8) + ' more on Deals</div>' : '') + '</div>';
+  }).catch(function () { box.innerHTML = ''; });
+}
+
+// The Friday wrap-up: the recap over Monday..today. On Fridays it's what
+// opens by itself; "This week ▸" opens it any day. Copy for Zach builds
+// the week as text.
+function weekStartKey(k) { return keyShift(k, -((keyDow(k) + 6) % 7)); }
+function openWeekRecap() {
+  var today = nyKey();
+  return api('dayRecap', { day: weekStartKey(today), to: today }).then(function (r) { openRecap(0, r); });
+}
+function weekText(r) {
+  var R = r.reached, out = [];
+  out.push('SB week of ' + keyLabel(r.day, true) + (r.to && r.to !== r.day ? ' – ' + keyLabel(r.to, true) : ''));
+  out.push(R.invites + ' LinkedIn invites at ' + R.companies.length + ' brands · ' + R.accepted.length + ' accepted · ' + R.replies.length + ' replied');
+  if (R.companies.length) { out.push(''); out.push('Invites by brand:'); R.companies.forEach(function (c) { out.push('• ' + c.name + ' — ' + c.people.length); }); }
+  if (R.accepted.length) { out.push(''); out.push('Accepted:'); R.accepted.forEach(function (p) { out.push('• ' + p.name + ' (' + p.brand + ')'); }); }
+  if (R.replies.length) { out.push(''); out.push('Replied:'); R.replies.forEach(function (p) { out.push('• ' + p.name + ' (' + p.brand + ')'); }); }
+  var calls = R.steps.filter(function (s) { return /^Call booked/.test(s.step); });
+  if (calls.length) { out.push(''); out.push('Calls booked:'); calls.forEach(function (s) { out.push('• ' + s.name + ' (' + s.brand + ') — ' + s.step.replace(/^Call booked\s*/, '')); }); }
+  var found = rcFound(r);
+  if (found.length) { out.push(''); out.push(found.length + ' new brands found'); }
+  return out.join('\n');
+}
+
+// One timeline per brand (brand page, under everything): every touch in
+// order. Opens on demand (brandTimeline).
+var BTL_OPEN = {};
+function btlRender(brandId) {
+  var box = document.getElementById('brand-timeline');
+  if (!box) return;
+  box.innerHTML = '<details class="fold btl" data-btl="' + esc(brandId) + '"' + (BTL_OPEN[brandId] ? ' open' : '') + '>' +
+    '<summary class="section-head">Timeline <span class="n">every invite, reply, email, board visit and deal, in order</span></summary>' +
+    '<div class="panel btl-body"><div class="dl-empty">Loading…</div></div></details>';
+  if (BTL_OPEN[brandId]) btlLoad(brandId);
+}
+var BTL_ICON = { sent: '→', accepted: '✓', replied: '↩', reply: '↩', email: '✉', board: '◉', deal: '$', show: '♪', people: '+', brand: '★', archived: '×', step: '•' };
+function btlLoad(brandId) {
+  return api('brandTimeline', { brandId: brandId }).then(function (r) {
+    var body = document.querySelector('[data-btl="' + brandId + '"] .btl-body');
+    if (!body) return;
+    if (!r.items.length) { body.innerHTML = '<div class="dl-empty">Nothing yet.</div>'; return; }
+    var lastDay = '';
+    body.innerHTML = r.items.map(function (it) {
+      var k = nyKey(new Date(it.at)), head = '';
+      if (k !== lastDay) { lastDay = k; head = '<div class="btl-day">' + esc(keyLabel(k, true)) + '</div>'; }
+      return head + '<div class="btl-it k-' + esc(it.kind) + '"><span class="btl-ic">' + (BTL_ICON[it.kind] || '•') + '</span>' +
+        '<span class="btl-tx">' + esc(it.text) + '</span><span class="btl-tm">' +
+        new Date(it.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }) + '</span></div>';
+    }).join('');
+  }).catch(function (e) {
+    var body = document.querySelector('[data-btl="' + brandId + '"] .btl-body');
+    if (body) body.innerHTML = '<div class="dl-empty">Could not load: ' + esc(e.message) + '</div>';
+  });
+}
+document.addEventListener('toggle', function (ev) {
+  var d = ev.target;
+  if (!d || !d.matches || !d.matches('[data-btl]')) return;
+  var id = d.getAttribute('data-btl');
+  BTL_OPEN[id] = d.open;
+  if (d.open) btlLoad(id);
+}, true);
+
+// Sponsor report after a show (Audience → an event): a print-ready page
+// for the brand, totals only — never a person (rule 9).
+function sponsorReport(ev) {
+  var brand = prompt('Which brand is this report for? (shown on the page — leave empty for none)', '') ;
+  if (brand === null) return;
+  api('audienceEventStats', { id: ev.id }).then(function (s) {
+    function bars(obj, label) {
+      var keys = Object.keys(obj || {}).filter(function (k) { return k !== '(unknown)'; });
+      if (!keys.length) return '';
+      keys.sort(function (a, b) { return obj[b] - obj[a]; });
+      var max = obj[keys[0]] || 1;
+      return '<h2>' + label + '</h2>' + keys.slice(0, 8).map(function (k) {
+        return '<div class="bar"><em>' + esc(k) + '</em><i style="width:' + Math.round(obj[k] / max * 300) + 'px"></i><b>' + obj[k] + '</b></div>';
+      }).join('');
+    }
+    var first = Math.max(0, s.rsvps - s.repeatCount);
+    var html = '<!doctype html><html><head><meta charset="utf-8"><title>' + esc((brand ? brand + ' × ' : '') + ev.name) + ' — show report</title><style>' +
+      'body{font:14px/1.5 -apple-system,"Segoe UI",Helvetica,Arial,sans-serif;color:#111;max-width:760px;margin:36px auto;padding:0 24px}' +
+      'h1{font-size:28px;letter-spacing:-.02em;margin:0}h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#777;margin:26px 0 8px}' +
+      '.k{display:flex;gap:30px;flex-wrap:wrap;margin-top:20px}.k div b{display:block;font-size:30px}.k div span{font-size:13px;color:#777}' +
+      '.bar{display:flex;align-items:center;gap:10px;margin:4px 0}.bar i{display:inline-block;height:12px;background:#2a62d6;border-radius:0 3px 3px 0}' +
+      '.bar em{font-style:normal;font-size:13px;color:#555;min-width:150px}.bar b{font-size:13px}' +
+      '.foot{margin-top:34px;padding-top:12px;border-top:1px solid #eee;font-size:12.5px;color:#999}@media print{.noprint{display:none}}</style></head><body>' +
+      '<div style="font-size:13px;letter-spacing:.1em;color:#2a62d6;font-weight:700">SB AGENCY · SHOW REPORT' + (brand ? ' FOR ' + esc(brand.toUpperCase()) : '') + '</div>' +
+      '<h1>' + esc(ev.name) + '</h1>' +
+      '<div style="color:#555;margin-top:4px">' + esc([ev.headliner, ev.school, ev.venue, ev.city && ev.state ? ev.city + ', ' + ev.state : ev.city, ev.date ? new Date(ev.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : null].filter(Boolean).join(' · ')) + '</div>' +
+      '<div class="k">' +
+        '<div><b>' + s.checkins + '</b><span>in the room (checked in)</span></div>' +
+        '<div><b>' + s.rsvps + '</b><span>RSVPs</span></div>' +
+        '<div><b>' + s.showRate + '%</b><span>show rate</span></div>' +
+        '<div><b>' + first + '</b><span>first time at an SB show</span></div>' +
+        '<div><b>' + s.repeatCount + '</b><span>come back to SB shows</span></div>' +
+        (ev.capacity ? '<div><b>' + Math.round(s.checkins / ev.capacity * 100) + '%</b><span>of capacity (' + ev.capacity + ')</span></div>' : '') +
+      '</div>' +
+      bars(s.bySchool, 'Campuses') + bars(s.byClassYear, 'Class year') + bars(s.byAgeBand, 'Age') +
+      '<div class="foot">Generated ' + new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) + ' by SB Agency. ' +
+      'Aggregated audience data only — individual attendee records are never shared.</div>' +
+      '<button class="noprint" style="margin-top:20px;padding:10px 18px;font-size:14px" onclick="window.print()">Print / save as PDF</button></body></html>';
+    var w = window.open('', '_blank');
+    if (!w) { toast('Allow pop-ups to open the report'); return; }
+    w.document.write(html);
+    w.document.close();
+  }).catch(function (e) { toast(e.message); });
+}
+
+document.addEventListener('click', function (ev) {
+  var t = ev.target, el;
+  if (t.closest('#hm-week')) { openWeekRecap().catch(function (e) { toast(e.message); }); return; }
+  if ((el = t.closest('[data-wsedit]'))) { WS_EDIT = el.getAttribute('data-wsedit') === '1'; renderScore(); return; }
+  if (t.closest('[data-wssave]')) {
+    var goals = {};
+    document.querySelectorAll('[data-wsgoal]').forEach(function (i) { goals[i.getAttribute('data-wsgoal')] = Number(i.value); });
+    api('setWeeklyGoals', { goals: goals }).then(function (r) { WS.goals = r.goals; WS_EDIT = false; renderScore(); toast('Goals saved'); })
+      .catch(function (e) { toast(e.message); });
+    return;
+  }
+  if ((el = t.closest('[data-rc-copyweek]'))) { if (RC_SHOW) copyText(weekText(RC_SHOW)); return; }
+  if ((el = t.closest('#hm-stale [data-rc-brand2]'))) { ev.preventDefault(); loadBrand(el.getAttribute('data-rc-brand2')); return; }
+  if (t.closest('[data-zachall]')) { document.getElementById('dashboard').classList.remove('zach-only'); return; }
+});
+
+// Zach's list on a phone: his link (app.html#zach) on a small screen shows
+// only the list — no tiles, no board — with a way back to the full Home.
+(function () {
+  if (location.hash !== '#zach') return;
+  if (!window.matchMedia || !matchMedia('(max-width: 820px)').matches) return;
+  var home = document.getElementById('dashboard');
+  if (home) home.classList.add('zach-only');
+})();
 
 // --- For Zach to do --------------------------------------------
 //
@@ -7058,6 +7286,7 @@ function loadBrand(brandId) {
     if (!mine()) return;
     CURRENT_BRAND = d;
     var b = d.brand;
+    btlRender(b.id);
     rememberSponsors(b.shows);
     (b.documents || []).forEach(function (dc) { DOC_BY_ID[dc.id] = dc; });
     // The People tab, where the LinkedIn capture script's pill lives;
@@ -19048,7 +19277,7 @@ function openAudEvent(id) {
       '<button class="btn-ghost" id="ae-copy-amb">Copy ambassador link</button>' +
       '<span class="hint" style="margin:0">their RSVPs get attributed to that ref</span></div>' +
     '<div id="ae-stats"></div>' +
-    '<div style="display:flex;gap:8px;margin-top:16px"><button class="btn-ghost" id="ae-edit">Edit event</button>' +
+    '<div style="display:flex;gap:8px;margin-top:16px"><button class="btn-solid" id="ae-report" title="A print-ready page for a sponsor: turnout, campuses, class years — totals only">Sponsor report</button><button class="btn-ghost" id="ae-edit">Edit event</button>' +
     '<button class="btn-ghost" id="ae-del" style="color:var(--warn)">Delete event…</button></div></div>';
   document.getElementById('ae-copy-rsvp').addEventListener('click', function () { copyText(rsvpLink, this); });
   document.getElementById('ae-copy-door').addEventListener('click', function () { copyText(doorLink, this); });
@@ -19064,6 +19293,7 @@ function openAudEvent(id) {
     }).catch(function (e) { toast(e.message); });
   });
   document.getElementById('ae-edit').addEventListener('click', function () { audEventForm(ev); window.scrollTo(0, 0); });
+  document.getElementById('ae-report').addEventListener('click', function () { sponsorReport(ev); });
   document.getElementById('ae-del').addEventListener('click', function () {
     if (!confirm('Delete "' + ev.name + '" and its ' + ev.rsvps + ' attendance rows? Attendees themselves are kept. This cannot be undone.')) return;
     api('deleteAudienceEvent', { id: ev.id }).then(function () { toast('Event deleted'); loadAudience(); })

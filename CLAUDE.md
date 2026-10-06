@@ -71,6 +71,16 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `node scripts/cc.mjs dayRecap` before choosing what to build. Tests: `node scripts/test-work-log.mjs`,
   `NODE_PATH=$(npm root -g) node scripts/test-today.js` (page, fake /api/data),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-today-e2e.js` (real handlers).
+- **Leo's picked ideas, built Oct 6 2026** (retired from `build-ideas.ts`): **Weekly scoreboard** on Home (`#hm-score`,
+  `weeklyScore` / `setWeeklyGoals`, Setting `weeklyGoals`, defaults `WEEKLY_GOALS_DEFAULT`): invites / accepted /
+  replied / calls booked / deals / brands added per New York week (Mon–Sun), this week vs goal + 8 weeks of bars.
+  **Deals gone quiet** (`#hm-stale`, `staleDeals`): open deals with nothing at the brand (deal update, outreach
+  step, email, board visit) for 14+ days; also an ask on the recap. **Friday wrap-up**: `dayRecap({ day, to })`
+  is a range (no to-do); **This week ▸** on Home and Friday's auto-recap open Monday..today with **Copy the week for
+  Zach** (`weekText`). **Brand timeline** (brand page, `#brand-timeline`, `brandTimeline`): every touch newest first,
+  loaded when the fold opens. **Zach's list on a phone**: `app.html#zach` on a ≤820px screen = `zach-only` (list only,
+  "Show the whole Home"). **Sponsor report** (Audience → an event → Sponsor report, `sponsorReport`): print page from
+  `audienceEventStats` (now also `byClassYear`, `byAgeBand`) — totals only, rule 9.
 - **Home → Today's list for Zach** (Leo, Oct 6 2026: "a button on the home page that can copy a list of what is
   supposed to be sent out today so i can send to zach" + flag queued people who "do not fit a role or there is
   someone who should replace them"). Button in Home's header (and on the recap's To do card) opens `#hm-send`

@@ -207,6 +207,34 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual(planNow[dayA].brandIds, ['bf_rich', 'bf_poor'])
     ok('a category change moves other categories on; Best fit puts planned brands in fit order (preview first)')
 
+    // 10. Leo's picked ideas: scoreboard, brand timeline, deals gone quiet, the week's recap.
+    const ws = await data('weeklyScore', {})
+    const thisWeek = ws.weeks[ws.weeks.length - 1]
+    assert.equal(ws.weeks.length, 8)
+    assert.ok(thisWeek.invites >= 1 && thisWeek.accepts >= 1, 'this week counts the invite and the accept: ' + JSON.stringify(thisWeek))
+    assert.equal(ws.goals.invites, 90)
+    const sg = await data('setWeeklyGoals', { goals: { invites: 60, bogus: 5, calls: -1 } })
+    assert.deepEqual([sg.goals.invites, sg.goals.calls, sg.goals.bogus], [60, 3, undefined])
+    const tl = await data('brandTimeline', { brandId: 'b1' })
+    assert.ok(tl.items.some(i => /accepted on LinkedIn/.test(i.text)), 'the accept is on the timeline')
+    assert.ok(tl.items.some(i => /people added|person added/.test(i.text)))
+    assert.equal(tl.items[tl.items.length - 1].kind, 'brand', 'oldest last: the brand being added')
+    const monthAgo = new Date(Date.now() - 30 * 864e5)
+    const dq = await prisma.deal.create({ data: { brandId: 'b5', name: 'Echo × Fall tour', stage: 'proposal', valueCents: 500000 } })
+    await prisma.$executeRawUnsafe('UPDATE "Deal" SET "updatedAt" = $1::timestamp WHERE id = $2', monthAgo.toISOString(), dq.id)
+    await prisma.deal.create({ data: { brandId: 'b1', name: 'Fresh deal', stage: 'conversation' } })
+    const sd = await data('staleDeals', {})
+    const quiet = sd.deals.map(d => d.name)
+    assert.ok(!quiet.includes('Fresh deal'), 'a fresh deal is not quiet')
+    // Echo Pouch had outreach today (the send-list test), so it is not quiet either.
+    assert.ok(!quiet.includes('Echo × Fall tour'), 'brand activity counts as activity')
+    await prisma.targetEvent.updateMany({ where: { target: { brandId: 'b5' } }, data: { createdAt: monthAgo } })
+    assert.ok((await data('staleDeals', {})).deals.some(d => d.name === 'Echo × Fall tour' && d.quietDays >= 29), 'quiet for 30 days')
+    const wk = await data('dayRecap', { day: '2026-10-01', to: nyKey(new Date()) })
+    assert.equal(wk.range, true); assert.equal(wk.todo, null)
+    assert.ok(wk.chats.some(c => c.title === 'Old chat'), 'a range has every day\'s chats')
+    ok('scoreboard, goals, brand timeline, deals gone quiet, the week as a recap')
+
     console.log(n + ' checks passed');
   } catch (e) {
     console.error('FAILED:', e.stack || e.message);
