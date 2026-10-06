@@ -262,7 +262,7 @@ async function main() {
   const fold = await page.textContent('#fill-progress details:not([open]) summary');
   assert.equal(fold, 'People on file · 286 of 486 brands have someone · +3 from SponsorUnited today');
   await page.click('#fill-progress summary');
-  await page.waitForFunction(() => /Capture keeps up to 25 a brand/.test(document.querySelector('#fill-progress details[open]').textContent));
+  await page.waitForFunction(() => /3 added this week/.test(document.querySelector('#fill-progress details[open]').textContent));
   console.log('✓ the People on file card is folded to one line and opens as it was');
 
   // "pick it" (and the card's Pick their pages) → Outreach → People's

@@ -1854,7 +1854,7 @@
     <section class="view page" id="passed">
       <div class="eyebrow">Outreach</div>
       <h1>Archived</h1>
-      <div class="sub" id="ps-sub">Brands taken off outreach — hidden from the queue, the schedule and next best until you bring them back. Passing a brand for the day is separate: it wears off overnight and never lands here.</div>
+      <div class="sub" id="ps-sub">Brands taken off outreach. Bring one back to use it again.</div>
       <div id="passed-list" style="margin-top:18px"></div>
     </section>
 
@@ -1904,7 +1904,7 @@
       <div id="st-refile"></div>
       <div id="st-fit"></div>
       <div class="kpi-row" id="st-kpis"></div>
-      <div class="hint" style="margin:0 0 10px">Each brand sits in one row: its category, or where the re-file above would move it (those say where they’re filed today).</div>
+      <div class="hint" style="margin:0 0 10px">One row per brand, under its category (or where a re-file would move it).</div>
       <div class="st-legend" id="st-legend"></div>
       <div class="section-head">Your lanes <span class="n" id="st-lanes-n"></span></div>
       <div class="st-stack" id="st-lanes"></div>
@@ -2000,7 +2000,7 @@
     <section class="view page" id="audience">
       <div class="eyebrow">Audience</div>
       <h1>Events</h1>
-      <div class="sub">Capture who actually comes to the shows — RSVP links via ambassadors, door check-in, box-office imports. Individual attendees never leave this dashboard.</div>
+      <div class="sub">Who comes to the shows: RSVPs, door check-ins, imports. Attendee details stay here.</div>
       <div style="margin-top:18px;display:flex;gap:8px"><button class="btn-solid" id="btn-newevent">+ New event</button></div>
       <div id="aud-form-slot" style="margin-top:12px"></div>
       <div id="aud-list" style="margin-top:6px"></div>
@@ -2025,7 +2025,7 @@
     <section class="view page" id="segments">
       <div class="eyebrow">Audience</div>
       <h1>Segments</h1>
-      <div class="sub" id="seg-sub">Derived from the attendance table, recomputed on demand — never hand-entered. Export any profile as the one-pager that goes in front of a brand (aggregates only).</div>
+      <div class="sub" id="seg-sub">Built from attendance. Export any group as a one-pager for brands (totals only).</div>
       <div class="kpi-row" id="seg-kpis"></div>
       <div id="seg-rollups"></div>
       <div class="section-head">Segments <span class="n" id="seg-n"></span></div>
@@ -2046,7 +2046,7 @@
     <section class="view page wide" id="clarify">
       <div class="eyebrow">Brands</div>
       <h1>Clarify</h1>
-      <div class="sub">Brands the SponsorUnited lookup couldn’t match on its own. Only pages whose name could be the brand show here.</div>
+      <div class="sub">Pick the right SponsorUnited page for each brand.</div>
       <div id="su-proposals"></div>
     </section>
 
@@ -4121,7 +4121,7 @@ function ztHeadHtml(c) {
   return '<div class="zt-head">' +
     '<div class="zt-head-top">' +
       '<div><h2 class="zt-title">For Zach to do</h2>' +
-        '<div class="zt-subline">Everyone who accepted on LinkedIn: Accepted → Replied → Email or LinkedIn DM → Call scheduled. Either of you can tick a step.</div></div>' +
+        '<div class="zt-subline">Everyone who accepted on LinkedIn, until a call is booked.</div></div>' +
       '<div class="zt-tools">' +
         (function () {
           // Which of Leo's templates are still the stand-in.
@@ -5387,7 +5387,7 @@ function renderFillProgress() {
           '<div style="height:100%;width:' + pct + '%;background:#8fd6a8"></div></div>' +
         '<div class="hint" style="margin:0 0 4px">' +
           p.peopleOnFile + ' people on file · ' + p.empty + ' brands with nobody · ' +
-          p.addedWeek + ' added this week. Capture keeps up to ' + p.cap + ' a brand — most will have fewer, and that’s fine.' +
+          p.addedWeek + ' added this week.' +
         '</div>' +
         '<div class="hint" style="margin:0 0 4px">' + lastLine + '</div>' +
         (p.underNoId
@@ -5398,7 +5398,7 @@ function renderFillProgress() {
           ? '<div class="hint" style="margin:0 0 4px">' + p.roomReachable + ' more people are reachable right now without any lookup.</div>'
           : '') +
         (p.resting
-          ? '<div class="hint" style="margin:0 0 4px">' + p.resting + (p.resting === 1 ? ' brand is' : ' brands are') + ' resting — SponsorUnited had nobody new for them last time, so the sweep skips them for ' + (p.restDays || 14) + ' days and gets on with the rest.</div>'
+          ? '<div class="hint" style="margin:0 0 4px">' + p.resting + (p.resting === 1 ? ' brand is' : ' brands are') + ' resting ' + (p.restDays || 14) + ' days — nobody new last time.</div>'
           : '') +
         (p.nextUp.length
           ? '<div class="hint" style="margin:6px 0 0">Next up: ' + p.nextUp.map(function (b) {
@@ -5406,7 +5406,7 @@ function renderFillProgress() {
             }).join(' · ') + '</div>'
           : '') +
         (stale
-          ? '<div class="hint" style="margin:8px 0 0;color:#f0b86b">Nothing captured today. Open SponsorUnited in a tab, signed in, and leave it alone — the script starts on its own after two idle minutes. If it still does nothing, click the SB pill → “Test the search on this page”.</div>'
+          ? '<div class="hint" style="margin:8px 0 0;color:#f0b86b">Nothing captured today. Leave SponsorUnited open in a tab — it starts after two idle minutes.</div>'
           : '') +
       '</div></details>';
     var fold = box.querySelector('details');
@@ -8444,11 +8444,7 @@ function loadNeedsMisses() {
       '<div class="panel panel-pad" style="border-color:var(--warn)">' +
         '<div class="section-head" style="margin:0 0 4px">Captured under a name we don\u2019t have ' +
           '<span class="n">' + d.misses.length + '</span></div>' +
-        '<div class="hint" style="margin:0 0 12px">SponsorUnited files some brands under another name ' +
-          '(\u201c818 Tequila\u201d for our \u201c818 Spirits\u201d), so the capture had nowhere to put these people. ' +
-          'Point each one at the right brand \u2014 the name is saved as an \u201calso known as\u201d, the people land now, ' +
-          'and the next capture finds the brand by itself. If it really is a brand we don\u2019t have yet, ' +
-          '\u201c+ New brand\u201d adds it under this name.</div>' +
+        '<div class="hint" style="margin:0 0 12px">SponsorUnited used a different name for these brands. Point each at the right brand, or \u201c+ New brand\u201d.</div>' +
         d.misses.map(function (m) {
           return '<div data-missrow="' + esc(m.name) + '" style="border-top:1px solid var(--border-soft);padding:10px 0">' +
             '<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">' +
@@ -8694,9 +8690,9 @@ function stBrands(r) {
 
 function stIdeas(r) {
   return '<div class="hint" style="margin:0 0 10px">Well-known names that aren’t on your list under any name. ' +
-      'Untick any you don’t want, then check. Nothing is added until you confirm. They go in under ' +
+      'Untick any you don’t want; nothing is added until you confirm. They go in under ' +
       esc(CAT_NAMES[r.file] || r.file) + ' with nobody on file yet.</div>' +
-    '<div class="hint" style="margin:0 0 10px">These are also the LinkedIn run\u2019s research list: with \u201cLook up the research list\u201d on, it finds each one\u2019s LinkedIn page, adds the brand and reads its people. A note says when it couldn\u2019t place one.</div>' +
+    '<div class="hint" style="margin:0 0 10px">The LinkedIn fill looks these up and adds them by itself.</div>' +
     '<div class="st-idea-list">' + r.ideas.map(function (n) {
       var note = r.ideaNotes && r.ideaNotes[n];
       return '<label class="st-idea"' + (note ? ' title="LinkedIn run: ' + esc(note) + '"' : '') + '><input type="checkbox" checked value="' + esc(n) + '">' + esc(n) +
@@ -8776,8 +8772,7 @@ function stPlan(r) {
   if (!list.length) return '<div class="hint" style="margin:0">Nothing here is ready for a day right now.</div>';
   var ticked = ST_PLAN_SEL[r.key];
   var n = stPlanIds(r.key).length;
-  return '<div class="hint" style="margin:0 0 8px">Brands here with people nobody has contacted yet. Ticked: about a day’s worth (' + sdCap() + ' people). ' +
-      'Pick a day and you see who would go out before anything is added.</div>' +
+  return '<div class="hint" style="margin:0 0 8px">Brands with people not yet contacted. About a day’s worth (' + sdCap() + ' people) is ticked.</div>' +
     '<div class="st-plan">' + list.map(function (b) {
       var tags = [b.people + (b.people === 1 ? ' person' : ' people') + ' on file'];
       if (b.queued) tags.push(b.queued + ' queued');
@@ -9110,8 +9105,7 @@ function fitRender() {
   var stagedErr = FIT.staged && FIT.staged.error
     ? '<div class="hint" style="margin:8px 0;color:#f2918c">Research from Claude could not be read: ' + esc(FIT.staged.error) + '</div>' : '';
   var research = stagedErr +
-    '<div class="hint" style="margin:8px 0">Claude looks up sales, venture money, US distribution and college / music sponsorships. ' +
-      'Copy the list into the Claude chat; what comes back shows here for you to tick — nothing is saved before that.</div>' +
+    '<div class="hint" style="margin:8px 0">Copy the list to Claude; its findings come back here for you to tick.</div>' +
     '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
       '<button class="btn-ghost" data-fitact="copy"' + (L && L.shown ? '' : ' disabled') + '>Copy list for Claude (' + (L && L.shown || 0) + ')</button>' +
       '<button class="btn-ghost" data-fitact="more" title="Every brand in play not researched yet, best fit first">Copy more brands…</button>' +
@@ -9154,8 +9148,7 @@ function fitRender() {
   if (!box.querySelector('[data-fitsec]')) {
     box.innerHTML = '<div class="panel panel-pad fit-panel" style="margin-bottom:14px">' +
       '<h3>Brand Fit — which brands to reach out to</h3>' +
-      '<div class="hint" style="margin:0 0 8px">Each brand scores 0–100: budget and venture money weigh most ($5M+ raised is strong), then college / music sponsorships, ' +
-        'an 18–24 category, people we can reach and how the category accepts. Plan my week and the Fill box take the best fit first. Open a brand for its reasons.</div>' +
+      '<div class="hint" style="margin:0 0 8px">Score 0–100: money first, then college / music sponsorships, 18–24 audience and reachable people.</div>' +
       ['research', 'archive'].map(function (k) {
         return '<details class="fold" data-fitsec="' + k + '"' + (FIT.open[k] ? ' open' : '') + '>' +
           '<summary data-fitsum="' + k + '"></summary><div data-fitbody="' + k + '"></div></details>';
@@ -9987,8 +9980,7 @@ function renderToEmail() {
       '<div class="panel panel-pad" style="margin-top:18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
         '<div style="flex:1;min-width:220px">' +
           '<b style="font-size:13.5px">Zach’s list: ' + todo + ' to do</b>' +
-          '<div class="hint" style="margin:3px 0 0">Everyone who accepted on LinkedIn is on Home → For Zach to do, ' +
-            'with the next step for each: text back, the final reach-out, email, or set up a call.</div>' +
+          '<div class="hint" style="margin:3px 0 0">Accepted people are on Home → For Zach to do.</div>' +
         '</div>' +
         '<button class="btn-draft" data-gozach>Open Zach’s list →</button>' +
       '</div>';
@@ -10032,7 +10024,7 @@ function renderFollowUps() {
       (d.nudge.length
         ? '<div class="count-head" style="margin-top:18px;color:#f0b86b">DM\u2019d, no answer <span class="n">' + d.nudge.length + '</span></div>' +
           '<div class="hint" style="margin:2px 0 8px">Accepted and messaged, quiet for ' + d.nudgeAfterDays +
-            '+ days: the final reach-out is due (Home \u2192 For Zach to do). It\u2019s already written \u2014 copy it and send, then tick it there.</div>' + rows(d.nudge, 'nudge')
+            '+ days: final reach-out due (Home \u2192 For Zach to do).</div>' + rows(d.nudge, 'nudge')
         : '') +
       (d.stale.length
         ? '<div class="count-head" style="margin-top:18px;color:var(--ink-3)">Invite never accepted <span class="n">' + d.stale.length + '</span></div>' +
@@ -14331,7 +14323,7 @@ function oqRenderStaleRail() {
   slot.innerHTML = '<div class="oq-sum">' +
     '<div class="oq-sum-k">Old invites</div>' +
     '<div class="oq-sum-big">' + c.people + '<span>waiting 3+ weeks</span></div>' +
-    '<div class="hint" style="margin:0">' + sdPlural(c.brands, 'brand', 'brands') + ', no accept. Withdraw them on LinkedIn to keep the pending list short, then log them here — their brands can try someone new.</div>' +
+    '<div class="hint" style="margin:0">' + sdPlural(c.brands, 'brand', 'brands') + ', no accept. Withdraw on LinkedIn, then log it here.</div>' +
     '<button class="btn-ghost" data-oqstale="toggle">' + (OQ_STALE.open ? 'Hide the list' : 'Clean up') + '</button>' +
   '</div>';
 }
@@ -14663,8 +14655,8 @@ function loadOutreach() {
         'Change who goes first on the Schedule.</div>'
       : '';
     var offNote = waitNote + closedNote + (offDay
-      ? '<div class="hint" style="margin:6px 0 0;color:#f0b86b">No outreach today — you send Tuesday, Wednesday and Thursday. Next up: ' +
-        esc(shortDate(schedDayKeys(1)[0] + 'T12:00:00')) + '. Plan it on the Schedule tab, or add today there as an extra sending day.</div>'
+      ? '<div class="hint" style="margin:6px 0 0;color:#f0b86b">No outreach today (Tue–Thu only). Next: ' +
+        esc(shortDate(schedDayKeys(1)[0] + 'T12:00:00')) + '.</div>'
       : '');
     document.getElementById('queue-head').innerHTML = mode === 'today'
       ? 'To send today' + (r.theme ? ' — ' + esc(CAT_NAMES[r.theme] || r.theme) + ' day' : '') + ' <span class="n">' + list.length + '</span>' +
@@ -16430,7 +16422,7 @@ function renderActHome() {
   var current = active.reduce(function (s, a) { return s + a.currentCents; }, 0);
   var soon = active.filter(function (a) { return a.daysOut != null && a.daysOut >= 0; }).sort(function (a, b) { return a.daysOut - b.daysOut; })[0];
   var h = '<div class="eyebrow">Activations</div><h1>What we\'re delivering</h1>' +
-    '<div class="sub">Signed deals being carried out. Cost side only — sponsorship revenue stays in Pipeline, booking revenue in sb-crm, never added together.</div>';
+    '<div class="sub">Signed deals being run. Costs only — revenue lives in Deals.</div>';
   h += '<div class="kpi-row">' +
     '<div class="kpi"><div class="kpi-label">Active</div><div class="kpi-value">' + active.length + '</div><div class="kpi-note">activations</div></div>' +
     '<div class="kpi money"><div class="kpi-label">Approved budget</div><div class="kpi-value">' + money(budget) + '</div><div class="kpi-note">across active</div></div>' +
@@ -17372,7 +17364,7 @@ function renderOps(r) {
   var sum = r.summary || {};
   var h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
     '<div><div class="eyebrow">Operations</div><h1>Contracts & invoices</h1>' +
-    '<div class="sub">Everything that lands in the ops mailbox, sorted and tracked here. Reply and forward go out as SB Agency Operations.</div></div>' +
+    '<div class="sub">The ops mailbox, sorted.</div></div>' +
     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">' +
       (st.connected
         ? '<span style="font-size:13px;color:var(--ink-3)">● ' + esc(st.address || 'connected') + (st.lastScanAt ? ' · scanned ' + when(st.lastScanAt) : '') + '</span>' +
@@ -18151,7 +18143,7 @@ function renderNextBest() {
     if (!rows.length) { slot.innerHTML = ''; return; }
     slot.innerHTML =
       '<div class="count-head" style="margin-top:26px">Next best brands — not contacted yet <span class="n">' + rows.length + '</span></div>' +
-      '<div class="hint" style="margin:2px 0 10px">Ranked by tier, reachable decision makers, and how each category has replied so far. Queue adds their best contact to Today.</div>' +
+      '<div class="hint" style="margin:2px 0 10px">Best brands to reach next. Queue adds their best contact to today.</div>' +
       rows.map(function (b) {
         var tag = [CAT_NAMES[b.category] || b.category].filter(Boolean).join('');
         return '<div class="target" data-brand="' + esc(b.id) + '">' +
