@@ -1664,6 +1664,24 @@ function factChanges(current: Record<FactField, any>, row: ResearchRow): FactCha
 const FIT_ARCHIVE_KEY = 'fitArchiveLast'
 const RESEARCH_STAGED_KEY = 'researchStaged'
 const BUILD_PICKS_KEY = 'buildIdeaPicks'
+
+// A pasted NEED that points at one of the dashboard's own review queues
+// is done once that queue is empty — Leo did it on the page, so it
+// shouldn't sit on the recap waiting for a tick too. Rules only.
+const NEED_QUEUES: Array<[RegExp, string, string]> = [
+  [/research|brand fit|save facts/i, 'research', 'Brand Fit research is all reviewed'],
+  [/discover|hunt finds|\bfinds\b|add or (×|x|dismiss)/i, 'discover', 'nothing left to review on Discover'],
+  [/which linkedin page|linkedin pages?\b.*(pick|theirs)|pick their pages/i, 'lipage', 'no LinkedIn pages left to pick'],
+  [/sponsorunited page|clarify/i, 'clarify', 'nothing left on Clarify'],
+  [/access request/i, 'access', 'no access requests waiting'],
+]
+function needClearedBy(n: { label?: string; steps?: string[] }, asks: Array<{ key: string }>): string | null {
+  const text = [n.label, ...(n.steps || [])].join(' ')
+  for (const [re, key, why] of NEED_QUEUES) {
+    if (re.test(text)) return asks.some(a => a.key === key) ? null : why
+  }
+  return null
+}
 const RESEARCH_LAST_KEY = 'researchImportLast'
 type FitArchiveLog = {
   at: string; by: string | null; brands: string[]; names: string[]; shelved: string[]
@@ -2539,9 +2557,16 @@ const handlers: Record<string, Handler> = {
     ])
     const ask = (key: string, n: number, label: string, view: string) => { if (n > 0) asks.push({ key, n, label, view }) }
     ask('discover', discover, 'brands found, waiting for Add or ×', 'discover')
-    ask('research', Array.isArray(staged?.rows) ? staged.rows.length : 0, 'researched brands to review (Brand Fit)', 'stock')
+    // A batch Leo saved or dismissed is done, even though the setting stays.
+    const stagedLeft = staged && !staged.appliedAt && !staged.dismissedAt && Array.isArray(staged.rows) ? staged.rows.length : 0
+    ask('research', stagedLeft, 'researched brands to review (Brand Fit)', 'stock')
     ask('access', access, 'Show Board access requests to approve', 'board')
-    ask('lipage', Object.keys(review || {}).length, 'brands: which LinkedIn page is theirs?', 'linkedin')
+    // Only brands still in play — the People tab hides the rest.
+    const reviewIds = Object.keys(review || {})
+    const reviewLeft = reviewIds.length
+      ? await prisma.brand.count({ where: { id: { in: reviewIds }, passedAt: null, doNotEmail: false } })
+      : 0
+    ask('lipage', reviewLeft, 'brands: which LinkedIn page is theirs?', 'linkedin')
     ask('clarify', clarify, 'brands: which SponsorUnited page is theirs?', 'clarify')
 
     const chats = logs.map(l => {
@@ -2552,7 +2577,10 @@ const handlers: Record<string, Handler> = {
       return {
         id: l.id, title: l.title, raw: l.raw, source: l.source, addedBy: l.addedBy, createdAt: l.createdAt,
         done: parsed.done ?? [], ideas: parsed.ideas ?? [],
-        needs: (parsed.needs ?? []).map((n: any, i: number) => ({ ...n, i, done: doneIdx.includes(i) })),
+        needs: (parsed.needs ?? []).map((n: any, i: number) => {
+          const auto = needClearedBy(n, asks)
+          return { ...n, i, done: doneIdx.includes(i) || !!auto, auto }
+        }),
       }
     })
 

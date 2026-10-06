@@ -90,7 +90,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(saved.needs, 1);
     r = await data('dayRecap', {});
     assert.deepEqual(r.chats.map(c => c.title), ['Brand hunt', 'Snag session']);
-    assert.deepEqual(r.chats[0].needs, [{ label: 'Review the finds', steps: ['Open Discover'], i: 0, done: false }]);
+    assert.deepEqual(r.chats[0].needs, [{ label: 'Review the finds', steps: ['Open Discover'], i: 0, done: false, auto: null }]);
     assert.deepEqual(r.chats[0].ideas, ['Score by funding']);
     assert.deepEqual(r.logDays, [{ day: today, n: 2 }]);
     await assert.rejects(data('addWorkLog', { text: '   ' }), /Paste what the chat did/);
@@ -115,6 +115,21 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const old = await data('dayRecap', { day: '2026-10-01' });
     assert.deepEqual([old.isToday, old.todo, old.chats.map(c => c.title), old.reached.invites], [false, null, ['Old chat'], 0]);
     ok('delete previews first; a past day has its own log and no to-do');
+
+    // 5. Done things leave: a saved research batch stops counting, and a
+    //    pasted NEED about it reads as done.
+    await prisma.setting.upsert({ where: { key: 'researchStaged' }, create: { key: 'researchStaged', value: JSON.stringify({ at: 'x', rows: [{ name: 'A' }, { name: 'B' }] }) }, update: { value: JSON.stringify({ at: 'x', rows: [{ name: 'A' }, { name: 'B' }] }) } })
+    await data('addWorkLog', { text: 'Research chat\nNEED: review the research\n1. Open Brand Fit\n2. Save facts' })
+    r = await data('dayRecap', {})
+    assert.ok(r.asks.some(a => a.key === 'research' && a.n === 2))
+    let need = r.chats.find(c => c.title === 'Research chat').needs[0]
+    assert.deepEqual([need.done, need.auto], [false, null])
+    await prisma.setting.update({ where: { key: 'researchStaged' }, data: { value: JSON.stringify({ at: 'x', rows: [{ name: 'A' }], appliedAt: 'now' }) } })
+    r = await data('dayRecap', {})
+    assert.ok(!r.asks.some(a => a.key === 'research'), 'a saved batch is not waiting')
+    need = r.chats.find(c => c.title === 'Research chat').needs[0]
+    assert.equal(need.done, true); assert.match(need.auto, /research/)
+    ok('saved research leaves the recap; its pasted NEED reads as done')
 
     console.log(n + ' checks passed');
   } catch (e) {

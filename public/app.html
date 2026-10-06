@@ -2858,7 +2858,9 @@ function rcFound(r) {
 }
 function rcOpenNeeds(r) {
   var out = [];
-  r.chats.forEach(function (c) { c.needs.forEach(function (n) { out.push({ chat: c, need: n }); }); });
+  // Only what's still open: a ticked need, or one the dashboard shows is
+  // done (its queue is empty), leaves the recap.
+  r.chats.forEach(function (c) { c.needs.forEach(function (n) { if (!n.done) out.push({ chat: c, need: n }); }); });
   return out;
 }
 // Zach's list people with something to do now, most urgent stage first
@@ -2878,7 +2880,7 @@ function rcCounts(r) {
     reached: reached.invites + reached.emails.length + reached.steps.length,
     todo: r.isToday ? (todo.sendingDay ? (todo.queued || 0) : 0) + (todo.actions || 0) + rcZachTodo().length + (todo.calls || []).length : 0,
     found: rcFound(r).length,
-    needs: r.asks.length + rcOpenNeeds(r).filter(function (x) { return !x.need.done; }).length,
+    needs: r.asks.length + rcOpenNeeds(r).length,
   };
 }
 
@@ -3061,15 +3063,24 @@ function rcCards(r) {
 
 function needHtml(chat, n) {
   return '<label class="need' + (n.done ? ' done' : '') + '">' +
-    '<input type="checkbox" data-need="' + esc(chat.id) + '" data-i="' + n.i + '"' + (n.done ? ' checked' : '') + '>' +
+    '<input type="checkbox" data-need="' + esc(chat.id) + '" data-i="' + n.i + '"' + (n.done ? ' checked' : '') + (n.auto ? ' disabled' : '') + '>' +
     '<span><span class="nl">' + rcText(n.label) + '</span>' +
+    (n.auto ? '<div class="from">Done — ' + esc(n.auto) + '</div>' : '') +
     (n.steps.length ? '<ol>' + n.steps.map(function (s) { return '<li>' + rcText(s) + '</li>'; }).join('') + '</ol>' : '') +
     '<div class="from">' + esc(chat.title) + '</div></span></label>';
 }
 
+// Always drawn from a fresh read, so anything done since the page loaded
+// (research saved, finds added, a need ticked) is already gone.
 function openRecap(at, data) {
+  if (!data) {
+    return loadToday().then(function (r) { drawRecap(at, r); }, function () { if (RC) drawRecap(at, RC); });
+  }
+  return drawRecap(at, data);
+}
+function drawRecap(at, data) {
   var r = data || RC;
-  if (!r) { return loadToday().then(function () { openRecap(at); }); }
+  if (!r) return;
   RC_SHOW = r;
   var cards = rcCards(r);
   var start = typeof at === 'string' ? Math.max(0, cards.findIndex(function (c) { return c.key === at; })) : (at || 0);
@@ -3293,6 +3304,17 @@ document.addEventListener('keydown', function (ev) {
   else if (ev.key === 'ArrowDown' || ev.key === 'ArrowRight' || ev.key === 'PageDown' || (ev.key === ' ' && !ev.target.closest('button,a'))) { ev.preventDefault(); rcGo(RC_I + 1); }
   else if (ev.key === 'ArrowUp' || ev.key === 'ArrowLeft' || ev.key === 'PageUp') { ev.preventDefault(); rcGo(RC_I - 1); }
 });
+
+// Coming back to the tab refreshes Home's tiles and log (something may
+// have been done in another tab or on another screen).
+function homeRefreshOnReturn() {
+  if (document.visibilityState === 'hidden') return;
+  var home = document.getElementById('dashboard');
+  if (!home || !home.classList.contains('active') || !document.getElementById('recap').hidden) return;
+  loadToday().catch(function () {});
+}
+window.addEventListener('focus', homeRefreshOnReturn);
+document.addEventListener('visibilitychange', homeRefreshOnReturn);
 
 // Opens by itself on the first visit of each Tue–Fri (or from #today).
 function maybeAutoRecap() {
