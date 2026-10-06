@@ -1,0 +1,127 @@
+// scripts/test-today-e2e.js — Home → Today against the real handlers and a
+// throwaway Postgres (wiped): dayRecap, addWorkLog, setWorkNeedDone,
+// pickBuildIdea, deleteWorkLog.
+// Run: E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-today-e2e.js
+const path = require('path');
+const { spawn, execSync } = require('child_process');
+const assert = require('assert/strict');
+
+const DB = process.env.E2E_DATABASE_URL || '';
+let host = '';
+try { host = new URL(DB).hostname; } catch (e) {}
+if (!['localhost', '127.0.0.1', '::1', '[::1]'].includes(host)) {
+  console.error('E2E_DATABASE_URL must be a throwaway Postgres on this machine (it gets wiped). ' +
+    'In Claude\'s cloud sessions: E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-brand-fit-e2e.js');
+  process.exit(1);
+}
+
+const ROOT = path.join(__dirname, '..');
+const PORT = Number(process.env.E2E_PORT || 3461);
+const BASE = 'http://127.0.0.1:' + PORT;
+const DASHBOARD_TOKEN = 'e2e-dashboard-token-0123456789abcdef';
+const M = 1000000 * 100; // $1M in cents
+
+const data = async (fn, args) => {
+  const r = await fetch(BASE + '/api/data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + DASHBOARD_TOKEN },
+    body: JSON.stringify({ fn, args: args || {} }),
+  });
+  const j = await r.json().catch(() => ({ ok: false, error: 'HTTP ' + r.status }));
+  if (!j.ok) throw new Error(fn + ': ' + (j.error || r.status));
+  return j.data;
+};
+
+// New York day keys, the way the dashboard counts days.
+const nyKey = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(d);
+
+let n = 0;
+const ok = (name) => { n++; console.log('  ok — ' + name); };
+
+(async () => {
+  let server = null, prisma = null;
+  try {
+    const env = { ...process.env, DATABASE_URL: DB };
+    execSync('npx prisma db push --force-reset --accept-data-loss --skip-generate', { cwd: ROOT, env, stdio: 'pipe' });
+    const { PrismaClient } = require('@prisma/client');
+    prisma = new PrismaClient({ datasources: { db: { url: DB } } });
+
+    server = spawn('npx', ['next', 'dev', '-p', String(PORT)], {
+      cwd: ROOT, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...env, DASHBOARD_TOKEN, NEXTAUTH_SECRET: 'e2e-only', NEXT_TELEMETRY_DISABLED: '1' },
+    });
+    let log = '';
+    server.stdout.on('data', d => { log += d; });
+    server.stderr.on('data', d => { log += d; });
+    const t0 = Date.now();
+    for (;;) {
+      try { await data('categoryReach'); break; } catch (e) {}
+      if (Date.now() - t0 > 240000) throw new Error('next dev never answered:\n' + log.slice(-3000));
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    ok('the dashboard runs locally (' + Math.round((Date.now() - t0) / 1000) + ' s to first answer)');
+
+    const today = nyKey(new Date());
+    await prisma.brand.create({ data: { id: 'b1', name: 'Alpha Water', category: 'electrolytes' } });
+    const c1 = await prisma.contact.create({ data: { brandId: 'b1', name: 'Ann Able', title: 'CMO' } });
+    const c2 = await prisma.contact.create({ data: { brandId: 'b1', name: 'Ben Bright', title: 'Brand Manager' } });
+    const t1 = await prisma.target.create({ data: { brandId: 'b1', contactId: c1.id, status: 'sent', sentAt: new Date() } });
+    await prisma.target.create({ data: { brandId: 'b1', contactId: c2.id, status: 'accepted', dmSentAt: new Date() } });
+    await prisma.targetEvent.create({ data: { targetId: t1.id, kind: 'status', fromStatus: 'sent', toStatus: 'accepted' } });
+    await prisma.discoveredBrand.create({ data: { query: 'Claude hunt · ' + today, name: 'Flerish', category: 'electrolytes', signals: 'sponsors' } });
+
+    // 1. The recap reads the day.
+    let r = await data('dayRecap', {});
+    assert.equal(r.day, today);
+    assert.equal(r.reached.invites, 1);
+    assert.deepEqual(r.reached.companies.map(c => [c.name, c.people]), [['Alpha Water', ['Ann Able']]]);
+    assert.deepEqual(r.reached.accepted.map(p => p.name), ['Ann Able']);
+    assert.deepEqual(r.reached.steps.map(s => s.step), ['First LinkedIn message']);
+    assert.deepEqual(r.found.discovered.map(f => [f.name, f.source]), [['Flerish', 'Claude hunt']]);
+    assert.ok(r.todo && typeof r.todo.queued === 'number', 'today has a to-do');
+    assert.deepEqual(r.asks.map(a => [a.key, a.n]), [['discover', 1]]);
+    assert.ok(r.ideas.length >= 5);
+    ok('dayRecap: invites, accepts, Zach steps, finds, asks');
+
+    // 2. Paste two chats; NEED and ideas are sorted out.
+    const paste = 'Brand hunt\n- Posted 49 brands\n**NEED: Review the finds**\n1. Open Discover\n\nIdeas:\n- Score by funding\n---\nSnag session\n- Found Snag on LinkedIn';
+    const saved = await data('addWorkLog', { text: paste });
+    assert.equal(saved.saved, 2);
+    assert.equal(saved.needs, 1);
+    r = await data('dayRecap', {});
+    assert.deepEqual(r.chats.map(c => c.title), ['Brand hunt', 'Snag session']);
+    assert.deepEqual(r.chats[0].needs, [{ label: 'Review the finds', steps: ['Open Discover'], i: 0, done: false }]);
+    assert.deepEqual(r.chats[0].ideas, ['Score by funding']);
+    assert.deepEqual(r.logDays, [{ day: today, n: 2 }]);
+    await assert.rejects(data('addWorkLog', { text: '   ' }), /Paste what the chat did/);
+    ok('addWorkLog: two chats saved, NEED / ideas sorted');
+
+    // 3. Tick a need, pick an idea.
+    await data('setWorkNeedDone', { id: r.chats[0].id, index: 0, done: true });
+    const ideaId = r.ideas[0].id;
+    await data('pickBuildIdea', { id: ideaId, on: true });
+    r = await data('dayRecap', {});
+    assert.equal(r.chats[0].needs[0].done, true);
+    assert.deepEqual(r.picked, [ideaId]);
+    ok('need ticked and idea picked are kept');
+
+    // 4. Delete previews first, then deletes. A past day reads alone.
+    const pv = await data('deleteWorkLog', { id: r.chats[1].id });
+    assert.equal(pv.preview, true);
+    assert.equal(await prisma.workLog.count(), 2, 'a preview deletes nothing');
+    await data('deleteWorkLog', { id: r.chats[1].id, confirm: true });
+    assert.equal(await prisma.workLog.count(), 1);
+    await data('addWorkLog', { text: 'Old chat\n- did x', day: '2026-10-01' });
+    const old = await data('dayRecap', { day: '2026-10-01' });
+    assert.deepEqual([old.isToday, old.todo, old.chats.map(c => c.title), old.reached.invites], [false, null, ['Old chat'], 0]);
+    ok('delete previews first; a past day has its own log and no to-do');
+
+    console.log(n + ' checks passed');
+  } catch (e) {
+    console.error('FAILED:', e.stack || e.message);
+    process.exitCode = 1;
+  } finally {
+    if (prisma) await prisma.$disconnect().catch(() => {});
+    if (server) { try { process.kill(-server.pid, 'SIGTERM'); } catch (e) {} }
+  }
+})();

@@ -1070,3 +1070,23 @@ model BoardAccessRequest {
   @@index([status])
   @@index([createdAt])
 }
+
+// Home → Today: what Leo's Claude Code chats did, pasted in (or posted by a
+// session through scripts/cc.mjs addWorkLog). One row per chat; the raw text
+// is kept as pasted, the sorted piles (src/lib/work-log.ts) beside it.
+model WorkLog {
+  id    String @id @default(cuid())
+  // New York day key "YYYY-MM-DD" the work belongs to.
+  day   String
+  title String
+  raw   String
+  // JSON: { done: string[], needs: [{label, steps}], ideas: string[] }
+  parsed String
+  // JSON array of need indexes Leo ticked done.
+  needsDone String @default("[]")
+  source    String @default("paste")
+  addedBy   String?
+  createdAt DateTime @default(now())
+
+  @@index([day])
+}

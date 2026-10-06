@@ -31,7 +31,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 
 ## Where things live
 - `public/app.html` — the whole UI. Top nav is six groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
-  `showView`): Home · Brands (All brands / Discover — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
+  `showView`): Home · Brands (All brands / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
   Schedule / Email / People / Archived / Email stats) ·
   **Show Board** (Overview = code lookup + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
@@ -49,6 +49,28 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   "sent <date> · opened". `getBrand` returns each target's outbound emails and fills the free template
   notes for anyone not yet contacted, so a newly added person gets Note · M/W instead of only the log
   button. **Draft intro email** only drafts; the card reloads and the header shows that email's state.
+- **Home → Today** (Leo, Oct 6 2026: "a screen of what has been done today … who we reached out to,
+  what should we do today, what brands did we find, what you need from me, ideas"). Home's top is the date,
+  **+ Paste what Claude did** / **Today's recap ▸**, and four tiles (Reached out / To do / Brands found /
+  Needs you — a click opens the recap at that card); the old KPI rows, revenue and category cards fold into
+  "Numbers & categories" at the bottom. **The recap** (`openRecap`, `rc*` in app.html, `#recap`) opens by
+  itself on the first visit of each **Tue–Fri** (per browser, localStorage `sb.recapSeen`; `RC_DAYS`), from
+  the button, a tile, or `app.html#today`: full screen, one card per section (who we reached · what to do
+  today (today only; Zach's list counted on the page with `ztFilterOf`) · brands found · what Claude did (when
+  chats were logged) · what I need from you · ideas), scroll / arrows / dots / a click on the card move on,
+  the last click (Done) or Esc closes. **Today's log** (`renderDayLog`, `dl*`): any day (‹ › and a day list),
+  the day's numbers, **paste box** and the pasted chats. Data = `dayRecap({ day })` (read-only: invites by
+  sentAt, accept events, emails, Zach's list steps, Discover rows + brands created that day, the review
+  queues as counts, the day's chats, `BUILD_IDEAS` + Leo's picks). **Pasted chats** = table `WorkLog` (one
+  row per chat, raw text kept): `addWorkLog({ text, day })` splits on a line of `---` or a new "Debrief …"
+  line, drops a chat already saved that day, and sorts lines with rules (`src/lib/work-log.ts`, no model call):
+  NEED blocks / need-ish headings → Leo's to-do (ticked via `setWorkNeedDone`), idea / next-step headings →
+  ideas, the rest → done. `deleteWorkLog` previews first. A Claude session can log itself:
+  `node scripts/cc.mjs addWorkLog '{"text":"…"}'`. **Ideas** live in `src/lib/build-ideas.ts` (retire one there
+  once built); **Build this** = `pickBuildIdea` → Setting `buildIdeaPicks` — read them with
+  `node scripts/cc.mjs dayRecap` before choosing what to build. Tests: `node scripts/test-work-log.mjs`,
+  `NODE_PATH=$(npm root -g) node scripts/test-today.js` (page, fake /api/data),
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-today-e2e.js` (real handlers).
 - **Home → For Zach to do** (`zachTodo` + `renderZachTodo`; deep link `app.html#zach`) — **everyone who
   accepted a LinkedIn invite** until they're finished (`HAND_WAITING` in `route.ts`: accepted/replied,
   no `callAt`, no `handSkippedAt`). Replied by email still shows (Email step ticked, "replied by
@@ -83,7 +105,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   wantsEmail, liPath, liSent, emailed, call, skip). Fields: `dmSentAt`, `nudgedAt`,
   `handWantsEmailAt`/`emailedAt`, `handLiPathAt`/`handLiSentAt`, `callAt`/`callBookedAt`,
   `handSkippedAt`. Two templates (Settings `handEmailTemplate`, `handDmTemplate`; placeholders
-  (NAME) (BRAND) (TITLE); stand-ins until Leo saves his), edited in one modal with tabs and a live
+  (NAME) (BRAND) (TITLE); the email one is Leo's text by default (`HAND_EMAIL_TEMPLATE_DEFAULT`), the DM one a stand-in until he saves his), edited in one modal with tabs and a live
   preview; per-person edits in `Target.handSubject/handBody/handDm` (null = follow the template).
   The first LinkedIn message ("Text them on LinkedIn") follows a third template, Setting
   `handFirstDmTemplate` (Leo's pasted text is the default; "Edit template" on the card or the modal's

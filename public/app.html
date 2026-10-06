@@ -415,6 +415,104 @@
   .zs-more{display:block;width:calc(100% - 24px);margin:4px 12px 2px;padding:6px 0;border:0;border-top:1px solid var(--border-soft);background:none;color:var(--accent-hi);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;text-align:left}
   .zs-more:hover{text-decoration:underline}
   @media (min-width:1360px){ #dashboard.page{max-width:1660px} }
+  /* Home head + "today at a glance" tiles (Leo, Oct 6: cleaner Home) */
+  .hm-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .hm-btns{display:flex;gap:8px;flex-wrap:wrap}
+  .hm-glance{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:26px 0 8px}
+  .hm-tile{all:unset;box-sizing:border-box;cursor:pointer;background:var(--surface-1);border:1px solid var(--border);
+    border-radius:var(--radius);padding:16px 18px;display:flex;flex-direction:column;gap:4px;position:relative;overflow:hidden;
+    transition:border-color .15s,transform .15s}
+  .hm-tile:before{content:'';position:absolute;inset:0 auto 0 0;width:3px;background:var(--tc,var(--accent))}
+  .hm-tile:hover,.hm-tile:focus-visible{border-color:var(--tc,var(--accent));transform:translateY(-1px)}
+  .hm-tile .k{font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+  .hm-tile .v{font-size:28px;font-weight:800;font-family:var(--display);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .hm-tile .s{font-size:12px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  details.hm-more{margin-top:34px;border-top:1px solid var(--border-soft);padding-top:4px}
+  /* Today's log */
+  .dl-nav{margin-left:auto;display:flex;align-items:center;gap:6px}
+  .dl-nav select{background:var(--surface-2);color:var(--ink-1);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font:inherit;font-size:12.5px}
+  .dl-sum{display:flex;gap:18px;flex-wrap:wrap;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border-soft);font-size:13px;color:var(--ink-2)}
+  .dl-sum b{color:var(--ink-1);font-variant-numeric:tabular-nums}
+  .dl-sum .btn-ghost{margin-left:auto}
+  .dl-paste{padding:16px 20px;border-bottom:1px solid var(--border-soft);background:var(--surface-2)}
+  .dl-paste textarea{width:100%;min-height:150px;resize:vertical;background:var(--surface-0);color:var(--ink-1);border:1px solid var(--border);
+    border-radius:10px;padding:12px 14px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+  .dl-paste textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--ring)}
+  .dl-paste .row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+  .dl-chat{border-bottom:1px solid var(--border-soft)}
+  .dl-chat:last-child{border-bottom:none}
+  .dl-chat>summary{list-style:none;cursor:pointer;padding:13px 20px;display:flex;gap:12px;align-items:center}
+  .dl-chat>summary::-webkit-details-marker{display:none}
+  .dl-chat>summary:before{content:'▸';color:var(--ink-3);font-size:11px}
+  .dl-chat[open]>summary:before{content:'▾'}
+  .dl-chat .t{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dl-chat .m{font-size:12px;color:var(--ink-3);white-space:nowrap}
+  .dl-body{padding:2px 20px 16px 43px;display:grid;gap:12px}
+  .dl-body h4{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+  .dl-body ul{list-style:none;display:grid;gap:4px}
+  .dl-body li{font-size:13px;color:var(--ink-2);padding-left:14px;position:relative}
+  .dl-body li:before{content:'';position:absolute;left:2px;top:.62em;width:5px;height:5px;border-radius:50%;background:var(--ink-3)}
+  .dl-body pre{white-space:pre-wrap;font-size:12px;color:var(--ink-3);background:var(--surface-0);border:1px solid var(--border-soft);border-radius:8px;padding:10px 12px;max-height:320px;overflow:auto}
+  .dl-empty{padding:18px 20px;color:var(--ink-3);font-size:13px}
+  .need{display:flex;gap:10px;align-items:flex-start;padding:8px 0}
+  .need input{margin-top:3px;accent-color:var(--good);width:16px;height:16px;flex:none}
+  .need .nl{font-weight:600;color:var(--ink-1);font-size:13.5px}
+  .need.done .nl{text-decoration:line-through;color:var(--ink-3)}
+  .need ol{margin:4px 0 0 18px;font-size:12.5px;color:var(--ink-2)}
+  .need.done ol{display:none}
+  .need .from{font-size:11.5px;color:var(--ink-3)}
+
+  /* The recap: full screen, one card per section, scroll or click through */
+  body.rc-on{overflow:hidden}
+  .rc{position:fixed;inset:0;z-index:900;background:radial-gradient(1200px 700px at 70% -10%,rgba(79,131,247,.18),transparent 60%),rgba(8,8,12,.97);
+    backdrop-filter:blur(6px);display:flex;flex-direction:column;animation:rcIn .25s ease}
+  @keyframes rcIn{from{opacity:0}to{opacity:1}}
+  .rc-top{display:flex;align-items:center;gap:14px;padding:16px 24px;position:absolute;top:0;left:0;right:0;z-index:2;pointer-events:none}
+  .rc-top>*{pointer-events:auto}
+  .rc-day{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-hi)}
+  .rc-x{all:unset;cursor:pointer;margin-left:auto;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--ink-2);
+    background:rgba(255,255,255,.06);font-size:16px}
+  .rc-x:hover,.rc-x:focus-visible{background:rgba(255,255,255,.14);color:#fff}
+  .rc-dots{position:absolute;right:22px;top:50%;transform:translateY(-50%);display:grid;gap:10px;z-index:2}
+  .rc-dot{all:unset;cursor:pointer;width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.22);transition:all .2s}
+  .rc-dot.on{background:var(--accent-hi);height:22px;border-radius:5px}
+  .rc-track{flex:1;overflow-y:auto;scroll-snap-type:y proximity;scroll-behavior:smooth}
+  .rc-card{min-height:100vh;scroll-snap-align:start;display:flex;align-items:center;justify-content:center;padding:84px 64px 64px;cursor:pointer}
+  .rc-inner{width:100%;max-width:820px;cursor:auto}
+  .rc-step{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+  .rc-card h2{font-family:var(--display);font-size:clamp(30px,5vw,48px);font-weight:800;letter-spacing:-.03em;line-height:1.05;margin:8px 0 6px}
+  .rc-lead{font-size:16px;color:var(--ink-2);margin-bottom:24px}
+  .rc-lead b{color:#fff}
+  .rc-big{display:flex;gap:28px;flex-wrap:wrap;margin:6px 0 26px}
+  .rc-big div{display:flex;flex-direction:column}
+  .rc-big b{font-family:var(--display);font-size:44px;font-weight:800;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums}
+  .rc-big span{font-size:12px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.08em;margin-top:6px}
+  .rc-list{display:grid;gap:8px}
+  .rc-row{background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start}
+  .rc-row .nm{font-weight:700;color:#fff}
+  .rc-row .sm{font-size:12.5px;color:var(--ink-3)}
+  .rc-row .grow{flex:1;min-width:0}
+  .rc-row .ppl{font-size:13px;color:var(--ink-2);margin-top:2px}
+  .rc-tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent-hi);margin:2px 4px 0 0}
+  .rc-tag.g{background:rgba(62,207,142,.13);color:var(--good)}
+  .rc-tag.w{background:rgba(232,182,76,.14);color:var(--warn)}
+  .rc-tag.r{background:rgba(240,113,107,.14);color:var(--bad)}
+  .rc-h{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:22px 0 8px}
+  .rc-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px;align-items:center}
+  .rc-next{all:unset;cursor:pointer;margin-left:auto;font-weight:700;font-size:13px;color:var(--accent-hi);padding:8px 2px}
+  .rc-next:hover{color:#fff}
+  .rc-empty{color:var(--ink-3);font-size:14px;padding:6px 0}
+  .rc-more{font-size:12.5px;color:var(--ink-3);padding:4px 2px}
+  .rc-idea .btn-ghost{white-space:nowrap}
+  .rc-idea.picked{border-color:rgba(62,207,142,.45)}
+  .rc-hint{position:absolute;bottom:14px;left:0;right:0;text-align:center;font-size:11.5px;color:var(--ink-3);pointer-events:none}
+  @media (max-width:700px){
+    .rc-card{padding:72px 18px 56px}
+    .rc-dots{right:8px}
+    .rc-big{gap:14px 22px}
+    .rc-big b{font-size:34px}
+    .dl-body{padding-left:20px}
+  }
   @media (max-width:768px){ .zs{padding:14px 12px} .zs-rule{margin-left:0} }
   @media (hover:none){.zt-go,.zt-keys{display:none}}
   @media (prefers-reduced-motion:reduce){
@@ -1448,17 +1546,30 @@
 
     <!-- DASHBOARD -->
     <section class="view active page" id="dashboard">
-      <div class="eyebrow">Dashboard</div>
-      <h1 id="today-date">—</h1>
-      <div class="sub" id="dash-sub">Loading…</div>
+      <div class="hm-head">
+        <div>
+          <div class="eyebrow">Command center</div>
+          <h1 id="today-date">—</h1>
+          <div class="sub" id="dash-sub">Loading…</div>
+        </div>
+        <div class="hm-btns">
+          <button class="btn-ghost" id="hm-paste" title="Paste what your Claude Code chats did — saved under today">+ Paste what Claude did</button>
+          <button class="btn-solid" id="hm-recap">Today’s recap ▸</button>
+        </div>
+      </div>
+      <div class="hm-glance" id="hm-glance"></div>
       <div id="zach-todo"></div>
       <div id="action-panel" style="margin-top:20px"></div>
-      <div class="kpi-row" id="kpis"></div>
-      <div class="section-head">Sponsorship revenue <span class="n">separate line from booking revenue</span></div>
-      <div class="kpi-row" id="rev-kpis" style="margin-top:0"></div>
-      <div id="owner-split"></div>
-      <div class="section-head">Categories <a href="#stock" class="sd-link" id="go-stock">Stock take: every brand by lane &rarr;</a></div>
-      <div class="card-grid" id="cat-cards" style="margin-top:0"></div>
+      <div id="day-log"></div>
+      <details class="fold hm-more" id="hm-more">
+        <summary class="section-head">Numbers &amp; categories <span class="n">targets, sponsorship revenue, brands by category</span></summary>
+        <div class="kpi-row" id="kpis" style="margin-top:6px"></div>
+        <div class="section-head">Sponsorship revenue <span class="n">separate line from booking revenue</span></div>
+        <div class="kpi-row" id="rev-kpis" style="margin-top:0"></div>
+        <div id="owner-split"></div>
+        <div class="section-head">Categories <a href="#stock" class="sd-link" id="go-stock">Stock take: every brand by lane &rarr;</a></div>
+        <div class="card-grid" id="cat-cards" style="margin-top:0"></div>
+      </details>
       <div class="section-head" id="todos-head">Open todos</div>
       <div class="panel" id="todos"></div>
     </section>
@@ -2018,6 +2129,7 @@
 
 <div class="toast" id="toast"></div>
 
+<div id="recap" class="rc" hidden role="dialog" aria-modal="true" aria-label="Today’s recap"></div>
 <script>
 'use strict';
 
@@ -2562,6 +2674,7 @@ function loadDashboard() {
   showView('dashboard');
   renderZachTodo();
   renderActionPanel();
+  loadToday().catch(function (e) { var g = document.getElementById('hm-glance'); if (g) g.innerHTML = '<div class="hint">Could not load today: ' + esc(e.message) + '</div>'; });
   document.getElementById('today-date').textContent =
     new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
 
@@ -2637,6 +2750,504 @@ function loadDashboard() {
         }).join('') + '</div>'
       : '';
   });
+}
+
+// --- Today: the recap and the day's log ------------------------
+//
+// Leo, Oct 6: "when you click on the command center, it gives you a screen
+// of what has been done today … who we reached out to today, what should we
+// do today, what brands did we find today, what you need from me, ideas".
+// The recap opens by itself on the first visit of each Tue–Fri (per
+// browser, localStorage sb.recapSeen) and from "Today's recap ▸" any time:
+// full screen, one card per section, scroll or click through, the last
+// click closes it. Today's log (below Zach's list) keeps every day: the
+// pasted Claude Code chats (addWorkLog — rules sort them into done / NEED /
+// ideas, src/lib/work-log.ts) beside what the dashboard itself saw that day.
+// Data: dayRecap({ day }). Deep link: app.html#today.
+var RC = null;            // dayRecap for today
+var RC_SHOW = null;       // the recap on screen (today's or a past day's)
+var RC_I = 0;             // the card in view
+var DL_DAY = null;        // the day the log panel shows (null = today)
+var DL_DATA = null;
+var DL_PASTE = false;     // paste box open
+var DL_OPEN = {};         // chat id -> open
+var RC_DAYS = [2, 3, 4, 5];  // Tue–Fri: the days the recap opens by itself
+
+function nyKey(d) { return (d || new Date()).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); }
+function keyDow(k) { return new Date(k + 'T12:00:00Z').getUTCDay(); }
+function keyShift(k, n) { return new Date(new Date(k + 'T12:00:00Z').getTime() + n * 864e5).toISOString().slice(0, 10); }
+function keyLabel(k, long) {
+  return new Date(k + 'T12:00:00Z').toLocaleDateString('en-US', long
+    ? { timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric' }
+    : { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' });
+}
+function rcText(s) {
+  return esc(s).replace(/(https?:\/\/[^\s<)]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+}
+function plural(n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); }
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private window */ } }
+
+// One brand per found row: Discover rows, plus brands made that day that
+// no Discover row stands for (added by hand, LinkedIn research…).
+function rcFound(r) {
+  var rows = r.found.discovered.slice();
+  var have = {};
+  rows.forEach(function (f) { if (f.brandId) have[f.brandId] = 1; });
+  r.found.brands.forEach(function (b) {
+    if (!have[b.id]) rows.push({ name: b.name, category: b.category, status: 'added', brandId: b.id,
+      source: b.source === 'research' ? 'Research list' : /linkedin/.test(b.source || '') ? 'LinkedIn' : 'Added by hand' });
+  });
+  return rows;
+}
+function rcOpenNeeds(r) {
+  var out = [];
+  r.chats.forEach(function (c) { c.needs.forEach(function (n) { out.push({ chat: c, need: n }); }); });
+  return out;
+}
+// Zach's list people with something to do now, most urgent stage first
+// (the same order the list uses). Empty until Zach's list has loaded.
+function rcZachTodo() {
+  if (!ZT || !ZT.brands) return [];
+  var out = [];
+  ZT.brands.forEach(function (g) {
+    g.people.forEach(function (p) { if (ztFilterOf(p) === 'todo') out.push(p); });
+  });
+  return out;
+}
+function rcCounts(r) {
+  var reached = r.reached;
+  var todo = r.todo || {};
+  return {
+    reached: reached.invites + reached.emails.length + reached.steps.length,
+    todo: r.isToday ? (todo.sendingDay ? (todo.queued || 0) : 0) + (todo.actions || 0) + rcZachTodo().length + (todo.calls || []).length : 0,
+    found: rcFound(r).length,
+    needs: r.asks.length + rcOpenNeeds(r).filter(function (x) { return !x.need.done; }).length,
+  };
+}
+
+function loadToday() {
+  return api('dayRecap').then(function (r) {
+    if (!r || !r.reached) throw new Error('no recap');
+    RC = r;
+    renderGlance();
+    if (!DL_DAY || DL_DAY === r.day) { DL_DATA = r; renderDayLog(); }
+    return r;
+  });
+}
+
+function renderGlance() {
+  var box = document.getElementById('hm-glance');
+  if (!box || !RC) return;
+  var r = RC, c = rcCounts(r), t = r.todo || {};
+  var comp = r.reached.companies.length;
+  var prev = r.reached.previous;
+  var tiles = [
+    ['reached', 'Reached out today', c.reached,
+      comp ? plural(r.reached.invites, 'invite') + ' at ' + plural(comp, 'brand')
+        : prev ? 'Last: ' + keyLabel(prev.day) + ' · ' + prev.total + ' invites' : 'Nothing out yet', 'var(--accent)'],
+    ['todo', 'To do today', c.todo,
+      t.sendingDay ? (t.queued || 0) + ' in the LinkedIn queue · ' + rcZachTodo().length + ' on Zach’s list'
+        : 'No outreach today · ' + rcZachTodo().length + ' on Zach’s list', 'var(--warn)'],
+    ['found', 'Brands found today', c.found,
+      r.asks.some(function (a) { return a.key === 'discover'; })
+        ? r.asks.filter(function (a) { return a.key === 'discover'; })[0].n + ' waiting on Discover' : 'Discover is clear', 'var(--good)'],
+    ['needs', 'Needs you', c.needs,
+      c.needs ? 'Reviews and steps only you can do' : 'Nothing waiting on you', 'var(--bad)'],
+  ];
+  box.innerHTML = tiles.map(function (x, i) {
+    return '<button class="hm-tile" data-rc-open="' + x[0] + '" style="--tc:' + x[4] + '">' +
+      '<span class="k">' + x[1] + '</span><span class="v">' + x[2] + '</span><span class="s">' + esc(x[3]) + '</span></button>';
+  }).join('');
+}
+
+// ---- the recap overlay ----
+
+function rcCards(r) {
+  var cards = [];
+  var day = keyLabel(r.day, true);
+  var R = r.reached;
+
+  // 1. Who we reached
+  var h = '<div class="rc-big">' +
+    '<div><b>' + R.invites + '</b><span>LinkedIn invites</span></div>' +
+    '<div><b>' + R.companies.length + '</b><span>brands</span></div>' +
+    '<div><b>' + R.accepted.length + '</b><span>accepted</span></div>' +
+    '<div><b>' + R.replies.length + '</b><span>replied</span></div>' +
+    (R.emails.length ? '<div><b>' + R.emails.length + '</b><span>emails</span></div>' : '') + '</div>';
+  if (!R.companies.length && !R.steps.length && !R.emails.length) {
+    h += '<div class="rc-empty">Nothing has gone out ' + (r.isToday ? 'yet today' : 'that day') + '.' +
+      (R.previous ? ' Last sending day, ' + esc(keyLabel(R.previous.day, true)) + ': <b>' + R.previous.total + ' invites at ' +
+        plural(R.previous.companies, 'brand') + '</b>.' : '') + '</div>';
+  }
+  if (R.companies.length) {
+    h += '<div class="rc-h">Invites by brand</div><div class="rc-list">' + R.companies.slice(0, 14).map(function (b) {
+      return '<div class="rc-row"><div class="grow"><a class="nm" href="#" data-rc-brand="' + esc(b.brandId) + '">' + esc(b.name) + '</a>' +
+        ' <span class="sm">' + esc(CAT_NAMES[b.category] || b.category || '') + '</span>' +
+        '<div class="ppl">' + b.people.map(esc).join(' · ') + '</div></div><span class="rc-tag">' + b.people.length + '</span></div>';
+    }).join('') + '</div>' + (R.companies.length > 14 ? '<div class="rc-more">+ ' + (R.companies.length - 14) + ' more brands</div>' : '');
+  }
+  var moves = [];
+  R.accepted.forEach(function (p) { moves.push([p, 'Accepted', 'g']); });
+  R.replies.forEach(function (p) { moves.push([p, 'Replied', 'g']); });
+  R.steps.forEach(function (p) { moves.push([p, p.step, '']); });
+  R.emails.forEach(function (p) { moves.push([p, p.kind === 'followup' ? 'Follow-up email' : 'Intro email', '']); });
+  if (moves.length) {
+    h += '<div class="rc-h">Replies, accepts and follow-through</div><div class="rc-list">' + moves.slice(0, 12).map(function (m) {
+      return '<div class="rc-row"><div class="grow"><span class="nm">' + esc(m[0].name) + '</span> <span class="sm">· ' + esc(m[0].brand) + '</span></div>' +
+        '<span class="rc-tag ' + m[2] + '">' + esc(m[1]) + '</span></div>';
+    }).join('') + '</div>' + (moves.length > 12 ? '<div class="rc-more">+ ' + (moves.length - 12) + ' more</div>' : '');
+  }
+  cards.push({ key: 'reached', step: 'Reached out', title: r.isToday ? 'Who we reached today' : 'Who we reached', body: h,
+    acts: '<button class="btn-ghost" data-rc-go="outreach">LinkedIn queue</button><button class="btn-ghost" data-rc-go="reached">Results</button>' });
+
+  // 2. What to do today (today only)
+  if (r.isToday) {
+    var t = r.todo || {};
+    var zt = rcZachTodo();
+    h = '';
+    if (t.sendingDay) {
+      h += '<div class="rc-lead">Sending day. <b>' + (t.queued || 0) + '</b> ' + ((t.queued || 0) === 1 ? 'person is' : 'people are') +
+        ' still in today’s LinkedIn queue (a day holds ' + t.cap + ').' +
+        (t.category ? ' Today’s category: <b>' + esc(CAT_NAMES[t.category] || t.category) + '</b>.' : '') + '</div>';
+      if (t.planned.length) h += '<div class="rc-h">On the Schedule today</div><div class="rc-list">' + t.planned.map(function (b, i) {
+        return '<div class="rc-row"><span class="rc-tag">' + (i + 1) + '</span><div class="grow"><a class="nm" href="#" data-rc-brand="' + esc(b.id) + '">' + esc(b.name) + '</a></div></div>';
+      }).join('') + '</div>';
+    } else {
+      h += '<div class="rc-lead">Not a sending day — LinkedIn outreach runs Tuesday to Thursday. Follow-through below still counts.</div>';
+    }
+    h += '<div class="rc-h">Zach’s list · ' + plural(zt.length, 'person', 'people') + ' to do</div>';
+    h += zt.length ? '<div class="rc-list">' + zt.slice(0, 8).map(function (p) {
+      var late = /late/.test(ztStageLabel(p));
+      return '<div class="rc-row"><div class="grow"><span class="nm">' + esc(p.name) + '</span> <span class="sm">· ' + esc(p.brandName) + '</span></div>' +
+        '<span class="rc-tag ' + (late ? 'r' : 'w') + '">' + esc(ztStageLabel(p)) + '</span></div>';
+    }).join('') + '</div>' + (zt.length > 8 ? '<div class="rc-more">+ ' + (zt.length - 8) + ' more on Zach’s list</div>' : '')
+      : '<div class="rc-empty">' + (ZT ? 'Nothing due on Zach’s list.' : 'Zach’s list is still loading.') + '</div>';
+    if (t.actions) {
+      h += '<div class="rc-h">Needs action · ' + t.actions + (t.overdue ? ' (' + t.overdue + ' overdue)' : '') + '</div><div class="rc-list">' +
+        t.actionItems.map(function (it) {
+          return '<div class="rc-row"><div class="grow"><a class="nm" href="#" data-rc-brand="' + esc(it.brandId) + '">' + esc(it.brandName) + '</a> <span class="sm">· ' + esc(it.contactName) + '</span>' +
+            (it.nextStep ? '<div class="ppl">▸ ' + esc(it.nextStep) + '</div>' : '') + '</div>' +
+            '<span class="rc-tag ' + (it.overdue ? 'r' : it.reason === 'reply' ? 'g' : 'w') + '">' + (it.overdue ? 'overdue' : it.reason === 'reply' ? 'replied' : 'follow up') + '</span></div>';
+        }).join('') + '</div>';
+    }
+    if ((t.calls || []).length) {
+      h += '<div class="rc-h">Calls today</div><div class="rc-list">' + t.calls.map(function (p) {
+        return '<div class="rc-row"><div class="grow"><span class="nm">' + esc(p.name) + '</span> <span class="sm">· ' + esc(p.brand) + '</span></div><span class="rc-tag g">call</span></div>';
+      }).join('') + '</div>';
+    }
+    cards.push({ key: 'todo', step: 'Today', title: 'What to do today', body: h,
+      acts: '<button class="btn-ghost" data-rc-go="zach">Zach’s list</button><button class="btn-ghost" data-rc-go="schedule">Schedule</button>' });
+  }
+
+  // 3. Brands found
+  var found = rcFound(r);
+  h = '';
+  if (!found.length) h = '<div class="rc-empty">No new brands ' + (r.isToday ? 'yet today' : 'that day') + '. The daily brand hunt runs at 5:52am New York.</div>';
+  else {
+    var bySrc = {};
+    found.forEach(function (f) { (bySrc[f.source] = bySrc[f.source] || []).push(f); });
+    h += '<div class="rc-big">' + Object.keys(bySrc).map(function (k) { return '<div><b>' + bySrc[k].length + '</b><span>' + esc(k) + '</span></div>'; }).join('') + '</div>';
+    var SIGN = { sponsors: 'sponsors college/music', genz: '18–24', midsize: 'growing' };
+    h += '<div class="rc-list">' + found.slice(0, 16).map(function (f) {
+      var tags = String(f.signals || '').split(',').filter(Boolean).map(function (s) { return '<span class="rc-tag">' + esc(SIGN[s] || s) + '</span>'; }).join('');
+      var st = f.status === 'added' ? '<span class="rc-tag g">added</span>' : f.status === 'dismissed' ? '<span class="rc-tag r">dismissed</span>' : '<span class="rc-tag w">to review</span>';
+      return '<div class="rc-row"><div class="grow">' + (f.brandId ? '<a class="nm" href="#" data-rc-brand="' + esc(f.brandId) + '">' + esc(f.name) + '</a>' : '<span class="nm">' + esc(f.name) + '</span>') +
+        ' <span class="sm">' + esc(CAT_NAMES[f.category] || f.category || '') + ' · ' + esc(f.source) + '</span>' +
+        (f.reason ? '<div class="ppl">' + esc(f.reason) + '</div>' : '') + (tags ? '<div>' + tags + '</div>' : '') + '</div>' + st + '</div>';
+    }).join('') + '</div>' + (found.length > 16 ? '<div class="rc-more">+ ' + (found.length - 16) + ' more on Discover</div>' : '');
+  }
+  cards.push({ key: 'found', step: 'Discover', title: 'Brands we found', body: h,
+    acts: '<button class="btn-ghost" data-rc-go="discover">Review on Discover</button>' });
+
+  // 4. What Claude did (only when chats were logged)
+  if (r.chats.length) {
+    h = '<div class="rc-lead">' + plural(r.chats.length, 'Claude Code chat') + ' logged.</div><div class="rc-list">' + r.chats.map(function (c) {
+      var done = c.done.slice(0, 4);
+      return '<div class="rc-row"><div class="grow"><span class="nm">' + esc(c.title) + '</span>' +
+        (done.length ? '<div class="ppl">' + done.map(function (d) { return '• ' + rcText(d); }).join('<br>') + '</div>' : '') +
+        (c.done.length > 4 ? '<div class="rc-more">+ ' + (c.done.length - 4) + ' more in Today’s log</div>' : '') + '</div>' +
+        (c.needs.length ? '<span class="rc-tag r">' + c.needs.length + ' need</span>' : '') + '</div>';
+    }).join('') + '</div>';
+    cards.push({ key: 'claude', step: 'Claude', title: 'What Claude did', body: h, acts: '<button class="btn-ghost" data-rc-go="log">Open Today’s log</button>' });
+  }
+
+  // 5. What I need from you
+  var needs = rcOpenNeeds(r);
+  h = '';
+  if (r.asks.length) h += '<div class="rc-h">Waiting in the dashboard</div><div class="rc-list">' + r.asks.map(function (a) {
+    return '<div class="rc-row"><span class="rc-tag w">' + a.n + '</span><div class="grow">' + esc(a.label) + '</div>' +
+      '<button class="btn-ghost" data-rc-go="' + esc(a.view) + '">Open →</button></div>';
+  }).join('') + '</div>';
+  if (needs.length) h += '<div class="rc-h">From today’s chats</div><div class="rc-list">' + needs.map(function (x) {
+    return '<div class="rc-row">' + needHtml(x.chat, x.need) + '</div>';
+  }).join('') + '</div>';
+  if (!h) h = '<div class="rc-empty">Nothing is waiting on you. 🎉</div>';
+  cards.push({ key: 'needs', step: 'Needs you', title: 'What I need from you', body: h, acts: '' });
+
+  // 6. Ideas
+  var chatIdeas = [];
+  r.chats.forEach(function (c) { c.ideas.forEach(function (i) { chatIdeas.push({ text: i, from: c.title }); }); });
+  h = '<div class="rc-lead">Tap <b>Build this</b> on any you want — the next Claude session sees your picks.</div><div class="rc-list">' +
+    r.ideas.map(function (i) {
+      return '<div class="rc-row rc-idea' + (i.picked ? ' picked' : '') + '"><div class="grow"><span class="nm">' + esc(i.title) + '</span> <span class="rc-tag">' + esc(i.area) + '</span>' +
+        '<div class="ppl">' + esc(i.why) + '</div></div>' +
+        '<button class="' + (i.picked ? 'btn-solid' : 'btn-ghost') + '" data-rc-idea="' + esc(i.id) + '" data-on="' + (i.picked ? '0' : '1') + '">' + (i.picked ? 'Picked ✓' : 'Build this') + '</button></div>';
+    }).join('') + '</div>';
+  if (chatIdeas.length) h += '<div class="rc-h">Ideas from today’s chats</div><div class="rc-list">' + chatIdeas.map(function (x) {
+    return '<div class="rc-row"><div class="grow">' + rcText(x.text) + '<div class="sm">' + esc(x.from) + '</div></div></div>';
+  }).join('') + '</div>';
+  cards.push({ key: 'ideas', step: 'Next', title: 'Ideas to build next', body: h, acts: '' });
+
+  cards.forEach(function (c, i) { c.day = day; c.i = i; });
+  return cards;
+}
+
+function needHtml(chat, n) {
+  return '<label class="need' + (n.done ? ' done' : '') + '">' +
+    '<input type="checkbox" data-need="' + esc(chat.id) + '" data-i="' + n.i + '"' + (n.done ? ' checked' : '') + '>' +
+    '<span><span class="nl">' + rcText(n.label) + '</span>' +
+    (n.steps.length ? '<ol>' + n.steps.map(function (s) { return '<li>' + rcText(s) + '</li>'; }).join('') + '</ol>' : '') +
+    '<div class="from">' + esc(chat.title) + '</div></span></label>';
+}
+
+function openRecap(at, data) {
+  var r = data || RC;
+  if (!r) { return loadToday().then(function () { openRecap(at); }); }
+  RC_SHOW = r;
+  var cards = rcCards(r);
+  var start = typeof at === 'string' ? Math.max(0, cards.findIndex(function (c) { return c.key === at; })) : (at || 0);
+  var box = document.getElementById('recap');
+  box.innerHTML =
+    '<div class="rc-top"><span class="rc-day">' + esc(keyLabel(r.day, true)) + (r.isToday ? ' · today' : '') + '</span>' +
+      '<button class="rc-x" data-rc-close title="Close (Esc)" aria-label="Close">✕</button></div>' +
+    '<div class="rc-dots">' + cards.map(function (c, i) { return '<button class="rc-dot" data-rc-dot="' + i + '" title="' + esc(c.title) + '" aria-label="' + esc(c.title) + '"></button>'; }).join('') + '</div>' +
+    '<div class="rc-track" id="rc-track">' + cards.map(function (c, i) {
+      var last = i === cards.length - 1;
+      return '<section class="rc-card" data-rc-i="' + i + '"><div class="rc-inner">' +
+        '<div class="rc-step">' + (i + 1) + ' / ' + cards.length + ' · ' + esc(c.step) + '</div>' +
+        '<h2>' + esc(c.title) + '</h2>' + c.body +
+        '<div class="rc-acts">' + c.acts + '<button class="rc-next" data-rc-next>' + (last ? 'Done ✓' : 'Next: ' + esc(cards[i + 1].title) + ' ↓') + '</button></div>' +
+        '</div></section>';
+    }).join('') + '</div>' +
+    '<div class="rc-hint">Scroll or click to go through · Esc to close</div>';
+  box.hidden = false;
+  document.body.classList.add('rc-on');
+  var track = document.getElementById('rc-track');
+  track.addEventListener('scroll', rcOnScroll, { passive: true });
+  RC_I = start;
+  track.style.scrollBehavior = 'auto';
+  var card = track.querySelector('[data-rc-i="' + start + '"]');
+  if (card) track.scrollTop = card.offsetTop;
+  track.style.scrollBehavior = '';
+  rcDots();
+  box.querySelector('.rc-x').focus({ preventScroll: true });
+  if (r.isToday) lsSet('sb.recapSeen', r.day);
+}
+function rcOnScroll() {
+  var track = document.getElementById('rc-track');
+  if (!track) return;
+  var mid = track.scrollTop + track.clientHeight * 0.4, i = 0;
+  track.querySelectorAll('.rc-card').forEach(function (c, n) { if (c.offsetTop <= mid) i = n; });
+  if (i !== RC_I) { RC_I = i; rcDots(); }
+}
+function rcDots() {
+  document.querySelectorAll('#recap .rc-dot').forEach(function (d, i) { d.classList.toggle('on', i === RC_I); });
+}
+function rcGo(i) {
+  var track = document.getElementById('rc-track');
+  if (!track) return;
+  var cards = track.querySelectorAll('.rc-card');
+  if (i >= cards.length) return closeRecap();
+  i = Math.max(0, i);
+  RC_I = i; rcDots();
+  track.scrollTo({ top: cards[i].offsetTop, behavior: 'smooth' });
+}
+function closeRecap() {
+  var box = document.getElementById('recap');
+  if (box.hidden) return;
+  box.hidden = true;
+  box.innerHTML = '';
+  document.body.classList.remove('rc-on');
+  if (location.hash === '#today') history.replaceState({}, '', location.pathname);
+}
+
+// ---- Today's log panel ----
+
+function dlLoad(day) {
+  DL_DAY = day && day !== (RC && RC.today) ? day : null;
+  if (!DL_DAY && RC) { DL_DATA = RC; renderDayLog(); return loadToday(); }
+  return api('dayRecap', { day: day }).then(function (r) { DL_DATA = r; renderDayLog(); });
+}
+
+function renderDayLog() {
+  var box = document.getElementById('day-log');
+  var r = DL_DATA;
+  if (!box || !r) return;
+  var c = rcCounts(r);
+  var days = r.logDays.slice();
+  if (!days.some(function (d) { return d.day === r.day; })) days.push({ day: r.day, n: 0 });
+  if (!days.some(function (d) { return d.day === r.today; })) days.push({ day: r.today, n: 0 });
+  days.sort(function (a, b) { return a.day < b.day ? 1 : -1; });
+  var head = '<div class="section-head">' + (r.isToday ? 'Today’s log' : 'Log · ' + esc(keyLabel(r.day, true))) +
+    ' <span class="n">what got done — the dashboard’s numbers + your pasted Claude chats</span>' +
+    '<span class="dl-nav"><button class="btn-ghost" data-dl-day="' + keyShift(r.day, -1) + '" title="Day before">‹</button>' +
+    '<select data-dl-pick aria-label="Pick a day">' + days.map(function (d) {
+      return '<option value="' + d.day + '"' + (d.day === r.day ? ' selected' : '') + '>' + esc(keyLabel(d.day)) + (d.day === r.today ? ' (today)' : '') + (d.n ? ' · ' + plural(d.n, 'chat') : '') + '</option>';
+    }).join('') + '</select>' +
+    (r.isToday ? '' : '<button class="btn-ghost" data-dl-day="' + keyShift(r.day, 1) + '" title="Day after">›</button><button class="btn-ghost" data-dl-day="' + r.today + '">Today</button>') +
+    '</span></div>';
+  var sum = '<div class="dl-sum">' +
+    '<span><b>' + r.reached.invites + '</b> invites at <b>' + r.reached.companies.length + '</b> brands</span>' +
+    '<span><b>' + r.reached.accepted.length + '</b> accepted</span>' +
+    '<span><b>' + r.reached.replies.length + '</b> replied</span>' +
+    '<span><b>' + c.found + '</b> brands found</span>' +
+    '<span><b>' + r.chats.length + '</b> Claude chats</span>' +
+    '<button class="btn-ghost" data-dl-recap>Recap for this day ▸</button></div>';
+  var paste = DL_PASTE
+    ? '<div class="dl-paste"><textarea id="dl-text" placeholder="Paste what a Claude Code chat did — one chat or many. Put a line of --- between chats.\n\nNEED blocks become your to-do list, an Ideas section goes to the idea list, the rest is what got done."></textarea>' +
+      '<div class="row"><button class="btn-solid" data-dl-save>Save to ' + esc(r.isToday ? 'today' : keyLabel(r.day)) + '</button>' +
+      '<button class="btn-ghost" data-dl-paste="0">Cancel</button>' +
+      '<span class="hint">Nothing is sent anywhere; it’s kept here under the day so you can look back.</span></div></div>'
+    : '<div class="dl-paste" style="background:none;padding:12px 20px"><button class="btn-ghost" data-dl-paste="1">+ Paste what Claude did' + (r.isToday ? ' today' : ' that day') + '</button></div>';
+  var chats = r.chats.length ? r.chats.map(function (ch) {
+    var open = DL_OPEN[ch.id];
+    var openNeeds = ch.needs.filter(function (n) { return !n.done; }).length;
+    return '<details class="dl-chat" data-dl-chat="' + esc(ch.id) + '"' + (open ? ' open' : '') + '><summary>' +
+      '<span class="t">' + esc(ch.title) + '</span>' +
+      '<span class="m">' + plural(ch.done.length, 'thing') + ' done' + (ch.needs.length ? ' · ' + (openNeeds ? '<span style="color:var(--bad)">' + openNeeds + ' need</span>' : 'needs done ✓') : '') +
+        (ch.ideas.length ? ' · ' + plural(ch.ideas.length, 'idea') : '') + ' · ' + new Date(ch.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + '</span></summary>' +
+      '<div class="dl-body">' +
+        (ch.done.length ? '<div><h4>Done</h4><ul>' + ch.done.map(function (d) { return '<li>' + rcText(d) + '</li>'; }).join('') + '</ul></div>' : '') +
+        (ch.needs.length ? '<div><h4>Needs you</h4>' + ch.needs.map(function (n) { return needHtml(ch, n); }).join('') + '</div>' : '') +
+        (ch.ideas.length ? '<div><h4>Ideas</h4><ul>' + ch.ideas.map(function (d) { return '<li>' + rcText(d) + '</li>'; }).join('') + '</ul></div>' : '') +
+        '<details><summary class="hint" style="cursor:pointer">What was pasted</summary><pre>' + esc(ch.raw) + '</pre></details>' +
+        '<div><button class="btn-ghost" data-dl-del="' + esc(ch.id) + '">Delete this chat…</button></div>' +
+      '</div></details>';
+  }).join('') : '<div class="dl-empty">No Claude chats logged ' + (r.isToday ? 'today yet' : 'that day') + '.</div>';
+  box.innerHTML = head + '<div class="panel">' + sum + paste + chats + '</div>';
+  if (DL_PASTE) { var ta = document.getElementById('dl-text'); if (ta && !ta.value) ta.focus({ preventScroll: true }); }
+}
+
+function dlRefresh() {
+  var day = DL_DAY;
+  return (day ? api('dayRecap', { day: day }).then(function (r) { DL_DATA = r; renderDayLog(); }) : Promise.resolve())
+    .then(loadToday);
+}
+
+document.addEventListener('click', function (ev) {
+  var t = ev.target;
+  var el;
+  if ((el = t.closest('[data-rc-open]'))) { openRecap(el.getAttribute('data-rc-open')); return; }
+  if (t.closest('#hm-recap')) { openRecap(0); return; }
+  if (t.closest('#hm-paste')) {
+    DL_PASTE = true;
+    (DL_DAY ? dlLoad(null) : Promise.resolve(renderDayLog())).then(function () {
+      var b = document.getElementById('day-log'); if (b) b.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return;
+  }
+  if ((el = t.closest('[data-dl-day]'))) { dlLoad(el.getAttribute('data-dl-day')); return; }
+  if (t.closest('[data-dl-recap]')) { if (DL_DATA) openRecap(0, DL_DATA); return; }
+  if ((el = t.closest('[data-dl-paste]'))) { DL_PASTE = el.getAttribute('data-dl-paste') === '1'; renderDayLog(); return; }
+  if (t.closest('[data-dl-save]')) {
+    var ta = document.getElementById('dl-text');
+    var text = ta ? ta.value : '';
+    if (!text.trim()) { toast('Paste what the chat did first'); return; }
+    var btn = t.closest('[data-dl-save]'); btn.disabled = true; btn.textContent = 'Saving…';
+    api('addWorkLog', { text: text, day: DL_DATA ? DL_DATA.day : undefined }).then(function (res) {
+      toast('Saved ' + plural(res.saved, 'chat') + (res.needs ? ' · ' + plural(res.needs, 'thing') + ' for you to do' : '') +
+        (res.skipped ? ' · ' + res.skipped + ' already saved' : ''));
+      DL_PASTE = false;
+      return dlRefresh();
+    }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Save'; });
+    return;
+  }
+  if ((el = t.closest('[data-dl-del]'))) {
+    var id = el.getAttribute('data-dl-del');
+    api('deleteWorkLog', { id: id }).then(function (p) {
+      if (!confirm('Delete “' + p.title + '” from ' + keyLabel(p.day, true) + '?\n\nThis removes what was pasted (' + p.chars + ' characters) and its to-dos. It can’t be undone.')) return;
+      return api('deleteWorkLog', { id: id, confirm: true }).then(function () { toast('Deleted'); return dlRefresh(); });
+    }).catch(function (e) { toast(e.message); });
+    return;
+  }
+
+  // Inside the recap
+  if (!t.closest('#recap')) return;
+  if (t.closest('[data-rc-close]')) { closeRecap(); return; }
+  if ((el = t.closest('[data-rc-dot]'))) { rcGo(+el.getAttribute('data-rc-dot')); return; }
+  if (t.closest('[data-rc-next]')) { rcGo(+t.closest('.rc-card').getAttribute('data-rc-i') + 1); return; }
+  if ((el = t.closest('[data-rc-brand]'))) { ev.preventDefault(); closeRecap(); loadBrand(el.getAttribute('data-rc-brand')); return; }
+  if ((el = t.closest('[data-rc-go]'))) {
+    var go = el.getAttribute('data-rc-go');
+    closeRecap();
+    if (go === 'zach') gotoZachList();
+    else if (go === 'log') { var b = document.getElementById('day-log'); if (b) b.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    else gotoView(go);
+    return;
+  }
+  if ((el = t.closest('[data-rc-idea]'))) {
+    var on = el.getAttribute('data-on') === '1';
+    el.disabled = true;
+    api('pickBuildIdea', { id: el.getAttribute('data-rc-idea'), on: on }).then(function () {
+      el.disabled = false;
+      el.className = on ? 'btn-solid' : 'btn-ghost';
+      el.textContent = on ? 'Picked ✓' : 'Build this';
+      el.setAttribute('data-on', on ? '0' : '1');
+      el.closest('.rc-idea').classList.toggle('picked', on);
+      (RC.ideas || []).forEach(function (i) { if (i.id === el.getAttribute('data-rc-idea')) i.picked = on; });
+    }).catch(function (e) { el.disabled = false; toast(e.message); });
+    return;
+  }
+  // A click on the card itself (not a link, button, box or text being
+  // selected) goes to the next card; the last one closes.
+  if (t.closest('a,button,input,label,select,textarea,summary,details')) return;
+  if (String(window.getSelection ? window.getSelection() : '').length) return;
+  var card = t.closest('.rc-card');
+  if (card) rcGo(+card.getAttribute('data-rc-i') + 1);
+});
+
+document.addEventListener('change', function (ev) {
+  var t = ev.target;
+  if (t.matches && t.matches('[data-dl-pick]')) { dlLoad(t.value); return; }
+  if (t.matches && t.matches('[data-need]')) {
+    var id = t.getAttribute('data-need'), i = +t.getAttribute('data-i'), done = t.checked;
+    var lab = t.closest('.need'); if (lab) lab.classList.toggle('done', done);
+    [RC, DL_DATA, RC_SHOW].forEach(function (r) {
+      if (!r) return;
+      r.chats.forEach(function (c) { if (c.id === id) c.needs.forEach(function (n) { if (n.i === i) n.done = done; }); });
+    });
+    api('setWorkNeedDone', { id: id, index: i, done: done }).then(function () {
+      renderGlance();
+      if (document.getElementById('recap').hidden) renderDayLog();
+    }).catch(function (e) { toast(e.message); });
+  }
+});
+
+document.addEventListener('toggle', function (ev) {
+  var d = ev.target;
+  if (d && d.matches && d.matches('[data-dl-chat]')) DL_OPEN[d.getAttribute('data-dl-chat')] = d.open;
+}, true);
+
+document.addEventListener('keydown', function (ev) {
+  var box = document.getElementById('recap');
+  if (!box || box.hidden) return;
+  if (ev.target.closest && ev.target.closest('input,textarea,select')) return;
+  if (ev.key === 'Escape') { ev.preventDefault(); closeRecap(); }
+  else if (ev.key === 'ArrowDown' || ev.key === 'ArrowRight' || ev.key === 'PageDown' || (ev.key === ' ' && !ev.target.closest('button,a'))) { ev.preventDefault(); rcGo(RC_I + 1); }
+  else if (ev.key === 'ArrowUp' || ev.key === 'ArrowLeft' || ev.key === 'PageUp') { ev.preventDefault(); rcGo(RC_I - 1); }
+});
+
+// Opens by itself on the first visit of each Tue–Fri (or from #today).
+function maybeAutoRecap() {
+  var today = nyKey();
+  var asked = location.hash === '#today';
+  if (!asked && (location.hash && location.hash !== '#') ) return;
+  if (!asked && (RC_DAYS.indexOf(keyDow(today)) < 0 || lsGet('sb.recapSeen') === today)) return;
+  // Give Zach's list a moment so "What to do today" can count it.
+  var go = function () { openRecap(0); };
+  Promise.all([RC ? Promise.resolve() : loadToday(), ZT ? Promise.resolve() : new Promise(function (res) { setTimeout(res, 1500); })])
+    .then(go).catch(function () { /* the Home page still works */ });
 }
 
 // --- For Zach to do --------------------------------------------
@@ -18415,6 +19026,8 @@ loadRateCard();
 loadDashboard().catch(function (e) {
   document.getElementById('dash-sub').textContent = 'Could not connect: ' + e.message;
 });
+maybeAutoRecap();
+window.addEventListener('hashchange', function () { if (location.hash === '#today') openRecap(0); });
 </script>
 </body>
 </html>

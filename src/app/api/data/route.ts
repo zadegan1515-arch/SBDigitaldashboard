@@ -55,6 +55,8 @@ import { buildStock, bestDealStage, refileMoves, remapPlanDays, brandKey } from 
 import { buyerKind, isBuyerTitle, countBuyers, BUYER_TARGET } from '@/lib/buyers'
 import { readCoverFacts, brandCover } from '@/lib/coverage-db'
 import { LI_PER_DAY } from '@/lib/coverage'
+import { parseWorkLog, WORK_LOG_MAX_CHARS } from '@/lib/work-log'
+import { BUILD_IDEAS } from '@/lib/build-ideas'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
@@ -1660,6 +1662,7 @@ function factChanges(current: Record<FactField, any>, row: ResearchRow): FactCha
 // research, the last research import (Undo).
 const FIT_ARCHIVE_KEY = 'fitArchiveLast'
 const RESEARCH_STAGED_KEY = 'researchStaged'
+const BUILD_PICKS_KEY = 'buildIdeaPicks'
 const RESEARCH_LAST_KEY = 'researchImportLast'
 type FitArchiveLog = {
   at: string; by: string | null; brands: string[]; names: string[]; shelved: string[]
@@ -2429,6 +2432,208 @@ async function handWaitingIds(): Promise<Set<string>> {
 const handlers: Record<string, Handler> = {
 
   // -------- dashboard --------
+
+  // Home → Today (the Tue–Fri recap that opens with the first visit of
+  // the day, and the Today's log panel): what went out, what's on today,
+  // what got found, what Leo has to do, ideas — for any day (`day` =
+  // "YYYY-MM-DD", New York; default today). Read-only. Who we reached =
+  // LinkedIn invites dated that day (sentByCompany's rule) + emails sent
+  // + Zach's list steps; found = Discover rows + brands created that day.
+  async dayRecap({ day }: any = {}) {
+    const today = localDayKey()
+    const d = isDayKey(day) ? day : today
+    const lo = dayStartOf(d)
+    const hi = dayStartOf(addDaysKey(d, 1))
+    const inDay = { gte: lo, lt: hi }
+    const who = { brandId: true, brand: { select: { name: true } }, contact: { select: { name: true } } } as const
+    const [invites, accepts, emails, replies, hand, finds, made, logs, picks, logDays] = await Promise.all([
+      prisma.target.findMany({
+        where: { sentAt: inDay }, orderBy: { sentAt: 'asc' },
+        select: { brandId: true, brand: { select: { name: true, category: true } }, contact: { select: { name: true, title: true } } },
+      }),
+      prisma.targetEvent.findMany({ where: { createdAt: inDay, toStatus: 'accepted' }, select: { target: { select: who } } }),
+      prisma.emailMessage.findMany({ where: { direction: 'out', status: 'sent', sentAt: inDay }, select: { kind: true, target: { select: who } } }),
+      prisma.target.findMany({ where: { repliedAt: inDay }, select: who }),
+      prisma.target.findMany({
+        where: { OR: [{ dmSentAt: inDay }, { nudgedAt: inDay }, { emailedAt: inDay }, { handLiSentAt: inDay }, { callBookedAt: inDay }] },
+        select: { ...who, dmSentAt: true, nudgedAt: true, emailedAt: true, handLiSentAt: true, callBookedAt: true, callAt: true },
+      }),
+      prisma.discoveredBrand.findMany({
+        where: { createdAt: inDay }, orderBy: { createdAt: 'desc' }, take: 200,
+        select: { id: true, name: true, category: true, query: true, status: true, signals: true, reason: true, sourceUrl: true, website: true, brandId: true },
+      }),
+      prisma.brand.findMany({ where: { createdAt: inDay }, orderBy: { createdAt: 'desc' }, take: 200, select: { id: true, name: true, category: true, source: true } }),
+      prisma.workLog.findMany({ where: { day: d }, orderBy: { createdAt: 'asc' } }),
+      readJsonSetting<Record<string, { at: string; by: string | null }>>(prisma, BUILD_PICKS_KEY, {}),
+      prisma.workLog.groupBy({ by: ['day'], _count: { _all: true }, orderBy: { day: 'desc' }, take: 60 }),
+    ])
+
+    const byBrand = new Map<string, { brandId: string; name: string; category: string | null; people: string[] }>()
+    for (const t of invites) {
+      const row = byBrand.get(t.brandId)
+      if (row) row.people.push(t.contact.name)
+      else byBrand.set(t.brandId, { brandId: t.brandId, name: t.brand.name, category: t.brand.category, people: [t.contact.name] })
+    }
+    const person = (t: { brandId: string; brand: { name: string }; contact: { name: string } }) =>
+      ({ brandId: t.brandId, brand: t.brand.name, name: t.contact.name })
+    const steps: Array<{ brandId: string; brand: string; name: string; step: string }> = []
+    for (const t of hand) {
+      const p = person(t)
+      const at = (x: Date | null) => !!x && x >= lo && x < hi
+      if (at(t.dmSentAt)) steps.push({ ...p, step: 'First LinkedIn message' })
+      if (at(t.nudgedAt)) steps.push({ ...p, step: 'Final reach-out' })
+      if (at(t.handLiSentAt)) steps.push({ ...p, step: 'LinkedIn DM' })
+      if (at(t.emailedAt)) steps.push({ ...p, step: 'Email' })
+      if (at(t.callBookedAt)) steps.push({ ...p, step: 'Call booked' + (t.callAt ? ' for ' + localDayKey(t.callAt) : '') })
+    }
+
+    // Early on a sending day nothing has gone out yet: say what the last
+    // day that sent anything did, so the first card isn't just "nothing".
+    let previous: { day: string; total: number; companies: number } | null = null
+    if (d === today && !invites.length) {
+      const last = await prisma.target.findFirst({ where: { sentAt: { lt: lo } }, orderBy: { sentAt: 'desc' }, select: { sentAt: true } })
+      if (last?.sentAt) {
+        const k = localDayKey(last.sentAt)
+        const r = await handlers.sentByCompany({ from: k })
+        previous = { day: k, total: r.total, companies: r.companies.length }
+      }
+    }
+
+    // What's on today (only for today): the Schedule's brands, people
+    // still in today's queue, follow-ups, calls.
+    let todo: any = null
+    if (d === today) {
+      const [extras, plan, queued, action, calls] = await Promise.all([
+        readExtraDays(),
+        readPlan(),
+        prisma.target.count({ where: { queuedFor: inDay, status: { in: ['queued', 'drafted'] }, shelved: false, sentAt: null } }),
+        handlers.getActionQueue({}),
+        prisma.target.findMany({ where: { callAt: inDay }, select: who }),
+      ])
+      const ids = plan[today]?.brandIds ?? []
+      const names = ids.length ? await prisma.brand.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : []
+      const nameOf = new Map(names.map(b => [b.id, b.name]))
+      todo = {
+        sendingDay: isSendingKey(today, extras),
+        cap: DAILY_SEND_LIMIT,
+        category: plan[today]?.category ?? null,
+        planned: ids.filter(id => nameOf.has(id)).map(id => ({ id, name: nameOf.get(id)! })),
+        queued,
+        actions: action.count,
+        overdue: action.items.filter((i: any) => i.overdue).length,
+        actionItems: action.items.slice(0, 6),
+        calls: calls.map(person),
+      }
+    }
+
+    // What Leo has to do: the dashboard's own review queues (counts only,
+    // each a link), then every NEED from today's pasted chats.
+    const asks: Array<{ key: string; label: string; n: number; view: string }> = []
+    const [discover, staged, review, clarify, access] = await Promise.all([
+      prisma.discoveredBrand.count({ where: { status: 'new' } }),
+      readJsonSetting<any>(prisma, RESEARCH_STAGED_KEY, null),
+      readJsonSetting<Record<string, unknown>>(prisma, LI_REVIEW_KEY, {}),
+      handlers.suMatchQueue({}).then((r: any) => r.proposals.length).catch(() => 0),
+      prisma.boardAccessRequest.count({ where: { status: 'pending' } }),
+    ])
+    const ask = (key: string, n: number, label: string, view: string) => { if (n > 0) asks.push({ key, n, label, view }) }
+    ask('discover', discover, 'brands found, waiting for Add or ×', 'discover')
+    ask('research', Array.isArray(staged?.rows) ? staged.rows.length : 0, 'researched brands to review (Brand Fit)', 'stock')
+    ask('access', access, 'Show Board access requests to approve', 'board')
+    ask('lipage', Object.keys(review || {}).length, 'brands: which LinkedIn page is theirs?', 'linkedin')
+    ask('clarify', clarify, 'brands: which SponsorUnited page is theirs?', 'clarify')
+
+    const chats = logs.map(l => {
+      let parsed: any = {}
+      let doneIdx: number[] = []
+      try { parsed = JSON.parse(l.parsed) } catch { /* raw is still there */ }
+      try { doneIdx = JSON.parse(l.needsDone) } catch { /* none ticked */ }
+      return {
+        id: l.id, title: l.title, raw: l.raw, source: l.source, addedBy: l.addedBy, createdAt: l.createdAt,
+        done: parsed.done ?? [], ideas: parsed.ideas ?? [],
+        needs: (parsed.needs ?? []).map((n: any, i: number) => ({ ...n, i, done: doneIdx.includes(i) })),
+      }
+    })
+
+    return {
+      day: d, today, isToday: d === today,
+      reached: {
+        invites: invites.length, companies: [...byBrand.values()],
+        accepted: accepts.map(a => person(a.target)),
+        emails: emails.map(e => ({ ...person(e.target), kind: e.kind })),
+        replies: replies.map(person),
+        steps, previous,
+      },
+      todo,
+      found: {
+        discovered: finds.map(f => ({ ...f, source: f.query.startsWith('Claude hunt') ? 'Claude hunt' : f.query.startsWith('LinkedIn') ? 'LinkedIn' : f.query.startsWith('Research') ? 'Research list' : 'Search' })),
+        brands: made,
+      },
+      asks,
+      chats,
+      ideas: BUILD_IDEAS.map(i => ({ ...i, picked: !!picks[i.id] })),
+      picked: Object.keys(picks),
+      logDays: logDays.map(r => ({ day: r.day, n: r._count._all })),
+    }
+  },
+
+  // Paste one or more Claude Code reports (a line of --- between chats).
+  // Each chat is one WorkLog row on `day` (default today, New York). Also
+  // callable from a Claude session: node scripts/cc.mjs addWorkLog '{"text":"…"}'.
+  async addWorkLog({ text, title, day, source, __user }: any) {
+    const body = String(text || '')
+    if (!body.trim()) throw new Error('Paste what the chat did first')
+    if (body.length > WORK_LOG_MAX_CHARS) throw new Error('That paste is too long — split it in two')
+    const d = isDayKey(day) ? day : localDayKey()
+    const parsed = parseWorkLog(body)
+    if (!parsed.length) throw new Error('Nothing to save in that paste')
+    // The same chat pasted twice on one day is kept once.
+    const have = new Set((await prisma.workLog.findMany({ where: { day: d }, select: { raw: true } })).map(r => r.raw))
+    const chats = parsed.filter(c => !have.has(c.raw))
+    if (title && chats.length === 1) chats[0].title = String(title).slice(0, 90)
+    const rows = await prisma.$transaction(chats.map(c => prisma.workLog.create({
+      data: {
+        day: d, title: c.title, raw: c.raw,
+        parsed: JSON.stringify({ done: c.done, needs: c.needs, ideas: c.ideas }),
+        source: source === 'claude' ? 'claude' : 'paste', addedBy: __user ?? null,
+      },
+      select: { id: true, title: true },
+    })))
+    return { day: d, saved: rows.length, skipped: parsed.length - chats.length, chats: rows, needs: chats.reduce((n, c) => n + c.needs.length, 0) }
+  },
+
+  // Tick a pasted NEED done (or back).
+  async setWorkNeedDone({ id, index, done = true }: any) {
+    const row = await prisma.workLog.findUnique({ where: { id: String(id) }, select: { needsDone: true } })
+    if (!row) throw new Error('That log is gone')
+    let list: number[] = []
+    try { list = JSON.parse(row.needsDone) } catch { list = [] }
+    const i = Number(index)
+    const next = done ? [...new Set([...list, i])] : list.filter(x => x !== i)
+    await prisma.workLog.update({ where: { id: String(id) }, data: { needsDone: JSON.stringify(next) } })
+    return { id, needsDone: next }
+  },
+
+  // Remove one pasted chat. Without `confirm` it only says what would go
+  // (rule 6: show what changes first).
+  async deleteWorkLog({ id, confirm }: any) {
+    const row = await prisma.workLog.findUnique({ where: { id: String(id) }, select: { id: true, day: true, title: true, raw: true } })
+    if (!row) throw new Error('That log is gone')
+    if (!confirm) return { preview: true, day: row.day, title: row.title, chars: row.raw.length }
+    await prisma.workLog.delete({ where: { id: row.id } })
+    return { deleted: row.id, title: row.title }
+  },
+
+  // "Build this" on an idea: remembered so the next Claude session sees it.
+  async pickBuildIdea({ id, on = true, __user }: any) {
+    const key = String(id || '')
+    if (!BUILD_IDEAS.some(i => i.id === key)) throw new Error('Unknown idea')
+    const picks = await readJsonSetting<Record<string, { at: string; by: string | null }>>(prisma, BUILD_PICKS_KEY, {})
+    if (on) picks[key] = { at: new Date().toISOString(), by: __user ?? null }
+    else delete picks[key]
+    await writeJsonSetting(prisma, BUILD_PICKS_KEY, picks)
+    return { picked: Object.keys(picks) }
+  },
 
   async getDashboard() {
     const boardViews7d = await prisma.boardVisit.count({
