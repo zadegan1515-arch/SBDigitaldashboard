@@ -251,12 +251,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   under any name or aka) that add through `addBrandsBulk`'s preview, filed under the lane.
   `LANE_GOAL = 15` in play per lane. `node scripts/test-stock.mjs`.
 - **Brands → All brands = the one roster table** (Leo, Oct 2026: "aggregate all the brands … make sure
-  we have sufficient contacts for each brand"; `brRender`, `BR_*` in app.html). One row per brand:
-  Category · Tier · **Buyers** · People · Email · LinkedIn · Last touch. **Buyers** = people on file
+  we have sufficient contacts for each brand"; `brRender`, `BR_*` in app.html). Kept lean (Leo, Oct 2026: "too
+  much going on"): search + one **More ▾** menu (Brand Fit, SponsorUnited worklist, Lanes & re-file,
+  Duplicates, Fill summaries — same ids `bq-*`), one **category dropdown** (`brCatSelect`, `data-brcat`;
+  the chip row is gone), filters on one line, archived hidden by default. One row per brand:
+  Category · Tier · Fit · **Buyers** (the edit row shows everyone else on file). **Buyers** = people on file
   whose title is partnerships/sponsorship, events/experiential, marketing/brand or founder/CEO
   (`src/lib/buyers.ts`, counted in `listBrands` → `buyers`, `buyerPeople`; `node scripts/test-buyers.mjs`);
   a brand is covered at **1** (`BR_TARGET`, Leo's call). Filters All / Needs people / Has enough,
-  Hide archived, sort (fewest buyers first by default), search by name or aka. A row opens in place:
+  Hide too small, Hide archived, sort (fewest buyers first by default), search by name or aka. A row opens in place:
   category, tier, website, LinkedIn page, aka, notes save on change (`updateBrand`); **Add a person**
   (`upsertContact`); the name opens the brand page. The tick bar (re-file, Put on a day) is unchanged.
   Stock take (lanes, ideas, re-file) and Needs contacts (SponsorUnited worklist) left the sub-tabs and

@@ -1030,6 +1030,13 @@
   .count-head .n{color:var(--ink-3);font-weight:500;margin-left:6px}
   /* Brands table (loadBrands → brRender) */
   .br-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 10px}
+  .br-bar .chip{padding:4px 11px;font-size:12px}
+  .bq-more{position:relative}
+  .bq-more>summary{list-style:none;cursor:pointer}
+  .bq-more>summary::-webkit-details-marker{display:none}
+  .bq-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:30;display:flex;flex-direction:column;gap:4px;min-width:250px;
+    padding:8px;background:var(--surface-2,#1b1b22);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
+  .bq-menu .btn-ghost{text-align:left;width:100%}
   .br-bar .chip .n{margin-left:6px;color:var(--ink-3);font-weight:500}
   .br-chk{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-2)}
   .br-chk .inp{padding:5px 9px;font-size:12.5px}
@@ -1401,15 +1408,21 @@
       <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
         <input class="field-box" id="bq" placeholder="Search brands — or type a new name to add one…" style="flex:1;min-width:240px" autocomplete="off">
         <button class="btn-solid" id="bq-add" hidden>Add + find on SponsorUnited</button>
-        <button class="btn-ghost" id="bq-fill" title="Fills empty brand summaries from a built-in list of known brands — never overwrites anything you typed">Fill summaries</button>
-        <button class="btn-ghost" id="bq-dups" title="Brands that look like the same company: the same name, LinkedIn page or website">Duplicates</button>
-        <button class="btn-ghost" id="bq-stock" title="Every brand in the lanes SB sells, brand ideas to add, and Re-file categories">Lanes, ideas &amp; re-file</button>
-        <button class="btn-ghost" id="bq-needs" title="Brands with nobody on file: SponsorUnited names, Find on LinkedIn, Add contact">SponsorUnited worklist</button>
-        <button class="btn-ghost" id="bq-fittools" title="Brand Fit: research brands (sales, venture money, US, college / music) and the Suggest Archive list — on Stock take">Brand Fit: research &amp; archive</button>
+        <!-- Leo, Oct 2026: "too much going on" — the tools live in one menu. -->
+        <details class="bq-more" id="bq-more">
+          <summary class="btn-ghost">More ▾</summary>
+          <div class="bq-menu">
+            <button class="btn-ghost" id="bq-fittools" title="Brand Fit: research brands (sales, venture money, US, college / music) and the Suggest Archive list — on Stock take">Brand Fit: research &amp; archive</button>
+            <button class="btn-ghost" id="bq-needs" title="Brands with nobody on file: SponsorUnited names, Find on LinkedIn, Add contact">SponsorUnited worklist</button>
+            <button class="btn-ghost" id="bq-stock" title="Every brand in the lanes SB sells, brand ideas to add, and Re-file categories">Lanes, ideas &amp; re-file</button>
+            <button class="btn-ghost" id="bq-dups" title="Brands that look like the same company: the same name, LinkedIn page or website">Duplicates</button>
+            <button class="btn-ghost" id="bq-fill" title="Fills empty brand summaries from a built-in list of known brands — never overwrites anything you typed">Fill summaries</button>
+          </div>
+        </details>
       </div>
       <div id="dup-panel"></div>
       <div id="su-find"></div>
-      <div class="chips" id="brand-cat-chips" style="margin-top:12px"></div>
+      <div class="chips" id="brand-cat-chips" hidden></div>
       <div id="su-proposals"></div>
       <div id="brands-selbar" class="hint" style="margin:10px 0 8px"></div>
       <div id="brands-list"></div>
@@ -4469,7 +4482,9 @@ function loadBrands(category) {
   // a capture, a sponsor-page request, a board approval or Notion with no
   // category at all, which no real chip would ever list. Its count comes
   // from categoryReach's "uncategorised" row.
-  document.getElementById('brand-cat-chips').innerHTML =
+  // The category chips became one dropdown in the table bar (brCatSelect);
+  // the old row stays empty.
+  var _oldChips =
     '<button class="chip' + (category === 'all' ? ' active' : '') + '" data-bcat="all">All</button>' +
     // What the LinkedIn run added on its own in the last two weeks and
     // nobody has looked at: Keep, Archive or re-file them from here.
@@ -4489,6 +4504,16 @@ function loadBrands(category) {
   // How far through each category the outreach is — reached / total.
   dupLoad();
   api('categoryReach').then(function (cr) {
+    BR_REACH = cr;
+    // Counts arrive after the table: relabel the options in place (never
+    // swap the element — that would drop a pick in progress).
+    var sel = document.querySelector('#brands-list [data-brcat]');
+    if (sel) {
+      var fresh = document.createElement('div');
+      fresh.innerHTML = brCatSelect();
+      var opts = fresh.querySelectorAll('option');
+      [].forEach.call(sel.options, function (o, i) { if (opts[i]) o.textContent = opts[i].textContent; });
+    }
     var nl = document.querySelector('[data-creach="new"]');
     if (nl) {
       nl.textContent = String(cr.newFromLinkedIn || 0);
@@ -4547,7 +4572,20 @@ function loadBrands(category) {
 // re-file and the SponsorUnited worklist are buttons in the header.
 var BR_LIST = [];
 var BR_TARGET = 1;
-var BR = { show: 'all', sort: 'fewest', hideArchived: false };
+var BR = { show: 'all', sort: 'fewest', hideArchived: true };
+var BR_REACH = null; // categoryReach: invited / total per category, for the dropdown
+// One dropdown for the category (it was a row of 20+ chips).
+function brCatSelect() {
+  var cur = lastCategory || 'all', cr = BR_REACH || {}, cats = cr.categories || {};
+  var n = function (k) { var r = cats[k]; return r ? ' (' + r.reached + '/' + r.total + ' invited)' : ''; };
+  var opt = function (v, label) { return '<option value="' + esc(v) + '"' + (cur === v ? ' selected' : '') + '>' + esc(label) + '</option>'; };
+  return '<select class="inp" data-brcat title="Which brands: a category, the LinkedIn run\'s new ones, or unfiled">' +
+    opt('all', 'All categories') +
+    opt('new', 'New from LinkedIn' + (cr.newFromLinkedIn ? ' (' + cr.newFromLinkedIn + ')' : '')) +
+    CAT_KEYS.map(function (k) { return opt(k, CAT_NAMES[k] + n(k)); }).join('') +
+    opt('none', 'No category' + n('uncategorised')) +
+  '</select>';
+}
 var BR_OPEN = {};   // brand id -> true while its edit row is open
 var BR_KIND = { partnerships: 'Partnerships', events: 'Events', marketing: 'Marketing', founder: 'Founder / CEO' };
 
@@ -4628,7 +4666,7 @@ function brEditRow(b) {
       (p.linkedin ? ' <span class="br-has" title="Has a LinkedIn link">in</span>' : '') + '</li>';
   }).join('');
   var others = brPeople(b) - brBuyers(b);
-  return '<tr class="br-open" data-bropen="' + esc(b.id) + '"><td colspan="11"><div class="br-edit">' +
+  return '<tr class="br-open" data-bropen="' + esc(b.id) + '"><td colspan="7"><div class="br-edit">' +
     '<div class="br-fields">' + cat + tier +
       f('website', 'Website', b.website, 'brand.com') +
       f('linkedinUrl', 'LinkedIn page', b.linkedinUrl, 'linkedin.com/company/…') +
@@ -4661,7 +4699,6 @@ function brEditRow(b) {
 function brRow(b) {
   var newNote = lastCategory === 'new'
     ? '<div class="br-sub">' + esc(b.source === 'research' ? 'Research list' : 'LinkedIn run') + ' · added ' + esc(shortDate(b.createdAt)) + '</div>' : '';
-  var t = brTouch(b);
   var open = !!BR_OPEN[b.id];
   return '<tr class="br-row' + (b.passedAt ? ' off' : '') + (BB.sel[b.id] ? ' sel' : '') + (open ? ' is-open' : '') + '" data-brow="' + esc(b.id) + '" data-name="' + esc(b.name) + '">' +
     '<td class="br-tick"><label data-bsel="' + esc(b.id) + '" title="Select to re-file or put on a day">' +
@@ -4672,10 +4709,6 @@ function brRow(b) {
     '<td class="br-tier">' + esc(b.tier || '—') + '</td>' +
     '<td class="br-fit">' + fitTags(b.fit, { noUs: true }) + '</td>' +
     '<td class="br-num">' + brBuyerCell(b) + '</td>' +
-    '<td class="br-num">' + brPeople(b) + '</td>' +
-    '<td class="br-num br-opt">' + (b.withEmail || 0) + '</td>' +
-    '<td class="br-num br-opt">' + (b.withLinkedin || 0) + '</td>' +
-    '<td class="br-touch br-opt">' + (t ? esc(shortDate(t)) : '—') + '</td>' +
     '<td class="br-go"><button class="btn-ghost sd-sm" data-bract="toggle">' + (open ? 'Close' : 'Edit') + '</button></td>' +
   '</tr>' + (open ? brEditRow(b) : '');
 }
@@ -4688,10 +4721,10 @@ function brRender() {
     return '<button class="chip' + (BR.show === key ? ' active' : '') + '" data-brshow="' + key + '">' + label + '<span class="n">' + n + '</span></button>';
   };
   var sorts = [['fewest', 'Fewest buyers first'], ['fit', 'Best fit first'], ['most', 'Most buyers first'], ['people', 'Most people'], ['touch', 'Last touched'], ['name', 'Name A–Z']];
-  var bar = '<div class="br-bar">' +
+  var bar = '<div class="br-bar">' + brCatSelect() +
     chip('all', 'All', BR_LIST.length) + chip('need', 'Needs people', need) + chip('enough', 'Has enough', BR_LIST.length - need) +
-    '<label class="br-chk"><input type="checkbox" data-brarch' + (BR.hideArchived ? ' checked' : '') + '> Hide archived</label>' +
     (lastCategory === 'new' ? '' : hideSmallBox('brands')) +
+    '<label class="br-chk"><input type="checkbox" data-brarch' + (BR.hideArchived ? ' checked' : '') + '> Hide archived</label>' +
     '<span style="flex:1"></span>' +
     '<label class="br-chk">Sort <select class="inp" data-brsort>' + sorts.map(function (s) {
       return '<option value="' + s[0] + '"' + (BR.sort === s[0] ? ' selected' : '') + '>' + s[1] + '</option>';
@@ -4699,9 +4732,7 @@ function brRender() {
   '</div>';
   var head = '<tr><th class="br-tick"></th><th>Brand</th><th>Category</th><th>Tier</th>' +
     '<th title="Brand Fit 0–100: budget and venture money weigh most; open a brand for the reasons">Fit</th>' +
-    '<th class="br-num" title="Partnerships, marketing, events or founder / CEO titles on file">Buyers</th>' +
-    '<th class="br-num">People</th><th class="br-num br-opt">Email</th><th class="br-num br-opt">LinkedIn</th>' +
-    '<th class="br-opt">Last touch</th><th></th></tr>';
+    '<th class="br-num" title="Partnerships, marketing, events or founder / CEO titles on file">Buyers</th><th></th></tr>';
   var hidden = (document.getElementById('bq').value || '').trim() ? 0
     : BR_LIST.filter(function (b) { return brSmallHidden(b) && !(BR.hideArchived && b.passedAt); }).length;
   var hiddenNote = hidden ? '<div class="hint" style="margin:8px 0 0">' + hidden + (hidden === 1 ? ' brand' : ' brands') +
@@ -4760,6 +4791,8 @@ function brToggle(id) {
 document.getElementById('brands-list').addEventListener('change', function (e) {
   var sort = e.target.closest('[data-brsort]');
   if (sort) { BR.sort = sort.value; brRender(); applyBrandFilter(); return; }
+  var cat = e.target.closest('[data-brcat]');
+  if (cat) { loadBrands(cat.value); return; }
   var arch = e.target.closest('[data-brarch]');
   if (arch) { BR.hideArchived = arch.checked; brRender(); applyBrandFilter(); return; }
   var ed = e.target.closest('[data-bredit]');
@@ -5331,6 +5364,13 @@ function dupRender() {
   box.innerHTML = html + '</div>';
 }
 
+document.getElementById('bq-more').addEventListener('click', function (e) {
+  if (e.target.closest('.bq-menu button')) this.open = false;
+});
+document.addEventListener('click', function (e) {
+  var m = document.getElementById('bq-more');
+  if (m && m.open && !m.contains(e.target)) m.open = false;
+});
 document.getElementById('bq-stock').addEventListener('click', function () { gotoView('stock'); });
 document.getElementById('bq-needs').addEventListener('click', function () { gotoView('needs'); });
 // Brand Fit on the Brands tab: Stock take's Brand Fit panel (research and
