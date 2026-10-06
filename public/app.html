@@ -1403,9 +1403,66 @@
   .req-pill{font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;background:var(--surface-2);color:var(--ink-2);border:1px solid var(--border)}
   .req-pill b{color:var(--ink-1);font-weight:700}
   .req-note{margin-top:10px;font-size:13px;color:var(--ink-2);font-style:italic}
+  /* Opening intro (Leo, Oct 2026: "an animation as i open the command center … the sb agency logo").
+     Once per tab session; skipped for reduced motion and automated browsers; click / any key skips. */
+  #sb-intro{position:fixed;inset:0;z-index:2147483000;background:#0b0b0f;display:grid;place-items:center;
+    overflow:hidden;cursor:pointer;transition:opacity .7s ease .15s}
+  #sb-intro::before{content:"";position:absolute;width:120vmax;height:120vmax;left:50%;top:50%;
+    transform:translate(-50%,-50%) scale(.4);border-radius:50%;opacity:0;
+    background:radial-gradient(circle,rgba(79,131,247,.22) 0%,rgba(79,131,247,.06) 30%,transparent 60%);
+    animation:sbiGlow 2.6s ease-out .5s forwards}
+  #sb-intro .sbi-stage{position:relative;display:flex;flex-direction:column;align-items:center;gap:28px;
+    transition:transform .9s cubic-bezier(.7,0,.2,1),opacity .6s ease,filter .9s ease}
+  #sb-intro .sbi-logo{width:min(520px,78vw);height:auto;display:block;
+    -webkit-mask-image:linear-gradient(100deg,#000 40%,transparent 60%);mask-image:linear-gradient(100deg,#000 40%,transparent 60%);
+    -webkit-mask-size:300% 100%;mask-size:300% 100%;-webkit-mask-position:100% 0;mask-position:100% 0;
+    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+    animation:sbiWrite 1.4s cubic-bezier(.45,.05,.25,1) .2s forwards,sbiShine 1.2s ease-out 1.5s forwards}
+  #sb-intro .sbi-line{width:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent-hi),transparent);
+    animation:sbiLine .9s cubic-bezier(.3,0,.2,1) 1.35s forwards}
+  #sb-intro .sbi-tag{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.9em;
+    text-transform:uppercase;color:var(--ink-2);opacity:0;transform:translateY(6px);margin-right:-.9em;
+    animation:sbiTag .8s ease-out 1.55s forwards}
+  #sb-intro.sbi-out{opacity:0;pointer-events:none}
+  #sb-intro.sbi-out .sbi-stage{transform:scale(1.18);opacity:0;filter:blur(6px)}
+  body.sbi-playing .app{opacity:0;transform:scale(.97)}
+  body.sbi-reveal .app{opacity:1;transform:none;transition:opacity .8s ease .2s,transform 1s cubic-bezier(.2,.7,.2,1) .1s}
+  @keyframes sbiWrite{to{-webkit-mask-position:0 0;mask-position:0 0}}
+  @keyframes sbiShine{0%{filter:drop-shadow(0 0 0 rgba(111,157,255,0))}
+    45%{filter:drop-shadow(0 0 18px rgba(111,157,255,.55))}100%{filter:drop-shadow(0 0 6px rgba(111,157,255,.18))}}
+  @keyframes sbiLine{to{width:min(320px,60vw)}}
+  @keyframes sbiTag{to{opacity:1;transform:none}}
+  @keyframes sbiGlow{to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+  @media (max-width:520px){#sb-intro .sbi-tag{font-size:10px;letter-spacing:.6em;margin-right:-.6em}}
 </style>
 </head>
 <body>
+<div id="sb-intro" aria-hidden="true">
+  <div class="sbi-stage">
+    <img class="sbi-logo" src="/materials/sb-logo-white.png" alt="">
+    <div class="sbi-line"></div>
+    <div class="sbi-tag">Command Center</div>
+  </div>
+</div>
+<script>
+(function(){
+  var el = document.getElementById('sb-intro'), seen = false;
+  try { seen = sessionStorage.getItem('sb.intro') === '1'; sessionStorage.setItem('sb.intro', '1'); } catch (e) {}
+  var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (seen || still || navigator.webdriver || /[?&]nointro\b/.test(location.search)) { el.remove(); return; }
+  document.body.classList.add('sbi-playing');
+  var done = false, t = setTimeout(finish, 2900);
+  function finish(){
+    if (done) return; done = true; clearTimeout(t);
+    document.body.classList.add('sbi-reveal'); document.body.classList.remove('sbi-playing');
+    el.classList.add('sbi-out');
+    removeEventListener('keydown', finish, true);
+    setTimeout(function(){ el.remove(); document.body.classList.remove('sbi-reveal'); }, 1300);
+  }
+  el.addEventListener('click', finish);
+  addEventListener('keydown', finish, true);
+})();
+</script>
 <div class="app">
   <aside class="sidebar">
     <div class="logo">
