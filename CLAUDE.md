@@ -276,6 +276,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   page optional), at least one sign — `sponsors` college/music, `genz` 18–24, `midsize` growing —
   never a known brand, **50 a rolling day**. A failed save answers 500 with the database's reason. Rows land on Brands → Discover under "Claude hunt · <date>"
   (sign tags + Source ↗) for Leo to Add / Dismiss; it never makes a Brand itself.
+  **Brands → Discover** (Leo, Oct 2026: "more simple and clean"; `loadDiscover`/`dcRender`, `DC` in
+  app.html): one list — To review / Added tabs, a source dropdown (Claude hunt / LinkedIn / Research
+  list / Search, from `listDiscoveries`' `source`) and a category dropdown; one row per brand (name,
+  category · source, sign tags, the why on one line) with **Add** and **×**; a row opens for the pitch
+  and links (Source, Website, LinkedIn, SponsorUnited). The old "describe a niche" search box is gone
+  (it needed paid API calls). `node scripts/test-discover.js`.
 - **Brands → New from LinkedIn** (chip after All; `listBrands({ category: 'new' })`, count from
   `categoryReach.newFromLinkedIn`): brands the LinkedIn run added itself (`source` linkedin-discover /
   research) in the last 14 days that nobody has looked at. Tick → **Keep** (off the list, nothing

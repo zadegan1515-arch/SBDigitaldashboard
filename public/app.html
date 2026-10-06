@@ -1084,6 +1084,34 @@
     .br-opt{display:none}
     .br-edit,.br-fields,.br-add{grid-template-columns:1fr}
   }
+  /* Discover (dcRender) */
+  .dc-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:18px 0 12px}
+  .dc-bar .chip .n{margin-left:6px;color:var(--ink-3);font-weight:500}
+  .dc-bar .inp{padding:6px 10px;font-size:12.5px;max-width:220px}
+  .dc-list{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-1);overflow:hidden}
+  .dc-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 16px;align-items:center;padding:12px 16px;border-top:1px solid var(--border-soft)}
+  .dc-row:first-child{border-top:0}
+  .dc-row:hover{background:rgba(255,255,255,.02)}
+  .dc-row.open{background:var(--surface-2)}
+  .dc-main{min-width:0;cursor:pointer}
+  .dc-name{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .dc-meta{margin-right:4px}
+  .dc-name b{font-size:14px;font-weight:600}
+  .dc-meta{font-size:11.5px;color:var(--ink-3)}
+  .dc-sign{font-size:11px;color:#55d9a2;background:rgba(62,207,142,.1);border-radius:999px;padding:1px 8px}
+  .dc-why{font-size:12.5px;color:var(--ink-2);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dc-row.open .dc-why{white-space:normal}
+  .dc-act{display:flex;align-items:center;gap:6px}
+  .dc-add{padding:6px 16px;font-size:12.5px}
+  .dc-x{width:30px;height:30px;border-radius:999px;border:1px solid var(--border);background:transparent;color:var(--ink-3);cursor:pointer;font-size:16px;line-height:1}
+  .dc-x:hover{color:var(--bad);border-color:rgba(240,113,107,.5)}
+  .dc-done{font-size:12px;color:var(--ink-3)}
+  .dc-more{grid-column:1/-1;font-size:12.5px;color:var(--ink-2);display:flex;flex-direction:column;gap:8px;padding-top:4px}
+  .dc-k{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-right:8px}
+  .dc-links{display:flex;gap:14px;flex-wrap:wrap}
+  .dc-links a{color:var(--accent-hi)}
+  .dc-empty{padding:40px 16px;text-align:center;color:var(--ink-3);border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-1)}
+  @media (max-width:600px){ .dc-row{grid-template-columns:1fr} .dc-bar .inp{max-width:none;flex:1} }
   .target{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);
     padding:17px 20px;margin-bottom:10px;display:flex;align-items:center;gap:16px;box-shadow:var(--shadow);
     transition:border-color .15s}
@@ -1752,14 +1780,10 @@
     <!-- DISCOVER -->
     <section class="view page wide" id="discover">
       <div class="eyebrow">Discover</div>
-      <h1>Find new brands</h1>
-      <div class="sub">Describe a niche; add the matches you like.</div>
-      <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
-        <input class="field-box" id="disc-q" placeholder="e.g. venture-backed CPG brands, hard seltzer challengers, sunscreen brands going after Gen Z" style="flex:1;min-width:260px">
-        <button class="btn-solid" id="disc-go">Search</button>
-      </div>
-      <div id="disc-recent" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"></div>
-      <div id="disc-body" style="margin-top:16px"></div>
+      <h1>New brands to review</h1>
+      <div class="sub" id="dc-sub">Claude finds up to 50 a day. Add the ones worth pitching, dismiss the rest.</div>
+      <div id="dc-bar" class="dc-bar"></div>
+      <div id="disc-body"></div>
     </section>
 
     <!-- RESULTS -->
@@ -14816,109 +14840,139 @@ document.getElementById('bd-results').addEventListener('click', function (e) {
 // Rows wait here until someone Adds or Dismisses them; a userscript
 // capture on SponsorUnited flips a row to "contacts ✓" on next load.
 
-function loadDiscover(selectedQuery) {
-  showView('discover');
-  var body = document.getElementById('disc-body');
-  api('listDiscoveries', selectedQuery ? { query: selectedQuery } : {}).then(function (d) {
-    document.getElementById('disc-recent').innerHTML = (d.recent || []).map(function (r) {
-      return '<button class="btn-ghost" data-discq="' + esc(r.query) + '" style="font-size:12px;padding:4px 10px' +
-        (selectedQuery === r.query ? ';border-color:var(--accent);color:var(--accent)' : '') + '">' +
-        esc(r.query) + ' (' + r.n + ')</button>';
-    }).join('');
-    document.querySelectorAll('[data-discq]').forEach(function (b) {
-      b.onclick = function () { loadDiscover(b.getAttribute('data-discq')); };
-    });
-    renderDiscoverRows(body, d.rows || [], selectedQuery);
-  }).catch(function (e) {
-    body.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
-  });
+// --- Discover ---------------------------------------------------
+// Leo, Oct 2026: "make this cleaner … more simple and clean". One list:
+// To review / Added, a source and a category dropdown, one line per brand
+// (name, category, signs, why) with Add and ×. A row opens for the
+// activation idea and the links. The old "describe a niche" search is gone
+// (it needed paid API calls; the daily Claude hunt does that job now).
+var DC = { rows: [], tab: 'review', source: '', cat: '', open: {} };
+var DC_SIGNS = { sponsors: 'College / music', genz: '18–24', midsize: 'Growing' };
+var DC_SIGNS_LONG = { sponsors: 'Already sponsors college or music', genz: 'Aims at 18–24 year olds', midsize: 'Mid-size and growing' };
 
-  var go = document.getElementById('disc-go');
-  go.onclick = function () {
-    var q = document.getElementById('disc-q').value.trim();
-    if (q.length < 3) { toast('Type what kind of brands to hunt for'); return; }
-    go.disabled = true; go.innerHTML = '<span class="spinner"></span> Searching the web…';
-    body.innerHTML = '<div class="panel"><div class="empty"><h3>Hunting…</h3><p>Searching the web for “' + esc(q) + '” and verifying LinkedIn pages. Takes up to a minute.</p></div></div>';
-    api('discoverBrands', { query: q }).then(function (r) {
-      go.disabled = false; go.textContent = 'Search';
-      toast(r.results.length + ' brand' + (r.results.length === 1 ? '' : 's') + ' found with verified LinkedIn');
-      loadDiscover(q);
-    }).catch(function (e) {
-      go.disabled = false; go.textContent = 'Search';
-      body.innerHTML = '<div class="panel"><div class="empty"><h3>Search failed</h3><p>' + esc(e.message) + '</p></div></div>';
-    });
-  };
-  document.getElementById('disc-q').onkeydown = function (ev) { if (ev.key === 'Enter') go.onclick(); };
+function loadDiscover() {
+  var again = showView('discover');
+  var body = document.getElementById('disc-body');
+  if (!again && !DC.rows.length) body.innerHTML = '<div class="dc-empty">Loading…</div>';
+  var mine = viewTurn('discover');
+  return api('listDiscoveries', {}).then(function (d) {
+    if (!mine()) return;
+    DC.rows = d.rows || [];
+    dcRender();
+  }).catch(function (e) {
+    if (!mine()) return;
+    body.innerHTML = '<div class="dc-empty">Could not load · ' + esc(e.message) + '</div>';
+  });
 }
 
-// The daily Claude hunt's signs (src/lib/claude-hunt.ts HUNT_SIGNALS).
-var DISC_SIGNALS = { sponsors: 'Sponsors college / music', genz: 'Aims at 18–24', midsize: 'Mid-size, growing' };
+function dcAdded(r) { return r.inSystem || r.status === 'added'; }
 
-function renderDiscoverRows(body, rows, selectedQuery) {
-  var live = rows.filter(function (r) { return r.status !== 'dismissed'; });
-  if (!live.length) {
-    body.innerHTML = '<div class="panel"><div class="empty"><h3>' + (selectedQuery ? 'Nothing left from this search' : 'No discoveries yet') + '</h3>' +
-      '<p>Run a search above — try “venture-backed CPG brands” or “energy drink challengers”.</p></div></div>';
+function dcShown() {
+  return DC.rows.filter(function (r) {
+    if ((DC.tab === 'added') !== dcAdded(r)) return false;
+    if (DC.source && r.source !== DC.source) return false;
+    if (DC.cat && r.category !== DC.cat) return false;
+    return true;
+  });
+}
+
+function dcRender() {
+  var review = DC.rows.filter(function (r) { return !dcAdded(r); }).length;
+  var added = DC.rows.length - review;
+  var pool = DC.rows.filter(function (r) { return (DC.tab === 'added') === dcAdded(r); });
+  var count = function (key, v) { return pool.filter(function (r) { return r[key] === v; }).length; };
+  var sources = ['Claude hunt', 'LinkedIn', 'Research list', 'Search'].filter(function (x) { return count('source', x) || DC.source === x; });
+  var cats = CAT_KEYS.filter(function (k) { return count('category', k) || DC.cat === k; });
+  var tab = function (key, label, n) {
+    return '<button class="chip' + (DC.tab === key ? ' active' : '') + '" data-dctab="' + key + '">' + label + '<span class="n">' + n + '</span></button>';
+  };
+  document.getElementById('dc-bar').innerHTML =
+    tab('review', 'To review', review) + tab('added', 'Added', added) +
+    '<span style="flex:1"></span>' +
+    '<select class="inp" data-dcsel="source" aria-label="Source"><option value="">All sources</option>' +
+      sources.map(function (x) { return '<option' + (DC.source === x ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select>' +
+    '<select class="inp" data-dcsel="cat" aria-label="Category"><option value="">All categories</option>' +
+      cats.map(function (k) { return '<option value="' + esc(k) + '"' + (DC.cat === k ? ' selected' : '') + '>' + esc(CAT_NAMES[k]) + '</option>'; }).join('') + '</select>';
+
+  var rows = dcShown();
+  var body = document.getElementById('disc-body');
+  if (!rows.length) {
+    body.innerHTML = '<div class="dc-empty">' + (DC.tab === 'review'
+      ? (review ? 'Nothing here with these filters.' : 'All caught up — the next batch lands tomorrow morning.')
+      : 'Nothing added yet.') + '</div>';
     return;
   }
-  body.innerHTML = live.map(function (r) {
-    var badge = r.inSystem
-      ? (r.contactCount > 0
-          ? '<span class="status confirmed">in system · ' + r.contactCount + ' contact' + (r.contactCount === 1 ? '' : 's') + ' ✓</span>'
-          : '<span class="status sent">in system · needs contacts</span>')
-      : '';
-    return '<div class="panel panel-pad" style="margin-bottom:8px" data-disc="' + esc(r.id) + '">' +
-      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
-        (r.brandId ? '<a href="#" class="t-brand" data-brand="' + esc(r.brandId) + '" style="font-weight:600;color:inherit;text-decoration:none">' + esc(r.name) + '</a>'
-                   : '<b>' + esc(r.name) + '</b>') +
-        (r.category ? '<span class="status">' + esc(CAT_NAMES[r.category] || r.category) + '</span>' : '') +
-        badge +
-        '<span style="margin-left:auto"></span>' +
-        (r.linkedinUrl ? '<a class="btn-ghost" href="' + esc(r.linkedinUrl) + '" target="_blank" rel="noopener" style="padding:3px 9px;font-size:12px">in ↗</a>' : '') +
-        (r.sourceUrl ? '<a class="btn-ghost" href="' + esc(r.sourceUrl) + '" target="_blank" rel="noopener" style="padding:3px 9px;font-size:12px" title="Where Claude found it">Source ↗</a>' : '') +
-        (r.website ? '<a class="btn-ghost" href="' + esc(r.website) + '" target="_blank" rel="noopener" style="padding:3px 9px;font-size:12px">🌐</a>' : '') +
-        '<button class="btn-ghost" data-discact="su" style="padding:3px 9px;font-size:12px" title="Copies the name and opens SponsorUnited — use the capture script on the brand page">SU ↗</button>' +
-        (r.inSystem ? '' : '<button class="btn-solid" data-discact="add" style="padding:3px 11px;font-size:12px">+ Add</button>') +
-        '<button class="btn-ghost danger" data-discact="dismiss" style="padding:3px 9px;font-size:12px">×</button>' +
-      '</div>' +
-      (r.signals ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' + String(r.signals).split(',').map(function (k) {
-        return DISC_SIGNALS[k] ? '<span class="status replied">' + esc(DISC_SIGNALS[k]) + '</span>' : '';
-      }).join('') + '</div>' : '') +
-      (r.reason ? '<div style="font-size:12.5px;color:var(--ink-2);margin-top:5px">' + esc(r.reason) + '</div>' : '') +
-      (r.activation ? '<div style="font-size:12.5px;margin-top:5px;padding:7px 10px;background:var(--accent-soft,#fdf0ec);border-radius:6px">' +
-        '<b style="color:var(--accent)">Activation idea:</b> ' + esc(r.activation) + '</div>' : '') +
-    '</div>';
-  }).join('') +
-  '<div class="hint" style="margin-top:8px">SU ↗ copies the brand name and opens SponsorUnited — search it there and the capture script pulls contacts straight in; this list updates on the next load. + Add saves it as a brand (with its website and LinkedIn when known) so it shows on All brands under Needs people.</div>';
-
-  body.querySelectorAll('a[data-brand]').forEach(function (a) {
-    a.onclick = function (ev) { ev.preventDefault(); loadBrand(a.getAttribute('data-brand')); };
-  });
-  body.querySelectorAll('[data-discact="su"]').forEach(function (b) {
-    b.onclick = function () {
-      var card = b.closest('[data-disc]');
-      var name = card.querySelector('b, a.t-brand').textContent;
-      try { navigator.clipboard.writeText(name); } catch (e) {}
-      toast('“' + name + '” copied — paste it into SponsorUnited search');
-      window.open('https://app.sponsorunited.com/', '_blank');
-    };
-  });
-  body.querySelectorAll('[data-discact="add"]').forEach(function (b) {
-    b.onclick = function () {
-      b.disabled = true;
-      api('addDiscoveredBrand', { id: b.closest('[data-disc]').getAttribute('data-disc') })
-        .then(function () { toast('Added — it\'s in Brands and Needs Contacts'); loadDiscover(selectedQuery); })
-        .catch(function (e) { toast(e.message); b.disabled = false; });
-    };
-  });
-  body.querySelectorAll('[data-discact="dismiss"]').forEach(function (b) {
-    b.onclick = function () {
-      api('dismissDiscovered', { id: b.closest('[data-disc]').getAttribute('data-disc') })
-        .then(function () { loadDiscover(selectedQuery); })
-        .catch(function (e) { toast(e.message); });
-    };
-  });
+  body.innerHTML = '<div class="dc-list">' + rows.map(dcRow).join('') + '</div>';
 }
+
+function dcRow(r) {
+  var open = !!DC.open[r.id];
+  var signs = String(r.signals || '').split(',').filter(function (k) { return DC_SIGNS[k]; });
+  var meta = [r.category ? (CAT_NAMES[r.category] || r.category) : '', r.source].filter(Boolean).join(' · ');
+  var links = [
+    r.sourceUrl ? '<a href="' + esc(r.sourceUrl) + '" target="_blank" rel="noopener">Source ↗</a>' : '',
+    r.website ? '<a href="' + esc(r.website) + '" target="_blank" rel="noopener">Website ↗</a>' : '',
+    r.linkedinUrl ? '<a href="' + esc(r.linkedinUrl) + '" target="_blank" rel="noopener">LinkedIn ↗</a>' : '',
+    '<a href="#" data-dcact="su">Find on SponsorUnited ↗</a>',
+  ].filter(Boolean).join('');
+  var actions = dcAdded(r)
+    ? '<span class="dc-done">Added' + (r.inSystem ? ' · ' + r.contactCount + (r.contactCount === 1 ? ' person' : ' people') : '') + '</span>' +
+      (r.brandId ? '<button class="btn-ghost sd-sm" data-dcact="open">Open</button>' : '')
+    : '<button class="btn-solid dc-add" data-dcact="add">Add</button>' +
+      '<button class="dc-x" data-dcact="dismiss" title="Not a fit — dismiss" aria-label="Dismiss ' + esc(r.name) + '">×</button>';
+  return '<div class="dc-row' + (open ? ' open' : '') + '" data-disc="' + esc(r.id) + '">' +
+    '<div class="dc-main" data-dcact="toggle">' +
+      '<div class="dc-name"><b>' + esc(r.name) + '</b><span class="dc-meta">' + esc(meta) + '</span>' +
+        signs.map(function (k) {
+          return '<span class="dc-sign" title="' + esc(DC_SIGNS_LONG[k]) + '">' + esc(DC_SIGNS[k]) + '</span>';
+        }).join('') + '</div>' +
+      (r.reason ? '<div class="dc-why">' + esc(r.reason) + '</div>' : '') +
+    '</div>' +
+    '<div class="dc-act">' + actions + '</div>' +
+    (open ? '<div class="dc-more">' +
+      (r.activation ? '<div><span class="dc-k">Pitch</span>' + esc(r.activation) + '</div>' : '') +
+      '<div class="dc-links">' + links + '</div></div>' : '') +
+  '</div>';
+}
+
+document.getElementById('dc-bar').addEventListener('click', function (e) {
+  var t = e.target.closest('[data-dctab]');
+  if (!t) return;
+  DC.tab = t.getAttribute('data-dctab'); DC.source = ''; DC.cat = '';
+  dcRender();
+});
+document.getElementById('dc-bar').addEventListener('change', function (e) {
+  var sel = e.target.closest('[data-dcsel]');
+  if (!sel) return;
+  DC[sel.getAttribute('data-dcsel')] = sel.value;
+  dcRender();
+});
+document.getElementById('disc-body').addEventListener('click', function (e) {
+  var el = e.target.closest('[data-dcact]');
+  if (!el || e.target.closest('a[target]')) return;
+  var row = el.closest('[data-disc]'), id = row && row.getAttribute('data-disc');
+  var r = DC.rows.filter(function (x) { return x.id === id; })[0];
+  if (!r) return;
+  var what = el.getAttribute('data-dcact');
+  if (what === 'toggle') { if (DC.open[id]) delete DC.open[id]; else DC.open[id] = true; dcRender(); return; }
+  e.preventDefault();
+  if (what === 'open') { loadBrand(r.brandId); return; }
+  if (what === 'su') {
+    try { navigator.clipboard.writeText(r.name); } catch (err) {}
+    toast('“' + r.name + '” copied — paste it into SponsorUnited search');
+    window.open('https://app.sponsorunited.com/', '_blank');
+    return;
+  }
+  if (what === 'add' || what === 'dismiss') {
+    el.disabled = true;
+    api(what === 'add' ? 'addDiscoveredBrand' : 'dismissDiscovered', { id: id }).then(function (res) {
+      if (what === 'add') { r.status = 'added'; r.inSystem = true; r.brandId = res && res.brandId; r.contactCount = 0; toast(r.name + ' added to Brands'); }
+      else { DC.rows = DC.rows.filter(function (x) { return x.id !== id; }); }
+      delete DC.open[id];
+      dcRender();
+    }).catch(function (err) { el.disabled = false; toast(err.message); });
+  }
+});
 
 // --- results ---------------------------------------------------
 //

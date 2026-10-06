@@ -9431,32 +9431,31 @@ const handlers: Record<string, Handler> = {
   // The bench, refreshed: re-checks each row against the Brand table so a
   // userscript capture on SponsorUnited flips a row to "contacts ✓"
   // the next time this loads.
+  // Brands → Discover: everything found and not dismissed, newest first,
+  // each with whether it's on the roster now (by id, else exact name) and
+  // where it came from (`source`: the Claude hunt, LinkedIn, the research
+  // list or an old search). One read of the roster, not one per row.
   async listDiscoveries({ query }: any) {
-    const where = query ? { query } : {}
     const rows = await (prisma as any).discoveredBrand.findMany({
-      where, orderBy: { createdAt: 'desc' }, take: 200,
+      where: { status: { not: 'dismissed' }, ...(query ? { query } : {}) },
+      orderBy: { createdAt: 'desc' }, take: 600,
     })
-    const recent = await (prisma as any).discoveredBrand.groupBy({
-      by: ['query'], _count: { query: true }, _max: { createdAt: true },
-      orderBy: { _max: { createdAt: 'desc' } }, take: 10,
+    const brands = await prisma.brand.findMany({ select: { id: true, name: true, _count: { select: { contacts: true } } } })
+    const byId = new Map(brands.map(b => [b.id, b]))
+    const byName = new Map(brands.map(b => [b.name.toLowerCase(), b]))
+    const sourceOf = (q: string) => /^(Claude hunt|🔥)/.test(q) ? 'Claude hunt'
+      : /^LinkedIn/.test(q) ? 'LinkedIn' : /^Research list/.test(q) ? 'Research list' : 'Search'
+    const link: { id: string; brandId: string }[] = []
+    const out = rows.map((r: any) => {
+      const existing = (r.brandId && byId.get(r.brandId)) || byName.get(String(r.name).toLowerCase())
+      if (existing && !r.brandId) { link.push({ id: r.id, brandId: existing.id }); r.brandId = existing.id; r.status = 'added' }
+      return { ...r, source: sourceOf(r.query), inSystem: !!existing, contactCount: existing?._count.contacts ?? 0 }
     })
-    const out: any[] = []
-    for (const r of rows) {
-      const existing = await prisma.brand.findFirst({
-        where: r.brandId ? { id: r.brandId } : { name: { equals: r.name, mode: 'insensitive' } },
-        select: { id: true, _count: { select: { contacts: true } } },
-      })
-      if (existing && !r.brandId) {
-        await (prisma as any).discoveredBrand.update({ where: { id: r.id }, data: { brandId: existing.id, status: r.status === 'dismissed' ? 'dismissed' : 'added' } })
-        r.brandId = existing.id
-        if (r.status !== 'dismissed') r.status = 'added'
-      }
-      out.push({ ...r, inSystem: !!existing, contactCount: existing?._count.contacts ?? 0 })
+    // A brand added since by any other path: remember the link.
+    for (const l of link) {
+      await (prisma as any).discoveredBrand.update({ where: { id: l.id }, data: { brandId: l.brandId, status: 'added' } })
     }
-    return {
-      rows: out,
-      recent: recent.map(g => ({ query: g.query, n: g._count.query, at: g._max.createdAt })),
-    }
+    return { rows: out }
   },
 
   // Promote a discovery to a real Brand. It arrives contact-less, so it
