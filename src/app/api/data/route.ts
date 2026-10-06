@@ -2343,6 +2343,24 @@ function handFillText(text: string, p: { name: string; brandName: string; title:
     .replace(/\(title\)/gi, p.title || '')
 }
 
+// The email Zach sends when they replied and want email. Leo pasted his
+// own (Oct 6 2026), so it's the default, not a stand-in; a saved one in
+// the template editor wins.
+const HAND_EMAIL_TEMPLATE_DEFAULT = {
+  subject: 'SB Agency × (BRAND)',
+  body: [
+    'Hi (NAME),',
+    '',
+    'Great to connect on LinkedIn. Would love to share some ideas and put something together with (BRAND) around our college events.',
+    '',
+    'Do you have 15 minutes for a quick call later this week? I’ve attached our deck for you to check out in the meantime.',
+    '',
+    'Thanks!',
+    'Zach Goldstein',
+    'SB Agency',
+  ].join('\n'),
+}
+
 async function readHandTemplate(kind: HandTemplateKind = 'email') {
   const key = handTemplateKey(kind)
   if (kind === 'first') {
@@ -2365,6 +2383,7 @@ async function readHandTemplate(kind: HandTemplateKind = 'email') {
       }
     } catch { /* an unreadable row falls back to the stand-in */ }
   }
+  if (kind === 'email') return { ...HAND_EMAIL_TEMPLATE_DEFAULT, standIn: false, savedAt: null, savedBy: null }
   return { ...standIn, standIn: true, savedAt: null, savedBy: null }
 }
 
