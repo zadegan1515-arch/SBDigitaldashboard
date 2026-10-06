@@ -363,25 +363,42 @@
   .zt-prev-body{font-size:13.5px;line-height:1.65;white-space:pre-wrap;color:var(--ink-2);overflow-wrap:anywhere}
   .zt-fill-tok{color:#dbe6ff;background:rgba(79,131,247,.16);border-radius:4px;padding:0 3px}
   .zt-bad-tok{color:#f2918c;background:rgba(240,113,107,.12);border-radius:4px;padding:0 3px}
-  /* Where every brand stands: the right side of Zach's list. Stacked
-     under the list on narrower screens; beside it, following the scroll,
-     when there's room. Countdown words carry the meaning; colour backs
-     them up (late red, today blue, coming up grey). */
-  .zs{margin-top:22px;background:var(--surface-1);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:16px 0 8px}
-  .zs-head{padding:0 16px 10px}
-  .zs-head h3{font-family:var(--display);font-size:16px;font-weight:800;letter-spacing:-.015em}
-  .zs-sum{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:12.5px;color:var(--ink-3)}
+  /* Where every brand stands: a full-width board at the top of Home,
+     above Zach's list (Leo, Oct 6: "more defined ... lines between the
+     categories ... move it higher up and take full advantage of the home
+     page"). One card per stage, side by side, each with its own colour
+     edge; countdown words carry the meaning, colour backs them up (late
+     red, today blue, coming up grey). A stage shows its most urgent few,
+     the rest behind "N more". */
+  .zt-cols{display:flex;flex-direction:column}
+  .zt-cols .zs{order:-1}
+  .zs{margin:22px 0 28px;background:var(--surface-1);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:16px 16px 16px}
+  .zs-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;padding:0 4px 14px}
+  .zs-head h3{font-family:var(--display);font-size:18px;font-weight:800;letter-spacing:-.015em}
+  .zs-sum{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;color:var(--ink-3)}
   .zs-sum b{color:var(--ink-1);font-weight:700;font-variant-numeric:tabular-nums}
   .zs-sum .late b{color:var(--bad)}
   .zs-sum .today b{color:var(--accent-hi)}
-  .zs-rule{margin-top:6px;font-size:11.5px;color:var(--ink-3);line-height:1.45}
-  .zs-grp{border-top:1px solid var(--border-soft);padding:8px 0 4px}
-  .zs-gh{display:flex;align-items:baseline;gap:8px;padding:4px 16px 4px;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2)}
-  .zs-gh small{font-size:11px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--ink-3)}
-  .zs-gh .n{margin-left:auto;font-weight:600;letter-spacing:0;color:var(--ink-3);font-variant-numeric:tabular-nums}
-  .zs-row{display:flex;align-items:center;gap:10px;width:100%;padding:7px 16px;border:0;background:transparent;color:inherit;
+  .zs-rule{margin-left:auto;font-size:11.5px;color:var(--ink-3);line-height:1.45}
+  .zs-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;align-items:start}
+  .zs-grp{--stage:var(--ink-3);min-width:0;background:var(--surface-2);border:1px solid var(--border);border-top:3px solid var(--stage);border-radius:12px;padding:10px 0 6px;overflow:hidden}
+  .zs-msg{--stage:var(--accent)}
+  .zs-final{--stage:var(--warn)}
+  .zs-sent{--stage:#8a8fa3}
+  .zs-talk{--stage:var(--good)}
+  .zs-call{--stage:var(--accent-hi)}
+  .zs-quiet{--stage:#4a4d5c}
+  .zs-gh{display:flex;align-items:center;gap:8px;padding:2px 12px 9px;margin-bottom:2px;border-bottom:1px solid var(--border)}
+  .zs-gh-t{min-width:0;display:flex;flex-direction:column}
+  .zs-gh-t span{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-1)}
+  .zs-gh small{font-size:11px;font-weight:500;color:var(--ink-3);margin-top:1px}
+  .zs-gh .n{margin-left:auto;flex:none;min-width:22px;padding:1px 7px;border-radius:999px;background:var(--surface-1);border:1px solid var(--border);
+    text-align:center;font-size:11.5px;font-weight:700;color:var(--ink-2);font-variant-numeric:tabular-nums}
+  .zs-gh .lt{flex:none;font-size:11px;font-weight:700;color:var(--bad);font-variant-numeric:tabular-nums}
+  .zs-row{display:flex;align-items:center;gap:9px;width:100%;padding:8px 12px;border:0;background:transparent;color:inherit;
     font-family:inherit;text-align:left;cursor:pointer;transition:background .12s}
-  .zs-row:hover{background:var(--surface-2)}
+  .zs-row + .zs-row{border-top:1px solid var(--border-soft)}
+  .zs-row:hover{background:var(--surface-1)}
   .zs-row:focus-visible{outline:2px solid var(--ring);outline-offset:-2px}
   .zs-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--c)}
   .zs-name{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:0 6px}
@@ -395,13 +412,10 @@
   .zs-when.todo{color:var(--good)}
   .zt-done-row.zs-flash{animation:zs-flash 1.6s ease-out}
   @keyframes zs-flash{from{background:var(--accent-soft)}to{background:transparent}}
-  .zs-more{display:block;margin:2px 16px 4px;padding:4px 0;border:0;background:none;color:var(--accent-hi);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer}
+  .zs-more{display:block;width:calc(100% - 24px);margin:4px 12px 2px;padding:6px 0;border:0;border-top:1px solid var(--border-soft);background:none;color:var(--accent-hi);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;text-align:left}
   .zs-more:hover{text-decoration:underline}
-  @media (min-width:1360px){
-    #dashboard.page{max-width:1660px}
-    .zt-cols.has-side{display:grid;grid-template-columns:minmax(0,1fr) clamp(290px,22vw,360px);gap:28px;align-items:start}
-    .zt-cols.has-side .zs{margin-top:0;position:sticky;top:132px;max-height:calc(100vh - 148px);overflow:auto}
-  }
+  @media (min-width:1360px){ #dashboard.page{max-width:1660px} }
+  @media (max-width:768px){ .zs{padding:14px 12px} .zs-rule{margin-left:0} }
   @media (hover:none){.zt-go,.zt-keys{display:none}}
   @media (prefers-reduced-motion:reduce){
     .zt-item,.zt-exp,.zt-fill,.zt-undo,.zt-go,.zt-chev,.zt-row,.zt-step{transition:none}
@@ -3298,7 +3312,7 @@ var ZS_GROUPS = [
   { key: 'call', title: 'Call booked', sub: '' },
   { key: 'quiet', title: 'No response', sub: 'quiet after the final' }
 ];
-var ZS_SHOW = 8;           // rows a stage shows before "N more"
+var ZS_SHOW = 5;           // rows a stage shows before "N more" (3 on a phone)
 var ZS_MORE = {};          // stage key -> showing all
 function zsGroupOf(p) {
   var st = ztStage(p);
@@ -3410,18 +3424,21 @@ function zsHtml() {
         '<span><b>' + n + '</b> ' + (n === 1 ? 'brand' : 'brands') + '</span></div>' +
       '<div class="zs-rule">Accepted → message on day ' + ZT_DAYS.dm + ' → final reach-out ' + ZT_DAYS.final +
         ' days later → No response after ' + ZT_DAYS.quiet + ' quiet days</div>' +
-    '</div>' +
+    '</div><div class="zs-board">' +
     ZS_GROUPS.map(function (x) {
       var list = rows[x.key];
       if (!list.length) return '';
-      var shown = ZS_MORE[x.key] ? list : list.slice(0, ZS_SHOW);
+      var cap = window.innerWidth <= 768 ? 3 : ZS_SHOW;
+      var shown = ZS_MORE[x.key] ? list : list.slice(0, cap);
+      var lateN = list.filter(function (r) { return r.lead.w.cls === 'late'; }).length;
       return '<section class="zs-grp zs-' + x.key + '">' +
-        '<div class="zs-gh"><span>' + esc(x.title) + '</span>' + (x.sub ? '<small>' + esc(x.sub) + '</small>' : '') +
+        '<div class="zs-gh"><div class="zs-gh-t"><span>' + esc(x.title) + '</span>' + (x.sub ? '<small>' + esc(x.sub) + '</small>' : '') + '</div>' +
+          (lateN ? '<b class="lt">' + lateN + ' late</b>' : '') +
           '<span class="n">' + list.length + '</span></div>' +
         shown.map(function (r) { return zsRowHtml(r, x.key); }).join('') +
         (list.length > shown.length ? '<button class="zs-more" data-zsmore="' + x.key + '">' + (list.length - shown.length) + ' more</button>' : '') +
       '</section>';
-    }).join('');
+    }).join('') + '</div>';
 }
 function zsRefresh() {
   var box = document.getElementById('zach-todo');

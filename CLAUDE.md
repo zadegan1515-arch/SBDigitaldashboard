@@ -69,8 +69,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   and Waiting into its own filter chip; a reply any time brings them back. Results → "DM'd, no answer"
   (`followUpsDue`) uses the same 10 days and the same final text, and drops anyone already sent the final.
   **Where every brand stands** (Leo: "view where we are at with our outreach and what status all the
-  brands are at so we dont forget to maintain comms"): the right side of Zach's list (`zs*` in app.html;
-  beside the list from 1360px wide, sticky; under it on narrower screens). Every brand with someone on
+  brands are at so we dont forget to maintain comms"): a full-width board at the top of Home, above
+  Zach's list (`zs*` in app.html; Leo, Oct 6: "more defined ... lines between the categories ... move it
+  higher up"): one bordered card per stage side by side (`.zs-board` grid, colour edge per stage, "N late"
+  in the card head), 5 rows a stage (3 on a phone) then "N more". Every brand with someone on
   the list + every call booked, grouped Accepted (first message due) / Messaged (final reach-out due) /
   Final sent / Replied-emailed / Call booked / No response; a row per brand per stage (a brand with people
   at two stages shows under both), its most urgent person leads, countdown "in 3d / today / 2d late";
