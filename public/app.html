@@ -178,6 +178,9 @@
   .zt-linkbtn{background:none;border:none;padding:0;font-family:inherit;font-size:13.5px;font-weight:600;
     color:var(--accent-hi);cursor:pointer;text-decoration:none}
   .zt-linkbtn:hover{color:#9dbaff;text-decoration:underline}
+  .zt-linkbtn.zt-copybtn{padding:9px 22px;border-radius:9px;background:var(--accent);color:#fff;font-size:14.5px;
+    font-weight:700;min-width:96px;text-align:center}
+  .zt-linkbtn.zt-copybtn:hover{background:var(--accent-hi);color:#fff;text-decoration:none}
   .zt-addnote{display:inline-block;margin-bottom:12px}
   .zt-mail{border:1px solid var(--border);border-radius:12px;background:var(--surface-1);overflow:hidden;transition:border-color .15s}
   .zt-mail:focus-within{border-color:rgba(79,131,247,.45)}
@@ -3993,7 +3996,7 @@ function ztPanelHtml(p) {
         '<div class="zt-mailfoot"><span class="zt-edstate">' + (edited
           ? '<span class="zt-edited">Edited for ' + esc(ztFirst(p)) + '</span><button class="zt-linkbtn" data-ztact="dmreset">Reset to template</button>'
           : '<span>From the LinkedIn DM template. Edit it right here</span>') + '</span>' +
-          '<button class="zt-linkbtn" data-ztact="copylidm">Copy</button></div>' +
+          '<button class="zt-linkbtn zt-copybtn" data-ztact="copylidm">Copy</button></div>' +
       '</div>' +
       '<div class="zt-acts">' + li +
         (p.liSentAt ? '' : tick('liSent', 'DM sent ✓', 'Logged: the reply went out on LinkedIn.') + unpick('liPath')) +
@@ -4044,7 +4047,7 @@ function ztMsgHtml(p, kind) {
           ? '<span class="zt-edited">Edited for ' + esc(ztFirst(p)) + '</span><button class="zt-linkbtn" data-ztact="finalreset" title="Throw away this card’s edits and use the template again">Reset to template</button>'
           : '<span>From your template. Edit it right here</span>') +
           '<button class="zt-linkbtn" data-ztact="tpl" data-kind="final" title="The final reach-out every card starts from">Edit template</button>') + '</span>' +
-      '<button class="zt-linkbtn" data-ztact="' + (kind === 'dm' ? 'copydm' : 'copynudge') + '">Copy</button></div>' +
+      '<button class="zt-linkbtn zt-copybtn" data-ztact="' + (kind === 'dm' ? 'copydm' : 'copynudge') + '">Copy</button></div>' +
   '</div>';
 }
 
@@ -4064,7 +4067,7 @@ function ztEmailHtml(p) {
       '<textarea class="zt-body" data-ztbody rows="' + rows + '" aria-label="Email to ' + esc(p.name) + '">' + esc(d.body) + '</textarea>' +
       '<div class="zt-mailfoot">' +
         '<span class="zt-edstate">' + ztEdStateHtml(p) + '</span>' +
-        '<button class="zt-linkbtn" data-ztact="copy">Copy email</button>' +
+        '<button class="zt-linkbtn zt-copybtn" data-ztact="copy">Copy email</button>' +
         '<button class="zt-linkbtn" data-ztact="copysubj">Copy subject</button>' +
         '<a class="zt-linkbtn" href="/materials/sba-one-pager.pdf" download="SBA One Pager.pdf" title="Download the one-pager to attach">One-pager ↓</a>' +
       '</div>' +
