@@ -85,7 +85,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - **Home → For Zach to do** (`zachTodo` + `renderZachTodo`; deep link `app.html#zach`) — **everyone who
   accepted a LinkedIn invite** until they're finished (`HAND_WAITING` in `route.ts`: accepted/replied,
   no `callAt`, no `handSkippedAt`). Replied by email still shows (Email step ticked, "replied by
-  email"); archived / do-not-email brands show with a tag, never hidden. Filters: To do / Waiting only.
+  email"); archived / do-not-email brands show with a tag, never hidden. Filters: To do / Waiting only. **Call to book sits under Waiting, not To do** (Leo, Oct 6: not urgent; the status board counts it — `ztIsWait`).
   One-line rows under brand labels (avatar colour follows the brand,
   a 4-dot mini flow, the next step in words), **earliest step first** (Leo: "the earlier the stage,
   the higher up it should be" — `ztCompare`: text back → follow-up → reply to answer → email/DM to

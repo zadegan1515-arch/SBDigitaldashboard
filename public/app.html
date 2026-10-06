@@ -3741,9 +3741,11 @@ function ztSince(p) {
     title: pick[1] + shortDate(pick[0])
   };
 }
-// Nothing to do for them yet: the message isn't due, or they haven't
-// answered. No response is its own filter, off the to-do.
-function ztIsWait(st) { return st === 'waiting' || st === 'soon'; }
+// Nothing to do for them yet: the message isn't due, they haven't
+// answered, or all that's left is booking the call (Leo, Oct 6: not an
+// urgent to-do; the status board counts it). No response is its own
+// filter, off the to-do.
+function ztIsWait(st) { return st === 'waiting' || st === 'soon' || st === 'call'; }
 function ztFilterOf(p) {
   var st = ztStage(p);
   return st === 'noreply' ? 'noreply' : ztIsWait(st) ? 'waiting' : 'todo';
