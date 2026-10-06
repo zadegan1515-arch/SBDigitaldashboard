@@ -2349,6 +2349,11 @@ function keepPlace(view) {
     view: view, y: window.scrollY, ownY: window.scrollY, chain: m.chain, spots: m.spots,
     details: placeDetails(view), known: new WeakSet(), boxes: [], focus: null, swapped: false, timer: 0,
   };
+  // At the very top, the top is the place (Leo, Oct 6: Home opened half
+  // way down Zach's list — the list and board loading above the tiles
+  // dragged the page down to keep the tiles on screen). The thing he
+  // clicked, if any, is still held.
+  if (P.y < 1) P.spots = [];
   P.details.forEach(function (d) { P.known.add(d.el); });
   view.querySelectorAll('[data-scroll]').forEach(function (el) {
     var sel = placeSel(el, view);

@@ -128,6 +128,10 @@ async function main() {
   });
   await page.goto(base + '/app.html');
   await page.waitForSelector('#zach-todo .zs-row');
+  await page.waitForTimeout(1200);
+  // Home opens at the top (Leo, Oct 6: it opened half way down Zach's list).
+  assert.equal(await page.evaluate(() => window.scrollY), 0, 'Home opens at the top');
+  console.log('ok 0 - Home opens at the top');
 
   // 1. Stages --------------------------------------------------------
   const stages = await page.evaluate(() => {
