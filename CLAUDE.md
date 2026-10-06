@@ -265,9 +265,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Stock take (lanes, ideas, re-file) and Needs contacts (SponsorUnited worklist) left the sub-tabs and
   are header buttons; their views and deep links still work. `node scripts/test-brands-table.js`.
 - **Daily Claude brand hunt** (Leo, Oct 2026: "a process for Claude to find new brands … it shouldn't
-  necessarily be through LinkedIn"). Routine "Discover: daily brand hunt (web)" (5:52 New York, a fresh
-  session in the Claude Code cloud environment that holds `REPORT_TOKEN` — the old Cowork routine of the
-  same name had no token and is paused; subscription, no API spend) searches the open web (launch / funding news, sponsorship
+  necessarily be through LinkedIn"). Routine "Discover: daily brand hunt" (5:52 New York) wakes the cloud
+  session "Brand hunt (daily)" — repo attached, `REPORT_TOKEN` in its environment; a fresh empty session
+  gets its call blocked by the safety check, and the old Cowork routine had no token (both paused);
+  subscription, no API spend) searches the open web (launch / funding news, sponsorship
   announcements, retailer shelves, trend coverage) and posts to `/api/discover-ingest` (Bearer
   `REPORT_TOKEN`; the old body `token` = INGEST_TOKEN still accepted). `GET` = lanes, `leftToday`, every
   known name (brands + aka + earlier finds; names only). Rules pure in `src/lib/claude-hunt.ts`
