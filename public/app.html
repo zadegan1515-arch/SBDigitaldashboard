@@ -427,6 +427,7 @@
   .hm-tile .v{font-size:28px;font-weight:800;font-family:var(--display);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
   .hm-tile .s{font-size:13px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   details.hm-more{margin-top:34px;border-top:1px solid var(--border-soft);padding-top:4px}
+  .oq-bpass{margin-left:10px;padding:4px 11px;font-size:12.5px}
   /* Today's send list */
   #hm-send .sl{margin:14px 0 6px}
   .sl-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--border-soft)}
@@ -2284,6 +2285,10 @@ var CAT_NAMES = {
   unresolved:'Needs Clarification'
 };
 var CAT_KEYS = Object.keys(CAT_NAMES);
+// A Schedule day can be "Best fit": any category, best Brand Fit first
+// (Leo, Oct 6 2026). Named here so every "<category> day" label reads it;
+// added after CAT_KEYS so it never shows up as a brand category.
+CAT_NAMES.bestfit = 'Best fit';
 var TARGET_STATUSES = ['all','queued','drafted','sent','accepted','withdrawn','passed','replied','converted','declined','dead'];
 var ME = { owner: null };
 var OWNERS = [];
@@ -3532,6 +3537,17 @@ function goHomeFromLogo() {
 document.getElementById('logo-home').addEventListener('click', goHomeFromLogo);
 document.getElementById('logo-home').addEventListener('keydown', function (ev) {
   if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); goHomeFromLogo(); }
+});
+
+// Outreach → LinkedIn: Pass a whole brand for today.
+document.addEventListener('click', function (ev) {
+  var el = ev.target.closest('[data-oqbpass]');
+  if (!el) return;
+  el.disabled = true;
+  api('passBrandToday', { brandId: el.getAttribute('data-oqbpass') }).then(function (r) {
+    toast((r.name || 'Brand') + ' passed for today' + (r.unqueued ? ' — ' + r.unqueued + ' back in the pool' : ''));
+    loadOutreach();
+  }).catch(function (err) { el.disabled = false; toast(err.message); });
 });
 
 // --- For Zach to do --------------------------------------------
@@ -11779,6 +11795,7 @@ function sdDayHtml(key) {
   var catSel = '<select class="inp sd-catsel" data-sdcatsel="' + esc(key) + '" title="The category this day works">' +
     '<option value=""' + (planned ? '' : ' selected') + '>Automatic rotation' +
       (day.auto && day.category ? ' (' + esc(catName) + ')' : '') + '</option>' +
+    '<option value="bestfit"' + (planned === 'bestfit' ? ' selected' : '') + ' title="Any category — the brands with the best Brand Fit score go first">★ Best fit (any category)</option>' +
     CAT_KEYS.map(function (k) {
       return '<option value="' + esc(k) + '"' + (planned === k ? ' selected' : '') + '>' + esc(CAT_NAMES[k]) + '</option>';
     }).join('') +
@@ -14200,6 +14217,10 @@ function oqBrandCard(g) {
       (cat ? '<span class="oq-bcat">' + esc(cat) + '</span>' : '') +
       sdLabel(OQ_LABELS[g.brandId]) +
       '<span class="oq-bprog"><span data-oqcount>' + c.sent + ' of ' + c.total + ' sent</span>' + oqBar(c.sent, c.total) + '</span>' +
+      // Leo, Oct 6 2026: "a pass button on the brand as a whole" — the
+      // whole brand off today's list (passBrandToday: unsent people back
+      // to the pool, nothing deleted; it can come up another day).
+      (c.sent < c.total ? '<button class="btn-ghost oq-bpass" data-oqbpass="' + esc(g.brandId) + '" title="Take the whole brand off today’s list. Its people go back to the pool; it can come back another day.">Pass brand</button>' : '') +
     '</div>' +
     '<div class="oq-rows">' + rows.map(targetRow).join('') + '</div>' +
   '</div>';

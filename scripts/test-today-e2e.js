@@ -162,6 +162,25 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal((await prisma.brand.findUnique({ where: { id: an.brandId } })).tier, null)
     ok('Discover adds: midsize → growth, otherwise no tier (never "established")')
 
+    // 8. A Best fit day: any category, the higher Brand Fit first.
+    const mk = async (id, name, category, extra) => {
+      await prisma.brand.create({ data: { id, name, category, usStatus: 'yes', ...extra } })
+      for (let i = 0; i < 3; i++) {
+        const c = await prisma.contact.create({ data: { brandId: id, name: name + ' P' + i, title: 'Head of Partnerships', linkedinUrl: 'https://www.linkedin.com/in/' + id + i + '/' } })
+        await prisma.target.create({ data: { brandId: id, contactId: c.id, status: 'queued' } })
+      }
+    }
+    await mk('bf_rich', 'Rich Pop', 'snacks', { fundingCents: 50n * 100000000n, sponsorsCollege: true, liMembers: 120 })
+    await mk('bf_poor', 'Poor Fizz', 'energy', { liMembers: 30 })
+    let op = await data('getOutreachPlan', {})
+    // Every coming day Best fit, so no category rotation takes one first.
+    for (const d of op.days) if (d.date >= op.today) await data('planSetCategory', { date: d.date, category: 'bestfit' })
+    op = await data('getOutreachPlan', {})
+    const day = op.days.find(d => (d.brands || []).some(b => b.name === 'Rich Pop' || b.name === 'Poor Fizz'))
+    const order = (day.brands || []).map(b => b.name).filter(n => n === 'Rich Pop' || n === 'Poor Fizz')
+    assert.deepEqual(order, ['Rich Pop', 'Poor Fizz'], 'both categories, best fit first: ' + JSON.stringify((day.brands || []).map(b => b.name)))
+    ok('a Best fit day takes every category, the best Brand Fit first')
+
     console.log(n + ' checks passed');
   } catch (e) {
     console.error('FAILED:', e.stack || e.message);

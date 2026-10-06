@@ -173,6 +173,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   sends exactly the previewed ids. Days = `planDayChoices` = the Schedule's columns
   (`scheduleDays`, shared with `getOutreachPlan`) + the next off weekday, which `addDay` opens as
   a sending day; `planAddBrands` refuses a non-sending day without it.
+  **Best fit day** (Leo, Oct 6 2026: "make a category best fit"): a day's category menu has **★ Best fit (any
+  category)** = `BEST_FIT_DAY` ('bestfit'; `inDayTheme` / `isCategoryTheme` in route.ts): every category, the fill
+  ordered by Brand Fit score (`brandFit`) instead of person fit — getTodayQueue, getOutreachPlan, fillToday;
+  clearTodayOffCategory does nothing on it. `CAT_NAMES.bestfit` is added after `CAT_KEYS` so it never files a brand.
+  **Pass brand** on a LinkedIn-tab brand card = `passBrandToday` (whole brand off today; unsent people back to the pool).
   **Who goes first** (Leo, Sep 2026): a day's planned brands go out in their plan order
   (`plan[day].brandIds`) — numbered on the cards, ↑ ↓ or drag a card within its day
   (`planReorderDay`). Whole brands in that order while they fit in the day's 30 (after anyone sent

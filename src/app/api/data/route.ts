@@ -867,6 +867,15 @@ function reasonText(reason: string | null | undefined, ctx: ReasonCtx = {}): str
 // ---------------------------------------------------------------
 
 type PlanDay = { category: string | null; brandIds: string[] }
+// A day's "category" may be Best fit (Leo, Oct 6 2026: "can you make a
+// category best fit"): any category, the highest Brand Fit score first.
+const BEST_FIT_DAY = 'bestfit'
+function inDayTheme(category: string | null | undefined, theme: string | null | undefined): boolean {
+  return !theme || theme === BEST_FIT_DAY || category === theme
+}
+function isCategoryTheme(theme: string | null | undefined): theme is string {
+  return !!theme && theme !== BEST_FIT_DAY
+}
 type OutreachPlan = Record<string, PlanDay>
 
 // Most brands one day can hold by hand. Thirty people a day means this
@@ -2907,7 +2916,7 @@ const handlers: Record<string, Handler> = {
     // The day is ONE category, strictly (Leo): no topping up from other
     // categories. A short day stays short — the Schedule tab's Add-more
     // and side list are how it gets filled.
-    const themed = (theme ? candidates.filter(c => c.brand.category === theme) : candidates)
+    const themed = candidates.filter(c => inDayTheme(c.brand.category, theme))
       .filter(c => !laterPinned.has(c.brandId))
     // Not a sending day (no Tuesday-Thursday, no extra day opened): no
     // automatic picks. Hand-picks still show — they were stamped on
@@ -2937,12 +2946,14 @@ const handlers: Record<string, Handler> = {
       ? await prisma.brand.findMany({ where: { id: { in: [...themedByBrand.keys()] } }, select: PLAN_BRAND_SELECT })
       : []
     const fillBrandById = new Map(fillBrands.map(b => [b.id, b]))
+    const bestRates = theme === BEST_FIT_DAY && fillBrands.length ? await recentAcceptRates() : null
     const groups = orderFillGroups([...themedByBrand.entries()].map(([id, list]) => {
       const b = fillBrandById.get(id)
       const p = b ? previewBrandPicks(b, { forToday: true, dayStart: startOfDay }) : null
       return {
         id, held: heldBrands.has(id),
-        fit: Math.max(...list.map(c => c.fitScore)),
+        // A Best fit day orders brands by Brand Fit, not by person fit.
+        fit: bestRates && b ? brandFit(b, b.contacts.filter(isReachable).length, bestRates).score : Math.max(...list.map(c => c.fitScore)),
         size: fillSize(p?.people.length ?? 0, stampedBy.get(id) ?? 0, list.length),
         // A brand-level gate (do-not-email, nobody reachable any more)
         // means the preview counts only its pooled people. Those are all
@@ -5797,6 +5808,8 @@ const handlers: Record<string, Handler> = {
     const carryTo = carryLog && carryLog.to >= todayKey ? carryLog.to : null
     const carryLive = carryLog && carryTo ? carryLog.brands.filter(b => (plan[carryTo]?.brandIds ?? []).includes(b.id)) : []
     const carriedFrom = new Map(carryLive.map(b => [b.id, b.from]))
+    // Best fit days rank brands by Brand Fit, which uses accept rates.
+    const planRates = Object.values(plan).some(d => d?.category === BEST_FIT_DAY) ? await recentAcceptRates() : null
     const days = dayList.map(({ key, at }) => {
       // Not "the first row" any more: on a Monday or Friday none of the
       // planned days is today, and today's queue must not be charged
@@ -5855,7 +5868,7 @@ const handlers: Record<string, Handler> = {
       // Today closed by "Move what's left": no automatic picks at all, so
       // no rest-of-category list either.
       const inTheme = isToday && closedToday ? []
-        : theme ? usable.filter(c => c.brand.category === theme) : usable
+        : usable.filter(c => inDayTheme(c.brand.category, theme))
       // Whole brands, filled to their thread count — fillWholeBrands, the
       // rule getTodayQueue fills today by, so the day says what will
       // really go out. Slicing this list by person cut brands in half:
@@ -5890,7 +5903,8 @@ const handlers: Record<string, Handler> = {
           const adds = p.filter(x => !stampedNames.has(x.name))
           people = adds.length ? adds : list.map(personOf)
         }
-        return { id, fit: Math.max(...list.map(c => c.fitScore)), held: isToday && stampedN > 0, size, people, brand: list[0].brand }
+        const fit = theme === BEST_FIT_DAY && b ? brandFit(b, b.contacts.filter(isReachable).length, planRates).score : Math.max(...list.map(c => c.fitScore))
+        return { id, fit, held: isToday && stampedN > 0, size, people, brand: list[0].brand }
       }))
       // The same "starts empty" test getTodayQueue uses before it splits
       // a brand: nothing sent or stamped today, and no planned brand
@@ -5926,7 +5940,7 @@ const handlers: Record<string, Handler> = {
           row = {
             id: brand.id, name: brand.name, people: [], going: 0,
             website: brand.website, linkedinUrl: brand.linkedinUrl, externalId: brand.externalId,
-            topUp: !!theme && brand.category !== theme,
+            topUp: isCategoryTheme(theme) && brand.category !== theme,
             inQueue, category: brand.category,
           }
           rowByBrand.set(brand.id, row)
@@ -6005,7 +6019,7 @@ const handlers: Record<string, Handler> = {
           const onScreen = new Set<string>([
             ...rowByBrand.keys(),
             ...spillByBrand.keys(),
-            ...(theme ? addable.filter(b => b.category === theme && !(isToday && passedToday(b))).map(b => b.id) : []),
+            ...(isCategoryTheme(theme) ? addable.filter(b => b.category === theme && !(isToday && passedToday(b))).map(b => b.id) : []),
           ])
           const blocked: Record<string, { count: number; brands: HealthBrand[] }> = {}
           let blockedTotal = 0
@@ -7360,7 +7374,7 @@ const handlers: Record<string, Handler> = {
     let planDay: any = null
     try { planDay = planRow ? (JSON.parse(planRow.value)[localDayKey()] ?? null) : null } catch { planDay = null }
     const theme: string | null = planDay?.category ?? null
-    if (!theme) return { cleared: 0, theme: null, brands: [], reason: 'no category set for today' }
+    if (!isCategoryTheme(theme)) return { cleared: 0, theme: null, brands: [], reason: theme ? 'today is a Best fit day — every category goes' : 'no category set for today' }
 
     // Hand-pinned brands are an explicit choice for today — leave them.
     const pinned = new Set<string>(planDay?.brandIds ?? [])
@@ -7415,14 +7429,14 @@ const handlers: Record<string, Handler> = {
     const cats = [...new Set(allCandidates.map(c => c.brand.category).filter(Boolean))].sort() as string[]
     const theme = planDay?.category
       ?? (cats.length ? cats[Math.floor(Date.now() / 86400000) % cats.length] : null)
-    const themePool = theme ? candidates.filter(c => c.brand.category === theme).length : candidates.length
+    const themePool = candidates.filter(c => inDayTheme(c.brand.category, theme)).length
     let need = DAILY_SEND_LIMIT - sentToday - stamped - themePool
     if (need <= 0) return { added: 0, shortBy: 0, theme, already: true }
 
     const brands = await prisma.brand.findMany({
       where: {
         passedAt: null, ...notPassedToday(), doNotEmail: false, contacts: { some: {} }, AND: [SOLD_IN_US],
-        ...(theme ? { category: theme } : {}),
+        ...(isCategoryTheme(theme) ? { category: theme } : {}),
       },
       select: {
         id: true,
