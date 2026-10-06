@@ -23,7 +23,7 @@ import '@/lib/bigint-json'
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import { timingSafeEqual } from 'crypto'
-import { HUNT_LANES, HUNT_PER_DAY, HUNT_PER_POST, HUNT_SIGNALS, HUNT_LABEL, huntLabel, judgeHuntRow, knownKeys, type HuntRow } from '@/lib/claude-hunt'
+import { HUNT_LANES, HUNT_SOURCES, HUNT_PER_DAY, HUNT_PER_POST, HUNT_SIGNALS, HUNT_LABEL, huntLabel, judgeHuntRow, knownKeys, type HuntRow } from '@/lib/claude-hunt'
 
 export const dynamic = 'force-dynamic'
 
@@ -70,6 +70,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     lanes: HUNT_LANES,
+    sources: HUNT_SOURCES,
     signals: HUNT_SIGNALS,
     perDay: HUNT_PER_DAY,
     leftToday: Math.max(0, HUNT_PER_DAY - used),

@@ -271,7 +271,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   subscription, no API spend) searches the open web (launch / funding news, sponsorship
   announcements, retailer shelves, trend coverage) and posts to `/api/discover-ingest` (Bearer
   `REPORT_TOKEN`; the old body `token` = INGEST_TOKEN still accepted). `GET` = lanes, `leftToday`, every
-  known name (brands + aka + earlier finds; names only). Rules pure in `src/lib/claude-hunt.ts`
+  known name (brands + aka + earlier finds; names only) + `sources` = Leo's sites to search first
+  (`HUNT_SOURCES`: bevnet.com, brewbound.com, frontofficesports.com, cpglatest.com — add one there). Rules pure in `src/lib/claude-hunt.ts`
   (`node scripts/test-claude-hunt.mjs`): **priority lanes only**, a website or source link (LinkedIn
   page optional), at least one sign — `sponsors` college/music, `genz` 18–24, `midsize` growing —
   never a known brand, **50 a rolling day**. A failed save answers 500 with the database's reason. Rows land on Brands → Discover under "Claude hunt · <date>"
