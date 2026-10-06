@@ -18,7 +18,7 @@ execSync(
   ' --target es2020 --module esnext --moduleResolution bundler --skipLibCheck',
   { stdio: 'inherit' },
 )
-const { candidatesToOffer, rejectCandidates, readRejected, decideMatch } =
+const { candidatesToOffer, rejectCandidates, readRejected, decideMatch, resemblesBrand, resemblingCandidates } =
   await import(pathToFileURL(join(out, 'su-match.js')).href)
 
 let pass = 0, fail = 0
@@ -59,6 +59,21 @@ await rejectCandidates(db, 'b2', ['GC1'])
 const log = await readRejected(db)
 is('remembered per brand, no repeats', log.b1, ['GC2', 'CP', 'X9'])
 is('other brands untouched', log.b2, ['GC1'])
+// Only pages that could be the brand are offered (SponsorUnited's own
+// tiles were parked for every brand, and Use this put Halfday on Notion).
+const tiles = [
+  { externalId: 'ES', name: 'ESKA Water Beverage - Non-Alcoholic Water & Specialty Water' },
+  { externalId: 'HD', name: 'Halfday Iced Tea Beverage - Non-Alcoholic Tea' },
+  { externalId: 'HI', name: 'Hims Healthcare Pharma & Over the Counter' },
+]
+is('tiles are not Notion', ids(resemblingCandidates('Notion', null, tiles)), [])
+is('tiles are not Mom Water', ids(resemblingCandidates('Mom Water', null, tiles)), [])
+is('Halfday finds its page', ids(resemblingCandidates('Halfday Iced Tea', null, tiles)), ['HD'])
+is('short name in a long result', ids(resemblingCandidates('Halfday', null, tiles)), ['HD'])
+is('aka counts', ids(resemblingCandidates('Hims & Hers', 'Hims', tiles)), ['HI'])
+is('same first word', resemblesBrand("Grillo's Pickles", null, "Grillo's Food & Beverage"), true)
+is('Hinge is not Hims', resemblesBrand('Hinge', null, 'Hims Healthcare'), false)
+is('no partial words', resemblesBrand('Hu', null, 'Hum Nutrition'), false)
 rows.set('suRejected', '{not json')
 is('a corrupt store reads as empty', await readRejected(db), {})
 

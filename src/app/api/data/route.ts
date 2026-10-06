@@ -16,7 +16,7 @@ import {
   readSearch, writeSearch, readProposals, writeProposals,
   readCaptureQueue, writeCaptureQueue, queueCapture,
   readSweepLog, isResting, SWEEP_REST_DAYS, PROPOSAL_VERSION,
-  candidatesToOffer, readRejected, rejectCandidates,
+  candidatesToOffer, readRejected, rejectCandidates, resemblingCandidates,
 } from '@/lib/su-match'
 import { getServerSession } from 'next-auth'
 import Anthropic from '@anthropic-ai/sdk'
@@ -7536,16 +7536,26 @@ const handlers: Record<string, Handler> = {
     // Only proposals from the fixed reader, and only for brands still
     // without a profile (one may have been attached since).
     const current = all.filter(p => p.v === PROPOSAL_VERSION)
-    const settled = new Set((await prisma.brand.findMany({
-      where: { id: { in: current.map(p => p.brandId) }, externalId: { not: null } },
-      select: { id: true },
-    })).map(b => b.id))
-    // Pages Leo already turned down stay down, and a brand with nothing
-    // left to choose from is no question at all — an empty "no matches"
-    // card was most of what the list used to be.
-    const proposals = current.filter(p => !settled.has(p.brandId)).flatMap(p => {
-      const candidates = candidatesToOffer(p.candidates, rejected[p.brandId])
-      return candidates.length ? [{ ...p, candidates }] : []
+    const brands = new Map((await prisma.brand.findMany({
+      where: { id: { in: current.map(p => p.brandId) } },
+      select: { id: true, name: true, aka: true, externalId: true },
+    })).map(b => [b.id, b]))
+    // A page already saved on another brand is that brand's, not a choice.
+    const allIds = Array.from(new Set(current.flatMap(p => (p.candidates || []).map(c => c?.externalId)).filter(Boolean)))
+    const taken = new Set((await prisma.brand.findMany({
+      where: { externalId: { in: allIds } },
+      select: { externalId: true },
+    })).map(b => b.externalId))
+    // Pages Leo already turned down stay down, a page whose name can't be
+    // this brand is never offered (the lookup once parked SponsorUnited's
+    // own tiles for every brand), and a brand with nothing left to choose
+    // from is no question at all.
+    const proposals = current.flatMap(p => {
+      const b = brands.get(p.brandId)
+      if (!b || b.externalId) return []
+      const candidates = resemblingCandidates(b.name, b.aka, candidatesToOffer(p.candidates, rejected[p.brandId]))
+        .filter(c => !taken.has(c.externalId))
+      return candidates.length ? [{ ...p, brandName: b.name, candidates }] : []
     })
     return { proposals, missing, capturePending: queue.length }
   },

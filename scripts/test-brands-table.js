@@ -26,7 +26,7 @@ function row(id, name, buyers, people, extra) {
   }, extra || {});
 }
 
-const S = { list: [], saves: [], adds: [] };
+const S = { list: [], saves: [], adds: [], proposals: [], resolved: [] };
 function reset() {
   S.list = [
     row('b1', 'Alpha Energy', 0, 4, { aka: 'Alpha Co' }),
@@ -45,6 +45,8 @@ const H = {
   listBrands: () => S.list,
   categoryReach: () => ({ categories: {}, newFromLinkedIn: 0 }),
   findDuplicates: () => ({ groups: [] }),
+  suMatchQueue: () => ({ proposals: S.proposals, missing: 0, capturePending: 0 }),
+  suResolveMatch: (a) => { S.resolved.push(a); S.proposals = S.proposals.filter((p) => p.brandId !== a.brandId); return { ok: true, brandId: a.brandId, brandName: 'Halfday Iced Tea' }; },
   updateBrand: (a) => { S.saves.push(a); return { ok: true }; },
   upsertContact: (a) => {
     S.adds.push(a);
@@ -92,7 +94,7 @@ async function main() {
 
   // Sub-tabs: Stock take and Needs contacts folded in, still reachable.
   const tabs = await page.$$eval('#sub-tabs .nav-item', (bs) => bs.map((b) => b.textContent));
-  assert.deepEqual(tabs, ['All brands', 'Discover']);
+  assert.deepEqual(tabs, ['All brands', 'Discover', 'Clarify']);
   assert.ok(await page.$('#bq-stock') && await page.$('#bq-needs'), 'lanes and worklist buttons');
   console.log('✓ one Brands page; lanes / worklist are buttons');
 
@@ -182,6 +184,21 @@ async function main() {
   await page.click('[data-brow="b2"] .br-link');
   await page.waitForFunction(() => document.getElementById('brand').classList.contains('active'));
   console.log('✓ the brand name opens the full brand page');
+
+  // Clarify (Leo, Oct 2026): "Which SponsorUnited page is theirs?" is its
+  // own tab, not on All brands; Use this resolves that brand and the list
+  // redraws (empty state when nothing is left).
+  S.proposals = [{ brandId: 'hd', brandName: 'Halfday Iced Tea', v: 2, at: Date.now(),
+    candidates: [{ externalId: 'HD1', name: 'Halfday Iced Tea Beverage - Non-Alcoholic Tea' }] }];
+  await page.evaluate(() => gotoView('brands'));
+  await page.waitForSelector('#brands-list .br-table');
+  assert.equal(await page.$('#brands #su-proposals'), null, 'not on All brands');
+  await page.click('#sub-tabs [data-view="clarify"]');
+  await page.waitForSelector('#su-proposals [data-suuse="hd"]');
+  await page.click('#su-proposals [data-suuse="hd"]');
+  await page.waitForSelector('#su-proposals .empty');
+  assert.deepEqual(S.resolved, [{ brandId: 'hd', externalId: 'HD1', suName: 'Halfday Iced Tea Beverage - Non-Alcoholic Tea' }]);
+  console.log('✓ Clarify tab: Use this resolves the brand, then "Nothing to clarify"');
 
   // Phone width: no sideways page scroll.
   await page.setViewportSize({ width: 390, height: 800 });

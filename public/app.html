@@ -1423,7 +1423,6 @@
       <div id="dup-panel"></div>
       <div id="su-find"></div>
       <div class="chips" id="brand-cat-chips" hidden></div>
-      <div id="su-proposals"></div>
       <div id="brands-selbar" class="hint" style="margin:10px 0 8px"></div>
       <div id="brands-list"></div>
       <div id="brands-bulk"></div>
@@ -1740,6 +1739,14 @@
     <!-- OPERATIONS (ops@ inbox: contracts + invoices) -->
     <section class="view page" id="operations">
       <div id="ops-body"></div>
+    </section>
+
+    <!-- CLARIFY — which SponsorUnited page is theirs (Leo, Oct 2026: its own tab) -->
+    <section class="view page wide" id="clarify">
+      <div class="eyebrow">Brands</div>
+      <h1>Clarify</h1>
+      <div class="sub">Brands the SponsorUnited lookup couldn’t match on its own. Only pages whose name could be the brand show here.</div>
+      <div id="su-proposals"></div>
     </section>
 
     <!-- DISCOVER -->
@@ -2141,7 +2148,7 @@ function refreshAfterSponsorChange() {
 // The top nav holds five groups; the views inside a group show as a
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
-  brands: [['brands', 'All brands'], ['discover', 'Discover']],
+  brands: [['brands', 'All brands'], ['discover', 'Discover'], ['clarify', 'Clarify']],
   outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['schedule', 'Schedule'], ['email-out', 'Email'], ['linkedin', 'People'], ['passed', 'Archived'], ['results', 'Email stats']],
   board: [['board', 'Overview'], ['talks', 'In talks'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
@@ -2149,7 +2156,7 @@ var SUBTABS = {
   operations: [['materials', 'Materials'], ['team', 'Team']],
 };
 var GROUP_OF = {
-  brands: 'brands', brand: 'brands', discover: 'brands', needs: 'brands', stock: 'brands',
+  brands: 'brands', brand: 'brands', discover: 'brands', clarify: 'brands', needs: 'brands', stock: 'brands',
   outreach: 'outreach', 'email-out': 'outreach', reached: 'outreach', schedule: 'outreach', linkedin: 'outreach', results: 'outreach', passed: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
   pipeline: 'pipeline', sponsorships: 'pipeline',
@@ -4551,7 +4558,6 @@ function loadBrands(category) {
     brRender();
     bbRender();
     applyBrandFilter();
-    renderSuProposals();
   }).catch(function (e) {
     if (!mine()) return;
     if (again) { toast('Could not refresh: ' + e.message); return; }
@@ -5569,12 +5575,22 @@ function suRenderResults(name, results) {
 // resembles the brand come back from the server, so each card is a real
 // "which of these is it?" and not SponsorUnited's dashboard tiles.
 var SU_PROPOSALS_SHOWN = 6;
+function loadClarify() {
+  var again = showView('clarify');
+  var box = document.getElementById('su-proposals');
+  if (!again && box) box.innerHTML = '<div class="hint" style="margin-top:16px">Loading…</div>';
+  renderSuProposals();
+}
 function renderSuProposals(showAll) {
   var box = document.getElementById('su-proposals');
   if (!box) return;
   api('suMatchQueue').then(function (d) {
     var list = d.proposals || [];
-    if (!list.length) { box.innerHTML = ''; return; }
+    if (!list.length) {
+      box.innerHTML = '<div class="panel"><div class="empty"><h3>Nothing to clarify</h3>' +
+        '<p>Every brand the lookup searched either matched on its own or found no page that could be it.</p></div></div>';
+      return;
+    }
     var shown = showAll ? list : list.slice(0, SU_PROPOSALS_SHOWN);
     box.innerHTML = '<div class="count-head" style="margin-top:16px;color:#f0b86b">Which SponsorUnited page is theirs? <span class="n">' + list.length + '</span></div>' +
       '<div class="hint" style="margin:2px 0 8px;max-width:720px">We look each brand up on SponsorUnited so its people can be pulled in automatically. ' +
@@ -5597,7 +5613,7 @@ function renderSuProposals(showAll) {
       }).join('') +
       (list.length > shown.length
         ? '<button class="btn-ghost" data-suall style="margin-bottom:8px">Show all ' + list.length + '</button>' : '');
-  }).catch(function () { box.innerHTML = ''; });
+  }).catch(function (e) { box.innerHTML = '<div class="hint" style="margin-top:16px">Could not load: ' + esc(e.message) + '</div>'; });
 }
 
 document.getElementById('su-proposals').addEventListener('click', function (e) {
@@ -5623,10 +5639,11 @@ document.getElementById('su-proposals').addEventListener('click', function (e) {
         return;
       }
       toast('Saved — pulling their people in');
+      renderSuProposals();
     }).catch(function (err) { toast(err.message); renderSuProposals(); });
   } else {
     api('suResolveMatch', { brandId: brandId, dismiss: true, rejectIds: shownIds || undefined })
-      .then(function () { toast('Got it — those pages won’t be suggested for this brand again'); })
+      .then(function () { toast('Got it — those pages won’t be suggested for this brand again'); renderSuProposals(); })
       .catch(function (err) { toast(err.message); renderSuProposals(); });
   }
 });
@@ -16454,6 +16471,7 @@ function gotoViewNow(id) {
   if (id === 'talks') loadTalks();
   if (id === 'results') loadResults();
   if (id === 'discover') loadDiscover();
+  if (id === 'clarify') loadClarify();
   if (id === 'materials') showView('materials');
   if (id === 'team') loadTeam();
 }
@@ -16516,6 +16534,12 @@ function gotoViewNow(id) {
     });
     loadLinkedin();
   }, 50);
+})();
+
+// Deep link: #clarify — Brands → Clarify.
+(function () {
+  if (!/^#clarify/.test(location.hash || '')) return;
+  setTimeout(function () { loadClarify(); }, 50);
 })();
 
 // Deep link: #stock — Brands → Stock take.
