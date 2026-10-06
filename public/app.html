@@ -6208,8 +6208,21 @@ function loadBrand(brandId) {
             '<button class="btn-ghost" data-cedit="' + esc(c.id) + '" title="Fix their name, title, LinkedIn or email — a rename regenerates their drafts">✎ Edit</button>' +
           '</div></div>';
       }).join('')
+      // No one on file: the ways to find them, right here — search the
+      // brand on SponsorUnited (name copied when we have no profile id)
+      // or LinkedIn, then put who you find in with + Add person.
       : '<div class="panel"><div class="empty"><h3>No people yet</h3>' +
-        '<p>Pull them from SponsorUnited, or add one by hand from LinkedIn.</p></div></div>');
+        '<p>Find them on SponsorUnited or LinkedIn, then add them here.</p>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:14px">' +
+          '<a class="btn-ghost" id="b-find-su" href="' + esc(suUrl) + '" target="_blank" rel="noopener" title="' +
+            (b.externalId ? 'Their SponsorUnited contacts' : 'Copies “' + esc(b.name) + '” — paste it into SponsorUnited’s search bar') +
+            '">SponsorUnited ↗</a>' +
+          '<a class="btn-ghost" href="' + esc(liCompany) + '" target="_blank" rel="noopener" title="' +
+            (b.linkedinUrl ? 'Their LinkedIn People tab — press the SB pill there to add the buyers' : 'LinkedIn company search for this brand') +
+            '">LinkedIn company ↗</a>' +
+          '<a class="btn-ghost" href="' + esc(liBuyerUrl(b)) + '" target="_blank" rel="noopener" title="LinkedIn people search: marketing at ' + esc(b.name) + '">LinkedIn people ↗</a>' +
+          '<button class="btn-solid" id="b-find-add">+ Add person</button>' +
+        '</div></div></div>');
 
     // outreach — the header counts who is still waiting to be written to
     // apart from who has been, instead of calling everyone "in queue".
@@ -6471,6 +6484,15 @@ function loadBrand(brandId) {
     document.getElementById('b-addcontact').onclick = function () {
       openContactForm(b.id, document.getElementById('b-contact-slot'));
     };
+    var findAdd = document.getElementById('b-find-add');
+    if (findAdd) findAdd.onclick = function () {
+      openContactForm(b.id, document.getElementById('b-contact-slot'));
+    };
+    var findSu = document.getElementById('b-find-su');
+    if (findSu && !b.externalId) findSu.addEventListener('click', function () {
+      try { navigator.clipboard.writeText(b.name).catch(function () {}); } catch (e) {}
+      toast('“' + b.name + '” copied — paste it into SponsorUnited search');
+    });
 
     box.querySelectorAll('[data-cedit]').forEach(function (btn) {
       btn.onclick = function () {
