@@ -4397,7 +4397,7 @@ document.getElementById('zt-tsave').addEventListener('click', function () {
 
 var lastCategory = null;
 
-// Where the fill-to-25 stands. The sweep runs in Leo's own browser, so
+// Where filling brands with people stands. The sweep runs in Leo's own browser, so
 // "is it actually working" can only be answered by what it has added —
 // a day with nothing new means nothing is running, and that is worth
 // saying out loud rather than leaving the roster to look stalled.
@@ -4405,7 +4405,11 @@ function renderFillProgress() {
   var box = document.getElementById('fill-progress');
   if (!box) return;
   api('fillProgress').then(function (p) {
-    var pct = p.brands ? Math.round((p.atCap / p.brands) * 100) : 0;
+    // Progress = brands with at least one person on file. Most brands
+    // will never have 25 people, so 25 is only where the capture stops
+    // taking more, never the goal (Leo, Oct 2026).
+    var withSomeone = Math.max(0, p.brands - p.empty);
+    var pct = p.brands ? Math.round((withSomeone / p.brands) * 100) : 0;
     var stale = !p.addedToday;
     var ago = p.lastAt
       ? Math.round((Date.now() - new Date(p.lastAt).getTime()) / 36e5)
@@ -4418,8 +4422,8 @@ function renderFillProgress() {
     box.innerHTML =
       '<div class="panel panel-pad" style="margin-top:14px">' +
         '<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px">' +
-          '<b style="font-size:13px">Filling to ' + p.cap + ' people per brand</b>' +
-          '<span class="n">' + p.atCap + ' of ' + p.brands + ' full</span>' +
+          '<b style="font-size:13px">People on file</b>' +
+          '<span class="n">' + withSomeone + ' of ' + p.brands + ' brands have someone</span>' +
           '<span style="flex:1"></span>' +
           '<span style="font-size:12px;color:' + (stale ? '#f0b86b' : '#8fd6a8') + '">' +
             (p.addedToday ? '+' + p.addedToday + ' people today' : 'nothing added today') +
@@ -4428,12 +4432,12 @@ function renderFillProgress() {
         '<div style="height:6px;background:var(--border);border-radius:99px;overflow:hidden;margin-bottom:8px">' +
           '<div style="height:100%;width:' + pct + '%;background:#8fd6a8"></div></div>' +
         '<div class="hint" style="margin:0 0 4px">' +
-          p.peopleOnFile + ' people on file · ' + p.under + ' brands under ' + p.cap +
-          ' · ' + p.empty + ' with nobody · ' + p.addedWeek + ' added this week.' +
+          p.peopleOnFile + ' people on file · ' + p.empty + ' brands with nobody · ' +
+          p.addedWeek + ' added this week. Capture keeps up to ' + p.cap + ' a brand — most will have fewer, and that’s fine.' +
         '</div>' +
         '<div class="hint" style="margin:0 0 4px">' + lastLine + '</div>' +
         (p.underNoId
-          ? '<div class="hint" style="margin:0 0 4px;color:#f0b86b"><b>' + p.underNoId + '</b> of those have no SponsorUnited profile saved — the sweep cannot reach them until the lookup finds one. That is the first half of “Fill every brand to 25”. ' +
+          ? '<div class="hint" style="margin:0 0 4px;color:#f0b86b"><b>' + p.underNoId + '</b> brands have no SponsorUnited profile saved — the sweep cannot reach them until the lookup finds one. ' +
             '<a href="#" id="fp-see">See them</a> (most have contacts already, so they are not in Needs contacts).</div>'
           : '') +
         (p.roomReachable
