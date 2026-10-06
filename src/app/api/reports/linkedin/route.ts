@@ -15,6 +15,7 @@ import { timingSafeEqual } from 'crypto'
 import { readRuns } from '@/lib/li-report'
 import { readLiLog, readLiResearch, LI_SCRIPT_VERSION, LI_READER } from '@/lib/li-sweep'
 import { readCoverCounts } from '@/lib/coverage-db'
+import { LI_REVIEW_KEY, type Review } from '@/lib/li-review'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,13 +32,24 @@ function allowed(req: NextRequest): boolean {
 export async function GET(req: NextRequest) {
   if (!allowed(req)) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
 
-  const [runs, sweep, research, coverage] = await Promise.all([readRuns(prisma), readLiLog(prisma), readLiResearch(prisma), readCoverCounts(prisma)])
+  const [runs, sweep, research, coverage, reviewRow] = await Promise.all([
+    readRuns(prisma), readLiLog(prisma), readLiResearch(prisma), readCoverCounts(prisma),
+    prisma.setting.findUnique({ where: { key: LI_REVIEW_KEY } }),
+  ])
   const since = Date.now() - 14 * 864e5
   const noted = Object.entries(sweep).filter(([, m]) => m && m.note && Date.parse(m.at) >= since)
-  const names = noted.length
-    ? await prisma.brand.findMany({ where: { id: { in: noted.map(([id]) => id) } }, select: { id: true, name: true } })
+  // "Which LinkedIn page is theirs?": the brands the search couldn't place
+  // and the public company results it saw — so the morning check can tell
+  // a brand with no clear page from a matching rule that's off.
+  let review: Review = {}
+  try { review = reviewRow ? JSON.parse(reviewRow.value) : {} } catch { review = {} }
+  const reviewed = Object.entries(review).filter(([, e]) => e && Date.parse(e.at) >= since)
+  const ids = Array.from(new Set([...noted.map(([id]) => id), ...reviewed.map(([id]) => id)]))
+  const names = ids.length
+    ? await prisma.brand.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, category: true } })
     : []
   const nameOf = new Map(names.map(b => [b.id, b.name]))
+  const categoryOf = new Map(names.map(b => [b.id, b.category]))
 
   return NextResponse.json({
     ok: true,
@@ -54,6 +66,13 @@ export async function GET(req: NextRequest) {
     // rest — next in the fill, page to pick, read lately with nobody, no
     // LinkedIn page, full. Counts only.
     coverage,
+    pageReview: reviewed
+      .sort((a, b) => Date.parse(b[1].at) - Date.parse(a[1].at))
+      .slice(0, 60)
+      .map(([id, e]) => ({
+        brand: nameOf.get(id) || id, category: categoryOf.get(id) ?? null, at: e.at, why: e.why, pageIndustry: e.pageIndustry ?? null,
+        results: (e.candidates || []).slice(0, 3).map(c => ({ name: c.name, subtitle: c.subtitle })),
+      })),
     research: Object.entries(research)
       .filter(([, m]) => m && m.outcome === 'unclear' && Date.parse(m.at) >= since)
       .slice(0, 100)
