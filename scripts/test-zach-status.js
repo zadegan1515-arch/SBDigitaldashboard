@@ -11,9 +11,10 @@
 //   1. Stages: day-2 message (waits until then, due on the day, late
 //      after), final reach-out 10 days after the message, No response 7
 //      days after the final.
-//   2. The right side: beside the list on a wide screen, under it on a
-//      narrow one; grouped by stage, most urgent first, "N late / due
-//      today" counts, a brand with people at two stages under both.
+//   2. The board (Leo, Oct 6: "more defined ... move it higher up"): full
+//      width above the list, one bordered card per stage side by side;
+//      grouped by stage, most urgent first, "N late / due today" counts,
+//      a brand with people at two stages under both.
 //   3. A click on the right opens that person on the left, under the
 //      filter they're in (To do / Waiting / No response).
 //   4. The final reach-out follows its own template; a card's edit saves
@@ -127,6 +128,10 @@ async function main() {
   });
   await page.goto(base + '/app.html');
   await page.waitForSelector('#zach-todo .zs-row');
+  await page.waitForTimeout(1200);
+  // Home opens at the top (Leo, Oct 6: it opened half way down Zach's list).
+  assert.equal(await page.evaluate(() => window.scrollY), 0, 'Home opens at the top');
+  console.log('ok 0 - Home opens at the top');
 
   // 1. Stages --------------------------------------------------------
   const stages = await page.evaluate(() => {
@@ -152,11 +157,13 @@ async function main() {
     window.scrollTo(0, 0);
     const m = document.querySelector('#zach-todo .zt-main').getBoundingClientRect();
     const z = document.querySelector('#zach-todo .zs').getBoundingClientRect();
-    return { mainRight: m.right, sideLeft: z.left, sideTop: z.top, mainTop: m.top, pos: getComputedStyle(document.querySelector('#zach-todo .zs')).position };
+    return { sideBottom: z.bottom, mainTop: m.top, sideWidth: z.width, mainWidth: m.width, pos: getComputedStyle(document.querySelector('#zach-todo .zs')).position };
   });
-  assert.ok(geo.sideLeft >= geo.mainRight, 'side panel sits right of the list on a wide screen');
-  assert.ok(Math.abs(geo.sideTop - geo.mainTop) < 4, 'side panel starts level with the list ' + JSON.stringify(geo));
-  assert.equal(geo.pos, 'sticky');
+  assert.ok(geo.sideBottom <= geo.mainTop, 'the board sits above the list ' + JSON.stringify(geo));
+  assert.ok(Math.abs(geo.sideWidth - geo.mainWidth) < 4, 'the board is as wide as the list ' + JSON.stringify(geo));
+  assert.equal(geo.pos, 'static');
+  const tops = await page.$$eval('#zach-todo .zs-grp', (els) => els.map((g) => Math.round(g.getBoundingClientRect().top)));
+  assert.ok(tops.length >= 4 && tops[0] === tops[1] && tops[1] === tops[2], 'stages side by side on a wide screen ' + tops);
   const groups = await page.$$eval('#zach-todo .zs-grp', (els) => els.map((g) => ({
     head: g.querySelector('.zs-gh span').textContent,
     rows: Array.from(g.querySelectorAll('.zs-row')).map((r) => r.querySelector('.zs-name b').textContent + ' | ' + r.querySelector('.zs-when').textContent),
@@ -175,7 +182,19 @@ async function main() {
   assert.equal(hold, 'do not email');
   const rule = await page.textContent('#zach-todo .zs-rule');
   assert.match(rule, /day 2 .* 10 days later .* 7 quiet days/);
-  console.log('ok 2 - right side: beside the list, by stage, most urgent first, counts');
+  console.log('ok 2 - the board: above the list, full width, a card per stage, most urgent first, counts');
+  if (process.env.SHOT_BOARD) {
+    await page.evaluate(() => document.getElementById('zach-todo').scrollIntoView());
+    await page.screenshot({ path: process.env.SHOT_BOARD });
+    for (const w of [1100, 390]) {
+      await page.setViewportSize({ width: w, height: 900 });
+      await page.waitForTimeout(150);
+      await page.evaluate(() => { ztRender(); document.getElementById('zach-todo').scrollIntoView(); });
+      await page.screenshot({ path: process.env.SHOT_BOARD.replace('.png', '-' + w + '.png') });
+    }
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await page.evaluate(() => ztRender());
+  }
 
   // 3. A click on the right opens them on the left ---------------------
   await page.click('#zach-todo .zs-row[data-zsopen="tG"]');
@@ -236,16 +255,16 @@ async function main() {
   assert.equal(await page.inputValue(box), 'Hey Eve, closing the loop on Echo Soda.');
   console.log('ok 4 - final reach-out: own template, card edits save per person, Reset, Templates tab');
 
-  // 5. Narrow screen: under the list, not sticky -----------------------
+  // 5. Narrow screen: still above the list, nothing off the side ------
   await page.setViewportSize({ width: 1100, height: 900 });
   await page.waitForTimeout(150);
   const narrow = await page.evaluate(() => {
     const m = document.querySelector('#zach-todo .zt-main').getBoundingClientRect();
     const z = document.querySelector('#zach-todo .zs').getBoundingClientRect();
-    return { below: z.top >= m.bottom - 1, pos: getComputedStyle(document.querySelector('#zach-todo .zs')).position, scrollX: document.documentElement.scrollWidth > window.innerWidth };
+    return { above: z.bottom <= m.top + 1, pos: getComputedStyle(document.querySelector('#zach-todo .zs')).position, scrollX: document.documentElement.scrollWidth > window.innerWidth };
   });
-  assert.deepEqual(narrow, { below: true, pos: 'static', scrollX: false });
-  console.log('ok 5 - narrow screen: the right side stacks under the list');
+  assert.deepEqual(narrow, { above: true, pos: 'static', scrollX: false });
+  console.log('ok 5 - narrow screen: the board stays above the list, no sideways scroll');
 
   // 6. Everyone left went quiet: To do points at No response, not an empty Waiting.
   await page.evaluate(() => {

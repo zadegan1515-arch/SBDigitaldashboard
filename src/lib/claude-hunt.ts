@@ -16,6 +16,16 @@ export const HUNT_PER_DAY = 50
 export const HUNT_PER_POST = 50
 export const HUNT_LABEL = 'Claude hunt'   // query prefix: "Claude hunt · Oct 5"
 
+// Sites Leo wants searched first every morning (Oct 2026). The hunt gets
+// them from GET /api/discover-ingest (`sources`) and works these before the
+// wider web. Add a site here to add it to the hunt.
+export const HUNT_SOURCES: string[] = [
+  'bevnet.com',
+  'brewbound.com',
+  'frontofficesports.com',
+  'cpglatest.com',
+]
+
 export const HUNT_LANES: string[] = LANES.filter(l => l.priority).map(l => l.key)
 
 export const HUNT_SIGNALS = {

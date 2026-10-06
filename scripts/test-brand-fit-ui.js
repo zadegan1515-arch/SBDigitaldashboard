@@ -185,6 +185,11 @@ async function main() {
     // 2. Brand page.
     await page.evaluate(() => loadBrand('b_high'));
     await page.waitForSelector('#b-fit');
+    // No people yet: the ways to find them sit in the empty box.
+    assert.match(await page.getAttribute('#b-find-su', 'href'), /^https:\/\/pro\.sponsorunited\.com\/$/);
+    assert.match(await page.textContent('#brand-body'), /LinkedIn company ↗[\s\S]*LinkedIn people ↗/);
+    await page.click('#b-find-add');
+    await page.waitForSelector('#b-contact-slot input');
     const fitLine = await page.textContent('#b-fit');
     assert.match(fitLine, /Fit 88/);
     assert.match(fitLine, /raised \$30M/);

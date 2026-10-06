@@ -223,6 +223,32 @@ export function candidatesToOffer(candidates: SuCandidate[], rejected: string[] 
   return (Array.isArray(candidates) ? candidates : []).filter(c => c && c.externalId && !no.has(c.externalId))
 }
 
+// Only pages that could be this brand are worth asking about. The
+// lookup once parked SponsorUnited's own page tiles (ESKA, Apothekary,
+// Halfday Iced Tea, Hims…) as "results" for every brand it searched, and
+// Use this on one attached Halfday's page to Notion. SponsorUnited shows a
+// result as its name followed by its industry ("Halfday Iced Tea
+// Beverage - Non-Alcoholic Tea"), so a page resembles the brand when its
+// text holds the brand's name (or an also-known-as) as whole words, or
+// both start with the same distinctive word ("Grillo's Pickles" /
+// "Grillo's"). Anything else is not a question for Leo.
+function firstWord(n: string): string {
+  const w = n.split(' ')[0] || ''
+  return w.length >= 4 ? w : ''
+}
+
+export function resemblesBrand(brandName: string, aka: string | null, candidateName: string): boolean {
+  const cand = ' ' + normalizeBrandName(candidateName) + ' '
+  if (!cand.trim()) return false
+  const names = [brandName, ...String(aka || '').split(/[,;]/)].map(normalizeBrandName).filter(Boolean)
+  const candFirst = firstWord(cand.trim())
+  return names.some(n => cand.includes(' ' + n + ' ') || (!!candFirst && firstWord(n) === candFirst))
+}
+
+export function resemblingCandidates(brandName: string, aka: string | null, candidates: SuCandidate[]): SuCandidate[] {
+  return (Array.isArray(candidates) ? candidates : []).filter(c => c && resemblesBrand(brandName, aka, c.name))
+}
+
 // ---------------- the sweep log ----------------
 //
 // What the last capture of each brand found. The sweep's worklist is

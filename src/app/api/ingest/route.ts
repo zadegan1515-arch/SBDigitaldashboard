@@ -26,7 +26,7 @@ import { readMisses, writeMisses, addMiss, type HeldRow } from '@/lib/brand-matc
 import {
   readSearch, writeSearch, readProposals, writeProposals, upsertProposal,
   readCaptureQueue, writeCaptureQueue, queueCapture, decideMatch,
-  candidatesToOffer, readRejected,
+  candidatesToOffer, readRejected, resemblingCandidates,
   readSweepLog, markSwept, isResting, PROPOSAL_VERSION, LOOKUP_READER,
   type SuCandidate,
 } from '@/lib/su-match'
@@ -545,7 +545,10 @@ export async function POST(req: NextRequest) {
 
     // Pages Leo already turned down for this brand ("None of these") are
     // never offered or attached again.
-    const offered = candidatesToOffer(candidates, (await readRejected(prisma))[brand.id])
+    // …and only pages whose name could be this brand: a page full of
+    // other companies is "nothing found", not a question.
+    const offered = resemblingCandidates(brand.name, brand.aka,
+      candidatesToOffer(candidates, (await readRejected(prisma))[brand.id]))
     const { pick, reason } = decideMatch(brand.name, brand.aka, offered)
     if (!pick) {
       // Nothing came back (or only pages he turned down): no question

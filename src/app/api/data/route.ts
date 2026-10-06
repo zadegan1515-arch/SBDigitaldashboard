@@ -16,7 +16,7 @@ import {
   readSearch, writeSearch, readProposals, writeProposals,
   readCaptureQueue, writeCaptureQueue, queueCapture,
   readSweepLog, isResting, SWEEP_REST_DAYS, PROPOSAL_VERSION,
-  candidatesToOffer, readRejected, rejectCandidates,
+  candidatesToOffer, readRejected, rejectCandidates, resemblingCandidates,
 } from '@/lib/su-match'
 import { getServerSession } from 'next-auth'
 import Anthropic from '@anthropic-ai/sdk'
@@ -2345,6 +2345,24 @@ function handFillText(text: string, p: { name: string; brandName: string; title:
     .replace(/\(title\)/gi, p.title || '')
 }
 
+// The email Zach sends when they replied and want email. Leo pasted his
+// own (Oct 6 2026), so it's the default, not a stand-in; a saved one in
+// the template editor wins.
+const HAND_EMAIL_TEMPLATE_DEFAULT = {
+  subject: 'SB Agency × (BRAND)',
+  body: [
+    'Hi (NAME),',
+    '',
+    'Great to connect on LinkedIn. Would love to share some ideas and put something together with (BRAND) around our college events.',
+    '',
+    'Do you have 15 minutes for a quick call later this week? I’ve attached our deck for you to check out in the meantime.',
+    '',
+    'Thanks!',
+    'Zach Goldstein',
+    'SB Agency',
+  ].join('\n'),
+}
+
 async function readHandTemplate(kind: HandTemplateKind = 'email') {
   const key = handTemplateKey(kind)
   if (kind === 'first') {
@@ -2367,6 +2385,7 @@ async function readHandTemplate(kind: HandTemplateKind = 'email') {
       }
     } catch { /* an unreadable row falls back to the stand-in */ }
   }
+  if (kind === 'email') return { ...HAND_EMAIL_TEMPLATE_DEFAULT, standIn: false, savedAt: null, savedBy: null }
   return { ...standIn, standIn: true, savedAt: null, savedBy: null }
 }
 
@@ -7544,16 +7563,26 @@ const handlers: Record<string, Handler> = {
     // Only proposals from the fixed reader, and only for brands still
     // without a profile (one may have been attached since).
     const current = all.filter(p => p.v === PROPOSAL_VERSION)
-    const settled = new Set((await prisma.brand.findMany({
-      where: { id: { in: current.map(p => p.brandId) }, externalId: { not: null } },
-      select: { id: true },
-    })).map(b => b.id))
-    // Pages Leo already turned down stay down, and a brand with nothing
-    // left to choose from is no question at all — an empty "no matches"
-    // card was most of what the list used to be.
-    const proposals = current.filter(p => !settled.has(p.brandId)).flatMap(p => {
-      const candidates = candidatesToOffer(p.candidates, rejected[p.brandId])
-      return candidates.length ? [{ ...p, candidates }] : []
+    const brands = new Map((await prisma.brand.findMany({
+      where: { id: { in: current.map(p => p.brandId) } },
+      select: { id: true, name: true, aka: true, externalId: true },
+    })).map(b => [b.id, b]))
+    // A page already saved on another brand is that brand's, not a choice.
+    const allIds = Array.from(new Set(current.flatMap(p => (p.candidates || []).map(c => c?.externalId)).filter(Boolean)))
+    const taken = new Set((await prisma.brand.findMany({
+      where: { externalId: { in: allIds } },
+      select: { externalId: true },
+    })).map(b => b.externalId))
+    // Pages Leo already turned down stay down, a page whose name can't be
+    // this brand is never offered (the lookup once parked SponsorUnited's
+    // own tiles for every brand), and a brand with nothing left to choose
+    // from is no question at all.
+    const proposals = current.flatMap(p => {
+      const b = brands.get(p.brandId)
+      if (!b || b.externalId) return []
+      const candidates = resemblingCandidates(b.name, b.aka, candidatesToOffer(p.candidates, rejected[p.brandId]))
+        .filter(c => !taken.has(c.externalId))
+      return candidates.length ? [{ ...p, brandName: b.name, candidates }] : []
     })
     return { proposals, missing, capturePending: queue.length }
   },
@@ -9478,32 +9507,31 @@ const handlers: Record<string, Handler> = {
   // The bench, refreshed: re-checks each row against the Brand table so a
   // userscript capture on SponsorUnited flips a row to "contacts ✓"
   // the next time this loads.
+  // Brands → Discover: everything found and not dismissed, newest first,
+  // each with whether it's on the roster now (by id, else exact name) and
+  // where it came from (`source`: the Claude hunt, LinkedIn, the research
+  // list or an old search). One read of the roster, not one per row.
   async listDiscoveries({ query }: any) {
-    const where = query ? { query } : {}
     const rows = await (prisma as any).discoveredBrand.findMany({
-      where, orderBy: { createdAt: 'desc' }, take: 200,
+      where: { status: { not: 'dismissed' }, ...(query ? { query } : {}) },
+      orderBy: { createdAt: 'desc' }, take: 600,
     })
-    const recent = await (prisma as any).discoveredBrand.groupBy({
-      by: ['query'], _count: { query: true }, _max: { createdAt: true },
-      orderBy: { _max: { createdAt: 'desc' } }, take: 10,
+    const brands = await prisma.brand.findMany({ select: { id: true, name: true, _count: { select: { contacts: true } } } })
+    const byId = new Map(brands.map(b => [b.id, b]))
+    const byName = new Map(brands.map(b => [b.name.toLowerCase(), b]))
+    const sourceOf = (q: string) => /^(Claude hunt|🔥)/.test(q) ? 'Claude hunt'
+      : /^LinkedIn/.test(q) ? 'LinkedIn' : /^Research list/.test(q) ? 'Research list' : 'Search'
+    const link: { id: string; brandId: string }[] = []
+    const out = rows.map((r: any) => {
+      const existing = (r.brandId && byId.get(r.brandId)) || byName.get(String(r.name).toLowerCase())
+      if (existing && !r.brandId) { link.push({ id: r.id, brandId: existing.id }); r.brandId = existing.id; r.status = 'added' }
+      return { ...r, source: sourceOf(r.query), inSystem: !!existing, contactCount: existing?._count.contacts ?? 0 }
     })
-    const out: any[] = []
-    for (const r of rows) {
-      const existing = await prisma.brand.findFirst({
-        where: r.brandId ? { id: r.brandId } : { name: { equals: r.name, mode: 'insensitive' } },
-        select: { id: true, _count: { select: { contacts: true } } },
-      })
-      if (existing && !r.brandId) {
-        await (prisma as any).discoveredBrand.update({ where: { id: r.id }, data: { brandId: existing.id, status: r.status === 'dismissed' ? 'dismissed' : 'added' } })
-        r.brandId = existing.id
-        if (r.status !== 'dismissed') r.status = 'added'
-      }
-      out.push({ ...r, inSystem: !!existing, contactCount: existing?._count.contacts ?? 0 })
+    // A brand added since by any other path: remember the link.
+    for (const l of link) {
+      await (prisma as any).discoveredBrand.update({ where: { id: l.id }, data: { brandId: l.brandId, status: 'added' } })
     }
-    return {
-      rows: out,
-      recent: recent.map(g => ({ query: g.query, n: g._count.query, at: g._max.createdAt })),
-    }
+    return { rows: out }
   },
 
   // Promote a discovery to a real Brand. It arrives contact-less, so it

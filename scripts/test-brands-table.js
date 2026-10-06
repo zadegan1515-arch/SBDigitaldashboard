@@ -3,8 +3,8 @@
 // buyer counts and the Needs people / Has enough filters, sort, search
 // (name or also-known-as), a row opening to edit (saves on change), adding
 // a person, the "Every brand a marketing / partnerships person" card
-// (counts by reason, Show them, Pick their pages, the folded SponsorUnited
-// sweep card), and the phone width (no sideways page scroll).
+// (counts by reason, Show them, Pick their pages, the folded People on
+// file card), and the phone width (no sideways page scroll).
 //   NODE_PATH=$(npm root -g) node scripts/test-brands-table.js
 const http = require('http');
 const fs = require('fs');
@@ -28,7 +28,7 @@ function row(id, name, buyers, people, extra) {
   }, extra || {});
 }
 
-const S = { list: [], saves: [], adds: [] };
+const S = { list: [], saves: [], adds: [], proposals: [], resolved: [] };
 function reset() {
   S.list = [
     row('b1', 'Alpha Energy', 0, 4, { aka: 'Alpha Co' }),
@@ -47,6 +47,8 @@ const H = {
   listBrands: () => S.list,
   categoryReach: () => ({ categories: {}, newFromLinkedIn: 0 }),
   findDuplicates: () => ({ groups: [] }),
+  suMatchQueue: () => ({ proposals: S.proposals, missing: 0, capturePending: 0 }),
+  suResolveMatch: (a) => { S.resolved.push(a); S.proposals = S.proposals.filter((p) => p.brandId !== a.brandId); return { ok: true, brandId: a.brandId, brandName: 'Halfday Iced Tea' }; },
   updateBrand: (a) => { S.saves.push(a); return { ok: true }; },
   upsertContact: (a) => {
     S.adds.push(a);
@@ -94,9 +96,24 @@ async function main() {
 
   // Sub-tabs: Stock take and Needs contacts folded in, still reachable.
   const tabs = await page.$$eval('#sub-tabs .nav-item', (bs) => bs.map((b) => b.textContent));
-  assert.deepEqual(tabs, ['All brands', 'Discover']);
+  assert.deepEqual(tabs, ['All brands', 'Discover', 'Clarify']);
   assert.ok(await page.$('#bq-stock') && await page.$('#bq-needs'), 'lanes and worklist buttons');
   console.log('✓ one Brands page; lanes / worklist are buttons');
+
+  // Leo, Oct 2026 ("too much going on"): tools in one More menu, one
+  // category dropdown, Brand / Category / Tier / Fit / Buyers only, and
+  // archived hidden by default.
+  assert.ok(await page.isHidden('#bq-dups'), 'tools sit in the More menu');
+  await page.click('#bq-more > summary');
+  assert.ok(await page.isVisible('#bq-dups') && await page.isVisible('#bq-fittools'));
+  await page.click('#bq-more > summary');
+  assert.ok(await page.isHidden('#brand-cat-chips'), 'no chip row');
+  assert.ok(await page.$('#brands-list [data-brcat]'), 'one category dropdown');
+  const heads = await page.$$eval('#brands-list thead th', (ts) => ts.map((t) => t.textContent.trim()).filter(Boolean));
+  assert.deepEqual(heads, ['Brand', 'Category', 'Tier', 'Fit', 'Buyers']);
+  assert.deepEqual(await names(), ['Alpha Energy', 'Charlie Spirits', 'Bravo Soda'], 'archived hidden by default');
+  await page.uncheck('[data-brarch]');
+  console.log('✓ More menu, category dropdown, five columns, archived hidden by default');
 
   // Default sort: fewest buyers first, archived last.
   assert.deepEqual(await names(), ['Alpha Energy', 'Charlie Spirits', 'Bravo Soda', 'Delta Gone']);
@@ -156,10 +173,35 @@ async function main() {
   assert.match(await page.textContent('[data-brow="b1"] .br-buy'), /1/);
   console.log('✓ add a person from the row; the count updates and the row stays open');
 
+  // The category dropdown switches the list.
+  await page.selectOption('#brands-list [data-brcat]', 'energy');
+  await page.waitForFunction(() => /Energy/.test(document.getElementById('brands-title').textContent));
+  assert.equal(await page.$eval('#brands-list [data-brcat]', (s) => s.value), 'energy');
+  await page.selectOption('#brands-list [data-brcat]', 'all');
+  await page.waitForFunction(() => document.getElementById('brands-title').textContent === 'All brands');
+  console.log('✓ the category dropdown switches the list');
+
+  if (process.env.BRANDS_SHOT) await page.screenshot({ path: process.env.BRANDS_SHOT });
+
   // The name opens the brand page.
   await page.click('[data-brow="b2"] .br-link');
   await page.waitForFunction(() => document.getElementById('brand').classList.contains('active'));
   console.log('✓ the brand name opens the full brand page');
+
+  // Clarify (Leo, Oct 2026): "Which SponsorUnited page is theirs?" is its
+  // own tab, not on All brands; Use this resolves that brand and the list
+  // redraws (empty state when nothing is left).
+  S.proposals = [{ brandId: 'hd', brandName: 'Halfday Iced Tea', v: 2, at: Date.now(),
+    candidates: [{ externalId: 'HD1', name: 'Halfday Iced Tea Beverage - Non-Alcoholic Tea' }] }];
+  await page.evaluate(() => gotoView('brands'));
+  await page.waitForSelector('#brands-list .br-table');
+  assert.equal(await page.$('#brands #su-proposals'), null, 'not on All brands');
+  await page.click('#sub-tabs [data-view="clarify"]');
+  await page.waitForSelector('#su-proposals [data-suuse="hd"]');
+  await page.click('#su-proposals [data-suuse="hd"]');
+  await page.waitForSelector('#su-proposals .empty');
+  assert.deepEqual(S.resolved, [{ brandId: 'hd', externalId: 'HD1', suName: 'Halfday Iced Tea Beverage - Non-Alcoholic Tea' }]);
+  console.log('✓ Clarify tab: Use this resolves the brand, then "Nothing to clarify"');
 
   // Every brand a marketing / partnerships person (coverage.ts): counts
   // from the rows' `cover`, this week and the last LinkedIn run from
@@ -216,12 +258,12 @@ async function main() {
   assert.equal(await page.$('#brands-list [data-brwhy]'), null, 'the reasons show under Needs people only');
   console.log('✓ Show them: Needs people narrowed to that reason; each row says why');
 
-  // The SponsorUnited sweep card: one line, opens as it was.
+  // The People on file (SponsorUnited sweep) card: one line, opens as it was.
   const fold = await page.textContent('#fill-progress details:not([open]) summary');
-  assert.equal(fold, 'SponsorUnited sweep · 29 of 486 brands at 25 people · +3 people today');
+  assert.equal(fold, 'People on file · 286 of 486 brands have someone · +3 from SponsorUnited today');
   await page.click('#fill-progress summary');
-  await page.waitForFunction(() => /Filling to 25 people per brand/.test(document.querySelector('#fill-progress details[open]').textContent));
-  console.log('✓ the SponsorUnited sweep card is folded to one line and opens as it was');
+  await page.waitForFunction(() => /Capture keeps up to 25 a brand/.test(document.querySelector('#fill-progress details[open]').textContent));
+  console.log('✓ the People on file card is folded to one line and opens as it was');
 
   // "pick it" (and the card's Pick their pages) → Outreach → People's
   // "Which LinkedIn page is theirs?".

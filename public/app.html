@@ -363,25 +363,42 @@
   .zt-prev-body{font-size:13.5px;line-height:1.65;white-space:pre-wrap;color:var(--ink-2);overflow-wrap:anywhere}
   .zt-fill-tok{color:#dbe6ff;background:rgba(79,131,247,.16);border-radius:4px;padding:0 3px}
   .zt-bad-tok{color:#f2918c;background:rgba(240,113,107,.12);border-radius:4px;padding:0 3px}
-  /* Where every brand stands: the right side of Zach's list. Stacked
-     under the list on narrower screens; beside it, following the scroll,
-     when there's room. Countdown words carry the meaning; colour backs
-     them up (late red, today blue, coming up grey). */
-  .zs{margin-top:22px;background:var(--surface-1);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:16px 0 8px}
-  .zs-head{padding:0 16px 10px}
-  .zs-head h3{font-family:var(--display);font-size:16px;font-weight:800;letter-spacing:-.015em}
-  .zs-sum{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:12.5px;color:var(--ink-3)}
+  /* Where every brand stands: a full-width board at the top of Home,
+     above Zach's list (Leo, Oct 6: "more defined ... lines between the
+     categories ... move it higher up and take full advantage of the home
+     page"). One card per stage, side by side, each with its own colour
+     edge; countdown words carry the meaning, colour backs them up (late
+     red, today blue, coming up grey). A stage shows its most urgent few,
+     the rest behind "N more". */
+  .zt-cols{display:flex;flex-direction:column}
+  .zt-cols .zs{order:-1}
+  .zs{margin:22px 0 28px;background:var(--surface-1);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:16px 16px 16px}
+  .zs-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;padding:0 4px 14px}
+  .zs-head h3{font-family:var(--display);font-size:18px;font-weight:800;letter-spacing:-.015em}
+  .zs-sum{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;color:var(--ink-3)}
   .zs-sum b{color:var(--ink-1);font-weight:700;font-variant-numeric:tabular-nums}
   .zs-sum .late b{color:var(--bad)}
   .zs-sum .today b{color:var(--accent-hi)}
-  .zs-rule{margin-top:6px;font-size:11.5px;color:var(--ink-3);line-height:1.45}
-  .zs-grp{border-top:1px solid var(--border-soft);padding:8px 0 4px}
-  .zs-gh{display:flex;align-items:baseline;gap:8px;padding:4px 16px 4px;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2)}
-  .zs-gh small{font-size:11px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--ink-3)}
-  .zs-gh .n{margin-left:auto;font-weight:600;letter-spacing:0;color:var(--ink-3);font-variant-numeric:tabular-nums}
-  .zs-row{display:flex;align-items:center;gap:10px;width:100%;padding:7px 16px;border:0;background:transparent;color:inherit;
+  .zs-rule{margin-left:auto;font-size:11.5px;color:var(--ink-3);line-height:1.45}
+  .zs-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;align-items:start}
+  .zs-grp{--stage:var(--ink-3);min-width:0;background:var(--surface-2);border:1px solid var(--border);border-top:3px solid var(--stage);border-radius:12px;padding:10px 0 6px;overflow:hidden}
+  .zs-msg{--stage:var(--accent)}
+  .zs-final{--stage:var(--warn)}
+  .zs-sent{--stage:#8a8fa3}
+  .zs-talk{--stage:var(--good)}
+  .zs-call{--stage:var(--accent-hi)}
+  .zs-quiet{--stage:#4a4d5c}
+  .zs-gh{display:flex;align-items:center;gap:8px;padding:2px 12px 9px;margin-bottom:2px;border-bottom:1px solid var(--border)}
+  .zs-gh-t{min-width:0;display:flex;flex-direction:column}
+  .zs-gh-t span{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-1)}
+  .zs-gh small{font-size:11px;font-weight:500;color:var(--ink-3);margin-top:1px}
+  .zs-gh .n{margin-left:auto;flex:none;min-width:22px;padding:1px 7px;border-radius:999px;background:var(--surface-1);border:1px solid var(--border);
+    text-align:center;font-size:11.5px;font-weight:700;color:var(--ink-2);font-variant-numeric:tabular-nums}
+  .zs-gh .lt{flex:none;font-size:11px;font-weight:700;color:var(--bad);font-variant-numeric:tabular-nums}
+  .zs-row{display:flex;align-items:center;gap:9px;width:100%;padding:8px 12px;border:0;background:transparent;color:inherit;
     font-family:inherit;text-align:left;cursor:pointer;transition:background .12s}
-  .zs-row:hover{background:var(--surface-2)}
+  .zs-row + .zs-row{border-top:1px solid var(--border-soft)}
+  .zs-row:hover{background:var(--surface-1)}
   .zs-row:focus-visible{outline:2px solid var(--ring);outline-offset:-2px}
   .zs-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--c)}
   .zs-name{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:0 6px}
@@ -395,13 +412,10 @@
   .zs-when.todo{color:var(--good)}
   .zt-done-row.zs-flash{animation:zs-flash 1.6s ease-out}
   @keyframes zs-flash{from{background:var(--accent-soft)}to{background:transparent}}
-  .zs-more{display:block;margin:2px 16px 4px;padding:4px 0;border:0;background:none;color:var(--accent-hi);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer}
+  .zs-more{display:block;width:calc(100% - 24px);margin:4px 12px 2px;padding:6px 0;border:0;border-top:1px solid var(--border-soft);background:none;color:var(--accent-hi);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;text-align:left}
   .zs-more:hover{text-decoration:underline}
-  @media (min-width:1360px){
-    #dashboard.page{max-width:1660px}
-    .zt-cols.has-side{display:grid;grid-template-columns:minmax(0,1fr) clamp(290px,22vw,360px);gap:28px;align-items:start}
-    .zt-cols.has-side .zs{margin-top:0;position:sticky;top:132px;max-height:calc(100vh - 148px);overflow:auto}
-  }
+  @media (min-width:1360px){ #dashboard.page{max-width:1660px} }
+  @media (max-width:768px){ .zs{padding:14px 12px} .zs-rule{margin-left:0} }
   @media (hover:none){.zt-go,.zt-keys{display:none}}
   @media (prefers-reduced-motion:reduce){
     .zt-item,.zt-exp,.zt-fill,.zt-undo,.zt-go,.zt-chev,.zt-row,.zt-step{transition:none}
@@ -1030,6 +1044,13 @@
   .count-head .n{color:var(--ink-3);font-weight:500;margin-left:6px}
   /* Brands table (loadBrands → brRender) */
   .br-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 10px}
+  .br-bar .chip{padding:4px 11px;font-size:12px}
+  .bq-more{position:relative}
+  .bq-more>summary{list-style:none;cursor:pointer}
+  .bq-more>summary::-webkit-details-marker{display:none}
+  .bq-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:30;display:flex;flex-direction:column;gap:4px;min-width:250px;
+    padding:8px;background:var(--surface-2,#1b1b22);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
+  .bq-menu .btn-ghost{text-align:left;width:100%}
   .br-bar .chip .n{margin-left:6px;color:var(--ink-3);font-weight:500}
   .br-chk{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-2)}
   .br-chk .inp{padding:5px 9px;font-size:12.5px}
@@ -1107,6 +1128,34 @@
     .br-opt{display:none}
     .br-edit,.br-fields,.br-add{grid-template-columns:1fr}
   }
+  /* Discover (dcRender) */
+  .dc-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:18px 0 12px}
+  .dc-bar .chip .n{margin-left:6px;color:var(--ink-3);font-weight:500}
+  .dc-bar .inp{padding:6px 10px;font-size:12.5px;max-width:220px}
+  .dc-list{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-1);overflow:hidden}
+  .dc-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 16px;align-items:center;padding:12px 16px;border-top:1px solid var(--border-soft)}
+  .dc-row:first-child{border-top:0}
+  .dc-row:hover{background:rgba(255,255,255,.02)}
+  .dc-row.open{background:var(--surface-2)}
+  .dc-main{min-width:0;cursor:pointer}
+  .dc-name{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .dc-meta{margin-right:4px}
+  .dc-name b{font-size:14px;font-weight:600}
+  .dc-meta{font-size:11.5px;color:var(--ink-3)}
+  .dc-sign{font-size:11px;color:#55d9a2;background:rgba(62,207,142,.1);border-radius:999px;padding:1px 8px}
+  .dc-why{font-size:12.5px;color:var(--ink-2);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dc-row.open .dc-why{white-space:normal}
+  .dc-act{display:flex;align-items:center;gap:6px}
+  .dc-add{padding:6px 16px;font-size:12.5px}
+  .dc-x{width:30px;height:30px;border-radius:999px;border:1px solid var(--border);background:transparent;color:var(--ink-3);cursor:pointer;font-size:16px;line-height:1}
+  .dc-x:hover{color:var(--bad);border-color:rgba(240,113,107,.5)}
+  .dc-done{font-size:12px;color:var(--ink-3)}
+  .dc-more{grid-column:1/-1;font-size:12.5px;color:var(--ink-2);display:flex;flex-direction:column;gap:8px;padding-top:4px}
+  .dc-k{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-right:8px}
+  .dc-links{display:flex;gap:14px;flex-wrap:wrap}
+  .dc-links a{color:var(--accent-hi)}
+  .dc-empty{padding:40px 16px;text-align:center;color:var(--ink-3);border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-1)}
+  @media (max-width:600px){ .dc-row{grid-template-columns:1fr} .dc-bar .inp{max-width:none;flex:1} }
   .target{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);
     padding:17px 20px;margin-bottom:10px;display:flex;align-items:center;gap:16px;box-shadow:var(--shadow);
     transition:border-color .15s}
@@ -1423,7 +1472,7 @@
     </section>
 
     <!-- BRANDS — category drill-down -->
-    <section class="view page" id="brands">
+    <section class="view page wide" id="brands">
       <div class="eyebrow">Category</div>
       <h1 id="brands-title">Brands</h1>
       <div class="sub" id="brands-sub">Loading…</div>
@@ -1432,16 +1481,21 @@
       <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
         <input class="field-box" id="bq" placeholder="Search brands — or type a new name to add one…" style="flex:1;min-width:240px" autocomplete="off">
         <button class="btn-solid" id="bq-add" hidden>Add + find on SponsorUnited</button>
-        <button class="btn-ghost" id="bq-fill" title="Fills empty brand summaries from a built-in list of known brands — never overwrites anything you typed">Fill summaries</button>
-        <button class="btn-ghost" id="bq-dups" title="Brands that look like the same company: the same name, LinkedIn page or website">Duplicates</button>
-        <button class="btn-ghost" id="bq-stock" title="Every brand in the lanes SB sells, brand ideas to add, and Re-file categories">Lanes, ideas &amp; re-file</button>
-        <button class="btn-ghost" id="bq-needs" title="Brands with nobody on file: SponsorUnited names, Find on LinkedIn, Add contact">SponsorUnited worklist</button>
-        <button class="btn-ghost" id="bq-fittools" title="Brand Fit: research brands (sales, venture money, US, college / music) and the Suggest Archive list — on Stock take">Brand Fit: research &amp; archive</button>
+        <!-- Leo, Oct 2026: "too much going on" — the tools live in one menu. -->
+        <details class="bq-more" id="bq-more">
+          <summary class="btn-ghost">More ▾</summary>
+          <div class="bq-menu">
+            <button class="btn-ghost" id="bq-fittools" title="Brand Fit: research brands (sales, venture money, US, college / music) and the Suggest Archive list — on Stock take">Brand Fit: research &amp; archive</button>
+            <button class="btn-ghost" id="bq-needs" title="Brands with nobody on file: SponsorUnited names, Find on LinkedIn, Add contact">SponsorUnited worklist</button>
+            <button class="btn-ghost" id="bq-stock" title="Every brand in the lanes SB sells, brand ideas to add, and Re-file categories">Lanes, ideas &amp; re-file</button>
+            <button class="btn-ghost" id="bq-dups" title="Brands that look like the same company: the same name, LinkedIn page or website">Duplicates</button>
+            <button class="btn-ghost" id="bq-fill" title="Fills empty brand summaries from a built-in list of known brands — never overwrites anything you typed">Fill summaries</button>
+          </div>
+        </details>
       </div>
       <div id="dup-panel"></div>
       <div id="su-find"></div>
-      <div class="chips" id="brand-cat-chips" style="margin-top:12px"></div>
-      <div id="su-proposals"></div>
+      <div class="chips" id="brand-cat-chips" hidden></div>
       <div id="brands-selbar" class="hint" style="margin:10px 0 8px"></div>
       <div id="brands-list"></div>
       <div id="brands-bulk"></div>
@@ -1601,7 +1655,7 @@
     </section>
 
     <!-- NEEDS CONTACTS -->
-    <section class="view page" id="needs">
+    <section class="view page wide" id="needs">
       <div class="eyebrow">Gaps</div>
       <h1>Needs contact info</h1>
       <div class="sub" id="needs-sub">Loading…</div>
@@ -1611,7 +1665,7 @@
     </section>
 
     <!-- STOCK TAKE — every brand sorted into the lanes SB sells -->
-    <section class="view page" id="stock">
+    <section class="view page wide" id="stock">
       <div class="eyebrow">Brands</div>
       <h1>Stock take</h1>
       <div class="sub" id="st-sub">Loading…</div>
@@ -1760,17 +1814,21 @@
       <div id="ops-body"></div>
     </section>
 
+    <!-- CLARIFY — which SponsorUnited page is theirs (Leo, Oct 2026: its own tab) -->
+    <section class="view page wide" id="clarify">
+      <div class="eyebrow">Brands</div>
+      <h1>Clarify</h1>
+      <div class="sub">Brands the SponsorUnited lookup couldn’t match on its own. Only pages whose name could be the brand show here.</div>
+      <div id="su-proposals"></div>
+    </section>
+
     <!-- DISCOVER -->
-    <section class="view page" id="discover">
+    <section class="view page wide" id="discover">
       <div class="eyebrow">Discover</div>
-      <h1>Find new brands</h1>
-      <div class="sub">Describe a niche; add the matches you like.</div>
-      <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
-        <input class="field-box" id="disc-q" placeholder="e.g. venture-backed CPG brands, hard seltzer challengers, sunscreen brands going after Gen Z" style="flex:1;min-width:260px">
-        <button class="btn-solid" id="disc-go">Search</button>
-      </div>
-      <div id="disc-recent" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"></div>
-      <div id="disc-body" style="margin-top:16px"></div>
+      <h1>New brands to review</h1>
+      <div class="sub" id="dc-sub">Claude finds up to 50 a day. Add the ones worth pitching, dismiss the rest.</div>
+      <div id="dc-bar" class="dc-bar"></div>
+      <div id="disc-body"></div>
     </section>
 
     <!-- RESULTS -->
@@ -2159,7 +2217,7 @@ function refreshAfterSponsorChange() {
 // The top nav holds five groups; the views inside a group show as a
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
-  brands: [['brands', 'All brands'], ['discover', 'Discover']],
+  brands: [['brands', 'All brands'], ['discover', 'Discover'], ['clarify', 'Clarify']],
   outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['schedule', 'Schedule'], ['email-out', 'Email'], ['linkedin', 'People'], ['passed', 'Archived'], ['results', 'Email stats']],
   board: [['board', 'Overview'], ['talks', 'In talks'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
@@ -2167,7 +2225,7 @@ var SUBTABS = {
   operations: [['materials', 'Materials'], ['team', 'Team']],
 };
 var GROUP_OF = {
-  brands: 'brands', brand: 'brands', discover: 'brands', needs: 'brands', stock: 'brands',
+  brands: 'brands', brand: 'brands', discover: 'brands', clarify: 'brands', needs: 'brands', stock: 'brands',
   outreach: 'outreach', 'email-out': 'outreach', reached: 'outreach', schedule: 'outreach', linkedin: 'outreach', results: 'outreach', passed: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
   pipeline: 'pipeline', sponsorships: 'pipeline',
@@ -2322,6 +2380,11 @@ function keepPlace(view) {
     view: view, y: window.scrollY, ownY: window.scrollY, chain: m.chain, spots: m.spots,
     details: placeDetails(view), known: new WeakSet(), boxes: [], focus: null, swapped: false, timer: 0,
   };
+  // At the very top, the top is the place (Leo, Oct 6: Home opened half
+  // way down Zach's list — the list and board loading above the tiles
+  // dragged the page down to keep the tiles on screen). The thing he
+  // clicked, if any, is still held.
+  if (P.y < 1) P.spots = [];
   P.details.forEach(function (d) { P.known.add(d.el); });
   view.querySelectorAll('[data-scroll]').forEach(function (el) {
     var sel = placeSel(el, view);
@@ -3285,7 +3348,7 @@ var ZS_GROUPS = [
   { key: 'call', title: 'Call booked', sub: '' },
   { key: 'quiet', title: 'No response', sub: 'quiet after the final' }
 ];
-var ZS_SHOW = 8;           // rows a stage shows before "N more"
+var ZS_SHOW = 5;           // rows a stage shows before "N more" (3 on a phone)
 var ZS_MORE = {};          // stage key -> showing all
 function zsGroupOf(p) {
   var st = ztStage(p);
@@ -3397,18 +3460,21 @@ function zsHtml() {
         '<span><b>' + n + '</b> ' + (n === 1 ? 'brand' : 'brands') + '</span></div>' +
       '<div class="zs-rule">Accepted → message on day ' + ZT_DAYS.dm + ' → final reach-out ' + ZT_DAYS.final +
         ' days later → No response after ' + ZT_DAYS.quiet + ' quiet days</div>' +
-    '</div>' +
+    '</div><div class="zs-board">' +
     ZS_GROUPS.map(function (x) {
       var list = rows[x.key];
       if (!list.length) return '';
-      var shown = ZS_MORE[x.key] ? list : list.slice(0, ZS_SHOW);
+      var cap = window.innerWidth <= 768 ? 3 : ZS_SHOW;
+      var shown = ZS_MORE[x.key] ? list : list.slice(0, cap);
+      var lateN = list.filter(function (r) { return r.lead.w.cls === 'late'; }).length;
       return '<section class="zs-grp zs-' + x.key + '">' +
-        '<div class="zs-gh"><span>' + esc(x.title) + '</span>' + (x.sub ? '<small>' + esc(x.sub) + '</small>' : '') +
+        '<div class="zs-gh"><div class="zs-gh-t"><span>' + esc(x.title) + '</span>' + (x.sub ? '<small>' + esc(x.sub) + '</small>' : '') + '</div>' +
+          (lateN ? '<b class="lt">' + lateN + ' late</b>' : '') +
           '<span class="n">' + list.length + '</span></div>' +
         shown.map(function (r) { return zsRowHtml(r, x.key); }).join('') +
         (list.length > shown.length ? '<button class="zs-more" data-zsmore="' + x.key + '">' + (list.length - shown.length) + ' more</button>' : '') +
       '</section>';
-    }).join('');
+    }).join('') + '</div>';
 }
 function zsRefresh() {
   var box = document.getElementById('zach-todo');
@@ -4383,9 +4449,9 @@ document.getElementById('zt-tsave').addEventListener('click', function () {
 // --- brands (category drill-down) ------------------------------
 
 var lastCategory = null;
-var FP_OPEN = false;  // the SponsorUnited sweep card is folded to one line until opened
+var FP_OPEN = false;  // the People on file (SponsorUnited sweep) card is folded to one line until opened
 
-// Where the fill-to-25 stands. The sweep runs in Leo's own browser, so
+// Where filling brands with people stands. The sweep runs in Leo's own browser, so
 // "is it actually working" can only be answered by what it has added —
 // a day with nothing new means nothing is running, and that is worth
 // saying out loud rather than leaving the roster to look stalled.
@@ -4393,7 +4459,11 @@ function renderFillProgress() {
   var box = document.getElementById('fill-progress');
   if (!box) return;
   api('fillProgress').then(function (p) {
-    var pct = p.brands ? Math.round((p.atCap / p.brands) * 100) : 0;
+    // Progress = brands with at least one person on file. Most brands
+    // will never have 25 people, so 25 is only where the capture stops
+    // taking more, never the goal (Leo, Oct 2026).
+    var withSomeone = Math.max(0, p.brands - p.empty);
+    var pct = p.brands ? Math.round((withSomeone / p.brands) * 100) : 0;
     var stale = !p.addedToday;
     var ago = p.lastAt
       ? Math.round((Date.now() - new Date(p.lastAt).getTime()) / 36e5)
@@ -4407,12 +4477,12 @@ function renderFillProgress() {
     // person" (Leo's question since Oct 2026); open, it is as it was.
     box.innerHTML =
       '<details class="fp-fold"' + (FP_OPEN ? ' open' : '') + '>' +
-      '<summary>SponsorUnited sweep · ' + p.atCap + ' of ' + p.brands + ' brands at ' + p.cap + ' people · ' +
-        (p.addedToday ? '+' + p.addedToday + ' people today' : p.addedWeek + ' added this week') + '</summary>' +
+      '<summary>People on file · ' + withSomeone + ' of ' + p.brands + ' brands have someone · ' +
+        (p.addedToday ? '+' + p.addedToday + ' from SponsorUnited today' : p.addedWeek + ' from SponsorUnited this week') + '</summary>' +
       '<div class="panel panel-pad" style="margin-top:6px">' +
         '<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px">' +
-          '<b style="font-size:13px">Filling to ' + p.cap + ' people per brand</b>' +
-          '<span class="n">' + p.atCap + ' of ' + p.brands + ' full</span>' +
+          '<b style="font-size:13px">People on file</b>' +
+          '<span class="n">' + withSomeone + ' of ' + p.brands + ' brands have someone</span>' +
           '<span style="flex:1"></span>' +
           '<span style="font-size:12px;color:' + (stale ? '#f0b86b' : '#8fd6a8') + '">' +
             (p.addedToday ? '+' + p.addedToday + ' people today' : 'nothing added today') +
@@ -4421,12 +4491,12 @@ function renderFillProgress() {
         '<div style="height:6px;background:var(--border);border-radius:99px;overflow:hidden;margin-bottom:8px">' +
           '<div style="height:100%;width:' + pct + '%;background:#8fd6a8"></div></div>' +
         '<div class="hint" style="margin:0 0 4px">' +
-          p.peopleOnFile + ' people on file · ' + p.under + ' brands under ' + p.cap +
-          ' · ' + p.empty + ' with nobody · ' + p.addedWeek + ' added this week.' +
+          p.peopleOnFile + ' people on file · ' + p.empty + ' brands with nobody · ' +
+          p.addedWeek + ' added this week. Capture keeps up to ' + p.cap + ' a brand — most will have fewer, and that’s fine.' +
         '</div>' +
         '<div class="hint" style="margin:0 0 4px">' + lastLine + '</div>' +
         (p.underNoId
-          ? '<div class="hint" style="margin:0 0 4px;color:#f0b86b"><b>' + p.underNoId + '</b> of those have no SponsorUnited profile saved — the sweep cannot reach them until the lookup finds one. That is the first half of “Fill every brand to 25”. ' +
+          ? '<div class="hint" style="margin:0 0 4px;color:#f0b86b"><b>' + p.underNoId + '</b> brands have no SponsorUnited profile saved — the sweep cannot reach them until the lookup finds one. ' +
             '<a href="#" id="fp-see">See them</a> (most have contacts already, so they are not in Needs contacts).</div>'
           : '') +
         (p.roomReachable
@@ -4509,7 +4579,9 @@ function loadBrands(category) {
   // a capture, a sponsor-page request, a board approval or Notion with no
   // category at all, which no real chip would ever list. Its count comes
   // from categoryReach's "uncategorised" row.
-  document.getElementById('brand-cat-chips').innerHTML =
+  // The category chips became one dropdown in the table bar (brCatSelect);
+  // the old row stays empty.
+  var _oldChips =
     '<button class="chip' + (category === 'all' ? ' active' : '') + '" data-bcat="all">All</button>' +
     // What the LinkedIn run added on its own in the last two weeks and
     // nobody has looked at: Keep, Archive or re-file them from here.
@@ -4529,6 +4601,16 @@ function loadBrands(category) {
   // How far through each category the outreach is — reached / total.
   dupLoad();
   api('categoryReach').then(function (cr) {
+    BR_REACH = cr;
+    // Counts arrive after the table: relabel the options in place (never
+    // swap the element — that would drop a pick in progress).
+    var sel = document.querySelector('#brands-list [data-brcat]');
+    if (sel) {
+      var fresh = document.createElement('div');
+      fresh.innerHTML = brCatSelect();
+      var opts = fresh.querySelectorAll('option');
+      [].forEach.call(sel.options, function (o, i) { if (opts[i]) o.textContent = opts[i].textContent; });
+    }
     var nl = document.querySelector('[data-creach="new"]');
     if (nl) {
       nl.textContent = String(cr.newFromLinkedIn || 0);
@@ -4576,7 +4658,6 @@ function loadBrands(category) {
     brRender();
     bbRender();
     applyBrandFilter();
-    renderSuProposals();
   }).catch(function (e) {
     if (!mine()) return;
     if (again) { toast('Could not refresh: ' + e.message); return; }
@@ -4717,7 +4798,20 @@ document.getElementById('cover-card').addEventListener('click', function (e) {
 // re-file and the SponsorUnited worklist are buttons in the header.
 var BR_LIST = [];
 var BR_TARGET = 1;
-var BR = { show: 'all', why: '', sort: 'fewest', hideArchived: false };
+var BR = { show: 'all', why: '', sort: 'fewest', hideArchived: true };
+var BR_REACH = null; // categoryReach: invited / total per category, for the dropdown
+// One dropdown for the category (it was a row of 20+ chips).
+function brCatSelect() {
+  var cur = lastCategory || 'all', cr = BR_REACH || {}, cats = cr.categories || {};
+  var n = function (k) { var r = cats[k]; return r ? ' (' + r.reached + '/' + r.total + ' invited)' : ''; };
+  var opt = function (v, label) { return '<option value="' + esc(v) + '"' + (cur === v ? ' selected' : '') + '>' + esc(label) + '</option>'; };
+  return '<select class="inp" data-brcat title="Which brands: a category, the LinkedIn run\'s new ones, or unfiled">' +
+    opt('all', 'All categories') +
+    opt('new', 'New from LinkedIn' + (cr.newFromLinkedIn ? ' (' + cr.newFromLinkedIn + ')' : '')) +
+    CAT_KEYS.map(function (k) { return opt(k, CAT_NAMES[k] + n(k)); }).join('') +
+    opt('none', 'No category' + n('uncategorised')) +
+  '</select>';
+}
 var BR_OPEN = {};   // brand id -> true while its edit row is open
 var BR_KIND = { partnerships: 'Partnerships', events: 'Events', marketing: 'Marketing', founder: 'Founder / CEO' };
 
@@ -4824,7 +4918,7 @@ function brEditRow(b) {
       (p.linkedin ? ' <span class="br-has" title="Has a LinkedIn link">in</span>' : '') + '</li>';
   }).join('');
   var others = brPeople(b) - brBuyers(b);
-  return '<tr class="br-open" data-bropen="' + esc(b.id) + '"><td colspan="11"><div class="br-edit">' +
+  return '<tr class="br-open" data-bropen="' + esc(b.id) + '"><td colspan="7"><div class="br-edit">' +
     '<div class="br-fields">' + cat + tier +
       f('website', 'Website', b.website, 'brand.com') +
       f('linkedinUrl', 'LinkedIn page', b.linkedinUrl, 'linkedin.com/company/…') +
@@ -4857,7 +4951,6 @@ function brEditRow(b) {
 function brRow(b) {
   var newNote = lastCategory === 'new'
     ? '<div class="br-sub">' + esc(b.source === 'research' ? 'Research list' : 'LinkedIn run') + ' · added ' + esc(shortDate(b.createdAt)) + '</div>' : '';
-  var t = brTouch(b);
   var open = !!BR_OPEN[b.id];
   return '<tr class="br-row' + (b.passedAt ? ' off' : '') + (BB.sel[b.id] ? ' sel' : '') + (open ? ' is-open' : '') + '" data-brow="' + esc(b.id) + '" data-name="' + esc(b.name) + '">' +
     '<td class="br-tick"><label data-bsel="' + esc(b.id) + '" title="Select to re-file or put on a day">' +
@@ -4868,10 +4961,6 @@ function brRow(b) {
     '<td class="br-tier">' + esc(b.tier || '—') + '</td>' +
     '<td class="br-fit">' + fitTags(b.fit, { noUs: true }) + '</td>' +
     '<td class="br-num">' + brBuyerCell(b) + '</td>' +
-    '<td class="br-num">' + brPeople(b) + '</td>' +
-    '<td class="br-num br-opt">' + (b.withEmail || 0) + '</td>' +
-    '<td class="br-num br-opt">' + (b.withLinkedin || 0) + '</td>' +
-    '<td class="br-touch br-opt">' + (t ? esc(shortDate(t)) : '—') + '</td>' +
     '<td class="br-go"><button class="btn-ghost sd-sm" data-bract="toggle">' + (open ? 'Close' : 'Edit') + '</button></td>' +
   '</tr>' + (open ? brEditRow(b) : '');
 }
@@ -4885,10 +4974,10 @@ function brRender() {
     return '<button class="chip' + (BR.show === key ? ' active' : '') + '" data-brshow="' + key + '">' + label + '<span class="n">' + n + '</span></button>';
   };
   var sorts = [['fewest', 'Fewest buyers first'], ['fit', 'Best fit first'], ['most', 'Most buyers first'], ['people', 'Most people'], ['touch', 'Last touched'], ['name', 'Name A–Z']];
-  var bar = '<div class="br-bar">' +
+  var bar = '<div class="br-bar">' + brCatSelect() +
     chip('all', 'All', BR_LIST.length) + chip('need', 'Needs people', need) + chip('enough', 'Has enough', enough) +
-    '<label class="br-chk"><input type="checkbox" data-brarch' + (BR.hideArchived ? ' checked' : '') + '> Hide archived</label>' +
     (lastCategory === 'new' ? '' : hideSmallBox('brands')) +
+    '<label class="br-chk"><input type="checkbox" data-brarch' + (BR.hideArchived ? ' checked' : '') + '> Hide archived</label>' +
     '<span style="flex:1"></span>' +
     '<label class="br-chk">Sort <select class="inp" data-brsort>' + sorts.map(function (s) {
       return '<option value="' + s[0] + '"' + (BR.sort === s[0] ? ' selected' : '') + '>' + s[1] + '</option>';
@@ -4906,9 +4995,7 @@ function brRender() {
   }
   var head = '<tr><th class="br-tick"></th><th>Brand</th><th>Category</th><th>Tier</th>' +
     '<th title="Brand Fit 0–100: budget and venture money weigh most; open a brand for the reasons">Fit</th>' +
-    '<th class="br-num" title="Partnerships, marketing, events or founder / CEO titles on file">Buyers</th>' +
-    '<th class="br-num">People</th><th class="br-num br-opt">Email</th><th class="br-num br-opt">LinkedIn</th>' +
-    '<th class="br-opt">Last touch</th><th></th></tr>';
+    '<th class="br-num" title="Partnerships, marketing, events or founder / CEO titles on file">Buyers</th><th></th></tr>';
   var hidden = (document.getElementById('bq').value || '').trim() ? 0
     : BR_LIST.filter(function (b) { return brSmallHidden(b) && !(BR.hideArchived && b.passedAt); }).length;
   var hiddenNote = hidden ? '<div class="hint" style="margin:8px 0 0">' + hidden + (hidden === 1 ? ' brand' : ' brands') +
@@ -4970,6 +5057,8 @@ function brToggle(id) {
 document.getElementById('brands-list').addEventListener('change', function (e) {
   var sort = e.target.closest('[data-brsort]');
   if (sort) { BR.sort = sort.value; brRender(); applyBrandFilter(); return; }
+  var cat = e.target.closest('[data-brcat]');
+  if (cat) { loadBrands(cat.value); return; }
   var arch = e.target.closest('[data-brarch]');
   if (arch) { BR.hideArchived = arch.checked; brRender(); applyBrandFilter(); return; }
   var ed = e.target.closest('[data-bredit]');
@@ -5541,6 +5630,13 @@ function dupRender() {
   box.innerHTML = html + '</div>';
 }
 
+document.getElementById('bq-more').addEventListener('click', function (e) {
+  if (e.target.closest('.bq-menu button')) this.open = false;
+});
+document.addEventListener('click', function (e) {
+  var m = document.getElementById('bq-more');
+  if (m && m.open && !m.contains(e.target)) m.open = false;
+});
 document.getElementById('bq-stock').addEventListener('click', function () { gotoView('stock'); });
 document.getElementById('bq-needs').addEventListener('click', function () { gotoView('needs'); });
 // Brand Fit on the Brands tab: Stock take's Brand Fit panel (research and
@@ -5739,12 +5835,22 @@ function suRenderResults(name, results) {
 // resembles the brand come back from the server, so each card is a real
 // "which of these is it?" and not SponsorUnited's dashboard tiles.
 var SU_PROPOSALS_SHOWN = 6;
+function loadClarify() {
+  var again = showView('clarify');
+  var box = document.getElementById('su-proposals');
+  if (!again && box) box.innerHTML = '<div class="hint" style="margin-top:16px">Loading…</div>';
+  renderSuProposals();
+}
 function renderSuProposals(showAll) {
   var box = document.getElementById('su-proposals');
   if (!box) return;
   api('suMatchQueue').then(function (d) {
     var list = d.proposals || [];
-    if (!list.length) { box.innerHTML = ''; return; }
+    if (!list.length) {
+      box.innerHTML = '<div class="panel"><div class="empty"><h3>Nothing to clarify</h3>' +
+        '<p>Every brand the lookup searched either matched on its own or found no page that could be it.</p></div></div>';
+      return;
+    }
     var shown = showAll ? list : list.slice(0, SU_PROPOSALS_SHOWN);
     box.innerHTML = '<div class="count-head" style="margin-top:16px;color:#f0b86b">Which SponsorUnited page is theirs? <span class="n">' + list.length + '</span></div>' +
       '<div class="hint" style="margin:2px 0 8px;max-width:720px">We look each brand up on SponsorUnited so its people can be pulled in automatically. ' +
@@ -5767,7 +5873,7 @@ function renderSuProposals(showAll) {
       }).join('') +
       (list.length > shown.length
         ? '<button class="btn-ghost" data-suall style="margin-bottom:8px">Show all ' + list.length + '</button>' : '');
-  }).catch(function () { box.innerHTML = ''; });
+  }).catch(function (e) { box.innerHTML = '<div class="hint" style="margin-top:16px">Could not load: ' + esc(e.message) + '</div>'; });
 }
 
 document.getElementById('su-proposals').addEventListener('click', function (e) {
@@ -5793,10 +5899,11 @@ document.getElementById('su-proposals').addEventListener('click', function (e) {
         return;
       }
       toast('Saved — pulling their people in');
+      renderSuProposals();
     }).catch(function (err) { toast(err.message); renderSuProposals(); });
   } else {
     api('suResolveMatch', { brandId: brandId, dismiss: true, rejectIds: shownIds || undefined })
-      .then(function () { toast('Got it — those pages won’t be suggested for this brand again'); })
+      .then(function () { toast('Got it — those pages won’t be suggested for this brand again'); renderSuProposals(); })
       .catch(function (err) { toast(err.message); renderSuProposals(); });
   }
 });
@@ -6337,8 +6444,21 @@ function loadBrand(brandId) {
             '<button class="btn-ghost" data-cedit="' + esc(c.id) + '" title="Fix their name, title, LinkedIn or email — a rename regenerates their drafts">✎ Edit</button>' +
           '</div></div>';
       }).join('')
+      // No one on file: the ways to find them, right here — search the
+      // brand on SponsorUnited (name copied when we have no profile id)
+      // or LinkedIn, then put who you find in with + Add person.
       : '<div class="panel"><div class="empty"><h3>No people yet</h3>' +
-        '<p>Pull them from SponsorUnited, or add one by hand from LinkedIn.</p></div></div>');
+        '<p>Find them on SponsorUnited or LinkedIn, then add them here.</p>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:14px">' +
+          '<a class="btn-ghost" id="b-find-su" href="' + esc(suUrl) + '" target="_blank" rel="noopener" title="' +
+            (b.externalId ? 'Their SponsorUnited contacts' : 'Copies “' + esc(b.name) + '” — paste it into SponsorUnited’s search bar') +
+            '">SponsorUnited ↗</a>' +
+          '<a class="btn-ghost" href="' + esc(liCompany) + '" target="_blank" rel="noopener" title="' +
+            (b.linkedinUrl ? 'Their LinkedIn People tab — press the SB pill there to add the buyers' : 'LinkedIn company search for this brand') +
+            '">LinkedIn company ↗</a>' +
+          '<a class="btn-ghost" href="' + esc(liBuyerUrl(b)) + '" target="_blank" rel="noopener" title="LinkedIn people search: marketing at ' + esc(b.name) + '">LinkedIn people ↗</a>' +
+          '<button class="btn-solid" id="b-find-add">+ Add person</button>' +
+        '</div></div></div>');
 
     // outreach — the header counts who is still waiting to be written to
     // apart from who has been, instead of calling everyone "in queue".
@@ -6600,6 +6720,15 @@ function loadBrand(brandId) {
     document.getElementById('b-addcontact').onclick = function () {
       openContactForm(b.id, document.getElementById('b-contact-slot'));
     };
+    var findAdd = document.getElementById('b-find-add');
+    if (findAdd) findAdd.onclick = function () {
+      openContactForm(b.id, document.getElementById('b-contact-slot'));
+    };
+    var findSu = document.getElementById('b-find-su');
+    if (findSu && !b.externalId) findSu.addEventListener('click', function () {
+      try { navigator.clipboard.writeText(b.name).catch(function () {}); } catch (e) {}
+      toast('“' + b.name + '” copied — paste it into SponsorUnited search');
+    });
 
     box.querySelectorAll('[data-cedit]').forEach(function (btn) {
       btn.onclick = function () {
@@ -14974,109 +15103,139 @@ document.getElementById('bd-results').addEventListener('click', function (e) {
 // Rows wait here until someone Adds or Dismisses them; a userscript
 // capture on SponsorUnited flips a row to "contacts ✓" on next load.
 
-function loadDiscover(selectedQuery) {
-  showView('discover');
-  var body = document.getElementById('disc-body');
-  api('listDiscoveries', selectedQuery ? { query: selectedQuery } : {}).then(function (d) {
-    document.getElementById('disc-recent').innerHTML = (d.recent || []).map(function (r) {
-      return '<button class="btn-ghost" data-discq="' + esc(r.query) + '" style="font-size:12px;padding:4px 10px' +
-        (selectedQuery === r.query ? ';border-color:var(--accent);color:var(--accent)' : '') + '">' +
-        esc(r.query) + ' (' + r.n + ')</button>';
-    }).join('');
-    document.querySelectorAll('[data-discq]').forEach(function (b) {
-      b.onclick = function () { loadDiscover(b.getAttribute('data-discq')); };
-    });
-    renderDiscoverRows(body, d.rows || [], selectedQuery);
-  }).catch(function (e) {
-    body.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
-  });
+// --- Discover ---------------------------------------------------
+// Leo, Oct 2026: "make this cleaner … more simple and clean". One list:
+// To review / Added, a source and a category dropdown, one line per brand
+// (name, category, signs, why) with Add and ×. A row opens for the
+// activation idea and the links. The old "describe a niche" search is gone
+// (it needed paid API calls; the daily Claude hunt does that job now).
+var DC = { rows: [], tab: 'review', source: '', cat: '', open: {} };
+var DC_SIGNS = { sponsors: 'College / music', genz: '18–24', midsize: 'Growing' };
+var DC_SIGNS_LONG = { sponsors: 'Already sponsors college or music', genz: 'Aims at 18–24 year olds', midsize: 'Mid-size and growing' };
 
-  var go = document.getElementById('disc-go');
-  go.onclick = function () {
-    var q = document.getElementById('disc-q').value.trim();
-    if (q.length < 3) { toast('Type what kind of brands to hunt for'); return; }
-    go.disabled = true; go.innerHTML = '<span class="spinner"></span> Searching the web…';
-    body.innerHTML = '<div class="panel"><div class="empty"><h3>Hunting…</h3><p>Searching the web for “' + esc(q) + '” and verifying LinkedIn pages. Takes up to a minute.</p></div></div>';
-    api('discoverBrands', { query: q }).then(function (r) {
-      go.disabled = false; go.textContent = 'Search';
-      toast(r.results.length + ' brand' + (r.results.length === 1 ? '' : 's') + ' found with verified LinkedIn');
-      loadDiscover(q);
-    }).catch(function (e) {
-      go.disabled = false; go.textContent = 'Search';
-      body.innerHTML = '<div class="panel"><div class="empty"><h3>Search failed</h3><p>' + esc(e.message) + '</p></div></div>';
-    });
-  };
-  document.getElementById('disc-q').onkeydown = function (ev) { if (ev.key === 'Enter') go.onclick(); };
+function loadDiscover() {
+  var again = showView('discover');
+  var body = document.getElementById('disc-body');
+  if (!again && !DC.rows.length) body.innerHTML = '<div class="dc-empty">Loading…</div>';
+  var mine = viewTurn('discover');
+  return api('listDiscoveries', {}).then(function (d) {
+    if (!mine()) return;
+    DC.rows = d.rows || [];
+    dcRender();
+  }).catch(function (e) {
+    if (!mine()) return;
+    body.innerHTML = '<div class="dc-empty">Could not load · ' + esc(e.message) + '</div>';
+  });
 }
 
-// The daily Claude hunt's signs (src/lib/claude-hunt.ts HUNT_SIGNALS).
-var DISC_SIGNALS = { sponsors: 'Sponsors college / music', genz: 'Aims at 18–24', midsize: 'Mid-size, growing' };
+function dcAdded(r) { return r.inSystem || r.status === 'added'; }
 
-function renderDiscoverRows(body, rows, selectedQuery) {
-  var live = rows.filter(function (r) { return r.status !== 'dismissed'; });
-  if (!live.length) {
-    body.innerHTML = '<div class="panel"><div class="empty"><h3>' + (selectedQuery ? 'Nothing left from this search' : 'No discoveries yet') + '</h3>' +
-      '<p>Run a search above — try “venture-backed CPG brands” or “energy drink challengers”.</p></div></div>';
+function dcShown() {
+  return DC.rows.filter(function (r) {
+    if ((DC.tab === 'added') !== dcAdded(r)) return false;
+    if (DC.source && r.source !== DC.source) return false;
+    if (DC.cat && r.category !== DC.cat) return false;
+    return true;
+  });
+}
+
+function dcRender() {
+  var review = DC.rows.filter(function (r) { return !dcAdded(r); }).length;
+  var added = DC.rows.length - review;
+  var pool = DC.rows.filter(function (r) { return (DC.tab === 'added') === dcAdded(r); });
+  var count = function (key, v) { return pool.filter(function (r) { return r[key] === v; }).length; };
+  var sources = ['Claude hunt', 'LinkedIn', 'Research list', 'Search'].filter(function (x) { return count('source', x) || DC.source === x; });
+  var cats = CAT_KEYS.filter(function (k) { return count('category', k) || DC.cat === k; });
+  var tab = function (key, label, n) {
+    return '<button class="chip' + (DC.tab === key ? ' active' : '') + '" data-dctab="' + key + '">' + label + '<span class="n">' + n + '</span></button>';
+  };
+  document.getElementById('dc-bar').innerHTML =
+    tab('review', 'To review', review) + tab('added', 'Added', added) +
+    '<span style="flex:1"></span>' +
+    '<select class="inp" data-dcsel="source" aria-label="Source"><option value="">All sources</option>' +
+      sources.map(function (x) { return '<option' + (DC.source === x ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select>' +
+    '<select class="inp" data-dcsel="cat" aria-label="Category"><option value="">All categories</option>' +
+      cats.map(function (k) { return '<option value="' + esc(k) + '"' + (DC.cat === k ? ' selected' : '') + '>' + esc(CAT_NAMES[k]) + '</option>'; }).join('') + '</select>';
+
+  var rows = dcShown();
+  var body = document.getElementById('disc-body');
+  if (!rows.length) {
+    body.innerHTML = '<div class="dc-empty">' + (DC.tab === 'review'
+      ? (review ? 'Nothing here with these filters.' : 'All caught up — the next batch lands tomorrow morning.')
+      : 'Nothing added yet.') + '</div>';
     return;
   }
-  body.innerHTML = live.map(function (r) {
-    var badge = r.inSystem
-      ? (r.contactCount > 0
-          ? '<span class="status confirmed">in system · ' + r.contactCount + ' contact' + (r.contactCount === 1 ? '' : 's') + ' ✓</span>'
-          : '<span class="status sent">in system · needs contacts</span>')
-      : '';
-    return '<div class="panel panel-pad" style="margin-bottom:8px" data-disc="' + esc(r.id) + '">' +
-      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
-        (r.brandId ? '<a href="#" class="t-brand" data-brand="' + esc(r.brandId) + '" style="font-weight:600;color:inherit;text-decoration:none">' + esc(r.name) + '</a>'
-                   : '<b>' + esc(r.name) + '</b>') +
-        (r.category ? '<span class="status">' + esc(CAT_NAMES[r.category] || r.category) + '</span>' : '') +
-        badge +
-        '<span style="margin-left:auto"></span>' +
-        (r.linkedinUrl ? '<a class="btn-ghost" href="' + esc(r.linkedinUrl) + '" target="_blank" rel="noopener" style="padding:3px 9px;font-size:12px">in ↗</a>' : '') +
-        (r.sourceUrl ? '<a class="btn-ghost" href="' + esc(r.sourceUrl) + '" target="_blank" rel="noopener" style="padding:3px 9px;font-size:12px" title="Where Claude found it">Source ↗</a>' : '') +
-        (r.website ? '<a class="btn-ghost" href="' + esc(r.website) + '" target="_blank" rel="noopener" style="padding:3px 9px;font-size:12px">🌐</a>' : '') +
-        '<button class="btn-ghost" data-discact="su" style="padding:3px 9px;font-size:12px" title="Copies the name and opens SponsorUnited — use the capture script on the brand page">SU ↗</button>' +
-        (r.inSystem ? '' : '<button class="btn-solid" data-discact="add" style="padding:3px 11px;font-size:12px">+ Add</button>') +
-        '<button class="btn-ghost danger" data-discact="dismiss" style="padding:3px 9px;font-size:12px">×</button>' +
-      '</div>' +
-      (r.signals ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' + String(r.signals).split(',').map(function (k) {
-        return DISC_SIGNALS[k] ? '<span class="status replied">' + esc(DISC_SIGNALS[k]) + '</span>' : '';
-      }).join('') + '</div>' : '') +
-      (r.reason ? '<div style="font-size:12.5px;color:var(--ink-2);margin-top:5px">' + esc(r.reason) + '</div>' : '') +
-      (r.activation ? '<div style="font-size:12.5px;margin-top:5px;padding:7px 10px;background:var(--accent-soft,#fdf0ec);border-radius:6px">' +
-        '<b style="color:var(--accent)">Activation idea:</b> ' + esc(r.activation) + '</div>' : '') +
-    '</div>';
-  }).join('') +
-  '<div class="hint" style="margin-top:8px">SU ↗ copies the brand name and opens SponsorUnited — search it there and the capture script pulls contacts straight in; this list updates on the next load. + Add saves it as a brand (with its website and LinkedIn when known) so it shows on All brands under Needs people.</div>';
-
-  body.querySelectorAll('a[data-brand]').forEach(function (a) {
-    a.onclick = function (ev) { ev.preventDefault(); loadBrand(a.getAttribute('data-brand')); };
-  });
-  body.querySelectorAll('[data-discact="su"]').forEach(function (b) {
-    b.onclick = function () {
-      var card = b.closest('[data-disc]');
-      var name = card.querySelector('b, a.t-brand').textContent;
-      try { navigator.clipboard.writeText(name); } catch (e) {}
-      toast('“' + name + '” copied — paste it into SponsorUnited search');
-      window.open('https://app.sponsorunited.com/', '_blank');
-    };
-  });
-  body.querySelectorAll('[data-discact="add"]').forEach(function (b) {
-    b.onclick = function () {
-      b.disabled = true;
-      api('addDiscoveredBrand', { id: b.closest('[data-disc]').getAttribute('data-disc') })
-        .then(function () { toast('Added — it\'s in Brands and Needs Contacts'); loadDiscover(selectedQuery); })
-        .catch(function (e) { toast(e.message); b.disabled = false; });
-    };
-  });
-  body.querySelectorAll('[data-discact="dismiss"]').forEach(function (b) {
-    b.onclick = function () {
-      api('dismissDiscovered', { id: b.closest('[data-disc]').getAttribute('data-disc') })
-        .then(function () { loadDiscover(selectedQuery); })
-        .catch(function (e) { toast(e.message); });
-    };
-  });
+  body.innerHTML = '<div class="dc-list">' + rows.map(dcRow).join('') + '</div>';
 }
+
+function dcRow(r) {
+  var open = !!DC.open[r.id];
+  var signs = String(r.signals || '').split(',').filter(function (k) { return DC_SIGNS[k]; });
+  var meta = [r.category ? (CAT_NAMES[r.category] || r.category) : '', r.source].filter(Boolean).join(' · ');
+  var links = [
+    r.sourceUrl ? '<a href="' + esc(r.sourceUrl) + '" target="_blank" rel="noopener">Source ↗</a>' : '',
+    r.website ? '<a href="' + esc(r.website) + '" target="_blank" rel="noopener">Website ↗</a>' : '',
+    r.linkedinUrl ? '<a href="' + esc(r.linkedinUrl) + '" target="_blank" rel="noopener">LinkedIn ↗</a>' : '',
+    '<a href="#" data-dcact="su">Find on SponsorUnited ↗</a>',
+  ].filter(Boolean).join('');
+  var actions = dcAdded(r)
+    ? '<span class="dc-done">Added' + (r.inSystem ? ' · ' + r.contactCount + (r.contactCount === 1 ? ' person' : ' people') : '') + '</span>' +
+      (r.brandId ? '<button class="btn-ghost sd-sm" data-dcact="open">Open</button>' : '')
+    : '<button class="btn-solid dc-add" data-dcact="add">Add</button>' +
+      '<button class="dc-x" data-dcact="dismiss" title="Not a fit — dismiss" aria-label="Dismiss ' + esc(r.name) + '">×</button>';
+  return '<div class="dc-row' + (open ? ' open' : '') + '" data-disc="' + esc(r.id) + '">' +
+    '<div class="dc-main" data-dcact="toggle">' +
+      '<div class="dc-name"><b>' + esc(r.name) + '</b><span class="dc-meta">' + esc(meta) + '</span>' +
+        signs.map(function (k) {
+          return '<span class="dc-sign" title="' + esc(DC_SIGNS_LONG[k]) + '">' + esc(DC_SIGNS[k]) + '</span>';
+        }).join('') + '</div>' +
+      (r.reason ? '<div class="dc-why">' + esc(r.reason) + '</div>' : '') +
+    '</div>' +
+    '<div class="dc-act">' + actions + '</div>' +
+    (open ? '<div class="dc-more">' +
+      (r.activation ? '<div><span class="dc-k">Pitch</span>' + esc(r.activation) + '</div>' : '') +
+      '<div class="dc-links">' + links + '</div></div>' : '') +
+  '</div>';
+}
+
+document.getElementById('dc-bar').addEventListener('click', function (e) {
+  var t = e.target.closest('[data-dctab]');
+  if (!t) return;
+  DC.tab = t.getAttribute('data-dctab'); DC.source = ''; DC.cat = '';
+  dcRender();
+});
+document.getElementById('dc-bar').addEventListener('change', function (e) {
+  var sel = e.target.closest('[data-dcsel]');
+  if (!sel) return;
+  DC[sel.getAttribute('data-dcsel')] = sel.value;
+  dcRender();
+});
+document.getElementById('disc-body').addEventListener('click', function (e) {
+  var el = e.target.closest('[data-dcact]');
+  if (!el || e.target.closest('a[target]')) return;
+  var row = el.closest('[data-disc]'), id = row && row.getAttribute('data-disc');
+  var r = DC.rows.filter(function (x) { return x.id === id; })[0];
+  if (!r) return;
+  var what = el.getAttribute('data-dcact');
+  if (what === 'toggle') { if (DC.open[id]) delete DC.open[id]; else DC.open[id] = true; dcRender(); return; }
+  e.preventDefault();
+  if (what === 'open') { loadBrand(r.brandId); return; }
+  if (what === 'su') {
+    try { navigator.clipboard.writeText(r.name); } catch (err) {}
+    toast('“' + r.name + '” copied — paste it into SponsorUnited search');
+    window.open('https://app.sponsorunited.com/', '_blank');
+    return;
+  }
+  if (what === 'add' || what === 'dismiss') {
+    el.disabled = true;
+    api(what === 'add' ? 'addDiscoveredBrand' : 'dismissDiscovered', { id: id }).then(function (res) {
+      if (what === 'add') { r.status = 'added'; r.inSystem = true; r.brandId = res && res.brandId; r.contactCount = 0; toast(r.name + ' added to Brands'); }
+      else { DC.rows = DC.rows.filter(function (x) { return x.id !== id; }); }
+      delete DC.open[id];
+      dcRender();
+    }).catch(function (err) { el.disabled = false; toast(err.message); });
+  }
+});
 
 // --- results ---------------------------------------------------
 //
@@ -16629,6 +16788,7 @@ function gotoViewNow(id) {
   if (id === 'talks') loadTalks();
   if (id === 'results') loadResults();
   if (id === 'discover') loadDiscover();
+  if (id === 'clarify') loadClarify();
   if (id === 'materials') showView('materials');
   if (id === 'team') loadTeam();
 }
@@ -16691,6 +16851,12 @@ function gotoViewNow(id) {
     });
     loadLinkedin();
   }, 50);
+})();
+
+// Deep link: #clarify — Brands → Clarify.
+(function () {
+  if (!/^#clarify/.test(location.hash || '')) return;
+  setTimeout(function () { loadClarify(); }, 50);
 })();
 
 // Deep link: #stock — Brands → Stock take.

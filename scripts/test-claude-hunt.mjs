@@ -12,7 +12,7 @@ for (const f of readdirSync(out).filter(f => f.endsWith('.js'))) {
   const p = join(out, f)
   writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, "from '$1.js'"))
 }
-const { judgeHuntRow, knownKeys, HUNT_LANES, huntLabel } = await import(pathToFileURL(join(out, 'claude-hunt.js')).href)
+const { judgeHuntRow, knownKeys, HUNT_LANES, HUNT_SOURCES, huntLabel } = await import(pathToFileURL(join(out, 'claude-hunt.js')).href)
 
 let n = 0
 function t(name, fn) { fn(); n++; console.log('  ok — ' + name) }
@@ -21,6 +21,9 @@ const good = { name: 'Nova Fizz', category: 'energy', signals: ['genz', 'midsize
 
 t('priority lanes are the seven Leo named', () => {
   assert.deepEqual(HUNT_LANES.sort(), ['apparel', 'athletic', 'electrolytes', 'energy', 'nicotine', 'rtd', 'spirits'])
+})
+t('Leo\'s sites to search first', () => {
+  assert.deepEqual(HUNT_SOURCES, ['bevnet.com', 'brewbound.com', 'frontofficesports.com', 'cpglatest.com'])
 })
 t('a good row saves; no LinkedIn needed', () => {
   const v = judgeHuntRow(good, new Set())

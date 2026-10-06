@@ -69,8 +69,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   and Waiting into its own filter chip; a reply any time brings them back. Results → "DM'd, no answer"
   (`followUpsDue`) uses the same 10 days and the same final text, and drops anyone already sent the final.
   **Where every brand stands** (Leo: "view where we are at with our outreach and what status all the
-  brands are at so we dont forget to maintain comms"): the right side of Zach's list (`zs*` in app.html;
-  beside the list from 1360px wide, sticky; under it on narrower screens). Every brand with someone on
+  brands are at so we dont forget to maintain comms"): a full-width board at the top of Home, above
+  Zach's list (`zs*` in app.html; Leo, Oct 6: "more defined ... lines between the categories ... move it
+  higher up"): one bordered card per stage side by side (`.zs-board` grid, colour edge per stage, "N late"
+  in the card head), 5 rows a stage (3 on a phone) then "N more". Every brand with someone on
   the list + every call booked, grouped Accepted (first message due) / Messaged (final reach-out due) /
   Final sent / Replied-emailed / Call booked / No response; a row per brand per stage (a brand with people
   at two stages shows under both), its most urgent person leads, countdown "in 3d / today / 2d late";
@@ -251,12 +253,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   under any name or aka) that add through `addBrandsBulk`'s preview, filed under the lane.
   `LANE_GOAL = 15` in play per lane. `node scripts/test-stock.mjs`.
 - **Brands → All brands = the one roster table** (Leo, Oct 2026: "aggregate all the brands … make sure
-  we have sufficient contacts for each brand"; `brRender`, `BR_*` in app.html). One row per brand:
-  Category · Tier · **Buyers** · People · Email · LinkedIn · Last touch. **Buyers** = people on file
+  we have sufficient contacts for each brand"; `brRender`, `BR_*` in app.html). Kept lean (Leo, Oct 2026: "too
+  much going on"): search + one **More ▾** menu (Brand Fit, SponsorUnited worklist, Lanes & re-file,
+  Duplicates, Fill summaries — same ids `bq-*`), one **category dropdown** (`brCatSelect`, `data-brcat`;
+  the chip row is gone), filters on one line, archived hidden by default. One row per brand:
+  Category · Tier · Fit · **Buyers** (the edit row shows everyone else on file). **Buyers** = people on file
   whose title is partnerships/sponsorship, events/experiential, marketing/brand or founder/CEO
   (`src/lib/buyers.ts`, counted in `listBrands` → `buyers`, `buyerPeople`; `node scripts/test-buyers.mjs`);
   a brand is covered at **1** (`BR_TARGET`, Leo's call). Filters All / Needs people / Has enough,
-  Hide archived, sort (fewest buyers first by default), search by name or aka. A row opens in place:
+  Hide too small, Hide archived, sort (fewest buyers first by default), search by name or aka. A row opens in place:
   category, tier, website, LinkedIn page, aka, notes save on change (`updateBrand`); **Add a person**
   (`upsertContact`); the name opens the brand page. The tick bar (re-file, Put on a day) is unchanged.
   Stock take (lanes, ideas, re-file) and Needs contacts (SponsorUnited worklist) left the sub-tabs and
@@ -274,19 +279,28 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   worklist (`liRestsNow`, li-sweep.ts). Needs people splits by these reasons (`BR.why` chips); rows that
   need Leo say why under the name (`brCoverLine`). `buyerCoverage` adds people added this week by source,
   brands that got their first buyer this week, and the fill's last run (idle 36 h+ or an old script →
-  amber). The SponsorUnited "Filling to 25" card is folded to one line under it (`FP_OPEN`).
+  amber). The "People on file" card (`renderFillProgress` — brands with anyone on file, the SponsorUnited
+  sweep) is folded to one line under it (`FP_OPEN`).
   `node scripts/test-coverage-e2e.js` (real handlers, throwaway Postgres).
 - **Daily Claude brand hunt** (Leo, Oct 2026: "a process for Claude to find new brands … it shouldn't
-  necessarily be through LinkedIn"). Routine "Discover: daily brand hunt (web)" (5:52 New York, a fresh
-  session in the Claude Code cloud environment that holds `REPORT_TOKEN` — the old Cowork routine of the
-  same name had no token and is paused; subscription, no API spend) searches the open web (launch / funding news, sponsorship
+  necessarily be through LinkedIn"). Routine "Discover: daily brand hunt" (5:52 New York) wakes the cloud
+  session "Brand hunt (daily)" — repo attached, `REPORT_TOKEN` in its environment; a fresh empty session
+  gets its call blocked by the safety check, and the old Cowork routine had no token (both paused);
+  subscription, no API spend) searches the open web (launch / funding news, sponsorship
   announcements, retailer shelves, trend coverage) and posts to `/api/discover-ingest` (Bearer
   `REPORT_TOKEN`; the old body `token` = INGEST_TOKEN still accepted). `GET` = lanes, `leftToday`, every
-  known name (brands + aka + earlier finds; names only). Rules pure in `src/lib/claude-hunt.ts`
+  known name (brands + aka + earlier finds; names only) + `sources` = Leo's sites to search first
+  (`HUNT_SOURCES`: bevnet.com, brewbound.com, frontofficesports.com, cpglatest.com — add one there). Rules pure in `src/lib/claude-hunt.ts`
   (`node scripts/test-claude-hunt.mjs`): **priority lanes only**, a website or source link (LinkedIn
   page optional), at least one sign — `sponsors` college/music, `genz` 18–24, `midsize` growing —
   never a known brand, **50 a rolling day**. A failed save answers 500 with the database's reason. Rows land on Brands → Discover under "Claude hunt · <date>"
   (sign tags + Source ↗) for Leo to Add / Dismiss; it never makes a Brand itself.
+  **Brands → Discover** (Leo, Oct 2026: "more simple and clean"; `loadDiscover`/`dcRender`, `DC` in
+  app.html): one list — To review / Added tabs, a source dropdown (Claude hunt / LinkedIn / Research
+  list / Search, from `listDiscoveries`' `source`) and a category dropdown; one row per brand (name,
+  category · source, sign tags, the why on one line) with **Add** and **×**; a row opens for the pitch
+  and links (Source, Website, LinkedIn, SponsorUnited). The old "describe a niche" search box is gone
+  (it needed paid API calls). `node scripts/test-discover.js`.
 - **Brands → New from LinkedIn** (chip after All; `listBrands({ category: 'new' })`, count from
   `categoryReach.newFromLinkedIn`): brands the LinkedIn run added itself (`source` linkedin-discover /
   research) in the last 14 days that nobody has looked at. Tick → **Keep** (off the list, nothing
@@ -315,9 +329,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Property results dropped; `node scripts/test-capture.js` covers it. Proposals from script ≤4.1
   have no `v` and stay hidden (`PROPOSAL_VERSION`). Lookup calls must send `reader: 2`
   (`LOOKUP_READER`, script ≥4.4); older copies get a 426 "out of date — Check for userscript
-  updates". The SB menu shows the version (`SCRIPT_VERSION`, keep = `@version`). The review list (Brands → "Which SponsorUnited
-  page is theirs?") only shows brands with something to pick: a search with no results answers
-  `none` and parks nothing. **None of these** remembers the pages turned down per brand (Setting
+  updates". The SB menu shows the version (`SCRIPT_VERSION`, keep = `@version`). The review list (**Brands → Clarify**, its own tab,
+  deep link `#clarify`; "Which SponsorUnited page is theirs?") only shows brands with something to pick: a search
+  with no results answers `none` and parks nothing; only pages whose name could be the brand are kept or offered
+  (`resemblesBrand`, su-match.ts — at intake and in `suMatchQueue`), and a page saved on another brand is never
+  offered (Oct 2026: the lookup parked SponsorUnited's own tiles for every brand, and Use this put Halfday on Notion). **None of these** remembers the pages turned down per brand (Setting
   `suRejected`, `candidatesToOffer`) so a later lookup can't offer them again;
   `node scripts/test-su-match.mjs`.
 - `scripts/linkedin-capture.user.js` — **LinkedIn People capture** (second Tampermonkey script, same
