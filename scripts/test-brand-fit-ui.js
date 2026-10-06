@@ -155,31 +155,32 @@ async function main() {
   await page.waitForFunction(() => typeof window.loadBrand === 'function');
 
   try {
-    // 1. Brands.
+    // 1. Brands (the roster table).
     await page.evaluate(() => gotoView('brands'));
-    await page.waitForSelector('#brands-list [data-brand="b_high"]');
+    await page.waitForSelector('#brands-list tr[data-brow="b_high"]');
     assert.equal(last('listBrands').args.fit, true);
-    let order = await page.$$eval('#brands-list [data-brand]', (els) => els.filter((e) => e.style.display !== 'none').map((e) => e.getAttribute('data-brand')));
-    assert.deepEqual(order, ['b_high', 'b_low', 'b_tinysent'], 'best fit first; the uncontacted tiny brand hidden');
-    assert.match(await page.textContent('#brands-sub'), /1 too small hidden/);
-    assert.match(await page.textContent('#brands-list [data-brand="b_high"]'), /Fit 88/);
-    assert.match(await page.textContent('#brands-list [data-brand="b_tinysent"]'), /too small/);
-    await page.click('#bq-showsmall');
-    await page.waitForSelector('#brands-list [data-brand="b_tiny"]');
-    assert.equal(await page.isChecked('#bq-small'), false, 'the switch went off');
+    const rowsNow = () => page.$$eval('#brands-list tr[data-brow]', (els) => els.map((e) => e.getAttribute('data-brow')));
+    assert.ok(!(await rowsNow()).includes('b_tiny'), 'the uncontacted tiny brand is hidden');
+    assert.ok((await rowsNow()).includes('b_tinysent'), 'a contacted tiny brand still shows');
+    assert.match(await page.textContent('#brands-list'), /1 brand too small hidden/);
+    assert.match(await page.textContent('#brands-list tr[data-brow="b_high"]'), /Fit 88/);
+    assert.match(await page.textContent('#brands-list tr[data-brow="b_tinysent"]'), /too small/);
+    await page.selectOption('#brands-list [data-brsort]', 'fit');
+    await page.waitForFunction(() => document.querySelector('#brands-list tr[data-brow]').getAttribute('data-brow') === 'b_high');
+    assert.deepEqual(await rowsNow(), ['b_high', 'b_low', 'b_tinysent'], 'best fit first');
+    await page.click('#brands-list [data-brshowsmall]');
+    await page.waitForSelector('#brands-list tr[data-brow="b_tiny"]');
+    assert.equal(await page.isChecked('#brands-list [data-hidesmall="brands"]'), false, 'the switch went off');
     assert.equal(await page.evaluate(() => localStorage.getItem('sb.hideSmall')), '0', 'remembered');
-    await page.check('#bq-small');
-    await page.waitForFunction(() => document.querySelector('#brands-list [data-brand="b_tiny"]').style.display === 'none');
+    await page.check('#brands-list [data-hidesmall="brands"]');
+    await page.waitForFunction(() => !document.querySelector('#brands-list tr[data-brow="b_tiny"]'));
     // A search still finds a brand the switch hides — and doesn't offer to add it again.
     await page.fill('#bq', 'Tiny Hidden Co');
-    await page.waitForFunction(() => document.querySelector('#brands-list [data-brand="b_tiny"]').style.display === '');
+    await page.waitForSelector('#brands-list tr[data-brow="b_tiny"]');
     assert.equal(await page.isHidden('#bq-add'), true);
     await page.fill('#bq', '');
-    await page.waitForFunction(() => document.querySelector('#brands-list [data-brand="b_tiny"]').style.display === 'none');
-    await page.selectOption('#bq-sort', '');
-    await page.waitForFunction(() => document.querySelector('#brands-list [data-brand]').getAttribute('data-brand') === 'b_low');
-    await page.selectOption('#bq-sort', 'fit');
-    ok('Brands: best fit first, too small hidden unless contacted, "show them" and the switch, order picker');
+    await page.waitForFunction(() => !document.querySelector('#brands-list tr[data-brow="b_tiny"]'));
+    ok('Brands table: Fit column, best fit first, too small hidden unless contacted, "show them", the switch, search');
 
     // 2. Brand page.
     await page.evaluate(() => loadBrand('b_high'));

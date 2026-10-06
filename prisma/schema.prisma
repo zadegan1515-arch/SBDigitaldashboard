@@ -256,9 +256,11 @@ model Target {
   handLiPathAt     DateTime?
   handLiSentAt     DateTime?
   handDm           String?
-  // The LinkedIn follow-up (Draft.nudge) went out after the DM got no
-  // answer.
-  nudgedAt DateTime?
+  // The final reach-out on LinkedIn went out (10 days after the first
+  // message, no answer). handFinal is this person's own edit of the
+  // final reach-out template; null = follow the template.
+  nudgedAt  DateTime?
+  handFinal String?
   // A call booked from Zach's list: when it is, and when it was booked.
   // Booking also sets followUpAt, so the call shows in "Needs action
   // today" on the day.
@@ -670,6 +672,10 @@ model DiscoveredBrand {
   activation  String?
   website     String?
   linkedinUrl String?
+  // The daily Claude hunt (src/lib/claude-hunt.ts): where it found the
+  // brand, and which of Leo's signs it has ("sponsors,genz,midsize").
+  sourceUrl   String?
+  signals     String?
 
   // "new" | "added" (promoted to Brand, or already existed) | "dismissed"
   status  String  @default("new")

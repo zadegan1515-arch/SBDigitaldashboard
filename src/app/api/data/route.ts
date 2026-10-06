@@ -52,6 +52,7 @@ import { rollWindow, findUnsent, planCarry, type Unsent, type CarryFacts } from 
 import { workNeed, dueDays } from '@/lib/planned-first'
 import { scoreBrand, dollarsToCents, normUs, normBiz, cleanResearchRow, shortMoney, type FitResult, type ResearchRow } from '@/lib/brand-fit'
 import { buildStock, bestDealStage, refileMoves, remapPlanDays, brandKey } from '@/lib/stock'
+import { buyerKind, isBuyerTitle, countBuyers } from '@/lib/buyers'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
@@ -2312,13 +2313,38 @@ const HAND_FIRST_TEMPLATE_DEFAULT = {
     'I have also attached our deck for you to check out in the meantime. Thanks!',
 }
 
-type HandTemplateKind = 'email' | 'dm' | 'first'
+// The final reach-out ("Send the final reach-out"): LinkedIn, 10 days
+// after the first message when they haven't answered. Body only. A
+// stand-in until Leo saves his; a card someone edited keeps its own
+// (Target.handFinal).
+const HAND_FINAL_TEMPLATE_KEY = 'handFinalTemplate'
+const HAND_FINAL_TEMPLATE_STANDIN = {
+  subject: '',
+  body: 'Hi (NAME), one last note from me so I don’t clutter your inbox. If a college activation for (BRAND) is ever on the table, ' +
+    'I’d love to show you what we’re putting together this season. Happy to send the deck whenever it’s useful. Thanks!',
+}
+
+type HandTemplateKind = 'email' | 'dm' | 'first' | 'final'
 function handTemplateKind(kind: any): HandTemplateKind {
-  return kind === 'dm' || kind === 'first' ? kind : 'email'
+  return kind === 'dm' || kind === 'first' || kind === 'final' ? kind : 'email'
+}
+function handTemplateKey(kind: HandTemplateKind) {
+  return kind === 'dm' ? HAND_DM_TEMPLATE_KEY : kind === 'first' ? HAND_FIRST_TEMPLATE_KEY
+    : kind === 'final' ? HAND_FINAL_TEMPLATE_KEY : HAND_TEMPLATE_KEY
+}
+
+// (NAME) or (FIRST NAME) -> first name, (BRAND) or (COMPANY) -> brand,
+// (TITLE) -> job title. Same as handFill in app.html.
+function handFillText(text: string, p: { name: string; brandName: string; title: string | null }) {
+  const first = String(p.name || '').trim().split(/\s+/)[0] || 'there'
+  return String(text || '')
+    .replace(/\((?:first\s*)?name\)/gi, first)
+    .replace(/\((?:brand|company)\)/gi, p.brandName || '')
+    .replace(/\(title\)/gi, p.title || '')
 }
 
 async function readHandTemplate(kind: HandTemplateKind = 'email') {
-  const key = kind === 'dm' ? HAND_DM_TEMPLATE_KEY : kind === 'first' ? HAND_FIRST_TEMPLATE_KEY : HAND_TEMPLATE_KEY
+  const key = handTemplateKey(kind)
   if (kind === 'first') {
     const row = await prisma.setting.findUnique({ where: { key } })
     try {
@@ -2329,7 +2355,7 @@ async function readHandTemplate(kind: HandTemplateKind = 'email') {
     } catch { /* fall through to Leo's default */ }
     return { ...HAND_FIRST_TEMPLATE_DEFAULT, standIn: false, savedAt: null, savedBy: null }
   }
-  const standIn = kind === 'dm' ? HAND_DM_TEMPLATE_STANDIN : HAND_TEMPLATE_STANDIN
+  const standIn = kind === 'dm' ? HAND_DM_TEMPLATE_STANDIN : kind === 'final' ? HAND_FINAL_TEMPLATE_STANDIN : HAND_TEMPLATE_STANDIN
   const row = await prisma.setting.findUnique({ where: { key } })
   if (row) {
     try {
@@ -2354,8 +2380,15 @@ const HAND_WAITING: Prisma.TargetWhereInput = {
   handSkippedAt: null,
   callAt: null,
 }
-// A DM with no answer this long turns into "Send the follow-up".
-const HAND_NUDGE_DAYS = 4
+// The cadence after an accept (Leo, Oct 5 2026): the first LinkedIn
+// message is due 2 days after the accept; no answer 10 days after that
+// message, the final reach-out is due; 7 quiet days after the final they
+// count as "No response" (off the to-do, into that group; nothing is
+// written, so a reply any time brings them back). The page works the
+// stage out (ztStage) from these, sent with zachTodo.
+const HAND_DM_DAYS = 2
+const HAND_NUDGE_DAYS = 10
+const HAND_QUIET_DAYS = 7
 
 // An archived brand, or one marked do-not-email (the flag, or "skip" in
 // its notes — the email machine's rule), stays off Zach's list. The list
@@ -3132,10 +3165,11 @@ const handlers: Record<string, Handler> = {
         _count: { select: { contacts: true, targets: true, deals: true, activations: true } },
         // Decision-makers first, but never pretend a brand with contacts
         // has none — that read as "No contacts yet" next to "5 contacts".
+        // Everyone on file (≤ 25 a brand): the table counts the buyers
+        // (src/lib/buyers.ts) and who has an email / a LinkedIn link.
         contacts: {
-          orderBy: { isDecisionMaker: 'desc' },
-          select: { name: true, title: true, linkedinUrl: true },
-          take: 3,
+          orderBy: [{ isDecisionMaker: 'desc' }, { name: 'asc' }],
+          select: { id: true, name: true, title: true, email: true, linkedinUrl: true },
         },
         // Outreach state for the card: invited / replied and when, and
         // emailed (by hand or by the machine) — "contacted" either way.
@@ -3146,7 +3180,7 @@ const handlers: Record<string, Handler> = {
           },
         },
       },
-      take,
+      take: Math.min(Math.max(Number(take) || 500, 1), 5000),
     })
 
     // Brands with contacts first — those are the actionable ones.
@@ -3162,22 +3196,9 @@ const handlers: Record<string, Handler> = {
       if (at !== bt) return at - bt
       return a.name.localeCompare(b.name)
     })
-    // Brand Fit needs the reachable count (the include keeps only three
-    // people) and the category accept rates.
-    let reach: Map<string, number> | null = null
-    let rates: AcceptRates | null = null
-    if (fit && sorted.length) {
-      const [rows, r] = await Promise.all([
-        prisma.contact.groupBy({
-          by: ['brandId'],
-          where: { brandId: { in: sorted.map(b => b.id) }, OR: [{ email: { not: null } }, { linkedinUrl: { not: null } }] },
-          _count: { _all: true },
-        }),
-        recentAcceptRates(),
-      ])
-      reach = new Map(rows.map(r => [r.brandId, r._count._all]))
-      rates = r
-    }
+    // Brand Fit needs the category accept rates (reachable people come
+    // from the contacts already loaded).
+    const rates: AcceptRates | null = fit && sorted.length ? await recentAcceptRates() : null
     const now = new Date()
     // Flatten each brand's targets into the card's outreach summary —
     // invited / replied and the dates, so the list answers "where does
@@ -3187,11 +3208,21 @@ const handlers: Record<string, Handler> = {
       const sent = ts.filter(wasInvited)
       const replied = ts.filter(t => t.repliedAt)
       const last = (xs: Date[]) => xs.length ? new Date(Math.max(...xs.map(d => d.getTime()))) : null
-      const { targets, ...rest } = b
-      const f = reach ? brandFit(b, reach.get(b.id) ?? 0, rates, now) : null
+      const { targets, contacts, ...rest } = b
+      const buyers = contacts.filter(c => isBuyerTitle(c.title))
+      const f = rates ? brandFit(b, contacts.filter(isReachable).length, rates, now) : null
       const emailed = ts.filter(t => t.emailedAt || t._count.emails > 0).length
       return {
         ...rest,
+        // First three for the old card shape (searches, pickers).
+        contacts: contacts.slice(0, 3).map(c => ({ name: c.name, title: c.title, linkedinUrl: c.linkedinUrl })),
+        buyers: countBuyers(contacts.map(c => c.title)),
+        buyerPeople: buyers.slice(0, 12).map(c => ({
+          id: c.id, name: c.name, title: c.title, kind: buyerKind(c.title),
+          email: !!c.email, linkedin: !!c.linkedinUrl,
+        })),
+        withEmail: contacts.filter(c => !!c.email).length,
+        withLinkedin: contacts.filter(c => !!c.linkedinUrl).length,
         ...(f ? {
           fit: fitBrief(f),
           // What "Hide too small" may hide: the same as Stock take — too
@@ -7082,10 +7113,11 @@ const handlers: Record<string, Handler> = {
   // HAND_DONE_DAYS, and whatever brand rule held back.
   async zachTodo() {
     const since = new Date(Date.now() - HAND_DONE_DAYS * 24 * 60 * 60 * 1000)
-    const [template, dmTemplate, firstTemplate, rows, doneRows] = await Promise.all([
+    const [template, dmTemplate, firstTemplate, finalTemplate, rows, doneRows] = await Promise.all([
       readHandTemplate(),
       readHandTemplate('dm'),
       readHandTemplate('first'),
+      readHandTemplate('final'),
       prisma.target.findMany({
         where: HAND_WAITING,
         include: {
@@ -7099,8 +7131,8 @@ const handlers: Record<string, Handler> = {
             select: { direction: true, sentAt: true, createdAt: true, subject: true },
           },
           events: { where: { toStatus: 'accepted' }, orderBy: { createdAt: 'asc' }, take: 1, select: { createdAt: true } },
-          // The LinkedIn DM and follow-up the queue already wrote for them.
-          drafts: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, variant: true, firstMessage: true, nudge: true, editedByHuman: true } },
+          // The first LinkedIn message the queue already wrote for them.
+          drafts: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, variant: true, firstMessage: true, editedByHuman: true } },
         },
         orderBy: [{ sentAt: 'asc' }, { createdAt: 'asc' }],
         take: 1000,
@@ -7145,10 +7177,7 @@ const handlers: Record<string, Handler> = {
       }
       const auto = t.emails.find(e => e.direction === 'out')
       const inbound = t.emails.find(e => e.direction === 'in')
-      // No draft on file (added by hand, say): the same template the
-      // queue uses, unsaved, so there's still something to copy.
       const dr = t.drafts[0] ?? null
-      const fallback = dr ? null : templateLinkedInDraft({ brand: t.brand, contact: t.contact }, 'man')
       // The first message follows Leo's template unless someone really
       // rewrote it on the card (the queue's autosave marks untouched
       // drafts edited too, so an unchanged queue text doesn't count).
@@ -7181,7 +7210,8 @@ const handlers: Record<string, Handler> = {
         draftId: dr?.id ?? null,
         dmOwn,
         dm: dmOwn ? dr!.firstMessage : null,
-        nudge: dr?.nudge ?? fallback?.nudge ?? '',
+        // Their own final reach-out; null = Leo's template.
+        final: t.handFinal,
       })
     }
 
@@ -7203,13 +7233,16 @@ const handlers: Record<string, Handler> = {
       template,
       dmTemplate,
       firstTemplate,
+      finalTemplate,
       brands,
       people,
       noAddress: brands.reduce((n, g) => n + g.people.filter((p: any) => !p.email).length, 0),
       held: [...held.values()],
       done: done.slice(0, 60),
       doneDays: HAND_DONE_DAYS,
+      dmAfterDays: HAND_DM_DAYS,
       nudgeAfterDays: HAND_NUDGE_DAYS,
+      quietAfterDays: HAND_QUIET_DAYS,
       calls: calls.map(c => ({ targetId: c.id, brandId: c.brand.id, brandName: c.brand.name, name: c.contact.name, title: c.contact.title, callAt: c.callAt })),
     }
   },
@@ -7217,7 +7250,7 @@ const handlers: Record<string, Handler> = {
   // One tick on Zach's list, or its Undo (on: false). Either of Zach or
   // Leo can tick; the brand page's Activity says who.
   //   dm         texted back on LinkedIn       (dmSentAt)
-  //   nudge      sent the LinkedIn follow-up   (nudgedAt)
+  //   nudge      sent the final reach-out      (nudgedAt)
   //   replied    they answered on LinkedIn     (status, via setTargetStatus)
   //   wantsEmail Email path picked             (handWantsEmailAt; implies replied)
   //   liPath     LinkedIn DM path picked       (handLiPathAt; implies replied)
@@ -7251,7 +7284,7 @@ const handlers: Record<string, Handler> = {
       case 'dm': data = { dmSentAt: on ? now : null }; label = 'texted back on LinkedIn'; break
       case 'liPath': data = { handLiPathAt: on ? now : null }; label = 'talking on LinkedIn'; break
       case 'liSent': data = { handLiSentAt: on ? now : null }; label = 'replied on LinkedIn'; break
-      case 'nudge': data = { nudgedAt: on ? now : null }; label = 'sent the LinkedIn follow-up'; break
+      case 'nudge': data = { nudgedAt: on ? now : null }; label = 'sent the final reach-out on LinkedIn'; break
       case 'wantsEmail': data = { handWantsEmailAt: on ? now : null }; label = 'wants an email'; break
       case 'emailed': data = { emailedAt: on ? now : null }; label = 'emailed'; break
       case 'skip': data = { handSkippedAt: on ? now : null }; label = 'no follow-up needed'; break
@@ -7291,7 +7324,7 @@ const handlers: Record<string, Handler> = {
       savedAt: new Date().toISOString(),
       savedBy: __user ?? null,
     })
-    const key = k === 'dm' ? HAND_DM_TEMPLATE_KEY : k === 'first' ? HAND_FIRST_TEMPLATE_KEY : HAND_TEMPLATE_KEY
+    const key = handTemplateKey(k)
     await prisma.setting.upsert({ where: { key }, create: { key, value }, update: { value } })
     return readHandTemplate(k)
   },
@@ -7299,7 +7332,7 @@ const handlers: Record<string, Handler> = {
   // One card's own version of the email, and the note for Zach. Every
   // field is optional: a subject-only edit leaves the body following the
   // template, and null hands one field back to it. reset hands back both.
-  async saveHandEmail({ targetId, subject, body, note, dm, reset }: any) {
+  async saveHandEmail({ targetId, subject, body, note, dm, final, reset }: any) {
     if (!targetId) throw new Error('Missing person')
     const data: Prisma.TargetUpdateInput = {}
     if (reset) { data.handSubject = null; data.handBody = null }
@@ -7310,6 +7343,8 @@ const handlers: Record<string, Handler> = {
     if (note !== undefined) data.handNote = String(note ?? '').trim().slice(0, 2000) || null
     if (dm === null) data.handDm = null
     else if (typeof dm === 'string') data.handDm = dm.slice(0, 3000)
+    if (final === null) data.handFinal = null
+    else if (typeof final === 'string') data.handFinal = final.slice(0, 3000)
     return prisma.target.update({
       where: { id: targetId },
       data,
@@ -7618,26 +7653,39 @@ const handlers: Record<string, Handler> = {
   //
   // Read-only: this only surfaces rows. Every action on them already
   // exists on the brand card and the Results list.
-  async followUpsDue({ nudgeAfterDays = 7, staleAfterDays = 14 }: any = {}) {
+  async followUpsDue({ nudgeAfterDays = HAND_NUDGE_DAYS, staleAfterDays = 14 }: any = {}) {
     const now = Date.now()
-    const nudgeBefore = new Date(now - nudgeAfterDays * 864e5)
+    // Whole New York days, like Zach's list: a DM sent any time on Sep 25
+    // has its final reach-out due all of Oct 5.
+    const nudgeBefore = dayStartOf(addDaysKey(localDayKey(), -(Number(nudgeAfterDays) - 1)))
     const staleBefore = new Date(now - staleAfterDays * 864e5)
     const days = (d: Date) => Math.floor((now - d.getTime()) / 864e5)
 
-    const [nudge, stale] = await Promise.all([
-      // DM'd and no answer. The nudge is already written on the draft.
+    const [finalTemplate, nudge, stale] = await Promise.all([
+      readHandTemplate('final'),
+      // DM'd and no answer, final reach-out not sent yet: the same people
+      // Zach's list has on "Send the final reach-out", with the same text.
       prisma.target.findMany({
         where: {
+          // Not answered by any road Zach's list counts (ztReplied): an
+          // email Zach sent puts them on "set up the call", not here.
           status: 'accepted',
-          dmSentAt: { not: null, lte: nudgeBefore },
+          dmSentAt: { not: null, lt: nudgeBefore },
           repliedAt: null,
+          emailedAt: null,
+          handWantsEmailAt: null,
+          handLiPathAt: null,
+          handLiSentAt: null,
+          emails: { none: { direction: 'in' } },
+          nudgedAt: null,
+          handSkippedAt: null,
+          callAt: null,
         },
         orderBy: { dmSentAt: 'asc' },
         take: 60,
         include: {
           brand: { select: { id: true, name: true } },
           contact: { select: { name: true, title: true, linkedinUrl: true } },
-          drafts: { orderBy: { createdAt: 'desc' }, take: 1 },
         },
       }),
       // Invited and never accepted.
@@ -7659,7 +7707,7 @@ const handlers: Record<string, Handler> = {
         contactName: t.contact.name, title: t.contact.title,
         linkedinUrl: t.contact.linkedinUrl,
         dmSentAt: t.dmSentAt, days: days(t.dmSentAt!),
-        nudge: t.drafts[0]?.nudge ?? null,
+        nudge: t.handFinal ?? handFillText(finalTemplate.body, { name: t.contact.name, brandName: t.brand.name, title: t.contact.title }),
       })),
       stale: stale.map(t => ({
         id: t.id, brandId: t.brand.id, brandName: t.brand.name,
@@ -9419,7 +9467,8 @@ const handlers: Record<string, Handler> = {
           name: d.name, category, tier,
           website: d.website ?? null, linkedinUrl: d.linkedinUrl ?? null,
           source: 'discover',
-          notes: [d.reason ? `Discover: ${d.reason}` : '', (d as any).activation ? `Activation idea: ${(d as any).activation}` : ''].filter(Boolean).join('\n') || null,
+          notes: [d.reason ? `Discover: ${d.reason}` : '', (d as any).activation ? `Activation idea: ${(d as any).activation}` : '',
+            d.sourceUrl ? `Found in: ${d.sourceUrl}` : ''].filter(Boolean).join('\n') || null,
         },
       })
     }
@@ -9435,7 +9484,9 @@ const handlers: Record<string, Handler> = {
     if (!q) throw new Error('query required')
     let saved = 0, skipped = 0
     for (const r of rows.slice(0, 40)) {
-      if (!r?.name || !/linkedin\.com\/company\//i.test(String(r.linkedinUrl ?? ''))) { skipped++; continue }
+      // Proof it's real: a LinkedIn company page or its own website.
+      const hasLi = /linkedin\.com\/company\//i.test(String(r?.linkedinUrl ?? ''))
+      if (!r?.name || (!hasLi && !/^https?:\/\/\S+\.\S+/i.test(String(r.website ?? '')))) { skipped++; continue }
       const name = String(r.name).trim().slice(0, 120)
       const existing = await prisma.brand.findFirst({
         where: { name: { equals: name, mode: 'insensitive' } }, select: { id: true },
@@ -9448,7 +9499,7 @@ const handlers: Record<string, Handler> = {
           reason: r.reason ? String(r.reason).slice(0, 300) : null,
           activation: r.activation ? String(r.activation).slice(0, 300) : null,
           website: r.website ? String(r.website).slice(0, 300) : null,
-          linkedinUrl: String(r.linkedinUrl).slice(0, 300),
+          linkedinUrl: hasLi ? String(r.linkedinUrl).slice(0, 300) : null,
           ...(existing ? { status: 'added', brandId: existing.id } : {}),
         },
         update: {

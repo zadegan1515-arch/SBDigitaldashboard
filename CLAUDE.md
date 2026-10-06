@@ -31,7 +31,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 
 ## Where things live
 - `public/app.html` — the whole UI. Top nav is six groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
-  `showView`): Home · Brands (All brands / Stock take / Discover / Needs contacts) · Outreach (LinkedIn / Results /
+  `showView`): Home · Brands (All brands / Discover — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
   Schedule / Email / People / Archived / Email stats) ·
   **Show Board** (Overview = code lookup + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
@@ -58,10 +58,24 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   the higher up it should be" — `ztCompare`: text back → follow-up → reply to answer → email/DM to
   send → call; longest-waiting first within a step; a brand sits where its earliest person sits and
   keeps its people together); one row open at a time shows the flow
-  **Accepted → Text them on LinkedIn (1–4 days after the accept, late after day 4 — `ztDmWindow`; follow-up after 4 quiet days) →
-  Replied → They want email → Email to send → Email sent, and/or They want LinkedIn → DM to send →
-  DM sent (either or both; picking one logs the reply) →
+  **Accepted → Text them on LinkedIn (due 2 days after the accept, calendar days; waits until then as
+  "Text them <day>", late after) → no answer 10 days after that message: Send the final reach-out → still
+  quiet 7 days after the final: No response → Replied → They want email → Email to send → Email sent,
+  and/or They want LinkedIn → DM to send → DM sent (either or both; picking one logs the reply) →
   Call scheduled** (day picked; sets followUpAt so it shows in Needs action on the day; the end).
+  **Cadence** (Leo, Oct 5 2026): `HAND_DM_DAYS = 2`, `HAND_NUDGE_DAYS = 10`, `HAND_QUIET_DAYS = 7` in
+  route.ts, sent with zachTodo (`ZT_DAYS` on the page: `ztMsgDue` / `ztFinalDue` / `ztQuietDay`,
+  `ztDaysTo`). **No response** is worked out on the page (stage `noreply`, nothing written): off To do
+  and Waiting into its own filter chip; a reply any time brings them back. Results → "DM'd, no answer"
+  (`followUpsDue`) uses the same 10 days and the same final text, and drops anyone already sent the final.
+  **Where every brand stands** (Leo: "view where we are at with our outreach and what status all the
+  brands are at so we dont forget to maintain comms"): the right side of Zach's list (`zs*` in app.html;
+  beside the list from 1360px wide, sticky; under it on narrower screens). Every brand with someone on
+  the list + every call booked, grouped Accepted (first message due) / Messaged (final reach-out due) /
+  Final sent / Replied-emailed / Call booked / No response; a row per brand per stage (a brand with people
+  at two stages shows under both), its most urgent person leads, countdown "in 3d / today / 2d late";
+  "N late · N due today · N brands" on top. A click opens that person on the left under their filter
+  (`zsOpen`); a call opens the brand page. Read-only. `node scripts/test-zach-status.js`.
   "← Back a step" on an open card undoes the latest tick (`ztLastStep`). The stage is computed on
   the page (`ztStage`); every tick/undo is `handStep` (dm, nudge, replied,
   wantsEmail, liPath, liSent, emailed, call, skip). Fields: `dmSentAt`, `nudgedAt`,
@@ -72,8 +86,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   The first LinkedIn message ("Text them on LinkedIn") follows a third template, Setting
   `handFirstDmTemplate` (Leo's pasted text is the default; "Edit template" on the card or the modal's
   First LinkedIn message tab); a card keeps its own text only when someone really rewrote it (draft
-  `firstMessage` edited and ≠ the queue's stock text; Reset to template clears it). The follow-up is
-  the queue's draft (`saveDraft`). Leo's note is
+  `firstMessage` edited and ≠ the queue's stock text; Reset to template clears it). The **final
+  reach-out** follows a fourth, Setting `handFinalTemplate` (stand-in until Leo saves his; the modal's
+  Final reach-out tab); a card's edit is `Target.handFinal` (null = the template; `saveHandEmail`
+  `final`), no longer the queue draft's nudge. Leo's note is
   `Target.handNote`; To writes `Contact.email` (old address kept in the contact's notes).
   Open in Gmail (compose URL, `authuser` = signed-in email) / Copy: **nothing sends from the site**,
   so the cap isn't involved. Done fold (30 days) and Calls booked, each with Undo. No CC (Leo's call); one-pager is a download button. The email
@@ -85,7 +101,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   /api/data and /api/ingest). **Invite sent** = sentAt now (counts in the day's 30, the weekly limit,
   accept rates; They accepted later). **They accepted** = status accepted with **no sentAt** (Leo's call:
   only accepts get logged this way, so they stay out of the weekly limit, coverage and accept rates);
-  its TargetEvent is Zach's list's acceptedAt ("Text them" due 24h after the log). Because of that,
+  its TargetEvent is Zach's list's acceptedAt ("Text them" due 2 days after the log, `HAND_DM_DAYS`). Because of that,
   "was this brand/person contacted" must use `wasInvited` / `INVITED_WHERE` in route.ts (sentAt OR status
   sent/accepted/replied/converted), **never sentAt alone**. A log never moves anyone backwards; the person
   is found by profile link anywhere or by name at the brand (no second copy; on file at another brand →
@@ -179,9 +195,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   sales under $1M, or (sales not known) under 20 people on LinkedIn **measured** — a size guessed from tier
   never hides, and a brand with a parent company (`parentOf`) is never small by its own page. **Hide too small**
   is one per-browser switch (`HIDE_SMALL`, localStorage `sb.hideSmall`, on by default) on Brands, Stock
-  take, the Fill box and Plan my week (the Brands list draws `listBrands({ fit: true })` rows and hides
-  those the server flags `hideSmall` — too small and untouched, the same rule as Stock take; a search
-  still finds them; New from LinkedIn never hides; `brandStock`, `suggestForDay`, `planWeek` take `hideSmall`); it
+  take, the Fill box and Plan my week (the Brands roster table asks `listBrands({ fit: true })`, has a
+  Fit column and a "Best fit first" sort, and hides rows the server flags `hideSmall` — too small and
+  untouched, the same rule as Stock take; a search still finds them; New from LinkedIn never hides; `brandStock`, `suggestForDay`, `planWeek` take `hideSmall`); it
   only hides brands nobody has contacted (invited, emailed or replied). `compareOpenBrands` puts the
   higher fit first after the contacts label (replaced "small brands first"). Facts live on Brand
   (`salesCents`/`fundingCents` **BigInt** cents — `src/lib/bigint-json.ts` makes them JSON numbers and is
@@ -234,6 +250,28 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   reached > has people > needs contacts. Priority lanes carry ideas (known names not on the roster
   under any name or aka) that add through `addBrandsBulk`'s preview, filed under the lane.
   `LANE_GOAL = 15` in play per lane. `node scripts/test-stock.mjs`.
+- **Brands → All brands = the one roster table** (Leo, Oct 2026: "aggregate all the brands … make sure
+  we have sufficient contacts for each brand"; `brRender`, `BR_*` in app.html). One row per brand:
+  Category · Tier · **Buyers** · People · Email · LinkedIn · Last touch. **Buyers** = people on file
+  whose title is partnerships/sponsorship, events/experiential, marketing/brand or founder/CEO
+  (`src/lib/buyers.ts`, counted in `listBrands` → `buyers`, `buyerPeople`; `node scripts/test-buyers.mjs`);
+  a brand is covered at **1** (`BR_TARGET`, Leo's call). Filters All / Needs people / Has enough,
+  Hide archived, sort (fewest buyers first by default), search by name or aka. A row opens in place:
+  category, tier, website, LinkedIn page, aka, notes save on change (`updateBrand`); **Add a person**
+  (`upsertContact`); the name opens the brand page. The tick bar (re-file, Put on a day) is unchanged.
+  Stock take (lanes, ideas, re-file) and Needs contacts (SponsorUnited worklist) left the sub-tabs and
+  are header buttons; their views and deep links still work. `node scripts/test-brands-table.js`.
+- **Daily Claude brand hunt** (Leo, Oct 2026: "a process for Claude to find new brands … it shouldn't
+  necessarily be through LinkedIn"). Routine "Discover: daily brand hunt (web)" (5:52 New York, a fresh
+  session in the Claude Code cloud environment that holds `REPORT_TOKEN` — the old Cowork routine of the
+  same name had no token and is paused; subscription, no API spend) searches the open web (launch / funding news, sponsorship
+  announcements, retailer shelves, trend coverage) and posts to `/api/discover-ingest` (Bearer
+  `REPORT_TOKEN`; the old body `token` = INGEST_TOKEN still accepted). `GET` = lanes, `leftToday`, every
+  known name (brands + aka + earlier finds; names only). Rules pure in `src/lib/claude-hunt.ts`
+  (`node scripts/test-claude-hunt.mjs`): **priority lanes only**, a website or source link (LinkedIn
+  page optional), at least one sign — `sponsors` college/music, `genz` 18–24, `midsize` growing —
+  never a known brand, **50 a rolling day**. A failed save answers 500 with the database's reason. Rows land on Brands → Discover under "Claude hunt · <date>"
+  (sign tags + Source ↗) for Leo to Add / Dismiss; it never makes a Brand itself.
 - **Brands → New from LinkedIn** (chip after All; `listBrands({ category: 'new' })`, count from
   `categoryReach.newFromLinkedIn`): brands the LinkedIn run added itself (`source` linkedin-discover /
   research) in the last 14 days that nobody has looked at. Tick → **Keep** (off the list, nothing
@@ -515,8 +553,9 @@ AMBASSADOR_PLATFORM_URL · AMBASSADOR_PLATFORM_TOKEN (= platform INTEGRATION_TOK
 optional: SIGNATURE_LINKEDIN_URL, SIGNATURE_INSTAGRAM_URL, SIGNATURE_EMBED=1, SIGNATURE_ICONS=1, OPS_BACKFILL_DAYS,
 SPONSOR_HOST (brand page host), SPONSOR_REQUEST_TO (who gets sponsor requests), SPONSOR_GATE=1
 (turn the Show Board access-code gate on), SPONSOR_MASTER_CODE (team code that always opens the
-board), CRM_SHEET_ID, REPORT_TOKEN (read-only LinkedIn run reports for Claude's morning check; 24+
-characters, the same value in the Claude cloud environment's settings).
+board), CRM_SHEET_ID, REPORT_TOKEN (Claude's cloud token: reads the LinkedIn run reports, and may add
+Discover review rows for the daily brand hunt — never brands; 24+ characters, the same value in the Claude
+cloud environment's settings).
 
 ## Conventions
 - **Outreach runs Tuesday / Wednesday / Thursday only** — no Mondays, no Fridays, no weekends —
