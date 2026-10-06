@@ -153,6 +153,15 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual(echo.people.map(p => p.name).sort(), ['Mo Market', 'Pat Partner'])
     ok('today\'s send list: flags store staff, offers a partnerships person, swap works')
 
+    // 7. Adding from Discover no longer files a brand as "established".
+    const dm = await prisma.discoveredBrand.create({ data: { query: 'Claude hunt · x', name: 'Mid Fizz', category: 'energy', signals: 'genz,midsize' } })
+    const dn = await prisma.discoveredBrand.create({ data: { query: 'Claude hunt · x', name: 'Plain Fizz', category: 'energy', signals: 'genz' } })
+    const am = await data('addDiscoveredBrand', { id: dm.id })
+    const an = await data('addDiscoveredBrand', { id: dn.id })
+    assert.equal((await prisma.brand.findUnique({ where: { id: am.brandId } })).tier, 'growth')
+    assert.equal((await prisma.brand.findUnique({ where: { id: an.brandId } })).tier, null)
+    ok('Discover adds: midsize → growth, otherwise no tier (never "established")')
+
     console.log(n + ' checks passed');
   } catch (e) {
     console.error('FAILED:', e.stack || e.message);

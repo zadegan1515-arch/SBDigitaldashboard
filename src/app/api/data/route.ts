@@ -9867,9 +9867,16 @@ const handlers: Record<string, Handler> = {
 
   // Promote a discovery to a real Brand. It arrives contact-less, so it
   // shows up on Needs Contacts — the SU userscript or manual add fills it.
-  async addDiscoveredBrand({ id, tier = 'established' }: any) {
+  async addDiscoveredBrand({ id, tier }: any) {
     const d = await (prisma as any).discoveredBrand.findUnique({ where: { id } })
     if (!d) throw new Error('Not found')
+    // Tier = how big the brand is. It used to default to "established"
+    // (big), so every find from Discover — Coco5, a $10M-raise sports
+    // drink — was filed as a giant and the LinkedIn fill did it last
+    // (Leo, Oct 6 2026: "why is coco5 established"). Now: the hunt's
+    // "midsize" sign → growth; otherwise left blank until LinkedIn's
+    // headcount (liMembers) sizes it. A tier passed in still wins.
+    if (!TIER_KEYS.includes(tier)) tier = String(d.signals || '').split(',').includes('midsize') ? 'growth' : null
     let brand = await prisma.brand.findFirst({ where: { name: { equals: d.name, mode: 'insensitive' } } })
     if (!brand) {
       // The bench holds whatever the model or a Cowork import wrote
