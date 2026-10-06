@@ -118,7 +118,7 @@ async function main() {
   // Default sort: fewest buyers first, archived last.
   assert.deepEqual(await names(), ['Alpha Energy', 'Charlie Spirits', 'Bravo Soda', 'Delta Gone']);
   // Counted over the brands in play: archived Delta Gone needs nobody.
-  assert.match(await page.textContent('#brands-sub'), /^3 brands in play \(\+1 archived\) · 2 have a marketing \/ partnerships person on file · 1 still need one$/);
+  assert.match(await page.textContent('#brands-sub'), /^3 brands in play · 2 have a buyer · 1 need one$/);
   assert.match(await page.textContent('[data-brow="b1"] .br-buy'), /0/);
   assert.ok(await page.$('[data-brow="b1"] .br-buy.low') && await page.$('[data-brow="b2"] .br-buy.ok'));
   console.log('✓ buyer counts, fewest first, archived last');
@@ -224,21 +224,21 @@ async function main() {
     roomReachable: 38, addedToday: 3, addedWeek: 3, lastAt: NOW, lastBrand: 'Knox Hydrate', nextUp: [],
   });
   await page.evaluate(() => gotoView('brands'));
-  await page.waitForFunction(() => /15 people added this week/.test(document.getElementById('cover-card').textContent));
+  await page.waitForFunction(() => /\+4 this week/.test(document.getElementById('cover-card').textContent));
   const card = await page.textContent('#cover-card');
-  assert.match(card, /Every brand a marketing \/ partnerships person\s*1 of 5 brands in play/);
-  assert.match(card, /\+4 brands got one this week/);
-  assert.match(card, /15 people added this week: 11 from LinkedIn · 3 from SponsorUnited · 1 by hand/);
+  assert.match(card, /Buyer coverage\s*1 of 5/);
+  assert.match(card, /\+4 this week/);
+  assert.match(await page.getAttribute('#cover-card .cv-week', 'title'), /15 people added this week: 11 LinkedIn · 3 SponsorUnited · 1 by hand/);
   assert.deepEqual(
     await page.$$eval('#cover-card [data-cvrow]', (rs) => rs.map((r) => r.getAttribute('data-cvrow') + ':' + r.querySelector('.cv-n').textContent)),
     ['next:2', 'page:1', 'resting:1'], 'one row per reason, empty reasons left out');
-  assert.match(card, /About 1 day at 100 a day/);
-  assert.match(card, /back on the fill’s list from Oct 30/);
+  assert.match(card, /Next on the LinkedIn fill · about 1 day/);
+  assert.match(card, /back on the fill Oct 30/);
   assert.ok(await page.$('#cover-card [data-cvrow="next"] a[href="https://www.linkedin.com/feed/#sb-fill"]'), 'Start the LinkedIn fill');
-  assert.match(card, /Last LinkedIn run \w{3} \d{1,2} · 6 brands · \+11 people · nothing since/);
-  assert.match(card, /that run used script 1\.25, 1\.28 is out/);
+  assert.match(card, /Last LinkedIn run \w{3} \d{1,2} · 6 brands · \+11 people · idle/);
+  assert.match(card, /script 1\.25 is old/);
   assert.ok(await page.$('#cover-card .cv-run.warn'), 'an idle fill and an old script are flagged');
-  assert.equal(await page.textContent('#brands-sub'), '5 brands in play (+1 archived) · 1 have a marketing / partnerships person on file · 4 still need one');
+  assert.equal(await page.textContent('#brands-sub'), '5 brands in play · 1 have a buyer · 4 need one');
   console.log('✓ the coverage card: counts by reason, this week, the last LinkedIn run');
 
   await page.click('#cover-card [data-cvshow="resting"]');

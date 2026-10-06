@@ -1218,6 +1218,11 @@
   .cv-week{font-size:13px;color:var(--warn)}
   .cv-week.up{color:var(--good)}
   .cv-bar{height:6px;background:var(--border);border-radius:99px;overflow:hidden;margin:2px 0 8px}
+  .cv-head{align-items:center}
+  .cv-bar.cv-bar-in{flex:1;min-width:120px;margin:0}
+  .cv-row{padding:6px 0}
+  .cv-n{font-size:16px}
+  .cv-what span[title]{cursor:help}
   .cv-bar>div{height:100%;background:var(--good)}
   .cv-rows{margin-top:6px}
   .cv-row{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:12px;align-items:center;padding:9px 0;border-top:1px solid var(--border-soft)}
@@ -1696,7 +1701,7 @@
 
     <!-- BRANDS — category drill-down -->
     <section class="view page wide" id="brands">
-      <div class="eyebrow">Category</div>
+      <div class="eyebrow">Brands</div>
       <h1 id="brands-title">Brands</h1>
       <div class="sub" id="brands-sub">Loading…</div>
       <div id="cover-card"></div>
@@ -5531,11 +5536,9 @@ function loadBrands(category) {
     var cc = cvCounts(list);
     document.getElementById('brands-sub').textContent = category === 'new'
       ? (list.length
-          ? list.length + (list.length === 1 ? ' brand' : ' brands') + ' the LinkedIn run added in the last 14 days that nobody has looked at. ' +
-            'Tick them, then Keep the good ones, Archive the misses, or re-file them — each leaves this list.'
-          : 'Nothing new to look at — everything the LinkedIn run added has been kept, archived or re-filed.')
-      : cc.inPlay + ' brands in play' + (cc.off ? ' (+' + cc.off + ' archived)' : '') + ' · ' + cc.covered +
-        ' have a marketing / partnerships person on file · ' + cc.need + ' still need one';
+          ? list.length + (list.length === 1 ? ' brand' : ' brands') + ' added by LinkedIn in the last 14 days. Tick to Keep, Archive or re-file.'
+          : 'Nothing new to look at.')
+      : cc.inPlay + ' brands in play · ' + cc.covered + ' have a buyer · ' + cc.need + ' need one';
 
     renderCoverage();
     if (category === 'all') {
@@ -5596,7 +5599,7 @@ function cvCounts(list) {
 function cvRunLine(info) {
   if (!info) return '';
   var r = info.run;
-  if (!r) return '<div class="cv-run warn">The LinkedIn fill hasn\u2019t run yet. It runs on your computer, in a LinkedIn window of its own — Start the LinkedIn fill opens it.</div>';
+  if (!r) return '<div class="cv-run warn">The LinkedIn fill hasn\u2019t run yet.</div>';
   var last = new Date(r.lastAt).getTime();
   var live = r.status === 'running' && Date.now() - last < 15 * 60000;
   var idle = !live && Date.now() - last > 36 * 36e5;
@@ -5604,8 +5607,8 @@ function cvRunLine(info) {
   return '<div class="cv-run' + (idle || behind ? ' warn' : '') + '">' +
     (live ? 'The LinkedIn fill is running now' : 'Last LinkedIn run ' + esc(shortDate(r.startedAt))) +
     ' · ' + r.brands + (r.brands === 1 ? ' brand' : ' brands') + ' · +' + r.added + ' people' +
-    (idle ? ' · nothing since: it only runs while LinkedIn is open in its window on your computer' : '') +
-    (behind ? ' · that run used script ' + esc(r.script) + ', ' + esc(info.latestScript) + ' is out — click the orange SB pill on LinkedIn to update' : '') +
+    (idle ? ' · idle — it runs only while its LinkedIn window is open' : '') +
+    (behind ? ' · script ' + esc(r.script) + ' is old — click the orange SB pill to update' : '') +
   '</div>';
 }
 
@@ -5623,32 +5626,33 @@ function renderCoverage() {
     if (!n) return '';
     return '<div class="cv-row" data-cvrow="' + state + '"><div class="cv-n">' + n + '</div>' +
       '<div class="cv-what">' + what + '</div>' +
-      '<div class="cv-acts">' + (acts || '') + '<button class="btn-ghost" data-cvshow="' + state + '">Show them</button></div></div>';
+      '<div class="cv-acts">' + (acts || '') + '<button class="btn-ghost" data-cvshow="' + state + '">Show</button></div></div>';
   };
+  // Leo, Oct 6 2026: the Brands tab "should not get overwhelmed with info" —
+  // one header line, then one short line per reason; the long story is in
+  // each line's hover tip.
+  var weekTip = wk ? (wk.linkedin + wk.sponsorunited + wk.other) + ' people added this week: ' + wk.linkedin + ' LinkedIn · ' +
+    wk.sponsorunited + ' SponsorUnited · ' + wk.other + ' by hand' : '';
   box.innerHTML = '<div class="panel panel-pad cv-card">' +
-    '<div class="cv-head"><b style="font-size:13px">Every brand a marketing / partnerships person</b>' +
-      '<span class="n">' + c.covered + ' of ' + c.inPlay + ' brands in play</span>' +
-      '<span style="flex:1"></span>' +
-      (info ? '<span class="cv-week' + (info.coveredWeek ? ' up' : '') + '">' +
-        (info.coveredWeek ? '+' + info.coveredWeek + (info.coveredWeek === 1 ? ' brand' : ' brands') + ' got one this week' : 'none got one this week') + '</span>' : '') +
+    '<div class="cv-head"><b>Buyer coverage</b>' +
+      '<span class="n">' + c.covered + ' of ' + c.inPlay + '</span>' +
+      '<div class="cv-bar cv-bar-in"><div style="width:' + pct + '%"></div></div>' +
+      (info ? '<span class="cv-week' + (info.coveredWeek ? ' up' : '') + '" title="' + esc(weekTip) + '">' +
+        (info.coveredWeek ? '+' + info.coveredWeek + ' this week' : 'none new this week') + '</span>' : '') +
     '</div>' +
-    '<div class="cv-bar"><div style="width:' + pct + '%"></div></div>' +
-    (wk ? '<div class="hint" style="margin:0 0 4px">' + (wk.linkedin + wk.sponsorunited + wk.other) + ' people added this week: ' +
-      wk.linkedin + ' from LinkedIn · ' + wk.sponsorunited + ' from SponsorUnited · ' + wk.other + ' by hand.</div>' : '') +
     (c.need
       ? '<div class="cv-rows">' +
-          row('next', '<b>The LinkedIn fill reads these next</b> — brands with nobody go first now. About ' + days + (days === 1 ? ' day' : ' days') +
-            ' at ' + per + ' a day, on your computer with LinkedIn open in its window.',
-            '<a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" title="Opens LinkedIn in a window of its own and starts the fill: the Schedule\u2019s short brands, then every brand with nobody in marketing / partnerships. Leave a corner of that window in view. Needs the LinkedIn capture script in Tampermonkey.">Start the LinkedIn fill ↗</a>') +
-          row('page', '<b>Pick their LinkedIn page</b> — the fill wasn\u2019t sure which page is theirs. One click each; the next run reads them.',
-            '<button class="btn-ghost" data-cvpages="1">Pick their pages →</button>') +
-          row('resting', '<b>LinkedIn found nobody in marketing / partnerships</b> on a recent read' +
-            (c.back ? '; back on the fill\u2019s list from ' + esc(shortDate(c.back)) : '') +
-            '. Sooner: open one, Find marketing people on LinkedIn, and Send to dashboard from a profile — or SponsorUnited.') +
-          row('noPage', '<b>No LinkedIn page</b> (you said so) — SponsorUnited, or add someone by hand.') +
-          row('full', '<b>Full</b> — 25 on file and none in marketing / partnerships, so the fill can\u2019t add more. Open one and add the right person.') +
+          row('next', '<span title="Brands with nobody go first. About ' + days + (days === 1 ? ' day' : ' days') + ' at ' + per +
+            ' a day, on your computer with LinkedIn open in its window.">Next on the LinkedIn fill · about ' + days + (days === 1 ? ' day' : ' days') + '</span>',
+            '<a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" title="Opens LinkedIn in a window of its own and starts the fill. Leave a corner of that window in view. Needs the LinkedIn capture script in Tampermonkey.">Start the fill ↗</a>') +
+          row('page', '<span title="The fill wasn\u2019t sure which LinkedIn page is theirs. One click each; the next run reads them.">Pick their LinkedIn page</span>',
+            '<button class="btn-ghost" data-cvpages="1">Pick →</button>') +
+          row('resting', '<span title="LinkedIn showed nobody in marketing / partnerships on a recent read. Sooner: open one and add someone, or try SponsorUnited.">LinkedIn found nobody' +
+            (c.back ? ' · back on the fill ' + esc(shortDate(c.back)) : '') + '</span>') +
+          row('noPage', '<span title="You said they have no LinkedIn page. Try SponsorUnited or add someone by hand.">No LinkedIn page</span>') +
+          row('full', '<span title="25 people on file and none in marketing / partnerships, so the fill can\u2019t add more. Open one and add the right person.">25 on file, no buyer</span>') +
         '</div>'
-      : '<div class="hint" style="margin:6px 0 0;color:var(--good)">Every brand in play has a marketing / partnerships person on file.</div>') +
+      : '<div class="hint" style="margin:6px 0 0;color:var(--good)">Every brand in play has a buyer.</div>') +
     cvRunLine(info) +
   '</div>';
 }
@@ -6254,7 +6258,7 @@ function bbRender() {
     : '';
   document.getElementById('brands-selbar').innerHTML = note + (hasRows
     ? '<a href="#" data-bball="1">Select all shown</a>' +
-      (n ? ' · <a href="#" data-bbclear="1">Clear</a>' : ' — tick brands to re-file them or put them on a Schedule day')
+      (n ? ' · <a href="#" data-bbclear="1">Clear</a>' : '')
     : '');
   var bar = document.getElementById('brands-bulk');
   if (!n) { bar.innerHTML = ''; return; }
