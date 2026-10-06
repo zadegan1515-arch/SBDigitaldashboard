@@ -36,7 +36,7 @@ import {
   normalizeCompany, cleanBrandName, judgeDiscovery, industryFits, decideResearchMatch, nearName, pageLooksWrong,
   type LiCompany,
 } from '@/lib/li-capture'
-import { readLiLog, markLiSwept, liResting, readLiResearch, markLiResearch, researchResting, LI_READER, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
+import { readLiLog, markLiSwept, liRestsNow, readLiResearch, markLiResearch, researchResting, LI_READER, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
 import { recordRun } from '@/lib/li-report'
 import { PARENTS, parentOf, decideParentPage, siblingNamed, LI_PARENT_PAGES_KEY } from '@/lib/parents'
 import {
@@ -49,6 +49,8 @@ import { nameFromSlug, isLogStage } from '@/lib/li-log'
 import { guessCategory } from '@/lib/category-hints'
 import { dueDays, shortOnPeople, plannedFirst } from '@/lib/planned-first'
 import { brandSize, sizeRank, cleanMembers } from '@/lib/brand-size'
+import { countBuyers, BUYER_TARGET } from '@/lib/buyers'
+import { noBuyerFirst } from '@/lib/coverage'
 
 const prisma = new PrismaClient()
 
@@ -635,8 +637,11 @@ export async function POST(req: NextRequest) {
   // -----------------------------------------------------------------
 
   // action: "liList" — every brand under the cap, off-outreach brands and
-  // resting ones left out. Brands matching `focus` ("electrolyte") come
-  // first, then emptiest first, like the SponsorUnited sweep.
+  // resting ones left out. The Schedule's short brands first, then the
+  // brands with no marketing / partnerships person on file yet (Leo, Oct
+  // 2026: "get all brands … to have sufficient contacts" — coverage.ts),
+  // then the rest; within each, `focus` ("electrolyte") first, then by
+  // size, emptiest first.
   if (body.action === 'liList') {
     const terms = focusTerms(body.focus)
     const log = await readLiLog(prisma)
@@ -645,6 +650,7 @@ export async function POST(req: NextRequest) {
       select: {
         id: true, name: true, aka: true, about: true, topProducts: true, notes: true,
         category: true, linkedinUrl: true, tier: true, liMembers: true, _count: { select: { contacts: true } },
+        contacts: { select: { title: true } },
       },
     })
     const underCap = all.filter(b => b._count.contacts < CONTACT_CAP_PER_BRAND)
@@ -657,13 +663,7 @@ export async function POST(req: NextRequest) {
       const p = parentOf(name, aka)
       return p ? { name: p.name, search: p.search, slug: parentPages[p.name] || null } : null
     }
-    const restsNow = (b: { id: string; name: string; aka: string | null }) => {
-      const m = log[b.id]
-      if (!liResting(m)) return false
-      // A parent whose page wasn't found (script ≤1.20 marked it tried anyway).
-      if (m && !m.added && /could not find .+ on LinkedIn/.test(m.note || '') && parentOf(b.name, b.aka)) return false
-      return !(m && !m.added && !m.parentTried && parentOf(b.name, b.aka))
-    }
+    const restsNow = (b: { id: string; name: string; aka: string | null }) => liRestsNow(log[b.id], !!parentOf(b.name, b.aka))
     const resting = underCap.filter(restsNow).length
     // Brands Leo said have no LinkedIn page ("None of these") aren't searched again.
     const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
@@ -673,6 +673,8 @@ export async function POST(req: NextRequest) {
       .map(b => ({
         brandId: b.id, name: b.name, aka: b.aka, category: b.category,
         linkedinUrl: b.linkedinUrl, contacts: b._count.contacts, focus: matchesFocus(b, terms),
+        // Nobody in marketing / partnerships on file yet (buyers.ts).
+        noBuyer: countBuyers(b.contacts.map(c => c.title)).total < BUYER_TARGET,
         parent: parentFor(b.name, b.aka),
         // Target (mid-size) brands first, then not yet measured, small, big
         // (brand-size.ts; Leo, Oct 2026).
@@ -724,7 +726,7 @@ export async function POST(req: NextRequest) {
         if (!names.length || names.some(n => onRoster.has(brandKey(n)))) continue
         if (researchResting(rlog[brandKey(names[0])])) { researchWaiting++; continue }
         asked.push({
-          research: true, name: names[0], aka: names.slice(1).join(', ') || null,
+          research: true, asked: true, name: names[0], aka: names.slice(1).join(', ') || null,
           category: x.category, lane: 'Asked for by name', linkedinUrl: null, contacts: 0, focus: true,
         })
       }
@@ -751,17 +753,22 @@ export async function POST(req: NextRequest) {
     const short = new Set(dueBrands.filter(shortOnPeople).map(b => b.id))
     const { first: planned, rest } = plannedFirst(items, due, short)
     // After the focus word: target brands, then the research list's names,
-    // then the rest by size (unknown, small, big).
+    // then the rest by size (unknown, small, big). Then the brands with no
+    // buyer pulled ahead of all that, each group in that same order — only
+    // the Schedule's brands and the names Leo asked for come before them.
     const others = rest.filter(i => !i.focus)
-    const ordered = [
+    const ordered = noBuyerFirst<any>([
       ...planned,
       ...research.filter(r => r.focus), ...rest.filter(i => i.focus),
       ...others.filter(i => i.size === 'target'),
       ...research.filter(r => !r.focus), ...others.filter(i => i.size !== 'target'),
-    ]
+    ])
     return NextResponse.json({
       ok: true,
       items: ordered,
+      // Brands on the list with nobody in marketing / partnerships yet —
+      // they go right after the Schedule's (the panel says so).
+      noBuyer: ordered.filter(i => i.noBuyer && !i.research && !i.planned).length,
       research: research.length,
       researchFocus: research.filter(r => r.focus).length,
       researchWaiting,

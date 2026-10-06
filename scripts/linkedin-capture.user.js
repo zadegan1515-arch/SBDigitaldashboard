@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.27
+// @version      1.28
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -83,7 +83,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.27';
+  var VERSION = '1.28';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1822,6 +1822,9 @@
       return 'on the Schedule for ' + d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' and short on people';
     }
     if (item.research) return 'from the research list' + (item.lane ? ' (' + item.lane + ')' : '');
+    // Brands with nobody in marketing / partnerships go right after the
+    // Schedule's (the dashboard's liList puts them there).
+    if (item.noBuyer) return 'no marketing / partnerships person on file yet' + (item.focus ? ' (a “' + (job.focus || 'focus') + '” brand)' : '');
     if (item.focus) return 'a “' + (job.focus || 'focus') + '” brand';
     var sz = { target: 'a target brand (mid-size)', small: 'a small brand', big: 'a big company — they go last' }[item.size];
     if (sz) return sz + (item.members != null ? ', ' + item.members.toLocaleString('en-US') + ' on LinkedIn' : '');
@@ -1838,6 +1841,8 @@
     var n = job.items.length, at = Math.min(job.at, n);
     var focusN = job.items.filter(function (i) { return i.focus && !i.planned; }).length;
     var plannedN = job.items.filter(function (i) { return i.planned; }).length;
+    var isGap = function (i) { return i.noBuyer && !i.planned && !i.research; };
+    var gapN = job.items.filter(isGap).length;
     var doneOf = function (test) { return job.items.slice(0, at).filter(test).length; };
     var pct = n ? Math.round(at / n * 100) : 100;
     var cur = at < n ? job.items[at] : null;
@@ -1846,7 +1851,8 @@
       head('Filling brands from LinkedIn'),
       h('div', { style: 'margin-bottom:4px' }, [b(String(at)), ' of ' + n + ' brands · ', b(String(job.added || 0)), ' people added']),
       plannedN ? h('div', { style: 'font-size:12px;color:#555', text: 'First, the Schedule\'s brands that are short on people: ' + doneOf(function (i) { return i.planned; }) + ' of ' + plannedN + ' done' }) : null,
-      focusN ? h('div', { style: 'font-size:12px;color:#555', text: (plannedN ? 'Then ' : '') + '“' + (job.focus || 'focus') + '” brands: ' + doneOf(function (i) { return i.focus && !i.planned; }) + ' of ' + focusN + ' done' }) : null,
+      gapN ? h('div', { id: 'sbligap', style: 'font-size:12px;color:#555', text: (plannedN ? 'Then ' : 'First, ') + 'brands with no marketing / partnerships person yet: ' + doneOf(isGap) + ' of ' + gapN + ' done' }) : null,
+      focusN ? h('div', { style: 'font-size:12px;color:#555', text: (plannedN || gapN ? 'Then ' : '') + '“' + (job.focus || 'focus') + '” brands: ' + doneOf(function (i) { return i.focus && !i.planned; }) + ' of ' + focusN + ' done' }) : null,
       cur ? h('div', { id: 'sblinow', style: 'font-size:12px;color:#111;margin-top:4px' }, [b(cur.name), ' — ' + whyItem(job, cur)]) : null,
       h('div', { style: 'font-size:12px;color:#555', text: 'Today: ' + job.doneToday + ' of ' + DAILY_CAP + ' brands' }),
       (job.newBrands || []).length ? h('div', { style: 'font-size:12px;color:#137333', text: job.newBrands.length + ' new brand' + (job.newBrands.length === 1 ? '' : 's') + ' found and added' }) : null,
@@ -1921,8 +1927,15 @@
         var have = j.items.length - (j.research || 0);
         out.appendChild(h('div', { style: MUTED }, [b(String(have)), ' brands under ' + j.cap + ' people' +
           (j.research ? ', plus ' : '.'), j.research ? b(String(j.research)) : null, j.research ? ' names from the research list to find on LinkedIn.' : null]));
+        // The dashboard puts the brands with no marketing / partnerships
+        // person right after the Schedule's (Leo, Oct 2026: every brand
+        // gets one); the focus word orders brands within each group.
+        var gap = j.noBuyer || 0;
+        if (gap) out.appendChild(h('div', { id: 'sbligapnote', style: 'font-size:12px;color:#111;margin-bottom:6px', text: (j.planned ? 'After the Schedule\'s ' + j.planned + ' brand' + (j.planned === 1 ? '' : 's') + ' short on people, the ' : 'First the ') +
+          gap + ' brand' + (gap === 1 ? '' : 's') + ' with no marketing / partnerships person on file yet — so every brand gets one. Then the rest, up to 25 people each.' }));
         if (f) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: first.length
-          ? 'First the ' + first.length + ' matching “' + f + '”: ' + first.slice(0, 15).map(function (i) { return i.name; }).join(', ') + (first.length > 15 ? '…' : '') + '. Then everything else, emptiest first.'
+          ? (gap ? 'Within each, the ' + first.length + ' matching “' + f + '” go first: ' : 'First the ' + first.length + ' matching “' + f + '”: ') +
+            first.slice(0, 15).map(function (i) { return i.name; }).join(', ') + (first.length > 15 ? '…' : '') + (gap ? '.' : '. Then everything else, emptiest first.')
           : 'None match “' + f + '” — it goes emptiest first.' }));
         if (j.sizes) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: 'Then by size: ' + j.sizes.target + ' target (mid-size, 20–499 on LinkedIn), ' + j.sizes.unknown + ' not measured yet, ' + j.sizes.small + ' small, ' + j.sizes.big + ' big companies last.' }));
         if (j.noPage) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.noPage + ' have no LinkedIn page saved; it searches LinkedIn for those and only uses a clear match.' }));
@@ -1936,7 +1949,7 @@
     focus.onkeydown = function (e) { if (e.key === 'Enter') look(); };
     freshPanel([
       head('Fill brands by itself'),
-      h('div', { style: MUTED, text: 'Goes through every brand under 25 people, one at a time in this tab, and saves the buyers it finds. About ' + DAILY_CAP + ' brands a day, under a minute apart. It pauses if LinkedIn shows a check or a limit.' }),
+      h('div', { style: MUTED, text: 'Goes through every brand under 25 people — the ones with no marketing / partnerships person first — one at a time in this tab, and saves the buyers it finds. About ' + DAILY_CAP + ' brands a day, under a minute apart. It pauses if LinkedIn shows a check or a limit.' }),
       h('div', { style: 'font-size:12px;color:#555;margin-bottom:4px', text: 'Start with brands matching (optional):' }),
       h('div', { style: 'display:flex;gap:6px' }, [
         focus,

@@ -60,12 +60,16 @@ jobs:
       - name: Types
         run: npx tsc --noEmit
       - name: Rules
-        run: node scripts/test-li-capture.mjs && node scripts/test-li-report.mjs && node scripts/test-li-log.mjs && node scripts/test-brand-size.mjs && node scripts/test-brand-fit.mjs
+        run: node scripts/test-li-capture.mjs && node scripts/test-li-report.mjs && node scripts/test-li-log.mjs && node scripts/test-brand-size.mjs && node scripts/test-brand-fit.mjs && node scripts/test-coverage.mjs
       - name: Script against a fake dashboard
         run: node scripts/test-li-script.js
       - name: Zach's logging-only script against a fake dashboard
         run: node scripts/test-li-log-script.js
       - name: Whole chain against fake LinkedIn
         run: node scripts/test-li-e2e.js
+        env:
+          E2E_DATABASE_URL: postgresql://postgres:e2e@localhost:5432/sbe2e
+      - name: Every brand a buyer on a real database
+        run: node scripts/test-coverage-e2e.js
         env:
           E2E_DATABASE_URL: postgresql://postgres:e2e@localhost:5432/sbe2e

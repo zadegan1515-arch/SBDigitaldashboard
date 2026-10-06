@@ -1071,6 +1071,36 @@
   .br-add{display:grid;grid-template-columns:1fr 1fr;gap:6px}
   .br-add .inp{font-size:12.5px;padding:6px 9px;width:100%}
   .br-add button{justify-self:start}
+  /* Every brand a buyer (coverage card on All brands) */
+  .cv-card{margin-top:14px}
+  .cv-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px}
+  .cv-head .n{color:var(--ink-2);font-size:13px;font-variant-numeric:tabular-nums}
+  .cv-week{font-size:12px;color:var(--warn)}
+  .cv-week.up{color:var(--good)}
+  .cv-bar{height:6px;background:var(--border);border-radius:99px;overflow:hidden;margin:2px 0 8px}
+  .cv-bar>div{height:100%;background:var(--good)}
+  .cv-rows{margin-top:6px}
+  .cv-row{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:12px;align-items:center;padding:9px 0;border-top:1px solid var(--border-soft)}
+  .cv-n{font-size:20px;font-weight:700;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-1)}
+  .cv-what{font-size:12.5px;color:var(--ink-2);line-height:1.45}
+  .cv-what b{color:var(--ink-1);font-weight:600}
+  .cv-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .cv-acts .btn-ghost,.cv-acts .btn-solid{padding:5px 12px;font-size:12px;text-decoration:none}
+  .cv-run{font-size:12px;color:var(--ink-3);margin-top:10px;padding-top:9px;border-top:1px solid var(--border-soft)}
+  .cv-run.warn{color:var(--warn)}
+  .fp-fold{margin-top:8px}
+  .fp-fold>summary{cursor:pointer;font-size:12px;color:var(--ink-3);padding:4px 2px}
+  .fp-fold>summary:hover{color:var(--ink-2)}
+  /* "Show them" / "Pick their pages" scroll here: clear of the sticky top bar */
+  #brands-list,#li-review{scroll-margin-top:180px}
+  .br-why{margin-top:-4px}
+  .br-why .chip{font-size:12px;padding:4px 11px}
+  .br-cvl{color:var(--warn);max-width:440px}
+  .br-cvl a{color:inherit;text-decoration:underline}
+  @media (max-width:640px){
+    .cv-row{grid-template-columns:40px minmax(0,1fr)}
+    .cv-acts{grid-column:2;justify-content:flex-start}
+  }
   .br-links{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px;font-size:12.5px}
   .br-links a{color:var(--accent-hi)}
   @media (max-width:760px){
@@ -1397,6 +1427,7 @@
       <div class="eyebrow">Category</div>
       <h1 id="brands-title">Brands</h1>
       <div class="sub" id="brands-sub">Loading…</div>
+      <div id="cover-card"></div>
       <div id="fill-progress"></div>
       <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
         <input class="field-box" id="bq" placeholder="Search brands — or type a new name to add one…" style="flex:1;min-width:240px" autocomplete="off">
@@ -1555,7 +1586,7 @@
         <button class="chip" data-lif="profiles">Saved profiles</button>
         <button class="chip" data-lif="none">Nobody yet</button>
         <button class="chip" data-lif="thin" title="Brands with room under the 25-people cap, emptiest first — open People ↗ and press the SB pill">Under 25</button>
-        <a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" style="text-decoration:none;margin-left:6px" title="Opens LinkedIn in a window of its own and starts the fill there by itself — electrolytes first, the research list and lookalikes on. Keep working here; leave that window alone, with a corner of it in view (minimized or fully covered, Chrome slows it). Needs the LinkedIn capture script in Tampermonkey.">Start the LinkedIn fill ↗</a>
+        <a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" style="text-decoration:none;margin-left:6px" title="Opens LinkedIn in a window of its own and starts the fill there by itself — the Schedule's short brands, then every brand with nobody in marketing / partnerships, electrolytes first within each; the research list and lookalikes on. Keep working here; leave that window alone, with a corner of it in view (minimized or fully covered, Chrome slows it). Needs the LinkedIn capture script in Tampermonkey.">Start the LinkedIn fill ↗</a>
         <input class="inp" id="li-q" placeholder="Filter brands…" autocomplete="off" style="margin-left:auto;width:220px">
       </div>
       <div class="hint" id="li-script-hint" style="margin-top:10px;display:none">
@@ -4352,6 +4383,7 @@ document.getElementById('zt-tsave').addEventListener('click', function () {
 // --- brands (category drill-down) ------------------------------
 
 var lastCategory = null;
+var FP_OPEN = false;  // the SponsorUnited sweep card is folded to one line until opened
 
 // Where the fill-to-25 stands. The sweep runs in Leo's own browser, so
 // "is it actually working" can only be answered by what it has added —
@@ -4371,8 +4403,13 @@ function renderFillProgress() {
         (p.lastBrand ? ' (' + esc(p.lastBrand) + ')' : '')
       : 'Nothing has ever been captured from SponsorUnited.';
 
+    // Folded to one line under "Every brand a marketing / partnerships
+    // person" (Leo's question since Oct 2026); open, it is as it was.
     box.innerHTML =
-      '<div class="panel panel-pad" style="margin-top:14px">' +
+      '<details class="fp-fold"' + (FP_OPEN ? ' open' : '') + '>' +
+      '<summary>SponsorUnited sweep · ' + p.atCap + ' of ' + p.brands + ' brands at ' + p.cap + ' people · ' +
+        (p.addedToday ? '+' + p.addedToday + ' people today' : p.addedWeek + ' added this week') + '</summary>' +
+      '<div class="panel panel-pad" style="margin-top:6px">' +
         '<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px">' +
           '<b style="font-size:13px">Filling to ' + p.cap + ' people per brand</b>' +
           '<span class="n">' + p.atCap + ' of ' + p.brands + ' full</span>' +
@@ -4406,7 +4443,9 @@ function renderFillProgress() {
         (stale
           ? '<div class="hint" style="margin:8px 0 0;color:#f0b86b">Nothing captured today. Open SponsorUnited in a tab, signed in, and leave it alone — the script starts on its own after two idle minutes. If it still does nothing, click the SB pill → “Test the search on this page”.</div>'
           : '') +
-      '</div>';
+      '</div></details>';
+    var fold = box.querySelector('details');
+    if (fold) fold.addEventListener('toggle', function () { FP_OPEN = fold.open; });
 
     box.querySelectorAll('[data-bopen]').forEach(function (a) {
       a.onclick = function (e) { e.preventDefault(); loadBrand(a.getAttribute('data-bopen')); };
@@ -4426,6 +4465,7 @@ function loadBrandsNoProfile() {
   var box = document.getElementById('brands-list');
   document.getElementById('brands-sub').textContent = 'Loading…';
   document.getElementById('fill-progress').innerHTML = '';
+  document.getElementById('cover-card').innerHTML = '';
   box.innerHTML = '';
   bbReset();
   api('listBrands', { noProfile: true }).then(function (list) {
@@ -4510,18 +4550,28 @@ function loadBrands(category) {
   }
   var mine = viewTurn('brands');
 
-  return api('listBrands', { category: category, take: 5000, fit: true }).then(function (list) {
+  if (category !== 'all') document.getElementById('cover-card').innerHTML = '';
+  return api('listBrands', { category: category, take: 5000, fit: true, coverage: true }).then(function (list) {
     if (!mine()) return;
     BR_LIST = list;
-    var covered = list.filter(brCovered).length;
+    // Archived and do-not-email brands don't need anyone: the counts are
+    // of the brands in play (the same as the card's).
+    var cc = cvCounts(list);
     document.getElementById('brands-sub').textContent = category === 'new'
       ? (list.length
           ? list.length + (list.length === 1 ? ' brand' : ' brands') + ' the LinkedIn run added in the last 14 days that nobody has looked at. ' +
             'Tick them, then Keep the good ones, Archive the misses, or re-file them — each leaves this list.'
           : 'Nothing new to look at — everything the LinkedIn run added has been kept, archived or re-filed.')
-      : list.length + ' brands · ' + covered + ' have a marketing / partnerships person on file · ' +
-        (list.length - covered) + ' still need one';
+      : cc.inPlay + ' brands in play' + (cc.off ? ' (+' + cc.off + ' archived)' : '') + ' · ' + cc.covered +
+        ' have a marketing / partnerships person on file · ' + cc.need + ' still need one';
 
+    renderCoverage();
+    if (category === 'all') {
+      api('buyerCoverage').then(function (info) {
+        CV_INFO = info;
+        if (mine() && lastCategory === 'all') renderCoverage();
+      }).catch(function () { /* the card works without this week's numbers */ });
+    }
     renderFillProgress();
     brRender();
     bbRender();
@@ -4535,6 +4585,126 @@ function loadBrands(category) {
   });
 }
 
+// --- every brand a buyer -----------------------------------------
+// Leo, Oct 2026, on All brands: "how can we get all brands on the command
+// center to have sufficient contacts". A brand has enough with one
+// marketing / partnerships person on file (BR_TARGET). This card turns
+// the rest into work (src/lib/coverage.ts): what the LinkedIn fill does by
+// itself — it takes brands with nobody first — what needs Leo (a LinkedIn
+// page to pick), and what LinkedIn couldn't find. The counts come from the
+// roster's own rows (listBrands' `cover`), so a count and the rows its
+// "Show them" opens are the same list; buyerCoverage adds this week's
+// numbers and the fill's last run.
+var CV_INFO = null;
+var CV_ORDER = ['next', 'page', 'resting', 'noPage', 'full'];
+var CV_WHY = {
+  next: 'Next in the LinkedIn fill',
+  page: 'Pick their LinkedIn page',
+  resting: 'LinkedIn found nobody',
+  noPage: 'No LinkedIn page',
+  full: 'Full, none in marketing'
+};
+
+function cvCounts(list) {
+  var c = { inPlay: 0, covered: 0, need: 0, off: 0, next: 0, page: 0, resting: 0, noPage: 0, full: 0, back: null };
+  list.forEach(function (b) {
+    var st = brCoverState(b);
+    c[st] = (c[st] || 0) + 1;
+    if (st === 'off') return;
+    c.inPlay++;
+    if (st === 'covered') return;
+    c.need++;
+    if (st === 'resting' && b.cover.back && (!c.back || b.cover.back < c.back)) c.back = b.cover.back;
+  });
+  return c;
+}
+
+// The engine is Leo's browser, so whether it's running is the first thing
+// to know: the last run, and a nudge when nothing has run for a day and a
+// half or the run used an old copy of the script.
+function cvRunLine(info) {
+  if (!info) return '';
+  var r = info.run;
+  if (!r) return '<div class="cv-run warn">The LinkedIn fill hasn\u2019t run yet. It runs on your computer, in a LinkedIn window of its own — Start the LinkedIn fill opens it.</div>';
+  var last = new Date(r.lastAt).getTime();
+  var live = r.status === 'running' && Date.now() - last < 15 * 60000;
+  var idle = !live && Date.now() - last > 36 * 36e5;
+  var behind = !!(r.script && info.latestScript && liVersionBehind(r.script, info.latestScript));
+  return '<div class="cv-run' + (idle || behind ? ' warn' : '') + '">' +
+    (live ? 'The LinkedIn fill is running now' : 'Last LinkedIn run ' + esc(shortDate(r.startedAt))) +
+    ' · ' + r.brands + (r.brands === 1 ? ' brand' : ' brands') + ' · +' + r.added + ' people' +
+    (idle ? ' · nothing since: it only runs while LinkedIn is open in its window on your computer' : '') +
+    (behind ? ' · that run used script ' + esc(r.script) + ', ' + esc(info.latestScript) + ' is out — click the orange SB pill on LinkedIn to update' : '') +
+  '</div>';
+}
+
+function renderCoverage() {
+  var box = document.getElementById('cover-card');
+  if (!box) return;
+  if (lastCategory !== 'all' || BRANDS_SHOWN !== 'all') { box.innerHTML = ''; return; }
+  var c = cvCounts(BR_LIST), info = CV_INFO;
+  var pct = c.inPlay ? Math.round(c.covered / c.inPlay * 100) : 100;
+  var per = (info && info.perDay) || 100;
+  var days = Math.max(1, Math.ceil(c.next / per));
+  var wk = info && info.week;
+  var row = function (state, what, acts) {
+    var n = c[state];
+    if (!n) return '';
+    return '<div class="cv-row" data-cvrow="' + state + '"><div class="cv-n">' + n + '</div>' +
+      '<div class="cv-what">' + what + '</div>' +
+      '<div class="cv-acts">' + (acts || '') + '<button class="btn-ghost" data-cvshow="' + state + '">Show them</button></div></div>';
+  };
+  box.innerHTML = '<div class="panel panel-pad cv-card">' +
+    '<div class="cv-head"><b style="font-size:13px">Every brand a marketing / partnerships person</b>' +
+      '<span class="n">' + c.covered + ' of ' + c.inPlay + ' brands in play</span>' +
+      '<span style="flex:1"></span>' +
+      (info ? '<span class="cv-week' + (info.coveredWeek ? ' up' : '') + '">' +
+        (info.coveredWeek ? '+' + info.coveredWeek + (info.coveredWeek === 1 ? ' brand' : ' brands') + ' got one this week' : 'none got one this week') + '</span>' : '') +
+    '</div>' +
+    '<div class="cv-bar"><div style="width:' + pct + '%"></div></div>' +
+    (wk ? '<div class="hint" style="margin:0 0 4px">' + (wk.linkedin + wk.sponsorunited + wk.other) + ' people added this week: ' +
+      wk.linkedin + ' from LinkedIn · ' + wk.sponsorunited + ' from SponsorUnited · ' + wk.other + ' by hand.</div>' : '') +
+    (c.need
+      ? '<div class="cv-rows">' +
+          row('next', '<b>The LinkedIn fill reads these next</b> — brands with nobody go first now. About ' + days + (days === 1 ? ' day' : ' days') +
+            ' at ' + per + ' a day, on your computer with LinkedIn open in its window.',
+            '<a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" title="Opens LinkedIn in a window of its own and starts the fill: the Schedule\u2019s short brands, then every brand with nobody in marketing / partnerships. Leave a corner of that window in view. Needs the LinkedIn capture script in Tampermonkey.">Start the LinkedIn fill ↗</a>') +
+          row('page', '<b>Pick their LinkedIn page</b> — the fill wasn\u2019t sure which page is theirs. One click each; the next run reads them.',
+            '<button class="btn-ghost" data-cvpages="1">Pick their pages →</button>') +
+          row('resting', '<b>LinkedIn found nobody in marketing / partnerships</b> on a recent read' +
+            (c.back ? '; back on the fill\u2019s list from ' + esc(shortDate(c.back)) : '') +
+            '. Sooner: open one, Find marketing people on LinkedIn, and Send to dashboard from a profile — or SponsorUnited.') +
+          row('noPage', '<b>No LinkedIn page</b> (you said so) — SponsorUnited, or add someone by hand.') +
+          row('full', '<b>Full</b> — 25 on file and none in marketing / partnerships, so the fill can\u2019t add more. Open one and add the right person.') +
+        '</div>'
+      : '<div class="hint" style="margin:6px 0 0;color:var(--good)">Every brand in play has a marketing / partnerships person on file.</div>') +
+    cvRunLine(info) +
+  '</div>';
+}
+
+// "Show them": Needs people, narrowed to that reason, scrolled into view.
+function cvShow(state) {
+  BR.show = 'need';
+  BR.why = state || '';
+  brRender();
+  applyBrandFilter();
+  var t = document.getElementById('brands-list');
+  if (t && t.scrollIntoView) t.scrollIntoView({ block: 'start' });
+}
+
+// "Which LinkedIn page is theirs?" lives on Outreach → People.
+var LI_JUMP_REVIEW = false;
+function cvPickPages() {
+  LI_JUMP_REVIEW = true;
+  gotoView('linkedin');
+}
+
+document.getElementById('cover-card').addEventListener('click', function (e) {
+  var show = e.target.closest('[data-cvshow]');
+  if (show) { cvShow(show.getAttribute('data-cvshow')); return; }
+  if (e.target.closest('[data-cvpages]')) cvPickPages();
+});
+
 // --- the Brands table -------------------------------------------
 // Leo, Oct 2026: one page for every brand — "make sure we have sufficient
 // contacts for each brand". One row per brand; BUYERS = people on file
@@ -4547,12 +4717,21 @@ function loadBrands(category) {
 // re-file and the SponsorUnited worklist are buttons in the header.
 var BR_LIST = [];
 var BR_TARGET = 1;
-var BR = { show: 'all', sort: 'fewest', hideArchived: false };
+var BR = { show: 'all', why: '', sort: 'fewest', hideArchived: false };
 var BR_OPEN = {};   // brand id -> true while its edit row is open
 var BR_KIND = { partnerships: 'Partnerships', events: 'Events', marketing: 'Marketing', founder: 'Founder / CEO' };
 
 function brBuyers(b) { return (b.buyers && b.buyers.total) || 0; }
 function brCovered(b) { return brBuyers(b) >= BR_TARGET; }
+// Where a brand stands on its first marketing / partnerships person
+// (listBrands' `cover`, src/lib/coverage.ts): covered, off (archived or
+// do-not-email — nobody needed), or what stands in the way.
+function brCoverState(b) {
+  if (b.cover && b.cover.state) return b.cover.state;
+  if (b.passedAt || b.doNotEmail) return 'off';
+  return brCovered(b) ? 'covered' : 'next';
+}
+function brNeeds(b) { var st = brCoverState(b); return st !== 'off' && st !== 'covered'; }
 function brPeople(b) { return (b._count && b._count.contacts) || 0; }
 function brTouch(b) {
   var o = b.outreach || {}, a = o.lastSentAt ? +new Date(o.lastSentAt) : 0, r = o.lastRepliedAt ? +new Date(o.lastRepliedAt) : 0;
@@ -4572,7 +4751,7 @@ function brShown() {
   var rows = BR_LIST.filter(function (b) {
     if (BR.hideArchived && b.passedAt) return false;
     if (!ql && brSmallHidden(b)) return false;
-    if (BR.show === 'need' && brCovered(b)) return false;
+    if (BR.show === 'need' && (!brNeeds(b) || (BR.why && brCoverState(b) !== BR.why))) return false;
     if (BR.show === 'enough' && !brCovered(b)) return false;
     return brMatches(b, ql);
   });
@@ -4595,6 +4774,23 @@ function brState(b) {
   if (o.replied) return '<span class="status replied">replied</span>';
   if (o.invited) return '<span class="status sent">reached</span>';
   if (o.queued) return '<span class="status queued">queued</span>';
+  return '';
+}
+
+// Under the name of a brand with nobody in marketing / partnerships, when
+// the fill won't get it by itself: why, and what to do. Brands next in the
+// fill say nothing — that's the machine's job.
+function brCoverLine(b) {
+  var c = b.cover;
+  if (!c) return '';
+  if (c.state === 'page') return '<div class="br-sub br-cvl">No clear LinkedIn page — <a href="#" data-bract="pickpage">pick it</a> and the next run reads it</div>';
+  if (c.state === 'resting') {
+    var note = c.note || 'nobody in marketing / partnerships';
+    return '<div class="br-sub br-cvl" title="' + esc('From the LinkedIn fill\u2019s visit: ' + note) + '">LinkedIn ' + esc(shortDate(c.at)) + ': ' +
+      esc(note.length > 90 ? note.slice(0, 87) + '…' : note) + ' · back on the fill ' + esc(shortDate(c.back)) + '</div>';
+  }
+  if (c.state === 'noPage') return '<div class="br-sub br-cvl">No LinkedIn page — SponsorUnited, or add someone by hand</div>';
+  if (c.state === 'full') return '<div class="br-sub br-cvl">Full (25 on file) and none in marketing / partnerships</div>';
   return '';
 }
 
@@ -4667,7 +4863,7 @@ function brRow(b) {
     '<td class="br-tick"><label data-bsel="' + esc(b.id) + '" title="Select to re-file or put on a day">' +
       '<input type="checkbox" data-bselcb="' + esc(b.id) + '" data-name="' + esc(b.name) + '"' + (BB.sel[b.id] ? ' checked' : '') + '></label></td>' +
     '<td class="br-name"><span class="br-caret" aria-hidden="true">' + (open ? '▾' : '▸') + '</span>' +
-      '<span class="t-brand br-link" data-brand="' + esc(b.id) + '" title="Open the brand page">' + esc(b.name) + '</span> ' + brState(b) + newNote + '</td>' +
+      '<span class="t-brand br-link" data-brand="' + esc(b.id) + '" title="Open the brand page">' + esc(b.name) + '</span> ' + brState(b) + newNote + brCoverLine(b) + '</td>' +
     '<td class="br-cat">' + esc(b.category ? (CAT_NAMES[b.category] || b.category) : '—') + '</td>' +
     '<td class="br-tier">' + esc(b.tier || '—') + '</td>' +
     '<td class="br-fit">' + fitTags(b.fit, { noUs: true }) + '</td>' +
@@ -4683,13 +4879,14 @@ function brRow(b) {
 function brRender() {
   var box = document.getElementById('brands-list');
   var rows = brShown();
-  var need = BR_LIST.filter(function (b) { return !brCovered(b); }).length;
+  var need = BR_LIST.filter(brNeeds).length;
+  var enough = BR_LIST.filter(brCovered).length;
   var chip = function (key, label, n) {
     return '<button class="chip' + (BR.show === key ? ' active' : '') + '" data-brshow="' + key + '">' + label + '<span class="n">' + n + '</span></button>';
   };
   var sorts = [['fewest', 'Fewest buyers first'], ['fit', 'Best fit first'], ['most', 'Most buyers first'], ['people', 'Most people'], ['touch', 'Last touched'], ['name', 'Name A–Z']];
   var bar = '<div class="br-bar">' +
-    chip('all', 'All', BR_LIST.length) + chip('need', 'Needs people', need) + chip('enough', 'Has enough', BR_LIST.length - need) +
+    chip('all', 'All', BR_LIST.length) + chip('need', 'Needs people', need) + chip('enough', 'Has enough', enough) +
     '<label class="br-chk"><input type="checkbox" data-brarch' + (BR.hideArchived ? ' checked' : '') + '> Hide archived</label>' +
     (lastCategory === 'new' ? '' : hideSmallBox('brands')) +
     '<span style="flex:1"></span>' +
@@ -4697,6 +4894,16 @@ function brRender() {
       return '<option value="' + s[0] + '"' + (BR.sort === s[0] ? ' selected' : '') + '>' + s[1] + '</option>';
     }).join('') + '</select></label>' +
   '</div>';
+  // Needs people, split by what stands in the way (the card's rows).
+  if (BR.show === 'need') {
+    var cc = cvCounts(BR_LIST);
+    bar += '<div class="br-bar br-why">' +
+      '<button class="chip' + (BR.why ? '' : ' active') + '" data-brwhy="">Any reason<span class="n">' + cc.need + '</span></button>' +
+      CV_ORDER.filter(function (k) { return cc[k] || BR.why === k; }).map(function (k) {
+        return '<button class="chip' + (BR.why === k ? ' active' : '') + '" data-brwhy="' + k + '">' + CV_WHY[k] + '<span class="n">' + cc[k] + '</span></button>';
+      }).join('') +
+    '</div>';
+  }
   var head = '<tr><th class="br-tick"></th><th>Brand</th><th>Category</th><th>Tier</th>' +
     '<th title="Brand Fit 0–100: budget and venture money weigh most; open a brand for the reasons">Fit</th>' +
     '<th class="br-num" title="Partnerships, marketing, events or founder / CEO titles on file">Buyers</th>' +
@@ -4716,7 +4923,9 @@ function brById(id) { return BR_LIST.filter(function (b) { return b.id === id; }
 
 document.getElementById('brands-list').addEventListener('click', function (e) {
   var show = e.target.closest('[data-brshow]');
-  if (show) { BR.show = show.getAttribute('data-brshow'); brRender(); applyBrandFilter(); return; }
+  if (show) { BR.show = show.getAttribute('data-brshow'); BR.why = ''; brRender(); applyBrandFilter(); return; }
+  var why = e.target.closest('[data-brwhy]');
+  if (why) { BR.why = why.getAttribute('data-brwhy'); brRender(); applyBrandFilter(); return; }
   if (e.target.closest('[data-brshowsmall]')) { e.preventDefault(); setHideSmall(false); brRender(); return; }
   var pass = e.target.closest('[data-blpass]');
   if (pass) {
@@ -4738,6 +4947,7 @@ document.getElementById('brands-list').addEventListener('click', function (e) {
     var what = act.getAttribute('data-bract');
     e.preventDefault();
     if (what === 'page') { loadBrand(id); return; }
+    if (what === 'pickpage') { cvPickPages(); return; }
     if (what === 'add') { brAddPerson(id, row); return; }
     if (what === 'toggle') { brToggle(id); return; }
   }
@@ -8241,6 +8451,11 @@ function loadLinkedin() {
   return api('linkedinPeople').then(function (d) {
     LI_DATA = d.brands || [];
     renderLiReview(d.pageReview || []);
+    if (LI_JUMP_REVIEW) {
+      LI_JUMP_REVIEW = false;
+      var rv = document.getElementById('li-review');
+      if (rv && rv.style.display !== 'none' && rv.scrollIntoView) rv.scrollIntoView({ block: 'start' });
+    }
     renderLiRuns(d.runs || [], d.latestScript || null, d.liOwner || null);
     loadLiClean();
     var profiles = 0, brandsWith = 0;

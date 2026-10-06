@@ -249,8 +249,14 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.ok(onRoster.length > 20, 'the research list is long');
     await prisma.brand.createMany({ data: onRoster.map(name => ({ name, category: 'unresolved', passedAt: new Date() })), skipDuplicates: true });
     const list = (await ingest({ action: 'liList', focus: 'electrolyte', research: true })).j;
-    assert.deepEqual(list.items.map(i => i.name).slice(0, 2), ['Huel', 'Powerade'], 'asked-for names first, then the focus lane');
-    assert.deepEqual(list.items.slice(2).map(i => i.name).sort(), ['Big Bev', 'Blank Cards', 'Liquid Death', 'Native', 'Olipop', 'Tanqueray']);
+    // Asked-for names first, then the brands with nobody in marketing /
+    // partnerships (all five here — nobody on file yet), then the focus
+    // lane's research names, then the rest.
+    assert.equal(list.items[0].name, 'Huel', 'asked-for names first');
+    assert.deepEqual(list.items.slice(1, 6).map(i => i.name).sort(), ['Big Bev', 'Blank Cards', 'Liquid Death', 'Native', 'Olipop'], 'then the brands with no buyer');
+    assert.ok(list.items.slice(1, 6).every(i => i.noBuyer), 'each marked');
+    assert.equal(list.noBuyer, 5);
+    assert.deepEqual(list.items.slice(6).map(i => i.name), ['Powerade', 'Tanqueray'], 'then the focus lane, then the rest');
     assert.deepEqual(list.items.find(i => i.name === 'Tanqueray').parent, { name: 'Diageo', search: 'Diageo', slug: null }, 'the worklist knows whose page its people are under');
     assert.equal(list.latest, VERSION, 'the dashboard expects this script version');
 
@@ -358,6 +364,27 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       await prisma.brand.deleteMany({ where: { id: { startsWith: 'sz_' } } });
     }
     ok('the fill goes target brands first, then not measured, small, big last');
+    {
+      // Brands with no marketing / partnerships person go first, whatever
+      // their size; the rest after, in the usual order (coverage.ts).
+      await prisma.brand.createMany({ data: [
+        { id: 'gp_mid', name: 'Gap Mid', category: 'beverage', liMembers: 120 },
+        { id: 'gp_big', name: 'Gap Big', category: 'beverage', liMembers: 2400 },
+        { id: 'gp_has', name: 'Has Buyer Mid', category: 'beverage', liMembers: 120 },
+        { id: 'gp_other', name: 'Gap Other Titles', category: 'beverage', liMembers: 120 },
+      ] })
+      await prisma.contact.createMany({ data: [
+        { brandId: 'gp_has', name: 'Bea Buyer', title: 'Brand Manager' },
+        { brandId: 'gp_other', name: 'Sam Sales', title: 'Regional Sales Director' },
+      ] })
+      const l = (await ingest({ action: 'liList' })).j;
+      const order = l.items.filter(i => /^(Gap|Has Buyer) /.test(i.name)).map(i => i.name);
+      assert.deepEqual(order, ['Gap Mid', 'Gap Other Titles', 'Gap Big', 'Has Buyer Mid'], 'no buyer first (other titles do not count), each group by size then emptiest');
+      assert.equal(l.items.find(i => i.name === 'Has Buyer Mid').noBuyer, false);
+      await prisma.contact.deleteMany({ where: { brandId: { startsWith: 'gp_' } } });
+      await prisma.brand.deleteMany({ where: { id: { startsWith: 'gp_' } } });
+    }
+    ok('brands with no marketing / partnerships person go first, whatever their size');
     assert.equal(run.problems, 1);
     assert.equal(run.samples[0].name, 'Blank Cards');
     assert.match(run.samples[0].problem, /every title came out blank/);

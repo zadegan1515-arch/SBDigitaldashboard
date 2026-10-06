@@ -222,7 +222,11 @@ const server = http.createServer((req, res) => {
           : { ok: true, outcome: 'unclear' }));
       }
       if (body.action === 'liList') {
-        return res.end(JSON.stringify({ ok: true, items: fillItems, cap: 25, noPage: fillItems.filter(i => !i.linkedinUrl && !i.research).length, resting: 0, research: fillItems.filter(i => i.research).length }));
+        return res.end(JSON.stringify({
+          ok: true, items: fillItems, cap: 25, noPage: fillItems.filter(i => !i.linkedinUrl && !i.research).length, resting: 0, research: fillItems.filter(i => i.research).length,
+          planned: fillItems.filter(i => i.planned).length,
+          noBuyer: fillItems.filter(i => i.noBuyer && !i.research && !i.planned).length,
+        }));
       }
       if (body.action === 'liMatched' && body.recheck) {
         return res.end(JSON.stringify({ ok: true, outcome: 'review', suggested: 'Native', candidates: 2 }));
@@ -658,6 +662,33 @@ const GM_SHIM = `
       await pg.close();
     }
     ok('a run finds a missing page by search, reads each brand, saves by brandId and finishes');
+
+    // 9b. Brands with no marketing / partnerships person on file go first
+    // (the dashboard's liList puts them right after the Schedule's): the
+    // setup panel says so, and the run says why the brand is next.
+    {
+      fillItems = [
+        { brandId: 'b-ld', name: 'Liquid Death', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/liquid-death/', contacts: 3, focus: false, noBuyer: true },
+      ];
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.waitForSelector('#sblipill', { state: 'visible' });
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      await pg.uncheck('#sbliresearch');
+      await pg.uncheck('#sblilook');
+      await pg.click('#sblifilllook');
+      await pg.waitForSelector('#sblifillstart');
+      assert.match(await pg.textContent('#sbligapnote'), /^First the 1 brand with no marketing \/ partnerships person on file yet — so every brand gets one\./);
+      assert.match(await pg.textContent('#sbli-panel'), /None match “electrolyte”/);
+      await pg.click('#sblifillstart');
+      await pg.waitForFunction(() => /Liquid Death — no marketing \/ partnerships person on file yet/.test((document.getElementById('sblinow') || {}).textContent || ''), null, { timeout: 15000 });
+      assert.match(await pg.textContent('#sbligap'), /^First, brands with no marketing \/ partnerships person yet: [01] of 1 done/);
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 60000 });
+      await pg.close();
+    }
+    ok('brands with no marketing / partnerships person go first; the panel says so and why each is next');
 
     // 9b. Clicks don't stop it; the Pause button does; leaving the page waits.
     {

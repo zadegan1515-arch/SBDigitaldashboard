@@ -28,7 +28,7 @@ export const LI_READER = 2
 // copies there's an update (the pill turns orange; one click takes it),
 // since Tampermonkey on its own only checks about once a day.
 // scripts/test-li-script.js fails when the two drift apart.
-export const LI_SCRIPT_VERSION = '1.27'
+export const LI_SCRIPT_VERSION = '1.28'
 
 export type LiMark = { at: string; seen: number; added: number; note?: string | null; v?: number; parentTried?: boolean }
 export type LiLog = Record<string, LiMark>
@@ -75,6 +75,18 @@ export function liResting(mark: LiMark | undefined, now = Date.now()): boolean {
   if (isTooBig(mark)) return false
   const at = Date.parse(mark.at)
   return Number.isFinite(at) && now - at < (isTooBig(mark) ? LI_BIG_REST_DAYS : LI_REST_DAYS) * 864e5
+}
+
+// Off the fill's worklist for now: resting, unless the brand has a parent
+// company (parents.ts) whose People tab the run hasn't searched yet — a
+// read with nobody added, before the parent route existed or while the
+// parent's own page couldn't be found, is due again at once. The worklist
+// (liList) and All brands' coverage card (coverage.ts) both ask this.
+export function liRestsNow(mark: LiMark | undefined, hasParent: boolean, now = Date.now()): boolean {
+  if (!liResting(mark, now)) return false
+  // A parent whose page wasn't found (script ≤1.20 marked it tried anyway).
+  if (mark && !mark.added && /could not find .+ on LinkedIn/.test(mark.note || '') && hasParent) return false
+  return !(mark && !mark.added && !mark.parentTried && hasParent)
 }
 
 // ---- the research list ----

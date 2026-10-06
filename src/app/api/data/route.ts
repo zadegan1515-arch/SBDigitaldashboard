@@ -52,7 +52,9 @@ import { rollWindow, findUnsent, planCarry, type Unsent, type CarryFacts } from 
 import { workNeed, dueDays } from '@/lib/planned-first'
 import { scoreBrand, dollarsToCents, normUs, normBiz, cleanResearchRow, shortMoney, type FitResult, type ResearchRow } from '@/lib/brand-fit'
 import { buildStock, bestDealStage, refileMoves, remapPlanDays, brandKey } from '@/lib/stock'
-import { buyerKind, isBuyerTitle, countBuyers } from '@/lib/buyers'
+import { buyerKind, isBuyerTitle, countBuyers, BUYER_TARGET } from '@/lib/buyers'
+import { readCoverFacts, brandCover } from '@/lib/coverage-db'
+import { LI_PER_DAY } from '@/lib/coverage'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
@@ -3147,7 +3149,10 @@ const handlers: Record<string, Handler> = {
   // have no profile" had nowhere to be looked at.
   // `fit: true` (the Brands tab) adds each brand's Brand Fit; the pickers
   // that also call this leave it off and stay as they were.
-  async listBrands({ category, search, take = 500, noProfile, fit }: any) {
+  // `coverage: true` (the Brands tab too) adds where each brand stands on
+  // getting its first marketing / partnerships person (coverage.ts): the
+  // card on All brands counts these, and Needs people filters by them.
+  async listBrands({ category, search, take = 500, noProfile, fit, coverage }: any) {
     const reviewed = category === 'new' ? await readReviewedNew() : null
     const brands = await prisma.brand.findMany({
       where: {
@@ -3199,6 +3204,7 @@ const handlers: Record<string, Handler> = {
     // Brand Fit needs the category accept rates (reachable people come
     // from the contacts already loaded).
     const rates: AcceptRates | null = fit && sorted.length ? await recentAcceptRates() : null
+    const facts = coverage && sorted.length ? await readCoverFacts(prisma) : null
     const now = new Date()
     // Flatten each brand's targets into the card's outreach summary —
     // invited / replied and the dates, so the list answers "where does
@@ -3212,8 +3218,10 @@ const handlers: Record<string, Handler> = {
       const buyers = contacts.filter(c => isBuyerTitle(c.title))
       const f = rates ? brandFit(b, contacts.filter(isReachable).length, rates, now) : null
       const emailed = ts.filter(t => t.emailedAt || t._count.emails > 0).length
+      const cover = facts ? brandCover({ ...b, titles: contacts.map(c => c.title) }, facts, now.getTime()) : null
       return {
         ...rest,
+        ...(cover ? { cover: { state: cover.state, note: cover.note ?? null, at: cover.at ?? null, back: cover.back ?? null } } : {}),
         // First three for the old card shape (searches, pickers).
         contacts: contacts.slice(0, 3).map(c => ({ name: c.name, title: c.title, linkedinUrl: c.linkedinUrl })),
         buyers: countBuyers(contacts.map(c => c.title)),
@@ -8026,6 +8034,55 @@ const handlers: Record<string, Handler> = {
         .sort((a, b) => a._count.contacts - b._count.contacts)
         .slice(0, 6)
         .map(b => ({ id: b.id, name: b.name, contacts: b._count.contacts })),
+    }
+  },
+
+  // All brands → "Every brand a marketing / partnerships person"
+  // (coverage.ts; Leo, Oct 2026: "how can we get all brands … to have
+  // sufficient contacts"). The page counts where brands stand from
+  // listBrands' rows — so a count and the rows "Show them" opens are the
+  // same list; this adds what moved this week, and the LinkedIn fill's
+  // last run: the fill does most of it, in Leo's browser, so whether it's
+  // running has to be answerable here.
+  async buyerCoverage() {
+    const weekAgo = new Date(Date.now() - 7 * 864e5)
+    const [bySource, people, runs] = await Promise.all([
+      prisma.contact.groupBy({ by: ['source'], where: { createdAt: { gte: weekAgo } }, _count: { _all: true } }),
+      prisma.contact.findMany({
+        where: { brand: { passedAt: null, doNotEmail: false } },
+        select: { brandId: true, title: true, createdAt: true },
+      }),
+      readRuns(prisma),
+    ])
+    const week = { linkedin: 0, sponsorunited: 0, other: 0 }
+    for (const r of bySource) {
+      const n = r._count._all
+      if (r.source === 'linkedin') week.linkedin += n
+      else if (r.source === 'sponsorunited') week.sponsorunited += n
+      else week.other += n
+    }
+    // Brands that reached BUYER_TARGET this week: the day their Nth
+    // marketing / partnerships person arrived.
+    const times = new Map<string, number[]>()
+    for (const c of people) {
+      if (!isBuyerTitle(c.title)) continue
+      const list = times.get(c.brandId) || []
+      list.push(c.createdAt.getTime())
+      times.set(c.brandId, list)
+    }
+    let coveredWeek = 0
+    for (const list of times.values()) {
+      if (list.length < BUYER_TARGET) continue
+      if (list.sort((a, b) => a - b)[BUYER_TARGET - 1] >= weekAgo.getTime()) coveredWeek++
+    }
+    const r = runs[0]
+    return {
+      target: BUYER_TARGET,
+      perDay: LI_PER_DAY,
+      week,
+      coveredWeek,
+      latestScript: LI_SCRIPT_VERSION,
+      run: r ? { startedAt: r.startedAt, lastAt: r.lastAt, status: r.status, brands: r.brands.length, added: r.added, script: r.script } : null,
     }
   },
 

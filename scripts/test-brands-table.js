@@ -2,7 +2,9 @@
 // Oct 2026). Drives public/app.html in Chromium against a fake /api/data:
 // buyer counts and the Needs people / Has enough filters, sort, search
 // (name or also-known-as), a row opening to edit (saves on change), adding
-// a person, and the phone width (no sideways page scroll).
+// a person, the "Every brand a marketing / partnerships person" card
+// (counts by reason, Show them, Pick their pages, the folded SponsorUnited
+// sweep card), and the phone width (no sideways page scroll).
 //   NODE_PATH=$(npm root -g) node scripts/test-brands-table.js
 const http = require('http');
 const fs = require('fs');
@@ -98,13 +100,14 @@ async function main() {
 
   // Default sort: fewest buyers first, archived last.
   assert.deepEqual(await names(), ['Alpha Energy', 'Charlie Spirits', 'Bravo Soda', 'Delta Gone']);
-  assert.match(await page.textContent('#brands-sub'), /2 have a marketing \/ partnerships person on file · 2 still need one/);
+  // Counted over the brands in play: archived Delta Gone needs nobody.
+  assert.match(await page.textContent('#brands-sub'), /^3 brands in play \(\+1 archived\) · 2 have a marketing \/ partnerships person on file · 1 still need one$/);
   assert.match(await page.textContent('[data-brow="b1"] .br-buy'), /0/);
   assert.ok(await page.$('[data-brow="b1"] .br-buy.low') && await page.$('[data-brow="b2"] .br-buy.ok'));
   console.log('✓ buyer counts, fewest first, archived last');
 
   await page.click('[data-brshow="need"]');
-  assert.deepEqual(await names(), ['Alpha Energy', 'Delta Gone']);
+  assert.deepEqual(await names(), ['Alpha Energy'], 'an archived brand never needs people');
   await page.check('[data-brarch]');
   assert.deepEqual(await names(), ['Alpha Energy']);
   await page.uncheck('[data-brarch]');
@@ -158,10 +161,87 @@ async function main() {
   await page.waitForFunction(() => document.getElementById('brand').classList.contains('active'));
   console.log('✓ the brand name opens the full brand page');
 
+  // Every brand a marketing / partnerships person (coverage.ts): counts
+  // from the rows' `cover`, this week and the last LinkedIn run from
+  // buyerCoverage; Show them = Needs people narrowed to that reason.
+  const ago = (d) => new Date(Date.now() - d * 864e5).toISOString();
+  S.list = [
+    row('c1', 'Next One', 0, 2, { cover: { state: 'next' } }),
+    row('c2', 'Next Two', 0, 0, { cover: { state: 'next' } }),
+    row('c3', 'Page Pick', 0, 0, { cover: { state: 'page' } }),
+    row('c4', 'Rest Co', 0, 5, { cover: { state: 'resting', note: 'big company (173 people) — nobody new in its partnerships, sponsorship, brand manager, marketing searches', at: '2026-09-30T20:00:00.000Z', back: '2026-10-30T20:00:00.000Z' } }),
+    row('c5', 'Covered Co', 2, 4, { cover: { state: 'covered' } }),
+    row('c6', 'Gone Co', 0, 0, { passedAt: NOW, cover: { state: 'off' } }),
+  ];
+  H.buyerCoverage = () => ({
+    target: 1, perDay: 100, week: { linkedin: 11, sponsorunited: 3, other: 1 }, coveredWeek: 4, latestScript: '1.28',
+    run: { startedAt: ago(3), lastAt: ago(3), status: 'stopped', brands: 6, added: 11, script: '1.25' },
+  });
+  H.fillProgress = () => ({
+    resting: 18, restDays: 14, cap: 25, brands: 486, atCap: 29, under: 457, underNoId: 437, empty: 200, peopleOnFile: 3999,
+    roomReachable: 38, addedToday: 3, addedWeek: 3, lastAt: NOW, lastBrand: 'Knox Hydrate', nextUp: [],
+  });
+  await page.evaluate(() => gotoView('brands'));
+  await page.waitForFunction(() => /15 people added this week/.test(document.getElementById('cover-card').textContent));
+  const card = await page.textContent('#cover-card');
+  assert.match(card, /Every brand a marketing \/ partnerships person\s*1 of 5 brands in play/);
+  assert.match(card, /\+4 brands got one this week/);
+  assert.match(card, /15 people added this week: 11 from LinkedIn · 3 from SponsorUnited · 1 by hand/);
+  assert.deepEqual(
+    await page.$$eval('#cover-card [data-cvrow]', (rs) => rs.map((r) => r.getAttribute('data-cvrow') + ':' + r.querySelector('.cv-n').textContent)),
+    ['next:2', 'page:1', 'resting:1'], 'one row per reason, empty reasons left out');
+  assert.match(card, /About 1 day at 100 a day/);
+  assert.match(card, /back on the fill’s list from Oct 30/);
+  assert.ok(await page.$('#cover-card [data-cvrow="next"] a[href="https://www.linkedin.com/feed/#sb-fill"]'), 'Start the LinkedIn fill');
+  assert.match(card, /Last LinkedIn run \w{3} \d{1,2} · 6 brands · \+11 people · nothing since/);
+  assert.match(card, /that run used script 1\.25, 1\.28 is out/);
+  assert.ok(await page.$('#cover-card .cv-run.warn'), 'an idle fill and an old script are flagged');
+  assert.equal(await page.textContent('#brands-sub'), '5 brands in play (+1 archived) · 1 have a marketing / partnerships person on file · 4 still need one');
+  console.log('✓ the coverage card: counts by reason, this week, the last LinkedIn run');
+
+  await page.click('#cover-card [data-cvshow="resting"]');
+  assert.deepEqual(await names(), ['Rest Co']);
+  const restLine = await page.textContent('[data-brow="c4"] .br-cvl');
+  assert.match(restLine, /^LinkedIn Sep 30: big company \(173 people\) — nobody new in its partnerships/);
+  assert.match(restLine, /… · back on the fill Oct 30$/, 'a long note is cut short; the whole note is in the tooltip');
+  assert.deepEqual(await page.$$eval('#brands-list [data-brwhy]', (cs) => cs.map((c) => c.textContent)),
+    ['Any reason4', 'Next in the LinkedIn fill2', 'Pick their LinkedIn page1', 'LinkedIn found nobody1']);
+  await page.click('#brands-list [data-brwhy=""]');
+  assert.deepEqual((await names()).sort(), ['Next One', 'Next Two', 'Page Pick', 'Rest Co'], 'archived Gone Co needs nobody');
+  assert.equal(await page.$('[data-brow="c1"] .br-cvl'), null, 'next in the fill: nothing to say on the row');
+  await page.click('#brands-list [data-brwhy="page"]');
+  assert.deepEqual(await names(), ['Page Pick']);
+  assert.match(await page.textContent('[data-brow="c3"] .br-cvl'), /No clear LinkedIn page — pick it/);
+  await page.click('[data-brshow="all"]');
+  assert.equal(await page.$('#brands-list [data-brwhy]'), null, 'the reasons show under Needs people only');
+  console.log('✓ Show them: Needs people narrowed to that reason; each row says why');
+
+  // The SponsorUnited sweep card: one line, opens as it was.
+  const fold = await page.textContent('#fill-progress details:not([open]) summary');
+  assert.equal(fold, 'SponsorUnited sweep · 29 of 486 brands at 25 people · +3 people today');
+  await page.click('#fill-progress summary');
+  await page.waitForFunction(() => /Filling to 25 people per brand/.test(document.querySelector('#fill-progress details[open]').textContent));
+  console.log('✓ the SponsorUnited sweep card is folded to one line and opens as it was');
+
+  // "pick it" (and the card's Pick their pages) → Outreach → People's
+  // "Which LinkedIn page is theirs?".
+  H.linkedinPeople = () => ({
+    brands: [], runs: [], latestScript: '1.28', liOwner: null,
+    pageReview: [{ brandId: 'c3', name: 'Page Pick', category: 'energy', website: null, at: NOW, why: 'unclear', saved: null, pageIndustry: null, candidates: [] }],
+  });
+  H.liCleanup = () => ({ people: [], brands: [] });
+  await page.click('#brands-list [data-brshow="need"]');
+  await page.click('#brands-list [data-brwhy="page"]');
+  await page.click('[data-brow="c3"] [data-bract="pickpage"]');
+  await page.waitForFunction(() => document.getElementById('linkedin').classList.contains('active'));
+  await page.waitForFunction(() => /Which LinkedIn page is theirs\?/.test(document.getElementById('li-review').textContent));
+  console.log('✓ "pick it" opens Outreach → People on the page-picking card');
+
   // Phone width: no sideways page scroll.
   await page.setViewportSize({ width: 390, height: 800 });
   await page.evaluate(() => gotoView('brands'));
   await page.waitForSelector('#brands-list .br-table');
+  await page.waitForSelector('#cover-card .cv-card');
   const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   assert.ok(wide <= 1, 'no sideways page scroll at phone width (' + wide + 'px)');
   console.log('✓ phone width fits');

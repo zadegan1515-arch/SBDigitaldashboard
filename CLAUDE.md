@@ -261,6 +261,21 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (`upsertContact`); the name opens the brand page. The tick bar (re-file, Put on a day) is unchanged.
   Stock take (lanes, ideas, re-file) and Needs contacts (SponsorUnited worklist) left the sub-tabs and
   are header buttons; their views and deep links still work. `node scripts/test-brands-table.js`.
+  **Every brand a buyer** (Leo, Oct 2026: "how can we get all brands … to have sufficient contacts"):
+  the card at the top of All brands (`renderCoverage`, `cv*`). Counts are of brands **in play** (archived /
+  do-not-email are "off" and never need anyone — the header, Needs people and the card all say so). Each
+  brand with no buyer is in one state (rules pure in `src/lib/coverage.ts`, `node scripts/test-coverage.mjs`;
+  DB side `src/lib/coverage-db.ts`; `listBrands({ coverage: true })` → `cover` per row, so a count and
+  the rows its **Show them** opens are one list): **next** — the LinkedIn fill reads it next (Start the
+  LinkedIn fill ↗; "about N days" at `LI_PER_DAY` = the script's DAILY_CAP); **page** — on "Which LinkedIn
+  page is theirs?" (Pick their pages → Outreach → People's card); **resting** — read in the last 30 days,
+  nobody with a buyer title (the fill's note + "back on the fill <date>" on the row); **noPage** — Leo said
+  None of these and there's no parent; **full** — 25 on file, none a buyer. Same rest rule as the
+  worklist (`liRestsNow`, li-sweep.ts). Needs people splits by these reasons (`BR.why` chips); rows that
+  need Leo say why under the name (`brCoverLine`). `buyerCoverage` adds people added this week by source,
+  brands that got their first buyer this week, and the fill's last run (idle 36 h+ or an old script →
+  amber). The SponsorUnited "Filling to 25" card is folded to one line under it (`FP_OPEN`).
+  `node scripts/test-coverage-e2e.js` (real handlers, throwaway Postgres).
 - **Daily Claude brand hunt** (Leo, Oct 2026: "a process for Claude to find new brands … it shouldn't
   necessarily be through LinkedIn"). Routine "Discover: daily brand hunt (web)" (5:52 New York, a fresh
   session in the Claude Code cloud environment that holds `REPORT_TOKEN` — the old Cowork routine of the
@@ -342,7 +357,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Setting `outreachShownDays`, written by `getOutreachPlan`; short = reachable < `workNeed`, the
   same rule as the Schedule's labels; soonest day first; `src/lib/planned-first.ts`,
   `node scripts/test-planned-first.mjs`; the Schedule's contacts check links "Start the LinkedIn
-  fill ↗ — it does these first"), then a focus word
+  fill ↗ — it does these first"), then (after any name Leo asked for, `RESEARCH_EXTRA`) **every brand
+  with no buyer on file** (Leo, Oct 2026 — `noBuyerFirst` in `src/lib/coverage.ts`; items carry
+  `noBuyer`, the reply `noBuyer` = how many; script ≥1.28 says so in the setup panel, the run's
+  progress and `whyItem`), then the rest; within each group a focus word
   (`focusTerms` — "electrolyte" expands to the hydration shelf by name), then **by size** (Leo, Oct 2026: "classify
   mid-sized brands as target brands and do those"; `src/lib/brand-size.ts`, `node scripts/test-brand-size.mjs`):
   target brands → the research list → size unknown → small → big, emptiest first within each. Size =
@@ -436,7 +454,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `liSwept` (with `run`; research names too, brandId null); a page the reader gets wrong
   (`readingProblem`: people on screen but none read, every title blank/the same, badges in names) sends
   `problem` + a card `sample` (≤3 per run). Shown on Outreach → People ("Last LinkedIn run");
-  read-only for Claude at `GET /api/reports/linkedin` (Bearer `REPORT_TOKEN`, no contacts). **Full chain**:
+  read-only for Claude at `GET /api/reports/linkedin` (Bearer `REPORT_TOKEN`, no contacts; `coverage` =
+  the Every-brand-a-buyer counts, numbers only). **Full chain**:
   `scripts/test-li-e2e.js` — the real script → real `/api/ingest` (`next dev`) → a throwaway local
   Postgres, fake LinkedIn (`E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) NODE_PATH=$(npm root -g) node
   scripts/test-li-e2e.js`; refuses any non-local database — it wipes it). GitHub Actions **LinkedIn tool**
