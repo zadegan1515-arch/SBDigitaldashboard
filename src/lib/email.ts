@@ -17,6 +17,7 @@
 import { PrismaClient } from '@prisma/client'
 import Anthropic from '@anthropic-ai/sdk'
 import nodemailer from 'nodemailer'
+import { assertSendingAllowed, EMAIL_SENDING_OFF, NO_SEND_MESSAGE } from '@/lib/no-send'
 import { ImapFlow } from 'imapflow'
 import { resolveMx } from 'dns/promises'
 import { sendViaGmail, googleStatus, type OutgoingMail, gmailListReplies, gmailScan } from '@/lib/google'
@@ -71,9 +72,11 @@ export function emailAddress(): string | null {
 // the building — not the per-card Send button, not "Send all", not the
 // morning cron. Drafting, discovery and every other feature keep running.
 export async function sendingPaused(): Promise<boolean> {
+  if (EMAIL_SENDING_OFF) return true                    // off in code (src/lib/no-send.ts)
   return (await getSetting('sendingPaused')) !== '0'   // default: PAUSED
 }
 export async function setSendingPaused(paused: boolean) {
+  if (!paused && EMAIL_SENDING_OFF) throw new Error(NO_SEND_MESSAGE)
   await setSetting('sendingPaused', paused ? '1' : '0')
   // Turning sending ON is day one of the ramp. The ramp clock had been
   // ticking since the code first ran, days before any real send — left
@@ -89,6 +92,7 @@ export async function setSendingPaused(paused: boolean) {
 
 // One door for every outgoing message, whichever transport is live.
 async function deliver(mail: OutgoingMail) {
+  assertSendingAllowed()
   const { mode } = await sendMode()
   if (mode === 'gmail') return sendViaGmail(mail)
   if (mode === 'smtp') return makeTransport().sendMail(mail as any)
@@ -359,7 +363,7 @@ export async function suggestForDraft(emailId: string) {
 // first waiting draft as the sample (untouched), or a filled template
 // if the queue is empty. Never counts against the daily cap.
 export async function sendTestEmail(to: string) {
-  if (await sendingPaused()) throw new Error('Sending is paused — turn it on in Outreach → ✉ Email when you\'re ready to go live.')
+  if (await sendingPaused()) throw new Error(EMAIL_SENDING_OFF ? NO_SEND_MESSAGE : 'Sending is paused — turn it on in Outreach → ✉ Email when you\'re ready to go live.')
   const { mode } = await sendMode()
   if (mode === 'none') throw new Error('No sending account connected')
   if (!to || !/@/.test(to)) throw new Error('Valid address required')
@@ -766,7 +770,7 @@ export async function recordOpen(emailId: string) {
 
 // One email, by draft id — the per-card Send button.
 export async function sendOneEmail(emailId: string) {
-  if (await sendingPaused()) throw new Error('Sending is paused — turn it on in Outreach → ✉ Email when you\'re ready to go live.')
+  if (await sendingPaused()) throw new Error(EMAIL_SENDING_OFF ? NO_SEND_MESSAGE : 'Sending is paused — turn it on in Outreach → ✉ Email when you\'re ready to go live.')
   const { mode } = await sendMode()
   if (mode === 'none') throw new Error('No sending account connected — connect Google on the Outreach page.')
   const d = await prisma.emailMessage.findUnique({
@@ -839,7 +843,7 @@ async function roomToday(): Promise<{ cap: number; sentToday: number; room: numb
 }
 
 async function sendBatch(statuses: string[], limit?: number) {
-  if (await sendingPaused()) return { configured: true, paused: true, sent: 0, failed: 0, errors: ['Sending is paused'] }
+  if (await sendingPaused()) return { configured: true, paused: true, sent: 0, failed: 0, errors: [EMAIL_SENDING_OFF ? NO_SEND_MESSAGE : 'Sending is paused'] }
   const { mode } = await sendMode()
   if (mode === 'none') return { configured: false, sent: 0, failed: 0 }
 
@@ -1186,7 +1190,7 @@ export async function draftReplyResponse(emailId: string) {
 
 // Send that response (or Leo's edited version of it).
 export async function sendReplyEmail(targetId: string, to: string, subject: string, body: string) {
-  if (await sendingPaused()) throw new Error('Sending is paused — turn it on in Outreach → ✉ Email when you\'re ready to go live.')
+  if (await sendingPaused()) throw new Error(EMAIL_SENDING_OFF ? NO_SEND_MESSAGE : 'Sending is paused — turn it on in Outreach → ✉ Email when you\'re ready to go live.')
   const { mode } = await sendMode()
   if (mode === 'none') throw new Error('No sending account connected')
   if (!to || !/@/.test(to)) throw new Error('Valid address required')

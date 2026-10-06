@@ -51,6 +51,7 @@ import { dueDays, shortOnPeople, plannedFirst } from '@/lib/planned-first'
 import { brandSize, sizeRank, cleanMembers } from '@/lib/brand-size'
 import { countBuyers, BUYER_TARGET } from '@/lib/buyers'
 import { noBuyerFirst } from '@/lib/coverage'
+import { giantWhy } from '@/lib/giants'
 
 const prisma = new PrismaClient()
 
@@ -871,7 +872,7 @@ export async function POST(req: NextRequest) {
     const dismissedNames = new Set(dismissed.map(d => normalizeCompany(d.name)))
     const dismissedSlugs = new Set(dismissed.map(d => companySlug(d.linkedinUrl)).filter(Boolean) as string[])
 
-    const tally = { known: 0, dismissed: 0, small: 0, industry: 0, capped: 0 }
+    const tally = { known: 0, dismissed: 0, small: 0, industry: 0, giant: 0, capped: 0 }
     const created: Array<{ brandId: string; name: string; category: string; linkedinUrl: string }> = []
     const seen = new Set<string>()
     for (const raw of (Array.isArray(body.companies) ? body.companies : []).slice(0, 40)) {
@@ -889,6 +890,8 @@ export async function POST(req: NextRequest) {
       if (dismissedSlugs.has(slug) || nearKnown(dismissedNames)) { tally.dismissed++; continue }
       const verdict = judgeDiscovery({ name, subtitle }, fromBrand?.category ?? null)
       if ('reason' in verdict) { tally[verdict.reason]++; continue }
+      // Leo, Oct 6 2026: no giants (src/lib/giants.ts).
+      if (giantWhy(name, { followers: verdict.followers })) { tally.giant++; continue }
       if (room <= 0) { tally.capped++; continue }
       // The name can say more than LinkedIn's industry line ("Casamigos
       // Tequila" is alcohol, "Beverage Manufacturing" isn't specific) —

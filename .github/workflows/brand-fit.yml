@@ -17,6 +17,11 @@ on:
       - 'scripts/test-chat-add*'
       - 'src/lib/bigint-json.ts'
       - 'src/lib/work-log.ts'
+      - 'src/lib/no-send.ts'
+      - 'src/lib/email.ts'
+      - 'src/lib/google.ts'
+      - 'src/lib/giants.ts'
+      - 'src/lib/claude-hunt.ts'
       - 'src/lib/build-ideas.ts'
       - 'scripts/test-today*'
       - 'scripts/test-work-log.mjs'
@@ -35,6 +40,11 @@ on:
       - 'scripts/test-chat-add*'
       - 'src/lib/bigint-json.ts'
       - 'src/lib/work-log.ts'
+      - 'src/lib/no-send.ts'
+      - 'src/lib/email.ts'
+      - 'src/lib/google.ts'
+      - 'src/lib/giants.ts'
+      - 'src/lib/claude-hunt.ts'
       - 'src/lib/build-ideas.ts'
       - 'scripts/test-today*'
       - 'scripts/test-work-log.mjs'
@@ -72,7 +82,7 @@ jobs:
       - name: Types
         run: npx tsc --noEmit
       - name: Rules
-        run: node scripts/test-brand-fit.mjs && node scripts/test-brand-size.mjs && node scripts/test-stock.mjs && node scripts/test-work-log.mjs && node scripts/test-chat-add.mjs
+        run: node scripts/test-brand-fit.mjs && node scripts/test-brand-size.mjs && node scripts/test-stock.mjs && node scripts/test-work-log.mjs && node scripts/test-no-send.mjs && node scripts/test-claude-hunt.mjs && node scripts/test-chat-add.mjs
       - name: The page against a fake dashboard
         run: node scripts/test-brand-fit-ui.js && node scripts/test-brands-table.js && node scripts/test-today.js
       - name: The handlers on a real database

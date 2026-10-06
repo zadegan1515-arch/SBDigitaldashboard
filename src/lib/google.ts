@@ -24,6 +24,7 @@
 
 import { PrismaClient } from '@prisma/client'
 import MailComposer from 'nodemailer/lib/mail-composer'
+import { assertSendingAllowed } from '@/lib/no-send'
 
 const prisma = new PrismaClient()
 
@@ -187,6 +188,7 @@ function buildRaw(mail: OutgoingMail): Promise<string> {
 }
 
 export async function sendViaGmail(mail: OutgoingMail) {
+  assertSendingAllowed()
   const token = await accessToken()
   const raw = await buildRaw(mail)
   const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
@@ -710,6 +712,7 @@ export async function opsGetAttachment(messageId: string, attachmentId: string):
 
 // Send from the ops mailbox. inReplyTo/threadId keep replies in the thread.
 export async function opsSend(mail: OutgoingMail & { threadId?: string; inReplyTo?: string }) {
+  assertSendingAllowed()
   const token = await opsAccessToken()
   const raw = await new Promise<string>((resolve, reject) => {
     new MailComposer({

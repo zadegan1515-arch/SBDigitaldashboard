@@ -9,7 +9,7 @@ If `../CLAUDE.md` (the SB Agency workspace file) exists it applies too. The rule
 4. **No Anthropic API spend** unless Leo explicitly approves it for a specific feature. Prefer rules/regex.
 5. **Claude does not move real money.** Payouts on the platform run only when a human clicks; PayPal stays sandbox unless Leo sets `PAYPAL_ENV=live`.
 6. **Never bulk-delete or overwrite data** without showing exactly what changes first.
-7. **Email sending:** cap is enforced in code (start 5/day, +8/week, ceiling 40). Never raise it without Leo. Warmup / test emails from the app are fine.
+7. **No emails go out** (Leo, Oct 6 2026: "no emails should be sent out"). `EMAIL_SENDING_OFF = true` in `src/lib/no-send.ts` stops every send path at its last step (`deliver`, `sendViaGmail`, `opsSend`) — outreach, test/warmup, ops replies, Show Board access codes and team notifications. Drafting, Copy and Open in Gmail still work. Never flip it without Leo's explicit yes; `node scripts/test-no-send.mjs` fails if it's off or a send path skips the guard. (If Leo turns sending back on: the cap is in code — start 5/day, +8/week, ceiling 40; never raise it without him.)
 8. Ask clarifying questions when the request is ambiguous. When reporting back: **what you fixed, what Leo needs to give you** — short, with links. No long explanations. Anything Leo must do himself is a labeled **NEED** block: a bold one-line label, numbered steps, only the info required — nothing extra.
 9. **Attendee data (Audience module):** individual attendee records never leave the dashboard — sponsors and every public API get aggregates only. Email is identity: all attendee writes go through `normalizeEmail` in `src/lib/audience-core.ts`, guarded by `node scripts/test-audience.mjs`. Consent text is versioned (`ConsentText`); imports never claim consent the person didn't give. Deleting an attendee (the "remove my data" path) always shows what goes before it goes.
 
@@ -315,7 +315,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (`HUNT_SOURCES`: bevnet.com, brewbound.com, frontofficesports.com, cpglatest.com — add one there). Rules pure in `src/lib/claude-hunt.ts`
   (`node scripts/test-claude-hunt.mjs`): **priority lanes only**, a website or source link (LinkedIn
   page optional), at least one sign — `sponsors` college/music, `genz` 18–24, `midsize` growing —
-  never a known brand, **50 a rolling day**. A failed save answers 500 with the database's reason. Rows land on Brands → Discover under "Claude hunt · <date>"
+  never a known brand, **never a giant** (Leo, Oct 6 2026: `src/lib/giants.ts` — household names, brands of the big parents in parents.ts, $1B+ sales via the row's `salesUsd`; GET sends the list as `reject`; the LinkedIn lookalikes skip them too, plus 1M+ followers — roster brands are untouched), **50 a rolling day**. A failed save answers 500 with the database's reason. Rows land on Brands → Discover under "Claude hunt · <date>"
   (sign tags + Source ↗) for Leo to Add / Dismiss; it never makes a Brand itself.
   **Brands → Discover** (Leo, Oct 2026: "more simple and clean"; `loadDiscover`/`dcRender`, `DC` in
   app.html): one list — To review / Added tabs, a source dropdown (Claude hunt / LinkedIn / Research

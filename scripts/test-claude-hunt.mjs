@@ -64,4 +64,16 @@ t('label is the New York date', () => {
   assert.equal(huntLabel(new Date('2026-10-06T02:00:00Z')), 'Claude hunt · Oct 5')
 })
 
+t('giants are refused (Leo, Oct 6 2026)', () => {
+  for (const name of ['Red Bull', 'Monster Energy', 'Bud Light', 'Ketel One', 'Diageo', 'Nike', "Tito's"]) {
+    const v = judgeHuntRow({ ...good, name }, new Set())
+    assert.equal(v.ok, false, name); assert.match(v.why, /^a giant/, name)
+  }
+  const big = judgeHuntRow({ ...good, name: 'Huge Pop', salesUsd: 2_500_000_000 }, new Set())
+  assert.equal(big.ok, false); assert.match(big.why, /\$1B\+/)
+  assert.equal(judgeHuntRow({ ...good, name: 'Mid Pop', salesUsd: 40_000_000 }, new Set()).ok, true)
+  // A name that only contains a giant's word is not that giant.
+  assert.equal(judgeHuntRow({ ...good, name: 'Nikel Energy' }, new Set()).ok, true)
+})
+
 console.log(n + ' hunt tests passed')

@@ -11,6 +11,7 @@
 // node scripts/test-claude-hunt.mjs
 
 import { LANES, brandKey } from './stock'
+import { giantWhy } from './giants'
 
 export const HUNT_PER_DAY = 50
 export const HUNT_PER_POST = 50
@@ -86,6 +87,10 @@ export function judgeHuntRow(r: any, known: Set<string>): HuntVerdict {
   const key = brandKey(name)
   if (!key) return { ok: false, name, why: 'no name' }
   if (known.has(key)) return { ok: false, name, why: 'already known' }
+  // Leo, Oct 6 2026: no giants (src/lib/giants.ts). The hunt may send
+  // salesUsd (annual sales, dollars) when it knows it.
+  const giant = giantWhy(name, { salesUsd: r?.salesUsd ?? r?.revenueUsd })
+  if (giant) return { ok: false, name, why: 'a giant (' + giant + ')' }
 
   const category = String(r?.category ?? '').trim().toLowerCase()
   if (!HUNT_LANES.includes(category)) {

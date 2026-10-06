@@ -24,6 +24,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import { timingSafeEqual } from 'crypto'
 import { HUNT_LANES, HUNT_SOURCES, HUNT_PER_DAY, HUNT_PER_POST, HUNT_SIGNALS, HUNT_LABEL, huntLabel, judgeHuntRow, knownKeys, type HuntRow } from '@/lib/claude-hunt'
+import { GIANT_NAMES } from '@/lib/giants'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,6 +77,11 @@ export async function GET(req: NextRequest) {
     leftToday: Math.max(0, HUNT_PER_DAY - used),
     label: huntLabel(),
     known: [...names].sort((a, b) => a.localeCompare(b)),
+    // Leo, Oct 6 2026: never send giants — they're refused on save.
+    reject: {
+      rule: 'No giants: household names, brands owned by the big parent companies (Diageo, Pernod Ricard, Bacardi, Monster…), $1B+ in sales. Send salesUsd when you know it.',
+      giants: GIANT_NAMES.map(g => g.split('|')[0]),
+    },
   })
 }
 
