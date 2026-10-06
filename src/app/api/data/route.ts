@@ -58,6 +58,7 @@ import { readCoverFacts, brandCover } from '@/lib/coverage-db'
 import { LI_PER_DAY } from '@/lib/coverage'
 import { parseWorkLog, WORK_LOG_MAX_CHARS } from '@/lib/work-log'
 import { BUILD_IDEAS } from '@/lib/build-ideas'
+import { checkBrandQueue } from '@/lib/queue-check'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
@@ -2604,6 +2605,55 @@ const handlers: Record<string, Handler> = {
       picked: Object.keys(picks),
       logDays: logDays.map(r => ({ day: r.day, n: r._count._all })),
     }
+  },
+
+  // Home → Today's send list (Leo, Oct 6 2026: "a button on the home page
+  // that can copy a list of what is supposed to be sent out today so i can
+  // send to zach"). Today's LinkedIn queue (the same read as the LinkedIn
+  // tab — getTodayQueue) by company, each person with title + link, and
+  // the queue check (src/lib/queue-check.ts): who isn't a buyer, and who at
+  // the same brand would be better. Swap / Leave out use queueContact and
+  // passContact, so a change shows on the LinkedIn tab too.
+  async todaySendList() {
+    const q: any = await handlers.getTodayQueue({})
+    const toSend: any[] = (q.targets || []).filter((t: any) => !t.sentAt && ['queued', 'drafted'].includes(t.status))
+    const brandIds = [...new Set(toSend.map(t => t.brandId))]
+    const brands = brandIds.length ? await prisma.brand.findMany({
+      where: { id: { in: brandIds } },
+      select: {
+        id: true, name: true, aka: true,
+        contacts: { select: { id: true, name: true, title: true, linkedinUrl: true, targets: { select: { id: true, status: true, sentAt: true, queuedFor: true } } } },
+      },
+    }) : []
+    const today = startOfLocalDay()
+    const out = brands.map(b => {
+      const queued = toSend.filter(t => t.brandId === b.id)
+      const queuedIds = new Set(queued.map(t => t.contactId))
+      const names = [b.name, ...String(b.aka ?? '').split(/[,;]/).map(s => s.trim()).filter(Boolean)]
+      const others = b.contacts.filter(c => !queuedIds.has(c.id)).map(c => {
+        const t = c.targets[0]
+        return {
+          contactId: c.id, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl,
+          // Written to, or set aside on purpose (passed, withdrawn…): never offered.
+          contacted: !!t && (wasInvited(t) || ['passed', 'declined', 'dead', 'withdrawn'].includes(t.status)),
+          queued: !!t && !!t.queuedFor && t.queuedFor >= today && ['queued', 'drafted'].includes(t.status),
+        }
+      })
+      const flags = checkBrandQueue(queued.map(t => ({ targetId: t.id, name: t.contact.name, title: t.contact.title })), others, names)
+      return {
+        brandId: b.id, name: b.name,
+        people: queued.map((t, i) => ({
+          targetId: t.id, contactId: t.contactId, name: t.contact.name, title: t.contact.title,
+          linkedinUrl: t.contact.linkedinUrl, problem: flags[i].problem, better: flags[i].better,
+        })),
+      }
+    })
+    // Brands in the order the LinkedIn tab lists them.
+    const order = new Map(brandIds.map((id, i) => [id, i]))
+    out.sort((a, b) => order.get(a.brandId)! - order.get(b.brandId)!)
+    const people = out.reduce((n, b) => n + b.people.length, 0)
+    const flagged = out.reduce((n, b) => n + b.people.filter(p => p.problem || p.better).length, 0)
+    return { day: localDayKey(), sendingDay: q.sendingDay, cap: q.cap, sentToday: q.sentToday, brands: out, people, flagged }
   },
 
   // Paste one or more Claude Code reports (a line of --- between chats).

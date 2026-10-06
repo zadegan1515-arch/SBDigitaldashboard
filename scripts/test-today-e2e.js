@@ -131,6 +131,28 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(need.done, true); assert.match(need.auto, /research/)
     ok('saved research leaves the recap; its pasted NEED reads as done')
 
+    // 6. Today's send list: by company, flags a non-buyer, offers a better person.
+    await prisma.brand.create({ data: { id: 'b5', name: 'Echo Pouch', category: 'nicotine' } })
+    const store = await prisma.contact.create({ data: { brandId: 'b5', name: 'Sam Store', title: 'Store Manager', linkedinUrl: 'https://www.linkedin.com/in/sam' } })
+    const pm = await prisma.contact.create({ data: { brandId: 'b5', name: 'Mo Market', title: 'Marketing Manager', linkedinUrl: 'https://www.linkedin.com/in/mo' } })
+    await prisma.contact.create({ data: { brandId: 'b5', name: 'Pat Partner', title: 'Head of Partnerships', linkedinUrl: 'https://www.linkedin.com/in/pat' } })
+    await prisma.target.create({ data: { brandId: 'b5', contactId: store.id, status: 'queued', queuedFor: new Date() } })
+    await prisma.target.create({ data: { brandId: 'b5', contactId: pm.id, status: 'queued', queuedFor: new Date() } })
+    let sl = await data('todaySendList', {})
+    let echo = sl.brands.find(b => b.name === 'Echo Pouch')
+    assert.ok(echo, 'Echo Pouch is on today\'s list')
+    const sam = echo.people.find(p => p.name === 'Sam Store')
+    assert.match(sam.problem, /store staff/)
+    assert.equal(sam.better.name, 'Pat Partner')
+    assert.equal(echo.people.find(p => p.name === 'Mo Market').better, null, 'Pat goes to the weakest only')
+    // Swap = queue Pat, leave Sam out.
+    await data('queueContact', { contactId: sam.better.contactId })
+    await data('passContact', { contactId: sam.contactId })
+    sl = await data('todaySendList', {})
+    echo = sl.brands.find(b => b.name === 'Echo Pouch')
+    assert.deepEqual(echo.people.map(p => p.name).sort(), ['Mo Market', 'Pat Partner'])
+    ok('today\'s send list: flags store staff, offers a partnerships person, swap works')
+
     console.log(n + ' checks passed');
   } catch (e) {
     console.error('FAILED:', e.stack || e.message);

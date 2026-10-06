@@ -427,6 +427,28 @@
   .hm-tile .v{font-size:28px;font-weight:800;font-family:var(--display);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
   .hm-tile .s{font-size:12px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   details.hm-more{margin-top:34px;border-top:1px solid var(--border-soft);padding-top:4px}
+  /* Today's send list */
+  #hm-send .sl{margin:14px 0 6px}
+  .sl-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--border-soft)}
+  .sl-meta{color:var(--ink-3);font-size:13px;margin-left:6px}
+  .sl-warn{color:var(--warn);font-weight:600}
+  .sl-acts{display:flex;gap:8px}
+  .sl-body{max-height:520px;overflow:auto}
+  .sl-brand{padding:12px 20px;border-bottom:1px solid var(--border-soft)}
+  .sl-brand:last-child{border-bottom:0}
+  .sl-bn{font-weight:700;color:var(--ink-1);text-decoration:none;font-size:14px}
+  .sl-bn:hover{color:var(--accent-hi)}
+  .sl-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:7px 0 7px 12px;border-left:2px solid transparent;margin-top:4px}
+  .sl-row.bad{border-left-color:var(--bad)}
+  .sl-row.meh{border-left-color:var(--warn)}
+  .sl-name{font-weight:600;font-size:14px}
+  .sl-title{color:var(--ink-2);font-size:13.5px}
+  .sl-row a{color:var(--accent-hi);text-decoration:none}
+  .sl-flag{color:var(--bad);font-size:13px;margin-top:3px}
+  .sl-better{color:var(--ink-2);font-size:13px;margin-top:3px}
+  .sl-better .btn-ghost{padding:3px 10px;font-size:12px;margin-left:4px}
+  .sl-why{color:var(--ink-3)}
+  .sl-keep{color:var(--ink-3);margin-left:8px;font-size:12.5px;cursor:pointer}
   /* Today's log */
   .dl-nav{margin-left:auto;display:flex;align-items:center;gap:6px}
   .dl-nav select{background:var(--surface-2);color:var(--ink-1);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font:inherit;font-size:12.5px}
@@ -1641,11 +1663,13 @@
           <div class="sub" id="dash-sub">Loading…</div>
         </div>
         <div class="hm-btns">
+          <button class="btn-ghost" id="hm-sendlist" title="Today’s LinkedIn invites by company, checked for people who don’t fit — copy it for Zach">Today’s list for Zach</button>
           <button class="btn-ghost" id="hm-paste" title="Paste what your Claude Code chats did — saved under today">+ Paste what Claude did</button>
           <button class="btn-solid" id="hm-recap">Today’s recap ▸</button>
         </div>
       </div>
       <div class="hm-glance" id="hm-glance"></div>
+      <div id="hm-send"></div>
       <div id="zach-todo"></div>
       <div id="action-panel" style="margin-top:20px"></div>
       <div id="day-log"></div>
@@ -3027,7 +3051,7 @@ function rcCards(r) {
       }).join('') + '</div>';
     }
     cards.push({ key: 'todo', step: 'Today', title: 'What to do today', body: h,
-      acts: '<button class="btn-ghost" data-rc-go="zach">Zach’s list</button><button class="btn-ghost" data-rc-go="schedule">Schedule</button>' });
+      acts: '<button class="btn-ghost" data-rc-go="sendlist">Today’s list for Zach</button><button class="btn-ghost" data-rc-go="zach">Zach’s list</button><button class="btn-ghost" data-rc-go="schedule">Schedule</button>' });
   }
 
   // 3. Brands found
@@ -3281,6 +3305,7 @@ document.addEventListener('click', function (ev) {
     var go = el.getAttribute('data-rc-go');
     closeRecap();
     if (go === 'zach') gotoZachList();
+    else if (go === 'sendlist') { if (!document.getElementById('dashboard').classList.contains('active')) gotoView('dashboard'); slOpen(); }
     else if (go === 'log') { var b = document.getElementById('day-log'); if (b) b.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     else gotoView(go);
     return;
@@ -3364,6 +3389,116 @@ function maybeAutoRecap() {
   Promise.all([RC ? Promise.resolve() : loadToday(), ZT ? Promise.resolve() : new Promise(function (res) { setTimeout(res, 1500); }), introGone])
     .then(go).catch(function () { /* the Home page still works */ });
 }
+
+// --- Home → Today's send list ------------------------------------
+// Leo, Oct 6: "a button on the home page that can copy a list of what is
+// supposed to be sent out today so i can send to zach easily" + flag
+// anyone who doesn't fit a role or has a better person to replace them.
+// todaySendList = today's LinkedIn queue by company with the queue check;
+// Copy builds plain text for Zach (flagged people left out unless Leo
+// ticks them back in). Swap = passContact + queueContact; Leave out =
+// passContact. Both undo from the brand page (Queue).
+var SL = null;          // last todaySendList
+var SL_OPEN = false;
+var SL_KEEP = {};       // targetId -> include a flagged person anyway
+
+function slLoad() {
+  var box = document.getElementById('hm-send');
+  if (!box) return;
+  if (!SL) box.innerHTML = '<div class="panel sl"><div class="dl-empty">Reading today’s list…</div></div>';
+  return api('todaySendList').then(function (r) { SL = r; slRender(); })
+    .catch(function (e) { box.innerHTML = '<div class="panel sl"><div class="dl-empty">Could not read today’s list: ' + esc(e.message) + '</div></div>'; });
+}
+function slIncluded(p) { return !p.problem || !!SL_KEEP[p.targetId]; }
+function slText() {
+  var r = SL, rows = [], n = 0, cos = 0;
+  r.brands.forEach(function (b) {
+    var ppl = b.people.filter(slIncluded);
+    if (!ppl.length) return;
+    cos += 1;
+    rows.push(b.name);
+    ppl.forEach(function (p) {
+      n += 1;
+      rows.push('• ' + p.name + (p.title ? ' — ' + p.title : '') + (p.linkedinUrl ? '\n  ' + p.linkedinUrl : ''));
+    });
+    rows.push('');
+  });
+  var head = 'LinkedIn invites for ' + keyLabel(r.day, true) + ' — ' + plural(n, 'person', 'people') + ', ' + plural(cos, 'company', 'companies');
+  return { text: (head + '\n\n' + rows.join('\n')).replace(/\n+$/, ''), n: n };
+}
+function slRender() {
+  var box = document.getElementById('hm-send');
+  if (!box || !SL) return;
+  var r = SL;
+  var t = slText();
+  var head = '<div class="sl-head"><div><b>Today’s LinkedIn list</b> <span class="sl-meta">' +
+    plural(r.people, 'person', 'people') + ' · ' + plural(r.brands.length, 'company', 'companies') +
+    (r.flagged ? ' · <span class="sl-warn">' + r.flagged + ' to check</span>' : ' · all look right') + '</span></div>' +
+    '<div class="sl-acts"><button class="btn-solid" data-sl-copy' + (t.n ? '' : ' disabled') + '>Copy for Zach (' + t.n + ')</button>' +
+    '<button class="btn-ghost" data-sl-close aria-label="Close">✕</button></div></div>';
+  if (!r.sendingDay && !r.people) {
+    box.innerHTML = '<div class="panel sl">' + head + '<div class="dl-empty">Not a sending day — outreach goes Tuesday to Thursday.</div></div>';
+    return;
+  }
+  if (!r.people) {
+    box.innerHTML = '<div class="panel sl">' + head + '<div class="dl-empty">Nobody left in today’s list' + (r.sentToday ? ' — ' + r.sentToday + ' sent already.' : '.') + '</div></div>';
+    return;
+  }
+  var body = r.brands.map(function (b) {
+    return '<div class="sl-brand"><a href="#" class="sl-bn" data-rc-brand2="' + esc(b.brandId) + '">' + esc(b.name) + '</a>' +
+      b.people.map(function (p) {
+        var flag = '';
+        if (p.problem) flag += '<div class="sl-flag">⚠ ' + esc(p.problem) +
+          ' <label class="sl-keep"><input type="checkbox" data-sl-keep="' + esc(p.targetId) + '"' + (SL_KEEP[p.targetId] ? ' checked' : '') + '> send anyway</label></div>';
+        if (p.better) flag += '<div class="sl-better">Better: <b>' + esc(p.better.name) + '</b>' + (p.better.title ? ' — ' + esc(p.better.title) : '') +
+          (p.better.linkedinUrl ? ' <a href="' + esc(p.better.linkedinUrl) + '" target="_blank" rel="noopener">↗</a>' : '') +
+          ' <span class="sl-why">(' + esc(p.better.why) + ')</span>' +
+          ' <button class="btn-ghost" data-sl-swap="' + esc(p.contactId) + '" data-to="' + esc(p.better.contactId) + '">Swap</button></div>';
+        return '<div class="sl-row' + (p.problem ? ' bad' : p.better ? ' meh' : '') + '"><div class="sl-p">' +
+          '<span class="sl-name">' + esc(p.name) + '</span>' + (p.title ? ' <span class="sl-title">' + esc(p.title) + '</span>' : '') +
+          (p.linkedinUrl ? ' <a href="' + esc(p.linkedinUrl) + '" target="_blank" rel="noopener" title="LinkedIn">↗</a>' : '') + flag + '</div>' +
+          ((p.problem || p.better) ? '<button class="btn-ghost" data-sl-out="' + esc(p.contactId) + '" title="Take them off today and skip them">Leave out</button>' : '') +
+          '</div>';
+      }).join('') + '</div>';
+  }).join('');
+  box.innerHTML = '<div class="panel sl">' + head + '<div class="sl-body">' + body + '</div></div>';
+}
+function slOpen() {
+  SL_OPEN = true;
+  slLoad();
+  var b = document.getElementById('hm-send');
+  if (b) b.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+document.addEventListener('click', function (ev) {
+  var t = ev.target, el;
+  if (t.closest('#hm-sendlist')) { if (SL_OPEN && document.getElementById('hm-send').innerHTML) { SL_OPEN = false; SL = null; document.getElementById('hm-send').innerHTML = ''; } else slOpen(); return; }
+  if (!t.closest('#hm-send')) return;
+  if (t.closest('[data-sl-close]')) { SL_OPEN = false; SL = null; document.getElementById('hm-send').innerHTML = ''; return; }
+  if (t.closest('[data-sl-copy]')) { var x = slText(); if (x.n) copyText(x.text); return; }
+  if ((el = t.closest('[data-rc-brand2]'))) { ev.preventDefault(); loadBrand(el.getAttribute('data-rc-brand2')); return; }
+  if ((el = t.closest('[data-sl-out]'))) {
+    el.disabled = true;
+    api('passContact', { contactId: el.getAttribute('data-sl-out') }).then(function (r) {
+      toast(r.passed ? r.contactName + ' left out — Queue on the brand page brings them back' : 'Already contacted — not changed');
+      return slLoad();
+    }).catch(function (e) { el.disabled = false; toast(e.message); });
+    return;
+  }
+  if ((el = t.closest('[data-sl-swap]'))) {
+    var from = el.getAttribute('data-sl-swap'), to = el.getAttribute('data-to');
+    el.disabled = true;
+    api('queueContact', { contactId: to }).then(function (q) {
+      if (!q.queued) throw new Error((q.contactName || 'They') + ' can’t be queued — already contacted');
+      return api('passContact', { contactId: from }).then(function () { toast('Swapped in ' + q.contactName); return slLoad(); });
+    }).catch(function (e) { el.disabled = false; toast(e.message); });
+    return;
+  }
+});
+document.addEventListener('change', function (ev) {
+  var t = ev.target;
+  if (t.matches && t.matches('[data-sl-keep]')) { SL_KEEP[t.getAttribute('data-sl-keep')] = t.checked; slRender(); }
+});
 
 // --- For Zach to do --------------------------------------------
 //

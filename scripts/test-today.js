@@ -71,6 +71,16 @@ const H = {
   addWorkLog: (a) => ({ day: a.day, saved: 2, chats: [], needs: 1 }),
   setWorkNeedDone: (a) => ({ id: a.id, needsDone: a.done ? [a.index] : [] }),
   pickBuildIdea: (a) => ({ picked: a.on ? [a.id] : [] }),
+  todaySendList: () => ({ day: TODAY, sendingDay: true, cap: 30, sentToday: 0, people: 3, flagged: 2, brands: [
+    { brandId: 'b1', name: 'Alpha Water', people: [
+      { targetId: 't1', contactId: 'c1', name: 'Ann Able', title: 'Head of Partnerships', linkedinUrl: 'https://www.linkedin.com/in/ann', problem: null, better: null },
+      { targetId: 't2', contactId: 'c2', name: 'Sam Store', title: 'Store Manager', linkedinUrl: 'https://www.linkedin.com/in/sam', problem: 'looks like store staff (Store Manager)',
+        better: { contactId: 'c9', name: 'Pat Partner', title: 'Partnerships Lead', linkedinUrl: 'https://www.linkedin.com/in/pat', why: 'a partnerships person instead' } } ] },
+    { brandId: 'b2', name: 'Bravo Energy', people: [
+      { targetId: 't3', contactId: 'c3', name: 'Mo Market', title: 'Marketing Manager', linkedinUrl: null, problem: null,
+        better: { contactId: 'c8', name: 'Spo Lead', title: 'Sponsorship Director', linkedinUrl: null, why: 'partnerships beats marketing' } } ] } ] }),
+  queueContact: (a) => ({ queued: true, contactName: 'Pat Partner' }),
+  passContact: (a) => ({ passed: true, contactName: 'Sam Store' }),
   deleteWorkLog: (a) => (a.confirm ? { deleted: a.id, title: 'Brand hunt' } : { preview: true, day: TODAY, title: 'Brand hunt', chars: 24 }),
 };
 
@@ -166,6 +176,27 @@ async function main() {
   assert.ok(S.args.dayRecap.some((a) => a.day === '2026-10-01'), 'another day loads that day');
   assert.match(await page.textContent('#day-log .section-head'), /Log · Thursday, October 1/);
   console.log('ok 4 - paste saves, delete previews first, past days load');
+
+  // 6 ---------------------------------------------------------------
+  await page.evaluate(() => { window.__copied = null; navigator.clipboard.writeText = (t) => { window.__copied = t; return Promise.resolve(); }; window.scrollTo(0, 0); });
+  await page.click('#hm-sendlist');
+  await page.waitForSelector('#hm-send .sl-row');
+  assert.match(await page.textContent('#hm-send .sl-head'), /3 people · 2 companies · 2 to check/);
+  assert.match(await page.textContent('#hm-send .sl-row.bad .sl-flag'), /store staff/);
+  await page.click('#hm-send [data-sl-copy]');
+  let copied = await page.evaluate(() => window.__copied);
+  assert.match(copied, /LinkedIn invites for .* — 2 people, 2 companies/);
+  assert.ok(copied.includes('• Ann Able — Head of Partnerships\n  https://www.linkedin.com/in/ann'));
+  assert.ok(!copied.includes('Sam Store'), 'a flagged person is left out of the copy');
+  await page.check('#hm-send [data-sl-keep="t2"]');
+  await page.click('#hm-send [data-sl-copy]');
+  copied = await page.evaluate(() => window.__copied);
+  assert.ok(copied.includes('Sam Store'), 'send anyway puts them back');
+  await page.click('#hm-send [data-sl-swap="c2"]');
+  await page.waitForTimeout(300);
+  assert.deepEqual(S.args.queueContact[0], { contactId: 'c9' });
+  assert.deepEqual(S.args.passContact[0], { contactId: 'c2' });
+  console.log('ok 6 - today’s list: flags, copy for Zach (flagged left out), send anyway, swap');
 
   // 5 ---------------------------------------------------------------
   await page.setViewportSize({ width: 390, height: 800 });

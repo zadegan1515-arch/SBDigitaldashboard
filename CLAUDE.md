@@ -71,6 +71,17 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `node scripts/cc.mjs dayRecap` before choosing what to build. Tests: `node scripts/test-work-log.mjs`,
   `NODE_PATH=$(npm root -g) node scripts/test-today.js` (page, fake /api/data),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-today-e2e.js` (real handlers).
+- **Home → Today's list for Zach** (Leo, Oct 6 2026: "a button on the home page that can copy a list of what is
+  supposed to be sent out today so i can send to zach" + flag queued people who "do not fit a role or there is
+  someone who should replace them"). Button in Home's header (and on the recap's To do card) opens `#hm-send`
+  (`sl*` in app.html): `todaySendList` = today's LinkedIn queue (the same `getTodayQueue` read the LinkedIn tab
+  does) by company, each person with title + link, plus the **queue check** (`src/lib/queue-check.ts`, rules only:
+  `personProblem` = no title / not a buyer title (buyers.ts) / refused by the LinkedIn rules (student, store,
+  investor…); `checkBrandQueue` offers an uncontacted person at the same brand with a LinkedIn link and a stronger
+  title — partnerships > events > marketing = founder — one candidate per person, weakest first). **Copy for Zach**
+  = plain text (company, • name — title, link), flagged people left out unless "send anyway" is ticked. **Swap** =
+  `queueContact` (the better person) + `passContact` (the flagged one); **Leave out** = `passContact`; Queue on the
+  brand page undoes either. `node scripts/test-queue-check.mjs`; page + e2e in test-today*.
 - **Home → For Zach to do** (`zachTodo` + `renderZachTodo`; deep link `app.html#zach`) — **everyone who
   accepted a LinkedIn invite** until they're finished (`HAND_WAITING` in `route.ts`: accepted/replied,
   no `callAt`, no `handSkippedAt`). Replied by email still shows (Email step ticked, "replied by
