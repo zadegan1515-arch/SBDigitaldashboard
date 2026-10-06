@@ -6,9 +6,11 @@
 // what the script sends.
 //
 //   1. One version: @version = VERSION.
-//   2. It logs and does nothing else: off a profile the pill only says
-//      where to go; a company's People page is never read or scrolled;
-//      the dashboard's #sb-fill link starts nothing; nothing is sent.
+//   2. Nothing by itself: off a profile the pill only says where to go;
+//      a company's People page is read only when Zach presses "Read this
+//      page" (1.1, Leo Oct 6 2026 — his network shows people Leo's hides):
+//      it scrolls that page, previews (liPreview), and saves on Add
+//      (liCapture); the dashboard's #sb-fill link starts nothing.
 //   3. On a profile it reads the name (<h1>), the headline (pronouns and
 //      "· 2nd" skipped) and the current company (LinkedIn's "Current
 //      company" line, else the first job's logo), asks the dashboard who
@@ -111,6 +113,11 @@ const server = http.createServer((req, res) => {
         return res.end(JSON.stringify({ ok: true, contactId: body.contactId || 'c-new', targetId: 't-1', name: body.name || 'Sam Lee', brand, status: body.stage, noop: null, madeContact: !body.contactId, brandCreated: !!body.createIfMissing,
           undo: { targetId: 't-1', stage: body.stage, before: null, madeContact: !body.contactId } }));
       }
+      if (body.action === 'liPreview') {
+        return res.end(JSON.stringify({ ok: true, brand: { id: 'b1', name: 'Liquid Death' }, have: 2, cap: 25, room: 23,
+          rows: body.rows.map((r, i) => ({ name: r.name, role: r.headline, verdict: i === 2 ? 'dupe' : 'add' })) }));
+      }
+      if (body.action === 'liCapture') return res.end(JSON.stringify({ ok: true, added: 2, have: 4, cap: 25, brand: { id: 'b1', name: 'Liquid Death' } }));
       if (body.action === 'liPersonUndo') return res.end(JSON.stringify({ ok: true, undone: true, name: 'Jane Doe', removed: true }));
       res.end(JSON.stringify({ ok: false, error: 'not expected from the log script: ' + body.action }));
     });
@@ -198,14 +205,31 @@ const shim = (seedToken) => `
     ok('off a profile the pill only says where to go; nothing sent');
 
     pg = await open('/company/liquid-death/people/');
+    await pg.waitForFunction(() => (document.getElementById('sblogpill') || {}).textContent === 'SB · Read people');
     await pg.click('#sblogpill');
-    await pg.waitForFunction(() => /Open the person's profile/.test((document.getElementById('sblog-panel') || {}).innerText || ''));
-    await pg.waitForTimeout(800);
-    assert.equal(await pg.evaluate(() => window.scrollY), 0, 'never scrolls');
-    assert.equal(await pg.evaluate(() => !!window.__moreClicked), false, 'never clicks Show more');
-    assert.equal(sent.length, 0, 'a People page is never read');
+    await pg.waitForSelector('#sblogread');
+    await pg.waitForTimeout(600);
+    assert.equal(await pg.evaluate(() => window.scrollY), 0, 'opening the panel never scrolls');
+    assert.equal(await pg.evaluate(() => !!window.__moreClicked), false, 'opening the panel never clicks Show more');
+    assert.equal(sent.length, 0, 'nothing is read until Read this page');
+    await pg.click('#sblogread');
+    await pg.waitForSelector('#sblogadd', { timeout: 20000 });
+    const pv = sent.find(x => x.action === 'liPreview');
+    assert.deepEqual(pv.rows.map(r => r.name), ['Person A', 'Person B', 'Person C']);
+    assert.equal(pv.rows[0].headline, 'Brand Manager');
+    assert.equal(pv.companyName, 'Liquid Death');
+    assert.equal(await pg.evaluate(() => !!window.__moreClicked), true, 'it presses Show more like a person would');
+    assert.equal(sent.filter(x => x.action === 'liCapture').length, 0, 'nothing saved before Add');
+    assert.match(await pg.textContent('#sblogadd'), /Add 2 to Liquid Death/);
+    await pg.click('#sblogadd');
+    await pg.waitForFunction(() => /Saved/.test((document.getElementById('sblog-panel') || {}).innerText || ''));
+    const cap = sent.find(x => x.action === 'liCapture');
+    assert.equal(cap.rows.length, 3);
+    assert.equal(cap.via, 'log');
+    assert.ok(!sent.some(x => /^li(List|Run|Swept|Matched|Discover|Research)$/.test(x.action)), 'no run actions, ever');
+    sent.length = 0;
     await pg.close();
-    ok('a company\'s People page is left alone: no reading, scrolling or sending');
+    ok('a company\'s People page: read only on Read this page, previewed, saved only on Add; no run');
 
     pg = await open('/feed/#sb-fill');
     await pg.waitForTimeout(1500);

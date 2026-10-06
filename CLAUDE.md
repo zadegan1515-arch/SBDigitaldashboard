@@ -572,8 +572,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   GM storage), sends `reader: 2` so the li* gate lets it through, `@version` = `VERSION` (its own track,
   from 1.0; it ignores `latest`, Tampermonkey's daily update keeps it current). Pill bottom-left, or just
   above the People pill if both are installed. Same install by paste, same Trusted Types rules (`h()`,
-  never innerHTML). Tests: `node scripts/test-li-log-script.js` (fake LinkedIn + fake dashboard: logs
-  only, never reads a People page or starts a run) and `test-li-e2e.js` (real dashboard + throwaway
+  never innerHTML). **Since 1.1** (Leo, Oct 6 2026: Leo's LinkedIn hides out-of-network people as "LinkedIn Member", Zach's
+  bigger network shows them): on a company's People page the pill is **SB · Read people** → **Read this page**
+  (only on that click; scrolls that page + Show more, ≤150 people) → `liPreview` → **Add** → `liCapture` (`via: 'log'`,
+  no `me` so the Leo-only lock doesn't apply; buyers only, 25 cap). Still no run, no fill, no navigation by itself.
+  Tests: `node scripts/test-li-log-script.js` (fake LinkedIn + fake dashboard: reads a People page only on
+  Read, saves only on Add, never a run action) and `test-li-e2e.js` (real dashboard + throwaway
   Postgres: accepted, Undo, invite sent).
 - `src/lib/email.ts` — outreach: drafting, cap/ramp (`roomToday`), sending via Gmail API, replies, warmup stats, signature (hosted images, LinkedIn/IG as text links).
 - `src/lib/google.ts` — OAuth (gmail / drive / ops grants), Gmail read+send, Drive/Sheets/Docs create.

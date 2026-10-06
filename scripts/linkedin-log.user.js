@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         SB Dashboard — Log LinkedIn Invites
 // @namespace    sbagency.command-center
-// @version      1.0
-// @description  For Zach's LinkedIn: on someone's profile, log that you invited them or that they accepted, straight into the SB Command Center. Nothing else.
+// @version      1.1
+// @description  For Zach's LinkedIn: on someone's profile, log that you invited them or that they accepted; on a company's People page, read the marketing / partnerships people you can see into the SB Command Center. Only when you click.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
 // @run-at       document-idle
@@ -29,10 +29,12 @@
 // Never through a day's queue; the dashboard decides the rest
 // (src/lib/li-log.ts). Each log has an Undo.
 //
-// This script only ever reads the one profile page that's open. It has
-// no People capture, no "Fill brands by itself", no scrolling and no
-// page-to-page browsing — those are in linkedin-capture.user.js, which
-// stays on Leo's own LinkedIn and must never be installed here.
+// It only ever reads the one page that's open, and only when Zach
+// clicks: a profile (log them), or — since 1.1 (Leo, Oct 6 2026) — a
+// company's People page ("Read this page": scrolls that page, previews,
+// Add). It has no "Fill brands by itself", no run and no page-to-page
+// browsing on its own — those are in linkedin-capture.user.js, which stays
+// on Leo's own LinkedIn and must never be installed here.
 //
 // TO INSTALL (once, in Zach's browser): Tampermonkey -> + (new script) ->
 // select ALL of the sample text and paste this over it -> save. Chrome
@@ -52,7 +54,7 @@
   var INGEST_URL = 'https://sb-digitaldashboard.vercel.app/api/ingest';
   var DASH_URL = 'https://sb-digitaldashboard.vercel.app/app.html';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.0';
+  var VERSION = '1.1';
   // The dashboard refuses LinkedIn calls from an older card reader
   // (LI_READER in src/lib/li-sweep.ts). This reads a profile, not cards,
   // and sends the current number so its calls are let through.
@@ -255,6 +257,7 @@
     if (!token()) return openSetup();
     if (profilePath()) return openProfile();
     if (profileSubpage()) return openProfileSubpage();
+    if (companyPath()) return openPeople();
     return openNotProfile();
   }
 
@@ -567,6 +570,320 @@
     ]);
   }
 
+  // ---- a company's People page, read by hand (Leo, Oct 6 2026) --------
+  //
+  // "When the run is on my account it does not give access to all of the
+  // people at a company but it does on Zach's": LinkedIn hides people
+  // outside your network as "LinkedIn Member", and Zach's network is the
+  // big one. So on a company's People page this pill can read the people
+  // Zach can see — only when he presses "Read this page", only the page
+  // that's open (it scrolls it and presses "Show more" like a person
+  // would, up to 150 people), never another page by itself. No run, no
+  // fill: an automatic run is what LinkedIn restricts, and this is the
+  // account that sends the invites. Same preview → Add as Leo's People
+  // script; buyers only, the 25 cap, never anyone already on file.
+
+  var PROFILE_SEL = 'a[href*="/in/"]';
+  var MAX_PEOPLE = 150, MAX_ROUNDS = 15;
+  var KEYWORDS = ['partnerships', 'marketing', 'sponsorship', 'brand', 'events'];
+  var HALT_TEXT = /commercial use limit|unusual activity|security verification|quick security check|verify (?:that )?you'?re (?:a )?human|too many requests|you'?ve reached the (?:weekly|monthly) limit|account (?:has been )?restricted|temporarily restricted/i;
+
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function rand(a, c) { return a + Math.floor(Math.random() * (c - a)); }
+  function pageText(n) {
+    try { return String(document.body ? document.body.innerText : '').slice(0, n || 20000); } catch (e) { return ''; }
+  }
+  function companyPath() {
+    var m = location.pathname.match(/^\/(company|showcase)\/([^\/?#]+)/);
+    return m ? { kind: m[1], slug: m[2] } : null;
+  }
+  function onPeoplePage() {
+    return /^\/(company|showcase)\/[^\/]+\/people(\/|$)/.test(location.pathname);
+  }
+  function companyBase() {
+    var c = companyPath();
+    return c ? location.origin + '/' + c.kind + '/' + c.slug + '/' : null;
+  }
+  function companyName() {
+    var el = document.querySelector('.org-top-card-summary__title, main h1, h1');
+    var t = el ? (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim() : '';
+    if (!t) t = document.title.replace(/^\(\d+\+?\)\s*/, '').split(/[:|]/)[0].trim();
+    return t.slice(0, 120);
+  }
+  function companyIndustry() {
+    var el = document.querySelector('.org-top-card-summary-info-list__info-item, .org-top-card-summary-info-list');
+    return el ? String(el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120) : '';
+  }
+  function slugOf(href) {
+    var m = String(href || '').match(/\/in\/([^\/?#]+)/);
+    return m ? m[1].toLowerCase() : null;
+  }
+  function profileLinks(root) {
+    return [].slice.call((root || document).querySelectorAll(PROFILE_SEL)).filter(function (a) {
+      return !skipZone(a) && slugOf(a.getAttribute('href'));
+    });
+  }
+  function distinctSlugs(el) {
+    var s = {};
+    [].slice.call(el.querySelectorAll(PROFILE_SEL)).forEach(function (a) { var k = slugOf(a.getAttribute('href')); if (k) s[k] = 1; });
+    return Object.keys(s).length;
+  }
+  function countPeople() {
+    var s = {};
+    profileLinks().forEach(function (a) { s[slugOf(a.getAttribute('href'))] = 1; });
+    return Object.keys(s).length;
+  }
+  function cardFor(a) {
+    var li = a.closest('li');
+    if (li && !skipZone(li) && distinctSlugs(li) === 1) return li;
+    var el = a;
+    while (el.parentElement && el.parentElement !== document.body) {
+      var p = el.parentElement;
+      if (distinctSlugs(p) > 1) break;
+      el = p;
+      if (lines(el).length > 14) break;
+    }
+    return el;
+  }
+  function readCard(card) {
+    var all = lines(card);
+    var name = null;
+    profileLinks(card).forEach(function (a) { if (!name) name = personName(lines(a)[0]) || null; });
+    if (!name) name = personName(all[0]) || null;
+    var subEl = card.querySelector('.artdeco-entity-lockup__subtitle');
+    var headline = subEl ? personName(lines(subEl).join(' ')) : '';
+    if (!headline && name) {
+      var at = -1;
+      for (var i = 0; i < all.length; i++) { if (personName(all[i]) === name || all[i].indexOf(name) === 0) { at = i; break; } }
+      for (var j = at + 1; j < all.length && !headline; j++) {
+        var l = personName(all[j]);
+        if (l && l !== name) headline = l;
+      }
+    }
+    return { name: name, headline: headline };
+  }
+  function scrapePeople() {
+    var done = {}, rows = [];
+    profileLinks().forEach(function (a) {
+      var slug = slugOf(a.getAttribute('href'));
+      if (done[slug]) return;
+      var got = readCard(cardFor(a));
+      if (!got.name || /^linkedin member$/i.test(got.name) || got.name.length > 80) return;
+      done[slug] = 1;
+      rows.push({ name: got.name, headline: got.headline, linkedinUrl: 'https://www.linkedin.com/in/' + slug + '/' });
+    });
+    return rows;
+  }
+  function hiddenMembers() {
+    var seen = [];
+    [].slice.call(document.querySelectorAll('main *')).forEach(function (el) {
+      if (el.children.length || skipZone(el)) return;
+      if (!/^linkedin member$/i.test(String(el.textContent || '').trim())) return;
+      var c = el.closest('li') || el.parentElement;
+      if (seen.indexOf(c) < 0) seen.push(c);
+    });
+    return seen.length;
+  }
+  function peopleCount() {
+    var m = /([\d][\d,.]*)\s*([KM])?\+?\s+associated members?/i.exec(pageText(8000));
+    if (!m) return null;
+    var n = parseFloat(m[1].replace(/,/g, ''));
+    if (!isFinite(n)) return null;
+    if (m[2]) n *= /k/i.test(m[2]) ? 1e3 : 1e6;
+    return Math.round(n);
+  }
+  function moreButton() {
+    var bs = [].slice.call(document.querySelectorAll('button'));
+    for (var i = 0; i < bs.length; i++) {
+      var x = bs[i];
+      if (x.disabled || skipZone(x) || !x.offsetParent) continue;
+      if (/^(show more results|show more|load more)$/i.test((x.innerText || x.textContent || '').trim())) return x;
+    }
+    return null;
+  }
+  // Scroll the way a person would: to the bottom, a pause, "Show more
+  // results" if it's there, a longer pause. Stops when the list stops
+  // growing, at 150 people, or when Stop is pressed.
+  function expand(onProgress, halt) {
+    return new Promise(function (resolve) {
+      var rounds = 0, still = 0, last = countPeople();
+      function step() {
+        if (halt.stopped || rounds >= MAX_ROUNDS || last >= MAX_PEOPLE) return resolve();
+        rounds++;
+        var links = profileLinks();
+        if (links.length) links[links.length - 1].scrollIntoView({ block: 'end' });
+        window.scrollTo(0, document.body.scrollHeight);
+        wait(rand(900, 1600)).then(function () {
+          if (halt.stopped) return;
+          var more = moreButton();
+          if (more) more.click();
+          return wait(more ? rand(1300, 2200) : rand(500, 900));
+        }).then(function () {
+          var n = countPeople();
+          onProgress(n);
+          still = n <= last ? still + 1 : 0;
+          last = Math.max(last, n);
+          if (still >= 2) return resolve();
+          step();
+        }).catch(function () { resolve(); });
+      }
+      step();
+    });
+  }
+
+  function keywordChips() {
+    var base = companyBase();
+    if (!base) return null;
+    return h('div', {}, [
+      h('div', { style: 'font-size:11.5px;color:#777;margin:10px 0 5px', text: 'Big company? Open a narrower view, then read it:' }),
+      h('div', { style: 'display:flex;flex-wrap:wrap;gap:5px' }, KEYWORDS.map(function (k) {
+        return h('a', {
+          href: base + 'people/?keywords=' + encodeURIComponent(k),
+          style: 'border:1px solid #ddd;border-radius:99px;padding:3px 9px;color:#111;text-decoration:none;font-size:12px',
+          text: k,
+        });
+      })),
+    ]);
+  }
+
+  var lastRead = null, reading = false;
+
+  function openPeople() {
+    if (reading) return;
+    if (!onPeoplePage()) {
+      return freshPanel([
+        head(companyName() || 'SB · Log'),
+        h('div', { style: MUTED }, ['To add this company\'s marketing / partnerships people, open its ', b('People'), ' tab, then press this pill.']),
+        h('button', { id: 'sblogopenpeople', style: BTN, text: 'Open the People tab', onclick: function () { location.href = companyBase() + 'people/'; } }),
+        tokenLink(),
+      ]);
+    }
+    freshPanel([
+      head(companyName() || 'People'),
+      h('div', { style: MUTED }, ['Reads the people ', b('you can see'), ' on this page and adds the marketing / partnerships ones to the brand in the dashboard. You see who first; nothing is saved until you press Add.']),
+      h('button', { id: 'sblogread', style: BTN, text: 'Read this page', onclick: guard(readPeople) }),
+      keywordChips(),
+      h('div', { style: SMALL, text: 'Only this page, only when you press Read. It scrolls like you would (up to ' + MAX_PEOPLE + ' people).' }),
+      tokenLink(),
+    ]);
+  }
+
+  function readPeople() {
+    if (HALT_TEXT.test(pageText(6000))) return showError('LinkedIn is asking you to slow down on this page. Leave it for a while — nothing was read.');
+    reading = true;
+    var halt = { stopped: false };
+    var prog = h('div', { id: 'sblogprog', style: 'color:#555;margin-bottom:10px', text: countPeople() + ' people on screen…' });
+    freshPanel([
+      head('Reading this page'),
+      prog,
+      h('button', { id: 'sblogstop', style: BTN2, text: 'Stop and use what\'s here', onclick: function () { halt.stopped = true; } }),
+    ]);
+    var info = { companyName: companyName(), companyUrl: location.href, industry: companyIndustry(), members: peopleCount() };
+    expand(function (n) { prog.textContent = n + ' people on screen…'; }, halt).then(function () {
+      window.scrollTo(0, 0);
+      lastRead = Object.assign(info, { rows: scrapePeople(), hidden: hiddenMembers(), keyword: (location.search.match(/keywords=([^&]+)/) || [])[1] || '' });
+      reading = false;
+      return previewPeople('');
+    }).catch(function (e) { reading = false; showError(e.message); });
+  }
+
+  function previewPeople(brandName) {
+    var r = lastRead;
+    if (!r) return Promise.resolve();
+    return post({ action: 'liPreview', companyUrl: r.companyUrl, companyName: r.companyName, brandName: brandName || '', rows: r.rows, via: 'log' })
+      .then(function (j) {
+        if (!j || !j.ok) return showError((j && j.error) || 'The dashboard could not read that.');
+        renderPeoplePreview(j, brandName);
+      });
+  }
+
+  function peopleGroup(title, rows, open, color) {
+    if (!rows.length) return null;
+    return h('details', { open: !!open, style: 'display:block;margin-top:8px' }, [
+      h('summary', { style: 'display:list-item;cursor:pointer;font-weight:600;color:' + (color || '#111'), text: title + ' (' + rows.length + ')' }),
+      h('div', { style: 'font-size:12px;margin-top:4px;max-height:180px;overflow:auto' }, rows.map(function (x) {
+        return h('div', { style: 'padding:2px 0' }, [
+          x.name,
+          x.role ? h('span', { style: 'color:#777', text: ' — ' + x.role }) : null,
+          x.at ? h('span', { style: 'color:#946200', text: ' (on file at ' + x.at + ')' }) : null,
+        ]);
+      })),
+    ]);
+  }
+
+  function renderPeoplePreview(j, typed) {
+    var by = function (v) { return j.rows.filter(function (x) { return x.verdict === v; }); };
+    var adds = by('add'), waiting = by('noBrand');
+    var again = function (name) { previewPeople(name).catch(function (e) { showError(e.message); }); };
+    var box = h('input', {
+      id: 'sblogbrand', value: typed || (j.brand ? j.brand.name : ''), placeholder: 'Dashboard brand name',
+      style: 'flex:1;min-width:0;padding:6px 8px;border:1px solid #ccc;border-radius:6px;font:12.5px system-ui;color:#111;background:#fff',
+    });
+    box.onkeydown = function (e) { if (e.key === 'Enter') again(box.value.trim()); };
+    var add = null, create = null;
+    if (j.brand) {
+      add = h('button', { id: 'sblogadd', style: BTN + ';margin-top:12px', disabled: !adds.length,
+        text: adds.length ? 'Add ' + adds.length + ' to ' + j.brand.name : 'Nobody new to add' });
+      if (adds.length) add.onclick = guard(function () { capturePeople(typed, add); });
+    } else if (j.createName) {
+      var n = Math.min(waiting.length, j.cap);
+      create = h('button', { id: 'sblogcreate', style: BTN + ';margin-top:12px',
+        text: 'Add “' + j.createName + '” as a new brand' + (n ? ' + ' + n + (n === 1 ? ' person' : ' people') : '') });
+      create.onclick = guard(function () { capturePeople(typed, create, true); });
+    }
+    freshPanel([
+      head(lastRead.companyName || 'People'),
+      j.brand
+        ? h('div', { style: 'margin-bottom:4px' }, ['For ', b(j.brand.name), ' · ' + j.have + ' of ' + j.cap + ' on file' + (j.room ? ', room for ' + j.room : ' — full')])
+        : h('div', { style: 'color:#946200;margin-bottom:4px', text: 'Which dashboard brand is this? None matched “' + (j.notFound || lastRead.companyName) + '”.' }),
+      !j.brand && j.suggestions && j.suggestions.length
+        ? h('div', { style: 'display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px' }, j.suggestions.map(function (s) {
+            return h('button', { style: 'border:1px solid #ddd;background:#fff;color:#111;border-radius:99px;padding:3px 9px;cursor:pointer;font:12px system-ui', text: s, onclick: function () { again(s); } });
+          }))
+        : null,
+      h('div', { style: 'display:flex;gap:6px;margin:6px 0 4px' }, [
+        box,
+        h('button', { id: 'sblogcheck', text: j.brand ? 'Change' : 'Check',
+          style: 'background:#fff;color:#111;border:1px solid #ccc;border-radius:6px;padding:5px 10px;cursor:pointer;font:12.5px system-ui',
+          onclick: function () { again(box.value.trim()); } }),
+      ]),
+      h('div', { style: 'font-size:12px;color:#555;margin-top:8px', text: lastRead.rows.length + ' people read from this page.' +
+        (lastRead.hidden ? ' ' + lastRead.hidden + ' show as "LinkedIn Member" (outside your network).' : '') }),
+      peopleGroup(j.brand ? 'Will add' : 'Buyers found', j.brand ? adds : waiting, true, '#137333'),
+      peopleGroup('Over the ' + j.cap + ' cap', by('full'), false, '#946200'),
+      peopleGroup('Already on file', by('dupe'), false, '#555'),
+      peopleGroup('On file at another brand', by('elsewhere'), false, '#946200'),
+      peopleGroup('Not a buyer title — left out', by('notBuyer'), false, '#999'),
+      add, create,
+      keywordChips(),
+      tokenLink(),
+    ]);
+  }
+
+  function capturePeople(typed, btn, create) {
+    var r = lastRead;
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    return post({
+      action: 'liCapture', via: 'log',
+      companyUrl: r.companyUrl, companyName: r.companyName, companyIndustry: r.industry || '',
+      brandName: typed || '', createIfMissing: !!create,
+      // The headcount is the whole company's only on the unfiltered tab.
+      members: r.keyword ? null : r.members,
+      rows: r.rows,
+    }).then(function (j) {
+      if (!j || !j.ok) return showError((j && j.error) || 'Nothing was saved.');
+      freshPanel([
+        head('Saved'),
+        j.brandCreated ? h('div', { style: 'margin-bottom:6px;color:#137333' }, [b(j.brand.name), ' is now a brand in the dashboard. Its category is a guess — check it on the brand page.']) : null,
+        h('div', { style: 'margin-bottom:6px' }, [b(String(j.added)), ' added to ', b(j.brand.name), '. It now has ' + j.have + ' of ' + j.cap + ' people on file.']),
+        h('a', { href: DASH_URL + '#brand/' + j.brand.id, target: '_blank', rel: 'noopener', style: BTN2 + ';margin-top:10px', text: 'Open ' + j.brand.name + ' in the dashboard ↗' }),
+        h('div', { style: SMALL, text: 'Still short? Open a narrower view below, then press the pill again.' }),
+        keywordChips(),
+      ]);
+    }).catch(function (e) { showError(e.message); });
+  }
+
   // ---- the pill ---------------------------------------------------------
   //
   // Bottom-left: LinkedIn's Messaging bar sits bottom-right. If this
@@ -585,7 +902,7 @@
   }
   function paintPill() {
     if (!pill) return;
-    var label = profilePath() ? 'SB · Log them' : 'SB · Log';
+    var label = profilePath() ? 'SB · Log them' : onPeoplePage() ? 'SB · Read people' : 'SB · Log';
     if (pill.textContent !== label) pill.textContent = label;
     var bottom = document.getElementById('sblipill') ? '66px' : '16px';
     if (pill.style.bottom !== bottom) pill.style.bottom = bottom;
@@ -600,7 +917,7 @@
     paintPill();
     if (location.pathname !== lastPath) {
       // A different page: whatever the panel said is about the old one.
-      if (lastPath) closePanel();
+      if (lastPath && !reading) closePanel();
       lastPath = location.pathname;
     }
   }
