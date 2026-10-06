@@ -301,6 +301,16 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   category · source, sign tags, the why on one line) with **Add** and **×**; a row opens for the pitch
   and links (Source, Website, LinkedIn, SponsorUnited). The old "describe a niche" search box is gone
   (it needed paid API calls). `node scripts/test-discover.js`.
+- **"Add a brand" chat** (Leo, Oct 2026: "send a picture of a brand from instagram or type in a name
+  and it will find the brand … and add it"). A saved Claude cloud session ("Add a brand", repo attached,
+  `DASHBOARD_TOKEN` in its environment — no API spend) follows `docs/add-a-brand-chat.md`: reads the
+  screenshot / name, `brandLookup`, researches the open web (site, LinkedIn page, what they sell, money,
+  college / music), previews `chatAddBrand` (rules pure in `src/lib/chat-add.ts`: possible matches by
+  name / aka, LinkedIn page, website — the Duplicates signals; `node scripts/test-chat-add.mjs`), shows
+  Leo a card, and only on his yes applies: Brand `source: 'chat'`, notes say where it came from. A
+  possible match is refused unless Leo says it's a different company (`notSame`; an exact name never).
+  Facts go to `researchStage` (Stock take → Brand Fit review), never straight onto the brand. It can't
+  sign in to SponsorUnited or LinkedIn — the LinkedIn fill and SU sweep pick the brand up from there.
 - **Brands → New from LinkedIn** (chip after All; `listBrands({ category: 'new' })`, count from
   `categoryReach.newFromLinkedIn`): brands the LinkedIn run added itself (`source` linkedin-discover /
   research) in the last 14 days that nobody has looked at. Tick → **Keep** (off the list, nothing

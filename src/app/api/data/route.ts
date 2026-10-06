@@ -46,6 +46,7 @@ import {
 } from '@/lib/li-review'
 import { LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR, linkedinWindows, acceptRates, planWeekDays, type AcceptRates } from '@/lib/plan-week'
 import { findDuplicateGroups, pairKey } from '@/lib/duplicates'
+import { cleanChatBrand, matchRoster, chatNotes } from '@/lib/chat-add'
 import { findLinkedInPeople, logLinkedInPerson, undoLinkedInLog, checkNewPerson } from '@/lib/li-log-db'
 import { isLogStage } from '@/lib/li-log'
 import { rollWindow, findUnsent, planCarry, type Unsent, type CarryFacts } from '@/lib/carry'
@@ -4587,6 +4588,53 @@ const handlers: Record<string, Handler> = {
     })
 
     return { brand, created: true, inference }
+  },
+
+  // The "Add a brand" chat (src/lib/chat-add.ts, docs/add-a-brand-chat.md):
+  // a Claude session Leo sends an Instagram screenshot or a name to. It
+  // researches on the open web, shows Leo the card, and only on his yes
+  // calls this with apply. Preview = the cleaned brand + what on the roster
+  // it could already be. Apply refuses a possible duplicate unless Leo said
+  // it's a different company (notSame). Category is always a real key (the
+  // keyword guess if none, never a model call). Facts (sales, funding,
+  // college / music…) are never written here: they go to the research
+  // review on Stock take → Brand Fit, like every other Claude research.
+  async chatAddBrand({ brand: raw, facts, apply, notSame }: any) {
+    const { row, error } = cleanChatBrand(raw)
+    if (error || !row) throw new Error(error ?? 'Could not read the brand')
+    const asked = checkCategory(row.category)
+    const category = asked ?? guessCategory(row.name, [row.about, row.website].filter(Boolean).join(' '))
+    let factRow: any = null
+    if (facts && typeof facts === 'object' && Object.keys(facts).length) {
+      const { error: fe } = cleanResearchRow({ ...facts, name: row.name })
+      if (fe) throw new Error(fe)
+      factRow = { ...facts, name: row.name }
+    }
+    const roster = await prisma.brand.findMany({ select: { id: true, name: true, aka: true, website: true, linkedinUrl: true, passedAt: true } })
+    const matches = matchRoster(row, roster)
+    const card = { ...row, category }
+    if (!apply) return { preview: true, brand: card, matches, facts: factRow }
+    // An exact name clash is the unique index: never a second copy.
+    if (matches.length && (!notSame || matches.some(m => m.name.toLowerCase() === row.name.toLowerCase()))) {
+      throw new Error('Already on the roster as ' + matches.map(m => '"' + m.name + '"').join(', ') + ' — not added')
+    }
+    const day = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' })
+    const made = await prisma.brand.create({
+      data: {
+        name: row.name, category, tier: row.tier,
+        website: row.website, linkedinUrl: row.linkedinUrl,
+        aka: row.aka.length ? row.aka.join(', ') : null,
+        about: row.about,
+        notes: chatNotes(row, day),
+        source: 'chat',
+      },
+    })
+    const staged = factRow ? await handlers.researchStage({ rows: [{ ...factRow, id: made.id }], by: 'Add a brand chat' }) : null
+    return {
+      created: { id: made.id, name: made.name, category: made.category },
+      link: (process.env.SITE_URL || 'https://sb-digitaldashboard.vercel.app') + '/app.html#brand/' + made.id,
+      factsStaged: staged ? staged.staged : 0,
+    }
   },
 
   // -------- search --------
