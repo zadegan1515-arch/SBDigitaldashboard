@@ -414,7 +414,6 @@
   @keyframes zs-flash{from{background:var(--accent-soft)}to{background:transparent}}
   .zs-more{display:block;width:calc(100% - 24px);margin:4px 12px 2px;padding:6px 0;border:0;border-top:1px solid var(--border-soft);background:none;color:var(--accent-hi);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;text-align:left}
   .zs-more:hover{text-decoration:underline}
-  @media (min-width:1360px){ #dashboard.page{max-width:1660px} }
   @media (max-width:768px){ .zs{padding:14px 12px} .zs-rule{margin-left:0} }
   @media (hover:none){.zt-go,.zt-keys{display:none}}
   @media (prefers-reduced-motion:reduce){
@@ -454,7 +453,7 @@
     border:1px solid var(--border);border-radius:4px;padding:1px 5px;background:var(--surface-2)}
   .whoami{margin-left:auto;font-size:12px;color:var(--ink-3)}
 
-  .page{max-width:1220px;padding:44px 48px 110px}
+  .page{max-width:none;padding:44px 48px 110px}
   .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-hi);margin-bottom:10px}
   .eyebrow a,.crumb{color:var(--ink-3);cursor:pointer;text-decoration:none}
   .crumb:hover{color:var(--ink-1)}
@@ -8805,10 +8804,10 @@ function renderLiReview(list) {
           (e.saved ? ' Saved now: <a href="' + esc(e.saved) + '" target="_blank" rel="noopener">' + esc(e.saved.replace(/^https:\/\/www\.linkedin\.com/, '')) + ' ↗</a>' : '') + '</div>' +
         (e.candidates || []).map(function (c) {
           var url = 'https://www.linkedin.com/company/' + c.slug + '/';
-          return '<div class="t-meta" style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
-            '<a href="' + esc(url) + '" target="_blank" rel="noopener"><b>' + esc(c.name) + '</b> ↗</a>' +
-            '<span style="color:var(--ink-3)">' + esc(c.subtitle || '') + '</span>' +
-            '<button class="btn-draft mini" data-lirv-pick="' + esc(c.slug) + '">This one</button></div>';
+          return '<div class="t-meta" style="margin-top:6px;display:flex;gap:10px;align-items:center">' +
+            '<a href="' + esc(url) + '" target="_blank" rel="noopener" style="flex:none"><b>' + esc(c.name) + '</b> ↗</a>' +
+            '<span style="color:var(--ink-3);flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(c.subtitle || '') + '">' + esc(c.subtitle || '') + '</span>' +
+            '<button class="btn-draft mini" style="flex:none" data-lirv-pick="' + esc(c.slug) + '">This one</button></div>';
         }).join('') +
         '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
           '<input class="inp" data-lirv-url placeholder="or paste their LinkedIn page link" style="flex:1;min-width:200px">' +

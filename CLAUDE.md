@@ -629,6 +629,7 @@ cloud environment's settings).
   `CAT_NAMES` in app.html; used by route.ts, ingest, Stock take). Every path that files a brand
   refuses an unknown key (`checkCategory`). Brands tab: "No category" chip (`listBrands({category:
   'none'})`) and tick-to-re-file with a from → to preview (`setBrandsCategory`, category/tier only).
+- **Full width** (Leo, Oct 6 2026: "every space is taken up on the screen"): `.page` has no max-width on any view; don't cap a page's width again (narrow inputs / modals are fine).
 - Cents everywhere; `money()` formats on the client, `parseMoney()` parses "$1,750".
 - Activations: "current cost" = sum of `finalCents` only; estimate is the sheet. A staff-section line is a people line (slots) unless it's travel/labour (`isPeopleLine`, same regex client+server).
 - EventStaff `status`: invited · onboarding · ready · confirmed · declined · no_show · done. Local confirmed/declined/no_show/done are never overwritten by a platform sync.
