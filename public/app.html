@@ -414,7 +414,6 @@
   @keyframes zs-flash{from{background:var(--accent-soft)}to{background:transparent}}
   .zs-more{display:block;width:calc(100% - 24px);margin:4px 12px 2px;padding:6px 0;border:0;border-top:1px solid var(--border-soft);background:none;color:var(--accent-hi);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;text-align:left}
   .zs-more:hover{text-decoration:underline}
-  @media (min-width:1360px){ #dashboard.page{max-width:1660px} }
   /* Home head + "today at a glance" tiles (Leo, Oct 6: cleaner Home) */
   .hm-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
   .hm-btns{display:flex;gap:8px;flex-wrap:wrap}
@@ -552,7 +551,7 @@
     border:1px solid var(--border);border-radius:4px;padding:1px 5px;background:var(--surface-2)}
   .whoami{margin-left:auto;font-size:12px;color:var(--ink-3)}
 
-  .page{max-width:1220px;padding:44px 48px 110px}
+  .page{max-width:none;padding:44px 48px 110px}
   .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-hi);margin-bottom:10px}
   .eyebrow a,.crumb{color:var(--ink-3);cursor:pointer;text-decoration:none}
   .crumb:hover{color:var(--ink-1)}
@@ -1501,9 +1500,66 @@
   .req-pill{font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;background:var(--surface-2);color:var(--ink-2);border:1px solid var(--border)}
   .req-pill b{color:var(--ink-1);font-weight:700}
   .req-note{margin-top:10px;font-size:13px;color:var(--ink-2);font-style:italic}
+  /* Opening intro (Leo, Oct 2026: "an animation as i open the command center … the sb agency logo").
+     Once per tab session; skipped for reduced motion and automated browsers; click / any key skips. */
+  #sb-intro{position:fixed;inset:0;z-index:2147483000;background:#0b0b0f;display:grid;place-items:center;
+    overflow:hidden;cursor:pointer;transition:opacity .7s ease .15s}
+  #sb-intro::before{content:"";position:absolute;width:120vmax;height:120vmax;left:50%;top:50%;
+    transform:translate(-50%,-50%) scale(.4);border-radius:50%;opacity:0;
+    background:radial-gradient(circle,rgba(79,131,247,.22) 0%,rgba(79,131,247,.06) 30%,transparent 60%);
+    animation:sbiGlow 2.6s ease-out .5s forwards}
+  #sb-intro .sbi-stage{position:relative;display:flex;flex-direction:column;align-items:center;gap:28px;
+    transition:transform .9s cubic-bezier(.7,0,.2,1),opacity .6s ease,filter .9s ease}
+  #sb-intro .sbi-logo{width:min(520px,78vw);height:auto;display:block;
+    -webkit-mask-image:linear-gradient(100deg,#000 40%,transparent 60%);mask-image:linear-gradient(100deg,#000 40%,transparent 60%);
+    -webkit-mask-size:300% 100%;mask-size:300% 100%;-webkit-mask-position:100% 0;mask-position:100% 0;
+    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+    animation:sbiWrite 1.4s cubic-bezier(.45,.05,.25,1) .2s forwards,sbiShine 1.2s ease-out 1.5s forwards}
+  #sb-intro .sbi-line{width:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent-hi),transparent);
+    animation:sbiLine .9s cubic-bezier(.3,0,.2,1) 1.35s forwards}
+  #sb-intro .sbi-tag{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.9em;
+    text-transform:uppercase;color:var(--ink-2);opacity:0;transform:translateY(6px);margin-right:-.9em;
+    animation:sbiTag .8s ease-out 1.55s forwards}
+  #sb-intro.sbi-out{opacity:0;pointer-events:none}
+  #sb-intro.sbi-out .sbi-stage{transform:scale(1.18);opacity:0;filter:blur(6px)}
+  body.sbi-playing .app{opacity:0;transform:scale(.97)}
+  body.sbi-reveal .app{opacity:1;transform:none;transition:opacity .8s ease .2s,transform 1s cubic-bezier(.2,.7,.2,1) .1s}
+  @keyframes sbiWrite{to{-webkit-mask-position:0 0;mask-position:0 0}}
+  @keyframes sbiShine{0%{filter:drop-shadow(0 0 0 rgba(111,157,255,0))}
+    45%{filter:drop-shadow(0 0 18px rgba(111,157,255,.55))}100%{filter:drop-shadow(0 0 6px rgba(111,157,255,.18))}}
+  @keyframes sbiLine{to{width:min(320px,60vw)}}
+  @keyframes sbiTag{to{opacity:1;transform:none}}
+  @keyframes sbiGlow{to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+  @media (max-width:520px){#sb-intro .sbi-tag{font-size:10px;letter-spacing:.6em;margin-right:-.6em}}
 </style>
 </head>
 <body>
+<div id="sb-intro" aria-hidden="true">
+  <div class="sbi-stage">
+    <img class="sbi-logo" src="/materials/sb-logo-white.png" alt="">
+    <div class="sbi-line"></div>
+    <div class="sbi-tag">Command Center</div>
+  </div>
+</div>
+<script>
+(function(){
+  var el = document.getElementById('sb-intro'), seen = false;
+  try { seen = sessionStorage.getItem('sb.intro') === '1'; sessionStorage.setItem('sb.intro', '1'); } catch (e) {}
+  var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (seen || still || navigator.webdriver || /[?&]nointro\b/.test(location.search)) { el.remove(); return; }
+  document.body.classList.add('sbi-playing');
+  var done = false, t = setTimeout(finish, 2900);
+  function finish(){
+    if (done) return; done = true; clearTimeout(t);
+    document.body.classList.add('sbi-reveal'); document.body.classList.remove('sbi-playing');
+    el.classList.add('sbi-out');
+    removeEventListener('keydown', finish, true);
+    setTimeout(function(){ el.remove(); document.body.classList.remove('sbi-reveal'); }, 1300);
+  }
+  el.addEventListener('click', finish);
+  addEventListener('keydown', finish, true);
+})();
+</script>
 <div class="app">
   <aside class="sidebar">
     <div class="logo">
@@ -3244,9 +3300,14 @@ function maybeAutoRecap() {
   var asked = location.hash === '#today';
   if (!asked && (location.hash && location.hash !== '#') ) return;
   if (!asked && (RC_DAYS.indexOf(keyDow(today)) < 0 || lsGet('sb.recapSeen') === today)) return;
-  // Give Zach's list a moment so "What to do today" can count it.
+  // Give Zach's list a moment so "What to do today" can count it, and let
+  // the opening logo animation (#sb-intro) finish first.
   var go = function () { openRecap(0); };
-  Promise.all([RC ? Promise.resolve() : loadToday(), ZT ? Promise.resolve() : new Promise(function (res) { setTimeout(res, 1500); })])
+  var introGone = new Promise(function (res) {
+    var n = 0;
+    (function wait() { if (!document.getElementById('sb-intro') || ++n > 40) res(); else setTimeout(wait, 200); })();
+  });
+  Promise.all([RC ? Promise.resolve() : loadToday(), ZT ? Promise.resolve() : new Promise(function (res) { setTimeout(res, 1500); }), introGone])
     .then(go).catch(function () { /* the Home page still works */ });
 }
 
@@ -9359,10 +9420,10 @@ function renderLiReview(list) {
           (e.saved ? ' Saved now: <a href="' + esc(e.saved) + '" target="_blank" rel="noopener">' + esc(e.saved.replace(/^https:\/\/www\.linkedin\.com/, '')) + ' ↗</a>' : '') + '</div>' +
         (e.candidates || []).map(function (c) {
           var url = 'https://www.linkedin.com/company/' + c.slug + '/';
-          return '<div class="t-meta" style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
-            '<a href="' + esc(url) + '" target="_blank" rel="noopener"><b>' + esc(c.name) + '</b> ↗</a>' +
-            '<span style="color:var(--ink-3)">' + esc(c.subtitle || '') + '</span>' +
-            '<button class="btn-draft mini" data-lirv-pick="' + esc(c.slug) + '">This one</button></div>';
+          return '<div class="t-meta" style="margin-top:6px;display:flex;gap:10px;align-items:center">' +
+            '<a href="' + esc(url) + '" target="_blank" rel="noopener" style="flex:none"><b>' + esc(c.name) + '</b> ↗</a>' +
+            '<span style="color:var(--ink-3);flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(c.subtitle || '') + '">' + esc(c.subtitle || '') + '</span>' +
+            '<button class="btn-draft mini" style="flex:none" data-lirv-pick="' + esc(c.slug) + '">This one</button></div>';
         }).join('') +
         '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
           '<input class="inp" data-lirv-url placeholder="or paste their LinkedIn page link" style="flex:1;min-width:200px">' +

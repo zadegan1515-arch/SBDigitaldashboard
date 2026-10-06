@@ -13,6 +13,8 @@ on:
       - 'src/lib/brand-fit.ts'
       - 'src/lib/brand-size.ts'
       - 'src/lib/stock.ts'
+      - 'src/lib/chat-add.ts'
+      - 'scripts/test-chat-add*'
       - 'src/lib/bigint-json.ts'
       - 'src/lib/work-log.ts'
       - 'src/lib/build-ideas.ts'
@@ -29,6 +31,8 @@ on:
       - 'src/lib/brand-fit.ts'
       - 'src/lib/brand-size.ts'
       - 'src/lib/stock.ts'
+      - 'src/lib/chat-add.ts'
+      - 'scripts/test-chat-add*'
       - 'src/lib/bigint-json.ts'
       - 'src/lib/work-log.ts'
       - 'src/lib/build-ideas.ts'
@@ -68,10 +72,10 @@ jobs:
       - name: Types
         run: npx tsc --noEmit
       - name: Rules
-        run: node scripts/test-brand-fit.mjs && node scripts/test-brand-size.mjs && node scripts/test-stock.mjs && node scripts/test-work-log.mjs
+        run: node scripts/test-brand-fit.mjs && node scripts/test-brand-size.mjs && node scripts/test-stock.mjs && node scripts/test-work-log.mjs && node scripts/test-chat-add.mjs
       - name: The page against a fake dashboard
         run: node scripts/test-brand-fit-ui.js && node scripts/test-brands-table.js && node scripts/test-today.js
       - name: The handlers on a real database
-        run: node scripts/test-brand-fit-e2e.js && node scripts/test-today-e2e.js
+        run: node scripts/test-brand-fit-e2e.js && node scripts/test-today-e2e.js && node scripts/test-chat-add-e2e.js
         env:
           E2E_DATABASE_URL: postgresql://postgres:e2e@localhost:5432/sbe2e
