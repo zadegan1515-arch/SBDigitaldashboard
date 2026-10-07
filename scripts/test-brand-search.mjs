@@ -27,11 +27,12 @@ t('starts with, then a word starts with, then contains', () => {
   assert.equal(rank('bull', 'Red Bull'), 2)
   assert.equal(rank('ull', 'Red Bull'), 3)
 })
-t('an also-known-as match is rank 4 and names it', () => {
+t('an also-known-as match names it: exact = 0, otherwise rank 4', () => {
   const hit = searchHit('Smirnoff Ice', 'Smirnoff', 'Smirnoff Ice, Smirnoff Vodka')
-  assert.deepEqual(hit, { rank: 4, via: 'aka', aka: 'Smirnoff Ice' })
+  assert.deepEqual(hit, { rank: 0, via: 'aka', aka: 'Smirnoff Ice' })
   const aka = searchHit('Liquid Death', 'LD Water Co', 'Liquid Death')
-  assert.deepEqual(aka, { rank: 4, via: 'aka', aka: 'Liquid Death' })
+  assert.deepEqual(aka, { rank: 0, via: 'aka', aka: 'Liquid Death' }, 'the exact other name is exact')
+  assert.deepEqual(searchHit('Liquid', 'LD Water Co', 'Liquid Death'), { rank: 4, via: 'aka', aka: 'Liquid Death' })
 })
 t('a spelling slip is rank 5', () => {
   assert.equal(searchHit('celcius', 'Celsius').via, 'fuzzy')
@@ -44,6 +45,11 @@ t('no match, and short words never guess', () => {
   assert.equal(rank('ab', 'Celsius'), null)
   assert.equal(rank('nike', 'Celsius'), null)
   assert.equal(rank('', 'Celsius'), null)
+})
+t('only words the key drops ("co", "the") still search the plain name', () => {
+  assert.equal(rank('co', 'Coca-Cola'), 1)
+  assert.equal(rank('the', "The Farmer's Dog"), 1)
+  assert.equal(rank('co', 'Celsius'), null)
 })
 t('edit distance stops early', () => {
   assert.equal(editDistance('celcius', 'celsius'), 1)

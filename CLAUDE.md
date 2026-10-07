@@ -179,11 +179,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `sb.schedFindDay`), rows from `searchPlanBrands` = the whole roster ranked in memory by
   `src/lib/brand-search.ts` (exact → starts with → word → contains → aka → spelling slip "did you mean";
   `node scripts/test-brand-search.mjs`), then addable first, then Brand Fit; each row says what Add does on
-  that day (incl. "N in today's queue — Add moves them"); ↑ ↓ Enter adds a plain add only ("Add anyway" =
-  click or Shift+Enter; an Enter before the rows land adds only an exact addable match); **Paste a list**
+  that day (incl. "N in today's queue — Add moves them"); ↑ ↓ Enter adds a plain add only ("Add anyway" and a
+  spelling guess = click or Shift+Enter; an Enter before the rows land adds only an exact addable match, and only
+  for exactly that text); a query of only dropped words ("co", "the") searches the plain name; **Paste a list**
   (`matchBrandList`; a list pasted into the box opens it for the chosen day). The day's **Fill box** = "N open
   spots · Fill to 30" + a "Suggestions" fold (`suggestForDay`; follows the day's category — no menu of its own;
-  Best fit = every category, best fit first), category drill-in with multi-select (`categoryBrands`). Moving: drag onto a
+  Best fit = every category, best fit first; on a category day Fill to 30 takes only that category, other
+  categories listed under it with + Add), category drill-in with multi-select (`categoryBrands`). Moving: drag onto a
   day or "Move to" (`planMoveBrand`; moving off today un-stamps unsent people, nothing shelved). Plan
   writes go through `planAddBrands` / `planMoveBrand` / `planRemoveBrand` / `planSetCategory`.
   **Put on a day outside the Schedule** (Leo: "make sure adding brands to days is easy"): the brand
@@ -215,7 +217,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Apply sends `expect` (the preview's signature; anything changed since → `stale`, shown again), writes the
   category, unpins back to the pool (never onto the next day), un-stamps (queuedFor null, nothing shelved), reopens
   today, refills today's queue; Best fit keeps its remaining pins in fit order. Brands that sent today are never
-  touched. Undo = `undoDayTheme` (Setting `dayThemeLast`; preview, then puts category, pins and queued people back;
+  touched; a planned brand coming off today takes its queued people with it (named on the card). The new order of
+  the pins Best fit keeps is shown before it's written ("Use this order"). Taking a brand off today (× /
+  `planRemoveBrand`) also passes it for today, or Best fit would pick it straight back up. A brand in today's
+  queue is never shown on a later day. Undo = `undoDayTheme` (Setting `dayThemeLast`, incl. `refilled` = who today's
+  queue took in for the new category, taken back out; never re-queues a brand passed today, archived or planned
+  elsewhere; preview, then puts category, pins and queued people back;
   the toolbar's "Undo" link via `getOutreachPlan.themeUndo`). `offTheme` per day = what a re-pick would take off →
   "N brands don't fit … Make the day match". **Category priority** (Setting `categoryPriority` over
   `DEFAULT_CATEGORY_PRIORITY`, `getCategoryPriority` / `setCategoryPriority`, More ▾ → Category priority… modal
@@ -707,9 +714,10 @@ cloud environment's settings).
   `outreachDayRows`, written by `getOutreachPlan`) that sent nobody — is pinned to the next sending
   day and its stamped people go back to the pool so that day's queue stamps them again. Stays put,
   with why: archived / do-not-email / in talks, passed that day, planned for another day, nobody left.
-  **Onto a Best fit day** (Oct 7 2026) only real commitments carry: brands planned by hand, and people
-  queued at brands Best fit would pick; what the day only showed, and queued people at brands already
-  reached / Skip / too small, go back to waiting (Best fit ranks them again) — so the day stays best fit.
+  **Onto a Best fit day** (Oct 7 2026) only real commitments carry: brands planned by hand, people queued
+  by hand, a brand that sent anyone that day (half-sent, it goes whole), and the automatic fill's picks Best fit
+  would still pick. What the day only showed, and the fill's own picks at brands already reached / Skip / too
+  small (Setting `outreachAutoQueued`, written by getTodayQueue), go back to waiting — so the day stays best fit.
   Rules pure in `src/lib/carry.ts` (`node scripts/test-carry.mjs`); last roll in Setting
   `outreachCarry` (Schedule "Carried over" note + "From <day>" tags, **Move them to…** =
   `moveCarried`), `outreachCarryDone` = { day, through, running } (one request claims the roll with a

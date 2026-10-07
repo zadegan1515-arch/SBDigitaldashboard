@@ -56,16 +56,34 @@ function fuzzy(q: { flat: string }, name: string): boolean {
   return flat.length > q.flat.length && editDistance(q.flat, flat.slice(0, q.flat.length), max) <= max
 }
 
+// Typed only words nameKey drops ("co", "the", "brands"): plain letters,
+// start of the name first, so the box still finds Coca-Cola for "co".
+function rawRank(query: string, name: string): number | null {
+  const q = query.toLowerCase().trim()
+  const n = name.toLowerCase()
+  if (!q) return null
+  if (n === q) return 0
+  if (n.startsWith(q)) return 1
+  if (n.split(/[^a-z0-9]+/).some(w => w.startsWith(q))) return 2
+  return n.includes(q) ? 3 : null
+}
+
 export function searchHit(query: string, name: string, aka: string | null | undefined): SearchHit | null {
   const key = nameKey(query)
   const q = { key, flat: key.replace(/ /g, '') }
-  if (!q.flat) return null
+  const akas = String(aka ?? '').split(/[,;]/).map(s => s.trim()).filter(Boolean)
+  if (!q.flat) {
+    const raw = rawRank(query, name)
+    if (raw !== null) return { rank: raw, via: 'name' }
+    for (const a of akas) if (rawRank(query, a) !== null) return { rank: 4, via: 'aka', aka: a }
+    return null
+  }
   const own = plainRank(q, name)
   if (own !== null) return { rank: own, via: 'name' }
-  const akas = String(aka ?? '').split(/[,;]/).map(s => s.trim()).filter(Boolean)
   for (const a of akas) {
     const r = plainRank(q, a)
-    if (r !== null) return { rank: 4, via: 'aka', aka: a }
+    // The exact other name counts as exact ("Liquid Death" for LD Water Co).
+    if (r !== null) return { rank: r === 0 ? 0 : 4, via: 'aka', aka: a }
   }
   if (fuzzy(q, name)) return { rank: 5, via: 'fuzzy' }
   for (const a of akas) if (fuzzy(q, a)) return { rank: 5, via: 'fuzzy', aka: a }

@@ -13392,7 +13392,8 @@ document.getElementById('cp-body').addEventListener('change', function (e) {
   var sel = e.target.closest('[data-cpcat]');
   if (!sel) return;
   var cat = sel.getAttribute('data-cpcat');
-  sel.disabled = true;
+  // One save at a time: each reads and writes the whole setting.
+  document.querySelectorAll('#cp-body [data-cpcat]').forEach(function (x) { x.disabled = true; });
   api('setCategoryPriority', { category: cat, priority: sel.value }).then(function () {
     var c = CP.data.categories.filter(function (x) { return x.key === cat; })[0];
     if (c) { c.priority = sel.value; c.custom = sel.value !== c.default; }
@@ -13400,7 +13401,7 @@ document.getElementById('cp-body').addEventListener('change', function (e) {
     toast((CAT_NAMES[cat] || cat) + ' → ' + SD_PRIO_WORD[sel.value]);
     cpRender();
     CP.changed = true;
-  }).catch(function (err) { sel.disabled = false; toast(err.message); });
+  }).catch(function (err) { toast(err.message); cpRender(); });
 });
 function cpClose() {
   document.getElementById('cp-scrim').classList.remove('open');
@@ -13466,6 +13467,9 @@ var SCHED_DRAG = null;
       // Enter adds only a plain add; "Add anyway" (already reached,
       // nobody reachable) is a click or Shift+Enter, Leo's call.
       if (row.pinnedOn === f.forDay) toast(row.name + ' is on ' + sdDayTag(f.forDay) + ' already');
+      // A spelling guess is never added on Enter alone — click it, or
+      // Shift+Enter, so Bandit never goes out because Bang was typed.
+      else if (row.matched === 'fuzzy' && !e.shiftKey) toast('Did you mean ' + row.name + '? Click it, or Shift+Enter');
       else if (row.action === 'add' || (row.action === 'addAnyway' && e.shiftKey)) sfAdd(row.id);
       else toast(row.name + ': ' + (row.text || 'can’t be added'));
     }

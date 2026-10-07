@@ -19,7 +19,8 @@
 //   4. Find box: asks for the chosen day, spelling-slip rows say so, ↓ +
 //      Enter adds the highlighted row to that day, Enter never adds an
 //      "Add anyway" row, a chip asks again for the new day, the cursor
-//      stays in the box after an add, a pasted list opens Paste a list for
+//      stays in the box after an add, a spelling guess needs Shift+Enter or a
+//      click, a pasted list opens Paste a list for
 //      the chosen day.
 //   5. Category priority window saves one category at a time.
 //
@@ -243,6 +244,9 @@ async function main() {
   assert.equal(count('planAddBrands'), 0, 'Enter on an Add anyway row adds nothing');
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('Enter');
+  await page.waitForTimeout(150);
+  assert.equal(count('planAddBrands'), 0, 'Enter alone never adds a spelling guess');
+  await page.keyboard.press('Shift+Enter');
   await waitFor(() => count('planAddBrands') === 1, 'the add');
   assert.deepEqual([last('planAddBrands').args.date, last('planAddBrands').args.brandIds], ['2026-10-07', ['c1']]);
   await page.waitForTimeout(250);

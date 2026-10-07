@@ -7534,12 +7534,16 @@ const handlers: Record<string, Handler> = {
     // a short word no longer loses its best match to whichever 80 rows
     // the database handed back first, and a spelling slip still finds
     // the brand.
-    const all = await prisma.brand.findMany({ select: { id: true, name: true, aka: true } })
+    const all = await prisma.brand.findMany({ select: { id: true, name: true, aka: true, passedAt: true, doNotEmail: true, usStatus: true } })
+    // Before the cut: within a match, brands that can go out ahead of
+    // archived / do-not-email / not-US ones, so a short query doesn't
+    // fill its 40 with brands that can't be added.
+    const off = (b: (typeof all)[number]) => Number(!!b.passedAt || b.doNotEmail || b.usStatus === 'no')
     const hits = all
-      .map(b => ({ id: b.id, name: b.name, hit: searchHit(query, b.name, b.aka) }))
-      .filter((x): x is { id: string; name: string; hit: SearchHit } => !!x.hit)
-      .sort((a, b) => a.hit.rank - b.hit.rank || a.name.localeCompare(b.name))
-      .slice(0, 30)
+      .map(b => ({ id: b.id, name: b.name, off: off(b), hit: searchHit(query, b.name, b.aka) }))
+      .filter((x): x is { id: string; name: string; off: number; hit: SearchHit } => !!x.hit)
+      .sort((a, b) => a.hit.rank - b.hit.rank || a.off - b.off || a.name.localeCompare(b.name))
+      .slice(0, 40)
     if (!hits.length) return { brands: [] }
     const [brands, ctx, rates] = await Promise.all([
       prisma.brand.findMany({ where: { id: { in: hits.map(h => h.id) } }, select: PLAN_BRAND_SELECT }),
