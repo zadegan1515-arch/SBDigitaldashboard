@@ -79,6 +79,8 @@ const H = {
   sentByCompany: ({ from, to }) => (from === '2000-01-01' ? { from, to, total: 0, companies: [] } : { from, to, ...SENT }),
   getTodayQueue: () => ({ targets: [], sentList: [], more: [], theme: 'energy', labels: {}, sendingDay: true, sentToday: 0, cap: 30 }),
   listTargets: () => [],
+  nextBestBrands: () => ({ brands: [{ id: 'nb1', name: 'Liquid Death', category: 'beverage', contacts: 3, why: ['growth'] }] }),
+  queueBrandTargets: ({ brandId }) => ({ queued: true, count: 2, name: brandId }),
 };
 
 const server = http.createServer((req, res) => {
@@ -123,6 +125,16 @@ async function main() {
   await page.evaluate(() => gotoView('outreach'));
   await page.waitForSelector('#queue-head [data-olopen="plan"]');
   assert.ok(await page.$('#queue-head [data-olopen="sent"]'), 'LinkedIn tab: What went out');
+  // Brands not reached yet sit under the queue (main column, not the rail).
+  await page.waitForSelector('#nextbest [data-nbq="nb1"]');
+  assert.ok(await page.evaluate(() => {
+    var t = document.getElementById('targets'), n = document.getElementById('nextbest');
+    return t.parentNode === n.parentNode && !n.closest('#oq-rail') &&
+      (t.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING);
+  }), 'not-reached brands sit under the queue');
+  await page.click('#nextbest [data-nbq="nb1"]');
+  for (let i = 0; i < 50 && !calls.some((c) => c.fn === 'queueBrandTargets'); i++) await page.waitForTimeout(20);
+  assert.strictEqual(calls.find((c) => c.fn === 'queueBrandTargets').args.brandId, 'nb1', 'Add to today queues the brand');
   await page.evaluate(() => renderSchedExtra());
   assert.ok(await page.$('#sched-extra [data-olopen="plan"]'), 'Schedule: Plan for Zach');
   assert.ok(await page.$('#sched-extra [data-olopen="sent"]'), 'Schedule: What went out');

@@ -1611,95 +1611,97 @@
   .req-pill b{color:var(--ink-1);font-weight:700}
   .req-note{margin-top:10px;font-size:13px;color:var(--ink-2);font-style:italic}
   /* Opening intro (Leo, Oct 2026: "an animation as i open the command center … the sb agency logo";
-     Oct 6: "more like an iron man logo where it lights up then goes into the site", no line under it).
-     Arc-reactor rings spin in, the logo powers on (flicker → glow → a metal glint), an energy pulse
-     rolls out, then it zooms through into the site. Black / white / silver like the SB Agency logo
-     (Oct 6). Plays on every load and reload (Leo, Oct 6); skipped for reduced motion and automated
-     browsers; click / any key skips. */
-  #sb-intro{position:fixed;inset:0;z-index:2147483000;background:#0b0b0f;display:grid;place-items:center;
-    overflow:hidden;cursor:pointer;transition:opacity .6s ease .2s}
-  #sb-intro::before{content:"";position:absolute;width:140vmax;height:140vmax;left:50%;top:50%;
-    transform:translate(-50%,-50%) scale(.3);border-radius:50%;opacity:0;
-    background:radial-gradient(circle,rgba(255,255,255,.05) 0%,rgba(200,200,212,.02) 28%,transparent 58%);
-    animation:sbiGlow 1.8s ease-out .9s forwards}
-  #sb-intro .sbi-stage{position:relative;display:flex;flex-direction:column;align-items:center;
-    transition:transform .9s cubic-bezier(.7,0,.2,1),opacity .7s ease,filter .9s ease}
-  #sb-intro .sbi-mark{position:relative;width:min(400px,64vw);display:grid;place-items:center}
-  #sb-intro .sbi-hud{position:absolute;left:50%;top:50%;width:min(590px,92vw);height:auto;
-    transform:translate(-50%,-50%);overflow:visible;pointer-events:none}
-  #sb-intro .sbi-hud circle{fill:none;stroke:#6e6e7a;transform-origin:200px 200px;opacity:0}
-  #sb-intro .sbi-r1{stroke-width:1.2;stroke-dasharray:3 9;animation:sbiRing 1s cubic-bezier(.2,.8,.2,1) .05s forwards,sbiSpin 9s linear infinite}
-  #sb-intro .sbi-r2{stroke-width:2.4;stroke-dasharray:120 40 20 40;animation:sbiRing 1s cubic-bezier(.2,.8,.2,1) .2s forwards,sbiSpinBack 6s linear infinite}
-  #sb-intro .sbi-r3{stroke-width:.8;animation:sbiRing 1.1s cubic-bezier(.2,.8,.2,1) .35s forwards}
-  #sb-intro .sbi-r4{stroke-width:6;stroke-dasharray:2 14;stroke:#9c9caa;animation:sbiRing 1s ease .5s forwards,sbiSpin 14s linear infinite}
-  #sb-intro .sbi-logo{position:relative;width:100%;height:auto;display:block;opacity:0;
-    animation:sbiPower 1.2s steps(1,end) .55s forwards,sbiLit 1.4s ease-out 1.25s forwards}
-  #sb-intro .sbi-sheen{position:absolute;inset:0;pointer-events:none;
-    -webkit-mask:url(/materials/sb-logo-white.png) center/100% 100% no-repeat;mask:url(/materials/sb-logo-white.png) center/100% 100% no-repeat;
-    background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.45) 48%,rgba(200,200,212,.35) 52%,transparent 65%);
-    background-size:260% 100%;background-position:130% 0;animation:sbiSheen .9s ease-in-out 1.75s forwards}
-  #sb-intro .sbi-wave{position:absolute;left:50%;top:50%;width:40vmin;height:40vmin;border-radius:50%;
-    border:2px solid rgba(200,200,212,.3);box-shadow:0 0 24px rgba(255,255,255,.08),inset 0 0 18px rgba(255,255,255,.05);
-    transform:translate(-50%,-50%) scale(.2);opacity:0;animation:sbiWave 1.1s cubic-bezier(.1,.6,.3,1) 1.55s forwards}
-  #sb-intro .sbi-tag{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.9em;
-    text-transform:uppercase;color:#9c9caa;opacity:0;transform:translateY(6px);position:absolute;left:0;right:0;top:calc(50% + min(295px,46vw) + 22px);text-align:center;padding-left:.9em;white-space:nowrap;
-    text-shadow:none;animation:sbiTag .8s ease-out 1.9s forwards}
-  #sb-intro .sbi-flash{position:absolute;inset:0;background:radial-gradient(circle,rgba(255,255,255,.18),rgba(200,200,212,.05) 40%,transparent 70%);opacity:0;pointer-events:none}
+     Oct 7: "just the SB agency logo, not like the Iron Man thing … more professional, but not too
+     corporate-y … abstract … really blend into what is going into the screen as a whole").
+     Breath (Leo picked it, Oct 7): nothing but the logo and space. AGENCY appears letter by letter from
+     the middle out, then the script SB is signed through it — a soft edge moving the way a pen would,
+     soft → sharp — and one wide, faint light passes over it like light across paper. Nothing moves or
+     resizes as it comes in (Oct 7: "the image moves a little when it loads in"); it's centred on the
+     window (50vw), so a scrollbar appearing under it can't nudge it. Then the logo eases back
+     while the dashboard rises into place: a page turn. One PNG: the letters are copies clipped to
+     their own boxes, the script is the PNG with those boxes cut out (no stroke comes near them).
+     Site colours only (#0b0b0f ground, logo just under white), no flash, no glow. Plays on every
+     load; skipped for reduced motion, automated browsers and ?nointro; click / any key finishes it. */
+  /* sbiBail: if the script below never runs, the overlay still gets out of the way */
+  #sb-intro{position:fixed;inset:0;z-index:2147483000;background:#0b0b0f;cursor:pointer;animation:sbiBail .4s 6s forwards;
+    transition:opacity .5s cubic-bezier(.3,0,.2,1) .06s;
+    --sbi-cut:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1000 535' preserveAspectRatio='none'%3E%3Cpath fill-rule='evenodd' d='M0 0h1000v535H0zM0 286h67v99H0zm152 0h71v99h-71zm145 0h60v99h-60zm292 0h73v99h-73zm159 0h71v99h-71zm187 0h65v99h-65z'/%3E%3C/svg%3E")}
+  #sb-intro .sbi-stage{position:absolute;left:calc(50vw - min(200px,32vw));top:calc(50% - min(107px,17.12vw));width:min(400px,64vw);height:calc(min(400px,64vw)*.535);
+    transition:transform .5s cubic-bezier(.25,.5,.3,1),opacity .28s cubic-bezier(.1,0,.4,1),filter .3s ease-out}
+  #sb-intro .sbi-stage img,#sb-intro .sbi-script{position:absolute;left:0;top:0;width:100%;height:100%;display:block}
+  #sb-intro .sbi-script{opacity:0}
+  /* the pen: the cut-out mask × a soft edge (~⅓ of the logo wide) running from the S to past the B */
+  #sb-intro .sbi-script img{
+    -webkit-mask:var(--sbi-cut) 0 0/100% 100% no-repeat,linear-gradient(104deg,#000 40%,transparent 55%) 63% 0/250% 100% no-repeat;-webkit-mask-composite:source-in;
+    mask:var(--sbi-cut) 0 0/100% 100% no-repeat,linear-gradient(104deg,#000 40%,transparent 55%) 63% 0/250% 100% no-repeat;mask-composite:intersect}
+  /* AGENCY: --d = each letter's delay, from the middle out (E, N first; A, Y last) */
+  #sb-intro .sbi-l{opacity:0;clip-path:inset(53.4% var(--r) 28% var(--l))}
+  /* the light: masked to the logo, so it only ever lifts the logo's own white a little */
+  #sb-intro .sbi-sheen{position:absolute;inset:0;overflow:hidden;pointer-events:none;
+    -webkit-mask:url(/materials/sb-logo-white.png) 0 0/100% 100% no-repeat;mask:url(/materials/sb-logo-white.png) 0 0/100% 100% no-repeat}
+  #sb-intro .sbi-sheen i{position:absolute;inset:0;transform:translateX(-82%);
+    background:linear-gradient(104deg,transparent 18%,rgba(255,255,255,.2) 37%,rgba(255,255,255,.65) 50%,rgba(255,255,255,.2) 63%,transparent 82%)}
+  #sb-intro.sbi-go .sbi-l{animation:sbiTrack .8s cubic-bezier(.3,.2,.3,1) var(--d) forwards}
+  #sb-intro.sbi-go .sbi-script{animation:sbiRise 1.25s cubic-bezier(.25,.7,.25,1) .38s forwards}
+  #sb-intro.sbi-go .sbi-script img{animation:sbiPen 1.15s cubic-bezier(.4,.2,.25,1) .38s forwards}
+  #sb-intro.sbi-go .sbi-sheen i{animation:sbiLight 1.2s cubic-bezier(.45,.05,.55,.95) .98s forwards}
   #sb-intro.sbi-out{opacity:0;pointer-events:none}
-  #sb-intro.sbi-out .sbi-stage{transform:scale(3.2);opacity:0;filter:blur(10px) brightness(1.15)}
-  #sb-intro.sbi-out .sbi-flash{animation:sbiFlash .7s ease-out forwards}
-  body.sbi-playing .app{opacity:0;transform:scale(.96)}
-  body.sbi-reveal .app{opacity:1;transform:none;transition:opacity .8s ease .25s,transform 1s cubic-bezier(.2,.7,.2,1) .15s}
-  @keyframes sbiRing{from{opacity:0;transform:scale(.55)}to{opacity:.7;transform:scale(1)}}
-  @keyframes sbiSpin{to{rotate:360deg}}
-  @keyframes sbiSpinBack{to{rotate:-360deg}}
-  /* power-on flicker: the arc reactor catching */
-  @keyframes sbiPower{0%{opacity:.15}12%{opacity:.7}20%{opacity:.08}34%{opacity:.85}42%{opacity:.25}58%{opacity:1}66%{opacity:.55}78%,100%{opacity:1}}
-  @keyframes sbiLit{0%{filter:drop-shadow(0 0 0 rgba(255,255,255,0)) brightness(.85)}
-    40%{filter:drop-shadow(0 0 14px rgba(255,255,255,.28)) brightness(1.05)}
-    100%{filter:drop-shadow(0 0 4px rgba(255,255,255,.1)) brightness(.92)}}
-  @keyframes sbiSheen{to{background-position:-30% 0}}
-  @keyframes sbiWave{0%{opacity:0;transform:translate(-50%,-50%) scale(.2)}15%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) scale(4.2)}}
-  @keyframes sbiTag{to{opacity:1;transform:none}}
-  @keyframes sbiGlow{to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
-  @keyframes sbiFlash{0%{opacity:0}25%{opacity:1}100%{opacity:0}}
-  @media (max-width:520px){#sb-intro .sbi-tag{font-size:11.5px;letter-spacing:.6em;padding-left:.6em}}
+  #sb-intro.sbi-out .sbi-stage{transform:translateY(-1.5%) scale(.96);opacity:0;filter:blur(2px)}
+  body.sbi-playing .app{opacity:0;transform:translateY(10px)}
+  body.sbi-reveal .app{transition:opacity .25s linear .06s,transform .56s cubic-bezier(.2,.6,.3,1) .04s}
+  @keyframes sbiTrack{from{opacity:0}to{opacity:.92}}
+  @keyframes sbiRise{from{opacity:0;filter:blur(3px)}30%{opacity:.92}50%{filter:blur(0)}to{opacity:.92;filter:none}}
+  @keyframes sbiPen{to{-webkit-mask-position:0 0,0 0;mask-position:0 0,0 0}}
+  @keyframes sbiLight{to{transform:translateX(82%)}}
+  @keyframes sbiBail{to{opacity:0;visibility:hidden}}
 </style>
 </head>
 <body>
 <div id="sb-intro" aria-hidden="true">
   <div class="sbi-stage">
-    <div class="sbi-mark">
-      <svg class="sbi-hud" viewBox="0 0 400 400" aria-hidden="true">
-        <circle class="sbi-r1" cx="200" cy="200" r="196"/>
-        <circle class="sbi-r2" cx="200" cy="200" r="178"/>
-        <circle class="sbi-r3" cx="200" cy="200" r="160"/>
-        <circle class="sbi-r4" cx="200" cy="200" r="140"/>
-      </svg>
-      <img class="sbi-logo" src="/materials/sb-logo-white.png" alt="">
-      <div class="sbi-sheen"></div>
-    </div>
-    <div class="sbi-tag">Command Center</div>
+    <div class="sbi-script"><img src="/materials/sb-logo-white.png" alt=""></div>
+    <img class="sbi-l" src="/materials/sb-logo-white.png" alt="" style="--l:0%;--r:93.3%;--d:.26s">
+    <img class="sbi-l" src="/materials/sb-logo-white.png" alt="" style="--l:15.2%;--r:77.7%;--d:.13s">
+    <img class="sbi-l" src="/materials/sb-logo-white.png" alt="" style="--l:29.7%;--r:64.3%;--d:0s">
+    <img class="sbi-l" src="/materials/sb-logo-white.png" alt="" style="--l:58.9%;--r:33.8%;--d:0s">
+    <img class="sbi-l" src="/materials/sb-logo-white.png" alt="" style="--l:74.8%;--r:18.1%;--d:.13s">
+    <img class="sbi-l" src="/materials/sb-logo-white.png" alt="" style="--l:93.5%;--r:0%;--d:.26s">
+    <div class="sbi-sheen"><i></i></div>
   </div>
-  <div class="sbi-wave"></div>
-  <div class="sbi-flash"></div>
 </div>
 <script>
 (function(){
-  var el = document.getElementById('sb-intro');
+  var el = document.getElementById('sb-intro'), body = document.body;
+  if (!el) return;
   var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (still || navigator.webdriver || /[?&]nointro\b/.test(location.search)) { el.remove(); return; }
-  document.body.classList.add('sbi-playing');
-  var done = false, t = setTimeout(finish, 3000);
-  function finish(){
-    if (done) return; done = true; clearTimeout(t);
-    document.body.classList.add('sbi-reveal'); document.body.classList.remove('sbi-playing');
-    el.classList.add('sbi-out');
-    removeEventListener('keydown', finish, true);
-    setTimeout(function(){ el.remove(); document.body.classList.remove('sbi-reveal'); }, 1300);
+  body.classList.add('sbi-playing');
+  var t0 = Date.now(), done = false, started = false, img = el.querySelector('img');
+  // starts once the logo is decoded, so there's never a half-drawn frame;
+  // a logo that isn't there by 0.9 s isn't waited for — the site just opens
+  var timer = setTimeout(finish, 900);
+  function go(){
+    if (started || done) return; started = true; clearTimeout(timer);
+    el.classList.add('sbi-go');
+    timer = setTimeout(finish, Math.max(1800, Math.min(2200, 2850 - (Date.now() - t0))));
   }
+  // the page turn: logo eases back, the dashboard rises in under it
+  function finish(){
+    if (done) return; done = true; clearTimeout(timer);
+    body.classList.add('sbi-reveal'); body.classList.remove('sbi-playing');
+    el.classList.add('sbi-out');
+    removeEventListener('keydown', key, true);
+    setTimeout(function(){ el.remove(); body.classList.remove('sbi-reveal'); }, 600);
+  }
+  if (!img) finish();
+  else if (img.decode) img.decode().then(go, finish);
+  else if (img.complete && img.naturalWidth) go();
+  else { img.onload = go; img.onerror = finish; }
+  // a key only skips: it never also scrolls or types in the dashboard underneath (Space, arrows, Tab);
+  // shortcuts with ⌘ / Ctrl / Alt (reload, new tab) still work
+  function key(e){ if (!e.metaKey && !e.ctrlKey && !e.altKey) e.preventDefault(); finish(); }
   el.addEventListener('click', finish);
-  addEventListener('keydown', finish, true);
+  addEventListener('keydown', key, true);
 })();
 </script>
 <div class="app">
@@ -1757,14 +1759,15 @@
           <button class="btn-solid" id="hm-recap">Today’s recap ▸</button>
         </div>
       </div>
+      <!-- Leo, Oct 7 2026: the week's scoreboard and today's log at the top of Home. -->
+      <div id="hm-score"></div>
+      <div id="day-log"></div>
       <div class="hm-glance" id="hm-glance"></div>
       <div id="hm-send"></div>
       <div id="zach-todo"></div>
       <div class="zach-back"><button class="btn-ghost" data-zachall>Show the whole Home ↓</button></div>
       <div id="action-panel" style="margin-top:20px"></div>
       <div id="hm-stale"></div>
-      <div id="hm-score"></div>
-      <div id="day-log"></div>
       <details class="fold hm-more" id="hm-more">
         <summary class="section-head">Numbers &amp; categories <span class="n">targets, sponsorship revenue, brands by category</span></summary>
         <div class="kpi-row" id="kpis" style="margin-top:6px"></div>
@@ -1889,11 +1892,11 @@
       <div id="status-filters" class="chips" style="display:none"></div>
       <div class="count-head" id="queue-head">To send today <span class="n"></span></div>
       <div id="targets"></div>
+      <div id="nextbest"></div>
       </div>
       <aside id="oq-rail">
         <div id="oq-today"></div>
         <div id="oq-stale"></div>
-        <div id="nextbest"></div>
       </aside>
       </div>
     </section>
@@ -18668,8 +18671,8 @@ function renderNextBest() {
     var rows = d.brands || [];
     if (!rows.length) { slot.innerHTML = ''; return; }
     slot.innerHTML =
-      '<div class="count-head" style="margin-top:26px">Next best brands — not contacted yet <span class="n">' + rows.length + '</span></div>' +
-      '<div class="hint" style="margin:2px 0 10px">Best brands to reach next. Queue adds their best contact to today.</div>' +
+      '<div class="count-head" style="margin-top:26px">Brands not reached yet <span class="n">' + rows.length + '</span></div>' +
+      '<div class="hint" style="margin:2px 0 10px">Nobody here has been contacted. Add to today puts their best people in today’s list.</div>' +
       rows.map(function (b) {
         var tag = [CAT_NAMES[b.category] || b.category].filter(Boolean).join('');
         return '<div class="target" data-brand="' + esc(b.id) + '">' +
@@ -18682,7 +18685,7 @@ function renderNextBest() {
             (b.needsPerson
               ? '<button class="btn-draft" data-nbperson="' + esc(b.id) + '" title="Add their person right here — a decision-maker title + LinkedIn queues them">+ Add person</button>'
               : '<span class="fit">' + b.contacts + ' contact' + (b.contacts === 1 ? '' : 's') + '</span>' +
-                '<button class="btn-draft" data-nbq="' + esc(b.id) + '">Queue</button>') +
+                '<button class="btn-draft" data-nbq="' + esc(b.id) + '">+ Add to today</button>') +
             '<button class="btn-ghost" data-nbtoday="' + esc(b.id) + '" title="Not today — off today’s suggestions, back on its own tomorrow">Pass</button>' +
             '<button class="btn-ghost danger" data-nbp="' + esc(b.id) + '" title="Archive — never suggested again unless you bring it back on its brand page">Archive</button>' +
           '</div>' +
