@@ -218,6 +218,12 @@ model Target {
   // is enforced without ever deleting anyone. Default false, so existing
   // rows and every new target start active until a cap shelves them.
   shelved Boolean @default(false)
+  // Why (Leo, Oct 7 2026: "people should only be shelved if they're
+  // actually shelved, not just if they have not been reached out to"):
+  // "cap" = only waiting behind the brand's limit (shown "next in line",
+  // comes back by itself when a slot opens); null = set aside on purpose
+  // (Shelve, Off queue, Archive…) — shown "shelved", never revived alone.
+  shelvedHow String?
 
   // Follow-up layer — the connective tissue that keeps a deal moving after
   // "sent". nextStep is what to do next in plain words; followUpAt is when

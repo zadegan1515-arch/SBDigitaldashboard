@@ -107,6 +107,13 @@ export function parentOf(name: string | null | undefined, aka?: string | null): 
   return null
 }
 
+// The parent company itself, by its name or any aka ("Molson Coors",
+// "Diageo"): always a big company.
+const PARENT_KEYS = new Set(PARENTS.flatMap(p => [p.name, p.search, ...(p.aka ?? [])].map(looseKey)).filter(Boolean))
+export function isParentCompany(name: string | null | undefined, aka?: string | null): boolean {
+  return [name, ...String(aka || '').split(/[,;]/)].some(n => { const k = looseKey(n); return !!k && PARENT_KEYS.has(k) })
+}
+
 // The words of a name, for whole-word finding ("Sol" isn't in "Solutions").
 function words(s: string | null | undefined): string {
   return String(s ?? '')

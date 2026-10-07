@@ -7,16 +7,22 @@
 // same workNeed, so "short" means the same thing in both places.
 // Tested by scripts/test-planned-first.mjs.
 
+import { BIG_BRAND_WORK } from './brand-size'
+
 // How many people a brand works at once: Leo's number if he set one,
-// else four at an established brand and three elsewhere.
-export function workNeed(b: { tier: string | null; workPeople: number | null }): number {
-  return b.workPeople ?? (b.tier === 'established' ? 4 : 3)
+// else ten at a big company (brand-size.ts — 500+ on LinkedIn, owned by a
+// parent company, or the parent itself; Leo, Oct 7 2026), four at an
+// established brand and three elsewhere.
+export function workNeed(b: { tier: string | null; workPeople: number | null; liMembers?: number | null; big?: boolean }): number {
+  if (b.workPeople) return b.workPeople
+  if (b.big) return BIG_BRAND_WORK
+  return b.tier === 'established' ? 4 : 3
 }
 
 // Short on people: fewer reachable (a LinkedIn or an email) than it
 // works at once — the Schedule's Thin or No one reachable.
 export function shortOnPeople(b: {
-  tier: string | null; workPeople: number | null
+  tier: string | null; workPeople: number | null; big?: boolean
   contacts: Array<{ email: string | null; linkedinUrl: string | null }>
 }): boolean {
   return b.contacts.filter(c => !!(c.email || c.linkedinUrl)).length < workNeed(b)

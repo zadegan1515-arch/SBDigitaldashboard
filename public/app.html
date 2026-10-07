@@ -7466,12 +7466,16 @@ function loadBrand(brandId) {
             var cold = !(b.targets || []).some(function (t) {
               return t.sentAt || ['sent', 'accepted', 'replied', 'converted'].indexOf(t.status) !== -1;
             });
+            // A big company opens with ten (Leo, Oct 7 2026; d.big = the
+            // server's isBigBrand).
+            var big = !!d.big;
             var sug = cold
-              ? (b.tier === 'established' ? 4 : 3)
+              ? (big ? 10 : b.tier === 'established' ? 4 : 3)
               : (b.tier === 'established' ? 3 : b.tier === 'growth' ? 2 : founder ? 1 : 2);
             sug = Math.max(1, Math.min(sug, Math.max(reach, 1)));
             var why = cold
-              ? (b.tier === 'established'
+              ? (big ? 'nobody written to yet — open ten threads at a big company'
+                : b.tier === 'established'
                   ? 'nobody written to yet — open four threads at a big brand'
                   : 'nobody written to yet — open three threads')
               : b.tier === 'established' ? 'big org — several possible buyers'
@@ -7480,7 +7484,7 @@ function loadBrand(brandId) {
               : 'no strong signal — two is the safe default';
             return '<select class="field-box" id="b-workpeople" style="width:auto;padding:6px 10px;font-size:13px" title="How many people to work at once at this brand. Auto follows the suggestion: ' + why + '. + Person can always exceed it.">' +
               '<option value=""' + (b.workPeople ? '' : ' selected') + '>Work: auto — suggests ' + sug + '</option>' +
-              [1, 2, 3, 4].map(function (n) {
+              [1, 2, 3, 4, 6, 8, 10].map(function (n) {
                 return '<option value="' + n + '"' + (b.workPeople === n ? ' selected' : '') + '>Work: ' + n + ' ' + (n === 1 ? 'person' : 'people') + '</option>';
               }).join('') +
             '</select>';
@@ -7679,12 +7683,17 @@ function loadBrand(brandId) {
     var reachedCount = b.targets.filter(function (t) {
       return t.sentAt || ['sent', 'accepted', 'replied', 'converted'].indexOf(t.status) !== -1;
     }).length;
+    // Waiting behind the brand's limit is "next in line"; only people set
+    // aside on purpose count as shelved.
+    var nextCount = b.passedAt ? 0 : b.targets.filter(function (t) { return t.shelved && t.shelvedHow === 'cap'; }).length;
+    var shelvedCount = b.targets.length - activeCount - nextCount;
     var outreachCounts = [
       waitingCount ? waitingCount + ' not sent yet' : '',
       reachedCount ? reachedCount + ' contacted' : '',
-      b.targets.length > activeCount
-        ? (b.targets.length - activeCount) + ' shelved' +
-          (b.targets.filter(function (t) { return t.shelved && !t.sentAt; }).length === (b.targets.length - activeCount)
+      nextCount ? nextCount + ' next in line' : '',
+      shelvedCount > 0
+        ? shelvedCount + ' shelved' +
+          (b.targets.filter(function (t) { return t.shelved && !t.sentAt && !(t.shelvedHow === 'cap' && !b.passedAt); }).length === shelvedCount
             ? ' (none contacted)' : '')
         : ''
     ].filter(Boolean).join(' · ') || activeCount + ' in play';
@@ -7728,8 +7737,15 @@ function loadBrand(brandId) {
             // LinkedIn and email each get their own words: "LinkedIn ·
             // invite sent Sep 16" is something someone logged; "Email ·
             // intro drafted, not sent" is waiting in Outreach → Email.
-            (t.shelved
-              ? '<span class="status declined" title="Shelved means not in the queue — it says nothing about whether an invite went out. Promote to put them back.">shelved</span>' +
+            // "Next in line" = only waiting behind the brand's limit
+            // (shelvedHow 'cap'); "shelved" = set aside on purpose (Leo,
+            // Oct 7 2026: "people should only be shelved if they're
+            // actually shelved").
+            (t.shelved && t.shelvedHow === 'cap' && !b.passedAt
+              ? '<span class="status queued" title="Not in the queue yet: this brand works a few people at a time and these are next. They go out when a spot opens, or click Queue now.">next in line</span>' +
+                (t.sentAt || !canSend ? '<span class="t-sep">·</span><span class="status ' + esc(t.status) + '">' + esc(liWords(t)) + '</span>' : '')
+              : t.shelved
+              ? '<span class="status declined" title="Set aside on purpose — not in the queue, and it never comes back by itself. Promote to put them back.">shelved</span>' +
                 (t.sentAt || !canSend ? '<span class="t-sep">·</span><span class="status ' + esc(t.status) + '">' + esc(liWords(t)) + '</span>'
                           : '<span>· never contacted</span>')
               : '<span class="status ' + (canSend ? 'queued' : esc(t.status)) + '">' + esc(liWords(t)) + '</span>') +
@@ -7784,7 +7800,7 @@ function loadBrand(brandId) {
             (t.status === 'replied' || t.status === 'converted'
               ? '<span class="status replied" style="font-size:13px;padding:5px 12px">Replied ✓</span>' : '') +
             (canSend ? '<button class="btn-ghost mini" data-shelf="' + esc(t.id) + '" data-to="' +
-              (t.shelved ? '0' : '1') + '">' + (t.shelved ? 'Promote' : 'Shelve') + '</button>' : '') +
+              (t.shelved ? '0' : '1') + '">' + (t.shelved ? (t.shelvedHow === 'cap' ? 'Queue now' : 'Promote') : 'Shelve') + '</button>' : '') +
             (t.contact.linkedinUrl ? '<a class="btn-ghost" href="' + esc(t.contact.linkedinUrl) +
               '" target="_blank" rel="noopener">↗</a>' : '') + '</div></div>';
         }).join('')

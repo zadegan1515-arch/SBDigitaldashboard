@@ -39,7 +39,8 @@ import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hint
 import { readLiLog, readLiResearch, LI_SCRIPT_VERSION, LI_SWEEP_KEY } from '@/lib/li-sweep'
 import { readRuns } from '@/lib/li-report'
 import { companySlug, companyPageUrl, profileSlug, looksLikeSeller } from '@/lib/li-capture'
-import { whyLeaveOut, parentOf } from '@/lib/parents'
+import { whyLeaveOut, parentOf, isParentCompany } from '@/lib/parents'
+import { brandSize, BIG_BRAND_WORK } from '@/lib/brand-size'
 import {
   readJsonSetting, writeJsonSetting, LI_REVIEW_KEY, LI_CONFIRMED_KEY, LI_OWNER_KEY,
   type Review, type Confirmed, type LiOwner,
@@ -518,8 +519,16 @@ function joinNames(names: string[]): string {
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
+// A big company (Leo, Oct 7 2026: "for bigger brands we should expand the
+// limit to 10 a day"): 500+ on LinkedIn, owned by a parent company we know,
+// or that parent itself (Molson Coors); not measured → established tier.
+function isBigBrand(b: { name?: string | null; aka?: string | null; tier: string | null; liMembers?: number | null }): boolean {
+  if (b.name && isParentCompany(b.name, b.aka)) return true
+  return brandSize({ liMembers: b.liMembers, tier: b.tier, hasParent: !!(b.name && parentOf(b.name, b.aka)) }) === 'big'
+}
+
 function recommendWorkPeople(
-  brand: { tier: string | null },
+  brand: { tier: string | null; name?: string | null; aka?: string | null; liMembers?: number | null },
   contacts: Array<{ title: string | null; email: string | null; linkedinUrl: string | null }>,
   cold = false,
 ): number {
@@ -531,8 +540,10 @@ function recommendWorkPeople(
   // second name to cut across. Once someone has been written to the old
   // narrower counts apply, so we don't pile onto a thread in motion.
   // Either way the brand's reachable people are the real ceiling.
+  // A big company opens with ten (Leo, Oct 7 2026) — many buyers, and
+  // nobody there owns campus.
   const n = cold
-    ? (brand.tier === 'established' ? 4 : 3)
+    ? (isBigBrand(brand) ? BIG_BRAND_WORK : brand.tier === 'established' ? 4 : 3)
     : (brand.tier === 'established' ? 3 : brand.tier === 'growth' ? 2 : founderLed ? 1 : 2)
   return Math.max(1, Math.min(n, Math.max(reachable, 1)))
 }
@@ -572,7 +583,7 @@ const PLAN_BRAND_SELECT = Prisma.validator<Prisma.BrandSelect>()({
   contacts: { select: { id: true, name: true, title: true, email: true, linkedinUrl: true, isDecisionMaker: true } },
   targets: {
     select: {
-      id: true, status: true, shelved: true, queuedFor: true, sentAt: true, repliedAt: true,
+      id: true, status: true, shelved: true, shelvedHow: true, queuedFor: true, sentAt: true, repliedAt: true,
       emailedAt: true, updatedAt: true, fitScore: true, contactId: true,
       contact: { select: { name: true, title: true } },
       // An email the machine actually sent counts as reaching the brand,
@@ -608,11 +619,11 @@ function isReachable(c: { email: string | null; linkedinUrl: string | null }): b
 // Ready / Thin / No one reachable. Shown on every brand on the Schedule
 // so a short day explains itself before anyone clicks.
 function contactLabel(
-  brand: { tier: string | null; workPeople: number | null },
+  brand: { tier: string | null; workPeople: number | null; name?: string | null; aka?: string | null; liMembers?: number | null },
   contacts: Array<{ email: string | null; linkedinUrl: string | null }>,
 ): ContactsLabel {
   const reachable = contacts.filter(isReachable).length
-  const need = workNeed(brand)
+  const need = workNeed({ ...brand, big: isBigBrand(brand) })
   return {
     kind: reachable === 0 ? 'none' : reachable >= need ? 'ready' : 'thin',
     reachable, need, onFile: contacts.length,
@@ -732,7 +743,7 @@ function previewBrandPicks(
   }
   const room = work - live.length
   const revivable = b.targets
-    .filter(t => t.shelved && ['queued', 'drafted'].includes(t.status))
+    .filter(t => t.shelved && t.shelvedHow === 'cap' && ['queued', 'drafted'].includes(t.status))
     .sort((x, y) => y.fitScore - x.fitScore)
     .slice(0, room)
   const targeted = new Set(b.targets.map(t => t.contactId))
@@ -1769,7 +1780,7 @@ function brandFit(b: FitFacts, reachable: number, rates: AcceptRates | null, now
     salesCents: centsNum(b.salesCents), fundingCents: centsNum(b.fundingCents), lastRoundAt: b.lastRoundAt,
     usStatus: b.usStatus, sponsorsCollege: b.sponsorsCollege, bizStatus: b.bizStatus, acquiredBy: b.acquiredBy,
     researchedAt: b.researchedAt,
-    reachable, need: workNeed(b), acceptRate: rateOrNull(rates, b.category), priority: categoryPriority(b.category), now,
+    reachable, need: workNeed({ ...b, big: isBigBrand(b) }), acceptRate: rateOrNull(rates, b.category), priority: categoryPriority(b.category), now,
   })
 }
 // Who a Best fit day may pick: a brand nobody there has been reached at
@@ -2284,7 +2295,14 @@ async function liCleanupCandidates() {
   }
 }
 
-async function reconcileBrandTargets(brandId: string, perBrand = TARGET_CAP_PER_BRAND) {
+async function reconcileBrandTargets(brandId: string, perBrandArg?: number) {
+  // A big company works ten at a time (Leo, Oct 7 2026), so it keeps ten
+  // in play; Leo's own number for the brand wins.
+  let perBrand = perBrandArg ?? TARGET_CAP_PER_BRAND
+  if (perBrandArg === undefined) {
+    const b = await prisma.brand.findUnique({ where: { id: brandId }, select: { name: true, aka: true, tier: true, liMembers: true, workPeople: true } })
+    if (b) perBrand = Math.max(TARGET_CAP_PER_BRAND, b.workPeople ?? (isBigBrand(b) ? BIG_BRAND_WORK : 0))
+  }
   const worked = await prisma.target.count({
     where: { brandId, ...INVITED_WHERE },
   })
@@ -2298,7 +2316,7 @@ async function reconcileBrandTargets(brandId: string, perBrand = TARGET_CAP_PER_
 
   const shelve = active.slice(room).map(t => t.id)
   if (shelve.length) {
-    await prisma.target.updateMany({ where: { id: { in: shelve } }, data: { shelved: true } })
+    await prisma.target.updateMany({ where: { id: { in: shelve } }, data: { shelved: true, shelvedHow: 'cap' } })
   }
   return {
     active: Math.min(active.length, room),
@@ -3710,8 +3728,11 @@ const handlers: Record<string, Handler> = {
   },
 
   // Bulk-loads contacts pulled from SponsorUnited, creating a queued
-  // target for anyone who looks like a decision maker.
-  async importContacts({ rows: incoming }: any) {
+  // target for anyone who looks like a decision maker. source 'research'
+  // = people Claude found on the open web for Leo (news, press releases,
+  // public LinkedIn results); each row's `notes` says where.
+  async importContacts({ rows: incoming, source }: any) {
+    const rowSource = source === 'research' ? 'research' : 'sponsorunited'
     const result = {
       brandsCreated: 0, contactsCreated: 0, targetsCreated: 0, targetsShelved: 0,
       skipped: 0, capped: 0, failed: 0, heldForReview: 0, errors: [] as string[],
@@ -3797,9 +3818,10 @@ const handlers: Record<string, Handler> = {
           email: row.email ?? null,
           location: row.location ?? null,
           linkedinUrl: row.linkedinUrl ?? null,
-          source: 'sponsorunited',
+          source: rowSource,
           externalId: row.externalId ?? null,
           isDecisionMaker: decisionMaker,
+          notes: typeof row.notes === 'string' && row.notes.trim() ? row.notes.trim().slice(0, 2000) : null,
         },
       })
       result.contactsCreated++
@@ -4015,7 +4037,7 @@ const handlers: Record<string, Handler> = {
         prisma.brand.updateMany({ where: { id: { in: archiveIds }, passedAt: null }, data: { passedAt: new Date() } }),
         prisma.target.updateMany({
           where: { brandId: { in: archiveIds }, status: { in: ['queued', 'drafted'] } },
-          data: { shelved: true, queuedFor: null },
+          data: { shelved: true, shelvedHow: null, queuedFor: null },
         }),
       ])
     }
@@ -4225,7 +4247,7 @@ const handlers: Record<string, Handler> = {
       })).map(t => t.id)
       const at = new Date()
       await tx.brand.updateMany({ where: { id: { in: ids }, passedAt: null }, data: { passedAt: at } })
-      await tx.target.updateMany({ where: { id: { in: shelve } }, data: { shelved: true, queuedFor: null } })
+      await tx.target.updateMany({ where: { id: { in: shelve } }, data: { shelved: true, shelvedHow: null, queuedFor: null } })
       log = { at: at.toISOString(), by: __user ?? null, brands: ids, names: still.map(b => b.name), shelved: shelve, days: [] }
     }, { timeout: 20000 })
     if (!log) throw new Error('Those brands are archived already')
@@ -4259,7 +4281,7 @@ const handlers: Record<string, Handler> = {
     const ids = still.map(b => b.id)
     await prisma.$transaction([
       prisma.brand.updateMany({ where: { id: { in: ids }, passedAt: new Date(last.at) }, data: { passedAt: null } }),
-      prisma.target.updateMany({ where: { id: { in: last.shelved }, brandId: { in: ids } }, data: { shelved: false } }),
+      prisma.target.updateMany({ where: { id: { in: last.shelved }, brandId: { in: ids } }, data: { shelved: false, shelvedHow: null } }),
     ])
     await writeJsonSetting(prisma, FIT_ARCHIVE_KEY, { ...last, undone: new Date().toISOString() })
     return { ok: true, back: still.map(b => b.name) }
@@ -5077,6 +5099,8 @@ const handlers: Record<string, Handler> = {
 
     return {
       brand: brandOut, events, money, fit,
+      // A big company works ten at a time (the Work menu's suggestion).
+      big: isBigBrand(brand),
       accessRequests: pendingAccess,
       boardViews: { count: boardViewCount, last: lastVisit, recent: recentVisits },
     }
@@ -5211,7 +5235,7 @@ const handlers: Record<string, Handler> = {
     // suggestion (which opens wider on a brand nobody has written to).
     if (fields.workPeople !== undefined) {
       const n = Number(fields.workPeople)
-      data.workPeople = n >= 1 && n <= 4 ? Math.round(n) : null
+      data.workPeople = n >= 1 && n <= BIG_BRAND_WORK ? Math.round(n) : null
     }
     // Renaming is allowed but never to empty; a clash with an existing
     // brand means it's a duplicate — merge, don't rename over it.
@@ -5619,7 +5643,7 @@ const handlers: Record<string, Handler> = {
     await prisma.$transaction(async tx => {
       if (pendingIds.length) {
         await tx.draft.deleteMany({ where: { targetId: { in: pendingIds } } })
-        await tx.target.updateMany({ where: { id: { in: pendingIds } }, data: { shelved: true, queuedFor: null } })
+        await tx.target.updateMany({ where: { id: { in: pendingIds } }, data: { shelved: true, shelvedHow: null, queuedFor: null } })
       }
       await tx.contact.updateMany({
         where: { id: { in: moving.map(c => c.id) } },
@@ -5688,7 +5712,7 @@ const handlers: Record<string, Handler> = {
       if (pending.length) {
         const ids = pending.map(t => t.id)
         await tx.draft.deleteMany({ where: { targetId: { in: ids } } })
-        await tx.target.updateMany({ where: { id: { in: ids } }, data: { shelved: true, queuedFor: null } })
+        await tx.target.updateMany({ where: { id: { in: ids } }, data: { shelved: true, shelvedHow: null, queuedFor: null } })
       }
       await tx.contact.update({
         where: { id: contact.id },
@@ -5848,14 +5872,16 @@ const handlers: Record<string, Handler> = {
 
     // Shelved targets come back before new ones are made — they were
     // picked once already and reviving costs nothing.
+    // Only people waiting behind the limit ("cap") — someone shelved on
+    // purpose stays shelved until Leo promotes them.
     const revivable = brand.targets
-      .filter(t => t.shelved && ['queued', 'drafted'].includes(t.status))
+      .filter(t => t.shelved && t.shelvedHow === 'cap' && ['queued', 'drafted'].includes(t.status))
       .sort((a, b) => b.fitScore - a.fitScore)
       .slice(0, room)
     if (revivable.length) {
       await prisma.target.updateMany({
         where: { id: { in: revivable.map(t => t.id) } },
-        data: { shelved: false, queuedFor: stamp ? new Date() : null },
+        data: { shelved: false, shelvedHow: null, queuedFor: stamp ? new Date() : null },
       })
     }
 
@@ -5957,7 +5983,7 @@ const handlers: Record<string, Handler> = {
     if (passed) {
       await prisma.target.updateMany({
         where: { brandId, status: { in: ['queued', 'drafted'] } },
-        data: { shelved: true, queuedFor: null },
+        data: { shelved: true, shelvedHow: null, queuedFor: null },
       })
     }
     return { id: brand.id, name: brand.name, passed: !!brand.passedAt }
@@ -8598,7 +8624,7 @@ const handlers: Record<string, Handler> = {
     if (!brand) throw new Error('Brand not found')
     const r = await prisma.target.updateMany({
       where: { brandId, status: { in: ['queued', 'drafted'] }, shelved: false },
-      data: { shelved: true, queuedFor: null },
+      data: { shelved: true, shelvedHow: null, queuedFor: null },
     })
     return { brandName: brand.name, count: r.count }
   },
@@ -8606,10 +8632,61 @@ const handlers: Record<string, Handler> = {
   // Flip one target in or out of the queue by hand. Promoting past the
   // cap is allowed — it's an explicit choice, and the next bulk retrim
   // would reconsider it.
+  // One-time relabel (Leo, Oct 7 2026: "people should only be shelved if
+  // they're actually shelved"): people the per-brand limit set aside
+  // before shelvedHow existed get "cap", so they read "next in line" and
+  // come back by themselves when a slot opens. Only never-contacted,
+  // still-queued people at a brand in play, on the brand they were queued
+  // for — and never a brand that looks taken off the queue by hand (no
+  // one active, under the limit contacted: "Off queue"). `before` = when
+  // shelvedHow went live: anyone shelved after that by hand already says
+  // so (null) and is left alone. Preview first.
+  async markCapShelved({ preview = true, before }: any = {}) {
+    const cutoff = new Date(String(before ?? ''))
+    if (isNaN(cutoff.getTime())) throw new Error('Say when shelvedHow went live (before)')
+    const rows = await prisma.target.findMany({
+      where: {
+        shelved: true, shelvedHow: null, status: { in: ['queued', 'drafted'] }, sentAt: null,
+        updatedAt: { lt: cutoff },
+        brand: { passedAt: null, doNotEmail: false },
+      },
+      select: { id: true, brandId: true, contact: { select: { brandId: true } }, brand: { select: { name: true } } },
+    })
+    const byBrand = new Map<string, { name: string; ids: string[] }>()
+    for (const t of rows) {
+      if (t.contact.brandId !== t.brandId) continue // moved to another brand: history
+      const e = byBrand.get(t.brandId) ?? { name: t.brand.name, ids: [] }
+      e.ids.push(t.id)
+      byBrand.set(t.brandId, e)
+    }
+    const ids = [...byBrand.keys()]
+    const [active, worked] = await Promise.all([
+      prisma.target.groupBy({ by: ['brandId'], where: { brandId: { in: ids }, shelved: false, status: { in: ['queued', 'drafted'] } }, _count: true }),
+      prisma.target.groupBy({ by: ['brandId'], where: { brandId: { in: ids }, ...INVITED_WHERE }, _count: true }),
+    ])
+    const activeBy = new Map(active.map(a => [a.brandId, a._count]))
+    const workedBy = new Map(worked.map(a => [a.brandId, a._count]))
+    const mark: string[] = []
+    const brands: Array<{ name: string; people: number }> = []
+    const offQueue: Array<{ name: string; people: number }> = []
+    for (const [id, e] of byBrand) {
+      const looksOffQueue = !activeBy.get(id) && (workedBy.get(id) ?? 0) < TARGET_CAP_PER_BRAND
+      if (looksOffQueue) { offQueue.push({ name: e.name, people: e.ids.length }); continue }
+      mark.push(...e.ids)
+      brands.push({ name: e.name, people: e.ids.length })
+    }
+    brands.sort((a, b) => b.people - a.people)
+    offQueue.sort((a, b) => b.people - a.people)
+    const out = { people: mark.length, brands: brands.length, sample: brands.slice(0, 40), leftShelved: offQueue.length, leftSample: offQueue.slice(0, 40) }
+    if (preview) return { ...out, preview: true }
+    const r = await prisma.target.updateMany({ where: { id: { in: mark }, shelved: true, shelvedHow: null }, data: { shelvedHow: 'cap' } })
+    return { ...out, marked: r.count }
+  },
+
   async setTargetShelved({ targetId, shelved }: any) {
     return prisma.target.update({
       where: { id: targetId },
-      data: { shelved: !!shelved },
+      data: { shelved: !!shelved, shelvedHow: null },
     })
   },
 
@@ -9354,7 +9431,7 @@ const handlers: Record<string, Handler> = {
     await prisma.$transaction([
       prisma.contact.deleteMany({ where: { id: { in: contacts.map(c => c.id) } } }),
       prisma.brand.updateMany({ where: { id: { in: sellerIds }, passedAt: null }, data: { passedAt: new Date() } }),
-      prisma.target.updateMany({ where: { id: { in: shelve } }, data: { shelved: true, queuedFor: null } }),
+      prisma.target.updateMany({ where: { id: { in: shelve } }, data: { shelved: true, shelvedHow: null, queuedFor: null } }),
       prisma.setting.upsert({ where: { key: LI_CLEANUP_KEY }, create: { key: LI_CLEANUP_KEY, value: v }, update: { value: v } }),
     ])
     // A freed slot goes to the next person at that brand.
@@ -9392,7 +9469,7 @@ const handlers: Record<string, Handler> = {
     if (brands.length) {
       await prisma.$transaction([
         prisma.brand.updateMany({ where: { id: { in: brands } }, data: { passedAt: null } }),
-        prisma.target.updateMany({ where: { id: { in: (last.shelved || []).map(String) } }, data: { shelved: false } }),
+        prisma.target.updateMany({ where: { id: { in: (last.shelved || []).map(String) } }, data: { shelved: false, shelvedHow: null } }),
       ])
     }
     for (const id of touched) { try { await reconcileBrandTargets(id) } catch { /* non-fatal */ } }

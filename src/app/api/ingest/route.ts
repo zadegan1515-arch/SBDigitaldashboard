@@ -38,7 +38,7 @@ import {
 } from '@/lib/li-capture'
 import { readLiLog, markLiSwept, liRestsNow, readLiResearch, markLiResearch, researchResting, LI_READER, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
 import { recordRun } from '@/lib/li-report'
-import { PARENTS, parentOf, decideParentPage, siblingNamed, LI_PARENT_PAGES_KEY } from '@/lib/parents'
+import { PARENTS, parentOf, decideParentPage, siblingNamed, isParentCompany, LI_PARENT_PAGES_KEY } from '@/lib/parents'
 import {
   addToReview, sameMember, readJsonSetting, writeJsonSetting,
   LI_REVIEW_KEY, LI_CONFIRMED_KEY, LI_OWNER_KEY, type Review, type Confirmed, type LiOwner,
@@ -48,7 +48,7 @@ import { logLinkedInPerson, personOnFile, undoLinkedInLog, checkNewPerson } from
 import { nameFromSlug, isLogStage } from '@/lib/li-log'
 import { guessCategory } from '@/lib/category-hints'
 import { dueDays, shortOnPeople, plannedFirst } from '@/lib/planned-first'
-import { brandSize, sizeRank, cleanMembers } from '@/lib/brand-size'
+import { brandSize, sizeRank, cleanMembers, BIG_BRAND_WORK } from '@/lib/brand-size'
 import { countBuyers, BUYER_TARGET } from '@/lib/buyers'
 import { noBuyerFirst } from '@/lib/coverage'
 import { giantWhy } from '@/lib/giants'
@@ -108,7 +108,15 @@ async function findBrandForCapture(name: string, externalId: string | null) {
 // Four per brand in the send queue, matching /api/data — a cold brand now
 // opens with up to four threads. Not the 25-contact file cap above.
 const TARGET_CAP_PER_BRAND = 4
-async function reconcileBrandTargets(brandId: string, perBrand = TARGET_CAP_PER_BRAND) {
+// A big company works ten at a time (Leo, Oct 7 2026) — isBigBrand in
+// /api/data, the same rule.
+function isBigBrand(b: { name: string; aka: string | null; tier: string | null; liMembers: number | null }): boolean {
+  if (isParentCompany(b.name, b.aka)) return true
+  return brandSize({ liMembers: b.liMembers, tier: b.tier, hasParent: !!parentOf(b.name, b.aka) }) === 'big'
+}
+async function reconcileBrandTargets(brandId: string) {
+  const b = await prisma.brand.findUnique({ where: { id: brandId }, select: { name: true, aka: true, tier: true, liMembers: true, workPeople: true } })
+  const perBrand = b ? Math.max(TARGET_CAP_PER_BRAND, b.workPeople ?? (isBigBrand(b) ? BIG_BRAND_WORK : 0)) : TARGET_CAP_PER_BRAND
   // Anyone written to — an accept logged with no invite date too.
   const worked = await prisma.target.count({
     where: { brandId, OR: [{ sentAt: { not: null } }, { status: { in: ['sent', 'accepted', 'replied', 'converted'] } }] },
@@ -120,7 +128,9 @@ async function reconcileBrandTargets(brandId: string, perBrand = TARGET_CAP_PER_
     select: { id: true },
   })
   const shelve = active.slice(room).map(t => t.id)
-  if (shelve.length) await prisma.target.updateMany({ where: { id: { in: shelve } }, data: { shelved: true } })
+  // "cap": only waiting behind the brand's limit — "next in line", not
+  // shelved on purpose.
+  if (shelve.length) await prisma.target.updateMany({ where: { id: { in: shelve } }, data: { shelved: true, shelvedHow: 'cap' } })
   return shelve.length
 }
 
@@ -753,10 +763,10 @@ export async function POST(req: NextRequest) {
     const dueBrands = dueIds.length
       ? await prisma.brand.findMany({
           where: { id: { in: dueIds } },
-          select: { id: true, tier: true, workPeople: true, contacts: { select: { email: true, linkedinUrl: true } } },
+          select: { id: true, name: true, aka: true, tier: true, liMembers: true, workPeople: true, contacts: { select: { email: true, linkedinUrl: true } } },
         })
       : []
-    const short = new Set(dueBrands.filter(shortOnPeople).map(b => b.id))
+    const short = new Set(dueBrands.filter(b => shortOnPeople({ ...b, big: isBigBrand(b) })).map(b => b.id))
     const { first: planned, rest } = plannedFirst(items, due, short)
     // After the focus word: target brands, then the research list's names,
     // then the rest by size (unknown, small, big). Then the brands with no

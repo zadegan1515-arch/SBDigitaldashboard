@@ -8,7 +8,7 @@
 // Run: node scripts/test-planned-first.mjs
 
 import { execSync } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -19,6 +19,8 @@ execSync(
   ' --target es2020 --module esnext --moduleResolution bundler --skipLibCheck',
   { stdio: 'inherit' },
 )
+// Node's ESM loader needs the .js on relative imports.
+writeFileSync(join(out, 'planned-first.js'), readFileSync(join(out, 'planned-first.js'), 'utf8').replace("from './brand-size'", "from './brand-size.js'"))
 const { workNeed, shortOnPeople, dueDays, plannedFirst } = await import(pathToFileURL(join(out, 'planned-first.js')).href)
 
 let pass = 0, fail = 0
@@ -76,6 +78,12 @@ is('a broken snapshot is ignored', dueDays({ today: '2026-09-29', plan: {}, show
   is('planned + short first: soonest day, then the emptiest', first.map(i => [i.brandId, i.planned]), [['b', '2026-09-30'], ['a', '2026-09-30'], ['c', '2026-10-01']])
   is('the rest keep their order (a ready planned brand and an unplanned short one included)', rest.map(i => i.brandId), ['z', 'r'])
 }
+
+// ---- a big company works ten (Leo, Oct 7 2026) ----------------------------
+is('big company: ten', workNeed({ tier: null, workPeople: null, big: true }), 10)
+is('big but Leo set 4: his number', workNeed({ tier: 'established', workPeople: 4, big: true }), 4)
+is('big: four reachable is short', shortOnPeople({ tier: null, workPeople: null, big: true, contacts: Array.from({ length: 4 }, () => ({ email: null, linkedinUrl: 'x' })) }), true)
+is('not big: established still four', workNeed({ tier: 'established', workPeople: null }), 4)
 
 console.log(fail ? `planned-first: ${pass} passed, ${fail} FAILED` : `planned-first: all ${pass} passed`)
 process.exit(fail ? 1 : 0)

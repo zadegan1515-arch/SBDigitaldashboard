@@ -44,6 +44,12 @@ export function brandSize(b: { liMembers?: number | null; tier?: string | null; 
   return 'unknown'
 }
 
+// How many people a big brand works at once when nobody has been written
+// to there yet (Leo, Oct 7 2026: "for bigger brands we should expand the
+// limit to 10 a day"). Everyone else opens with 3, or 4 at an established
+// brand.
+export const BIG_BRAND_WORK = 10
+
 export function sizeRank(s: BrandSize): number {
   return SIZE_ORDER.indexOf(s)
 }

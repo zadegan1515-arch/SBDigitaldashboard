@@ -297,6 +297,62 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.ok(wk.chats.some(c => c.title === 'Old chat'), 'a range has every day\'s chats')
     ok('scoreboard, goals, brand timeline, deals gone quiet, the week as a recap')
 
+    // 11. A big company works ten (Leo, Oct 7 2026); people held back by
+    //     the limit are "next in line" (shelvedHow cap), not shelved, and
+    //     only they come back by themselves.
+    await prisma.brand.create({ data: { id: 'big_cl', name: 'Coors Light', category: 'rtd', usStatus: 'yes' } }) // a Molson Coors brand
+    for (let i = 0; i < 12; i++) {
+      await prisma.contact.create({ data: { brandId: 'big_cl', name: 'CL Person ' + i, title: 'Brand Manager', linkedinUrl: 'https://www.linkedin.com/in/clp' + i + '/' } })
+    }
+    const imp = await data('importContacts', { source: 'research', rows: [
+      { brandName: 'Coors Light', name: 'Research Rita', title: 'Director, Partnership Marketing', linkedinUrl: 'https://www.linkedin.com/in/rrita/', notes: 'Found: example.com, Oct 2026' },
+    ] })
+    assert.equal(imp.contactsCreated, 1)
+    const rita = await prisma.contact.findFirst({ where: { name: 'Research Rita' } })
+    assert.deepEqual([rita.source, rita.notes], ['research', 'Found: example.com, Oct 2026'], 'research rows are labelled and keep where they came from')
+    const qb = await data('queueBrandTargets', { brandId: 'big_cl' })
+    assert.ok(qb.queued !== false, 'queued: ' + JSON.stringify(qb))
+    const liveCL = await prisma.target.count({ where: { brandId: 'big_cl', shelved: false, status: { in: ['queued', 'drafted'] } } })
+    assert.equal(liveCL, 10, 'a big company opens with ten')
+    const brandCL = await data('getBrand', { brandId: 'big_cl' })
+    assert.equal(brandCL.big, true)
+    // The limit's overflow is "cap"; a hand shelve is not, and never comes back alone.
+    await prisma.brand.create({ data: { id: 'cap_b', name: 'Cap Co', category: 'snacks', usStatus: 'yes' } })
+    const capTargets = []
+    for (let i = 0; i < 6; i++) {
+      const c = await prisma.contact.create({ data: { brandId: 'cap_b', name: 'Cap P' + i, title: 'Marketing Manager', linkedinUrl: 'https://www.linkedin.com/in/capp' + i + '/' } })
+      capTargets.push(await prisma.target.create({ data: { brandId: 'cap_b', contactId: c.id, status: 'queued', fitScore: 50 - i } }))
+    }
+    await data('importContacts', { rows: [{ brandName: 'Cap Co', name: 'Cap Extra', title: 'Brand Director' }] }) // runs the limit for Cap Co
+    const capRows = await prisma.target.findMany({ where: { brandId: 'cap_b' }, orderBy: { fitScore: 'desc' } })
+    assert.deepEqual(capRows.map(t => [t.shelved, t.shelvedHow]), [[false, null], [false, null], [false, null], [false, null], [true, 'cap'], [true, 'cap']], 'the two past the four are next in line')
+    // Two shelved by hand (the best two): the brand works three, so one
+    // spot opens — and it goes to someone next in line, never a hand shelve.
+    await data('setTargetShelved', { targetId: capRows[0].id, shelved: true })
+    await data('setTargetShelved', { targetId: capRows[1].id, shelved: true })
+    const hand = await prisma.target.findUnique({ where: { id: capRows[0].id } })
+    assert.deepEqual([hand.shelved, hand.shelvedHow], [true, null], 'a hand shelve is a real shelve')
+    await data('queueBrandTargets', { brandId: 'cap_b' })
+    const after = await prisma.target.findMany({ where: { brandId: 'cap_b' } })
+    assert.equal(after.find(t => t.id === capRows[0].id).shelved, true, 'the hand-shelved people stay shelved')
+    assert.equal(after.find(t => t.id === capRows[1].id).shelved, true)
+    const back = after.find(t => t.id === capRows[4].id)
+    assert.deepEqual([back.shelved, back.shelvedHow], [false, null], 'the best next-in-line person fills the open spot')
+    // The one-time relabel: rows shelved before shelvedHow existed (no
+    // label, last changed before `before`); preview, then only what it showed.
+    await prisma.$executeRawUnsafe(`UPDATE "Target" SET "shelvedHow" = NULL, "updatedAt" = NOW() - INTERVAL '2 days' WHERE "brandId" = 'cap_b' AND "shelvedHow" = 'cap'`)
+    const relabelBefore = new Date(Date.now() - 864e5).toISOString()
+    await assert.rejects(data('markCapShelved', { preview: true }), /before/)
+    const mk1 = await data('markCapShelved', { preview: true, before: relabelBefore })
+    assert.ok(mk1.preview && mk1.sample.some(x => x.name === 'Cap Co'))
+    const capCo = mk1.sample.find(x => x.name === 'Cap Co')
+    assert.equal(capCo.people, 1, 'only the old unlabelled row, never the two shelved by hand today')
+    const before1 = await prisma.target.count({ where: { shelvedHow: 'cap' } })
+    const mk2 = await data('markCapShelved', { preview: false, before: relabelBefore })
+    assert.equal(mk2.marked, mk1.people)
+    assert.equal(await prisma.target.count({ where: { shelvedHow: 'cap' } }), before1 + mk1.people)
+    ok('a big company opens with ten; next in line ≠ shelved; only next in line comes back by itself; relabel previews first')
+
     console.log(n + ' checks passed');
   } catch (e) {
     console.error('FAILED:', e.stack || e.message);

@@ -418,7 +418,16 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   capture (INGEST_TOKEN-gated, CORS-open). **Two different caps, don't confuse them:**
   `CONTACT_CAP_PER_BRAND = 25` (ingest + `importContacts`) is how many people we keep *on file* per
   brand — under 25 a brand imports whole, at 25 it stops taking new rows; best titles first, nothing
-  existing is removed. `TARGET_CAP_PER_BRAND = 3` is how many we *write to* per brand. The sweep's
+  existing is removed. `TARGET_CAP_PER_BRAND = 4` is how many we keep *in the queue* per brand — **10 at a big
+  company** (Leo, Oct 7 2026: "for bigger brands we should expand the limit to 10 a day"; `isBigBrand` = 500+ on
+  LinkedIn, owned by a parent in parents.ts, or that parent itself (`isParentCompany`), else established tier;
+  `BIG_BRAND_WORK` in brand-size.ts; a cold big brand opens with 10 (`recommendWorkPeople`), its contacts label needs
+  10 (`workNeed({ big })`), the brand page's Work menu goes 1–4, 6, 8, 10). People past the limit are **next in line**,
+  not shelved (Leo: "people should only be shelved if they're actually shelved"): `Target.shelvedHow = 'cap'` (set by
+  `reconcileBrandTargets` in /api/data and /api/ingest) reads "next in line" / **Queue now** on the brand page and comes
+  back by itself when a spot opens; `shelvedHow` null = set aside on purpose (Shelve, Off queue, Archive) — "shelved",
+  never revived alone. `markCapShelved({ preview, before })` labelled the rows shelved before this existed.
+  `importContacts({ rows, source: 'research' })` = people Claude found on the open web (each row's `notes` says where). The sweep's
   worklist (`action:'list'`, scope `thin`, emptiest brand first) is every brand under the contact
   cap — it used to be brands with zero contacts, which permanently skipped any brand whose first
   capture found one or two people. Old userscripts sending scope `missing` get `thin` too. A brand
