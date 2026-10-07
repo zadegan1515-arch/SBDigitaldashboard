@@ -241,6 +241,33 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await data('setCategoryPriority', { category: 'apparel', priority: 'low' })
     ok('Best fit is the default: never reached only, Skip never picked, search still finds everything')
 
+    // 9c. Today: a planned brand that comes off takes its people out of
+    //     today's queue (named on the card); Undo puts them back and takes
+    //     out whoever the new category brought in.
+    const tk = op9.today
+    await data('setExtraSendingDay', { date: tk, on: true }) // a no-op on Tue–Thu
+    await mk('bf_snack', 'Snack Co', 'snacks', { liMembers: 80 })
+    await data('planAddBrands', { date: tk, brandIds: ['bf_snack'] })
+    const snackQueued = () => prisma.target.count({ where: { brandId: 'bf_snack', queuedFor: { not: null }, sentAt: null } })
+    const n9 = await snackQueued()
+    assert.ok(n9 > 0, 'planned for today = in today\'s queue')
+    const pvT = await data('planApplyCategory', { date: tk, category: 'energy' })
+    const off = pvT.unpin.find(u => u.id === 'bf_snack')
+    assert.ok(off, 'Snack Co comes off')
+    assert.equal(off.targetIds.length, n9, 'its queued people are named')
+    await data('planApplyCategory', { date: tk, category: 'energy', preview: false, expect: pvT.expect })
+    assert.equal(await snackQueued(), 0, 'and they leave today\'s queue')
+    const refill = (JSON.parse((await prisma.setting.findUnique({ where: { key: 'dayThemeLast' } })).value).refilled) || []
+    const unT = await data('undoDayTheme', { preview: true })
+    assert.ok(unT.people >= n9)
+    assert.equal(unT.out, refill.length)
+    await data('undoDayTheme', {})
+    assert.equal(await snackQueued(), n9, 'Undo puts them back')
+    if (refill.length) {
+      assert.equal(await prisma.target.count({ where: { id: { in: refill }, queuedFor: { not: null }, sentAt: null } }), 0, 'and takes the refill back out')
+    }
+    ok('today: a planned brand that comes off leaves the queue; Undo restores it and removes the refill')
+
     // 10. Leo's picked ideas: scoreboard, brand timeline, deals gone quiet, the week's recap.
     const ws = await data('weeklyScore', {})
     const thisWeek = ws.weeks[ws.weeks.length - 1]

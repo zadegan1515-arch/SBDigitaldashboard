@@ -12105,7 +12105,9 @@ function sdThemeWord(cat) { return cat && cat !== 'bestfit' ? sdCatName(cat) : '
 function sdThemeCard(key, pv) {
   var word = sdThemeWord(pv.category);
   var lines = (pv.unpin || []).map(function (u) {
-    return '<li><b>' + esc(u.name) + '</b> <span class="sd-dim">' + esc(sdCatName(u.category)) + ' · planned, back to the pool</span></li>';
+    var q = (u.people || []).length;
+    return '<li><b>' + esc(u.name) + '</b> <span class="sd-dim">' + esc(sdCatName(u.category)) + ' · planned, back to the pool' +
+      (q ? ' · ' + esc(sdPlural(q, 'person', 'people')) + ' out of today’s queue' : '') + '</span></li>';
   }).concat((pv.unqueue || []).map(function (u) {
     return '<li><b>' + esc(u.brand) + '</b> <span class="sd-dim">' + esc(sdPlural(u.people.length, 'person', 'people')) +
       ' out of today’s queue, back to waiting</span></li>';
@@ -13333,7 +13335,8 @@ function sdThemeUndo() {
     if (!pv || pv.ok === false) { toast((pv && pv.message) || 'Nothing to undo'); return sdRefresh(); }
     var msg = 'Put ' + (pv.date === SCHED.today ? 'today' : pv.label) + ' back to ' + sdThemeWord(pv.category) + '?' +
       (pv.brands.length ? '\n\nBack on the day: ' + pv.brands.join(', ') : '') +
-      (pv.people ? '\n\n' + sdPlural(pv.people, 'person goes', 'people go') + ' back into today’s queue.' : '');
+      (pv.people ? '\n\n' + sdPlural(pv.people, 'person goes', 'people go') + ' back into today’s queue.' : '') +
+      (pv.out ? '\n\nOut again: ' + sdPlural(pv.out, 'person', 'people') + ' picked after the change (' + pv.outBrands.join(', ') + ').' : '');
     if (!window.confirm(msg)) return;
     return sdPlanCall('undoDayTheme', {}).then(function () { toast('Put back'); return sdRefresh(); });
   }).catch(function (err) { toast(err.message); });

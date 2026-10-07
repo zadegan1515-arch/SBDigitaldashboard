@@ -995,6 +995,22 @@ async function writeCarryLog(log: CarryLog): Promise<void> {
 // Brands with work left on `days` (src/lib/carry.ts findUnsent): people
 // stamped into one of those days' queue and never sent, and brands pinned
 // to the day or shown on it by the rotation that sent nobody that day.
+// The brands getTodayQueue's automatic fill queued, by day ({ day:
+// brandIds }, the last week): the morning roll onto a Best fit day only
+// sends back the fill's own picks, never people Leo queued by hand.
+const AUTO_QUEUED_KEY = 'outreachAutoQueued'
+async function noteAutoQueued(day: string, brandIds: string[]): Promise<void> {
+  const cur = await readJsonSetting<Record<string, string[]>>(prisma, AUTO_QUEUED_KEY, {})
+  const out: Record<string, string[]> = {}
+  const cutoff = addDaysKey(day, -7)
+  for (const [k, v] of Object.entries(cur && typeof cur === 'object' ? cur : {})) {
+    if (isDayKey(k) && k >= cutoff && Array.isArray(v)) out[k] = v.map(String)
+  }
+  out[day] = [...new Set([...(out[day] ?? []), ...brandIds])]
+  const value = JSON.stringify(out)
+  await prisma.setting.upsert({ where: { key: AUTO_QUEUED_KEY }, create: { key: AUTO_QUEUED_KEY, value }, update: { value } })
+}
+
 // shown: false leaves out the brands the Schedule only showed (the
 // automatic rows) — the morning roll onto a Best fit day, which ranks
 // them again with every brand never reached instead of pinning them.
@@ -1117,14 +1133,22 @@ async function rollOverUnsent(): Promise<void> {
     const toBestFit = !!to && !isCategoryTheme(plan[to]?.category)
     const unsent = await unsentOn(days, plan, { shown: !toBestFit })
     if (toBestFit && unsent.size) {
-      // Queued by the automatic fill (not planned by hand) at a brand Best
-      // fit would never pick — already reached, a Skip category, too small:
-      // its people go back to waiting instead of taking the day's room.
+      // Queued by the automatic fill itself (outreachAutoQueued — never a
+      // brand planned or queued by hand) at a brand Best fit would never
+      // pick: reached before, a Skip category, too small. Its people go
+      // back to waiting instead of taking the day's room. A brand that
+      // sent anyone on those days is half-sent: it carries, whole.
       const handPinned = new Set(days.flatMap(d => plan[d]?.brandIds ?? []))
-      const auto = [...unsent.keys()].filter(id => !handPinned.has(id))
+      const autoLog = await readJsonSetting<Record<string, string[]>>(prisma, AUTO_QUEUED_KEY, {})
+      const autoIds = new Set(days.flatMap(d => (autoLog && Array.isArray(autoLog[d]) ? autoLog[d] : [])))
+      const windowStart = dayStartOf([...days].sort()[0])
+      const auto = [...unsent.keys()].filter(id => !handPinned.has(id) && autoIds.has(id))
       if (auto.length) {
         const [brands, rates] = await Promise.all([
-          prisma.brand.findMany({ where: { id: { in: auto } }, select: PLAN_BRAND_SELECT }),
+          prisma.brand.findMany({
+            where: { id: { in: auto }, targets: { none: { sentAt: { gte: windowStart } } } },
+            select: PLAN_BRAND_SELECT,
+          }),
           recentAcceptRates(),
         ])
         const back: string[] = []
@@ -1223,6 +1247,9 @@ type DayThemeLog = {
   at: string; by: string | null; date: string
   categoryBefore: string | null; pinsBefore: string[]
   unqueued: string[]; reopened: { to: string } | null
+  // Who today's queue took in for the new category (Undo takes them back
+  // out, so the day never ends up with both lists).
+  refilled?: string[]
 }
 
 // What a day loses when its category becomes `cat` (null = Best fit, the
@@ -1255,8 +1282,15 @@ async function dayThemeChanges(plan: OutreachPlan, date: string, cat: string | n
     if (!b) return false
     return bestFit ? bestFitEligible(b, fitOf.get(id)!) : b.category === theme
   }
+  // A planned brand that comes off today takes its people out of today's
+  // queue too (as planRemoveBrand does), named on the card.
+  const queuedAt = (id: string) => queued.filter(t => t.brandId === id)
   const unpin = pins.filter(id => byId.has(id) && !started.has(id) && !belongs(id))
-    .map(id => { const b = byId.get(id)!; return { id, name: b.name, category: b.category } })
+    .map(id => {
+      const b = byId.get(id)!
+      const q = queuedAt(id)
+      return { id, name: b.name, category: b.category, people: q.map(t => t.contact.name), targetIds: q.map(t => t.id) }
+    })
   const offQueue = new Map<string, { brandId: string; brand: string; category: string | null; people: string[]; targetIds: string[] }>()
   for (const t of queued) {
     if (started.has(t.brandId) || pins.includes(t.brandId) || belongs(t.brandId)) continue
@@ -1268,7 +1302,7 @@ async function dayThemeChanges(plan: OutreachPlan, date: string, cat: string | n
   }
   const unqueue = [...offQueue.values()]
   const reopen = closed ? closed.to : null
-  const sig = JSON.stringify([cat, unpin.map(u => u.id), unqueue.flatMap(u => u.targetIds).sort(), reopen])
+  const sig = JSON.stringify([cat, unpin.map(u => u.id), [...unpin, ...unqueue].flatMap(u => u.targetIds).sort(), reopen])
   // Best fit keeps the planned brands it would pick, best Brand Fit first
   // (a brand that sent today stays at the top).
   const fitOrder = (keep: string[]) => [...keep].sort((a, b) =>
@@ -3387,6 +3421,10 @@ const handlers: Record<string, Handler> = {
         queuedBrands.add(first.id)
       }
     }
+
+    // Which brands the fill itself queued today, so the morning roll can
+    // tell them from people Leo queued by hand (rollOverUnsent).
+    if (queuedBrands.size) await noteAutoQueued(todayKey, [...queuedBrands])
 
     const fresh = newIds.length
       ? await prisma.target.findMany({ where: { id: { in: newIds } }, include })
@@ -6868,7 +6906,7 @@ const handlers: Record<string, Handler> = {
     const log: DayThemeLog = {
       at: new Date().toISOString(), by: __user ?? null, date,
       categoryBefore: before.category, pinsBefore: before.brandIds.slice(),
-      unqueued: out.unqueue.flatMap(u => u.targetIds), reopened: out.reopen ? { to: out.reopen } : null,
+      unqueued: [...out.unpin, ...out.unqueue].flatMap(u => u.targetIds), reopened: out.reopen ? { to: out.reopen } : null,
     }
     const gone = new Set(out.unpin.map(u => u.id))
     let keep = before.brandIds.filter(id => !gone.has(id))
@@ -6883,13 +6921,22 @@ const handlers: Record<string, Handler> = {
     }
     if (out.reopen) await prisma.setting.deleteMany({ where: { key: DAY_CLOSED_KEY } })
     const changed = !!(gone.size || log.unqueued.length || out.reopen || keep.join('|') !== before.brandIds.join('|') || before.category !== cat)
-    if (changed) {
+    // Today: the queue takes the new category's brands now, so the
+    // LinkedIn tab and Today's list for Zach agree with the column. Who it
+    // took in is logged for Undo.
+    if (date === today) {
+      const stampedNow = async () => new Set((await prisma.target.findMany({
+        where: { queuedFor: { gte: startOfLocalDay() }, status: { in: ['queued', 'drafted'] }, shelved: false, sentAt: null },
+        select: { id: true },
+      })).map(t => t.id))
+      const was = await stampedNow()
+      await (handlers.getTodayQueue as Handler)({})
+      log.refilled = [...await stampedNow()].filter(id => !was.has(id))
+    }
+    if (changed || log.refilled?.length) {
       const value = JSON.stringify(log)
       await prisma.setting.upsert({ where: { key: DAY_THEME_KEY }, create: { key: DAY_THEME_KEY, value }, update: { value } })
     }
-    // Today: the queue takes the new category's brands now, so the
-    // LinkedIn tab and Today's list for Zach agree with the column.
-    if (date === today) await (handlers.getTodayQueue as Handler)({})
     return { applied: true, date, category: cat, unpinned: gone.size, unqueued: log.unqueued.length, reopened: !!out.reopen, undo: changed }
   },
 
@@ -6904,19 +6951,38 @@ const handlers: Record<string, Handler> = {
     const plan = await readPlan()
     const pinnedElsewhere = pinnedDays(plan, today)
     const back = log.pinsBefore.filter(id => !(plan[log.date]?.brandIds ?? []).includes(id) && (pinnedElsewhere.get(id) ?? log.date) === log.date)
-    const restamp = log.date === today && log.unqueued.length
-      ? await prisma.target.findMany({ where: { id: { in: log.unqueued }, queuedFor: null, sentAt: null, shelved: false, status: { in: ['queued', 'drafted'] } }, select: { id: true } })
+    // Back into today's queue: only people still waiting, at a brand still
+    // in play, not passed for today and not planned for another day since.
+    const isToday = log.date === today
+    const restamp = isToday && log.unqueued.length
+      ? (await prisma.target.findMany({
+          where: {
+            id: { in: log.unqueued }, queuedFor: null, sentAt: null, shelved: false, status: { in: ['queued', 'drafted'] },
+            brand: { passedAt: null, ...notPassedToday() },
+          },
+          select: { id: true, brandId: true },
+        })).filter(t => (pinnedElsewhere.get(t.brandId) ?? log.date) === log.date)
+      : []
+    // Out again: whoever today's queue took in for the new category and
+    // hasn't been sent, so the day doesn't end up with both lists.
+    const unrefill = isToday && log.refilled?.length
+      ? await prisma.target.findMany({
+          where: { id: { in: log.refilled }, sentAt: null, queuedFor: { gte: startOfLocalDay() } },
+          select: { id: true, brand: { select: { name: true } } },
+        })
       : []
     const names = back.length ? await prisma.brand.findMany({ where: { id: { in: back } }, select: { id: true, name: true } }) : []
     const res = {
       ok: true, date: log.date, label: dayLabel(log.date), category: log.categoryBefore,
       brands: names.map(b => b.name), people: restamp.length, reclose: log.reopened?.to ?? null,
+      out: unrefill.length, outBrands: [...new Set(unrefill.map(t => t.brand.name))],
     }
     if (preview) return res
     const day = plan[log.date] ?? { category: null, brandIds: [] }
     const order = log.pinsBefore.filter(id => back.includes(id) || day.brandIds.includes(id))
     plan[log.date] = { category: log.categoryBefore, brandIds: [...order, ...day.brandIds.filter(id => !order.includes(id))] }
     await writePlan(plan)
+    if (unrefill.length) await prisma.target.updateMany({ where: { id: { in: unrefill.map(t => t.id) }, sentAt: null }, data: { queuedFor: null } })
     if (restamp.length) await prisma.target.updateMany({ where: { id: { in: restamp.map(t => t.id) } }, data: { queuedFor: new Date() } })
     if (log.reopened && log.date === today) {
       const value = JSON.stringify({ day: today, to: log.reopened.to })
