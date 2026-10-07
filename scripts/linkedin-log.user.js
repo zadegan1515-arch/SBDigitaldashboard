@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — Log LinkedIn Invites
 // @namespace    sbagency.command-center
-// @version      1.1
+// @version      1.2
 // @description  For Zach's LinkedIn: on someone's profile, log that you invited them or that they accepted; on a company's People page, read the marketing / partnerships people you can see into the SB Command Center. Only when you click.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -54,7 +54,7 @@
   var INGEST_URL = 'https://sb-digitaldashboard.vercel.app/api/ingest';
   var DASH_URL = 'https://sb-digitaldashboard.vercel.app/app.html';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.1';
+  var VERSION = '1.2';
   // The dashboard refuses LinkedIn calls from an older card reader
   // (LI_READER in src/lib/li-sweep.ts). This reads a profile, not cards,
   // and sends the current number so its calls are let through.
@@ -822,9 +822,15 @@
     box.onkeydown = function (e) { if (e.key === 'Enter') again(box.value.trim()); };
     var add = null, create = null;
     if (j.brand) {
-      add = h('button', { id: 'sblogadd', style: BTN + ';margin-top:12px', disabled: !adds.length,
-        text: adds.length ? 'Add ' + adds.length + ' to ' + j.brand.name : 'Nobody new to add' });
-      if (adds.length) add.onclick = guard(function () { capturePeople(typed, add); });
+      // Nobody new still answers the dashboard (1.2, Leo Oct 7 2026): the
+      // brand leaves "Read on Zach's LinkedIn" either way.
+      // A read that made out nobody proves nothing (cards still loading,
+      // stopped early, LinkedIn changed its cards): it can't mark anything.
+      var readSome = lastRead.rows.length > 0;
+      add = h('button', { id: 'sblogadd', style: BTN + ';margin-top:12px', disabled: !adds.length && !readSome,
+        text: adds.length ? 'Add ' + adds.length + ' to ' + j.brand.name
+          : readSome ? 'Nobody new — mark ' + j.brand.name + ' read' : 'Nobody read on this page' });
+      if (adds.length || readSome) add.onclick = guard(function () { capturePeople(typed, add); });
     } else if (j.createName) {
       var n = Math.min(waiting.length, j.cap);
       create = h('button', { id: 'sblogcreate', style: BTN + ';margin-top:12px',
@@ -876,7 +882,10 @@
       freshPanel([
         head('Saved'),
         j.brandCreated ? h('div', { style: 'margin-bottom:6px;color:#137333' }, [b(j.brand.name), ' is now a brand in the dashboard. Its category is a guess — check it on the brand page.']) : null,
-        h('div', { style: 'margin-bottom:6px' }, [b(String(j.added)), ' added to ', b(j.brand.name), '. It now has ' + j.have + ' of ' + j.cap + ' people on file.']),
+        j.added || j.failed
+          ? h('div', { style: 'margin-bottom:6px' }, [b(String(j.added)), ' added to ', b(j.brand.name), '. It now has ' + j.have + ' of ' + j.cap + ' people on file.' +
+              (j.failed ? ' ' + j.failed + ' could not be saved.' : '')])
+          : h('div', { style: 'margin-bottom:6px' }, ['Nobody new at ', b(j.brand.name), j.zachMarked ? ' — marked read, so it\'s off “Read on Zach\'s LinkedIn” in the dashboard.' : '.']),
         h('a', { href: DASH_URL + '#brand/' + j.brand.id, target: '_blank', rel: 'noopener', style: BTN2 + ';margin-top:10px', text: 'Open ' + j.brand.name + ' in the dashboard ↗' }),
         h('div', { style: SMALL, text: 'Still short? Open a narrower view below, then press the pill again.' }),
         keywordChips(),

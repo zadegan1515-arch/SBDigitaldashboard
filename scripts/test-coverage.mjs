@@ -75,6 +75,18 @@ t('back on the list: a visit over a month old, an old reader, a "too big" skip, 
   assert.equal(S({ hasParent: true, mark: { at: daysAgo(3), seen: 0, added: 0, v: 2, parentTried: true, note: 'no LinkedIn page of its own; could not find E. & J. Gallo on LinkedIn' } }), 'next')
 })
 
+t('people Leo\'s LinkedIn hid look like buyers: zach — after covered, full and page, ahead of noPage and resting', () => {
+  const resting = { at: daysAgo(2), seen: 3, added: 0, v: 2 }
+  assert.equal(S({ zachDue: true }), 'zach')
+  assert.equal(S({ zachDue: true, mark: resting }), 'zach', 'resting from the fill, still Zach\'s to read')
+  assert.equal(S({ zachDue: true, confirmed: 'none' }), 'zach')
+  assert.equal(S({ zachDue: true, inReview: true }), 'page', 'the page may be the wrong company')
+  assert.equal(S({ zachDue: true, titles: ['Brand Manager'] }), 'covered')
+  assert.equal(S({ zachDue: true, titles: Array(25).fill('Sales Associate') }), 'full')
+  assert.equal(S({ zachDue: true, passedAt: daysAgo(1) }), 'off')
+  assert.equal(S({ zachDue: false, mark: resting }), 'resting')
+})
+
 t('liRestsNow is the worklist rule: no mark, no rest', () => {
   assert.equal(liRestsNow(undefined, false, now), false)
   assert.equal(liRestsNow({ at: daysAgo(1), seen: 5, added: 2, v: 2 }, false, now), true)
@@ -89,13 +101,14 @@ t('counts: in play leaves out archived; need = in play and not covered', () => {
     coverOf({ titles: [], confirmed: 'none' }, opts),
     coverOf({ titles: [], passedAt: daysAgo(1) }, opts),
     coverOf({ titles: [], mark: { at: daysAgo(2), seen: 3, added: 0, v: 2 } }, opts),
+    coverOf({ titles: [], zachDue: true }, opts),
   ]
   const c = coverCounts(list)
   assert.deepEqual(
-    { inPlay: c.inPlay, need: c.need, covered: c.covered, next: c.next, page: c.page, noPage: c.noPage, resting: c.resting, off: c.off, full: c.full },
-    { inPlay: 5, need: 4, covered: 1, next: 1, page: 1, noPage: 1, resting: 1, off: 1, full: 0 },
+    { inPlay: c.inPlay, need: c.need, covered: c.covered, next: c.next, page: c.page, zach: c.zach, noPage: c.noPage, resting: c.resting, off: c.off, full: c.full },
+    { inPlay: 6, need: 5, covered: 1, next: 1, page: 1, zach: 1, noPage: 1, resting: 1, off: 1, full: 0 },
   )
-  assert.deepEqual(NEED_STATES, ['next', 'page', 'resting', 'noPage', 'full'])
+  assert.deepEqual(NEED_STATES, ['next', 'page', 'zach', 'resting', 'noPage', 'full'])
 })
 
 t('the fill: Schedule brands and asked-for names lead, then brands with no buyer, then the rest — each in its own order', () => {

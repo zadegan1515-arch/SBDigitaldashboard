@@ -113,11 +113,16 @@ const server = http.createServer((req, res) => {
         return res.end(JSON.stringify({ ok: true, contactId: body.contactId || 'c-new', targetId: 't-1', name: body.name || 'Sam Lee', brand, status: body.stage, noop: null, madeContact: !body.contactId, brandCreated: !!body.createIfMissing,
           undo: { targetId: 't-1', stage: body.stage, before: null, madeContact: !body.contactId } }));
       }
+      // Hiyo: everyone readable is already on file (1.2: Nobody new still
+      // answers, so the brand leaves "Read on Zach's LinkedIn").
+      const hiyo = /\/company\/hiyo\//.test(body.companyUrl || '');
       if (body.action === 'liPreview') {
-        return res.end(JSON.stringify({ ok: true, brand: { id: 'b1', name: 'Liquid Death' }, have: 2, cap: 25, room: 23,
-          rows: body.rows.map((r, i) => ({ name: r.name, role: r.headline, verdict: i === 2 ? 'dupe' : 'add' })) }));
+        return res.end(JSON.stringify({ ok: true, brand: hiyo ? { id: 'b-hi', name: 'Hiyo' } : { id: 'b1', name: 'Liquid Death' }, have: 2, cap: 25, room: 23,
+          rows: body.rows.map((r, i) => ({ name: r.name, role: r.headline, verdict: hiyo || i === 2 ? 'dupe' : 'add' })) }));
       }
-      if (body.action === 'liCapture') return res.end(JSON.stringify({ ok: true, added: 2, have: 4, cap: 25, brand: { id: 'b1', name: 'Liquid Death' } }));
+      if (body.action === 'liCapture') {
+        return res.end(JSON.stringify(hiyo ? { ok: true, added: 0, have: 3, cap: 25, brand: { id: 'b-hi', name: 'Hiyo' }, zachMarked: true } : { ok: true, added: 2, have: 4, cap: 25, brand: { id: 'b1', name: 'Liquid Death' } }));
+      }
       if (body.action === 'liPersonUndo') return res.end(JSON.stringify({ ok: true, undone: true, name: 'Jane Doe', removed: true }));
       res.end(JSON.stringify({ ok: false, error: 'not expected from the log script: ' + body.action }));
     });
@@ -140,6 +145,8 @@ const server = http.createServer((req, res) => {
   }
   if (/^\/in\/frame-probe/.test(req.url)) return res.end('<html><body>frame</body></html>');
   if (/^\/company\/liquid-death\/people\/?/.test(req.url)) return res.end(PEOPLE);
+  if (/^\/company\/hiyo\/people\/?/.test(req.url)) return res.end(PEOPLE.replace(/Liquid Death/g, 'Hiyo'));
+  if (/^\/company\/blank-hiyo\/people\/?/.test(req.url)) return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Hiyo</h1><ul></ul></main></body></html>');
   // The feed tidies its own address as it loads, the way LinkedIn does.
   res.end('<!doctype html><html><head><script>history.replaceState(null, "", location.pathname)</script></head><body><main><h1>Feed</h1></main></body></html>');
 });
@@ -227,9 +234,42 @@ const shim = (seedToken) => `
     assert.equal(cap.rows.length, 3);
     assert.equal(cap.via, 'log');
     assert.ok(!sent.some(x => /^li(List|Run|Swept|Matched|Discover|Research)$/.test(x.action)), 'no run actions, ever');
-    sent.length = 0;
     await pg.close();
     ok('a company\'s People page: read only on Read this page, previewed, saved only on Add; no run');
+
+    // Nobody new (a link off "Read on Zach's LinkedIn", keyword view): the
+    // button still answers the dashboard, which marks the brand read.
+    sent.length = 0;
+    pg = await open('/company/hiyo/people/?keywords=marketing');
+    await pg.waitForFunction(() => (document.getElementById('sblogpill') || {}).textContent === 'SB · Read people');
+    await pg.click('#sblogpill');
+    await pg.click('#sblogread');
+    await pg.waitForSelector('#sblogadd', { timeout: 20000 });
+    assert.match(await pg.textContent('#sblogadd'), /Nobody new — mark Hiyo read/);
+    assert.equal(await pg.$eval('#sblogadd', b => b.disabled), false);
+    assert.match(sent.find(x => x.action === 'liPreview').companyUrl, /\/company\/hiyo\/people\/\?keywords=marketing/);
+    await pg.click('#sblogadd');
+    await pg.waitForFunction(() => /marked read/.test((document.getElementById('sblog-panel') || {}).innerText || ''));
+    const done = sent.filter(x => x.action === 'liCapture');
+    assert.equal(done.length, 1);
+    assert.equal(done[0].via, 'log');
+    assert.equal(done[0].members, null, 'a keyword view says nothing about the headcount');
+    sent.length = 0;
+    await pg.close();
+    ok('nobody new: the button marks the brand read (liCapture via log), the keyword view\'s headcount is never sent');
+
+    // A read that made out nobody can't mark anything read.
+    pg = await open('/company/blank-hiyo/people/');
+    await pg.waitForFunction(() => (document.getElementById('sblogpill') || {}).textContent === 'SB · Read people');
+    await pg.click('#sblogpill');
+    await pg.click('#sblogread');
+    await pg.waitForSelector('#sblogadd', { timeout: 20000 });
+    assert.match(await pg.textContent('#sblogadd'), /Nobody read on this page/);
+    assert.equal(await pg.$eval('#sblogadd', b => b.disabled), true);
+    assert.equal(sent.filter(x => x.action === 'liCapture').length, 0);
+    sent.length = 0;
+    await pg.close();
+    ok('a read that made out nobody can\'t mark the brand read');
 
     pg = await open('/feed/#sb-fill');
     await pg.waitForTimeout(1500);

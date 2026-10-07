@@ -250,6 +250,10 @@ const server = http.createServer((req, res) => {
         const view = /[?&]keywords=(marketing|partnerships)$/.test(body.companyUrl || '') && body.brandId !== 'b-big';
         return res.end(JSON.stringify({ ok: true, brand: { id: body.brandId, name: body.companyName }, added: view ? 0 : 2, have: 12, cap: 25, targetsShelved: 0 }));
       }
+      if (body.action === 'liPreview' && /all-known/.test(body.companyUrl || '')) {
+        return res.end(JSON.stringify({ ok: true, brand: { id: 'b-ak', name: 'All Known' }, matchedBy: 'name', cap: 25, have: 6, room: 19,
+          rows: body.rows.map((r) => ({ name: r.name, role: r.headline, linkedinUrl: r.linkedinUrl, verdict: 'dupe' })) }));
+      }
       if (body.action === 'liPreview') {
         return res.end(JSON.stringify({
           ok: true, brand: { id: 'b1', name: 'Liquid Death' }, matchedBy: 'name', cap: 25, have: 20, room: 5,
@@ -297,6 +301,8 @@ const server = http.createServer((req, res) => {
     return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Native</h1>' +
       '<div class="org-top-card-summary-info-list"><div class="org-top-card-summary-info-list__info-item">Individual and Family Services</div></div><ul>' +
       '<li><section><a href="https://www.linkedin.com/in/cg-1/">Carla Gray</a> <span>• 3rd+</span><div>Caregiver</div></section></li>' +
+      // Someone hidden on the wrong company's page: never sent for Zach.
+      '<li><section><div>LinkedIn Member</div><div>Marketing</div></section></li>' +
       '</ul></main></body></html>');
   }
   if (/^\/search\/results\/companies\/\?keywords=Native(&|$)/.test(req.url)) {
@@ -313,6 +319,17 @@ const server = http.createServer((req, res) => {
   if (/^\/company\/casamigos-tequila\/people\/?/.test(req.url)) return res.end(page(true, 'Casamigos Tequila'));
   if (/^\/company\/drinklmnt\/people\/?/.test(req.url)) return res.end(page(true, 'LMNT'));
   // LinkedIn's real People cards, as they came through for Supergoop.
+  // Everyone readable already on file, one hidden marketer.
+  if (/^\/company\/all-known\/people\/?/.test(req.url)) {
+    return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">All Known</h1><ul>' +
+      '<li><section><a href="https://www.linkedin.com/in/ak-1/">Ana Known</a> <span>· 2nd</span><div>Brand Manager</div></section></li>' +
+      '<li><section><div>LinkedIn Member</div><div>Head of Events</div></section></li>' +
+      '</ul></main></body></html>');
+  }
+  // A People tab with nobody on it at all: no views worth opening.
+  if (/^\/company\/nobody-co\/people\/?/.test(req.url)) {
+    return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Nobody Co</h1><h2>0 associated members</h2><ul></ul></main></body></html>');
+  }
   if (/^\/company\/supergoop\/people\/?/.test(req.url)) {
     return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Supergoop!</h1><ul>' +
       '<li><section><a href="https://www.linkedin.com/in/holly-t/"><img alt=""></a>' +
@@ -322,6 +339,10 @@ const server = http.createServer((req, res) => {
         '<div><span>• 2nd</span></div><div>Senior Director, Brand Marketing</div><div>12 mutual connections</div><button>Connect</button></section></li>' +
       '<li><section><a href="https://www.linkedin.com/in/judy-l/"><span>Judy Lee</span><span> • 3rd+</span></a>' +
         '<div>Software Engineer at Supergoop!</div><button>Connect</button></section></li>' +
+      // Hidden people in real shapes: the badge on the "LinkedIn Member"
+      // line, and one with no headline at all.
+      '<li><section><span>LinkedIn Member</span> <span>• 3rd+</span><div>Head of Partnerships at Supergoop!</div><button>Connect</button></section></li>' +
+      '<li><section><div>LinkedIn Member</div><button>Connect</button></section></li>' +
       '</ul></main></body></html>');
   }
   // Leo (Sep 2026): only companies with under 100 people on LinkedIn.
@@ -550,11 +571,18 @@ const GM_SHIM = `
     assert.equal(sent.filter(b => b.action === 'liCapture').length, 0);
     assert.match(await pageObj.innerText('#sbli-panel'), /1 more show as "LinkedIn Member"/);
     ok('says how many "LinkedIn Member" cards LinkedIn hid');
+    // Their headlines, view by view, go with the preview: likely buyers
+    // land on "Read on Zach's LinkedIn" (1.30, Leo Oct 7 2026).
+    assert.deepEqual(previews[0].hidden.map(v => v.q), ['', 'marketing', 'partnerships']);
+    assert.ok(previews[0].hidden.every(v => v.heads.length === 1 && v.heads[0] === 'Marketing at Liquid Death'), JSON.stringify(previews[0].hidden));
+    assert.match(previews[0].hidden[1].url, /\/company\/liquid-death\/people\/\?keywords=marketing$/);
+    ok('hand scan: each view\'s "LinkedIn Member" headline goes with the preview');
     const addText = await pageObj.textContent('#sbliadd');
     assert.match(addText, /Add 2 to Liquid Death/);
     await pageObj.click('#sbliadd');
     await pageObj.waitForFunction(() => /Saved/.test(document.getElementById('sbli-panel').innerText));
     assert.equal(sent.filter(b => b.action === 'liCapture').length, 1);
+    assert.deepEqual(sent.filter(b => b.action === 'liCapture')[0].hidden, previews[0].hidden, 'Add carries the same hidden views');
     assert.match(pageObj.url(), /\/company\/liquid-death\/people\/\?keywords=partnerships$/);
     ok('saves only on "Add", and never navigated by itself');
 
@@ -669,9 +697,18 @@ const GM_SHIM = `
       const caps = sent.slice(before).filter(b => b.action === 'liCapture');
       assert.ok(caps.filter(c => !/keywords=/.test(c.companyUrl)).every(c => c.rows.length === 7), 'each brand read whole, including "Show more results"');
       assert.match(await pg.textContent('#sbli-panel'), /4 people added across 2 brands/);
+      // The hidden people ride on the brand's visit, never on a view's save
+      // (the server would take a view's for a hand read).
+      assert.ok(caps.every(c => !('hidden' in c)), 'no liCapture carries hidden views');
+      const sweptLd = sent.slice(before).find(b => b.action === 'liSwept' && b.brandId === 'b-ld');
+      assert.deepEqual(sweptLd.hidden.map(v => v.q), ['', 'marketing', 'partnerships']);
+      assert.ok(sweptLd.hidden.every(v => v.heads[0] === 'Marketing at Liquid Death' && /\/company\/liquid-death\/people\//.test(v.url)));
+      assert.match(await pg.innerText('#sblihiddenppl'), /2 brands had people LinkedIn hid/);
+      assert.match(await pg.innerText('#sblidid'), /· 1 hidden/);
       await pg.close();
     }
     ok('a run finds a missing page by search, reads each brand, saves by brandId and finishes');
+    ok('the run sends each brand\'s "LinkedIn Member" headlines with its visit and says so at the end');
 
     // 9b. Brands with no marketing / partnerships person on file go first
     // (the dashboard's liList puts them right after the Schedule's): the
@@ -889,6 +926,9 @@ const GM_SHIM = `
         ['Judy Lee', 'Software Engineer at Supergoop!'],
       ]);
       assert.ok(sent.slice(before).every(b => b.reader === 2), 'every call names its reader');
+      const hv = sent.slice(before).find(b => b.action === 'liPreview').hidden;
+      assert.ok(hv.length >= 1);
+      assert.deepEqual(hv[0].heads, ['Head of Partnerships at Supergoop!', ''], 'a badge on the hidden name line is not the headline');
       await pg.click('text=Copy a sample for Claude');
       await pg.waitForFunction(() => /Copied/.test(document.getElementById('sbli-panel').innerText));
       const clip = await pg.evaluate(() => window.__sbClip);
@@ -896,7 +936,26 @@ const GM_SHIM = `
       assert.ok(!/<img [^>]/.test(clip), 'images stripped from the sample');
       await pg.close();
     }
-    ok('LinkedIn\'s real cards: bullet badges stripped, every headline read; the sample copies for Claude');
+    ok('LinkedIn\'s real cards: bullet badges stripped, every headline read (hidden ones too); the sample copies for Claude');
+
+    // 12b. Nobody new by hand, but LinkedIn hid someone: the button still
+    // saves, so the hidden people reach Zach's list under the brand Leo saw.
+    {
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/company/all-known/people/?keywords=marketing');
+      await pg.waitForSelector('#sblipill', { state: 'visible' });
+      await pg.click('#sblipill');
+      await pg.waitForSelector('#sbliadd', { timeout: 20000 });
+      assert.match(await pg.textContent('#sbliadd'), /Nobody new — save the 1 hidden for Zach/);
+      await pg.click('#sbliadd');
+      await pg.waitForFunction(() => /Saved/.test(document.getElementById('sbli-panel').innerText));
+      const cap = sent.slice(before).find(b => b.action === 'liCapture');
+      assert.deepEqual(cap.hidden.map(v => [v.q, v.heads]), [['marketing', ['Head of Events']]]);
+      await pg.close();
+    }
+    ok('nobody new by hand: the button still sends the hidden people for Zach\'s list');
 
     // 13. One click from the dashboard.
     {
@@ -1084,6 +1143,7 @@ const GM_SHIM = `
       assert.equal(cap.companyIndustry, 'Individual and Family Services');
       const swept = sent.slice(before).find(b => b.action === 'liSwept');
       assert.match(swept.note, /looks like another company — pick the right one on Outreach → People/);
+      assert.ok(!('hidden' in swept), 'hidden people on another company\'s page are never sent');
       assert.match(await pg.textContent('#sblidid'), /Native — its saved LinkedIn page looks like another company/);
       await pg.close();
     }
@@ -1095,6 +1155,7 @@ const GM_SHIM = `
       fillItems = [
         { brandId: 'b-big', name: 'Big Co', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/big-co/', contacts: 0, focus: false },
         { brandId: 'b-small', name: 'Small Co', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/small-co/', contacts: 0, focus: false },
+        { brandId: 'b-none', name: 'Nobody Co', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/nobody-co/', contacts: 0, focus: false },
       ];
       const before = sent.length;
       const pg = await browser.newPage();
@@ -1115,15 +1176,23 @@ const GM_SHIM = `
         'liCapture:b-big:partnerships', 'liCapture:b-big:sponsorship', 'liCapture:b-big:brand manager', 'liSwept:b-big',
         'liCapture:b-small:all', 'liCapture:b-small:marketing', 'liCapture:b-small:partnerships', 'liSwept:b-small',
       ]);
+      // Nobody on the page, hidden or not: its marketing / partnerships views
+      // aren't opened (two page loads saved on Leo's free LinkedIn).
+      assert.deepEqual(run.filter(r => /b-none/.test(r)), ['liCapture:b-none:all', 'liSwept:b-none']);
+      assert.deepEqual(sent.slice(before).find(b => b.action === 'liSwept' && b.brandId === 'b-none').hidden, [], 'read, nobody hidden');
       const big = sent.slice(before).find(b => b.action === 'liSwept' && b.brandId === 'b-big');
       assert.equal(big.note, '');
       assert.equal(big.members, 12345);
       assert.equal(big.via, 'big company, 12,345 people: searched partnerships, sponsorship, brand manager');
       assert.equal(big.added, 6);
       assert.match(await pg.textContent('#sblidid'), /Big Co — 6 added \(big company, 12,345 people: searched partnerships, sponsorship, brand manager\)/);
+      // The whole tab is never read at a big company, so its hidden people
+      // come from the three searches only.
+      assert.deepEqual(big.hidden.map(v => v.q), ['partnerships', 'sponsorship', 'brand manager']);
       await pg.close();
     }
     ok('a company with 100+ people on LinkedIn gets targeted searches — partnerships, sponsorship, brand manager — not the whole tab');
+    ok('a People tab with nobody on it opens no more views, and says nobody was hidden');
 
     // 20. People under a parent company: a research name with no page of
     // its own becomes a brand and is read on the parent's People tab
@@ -1150,13 +1219,21 @@ const GM_SHIM = `
       const run = calls.map(b => b.action + (b.brandId ? ':' + b.brandId : '') + (b.action === 'liCapture' ? ':' + new URL(b.companyUrl).pathname + '?' + (new URL(b.companyUrl).searchParams.get('keywords') || '') : ''));
       assert.deepEqual(run, [
         'liResearch', 'liParent', 'liCapture:b-ko:/company/diageo/people/?Ketel One', 'liSwept:b-ko',
-        'liCapture:b-cm:/company/empty-co/people/?', 'liCapture:b-cm:/company/diageo/people/?Captain Morgan', 'liSwept:b-cm',
-      ], 'Diageo is found once; Captain Morgan\'s empty own page, then Diageo');
+        // Its own page shows only a "LinkedIn Member" card, so its marketing
+        // and partnerships views are read too (their headlines go to Zach).
+        'liCapture:b-cm:/company/empty-co/people/?', 'liCapture:b-cm:/company/empty-co/people/?marketing', 'liCapture:b-cm:/company/empty-co/people/?partnerships',
+        'liCapture:b-cm:/company/diageo/people/?Captain Morgan', 'liSwept:b-cm',
+      ], 'Diageo is found once; Captain Morgan\'s own page (hidden people only), then Diageo');
       const viaParent = calls.filter(b => b.action === 'liCapture' && /diageo/.test(b.companyUrl));
       assert.ok(viaParent.every(b => b.viaParent === true && b.checkPage === false), 'read as the brand\'s people, page not checked or saved');
       assert.deepEqual(viaParent.map(b => b.companyName), ['Ketel One', 'Captain Morgan']);
       const ko = calls.find(b => b.action === 'liSwept' && b.brandId === 'b-ko');
       assert.equal(ko.via, 'via Diageo'); assert.equal(ko.parentTried, true); assert.equal(ko.added, 2);
+      // The hidden people on its own page survive the move to Diageo's tab.
+      const cmSwept = calls.find(b => b.action === 'liSwept' && b.brandId === 'b-cm');
+      assert.deepEqual(cmSwept.hidden.map(v => v.q), ['', 'marketing', 'partnerships', 'Captain Morgan']);
+      assert.deepEqual(cmSwept.hidden[0].heads, ['Marketing']);
+      assert.match(cmSwept.hidden[3].url, /\/company\/diageo\/people\/\?keywords=Captain(%20|\+)Morgan$/);
       const text = await pg.textContent('#sblidid');
       assert.match(text, /Ketel One — 2 added \(via Diageo\)/);
       assert.match(text, /Captain Morgan — 2 added \(via Diageo\)/);
@@ -1222,6 +1299,7 @@ const GM_SHIM = `
         'liMatched:b-mn', 'liSwept:b-mn',
       ], 'no own-name search for the marked brands; the late one searched once, its other name never');
       const nn = calls.find(b => b.action === 'liSwept' && b.brandId === 'b-nn');
+      assert.ok(!('hidden' in nn), 'no page read: nothing said about hidden people');
       assert.match(nn.note, /marked it as having no LinkedIn page/);
       const mn = calls.find(b => b.action === 'liSwept' && b.brandId === 'b-mn');
       assert.match(mn.note, /marked it as having no LinkedIn page/);

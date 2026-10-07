@@ -16,6 +16,8 @@ on:
       - 'src/lib/**'
       - 'src/app/api/ingest/**'
       - 'src/app/api/reports/**'
+      - 'src/app/api/data/**'
+      - 'scripts/test-coverage*'
       - 'prisma/schema.prisma'
       - 'package.json'
       - 'package-lock.json'
@@ -28,6 +30,8 @@ on:
       - 'src/lib/**'
       - 'src/app/api/ingest/**'
       - 'src/app/api/reports/**'
+      - 'src/app/api/data/**'
+      - 'scripts/test-coverage*'
       - 'prisma/schema.prisma'
       - 'package.json'
       - 'package-lock.json'
@@ -60,7 +64,7 @@ jobs:
       - name: Types
         run: npx tsc --noEmit
       - name: Rules
-        run: node scripts/test-li-capture.mjs && node scripts/test-li-report.mjs && node scripts/test-li-log.mjs && node scripts/test-brand-size.mjs && node scripts/test-brand-fit.mjs && node scripts/test-coverage.mjs
+        run: node scripts/test-li-capture.mjs && node scripts/test-li-report.mjs && node scripts/test-li-log.mjs && node scripts/test-brand-size.mjs && node scripts/test-brand-fit.mjs && node scripts/test-coverage.mjs && node scripts/test-li-hidden.mjs
       - name: Script against a fake dashboard
         run: node scripts/test-li-script.js
       - name: Zach's logging-only script against a fake dashboard

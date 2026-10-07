@@ -1975,6 +1975,7 @@
       </div>
       <div id="li-clean" style="margin-top:14px;display:none"></div>
       <div id="li-review" style="margin-top:14px;display:none"></div>
+      <div id="li-zach" style="margin-top:14px;display:none"></div>
       <div id="li-runs" style="margin-top:14px;display:none"></div>
       <div id="li-list" style="margin-top:14px"></div>
     </section>
@@ -3453,6 +3454,7 @@ document.addEventListener('click', function (ev) {
     var go = el.getAttribute('data-rc-go');
     closeRecap();
     if (go === 'zach') gotoZachList();
+    else if (go === 'zachread') cvZachList();
     else if (go === 'sendlist') { if (!document.getElementById('dashboard').classList.contains('active')) gotoView('dashboard'); slOpen(); }
     else if (go === 'log') { DL_SHOW = true; renderDayLog(); var b = document.getElementById('day-log'); if (b) b.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     else gotoView(go);
@@ -5896,17 +5898,18 @@ function loadBrands(category) {
 // "Show them" opens are the same list; buyerCoverage adds this week's
 // numbers and the fill's last run.
 var CV_INFO = null;
-var CV_ORDER = ['next', 'page', 'resting', 'noPage', 'full'];
+var CV_ORDER = ['next', 'page', 'zach', 'resting', 'noPage', 'full'];
 var CV_WHY = {
   next: 'Next in the LinkedIn fill',
   page: 'Pick their LinkedIn page',
+  zach: 'Hidden from your LinkedIn',
   resting: 'LinkedIn found nobody',
   noPage: 'No LinkedIn page',
   full: 'Full, none in marketing'
 };
 
 function cvCounts(list) {
-  var c = { inPlay: 0, covered: 0, need: 0, off: 0, next: 0, page: 0, resting: 0, noPage: 0, full: 0, back: null };
+  var c = { inPlay: 0, covered: 0, need: 0, off: 0, next: 0, page: 0, zach: 0, resting: 0, noPage: 0, full: 0, back: null };
   list.forEach(function (b) {
     var st = brCoverState(b);
     c[st] = (c[st] || 0) + 1;
@@ -5973,6 +5976,8 @@ function renderCoverage() {
             '<a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" title="Opens LinkedIn in a window of its own and starts the fill. Leave a corner of that window in view. Needs the LinkedIn capture script in Tampermonkey.">Start the fill ↗</a>') +
           row('page', '<span title="The fill wasn\u2019t sure which LinkedIn page is theirs. One click each; the next run reads them.">Pick their LinkedIn page</span>',
             '<button class="btn-ghost" data-cvpages="1">Pick →</button>') +
+          row('zach', '<span title="Your LinkedIn showed their marketing / partnerships people as \u201cLinkedIn Member\u201d (outside your network). Zach\u2019s account sees them: SB \u00b7 Read people on each link.">Hidden from your LinkedIn · Zach reads them</span>',
+            '<button class="btn-ghost" data-cvzach="1">Open →</button>') +
           row('resting', '<span title="LinkedIn showed nobody in marketing / partnerships on a recent read. Sooner: open one and add someone, or try SponsorUnited.">LinkedIn found nobody' +
             (c.back ? ' · back on the fill ' + esc(shortDate(c.back)) : '') + '</span>') +
           row('noPage', '<span title="You said they have no LinkedIn page. Try SponsorUnited or add someone by hand.">No LinkedIn page</span>') +
@@ -5999,11 +6004,18 @@ function cvPickPages() {
   LI_JUMP_REVIEW = true;
   gotoView('linkedin');
 }
+// So does "Read on Zach's LinkedIn".
+var LI_JUMP_ZACH = false;
+function cvZachList() {
+  LI_JUMP_ZACH = true;
+  gotoView('linkedin');
+}
 
 document.getElementById('cover-card').addEventListener('click', function (e) {
   var show = e.target.closest('[data-cvshow]');
   if (show) { cvShow(show.getAttribute('data-cvshow')); return; }
   if (e.target.closest('[data-cvpages]')) cvPickPages();
+  if (e.target.closest('[data-cvzach]')) cvZachList();
 });
 
 // --- the Brands table -------------------------------------------
@@ -6098,6 +6110,7 @@ function brCoverLine(b) {
   var c = b.cover;
   if (!c) return '';
   if (c.state === 'page') return '<div class="br-sub br-cvl">No clear LinkedIn page — <a href="#" data-bract="pickpage">pick it</a> and the next run reads it</div>';
+  if (c.state === 'zach') return '<div class="br-sub br-cvl">Your LinkedIn hid their marketing people — <a href="#" data-bract="zachlist">on Zach\u2019s list</a></div>';
   if (c.state === 'resting') {
     var note = c.note || 'nobody in marketing / partnerships';
     return '<div class="br-sub br-cvl" title="' + esc('From the LinkedIn fill\u2019s visit: ' + note) + '">LinkedIn ' + esc(shortDate(c.at)) + ': ' +
@@ -6255,6 +6268,7 @@ document.getElementById('brands-list').addEventListener('click', function (e) {
     e.preventDefault();
     if (what === 'page') { loadBrand(id); return; }
     if (what === 'pickpage') { cvPickPages(); return; }
+    if (what === 'zachlist') { cvZachList(); return; }
     if (what === 'add') { brAddPerson(id, row); return; }
     if (what === 'toggle') { brToggle(id); return; }
   }
@@ -7600,6 +7614,14 @@ function loadBrand(brandId) {
       '<div class="section-head">People <span class="n">' + b.contacts.length + '</span>' +
         '<button class="btn-ghost" id="b-split" style="margin-left:auto" title="Two companies filed under one name — move some of these people onto their own brand">Split into two brands…</button>' +
         '<button class="btn-ghost" id="b-addcontact">+ Add person</button></div>' +
+      // People LinkedIn hid from Leo's account here (li-hidden.ts): Zach's
+      // account can read them (Outreach → People → Read on Zach's LinkedIn).
+      (d.liHidden && d.liHidden.due && d.liHidden.url
+        ? '<div class="hint" id="b-lihidden" style="margin:0 0 10px">Your LinkedIn hid ' +
+            (d.liHidden.likely === 1 ? '1 person who looks like a buyer' : d.liHidden.likely + ' people who look like buyers') +
+            (d.liHidden.titles && d.liHidden.titles.length ? ' (' + esc(d.liHidden.titles.slice(0, 3).join(', ')) + ')' : '') +
+            ' — Zach\u2019s account can see them: <a href="' + esc(d.liHidden.url) + '" target="_blank" rel="noopener">open on LinkedIn ↗</a>, then SB · Read people.</div>'
+        : '') +
       '<div id="b-split-slot"></div>' +
       '<div id="b-contact-slot"></div>' +
       (b.contacts.length ? b.contacts.map(function (c) {
@@ -9810,10 +9832,16 @@ function loadLinkedin() {
   return api('linkedinPeople').then(function (d) {
     LI_DATA = d.brands || [];
     renderLiReview(d.pageReview || []);
+    renderLiZach(d.zachList || [], d.zachDone || [], d.zachRestDays || 120);
     if (LI_JUMP_REVIEW) {
       LI_JUMP_REVIEW = false;
       var rv = document.getElementById('li-review');
       if (rv && rv.style.display !== 'none' && rv.scrollIntoView) rv.scrollIntoView({ block: 'start' });
+    }
+    if (LI_JUMP_ZACH) {
+      LI_JUMP_ZACH = false;
+      var zb = document.getElementById('li-zach');
+      if (zb && zb.style.display !== 'none' && zb.scrollIntoView) zb.scrollIntoView({ block: 'start' });
     }
     renderLiRuns(d.runs || [], d.latestScript || null, d.liOwner || null);
     loadLiClean();
@@ -9864,6 +9892,14 @@ function renderLiRuns(runs, latest, owner) {
     '<div class="t-meta" style="margin-top:6px">' + r.brands.length + ' brand' + (r.brands.length === 1 ? '' : 's') + ' done · ' +
       r.added + ' people added' + (r.newBrands ? ' · ' + r.newBrands + ' new brand' + (r.newBrands === 1 ? '' : 's') : '') +
       ' · last word ' + esc(when(r.lastAt)) + '</div>' +
+    (function () {
+      // People LinkedIn hid from Leo's account on this run (script 1.30+).
+      var hid = r.brands.filter(function (x) { return x.hiddenPeople; });
+      if (!hid.length) return '';
+      var likely = hid.filter(function (x) { return x.hiddenLikely; }).length;
+      return '<div class="t-meta" style="margin-top:4px" id="li-run-hidden">' + hid.length + (hid.length === 1 ? ' brand' : ' brands') +
+        ' had people your LinkedIn hid' + (likely ? ' · ' + likely + ' with likely buyers went on Zach\u2019s list' : '') + '</div>';
+    })() +
     (function () {
       // How long a brand takes, and whether a hidden window slowed it
       // (Chrome runs a minimized or fully covered window at a crawl).
@@ -9994,6 +10030,67 @@ function renderLiReview(list) {
   '</div>';
 }
 
+// "Read on Zach's LinkedIn" (Leo, Oct 7 2026: "i dont want to miss out on
+// people if i do it from my own account"). Leo's free LinkedIn shows
+// people outside his network as "LinkedIn Member" — no name, no profile,
+// only a headline. The fill (and his hand reads) count them and read those
+// headlines (li-hidden.ts); a brand where some look like buyers waits here
+// for Zach's SB · Read people, which sees them by name. Zach's read — or
+// Done — takes it off for a few months.
+var LI_ZACH = [];
+function zachWhat(r) {
+  return (r.likely === r.n ? r.likely + ' hidden' : r.likely + ' of ' + r.n + ' hidden') +
+    (r.likely === 1 ? ' looks like a buyer' : ' look like buyers') + (r.titles && r.titles.length ? ': ' + r.titles.join(', ') : '');
+}
+function zachText(list) {
+  var out = ['Read on your LinkedIn — ' + list.length + (list.length === 1 ? ' brand' : ' brands') +
+    '. Open each link, press SB · Read people → Read this page → Add (or "Nobody new").', ''];
+  list.forEach(function (r) {
+    out.push(r.name);
+    out.push('  ' + zachWhat(r));
+    out.push('  ' + r.url);
+    out.push('');
+  });
+  return out.join('\n').trim();
+}
+function renderLiZach(list, done, restDays) {
+  LI_ZACH = list;
+  var box = document.getElementById('li-zach');
+  if (!box) return;
+  if (!list.length && !done.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.style.display = '';
+  box.innerHTML = '<div class="panel" style="padding:14px 16px">' +
+    '<div class="t-line" style="flex-wrap:wrap;gap:6px"><b>Read on Zach\u2019s LinkedIn</b><span class="t-sep">·</span>' +
+      '<span class="t-title">' + (list.length
+        ? list.length + (list.length === 1 ? ' brand' : ' brands') + ' where your LinkedIn hid people who look like buyers'
+        : 'nothing waiting') + '</span>' +
+      (list.length ? '<button class="btn-solid" data-zach-copy="1" style="margin-left:auto" title="Each brand with its link, for Zach to open and press SB \u00b7 Read people">Copy for Zach (' + list.length + ')</button>' : '') +
+    '</div>' +
+    list.map(function (r) {
+      return '<div data-zach="' + esc(r.brandId) + '" style="padding:10px 0;border-top:1px solid var(--border-soft);margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+        '<div style="flex:1 1 280px;min-width:0">' +
+          '<div class="t-line"><span class="t-brand" data-brand="' + esc(r.brandId) + '" style="cursor:pointer">' + esc(r.name) + '</span>' +
+            (r.category ? '<span class="t-sep">·</span><span class="t-title">' + esc(CAT_NAMES[r.category] || r.category) + '</span>' : '') +
+            (r.buyers ? '' : '<span class="status declined" style="margin-left:8px">no buyer on file</span>') + '</div>' +
+          '<div class="t-meta" style="margin-top:4px">' + esc(zachWhat(r)) + '</div>' +
+        '</div>' +
+        '<a class="btn-ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener" title="' + esc(r.q ? 'Their People tab searched for \u201c' + r.q + '\u201d' : 'Their People tab') + '">Open on LinkedIn ↗</a>' +
+        '<button class="btn-ghost" data-zach-done="' + esc(r.brandId) + '" title="Zach read it, or there\u2019s nobody there \u2014 off this list for ' + restDays + ' days">Done</button>' +
+      '</div>';
+    }).join('') +
+    (done.length
+      ? '<details style="margin-top:10px"><summary class="t-meta" style="cursor:pointer">Read on Zach\u2019s lately (' + done.length + ')</summary>' +
+          done.map(function (r) {
+            return '<div class="t-meta" style="margin-top:6px;display:flex;gap:8px;align-items:center">' +
+              '<span class="t-brand" data-brand="' + esc(r.brandId) + '" style="cursor:pointer">' + esc(r.name) + '</span>' +
+              '<span>' + esc(shortDate(r.zachAt)) + (r.zachAdded ? ' · ' + r.zachAdded + ' added' : '') + '</span>' +
+              '<button class="btn-ghost sd-sm" data-zach-undo="' + esc(r.brandId) + '" style="margin-left:auto">Back on the list</button></div>';
+          }).join('') +
+        '</details>'
+      : '') +
+  '</div>';
+}
+
 // People the October rules leave out (Leo, Oct 2026: "is it getting the
 // right people"): LinkedIn people saved before the stricter rules —
 // students, store staff, investors and board members, people on a sister
@@ -10083,6 +10180,24 @@ document.getElementById('linkedin').addEventListener('change', function (e) {
 
 document.getElementById('linkedin').addEventListener('click', function (e) {
   var t = e.target;
+  if (t.closest('[data-zach-copy]')) {
+    e.preventDefault();
+    if (LI_ZACH.length) ztCopy(zachText(LI_ZACH), 'Copied ' + LI_ZACH.length + (LI_ZACH.length === 1 ? ' brand' : ' brands') + ' for Zach');
+    return;
+  }
+  var zd = t.closest('[data-zach-done]'), zu = t.closest('[data-zach-undo]');
+  if (zd || zu) {
+    e.preventDefault();
+    (zd || zu).disabled = true;
+    api('zachRead', { brandId: (zd || zu).getAttribute(zd ? 'data-zach-done' : 'data-zach-undo'), undo: !!zu })
+      .then(function () {
+        toast(zu ? 'Back on Zach\u2019s list' : 'Off Zach\u2019s list');
+        // Redraw only if Leo is still here (never pull him back to it).
+        if (document.getElementById('linkedin').classList.contains('active')) loadLinkedin();
+      })
+      .catch(function (err) { (zd || zu).disabled = false; toast(err.message || String(err)); });
+    return;
+  }
   if (t.closest('[data-lic-go]') && LI_CLEAN) {
     var ids = (LI_CLEAN.people || []).filter(function (p) { return !LI_CLEAN_OFF[p.id]; });
     var bs = (LI_CLEAN.brands || []).filter(function (b) { return !LI_CLEAN_OFF[b.id]; });
@@ -18342,7 +18457,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity', 'st-lanes', 'st-others'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'li-zach', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity', 'st-lanes', 'st-others'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;

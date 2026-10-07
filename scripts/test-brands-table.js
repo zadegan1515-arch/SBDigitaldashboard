@@ -214,6 +214,8 @@ async function main() {
     row('c4', 'Rest Co', 0, 5, { cover: { state: 'resting', note: 'big company (173 people) — nobody new in its partnerships, sponsorship, brand manager, marketing searches', at: '2026-09-30T20:00:00.000Z', back: '2026-10-30T20:00:00.000Z' } }),
     row('c5', 'Covered Co', 2, 4, { cover: { state: 'covered' } }),
     row('c6', 'Gone Co', 0, 0, { passedAt: NOW, cover: { state: 'off' } }),
+    // Leo's LinkedIn hid their marketing people: Zach's to read (li-hidden.ts).
+    row('c7', 'Hidden Co', 0, 1, { cover: { state: 'zach' } }),
   ];
   H.buyerCoverage = () => ({
     target: 1, perDay: 100, week: { linkedin: 11, sponsorunited: 3, other: 1 }, coveredWeek: 4, latestScript: '1.28',
@@ -226,19 +228,20 @@ async function main() {
   await page.evaluate(() => gotoView('brands'));
   await page.waitForFunction(() => /\+4 this week/.test(document.getElementById('cover-card').textContent));
   const card = await page.textContent('#cover-card');
-  assert.match(card, /Buyer coverage\s*1 of 5/);
+  assert.match(card, /Buyer coverage\s*1 of 6/);
   assert.match(card, /\+4 this week/);
   assert.match(await page.getAttribute('#cover-card .cv-week', 'title'), /15 people added this week: 11 LinkedIn · 3 SponsorUnited · 1 by hand/);
   assert.deepEqual(
     await page.$$eval('#cover-card [data-cvrow]', (rs) => rs.map((r) => r.getAttribute('data-cvrow') + ':' + r.querySelector('.cv-n').textContent)),
-    ['next:2', 'page:1', 'resting:1'], 'one row per reason, empty reasons left out');
+    ['next:2', 'page:1', 'zach:1', 'resting:1'], 'one row per reason, empty reasons left out');
+  assert.match(card, /Hidden from your LinkedIn · Zach reads them/);
   assert.match(card, /Next on the LinkedIn fill · about 1 day/);
   assert.match(card, /back on the fill Oct 30/);
   assert.ok(await page.$('#cover-card [data-cvrow="next"] a[href="https://www.linkedin.com/feed/#sb-fill"]'), 'Start the LinkedIn fill');
   assert.match(card, /Last LinkedIn run \w{3} \d{1,2} · 6 brands · \+11 people · idle/);
   assert.match(card, /script 1\.25 is old/);
   assert.ok(await page.$('#cover-card .cv-run.warn'), 'an idle fill and an old script are flagged');
-  assert.equal(await page.textContent('#brands-sub'), '5 brands in play · 1 have a buyer · 4 need one');
+  assert.equal(await page.textContent('#brands-sub'), '6 brands in play · 1 have a buyer · 5 need one');
   console.log('✓ the coverage card: counts by reason, this week, the last LinkedIn run');
 
   await page.click('#cover-card [data-cvshow="resting"]');
@@ -247,9 +250,9 @@ async function main() {
   assert.match(restLine, /^LinkedIn Sep 30: big company \(173 people\) — nobody new in its partnerships/);
   assert.match(restLine, /… · back on the fill Oct 30$/, 'a long note is cut short; the whole note is in the tooltip');
   assert.deepEqual(await page.$$eval('#brands-list [data-brwhy]', (cs) => cs.map((c) => c.textContent)),
-    ['Any reason4', 'Next in the LinkedIn fill2', 'Pick their LinkedIn page1', 'LinkedIn found nobody1']);
+    ['Any reason5', 'Next in the LinkedIn fill2', 'Pick their LinkedIn page1', 'Hidden from your LinkedIn1', 'LinkedIn found nobody1']);
   await page.click('#brands-list [data-brwhy=""]');
-  assert.deepEqual((await names()).sort(), ['Next One', 'Next Two', 'Page Pick', 'Rest Co'], 'archived Gone Co needs nobody');
+  assert.deepEqual((await names()).sort(), ['Hidden Co', 'Next One', 'Next Two', 'Page Pick', 'Rest Co'], 'archived Gone Co needs nobody');
   assert.equal(await page.$('[data-brow="c1"] .br-cvl'), null, 'next in the fill: nothing to say on the row');
   await page.click('#brands-list [data-brwhy="page"]');
   assert.deepEqual(await names(), ['Page Pick']);
@@ -278,6 +281,60 @@ async function main() {
   await page.waitForFunction(() => document.getElementById('linkedin').classList.contains('active'));
   await page.waitForFunction(() => /Which LinkedIn page is theirs\?/.test(document.getElementById('li-review').textContent));
   console.log('✓ "pick it" opens Outreach → People on the page-picking card');
+
+  // "Read on Zach's LinkedIn" (Leo, Oct 7 2026: "i dont want to miss out on
+  // people if i do it from my own account"): the row's link and the card's
+  // Open → land on it; links to the view to read, Copy for Zach, Done / Undo.
+  S.zachReads = [];
+  const zrow = (id, name, buyers, likely, url) => ({ brandId: id, name, category: 'rtd', onFile: 1 + buyers, buyers, n: likely + 1, likely,
+    titles: ['Brand Manager', 'Partnerships Lead'].slice(0, likely), url, q: 'marketing', at: NOW, by: 'fill', zachAt: null, zachAdded: null });
+  H.linkedinPeople = () => ({
+    brands: [], runs: [], latestScript: '1.30', liOwner: null, pageReview: [], zachRestDays: 120,
+    zachList: [
+      zrow('c7', 'Hidden Co', 0, 2, 'https://www.linkedin.com/company/hidden-co/people/?keywords=marketing'),
+      zrow('c8', 'Captain Morgan', 1, 1, 'https://www.linkedin.com/company/diageo/people/?keywords=Captain%20Morgan'),
+    ],
+    zachDone: [Object.assign(zrow('c9', 'Read Co', 1, 1, 'https://www.linkedin.com/company/read-co/people/'), { zachAt: NOW, zachAdded: 2 })],
+  });
+  H.zachRead = (a) => { S.zachReads.push(a); return { ok: true }; };
+  await page.evaluate(() => gotoView('brands'));
+  await page.waitForSelector('#brands-list [data-brshow="need"]');
+  await page.click('#brands-list [data-brshow="need"]');
+  await page.click('#brands-list [data-brwhy="zach"]');
+  assert.match(await page.textContent('[data-brow="c7"]'), /Your LinkedIn hid their marketing people/);
+  await page.click('[data-brow="c7"] [data-bract="zachlist"]');
+  await page.waitForFunction(() => document.getElementById('linkedin').classList.contains('active'));
+  await page.waitForFunction(() => /Read on Zach\u2019s LinkedIn/.test(document.getElementById('li-zach').textContent));
+  const zt = await page.textContent('#li-zach');
+  assert.match(zt, /2 brands where your LinkedIn hid people who look like buyers/);
+  assert.match(zt, /2 of 3 hidden look like buyers: Brand Manager, Partnerships Lead/);
+  assert.match(zt, /no buyer on file/);
+  assert.deepEqual(await page.$$eval('#li-zach [data-zach] a[target="_blank"]', (as) => as.map((a) => a.getAttribute('href'))),
+    ['https://www.linkedin.com/company/hidden-co/people/?keywords=marketing', 'https://www.linkedin.com/company/diageo/people/?keywords=Captain%20Morgan']);
+  await page.evaluate(() => { window.__copied = null; navigator.clipboard.writeText = (t) => { window.__copied = t; return Promise.resolve(); }; });
+  await page.click('#li-zach [data-zach-copy]');
+  const copied = await page.evaluate(() => window.__copied);
+  assert.match(copied, /^Read on your LinkedIn — 2 brands\. Open each link, press SB · Read people/);
+  assert.match(copied, /Hidden Co\n  2 of 3 hidden look like buyers: Brand Manager, Partnerships Lead\n  https:\/\/www\.linkedin\.com\/company\/hidden-co\/people\/\?keywords=marketing/);
+  assert.match(copied, /Captain Morgan\n  1 of 2 hidden looks like a buyer: Brand Manager\n  https:\/\/www\.linkedin\.com\/company\/diageo/);
+  const zachCalls = async (n) => { for (let i = 0; i < 100 && S.zachReads.length < n; i++) await page.waitForTimeout(50); };
+  await page.click('#li-zach [data-zach-done="c7"]');
+  await zachCalls(1);
+  await page.waitForSelector('#li-zach summary');
+  await page.click('#li-zach summary');
+  await page.click('#li-zach [data-zach-undo="c9"]');
+  await zachCalls(2);
+  assert.deepEqual(S.zachReads, [{ brandId: 'c7', undo: false }, { brandId: 'c9', undo: true }]);
+  console.log('✓ Read on Zach\u2019s LinkedIn: reached from the row and the card, links to each view, Copy for Zach, Done and Undo');
+
+  // The coverage card's Open → lands on it too.
+  await page.evaluate(() => gotoView('brands'));
+  await page.waitForSelector('#brands-list [data-brshow="all"]');
+  await page.click('#brands-list [data-brshow="all"]');
+  await page.waitForSelector('#cover-card [data-cvzach]', { state: 'visible' });
+  await page.click('#cover-card [data-cvzach]');
+  await page.waitForFunction(() => document.getElementById('linkedin').classList.contains('active') && document.getElementById('li-zach').style.display !== 'none');
+  console.log('✓ the coverage card\u2019s "Hidden from your LinkedIn" row opens Zach\u2019s list');
 
   // Phone width: no sideways page scroll.
   await page.setViewportSize({ width: 390, height: 800 });

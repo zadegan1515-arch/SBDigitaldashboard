@@ -332,6 +332,20 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual(next.items, [], 'nothing left for a second run');
     ok('visit and research logs written; a second run has nothing to redo');
 
+    // People LinkedIn hid from Leo's account (1.30, Leo Oct 7 2026: "i dont
+    // want to miss out on people if i do it from my own account"): each
+    // brand whose pages showed a "LinkedIn Member" marketer waits on
+    // "Read on Zach's LinkedIn", linked to the view to read.
+    const hiddenLog = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liHidden' } })).value);
+    const withHidden = { b_ld: 'liquid-death', [by.Huel.id]: 'huel', [by.Powerade.id]: 'powerade', b_oli: 'drinkolipop', [by.Hoplark.id]: 'hoplark' };
+    assert.deepEqual(Object.keys(hiddenLog).sort(), Object.keys(withHidden).sort(), 'only the brands whose pages showed someone hidden');
+    for (const [id, slug] of Object.entries(withHidden)) {
+      const e = hiddenLog[id];
+      assert.deepEqual({ n: e.n, likely: e.likely, titles: e.titles, by: e.by, q: e.q, url: e.url },
+        { n: 1, likely: 1, titles: ['Marketing'], by: 'fill', q: 'marketing', url: 'https://www.linkedin.com/company/' + slug + '/people/?keywords=marketing' }, slug);
+    }
+    ok('the run counted the "LinkedIn Member" marketer on each brand\'s pages: on Zach\'s list, with the view to read');
+
     // The report, as the morning check reads it.
     const denied = await fetch(BASE + '/api/reports/linkedin');
     assert.equal(denied.status, 401, 'no token, no report');
@@ -343,6 +357,9 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual(run.brands.map(b => b.name).sort(), ['Big Bev', 'Blank Cards', 'Hoplark', 'Huel', 'Liquid Death', 'Native', 'Olipop', 'Powerade', 'Tanqueray']);
     assert.equal(run.brands.find(b => b.name === 'Tanqueray').via, 'via Diageo');
     assert.equal(run.brands.find(b => b.name === 'Big Bev').members, 423);
+    const ldRun = run.brands.find(b => b.name === 'Liquid Death'), natRun = run.brands.find(b => b.name === 'Native');
+    assert.deepEqual([ldRun.hiddenPeople, ldRun.hiddenLikely], [1, 1]);
+    assert.deepEqual([run.brands.find(b => b.name === 'Big Bev').hiddenPeople, natRun.hiddenPeople], [0, null], 'Big Bev: read, nobody hidden; Native: its page was another company\'s');
     // The headcount is saved on the brand: 423 is a target (mid-size) brand.
     const bigBev = await prisma.brand.findUnique({ where: { id: 'b_big' } });
     assert.equal(bigBev.liMembers, 423);
@@ -492,6 +509,66 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(await prisma.contact.count({ where: { name: 'Erin Alvarez' } }), 1, 'no second copy');
     assert.deepEqual(errors, [], 'no page errors');
     ok('Invite sent for someone on file: dated now, no second copy');
+
+    // Zach's SB · Read people on a brand off "Read on Zach's LinkedIn":
+    // everyone readable is on file or not a buyer, so "Nobody new" marks
+    // it read — off the list, back with Undo.
+    assert.ok((await data('linkedinPeople')).zachList.some(r => r.brandId === 'b_ld'), 'Liquid Death waits on Zach');
+    await pp.goto('http://127.0.0.1:' + LI_PORT + '/company/liquid-death/people/?keywords=marketing');
+    await pp.waitForFunction(() => (document.getElementById('sblogpill') || {}).textContent === 'SB · Read people');
+    await pp.click('#sblogpill');
+    await pp.click('#sblogread');
+    await pp.waitForSelector('#sblogadd', { timeout: 60000 });
+    assert.match(await pp.textContent('#sblogadd'), /Nobody new — mark Liquid Death read/);
+    await pp.click('#sblogadd');
+    await pp.waitForFunction(() => /marked read/.test(document.getElementById('sblog-panel').innerText), null, { timeout: 60000 });
+    let hl = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liHidden' } })).value);
+    assert.ok(hl.b_ld.zachAt, 'marked read');
+    assert.equal(hl.b_ld.zachAdded, 0);
+    assert.equal(hl.b_ld.by, 'fill', 'Zach\'s read never rewrites what Leo\'s account saw');
+    let zl = await data('linkedinPeople');
+    assert.ok(!zl.zachList.some(r => r.brandId === 'b_ld') && zl.zachDone.some(r => r.brandId === 'b_ld'));
+    await data('zachRead', { brandId: 'b_ld', undo: true });
+    assert.ok((await data('linkedinPeople')).zachList.some(r => r.brandId === 'b_ld'), 'Undo puts it back');
+    assert.deepEqual(errors, [], 'no page errors');
+    ok('Zach\'s Read people with nobody new marks the brand read: off Zach\'s list (Undo puts it back)');
+
+    // A parent's tab searched for the brand (Diageo's, for Tanqueray) — the
+    // link on Zach's list for a brand read via its parent: the read is
+    // Tanqueray's, and Diageo's page and headcount are never put on it.
+    const dgUrl = 'https://www.linkedin.com/company/diageo/people/?keywords=Tanqueray';
+    hl = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liHidden' } })).value);
+    hl[tq.id] = { at: new Date().toISOString(), by: 'fill', n: 2, likely: 2, titles: ['Brand Manager'], url: dgUrl, q: 'Tanqueray' };
+    await prisma.setting.update({ where: { key: 'liHidden' }, data: { value: JSON.stringify(hl) } });
+    const dgRows = [
+      { name: 'Grace Lin', headline: 'Brand Manager, Tanqueray', linkedinUrl: 'https://www.linkedin.com/in/gl-dg/' },
+      { name: 'Cara Reed', headline: 'Senior Brand Manager, Crown Royal', linkedinUrl: 'https://www.linkedin.com/in/cr-dg/' },
+    ];
+    const pvz = (await ingest({ action: 'liPreview', via: 'log', companyUrl: dgUrl, companyName: 'Diageo', rows: dgRows })).j;
+    assert.deepEqual([pvz.brand && pvz.brand.name, pvz.matchedBy], ['Tanqueray', 'keyword']);
+    assert.deepEqual(pvz.rows.map(r => r.verdict), ['dupe', 'notBuyer'], 'Grace is on file; Cara works on Crown Royal');
+    const cz = (await ingest({ action: 'liCapture', via: 'log', companyUrl: dgUrl, companyName: 'Diageo', members: 31402, rows: dgRows })).j;
+    assert.equal(cz.added, 0);
+    const tq2 = await prisma.brand.findUnique({ where: { id: tq.id } });
+    assert.deepEqual([tq2.linkedinUrl, tq2.liMembers], [null, null], 'Diageo\'s page and headcount stay off Tanqueray');
+    hl = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liHidden' } })).value);
+    assert.ok(hl[tq.id].zachAt, 'Tanqueray marked read');
+    ok('Zach reading Diageo\'s tab searched for Tanqueray: Tanqueray\'s read (by the search word), parent page and headcount never saved on it');
+
+    // Leo's own hand read reports what it saw; an older script's visit
+    // leaves the list alone; a fill visit that saw nobody hidden clears it.
+    const leo = { slug: 'leo-z', name: 'Leo Z' };
+    const oliHidden = [{ q: 'partnerships', url: 'https://www.linkedin.com/company/drinkolipop/people/?keywords=partnerships', heads: ['Head of Partnerships', ''] }];
+    await ingest({ action: 'liPreview', me: leo, companyUrl: 'https://www.linkedin.com/company/drinkolipop/people/?keywords=partnerships', companyName: 'OLIPOP', rows: [], hidden: oliHidden });
+    hl = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liHidden' } })).value);
+    assert.deepEqual([hl.b_oli.by, hl.b_oli.likely, hl.b_oli.q], ['hand', 2, 'partnerships']);
+    await ingest({ action: 'liSwept', me: leo, brandId: 'b_oli', seen: 3, added: 0, note: '' });
+    hl = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liHidden' } })).value);
+    assert.equal(hl.b_oli.by, 'hand', 'a visit with no hidden field (older script) changes nothing');
+    await ingest({ action: 'liSwept', me: leo, brandId: 'b_oli', seen: 3, added: 0, note: '', hidden: [] });
+    hl = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liHidden' } })).value);
+    assert.equal(hl.b_oli, undefined, 'a fill visit that saw nobody hidden clears it');
+    ok('Leo\'s hand read reports hidden people; an older script\'s visit leaves them; a fill visit with none clears them');
 
     // The clean-up of people saved before the October rules: a new grad
     // nobody wrote to is listed, a store manager already invited is kept,

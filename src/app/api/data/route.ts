@@ -37,6 +37,7 @@ import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import { regionFlag } from '@/lib/region'
 import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hints'
 import { readLiLog, readLiResearch, LI_SCRIPT_VERSION, LI_SWEEP_KEY } from '@/lib/li-sweep'
+import { readHiddenLog, updateHiddenLog, markZachRead, clearZachRead, zachDue, ZACH_REST_DAYS, type HiddenEntry } from '@/lib/li-hidden'
 import { readRuns } from '@/lib/li-report'
 import { companySlug, companyPageUrl, profileSlug, looksLikeSeller } from '@/lib/li-capture'
 import { whyLeaveOut, parentOf, isParentCompany } from '@/lib/parents'
@@ -533,6 +534,55 @@ function joinNames(names: string[]): string {
   if (names.length <= 1) return names[0] ?? ''
   if (names.length === 2) return `${names[0]} and ${names[1]}`
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
+// What the page shows of a liHidden entry (li-hidden.ts): counts, the
+// buyer-looking titles, the link for Zach — LinkedIn gave no names.
+function hiddenOut(e: HiddenEntry) {
+  return {
+    n: e.n, likely: e.likely, titles: e.titles || [], url: e.url, q: e.q || '', at: e.at, by: e.by,
+    zachAt: e.zachAt ?? null, zachAdded: e.zachAdded ?? null,
+  }
+}
+
+// "Read on Zach's LinkedIn" (Outreach → People): brands where Leo's
+// account saw likely buyers it couldn't open and Zach hasn't read them
+// lately — brands with no buyer on file first, then the most likely
+// buyers. Off outreach (archived, do-not-email) and full brands (25 on
+// file) are left out: Zach's read couldn't add anyone there. zachDone =
+// the last two weeks of Zach's reads, for Undo.
+function zachLists(
+  log: Record<string, HiddenEntry>,
+  brands: Array<{ id: string; name: string; category: string | null; passedAt: Date | null; doNotEmail: boolean; contacts: Array<{ title: string | null }> }>,
+) {
+  const now = Date.now()
+  const byId = new Map(brands.map(b => [b.id, b]))
+  type Row = ReturnType<typeof hiddenOut> & { brandId: string; name: string; category: string | null; onFile: number; buyers: number }
+  const zachList: Row[] = [], zachDone: Row[] = []
+  for (const [id, e] of Object.entries(log)) {
+    const b = byId.get(id)
+    if (!b || !e) continue
+    const row: Row = { brandId: id, name: b.name, category: b.category, onFile: b.contacts.length, buyers: countBuyers(b.contacts.map(c => c.title)).total, ...hiddenOut(e) }
+    if (zachDue(e, now)) {
+      if (b.passedAt || b.doNotEmail || b.contacts.length >= CONTACT_CAP_PER_BRAND) continue
+      zachList.push(row)
+    } else if (e.zachAt && now - Date.parse(e.zachAt) < 14 * 864e5) zachDone.push(row)
+  }
+  zachList.sort((a, b) => (a.buyers ? 1 : 0) - (b.buyers ? 1 : 0) || b.likely - a.likely || a.name.localeCompare(b.name))
+  zachDone.sort((a, b) => String(b.zachAt).localeCompare(String(a.zachAt)))
+  return { zachList, zachDone, zachRestDays: ZACH_REST_DAYS }
+}
+
+// Forget what Leo's account saw hidden at a brand when it was read on a
+// page that isn't theirs (liPagePick / liPageNone).
+async function dropHiddenFrom(brandId: string, slug: string) {
+  await updateHiddenLog(prisma, log => {
+    const e = log[brandId]
+    if (!e || companySlug(e.url) !== slug) return log
+    const next = { ...log }
+    delete next[brandId]
+    return next
+  })
 }
 
 // A big company (Leo, Oct 7 2026: "for bigger brands we should expand the
@@ -2822,6 +2872,16 @@ const handlers: Record<string, Handler> = {
       ? await prisma.brand.count({ where: { id: { in: reviewIds }, passedAt: null, doNotEmail: false } })
       : 0
     ask('lipage', reviewLeft, 'brands: which LinkedIn page is theirs?', 'linkedin')
+    // People Leo's LinkedIn hides at brands in play (li-hidden.ts): Zach's.
+    try {
+      const hiddenLog = await readHiddenLog(prisma)
+      const dueIds = Object.keys(hiddenLog).filter(id => zachDue(hiddenLog[id]))
+      const zachLeft = dueIds.length
+        ? (await prisma.brand.findMany({ where: { id: { in: dueIds }, passedAt: null, doNotEmail: false }, select: { _count: { select: { contacts: true } } } }))
+            .filter(b => b._count.contacts < CONTACT_CAP_PER_BRAND).length
+        : 0
+      ask('zachread', zachLeft, 'brands for Zach to read on his LinkedIn (people yours hides)', 'zachread')
+    } catch { /* never blocks the recap */ }
     ask('clarify', clarify, 'brands: which SponsorUnited page is theirs?', 'clarify')
     try { ask('stale', (await handlers.staleDeals({})).deals.length, 'deals gone quiet for 14+ days', 'pipeline') } catch { /* never blocks the recap */ }
 
@@ -5118,8 +5178,17 @@ const handlers: Record<string, Handler> = {
       !!bestDealStage(brand.deals.map(d => d.stage)) || (await prisma.activation.count({ where: { brandId } })) > 0
     const fit = { ...fitRes, onArchiveList: !!fitRes.archiveWhy && !brand.passedAt && !inTalks }
 
+    // People LinkedIn hid from Leo's account at this brand (li-hidden.ts):
+    // the People section says so and links Zach's read.
+    const hidden = (await readHiddenLog(prisma))[brand.id]
+    const liHidden = hidden ? {
+      ...hiddenOut(hidden),
+      // Same rule as the list: nothing for Zach at a brand off outreach or full.
+      due: zachDue(hidden) && !brand.passedAt && !brand.doNotEmail && brand.contacts.length < CONTACT_CAP_PER_BRAND,
+    } : null
+
     return {
-      brand: brandOut, events, money, fit,
+      brand: brandOut, events, money, fit, liHidden,
       // A big company works ten at a time (the Work menu's suggestion).
       big: isBigBrand(brand),
       accessRequests: pendingAccess,
@@ -9379,7 +9448,24 @@ const handlers: Record<string, Handler> = {
       })
       .sort((a, b) => b.at.localeCompare(a.at))
     const owner = await readJsonSetting<LiOwner | null>(prisma, LI_OWNER_KEY, null)
-    return { brands: rows, runs, latestScript: LI_SCRIPT_VERSION, pageReview, liOwner: owner && (owner.name || owner.slug) ? owner : null }
+    return {
+      brands: rows, runs, latestScript: LI_SCRIPT_VERSION, pageReview, liOwner: owner && (owner.name || owner.slug) ? owner : null,
+      ...zachLists(await readHiddenLog(prisma), brands),
+    }
+  },
+
+  // "Read on Zach's LinkedIn": Done (Zach read it, or there's nothing
+  // there) and its Undo. Zach's own SB · Read people marks it by itself.
+  async zachRead({ brandId, undo }: any) {
+    const id = String(brandId || '')
+    if (!id) throw new Error('Which brand?')
+    let found = false
+    await updateHiddenLog(prisma, log => {
+      found = !!log[id]
+      return undo ? clearZachRead(log, id) : markZachRead(log, id, 0)
+    })
+    if (!found) throw new Error('That brand is not on Zach\'s list.')
+    return { ok: true }
   },
 
   // Leo picks a brand's LinkedIn page off the "Which LinkedIn page is
@@ -9406,6 +9492,10 @@ const handlers: Record<string, Handler> = {
     // be read on the next run instead.
     const log = await readLiLog(prisma)
     if (log[brand.id]) { delete log[brand.id]; await writeJsonSetting(prisma, LI_SWEEP_KEY, log) }
+    // Hidden people counted on the page that turned out not to be theirs
+    // would send Zach to another company.
+    const was = companySlug(brand.linkedinUrl)
+    if (was && was !== slug) await dropHiddenFrom(brand.id, was)
     return { ok: true, name: brand.name, linkedinUrl, was: brand.linkedinUrl }
   },
 
@@ -9418,6 +9508,8 @@ const handlers: Record<string, Handler> = {
     const entry = review[brand.id]
     if (entry?.why === 'wrong' && brand.linkedinUrl) {
       await prisma.brand.update({ where: { id: brand.id }, data: { linkedinUrl: null } })
+      const was = companySlug(brand.linkedinUrl)
+      if (was) await dropHiddenFrom(brand.id, was)
     }
     const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
     confirmed[brand.id] = 'none'

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.29
+// @version      1.30
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -83,7 +83,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.29';
+  var VERSION = '1.30';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -443,18 +443,62 @@
   }
 
   // "LinkedIn Member" cards: people outside Leo's network, whose name and
-  // profile LinkedIn hides — nothing on them to read. Counted so the panel
-  // can say so instead of looking like it missed them.
-  function hiddenMembers() {
-    var seen = [];
+  // profile LinkedIn hides. Nothing to save — but the card still shows
+  // their headline, so each one comes back as that line ('' when there is
+  // none). The fill sends them with the brand's visit and the dashboard
+  // puts brands whose hidden people look like buyers on "Read on Zach's
+  // LinkedIn": Zach's network is bigger, his account sees them by name.
+  function memberLeaves(root) {
+    return [].slice.call(root.querySelectorAll('*')).filter(function (el) {
+      return !el.children.length && /^linkedin member$/i.test(String(el.textContent || '').trim());
+    });
+  }
+  function memberCardFor(el) {
+    var li = el.closest('li');
+    if (li && !skipZone(li) && !profileLinks(li).length && memberLeaves(li).length === 1) return li;
+    // No list item of its own: walk up until a headline shows, never into
+    // a box that holds a real person or another hidden one.
+    var c = el.parentElement || el;
+    while (!lines(c).length && c.parentElement && c.parentElement !== document.body &&
+      !profileLinks(c.parentElement).length && memberLeaves(c.parentElement).length <= 1) c = c.parentElement;
+    return c;
+  }
+  function hiddenCards() {
+    var cards = [];
     [].slice.call(document.querySelectorAll('main *')).forEach(function (el) {
       if (el.children.length || skipZone(el)) return;
       if (!/^linkedin member$/i.test(String(el.textContent || '').trim())) return;
-      var c = el.closest('li') || el.parentElement;
-      if (seen.indexOf(c) < 0) seen.push(c);
+      var c = memberCardFor(el);
+      if (cards.indexOf(c) < 0) cards.push(c);
     });
-    return seen.length;
+    return cards.map(function (c) {
+      var sub = c.querySelector('.artdeco-entity-lockup__subtitle');
+      if (sub) return personName(lines(sub).join(' ')).slice(0, 160);
+      // "LinkedIn Member • 3rd+" on one line is the name, not the headline.
+      var ls = lines(c).map(personName).filter(function (x) { return x && !/^linkedin member$/i.test(x); });
+      return (ls[0] || '').slice(0, 160);
+    });
   }
+  function hiddenMembers() { return hiddenCards().length; }
+  // Hidden people across a brand's views, each counted once: with no name
+  // to go on, a headline counts as many times as one view showed it (the
+  // server merges the same way, li-hidden.ts).
+  function hiddenTotal(views) {
+    var most = {}, blanks = 0;
+    (views || []).forEach(function (v) {
+      var here = {}, b0 = 0;
+      (v.heads || []).forEach(function (hd) {
+        var k = String(hd || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        if (!k) b0++; else here[k] = (here[k] || 0) + 1;
+      });
+      Object.keys(here).forEach(function (k) { most[k] = Math.max(most[k] || 0, here[k]); });
+      blanks = Math.max(blanks, b0);
+    });
+    return Object.keys(most).reduce(function (n, k) { return n + most[k]; }, blanks);
+  }
+  // Everyone the list shows, hidden or not: a list of mostly "LinkedIn
+  // Member" cards still grows as it scrolls.
+  function listed() { return count() + hiddenMembers(); }
 
   // When the reader looks broken on a page — the ways it has gone wrong
   // on LinkedIn's real pages: people on screen and none made out, or
@@ -488,10 +532,12 @@
   function expand(onProgress, halt, limits) {
     var maxRounds = (limits && limits.rounds) || MAX_ROUNDS, maxPeople = (limits && limits.people) || MAX_PEOPLE;
     return new Promise(function (resolve) {
-      var rounds = 0, still = 0, last = count();
+      // Growth is judged on everyone listed (a list of mostly hidden cards
+      // still grows); the people cap on the readable ones, as before.
+      var rounds = 0, still = 0, last = listed();
       function step() {
         if (halt.stopped) return resolve({ capped: false });
-        if (rounds >= maxRounds || last >= maxPeople) return resolve({ capped: true });
+        if (rounds >= maxRounds || count() >= maxPeople) return resolve({ capped: true });
         rounds++;
         // Both, because LinkedIn has moved which element scrolls before.
         var links = profileLinks();
@@ -503,7 +549,7 @@
           if (more) more.click();
           return wait(more ? rand(1300, 2200) : rand(500, 900));
         }).then(function () {
-          var n = count();
+          var n = listed();
           onProgress(n);
           still = n <= last ? still + 1 : 0;
           last = Math.max(last, n);
@@ -779,7 +825,7 @@
     if (!hs) {
       var kw = keywordOfPage();
       hs = {
-        base: companyBase(), passes: kw ? [kw] : HAND_PASSES, pass: 0, rows: [], hidden: 0,
+        base: companyBase(), passes: kw ? [kw] : HAND_PASSES, pass: 0, rows: [], hidViews: [],
         companyName: companyName(), companyUrl: location.href, industry: companyIndustry(),
       };
     }
@@ -796,14 +842,16 @@
       h('button', { id: 'sblistop', style: BTN2, text: 'Stop and use what\'s here', onclick: function () { halt.stopped = true; } }),
     ]);
     // A view LinkedIn just loaded may draw its cards a moment later.
-    waitFor(function () { return count() > 0 || /no results/i.test(pageText(5000)); }, 8000).then(function () {
+    waitFor(function () { return listed() > 0 || /no results/i.test(pageText(5000)); }, 8000).then(function () {
       return expand(function (n) { prog.textContent = n + ' people on screen…'; }, halt);
     }).then(function () {
       window.scrollTo(0, 0);
       var have = {};
       hs.rows.forEach(function (r) { have[r.linkedinUrl] = 1; });
       scrape().forEach(function (r) { if (!have[r.linkedinUrl]) { have[r.linkedinUrl] = 1; hs.rows.push(r); } });
-      if (hs.pass === 0) { hs.hidden = hiddenMembers(); hs.members = peopleCount(); }
+      if (hs.pass === 0) hs.members = peopleCount();
+      var hid = hiddenCards();
+      if (hid.length) (hs.hidViews = hs.hidViews || []).push({ q: hs.passes[hs.pass] || '', url: location.href, heads: hid.slice(0, 60) });
       if (!halt.stopped && hs.pass < hs.passes.length - 1) {
         hs.pass++;
         saveHand(hs);
@@ -811,7 +859,7 @@
         return wait(rand(1500, 3000)).then(function () { location.href = handPassUrl(hs, hs.pass); });
       }
       saveHand(null);
-      lastRead = { rows: hs.rows, hidden: hs.hidden, views: hs.passes.length, members: hs.passes[0] ? null : hs.members, companyName: hs.companyName, companyUrl: hs.companyUrl, industry: hs.industry };
+      lastRead = { rows: hs.rows, hidden: hiddenTotal(hs.hidViews), hidViews: hs.hidViews || [], views: hs.passes.length, members: hs.passes[0] ? null : hs.members, companyName: hs.companyName, companyUrl: hs.companyUrl, industry: hs.industry };
       busy = false;
       return preview('');
     }).catch(function (e) {
@@ -829,6 +877,8 @@
       companyName: r.companyName,
       brandName: brandName || '',
       rows: r.rows,
+      // The "LinkedIn Member" cards: likely buyers go on Zach's list.
+      hidden: r.hidViews || [],
     }).then(function (j) {
       if (!j || !j.ok) return showError((j && j.error) || 'The dashboard could not read that.');
       renderPreview(j, brandName);
@@ -893,11 +943,15 @@
 
     var add = null;
     if (j.brand) {
+      // Nobody new, but LinkedIn hid people here: saving still sends them
+      // for Zach's list, under the brand Leo has confirmed.
+      var forZach = !adds.length && lastRead.hidden > 0;
       add = h('button', {
-        id: 'sbliadd', style: BTN + ';margin-top:12px', disabled: !adds.length,
-        text: adds.length ? 'Add ' + adds.length + ' to ' + j.brand.name : 'Nobody new to add',
+        id: 'sbliadd', style: BTN + ';margin-top:12px', disabled: !adds.length && !forZach,
+        text: adds.length ? 'Add ' + adds.length + ' to ' + j.brand.name
+          : forZach ? 'Nobody new — save the ' + lastRead.hidden + ' hidden for Zach' : 'Nobody new to add',
       });
-      if (adds.length) add.onclick = function () { capture(typed, add); };
+      if (adds.length || forZach) add.onclick = function () { capture(typed, add); };
     }
 
     // Not in the dashboard at all (Casamigos): Leo can add it from here.
@@ -922,7 +976,7 @@
         }),
       ]),
       h('div', { style: 'font-size:12px;color:#555;margin-top:8px', text: lastRead.rows.length + (lastRead.views > 1 ? ' people read from the whole list + the marketing and partnerships views.' : ' people read from this page.') +
-        (lastRead.hidden ? ' ' + lastRead.hidden + ' more show as "LinkedIn Member" — LinkedIn hides their name and profile (outside your network), so they can\'t be read.' : '') }),
+        (lastRead.hidden ? ' ' + lastRead.hidden + ' more show as "LinkedIn Member" — hidden from your account. If they look like buyers, the brand goes on “Read on Zach\'s LinkedIn” in the dashboard.' : '') }),
       group(j.brand ? 'Will add' : 'Buyers found', j.brand ? adds : waiting, true, '#137333'),
       group('Over the ' + j.cap + ' cap', by('full'), false, '#946200'),
       group('Already on file', by('dupe'), false, '#555'),
@@ -952,6 +1006,7 @@
       createIfMissing: !!(opts && opts.create),
       members: r.members == null ? null : r.members,
       rows: r.rows,
+      hidden: r.hidViews || [],
     }).then(function (j) {
       if (!j || !j.ok) return showError((j && j.error) || 'Nothing was saved.');
       freshPanel([
@@ -1377,6 +1432,7 @@
       phase: item.parent.slug ? 'read' : 'parent-find', kind: 'parent', passes: [item.name], pass: 0,
       parentTried: true, ownNote: why, triedAka: true, seen: st.seen || 0, seenUrls: st.seenUrls || [], added: 0, navs: 0,
       startedAt: st.startedAt || Date.now(), hiddenMs: st.hiddenMs || 0, members: st.members || null,
+      hidRead: st.hidRead || 0, hidViews: st.hidViews || [],
     };
     job.nextAt = Date.now() + secs(BETWEEN_PAGES);
     saveFill(job);
@@ -1501,10 +1557,12 @@
     renderFill(job, 'Reading ' + label);
     fillHalt = { stopped: false };
     var capped = false, rows = [], problem = null, sample = null;
+    // This view's "LinkedIn Member" cards (their headlines) and where.
+    var hid = [], viewQ = passes[job.step.pass] || '', viewUrl = null;
     var tooBig = null;
     readPath = location.pathname;
     var headcount = null;
-    waitFor(function () { return count() > 0 || /no results|0 associated members/i.test(pageText(5000)); }, 12000).then(function () {
+    waitFor(function () { return listed() > 0 || /no results|0 associated members/i.test(pageText(5000)); }, 12000).then(function () {
       var n = kind === 'own' && job.step.pass === 0 ? peopleCount() : null;
       // The brand's LinkedIn headcount sizes it for the next run's order.
       headcount = n;
@@ -1532,6 +1590,8 @@
       if (stop) return { halt: stop };
       if (headcount != null) { job1.step.members = headcount; saveFill(job1); }
       rows = scrape();
+      hid = hiddenCards();
+      viewUrl = location.href;
       problem = readingProblem(rows);
       if (problem) sample = sampleText(1500);
       window.scrollTo(0, 0);
@@ -1565,6 +1625,9 @@
       st.seen = Math.max(st.seen || 0, seenUrls.length);
       st.added += r.added || 0;
       if (problem && !st.problem) { st.problem = problem; st.sample = sample; }
+      // Views read, and the hidden people on each (sent with the visit).
+      st.hidRead = (st.hidRead || 0) + 1;
+      if (hid.length) (st.hidViews = st.hidViews || []).push({ q: viewQ, url: viewUrl, heads: hid.slice(0, 60) });
       job2.added = (job2.added || 0) + (r.added || 0);
       var full = r.have >= r.cap;
       var ps = stepPasses(st);
@@ -1572,8 +1635,9 @@
         : st.kind === 'big' ? !full && st.pass < ps.length - 1 && !(ps[st.pass + 1] === 'marketing' && st.added >= 3)
         // The marketing / partnerships views run even when the scroll
         // seemed to reach the end: a stalled scroll looks the same. A page
-        // with nobody on it at all has no views worth opening.
-        : !full && st.pass < ps.length - 1 && (st.pass > 0 || rows.length > 0);
+        // with nobody on it at all has no views worth opening — but one of
+        // only "LinkedIn Member" cards does (their headlines go to Zach).
+        : !full && st.pass < ps.length - 1 && (st.pass > 0 || rows.length > 0 || hid.length > 0);
       if (!more) return afterPeople(job2, item);
       st.pass++; st.navs = 0;
       job2.nextAt = Date.now() + secs(BETWEEN_PAGES);
@@ -1694,8 +1758,11 @@
       seen: st.seen, added: st.added, note: note || '', problem: st.problem || null, sample: st.sample || null,
       ms: st.startedAt ? Date.now() - st.startedAt : null, hiddenMs: st.hiddenMs || 0,
       via: via, members: st.members || null, parentTried: !!st.parentTried,
+      // People LinkedIn hid from this account, view by view — only when a
+      // view was read (no page read says nothing about who's hidden).
+      hidden: st.hidRead ? (st.hidViews || []) : undefined,
     }).catch(function () {});
-    job.results.push({ name: item.name, added: st.added, note: note || null, via: via });
+    job.results.push({ name: item.name, added: st.added, note: note || null, via: via, hidden: hiddenTotal(st.hidViews) });
     job.at++;
     job.step = null;
     job.doneToday++;
@@ -1716,6 +1783,7 @@
     runEvent(job, 'finish', { stopped: !!stopped, newBrands: (job.newBrands || []).length, hiddenMs: job.hiddenMs || 0 });
     var results = job.results || [];
     var problems = results.filter(function (r) { return r.note; });
+    var hiddenAt = results.filter(function (r) { return r.hidden; });
     freshPanel([
       head(stopped ? 'Run stopped' : 'Run finished'),
       h('div', { style: 'margin-bottom:6px' }, [b(String(job.added || 0)), ' people added across ' + results.length + ' brands.']),
@@ -1728,6 +1796,7 @@
               return h('div', { style: 'padding:2px 0' }, [
                 r.name,
                 h('span', { style: 'color:' + (r.added ? '#137333' : '#777'), text: ' — ' + (r.added ? r.added + ' added' + (r.via ? ' (' + r.via + ')' : '') : r.note || 'nobody new') }),
+                r.hidden ? h('span', { style: 'color:#946200', text: ' · ' + r.hidden + ' hidden' }) : null,
               ]);
             })),
           ])
@@ -1737,6 +1806,11 @@
             h('summary', { style: 'display:list-item;cursor:pointer;font-weight:600;color:#137333', text: job.newBrands.length + (job.newBrands.length === 1 ? ' new brand added' : ' new brands added') }),
             h('div', { style: 'font-size:12px;margin-top:4px;max-height:160px;overflow:auto', text: job.newBrands.join(', ') }),
           ])
+        : null,
+      // Leo, Oct 7 2026: "i dont want to miss out on people if i do it from
+      // my own account" — the ones LinkedIn hid wait for Zach's account.
+      hiddenAt.length
+        ? h('div', { id: 'sblihiddenppl', style: 'font-size:12px;margin-top:8px;color:#946200', text: hiddenAt.length + (hiddenAt.length === 1 ? ' brand had' : ' brands had') + ' people LinkedIn hid from your account. The ones who look like buyers are on “Read on Zach\'s LinkedIn” (dashboard → Outreach → People).' })
         : null,
       problems.length
         ? h('details', { open: true, style: 'display:block;margin-top:6px' }, [

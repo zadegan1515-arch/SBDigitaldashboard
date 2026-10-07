@@ -82,6 +82,9 @@ const ago = (d) => new Date(Date.now() - d * 864e5);
       // A brand under a parent company (Ketel One → Diageo): Leo's "no page"
       // doesn't stop the fill searching the parent.
       { id: 'b_kid', name: 'Ketel One', category: 'spirits' },
+      // Leo's LinkedIn hid their marketing people (li-hidden.ts): Zach's to read.
+      { id: 'b_zach', name: 'Zach Hidden Co', category: 'rtd', linkedinUrl: li('zach-co') },
+      { id: 'b_zach2', name: 'Zach Has Buyer', category: 'rtd', linkedinUrl: li('zach-two') },
     ] });
     await prisma.contact.createMany({ data: [
       { brandId: 'b_cov', name: 'Pat Partner', title: 'Brand Partnerships Manager', source: 'linkedin' },
@@ -90,13 +93,19 @@ const ago = (d) => new Date(Date.now() - d * 864e5);
       { brandId: 'b_next', name: 'Acct Two', title: 'Staff Accountant', source: 'sponsorunited' },
       ...Array.from({ length: 25 }, (_, i) => ({ brandId: 'b_full', name: 'Seller ' + i, title: 'Sales Associate', createdAt: ago(20) })),
       { brandId: 'b_off', name: 'Off Person', title: 'Brand Manager', source: 'linkedin' },
+      { brandId: 'b_zach', name: 'Eng One', title: 'Software Engineer', source: 'linkedin', createdAt: ago(20) },
+      { brandId: 'b_zach2', name: 'Bea Buyer', title: 'Brand Manager', source: 'linkedin', createdAt: ago(20) },
     ] });
     const setting = (key, value) => prisma.setting.create({ data: { key, value: JSON.stringify(value) } });
     await setting('liSweepLog', {
       b_rest: { at: ago(2).toISOString(), seen: 40, added: 0, v: 2, note: 'big company (173 people) — nobody new in its partnerships, sponsorship, brand manager, marketing searches' },
       // Read long ago: due again.
       b_next: { at: ago(45).toISOString(), seen: 3, added: 0, v: 2 },
+      b_zach: { at: ago(3).toISOString(), seen: 4, added: 0, v: 2 },
     });
+    const hid = (likely, slug) => ({ at: ago(3).toISOString(), by: 'fill', n: likely + 1, likely, titles: likely ? ['Brand Manager', 'Partnerships Lead'] : [],
+      url: 'https://www.linkedin.com/company/' + slug + '/people/?keywords=marketing', q: 'marketing' });
+    await setting('liHidden', { b_zach: hid(2, 'zach-co'), b_zach2: hid(3, 'zach-two'), b_off: hid(1, 'off'), b_full: hid(1, 'full'), b_rest: hid(0, 'rested') });
     await setting('liPageReview', { b_page: { at: ago(2).toISOString(), why: 'unclear', saved: null, pageIndustry: null, candidates: [] } });
     await setting('liPageConfirmed', { b_none: 'none', b_kid: 'none' });
     await setting('liRunReports', [{
@@ -110,7 +119,7 @@ const ago = (d) => new Date(Date.now() - d * 864e5);
     const st = Object.fromEntries(list.map(b => [b.id, b.cover && b.cover.state]));
     assert.deepEqual(st, {
       b_cov: 'covered', b_old: 'covered', b_next: 'next', b_page: 'page', b_none: 'noPage',
-      b_rest: 'resting', b_off: 'off', b_full: 'full', b_kid: 'next',
+      b_rest: 'resting', b_off: 'off', b_full: 'full', b_kid: 'next', b_zach: 'zach', b_zach2: 'covered',
     });
     const rest = list.find(b => b.id === 'b_rest').cover;
     assert.match(rest.note, /^big company/);
@@ -135,9 +144,32 @@ const ago = (d) => new Date(Date.now() - d * 864e5);
     const denied = await fetch(BASE + '/api/reports/linkedin');
     assert.equal(denied.status, 401);
     const rep = await (await fetch(BASE + '/api/reports/linkedin', { headers: { Authorization: 'Bearer ' + REPORT_TOKEN } })).json();
-    assert.deepEqual(rep.coverage, { covered: 2, off: 1, full: 1, page: 1, noPage: 1, resting: 1, next: 2, inPlay: 8, need: 6 });
+    assert.deepEqual(rep.coverage, { covered: 3, off: 1, full: 1, page: 1, zach: 1, noPage: 1, resting: 1, next: 2, inPlay: 10, need: 7 });
     assert.ok(!JSON.stringify(rep.coverage).includes('Pat Partner') && !JSON.stringify(rep.coverage).includes('Page Pick'), 'no names in the counts');
     ok('/api/reports/linkedin carries the coverage counts — numbers only');
+
+    // 4. "Read on Zach's LinkedIn": no buyer first, then most likely; off
+    // outreach and full brands left out; Done and Undo; the brand page line.
+    let lp = await data('linkedinPeople');
+    assert.deepEqual(lp.zachList.map(r => r.brandId), ['b_zach', 'b_zach2']);
+    const z = lp.zachList[0];
+    assert.deepEqual({ likely: z.likely, n: z.n, buyers: z.buyers, onFile: z.onFile, q: z.q }, { likely: 2, n: 3, buyers: 0, onFile: 1, q: 'marketing' });
+    assert.equal(z.url, 'https://www.linkedin.com/company/zach-co/people/?keywords=marketing');
+    assert.deepEqual(lp.zachDone, []);
+    assert.equal((await data('getBrand', { brandId: 'b_zach2' })).liHidden.due, true);
+    assert.equal((await data('getBrand', { brandId: 'b_full' })).liHidden.due, false, 'full: nothing for Zach to add');
+    assert.equal((await data('getBrand', { brandId: 'b_cov' })).liHidden, null);
+    await data('zachRead', { brandId: 'b_zach' });
+    lp = await data('linkedinPeople');
+    assert.deepEqual(lp.zachList.map(r => r.brandId), ['b_zach2']);
+    assert.deepEqual(lp.zachDone.map(r => r.brandId), ['b_zach']);
+    assert.equal((await data('listBrands', { take: 5000, coverage: true })).find(b => b.id === 'b_zach').cover.state, 'resting', 'read on Zach\'s: back to what the fill says');
+    await data('zachRead', { brandId: 'b_zach', undo: true });
+    assert.deepEqual((await data('linkedinPeople')).zachList.map(r => r.brandId), ['b_zach', 'b_zach2']);
+    await assert.rejects(data('zachRead', { brandId: 'b_cov' }), /not on Zach/);
+    const recap = await data('dayRecap', {});
+    assert.equal((recap.asks.find(a => a.key === 'zachread') || {}).n, 2, 'the recap asks for them');
+    ok('Read on Zach\'s LinkedIn: the list, its order and exclusions, Done / Undo, the brand page and the recap');
 
     console.log(n + ' coverage end-to-end checks passed');
   } catch (e) {

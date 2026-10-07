@@ -9,20 +9,22 @@ import { coverOf, coverCounts, type Cover, type CoverCounts } from './coverage'
 import { readLiLog, type LiLog } from './li-sweep'
 import { readJsonSetting, LI_REVIEW_KEY, LI_CONFIRMED_KEY, type Review, type Confirmed } from './li-review'
 import { parentOf } from './parents'
+import { readHiddenLog, zachDue, type HiddenLog } from './li-hidden'
 
 // How many people we keep on file per brand — CONTACT_CAP_PER_BRAND in
 // /api/data and /api/ingest.
 export const COVER_CAP = 25
 
-export type CoverFacts = { log: LiLog; review: Review; confirmed: Confirmed }
+export type CoverFacts = { log: LiLog; review: Review; confirmed: Confirmed; hidden: HiddenLog }
 
 export async function readCoverFacts(db: PrismaClient): Promise<CoverFacts> {
-  const [log, review, confirmed] = await Promise.all([
+  const [log, review, confirmed, hidden] = await Promise.all([
     readLiLog(db),
     readJsonSetting<Review>(db, LI_REVIEW_KEY, {}),
     readJsonSetting<Confirmed>(db, LI_CONFIRMED_KEY, {}),
+    readHiddenLog(db),
   ])
-  return { log, review, confirmed }
+  return { log, review, confirmed, hidden }
 }
 
 export type CoverBrand = {
@@ -45,6 +47,7 @@ export function brandCover(b: CoverBrand, f: CoverFacts, now = Date.now()): Cove
     mark: f.log[b.id],
     inReview: !!f.review[b.id],
     confirmed: f.confirmed[b.id] ?? null,
+    zachDue: zachDue(f.hidden[b.id], now),
   }, { cap: COVER_CAP, now })
 }
 

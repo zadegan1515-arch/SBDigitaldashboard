@@ -10,6 +10,9 @@
 //            first in its worklist, after the Schedule's short brands
 //   page     the fill wasn't sure which LinkedIn page is theirs: Leo
 //            picks it on Outreach → People and the next run reads it
+//   zach     people Leo's free LinkedIn hides ("LinkedIn Member") look
+//            like buyers: Zach's account reads them (li-hidden.ts —
+//            "Read on Zach's LinkedIn" on Outreach → People)
 //   resting  the fill read it lately and found nobody with a buyer title
 //            (or its page wouldn't open); back on the fill's list a month
 //            after that visit — meanwhile SponsorUnited or by hand
@@ -25,7 +28,7 @@
 import { countBuyers, BUYER_TARGET } from './buyers'
 import { liRestsNow, LI_REST_DAYS, type LiMark } from './li-sweep'
 
-export type CoverState = 'covered' | 'off' | 'full' | 'page' | 'noPage' | 'resting' | 'next'
+export type CoverState = 'covered' | 'off' | 'full' | 'page' | 'zach' | 'noPage' | 'resting' | 'next'
 
 // The LinkedIn fill's pace, brands a day — DAILY_CAP in
 // scripts/linkedin-capture.user.js. The card's "about N days" uses it.
@@ -34,7 +37,7 @@ export const LI_PER_DAY = 100
 // The states a brand that still needs a buyer can be in, in the order the
 // card lists them: what the fill will do by itself first, then what needs
 // Leo, then what LinkedIn can't help with.
-export const NEED_STATES: CoverState[] = ['next', 'page', 'resting', 'noPage', 'full']
+export const NEED_STATES: CoverState[] = ['next', 'page', 'zach', 'resting', 'noPage', 'full']
 
 export type CoverInput = {
   passedAt?: Date | string | null
@@ -50,6 +53,9 @@ export type CoverInput = {
   inReview?: boolean
   // Setting liPageConfirmed[brandId]: the page slug Leo picked, or "none".
   confirmed?: string | null
+  // Setting liHidden: likely buyers hidden from Leo's account, waiting on
+  // Zach's (li-hidden.ts zachDue).
+  zachDue?: boolean
 }
 
 export type Cover = {
@@ -68,6 +74,9 @@ export function coverOf(b: CoverInput, opts: { cap: number; now?: number }): Cov
   if (buyers >= BUYER_TARGET) return { state: 'covered', buyers }
   if (b.titles.length >= opts.cap) return { state: 'full', buyers }
   if (b.inReview) return { state: 'page', buyers }
+  // Leo's account read it and LinkedIn hid the buyers: another read from
+  // his account sees the same, so it's Zach's to read.
+  if (b.zachDue) return { state: 'zach', buyers }
   // Same test as the fill's worklist: no page, Leo said there's none, and
   // no parent to look under — the fill never visits it.
   if (!b.linkedinUrl && b.confirmed === 'none' && !b.hasParent) return { state: 'noPage', buyers }
@@ -87,7 +96,7 @@ export function coverOf(b: CoverInput, opts: { cap: number; now?: number }): Cov
 export type CoverCounts = Record<CoverState, number> & { inPlay: number; need: number }
 
 export function coverCounts(list: Cover[]): CoverCounts {
-  const out: CoverCounts = { covered: 0, off: 0, full: 0, page: 0, noPage: 0, resting: 0, next: 0, inPlay: 0, need: 0 }
+  const out: CoverCounts = { covered: 0, off: 0, full: 0, page: 0, zach: 0, noPage: 0, resting: 0, next: 0, inPlay: 0, need: 0 }
   for (const c of list) {
     out[c.state] += 1
     if (c.state !== 'off') out.inPlay += 1

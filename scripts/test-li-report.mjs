@@ -49,6 +49,16 @@ t('each brand keeps its time and hidden time; the run adds up the hidden minutes
   assert.deepEqual(r[0].brands.map(b => [b.ms, b.hiddenMs]), [[90000, 0], [840000, 720000], [null, 0]])
 })
 
+t('each brand keeps the people LinkedIn hid and how many look like buyers (script 1.30+)', () => {
+  let r = applyRunEvent([], { kind: 'brand', run: 'f9', name: 'Hiyo', seen: 4, added: 1, hiddenPeople: 3, hiddenLikely: 2 }, at(0))
+  r = applyRunEvent(r, { kind: 'brand', run: 'f9', name: 'Old script', seen: 4, added: 0 }, at(1))
+  r = applyRunEvent(r, { kind: 'brand', run: 'f9', name: 'Junk', seen: 1, added: 0, hiddenPeople: -4, hiddenLikely: 'lots' }, at(2))
+  const [a, b, c] = r[0].brands
+  assert.deepEqual([a.hiddenPeople, a.hiddenLikely], [3, 2])
+  assert.deepEqual([b.hiddenPeople, b.hiddenLikely], [null, null], 'an older script says nothing')
+  assert.deepEqual([c.hiddenPeople, c.hiddenLikely], [0, 0])
+})
+
 t('an unreadable page is counted and keeps a small sample — three at most', () => {
   let r = []
   for (let i = 0; i < 5; i++) {

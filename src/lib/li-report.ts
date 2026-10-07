@@ -35,6 +35,10 @@ export type RunBrand = {
   via?: string | null
   // LinkedIn's "N associated members" for a big brand
   members?: number | null
+  // "LinkedIn Member" cards — people Leo's account can't see — and how
+  // many of them look like buyers (li-hidden.ts; script 1.30+).
+  hiddenPeople?: number | null
+  hiddenLikely?: number | null
 }
 export type RunReport = {
   id: string
@@ -75,6 +79,8 @@ export type RunEvent = {
   hiddenMs?: number
   via?: string | null
   members?: number | null
+  hiddenPeople?: number | null
+  hiddenLikely?: number | null
 }
 
 const str = (v: unknown, n: number) => (v == null || v === '' ? null : String(v).slice(0, n))
@@ -117,6 +123,8 @@ export function applyRunEvent(reports: RunReport[], ev: RunEvent, now = new Date
       hiddenMs: num(ev.hiddenMs),
       via: str(ev.via, 120),
       members: ev.members == null ? null : num(ev.members),
+      hiddenPeople: ev.hiddenPeople == null ? null : num(ev.hiddenPeople),
+      hiddenLikely: ev.hiddenLikely == null ? null : num(ev.hiddenLikely),
     }
     if (run.brands.length < KEEP_BRANDS) run.brands.push(b)
     run.added += b.added

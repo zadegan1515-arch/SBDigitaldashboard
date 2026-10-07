@@ -207,7 +207,22 @@ async function main() {
     const save = last('updateBrand').args;
     assert.deepEqual(save.facts, { sponsorsCollege: 'no' }, 'only the fact Leo changed');
     await page.waitForSelector('#b-edit-toggle');
+    assert.equal(await page.$('#b-lihidden'), null, 'nothing hidden: no line');
+    // People LinkedIn hid from Leo's account (li-hidden.ts): one line, a link
+    // for Zach's account.
+    BRAND.liHidden = { n: 3, likely: 2, titles: ['Brand Manager', 'Partnerships Lead'], url: 'https://www.linkedin.com/company/high-fit/people/?keywords=marketing', q: 'marketing', due: true };
+    await page.evaluate(() => loadBrand('b_high'));
+    await page.waitForSelector('#b-lihidden');
+    assert.match(await page.textContent('#b-lihidden'), /Your LinkedIn hid 2 people who look like buyers \(Brand Manager, Partnerships Lead\) — Zach’s account can see them/);
+    assert.equal(await page.getAttribute('#b-lihidden a', 'href'), 'https://www.linkedin.com/company/high-fit/people/?keywords=marketing');
+    BRAND.liHidden = { ...BRAND.liHidden, due: false };
+    await page.evaluate(() => loadBrand('b_high'));
+    await page.waitForSelector('#b-fit');
+    await page.waitForTimeout(200);
+    assert.equal(await page.$('#b-lihidden'), null, 'read on Zach\'s already: no line');
+    delete BRAND.liHidden;
     ok('brand page: Fit line with reasons, facts prefilled exactly, Save sends only what changed');
+    ok('brand page: people LinkedIn hid from Leo\'s account get one line with the link for Zach');
 
     // 3. Stock take.
     await page.evaluate(() => gotoView('stock'));

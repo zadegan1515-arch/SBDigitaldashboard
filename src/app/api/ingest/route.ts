@@ -38,6 +38,7 @@ import {
 } from '@/lib/li-capture'
 import { readLiLog, markLiSwept, liRestsNow, readLiResearch, markLiResearch, researchResting, LI_READER, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
 import { recordRun } from '@/lib/li-report'
+import { recordHidden, markZachRead, updateHiddenLog, summarizeHidden, cleanViews } from '@/lib/li-hidden'
 import { PARENTS, parentOf, decideParentPage, siblingNamed, isParentCompany, LI_PARENT_PAGES_KEY } from '@/lib/parents'
 import {
   addToReview, sameMember, readJsonSetting, writeJsonSetting,
@@ -228,7 +229,7 @@ async function resolveLinkedinBrand(body: any) {
   // page we saved for the brand, then the page's own name (including
   // "also known as" names).
   let brand: Awaited<ReturnType<typeof findBrandForCapture>> = null
-  let matchedBy: 'id' | 'typed' | 'page' | 'name' | null = null
+  let matchedBy: 'id' | 'typed' | 'keyword' | 'page' | 'name' | null = null
   if (body.brandId) {
     brand = await prisma.brand.findUnique({ where: { id: String(body.brandId) } })
     if (brand) matchedBy = 'id'
@@ -236,7 +237,16 @@ async function resolveLinkedinBrand(body: any) {
     brand = await findBrandForCapture(typed, null)
     if (brand) matchedBy = 'typed'
   } else {
-    if (slug) {
+    // A parent company's People tab searched for one of its brands
+    // (Diageo's, for "Captain Morgan" — the fill's parent reads, and the
+    // links on "Read on Zach's LinkedIn"): the brand the search names,
+    // ahead of the page itself (Diageo may be a brand on the roster too).
+    const kw = peopleKeyword(body.companyUrl)
+    if (slug && kw) {
+      const named = await findBrandForCapture(kw, null)
+      if (named && await isParentPage(named, slug, companyName)) { brand = named; matchedBy = 'keyword' }
+    }
+    if (!brand && slug) {
       const withPage = await prisma.brand.findMany({ where: { linkedinUrl: { not: null } } })
       brand = withPage.find(b => companySlug(b.linkedinUrl) === slug) ?? null
       if (brand) matchedBy = 'page'
@@ -274,6 +284,50 @@ async function resolveLinkedinBrand(body: any) {
     }
   }
   return { brand, matchedBy, suggestions, slug, companyName, typed }
+}
+
+// The keyword of a People view ("…/people/?keywords=Captain%20Morgan").
+function peopleKeyword(url: unknown): string {
+  try { return String(new URL(String(url || '')).searchParams.get('keywords') || '').replace(/\s+/g, ' ').trim().slice(0, 120) } catch { return '' }
+}
+
+// Is this LinkedIn page the brand's parent company's (parents.ts)? The
+// parent's page the fill found (Setting liParentPages), else a page
+// called by the parent's name. Never the brand's own saved page.
+async function isParentPage(brand: { name: string; aka: string | null; linkedinUrl: string | null }, slug: string | null, pageName?: string | null): Promise<boolean> {
+  if (!slug || companySlug(brand.linkedinUrl) === slug) return false
+  const parent = parentOf(brand.name, brand.aka)
+  if (!parent) return false
+  const parentNames = [parent.name, parent.search, ...(parent.aka || [])].map(n => normalizeCompany(n))
+  // A brand called what its parent is called, by name or other name
+  // (Bacardi the rum, Bacardi the company; Heineken): that page is its own.
+  const ownNames = [brand.name, ...String(brand.aka || '').split(/[,;]/)].map(n => normalizeCompany(n)).filter(Boolean)
+  if (ownNames.some(n => parentNames.includes(n)) || isParentCompany(brand.name, brand.aka)) return false
+  const pages = await readJsonSetting<Record<string, string>>(prisma, LI_PARENT_PAGES_KEY, {})
+  if (pages[parent.name] === slug) return true
+  const page = normalizeCompany(pageName)
+  return !!page && parentNames.includes(page)
+}
+
+// The brand's names and its parent's — who counts as "this company" when
+// judging a headline (planLinkedin's rule, and the hidden people's).
+function ownNamesOf(brand: { name: string; aka: string | null }): string[] {
+  const parent = parentOf(brand.name, brand.aka)
+  return [brand.name, ...String(brand.aka || '').split(/[,;]/).map(x => x.trim()).filter(Boolean),
+    ...(parent ? [parent.name, parent.search, ...(parent.aka || [])] : [])]
+}
+
+// "LinkedIn Member" cards Leo's account saw (li-hidden.ts), judged the
+// way a real card is: buyer title, not "CEO of <another company>", not
+// someone on a sister brand.
+function hiddenJudge(brand: { name: string; aka: string | null }) {
+  const notBuyer = parentOf(brand.name, brand.aka) ? (h: string) => !!siblingNamed(currentWork(h), brand.name, brand.aka) : undefined
+  return { names: ownNamesOf(brand), notBuyer }
+}
+async function saveHidden(brand: { id: string; name: string; aka: string | null }, views: unknown, by: 'fill' | 'hand') {
+  try {
+    await updateHiddenLog(prisma, log => recordHidden(log, brand.id, views, { by, ...hiddenJudge(brand) }))
+  } catch { /* the list for Zach is a nicety; never fail a save over it */ }
 }
 
 // A headline's first two parts minus history ("ex-Smirnoff", "formerly
@@ -326,10 +380,7 @@ async function planLinkedin(body: any) {
   // company>" on its page reads as an outsider, and — when the brand has
   // a parent — so someone working on a sister brand is left out.
   const parent = brand ? parentOf(brand.name, brand.aka) : null
-  const ownNames = brand
-    ? [brand.name, ...String(brand.aka || '').split(/[,;]/).map(x => x.trim()).filter(Boolean),
-        ...(parent ? [parent.name, parent.search, ...(parent.aka || [])] : [])]
-    : null
+  const ownNames = brand ? ownNamesOf(brand) : null
 
   const rows: LiRow[] = cards.map(c => {
     const role = roleFromHeadline(c.headline, companyName || brand?.name || null)
@@ -363,6 +414,7 @@ async function planLinkedin(body: any) {
     // else the page's own name.
     createName: !brand ? (typed || companyName || null) : null,
     slug,
+    companyName,
     // The brand already has a different company page saved — a parent
     // company or a sister brand. Shown, never overwritten.
     pageMismatch: !!(slug && savedSlug && savedSlug !== slug),
@@ -1083,6 +1135,20 @@ export async function POST(req: NextRequest) {
       } catch { /* non-fatal */ }
       await saveMembers(brandId, body.members)
     }
+    // "LinkedIn Member" cards the read saw (script 1.30+; older copies
+    // send nothing, which leaves the list alone): likely buyers go on
+    // "Read on Zach's LinkedIn"; a read that saw nobody hidden clears it.
+    let hiddenSum: { n: number; likely: number } | null = null
+    if (brandId && Array.isArray(body.hidden)) {
+      try {
+        const b = await prisma.brand.findUnique({ where: { id: brandId }, select: { id: true, name: true, aka: true } })
+        if (b) {
+          const judge = hiddenJudge(b)
+          hiddenSum = summarizeHidden(cleanViews(body.hidden), judge.names, judge.notBuyer)
+          await updateHiddenLog(prisma, log => recordHidden(log, b.id, body.hidden, { by: 'fill', ...judge }))
+        }
+      } catch { /* non-fatal */ }
+    }
     // The run's report (li-report.ts). Research names that never became
     // a brand come through here too, with no brandId.
     if (body.run) {
@@ -1092,6 +1158,7 @@ export async function POST(req: NextRequest) {
           name: body.name, brandId: brandId || null, seen: body.seen, added: body.added,
           note: body.note || null, problem: body.problem || null, sample: body.sample || null,
           ms: body.ms ?? null, hiddenMs: body.hiddenMs, via: body.via || null, members: body.members ?? null,
+          hiddenPeople: hiddenSum ? hiddenSum.n : null, hiddenLikely: hiddenSum ? hiddenSum.likely : null,
         })
       } catch { /* the report is a nicety; the sweep log above is what counts */ }
     }
@@ -1142,6 +1209,14 @@ export async function POST(req: NextRequest) {
   // saving anything. The script shows this before Leo confirms.
   if (body.action === 'liPreview') {
     const plan = await planLinkedin(body)
+    // Leo reading a People page by hand: the "LinkedIn Member" cards it
+    // saw are worth Zach's look even when nobody is new to add — kept here
+    // only when the page itself says whose it is (the brand's saved page,
+    // or its parent's tab searched for it). A name Leo is still checking
+    // in the box, or a guess from the page's name, waits for Add.
+    if (body.via !== 'log' && Array.isArray(body.hidden) && plan.brand && (plan.matchedBy === 'page' || plan.matchedBy === 'keyword')) {
+      await saveHidden(plan.brand, body.hidden, 'hand')
+    }
     return NextResponse.json({ ok: true, ...liSummary(plan) }, { headers: cors })
   }
 
@@ -1268,12 +1343,16 @@ export async function POST(req: NextRequest) {
     if (!brand) {
       return NextResponse.json({ ok: false, error: plan.notFound ? `No brand called "${plan.notFound}" in the dashboard.` : 'Pick the dashboard brand first.', ...liSummary(plan) }, { status: 400, headers: cors })
     }
+    // Read on the brand's parent company's page (the fill says so; a hand
+    // read on Diageo's tab for Captain Morgan is worked out here): the
+    // people are the brand's, the page and its headcount are not.
+    const viaParent = body.viaParent === true || await isParentPage(brand, plan.slug, plan.companyName)
     // Remember the company page, so the next visit matches on the page
     // itself. Fill-if-empty, like every other capture field — and not
     // when another brand already has this page (sister brands under one
     // parent page), or the next visit would match whichever came first.
     let savedPage = false
-    if (plan.slug && !brand.linkedinUrl && body.viaParent !== true) {
+    if (plan.slug && !brand.linkedinUrl && !viaParent) {
       const others = await prisma.brand.findMany({
         where: { linkedinUrl: { not: null }, id: { not: brand.id } },
         select: { linkedinUrl: true },
@@ -1311,7 +1390,21 @@ export async function POST(req: NextRequest) {
         if (errors.length < 10) errors.push(`${r.name}: ${err?.message ?? 'error'}`)
       }
     }
-    if (body.viaParent !== true) await saveMembers(brand.id, body.members)
+    if (!viaParent) await saveMembers(brand.id, body.members)
+    // Zach's SB · Read people (via 'log') read this brand: off "Read on
+    // Zach's LinkedIn" for a while, whatever it added. Leo's own hand read
+    // reports the "LinkedIn Member" cards it saw.
+    let zachMarked = false
+    // Only a read that made out people, all saved, takes a brand off his
+    // list: a failed save or an empty read leaves it waiting.
+    if (body.via === 'log' && plan.rows.length && !failed) {
+      try {
+        await updateHiddenLog(prisma, log => {
+          zachMarked = !!log[brand.id]
+          return markZachRead(log, brand.id, added)
+        })
+      } catch { zachMarked = false }
+    } else if (Array.isArray(body.hidden)) await saveHidden(brand, body.hidden, 'hand')
     let targetsShelved = 0
     try { targetsShelved = await reconcileBrandTargets(brand.id) } catch { /* skip */ }
     const have = await prisma.contact.count({ where: { brandId: brand.id } })
@@ -1320,7 +1413,7 @@ export async function POST(req: NextRequest) {
       brand: { id: brand.id, name: brand.name },
       added, targetsCreated, targetsShelved, failed, errors,
       have, cap: CONTACT_CAP_PER_BRAND, brandCreated,
-      savedPage,
+      savedPage, zachMarked,
       verdicts: plan.rows.map(r => ({ name: r.name, verdict: r.verdict, at: r.at ?? null })),
     }, { headers: cors })
   }

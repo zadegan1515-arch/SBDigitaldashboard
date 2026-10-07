@@ -366,7 +366,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   the rows its **Show them** opens are one list): **next** — the LinkedIn fill reads it next (Start the
   LinkedIn fill ↗; "about N days" at `LI_PER_DAY` = the script's DAILY_CAP); **page** — on "Which LinkedIn
   page is theirs?" (Pick their pages → Outreach → People's card); **resting** — read in the last 30 days,
-  nobody with a buyer title (the fill's note + "back on the fill <date>" on the row); **noPage** — Leo said
+  nobody with a buyer title (the fill's note + "back on the fill <date>" on the row); **zach** — LinkedIn hid
+  their buyer-looking people from Leo's account (li-hidden.ts; "Read on Zach's LinkedIn"); **noPage** — Leo said
   None of these and there's no parent; **full** — 25 on file, none a buyer. Same rest rule as the
   worklist (`liRestsNow`, li-sweep.ts). Needs people splits by these reasons (`BR.why` chips); rows that
   need Leo say why under the name (`brCoverLine`). `buyerCoverage` adds people added this week by source,
@@ -595,8 +596,36 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   it has the repo attached; a session a routine makes fresh has no repo and can't push — which reads
   the reports and fixes/pushes LinkedIn-tool bugs only; needs `REPORT_TOKEN` +
   `sb-digitaldashboard.vercel.app` allowed in the cloud environment.
-  **"LinkedIn Member" cards** (out of Leo's network, name + profile hidden by LinkedIn) can't be read by
-  anything; the preview counts them (`hiddenMembers`) and says so, so a short read doesn't look broken.
+  **"LinkedIn Member" cards** (out of Leo's network, name + profile hidden by LinkedIn) can't be saved, but
+  **they aren't lost** (Leo, Oct 7 2026: "i dont want to miss out on people if i do it from my own account"):
+  since 1.30 the script reads each hidden card's headline (`hiddenCards` / `memberCardFor`), view by view
+  (`st.hidViews` / `hs.hidViews` `{q, url, heads}`, carried across `tryParent`, dropped on a wrong page); the
+  fill sends them with the brand's `liSwept` (`hidden`, only when a view was read), Leo's hand scan with
+  `liPreview`/`liCapture`. Scrolling and the page-ready waits count them too (`listed()`), and a page of only
+  hidden cards still opens its marketing / partnerships views. Rules pure in `src/lib/li-hidden.ts`
+  (`node scripts/test-li-hidden.mjs`): headlines judged like a real card (`isBuyer` with the brand's own names +
+  the sister-brand check from ingest's `hiddenJudge`); a headline counts once per view at most across views
+  (`summarizeHidden`); "likely" = buyer headline, or none at all in a marketing / partnerships search (`BUYER_SEARCH`
+  — not a parent's tab searched for the brand's name); the link = the view with the most likely buyers (`peopleViewUrl`, always rebuilt on www.linkedin.com). Setting `liHidden` (brandId →
+  `{at, by fill|hand, n, likely, titles, url, q, zachAt, zachAdded}`, advisory-locked `updateHiddenLog`): a fill
+  visit replaces it (one that saw nobody hidden clears it); a hand read replaces only a finding with fewer likely
+  buyers and never clears; an older script (no `hidden`) leaves it. A hand scan's preview records only when the page
+  says whose it is (matchedBy `page` / `keyword`); a name still being checked in the box waits for Add. The scroll's
+  people cap counts readable people only (hidden ones only keep it scrolling).
+  **Read on Zach's LinkedIn** (Outreach → People, `#li-zach`, `renderLiZach`; `linkedinPeople` → `zachList` /
+  `zachDone`): brands with likely buyers hidden, not read on Zach's in `ZACH_REST_DAYS` (120), not archived /
+  do-not-email / full — no buyer on file first; **Open on LinkedIn ↗** per brand, **Copy for Zach** (each brand +
+  link + "SB · Read people → Read this page → Add"), **Done** / **Back on the list** (`zachRead`). Zach's own
+  read (`liCapture` via `log`, incl. 1.2's "Nobody new") marks it (`markZachRead`, answered as `zachMarked`) — only a
+  read that made out people, all saved. Leo's own pill with nobody new but people hidden offers "Nobody new — save
+  the N hidden for Zach" (the same `liCapture`, adds 0, carries `hidden`). Coverage state **zach** (All
+  brands' card "Hidden from your LinkedIn · Zach reads them", `cvZachList` jumps to the list), the brand page's
+  People line (`getBrand.liHidden`, `#b-lihidden`), the recap ask `zachread`, the run card's hidden line and the
+  run report's `hiddenPeople` / `hiddenLikely`. A People view searched for a brand on its parent's page
+  (`/company/diageo/people/?keywords=Captain Morgan`) is that brand's read (`resolveLinkedinBrand` matchedBy
+  `keyword` via `isParentPage`, ahead of the page's own slug) and never saves the parent's page or headcount on
+  it (`liCapture` works `viaParent` out itself). `liPagePick` / `liPageNone` forget hidden people counted on a
+  page that wasn't theirs.
   Worklist in the dashboard: Outreach → People → "Under 25" (deep link `app.html#people`).
   On a profile (`/in/<slug>/`) the pill is **Send to dashboard** (Leo, Oct 2026: "it should just be send
   this contact to dashboard"): reads name / headline / current company (the SB · Log reader), the company
@@ -648,6 +677,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   bigger network shows them): on a company's People page the pill is **SB · Read people** → **Read this page**
   (only on that click; scrolls that page + Show more, ≤150 people) → `liPreview` → **Add** → `liCapture` (`via: 'log'`,
   no `me` so the Leo-only lock doesn't apply; buyers only, 25 cap). Still no run, no fill, no navigation by itself.
+  **1.2** (Oct 7 2026): nobody new → the button is "Nobody new — mark <brand> read" (sends the same `liCapture`, adds
+  0), so the brand leaves "Read on Zach's LinkedIn" (a read that made out nobody can't: "Nobody read on this page"); links off that list open the right view (a parent's page searched
+  for the brand is credited to the brand by its search word).
   Tests: `node scripts/test-li-log-script.js` (fake LinkedIn + fake dashboard: reads a People page only on
   Read, saves only on Add, never a run action) and `test-li-e2e.js` (real dashboard + throwaway
   Postgres: accepted, Undo, invite sent).
