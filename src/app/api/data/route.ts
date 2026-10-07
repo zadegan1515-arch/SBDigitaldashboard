@@ -457,9 +457,25 @@ function nextOffWeekday(extras: ExtraDays, opts: { afterToday?: boolean } = {}):
   return null
 }
 
+// Not passed for today, and not inside a Pass's two weeks (passedUntil).
+// One OR (the four combinations), so it spreads next to a caller's AND.
 function notPassedToday() {
   const start = startOfLocalDay()
-  return { OR: [{ passedTodayAt: null }, { passedTodayAt: { lt: start } }] }
+  const now = new Date()
+  return {
+    OR: [
+      { passedTodayAt: null, passedUntil: null },
+      { passedTodayAt: null, passedUntil: { lte: now } },
+      { passedTodayAt: { lt: start }, passedUntil: null },
+      { passedTodayAt: { lt: start }, passedUntil: { lte: now } },
+    ],
+  }
+}
+// Leo, Oct 7 2026: "when i pass on a brand it should not show up in the
+// outreach tab again for at least two weeks".
+const PASS_DAYS = 14
+function passedNow(b: { passedUntil?: Date | null }): boolean {
+  return !!b.passedUntil && b.passedUntil.getTime() > Date.now()
 }
 
 // Written to on LinkedIn: an invite with its date, or a row past the
@@ -564,7 +580,7 @@ function dropExecsAtBigBrands<T extends { title: string | null }>(
 const PLAN_BRAND_SELECT = Prisma.validator<Prisma.BrandSelect>()({
   id: true, name: true, aka: true, category: true, tier: true, workPeople: true,
   website: true, linkedinUrl: true, externalId: true,
-  passedAt: true, passedTodayAt: true, doNotEmail: true,
+  passedAt: true, passedTodayAt: true, passedUntil: true, doNotEmail: true,
   // Brand Fit facts (brandFit below) — the Fill box and Plan my week rank
   // and hide by them.
   liMembers: true, salesCents: true, fundingCents: true, lastRoundAt: true, usStatus: true,
@@ -1373,6 +1389,11 @@ async function planAddCore(plan: OutreachPlan, date: string, brandIds: unknown) 
 
   const dayStart = startOfLocalDay()
   for (const { b, result } of addedBrands) {
+    // Planning it by hand ends a Pass's two weeks.
+    if (b.passedUntil && !forToday) {
+      await prisma.brand.update({ where: { id: b.id }, data: { passedUntil: null } })
+      b.passedUntil = null
+    }
     if (!forToday) {
       // Planned for later: anyone of theirs sitting in today's queue
       // goes back to wait for that day, or the brand would go out twice.
@@ -1397,8 +1418,8 @@ async function planAddCore(plan: OutreachPlan, date: string, brandIds: unknown) 
     // Adding it to today on purpose overrides a "Pass today" from
     // earlier — otherwise the brand queues now and the next LinkedIn-tab
     // load skips it as passed.
-    if (b.passedTodayAt && b.passedTodayAt >= dayStart) {
-      await prisma.brand.update({ where: { id: b.id }, data: { passedTodayAt: null } })
+    if ((b.passedTodayAt && b.passedTodayAt >= dayStart) || b.passedUntil) {
+      await prisma.brand.update({ where: { id: b.id }, data: { passedTodayAt: null, passedUntil: null } })
     }
     let q: any = null
     let failure: string | null = null
@@ -1778,7 +1799,7 @@ function brandFit(b: FitFacts, reachable: number, rates: AcceptRates | null, now
 // talks / out of business, not too small, and not in a category Leo set
 // to Skip. Brand Fit orders them — category priority, then money.
 function bestFitEligible(b: PlanBrand, f: FitResult): boolean {
-  return !b.passedAt && !b.doNotEmail && b.usStatus !== 'no' && !inConversation(b)
+  return !b.passedAt && !passedNow(b) && !b.doNotEmail && b.usStatus !== 'no' && !inConversation(b)
     && !isReached(b) && !b.targets.some(wasInvited)
     && !f.ruledOut && !f.bizNote && !f.tooSmall && f.priority !== 'skip'
 }
@@ -5773,6 +5794,11 @@ const handlers: Record<string, Handler> = {
     if (brand.usStatus === 'no') {
       return { queued: false, reason: 'notus', brandId: brand.id, brandName: brand.name }
     }
+    // Queued on purpose: a Pass's two weeks are over. (The automatic
+    // picks never reach a passed brand.)
+    if (brand.passedUntil) {
+      await prisma.brand.update({ where: { id: brand.id }, data: { passedUntil: null, passedTodayAt: null } })
+    }
 
     // Someone at this brand already wrote back: stop cold-pitching it.
     // A deliberate click (force) still goes through — that is a
@@ -6035,7 +6061,7 @@ const handlers: Record<string, Handler> = {
     // passedToday is NOT filtered here: it is a today-only state, and
     // these rows feed every day's preview.
     const allBrands = everyBrand.filter(b =>
-      !b.passedAt && !inConversation(b) && !b.doNotEmail && b.contacts.length > 0)
+      !b.passedAt && !passedNow(b) && !inConversation(b) && !b.doNotEmail && b.contacts.length > 0)
     const untouched = allBrands.filter(b =>
       !planned.has(b.id) && !byBrand.has(b.id) &&
       !b.targets.some(t => t.sentAt ||
@@ -7448,7 +7474,7 @@ const handlers: Record<string, Handler> = {
     // Open to suggest at all: never reached, not set aside, not in talks,
     // and not already planned for some day.
     const openAll = brands.filter(b =>
-      !isReached(b) && !b.passedAt && !b.doNotEmail && !inConversation(b) && !ctx.pinnedOn.has(b.id))
+      !isReached(b) && !b.passedAt && !passedNow(b) && !b.doNotEmail && !inConversation(b) && !ctx.pinnedOn.has(b.id))
     const fits = new Map(openAll.map(b => [b.id, planBrandFit(b, fitRates)]))
     let hiddenSmall = 0, ruledOut = 0
     const open = openAll.filter(b => {
@@ -8615,11 +8641,28 @@ const handlers: Record<string, Handler> = {
 
   // Pass for today: keep a brand out of today's suggestions without
   // archiving it. Nothing to undo — it comes back by itself tomorrow.
+  // Since Oct 7 2026 a Pass also keeps it out of every automatic pick
+  // (Best fit, suggestions, Brands not reached yet) for PASS_DAYS; a hand
+  // add clears it.
   async passBrandToday({ brandId, on = true }: any) {
     const brand = await prisma.brand.update({
       where: { id: brandId },
-      data: { passedTodayAt: on ? new Date() : null },
+      data: on
+        ? { passedTodayAt: new Date(), passedUntil: new Date(Date.now() + PASS_DAYS * 864e5) }
+        : { passedTodayAt: null, passedUntil: null },
     })
+    // Off the Schedule's coming days too, or a pin would bring it back.
+    if (on) {
+      const plan = await readPlan()
+      const today = localDayKey()
+      let changed = false
+      for (const k of Object.keys(plan)) {
+        if (k < today || !plan[k]?.brandIds?.includes(brandId)) continue
+        plan[k].brandIds = plan[k].brandIds.filter(x => x !== brandId)
+        changed = true
+      }
+      if (changed) await writePlan(plan)
+    }
     // Passing has to actually empty the day, not just stop suggesting.
     // People already stamped into today's queue are what the Schedule
     // reads back as "in today's queue", so leaving them stamped meant a
@@ -8638,7 +8681,7 @@ const handlers: Record<string, Handler> = {
       })
       unqueued = r.count
     }
-    return { id: brand.id, name: brand.name, passedToday: !!brand.passedTodayAt, unqueued }
+    return { id: brand.id, name: brand.name, passedToday: !!brand.passedTodayAt, passedUntil: brand.passedUntil, unqueued }
   },
 
   // -------- follow-ups that nothing else surfaces --------
@@ -10006,6 +10049,7 @@ const handlers: Record<string, Handler> = {
   // tier, reachable decision makers, and how the brand's category has
   // actually replied to us so far. Feeds the list under the queue.
   async nextBestBrands({ take = 15 }: any = {}) {
+    await loadCategoryPriority()
     const [brands, sent, replies] = await Promise.all([
       prisma.brand.findMany({
         where: { doNotEmail: false, passedAt: null, ...notPassedToday(), AND: [SOLD_IN_US] },
@@ -10043,8 +10087,10 @@ const handlers: Record<string, Handler> = {
     // "add their person" prompt — otherwise a brand added from the
     // LinkedIn tab vanished until someone remembered Needs Contacts.
     const twoWeeks = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
+    // A category set to Skip (betting, Oct 7 2026) is never offered.
+    const skipped = (b: (typeof brands)[number]) => categoryPriority(b.category) === 'skip'
     const fresh = brands
-      .filter(b => !b.contacts.length && !touched(b) && b.createdAt >= twoWeeks)
+      .filter(b => !b.contacts.length && !touched(b) && !skipped(b) && b.createdAt >= twoWeeks)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .map(b => ({
         id: b.id, name: b.name, category: b.category, tier: b.tier,
@@ -10052,7 +10098,7 @@ const handlers: Record<string, Handler> = {
       }))
 
     const rows = brands
-      .filter(b => b.contacts.length && !touched(b))
+      .filter(b => b.contacts.length && !touched(b) && !skipped(b))
       .map(b => {
         let score = 0
         const why: string[] = []

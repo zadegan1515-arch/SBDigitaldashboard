@@ -43,8 +43,9 @@ export type Priority = 'top' | 'middle' | 'low' | 'skip'
 export const PRIORITIES: Priority[] = ['top', 'middle', 'low', 'skip']
 export const PRIORITY_POINTS: Record<Priority, number> = { top: 30, middle: 15, low: 0, skip: 0 }
 export const PRIORITY_WORD: Record<Priority, string> = { top: 'Top', middle: 'Middle', low: 'Low', skip: 'Skip' }
+// betting = skip: Leo, Oct 7 2026 "put all the betting aside for now and not have them in any outreach".
 export const DEFAULT_CATEGORY_PRIORITY: Record<string, Priority> = {
-  betting: 'top', spirits: 'top', rtd: 'top', alcohol: 'top', beverage: 'top', energy: 'top', electrolytes: 'top', nicotine: 'top',
+  betting: 'skip', spirits: 'top', rtd: 'top', alcohol: 'top', beverage: 'top', energy: 'top', electrolytes: 'top', nicotine: 'top',
   apparel: 'low', athletic: 'low', tech: 'low', software: 'low', fintech: 'low',
 }
 export function priorityOf(category: string | null | undefined, custom?: Record<string, string> | null): Priority {

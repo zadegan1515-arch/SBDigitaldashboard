@@ -95,6 +95,8 @@ model Brand {
   // tomorrow. Nobody has to remember to undo it, which is the whole
   // difference from archiving.
   passedTodayAt DateTime?
+  // Pass (Leo, Oct 7 2026): off every automatic outreach pick until then (14 days).
+  passedUntil   DateTime?
 
   // How many people to work at once at this brand (1-4). Null = follow
   // recommendWorkPeople, which opens three or four threads at a brand
