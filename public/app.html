@@ -1528,95 +1528,153 @@
   .req-pill b{color:var(--ink-1);font-weight:700}
   .req-note{margin-top:10px;font-size:13px;color:var(--ink-2);font-style:italic}
   /* Opening intro (Leo, Oct 2026: "an animation as i open the command center … the sb agency logo";
-     Oct 6: "more like an iron man logo where it lights up then goes into the site", no line under it).
-     Arc-reactor rings spin in, the logo powers on (flicker → glow → a metal glint), an energy pulse
-     rolls out, then it zooms through into the site. Black / white / silver like the SB Agency logo
-     (Oct 6). Plays on every load and reload (Leo, Oct 6); skipped for reduced motion and automated
-     browsers; click / any key skips. */
-  #sb-intro{position:fixed;inset:0;z-index:2147483000;background:#0b0b0f;display:grid;place-items:center;
-    overflow:hidden;cursor:pointer;transition:opacity .6s ease .2s}
-  #sb-intro::before{content:"";position:absolute;width:140vmax;height:140vmax;left:50%;top:50%;
-    transform:translate(-50%,-50%) scale(.3);border-radius:50%;opacity:0;
-    background:radial-gradient(circle,rgba(255,255,255,.05) 0%,rgba(200,200,212,.02) 28%,transparent 58%);
-    animation:sbiGlow 1.8s ease-out .9s forwards}
-  #sb-intro .sbi-stage{position:relative;display:flex;flex-direction:column;align-items:center;
-    transition:transform .9s cubic-bezier(.7,0,.2,1),opacity .7s ease,filter .9s ease}
-  #sb-intro .sbi-mark{position:relative;width:min(400px,64vw);display:grid;place-items:center}
-  #sb-intro .sbi-hud{position:absolute;left:50%;top:50%;width:min(590px,92vw);height:auto;
-    transform:translate(-50%,-50%);overflow:visible;pointer-events:none}
-  #sb-intro .sbi-hud circle{fill:none;stroke:#6e6e7a;transform-origin:200px 200px;opacity:0}
-  #sb-intro .sbi-r1{stroke-width:1.2;stroke-dasharray:3 9;animation:sbiRing 1s cubic-bezier(.2,.8,.2,1) .05s forwards,sbiSpin 9s linear infinite}
-  #sb-intro .sbi-r2{stroke-width:2.4;stroke-dasharray:120 40 20 40;animation:sbiRing 1s cubic-bezier(.2,.8,.2,1) .2s forwards,sbiSpinBack 6s linear infinite}
-  #sb-intro .sbi-r3{stroke-width:.8;animation:sbiRing 1.1s cubic-bezier(.2,.8,.2,1) .35s forwards}
-  #sb-intro .sbi-r4{stroke-width:6;stroke-dasharray:2 14;stroke:#9c9caa;animation:sbiRing 1s ease .5s forwards,sbiSpin 14s linear infinite}
-  #sb-intro .sbi-logo{position:relative;width:100%;height:auto;display:block;opacity:0;
-    animation:sbiPower 1.2s steps(1,end) .55s forwards,sbiLit 1.4s ease-out 1.25s forwards}
-  #sb-intro .sbi-sheen{position:absolute;inset:0;pointer-events:none;
-    -webkit-mask:url(/materials/sb-logo-white.png) center/100% 100% no-repeat;mask:url(/materials/sb-logo-white.png) center/100% 100% no-repeat;
-    background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.45) 48%,rgba(200,200,212,.35) 52%,transparent 65%);
-    background-size:260% 100%;background-position:130% 0;animation:sbiSheen .9s ease-in-out 1.75s forwards}
-  #sb-intro .sbi-wave{position:absolute;left:50%;top:50%;width:40vmin;height:40vmin;border-radius:50%;
-    border:2px solid rgba(200,200,212,.3);box-shadow:0 0 24px rgba(255,255,255,.08),inset 0 0 18px rgba(255,255,255,.05);
-    transform:translate(-50%,-50%) scale(.2);opacity:0;animation:sbiWave 1.1s cubic-bezier(.1,.6,.3,1) 1.55s forwards}
-  #sb-intro .sbi-tag{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.9em;
-    text-transform:uppercase;color:#9c9caa;opacity:0;transform:translateY(6px);position:absolute;left:0;right:0;top:calc(50% + min(295px,46vw) + 22px);text-align:center;padding-left:.9em;white-space:nowrap;
-    text-shadow:none;animation:sbiTag .8s ease-out 1.9s forwards}
-  #sb-intro .sbi-flash{position:absolute;inset:0;background:radial-gradient(circle,rgba(255,255,255,.18),rgba(200,200,212,.05) 40%,transparent 70%);opacity:0;pointer-events:none}
-  #sb-intro.sbi-out{opacity:0;pointer-events:none}
-  #sb-intro.sbi-out .sbi-stage{transform:scale(3.2);opacity:0;filter:blur(10px) brightness(1.15)}
-  #sb-intro.sbi-out .sbi-flash{animation:sbiFlash .7s ease-out forwards}
-  body.sbi-playing .app{opacity:0;transform:scale(.96)}
-  body.sbi-reveal .app{opacity:1;transform:none;transition:opacity .8s ease .25s,transform 1s cubic-bezier(.2,.7,.2,1) .15s}
-  @keyframes sbiRing{from{opacity:0;transform:scale(.55)}to{opacity:.7;transform:scale(1)}}
-  @keyframes sbiSpin{to{rotate:360deg}}
-  @keyframes sbiSpinBack{to{rotate:-360deg}}
-  /* power-on flicker: the arc reactor catching */
-  @keyframes sbiPower{0%{opacity:.15}12%{opacity:.7}20%{opacity:.08}34%{opacity:.85}42%{opacity:.25}58%{opacity:1}66%{opacity:.55}78%,100%{opacity:1}}
-  @keyframes sbiLit{0%{filter:drop-shadow(0 0 0 rgba(255,255,255,0)) brightness(.85)}
-    40%{filter:drop-shadow(0 0 14px rgba(255,255,255,.28)) brightness(1.05)}
-    100%{filter:drop-shadow(0 0 4px rgba(255,255,255,.1)) brightness(.92)}}
-  @keyframes sbiSheen{to{background-position:-30% 0}}
-  @keyframes sbiWave{0%{opacity:0;transform:translate(-50%,-50%) scale(.2)}15%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) scale(4.2)}}
-  @keyframes sbiTag{to{opacity:1;transform:none}}
-  @keyframes sbiGlow{to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
-  @keyframes sbiFlash{0%{opacity:0}25%{opacity:1}100%{opacity:0}}
-  @media (max-width:520px){#sb-intro .sbi-tag{font-size:11.5px;letter-spacing:.6em;padding-left:.6em}}
+     Oct 7: "just the SB agency logo … more professional, but not like too corporate-y … abstract …
+     really blend into what is going into the screen as a whole"). Rack focus, two planes of one mark: on
+     the site's own #0b0b0f, the logo's hand-drawn stroke blown up and far out of focus is the only light in
+     the room (soft arcs, a few % grey, drifting; fine grain, a whisper of the accent blue). Focus pulls from
+     that far plane to the real logo — it sharpens as the arcs behind it go softer — holds, then racks again
+     to the dashboard: the logo goes soft and fades while the page sharpens out of a slight blur, both on
+     screen for a beat. No flash, no glow, nothing brighter than the logo (Oct 6: "too bright, match up the
+     colors and brightness"). Plays on every load and reload; skipped for reduced motion, automated
+     browsers and ?nointro; a click or any key finishes it early. .app is never touched. */
+  #sb-intro{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;overflow:hidden;cursor:pointer}
+  #sb-intro.sbi-pass{pointer-events:none}
+  #sb-intro .sbi-veil,#sb-intro .sbi-bg,#sb-intro .sbi-bg>i,#sb-intro .sbi-far,#sb-intro .sbi-far canvas{position:absolute;pointer-events:none}
+  #sb-intro .sbi-veil,#sb-intro .sbi-bg,#sb-intro .sbi-shade{inset:0}
+  /* the dashboard underneath: soft and dim from the moment the rack starts, then sharp */
+  @supports (backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)){
+    #sb-intro.sbi-arm .sbi-veil{-webkit-backdrop-filter:blur(6px) brightness(.62);backdrop-filter:blur(6px) brightness(.62)}
+    #sb-intro.sbi-out .sbi-veil{-webkit-backdrop-filter:blur(0) brightness(1);backdrop-filter:blur(0) brightness(1);
+      transition:-webkit-backdrop-filter .66s cubic-bezier(.25,.1,.2,1) .22s,backdrop-filter .66s cubic-bezier(.25,.1,.2,1) .22s}
+    #sb-intro.sbi-fast .sbi-veil{transition:-webkit-backdrop-filter .42s cubic-bezier(.25,.1,.2,1) .1s,backdrop-filter .42s cubic-bezier(.25,.1,.2,1) .1s}}
+  /* the far plane: the mark ×3.8, drawn once into two small canvases (soft, softer) and scaled up */
+  #sb-intro .sbi-bg{background:#0b0b0f;transition:opacity .66s cubic-bezier(.45,0,.25,1) .1s}
+  #sb-intro .sbi-far{left:50%;top:50%;width:0;height:0;transform:translate3d(6vmax,2.5vmax,0) rotate(-5deg)}
+  #sb-intro .sbi-far canvas{left:-60vmax;top:-35.2vmax;width:120vmax;height:70.4vmax;opacity:0;will-change:transform,opacity;
+    transition:opacity .9s cubic-bezier(.4,0,.3,1) .2s,transform 1.6s cubic-bezier(.25,.5,.25,1) .15s}
+  #sb-intro.sbi-on .sbi-far{animation:sbiDrift 4s linear both}
+  #sb-intro.sbi-on .sbi-g1{opacity:.05;transition:opacity .55s cubic-bezier(.3,.3,.3,1)}
+  #sb-intro.sbi-in .sbi-g1{opacity:0;transform:scale(1.05);transition:opacity .9s cubic-bezier(.4,0,.3,1) .2s,transform 1.6s cubic-bezier(.25,.5,.25,1) .15s}
+  #sb-intro.sbi-in .sbi-g2{opacity:.06;transform:scale(1.05)}
+  /* a whisper of the accent, low left; the edges fall back to the page colour (never darker) */
+  #sb-intro .sbi-tint{width:80vmax;height:80vmax;left:calc(50% - 30vw - 40vmax);top:calc(50% + 10vh - 40vmax);border-radius:50%;
+    background:radial-gradient(closest-side,rgba(79,131,247,.032),rgba(79,131,247,.022) 45%,rgba(79,131,247,.008) 75%,transparent);animation:sbiFade 1s ease-out both}
+  #sb-intro .sbi-shade{background:radial-gradient(ellipse 75% 70% at 50% 50%,rgba(11,11,15,0) 45%,rgba(11,11,15,.7))}
+  #sb-intro .sbi-grain{inset:-120px;opacity:.045;will-change:transform;animation:sbiGrain .6s steps(1,end) infinite;
+    background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 2.2 0 0 0 -1'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E")}
+  /* the logo: out of focus → crisp (a touch under pure white); on the rack it goes soft first */
+  #sb-intro .sbi-mark{position:relative;width:min(400px,64vw)}
+  #sb-intro .sbi-logo{display:block;width:100%;height:auto;opacity:0;filter:blur(min(13px,2.6vw));transform:scale(1.04);
+    transition:opacity .85s cubic-bezier(.25,.4,.3,1),filter 1s cubic-bezier(.4,.1,.1,1),transform 1.3s cubic-bezier(.2,.7,.2,1)}
+  #sb-intro.sbi-in .sbi-logo{opacity:.92;filter:none;transform:none}
+  #sb-intro.sbi-out .sbi-logo{opacity:0;filter:blur(min(16px,3.2vw));transform:scale(1.06);
+    transition:opacity .66s cubic-bezier(.35,0,.25,1) .08s,filter .7s cubic-bezier(.45,0,.55,1),transform .9s cubic-bezier(.3,0,.2,1)}
+  #sb-intro.sbi-out .sbi-bg{opacity:0}
+  #sb-intro.sbi-out .sbi-far canvas{transform:scale(1.12);transition:opacity .9s,transform 1s cubic-bezier(.3,0,.2,1)}
+  /* skipped: the same rack, quicker */
+  #sb-intro.sbi-fast .sbi-logo{transition:opacity .34s cubic-bezier(.35,0,.25,1),filter .36s cubic-bezier(.45,0,.55,1),transform .45s cubic-bezier(.3,0,.2,1)}
+  #sb-intro.sbi-fast .sbi-bg{transition:opacity .4s cubic-bezier(.45,0,.25,1) .04s}
+  @keyframes sbiFade{from{opacity:0}}
+  @keyframes sbiDrift{from{transform:translate3d(13vmax,8vmax,0) rotate(-11deg)}}
+  @keyframes sbiGrain{0%{transform:translate3d(0,0,0)}20%{transform:translate3d(-37px,23px,0)}40%{transform:translate3d(29px,-41px,0)}
+    60%{transform:translate3d(-13px,-61px,0)}80%{transform:translate3d(53px,17px,0)}}
 </style>
 </head>
 <body>
 <div id="sb-intro" aria-hidden="true">
-  <div class="sbi-stage">
-    <div class="sbi-mark">
-      <svg class="sbi-hud" viewBox="0 0 400 400" aria-hidden="true">
-        <circle class="sbi-r1" cx="200" cy="200" r="196"/>
-        <circle class="sbi-r2" cx="200" cy="200" r="178"/>
-        <circle class="sbi-r3" cx="200" cy="200" r="160"/>
-        <circle class="sbi-r4" cx="200" cy="200" r="140"/>
-      </svg>
-      <img class="sbi-logo" src="/materials/sb-logo-white.png" alt="">
-      <div class="sbi-sheen"></div>
-    </div>
-    <div class="sbi-tag">Command Center</div>
-  </div>
-  <div class="sbi-wave"></div>
-  <div class="sbi-flash"></div>
+  <i class="sbi-veil"></i>
+  <div class="sbi-bg"><div class="sbi-far"><canvas class="sbi-g1" width="360" height="211"></canvas><canvas class="sbi-g2" width="360" height="211"></canvas></div><i class="sbi-tint"></i><i class="sbi-shade"></i><i class="sbi-grain"></i></div>
+  <div class="sbi-mark"><img class="sbi-logo" src="/materials/sb-logo-white.png" width="1000" height="535" alt="" decoding="async"></div>
 </div>
 <script>
 (function(){
   var el = document.getElementById('sb-intro');
+  if (!el) return;
   var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (still || navigator.webdriver || /[?&]nointro\b/.test(location.search)) { el.remove(); return; }
-  document.body.classList.add('sbi-playing');
-  var done = false, t = setTimeout(finish, 3000);
-  function finish(){
-    if (done) return; done = true; clearTimeout(t);
-    document.body.classList.add('sbi-reveal'); document.body.classList.remove('sbi-playing');
-    el.classList.add('sbi-out');
-    removeEventListener('keydown', finish, true);
-    setTimeout(function(){ el.remove(); document.body.classList.remove('sbi-reveal'); }, 1300);
+  var img = el.querySelector('.sbi-logo'), veil = el.querySelector('.sbi-veil');
+  var t0 = 0, phase = 0, endAt = 0, tHold, tEnd, tPass, tWait;
+  var LEAD = 360, HOLD = 1750, OUT = 910, FAST = 520, LAST = 3350;   // ms
+  // the clock starts on the first painted frame (a tab opened in the background plays it when shown)
+  function since(){ return t0 ? Date.now() - t0 : 0; }
+  // the far plane: the logo's strokes (its AGENCY letters lifted out) drawn small and out of focus, twice
+  // (soft, softer); CSS scales the canvases up, so the blur costs nothing per frame
+  function far(){
+    try {
+      var src = document.createElement('canvas'), sx = src.getContext('2d'), i, X = [0,62,157,218,302,351,594,656,754,814,940,1000];
+      var fl = window.CanvasRenderingContext2D && 'filter' in CanvasRenderingContext2D.prototype;
+      if (!sx) return;
+      src.width = 360; src.height = 211; sx.drawImage(img, 20, 20, 320, 171);
+      for (i = 0; i < X.length; i += 2) sx.clearRect(19 + X[i] * .32, 112, (X[i + 1] - X[i]) * .32 + 2, 30);
+      [['.sbi-g1', 2.5], ['.sbi-g2', 5]].forEach(function(g){
+        var c = el.querySelector(g[0]), x = c && c.getContext && c.getContext('2d');
+        if (!x) return;
+        if (fl) { x.filter = 'blur(' + g[1] + 'px)'; x.drawImage(src, 0, 0); return; }
+        // no canvas blur (older Safari, iOS): average the mark over a small disc of offsets, a lens's own defocus
+        var r = g[1] * 2, i, j, n = 37;
+        x.globalCompositeOperation = 'lighter'; x.globalAlpha = 1 / n; x.drawImage(src, 0, 0);
+        for (i = 1; i <= 3; i++) for (j = 0; j < 6 * i; j++) x.drawImage(src, r * i / 3 * Math.cos(j * Math.PI / 3 / i + i), r * i / 3 * Math.sin(j * Math.PI / 3 / i + i));
+      });
+    } catch (e) {}
   }
-  el.addEventListener('click', finish);
-  addEventListener('keydown', finish, true);
+  // the far plane shows, then focus pulls to the logo (it sharpens, the arcs behind go softer)
+  function begin(){
+    if (phase) return; phase = 1;
+    far();
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){
+      if (phase !== 1) return;
+      el.classList.add('sbi-on');
+      setTimeout(function(){
+        if (phase !== 1) return;
+        if (img) getComputedStyle(img).filter;
+        el.classList.add('sbi-in');
+        // the rack to the dashboard: after the hold, and never so late the whole thing runs past ~3.5 s from load
+        tHold = setTimeout(rack, Math.max(350, Math.min(HOLD, LAST - OUT - since())));
+      }, LEAD);
+    }); });
+  }
+  function rack(fast){
+    if (phase === 3) return;
+    if (phase === 2) { if (fast) hurry(); return; }
+    phase = 2; clearTimeout(tHold); clearTimeout(tWait);
+    el.classList.add('sbi-arm');
+    if (veil) getComputedStyle(veil).opacity;           // commit the soft start of the dashboard
+    if (fast) el.classList.add('sbi-fast');
+    el.classList.add('sbi-out');
+    finish(fast ? FAST : OUT);
+  }
+  // the intro keeps catching clicks (a click is a skip, never a click on the page under it) until its last ~120 ms
+  function finish(ms){
+    clearTimeout(tEnd); clearTimeout(tPass);
+    endAt = Date.now() + ms;
+    tPass = setTimeout(function(){ el.classList.add('sbi-pass'); }, Math.max(0, ms - 120));
+    tEnd = setTimeout(end, ms);
+  }
+  // a click or key during the rack: play the rest of it ~2.4x faster
+  function hurry(){
+    var k = 2.4, left = Math.max(0, endAt - Date.now());
+    if (left < 260) return;
+    try { (el.getAnimations ? el.getAnimations({ subtree: true }) : []).forEach(function(a){
+      if (a.transitionProperty) { if (a.updatePlaybackRate) a.updatePlaybackRate(k); else a.playbackRate = k; } }); } catch (e) {}
+    finish(left / k + 20);
+  }
+  function end(){
+    phase = 3; clearTimeout(tHold); clearTimeout(tEnd); clearTimeout(tPass); clearTimeout(tWait);
+    removeEventListener('keydown', skip, true);
+    el.remove();
+  }
+  function skip(){ rack(true); }
+  el.addEventListener('pointerdown', skip);
+  addEventListener('keydown', skip, true);
+  // a slow or missing logo never holds the dashboard: no logo by ~1.1 s → straight to the hand-off
+  requestAnimationFrame(function(){ t0 = Date.now(); tWait = setTimeout(function(){ if (!phase) rack(); }, 1100); });
+  function ok(){ return img && img.complete && img.naturalWidth > 0; }
+  function fail(){ if (!phase) rack(); }
+  // decode() can reject while the image is still loading (some WebKit builds): only a real failure skips
+  function late(){ if (ok()) begin(); else if (img.complete) fail(); else { img.addEventListener('load', begin); img.addEventListener('error', fail); } }
+  if (!img) rack();
+  else if (img.decode) img.decode().then(begin, late);
+  else late();
 })();
 </script>
 <div class="app">
