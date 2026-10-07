@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.28
+// @version      1.29
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -83,7 +83,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.28';
+  var VERSION = '1.29';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1307,6 +1307,9 @@
     if (!job.step) {
       job.step = { phase: item.research ? 'research' : peopleUrl(item.linkedinUrl, '') ? 'read' : 'search', pass: 0, triedAka: false, seen: 0, added: 0, navs: 0, startedAt: Date.now(), hiddenMs: 0 };
       saveFill(job);
+      // Leo marked it "None of these": never searched under its own name
+      // again — straight to its parent's page, or done.
+      if (item.noPage && job.step.phase === 'search') return endBrand(job, 'you marked it as having no LinkedIn page');
     }
     var st = job.step;
     // Only a page this run opened itself counts (navs > 0) — never the
@@ -1431,6 +1434,7 @@
         saveFill(job2);
         return runFill();
       }
+      if (r && r.outcome === 'markedNone') return endBrand(job2, 'you marked it as having no LinkedIn page');
       if (r && r.outcome !== 'review' && !st.triedAka && akaName(item)) {
         st.triedAka = true; st.navs = 0;
         job2.nextAt = Date.now() + rand(3000, 6000);
