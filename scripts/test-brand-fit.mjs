@@ -89,7 +89,8 @@ t('no money known: LinkedIn size stands in', () => {
 
 t('category priority: Top 30, Middle 15, Low 0, Skip 0 (Leo, Oct 7 2026)', () => {
   const pts = (c, priority) => scoreBrand({ ...base, category: c, priority }).reasons.find(r => /priority category/.test(r.text)).points
-  for (const c of ['betting', 'spirits', 'rtd', 'alcohol', 'beverage', 'energy', 'electrolytes', 'nicotine']) assert.equal(pts(c), 30, c)
+  for (const c of ['spirits', 'rtd', 'alcohol', 'beverage', 'energy', 'electrolytes', 'nicotine']) assert.equal(pts(c), 30, c)
+  assert.equal(priorityOf('betting'), 'skip', 'betting set aside (Leo, Oct 7 2026)')
   for (const c of ['apparel', 'athletic', 'tech', 'software', 'fintech']) assert.equal(pts(c), 0, c)
   for (const c of ['beauty', 'wellness', 'cpg', 'qsr']) assert.equal(pts(c), 15, c)
   assert.equal(pts('apparel', 'top'), 30, 'Leo\'s own setting wins over the default')

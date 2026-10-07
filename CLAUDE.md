@@ -227,7 +227,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   "N brands don't fit … Make the day match". **Category priority** (Setting `categoryPriority` over
   `DEFAULT_CATEGORY_PRIORITY`, `getCategoryPriority` / `setCategoryPriority`, More ▾ → Category priority… modal
   `#cp-scrim`): Top +30 / Middle +15 / Low 0 / Skip 0 and never picked by itself (a hand add still works).
-  **Pass brand** on a LinkedIn-tab brand card = `passBrandToday` (whole brand off today; unsent people back to the pool).
+  **Pass = two weeks off** (Leo, Oct 7 2026: "when i pass on a brand it should not show up in the outreach tab again for at least two weeks"): `passBrandToday` (LinkedIn card **Pass brand**, Brands not reached yet **Pass**, the Schedule's × on today's automatic rows, brand page Take off today) sets `passedTodayAt` + `Brand.passedUntil` = now + `PASS_DAYS` (14), un-stamps today's people and unpins it from coming days; `notPassedToday()` / `passedNow()` keep it out of Best fit, category rotation, suggestForDay and nextBestBrands until then. A hand add (planAddBrands, queueBrandTargets) clears it. `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-pass-e2e.js`.
+  **Betting set aside** (Leo, Oct 7 2026: "put all the betting aside for now and not have them in any outreach"): `betting: 'skip'` in `DEFAULT_CATEGORY_PRIORITY` (brand-fit.ts) — never auto-picked, and nextBestBrands leaves Skip categories out; a hand add still works. Put it back with Category priority.
   **Who goes first** (Leo, Sep 2026): a day's planned brands go out in their plan order
   (`plan[day].brandIds`) — numbered on the cards, ↑ ↓ or drag a card within its day
   (`planReorderDay`). Whole brands in that order while they fit in the day's 30 (after anyone sent

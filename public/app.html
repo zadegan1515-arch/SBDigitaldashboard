@@ -3660,7 +3660,7 @@ document.addEventListener('click', function (ev) {
   if (!el) return;
   el.disabled = true;
   api('passBrandToday', { brandId: el.getAttribute('data-oqbpass') }).then(function (r) {
-    toast((r.name || 'Brand') + ' passed for today' + (r.unqueued ? ' — ' + r.unqueued + ' back in the pool' : ''));
+    toast((r.name || 'Brand') + ' passed — off outreach for 2 weeks' + (r.unqueued ? ' — ' + r.unqueued + ' back in the pool' : ''));
     loadOutreach();
   }).catch(function (err) { el.disabled = false; toast(err.message); });
 });
@@ -7320,7 +7320,7 @@ function bpOff() {
       return x;
     }) : x;
   }).then(function (x) {
-    var text = today ? 'Off today — back tomorrow' : 'Off ' + W;
+    var text = today ? 'Passed — off outreach for 2 weeks' : 'Off ' + W;
     text += x.unqueued ? ' · ' + sdPlural(x.unqueued, 'person', 'people') + ' back in the pool.' : '.';
     toast(name + ' — ' + text);
     bpDone(id, text, false, !!x.unqueued);
@@ -11873,7 +11873,7 @@ function sdMove(id, name, from, to) {
       if (res) sdTakeResults(to, [res]);
       toast(name + ' → ' + sdDayTag(to) + (res ? ': ' + sdOutcome(res) : ''));
     } else {
-      toast(name + (offToday ? ' is off today — back tomorrow' : ' is off the schedule') +
+      toast(name + (offToday ? ' passed — off outreach for 2 weeks' : ' is off the schedule') +
         (r.unqueued ? ' · ' + sdPlural(r.unqueued, 'person', 'people') + ' back in the pool' : ''));
     }
     return sdRefresh();
@@ -12093,7 +12093,7 @@ function sdAutoCard(b, key, isToday) {
   // later day's automatic row is the day's own pick, so it has none — Move
   // to… pins it elsewhere, Archive takes it off outreach.
   var x = isToday
-    ? '<button class="btn-ghost sd-cardx" data-stoday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" title="Not today — back on its own tomorrow" aria-label="Pass ' + esc(b.name) + ' for today">×</button>'
+    ? '<button class="btn-ghost sd-cardx" data-stoday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" title="Pass — off outreach for 2 weeks" aria-label="Pass ' + esc(b.name) + ' for 2 weeks">×</button>'
     : '';
   var menu = '<div class="sd-menu-row">' + sdMoveSel(b.id, b.name, '', key, isToday && b.inQueue) + '</div>' +
     (sdIsShort(SCHED.labels[b.id]) ? sdLiLink(b) : '') +
@@ -13824,7 +13824,7 @@ var SCHED_DRAG = null;
       var tname = t.getAttribute('data-sn');
       t.disabled = true;
       api('passBrandToday', { brandId: t.getAttribute('data-stoday') }).then(function () {
-        toast('Passed ' + tname + ' for today — back tomorrow');
+        toast('Passed ' + tname + ' — off outreach for 2 weeks');
         return sdRefresh();
       }).catch(function (err) { toast(err.message); sdRefresh(); });
       return;
@@ -14726,7 +14726,7 @@ function oqBrandCard(g) {
       // Leo, Oct 6 2026: "a pass button on the brand as a whole" — the
       // whole brand off today's list (passBrandToday: unsent people back
       // to the pool, nothing deleted; it can come up another day).
-      (c.sent < c.total ? '<button class="btn-ghost oq-bpass" data-oqbpass="' + esc(g.brandId) + '" title="Take the whole brand off today’s list. Its people go back to the pool; it can come back another day.">Pass brand</button>' : '') +
+      (c.sent < c.total ? '<button class="btn-ghost oq-bpass" data-oqbpass="' + esc(g.brandId) + '" title="Take the whole brand off outreach for 2 weeks. Its people go back to the pool.">Pass brand</button>' : '') +
     '</div>' +
     '<div class="oq-rows">' + rows.map(targetRow).join('') + '</div>' +
   '</div>';
@@ -18686,7 +18686,7 @@ function renderNextBest() {
               ? '<button class="btn-draft" data-nbperson="' + esc(b.id) + '" title="Add their person right here — a decision-maker title + LinkedIn queues them">+ Add person</button>'
               : '<span class="fit">' + b.contacts + ' contact' + (b.contacts === 1 ? '' : 's') + '</span>' +
                 '<button class="btn-draft" data-nbq="' + esc(b.id) + '">+ Add to today</button>') +
-            '<button class="btn-ghost" data-nbtoday="' + esc(b.id) + '" title="Not today — off today’s suggestions, back on its own tomorrow">Pass</button>' +
+            '<button class="btn-ghost" data-nbtoday="' + esc(b.id) + '" title="Off outreach for 2 weeks — adding it by hand brings it back sooner">Pass</button>' +
             '<button class="btn-ghost danger" data-nbp="' + esc(b.id) + '" title="Archive — never suggested again unless you bring it back on its brand page">Archive</button>' +
           '</div>' +
         '</div>' +
@@ -18713,7 +18713,7 @@ document.getElementById('nextbest').addEventListener('click', function (e) {
   if (nbToday) {
     nbToday.disabled = true;
     api('passBrandToday', { brandId: nbToday.getAttribute('data-nbtoday') }).then(function (r) {
-      toast(r.name + ' passed for today — back tomorrow');
+      toast(r.name + ' passed — off outreach for 2 weeks');
       renderNextBest();
     }).catch(function (err) { toast(err.message); nbToday.disabled = false; });
     return;
