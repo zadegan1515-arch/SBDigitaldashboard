@@ -231,6 +231,10 @@ const server = http.createServer((req, res) => {
       if (body.action === 'liMatched' && body.recheck) {
         return res.end(JSON.stringify({ ok: true, outcome: 'review', suggested: 'Native', candidates: 2 }));
       }
+      if (body.action === 'liMatched' && body.brandId === 'b-mn') {
+        // Leo pressed "None of these" after this run fetched its list.
+        return res.end(JSON.stringify({ ok: true, outcome: 'markedNone' }));
+      }
       if (body.action === 'liMatched') {
         const hit = (body.candidates || []).find(c => c.name === 'LMNT');
         return res.end(JSON.stringify(hit
@@ -378,6 +382,12 @@ const server = http.createServer((req, res) => {
   if (/^\/company\/slow-brand\/people\/?/.test(req.url)) {
     return res.end('<!doctype html><html><body><main><h1 class="org-top-card-summary__title">Slow Brand</h1><ul id="g"></ul></main>' +
       '<script>setTimeout(function () { document.getElementById("g").insertAdjacentHTML("beforeend", ' + JSON.stringify(FIRST) + '); }, 3000)</script></body></html>');
+  }
+  // Only other companies called ALP (staffing, aviation).
+  if (/^\/search\/results\/companies\/\?keywords=ALP(%20Pouches)?(&|$)/.test(req.url)) {
+    return res.end('<!doctype html><html><body><main><ul>' +
+      '<li><a href="https://www.linkedin.com/company/alp-consulting/">Alp Consulting Ltd.</a><div>Staffing and Recruiting • Bangalore</div></li>' +
+      '</ul></main></body></html>');
   }
   // A company search, the way LinkedIn lays out results.
   if (/^\/search\/results\/companies\/\?keywords=LMNT/.test(req.url)) {
@@ -1179,6 +1189,45 @@ const GM_SHIM = `
       await pg.close();
     }
     ok('a parent page the search can\'t place names what LinkedIn showed and is retried');
+
+    // 22. Brands Leo marked "None of these" (no LinkedIn page): never
+    // searched under their own name again — one with a parent goes
+    // straight to the parent's People tab, one without is done at once;
+    // one marked after the run fetched its list is searched once, and the
+    // run moves on without trying its other name.
+    {
+      fillItems = [
+        { brandId: 'b-np', name: 'Bulleit', aka: null, category: 'spirits', linkedinUrl: null, noPage: true, contacts: 0, focus: false, parent: { name: 'Diageo', search: 'Diageo', slug: 'diageo' } },
+        { brandId: 'b-nn', name: 'Arnold Palmer Spiked', aka: null, category: 'rtd', linkedinUrl: null, noPage: true, contacts: 0, focus: false, parent: null },
+        { brandId: 'b-mn', name: 'ALP', aka: 'ALP Pouches', category: 'nicotine', linkedinUrl: null, contacts: 0, focus: false, parent: null },
+      ];
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      await pg.uncheck('#sbliresearch');
+      await pg.uncheck('#sblilook');
+      await pg.fill('#sblifocus', '');
+      await pg.click('#sblifilllook');
+      await pg.click('#sblifillstart');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 90000 });
+      await pg.waitForTimeout(300);
+      const calls = sent.slice(before).filter(b => /^li(Matched|Capture|Swept)$/.test(b.action));
+      const run = calls.map(b => b.action + ':' + b.brandId + (b.action === 'liCapture' ? ':' + new URL(b.companyUrl).pathname : ''));
+      assert.deepEqual(run, [
+        'liCapture:b-np:/company/diageo/people/', 'liSwept:b-np',
+        'liSwept:b-nn',
+        'liMatched:b-mn', 'liSwept:b-mn',
+      ], 'no own-name search for the marked brands; the late one searched once, its other name never');
+      const nn = calls.find(b => b.action === 'liSwept' && b.brandId === 'b-nn');
+      assert.match(nn.note, /marked it as having no LinkedIn page/);
+      const mn = calls.find(b => b.action === 'liSwept' && b.brandId === 'b-mn');
+      assert.match(mn.note, /marked it as having no LinkedIn page/);
+      await pg.close();
+    }
+    ok('brands marked "None of these" aren\'t searched again: parent\'s page only, or skipped');
 
     // 6. No @grant lines: runs, shows the pill, says to reinstall.
     const bare = await browser.newPage();

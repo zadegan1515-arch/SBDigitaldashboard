@@ -677,6 +677,8 @@ export async function POST(req: NextRequest) {
       .map(b => ({
         brandId: b.id, name: b.name, aka: b.aka, category: b.category,
         linkedinUrl: b.linkedinUrl, contacts: b._count.contacts, focus: matchesFocus(b, terms),
+        // Leo said it has no page of its own: only its parent's is searched.
+        noPage: !b.linkedinUrl && confirmed[b.id] === 'none',
         // Nobody in marketing / partnerships on file yet (buyers.ts).
         noBuyer: countBuyers(b.contacts.map(c => c.title)).total < BUYER_TARGET,
         parent: parentFor(b.name, b.aka),
@@ -799,6 +801,14 @@ export async function POST(req: NextRequest) {
     // recheck: the saved page's People tab showed another industry
     // (liCapture's pageMismatch), and the run searched again.
     const recheck = body.recheck === true
+    // Leo said "None of these" (Leo, Oct 2026: "it should not be revisited
+    // on linkedin in a run"). A run that fetched its list before he did
+    // still searches it once — nothing goes back on his list, and the run
+    // moves on (to the parent company's page, if the brand has one).
+    if (!recheck && !brand.linkedinUrl) {
+      const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
+      if (confirmed[brand.id] === 'none') return NextResponse.json({ ok: true, outcome: 'markedNone' }, { headers: cors })
+    }
     if (brand.linkedinUrl && !recheck) return NextResponse.json({ ok: true, outcome: 'already', linkedinUrl: brand.linkedinUrl }, { headers: cors })
     const candidates: LiCompany[] = (Array.isArray(body.candidates) ? body.candidates : []).slice(0, 20)
       .map((c: any) => ({

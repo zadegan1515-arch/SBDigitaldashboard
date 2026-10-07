@@ -489,6 +489,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Leo picks a result, pastes a link, or "None of these" (`liPagePick` / `liPageNone`; Setting
   `liPageConfirmed` = slug the check never questions, or "none" = don't look again; a wrong saved
   page goes on None, named in the confirm). A pick clears the brand's rest so the next run reads it.
+  **None sticks** (Leo, Oct 2026: "it should not be revisited on linkedin in a run"): `liList` leaves it out, or —
+  with a parent — sends it with `noPage` and the script (≥1.29) goes straight to the parent's page, never its own
+  name; a run that fetched its list before the mark gets `liMatched` → `markedNone` (nothing back on the list, no
+  second-name search).
   **Leo's LinkedIn only** (his call, Sep 30): every call carries `me` (from LinkedIn's own
   `/voyager/api/me`, csrf = JSESSIONID, cached 30 min per tab; else the nav photo's alt); ingest
   claims the first account into Setting `liOwner` and answers 403 `notOwner` to any other on the fill /
