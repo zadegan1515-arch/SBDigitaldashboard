@@ -74,11 +74,12 @@ export function acceptRates(invites: Array<{ category: string | null; accepted: 
 
 // One brand the plan may put on a day: its category, whether it is Ready
 // (enough reachable people), and how many people it would put in play.
-export type WeekCand = { id: string; category: string | null; ready: boolean; size: number }
+// fit = its Brand Fit score: a Best fit day takes the highest first.
+export type WeekCand = { id: string; category: string | null; ready: boolean; size: number; fit?: number }
 // A planned day as it stands: the brands already pinned to it (and how many
 // people each sends) and the category Leo set, if any.
 export type WeekDayIn = { date: string; kept: Array<{ id: string; going: number }>; category: string | null }
-export type WeekSource = 'yours' | 'asked' | 'picked' | 'full' | 'none'
+export type WeekSource = 'yours' | 'asked' | 'picked' | 'bestfit' | 'full' | 'none'
 export type WeekDayOut = {
   date: string
   category: string | null
@@ -113,6 +114,9 @@ export function planWeekDays(opts: {
   lastSent: ReadonlyMap<string, number>
   rateOf: (category: string | null) => number
   related: Partial<Record<string, string[]>>
+  // A day without a category: 'bestfit' (the default since Oct 7 2026)
+  // keeps it Best fit; 'pick' gives it a category, the rules above.
+  openDays?: 'bestfit' | 'pick'
 }): WeekDayOut[] {
   const { cap, lastSent, rateOf, related } = opts
   const forced = opts.forced ?? {}
@@ -148,6 +152,10 @@ export function planWeekDays(opts: {
     if (f && f !== '__pick') {
       category = f
       source = 'asked'
+    } else if (!category && !f && room > 0 && opts.openDays !== 'pick') {
+      // No category (Leo, Oct 7 2026): the day is Best fit — every
+      // category, the highest Brand Fit first.
+      source = 'bestfit'
     } else if ((f === '__pick' || !category) && room > 0) {
       const options = [...byCat.keys()]
         .filter(k => k && k !== 'unresolved')
@@ -187,7 +195,12 @@ export function planWeekDays(opts: {
         left -= c.size
       }
     }
-    if (room > 0) {
+    if (room > 0 && source === 'bestfit') {
+      // fit < 0 = a category Leo set to Skip: never on a Best fit day.
+      const all = [...byCat.values()].flat().filter(c => !used.has(c.id) && (c.fit ?? 0) >= 0)
+        .sort((x, y) => (y.fit ?? 0) - (x.fit ?? 0))
+      take(all, 'day')
+    } else if (room > 0) {
       if (category) take(avail(category), 'day')
       const rel = category ? related[category] ?? [] : []
       for (const k of rel) take(avail(k), 'related')

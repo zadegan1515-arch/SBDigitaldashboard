@@ -16,7 +16,7 @@ for (const f of fs.readdirSync(out)) {
   const p = join(out, f)
   fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace(/from '\.\/([\w-]+)'/g, "from './$1.js'"))
 }
-const { scoreBrand, isTooSmall, dollarsToCents, shortMoney, cleanResearchRow, TOO_SMALL_SALES_CENTS } =
+const { scoreBrand, priorityOf, isTooSmall, dollarsToCents, shortMoney, cleanResearchRow, TOO_SMALL_SALES_CENTS } =
   await import(pathToFileURL(join(out, 'brand-fit.js')).href)
 
 let n = 0
@@ -87,18 +87,35 @@ t('no money known: LinkedIn size stands in', () => {
   assert.equal(small.tooSmall, true)
 })
 
-t('18–24 categories score, others do not', () => {
-  for (const c of ['energy', 'electrolytes', 'rtd', 'spirits', 'nicotine', 'betting', 'apparel', 'athletic', 'beauty']) {
-    assert.equal(scoreBrand({ ...base, category: c }).reasons.find(r => /18–24/.test(r.text)).good, true, c)
-  }
-  assert.equal(scoreBrand({ ...base, category: 'software' }).reasons.find(r => /18–24/.test(r.text)).good, false)
+t('category priority: Top 30, Middle 15, Low 0, Skip 0 (Leo, Oct 7 2026)', () => {
+  const pts = (c, priority) => scoreBrand({ ...base, category: c, priority }).reasons.find(r => /priority category/.test(r.text)).points
+  for (const c of ['betting', 'spirits', 'rtd', 'alcohol', 'beverage', 'energy', 'electrolytes', 'nicotine']) assert.equal(pts(c), 30, c)
+  for (const c of ['apparel', 'athletic', 'tech', 'software', 'fintech']) assert.equal(pts(c), 0, c)
+  for (const c of ['beauty', 'wellness', 'cpg', 'qsr']) assert.equal(pts(c), 15, c)
+  assert.equal(pts('apparel', 'top'), 30, 'Leo\'s own setting wins over the default')
+  assert.equal(scoreBrand({ ...base, category: 'energy', priority: 'skip' }).priority, 'skip')
+  assert.equal(priorityOf('apparel', { apparel: 'middle' }), 'middle')
+  assert.equal(priorityOf('nonsense'), 'middle')
+  assert.equal(priorityOf(null), 'middle', 'no category reads Middle')
+  assert.equal(priorityOf('apparel', { apparel: 'bogus' }), 'low', 'a junk saved value falls back to the default, not Middle')
+})
+
+t('category beats money unless the gap is huge', () => {
+  // A Top-category brand nobody has researched beats a Low-category brand with $50M raised…
+  const topUnknown = scoreBrand({ ...base, category: 'spirits' })
+  const lowFunded = scoreBrand({ ...base, category: 'apparel', fundingCents: 50 * M })
+  assert.ok(topUnknown.score > lowFunded.score, topUnknown.score + ' vs ' + lowFunded.score)
+  // …but a tiny Top brand loses to a $100M+ Low one.
+  const topTiny = scoreBrand({ ...base, category: 'spirits', liMembers: 8 })
+  const lowHuge = scoreBrand({ ...base, category: 'apparel', salesCents: 200 * M })
+  assert.ok(lowHuge.score > topTiny.score, lowHuge.score + ' vs ' + topTiny.score)
 })
 
 t('score stays 0..100 and every point has a reason', () => {
   const top = scoreBrand({ ...base, salesCents: 900 * M, sponsorsCollege: true, acceptRate: 0.9 })
   assert.equal(top.score, 100)
   assert.equal(top.reasons.reduce((s, r) => s + r.points, 0), 100)
-  const bottom = scoreBrand({ category: null, reachable: 0, need: 3, acceptRate: 0, now, salesCents: 0, sponsorsCollege: false })
+  const bottom = scoreBrand({ category: 'software', reachable: 0, need: 3, acceptRate: 0, now, salesCents: 0, sponsorsCollege: false })
   assert.equal(bottom.score, 0)
 })
 

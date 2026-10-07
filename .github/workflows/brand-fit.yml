@@ -25,6 +25,13 @@ on:
       - 'src/lib/buyers.ts'
       - 'src/lib/claude-hunt.ts'
       - 'src/lib/build-ideas.ts'
+      - 'src/lib/brand-search.ts'
+      - 'src/lib/plan-week.ts'
+      - 'src/lib/carry.ts'
+      - 'scripts/test-brand-search.mjs'
+      - 'scripts/test-plan-week.mjs'
+      - 'scripts/test-schedule.js'
+      - 'scripts/test-outreach-lists.js'
       - 'scripts/test-today*'
       - 'scripts/test-work-log.mjs'
       - 'src/app/api/data/**'
@@ -50,6 +57,13 @@ on:
       - 'src/lib/buyers.ts'
       - 'src/lib/claude-hunt.ts'
       - 'src/lib/build-ideas.ts'
+      - 'src/lib/brand-search.ts'
+      - 'src/lib/plan-week.ts'
+      - 'src/lib/carry.ts'
+      - 'scripts/test-brand-search.mjs'
+      - 'scripts/test-plan-week.mjs'
+      - 'scripts/test-schedule.js'
+      - 'scripts/test-outreach-lists.js'
       - 'scripts/test-today*'
       - 'scripts/test-work-log.mjs'
       - 'src/app/api/data/**'
@@ -86,9 +100,9 @@ jobs:
       - name: Types
         run: npx tsc --noEmit
       - name: Rules
-        run: node scripts/test-brand-fit.mjs && node scripts/test-brand-size.mjs && node scripts/test-stock.mjs && node scripts/test-work-log.mjs && node scripts/test-no-send.mjs && node scripts/test-queue-check.mjs && node scripts/test-claude-hunt.mjs && node scripts/test-chat-add.mjs
+        run: node scripts/test-brand-fit.mjs && node scripts/test-brand-size.mjs && node scripts/test-stock.mjs && node scripts/test-work-log.mjs && node scripts/test-no-send.mjs && node scripts/test-queue-check.mjs && node scripts/test-claude-hunt.mjs && node scripts/test-chat-add.mjs && node scripts/test-brand-search.mjs && node scripts/test-plan-week.mjs && node scripts/test-carry.mjs
       - name: The page against a fake dashboard
-        run: node scripts/test-brand-fit-ui.js && node scripts/test-brands-table.js && node scripts/test-today.js
+        run: node scripts/test-brand-fit-ui.js && node scripts/test-brands-table.js && node scripts/test-today.js && node scripts/test-schedule.js && node scripts/test-outreach-lists.js
       - name: The handlers on a real database
         run: node scripts/test-brand-fit-e2e.js && node scripts/test-today-e2e.js && node scripts/test-chat-add-e2e.js
         env:

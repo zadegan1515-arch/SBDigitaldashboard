@@ -247,13 +247,18 @@ async function main() {
 
     // 4. Schedule Fill box.
     await page.evaluate(() => gotoView('schedule'));
+    // Suggestions sit folded under Fill to 30 (Oct 7 2026); open the fold.
+    await page.waitForSelector('#sched-days [data-sdfillbox] .sd-orow', { state: 'attached' });
+    await page.click('#sched-days [data-sdsugfold] > summary');
     await page.waitForSelector('#sched-days [data-sdfillbox] .sd-orow');
     assert.equal(last('suggestForDay').args.hideSmall, true);
     const box = await page.textContent('#sched-days [data-sdfillbox]');
     assert.match(box, /4 too small hidden/);
     assert.match(box, /Fit 77/);
     const before = calls.filter((c) => c.fn === 'suggestForDay').length;
-    await page.uncheck('#sched-days [data-hidesmall="sched"]');
+    // The Hide too small switch is in More ▾ now.
+    await page.click('#sd-more > summary');
+    await page.uncheck('#sched-extra [data-hidesmall="sched"]');
     await page.waitForFunction((b) => window.__calls === undefined, before);
     await page.waitForTimeout(300);
     const after = calls.filter((c) => c.fn === 'suggestForDay');

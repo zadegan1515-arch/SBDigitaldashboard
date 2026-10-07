@@ -167,11 +167,23 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `fillWholeBrands` is shared by the preview and `getTodayQueue`, so what the Schedule says is what
   the LinkedIn tab stamps; a day never passes 30 — `DAILY_SEND_LIMIT` in route.ts, Leo's call Sep 28
   2026, up from 20; the page shows the server's number via `sdCap()` / `SENT_TODAY.cap`, never a literal). Pinned cards say who goes or exactly why not
-  (`outreachGate` + `reasonText`). Adding: day search (`searchPlanBrands`; Enter adds the top match
-  and the cursor stays in the box for the next one — a redraw keeps the focused box's text, a box
-  Leo left clears), **Paste a list** (`matchBrandList`; a list pasted straight into a day's add box
-  opens it and checks at once), the day's **Fill box** (`suggestForDay`, any category, Fill to 30 =
-  whole brands that fit), category drill-in with multi-select (`categoryBrands`). Moving: drag onto a
+  (`outreachGate` + `reasonText`). **Kept simple** (Leo, Oct 7 2026: "a little clunky there's a lot going on"):
+  on screen = Plan for Zach / What went out / **More ▾** (Plan my week, Undo week plan, Category priority,
+  + Add a sending day, Hide too small), the LinkedIn weekly line only when it warns, the find box, the
+  contacts check as one line (nothing when every brand is ready), the day columns, Categories & coverage
+  folded (`#sched-catfold`, remembered in localStorage `sb.schedCats`). A card is one row — name, contacts
+  dot, tags, × (Unpin, or Pass today on today's automatic rows) and ⋯ (up / down, Move to, Send today anyway,
+  LinkedIn people, SponsorUnited, Archive, links); a day's ⋯ has Move what's left / Remove this sending day /
+  See every brand; Invited today is a fold. Adding: **Find a brand** box above the days (`renderSchedFind`,
+  `sf*`; never redrawn, so focus and text survive refreshes): day chips (last pick in localStorage
+  `sb.schedFindDay`), rows from `searchPlanBrands` = the whole roster ranked in memory by
+  `src/lib/brand-search.ts` (exact → starts with → word → contains → aka → spelling slip "did you mean";
+  `node scripts/test-brand-search.mjs`), then addable first, then Brand Fit; each row says what Add does on
+  that day (incl. "N in today's queue — Add moves them"); ↑ ↓ Enter adds a plain add only ("Add anyway" =
+  click or Shift+Enter; an Enter before the rows land adds only an exact addable match); **Paste a list**
+  (`matchBrandList`; a list pasted into the box opens it for the chosen day). The day's **Fill box** = "N open
+  spots · Fill to 30" + a "Suggestions" fold (`suggestForDay`; follows the day's category — no menu of its own;
+  Best fit = every category, best fit first), category drill-in with multi-select (`categoryBrands`). Moving: drag onto a
   day or "Move to" (`planMoveBrand`; moving off today un-stamps unsent people, nothing shelved). Plan
   writes go through `planAddBrands` / `planMoveBrand` / `planRemoveBrand` / `planSetCategory`.
   **Put on a day outside the Schedule** (Leo: "make sure adding brands to days is easy"): the brand
@@ -183,15 +195,31 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   sends exactly the previewed ids. Days = `planDayChoices` = the Schedule's columns
   (`scheduleDays`, shared with `getOutreachPlan`) + the next off weekday, which `addDay` opens as
   a sending day; `planAddBrands` refuses a non-sending day without it.
-  **Best fit day** (Leo, Oct 6 2026: "make a category best fit"): a day's category menu has **★ Best fit (any
-  category)** = `BEST_FIT_DAY` ('bestfit'; `inDayTheme` / `isCategoryTheme` in route.ts): every category, the fill
-  ordered by Brand Fit score (`brandFit`) instead of person fit — getTodayQueue, getOutreachPlan, fillToday;
-  clearTodayOffCategory does nothing on it. `CAT_NAMES.bestfit` is added after `CAT_KEYS` so it never files a brand.
-  **A category change reshapes the day** (Leo, Oct 6: "why does this not update when i do a new category" — a day
-  full of planned brands left the category nothing to fill): after `planSetCategory` the page asks
-  `planApplyCategory({ date, category })` (preview) and on Leo's confirm applies it — a category day moves its
-  planned brands of other categories to the next sending day (`planMoveBrand`); a Best fit day reorders its planned
-  brands by Brand Fit (`planReorderDay`). Brands that already sent someone today stay put.
+  **Best fit is the default day** (Leo, Oct 7 2026: "from now on … just put the best fit brands that we haven't
+  reached out to there"; replaced the category rotation by date): a day without a category = `BEST_FIT_DAY`
+  ('bestfit'; `dayTheme(cat) = cat || 'bestfit'`, `inDayTheme` / `isCategoryTheme` in route.ts) — in getTodayQueue,
+  getOutreachPlan, fillToday (hands a Best fit day to getTodayQueue), suggestForDay ('bestfit' = every category,
+  fit first, Skip left out) and Plan my week (an open day stays Best fit, `source: 'bestfit'`; "Let the plan pick
+  a category" = the old rules via `__pick` / `openDays: 'pick'`). Who: `bestFitRanked` / `bestFitEligible` /
+  `BEST_FIT_BRAND_WHERE` — brands **never reached** (no invite, no email; a "Withdrew" doesn't count), not archived /
+  do-not-email / not US / in talks / out of business, not too small, not a **Skip** category; read from brands,
+  not the waiting pool (a brand with nobody queued yet is still a pick — queueBrandTargets opens it), best
+  Brand Fit first; a brand already in today's list only takes its waiting people (never topped up). The menu:
+  "★ Best fit — not reached yet" first, then categories grouped Top → Skip (`sdCatOptions`, from
+  `getOutreachPlan.priority`). `CAT_NAMES.bestfit` is added after `CAT_KEYS` so it never files a brand.
+  **The category menu replaces the day's list** (Leo, Oct 6–7: "the drop down menu sometimes doesn't replace the
+  entire list so make sure that happens"): `planApplyCategory({ date, category })` previews (writes nothing) via
+  `dayThemeChanges` — planned brands outside the new category (on Best fit: planned brands it would never pick),
+  today's unsent queued people at other such brands, a today closed by Move what's left. Nothing to take off →
+  applied at once; else the day shows a card naming each (Replace the list / Just change the category / Cancel).
+  Apply sends `expect` (the preview's signature; anything changed since → `stale`, shown again), writes the
+  category, unpins back to the pool (never onto the next day), un-stamps (queuedFor null, nothing shelved), reopens
+  today, refills today's queue; Best fit keeps its remaining pins in fit order. Brands that sent today are never
+  touched. Undo = `undoDayTheme` (Setting `dayThemeLast`; preview, then puts category, pins and queued people back;
+  the toolbar's "Undo" link via `getOutreachPlan.themeUndo`). `offTheme` per day = what a re-pick would take off →
+  "N brands don't fit … Make the day match". **Category priority** (Setting `categoryPriority` over
+  `DEFAULT_CATEGORY_PRIORITY`, `getCategoryPriority` / `setCategoryPriority`, More ▾ → Category priority… modal
+  `#cp-scrim`): Top +30 / Middle +15 / Low 0 / Skip 0 and never picked by itself (a hand add still works).
   **Pass brand** on a LinkedIn-tab brand card = `passBrandToday` (whole brand off today; unsent people back to the pool).
   **Who goes first** (Leo, Sep 2026): a day's planned brands go out in their plan order
   (`plan[day].brandIds`) — numbered on the cards, ↑ ↓ or drag a card within its day
@@ -216,7 +244,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   **Add** (pins to that day; the fill makes room) and "Other day…". **Plan my week** (`planWeek`
   preview → apply, `undoPlanWeek` via Setting `planWeekLast`; the rules are pure in
   `src/lib/plan-week.ts`, `node scripts/test-plan-week.mjs`): the next 3 sending days — keeps pins
-  and Leo's categories, gives each open day a category that can fill it (never the day before's,
+  and Leo's categories, an open day stays Best fit (highest fit first, any category, Skip left out); "Let the plan
+  pick a category" gives it one that can fill it (never the day before's,
   least recently worked first, then accept rate), fills to 30 with whole brands (category →
   `RELATED_CATEGORIES` → the rest), never takes a brand in today's queue; nothing is written until
   Apply. **LinkedIn weekly limit**: ~100 invites per rolling 7 days (`LINKEDIN_WEEK_LIMIT`, warns
@@ -238,9 +267,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   stored; `Target.fitScore` is the per-person score, a different thing). Score 0–100, every point with a
   reason: **money weighs most** (Leo: rank by budget, any size) — annual sales or venture money, whichever
   says more ($5M+ raised = "a lot"; a round in the last 2 years adds); no money known → LinkedIn size
-  (`brand-size.ts`) stands in; then already sponsors college / music, an 18–24 category
-  (`YOUTH_CATEGORIES`: drinks, nicotine & betting, apparel / athletic / beauty), people we can reach,
-  the category's 90-day accept rate; while sales aren't known the stronger of funding and the size
+  (`brand-size.ts`) stands in (max 40); then **Leo's category priority** (Oct 7 2026: betting, alcohol, drinks,
+  nicotine, electrolytes Top +30; clothing, athletic, tech, AI, fintech Low 0; the rest Middle +15; Skip = 0 and never
+  auto-picked; `priorityOf`, editable per category — replaced the flat 18–24 bonus, so a Top brand with money
+  unknown beats a Low brand with $50M raised, and only a $100M+ Low brand beats a tiny Top one), already sponsors
+  college / music (15), people we can reach (10), the category's 90-day accept rate (5); while sales aren't known the stronger of funding and the size
   estimate counts (a parent company's brand keeps the parent's size). **Ruled out** = confirmed not sold
   in the US only (Leo's one hard no): nobody there is ever queued or emailed — `SOLD_IN_US` guard in
   `NOT_IN_CONVERSATION` (the rotation's pool), `fillToday`, `nextBestBrands`, today's list, the email
@@ -273,7 +304,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   still as the import left them). Never write facts without that review. **Suggest Archive**
   (`fitArchive` preview → apply, Undo `fitArchiveUndo`; Setting `fitArchiveLast`): confirmed not US,
   closed/acquired, or researched with every signal known to be absent (sales AND funding looked up and
-  under the bars, no college / music found, not 18–24) and a low score; never a brand in talks (reply, deal,
+  under the bars, no college / music found, not a Top category) and a low score; never a brand in talks (reply, deal,
   activation); apply = the usual archive (passedAt + queued people shelved) and takes them off upcoming
   Schedule days. Tests: `test-brand-fit.mjs`, `test-stock.mjs`, `test-brand-fit-ui.js` (page, fake
   /api/data), `test-brand-fit-e2e.js` (real handlers, throwaway Postgres:
@@ -676,6 +707,9 @@ cloud environment's settings).
   `outreachDayRows`, written by `getOutreachPlan`) that sent nobody — is pinned to the next sending
   day and its stamped people go back to the pool so that day's queue stamps them again. Stays put,
   with why: archived / do-not-email / in talks, passed that day, planned for another day, nobody left.
+  **Onto a Best fit day** (Oct 7 2026) only real commitments carry: brands planned by hand, and people
+  queued at brands Best fit would pick; what the day only showed, and queued people at brands already
+  reached / Skip / too small, go back to waiting (Best fit ranks them again) — so the day stays best fit.
   Rules pure in `src/lib/carry.ts` (`node scripts/test-carry.mjs`); last roll in Setting
   `outreachCarry` (Schedule "Carried over" note + "From <day>" tags, **Move them to…** =
   `moveCarried`), `outreachCarryDone` = { day, through, running } (one request claims the roll with a

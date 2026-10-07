@@ -8,9 +8,11 @@
 //     venture funding ($5M+ raised is "a lot"). No money known → estimate
 //     it from the brand's LinkedIn size (brand-size.ts — the same size the
 //     LinkedIn fill uses, one definition).
-//   - Also counts: already sponsors college / music, a category that sells
-//     to 18–24 (drinks, nicotine & betting, apparel / athletic / beauty),
-//     people we can reach on file, and how well the category converts.
+//   - Category priority next (Oct 7 2026, below): Top / Middle / Low /
+//     Skip, Leo's ranking — betting, alcohol, drinks, nicotine at the top,
+//     clothing and tech at the bottom.
+//   - Also counts: already sponsors college / music, people we can reach
+//     on file, and how well the category converts.
 //   - Ruled out: confirmed not sold in the US. Unknown → kept, tagged "US?".
 //     Out of business / acquired → suggested for Archive, Leo decides.
 //   - Too small (a switch, on by default): sales under $1M; sales not
@@ -30,12 +32,29 @@ export const BIG_FUNDING_CENTS = 5_000_000 * 100 // $5M raised = "a lot of ventu
 export const RECENT_ROUND_DAYS = 730 // a round in the last 2 years is fresh money
 export const LOW_FIT = 35 // under this with no signal → suggested for Archive
 
-// The categories that sell to 18–24 (Leo's pick).
-export const YOUTH_CATEGORIES = [
-  'electrolytes', 'energy', 'beverage', 'rtd', 'spirits', 'alcohol',
-  'nicotine', 'betting',
-  'apparel', 'athletic', 'beauty',
-]
+// Category priority (Leo, Oct 7 2026: "betting, alcohol, beverages as a
+// whole, nicotine, electrolytes as the highest … clothing and tech as the
+// lowest … the middle, products like skincare and Manscaped"). It replaced
+// the flat 15 points for "sells to 18–24": category now decides more than
+// money unless the money gap is huge. Leo can change any category on the
+// Schedule (Setting categoryPriority); these are the defaults. Skip = never
+// picked automatically (a hand add still works).
+export type Priority = 'top' | 'middle' | 'low' | 'skip'
+export const PRIORITIES: Priority[] = ['top', 'middle', 'low', 'skip']
+export const PRIORITY_POINTS: Record<Priority, number> = { top: 30, middle: 15, low: 0, skip: 0 }
+export const PRIORITY_WORD: Record<Priority, string> = { top: 'Top', middle: 'Middle', low: 'Low', skip: 'Skip' }
+export const DEFAULT_CATEGORY_PRIORITY: Record<string, Priority> = {
+  betting: 'top', spirits: 'top', rtd: 'top', alcohol: 'top', beverage: 'top', energy: 'top', electrolytes: 'top', nicotine: 'top',
+  apparel: 'low', athletic: 'low', tech: 'low', software: 'low', fintech: 'low',
+}
+export function priorityOf(category: string | null | undefined, custom?: Record<string, string> | null): Priority {
+  const c = String(category || '')
+  // A saved value that isn't a priority (hand-edited Setting) falls back
+  // to the default, not to Middle.
+  const v = custom && custom[c]
+  if (v && (PRIORITIES as string[]).includes(v)) return v as Priority
+  return DEFAULT_CATEGORY_PRIORITY[c] ?? 'middle'
+}
 
 export type UsStatus = 'yes' | 'no'
 export type BizStatus = 'active' | 'closed' | 'acquired'
@@ -56,6 +75,7 @@ export interface FitInput {
   reachable: number // people we can write to (email or LinkedIn)
   need: number // threads the brand wants open (contactLabel's need)
   acceptRate?: number | null // the category's smoothed accept rate, 0..1
+  priority?: Priority // the category's priority (default from DEFAULT_CATEGORY_PRIORITY)
   now: Date
 }
 
@@ -67,6 +87,7 @@ export interface FitReason {
 
 export interface FitResult {
   score: number // 0..100
+  priority: Priority // the category's priority — 'skip' is never picked automatically
   size: BrandSize
   tooSmall: boolean
   tooSmallWhy: string | null
@@ -200,24 +221,27 @@ export function scoreBrand(b: FitInput): FitResult {
   for (const m of money) add(m.good, m.text, m === best ? m.pts : 0)
 
   // 2. Already sponsors college / music.
-  if (b.sponsorsCollege === true) add(true, 'already sponsors college / music', 20)
+  // (Oct 7 2026: 20 → 15, and 4./5. trimmed, to make room for category
+  // priority at 30 and keep the total at 100.)
+  if (b.sponsorsCollege === true) add(true, 'already sponsors college / music', 15)
   else if (b.sponsorsCollege === false) add(false, 'no college / music sponsorships found', 0)
-  else add(null, 'college / music sponsorships not checked', 6)
+  else add(null, 'college / music sponsorships not checked', 5)
 
-  // 3. Sells to 18–24.
-  if (b.category && YOUTH_CATEGORIES.includes(b.category)) add(true, 'category sells to 18–24', 15)
-  else add(false, 'category not aimed at 18–24', 0)
+  // 3. Category priority (Leo's ranking; replaced "sells to 18–24").
+  const pr = b.priority ?? priorityOf(b.category)
+  add(pr === 'top' ? true : pr === 'middle' ? null : false,
+    PRIORITY_WORD[pr] + ' priority category' + (pr === 'skip' ? ' — never picked automatically' : ''), PRIORITY_POINTS[pr])
 
   // 4. People we can reach.
-  if (b.reachable >= b.need && b.reachable > 0) add(true, b.reachable + ' people we can reach', 15)
-  else if (b.reachable > 0) add(null, 'only ' + b.reachable + ' of ' + b.need + ' people we can reach', 8)
+  if (b.reachable >= b.need && b.reachable > 0) add(true, b.reachable + ' people we can reach', 10)
+  else if (b.reachable > 0) add(null, 'only ' + b.reachable + ' of ' + b.need + ' people we can reach', 5)
   else add(false, 'no one we can reach yet', 0)
 
   // 5. The category converts.
-  if (b.acceptRate == null) add(null, 'category accept rate not known yet', 5)
+  if (b.acceptRate == null) add(null, 'category accept rate not known yet', 2)
   else {
-    const p = Math.max(0, Math.min(10, Math.round(b.acceptRate * 25)))
-    add(p >= 5, 'category accepts ' + Math.round(b.acceptRate * 100) + '% of invites', p)
+    const p = Math.max(0, Math.min(5, Math.round(b.acceptRate * 12.5)))
+    add(p >= 3, 'category accepts ' + Math.round(b.acceptRate * 100) + '% of invites', p)
   }
 
   const score = Math.max(0, Math.min(100, reasons.reduce((s, r) => s + r.points, 0)))
@@ -233,19 +257,20 @@ export function scoreBrand(b: FitInput): FitResult {
 
   // Researched and nothing speaks for it — each signal known to be absent:
   // money looked up and under the bars, no college / music sponsorships
-  // found, not an 18–24 category. Unknowns are not "no": research that
+  // found, not a Top category. Unknowns are not "no": research that
   // found nothing never puts a brand on the list.
   const moneyKnown = b.salesCents != null && b.fundingCents != null
   const moneySignal = (b.salesCents != null && b.salesCents >= TOO_SMALL_SALES_CENTS)
     || (b.fundingCents != null && b.fundingCents >= BIG_FUNDING_CENTS)
-  const youth = !!b.category && YOUTH_CATEGORIES.includes(b.category)
-  const noSignals = !!toDate(b.researchedAt) && moneyKnown && !moneySignal && b.sponsorsCollege === false && !youth
+  // A Top category (Leo's priority) is a signal on its own.
+  const noSignals = !!toDate(b.researchedAt) && moneyKnown && !moneySignal && b.sponsorsCollege === false && pr !== 'top'
   const archiveWhy = ruledOut ?? bizNote ??
-    (noSignals && score < LOW_FIT ? 'low fit (' + score + '), no signal: no budget or funding, no college / music sponsorships, not 18–24' : null)
+    (noSignals && score < LOW_FIT ? 'low fit (' + score + '), no signal: no budget or funding, no college / music sponsorships, not a Top category' : null)
 
   const small = isTooSmall({ ...b })
   return {
     score,
+    priority: pr,
     size,
     tooSmall: small.tooSmall,
     tooSmallWhy: small.why,

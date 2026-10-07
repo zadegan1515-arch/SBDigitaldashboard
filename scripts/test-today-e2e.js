@@ -181,31 +181,65 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual(order, ['Rich Pop', 'Poor Fizz'], 'both categories, best fit first: ' + JSON.stringify((day.brands || []).map(b => b.name)))
     ok('a Best fit day takes every category, the best Brand Fit first')
 
-    // 9. A category change reshapes a day full of planned brands.
+    // 9. A category change replaces the day's list (Leo, Oct 7 2026: "the
+    //    drop down menu sometimes doesn't replace the entire list"): preview
+    //    writes nothing, apply sends exactly the preview (a stale one is
+    //    refused), planned brands go back to the pool (no next-day pile-up),
+    //    Undo puts the day back.
     const opd = await data('getOutreachPlan', {})
     const fut = opd.days.filter(d => d.date > opd.today)
     const dayA = fut[0].date
     await data('planSetCategory', { date: dayA, category: null })
     await data('planAddBrands', { date: dayA, brandIds: ['bf_poor', 'bf_rich'] })
     let pv2 = await data('planApplyCategory', { date: dayA, category: 'energy' })
-    assert.deepEqual(pv2.moves.map(m => m.name), ['Rich Pop'], 'only the other category moves')
-    const plan0 = await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })
-    assert.ok(JSON.parse(plan0.value)[dayA].brandIds.includes('bf_rich'), 'a preview moves nothing')
-    const ap = await data('planApplyCategory', { date: dayA, category: 'energy', preview: false })
-    assert.equal(ap.moved, 1)
+    assert.deepEqual(pv2.unpin.map(m => m.name), ['Rich Pop'], 'only the other category comes off')
+    assert.equal(pv2.changes, 1)
     let planNow = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value)
-    assert.deepEqual(planNow[dayA].brandIds, ['bf_poor'])
-    assert.ok(planNow[ap.to].brandIds.includes('bf_rich'), 'moved to the next sending day')
-    // Best fit: the planned brands in fit order.
-    await data('planMoveBrand', { brandId: 'bf_rich', from: ap.to, to: dayA })
+    assert.deepEqual([planNow[dayA].category, planNow[dayA].brandIds], [null, ['bf_poor', 'bf_rich']], 'a preview writes nothing')
+    const stale = await data('planApplyCategory', { date: dayA, category: 'energy', preview: false, expect: 'not-the-preview' })
+    assert.equal(stale.stale, true, 'an apply that is not the preview is refused')
+    const ap = await data('planApplyCategory', { date: dayA, category: 'energy', preview: false, expect: pv2.expect })
+    assert.equal(ap.unpinned, 1)
     planNow = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value)
-    assert.deepEqual(planNow[dayA].brandIds, ['bf_poor', 'bf_rich'])
-    pv2 = await data('planApplyCategory', { date: dayA, category: 'bestfit' })
-    assert.deepEqual(pv2.order.map(o => o.name), ['Rich Pop', 'Poor Fizz'])
-    await data('planApplyCategory', { date: dayA, category: 'bestfit', preview: false })
+    assert.deepEqual([planNow[dayA].category, planNow[dayA].brandIds], ['energy', ['bf_poor']])
+    assert.ok(!Object.values(planNow).some(d => d.brandIds.includes('bf_rich')), 'back to the pool, not onto the next day')
+    const un = await data('undoDayTheme', { preview: true })
+    assert.deepEqual(un.brands, ['Rich Pop'])
+    await data('undoDayTheme', {})
     planNow = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value)
-    assert.deepEqual(planNow[dayA].brandIds, ['bf_rich', 'bf_poor'])
-    ok('a category change moves other categories on; Best fit puts planned brands in fit order (preview first)')
+    assert.deepEqual([planNow[dayA].category, planNow[dayA].brandIds], [null, ['bf_poor', 'bf_rich']], 'Undo puts the day back')
+    // Best fit: a planned brand already reached comes off, the rest go in
+    // Brand Fit order.
+    await mk('bf_done', 'Done Co', 'spirits', { liMembers: 300 })
+    await prisma.target.updateMany({ where: { brandId: 'bf_done' }, data: { status: 'sent', sentAt: new Date(Date.now() - 20 * 864e5) } })
+    await prisma.contact.create({ data: { brandId: 'bf_done', name: 'Done Extra', title: 'Brand Manager', linkedinUrl: 'https://www.linkedin.com/in/doneextra/' } })
+    await data('planAddBrands', { date: dayA, brandIds: ['bf_done'] })
+    pv2 = await data('planApplyCategory', { date: dayA, category: null })
+    assert.deepEqual(pv2.unpin.map(m => m.name), ['Done Co'], 'Best fit takes off the brand already reached')
+    await data('planApplyCategory', { date: dayA, category: null, preview: false, expect: pv2.expect })
+    planNow = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value)
+    assert.deepEqual(planNow[dayA].brandIds, ['bf_rich', 'bf_poor'], 'the rest in fit order')
+    ok('a category change replaces the list: preview first, exact apply, back to the pool, Undo; Best fit drops reached brands')
+
+    // 9b. Best fit is the default (no category = Best fit), never reached
+    //     only, a Skip category never picked by itself.
+    await data('planRemoveBrand', { date: dayA, brandId: 'bf_rich' })
+    await data('planRemoveBrand', { date: dayA, brandId: 'bf_poor' })
+    for (const d of (await data('getOutreachPlan', {})).days) if (d.date >= op.today) await data('planSetCategory', { date: d.date, category: null })
+    await mk('bf_app', 'Thread Co', 'apparel', { fundingCents: 50n * 100000000n, sponsorsCollege: true, liMembers: 120 })
+    await data('setCategoryPriority', { category: 'apparel', priority: 'skip' })
+    const op9 = await data('getOutreachPlan', {})
+    const autoNames = op9.days.filter(d => d.date >= op9.today).flatMap(d => (d.brands || []).map(b => b.name))
+    assert.ok(op9.days.every(d => d.category === 'bestfit' && d.auto), 'every day without a category is Best fit')
+    assert.ok(autoNames.includes('Rich Pop'), 'a never-reached brand is picked: ' + JSON.stringify(autoNames))
+    assert.ok(!autoNames.includes('Done Co'), 'a brand already reached is never picked on a Best fit day')
+    assert.ok(!autoNames.includes('Thread Co'), 'a Skip category is never picked by itself')
+    const sug = await data('suggestForDay', { date: fut[0].date, category: 'bestfit' })
+    assert.ok(!sug.brands.some(b => b.name === 'Thread Co' || b.name === 'Done Co'), 'nor suggested')
+    const found = await data('searchPlanBrands', { q: 'thred co', date: fut[0].date })
+    assert.equal(found.brands[0] && found.brands[0].name, 'Thread Co', 'a hand search still finds it (spelling slip too)')
+    await data('setCategoryPriority', { category: 'apparel', priority: 'low' })
+    ok('Best fit is the default: never reached only, Skip never picked, search still finds everything')
 
     // 10. Leo's picked ideas: scoreboard, brand timeline, deals gone quiet, the week's recap.
     const ws = await data('weeklyScore', {})

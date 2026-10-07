@@ -86,6 +86,8 @@ const base = (over = {}) => ({
   lastSent: new Map(),
   rateOf: () => 0.2,
   related: { electrolytes: ['energy'], energy: ['electrolytes'], rtd: ['spirits'] },
+  // The category rules below; Best fit (the default) has its own tests.
+  openDays: 'pick',
   ...over,
 })
 const fillCat = (cat, n, size = 4, prefix = cat) => Array.from({ length: n }, (_, i) => cand(prefix + i, cat, size))
@@ -208,6 +210,24 @@ const fillCat = (cat, n, size = 4, prefix = cat) => Array.from({ length: n }, (_
   // Brands that go out nobody (size 0) are never offered.
   const p = planWeekDays(base({ cands: [cand('z', 'energy', 0), cand('y', 'energy', 3)], days: [day(DAYS[0])] }))
   is('size 0 brands skipped', p[0].add.map(a => a.id), ['y'])
+}
+
+{
+  // Best fit (the default since Oct 7 2026): a day with no category stays
+  // without one and takes the highest Brand Fit first, any category,
+  // whole brands, each brand on one day only.
+  const cands = [
+    { ...cand('a', 'energy', 4), fit: 50 }, { ...cand('b', 'apparel', 4), fit: 20 },
+    { ...cand('c', 'spirits', 4), fit: 80 }, { ...cand('d', 'betting', 4), fit: 70 },
+    { ...cand('e', 'wellness', 4), fit: 60 }, { ...cand('f', 'energy', 4), fit: 10 },
+  ]
+  const p = planWeekDays({ ...base({ cands, cap: 12, days: [day(DAYS[0]), day(DAYS[1])] }), openDays: undefined })
+  is('best fit: no category given', p.map(d => d.category), [null, null])
+  is('best fit: source', p.map(d => d.source), ['bestfit', 'bestfit'])
+  is('best fit: highest fit first, across categories', p[0].add.map(a => a.id), ['c', 'd', 'e'])
+  is('best fit: the next day takes the next best', p[1].add.map(a => a.id), ['a', 'b', 'f'])
+  const mine = planWeekDays({ ...base({ cands, cap: 12, days: [day(DAYS[0], [], 'energy')] }), openDays: undefined })
+  is('best fit: Leo\'s category still wins', [mine[0].category, mine[0].add[0].id], ['energy', 'a'])
 }
 
 console.log(fail ? `plan-week: ${pass} passed, ${fail} FAILED` : `plan-week: all ${pass} passed`)
