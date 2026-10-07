@@ -16,14 +16,17 @@ if (!['localhost', '127.0.0.1', '::1', '[::1]'].includes(host)) {
 }
 
 const ROOT = path.join(__dirname, '..');
-const PORT = Number(process.env.E2E_PORT || 3461);
+// Its own port: test-today-e2e runs just before it in CI on 3461, and its
+// dev server can still hold that port for a moment after it's told to stop.
+const PORT = Number(process.env.E2E_PORT || 3462);
 const BASE = 'http://127.0.0.1:' + PORT;
 const DASHBOARD_TOKEN = 'e2e-dashboard-token-0123456789abcdef';
 const M = 1000000 * 100; // $1M in cents
 
-const data = async (fn, args) => {
+const data = async (fn, args, timeoutMs) => {
   const r = await fetch(BASE + '/api/data', {
     method: 'POST',
+    signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + DASHBOARD_TOKEN },
     body: JSON.stringify({ fn, args: args || {} }),
   });
@@ -54,9 +57,11 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     server.stdout.on('data', d => { log += d; });
     server.stderr.on('data', d => { log += d; });
     const t0 = Date.now();
+    let lastErr = '';
     for (;;) {
-      try { await data('categoryReach'); break; } catch (e) {}
-      if (Date.now() - t0 > 240000) throw new Error('next dev never answered:\n' + log.slice(-3000));
+      // A request that hangs gives up after 60 s and is tried again.
+      try { await data('categoryReach', {}, 60000); break; } catch (e) { lastErr = String(e && e.message || e); }
+      if (Date.now() - t0 > 240000) throw new Error('next dev never answered (last try: ' + lastErr + '):\n' + log.slice(-3000));
       await new Promise(r => setTimeout(r, 1500));
     }
     ok('the dashboard runs locally (' + Math.round((Date.now() - t0) / 1000) + ' s to first answer)');
