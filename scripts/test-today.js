@@ -31,10 +31,10 @@ const ROOT = path.join(__dirname, '..', 'public');
 const TODAY = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 const S = { calls: [], args: {} };
 
-function recap(day) {
-  const isToday = !day || day === TODAY;
+function recap(day, to) {
+  const isToday = (!day || day === TODAY) && !to;
   return {
-    day: day || TODAY, today: TODAY, isToday,
+    day: day || TODAY, to: to || day || TODAY, range: !!to, today: TODAY, isToday,
     reached: {
       invites: 3,
       companies: [{ brandId: 'b1', name: 'Alpha Water', category: 'electrolytes', people: ['Ann Able', 'Ben Bright'] },
@@ -67,7 +67,7 @@ const H = {
     dmAfterDays: 2, nudgeAfterDays: 10, quietAfterDays: 7, calls: [] }),
   getActionQueue: () => ({ count: 0, items: [] }),
   getDashboard: () => ({}),
-  dayRecap: (a) => recap(a.day),
+  dayRecap: (a) => recap(a.day, a.to),
   addWorkLog: (a) => ({ day: a.day, saved: 2, chats: [], needs: 1 }),
   setWorkNeedDone: (a) => ({ id: a.id, needsDone: a.done ? [a.index] : [] }),
   pickBuildIdea: (a) => ({ picked: a.on ? [a.id] : [] }),
@@ -79,6 +79,15 @@ const H = {
     { brandId: 'b2', name: 'Bravo Energy', people: [
       { targetId: 't3', contactId: 'c3', name: 'Mo Market', title: 'Marketing Manager', linkedinUrl: null, problem: null,
         better: { contactId: 'c8', name: 'Spo Lead', title: 'Sponsorship Director', linkedinUrl: null, why: 'partnerships beats marketing' } } ] } ] }),
+  weeklyScore: () => ({ today: TODAY, goals: { invites: 90, accepts: 25, replies: 8, calls: 3, deals: 1, brands: 50 },
+    weeks: Array.from({ length: 8 }, (_, i) => ({ start: '2026-08-' + String(17 + i * 7 > 31 ? 31 : 17 + i * 7).padStart(2, '0'), invites: 10 * i, accepts: 2 * i, replies: i, calls: i % 2, deals: 0, brands: 5 })) }),
+  setWeeklyGoals: (a) => ({ goals: Object.assign({ invites: 90, accepts: 25, replies: 8, calls: 3, deals: 1, brands: 50 }, a.goals) }),
+  staleDeals: () => ({ days: 14, deals: [{ dealId: 'd1', brandId: 'b7', brandName: 'Quiet Co', name: 'Fall tour', stage: 'proposal', valueCents: 500000, nextStep: null, lastAt: '2026-09-01T00:00:00Z', lastWhat: 'email', quietDays: 35 }] }),
+  brandTimeline: () => ({ brandId: 'b1', name: 'Alpha Water', items: [
+    { at: '2026-10-06T15:00:00Z', kind: 'accepted', text: 'Ann Able — accepted on LinkedIn' },
+    { at: '2026-10-05T15:00:00Z', kind: 'sent', text: 'Ann Able — LinkedIn invite sent' },
+    { at: '2026-09-20T15:00:00Z', kind: 'brand', text: 'Brand added (discover)' }] }),
+  audienceEventStats: () => ({ rsvps: 120, checkins: 90, showRate: 75, revenueCents: 0, bySource: {}, byTicket: {}, bySchool: { UCLA: 50, USC: 40 }, byClassYear: { '2027': 30 }, byAgeBand: {}, ambassadors: [], repeatCount: 40 }),
   queueContact: (a) => ({ queued: true, contactName: 'Pat Partner' }),
   passContact: (a) => ({ passed: true, contactName: 'Sam Store' }),
   deleteWorkLog: (a) => (a.confirm ? { deleted: a.id, title: 'Brand hunt' } : { preview: true, day: TODAY, title: 'Brand hunt', chars: 24 }),
@@ -198,6 +207,40 @@ async function main() {
   assert.deepEqual(S.args.passContact[0], { contactId: 'c2' });
   console.log('ok 6 - today’s list: flags, copy for Zach (flagged left out), send anyway, swap');
 
+  // 8 ---------------------------------------------------------------
+  await page.evaluate(() => window.scrollTo(0, 0));
+  assert.equal(await page.$$eval('#hm-score .ws-t', (els) => els.length), 6, 'six scoreboard tiles');
+  assert.match(await page.textContent('#hm-score .ws-t'), /Invites\s*70\s*\/ 90/);
+  assert.match(await page.textContent('#hm-stale'), /Quiet Co.*Fall tour.*35 days ago/s);
+  await page.click('[data-wsedit="1"]');
+  await page.fill('[data-wsgoal="invites"]', '60');
+  await page.click('[data-wssave]');
+  await page.waitForTimeout(200);
+  assert.equal(S.args.setWeeklyGoals[0].goals.invites, 60);
+  assert.match(await page.textContent('#hm-score .ws-t'), /70\s*\/ 60/);
+  await page.click('#hm-week');
+  await page.waitForSelector('#recap:not([hidden]) .rc-card');
+  const wkArgs = S.args.dayRecap[S.args.dayRecap.length - 1];
+  assert.ok(wkArgs.to && wkArgs.day <= wkArgs.to, 'the week is a range: ' + JSON.stringify(wkArgs));
+  await page.evaluate(() => { window.__copied = null; navigator.clipboard.writeText = (t) => { window.__copied = t; return Promise.resolve(); }; });
+  await page.click('#recap [data-rc-copyweek]');
+  assert.match(await page.evaluate(() => window.__copied), /3 LinkedIn invites at 2 brands[\s\S]*• Alpha Water — 2/);
+  await page.keyboard.press('Escape');
+  // the brand timeline renders and loads on open
+  await page.evaluate(() => { btlRender('b1'); document.querySelector('[data-btl="b1"]').open = true; });
+  await page.waitForFunction(() => /accepted on LinkedIn/.test(document.getElementById('brand-timeline').textContent));
+  // the sponsor report: totals only, in a print window
+  const report = await page.evaluate(() => new Promise((res) => {
+    window.prompt = () => 'Monster';
+    window.open = () => ({ document: { write: (h) => res(h), close: () => {} } });
+    sponsorReport({ id: 'e1', name: 'Fall Fest', school: 'UCLA', capacity: 120 });
+  }));
+  assert.match(report, /SHOW REPORT FOR MONSTER/);
+  assert.match(report, /<b>90<\/b><span>in the room/);
+  assert.match(report, /UCLA/);
+  assert.ok(!/@/.test(report.replace(/@media/g, '')), 'no emails on the report');
+  console.log('ok 8 - scoreboard + goals, deals gone quiet, the week recap with Copy, brand timeline, sponsor report');
+
   // 5 ---------------------------------------------------------------
   await page.setViewportSize({ width: 390, height: 800 });
   await page.click('#hm-recap');
@@ -220,6 +263,19 @@ async function main() {
   await page.waitForTimeout(300);
   assert.equal(await page.evaluate(() => document.getElementById('dashboard').classList.contains('active')), true, 'the SB logo goes Home');
   console.log('ok 7 - opening the site lands on Home; the SB logo goes Home');
+
+  // 9 --------------------------------------------------------------- Zach's link on a phone
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto('about:blank');
+  await page.goto(base + '/app.html#zach');
+  await page.waitForTimeout(1200);
+  assert.equal(await page.evaluate(() => document.getElementById('dashboard').classList.contains('zach-only')), true);
+  assert.equal(await page.isVisible('#hm-glance'), false, 'no tiles in Zach view');
+  assert.equal(await page.isVisible('#hm-score'), false);
+  assert.equal(await page.isVisible('#zach-todo'), true);
+  await page.click('[data-zachall]');
+  assert.equal(await page.isVisible('#hm-glance'), true, 'Show the whole Home brings it back');
+  console.log('ok 9 - Zach\'s link on a phone shows only his list');
 
   assert.deepEqual(errors, [], 'no page errors');
   await browser.close();

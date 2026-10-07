@@ -162,6 +162,141 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal((await prisma.brand.findUnique({ where: { id: an.brandId } })).tier, null)
     ok('Discover adds: midsize → growth, otherwise no tier (never "established")')
 
+    // 8. A Best fit day: any category, the higher Brand Fit first.
+    const mk = async (id, name, category, extra) => {
+      await prisma.brand.create({ data: { id, name, category, usStatus: 'yes', ...extra } })
+      for (let i = 0; i < 3; i++) {
+        const c = await prisma.contact.create({ data: { brandId: id, name: name + ' P' + i, title: 'Head of Partnerships', linkedinUrl: 'https://www.linkedin.com/in/' + id + i + '/' } })
+        await prisma.target.create({ data: { brandId: id, contactId: c.id, status: 'queued' } })
+      }
+    }
+    await mk('bf_rich', 'Rich Pop', 'snacks', { fundingCents: 50n * 100000000n, sponsorsCollege: true, liMembers: 120 })
+    await mk('bf_poor', 'Poor Fizz', 'energy', { liMembers: 30 })
+    let op = await data('getOutreachPlan', {})
+    // Every coming day Best fit, so no category rotation takes one first.
+    for (const d of op.days) if (d.date >= op.today) await data('planSetCategory', { date: d.date, category: 'bestfit' })
+    op = await data('getOutreachPlan', {})
+    const day = op.days.find(d => (d.brands || []).some(b => b.name === 'Rich Pop' || b.name === 'Poor Fizz'))
+    const order = (day.brands || []).map(b => b.name).filter(n => n === 'Rich Pop' || n === 'Poor Fizz')
+    assert.deepEqual(order, ['Rich Pop', 'Poor Fizz'], 'both categories, best fit first: ' + JSON.stringify((day.brands || []).map(b => b.name)))
+    ok('a Best fit day takes every category, the best Brand Fit first')
+
+    // 9. A category change replaces the day's list (Leo, Oct 7 2026: "the
+    //    drop down menu sometimes doesn't replace the entire list"): preview
+    //    writes nothing, apply sends exactly the preview (a stale one is
+    //    refused), planned brands go back to the pool (no next-day pile-up),
+    //    Undo puts the day back.
+    const opd = await data('getOutreachPlan', {})
+    const fut = opd.days.filter(d => d.date > opd.today)
+    const dayA = fut[0].date
+    await data('planSetCategory', { date: dayA, category: null })
+    await data('planAddBrands', { date: dayA, brandIds: ['bf_poor', 'bf_rich'] })
+    let pv2 = await data('planApplyCategory', { date: dayA, category: 'energy' })
+    assert.deepEqual(pv2.unpin.map(m => m.name), ['Rich Pop'], 'only the other category comes off')
+    assert.equal(pv2.changes, 1)
+    let planNow = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value)
+    assert.deepEqual([planNow[dayA].category, planNow[dayA].brandIds], [null, ['bf_poor', 'bf_rich']], 'a preview writes nothing')
+    const stale = await data('planApplyCategory', { date: dayA, category: 'energy', preview: false, expect: 'not-the-preview' })
+    assert.equal(stale.stale, true, 'an apply that is not the preview is refused')
+    const ap = await data('planApplyCategory', { date: dayA, category: 'energy', preview: false, expect: pv2.expect })
+    assert.equal(ap.unpinned, 1)
+    planNow = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value)
+    assert.deepEqual([planNow[dayA].category, planNow[dayA].brandIds], ['energy', ['bf_poor']])
+    assert.ok(!Object.values(planNow).some(d => d.brandIds.includes('bf_rich')), 'back to the pool, not onto the next day')
+    const un = await data('undoDayTheme', { preview: true })
+    assert.deepEqual(un.brands, ['Rich Pop'])
+    await data('undoDayTheme', {})
+    planNow = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value)
+    assert.deepEqual([planNow[dayA].category, planNow[dayA].brandIds], [null, ['bf_poor', 'bf_rich']], 'Undo puts the day back')
+    // Best fit: a planned brand already reached comes off, the rest go in
+    // Brand Fit order.
+    await mk('bf_done', 'Done Co', 'spirits', { liMembers: 300 })
+    await prisma.target.updateMany({ where: { brandId: 'bf_done' }, data: { status: 'sent', sentAt: new Date(Date.now() - 20 * 864e5) } })
+    await prisma.contact.create({ data: { brandId: 'bf_done', name: 'Done Extra', title: 'Brand Manager', linkedinUrl: 'https://www.linkedin.com/in/doneextra/' } })
+    await data('planAddBrands', { date: dayA, brandIds: ['bf_done'] })
+    pv2 = await data('planApplyCategory', { date: dayA, category: null })
+    assert.deepEqual(pv2.unpin.map(m => m.name), ['Done Co'], 'Best fit takes off the brand already reached')
+    assert.deepEqual(pv2.reorder.map(o => o.name), ['Rich Pop', 'Poor Fizz'], 'and shows the new order before writing it')
+    await data('planApplyCategory', { date: dayA, category: null, preview: false, expect: pv2.expect })
+    planNow = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value)
+    assert.deepEqual(planNow[dayA].brandIds, ['bf_rich', 'bf_poor'], 'the rest in fit order')
+    ok('a category change replaces the list: preview first, exact apply, back to the pool, Undo; Best fit drops reached brands')
+
+    // 9b. Best fit is the default (no category = Best fit), never reached
+    //     only, a Skip category never picked by itself.
+    await data('planRemoveBrand', { date: dayA, brandId: 'bf_rich' })
+    await data('planRemoveBrand', { date: dayA, brandId: 'bf_poor' })
+    for (const d of (await data('getOutreachPlan', {})).days) if (d.date >= op.today) await data('planSetCategory', { date: d.date, category: null })
+    await mk('bf_app', 'Thread Co', 'apparel', { fundingCents: 50n * 100000000n, sponsorsCollege: true, liMembers: 120 })
+    await data('setCategoryPriority', { category: 'apparel', priority: 'skip' })
+    const op9 = await data('getOutreachPlan', {})
+    const autoNames = op9.days.filter(d => d.date >= op9.today).flatMap(d => (d.brands || []).map(b => b.name))
+    assert.ok(op9.days.every(d => d.category === 'bestfit' && d.auto), 'every day without a category is Best fit')
+    assert.ok(autoNames.includes('Rich Pop'), 'a never-reached brand is picked: ' + JSON.stringify(autoNames))
+    assert.ok(!autoNames.includes('Done Co'), 'a brand already reached is never picked on a Best fit day')
+    assert.ok(!autoNames.includes('Thread Co'), 'a Skip category is never picked by itself')
+    const sug = await data('suggestForDay', { date: fut[0].date, category: 'bestfit' })
+    assert.ok(!sug.brands.some(b => b.name === 'Thread Co' || b.name === 'Done Co'), 'nor suggested')
+    const found = await data('searchPlanBrands', { q: 'thred co', date: fut[0].date })
+    assert.equal(found.brands[0] && found.brands[0].name, 'Thread Co', 'a hand search still finds it (spelling slip too)')
+    await data('setCategoryPriority', { category: 'apparel', priority: 'low' })
+    ok('Best fit is the default: never reached only, Skip never picked, search still finds everything')
+
+    // 9c. Today: a planned brand that comes off takes its people out of
+    //     today's queue (named on the card); Undo puts them back and takes
+    //     out whoever the new category brought in.
+    const tk = op9.today
+    await data('setExtraSendingDay', { date: tk, on: true }) // a no-op on Tue–Thu
+    await mk('bf_snack', 'Snack Co', 'snacks', { liMembers: 80 })
+    await data('planAddBrands', { date: tk, brandIds: ['bf_snack'] })
+    const snackQueued = () => prisma.target.count({ where: { brandId: 'bf_snack', queuedFor: { not: null }, sentAt: null } })
+    const n9 = await snackQueued()
+    assert.ok(n9 > 0, 'planned for today = in today\'s queue')
+    const pvT = await data('planApplyCategory', { date: tk, category: 'energy' })
+    const off = pvT.unpin.find(u => u.id === 'bf_snack')
+    assert.ok(off, 'Snack Co comes off')
+    assert.equal(off.targetIds.length, n9, 'its queued people are named')
+    await data('planApplyCategory', { date: tk, category: 'energy', preview: false, expect: pvT.expect })
+    assert.equal(await snackQueued(), 0, 'and they leave today\'s queue')
+    const refill = (JSON.parse((await prisma.setting.findUnique({ where: { key: 'dayThemeLast' } })).value).refilled) || []
+    const unT = await data('undoDayTheme', { preview: true })
+    assert.ok(unT.people >= n9)
+    assert.equal(unT.out, refill.length)
+    await data('undoDayTheme', {})
+    assert.equal(await snackQueued(), n9, 'Undo puts them back')
+    if (refill.length) {
+      assert.equal(await prisma.target.count({ where: { id: { in: refill }, queuedFor: { not: null }, sentAt: null } }), 0, 'and takes the refill back out')
+    }
+    ok('today: a planned brand that comes off leaves the queue; Undo restores it and removes the refill')
+
+    // 10. Leo's picked ideas: scoreboard, brand timeline, deals gone quiet, the week's recap.
+    const ws = await data('weeklyScore', {})
+    const thisWeek = ws.weeks[ws.weeks.length - 1]
+    assert.equal(ws.weeks.length, 8)
+    assert.ok(thisWeek.invites >= 1 && thisWeek.accepts >= 1, 'this week counts the invite and the accept: ' + JSON.stringify(thisWeek))
+    assert.equal(ws.goals.invites, 90)
+    const sg = await data('setWeeklyGoals', { goals: { invites: 60, bogus: 5, calls: -1 } })
+    assert.deepEqual([sg.goals.invites, sg.goals.calls, sg.goals.bogus], [60, 3, undefined])
+    const tl = await data('brandTimeline', { brandId: 'b1' })
+    assert.ok(tl.items.some(i => /accepted on LinkedIn/.test(i.text)), 'the accept is on the timeline')
+    assert.ok(tl.items.some(i => /people added|person added/.test(i.text)))
+    assert.equal(tl.items[tl.items.length - 1].kind, 'brand', 'oldest last: the brand being added')
+    const monthAgo = new Date(Date.now() - 30 * 864e5)
+    const dq = await prisma.deal.create({ data: { brandId: 'b5', name: 'Echo × Fall tour', stage: 'proposal', valueCents: 500000 } })
+    await prisma.$executeRawUnsafe('UPDATE "Deal" SET "updatedAt" = $1::timestamp WHERE id = $2', monthAgo.toISOString(), dq.id)
+    await prisma.deal.create({ data: { brandId: 'b1', name: 'Fresh deal', stage: 'conversation' } })
+    const sd = await data('staleDeals', {})
+    const quiet = sd.deals.map(d => d.name)
+    assert.ok(!quiet.includes('Fresh deal'), 'a fresh deal is not quiet')
+    // Echo Pouch had outreach today (the send-list test), so it is not quiet either.
+    assert.ok(!quiet.includes('Echo × Fall tour'), 'brand activity counts as activity')
+    await prisma.targetEvent.updateMany({ where: { target: { brandId: 'b5' } }, data: { createdAt: monthAgo } })
+    assert.ok((await data('staleDeals', {})).deals.some(d => d.name === 'Echo × Fall tour' && d.quietDays >= 29), 'quiet for 30 days')
+    const wk = await data('dayRecap', { day: '2026-10-01', to: nyKey(new Date()) })
+    assert.equal(wk.range, true); assert.equal(wk.todo, null)
+    assert.ok(wk.chats.some(c => c.title === 'Old chat'), 'a range has every day\'s chats')
+    ok('scoreboard, goals, brand timeline, deals gone quiet, the week as a recap')
+
     console.log(n + ' checks passed');
   } catch (e) {
     console.error('FAILED:', e.stack || e.message);

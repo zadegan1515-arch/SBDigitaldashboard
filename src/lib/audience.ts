@@ -262,13 +262,16 @@ export async function audienceEventStats(id: string) {
   const eventId = String(id)
   const rows = await prisma.attendance.findMany({
     where: { eventId },
-    include: { attendee: { select: { id: true, school: true } } },
+    include: { attendee: { select: { id: true, school: true, classYear: true, ageBand: true } } },
   })
   const ins = rows.filter(r => r.checkedInAt)
   const bySource: Record<string, number> = {}
   const byTicket: Record<string, number> = {}
   const byAmb: Record<string, number> = {}
   const bySchool: Record<string, number> = {}
+  // Counts only — the sponsor report prints these, never a person.
+  const byClassYear: Record<string, number> = {}
+  const byAgeBand: Record<string, number> = {}
   let revenueCents = 0
   for (const r of rows) {
     bySource[r.source] = (bySource[r.source] || 0) + 1
@@ -276,6 +279,8 @@ export async function audienceEventStats(id: string) {
     if (r.referringAmbassadorRef) byAmb[r.referringAmbassadorRef] = (byAmb[r.referringAmbassadorRef] || 0) + 1
     const school = r.attendee.school || '(unknown)'
     bySchool[school] = (bySchool[school] || 0) + 1
+    if (r.attendee.classYear) byClassYear[r.attendee.classYear] = (byClassYear[r.attendee.classYear] || 0) + 1
+    if (r.attendee.ageBand) byAgeBand[r.attendee.ageBand] = (byAgeBand[r.attendee.ageBand] || 0) + 1
     revenueCents += r.pricePaidCents
   }
   // Repeat share: of this event's attendees, how many have any other
@@ -292,7 +297,7 @@ export async function audienceEventStats(id: string) {
     checkins: ins.length,
     showRate: rows.length ? Math.round((ins.length / rows.length) * 100) : 0,
     revenueCents,
-    bySource, byTicket, bySchool,
+    bySource, byTicket, bySchool, byClassYear, byAgeBand,
     ambassadors: Object.entries(byAmb).sort((a, b) => b[1] - a[1]).slice(0, 12)
       .map(([ref, count]) => ({ ref, count })),
     repeatCount: repeats.length,

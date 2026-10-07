@@ -406,6 +406,9 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(nat.why, 'wrong'); assert.equal(nat.pageIndustry, 'Individual and Family Services');
     assert.equal(nat.saved, 'https://www.linkedin.com/company/native-co./');
     assert.equal(nat.candidates[0].slug, 'native-cos', 'the page that fits first');
+    const repNat = (await (await fetch(BASE + '/api/reports/linkedin', { headers: { Authorization: 'Bearer ' + REPORT_TOKEN } })).json()).pageReview.find(e => e.brand === 'Native');
+    assert.equal(repNat.why, 'wrong'); assert.equal(repNat.results[0].name.length > 0, true, 'the report shows the results it saw');
+    assert.ok(!JSON.stringify(repNat).includes('slug'), 'company names and industries only');
     assert.equal((await prisma.brand.findUnique({ where: { id: 'b_nat' } })).linkedinUrl, 'https://www.linkedin.com/company/native-co./', 'the run never swaps a saved page itself');
     const picked = await data('liPagePick', { brandId: 'b_nat', url: 'https://www.linkedin.com/company/native-cos/' });
     assert.equal(picked.linkedinUrl, 'https://www.linkedin.com/company/native-cos/');
@@ -414,6 +417,23 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const again = (await ingest({ action: 'liList', focus: 'electrolyte', research: true, me: { slug: 'leo-z', name: 'Leo Z' } })).j;
     assert.deepEqual(again.items.map(i => [i.name, i.linkedinUrl]), [['Native', 'https://www.linkedin.com/company/native-cos/']], 'the next run reads it');
     ok('Native\'s wrong page: nobody saved, on Leo\'s list with the right page first; picking it sends it to the next run');
+
+    // "None of these" (Leo, Oct 2026: a brand marked as having no LinkedIn
+    // page is never searched again): off the worklist, or — with a parent
+    // company — on it only for the parent's page; a run that fetched its
+    // list earlier is told so, and nothing goes back on Leo's list.
+    await prisma.brand.create({ data: { id: 'b_alp', name: 'Pouchly', category: 'nicotine' } });
+    // A Diageo brand (on the roster already if the research list made it).
+    const cptId = (await prisma.brand.upsert({ where: { name: 'Smirnoff Ice' }, update: { linkedinUrl: null, passedAt: null }, create: { name: 'Smirnoff Ice', category: 'spirits' } })).id;
+    for (const id of ['b_alp', cptId]) await data('liPageNone', { brandId: id });
+    const after = (await ingest({ action: 'liList', ignoreRest: true, me: { slug: 'leo-z', name: 'Leo Z' } })).j;
+    assert.ok(!after.items.some(i => i.brandId === 'b_alp'), 'Pouchly off the worklist');
+    const cpt = after.items.find(i => i.brandId === cptId);
+    assert.ok(cpt && cpt.noPage === true && cpt.parent && cpt.parent.name === 'Diageo', 'Smirnoff Ice only for Diageo\'s page');
+    const late = (await ingest({ action: 'liMatched', brandId: 'b_alp', candidates: [{ url: 'https://www.linkedin.com/company/alp-consulting/', name: 'Alp Consulting Ltd.', subtitle: 'Staffing and Recruiting' }], me: { slug: 'leo-z', name: 'Leo Z' } })).j;
+    assert.equal(late.outcome, 'markedNone');
+    assert.ok(!(await data('linkedinPeople')).pageReview.some(e => e.brandId === 'b_alp'), 'not back on Leo\'s list');
+    ok('"None of these" sticks: off the worklist (a parent brand only for the parent\'s page), never back on Leo\'s list');
 
     // Everything the run did, with the people's names.
     const detail = await data('liRunDetail', { id: run.id });
