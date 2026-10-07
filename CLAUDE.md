@@ -58,7 +58,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   the button, a tile, or `app.html#today`: full screen, one card per section (who we reached · what to do
   today (today only; Zach's list counted on the page with `ztFilterOf`) · brands found · what Claude did (when
   chats were logged) · what I need from you · ideas), scroll / arrows / dots / a click on the card move on,
-  the last click (Done) or Esc closes. **Today's log** (`renderDayLog`, `dl*`): any day (‹ › and a day list),
+  the last click (Done) or Esc closes. **Today's log** (`renderDayLog`, `dl*`; **not shown on Home** — Leo, Oct 7 2026: "get rid of this"; `#day-log` is hidden until **+ Paste what Claude did** or the recap's Open Today's log sets `DL_SHOW`, × closes it): any day (‹ › and a day list),
   the day's numbers, **paste box** and the pasted chats. Data = `dayRecap({ day })` (read-only: invites by
   sentAt, accept events, emails, Zach's list steps, Discover rows + brands created that day, the review
   queues as counts, the day's chats, `BUILD_IDEAS` + Leo's picks). **Pasted chats** = table `WorkLog` (one

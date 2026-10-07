@@ -1761,7 +1761,7 @@
       </div>
       <!-- Leo, Oct 7 2026: the week's scoreboard and today's log at the top of Home. -->
       <div id="hm-score"></div>
-      <div id="day-log"></div>
+      <div id="day-log" hidden></div>
       <div class="hm-glance" id="hm-glance"></div>
       <div id="hm-send"></div>
       <div id="zach-todo"></div>
@@ -3021,6 +3021,9 @@ var RC_I = 0;             // the card in view
 var DL_DAY = null;        // the day the log panel shows (null = today)
 var DL_DATA = null;
 var DL_PASTE = false;     // paste box open
+// Leo, Oct 7 2026: "get rid of this" — the log no longer sits on Home; it
+// opens only from + Paste what Claude did / the recap's Open Today's log.
+var DL_SHOW = false;
 var DL_OPEN = {};         // chat id -> open
 var RC_DAYS = [2, 3, 4, 5];  // Tue–Fri: the days the recap opens by itself
 
@@ -3346,7 +3349,10 @@ function dlLoad(day) {
 function renderDayLog() {
   var box = document.getElementById('day-log');
   var r = DL_DATA;
-  if (!box || !r) return;
+  if (!box) return;
+  box.hidden = !DL_SHOW;
+  if (!DL_SHOW) { box.innerHTML = ''; return; }
+  if (!r) return;
   var c = rcCounts(r);
   var days = r.logDays.slice();
   if (!days.some(function (d) { return d.day === r.day; })) days.push({ day: r.day, n: 0 });
@@ -3359,7 +3365,7 @@ function renderDayLog() {
       return '<option value="' + d.day + '"' + (d.day === r.day ? ' selected' : '') + '>' + esc(keyLabel(d.day)) + (d.day === r.today ? ' (today)' : '') + (d.n ? ' · ' + plural(d.n, 'chat') : '') + '</option>';
     }).join('') + '</select>' +
     (r.isToday ? '' : '<button class="btn-ghost" data-dl-day="' + keyShift(r.day, 1) + '" title="Day after">›</button><button class="btn-ghost" data-dl-day="' + r.today + '">Today</button>') +
-    '</span></div>';
+    '<button class="btn-ghost" data-dl-hide title="Close the log">×</button></span></div>';
   var sum = '<div class="dl-sum">' +
     '<span><b>' + r.reached.invites + '</b> invites at <b>' + r.reached.companies.length + '</b> brands</span>' +
     '<span><b>' + r.reached.accepted.length + '</b> accepted</span>' +
@@ -3403,8 +3409,10 @@ document.addEventListener('click', function (ev) {
   var el;
   if ((el = t.closest('[data-rc-open]'))) { openRecap(el.getAttribute('data-rc-open')); return; }
   if (t.closest('#hm-recap')) { openRecap(0); return; }
+  if (t.closest('[data-dl-hide]')) { DL_SHOW = false; DL_PASTE = false; renderDayLog(); return; }
   if (t.closest('#hm-paste')) {
     DL_PASTE = true;
+    DL_SHOW = true;
     (DL_DAY ? dlLoad(null) : Promise.resolve(renderDayLog())).then(function () {
       var b = document.getElementById('day-log'); if (b) b.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
@@ -3446,7 +3454,7 @@ document.addEventListener('click', function (ev) {
     closeRecap();
     if (go === 'zach') gotoZachList();
     else if (go === 'sendlist') { if (!document.getElementById('dashboard').classList.contains('active')) gotoView('dashboard'); slOpen(); }
-    else if (go === 'log') { var b = document.getElementById('day-log'); if (b) b.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    else if (go === 'log') { DL_SHOW = true; renderDayLog(); var b = document.getElementById('day-log'); if (b) b.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     else gotoView(go);
     return;
   }

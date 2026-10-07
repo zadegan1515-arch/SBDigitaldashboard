@@ -167,6 +167,7 @@ async function main() {
   console.log('ok 2 - cards in order, click / arrows / dots move, Done and Esc close');
 
   // 4 ---------------------------------------------------------------
+  assert.equal(await page.isHidden('#day-log'), true, 'the log is not on Home until asked for (Leo, Oct 7)');
   await page.click('#hm-paste');
   await page.waitForSelector('#dl-text');
   await page.fill('#dl-text', 'Chat A\n- did a\n---\nChat B\nNEED: do b');
@@ -184,6 +185,8 @@ async function main() {
   await page.waitForTimeout(300);
   assert.ok(S.args.dayRecap.some((a) => a.day === '2026-10-01'), 'another day loads that day');
   assert.match(await page.textContent('#day-log .section-head'), /Log · Thursday, October 1/);
+  await page.click('[data-dl-hide]');
+  assert.equal(await page.isHidden('#day-log'), true, '× closes the log');
   console.log('ok 4 - paste saves, delete previews first, past days load');
 
   // 6 ---------------------------------------------------------------
