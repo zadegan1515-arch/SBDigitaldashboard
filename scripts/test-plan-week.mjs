@@ -228,6 +228,20 @@ const fillCat = (cat, n, size = 4, prefix = cat) => Array.from({ length: n }, (_
   is('best fit: the next day takes the next best', p[1].add.map(a => a.id), ['a', 'b', 'f'])
   const mine = planWeekDays({ ...base({ cands, cap: 12, days: [day(DAYS[0], [], 'energy')] }), openDays: undefined })
   is('best fit: Leo\'s category still wins', [mine[0].category, mine[0].add[0].id], ['energy', 'a'])
+  // Skip: never on a Best fit day, never picked, never a top-up; only a
+  // day Leo gave that category. notBest (closed, too small): not on Best fit.
+  const sk = [
+    { ...cand('s1', 'tech', 4), fit: 99, skip: true }, { ...cand('n1', 'energy', 4), fit: 95, notBest: true },
+    { ...cand('e1', 'energy', 4), fit: 50 }, { ...cand('w1', 'wellness', 4), fit: 40 },
+  ]
+  const bf = planWeekDays({ ...base({ cands: sk, cap: 8, days: [day(DAYS[0])] }), openDays: undefined })
+  is('skip / notBest never on a Best fit day', bf[0].add.map(a => a.id), ['e1', 'w1'])
+  const pick = planWeekDays(base({ cands: sk, cap: 8, days: [day(DAYS[0])] }))
+  is('a Skip category is never picked', pick[0].category === 'tech', false)
+  const topUp = planWeekDays(base({ cands: sk, cap: 20, days: [day(DAYS[0], [], 'wellness')] }))
+  is('nor a top-up', topUp[0].add.some(a => a.id === 's1'), false)
+  const his = planWeekDays(base({ cands: sk, cap: 8, days: [day(DAYS[0], [], 'tech')] }))
+  is('only Leo\'s own tech day takes it', his[0].add.map(a => a.id)[0], 's1')
 }
 
 console.log(fail ? `plan-week: ${pass} passed, ${fail} FAILED` : `plan-week: all ${pass} passed`)

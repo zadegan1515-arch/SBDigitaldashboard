@@ -13710,7 +13710,7 @@ var SCHED_DRAG = null;
       var uname = t.getAttribute('data-sdn');
       t.disabled = true;
       sdPlanCall('planRemoveBrand', { date: t.getAttribute('data-sdday'), brandId: t.getAttribute('data-sdunpin') }).then(function (r) {
-        toast(uname + ' unpinned' + (r.unqueued ? ' · ' + sdPlural(r.unqueued, 'person', 'people') + ' back in the pool' : ''));
+        toast(uname + (r.passedToday ? ' off today — back tomorrow' : ' unpinned') + (r.unqueued ? ' · ' + sdPlural(r.unqueued, 'person', 'people') + ' back in the pool' : ''));
         return sdRefresh();
       }).catch(function (err) { toast(err.message); sdRefresh(); });
       return;

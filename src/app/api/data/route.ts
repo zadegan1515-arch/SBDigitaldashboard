@@ -6290,8 +6290,9 @@ const handlers: Record<string, Handler> = {
           for (const x of bestRanked) {
             if (bestTaken.has(x.b.id) || (isToday && passedToday(x.b))) continue
             const pooled = pooledBy.get(x.b.id) ?? []
-            // Already in today's list: only its waiting people (getTodayQueue).
-            if (isToday && stampedByBrand.has(x.b.id) && !pooled.length) continue
+            // Already in today's list: today only its waiting people
+            // (getTodayQueue); a later day not at all — it is going today.
+            if (stampedByBrand.has(x.b.id) && (!isToday || !pooled.length)) continue
             themeByBrand.set(x.b.id, pooled)
           }
         }
@@ -6868,8 +6869,13 @@ const handlers: Record<string, Handler> = {
     const plan = await readPlan()
     if (plan[date]) plan[date].brandIds = plan[date].brandIds.filter(x => x !== brandId)
     await writePlan(plan)
-    const unqueued = date === localDayKey() ? await unstampToday(String(brandId)) : 0
-    return { ok: true, unqueued }
+    const today = date === localDayKey()
+    const unqueued = today ? await unstampToday(String(brandId)) : 0
+    // Off today means off today: Best fit (the default day) would pick a
+    // never-reached brand straight back up into the room it freed. Passed
+    // for today, it is back tomorrow on its own.
+    if (today) await prisma.brand.update({ where: { id: String(brandId) }, data: { passedTodayAt: new Date() } }).catch(() => null)
+    return { ok: true, unqueued, passedToday: today }
   },
 
   // A day's category menu replaces the day's list (Leo, Oct 6–7 2026: "why
@@ -7163,8 +7169,12 @@ const handlers: Record<string, Handler> = {
         date: d.key, kept: kept.get(d.key)!,
         category: forceBest.has(d.key) || plan[d.key]?.category === BEST_FIT_DAY ? null : plan[d.key]?.category ?? null,
       })),
-      // A Skip category never goes on a Best fit day.
-      cands: cands.map(c => ({ id: c.b.id, category: c.b.category, ready: c.label.kind === 'ready', size: c.people.length, fit: c.f.priority === 'skip' ? -1 : c.fit })),
+      // A Skip category is never picked or topped up from; a Best fit day
+      // takes only what the Schedule's Best fit would (bestFitEligible).
+      cands: cands.map(c => ({
+        id: c.b.id, category: c.b.category, ready: c.label.kind === 'ready', size: c.people.length, fit: c.fit,
+        skip: c.f.priority === 'skip', notBest: !bestFitEligible(c.b, c.f),
+      })),
       cap: DAILY_SEND_LIMIT,
       forced, prev, lastSent,
       rateOf: rates.of,
