@@ -216,6 +216,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await data('planAddBrands', { date: dayA, brandIds: ['bf_done'] })
     pv2 = await data('planApplyCategory', { date: dayA, category: null })
     assert.deepEqual(pv2.unpin.map(m => m.name), ['Done Co'], 'Best fit takes off the brand already reached')
+    assert.deepEqual(pv2.reorder.map(o => o.name), ['Rich Pop', 'Poor Fizz'], 'and shows the new order before writing it')
     await data('planApplyCategory', { date: dayA, category: null, preview: false, expect: pv2.expect })
     planNow = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value)
     assert.deepEqual(planNow[dayA].brandIds, ['bf_rich', 'bf_poor'], 'the rest in fit order')

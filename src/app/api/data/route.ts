@@ -1302,12 +1302,19 @@ async function dayThemeChanges(plan: OutreachPlan, date: string, cat: string | n
   }
   const unqueue = [...offQueue.values()]
   const reopen = closed ? closed.to : null
-  const sig = JSON.stringify([cat, unpin.map(u => u.id), [...unpin, ...unqueue].flatMap(u => u.targetIds).sort(), reopen])
   // Best fit keeps the planned brands it would pick, best Brand Fit first
-  // (a brand that sent today stays at the top).
+  // (a brand that sent today stays at the top). The order decides who
+  // fits in the day's 30, so a new order is shown before it is written.
   const fitOrder = (keep: string[]) => [...keep].sort((a, b) =>
     Number(started.has(b)) - Number(started.has(a)) || (fitOf.get(b)?.score ?? -1) - (fitOf.get(a)?.score ?? -1))
-  return { theme, unpin, unqueue, reopen, sig, fitOrder }
+  const gone = new Set(unpin.map(u => u.id))
+  const kept = pins.filter(id => !gone.has(id))
+  const ordered = bestFit ? fitOrder(kept) : kept
+  const reorder = ordered.join('|') !== kept.join('|')
+    ? ordered.map(id => ({ id, name: byId.get(id)?.name ?? id, fit: fitOf.get(id)?.score ?? null }))
+    : []
+  const sig = JSON.stringify([cat, unpin.map(u => u.id), [...unpin, ...unqueue].flatMap(u => u.targetIds).sort(), reopen, reorder.map(r => r.id)])
+  return { theme, unpin, unqueue, reopen, reorder, sig, fitOrder }
 }
 
 // The shared add behind planAddBrands / planAddBrand / planMoveBrand.
@@ -6902,8 +6909,8 @@ const handlers: Record<string, Handler> = {
     const out = {
       date, category: cat, theme: ch.theme,
       unpin: keepPins ? [] : ch.unpin, unqueue: keepPins ? [] : ch.unqueue,
-      reopen: keepPins ? null : ch.reopen, expect: keepPins ? 'keep' : ch.sig,
-      changes: keepPins ? 0 : ch.unpin.length + ch.unqueue.length + (ch.reopen ? 1 : 0),
+      reopen: keepPins ? null : ch.reopen, reorder: keepPins ? [] : ch.reorder, expect: keepPins ? 'keep' : ch.sig,
+      changes: keepPins ? 0 : ch.unpin.length + ch.unqueue.length + (ch.reopen ? 1 : 0) + (ch.reorder.length ? 1 : 0),
     }
     if (preview) return out
     if (expect !== undefined && String(expect) !== out.expect) return { ...out, stale: true }

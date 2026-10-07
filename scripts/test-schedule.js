@@ -85,6 +85,7 @@ const H = {
   appVersion: () => ({ sha: 'test' }),
   getOutreachPlan: () => PLAN(),
   categoryCoverage: () => ({ weeks: [], rows: [] }),
+  categoryBrands: ({ category }) => ({ category, brands: [] }),
   suggestForDay: () => ({ brands: [], others: [], needPeople: [], hiddenSmall: 0 }),
   searchPlanBrands: ({ q }) => ({ brands: /^cel/i.test(q) ? ROWS : [] }),
   planAddBrands: ({ date, brandIds }) => ({ ok: true, results: brandIds.map((id) => ({ brandId: id, brandName: id, added: true, state: 'going', going: 4, people: [] })) }),
@@ -165,6 +166,20 @@ async function main() {
   assert.equal((await page.$$('[data-sdq]')).length, 0, 'no per-day add boxes');
   assert.equal(await page.evaluate(() => document.getElementById('sched-catfold').open), false, 'categories folded');
   assert.deepEqual(await page.$$eval('#sf-days .sd-chip', (els) => els.map((e) => e.textContent)), ['Today23 open', 'Thu Oct 826 open', 'Tue Oct 1330 open']);
+  // + Add a sending day keeps More open with its date field showing.
+  await page.click('#sd-more > summary');
+  await page.click('#sd-more [data-sdxtoggle]');
+  await page.waitForTimeout(100);
+  assert.equal(await page.evaluate(() => document.getElementById('sd-more').open), true, 'More stays open');
+  assert.equal(await page.isVisible('#sd-more [data-sdxdate]'), true, 'the date field shows');
+  await page.click('#sd-more a[data-sdxtoggle]');
+  await page.click('#schedule h1');
+  // A day's ⋯ → See every <category> brand opens the folded drill-in.
+  await page.click('[data-drop="2026-10-08"] .sd-day-h .sd-cm > summary');
+  await page.click('[data-drop="2026-10-08"] [data-sdseecat="spirits"]');
+  await page.waitForTimeout(100);
+  assert.equal(await page.evaluate(() => document.getElementById('sched-catfold').open), true, 'See every opens Categories & coverage');
+  await page.evaluate(() => { document.getElementById('sched-catfold').open = false; });
   console.log('✓ 1 layout: toolbar + More, one find box with day chips, folds');
 
   // 2. The day menu -------------------------------------------------------

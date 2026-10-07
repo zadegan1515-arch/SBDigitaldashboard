@@ -12113,13 +12113,19 @@ function sdThemeCard(key, pv) {
       ' out of today’s queue, back to waiting</span></li>';
   }));
   if (pv.reopen) lines.push('<li>Today opens again for automatic picks <span class="sd-dim">(what was left moved to ' + esc(sdDayName(pv.reopen)) + ')</span></li>');
+  // Best fit puts the planned brands that stay in fit order — that order
+  // decides who fits in the day's 30, so it is shown first too.
+  var order = (pv.reorder || []).map(function (o, i) {
+    return '<li>' + (i + 1) + '. <b>' + esc(o.name) + '</b>' + (o.fit != null ? ' <span class="sd-dim">fit ' + o.fit + '</span>' : '') + '</li>';
+  });
   return '<div class="sd-theme">' +
-    '<div><b>' + esc(sdDayTag(key)) + ' → ' + esc(word) + '.</b> To replace the list, these come off:</div>' +
-    '<ul>' + lines.join('') + '</ul>' +
+    '<div><b>' + esc(sdDayTag(key)) + ' → ' + esc(word) + '.</b>' + (lines.length ? ' To replace the list, these come off:' : '') + '</div>' +
+    (lines.length ? '<ul>' + lines.join('') + '</ul>' : '') +
+    (order.length ? '<div>Planned brands in best-fit order (who goes first):</div><ol style="margin:0;padding-left:18px;font-size:13px;color:var(--ink-2)">' + order.join('') + '</ol>' : '') +
     '<div class="sd-dim">Nobody is deleted. Anyone already invited today stays.</div>' +
     '<div class="sd-theme-f">' +
-      '<button class="btn-solid sd-sm" data-sdthemego="' + esc(key) + '"' + (pv.busy ? ' disabled' : '') + '>' + (pv.busy ? 'Replacing…' : 'Replace the list') + '</button>' +
-      '<button class="btn-ghost sd-sm" data-sdthemekeep="' + esc(key) + '"' + (pv.busy ? ' disabled' : '') + ' title="Change the category and keep these on the day">Just change the category</button>' +
+      '<button class="btn-solid sd-sm" data-sdthemego="' + esc(key) + '"' + (pv.busy ? ' disabled' : '') + '>' + (pv.busy ? 'Saving…' : lines.length ? 'Replace the list' : 'Use this order') + '</button>' +
+      '<button class="btn-ghost sd-sm" data-sdthemekeep="' + esc(key) + '"' + (pv.busy ? ' disabled' : '') + ' title="Change the category and leave the planned brands as they are">Just change the category</button>' +
       '<a href="#" class="sd-link" data-sdthemex="' + esc(key) + '">Cancel</a>' +
     '</div>' +
   '</div>';
@@ -12363,10 +12369,11 @@ function sdFillOthers(key) {
   return ((ent && ent.data && ent.data.others) || []).filter(function (b) { return !on[b.id]; });
 }
 
-// What Fill to 30 works through: the day's own category first, then the
-// others, so a short category is topped up rather than left short.
+// What Fill to 30 works through: a category day only its own category
+// (the menu replaces the day's list, so Fill doesn't add other categories
+// back in); a Best fit day already asks for every category.
 function sdFillPool(key) {
-  return sdFillRows(key).concat(sdFillOthers(key));
+  return sdFillRows(key);
 }
 
 function sdSugRow(b, key, open, allCats) {
@@ -12429,6 +12436,9 @@ function sdFillInner(key) {
       ' (' + sdPlural(fit.people, 'person', 'people') + ')</div>';
   }
   var shown = f.all ? rows : rows.slice(0, 8);
+  // Other categories stay one click away on a category day (+ Add), never
+  // in Fill to 30.
+  var others = cat ? sdFillOthers(key).slice(0, 6) : [];
   var need = data.needPeople || [];
   var needTotal = Math.max(data.needPeopleTotal || 0, need.length);
   html += '<details class="sd-sugfold" data-sdsugfold="' + esc(key) + '"' + (f.open ? ' open' : '') + '>' +
@@ -12436,7 +12446,8 @@ function sdFillInner(key) {
     (shown.length
       ? shown.map(function (b) { return sdSugRow(b, key, open, !cat || b.category !== cat); }).join('') +
         (rows.length > shown.length ? '<a href="#" class="sd-link" data-sdfillall="' + esc(key) + '">Show ' + (rows.length - shown.length) + ' more</a>' : '')
-      : '<div class="sd-dim">No brands left that can go out ' + esc(key === SCHED.today ? 'today' : 'on ' + sdDayName(key)) + '.</div>') +
+      : '<div class="sd-dim">No ' + esc(cat ? sdCatName(cat) + ' ' : '') + 'brands left that can go out ' + esc(key === SCHED.today ? 'today' : 'on ' + sdDayName(key)) + '.</div>') +
+    (others.length ? '<div class="sd-open-sub">Other categories (not in Fill to ' + sdCap() + ')</div>' + others.map(function (b) { return sdSugRow(b, key, open, true); }).join('') : '') +
     (need.length
       ? '<div class="sd-need"><a href="#" class="sd-link" data-sdneed="' + esc(key) + '">' +
           (f.needOpen ? '▾' : '▸') + ' Need people first (' + (needTotal > need.length ? need.length + ' of ' + needTotal : need.length) + ')</a>' +
@@ -12966,6 +12977,9 @@ function renderSchedBulk() {
 function sdOpenCat(key, scroll) {
   if (SCHED.openCat !== key) { SCHED.catSel = {}; SCHED.catQ = ''; }
   SCHED.openCat = key;
+  // The drill-in lives in the Categories & coverage fold: open it.
+  var cf = document.getElementById('sched-catfold');
+  if (cf && !cf.open) cf.open = true;
   renderSchedCats();
   if (scroll) {
     var el = document.getElementById('sd-drill');
@@ -13249,6 +13263,8 @@ function sfSearch(now) {
   var key = sfDay();
   clearTimeout(f.t);
   var mine = ++f.seq;
+  // An Enter belongs to exactly what was typed when it was pressed.
+  if (f.pendingEnter && f.pendingEnter !== q) f.pendingEnter = '';
   if (q.length < 2) { f.rows = []; f.forQ = ''; f.hl = 0; f.pendingEnter = ''; sfRender(); return; }
   f.t = setTimeout(function () {
     api('searchPlanBrands', { q: q, date: key }).then(function (r) {
@@ -13275,7 +13291,7 @@ function sfAdd(id) {
   var key = f.forDay || sfDay();
   var inp = document.getElementById('sf-q');
   if (inp) { inp.value = ''; inp.focus(); }
-  f.rows = []; f.forQ = ''; f.hl = 0; f.seq++;
+  f.rows = []; f.forQ = ''; f.hl = 0; f.seq++; f.pendingEnter = '';
   sfRender();
   sdAdd(key, [id]).then(function () { sfChips(); });
 }
@@ -13336,7 +13352,8 @@ function sdThemeUndo() {
     var msg = 'Put ' + (pv.date === SCHED.today ? 'today' : pv.label) + ' back to ' + sdThemeWord(pv.category) + '?' +
       (pv.brands.length ? '\n\nBack on the day: ' + pv.brands.join(', ') : '') +
       (pv.people ? '\n\n' + sdPlural(pv.people, 'person goes', 'people go') + ' back into today’s queue.' : '') +
-      (pv.out ? '\n\nOut again: ' + sdPlural(pv.out, 'person', 'people') + ' picked after the change (' + pv.outBrands.join(', ') + ').' : '');
+      (pv.out ? '\n\n' + sdPlural(pv.out, 'person comes', 'people come') + ' out of today’s queue — picked after the change (' + pv.outBrands.join(', ') + ').' : '') +
+      (pv.reclose ? '\n\nToday closes to automatic picks again (what was left goes to ' + sdDayName(pv.reclose) + ').' : '');
     if (!window.confirm(msg)) return;
     return sdPlanCall('undoDayTheme', {}).then(function () { toast('Put back'); return sdRefresh(); });
   }).catch(function (err) { toast(err.message); });
@@ -13404,6 +13421,8 @@ var SCHED_DRAG = null;
   // An open ⋯ / More menu closes on a click anywhere else, and after
   // one of its buttons is used.
   document.addEventListener('click', function (e) {
+    // A click that redrew its own menu (+ Add a sending day) is inside it.
+    if (!e.target.isConnected) return;
     sec.querySelectorAll('details.sd-cm[open], details.sd-more[open]').forEach(function (d) {
       if (!d.contains(e.target)) d.open = false;
       else if (e.target.closest('.sd-menu button') && !e.target.closest('[data-sdxtoggle]')) d.open = false;
