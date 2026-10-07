@@ -1891,11 +1891,11 @@
       <div id="status-filters" class="chips" style="display:none"></div>
       <div class="count-head" id="queue-head">To send today <span class="n"></span></div>
       <div id="targets"></div>
+      <div id="nextbest"></div>
       </div>
       <aside id="oq-rail">
         <div id="oq-today"></div>
         <div id="oq-stale"></div>
-        <div id="nextbest"></div>
       </aside>
       </div>
     </section>
@@ -18654,8 +18654,8 @@ function renderNextBest() {
     var rows = d.brands || [];
     if (!rows.length) { slot.innerHTML = ''; return; }
     slot.innerHTML =
-      '<div class="count-head" style="margin-top:26px">Next best brands — not contacted yet <span class="n">' + rows.length + '</span></div>' +
-      '<div class="hint" style="margin:2px 0 10px">Best brands to reach next. Queue adds their best contact to today.</div>' +
+      '<div class="count-head" style="margin-top:26px">Brands not reached yet <span class="n">' + rows.length + '</span></div>' +
+      '<div class="hint" style="margin:2px 0 10px">Nobody here has been contacted. Add to today puts their best people in today’s list.</div>' +
       rows.map(function (b) {
         var tag = [CAT_NAMES[b.category] || b.category].filter(Boolean).join('');
         return '<div class="target" data-brand="' + esc(b.id) + '">' +
@@ -18668,7 +18668,7 @@ function renderNextBest() {
             (b.needsPerson
               ? '<button class="btn-draft" data-nbperson="' + esc(b.id) + '" title="Add their person right here — a decision-maker title + LinkedIn queues them">+ Add person</button>'
               : '<span class="fit">' + b.contacts + ' contact' + (b.contacts === 1 ? '' : 's') + '</span>' +
-                '<button class="btn-draft" data-nbq="' + esc(b.id) + '">Queue</button>') +
+                '<button class="btn-draft" data-nbq="' + esc(b.id) + '">+ Add to today</button>') +
             '<button class="btn-ghost" data-nbtoday="' + esc(b.id) + '" title="Not today — off today’s suggestions, back on its own tomorrow">Pass</button>' +
             '<button class="btn-ghost danger" data-nbp="' + esc(b.id) + '" title="Archive — never suggested again unless you bring it back on its brand page">Archive</button>' +
           '</div>' +

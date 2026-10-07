@@ -261,7 +261,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   passes 100. **Coverage** (`categoryCoverage`): categories × the last 6 weeks (Mon–Sun, New York),
   invites per week + share accepted (accepted/replied, withdrawn uncounted); 90-day accept rates
   (smoothed, cached 10 min) also order the Fill box's other categories. **Outreach → LinkedIn** = one card per brand
-  (sent people stay in their card, `getTodayQueue.sentList`; a finished brand folds to one line).
+  (sent people stay in their card, `getTodayQueue.sentList`; a finished brand folds to one line). **Brands not reached yet** (`nextBestBrands` → `renderNextBest`, `#nextbest`) sits under the queue in the main column (Leo, Oct 7 2026 — it was in the right rail, off screen); **+ Add to today** = `queueBrandTargets`.
   **Old invites** (rail card + clean-up panel; `staleInvites` = still "sent" after 21 days, by brand,
   with who the brand would try next; `markInvitesWithdrawn` preview → one transaction + a
   TargetEvent each): withdrawn on Zach's LinkedIn, ticked here. They keep `sentAt` (coverage and
