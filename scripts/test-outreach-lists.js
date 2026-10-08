@@ -81,6 +81,11 @@ const H = {
   listTargets: () => [],
   nextBestBrands: () => ({ brands: [{ id: 'nb1', name: 'Liquid Death', category: 'beverage', contacts: 3, why: ['growth'] }] }),
   queueBrandTargets: ({ brandId }) => ({ queued: true, count: 2, name: brandId }),
+  // The queue's add box (Oct 8 2026) uses the Schedule's search.
+  searchPlanBrands: ({ q }) => ({ brands: /gorila|gorilla/i.test(q) ? [
+    { id: 'gm', name: 'Gorilla Mind', category: 'energy', action: 'add', text: '4 would go out', label: { kind: 'ready', reachable: 4, need: 3 }, fit: null, matched: /gorila/i.test(q) ? 'fuzzy' : 'name', exact: false },
+    { id: 'gx', name: 'Gorilla Glue', category: 'cpg', action: 'addAnyway', text: 'Invited Sep 16 · already reached', label: { kind: 'ready', reachable: 3, need: 3 }, fit: null, matched: 'name', exact: false },
+  ] : [] }),
 };
 
 const server = http.createServer((req, res) => {
@@ -135,6 +140,33 @@ async function main() {
   await page.click('#nextbest [data-nbq="nb1"]');
   for (let i = 0; i < 50 && !calls.some((c) => c.fn === 'queueBrandTargets'); i++) await page.waitForTimeout(20);
   assert.strictEqual(calls.find((c) => c.fn === 'queueBrandTargets').args.brandId, 'nb1', 'Add to today queues the brand');
+  // The add box: always in view, the Schedule's search, keys and buttons.
+  assert.equal(await page.$eval('#oq-addbar', (el) => getComputedStyle(el).position), 'sticky', 'the add box stays in view while scrolling');
+  await page.fill('#oq-add', 'gorila');
+  await page.waitForSelector('#oq-results [data-oqrow="1"]');
+  assert.equal(calls.filter((c) => c.fn === 'searchPlanBrands').slice(-1)[0].args.q, 'gorila');
+  const res = await page.textContent('#oq-results');
+  assert.match(res, /Gorilla Mind[\s\S]*did you mean this\?[\s\S]*4 would go out/);
+  assert.match(res, /Gorilla Glue[\s\S]*already reached[\s\S]*Add anyway/);
+  assert.match(res, /\+ Add “gorila” as a new brand/);
+  // Enter never takes an "Add anyway": it names why instead.
+  await page.press('#oq-add', 'ArrowDown');
+  assert.ok(await page.$('#oq-results [data-oqrow="1"].hl'), '↓ moves the pick');
+  let before = calls.filter((c) => c.fn === 'queueBrandTargets').length;
+  await page.press('#oq-add', 'Enter');
+  await page.waitForTimeout(150);
+  assert.equal(calls.filter((c) => c.fn === 'queueBrandTargets').length, before, 'Enter on an Add anyway adds nothing');
+  await page.press('#oq-add', 'ArrowUp');
+  await page.press('#oq-add', 'Enter');
+  for (let i = 0; i < 50 && calls.filter((c) => c.fn === 'queueBrandTargets').length === before; i++) await page.waitForTimeout(20);
+  assert.deepEqual(calls.filter((c) => c.fn === 'queueBrandTargets').slice(-1)[0].args, { brandId: 'gm' }, 'Enter adds the plain add to today');
+  // Add anyway is a click, and says so.
+  await page.fill('#oq-add', 'gorilla');
+  await page.waitForSelector('#oq-results [data-oqforce]');
+  await page.click('#oq-results [data-oqforce]');
+  for (let i = 0; i < 50 && calls.filter((c) => c.fn === 'queueBrandTargets').slice(-1)[0].args.brandId !== 'gx'; i++) await page.waitForTimeout(20);
+  assert.deepEqual(calls.filter((c) => c.fn === 'queueBrandTargets').slice(-1)[0].args, { brandId: 'gx', force: true });
+  console.log('✓ the queue\'s add box: in view while scrolling, typo-proof search, Enter adds, Add anyway is a click');
   await page.evaluate(() => renderSchedExtra());
   assert.ok(await page.$('#sched-extra [data-olopen="plan"]'), 'Schedule: Plan for Zach');
   assert.ok(await page.$('#sched-extra [data-olopen="sent"]'), 'Schedule: What went out');

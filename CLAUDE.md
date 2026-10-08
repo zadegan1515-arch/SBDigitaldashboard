@@ -263,6 +263,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   invites per week + share accepted (accepted/replied, withdrawn uncounted); 90-day accept rates
   (smoothed, cached 10 min) also order the Fill box's other categories. **Outreach → LinkedIn** = one card per brand
   (sent people stay in their card, `getTodayQueue.sentList`; a finished brand folds to one line). **Brands not reached yet** (`nextBestBrands` → `renderNextBest`, `#nextbest`) sits under the queue in the main column (Leo, Oct 7 2026 — it was in the right rail, off screen); **+ Add to today** = `queueBrandTargets`.
+  **Add a brand from the queue** (Leo, Oct 8 2026: "i should be able to add a brand from the queue"): the LinkedIn tab's
+  add box (`#oq-addbar`) sticks just under the header (`--head-h`, measured from `.header-stick`; the rail uses it too)
+  and uses the Schedule's search (`searchPlanBrands` for today: spelling slips, aka, contacts label, what Add does);
+  ↑ ↓ Enter adds a plain add, **Add anyway** (already reached / nobody reachable) is a click (`force`), then
+  `queueBrandTargets`; "+ Add “…” as a new brand" is always the last row.
   **Old invites** (rail card + clean-up panel; `staleInvites` = still "sent" after 21 days, by brand,
   with who the brand would try next; `markInvitesWithdrawn` preview → one transaction + a
   TargetEvent each): withdrawn on Zach's LinkedIn, ticked here. They keep `sentAt` (coverage and

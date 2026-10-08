@@ -1170,10 +1170,20 @@
      rail (today's numbers + next best brands) only appears on screens
      wide enough to hold it beside the queue. */
   .oq-grid{display:block}
+  /* Leo, Oct 8 2026: "i should be able to add a brand from the queue" —
+     the add box stays in view however far down the queue he is. */
+  #oq-addbar{display:flex;gap:8px;margin-top:12px;max-width:640px;position:sticky;top:var(--head-h,76px);z-index:30;
+    background:var(--surface-0);padding:8px 0;box-shadow:0 8px 12px -10px rgba(0,0,0,.6)}
+  #oq-results .oq-row.hl{background:var(--surface-2)}
+  #oq-results .oq-row{padding:9px 12px;font-size:13px;cursor:pointer;display:flex;gap:10px;align-items:center;border-top:1px solid var(--border-soft)}
+  #oq-results .oq-row:first-child{border-top:0}
+  #oq-results .oq-m{flex:1 1 auto;min-width:0}
+  #oq-results .oq-t{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  #oq-results .oq-why{color:var(--ink-3);font-size:12.5px;margin-top:2px}
   #oq-rail{margin-top:8px}
   @media (min-width:1400px){
     .oq-grid{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:28px;align-items:start}
-    #oq-rail{position:sticky;top:76px;margin-top:22px;max-height:calc(100vh - 96px);overflow:auto}
+    #oq-rail{position:sticky;top:calc(var(--head-h,76px) + 8px);margin-top:22px;max-height:calc(100vh - var(--head-h,76px) - 28px);overflow:auto}
     #oq-rail .target{flex-wrap:wrap;gap:10px;padding:14px 16px}
     #oq-rail .t-main{flex:1 1 100%}
     #oq-rail .t-actions{justify-content:flex-start}
@@ -1880,9 +1890,10 @@
         <button class="chip" data-mode="all">All targets <span class="n" id="c-all">0</span></button>
         <button class="btn-ghost" id="btn-retrim" style="margin-left:auto">Cap to top 3 / brand</button>
       </div>
-      <div style="display:flex;gap:8px;margin-top:12px;max-width:560px">
+      <div id="oq-addbar">
         <div style="position:relative;flex:1">
-          <input class="inp" id="oq-add" placeholder="+ Add a brand to the queue — type its name…" style="width:100%" autocomplete="off">
+          <input class="inp" id="oq-add" placeholder="+ Add a brand to today's queue — type its name…" style="width:100%" autocomplete="off"
+            aria-label="Add a brand to today's queue" title="Spelling slips are fine. ↑ ↓ pick, Enter adds to today.">
           <div id="oq-results" style="position:absolute;top:100%;left:0;right:0;z-index:30;display:none;background:var(--surface-1);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:260px;overflow:auto;margin-top:4px"></div>
         </div>
         <button class="btn-solid" id="oq-new" style="flex:none">+ New brand</button>
@@ -2692,6 +2703,17 @@ function placeDetails(view) {
 // Where the screen is now. `chain`: the thing last clicked, if it's on
 // screen, and its named ancestors, innermost first. `spots`: named
 // elements under a grid of points below the sticky header.
+// The sticky header's height as --head-h, for things that stick just
+// under it (the queue's add box, its rail).
+(function () {
+  var head = document.querySelector('.header-stick');
+  if (!head) return;
+  var set = function () { document.documentElement.style.setProperty('--head-h', Math.ceil(head.getBoundingClientRect().height) + 'px'); };
+  set();
+  if (window.ResizeObserver) new ResizeObserver(set).observe(head);
+  else window.addEventListener('resize', set);
+})();
+
 function placeMarks(view) {
   var head = document.querySelector('.header-stick');
   var top = head ? Math.max(0, head.getBoundingClientRect().bottom) : 0;
@@ -19024,35 +19046,72 @@ function openNewBrandForm(prefill) {
 }
 document.getElementById('oq-new').addEventListener('click', function () { openNewBrandForm(''); });
 
-// Hand-pick a brand into the outreach queue. Type a name, click a result,
-// and its best reachable contact jumps into Today.
+// Hand-pick a brand into today's queue (Leo, Oct 8 2026: "i should be able to
+// add a brand from the queue"). The Schedule's search (searchPlanBrands:
+// spelling slips, also-known-as, what adding does today, the contacts label);
+// ↑ ↓ pick, Enter adds a plain add (an "Add anyway" — already reached or
+// nobody reachable — is a click); its people go straight into Today
+// (queueBrandTargets). A brand that isn't on the roster: + New brand.
 (function () {
   var box = document.getElementById('oq-add');
   var drop = document.getElementById('oq-results');
-  var timer = null;
+  var timer = null, seq = 0, rows = [], hl = 0, forQ = '';
 
-  function hide() { drop.style.display = 'none'; drop.innerHTML = ''; }
+  function hide() { drop.style.display = 'none'; drop.innerHTML = ''; rows = []; forQ = ''; hl = 0; }
 
-  box.addEventListener('input', function () {
+  function render(q) {
+    var newRow = '<div class="oq-row-new" style="padding:10px 12px;font-size:13px;cursor:pointer;color:var(--accent-hi);font-weight:600;border-top:1px solid var(--border-soft)">+ Add “' + esc(q) + '” as a new brand</div>';
+    drop.innerHTML = (rows.length ? rows.map(function (b, i) {
+      var btn = b.action === 'add' ? '<button class="btn-draft sd-sm" data-oqadd="' + esc(b.id) + '">Add to today</button>'
+        : b.action === 'addAnyway' ? '<button class="btn-ghost sd-sm" data-oqadd="' + esc(b.id) + '" data-oqforce="1" title="Already reached, or nobody reachable — your call">Add anyway</button>'
+        : '<button class="btn-ghost sd-sm" data-oqopen="' + esc(b.id) + '">Open brand</button>';
+      var how = b.matched === 'aka' ? 'aka ' + b.aka : b.matched === 'fuzzy' ? 'did you mean this?' : '';
+      return '<div class="oq-row' + (i === hl ? ' hl' : '') + '" data-oqrow="' + i + '">' +
+        '<div class="oq-m"><div class="oq-t"><span style="font-weight:600">' + esc(b.name) + '</span>' +
+          '<span style="color:var(--ink-3)">' + esc(CAT_NAMES[b.category] || b.category || '') + '</span>' +
+          fitTags(b.fit, { noUs: true }) + sdLabel(b.label) +
+          (how ? '<span style="color:var(--ink-3)">' + esc(how) + '</span>' : '') + '</div>' +
+        '<div class="oq-why">' + esc(b.text || '') + '</div></div>' + btn + '</div>';
+    }).join('') : '<div style="padding:10px 12px;font-size:13px;color:var(--ink-3)">No brand called that on the roster.</div>') + newRow;
+    drop.style.display = 'block';
+  }
+
+  function search(now) {
     var q = box.value.trim();
     clearTimeout(timer);
+    var mine = ++seq;
     if (q.length < 2) { hide(); return; }
     timer = setTimeout(function () {
-      api('listBrands', { search: q, take: 8 }).then(function (brands) {
-        if (!brands.length) {
-          drop.innerHTML = '<div class="oq-row-new" style="padding:10px 12px;font-size:13px;cursor:pointer;color:var(--accent-hi);font-weight:600">+ Add “' + esc(q) + '” as a new brand</div>';
-          drop.style.display = 'block';
-          return;
-        }
-        drop.innerHTML = brands.map(function (b) {
-          return '<div class="oq-row" data-oq="' + esc(b.id) + '" style="padding:9px 12px;font-size:13px;cursor:pointer;display:flex;gap:8px;align-items:center">' +
-            '<span style="font-weight:600">' + esc(b.name) + '</span>' +
-            '<span style="color:var(--ink-3)">' + esc(CAT_NAMES[b.category] || b.category || '') + '</span>' +
-            '<span style="margin-left:auto;color:var(--ink-3);font-size:13px">' + b._count.contacts + ' contact' + (b._count.contacts === 1 ? '' : 's') + '</span></div>';
-        }).join('');
-        drop.style.display = 'block';
-      }).catch(hide);
-    }, 250);
+      api('searchPlanBrands', { q: q, date: nyKey() }).then(function (r) {
+        if (mine !== seq) return;
+        rows = r.brands || []; forQ = q; hl = 0;
+        render(q);
+      }).catch(function (e) { if (mine === seq) { hide(); toast(e.message); } });
+    }, now ? 0 : 180);
+  }
+
+  function add(id, force) {
+    hide(); box.value = '';
+    api('queueBrandTargets', force ? { brandId: id, force: true } : { brandId: id }).then(function (r) {
+      queueToast(r);
+      loadOutreach();
+    }).catch(function (err) { toast(err.message); });
+  }
+
+  box.addEventListener('input', function () { search(false); });
+  box.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { hide(); return; }
+    if (!rows.length || forQ !== box.value.trim()) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      hl = (hl + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length;
+      render(forQ);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      var b = rows[hl];
+      if (b && b.action === 'add') add(b.id, false);
+      else if (b) toast(b.name + ': ' + (b.text || 'pick it from the list'));
+    }
   });
 
   drop.addEventListener('click', function (e) {
@@ -19070,14 +19129,18 @@ document.getElementById('oq-new').addEventListener('click', function () { openNe
       if (ncBtn) ncBtn.click();
       return;
     }
-    var row = e.target.closest('.oq-row');
+    var open = e.target.closest('[data-oqopen]');
+    if (open) { var oid = open.getAttribute('data-oqopen'); hide(); box.value = ''; loadBrand(oid); return; }
+    var btn = e.target.closest('[data-oqadd]');
+    var row = btn || e.target.closest('.oq-row');
     if (!row) return;
-    var brandId = row.getAttribute('data-oq');
-    hide(); box.value = '';
-    api('queueBrandTargets', { brandId: brandId }).then(function (r) {
-      queueToast(r);
-      loadOutreach();
-    }).catch(function (err) { toast(err.message); });
+    if (!btn) {
+      // A click on the row itself adds only a plain add.
+      var b = rows[Number(row.getAttribute('data-oqrow'))];
+      if (b && b.action === 'add') add(b.id, false);
+      return;
+    }
+    add(btn.getAttribute('data-oqadd'), btn.hasAttribute('data-oqforce'));
   });
 
   document.addEventListener('click', function (e) {
