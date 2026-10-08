@@ -96,10 +96,35 @@ for (const p of PARENTS) {
   }
 }
 
+// The parent company a name IS ("Diageo", "Molson Coors"), not one of
+// its brands. Bacardi is both, and a brand of its own first, so a name
+// that is also one of the parent's brands isn't counted here.
+export function parentCompanyOf(name: string | null | undefined): Parent | null {
+  const k = looseKey(name)
+  if (!k || BY_KEY.has(k)) return null
+  return PARENTS.find(p => [p.name, p.search, ...(p.aka ?? [])].some(n => looseKey(n) === k)) ?? null
+}
+
+// A parent by any name it goes by, its namesake brand included.
+export function findParent(name: string | null | undefined): Parent | null {
+  const k = looseKey(name)
+  if (!k) return null
+  return PARENTS.find(p => [p.name, p.search, ...(p.aka ?? [])].some(n => looseKey(n) === k)) ?? null
+}
+
+// Every spelling of every brand a parent owns, for a combined parent
+// brand's "also known as" (Leo, Oct 8 2026: one Diageo brand).
+export function parentBrandNames(p: Parent): string[] {
+  return [...p.brands, ...(p.others ?? [])].flatMap(b => b.split('|')).map(s => s.trim()).filter(Boolean)
+}
+
 // The parent whose page a brand's people are under, by its name or any
 // "also known as". A brand that IS the parent's namesake (Bacardi) has its
 // own page first; the parent is only where it looks when that gives nobody.
+// The parent company itself has no parent, even when its "also known as"
+// lists its brands (Diageo, after its brands were combined into it).
 export function parentOf(name: string | null | undefined, aka?: string | null): Parent | null {
+  if (parentCompanyOf(name)) return null
   for (const n of [name, ...String(aka || '').split(/[,;]/)]) {
     const p = BY_KEY.get(looseKey(n))
     if (p) return p

@@ -21,7 +21,7 @@ execSync(
 // Node wants the extension the bundler doesn't.
 writeFileSync(join(out, 'parents.js'), readFileSync(join(out, 'parents.js'), 'utf8').replace("from './li-capture'", "from './li-capture.js'"))
 const lib = await import(pathToFileURL(join(out, 'li-capture.js')).href)
-const { parentOf, decideParentPage, PARENTS, siblingNamed, whyLeaveOut } = await import(pathToFileURL(join(out, 'parents.js')).href)
+const { parentOf, decideParentPage, PARENTS, siblingNamed, whyLeaveOut, parentCompanyOf, findParent, parentBrandNames } = await import(pathToFileURL(join(out, 'parents.js')).href)
 const { companySlug, profileSlug, profileUrl, cleanName, personKey, roleFromHeadline, isBuyer,
   normalizeCompany, decideCompanyMatch, focusTerms, matchesFocus,
   parseFollowers, industryOf, categoryFromIndustry, judgeDiscovery, decideResearchMatch, nearName, pageLooksWrong,
@@ -229,6 +229,24 @@ t('parent companies: the brands whose people are under them, by any spelling', (
   assert.equal(parentOf('Liquid Death'), null)
   const all = PARENTS.flatMap(p => p.brands.flatMap(b => b.split('|')))
   assert.equal(new Set(all.map(x => x.toLowerCase())).size, all.length, 'no brand under two parents')
+})
+
+t('a parent company combined into one brand has no parent itself; Bacardi is still a brand first', () => {
+  const aka = 'Ketel One, Crown Royal, Smirnoff, Captain Morgan'
+  assert.equal(parentCompanyOf('Diageo').name, 'Diageo')
+  assert.equal(parentCompanyOf('Molson Coors').name, 'Molson Coors')
+  assert.equal(parentCompanyOf('Bacardi'), null, 'Bacardi the rum is one of its own brands')
+  assert.equal(parentCompanyOf('Ketel One'), null)
+  assert.equal(parentOf('Diageo', aka), null)
+  assert.equal(parentOf('Bacardi').name, 'Bacardi')
+  // Everyone at Diageo is Diageo's: no sister brand to hold against them
+  assert.equal(siblingNamed('Brand Manager, Lagavulin', 'Diageo', aka), null)
+  assert.equal(whyLeaveOut('Brand Director, Guinness US', 'Diageo', aka), null)
+  assert.equal(findParent('Bacardi').name, 'Bacardi')
+  assert.equal(findParent('diageo').name, 'Diageo')
+  assert.equal(findParent('Nobody Inc'), null)
+  const names = parentBrandNames(findParent('Diageo'))
+  for (const n of ['Ketel One', 'Cîroc', 'Ciroc', 'DeLeon', 'Lagavulin']) assert.ok(names.includes(n), n)
 })
 
 t("a parent's own page: its exact name, the most followed", () => {

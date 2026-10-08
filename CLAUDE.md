@@ -409,6 +409,22 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   possible match is refused unless Leo says it's a different company (`notSame`; an exact name never).
   Facts go to `researchStage` (Stock take → Brand Fit review), never straight onto the brand. It can't
   sign in to SponsorUnited or LinkedIn — the LinkedIn fill and SU sweep pick the brand up from there.
+- **One brand per parent company** (Leo, Oct 8 2026: "make all of the brands under Diageo one big brand on the site and
+  move all of the contacts there"): `combineParent({ parent })` previews (writes nothing) every brand `parentOf` puts under
+  that parent in `src/lib/parents.ts` → one brand named for the company (the one on the roster, else a new one: the
+  brands' most common category, established, LinkedIn page from Setting `liParentPages`). Apply (`confirm` + the
+  preview's `expect`, else `stale`) moves contacts, targets, deals, shows, documents, activations, board visits,
+  requests, ops mail and Discover rows in one transaction; the company's aka gets every name and spelling of the brands
+  that went in plus every brand parents.ts lists for it (so a capture, paste or the research list under "Ketel One"
+  finds Diageo), and **nothing that describes one label** (about, products, website, its LinkedIn page, headcount,
+  facts) lands on the company — unlike `mergeBrands`. Named, never fixed by itself: the same person under two of them,
+  an aka that's another company (Crown Royal's coffee-shop page), LinkedIn pages not kept. Refuses a show / partner /
+  board code on two of them. Past the company's number (10, or Leo's Work number) the people waiting become next in
+  line (`shelvedHow: 'cap'`), never anyone in today's list. Undo `undoCombineParent` (Setting `parentCombineLast`):
+  same ids, everything still on the company goes back; the company is deleted only if it was made by the combine and
+  nothing new landed on it. A parent company has no parent itself (`parentCompanyOf` → `parentOf` null), so a
+  combined Diageo never refuses people on its own labels as "sister brands". No button: Claude runs it with
+  `node scripts/cc.mjs combineParent '{"parent":"Diageo"}'`. `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-combine-e2e.js`.
 - **Brands → New from LinkedIn** (chip after All; `listBrands({ category: 'new' })`, count from
   `categoryReach.newFromLinkedIn`): brands the LinkedIn run added itself (`source` linkedin-discover /
   research) in the last 14 days that nobody has looked at. Tick → **Keep** (off the list, nothing

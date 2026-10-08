@@ -40,7 +40,7 @@ import { readLiLog, readLiResearch, LI_SCRIPT_VERSION, LI_SWEEP_KEY } from '@/li
 import { readHiddenLog, updateHiddenLog, markZachRead, clearZachRead, zachDue, ZACH_REST_DAYS, type HiddenEntry } from '@/lib/li-hidden'
 import { readRuns } from '@/lib/li-report'
 import { companySlug, companyPageUrl, profileSlug, looksLikeSeller } from '@/lib/li-capture'
-import { whyLeaveOut, parentOf, isParentCompany } from '@/lib/parents'
+import { whyLeaveOut, parentOf, isParentCompany, parentCompanyOf, findParent, parentBrandNames, LI_PARENT_PAGES_KEY, type Parent } from '@/lib/parents'
 import { brandSize, BIG_BRAND_WORK } from '@/lib/brand-size'
 import {
   readJsonSetting, writeJsonSetting, LI_REVIEW_KEY, LI_CONFIRMED_KEY, LI_OWNER_KEY,
@@ -2392,6 +2392,169 @@ async function reconcileBrandTargets(brandId: string, perBrandArg?: number) {
   return {
     active: Math.min(active.length, room),
     shelvedNow: shelve.length,
+  }
+}
+
+// ---------------------------------------------------------------
+// One brand per parent company (Leo, Oct 8 2026: "make all of the brands
+// under Diageo one big brand on the site and move all of the contacts
+// there"). Every brand parents.ts puts under the parent goes into one
+// brand named for the company — the one already on the roster, else a
+// new one. Unlike mergeBrands, nothing that describes one label (its
+// about, products, website, LinkedIn page, headcount, facts) lands on
+// the company: those describe Don Julio, not Diageo.
+// ---------------------------------------------------------------
+
+const COMBINE_LAST_KEY = 'parentCombineLast'
+// Everything that hangs off a brand (Partner, one per brand, apart).
+const COMBINE_TABLES = ['contact', 'target', 'deal', 'showSponsor', 'document', 'activation', 'boardVisit', 'boardAccessRequest', 'opsMessage', 'discoveredBrand'] as const
+type CombineTable = (typeof COMBINE_TABLES)[number]
+
+const nameWords = (s: unknown) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .replace(/&/g, ' and ').replace(/['’.]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()
+// Another spelling of the same name ("DeLeon" for "DeLeón Tequila",
+// "Cîroc Vodka" for "Cîroc"). Crown Royal's saved page was a coffee
+// shop's ("The Crown: Royal Coffee Lab…") — not one.
+function sameNameFamily(a: unknown, b: unknown) {
+  const x = nameWords(a), y = nameWords(b)
+  return !!x && !!y && (x === y || x.startsWith(y + ' ') || y.startsWith(x + ' '))
+}
+const personKeys = (c: { name: string; email: string | null; linkedinUrl: string | null }) => {
+  const slug = (String(c.linkedinUrl || '').match(/\/in\/([^/?#]+)/i) || [])[1]
+  return [slug && 'in:' + decodeURIComponent(slug).toLowerCase(), c.email && 'em:' + c.email.trim().toLowerCase(), nameWords(c.name) && 'nm:' + nameWords(c.name)].filter(Boolean) as string[]
+}
+
+async function combinePlan(parentName: unknown) {
+  const parent = findParent(String(parentName || ''))
+  if (!parent) throw new Error(`"${parentName}" isn't a parent company the dashboard knows (src/lib/parents.ts)`)
+  const all = await prisma.brand.findMany({ orderBy: { createdAt: 'asc' } })
+  const isCompany = (b: { name: string }) => parentCompanyOf(b.name)?.name === parent.name
+  const keeper = all.find(isCompany) ?? null
+  // A second copy of the company itself goes in too.
+  const going = all.filter(b => b.id !== keeper?.id && (isCompany(b) || parentOf(b.name, b.aka)?.name === parent.name))
+  const ids = going.map(b => b.id)
+  const setIds = keeper ? [...ids, keeper.id] : ids
+  const dayStart = startOfLocalDay()
+
+  const [contacts, targets, shows, partners, ...others] = await Promise.all([
+    prisma.contact.findMany({ where: { brandId: { in: setIds } }, select: { id: true, brandId: true, name: true, title: true, email: true, linkedinUrl: true } }),
+    prisma.target.findMany({ where: { brandId: { in: setIds } }, select: { id: true, brandId: true, status: true, sentAt: true, shelved: true, queuedFor: true } }),
+    prisma.showSponsor.findMany({ where: { brandId: { in: setIds } }, select: { brandId: true, crmLeadId: true } }),
+    prisma.partner.findMany({ where: { brandId: { in: setIds } }, select: { brandId: true } }),
+    prisma.deal.findMany({ where: { brandId: { in: ids } }, select: { brandId: true } }),
+    prisma.activation.findMany({ where: { brandId: { in: ids } }, select: { brandId: true } }),
+    prisma.document.findMany({ where: { brandId: { in: ids } }, select: { brandId: true } }),
+    prisma.boardVisit.findMany({ where: { brandId: { in: ids } }, select: { brandId: true } }),
+  ])
+  const [deals, activations, documents, boardVisits] = others as { brandId: string | null }[][]
+  const count = (rows: { brandId: string | null }[], id: string) => rows.filter(r => r.brandId === id).length
+  const waiting = (t: (typeof targets)[number]) => !t.shelved && ['queued', 'drafted'].includes(t.status)
+
+  const brands = going.map(b => {
+    const ts = targets.filter(t => t.brandId === b.id)
+    return {
+      id: b.id, name: b.name, category: b.category,
+      contacts: count(contacts, b.id),
+      invited: ts.filter(wasInvited).length,
+      today: ts.filter(t => waiting(t) && t.queuedFor && t.queuedFor >= dayStart).length,
+      waiting: ts.filter(t => waiting(t) && !(t.queuedFor && t.queuedFor >= dayStart)).length,
+      shelved: ts.filter(t => t.shelved && !wasInvited(t)).length,
+      deals: count(deals, b.id), shows: count(shows, b.id), activations: count(activations, b.id),
+      documents: count(documents, b.id), boardVisits: count(boardVisits, b.id),
+      archived: !!b.passedAt, doNotEmail: b.doNotEmail,
+      passedUntil: b.passedUntil && b.passedUntil > new Date() ? b.passedUntil : null,
+      linkedinUrl: b.linkedinUrl, website: b.website, boardCode: b.boardCode,
+    }
+  })
+
+  // Things only one brand can hold: say so and stop, never drop one.
+  const blocks: string[] = []
+  const byLead = new Map<string, Set<string>>()
+  for (const sh of shows) {
+    if (!byLead.has(sh.crmLeadId)) byLead.set(sh.crmLeadId, new Set())
+    byLead.get(sh.crmLeadId)!.add(sh.brandId)
+  }
+  for (const set of byLead.values()) if (set.size > 1) {
+    blocks.push('The same show is on ' + [...set].map(id => all.find(b => b.id === id)?.name).join(' and ') + ' — merge those two by hand first')
+  }
+  if (partners.length > 1) blocks.push('More than one of these has a partner record (' + partners.map(p => all.find(b => b.id === p.brandId)?.name).join(', ') + ')')
+  const codes = [keeper, ...going].filter(b => b?.boardCode)
+  if (codes.length > 1) blocks.push('More than one has a Show Board code (' + codes.map(b => b!.name).join(', ') + ') — only one can stay')
+
+  // The same person filed under two of these brands: named, both kept.
+  const groups = new Map<string, Set<string>>()
+  const owner = new Map<string, string>()
+  for (const c of contacts) for (const k of personKeys(c)) {
+    if (!groups.has(k)) groups.set(k, new Set())
+    groups.get(k)!.add(c.id)
+    owner.set(c.id, c.brandId)
+  }
+  const seenDup = new Set<string>()
+  const samePerson: { name: string; at: string[] }[] = []
+  for (const set of groups.values()) {
+    if (set.size < 2) continue
+    const key = [...set].sort().join(',')
+    if (seenDup.has(key)) continue
+    seenDup.add(key)
+    const first = contacts.find(c => set.has(c.id))!
+    samePerson.push({ name: first.name, at: [...set].map(id => all.find(b => b.id === owner.get(id))?.name || '?') })
+  }
+
+  // The company's "also known as": every name and spelling of the brands
+  // going in, then every brand parents.ts lists for it, so a capture,
+  // a paste or the research list under any of them finds the company
+  // instead of making the brand again.
+  const companyName = keeper?.name ?? parent.name
+  let aka: string | null = keeper?.aka ?? null
+  const droppedAka: { brand: string; aka: string }[] = []
+  for (const b of going) {
+    aka = addAka(aka, b.name, companyName) || null
+    for (const a of String(b.aka ?? '').split(/[,;]/).map(x => x.trim()).filter(Boolean)) {
+      if (sameNameFamily(a, b.name) || parentBrandNames(parent).some(n => sameNameFamily(n, a))) aka = addAka(aka, a, companyName) || null
+      else droppedAka.push({ brand: b.name, aka: a })
+    }
+  }
+  for (const n of parentBrandNames(parent)) aka = addAka(aka, n, companyName) || null
+
+  // A new company brand: the category most of its brands are in, its own
+  // LinkedIn page if the fill found it.
+  let create: null | { name: string; category: string | null; tier: string; linkedinUrl: string | null } = null
+  if (!keeper) {
+    const tally = new Map<string, number>()
+    for (const b of going) if (b.category) tally.set(b.category, (tally.get(b.category) || 0) + 1)
+    const category = [...tally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+    const pages = await readJsonSetting<Record<string, string>>(prisma, LI_PARENT_PAGES_KEY, {})
+    const slug = pages[parent.name]
+    create = { name: parent.name, category: checkCategory(category), tier: 'established', linkedinUrl: slug ? `https://www.linkedin.com/company/${slug}/` : null }
+    if (all.some(b => b.name.toLowerCase() === parent.name.toLowerCase())) blocks.push(`A brand named ${parent.name} already exists`)
+  }
+
+  // One brand works BIG_BRAND_WORK people at a time (or Leo's number):
+  // everyone already invited at any of them counts against it.
+  const invited = brands.reduce((n, b) => n + b.invited, 0) +
+    (keeper ? targets.filter(t => t.brandId === keeper.id && wasInvited(t)).length : 0)
+  const limit = keeper?.workPeople ?? BIG_BRAND_WORK
+  const todayN = brands.reduce((n, b) => n + b.today, 0)
+  const waitingN = brands.reduce((n, b) => n + b.waiting, 0) +
+    (keeper ? targets.filter(t => t.brandId === keeper.id && waiting(t)).length : 0)
+  const room = Math.max(0, limit - invited - todayN)
+  const work = { invited, limit, today: todayN, waiting: waitingN, nextInLine: Math.max(0, waitingN - room) }
+
+  const expect = (keeper?.id ?? 'new') + '#' + brands.map(b => `${b.id}:${b.contacts}:${targets.filter(t => t.brandId === b.id).length}`).join('|')
+  return {
+    parent, keeper, going, ids, brands, blocks, samePerson, droppedAka, aka, create, work, expect,
+    pagesNotKept: brands.filter(b => b.linkedinUrl && b.linkedinUrl !== (keeper?.linkedinUrl ?? create?.linkedinUrl)).map(b => ({ brand: b.name, url: b.linkedinUrl })),
+    contacts: contacts.length,
+  }
+}
+
+function combineSummary(plan: Awaited<ReturnType<typeof combinePlan>>) {
+  return {
+    parent: plan.parent.name,
+    keeper: plan.keeper ? { id: plan.keeper.id, name: plan.keeper.name, isNew: false } : { id: null, ...plan.create, isNew: true },
+    brands: plan.brands, contacts: plan.contacts,
+    samePerson: plan.samePerson, droppedAka: plan.droppedAka, pagesNotKept: plan.pagesNotKept,
+    akaAfter: plan.aka, work: plan.work, blocks: plan.blocks, expect: plan.expect,
   }
 }
 
@@ -5069,6 +5232,143 @@ const handlers: Record<string, Handler> = {
     return { merged: true, summary }
   },
 
+
+  // One brand for a parent company: every brand parents.ts puts under it
+  // goes in (see combinePlan). Preview by default; confirm with the
+  // preview's `expect` applies it in one transaction, and anything
+  // changed since answers `stale`. Undo = undoCombineParent.
+  async combineParent({ parent, confirm = false, expect }: any) {
+    const plan = await combinePlan(parent)
+    const summary = combineSummary(plan)
+    if (!confirm) return { applied: false, ...summary }
+    if (!plan.going.length) throw new Error(`No brands under ${plan.parent.name} to combine`)
+    if (plan.blocks.length) throw new Error(plan.blocks.join('; '))
+    if (expect !== plan.expect) return { applied: false, stale: true, ...summary }
+
+    const dayStart = startOfLocalDay()
+    const day = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: WORK_TZ })
+    const names = plan.going.map(b => b.name)
+    const result = await prisma.$transaction(async tx => {
+      const keeper = plan.keeper ?? await tx.brand.create({
+        data: { ...plan.create!, source: 'combine' },
+      })
+      const moved: Record<string, Record<string, string[]>> = {}
+      for (const t of COMBINE_TABLES) {
+        const rows: { id: string; brandId: string | null }[] = await (tx as any)[t].findMany({ where: { brandId: { in: plan.ids } }, select: { id: true, brandId: true } })
+        moved[t] = {}
+        for (const r of rows) (moved[t][r.brandId!] ||= []).push(r.id)
+        if (rows.length) await (tx as any)[t].updateMany({ where: { brandId: { in: plan.ids } }, data: { brandId: keeper.id } })
+      }
+      // Partner and the Show Board code: at most one (checked above).
+      const partner = await tx.partner.findFirst({ where: { brandId: { in: plan.ids } }, select: { brandId: true } })
+      if (partner) await tx.partner.update({ where: { brandId: partner.brandId }, data: { brandId: keeper.id } })
+      const coded = plan.going.find(b => b.boardCode)
+      // externalId is unique: free it on the brand going in first.
+      const ext = !keeper.externalId ? plan.going.find(b => b.externalId) : undefined
+      if (ext) await tx.brand.update({ where: { id: ext.id }, data: { externalId: null } })
+      await tx.brand.deleteMany({ where: { id: { in: plan.ids } } })
+      const line = `Combined into ${keeper.name} ${day}: ${names.join(', ')}.`
+      await tx.brand.update({
+        where: { id: keeper.id },
+        data: {
+          aka: plan.aka,
+          notes: keeper.notes ? keeper.notes + '\n' + line : line,
+          ...(ext ? { externalId: ext.externalId } : {}),
+          ...(coded && !keeper.boardCode ? { boardCode: coded.boardCode } : {}),
+        },
+      })
+
+      // One brand works its number of people at a time: the people still
+      // waiting past it are next in line (back by themselves when a spot
+      // opens), the way reconcileBrandTargets does it — except anyone in
+      // today's list, who stays for today.
+      const worked = await tx.target.count({ where: { brandId: keeper.id, ...INVITED_WHERE } })
+      const active = await tx.target.findMany({
+        where: { brandId: keeper.id, status: { in: ['queued', 'drafted'] }, shelved: false },
+        orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
+        select: { id: true, queuedFor: true },
+      })
+      const isToday = (t: { queuedFor: Date | null }) => !!t.queuedFor && t.queuedFor >= dayStart
+      const room = Math.max(0, (keeper.workPeople ?? BIG_BRAND_WORK) - worked - active.filter(isToday).length)
+      const shelve = active.filter(t => !isToday(t)).slice(room).map(t => t.id)
+      if (shelve.length) await tx.target.updateMany({ where: { id: { in: shelve } }, data: { shelved: true, shelvedHow: 'cap' } })
+
+      await writeJsonSetting(tx, COMBINE_LAST_KEY, {
+        at: new Date().toISOString(), parent: plan.parent.name,
+        keeperId: keeper.id, created: !plan.keeper,
+        keeperBefore: plan.keeper ? { aka: plan.keeper.aka, notes: plan.keeper.notes, externalId: plan.keeper.externalId, boardCode: plan.keeper.boardCode } : null,
+        brands: plan.going, moved, partnerFrom: partner?.brandId ?? null,
+        externalIdFrom: ext?.id ?? null, boardCodeFrom: coded && !keeper.boardCode ? coded.id : null, shelved: shelve,
+      })
+      return { keeperId: keeper.id, keeperName: keeper.name, shelved: shelve.length }
+    }, { maxWait: 10000, timeout: 60000 })
+    return { applied: true, ...summary, ...result }
+  },
+
+  // Puts the last combineParent back: each brand as it was (same id),
+  // with whatever of its own is still on the company. People the company
+  // got after the combine stay on it. Preview first.
+  async undoCombineParent({ confirm = false }: any) {
+    const last = await readJsonSetting<any>(prisma, COMBINE_LAST_KEY, null)
+    if (!last || !Array.isArray(last.brands)) throw new Error('Nothing to undo')
+    const keeper = await prisma.brand.findUnique({ where: { id: last.keeperId } })
+    if (!keeper) throw new Error(`${last.parent} is no longer on the roster — nothing to put back`)
+    const names = (last.brands as any[]).map(b => b.name)
+    const clash = await prisma.brand.findMany({ where: { OR: [{ id: { in: last.brands.map((b: any) => b.id) } }, { name: { in: names } }] }, select: { name: true } })
+    const back: Record<string, number> = {}
+    let stayed = 0
+    for (const t of COMBINE_TABLES) {
+      const ids = Object.values((last.moved?.[t] ?? {}) as Record<string, string[]>).flat()
+      if (!ids.length) continue
+      const still = await (prisma as any)[t].count({ where: { id: { in: ids }, brandId: keeper.id } })
+      back[t] = still
+      stayed += ids.length - still
+    }
+    const preview = {
+      parent: last.parent, at: last.at, brands: names, back, movedSince: stayed,
+      blocks: clash.length ? ['Already on the roster again: ' + clash.map(c => c.name).join(', ')] : [],
+    }
+    if (!confirm) return { applied: false, ...preview }
+    if (preview.blocks.length) throw new Error(preview.blocks[0])
+
+    await prisma.$transaction(async tx => {
+      if (last.externalIdFrom) await tx.brand.update({ where: { id: keeper.id }, data: { externalId: last.keeperBefore?.externalId ?? null } })
+      for (const b of last.brands as any[]) {
+        const data: any = { ...b }
+        for (const k of ['liMembersAt', 'lastRoundAt', 'researchedAt', 'passedAt', 'passedTodayAt', 'passedUntil', 'createdAt', 'updatedAt']) if (data[k]) data[k] = new Date(data[k])
+        for (const k of ['salesCents', 'fundingCents']) if (data[k] != null) data[k] = BigInt(data[k])
+        if (b.id === last.boardCodeFrom) data.boardCode = b.boardCode
+        await tx.brand.create({ data })
+      }
+      for (const t of COMBINE_TABLES) {
+        for (const [brandId, ids] of Object.entries((last.moved?.[t] ?? {}) as Record<string, string[]>)) {
+          await (tx as any)[t].updateMany({ where: { id: { in: ids }, brandId: keeper.id }, data: { brandId } })
+        }
+      }
+      if (last.partnerFrom) {
+        const p = await tx.partner.findUnique({ where: { brandId: keeper.id } })
+        if (p) await tx.partner.update({ where: { brandId: keeper.id }, data: { brandId: last.partnerFrom } })
+      }
+      // The people the combine put next in line, back where they were.
+      if (last.shelved?.length) {
+        await tx.target.updateMany({ where: { id: { in: last.shelved }, shelvedHow: 'cap', status: { in: ['queued', 'drafted'] } }, data: { shelved: false, shelvedHow: null } })
+      }
+      const left = last.created ? (await Promise.all(COMBINE_TABLES.map(t => (tx as any)[t].count({ where: { brandId: keeper.id } })))).reduce((a: number, b: number) => a + b, 0) : 1
+      if (last.created && !left && !(await tx.partner.findUnique({ where: { brandId: keeper.id } }))) {
+        await tx.brand.delete({ where: { id: keeper.id } })
+      } else {
+        await tx.brand.update({
+          where: { id: keeper.id },
+          data: {
+            aka: last.keeperBefore?.aka ?? null, notes: last.keeperBefore?.notes ?? null,
+            ...(last.boardCodeFrom ? { boardCode: last.keeperBefore?.boardCode ?? null } : {}),
+          },
+        })
+      }
+      await tx.setting.delete({ where: { key: COMBINE_LAST_KEY } })
+    }, { maxWait: 10000, timeout: 60000 })
+    return { applied: true, ...preview }
+  },
 
   // -------- brand detail --------
 
