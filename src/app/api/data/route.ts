@@ -41,6 +41,7 @@ import { readHiddenLog, updateHiddenLog, markZachRead, clearZachRead, zachDue, Z
 import { readRuns } from '@/lib/li-report'
 import { companySlug, companyPageUrl, profileSlug, looksLikeSeller } from '@/lib/li-capture'
 import { whyLeaveOut, parentOf, isParentCompany, parentCompanyOf, findParent, parentBrandNames, LI_PARENT_PAGES_KEY, type Parent } from '@/lib/parents'
+import { samePeopleGroups, pickKeeper, mergeFields, targetRank, type PersonRow, type MergeFields } from '@/lib/same-person'
 import { brandSize, BIG_BRAND_WORK } from '@/lib/brand-size'
 import {
   readJsonSetting, writeJsonSetting, LI_REVIEW_KEY, LI_CONFIRMED_KEY, LI_OWNER_KEY,
@@ -2419,11 +2420,6 @@ function sameNameFamily(a: unknown, b: unknown) {
   const x = nameWords(a), y = nameWords(b)
   return !!x && !!y && (x === y || x.startsWith(y + ' ') || y.startsWith(x + ' '))
 }
-const personKeys = (c: { name: string; email: string | null; linkedinUrl: string | null }) => {
-  const slug = (String(c.linkedinUrl || '').match(/\/in\/([^/?#]+)/i) || [])[1]
-  return [slug && 'in:' + decodeURIComponent(slug).toLowerCase(), c.email && 'em:' + c.email.trim().toLowerCase(), nameWords(c.name) && 'nm:' + nameWords(c.name)].filter(Boolean) as string[]
-}
-
 async function combinePlan(parentName: unknown) {
   const parent = findParent(String(parentName || ''))
   if (!parent) throw new Error(`"${parentName}" isn't a parent company the dashboard knows (src/lib/parents.ts)`)
@@ -2437,7 +2433,7 @@ async function combinePlan(parentName: unknown) {
   const dayStart = startOfLocalDay()
 
   const [contacts, targets, shows, partners, ...others] = await Promise.all([
-    prisma.contact.findMany({ where: { brandId: { in: setIds } }, select: { id: true, brandId: true, name: true, title: true, email: true, linkedinUrl: true } }),
+    peopleRows(prisma, setIds),
     prisma.target.findMany({ where: { brandId: { in: setIds } }, select: { id: true, brandId: true, status: true, sentAt: true, shelved: true, queuedFor: true } }),
     prisma.showSponsor.findMany({ where: { brandId: { in: setIds } }, select: { brandId: true, crmLeadId: true } }),
     prisma.partner.findMany({ where: { brandId: { in: setIds } }, select: { brandId: true } }),
@@ -2481,24 +2477,11 @@ async function combinePlan(parentName: unknown) {
   const codes = [keeper, ...going].filter(b => b?.boardCode)
   if (codes.length > 1) blocks.push('More than one has a Show Board code (' + codes.map(b => b!.name).join(', ') + ') — only one can stay')
 
-  // The same person filed under two of these brands: named, both kept.
-  const groups = new Map<string, Set<string>>()
-  const owner = new Map<string, string>()
-  for (const c of contacts) for (const k of personKeys(c)) {
-    if (!groups.has(k)) groups.set(k, new Set())
-    groups.get(k)!.add(c.id)
-    owner.set(c.id, c.brandId)
-  }
-  const seenDup = new Set<string>()
-  const samePerson: { name: string; at: string[] }[] = []
-  for (const set of groups.values()) {
-    if (set.size < 2) continue
-    const key = [...set].sort().join(',')
-    if (seenDup.has(key)) continue
-    seenDup.add(key)
-    const first = contacts.find(c => set.has(c.id))!
-    samePerson.push({ name: first.name, at: [...set].map(id => all.find(b => b.id === owner.get(id))?.name || '?') })
-  }
+  // The same person filed under two of these brands (they'll be one
+  // brand): merged on apply, the way mergePeople does it (Leo: "merge if
+  // two people appear").
+  const brandNameOf = (id: string) => all.find(b => b.id === id)?.name || '?'
+  const samePerson = planSamePeople(contacts, mergeDay(), brandNameOf).map(({ data, ...p }) => ({ ...p, at: [p.keep, ...p.drops].map(r => r.brand) }))
 
   // The company's "also known as": every name and spelling of the brands
   // going in, then every brand parents.ts lists for it, so a capture,
@@ -2555,6 +2538,144 @@ function combineSummary(plan: Awaited<ReturnType<typeof combinePlan>>) {
     brands: plan.brands, contacts: plan.contacts,
     samePerson: plan.samePerson, droppedAka: plan.droppedAka, pagesNotKept: plan.pagesNotKept,
     akaAfter: plan.aka, work: plan.work, blocks: plan.blocks, expect: plan.expect,
+  }
+}
+
+// ---------------------------------------------------------------
+// The same person filed twice at one brand (src/lib/same-person.ts; Leo,
+// Oct 8 2026: "merge if two people appear"). The row with the furthest
+// outreach stays and takes what it's missing from the other (email,
+// phone, city…); a title or LinkedIn link that doesn't fit goes in its
+// notes. The two outreach rows become one: the further one stays, the
+// other's notes, emails and history move onto it. Every merge keeps what
+// it changed so it can be put back (undoMergePeople, undoCombineParent).
+// ---------------------------------------------------------------
+
+const PEOPLE_MERGE_LAST_KEY = 'peopleMergeLast'
+// What hangs off an outreach row.
+const TARGET_CHILDREN = ['targetEvent', 'draft', 'emailMessage'] as const
+
+type PersonOnFile = PersonRow & { brandId: string }
+type PersonMergePlan = {
+  name: string; keepId: string; dropIds: string[]
+  data: MergeFields; takes: string[]; lines: string[]
+  keep: { id: string; title: string | null; source: string | null; status: string | null; brand?: string }
+  drops: { id: string; title: string | null; source: string | null; status: string | null; brand?: string }[]
+}
+
+const mergeDay = () => new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: WORK_TZ })
+
+async function peopleRows(db: any, brandIds: string[]): Promise<PersonOnFile[]> {
+  const rows = await db.contact.findMany({
+    where: { brandId: { in: brandIds } },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true, brandId: true, name: true, title: true, email: true, phone: true, location: true,
+      linkedinUrl: true, twitterUrl: true, externalId: true, source: true, isDecisionMaker: true,
+      notes: true, createdAt: true, targets: { select: { id: true, status: true, sentAt: true } },
+    },
+  })
+  return rows.map(({ targets, ...c }: any) => ({ ...c, target: targets[0] ?? null }))
+}
+
+// Each group of one person, what stays and what it takes. Rows from
+// different brands are only ever passed in together by combineParent,
+// whose brands are about to be one.
+function planSamePeople(rows: PersonOnFile[], day: string, brandName?: (id: string) => string): PersonMergePlan[] {
+  return samePeopleGroups(rows).map(g => {
+    const keep = pickKeeper(g)
+    const drops = g.filter(r => r.id !== keep.id)
+    let acc: PersonRow = { ...keep }
+    const data: MergeFields = {}
+    const lines: string[] = []
+    for (const d of drops) {
+      const m = mergeFields(acc, d, day)
+      Object.assign(data, m.data)
+      acc = { ...acc, ...m.data }
+      lines.push(...m.lines)
+    }
+    const who = (r: PersonOnFile) => ({
+      id: r.id, title: r.title ?? null, source: r.source ?? null, status: r.target?.status ?? null,
+      ...(brandName ? { brand: brandName(r.brandId) } : {}),
+    })
+    return {
+      name: keep.name, keepId: keep.id, dropIds: drops.map(d => d.id), data,
+      takes: Object.keys(data).filter(k => k !== 'notes' && k !== 'isDecisionMaker'), lines,
+      keep: who(keep), drops: drops.map(who),
+    }
+  })
+}
+
+// A row as JSON (a Setting) back to what Prisma takes: dates and BigInts.
+function reviveRow(model: string, row: Record<string, any>) {
+  const m = Prisma.dmmf.datamodel.models.find(x => x.name === model)
+  if (!m) throw new Error('Unknown model ' + model)
+  const out: Record<string, any> = {}
+  for (const f of m.fields) {
+    if ((f.kind !== 'scalar' && f.kind !== 'enum') || !(f.name in row)) continue
+    let v = row[f.name]
+    if (v != null && f.type === 'DateTime') v = new Date(v)
+    if (v != null && f.type === 'BigInt') v = BigInt(v)
+    out[f.name] = v
+  }
+  return out
+}
+
+async function applySamePerson(tx: any, p: PersonMergePlan) {
+  const keepRow = await tx.contact.findUnique({ where: { id: p.keepId } })
+  if (!keepRow) throw new Error(`${p.name} is no longer on file`)
+  const keepBefore: Record<string, any> = {}
+  for (const k of Object.keys(p.data)) keepBefore[k] = keepRow[k]
+  let keepT = await tx.target.findUnique({ where: { contactId: p.keepId } })
+  const drops: any[] = []
+  for (const dropId of p.dropIds) {
+    const row = await tx.contact.findUnique({ where: { id: dropId } })
+    if (!row) throw new Error(`${p.name}'s second copy is no longer on file`)
+    if (row.brandId !== keepRow.brandId) throw new Error(`${p.name}'s two copies are at different brands`)
+    const dT = await tx.target.findUnique({ where: { contactId: dropId } })
+    const rec: any = { row, targetMoved: null, weak: null, strongId: null, strongWasDrop: false, children: null }
+    if (dT && !keepT) {
+      await tx.target.update({ where: { id: dT.id }, data: { contactId: p.keepId } })
+      rec.targetMoved = dT.id
+      keepT = dT
+    } else if (dT && keepT) {
+      // One outreach row per person: the further one stays, the other's
+      // notes, emails and history move onto it.
+      const dropWins = targetRank(dT) > targetRank(keepT)
+      const strong = dropWins ? dT : keepT
+      const weak = dropWins ? keepT : dT
+      const children: Record<string, string[]> = {}
+      for (const c of TARGET_CHILDREN) {
+        const ids = (await tx[c].findMany({ where: { targetId: weak.id }, select: { id: true } })).map((r: any) => r.id)
+        children[c] = ids
+        if (ids.length) await tx[c].updateMany({ where: { id: { in: ids } }, data: { targetId: strong.id } })
+      }
+      await tx.target.delete({ where: { id: weak.id } })
+      if (dropWins) await tx.target.update({ where: { id: strong.id }, data: { contactId: p.keepId } })
+      Object.assign(rec, { weak, strongId: strong.id, strongWasDrop: dropWins, children })
+      keepT = strong
+    }
+    await tx.contact.delete({ where: { id: dropId } })
+    drops.push(rec)
+  }
+  if (Object.keys(p.data).length) await tx.contact.update({ where: { id: p.keepId }, data: p.data })
+  return { keepId: p.keepId, name: p.name, keepBefore, drops }
+}
+
+// Puts one applySamePerson back: the kept row's fields first (frees an
+// externalId it took), then each second copy and its outreach row, same ids.
+async function undoSamePerson(tx: any, rec: any) {
+  if (Object.keys(rec.keepBefore || {}).length) await tx.contact.update({ where: { id: rec.keepId }, data: reviveRow('Contact', rec.keepBefore) })
+  for (const d of [...rec.drops].reverse()) {
+    await tx.contact.create({ data: reviveRow('Contact', d.row) })
+    if (d.targetMoved) await tx.target.update({ where: { id: d.targetMoved }, data: { contactId: d.row.id } })
+    if (d.weak) {
+      if (d.strongWasDrop) await tx.target.update({ where: { id: d.strongId }, data: { contactId: d.row.id } })
+      await tx.target.create({ data: reviveRow('Target', d.weak) })
+      for (const [c, ids] of Object.entries(d.children as Record<string, string[]>)) {
+        if (ids.length) await tx[c].updateMany({ where: { id: { in: ids } }, data: { targetId: d.weak.id } })
+      }
+    }
   }
 }
 
@@ -5278,6 +5399,12 @@ const handlers: Record<string, Handler> = {
         },
       })
 
+      // The same person filed under two of them is one row now (Leo: "merge
+      // if two people appear") — before the count below, since two rows
+      // can become one.
+      const people: any[] = []
+      for (const p of planSamePeople(await peopleRows(tx, [keeper.id]), day)) people.push(await applySamePerson(tx, p))
+
       // One brand works its number of people at a time: the people still
       // waiting past it are next in line (back by themselves when a spot
       // opens), the way reconcileBrandTargets does it — except anyone in
@@ -5299,8 +5426,9 @@ const handlers: Record<string, Handler> = {
         keeperBefore: plan.keeper ? { aka: plan.keeper.aka, notes: plan.keeper.notes, externalId: plan.keeper.externalId, boardCode: plan.keeper.boardCode } : null,
         brands: plan.going, moved, partnerFrom: partner?.brandId ?? null,
         externalIdFrom: ext?.id ?? null, boardCodeFrom: coded && !keeper.boardCode ? coded.id : null, shelved: shelve,
+        people,
       })
-      return { keeperId: keeper.id, keeperName: keeper.name, shelved: shelve.length }
+      return { keeperId: keeper.id, keeperName: keeper.name, shelved: shelve.length, merged: people.map(r => r.name) }
     }, { maxWait: 10000, timeout: 60000 })
     return { applied: true, ...summary, ...result }
   },
@@ -5315,31 +5443,36 @@ const handlers: Record<string, Handler> = {
     if (!keeper) throw new Error(`${last.parent} is no longer on the roster — nothing to put back`)
     const names = (last.brands as any[]).map(b => b.name)
     const clash = await prisma.brand.findMany({ where: { OR: [{ id: { in: last.brands.map((b: any) => b.id) } }, { name: { in: names } }] }, select: { name: true } })
+    // Rows the combine merged away come back too (same ids).
+    const people: any[] = Array.isArray(last.people) ? last.people : []
+    const mergedAway = new Set<string>(people.flatMap(r => r.drops.flatMap((d: any) => [d.row.id, d.weak?.id].filter(Boolean))))
     const back: Record<string, number> = {}
     let stayed = 0
     for (const t of COMBINE_TABLES) {
       const ids = Object.values((last.moved?.[t] ?? {}) as Record<string, string[]>).flat()
       if (!ids.length) continue
-      const still = await (prisma as any)[t].count({ where: { id: { in: ids }, brandId: keeper.id } })
+      const still = await (prisma as any)[t].count({ where: { id: { in: ids }, brandId: keeper.id } }) +
+        ids.filter(id => mergedAway.has(id)).length
       back[t] = still
       stayed += ids.length - still
     }
+    const keptPeople = people.length ? await prisma.contact.count({ where: { id: { in: people.map(r => r.keepId) } } }) : 0
+    const blocks: string[] = []
+    if (clash.length) blocks.push('Already on the roster again: ' + clash.map(c => c.name).join(', '))
+    if (keptPeople < people.length) blocks.push('Someone the combine merged has since been removed')
     const preview = {
       parent: last.parent, at: last.at, brands: names, back, movedSince: stayed,
-      blocks: clash.length ? ['Already on the roster again: ' + clash.map(c => c.name).join(', ')] : [],
+      unmerge: people.map(r => r.name), blocks,
     }
     if (!confirm) return { applied: false, ...preview }
     if (preview.blocks.length) throw new Error(preview.blocks[0])
 
     await prisma.$transaction(async tx => {
+      // The merged people first: their second copies come back on the
+      // company, and the move below takes them home with everything else.
+      for (const r of [...people].reverse()) await undoSamePerson(tx, r)
       if (last.externalIdFrom) await tx.brand.update({ where: { id: keeper.id }, data: { externalId: last.keeperBefore?.externalId ?? null } })
-      for (const b of last.brands as any[]) {
-        const data: any = { ...b }
-        for (const k of ['liMembersAt', 'lastRoundAt', 'researchedAt', 'passedAt', 'passedTodayAt', 'passedUntil', 'createdAt', 'updatedAt']) if (data[k]) data[k] = new Date(data[k])
-        for (const k of ['salesCents', 'fundingCents']) if (data[k] != null) data[k] = BigInt(data[k])
-        if (b.id === last.boardCodeFrom) data.boardCode = b.boardCode
-        await tx.brand.create({ data })
-      }
+      for (const b of last.brands as any[]) await tx.brand.create({ data: reviveRow('Brand', b) as any })
       for (const t of COMBINE_TABLES) {
         for (const [brandId, ids] of Object.entries((last.moved?.[t] ?? {}) as Record<string, string[]>)) {
           await (tx as any)[t].updateMany({ where: { id: { in: ids }, brandId: keeper.id }, data: { brandId } })
@@ -5366,6 +5499,55 @@ const handlers: Record<string, Handler> = {
         })
       }
       await tx.setting.delete({ where: { key: COMBINE_LAST_KEY } })
+    }, { maxWait: 10000, timeout: 60000 })
+    return { applied: true, ...preview }
+  },
+
+  // The same person filed twice at one brand, as one row (see
+  // planSamePeople). Preview by default; confirm with the preview's
+  // `expect` merges every group at the brand in one transaction. Undo =
+  // undoMergePeople (the last merge).
+  async mergePeople({ brandId, confirm = false, expect }: any) {
+    const brand = await prisma.brand.findUnique({ where: { id: String(brandId || '') }, select: { id: true, name: true } })
+    if (!brand) throw new Error('Brand not found')
+    const plans = planSamePeople(await peopleRows(prisma, [brand.id]), mergeDay())
+    const sig = plans.map(p => [p.keepId, ...p.dropIds].join('+')).join('|')
+    const summary = { brand: brand.name, brandId: brand.id, people: plans.map(({ data, ...p }) => p), expect: sig }
+    if (!confirm) return { applied: false, ...summary }
+    if (!plans.length) throw new Error(`Nobody is on file twice at ${brand.name}`)
+    if (expect !== sig) return { applied: false, stale: true, ...summary }
+    const recs = await prisma.$transaction(async tx => {
+      const out: any[] = []
+      for (const p of plans) out.push(await applySamePerson(tx, p))
+      await writeJsonSetting(tx, PEOPLE_MERGE_LAST_KEY, { at: new Date().toISOString(), brandId: brand.id, brand: brand.name, recs: out })
+      return out
+    }, { maxWait: 10000, timeout: 60000 })
+    return { applied: true, ...summary, merged: recs.length }
+  },
+
+  // Puts the last mergePeople back: each second copy and its outreach row
+  // (same ids), the kept row's fields as they were. Preview first.
+  async undoMergePeople({ confirm = false }: any) {
+    const last = await readJsonSetting<any>(prisma, PEOPLE_MERGE_LAST_KEY, null)
+    if (!last || !Array.isArray(last.recs) || !last.recs.length) throw new Error('Nothing to undo')
+    const keepIds = last.recs.map((r: any) => r.keepId)
+    const dropIds = last.recs.flatMap((r: any) => r.drops.map((d: any) => d.row.id))
+    const homes = [...new Set<string>(last.recs.flatMap((r: any) => r.drops.map((d: any) => d.row.brandId)))]
+    const [keeps, clash, brands] = await Promise.all([
+      prisma.contact.count({ where: { id: { in: keepIds } } }),
+      prisma.contact.count({ where: { id: { in: dropIds } } }),
+      prisma.brand.count({ where: { id: { in: homes } } }),
+    ])
+    const blocks: string[] = []
+    if (keeps < keepIds.length) blocks.push('Someone merged has since been removed')
+    if (clash) blocks.push('Already back on file')
+    if (brands < homes.length) blocks.push(`${last.brand} is no longer on the roster`)
+    const preview = { brand: last.brand, brandId: last.brandId, at: last.at, people: last.recs.map((r: any) => r.name), blocks }
+    if (!confirm) return { applied: false, ...preview }
+    if (blocks.length) throw new Error(blocks[0])
+    await prisma.$transaction(async tx => {
+      for (const r of [...last.recs].reverse()) await undoSamePerson(tx, r)
+      await tx.setting.delete({ where: { key: PEOPLE_MERGE_LAST_KEY } })
     }, { maxWait: 10000, timeout: 60000 })
     return { applied: true, ...preview }
   },
@@ -5487,8 +5669,17 @@ const handlers: Record<string, Handler> = {
       due: zachDue(hidden) && !brand.passedAt && !brand.doNotEmail && brand.contacts.length < CONTACT_CAP_PER_BRAND,
     } : null
 
+    // The same person on file twice here: the People section offers the
+    // merge (mergePeople), and its Undo while it's the last one.
+    const targetOf = new Map(brand.targets.map(t => [t.contactId, { id: t.id, status: t.status, sentAt: t.sentAt }]))
+    const samePeople = planSamePeople(brand.contacts.map(c => ({ ...c, target: targetOf.get(c.id) ?? null })), mergeDay())
+      .map(({ data, ...p }) => p)
+    const lastMerge = await readJsonSetting<any>(prisma, PEOPLE_MERGE_LAST_KEY, null)
+    const peopleMergeUndo = lastMerge?.brandId === brand.id && Array.isArray(lastMerge.recs)
+      ? { at: lastMerge.at, people: lastMerge.recs.map((r: any) => r.name) } : null
+
     return {
-      brand: brandOut, events, money, fit, liHidden,
+      brand: brandOut, events, money, fit, liHidden, samePeople, peopleMergeUndo,
       // A big company works ten at a time (the Work menu's suggestion).
       big: isBigBrand(brand),
       accessRequests: pendingAccess,

@@ -7644,6 +7644,20 @@ function loadBrand(brandId) {
             (d.liHidden.titles && d.liHidden.titles.length ? ' (' + esc(d.liHidden.titles.slice(0, 3).join(', ')) + ')' : '') +
             ' — Zach\u2019s account can see them: <a href="' + esc(d.liHidden.url) + '" target="_blank" rel="noopener">open on LinkedIn ↗</a>, then SB · Read people.</div>'
         : '') +
+      // The same person on file twice here (same-person.ts — Leo, Oct 8
+      // 2026: "merge if two people appear"): Merge… shows what stays,
+      // then merges (mergePeople); Undo for a day after.
+      (d.samePeople && d.samePeople.length
+        ? '<div class="hint" id="b-same" style="margin:0 0 10px">' +
+            (d.samePeople.length === 1
+              ? esc(d.samePeople[0].name) + ' is on file twice'
+              : d.samePeople.length + ' people are on file twice (' + esc(d.samePeople.slice(0, 3).map(function (p) { return p.name; }).join(', ')) + ')') +
+            ' — <button class="btn-ghost" id="b-same-merge" style="padding:3px 10px;font-size:13px">Merge…</button></div>'
+        : (d.peopleMergeUndo && Date.now() - new Date(d.peopleMergeUndo.at).getTime() < 864e5
+          ? '<div class="hint" id="b-same-undo" style="margin:0 0 10px">Merged ' + esc(d.peopleMergeUndo.people.join(', ')) +
+              '\u2019s two copies into one — <a href="#" id="b-same-undo-link">Undo</a></div>'
+          : '')) +
+      '<div id="b-same-slot"></div>' +
       '<div id="b-split-slot"></div>' +
       '<div id="b-contact-slot"></div>' +
       (b.contacts.length ? b.contacts.map(function (c) {
@@ -7997,6 +8011,10 @@ function loadBrand(brandId) {
     };
 
     document.getElementById('b-split').onclick = function () { openSplitBrand(b); };
+    var sameBtn = document.getElementById('b-same-merge');
+    if (sameBtn) sameBtn.onclick = function () { openSamePeople(b); };
+    var sameUndo = document.getElementById('b-same-undo-link');
+    if (sameUndo) sameUndo.onclick = function (e) { e.preventDefault(); undoSamePeople(b); };
 
     document.getElementById('b-addcontact').onclick = function () {
       openContactForm(b.id, document.getElementById('b-contact-slot'));
@@ -8473,6 +8491,62 @@ function openContactForm(brandId, slot, onDone, existing) {
       else loadBrand(brandId);
     }).catch(function (e) { toast(e.message); saveBtn.disabled = false; });
   };
+}
+
+// The same person on file twice at a brand (mergePeople): what each
+// merge keeps and takes, then one click merges every one of them.
+var SAME_TAKES = { email: 'email', phone: 'phone', location: 'city', linkedinUrl: 'LinkedIn link', twitterUrl: 'X link', externalId: 'SponsorUnited link', title: 'title' };
+function sameWho(r) {
+  var src = r.source === 'sponsorunited' ? 'from SponsorUnited' : r.source === 'linkedin' ? 'from LinkedIn' : r.source ? 'from ' + r.source : '';
+  var st = { sent: 'invited', accepted: 'accepted', replied: 'replied', converted: 'in talks', withdrawn: 'invite withdrawn', queued: 'in the queue', drafted: 'in the queue' }[r.status] || '';
+  return [r.title ? '“' + r.title + '”' : 'no title', src, st].filter(Boolean).join(' · ');
+}
+function openSamePeople(b) {
+  var slot = document.getElementById('b-same-slot');
+  slot.innerHTML = '<div class="hint" style="margin:0 0 10px">Checking…</div>';
+  api('mergePeople', { brandId: b.id }).then(function (pv) {
+    if (!pv.people.length) { slot.innerHTML = ''; toast('Nobody is on file twice any more'); loadBrand(b.id); return; }
+    slot.innerHTML =
+      '<div class="panel panel-pad" id="same-card" style="margin-bottom:10px">' +
+        '<div style="font-size:13.5px;font-weight:600;margin-bottom:6px">Merge into one row each</div>' +
+        pv.people.map(function (p) {
+          var takes = (p.takes || []).map(function (k) { return SAME_TAKES[k] || k; });
+          return '<div class="same-row" style="padding:8px 0;border-top:1px solid var(--border);font-size:13.5px">' +
+            '<b style="font-weight:600">' + esc(p.name) + '</b>' +
+            '<div>Stays: ' + esc(sameWho(p.keep)) + '</div>' +
+            p.drops.map(function (r) { return '<div style="color:var(--ink-3)">Goes: ' + esc(sameWho(r)) + '</div>'; }).join('') +
+            (takes.length ? '<div>Takes the ' + esc(takes.join(', ')) + ' from the copy that goes.</div>' : '') +
+            (p.lines && p.lines.length ? '<div style="color:var(--ink-3)">Noted on the person: ' + esc(p.lines.join('; ')) + '</div>' : '') +
+          '</div>';
+        }).join('') +
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:8px">' +
+          '<button class="btn-solid" id="same-go">Merge ' + (pv.people.length === 1 ? '' : pv.people.length + ' people') + '</button>' +
+          '<button class="btn-ghost" id="same-cancel">Cancel</button>' +
+          '<span class="hint" style="margin:0">Outreach stays on the row that got furthest. Undo after.</span>' +
+        '</div>' +
+      '</div>';
+    document.getElementById('same-cancel').onclick = function () { slot.innerHTML = ''; };
+    var go = document.getElementById('same-go');
+    go.onclick = function () {
+      go.disabled = true;
+      api('mergePeople', { brandId: b.id, confirm: true, expect: pv.expect }).then(function (r) {
+        if (r.stale) { toast('Something changed on this brand — here it is again'); openSamePeople(b); return; }
+        toast(r.merged === 1 ? 'Merged ' + pv.people[0].name : 'Merged ' + r.merged + ' people');
+        slot.innerHTML = '';
+        loadBrand(b.id);
+      }).catch(function (e) { toast(e.message); go.disabled = false; });
+    };
+  }).catch(function (e) { slot.innerHTML = ''; toast(e.message); });
+}
+function undoSamePeople(b) {
+  api('undoMergePeople', {}).then(function (pv) {
+    if (pv.blocks && pv.blocks.length) { toast(pv.blocks[0]); return; }
+    if (!confirm('Put ' + pv.people.join(', ') + ' back as two rows, each with its own outreach?')) return;
+    return api('undoMergePeople', { confirm: true }).then(function () {
+      toast('Put back');
+      loadBrand(b.id);
+    });
+  }).catch(function (e) { toast(e.message); });
 }
 
 // Two companies filed under one name — "On!" the nicotine pouch brand

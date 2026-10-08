@@ -17,6 +17,8 @@ on:
       - 'scripts/test-chat-add*'
       - 'scripts/test-combine*'
       - 'src/lib/parents.ts'
+      - 'src/lib/same-person.ts'
+      - 'scripts/test-same-person*'
       - 'src/lib/bigint-json.ts'
       - 'src/lib/work-log.ts'
       - 'src/lib/no-send.ts'
@@ -51,6 +53,8 @@ on:
       - 'scripts/test-chat-add*'
       - 'scripts/test-combine*'
       - 'src/lib/parents.ts'
+      - 'src/lib/same-person.ts'
+      - 'scripts/test-same-person*'
       - 'src/lib/bigint-json.ts'
       - 'src/lib/work-log.ts'
       - 'src/lib/no-send.ts'
@@ -104,7 +108,7 @@ jobs:
       - name: Types
         run: npx tsc --noEmit
       - name: Rules
-        run: node scripts/test-brand-fit.mjs && node scripts/test-brand-size.mjs && node scripts/test-stock.mjs && node scripts/test-work-log.mjs && node scripts/test-no-send.mjs && node scripts/test-queue-check.mjs && node scripts/test-claude-hunt.mjs && node scripts/test-chat-add.mjs && node scripts/test-brand-search.mjs && node scripts/test-plan-week.mjs && node scripts/test-carry.mjs
+        run: node scripts/test-brand-fit.mjs && node scripts/test-brand-size.mjs && node scripts/test-stock.mjs && node scripts/test-work-log.mjs && node scripts/test-no-send.mjs && node scripts/test-queue-check.mjs && node scripts/test-claude-hunt.mjs && node scripts/test-chat-add.mjs && node scripts/test-brand-search.mjs && node scripts/test-plan-week.mjs && node scripts/test-carry.mjs && node scripts/test-same-person.mjs
       - name: The page against a fake dashboard
         run: node scripts/test-brand-fit-ui.js && node scripts/test-brands-table.js && node scripts/test-today.js && node scripts/test-schedule.js && node scripts/test-outreach-lists.js
       - name: The handlers on a real database

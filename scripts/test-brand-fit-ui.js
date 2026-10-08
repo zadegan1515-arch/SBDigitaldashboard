@@ -64,6 +64,13 @@ const BRAND = {
   },
 };
 
+const SAME = [{
+  name: 'Ari Anderman', keepId: 'c_ari1', dropIds: ['c_ari2'], takes: ['email', 'location'],
+  lines: ['also on file as “Marketing Director, Don Julio Tequila” (sponsorunited)', 'other LinkedIn link https://www.linkedin.com/in/ari-anderman-8743a831/'],
+  keep: { id: 'c_ari1', title: 'Head of Marketing', source: 'linkedin', status: 'sent' },
+  drops: [{ id: 'c_ari2', title: 'Marketing Director, Don Julio Tequila', source: 'sponsorunited', status: null }],
+}];
+
 const STOCK = {
   goal: 15, refile: 0, lastRefile: null,
   totals: { business: 0, replied: 0, reached: 0, ready: 1, needs: 0, off: 0, total: 1, people: 3, under25: 1, noProfile: 1, touched: 0, small: 2, categories: 1 },
@@ -90,6 +97,11 @@ const H = {
   categoryReach: () => ({ categories: {}, newFromLinkedIn: 0 }),
   findDuplicates: () => ({ groups: [] }),
   getBrand: () => BRAND,
+  // The same person twice (Leo, Oct 8 2026: "merge if two people appear").
+  mergePeople: (a) => (a.confirm
+    ? (a.expect === 'sig1' ? { applied: true, merged: 1, people: SAME } : { applied: false, stale: true, people: SAME, expect: 'sig1' })
+    : { applied: false, brand: 'High Fit Co', people: SAME, expect: 'sig1' }),
+  undoMergePeople: (a) => (a.confirm ? { applied: true, people: ['Ari Anderman'], blocks: [] } : { applied: false, people: ['Ari Anderman'], blocks: [] }),
   updateBrand: () => ({ ok: true }),
   brandStock: () => STOCK,
   researchList: () => ({ scope: 'schedule', total: 1, shown: 1, scheduled: 1, rows: [{ id: 'b_euro', name: 'Euro Co' }], text: 'Research these brands…\n- {"id":"b_euro"}' }),
@@ -221,6 +233,40 @@ async function main() {
     await page.waitForTimeout(200);
     assert.equal(await page.$('#b-lihidden'), null, 'read on Zach\'s already: no line');
     delete BRAND.liHidden;
+
+    // The same person on file twice: one line, Merge… shows what stays and
+    // what it takes, Merge sends the preview's signature; Undo after.
+    assert.equal(await page.$('#b-same'), null, 'nobody twice: no line');
+    BRAND.samePeople = SAME.map(({ data, ...p }) => p);
+    await page.evaluate(() => loadBrand('b_high'));
+    await page.waitForSelector('#b-same');
+    assert.match(await page.textContent('#b-same'), /Ari Anderman is on file twice/);
+    await page.click('#b-same-merge');
+    await page.waitForSelector('#same-card');
+    assert.equal(last('mergePeople').args.confirm, undefined, 'Merge… only previews');
+    const card = await page.textContent('#same-card');
+    assert.match(card, /Stays: “Head of Marketing” · from LinkedIn · invited/);
+    assert.match(card, /Goes: “Marketing Director, Don Julio Tequila” · from SponsorUnited/);
+    assert.match(card, /Takes the email, city from the copy that goes/);
+    assert.match(card, /Noted on the person: also on file as/);
+    BRAND.samePeople = [];
+    BRAND.peopleMergeUndo = { at: new Date().toISOString(), people: ['Ari Anderman'] };
+    await page.click('#same-go');
+    await page.waitForSelector('#b-same-undo');
+    assert.deepEqual(last('mergePeople').args, { brandId: 'b_high', confirm: true, expect: 'sig1' });
+    assert.match(await page.textContent('#b-same-undo'), /Merged Ari Anderman’s two copies into one — Undo/);
+    BRAND.peopleMergeUndo = null;
+    await page.click('#b-same-undo-link');
+    await page.waitForFunction(() => !document.getElementById('b-same-undo'));
+    assert.deepEqual(last('undoMergePeople').args, { confirm: true });
+    BRAND.peopleMergeUndo = { at: new Date(Date.now() - 2 * 864e5).toISOString(), people: ['Ari Anderman'] };
+    await page.evaluate(() => loadBrand('b_high'));
+    await page.waitForSelector('#b-fit');
+    await page.waitForTimeout(200);
+    assert.equal(await page.$('#b-same-undo'), null, 'Undo is offered for a day');
+    delete BRAND.samePeople; delete BRAND.peopleMergeUndo;
+    ok('brand page: someone on file twice gets one line; Merge… shows what stays, Merge sends the preview, Undo for a day');
+
     ok('brand page: Fit line with reasons, facts prefilled exactly, Save sends only what changed');
     ok('brand page: people LinkedIn hid from Leo\'s account get one line with the link for Zach');
 

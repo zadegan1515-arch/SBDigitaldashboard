@@ -417,14 +417,26 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   requests, ops mail and Discover rows in one transaction; the company's aka gets every name and spelling of the brands
   that went in plus every brand parents.ts lists for it (so a capture, paste or the research list under "Ketel One"
   finds Diageo), and **nothing that describes one label** (about, products, website, its LinkedIn page, headcount,
-  facts) lands on the company — unlike `mergeBrands`. Named, never fixed by itself: the same person under two of them,
-  an aka that's another company (Crown Royal's coffee-shop page), LinkedIn pages not kept. Refuses a show / partner /
+  facts) lands on the company — unlike `mergeBrands`. **The same person under two of them is merged** (Leo: "merge if two
+  people appear" — `planSamePeople`/`applySamePerson`, below). Named, never fixed by itself: an aka that's another company
+  (Crown Royal's coffee-shop page), LinkedIn pages not kept. Refuses a show / partner /
   board code on two of them. Past the company's number (10, or Leo's Work number) the people waiting become next in
   line (`shelvedHow: 'cap'`), never anyone in today's list. Undo `undoCombineParent` (Setting `parentCombineLast`):
   same ids, everything still on the company goes back; the company is deleted only if it was made by the combine and
   nothing new landed on it. A parent company has no parent itself (`parentCompanyOf` → `parentOf` null), so a
   combined Diageo never refuses people on its own labels as "sister brands". No button: Claude runs it with
   `node scripts/cc.mjs combineParent '{"parent":"Diageo"}'`. `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-combine-e2e.js`.
+  Done for **Diageo** Oct 8 2026 (13 brands, 36 people; Setting `parentCombineLast` holds its Undo).
+- **The same person twice at one brand** (Leo, Oct 8 2026: "merge if two people appear"; rules pure in
+  `src/lib/same-person.ts`, `node scripts/test-same-person.mjs`): same LinkedIn profile, same email, or the same full name
+  (2+ words) — unless both rows have an email and they differ; a different LinkedIn link never separates them (Ari
+  Anderman changed his). The row whose outreach got furthest stays (then the one with a LinkedIn link, then the newest);
+  it takes what it's missing (email, phone, city, links, SponsorUnited id) and notes what didn't fit ("also on file as
+  “…”", "other LinkedIn link …"). Two outreach rows become one: the further stays, the other's drafts, emails and
+  history move onto it. Brand page: "X is on file twice — Merge…" (`getBrand.samePeople`, `#b-same`, `openSamePeople`)
+  → what stays / goes / takes → Merge (`mergePeople({ brandId, confirm, expect })`, stale-checked), "Merged … — Undo"
+  for a day (`undoMergePeople`, Setting `peopleMergeLast`, same ids back). combineParent runs the same merge after
+  its move and its Undo puts them back first.
 - **Brands → New from LinkedIn** (chip after All; `listBrands({ category: 'new' })`, count from
   `categoryReach.newFromLinkedIn`): brands the LinkedIn run added itself (`source` linkedin-discover /
   research) in the last 14 days that nobody has looked at. Tick → **Keep** (off the list, nothing
