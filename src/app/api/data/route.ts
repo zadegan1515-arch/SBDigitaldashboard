@@ -20,7 +20,7 @@ import {
 } from '@/lib/su-match'
 import { getServerSession } from 'next-auth'
 import Anthropic from '@anthropic-ai/sdk'
-import { authOptions, allowlist } from '@/lib/auth'
+import { authOptions, allowlist, readDenied } from '@/lib/auth'
 import {
   emailStatus, listEmailQueue, draftDailyEmails,
   sendApprovedEmails, checkReplies, suggestForDraft, sendTestEmail,
@@ -5520,7 +5520,11 @@ const handlers: Record<string, Handler> = {
     const me = session?.user?.email?.toLowerCase() ?? null
     const managers = allowlist()
     const invited = await prisma.allowedEmail.findMany({ orderBy: { createdAt: 'desc' } })
-    return { managers, invited, canManage: Boolean(me && managers.includes(me)) }
+    // Who Google signed in and the list turned away, last 14 days, not
+    // since let in.
+    const allowed = new Set([...managers, ...invited.map(i => i.email.toLowerCase())])
+    const denied = (await readDenied()).filter(d => !allowed.has(d.email) && Date.now() - Date.parse(d.at) < 14 * 864e5)
+    return { managers, invited, denied, canManage: Boolean(me && managers.includes(me)) }
   },
 
   async addTeamEmail({ email }: any) {

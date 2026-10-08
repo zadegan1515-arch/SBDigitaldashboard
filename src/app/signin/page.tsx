@@ -4,9 +4,25 @@ import { signIn } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 
+// What went wrong, in words (Oct 8 2026: every error used to read "doesn't
+// have access", even when Google never finished signing in).
+function problem(code: string, email: string | null): string {
+  if (code === 'AccessDenied') {
+    return email
+      ? `Google signed you in as ${email}, and that address isn\u2019t on the list. Ask Leo to add it (Operations \u2192 Team).`
+      : 'That account doesn\u2019t have access. Ask Leo to add your email.'
+  }
+  if (code === 'OAuthCallback' || code === 'OAuthSignin' || code === 'Callback') {
+    return 'Google didn\u2019t finish signing you in. Try again. If Google said your organization blocks this app, the sboyagency.com Google admin has to allow it.'
+  }
+  if (code === 'Unavailable') return 'The dashboard couldn\u2019t check the list just now. Try again in a minute.'
+  return `Sign-in didn\u2019t work (${code}). Try again.`
+}
+
 function SignInBox() {
   const params = useSearchParams()
   const denied = params.get('error')
+  const email = params.get('email')
 
   return (
     <div style={{
@@ -38,7 +54,7 @@ function SignInBox() {
             marginTop: 18, padding: '10px 12px', borderRadius: 8,
             background: '#f6eceb', color: '#8f342f', fontSize: 12.5, lineHeight: 1.5,
           }}>
-            That account doesn&rsquo;t have access. Ask Leo to add your email.
+            {problem(denied, email)}
           </div>
         )}
 

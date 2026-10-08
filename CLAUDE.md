@@ -415,6 +415,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   brands share or a platform link (linktr.ee, Instagram…) is no signal. Suggestions only: Merge runs the
   brand page's `mergeBrands` preview + confirm (the keeper now takes the merged brand's names as
   also-known-as); **Not duplicates** is remembered per pair (Setting `dupNotSame`).
+- **Sign-in** (`src/lib/auth.ts`): founding list = `ALLOWED_EMAILS` in Vercel (can manage Operations → Team) +
+  the `AllowedEmail` table (added on Team). A turned-away sign-in is kept (Setting `signInDenied`, last 20) and listed
+  on Team under "Tried to sign in" with **Add** (founding members only); `/signin` says what went wrong by error code
+  (Oct 8 2026 — every error used to read "doesn't have access"): AccessDenied names the address Google gave
+  (`?email=`; a Workspace alias signs in as its main address), OAuthCallback/OAuthSignin/Callback = Google didn't
+  finish (try again, or the sboyagency.com Google admin blocks the app), Unavailable = the list couldn't be read.
 - `src/app/api/data/route.ts` — every server function. Add a handler = add a key to `handlers`.
 - `src/app/api/ingest/route.ts` + `scripts/sponsorunited-capture.user.js` — SponsorUnited contact
   capture (INGEST_TOKEN-gated, CORS-open). **Two different caps, don't confuse them:**

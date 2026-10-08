@@ -336,6 +336,20 @@ async function main() {
   await page.waitForFunction(() => document.getElementById('linkedin').classList.contains('active') && document.getElementById('li-zach').style.display !== 'none');
   console.log('✓ the coverage card\u2019s "Hidden from your LinkedIn" row opens Zach\u2019s list');
 
+  // Operations → Team: sign-ins the list turned away (Oct 8 2026), with the
+  // address Google gave and a one-click Add for a founding member.
+  S.teamAdds = [];
+  H.listTeam = () => ({ managers: ['leo@example.com'], invited: [], canManage: true,
+    denied: [{ email: 'leonardo@example.com', name: 'Leo Z', at: NOW }] });
+  H.addTeamEmail = (a) => { S.teamAdds.push(a); return { email: a.email }; };
+  await page.evaluate(() => gotoView('team'));
+  await page.waitForSelector('#team-body [data-team-denied="leonardo@example.com"]');
+  assert.match(await page.textContent('#team-body'), /Tried to sign in[\s\S]*leonardo@example\.com[\s\S]*Leo Z/);
+  await page.click('#team-body [data-team-add-email="leonardo@example.com"]');
+  for (let i = 0; i < 100 && !S.teamAdds.length; i++) await page.waitForTimeout(50);
+  assert.deepEqual(S.teamAdds, [{ email: 'leonardo@example.com' }]);
+  console.log('✓ Team: turned-away sign-ins listed with one-click Add');
+
   // Phone width: no sideways page scroll.
   await page.setViewportSize({ width: 390, height: 800 });
   await page.evaluate(() => gotoView('brands'));

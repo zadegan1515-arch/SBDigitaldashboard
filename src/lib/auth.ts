@@ -18,6 +18,32 @@ import { PrismaClient } from '@prisma/client'
 // not depend on request-handling code.
 const prisma = new PrismaClient()
 
+// Turned-away sign-ins (Oct 8 2026: Leo's sboyagency.com sign-in came back
+// "doesn't have access" with nothing to say why). The last 20, so the Team
+// page can show who tried — with the exact address Google gave, which for a
+// Workspace alias is the account's main address — and a founding member can
+// add them in one click. Best effort: it never decides a sign-in.
+export const DENIED_KEY = 'signInDenied'
+export type DeniedSignIn = { email: string; name: string | null; at: string }
+
+export async function readDenied(): Promise<DeniedSignIn[]> {
+  try {
+    const row = await prisma.setting.findUnique({ where: { key: DENIED_KEY } })
+    const list = row ? JSON.parse(row.value) : []
+    return Array.isArray(list) ? list.filter(x => x && typeof x.email === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+async function noteDenied(email: string, name?: string | null) {
+  try {
+    const list = (await readDenied()).filter(x => x.email !== email)
+    const v = JSON.stringify([{ email, name: name ? String(name).slice(0, 120) : null, at: new Date().toISOString() }, ...list].slice(0, 20))
+    await prisma.setting.upsert({ where: { key: DENIED_KEY }, create: { key: DENIED_KEY, value: v }, update: { value: v } })
+  } catch { /* never in the way of the answer */ }
+}
+
 export function allowlist(): string[] {
   return (process.env.ALLOWED_EMAILS ?? '')
     .split(',')
@@ -57,11 +83,14 @@ export const authOptions: NextAuthOptions = {
       } catch (err) {
         // A database hiccup should not silently admit anyone.
         console.error('[auth] AllowedEmail lookup failed', err)
-        return false
+        return '/signin?error=Unavailable'
       }
 
       console.warn('[auth] denied sign-in for', email)
-      return false
+      await noteDenied(email, user.name)
+      // The sign-in page names the address Google gave, so a person whose
+      // Google account signs in under another address can see it.
+      return '/signin?error=AccessDenied&email=' + encodeURIComponent(email)
     },
 
     async session({ session }) {

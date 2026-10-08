@@ -16914,6 +16914,20 @@ function loadTeam() {
           'Removing them here locks them out at their next sign-in.</div></div>';
     }
 
+    // Google signed them in, the list turned them away (last 14 days).
+    var denied = d.denied || [];
+    if (denied.length) {
+      out += '<div class="section-head">Tried to sign in <span class="n">turned away</span></div>' +
+        denied.map(function (p) {
+          return '<div class="target" data-team-denied="' + esc(p.email) + '"><div class="t-main"><div class="t-line">' +
+            '<span class="t-brand">' + esc(p.email) + '</span></div>' +
+            '<div class="t-meta"><span>' + (p.name ? esc(p.name) + ' · ' : '') + when(p.at) + '</span></div></div>' +
+            '<div class="t-actions">' +
+            (d.canManage ? '<button class="btn-solid" data-team-add-email="' + esc(p.email) + '">Add</button>' : '') +
+            '</div></div>';
+        }).join('');
+    }
+
     out += d.invited.length
       ? d.invited.map(function (p) {
           return '<div class="target"><div class="t-main"><div class="t-line">' +
@@ -16945,6 +16959,15 @@ function loadTeam() {
 }
 
 document.getElementById('team-body').addEventListener('click', function (e) {
+  var add = e.target.closest('[data-team-add-email]');
+  if (add) {
+    add.disabled = true;
+    api('addTeamEmail', { email: add.getAttribute('data-team-add-email') }).then(function () {
+      toast('Added — they can sign in now');
+      loadTeam();
+    }).catch(function (err) { toast(err.message); add.disabled = false; });
+    return;
+  }
   var btn = e.target.closest('[data-team-remove]');
   if (!btn) return;
   var email = btn.getAttribute('data-team-remove');
