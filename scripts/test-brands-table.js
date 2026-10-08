@@ -82,6 +82,8 @@ async function main() {
       let body;
       try { body = { ok: true, data: H[fn] ? H[fn](args || {}) : {} }; }
       catch (e) { body = { ok: false, error: e.message }; }
+      // A slow answer, the way CI's runner gives one (S.slow[fn] ms).
+      if (S.slow && S.slow[fn]) await new Promise(r => setTimeout(r, S.slow[fn]));
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
     }
     if (!url.startsWith(base)) return route.abort();
@@ -345,10 +347,17 @@ async function main() {
   await page.evaluate(() => gotoView('team'));
   await page.waitForSelector('#team-body [data-team-denied="leonardo@example.com"]');
   assert.match(await page.textContent('#team-body'), /Tried to sign in[\s\S]*leonardo@example\.com[\s\S]*Leo Z/);
+  // The Add answers slowly and Leo moves on first: the page must not be
+  // pulled back to Team when the answer lands (the CI failure, Oct 8 2026).
+  S.slow = { addTeamEmail: 400 };
   await page.click('#team-body [data-team-add-email="leonardo@example.com"]');
   for (let i = 0; i < 100 && !S.teamAdds.length; i++) await page.waitForTimeout(50);
   assert.deepEqual(S.teamAdds, [{ email: 'leonardo@example.com' }]);
-  console.log('✓ Team: turned-away sign-ins listed with one-click Add');
+  await page.evaluate(() => gotoView('brands'));
+  await page.waitForTimeout(700);
+  assert.equal(await page.evaluate(() => document.getElementById('brands').classList.contains('active')), true, 'still on Brands after the Add came back');
+  S.slow = null;
+  console.log('✓ Team: turned-away sign-ins listed with one-click Add; moving on before it answers stays put');
 
   // Phone width: no sideways page scroll.
   await page.setViewportSize({ width: 390, height: 800 });

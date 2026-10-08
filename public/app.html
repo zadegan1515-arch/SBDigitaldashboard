@@ -17083,7 +17083,7 @@ function loadTeam() {
       addBtn.disabled = true;
       api('addTeamEmail', { email: v }).then(function () {
         toast('Added — they can sign in now');
-        loadTeam();
+        teamRefresh();
       }).catch(function (e) { toast(e.message); addBtn.disabled = false; });
     };
   }).catch(function (e) {
@@ -17098,7 +17098,7 @@ document.getElementById('team-body').addEventListener('click', function (e) {
     add.disabled = true;
     api('addTeamEmail', { email: add.getAttribute('data-team-add-email') }).then(function () {
       toast('Added — they can sign in now');
-      loadTeam();
+      teamRefresh();
     }).catch(function (err) { toast(err.message); add.disabled = false; });
     return;
   }
@@ -17108,9 +17108,15 @@ document.getElementById('team-body').addEventListener('click', function (e) {
   if (!window.confirm('Remove ' + email + '?\n\nThey will be locked out at their next sign-in.')) return;
   api('removeTeamEmail', { email: email }).then(function () {
     toast('Removed');
-    loadTeam();
+    teamRefresh();
   }).catch(function (err) { toast(err.message); });
 });
+// After an Add / Remove: redraw Team only if it's still on screen — moving
+// on before the answer came back used to pull the page back to Team.
+function teamRefresh() {
+  var v = document.getElementById('team');
+  if (v && v.classList.contains('active')) loadTeam();
+}
 
 // --- events ----------------------------------------------------
 
