@@ -432,18 +432,22 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   the same personal email with names that agree ("R. Zalis" / "Rachel Zalis") — never when both rows have different
   emails, never through a **shared inbox** (partnerships@, info@… `isRoleInbox`), never a pair Leo marked **Not the same
   person** (`notSamePerson({ ids, undo })`, Setting `peopleNotSame`); a different LinkedIn link alone never separates them
-  (Ari Anderman changed his). The row whose outreach got furthest stays (`targetRank`: replied > **declined** > accepted >
-  dead > sent > withdrawn > **passed** > drafted > queued — a "no" or a pass is never replaced by a queued copy; then the one
+  (Ari Anderman changed his). The row whose outreach got furthest stays (`targetRank` / `targetBeats`: replied >
+  **declined** > accepted > sent > dead > withdrawn > passed > drafted > queued — a "no" is never replaced by a waiting copy,
+  a live invite beats a copy gone cold by email, and a pass vs a queued copy goes to the later of the two; then the one
   with a LinkedIn link, then the newest); it takes what it's missing (email, phone, city, links, SponsorUnited id) and
   notes everything that didn't fit (another title, name, link, phone, city, id). Two outreach rows become one: the
-  further stays and takes the other's missing fields (invite date, DM, call, Leo's note — notes joined) plus its drafts
+  further stays and takes the other's missing fields (invite date, DM, call, Leo's note — notes joined; never its
+  Zach's-list "Not needed", `handSkippedAt`) plus its drafts
   (dated just before its own, so its own stay newest), emails and history. Brand page: "X is on file twice — Merge…"
   (`getBrand.samePeople`, `#b-same`, `openSamePeople`) → each person with a tick, what stays / goes (name, title, email,
-  link, status) / takes, **Not the same person** → Merge ticked (`mergePeople({ brandId, confirm, expect, only })`,
-  stale-checked), "Merged … — Undo" for a day (`undoMergePeople({ brandId })` — refuses another brand's merge; Setting
-  `peopleMergeLast`, same ids back; **a field edited since the merge stays**, named in the preview as `staysAsIs`).
-  combineParent runs the same merge after its move (its `expect` covers who'd be merged) and its Undo puts them back
-  first — including a later Merge… on the company that touched rows the combine moved.
+  link, status) / takes, **Not the same person** (two rows) or **someone else** on one row of three+ (`one`) → Merge
+  ticked (`mergePeople({ brandId, confirm, expect, only })`, stale-checked), "Merged … — Undo" for a day, shown even
+  while others still wait (`undoMergePeople({ brandId })` = that brand's newest merge; Setting `peopleMergeLog`, the
+  last 50 merges, advisory-locked; same ids back; **a field edited since the merge stays**, named in the preview as
+  `staysAsIs`; `undoCheck` refuses a kept row that's gone or a copy already back). combineParent runs the same merge
+  after its move (its `expect` covers who'd be merged) and its Undo puts them back first — and every later Merge… on
+  the company that touched rows the combine moved (those log entries go with it).
 - **Brands → New from LinkedIn** (chip after All; `listBrands({ category: 'new' })`, count from
   `categoryReach.newFromLinkedIn`): brands the LinkedIn run added itself (`source` linkedin-discover /
   research) in the last 14 days that nobody has looked at. Tick → **Keep** (off the list, nothing

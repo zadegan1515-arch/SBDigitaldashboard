@@ -256,12 +256,30 @@ async function main() {
     await page.waitForSelector('#same-card');
     assert.match(card, /Takes the email, city from the copy that goes/);
     assert.match(card, /Noted on the person: also on file as/);
-    BRAND.samePeople = [];
+    // Merged Ari; Eve (three rows) still waits — both lines show.
+    BRAND.samePeople = [{
+      name: 'Eve Park', keepId: 'e1', dropIds: ['e2', 'e3'], takes: [], lines: [],
+      keep: { id: 'e1', name: 'Eve Park', title: 'Brand Manager', source: 'linkedin', status: null },
+      drops: [{ id: 'e2', name: 'Eve Park', title: 'Brand Manager', source: 'linkedin', status: null }, { id: 'e3', name: 'Eve Park', title: 'Intern', source: 'linkedin', status: null }],
+    }];
     BRAND.peopleMergeUndo = { at: new Date().toISOString(), people: ['Ari Anderman'] };
     await page.click('#same-go');
     await page.waitForSelector('#b-same-undo');
+    assert.match(await page.textContent('#b-same'), /Eve Park is on file twice/, 'the Undo shows while someone else still waits');
     assert.deepEqual(last('mergePeople').args, { brandId: 'b_high', confirm: true, expect: 'sig1', only: ['c_ari1'] });
-    assert.match(await page.textContent('#b-same-undo'), /Merged Ari Anderman’s two copies into one — Undo/);
+    assert.match(await page.textContent('#b-same-undo'), /Merged Ari Anderman’s copies into one — Undo/);
+    // Three rows: "someone else" on one row sends only that one
+    const saved = H.mergePeople;
+    H.mergePeople = () => ({ applied: false, brand: 'High Fit Co', people: BRAND.samePeople, expect: 'sig2' });
+    await page.click('#b-same-merge');
+    await page.waitForSelector('#same-card [data-samenotone="e3"]');
+    assert.equal(await page.$('#same-card [data-samenot]'), null, 'no all-or-nothing button on a group of three');
+    await page.click('#same-card [data-samenotone="e3"]');
+    await page.waitForTimeout(200);
+    assert.deepEqual(last('notSamePerson').args, { ids: ['e1', 'e2', 'e3'], one: 'e3' });
+    H.mergePeople = saved;
+    await page.click('#same-cancel').catch(() => {});
+    BRAND.samePeople = [];
     BRAND.peopleMergeUndo = null;
     await page.click('#b-same-undo-link');
     await page.waitForFunction(() => !document.getElementById('b-same-undo'));

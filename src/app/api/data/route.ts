@@ -41,7 +41,7 @@ import { readHiddenLog, updateHiddenLog, markZachRead, clearZachRead, zachDue, Z
 import { readRuns } from '@/lib/li-report'
 import { companySlug, companyPageUrl, profileSlug, looksLikeSeller } from '@/lib/li-capture'
 import { whyLeaveOut, parentOf, isParentCompany, parentCompanyOf, findParent, parentBrandNames, LI_PARENT_PAGES_KEY, type Parent } from '@/lib/parents'
-import { samePeopleGroups, pickKeeper, mergeFields, targetRank, pairKey as personPairKey, type PersonRow, type MergeFields } from '@/lib/same-person'
+import { samePeopleGroups, pickKeeper, mergeFields, targetBeats, pairKey as personPairKey, type PersonRow, type MergeFields } from '@/lib/same-person'
 import { brandSize, BIG_BRAND_WORK } from '@/lib/brand-size'
 import {
   readJsonSetting, writeJsonSetting, LI_REVIEW_KEY, LI_CONFIRMED_KEY, LI_OWNER_KEY,
@@ -2557,7 +2557,9 @@ function combineSummary(plan: Awaited<ReturnType<typeof combinePlan>>) {
 // a field edited since the merge is left as it is.
 // ---------------------------------------------------------------
 
-const PEOPLE_MERGE_LAST_KEY = 'peopleMergeLast'
+// Every merge, newest last (the last 50): Undo takes back a brand's
+// newest; the combine's Undo also takes back later ones on the company.
+const PEOPLE_MERGE_LOG_KEY = 'peopleMergeLog'
 // Pairs Leo said are two people (pairKey), never offered again.
 const PEOPLE_NOT_SAME_KEY = 'peopleNotSame'
 // What hangs off an outreach row.
@@ -2565,7 +2567,9 @@ const TARGET_CHILDREN = ['targetEvent', 'draft', 'emailMessage'] as const
 // An outreach row's own fields that never move from the one that goes:
 // who it is, where it stands (the stronger row's status wins), its place
 // in the queue.
-const TARGET_OWN = new Set(['id', 'brandId', 'contactId', 'status', 'fitScore', 'shelved', 'shelvedHow', 'queuedFor', 'createdAt', 'updatedAt'])
+// handSkippedAt too: "Not needed" on Zach's list was about that copy, and
+// would take a person who replied off his list.
+const TARGET_OWN = new Set(['id', 'brandId', 'contactId', 'status', 'fitScore', 'shelved', 'shelvedHow', 'queuedFor', 'handSkippedAt', 'createdAt', 'updatedAt'])
 const TARGET_JOIN = new Set(['notes', 'handNote'])
 
 type PersonOnFile = PersonRow & { brandId: string }
@@ -2585,7 +2589,7 @@ async function peopleRows(db: any, brandIds: string[]): Promise<PersonOnFile[]> 
     select: {
       id: true, brandId: true, name: true, title: true, email: true, phone: true, location: true,
       linkedinUrl: true, twitterUrl: true, externalId: true, source: true, isDecisionMaker: true,
-      notes: true, createdAt: true, targets: { select: { id: true, status: true, sentAt: true } },
+      notes: true, createdAt: true, targets: { select: { id: true, status: true, sentAt: true, updatedAt: true } },
     },
   })
   return rows.map(({ targets, ...c }: any) => ({ ...c, target: targets[0] ?? null }))
@@ -2682,7 +2686,7 @@ async function applySamePerson(tx: any, p: PersonMergePlan) {
     } else if (dT && keepT) {
       // One outreach row per person: the further one stays and takes the
       // other's missing fields, notes, drafts, emails and history.
-      const dropWins = targetRank(dT) > targetRank(keepT)
+      const dropWins = targetBeats(dT, keepT)
       const strong = dropWins ? dT : keepT
       const weak = dropWins ? keepT : dT
       const fill = targetFill(strong, weak)
@@ -2768,6 +2772,41 @@ async function undoSamePerson(tx: any, rec: any) {
     }
   }
 }
+
+type MergeEntry = { id: string; at: string; brandId: string; brand: string; recs: any[] }
+async function readMergeLog(db: any): Promise<MergeEntry[]> {
+  const log = await readJsonSetting<MergeEntry[]>(db, PEOPLE_MERGE_LOG_KEY, [])
+  return Array.isArray(log) ? log : []
+}
+// One writer at a time, like updateHiddenLog.
+async function changeMergeLog(tx: any, change: (log: MergeEntry[]) => MergeEntry[]) {
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${PEOPLE_MERGE_LOG_KEY}))::text`
+  await writeJsonSetting(tx, PEOPLE_MERGE_LOG_KEY, change(await readMergeLog(tx)).slice(-50))
+}
+
+// Whether merges can be put back, in the order they'd be undone (newest
+// first): each kept row must still be on file (or come back from a newer
+// one undone first), no second copy back already. A field edited since is
+// named — only against the newest merge that touched that person.
+async function undoCheck(db: any, recs: any[]) {
+  const ids = [...new Set<string>(recs.flatMap(r => [r.keepId, ...r.drops.map((d: any) => d.row.id)]))]
+  const present = new Set<string>((await db.contact.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((c: any) => c.id))
+  const blocks: string[] = []
+  const staysAsIs: string[] = []
+  const newer = new Set<string>()
+  for (const r of recs) {
+    if (!present.has(r.keepId)) blocks.push(`${r.name} has since been removed`)
+    for (const d of r.drops) {
+      if (present.has(d.row.id)) blocks.push(`${r.name}'s second copy is already back on file`)
+      present.add(d.row.id)
+    }
+    if (!newer.has(r.keepId)) for (const f of await changedSinceMerge(db, r)) staysAsIs.push(`${r.name}: ${f}`)
+    newer.add(r.keepId)
+  }
+  return { blocks, staysAsIs }
+}
+// A log entry's merges, newest first.
+const undoOrder = (entries: MergeEntry[]) => [...entries].sort((a, b) => b.at.localeCompare(a.at)).flatMap(e => [...e.recs].reverse())
 
 // ---------------------------------------------------------------
 // Categorisation
@@ -5537,12 +5576,10 @@ const handlers: Record<string, Handler> = {
     // those a later "Merge…" on the company merged, when it touched rows
     // the combine moved (Diageo's Ari: merged after the combine).
     const movedIds = new Set<string>([...Object.values((last.moved?.contact ?? {}) as Record<string, string[]>).flat(), ...Object.values((last.moved?.target ?? {}) as Record<string, string[]>).flat()])
-    const laterMerge = await readJsonSetting<any>(prisma, PEOPLE_MERGE_LAST_KEY, null)
-    const later: any[] = laterMerge?.brandId === keeper.id && Array.isArray(laterMerge.recs) &&
-      laterMerge.recs.some((r: any) => movedIds.has(r.keepId) || r.drops.some((d: any) => movedIds.has(d.row.id) || (d.weak && movedIds.has(d.weak.id))))
-      ? laterMerge.recs : []
-    // Undone newest first: the later merge, then the combine's own.
-    const people: any[] = [...(Array.isArray(last.people) ? last.people : []), ...later]
+    const touches = (r: any) => movedIds.has(r.keepId) || r.drops.some((d: any) => movedIds.has(d.row.id) || (d.weak && movedIds.has(d.weak.id)))
+    const later = (await readMergeLog(prisma)).filter(e => e.brandId === keeper.id && e.at >= last.at && e.recs.some(touches))
+    // Undone newest first: the later merges, then the combine's own.
+    const people: any[] = [...undoOrder(later), ...[...(Array.isArray(last.people) ? last.people : [])].reverse()]
     const mergedAway = new Set<string>(people.flatMap(r => r.drops.flatMap((d: any) => [d.row.id, d.weak?.id].filter(Boolean))))
     const back: Record<string, number> = {}
     let stayed = 0
@@ -5554,12 +5591,10 @@ const handlers: Record<string, Handler> = {
       back[t] = still
       stayed += ids.length - still
     }
-    const keptPeople = people.length ? await prisma.contact.count({ where: { id: { in: people.map(r => r.keepId) } } }) : 0
-    const blocks: string[] = []
-    if (clash.length) blocks.push('Already on the roster again: ' + clash.map(c => c.name).join(', '))
-    if (keptPeople < people.length) blocks.push('Someone the combine merged has since been removed')
-    const staysAsIs: string[] = []
-    for (const r of people) for (const f of await changedSinceMerge(prisma, r)) staysAsIs.push(`${r.name}: ${f}`)
+    const check = await undoCheck(prisma, people)
+    const blocks: string[] = [...check.blocks]
+    if (clash.length) blocks.unshift('Already on the roster again: ' + clash.map(c => c.name).join(', '))
+    const staysAsIs = check.staysAsIs
     const preview = {
       parent: last.parent, at: last.at, brands: names, back, movedSince: stayed,
       unmerge: people.map(r => r.name), staysAsIs, blocks,
@@ -5570,8 +5605,11 @@ const handlers: Record<string, Handler> = {
     await prisma.$transaction(async tx => {
       // The merged people first: their second copies come back on the
       // company, and the move below takes them home with everything else.
-      for (const r of [...people].reverse()) await undoSamePerson(tx, r)
-      if (later.length) await tx.setting.deleteMany({ where: { key: PEOPLE_MERGE_LAST_KEY } })
+      for (const r of people) await undoSamePerson(tx, r)
+      if (later.length) {
+        const gone = new Set(later.map(e => e.id))
+        await changeMergeLog(tx, log => log.filter(e => !gone.has(e.id)))
+      }
       if (last.externalIdFrom) await tx.brand.update({ where: { id: keeper.id }, data: { externalId: last.keeperBefore?.externalId ?? null } })
       for (const b of last.brands as any[]) await tx.brand.create({ data: reviveRow('Brand', b) as any })
       for (const t of COMBINE_TABLES) {
@@ -5618,43 +5656,36 @@ const handlers: Record<string, Handler> = {
     if (!confirm) return { applied: false, ...summary }
     if (!plans.length) throw new Error(`Nobody is on file twice at ${brand.name}`)
     if (expect !== sig) return { applied: false, stale: true, ...summary }
-    const picked = Array.isArray(only) ? plans.filter(p => only.includes(p.keepId)) : plans
+    const onlyIds = only == null ? null : (Array.isArray(only) ? only : [only]).map(String)
+    const picked = onlyIds ? plans.filter(p => onlyIds.includes(p.keepId)) : plans
     if (!picked.length) throw new Error('Tick at least one person to merge')
     const recs = await prisma.$transaction(async tx => {
       const out: any[] = []
       for (const p of picked) out.push(await applySamePerson(tx, p))
-      await writeJsonSetting(tx, PEOPLE_MERGE_LAST_KEY, { at: new Date().toISOString(), brandId: brand.id, brand: brand.name, recs: out })
+      const at = new Date().toISOString()
+      await changeMergeLog(tx, log => [...log, { id: at + ':' + brand.id, at, brandId: brand.id, brand: brand.name, recs: out }])
       return out
     }, { maxWait: 10000, timeout: 60000 })
     return { applied: true, ...summary, merged: recs.length }
   },
 
-  // Puts the last mergePeople back: each second copy and its outreach row
-  // (same ids), the kept row's fields as they were. Preview first.
+  // Puts a brand's newest mergePeople back (or the newest anywhere, no
+  // brandId): each second copy and its outreach row (same ids), the kept
+  // row's fields as they were unless edited since. Preview first.
   async undoMergePeople({ confirm = false, brandId }: any) {
-    const last = await readJsonSetting<any>(prisma, PEOPLE_MERGE_LAST_KEY, null)
-    if (!last || !Array.isArray(last.recs) || !last.recs.length) throw new Error('Nothing to undo')
-    if (brandId && last.brandId !== brandId) throw new Error(`The last merge was at ${last.brand}, not this brand`)
-    const keepIds = last.recs.map((r: any) => r.keepId)
-    const dropIds = last.recs.flatMap((r: any) => r.drops.map((d: any) => d.row.id))
-    const homes = [...new Set<string>(last.recs.flatMap((r: any) => r.drops.map((d: any) => d.row.brandId)))]
-    const [keeps, clash, brands] = await Promise.all([
-      prisma.contact.count({ where: { id: { in: keepIds } } }),
-      prisma.contact.count({ where: { id: { in: dropIds } } }),
-      prisma.brand.count({ where: { id: { in: homes } } }),
-    ])
-    const blocks: string[] = []
-    if (keeps < keepIds.length) blocks.push('Someone merged has since been removed')
-    if (clash) blocks.push('Already back on file')
-    if (brands < homes.length) blocks.push(`${last.brand} is no longer on the roster`)
-    const staysAsIs: string[] = []
-    for (const r of last.recs) for (const f of await changedSinceMerge(prisma, r)) staysAsIs.push(`${r.name}: ${f}`)
-    const preview = { brand: last.brand, brandId: last.brandId, at: last.at, people: last.recs.map((r: any) => r.name), staysAsIs, blocks }
+    const log = await readMergeLog(prisma)
+    const entry = [...log].reverse().find(e => !brandId || e.brandId === brandId)
+    if (!entry) throw new Error(brandId ? 'Nothing to undo at this brand' : 'Nothing to undo')
+    const homes = [...new Set<string>(entry.recs.flatMap((r: any) => r.drops.map((d: any) => d.row.brandId)))]
+    const check = await undoCheck(prisma, undoOrder([entry]))
+    const blocks = [...check.blocks]
+    if ((await prisma.brand.count({ where: { id: { in: homes } } })) < homes.length) blocks.push(`${entry.brand} is no longer on the roster`)
+    const preview = { brand: entry.brand, brandId: entry.brandId, at: entry.at, people: entry.recs.map((r: any) => r.name), staysAsIs: check.staysAsIs, blocks }
     if (!confirm) return { applied: false, ...preview }
     if (blocks.length) throw new Error(blocks[0])
     await prisma.$transaction(async tx => {
-      for (const r of [...last.recs].reverse()) await undoSamePerson(tx, r)
-      await tx.setting.delete({ where: { key: PEOPLE_MERGE_LAST_KEY } })
+      for (const r of undoOrder([entry])) await undoSamePerson(tx, r)
+      await changeMergeLog(tx, l => l.filter(e => e.id !== entry.id))
     }, { maxWait: 10000, timeout: 60000 })
     return { applied: true, ...preview }
   },
@@ -5662,13 +5693,17 @@ const handlers: Record<string, Handler> = {
   // Leo: these rows are two people, not one. Every pair among `ids` is
   // remembered (Setting peopleNotSame) and never offered as a merge again;
   // `undo` forgets them.
-  async notSamePerson({ ids, undo = false }: any) {
+  // `one` = only that row is someone else: its pairs with the others.
+  async notSamePerson({ ids, undo = false, one }: any) {
     const list = [...new Set((Array.isArray(ids) ? ids : []).map(String).filter(Boolean))]
     if (list.length < 2) throw new Error('Pick two people')
     const found = await prisma.contact.findMany({ where: { id: { in: list } }, select: { id: true, name: true, brandId: true } })
     if (found.length !== list.length) throw new Error('Someone is no longer on file')
     const pairs: string[] = []
-    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) pairs.push(personPairKey(list[i], list[j]))
+    if (one && !list.includes(String(one))) throw new Error('Pick one of these people')
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      if (!one || list[i] === String(one) || list[j] === String(one)) pairs.push(personPairKey(list[i], list[j]))
+    }
     const cur = await readNotSame(prisma)
     for (const k of pairs) { if (undo) cur.delete(k); else cur.add(k) }
     // Newest last; the oldest fall off past 5,000 pairs.
@@ -5795,11 +5830,11 @@ const handlers: Record<string, Handler> = {
 
     // The same person on file twice here: the People section offers the
     // merge (mergePeople), and its Undo while it's the last one.
-    const targetOf = new Map(brand.targets.map(t => [t.contactId, { id: t.id, status: t.status, sentAt: t.sentAt }]))
+    const targetOf = new Map(brand.targets.map(t => [t.contactId, { id: t.id, status: t.status, sentAt: t.sentAt, updatedAt: t.updatedAt }]))
     const samePeople = planSamePeople(brand.contacts.map(c => ({ ...c, target: targetOf.get(c.id) ?? null })), mergeDay(), null, await readNotSame(prisma))
       .map(({ data, ...p }) => p)
-    const lastMerge = await readJsonSetting<any>(prisma, PEOPLE_MERGE_LAST_KEY, null)
-    const peopleMergeUndo = lastMerge?.brandId === brand.id && Array.isArray(lastMerge.recs)
+    const lastMerge = [...await readMergeLog(prisma)].reverse().find(e => e.brandId === brand.id)
+    const peopleMergeUndo = lastMerge && Date.now() - Date.parse(lastMerge.at) < 864e5
       ? { at: lastMerge.at, people: lastMerge.recs.map((r: any) => r.name) } : null
 
     return {

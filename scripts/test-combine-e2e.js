@@ -290,7 +290,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
 
     // Something edited after the merge stays as it is on undo, and says so.
     await prisma.contact.update({ where: { id: 'dana1' }, data: { email: 'dana.new@solo.co' } });
-    await assert.rejects(data('undoMergePeople', { brandId: 'ketel' }), /The last merge was at Solo Co, not this brand/);
+    await assert.rejects(data('undoMergePeople', { brandId: 'ketel' }), /Nothing to undo at this brand/);
     const mu2 = await data('undoMergePeople', { brandId: 'solo' });
     assert.deepEqual(mu2.staysAsIs, ['Dana Cruz: email']);
     await data('undoMergePeople', { brandId: 'solo', confirm: true });
@@ -316,6 +316,39 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(await prisma.contact.count({ where: { name: 'Dana Cruz' } }), 2, 'Dana wasn\'t ticked');
     ok('"Not the same person" keeps two rows apart until taken back; Merge takes only the ticked people');
 
+    // Three rows, one of them someone else: "someone else" on that row only.
+    await prisma.contact.create({ data: { id: 'kim1', brandId: 'solo', name: 'Chris Kim', linkedinUrl: 'https://www.linkedin.com/in/chriskim1/' } });
+    await prisma.contact.create({ data: { id: 'kim2', brandId: 'solo', name: 'Chris Kim', linkedinUrl: 'https://www.linkedin.com/in/chriskim1/' } });
+    await prisma.contact.create({ data: { id: 'kim3', brandId: 'solo', name: 'Chris Kim', linkedinUrl: 'https://www.linkedin.com/in/chris-kim-other/' } });
+    const kimGroup = (await data('mergePeople', { brandId: 'solo' })).people.find(p => p.name === 'Chris Kim');
+    assert.equal(kimGroup.dropIds.length, 2);
+    await data('notSamePerson', { ids: ['kim1', 'kim2', 'kim3'], one: 'kim3' });
+    const kimAfter = (await data('mergePeople', { brandId: 'solo' })).people.find(p => p.name === 'Chris Kim');
+    assert.deepEqual([kimAfter.keepId, ...kimAfter.dropIds].sort(), ['kim1', 'kim2'], 'the two with one profile are still one person');
+    ok('three rows, one someone else: marking that one keeps the other two offered');
+
+    // Zach's "Not needed" on the copy that goes never takes a replied
+    // person off his list; a copy that only went cold by email loses to a
+    // live invite.
+    await prisma.brand.create({ data: { id: 'sam', name: 'Sam Co', category: 'energy' } });
+    await prisma.contact.create({ data: { id: 'sam1', brandId: 'sam', name: 'Sam Reed', linkedinUrl: 'https://www.linkedin.com/in/samreed/' } });
+    await prisma.contact.create({ data: { id: 'sam2', brandId: 'sam', name: 'Sam Reed', email: 'sam@samco.com' } });
+    await prisma.target.create({ data: { id: 't_sam1', brandId: 'sam', contactId: 'sam1', status: 'replied', sentAt: new Date(), repliedAt: new Date() } });
+    await prisma.target.create({ data: { id: 't_sam2', brandId: 'sam', contactId: 'sam2', status: 'accepted', handSkippedAt: new Date(), callAt: new Date('2026-10-20') } });
+    await prisma.contact.create({ data: { id: 'lee1', brandId: 'sam', name: 'Lee Park', linkedinUrl: 'https://www.linkedin.com/in/leepark/' } });
+    await prisma.contact.create({ data: { id: 'lee2', brandId: 'sam', name: 'Lee Park', email: 'lee@samco.com' } });
+    await prisma.target.create({ data: { id: 't_lee1', brandId: 'sam', contactId: 'lee1', status: 'sent', sentAt: new Date() } });
+    await prisma.target.create({ data: { id: 't_lee2', brandId: 'sam', contactId: 'lee2', status: 'dead' } });
+    const samPv = await data('mergePeople', { brandId: 'sam' });
+    await data('mergePeople', { brandId: 'sam', confirm: true, expect: samPv.expect });
+    const ts1 = await prisma.target.findUnique({ where: { contactId: 'sam1' } });
+    assert.equal(ts1.status, 'replied');
+    assert.equal(ts1.handSkippedAt, null, 'still on Zach\'s list');
+    assert.equal(ts1.callAt.toISOString().slice(0, 10), '2026-10-20', 'the call on the other copy is kept');
+    assert.equal((await prisma.target.findUnique({ where: { contactId: 'lee1' } })).status, 'sent', 'the live invite stays');
+    assert.equal(await prisma.contact.count({ where: { id: { in: ['sam2', 'lee2'] } } }), 0);
+    ok('a replied person stays on Zach\'s list (the other copy\'s "Not needed" isn\'t carried), keeps its call; a live invite beats a copy gone cold by email');
+
     // The live Diageo case: the combine left Ari twice, he was merged
     // afterwards on the company — the combine's Undo puts both back home.
     await data('undoCombineParent', { confirm: true });
@@ -329,6 +362,17 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const mp4 = await data('mergePeople', { brandId: d4.keeperId });
     await data('mergePeople', { brandId: d4.keeperId, confirm: true, expect: mp4.expect });
     assert.equal(await prisma.contact.count({ where: { id: 'ari2' } }), 0);
+    // Two more merges after Ari's: one on the company (people added since),
+    // one at another brand — neither may cost Ari's Undo.
+    await prisma.contact.create({ data: { id: 'eve1', brandId: d4.keeperId, name: 'Eve Park', title: 'Brand Manager' } });
+    await prisma.contact.create({ data: { id: 'eve2', brandId: d4.keeperId, name: 'Eve Park', title: 'Senior Brand Manager' } });
+    const mpEve = await data('mergePeople', { brandId: d4.keeperId });
+    await data('mergePeople', { brandId: d4.keeperId, confirm: true, expect: mpEve.expect });
+    await prisma.contact.create({ data: { id: 'zed1', brandId: 'solo', name: 'Zed Ray' } });
+    await prisma.contact.create({ data: { id: 'zed2', brandId: 'solo', name: 'Zed Ray' } });
+    const mpZed = await data('mergePeople', { brandId: 'solo', only: [] });
+    await data('mergePeople', { brandId: 'solo', confirm: true, expect: mpZed.expect, only: mpZed.people.filter(p => p.name === 'Zed Ray').map(p => p.keepId) });
+    assert.deepEqual((await data('getBrand', { brandId: d4.keeperId })).peopleMergeUndo.people, ['Eve Park'], 'the company\'s newest merge is the one its page offers');
     const up4 = await data('undoCombineParent', {});
     assert.deepEqual(up4.unmerge, ['Ari Anderman']);
     assert.equal(up4.movedSince, 0, 'Ari\'s second copy is counted as coming back');
@@ -337,7 +381,8 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual({ brand: a2.brandId, email: a2.email }, { brand: 'bulleit', email: 'ari.anderman@diageo.com' });
     const a1 = await prisma.contact.findUnique({ where: { id: 'ari1' } });
     assert.deepEqual({ brand: a1.brandId, email: a1.email }, { brand: 'ketel', email: null });
-    await assert.rejects(data('undoMergePeople', {}), /Nothing to undo/, 'the later merge was undone with the combine');
+    assert.deepEqual((await data('undoMergePeople', { brandId: d4.keeperId })).people, ['Eve Park'], 'Eve\'s merge (people added after the combine) stays, undoable');
+    assert.deepEqual((await data('undoMergePeople', { brandId: 'solo' })).people, ['Zed Ray']);
     ok('a merge on the company after the combine: the combine\'s Undo puts both copies back at their own brands');
 
     console.log(n + ' checks passed');

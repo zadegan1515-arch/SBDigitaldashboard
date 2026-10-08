@@ -102,7 +102,7 @@ t('a shared inbox never makes two people one; a shared address with names that d
   assert.equal(P.samePerson({ id: '1', name: 'Jane Doe', email: 'info@b.com' }, { id: '2', name: 'Jane Doe', email: 'info@b.com' }), true)
 })
 
-t('"they said no" or a pass is never replaced by a copy that\'s only queued', () => {
+t('"they said no" is never replaced by a copy that\'s only queued or invited', () => {
   const passed = { id: 'p', name: 'A B', target: { id: 't1', status: 'passed' }, createdAt: '2026-01-01' }
   const queued = { id: 'q', name: 'A B', target: { id: 't2', status: 'queued' }, createdAt: '2026-10-01' }
   assert.equal(P.pickKeeper([queued, passed]).id, 'p')
@@ -110,7 +110,7 @@ t('"they said no" or a pass is never replaced by a copy that\'s only queued', ()
   const sent = { id: 's', name: 'A B', target: { id: 't4', status: 'sent', sentAt: '2026-10-01' }, createdAt: '2026-10-01' }
   assert.equal(P.pickKeeper([sent, declined]).id, 'd')
   const dead = { id: 'x', name: 'A B', target: { id: 't5', status: 'dead' }, createdAt: '2026-01-01' }
-  assert.equal(P.pickKeeper([sent, dead]).id, 'x')
+  assert.equal(P.pickKeeper([dead, queued]).id, 'x', 'gone cold still beats only queued')
   // …while a reply or an accept still outranks an invite
   assert.equal(P.pickKeeper([sent, { id: 'a', name: 'A B', target: { id: 't6', status: 'accepted' } }]).id, 'a')
 })
@@ -130,6 +130,16 @@ t('Leo\'s "not the same person" keeps a pair apart, and a group that would join 
   assert.deepEqual(P.samePeopleGroups([a, b], ns), [])
   assert.deepEqual(P.samePeopleGroups([a, b, c], ns), [], 'a and b would meet through c')
   assert.equal(P.samePeopleGroups([a, b, c]).length, 1)
+})
+
+t('a pass and a queued copy: the later of the two decisions stays; a live invite beats a copy gone cold', () => {
+  const passedOld = { id: 'p', name: 'A B', target: { id: 't1', status: 'passed', updatedAt: '2026-10-01' } }
+  const queuedNew = { id: 'q', name: 'A B', target: { id: 't2', status: 'queued', updatedAt: '2026-10-08' } }
+  assert.equal(P.pickKeeper([passedOld, queuedNew]).id, 'q')
+  assert.equal(P.targetBeats(queuedNew.target, passedOld.target), true)
+  const passedNew = { ...passedOld, target: { ...passedOld.target, updatedAt: '2026-10-09' } }
+  assert.equal(P.pickKeeper([queuedNew, passedNew]).id, 'p')
+  assert.equal(P.pickKeeper([{ id: 'd', name: 'A B', target: { id: 'x', status: 'dead' } }, { id: 's', name: 'A B', target: { id: 'y', status: 'sent', sentAt: '2026-10-01' } }]).id, 's')
 })
 
 console.log('same-person: all ' + n + ' passed')

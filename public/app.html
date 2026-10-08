@@ -7653,10 +7653,12 @@ function loadBrand(brandId) {
               ? esc(d.samePeople[0].name) + ' is on file twice'
               : d.samePeople.length + ' people are on file twice (' + esc(d.samePeople.slice(0, 3).map(function (p) { return p.name; }).join(', ')) + ')') +
             ' — <button class="btn-ghost" id="b-same-merge" style="padding:3px 10px;font-size:13px">Merge…</button></div>'
-        : (d.peopleMergeUndo && Date.now() - new Date(d.peopleMergeUndo.at).getTime() < 864e5
-          ? '<div class="hint" id="b-same-undo" style="margin:0 0 10px">Merged ' + esc(d.peopleMergeUndo.people.join(', ')) +
-              '\u2019s two copies into one — <a href="#" id="b-same-undo-link">Undo</a></div>'
-          : '')) +
+        : '') +
+      // The brand's newest merge, for a day (also while others still wait).
+      (d.peopleMergeUndo && Date.now() - new Date(d.peopleMergeUndo.at).getTime() < 864e5
+        ? '<div class="hint" id="b-same-undo" style="margin:0 0 10px">Merged ' + esc(d.peopleMergeUndo.people.join(', ')) +
+            (d.peopleMergeUndo.people.length === 1 ? '\u2019s copies into one' : ' (each into one row)') + ' — <a href="#" id="b-same-undo-link">Undo</a></div>'
+        : '') +
       '<div id="b-same-slot"></div>' +
       '<div id="b-split-slot"></div>' +
       '<div id="b-contact-slot"></div>' +
@@ -8504,6 +8506,9 @@ function sameWho(r, name) {
   var nm = r.name && name && r.name.trim().toLowerCase() !== name.trim().toLowerCase() ? 'as “' + r.name + '”' : '';
   return [nm, r.title ? '“' + r.title + '”' : 'no title', r.email || '', src, st].filter(Boolean).join(' · ');
 }
+function sameNotOne(id, ids) {
+  return ' <a href="#" data-samenotone="' + esc(id) + '" data-samegroup="' + esc(ids) + '" style="font-size:12.5px">someone else</a>';
+}
 function sameLink(r) {
   return r.linkedinUrl ? ' <a href="' + esc(r.linkedinUrl) + '" target="_blank" rel="noopener">LinkedIn ↗</a>' : '';
 }
@@ -8522,12 +8527,13 @@ function openSamePeople(b) {
             '<input type="checkbox" checked data-samepick="' + esc(p.keepId) + '" style="margin-top:3px" aria-label="Merge ' + esc(p.name) + '">' +
             '<div style="flex:1;min-width:0">' +
               '<b style="font-weight:600">' + esc(p.name) + '</b>' +
-              '<div>Stays: ' + esc(sameWho(p.keep, p.name)) + sameLink(p.keep) + '</div>' +
-              p.drops.map(function (r) { return '<div style="color:var(--ink-3)">Goes: ' + esc(sameWho(r, p.name)) + sameLink(r) + '</div>'; }).join('') +
+              // Three or more: each row can be the one that's someone else.
+              '<div>Stays: ' + esc(sameWho(p.keep, p.name)) + sameLink(p.keep) + (p.drops.length > 1 ? sameNotOne(p.keep.id, ids) : '') + '</div>' +
+              p.drops.map(function (r) { return '<div style="color:var(--ink-3)">Goes: ' + esc(sameWho(r, p.name)) + sameLink(r) + (p.drops.length > 1 ? sameNotOne(r.id, ids) : '') + '</div>'; }).join('') +
               (takes.length ? '<div>Takes the ' + esc(takes.join(', ')) + ' from the copy that goes.</div>' : '') +
               (p.lines && p.lines.length ? '<div style="color:var(--ink-3)">Noted on the person: ' + esc(p.lines.join('; ')) + '</div>' : '') +
             '</div>' +
-            '<button class="btn-ghost" data-samenot="' + esc(ids) + '" style="padding:3px 10px;font-size:13px;white-space:nowrap">Not the same person</button>' +
+            (p.drops.length === 1 ? '<button class="btn-ghost" data-samenot="' + esc(ids) + '" style="padding:3px 10px;font-size:13px;white-space:nowrap">Not the same person</button>' : '') +
           '</div>';
         }).join('') +
         '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">' +
@@ -8537,6 +8543,15 @@ function openSamePeople(b) {
         '</div>' +
       '</div>';
     document.getElementById('same-cancel').onclick = function () { slot.innerHTML = ''; };
+    slot.querySelectorAll('[data-samenotone]').forEach(function (a) {
+      a.onclick = function (e) {
+        e.preventDefault();
+        api('notSamePerson', { ids: a.getAttribute('data-samegroup').split(','), one: a.getAttribute('data-samenotone') }).then(function () {
+          toast('Kept apart — the others are checked again');
+          openSamePeople(b);
+        }).catch(function (err) { toast(err.message); });
+      };
+    });
     slot.querySelectorAll('[data-samenot]').forEach(function (btn) {
       btn.onclick = function () {
         btn.disabled = true;

@@ -33,7 +33,7 @@ export type PersonRow = {
   notes?: string | null
   createdAt?: string | Date | null
   // The person's outreach row, when there is one (one per contact).
-  target?: { id: string; status: string; sentAt?: string | Date | null } | null
+  target?: { id: string; status: string; sentAt?: string | Date | null; updatedAt?: string | Date | null } | null
 }
 
 export function personNameKey(name: unknown): string {
@@ -105,25 +105,37 @@ export function samePeopleGroups<T extends PersonRow>(rows: T[], notSame?: Set<s
 }
 
 // How far along a person's outreach is: the row that has gone furthest is
-// the one kept (an invite is never undone by a merge), and a decision
-// outranks a row merely waiting — "they said no" (declined, dead) or Leo
-// passing on the person is never replaced by a queued copy.
+// the one kept (an invite is never undone by a merge), and "they said no"
+// (declined) outranks an invite still waiting. A copy that only went cold
+// by email (dead) loses to a live invite.
 const RANK: Record<string, number> = {
-  converted: 9, replied: 8, declined: 7, accepted: 6, dead: 5.5, sent: 5, withdrawn: 4, passed: 3, drafted: 2, queued: 1,
+  converted: 9, replied: 8, declined: 7, accepted: 6, sent: 5, dead: 4.5, withdrawn: 4, passed: 3, drafted: 2, queued: 1,
 }
 export function targetRank(t: PersonRow['target']): number {
   if (!t) return 0
   return Math.max(RANK[t.status] ?? 0, t.sentAt ? RANK.sent : 0)
 }
+const when = (d: unknown) => (d ? new Date(d as any).getTime() || 0 : 0)
 
-// The row that stays: the furthest outreach, then the one with a LinkedIn
-// link (the queue works from it), then the newest (the freshest title).
+// The outreach row that stays when both copies have one. Leo passing on
+// one copy and queueing the other: the later of the two is what he meant.
+export function targetBeats(a: PersonRow['target'], b: PersonRow['target']): boolean {
+  const ra = targetRank(a), rb = targetRank(b)
+  if (a && b && ra !== rb && ra <= RANK.passed && rb <= RANK.passed && (a.status === 'passed' || b.status === 'passed')) {
+    const ta = when(a.updatedAt), tb = when(b.updatedAt)
+    if (ta !== tb) return ta > tb
+  }
+  return ra > rb
+}
+
+// The row that stays: the outreach that counts (targetBeats), then the one
+// with a LinkedIn link (the queue works from it), then the newest (the
+// freshest title).
 export function pickKeeper<T extends PersonRow>(group: T[]): T {
-  const time = (r: T) => (r.createdAt ? new Date(r.createdAt).getTime() : 0)
   return [...group].sort((a, b) =>
-    targetRank(b.target) - targetRank(a.target) ||
+    (targetBeats(b.target, a.target) ? 1 : targetBeats(a.target, b.target) ? -1 : 0) ||
     Number(!!linkedinSlug(b.linkedinUrl)) - Number(!!linkedinSlug(a.linkedinUrl)) ||
-    time(b) - time(a))[0]
+    when(b.createdAt) - when(a.createdAt))[0]
 }
 
 const FILL = ['email', 'phone', 'location', 'linkedinUrl', 'twitterUrl', 'externalId'] as const
