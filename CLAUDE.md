@@ -428,15 +428,22 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `node scripts/cc.mjs combineParent '{"parent":"Diageo"}'`. `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-combine-e2e.js`.
   Done for **Diageo** Oct 8 2026 (13 brands, 36 people; Setting `parentCombineLast` holds its Undo).
 - **The same person twice at one brand** (Leo, Oct 8 2026: "merge if two people appear"; rules pure in
-  `src/lib/same-person.ts`, `node scripts/test-same-person.mjs`): same LinkedIn profile, same email, or the same full name
-  (2+ words) — unless both rows have an email and they differ; a different LinkedIn link never separates them (Ari
-  Anderman changed his). The row whose outreach got furthest stays (then the one with a LinkedIn link, then the newest);
-  it takes what it's missing (email, phone, city, links, SponsorUnited id) and notes what didn't fit ("also on file as
-  “…”", "other LinkedIn link …"). Two outreach rows become one: the further stays, the other's drafts, emails and
-  history move onto it. Brand page: "X is on file twice — Merge…" (`getBrand.samePeople`, `#b-same`, `openSamePeople`)
-  → what stays / goes / takes → Merge (`mergePeople({ brandId, confirm, expect })`, stale-checked), "Merged … — Undo"
-  for a day (`undoMergePeople`, Setting `peopleMergeLast`, same ids back). combineParent runs the same merge after
-  its move and its Undo puts them back first.
+  `src/lib/same-person.ts`, `node scripts/test-same-person.mjs`): same LinkedIn profile, the same full name (2+ words), or
+  the same personal email with names that agree ("R. Zalis" / "Rachel Zalis") — never when both rows have different
+  emails, never through a **shared inbox** (partnerships@, info@… `isRoleInbox`), never a pair Leo marked **Not the same
+  person** (`notSamePerson({ ids, undo })`, Setting `peopleNotSame`); a different LinkedIn link alone never separates them
+  (Ari Anderman changed his). The row whose outreach got furthest stays (`targetRank`: replied > **declined** > accepted >
+  dead > sent > withdrawn > **passed** > drafted > queued — a "no" or a pass is never replaced by a queued copy; then the one
+  with a LinkedIn link, then the newest); it takes what it's missing (email, phone, city, links, SponsorUnited id) and
+  notes everything that didn't fit (another title, name, link, phone, city, id). Two outreach rows become one: the
+  further stays and takes the other's missing fields (invite date, DM, call, Leo's note — notes joined) plus its drafts
+  (dated just before its own, so its own stay newest), emails and history. Brand page: "X is on file twice — Merge…"
+  (`getBrand.samePeople`, `#b-same`, `openSamePeople`) → each person with a tick, what stays / goes (name, title, email,
+  link, status) / takes, **Not the same person** → Merge ticked (`mergePeople({ brandId, confirm, expect, only })`,
+  stale-checked), "Merged … — Undo" for a day (`undoMergePeople({ brandId })` — refuses another brand's merge; Setting
+  `peopleMergeLast`, same ids back; **a field edited since the merge stays**, named in the preview as `staysAsIs`).
+  combineParent runs the same merge after its move (its `expect` covers who'd be merged) and its Undo puts them back
+  first — including a later Merge… on the company that touched rows the combine moved.
 - **Brands → New from LinkedIn** (chip after All; `listBrands({ category: 'new' })`, count from
   `categoryReach.newFromLinkedIn`): brands the LinkedIn run added itself (`source` linkedin-discover /
   research) in the last 14 days that nobody has looked at. Tick → **Keep** (off the list, nothing

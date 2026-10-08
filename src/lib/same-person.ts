@@ -7,10 +7,13 @@
 // One (his custom link, today's title, invited) — one person, two rows.
 //
 // Who counts as the same person, at one brand: the same LinkedIn profile,
-// the same email, or the same full name — unless both rows carry an email
-// and the two differ (then they're two people who share a name). A
-// LinkedIn link alone never separates them: people change their link, as
-// Ari did. A one-word name never matches by name.
+// the same full name, or the same personal email with names that agree
+// ("R. Zalis" / "Rachel Zalis") — unless both rows carry an email and the
+// two differ (two people who share a name). A shared inbox
+// (partnerships@, info@…) never makes two rows one person. A LinkedIn link
+// alone never separates them: people change their link, as Ari did. A
+// one-word name never matches by name. Leo can say two rows aren't the
+// same person (Setting "peopleNotSame", pairKey); that pair never matches.
 //
 // Pure here; /api/data does the writes (combineParent, mergePeople).
 // node scripts/test-same-person.mjs
@@ -48,13 +51,31 @@ export function linkedinSlug(url: unknown): string {
 
 const emailKey = (e: unknown) => String(e ?? '').trim().toLowerCase()
 
+// A team inbox, not a person's address.
+const ROLE_INBOX = /^(info|hello|hi|contact|team|partners?|partnerships?|sponsors?|sponsorships?|marketing|events?|press|media|pr|sales|support|admin|office|collabs?|collaborations?|brand|brands|hr|careers|jobs|social|influencers?|ambassadors?|community|general|inquiries|enquiries|hey)@/
+export const isRoleInbox = (e: unknown) => ROLE_INBOX.test(emailKey(e))
+
+// The two names could be one person's: the same name, or the same last
+// name with the same first initial ("R. Zalis", "Rachel Zalis").
+function namesAgree(a: unknown, b: unknown): boolean {
+  const x = personNameKey(a), y = personNameKey(b)
+  if (!x || !y) return false
+  if (x === y) return true
+  const xs = x.split(' '), ys = y.split(' ')
+  return xs[xs.length - 1] === ys[ys.length - 1] && xs[0][0] === ys[0][0]
+}
+
+// The key Leo's "not the same person" is kept under.
+export const pairKey = (a: string, b: string) => [a, b].sort().join('|')
+
 // Two rows are one person (see the top of the file).
-export function samePerson(a: PersonRow, b: PersonRow): boolean {
+export function samePerson(a: PersonRow, b: PersonRow, notSame?: Set<string> | null): boolean {
+  if (notSame && notSame.has(pairKey(a.id, b.id))) return false
   const ea = emailKey(a.email), eb = emailKey(b.email)
   if (ea && eb && ea !== eb) return false
   const sa = linkedinSlug(a.linkedinUrl), sb = linkedinSlug(b.linkedinUrl)
   if (sa && sa === sb) return true
-  if (ea && ea === eb) return true
+  if (ea && ea === eb && !ROLE_INBOX.test(ea) && namesAgree(a.name, b.name)) return true
   const na = personNameKey(a.name)
   return !!na && na === personNameKey(b.name)
 }
@@ -62,12 +83,12 @@ export function samePerson(a: PersonRow, b: PersonRow): boolean {
 // The rows at one brand that are one person, in groups of two or more.
 // A group is only offered when every pair in it is the same person (three
 // "Chris Lee"s where two have different emails are left alone).
-export function samePeopleGroups<T extends PersonRow>(rows: T[]): T[][] {
+export function samePeopleGroups<T extends PersonRow>(rows: T[], notSame?: Set<string> | null): T[][] {
   const parent = rows.map((_, i) => i)
   const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])))
   for (let i = 0; i < rows.length; i++) {
     for (let j = i + 1; j < rows.length; j++) {
-      if (samePerson(rows[i], rows[j])) parent[find(i)] = find(j)
+      if (samePerson(rows[i], rows[j], notSame)) parent[find(i)] = find(j)
     }
   }
   const groups = new Map<number, T[]>()
@@ -76,12 +97,20 @@ export function samePeopleGroups<T extends PersonRow>(rows: T[]): T[][] {
     if (!groups.has(k)) groups.set(k, [])
     groups.get(k)!.push(r)
   })
-  return [...groups.values()].filter(g => g.length > 1 && g.every((a, i) => g.every((b, j) => i === j || samePerson(a, b) || !(emailKey(a.email) && emailKey(b.email)))))
+  // Through a third row, two rows can join that are plainly two people
+  // (their own different emails, or Leo said so): the group is left alone.
+  return [...groups.values()].filter(g => g.length > 1 && g.every((a, i) => g.every((b, j) =>
+    i === j || samePerson(a, b, notSame) ||
+    !((emailKey(a.email) && emailKey(b.email)) || (notSame && notSame.has(pairKey(a.id, b.id)))))))
 }
 
 // How far along a person's outreach is: the row that has gone furthest is
-// the one kept (an invite is never undone by a merge).
-const RANK: Record<string, number> = { converted: 7, replied: 6, accepted: 5, sent: 4, withdrawn: 3, drafted: 2, queued: 1 }
+// the one kept (an invite is never undone by a merge), and a decision
+// outranks a row merely waiting — "they said no" (declined, dead) or Leo
+// passing on the person is never replaced by a queued copy.
+const RANK: Record<string, number> = {
+  converted: 9, replied: 8, declined: 7, accepted: 6, dead: 5.5, sent: 5, withdrawn: 4, passed: 3, drafted: 2, queued: 1,
+}
 export function targetRank(t: PersonRow['target']): number {
   if (!t) return 0
   return Math.max(RANK[t.status] ?? 0, t.sentAt ? RANK.sent : 0)
@@ -113,6 +142,13 @@ export function mergeFields(keep: PersonRow, drop: PersonRow, day: string): { da
   }
   const ks = linkedinSlug(keep.linkedinUrl), ds = linkedinSlug(drop.linkedinUrl)
   if (ks && ds && ks !== ds) lines.push(`other LinkedIn link ${drop.linkedinUrl}`)
+  if (personNameKey(drop.name) !== personNameKey(keep.name) && String(drop.name ?? '').trim()) lines.push(`also on file as name “${String(drop.name).trim()}”`)
+  // A second phone, city, X link or SponsorUnited id: kept in the note.
+  const other: [keyof PersonRow, string][] = [['phone', 'other phone'], ['location', 'also listed in'], ['twitterUrl', 'other X link'], ['externalId', 'other SponsorUnited id']]
+  for (const [k, label] of other) {
+    const kv = String(keep[k] ?? '').trim(), dv = String(drop[k] ?? '').trim()
+    if (kv && dv && kv.toLowerCase() !== dv.toLowerCase()) lines.push(`${label} ${dv}`)
+  }
   if (drop.isDecisionMaker && !keep.isDecisionMaker) data.isDecisionMaker = true
   const dropNotes = String(drop.notes ?? '').trim()
   const keepNotes = String(keep.notes ?? '').trim()

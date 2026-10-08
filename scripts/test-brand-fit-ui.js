@@ -67,8 +67,8 @@ const BRAND = {
 const SAME = [{
   name: 'Ari Anderman', keepId: 'c_ari1', dropIds: ['c_ari2'], takes: ['email', 'location'],
   lines: ['also on file as “Marketing Director, Don Julio Tequila” (sponsorunited)', 'other LinkedIn link https://www.linkedin.com/in/ari-anderman-8743a831/'],
-  keep: { id: 'c_ari1', title: 'Head of Marketing', source: 'linkedin', status: 'sent' },
-  drops: [{ id: 'c_ari2', title: 'Marketing Director, Don Julio Tequila', source: 'sponsorunited', status: null }],
+  keep: { id: 'c_ari1', name: 'Ari Anderman', title: 'Head of Marketing', email: null, linkedinUrl: 'https://www.linkedin.com/in/arianderman/', source: 'linkedin', status: 'sent' },
+  drops: [{ id: 'c_ari2', name: 'Ari Anderman', title: 'Marketing Director, Don Julio Tequila', email: 'ari.anderman@diageo.com', linkedinUrl: 'https://www.linkedin.com/in/ari-anderman-8743a831/', source: 'sponsorunited', status: null }],
 }];
 
 const STOCK = {
@@ -101,7 +101,8 @@ const H = {
   mergePeople: (a) => (a.confirm
     ? (a.expect === 'sig1' ? { applied: true, merged: 1, people: SAME } : { applied: false, stale: true, people: SAME, expect: 'sig1' })
     : { applied: false, brand: 'High Fit Co', people: SAME, expect: 'sig1' }),
-  undoMergePeople: (a) => (a.confirm ? { applied: true, people: ['Ari Anderman'], blocks: [] } : { applied: false, people: ['Ari Anderman'], blocks: [] }),
+  undoMergePeople: (a) => (a.confirm ? { applied: true, brand: 'High Fit Co', people: ['Ari Anderman'], blocks: [], staysAsIs: [] } : { applied: false, brand: 'High Fit Co', people: ['Ari Anderman'], blocks: [], staysAsIs: [] }),
+  notSamePerson: () => ({ ok: true, pairs: 1 }),
   updateBrand: () => ({ ok: true }),
   brandStock: () => STOCK,
   researchList: () => ({ scope: 'schedule', total: 1, shown: 1, scheduled: 1, rows: [{ id: 'b_euro', name: 'Euro Co' }], text: 'Research these brands…\n- {"id":"b_euro"}' }),
@@ -246,19 +247,25 @@ async function main() {
     assert.equal(last('mergePeople').args.confirm, undefined, 'Merge… only previews');
     const card = await page.textContent('#same-card');
     assert.match(card, /Stays: “Head of Marketing” · from LinkedIn · invited/);
-    assert.match(card, /Goes: “Marketing Director, Don Julio Tequila” · from SponsorUnited/);
+    assert.match(card, /Goes: “Marketing Director, Don Julio Tequila” · ari\.anderman@diageo\.com · from SponsorUnited/);
+    assert.equal(await page.getAttribute('#same-card .same-row a', 'href'), 'https://www.linkedin.com/in/arianderman/');
+    // Not the same person: remembered, the card asks again
+    await page.click('[data-samenot]');
+    await page.waitForTimeout(200);
+    assert.deepEqual(last('notSamePerson').args, { ids: ['c_ari1', 'c_ari2'] });
+    await page.waitForSelector('#same-card');
     assert.match(card, /Takes the email, city from the copy that goes/);
     assert.match(card, /Noted on the person: also on file as/);
     BRAND.samePeople = [];
     BRAND.peopleMergeUndo = { at: new Date().toISOString(), people: ['Ari Anderman'] };
     await page.click('#same-go');
     await page.waitForSelector('#b-same-undo');
-    assert.deepEqual(last('mergePeople').args, { brandId: 'b_high', confirm: true, expect: 'sig1' });
+    assert.deepEqual(last('mergePeople').args, { brandId: 'b_high', confirm: true, expect: 'sig1', only: ['c_ari1'] });
     assert.match(await page.textContent('#b-same-undo'), /Merged Ari Anderman’s two copies into one — Undo/);
     BRAND.peopleMergeUndo = null;
     await page.click('#b-same-undo-link');
     await page.waitForFunction(() => !document.getElementById('b-same-undo'));
-    assert.deepEqual(last('undoMergePeople').args, { confirm: true });
+    assert.deepEqual(last('undoMergePeople').args, { brandId: 'b_high', confirm: true });
     BRAND.peopleMergeUndo = { at: new Date(Date.now() - 2 * 864e5).toISOString(), people: ['Ari Anderman'] };
     await page.evaluate(() => loadBrand('b_high'));
     await page.waitForSelector('#b-fit');

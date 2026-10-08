@@ -8494,12 +8494,18 @@ function openContactForm(brandId, slot, onDone, existing) {
 }
 
 // The same person on file twice at a brand (mergePeople): what each
-// merge keeps and takes, then one click merges every one of them.
+// merge keeps and takes, a tick per person, "Not the same person" for
+// two who share a name, then one click merges the ticked ones.
 var SAME_TAKES = { email: 'email', phone: 'phone', location: 'city', linkedinUrl: 'LinkedIn link', twitterUrl: 'X link', externalId: 'SponsorUnited link', title: 'title' };
-function sameWho(r) {
+function sameWho(r, name) {
   var src = r.source === 'sponsorunited' ? 'from SponsorUnited' : r.source === 'linkedin' ? 'from LinkedIn' : r.source ? 'from ' + r.source : '';
-  var st = { sent: 'invited', accepted: 'accepted', replied: 'replied', converted: 'in talks', withdrawn: 'invite withdrawn', queued: 'in the queue', drafted: 'in the queue' }[r.status] || '';
-  return [r.title ? '“' + r.title + '”' : 'no title', src, st].filter(Boolean).join(' · ');
+  var st = { sent: 'invited', accepted: 'accepted', replied: 'replied', converted: 'in talks', withdrawn: 'invite withdrawn',
+    queued: 'in the queue', drafted: 'in the queue', declined: 'said no', dead: 'no answer', passed: 'passed on' }[r.status] || '';
+  var nm = r.name && name && r.name.trim().toLowerCase() !== name.trim().toLowerCase() ? 'as “' + r.name + '”' : '';
+  return [nm, r.title ? '“' + r.title + '”' : 'no title', r.email || '', src, st].filter(Boolean).join(' · ');
+}
+function sameLink(r) {
+  return r.linkedinUrl ? ' <a href="' + esc(r.linkedinUrl) + '" target="_blank" rel="noopener">LinkedIn ↗</a>' : '';
 }
 function openSamePeople(b) {
   var slot = document.getElementById('b-same-slot');
@@ -8511,27 +8517,43 @@ function openSamePeople(b) {
         '<div style="font-size:13.5px;font-weight:600;margin-bottom:6px">Merge into one row each</div>' +
         pv.people.map(function (p) {
           var takes = (p.takes || []).map(function (k) { return SAME_TAKES[k] || k; });
-          return '<div class="same-row" style="padding:8px 0;border-top:1px solid var(--border);font-size:13.5px">' +
-            '<b style="font-weight:600">' + esc(p.name) + '</b>' +
-            '<div>Stays: ' + esc(sameWho(p.keep)) + '</div>' +
-            p.drops.map(function (r) { return '<div style="color:var(--ink-3)">Goes: ' + esc(sameWho(r)) + '</div>'; }).join('') +
-            (takes.length ? '<div>Takes the ' + esc(takes.join(', ')) + ' from the copy that goes.</div>' : '') +
-            (p.lines && p.lines.length ? '<div style="color:var(--ink-3)">Noted on the person: ' + esc(p.lines.join('; ')) + '</div>' : '') +
+          var ids = [p.keepId].concat(p.dropIds).join(',');
+          return '<div class="same-row" style="padding:8px 0;border-top:1px solid var(--border);font-size:13.5px;display:flex;gap:8px;align-items:flex-start">' +
+            '<input type="checkbox" checked data-samepick="' + esc(p.keepId) + '" style="margin-top:3px" aria-label="Merge ' + esc(p.name) + '">' +
+            '<div style="flex:1;min-width:0">' +
+              '<b style="font-weight:600">' + esc(p.name) + '</b>' +
+              '<div>Stays: ' + esc(sameWho(p.keep, p.name)) + sameLink(p.keep) + '</div>' +
+              p.drops.map(function (r) { return '<div style="color:var(--ink-3)">Goes: ' + esc(sameWho(r, p.name)) + sameLink(r) + '</div>'; }).join('') +
+              (takes.length ? '<div>Takes the ' + esc(takes.join(', ')) + ' from the copy that goes.</div>' : '') +
+              (p.lines && p.lines.length ? '<div style="color:var(--ink-3)">Noted on the person: ' + esc(p.lines.join('; ')) + '</div>' : '') +
+            '</div>' +
+            '<button class="btn-ghost" data-samenot="' + esc(ids) + '" style="padding:3px 10px;font-size:13px;white-space:nowrap">Not the same person</button>' +
           '</div>';
         }).join('') +
-        '<div style="display:flex;gap:8px;align-items:center;margin-top:8px">' +
-          '<button class="btn-solid" id="same-go">Merge ' + (pv.people.length === 1 ? '' : pv.people.length + ' people') + '</button>' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">' +
+          '<button class="btn-solid" id="same-go">Merge ticked</button>' +
           '<button class="btn-ghost" id="same-cancel">Cancel</button>' +
           '<span class="hint" style="margin:0">Outreach stays on the row that got furthest. Undo after.</span>' +
         '</div>' +
       '</div>';
     document.getElementById('same-cancel').onclick = function () { slot.innerHTML = ''; };
+    slot.querySelectorAll('[data-samenot]').forEach(function (btn) {
+      btn.onclick = function () {
+        btn.disabled = true;
+        api('notSamePerson', { ids: btn.getAttribute('data-samenot').split(',') }).then(function () {
+          toast('Kept apart — won’t be offered again');
+          openSamePeople(b);
+        }).catch(function (e) { toast(e.message); btn.disabled = false; });
+      };
+    });
     var go = document.getElementById('same-go');
     go.onclick = function () {
+      var only = [].map.call(slot.querySelectorAll('[data-samepick]:checked'), function (cb) { return cb.getAttribute('data-samepick'); });
+      if (!only.length) { toast('Tick at least one person to merge'); return; }
       go.disabled = true;
-      api('mergePeople', { brandId: b.id, confirm: true, expect: pv.expect }).then(function (r) {
+      api('mergePeople', { brandId: b.id, confirm: true, expect: pv.expect, only: only }).then(function (r) {
         if (r.stale) { toast('Something changed on this brand — here it is again'); openSamePeople(b); return; }
-        toast(r.merged === 1 ? 'Merged ' + pv.people[0].name : 'Merged ' + r.merged + ' people');
+        toast(r.merged === 1 ? 'Merged 1 person' : 'Merged ' + r.merged + ' people');
         slot.innerHTML = '';
         loadBrand(b.id);
       }).catch(function (e) { toast(e.message); go.disabled = false; });
@@ -8539,10 +8561,11 @@ function openSamePeople(b) {
   }).catch(function (e) { slot.innerHTML = ''; toast(e.message); });
 }
 function undoSamePeople(b) {
-  api('undoMergePeople', {}).then(function (pv) {
+  api('undoMergePeople', { brandId: b.id }).then(function (pv) {
     if (pv.blocks && pv.blocks.length) { toast(pv.blocks[0]); return; }
-    if (!confirm('Put ' + pv.people.join(', ') + ' back as two rows, each with its own outreach?')) return;
-    return api('undoMergePeople', { confirm: true }).then(function () {
+    var stays = pv.staysAsIs && pv.staysAsIs.length ? '\n\nChanged since, stays as it is: ' + pv.staysAsIs.join('; ') : '';
+    if (!confirm('Put ' + pv.people.join(', ') + ' at ' + pv.brand + ' back as two rows, each with its own outreach?' + stays)) return;
+    return api('undoMergePeople', { brandId: b.id, confirm: true }).then(function () {
       toast('Put back');
       loadBrand(b.id);
     });

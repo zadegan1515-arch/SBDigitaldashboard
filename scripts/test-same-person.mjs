@@ -90,4 +90,46 @@ t('the kept row\'s own fields always win; missing ones fill; notes are kept, not
   assert.equal(both.data.notes, 'one\ntwo')
 })
 
+t('a shared inbox never makes two people one; a shared address with names that don\'t agree doesn\'t either', () => {
+  const jane = { id: 'j', name: 'Jane Doe', email: 'partnerships@brand.com', linkedinUrl: 'https://www.linkedin.com/in/janedoe/' }
+  const john = { id: 'o', name: 'John Roe', email: 'Partnerships@brand.com ', linkedinUrl: 'https://www.linkedin.com/in/johnroe/' }
+  assert.equal(P.samePerson(jane, john), false)
+  assert.deepEqual(P.samePeopleGroups([jane, john]), [])
+  assert.equal(P.samePerson({ id: '1', name: 'Jane Doe', email: 'jd@brand.com' }, { id: '2', name: 'Bob Roe', email: 'jd@brand.com' }), false)
+  assert.equal(P.isRoleInbox('Sponsorships@diageo.com'), true)
+  assert.equal(P.isRoleInbox('ari.anderman@diageo.com'), false)
+  // the same inbox AND the same name: one person by name
+  assert.equal(P.samePerson({ id: '1', name: 'Jane Doe', email: 'info@b.com' }, { id: '2', name: 'Jane Doe', email: 'info@b.com' }), true)
+})
+
+t('"they said no" or a pass is never replaced by a copy that\'s only queued', () => {
+  const passed = { id: 'p', name: 'A B', target: { id: 't1', status: 'passed' }, createdAt: '2026-01-01' }
+  const queued = { id: 'q', name: 'A B', target: { id: 't2', status: 'queued' }, createdAt: '2026-10-01' }
+  assert.equal(P.pickKeeper([queued, passed]).id, 'p')
+  const declined = { id: 'd', name: 'A B', target: { id: 't3', status: 'declined', sentAt: '2026-09-01' }, createdAt: '2026-01-01' }
+  const sent = { id: 's', name: 'A B', target: { id: 't4', status: 'sent', sentAt: '2026-10-01' }, createdAt: '2026-10-01' }
+  assert.equal(P.pickKeeper([sent, declined]).id, 'd')
+  const dead = { id: 'x', name: 'A B', target: { id: 't5', status: 'dead' }, createdAt: '2026-01-01' }
+  assert.equal(P.pickKeeper([sent, dead]).id, 'x')
+  // …while a reply or an accept still outranks an invite
+  assert.equal(P.pickKeeper([sent, { id: 'a', name: 'A B', target: { id: 't6', status: 'accepted' } }]).id, 'a')
+})
+
+t('a second phone, city, X link, SponsorUnited id or name is noted, never dropped', () => {
+  const keep = { id: 'k', name: 'R. Zalis', phone: '111', location: 'NYC', twitterUrl: 'https://x.com/a', externalId: 'su-1' }
+  const drop = { id: 'd', name: 'Rachel Zalis', phone: '222', location: 'LA', twitterUrl: 'https://x.com/b', externalId: 'su-2' }
+  const { data, lines } = P.mergeFields(keep, drop, 'Oct 8, 2026')
+  assert.deepEqual(lines, ['also on file as name “Rachel Zalis”', 'other phone 222', 'also listed in LA', 'other X link https://x.com/b', 'other SponsorUnited id su-2'])
+  assert.match(data.notes, /other phone 222/)
+})
+
+t('Leo\'s "not the same person" keeps a pair apart, and a group that would join them through a third', () => {
+  const a = { id: 'a', name: 'Chris Lee' }, b = { id: 'b', name: 'Chris Lee' }, c = { id: 'c', name: 'Chris Lee' }
+  const ns = new Set([P.pairKey('b', 'a')])
+  assert.equal(P.samePerson(a, b, ns), false)
+  assert.deepEqual(P.samePeopleGroups([a, b], ns), [])
+  assert.deepEqual(P.samePeopleGroups([a, b, c], ns), [], 'a and b would meet through c')
+  assert.equal(P.samePeopleGroups([a, b, c]).length, 1)
+})
+
 console.log('same-person: all ' + n + ' passed')
