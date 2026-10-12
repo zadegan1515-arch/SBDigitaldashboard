@@ -281,16 +281,16 @@ export function industryFits(category: string | null | undefined, subtitle: stri
 
 // What a brand of the category sells, in the words a page's own line
 // uses. Only for an exact name in an industry that doesn't fit (Leo, Oct
-// 12 2026: Ultra Pouches files itself under "Wellness and Fitness
-// Services" but says "Instant focus in a pouch").
+// 12 2026: a page whose description says "Instant focus in a pouch" is a
+// pouch brand, whatever industry it picked on LinkedIn).
 const PRODUCT_WORDS: Record<string, RegExp> = {
   electrolytes: /electrolyte|hydration|drink mix/i,
-  energy: /energy drink|energy shot|caffeine|\bdrinks?\b/i,
+  energy: /energy drink|energy shot|caffeine|paraxanthine|\bdrinks?\b|in a pouch|(?:energy|caffeine|focus) pouch/i,
   beverage: /\bdrinks?\b|beverage|\bteas?\b|soda|sparkling|juice|water/i,
   rtd: /seltzer|cocktail|\bbeer|hard (?:tea|lemonade|cider)|spiked|\bdrinks?\b/i,
   spirits: /vodka|tequila|whisk|bourbon|\brum\b|\bgin\b|mezcal|liqueur|spirits|aperitiv/i,
   alcohol: /vodka|tequila|whisk|bourbon|\brum\b|\bgin\b|wine|\bbeer|seltzer|cocktail|spirits/i,
-  nicotine: /in a pouch|nicotine|snus|\bvape|(?:energy|caffeine|focus) pouch/i,
+  nicotine: /nicotine pouch|snus|\bvape|\btobacco/i,
   beauty: /skin ?care|cosmetic|makeup|serum|beauty/i,
   wellness: /supplement|vitamin|protein|wellness/i,
   athletic: /apparel|footwear|sneaker|activewear|athletic/i,

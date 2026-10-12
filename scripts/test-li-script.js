@@ -154,6 +154,8 @@ let latestVersion = null;
 let fillItems = [];
 const discovered = new Set();
 const homeVisits = [];
+// Company searches the fake LinkedIn served, by keywords.
+const searchHits = {};
 
 // LinkedIn's "Pages people also viewed" rail.
 function rail(cos) {
@@ -234,6 +236,12 @@ const server = http.createServer((req, res) => {
       if (body.action === 'liMatched' && body.brandId === 'b-mn') {
         // Leo pressed "None of these" after this run fetched its list.
         return res.end(JSON.stringify({ ok: true, outcome: 'markedNone' }));
+      }
+      if (body.action === 'liMatched' && /^b-(az|lc)$/.test(body.brandId)) {
+        const hit = (body.candidates || [])[0];
+        return res.end(JSON.stringify(hit
+          ? { ok: true, outcome: 'attached', how: 'exact', name: hit.name, linkedinUrl: hit.url }
+          : { ok: true, outcome: 'none' }));
       }
       if (body.action === 'liMatched') {
         const hit = (body.candidates || []).find(c => c.name === 'LMNT');
@@ -410,6 +418,26 @@ const server = http.createServer((req, res) => {
       '<li><a href="https://www.linkedin.com/company/alp-consulting/">Alp Consulting Ltd.</a><div>Staffing and Recruiting • Bangalore</div></li>' +
       '</ul></main></body></html>');
   }
+  // Arizona Beverages (Oct 12 2026): its own name shows nothing, twice;
+  // the spelling the dashboard knows ("AriZona") finds its page.
+  if (/^\/search\/results\/companies\/\?keywords=(Arizona%20Beverages|AriZona)(&|$)/.test(req.url)) {
+    const q = decodeURIComponent(req.url.match(/keywords=([^&]*)/)[1]);
+    searchHits[q] = (searchHits[q] || 0) + 1;
+    if (q !== 'AriZona') return res.end('<!doctype html><html><body><main><p>No results found</p></main></body></html>');
+    return res.end('<!doctype html><html><body><main><ul>' +
+      '<li><a href="https://www.linkedin.com/company/arizona-beverages/"><span>AriZona Beverages USA</span></a><div>Beverage Manufacturing • Woodbury, NY</div><div>60K followers</div></li>' +
+      '</ul></main></body></html>');
+  }
+  if (/^\/company\/arizona-beverages\/people\/?/.test(req.url)) return res.end(page(true, 'AriZona Beverages USA'));
+  // A search that shows nothing the first time and its results on the reload.
+  if (/^\/search\/results\/companies\/\?keywords=Late%20Cola(&|$)/.test(req.url)) {
+    searchHits['Late Cola'] = (searchHits['Late Cola'] || 0) + 1;
+    if (searchHits['Late Cola'] === 1) return res.end('<!doctype html><html><body><main><p>No results found</p></main></body></html>');
+    return res.end('<!doctype html><html><body><main><ul>' +
+      '<li><a href="https://www.linkedin.com/company/late-cola/"><span>Late Cola</span></a><div>Beverage Manufacturing • Austin</div><div>2K followers</div></li>' +
+      '</ul></main></body></html>');
+  }
+  if (/^\/company\/late-cola\/people\/?/.test(req.url)) return res.end(page(true, 'Late Cola'));
   // A company search, the way LinkedIn lays out results.
   if (/^\/search\/results\/companies\/\?keywords=LMNT/.test(req.url)) {
     return res.end('<!doctype html><html><body><main><ul>' +
@@ -709,6 +737,39 @@ const GM_SHIM = `
       await pg.close();
     }
     ok('a run finds a missing page by search, reads each brand, saves by brandId and finishes');
+
+    // 9a2. An empty search is loaded again before the run believes it, and
+    // the second name is the spelling the dashboard sends (Oct 12 2026).
+    {
+      fillItems = [
+        { brandId: 'b-lc', name: 'Late Cola', aka: null, category: 'beverage', linkedinUrl: null, contacts: 0, focus: true },
+        { brandId: 'b-az', name: 'Arizona Beverages', aka: null, alsoSearch: 'AriZona', category: 'beverage', linkedinUrl: null, contacts: 1, focus: true },
+      ];
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.waitForSelector('#sblipill', { state: 'visible' });
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      await pg.uncheck('#sblilook');
+      await pg.fill('#sbliwords', '');
+      await pg.click('#sblifilllook');
+      await pg.waitForSelector('#sblifillstart');
+      await pg.click('#sblifillstart');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 120000 });
+      const matched = sent.slice(before).filter(b => b.action === 'liMatched');
+      // Late Cola: shown empty, loaded again, found — one answer, with its page.
+      assert.equal(searchHits['Late Cola'], 2);
+      assert.deepEqual(matched.filter(b => b.brandId === 'b-lc').map(b => b.candidates.map(c => c.name)), [['Late Cola']]);
+      // Arizona Beverages: empty twice (asked once), then "AriZona" finds it.
+      assert.equal(searchHits['Arizona Beverages'], 2);
+      assert.equal(searchHits['AriZona'], 1);
+      assert.deepEqual(matched.filter(b => b.brandId === 'b-az').map(b => b.candidates.map(c => c.name)), [[], ['AriZona Beverages USA']]);
+      assert.ok(sent.slice(before).some(b => b.action === 'liCapture' && b.brandId === 'b-az' && /arizona-beverages/.test(b.companyUrl)));
+      await pg.close();
+    }
+    ok('an empty company search is loaded again, then the spelling the dashboard knows is tried');
     ok('the run sends each brand\'s "LinkedIn Member" headlines with its visit and says so at the end');
 
     // 9b. Brands with no marketing / partnerships person on file go first

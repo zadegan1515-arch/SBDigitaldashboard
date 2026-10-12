@@ -623,6 +623,14 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   why the current brand is next (`whyItem`: on the Schedule for <day> and short on people — Schedule
   brands go first, which is why Native came before the electrolyte brands — research list, focus word,
   emptiest), and the end of a run lists every brand and what happened ("What it did").
+  **Finding a roster brand's page** (Leo, Oct 12 2026, after Arizona Beverages / Crodino / Ultra Pouches landed on his
+  list; script 1.35): an empty company search is loaded once more before the run believes it (`searchLooksEmpty`; 30 s
+  to draw while the window is hidden, `searchWait`); the second search is the aka, else `alsoSearch` from `liList` =
+  `secondSearchName` (stock.ts: a spelling the lanes' known names have for it — "AriZona" for Arizona Beverages — else
+  the name without "Skincare" / "Energy" / "Nutrition"…); `liMatched` also matches those known spellings
+  (`knownSpellings`); one exact name whose own line says what the brand sells counts even in an industry that doesn't
+  fit (`descriptionFits`, `PRODUCT_WORDS` in li-capture.ts — "in a pouch"). Crodino is under Campari Group. To send a
+  brand back to the fill (forget "None of these" and its month's rest): `node scripts/cc.mjs liPageRetry '{"brandId":"…"}'`.
   **Which LinkedIn page is theirs?** (`src/lib/li-review.ts`, Setting `liPageReview`; top of Outreach →
   People): brands the search wasn't sure of (unclear / none, with the top results, the fitting one
   first) and brands whose **saved page is another company's** — the run sends `checkPage` +
