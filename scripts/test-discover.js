@@ -18,6 +18,11 @@ const NOW = new Date().toISOString();
 
 
 const NAMES = ['Aéropostale', 'Blenders Eyewear', 'Lucky Energy', 'Garage Beer', 'Flerish'];
+// listDiscoveries' grade (discover-grade.ts); best grade first by default.
+const GRADES = [['D', 22], ['C', 37], ['A', 69], ['B', 52], ['A', 62]];
+const BY_GRADE = ['Lucky Energy', 'Flerish', 'Garage Beer', 'Blenders Eyewear', 'Aéropostale'];
+const grade = ([g, score]) => ({ grade: g, score, word: 'w', capped: null,
+  reasons: [{ good: true, text: 'Top priority category', points: 30 }, { good: null, text: 'money not known — size not known', points: 15 }] });
 const S = { rows: [], adds: [], dismissed: [] };
 function reset() {
   S.rows = NAMES.map((n, i) => ({
@@ -26,9 +31,11 @@ function reset() {
     signals: i % 2 ? 'sponsors,genz' : 'midsize', status: 'new', inSystem: false, contactCount: 0, brandId: null,
     reason: 'A long reason about why ' + n + ' fits SB Agency, with a fact or two that could run past one line on a narrow screen and should be cut off neatly.',
     activation: 'Sampling at the door for ' + n + '.', website: 'https://example.com/' + i, sourceUrl: 'https://news.example.com/' + i, linkedinUrl: null,
+    grade: grade(GRADES[i]),
   }));
   S.rows.push({ id: 'dx', name: 'Already Here', category: 'energy', query: 'Claude hunt · Oct 5', source: 'Claude hunt', signals: 'genz',
-    status: 'added', inSystem: true, contactCount: 3, brandId: 'b9', reason: 'r', activation: null, website: null, sourceUrl: null, linkedinUrl: null });
+    status: 'added', inSystem: true, contactCount: 3, brandId: 'b9', reason: 'r', activation: null, website: null, sourceUrl: null, linkedinUrl: null,
+    grade: grade(['B', 50]) });
 }
 reset();
 const H = {
@@ -72,7 +79,8 @@ async function main() {
   await page.waitForSelector('#disc-body .dc-row');
   const names = () => page.$$eval('#disc-body .dc-row b', (bs) => bs.map((b) => b.textContent));
 
-  assert.deepEqual(await names(), NAMES, 'To review lists everything not added');
+  assert.deepEqual(await names(), BY_GRADE, 'To review lists everything not added, best grade first');
+  assert.deepEqual(await page.$$eval('#disc-body .dc-grade', (e) => e.map((x) => x.textContent)), ['A', 'A', 'B', 'C', 'D'], 'every row shows its grade');
   assert.match(await page.textContent('[data-dctab="review"]'), /5/);
   assert.match(await page.textContent('[data-dctab="added"]'), /1/);
   assert.equal(await page.$('#disc-q'), null, 'the old search box is gone');
@@ -82,14 +90,24 @@ async function main() {
   assert.deepEqual(await names(), ['Flerish']);
   await page.selectOption('[data-dcsel="source"]', '');
   await page.selectOption('[data-dcsel="cat"]', 'apparel');
-  assert.deepEqual(await names(), ['Aéropostale', 'Blenders Eyewear']);
+  assert.deepEqual(await names(), ['Blenders Eyewear', 'Aéropostale']);
   await page.selectOption('[data-dcsel="cat"]', '');
   console.log('✓ source and category dropdowns');
 
-  await page.screenshot({ path: process.env.SHOT || '/dev/null' });
+  await page.selectOption('[data-dcsel="grade"]', 'A');
+  assert.deepEqual(await names(), ['Lucky Energy', 'Flerish']);
+  assert.match(await page.textContent('[data-dcsel="grade"]'), /Grade A \(2\)/);
+  await page.selectOption('[data-dcsel="grade"]', '');
+  await page.selectOption('[data-dcsel="sort"]', 'new');
+  assert.deepEqual(await names(), NAMES, 'Newest first keeps the server order');
+  await page.selectOption('[data-dcsel="sort"]', 'grade');
+  console.log('✓ grade filter and sort');
+
+  if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
   await page.click('[data-disc="d0"] .dc-name');
   await page.waitForSelector('[data-disc="d0"] .dc-more');
   assert.match(await page.textContent('[data-disc="d0"] .dc-more'), /Sampling at the door/);
+  assert.match(await page.textContent('[data-disc="d0"] .dc-more'), /Grade\s*D · 22\/100[\s\S]*\+30Top priority category/);
   assert.ok(await page.$('[data-disc="d0"] a[href="https://news.example.com/0"]'));
   console.log('✓ a row opens for the pitch and links');
 

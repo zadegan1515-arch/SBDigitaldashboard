@@ -57,6 +57,7 @@ import { isLogStage } from '@/lib/li-log'
 import { rollWindow, findUnsent, planCarry, type Unsent, type CarryFacts } from '@/lib/carry'
 import { workNeed, dueDays } from '@/lib/planned-first'
 import { searchHit, type SearchHit } from '@/lib/brand-search'
+import { gradeDiscovery, gradeFromFit } from '@/lib/discover-grade'
 import { scoreBrand, priorityOf, PRIORITIES, PRIORITY_POINTS, DEFAULT_CATEGORY_PRIORITY, type Priority, dollarsToCents, normUs, normBiz, cleanResearchRow, shortMoney, type FitResult, type ResearchRow } from '@/lib/brand-fit'
 import { buildStock, bestDealStage, refileMoves, remapPlanDays, brandKey } from '@/lib/stock'
 import { buyerKind, isBuyerTitle, countBuyers, BUYER_TARGET } from '@/lib/buyers'
@@ -11783,10 +11784,28 @@ const handlers: Record<string, Handler> = {
     const sourceOf = (q: string) => /^(Claude hunt|🔥)/.test(q) ? 'Claude hunt'
       : /^LinkedIn/.test(q) ? 'LinkedIn' : /^Research list/.test(q) ? 'Research list' : 'Search'
     const link: { id: string; brandId: string }[] = []
-    const out = rows.map((r: any) => {
-      const existing = (r.brandId && byId.get(r.brandId)) || byName.get(String(r.name).toLowerCase())
+    const matched = rows.map((r: any) => (r.brandId && byId.get(r.brandId)) || byName.get(String(r.name).toLowerCase()) || null)
+    // The grade (discover-grade.ts): a find on the roster by its brand's
+    // own Brand Fit, the rest by what Discover knows.
+    const rates = await recentAcceptRates()
+    const now = new Date()
+    const onRoster = Array.from(new Set(matched.filter(Boolean).map((b: any) => b.id))) as string[]
+    const facts = onRoster.length ? await prisma.brand.findMany({
+      where: { id: { in: onRoster } },
+      select: { id: true, name: true, aka: true, category: true, tier: true, workPeople: true, ...FIT_SELECT,
+        contacts: { select: { email: true, linkedinUrl: true } } },
+    }) : []
+    const fitById = new Map(facts.map(b => [b.id, brandFit(b, b.contacts.filter(isReachable).length, rates, now)]))
+    const out = rows.map((r: any, i: number) => {
+      const existing = matched[i]
       if (existing && !r.brandId) { link.push({ id: r.id, brandId: existing.id }); r.brandId = existing.id; r.status = 'added' }
-      return { ...r, source: sourceOf(r.query), inSystem: !!existing, contactCount: existing?._count.contacts ?? 0 }
+      const fit = existing && fitById.get(existing.id)
+      const raw = String(r.category ?? '').trim().toLowerCase()
+      const cat = isCategoryKey(raw) ? raw : guessCategory(r.name, r.category)
+      const g = fit ? gradeFromFit(fit) : gradeDiscovery(
+        { category: cat, signals: r.signals, hasParent: !!parentOf(r.name, null) },
+        { priority: categoryPriority(cat), acceptRate: rateOrNull(rates, cat), now })
+      return { ...r, source: sourceOf(r.query), inSystem: !!existing, contactCount: existing?._count.contacts ?? 0, grade: g }
     })
     // A brand added since by any other path: remember the link.
     for (const l of link) {
