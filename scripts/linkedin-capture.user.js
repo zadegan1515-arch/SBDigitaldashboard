@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.33
+// @version      1.34
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -86,7 +86,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.33';
+  var VERSION = '1.34';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1328,6 +1328,11 @@
   var SN_EMPTY = /no leads (?:match|found)|no matches found|no results found|\b0 results/i;
   var SN_UPSELL = /start (?:your )?free trial|try sales navigator|upgrade to sales navigator|get sales navigator|reactivate (?:your )?sales navigator/i;
 
+  var FIT_KEY = 'sbLiMinFit';
+  var FIT_DEFAULT = 60;
+  function minFitWanted() {
+    try { var v = GM_getValue(FIT_KEY, FIT_DEFAULT); return typeof v === 'number' && v >= 0 && v <= 100 ? v : FIT_DEFAULT; } catch (e) { return FIT_DEFAULT; }
+  }
   function snWanted() { try { return GM_getValue(SN_KEY, true) !== false; } catch (e) { return true; } }
   function snOn(job) { return !!job && job.salesNav === true; }
   function onSalesSearch() { return /^\/sales\/search\/people\/?$/.test(location.pathname); }
@@ -2330,6 +2335,10 @@
   // under electrolyte brands" — it was on the Schedule, which goes first).
   function whyItem(job, item) {
     if (!item) return '';
+    var w = whyItemBase(job, item);
+    return item.fit != null && !item.research ? w + ' · Brand Fit ' + item.fit : w;
+  }
+  function whyItemBase(job, item) {
     if (item.planned) {
       var d = new Date(item.planned + 'T12:00:00');
       return 'on the Schedule for ' + d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' and short on people';
@@ -2413,6 +2422,13 @@
     var researchBox = h('input', { type: 'checkbox', id: 'sbliresearch', checked: true, style: 'margin:2px 0 0' });
     var lookBox = h('input', { type: 'checkbox', id: 'sblilook', checked: true, style: 'margin:2px 0 0' });
     var snBox = h('input', { type: 'checkbox', id: 'sblisalesnav', checked: snWanted(), style: 'margin:2px 0 0' });
+    // Only brands that score well on Brand Fit (the dashboard's ratings;
+    // Leo, Oct 12 2026: "only fill in the brands that score highly").
+    var fitBox = h('input', {
+      id: 'sbliminfit', type: 'number', min: '0', max: '100', value: String(minFitWanted()),
+      style: 'width:56px;padding:4px 6px;border:1px solid #ccc;border-radius:6px;font:12.5px system-ui;color:#111;background:#fff',
+    });
+    fitBox.onchange = function () { try { GM_setValue(FIT_KEY, Math.max(0, Math.min(100, Number(fitBox.value) || 0))); } catch (e) {} };
     snBox.onchange = function () { try { GM_setValue(SN_KEY, snBox.checked); } catch (e) {} };
     // Off by default: LinkedIn's keyword search turns up small pages, not
     // the big names (Leo: "the big electrolyte brands don't come up when
@@ -2432,7 +2448,7 @@
     var look = function () {
       var f = focus.value.trim();
       out.textContent = 'Getting the list…';
-      post({ action: 'liList', focus: f, research: researchBox.checked, salesNav: snBox.checked }).then(function (j) {
+      post({ action: 'liList', focus: f, research: researchBox.checked, salesNav: snBox.checked, minFit: Math.max(0, Math.min(100, Number(fitBox.value) || 0)) }).then(function (j) {
         while (out.firstChild) out.removeChild(out.firstChild);
         if (!j || !j.ok) { out.textContent = (j && j.error) || 'Could not get the list.'; return; }
         if (!j.items.length) {
@@ -2459,6 +2475,7 @@
           : 'None match “' + f + '” — it goes emptiest first.' }));
         if (j.sizes) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: 'Then by size: ' + j.sizes.target + ' target (mid-size, 20–499 on LinkedIn), ' + j.sizes.unknown + ' not measured yet, ' + j.sizes.small + ' small, ' + j.sizes.big + ' big companies last.' }));
         if (j.noPage) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.noPage + ' have no LinkedIn page saved; it searches LinkedIn for those and only uses a clear match.' }));
+        if (j.minFit) out.appendChild(h('div', { id: 'sblifitnote', style: 'font-size:12px;color:#555;margin-bottom:6px', text: 'Only brands with Brand Fit ' + j.minFit + '+, best first' + (j.belowFit ? ' — ' + j.belowFit + ' lower-scoring, too small or Skip brands left out' : '') + '. The Schedule\'s brands always go.' }));
         if (j.hiddenRetry) out.appendChild(h('div', { id: 'sblisnretry', style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.hiddenRetry + ' brands read before without Sales Navigator (or with buyers LinkedIn hid) are back for it, right after the Schedule\'s.' }));
         if (j.resting) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.resting + ' left out: nothing new on their last visit (they rest a month).' }));
         if (j.researchWaiting) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.researchWaiting + ' research names left out: LinkedIn had no clear page for them last month.' }));
@@ -2478,6 +2495,10 @@
           id: 'sblifilllook', text: 'See the list', onclick: look,
           style: 'background:#fff;color:#111;border:1px solid #ccc;border-radius:6px;padding:5px 10px;cursor:pointer;font:12.5px system-ui',
         }),
+      ]),
+      h('label', { style: 'display:flex;gap:7px;align-items:center;font-size:12px;color:#333;margin-top:10px' }, [
+        h('span', { text: 'Only brands with Brand Fit of at least' }), fitBox,
+        h('span', { style: 'color:#777', text: '(0 = every brand)' }),
       ]),
       h('label', { style: 'display:flex;gap:7px;align-items:flex-start;font-size:12px;color:#333;cursor:pointer;margin-top:10px' }, [
         snBox,

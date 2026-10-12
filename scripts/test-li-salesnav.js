@@ -178,7 +178,7 @@ const server = http.createServer((req, res) => {
 
 const GM_SHIM = `
   (function () {
-    var seed = { sbIngestToken: 'test-token' };
+    var seed = { sbIngestToken: 'test-token', sbLiMinFit: 0 };
     var P = '__gm:';
     try {
       if (!sessionStorage.getItem('__gm_seeded')) {

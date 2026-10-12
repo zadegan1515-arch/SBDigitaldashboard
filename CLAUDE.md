@@ -700,7 +700,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   account without Sales Navigator switches it off for a run** (1.33; Leo: "i dont want the sales navigator to be
   off") — a page that doesn't load (30 s, 60 s while the window is hidden) or "No matches found" (an empty search)
   costs that brand only; a run an older copy switched off turns it back on at its next page load, and the panel has
-  **Use Sales Navigator again** (`snTurnOn`). Unverified against the real Sales Navigator pages
+  **Use Sales Navigator again** (`snTurnOn`). **Brand Fit floor** (1.34; Leo, Oct 12 2026: "can it only fill in the brands that
+  score highly"): the setup panel's "Only brands with Brand Fit of at least [60]" (GM `sbLiMinFit`, 0 = every brand)
+  → `liList({ minFit })` scores each brand with `scoreBrand` (brand-fit.ts, Leo's category priority, no accept rate)
+  and leaves off brands under the floor, too small, not US, closed or Skip (`belowFit` counts them) — never the
+  Schedule's brands or names Leo asked for; with a floor the list goes best fit first (items carry `fit`, the panel
+  shows it). The Sales Navigator retry (`snRetry`) only applies when the run has Sales Navigator on. Unverified against the real Sales Navigator pages
   until Leo's first run — "Copy a sample for Claude" works on a Sales Navigator search. `node scripts/test-li-salesnav.js`.
   **"LinkedIn Member" cards** (out of Leo's network, name + profile hidden by LinkedIn) can't be saved, but
   **they aren't lost** (Leo, Oct 7 2026: "i dont want to miss out on people if i do it from my own account"):

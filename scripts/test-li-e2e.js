@@ -186,7 +186,7 @@ const linkedin = http.createServer((req, res) => {
 
 const GM_SHIM = `(function () {
   var P = '__gm:';
-  if (!sessionStorage.getItem('__gm_seeded')) { sessionStorage.setItem(P + 'sbIngestToken', JSON.stringify(${JSON.stringify(TOKEN)})); sessionStorage.setItem(P + 'sbLiSalesNav', 'false'); sessionStorage.setItem('__gm_seeded', '1'); }
+  if (!sessionStorage.getItem('__gm_seeded')) { sessionStorage.setItem(P + 'sbIngestToken', JSON.stringify(${JSON.stringify(TOKEN)})); sessionStorage.setItem(P + 'sbLiSalesNav', 'false'); sessionStorage.setItem(P + 'sbLiMinFit', '0'); sessionStorage.setItem('__gm_seeded', '1'); }
   window.GM_getValue = function (k, d) { var v = sessionStorage.getItem(P + k); return v == null ? d : JSON.parse(v); };
   window.GM_setValue = function (k, v) { sessionStorage.setItem(P + k, JSON.stringify(v)); };
   window.GM_deleteValue = function (k) { sessionStorage.removeItem(P + k); };
@@ -602,6 +602,21 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       assert.equal(await listOf(true), undefined, 'its one retry is done');
     }
     ok('Sales Navigator: hidden buyers bring a brand back once; a member-id link keeps its case and still matches duplicates');
+
+    // A Brand Fit floor (Leo: "only fill in the brands that score highly"):
+    // every brand carries its score; under the floor, it's left off.
+    {
+      const all = (await ingest({ action: 'liList', me: leo, focus: '' })).j
+      assert.ok(all.items.filter(i => !i.research).every(i => typeof i.fit === 'number'), 'each brand carries its Brand Fit')
+      const floor = Math.max(...all.items.filter(i => !i.research && !i.planned).map(i => i.fit))
+      const high = (await ingest({ action: 'liList', me: leo, focus: '', minFit: floor })).j
+      assert.equal(high.minFit, floor)
+      assert.ok(high.items.filter(i => !i.research && !i.planned).every(i => i.fit >= floor), 'only brands at the floor or above')
+      assert.ok(high.belowFit > 0, 'the rest are counted as left out')
+      const scores = high.items.filter(i => !i.research && !i.planned && !i.hiddenRetry && !i.noBuyer && !i.last).map(i => i.fit)
+      assert.deepEqual(scores, [...scores].sort((a, b) => b - a), 'best fit first')
+    }
+    ok('a Brand Fit floor: every brand carries its score, the ones under it are left off, best first');
 
     // The clean-up of people saved before the October rules: a new grad
     // nobody wrote to is listed, a store manager already invited is kept,
