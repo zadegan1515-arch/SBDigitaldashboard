@@ -20,9 +20,10 @@ export type FillDay = { day: string; rows: FillRow[] }
 export function fillWhy(i: FillItem, focus: string, dayLabel: (key: string) => string = k => k): string {
   if (i.planned) return 'On the Schedule ' + dayLabel(i.planned) + ', short on people'
   if (i.asked) return 'Asked for by name'
-  if (i.hiddenRetry) return 'Back for Sales Navigator (buyers hidden last time)'
+  // Read last wins: that's where the run puts it, Sales Navigator retry or not.
   if (i.last === 'reached') return 'Already reached out — read last'
   if (i.last === 'giant') return 'Giant, held back — read last'
+  if (i.hiddenRetry) return 'Back for Sales Navigator (buyers hidden last time)'
   const bits: string[] = []
   if (i.research) bits.push('Research list' + (i.lane ? ' · ' + i.lane : ''))
   if (i.noBuyer && !i.research) bits.push('no buyer on file')
