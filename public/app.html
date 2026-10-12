@@ -7298,7 +7298,10 @@ function bpRender() {
   var html = '<span class="b-plan-k">Schedule</span>';
   if (!r || !r.brand || r.brand.id !== BP.id) { slot.innerHTML = html + '<span class="sd-dim">…</span>'; return; }
   var b = r.brand;
-  if (b.refusal) {
+  // Resting after its first outreach (the queue rules): only the days on
+  // or after the rest ends are offered; Take off stays for a pinned one.
+  var restFrom = b.refusalReason === 'resting' && b.restUntil ? b.restUntil : '';
+  if (b.refusal && !restFrom) {
     // A giant held back (the queue rules) can be let through here.
     var giant = b.refusalReason === 'giant';
     slot.innerHTML = html + '<span class="sd-dim">' +
@@ -7309,7 +7312,9 @@ function bpRender() {
     return;
   }
   var where;
-  if (b.pinnedOn && b.going && b.waits) {
+  if (restFrom) {
+    where = (b.pinnedOn ? 'On <b>' + esc(bpWord(b.pinnedOn)) + '</b> · ' : '') + '<span class="pd-warn">' + esc(b.refusal) + '</span>';
+  } else if (b.pinnedOn && b.going && b.waits) {
     where = 'On <b>' + esc(bpWord(b.pinnedOn)) + '</b> · <span class="pd-warn">waits: past the day’s ' + sdCap() +
       (b.waitsLabel ? ', goes out ' + esc(b.waitsLabel) : '') + ' unless you move it up on the Schedule</span>';
   } else if (b.pinnedOn) {
@@ -7323,11 +7328,11 @@ function bpRender() {
   } else {
     where = 'Not on a day';
   }
-  var opts = (r.days || []).filter(function (d) { return d.key !== b.pinnedOn; }).map(function (d) {
+  var opts = (r.days || []).filter(function (d) { return d.key !== b.pinnedOn && (!restFrom || d.key >= restFrom); }).map(function (d) {
     return '<option value="' + esc(d.key) + '">' +
       esc((d.today ? 'Today · ' : '') + d.label + (d.category ? ' · ' + (CAT_NAMES[d.category] || d.category) : '') + (d.extra ? ' (extra day)' : '')) + '</option>';
   }).join('') +
-    (r.offDay ? '<option value="' + esc(r.offDay.key) + '" data-add="1">' + esc(r.offDay.label + ' (adds it as a sending day)') + '</option>' : '');
+    (r.offDay && (!restFrom || r.offDay.key >= restFrom) ? '<option value="' + esc(r.offDay.key) + '" data-add="1">' + esc(r.offDay.label + ' (adds it as a sending day)') + '</option>' : '');
   var moving = !!(b.pinnedOn || b.inTodayQueue);
   var lock = BP.busy ? ' disabled' : '';
   html += '<span>' + where + '</span>' +
@@ -19235,7 +19240,10 @@ function openPersonForBrand(brandId, brandName) {
     '</div>';
   openContactForm(brandId, slot.querySelector('#opb-slot'), function () {
     api('queueBrandTargets', { brandId: brandId, force: true })
-      .then(function (q) { if (q.queued) toast(q.contactName + ' added to the queue'); })
+      .then(function (q) {
+        if (q.queued) toast(q.contactName + ' added to the queue');
+        else if (q.reason === 'giant' || q.reason === 'resting') queueToast(q);
+      })
       .catch(function () {})
       .then(function () { slot.innerHTML = ''; loadOutreach(); });
   });
@@ -19307,7 +19315,15 @@ function openNewBrandForm(prefill) {
       openContactForm(r.brand.id, slot.querySelector('#ob-contact'), function () {
         // Queue whoever was just added (or the brand's best contact).
         api('queueBrandTargets', { brandId: r.brand.id }).then(function (q) {
-          if (q.contactName) queueToast(q); else toast('Person added');
+          // A giant asks "Add anyway?"; a brand resting after its first
+          // outreach says until when (the queue rules).
+          if (q.contactName || q.reason === 'giant' || q.reason === 'resting') {
+            queueToast(q, function () {
+              api('queueBrandTargets', { brandId: r.brand.id, allowGiant: true })
+                .then(function (q2) { queueToast(q2); loadOutreach(); })
+                .catch(function (e) { toast(e.message); });
+            });
+          } else toast('Person added');
         }).catch(function () { toast('Person added — queue them from the brand page'); })
           .then(function () { slot.innerHTML = ''; loadOutreach(); });
       });
@@ -19334,7 +19350,7 @@ document.getElementById('oq-new').addEventListener('click', function () { openNe
     var newRow = '<div class="oq-row-new" style="padding:10px 12px;font-size:13px;cursor:pointer;color:var(--accent-hi);font-weight:600;border-top:1px solid var(--border-soft)">+ Add “' + esc(q) + '” as a new brand</div>';
     drop.innerHTML = (rows.length ? rows.map(function (b, i) {
       var btn = b.action === 'add' ? '<button class="btn-draft sd-sm" data-oqadd="' + esc(b.id) + '">Add to today</button>'
-        : b.action === 'addAnyway' ? '<button class="btn-ghost sd-sm" data-oqadd="' + esc(b.id) + '" data-oqforce="1"' + (b.giant ? ' data-oqgiant="1"' : '') + ' title="' + (b.giant ? 'A giant — held back for now. This lets it go like any other brand.' : 'Already reached, or nobody reachable — your call') + '">Add anyway</button>'
+        : b.action === 'addAnyway' ? '<button class="btn-ghost sd-sm" data-oqadd="' + esc(b.id) + '"' + (b.giant ? ' data-oqgiant="1"' : ' data-oqforce="1"') + ' title="' + (b.giant ? 'A giant — held back for now. This lets it go like any other brand.' : 'Already reached, or nobody reachable — your call') + '">Add anyway</button>'
         : '<button class="btn-ghost sd-sm" data-oqopen="' + esc(b.id) + '">Open brand</button>';
       var how = b.matched === 'aka' ? 'aka ' + b.aka : b.matched === 'fuzzy' ? 'did you mean this?' : '';
       return '<div class="oq-row' + (i === hl ? ' hl' : '') + '" data-oqrow="' + i + '">' +

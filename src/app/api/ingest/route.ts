@@ -864,8 +864,11 @@ export async function POST(req: NextRequest) {
     const tail = (i: any) => (i.planned || i.asked) ? 0
       : (i.research ? i.giant : giantIds.has(i.brandId)) ? 2
       : !i.research && reachedIds.has(i.brandId) ? 1 : 0
+    // The ones moved to the back don't go first for having no buyer or
+    // the focus word any more, so the run's panel mustn't say they do.
     const ordered = [0, 1, 2].flatMap(n => sorted.filter(i => tail(i) === n))
-    const reachedLast = (i: any) => tail(i) === 1
+      .map(i => (tail(i) ? { ...i, noBuyer: false, focus: false, last: tail(i) === 1 ? 'reached' : 'giant' } : i))
+    const reachedLast = (i: any) => i.last === 'reached'
     return NextResponse.json({
       ok: true,
       items: ordered,
@@ -873,7 +876,7 @@ export async function POST(req: NextRequest) {
       // they go right after the Schedule's (the panel says so).
       noBuyer: ordered.filter(i => i.noBuyer && !i.research && !i.planned).length,
       research: research.length,
-      researchFocus: research.filter(r => r.focus).length,
+      researchFocus: ordered.filter(i => i.research && i.focus).length,
       researchWaiting,
       focusCount: ordered.filter(i => i.focus).length,
       planned: planned.length,
@@ -883,7 +886,7 @@ export async function POST(req: NextRequest) {
       underCap: underCap.length,
       // Read last: brands already reached out to, then giants held back.
       reachedLast: ordered.filter(reachedLast).length,
-      giantsLast: ordered.filter(i => tail(i) === 2).length,
+      giantsLast: ordered.filter(i => i.last === 'giant').length,
       cap: CONTACT_CAP_PER_BRAND,
       latest: LI_SCRIPT_VERSION,
     }, { headers: cors })

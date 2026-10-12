@@ -1727,9 +1727,11 @@ async function planAddPreview(plan: OutreachPlan, date: string, brandIds: unknow
   // fit goes out on the next sending day.
   let dayPeople = 0
   if (forToday) {
+    // People the queue rules skip (gatedStampBrands) aren't in today's list.
+    const gated = await gatedStampBrands(dayStart, q0)
     const [queued, sent] = await Promise.all([
       prisma.target.count({ where: {
-        brandId: { notIn: ids }, status: { in: ['queued', 'drafted'] }, shelved: false,
+        brandId: { notIn: [...ids, ...gated] }, status: { in: ['queued', 'drafted'] }, shelved: false,
         queuedFor: { gte: dayStart }, sentAt: null,
       } }),
       prisma.target.count({ where: { brandId: { notIn: ids }, sentAt: { gte: dayStart } } }),
@@ -7148,9 +7150,16 @@ const handlers: Record<string, Handler> = {
       // The queue rules as of that day: resting after its first outreach,
       // or a giant held back (pinned before the rules) — nobody goes; a
       // giant's card offers "Add anyway".
-      const sentHere = isToday && b.targets.some(t => t.sentAt && t.sentAt >= startToday)
-      const g = sentHere ? null : brandGate(b, q, false, key)
+      const g = brandGate(b, q, false, key)
       if (g && !planRefusal(b)) {
+        // Some went today before the rules stopped it (giants turned back
+        // off, an accept logged since): say who went; the rest are skipped
+        // like in today's list (gatedStampBrands), never "going".
+        const sentNow = isToday ? b.targets.filter(t => t.sentAt && t.sentAt >= startToday) : []
+        if (sentNow.length) {
+          return { ...base, giant: g.reason === 'giant', state: 'sent', going: 0, sentToday: sentNow.length, pendingQueue: false,
+            people: sentNow.slice(0, 6).map(personOf), reason: null, reasonText: null }
+        }
         return { ...base, giant: g.reason === 'giant', state: 'blocked', going: 0, sentToday: 0, pendingQueue: false,
           people: [] as PreviewPerson[], reason: g.reason, reasonText: reasonText(g.reason, reasonCtx(b)) }
       }
@@ -9058,15 +9067,27 @@ const handlers: Record<string, Handler> = {
     const startOfDay = startOfLocalDay()
     // The system's own picks (queue-rules.ts): brands nobody reached out
     // to before today, no giants while they're held back.
-    const [sentToday, stamped, plan, pooled, q] = await Promise.all([
+    // Today's list as getTodayQueue shows it: people the queue rules skip
+    // (gatedStampBrands) take no room.
+    const listedToday = async (qc: QueueCtx) => {
+      const [rows, gated] = await Promise.all([
+        prisma.target.findMany({
+          where: { queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null, AND: [SOLD_IN_US] } },
+          select: { brandId: true },
+        }),
+        gatedStampBrands(startOfDay, qc),
+      ])
+      return rows.filter(t => !gated.has(t.brandId)).length
+    }
+    const q = await readQueueCtx()
+    const [sentToday, stamped, plan, pooled] = await Promise.all([
       prisma.target.count({ where: { sentAt: { gte: startOfDay } } }),
-      prisma.target.count({ where: { queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } } }),
+      listedToday(q),
       readPlan(),
       prisma.target.findMany({
         where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: { AND: [NOT_IN_CONVERSATION, notReachedBefore(startOfDay)] } },
         select: { brandId: true, brand: { select: { category: true, name: true, aka: true, salesCents: true } } },
       }),
-      readQueueCtx(),
     ])
     const allCandidates = pooled.filter(c => !heldGiant({ id: c.brandId, ...c.brand }, q))
     const todayKey = localDayKey()
@@ -9084,7 +9105,7 @@ const handlers: Record<string, Handler> = {
       // reached, best Brand Fit first; asking it again is the fill.
       const before = stamped
       await (handlers.getTodayQueue as Handler)({})
-      const after = await prisma.target.count({ where: { queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } } })
+      const after = await listedToday(q)
       const added = Math.max(0, after - before)
       const shortBy = Math.max(0, DAILY_SEND_LIMIT - sentToday - after)
       return added || shortBy ? { added, shortBy, theme } : { added: 0, shortBy: 0, theme, already: true }
