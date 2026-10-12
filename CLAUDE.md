@@ -304,7 +304,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   says more ($5M+ raised = "a lot"; a round in the last 2 years adds); **money to spend, not too big** (Leo, Oct 12
   2026: "i want brands to have money to spend but not be too big"): sales **$10M–$500M = the sweet spot** (40),
   $1M–$10M 22, $500M–$1B 24, a **giant** (`giantOf`, giants.ts — household name, big parent's brand, $1B+) 8 whatever
-  its money says, $500M+ raised 24; no money known → LinkedIn size (`brand-size.ts`) stands in — **mid-size 20–499 = 30**,
+  its money says, $500M+ raised 24; no money known → LinkedIn size (`brand-size.ts`) stands in — **mid-size 20–499 = 26** (a guess stays under real money),
   500+ = 18, unknown 15, under 20 = 6; then **Leo's category priority** (Oct 7 2026: betting, alcohol, drinks,
   nicotine, electrolytes Top +30; clothing, athletic, tech, AI, fintech Low 0; the rest Middle +15; Skip = 0 and never
   auto-picked; `priorityOf`, editable per category — replaced the flat 18–24 bonus, so a Top brand with money

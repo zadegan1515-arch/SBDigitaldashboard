@@ -86,6 +86,8 @@ t('no money known: LinkedIn size stands in — mid-size (20–499) scores the mo
   assert.ok(target.score > big.score && big.score > unknown.score && unknown.score > small.score,
     [target.score, big.score, unknown.score, small.score].join(' '))
   assert.equal(small.tooSmall, true)
+  const funded = scoreBrand({ ...base, fundingCents: 30 * M })
+  assert.ok(funded.score > target.score, 'a size guess never beats real money')
 })
 
 t('money to spend but not too big: $10M–$500M in sales scores the most (Leo, Oct 12 2026)', () => {

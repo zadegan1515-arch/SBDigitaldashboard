@@ -199,7 +199,9 @@ function fundingPoints(c: number, recent: boolean): number {
 }
 // No money known: LinkedIn size stands in.
 // Mid-size (20–499 people) is the target; 500+ has the money but is slower.
-const SIZE_POINTS: Record<BrandSize, number> = { big: 18, target: 30, unknown: 15, small: 6 }
+// A headcount is a guess at money, so it stays under real money ($25M+
+// raised = 32, sales in the sweet spot = 40).
+const SIZE_POINTS: Record<BrandSize, number> = { big: 18, target: 26, unknown: 15, small: 6 }
 
 export function scoreBrand(b: FitInput): FitResult {
   const reasons: FitReason[] = []

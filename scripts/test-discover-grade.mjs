@@ -48,10 +48,9 @@ t('a Top category with no sign → B', () => {
   assert.equal(gradeDiscovery({ category: 'energy', signals: '' }, ctx('top')).grade, 'B')
 })
 
-t('a Middle category with no sign → C; mid-size and sponsoring college → A', () => {
+t('a Middle category with no sign → C; mid-size and sponsoring college → B', () => {
   assert.equal(gradeDiscovery({ category: 'snacks', signals: null }, ctx('middle')).grade, 'C')
-  assert.equal(gradeDiscovery({ category: 'snacks', signals: 'sponsors,midsize' }, ctx('middle')).grade, 'A')
-  assert.equal(gradeDiscovery({ category: 'snacks', signals: 'sponsors' }, ctx('middle')).grade, 'B')
+  assert.equal(gradeDiscovery({ category: 'snacks', signals: 'sponsors,midsize' }, ctx('middle')).grade, 'B')
 })
 
 t('a Low category with no sign → D', () => {
