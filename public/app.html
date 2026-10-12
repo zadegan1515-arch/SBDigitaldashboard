@@ -278,6 +278,9 @@
   .zt-mini i.now{background:var(--accent);box-shadow:0 0 0 3px rgba(79,131,247,.25)}
   .zt-mini b{width:8px;height:2px;background:#33333e}
   .zt-tabs{display:flex;gap:6px;margin-top:12px}
+  /* + Add brand → Person: only the name, email, phone, owner, notes. */
+  #brand-body.b-person :is(#b-plan,#b-enrich,#b-dne,#b-workpeople,#b-pass,#b-split,#b-find-su,#b-draftintro,.b-nop){display:none!important}
+  #add-scrim.nb-person [data-nbbrand],#add-scrim.nb-person [data-nbbrandbox],#add-scrim:not(.nb-person) [data-nbperson]{display:none!important}
   .zt-fl-col{display:flex;flex-direction:column;align-items:stretch}
   .zt-fl-col .zt-node{justify-content:flex-start;width:100%}
   /* Bigger rows and next-step tags (Leo: make each card bigger). */
@@ -2276,19 +2279,26 @@
 <div class="scrim" id="add-scrim">
   <div class="modal">
     <div class="modal-head">
-      <h2>Add a brand</h2>
-      <p>Type the name. The category is worked out for you — override it if it's wrong.</p>
+      <h2 id="nb-h">Add a brand</h2>
+      <p id="nb-sub">Type the name. The category is worked out for you — override it if it's wrong.</p>
+      <div class="zt-tabs"><button class="chip active" data-nbkind="brand">Brand</button><button class="chip" data-nbkind="person">Person</button></div>
     </div>
     <div class="modal-body">
       <div class="field" style="margin-bottom:12px">
-        <label class="lbl" for="nb-name">Brand name</label>
+        <label class="lbl" for="nb-name" id="nb-name-lbl">Brand name</label>
         <input class="field-box" id="nb-name" type="text" placeholder="e.g. Alani Nu" autocomplete="off">
       </div>
-      <div style="display:flex;gap:8px;align-items:center;margin:-4px 0 12px">
+      <div class="row2" data-nbperson style="margin-bottom:12px">
+        <div><label class="lbl" for="nb-email">Email</label>
+          <input class="field-box" id="nb-email" type="email" placeholder="optional"></div>
+        <div><label class="lbl" for="nb-phone">Phone</label>
+          <input class="field-box" id="nb-phone" type="text" placeholder="optional"></div>
+      </div>
+      <div data-nbbrand style="display:flex;gap:8px;align-items:center;margin:-4px 0 12px">
         <button class="btn-ghost" id="nb-bulk-open" style="padding:5px 12px;font-size:13px">Paste a list instead</button>
         <span class="hint" style="margin:0">A whole spreadsheet column at once — one name per line.</span>
       </div>
-      <div id="nb-bulk" hidden style="margin-bottom:12px">
+      <div id="nb-bulk" data-nbbrandbox hidden style="margin-bottom:12px">
         <label class="lbl" for="nb-bulk-text">One brand per line. A comma after the name is taken as their website.</label>
         <textarea class="field-box" id="nb-bulk-text" rows="7" placeholder="Alani Nu&#10;Celsius, celsius.com&#10;Poppi"></textarea>
         <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
@@ -2297,13 +2307,13 @@
         </div>
         <div id="nb-bulk-prev"></div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;margin:-4px 0 12px">
+      <div data-nbbrand style="display:flex;gap:8px;align-items:center;margin:-4px 0 12px">
         <button class="btn-ghost" id="nb-su" style="padding:5px 12px;font-size:13px">Find on SponsorUnited</button>
         <span class="hint" style="margin:0">Pulls their people in with the brand. Needs a signed-in SponsorUnited tab.</span>
       </div>
-      <div id="nb-su-results"></div>
-      <div id="nb-guess"></div>
-      <div class="row2" style="margin-bottom:12px">
+      <div id="nb-su-results" data-nbbrand></div>
+      <div id="nb-guess" data-nbbrand></div>
+      <div class="row2" data-nbbrand style="margin-bottom:12px">
         <div><label class="lbl" for="nb-cat">Category</label>
           <select class="field-box" id="nb-cat"></select></div>
         <div><label class="lbl" for="nb-tier">Tier</label>
@@ -2317,7 +2327,7 @@
       <div class="row2" style="margin-bottom:12px">
         <div><label class="lbl" for="nb-owner">Owner</label>
           <select class="field-box" id="nb-owner"></select></div>
-        <div><label class="lbl" for="nb-site">Website</label>
+        <div data-nbbrand><label class="lbl" for="nb-site">Website</label>
           <input class="field-box" id="nb-site" type="text" placeholder="optional"></div>
       </div>
       <div class="field" style="margin-bottom:0">
@@ -7403,6 +7413,10 @@ function loadBrand(brandId) {
     if (!mine()) return;
     CURRENT_BRAND = d;
     var b = d.brand;
+    // A person (+ Add brand → Person): same page, outreach parts hidden
+    // (CSS on .b-person), the Show Board link up top.
+    var person = b.kind === 'person';
+    box.classList.toggle('b-person', person);
     btlRender(b.id);
     rememberSponsors(b.shows);
     (b.documents || []).forEach(function (dc) { DOC_BY_ID[dc.id] = dc; });
@@ -7422,7 +7436,7 @@ function loadBrand(brandId) {
     var head =
       '<h1>' + esc(b.name) + '</h1>' +
       '<div class="sub">' +
-        esc(CAT_NAMES[b.category] || b.category || 'Uncategorized') +
+        (person ? 'Person · gets the Show Board' : esc(CAT_NAMES[b.category] || b.category || 'Uncategorized')) +
         (b.tier ? ' · ' + esc(b.tier) : '') +
         (b.partner ? ' · ' + esc(b.partner.lifecycle.replace(/_/g, ' ')) : '') +
       '</div>' +
@@ -7432,12 +7446,13 @@ function loadBrand(brandId) {
         ? '<div style="font-size:14px;line-height:1.55;color:var(--ink-2);max-width:660px;margin:8px 0 0">' +
             esc(b.about) + (/[.!?]$/.test(b.about) ? '' : '.') +
             (b.topProducts ? ' Known for ' + esc(b.topProducts) + '.' : '') + '</div>'
+        : person ? (b.notes ? '<div style="font-size:14px;color:var(--ink-2);margin:8px 0 0">' + esc(b.notes) + '</div>' : '')
         : '<div class="hint" style="margin:8px 0 0">No summary yet — open “Details &amp; notes” below and fill in “What they do”.</div>') +
       // Where it stands on the Schedule, and a menu to put it on a day
       // (filled by bpLoad once the page is up).
       '<div id="b-plan" class="b-plan"></div>' +
       // Brand Fit: the score and every reason (src/lib/brand-fit.ts).
-      bFitLine(d.fit) +
+      (person ? '' : bFitLine(d.fit)) +
       // A Show Board access request waiting on a decision. Same two
       // actions as the Show Board queue — this is just the other place
       // you'd naturally look for the brand that asked.
@@ -7500,8 +7515,8 @@ function loadBrand(brandId) {
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
           '<button class="btn-solid" id="b-enrich">Auto-fill from the web</button>' +
           '<button class="btn-ghost" id="b-edit-toggle">Edit</button>' +
-          '<a class="btn-ghost" href="' + esc(liCompany) + '" target="_blank" rel="noopener" title="Their LinkedIn People tab \u2014 press the SB pill there to add the buyers">LinkedIn people ↗</a>' +
-          '<a class="btn-ghost" href="' + esc(suUrl) + '" target="_blank" rel="noopener">' + suLabel + '</a>' +
+          '<a class="btn-ghost b-nop" href="' + esc(liCompany) + '" target="_blank" rel="noopener" title="Their LinkedIn People tab \u2014 press the SB pill there to add the buyers">LinkedIn people ↗</a>' +
+          '<a class="btn-ghost b-nop" href="' + esc(suUrl) + '" target="_blank" rel="noopener">' + suLabel + '</a>' +
           (b.doNotEmail
             ? '<button class="btn-ghost" id="b-dne" style="border-color:var(--accent);color:var(--accent)" title="This brand is excluded from all outreach emails — click to allow again">Do not email</button>'
             : '<button class="btn-ghost" id="b-dne" title="Exclude this brand from all outreach emails (intros and follow-ups)">Emails on</button>') +
@@ -7544,7 +7559,10 @@ function loadBrand(brandId) {
             ? '<button class="btn-ghost" id="b-pass" style="border-color:var(--warn);color:var(--warn)" title="Archived — hidden from all outreach. Click to bring it back.">Archived — bring back</button>'
             : '<button class="btn-ghost" id="b-pass" title="Take this brand off outreach (queue, picks, schedule, next best) until you bring it back">Archive brand</button>') +
           '<button class="btn-ghost" id="b-merge">Merge duplicate…</button>' +
-          '<button class="btn-ghost danger" id="b-delete" style="margin-left:auto">Delete brand</button>' +
+          (person
+            ? '<button class="btn-ghost" id="b-kind" title="Show this as a brand again (it stays archived until you bring it back)">It\'s a brand, not a person</button>'
+            : '<button class="btn-ghost" id="b-kind" title="One person you send the Show Board to, not a company: takes it off outreach">This is a person…</button>') +
+          '<button class="btn-ghost danger" id="b-delete" style="margin-left:auto">' + (person ? 'Delete person' : 'Delete brand') + '</button>' +
         '</div>' +
         '<div id="b-merge-slot"></div>' +
         '<div id="b-edit"' + (BRAND_EDIT_OPEN === b.id ? '' : ' hidden') + ' style="margin-top:14px;border-top:1px solid var(--border-soft);padding-top:14px">' +
@@ -7908,7 +7926,7 @@ function loadBrand(brandId) {
     // Show Board access — the whole public board is code-gated; this is
     // where a brand's code is minted and its ready-to-send link copied.
     var boardAccess =
-      '<details class="fold"><summary class="section-head">Show Board access' +
+      '<details class="fold"' + (person ? ' open' : '') + '><summary class="section-head">Show Board access' +
         (b.boardCode ? ' <span class="n">code set</span>' : '') + '</summary>' +
       '<div class="panel panel-pad">' +
         (b.boardCode
@@ -7943,8 +7961,22 @@ function loadBrand(brandId) {
       '</div></details>';
 
     // Essentials open (people, outreach, shows); everything else folded.
-    box.innerHTML = head + contacts + outreach + shows + details + boardAccess + docs + activity;
-    bpLoad(b.id);
+    box.innerHTML = person
+      ? head + boardAccess + contacts + outreach + shows + details + docs + activity
+      : head + contacts + outreach + shows + details + boardAccess + docs + activity;
+    if (!person) bpLoad(b.id);
+
+    box.querySelector('#b-kind').onclick = function () {
+      var to = person ? null : 'person';
+      api('setBrandKind', { brandId: b.id, kind: to }).then(function (p) {
+        if (!window.confirm((to ? 'Make ' : 'Show ') + p.name + (to ? ' a person?' : ' as a brand again?') +
+          '\n\n• ' + p.changes.join('\n• '))) return;
+        return api('setBrandKind', { brandId: b.id, kind: to, confirm: true }).then(function () {
+          toast(to ? p.name + ' is now a person — off outreach' : p.name + ' is a brand again (still archived)');
+          loadBrand(b.id);
+        });
+      }).catch(function (e) { toast(e.message); });
+    };
 
     box.querySelector('#b-edit-toggle').onclick = function () {
       var f = box.querySelector('#b-edit'); f.hidden = !f.hidden;
@@ -14714,13 +14746,35 @@ function runSearch(q) {
 
 var guessTimer = null, lastGuessed = '';
 
-function openAddBrand() {
+// Brand or Person (Leo, Oct 12 2026: "sometimes we want to send the show
+// board to individual people"). A person = name + email / phone; the server
+// files them off outreach and mints their board code (addPerson in route.ts).
+var NB_KIND = 'brand';
+function nbSetKind(k) {
+  NB_KIND = k;
+  var person = k === 'person';
+  document.getElementById('add-scrim').classList.toggle('nb-person', person);
+  document.querySelectorAll('[data-nbkind]').forEach(function (b) {
+    b.classList.toggle('active', b.getAttribute('data-nbkind') === k);
+  });
+  document.getElementById('nb-h').textContent = person ? 'Add a person' : 'Add a brand';
+  document.getElementById('nb-sub').textContent = person
+    ? 'Someone to send the Show Board to. They get their own board code and stay out of outreach.'
+    : 'Type the name. The category is worked out for you — override it if it\'s wrong.';
+  document.getElementById('nb-name-lbl').textContent = person ? 'Their name' : 'Brand name';
+  document.getElementById('nb-name').placeholder = person ? 'e.g. Miles Carter' : 'e.g. Alani Nu';
+  document.getElementById('nb-save').textContent = person ? 'Add person' : 'Add brand';
+  document.getElementById('nb-msg').textContent = '';
+}
+
+function openAddBrand(kind) {
   document.getElementById('add-scrim').classList.add('open');
   document.getElementById('nb-cat').innerHTML = catOptions('unresolved');
   document.getElementById('nb-owner').innerHTML = ownerOptions(ME.owner);
   document.getElementById('nb-guess').innerHTML = '';
   document.getElementById('nb-msg').textContent = '';
-  ['nb-name', 'nb-site', 'nb-notes'].forEach(function (id) { document.getElementById(id).value = ''; });
+  ['nb-name', 'nb-site', 'nb-notes', 'nb-email', 'nb-phone'].forEach(function (id) { document.getElementById(id).value = ''; });
+  nbSetKind(kind === 'person' ? 'person' : 'brand');
   NB_PICK = null;
   var sub = document.getElementById('nb-su-results');
   if (sub) sub.innerHTML = '';
@@ -16502,7 +16556,7 @@ function loadTalks() {
         : 'Code sent — not opened yet';
       return '<div class="panel panel-pad" style="margin-bottom:10px">' +
         '<div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap">' +
-          '<a href="#" data-tk-brand="' + esc(t.brand.id) + '" style="font-family:var(--display);font-weight:700;font-size:16px;color:inherit;text-decoration:none">' + esc(t.brand.name) + '</a>' +
+          '<a href="#" data-tk-brand="' + esc(t.brand.id) + '" style="font-family:var(--display);font-weight:700;font-size:16px;color:inherit;text-decoration:none">' + esc(t.brand.name) + '</a>' + (t.brand.kind === 'person' ? ' <span class="n" style="font-size:12.5px;color:var(--ink-3)">· person</span>' : '') +
           '<code style="font-size:13px;font-weight:700;letter-spacing:.07em;color:var(--ink-2)">' + esc(t.code) + '</code>' +
           '<span style="margin-left:auto;font-size:13.5px;color:var(--ink-3)">' + esc(stat) + '</span></div>' +
         (t.viewers.length ? '<div style="font-size:13px;color:var(--ink-2);margin-top:6px">' + t.viewers.map(esc).join(' · ') + '</div>' : '') +
@@ -19590,8 +19644,17 @@ document.getElementById('add-scrim').addEventListener('click', function (e) {
   if (e.target === this) closeAddBrand();
 });
 
+document.querySelectorAll('[data-nbkind]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    nbSetKind(b.getAttribute('data-nbkind'));
+    document.getElementById('nb-name').focus();
+  });
+});
+
 document.getElementById('nb-name').addEventListener('input', function () {
   clearTimeout(guessTimer);
+  // A person has no category to guess.
+  if (NB_KIND === 'person') return;
   var v = this.value.trim();
   if (v.length < 2) { document.getElementById('nb-guess').innerHTML = ''; lastGuessed = ''; return; }
   guessTimer = setTimeout(function () { guessFor(v); }, 500);
@@ -19731,6 +19794,27 @@ document.getElementById('nb-save').addEventListener('click', function () {
   var btn = this;
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Adding…';
+  if (NB_KIND === 'person') {
+    api('createBrand', {
+      kind: 'person',
+      name: name,
+      email: document.getElementById('nb-email').value.trim() || null,
+      phone: document.getElementById('nb-phone').value.trim() || null,
+      owner: document.getElementById('nb-owner').value || null,
+      notes: document.getElementById('nb-notes').value || null
+    }).then(function (r) {
+      btn.disabled = false;
+      btn.textContent = 'Add person';
+      closeAddBrand();
+      toast('Added ' + name + ' — copy their board link below');
+      loadBrand(r.brand.id);
+    }).catch(function (e) {
+      btn.disabled = false;
+      btn.textContent = 'Add person';
+      document.getElementById('nb-msg').textContent = e.message;
+    });
+    return;
+  }
 
   api('createBrand', {
     name: name,

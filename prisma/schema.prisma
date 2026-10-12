@@ -55,6 +55,11 @@ model Brand {
   researchedAt    DateTime? // last time these facts were looked up
   researchNote    String?   // where the facts came from (sources, one line)
 
+  // "person" = one individual we send the Show Board to (Leo, Oct 12 2026),
+  // not a company: added as archived + do-not-email so no outreach path
+  // ever picks them, left out of the roster and category counts. Null = a brand.
+  kind String?
+
   // Where this record came from: "sponsorunited" | "manual" | "import"
   source      String  @default("manual")
   // SponsorUnited profile ULID, so we can re-sync without duplicating
