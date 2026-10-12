@@ -16,7 +16,7 @@ If `../CLAUDE.md` (the SB Agency workspace file) exists it applies too. The rule
 ## Ways of working
 - Leo chose: **push straight to `main`**. Both hosts auto-deploy, so after every push **check the build went green** (Vercel dashboard or `vercel` CLI; Railway deployments tab) and re-check the live page.
 - Vercel Hobby limits: **2 cron jobs, daily only**; 1 concurrent build. Don't add crons — fold new scheduled work into `/api/cron/email` (11:00 UTC) or `/api/cron/send` (15:00 UTC).
-- Prisma schema changes deploy themselves (`prisma db push` runs in the Vercel build). Still: additive changes only; never drop columns with data.
+- Prisma schema changes deploy themselves (`prisma db push` runs in the Vercel build — **production builds only**, `scripts/db-push.mjs`: previews share the production database, and on Oct 12 2026 a branch preview without `Brand.kind` dropped it and broke every brand page). Still: additive changes only; never drop columns with data. A branch with a new column works in its preview only once main has it.
 - Test before pushing: `npm run build` (Next) / `npx tsc --noEmit`, and for `public/app.html` a Playwright smoke run with mocked `/api/data` (`NODE_PATH=$(npm root -g) node scripts/test-keep-place.js` is one).
 - Google OAuth: one Google Cloud client (`GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`) serves three grants — outreach mailbox (`state=gmail`), Drive (`state=drive`), ops mailbox (`state=ops`). Scopes stay narrow: gmail.send + gmail.readonly, drive.file. Never request mail.google.com or modify/delete scopes.
 
