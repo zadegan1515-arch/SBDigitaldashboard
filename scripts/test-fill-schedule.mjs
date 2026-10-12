@@ -1,0 +1,44 @@
+// scripts/test-fill-schedule.mjs — guards src/lib/fill-schedule.ts (Outreach →
+// People's Fill schedule: the LinkedIn fill's worklist cut into its days).
+// Run: node scripts/test-fill-schedule.mjs
+
+import { execSync } from 'node:child_process'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+
+const out = mkdtempSync(join(tmpdir(), 'fill-schedule-test-'))
+execSync('npx tsc src/lib/fill-schedule.ts --outDir ' + out + ' --target es2020 --module esnext --moduleResolution bundler --skipLibCheck', { stdio: 'inherit' })
+const { splitFillDays, fillWhy } = await import(pathToFileURL(join(out, 'fill-schedule.js')).href)
+
+let pass = 0, fail = 0
+const is = (label, got, want) => {
+  if (JSON.stringify(got) === JSON.stringify(want)) { pass++; return }
+  fail++; console.log('✗', label, '— got', JSON.stringify(got), 'want', JSON.stringify(want))
+}
+const items = n => Array.from({ length: n }, (_, i) => ({ brandId: 'b' + i, name: 'B' + i, fit: 70 }))
+
+let d = splitFillDays(items(250), { today: '2026-10-12', doneToday: 0, perDay: 100 })
+is('100 a day', d.map(x => [x.day, x.rows.length]), [['2026-10-12', 100], ['2026-10-13', 100], ['2026-10-14', 50]])
+is('order kept', d[1].rows[0].name, 'B100')
+d = splitFillDays(items(150), { today: '2026-10-12', doneToday: 40, perDay: 100 })
+is('today gets what is left', d.map(x => [x.day, x.rows.length]), [['2026-10-12', 60], ['2026-10-13', 90]])
+d = splitFillDays(items(5), { today: '2026-10-12', doneToday: 100, perDay: 100 })
+is('done for today → starts tomorrow', d.map(x => [x.day, x.rows.length]), [['2026-10-13', 5]])
+d = splitFillDays(items(3), { today: '2026-10-31', doneToday: 99, perDay: 100 })
+is('across a month', d.map(x => x.day), ['2026-10-31', '2026-11-01'])
+is('weekends too', splitFillDays(items(201), { today: '2026-10-16', doneToday: 0, perDay: 100 }).map(x => x.day), ['2026-10-16', '2026-10-17', '2026-10-18'])
+is('nothing → no days', splitFillDays([], { today: '2026-10-12', doneToday: 0, perDay: 100 }), [])
+
+is('schedule brand', fillWhy({ name: 'X', brandId: 'x', planned: '2026-10-14' }, '', k => 'Wed'), 'On the Schedule Wed, short on people')
+is('asked', fillWhy({ name: 'X', research: true, asked: true }, ''), 'Asked for by name')
+is('research', fillWhy({ name: 'X', research: true, lane: 'Energy drinks', focus: true }, 'electrolyte'), 'Research list · Energy drinks · focus “electrolyte”')
+is('no buyer', fillWhy({ name: 'X', brandId: 'x', noBuyer: true }, ''), 'No buyer on file')
+is('reached last', fillWhy({ name: 'X', brandId: 'x', last: 'reached', noBuyer: true }, ''), 'Already reached out — read last')
+is('read last beats the Sales Navigator retry', fillWhy({ name: 'X', brandId: 'x', last: 'reached', hiddenRetry: true }, ''), 'Already reached out — read last')
+is('giant last', fillWhy({ name: 'X', brandId: 'x', last: 'giant' }, ''), 'Giant, held back — read last')
+is('plain', fillWhy({ name: 'X', brandId: 'x' }, ''), 'Under 25 people on file')
+
+console.log(fail ? `fill-schedule: ${fail} failed, ${pass} passed` : `fill-schedule: all ${pass} passed`)
+process.exit(fail ? 1 : 0)
