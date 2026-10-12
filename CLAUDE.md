@@ -705,7 +705,17 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   → `liList({ minFit })` scores each brand with `scoreBrand` (brand-fit.ts, Leo's category priority, no accept rate)
   and leaves off brands under the floor, too small, not US, closed or Skip (`belowFit` counts them) — never the
   Schedule's brands or names Leo asked for; with a floor the list goes best fit first (items carry `fit`, the panel
-  shows it). The Sales Navigator retry (`snRetry`) only applies when the run has Sales Navigator on. Unverified against the real Sales Navigator pages
+  shows it). The Sales Navigator retry (`snRetry`) only applies when the run has Sales Navigator on.
+  **Mid-size first** (1.36; Leo, Oct 12 2026: "i want to target the midsized brands mainly"): with a floor the list
+  goes **size first** — target (20–499 on LinkedIn) → not measured → small → big — then, within a size, no buyer yet
+  first, then best fit (`midFirst`; `noBuyerFirst` only without a floor). The floor defaults to **50** (`FIT_DEFAULT`):
+  Brand Fit gives big companies 30 size points vs mid-size 22, and at 60 only 14 of 49 mid-size brands passed (vs 100
+  of 207 big). **Very big brands skipped** (1.35, "Skip very big brands", GM `sbLiSkipBig`, on by default →
+  `skipGiants`): held giants (giants.ts) and anything with **1,500+ on LinkedIn** (`VERY_BIG_LI`; Leo: "not reach out
+  to any brand with over 1500 employees"), unless Leo OK'd the brand; giant research names too (`bigSkipped`).
+  **Faster**: with Sales Navigator the People tab gets a glance only (`SN_GLANCE`, 2 scrolls / 40 people — Sales
+  Navigator reads the people), a brand under 50 on LinkedIn (`SN_SMALL`) gets only the marketing search, and brands
+  with a saved LinkedIn page go before the ones the run has to search for (`paged`). Unverified against the real Sales Navigator pages
   until Leo's first run — "Copy a sample for Claude" works on a Sales Navigator search. `node scripts/test-li-salesnav.js`.
   **"LinkedIn Member" cards** (out of Leo's network, name + profile hidden by LinkedIn) can't be saved, but
   **they aren't lost** (Leo, Oct 7 2026: "i dont want to miss out on people if i do it from my own account"):

@@ -152,6 +152,10 @@ const DISCOVER_CAP_PER_DAY = 50
 // The day the fill's Sales Navigator step shipped (New York midnight): a
 // brand read since then without it is due once for it (liList).
 const SN_SINCE = Date.parse('2026-10-12T04:00:00Z')
+// "Very big" for the fill's skip: 1,500+ people on LinkedIn (Leo, Oct 12 2026:
+// "not reach out to any brand with over 1500 employees"); giants.ts covers the
+// household names whatever their page says.
+const VERY_BIG_LI = 1500
 
 // Save a brand's SponsorUnited profile id, and remember SponsorUnited's
 // own spelling as an "also known as" so later captures match by name as
@@ -765,6 +769,14 @@ export async function POST(req: NextRequest) {
       const f = fitOf.get(id)
       return !minFit || (!!f && f.score >= minFit && !f.tooSmall && !f.ruledOut && !f.bizNote && f.priority !== 'skip')
     }
+    // Very big brands left off altogether (Leo, Oct 12 2026: "skip the very big
+    // brands"): the giants the Schedule holds back (giants.ts — household names,
+    // the big parents and their brands, $1B+ sales) and anything with 1,500+
+    // people on LinkedIn (1,500+), unless Leo OK'd that brand. The Schedule's own brands
+    // and names he asked for still go.
+    const skipBig = body.skipGiants === true
+    const veryBig = (b: { id: string; liMembers: number | null }) =>
+      giantIds.has(b.id) || (!giants.ok.has(b.id) && (b.liMembers ?? 0) >= VERY_BIG_LI)
     // Giants held back from outreach (Leo, Oct 12 2026: "not yet" — the
     // Schedule's Giants switch, queue-rules.ts) and brands already reached
     // out to (the Schedule's own picks skip them) are read last: their
@@ -825,9 +837,12 @@ export async function POST(req: NextRequest) {
         hiddenRetry: restsNow(b) && snRetry(b),
         fit: fitOf.get(b.id)?.score ?? null,
       }))
-      // With a fit floor, best fit first; without one, by size as before.
+      // Mid-size first (Leo, Oct 12 2026: "i want to target the midsized brands
+      // mainly"): target → not measured → small → big. With a fit floor, within
+      // a size the brands with no buyer go first, then best fit.
       .sort((a, b) => Number(b.focus) - Number(a.focus)
-        || (minFit ? (b.fit ?? 0) - (a.fit ?? 0) : sizeRank(a.size) - sizeRank(b.size))
+        || sizeRank(a.size) - sizeRank(b.size)
+        || (minFit ? (Number(b.noBuyer) - Number(a.noBuyer)) || ((b.fit ?? 0) - (a.fit ?? 0)) : 0)
         || a.contacts - b.contacts || a.name.localeCompare(b.name))
 
     // The research list: Stock take's lane ideas — known brand names not
@@ -885,6 +900,11 @@ export async function POST(req: NextRequest) {
     // short on people (Leo: "planned brands first"), so they have
     // someone to invite by their day — soonest day first. `planned` is
     // that day.
+    // Very big names off the research list too (a name Leo asked for stays).
+    let giantNamesSkipped = 0
+    if (body.skipGiants === true) {
+      for (let i = research.length - 1; i >= 0; i--) if (research[i].giant && !research[i].asked) { research.splice(i, 1); giantNamesSkipped++ }
+    }
     const [planRow, shownRow] = await Promise.all([
       prisma.setting.findUnique({ where: { key: 'outreachPlan' } }),
       prisma.setting.findUnique({ where: { key: 'outreachShownDays' } }),
@@ -901,22 +921,25 @@ export async function POST(req: NextRequest) {
       : []
     const short = new Set(dueBrands.filter(b => shortOnPeople({ ...b, big: isBigBrand(b) })).map(b => b.id))
     const { first: planned, rest: unplanned } = plannedFirst(items, due, short)
-    const rest = unplanned.filter(i => fitOk(i.brandId))
-    const belowFit = unplanned.length - rest.length
+    const fitted = unplanned.filter(i => fitOk(i.brandId))
+    const belowFit = unplanned.length - fitted.length
+    const byId = new Map(everyBrand.map(b => [b.id, b] as const))
+    const rest = skipBig ? fitted.filter(i => !veryBig(byId.get(i.brandId)!)) : fitted
+    const bigSkipped = fitted.length - rest.length
     // After the focus word: target brands, then the research list's names,
     // then the rest by size (unknown, small, big). Then the brands with no
     // buyer pulled ahead of all that, each group in that same order — only
     // the Schedule's brands and the names Leo asked for come before them.
     const others = rest.filter(i => !i.focus)
-    const sorted = noBuyerFirst<any>(minFit
-      // A fit floor: best fit first, the research list's names after.
-      ? [...planned, ...research.filter(r => r.focus), ...rest.filter(i => i.focus), ...others, ...research.filter(r => !r.focus)]
-      : [
-          ...planned,
-          ...research.filter(r => r.focus), ...rest.filter(i => i.focus),
-          ...others.filter(i => i.size === 'target'),
-          ...research.filter(r => !r.focus), ...others.filter(i => i.size !== 'target'),
-        ])
+    const bySize = [
+      ...planned,
+      ...research.filter(r => r.focus), ...rest.filter(i => i.focus),
+      ...others.filter(i => i.size === 'target'),
+      ...research.filter(r => !r.focus), ...others.filter(i => i.size !== 'target'),
+    ]
+    // With a fit floor, size leads (mid-size first) and "no buyer yet" only
+    // orders brands within a size; without one, as before.
+    const sorted: any[] = minFit ? bySize : noBuyerFirst<any>(bySize)
     // Then brands already reached out to, then giants held back — each in
     // the same order as before. The Schedule's own brands and the names Leo
     // asked for keep their place.
@@ -929,7 +952,10 @@ export async function POST(req: NextRequest) {
     const front = sorted.filter(i => tail(i) === 0 && !lead.includes(i))
     // The ones moved to the back don't go first for having no buyer or
     // the focus word any more, so the run's panel mustn't say they do.
-    const ordered = [...lead, ...front.filter(i => i.hiddenRetry), ...front.filter(i => !i.hiddenRetry),
+    // Brands with a LinkedIn page before those the run has to search for (a
+    // search often finds no clear page — a visit for nothing).
+    const paged = (xs: any[]) => [...xs.filter(i => i.research || i.linkedinUrl), ...xs.filter(i => !i.research && !i.linkedinUrl)]
+    const ordered = [...lead, ...paged(front.filter(i => i.hiddenRetry)), ...paged(front.filter(i => !i.hiddenRetry)),
       ...[1, 2].flatMap(n => sorted.filter(i => tail(i) === n))]
       .map(i => (tail(i) ? { ...i, noBuyer: false, focus: false, last: tail(i) === 1 ? 'reached' : 'giant' } : i))
     const reachedLast = (i: any) => i.last === 'reached'
@@ -940,13 +966,15 @@ export async function POST(req: NextRequest) {
       // they go right after the Schedule's (the panel says so).
       noBuyer: ordered.filter(i => i.noBuyer && !i.research && !i.planned).length,
       hiddenRetry: ordered.filter(i => i.hiddenRetry).length,
-      minFit, belowFit,
+      minFit, belowFit, bigSkipped: bigSkipped + giantNamesSkipped,
       research: research.length,
       researchFocus: ordered.filter(i => i.research && i.focus).length,
       researchWaiting,
       focusCount: ordered.filter(i => i.focus).length,
       planned: planned.length,
-      sizes: { target: items.filter(i => i.size === 'target').length, unknown: items.filter(i => i.size === 'unknown').length, small: items.filter(i => i.size === 'small').length, big: items.filter(i => i.size === 'big').length },
+      // Of the brands on this list (after any fit floor / big-brand skip).
+      sizes: { target: ordered.filter(i => !i.research && i.size === 'target').length, unknown: ordered.filter(i => !i.research && i.size === 'unknown').length, small: ordered.filter(i => !i.research && i.size === 'small').length, big: ordered.filter(i => !i.research && i.size === 'big').length },
+      midFirst: !!minFit,
       noPage: items.filter(i => !i.linkedinUrl).length,
       resting,
       underCap: underCap.length,
