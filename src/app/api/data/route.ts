@@ -9044,6 +9044,42 @@ const handlers: Record<string, Handler> = {
     }
   },
 
+  // Show Board → Access codes lookup. Searches the whole roster in the
+  // database (it used to filter a cached listBrands — 500 rows in no order,
+  // so most brands were never found), by name or also-known-as, people
+  // (Brand.kind 'person') and archived brands included. Exact, then
+  // starts-with, then the rest.
+  async boardCodeLookup({ q }: any) {
+    const query = String(q ?? '').trim().slice(0, 120)
+    if (query.length < 2) return { brands: [] }
+    const rows = await prisma.brand.findMany({
+      where: {
+        OR: [
+          { name: { contains: query, mode: 'insensitive' } },
+          { aka: { contains: query, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, name: true, aka: true, kind: true, boardCode: true, passedAt: true },
+      orderBy: { name: 'asc' },
+      take: 200,
+    })
+    const want = query.toLowerCase()
+    const rank = (b: { name: string; aka: string | null }) => {
+      const n = b.name.toLowerCase()
+      if (n === want) return 0
+      if (n.startsWith(want)) return 1
+      if (n.includes(want)) return 2
+      return 3 // matched on aka only
+    }
+    rows.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name))
+    return {
+      brands: rows.slice(0, 30).map(b => ({
+        id: b.id, name: b.name, boardCode: b.boardCode, person: b.kind === 'person', archived: !!b.passedAt,
+        aka: rank(b) === 3 ? b.aka : null,
+      })),
+    }
+  },
+
   // One log: { contactId } for someone on file, else { brandId | newBrand,
   // name, title, linkedinUrl, … }, and stage 'sent' | 'accepted'.
   async logLinkedInPerson({ contactId, brandId, newBrand, name, title, linkedinUrl, email, phone, location, notes, stage, __user }: any) {

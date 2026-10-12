@@ -33,7 +33,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - `public/app.html` — the whole UI. Top nav is six groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
   `showView`): Home · Brands (All brands / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
   Schedule / Email / People / Archived / Email stats) ·
-  **Show Board** (Overview = code lookup + access-request approve/deny queue + stat tiles (total visits,
+  **Show Board** (Overview = code lookup (`boardCodeLookup`: the whole roster by name / aka, people and archived too — it used to filter listBrands' first 500; `test-board-lookup.js`) + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
   exact NY times and time on board; **every** board open is logged, gate on or off (anonymous = "Visitor") / **In talks** = per-brand engagement cards (code, viewers, opens, timed minutes
   via the board's 60s heartbeat → `BoardVisit.lastSeenAt`, picked shows, visit log) / Requests /

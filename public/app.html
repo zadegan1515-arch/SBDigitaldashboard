@@ -16723,7 +16723,8 @@ function loadTalks() {
 // One place for running the board: hand out access codes, see the
 // numbers, see who's been opening it.
 
-var BD_BRANDS = null;      // cached brand list for the code lookup
+var BD_BRANDS = [];        // the code lookup's latest results (boardCodeLookup)
+var BD_TURN = 0;           // newest lookup wins
 var BD_SELECTED = null;    // brand currently shown in the code panel
 
 function renderBoardCode() {
@@ -16765,7 +16766,6 @@ function loadBoard() {
   showView('board');
   document.getElementById('bd-sub').innerHTML =
     '<a href="' + esc(SPONSOR_URL) + '" target="_blank" rel="noopener">' + esc(SPONSOR_URL.replace(/^https?:\/\//, '')) + '</a>';
-  if (!BD_BRANDS) api('listBrands', { category: 'all' }).then(function (list) { BD_BRANDS = list; }).catch(function () {});
 
   // Pending access requests from the gate: approve (emails the code) or deny.
   api('listAccessRequests').then(function (d) {
@@ -16792,7 +16792,7 @@ function loadBoard() {
         btn.disabled = true; btn.textContent = 'Approving…';
         api('approveAccessRequest', { id: id }).then(function (r) {
           toast(r.emailed ? 'Approved — code emailed' : 'Approved — email failed, copy the code from the brand page');
-          BD_BRANDS = null; loadBoard();
+          loadBoard();
         }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Approve — email code'; });
       };
     });
@@ -16942,18 +16942,34 @@ document.getElementById('bd-refresh').addEventListener('click', function () {
   }).catch(function () {}).then(function () { btn.disabled = false; btn.textContent = '↻ Refresh'; });
 });
 
-// Code lookup: filter the cached brand list, pick one, mint/copy codes.
+// Code lookup: ask the server (whole roster, name or aka, people too),
+// pick one, mint/copy codes. It used to filter a cached listBrands, which
+// stops at 500 brands in no order — most brands were never found.
+var BD_TIMER = null;
 document.getElementById('bd-q').addEventListener('input', function () {
-  var q = this.value.trim().toLowerCase(), box = document.getElementById('bd-results');
-  if (q.length < 2 || !BD_BRANDS) { box.style.display = 'none'; return; }
-  // Every match, in a scrollable list that pushes the page down instead
-  // of a floating menu that clips.
-  var hits = BD_BRANDS.filter(function (b) { return b.name.toLowerCase().indexOf(q) >= 0; });
-  box.innerHTML = hits.map(function (b) {
-    return '<div class="clickable" data-bdpick="' + esc(b.id) + '" style="padding:10px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid var(--border)">' +
-      esc(b.name) + (b.boardCode ? ' <span style="color:var(--ink-3);font-size:13px">· has code</span>' : '') + '</div>';
-  }).join('') || '<div style="padding:10px 12px;font-size:13px;color:var(--ink-3)">No brand with that name</div>';
-  box.style.display = 'block';
+  var q = this.value.trim(), box = document.getElementById('bd-results');
+  clearTimeout(BD_TIMER);
+  var turn = ++BD_TURN;
+  if (q.length < 2) { box.style.display = 'none'; return; }
+  BD_TIMER = setTimeout(function () {
+    api('boardCodeLookup', { q: q }).then(function (r) {
+      if (turn !== BD_TURN) return;
+      BD_BRANDS = r.brands || [];
+      // Every match, in a scrollable list that pushes the page down instead
+      // of a floating menu that clips.
+      box.innerHTML = BD_BRANDS.map(function (b) {
+        var tags = (b.person ? ' · person' : '') + (b.archived && !b.person ? ' · archived' : '') +
+          (b.aka ? ' · aka ' + b.aka : '') + (b.boardCode ? ' · has code' : '');
+        return '<div class="clickable" data-bdpick="' + esc(b.id) + '" style="padding:10px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid var(--border)">' +
+          esc(b.name) + (tags ? ' <span style="color:var(--ink-3);font-size:13px">' + esc(tags) + '</span>' : '') + '</div>';
+      }).join('') || '<div style="padding:10px 12px;font-size:13px;color:var(--ink-3)">No brand with that name</div>';
+      box.style.display = 'block';
+    }).catch(function (e) {
+      if (turn !== BD_TURN) return;
+      box.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--ink-3)">Couldn’t search: ' + esc(e.message) + '</div>';
+      box.style.display = 'block';
+    });
+  }, 200);
 });
 document.getElementById('bd-results').addEventListener('click', function (e) {
   var row = e.target.closest('[data-bdpick]');
