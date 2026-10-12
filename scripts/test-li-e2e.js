@@ -618,6 +618,20 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     }
     ok('a Brand Fit floor: every brand carries its score, the ones under it are left off, best first');
 
+    // Outreach → People's Fill schedule is the same list, cut into days.
+    {
+      const want = (await ingest({ action: 'liList', me: leo, focus: 'electrolyte', research: true, salesNav: true, minFit: 0 })).j
+      const sch = await data('fillSchedule', { minFit: 0 })
+      const rows = sch.days.flatMap(d => d.rows)
+      assert.deepEqual(rows.map(r => r.name), want.items.map(i => i.name), 'the schedule lists what the fill reads, in its order')
+      assert.equal(sch.total, want.items.length)
+      assert.ok(sch.days.every(d => d.rows.length <= sch.perDay), 'never more than a day\'s worth')
+      assert.ok(rows.every(r => r.why), 'each says why it is there')
+      const hi = await data('fillSchedule', { minFit: 100 })
+      assert.ok(hi.days.flatMap(d => d.rows).every(r => r.research || r.fit >= 100 || /Schedule|Asked/.test(r.why)), 'the floor holds')
+    }
+    ok('Fill schedule: the fill\'s own list in its order, a day\'s worth a day, with the floor');
+
     // The clean-up of people saved before the October rules: a new grad
     // nobody wrote to is listed, a store manager already invited is kept,
     // a league on the roster is offered for Archive. Remove, then Undo.

@@ -64,7 +64,7 @@ jobs:
       - name: Types
         run: npx tsc --noEmit
       - name: Rules
-        run: node scripts/test-li-capture.mjs && node scripts/test-li-report.mjs && node scripts/test-li-log.mjs && node scripts/test-brand-size.mjs && node scripts/test-brand-fit.mjs && node scripts/test-coverage.mjs && node scripts/test-li-hidden.mjs
+        run: node scripts/test-li-capture.mjs && node scripts/test-li-report.mjs && node scripts/test-li-log.mjs && node scripts/test-brand-size.mjs && node scripts/test-brand-fit.mjs && node scripts/test-coverage.mjs && node scripts/test-li-hidden.mjs && node scripts/test-fill-schedule.mjs
       - name: Script against a fake dashboard
         run: node scripts/test-li-script.js
       - name: The fill with Sales Navigator, against fake LinkedIn

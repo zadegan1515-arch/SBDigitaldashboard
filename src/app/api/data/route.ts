@@ -37,6 +37,8 @@ import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import { regionFlag } from '@/lib/region'
 import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hints'
 import { readLiLog, readLiResearch, LI_SCRIPT_VERSION, LI_SWEEP_KEY } from '@/lib/li-sweep'
+import { buildLiList } from '@/lib/li-list-db'
+import { splitFillDays } from '@/lib/fill-schedule'
 import { readHiddenLog, updateHiddenLog, markZachRead, clearZachRead, zachDue, ZACH_REST_DAYS, type HiddenEntry } from '@/lib/li-hidden'
 import { readRuns } from '@/lib/li-report'
 import { companySlug, companyPageUrl, profileSlug, looksLikeSeller } from '@/lib/li-capture'
@@ -10453,6 +10455,32 @@ const handlers: Record<string, Handler> = {
   // people and their saved profile links, plus each person's outreach
   // status so already-contacted people are visible at a glance. The
   // company-People-page and title-search URLs are built client-side.
+  // Outreach → People → Fill schedule (Leo, Oct 12 2026: "make me a schedule
+  // for the brands that run in the linkedin fills"): the fill's own worklist
+  // (buildLiList — the same function the script asks, li-list-db.ts) with the
+  // run's setup — Brand Fit floor (the script's default 60), focus word,
+  // research list, Sales Navigator — cut into its days at LI_PER_DAY a day.
+  // Read-only.
+  async fillSchedule({ minFit = 60, focus = 'electrolyte', research = true, salesNav = true }: any) {
+    const floor = Math.max(0, Math.min(100, Number(minFit) || 0))
+    const word = String(focus ?? '').trim().slice(0, 60)
+    const list = await buildLiList(prisma, { action: 'liList', minFit: floor, focus: word, research: research !== false, salesNav: salesNav !== false })
+    // Brands (and research names) the fill already read today count against
+    // today's 100 — the script keeps its own count; this is the server's view.
+    const today = localDayKey()
+    const [log, rlog] = await Promise.all([readLiLog(prisma), readLiResearch(prisma)])
+    const doneToday = [...Object.values(log), ...Object.values(rlog)]
+      .filter(m => m && m.at && localDayKey(new Date(m.at)) === today).length
+    const label = (key: string) => NY_DAY_LABEL.format(new Date(key + 'T12:00:00Z'))
+    const days = splitFillDays(list.items, { today, doneToday, perDay: LI_PER_DAY, focus: word, dayLabel: label })
+    return {
+      today, doneToday, perDay: LI_PER_DAY, minFit: floor, focus: word,
+      total: list.items.length, belowFit: list.belowFit, resting: list.resting, underCap: list.underCap,
+      planned: list.planned, research: list.research, reachedLast: list.reachedLast, giantsLast: list.giantsLast,
+      days: days.map(d => ({ ...d, label: label(d.day) })),
+    }
+  },
+
   async linkedinPeople() {
     const brands = await prisma.brand.findMany({
       include: {

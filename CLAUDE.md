@@ -738,6 +738,14 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   it (`liCapture` works `viaParent` out itself). `liPagePick` / `liPageNone` forget hidden people counted on a
   page that wasn't theirs.
   Worklist in the dashboard: Outreach → People → "Under 25" (deep link `app.html#people`).
+  **Fill schedule** (Leo, Oct 12 2026: "make me a schedule for the brands that run in the linkedin fills"; card `#li-sched`
+  on Outreach → People, `renderFillSched`): `fillSchedule({ minFit })` = the fill's own worklist — liList's logic lives in
+  `buildLiList` (`src/lib/li-list-db.ts`), shared by /api/ingest and /api/data so the schedule is exactly what the run
+  reads — with the script's defaults (focus electrolyte, research list, Sales Navigator) and a Brand Fit floor (default 60,
+  per browser in localStorage `sb.fillFit`; Leo sets the same in the fill's setup panel), cut into calendar days at
+  `LI_PER_DAY` (today = what's left after the brands the sweep / research logs show read today; `splitFillDays`,
+  `fillWhy` in `src/lib/fill-schedule.ts`). Read-only forecast. `node scripts/test-fill-schedule.mjs`,
+  `test-fill-schedule-ui.js` (page), and a check in `test-li-e2e.js` (same names, same order as liList).
   On a profile (`/in/<slug>/`) the pill is **Send to dashboard** (Leo, Oct 2026: "it should just be send
   this contact to dashboard"): reads name / headline / current company (the SB · Log reader), the company
   box is editable, one click → `liCapture` with `handPicked` (one row; skips the buyer-title filter, keeps

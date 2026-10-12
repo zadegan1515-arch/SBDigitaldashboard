@@ -1994,6 +1994,7 @@
       <div id="li-review" style="margin-top:14px;display:none"></div>
       <div id="li-zach" style="margin-top:14px;display:none"></div>
       <div id="li-runs" style="margin-top:14px;display:none"></div>
+      <div id="li-sched" style="margin-top:14px;display:none"></div>
       <div id="li-list" style="margin-top:14px"></div>
     </section>
 
@@ -10076,6 +10077,7 @@ function loadLinkedin() {
     }
     renderLiRuns(d.runs || [], d.latestScript || null, d.liOwner || null);
     loadLiClean();
+    loadFillSched();
     var profiles = 0, brandsWith = 0;
     LI_DATA.forEach(function (b) {
       var n = b.contacts.filter(function (c) { return c.linkedinUrl; }).length;
@@ -10284,6 +10286,75 @@ function zachText(list) {
   });
   return out.join('\n').trim();
 }
+// Fill schedule (Leo, Oct 12 2026: "make me a schedule for the brands that run
+// in the linkedin fills"): fillSchedule = the fill's own worklist (the same
+// liList the script asks) cut into its days, 100 a day, with a Brand Fit floor
+// (remembered per browser, localStorage sb.fillFit; the script's default 60).
+// Read-only — a forecast: every run asks for the list fresh.
+var LI_SCHED = null, LI_SCHED_OPEN = null;
+function fillFitFloor() {
+  try { var v = localStorage.getItem('sb.fillFit'); if (v != null && v !== '' && !isNaN(Number(v))) return Math.max(0, Math.min(100, Number(v))); } catch (e) {}
+  return 60;
+}
+function loadFillSched() {
+  return api('fillSchedule', { minFit: fillFitFloor() }).then(function (d) { LI_SCHED = d; renderFillSched(); })
+    .catch(function (e) {
+      var box = document.getElementById('li-sched');
+      if (!box) return;
+      box.style.display = '';
+      box.innerHTML = '<div class="panel" style="padding:14px 16px"><b>Fill schedule</b> <span class="t-meta">· couldn’t load: ' + esc(e.message) + '</span></div>';
+    });
+}
+function renderFillSched() {
+  var box = document.getElementById('li-sched'), d = LI_SCHED;
+  if (!box || !d) return;
+  box.style.display = '';
+  if (!LI_SCHED_OPEN) { LI_SCHED_OPEN = {}; if (d.days.length) LI_SCHED_OPEN[d.days[0].day] = true; }
+  var n = d.total, nd = d.days.length;
+  var head = '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><b>Fill schedule</b><span class="t-sep">·</span>' +
+    '<span class="t-title">' + (n ? n + (n === 1 ? ' brand' : ' brands') + ' · about ' + nd + (nd === 1 ? ' day' : ' days') + ' at ' + d.perDay + ' a day' : 'nothing for the fill to read') + '</span>' +
+    '<label style="margin-left:auto;display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink-3)">Brand Fit at least ' +
+      '<input class="inp" type="number" min="0" max="100" step="5" data-fsfit value="' + d.minFit + '" style="width:72px"></label></div>' +
+    '<div class="t-meta" style="margin-top:6px">What the LinkedIn fill reads next, day by day. Set the same floor in the fill’s setup panel.' +
+      (d.doneToday ? ' ' + d.doneToday + ' read today already.' : '') + '</div>' +
+    '<div class="t-meta" style="margin-top:4px">' + [
+      d.minFit && d.belowFit ? d.belowFit + ' under Fit ' + d.minFit + ' left out' : '',
+      d.resting ? d.resting + ' resting (read lately)' : '',
+      d.planned ? d.planned + ' on the Schedule go first, whatever their fit' : '',
+      d.research ? d.research + ' research-list name' + (d.research === 1 ? '' : 's') + ' (not on the roster yet, no fit score)' : '',
+    ].filter(Boolean).join(' · ') + '</div>';
+  var days = d.days.map(function (day) {
+    var ahead = Math.round((new Date(day.day + 'T12:00:00Z') - new Date(d.today + 'T12:00:00Z')) / 864e5);
+    var when = (ahead === 0 ? 'Today · ' : ahead === 1 ? 'Tomorrow · ' : '') + day.label;
+    return '<details data-fsday="' + esc(day.day) + '"' + (LI_SCHED_OPEN[day.day] ? ' open' : '') + ' style="border-top:1px solid var(--border-soft);margin-top:8px;padding-top:8px">' +
+      '<summary style="cursor:pointer"><b>' + esc(when) + '</b> <span style="color:var(--ink-3);font-size:13px">— ' + day.rows.length + (day.rows.length === 1 ? ' brand' : ' brands') + '</span></summary>' +
+      day.rows.map(function (r, i) {
+        return '<div style="display:flex;gap:10px;align-items:baseline;padding:6px 0;flex-wrap:wrap">' +
+          '<span class="t-meta" style="width:28px;text-align:right">' + (i + 1) + '</span>' +
+          (r.brandId ? '<span class="t-brand" data-brand="' + esc(r.brandId) + '" style="cursor:pointer">' + esc(r.name) + '</span>'
+            : '<span class="t-brand">' + esc(r.name) + '</span>') +
+          (r.category ? '<span class="t-meta">' + esc(CAT_NAMES[r.category] || r.category) + '</span>' : '') +
+          (r.fit != null ? '<span class="t-meta">Fit <b>' + r.fit + '</b></span>' : '') +
+          (r.brandId ? '<span class="t-meta">' + r.contacts + ' on file</span>' : '') +
+          '<span class="t-meta" style="margin-left:auto">' + esc(r.why) + '</span>' +
+        '</div>';
+      }).join('') +
+    '</details>';
+  }).join('');
+  box.innerHTML = '<div class="panel" style="padding:14px 16px">' + head + days + '</div>';
+}
+document.getElementById('linkedin').addEventListener('toggle', function (e) {
+  var t = e.target;
+  if (t && t.matches && t.matches('[data-fsday]') && LI_SCHED_OPEN) LI_SCHED_OPEN[t.getAttribute('data-fsday')] = t.open;
+}, true);
+document.getElementById('linkedin').addEventListener('change', function (e) {
+  if (!e.target.matches || !e.target.matches('[data-fsfit]')) return;
+  var v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+  try { localStorage.setItem('sb.fillFit', String(v)); } catch (err) {}
+  LI_SCHED_OPEN = null;
+  loadFillSched();
+});
+
 function renderLiZach(list, done, restDays) {
   LI_ZACH = list;
   var box = document.getElementById('li-zach');
@@ -18832,7 +18903,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'li-zach', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity', 'st-lanes', 'st-others'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'li-zach', 'li-sched', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity', 'st-lanes', 'st-others'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
