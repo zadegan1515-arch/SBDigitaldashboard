@@ -4019,7 +4019,11 @@ function ztEmailDone(p) { return p.emailedAt || p.emailReplyAt || null; }
 // days after the message), and No response (7 days after the final).
 // An accept with no date on file (old rows) counts from the invite, so
 // the oldest show as late; with neither, it's due now.
-function ztMsgDue(p) { var a = p.acceptedAt || p.invitedAt; return a ? ztAddDays(a, ZT_DAYS.dm) : null; }
+// The first message only goes out Tue–Thu (Leo, Oct 12 2026): a due day that
+// lands on a Fri–Mon moves to the next Tuesday.
+var ZT_MSG_DOWS = [2, 3, 4];
+function ztMsgDay(d) { var x = new Date(d); while (ZT_MSG_DOWS.indexOf(x.getDay()) < 0) x.setDate(x.getDate() + 1); return x; }
+function ztMsgDue(p) { var a = p.acceptedAt || p.invitedAt; return a ? ztMsgDay(ztAddDays(a, ZT_DAYS.dm)) : null; }
 function ztFinalDue(p) { return p.dmSentAt ? ztAddDays(p.dmSentAt, ZT_DAYS.final) : null; }
 function ztQuietDay(p) { return p.nudgedAt ? ztAddDays(p.nudgedAt, ZT_DAYS.quiet) : null; }
 function ztDmWindow(p) {
@@ -4275,9 +4279,9 @@ function ztPanelHtml(p) {
     out = h(panel === 'dm' ? 'Text them on LinkedIn' : 'Send the final reach-out',
         panel === 'dm' && !p.dmSentAt
           ? (!w ? 'Due now'
-            : w.late ? 'Late: it was due ' + esc(wd(w.due)) + ', ' + ZT_DAYS.dm + ' days after they accepted. Send it today'
-            : w.days > 0 ? 'Due ' + esc(wd(w.due)) + ', ' + ZT_DAYS.dm + ' days after they accepted'
-            : 'Due today, ' + ZT_DAYS.dm + ' days after they accepted')
+            : w.late ? 'Late: it was due ' + esc(wd(w.due)) + ' (' + ZT_DAYS.dm + '+ days after they accepted, Tue–Thu). Send it today'
+            : w.days > 0 ? 'Due ' + esc(wd(w.due)) + ' (' + ZT_DAYS.dm + '+ days after they accepted, Tue–Thu)'
+            : 'Due today (' + ZT_DAYS.dm + '+ days after they accepted, Tue–Thu)')
           : panel === 'nudge' && fd && !p.nudgedAt
           ? (fdays > 0 ? 'Due ' + esc(wd(fd)) + ', ' + ZT_DAYS.final + ' days after the first message, if they haven’t answered'
             : fdays < 0 ? 'Late: it was due ' + esc(wd(fd)) + ', ' + ZT_DAYS.final + ' days after the first message. Send it today'
@@ -4703,7 +4707,7 @@ function zsHtml() {
         (late ? '<span class="late"><b>' + late + '</b> late</span>' : '') +
         (today ? '<span class="today"><b>' + today + '</b> due today</span>' : '') +
         '<span><b>' + n + '</b> ' + (n === 1 ? 'brand' : 'brands') + '</span></div>' +
-      '<div class="zs-rule">Accepted → message on day ' + ZT_DAYS.dm + ' → final reach-out ' + ZT_DAYS.final +
+      '<div class="zs-rule">Accepted → message on day ' + ZT_DAYS.dm + ' (Tue–Thu) → final reach-out ' + ZT_DAYS.final +
         ' days later → No response after ' + ZT_DAYS.quiet + ' quiet days</div>' +
     '</div><div class="zs-board">' +
     ZS_GROUPS.map(function (x) {
@@ -5359,7 +5363,7 @@ function ztOpenTpl(kind) {
   document.getElementById('zt-tsubj-wrap').hidden = noSubj;
   document.getElementById('zt-prev-subj').hidden = noSubj;
   document.getElementById('zt-tbody-lbl').textContent = ZT_TPL_KIND === 'dm' ? 'LinkedIn message (when they want to keep it in the chat)'
-    : ZT_TPL_KIND === 'first' ? 'First LinkedIn message (Text them on LinkedIn, ' + ZT_DAYS.dm + ' days after they accept)'
+    : ZT_TPL_KIND === 'first' ? 'First LinkedIn message (Text them on LinkedIn, ' + ZT_DAYS.dm + ' days after they accept, on a Tue–Thu)'
     : ZT_TPL_KIND === 'final' ? 'Final reach-out on LinkedIn (' + ZT_DAYS.final + ' days after the first message, if they haven’t answered)' : 'Email';
   var t = ZT_TPL_KIND === 'dm'
     ? ((ZT && ZT.dmTemplate) || { subject: '', body: '', standIn: true })

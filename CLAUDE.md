@@ -101,7 +101,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   the higher up it should be" — `ztCompare`: text back → follow-up → reply to answer → email/DM to
   send → call; longest-waiting first within a step; a brand sits where its earliest person sits and
   keeps its people together); one row open at a time shows the flow
-  **Accepted → Text them on LinkedIn (due 2 days after the accept, calendar days; waits until then as
+  **Accepted → Text them on LinkedIn (due 2 days after the accept, calendar days, **Tue–Thu only** — Leo, Oct 12 2026: a due day on Fri–Mon moves to Tuesday, `ZT_MSG_DOWS`; waits until then as
   "Text them <day>", late after) → no answer 10 days after that message: Send the final reach-out → still
   quiet 7 days after the final: No response → Replied → They want email → Email to send → Email sent,
   and/or They want LinkedIn → DM to send → DM sent (either or both; picking one logs the reply) →
