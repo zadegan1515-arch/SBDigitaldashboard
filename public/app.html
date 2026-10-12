@@ -7402,6 +7402,7 @@ function loadBrand(brandId) {
   return api('getBrand', { brandId: brandId }).then(function (d) {
     if (!mine()) return;
     CURRENT_BRAND = d;
+    if (d.sponsorUrl) SPONSOR_URL = d.sponsorUrl;
     var b = d.brand;
     btlRender(b.id);
     rememberSponsors(b.shows);
@@ -8811,9 +8812,12 @@ function showLine(s) {
 }
 var SHOW_GENRES = ['edm', 'hip-hop', 'country', 'pop', 'band', 'other'];
 var SHOWS_LAST = [];
-// The brand-facing page URL; listShows sends the real one (custom host
-// when SPONSOR_HOST is set, else this deployment's own /partnerships).
+// The brand-facing page URL. The server sends the real one (custom host
+// shows.sboyagency.com when SPONSOR_HOST is set, else this deployment's own
+// /partnerships) — asked on load and with every brand page and the Shows list,
+// so a link copied from a brand page never carries the vercel.app address.
 var SPONSOR_URL = location.origin + '/partnerships';
+api('sponsorUrl').then(function (r) { if (r && r.url) SPONSOR_URL = r.url; }).catch(function () {});
 var showsSel = {};
 var showsPick = { state: '', type: '', genre: '' };
 function fmtShowDate(d) {
