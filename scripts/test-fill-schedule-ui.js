@@ -17,7 +17,7 @@ const calls = [];
 const row = (i, extra) => Object.assign({ brandId: 'b' + i, name: 'Brand ' + i, category: 'energy', fit: 90 - i, contacts: 2, research: false, why: 'No buyer on file' }, extra || {});
 const sched = (minFit) => ({
   today: '2026-10-12', doneToday: 40, perDay: 100, minFit, focus: 'electrolyte', total: 3,
-  belowFit: 12, resting: 30, underCap: 80, planned: 1, research: 1, reachedLast: 0, giantsLast: 0,
+  belowFit: 12, bigSkipped: 3, resting: 30, underCap: 80, planned: 1, research: 1, reachedLast: 0, giantsLast: 0,
   days: [
     { day: '2026-10-12', label: 'Mon, Oct 12', rows: [row(1, { why: 'On the Schedule Wed, Oct 14, short on people' }), row(2)] },
     { day: '2026-10-13', label: 'Tue, Oct 13', rows: [row(3, { brandId: null, name: 'Liquid Lab', fit: null, research: true, why: 'Research list · Electrolytes' })] },
@@ -67,10 +67,10 @@ async function main() {
   await page.waitForSelector('#li-sched [data-fsday]');
 
   const last = (fn) => [...calls].reverse().find((c) => c.fn === fn);
-  assert.equal(last('fillSchedule').args.minFit, 60, 'the script’s default floor');
+  assert.equal(last('fillSchedule').args.minFit, 50, 'the script’s default floor');
   const text = await page.textContent('#li-sched');
   assert.ok(/3 brands · about 2 days at 100 a day/.test(text), text);
-  assert.ok(/40 read today already/.test(text) && /12 under Fit 60 left out/.test(text), text);
+  assert.ok(/40 read today already/.test(text) && /12 under Fit 50 left out/.test(text) && /3 very big brands skipped/.test(text) && /mid-size brands first/.test(text), text);
   assert.ok(await page.$eval('[data-fsday="2026-10-12"]', (d) => d.open), 'today open');
   assert.ok(!(await page.$eval('[data-fsday="2026-10-13"]', (d) => d.open)), 'later days folded');
   assert.ok(/Today · Mon, Oct 12/.test(text) && /Tomorrow · Tue, Oct 13/.test(text), text);

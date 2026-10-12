@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.35
+// @version      1.37
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -86,7 +86,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.35';
+  var VERSION = '1.37';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1346,6 +1346,11 @@
       keywords: 'partnership OR partnerships OR sponsorship OR sponsorships' },
   ];
   var SN_PAGE_SIZE = 25;
+  // The People tab's first screen or two, when Sales Navigator does the rest.
+  var SN_GLANCE = { rounds: 2, people: 40 };
+  // Under this many on LinkedIn, the marketing search finds everyone worth it;
+  // the partnerships / sponsorship search is skipped.
+  var SN_SMALL = 50;
   // Sales Navigator's empty search, and its pages for an account without it.
   // Its wordings seen so far: "No leads matched your search" / "0 results"
   // and, with a function filter, "No matches found" (Oct 12 2026).
@@ -1353,7 +1358,11 @@
   var SN_UPSELL = /start (?:your )?free trial|try sales navigator|upgrade to sales navigator|get sales navigator|reactivate (?:your )?sales navigator/i;
 
   var FIT_KEY = 'sbLiMinFit';
-  var FIT_DEFAULT = 60;
+  // 50, not 60: Brand Fit gives a big company 8 more points than a mid-size
+  // one, and 60 left out most mid-size brands (Leo wants them mainly).
+  var FIT_DEFAULT = 50;
+  var BIG_KEY = 'sbLiSkipBig';
+  function skipBigWanted() { try { return GM_getValue(BIG_KEY, true) !== false; } catch (e) { return true; } }
   function minFitWanted() {
     try { var v = GM_getValue(FIT_KEY, FIT_DEFAULT); return typeof v === 'number' && v >= 0 && v <= 100 ? v : FIT_DEFAULT; } catch (e) { return FIT_DEFAULT; }
   }
@@ -1585,6 +1594,8 @@
       // 2026); off for the rest of the run if the account doesn't have it.
       salesNav: discover.salesNav !== false,
       snWanted: discover.salesNav !== false,
+      // The dashboard put mid-size brands first (a Brand Fit floor is on).
+      midFirst: !!discover.midFirst,
       searches: (discover.words || []).map(function (q) { return { q: q, page: 1, navs: 0 }; }),
     });
     runEvent(loadFill(), 'start', { focus: focus || '', items: items.length });
@@ -1863,7 +1874,10 @@
       // The brand's LinkedIn headcount sizes it for the next run's order.
       headcount = n;
       if (n != null && n >= BIG_COMPANY) { tooBig = n; return { skip: true }; }
-      return expand(function (n) { setFillStatus('Reading ' + label + ' — ' + n + ' people on screen'); }, fillHalt, kind === 'own' ? null : SHORT_READ);
+      // With Sales Navigator the People tab only needs a glance (headcount,
+      // page check, similar brands): Sales Navigator reads the people.
+      var limits = kind !== 'own' ? SHORT_READ : snOn(job) && job.step.pass === 0 ? SN_GLANCE : null;
+      return expand(function (n) { setFillStatus('Reading ' + label + ' — ' + n + ' people on screen'); }, fillHalt, limits);
     }).then(function (res) {
       // Too big to read whole: its People tab's targeted views instead.
       if (tooBig != null) {
@@ -2093,7 +2107,7 @@
       var full = r.have >= r.cap;
       var shown = got.links + got.hidden.length;
       if (!full && shown >= SN_PAGE_SIZE && page < search.pages) { st.snPage++; st.navs = 0; }
-      else if (!full && st.snI < SN_SEARCHES.length - 1) { st.snI++; st.snPage = 1; st.navs = 0; }
+      else if (!full && st.snI < SN_SEARCHES.length - 1 && !(st.members != null && st.members < SN_SMALL)) { st.snI++; st.snPage = 1; st.navs = 0; }
       else {
         // Done. Sales Navigator named whoever it could, so the hidden
         // people that count now are the ones it still couldn't.
@@ -2377,6 +2391,12 @@
     }
     if (item.research) return 'from the research list' + (item.lane ? ' (' + item.lane + ')' : '');
     if (item.hiddenRetry) return 'read before without Sales Navigator — back for it';
+    // Mid-size first (Leo, Oct 12 2026): the size leads the reason.
+    if (job.midFirst && item.size) {
+      var sw = { target: 'a mid-size brand', unknown: 'size not measured yet', small: 'a small brand', big: 'a big company (500–1,499)' }[item.size];
+      if (sw) return sw + (item.members != null ? ', ' + item.members.toLocaleString('en-US') + ' on LinkedIn' : '') +
+        (item.noBuyer ? ' — no marketing / partnerships person yet' : '') + (item.focus ? ' (a “' + (job.focus || 'focus') + '” brand)' : '');
+    }
     // Brands with nobody in marketing / partnerships go right after the
     // Schedule's (the dashboard's liList puts them there).
     if (item.noBuyer) return 'no marketing / partnerships person on file yet' + (item.focus ? ' (a “' + (job.focus || 'focus') + '” brand)' : '');
@@ -2397,6 +2417,8 @@
     var focusN = job.items.filter(function (i) { return i.focus && !i.planned; }).length;
     var plannedN = job.items.filter(function (i) { return i.planned; }).length;
     var isGap = function (i) { return i.noBuyer && !i.planned && !i.research; };
+    // Mid-size first: the brands that lead the run, instead of the no-buyer ones.
+    if (job.midFirst) isGap = function (i) { return i.size === 'target' && !i.planned && !i.research; };
     var gapN = job.items.filter(isGap).length;
     var doneOf = function (test) { return job.items.slice(0, at).filter(test).length; };
     var pct = n ? Math.round(at / n * 100) : 100;
@@ -2406,7 +2428,7 @@
       head('Filling brands from LinkedIn'),
       h('div', { style: 'margin-bottom:4px' }, [b(String(at)), ' of ' + n + ' brands · ', b(String(job.added || 0)), ' people added']),
       plannedN ? h('div', { style: 'font-size:12px;color:#555', text: 'First, the Schedule\'s brands that are short on people: ' + doneOf(function (i) { return i.planned; }) + ' of ' + plannedN + ' done' }) : null,
-      gapN ? h('div', { id: 'sbligap', style: 'font-size:12px;color:#555', text: (plannedN ? 'Then ' : 'First, ') + 'brands with no marketing / partnerships person yet: ' + doneOf(isGap) + ' of ' + gapN + ' done' }) : null,
+      gapN ? h('div', { id: 'sbligap', style: 'font-size:12px;color:#555', text: (plannedN ? 'Then ' : 'First, ') + (job.midFirst ? 'mid-size brands: ' : 'brands with no marketing / partnerships person yet: ') + doneOf(isGap) + ' of ' + gapN + ' done' }) : null,
       focusN ? h('div', { style: 'font-size:12px;color:#555', text: (plannedN || gapN ? 'Then ' : '') + '“' + (job.focus || 'focus') + '” brands: ' + doneOf(function (i) { return i.focus && !i.planned; }) + ' of ' + focusN + ' done' }) : null,
       cur ? h('div', { id: 'sblinow', style: 'font-size:12px;color:#111;margin-top:4px' }, [b(cur.name), ' — ' + whyItem(job, cur)]) : null,
       h('div', { style: 'font-size:12px;color:#555', text: 'Today: ' + job.doneToday + ' of ' + DAILY_CAP + ' brands' }),
@@ -2460,6 +2482,8 @@
       id: 'sbliminfit', type: 'number', min: '0', max: '100', value: String(minFitWanted()),
       style: 'width:56px;padding:4px 6px;border:1px solid #ccc;border-radius:6px;font:12.5px system-ui;color:#111;background:#fff',
     });
+    var bigBox = h('input', { type: 'checkbox', id: 'sbliskipbig', checked: skipBigWanted(), style: 'margin:2px 0 0' });
+    bigBox.onchange = function () { try { GM_setValue(BIG_KEY, bigBox.checked); } catch (e) {} };
     fitBox.onchange = function () { try { GM_setValue(FIT_KEY, Math.max(0, Math.min(100, Number(fitBox.value) || 0))); } catch (e) {} };
     snBox.onchange = function () { try { GM_setValue(SN_KEY, snBox.checked); } catch (e) {} };
     // Off by default: LinkedIn's keyword search turns up small pages, not
@@ -2480,7 +2504,7 @@
     var look = function () {
       var f = focus.value.trim();
       out.textContent = 'Getting the list…';
-      post({ action: 'liList', focus: f, research: researchBox.checked, salesNav: snBox.checked, minFit: Math.max(0, Math.min(100, Number(fitBox.value) || 0)) }).then(function (j) {
+      post({ action: 'liList', focus: f, research: researchBox.checked, salesNav: snBox.checked, minFit: Math.max(0, Math.min(100, Number(fitBox.value) || 0)), skipGiants: bigBox.checked }).then(function (j) {
         while (out.firstChild) out.removeChild(out.firstChild);
         if (!j || !j.ok) { out.textContent = (j && j.error) || 'Could not get the list.'; return; }
         if (!j.items.length) {
@@ -2499,21 +2523,25 @@
         // person right after the Schedule's (Leo, Oct 2026: every brand
         // gets one); the focus word orders brands within each group.
         var gap = j.noBuyer || 0;
-        if (gap) out.appendChild(h('div', { id: 'sbligapnote', style: 'font-size:12px;color:#111;margin-bottom:6px', text: (j.planned ? 'After the Schedule\'s ' + j.planned + ' brand' + (j.planned === 1 ? '' : 's') + ' short on people, the ' : 'First the ') +
+        if (j.midFirst) out.appendChild(h('div', { id: 'sblimidnote', style: 'font-size:12px;color:#111;margin-bottom:6px', text: (j.planned ? 'After the Schedule\'s ' + j.planned + ' brand' + (j.planned === 1 ? '' : 's') + ' short on people: m' : 'M') +
+          'id-size brands first' + (j.sizes ? ' (' + j.sizes.target + ', 20–499 on LinkedIn), then ' + j.sizes.unknown + ' not measured yet, ' + j.sizes.small + ' small, ' + j.sizes.big + ' big (500–1,499)' : '') +
+          '. Within each, brands with no marketing / partnerships person first, then best Brand Fit.' }));
+        if (gap && !j.midFirst) out.appendChild(h('div', { id: 'sbligapnote', style: 'font-size:12px;color:#111;margin-bottom:6px', text: (j.planned ? 'After the Schedule\'s ' + j.planned + ' brand' + (j.planned === 1 ? '' : 's') + ' short on people, the ' : 'First the ') +
           gap + ' brand' + (gap === 1 ? '' : 's') + ' with no marketing / partnerships person on file yet — so every brand gets one. Then the rest, up to 25 people each.' }));
         if (f) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: first.length
           ? (gap ? 'Within each, the ' + first.length + ' matching “' + f + '” go first: ' : 'First the ' + first.length + ' matching “' + f + '”: ') +
             first.slice(0, 15).map(function (i) { return i.name; }).join(', ') + (first.length > 15 ? '…' : '') + (gap ? '.' : '. Then everything else, emptiest first.')
           : 'None match “' + f + '” — it goes emptiest first.' }));
-        if (j.sizes) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: 'Then by size: ' + j.sizes.target + ' target (mid-size, 20–499 on LinkedIn), ' + j.sizes.unknown + ' not measured yet, ' + j.sizes.small + ' small, ' + j.sizes.big + ' big companies last.' }));
+        if (j.sizes && !j.midFirst) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: 'Then by size: ' + j.sizes.target + ' target (mid-size, 20–499 on LinkedIn), ' + j.sizes.unknown + ' not measured yet, ' + j.sizes.small + ' small, ' + j.sizes.big + ' big companies last.' }));
         if (j.noPage) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.noPage + ' have no LinkedIn page saved; it searches LinkedIn for those and only uses a clear match.' }));
-        if (j.minFit) out.appendChild(h('div', { id: 'sblifitnote', style: 'font-size:12px;color:#555;margin-bottom:6px', text: 'Only brands with Brand Fit ' + j.minFit + '+, best first' + (j.belowFit ? ' — ' + j.belowFit + ' lower-scoring, too small or Skip brands left out' : '') + '. The Schedule\'s brands always go.' }));
+        if (j.minFit) out.appendChild(h('div', { id: 'sblifitnote', style: 'font-size:12px;color:#555;margin-bottom:6px', text: 'Only brands with Brand Fit ' + j.minFit + '+' + (j.belowFit ? ' — ' + j.belowFit + ' lower-scoring, too small or Skip brands left out' : '') + '. The Schedule\'s brands always go.' }));
+        if (j.bigSkipped) out.appendChild(h('div', { id: 'sblibignote', style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.bigSkipped + ' very big brands skipped (household names, big parent companies, 1,500+ on LinkedIn).' }));
         if (j.hiddenRetry) out.appendChild(h('div', { id: 'sblisnretry', style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.hiddenRetry + ' brands read before without Sales Navigator (or with buyers LinkedIn hid) are back for it, right after the Schedule\'s.' }));
         if (j.resting) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.resting + ' left out: nothing new on their last visit (they rest a month).' }));
         if (j.researchWaiting) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.researchWaiting + ' research names left out: LinkedIn had no clear page for them last month.' }));
         out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:8px', text: 'At about ' + DAILY_CAP + ' a day that is roughly ' + Math.ceil(j.items.length / DAILY_CAP) + ' day(s).' }));
-        out.appendChild(h('button', { id: 'sblifillstart', style: BTN, text: 'Start', onclick: function () { startFill(j.items, f, discoverNow()); } }));
-        if (startNow) { startNow = false; startFill(j.items, f, discoverNow()); }
+        out.appendChild(h('button', { id: 'sblifillstart', style: BTN, text: 'Start', onclick: function () { startFill(j.items, f, Object.assign(discoverNow(), { midFirst: !!j.midFirst })); } }));
+        if (startNow) { startNow = false; startFill(j.items, f, Object.assign(discoverNow(), { midFirst: !!j.midFirst })); }
       }).catch(function (e) { out.textContent = e.message; });
     };
     focus.onkeydown = function (e) { if (e.key === 'Enter') look(); };
@@ -2531,6 +2559,10 @@
       h('label', { style: 'display:flex;gap:7px;align-items:center;font-size:12px;color:#333;margin-top:10px' }, [
         h('span', { text: 'Only brands with Brand Fit of at least' }), fitBox,
         h('span', { style: 'color:#777', text: '(0 = every brand)' }),
+      ]),
+      h('label', { style: 'display:flex;gap:7px;align-items:flex-start;font-size:12px;color:#333;cursor:pointer;margin-top:8px' }, [
+        bigBox,
+        h('span', { text: 'Skip very big brands — household names, brands of the big parent companies (Diageo, Pernod Ricard…), $1B+ sales or 1,500+ on LinkedIn' }),
       ]),
       h('label', { style: 'display:flex;gap:7px;align-items:flex-start;font-size:12px;color:#333;cursor:pointer;margin-top:10px' }, [
         snBox,

@@ -26,6 +26,9 @@ export function fillWhy(i: FillItem, focus: string, dayLabel: (key: string) => s
   if (i.hiddenRetry) return 'Back for Sales Navigator (buyers hidden last time)'
   const bits: string[] = []
   if (i.research) bits.push('Research list' + (i.lane ? ' · ' + i.lane : ''))
+  // Mid-size first (Leo, Oct 12 2026): the size the run orders by.
+  if (!i.research && i.size === 'target') bits.push('mid-size')
+  else if (!i.research && i.size === 'big') bits.push('big company')
   if (i.noBuyer && !i.research) bits.push('no buyer on file')
   if (i.focus && focus) bits.push('focus “' + focus + '”')
   const why = bits.join(' · ') || 'under 25 people on file'

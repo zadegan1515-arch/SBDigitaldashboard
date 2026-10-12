@@ -10333,12 +10333,13 @@ function zachText(list) {
 // Fill schedule (Leo, Oct 12 2026: "make me a schedule for the brands that run
 // in the linkedin fills"): fillSchedule = the fill's own worklist (the same
 // liList the script asks) cut into its days, 100 a day, with a Brand Fit floor
-// (remembered per browser, localStorage sb.fillFit; the script's default 60).
+// (remembered per browser, localStorage sb.fillFit; the script's default 50 —
+// mid-size brands first, very big brands skipped, as the run does).
 // Read-only — a forecast: every run asks for the list fresh.
 var LI_SCHED = null, LI_SCHED_OPEN = null;
 function fillFitFloor() {
   try { var v = localStorage.getItem('sb.fillFit'); if (v != null && v !== '' && !isNaN(Number(v))) return Math.max(0, Math.min(100, Number(v))); } catch (e) {}
-  return 60;
+  return 50;
 }
 function loadFillSched() {
   return api('fillSchedule', { minFit: fillFitFloor() }).then(function (d) { LI_SCHED = d; renderFillSched(); })
@@ -10363,6 +10364,8 @@ function renderFillSched() {
       (d.doneToday ? ' ' + d.doneToday + ' read today already.' : '') + '</div>' +
     '<div class="t-meta" style="margin-top:4px">' + [
       d.minFit && d.belowFit ? d.belowFit + ' under Fit ' + d.minFit + ' left out' : '',
+      d.bigSkipped ? d.bigSkipped + ' very big brand' + (d.bigSkipped === 1 ? '' : 's') + ' skipped (giants, 1,500+ on LinkedIn)' : '',
+      d.minFit ? 'mid-size brands first' : '',
       d.resting ? d.resting + ' resting (read lately)' : '',
       d.planned ? d.planned + ' on the Schedule go first, whatever their fit' : '',
       d.research ? d.research + ' research-list name' + (d.research === 1 ? '' : 's') + ' (not on the roster yet, no fit score)' : '',
