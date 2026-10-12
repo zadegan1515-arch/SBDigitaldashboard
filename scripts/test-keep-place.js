@@ -49,6 +49,9 @@ const NOW = new Date().toISOString();
 // --- fake data ----------------------------------------------------
 
 const S = {
+  // The LinkedIn tab's extras (4d): whole brands ready if there's room,
+  // open spots, the sent-today and going-stale rows, the last args seen.
+  more: [], open: 0, sentList: [], stale: [], last: {},
   brands: {},            // id -> getBrand payload
   dne: {},               // brand id -> doNotEmail
   drafts: [],            // email queue
@@ -186,9 +189,14 @@ const H = {
   },
   deleteEmailDraft: ({ id }) => { S.drafts = S.drafts.filter((x) => x.id !== id); return { ok: true }; },
   getTodayQueue: () => ({
-    targets: S.queue, sentList: [], more: [], theme: 'energy', labels: {}, sendingDay: true, sentToday: 0, cap: S.dayCap,
+    targets: S.queue, sentList: S.sentList, more: [], moreBrands: S.more, openSpots: S.open, theme: 'energy', labels: {}, sendingDay: true,
+    sentToday: S.sentList.length, cap: S.dayCap,
   }),
-  listTargets: () => [],
+  listTargets: () => S.stale,
+  setTargetStatus: (a) => { S.last.setTargetStatus = a; return { ok: true }; },
+  queueBrandTargets: (a) => { S.last.queueBrandTargets = a; return { queued: true, count: 3, contactName: 'Mo, Ma and Mi' }; },
+  unqueueBrand: (a) => { S.last.unqueueBrand = a; return { brandName: 'Queue Brand 0', count: 2, todayOnly: true }; },
+  planDayChoices: () => ({ today: '2026-10-07', days: [{ key: '2026-10-07', label: 'Wed Oct 7', today: true }, { key: '2026-10-08', label: 'Thu Oct 8' }], offDay: null }),
   listBrands: () => S.list,
   categoryReach: () => ({ categories: {}, newFromLinkedIn: 0 }),
   listDeals: () => ({ deals: S.deals, openCents: 0, wonCents: 0 }),
@@ -435,6 +443,56 @@ async function main() {
   assert.equal(await page.textContent('#fill20'), 'Fill to 25', 'another server number shows as it is');
   S.dayCap = 30;
   console.log('✓ 4c the LinkedIn tab shows the server\'s people-a-day number');
+
+  // 4d. "Ready if you have room" offers whole brands (Add to today when it
+  // fits the open spots, else Put on a day — never one person to Mark
+  // sent); Withdrew on an old invite keeps it counted, on today's uncounts
+  // it; Off queue is today only.
+  const tgt = (id, brandId, status, sentAt) => ({ ...qTarget(0), id, brandId, status, sentAt,
+    brand: { id: brandId, name: 'Brand ' + brandId, category: 'energy', workPeople: null },
+    contact: { id: 'c' + id, name: 'Person ' + id, title: 'Brand Manager', linkedinUrl: null } });
+  S.more = [
+    { brandId: 'mb1', brandName: 'More One', category: 'energy', size: 3, people: [{ name: 'Mo' }, { name: 'Ma' }, { name: 'Mi' }] },
+    { brandId: 'mb2', brandName: 'More Two', category: 'energy', size: 10, people: [] },
+  ];
+  S.open = 5;
+  S.sentList = [tgt('st1', 'sb1', 'sent', NOW)];
+  S.stale = [tgt('old1', 'ob1', 'sent', new Date(Date.now() - 10 * 864e5).toISOString())];
+  n = count('getTodayQueue');
+  await page.evaluate(() => loadOutreach());
+  await answered('getTodayQueue', n);
+  await page.waitForSelector('[data-oqsec="more"] [data-oqmore="mb1"]');
+  assert.equal(await page.$$eval('[data-oqsec="more"] .target', (els) => els.length), 0, 'no single people to Mark sent');
+  assert.equal(await page.textContent('[data-oqmore="mb1"] [data-oqmoreadd]'), 'Add to today (3)');
+  assert.equal(await page.$('[data-oqmore="mb2"] [data-oqmoreadd]'), null, 'a brand bigger than the open spots has no Add to today');
+  await page.waitForSelector('[data-oqmoreday="mb2"] select[data-pdday]');
+  assert.match(await page.textContent('[data-oqsec="more"]'), /More One.*3 people · Mo, Ma, Mi/);
+  assert.match(await page.textContent('#targets'), /5 open spots today — add a whole brand/);
+  n = count('queueBrandTargets');
+  await page.click('[data-oqmoreadd="mb1"]');
+  await answered('queueBrandTargets', n);
+  assert.deepEqual(S.last.queueBrandTargets, { brandId: 'mb1' }, 'the whole brand, through the queue');
+  await page.waitForSelector('#targets .target[data-id="old1"] [data-act="withdrew"]');
+  const chip = async () => page.textContent('#sent-today-chip');
+  assert.match(await chip(), /^1 of 30/);
+  n = count('setTargetStatus');
+  await page.click('#targets .target[data-id="old1"] [data-act="withdrew"]');
+  await answered('setTargetStatus', n);
+  assert.deepEqual([S.last.setTargetStatus.status, await chip()], ['withdrawn', '1 of 30 sent today'], 'an old invite withdrawn still counts');
+  assert.ok(await page.evaluate(() => !!TARGET_CACHE.old1.sentAt), 'its send date stays');
+  await page.click('[data-oqfold="sb1"]');   // a brand all sent today is folded
+  n = count('setTargetStatus');
+  await page.click('#targets .target[data-id="st1"] [data-act="withdrew"]');
+  await answered('setTargetStatus', n);
+  assert.match(await chip(), /^0 of 30/, 'one sent today is uncounted');
+  assert.equal(await page.evaluate(() => TARGET_CACHE.st1.sentAt), null);
+  n = count('unqueueBrand');
+  await page.click('#targets .target[data-id="q0"] [data-act="unqueue"]');
+  await answered('unqueueBrand', n);
+  assert.deepEqual(S.last.unqueueBrand, { brandId: 'qb0' });
+  assert.match(await page.textContent('#toast'), /Off today’s list — it can come back tomorrow/);
+  S.more = []; S.open = 0; S.sentList = []; S.stale = [];
+  console.log('✓ 4d LinkedIn tab: whole brands if there\'s room, Withdrew keeps an old invite counted, Off queue is today only');
 
   await page.evaluate(() => gotoView('brands'));
   await page.waitForSelector('#brands-list [data-brand="lb50"]');

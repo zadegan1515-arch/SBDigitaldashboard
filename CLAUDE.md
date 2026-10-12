@@ -227,7 +227,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   "N brands don't fit … Make the day match". **Category priority** (Setting `categoryPriority` over
   `DEFAULT_CATEGORY_PRIORITY`, `getCategoryPriority` / `setCategoryPriority`, More ▾ → Category priority… modal
   `#cp-scrim`): Top +30 / Middle +15 / Low 0 / Skip 0 and never picked by itself (a hand add still works).
-  **Pass = two weeks off** (Leo, Oct 7 2026: "when i pass on a brand it should not show up in the outreach tab again for at least two weeks"): `passBrandToday` (LinkedIn card **Pass brand**, Brands not reached yet **Pass**, the Schedule's × on today's automatic rows, brand page Take off today) sets `passedTodayAt` + `Brand.passedUntil` = now + `PASS_DAYS` (14), un-stamps today's people and unpins it from coming days; `notPassedToday()` / `passedNow()` keep it out of Best fit, category rotation, suggestForDay and nextBestBrands until then. A hand add (planAddBrands, queueBrandTargets) clears it. `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-pass-e2e.js`.
+  **Pass = two weeks off** (Leo, Oct 7 2026: "when i pass on a brand it should not show up in the outreach tab again for at least two weeks"): `passBrandToday` (LinkedIn card **Pass brand**, Brands not reached yet **Pass**, the Schedule's × **Not now** on any day's automatic row, brand page Take off today) sets `passedTodayAt` + `Brand.passedUntil` = now + `PASS_DAYS` (14), un-stamps today's people and unpins it from coming days; `notPassedToday()` / `passedNow()` / `notOnPass()` keep it out of Best fit, category rotation, every Schedule day's rows, the morning roll (`CarryFacts.passedUntil` → "Passed until …"), `queuePlannedToday`, Fill to 30, Plan my week, suggestForDay and nextBestBrands until then (a brand shown on a later day used to carry in and have its Pass ended by the queue). A hand add (planAddBrands, queueBrandTargets) clears it. **Off queue** (a LinkedIn row's company-wide button, `unqueueBrand`) is **today only** (Leo, Oct 12 2026): off today's plan, unsent people back to waiting (nothing shelved), `passedTodayAt` — back tomorrow. `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-pass-e2e.js`.
   **Betting set aside** (Leo, Oct 7 2026: "put all the betting aside for now and not have them in any outreach"): `betting: 'skip'` in `DEFAULT_CATEGORY_PRIORITY` (brand-fit.ts) — never auto-picked, and nextBestBrands leaves Skip categories out; a hand add still works. Put it back with Category priority.
   **Queue rules** (Leo, Oct 12 2026: "i dont want brand i have already reached out to to be in the queue
   and i also dont want to reach out to super big brands yet"; rules pure in `src/lib/queue-rules.ts`,
@@ -240,7 +240,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   queueContact, Send today anyway, today's planned brands, the morning roll) a reached brand **rests 14
   days from its first outreach** (New York day keys; a later Schedule day is judged as of that day; the
   day a brand opens is its own sitting, so the rest of its people that day still go; an accept logged
-  without an invite date counts from the row's last change and is never a sitting). **Giants**
+  without an invite date counts from the row's last change and is never a sitting). **Part-sent brands**
+  (Leo, Oct 12 2026: "If Zach sends only some of a brand's people one day, the rest go out on the next
+  sending day"): by hand the sitting runs on to the next sending day after its first day (`sittingOf`,
+  `nextSending` from `QueueCtx.extras` — extra days count), so the morning roll carries the rest there,
+  queuePlannedToday stamps them and the gate, gatedStampBrands and the Schedule let them through — that
+  one day only (a day later it rests); the 14 days then count from the sitting's last day anything went
+  out. The system's own picks still never take it. **Giants**
   (`giants.ts`: household names, parent companies and their brands, $1B+ sales) are held back: nothing
   picks them, and a hand add asks — **Add anyway** (`allowGiants` on planAddBrands, `allowGiant` on
   queueBrandTargets/queueContact, the giant card's button → `allowGiant`) OKs that brand for good.
@@ -259,9 +265,19 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   the day preview (`waits` on pinned cards, not counted in the day), add results and previews
   (`waitingOnDay` — an add goes last), the brand page line, and today's queue:
   `queuePlannedToday` (getTodayQueue, and after a reorder of today; `dryRun` for the brand page)
-  stamps today's planned brands in order and never takes anyone out; the LinkedIn tab lists them
-  first, in that order, and names who waits (`plannedWaiting`, `waitingTo`). A waiting card on
-  today has **Send today anyway** (queueBrandTargets). Adding to today still goes straight in.
+  stamps today's planned brands in order and never takes anyone out — nor tops up a brand already in
+  today's list or sent today (a reload adds nobody: it used to push a 30-person day to 35, refill a
+  Leave out and let the CEO step in; executives fill a brand's count only when no non-executive there is
+  untargeted or in play — `dropExecsAtBigBrands(…, inPlayNonExec)`, "+ Person" excepted). **One order for
+  today** (`src/lib/today-order.ts`, `node scripts/test-today-order.mjs`): planned brands in plan order, then
+  hand-adds newest first, then the fill's brands in `outreachAutoQueued` order (best first) — getTodayQueue,
+  Today's list for Zach and the Schedule's today column; a reload used to list the fill worst-first. The
+  LinkedIn tab names who waits (`plannedWaiting`, `waitingTo`). A waiting card on today has **Send today
+  anyway** (queueBrandTargets). Adding to today still goes straight in — after today's earlier pins are
+  stamped (planAddCore runs queuePlannedToday first; the preview counts them), so an add never pushes a pin
+  to tomorrow; today's note says move a brand or send anyway (a reorder frees nothing there). Today's queue
+  end to end (the roll's part-sent / Pass cases, one order, reloads, Leave out, Off queue, Withdrew, adds,
+  ready if you have room): `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-queue-e2e.js`.
   **Categories chart** (Leo: "a chart that shows what category of brands we have reached out
   to and u can click on it"): replaced the tiles. One bar per category, length = brands in play
   (set aside left out), steps Replied / Accepted / Invited or emailed / Not reached (one blue
@@ -284,7 +300,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   passes 100. **Coverage** (`categoryCoverage`): categories × the last 6 weeks (Mon–Sun, New York),
   invites per week + share accepted (accepted/replied, withdrawn uncounted); 90-day accept rates
   (smoothed, cached 10 min) also order the Fill box's other categories. **Outreach → LinkedIn** = one card per brand
-  (sent people stay in their card, `getTodayQueue.sentList`; a finished brand folds to one line). **Brands not reached yet** (`nextBestBrands` → `renderNextBest`, `#nextbest`) sits under the queue in the main column (Leo, Oct 7 2026 — it was in the right rail, off screen); **+ Add to today** = `queueBrandTargets`.
+  (sent people stay in their card, `getTodayQueue.sentList`; a finished brand folds to one line). **Ready if you have
+  room** = whole brands (`getTodayQueue.moreBrands` + `openSpots`, `oqMoreCard`): **Add to today (N)** when it fits the
+  open spots, else the Put on a day picker — never one person to Mark sent (one send made the brand reached and
+  stranded its rest for two weeks). **Brands not reached yet** (`nextBestBrands` → `renderNextBest`, `#nextbest`) sits under the queue in the main column (Leo, Oct 7 2026 — it was in the right rail, off screen); **+ Add to today** = `queueBrandTargets`.
   **Add a brand from the queue** (Leo, Oct 8 2026: "i should be able to add a brand from the queue"): the LinkedIn tab's
   add box (`#oq-addbar`) sticks just under the header (`--head-h`, measured from `.header-stick`; the rail uses it too)
   and uses the Schedule's search (`searchPlanBrands` for today: spelling slips, aka, contacts label, what Add does);
@@ -293,8 +312,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   **Old invites** (rail card + clean-up panel; `staleInvites` = still "sent" after 21 days, by brand,
   with who the brand would try next; `markInvitesWithdrawn` preview → one transaction + a
   TargetEvent each): withdrawn on Zach's LinkedIn, ticked here. They keep `sentAt` (coverage and
-  accept rates still count them; the brand stays reached) — unlike the row's **Withdrew**, which
-  is a mistake taken back and uncounts the send. "Plan them" pins brands with someone new to the
+  accept rates still count them; the brand stays reached) — so does the row's **Withdrew** on an invite
+  from before today (since Oct 12 2026; logged "Invite from <date> withdrawn on LinkedIn"); only one
+  sent today is a mistake taken back and uncounts the send. "Plan them" pins brands with someone new to the
   next sending day. A send out of the queue is always dated now (`setTargetStatus`), even on a row
   carrying an earlier invite's date.
 - **Brand Fit** (Leo, Oct 2026: "a filter process to determine which brands we should reach out to").
@@ -353,7 +373,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   rows, and on today the invites already sent (`sentPeople`), noted as sent; a brand that waits is named,
   a blocked one left out), day chips tick days in/out. What went out = `sentByCompany({ from, to })`:
   LinkedIn invites dated in those New York days, any status (the LinkedIn tab's "sent today" count;
-  Withdrew clears the date), by company in send order — **LinkedIn only** (his call); Today / Yesterday /
+  a same-day Withdrew clears the date, an older one keeps it), by company in send order — **LinkedIn only** (his call); Today / Yesterday /
   This week / Last week or typed dates. `node scripts/test-outreach-lists.js`.
 - **Brands → Stock take** (`brandStock` + `src/lib/stock.ts`; deep link `app.html#stock`; linked from
   Home → Categories) — the whole roster in one read, every brand in exactly one row. **Leo's lanes are
@@ -509,7 +529,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   10 (`workNeed({ big })`), the brand page's Work menu goes 1–4, 6, 8, 10). People past the limit are **next in line**,
   not shelved (Leo: "people should only be shelved if they're actually shelved"): `Target.shelvedHow = 'cap'` (set by
   `reconcileBrandTargets` in /api/data and /api/ingest) reads "next in line" / **Queue now** on the brand page and comes
-  back by itself when a spot opens; `shelvedHow` null = set aside on purpose (Shelve, Off queue, Archive) — "shelved",
+  back by itself when a spot opens; `shelvedHow` null = set aside on purpose (Shelve, Archive) — "shelved",
   never revived alone. `markCapShelved({ preview, before })` labelled the rows shelved before this existed.
   `importContacts({ rows, source: 'research' })` = people Claude found on the open web (each row's `notes` says where). The sweep's
   worklist (`action:'list'`, scope `thin`, emptiest brand first) is every brand under the contact
@@ -861,9 +881,11 @@ cloud environment's settings).
   queue and never sent, or a brand pinned there / shown there by the rotation (Setting
   `outreachDayRows`, written by `getOutreachPlan`) that sent nobody — is pinned to the next sending
   day and its stamped people go back to the pool so that day's queue stamps them again. Stays put,
-  with why: archived / do-not-email / in talks, passed that day, planned for another day, nobody left.
+  with why: archived / do-not-email / in talks, passed that day or inside a Pass's two weeks, planned for
+  another day, nobody left, resting (a part-sent brand whose next sending day has gone by — queue rules).
   **Onto a Best fit day** (Oct 7 2026) only real commitments carry: brands planned by hand, people queued
-  by hand, a brand that sent anyone that day (half-sent, it goes whole), and the automatic fill's picks Best fit
+  by hand, a brand that sent anyone that day (half-sent: its rest goes out on that next sending day, the same
+  sitting — Leo, Oct 12 2026), and the automatic fill's picks Best fit
   would still pick. What the day only showed, and the fill's own picks at brands already reached / Skip / too
   small (Setting `outreachAutoQueued`, written by getTodayQueue), go back to waiting — so the day stays best fit.
   Rules pure in `src/lib/carry.ts` (`node scripts/test-carry.mjs`); last roll in Setting

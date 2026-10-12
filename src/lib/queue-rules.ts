@@ -24,6 +24,14 @@
 // stops a brand on the day it opened. A later day on the Schedule is
 // judged as of that day.
 //
+// Part-sent brands (Leo, Oct 12 2026: "If Zach sends only some of a
+// brand's people one day, the rest go out on the next sending day"): the
+// sitting runs on to the next sending day after the first one, for the
+// hand paths only (the morning roll's pin, a hand add) — so the rest of
+// that first outreach finishes there, and only there. The two weeks
+// start after the sitting: from its second day when anything went out
+// then, else from its first.
+//
 // Pure — src/app/api/data/route.ts loads the rows and asks here.
 // node scripts/test-queue-rules.mjs
 
@@ -104,9 +112,42 @@ export function firstOutreachAt(rows: OutreachRow[]): Date | null {
   return outreachDates(rows).first
 }
 
-// The first day a reached brand may be queued again by hand.
+// The first day a reached brand may be queued again by hand, counted
+// from its first outreach (a brand with no second sitting day).
 export function restUntilDay(first: Date): string {
   return addDays(nyDayKey(first), REST_DAYS)
+}
+
+// The sending day after a day key (route.ts knows the days: Tue–Thu plus
+// the extra days Leo opened). Missing = no second sitting day at all.
+export type NextSending = (day: string) => string | null
+
+// The brand's sitting and its rest: `days` = the day its first outreach
+// began, then the next sending day (the rest of a part-sent brand goes
+// out there); `restFrom` = the sitting's last day that anything went out
+// on; `until` = the first day it may be queued again by hand. An undated
+// reach (an accept logged without its invite, an email with no date) is
+// never a sitting: it counts from its last change, as before.
+export type Sitting = { first: Date; days: string[]; restFrom: string; until: string }
+export function sittingOf(rows: OutreachRow[], nextSending?: NextSending): Sitting | null {
+  const { first, undated } = outreachDates(rows)
+  if (!first) return null
+  const day1 = nyDayKey(first)
+  if (undated) return { first, days: [], restFrom: day1, until: addDays(day1, REST_DAYS) }
+  const day2 = nextSending ? nextSending(day1) : null
+  const days = day2 && day2 > day1 ? [day1, day2] : [day1]
+  const restFrom = days.length > 1 && reachDays(rows).has(days[1]) ? days[1] : day1
+  return { first, days, restFrom, until: addDays(restFrom, REST_DAYS) }
+}
+
+// The New York days anything dated went out on.
+function reachDays(rows: OutreachRow[]): Set<string> {
+  const out = new Set<string>()
+  for (const t of rows) {
+    if (!rowReached(t)) continue
+    for (const d of [t.sentAt, t.emailedAt, t.firstEmailAt]) if (d && !isNaN(d.getTime())) out.add(nyDayKey(d))
+  }
+  return out
 }
 
 export type GateReason = 'reached' | 'resting' | 'giant'
@@ -119,16 +160,19 @@ export type Gate = { reason: GateReason; first?: Date; until?: string; why?: str
 //  giantsOn: Leo turned giants on (the Schedule's switch) or OK'd this one.
 // A hand add only ever gets 'resting' or 'giant' back; 'giant' there is a
 // question, not a refusal — the caller asks before adding.
+// nextSending: the sending days, for a part-sent brand's second sitting
+// day (hand paths only); without it the sitting is its first day alone.
 export function queueGate(
   b: { name: string; aka?: string | null; salesCents?: bigint | number | null; rows: OutreachRow[] },
-  opts: { auto: boolean; giantsOn: boolean; day: string },
+  opts: { auto: boolean; giantsOn: boolean; day: string; nextSending?: NextSending },
 ): Gate {
-  const { first, undated } = outreachDates(b.rows)
-  // Reached before this day (the day it opened is its own sitting).
-  if (first && (undated || nyDayKey(first) < opts.day)) {
-    const until = restUntilDay(first)
-    if (opts.auto) return { reason: 'reached', first, until }
-    if (opts.day < until) return { reason: 'resting', first, until }
+  const s = sittingOf(b.rows, opts.nextSending)
+  // Reached before this day (the day it opened is its own sitting; by
+  // hand, so is the next sending day — the rest of a part-sent brand).
+  if (s && (!s.days.length || s.days[0] < opts.day)) {
+    const sitting = !opts.auto && s.days.includes(opts.day)
+    if (opts.auto) return { reason: 'reached', first: s.first, until: s.until }
+    if (!sitting && opts.day < s.until) return { reason: 'resting', first: s.first, until: s.until }
   }
   if (!opts.giantsOn) {
     const why = giantOf(b)

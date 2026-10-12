@@ -64,10 +64,16 @@ export function findUnsent(input: {
 // null. passedOn: the day Pass today was pressed on it, if any. pinnedOn:
 // a day from today on it is already planned for (not one being emptied).
 // people: who would go out if it moved.
+// passedUntil: the last day of a Pass's two weeks still running (Leo, Oct
+// 7 2026: "it should not show up in the outreach tab again for at least
+// two weeks"), else null — a brand the Schedule showed on another day
+// never carries back in through it.
 export type CarryFacts = {
   name: string; refusal: string | null; passedOn: string | null; pinnedOn: string | null; people: number
   // How to say pinnedOn ("Tue Sep 29"); the key itself when missing.
   pinnedLabel?: string
+  passedUntil?: string | null
+  passedUntilLabel?: string
 }
 
 // Which brands move to `to` and which stay, each staying one with why.
@@ -95,6 +101,10 @@ export function planCarry(
     if (!f) continue
     if (f.refusal) { left.push({ id, name: f.name, why: f.refusal }); continue }
     if (f.passedOn === u.from) { left.push({ id, name: f.name, why: 'Passed that day' }); continue }
+    if (f.passedUntil && f.passedUntil >= to) {
+      left.push({ id, name: f.name, why: `Passed until ${f.passedUntilLabel ?? f.passedUntil}` })
+      continue
+    }
     if (f.pinnedOn && f.pinnedOn !== to) {
       left.push({ id, name: f.name, why: `Planned for ${f.pinnedLabel ?? f.pinnedOn} already` })
       unstamp.push(...u.stamped)

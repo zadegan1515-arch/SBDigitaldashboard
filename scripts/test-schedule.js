@@ -27,6 +27,9 @@
 //      line and its switch, Add anyway on a giant's card, an add that
 //      comes back "a giant" asks and re-adds with allowGiants, and a giant
 //      row in the find box sends allowGiants straight away.
+//   7. A later day's automatic row has the × too ("Not now" = a Pass, two
+//      weeks), and today's "planned brands wait" note says to move a brand
+//      or Send today anyway — reordering today frees nothing.
 //
 // Run: NODE_PATH=$(npm root -g) node scripts/test-schedule.js   (~6s)
 
@@ -51,6 +54,7 @@ const PRIORITY = { spirits: 'top', betting: 'top', beauty: 'middle', apparel: 'l
 let themeUndo = null;
 let giantsOn = false;
 let giantCard = false;
+let waitCard = false;
 const GIANT_CARD = { id: 'g1', name: 'Red Bull', category: 'energy', state: 'blocked', going: 0, people: [], giant: true, reason: 'giant', reasonText: 'A giant (a household name) — held back for now. Add anyway to send it.' };
 const PLAN = () => ({
   queueRules: { giantsOn, giantsHeld: 7, giantsOk: 0, restDays: 14 },
@@ -64,7 +68,8 @@ const PLAN = () => ({
   days: [
     {
       date: '2026-10-07', today: true, category: 'bestfit', auto: true, total: 7, sent: 0, offTheme: 1,
-      pinned: [{ id: 'p1', name: 'BodyArmor', category: 'electrolytes', state: 'going', going: 2, people: [{ name: 'Ann' }] }],
+      pinned: [{ id: 'p1', name: 'BodyArmor', category: 'electrolytes', state: 'going', going: 2, people: [{ name: 'Ann' }] }]
+        .concat(waitCard ? [{ id: 'p9', name: 'Waiting Co', category: 'energy', state: 'going', going: 4, people: [], waits: '2026-10-08' }] : []),
       brands: [{ id: 'a1', name: 'Celsius', going: 4, people: [{ name: 'Bo' }], category: 'energy' }],
       sentPeople: [], overflow: [],
     },
@@ -104,6 +109,7 @@ const H = {
     ? { brandId: id, brandName: 'Giant ' + id, added: false, state: 'refused', going: 0, reason: 'giant', reasonText: 'A giant (a household name) — held back for now. Add anyway to send it.' }
     : { brandId: id, brandName: id, added: true, state: 'going', going: 4, people: [] })) }),
   setGiantsOn: ({ on }) => { giantsOn = !!on; return { giantsOn }; },
+  passBrandToday: ({ brandId }) => ({ id: brandId, name: brandId, passedToday: true, unqueued: 0 }),
   allowGiant: ({ brandId }) => ({ ok: true, brandId, name: 'Red Bull' }),
   matchBrandList: ({ text }) => ({ lines: text.split('\n').map((t) => ({ input: t, brand: null, suggestions: [] })) }),
   planApplyCategory: ({ date, category, preview, keepPins, expect }) => {
@@ -334,6 +340,23 @@ async function main() {
   await waitFor(() => last('planAddBrands').args.brandIds[0] === 'g3', 'the giant row add');
   assert.deepEqual(last('planAddBrands').args.allowGiants, ['g3']);
   console.log('✓ 6 queue rules: the Giants line + switch, Add anyway on a card, an add asks for giants, a giant row');
+
+  // 7. Not now on any day; today's waiting note ------------------------
+  const x2 = '[data-drop="2026-10-08"] [data-stoday="a2"]';
+  await page.waitForSelector(x2);
+  assert.match(await page.getAttribute(x2, 'title'), /Not now — off outreach for 2 weeks/);
+  await page.click(x2);
+  await waitFor(() => count('passBrandToday') === 1, 'Not now on a later day');
+  assert.deepEqual(last('passBrandToday').args, { brandId: 'a2' });
+  assert.ok(await page.$('[data-drop="2026-10-07"] [data-stoday="a1"]'), 'today\'s automatic row keeps its ×');
+  waitCard = true;
+  await page.evaluate(() => sdRefresh());
+  await page.waitForFunction(() => /planned brand waits/.test(document.querySelector('[data-drop="2026-10-07"]').textContent));
+  const todayCol = await page.textContent('[data-drop="2026-10-07"]');
+  assert.match(todayCol, /Move a brand to another day .*Send today anyway/);
+  assert.doesNotMatch(todayCol, /Drag to change who goes first/);
+  waitCard = false;
+  console.log('✓ 7 Not now (a Pass) on any day\'s automatic row; today\'s waiting note says move or send anyway');
 
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All Schedule checks passed.');

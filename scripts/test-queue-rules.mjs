@@ -3,8 +3,10 @@
 //
 // Pins: the system only picks brands nobody has reached out to (an invite
 // logged outside the queue or withdrawn counts, a mistaken send taken back
-// doesn't); by hand a reached brand rests 14 days from its FIRST outreach;
-// giants are held back unless Leo turns them on. Compiles the lib and the
+// doesn't); by hand a reached brand rests 14 days from its FIRST outreach
+// — a part-sent brand's rest goes out on the next sending day, the same
+// sitting, and the 14 days start after it; giants are held back unless Leo
+// turns them on. Compiles the lib and the
 // ones it reads, like test-duplicates.mjs.
 // Run: node scripts/test-queue-rules.mjs
 
@@ -25,7 +27,7 @@ for (const f of readdirSync(out).filter(f => f.endsWith('.js'))) {
   const p = join(out, f)
   writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, "from '$1.js'"))
 }
-const { REST_DAYS, rowReached, firstOutreachAt, restUntilDay, queueGate, giantOf, nyDayKey } = await import(pathToFileURL(join(out, 'queue-rules.js')).href)
+const { REST_DAYS, rowReached, firstOutreachAt, restUntilDay, queueGate, giantOf, nyDayKey, sittingOf } = await import(pathToFileURL(join(out, 'queue-rules.js')).href)
 
 let pass = 0, fail = 0
 const is = (label, got, want) => {
@@ -96,6 +98,46 @@ is('a giant is held back from the picks', gate(red, { auto: true }), { reason: '
 is('a giant by hand: a question (giant), not a rest', gate(red, { auto: false })?.reason, 'giant')
 is('giants on (or this one OK\'d): it goes', gate(red, { auto: true, giantsOn: true }), null)
 is('resting wins over giant by hand', gate({ ...reachedOn('2026-10-09'), name: 'Red Bull' }, { auto: false })?.reason, 'resting')
+
+// ---- part-sent brands: the sitting runs on to the next sending day ------------
+// Leo, Oct 12 2026: "If Zach sends only some of a brand's people one day, the
+// rest go out on the next sending day" — then the two weeks start.
+// Tue–Thu, plus extra days (Oct 12 2026 is a Monday).
+const sendingAfter = (extras = []) => (key) => {
+  for (let k = 1; k < 30; k++) {
+    const d = new Date(new Date(key + 'T12:00:00Z').getTime() + k * 864e5).toISOString().slice(0, 10)
+    const dow = new Date(d + 'T12:00:00Z').getUTCDay()
+    if ([2, 3, 4].includes(dow) || extras.includes(d)) return d
+  }
+  return null
+}
+const next = sendingAfter()
+const partSent = (sentDays) => ({ name: 'Mid Co', rows: [
+  ...sentDays.map(day => row({ status: 'sent', sentAt: d(day) })),
+  row({ status: 'drafted' }), row({ status: 'queued' }),
+] })
+const tue = partSent(['2026-10-13', '2026-10-13'])
+const hand = (b, day, nx = next) => queueGate(b, { auto: false, giantsOn: false, day, nextSending: nx })
+is('part-sent on Tue: by hand the rest go Wed (the same sitting)', hand(tue, '2026-10-14'), null)
+is('…the system still never picks it Wed', queueGate(tue, { auto: true, giantsOn: false, day: '2026-10-14', nextSending: next })?.reason, 'reached')
+const thu = hand(tue, '2026-10-15')
+is('…only that one day: Thu it rests, two weeks from Tue (nothing went Wed)', [thu?.reason, thu?.until], ['resting', '2026-10-27'])
+const both = partSent(['2026-10-13', '2026-10-14'])
+const thu2 = hand(both, '2026-10-15')
+is('the rest went Wed: the two weeks start after it', [thu2?.reason, thu2?.until], ['resting', '2026-10-28'])
+is('…so it can go again two weeks after Wed, not Tue', [hand(both, '2026-10-27')?.reason, hand(both, '2026-10-28')], ['resting', null])
+const thursday = partSent(['2026-10-15'])
+is('part-sent on Thu: the next sending day is Tue (no Fri–Mon)', [hand(thursday, '2026-10-20'), hand(thursday, '2026-10-16')?.reason], [null, 'resting'])
+const withFri = sendingAfter(['2026-10-16'])
+is('an extra Friday open: that is the next sending day, and Tue rests', [hand(thursday, '2026-10-16', withFri), hand(thursday, '2026-10-20', withFri)?.reason], [null, 'resting'])
+is('without the sending days: the first day only (as before)', queueGate(tue, { auto: false, giantsOn: false, day: '2026-10-14' })?.reason, 'resting')
+const undatedAccept = { name: 'Mid Co', rows: [row({ status: 'accepted', updatedAt: d('2026-10-13') }), row()] }
+is('an accept logged without its invite never opens a sitting, nor a second day', hand(undatedAccept, '2026-10-14')?.reason, 'resting')
+is('sittingOf: the days and when the rest starts', sittingOf(both.rows, next) && {
+  days: sittingOf(both.rows, next).days, restFrom: sittingOf(both.rows, next).restFrom, until: sittingOf(both.rows, next).until,
+}, { days: ['2026-10-13', '2026-10-14'], restFrom: '2026-10-14', until: '2026-10-28' })
+is('sittingOf: never reached', sittingOf([row()], next), null)
+is('a giant part-sent: still the giant question on its second day', queueGate({ ...tue, name: 'Red Bull' }, { auto: false, giantsOn: false, day: '2026-10-14', nextSending: next })?.reason, 'giant')
 
 // ---- giants -------------------------------------------------------------------
 is('household name, any spelling', giantOf({ name: 'Monster Energy Co.' }), 'a household name')

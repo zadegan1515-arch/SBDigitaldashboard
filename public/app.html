@@ -1234,6 +1234,8 @@
   .oq-brand [data-fold]{margin:0 16px 14px}
   .oq-brand #nextstep-form{margin:0 16px 14px}
   .oq-done .oq-bh{padding:11px 20px}
+  /* "Ready if you have room": the Put on a day picker under a brand. */
+  .oq-moreday{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 20px 13px;font-size:13px}
   .oq-done .oq-ok{color:var(--good);font-weight:700}
   .oq-done .oq-dsum{font-size:13.5px;color:var(--ink-2);min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* activations budget sheet — reads as a table, edits in place */
@@ -3697,6 +3699,19 @@ function goHomeFromLogo() {
 document.getElementById('logo-home').addEventListener('click', goHomeFromLogo);
 document.getElementById('logo-home').addEventListener('keydown', function (ev) {
   if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); goHomeFromLogo(); }
+});
+
+// Outreach → LinkedIn: a whole brand from "ready if you have room" into
+// today's list.
+document.addEventListener('click', function (ev) {
+  var el = ev.target.closest('[data-oqmoreadd]');
+  if (!el) return;
+  el.disabled = true;
+  var bid = el.getAttribute('data-oqmoreadd');
+  api('queueBrandTargets', { brandId: bid }).then(function (r) {
+    queueToast(r);
+    loadOutreach();
+  }).catch(function (err) { el.disabled = false; toast(err.message); });
 });
 
 // Outreach → LinkedIn: Pass a whole brand for today.
@@ -11103,7 +11118,7 @@ document.getElementById('reached-list').addEventListener('click', function (e) {
   });
   renderReached();
   toast(status === 'replied' ? 'Reply logged — they’re on your Home needs-action list'
-    : status === 'withdrawn' ? 'Logged as withdrawn — Re-queue them from the LinkedIn tab (All targets) anytime'
+    : status === 'withdrawn' ? 'Logged as withdrawn — an invite from before today still counts as sent. Re-queue them from the LinkedIn tab (All targets) anytime'
     : 'Accepted — DM them from the LinkedIn tab');
   api('setTargetStatus', { targetId: tid, status: status, actor: ME.owner || null })
     .catch(function (err) { toast(err.message); RC_DATA = []; loadReached(); });
@@ -12496,12 +12511,10 @@ function sdAutoCard(b, key, isToday) {
     (pp.names.length ? ' · ' + sdNames(pp.names) : '') +
     (b.later ? ' <span class="sd-dim" title="Ready too, but past the day’s ' + sdCap() + ' — they go out next time">+' + b.later + ' next time</span>' : '') +
   '</div>';
-  // × on today passes the brand for today (back on its own tomorrow); a
-  // later day's automatic row is the day's own pick, so it has none — Move
-  // to… pins it elsewhere, Archive takes it off outreach.
-  var x = isToday
-    ? '<button class="btn-ghost sd-cardx" data-stoday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" title="Pass — off outreach for 2 weeks" aria-label="Pass ' + esc(b.name) + ' for 2 weeks">×</button>'
-    : '';
+  // × on any day's automatic row = Not now: a Pass, off outreach for two
+  // weeks (Leo, Oct 7 2026), so a brand can come off Wednesday's list
+  // before the plan goes to Zach. Move to… pins it elsewhere instead.
+  var x = '<button class="btn-ghost sd-cardx" data-stoday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" title="Not now — off outreach for 2 weeks" aria-label="Not now: pass ' + esc(b.name) + ' for 2 weeks">×</button>';
   var menu = '<div class="sd-menu-row">' + sdMoveSel(b.id, b.name, '', key, isToday && b.inQueue) + '</div>' +
     (sdIsShort(SCHED.labels[b.id]) ? sdLiLink(b) : '') +
     sdArchiveBtn(b.id, b.name, '');
@@ -12615,7 +12628,10 @@ function sdDayHtml(key) {
     html += '<div class="sd-note">What was left today moved to ' + esc(sdDayName(day.closedTo)) + '. Only brands you add by hand go out today.</div>';
   }
   var waiting = pinned.filter(function (p) { return p.waits; }).length;
-  if (waiting) html += '<div class="sd-note">' + sdPlural(waiting, 'planned brand waits', 'planned brands wait') + ' — past the day’s ' + cap + '. Drag to change who goes first.</div>';
+  // Today the brands ahead of them are in the LinkedIn list already, so a
+  // new order frees nothing: move one to another day, or send it anyway.
+  if (waiting) html += '<div class="sd-note">' + sdPlural(waiting, 'planned brand waits', 'planned brands wait') + ' — past the day’s ' + cap + '. ' +
+    (isToday ? 'Move a brand to another day (⋯ → Move to…), or ⋯ → Send today anyway.' : 'Drag to change who goes first.') + '</div>';
   html += pinned.map(function (p, i) { return sdPinnedCard(p, key, i, pinned.length); }).join('');
   html += auto.map(function (b) { return sdAutoCard(b, key, isToday); }).join('');
   if (!pinned.length && !auto.length) {
@@ -14248,9 +14264,9 @@ var SCHED_DRAG = null;
     }
     if ((t = e.target.closest('[data-sdxrm]'))) { e.preventDefault(); sdRemoveExtraDay(t.getAttribute('data-sdxrm')); return; }
     if ((t = e.target.closest('[data-sdseecat]'))) { e.preventDefault(); sdOpenCat(t.getAttribute('data-sdseecat'), true); return; }
-    // Pass for today: off today's suggestions only, back by itself
-    // tomorrow — which is the whole point of it being separate from
-    // Archive.
+    // Not now (an automatic row's ×, any day): a Pass, off outreach for
+    // two weeks and back by itself — which is the whole point of it being
+    // separate from Archive.
     if ((t = e.target.closest('[data-stoday]'))) {
       var tname = t.getAttribute('data-sn');
       t.disabled = true;
@@ -15047,10 +15063,10 @@ function targetRow(t) {
       '<span style="width:1px;height:16px;background:var(--border);margin:0 3px;flex:none"></span>' +
       (t.status === 'sent'
         ? '<button class="btn-ghost mini" data-act="unsend" title="Hit Mark sent by mistake? Puts them back in the queue and uncounts the send">↩ Undo</button>' +
-          '<button class="btn-ghost mini" data-act="withdrew" title="Withdrew the invite on LinkedIn? Logs it and uncounts the send — Re-queue brings them back">Withdrew</button>' : '') +
+          '<button class="btn-ghost mini" data-act="withdrew" title="Withdrew the invite on LinkedIn? Logs it. Sent today: the send is uncounted. Older: it still counts as sent — Re-queue brings them back">Withdrew</button>' : '') +
       '<button class="btn-ghost mini" data-act="addperson" title="Queue another person at this brand — the next decision maker steps in">+ Person</button>' +
       '<button class="btn-ghost mini" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
-      (isPre ? '<button class="btn-ghost mini" data-act="unqueue" title="Take the whole company off the queue — nobody deleted, promote them back from the brand page">Off queue</button>' : '') +
+      (isPre ? '<button class="btn-ghost mini" data-act="unqueue" title="Take the whole company off today’s list — nobody deleted, it can come back tomorrow (Pass brand = two weeks)">Off queue</button>' : '') +
       (t.status !== 'declined' && t.status !== 'dead' && t.status !== 'converted' && t.status !== 'passed'
         ? '<button class="btn-ghost mini danger" data-act="pass" title="Pass on THIS person only — the brand stays in play and another person can take the slot">Pass</button>' : '') +
     '</div>' +
@@ -15182,6 +15198,33 @@ function oqBrandCard(g) {
       (c.sent < c.total ? '<button class="btn-ghost oq-bpass" data-oqbpass="' + esc(g.brandId) + '" title="Take the whole brand off outreach for 2 weeks. Its people go back to the pool.">Pass brand</button>' : '') +
     '</div>' +
     '<div class="oq-rows">' + rows.map(targetRow).join('') + '</div>' +
+  '</div>';
+}
+
+// "Ready if you have room" (getTodayQueue.moreBrands, openSpots): one
+// card per WHOLE brand, never a person to Mark sent — one send made the
+// brand reached, and its other people sat out the two-week rest. Add to
+// today when it fits the open spots (queueBrandTargets), else Put on a
+// day (the usual picker: preview first, then Add).
+var OQ_MORE = { list: [], open: 0 };
+function oqMoreCard(m) {
+  var fits = OQ_MORE.open >= m.size;
+  var cat = m.category ? (CAT_NAMES[m.category] || m.category) : '';
+  pdCtx('oqmore:' + m.brandId, {
+    ids: function () { return [m.brandId]; },
+    render: function () { var el = document.querySelector('[data-oqmoreday="' + m.brandId + '"]'); if (el) el.innerHTML = pdHtml('oqmore:' + m.brandId); },
+    done: function () { loadOutreach(); },
+  });
+  return '<div class="oq-brand" data-oqmore="' + esc(m.brandId) + '">' +
+    '<div class="oq-bh">' +
+      '<span class="oq-bname" data-brand="' + esc(m.brandId) + '">' + esc(m.brandName) + '</span>' +
+      (cat ? '<span class="oq-bcat">' + esc(cat) + '</span>' : '') +
+      sdLabel(OQ_LABELS[m.brandId]) +
+      '<span class="sd-dim">' + esc(sdPlural(m.size, 'person', 'people')) +
+        ((m.people || []).length ? ' · ' + esc(m.people.map(function (p) { return p.name; }).join(', ')) : '') + '</span>' +
+      (fits ? '<button class="btn-draft" data-oqmoreadd="' + esc(m.brandId) + '" title="Queue the whole brand into today’s list">Add to today (' + m.size + ')</button>' : '') +
+    '</div>' +
+    (fits ? '' : '<div class="oq-moreday" data-oqmoreday="' + esc(m.brandId) + '">' + pdHtml('oqmore:' + m.brandId) + '</div>') +
   '</div>';
 }
 
@@ -15608,7 +15651,8 @@ function loadOutreach() {
           SENT_TODAY.count = tq.sentToday || 0;
           SENT_TODAY.cap = tq.cap || SENT_TODAY.cap;
           OQ_LABELS = tq.labels || {};
-          return { accepted: [], list: list, theme: tq.theme || null, more: tq.more || [], sentToday: sentToday, stale: stale };
+          OQ_MORE = { list: tq.moreBrands || [], open: typeof tq.openSpots === 'number' ? tq.openSpots : 0 };
+          return { accepted: [], list: list, theme: tq.theme || null, more: OQ_MORE.list, sentToday: sentToday, stale: stale };
         })
     : api('listTargets', { status: statusFilter }).then(function (l) { return { accepted: [], list: l || [], theme: null, more: [], sentToday: [], stale: [] }; });
 
@@ -15619,7 +15663,6 @@ function loadOutreach() {
     OQ_THEME = r.theme || null;
     r.accepted.forEach(function (t) { TARGET_CACHE[t.id] = t; });
     r.sentToday.forEach(function (t) { TARGET_CACHE[t.id] = t; });
-    (r.more || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
     (list || []).forEach(function (t) { TARGET_CACHE[t.id] = t; });
     // Not a sending day (not Tue/Wed/Thu, and not an extra day added on
     // the Schedule). Say so at the top of the queue rather than letting
@@ -15634,7 +15677,7 @@ function loadOutreach() {
       ? '<div class="hint" style="margin:6px 0 0;color:#eec777">' + sdPlural(OQ_WAITING.list.length, 'planned brand waits', 'planned brands wait') +
         ' — today’s ' + SENT_TODAY.cap + ' are taken: ' + esc(OQ_WAITING.list.map(function (w) { return w.brandName; }).join(', ')) + '. ' +
         (OQ_WAITING.to ? 'They move to ' + esc(sdDayName(OQ_WAITING.to)) + ' tomorrow morning. ' : '') +
-        'Change who goes first on the Schedule.</div>'
+        'To send one today, move a brand to another day on the Schedule, or use Send today anyway there.</div>'
       : '';
     var offNote = waitNote + closedNote + (offDay
       ? '<div class="hint" style="margin:6px 0 0;color:#f0b86b">No outreach today (Tue–Thu only). Next: ' +
@@ -15708,12 +15751,15 @@ function loadOutreach() {
         '<div class="hint" style="margin:2px 0 10px">Everyone at these brands got their invite. Show people for an Undo, or when an accept lands.</div>' +
         '<div data-oqsec="done">' + done.map(oqDoneCard).join('') + '</div>'
       : '';
-    // "The rest in that category" — ready rows past today's 30, in
-    // case there's room. Mark sent still counts toward the cap.
+    // The next whole brands after today's list (getTodayQueue.moreBrands):
+    // Add to today when they fit the open spots, else put on a day.
     var moreBlock = (r.more || []).length
       ? '<div class="count-head" style="margin-top:24px">' + (r.theme === 'bestfit' ? 'Next best fit' : 'More in ' + (r.theme ? esc(CAT_NAMES[r.theme] || r.theme) : 'this category')) + ' — ready if you have room <span class="n">' + r.more.length + '</span></div>' +
-        '<div class="hint" style="margin:2px 0 10px">Beyond today’s ' + SENT_TODAY.cap + '. Sending one still counts toward the daily cap.</div>' +
-        '<div data-oqsec="more">' + oqGroup(r.more).map(oqBrandCard).join('') + '</div>'
+        '<div class="hint" style="margin:2px 0 10px">' + (OQ_MORE.open > 0
+          ? sdPlural(OQ_MORE.open, 'open spot', 'open spots') + ' today — add a whole brand.'
+          : 'Today’s ' + SENT_TODAY.cap + ' are taken — put one on another day.') +
+          ' A brand goes out whole: its first outreach is all its people.</div>' +
+        '<div data-oqsec="more">' + r.more.map(oqMoreCard).join('') + '</div>'
       : '';
     var old21 = (r.stale || []).filter(function (t) { return Date.now() - new Date(t.sentAt).getTime() >= 21 * 864e5; }).length;
     var staleBlock = (r.stale || []).length
@@ -19693,11 +19739,16 @@ document.getElementById('targets').addEventListener('click', function (e) {
       .catch(function (err) { toast(err.message); loadOutreach(); });
   }
 
+  // Withdrew: an invite sent today is a mistake taken back (uncounted); an
+  // older one went out and keeps its date, so the brand stays reached —
+  // the server does the same (setTargetStatus).
   if (act === 'withdrew') {
     var wt = TARGET_CACHE[id];
-    if (wt) { wt.status = 'withdrawn'; wt.sentAt = null; refreshRow(id); }
-    bumpSentToday(-1);
-    toast('Logged as withdrawn — Re-queue when you want another go');
+    var wtToday = !!(wt && wt.sentAt && nyKey(new Date(wt.sentAt)) === nyKey());
+    if (wt) { wt.status = 'withdrawn'; if (wtToday) wt.sentAt = null; refreshRow(id); }
+    if (wtToday) bumpSentToday(-1);
+    toast(wtToday ? 'Logged as withdrawn — that send is uncounted. Re-queue when you want another go'
+      : 'Logged as withdrawn — the invite still counts as sent, so the brand stays reached');
     api('setTargetStatus', { targetId: id, status: 'withdrawn', actor: ME.owner || null })
       .catch(function (err) { toast(err.message); loadOutreach(); });
   }
@@ -19710,9 +19761,9 @@ document.getElementById('targets').addEventListener('click', function (e) {
       .catch(function (err) { toast(err.message); loadOutreach(); });
   }
 
-  // Off queue = the whole COMPANY steps out of the queue (Leo). Nobody
-  // deleted — the brand page promotes them back. In place: every row
-  // of the brand vanishes.
+  // Off queue = the whole COMPANY steps out of today's list (Leo; today
+  // only since Oct 12 2026 — Pass brand is the two weeks). Nobody deleted.
+  // In place: every unsent row of the brand vanishes.
   if (act === 'unqueue') {
     var uqBrand = TARGET_CACHE[id] && TARGET_CACHE[id].brandId;
     if (!uqBrand) return;
@@ -19721,7 +19772,7 @@ document.getElementById('targets').addEventListener('click', function (e) {
       if (t2 && t2.brandId === uqBrand && (t2.status === 'queued' || t2.status === 'drafted')) r2.remove();
     });
     refreshBrandCard(uqBrand);
-    toast('Company off the queue — still on the brand page');
+    toast('Off today’s list — it can come back tomorrow');
     api('unqueueBrand', { brandId: uqBrand })
       .catch(function (err) { toast(err.message); loadOutreach(); });
     return;

@@ -4,23 +4,32 @@
 // The morning roll changes the plan by itself, so its rules are pinned
 // here: which past days it looks at, what counts as not sent (a person in
 // the day's queue who never went; a pinned or shown brand that sent
-// nobody), and what stays put and why (archived, passed that day, planned
-// elsewhere, nobody left, day full). Compiles the lib on its own, like
-// test-stock.mjs. Run: node scripts/test-carry.mjs
+// nobody), and what stays put and why (archived, passed that day or inside
+// a Pass's two weeks, planned elsewhere, nobody left, day full), and that a
+// part-sent brand's rest moves to the next sending day only. Compiles the
+// lib with queue-rules.ts. Run: node scripts/test-carry.mjs
 
 import { execSync } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+// carry.ts, and queue-rules.ts for the part-sent case (the roll asks the
+// queue rules whether a brand may move; route.ts carryBrands).
 const out = mkdtempSync(join(tmpdir(), 'carry-test-'))
 execSync(
-  'npx tsc src/lib/carry.ts --outDir ' + out +
+  'npx tsc src/lib/carry.ts src/lib/queue-rules.ts --outDir ' + out +
   ' --target es2020 --module esnext --moduleResolution bundler --skipLibCheck',
   { stdio: 'inherit' },
 )
+// Node wants the extension on a relative import; tsc leaves it off.
+for (const f of readdirSync(out).filter(f => f.endsWith('.js'))) {
+  const p = join(out, f)
+  writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, "from '$1.js'"))
+}
 const { rollWindow, findUnsent, planCarry } = await import(pathToFileURL(join(out, 'carry.js')).href)
+const { queueGate } = await import(pathToFileURL(join(out, 'queue-rules.js')).href)
 
 let pass = 0, fail = 0
 const is = (label, got, want) => {
@@ -118,6 +127,57 @@ is('a broken snapshot is ignored', [...findUnsent({ days: ['2026-09-25'], stampe
   is('a Pass on another day does not hold it back', passedEarlier.moved.map(m => m.id), ['a'])
   const unknown = planCarry(new Map([['gone', { from: '2026-09-25', stamped: ['z'] }]]), new Map(), '2026-09-29', [], 40)
   is('a brand deleted since is skipped quietly', [unknown.moved, unknown.left, unknown.unstamp], [[], [], []])
+}
+
+// ---- a Pass holds for its two weeks (Leo, Oct 7 2026) ------------------------
+{
+  const unsent = new Map([['p', { from: '2026-10-07', stamped: [] }], ['q', { from: '2026-10-07', stamped: [] }]])
+  const F = (name, o = {}) => ({ name, refusal: null, passedOn: '2026-10-06', pinnedOn: null, people: 3, ...o })
+  const facts = new Map([
+    ['p', F('Passed Co', { passedUntil: '2026-10-20', passedUntilLabel: 'Tue Oct 20' })],
+    ['q', F('Pass Over Co', { passedUntil: '2026-10-07' })],
+  ])
+  const r = planCarry(unsent, facts, '2026-10-08', [], 40)
+  is('passed on another day, shown since: stays out while the Pass runs', r.left.map(x => [x.id, x.why]), [['p', 'Passed until Tue Oct 20']])
+  is('a Pass that ended before the day: it moves', r.moved.map(m => m.id), ['q'])
+  const onLast = planCarry(new Map([['p', { from: '2026-10-07', stamped: [] }]]),
+    new Map([['p', F('Passed Co', { passedUntil: '2026-10-20' })]]), '2026-10-20', [], 40)
+  is('its last day is still passed', onLast.moved.length, 0)
+}
+
+// ---- part-sent: the rest go out on the next sending day, then it rests -------
+// Leo, Oct 12 2026: "If Zach sends only some of a brand's people one day, the
+// rest go out on the next sending day". Mirrors route.ts carryBrands: the
+// refusal is the queue rules' answer for a hand path, as of the day it moves to.
+{
+  const next = (key) => {
+    for (let k = 1; k < 30; k++) {
+      const d = new Date(new Date(key + 'T12:00:00Z').getTime() + k * 864e5).toISOString().slice(0, 10)
+      if ([2, 3, 4].includes(new Date(d + 'T12:00:00Z').getUTCDay())) return d
+    }
+    return null
+  }
+  const at = day => new Date(day + 'T15:00:00Z')
+  // Tue Oct 13: two of four sent, two stamped and never sent.
+  const rows = [
+    { id: 's1', status: 'sent', sentAt: at('2026-10-13') }, { id: 's2', status: 'sent', sentAt: at('2026-10-13') },
+    { id: 'w1', status: 'drafted', sentAt: null }, { id: 'w2', status: 'drafted', sentAt: null },
+  ]
+  const unsent = findUnsent({
+    days: ['2026-10-13'],
+    stamped: [{ id: 'w1', brandId: 'acme', day: '2026-10-13' }, { id: 'w2', brandId: 'acme', day: '2026-10-13' }],
+    sent: [{ brandId: 'acme', day: '2026-10-13' }, { brandId: 'acme', day: '2026-10-13' }],
+    pins: {}, shown: null,
+  })
+  is('half-sent: its unsent people carry', unsent.get('acme'), { from: '2026-10-13', stamped: ['w1', 'w2'] })
+  const factsFor = (to) => {
+    const g = queueGate({ name: 'Acme', rows }, { auto: false, giantsOn: false, day: to, nextSending: next })
+    return new Map([['acme', { name: 'Acme', refusal: g ? g.reason + (g.until ? ' until ' + g.until : '') : null, passedOn: null, pinnedOn: null, people: 0 }]])
+  }
+  const wed = planCarry(unsent, factsFor('2026-10-14'), '2026-10-14', [], 40)
+  is('the next sending day: it moves, the same two people', [wed.moved, wed.unstamp], [[{ id: 'acme', name: 'Acme', people: 2, from: '2026-10-13' }], ['w1', 'w2']])
+  const thu = planCarry(unsent, factsFor('2026-10-15'), '2026-10-15', [], 40)
+  is('a day later (Wednesday missed): it stays, resting two weeks', [thu.moved.length, thu.left.map(x => x.why)], [0, ['resting until 2026-10-27']])
 }
 
 console.log(fail ? `carry: ${pass} passed, ${fail} FAILED` : `carry: all ${pass} passed`)
