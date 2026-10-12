@@ -181,6 +181,39 @@ function checkCategory(category: unknown): string | null {
   return key
 }
 
+// "+ Add brand" → Person (Leo, Oct 12 2026: "sometimes we want to send the
+// show board to individual people"). A Brand row marked kind "person" so the
+// board code, visit log, requests and In talks all work unchanged; archived +
+// do-not-email from birth so no outreach path (queue, Schedule, Best fit,
+// email machine, LinkedIn fill) ever picks them. Their email / phone go on a
+// Contact (no outreach target). The code is minted here — it's why they exist.
+async function addPerson({ name, email, phone, notes, owner }: { name: string; email?: unknown; phone?: unknown; notes?: unknown; owner?: unknown }) {
+  const mail = String(email ?? '').trim().toLowerCase()
+  if (mail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) throw new Error('That email doesn\'t look right')
+  const tel = String(phone ?? '').trim().slice(0, 40)
+  const existing = await prisma.brand.findUnique({ where: { name }, select: { id: true, kind: true } })
+  if (existing) {
+    throw new Error('"' + name + '" is already on file as a ' + (existing.kind === 'person' ? 'person' : 'brand') +
+      ' — add a last name or where they\'re from')
+  }
+  let code: string | null = null
+  for (let i = 0; i < 5 && !code; i++) {
+    const c = newBoardCode()
+    if (!(await prisma.brand.findFirst({ where: { boardCode: c }, select: { id: true } }))) code = c
+  }
+  const brand = await prisma.brand.create({
+    data: {
+      name, kind: 'person', source: 'person', category: null,
+      passedAt: new Date(), doNotEmail: true,
+      notes: String(notes ?? '').trim() || null,
+      owner: String(owner ?? '').trim() || null,
+      boardCode: code,
+      ...(mail || tel ? { contacts: { create: { name, email: mail || null, phone: tel || null, source: 'manual' } } } : {}),
+    },
+  })
+  return { brand, created: true, inference: null, person: true }
+}
+
 // Which categories fill a day whose own one has run short — the Schedule's
 // Fill box lists these first under "From other categories". Mostly the
 // lanes and the broad buckets they split out of, both ways round.
@@ -4571,6 +4604,8 @@ const handlers: Record<string, Handler> = {
         // requests, board approvals and Notion that nobody has filed yet.
         // "new" is New from LinkedIn: what the LinkedIn run added on its
         // own in the last two weeks that nobody has looked at yet.
+        // A person (Show Board guest) is not a brand: never on the roster.
+        kind: null,
         ...(category === 'none' ? { category: null }
           : category === 'new' ? newBrandWhere(reviewed!)
           : category && category !== 'all' ? { category } : {}),
@@ -4668,6 +4703,7 @@ const handlers: Record<string, Handler> = {
   async categoryReach() {
     const [brands, reviewed] = await Promise.all([
       prisma.brand.findMany({
+        where: { kind: null },
         select: {
           id: true, category: true, passedAt: true, source: true, createdAt: true,
           targets: { select: { sentAt: true, status: true } },
@@ -6044,6 +6080,44 @@ const handlers: Record<string, Handler> = {
     throw new Error('Could not generate a unique code — try again')
   },
 
+  // A brand row that is really one person ("Miles (personal)") → a person,
+  // or back. Preview (no confirm) says what changes. To a person = off
+  // outreach for good: archived (queued people shelved, as Archive does)
+  // and do-not-email; back to a brand only drops the mark — it stays
+  // archived until someone brings it back.
+  async setBrandKind({ brandId, kind, confirm }: any) {
+    const brand = await prisma.brand.findUnique({ where: { id: String(brandId || '') } })
+    if (!brand) throw new Error('Brand not found')
+    const toPerson = kind === 'person'
+    const queued = toPerson
+      ? await prisma.target.count({ where: { brandId: brand.id, status: { in: ['queued', 'drafted'] }, shelved: false } })
+      : 0
+    const changes = toPerson
+      ? [
+          'Shown as a person, not a brand — left out of All brands and the category counts',
+          ...(brand.passedAt ? [] : ['Archived: off the queue, Schedule and every automatic pick']),
+          ...(brand.doNotEmail ? [] : ['Do not email: no intro or follow-up emails']),
+          ...(queued ? [queued + ' queued ' + (queued === 1 ? 'person' : 'people') + ' shelved'] : []),
+        ]
+      : ['Shown as a brand again — it stays archived until you bring it back']
+    if (!confirm) return { preview: true, name: brand.name, changes }
+    if (toPerson) {
+      await prisma.$transaction([
+        prisma.brand.update({
+          where: { id: brand.id },
+          data: { kind: 'person', passedAt: brand.passedAt ?? new Date(), doNotEmail: true },
+        }),
+        prisma.target.updateMany({
+          where: { brandId: brand.id, status: { in: ['queued', 'drafted'] } },
+          data: { shelved: true, shelvedHow: null, queuedFor: null },
+        }),
+      ])
+    } else {
+      await prisma.brand.update({ where: { id: brand.id }, data: { kind: null } })
+    }
+    return { id: brand.id, kind: toPerson ? 'person' : null }
+  },
+
   // One click on the brand page: search the public web and fill in the
   // brand's website, what it does, and its best sellers. Costs one small
   // Anthropic web-search call; only empty fields are written, so
@@ -6189,9 +6263,10 @@ const handlers: Record<string, Handler> = {
   // Category is inferred when not supplied. A duplicate name returns the
   // existing brand rather than throwing — adding a brand twice is a
   // normal thing to do by accident and shouldn't read as an error.
-  async createBrand({ name, category, tier, website, linkedinUrl, notes, owner, hint }: any) {
+  async createBrand({ name, category, tier, website, linkedinUrl, notes, owner, hint, kind, email, phone }: any) {
     const clean = String(name ?? '').trim()
     if (!clean) throw new Error('Name required')
+    if (kind === 'person') return addPerson({ name: clean, email, phone, notes, owner })
     // Checked before the duplicate lookup so a bad key is always an
     // error, not only when the name happens to be new.
     const askedCategory = checkCategory(category)
@@ -10677,7 +10752,7 @@ const handlers: Record<string, Handler> = {
   async listTalks() {
     const brands = await prisma.brand.findMany({
       where: { boardCode: { not: null } },
-      select: { id: true, name: true, boardCode: true, about: true },
+      select: { id: true, name: true, boardCode: true, about: true, kind: true },
     })
     const ids = brands.map(b => b.id)
     const [visits, picks] = await Promise.all([
@@ -10694,7 +10769,7 @@ const handlers: Record<string, Handler> = {
       const v = visits.filter(x => x.brandId === b.id)
       const timed = v.filter(x => x.lastSeenAt)
       return {
-        brand: { id: b.id, name: b.name, about: b.about },
+        brand: { id: b.id, name: b.name, about: b.about, kind: b.kind },
         code: b.boardCode,
         opens: v.length,
         viewers: [...new Set(v.map(x => x.email).filter(Boolean))] as string[],

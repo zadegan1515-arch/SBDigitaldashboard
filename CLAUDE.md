@@ -16,7 +16,7 @@ If `../CLAUDE.md` (the SB Agency workspace file) exists it applies too. The rule
 ## Ways of working
 - Leo chose: **push straight to `main`**. Both hosts auto-deploy, so after every push **check the build went green** (Vercel dashboard or `vercel` CLI; Railway deployments tab) and re-check the live page.
 - Vercel Hobby limits: **2 cron jobs, daily only**; 1 concurrent build. Don't add crons — fold new scheduled work into `/api/cron/email` (11:00 UTC) or `/api/cron/send` (15:00 UTC).
-- Prisma schema changes deploy themselves (`prisma db push` runs in the Vercel build). Still: additive changes only; never drop columns with data.
+- Prisma schema changes deploy themselves (`prisma db push` runs in the Vercel build — **production builds only**, `scripts/db-push.mjs`: previews share the production database, and on Oct 12 2026 a branch preview without `Brand.kind` dropped it and broke every brand page). The Vercel project's **Build Command** is set to the same rule (`prisma generate && if [ "$VERCEL_ENV" = "production" ]; then prisma db push --skip-generate; …; fi && next build`) so a branch that hasn't merged main can't undo it either. Still: additive changes only; never drop columns with data. A branch with a new column works in its preview only once main has it.
 - Test before pushing: `npm run build` (Next) / `npx tsc --noEmit`, and for `public/app.html` a Playwright smoke run with mocked `/api/data` (`NODE_PATH=$(npm root -g) node scripts/test-keep-place.js` is one).
 - Google OAuth: one Google Cloud client (`GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`) serves three grants — outreach mailbox (`state=gmail`), Drive (`state=drive`), ops mailbox (`state=ops`). Scopes stay narrow: gmail.send + gmail.readonly, drive.file. Never request mail.google.com or modify/delete scopes.
 
@@ -487,6 +487,16 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (Oct 8 2026 — every error used to read "doesn't have access"): AccessDenied names the address Google gave
   (`?email=`; a Workspace alias signs in as its main address), OAuthCallback/OAuthSignin/Callback = Google didn't
   finish (try again, or the sboyagency.com Google admin blocks the app), Unavailable = the list couldn't be read.
+- **+ Add brand → Person** (Leo, Oct 12 2026: "sometimes we want to send the show board to individual people"):
+  the Add box has a Brand / Person switch (`nbSetKind`, `NB_KIND`). A person = `Brand.kind = 'person'`
+  (`createBrand({ kind: 'person', name, email, phone })` → `addPerson` in route.ts): archived + do-not-email from
+  birth (so every outreach path skips them), no category, board code minted, email / phone on a Contact (no
+  Target); a name already on file is refused. Left out of `listBrands` and `categoryReach`; found by search and
+  on Show Board → In talks ("· person"). Their page (`.b-person` on `#brand-body`) leads with Show Board access
+  open; Schedule / Brand Fit / outreach buttons hidden. **This is a person…** / **It's a brand, not a person** on
+  the brand page = `setBrandKind` (preview, then `confirm`; to person also archives, shelves queued people,
+  do-not-email; back only drops the mark). `node scripts/test-add-person.js` (page),
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-person-e2e.js`.
 - `src/app/api/data/route.ts` — every server function. Add a handler = add a key to `handlers`.
 - `src/app/api/ingest/route.ts` + `scripts/sponsorunited-capture.user.js` — SponsorUnited contact
   capture (INGEST_TOKEN-gated, CORS-open). **Two different caps, don't confuse them:**
