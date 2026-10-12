@@ -3195,7 +3195,22 @@ async function handWaitingIds(): Promise<Set<string>> {
   return new Set(rows.map(t => t.id))
 }
 
+// The brand-facing Show Board link (what a brand is sent). SPONSOR_HOST only
+// when Leo has actually attached that domain in Vercel — otherwise its links
+// 404, so the fallback is the page on the deployment itself, which always works.
+function sponsorBoardUrl(): string {
+  const host = (process.env.SPONSOR_HOST || '').trim()
+  return host
+    ? 'https://' + host + '/'
+    : (process.env.SITE_URL || 'https://sb-digitaldashboard.vercel.app') + '/partnerships'
+}
+
 const handlers: Record<string, Handler> = {
+  // The Show Board link the page copies for a brand (asked once on load).
+  async sponsorUrl() {
+    return { url: sponsorBoardUrl() }
+  },
+
 
   // -------- dashboard --------
 
@@ -5185,12 +5200,7 @@ const handlers: Record<string, Handler> = {
       unsold: shows.filter(s => s.sponsors.length === 0).length,
       rejected: cache.rejected.length,
       genres: GENRES,
-      // The brand-facing page. SPONSOR_HOST only when Leo has actually
-      // attached that domain in Vercel — otherwise its links 404, so the
-      // fallback is the page on the deployment itself, which always works.
-      sponsorUrl: process.env.SPONSOR_HOST
-        ? 'https://' + process.env.SPONSOR_HOST + '/'
-        : (process.env.SITE_URL || 'https://sb-digitaldashboard.vercel.app') + '/partnerships',
+      sponsorUrl: sponsorBoardUrl(),
       shows,
     }
   },
@@ -5879,6 +5889,7 @@ const handlers: Record<string, Handler> = {
       big: isBigBrand(brand),
       accessRequests: pendingAccess,
       boardViews: { count: boardViewCount, last: lastVisit, recent: recentVisits },
+      sponsorUrl: sponsorBoardUrl(),
     }
   },
 
@@ -10522,9 +10533,7 @@ const handlers: Record<string, Handler> = {
     const existing = await prisma.contact.findFirst({ where: { brandId: brand.id, email: reqRow.email } })
     if (!existing) await prisma.contact.create({ data: { brandId: brand.id, name: reqRow.name, email: reqRow.email, source: 'board-access' } })
 
-    const boardUrl = process.env.SPONSOR_HOST
-      ? 'https://' + process.env.SPONSOR_HOST + '/'
-      : (process.env.SITE_URL || 'https://sb-digitaldashboard.vercel.app') + '/partnerships'
+    const boardUrl = sponsorBoardUrl()
     const link = boardUrl + '?code=' + encodeURIComponent(brand.boardCode!)
     const subject = 'Your access to the SB Agency Show Board'
     const text = `Hi ${reqRow.name},\n\nHere's your access to the SB Agency Show Board:\n${link}\n\nAccess code: ${brand.boardCode}\n\nPick the shows you want your brand at and send the request — we'll come back with options and pricing.\n\nSB Agency`

@@ -769,7 +769,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   performer (`?performer=dj|singer|rapper|band`, derived in `performerFor` from genre+type) and genre.
   Links: `/?state=TX&genre=edm`, hand-picked `/?for=Brand&pick=id,id` (built from the Shows tab
   checkboxes → "Copy link for this brand"). Copied links use `SPONSOR_HOST` only when that env var is
-  set; until Leo attaches the custom domain in Vercel they fall back to `SITE_URL/partnerships`. A submit → `src/lib/sponsor-request.ts`:
+  set (it is: shows.sboyagency.com, attached in Vercel); unset, they fall back to `SITE_URL/partnerships`. One helper,
+  `sponsorBoardUrl()` in route.ts; the page asks `sponsorUrl` on load and gets it with every `getBrand` (Oct 12 2026: a
+  brand page's Copy link used the vercel.app address until the Shows tab had loaded). A submit → `src/lib/sponsor-request.ts`:
   Brand + Contact + ShowSponsor(status `requested`) per show + one Deal (source `request`) + email to
   `SPONSOR_REQUEST_TO`. Only brand-safe fields ever leave the public API (no reps, statuses, money).
 - `src/lib/ops.ts` — Operations inbox: rules classifier (contract / invoice_payable / invoice_receivable / other), 90-day backfill scan, reply/forward as "SB Agency Operations".
