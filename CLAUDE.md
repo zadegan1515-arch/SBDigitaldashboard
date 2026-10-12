@@ -420,7 +420,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   list / Search, from `listDiscoveries`' `source`) and a category dropdown; one row per brand (name,
   category · source, sign tags, the why on one line) with **Add** and **×**; a row opens for the pitch
   and links (Source, Website, LinkedIn, SponsorUnited). The old "describe a niche" search box is gone
-  (it needed paid API calls). `node scripts/test-discover.js`.
+  (it needed paid API calls). **Every find is graded** (Leo, Oct 12 2026: "grade each brand that is found in the
+  discover brands"; `src/lib/discover-grade.ts`, `node scripts/test-discover-grade.mjs`): Brand Fit as a letter — A 60+ /
+  B 45+ / C 30+ / D; Skip category, not US or closed = D, too small caps at C. A find on the roster grades on its brand's
+  own Brand Fit; a new one on what Discover knows (category priority, the `sponsors` sign, `midsize` = growth tier, a
+  parent) — money and people unknown, so a new find tops out in the low 70s. `listDiscoveries` returns `grade` per row;
+  the page shows the letter, a grade filter and **Best grade first** (default) / Newest first; an open row lists the
+  points. `node scripts/test-discover.js`.
 - **"Add a brand" chat** (Leo, Oct 2026: "send a picture of a brand from instagram or type in a name
   and it will find the brand … and add it"). A saved Claude cloud session ("Add a brand", repo attached,
   `DASHBOARD_TOKEN` in its environment — no API spend) follows `docs/add-a-brand-chat.md`: reads the
@@ -715,7 +721,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   to any brand with over 1500 employees"), unless Leo OK'd the brand; giant research names too (`bigSkipped`).
   **Faster**: with Sales Navigator the People tab gets a glance only (`SN_GLANCE`, 2 scrolls / 40 people — Sales
   Navigator reads the people), a brand under 50 on LinkedIn (`SN_SMALL`) gets only the marketing search, and brands
-  with a saved LinkedIn page go before the ones the run has to search for (`paged`). Unverified against the real Sales Navigator pages
+  with a saved LinkedIn page go before the ones the run has to search for (`paged`). The worklist lives in `src/lib/li-list-db.ts` (`buildLiList`, shared by liList and
+  Outreach → People's **Fill schedule**, `fillSchedule`, whose defaults match the run's: floor 50, very big skipped). Unverified against the real Sales Navigator pages
   until Leo's first run — "Copy a sample for Claude" works on a Sales Navigator search. `node scripts/test-li-salesnav.js`.
   **"LinkedIn Member" cards** (out of Leo's network, name + profile hidden by LinkedIn) can't be saved, but
   **they aren't lost** (Leo, Oct 7 2026: "i dont want to miss out on people if i do it from my own account"):
@@ -748,6 +755,14 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   it (`liCapture` works `viaParent` out itself). `liPagePick` / `liPageNone` forget hidden people counted on a
   page that wasn't theirs.
   Worklist in the dashboard: Outreach → People → "Under 25" (deep link `app.html#people`).
+  **Fill schedule** (Leo, Oct 12 2026: "make me a schedule for the brands that run in the linkedin fills"; card `#li-sched`
+  on Outreach → People, `renderFillSched`): `fillSchedule({ minFit })` = the fill's own worklist — liList's logic lives in
+  `buildLiList` (`src/lib/li-list-db.ts`), shared by /api/ingest and /api/data so the schedule is exactly what the run
+  reads — with the script's defaults (focus electrolyte, research list, Sales Navigator) and a Brand Fit floor (default 60,
+  per browser in localStorage `sb.fillFit`; Leo sets the same in the fill's setup panel), cut into calendar days at
+  `LI_PER_DAY` (today = what's left after the brands the sweep / research logs show read today; `splitFillDays`,
+  `fillWhy` in `src/lib/fill-schedule.ts`). Read-only forecast. `node scripts/test-fill-schedule.mjs`,
+  `test-fill-schedule-ui.js` (page), and a check in `test-li-e2e.js` (same names, same order as liList).
   On a profile (`/in/<slug>/`) the pill is **Send to dashboard** (Leo, Oct 2026: "it should just be send
   this contact to dashboard"): reads name / headline / current company (the SB · Log reader), the company
   box is editable, one click → `liCapture` with `handPicked` (one row; skips the buyer-title filter, keeps

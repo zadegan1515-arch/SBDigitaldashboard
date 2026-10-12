@@ -1365,6 +1365,14 @@
   .dc-meta{margin-right:4px}
   .dc-name b{font-size:14px;font-weight:600}
   .dc-meta{font-size:13px;color:var(--ink-3)}
+  .dc-grade{flex:none;align-self:center;display:inline-grid;place-items:center;width:24px;height:24px;border-radius:6px;font-size:13px;font-weight:800;border:1px solid}
+  .dc-grade.g-A{color:var(--good);border-color:var(--good);background:rgba(62,207,142,.12)}
+  .dc-grade.g-B{color:var(--blue);border-color:var(--blue);background:rgba(67,198,232,.1)}
+  .dc-grade.g-C{color:var(--warn);border-color:var(--warn);background:rgba(232,182,76,.1)}
+  .dc-grade.g-D{color:var(--ink-3);border-color:var(--border);background:transparent}
+  .dc-reasons{margin:4px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px}
+  .dc-reasons .pt{display:inline-block;min-width:34px;font-weight:700;color:var(--ink-3)}
+  .dc-reasons .ok .pt{color:var(--good)}
   .dc-sign{font-size:12.5px;color:#55d9a2;background:rgba(62,207,142,.1);border-radius:999px;padding:1px 8px}
   .dc-why{font-size:13.5px;color:var(--ink-2);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .dc-row.open .dc-why{white-space:normal}
@@ -1994,6 +2002,7 @@
       <div id="li-review" style="margin-top:14px;display:none"></div>
       <div id="li-zach" style="margin-top:14px;display:none"></div>
       <div id="li-runs" style="margin-top:14px;display:none"></div>
+      <div id="li-sched" style="margin-top:14px;display:none"></div>
       <div id="li-list" style="margin-top:14px"></div>
     </section>
 
@@ -10076,6 +10085,7 @@ function loadLinkedin() {
     }
     renderLiRuns(d.runs || [], d.latestScript || null, d.liOwner || null);
     loadLiClean();
+    loadFillSched();
     var profiles = 0, brandsWith = 0;
     LI_DATA.forEach(function (b) {
       var n = b.contacts.filter(function (c) { return c.linkedinUrl; }).length;
@@ -10284,6 +10294,78 @@ function zachText(list) {
   });
   return out.join('\n').trim();
 }
+// Fill schedule (Leo, Oct 12 2026: "make me a schedule for the brands that run
+// in the linkedin fills"): fillSchedule = the fill's own worklist (the same
+// liList the script asks) cut into its days, 100 a day, with a Brand Fit floor
+// (remembered per browser, localStorage sb.fillFit; the script's default 50 —
+// mid-size brands first, very big brands skipped, as the run does).
+// Read-only — a forecast: every run asks for the list fresh.
+var LI_SCHED = null, LI_SCHED_OPEN = null;
+function fillFitFloor() {
+  try { var v = localStorage.getItem('sb.fillFit'); if (v != null && v !== '' && !isNaN(Number(v))) return Math.max(0, Math.min(100, Number(v))); } catch (e) {}
+  return 50;
+}
+function loadFillSched() {
+  return api('fillSchedule', { minFit: fillFitFloor() }).then(function (d) { LI_SCHED = d; renderFillSched(); })
+    .catch(function (e) {
+      var box = document.getElementById('li-sched');
+      if (!box) return;
+      box.style.display = '';
+      box.innerHTML = '<div class="panel" style="padding:14px 16px"><b>Fill schedule</b> <span class="t-meta">· couldn’t load: ' + esc(e.message) + '</span></div>';
+    });
+}
+function renderFillSched() {
+  var box = document.getElementById('li-sched'), d = LI_SCHED;
+  if (!box || !d) return;
+  box.style.display = '';
+  if (!LI_SCHED_OPEN) { LI_SCHED_OPEN = {}; if (d.days.length) LI_SCHED_OPEN[d.days[0].day] = true; }
+  var n = d.total, nd = d.days.length;
+  var head = '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><b>Fill schedule</b><span class="t-sep">·</span>' +
+    '<span class="t-title">' + (n ? n + (n === 1 ? ' brand' : ' brands') + ' · about ' + nd + (nd === 1 ? ' day' : ' days') + ' at ' + d.perDay + ' a day' : 'nothing for the fill to read') + '</span>' +
+    '<label style="margin-left:auto;display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink-3)">Brand Fit at least ' +
+      '<input class="inp" type="number" min="0" max="100" step="5" data-fsfit value="' + d.minFit + '" style="width:72px"></label></div>' +
+    '<div class="t-meta" style="margin-top:6px">What the LinkedIn fill reads next, day by day. Set the same floor in the fill’s setup panel.' +
+      (d.doneToday ? ' ' + d.doneToday + ' read today already.' : '') + '</div>' +
+    '<div class="t-meta" style="margin-top:4px">' + [
+      d.minFit && d.belowFit ? d.belowFit + ' under Fit ' + d.minFit + ' left out' : '',
+      d.bigSkipped ? d.bigSkipped + ' very big brand' + (d.bigSkipped === 1 ? '' : 's') + ' skipped (giants, 1,500+ on LinkedIn)' : '',
+      d.minFit ? 'mid-size brands first' : '',
+      d.resting ? d.resting + ' resting (read lately)' : '',
+      d.planned ? d.planned + ' on the Schedule go first, whatever their fit' : '',
+      d.research ? d.research + ' research-list name' + (d.research === 1 ? '' : 's') + ' (not on the roster yet, no fit score)' : '',
+    ].filter(Boolean).join(' · ') + '</div>';
+  var days = d.days.map(function (day) {
+    var ahead = Math.round((new Date(day.day + 'T12:00:00Z') - new Date(d.today + 'T12:00:00Z')) / 864e5);
+    var when = (ahead === 0 ? 'Today · ' : ahead === 1 ? 'Tomorrow · ' : '') + day.label;
+    return '<details data-fsday="' + esc(day.day) + '"' + (LI_SCHED_OPEN[day.day] ? ' open' : '') + ' style="border-top:1px solid var(--border-soft);margin-top:8px;padding-top:8px">' +
+      '<summary style="cursor:pointer"><b>' + esc(when) + '</b> <span style="color:var(--ink-3);font-size:13px">— ' + day.rows.length + (day.rows.length === 1 ? ' brand' : ' brands') + '</span></summary>' +
+      day.rows.map(function (r, i) {
+        return '<div style="display:flex;gap:10px;align-items:baseline;padding:6px 0;flex-wrap:wrap">' +
+          '<span class="t-meta" style="width:28px;text-align:right">' + (i + 1) + '</span>' +
+          (r.brandId ? '<span class="t-brand" data-brand="' + esc(r.brandId) + '" style="cursor:pointer">' + esc(r.name) + '</span>'
+            : '<span class="t-brand">' + esc(r.name) + '</span>') +
+          (r.category ? '<span class="t-meta">' + esc(CAT_NAMES[r.category] || r.category) + '</span>' : '') +
+          (r.fit != null ? '<span class="t-meta">Fit <b>' + r.fit + '</b></span>' : '') +
+          (r.brandId ? '<span class="t-meta">' + r.contacts + ' on file</span>' : '') +
+          '<span class="t-meta" style="margin-left:auto">' + esc(r.why) + '</span>' +
+        '</div>';
+      }).join('') +
+    '</details>';
+  }).join('');
+  box.innerHTML = '<div class="panel" style="padding:14px 16px">' + head + days + '</div>';
+}
+document.getElementById('linkedin').addEventListener('toggle', function (e) {
+  var t = e.target;
+  if (t && t.matches && t.matches('[data-fsday]') && LI_SCHED_OPEN) LI_SCHED_OPEN[t.getAttribute('data-fsday')] = t.open;
+}, true);
+document.getElementById('linkedin').addEventListener('change', function (e) {
+  if (!e.target.matches || !e.target.matches('[data-fsfit]')) return;
+  var v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+  try { localStorage.setItem('sb.fillFit', String(v)); } catch (err) {}
+  LI_SCHED_OPEN = null;
+  loadFillSched();
+});
+
 function renderLiZach(list, done, restDays) {
   LI_ZACH = list;
   var box = document.getElementById('li-zach');
@@ -16993,7 +17075,11 @@ document.getElementById('bd-results').addEventListener('click', function (e) {
 // (name, category, signs, why) with Add and ×. A row opens for the
 // activation idea and the links. The old "describe a niche" search is gone
 // (it needed paid API calls; the daily Claude hunt does that job now).
-var DC = { rows: [], tab: 'review', source: '', cat: '', open: {} };
+// Every find carries a grade (listDiscoveries → src/lib/discover-grade.ts:
+// Brand Fit as a letter A–D; Leo, Oct 12 2026: "grade each brand that is
+// found in the discover brands"). Best grade first unless Newest is picked.
+var DC = { rows: [], tab: 'review', source: '', cat: '', grade: '', sort: 'grade', open: {} };
+var DC_GRADE_ORDER = { A: 0, B: 1, C: 2, D: 3 };
 var DC_SIGNS = { sponsors: 'College / music', genz: '18–24', midsize: 'Growing' };
 var DC_SIGNS_LONG = { sponsors: 'Already sponsors college or music', genz: 'Aims at 18–24 year olds', midsize: 'Mid-size and growing' };
 
@@ -17019,8 +17105,17 @@ function dcShown() {
     if ((DC.tab === 'added') !== dcAdded(r)) return false;
     if (DC.source && r.source !== DC.source) return false;
     if (DC.cat && r.category !== DC.cat) return false;
+    if (DC.grade && !(r.grade && r.grade.grade === DC.grade)) return false;
     return true;
-  });
+  }).map(function (r, i) { return { r: r, i: i }; }).sort(function (a, b) {
+    if (DC.sort === 'grade') {
+      var ga = a.r.grade ? a.r.grade.score : -1, gb = b.r.grade ? b.r.grade.score : -1;
+      var la = a.r.grade ? DC_GRADE_ORDER[a.r.grade.grade] : 9, lb = b.r.grade ? DC_GRADE_ORDER[b.r.grade.grade] : 9;
+      if (la !== lb) return la - lb;
+      if (ga !== gb) return gb - ga;
+    }
+    return a.i - b.i;
+  }).map(function (x) { return x.r; });
 }
 
 function dcRender() {
@@ -17030,6 +17125,7 @@ function dcRender() {
   var count = function (key, v) { return pool.filter(function (r) { return r[key] === v; }).length; };
   var sources = ['Claude hunt', 'LinkedIn', 'Research list', 'Search'].filter(function (x) { return count('source', x) || DC.source === x; });
   var cats = CAT_KEYS.filter(function (k) { return count('category', k) || DC.cat === k; });
+  var gradeN = function (g) { return pool.filter(function (r) { return r.grade && r.grade.grade === g; }).length; };
   var tab = function (key, label, n) {
     return '<button class="chip' + (DC.tab === key ? ' active' : '') + '" data-dctab="' + key + '">' + label + '<span class="n">' + n + '</span></button>';
   };
@@ -17039,7 +17135,11 @@ function dcRender() {
     '<select class="inp" data-dcsel="source" aria-label="Source"><option value="">All sources</option>' +
       sources.map(function (x) { return '<option' + (DC.source === x ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select>' +
     '<select class="inp" data-dcsel="cat" aria-label="Category"><option value="">All categories</option>' +
-      cats.map(function (k) { return '<option value="' + esc(k) + '"' + (DC.cat === k ? ' selected' : '') + '>' + esc(CAT_NAMES[k]) + '</option>'; }).join('') + '</select>';
+      cats.map(function (k) { return '<option value="' + esc(k) + '"' + (DC.cat === k ? ' selected' : '') + '>' + esc(CAT_NAMES[k]) + '</option>'; }).join('') + '</select>' +
+    '<select class="inp" data-dcsel="grade" aria-label="Grade"><option value="">All grades</option>' +
+      ['A', 'B', 'C', 'D'].map(function (g) { return '<option value="' + g + '"' + (DC.grade === g ? ' selected' : '') + '>Grade ' + g + ' (' + gradeN(g) + ')</option>'; }).join('') + '</select>' +
+    '<select class="inp" data-dcsel="sort" aria-label="Sort"><option value="grade"' + (DC.sort === 'grade' ? ' selected' : '') + '>Best grade first</option>' +
+      '<option value="new"' + (DC.sort === 'new' ? ' selected' : '') + '>Newest first</option></select>';
 
   var rows = dcShown();
   var body = document.getElementById('disc-body');
@@ -17067,16 +17167,24 @@ function dcRow(r) {
       (r.brandId ? '<button class="btn-ghost sd-sm" data-dcact="open">Open</button>' : '')
     : '<button class="btn-solid dc-add" data-dcact="add">Add</button>' +
       '<button class="dc-x" data-dcact="dismiss" title="Not a fit — dismiss" aria-label="Dismiss ' + esc(r.name) + '">×</button>';
+  var g = r.grade;
+  var badge = g ? '<span class="dc-grade g-' + g.grade + '" title="' + esc('Grade ' + g.grade + ' · ' + g.score + '/100 · ' + g.word + (g.capped ? ' — ' + g.capped : '')) + '">' + g.grade + '</span>' : '';
+  var gradeMore = g ? '<div><span class="dc-k">Grade</span><b>' + g.grade + '</b> · ' + g.score + '/100 Brand Fit · ' + esc(g.word) +
+      (g.capped ? ' <span style="color:var(--warn)">— ' + esc(g.capped) + '</span>' : '') +
+      (dcAdded(r) ? '' : ' <span style="color:var(--ink-3)">(money and people get known once it’s added)</span>') +
+      '<ul class="dc-reasons">' + (g.reasons || []).map(function (x) {
+        return '<li class="' + (x.good ? 'ok' : '') + '"><span class="pt">+' + x.points + '</span>' + esc(x.text) + '</li>';
+      }).join('') + '</ul></div>' : '';
   return '<div class="dc-row' + (open ? ' open' : '') + '" data-disc="' + esc(r.id) + '">' +
     '<div class="dc-main" data-dcact="toggle">' +
-      '<div class="dc-name"><b>' + esc(r.name) + '</b><span class="dc-meta">' + esc(meta) + '</span>' +
+      '<div class="dc-name">' + badge + '<b>' + esc(r.name) + '</b><span class="dc-meta">' + esc(meta) + '</span>' +
         signs.map(function (k) {
           return '<span class="dc-sign" title="' + esc(DC_SIGNS_LONG[k]) + '">' + esc(DC_SIGNS[k]) + '</span>';
         }).join('') + '</div>' +
       (r.reason ? '<div class="dc-why">' + esc(r.reason) + '</div>' : '') +
     '</div>' +
     '<div class="dc-act">' + actions + '</div>' +
-    (open ? '<div class="dc-more">' +
+    (open ? '<div class="dc-more">' + gradeMore +
       (r.activation ? '<div><span class="dc-k">Pitch</span>' + esc(r.activation) + '</div>' : '') +
       '<div class="dc-links">' + links + '</div></div>' : '') +
   '</div>';
@@ -17085,7 +17193,7 @@ function dcRow(r) {
 document.getElementById('dc-bar').addEventListener('click', function (e) {
   var t = e.target.closest('[data-dctab]');
   if (!t) return;
-  DC.tab = t.getAttribute('data-dctab'); DC.source = ''; DC.cat = '';
+  DC.tab = t.getAttribute('data-dctab'); DC.source = ''; DC.cat = ''; DC.grade = '';
   dcRender();
 });
 document.getElementById('dc-bar').addEventListener('change', function (e) {
@@ -18832,7 +18940,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'li-zach', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity', 'st-lanes', 'st-others'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'li-zach', 'li-sched', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity', 'st-lanes', 'st-others'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
