@@ -37,6 +37,8 @@ export const GIANT_NAMES: string[] = [
   'L\'Oréal|L\'Oreal|Loreal', 'Maybelline', 'Dove', 'Axe', 'Old Spice', 'Gillette', 'Procter & Gamble|P&G', 'Unilever',
   // nicotine / betting
   'Zyn', 'Juul', 'Marlboro', 'Altria', 'Philip Morris', 'Copenhagen', 'Skoal', 'DraftKings', 'FanDuel',
+  // retail / home (Leo, Oct 12 2026: "i dont like ikea")
+  'IKEA',
 ]
 
 let KEYS: Map<string, string> | null = null
