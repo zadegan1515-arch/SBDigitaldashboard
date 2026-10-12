@@ -6312,41 +6312,66 @@ const handlers: Record<string, Handler> = {
   // keyword guess if none, never a model call). Facts (sales, funding,
   // college / music…) are never written here: they go to the research
   // review on Stock take → Brand Fit, like every other Claude research.
-  async chatAddBrand({ brand: raw, facts, apply, notSame }: any) {
+  // The "Add a brand" chat (docs/add-a-brand-chat.md). Preview by
+  // default: the cleaned card, possible matches on the roster, and the
+  // facts exactly as they'd be written. Leo's yes on that card is the
+  // review (Leo, Oct 12 2026: "my yes is the review, so skip Stock take"):
+  // apply makes the brand and writes those facts onto it in one go. Only
+  // ever a brand it makes — facts never land on an existing one this way.
+  async chatAddBrand({ brand: raw, facts, apply, notSame, expect }: any) {
     const { row, error } = cleanChatBrand(raw)
     if (error || !row) throw new Error(error ?? 'Could not read the brand')
     const asked = checkCategory(row.category)
     const category = asked ?? guessCategory(row.name, [row.about, row.website].filter(Boolean).join(' '))
-    let factRow: any = null
+    let factRow: ResearchRow | null = null
     if (facts && typeof facts === 'object' && Object.keys(facts).length) {
-      const { error: fe } = cleanResearchRow({ ...facts, name: row.name })
-      if (fe) throw new Error(fe)
-      factRow = { ...facts, name: row.name }
+      const { row: fr, error: fe } = cleanResearchRow({ ...facts, name: row.name })
+      if (fe || !fr) throw new Error(fe ?? 'Could not read the facts')
+      factRow = fr
     }
+    // What the card says the brand will carry: each fact against a brand
+    // that has none yet.
+    const blank = Object.fromEntries(Object.keys(FIT_COLUMNS_SELECT).map(k => [k, null])) as Record<FactField, any>
+    const factLines = factRow ? factChanges(blank, factRow).map(c => ({ label: c.label, value: c.toText })) : []
     const roster = await prisma.brand.findMany({ select: { id: true, name: true, aka: true, website: true, linkedinUrl: true, passedAt: true } })
     const matches = matchRoster(row, roster)
     const card = { ...row, category }
-    if (!apply) return { preview: true, brand: card, matches, facts: factRow }
+    // The card Leo says yes to, as one string: with facts, apply writes
+    // only what that card showed (anything else → preview again).
+    const sig = JSON.stringify([row.name, category, factLines])
+    if (!apply) return { preview: true, brand: card, matches, facts: factLines, expect: sig }
+    if (factLines.length && expect !== sig) {
+      throw new Error('These facts aren\u2019t the ones on the card Leo said yes to — preview again and show him the new card')
+    }
     // An exact name clash is the unique index: never a second copy.
     if (matches.length && (!notSame || matches.some(m => m.name.toLowerCase() === row.name.toLowerCase()))) {
       throw new Error('Already on the roster as ' + matches.map(m => '"' + m.name + '"').join(', ') + ' — not added')
     }
     const day = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' })
-    const made = await prisma.brand.create({
-      data: {
-        name: row.name, category, tier: row.tier,
-        website: row.website, linkedinUrl: row.linkedinUrl,
-        aka: row.aka.length ? row.aka.join(', ') : null,
-        about: row.about,
-        notes: chatNotes(row, day),
-        source: 'chat',
-      },
+    const made = await prisma.$transaction(async tx => {
+      const b = await tx.brand.create({
+        data: {
+          name: row.name, category, tier: row.tier,
+          website: row.website, linkedinUrl: row.linkedinUrl,
+          aka: row.aka.length ? row.aka.join(', ') : null,
+          about: row.about,
+          notes: chatNotes(row, day),
+          source: 'chat',
+        },
+      })
+      const changes = factRow ? factChanges(b, factRow) : []
+      if (!changes.length) return b
+      // Researched, like a reviewed research import: off the research
+      // list for 90 days.
+      const data: Record<string, any> = { researchedAt: new Date() }
+      for (const c of changes) data[c.field] = c.to
+      return tx.brand.update({ where: { id: b.id }, data })
     })
-    const staged = factRow ? await handlers.researchStage({ rows: [{ ...factRow, id: made.id }], by: 'Add a brand chat' }) : null
     return {
       created: { id: made.id, name: made.name, category: made.category },
       link: (process.env.SITE_URL || 'https://sb-digitaldashboard.vercel.app') + '/app.html#brand/' + made.id,
-      factsStaged: staged ? staged.staged : 0,
+      factsWritten: factLines.length,
+      facts: factLines,
     }
   },
 
