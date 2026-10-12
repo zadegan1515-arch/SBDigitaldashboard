@@ -28,7 +28,7 @@ export const LI_READER = 2
 // copies there's an update (the pill turns orange; one click takes it),
 // since Tampermonkey on its own only checks about once a day.
 // scripts/test-li-script.js fails when the two drift apart.
-export const LI_SCRIPT_VERSION = '1.31'
+export const LI_SCRIPT_VERSION = '1.32'
 
 // sn = the read went through Sales Navigator, which names people the
 // People tab hides ("LinkedIn Member").

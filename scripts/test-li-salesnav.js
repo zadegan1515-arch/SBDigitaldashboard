@@ -80,7 +80,7 @@ function salesPage(items, total) {
     '</script></body></html>';
 }
 
-const COMPANY_IDS = { 'liquid-death': '1234', 'big-co': '5678', 'wrong-id': '7777', 'no-sn': '9999' };
+const COMPANY_IDS = { 'liquid-death': '1234', 'big-co': '5678', 'wrong-id': '7777', 'no-sn': '9999', 'tiny-co': '4321', 'tiny-two': '4322' };
 const salesQueries = [];
 
 const sent = [];
@@ -147,6 +147,11 @@ const server = http.createServer((req, res) => {
       return res.end(salesPage([lead(mid(40), 'Sam Sponsor', 'Sponsorship Manager', 'Liquid Death, Inc.')], 1));
     }
     if (co === '5678') return res.end(salesPage([lead(mid(50), 'Bea Big', 'VP Marketing', 'Big Co')], 1));
+    // A brand with nobody in marketing: Sales Navigator's own empty page,
+    // no results count on it (Leo's first run, Oct 12 2026).
+    if (co === '4321' || co === '4322') {
+      return res.end('<!doctype html><html><body><main><h2>No matches found</h2><p>Remove the Function filter to show leads matching your other filters.</p></main></body></html>');
+    }
     return res.end(salesPage([], 0) + '<div>No leads match your search</div>');
   }
   if (url.pathname === '/premium/products/') return res.end('<!doctype html><html><body><main><h1>Start your free trial of Sales Navigator</h1></main></body></html>');
@@ -158,7 +163,7 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/company/big-co/people/') {
     return res.end(peoplePage('Big Co', peopleCard('bob-b', 'Bob B', 'Engineer'), '<h2>12,345 associated members</h2>'));
   }
-  for (const slug of ['no-id', 'wrong-id', 'no-sn', 'after-no-sn']) {
+  for (const slug of ['no-id', 'wrong-id', 'no-sn', 'after-no-sn', 'tiny-co', 'tiny-two']) {
     if (url.pathname === '/company/' + slug + '/people/') {
       const kw = url.searchParams.get('keywords') || '';
       return res.end(peoplePage(slug, peopleCard(slug + '-' + (kw || 'all'), 'Person ' + slug + ' ' + (kw || 'all'), 'Brand Manager at ' + slug)));
@@ -306,6 +311,16 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
       assert.ok(sw.every(s => s.salesNav === false));
       assert.match(r.panel, /from Sales Navigator|Run finished/);
       ok('no company id, or another company\'s people: nobody saved from it, the People tab views instead');
+    }
+
+    // Brands with nobody in marketing ("No matches found") are empty
+    // searches, not Sales Navigator failing: two in a row keep it on.
+    {
+      const r = await run([item('b-tiny', 'Tiny Co', 'tiny-co'), item('b-tiny2', 'Tiny Two', 'tiny-two'), item('b-ld', 'Liquid Death', 'liquid-death')]);
+      const sw = r.calls.filter(b => b.action === 'liSwept');
+      assert.deepEqual(sw.map(s => s.salesNav), [true, true, true], 'every brand read through Sales Navigator');
+      assert.deepEqual(r.queries.filter(q => q.co === '4321').map(q => q.kind), ['fn', 'kw']);
+      ok('"No matches found" is an empty search: Sales Navigator stays on for the run');
     }
 
     // 5. No Sales Navigator on the account: off for the rest of the run.

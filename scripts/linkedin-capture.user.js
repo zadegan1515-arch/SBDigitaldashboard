@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.31
+// @version      1.32
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -86,7 +86,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.31';
+  var VERSION = '1.32';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1323,7 +1323,9 @@
   ];
   var SN_PAGE_SIZE = 25;
   // Sales Navigator's empty search, and its pages for an account without it.
-  var SN_EMPTY = /no leads (?:match|found)|no results found|0 results/i;
+  // Its wordings seen so far: "No leads matched your search" / "0 results"
+  // and, with a function filter, "No matches found" (Oct 12 2026).
+  var SN_EMPTY = /no leads (?:match|found)|no matches found|no results found|\b0 results/i;
   var SN_UPSELL = /start (?:your )?free trial|try sales navigator|upgrade to sales navigator|get sales navigator|reactivate (?:your )?sales navigator/i;
 
   function snWanted() { try { return GM_getValue(SN_KEY, true) !== false; } catch (e) { return true; } }
