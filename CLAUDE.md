@@ -420,7 +420,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   list / Search, from `listDiscoveries`' `source`) and a category dropdown; one row per brand (name,
   category · source, sign tags, the why on one line) with **Add** and **×**; a row opens for the pitch
   and links (Source, Website, LinkedIn, SponsorUnited). The old "describe a niche" search box is gone
-  (it needed paid API calls). `node scripts/test-discover.js`.
+  (it needed paid API calls). **Every find is graded** (Leo, Oct 12 2026: "grade each brand that is found in the
+  discover brands"; `src/lib/discover-grade.ts`, `node scripts/test-discover-grade.mjs`): Brand Fit as a letter — A 60+ /
+  B 45+ / C 30+ / D; Skip category, not US or closed = D, too small caps at C. A find on the roster grades on its brand's
+  own Brand Fit; a new one on what Discover knows (category priority, the `sponsors` sign, `midsize` = growth tier, a
+  parent) — money and people unknown, so a new find tops out in the low 70s. `listDiscoveries` returns `grade` per row;
+  the page shows the letter, a grade filter and **Best grade first** (default) / Newest first; an open row lists the
+  points. `node scripts/test-discover.js`.
 - **"Add a brand" chat** (Leo, Oct 2026: "send a picture of a brand from instagram or type in a name
   and it will find the brand … and add it"). A saved Claude cloud session ("Add a brand", repo attached,
   `DASHBOARD_TOKEN` in its environment — no API spend) follows `docs/add-a-brand-chat.md`: reads the
