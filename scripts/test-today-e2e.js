@@ -310,7 +310,11 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(imp.contactsCreated, 1)
     const rita = await prisma.contact.findFirst({ where: { name: 'Research Rita' } })
     assert.deepEqual([rita.source, rita.notes], ['research', 'Found: example.com, Oct 2026'], 'research rows are labelled and keep where they came from')
-    const qb = await data('queueBrandTargets', { brandId: 'big_cl' })
+    // Coors Light is a giant (Molson Coors): held back until Leo says
+    // "Add anyway" (queue rules, Oct 12 2026), which OKs it for good.
+    const held = await data('queueBrandTargets', { brandId: 'big_cl' })
+    assert.deepEqual([held.queued, held.reason], [false, 'giant'], 'a giant asks first')
+    const qb = await data('queueBrandTargets', { brandId: 'big_cl', allowGiant: true })
     assert.ok(qb.queued !== false, 'queued: ' + JSON.stringify(qb))
     const liveCL = await prisma.target.count({ where: { brandId: 'big_cl', shelved: false, status: { in: ['queued', 'drafted'] } } })
     assert.equal(liveCL, 10, 'a big company opens with ten')

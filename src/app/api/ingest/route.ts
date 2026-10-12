@@ -731,14 +731,16 @@ export async function POST(req: NextRequest) {
       }),
       readJsonSetting<unknown>(prisma, GIANTS_KEY, {}),
     ])
-    // Giants held back from outreach (Leo, Oct 12 2026 — the Schedule's
-    // Giants switch, queue-rules.ts) aren't worth a run's visit yet; one
-    // Leo OK'd by hand is.
+    // Giants held back from outreach (Leo, Oct 12 2026: "not yet" — the
+    // Schedule's Giants switch, queue-rules.ts) and brands already reached
+    // out to (the Schedule's own picks skip them) are read last: their
+    // people are ready for later, but they never take a day's visits from
+    // brands that can go out now. One Leo OK'd by hand is a plain brand.
     const giants = parseGiants(giantsSetting)
-    const heldGiant = (b: { id: string; name: string; aka: string | null; salesCents: bigint | null }) =>
-      !giants.on && !giants.ok.has(b.id) && !!giantOf(b)
-    const giantsHeld = everyBrand.filter(b => b._count.contacts < CONTACT_CAP_PER_BRAND && heldGiant(b)).length
-    const all = everyBrand.filter(b => !heldGiant(b))
+    const giantIds = new Set(everyBrand
+      .filter(b => !giants.on && !giants.ok.has(b.id) && !!giantOf(b))
+      .map(b => b.id))
+    const all = everyBrand
     const reachedIds = new Set(all
       .filter(b => b.targets.some(t => rowReached({ status: t.status, sentAt: t.sentAt, emailedAt: t.emailedAt, emails: t._count.emails })))
       .map(b => b.id))
@@ -780,7 +782,6 @@ export async function POST(req: NextRequest) {
     // Electrolytes & hydration lane), ahead of the focus brands we have.
     const research: any[] = []
     let researchWaiting = 0
-    let researchGiants = 0
     if (body.research === true) {
       const rlog = await readLiResearch(prisma)
       const roster = await prisma.brand.findMany({ select: { name: true, aka: true } })
@@ -794,8 +795,6 @@ export async function POST(req: NextRequest) {
           const names = k.split('|').map(n => n.trim()).filter(Boolean)
           if (!names.length || names.some(n => onRoster.has(brandKey(n)))) continue
           const akaList = names.slice(1).join(', ') || null
-          // A giant isn't worth looking up while giants are held back.
-          if (!giants.on && giantWhy(names[0], { aka: akaList })) { researchGiants++; continue }
           // A name that found no page of its own before the parent route
           // existed gets its parent looked at now.
           const mark = rlog[brandKey(names[0])]
@@ -804,6 +803,8 @@ export async function POST(req: NextRequest) {
             research: true, name: names[0], aka: akaList,
             category: l.key, lane: l.name, linkedinUrl: null, contacts: 0, focus: laneFocus,
             parent: parentFor(names[0], akaList),
+            // A giant name waits behind everything else (giants held back).
+            giant: !giants.on && !!giantWhy(names[0], { aka: akaList }),
           })
         }
       }
@@ -857,10 +858,14 @@ export async function POST(req: NextRequest) {
       ...others.filter(i => i.size === 'target'),
       ...research.filter(r => !r.focus), ...others.filter(i => i.size !== 'target'),
     ])
-    // Brands already reached out to go last, in the same order (the
-    // Schedule's own brands keep their place: they're on a day).
-    const reachedLast = (i: any) => !i.research && !i.planned && reachedIds.has(i.brandId)
-    const ordered = [...sorted.filter(i => !reachedLast(i)), ...sorted.filter(reachedLast)]
+    // Then brands already reached out to, then giants held back — each in
+    // the same order as before. The Schedule's own brands and the names Leo
+    // asked for keep their place.
+    const tail = (i: any) => (i.planned || i.asked) ? 0
+      : (i.research ? i.giant : giantIds.has(i.brandId)) ? 2
+      : !i.research && reachedIds.has(i.brandId) ? 1 : 0
+    const ordered = [0, 1, 2].flatMap(n => sorted.filter(i => tail(i) === n))
+    const reachedLast = (i: any) => tail(i) === 1
     return NextResponse.json({
       ok: true,
       items: ordered,
@@ -876,9 +881,9 @@ export async function POST(req: NextRequest) {
       noPage: items.filter(i => !i.linkedinUrl).length,
       resting,
       underCap: underCap.length,
-      // Left out as giants held back; read last as already reached.
-      giantsHeld, researchGiants,
+      // Read last: brands already reached out to, then giants held back.
       reachedLast: ordered.filter(reachedLast).length,
+      giantsLast: ordered.filter(i => tail(i) === 2).length,
       cap: CONTACT_CAP_PER_BRAND,
       latest: LI_SCRIPT_VERSION,
     }, { headers: cors })

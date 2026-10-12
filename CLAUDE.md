@@ -248,8 +248,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Giants: held back (N) Allow" is `setGiantsOn` (`getOutreachPlan.queueRules`). People already stamped
   at a resting brand or held giant are **skipped, never removed** (`gatedStampBrands`: not shown, not
   counted). Reasons `reached` / `resting` / `giant` in `reasonText` + `SD_SHORT`. The LinkedIn fill
-  (`liList`) leaves held giants and giant research names out and reads reached brands last
-  (`giantsHeld`, `researchGiants`, `reachedLast`). The email machine keeps its own rules.
+  (`liList`) reads brands already reached, then held giants (brands and research names), **last** —
+  their people are ready for later, but they never take a day's visits first (`reachedLast`, `giantsLast`;
+  the Schedule's brands and names Leo asked for keep their place). The email machine keeps its own rules.
   **Who goes first** (Leo, Sep 2026): a day's planned brands go out in their plan order
   (`plan[day].brandIds`) — numbered on the cards, ↑ ↓ or drag a card within its day
   (`planReorderDay`). Whole brands in that order while they fit in the day's 30 (after anyone sent
