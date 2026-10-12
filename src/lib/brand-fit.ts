@@ -4,10 +4,14 @@
 // so the score is never a black box.
 //
 // Leo's answers:
-//   - Rank by budget, any size. Money weighs the most: annual sales, or
-//     venture funding ($5M+ raised is "a lot"). No money known → estimate
-//     it from the brand's LinkedIn size (brand-size.ts — the same size the
-//     LinkedIn fill uses, one definition).
+//   - Money weighs the most: annual sales, or venture funding ($5M+ raised
+//     is "a lot"). No money known → estimate it from the brand's LinkedIn
+//     size (brand-size.ts — the same size the LinkedIn fill uses).
+//   - Money to spend, but not too big (Leo, Oct 12 2026: "i want brands to
+//     have money to spend but not be too big"): sales of $10M–$500M score
+//     the most; $500M–$1B less; a giant (giants.ts: household names, big
+//     parents' brands, $1B+) least. By headcount, 20–499 people on LinkedIn
+//     scores the most and 500+ less (it used to be the other way round).
 //   - Category priority next (Oct 7 2026, below): Top / Middle / Low /
 //     Skip, Leo's ranking — betting, alcohol, drinks, nicotine at the top,
 //     clothing and tech at the bottom.
@@ -77,6 +81,7 @@ export interface FitInput {
   need: number // threads the brand wants open (contactLabel's need)
   acceptRate?: number | null // the category's smoothed accept rate, 0..1
   priority?: Priority // the category's priority (default from DEFAULT_CATEGORY_PRIORITY)
+  giant?: string | null // giants.ts's reason it's a giant (queue-rules giantOf), or null
   now: Date
 }
 
@@ -162,17 +167,29 @@ export function isTooSmall(b: { salesCents?: number | null; liMembers?: number |
   return { tooSmall: false, why: null, size }
 }
 
-// Money: up to 40 points, whichever of sales / funding says more.
+// Money: up to 40 points, whichever of sales / funding says more. The
+// sweet spot is $10M–$500M in sales: money to spend, not too big.
+export const SWEET_SALES_MIN_CENTS = 10_000_000 * 100
+export const SWEET_SALES_MAX_CENTS = 500_000_000 * 100
+const GIANT_SALES_CENTS = 1_000_000_000 * 100
+const GIANT_POINTS = 8
 function salesPoints(c: number): number {
-  if (c >= 100_000_000 * 100) return 40
-  if (c >= 25_000_000 * 100) return 34
-  if (c >= 10_000_000 * 100) return 28
-  if (c >= TOO_SMALL_SALES_CENTS) return 20
+  if (c >= GIANT_SALES_CENTS) return GIANT_POINTS
+  if (c > SWEET_SALES_MAX_CENTS) return 24
+  if (c >= SWEET_SALES_MIN_CENTS) return 40
+  if (c >= TOO_SMALL_SALES_CENTS) return 22
   return 0
+}
+function salesNote(c: number): string {
+  if (c >= GIANT_SALES_CENTS) return ' — too big for now'
+  if (c > SWEET_SALES_MAX_CENTS) return ' — big'
+  if (c >= SWEET_SALES_MIN_CENTS) return ' — the sweet spot'
+  return ''
 }
 function fundingPoints(c: number, recent: boolean): number {
   let p = 0
-  if (c >= 100_000_000 * 100) p = 36
+  if (c >= 500_000_000 * 100) p = 24 // half a billion raised: a big company
+  else if (c >= 100_000_000 * 100) p = 36
   else if (c >= 25_000_000 * 100) p = 32
   else if (c >= BIG_FUNDING_CENTS) p = 26
   else if (c >= 1_000_000 * 100) p = 10
@@ -181,7 +198,8 @@ function fundingPoints(c: number, recent: boolean): number {
   return Math.min(40, p)
 }
 // No money known: LinkedIn size stands in.
-const SIZE_POINTS: Record<BrandSize, number> = { big: 30, target: 22, unknown: 15, small: 6 }
+// Mid-size (20–499 people) is the target; 500+ has the money but is slower.
+const SIZE_POINTS: Record<BrandSize, number> = { big: 18, target: 30, unknown: 15, small: 6 }
 
 export function scoreBrand(b: FitInput): FitResult {
   const reasons: FitReason[] = []
@@ -202,7 +220,7 @@ export function scoreBrand(b: FitInput): FitResult {
     : size === 'unknown' ? 'size not known'
     : size + ' (by ' + (b.hasParent ? 'parent company' : 'tier') + ')'
   const money: Array<{ good: boolean | null; text: string; pts: number }> = []
-  if (sp != null) money.push({ good: sp >= 20, text: 'sales ' + shortMoney(b.salesCents!) + ' a year', pts: sp })
+  if (sp != null) money.push({ good: sp >= 20, text: 'sales ' + shortMoney(b.salesCents!) + ' a year' + salesNote(b.salesCents!), pts: sp })
   if (fp != null) {
     const big = b.fundingCents! >= BIG_FUNDING_CENTS
     money.push({
@@ -218,8 +236,15 @@ export function scoreBrand(b: FitInput): FitResult {
       pts: SIZE_POINTS[size],
     })
   }
-  const best = money.reduce((a, m) => (m.pts > a.pts ? m : a), money[0])
-  for (const m of money) add(m.good, m.text, m === best ? m.pts : 0)
+  // A giant is held back from outreach: whatever its money says, it gets
+  // the giant's points.
+  if (b.giant) {
+    for (const m of money) add(m.good, m.text, 0)
+    add(false, 'giant (' + b.giant + ') — too big for now', GIANT_POINTS)
+  } else {
+    const best = money.reduce((a, m) => (m.pts > a.pts ? m : a), money[0])
+    for (const m of money) add(m.good, m.text, m === best ? m.pts : 0)
+  }
 
   // 2. Already sponsors college / music.
   // (Oct 7 2026: 20 → 15, and 4./5. trimmed, to make room for category
