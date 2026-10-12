@@ -53,6 +53,7 @@ import { brandSize, sizeRank, cleanMembers, BIG_BRAND_WORK } from '@/lib/brand-s
 import { countBuyers, BUYER_TARGET } from '@/lib/buyers'
 import { noBuyerFirst } from '@/lib/coverage'
 import { giantWhy } from '@/lib/giants'
+import { giantOf, rowReached, parseGiants, GIANTS_KEY } from '@/lib/queue-rules'
 
 const prisma = new PrismaClient()
 
@@ -711,14 +712,36 @@ export async function POST(req: NextRequest) {
   if (body.action === 'liList') {
     const terms = focusTerms(body.focus)
     const log = await readLiLog(prisma)
-    const all = await prisma.brand.findMany({
-      where: { doNotEmail: false, passedAt: null },
-      select: {
-        id: true, name: true, aka: true, about: true, topProducts: true, notes: true,
-        category: true, linkedinUrl: true, tier: true, liMembers: true, _count: { select: { contacts: true } },
-        contacts: { select: { title: true } },
-      },
-    })
+    const [everyBrand, giantsSetting] = await Promise.all([
+      prisma.brand.findMany({
+        where: { doNotEmail: false, passedAt: null },
+        select: {
+          id: true, name: true, aka: true, about: true, topProducts: true, notes: true, salesCents: true,
+          category: true, linkedinUrl: true, tier: true, liMembers: true, _count: { select: { contacts: true } },
+          contacts: { select: { title: true } },
+          // Reached out to already (queue-rules.ts): the Schedule's own
+          // picks skip those, so the run reads them last.
+          targets: {
+            select: {
+              status: true, sentAt: true, emailedAt: true,
+              _count: { select: { emails: { where: { direction: 'out', status: 'sent' } } } },
+            },
+          },
+        },
+      }),
+      readJsonSetting<unknown>(prisma, GIANTS_KEY, {}),
+    ])
+    // Giants held back from outreach (Leo, Oct 12 2026 — the Schedule's
+    // Giants switch, queue-rules.ts) aren't worth a run's visit yet; one
+    // Leo OK'd by hand is.
+    const giants = parseGiants(giantsSetting)
+    const heldGiant = (b: { id: string; name: string; aka: string | null; salesCents: bigint | null }) =>
+      !giants.on && !giants.ok.has(b.id) && !!giantOf(b)
+    const giantsHeld = everyBrand.filter(b => b._count.contacts < CONTACT_CAP_PER_BRAND && heldGiant(b)).length
+    const all = everyBrand.filter(b => !heldGiant(b))
+    const reachedIds = new Set(all
+      .filter(b => b.targets.some(t => rowReached({ status: t.status, sentAt: t.sentAt, emailedAt: t.emailedAt, emails: t._count.emails })))
+      .map(b => b.id))
     const underCap = all.filter(b => b._count.contacts < CONTACT_CAP_PER_BRAND)
     const ignoreRest = body.ignoreRest === true
     // Brands whose people are under a parent company (parents.ts): the run
@@ -757,6 +780,7 @@ export async function POST(req: NextRequest) {
     // Electrolytes & hydration lane), ahead of the focus brands we have.
     const research: any[] = []
     let researchWaiting = 0
+    let researchGiants = 0
     if (body.research === true) {
       const rlog = await readLiResearch(prisma)
       const roster = await prisma.brand.findMany({ select: { name: true, aka: true } })
@@ -770,6 +794,8 @@ export async function POST(req: NextRequest) {
           const names = k.split('|').map(n => n.trim()).filter(Boolean)
           if (!names.length || names.some(n => onRoster.has(brandKey(n)))) continue
           const akaList = names.slice(1).join(', ') || null
+          // A giant isn't worth looking up while giants are held back.
+          if (!giants.on && giantWhy(names[0], { aka: akaList })) { researchGiants++; continue }
           // A name that found no page of its own before the parent route
           // existed gets its parent looked at now.
           const mark = rlog[brandKey(names[0])]
@@ -825,12 +851,16 @@ export async function POST(req: NextRequest) {
     // buyer pulled ahead of all that, each group in that same order — only
     // the Schedule's brands and the names Leo asked for come before them.
     const others = rest.filter(i => !i.focus)
-    const ordered = noBuyerFirst<any>([
+    const sorted = noBuyerFirst<any>([
       ...planned,
       ...research.filter(r => r.focus), ...rest.filter(i => i.focus),
       ...others.filter(i => i.size === 'target'),
       ...research.filter(r => !r.focus), ...others.filter(i => i.size !== 'target'),
     ])
+    // Brands already reached out to go last, in the same order (the
+    // Schedule's own brands keep their place: they're on a day).
+    const reachedLast = (i: any) => !i.research && !i.planned && reachedIds.has(i.brandId)
+    const ordered = [...sorted.filter(i => !reachedLast(i)), ...sorted.filter(reachedLast)]
     return NextResponse.json({
       ok: true,
       items: ordered,
@@ -846,6 +876,9 @@ export async function POST(req: NextRequest) {
       noPage: items.filter(i => !i.linkedinUrl).length,
       resting,
       underCap: underCap.length,
+      // Left out as giants held back; read last as already reached.
+      giantsHeld, researchGiants,
+      reachedLast: ordered.filter(reachedLast).length,
       cap: CONTACT_CAP_PER_BRAND,
       latest: LI_SCRIPT_VERSION,
     }, { headers: cors })

@@ -23,6 +23,10 @@
 //      click, a pasted list opens Paste a list for
 //      the chosen day.
 //   5. Category priority window saves one category at a time.
+//   6. The queue rules (Leo, Oct 12 2026): the "New brands only · Giants"
+//      line and its switch, Add anyway on a giant's card, an add that
+//      comes back "a giant" asks and re-adds with allowGiants, and a giant
+//      row in the find box sends allowGiants straight away.
 //
 // Run: NODE_PATH=$(npm root -g) node scripts/test-schedule.js   (~6s)
 
@@ -45,7 +49,11 @@ const count = (fn) => calls.filter((c) => c.fn === fn).length;
 
 const PRIORITY = { spirits: 'top', betting: 'top', beauty: 'middle', apparel: 'low', tech: 'low' };
 let themeUndo = null;
+let giantsOn = false;
+let giantCard = false;
+const GIANT_CARD = { id: 'g1', name: 'Red Bull', category: 'energy', state: 'blocked', going: 0, people: [], giant: true, reason: 'giant', reasonText: 'A giant (a household name) — held back for now. Add anyway to send it.' };
 const PLAN = () => ({
+  queueRules: { giantsOn, giantsHeld: 7, giantsOk: 0, restDays: 14 },
   today: '2026-10-07',
   pool: { total: 40, cap: 30 },
   priority: PRIORITY,
@@ -67,7 +75,7 @@ const PLAN = () => ({
     },
     {
       date: '2026-10-13', category: 'bestfit', auto: true, total: 0, sent: 0, offTheme: 0,
-      pinned: [], brands: [], sentPeople: [], overflow: [],
+      pinned: giantCard ? [GIANT_CARD] : [], brands: [], sentPeople: [], overflow: [],
     },
   ],
   categories: [], past: [], extraDays: [], nextOffDay: '2026-10-09',
@@ -77,6 +85,8 @@ const ROWS = [
   { id: 'c1', name: 'Celsius', category: 'energy', action: 'add', text: '4 would go out', going: 4, label: { kind: 'ready', reachable: 4, need: 3, onFile: 5 }, pinnedOn: null, fit: { score: 72 }, matched: 'fuzzy', exact: false },
   { id: 'c2', name: 'Celsius Heat', category: 'energy', action: 'addAnyway', text: 'Invited Sep 16 · already reached', going: 1, label: { kind: 'thin', reachable: 1, need: 3, onFile: 1 }, pinnedOn: null, fit: { score: 40 }, matched: 'name', exact: false },
 ];
+
+const GIANT_ROW = { id: 'g3', name: 'Red Bull', category: 'energy', action: 'addAnyway', giant: true, status: 'giant', text: 'A giant (a household name) · held back for now', going: 3, label: { kind: 'ready', reachable: 5, need: 10, onFile: 8 }, pinnedOn: null, fit: { score: 60 }, matched: 'name', exact: true };
 
 const H = {
   getMe: () => ({ email: 'leo@example.com', name: 'Leo', owner: 'Leo', role: 'admin' }),
@@ -88,8 +98,13 @@ const H = {
   categoryCoverage: () => ({ weeks: [], rows: [] }),
   categoryBrands: ({ category }) => ({ category, brands: [] }),
   suggestForDay: () => ({ brands: [], others: [], needPeople: [], hiddenSmall: 0 }),
-  searchPlanBrands: ({ q }) => ({ brands: /^cel/i.test(q) ? ROWS : [] }),
-  planAddBrands: ({ date, brandIds }) => ({ ok: true, results: brandIds.map((id) => ({ brandId: id, brandName: id, added: true, state: 'going', going: 4, people: [] })) }),
+  searchPlanBrands: ({ q }) => ({ brands: /^cel/i.test(q) ? ROWS : /^red/i.test(q) ? [GIANT_ROW] : [] }),
+  // g* brands are giants: refused unless the add says allowGiants.
+  planAddBrands: ({ date, brandIds, allowGiants }) => ({ ok: true, results: brandIds.map((id) => (/^g/.test(id) && !(allowGiants || []).includes(id)
+    ? { brandId: id, brandName: 'Giant ' + id, added: false, state: 'refused', going: 0, reason: 'giant', reasonText: 'A giant (a household name) — held back for now. Add anyway to send it.' }
+    : { brandId: id, brandName: id, added: true, state: 'going', going: 4, people: [] })) }),
+  setGiantsOn: ({ on }) => { giantsOn = !!on; return { giantsOn }; },
+  allowGiant: ({ brandId }) => ({ ok: true, brandId, name: 'Red Bull' }),
   matchBrandList: ({ text }) => ({ lines: text.split('\n').map((t) => ({ input: t, brand: null, suggestions: [] })) }),
   planApplyCategory: ({ date, category, preview, keepPins, expect }) => {
     if (category === 'beauty' && preview !== false) return { date, category, changes: 0, unpin: [], unqueue: [], reopen: null, expect: 'sig0' };
@@ -280,6 +295,45 @@ async function main() {
   assert.deepEqual(last('setCategoryPriority').args, { category: 'apparel', priority: 'skip' });
   await page.click('#cp-close');
   console.log('✓ 5 category priority: one category at a time');
+
+  // 6. The queue rules ------------------------------------------------
+  const rules = await page.textContent('#sched-extra .sd-rules');
+  assert.match(rules, /New brands only/);
+  assert.match(rules, /Giants: held back \(7\)/);
+  await page.click('#sched-extra [data-sdgiants="1"]');
+  await waitFor(() => count('setGiantsOn') === 1, 'the giants switch');
+  assert.deepEqual(last('setGiantsOn').args, { on: true });
+  await page.waitForFunction(() => /Giants: on/.test(document.querySelector('#sched-extra .sd-rules').textContent));
+  await page.click('#sched-extra [data-sdgiants="0"]');
+  await waitFor(() => count('setGiantsOn') === 2, 'holding them back again');
+  assert.deepEqual(last('setGiantsOn').args, { on: false });
+  // A giant pinned before the rules: its card says why and offers Add anyway.
+  giantCard = true;
+  await page.evaluate(() => sdRefresh());
+  await page.waitForSelector('[data-sdgiantok="g1"]');
+  assert.match(await page.textContent('[data-drop="2026-10-13"]'), /A giant \(a household name\)/);
+  await page.click('[data-sdgiantok="g1"]');
+  await waitFor(() => count('allowGiant') === 1, 'Add anyway on the card');
+  assert.deepEqual(last('allowGiant').args, { brandId: 'g1' });
+  giantCard = false;
+  // An add that comes back "a giant" asks (the dialog says yes) and adds
+  // just the giants again with allowGiants.
+  const adds0 = count('planAddBrands');
+  await page.evaluate(() => sdAdd('2026-10-13', ['x1', 'g2']));
+  await waitFor(() => count('planAddBrands') === adds0 + 2, 'the second add');
+  const [askAdd, giantAdd] = calls.filter((c) => c.fn === 'planAddBrands').slice(-2);
+  assert.deepEqual([askAdd.args.brandIds, askAdd.args.allowGiants], [['x1', 'g2'], undefined]);
+  assert.deepEqual([giantAdd.args.brandIds, giantAdd.args.allowGiants], [['g2'], ['g2']]);
+  // The find box: Add anyway on a giant row is the yes.
+  await page.click('[data-sfday="2026-10-13"]');
+  await page.fill('#sf-q', '');
+  await page.type('#sf-q', 'red');
+  await page.waitForSelector('#sf-res [data-sfadd="g3"]');
+  assert.match(await page.textContent('#sf-res'), /held back for now/);
+  await page.click('#sf-res [data-sfadd="g3"]');
+  await waitFor(() => last('planAddBrands').args.brandIds[0] === 'g3', 'the giant row add');
+  assert.deepEqual(last('planAddBrands').args.allowGiants, ['g3']);
+  console.log('✓ 6 queue rules: the Giants line + switch, Add anyway on a card, an add asks for giants, a giant row');
 
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All Schedule checks passed.');

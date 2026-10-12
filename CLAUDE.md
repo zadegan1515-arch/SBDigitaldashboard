@@ -229,6 +229,27 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `#cp-scrim`): Top +30 / Middle +15 / Low 0 / Skip 0 and never picked by itself (a hand add still works).
   **Pass = two weeks off** (Leo, Oct 7 2026: "when i pass on a brand it should not show up in the outreach tab again for at least two weeks"): `passBrandToday` (LinkedIn card **Pass brand**, Brands not reached yet **Pass**, the Schedule's × on today's automatic rows, brand page Take off today) sets `passedTodayAt` + `Brand.passedUntil` = now + `PASS_DAYS` (14), un-stamps today's people and unpins it from coming days; `notPassedToday()` / `passedNow()` keep it out of Best fit, category rotation, suggestForDay and nextBestBrands until then. A hand add (planAddBrands, queueBrandTargets) clears it. `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-pass-e2e.js`.
   **Betting set aside** (Leo, Oct 7 2026: "put all the betting aside for now and not have them in any outreach"): `betting: 'skip'` in `DEFAULT_CATEGORY_PRIORITY` (brand-fit.ts) — never auto-picked, and nextBestBrands leaves Skip categories out; a hand add still works. Put it back with Category priority.
+  **Queue rules** (Leo, Oct 12 2026: "i dont want brand i have already reached out to to be in the queue
+  and i also dont want to reach out to super big brands yet"; rules pure in `src/lib/queue-rules.ts`,
+  `node scripts/test-queue-rules.mjs`). **Whatever the system picks by itself** — a category day's pool
+  (getTodayQueue, the Schedule's day rows, fillToday), Best fit, Add more / the bench, the Fill box,
+  Plan my week, next best — takes **only brands nobody has reached out to** (an invite ever, logged
+  outside the queue or withdrawn; an accept/reply; a hand or machine email — `notReachedBefore(dayStart)`
+  in SQL, `brandGate(b, q, true)` in code; the old category-day pool only skipped replied brands, so it
+  re-pitched invited ones). **By hand** (planAddBrands, planMoveBrand, the brand page, queueBrandTargets,
+  queueContact, Send today anyway, today's planned brands, the morning roll) a reached brand **rests 14
+  days from its first outreach** (New York day keys; a later Schedule day is judged as of that day; the
+  day a brand opens is its own sitting, so the rest of its people that day still go; an accept logged
+  without an invite date counts from the row's last change and is never a sitting). **Giants**
+  (`giants.ts`: household names, parent companies and their brands, $1B+ sales) are held back: nothing
+  picks them, and a hand add asks — **Add anyway** (`allowGiants` on planAddBrands, `allowGiant` on
+  queueBrandTargets/queueContact, the giant card's button → `allowGiant`) OKs that brand for good.
+  Setting `outreachGiants` = { on, ok: [brandId] }; the Schedule's toolbar line "New brands only ·
+  Giants: held back (N) Allow" is `setGiantsOn` (`getOutreachPlan.queueRules`). People already stamped
+  at a resting brand or held giant are **skipped, never removed** (`gatedStampBrands`: not shown, not
+  counted). Reasons `reached` / `resting` / `giant` in `reasonText` + `SD_SHORT`. The LinkedIn fill
+  (`liList`) leaves held giants and giant research names out and reads reached brands last
+  (`giantsHeld`, `researchGiants`, `reachedLast`). The email machine keeps its own rules.
   **Who goes first** (Leo, Sep 2026): a day's planned brands go out in their plan order
   (`plan[day].brandIds`) — numbered on the cards, ↑ ↓ or drag a card within its day
   (`planReorderDay`). Whole brands in that order while they fit in the day's 30 (after anyone sent
