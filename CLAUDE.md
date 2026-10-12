@@ -386,7 +386,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Stock take (lanes, ideas, re-file) and Needs contacts (SponsorUnited worklist) left the sub-tabs and
   are header buttons; their views and deep links still work. `node scripts/test-brands-table.js`.
   **Every brand a buyer** (Leo, Oct 2026: "how can we get all brands … to have sufficient contacts"):
-  the card at the top of All brands (`renderCoverage`, `cv*`). Counts are of brands **in play** (archived /
+  the card at the top of All brands (`renderCoverage`, `cv*`). **One line** (Leo, Oct 12 2026: "clean up the brands tab"): bar, this
+  week, and only the buttons that need someone (Start the fill ↗, Pick N LinkedIn pages →, N for Zach to read →);
+  **Details ▸** (`CV_OPEN`) opens the per-reason rows, the last run and the People on file fold (`#fill-progress`,
+  hidden while folded); a run that needs a look (idle / old script) shows while folded. The table has no Edit
+  column (the row or its ▸ opens it), Select all is the header's tick box (`bbAllBox`), Clear sits in the tick
+  bar, and the note under a name is one short grey line (the long story in its tooltip). Counts are of brands **in play** (archived /
   do-not-email are "off" and never need anyone — the header, Needs people and the card all say so). Each
   brand with no buyer is in one state (rules pure in `src/lib/coverage.ts`, `node scripts/test-coverage.mjs`;
   DB side `src/lib/coverage-db.ts`; `listBrands({ coverage: true })` → `cover` per row, so a count and

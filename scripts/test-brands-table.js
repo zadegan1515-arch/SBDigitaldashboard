@@ -183,6 +183,18 @@ async function main() {
   await page.waitForFunction(() => document.getElementById('brands-title').textContent === 'All brands');
   console.log('✓ the category dropdown switches the list');
 
+  // Select all = the header's box (the "Select all shown" link is gone);
+  // it ticks only the rows shown, Clear in the bar unticks them all.
+  await page.fill('#bq', 'alpha');
+  await page.check('#brands-list thead [data-bball]');
+  assert.match(await page.textContent('#brands-bulk'), /1 selected/);
+  await page.fill('#bq', '');
+  assert.equal(await page.$eval('#brands-list thead [data-bball]', (c) => c.checked || !c.indeterminate), false, 'some ticked: half box');
+  await page.click('#brands-bulk [data-bbclear]');
+  assert.equal(await page.textContent('#brands-bulk'), '');
+  assert.equal(await page.$('#brands-list [data-brow] .br-go'), null, 'no Edit column — the row opens');
+  console.log('✓ select all from the header box, Clear in the bar');
+
   if (process.env.BRANDS_SHOT) await page.screenshot({ path: process.env.BRANDS_SHOT });
 
   // The name opens the brand page.
@@ -233,13 +245,23 @@ async function main() {
   assert.match(card, /Buyer coverage\s*1 of 6/);
   assert.match(card, /\+4 this week/);
   assert.match(await page.getAttribute('#cover-card .cv-week', 'title'), /15 people added this week: 11 LinkedIn · 3 SponsorUnited · 1 by hand/);
+  // Folded to one line (Leo, Oct 12 2026: "clean up the brands tab"): the
+  // buttons that need someone; reasons, the run and People on file under Details.
+  assert.equal(await page.$('#cover-card [data-cvrow]'), null, 'reasons folded');
+  assert.ok(await page.isHidden('#fill-progress'), 'People on file folded with them');
+  assert.ok(await page.$('#cover-card .cv-head a[href="https://www.linkedin.com/feed/#sb-fill"]'), 'Start the LinkedIn fill');
+  assert.match(await page.textContent('#cover-card [data-cvpages]'), /Pick 1 LinkedIn page/);
+  assert.match(await page.textContent('#cover-card [data-cvzach]'), /1 for Zach to read/);
+  assert.ok(await page.$('#cover-card .cv-run.warn'), 'a run that needs a look shows while folded');
+  await page.click('#cover-card [data-cvtog]');
+  await page.waitForSelector('#cover-card [data-cvrow]');
+  const card2 = await page.textContent('#cover-card');
   assert.deepEqual(
     await page.$$eval('#cover-card [data-cvrow]', (rs) => rs.map((r) => r.getAttribute('data-cvrow') + ':' + r.querySelector('.cv-n').textContent)),
     ['next:2', 'page:1', 'zach:1', 'resting:1'], 'one row per reason, empty reasons left out');
-  assert.match(card, /Hidden from your LinkedIn · Zach reads them/);
-  assert.match(card, /Next on the LinkedIn fill · about 1 day/);
-  assert.match(card, /back on the fill Oct 30/);
-  assert.ok(await page.$('#cover-card [data-cvrow="next"] a[href="https://www.linkedin.com/feed/#sb-fill"]'), 'Start the LinkedIn fill');
+  assert.match(card2, /Hidden from your LinkedIn · Zach reads them/);
+  assert.match(card2, /Next on the LinkedIn fill · about 1 day/);
+  assert.match(card2, /back on the fill Oct 30/);
   assert.match(card, /Last LinkedIn run \w{3} \d{1,2} · 6 brands · \+11 people · idle/);
   assert.match(card, /script 1\.25 is old/);
   assert.ok(await page.$('#cover-card .cv-run.warn'), 'an idle fill and an old script are flagged');
@@ -249,8 +271,8 @@ async function main() {
   await page.click('#cover-card [data-cvshow="resting"]');
   assert.deepEqual(await names(), ['Rest Co']);
   const restLine = await page.textContent('[data-brow="c4"] .br-cvl');
-  assert.match(restLine, /^LinkedIn Sep 30: big company \(173 people\) — nobody new in its partnerships/);
-  assert.match(restLine, /… · back on the fill Oct 30$/, 'a long note is cut short; the whole note is in the tooltip');
+  assert.equal(restLine, 'LinkedIn found nobody Sep 30 · back on the fill Oct 30');
+  assert.match(await page.getAttribute('[data-brow="c4"] .br-cvl', 'title'), /big company \(173 people\) — nobody new in its partnerships/, 'the whole note is in the tooltip');
   assert.deepEqual(await page.$$eval('#brands-list [data-brwhy]', (cs) => cs.map((c) => c.textContent)),
     ['Any reason5', 'Next in the LinkedIn fill2', 'Pick their LinkedIn page1', 'Hidden from your LinkedIn1', 'LinkedIn found nobody1']);
   await page.click('#brands-list [data-brwhy=""]');
@@ -263,7 +285,8 @@ async function main() {
   assert.equal(await page.$('#brands-list [data-brwhy]'), null, 'the reasons show under Needs people only');
   console.log('✓ Show them: Needs people narrowed to that reason; each row says why');
 
-  // The People on file (SponsorUnited sweep) card: one line, opens as it was.
+  // The People on file (SponsorUnited sweep) card: one line under Details, opens as it was.
+  assert.ok(await page.isVisible('#fill-progress'), 'shown with Details open');
   const fold = await page.textContent('#fill-progress details:not([open]) summary');
   assert.equal(fold, 'People on file · 286 of 486 brands have someone · +3 from SponsorUnited today');
   await page.click('#fill-progress summary');
