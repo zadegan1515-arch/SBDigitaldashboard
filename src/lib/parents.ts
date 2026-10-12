@@ -38,7 +38,7 @@ export const PARENTS: Parent[] = [
   { name: 'Suntory Global Spirits', search: 'Suntory Global Spirits', aka: ['Beam Suntory'], brands: [
     'Jim Beam', "Maker's Mark", 'Hornitos', 'Sauza', 'Knob Creek', 'Basil Hayden'],
     others: ['Laphroaig', 'Hibiki', 'Yamazaki', 'Toki', 'Roku', 'Haku', 'Canadian Club', "Teacher's", 'Effen', 'On The Rocks', '-196', 'Midori', 'Sipsmith', 'Legent', "Booker's", 'Old Grand-Dad', 'Larios', 'Tres Generaciones', 'DeKuyper', 'Cruzan'] },
-  { name: 'Campari Group', search: 'Campari Group', brands: ['Aperol', 'Campari', 'Espolòn|Espolon', 'Wild Turkey', 'SKYY'],
+  { name: 'Campari Group', search: 'Campari Group', brands: ['Aperol', 'Campari', 'Espolòn|Espolon', 'Wild Turkey', 'SKYY', 'Crodino'],
     others: ['Appleton', 'Grand Marnier', 'Courvoisier', 'Montelobos', 'Cinzano', 'Cynar', 'Averna', 'Bulldog Gin', "Russell's Reserve"] },
   { name: 'Proximo Spirits', search: 'Proximo Spirits', brands: ['Jose Cuervo', '1800 Tequila|1800', 'Kraken Rum|Kraken', 'Hangar 1'],
     others: ['Dobel', 'Gran Centenario', 'Bushmills', 'Three Olives', "Stranahan's", 'Proper No. Twelve|Proper 12', 'Pendleton', 'Boodles'] },

@@ -39,7 +39,7 @@ import {
   addToReview, sameMember, readJsonSetting, writeJsonSetting,
   LI_REVIEW_KEY, LI_CONFIRMED_KEY, LI_OWNER_KEY, type Review, type Confirmed, type LiOwner,
 } from '@/lib/li-review'
-import { brandKey } from '@/lib/stock'
+import { brandKey, knownSpellings } from '@/lib/stock'
 import { logLinkedInPerson, personOnFile, undoLinkedInLog, checkNewPerson } from '@/lib/li-log-db'
 import { nameFromSlug, isLogStage } from '@/lib/li-log'
 import { guessCategory } from '@/lib/category-hints'
@@ -727,7 +727,10 @@ export async function POST(req: NextRequest) {
         subtitle: String(c?.subtitle || '').replace(/\s+/g, ' ').trim().slice(0, 200),
       }))
       .filter((c: LiCompany) => c.slug && c.name)
-    const { pick, reason } = decideCompanyMatch(brand, candidates)
+    // Its page may go by a spelling our lists know ("AriZona" for Arizona
+    // Beverages) — matched like an "also known as".
+    const known = knownSpellings(brand.name, brand.aka)
+    const { pick, reason } = decideCompanyMatch({ ...brand, aka: [brand.aka, ...known].filter(Boolean).join(', ') || null }, candidates)
     const review = async (why: 'unclear' | 'none' | 'wrong') => {
       const list = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
       await writeJsonSetting(prisma, LI_REVIEW_KEY, addToReview(list, brand.id, {

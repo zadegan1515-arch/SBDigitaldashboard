@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.34
+// @version      1.35
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -86,7 +86,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.34';
+  var VERSION = '1.35';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1189,6 +1189,30 @@
   function akaName(item) {
     return String(item.aka || '').split(/[,;]/).map(function (x) { return x.trim(); }).filter(Boolean)[0] || '';
   }
+  // The second name typed into LinkedIn's search: the "also known as",
+  // else what the dashboard sends (a spelling its lists know — "AriZona"
+  // for Arizona Beverages — or the name without "Skincare" / "Energy").
+  function secondName(item) {
+    return akaName(item) || String(item.alsoSearch || '').trim();
+  }
+
+  // A company search that showed nothing. LinkedIn sometimes draws an
+  // empty page (a hidden window, a slow load): Arizona Beverages "found
+  // nothing" on Oct 12 2026 with the window hidden. The same search is
+  // loaded once more before the run believes it.
+  function searchLooksEmpty(job, q) {
+    var st = job.step;
+    if (searchCandidates().length || st.emptyRetried === q) return false;
+    st.emptyRetried = q; st.navs = 0;
+    job.nextAt = Date.now() + rand(4000, 8000);
+    saveFill(job);
+    renderFill(job, 'LinkedIn showed nothing for “' + q + '” — loading it again');
+    later(runFill, 1000);
+    return true;
+  }
+  // How long a search gets to draw: longer while the window is hidden
+  // (Chrome slows a hidden window's page).
+  function searchWait() { return document.hidden ? 30000 : 12000; }
 
   function peopleUrl(linkedinUrl, keyword) {
     var m = String(linkedinUrl || '').match(/linkedin\.com\/(company|showcase)\/([^\/?#]+)/i);
@@ -1619,7 +1643,7 @@
     // Only a page this run opened itself counts (navs > 0) — never the
     // page Leo happened to be on when he pressed Start.
     if (st.phase === 'search' || st.phase === 'research') {
-      var q = st.triedAka ? akaName(item) : item.name;
+      var q = st.triedAka ? secondName(item) : item.name;
       if (st.navs > 0 && /^\/search\/results\/companies/.test(location.pathname) && kwParam() === q && pageParam() === 1) {
         st.navs = 0; saveFill(job);
         return st.phase === 'research' ? fillResearch(item, q) : fillSearch(item, q);
@@ -1738,11 +1762,15 @@
   function fillSearch(item, q) {
     var job = loadFill(), at0 = job.at;
     renderFill(job, 'Reading LinkedIn\'s results for “' + q + '”');
-    waitFor(function () { return searchCandidates().length || /no results/i.test(pageText(5000)); }, 12000).then(function () {
+    waitFor(function () { return searchCandidates().length || /no results/i.test(pageText(5000)); }, searchWait()).then(function () {
       var stop = linkedinSaysStop();
       if (stop) return { halt: stop };
+      var j = loadFill();
+      if (!sameStep(j, at0)) return null;
+      if (searchLooksEmpty(j, q)) return null;
       return post({ action: 'liMatched', brandId: item.brandId, recheck: !!loadFill().step.recheck, candidates: searchCandidates() });
     }).then(function (r) {
+      if (r === null) return;
       var job2 = loadFill();
       if (!sameStep(job2, at0)) return;
       if (r && r.halt) return pauseFill(job2, r.halt + '. Leave LinkedIn alone for a day before pressing Continue.');
@@ -1755,7 +1783,7 @@
         return runFill();
       }
       if (r && r.outcome === 'markedNone') return endBrand(job2, 'you marked it as having no LinkedIn page');
-      if (r && r.outcome !== 'review' && !st.triedAka && akaName(item)) {
+      if (r && r.outcome !== 'review' && !st.triedAka && secondName(item)) {
         st.triedAka = true; st.navs = 0;
         job2.nextAt = Date.now() + rand(3000, 6000);
         saveFill(job2);
@@ -1774,12 +1802,16 @@
   function fillResearch(item, q) {
     var job = loadFill(), at0 = job.at;
     renderFill(job, 'Reading LinkedIn\'s results for “' + q + '” (research list)');
-    var final = job.step.triedAka || !akaName(item);
-    waitFor(function () { return searchCandidates().length || /no results/i.test(pageText(5000)); }, 12000).then(function () {
+    var final = job.step.triedAka || !secondName(item);
+    waitFor(function () { return searchCandidates().length || /no results/i.test(pageText(5000)); }, searchWait()).then(function () {
       var stop = linkedinSaysStop();
       if (stop) return { halt: stop };
+      var j = loadFill();
+      if (!sameStep(j, at0)) return null;
+      if (searchLooksEmpty(j, q)) return null;
       return post({ action: 'liResearch', name: item.name, aka: item.aka || '', category: item.category, lane: item.lane || '', candidates: searchCandidates(), final: final });
     }).then(function (r) {
+      if (r === null) return;
       var job2 = loadFill();
       if (!sameStep(job2, at0)) return;
       if (r && r.halt) return pauseFill(job2, r.halt + '. Leave LinkedIn alone for a day before pressing Continue.');

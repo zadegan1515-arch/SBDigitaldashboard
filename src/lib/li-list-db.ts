@@ -9,7 +9,7 @@ import { readLiLog, liRestsNow, readLiResearch, researchResting, LI_SCRIPT_VERSI
 import { readHiddenLog } from './li-hidden'
 import { parentOf, isParentCompany, LI_PARENT_PAGES_KEY } from './parents'
 import { readJsonSetting, LI_CONFIRMED_KEY, type Confirmed } from './li-review'
-import { LANES, RESEARCH_EXTRA, brandKey } from './stock'
+import { LANES, RESEARCH_EXTRA, brandKey, secondSearchName } from './stock'
 import { dueDays, shortOnPeople, plannedFirst, workNeed } from './planned-first'
 import { scoreBrand, priorityOf } from './brand-fit'
 import { brandSize, sizeRank } from './brand-size'
@@ -131,6 +131,8 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     .filter(b => b.linkedinUrl || confirmed[b.id] !== 'none' || parentOf(b.name, b.aka))
     .map(b => ({
       brandId: b.id, name: b.name, aka: b.aka, category: b.category,
+      // Typed into LinkedIn's search when the name finds nothing (script 1.35+).
+      alsoSearch: b.aka ? null : secondSearchName(b.name, b.aka) || null,
       linkedinUrl: b.linkedinUrl, contacts: b._count.contacts, focus: matchesFocus(b, terms),
       // Leo said it has no page of its own: only its parent's is searched.
       noPage: !b.linkedinUrl && confirmed[b.id] === 'none',

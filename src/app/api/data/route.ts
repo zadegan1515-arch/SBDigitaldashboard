@@ -10603,6 +10603,22 @@ const handlers: Record<string, Handler> = {
     return { ok: true, name: brand.name, removedPage: entry?.why === 'wrong' ? brand.linkedinUrl : null }
   },
 
+  // Look again: the brand goes back to the LinkedIn fill — "None of
+  // these" and its month's rest after a search that found nothing clear
+  // are forgotten, so the next run searches it (Oct 12 2026: Arizona
+  // Beverages and Crodino, searched while the window was hidden).
+  async liPageRetry({ brandId }: { brandId: string }) {
+    const brand = await prisma.brand.findUnique({ where: { id: String(brandId) }, select: { id: true, name: true, linkedinUrl: true } })
+    if (!brand) throw new Error('Brand not found')
+    const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
+    const wasNone = confirmed[brand.id] === 'none'
+    if (wasNone) { delete confirmed[brand.id]; await writeJsonSetting(prisma, LI_CONFIRMED_KEY, confirmed) }
+    const log = await readLiLog(prisma)
+    const rested = !!log[brand.id]
+    if (rested) { delete log[brand.id]; await writeJsonSetting(prisma, LI_SWEEP_KEY, log) }
+    return { ok: true, name: brand.name, linkedinUrl: brand.linkedinUrl, wasNone, rested }
+  },
+
   // The fill runs on one LinkedIn account (the first one it ran on).
   // "Not you?" clears it; the next run remembers the account it runs on.
   async liOwnerReset() {

@@ -146,6 +146,17 @@ t('"Prime" skips Prime Video for PRIME Hydration', () => {
   ])
   assert.equal(r.pick && r.pick.name, 'PRIME Hydration')
 })
+t('exact name whose own line says what it sells: Ultra Pouches (Oct 12 2026)', () => {
+  const r = decideCompanyMatch({ name: 'Ultra Pouches', category: 'nicotine' }, [
+    bev('Ultra Pouches', 'Wellness and Fitness Services • Brooklyn, New York • Instant focus in a pouch. Zero nicotine.'),
+    bev('Ultra Labels & Flexpack', 'Printing Services • Eagle Farm, Queensland • flexible packaging'),
+  ])
+  assert.equal(r.reason, 'exact'); assert.equal(r.pick.name, 'Ultra Pouches')
+  // The industry line alone never counts as the description.
+  assert.equal(decideCompanyMatch({ name: 'Native', category: 'beauty' }, [bev('Native', 'Home Health Care Services • Ohio')]).reason, 'unclear')
+  // A packaging firm that makes pouches is not a pouch brand.
+  assert.equal(decideCompanyMatch({ name: 'Ultra', category: 'nicotine' }, [bev('Ultra', 'Packaging • Delhi • PVC pouches')]).reason, 'unclear')
+})
 t('a different company is left for Leo', () => {
   assert.equal(decideCompanyMatch({ name: 'Celsius', category: 'beverage' }, [bev('Celsius Network', 'Financial Services')]).reason, 'unclear')
   assert.equal(decideCompanyMatch({ name: 'Celsius', category: null }, [bev('Celsius Holdings Beverages', 'Beverage Manufacturing')]).reason, 'unclear')
