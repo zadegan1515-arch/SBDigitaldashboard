@@ -74,7 +74,12 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(pv.preview, true);
     assert.deepEqual(pv.matches, []);
     assert.equal(await prisma.brand.count({ where: { name: 'Olipop' } }), 0, 'a preview writes nothing');
-    ok('preview: cleaned card, no matches, nothing written');
+    // The facts as the card will show them — exactly what a yes writes.
+    const pvf = await data('chatAddBrand', { brand: { name: 'Olipop' }, facts: { us: 'yes', funding: '$50M', sponsorsCollege: 'unknown' } });
+    assert.deepEqual(pvf.facts.map(f => f.label).sort(), ['In the US', 'Raised'], JSON.stringify(pvf.facts));
+    assert.ok(pvf.facts.some(f => /50/.test(f.value)), 'the amount is on the card: ' + JSON.stringify(pvf.facts));
+    await assert.rejects(data('chatAddBrand', { brand: { name: 'Olipop' }, facts: { funding: 'lots' } }), /funding "lots" is not an amount/);
+    ok('preview: cleaned card, no matches, the facts as they\'d be written, nothing written');
 
     await assert.rejects(data('chatAddBrand', { brand: { name: 'X Brand', category: 'snacks' } }), /category/i);
     ok('an unknown category is refused');
@@ -85,24 +90,37 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await assert.rejects(data('chatAddBrand', { apply: true, notSame: true, brand: { name: 'poppi', website: 'drinkpoppi.com' } }), /Already on the roster/);
     ok('a possible duplicate is refused; an exact name even with notSame');
 
-    const made = await data('chatAddBrand', {
-      apply: true,
+    const olipop = {
       brand: { name: 'Olipop', category: 'beverage', tier: 'growth', website: 'drinkolipop.com', aka: 'Olipop Soda', about: 'Prebiotic soda', instagram: 'drinkolipop', note: 'Seen on IG' },
       facts: { us: 'yes', funding: '$50M', sponsorsCollege: 'unknown' },
-    });
+    };
+    const card = await data('chatAddBrand', olipop);
+    // Facts that aren't the card's are refused: the yes was to the card.
+    await assert.rejects(data('chatAddBrand', { ...olipop, apply: true }), /aren’t the ones on the card/);
+    await assert.rejects(data('chatAddBrand', { ...olipop, facts: { ...olipop.facts, funding: '$60M' }, apply: true, expect: card.expect }), /aren’t the ones on the card/);
+    assert.equal(await prisma.brand.count({ where: { name: 'Olipop' } }), 0);
+    const made = await data('chatAddBrand', { ...olipop, apply: true, expect: card.expect });
     const b = await prisma.brand.findUnique({ where: { id: made.created.id } });
     assert.equal(b.source, 'chat');
     assert.equal(b.category, 'beverage');
     assert.equal(b.aka, 'Olipop Soda');
     assert.equal(b.website, 'https://drinkolipop.com/');
     assert.match(b.notes, /Add a brand" chat[\s\S]*Seen on IG[\s\S]*@drinkolipop/);
-    assert.equal(b.fundingCents, null, 'facts never land straight on the brand');
-    assert.equal(made.factsStaged, 1);
+    // Leo's yes is the review (Oct 12 2026): the facts go straight on.
+    assert.equal(Number(b.fundingCents), 50000000 * 100);
+    assert.equal(b.usStatus, 'yes');
+    assert.equal(b.sponsorsCollege, null, 'unknown stays unknown');
+    assert.ok(b.researchedAt, 'researched — off the research list');
+    assert.equal(made.factsWritten, 2);
     const staged = await data('researchImport', { staged: true });
-    const row = (staged.rows || []).find(r => r.brandId === b.id || (r.brand && r.brand.id === b.id));
-    assert.ok(row, 'facts wait in the research review: ' + JSON.stringify(staged).slice(0, 400));
+    assert.ok(!(staged.rows || []).some(r => r.brandId === b.id || (r.brand && r.brand.id === b.id)), 'nothing waits on Stock take');
     assert.ok(made.link.endsWith('#brand/' + b.id));
-    ok('apply: brand made (source chat, notes, aka), facts staged for review, link back');
+    ok('apply: brand made (source chat, notes, aka) with exactly the facts on the card Leo said yes to, nothing on Stock take, link back');
+
+    const bare = await data('chatAddBrand', { apply: true, brand: { name: 'Bare Co', category: 'beverage' } });
+    const bb = await prisma.brand.findUnique({ where: { id: bare.created.id } });
+    assert.deepEqual({ written: bare.factsWritten, researched: bb.researchedAt, us: bb.usStatus }, { written: 0, researched: null, us: null });
+    ok('no facts sent: nothing written, not marked researched');
 
     const again = await data('chatAddBrand', { brand: { name: 'Olipop Soda' } });
     assert.equal(again.matches[0].name, 'Olipop');

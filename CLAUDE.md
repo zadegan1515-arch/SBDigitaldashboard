@@ -336,7 +336,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   [field, value now, new value] — a hand edit after the review counts as a change), and anything that
   changed since is skipped, named, and left waiting in the batch. Rows match by id, else exact name / aka
   (`researchMatcher`); a brand listed twice — the later row wins. One transaction, Undo `researchUndo` (only fields
-  still as the import left them). Never write facts without that review. **Suggest Archive**
+  still as the import left them). Never write facts without that review — the one exception is a brand the "Add a
+  brand" chat makes, where Leo's yes on the card that showed the facts is the review. **Suggest Archive**
   (`fitArchive` preview → apply, Undo `fitArchiveUndo`; Setting `fitArchiveLast`): confirmed not US,
   closed/acquired, or researched with every signal known to be absent (sales AND funding looked up and
   under the bars, no college / music found, not a Top category) and a low score; never a brand in talks (reply, deal,
@@ -386,7 +387,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Stock take (lanes, ideas, re-file) and Needs contacts (SponsorUnited worklist) left the sub-tabs and
   are header buttons; their views and deep links still work. `node scripts/test-brands-table.js`.
   **Every brand a buyer** (Leo, Oct 2026: "how can we get all brands … to have sufficient contacts"):
-  the card at the top of All brands (`renderCoverage`, `cv*`). Counts are of brands **in play** (archived /
+  the card at the top of All brands (`renderCoverage`, `cv*`). **One line** (Leo, Oct 12 2026: "clean up the brands tab"): bar, this
+  week, and only the buttons that need someone (Start the fill ↗, Pick N LinkedIn pages →, N for Zach to read →);
+  **Details ▸** (`CV_OPEN`) opens the per-reason rows, the last run and the People on file fold (`#fill-progress`,
+  hidden while folded); a run that needs a look (idle / old script) shows while folded. The table has no Edit
+  column (the row or its ▸ opens it), Select all is the header's tick box (`bbAllBox`), Clear sits in the tick
+  bar, and the note under a name is one short grey line (the long story in its tooltip). Counts are of brands **in play** (archived /
   do-not-email are "off" and never need anyone — the header, Needs people and the card all say so). Each
   brand with no buyer is in one state (rules pure in `src/lib/coverage.ts`, `node scripts/test-coverage.mjs`;
   DB side `src/lib/coverage-db.ts`; `listBrands({ coverage: true })` → `cover` per row, so a count and
@@ -435,7 +441,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   name / aka, LinkedIn page, website — the Duplicates signals; `node scripts/test-chat-add.mjs`), shows
   Leo a card, and only on his yes applies: Brand `source: 'chat'`, notes say where it came from. A
   possible match is refused unless Leo says it's a different company (`notSame`; an exact name never).
-  Facts go to `researchStage` (Stock take → Brand Fit review), never straight onto the brand. It can't
+  **Facts: Leo's yes is the review** (Leo, Oct 12 2026: "my yes is the review, so skip Stock take"): the
+  preview returns `facts` = each fact as it'll be written (`factChanges` against a blank brand, `{ label, value }`),
+  the card shows them all, and apply (with the preview's `expect`; other facts are refused) writes them onto the
+  brand it makes in the same transaction (+ `researchedAt`; `factsWritten`). Never onto a brand that was already there — those still go to `researchStage`. It can't
   sign in to SponsorUnited or LinkedIn — the LinkedIn fill and SU sweep pick the brand up from there.
 - **One brand per parent company** (Leo, Oct 8 2026: "make all of the brands under Diageo one big brand on the site and
   move all of the contacts there"): `combineParent({ parent })` previews (writes nothing) every brand `parentOf` puts under

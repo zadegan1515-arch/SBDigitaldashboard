@@ -1142,6 +1142,7 @@
      #brands-bulk, whose parent (the Brands section) also holds the list.
      Without this the bar sits under the last of ~500 rows, off screen. */
   #brands-bulk{position:sticky;bottom:12px;z-index:5}
+  #brands-selbar:empty{display:none}
   #brands-bulk .sd-bulk{position:relative}
   /* "Put on a day" (Brands bar, Stock take lanes, brand page): a day
      menu, then who would go out before anything is added. */
@@ -1285,7 +1286,8 @@
   .br-tick{width:30px}
   .br-tick label{display:flex;align-items:center;padding:4px;cursor:pointer}
   .br-name{min-width:170px}
-  .br-caret{color:var(--ink-3);font-size:11.5px;margin-right:6px}
+  .br-caret{background:none;border:0;color:var(--ink-3);font-size:11.5px;margin-right:4px;padding:2px 4px;cursor:pointer}
+  .br-caret:hover{color:var(--ink-1)}
   .br-link{cursor:pointer}
   .br-link:hover{color:var(--accent-hi);text-decoration:underline}
   .br-sub{font-size:13px;color:var(--ink-3);margin-top:2px}
@@ -1332,6 +1334,14 @@
   .cv-acts .btn-ghost,.cv-acts .btn-solid{padding:5px 12px;font-size:13px;text-decoration:none}
   .cv-run{font-size:13px;color:var(--ink-3);margin-top:10px;padding-top:9px;border-top:1px solid var(--border-soft)}
   .cv-run.warn{color:var(--warn)}
+  /* Folded to one line (Leo, Oct 12 2026: "clean up the brands tab"): bar + the
+     actions that need someone; the reasons open under Details. */
+  .cv-card{padding:12px 16px}
+  .cv-head{margin-bottom:0}
+  .cv-head .btn-ghost,.cv-head .btn-solid{padding:5px 12px;font-size:13px;text-decoration:none}
+  .cv-tog{background:none;border:0;color:var(--ink-3);font:inherit;font-size:13px;cursor:pointer;padding:4px 2px}
+  .cv-tog:hover{color:var(--ink-2)}
+  .cv-card .cv-run{margin-top:8px;padding-top:7px}
   .fp-fold{margin-top:8px}
   .fp-fold>summary{cursor:pointer;font-size:13px;color:var(--ink-3);padding:4px 2px}
   .fp-fold>summary:hover{color:var(--ink-2)}
@@ -1339,7 +1349,7 @@
   #brands-list,#li-review{scroll-margin-top:180px}
   .br-why{margin-top:-4px}
   .br-why .chip{font-size:13px;padding:4px 11px}
-  .br-cvl{color:var(--warn);max-width:440px}
+  .br-cvl{color:var(--ink-3);max-width:440px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .br-cvl a{color:inherit;text-decoration:underline}
   @media (max-width:640px){
     .cv-row{grid-template-columns:40px minmax(0,1fr)}
@@ -5946,6 +5956,7 @@ function loadBrands(category) {
 // "Show them" opens are the same list; buyerCoverage adds this week's
 // numbers and the fill's last run.
 var CV_INFO = null;
+var CV_OPEN = false; // the coverage card's Details (reasons + People on file) is folded until opened
 var CV_ORDER = ['next', 'page', 'zach', 'resting', 'noPage', 'full'];
 var CV_WHY = {
   next: 'Next in the LinkedIn fill',
@@ -5991,48 +6002,64 @@ function cvRunLine(info) {
 
 function renderCoverage() {
   var box = document.getElementById('cover-card');
+  var fp = document.getElementById('fill-progress');
   if (!box) return;
-  if (lastCategory !== 'all' || BRANDS_SHOWN !== 'all') { box.innerHTML = ''; return; }
+  if (lastCategory !== 'all' || BRANDS_SHOWN !== 'all') { box.innerHTML = ''; if (fp) fp.hidden = true; return; }
+  if (fp) fp.hidden = !CV_OPEN;
   var c = cvCounts(BR_LIST), info = CV_INFO;
   var pct = c.inPlay ? Math.round(c.covered / c.inPlay * 100) : 100;
   var per = (info && info.perDay) || 100;
   var days = Math.max(1, Math.ceil(c.next / per));
   var wk = info && info.week;
-  var row = function (state, what, acts) {
+  var row = function (state, what) {
     var n = c[state];
     if (!n) return '';
     return '<div class="cv-row" data-cvrow="' + state + '"><div class="cv-n">' + n + '</div>' +
       '<div class="cv-what">' + what + '</div>' +
-      '<div class="cv-acts">' + (acts || '') + '<button class="btn-ghost" data-cvshow="' + state + '">Show</button></div></div>';
+      '<div class="cv-acts"><button class="btn-ghost" data-cvshow="' + state + '">Show</button></div></div>';
   };
-  // Leo, Oct 6 2026: the Brands tab "should not get overwhelmed with info" —
-  // one header line, then one short line per reason; the long story is in
-  // each line's hover tip.
+  // Leo, Oct 6 2026: the Brands tab "should not get overwhelmed with info";
+  // Oct 12: "clean up the brands tab". One line: the bar, this week, and only
+  // the buttons that need someone (start the fill, pick pages, Zach's list).
+  // The count per reason folds under Details (CV_OPEN) with the People on
+  // file card; the last run shows on its own only when it needs a look.
   var weekTip = wk ? (wk.linkedin + wk.sponsorunited + wk.other) + ' people added this week: ' + wk.linkedin + ' LinkedIn · ' +
     wk.sponsorunited + ' SponsorUnited · ' + wk.other + ' by hand' : '';
+  var run = cvRunLine(info);
+  var runWarn = /cv-run warn/.test(run);
+  var acts = c.need
+    ? (c.next ? '<a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" data-cvfill="1" title="' +
+        esc(c.next + ' brands next on the LinkedIn fill — about ' + days + (days === 1 ? ' day' : ' days') + ' at ' + per +
+          ' a day. Opens LinkedIn in a window of its own and starts the fill; needs the LinkedIn capture script in Tampermonkey.') +
+        '">Start the fill ↗</a>' : '') +
+      (c.page ? '<button class="btn-ghost" data-cvpages="1" title="The fill wasn\u2019t sure which LinkedIn page is theirs. One click each; the next run reads them.">Pick ' +
+        c.page + (c.page === 1 ? ' LinkedIn page' : ' LinkedIn pages') + ' →</button>' : '') +
+      (c.zach ? '<button class="btn-ghost" data-cvzach="1" title="Your LinkedIn showed their marketing / partnerships people as \u201cLinkedIn Member\u201d. Zach\u2019s account sees them.">' +
+        c.zach + ' for Zach to read →</button>' : '') +
+      '<button class="cv-tog" data-cvtog="1" aria-expanded="' + (CV_OPEN ? 'true' : 'false') + '">' + (CV_OPEN ? 'Details ▾' : 'Details ▸') + '</button>'
+    : '';
   box.innerHTML = '<div class="panel panel-pad cv-card">' +
     '<div class="cv-head"><b>Buyer coverage</b>' +
       '<span class="n">' + c.covered + ' of ' + c.inPlay + '</span>' +
       '<div class="cv-bar cv-bar-in"><div style="width:' + pct + '%"></div></div>' +
       (info ? '<span class="cv-week' + (info.coveredWeek ? ' up' : '') + '" title="' + esc(weekTip) + '">' +
         (info.coveredWeek ? '+' + info.coveredWeek + ' this week' : 'none new this week') + '</span>' : '') +
+      acts +
     '</div>' +
-    (c.need
+    (!c.need ? '<div class="hint" style="margin:6px 0 0;color:var(--good)">Every brand in play has a buyer.</div>' : '') +
+    (c.need && CV_OPEN
       ? '<div class="cv-rows">' +
           row('next', '<span title="Brands with nobody go first. About ' + days + (days === 1 ? ' day' : ' days') + ' at ' + per +
-            ' a day, on your computer with LinkedIn open in its window.">Next on the LinkedIn fill · about ' + days + (days === 1 ? ' day' : ' days') + '</span>',
-            '<a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" title="Opens LinkedIn in a window of its own and starts the fill. Leave a corner of that window in view. Needs the LinkedIn capture script in Tampermonkey.">Start the fill ↗</a>') +
-          row('page', '<span title="The fill wasn\u2019t sure which LinkedIn page is theirs. One click each; the next run reads them.">Pick their LinkedIn page</span>',
-            '<button class="btn-ghost" data-cvpages="1">Pick →</button>') +
-          row('zach', '<span title="Your LinkedIn showed their marketing / partnerships people as \u201cLinkedIn Member\u201d (outside your network). Zach\u2019s account sees them: SB \u00b7 Read people on each link.">Hidden from your LinkedIn · Zach reads them</span>',
-            '<button class="btn-ghost" data-cvzach="1">Open →</button>') +
+            ' a day, on your computer with LinkedIn open in its window.">Next on the LinkedIn fill · about ' + days + (days === 1 ? ' day' : ' days') + '</span>') +
+          row('page', '<span title="The fill wasn\u2019t sure which LinkedIn page is theirs. One click each; the next run reads them.">Pick their LinkedIn page</span>') +
+          row('zach', '<span title="Your LinkedIn showed their marketing / partnerships people as \u201cLinkedIn Member\u201d (outside your network). Zach\u2019s account sees them: SB \u00b7 Read people on each link.">Hidden from your LinkedIn · Zach reads them</span>') +
           row('resting', '<span title="LinkedIn showed nobody in marketing / partnerships on a recent read. Sooner: open one and add someone, or try SponsorUnited.">LinkedIn found nobody' +
             (c.back ? ' · back on the fill ' + esc(shortDate(c.back)) : '') + '</span>') +
           row('noPage', '<span title="You said they have no LinkedIn page. Try SponsorUnited or add someone by hand.">No LinkedIn page</span>') +
           row('full', '<span title="25 people on file and none in marketing / partnerships, so the fill can\u2019t add more. Open one and add the right person.">25 on file, no buyer</span>') +
         '</div>'
-      : '<div class="hint" style="margin:6px 0 0;color:var(--good)">Every brand in play has a buyer.</div>') +
-    cvRunLine(info) +
+      : '') +
+    (runWarn || CV_OPEN ? run : '') +
   '</div>';
 }
 
@@ -6060,6 +6087,7 @@ function cvZachList() {
 }
 
 document.getElementById('cover-card').addEventListener('click', function (e) {
+  if (e.target.closest('[data-cvtog]')) { CV_OPEN = !CV_OPEN; renderCoverage(); return; }
   var show = e.target.closest('[data-cvshow]');
   if (show) { cvShow(show.getAttribute('data-cvshow')); return; }
   if (e.target.closest('[data-cvpages]')) cvPickPages();
@@ -6157,15 +6185,15 @@ function brState(b) {
 function brCoverLine(b) {
   var c = b.cover;
   if (!c) return '';
-  if (c.state === 'page') return '<div class="br-sub br-cvl">No clear LinkedIn page — <a href="#" data-bract="pickpage">pick it</a> and the next run reads it</div>';
+  if (c.state === 'page') return '<div class="br-sub br-cvl">No clear LinkedIn page — <a href="#" data-bract="pickpage">pick it</a></div>';
   if (c.state === 'zach') return '<div class="br-sub br-cvl">Your LinkedIn hid their marketing people — <a href="#" data-bract="zachlist">on Zach\u2019s list</a></div>';
   if (c.state === 'resting') {
     var note = c.note || 'nobody in marketing / partnerships';
-    return '<div class="br-sub br-cvl" title="' + esc('From the LinkedIn fill\u2019s visit: ' + note) + '">LinkedIn ' + esc(shortDate(c.at)) + ': ' +
-      esc(note.length > 90 ? note.slice(0, 87) + '…' : note) + ' · back on the fill ' + esc(shortDate(c.back)) + '</div>';
+    return '<div class="br-sub br-cvl" title="' + esc('From the LinkedIn fill\u2019s visit ' + shortDate(c.at) + ': ' + note) + '">LinkedIn found nobody ' +
+      esc(shortDate(c.at)) + ' · back on the fill ' + esc(shortDate(c.back)) + '</div>';
   }
-  if (c.state === 'noPage') return '<div class="br-sub br-cvl">No LinkedIn page — SponsorUnited, or add someone by hand</div>';
-  if (c.state === 'full') return '<div class="br-sub br-cvl">Full (25 on file) and none in marketing / partnerships</div>';
+  if (c.state === 'noPage') return '<div class="br-sub br-cvl" title="Try SponsorUnited, or add someone by hand">No LinkedIn page</div>';
+  if (c.state === 'full') return '<div class="br-sub br-cvl" title="25 people on file and none in marketing / partnerships — open it and add the right person">25 on file, no buyer</div>';
   return '';
 }
 
@@ -6199,7 +6227,7 @@ function brEditRow(b) {
       (p.linkedin ? ' <span class="br-has" title="Has a LinkedIn link">in</span>' : '') + '</li>';
   }).join('');
   var others = brPeople(b) - brBuyers(b);
-  return '<tr class="br-open" data-bropen="' + esc(b.id) + '"><td colspan="7"><div class="br-edit">' +
+  return '<tr class="br-open" data-bropen="' + esc(b.id) + '"><td colspan="6"><div class="br-edit">' +
     '<div class="br-fields">' + cat + tier +
       f('website', 'Website', b.website, 'brand.com') +
       f('linkedinUrl', 'LinkedIn page', b.linkedinUrl, 'linkedin.com/company/…') +
@@ -6236,13 +6264,12 @@ function brRow(b) {
   return '<tr class="br-row' + (b.passedAt ? ' off' : '') + (BB.sel[b.id] ? ' sel' : '') + (open ? ' is-open' : '') + '" data-brow="' + esc(b.id) + '" data-name="' + esc(b.name) + '">' +
     '<td class="br-tick"><label data-bsel="' + esc(b.id) + '" title="Select to re-file or put on a day">' +
       '<input type="checkbox" data-bselcb="' + esc(b.id) + '" data-name="' + esc(b.name) + '"' + (BB.sel[b.id] ? ' checked' : '') + '></label></td>' +
-    '<td class="br-name"><span class="br-caret" aria-hidden="true">' + (open ? '▾' : '▸') + '</span>' +
+    '<td class="br-name"><button class="br-caret" data-bract="toggle" aria-expanded="' + (open ? 'true' : 'false') + '" title="' + (open ? 'Close' : 'Edit details and add people') + '">' + (open ? '▾' : '▸') + '</button>' +
       '<span class="t-brand br-link" data-brand="' + esc(b.id) + '" title="Open the brand page">' + esc(b.name) + '</span> ' + brState(b) + newNote + brCoverLine(b) + '</td>' +
     '<td class="br-cat">' + esc(b.category ? (CAT_NAMES[b.category] || b.category) : '—') + '</td>' +
     '<td class="br-tier">' + esc(b.tier || '—') + '</td>' +
     '<td class="br-fit">' + fitTags(b.fit, { noUs: true }) + '</td>' +
     '<td class="br-num">' + brBuyerCell(b) + '</td>' +
-    '<td class="br-go"><button class="btn-ghost sd-sm" data-bract="toggle">' + (open ? 'Close' : 'Edit') + '</button></td>' +
   '</tr>' + (open ? brEditRow(b) : '');
 }
 
@@ -6274,9 +6301,9 @@ function brRender() {
       }).join('') +
     '</div>';
   }
-  var head = '<tr><th class="br-tick"></th><th>Brand</th><th>Category</th><th>Tier</th>' +
+  var head = '<tr><th class="br-tick"><label title="Select every brand shown"><input type="checkbox" data-bball></label></th><th>Brand</th><th>Category</th><th>Tier</th>' +
     '<th title="Brand Fit 0–100: budget and venture money weigh most; open a brand for the reasons">Fit</th>' +
-    '<th class="br-num" title="Partnerships, marketing, events or founder / CEO titles on file">Buyers</th><th></th></tr>';
+    '<th class="br-num" title="Partnerships, marketing, events or founder / CEO titles on file">Buyers</th></tr>';
   var hidden = (document.getElementById('bq').value || '').trim() ? 0
     : BR_LIST.filter(function (b) { return brSmallHidden(b) && !(BR.hideArchived && b.passedAt); }).length;
   var hiddenNote = hidden ? '<div class="hint" style="margin:8px 0 0">' + hidden + (hidden === 1 ? ' brand' : ' brands') +
@@ -6285,6 +6312,7 @@ function brRender() {
     ? '<div class="br-wrap" data-scroll="brands-table"><table class="br-table"><thead>' + head + '</thead><tbody>' +
         rows.map(brRow).join('') + '</tbody></table></div>'
     : '<div class="panel"><div class="empty"><h3>' + (BR_LIST.length ? 'No brands match' : 'No brands here') + '</h3></div></div>') + hiddenNote;
+  bbAllBox();
 }
 
 function brById(id) { return BR_LIST.filter(function (b) { return b.id === id; })[0]; }
@@ -6660,15 +6688,13 @@ function bbTierName(t) { return t || 'no tier'; }
 
 function bbRender() {
   var ids = Object.keys(BB.sel), n = ids.length;
-  var hasRows = !!document.querySelector('#brands-list [data-bselcb]');
   var note = BB_NOTE && BB_NOTE.cat === lastCategory && !n
     ? '<div class="pd-done">✓ ' + esc(BB_NOTE.text) + ' · <a href="#" data-bbsched="1">Open the Schedule →</a>' +
         ' <a href="#" class="sd-x" data-bbnotex="1" title="Dismiss">×</a></div>'
     : '';
-  document.getElementById('brands-selbar').innerHTML = note + (hasRows
-    ? '<a href="#" data-bball="1">Select all shown</a>' +
-      (n ? ' · <a href="#" data-bbclear="1">Clear</a>' : '')
-    : '');
+  // Select all is the table header's tick box; Clear sits in the bar below.
+  document.getElementById('brands-selbar').innerHTML = note;
+  bbAllBox();
   var bar = document.getElementById('brands-bulk');
   if (!n) { bar.innerHTML = ''; return; }
 
@@ -6688,7 +6714,7 @@ function bbRender() {
   var picked = !!(BB.cat || BB.tier);
 
   var html = '<div class="sd-bulk">' +
-    '<b>' + n + ' selected</b>' +
+    '<b>' + n + ' selected</b> <a href="#" data-bbclear="1">Clear</a>' +
     (lastCategory === 'new'
       ? '<button class="btn-solid" data-bbkeep="1"' + lock + ' title="Looked at, fine as they are — off this list, nothing on them changes">Keep ' + n + '</button>' +
         '<button class="btn-ghost danger" data-bbarchive="1"' + lock + ' title="Not a fit — off outreach for good, onto the Archived tab (Bring back anytime)">Archive ' + n + '…</button>' +
@@ -6728,6 +6754,16 @@ function bbRender() {
   bar.innerHTML = html + '</div>';
 }
 
+// The table header's Select all box: ticked when every row shown is,
+// half when only some brands are ticked.
+function bbAllBox() {
+  var box = document.querySelector('#brands-list input[data-bball]');
+  if (!box) return;
+  var shown = document.querySelectorAll('#brands-list input[data-bselcb]');
+  box.checked = shown.length > 0 && [].every.call(shown, function (cb) { return cb.checked; });
+  box.indeterminate = !box.checked && Object.keys(BB.sel).length > 0;
+}
+
 function bbSetTick(cb, on) {
   var id = cb.getAttribute('data-bselcb');
   cb.checked = on;
@@ -6737,6 +6773,8 @@ function bbSetTick(cb, on) {
 }
 
 document.getElementById('brands-list').addEventListener('change', function (e) {
+  var all = e.target.closest('input[data-bball]');
+  if (all) { bbTickAll(all.checked); return; }
   var cb = e.target.closest('input[data-bselcb]');
   if (!cb) return;
   bbSetTick(cb, cb.checked);
@@ -6745,22 +6783,19 @@ document.getElementById('brands-list').addEventListener('change', function (e) {
   bbRender();
 });
 
-// "Select all shown" respects the search box: rows it has hidden stay
-// unticked, so a filtered list re-files only what you can see.
-document.getElementById('brands-selbar').addEventListener('click', function (e) {
-  if (e.target.closest('[data-bbsched]')) { e.preventDefault(); BB_NOTE = null; gotoView('schedule'); return; }
-  if (e.target.closest('[data-bbnotex]')) { e.preventDefault(); BB_NOTE = null; bbRender(); return; }
-  var all = e.target.closest('[data-bball]'), clear = e.target.closest('[data-bbclear]');
-  if (!all && !clear) return;
-  e.preventDefault();
+// Select all (the header's box) respects the search box and filters: rows
+// they hide stay unticked, so a filtered list re-files only what you can see.
+function bbTickAll(on) {
   BB_NOTE = null;
-  document.querySelectorAll('#brands-list input[data-bselcb]').forEach(function (cb) {
-    if (clear) { bbSetTick(cb, false); return; }
-    bbSetTick(cb, true);
-  });
+  document.querySelectorAll('#brands-list input[data-bselcb]').forEach(function (cb) { bbSetTick(cb, on); });
+  if (!on) BB.sel = {};
   BB.preview = null; BB.shown = null;
   pdTicksChanged('brands');
   bbRender();
+}
+document.getElementById('brands-selbar').addEventListener('click', function (e) {
+  if (e.target.closest('[data-bbsched]')) { e.preventDefault(); BB_NOTE = null; gotoView('schedule'); return; }
+  if (e.target.closest('[data-bbnotex]')) { e.preventDefault(); BB_NOTE = null; bbRender(); return; }
 });
 
 document.getElementById('brands-bulk').addEventListener('change', function (e) {
@@ -6773,6 +6808,7 @@ document.getElementById('brands-bulk').addEventListener('change', function (e) {
 });
 
 document.getElementById('brands-bulk').addEventListener('click', function (e) {
+  if (e.target.closest('[data-bbclear]')) { e.preventDefault(); if (!BB.busy) bbTickAll(false); return; }
   if (e.target.closest('[data-bbcancel]')) { BB.preview = null; BB.shown = null; bbRender(); return; }
   var prev = e.target.closest('[data-bbpreview]'), apply = e.target.closest('[data-bbapply]');
   if ((!prev && !apply) || BB.busy) return;

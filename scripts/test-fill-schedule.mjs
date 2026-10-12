@@ -36,6 +36,7 @@ is('asked', fillWhy({ name: 'X', research: true, asked: true }, ''), 'Asked for 
 is('research', fillWhy({ name: 'X', research: true, lane: 'Energy drinks', focus: true }, 'electrolyte'), 'Research list · Energy drinks · focus “electrolyte”')
 is('no buyer', fillWhy({ name: 'X', brandId: 'x', noBuyer: true }, ''), 'No buyer on file')
 is('reached last', fillWhy({ name: 'X', brandId: 'x', last: 'reached', noBuyer: true }, ''), 'Already reached out — read last')
+is('read last beats the Sales Navigator retry', fillWhy({ name: 'X', brandId: 'x', last: 'reached', hiddenRetry: true }, ''), 'Already reached out — read last')
 is('giant last', fillWhy({ name: 'X', brandId: 'x', last: 'giant' }, ''), 'Giant, held back — read last')
 is('plain', fillWhy({ name: 'X', brandId: 'x' }, ''), 'Under 25 people on file')
 
