@@ -646,6 +646,24 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   it has the repo attached; a session a routine makes fresh has no repo and can't push — which reads
   the reports and fixes/pushes LinkedIn-tool bugs only; needs `REPORT_TOKEN` +
   `sb-digitaldashboard.vercel.app` allowed in the cloud environment.
+  **Sales Navigator** (Leo, Oct 12 2026: "build out the fill for a Sales Navigator page on my own account"; script
+  1.31, still Leo's account only): with the setup panel's "Use Sales Navigator" on (default, GM `sbLiSalesNav`), a brand's
+  People tab is read whole as before (headcount, page check, lookalikes — kept in the step as `look`), then **instead of**
+  its marketing / partnerships views (or a big company's searches) the run opens Sales Navigator's lead search filtered
+  to the brand's company id (`companyIdHere`: voyager `organization/companies?q=universalName`, else the id the page
+  mentions most): `SN_SEARCHES` = function Marketing + Business Development (up to 3 pages of 25), then "partnership(s)
+  OR sponsorship(s)" (up to 2). Results draw as they scroll (`snExpand` scrolls `#search-results-container`); cards are
+  read by `data-anonymize` (person-name / title / company-name) with a lines fallback (`snReadCard`); a person is saved
+  as `linkedin.com/in/<member id>` (the lead URL's ACw… id; `storedProfileUrl` keeps its case, `profileSlug` still
+  compares case-blind) with "Title at Company", through the same `liCapture` by brandId (big company: `checkPage` on
+  the first save). Mis-searches: no company id → the People tab views; results mostly at another company
+  (`sameCompany`) → nobody saved from it, People tab views; one result at another company → left out; landing off the
+  search (upsell / `/premium/`) → Sales Navigator off for the rest of the run (`snOff`, panel line `#sblisnline`);
+  contract chooser → pause; twice failing to open → off for the run. `liSwept` carries `salesNav` (mark `sn`, via
+  "Sales Navigator") and only the hidden people Sales Navigator still couldn't name, as People-tab views Zach can open.
+  `liList({ salesNav: true })` brings back resting brands with likely hidden buyers, no `sn` mark and no Zach read
+  (`hiddenRetry`, right after the Schedule's and asked-for names). Unverified against the real Sales Navigator pages
+  until Leo's first run — "Copy a sample for Claude" works on a Sales Navigator search. `node scripts/test-li-salesnav.js`.
   **"LinkedIn Member" cards** (out of Leo's network, name + profile hidden by LinkedIn) can't be saved, but
   **they aren't lost** (Leo, Oct 7 2026: "i dont want to miss out on people if i do it from my own account"):
   since 1.30 the script reads each hidden card's headline (`hiddenCards` / `memberCardFor`), view by view

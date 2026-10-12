@@ -43,6 +43,21 @@ export function profileUrl(slug: string): string {
   return 'https://www.linkedin.com/in/' + encodeURIComponent(slug) + '/'
 }
 
+// The link to keep on file. A vanity link is case-blind and kept lower
+// case as always; a member id (ACwAA…, from Sales Navigator — linkedin.com/
+// in/<id> opens the person's profile) is case-sensitive, so it keeps its
+// case. Comparisons still go through profileSlug.
+const MEMBER_ID = /^AC[A-Za-z0-9_-]{20,}$/
+export function storedProfileUrl(url: string | null | undefined): string | null {
+  const m = String(url || '').match(/(?:linkedin\.com)?\/(?:in|pub)\/([^\/?#\s]+)/i)
+  if (!m) return null
+  let s = m[1]
+  try { s = decodeURIComponent(s) } catch { /* keep as is */ }
+  s = s.trim()
+  if (!s) return null
+  return profileUrl(MEMBER_ID.test(s) ? s : s.toLowerCase())
+}
+
 // The name as LinkedIn shows it, tidied. Null for anything that is not a
 // person's name: "LinkedIn Member" (out of network, no profile to open),
 // an address, or a whole card's text.

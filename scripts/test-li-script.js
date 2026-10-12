@@ -439,7 +439,8 @@ const GM_SHIM = `
   (function () {
     // Backed by this tab's sessionStorage so it survives the fill's page
     // loads, as Tampermonkey's own storage does. Seeded once per tab.
-    var seed = { sbIngestToken: 'test-token' };
+    // Sales Navigator off: these runs are the People tab's (test-li-salesnav.js has the other).
+    var seed = { sbIngestToken: 'test-token', sbLiSalesNav: false };
     var P = '__gm:';
     try {
       if (!sessionStorage.getItem('__gm_seeded')) {
@@ -626,7 +627,7 @@ const GM_SHIM = `
       const scErrors = [];
       sc.on('pageerror', e => scErrors.push(e.message));
       sc.on('dialog', d => { scErrors.push('alert: ' + d.message()); d.dismiss(); });
-      await sc.addInitScript((withToken ? GM_SHIM : GM_SHIM.replace("{ sbIngestToken: 'test-token' }", '{}')) + '\n' + SCRIPT);
+      await sc.addInitScript((withToken ? GM_SHIM : GM_SHIM.replace("{ sbIngestToken: 'test-token', sbLiSalesNav: false }", '{}')) + '\n' + SCRIPT);
       await sc.goto('http://127.0.0.1:4622/company/scrub-brand/people/');
       const scrubs = await sc.evaluate(() => { const d = document.createElement('div'); d.innerHTML = '<button id="x">b</button>'; return !d.querySelector('#x'); });
       assert.equal(scrubs, true, 'the test page must really scrub inserted HTML');

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.30
+// @version      1.31
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -35,6 +35,9 @@
 // a slow run through every brand under 25, ~50 a day, which can also add
 // new brands LinkedIn shows (lookalikes, keyword searches) and pauses the
 // moment LinkedIn shows a check — see "filling brands by itself" below.
+// With Sales Navigator on the account (1.31), the run takes each brand's
+// marketing / partnerships people from Sales Navigator's lead search,
+// which names people the People tab hides — see "Sales Navigator".
 // Leo asked for the run knowing LinkedIn restricts accounts that browse
 // like a script; everything about its pace is there to look like a
 // person, and to stop like one.
@@ -83,7 +86,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.30';
+  var VERSION = '1.31';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1031,13 +1034,15 @@
   // no tracking attributes) — for Leo to paste into the chat.
   function sampleText(markupChars) {
     var cards = [], seen = {};
-    profileLinks().forEach(function (a) {
-      var slug = slugOf(a.getAttribute('href'));
+    // A Sales Navigator search: its lead cards, read its way.
+    var sn = onSalesSearch();
+    (sn ? snLinks() : profileLinks()).forEach(function (a) {
+      var slug = sn ? leadId(a.getAttribute('href')) : slugOf(a.getAttribute('href'));
       if (seen[slug] || cards.length >= 3) return;
       seen[slug] = 1;
-      cards.push(cardFor(a));
+      cards.push(sn ? snCard(a) : cardFor(a));
     });
-    var out = ['SB LinkedIn sample · script ' + VERSION + ' · ' + location.pathname + ' · ' + count() + ' people on screen'];
+    var out = ['SB LinkedIn sample · script ' + VERSION + ' · ' + location.pathname + ' · ' + (sn ? snCount() : count()) + ' people on screen'];
     // Where every profile link on the page is, read or skipped: when the
     // count is short, this says which wrapper hid the rest.
     var zones = {};
@@ -1048,7 +1053,7 @@
     });
     out.push('profile links ' + JSON.stringify(zones));
     cards.forEach(function (c, i) {
-      out.push('--- card ' + (i + 1) + ' read as ' + JSON.stringify(readCard(c)));
+      out.push('--- card ' + (i + 1) + ' read as ' + JSON.stringify(sn ? snReadCard(c, c.querySelector('a[href*="/sales/lead/"]') || c) : readCard(c)));
       out.push('lines ' + JSON.stringify(cardLines(c).slice(0, 14)));
       out.push(String(c.outerHTML || '')
         .replace(/<img[^>]*>/g, '<img>')
@@ -1226,7 +1231,7 @@
   // LinkedIn telling us to stop. Checked on every page the run lands on
   // and before every save. (Our panel hangs off <html>, not <body>, so
   // its own words never trip this.)
-  var HALT_TEXT = /commercial use limit|unusual activity|security verification|quick security check|verify (?:that )?you'?re (?:a )?human|too many requests|you'?ve reached the (?:weekly|monthly) limit|account (?:has been )?restricted|temporarily restricted/i;
+  var HALT_TEXT = /commercial use limit|unusual activity|security verification|quick security check|verify (?:that )?you'?re (?:a )?human|too many requests|you'?ve reached the (?:weekly|monthly) limit|account (?:has been )?restricted|temporarily restricted|reached (?:your|the) (?:\w+ )?search limit|too many actions/i;
   function linkedinSaysStop() {
     if (/^\/(checkpoint|authwall|uas|login|signup)(\/|$)/.test(location.pathname)) return 'LinkedIn asked you to sign in or pass a check';
     var m = pageText().match(HALT_TEXT);
@@ -1292,6 +1297,239 @@
   function searchCandidates() {
     return companyCards(document, true, null).slice(0, 10);
   }
+
+  // ---- Sales Navigator (Leo, Oct 12 2026) ----
+  //
+  // On Leo's account a brand's People tab shows most of its marketers as
+  // "LinkedIn Member": outside his network, name and profile hidden.
+  // Sales Navigator shows 3rd-degree people by name. So when it's open on
+  // the account, a brand's marketing / partnerships views come from Sales
+  // Navigator's lead search instead: current company = the brand's page
+  // (by LinkedIn's company id, so it's that company and no other), and
+  //   1. function Marketing or Business Development (up to 3 pages);
+  //   2. "partnership(s) OR sponsorship(s)" anywhere (up to 2 pages).
+  // The People tab's whole list is still read first: it gives the
+  // headcount, the industry check, lookalikes and anyone in-network.
+  // Saving is the same liCapture by brandId, so the dashboard's rules
+  // (buyers only, 25 cap, duplicates) hold exactly as they do now.
+  // If Sales Navigator isn't open on the account, or a brand's company id
+  // can't be found, the brand gets the People tab views as before.
+  var SN_KEY = 'sbLiSalesNav';
+  var SN_SEARCHES = [
+    { label: 'marketing & business development', q: 'marketing', pages: 3,
+      functions: [[15, 'Marketing'], [4, 'Business Development']] },
+    { label: 'partnerships & sponsorship', q: 'partnerships', pages: 2,
+      keywords: 'partnership OR partnerships OR sponsorship OR sponsorships' },
+  ];
+  var SN_PAGE_SIZE = 25;
+  // Sales Navigator's empty search, and its pages for an account without it.
+  var SN_EMPTY = /no leads (?:match|found)|no results found|0 results/i;
+  var SN_UPSELL = /start (?:your )?free trial|try sales navigator|upgrade to sales navigator|get sales navigator|reactivate (?:your )?sales navigator/i;
+
+  function snWanted() { try { return GM_getValue(SN_KEY, true) !== false; } catch (e) { return true; } }
+  function snOn(job) { return !!job && job.salesNav === true; }
+  function onSalesSearch() { return /^\/sales\/search\/people\/?$/.test(location.pathname); }
+  function snPageNo() {
+    try { return parseInt(new URLSearchParams(location.search).get('page') || '1', 10) || 1; } catch (e) { return 1; }
+  }
+  // Rest.li text: encodeURIComponent leaves ( ) ' ! * alone, and those
+  // are Sales Navigator's own punctuation in the query.
+  function restli(s) {
+    return encodeURIComponent(String(s || '')).replace(/[()'!*]/g, function (c) { return '%' + c.charCodeAt(0).toString(16).toUpperCase(); });
+  }
+  function snUrl(coId, coName, search, page) {
+    var filters = ['(type:CURRENT_COMPANY,values:List((id:urn%3Ali%3Aorganization%3A' + coId + ',text:' + restli(coName) + ',selectionType:INCLUDED)))'];
+    if (search.functions) {
+      filters.push('(type:FUNCTION,values:List(' + search.functions.map(function (f) {
+        return '(id:' + f[0] + ',text:' + restli(f[1]) + ',selectionType:INCLUDED)';
+      }).join(',') + '))');
+    }
+    var query = '(' + (search.keywords ? 'keywords:' + restli(search.keywords) + ',' : '') + 'filters:List(' + filters.join(',') + '))';
+    return location.origin + '/sales/search/people?query=' + query + (page > 1 ? '&page=' + page : '');
+  }
+
+  // LinkedIn's own id for the company page we're on — what Sales
+  // Navigator's company filter takes. Asked of LinkedIn the way its pages
+  // ask; else the id the page itself mentions most (its own, on its own
+  // page). null when neither says.
+  var COMPANY_URN = /urn:li:(?:fsd_company|fs_normalized_company|fs_company|company|organization):(\d+)/g;
+  function companyIdOnPage() {
+    var html = '';
+    try { html = document.documentElement.innerHTML; } catch (e) {}
+    var counts = {}, m, best = null;
+    COMPANY_URN.lastIndex = 0;
+    while ((m = COMPANY_URN.exec(html))) counts[m[1]] = (counts[m[1]] || 0) + 1;
+    Object.keys(counts).forEach(function (id) { if (!best || counts[id] > counts[best]) best = id; });
+    return best;
+  }
+  function companyIdHere() {
+    var c = companyPath();
+    if (!c) return Promise.resolve(null);
+    var m = document.cookie.match(/JSESSIONID="?([^";]+)"?/);
+    var ask = m && typeof fetch === 'function'
+      ? fetch('/voyager/api/organization/companies?q=universalName&universalName=' + encodeURIComponent(c.slug), {
+          credentials: 'include', headers: { 'csrf-token': m[1], accept: 'application/json', 'x-restli-protocol-version': '2.0.0' },
+        })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (j) {
+            var first = j && Array.isArray(j.elements) ? j.elements[0] : j;
+            var hit = first ? /urn:li:(?:fsd_company|fs_normalized_company|fs_company|company|organization):(\d+)/.exec(JSON.stringify(first)) : null;
+            return hit ? hit[1] : null;
+          })
+          .catch(function () { return null; })
+      : Promise.resolve(null);
+    var timeout = new Promise(function (res) { setTimeout(function () { res(null); }, 6000); });
+    return Promise.race([ask, timeout]).then(function (id) { return id || companyIdOnPage(); });
+  }
+
+  // Lead links in Sales Navigator's results: /sales/lead/<id>,NAME_SEARCH,…
+  // The id opens the same person's profile at linkedin.com/in/<id>.
+  function leadId(href) {
+    var m = String(href || '').match(/\/sales\/lead\/([A-Za-z0-9_-]+)/);
+    return m ? m[1] : null;
+  }
+  function snLinks() {
+    return [].slice.call(document.querySelectorAll('a[href*="/sales/lead/"]')).filter(function (a) {
+      return !a.closest('.sb-li-ui, [role="dialog"]') && leadId(a.getAttribute('href'));
+    });
+  }
+  function distinctLeads(el) {
+    var s = {};
+    [].slice.call(el.querySelectorAll('a[href*="/sales/lead/"]')).forEach(function (a) {
+      var k = leadId(a.getAttribute('href'));
+      if (k) s[k] = 1;
+    });
+    return Object.keys(s).length;
+  }
+  function snCard(a) {
+    var li = a.closest('li');
+    if (li && distinctLeads(li) === 1) return li;
+    var el = a;
+    while (el.parentElement && el.parentElement !== document.body) {
+      if (distinctLeads(el.parentElement) > 1) break;
+      el = el.parentElement;
+      if (lines(el).length > 14) break;
+    }
+    return el;
+  }
+  function textOf(el) { return el ? String(el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim() : ''; }
+  // One result: name, title and company. Sales Navigator marks each with
+  // data-anonymize; when it doesn't, the lines after the name decide.
+  function snReadCard(card, a) {
+    var name = personName(textOf(card.querySelector('[data-anonymize="person-name"]')) || lines(a)[0] || '');
+    var title = textOf(card.querySelector('[data-anonymize="title"]'));
+    var company = textOf(card.querySelector('[data-anonymize="company-name"]'));
+    if (!title && name) {
+      var all = lines(card).map(personName), at = all.indexOf(name);
+      for (var i = at + 1; i < all.length && !title; i++) {
+        var l = all[i];
+        if (l && l !== name && !/^(save|saved|message|view profile|\d+(st|nd|rd|th)?|.*\bdegree\b.*)$/i.test(l)) title = l;
+      }
+    }
+    return { name: name, title: personName(title).slice(0, 200), company: company.replace(/^\s*(?:at\s+)?/i, '').slice(0, 120) };
+  }
+  // "LinkedIn Member" cards Sales Navigator still can't name.
+  function snHiddenLeaves() {
+    return [].slice.call(document.querySelectorAll('main *, #search-results-container *')).filter(function (el) {
+      return !el.children.length && !el.closest('.sb-li-ui') && /^linkedin member$/i.test(String(el.textContent || '').trim());
+    });
+  }
+  function snRead() {
+    var ids = {}, rows = [], hidden = [], hidCards = [];
+    snLinks().forEach(function (a) {
+      var id = leadId(a.getAttribute('href'));
+      if (ids[id]) return;
+      ids[id] = 1;
+      var card = snCard(a);
+      var r = snReadCard(card, a);
+      if (!r.name || r.name.length > 80) return;
+      if (/^linkedin member$/i.test(r.name)) { hidden.push(r.title); hidCards.push(card); return; }
+      rows.push({ name: r.name, title: r.title, company: r.company, linkedinUrl: 'https://www.linkedin.com/in/' + id + '/' });
+    });
+    // Hidden cards with no lead link at all.
+    snHiddenLeaves().forEach(function (el) {
+      var card = el.closest('li') || el.parentElement;
+      if (!card || hidCards.indexOf(card) >= 0 || card.querySelector('a[href*="/sales/lead/"]')) return;
+      hidCards.push(card);
+      hidden.push(textOf(card.querySelector('[data-anonymize="title"]')) ||
+        (lines(card).map(personName).filter(function (x) { return x && !/^linkedin member$/i.test(x); })[0] || ''));
+    });
+    return { rows: rows, hidden: hidden.map(function (x) { return String(x || '').slice(0, 160); }), links: Object.keys(ids).length };
+  }
+  function snCount() { var g = snRead(); return g.links + g.hidden.length; }
+
+  // Sales Navigator draws its results as they scroll into view, inside a
+  // box of their own: scroll that box down a screen at a time until the
+  // count stops growing at the bottom.
+  function snScroller() {
+    var c = document.querySelector('#search-results-container');
+    if (c && c.scrollHeight > c.clientHeight + 20) return c;
+    var a = snLinks()[0], el = a && a.parentElement;
+    while (el && el !== document.body) {
+      var cs = getComputedStyle(el);
+      if (/(auto|scroll)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 20) return el;
+      el = el.parentElement;
+    }
+    return null;
+  }
+  function snExpand(halt) {
+    return new Promise(function (resolve) {
+      var steps = 0, still = 0, last = -1;
+      (function step() {
+        if (halt.stopped) return resolve();
+        var sc = snScroller();
+        if (sc) sc.scrollTop = sc.scrollTop + Math.max(300, sc.clientHeight * 0.8);
+        else window.scrollBy(0, Math.max(300, window.innerHeight * 0.8));
+        steps++;
+        wait(rand(400, 800)).then(function () {
+          var n = snCount();
+          var atEnd = sc ? sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 5
+            : window.innerHeight + window.scrollY >= document.body.scrollHeight - 5;
+          still = n === last && atEnd ? still + 1 : 0;
+          last = n;
+          if (still >= 2 || steps >= 20) {
+            if (sc) sc.scrollTop = 0;
+            window.scrollTo(0, 0);
+            return resolve();
+          }
+          step();
+        }).catch(function () { resolve(); });
+      })();
+    });
+  }
+
+  // Is a result's company the brand? The company filter should make every
+  // result the brand's; this is the check that a wrong company id can't
+  // fill a brand with someone else's people.
+  function coKey(s) {
+    return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/&/g, ' and ')
+      .replace(/[^a-z0-9]+/g, ' ').replace(/\b(inc|llc|ltd|corp|co|company|the|group)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  function sameCompany(a, names) {
+    var x = coKey(a);
+    if (!x) return true;
+    return names.some(function (n) {
+      var y = coKey(n);
+      if (!y) return false;
+      if (x === y || x.indexOf(y) >= 0 || y.indexOf(x) >= 0) return true;
+      var fx = x.split(' ')[0], fy = y.split(' ')[0];
+      return fx.length >= 4 && fx === fy;
+    });
+  }
+
+  function snReadingProblem(got) {
+    if (!got.rows.length) return got.links >= 3 ? 'Sales Navigator showed ' + got.links + ' people but the reader made out none' : null;
+    if (got.rows.length >= 3 && got.rows.every(function (r) { return !r.title; })) return 'every Sales Navigator title came out blank (' + got.rows.length + ' people)';
+    return null;
+  }
+
+  // Why the run isn't on a Sales Navigator search after going to one.
+  function snWhyNot() {
+    var p = location.pathname;
+    if (/^\/sales\/contract/.test(p)) return { pause: 'Sales Navigator asked which contract to use. Pick it, then press Continue' };
+    if (/^\/(sales|premium)\//.test(p) || SN_UPSELL.test(pageText(6000))) return { text: 'Sales Navigator isn\'t open on this LinkedIn account', wholeRun: true };
+    return null;
+  }
   var fillTimer = null, fillHalt = { stopped: false }, fillStatusEl = null;
   function later(fn, ms) {
     clearTimeout(fillTimer);
@@ -1312,6 +1550,9 @@
       items: items, at: 0, step: null, results: [], added: 0,
       day: todayKey(), doneToday: 0, nextAt: 0, pausedUntil: 0, paused: null,
       lookalikes: !!discover.lookalikes, newBrands: [],
+      // Sales Navigator for the marketing / partnerships people (Leo, Oct
+      // 2026); off for the rest of the run if the account doesn't have it.
+      salesNav: discover.salesNav !== false,
       searches: (discover.words || []).map(function (q) { return { q: q, page: 1, navs: 0 }; }),
     });
     runEvent(loadFill(), 'start', { focus: focus || '', items: items.length });
@@ -1389,6 +1630,21 @@
       }
       return go(job, searchUrl(pq), 'Finding ' + item.parent.name + ' on LinkedIn — ' + item.name + '\'s people are there');
     }
+    // Sales Navigator's lead searches (instead of the keyword views).
+    if (st.phase === 'sales') {
+      if (st.navs > 0 && onSalesSearch() && snPageNo() === st.snPage) {
+        st.navs = 0; saveFill(job);
+        return fillSales(item);
+      }
+      if (st.navs > 0) {
+        var why = snWhyNot();
+        if (why && why.pause) return pauseFill(job, why.pause);
+        if (why) return snFailed(job, why.text, why.wholeRun);
+      }
+      if (st.navs >= 2) return snFailed(job, 'its Sales Navigator search would not open', false);
+      var sn = SN_SEARCHES[st.snI];
+      return go(job, snUrl(st.coId, st.pageName || item.name, sn, st.snPage), 'Sales Navigator: ' + item.name + ' — ' + sn.label + (st.snPage > 1 ? ' (page ' + st.snPage + ')' : ''));
+    }
     var want = stepPasses(st)[st.pass];
     if (st.navs > 0 && onPeoplePage() && kwParam() === want) {
       st.navs = 0; saveFill(job);
@@ -1432,7 +1688,7 @@
       phase: item.parent.slug ? 'read' : 'parent-find', kind: 'parent', passes: [item.name], pass: 0,
       parentTried: true, ownNote: why, triedAka: true, seen: st.seen || 0, seenUrls: st.seenUrls || [], added: 0, navs: 0,
       startedAt: st.startedAt || Date.now(), hiddenMs: st.hiddenMs || 0, members: st.members || null,
-      hidRead: st.hidRead || 0, hidViews: st.hidViews || [],
+      hidRead: st.hidRead || 0, hidViews: st.hidViews || [], salesNav: !!st.salesNav,
     };
     job.nextAt = Date.now() + secs(BETWEEN_PAGES);
     saveFill(job);
@@ -1575,7 +1831,14 @@
         readPath = null;
         if (!sameStep(jobB, at0)) return null;
         var sb = jobB.step;
-        sb.kind = 'big'; sb.passes = BIG_PASSES; sb.pass = 0; sb.navs = 0; sb.members = tooBig;
+        sb.members = tooBig;
+        // With Sales Navigator, a big company's buyers come from its lead
+        // search (by company id) instead of the People tab's searches.
+        if (snOn(jobB) && kind === 'own') {
+          saveFill(jobB);
+          return toSales(at0, 'big').then(function () { return null; });
+        }
+        sb.kind = 'big'; sb.passes = BIG_PASSES; sb.pass = 0; sb.navs = 0;
         jobB.nextAt = Date.now() + secs(BETWEEN_PAGES);
         saveFill(jobB);
         runFill();
@@ -1639,7 +1902,147 @@
         // only "LinkedIn Member" cards does (their headlines go to Zach).
         : !full && st.pass < ps.length - 1 && (st.pass > 0 || rows.length > 0 || hid.length > 0);
       if (!more) return afterPeople(job2, item);
+      // The whole list read: Sales Navigator for the marketing /
+      // partnerships people, where it's open.
+      if (snOn(job2) && (st.kind || 'own') === 'own' && st.pass === 0) {
+        saveFill(job2);
+        return toSales(at0, 'own');
+      }
       st.pass++; st.navs = 0;
+      job2.nextAt = Date.now() + secs(BETWEEN_PAGES);
+      saveFill(job2);
+      runFill();
+    }).catch(fillError);
+  }
+
+  // From the brand's People tab to its Sales Navigator searches. Called
+  // while still on the People tab: the company id, the page's name and
+  // industry, and its lookalikes are read here, before leaving it.
+  function toSales(at0, from) {
+    return companyIdHere().then(function (id) {
+      var job = loadFill();
+      if (!sameStep(job, at0)) return;
+      var st = job.step;
+      st.pageName = companyName();
+      st.industry = companyIndustry();
+      st.look = job.lookalikes ? lookalikes() : [];
+      st.snFrom = from;
+      // No id, no company filter: this brand gets the People tab views.
+      if (!id) return snFallback(job, 'could not find its LinkedIn company id');
+      st.phase = 'sales'; st.coId = id; st.snI = 0; st.snPage = 1; st.navs = 0; st.snHid = [];
+      job.nextAt = Date.now() + secs(BETWEEN_PAGES);
+      saveFill(job);
+      runFill();
+    }).catch(fillError);
+  }
+
+  // Back to the People tab's own views for this brand: its marketing /
+  // partnerships views, or a big company's searches.
+  function snFallback(job, why) {
+    var st = job.step;
+    st.snNote = why;
+    st.phase = 'read'; st.navs = 0;
+    if (st.snFrom === 'big') { st.kind = 'big'; st.passes = BIG_PASSES; st.pass = 0; }
+    else { st.kind = undefined; st.passes = undefined; st.pass = 1; }
+    job.nextAt = Date.now() + secs(BETWEEN_PAGES);
+    saveFill(job);
+    runFill();
+  }
+  // Sales Navigator didn't work for this brand. Twice in a row (or an
+  // account without it) and the rest of the run goes without it.
+  function snFailed(job, why, wholeRun, notTheAccount) {
+    if (!notTheAccount) job.snFails = (job.snFails || 0) + 1;
+    if (wholeRun || job.snFails >= 2) { job.salesNav = false; job.snOff = why; }
+    snFallback(job, why);
+  }
+
+  function fillSales(item) {
+    var job = loadFill(), at0 = job.at, st0 = job.step;
+    var search = SN_SEARCHES[st0.snI], page = st0.snPage;
+    renderFill(job, 'Reading Sales Navigator — ' + item.name + ' · ' + search.label + (page > 1 ? ' (page ' + page + ')' : ''));
+    fillHalt = { stopped: false };
+    readPath = location.pathname;
+    var got = null, rows = [], problem = null, sample = null;
+    waitFor(function () { return snLinks().length || snHiddenLeaves().length || SN_EMPTY.test(pageText(6000)) || !onSalesSearch(); }, 15000).then(function () {
+      if (!sameStep(loadFill(), at0)) return null;
+      var stop = linkedinSaysStop();
+      if (stop) return { halt: stop };
+      if (!onSalesSearch()) return { fail: snWhyNot() || { text: 'Sales Navigator left its search page' } };
+      if (!snLinks().length && !snHiddenLeaves().length && !SN_EMPTY.test(pageText(6000))) return { fail: { text: 'Sales Navigator\'s results did not load' } };
+      return snExpand(fillHalt).then(function () { return {}; });
+    }).then(function (res) {
+      if (!res) return null;
+      if (res.halt || res.fail) return res;
+      if (location.pathname !== readPath) { readPath = null; later(runFill, 3000); return null; }
+      readPath = null;
+      var stop = linkedinSaysStop();
+      if (stop) return { halt: stop };
+      got = snRead();
+      // Every result should be the brand (the company filter). Mostly
+      // someone else's: the id was wrong — save nobody.
+      var names = [st0.pageName, item.name, akaName(item)].filter(Boolean);
+      var named = got.rows.filter(function (r) { return r.company; });
+      var off = named.filter(function (r) { return !sameCompany(r.company, names); });
+      if (named.length >= 3 && off.length * 2 > named.length) {
+        return { fail: { text: 'Sales Navigator showed another company\'s people (' + off[0].company + ')', notTheAccount: true } };
+      }
+      rows = got.rows.filter(function (r) { return off.indexOf(r) < 0; }).map(function (r) {
+        return { name: r.name, headline: r.title + (r.title && r.company ? ' at ' + r.company : ''), linkedinUrl: r.linkedinUrl };
+      });
+      problem = snReadingProblem(got);
+      if (problem) sample = sampleText(1500);
+      return post({
+        action: 'liCapture', brandId: item.brandId,
+        // The brand's own page, never Sales Navigator's address: the
+        // dashboard may save it as the brand's page.
+        companyUrl: item.linkedinUrl, companyName: item.name, companyIndustry: st0.industry || '',
+        // A big company skipped its People tab's read, so its page is
+        // checked here, once.
+        checkPage: st0.snFrom === 'big' && !st0.pageChecked, rows: rows,
+      });
+    }).then(function (r) {
+      if (!r) return;
+      var job2 = loadFill();
+      if (!sameStep(job2, at0)) return;
+      if (r.halt) return pauseFill(job2, r.halt + '. Leave LinkedIn alone for a day before pressing Continue.');
+      if (r.fail) {
+        if (r.fail.pause) return pauseFill(job2, r.fail.pause);
+        return snFailed(job2, r.fail.text, r.fail.wholeRun, r.fail.notTheAccount);
+      }
+      if (!r.ok) return finishBrand(job2, r.error || 'the dashboard did not save');
+      var st = job2.step;
+      if (r.pageMismatch) {
+        if (st.recheck) return finishBrand(job2, 'its saved LinkedIn page looks like another company (' + r.industry + ') — pick the right one on Outreach → People');
+        job2.step = { phase: 'search', recheck: true, pass: 0, triedAka: false, seen: st.seen, added: st.added, navs: 0, startedAt: st.startedAt, hiddenMs: st.hiddenMs || 0 };
+        job2.nextAt = Date.now() + secs(BETWEEN_PAGES);
+        saveFill(job2);
+        return runFill();
+      }
+      st.pageChecked = true;
+      job2.snFails = 0;
+      var seenUrls = st.seenUrls || [];
+      rows.forEach(function (x) { if (seenUrls.indexOf(x.linkedinUrl) < 0) seenUrls.push(x.linkedinUrl); });
+      st.seenUrls = seenUrls;
+      st.seen = Math.max(st.seen || 0, seenUrls.length);
+      st.added += r.added || 0;
+      job2.added = (job2.added || 0) + (r.added || 0);
+      if (problem && !st.problem) { st.problem = problem; st.sample = sample; }
+      // Who Sales Navigator still couldn't name. Sent as the People tab's
+      // matching view, which is what Zach can open on his account.
+      if (got.hidden.length) (st.snHid = st.snHid || []).push({ q: search.q, url: peopleUrl(item.linkedinUrl, search.q), heads: got.hidden.slice(0, 60) });
+      st.snRead = (st.snRead || 0) + 1;
+      var full = r.have >= r.cap;
+      var shown = got.links + got.hidden.length;
+      if (!full && shown >= SN_PAGE_SIZE && page < search.pages) { st.snPage++; st.navs = 0; }
+      else if (!full && st.snI < SN_SEARCHES.length - 1) { st.snI++; st.snPage = 1; st.navs = 0; }
+      else {
+        // Done. Sales Navigator named whoever it could, so the hidden
+        // people that count now are the ones it still couldn't.
+        st.salesNav = true;
+        st.hidViews = st.snHid || [];
+        st.hidRead = (st.hidRead || 0) + 1;
+        return afterPeople(job2, item);
+      }
       job2.nextAt = Date.now() + secs(BETWEEN_PAGES);
       saveFill(job2);
       runFill();
@@ -1713,7 +2116,8 @@
   // and most of a minute per brand (Leo, Sep 2026: "only when free").
   function afterPeople(job, item) {
     if (!job.lookalikes || (job.step && job.step.kind === 'parent')) return endBrand(job, null);
-    var here = lookalikes();
+    // Read on the People tab before the run left it for Sales Navigator.
+    var here = job.step && job.step.look ? job.step.look : lookalikes();
     // saveLookalikes re-reads the run, so this brand's counts must be
     // saved first (they weren't: a brand with lookalikes logged 0 added).
     if (here.length) { saveFill(job); return saveLookalikes(item, here); }
@@ -1750,6 +2154,8 @@
       via = 'big company, ' + size + ': searched ' + searched;
       if (!st.added && !note) note = 'big company (' + size + ') — nobody new in its ' + searched + ' searches';
     }
+    if (st.salesNav && st.kind !== 'parent') via = 'Sales Navigator' + (st.snFrom === 'big' ? ', big company (' + (st.members || 0).toLocaleString('en-US') + ' people)' : '');
+    else if (st.snNote && st.kind !== 'parent') via = (via ? via + '; ' : '') + 'People tab (Sales Navigator: ' + st.snNote + ')';
     // Every item goes in the run's report; the server's visit log (which
     // rests brands) only takes the ones with a brandId — a research name
     // that never became a brand is logged by liResearch.
@@ -1758,6 +2164,9 @@
       seen: st.seen, added: st.added, note: note || '', problem: st.problem || null, sample: st.sample || null,
       ms: st.startedAt ? Date.now() - st.startedAt : null, hiddenMs: st.hiddenMs || 0,
       via: via, members: st.members || null, parentTried: !!st.parentTried,
+      // Read through Sales Navigator: the brand's hidden people had their
+      // chance to be named (the dashboard won't bring it back for that).
+      salesNav: !!st.salesNav,
       // People LinkedIn hid from this account, view by view — only when a
       // view was read (no page read says nothing about who's hidden).
       hidden: st.hidRead ? (st.hidViews || []) : undefined,
@@ -1900,6 +2309,7 @@
       return 'on the Schedule for ' + d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' and short on people';
     }
     if (item.research) return 'from the research list' + (item.lane ? ' (' + item.lane + ')' : '');
+    if (item.hiddenRetry) return 'LinkedIn hid its buyers from your account last time — Sales Navigator may name them';
     // Brands with nobody in marketing / partnerships go right after the
     // Schedule's (the dashboard's liList puts them there).
     if (item.noBuyer) return 'no marketing / partnerships person on file yet' + (item.focus ? ' (a “' + (job.focus || 'focus') + '” brand)' : '');
@@ -1912,7 +2322,7 @@
   function renderFill(job, status) {
     if (!job) return;
     var hiddenMin = Math.floor((job.hiddenMs || 0) / 60000);
-    var key = [job.at, job.added, job.doneToday, job.paused, job.pausedUntil, (job.newBrands || []).length, job.items.length, hiddenMin].join('|');
+    var key = [job.at, job.added, job.doneToday, job.paused, job.pausedUntil, (job.newBrands || []).length, job.items.length, hiddenMin, job.salesNav, job.snOff].join('|');
     if (panel && panel.getAttribute('data-fill') === key && fillStatusEl && fillStatusEl.isConnected) {
       return setFillStatus(status);
     }
@@ -1933,6 +2343,8 @@
       focusN ? h('div', { style: 'font-size:12px;color:#555', text: (plannedN || gapN ? 'Then ' : '') + '“' + (job.focus || 'focus') + '” brands: ' + doneOf(function (i) { return i.focus && !i.planned; }) + ' of ' + focusN + ' done' }) : null,
       cur ? h('div', { id: 'sblinow', style: 'font-size:12px;color:#111;margin-top:4px' }, [b(cur.name), ' — ' + whyItem(job, cur)]) : null,
       h('div', { style: 'font-size:12px;color:#555', text: 'Today: ' + job.doneToday + ' of ' + DAILY_CAP + ' brands' }),
+      h('div', { id: 'sblisnline', style: 'font-size:12px;color:' + (job.snOff ? '#946200' : '#555'), text: job.salesNav ? 'Marketing / partnerships people from Sales Navigator'
+        : job.snOff ? 'Sales Navigator off for this run: ' + job.snOff + ' — using the People tab' : 'Marketing / partnerships people from the People tab' }),
       (job.newBrands || []).length ? h('div', { style: 'font-size:12px;color:#137333', text: job.newBrands.length + ' new brand' + (job.newBrands.length === 1 ? '' : 's') + ' found and added' }) : null,
       h('div', { style: 'height:6px;background:#eee;border-radius:99px;overflow:hidden;margin-top:6px' }, [
         h('div', { style: 'height:100%;width:' + pct + '%;background:#111' }),
@@ -1973,6 +2385,8 @@
     });
     var researchBox = h('input', { type: 'checkbox', id: 'sbliresearch', checked: true, style: 'margin:2px 0 0' });
     var lookBox = h('input', { type: 'checkbox', id: 'sblilook', checked: true, style: 'margin:2px 0 0' });
+    var snBox = h('input', { type: 'checkbox', id: 'sblisalesnav', checked: snWanted(), style: 'margin:2px 0 0' });
+    snBox.onchange = function () { try { GM_setValue(SN_KEY, snBox.checked); } catch (e) {} };
     // Off by default: LinkedIn's keyword search turns up small pages, not
     // the big names (Leo: "the big electrolyte brands don't come up when
     // you search electrolyte") — the research list is how those come in.
@@ -1983,6 +2397,7 @@
     var discoverNow = function () {
       return {
         lookalikes: lookBox.checked,
+        salesNav: snBox.checked,
         words: words.value.split(/[,;]/).map(function (w) { return w.trim(); }).filter(Boolean).slice(0, 5),
       };
     };
@@ -1990,7 +2405,7 @@
     var look = function () {
       var f = focus.value.trim();
       out.textContent = 'Getting the list…';
-      post({ action: 'liList', focus: f, research: researchBox.checked }).then(function (j) {
+      post({ action: 'liList', focus: f, research: researchBox.checked, salesNav: snBox.checked }).then(function (j) {
         while (out.firstChild) out.removeChild(out.firstChild);
         if (!j || !j.ok) { out.textContent = (j && j.error) || 'Could not get the list.'; return; }
         if (!j.items.length) {
@@ -2017,6 +2432,7 @@
           : 'None match “' + f + '” — it goes emptiest first.' }));
         if (j.sizes) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: 'Then by size: ' + j.sizes.target + ' target (mid-size, 20–499 on LinkedIn), ' + j.sizes.unknown + ' not measured yet, ' + j.sizes.small + ' small, ' + j.sizes.big + ' big companies last.' }));
         if (j.noPage) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.noPage + ' have no LinkedIn page saved; it searches LinkedIn for those and only uses a clear match.' }));
+        if (j.hiddenRetry) out.appendChild(h('div', { id: 'sblisnretry', style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.hiddenRetry + ' read before had buyers LinkedIn hid from you — they\'re back on the list for Sales Navigator, right after the Schedule\'s.' }));
         if (j.resting) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.resting + ' left out: nothing new on their last visit (they rest a month).' }));
         if (j.researchWaiting) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.researchWaiting + ' research names left out: LinkedIn had no clear page for them last month.' }));
         out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:8px', text: 'At about ' + DAILY_CAP + ' a day that is roughly ' + Math.ceil(j.items.length / DAILY_CAP) + ' day(s).' }));
@@ -2035,6 +2451,10 @@
           id: 'sblifilllook', text: 'See the list', onclick: look,
           style: 'background:#fff;color:#111;border:1px solid #ccc;border-radius:6px;padding:5px 10px;cursor:pointer;font:12.5px system-ui',
         }),
+      ]),
+      h('label', { style: 'display:flex;gap:7px;align-items:flex-start;font-size:12px;color:#333;cursor:pointer;margin-top:10px' }, [
+        snBox,
+        h('span', { text: 'Use Sales Navigator for the marketing / partnerships people — it names people your LinkedIn shows as "LinkedIn Member". If it isn\'t open on this account, the run uses the People tab.' }),
       ]),
       h('div', { style: 'margin-top:12px;padding-top:10px;border-top:1px solid #eee' }, [
         h('div', { style: 'font-weight:600;margin-bottom:6px', text: 'Find new brands too' }),

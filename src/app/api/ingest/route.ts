@@ -31,14 +31,14 @@ import {
   type SuCandidate,
 } from '@/lib/su-match'
 import {
-  companySlug, companyPageUrl, profileSlug, profileUrl, cleanName, personKey,
+  companySlug, companyPageUrl, profileSlug, profileUrl, storedProfileUrl, cleanName, personKey,
   roleFromHeadline, isBuyer, decideCompanyMatch, focusTerms, matchesFocus,
   normalizeCompany, cleanBrandName, judgeDiscovery, industryFits, decideResearchMatch, nearName, pageLooksWrong,
   type LiCompany,
 } from '@/lib/li-capture'
 import { readLiLog, markLiSwept, liRestsNow, readLiResearch, markLiResearch, researchResting, LI_READER, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
 import { recordRun } from '@/lib/li-report'
-import { recordHidden, markZachRead, updateHiddenLog, summarizeHidden, cleanViews } from '@/lib/li-hidden'
+import { recordHidden, markZachRead, updateHiddenLog, summarizeHidden, cleanViews, readHiddenLog } from '@/lib/li-hidden'
 import { PARENTS, parentOf, decideParentPage, siblingNamed, isParentCompany, LI_PARENT_PAGES_KEY } from '@/lib/parents'
 import {
   addToReview, sameMember, readJsonSetting, writeJsonSetting,
@@ -342,13 +342,13 @@ async function planLinkedin(body: any) {
 
   // The cards: a real profile link and a real name, once each.
   const seen = new Set<string>()
-  const cards: Array<{ name: string; headline: string; slug: string }> = []
+  const cards: Array<{ name: string; headline: string; slug: string; url: string }> = []
   for (const r of (Array.isArray(body.rows) ? body.rows : []).slice(0, 500)) {
     const name = cleanName(r?.name)
     const ps = profileSlug(r?.linkedinUrl)
     if (!name || !ps || seen.has(ps)) continue
     seen.add(ps)
-    cards.push({ name, headline: String(r?.headline || '').replace(/\s+/g, ' ').trim().slice(0, 300), slug: ps })
+    cards.push({ name, headline: String(r?.headline || '').replace(/\s+/g, ' ').trim().slice(0, 300), slug: ps, url: storedProfileUrl(r?.linkedinUrl) || profileUrl(ps) })
   }
   const handPicked = body.handPicked === true && cards.length === 1
 
@@ -384,7 +384,7 @@ async function planLinkedin(body: any) {
 
   const rows: LiRow[] = cards.map(c => {
     const role = roleFromHeadline(c.headline, companyName || brand?.name || null)
-    const row: LiRow = { name: c.name, role, linkedinUrl: profileUrl(c.slug), slug: c.slug, verdict: 'add', fit: scoreFit(role, brand?.tier ?? null) }
+    const row: LiRow = { name: c.name, role, linkedinUrl: c.url, slug: c.slug, verdict: 'add', fit: scoreFit(role, brand?.tier ?? null) }
     const key = personKey(c.name)
     if (mineSlugs.has(c.slug) || (key && mineKeys.has(key))) row.verdict = 'dupe'
     else if (elsewhere.has(c.slug)) { row.verdict = 'elsewhere'; row.at = elsewhere.get(c.slug) }
@@ -729,12 +729,21 @@ export async function POST(req: NextRequest) {
       const p = parentOf(name, aka)
       return p ? { name: p.name, search: p.search, slug: parentPages[p.name] || null } : null
     }
+    // With Sales Navigator (script 1.31+, Leo, Oct 12 2026): a brand read
+    // on the People tab whose buyers LinkedIn hid ("LinkedIn Member") is
+    // due again at once — Sales Navigator names them. Once per brand (the
+    // mark's `sn`), and not after Zach's account has read it.
+    const hiddenLog = body.salesNav === true ? await readHiddenLog(prisma) : {}
+    const snRetry = (b: { id: string; linkedinUrl: string | null }) => {
+      const h = hiddenLog[b.id]
+      return !!b.linkedinUrl && !!h && h.likely > 0 && !h.zachAt && !log[b.id]?.sn
+    }
     const restsNow = (b: { id: string; name: string; aka: string | null }) => liRestsNow(log[b.id], !!parentOf(b.name, b.aka))
-    const resting = underCap.filter(restsNow).length
+    const resting = underCap.filter(b => restsNow(b) && !snRetry(b)).length
     // Brands Leo said have no LinkedIn page ("None of these") aren't searched again.
     const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
     const items = underCap
-      .filter(b => ignoreRest || !restsNow(b))
+      .filter(b => ignoreRest || !restsNow(b) || snRetry(b))
       .filter(b => b.linkedinUrl || confirmed[b.id] !== 'none' || parentOf(b.name, b.aka))
       .map(b => ({
         brandId: b.id, name: b.name, aka: b.aka, category: b.category,
@@ -748,6 +757,8 @@ export async function POST(req: NextRequest) {
         // (brand-size.ts; Leo, Oct 2026).
         size: brandSize({ liMembers: b.liMembers, tier: b.tier, hasParent: !!parentOf(b.name, b.aka) }),
         members: b.liMembers ?? null,
+        // Back only for Sales Navigator (it rests otherwise).
+        hiddenRetry: restsNow(b) && snRetry(b),
       }))
       .sort((a, b) => Number(b.focus) - Number(a.focus) || sizeRank(a.size) - sizeRank(b.size) || a.contacts - b.contacts || a.name.localeCompare(b.name))
 
@@ -825,18 +836,23 @@ export async function POST(req: NextRequest) {
     // buyer pulled ahead of all that, each group in that same order — only
     // the Schedule's brands and the names Leo asked for come before them.
     const others = rest.filter(i => !i.focus)
-    const ordered = noBuyerFirst<any>([
+    const sorted = noBuyerFirst<any>([
       ...planned,
       ...research.filter(r => r.focus), ...rest.filter(i => i.focus),
       ...others.filter(i => i.size === 'target'),
       ...research.filter(r => !r.focus), ...others.filter(i => i.size !== 'target'),
     ])
+    // The brands back for Sales Navigator go right after the Schedule's and
+    // the names Leo asked for: their buyers are known to be there.
+    const lead = sorted.filter(i => i.planned || i.asked)
+    const ordered = [...lead, ...sorted.filter(i => i.hiddenRetry && !lead.includes(i)), ...sorted.filter(i => !i.hiddenRetry && !lead.includes(i))]
     return NextResponse.json({
       ok: true,
       items: ordered,
       // Brands on the list with nobody in marketing / partnerships yet —
       // they go right after the Schedule's (the panel says so).
       noBuyer: ordered.filter(i => i.noBuyer && !i.research && !i.planned).length,
+      hiddenRetry: ordered.filter(i => i.hiddenRetry).length,
       research: research.length,
       researchFocus: research.filter(r => r.focus).length,
       researchWaiting,
@@ -1131,6 +1147,8 @@ export async function POST(req: NextRequest) {
           note: body.note ? String(body.note).slice(0, 160) : null,
           v: Number(body.reader) || 0,
           parentTried: body.parentTried === true,
+          // Read through Sales Navigator (script 1.31+).
+          sn: body.salesNav === true,
         })
       } catch { /* non-fatal */ }
       await saveMembers(brandId, body.members)

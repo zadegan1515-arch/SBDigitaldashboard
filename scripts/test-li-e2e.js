@@ -186,7 +186,7 @@ const linkedin = http.createServer((req, res) => {
 
 const GM_SHIM = `(function () {
   var P = '__gm:';
-  if (!sessionStorage.getItem('__gm_seeded')) { sessionStorage.setItem(P + 'sbIngestToken', JSON.stringify(${JSON.stringify(TOKEN)})); sessionStorage.setItem('__gm_seeded', '1'); }
+  if (!sessionStorage.getItem('__gm_seeded')) { sessionStorage.setItem(P + 'sbIngestToken', JSON.stringify(${JSON.stringify(TOKEN)})); sessionStorage.setItem(P + 'sbLiSalesNav', 'false'); sessionStorage.setItem('__gm_seeded', '1'); }
   window.GM_getValue = function (k, d) { var v = sessionStorage.getItem(P + k); return v == null ? d : JSON.parse(v); };
   window.GM_setValue = function (k, v) { sessionStorage.setItem(P + k, JSON.stringify(v)); };
   window.GM_deleteValue = function (k) { sessionStorage.removeItem(P + k); };
@@ -569,6 +569,33 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     hl = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liHidden' } })).value);
     assert.equal(hl.b_oli, undefined, 'a fill visit that saw nobody hidden clears it');
     ok('Leo\'s hand read reports hidden people; an older script\'s visit leaves them; a fill visit with none clears them');
+
+    // Sales Navigator (script 1.31): a brand read on the People tab whose
+    // buyers were hidden is back on the worklist for it, once; people it
+    // names are kept with their member-id link, case and all.
+    {
+      const sn = await prisma.brand.create({ data: { name: 'Sn Retry Co', category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/sn-retry-co/' } });
+      await ingest({ action: 'liSwept', me: leo, brandId: sn.id, seen: 4, added: 0, note: '',
+        hidden: [{ q: 'marketing', url: 'https://www.linkedin.com/company/sn-retry-co/people/?keywords=marketing', heads: ['Brand Manager', 'Head of Partnerships'] }] });
+      const listOf = async (salesNav) => (await ingest({ action: 'liList', me: leo, focus: '', salesNav })).j.items.find(i => i.brandId === sn.id);
+      assert.equal(await listOf(false), undefined, 'resting without Sales Navigator');
+      const back = await listOf(true);
+      assert.equal(back && back.hiddenRetry, true, 'back for Sales Navigator');
+      const memberId = 'ACwAAB1c2D3e4F5g6H7i8J9k0LmNoPqRsTuVwXy';
+      const cap = await ingest({ action: 'liCapture', me: leo, brandId: sn.id, companyUrl: sn.linkedinUrl, companyName: 'Sn Retry Co', checkPage: false,
+        rows: [{ name: 'Nia Named', headline: 'Brand Manager at Sn Retry Co', linkedinUrl: 'https://www.linkedin.com/in/' + memberId + '/' }] });
+      assert.equal(cap.j.added, 1);
+      const nia = await prisma.contact.findFirst({ where: { brandId: sn.id, name: 'Nia Named' } });
+      assert.equal(nia.linkedinUrl, 'https://www.linkedin.com/in/' + memberId + '/', 'the member id keeps its case');
+      const again = await ingest({ action: 'liCapture', me: leo, brandId: sn.id, companyUrl: sn.linkedinUrl, companyName: 'Sn Retry Co', checkPage: false,
+        rows: [{ name: 'Nia Named', headline: 'Brand Manager', linkedinUrl: 'https://www.linkedin.com/in/' + memberId.toLowerCase() + '/' }] });
+      assert.equal(again.j.added, 0, 'the same person again is a duplicate, whatever the case');
+      await ingest({ action: 'liSwept', me: leo, brandId: sn.id, seen: 1, added: 1, note: '', salesNav: true, hidden: [] });
+      assert.equal(await listOf(true), undefined, 'read through Sales Navigator: rests like any other');
+      const mark = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liSweepLog' } })).value)[sn.id];
+      assert.equal(mark.sn, true);
+    }
+    ok('Sales Navigator: hidden buyers bring a brand back once; a member-id link keeps its case and still matches duplicates');
 
     // The clean-up of people saved before the October rules: a new grad
     // nobody wrote to is listed, a store manager already invited is kept,

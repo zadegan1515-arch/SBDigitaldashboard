@@ -28,9 +28,11 @@ export const LI_READER = 2
 // copies there's an update (the pill turns orange; one click takes it),
 // since Tampermonkey on its own only checks about once a day.
 // scripts/test-li-script.js fails when the two drift apart.
-export const LI_SCRIPT_VERSION = '1.30'
+export const LI_SCRIPT_VERSION = '1.31'
 
-export type LiMark = { at: string; seen: number; added: number; note?: string | null; v?: number; parentTried?: boolean }
+// sn = the read went through Sales Navigator, which names people the
+// People tab hides ("LinkedIn Member").
+export type LiMark = { at: string; seen: number; added: number; note?: string | null; v?: number; parentTried?: boolean; sn?: boolean }
 export type LiLog = Record<string, LiMark>
 
 type SettingStore = {

@@ -22,7 +22,7 @@ execSync(
 writeFileSync(join(out, 'parents.js'), readFileSync(join(out, 'parents.js'), 'utf8').replace("from './li-capture'", "from './li-capture.js'"))
 const lib = await import(pathToFileURL(join(out, 'li-capture.js')).href)
 const { parentOf, decideParentPage, PARENTS, siblingNamed, whyLeaveOut, parentCompanyOf, findParent, parentBrandNames } = await import(pathToFileURL(join(out, 'parents.js')).href)
-const { companySlug, profileSlug, profileUrl, cleanName, personKey, roleFromHeadline, isBuyer,
+const { companySlug, profileSlug, profileUrl, storedProfileUrl, cleanName, personKey, roleFromHeadline, isBuyer,
   normalizeCompany, decideCompanyMatch, focusTerms, matchesFocus,
   parseFollowers, industryOf, categoryFromIndustry, judgeDiscovery, decideResearchMatch, nearName, pageLooksWrong,
   looksLikeSeller, cleanBrandName } = lib
@@ -46,6 +46,14 @@ t('profile slug ignores tracking params and case', () => {
   assert.equal(profileSlug('https://www.linkedin.com/in/jos%C3%A9-p/'), 'josé-p')
   assert.equal(profileSlug('https://www.linkedin.com/company/x/'), null)
   assert.equal(profileUrl('jane-doe-12ab'), 'https://www.linkedin.com/in/jane-doe-12ab/')
+})
+
+t('a Sales Navigator member id keeps its case on file; a vanity link is lower case', () => {
+  const id = 'ACwAAA1b2C3d4E5f6G7h8I9j0KlMnOpQrStUvWx'
+  assert.equal(storedProfileUrl('https://www.linkedin.com/in/' + id + '/'), 'https://www.linkedin.com/in/' + id + '/')
+  assert.equal(profileSlug('https://www.linkedin.com/in/' + id + '/'), id.toLowerCase(), 'still compared case-blind')
+  assert.equal(storedProfileUrl('https://www.linkedin.com/in/Jane-Doe-12ab?x=1'), 'https://www.linkedin.com/in/jane-doe-12ab/')
+  assert.equal(storedProfileUrl('https://www.linkedin.com/company/x/'), null)
 })
 
 // --- names ------------------------------------------------------
