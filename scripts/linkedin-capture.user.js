@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.32
+// @version      1.33
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -86,7 +86,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.32';
+  var VERSION = '1.33';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1555,6 +1555,7 @@
       // Sales Navigator for the marketing / partnerships people (Leo, Oct
       // 2026); off for the rest of the run if the account doesn't have it.
       salesNav: discover.salesNav !== false,
+      snWanted: discover.salesNav !== false,
       searches: (discover.words || []).map(function (q) { return { q: q, page: 1, navs: 0 }; }),
     });
     runEvent(loadFill(), 'start', { focus: focus || '', items: items.length });
@@ -1643,7 +1644,7 @@
         if (why && why.pause) return pauseFill(job, why.pause);
         if (why) return snFailed(job, why.text, why.wholeRun);
       }
-      if (st.navs >= 2) return snFailed(job, 'its Sales Navigator search would not open', false);
+      if (st.navs >= 2) return snFailed(job, 'its Sales Navigator search would not open');
       var sn = SN_SEARCHES[st.snI];
       return go(job, snUrl(st.coId, st.pageName || item.name, sn, st.snPage), 'Sales Navigator: ' + item.name + ' — ' + sn.label + (st.snPage > 1 ? ' (page ' + st.snPage + ')' : ''));
     }
@@ -1952,10 +1953,29 @@
   }
   // Sales Navigator didn't work for this brand. Twice in a row (or an
   // account without it) and the rest of the run goes without it.
-  function snFailed(job, why, wholeRun, notTheAccount) {
-    if (!notTheAccount) job.snFails = (job.snFails || 0) + 1;
-    if (wholeRun || job.snFails >= 2) { job.salesNav = false; job.snOff = why; }
+  // Sales Navigator didn't work for this brand: this brand gets the People
+  // tab. Only LinkedIn saying the account has no Sales Navigator switches it
+  // off for the rest of the run (Leo, Oct 12 2026: "i dont want the sales
+  // navigator to be off" — two empty brands in a row had switched it off).
+  function snFailed(job, why, wholeRun) {
+    if (wholeRun) { job.salesNav = false; job.snOff = why; job.snNoAccount = true; }
     snFallback(job, why);
+  }
+  // Sales Navigator back on for a run that switched it off (the panel's
+  // button, and by itself for a run an older copy switched off on a page
+  // that didn't load) — never against the setup panel's switch.
+  function snBackOn(job) {
+    if (!job || job.salesNav !== false || !job.snOff || !snWanted()) return false;
+    job.salesNav = true; job.snOff = null; job.snNoAccount = false;
+    return true;
+  }
+  function snTurnOn() {
+    var job = loadFill();
+    if (!job || !ownsFill(job)) return;
+    if (job.salesNav === false) { job.salesNav = true; job.snOff = null; job.snNoAccount = false; }
+    try { GM_setValue(SN_KEY, true); } catch (e) {}
+    saveFill(job);
+    renderFill(job, 'Sales Navigator back on — from the next brand.');
   }
 
   function fillSales(item) {
@@ -1965,7 +1985,7 @@
     fillHalt = { stopped: false };
     readPath = location.pathname;
     var got = null, rows = [], problem = null, sample = null;
-    waitFor(function () { return snLinks().length || snHiddenLeaves().length || SN_EMPTY.test(pageText(6000)) || !onSalesSearch(); }, 15000).then(function () {
+    waitFor(function () { return snLinks().length || snHiddenLeaves().length || SN_EMPTY.test(pageText(6000)) || !onSalesSearch(); }, document.hidden ? 60000 : 30000).then(function () {
       if (!sameStep(loadFill(), at0)) return null;
       var stop = linkedinSaysStop();
       if (stop) return { halt: stop };
@@ -2009,7 +2029,7 @@
       if (r.halt) return pauseFill(job2, r.halt + '. Leave LinkedIn alone for a day before pressing Continue.');
       if (r.fail) {
         if (r.fail.pause) return pauseFill(job2, r.fail.pause);
-        return snFailed(job2, r.fail.text, r.fail.wholeRun, r.fail.notTheAccount);
+        return snFailed(job2, r.fail.text, r.fail.wholeRun);
       }
       if (!r.ok) return finishBrand(job2, r.error || 'the dashboard did not save');
       var st = job2.step;
@@ -2169,6 +2189,9 @@
       // Read through Sales Navigator: the brand's hidden people had their
       // chance to be named (the dashboard won't bring it back for that).
       salesNav: !!st.salesNav,
+      // Meant to go through Sales Navigator and didn't: due once more for it.
+      snMissed: !!job.snWanted && !st.salesNav && !!item.linkedinUrl,
+      retry: !!item.hiddenRetry,
       // People LinkedIn hid from this account, view by view — only when a
       // view was read (no page read says nothing about who's hidden).
       hidden: st.hidRead ? (st.hidViews || []) : undefined,
@@ -2256,6 +2279,7 @@
     job.paused = null;
     if (job.step) job.step.navs = 0;
     job.nextAt = 0;
+    if (!job.snNoAccount) snBackOn(job);
     saveFill(job);
     runEvent(job, 'resume');
     fillHalt = { stopped: false };
@@ -2311,7 +2335,7 @@
       return 'on the Schedule for ' + d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' and short on people';
     }
     if (item.research) return 'from the research list' + (item.lane ? ' (' + item.lane + ')' : '');
-    if (item.hiddenRetry) return 'LinkedIn hid its buyers from your account last time — Sales Navigator may name them';
+    if (item.hiddenRetry) return 'read before without Sales Navigator — back for it';
     // Brands with nobody in marketing / partnerships go right after the
     // Schedule's (the dashboard's liList puts them there).
     if (item.noBuyer) return 'no marketing / partnerships person on file yet' + (item.focus ? ' (a “' + (job.focus || 'focus') + '” brand)' : '');
@@ -2347,6 +2371,7 @@
       h('div', { style: 'font-size:12px;color:#555', text: 'Today: ' + job.doneToday + ' of ' + DAILY_CAP + ' brands' }),
       h('div', { id: 'sblisnline', style: 'font-size:12px;color:' + (job.snOff ? '#946200' : '#555'), text: job.salesNav ? 'Marketing / partnerships people from Sales Navigator'
         : job.snOff ? 'Sales Navigator off for this run: ' + job.snOff + ' — using the People tab' : 'Marketing / partnerships people from the People tab' }),
+      job.salesNav === false ? h('button', { id: 'sblisnon', style: BTN2 + ';margin-top:6px', text: 'Use Sales Navigator again', onclick: guard(snTurnOn) }) : null,
       (job.newBrands || []).length ? h('div', { style: 'font-size:12px;color:#137333', text: job.newBrands.length + ' new brand' + (job.newBrands.length === 1 ? '' : 's') + ' found and added' }) : null,
       h('div', { style: 'height:6px;background:#eee;border-radius:99px;overflow:hidden;margin-top:6px' }, [
         h('div', { style: 'height:100%;width:' + pct + '%;background:#111' }),
@@ -2434,7 +2459,7 @@
           : 'None match “' + f + '” — it goes emptiest first.' }));
         if (j.sizes) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: 'Then by size: ' + j.sizes.target + ' target (mid-size, 20–499 on LinkedIn), ' + j.sizes.unknown + ' not measured yet, ' + j.sizes.small + ' small, ' + j.sizes.big + ' big companies last.' }));
         if (j.noPage) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.noPage + ' have no LinkedIn page saved; it searches LinkedIn for those and only uses a clear match.' }));
-        if (j.hiddenRetry) out.appendChild(h('div', { id: 'sblisnretry', style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.hiddenRetry + ' read before had buyers LinkedIn hid from you — they\'re back on the list for Sales Navigator, right after the Schedule\'s.' }));
+        if (j.hiddenRetry) out.appendChild(h('div', { id: 'sblisnretry', style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.hiddenRetry + ' brands read before without Sales Navigator (or with buyers LinkedIn hid) are back for it, right after the Schedule\'s.' }));
         if (j.resting) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.resting + ' left out: nothing new on their last visit (they rest a month).' }));
         if (j.researchWaiting) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.researchWaiting + ' research names left out: LinkedIn had no clear page for them last month.' }));
         out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:8px', text: 'At about ' + DAILY_CAP + ' a day that is roughly ' + Math.ceil(j.items.length / DAILY_CAP) + ' day(s).' }));
@@ -2554,6 +2579,8 @@
       // that trip was Leo's, not the run's, so it doesn't count as one of
       // the brand's two tries at opening its page.
       if (AUTO_FILL && claim.step) claim.step.navs = 0;
+      // Switched off by an older copy over a page that didn't load: back on.
+      if (claim.snOff && !claim.snNoAccount && !claim.snFixed) { snBackOn(claim); claim.snFixed = true; }
       saveFill(claim);
       later(runFill, rand(2500, 4000));
     }

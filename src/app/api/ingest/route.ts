@@ -148,6 +148,9 @@ const CONTACT_CAP_PER_BRAND = 25
 // searches together). Lookalikes of lookalikes never end; this keeps the
 // roster growing at a pace outreach can use.
 const DISCOVER_CAP_PER_DAY = 50
+// The day the fill's Sales Navigator step shipped (New York midnight): a
+// brand read since then without it is due once for it (liList).
+const SN_SINCE = Date.parse('2026-10-12T04:00:00Z')
 
 // Save a brand's SponsorUnited profile id, and remember SponsorUnited's
 // own spelling as an "also known as" so later captures match by name as
@@ -759,9 +762,14 @@ export async function POST(req: NextRequest) {
     // due again at once — Sales Navigator names them. Once per brand (the
     // mark's `sn`), and not after Zach's account has read it.
     const hiddenLog = body.salesNav === true ? await readHiddenLog(prisma) : {}
+    // Also every brand read without it since it shipped, or that a run with
+    // it on had to read on the People tab (Leo, Oct 12 2026: "make sure it
+    // hits every brand that it skipped"). Once: a retry that still can't use
+    // it (no company id…) is marked and rests like any other read.
     const snRetry = (b: { id: string; linkedinUrl: string | null }) => {
-      const h = hiddenLog[b.id]
-      return !!b.linkedinUrl && !!h && h.likely > 0 && !h.zachAt && !log[b.id]?.sn
+      const m = log[b.id], h = hiddenLog[b.id]
+      if (!b.linkedinUrl || !m || m.sn || m.snRetried) return false
+      return !!m.snMissed || Date.parse(m.at) >= SN_SINCE || (!!h && h.likely > 0 && !h.zachAt)
     }
     const restsNow = (b: { id: string; name: string; aka: string | null }) => liRestsNow(log[b.id], !!parentOf(b.name, b.aka))
     const resting = underCap.filter(b => restsNow(b) && !snRetry(b)).length
@@ -1189,8 +1197,11 @@ export async function POST(req: NextRequest) {
           note: body.note ? String(body.note).slice(0, 160) : null,
           v: Number(body.reader) || 0,
           parentTried: body.parentTried === true,
-          // Read through Sales Navigator (script 1.31+).
+          // Read through Sales Navigator (script 1.31+); or meant to be and
+          // read on the People tab instead; or that was its one retry.
           sn: body.salesNav === true,
+          snMissed: body.snMissed === true,
+          snRetried: body.retry === true && body.salesNav !== true,
         })
       } catch { /* non-fatal */ }
       await saveMembers(brandId, body.members)

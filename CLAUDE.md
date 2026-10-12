@@ -693,8 +693,14 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   search (upsell / `/premium/`) → Sales Navigator off for the rest of the run (`snOff`, panel line `#sblisnline`);
   contract chooser → pause; twice failing to open → off for the run. `liSwept` carries `salesNav` (mark `sn`, via
   "Sales Navigator") and only the hidden people Sales Navigator still couldn't name, as People-tab views Zach can open.
-  `liList({ salesNav: true })` brings back resting brands with likely hidden buyers, no `sn` mark and no Zach read
-  (`hiddenRetry`, right after the Schedule's and asked-for names). Unverified against the real Sales Navigator pages
+  `liList({ salesNav: true })` brings back, **once** (`hiddenRetry`, right after the Schedule's and asked-for names),
+  resting brands with no `sn` mark that were read since it shipped (`SN_SINCE`, Oct 12 2026), read on the People
+  tab by a run that had it on (mark `snMissed`), or with likely hidden buyers and no Zach read; a retry still
+  without it is marked `snRetried` and rests (Leo: "make sure it hits every brand that it skipped"). **Only an
+  account without Sales Navigator switches it off for a run** (1.33; Leo: "i dont want the sales navigator to be
+  off") — a page that doesn't load (30 s, 60 s while the window is hidden) or "No matches found" (an empty search)
+  costs that brand only; a run an older copy switched off turns it back on at its next page load, and the panel has
+  **Use Sales Navigator again** (`snTurnOn`). Unverified against the real Sales Navigator pages
   until Leo's first run — "Copy a sample for Claude" works on a Sales Navigator search. `node scripts/test-li-salesnav.js`.
   **"LinkedIn Member" cards** (out of Leo's network, name + profile hidden by LinkedIn) can't be saved, but
   **they aren't lost** (Leo, Oct 7 2026: "i dont want to miss out on people if i do it from my own account"):

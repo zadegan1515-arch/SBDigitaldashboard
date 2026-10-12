@@ -594,6 +594,12 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       assert.equal(await listOf(true), undefined, 'read through Sales Navigator: rests like any other');
       const mark = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liSweepLog' } })).value)[sn.id];
       assert.equal(mark.sn, true);
+      // A brand read on the People tab while Sales Navigator was on comes
+      // back once; its retry, still without it, rests like any read.
+      await ingest({ action: 'liSwept', me: leo, brandId: sn.id, seen: 1, added: 0, note: '', snMissed: true, hidden: [] });
+      assert.equal((await listOf(true) || {}).hiddenRetry, true, 'missed: back for Sales Navigator');
+      await ingest({ action: 'liSwept', me: leo, brandId: sn.id, seen: 1, added: 0, note: '', snMissed: true, retry: true, hidden: [] });
+      assert.equal(await listOf(true), undefined, 'its one retry is done');
     }
     ok('Sales Navigator: hidden buyers bring a brand back once; a member-id link keeps its case and still matches duplicates');
 

@@ -41,7 +41,9 @@ catch (e) {
 const PORT = 4623;
 const SCRIPT = fs.readFileSync(path.join(__dirname, 'linkedin-capture.user.js'), 'utf8')
   .replace("'https://sb-digitaldashboard.vercel.app/api/ingest'", "'http://127.0.0.1:" + PORT + "/api/ingest'")
-  .replace(/function rand\(a, b\) \{[^}]*\}/, 'function rand() { return 30; }');
+  .replace(/function rand\(a, b\) \{[^}]*\}/, 'function rand() { return 30; }')
+  // Sales Navigator's results wait: seconds on LinkedIn, too long for a test.
+  .replace('document.hidden ? 60000 : 30000', '2500');
 
 // ---- fake LinkedIn ------------------------------------------------
 function peopleCard(slug, name, headline) {
@@ -80,7 +82,7 @@ function salesPage(items, total) {
     '</script></body></html>';
 }
 
-const COMPANY_IDS = { 'liquid-death': '1234', 'big-co': '5678', 'wrong-id': '7777', 'no-sn': '9999', 'tiny-co': '4321', 'tiny-two': '4322' };
+const COMPANY_IDS = { 'liquid-death': '1234', 'big-co': '5678', 'wrong-id': '7777', 'no-sn': '9999', 'tiny-co': '4321', 'tiny-two': '4322', 'stuck-one': '4401', 'stuck-two': '4402' };
 const salesQueries = [];
 
 const sent = [];
@@ -149,6 +151,8 @@ const server = http.createServer((req, res) => {
     if (co === '5678') return res.end(salesPage([lead(mid(50), 'Bea Big', 'VP Marketing', 'Big Co')], 1));
     // A brand with nobody in marketing: Sales Navigator's own empty page,
     // no results count on it (Leo's first run, Oct 12 2026).
+    // A results page that never draws (a slow or hidden window).
+    if (co === '4401' || co === '4402') return res.end('<!doctype html><html><body><main><div class="spinner"></div></main></body></html>');
     if (co === '4321' || co === '4322') {
       return res.end('<!doctype html><html><body><main><h2>No matches found</h2><p>Remove the Function filter to show leads matching your other filters.</p></main></body></html>');
     }
@@ -163,7 +167,7 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/company/big-co/people/') {
     return res.end(peoplePage('Big Co', peopleCard('bob-b', 'Bob B', 'Engineer'), '<h2>12,345 associated members</h2>'));
   }
-  for (const slug of ['no-id', 'wrong-id', 'no-sn', 'after-no-sn', 'tiny-co', 'tiny-two']) {
+  for (const slug of ['no-id', 'wrong-id', 'no-sn', 'after-no-sn', 'tiny-co', 'tiny-two', 'stuck-one', 'stuck-two']) {
     if (url.pathname === '/company/' + slug + '/people/') {
       const kw = url.searchParams.get('keywords') || '';
       return res.end(peoplePage(slug, peopleCard(slug + '-' + (kw || 'all'), 'Person ' + slug + ' ' + (kw || 'all'), 'Brand Manager at ' + slug)));
@@ -323,6 +327,19 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
       ok('"No matches found" is an empty search: Sales Navigator stays on for the run');
     }
 
+    // Results that never load, twice in a row: those two get the People
+    // tab; Sales Navigator stays on (Leo: "i dont want the sales navigator
+    // to be off").
+    {
+      const r = await run([item('b-st1', 'Stuck One', 'stuck-one'), item('b-st2', 'Stuck Two', 'stuck-two'), item('b-ld', 'Liquid Death', 'liquid-death')]);
+      const sw = r.calls.filter(b => b.action === 'liSwept');
+      assert.deepEqual(sw.map(s => s.salesNav), [false, false, true]);
+      assert.match(sw[0].via, /Sales Navigator's results did not load/);
+      assert.deepEqual(sw.map(s => s.snMissed), [true, true, false], 'the two it couldn\'t read through Sales Navigator are due once more');
+      assert.match(r.panel, /Run finished/);
+      ok('a Sales Navigator page that doesn\'t load costs that brand only: Sales Navigator stays on');
+    }
+
     // 5. No Sales Navigator on the account: off for the rest of the run.
     {
       const r = await run([item('b-nosn', 'No SN', 'no-sn'), item('b-after', 'After', 'after-no-sn')]);
@@ -355,7 +372,7 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
       await pg.click('#sblifillopen');
       await pg.click('#sblifilllook');
       await pg.waitForSelector('#sblisnretry');
-      assert.match(await pg.innerText('#sblisnretry'), /^1 read before had buyers LinkedIn hid from you/);
+      assert.match(await pg.innerText('#sblisnretry'), /^1 brands read before without Sales Navigator .* are back for it/);
       await ctx.close();
       ok('the setup panel names the brands back on the list for Sales Navigator');
     }
