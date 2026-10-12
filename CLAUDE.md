@@ -16,7 +16,7 @@ If `../CLAUDE.md` (the SB Agency workspace file) exists it applies too. The rule
 ## Ways of working
 - Leo chose: **push straight to `main`**. Both hosts auto-deploy, so after every push **check the build went green** (Vercel dashboard or `vercel` CLI; Railway deployments tab) and re-check the live page.
 - Vercel Hobby limits: **2 cron jobs, daily only**; 1 concurrent build. Don't add crons — fold new scheduled work into `/api/cron/email` (11:00 UTC) or `/api/cron/send` (15:00 UTC).
-- Prisma schema changes deploy themselves (`prisma db push` runs in the Vercel build). Still: additive changes only; never drop columns with data.
+- Prisma schema changes deploy themselves (`prisma db push` runs in the Vercel build — **production builds only**, `scripts/db-push.mjs`: previews share the production database, and on Oct 12 2026 a branch preview without `Brand.kind` dropped it and broke every brand page). The Vercel project's **Build Command** is set to the same rule (`prisma generate && if [ "$VERCEL_ENV" = "production" ]; then prisma db push --skip-generate; …; fi && next build`) so a branch that hasn't merged main can't undo it either. Still: additive changes only; never drop columns with data. A branch with a new column works in its preview only once main has it.
 - Test before pushing: `npm run build` (Next) / `npx tsc --noEmit`, and for `public/app.html` a Playwright smoke run with mocked `/api/data` (`NODE_PATH=$(npm root -g) node scripts/test-keep-place.js` is one).
 - Google OAuth: one Google Cloud client (`GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`) serves three grants — outreach mailbox (`state=gmail`), Drive (`state=drive`), ops mailbox (`state=ops`). Scopes stay narrow: gmail.send + gmail.readonly, drive.file. Never request mail.google.com or modify/delete scopes.
 
@@ -101,7 +101,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   the higher up it should be" — `ztCompare`: text back → follow-up → reply to answer → email/DM to
   send → call; longest-waiting first within a step; a brand sits where its earliest person sits and
   keeps its people together); one row open at a time shows the flow
-  **Accepted → Text them on LinkedIn (due 2 days after the accept, calendar days; waits until then as
+  **Accepted → Text them on LinkedIn (due 2 days after the accept, calendar days, **Tue–Thu only** — Leo, Oct 12 2026: a due day on Fri–Mon moves to Tuesday, `ZT_MSG_DOWS`; waits until then as
   "Text them <day>", late after) → no answer 10 days after that message: Send the final reach-out → still
   quiet 7 days after the final: No response → Replied → They want email → Email to send → Email sent,
   and/or They want LinkedIn → DM to send → DM sent (either or both; picking one logs the reply) →
@@ -229,6 +229,28 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `#cp-scrim`): Top +30 / Middle +15 / Low 0 / Skip 0 and never picked by itself (a hand add still works).
   **Pass = two weeks off** (Leo, Oct 7 2026: "when i pass on a brand it should not show up in the outreach tab again for at least two weeks"): `passBrandToday` (LinkedIn card **Pass brand**, Brands not reached yet **Pass**, the Schedule's × on today's automatic rows, brand page Take off today) sets `passedTodayAt` + `Brand.passedUntil` = now + `PASS_DAYS` (14), un-stamps today's people and unpins it from coming days; `notPassedToday()` / `passedNow()` keep it out of Best fit, category rotation, suggestForDay and nextBestBrands until then. A hand add (planAddBrands, queueBrandTargets) clears it. `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-pass-e2e.js`.
   **Betting set aside** (Leo, Oct 7 2026: "put all the betting aside for now and not have them in any outreach"): `betting: 'skip'` in `DEFAULT_CATEGORY_PRIORITY` (brand-fit.ts) — never auto-picked, and nextBestBrands leaves Skip categories out; a hand add still works. Put it back with Category priority.
+  **Queue rules** (Leo, Oct 12 2026: "i dont want brand i have already reached out to to be in the queue
+  and i also dont want to reach out to super big brands yet"; rules pure in `src/lib/queue-rules.ts`,
+  `node scripts/test-queue-rules.mjs`). **Whatever the system picks by itself** — a category day's pool
+  (getTodayQueue, the Schedule's day rows, fillToday), Best fit, Add more / the bench, the Fill box,
+  Plan my week, next best — takes **only brands nobody has reached out to** (an invite ever, logged
+  outside the queue or withdrawn; an accept/reply; a hand or machine email — `notReachedBefore(dayStart)`
+  in SQL, `brandGate(b, q, true)` in code; the old category-day pool only skipped replied brands, so it
+  re-pitched invited ones). **By hand** (planAddBrands, planMoveBrand, the brand page, queueBrandTargets,
+  queueContact, Send today anyway, today's planned brands, the morning roll) a reached brand **rests 14
+  days from its first outreach** (New York day keys; a later Schedule day is judged as of that day; the
+  day a brand opens is its own sitting, so the rest of its people that day still go; an accept logged
+  without an invite date counts from the row's last change and is never a sitting). **Giants**
+  (`giants.ts`: household names, parent companies and their brands, $1B+ sales) are held back: nothing
+  picks them, and a hand add asks — **Add anyway** (`allowGiants` on planAddBrands, `allowGiant` on
+  queueBrandTargets/queueContact, the giant card's button → `allowGiant`) OKs that brand for good.
+  Setting `outreachGiants` = { on, ok: [brandId] }; the Schedule's toolbar line "New brands only ·
+  Giants: held back (N) Allow" is `setGiantsOn` (`getOutreachPlan.queueRules`). People already stamped
+  at a resting brand or held giant are **skipped, never removed** (`gatedStampBrands`: not shown, not
+  counted). Reasons `reached` / `resting` / `giant` in `reasonText` + `SD_SHORT`. The LinkedIn fill
+  (`liList`) reads brands already reached, then held giants (brands and research names), **last** —
+  their people are ready for later, but they never take a day's visits first (`reachedLast`, `giantsLast`;
+  the Schedule's brands and names Leo asked for keep their place). The email machine keeps its own rules.
   **Who goes first** (Leo, Sep 2026): a day's planned brands go out in their plan order
   (`plan[day].brandIds`) — numbered on the cards, ↑ ↓ or drag a card within its day
   (`planReorderDay`). Whole brands in that order while they fit in the day's 30 (after anyone sent
@@ -465,6 +487,16 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (Oct 8 2026 — every error used to read "doesn't have access"): AccessDenied names the address Google gave
   (`?email=`; a Workspace alias signs in as its main address), OAuthCallback/OAuthSignin/Callback = Google didn't
   finish (try again, or the sboyagency.com Google admin blocks the app), Unavailable = the list couldn't be read.
+- **+ Add brand → Person** (Leo, Oct 12 2026: "sometimes we want to send the show board to individual people"):
+  the Add box has a Brand / Person switch (`nbSetKind`, `NB_KIND`). A person = `Brand.kind = 'person'`
+  (`createBrand({ kind: 'person', name, email, phone })` → `addPerson` in route.ts): archived + do-not-email from
+  birth (so every outreach path skips them), no category, board code minted, email / phone on a Contact (no
+  Target); a name already on file is refused. Left out of `listBrands` and `categoryReach`; found by search and
+  on Show Board → In talks ("· person"). Their page (`.b-person` on `#brand-body`) leads with Show Board access
+  open; Schedule / Brand Fit / outreach buttons hidden. **This is a person…** / **It's a brand, not a person** on
+  the brand page = `setBrandKind` (preview, then `confirm`; to person also archives, shelves queued people,
+  do-not-email; back only drops the mark). `node scripts/test-add-person.js` (page),
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-person-e2e.js`.
 - `src/app/api/data/route.ts` — every server function. Add a handler = add a key to `handlers`.
 - `src/app/api/ingest/route.ts` + `scripts/sponsorunited-capture.user.js` — SponsorUnited contact
   capture (INGEST_TOKEN-gated, CORS-open). **Two different caps, don't confuse them:**
@@ -777,7 +809,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   performer (`?performer=dj|singer|rapper|band`, derived in `performerFor` from genre+type) and genre.
   Links: `/?state=TX&genre=edm`, hand-picked `/?for=Brand&pick=id,id` (built from the Shows tab
   checkboxes → "Copy link for this brand"). Copied links use `SPONSOR_HOST` only when that env var is
-  set; until Leo attaches the custom domain in Vercel they fall back to `SITE_URL/partnerships`. A submit → `src/lib/sponsor-request.ts`:
+  set (it is: shows.sboyagency.com, attached in Vercel); unset, they fall back to `SITE_URL/partnerships`. One helper,
+  `sponsorBoardUrl()` in route.ts; the page asks `sponsorUrl` on load and gets it with every `getBrand` (Oct 12 2026: a
+  brand page's Copy link used the vercel.app address until the Shows tab had loaded). A submit → `src/lib/sponsor-request.ts`:
   Brand + Contact + ShowSponsor(status `requested`) per show + one Deal (source `request`) + email to
   `SPONSOR_REQUEST_TO`. Only brand-safe fields ever leave the public API (no reps, statuses, money).
 - `src/lib/ops.ts` — Operations inbox: rules classifier (contract / invoice_payable / invoice_receivable / other), 90-day backfill scan, reply/forward as "SB Agency Operations".

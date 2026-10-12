@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma db push --skip-generate && next build",
+    "build": "prisma generate && node scripts/db-push.mjs && next build",
     "start": "next start",
     "postinstall": "prisma generate",
     "test:li": "node scripts/test-li-capture.mjs && node scripts/test-li-report.mjs && node scripts/test-li-log.mjs && node scripts/test-li-script.js && node scripts/test-li-log-script.js",

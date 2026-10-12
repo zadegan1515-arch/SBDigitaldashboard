@@ -278,6 +278,9 @@
   .zt-mini i.now{background:var(--accent);box-shadow:0 0 0 3px rgba(79,131,247,.25)}
   .zt-mini b{width:8px;height:2px;background:#33333e}
   .zt-tabs{display:flex;gap:6px;margin-top:12px}
+  /* + Add brand → Person: only the name, email, phone, owner, notes. */
+  #brand-body.b-person :is(#b-plan,#b-enrich,#b-dne,#b-workpeople,#b-pass,#b-split,#b-find-su,#b-draftintro,.b-nop){display:none!important}
+  #add-scrim.nb-person [data-nbbrand],#add-scrim.nb-person [data-nbbrandbox],#add-scrim:not(.nb-person) [data-nbperson]{display:none!important}
   .zt-fl-col{display:flex;flex-direction:column;align-items:stretch}
   .zt-fl-col .zt-node{justify-content:flex-start;width:100%}
   /* Bigger rows and next-step tags (Leo: make each card bigger). */
@@ -978,6 +981,8 @@
   .sd-tag.carried{color:#aac6ff;border-color:rgba(79,131,247,.4);background:var(--accent-soft)}
   .sd-left{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--border-soft);padding-top:10px}
   /* LinkedIn's weekly limit: the line in the top row, and a day's note */
+  .sd-rules{font-size:13px;color:var(--ink-3);margin-right:14px}
+  .sd-rules b{color:var(--ink-1);font-weight:700}
   .sd-liw{font-size:13px;color:var(--ink-3)}
   .sd-liw b{color:var(--ink-1);font-weight:700}
   .sd-liw.warn,.sd-liw.warn b{color:#eec777}
@@ -1152,6 +1157,7 @@
   .pd-notes{font-size:13px;color:#eec777;line-height:1.45;margin-top:6px}
   .pd-notes div+div{margin-top:3px}
   .pd-go{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+  .pd-giants{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;margin-top:8px;font-size:13px}
   .pd-done{font-size:13.5px;color:#8fe0bb;background:rgba(62,207,142,.1);border-radius:8px;padding:6px 10px;margin-bottom:8px;line-height:1.45}
   .pd-done a{color:var(--accent-hi)}
   .pd-done.bad{color:#f4a8a4;background:rgba(240,113,107,.1)}
@@ -2276,19 +2282,26 @@
 <div class="scrim" id="add-scrim">
   <div class="modal">
     <div class="modal-head">
-      <h2>Add a brand</h2>
-      <p>Type the name. The category is worked out for you — override it if it's wrong.</p>
+      <h2 id="nb-h">Add a brand</h2>
+      <p id="nb-sub">Type the name. The category is worked out for you — override it if it's wrong.</p>
+      <div class="zt-tabs"><button class="chip active" data-nbkind="brand">Brand</button><button class="chip" data-nbkind="person">Person</button></div>
     </div>
     <div class="modal-body">
       <div class="field" style="margin-bottom:12px">
-        <label class="lbl" for="nb-name">Brand name</label>
+        <label class="lbl" for="nb-name" id="nb-name-lbl">Brand name</label>
         <input class="field-box" id="nb-name" type="text" placeholder="e.g. Alani Nu" autocomplete="off">
       </div>
-      <div style="display:flex;gap:8px;align-items:center;margin:-4px 0 12px">
+      <div class="row2" data-nbperson style="margin-bottom:12px">
+        <div><label class="lbl" for="nb-email">Email</label>
+          <input class="field-box" id="nb-email" type="email" placeholder="optional"></div>
+        <div><label class="lbl" for="nb-phone">Phone</label>
+          <input class="field-box" id="nb-phone" type="text" placeholder="optional"></div>
+      </div>
+      <div data-nbbrand style="display:flex;gap:8px;align-items:center;margin:-4px 0 12px">
         <button class="btn-ghost" id="nb-bulk-open" style="padding:5px 12px;font-size:13px">Paste a list instead</button>
         <span class="hint" style="margin:0">A whole spreadsheet column at once — one name per line.</span>
       </div>
-      <div id="nb-bulk" hidden style="margin-bottom:12px">
+      <div id="nb-bulk" data-nbbrandbox hidden style="margin-bottom:12px">
         <label class="lbl" for="nb-bulk-text">One brand per line. A comma after the name is taken as their website.</label>
         <textarea class="field-box" id="nb-bulk-text" rows="7" placeholder="Alani Nu&#10;Celsius, celsius.com&#10;Poppi"></textarea>
         <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
@@ -2297,13 +2310,13 @@
         </div>
         <div id="nb-bulk-prev"></div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;margin:-4px 0 12px">
+      <div data-nbbrand style="display:flex;gap:8px;align-items:center;margin:-4px 0 12px">
         <button class="btn-ghost" id="nb-su" style="padding:5px 12px;font-size:13px">Find on SponsorUnited</button>
         <span class="hint" style="margin:0">Pulls their people in with the brand. Needs a signed-in SponsorUnited tab.</span>
       </div>
-      <div id="nb-su-results"></div>
-      <div id="nb-guess"></div>
-      <div class="row2" style="margin-bottom:12px">
+      <div id="nb-su-results" data-nbbrand></div>
+      <div id="nb-guess" data-nbbrand></div>
+      <div class="row2" data-nbbrand style="margin-bottom:12px">
         <div><label class="lbl" for="nb-cat">Category</label>
           <select class="field-box" id="nb-cat"></select></div>
         <div><label class="lbl" for="nb-tier">Tier</label>
@@ -2317,7 +2330,7 @@
       <div class="row2" style="margin-bottom:12px">
         <div><label class="lbl" for="nb-owner">Owner</label>
           <select class="field-box" id="nb-owner"></select></div>
-        <div><label class="lbl" for="nb-site">Website</label>
+        <div data-nbbrand><label class="lbl" for="nb-site">Website</label>
           <input class="field-box" id="nb-site" type="text" placeholder="optional"></div>
       </div>
       <div class="field" style="margin-bottom:0">
@@ -4019,7 +4032,11 @@ function ztEmailDone(p) { return p.emailedAt || p.emailReplyAt || null; }
 // days after the message), and No response (7 days after the final).
 // An accept with no date on file (old rows) counts from the invite, so
 // the oldest show as late; with neither, it's due now.
-function ztMsgDue(p) { var a = p.acceptedAt || p.invitedAt; return a ? ztAddDays(a, ZT_DAYS.dm) : null; }
+// The first message only goes out Tue–Thu (Leo, Oct 12 2026): a due day that
+// lands on a Fri–Mon moves to the next Tuesday.
+var ZT_MSG_DOWS = [2, 3, 4];
+function ztMsgDay(d) { var x = new Date(d); while (ZT_MSG_DOWS.indexOf(x.getDay()) < 0) x.setDate(x.getDate() + 1); return x; }
+function ztMsgDue(p) { var a = p.acceptedAt || p.invitedAt; return a ? ztMsgDay(ztAddDays(a, ZT_DAYS.dm)) : null; }
 function ztFinalDue(p) { return p.dmSentAt ? ztAddDays(p.dmSentAt, ZT_DAYS.final) : null; }
 function ztQuietDay(p) { return p.nudgedAt ? ztAddDays(p.nudgedAt, ZT_DAYS.quiet) : null; }
 function ztDmWindow(p) {
@@ -4275,9 +4292,9 @@ function ztPanelHtml(p) {
     out = h(panel === 'dm' ? 'Text them on LinkedIn' : 'Send the final reach-out',
         panel === 'dm' && !p.dmSentAt
           ? (!w ? 'Due now'
-            : w.late ? 'Late: it was due ' + esc(wd(w.due)) + ', ' + ZT_DAYS.dm + ' days after they accepted. Send it today'
-            : w.days > 0 ? 'Due ' + esc(wd(w.due)) + ', ' + ZT_DAYS.dm + ' days after they accepted'
-            : 'Due today, ' + ZT_DAYS.dm + ' days after they accepted')
+            : w.late ? 'Late: it was due ' + esc(wd(w.due)) + ' (' + ZT_DAYS.dm + '+ days after they accepted, Tue–Thu). Send it today'
+            : w.days > 0 ? 'Due ' + esc(wd(w.due)) + ' (' + ZT_DAYS.dm + '+ days after they accepted, Tue–Thu)'
+            : 'Due today (' + ZT_DAYS.dm + '+ days after they accepted, Tue–Thu)')
           : panel === 'nudge' && fd && !p.nudgedAt
           ? (fdays > 0 ? 'Due ' + esc(wd(fd)) + ', ' + ZT_DAYS.final + ' days after the first message, if they haven’t answered'
             : fdays < 0 ? 'Late: it was due ' + esc(wd(fd)) + ', ' + ZT_DAYS.final + ' days after the first message. Send it today'
@@ -4703,7 +4720,7 @@ function zsHtml() {
         (late ? '<span class="late"><b>' + late + '</b> late</span>' : '') +
         (today ? '<span class="today"><b>' + today + '</b> due today</span>' : '') +
         '<span><b>' + n + '</b> ' + (n === 1 ? 'brand' : 'brands') + '</span></div>' +
-      '<div class="zs-rule">Accepted → message on day ' + ZT_DAYS.dm + ' → final reach-out ' + ZT_DAYS.final +
+      '<div class="zs-rule">Accepted → message on day ' + ZT_DAYS.dm + ' (Tue–Thu) → final reach-out ' + ZT_DAYS.final +
         ' days later → No response after ' + ZT_DAYS.quiet + ' quiet days</div>' +
     '</div><div class="zs-board">' +
     ZS_GROUPS.map(function (x) {
@@ -5359,7 +5376,7 @@ function ztOpenTpl(kind) {
   document.getElementById('zt-tsubj-wrap').hidden = noSubj;
   document.getElementById('zt-prev-subj').hidden = noSubj;
   document.getElementById('zt-tbody-lbl').textContent = ZT_TPL_KIND === 'dm' ? 'LinkedIn message (when they want to keep it in the chat)'
-    : ZT_TPL_KIND === 'first' ? 'First LinkedIn message (Text them on LinkedIn, ' + ZT_DAYS.dm + ' days after they accept)'
+    : ZT_TPL_KIND === 'first' ? 'First LinkedIn message (Text them on LinkedIn, ' + ZT_DAYS.dm + ' days after they accept, on a Tue–Thu)'
     : ZT_TPL_KIND === 'final' ? 'Final reach-out on LinkedIn (' + ZT_DAYS.final + ' days after the first message, if they haven’t answered)' : 'Email';
   var t = ZT_TPL_KIND === 'dm'
     ? ((ZT && ZT.dmTemplate) || { subject: '', body: '', standIn: true })
@@ -6407,7 +6424,7 @@ function pdDayWord(key) {
 function pdTicksChanged(name) {
   var s = PD[name];
   if (!s) return;
-  s.prev = null; s.shown = null; s.err = '';
+  s.prev = null; s.shown = null; s.err = ''; s.giants = false; s.giantIds = null;
   s.seq++;
   clearTimeout(s.t);
   if (s.key) s.t = setTimeout(function () { pdPreview(name); }, 300);
@@ -6420,6 +6437,7 @@ function pdPreview(name) {
   s.prev = null; s.shown = null; s.err = '';
   if (!s.key || !ids.length || ids.length > 40) { s.busy = false; s.opts.render(); return; }
   var args = { date: s.key, brandIds: ids, addDay: s.addDay, preview: true };
+  if (s.giants && s.giantIds && s.giantIds.length) args.allowGiants = s.giantIds;
   var mine = ++s.seq;
   s.busy = true;
   s.opts.render();
@@ -6427,7 +6445,12 @@ function pdPreview(name) {
     if (mine !== s.seq) return;
     s.busy = false;
     s.prev = r;
-    s.shown = { date: args.date, brandIds: args.brandIds, addDay: args.addDay };
+    // Giants held back (the queue rules): offered as "Add the giants too".
+    if (!args.allowGiants) {
+      s.giants = false;
+      s.giantIds = (r.results || []).filter(function (x) { return x.reason === 'giant'; }).map(function (x) { return x.brandId; });
+    }
+    s.shown = { date: args.date, brandIds: args.brandIds, addDay: args.addDay, allowGiants: args.allowGiants };
     s.opts.render();
   }).catch(function (e) {
     if (mine !== s.seq) return;
@@ -6443,13 +6466,17 @@ function pdApply(name) {
   var args = s.shown;
   s.busy = true;
   s.opts.render();
-  api('planAddBrands', { date: args.date, brandIds: args.brandIds, addDay: args.addDay }).then(function (r) {
+  // Giants the preview held back (the queue rules) go only if Leo ticked
+  // "Add the giants too" — and then the preview already showed them going.
+  var send = { date: args.date, brandIds: args.brandIds, addDay: args.addDay };
+  if (args.allowGiants) send.allowGiants = args.allowGiants;
+  api('planAddBrands', send).then(function (r) {
     s.busy = false;
     var word = pdDayWord(args.date);
     var sum = sdSummary(r.results || []);
     var text = (word === 'today' ? 'Today' : word) + ' — ' + sum + (r.opened ? ' · ' + word + ' is a sending day now' : '');
     toast(text);
-    s.key = ''; s.addDay = false; s.prev = null; s.shown = null; s.err = '';
+    s.key = ''; s.addDay = false; s.prev = null; s.shown = null; s.err = ''; s.giants = false; s.giantIds = null;
     pdDays(true).catch(function () {});
     s.opts.done(r, text);
   }).catch(function (e) {
@@ -6536,6 +6563,11 @@ function pdHtml(name) {
       (res.length > added.length ? ' · ' + (res.length - added.length) + ' can’t be added' : '') + '</div>' +
     '<div class="pd-rows">' + res.map(pdRow).join('') + '</div>' +
     (notes.length ? '<div class="pd-notes">' + notes.map(function (t) { return '<div>' + esc(t) + '</div>'; }).join('') + '</div>' : '') +
+    (s.giantIds && s.giantIds.length
+      ? '<label class="pd-giants"><input type="checkbox" data-pdgiants="' + esc(name) + '"' + (s.giants ? ' checked' : '') + (s.busy ? ' disabled' : '') + '> ' +
+          (s.giantIds.length === 1 ? 'Add the giant too' : 'Add the ' + s.giantIds.length + ' giants too') +
+          ' <span class="sd-dim">— held back for now; this lets ' + (s.giantIds.length === 1 ? 'it' : 'them') + ' go like any other brand</span></label>'
+      : '') +
     '<div class="pd-go">' +
       (added.length
         ? '<button class="btn-solid sd-sm" data-pdapply="' + esc(name) + '"' + (s.busy ? ' disabled' : '') + '>' +
@@ -6547,6 +6579,12 @@ function pdHtml(name) {
 }
 
 document.addEventListener('change', function (e) {
+  var gbox = e.target.closest && e.target.closest('[data-pdgiants]');
+  if (gbox) {
+    var gs = PD[gbox.getAttribute('data-pdgiants')];
+    if (gs) { gs.giants = gbox.checked; pdPreview(gbox.getAttribute('data-pdgiants')); }
+    return;
+  }
   var sel = e.target.closest && e.target.closest('[data-pdday]');
   if (!sel) return;
   var s = PD[sel.getAttribute('data-pdday')];
@@ -7270,13 +7308,23 @@ function bpRender() {
   var html = '<span class="b-plan-k">Schedule</span>';
   if (!r || !r.brand || r.brand.id !== BP.id) { slot.innerHTML = html + '<span class="sd-dim">…</span>'; return; }
   var b = r.brand;
-  if (b.refusal) {
+  // Resting after its first outreach (the queue rules): only the days on
+  // or after the rest ends are offered; Take off stays for a pinned one.
+  var restFrom = b.refusalReason === 'resting' && b.restUntil ? b.restUntil : '';
+  if (b.refusal && !restFrom) {
+    // A giant held back (the queue rules) can be let through here.
+    var giant = b.refusalReason === 'giant';
     slot.innerHTML = html + '<span class="sd-dim">' +
-      esc(b.refusalReason === 'archived' ? 'Archived — bring it back to put it on a day.' : b.refusal) + '</span>';
+      esc(b.refusalReason === 'archived' ? 'Archived — bring it back to put it on a day.'
+        : giant ? b.refusal.replace(/ Add anyway to send it\.$/, '') : b.refusal) + '</span>' +
+      (giant ? '<button class="btn-ghost sd-sm" data-bpgiant' + (BP.busy ? ' disabled' : '') + ' title="Giants are held back for now. This lets this one brand go like any other.">Add anyway</button>' : '') +
+      (BP.note ? '<div class="pd-done' + (BP.note.bad ? ' bad' : '') + '">' + esc(BP.note.text) + '</div>' : '');
     return;
   }
   var where;
-  if (b.pinnedOn && b.going && b.waits) {
+  if (restFrom) {
+    where = (b.pinnedOn ? 'On <b>' + esc(bpWord(b.pinnedOn)) + '</b> · ' : '') + '<span class="pd-warn">' + esc(b.refusal) + '</span>';
+  } else if (b.pinnedOn && b.going && b.waits) {
     where = 'On <b>' + esc(bpWord(b.pinnedOn)) + '</b> · <span class="pd-warn">waits: past the day’s ' + sdCap() +
       (b.waitsLabel ? ', goes out ' + esc(b.waitsLabel) : '') + ' unless you move it up on the Schedule</span>';
   } else if (b.pinnedOn) {
@@ -7290,11 +7338,11 @@ function bpRender() {
   } else {
     where = 'Not on a day';
   }
-  var opts = (r.days || []).filter(function (d) { return d.key !== b.pinnedOn; }).map(function (d) {
+  var opts = (r.days || []).filter(function (d) { return d.key !== b.pinnedOn && (!restFrom || d.key >= restFrom); }).map(function (d) {
     return '<option value="' + esc(d.key) + '">' +
       esc((d.today ? 'Today · ' : '') + d.label + (d.category ? ' · ' + (CAT_NAMES[d.category] || d.category) : '') + (d.extra ? ' (extra day)' : '')) + '</option>';
   }).join('') +
-    (r.offDay ? '<option value="' + esc(r.offDay.key) + '" data-add="1">' + esc(r.offDay.label + ' (adds it as a sending day)') + '</option>' : '');
+    (r.offDay && (!restFrom || r.offDay.key >= restFrom) ? '<option value="' + esc(r.offDay.key) + '" data-add="1">' + esc(r.offDay.label + ' (adds it as a sending day)') + '</option>' : '');
   var moving = !!(b.pinnedOn || b.inTodayQueue);
   var lock = BP.busy ? ' disabled' : '';
   html += '<span>' + where + '</span>' +
@@ -7381,6 +7429,18 @@ document.getElementById('brand-body').addEventListener('change', function (e) {
 });
 document.getElementById('brand-body').addEventListener('click', function (e) {
   if (e.target.closest('[data-bpoff]')) { bpOff(); return; }
+  if (e.target.closest('[data-bpgiant]')) {
+    var gb = BP.data && BP.data.brand;
+    if (!gb || BP.busy) return;
+    BP.busy = true;
+    bpRender();
+    api('allowGiant', { brandId: gb.id }).then(function () {
+      BP.busy = false;
+      toast(gb.name + ' goes like any other brand now');
+      bpDone(gb.id, 'Giant OK’d — it can go on a day now.', false, false);
+    }).catch(function (err) { BP.busy = false; toast(err.message); bpRender(); });
+    return;
+  }
   if (e.target.closest('[data-bpsched]')) { e.preventDefault(); gotoView('schedule'); }
 });
 
@@ -7398,7 +7458,12 @@ function loadBrand(brandId) {
   return api('getBrand', { brandId: brandId }).then(function (d) {
     if (!mine()) return;
     CURRENT_BRAND = d;
+    if (d.sponsorUrl) SPONSOR_URL = d.sponsorUrl;
     var b = d.brand;
+    // A person (+ Add brand → Person): same page, outreach parts hidden
+    // (CSS on .b-person), the Show Board link up top.
+    var person = b.kind === 'person';
+    box.classList.toggle('b-person', person);
     btlRender(b.id);
     rememberSponsors(b.shows);
     (b.documents || []).forEach(function (dc) { DOC_BY_ID[dc.id] = dc; });
@@ -7418,7 +7483,7 @@ function loadBrand(brandId) {
     var head =
       '<h1>' + esc(b.name) + '</h1>' +
       '<div class="sub">' +
-        esc(CAT_NAMES[b.category] || b.category || 'Uncategorized') +
+        (person ? 'Person · gets the Show Board' : esc(CAT_NAMES[b.category] || b.category || 'Uncategorized')) +
         (b.tier ? ' · ' + esc(b.tier) : '') +
         (b.partner ? ' · ' + esc(b.partner.lifecycle.replace(/_/g, ' ')) : '') +
       '</div>' +
@@ -7428,12 +7493,13 @@ function loadBrand(brandId) {
         ? '<div style="font-size:14px;line-height:1.55;color:var(--ink-2);max-width:660px;margin:8px 0 0">' +
             esc(b.about) + (/[.!?]$/.test(b.about) ? '' : '.') +
             (b.topProducts ? ' Known for ' + esc(b.topProducts) + '.' : '') + '</div>'
+        : person ? (b.notes ? '<div style="font-size:14px;color:var(--ink-2);margin:8px 0 0">' + esc(b.notes) + '</div>' : '')
         : '<div class="hint" style="margin:8px 0 0">No summary yet — open “Details &amp; notes” below and fill in “What they do”.</div>') +
       // Where it stands on the Schedule, and a menu to put it on a day
       // (filled by bpLoad once the page is up).
       '<div id="b-plan" class="b-plan"></div>' +
       // Brand Fit: the score and every reason (src/lib/brand-fit.ts).
-      bFitLine(d.fit) +
+      (person ? '' : bFitLine(d.fit)) +
       // A Show Board access request waiting on a decision. Same two
       // actions as the Show Board queue — this is just the other place
       // you'd naturally look for the brand that asked.
@@ -7496,8 +7562,8 @@ function loadBrand(brandId) {
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
           '<button class="btn-solid" id="b-enrich">Auto-fill from the web</button>' +
           '<button class="btn-ghost" id="b-edit-toggle">Edit</button>' +
-          '<a class="btn-ghost" href="' + esc(liCompany) + '" target="_blank" rel="noopener" title="Their LinkedIn People tab \u2014 press the SB pill there to add the buyers">LinkedIn people ↗</a>' +
-          '<a class="btn-ghost" href="' + esc(suUrl) + '" target="_blank" rel="noopener">' + suLabel + '</a>' +
+          '<a class="btn-ghost b-nop" href="' + esc(liCompany) + '" target="_blank" rel="noopener" title="Their LinkedIn People tab \u2014 press the SB pill there to add the buyers">LinkedIn people ↗</a>' +
+          '<a class="btn-ghost b-nop" href="' + esc(suUrl) + '" target="_blank" rel="noopener">' + suLabel + '</a>' +
           (b.doNotEmail
             ? '<button class="btn-ghost" id="b-dne" style="border-color:var(--accent);color:var(--accent)" title="This brand is excluded from all outreach emails — click to allow again">Do not email</button>'
             : '<button class="btn-ghost" id="b-dne" title="Exclude this brand from all outreach emails (intros and follow-ups)">Emails on</button>') +
@@ -7540,7 +7606,10 @@ function loadBrand(brandId) {
             ? '<button class="btn-ghost" id="b-pass" style="border-color:var(--warn);color:var(--warn)" title="Archived — hidden from all outreach. Click to bring it back.">Archived — bring back</button>'
             : '<button class="btn-ghost" id="b-pass" title="Take this brand off outreach (queue, picks, schedule, next best) until you bring it back">Archive brand</button>') +
           '<button class="btn-ghost" id="b-merge">Merge duplicate…</button>' +
-          '<button class="btn-ghost danger" id="b-delete" style="margin-left:auto">Delete brand</button>' +
+          (person
+            ? '<button class="btn-ghost" id="b-kind" title="Show this as a brand again (it stays archived until you bring it back)">It\'s a brand, not a person</button>'
+            : '<button class="btn-ghost" id="b-kind" title="One person you send the Show Board to, not a company: takes it off outreach">This is a person…</button>') +
+          '<button class="btn-ghost danger" id="b-delete" style="margin-left:auto">' + (person ? 'Delete person' : 'Delete brand') + '</button>' +
         '</div>' +
         '<div id="b-merge-slot"></div>' +
         '<div id="b-edit"' + (BRAND_EDIT_OPEN === b.id ? '' : ' hidden') + ' style="margin-top:14px;border-top:1px solid var(--border-soft);padding-top:14px">' +
@@ -7904,7 +7973,7 @@ function loadBrand(brandId) {
     // Show Board access — the whole public board is code-gated; this is
     // where a brand's code is minted and its ready-to-send link copied.
     var boardAccess =
-      '<details class="fold"><summary class="section-head">Show Board access' +
+      '<details class="fold"' + (person ? ' open' : '') + '><summary class="section-head">Show Board access' +
         (b.boardCode ? ' <span class="n">code set</span>' : '') + '</summary>' +
       '<div class="panel panel-pad">' +
         (b.boardCode
@@ -7939,8 +8008,22 @@ function loadBrand(brandId) {
       '</div></details>';
 
     // Essentials open (people, outreach, shows); everything else folded.
-    box.innerHTML = head + contacts + outreach + shows + details + boardAccess + docs + activity;
-    bpLoad(b.id);
+    box.innerHTML = person
+      ? head + boardAccess + contacts + outreach + shows + details + docs + activity
+      : head + contacts + outreach + shows + details + boardAccess + docs + activity;
+    if (!person) bpLoad(b.id);
+
+    box.querySelector('#b-kind').onclick = function () {
+      var to = person ? null : 'person';
+      api('setBrandKind', { brandId: b.id, kind: to }).then(function (p) {
+        if (!window.confirm((to ? 'Make ' : 'Show ') + p.name + (to ? ' a person?' : ' as a brand again?') +
+          '\n\n• ' + p.changes.join('\n• '))) return;
+        return api('setBrandKind', { brandId: b.id, kind: to, confirm: true }).then(function () {
+          toast(to ? p.name + ' is now a person — off outreach' : p.name + ' is a brand again (still archived)');
+          loadBrand(b.id);
+        });
+      }).catch(function (e) { toast(e.message); });
+    };
 
     box.querySelector('#b-edit-toggle').onclick = function () {
       var f = box.querySelector('#b-edit'); f.hidden = !f.hidden;
@@ -8062,16 +8145,27 @@ function loadBrand(brandId) {
       btn.addEventListener('click', function () {
         var acts = btn.closest('.t-actions');
         btn.disabled = true;
-        api('queueContact', { contactId: btn.getAttribute('data-cqueue') }).then(function (r) {
-          if (r.queued) {
-            acts.querySelectorAll('[data-cqueue],[data-cskip],[data-cstate]').forEach(function (x) { x.remove(); });
-            acts.insertAdjacentHTML('afterbegin', '<span class="status queued" data-cstate style="font-size:13px;padding:5px 12px">in today’s list · not sent yet</span>');
-            toast(r.contactName + ' is in today’s list — top of the LinkedIn tab');
-          } else {
-            toast(r.contactName + ' is already in play (' + r.status + ')');
-            btn.disabled = false;
-          }
-        }).catch(function (e) { toast(e.message); btn.disabled = false; });
+        var cid = btn.getAttribute('data-cqueue');
+        var go = function (allowGiant) {
+          return api('queueContact', allowGiant ? { contactId: cid, allowGiant: true } : { contactId: cid }).then(function (r) {
+            if (r.queued) {
+              acts.querySelectorAll('[data-cqueue],[data-cskip],[data-cstate]').forEach(function (x) { x.remove(); });
+              acts.insertAdjacentHTML('afterbegin', '<span class="status queued" data-cstate style="font-size:13px;padding:5px 12px">in today’s list · not sent yet</span>');
+              toast(r.contactName + ' is in today’s list — top of the LinkedIn tab');
+            } else if (r.reason === 'giant' && !allowGiant) {
+              // A giant held back (the queue rules): ask, and go on a yes.
+              if (sdAskGiants([{ brandName: r.brandName, reasonText: r.reasonText }])) return go(true);
+              btn.disabled = false;
+            } else if (r.reason === 'resting') {
+              toast((r.brandName || r.contactName) + ': ' + (r.reasonText || 'reached out already — it rests two weeks.'));
+              btn.disabled = false;
+            } else {
+              toast(r.contactName + ' is already in play (' + r.status + ')');
+              btn.disabled = false;
+            }
+          });
+        };
+        go(false).catch(function (e) { toast(e.message); btn.disabled = false; });
       });
     });
     box.querySelectorAll('[data-cskip]').forEach(function (btn) {
@@ -8807,9 +8901,12 @@ function showLine(s) {
 }
 var SHOW_GENRES = ['edm', 'hip-hop', 'country', 'pop', 'band', 'other'];
 var SHOWS_LAST = [];
-// The brand-facing page URL; listShows sends the real one (custom host
-// when SPONSOR_HOST is set, else this deployment's own /partnerships).
+// The brand-facing page URL. The server sends the real one (custom host
+// shows.sboyagency.com when SPONSOR_HOST is set, else this deployment's own
+// /partnerships) — asked on load and with every brand page and the Shows list,
+// so a link copied from a brand page never carries the vercel.app address.
 var SPONSOR_URL = location.origin + '/partnerships';
+api('sponsorUrl').then(function (r) { if (r && r.url) SPONSOR_URL = r.url; }).catch(function () {});
 var showsSel = {};
 var showsPick = { state: '', type: '', genre: '' };
 function fmtShowDate(d) {
@@ -11131,7 +11228,12 @@ var SD_SHORT = {
   archived: 'archived',
   donotemail: 'do-not-email',
   notus: 'not sold in the US',
-  passedtoday: 'passed for today'
+  passedtoday: 'passed for today',
+  // The queue rules (Leo, Oct 12 2026): only brands nobody has reached;
+  // a reached brand rests two weeks; giants wait for "Add anyway".
+  reached: 'already reached out',
+  resting: 'reached out, resting two weeks',
+  giant: 'a giant, held back'
 };
 
 // Blocked for a reason a new person would fix. The rest (archived,
@@ -11263,8 +11365,26 @@ function renderSchedExtra() {
       ? '<span class="sd-dim">Changed ' + esc(sdDayTag(undo.date)) + '’s category.</span>' +
         '<a href="#" class="sd-link" data-sdthemeundo="1" title="Put that day back as it was: its category, its planned brands and the people taken out of today’s queue">Undo</a>'
       : '') +
-    '<span class="sd-sp"></span>' + sdLiWeekChip() +
+    '<span class="sd-sp"></span>' + sdRulesChip() + sdLiWeekChip() +
   '</div>';
+}
+
+// The queue rules in one line (getOutreachPlan.queueRules; Leo, Oct 12
+// 2026: no brand already reached out to in the queue, no super big
+// brands yet). The days only pick brands nobody has reached; one added
+// by hand rests two weeks from its first outreach; giants are held back
+// until this switch (or "Add anyway" on one brand).
+function sdRulesChip() {
+  var r = SCHED.queueRules;
+  if (!r) return '';
+  var tip = 'The days only pick brands nobody has reached out to yet. A brand you add by hand that was reached before waits ' +
+    r.restDays + ' days from its first outreach. Giants (household names, the big parent companies and their brands, $1B+ in sales) ' +
+    (r.giantsOn ? 'go like any other brand.' : 'are held back: nothing picks them, and adding one asks first.');
+  return '<span class="sd-rules" title="' + esc(tip) + '">New brands only · ' +
+    (r.giantsOn
+      ? 'Giants: <b>on</b> <a href="#" class="sd-link" data-sdgiants="0">Hold back</a>'
+      : 'Giants: <b>held back</b>' + (r.giantsHeld ? ' (' + r.giantsHeld + ')' : '') + ' <a href="#" class="sd-link" data-sdgiants="1">Allow</a>') +
+  '</span>';
 }
 
 // LinkedIn's weekly limit, in one line: invites in the last seven days,
@@ -11879,6 +11999,7 @@ function sdTake(d) {
   SCHED.extraDays = d.extraDays || [];
   SCHED.nextOffDay = d.nextOffDay || '';
   SCHED.linkedinWeek = d.linkedinWeek || null;
+  SCHED.queueRules = d.queueRules || null;
   SCHED.planWeekLast = d.planWeekLast || null;
   SCHED.themeUndo = d.themeUndo || null;
   SCHED.priority = d.priority || SCHED.priority || {};
@@ -12068,8 +12189,24 @@ function sdAdd(key, ids, opts) {
     }
   }
   SCHED.notes[key] = [];
-  return sdPlanCall('planAddBrands', { date: key, brandIds: ids }).then(function (r) {
+  var args = { date: key, brandIds: ids };
+  if (opts.allowGiants) args.allowGiants = opts.allowGiants;
+  return sdPlanCall('planAddBrands', args).then(function (r) {
     var results = r.results || [];
+    // Giants are held back (the queue rules): ask, once for the lot,
+    // and add the ones Leo says yes to.
+    var giants = opts.allowGiants ? [] : results.filter(function (x) { return !x.added && x.reason === 'giant'; });
+    if (giants.length && sdAskGiants(giants)) {
+      var ok = giants.map(function (x) { return x.brandId; });
+      var rest = results.filter(function (x) { return giants.indexOf(x) < 0; });
+      return sdPlanCall('planAddBrands', { date: key, brandIds: ok, allowGiants: ok }).then(function (r2) {
+        var all = rest.concat(r2.results || []);
+        sdTakeResults(key, all);
+        var sum2 = sdSummary(all);
+        if (!opts.quiet) toast(sdDayTag(key) + ' — ' + sum2);
+        return sdRefresh().then(function () { return sum2; });
+      });
+    }
     sdTakeResults(key, results);
     var sum = sdSummary(results);
     if (!opts.quiet) toast(sdDayTag(key) + ' — ' + sum);
@@ -12080,6 +12217,18 @@ function sdAdd(key, ids, opts) {
     // add works again and Leo can retry.
     return sdRefresh().then(function () { return null; });
   });
+}
+
+// "Add anyway?" for giants held back: rows carry brandName and the
+// server's reasonText. True = add them.
+function sdAskGiants(rows) {
+  var names = rows.map(function (x) { return x.brandName || x.name || 'This brand'; });
+  var one = rows.length === 1;
+  var why = one && /\(([^)]+)\)/.exec(rows[0].reasonText || '');
+  var who = one ? names[0] + ' is a giant' + (why ? ' (' + why[1] + ')' : '')
+    : names.slice(0, 6).join(', ') + (names.length > 6 ? ' and ' + (names.length - 6) + ' more' : '') + ' are giants';
+  return window.confirm(who + ' — giants are held back for now.\n\nAdd ' + (one ? 'it' : 'them') + ' anyway? ' +
+    (one ? 'It goes' : 'They go') + ' like any other brand from now on.');
 }
 
 // A day's planned brands in a new order (who goes first). ids = the
@@ -12313,6 +12462,7 @@ function sdPinnedCard(p, key, i, n) {
       '<div class="sd-fix">' +
         (SD_LI_FIX[p.reason] ? sdLiLink(p) : '') +
         (fixable ? '<button class="btn-draft sd-sm" data-sdperson="' + esc(p.id) + '">+ Add a person</button>' : '') +
+        (p.reason === 'giant' ? '<button class="btn-draft sd-sm" data-sdgiantok="' + esc(p.id) + '" data-sdn="' + esc(p.name) + '" title="Giants are held back for now. This lets this one brand go like any other.">Add anyway</button>' : '') +
       '</div>';
   }
   var many = n > 1;
@@ -13170,6 +13320,7 @@ function renderSchedDrillBody() {
       '<input type="checkbox" data-sdck="' + esc(b.id) + '"' + (SCHED.catSel[b.id] ? ' checked' : '') + '>' +
       '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' + tier(b) +
       '<span class="sd-dim">' + ((b.label && b.label.reachable) || 0) + ' reachable</span>' + pinTag(b) +
+      (b.giant ? '<span class="sd-tag warn" title="A giant (' + esc(b.giant) + ') — held back for now: the days never pick it, and adding it asks first">Giant</span>' : '') +
       (b.queued ? '<span class="sd-tag good">' + b.queued + ' queued</span>' : '') +
       '<span class="sd-sp"></span>' +
       (b.label && b.label.kind === 'thin' ? sdLiLink(b) : '') + addTo(b) +
@@ -13206,6 +13357,7 @@ function renderSchedDrillBody() {
       '<span class="status ' + st.pill + '">' + esc(o.stage || 'reached') + '</span>' +
       (o.stale ? '<span class="sd-tag warn">Going stale</span>' : '') +
       '<span class="sd-dim">' + esc(o.detail || '') + '</span>' +
+      (b.restUntil ? '<span class="sd-dim" title="Reached out already: it can go on a day again by hand two weeks after its first outreach">· rests until ' + esc(sdDayName(b.restUntil)) + '</span>' : '') +
       '<span class="sd-sp"></span>' +
       '<span class="sd-dim">' + ((b.label && b.label.reachable) || 0) + ' reachable</span>' +
     '</div>';
@@ -13504,7 +13656,7 @@ function sfRowHtml(b, i, key) {
   var dayWord = sdDayTag(key);
   var btn = b.pinnedOn === key ? '<span class="sd-dim">On ' + esc(dayWord) + ' ✓</span>'
     : b.action === 'add' ? '<button class="btn-draft sd-sm" data-sfadd="' + esc(b.id) + '">' + (b.pinnedOn ? 'Move to ' : 'Add to ') + esc(dayWord) + '</button>'
-    : b.action === 'addAnyway' ? '<button class="btn-ghost sd-sm" data-sfadd="' + esc(b.id) + '" title="Already reached, or nobody reachable — your call">Add anyway</button>'
+    : b.action === 'addAnyway' ? '<button class="btn-ghost sd-sm" data-sfadd="' + esc(b.id) + '" title="' + (b.giant ? 'A giant — held back for now. This lets it go like any other brand.' : 'Already reached, or nobody reachable — your call') + '">Add anyway</button>'
     : '<button class="btn-ghost sd-sm" data-sopen="' + esc(b.id) + '">Open brand</button>';
   var how = b.matched === 'aka' ? 'aka ' + b.aka : b.matched === 'fuzzy' ? 'did you mean this?' : '';
   return '<div class="sd-fr' + (i === f.hl ? ' hl' : '') + '" role="option" aria-selected="' + (i === f.hl) + '" data-sfrow="' + i + '">' +
@@ -13565,11 +13717,13 @@ function sfSearch(now) {
 function sfAdd(id) {
   var f = SCHED.find;
   var key = f.forDay || sfDay();
+  // "Add anyway" on a giant's row is Leo's yes (the queue rules).
+  var row = (f.rows || []).filter(function (r) { return r.id === id; })[0];
   var inp = document.getElementById('sf-q');
   if (inp) { inp.value = ''; inp.focus(); }
   f.rows = []; f.forQ = ''; f.hl = 0; f.seq++; f.pendingEnter = '';
   sfRender();
-  sdAdd(key, [id]).then(function () { sfChips(); });
+  sdAdd(key, [id], row && row.giant ? { allowGiants: [id] } : null).then(function () { sfChips(); });
 }
 
 // Paste a list, for the day the chips are on.
@@ -13915,6 +14069,26 @@ var SCHED_DRAG = null;
       return;
     }
     if ((t = e.target.closest('[data-sdthemeundo]'))) { e.preventDefault(); sdThemeUndo(); return; }
+    // The queue rules: the Giants switch, and "Add anyway" on one giant.
+    if ((t = e.target.closest('[data-sdgiants]'))) {
+      e.preventDefault();
+      var gOn = t.getAttribute('data-sdgiants') === '1';
+      if (gOn && !window.confirm('Allow giants?\n\nThe days will pick household names, the big parent companies and their brands, and $1B+ brands like any other.')) return;
+      sdPlanCall('setGiantsOn', { on: gOn }).then(function () {
+        toast(gOn ? 'Giants allowed — the days can pick them now' : 'Giants held back again');
+        return sdRefresh();
+      }).catch(function (err) { toast(err.message); });
+      return;
+    }
+    if ((t = e.target.closest('[data-sdgiantok]'))) {
+      var gid = t.getAttribute('data-sdgiantok'), gname = t.getAttribute('data-sdn') || 'This brand';
+      t.disabled = true;
+      sdPlanCall('allowGiant', { brandId: gid }).then(function () {
+        toast(gname + ' goes like any other brand now');
+        return sdRefresh();
+      }).catch(function (err) { toast(err.message); sdRefresh(); });
+      return;
+    }
     if ((t = e.target.closest('[data-cpopen]'))) { cpOpen(); return; }
     if ((t = e.target.closest('[data-sopen]'))) { e.preventDefault(); loadBrand(t.getAttribute('data-sopen')); return; }
     if ((t = e.target.closest('[data-sdcheck]'))) { e.preventDefault(); SCHED.checkOpen = !SCHED.checkOpen; renderSchedCheck(); return; }
@@ -13999,7 +14173,7 @@ var SCHED_DRAG = null;
       t.disabled = true;
       sdPlanCall('queueBrandTargets', { brandId: sid }).then(function (r) {
         toast(r && r.queued === false
-          ? sname + ': ' + (SD_SHORT[r.reason] || r.reason || 'could not queue it')
+          ? sname + ': ' + (r.reasonText || SD_SHORT[r.reason] || r.reason || 'could not queue it')
           : sname + ' is in today’s LinkedIn list');
         return sdRefresh();
       }).catch(function (err) { toast(err.message); sdRefresh(); });
@@ -14710,13 +14884,35 @@ function runSearch(q) {
 
 var guessTimer = null, lastGuessed = '';
 
-function openAddBrand() {
+// Brand or Person (Leo, Oct 12 2026: "sometimes we want to send the show
+// board to individual people"). A person = name + email / phone; the server
+// files them off outreach and mints their board code (addPerson in route.ts).
+var NB_KIND = 'brand';
+function nbSetKind(k) {
+  NB_KIND = k;
+  var person = k === 'person';
+  document.getElementById('add-scrim').classList.toggle('nb-person', person);
+  document.querySelectorAll('[data-nbkind]').forEach(function (b) {
+    b.classList.toggle('active', b.getAttribute('data-nbkind') === k);
+  });
+  document.getElementById('nb-h').textContent = person ? 'Add a person' : 'Add a brand';
+  document.getElementById('nb-sub').textContent = person
+    ? 'Someone to send the Show Board to. They get their own board code and stay out of outreach.'
+    : 'Type the name. The category is worked out for you — override it if it\'s wrong.';
+  document.getElementById('nb-name-lbl').textContent = person ? 'Their name' : 'Brand name';
+  document.getElementById('nb-name').placeholder = person ? 'e.g. Miles Carter' : 'e.g. Alani Nu';
+  document.getElementById('nb-save').textContent = person ? 'Add person' : 'Add brand';
+  document.getElementById('nb-msg').textContent = '';
+}
+
+function openAddBrand(kind) {
   document.getElementById('add-scrim').classList.add('open');
   document.getElementById('nb-cat').innerHTML = catOptions('unresolved');
   document.getElementById('nb-owner').innerHTML = ownerOptions(ME.owner);
   document.getElementById('nb-guess').innerHTML = '';
   document.getElementById('nb-msg').textContent = '';
-  ['nb-name', 'nb-site', 'nb-notes'].forEach(function (id) { document.getElementById(id).value = ''; });
+  ['nb-name', 'nb-site', 'nb-notes', 'nb-email', 'nb-phone'].forEach(function (id) { document.getElementById(id).value = ''; });
+  nbSetKind(kind === 'person' ? 'person' : 'brand');
   NB_PICK = null;
   var sub = document.getElementById('nb-su-results');
   if (sub) sub.innerHTML = '';
@@ -16498,7 +16694,7 @@ function loadTalks() {
         : 'Code sent — not opened yet';
       return '<div class="panel panel-pad" style="margin-bottom:10px">' +
         '<div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap">' +
-          '<a href="#" data-tk-brand="' + esc(t.brand.id) + '" style="font-family:var(--display);font-weight:700;font-size:16px;color:inherit;text-decoration:none">' + esc(t.brand.name) + '</a>' +
+          '<a href="#" data-tk-brand="' + esc(t.brand.id) + '" style="font-family:var(--display);font-weight:700;font-size:16px;color:inherit;text-decoration:none">' + esc(t.brand.name) + '</a>' + (t.brand.kind === 'person' ? ' <span class="n" style="font-size:12.5px;color:var(--ink-3)">· person</span>' : '') +
           '<code style="font-size:13px;font-weight:700;letter-spacing:.07em;color:var(--ink-2)">' + esc(t.code) + '</code>' +
           '<span style="margin-left:auto;font-size:13.5px;color:var(--ink-3)">' + esc(stat) + '</span></div>' +
         (t.viewers.length ? '<div style="font-size:13px;color:var(--ink-2);margin-top:6px">' + t.viewers.map(esc).join(' · ') + '</div>' : '') +
@@ -19016,10 +19212,15 @@ document.getElementById('nextbest').addEventListener('click', function (e) {
   var btn = e.target.closest('[data-nbq]');
   if (!btn) return;
   btn.disabled = true;
-  api('queueBrandTargets', { brandId: btn.getAttribute('data-nbq') }).then(function (r) {
-    queueToast(r);
-    loadOutreach();
-  }).catch(function (err) { toast(err.message); btn.disabled = false; });
+  var nbqId = btn.getAttribute('data-nbq');
+  var nbq = function (allowGiant) {
+    return api('queueBrandTargets', allowGiant ? { brandId: nbqId, allowGiant: true } : { brandId: nbqId }).then(function (r) {
+      queueToast(r, allowGiant ? null : function () { nbq(true); });
+      if (!r.queued) btn.disabled = false;
+      loadOutreach();
+    }).catch(function (err) { toast(err.message); btn.disabled = false; });
+  };
+  nbq(false);
 });
 
 // One message for every "add to queue" path. Up to two people per
@@ -19038,13 +19239,24 @@ var QUEUE_FAIL = {
   notus: 'not sold in the US — ruled out',
 };
 
-function queueToast(r) {
+// retry(allowGiant) re-asks the same queue call: a giant held back (the
+// queue rules) gets "Add anyway?" and goes on a yes.
+function queueToast(r, retry) {
+  if (!r.queued && r.reason === 'giant' && retry) {
+    if (sdAskGiants([{ brandName: r.brandName, reasonText: r.reasonText }])) retry(true);
+    return;
+  }
   if (r.queued) {
     var n = r.count || 1;
     toast(r.contactName + (r.promoted ? ' moved into today’s list' : r.revived ? ' brought back' : ' added to the queue') +
       (n > 1 ? ' — ' + n + ' people in play at this brand' : r.second ? ' — two people now in play at this brand' : ''));
   } else if (r.reason === 'notus') {
     toast(r.brandName + ' is marked not sold in the US — change “Sold in the US” on its brand page to reach out.');
+  } else if (r.reason === 'resting') {
+    // Reached out already: it rests two weeks from the first outreach.
+    toast((r.brandName || r.contactName) + ': ' + (r.reasonText || 'reached out already — it rests two weeks.'));
+  } else if (r.reason === 'giant') {
+    toast((r.brandName || r.contactName) + ' is a giant — held back for now. Add it on the Schedule with “Add anyway”.');
   } else if (r.reason === 'inconversation') {
     // Replied already — that is a follow-up, not new outreach.
     toast(r.brandName + ' already replied (' + r.contactName + ') — open the brand card to follow up instead of sending a new invite.');
@@ -19082,7 +19294,10 @@ function openPersonForBrand(brandId, brandName) {
     '</div>';
   openContactForm(brandId, slot.querySelector('#opb-slot'), function () {
     api('queueBrandTargets', { brandId: brandId, force: true })
-      .then(function (q) { if (q.queued) toast(q.contactName + ' added to the queue'); })
+      .then(function (q) {
+        if (q.queued) toast(q.contactName + ' added to the queue');
+        else if (q.reason === 'giant' || q.reason === 'resting') queueToast(q);
+      })
       .catch(function () {})
       .then(function () { slot.innerHTML = ''; loadOutreach(); });
   });
@@ -19154,7 +19369,15 @@ function openNewBrandForm(prefill) {
       openContactForm(r.brand.id, slot.querySelector('#ob-contact'), function () {
         // Queue whoever was just added (or the brand's best contact).
         api('queueBrandTargets', { brandId: r.brand.id }).then(function (q) {
-          if (q.contactName) queueToast(q); else toast('Person added');
+          // A giant asks "Add anyway?"; a brand resting after its first
+          // outreach says until when (the queue rules).
+          if (q.contactName || q.reason === 'giant' || q.reason === 'resting') {
+            queueToast(q, function () {
+              api('queueBrandTargets', { brandId: r.brand.id, allowGiant: true })
+                .then(function (q2) { queueToast(q2); loadOutreach(); })
+                .catch(function (e) { toast(e.message); });
+            });
+          } else toast('Person added');
         }).catch(function () { toast('Person added — queue them from the brand page'); })
           .then(function () { slot.innerHTML = ''; loadOutreach(); });
       });
@@ -19181,7 +19404,7 @@ document.getElementById('oq-new').addEventListener('click', function () { openNe
     var newRow = '<div class="oq-row-new" style="padding:10px 12px;font-size:13px;cursor:pointer;color:var(--accent-hi);font-weight:600;border-top:1px solid var(--border-soft)">+ Add “' + esc(q) + '” as a new brand</div>';
     drop.innerHTML = (rows.length ? rows.map(function (b, i) {
       var btn = b.action === 'add' ? '<button class="btn-draft sd-sm" data-oqadd="' + esc(b.id) + '">Add to today</button>'
-        : b.action === 'addAnyway' ? '<button class="btn-ghost sd-sm" data-oqadd="' + esc(b.id) + '" data-oqforce="1" title="Already reached, or nobody reachable — your call">Add anyway</button>'
+        : b.action === 'addAnyway' ? '<button class="btn-ghost sd-sm" data-oqadd="' + esc(b.id) + '"' + (b.giant ? ' data-oqgiant="1"' : ' data-oqforce="1"') + ' title="' + (b.giant ? 'A giant — held back for now. This lets it go like any other brand.' : 'Already reached, or nobody reachable — your call') + '">Add anyway</button>'
         : '<button class="btn-ghost sd-sm" data-oqopen="' + esc(b.id) + '">Open brand</button>';
       var how = b.matched === 'aka' ? 'aka ' + b.aka : b.matched === 'fuzzy' ? 'did you mean this?' : '';
       return '<div class="oq-row' + (i === hl ? ' hl' : '') + '" data-oqrow="' + i + '">' +
@@ -19208,10 +19431,13 @@ document.getElementById('oq-new').addEventListener('click', function () { openNe
     }, now ? 0 : 180);
   }
 
-  function add(id, force) {
+  function add(id, force, allowGiant) {
     hide(); box.value = '';
-    api('queueBrandTargets', force ? { brandId: id, force: true } : { brandId: id }).then(function (r) {
-      queueToast(r);
+    var args = { brandId: id };
+    if (force) args.force = true;
+    if (allowGiant) args.allowGiant = true;
+    api('queueBrandTargets', args).then(function (r) {
+      queueToast(r, allowGiant ? null : function () { add(id, force, true); });
       loadOutreach();
     }).catch(function (err) { toast(err.message); });
   }
@@ -19258,7 +19484,7 @@ document.getElementById('oq-new').addEventListener('click', function () { openNe
       if (b && b.action === 'add') add(b.id, false);
       return;
     }
-    add(btn.getAttribute('data-oqadd'), btn.hasAttribute('data-oqforce'));
+    add(btn.getAttribute('data-oqadd'), btn.hasAttribute('data-oqforce'), btn.hasAttribute('data-oqgiant'));
   });
 
   document.addEventListener('click', function (e) {
@@ -19586,8 +19812,17 @@ document.getElementById('add-scrim').addEventListener('click', function (e) {
   if (e.target === this) closeAddBrand();
 });
 
+document.querySelectorAll('[data-nbkind]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    nbSetKind(b.getAttribute('data-nbkind'));
+    document.getElementById('nb-name').focus();
+  });
+});
+
 document.getElementById('nb-name').addEventListener('input', function () {
   clearTimeout(guessTimer);
+  // A person has no category to guess.
+  if (NB_KIND === 'person') return;
   var v = this.value.trim();
   if (v.length < 2) { document.getElementById('nb-guess').innerHTML = ''; lastGuessed = ''; return; }
   guessTimer = setTimeout(function () { guessFor(v); }, 500);
@@ -19727,6 +19962,27 @@ document.getElementById('nb-save').addEventListener('click', function () {
   var btn = this;
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Adding…';
+  if (NB_KIND === 'person') {
+    api('createBrand', {
+      kind: 'person',
+      name: name,
+      email: document.getElementById('nb-email').value.trim() || null,
+      phone: document.getElementById('nb-phone').value.trim() || null,
+      owner: document.getElementById('nb-owner').value || null,
+      notes: document.getElementById('nb-notes').value || null
+    }).then(function (r) {
+      btn.disabled = false;
+      btn.textContent = 'Add person';
+      closeAddBrand();
+      toast('Added ' + name + ' — copy their board link below');
+      loadBrand(r.brand.id);
+    }).catch(function (e) {
+      btn.disabled = false;
+      btn.textContent = 'Add person';
+      document.getElementById('nb-msg').textContent = e.message;
+    });
+    return;
+  }
 
   api('createBrand', {
     name: name,

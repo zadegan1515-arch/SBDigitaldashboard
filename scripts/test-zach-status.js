@@ -37,8 +37,11 @@ catch (e) {
 
 const ROOT = path.join(__dirname, '..', 'public');
 const DAY = 864e5;
-const ago = (d) => new Date(Date.now() - d * DAY).toISOString();
-const ahead = (d) => new Date(Date.now() + d * DAY).toISOString();
+// The page's clock is pinned to a Wednesday noon: the first message only
+// comes due Tue–Thu, so the stages depend on the weekday.
+const NOW = (() => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + ((3 - d.getDay() + 7) % 7)); return d.getTime(); })();
+const ago = (d) => new Date(NOW - d * DAY).toISOString();
+const ahead = (d) => new Date(NOW + d * DAY).toISOString();
 
 // --- fake data ----------------------------------------------------
 
@@ -67,7 +70,7 @@ function payload() {
         person('tB', 'Ben Bright', { acceptedAt: ago(2) }),                                               // dm: due today
         person('tI', 'Ida Iver', { acceptedAt: ago(14), dmSentAt: ago(11) }),                             // nudge: 1d late
       ]),
-      brand('bC', 'Charlie Energy', [person('tC', 'Cal Crane', { acceptedAt: ago(5) })]),                 // dm: 3d late
+      brand('bC', 'Charlie Energy', [person('tC', 'Cal Crane', { acceptedAt: ago(5) })]),                 // dm: due Sun → Tue, 1d late
       brand('bD', 'Delta Drinks', [person('tD', 'Dee Dunn', { acceptedAt: ago(7), dmSentAt: ago(4) })]),  // waiting: final in 6d
       brand('bE', 'Echo Soda', [person('tE', 'Eve Elm', { acceptedAt: ago(15), dmSentAt: ago(12), final: S.eveFinal })]), // nudge: 2d late
       brand('bF', 'Foxtrot Fizz', [person('tF', 'Fay Fox', { acceptedAt: ago(20), dmSentAt: ago(16), nudgedAt: ago(3) })]), // waiting after final
@@ -126,6 +129,7 @@ async function main() {
     if (!url.startsWith(base)) return route.abort();
     return route.continue();
   });
+  await page.clock.setFixedTime(NOW);
   await page.goto(base + '/app.html');
   await page.waitForSelector('#zach-todo .zs-row');
   await page.waitForTimeout(1200);
@@ -150,7 +154,11 @@ async function main() {
   assert.deepEqual([...todoRows].sort(), ['tB', 'tC', 'tE', 'tH', 'tI']);
   const pillE = await page.textContent('#zach-todo .zt-item[data-zt="tE"] .zt-next');
   assert.equal(pillE, 'Send the final reach-out');
-  console.log('ok 1 - day-2 message, final 10 days later, No response 7 days after the final');
+  // The first message is due Tue–Thu only: a due day on Fri–Mon moves to Tuesday.
+  const dues = await page.evaluate(() => ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11']
+    .map((d) => { const x = ztMsgDue({ acceptedAt: d + 'T12:00:00' }); return x.getDate() + '/' + x.getDay(); }));
+  assert.deepEqual(dues, ['7/3', '8/4', '13/2', '13/2', '13/2', '13/2', '13/2']);
+  console.log('ok 1 - day-2 message (Tue–Thu only), final 10 days later, No response 7 days after the final');
 
   // 2. The right side --------------------------------------------------
   const geo = await page.evaluate(() => {
@@ -169,7 +177,7 @@ async function main() {
     rows: Array.from(g.querySelectorAll('.zs-row')).map((r) => r.querySelector('.zs-name b').textContent + ' | ' + r.querySelector('.zs-when').textContent),
   })));
   assert.deepEqual(groups, [
-    { head: 'Accepted', rows: ['Charlie Energy | 3d late', 'Bravo Hydration | today', 'Alpha Water | tomorrow'] },
+    { head: 'Accepted', rows: ['Charlie Energy | 1d late', 'Bravo Hydration | today', 'Alpha Water | tomorrow'] },
     { head: 'Messaged', rows: ['Echo Soda | 2d late', 'Bravo Hydration | 1d late', 'Delta Drinks | in 6d'] },
     { head: 'Final sent', rows: ['Foxtrot Fizz | sent ' + await page.evaluate((d) => shortDate(d), payload().brands[5].people[0].nudgedAt)] },
     { head: 'Replied / emailed', rows: ['Hotel Tea | email to send'] },
