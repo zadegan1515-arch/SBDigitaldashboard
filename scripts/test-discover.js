@@ -48,16 +48,26 @@ const H = {
   addDiscoveredBulk: (a) => {
     S.bulk.push(a);
     const rows = S.rows.filter((r) => r.status !== 'added' && r.grade.grade === 'A').map((r) => ({ id: r.id, name: r.name, category: r.category, score: r.grade.score, source: r.source }));
-    const held = [{ id: 'dh', name: 'Lucky Energy Co', match: 'Lucky Energy', why: ['name'] }];
-    if (!a.confirm) return { applied: false, grade: 'A', rows, held, expect: 'sigA' };
-    for (const id of a.ids) { const r = S.rows.find((x) => x.id === id); r.status = 'added'; r.inSystem = true; }
+    // A second find of Flerish joins it; a namesake of the held one is held too.
+    if (rows.some((r) => r.id === 'd4')) rows.push({ id: 'dj', name: 'Flerish Hydration', category: 'electrolytes', score: 60, source: 'Search', group: 'd4', joins: 'Flerish' });
+    if (S.bulkGrew) rows.push({ id: 'dn', name: 'Newcomer Soda', category: 'soda', score: 61, source: 'Claude hunt', group: 'dn' });
+    const held = [{ id: 'dh', name: 'Lucky Energy Co', match: 'Lucky Energy', why: ['name'] },
+      { id: 'dh2', name: 'Lucky Energy Co', match: 'Lucky Energy', why: ['name'], sameAs: 'Lucky Energy Co' }];
+    const expect = S.bulkGrew ? 'sigB' : 'sigA';
+    if (!a.confirm) return { applied: false, grade: 'A', rows, held, expect };
+    // The list changed while Leo was ticking: a new find came in.
+    if (S.bulkStale) { S.bulkStale = false; S.bulkGrew = true; return { applied: false, stale: true, grade: 'A', rows, held, expect: 'sigB' }; }
+    for (const id of a.ids) { const r = S.rows.find((x) => x.id === id); if (r) { r.status = 'added'; r.inSystem = true; } }
     S.bulkUndo = { at: new Date().toISOString(), grade: 'A', n: a.ids.length };
     return { applied: true, added: a.ids.length, linked: 0, names: [] };
   },
   undoDiscoverBulk: (a) => {
     S.undo.push(a);
-    if (a.confirm) { S.bulkUndo = null; return { applied: true, goes: ['Flerish'], stays: [], backToReview: 1 }; }
-    return { applied: false, goes: ['Flerish'], stays: [{ name: 'Lucky Energy', why: '2 people on file' }], backToReview: 1 };
+    const pv = { goes: ['Flerish'], stays: [{ name: 'Lucky Energy', why: '2 people on file' }], backToReview: 2, expect: S.undoMoved ? 'u2' : 'u1' };
+    if (a.confirm && a.expect !== pv.expect) return { applied: false, stale: true, ...pv };
+    if (a.confirm && S.undoMoveOnce) { S.undoMoveOnce = false; S.undoMoved = true; return { applied: false, stale: true, ...pv, expect: 'u2', stays: [] }; }
+    if (a.confirm) { S.bulkUndo = null; return { applied: true, ...pv }; }
+    return { applied: false, ...pv };
   },
   addDiscoveredBrand: ({ id }) => { S.adds.push(id); return { ok: true, brandId: 'nb' + id }; },
   dismissDiscovered: ({ id }) => { S.dismissed.push(id); return { ok: true }; },
@@ -139,7 +149,8 @@ async function main() {
   // Add all A's: one button, a preview with ticks, the held one named, Add
   // sends the preview's stamp and the ticked ids; Undo after.
   reset(); S.dismissed = []; S.adds = [];
-  page.on('dialog', (d) => d.accept());
+  const dialogs = [];
+  page.on('dialog', (d) => { dialogs.push(d.message()); d.accept(); });
   await page.evaluate(() => loadDiscover());
   await page.click('[data-dctab="review"]');
   await page.waitForSelector('#dc-bulk-a');
@@ -148,21 +159,42 @@ async function main() {
   await page.waitForSelector('#dc-bulk-card');
   assert.equal(S.bulk[0].confirm, undefined, 'the button only previews');
   const card = await page.textContent('#dc-bulk-card');
-  assert.match(card, /Add 2 grade-A finds as brands/);
+  assert.match(card, /Add 3 grade-A finds as brands/);
   assert.match(card, /Lucky Energy[\s\S]*Flerish/);
-  assert.match(card, /Left out — may already be on the roster: Lucky Energy Co \(looks like Lucky Energy\)/);
+  assert.match(card, /Flerish Hydration[\s\S]*same brand as Flerish — goes in as one/);
+  assert.match(card, /Left out — may already be on the roster: Lucky Energy Co \(looks like Lucky Energy\), Lucky Energy Co \(same as Lucky Energy Co, which looks like Lucky Energy\)/);
+  assert.equal(await page.textContent('#dc-bulk-go'), 'Add 3 brands');
   await page.uncheck('[data-dcpick="d2"]');
-  assert.equal(await page.textContent('#dc-bulk-go'), 'Add 1 brand');
+  assert.equal(await page.textContent('#dc-bulk-go'), 'Add 2 brands');
+  assert.equal(await page.isChecked('#dc-bulk-all'), false, 'Tick all shows it isn\'t all');
+  // The list changes before Add lands: it opens again, Leo's untick kept,
+  // the new find unticked and marked.
+  S.bulkStale = true;
+  await page.click('#dc-bulk-go');
+  await page.waitForSelector('[data-dcpick="dn"]');
+  assert.equal(S.bulk[1].expect, 'sigA');
+  assert.equal(await page.isChecked('[data-dcpick="d2"]'), false, 'still unticked after the list changed');
+  assert.equal(await page.isChecked('[data-dcpick="dn"]'), false, 'a find that wasn\'t there before comes in unticked');
+  assert.equal(await page.isChecked('[data-dcpick="d4"]'), true);
+  assert.match(await page.textContent('#dc-bulk-card'), /Newcomer Soda[\s\S]*new/);
+  assert.equal(await page.textContent('#dc-bulk-go'), 'Add 2 brands');
   await page.click('#dc-bulk-go');
   await page.waitForSelector('#dc-bulk-undo');
-  assert.deepEqual(S.bulk[1], { grade: 'A', confirm: true, expect: 'sigA', ids: ['d4'] });
+  assert.deepEqual(S.bulk[S.bulk.length - 1], { grade: 'A', confirm: true, expect: 'sigB', ids: ['d4', 'dj'] });
   assert.equal(await page.$('#dc-bulk-card'), null, 'the preview closes');
-  assert.match(await page.textContent('#dc-bulk-undo'), /Added 1 grade-A brand · Undo/);
+  assert.match(await page.textContent('#dc-bulk-undo'), /Added 2 grade-A brands · Undo/);
   assert.ok(!(await names()).includes('Flerish'), 'Flerish left To review');
+  // Undo: the dialog says what goes and what stays; a change in between
+  // shows it again before anything goes.
+  S.undoMoveOnce = true;
   await page.click('[data-dcundo]');
   await page.waitForFunction(() => !document.getElementById('dc-bulk-undo'));
-  assert.deepEqual(S.undo.map((u) => !!u.confirm), [false, true], 'Undo previews, then takes back');
-  console.log('✓ Add all A\u2019s: preview with ticks, held ones named, Add sends exactly the ticked ids; Undo');
+  assert.deepEqual(S.undo.map((u) => [!!u.confirm, u.expect]), [[false, undefined], [true, 'u1'], [true, 'u2']], 'Undo previews, sends its stamp, and asks again after a change');
+  assert.equal(dialogs.length, 2);
+  assert.match(dialogs[0], /1 brand comes off the roster: Flerish\n2 finds go back to To review\.[\s\S]*These stay \(touched since\): Lucky Energy — 2 people on file/);
+  assert.match(dialogs[1], /^Something changed since — here it is again\./);
+  assert.doesNotMatch(dialogs[1], /These stay/);
+  console.log('✓ Add all A\u2019s: preview with ticks, held ones named, ticks kept when the list changes; Undo names what goes and asks again after a change');
 
   await page.setViewportSize({ width: 390, height: 800 });
   await page.click('[data-dctab="review"]');

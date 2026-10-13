@@ -65,68 +65,104 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const q = 'Claude hunt · Oct 13';
     const find = (id, name, category, signals, extra) => prisma.discoveredBrand.create({ data: { id, query: q, name, category, signals, reason: 'why ' + name, ...(extra || {}) } });
     await find('koloa', 'Koloa Rum', 'spirits', 'sponsors,genz,midsize', { website: 'https://koloarum.com/' });
-    // The same brand from a second search: one brand, both finds linked.
+    // The same brand from a second search: it joins the first.
     await prisma.discoveredBrand.create({ data: { id: 'koloa2', query: 'LinkedIn: similar to Bacardi', name: 'Koloa Rum', category: 'spirits', signals: 'sponsors,genz,midsize' } });
     await find('bayou', 'Bayou Rum', 'spirits', 'sponsors,genz', { activation: 'Tasting at tailgates', sourceUrl: 'https://news.example.com/bayou' });
     await find('soju', 'Hello Soju', 'rtd', 'sponsors,genz,midsize');
     await find('luckyd', 'Lucky Energy Drinks', 'energy', 'sponsors,genz', { website: 'https://www.luckyenergy.com' });
+    // The held one's namesake from another search, no website: held too.
+    await prisma.discoveredBrand.create({ data: { id: 'luckyd2', query: 'Research list: energy', name: 'Lucky Energy Drinks', category: 'energy', signals: 'sponsors,genz', linkedinUrl: 'https://www.linkedin.com/company/lucky-energy-drinks/' } });
+    // Two names, one website: one brand.
+    await find('cann', 'Cann', 'rtd', 'sponsors,genz,midsize', { website: 'https://drinkcann.com' });
+    await find('cann2', 'Cann Social Tonics', 'rtd', 'sponsors,genz,midsize', { website: 'https://www.drinkcann.com/shop' });
+    await find('tide', 'Tide Seltzer', 'rtd', 'sponsors,genz,midsize');
     await find('shirt', 'Shirt Co', 'apparel', '');
     await find('done', 'Done Co', 'spirits', 'sponsors', { status: 'added' });
 
     const listed = (await data('listDiscoveries', {})).rows;
     const gradeOf = id => listed.find(r => r.id === id).grade.grade;
-    for (const id of ['koloa', 'koloa2', 'bayou', 'soju', 'luckyd']) assert.equal(gradeOf(id), 'A', id + ' is grade A: ' + JSON.stringify(listed.find(r => r.id === id).grade));
+    for (const id of ['koloa', 'koloa2', 'bayou', 'soju', 'luckyd', 'luckyd2', 'cann', 'cann2', 'tide']) assert.equal(gradeOf(id), 'A', id + ' is grade A: ' + JSON.stringify(listed.find(r => r.id === id).grade));
     assert.notEqual(gradeOf('shirt'), 'A');
     ok('the finds grade as expected (a Top category with college / music signs = A)');
 
     const pv = await data('addDiscoveredBulk', { grade: 'A' });
     assert.equal(pv.applied, false);
-    assert.deepEqual(pv.rows.map(r => r.id).sort(), ['bayou', 'koloa', 'koloa2', 'soju']);
-    assert.deepEqual(pv.held.map(h => [h.id, h.match]), [['luckyd', 'Lucky Energy']], 'a find whose website is a roster brand\'s is held back');
-    assert.equal(pv.rows.find(r => r.id === 'soju').category, 'rtd');
+    assert.deepEqual(pv.rows.map(r => r.id).sort(), ['bayou', 'cann', 'cann2', 'koloa', 'koloa2', 'soju', 'tide']);
+    const heldBy = Object.fromEntries(pv.held.map(h => [h.id, h]));
+    assert.deepEqual(Object.keys(heldBy).sort(), ['luckyd', 'luckyd2']);
+    assert.equal(heldBy.luckyd.match, 'Lucky Energy', 'a find whose website is a roster brand\'s is held back');
+    assert.deepEqual([heldBy.luckyd2.match, heldBy.luckyd2.sameAs], ['Lucky Energy', 'Lucky Energy Drinks'], 'and so is its namesake with nothing to match on');
+    const row = id => pv.rows.find(r => r.id === id);
+    assert.equal(row('soju').category, 'rtd');
+    assert.deepEqual([row('koloa2').group, row('koloa2').joins, row('koloa').group, row('koloa').joins], ['koloa', 'Koloa Rum', 'koloa', undefined]);
+    assert.deepEqual([row('cann2').group, row('cann2').joins], ['cann', 'Cann'], 'same website, another name: one brand');
     assert.equal(await prisma.brand.count(), 1, 'a preview writes nothing');
-    ok('preview: every A waiting for review, as filed; the one that may already be on the roster held back');
+    ok('preview: every A waiting for review, as filed; maybe-on-the-roster finds and their namesakes held; one brand\'s finds grouped');
 
     const stale = await data('addDiscoveredBulk', { grade: 'A', confirm: true, expect: 'old', ids: ['koloa'] });
     assert.equal(stale.stale, true);
     assert.equal(await prisma.brand.count(), 1);
-    await assert.rejects(data('addDiscoveredBulk', { grade: 'A', confirm: true, expect: pv.expect, ids: ['luckyd'] }), /Tick at least one/, 'a held find can\'t be sneaked in');
+    await assert.rejects(data('addDiscoveredBulk', { grade: 'A', confirm: true, expect: pv.expect, ids: ['luckyd', 'luckyd2'] }), /Tick at least one/, 'a held find can\'t be sneaked in');
     ok('an out-of-date preview writes nothing; a held find is never added');
 
-    const done = await data('addDiscoveredBulk', { grade: 'A', confirm: true, expect: pv.expect, ids: ['koloa', 'koloa2', 'bayou'] });
+    // koloa2 left unticked (Leo's "that's a duplicate"); both Canns ticked.
+    const done = await data('addDiscoveredBulk', { grade: 'A', confirm: true, expect: pv.expect, ids: ['koloa', 'bayou', 'cann', 'cann2', 'tide'] });
     assert.equal(done.applied, true);
-    assert.equal(done.added, 2);
+    assert.equal(done.added, 4);
     assert.equal(done.linked, 1);
     const koloa = await prisma.brand.findFirst({ where: { name: 'Koloa Rum' } });
     assert.deepEqual({ source: koloa.source, tier: koloa.tier, category: koloa.category, website: koloa.website }, { source: 'discover', tier: 'growth', category: 'spirits', website: 'https://koloarum.com/' });
     const bayou = await prisma.brand.findFirst({ where: { name: 'Bayou Rum' } });
     assert.match(bayou.notes, /Discover: why Bayou Rum[\s\S]*Activation idea: Tasting at tailgates[\s\S]*Found in: https:\/\/news\.example\.com\/bayou/);
     assert.equal(bayou.tier, null);
-    assert.equal(await prisma.brand.count({ where: { name: 'Koloa Rum' } }), 1, 'two finds, one brand');
+    const cann = await prisma.brand.findFirst({ where: { name: 'Cann' } });
+    assert.equal(await prisma.brand.count({ where: { name: 'Cann Social Tonics' } }), 0, 'two finds at one website, one brand');
     const d = Object.fromEntries((await prisma.discoveredBrand.findMany()).map(r => [r.id, r]));
-    assert.deepEqual([d.koloa.status, d.koloa2.status, d.koloa2.brandId], ['added', 'added', koloa.id]);
+    assert.deepEqual([d.cann.brandId, d.cann2.brandId, d.cann2.status], [cann.id, cann.id, 'added']);
+    assert.equal(d.koloa.status, 'added');
     assert.equal(d.soju.status, 'new', 'unticked stays to review');
     assert.equal(d.luckyd.status, 'new');
     const after = await data('listDiscoveries', {});
-    assert.deepEqual(after.bulkUndo && { n: after.bulkUndo.n, grade: after.bulkUndo.grade }, { n: 2, grade: 'A' });
-    ok('apply: exactly the ticked finds become brands (filed like a single Add); a find twice is one brand; Undo offered');
+    // …and the unticked namesake is linked to the new brand by name.
+    assert.deepEqual([after.rows.find(r => r.id === 'koloa2').status, (await prisma.discoveredBrand.findUnique({ where: { id: 'koloa2' } })).brandId], ['added', koloa.id]);
+    assert.deepEqual(after.bulkUndo && { n: after.bulkUndo.n, grade: after.bulkUndo.grade }, { n: 4, grade: 'A' });
+    ok('apply: exactly the ticked finds become brands (filed like a single Add); one brand\'s finds are one brand; Undo offered');
 
-    // Bayou gets a person (the fill was quick): it stays on undo.
+    // Since the add: Bayou got a person, Cann a Show Board code, Tide an edit.
     await prisma.contact.create({ data: { brandId: bayou.id, name: 'Pat Rum', title: 'Brand Manager' } });
+    await data('setBrandCode', { brandId: cann.id });
+    const tide = await prisma.brand.findFirst({ where: { name: 'Tide Seltzer' } });
+    await data('updateBrand', { brandId: tide.id, notes: 'Leo: met them at Expo' });
     const up = await data('undoDiscoverBulk', {});
     assert.deepEqual(up.goes, ['Koloa Rum']);
-    assert.deepEqual(up.stays, [{ name: 'Bayou Rum', why: '1 person on file' }]);
-    assert.equal(up.backToReview, 2);
+    assert.deepEqual(up.stays.slice().sort((a, b) => a.name.localeCompare(b.name)), [
+      { name: 'Bayou Rum', why: '1 person on file' }, { name: 'Cann', why: 'has a Show Board code' }, { name: 'Tide Seltzer', why: 'edited since' }]);
+    assert.equal(up.backToReview, 2, 'both Koloa finds, the one linked since by name too');
     assert.equal(await prisma.brand.count({ where: { name: 'Koloa Rum' } }), 1, 'an undo preview writes nothing');
-    await data('undoDiscoverBulk', { confirm: true });
+    ok('undo preview: a brand with a person, a board code or an edit stays, named; finds linked since count');
+
+    // Confirm without the preview's signature, or after a change: nothing goes.
+    assert.equal((await data('undoDiscoverBulk', { confirm: true })).stale, true);
+    const pat = await prisma.contact.create({ data: { brandId: koloa.id, name: 'Kai Koloa', title: 'Founder' } });
+    const late = await data('undoDiscoverBulk', { confirm: true, expect: up.expect });
+    assert.equal(late.stale, true);
+    assert.deepEqual(late.goes, []);
+    assert.equal(await prisma.brand.count({ where: { name: 'Koloa Rum' } }), 1);
+    assert.equal(await prisma.contact.count({ where: { id: pat.id } }), 1, 'the person saved since is never deleted with it');
+    await prisma.contact.delete({ where: { id: pat.id } });
+    ok('undo confirm checks the preview: a person added in between keeps the brand (stale, nothing deleted)');
+
+    const again = await data('undoDiscoverBulk', {});
+    assert.deepEqual(again.goes, ['Koloa Rum']);
+    await data('undoDiscoverBulk', { confirm: true, expect: again.expect });
     assert.equal(await prisma.brand.count({ where: { name: 'Koloa Rum' } }), 0);
-    assert.equal(await prisma.brand.count({ where: { name: 'Bayou Rum' } }), 1);
+    for (const nm of ['Bayou Rum', 'Cann', 'Tide Seltzer']) assert.equal(await prisma.brand.count({ where: { name: nm } }), 1, nm + ' stays');
     const d2 = Object.fromEntries((await prisma.discoveredBrand.findMany()).map(r => [r.id, r]));
     assert.deepEqual([d2.koloa.status, d2.koloa.brandId, d2.koloa2.status, d2.koloa2.brandId], ['new', null, 'new', null]);
-    assert.equal(d2.bayou.status, 'added');
+    assert.deepEqual([d2.bayou.status, d2.cann.status, d2.cann2.status], ['added', 'added', 'added']);
     assert.equal((await data('listDiscoveries', {})).bulkUndo, null);
     await assert.rejects(data('undoDiscoverBulk', {}), /Nothing to undo/);
-    ok('undo: brands nothing touched go and their finds return to review; one with a person stays, named');
+    ok('undo: the untouched brand goes and every find linked to it returns to review; touched ones stay');
 
     // The single Add still works the same way.
     const one = await data('addDiscoveredBrand', { id: 'soju' });

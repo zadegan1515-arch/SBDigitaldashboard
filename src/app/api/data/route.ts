@@ -50,7 +50,7 @@ import {
   type Review, type Confirmed, type LiOwner,
 } from '@/lib/li-review'
 import { LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR, linkedinWindows, acceptRates, planWeekDays, type AcceptRates } from '@/lib/plan-week'
-import { findDuplicateGroups, pairKey } from '@/lib/duplicates'
+import { findDuplicateGroups, pairKey, websiteDomain } from '@/lib/duplicates'
 import { cleanChatBrand, matchRoster, chatNotes } from '@/lib/chat-add'
 import { findLinkedInPeople, logLinkedInPerson, undoLinkedInLog, checkNewPerson } from '@/lib/li-log-db'
 import { isLogStage } from '@/lib/li-log'
@@ -3049,11 +3049,19 @@ async function promoteDiscovery(db: any, d: any, tier?: any): Promise<{ brandId:
 }
 
 // The finds of one grade waiting for review, as they'd be filed; the ones
-// that may already be on the roster are held back, named.
+// that may already be on the roster are held back, named — and so is any
+// other find with the same name, website or LinkedIn page as a held one
+// (two "Lucky Energy Drinks" finds, one held: the other would make the
+// duplicate the hold is there to stop). Finds that are one brand (same
+// name, website or LinkedIn page — "Cann" and "Cann Social Tonics" at
+// drinkcann.com) share a `group`: the best-scored one names the brand and
+// the others join it (`joins`).
 async function discoverBulkPlan(grade: string) {
   const { rows } = await handlers.listDiscoveries({})
   const pool = rows.filter((r: any) => !(r.inSystem || r.status === 'added') && r.grade?.grade === grade)
   const roster = await prisma.brand.findMany({ select: { id: true, name: true, aka: true, website: true, linkedinUrl: true, passedAt: true } })
+  const marks = (r: any) => [brandKey(r.name) && 'n:' + brandKey(r.name), websiteDomain(r.website) && 'w:' + websiteDomain(r.website),
+    companySlug(r.linkedinUrl) && 'l:' + companySlug(r.linkedinUrl)].filter(Boolean) as string[]
   const out: any[] = []
   const held: any[] = []
   for (const r of pool) {
@@ -3064,8 +3072,44 @@ async function discoverBulkPlan(grade: string) {
       signals: r.signals ?? null, website: r.website ?? null, linkedinUrl: r.linkedinUrl ?? null, reason: r.reason ?? null,
     })
   }
-  out.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
-  const sig = out.map(r => r.id).sort().join(',') + '#' + held.map(h => h.id).sort().join(',')
+  // A find that's the same brand as a held one is held with it (until no
+  // more join: a held twin can bring in a third by its website).
+  const heldBy = new Map<string, any>()
+  for (const h of held) for (const k of marks(pool.find((r: any) => r.id === h.id))) if (!heldBy.has(k)) heldBy.set(k, h)
+  for (let again = true; again;) {
+    again = false
+    for (let i = out.length - 1; i >= 0; i--) {
+      const h = marks(out[i]).map(k => heldBy.get(k)).find(Boolean)
+      if (!h) continue
+      const twin = { id: out[i].id, name: out[i].name, match: h.match, why: h.why, sameAs: h.name }
+      held.push(twin)
+      for (const k of marks(out[i])) if (!heldBy.has(k)) heldBy.set(k, twin)
+      out.splice(i, 1)
+      again = true
+    }
+  }
+  // Best score first; between equals, the find that knows more (website,
+  // LinkedIn page) names the brand.
+  const links = (r: any) => Number(!!r.website) + Number(!!r.linkedinUrl)
+  out.sort((a, b) => b.score - a.score || links(b) - links(a) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+  // One brand, several finds (joined through any shared mark): the best
+  // scored leads the group.
+  const up = out.map((_, i) => i)
+  const find = (i: number): number => (up[i] === i ? i : (up[i] = find(up[i])))
+  const firstWith = new Map<string, number>()
+  out.forEach((r, i) => {
+    for (const k of marks(r)) {
+      const j = firstWith.get(k)
+      if (j === undefined) firstWith.set(k, i)
+      else { const a = find(i), b = find(j); if (a !== b) up[Math.max(a, b)] = Math.min(a, b) }
+    }
+  })
+  out.forEach((r, i) => {
+    const lead = out[find(i)]
+    r.group = lead.id
+    if (lead !== r) r.joins = lead.name
+  })
+  const sig = out.map(r => r.id + ':' + r.group).sort().join(',') + '#' + held.map(h => h.id).sort().join(',')
   return { rows: out, held, sig }
 }
 
@@ -11939,8 +11983,8 @@ const handlers: Record<string, Handler> = {
   // with that grade, each as it would be filed, and the ones left out
   // because they may already be on the roster (same name / aka, LinkedIn
   // page or website — the chat's matchRoster). Confirm with the preview's
-  // `expect` and the ticked `ids` adds them in one transaction; two finds
-  // that are one brand become one. Undo = undoDiscoverBulk.
+  // `expect` and the ticked `ids` adds them in one transaction; finds that
+  // are one brand (the preview's `group`) become one. Undo = undoDiscoverBulk.
   async addDiscoveredBulk({ grade = 'A', confirm = false, ids, expect }: any) {
     if (!['A', 'B'].includes(grade)) throw new Error('Grade A or B')
     const plan = await discoverBulkPlan(grade)
@@ -11952,12 +11996,12 @@ const handlers: Record<string, Handler> = {
     if (!pick.length) throw new Error('Tick at least one brand to add')
     const at = new Date().toISOString()
     const made = await prisma.$transaction(async tx => {
-      const out: { discId: string; brandId: string; created: boolean; name: string; prevStatus: string }[] = []
-      const byKey = new Map<string, string>()
+      const out: { discId: string; brandId: string; created: boolean; name: string; prevStatus: string; stamp?: string }[] = []
+      const byGroup = new Map<string, string>()
       for (const r of pick) {
         const d = await (tx as any).discoveredBrand.findUnique({ where: { id: r.id } })
         if (!d || d.status === 'added' || d.status === 'dismissed' || d.brandId) continue
-        const twin = byKey.get(brandKey(d.name))
+        const twin = byGroup.get(r.group)
         if (twin) {
           // The second find of one brand: it fills what the first left empty.
           const b = await tx.brand.findUnique({ where: { id: twin }, select: { website: true, linkedinUrl: true } })
@@ -11970,9 +12014,15 @@ const handlers: Record<string, Handler> = {
           continue
         }
         const res = await promoteDiscovery(tx, d)
-        byKey.set(brandKey(d.name), res.brandId)
+        byGroup.set(r.group, res.brandId)
         out.push({ discId: d.id, brandId: res.brandId, created: res.created, name: d.name, prevStatus: d.status })
       }
+      // Each new brand as the add left it: Undo takes back only a brand
+      // nobody has changed since (stamp = its updatedAt now).
+      const mine = out.filter(o => o.created).map(o => o.brandId)
+      const stamps = new Map((await tx.brand.findMany({ where: { id: { in: mine } }, select: { id: true, updatedAt: true } }))
+        .map(b => [b.id, b.updatedAt.toISOString()]))
+      for (const o of out) if (o.created) o.stamp = stamps.get(o.brandId)
       await writeJsonSetting(tx, DISCOVER_BULK_KEY, { at, grade, rows: out })
       return out
     }, { maxWait: 10000, timeout: 120000 })
@@ -11980,39 +12030,86 @@ const handlers: Record<string, Handler> = {
   },
 
   // Takes the last bulk add back: the brands it made that nothing has
-  // touched since (no people, outreach, deal, show, activation, document,
-  // board visit, Schedule day) are deleted and their finds go back to To
-  // review; a brand touched since stays, named. Preview first.
-  async undoDiscoverBulk({ confirm = false }: any) {
+  // touched since are deleted and every find linked to them goes back to
+  // To review. Touched = the brand itself edited (facts, notes, a Show
+  // Board code, a merge into it, the LinkedIn fill saving its page — its
+  // updatedAt moved), or anything on it: people, outreach, a deal, show,
+  // activation, document, partner record, board visit or request, ops
+  // mail, a Schedule day. A touched brand stays, named. Preview first;
+  // confirm sends the preview's `expect`, and the delete itself only takes
+  // a brand still bare (anything new on one → stale, nothing changes).
+  async undoDiscoverBulk({ confirm = false, expect }: any) {
     const last = await readJsonSetting<any>(prisma, DISCOVER_BULK_KEY, null)
     if (!last || !Array.isArray(last.rows) || !last.rows.length) throw new Error('Nothing to undo')
-    const createdIds = [...new Set<string>(last.rows.filter((r: any) => r.created).map((r: any) => r.brandId))]
+    const made = last.rows.filter((r: any) => r.created)
+    const stampOf = new Map<string, string | undefined>(made.map((r: any) => [r.brandId, r.stamp]))
+    const createdIds = [...stampOf.keys()]
     const brands = await prisma.brand.findMany({
       where: { id: { in: createdIds } },
-      select: { id: true, name: true, _count: { select: { contacts: true, targets: true, deals: true, shows: true, activations: true, documents: true, boardVisits: true } } },
+      select: { id: true, name: true, createdAt: true, updatedAt: true, boardCode: true, partner: { select: { id: true } },
+        _count: { select: { contacts: true, targets: true, deals: true, shows: true, activations: true, documents: true, boardVisits: true } } },
     })
+    const ids = brands.map(b => b.id)
+    const tally = async (rows: { brandId: string | null }[]) => {
+      const m = new Map<string, number>()
+      for (const r of rows) if (r.brandId) m.set(r.brandId, (m.get(r.brandId) ?? 0) + 1)
+      return m
+    }
+    const requests = await tally(ids.length ? await (prisma as any).boardAccessRequest.findMany({ where: { brandId: { in: ids } }, select: { brandId: true } }) : [])
+    const mail = await tally(ids.length ? await (prisma as any).opsMessage.findMany({ where: { brandId: { in: ids } }, select: { brandId: true } }) : [])
     const plan = await readPlanRaw()
     const planned = new Set(Object.values(plan).flatMap((d: any) => (d?.brandIds ?? []) as string[]))
     const goes: { id: string; name: string }[] = []
     const stays: { name: string; why: string }[] = []
     for (const b of brands) {
       const c = b._count
+      const stamp = stampOf.get(b.id)
+      // An add from before stamps were kept: edited = changed 2+ min after it was made.
+      const edited = stamp ? b.updatedAt.getTime() !== Date.parse(stamp) : b.updatedAt.getTime() - b.createdAt.getTime() > 120e3
       const why = c.contacts ? `${c.contacts} ${c.contacts === 1 ? 'person' : 'people'} on file`
         : c.targets ? 'in outreach' : c.deals ? 'has a deal' : c.shows ? 'on a show' : c.activations ? 'has an activation'
-        : c.documents ? 'has a document' : c.boardVisits ? 'opened the Show Board' : planned.has(b.id) ? 'on a Schedule day' : null
+        : c.documents ? 'has a document' : b.partner ? 'has a partner record' : c.boardVisits ? 'opened the Show Board'
+        : requests.get(b.id) ? 'asked for the Show Board' : mail.get(b.id) ? 'has ops mail'
+        : planned.has(b.id) ? 'on a Schedule day' : b.boardCode ? 'has a Show Board code'
+        : edited ? 'edited since' : null
       if (why) stays.push({ name: b.name, why }); else goes.push({ id: b.id, name: b.name })
     }
-    const goIds = new Set(goes.map(g => g.id))
-    const back = last.rows.filter((r: any) => goIds.has(r.brandId))
-    const preview = { at: last.at, goes: goes.map(g => g.name), stays, backToReview: back.length }
+    const goIds = goes.map(g => g.id).sort()
+    // Every find linked to a brand that goes: the add's own (back to what
+    // they were) and any linked since by name (back to To review).
+    const linked = goIds.length ? await (prisma as any).discoveredBrand.findMany({ where: { brandId: { in: goIds } }, select: { id: true, name: true } }) : []
+    const own = new Map<string, any>(last.rows.filter((r: any) => goIds.includes(r.brandId)).map((r: any) => [r.discId, r]))
+    const sig = last.at + '#' + goIds.join(',') + '#' + stays.map(x => x.name + ':' + x.why).sort().join(',') + '#' + linked.map((l: any) => l.id).sort().join(',')
+    const preview = { at: last.at, goes: goes.map(g => g.name), stays, backToReview: linked.length, expect: sig }
     if (!confirm) return { applied: false, ...preview }
-    await prisma.$transaction(async tx => {
-      for (const r of back) {
-        await (tx as any).discoveredBrand.updateMany({ where: { id: r.discId, brandId: r.brandId }, data: { status: r.prevStatus || 'new', brandId: null } })
-      }
-      if (goIds.size) await tx.brand.deleteMany({ where: { id: { in: [...goIds] } } })
-      await tx.setting.deleteMany({ where: { key: DISCOVER_BULK_KEY } })
-    }, { maxWait: 10000, timeout: 60000 })
+    if (expect !== sig) return { applied: false, stale: true, ...preview }
+    try {
+      await prisma.$transaction(async tx => {
+        for (const l of linked) {
+          const r = own.get(l.id)
+          await (tx as any).discoveredBrand.updateMany({ where: { id: l.id, brandId: { in: goIds } }, data: { status: r?.prevStatus || 'new', brandId: null } })
+        }
+        if (goIds.length) {
+          // Only brands still bare and unchanged: anything that landed on one
+          // since the preview leaves the count short and undoes it all.
+          const gone = await tx.brand.deleteMany({
+            where: {
+              id: { in: goIds }, boardCode: null, partner: { is: null },
+              contacts: { none: {} }, targets: { none: {} }, deals: { none: {} }, shows: { none: {} },
+              activations: { none: {} }, documents: { none: {} }, boardVisits: { none: {} },
+              OR: brands.filter(b => goIds.includes(b.id)).map(b => ({ id: b.id, updatedAt: b.updatedAt })),
+            },
+          })
+          if (gone.count !== goIds.length) throw new Error('STALE_UNDO')
+          // A find linked by name since the preview: back to To review too.
+          await (tx as any).discoveredBrand.updateMany({ where: { brandId: { in: goIds } }, data: { status: 'new', brandId: null } })
+        }
+        await tx.setting.deleteMany({ where: { key: DISCOVER_BULK_KEY } })
+      }, { maxWait: 10000, timeout: 60000 })
+    } catch (e: any) {
+      if (e?.message !== 'STALE_UNDO') throw e
+      return { ...(await handlers.undoDiscoverBulk({})), stale: true }
+    }
     return { applied: true, ...preview }
   },
 

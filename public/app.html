@@ -17276,12 +17276,16 @@ document.getElementById('disc-body').addEventListener('click', function (e) {
 });
 
 // Add all A's: what the server would add (each as it'd be filed), the
-// ones held back as maybe on the roster already, ticks, then Add.
-function dcBulkOpen() {
+// ones held back as maybe on the roster already, ticks, then Add. After a
+// "the list changed" answer it opens again with Leo's unticks kept
+// (`keep.off`) and anything new since unticked (`keep.seen`).
+function dcBulkOpen(keep) {
   var slot = document.getElementById('dc-bulk');
-  slot.innerHTML = '<div class="hint" style="margin:0 0 10px">Checking…</div>';
+  if (!keep) slot.innerHTML = '<div class="hint" style="margin:0 0 10px">Checking…</div>';
   api('addDiscoveredBulk', { grade: 'A' }).then(function (pv) {
     if (!pv.rows.length && !pv.held.length) { slot.innerHTML = ''; toast('No grade-A finds left to add'); loadDiscover(); return; }
+    var isNew = function (r) { return !!(keep && keep.seen && keep.seen.indexOf(r.id) < 0); };
+    var ticked = function (r) { return !(keep && keep.off && keep.off.indexOf(r.id) >= 0) && !isNew(r); };
     slot.innerHTML =
       '<div class="panel panel-pad" id="dc-bulk-card" style="margin-bottom:12px">' +
         '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px">' +
@@ -17290,28 +17294,38 @@ function dcBulkOpen() {
         '</div>' +
         (pv.rows.length ? '<div style="max-height:340px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:4px 10px">' +
           '<label style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-soft);font-size:13px;color:var(--ink-3)">' +
-            '<input type="checkbox" id="dc-bulk-all" checked> Tick all</label>' +
+            '<input type="checkbox" id="dc-bulk-all"> Tick all</label>' +
           pv.rows.map(function (r) {
             return '<label class="dc-bulk-row" style="display:flex;gap:8px;align-items:baseline;padding:5px 0;cursor:pointer;font-size:13.5px">' +
-              '<input type="checkbox" data-dcpick="' + esc(r.id) + '" checked>' +
+              '<input type="checkbox" data-dcpick="' + esc(r.id) + '"' + (ticked(r) ? ' checked' : '') + '>' +
               '<span style="flex:1;min-width:0"><b style="font-weight:600">' + esc(r.name) + '</b>' +
-                ' <span style="color:var(--ink-3)">· ' + esc(CAT_NAMES[r.category] || r.category || 'No category') + ' · ' + r.score + '/100 · ' + esc(r.source || '') + '</span></span>' +
+                ' <span style="color:var(--ink-3)">· ' + esc(CAT_NAMES[r.category] || r.category || 'No category') + ' · ' + r.score + '/100 · ' + esc(r.source || '') + '</span>' +
+                (r.joins ? ' <span class="dc-sign" data-dcjoins="1">same brand as ' + esc(r.joins) + ' — goes in as one</span>' : '') +
+                (isNew(r) ? ' <span class="dc-sign" data-dcnew="1">new</span>' : '') +
+              '</span>' +
             '</label>';
           }).join('') + '</div>' : '') +
         (pv.held.length ? '<div class="hint" style="margin:10px 0 0">Left out — may already be on the roster: ' + pv.held.map(function (h) {
-          return esc(h.name) + ' (looks like ' + esc(h.match) + ')';
+          return esc(h.name) + (h.sameAs ? ' (same as ' + esc(h.sameAs) + ', which looks like ' + esc(h.match) + ')' : ' (looks like ' + esc(h.match) + ')');
         }).join(', ') + '. Add those by hand if they’re different.</div>' : '') +
         '<div style="display:flex;gap:8px;align-items:center;margin-top:10px">' +
-          (pv.rows.length ? '<button class="btn-solid" id="dc-bulk-go">Add ' + pv.rows.length + ' brands</button>' : '') +
+          (pv.rows.length ? '<button class="btn-solid" id="dc-bulk-go">Add</button>' : '') +
           '<button class="btn-ghost" id="dc-bulk-cancel">Cancel</button>' +
         '</div>' +
       '</div>';
+    var busy = false;
     var count = function () {
+      var boxes = slot.querySelectorAll('[data-dcpick]');
       var n = slot.querySelectorAll('[data-dcpick]:checked').length;
+      var all = document.getElementById('dc-bulk-all');
+      if (all) { all.checked = n === boxes.length; all.indeterminate = n > 0 && n < boxes.length; all.disabled = busy; }
+      boxes.forEach(function (cb) { cb.disabled = busy; });
       var go = document.getElementById('dc-bulk-go');
-      if (go) { go.textContent = 'Add ' + n + (n === 1 ? ' brand' : ' brands'); go.disabled = !n; }
+      if (go) { go.textContent = 'Add ' + n + (n === 1 ? ' brand' : ' brands'); go.disabled = busy || !n; }
     };
+    count();
     slot.onchange = function (e) {
+      if (busy) return;
       if (e.target.id === 'dc-bulk-all') {
         slot.querySelectorAll('[data-dcpick]').forEach(function (cb) { cb.checked = e.target.checked; });
       }
@@ -17321,26 +17335,35 @@ function dcBulkOpen() {
     var go = document.getElementById('dc-bulk-go');
     if (go) go.onclick = function () {
       var ids = [].map.call(slot.querySelectorAll('[data-dcpick]:checked'), function (cb) { return cb.getAttribute('data-dcpick'); });
-      if (!ids.length) return;
-      go.disabled = true;
+      if (!ids.length || busy) return;
+      busy = true; count();
       api('addDiscoveredBulk', { grade: 'A', confirm: true, expect: pv.expect, ids: ids }).then(function (r) {
-        if (r.stale) { toast('The list changed — here it is again'); dcBulkOpen(); return; }
+        if (r.stale) {
+          var off = [].map.call(slot.querySelectorAll('[data-dcpick]:not(:checked)'), function (cb) { return cb.getAttribute('data-dcpick'); });
+          toast('The list changed — your ticks are kept; anything new is unticked');
+          dcBulkOpen({ off: off, seen: pv.rows.map(function (x) { return x.id; }) });
+          return;
+        }
         slot.innerHTML = '';
         toast('Added ' + r.added + (r.added === 1 ? ' brand' : ' brands') + ' to Brands');
         loadDiscover();
-      }).catch(function (err) { toast(err.message); go.disabled = false; });
+      }).catch(function (err) { toast(err.message); busy = false; count(); });
     };
   }).catch(function (e) { slot.innerHTML = ''; toast(e.message); });
 }
 
-function dcBulkUndo() {
-  api('undoDiscoverBulk', {}).then(function (pv) {
-    var msg = 'Take back the bulk add?\n\n' +
-      (pv.goes.length ? pv.goes.length + ' brands come off the roster and back to To review: ' + pv.goes.join(', ') : 'No brand comes off the roster.') +
+// Undo the last bulk add: what goes and what stays (and why) first; the
+// apply sends the preview's `expect`, and a changed list is shown again.
+function dcBulkUndo(pv0) {
+  (pv0 ? Promise.resolve(pv0) : api('undoDiscoverBulk', {})).then(function (pv) {
+    var msg = (pv0 ? 'Something changed since — here it is again.\n\n' : '') + 'Take back the bulk add?\n\n' +
+      (pv.goes.length ? pv.goes.length + (pv.goes.length === 1 ? ' brand comes' : ' brands come') + ' off the roster: ' + pv.goes.join(', ') +
+        '\n' + pv.backToReview + (pv.backToReview === 1 ? ' find goes' : ' finds go') + ' back to To review.' : 'No brand comes off the roster.') +
       (pv.stays.length ? '\n\nThese stay (touched since): ' + pv.stays.map(function (x) { return x.name + ' — ' + x.why; }).join('; ') : '');
     if (!confirm(msg)) return;
-    return api('undoDiscoverBulk', { confirm: true }).then(function (r) {
-      toast(r.goes.length ? 'Took back ' + r.goes.length + ' brands' : 'Nothing to take back');
+    return api('undoDiscoverBulk', { confirm: true, expect: pv.expect }).then(function (r) {
+      if (r.stale) { dcBulkUndo(r); return; }
+      toast(r.goes.length ? 'Took back ' + r.goes.length + (r.goes.length === 1 ? ' brand' : ' brands') : 'Nothing to take back');
       loadDiscover();
     });
   }).catch(function (e) { toast(e.message); });

@@ -443,11 +443,16 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   points. **Add all A's** (Leo, Oct 13 2026 — 88 of 106 waiting finds were A): the To review bar's button (`dcBulkOpen`,
   `#dc-bulk`) → `addDiscoveredBulk({ grade: 'A' })` preview = every A waiting, each as it'd be filed (`discoveryCategory`,
   same as one Add), and the ones held back because they may already be on the roster (chat-add's `matchRoster`: name /
-  aka, LinkedIn page, website) → ticks → Add sends the preview's `expect` + ticked `ids` (one transaction through
-  `promoteDiscovery`, the single Add's own path; a find listed twice = one brand, the second fills its empty links).
-  Undo for a day on the bar (`listDiscoveries.bulkUndo`; `undoDiscoverBulk`, Setting `discoverBulkLast`): the brands it
-  made that nothing has touched since (people, outreach, deal, show, activation, document, board visit, a Schedule day)
-  are deleted, their finds back to To review; touched ones stay, named first. `node scripts/test-discover.js`,
+  aka, LinkedIn page, website) — and any other find with a held one's name / website / LinkedIn page (`sameAs`) → ticks
+  → Add sends the preview's `expect` + ticked `ids` (one transaction through `promoteDiscovery`, the single Add's own path).
+  Finds that are one brand (same name, website or LinkedIn page, in the batch) share a `group`: the best scored names
+  it, the others "same brand as …" join it and fill its empty links. A stale answer reopens it with Leo's unticks kept
+  and anything new unticked. Undo for a day on the bar (`listDiscoveries.bulkUndo`; `undoDiscoverBulk`, Setting
+  `discoverBulkLast` with each brand's `stamp` = its updatedAt after the add): a brand goes only if nothing touched it —
+  no edit (updatedAt moved: facts, notes, a merge into it, the fill saving its page), Show Board code, partner record,
+  people, outreach, deal, show, activation, document, board visit or request, ops mail, Schedule day; touched ones stay,
+  named. Every find linked to a brand that goes returns to To review (also those linked by name since). Confirm sends
+  the preview's `expect`; the delete only takes brands still bare (else `stale`, nothing changes). `node scripts/test-discover.js`,
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-discover-bulk-e2e.js`.
 - **"Add a brand" chat** (Leo, Oct 2026: "send a picture of a brand from instagram or type in a name
   and it will find the brand … and add it"). A saved Claude cloud session ("Add a brand", repo attached,
