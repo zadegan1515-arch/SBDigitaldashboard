@@ -36,16 +36,21 @@ export function workCount(b: BigBrandFacts & { workPeople: number | null }): num
 // who stays in play and who is next in line (shelvedHow 'cap' — they come
 // back by themselves when a spot opens). Everyone already written to counts
 // first (`worked`). Nobody in today's list (`today`) is ever taken out —
-// they stay even past the number, and count against it. The rest stay best
-// first (comparePicks).
-export function keepInPlay<T extends PickPerson & { today?: boolean }>(
-  active: T[], work: number, worked: number, names?: string[],
+// they stay even past the number, and count against it. Nor is anyone
+// chosen for a day's list (`chosen`, src/lib/chosen.ts — queued by hand,
+// Send to dashboard, + Add person, carried by the morning roll): the number
+// holds only the system's own picks (fourth review, Oct 13 2026 — Send to
+// dashboard's pick was set aside next in line in the same request). The
+// rest stay best first (comparePicks).
+export function keepInPlay<T extends PickPerson & { id?: string; today?: boolean }>(
+  active: T[], work: number, worked: number, names?: string[], chosen?: ReadonlySet<string>,
 ): { keep: T[]; next: T[] } {
   const room = Math.max(0, work - worked)
-  const today = active.filter(t => t.today)
-  const rest = sortPicks(active.filter(t => !t.today), names)
-  const take = Math.max(0, room - today.length)
-  return { keep: [...today, ...rest.slice(0, take)], next: rest.slice(take) }
+  const stays = (t: T) => !!t.today || (!!t.id && !!chosen?.has(t.id))
+  const first = active.filter(stays)
+  const rest = sortPicks(active.filter(t => !stays(t)), names)
+  const take = Math.max(0, room - first.length)
+  return { keep: [...first, ...rest.slice(0, take)], next: rest.slice(take) }
 }
 
 // The brand's names, for the title rules (a "CEO of <another company>" is

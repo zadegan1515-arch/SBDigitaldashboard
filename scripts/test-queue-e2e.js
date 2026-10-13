@@ -57,6 +57,8 @@
 //      a half-sent brand also planned for a later day carries to today.
 //   Z. A person sent to the dashboard (chosen, in the pool) goes ahead of
 //      the buyers waiting beside them; the brand's number never cuts them.
+//      Fourth review: through /api/ingest (the capture's own limit kept
+//      them), and + Add person; a notes-only Save trims nobody.
 //   AA. A day taken off (moveDay, no target) or an extra day removed: a
 //      part-sent brand pinned there for its rest moves onto its new day.
 //   AB. Move what's left / Put on a day onto a day they open: the preview
@@ -82,6 +84,19 @@ const ROOT = path.join(__dirname, '..');
 const PORT = Number(process.env.E2E_PORT || 3468);
 const BASE = 'http://127.0.0.1:' + PORT;
 const DASHBOARD_TOKEN = 'e2e-dashboard-token-0123456789abcdef';
+const INGEST_TOKEN = 'e2e-ingest-token-0123456789abcdef';
+
+// /api/ingest as the LinkedIn userscript calls it (Send to dashboard).
+const ingest = async (body) => {
+  const r = await fetch(BASE + '/api/ingest', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: INGEST_TOKEN, reader: 2, ...body }),
+  });
+  const j = await r.json().catch(() => ({ ok: false, error: 'HTTP ' + r.status }));
+  if (!j.ok) throw new Error((body.action || 'ingest') + ': ' + (j.error || r.status));
+  return j;
+};
 
 const data = async (fn, args) => {
   const r = await fetch(BASE + '/api/data', {
@@ -113,7 +128,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
 
     server = spawn('npx', ['next', 'dev', '-p', String(PORT)], {
       cwd: ROOT, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...env, DASHBOARD_TOKEN, NEXTAUTH_SECRET: 'e2e-only', NEXT_TELEMETRY_DISABLED: '1' },
+      env: { ...env, DASHBOARD_TOKEN, INGEST_TOKEN, NEXTAUTH_SECRET: 'e2e-only', NEXT_TELEMETRY_DISABLED: '1' },
     });
     let log = '';
     server.stdout.on('data', d => { log += d; });
@@ -699,28 +714,61 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     ok('a flagged person Leo queued by hand still goes from the pool');
 
     // ---- Z. Sent to the dashboard, three buyers waiting beside them -------
-    // Send to dashboard on a LinkedIn profile: a target in the pool, chosen
-    // (ingest notes it), at a brand whose three buyers the fill made targets
-    // for. A weaker title than theirs, not a flagged one: the brand's number
-    // used to cut them, not the flag hold-back.
+    // Send to dashboard on a LinkedIn profile, through /api/ingest as the
+    // userscript sends it, at a brand whose three buyers the fill made
+    // targets for. A weaker title than theirs: the capture's own limit
+    // (reconcileBrandTargets → keepInPlay) set the pick aside next in line in
+    // the same request, and the queue never brought them back (fourth
+    // review); then the brand's number cut them when it came up.
     await unstampAll();
     await mkBrand('sdz', 'Sentdash Seltzer', 'rtd');
-    const sz = await mkPeople('sdz', [...BUYERS, 'Social Media Manager']);
-    const szT = [];
-    for (const c of sz) szT.push((await prisma.target.create({ data: { brandId: 'sdz', contactId: c.id, status: 'queued' } })).id);
+    const sz = await mkPeople('sdz', BUYERS);
+    for (const c of sz) await prisma.target.create({ data: { brandId: 'sdz', contactId: c.id, status: 'queued' } });
+    const sent = await ingest({
+      action: 'liCapture', handPicked: true, createIfMissing: true,
+      companyName: 'Sentdash Seltzer', brandName: 'Sentdash Seltzer', companyUrl: '',
+      rows: [{ name: 'Sam Social', headline: 'Social Media Manager at Sentdash Seltzer', linkedinUrl: 'https://www.linkedin.com/in/sam-social-sdz/' }],
+    });
+    assert.equal(sent.added, 1, JSON.stringify(sent));
+    const samT = await prisma.target.findFirst({ where: { brandId: 'sdz', contact: { name: 'Sam Social' } } });
     const chRow = await prisma.setting.findUnique({ where: { key: 'outreachChosen' } });
-    await setting('outreachChosen', { ...(chRow ? JSON.parse(chRow.value) : {}), [szT[3]]: today });
+    assert.ok(chRow && JSON.parse(chRow.value)[samT.id] === today, 'noted as chosen');
+    assert.deepEqual([samT.shelved, samT.shelvedHow], [false, null], 'the capture never sets the pick aside: ' + JSON.stringify(samT));
+    const szCap = await prisma.target.findMany({ where: { brandId: 'sdz', shelvedHow: 'cap' } });
+    assert.equal(szCap.length, 1, 'one buyer next in line instead: ' + JSON.stringify(sent));
     const pvz = await data('planAddBrands', { date: today, brandIds: ['sdz'], preview: true });
     const pvzPeople = pvz.results[0].people.map(x => x.name);
-    assert.ok(pvzPeople.includes('sdz P3') && pvzPeople.length === 3, 'the preview: Leo\'s pick and two buyers: ' + JSON.stringify(pvzPeople));
+    assert.ok(pvzPeople.includes('Sam Social') && pvzPeople.length === 3, 'the preview: Leo\'s pick and two buyers: ' + JSON.stringify(pvzPeople));
     await data('queueBrandTargets', { brandId: 'sdz' });
     const szNow = await prisma.target.findMany({ where: { brandId: 'sdz' } });
-    const szPick = szNow.find(t => t.id === szT[3]);
+    const szPick = szNow.find(t => t.id === samT.id);
     assert.deepEqual([szPick.shelved, !!szPick.queuedFor], [false, true], 'Leo\'s pick is in today\'s list: ' + JSON.stringify(szPick));
     assert.deepEqual([szNow.filter(t => t.queuedFor).length, szNow.filter(t => t.shelvedHow === 'cap').length], [3, 1], 'its three: the pick and two buyers; one buyer next in line');
     await prisma.brand.update({ where: { id: 'sdz' }, data: { passedAt: new Date() } });
     await unstampAll();
-    ok('a person sent to the dashboard goes, the brand\'s number filled around them');
+    ok('a person sent to the dashboard (through /api/ingest) goes, the brand\'s number filled around them');
+
+    // + Add person on the brand page (upsertContact) beside three
+    // partnerships buyers: Leo's pick too — chosen, so the number never cuts
+    // them; and a notes-only Save (the page sends its tier back) trims nobody.
+    await mkBrand('hdz', 'Handadd Hard Seltzer', 'rtd');
+    const hz = await mkPeople('hdz', ['Head of Partnerships', 'Partnerships Manager', 'Director of Partnerships']);
+    for (const c of hz) await prisma.target.create({ data: { brandId: 'hdz', contactId: c.id, status: 'queued' } });
+    const hand = await data('upsertContact', { brandId: 'hdz', name: 'Hana Hand', title: 'Brand Marketing Manager', linkedinUrl: 'https://www.linkedin.com/in/hana-hand-hdz/' });
+    const hanaT = await prisma.target.findFirst({ where: { contactId: hand.id } });
+    const ch2 = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachChosen' } })).value);
+    assert.equal(ch2[hanaT.id], today, 'a hand add is noted as chosen');
+    await data('updateBrand', { brandId: 'hdz', notes: 'met at a show', tier: 'growth' });
+    assert.equal(await prisma.target.count({ where: { brandId: 'hdz', shelved: true } }), 0, 'a notes-only Save sets nobody aside');
+    const pvh = await data('planAddBrands', { date: today, brandIds: ['hdz'], preview: true });
+    assert.ok(pvh.results[0].people.some(x => x.name === 'Hana Hand'), 'the preview names the hand add: ' + JSON.stringify(pvh.results[0].people));
+    await data('queueBrandTargets', { brandId: 'hdz' });
+    const hanaNow = await prisma.target.findUnique({ where: { id: hanaT.id } });
+    assert.deepEqual([hanaNow.shelved, !!hanaNow.queuedFor], [false, true], 'the hand add is in today\'s list: ' + JSON.stringify(hanaNow));
+    assert.equal(await prisma.target.count({ where: { brandId: 'hdz', queuedFor: { not: null } } }), 3, 'the brand\'s three: the hand add and two buyers');
+    await prisma.brand.update({ where: { id: 'hdz' }, data: { passedAt: new Date() } });
+    await unstampAll();
+    ok('a person added by hand on the brand page goes; a notes-only Save trims nobody');
 
     // ---- AA. A day taken off keeps a part-sent brand's rest -----------------
     // moveDay with no target, then removing an extra day: a brand pinned on

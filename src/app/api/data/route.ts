@@ -3252,8 +3252,10 @@ async function reconcileBrandTargets(brandId: string, perBrandArg?: number) {
   // company, four at an established brand, three elsewhere — workCount in
   // src/lib/brand-work.ts, the same rule as /api/ingest and the queue. It
   // used to keep at least four, so a brand that works three sent four and
-  // "work 1" still kept four. Today's list is never touched (keepInPlay);
-  // the rest stay best LinkedIn buyer first.
+  // "work 1" still kept four. Today's list is never touched (keepInPlay),
+  // nor anyone chosen for a day's list (src/lib/chosen.ts — the number
+  // holds only the system's own picks); the rest stay best LinkedIn buyer
+  // first.
   const b = await prisma.brand.findUnique({ where: { id: brandId }, select: { name: true, aka: true, tier: true, liMembers: true, workPeople: true } })
   const perBrand = perBrandArg ?? (b ? workCount(b) : TARGET_CAP_PER_BRAND)
   const worked = await prisma.target.count({
@@ -3264,7 +3266,7 @@ async function reconcileBrandTargets(brandId: string, perBrandArg?: number) {
     orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
     select: IN_PLAY_SELECT,
   })
-  const { keep, next } = keepInPlay(inPlayRows(active, startOfLocalDay()), perBrand, worked, b ? brandNames(b) : undefined)
+  const { keep, next } = keepInPlay(inPlayRows(active, startOfLocalDay()), perBrand, worked, b ? brandNames(b) : undefined, await readChosen())
   const shelve = next.map(t => t.id)
   if (shelve.length) {
     await prisma.target.updateMany({ where: { id: { in: shelve } }, data: { shelved: true, shelvedHow: 'cap' } })
@@ -7050,6 +7052,11 @@ const handlers: Record<string, Handler> = {
       if (facts) return { id: brandId, unchanged: true }
       throw new Error('Nothing to update')
     }
+    // The number and tier as they were: the brand page sends its tier back
+    // on every Save, and a notes edit must not trim the pool (fourth review).
+    const limitBefore = data.workPeople !== undefined || data.tier !== undefined
+      ? await prisma.brand.findUnique({ where: { id: brandId }, select: { tier: true, workPeople: true } })
+      : null
     let saved
     try {
       saved = await prisma.brand.update({ where: { id: brandId }, data })
@@ -7059,7 +7066,7 @@ const handlers: Record<string, Handler> = {
     }
     // A new number (or tier) is the brand's limit at once (picks): people
     // waiting past it are next in line; today's list is never touched.
-    if (data.workPeople !== undefined || data.tier !== undefined) {
+    if (limitBefore && (limitBefore.tier !== saved.tier || limitBefore.workPeople !== saved.workPeople)) {
       try { await reconcileBrandTargets(brandId) } catch { /* non-fatal */ }
     }
     return saved
@@ -7355,7 +7362,7 @@ const handlers: Record<string, Handler> = {
     })
 
     if (dm && contact.linkedinUrl) {
-      await prisma.target.create({
+      const t = await prisma.target.create({
         data: {
           brandId,
           contactId: contact.id,
@@ -7366,6 +7373,9 @@ const handlers: Record<string, Handler> = {
       // A manual add is deliberate, so the person goes straight into the
       // queue even if the brand already has its three — the cap governs
       // bulk pulls, not a hand-picked contact. They can be shelved later.
+      // Noted as chosen (src/lib/chosen.ts), like the brand page's Queue:
+      // the brand's number held them back as it came up (fourth review).
+      await noteChosen([t.id])
     }
     return contact
   },
@@ -7547,6 +7557,7 @@ const handlers: Record<string, Handler> = {
     const brands = await prisma.brand.findMany({ select: { id: true, name: true, aka: true } })
     const dayStart = startOfLocalDay()
 
+    const chosen = await readChosen()
     let activeBefore = 0, wouldShelve = 0, brandsAffected = 0
     const sample: Array<{ brand: string; active: number; keep: number; shelve: number }> = []
 
@@ -7561,7 +7572,7 @@ const handlers: Record<string, Handler> = {
       activeBefore += active.length
       // The limit's own rule (keepInPlay), so the preview is what Apply
       // does: nobody in today's list comes out.
-      const over = keepInPlay(inPlayRows(active, dayStart), cap, worked, brandNames(b)).next.length
+      const over = keepInPlay(inPlayRows(active, dayStart), cap, worked, brandNames(b), chosen).next.length
       if (over > 0) {
         wouldShelve += over
         brandsAffected++

@@ -56,6 +56,16 @@ t('nobody in today\'s list is ever taken out — they count against the number',
   const over = keepInPlay([p('t1', 'CMO', { today: true }), p('t2', 'CMO', { today: true }), p('w', 'CMO')], 1, 0)
   assert.deepEqual([over.keep.length, over.next.map(x => x.id)], [2, ['w']], 'past the number already: today stays, the waiting one is next in line')
 })
+t('nobody chosen for a day\'s list is ever next in line — kept first, counted against the number', () => {
+  // Send to dashboard (Social Media Manager) at a brand with three buyers waiting.
+  const pool = [p('pp', 'Head of Partnerships'), p('bm', 'Brand Manager'), p('md', 'Marketing Director'), p('pick', 'Social Media Manager', { fit: 10 })]
+  const r = keepInPlay(pool, 3, 0, undefined, new Set(['pick']))
+  assert.deepEqual(r.keep.map(x => x.id), ['pick', 'pp', 'bm'], 'the pick stays, then the best two buyers')
+  assert.deepEqual(r.next.map(x => x.id), ['md'])
+  assert.deepEqual(keepInPlay(pool, 3, 0).next.map(x => x.id), ['pick'], 'without chosen the weaker title is cut')
+  const reached = keepInPlay([p('pick', 'Intern'), p('pp', 'Head of Partnerships')], 3, 3, undefined, new Set(['pick']))
+  assert.deepEqual([reached.keep.map(x => x.id), reached.next.map(x => x.id)], [['pick'], ['pp']], 'already invited up to the number: the pick still stays')
+})
 t('brand names include its other names', () => {
   assert.deepEqual(brandNames({ name: 'Liquid Death', aka: 'LD, Liquid Death Water' }), ['Liquid Death', 'LD', 'Liquid Death Water'])
 })

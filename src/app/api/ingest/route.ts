@@ -55,7 +55,7 @@ import { countBuyers, BUYER_TARGET } from '@/lib/buyers'
 import { noBuyerFirst } from '@/lib/coverage'
 import { giantWhy } from '@/lib/giants'
 import { giantOf, rowReached, parseGiants, GIANTS_KEY, nyDayKey } from '@/lib/queue-rules'
-import { noteChosenIds } from '@/lib/chosen'
+import { noteChosenIds, readChosenIds } from '@/lib/chosen'
 
 const prisma = new PrismaClient()
 
@@ -111,8 +111,9 @@ async function findBrandForCapture(name: string, externalId: string | null) {
 // number in play (Leo's, else ten at a big company, four at an established
 // brand, three elsewhere), already-contacted people first, best LinkedIn
 // buyers next; the rest are next in line. Nobody in today's list is taken
-// out. Nothing is deleted. Four is only the fallback. Not the 25-contact
-// file cap below.
+// out, nor anyone chosen for a day's list (src/lib/chosen.ts — Send to
+// dashboard's pick, noted just before this runs). Nothing is deleted.
+// Four is only the fallback. Not the 25-contact file cap below.
 const TARGET_CAP_PER_BRAND = 4
 async function reconcileBrandTargets(brandId: string) {
   const b = await prisma.brand.findUnique({ where: { id: brandId }, select: { name: true, aka: true, tier: true, liMembers: true, workPeople: true } })
@@ -131,7 +132,7 @@ async function reconcileBrandTargets(brandId: string) {
   const { next } = keepInPlay(active.map(t => ({
     id: t.id, title: t.contact.title, linkedinUrl: t.contact.linkedinUrl, email: t.contact.email, fit: t.fitScore,
     today: !!t.queuedFor && nyDayKey(t.queuedFor) >= todayKey,
-  })), perBrand, worked, b ? brandNames(b) : undefined)
+  })), perBrand, worked, b ? brandNames(b) : undefined, await readChosenIds(prisma, todayKey))
   const shelve = next.map(t => t.id)
   // "cap": only waiting behind the brand's limit — "next in line", not
   // shelved on purpose.

@@ -1,8 +1,9 @@
 // People picked for a day's LinkedIn list (review fix, Oct 13 2026): queued
 // by hand — the brand page's Queue (Swap on Today's list for Zach too), Send
-// to dashboard on a LinkedIn profile — or taken out of a missed day's list
-// by the morning roll so that day's queue stamps them again (route.ts
-// carryBrands: "that day's queue stamps them again").
+// to dashboard on a LinkedIn profile, + Add person (upsertContact) — or
+// taken out of a missed day's list by the morning roll so that day's queue
+// stamps them again (route.ts carryBrands: "that day's queue stamps them
+// again").
 //
 // The flagged hold-back in queueBrandTargets / previewBrandPicks (route.ts:
 // a flagged person waiting in the pool is set aside next in line while an
@@ -11,8 +12,9 @@
 // set aside the person Leo queued on Tuesday once the roll had put them
 // back in the pool on Wednesday, and someone else went in their place.
 // Nor does the brand's number cut them (third review, Oct 13 2026): chosen
-// people go first and all go (route.ts chosenFirst); the number holds only
-// the system's own picks.
+// people go first and all go (route.ts chosenFirst), and the brand's limit
+// never sets them aside next in line (keepInPlay, brand-work.ts — fourth
+// review); the number holds only the system's own picks.
 //
 // Setting outreachChosen = { targetId: the New York day key it was chosen },
 // kept CHOSEN_DAYS (past the two weeks' rest and the roll's week) and at most

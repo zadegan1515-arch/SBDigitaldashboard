@@ -351,8 +351,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   already waiting in the pool or next in line is held back too (set aside next in line, never anyone in today's
   list) instead of going ahead of unflagged buyers with no target yet — only people the system pooled and nobody
   chose (second review, Oct 13 2026): never someone **chosen** for a day's list (`src/lib/chosen.ts`, Setting
-  `outreachChosen` = { targetId: day }, 30 days: queued by hand — queueContact, Swap — Send to dashboard on a profile,
-  or put back in the pool by the morning roll so their day stamps them again, `carryBrands`), never while the brand
+  `outreachChosen` = { targetId: day }, 30 days: queued by hand — queueContact, Swap, **+ Add person** (upsertContact) —
+  Send to dashboard on a profile, or put back in the pool by the morning roll so their day stamps them again,
+  `carryBrands`), never while the brand
   finishes its first sitting (its rest goes whole), and only an unflagged person who could still go counts as the
   reason (people already invited don't): the hold-back set aside the person Leo queued on Tuesday once Wednesday's
   roll had put them back in the pool, and a part-sent brand's flagged rest because of the two buyers already sent.
@@ -362,7 +363,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   once the roll carried them. Same order in queueBrandTargets, previewBrandPicks (so the Schedule's
   "3 going" is what goes), and the limit: `reconcileBrandTargets` (both copies) = `workCount` / `keepInPlay` in
   `src/lib/brand-work.ts` (`node scripts/test-brand-work.mjs`) — it used to keep at least 4, so a brand that works 3
-  sent 4 and "work 1" kept 4; `updateBrand` re-runs it on a new number or tier. A brand already holding more is
+  sent 4 and "work 1" kept 4; it keeps chosen people like today's (never next in line, counted first; both copies
+  read `readChosenIds` — fourth review, Oct 13 2026: Send to dashboard's pick was set aside next in line by the
+  capture's own reconcile, and a later fill or capture parked carried and hand-queued people); `updateBrand` re-runs
+  it only when the number or tier really changes (the page sends its tier on every Save). A brand already holding more is
   trimmed **as it comes up** (Leo's default): queueBrandTargets promotes only its number, the rest of the pool →
   next in line (`shelvedHow 'cap'`); no bulk change, never anyone out of today's list (keepInPlay keeps today's
   stamps first); fillSize and the gated stamp stop at the number too. A queued person with no LinkedIn link: the
@@ -414,7 +418,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   part-sent brand, own part-sent pins ahead of carried work, an opened brand left out, a finishing brand fits the day,
   Plan my week's Undo onto today, the day for a brand's rest, Category priority fresh; the third review's: chosen
   people past the number and beside pooled buyers, a half-sent brand planned later, a day taken off or an extra day
-  removed with a brand's rest on it, previews onto a day they open): `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-queue-e2e.js`.
+  removed with a brand's rest on it, previews onto a day they open; the fourth review's: Send to dashboard through
+  /api/ingest at a brand with its number waiting, + Add person, a notes-only Save): `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-queue-e2e.js`.
   **Faster page** (Leo, Oct 12 2026: "make the schedule as efficient as possible" — the same answers, fewer and
   lighter reads; at 1,500 brands getOutreachPlan ~1.1 s → ~0.33 s, its reply ~200 → ~50 KB; a refresh with an open
   Fill box ~1.6 s in two requests → ~0.37 s in one; Plan my week ~1.55 s → ~0.4 s; the LinkedIn tab's first open
