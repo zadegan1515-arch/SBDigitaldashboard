@@ -23,7 +23,7 @@ const GRADES = [['D', 22], ['C', 37], ['A', 69], ['B', 52], ['A', 62]];
 const BY_GRADE = ['Lucky Energy', 'Flerish', 'Garage Beer', 'Blenders Eyewear', 'Aéropostale'];
 const grade = ([g, score]) => ({ grade: g, score, word: 'w', capped: null,
   reasons: [{ good: true, text: 'Top priority category', points: 30 }, { good: null, text: 'money not known — size not known', points: 15 }] });
-const S = { rows: [], adds: [], dismissed: [] };
+const S = { rows: [], adds: [], dismissed: [], bulk: [], undo: [], bulkUndo: null };
 function reset() {
   S.rows = NAMES.map((n, i) => ({
     id: 'd' + i, name: n, category: ['apparel', 'apparel', 'energy', 'rtd', 'electrolytes'][i],
@@ -43,7 +43,22 @@ const H = {
   listOwners: () => [], listActivations: () => [], getRateCard: () => ({}),
   zachTodo: () => ({ rows: [], people: [] }), getActionQueue: () => ({ count: 0, items: [] }),
   getDashboard: () => ({}), appVersion: () => ({ sha: 'test' }),
-  listDiscoveries: () => ({ rows: S.rows.filter((r) => !S.dismissed.includes(r.id)) }),
+  listDiscoveries: () => ({ rows: S.rows.filter((r) => !S.dismissed.includes(r.id)), bulkUndo: S.bulkUndo }),
+  // Add all A's (Leo, Oct 13 2026): preview, then the ticked ids.
+  addDiscoveredBulk: (a) => {
+    S.bulk.push(a);
+    const rows = S.rows.filter((r) => r.status !== 'added' && r.grade.grade === 'A').map((r) => ({ id: r.id, name: r.name, category: r.category, score: r.grade.score, source: r.source }));
+    const held = [{ id: 'dh', name: 'Lucky Energy Co', match: 'Lucky Energy', why: ['name'] }];
+    if (!a.confirm) return { applied: false, grade: 'A', rows, held, expect: 'sigA' };
+    for (const id of a.ids) { const r = S.rows.find((x) => x.id === id); r.status = 'added'; r.inSystem = true; }
+    S.bulkUndo = { at: new Date().toISOString(), grade: 'A', n: a.ids.length };
+    return { applied: true, added: a.ids.length, linked: 0, names: [] };
+  },
+  undoDiscoverBulk: (a) => {
+    S.undo.push(a);
+    if (a.confirm) { S.bulkUndo = null; return { applied: true, goes: ['Flerish'], stays: [], backToReview: 1 }; }
+    return { applied: false, goes: ['Flerish'], stays: [{ name: 'Lucky Energy', why: '2 people on file' }], backToReview: 1 };
+  },
   addDiscoveredBrand: ({ id }) => { S.adds.push(id); return { ok: true, brandId: 'nb' + id }; },
   dismissDiscovered: ({ id }) => { S.dismissed.push(id); return { ok: true }; },
 };
@@ -120,6 +135,34 @@ async function main() {
   await page.click('[data-dctab="added"]');
   assert.deepEqual(await names(), ['Lucky Energy', 'Already Here']);
   console.log('✓ Add moves a brand to Added; × dismisses');
+
+  // Add all A's: one button, a preview with ticks, the held one named, Add
+  // sends the preview's stamp and the ticked ids; Undo after.
+  reset(); S.dismissed = []; S.adds = [];
+  page.on('dialog', (d) => d.accept());
+  await page.evaluate(() => loadDiscover());
+  await page.click('[data-dctab="review"]');
+  await page.waitForSelector('#dc-bulk-a');
+  assert.match(await page.textContent('#dc-bulk-a'), /Add all A’s \(2\)/);
+  await page.click('#dc-bulk-a');
+  await page.waitForSelector('#dc-bulk-card');
+  assert.equal(S.bulk[0].confirm, undefined, 'the button only previews');
+  const card = await page.textContent('#dc-bulk-card');
+  assert.match(card, /Add 2 grade-A finds as brands/);
+  assert.match(card, /Lucky Energy[\s\S]*Flerish/);
+  assert.match(card, /Left out — may already be on the roster: Lucky Energy Co \(looks like Lucky Energy\)/);
+  await page.uncheck('[data-dcpick="d2"]');
+  assert.equal(await page.textContent('#dc-bulk-go'), 'Add 1 brand');
+  await page.click('#dc-bulk-go');
+  await page.waitForSelector('#dc-bulk-undo');
+  assert.deepEqual(S.bulk[1], { grade: 'A', confirm: true, expect: 'sigA', ids: ['d4'] });
+  assert.equal(await page.$('#dc-bulk-card'), null, 'the preview closes');
+  assert.match(await page.textContent('#dc-bulk-undo'), /Added 1 grade-A brand · Undo/);
+  assert.ok(!(await names()).includes('Flerish'), 'Flerish left To review');
+  await page.click('[data-dcundo]');
+  await page.waitForFunction(() => !document.getElementById('dc-bulk-undo'));
+  assert.deepEqual(S.undo.map((u) => !!u.confirm), [false, true], 'Undo previews, then takes back');
+  console.log('✓ Add all A\u2019s: preview with ticks, held ones named, Add sends exactly the ticked ids; Undo');
 
   await page.setViewportSize({ width: 390, height: 800 });
   await page.click('[data-dctab="review"]');

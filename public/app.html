@@ -2190,6 +2190,7 @@
       <h1>New brands to review</h1>
       <div class="sub" id="dc-sub">Claude finds up to 50 a day. Add the ones worth pitching, dismiss the rest.</div>
       <div id="dc-bar" class="dc-bar"></div>
+      <div id="dc-bulk"></div>
       <div id="disc-body"></div>
     </section>
 
@@ -17114,7 +17115,7 @@ document.getElementById('bd-results').addEventListener('click', function (e) {
 // Every find carries a grade (listDiscoveries → src/lib/discover-grade.ts:
 // Brand Fit as a letter A–D; Leo, Oct 12 2026: "grade each brand that is
 // found in the discover brands"). Best grade first unless Newest is picked.
-var DC = { rows: [], tab: 'review', source: '', cat: '', grade: '', sort: 'grade', open: {} };
+var DC = { rows: [], tab: 'review', source: '', cat: '', grade: '', sort: 'grade', open: {}, bulkUndo: null };
 var DC_GRADE_ORDER = { A: 0, B: 1, C: 2, D: 3 };
 var DC_SIGNS = { sponsors: 'College / music', genz: '18–24', midsize: 'Growing' };
 var DC_SIGNS_LONG = { sponsors: 'Already sponsors college or music', genz: 'Aims at 18–24 year olds', midsize: 'Mid-size and growing' };
@@ -17127,6 +17128,7 @@ function loadDiscover() {
   return api('listDiscoveries', {}).then(function (d) {
     if (!mine()) return;
     DC.rows = d.rows || [];
+    DC.bulkUndo = d.bulkUndo || null;
     dcRender();
   }).catch(function (e) {
     if (!mine()) return;
@@ -17165,8 +17167,14 @@ function dcRender() {
   var tab = function (key, label, n) {
     return '<button class="chip' + (DC.tab === key ? ' active' : '') + '" data-dctab="' + key + '">' + label + '<span class="n">' + n + '</span></button>';
   };
+  // Every A-grade find at once (Leo, Oct 13 2026): one button, a preview
+  // with ticks, then Add; its Undo for a day.
+  var reviewA = DC.rows.filter(function (r) { return !dcAdded(r) && r.grade && r.grade.grade === 'A'; }).length;
+  var bu = DC.bulkUndo;
   document.getElementById('dc-bar').innerHTML =
     tab('review', 'To review', review) + tab('added', 'Added', added) +
+    (DC.tab === 'review' && reviewA ? '<button class="btn-solid sd-sm" id="dc-bulk-a">Add all A\u2019s (' + reviewA + ')</button>' : '') +
+    (bu && bu.n ? '<span class="hint" id="dc-bulk-undo" style="margin:0">Added ' + bu.n + ' grade-' + esc(bu.grade || 'A') + (bu.n === 1 ? ' brand' : ' brands') + ' · <a href="#" data-dcundo="1">Undo</a></span>' : '') +
     '<span style="flex:1"></span>' +
     '<select class="inp" data-dcsel="source" aria-label="Source"><option value="">All sources</option>' +
       sources.map(function (x) { return '<option' + (DC.source === x ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select>' +
@@ -17227,6 +17235,8 @@ function dcRow(r) {
 }
 
 document.getElementById('dc-bar').addEventListener('click', function (e) {
+  if (e.target.closest('#dc-bulk-a')) { dcBulkOpen(); return; }
+  if (e.target.closest('[data-dcundo]')) { e.preventDefault(); dcBulkUndo(); return; }
   var t = e.target.closest('[data-dctab]');
   if (!t) return;
   DC.tab = t.getAttribute('data-dctab'); DC.source = ''; DC.cat = ''; DC.grade = '';
@@ -17264,6 +17274,77 @@ document.getElementById('disc-body').addEventListener('click', function (e) {
     }).catch(function (err) { el.disabled = false; toast(err.message); });
   }
 });
+
+// Add all A's: what the server would add (each as it'd be filed), the
+// ones held back as maybe on the roster already, ticks, then Add.
+function dcBulkOpen() {
+  var slot = document.getElementById('dc-bulk');
+  slot.innerHTML = '<div class="hint" style="margin:0 0 10px">Checking…</div>';
+  api('addDiscoveredBulk', { grade: 'A' }).then(function (pv) {
+    if (!pv.rows.length && !pv.held.length) { slot.innerHTML = ''; toast('No grade-A finds left to add'); loadDiscover(); return; }
+    slot.innerHTML =
+      '<div class="panel panel-pad" id="dc-bulk-card" style="margin-bottom:12px">' +
+        '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px">' +
+          '<b style="font-size:14px">Add ' + pv.rows.length + ' grade-A finds as brands</b>' +
+          '<span class="hint" style="margin:0">Each goes on the roster with no people yet; the LinkedIn fill and SponsorUnited sweep pick them up.</span>' +
+        '</div>' +
+        (pv.rows.length ? '<div style="max-height:340px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:4px 10px">' +
+          '<label style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-soft);font-size:13px;color:var(--ink-3)">' +
+            '<input type="checkbox" id="dc-bulk-all" checked> Tick all</label>' +
+          pv.rows.map(function (r) {
+            return '<label class="dc-bulk-row" style="display:flex;gap:8px;align-items:baseline;padding:5px 0;cursor:pointer;font-size:13.5px">' +
+              '<input type="checkbox" data-dcpick="' + esc(r.id) + '" checked>' +
+              '<span style="flex:1;min-width:0"><b style="font-weight:600">' + esc(r.name) + '</b>' +
+                ' <span style="color:var(--ink-3)">· ' + esc(CAT_NAMES[r.category] || r.category || 'No category') + ' · ' + r.score + '/100 · ' + esc(r.source || '') + '</span></span>' +
+            '</label>';
+          }).join('') + '</div>' : '') +
+        (pv.held.length ? '<div class="hint" style="margin:10px 0 0">Left out — may already be on the roster: ' + pv.held.map(function (h) {
+          return esc(h.name) + ' (looks like ' + esc(h.match) + ')';
+        }).join(', ') + '. Add those by hand if they’re different.</div>' : '') +
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:10px">' +
+          (pv.rows.length ? '<button class="btn-solid" id="dc-bulk-go">Add ' + pv.rows.length + ' brands</button>' : '') +
+          '<button class="btn-ghost" id="dc-bulk-cancel">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    var count = function () {
+      var n = slot.querySelectorAll('[data-dcpick]:checked').length;
+      var go = document.getElementById('dc-bulk-go');
+      if (go) { go.textContent = 'Add ' + n + (n === 1 ? ' brand' : ' brands'); go.disabled = !n; }
+    };
+    slot.onchange = function (e) {
+      if (e.target.id === 'dc-bulk-all') {
+        slot.querySelectorAll('[data-dcpick]').forEach(function (cb) { cb.checked = e.target.checked; });
+      }
+      count();
+    };
+    document.getElementById('dc-bulk-cancel').onclick = function () { slot.innerHTML = ''; };
+    var go = document.getElementById('dc-bulk-go');
+    if (go) go.onclick = function () {
+      var ids = [].map.call(slot.querySelectorAll('[data-dcpick]:checked'), function (cb) { return cb.getAttribute('data-dcpick'); });
+      if (!ids.length) return;
+      go.disabled = true;
+      api('addDiscoveredBulk', { grade: 'A', confirm: true, expect: pv.expect, ids: ids }).then(function (r) {
+        if (r.stale) { toast('The list changed — here it is again'); dcBulkOpen(); return; }
+        slot.innerHTML = '';
+        toast('Added ' + r.added + (r.added === 1 ? ' brand' : ' brands') + ' to Brands');
+        loadDiscover();
+      }).catch(function (err) { toast(err.message); go.disabled = false; });
+    };
+  }).catch(function (e) { slot.innerHTML = ''; toast(e.message); });
+}
+
+function dcBulkUndo() {
+  api('undoDiscoverBulk', {}).then(function (pv) {
+    var msg = 'Take back the bulk add?\n\n' +
+      (pv.goes.length ? pv.goes.length + ' brands come off the roster and back to To review: ' + pv.goes.join(', ') : 'No brand comes off the roster.') +
+      (pv.stays.length ? '\n\nThese stay (touched since): ' + pv.stays.map(function (x) { return x.name + ' — ' + x.why; }).join('; ') : '');
+    if (!confirm(msg)) return;
+    return api('undoDiscoverBulk', { confirm: true }).then(function (r) {
+      toast(r.goes.length ? 'Took back ' + r.goes.length + ' brands' : 'Nothing to take back');
+      loadDiscover();
+    });
+  }).catch(function (e) { toast(e.message); });
+}
 
 // --- results ---------------------------------------------------
 //

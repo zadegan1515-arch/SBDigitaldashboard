@@ -440,7 +440,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   own Brand Fit; a new one on what Discover knows (category priority, the `sponsors` sign, `midsize` = growth tier, a
   parent) — money and people unknown, so a new find tops out in the low 70s. `listDiscoveries` returns `grade` per row;
   the page shows the letter, a grade filter and **Best grade first** (default) / Newest first; an open row lists the
-  points. `node scripts/test-discover.js`.
+  points. **Add all A's** (Leo, Oct 13 2026 — 88 of 106 waiting finds were A): the To review bar's button (`dcBulkOpen`,
+  `#dc-bulk`) → `addDiscoveredBulk({ grade: 'A' })` preview = every A waiting, each as it'd be filed (`discoveryCategory`,
+  same as one Add), and the ones held back because they may already be on the roster (chat-add's `matchRoster`: name /
+  aka, LinkedIn page, website) → ticks → Add sends the preview's `expect` + ticked `ids` (one transaction through
+  `promoteDiscovery`, the single Add's own path; a find listed twice = one brand, the second fills its empty links).
+  Undo for a day on the bar (`listDiscoveries.bulkUndo`; `undoDiscoverBulk`, Setting `discoverBulkLast`): the brands it
+  made that nothing has touched since (people, outreach, deal, show, activation, document, board visit, a Schedule day)
+  are deleted, their finds back to To review; touched ones stay, named first. `node scripts/test-discover.js`,
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-discover-bulk-e2e.js`.
 - **"Add a brand" chat** (Leo, Oct 2026: "send a picture of a brand from instagram or type in a name
   and it will find the brand … and add it"). A saved Claude cloud session ("Add a brand", repo attached,
   `DASHBOARD_TOKEN` in its environment — no API spend) follows `docs/add-a-brand-chat.md`: reads the
