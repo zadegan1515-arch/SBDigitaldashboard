@@ -127,6 +127,12 @@ is('a broken snapshot is ignored', [...findUnsent({ days: ['2026-09-25'], stampe
   // day already and keeps its place among the day's own.
   is('the day keeps what it had and gains the moved, once each — carried first', r.dayIds, ['a', 'b', 'g', 'kept'])
   is('unstamp: the moved brands, and one planned elsewhere; not the refused', r.unstamp.sort(), ['a1', 'a2', 'e1'])
+  // Half-sent and planned for a later day (queued for today by hand while
+  // it sat on that day): its rest goes on the day it moves to, first — on
+  // the later day it would only rest two weeks.
+  const h = planCarry(new Map([['h', { from: '2026-09-25', stamped: ['h1', 'h2'], tier: 0, at: 0 }]]),
+    new Map([['h', F('Hotel', { pinnedOn: '2026-10-01', pinnedLabel: 'Thu Oct 1' })]]), '2026-09-29', ['kept'], 40)
+  is('a half-sent brand pinned later moves anyway, first', [h.moved.map(m => m.id), h.left, h.dayIds, h.unstamp], [['h'], [], ['h', 'kept'], ['h1', 'h2']])
 }
 {
   const unsent = new Map([['a', { from: '2026-09-25', stamped: [] }], ['b', { from: '2026-09-25', stamped: [] }]])

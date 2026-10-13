@@ -191,7 +191,11 @@ export function planCarry(
       left.push({ id, name: f.name, why: `Passed until ${f.passedUntilLabel ?? f.passedUntil}` })
       continue
     }
-    if (f.pinnedOn && f.pinnedOn !== to) {
+    // A later pin waits for its own day — but not a half-sent brand's: its
+    // rest has to go on `to`, and on that later day it would only read
+    // "rests two weeks" (review fix, Oct 13 2026). It moves (the caller
+    // takes it off the later day).
+    if (f.pinnedOn && f.pinnedOn !== to && tierOf(u) !== 0) {
       left.push({ id, name: f.name, why: `Planned for ${f.pinnedLabel ?? f.pinnedOn} already` })
       unstamp.push(...u.stamped)
       continue

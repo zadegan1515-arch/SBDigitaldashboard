@@ -10,6 +10,9 @@
 // chose. One of these goes as chosen, flag or not — the hold-back used to
 // set aside the person Leo queued on Tuesday once the roll had put them
 // back in the pool on Wednesday, and someone else went in their place.
+// Nor does the brand's number cut them (third review, Oct 13 2026): chosen
+// people go first and all go (route.ts chosenFirst); the number holds only
+// the system's own picks.
 //
 // Setting outreachChosen = { targetId: the New York day key it was chosen },
 // kept CHOSEN_DAYS (past the two weeks' rest and the roll's week) and at most

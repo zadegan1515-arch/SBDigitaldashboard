@@ -12161,22 +12161,28 @@ function sdAddExtraDay(date) {
   }).catch(function (e) { SCHED.extraBusy = false; renderSchedExtra(); toast(e.message); });
 }
 
-// The brands pinned to a day, by name, for the question before it goes.
-function sdPinnedNames(date) {
-  var day = SCHED.days[date];
-  if (day && day.pinned) return day.pinned.map(function (p) { return p.name || SCHED.names[p.id] || 'a brand'; });
-  return ((SCHED.plan[date] || {}).brandIds || []).map(function (id) { return SCHED.names[id] || 'a brand'; });
-}
-
+// Asks the server first (preview): a part-sent brand pinned on the day for
+// the rest of its first outreach moves to its new day — named before the
+// question, with the brands that go back to unscheduled.
 function sdRemoveExtraDay(date) {
-  var names = sdPinnedNames(date);
+  api('setExtraSendingDay', { date: date, on: false, preview: true }).then(function (pv) {
+    sdRemoveExtraDayAsk(date, pv || {});
+  }).catch(function (e) { toast(e.message); });
+}
+function sdRemoveExtraDayAsk(date, pv) {
+  var names = pv.removedBrands || [];
+  var rest = pv.restOn || [];
   var isToday = date === SCHED.today;
   var rotated = isToday ? ((SCHED.days[date] || {}).brands || []).filter(function (b) { return b.inQueue; }).length : 0;
   var list = names.slice(0, 12).join(', ') + (names.length > 12 ? ' and ' + (names.length - 12) + ' more' : '');
   if (!window.confirm('Remove ' + sdDayLabel(date) + ' as a sending day?' +
       (names.length
         ? '\n\n' + (names.length === 1 ? 'Its pinned brand goes' : 'Its ' + names.length + ' pinned brands go') + ' back to unscheduled: ' + list + '.' +
-          (isToday ? ' Their people not invited yet come back out of today’s queue; one that already sent some today goes first on the next sending day instead.' : '')
+          (isToday ? ' Their people not invited yet come back out of today’s queue.' : '')
+        : '') +
+      (rest.length
+        ? '\n\nThe rest of their first outreach goes first on another day: ' +
+          rest.map(function (x) { return x.name + ' → ' + x.label; }).join(', ') + '.'
         : '') +
       // The server only un-stamps the pinned brands' people. Whoever the
       // rotation already put in today's queue stays there, so say so
@@ -12922,7 +12928,10 @@ function sdDayMoveCard(key, m) {
     '<div class="sd-theme-f"><a href="#" class="sd-link" data-sdmdayx="' + esc(key) + '">Cancel</a></div></div>';
   var T = pv.to ? sdDayName(pv.to) : '';
   var rows = (pv.results || []).map(function (x) {
-    var what = !pv.to ? 'back to waiting'
+    // A part-sent brand here for the rest of its first outreach: that rest
+    // moves to its new second day (resitPinned), wherever else this goes.
+    var what = x.restOn ? 'the rest of its first outreach goes ' + sdDayName(x.restOn) + ', first'
+      : !pv.to ? 'back to waiting'
       : !x.added ? 'can’t go on ' + T + ' (' + (x.reasonText || SD_SHORT[x.reason] || 'refused') + ') · back to waiting'
       : x.state === 'going' && x.waits ? 'waits · past ' + T + '’s ' + (pv.cap || sdCap()) + (x.waits !== 'later' ? ', goes out ' + sdDayName(x.waits) : '')
       : x.state === 'going' ? sdPlural(x.going || 0, 'person', 'people') + ' on ' + T
@@ -12935,10 +12944,12 @@ function sdDayMoveCard(key, m) {
   if (pv.to && pv.whole && pv.category) notes.push(T + ' takes ' + W + '’s category too: ' + sdThemeWord(pv.category) + '.');
   if (pv.categoryLost) notes.push(W + '’s category (' + sdThemeWord(pv.categoryLost) + ') stays behind' + (pv.to ? ' — ' + T + ' keeps ' + sdThemeWord(pv.toCategory) : '') + '.');
   if ((pv.offTheme || []).length) notes.push('Not ' + sdThemeWord(pv.toCategory) + ', still going (planned by hand): ' + pv.offTheme.join(', ') + '.');
-  if ((pv.resat || []).length) notes.push(sdResatLine(pv.resat) + '.');
+  var elsewhere = (pv.resat || []).filter(function (x) { return x.from !== key; });
+  if (elsewhere.length) notes.push(sdResatLine(elsewhere) + '.');
+  var anyRest = (pv.results || []).some(function (x) { return x.restOn; });
   return '<div class="sd-theme">' +
     '<div><b>' + esc(W) + ' off' + (pv.to ? ' → ' + esc(T) : '') + '.</b> ' +
-      (rows.length ? (pv.to ? 'Its planned brands:' : 'Its planned brands go back to waiting:') : 'Nothing is planned on it.') + '</div>' +
+      (rows.length ? (pv.to || anyRest ? 'Its planned brands:' : 'Its planned brands go back to waiting:') : 'Nothing is planned on it.') + '</div>' +
     (rows.length ? '<ul>' + rows.join('') + '</ul>' : '') +
     notes.map(function (t) { return '<div class="sd-dim">' + esc(t) + '</div>'; }).join('') +
     '<div class="sd-dim">Nothing goes out on ' + esc(W) + '; its automatic picks go to other days by themselves. Undo brings it back.</div>' +

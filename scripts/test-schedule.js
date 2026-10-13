@@ -41,7 +41,9 @@
 //      previews, a stale answer shows again, Move the day sends the
 //      preview's expect; "No day — take it off" sends no target; the "Thu
 //      off" chip's Undo previews, then undoes; a day taken off reads "(send
-//      on it after all)" in the add-a-day menus.
+//      on it after all)" in the add-a-day menus. Third review: a part-sent
+//      brand on the day off says its rest moves on (once); Remove this
+//      sending day asks the server first and names it.
 //  13. Review fixes (Oct 13 2026): Fill to 30 on a Best fit day holding a
 //      big company adds no second one; a tick on a brand that left the list
 //      is dropped (never added unseen); a failed add reads "+ Add" again,
@@ -247,7 +249,9 @@ const H = {
     const pv = {
       preview: true, from, to: to || null, opening: false, whole: false, category: 'spirits', categoryLost: to ? 'spirits' : null, toCategory: to ? 'bestfit' : null, offTheme: [],
       results: to ? [{ brandId: 'x1', brandName: 'Moved Co', added: true, state: 'going', going: 3 }, { brandId: 'x2', brandName: 'Refused Co', added: false, state: 'refused', reasonText: 'Resting until Oct 20' }]
-        : [{ brandId: 'x1', brandName: 'Moved Co', added: false, state: 'back' }],
+        : [{ brandId: 'x1', brandName: 'Moved Co', added: false, state: 'back' },
+          { brandId: 'x3', brandName: 'Halfsent Co', added: false, state: 'back', restOn: '2026-10-13', restLabel: 'Tue Oct 13' }],
+      resat: to ? [] : [{ id: 'x3', name: 'Halfsent Co', from, to: '2026-10-13', label: 'Tue Oct 13' }],
       cap: 30, expect: 'mv1',
     };
     if (!confirm) return pv;
@@ -255,6 +259,11 @@ const H = {
     skipDays = [{ date: from, to: to || null }];
     return { ok: true, from, to: to || null, moved: 1, back: ['Refused Co'], message: 'Thu Oct 8 is off · its plan moved to Tue Oct 13' };
   },
+  setExtraSendingDay: ({ date, on, preview }) => (on
+    ? { ok: true, extraDays: [date], removedBrands: [], message: date + ' added as a sending day.' }
+    : preview
+      ? { preview: true, date, removedBrands: ['Plain Co'], restOn: [{ name: 'Halfsent Co', on: '2026-10-13', label: 'Tue Oct 13' }] }
+      : { ok: true, extraDays: [], removedBrands: ['Plain Co'], restOn: [{ name: 'Halfsent Co', on: '2026-10-13', label: 'Tue Oct 13' }], message: 'Fri Oct 9 is no longer a sending day.' }),
   undoMoveDay: ({ date, preview }) => {
     if (preview) return { ok: true, preview: true, date, to: '2026-10-13', back: ['Moved Co', 'Refused Co'], stay: [], categoryBack: false, closeTo: false,
       unqueue: undoToday ? [{ brand: 'Moved Co', people: 2 }] : [] };
@@ -630,11 +639,25 @@ async function main() {
   await waitFor(() => count('moveDay') === 4, 'the take-it-off preview');
   assert.deepEqual(last('moveDay').args, { from: '2026-10-08', to: null, addDay: false, preview: true });
   await page.waitForSelector('[data-sdmdaygo="2026-10-08"]');
-  assert.match(await page.textContent('[data-drop="2026-10-08"] .sd-theme'), /Its planned brands go back to waiting/);
+  // A part-sent brand there for its rest: that rest moves to its new day
+  // (third review), said on its row once — not "back to waiting".
+  const offCard = await page.textContent('[data-drop="2026-10-08"] .sd-theme');
+  assert.match(offCard, /Its planned brands: ?Moved Co back to waiting/, offCard);
+  assert.match(offCard, /Halfsent Co the rest of its first outreach goes Tue Oct 13, first/, offCard);
+  assert.doesNotMatch(offCard, /Moves to its new day/, 'not named twice: ' + offCard);
   assert.match(await page.textContent('[data-sdmdaygo="2026-10-08"]'), /Take the day off/);
   await page.click('[data-sdmdayx="2026-10-08"]');
   await page.waitForFunction(() => !document.querySelector('[data-sdmdaygo="2026-10-08"]'));
   assert.equal(count('moveDay'), 4, 'Cancel writes nothing');
+  // Remove this sending day (an extra day): asks the server first, and the
+  // question names a part-sent brand's rest moving on (third review).
+  dialogs.length = 0;
+  const xBefore = count('setExtraSendingDay');
+  await page.evaluate(() => sdRemoveExtraDay('2026-10-09'));
+  await waitFor(() => count('setExtraSendingDay') === xBefore + 2, 'preview then apply');
+  assert.deepEqual(calls.filter((c) => c.fn === 'setExtraSendingDay').slice(-2).map((c) => c.args),
+    [{ date: '2026-10-09', on: false, preview: true }, { date: '2026-10-09', on: false }]);
+  assert.match(dialogs[0], /Remove Fri Oct 9 as a sending day\?[\s\S]*back to unscheduled: Plain Co\.[\s\S]*goes first on another day: Halfsent Co → Tue Oct 13/, dialogs[0]);
   // A day taken off is offered back as "send on it after all".
   assert.equal(await page.evaluate(() => { SCHED.skipDays = [{ date: '2026-10-09' }]; return sdOffWord({ key: '2026-10-09' }); }), ' (send on it after all)');
   assert.equal(await page.evaluate(() => { SCHED.skipDays = []; return sdOffWord({ key: '2026-10-09' }); }), ' (adds it as a sending day)');

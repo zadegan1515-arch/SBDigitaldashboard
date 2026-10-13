@@ -223,8 +223,17 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   its rest made that day "rests two weeks" and the rest never went — `resitPinned(plan, before, after)` moves a brand
   pinned on its old second sitting day to the front of its new one, in setExtraSendingDay / planAddBrands /
   moveUnsent / moveCarried (adding a day) and moveDay / undoMoveDay; `resat` in the reply and in their previews
-  (`resitPreview`; the page's `sdResatText` / `sdResatLine`). Closing an extra day still sends its pins back to
-  unscheduled, named — except today's that already sent some: their rest goes first on the next sending day. Adding: **Find a brand** box above the days (`renderSchedFind`,
+  (`resitPreview`; the page's `sdResatText` / `sdResatLine`). **Taking a day off re-sits too** (third review, Oct 13
+  2026): Remove this sending day (`setExtraSendingDay` off — today or a later extra day) and Move this day to… with no
+  target (or a pin refused at the target) run resitPinned **before** the day's plan goes, so a brand pinned there for
+  its rest (carried in by the roll, or by Off queue / ×) moves first onto its new second day instead of "back to
+  unscheduled", where it then rested — `restOn` / `resat`, the moveDay card's row says "the rest of its first outreach
+  goes <day>", and Remove this sending day asks the server first (`setExtraSendingDay({ on: false, preview: true })`)
+  so its confirm names them. The rest of a closing extra day's pins still go back to unscheduled, named — and today's
+  that already sent some on their first day go first on the next sending day (pinRestOfSitting). **A preview for a move
+  that opens a day reads the calendar with it open** (planAddBrands and moveUnsent with addDay: `openedDays`, the
+  resat plan; `carryBrands(…, { q })`), as their applies do — it used to say "rests two weeks" for a half-sent brand
+  the apply then moved. Adding: **Find a brand** box above the days (`renderSchedFind`,
   `sf*`; never redrawn, so focus and text survive refreshes): day chips (last pick in localStorage
   `sb.schedFindDay`), rows from `searchPlanBrands` = the whole roster ranked in memory by
   `src/lib/brand-search.ts` (exact → starts with → word → contains → aka → spelling slip "did you mean";
@@ -347,7 +356,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   finishes its first sitting (its rest goes whole), and only an unflagged person who could still go counts as the
   reason (people already invited don't): the hold-back set aside the person Leo queued on Tuesday once Wednesday's
   roll had put them back in the pool, and a part-sent brand's flagged rest because of the two buyers already sent.
-  `readQueueCtx().chosen`; previewBrandPicks reads the same. Same order in queueBrandTargets, previewBrandPicks (so the Schedule's
+  `readQueueCtx().chosen`; previewBrandPicks reads the same. **Chosen people go first and all go** (third review, Oct
+  13 2026: `chosenFirst`): the brand's number holds only the system's own picks — it used to rank Leo's pick (a weaker
+  or flagged title) last and cut them for the buyers waiting beside them, or set aside a fourth he added past the number
+  once the roll carried them. Same order in queueBrandTargets, previewBrandPicks (so the Schedule's
   "3 going" is what goes), and the limit: `reconcileBrandTargets` (both copies) = `workCount` / `keepInPlay` in
   `src/lib/brand-work.ts` (`node scripts/test-brand-work.mjs`) — it used to keep at least 4, so a brand that works 3
   sent 4 and "work 1" kept 4; `updateBrand` re-runs it on a new number or tier. A brand already holding more is
@@ -400,7 +412,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   opened after a hand queue, machine emails, flags before executives, Undo onto today, Move this day's preview, a deal
   in the stamp, a held big brand, the week used up; the second review's: chosen people carried, × / Move off on a
   part-sent brand, own part-sent pins ahead of carried work, an opened brand left out, a finishing brand fits the day,
-  Plan my week's Undo onto today, the day for a brand's rest, Category priority fresh): `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-queue-e2e.js`.
+  Plan my week's Undo onto today, the day for a brand's rest, Category priority fresh; the third review's: chosen
+  people past the number and beside pooled buyers, a half-sent brand planned later, a day taken off or an extra day
+  removed with a brand's rest on it, previews onto a day they open): `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-queue-e2e.js`.
   **Faster page** (Leo, Oct 12 2026: "make the schedule as efficient as possible" — the same answers, fewer and
   lighter reads; at 1,500 brands getOutreachPlan ~1.1 s → ~0.33 s, its reply ~200 → ~50 KB; a refresh with an open
   Fill box ~1.6 s in two requests → ~0.37 s in one; Plan my week ~1.55 s → ~0.4 s; the LinkedIn tab's first open
@@ -1060,7 +1074,9 @@ cloud environment's settings).
   `outreachDayRows`, written by `getOutreachPlan`) that sent nobody — is pinned to the next sending
   day and its stamped people go back to the pool so that day's queue stamps them again. Stays put,
   with why: archived / do-not-email / in talks, passed that day or inside a Pass's two weeks, planned for
-  another day, nobody left, resting (a part-sent brand whose next sending day has gone by — queue rules).
+  another day (not a half-sent brand: its rest goes on the next sending day and it leaves the later day — third
+  review, Oct 13 2026; there it would only rest), nobody left, resting (a part-sent brand whose next sending day has
+  gone by — queue rules).
   **Onto a Best fit day** (Oct 7 2026) only real commitments carry: brands planned by hand, people queued
   by hand, a brand that sent anyone that day (half-sent: its rest goes out on that next sending day, the same
   sitting — Leo, Oct 12 2026), and the automatic fill's picks Best fit
