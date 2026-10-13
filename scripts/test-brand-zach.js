@@ -144,6 +144,8 @@ async function main() {
       let body;
       try { body = { ok: true, data: H[fn] ? H[fn](args || {}) : {} }; }
       catch (e) { body = { ok: false, error: e.message }; }
+      // A slow Home read: answered as the server had it when asked.
+      if (fn === 'zachTodo' && !(args || {}).brandId && S.slowHome) await new Promise((r) => setTimeout(r, 1500));
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
     }
     if (!url.startsWith(base)) return route.abort();
@@ -185,13 +187,16 @@ async function main() {
   await page.click('#brand-body [data-bzt="t1"] [data-ztact="step"][data-step="replied"]');
   await page.waitForFunction((s) => /^replied/.test(document.querySelector(s).previousElementSibling.querySelector('[data-cstate]').textContent), pill);
   assert.match(await page.textContent('#brand-body [data-bzt="t1"] .zt-row'), /Replied: email or LinkedIn\?/);
-  await page.waitForFunction(() => /Replied ✓/.test(document.querySelector('#brand-body').textContent));
-  assert.ok(all('getBrand').length > reads, 'a card step reads the page again, so the Outreach row follows');
-  assert.ok(await page.$('#brand-body [data-bzt="t1"] .zt-item.open'), 'the card stays open through the refresh');
+  await page.waitForFunction(() => /Replied ✓/.test(document.querySelector('#brand-body [data-ostep="t1"]').textContent));
+  assert.match(await page.textContent('#brand-body [data-opill="t1"]'), /^replied/, 'the Outreach row’s pill follows');
+  assert.equal(all('getBrand').length, reads, 'in place: the page isn’t read again (nobody typing gets cut off)');
+  assert.ok(await page.$('#brand-body [data-bzt="t1"] .zt-item.open'), 'the card stays open');
   // Email path: the To box; the address reaches ✎ Edit.
   await page.click('#brand-body [data-bzt="t1"] [data-ztnode="wantEmail"]');
   await page.waitForSelector('#brand-body [data-bzt="t1"] [data-ztto]');
-  await page.fill('#brand-body [data-bzt="t1"] [data-ztto]', 'alex@alphawater.com');
+  await page.focus('#brand-body [data-bzt="t1"] [data-ztto]');
+  await page.keyboard.type('alex@alphawater.com', { delay: 40 });
+  assert.equal(await page.evaluate(() => document.activeElement.hasAttribute('data-ztto')), true, 'typing in To is never cut off');
   await page.press('#brand-body [data-bzt="t1"] [data-ztto]', 'Tab');
   await page.waitForFunction(() => CURRENT_BRAND.brand.contacts[0].email === 'alex@alphawater.com');
   assert.deepEqual(all('setHandTo').slice(-1)[0].args, { targetId: 't1', email: 'alex@alphawater.com' });
@@ -202,13 +207,13 @@ async function main() {
   // Back twice: the email pick, then the reply.
   for (let i = 0; i < 2; i++) {
     const before = all('handStep').length;
-    const gets = all('getBrand').length;
     await page.click('#brand-body [data-bzt="t1"] [data-ztact="back"]');
-    await until(() => all('handStep').length > before && all('getBrand').length > gets && all('zachTodo').slice(-1)[0], 'Back a step and the refresh');
+    await until(() => all('handStep').length > before, 'Back a step');
     await page.waitForTimeout(200);
   }
   await page.waitForFunction((s) => document.querySelector(s).previousElementSibling.querySelector('[data-cstate]').textContent === 'LinkedIn · accepted', pill);
   assert.deepEqual(all('handStep').slice(-2).map((c) => [c.args.step, c.args.on]), [['wantsEmail', false], ['replied', false]]);
+  await page.waitForFunction(() => /Accepted ✓/.test(document.querySelector('#brand-body [data-ostep="t1"]').textContent));
   console.log('✓ 3. They replied turns the pill and the Outreach row; the To address reaches ✎ Edit; ← Back a step takes them back');
 
   // 4 ---------------------------------------------------------------
@@ -223,6 +228,22 @@ async function main() {
   assert.deepEqual(all('handStep').slice(-1)[0].args, { targetId: 't2', step: 'skip', on: false });
   assert.ok(all('zachTodo').slice(n).some((c) => c.args.brandId === 'b1'), 'Undo reads the brand’s cards again');
   console.log('✓ 4. Not needed folds the card to one line; Undo brings it back');
+
+  // 4b: Home's list read going out before a tick here, landing after it,
+  // doesn't undo the tick.
+  S.slowHome = true;
+  await page.evaluate(() => { renderZachTodo(); });
+  await page.click('#brand-body [data-bzt="t2"] [data-ztact="step"][data-step="dm"]').catch(async () => {
+    await page.click('#brand-body [data-bzt="t2"] .zt-row');
+    await page.click('#brand-body [data-bzt="t2"] [data-ztact="step"][data-step="dm"]');
+  });
+  await until(() => all('handStep').slice(-1)[0].args.targetId === 't2' && all('handStep').slice(-1)[0].args.step === 'dm', 'the tick');
+  await page.waitForTimeout(1800);   // the slow Home read lands
+  S.slowHome = false;
+  assert.ok(await page.evaluate(() => !!ZT_BY_ID.t2.dmSentAt), 'the tick stands after an older read lands');
+  assert.match(await page.textContent('#brand-body [data-bzt="t2"] .zt-row'), /Waiting on reply/);
+  S.dm.t2 = null;   // as it was, for Home below
+  console.log('✓ 4b. an older read landing after a tick doesn’t undo it');
 
   // 5 ---------------------------------------------------------------
   await page.evaluate(() => loadDashboard());

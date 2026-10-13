@@ -1410,6 +1410,7 @@
   .b-zt .zt-who b{font-size:13.5px;color:var(--ink-2)}
   .b-zt .zt-comp{padding:2px 16px 16px}
   .b-zt-done{margin:-4px 0 12px 22px;font-size:13px;color:var(--ink-3)}
+  .b-ostep{display:contents}
   @media (max-width:600px){
     /* a person's buttons go under their name instead of off the screen */
     #brand-body .target{flex-wrap:wrap}
@@ -4925,17 +4926,30 @@ function ztRefreshHead() {
   zsRefresh();
 }
 
+// A read that went out before someone ticked a person (on Home or a
+// brand page) keeps that person as ticked here, not as the read had them
+// (`_at`, set by every change); a tick that took them off the list
+// (call booked, not needed) keeps them off.
+function ztFresher(p, sent) {
+  var ex = ZT_BY_ID[p.targetId];
+  return ex && ex._at && ex._at >= sent ? ex : p;
+}
+
 function renderZachTodo() {
   var box = document.getElementById('zach-todo');
   if (!box) return;
+  var sent = Date.now();
   return api('zachTodo').then(function (r) {
     ZT = r;
     ztTakeDays(r);
     HAND_TPL = r.template;
+    var keep = r.brands.map(function (g) { return g.people.map(function (p) { return ztFresher(p, sent); }); });
     ZT_BY_ID = {};
-    r.brands.forEach(function (g) {
+    r.brands.forEach(function (g, i) {
+      g.people = keep[i].filter(function (p) { return !p.callAt && !p.skippedAt; });
       g.people.forEach(function (p) { p.brandId = g.id; p.brandName = g.name; p.brand = g; ZT_BY_ID[p.targetId] = p; });
     });
+    r.brands = r.brands.filter(function (g) { return g.people.length; });
     ztRender();
     if (ZT_SCROLL) { ZT_SCROLL = false; box.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   }).catch(function (e) {
@@ -4967,7 +4981,7 @@ function ztInBrand(id) {
 function ztAfter(id) {
   var p = ZT_BY_ID[id];
   if (!p) return;
-  if (ztInBrand(id)) { ztRedrawOpen(id); bztSyncRow(id); bztRefresh(); return; }
+  if (ztInBrand(id)) { ztRedrawOpen(id); bztSyncRow(id); bztSyncOutreach(id); return; }
   if (ztMatch(p, ZT_FILTER)) { ztRedrawOpen(id); ztRefreshHead(); }
   else { ZT_FILTER = ztFilterOf(p); ztRender(); }
 }
@@ -5048,6 +5062,7 @@ function ztGmail(id) {
 
 // The person's own fields, as the server will have them after `step`.
 function ztApply(p, step, on, date) {
+  p._at = Date.now();   // changed here: a read sent before this doesn't undo it
   var now = on ? new Date().toISOString() : null;
   if (step === 'dm') p.dmSentAt = now;
   else if (step === 'nudge') p.nudgedAt = now;
@@ -5075,7 +5090,7 @@ function ztDo(id, step, btn, off) {
     args.on = false;
     api('handStep', args).then(function () {
       ztApply(p, step, false); delete ZT_PANEL[id]; ztRedrawOpen(id);
-      if (inBrand) { bztSyncRow(id); bztRefresh(); } else ztRefreshHead();
+      if (inBrand) { bztSyncRow(id); bztSyncOutreach(id); } else ztRefreshHead();
     }).catch(function (err) { toast(err.message); });
     return;
   }
@@ -5114,7 +5129,7 @@ function ztDo(id, step, btn, off) {
       if (btn && btn.isConnected) btn.disabled = false;
       if (gone) { if (ZT_CUR === id) ZT_CUR = null; bztFill(); } else ztRedrawOpen(id);
       bztSyncRow(id);
-      bztRefresh();
+      bztSyncOutreach(id);
       return;
     }
     if (!gone && ztMatch(p, ZT_FILTER)) {
@@ -5155,7 +5170,7 @@ function ztUndo(id, kind) {
     .then(function () {
       ZT_FILTER = 'todo';
       ZT_CUR = id;
-      return inBrand ? loadBrand(BZT.brandId) : renderZachTodo();
+      return inBrand ? bztLoad(BZT.brandId).then(function () { bztSyncRow(id); bztSyncOutreach(id); }) : renderZachTodo();
     })
     .then(function () {
       if (!inBrand && ZT_BY_ID[id] && !ztMatch(ZT_BY_ID[id], ZT_FILTER)) { ZT_FILTER = ztFilterOf(ZT_BY_ID[id]); ztRender(); }
@@ -5336,6 +5351,7 @@ function ztOnChange(e) {
   var el = e.target, item = el.closest('[data-zt]');
   var id = item && item.getAttribute('data-zt'), p = id && ZT_BY_ID[id];
   if (!p) return;
+  p._at = Date.now();
 
   if (el.hasAttribute('data-ztlidm')) {
     var tplDm = handFill(((ZT && ZT.dmTemplate) || { body: '' }).body, p);
@@ -5515,7 +5531,7 @@ function bztAdopt(p) {
 }
 
 function bztLoad(brandId) {
-  var mine = ++BZT.seq;
+  var mine = ++BZT.seq, sent = Date.now();
   return api('zachTodo', { brandId: brandId }).then(function (r) {
     if (mine !== BZT.seq) return;
     ztTakeDays(r);
@@ -5524,7 +5540,10 @@ function bztLoad(brandId) {
     HAND_TPL = r.template;
     var ids = [];
     r.brands.forEach(function (g) {
-      g.people.forEach(function (p) { p.brandId = g.id; p.brandName = g.name; p.brand = g; bztAdopt(p); ids.push(p.targetId); });
+      g.people.forEach(function (p) {
+        p = ztFresher(p, sent);
+        p.brandId = g.id; p.brandName = g.name; p.brand = g; bztAdopt(p); ids.push(p.targetId);
+      });
     });
     BZT.brandId = brandId;
     BZT.ids = ids;
@@ -5553,6 +5572,10 @@ function bztFill() {
   document.querySelectorAll('#brand-body [data-bzt]').forEach(function (slot) {
     var id = slot.getAttribute('data-bzt'), p = ZT_BY_ID[id];
     var listed = BZT.ids.indexOf(id) !== -1 && p && !p.callAt && !p.skippedAt;
+    // A card someone is typing in stays as it is (it saves on change).
+    var typing = document.activeElement;
+    if (listed && typing && slot.contains(typing) && /^(INPUT|TEXTAREA|SELECT)$/.test(typing.tagName) &&
+        slot.querySelector('.zt-item[data-zt="' + id + '"]')) return;
     if (listed) {
       slot.innerHTML = '<div class="zt-list">' + ztItemHtml(p, true) + '</div>';
       slot.querySelectorAll('.zt-item.open .zt-body').forEach(ztFit);
@@ -5565,12 +5588,25 @@ function bztFill() {
   });
 }
 
-// The rest of the brand page after a step on a card: the Outreach row
-// and counts read the same fields (texted back, replied), so the page
-// reads them again. The card itself redraws from what's known (open
-// stays open), then from the fresh read.
-function bztRefresh() {
-  if (bztActive()) loadBrand(BZT.brandId);
+// The brand page's Outreach row for the person after a step on the card:
+// its pill and its Accepted ✓ / Replied ✓ part follow (DM sent, replied).
+// Only those boxes redraw, never the page: someone may be typing in a
+// card (a reload would cut them off mid-word).
+function bztSyncOutreach(id) {
+  var p = ZT_BY_ID[id];
+  var t = p && CURRENT_BRAND && CURRENT_BRAND.brand && (CURRENT_BRAND.brand.targets || []).filter(function (x) { return x.id === id; })[0];
+  if (!t) return;
+  t.status = p.status;
+  t.dmSentAt = p.dmSentAt || null;
+  t.repliedAt = p.repliedAt || null;
+  var pill = document.querySelector('#brand-body [data-opill="' + id + '"]');
+  if (pill) { pill.className = 'status ' + t.status; pill.textContent = liWords(t); }
+  var box = document.querySelector('#brand-body [data-ostep="' + id + '"]');
+  if (box) {
+    var tmp = document.createElement('div');
+    tmp.innerHTML = bOutreachStep(t, (t.drafts || [])[0]);
+    box.replaceWith(tmp.firstElementChild);
+  }
 }
 
 // An address saved in the card's To box: the brand page's copy of the
@@ -7563,6 +7599,26 @@ function emailWords(t) {
   return w;
 }
 
+// The brand page's Outreach row, the part that follows the invite:
+// Accepted? / Replied? while it's out, then Accepted ✓ (Copy DM, DM sent,
+// Replied?) and Replied ✓. Its own box so a step ticked on Zach's list
+// card above can redraw just this (bztSyncOutreach).
+function bOutreachStep(t, dr) {
+  return '<span class="b-ostep" data-ostep="' + esc(t.id) + '">' +
+    (t.status === 'sent'
+      ? '<button class="btn-draft" data-bract="accepted" data-brt="' + esc(t.id) + '" title="Did they accept the invite?">Accepted?</button>' +
+        '<button class="btn-ghost" data-bract="replied" data-brt="' + esc(t.id) + '" title="Did they write back?">Replied?</button>' +
+        '<button class="btn-ghost mini" data-bract="unsend" data-brt="' + esc(t.id) + '" title="No invite actually went out? Puts them back as not sent and uncounts it">↩ Undo</button>' : '') +
+    (t.status === 'accepted'
+      ? '<span class="status accepted" style="font-size:13px;padding:5px 12px">Accepted ✓</span>' +
+        (dr ? '<button class="btn-draft" data-bcopy="' + esc(t.id) + '" data-variant="dm" title="Copy the first DM">Copy DM</button>' : '') +
+        (t.dmSentAt ? '' : '<button class="btn-ghost" data-bract="dmsent" data-brt="' + esc(t.id) + '" title="Logged: the DM went out">DM sent ✓</button>') +
+        '<button class="btn-ghost" data-bract="replied" data-brt="' + esc(t.id) + '" title="Did they write back?">Replied?</button>' : '') +
+    (t.status === 'replied' || t.status === 'converted'
+      ? '<span class="status replied" style="font-size:13px;padding:5px 12px">Replied ✓</span>' : '') +
+  '</span>';
+}
+
 // --- brand page: Put on a day -----------------------------------
 // Where this brand stands on the Schedule, and one menu to put it on a
 // day or move it (Leo: "make sure adding brands to days is easy"). The
@@ -8198,7 +8254,7 @@ function loadBrand(brandId) {
               ? '<span class="status declined" title="Set aside on purpose — not in the queue, and it never comes back by itself. Promote to put them back.">shelved</span>' +
                 (t.sentAt || !canSend ? '<span class="t-sep">·</span><span class="status ' + esc(t.status) + '">' + esc(liWords(t)) + '</span>'
                           : '<span>· never contacted</span>')
-              : '<span class="status ' + (canSend ? 'queued' : esc(t.status)) + '">' + esc(liWords(t)) + '</span>') +
+              : '<span class="status ' + (canSend ? 'queued' : esc(t.status)) + '" data-opill="' + esc(t.id) + '">' + esc(liWords(t)) + '</span>') +
             (t.sentAt && t.status !== 'sent' ? '<span>· invited ' + shortDate(t.sentAt) + '</span>' : '') +
             // Logged straight to accepted (li-log.ts): the invite went
             // out from LinkedIn on a day nobody logged.
@@ -8238,17 +8294,7 @@ function loadBrand(brandId) {
               : '') +
             (canSend && !t.shelved
               ? '<button class="btn-ghost" data-bract="sent" data-brt="' + esc(t.id) + '" title="Click only after you have sent the connection request on LinkedIn — this logs it; nothing is sent from here">Invite sent on LinkedIn ✓</button>' : '') +
-            (t.status === 'sent'
-              ? '<button class="btn-draft" data-bract="accepted" data-brt="' + esc(t.id) + '" title="Did they accept the invite?">Accepted?</button>' +
-                '<button class="btn-ghost" data-bract="replied" data-brt="' + esc(t.id) + '" title="Did they write back?">Replied?</button>' +
-                '<button class="btn-ghost mini" data-bract="unsend" data-brt="' + esc(t.id) + '" title="No invite actually went out? Puts them back as not sent and uncounts it">↩ Undo</button>' : '') +
-            (t.status === 'accepted'
-              ? '<span class="status accepted" style="font-size:13px;padding:5px 12px">Accepted ✓</span>' +
-                (dr ? '<button class="btn-draft" data-bcopy="' + esc(t.id) + '" data-variant="dm" title="Copy the first DM">Copy DM</button>' : '') +
-                (t.dmSentAt ? '' : '<button class="btn-ghost" data-bract="dmsent" data-brt="' + esc(t.id) + '" title="Logged: the DM went out">DM sent ✓</button>') +
-                '<button class="btn-ghost" data-bract="replied" data-brt="' + esc(t.id) + '" title="Did they write back?">Replied?</button>' : '') +
-            (t.status === 'replied' || t.status === 'converted'
-              ? '<span class="status replied" style="font-size:13px;padding:5px 12px">Replied ✓</span>' : '') +
+            bOutreachStep(t, dr) +
             (canSend ? '<button class="btn-ghost mini" data-shelf="' + esc(t.id) + '" data-to="' +
               (t.shelved ? '0' : '1') + '">' + (t.shelved ? (t.shelvedHow === 'cap' ? 'Queue now' : 'Promote') : 'Shelve') + '</button>' : '') +
             (t.contact.linkedinUrl ? '<a class="btn-ghost" href="' + esc(t.contact.linkedinUrl) +
@@ -20379,10 +20425,15 @@ document.getElementById('brand-body').addEventListener('click', function (e) {
     pill.after(rbtn);
   }
   toast(actn === 'replied' ? 'Reply logged' : 'Accepted logged');
-  // Then the page again: Zach's list card under the person follows (an
-  // accept brings it up, a reply moves it on).
+  // Zach's list card under the person follows: a reply moves the card on
+  // in place; someone new on the list (an accept, or a reply straight
+  // from sent) needs the page again for their card.
+  var zp = actn === 'replied' && ZT_BY_ID[tid] && document.querySelector('#brand-body [data-bzt="' + tid + '"] .zt-item') ? ZT_BY_ID[tid] : null;
   api('setTargetStatus', { targetId: tid, status: actn, actor: ME.owner || null })
-    .then(function () { if (CURRENT_BRAND) loadBrand(CURRENT_BRAND.brand.id); })
+    .then(function () {
+      if (zp) { ztApply(zp, 'replied', true); ztRefreshRow(tid); ztRedrawOpen(tid); bztSyncRow(tid); bztSyncOutreach(tid); }
+      else if (CURRENT_BRAND) loadBrand(CURRENT_BRAND.brand.id);
+    })
     .catch(function (err) { toast(err.message); if (CURRENT_BRAND) loadBrand(CURRENT_BRAND.brand.id); });
 });
 

@@ -133,8 +133,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   company's card"): under each person whose outreach is accepted / replied, the same card (`.b-zt` slot, `bzt*` in
   app.html; `zachTodo({ brandId })` = one brand's people, booked calls and done steps), one person object shared with
   Home's list (`bztAdopt`, `ZT_BY_ID`), the same handlers (`ztOnClick`… bound on `#brand-body` inside `.b-zt`;
-  `ztItemEl` takes the copy on screen, `ztInBrand`/`ztAfter` redraw the card and the row's pill, `bztSyncRow`); a
-  finished person (call booked / Not needed) is one line with Undo. `NODE_PATH=$(npm root -g) node scripts/test-brand-zach.js`.
+  `ztItemEl` takes the copy on screen, `ztInBrand`/`ztAfter` redraw the card); a finished person (call booked / Not
+  needed) is one line with Undo. A step redraws **in place only** — the card, the People pill (`bztSyncRow`) and the
+  Outreach row's pill + Accepted/Replied part (`bOutreachStep`, `bztSyncOutreach`) — never the whole page (a reload cut
+  off typing in the card); `bztFill` never redraws a card with a focused box. The Outreach row's Replied? moves the card
+  on; its Accepted? reloads (the person needs a card). Copy DM copies the card's message. A read sent before a tick never
+  undoes it (`ztFresher`, `p._at`). `NODE_PATH=$(npm root -g) node scripts/test-brand-zach.js`.
   "← Back a step" on an open card undoes the latest tick (`ztLastStep`). The stage is computed on
   the page (`ztStage`); every tick/undo is `handStep` (dm, nudge, replied,
   wantsEmail, liPath, liSent, emailed, call, skip). Fields: `dmSentAt`, `nudgedAt`,
