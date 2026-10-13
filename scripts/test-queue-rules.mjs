@@ -27,7 +27,7 @@ for (const f of readdirSync(out).filter(f => f.endsWith('.js'))) {
   const p = join(out, f)
   writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, "from '$1.js'"))
 }
-const { REST_DAYS, rowReached, firstOutreachAt, restUntilDay, queueGate, giantOf, nyDayKey, sittingOf, secondTryOf, STALE_INVITE_DAYS } = await import(pathToFileURL(join(out, 'queue-rules.js')).href)
+const { REST_DAYS, rowReached, firstOutreachAt, restUntilDay, queueGate, giantOf, nyDayKey, sittingOf, secondTryOf, STALE_INVITE_DAYS, isConglomerate, veryBigWhy, VERY_BIG_LI } = await import(pathToFileURL(join(out, 'queue-rules.js')).href)
 
 let pass = 0, fail = 0
 const is = (label, got, want) => {
@@ -158,13 +158,33 @@ is('a giant part-sent: still the giant question on its second day', queueGate({ 
 }
 
 // ---- giants -------------------------------------------------------------------
-is('household name, any spelling', giantOf({ name: 'Monster Energy Co.' }), 'a household name')
+is('household name, any spelling', giantOf({ name: 'Celsius Holdings, Inc.' }), 'a household name')
+is('Monster Energy is Monster Beverage\'s own page: a conglomerate', giantOf({ name: 'Monster Energy Co.' }), null)
+is('a conglomerate\'s brand by another name is still a giant', giantOf({ name: 'Bang Energy' }), 'owned by Monster Beverage')
 is('by another name (aka)', giantOf({ name: 'Liquid Hydration Co', aka: 'Liquid IV' }), 'a household name')
-is('a parent company', giantOf({ name: 'Diageo' }), 'a parent company')
+// Conglomerates (Leo, Oct 12 2026: "yes except for congomerates"): the parent
+// companies themselves are never held back — not as giants, not for 1,500+.
+is('a conglomerate is not held back', giantOf({ name: 'Diageo' }), null)
+is('a conglomerate on the household list, 12,000 on LinkedIn: not held', giantOf({ name: 'Molson Coors', liMembers: 12338 }), null)
+is('a conglomerate by an aka', isConglomerate({ name: 'Diageo North America', aka: 'Diageo' }), true)
+is('a conglomerate\'s brand is not a conglomerate', isConglomerate({ name: 'Crown Royal' }), false)
+is('a conglomerate goes by itself', gate({ ...fresh, name: 'Diageo' }, { auto: true }), null)
 is('owned by a parent', !!giantOf({ name: 'Smirnoff' }), true)
 is('$1B+ in sales (cents)', giantOf({ name: 'Unknown Big', salesCents: 150_000_000_000n }), '$1B+ in sales')
 is('under $1B is not', giantOf({ name: 'Unknown Mid', salesCents: 5_000_000_000n }), null)
 is('a small brand is not', giantOf({ name: 'Olipop' }), null)
+
+// ---- 1,500+ people on LinkedIn (Leo, Oct 12 2026) ------------------------------
+is('the line is 1,500', VERY_BIG_LI, 1500)
+is('1,500 on LinkedIn: held back', giantOf({ name: 'Vans', liMembers: 1500 }), '1,500+ people on LinkedIn')
+is('1,499: not', giantOf({ name: 'Vans', liMembers: 1499 }), null)
+is('size unknown: not', giantOf({ name: 'Vans', liMembers: null }), null)
+is('a giant by name keeps its own reason', giantOf({ name: 'Bud Light', liMembers: 5000 }), 'a household name')
+is('a conglomerate\'s brand is still a giant', !!giantOf({ name: 'Smirnoff', liMembers: 20 }), true)
+is('veryBigWhy skips a conglomerate', veryBigWhy({ name: 'PepsiCo', liMembers: 300000 }), null)
+is('1,500+ is held from the picks', gate({ ...fresh, name: 'Hugeco', liMembers: 4000 }, { auto: true }), { reason: 'giant', why: '1,500+ people on LinkedIn' })
+is('1,500+ by hand: asks (Add anyway)', gate({ ...fresh, name: 'Hugeco', liMembers: 4000 }, { auto: false })?.reason, 'giant')
+is('1,500+ OK\'d (or giants on): it goes', gate({ ...fresh, name: 'Hugeco', liMembers: 4000 }, { auto: true, giantsOn: true }), null)
 
 console.log(fail ? `queue-rules: ${pass} passed, ${fail} FAILED` : `queue-rules: all ${pass} passed`)
 process.exit(fail ? 1 : 0)

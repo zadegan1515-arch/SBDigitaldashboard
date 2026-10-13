@@ -115,6 +115,20 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(m.kind, null); assert.ok(m.passedAt, 'back to a brand stays archived');
     ok('This is a person… previews, then takes the brand off outreach; back to a brand only drops the mark');
 
+    // Show Board → Access codes: the lookup searches the whole roster (it used
+    // to filter listBrands' first 500 rows, in no order), people and aka too.
+    await prisma.brand.createMany({ data: Array.from({ length: 600 }, (_, i) => ({ id: 'bulk' + i, name: 'Bulk Brand ' + String(i).padStart(3, '0'), category: 'energy' })) });
+    await prisma.brand.create({ data: { id: 'ultra', name: 'Zzz Ultra Pouches', aka: 'UP Nicotine', category: 'nicotine', boardCode: 'ULTRA1' } });
+    let lk = await data('boardCodeLookup', { q: 'ultra po' });
+    assert.ok(lk.brands.some(b => b.id === 'ultra' && b.boardCode === 'ULTRA1'), JSON.stringify(lk));
+    lk = await data('boardCodeLookup', { q: 'up nico' });
+    assert.ok(lk.brands.some(b => b.id === 'ultra' && b.aka), 'found by aka');
+    lk = await data('boardCodeLookup', { q: p.name.slice(0, 5) });
+    assert.ok(lk.brands.some(b => b.id === p.id && b.person), 'a person is found, marked person');
+    lk = await data('boardCodeLookup', { q: 'bulk brand 59' });
+    assert.equal(lk.brands.length, 10); assert.equal(lk.brands[0].name, 'Bulk Brand 590', 'in name order');
+    ok('Show Board code lookup finds any brand past the first 500, by aka, and people');
+
     console.log('person e2e: all ' + n + ' passed');
   } catch (e) {
     console.error(e);

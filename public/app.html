@@ -1142,6 +1142,7 @@
      #brands-bulk, whose parent (the Brands section) also holds the list.
      Without this the bar sits under the last of ~500 rows, off screen. */
   #brands-bulk{position:sticky;bottom:12px;z-index:5}
+  #brands-selbar:empty{display:none}
   #brands-bulk .sd-bulk{position:relative}
   /* "Put on a day" (Brands bar, Stock take lanes, brand page): a day
      menu, then who would go out before anything is added. */
@@ -1287,7 +1288,8 @@
   .br-tick{width:30px}
   .br-tick label{display:flex;align-items:center;padding:4px;cursor:pointer}
   .br-name{min-width:170px}
-  .br-caret{color:var(--ink-3);font-size:11.5px;margin-right:6px}
+  .br-caret{background:none;border:0;color:var(--ink-3);font-size:11.5px;margin-right:4px;padding:2px 4px;cursor:pointer}
+  .br-caret:hover{color:var(--ink-1)}
   .br-link{cursor:pointer}
   .br-link:hover{color:var(--accent-hi);text-decoration:underline}
   .br-sub{font-size:13px;color:var(--ink-3);margin-top:2px}
@@ -1334,6 +1336,14 @@
   .cv-acts .btn-ghost,.cv-acts .btn-solid{padding:5px 12px;font-size:13px;text-decoration:none}
   .cv-run{font-size:13px;color:var(--ink-3);margin-top:10px;padding-top:9px;border-top:1px solid var(--border-soft)}
   .cv-run.warn{color:var(--warn)}
+  /* Folded to one line (Leo, Oct 12 2026: "clean up the brands tab"): bar + the
+     actions that need someone; the reasons open under Details. */
+  .cv-card{padding:12px 16px}
+  .cv-head{margin-bottom:0}
+  .cv-head .btn-ghost,.cv-head .btn-solid{padding:5px 12px;font-size:13px;text-decoration:none}
+  .cv-tog{background:none;border:0;color:var(--ink-3);font:inherit;font-size:13px;cursor:pointer;padding:4px 2px}
+  .cv-tog:hover{color:var(--ink-2)}
+  .cv-card .cv-run{margin-top:8px;padding-top:7px}
   .fp-fold{margin-top:8px}
   .fp-fold>summary{cursor:pointer;font-size:13px;color:var(--ink-3);padding:4px 2px}
   .fp-fold>summary:hover{color:var(--ink-2)}
@@ -1341,7 +1351,7 @@
   #brands-list,#li-review{scroll-margin-top:180px}
   .br-why{margin-top:-4px}
   .br-why .chip{font-size:13px;padding:4px 11px}
-  .br-cvl{color:var(--warn);max-width:440px}
+  .br-cvl{color:var(--ink-3);max-width:440px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .br-cvl a{color:inherit;text-decoration:underline}
   @media (max-width:640px){
     .cv-row{grid-template-columns:40px minmax(0,1fr)}
@@ -1367,6 +1377,14 @@
   .dc-meta{margin-right:4px}
   .dc-name b{font-size:14px;font-weight:600}
   .dc-meta{font-size:13px;color:var(--ink-3)}
+  .dc-grade{flex:none;align-self:center;display:inline-grid;place-items:center;width:24px;height:24px;border-radius:6px;font-size:13px;font-weight:800;border:1px solid}
+  .dc-grade.g-A{color:var(--good);border-color:var(--good);background:rgba(62,207,142,.12)}
+  .dc-grade.g-B{color:var(--blue);border-color:var(--blue);background:rgba(67,198,232,.1)}
+  .dc-grade.g-C{color:var(--warn);border-color:var(--warn);background:rgba(232,182,76,.1)}
+  .dc-grade.g-D{color:var(--ink-3);border-color:var(--border);background:transparent}
+  .dc-reasons{margin:4px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px}
+  .dc-reasons .pt{display:inline-block;min-width:34px;font-weight:700;color:var(--ink-3)}
+  .dc-reasons .ok .pt{color:var(--good)}
   .dc-sign{font-size:12.5px;color:#55d9a2;background:rgba(62,207,142,.1);border-radius:999px;padding:1px 8px}
   .dc-why{font-size:13.5px;color:var(--ink-2);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .dc-row.open .dc-why{white-space:normal}
@@ -2005,6 +2023,7 @@
       <div id="li-review" style="margin-top:14px;display:none"></div>
       <div id="li-zach" style="margin-top:14px;display:none"></div>
       <div id="li-runs" style="margin-top:14px;display:none"></div>
+      <div id="li-sched" style="margin-top:14px;display:none"></div>
       <div id="li-list" style="margin-top:14px"></div>
     </section>
 
@@ -2182,6 +2201,7 @@
       <h1>New brands to review</h1>
       <div class="sub" id="dc-sub">Claude finds up to 50 a day. Add the ones worth pitching, dismiss the rest.</div>
       <div id="dc-bar" class="dc-bar"></div>
+      <div id="dc-bulk"></div>
       <div id="disc-body"></div>
     </section>
 
@@ -6007,6 +6027,7 @@ function loadBrands(category) {
 // "Show them" opens are the same list; buyerCoverage adds this week's
 // numbers and the fill's last run.
 var CV_INFO = null;
+var CV_OPEN = false; // the coverage card's Details (reasons + People on file) is folded until opened
 var CV_ORDER = ['next', 'page', 'zach', 'resting', 'noPage', 'full'];
 var CV_WHY = {
   next: 'Next in the LinkedIn fill',
@@ -6052,48 +6073,64 @@ function cvRunLine(info) {
 
 function renderCoverage() {
   var box = document.getElementById('cover-card');
+  var fp = document.getElementById('fill-progress');
   if (!box) return;
-  if (lastCategory !== 'all' || BRANDS_SHOWN !== 'all') { box.innerHTML = ''; return; }
+  if (lastCategory !== 'all' || BRANDS_SHOWN !== 'all') { box.innerHTML = ''; if (fp) fp.hidden = true; return; }
+  if (fp) fp.hidden = !CV_OPEN;
   var c = cvCounts(BR_LIST), info = CV_INFO;
   var pct = c.inPlay ? Math.round(c.covered / c.inPlay * 100) : 100;
   var per = (info && info.perDay) || 100;
   var days = Math.max(1, Math.ceil(c.next / per));
   var wk = info && info.week;
-  var row = function (state, what, acts) {
+  var row = function (state, what) {
     var n = c[state];
     if (!n) return '';
     return '<div class="cv-row" data-cvrow="' + state + '"><div class="cv-n">' + n + '</div>' +
       '<div class="cv-what">' + what + '</div>' +
-      '<div class="cv-acts">' + (acts || '') + '<button class="btn-ghost" data-cvshow="' + state + '">Show</button></div></div>';
+      '<div class="cv-acts"><button class="btn-ghost" data-cvshow="' + state + '">Show</button></div></div>';
   };
-  // Leo, Oct 6 2026: the Brands tab "should not get overwhelmed with info" —
-  // one header line, then one short line per reason; the long story is in
-  // each line's hover tip.
+  // Leo, Oct 6 2026: the Brands tab "should not get overwhelmed with info";
+  // Oct 12: "clean up the brands tab". One line: the bar, this week, and only
+  // the buttons that need someone (start the fill, pick pages, Zach's list).
+  // The count per reason folds under Details (CV_OPEN) with the People on
+  // file card; the last run shows on its own only when it needs a look.
   var weekTip = wk ? (wk.linkedin + wk.sponsorunited + wk.other) + ' people added this week: ' + wk.linkedin + ' LinkedIn · ' +
     wk.sponsorunited + ' SponsorUnited · ' + wk.other + ' by hand' : '';
+  var run = cvRunLine(info);
+  var runWarn = /cv-run warn/.test(run);
+  var acts = c.need
+    ? (c.next ? '<a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" data-cvfill="1" title="' +
+        esc(c.next + ' brands next on the LinkedIn fill — about ' + days + (days === 1 ? ' day' : ' days') + ' at ' + per +
+          ' a day. Opens LinkedIn in a window of its own and starts the fill; needs the LinkedIn capture script in Tampermonkey.') +
+        '">Start the fill ↗</a>' : '') +
+      (c.page ? '<button class="btn-ghost" data-cvpages="1" title="The fill wasn\u2019t sure which LinkedIn page is theirs. One click each; the next run reads them.">Pick ' +
+        c.page + (c.page === 1 ? ' LinkedIn page' : ' LinkedIn pages') + ' →</button>' : '') +
+      (c.zach ? '<button class="btn-ghost" data-cvzach="1" title="Your LinkedIn showed their marketing / partnerships people as \u201cLinkedIn Member\u201d. Zach\u2019s account sees them.">' +
+        c.zach + ' for Zach to read →</button>' : '') +
+      '<button class="cv-tog" data-cvtog="1" aria-expanded="' + (CV_OPEN ? 'true' : 'false') + '">' + (CV_OPEN ? 'Details ▾' : 'Details ▸') + '</button>'
+    : '';
   box.innerHTML = '<div class="panel panel-pad cv-card">' +
     '<div class="cv-head"><b>Buyer coverage</b>' +
       '<span class="n">' + c.covered + ' of ' + c.inPlay + '</span>' +
       '<div class="cv-bar cv-bar-in"><div style="width:' + pct + '%"></div></div>' +
       (info ? '<span class="cv-week' + (info.coveredWeek ? ' up' : '') + '" title="' + esc(weekTip) + '">' +
         (info.coveredWeek ? '+' + info.coveredWeek + ' this week' : 'none new this week') + '</span>' : '') +
+      acts +
     '</div>' +
-    (c.need
+    (!c.need ? '<div class="hint" style="margin:6px 0 0;color:var(--good)">Every brand in play has a buyer.</div>' : '') +
+    (c.need && CV_OPEN
       ? '<div class="cv-rows">' +
           row('next', '<span title="Brands with nobody go first. About ' + days + (days === 1 ? ' day' : ' days') + ' at ' + per +
-            ' a day, on your computer with LinkedIn open in its window.">Next on the LinkedIn fill · about ' + days + (days === 1 ? ' day' : ' days') + '</span>',
-            '<a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" title="Opens LinkedIn in a window of its own and starts the fill. Leave a corner of that window in view. Needs the LinkedIn capture script in Tampermonkey.">Start the fill ↗</a>') +
-          row('page', '<span title="The fill wasn\u2019t sure which LinkedIn page is theirs. One click each; the next run reads them.">Pick their LinkedIn page</span>',
-            '<button class="btn-ghost" data-cvpages="1">Pick →</button>') +
-          row('zach', '<span title="Your LinkedIn showed their marketing / partnerships people as \u201cLinkedIn Member\u201d (outside your network). Zach\u2019s account sees them: SB \u00b7 Read people on each link.">Hidden from your LinkedIn · Zach reads them</span>',
-            '<button class="btn-ghost" data-cvzach="1">Open →</button>') +
+            ' a day, on your computer with LinkedIn open in its window.">Next on the LinkedIn fill · about ' + days + (days === 1 ? ' day' : ' days') + '</span>') +
+          row('page', '<span title="The fill wasn\u2019t sure which LinkedIn page is theirs. One click each; the next run reads them.">Pick their LinkedIn page</span>') +
+          row('zach', '<span title="Your LinkedIn showed their marketing / partnerships people as \u201cLinkedIn Member\u201d (outside your network). Zach\u2019s account sees them: SB \u00b7 Read people on each link.">Hidden from your LinkedIn · Zach reads them</span>') +
           row('resting', '<span title="LinkedIn showed nobody in marketing / partnerships on a recent read. Sooner: open one and add someone, or try SponsorUnited.">LinkedIn found nobody' +
             (c.back ? ' · back on the fill ' + esc(shortDate(c.back)) : '') + '</span>') +
           row('noPage', '<span title="You said they have no LinkedIn page. Try SponsorUnited or add someone by hand.">No LinkedIn page</span>') +
           row('full', '<span title="25 people on file and none in marketing / partnerships, so the fill can\u2019t add more. Open one and add the right person.">25 on file, no buyer</span>') +
         '</div>'
-      : '<div class="hint" style="margin:6px 0 0;color:var(--good)">Every brand in play has a buyer.</div>') +
-    cvRunLine(info) +
+      : '') +
+    (runWarn || CV_OPEN ? run : '') +
   '</div>';
 }
 
@@ -6121,6 +6158,7 @@ function cvZachList() {
 }
 
 document.getElementById('cover-card').addEventListener('click', function (e) {
+  if (e.target.closest('[data-cvtog]')) { CV_OPEN = !CV_OPEN; renderCoverage(); return; }
   var show = e.target.closest('[data-cvshow]');
   if (show) { cvShow(show.getAttribute('data-cvshow')); return; }
   if (e.target.closest('[data-cvpages]')) cvPickPages();
@@ -6218,15 +6256,15 @@ function brState(b) {
 function brCoverLine(b) {
   var c = b.cover;
   if (!c) return '';
-  if (c.state === 'page') return '<div class="br-sub br-cvl">No clear LinkedIn page — <a href="#" data-bract="pickpage">pick it</a> and the next run reads it</div>';
+  if (c.state === 'page') return '<div class="br-sub br-cvl">No clear LinkedIn page — <a href="#" data-bract="pickpage">pick it</a></div>';
   if (c.state === 'zach') return '<div class="br-sub br-cvl">Your LinkedIn hid their marketing people — <a href="#" data-bract="zachlist">on Zach\u2019s list</a></div>';
   if (c.state === 'resting') {
     var note = c.note || 'nobody in marketing / partnerships';
-    return '<div class="br-sub br-cvl" title="' + esc('From the LinkedIn fill\u2019s visit: ' + note) + '">LinkedIn ' + esc(shortDate(c.at)) + ': ' +
-      esc(note.length > 90 ? note.slice(0, 87) + '…' : note) + ' · back on the fill ' + esc(shortDate(c.back)) + '</div>';
+    return '<div class="br-sub br-cvl" title="' + esc('From the LinkedIn fill\u2019s visit ' + shortDate(c.at) + ': ' + note) + '">LinkedIn found nobody ' +
+      esc(shortDate(c.at)) + ' · back on the fill ' + esc(shortDate(c.back)) + '</div>';
   }
-  if (c.state === 'noPage') return '<div class="br-sub br-cvl">No LinkedIn page — SponsorUnited, or add someone by hand</div>';
-  if (c.state === 'full') return '<div class="br-sub br-cvl">Full (25 on file) and none in marketing / partnerships</div>';
+  if (c.state === 'noPage') return '<div class="br-sub br-cvl" title="Try SponsorUnited, or add someone by hand">No LinkedIn page</div>';
+  if (c.state === 'full') return '<div class="br-sub br-cvl" title="25 people on file and none in marketing / partnerships — open it and add the right person">25 on file, no buyer</div>';
   return '';
 }
 
@@ -6260,7 +6298,7 @@ function brEditRow(b) {
       (p.linkedin ? ' <span class="br-has" title="Has a LinkedIn link">in</span>' : '') + '</li>';
   }).join('');
   var others = brPeople(b) - brBuyers(b);
-  return '<tr class="br-open" data-bropen="' + esc(b.id) + '"><td colspan="7"><div class="br-edit">' +
+  return '<tr class="br-open" data-bropen="' + esc(b.id) + '"><td colspan="6"><div class="br-edit">' +
     '<div class="br-fields">' + cat + tier +
       f('website', 'Website', b.website, 'brand.com') +
       f('linkedinUrl', 'LinkedIn page', b.linkedinUrl, 'linkedin.com/company/…') +
@@ -6297,13 +6335,12 @@ function brRow(b) {
   return '<tr class="br-row' + (b.passedAt ? ' off' : '') + (BB.sel[b.id] ? ' sel' : '') + (open ? ' is-open' : '') + '" data-brow="' + esc(b.id) + '" data-name="' + esc(b.name) + '">' +
     '<td class="br-tick"><label data-bsel="' + esc(b.id) + '" title="Select to re-file or put on a day">' +
       '<input type="checkbox" data-bselcb="' + esc(b.id) + '" data-name="' + esc(b.name) + '"' + (BB.sel[b.id] ? ' checked' : '') + '></label></td>' +
-    '<td class="br-name"><span class="br-caret" aria-hidden="true">' + (open ? '▾' : '▸') + '</span>' +
+    '<td class="br-name"><button class="br-caret" data-bract="toggle" aria-expanded="' + (open ? 'true' : 'false') + '" title="' + (open ? 'Close' : 'Edit details and add people') + '">' + (open ? '▾' : '▸') + '</button>' +
       '<span class="t-brand br-link" data-brand="' + esc(b.id) + '" title="Open the brand page">' + esc(b.name) + '</span> ' + brState(b) + newNote + brCoverLine(b) + '</td>' +
     '<td class="br-cat">' + esc(b.category ? (CAT_NAMES[b.category] || b.category) : '—') + '</td>' +
     '<td class="br-tier">' + esc(b.tier || '—') + '</td>' +
     '<td class="br-fit">' + fitTags(b.fit, { noUs: true }) + '</td>' +
     '<td class="br-num">' + brBuyerCell(b) + '</td>' +
-    '<td class="br-go"><button class="btn-ghost sd-sm" data-bract="toggle">' + (open ? 'Close' : 'Edit') + '</button></td>' +
   '</tr>' + (open ? brEditRow(b) : '');
 }
 
@@ -6335,9 +6372,9 @@ function brRender() {
       }).join('') +
     '</div>';
   }
-  var head = '<tr><th class="br-tick"></th><th>Brand</th><th>Category</th><th>Tier</th>' +
+  var head = '<tr><th class="br-tick"><label title="Select every brand shown"><input type="checkbox" data-bball></label></th><th>Brand</th><th>Category</th><th>Tier</th>' +
     '<th title="Brand Fit 0–100: budget and venture money weigh most; open a brand for the reasons">Fit</th>' +
-    '<th class="br-num" title="Partnerships, marketing, events or founder / CEO titles on file">Buyers</th><th></th></tr>';
+    '<th class="br-num" title="Partnerships, marketing, events or founder / CEO titles on file">Buyers</th></tr>';
   var hidden = (document.getElementById('bq').value || '').trim() ? 0
     : BR_LIST.filter(function (b) { return brSmallHidden(b) && !(BR.hideArchived && b.passedAt); }).length;
   var hiddenNote = hidden ? '<div class="hint" style="margin:8px 0 0">' + hidden + (hidden === 1 ? ' brand' : ' brands') +
@@ -6346,6 +6383,7 @@ function brRender() {
     ? '<div class="br-wrap" data-scroll="brands-table"><table class="br-table"><thead>' + head + '</thead><tbody>' +
         rows.map(brRow).join('') + '</tbody></table></div>'
     : '<div class="panel"><div class="empty"><h3>' + (BR_LIST.length ? 'No brands match' : 'No brands here') + '</h3></div></div>') + hiddenNote;
+  bbAllBox();
 }
 
 function brById(id) { return BR_LIST.filter(function (b) { return b.id === id; })[0]; }
@@ -6728,15 +6766,13 @@ function bbTierName(t) { return t || 'no tier'; }
 
 function bbRender() {
   var ids = Object.keys(BB.sel), n = ids.length;
-  var hasRows = !!document.querySelector('#brands-list [data-bselcb]');
   var note = BB_NOTE && BB_NOTE.cat === lastCategory && !n
     ? '<div class="pd-done">✓ ' + esc(BB_NOTE.text) + ' · <a href="#" data-bbsched="1">Open the Schedule →</a>' +
         ' <a href="#" class="sd-x" data-bbnotex="1" title="Dismiss">×</a></div>'
     : '';
-  document.getElementById('brands-selbar').innerHTML = note + (hasRows
-    ? '<a href="#" data-bball="1">Select all shown</a>' +
-      (n ? ' · <a href="#" data-bbclear="1">Clear</a>' : '')
-    : '');
+  // Select all is the table header's tick box; Clear sits in the bar below.
+  document.getElementById('brands-selbar').innerHTML = note;
+  bbAllBox();
   var bar = document.getElementById('brands-bulk');
   if (!n) { bar.innerHTML = ''; return; }
 
@@ -6756,7 +6792,7 @@ function bbRender() {
   var picked = !!(BB.cat || BB.tier);
 
   var html = '<div class="sd-bulk">' +
-    '<b>' + n + ' selected</b>' +
+    '<b>' + n + ' selected</b> <a href="#" data-bbclear="1">Clear</a>' +
     (lastCategory === 'new'
       ? '<button class="btn-solid" data-bbkeep="1"' + lock + ' title="Looked at, fine as they are — off this list, nothing on them changes">Keep ' + n + '</button>' +
         '<button class="btn-ghost danger" data-bbarchive="1"' + lock + ' title="Not a fit — off outreach for good, onto the Archived tab (Bring back anytime)">Archive ' + n + '…</button>' +
@@ -6796,6 +6832,16 @@ function bbRender() {
   bar.innerHTML = html + '</div>';
 }
 
+// The table header's Select all box: ticked when every row shown is,
+// half when only some brands are ticked.
+function bbAllBox() {
+  var box = document.querySelector('#brands-list input[data-bball]');
+  if (!box) return;
+  var shown = document.querySelectorAll('#brands-list input[data-bselcb]');
+  box.checked = shown.length > 0 && [].every.call(shown, function (cb) { return cb.checked; });
+  box.indeterminate = !box.checked && Object.keys(BB.sel).length > 0;
+}
+
 function bbSetTick(cb, on) {
   var id = cb.getAttribute('data-bselcb');
   cb.checked = on;
@@ -6805,6 +6851,8 @@ function bbSetTick(cb, on) {
 }
 
 document.getElementById('brands-list').addEventListener('change', function (e) {
+  var all = e.target.closest('input[data-bball]');
+  if (all) { bbTickAll(all.checked); return; }
   var cb = e.target.closest('input[data-bselcb]');
   if (!cb) return;
   bbSetTick(cb, cb.checked);
@@ -6813,22 +6861,19 @@ document.getElementById('brands-list').addEventListener('change', function (e) {
   bbRender();
 });
 
-// "Select all shown" respects the search box: rows it has hidden stay
-// unticked, so a filtered list re-files only what you can see.
-document.getElementById('brands-selbar').addEventListener('click', function (e) {
-  if (e.target.closest('[data-bbsched]')) { e.preventDefault(); BB_NOTE = null; gotoView('schedule'); return; }
-  if (e.target.closest('[data-bbnotex]')) { e.preventDefault(); BB_NOTE = null; bbRender(); return; }
-  var all = e.target.closest('[data-bball]'), clear = e.target.closest('[data-bbclear]');
-  if (!all && !clear) return;
-  e.preventDefault();
+// Select all (the header's box) respects the search box and filters: rows
+// they hide stay unticked, so a filtered list re-files only what you can see.
+function bbTickAll(on) {
   BB_NOTE = null;
-  document.querySelectorAll('#brands-list input[data-bselcb]').forEach(function (cb) {
-    if (clear) { bbSetTick(cb, false); return; }
-    bbSetTick(cb, true);
-  });
+  document.querySelectorAll('#brands-list input[data-bselcb]').forEach(function (cb) { bbSetTick(cb, on); });
+  if (!on) BB.sel = {};
   BB.preview = null; BB.shown = null;
   pdTicksChanged('brands');
   bbRender();
+}
+document.getElementById('brands-selbar').addEventListener('click', function (e) {
+  if (e.target.closest('[data-bbsched]')) { e.preventDefault(); BB_NOTE = null; gotoView('schedule'); return; }
+  if (e.target.closest('[data-bbnotex]')) { e.preventDefault(); BB_NOTE = null; bbRender(); return; }
 });
 
 document.getElementById('brands-bulk').addEventListener('change', function (e) {
@@ -6841,6 +6886,7 @@ document.getElementById('brands-bulk').addEventListener('change', function (e) {
 });
 
 document.getElementById('brands-bulk').addEventListener('click', function (e) {
+  if (e.target.closest('[data-bbclear]')) { e.preventDefault(); if (!BB.busy) bbTickAll(false); return; }
   if (e.target.closest('[data-bbcancel]')) { BB.preview = null; BB.shown = null; bbRender(); return; }
   var prev = e.target.closest('[data-bbpreview]'), apply = e.target.closest('[data-bbapply]');
   if ((!prev && !apply) || BB.busy) return;
@@ -10158,6 +10204,7 @@ function loadLinkedin() {
     }
     renderLiRuns(d.runs || [], d.latestScript || null, d.liOwner || null);
     loadLiClean();
+    loadFillSched();
     var profiles = 0, brandsWith = 0;
     LI_DATA.forEach(function (b) {
       var n = b.contacts.filter(function (c) { return c.linkedinUrl; }).length;
@@ -10366,6 +10413,78 @@ function zachText(list) {
   });
   return out.join('\n').trim();
 }
+// Fill schedule (Leo, Oct 12 2026: "make me a schedule for the brands that run
+// in the linkedin fills"): fillSchedule = the fill's own worklist (the same
+// liList the script asks) cut into its days, 100 a day, with a Brand Fit floor
+// (remembered per browser, localStorage sb.fillFit; the script's default 50 —
+// mid-size brands first, very big brands skipped, as the run does).
+// Read-only — a forecast: every run asks for the list fresh.
+var LI_SCHED = null, LI_SCHED_OPEN = null;
+function fillFitFloor() {
+  try { var v = localStorage.getItem('sb.fillFit'); if (v != null && v !== '' && !isNaN(Number(v))) return Math.max(0, Math.min(100, Number(v))); } catch (e) {}
+  return 50;
+}
+function loadFillSched() {
+  return api('fillSchedule', { minFit: fillFitFloor() }).then(function (d) { LI_SCHED = d; renderFillSched(); })
+    .catch(function (e) {
+      var box = document.getElementById('li-sched');
+      if (!box) return;
+      box.style.display = '';
+      box.innerHTML = '<div class="panel" style="padding:14px 16px"><b>Fill schedule</b> <span class="t-meta">· couldn’t load: ' + esc(e.message) + '</span></div>';
+    });
+}
+function renderFillSched() {
+  var box = document.getElementById('li-sched'), d = LI_SCHED;
+  if (!box || !d) return;
+  box.style.display = '';
+  if (!LI_SCHED_OPEN) { LI_SCHED_OPEN = {}; if (d.days.length) LI_SCHED_OPEN[d.days[0].day] = true; }
+  var n = d.total, nd = d.days.length;
+  var head = '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><b>Fill schedule</b><span class="t-sep">·</span>' +
+    '<span class="t-title">' + (n ? n + (n === 1 ? ' brand' : ' brands') + ' · about ' + nd + (nd === 1 ? ' day' : ' days') + ' at ' + d.perDay + ' a day' : 'nothing for the fill to read') + '</span>' +
+    '<label style="margin-left:auto;display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink-3)">Brand Fit at least ' +
+      '<input class="inp" type="number" min="0" max="100" step="5" data-fsfit value="' + d.minFit + '" style="width:72px"></label></div>' +
+    '<div class="t-meta" style="margin-top:6px">What the LinkedIn fill reads next, day by day. Set the same floor in the fill’s setup panel.' +
+      (d.doneToday ? ' ' + d.doneToday + ' read today already.' : '') + '</div>' +
+    '<div class="t-meta" style="margin-top:4px">' + [
+      d.minFit && d.belowFit ? d.belowFit + ' under Fit ' + d.minFit + ' left out' : '',
+      d.bigSkipped ? d.bigSkipped + ' very big brand' + (d.bigSkipped === 1 ? '' : 's') + ' skipped (giants, 1,500+ on LinkedIn)' : '',
+      d.minFit ? 'mid-size brands first' : '',
+      d.resting ? d.resting + ' resting (read lately)' : '',
+      d.planned ? d.planned + ' on the Schedule go first, whatever their fit' : '',
+      d.research ? d.research + ' research-list name' + (d.research === 1 ? '' : 's') + ' (not on the roster yet, no fit score)' : '',
+    ].filter(Boolean).join(' · ') + '</div>';
+  var days = d.days.map(function (day) {
+    var ahead = Math.round((new Date(day.day + 'T12:00:00Z') - new Date(d.today + 'T12:00:00Z')) / 864e5);
+    var when = (ahead === 0 ? 'Today · ' : ahead === 1 ? 'Tomorrow · ' : '') + day.label;
+    return '<details data-fsday="' + esc(day.day) + '"' + (LI_SCHED_OPEN[day.day] ? ' open' : '') + ' style="border-top:1px solid var(--border-soft);margin-top:8px;padding-top:8px">' +
+      '<summary style="cursor:pointer"><b>' + esc(when) + '</b> <span style="color:var(--ink-3);font-size:13px">— ' + day.rows.length + (day.rows.length === 1 ? ' brand' : ' brands') + '</span></summary>' +
+      day.rows.map(function (r, i) {
+        return '<div style="display:flex;gap:10px;align-items:baseline;padding:6px 0;flex-wrap:wrap">' +
+          '<span class="t-meta" style="width:28px;text-align:right">' + (i + 1) + '</span>' +
+          (r.brandId ? '<span class="t-brand" data-brand="' + esc(r.brandId) + '" style="cursor:pointer">' + esc(r.name) + '</span>'
+            : '<span class="t-brand">' + esc(r.name) + '</span>') +
+          (r.category ? '<span class="t-meta">' + esc(CAT_NAMES[r.category] || r.category) + '</span>' : '') +
+          (r.fit != null ? '<span class="t-meta">Fit <b>' + r.fit + '</b></span>' : '') +
+          (r.brandId ? '<span class="t-meta">' + r.contacts + ' on file</span>' : '') +
+          '<span class="t-meta" style="margin-left:auto">' + esc(r.why) + '</span>' +
+        '</div>';
+      }).join('') +
+    '</details>';
+  }).join('');
+  box.innerHTML = '<div class="panel" style="padding:14px 16px">' + head + days + '</div>';
+}
+document.getElementById('linkedin').addEventListener('toggle', function (e) {
+  var t = e.target;
+  if (t && t.matches && t.matches('[data-fsday]') && LI_SCHED_OPEN) LI_SCHED_OPEN[t.getAttribute('data-fsday')] = t.open;
+}, true);
+document.getElementById('linkedin').addEventListener('change', function (e) {
+  if (!e.target.matches || !e.target.matches('[data-fsfit]')) return;
+  var v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+  try { localStorage.setItem('sb.fillFit', String(v)); } catch (err) {}
+  LI_SCHED_OPEN = null;
+  loadFillSched();
+});
+
 function renderLiZach(list, done, restDays) {
   LI_ZACH = list;
   var box = document.getElementById('li-zach');
@@ -11500,7 +11619,7 @@ function sdRulesChip() {
   var r = SCHED.queueRules;
   if (!r) return '';
   var tip = 'The days only pick brands nobody has reached out to yet. A brand you add by hand that was reached before waits ' +
-    r.restDays + ' days from its first outreach. Giants (household names, the big parent companies and their brands, $1B+ in sales) ' +
+    r.restDays + ' days from its first outreach. Giants (household names, the big parent companies’ brands, $1B+ in sales, 1,500+ people on LinkedIn — never a conglomerate like Diageo itself) ' +
     (r.giantsOn ? 'go like any other brand.' : 'are held back: nothing picks them, and adding one asks first.');
   return '<span class="sd-rules" title="' + esc(tip) + '">New brands only · ' +
     (r.giantsOn
@@ -14875,7 +14994,7 @@ var SCHED_DRAG = null;
     if ((t = e.target.closest('[data-sdgiants]'))) {
       e.preventDefault();
       var gOn = t.getAttribute('data-sdgiants') === '1';
-      if (gOn && !window.confirm('Allow giants?\n\nThe days will pick household names, the big parent companies and their brands, and $1B+ brands like any other.')) return;
+      if (gOn && !window.confirm('Allow giants?\n\nThe days will pick household names, the big parent companies’ brands, $1B+ brands and brands with 1,500+ people on LinkedIn like any other.')) return;
       sdPlanCall('setGiantsOn', { on: gOn }).then(function () {
         toast(gOn ? 'Giants allowed — the days can pick them now' : 'Giants held back again');
         return sdRefresh();
@@ -17619,7 +17738,8 @@ function loadTalks() {
 // One place for running the board: hand out access codes, see the
 // numbers, see who's been opening it.
 
-var BD_BRANDS = null;      // cached brand list for the code lookup
+var BD_BRANDS = [];        // the code lookup's latest results (boardCodeLookup)
+var BD_TURN = 0;           // newest lookup wins
 var BD_SELECTED = null;    // brand currently shown in the code panel
 
 function renderBoardCode() {
@@ -17661,7 +17781,6 @@ function loadBoard() {
   showView('board');
   document.getElementById('bd-sub').innerHTML =
     '<a href="' + esc(SPONSOR_URL) + '" target="_blank" rel="noopener">' + esc(SPONSOR_URL.replace(/^https?:\/\//, '')) + '</a>';
-  if (!BD_BRANDS) api('listBrands', { category: 'all' }).then(function (list) { BD_BRANDS = list; }).catch(function () {});
 
   // Pending access requests from the gate: approve (emails the code) or deny.
   api('listAccessRequests').then(function (d) {
@@ -17688,7 +17807,7 @@ function loadBoard() {
         btn.disabled = true; btn.textContent = 'Approving…';
         api('approveAccessRequest', { id: id }).then(function (r) {
           toast(r.emailed ? 'Approved — code emailed' : 'Approved — email failed, copy the code from the brand page');
-          BD_BRANDS = null; loadBoard();
+          loadBoard();
         }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Approve — email code'; });
       };
     });
@@ -17838,18 +17957,34 @@ document.getElementById('bd-refresh').addEventListener('click', function () {
   }).catch(function () {}).then(function () { btn.disabled = false; btn.textContent = '↻ Refresh'; });
 });
 
-// Code lookup: filter the cached brand list, pick one, mint/copy codes.
+// Code lookup: ask the server (whole roster, name or aka, people too),
+// pick one, mint/copy codes. It used to filter a cached listBrands, which
+// stops at 500 brands in no order — most brands were never found.
+var BD_TIMER = null;
 document.getElementById('bd-q').addEventListener('input', function () {
-  var q = this.value.trim().toLowerCase(), box = document.getElementById('bd-results');
-  if (q.length < 2 || !BD_BRANDS) { box.style.display = 'none'; return; }
-  // Every match, in a scrollable list that pushes the page down instead
-  // of a floating menu that clips.
-  var hits = BD_BRANDS.filter(function (b) { return b.name.toLowerCase().indexOf(q) >= 0; });
-  box.innerHTML = hits.map(function (b) {
-    return '<div class="clickable" data-bdpick="' + esc(b.id) + '" style="padding:10px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid var(--border)">' +
-      esc(b.name) + (b.boardCode ? ' <span style="color:var(--ink-3);font-size:13px">· has code</span>' : '') + '</div>';
-  }).join('') || '<div style="padding:10px 12px;font-size:13px;color:var(--ink-3)">No brand with that name</div>';
-  box.style.display = 'block';
+  var q = this.value.trim(), box = document.getElementById('bd-results');
+  clearTimeout(BD_TIMER);
+  var turn = ++BD_TURN;
+  if (q.length < 2) { box.style.display = 'none'; return; }
+  BD_TIMER = setTimeout(function () {
+    api('boardCodeLookup', { q: q }).then(function (r) {
+      if (turn !== BD_TURN) return;
+      BD_BRANDS = r.brands || [];
+      // Every match, in a scrollable list that pushes the page down instead
+      // of a floating menu that clips.
+      box.innerHTML = BD_BRANDS.map(function (b) {
+        var tags = (b.person ? ' · person' : '') + (b.archived && !b.person ? ' · archived' : '') +
+          (b.aka ? ' · aka ' + b.aka : '') + (b.boardCode ? ' · has code' : '');
+        return '<div class="clickable" data-bdpick="' + esc(b.id) + '" style="padding:10px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid var(--border)">' +
+          esc(b.name) + (tags ? ' <span style="color:var(--ink-3);font-size:13px">' + esc(tags) + '</span>' : '') + '</div>';
+      }).join('') || '<div style="padding:10px 12px;font-size:13px;color:var(--ink-3)">No brand with that name</div>';
+      box.style.display = 'block';
+    }).catch(function (e) {
+      if (turn !== BD_TURN) return;
+      box.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--ink-3)">Couldn’t search: ' + esc(e.message) + '</div>';
+      box.style.display = 'block';
+    });
+  }, 200);
 });
 document.getElementById('bd-results').addEventListener('click', function (e) {
   var row = e.target.closest('[data-bdpick]');
@@ -17873,7 +18008,11 @@ document.getElementById('bd-results').addEventListener('click', function (e) {
 // (name, category, signs, why) with Add and ×. A row opens for the
 // activation idea and the links. The old "describe a niche" search is gone
 // (it needed paid API calls; the daily Claude hunt does that job now).
-var DC = { rows: [], tab: 'review', source: '', cat: '', open: {} };
+// Every find carries a grade (listDiscoveries → src/lib/discover-grade.ts:
+// Brand Fit as a letter A–D; Leo, Oct 12 2026: "grade each brand that is
+// found in the discover brands"). Best grade first unless Newest is picked.
+var DC = { rows: [], tab: 'review', source: '', cat: '', grade: '', sort: 'grade', open: {}, bulkUndo: null };
+var DC_GRADE_ORDER = { A: 0, B: 1, C: 2, D: 3 };
 var DC_SIGNS = { sponsors: 'College / music', genz: '18–24', midsize: 'Growing' };
 var DC_SIGNS_LONG = { sponsors: 'Already sponsors college or music', genz: 'Aims at 18–24 year olds', midsize: 'Mid-size and growing' };
 
@@ -17885,6 +18024,7 @@ function loadDiscover() {
   return api('listDiscoveries', {}).then(function (d) {
     if (!mine()) return;
     DC.rows = d.rows || [];
+    DC.bulkUndo = d.bulkUndo || null;
     dcRender();
   }).catch(function (e) {
     if (!mine()) return;
@@ -17899,8 +18039,17 @@ function dcShown() {
     if ((DC.tab === 'added') !== dcAdded(r)) return false;
     if (DC.source && r.source !== DC.source) return false;
     if (DC.cat && r.category !== DC.cat) return false;
+    if (DC.grade && !(r.grade && r.grade.grade === DC.grade)) return false;
     return true;
-  });
+  }).map(function (r, i) { return { r: r, i: i }; }).sort(function (a, b) {
+    if (DC.sort === 'grade') {
+      var ga = a.r.grade ? a.r.grade.score : -1, gb = b.r.grade ? b.r.grade.score : -1;
+      var la = a.r.grade ? DC_GRADE_ORDER[a.r.grade.grade] : 9, lb = b.r.grade ? DC_GRADE_ORDER[b.r.grade.grade] : 9;
+      if (la !== lb) return la - lb;
+      if (ga !== gb) return gb - ga;
+    }
+    return a.i - b.i;
+  }).map(function (x) { return x.r; });
 }
 
 function dcRender() {
@@ -17910,16 +18059,27 @@ function dcRender() {
   var count = function (key, v) { return pool.filter(function (r) { return r[key] === v; }).length; };
   var sources = ['Claude hunt', 'LinkedIn', 'Research list', 'Search'].filter(function (x) { return count('source', x) || DC.source === x; });
   var cats = CAT_KEYS.filter(function (k) { return count('category', k) || DC.cat === k; });
+  var gradeN = function (g) { return pool.filter(function (r) { return r.grade && r.grade.grade === g; }).length; };
   var tab = function (key, label, n) {
     return '<button class="chip' + (DC.tab === key ? ' active' : '') + '" data-dctab="' + key + '">' + label + '<span class="n">' + n + '</span></button>';
   };
+  // Every A-grade find at once (Leo, Oct 13 2026): one button, a preview
+  // with ticks, then Add; its Undo for a day.
+  var reviewA = DC.rows.filter(function (r) { return !dcAdded(r) && r.grade && r.grade.grade === 'A'; }).length;
+  var bu = DC.bulkUndo;
   document.getElementById('dc-bar').innerHTML =
     tab('review', 'To review', review) + tab('added', 'Added', added) +
+    (DC.tab === 'review' && reviewA ? '<button class="btn-solid sd-sm" id="dc-bulk-a">Add all A\u2019s (' + reviewA + ')</button>' : '') +
+    (bu && bu.n ? '<span class="hint" id="dc-bulk-undo" style="margin:0">Added ' + bu.n + ' grade-' + esc(bu.grade || 'A') + (bu.n === 1 ? ' brand' : ' brands') + ' · <a href="#" data-dcundo="1">Undo</a></span>' : '') +
     '<span style="flex:1"></span>' +
     '<select class="inp" data-dcsel="source" aria-label="Source"><option value="">All sources</option>' +
       sources.map(function (x) { return '<option' + (DC.source === x ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select>' +
     '<select class="inp" data-dcsel="cat" aria-label="Category"><option value="">All categories</option>' +
-      cats.map(function (k) { return '<option value="' + esc(k) + '"' + (DC.cat === k ? ' selected' : '') + '>' + esc(CAT_NAMES[k]) + '</option>'; }).join('') + '</select>';
+      cats.map(function (k) { return '<option value="' + esc(k) + '"' + (DC.cat === k ? ' selected' : '') + '>' + esc(CAT_NAMES[k]) + '</option>'; }).join('') + '</select>' +
+    '<select class="inp" data-dcsel="grade" aria-label="Grade"><option value="">All grades</option>' +
+      ['A', 'B', 'C', 'D'].map(function (g) { return '<option value="' + g + '"' + (DC.grade === g ? ' selected' : '') + '>Grade ' + g + ' (' + gradeN(g) + ')</option>'; }).join('') + '</select>' +
+    '<select class="inp" data-dcsel="sort" aria-label="Sort"><option value="grade"' + (DC.sort === 'grade' ? ' selected' : '') + '>Best grade first</option>' +
+      '<option value="new"' + (DC.sort === 'new' ? ' selected' : '') + '>Newest first</option></select>';
 
   var rows = dcShown();
   var body = document.getElementById('disc-body');
@@ -17947,25 +18107,35 @@ function dcRow(r) {
       (r.brandId ? '<button class="btn-ghost sd-sm" data-dcact="open">Open</button>' : '')
     : '<button class="btn-solid dc-add" data-dcact="add">Add</button>' +
       '<button class="dc-x" data-dcact="dismiss" title="Not a fit — dismiss" aria-label="Dismiss ' + esc(r.name) + '">×</button>';
+  var g = r.grade;
+  var badge = g ? '<span class="dc-grade g-' + g.grade + '" title="' + esc('Grade ' + g.grade + ' · ' + g.score + '/100 · ' + g.word + (g.capped ? ' — ' + g.capped : '')) + '">' + g.grade + '</span>' : '';
+  var gradeMore = g ? '<div><span class="dc-k">Grade</span><b>' + g.grade + '</b> · ' + g.score + '/100 Brand Fit · ' + esc(g.word) +
+      (g.capped ? ' <span style="color:var(--warn)">— ' + esc(g.capped) + '</span>' : '') +
+      (dcAdded(r) ? '' : ' <span style="color:var(--ink-3)">(money and people get known once it’s added)</span>') +
+      '<ul class="dc-reasons">' + (g.reasons || []).map(function (x) {
+        return '<li class="' + (x.good ? 'ok' : '') + '"><span class="pt">+' + x.points + '</span>' + esc(x.text) + '</li>';
+      }).join('') + '</ul></div>' : '';
   return '<div class="dc-row' + (open ? ' open' : '') + '" data-disc="' + esc(r.id) + '">' +
     '<div class="dc-main" data-dcact="toggle">' +
-      '<div class="dc-name"><b>' + esc(r.name) + '</b><span class="dc-meta">' + esc(meta) + '</span>' +
+      '<div class="dc-name">' + badge + '<b>' + esc(r.name) + '</b><span class="dc-meta">' + esc(meta) + '</span>' +
         signs.map(function (k) {
           return '<span class="dc-sign" title="' + esc(DC_SIGNS_LONG[k]) + '">' + esc(DC_SIGNS[k]) + '</span>';
         }).join('') + '</div>' +
       (r.reason ? '<div class="dc-why">' + esc(r.reason) + '</div>' : '') +
     '</div>' +
     '<div class="dc-act">' + actions + '</div>' +
-    (open ? '<div class="dc-more">' +
+    (open ? '<div class="dc-more">' + gradeMore +
       (r.activation ? '<div><span class="dc-k">Pitch</span>' + esc(r.activation) + '</div>' : '') +
       '<div class="dc-links">' + links + '</div></div>' : '') +
   '</div>';
 }
 
 document.getElementById('dc-bar').addEventListener('click', function (e) {
+  if (e.target.closest('#dc-bulk-a')) { dcBulkOpen(); return; }
+  if (e.target.closest('[data-dcundo]')) { e.preventDefault(); dcBulkUndo(); return; }
   var t = e.target.closest('[data-dctab]');
   if (!t) return;
-  DC.tab = t.getAttribute('data-dctab'); DC.source = ''; DC.cat = '';
+  DC.tab = t.getAttribute('data-dctab'); DC.source = ''; DC.cat = ''; DC.grade = '';
   dcRender();
 });
 document.getElementById('dc-bar').addEventListener('change', function (e) {
@@ -18000,6 +18170,100 @@ document.getElementById('disc-body').addEventListener('click', function (e) {
     }).catch(function (err) { el.disabled = false; toast(err.message); });
   }
 });
+
+// Add all A's: what the server would add (each as it'd be filed), the
+// ones held back as maybe on the roster already, ticks, then Add. After a
+// "the list changed" answer it opens again with Leo's unticks kept
+// (`keep.off`) and anything new since unticked (`keep.seen`).
+function dcBulkOpen(keep) {
+  var slot = document.getElementById('dc-bulk');
+  if (!keep) slot.innerHTML = '<div class="hint" style="margin:0 0 10px">Checking…</div>';
+  api('addDiscoveredBulk', { grade: 'A' }).then(function (pv) {
+    if (!pv.rows.length && !pv.held.length) { slot.innerHTML = ''; toast('No grade-A finds left to add'); loadDiscover(); return; }
+    var isNew = function (r) { return !!(keep && keep.seen && keep.seen.indexOf(r.id) < 0); };
+    var ticked = function (r) { return !(keep && keep.off && keep.off.indexOf(r.id) >= 0) && !isNew(r); };
+    slot.innerHTML =
+      '<div class="panel panel-pad" id="dc-bulk-card" style="margin-bottom:12px">' +
+        '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px">' +
+          '<b style="font-size:14px">Add ' + pv.rows.length + ' grade-A finds as brands</b>' +
+          '<span class="hint" style="margin:0">Each goes on the roster with no people yet; the LinkedIn fill and SponsorUnited sweep pick them up.</span>' +
+        '</div>' +
+        (pv.rows.length ? '<div style="max-height:340px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:4px 10px">' +
+          '<label style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-soft);font-size:13px;color:var(--ink-3)">' +
+            '<input type="checkbox" id="dc-bulk-all"> Tick all</label>' +
+          pv.rows.map(function (r) {
+            return '<label class="dc-bulk-row" style="display:flex;gap:8px;align-items:baseline;padding:5px 0;cursor:pointer;font-size:13.5px">' +
+              '<input type="checkbox" data-dcpick="' + esc(r.id) + '"' + (ticked(r) ? ' checked' : '') + '>' +
+              '<span style="flex:1;min-width:0"><b style="font-weight:600">' + esc(r.name) + '</b>' +
+                ' <span style="color:var(--ink-3)">· ' + esc(CAT_NAMES[r.category] || r.category || 'No category') + ' · ' + r.score + '/100 · ' + esc(r.source || '') + '</span>' +
+                (r.joins ? ' <span class="dc-sign" data-dcjoins="1">same brand as ' + esc(r.joins) + ' — goes in as one</span>' : '') +
+                (isNew(r) ? ' <span class="dc-sign" data-dcnew="1">new</span>' : '') +
+              '</span>' +
+            '</label>';
+          }).join('') + '</div>' : '') +
+        (pv.held.length ? '<div class="hint" style="margin:10px 0 0">Left out — may already be on the roster: ' + pv.held.map(function (h) {
+          return esc(h.name) + (h.sameAs ? ' (same as ' + esc(h.sameAs) + ', which looks like ' + esc(h.match) + ')' : ' (looks like ' + esc(h.match) + ')');
+        }).join(', ') + '. Add those by hand if they’re different.</div>' : '') +
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:10px">' +
+          (pv.rows.length ? '<button class="btn-solid" id="dc-bulk-go">Add</button>' : '') +
+          '<button class="btn-ghost" id="dc-bulk-cancel">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    var busy = false;
+    var count = function () {
+      var boxes = slot.querySelectorAll('[data-dcpick]');
+      var n = slot.querySelectorAll('[data-dcpick]:checked').length;
+      var all = document.getElementById('dc-bulk-all');
+      if (all) { all.checked = n === boxes.length; all.indeterminate = n > 0 && n < boxes.length; all.disabled = busy; }
+      boxes.forEach(function (cb) { cb.disabled = busy; });
+      var go = document.getElementById('dc-bulk-go');
+      if (go) { go.textContent = 'Add ' + n + (n === 1 ? ' brand' : ' brands'); go.disabled = busy || !n; }
+    };
+    count();
+    slot.onchange = function (e) {
+      if (busy) return;
+      if (e.target.id === 'dc-bulk-all') {
+        slot.querySelectorAll('[data-dcpick]').forEach(function (cb) { cb.checked = e.target.checked; });
+      }
+      count();
+    };
+    document.getElementById('dc-bulk-cancel').onclick = function () { slot.innerHTML = ''; };
+    var go = document.getElementById('dc-bulk-go');
+    if (go) go.onclick = function () {
+      var ids = [].map.call(slot.querySelectorAll('[data-dcpick]:checked'), function (cb) { return cb.getAttribute('data-dcpick'); });
+      if (!ids.length || busy) return;
+      busy = true; count();
+      api('addDiscoveredBulk', { grade: 'A', confirm: true, expect: pv.expect, ids: ids }).then(function (r) {
+        if (r.stale) {
+          var off = [].map.call(slot.querySelectorAll('[data-dcpick]:not(:checked)'), function (cb) { return cb.getAttribute('data-dcpick'); });
+          toast('The list changed — your ticks are kept; anything new is unticked');
+          dcBulkOpen({ off: off, seen: pv.rows.map(function (x) { return x.id; }) });
+          return;
+        }
+        slot.innerHTML = '';
+        toast('Added ' + r.added + (r.added === 1 ? ' brand' : ' brands') + ' to Brands');
+        loadDiscover();
+      }).catch(function (err) { toast(err.message); busy = false; count(); });
+    };
+  }).catch(function (e) { slot.innerHTML = ''; toast(e.message); });
+}
+
+// Undo the last bulk add: what goes and what stays (and why) first; the
+// apply sends the preview's `expect`, and a changed list is shown again.
+function dcBulkUndo(pv0) {
+  (pv0 ? Promise.resolve(pv0) : api('undoDiscoverBulk', {})).then(function (pv) {
+    var msg = (pv0 ? 'Something changed since — here it is again.\n\n' : '') + 'Take back the bulk add?\n\n' +
+      (pv.goes.length ? pv.goes.length + (pv.goes.length === 1 ? ' brand comes' : ' brands come') + ' off the roster: ' + pv.goes.join(', ') +
+        '\n' + pv.backToReview + (pv.backToReview === 1 ? ' find goes' : ' finds go') + ' back to To review.' : 'No brand comes off the roster.') +
+      (pv.stays.length ? '\n\nThese stay (touched since): ' + pv.stays.map(function (x) { return x.name + ' — ' + x.why; }).join('; ') : '');
+    if (!confirm(msg)) return;
+    return api('undoDiscoverBulk', { confirm: true, expect: pv.expect }).then(function (r) {
+      if (r.stale) { dcBulkUndo(r); return; }
+      toast(r.goes.length ? 'Took back ' + r.goes.length + (r.goes.length === 1 ? ' brand' : ' brands') : 'Nothing to take back');
+      loadDiscover();
+    });
+  }).catch(function (e) { toast(e.message); });
+}
 
 // --- results ---------------------------------------------------
 //
@@ -19712,7 +19976,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'li-zach', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity', 'st-lanes', 'st-others'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'li-zach', 'li-sched', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity', 'st-lanes', 'st-others'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;

@@ -730,6 +730,29 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal((await data('undoLeaveOutPeople', {})).ok, false, 'one Undo')
     ok('copy-flagged: the LinkedIn tab gets the flag, flagged counts problems only, Leave out previews then frees the spots, Undo puts them back')
 
+    // 12. 1,500+ people on LinkedIn is held back like a giant (Leo, Oct 12
+    //     2026: "not reach out to any brand with over 1500 employees"),
+    //     except a conglomerate ("yes except for congomerates").
+    const mkBig = async (id, name, liMembers) => {
+      await prisma.brand.create({ data: { id, name, category: 'snacks', usStatus: 'yes', liMembers } })
+      for (let i = 0; i < 3; i++) {
+        await prisma.contact.create({ data: { brandId: id, name: name + ' P' + i, title: 'Partnership Marketing Manager', linkedinUrl: 'https://www.linkedin.com/in/' + id + i + '/' } })
+      }
+    }
+    await mkBig('vb_huge', 'Hugeco Snacks', 2400)
+    await mkBig('vb_mid', 'Midway Snacks', 1499)
+    await mkBig('vb_cong', 'Molson Coors', 12338)
+    const hugeAsk = await data('queueBrandTargets', { brandId: 'vb_huge' })
+    assert.deepEqual([hugeAsk.queued, hugeAsk.reason], [false, 'giant'], '2,400 on LinkedIn asks first: ' + JSON.stringify(hugeAsk))
+    assert.match(hugeAsk.reasonText || '', /1,500\+ people on LinkedIn/, 'and says why')
+    const midOk = await data('queueBrandTargets', { brandId: 'vb_mid' })
+    assert.ok(midOk.queued !== false, '1,499 goes: ' + JSON.stringify(midOk))
+    const congOk = await data('queueBrandTargets', { brandId: 'vb_cong' })
+    assert.ok(congOk.queued !== false, 'a conglomerate is never held back: ' + JSON.stringify(congOk))
+    const hugeYes = await data('queueBrandTargets', { brandId: 'vb_huge', allowGiant: true })
+    assert.ok(hugeYes.queued !== false, 'Add anyway lets it go: ' + JSON.stringify(hugeYes))
+    ok('1,500+ on LinkedIn asks first (Add anyway), 1,499 and a conglomerate go')
+
     console.log(n + ' checks passed');
   } catch (e) {
     console.error('FAILED:', e.stack || e.message);

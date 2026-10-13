@@ -186,7 +186,7 @@ const linkedin = http.createServer((req, res) => {
 
 const GM_SHIM = `(function () {
   var P = '__gm:';
-  if (!sessionStorage.getItem('__gm_seeded')) { sessionStorage.setItem(P + 'sbIngestToken', JSON.stringify(${JSON.stringify(TOKEN)})); sessionStorage.setItem(P + 'sbLiSalesNav', 'false'); sessionStorage.setItem('__gm_seeded', '1'); }
+  if (!sessionStorage.getItem('__gm_seeded')) { sessionStorage.setItem(P + 'sbIngestToken', JSON.stringify(${JSON.stringify(TOKEN)})); sessionStorage.setItem(P + 'sbLiSalesNav', 'false'); sessionStorage.setItem(P + 'sbLiMinFit', '0'); sessionStorage.setItem(P + 'sbLiSkipBig', 'false'); sessionStorage.setItem('__gm_seeded', '1'); }
   window.GM_getValue = function (k, d) { var v = sessionStorage.getItem(P + k); return v == null ? d : JSON.parse(v); };
   window.GM_setValue = function (k, v) { sessionStorage.setItem(P + k, JSON.stringify(v)); };
   window.GM_deleteValue = function (k) { sessionStorage.removeItem(P + k); };
@@ -368,7 +368,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     {
       // The fill's order by size: target, not measured, small, big.
       await prisma.brand.createMany({ data: [
-        { id: 'sz_big', name: 'Size Big', category: 'beverage', liMembers: 2400 },
+        { id: 'sz_big', name: 'Size Big', category: 'beverage', liMembers: 900 },
         { id: 'sz_small', name: 'Size Small', category: 'beverage', liMembers: 7 },
         { id: 'sz_none', name: 'Size None', category: 'beverage' },
         { id: 'sz_mid', name: 'Size Mid', category: 'beverage', liMembers: 120 },
@@ -386,7 +386,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       // their size; the rest after, in the usual order (coverage.ts).
       await prisma.brand.createMany({ data: [
         { id: 'gp_mid', name: 'Gap Mid', category: 'beverage', liMembers: 120 },
-        { id: 'gp_big', name: 'Gap Big', category: 'beverage', liMembers: 2400 },
+        { id: 'gp_big', name: 'Gap Big', category: 'beverage', liMembers: 900 }, // big, under 1,500 (held back like a giant past it)
         { id: 'gp_has', name: 'Has Buyer Mid', category: 'beverage', liMembers: 120 },
         { id: 'gp_other', name: 'Gap Other Titles', category: 'beverage', liMembers: 120 },
       ] })
@@ -594,8 +594,83 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       assert.equal(await listOf(true), undefined, 'read through Sales Navigator: rests like any other');
       const mark = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liSweepLog' } })).value)[sn.id];
       assert.equal(mark.sn, true);
+      // A brand read on the People tab while Sales Navigator was on comes
+      // back once; its retry, still without it, rests like any read.
+      await ingest({ action: 'liSwept', me: leo, brandId: sn.id, seen: 1, added: 0, note: '', snMissed: true, hidden: [] });
+      assert.equal((await listOf(true) || {}).hiddenRetry, true, 'missed: back for Sales Navigator');
+      await ingest({ action: 'liSwept', me: leo, brandId: sn.id, seen: 1, added: 0, note: '', snMissed: true, retry: true, hidden: [] });
+      assert.equal(await listOf(true), undefined, 'its one retry is done');
     }
     ok('Sales Navigator: hidden buyers bring a brand back once; a member-id link keeps its case and still matches duplicates');
+
+    // A Brand Fit floor (Leo: "only fill in the brands that score highly"):
+    // every brand carries its score; under the floor, it's left off.
+    {
+      const all = (await ingest({ action: 'liList', me: leo, focus: '' })).j
+      assert.ok(all.items.filter(i => !i.research).every(i => typeof i.fit === 'number'), 'each brand carries its Brand Fit')
+      const floor = Math.max(...all.items.filter(i => !i.research && !i.planned).map(i => i.fit))
+      const high = (await ingest({ action: 'liList', me: leo, focus: '', minFit: floor })).j
+      assert.equal(high.minFit, floor)
+      assert.ok(high.items.filter(i => !i.research && !i.planned).every(i => i.fit >= floor), 'only brands at the floor or above')
+      assert.ok(high.belowFit > 0, 'the rest are counted as left out')
+      // Mid-size first (Leo: "i want to target the midsized brands mainly"),
+      // then by size; within a size, no buyer yet first, then best fit.
+      const rank = { target: 0, unknown: 1, small: 2, big: 3 }
+      const plain = high.items.filter(i => !i.research && !i.planned && !i.hiddenRetry && !i.last)
+      assert.ok(plain.every((i, k) => k === 0 || rank[plain[k - 1].size] <= rank[i.size]), 'size leads: mid-size first')
+      for (const size of Object.keys(rank)) for (const nb of [true, false]) {
+        const sc = plain.filter(i => i.size === size && !!i.noBuyer === nb).map(i => i.fit)
+        assert.deepEqual(sc, [...sc].sort((a, b) => b - a), 'best fit first within a size')
+      }
+      assert.equal(high.midFirst, true)
+    }
+    {
+      // A big company with the better score still comes after a mid-size one.
+      const bigCo = await prisma.brand.create({ data: { name: 'Bigco Energy', category: 'energy', liMembers: 600, linkedinUrl: 'https://www.linkedin.com/company/bigco-energy/' } })
+      const midCo = await prisma.brand.create({ data: { name: 'Middleton Snacks', category: 'wellness', liMembers: 80, linkedinUrl: 'https://www.linkedin.com/company/middleton-snacks/' } })
+      const j = (await ingest({ action: 'liList', me: leo, focus: '', minFit: 1 })).j
+      const at = (id) => j.items.findIndex(i => i.brandId === id)
+      assert.ok(at(midCo.id) >= 0 && at(bigCo.id) >= 0)
+      assert.ok(j.items[at(bigCo.id)].fit > j.items[at(midCo.id)].fit, 'the big one scores higher')
+      assert.ok(at(midCo.id) < at(bigCo.id), 'but the mid-size one goes first')
+      await prisma.brand.deleteMany({ where: { id: { in: [bigCo.id, midCo.id] } } })
+    }
+    ok('a Brand Fit floor: every brand carries its score, the ones under it are left off; mid-size first, then best fit');
+
+    // Very big brands skipped (Leo: "skip the very big brands"): a giant by
+    // name and one with 1,500+ on LinkedIn are off the list; the rest stay.
+    {
+      const giant = await prisma.brand.create({ data: { name: 'Skoal', category: 'nicotine', linkedinUrl: 'https://www.linkedin.com/company/skoal-e2e/' } })
+      const huge = await prisma.brand.create({ data: { name: 'Hugeco Drinks', category: 'beverage', liMembers: 1600, linkedinUrl: 'https://www.linkedin.com/company/hugeco/' } })
+      const mid = await prisma.brand.create({ data: { name: 'Midco Drinks', category: 'beverage', liMembers: 80, linkedinUrl: 'https://www.linkedin.com/company/midco/' } })
+      // A conglomerate is never skipped (Leo: "yes except for congomerates").
+      const cong = await prisma.brand.create({ data: { name: 'Brown-Forman', category: 'spirits', liMembers: 5200, linkedinUrl: 'https://www.linkedin.com/company/brown-forman-e2e/' } })
+      const ids = (j) => j.items.map(i => i.brandId)
+      const kept = (await ingest({ action: 'liList', me: leo, focus: '' })).j
+      assert.ok([giant.id, huge.id, mid.id, cong.id].every(id => ids(kept).includes(id)), 'without the skip, all four are on the list')
+      const skip = (await ingest({ action: 'liList', me: leo, focus: '', skipGiants: true })).j
+      assert.ok(!ids(skip).includes(giant.id) && !ids(skip).includes(huge.id), 'the giant and the 1,600-person brand are skipped')
+      assert.ok(ids(skip).includes(mid.id), 'a mid-size brand stays')
+      assert.ok(ids(skip).includes(cong.id), 'a conglomerate stays, 5,200 on LinkedIn or not')
+      assert.ok(skip.bigSkipped >= 2)
+      await prisma.brand.deleteMany({ where: { id: { in: [giant.id, huge.id, mid.id, cong.id] } } })
+    }
+    ok('very big brands skipped: a household name and a 1,500+ company are left off, a mid-size brand and a conglomerate stay');
+
+    // Outreach → People's Fill schedule is the same list, cut into days.
+    {
+      // The run's defaults: very big brands skipped (the schedule's default too).
+      const want = (await ingest({ action: 'liList', me: leo, focus: 'electrolyte', research: true, salesNav: true, minFit: 0, skipGiants: true })).j
+      const sch = await data('fillSchedule', { minFit: 0 })
+      const rows = sch.days.flatMap(d => d.rows)
+      assert.deepEqual(rows.map(r => r.name), want.items.map(i => i.name), 'the schedule lists what the fill reads, in its order')
+      assert.equal(sch.total, want.items.length)
+      assert.ok(sch.days.every(d => d.rows.length <= sch.perDay), 'never more than a day\'s worth')
+      assert.ok(rows.every(r => r.why), 'each says why it is there')
+      const hi = await data('fillSchedule', { minFit: 100 })
+      assert.ok(hi.days.flatMap(d => d.rows).every(r => r.research || r.fit >= 100 || /Schedule|Asked/.test(r.why)), 'the floor holds')
+    }
+    ok('Fill schedule: the fill\'s own list in its order, a day\'s worth a day, with the floor');
 
     // The clean-up of people saved before the October rules: a new grad
     // nobody wrote to is listed, a store manager already invited is kept,

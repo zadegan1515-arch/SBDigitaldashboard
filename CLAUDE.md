@@ -33,7 +33,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - `public/app.html` — the whole UI. Top nav is six groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
   `showView`): Home · Brands (All brands / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
   Schedule / Email / People / Archived / Email stats) ·
-  **Show Board** (Overview = code lookup + access-request approve/deny queue + stat tiles (total visits,
+  **Show Board** (Overview = code lookup (`boardCodeLookup`: the whole roster by name / aka, people and archived too — it used to filter listBrands' first 500; `test-board-lookup.js`) + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
   exact NY times and time on board; **every** board open is logged, gate on or off (anonymous = "Visitor") / **In talks** = per-brand engagement cards (code, viewers, opens, timed minutes
   via the board's 60s heartbeat → `BoardVisit.lastSeenAt`, picked shows, visit log) / Requests /
@@ -329,8 +329,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   day off vanished on Dec 1 and the brand carried there "rested". Machine emails count in queueBrandTargets'
   read too (`SENT_EMAIL` from plan-brands.ts), so the queue and its preview agree on a brand's first outreach.
   **Giants**
-  (`giants.ts`: household names, parent companies and their brands, $1B+ sales) are held back: nothing
-  picks them, and a hand add asks — **Add anyway** (`allowGiants` on planAddBrands, `allowGiant` on
+  (`giantOf` in queue-rules.ts: giants.ts — household names, the big parents' brands, $1B+ sales — or
+  **1,500+ people on LinkedIn**, `VERY_BIG_LI` / `veryBigWhy`; Leo, Oct 12 2026) are held back: nothing
+  picks them, and a hand add asks — **Add anyway**. **Conglomerates are never held** (Leo: "yes except
+  for congomerates"; `isConglomerate` = `isParentCompany`, parents.ts: Diageo, Molson Coors, PepsiCo,
+  Coca-Cola, Monster Energy, Heineken, Bacardi, Brown-Forman, Campari, Gallo on the roster) — he works them
+  as one account; their brands (Smirnoff, Bud Light…) still are giants. Brand Fit's giant points use the
+  same `giantOf`. **Add anyway** (`allowGiants` on planAddBrands, `allowGiant` on
   queueBrandTargets/queueContact, the giant card's button → `allowGiant`) OKs that brand for good.
   Setting `outreachGiants` = { on, ok: [brandId] }; the Schedule's toolbar line "New brands only ·
   Giants: held back (N) Allow" is `setGiantsOn` (`getOutreachPlan.queueRules`). People already stamped
@@ -511,9 +516,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - **Brand Fit** (Leo, Oct 2026: "a filter process to determine which brands we should reach out to").
   Rules pure in `src/lib/brand-fit.ts` (`node scripts/test-brand-fit.mjs`), computed on the fly (never
   stored; `Target.fitScore` is the per-person score, a different thing). Score 0–100, every point with a
-  reason: **money weighs most** (Leo: rank by budget, any size) — annual sales or venture money, whichever
-  says more ($5M+ raised = "a lot"; a round in the last 2 years adds); no money known → LinkedIn size
-  (`brand-size.ts`) stands in (max 40); then **Leo's category priority** (Oct 7 2026: betting, alcohol, drinks,
+  reason: **money weighs most** — annual sales or venture money, whichever
+  says more ($5M+ raised = "a lot"; a round in the last 2 years adds); **money to spend, not too big** (Leo, Oct 12
+  2026: "i want brands to have money to spend but not be too big"): sales **$10M–$500M = the sweet spot** (40),
+  $1M–$10M 22, $500M–$1B 24, a **giant** (`giantOf`, giants.ts — household name, big parent's brand, $1B+) 8 whatever
+  its money says, $500M+ raised 24; no money known → LinkedIn size (`brand-size.ts`) stands in — **mid-size 20–499 = 26** (a guess stays under real money),
+  500+ = 18, unknown 15, under 20 = 6; then **Leo's category priority** (Oct 7 2026: betting, alcohol, drinks,
   nicotine, electrolytes Top +30; clothing, athletic, tech, AI, fintech Low 0; the rest Middle +15; Skip = 0 and never
   auto-picked; `priorityOf`, editable per category — replaced the flat 18–24 bonus, so a Top brand with money
   unknown beats a Low brand with $50M raised, and only a $100M+ Low brand beats a tiny Top one), already sponsors
@@ -547,7 +555,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   [field, value now, new value] — a hand edit after the review counts as a change), and anything that
   changed since is skipped, named, and left waiting in the batch. Rows match by id, else exact name / aka
   (`researchMatcher`); a brand listed twice — the later row wins. One transaction, Undo `researchUndo` (only fields
-  still as the import left them). Never write facts without that review. **Suggest Archive**
+  still as the import left them). Never write facts without that review — the one exception is a brand the "Add a
+  brand" chat makes, where Leo's yes on the card that showed the facts is the review. **Suggest Archive**
   (`fitArchive` preview → apply, Undo `fitArchiveUndo`; Setting `fitArchiveLast`): confirmed not US,
   closed/acquired, or researched with every signal known to be absent (sales AND funding looked up and
   under the bars, no college / music found, not a Top category) and a low score; never a brand in talks (reply, deal,
@@ -599,7 +608,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Stock take (lanes, ideas, re-file) and Needs contacts (SponsorUnited worklist) left the sub-tabs and
   are header buttons; their views and deep links still work. `node scripts/test-brands-table.js`.
   **Every brand a buyer** (Leo, Oct 2026: "how can we get all brands … to have sufficient contacts"):
-  the card at the top of All brands (`renderCoverage`, `cv*`). Counts are of brands **in play** (archived /
+  the card at the top of All brands (`renderCoverage`, `cv*`). **One line** (Leo, Oct 12 2026: "clean up the brands tab"): bar, this
+  week, and only the buttons that need someone (Start the fill ↗, Pick N LinkedIn pages →, N for Zach to read →);
+  **Details ▸** (`CV_OPEN`) opens the per-reason rows, the last run and the People on file fold (`#fill-progress`,
+  hidden while folded); a run that needs a look (idle / old script) shows while folded. The table has no Edit
+  column (the row or its ▸ opens it), Select all is the header's tick box (`bbAllBox`), Clear sits in the tick
+  bar, and the note under a name is one short grey line (the long story in its tooltip). Counts are of brands **in play** (archived /
   do-not-email are "off" and never need anyone — the header, Needs people and the card all say so). Each
   brand with no buyer is in one state (rules pure in `src/lib/coverage.ts`, `node scripts/test-coverage.mjs`;
   DB side `src/lib/coverage-db.ts`; `listBrands({ coverage: true })` → `cover` per row, so a count and
@@ -633,7 +647,26 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   list / Search, from `listDiscoveries`' `source`) and a category dropdown; one row per brand (name,
   category · source, sign tags, the why on one line) with **Add** and **×**; a row opens for the pitch
   and links (Source, Website, LinkedIn, SponsorUnited). The old "describe a niche" search box is gone
-  (it needed paid API calls). `node scripts/test-discover.js`.
+  (it needed paid API calls). **Every find is graded** (Leo, Oct 12 2026: "grade each brand that is found in the
+  discover brands"; `src/lib/discover-grade.ts`, `node scripts/test-discover-grade.mjs`): Brand Fit as a letter — A 60+ /
+  B 45+ / C 30+ / D; Skip category, not US or closed = D, too small caps at C. A find on the roster grades on its brand's
+  own Brand Fit; a new one on what Discover knows (category priority, the `sponsors` sign, `midsize` = growth tier, a
+  parent) — money and people unknown, so a new find tops out in the low 70s. `listDiscoveries` returns `grade` per row;
+  the page shows the letter, a grade filter and **Best grade first** (default) / Newest first; an open row lists the
+  points. **Add all A's** (Leo, Oct 13 2026 — 88 of 106 waiting finds were A): the To review bar's button (`dcBulkOpen`,
+  `#dc-bulk`) → `addDiscoveredBulk({ grade: 'A' })` preview = every A waiting, each as it'd be filed (`discoveryCategory`,
+  same as one Add), and the ones held back because they may already be on the roster (chat-add's `matchRoster`: name /
+  aka, LinkedIn page, website) — and any other find with a held one's name / website / LinkedIn page (`sameAs`) → ticks
+  → Add sends the preview's `expect` + ticked `ids` (one transaction through `promoteDiscovery`, the single Add's own path).
+  Finds that are one brand (same name, website or LinkedIn page, in the batch) share a `group`: the best scored names
+  it, the others "same brand as …" join it and fill its empty links. A stale answer reopens it with Leo's unticks kept
+  and anything new unticked. Undo for a day on the bar (`listDiscoveries.bulkUndo`; `undoDiscoverBulk`, Setting
+  `discoverBulkLast` with each brand's `stamp` = its updatedAt after the add): a brand goes only if nothing touched it —
+  no edit (updatedAt moved: facts, notes, a merge into it, the fill saving its page), Show Board code, partner record,
+  people, outreach, deal, show, activation, document, board visit or request, ops mail, Schedule day; touched ones stay,
+  named. Every find linked to a brand that goes returns to To review (also those linked by name since). Confirm sends
+  the preview's `expect`; the delete only takes brands still bare (else `stale`, nothing changes). `node scripts/test-discover.js`,
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-discover-bulk-e2e.js`.
 - **"Add a brand" chat** (Leo, Oct 2026: "send a picture of a brand from instagram or type in a name
   and it will find the brand … and add it"). A saved Claude cloud session ("Add a brand", repo attached,
   `DASHBOARD_TOKEN` in its environment — no API spend) follows `docs/add-a-brand-chat.md`: reads the
@@ -642,7 +675,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   name / aka, LinkedIn page, website — the Duplicates signals; `node scripts/test-chat-add.mjs`), shows
   Leo a card, and only on his yes applies: Brand `source: 'chat'`, notes say where it came from. A
   possible match is refused unless Leo says it's a different company (`notSame`; an exact name never).
-  Facts go to `researchStage` (Stock take → Brand Fit review), never straight onto the brand. It can't
+  **Facts: Leo's yes is the review** (Leo, Oct 12 2026: "my yes is the review, so skip Stock take"): the
+  preview returns `facts` = each fact as it'll be written (`factChanges` against a blank brand, `{ label, value }`),
+  the card shows them all, and apply (with the preview's `expect`; other facts are refused) writes them onto the
+  brand it makes in the same transaction (+ `researchedAt`; `factsWritten`). Never onto a brand that was already there — those still go to `researchStage`. It can't
   sign in to SponsorUnited or LinkedIn — the LinkedIn fill and SU sweep pick the brand up from there.
 - **One brand per parent company** (Leo, Oct 8 2026: "make all of the brands under Diageo one big brand on the site and
   move all of the contacts there"): `combineParent({ parent })` previews (writes nothing) every brand `parentOf` puts under
@@ -828,6 +864,14 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   why the current brand is next (`whyItem`: on the Schedule for <day> and short on people — Schedule
   brands go first, which is why Native came before the electrolyte brands — research list, focus word,
   emptiest), and the end of a run lists every brand and what happened ("What it did").
+  **Finding a roster brand's page** (Leo, Oct 12 2026, after Arizona Beverages / Crodino / Ultra Pouches landed on his
+  list; script 1.37): an empty company search is loaded once more before the run believes it (`searchLooksEmpty`; 30 s
+  to draw while the window is hidden, `searchWait`); the second search is the aka, else `alsoSearch` from `liList` =
+  `secondSearchName` (stock.ts: a spelling the lanes' known names have for it — "AriZona" for Arizona Beverages — else
+  the name without "Skincare" / "Energy" / "Nutrition"…); `liMatched` also matches those known spellings
+  (`knownSpellings`); one exact name whose own line says what the brand sells counts even in an industry that doesn't
+  fit (`descriptionFits`, `PRODUCT_WORDS` in li-capture.ts — "in a pouch"). Crodino is under Campari Group. To send a
+  brand back to the fill (forget "None of these" and its month's rest): `node scripts/cc.mjs liPageRetry '{"brandId":"…"}'`.
   **Which LinkedIn page is theirs?** (`src/lib/li-review.ts`, Setting `liPageReview`; top of Outreach →
   People): brands the search wasn't sure of (unclear / none, with the top results, the fitting one
   first) and brands whose **saved page is another company's** — the run sends `checkPage` +
@@ -909,8 +953,31 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   search (upsell / `/premium/`) → Sales Navigator off for the rest of the run (`snOff`, panel line `#sblisnline`);
   contract chooser → pause; twice failing to open → off for the run. `liSwept` carries `salesNav` (mark `sn`, via
   "Sales Navigator") and only the hidden people Sales Navigator still couldn't name, as People-tab views Zach can open.
-  `liList({ salesNav: true })` brings back resting brands with likely hidden buyers, no `sn` mark and no Zach read
-  (`hiddenRetry`, right after the Schedule's and asked-for names). Unverified against the real Sales Navigator pages
+  `liList({ salesNav: true })` brings back, **once** (`hiddenRetry`, right after the Schedule's and asked-for names),
+  resting brands with no `sn` mark that were read since it shipped (`SN_SINCE`, Oct 12 2026), read on the People
+  tab by a run that had it on (mark `snMissed`), or with likely hidden buyers and no Zach read; a retry still
+  without it is marked `snRetried` and rests (Leo: "make sure it hits every brand that it skipped"). **Only an
+  account without Sales Navigator switches it off for a run** (1.33; Leo: "i dont want the sales navigator to be
+  off") — a page that doesn't load (30 s, 60 s while the window is hidden) or "No matches found" (an empty search)
+  costs that brand only; a run an older copy switched off turns it back on at its next page load, and the panel has
+  **Use Sales Navigator again** (`snTurnOn`). **Brand Fit floor** (1.34; Leo, Oct 12 2026: "can it only fill in the brands that
+  score highly"): the setup panel's "Only brands with Brand Fit of at least [60]" (GM `sbLiMinFit`, 0 = every brand)
+  → `liList({ minFit })` scores each brand with `scoreBrand` (brand-fit.ts, Leo's category priority, no accept rate)
+  and leaves off brands under the floor, too small, not US, closed or Skip (`belowFit` counts them) — never the
+  Schedule's brands or names Leo asked for; with a floor the list goes best fit first (items carry `fit`, the panel
+  shows it). The Sales Navigator retry (`snRetry`) only applies when the run has Sales Navigator on.
+  **Mid-size first** (1.36; Leo, Oct 12 2026: "i want to target the midsized brands mainly"): with a floor the list
+  goes **size first** — target (20–499 on LinkedIn) → not measured → small → big — then, within a size, no buyer yet
+  first, then best fit (`midFirst`; `noBuyerFirst` only without a floor). The floor defaults to **50** (`FIT_DEFAULT`):
+  set while Brand Fit still gave big companies 30 size points vs mid-size 22 (at 60 only 14 of 49 mid-size brands
+  passed, vs 100 of 207 big); since Oct 12 mid-size gets 26 and big 18. **Very big brands skipped** (1.35, "Skip very big brands", GM `sbLiSkipBig`, on by default →
+  `skipGiants`): held giants (giants.ts) and anything with **1,500+ on LinkedIn** (`VERY_BIG_LI`; Leo: "not reach out
+  to any brand with over 1500 employees"), unless Leo OK'd the brand — never a conglomerate (`veryBigWhy`, the
+  Schedule's rule); giant research names too (`bigSkipped`).
+  **Faster**: with Sales Navigator the People tab gets a glance only (`SN_GLANCE`, 2 scrolls / 40 people — Sales
+  Navigator reads the people), a brand under 50 on LinkedIn (`SN_SMALL`) gets only the marketing search, and brands
+  with a saved LinkedIn page go before the ones the run has to search for (`paged`). The worklist lives in `src/lib/li-list-db.ts` (`buildLiList`, shared by liList and
+  Outreach → People's **Fill schedule**, `fillSchedule`, whose defaults match the run's: floor 50, very big skipped). Unverified against the real Sales Navigator pages
   until Leo's first run — "Copy a sample for Claude" works on a Sales Navigator search. `node scripts/test-li-salesnav.js`.
   **"LinkedIn Member" cards** (out of Leo's network, name + profile hidden by LinkedIn) can't be saved, but
   **they aren't lost** (Leo, Oct 7 2026: "i dont want to miss out on people if i do it from my own account"):
@@ -943,6 +1010,14 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   it (`liCapture` works `viaParent` out itself). `liPagePick` / `liPageNone` forget hidden people counted on a
   page that wasn't theirs.
   Worklist in the dashboard: Outreach → People → "Under 25" (deep link `app.html#people`).
+  **Fill schedule** (Leo, Oct 12 2026: "make me a schedule for the brands that run in the linkedin fills"; card `#li-sched`
+  on Outreach → People, `renderFillSched`): `fillSchedule({ minFit })` = the fill's own worklist — liList's logic lives in
+  `buildLiList` (`src/lib/li-list-db.ts`), shared by /api/ingest and /api/data so the schedule is exactly what the run
+  reads — with the script's defaults (focus electrolyte, research list, Sales Navigator) and a Brand Fit floor (default 60,
+  per browser in localStorage `sb.fillFit`; Leo sets the same in the fill's setup panel), cut into calendar days at
+  `LI_PER_DAY` (today = what's left after the brands the sweep / research logs show read today; `splitFillDays`,
+  `fillWhy` in `src/lib/fill-schedule.ts`). Read-only forecast. `node scripts/test-fill-schedule.mjs`,
+  `test-fill-schedule-ui.js` (page), and a check in `test-li-e2e.js` (same names, same order as liList).
   On a profile (`/in/<slug>/`) the pill is **Send to dashboard** (Leo, Oct 2026: "it should just be send
   this contact to dashboard"): reads name / headline / current company (the SB · Log reader), the company
   box is editable, one click → `liCapture` with `handPicked` (one row; skips the buyer-title filter, keeps

@@ -243,6 +243,41 @@ function keysOf(b: { name: string; aka: string | null }): string[] {
   return [b.name, ...String(b.aka ?? '').split(/[,;]/)].map(brandKey).filter(Boolean)
 }
 
+// The other spellings our own lists know for a roster brand: the lanes'
+// known names share its key ("Arizona Beverages" is "AriZona|Arizona Iced
+// Tea"). For the LinkedIn search when the brand's own name finds nothing
+// (Leo, Oct 12 2026: "cross check with our current list of brands").
+const SPELLINGS = new Map<string, string[]>()
+for (const l of LANES) for (const k of l.known) {
+  const names = k.split('|').map(x => x.trim()).filter(Boolean)
+  for (const n of names) { const key = brandKey(n); if (key && !SPELLINGS.has(key)) SPELLINGS.set(key, names) }
+}
+export function knownSpellings(name: string, aka?: string | null): string[] {
+  const own = [name, ...String(aka ?? '').split(/[,;]/)].map(x => x.trim().toLowerCase()).filter(Boolean)
+  const out: string[] = []
+  for (const key of keysOf({ name, aka: aka ?? null })) {
+    for (const n of SPELLINGS.get(key) || []) {
+      if (!own.includes(n.toLowerCase()) && !out.some(o => o.toLowerCase() === n.toLowerCase())) out.push(n)
+    }
+  }
+  return out
+}
+
+// What the LinkedIn fill types the second time: the brand's "also known
+// as", else a spelling our lists know, else its name without the word
+// that says what it sells ("Anua Skincare" → "Anua", "HyTier Energy" →
+// "HyTier"). Only ever a search — the result must still match the brand's
+// own names (or the known spellings) to be its page.
+const SELLS_WORD = /\s+(?:beverages?|drinks?|skin ?care|energy|nutrition|spiked|pouches|hydration|spirits|brands?|company|co\.?|usa)$/i
+export function secondSearchName(name: string, aka?: string | null): string {
+  const a = String(aka ?? '').split(/[,;]/).map(x => x.trim()).filter(Boolean)[0]
+  if (a) return a
+  const k = knownSpellings(name, aka)[0]
+  if (k) return k
+  const short = String(name || '').trim().replace(SELLS_WORD, '').trim()
+  return short.length >= 3 && short.toLowerCase() !== String(name || '').trim().toLowerCase() ? short : ''
+}
+
 type Placeable = Pick<StockBrand, 'name' | 'aka' | 'category' | 'about' | 'topProducts'>
 
 // Where a brand belongs, and why: "filed" (its own filing stands),

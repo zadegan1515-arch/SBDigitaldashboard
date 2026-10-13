@@ -41,7 +41,9 @@ catch (e) {
 const PORT = 4623;
 const SCRIPT = fs.readFileSync(path.join(__dirname, 'linkedin-capture.user.js'), 'utf8')
   .replace("'https://sb-digitaldashboard.vercel.app/api/ingest'", "'http://127.0.0.1:" + PORT + "/api/ingest'")
-  .replace(/function rand\(a, b\) \{[^}]*\}/, 'function rand() { return 30; }');
+  .replace(/function rand\(a, b\) \{[^}]*\}/, 'function rand() { return 30; }')
+  // Sales Navigator's results wait: seconds on LinkedIn, too long for a test.
+  .replace('document.hidden ? 60000 : 30000', '2500');
 
 // ---- fake LinkedIn ------------------------------------------------
 function peopleCard(slug, name, headline) {
@@ -80,7 +82,7 @@ function salesPage(items, total) {
     '</script></body></html>';
 }
 
-const COMPANY_IDS = { 'liquid-death': '1234', 'big-co': '5678', 'wrong-id': '7777', 'no-sn': '9999', 'tiny-co': '4321', 'tiny-two': '4322' };
+const COMPANY_IDS = { 'liquid-death': '1234', 'big-co': '5678', 'wrong-id': '7777', 'no-sn': '9999', 'tiny-co': '4321', 'tiny-two': '4322', 'stuck-one': '4401', 'stuck-two': '4402', 'small-sn': '4501' };
 const salesQueries = [];
 
 const sent = [];
@@ -149,6 +151,9 @@ const server = http.createServer((req, res) => {
     if (co === '5678') return res.end(salesPage([lead(mid(50), 'Bea Big', 'VP Marketing', 'Big Co')], 1));
     // A brand with nobody in marketing: Sales Navigator's own empty page,
     // no results count on it (Leo's first run, Oct 12 2026).
+    // A results page that never draws (a slow or hidden window).
+    if (co === '4501') return res.end(salesPage([lead(mid(60), 'Sue Small', 'Head of Marketing', 'small-sn')], 1));
+    if (co === '4401' || co === '4402') return res.end('<!doctype html><html><body><main><div class="spinner"></div></main></body></html>');
     if (co === '4321' || co === '4322') {
       return res.end('<!doctype html><html><body><main><h2>No matches found</h2><p>Remove the Function filter to show leads matching your other filters.</p></main></body></html>');
     }
@@ -160,10 +165,14 @@ const server = http.createServer((req, res) => {
     return res.end(peoplePage('Liquid Death', peopleCard('jane-doe', 'Jane Doe', 'Brand Manager at Liquid Death') + HIDDEN_CARD,
       '<aside><section><h2>Pages people also viewed</h2><ul><li><a href="https://www.linkedin.com/company/jose-cuervo/"><span>Jose Cuervo</span></a><div>Beverage Manufacturing</div><div>250K followers</div></li></ul></section></aside>'));
   }
+  // A brand with 30 people on LinkedIn: the marketing search is enough.
+  if (url.pathname === '/company/small-sn/people/') {
+    return res.end(peoplePage('small-sn', peopleCard('ss-1', 'Sam Small', 'Founder at small-sn'), '<h2>30 associated members</h2>'));
+  }
   if (url.pathname === '/company/big-co/people/') {
     return res.end(peoplePage('Big Co', peopleCard('bob-b', 'Bob B', 'Engineer'), '<h2>12,345 associated members</h2>'));
   }
-  for (const slug of ['no-id', 'wrong-id', 'no-sn', 'after-no-sn', 'tiny-co', 'tiny-two']) {
+  for (const slug of ['no-id', 'wrong-id', 'no-sn', 'after-no-sn', 'tiny-co', 'tiny-two', 'stuck-one', 'stuck-two']) {
     if (url.pathname === '/company/' + slug + '/people/') {
       const kw = url.searchParams.get('keywords') || '';
       return res.end(peoplePage(slug, peopleCard(slug + '-' + (kw || 'all'), 'Person ' + slug + ' ' + (kw || 'all'), 'Brand Manager at ' + slug)));
@@ -174,7 +183,7 @@ const server = http.createServer((req, res) => {
 
 const GM_SHIM = `
   (function () {
-    var seed = { sbIngestToken: 'test-token' };
+    var seed = { sbIngestToken: 'test-token', sbLiMinFit: 0, sbLiSkipBig: false };
     var P = '__gm:';
     try {
       if (!sessionStorage.getItem('__gm_seeded')) {
@@ -323,6 +332,50 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
       ok('"No matches found" is an empty search: Sales Navigator stays on for the run');
     }
 
+    // Results that never load, twice in a row: those two get the People
+    // tab; Sales Navigator stays on (Leo: "i dont want the sales navigator
+    // to be off").
+    {
+      const r = await run([item('b-st1', 'Stuck One', 'stuck-one'), item('b-st2', 'Stuck Two', 'stuck-two'), item('b-ld', 'Liquid Death', 'liquid-death')]);
+      const sw = r.calls.filter(b => b.action === 'liSwept');
+      assert.deepEqual(sw.map(s => s.salesNav), [false, false, true]);
+      assert.match(sw[0].via, /Sales Navigator's results did not load/);
+      assert.deepEqual(sw.map(s => s.snMissed), [true, true, false], 'the two it couldn\'t read through Sales Navigator are due once more');
+      assert.match(r.panel, /Run finished/);
+      ok('a Sales Navigator page that doesn\'t load costs that brand only: Sales Navigator stays on');
+    }
+
+    // Under 50 on LinkedIn: only the marketing search (the partnerships one
+    // finds nobody new at a company that size).
+    {
+      const r = await run([item('b-small', 'Small SN', 'small-sn')]);
+      assert.deepEqual(r.queries.map(q => q.kind), ['fn'], 'one Sales Navigator search for a 30-person brand');
+      assert.equal(r.calls.find(b => b.action === 'liSwept').salesNav, true);
+      ok('a brand under 50 on LinkedIn gets only the marketing search');
+    }
+
+    // The start panel's defaults: Brand Fit 50+, very big brands skipped —
+    // sent with the worklist; with a floor the panel says mid-size first.
+    {
+      fillItems = [item('b-ld', 'Liquid Death', 'liquid-death', { size: 'target' })];
+      const before = sent.length;
+      const ctx = await browser.newContext();
+      const pg = await ctx.newPage();
+      await pg.addInitScript(GM_SHIM.replace("sbLiMinFit: 0, sbLiSkipBig: false", "") + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:' + PORT + '/feed/');
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      assert.equal(await pg.inputValue('#sbliminfit'), '50');
+      assert.equal(await pg.isChecked('#sbliskipbig'), true);
+      await pg.click('#sblifilllook');
+      await pg.waitForSelector('#sblifillstart');
+      const list = sent.slice(before).find(b => b.action === 'liList');
+      assert.equal(list.minFit, 50);
+      assert.equal(list.skipGiants, true);
+      await ctx.close();
+      ok('the start panel asks for Brand Fit 50+ and skips very big brands by default');
+    }
+
     // 5. No Sales Navigator on the account: off for the rest of the run.
     {
       const r = await run([item('b-nosn', 'No SN', 'no-sn'), item('b-after', 'After', 'after-no-sn')]);
@@ -355,7 +408,7 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
       await pg.click('#sblifillopen');
       await pg.click('#sblifilllook');
       await pg.waitForSelector('#sblisnretry');
-      assert.match(await pg.innerText('#sblisnretry'), /^1 read before had buyers LinkedIn hid from you/);
+      assert.match(await pg.innerText('#sblisnretry'), /^1 brands read before without Sales Navigator .* are back for it/);
       await ctx.close();
       ok('the setup panel names the brands back on the list for Sales Navigator');
     }

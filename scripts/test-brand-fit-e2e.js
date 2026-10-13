@@ -321,6 +321,23 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.ok(midBefore > 0);
     ok('research Undo: the old values are back');
 
+    // Discover: every find carries a grade — an added find its brand's own
+    // Brand Fit, a new one what Discover knows (discover-grade.ts).
+    await prisma.discoveredBrand.createMany({ data: [
+      { query: 'Claude hunt · Oct 12', name: 'Hydra Kick', category: 'electrolytes', signals: 'sponsors,genz,midsize' },
+      { query: 'Claude hunt · Oct 12', name: 'Plain Tees', category: 'apparel', signals: 'genz' },
+      { query: 'Claude hunt · Oct 12', name: 'Odd Wording Co', category: 'Energy drinks', signals: '' },
+      { query: 'Claude hunt · Oct 12', name: 'Big Funded Energy', category: 'energy', signals: '' },
+    ] });
+    const disc = (await data('listDiscoveries')).rows;
+    const dg = (name) => disc.find(r => r.name === name).grade;
+    assert.equal(dg('Hydra Kick').grade, 'A', JSON.stringify(dg('Hydra Kick')));
+    assert.equal(dg('Plain Tees').grade, 'D');
+    assert.ok(/Top priority/.test(dg('Odd Wording Co').reasons.map(r => r.text).join(' ')), 'a loose category is read as ours (energy)');
+    const bigFit = (await data('getBrand', { brandId: 'b_big' })).fit.score;
+    assert.equal(dg('Big Funded Energy').score, bigFit, 'a find on the roster grades on its brand\'s Brand Fit');
+    ok('Discover: every find graded; one on the roster by its own Brand Fit');
+
     console.log(n + ' checks passed');
   } catch (e) {
     console.error('FAILED:', e.stack || e.message);

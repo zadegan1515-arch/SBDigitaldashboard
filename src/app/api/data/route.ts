@@ -37,6 +37,8 @@ import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import { regionFlag } from '@/lib/region'
 import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hints'
 import { readLiLog, readLiResearch, LI_SCRIPT_VERSION, LI_SWEEP_KEY } from '@/lib/li-sweep'
+import { buildLiList } from '@/lib/li-list-db'
+import { splitFillDays } from '@/lib/fill-schedule'
 import { readHiddenLog, updateHiddenLog, markZachRead, clearZachRead, zachDue, ZACH_REST_DAYS, type HiddenEntry } from '@/lib/li-hidden'
 import { readRuns } from '@/lib/li-report'
 import { companySlug, companyPageUrl, profileSlug, looksLikeSeller } from '@/lib/li-capture'
@@ -49,13 +51,14 @@ import {
   type Review, type Confirmed, type LiOwner,
 } from '@/lib/li-review'
 import { LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR, linkedinWindows, acceptRates, planWeekDays, weekCap, orderFillGroups, fillWholeBrands, bigFits, compareAuto, type AcceptRates } from '@/lib/plan-week'
-import { findDuplicateGroups, pairKey } from '@/lib/duplicates'
+import { findDuplicateGroups, pairKey, websiteDomain } from '@/lib/duplicates'
 import { cleanChatBrand, matchRoster, chatNotes } from '@/lib/chat-add'
 import { findLinkedInPeople, logLinkedInPerson, undoLinkedInLog, checkNewPerson } from '@/lib/li-log-db'
 import { isLogStage } from '@/lib/li-log'
 import { rollWindow, findUnsent, planCarry, carryOrder, carryTimes, type Unsent, type CarryFacts, type CarryTier, type Moved } from '@/lib/carry'
 import { workNeed, dueDays } from '@/lib/planned-first'
 import { searchHit, type SearchHit } from '@/lib/brand-search'
+import { gradeDiscovery, gradeFromFit } from '@/lib/discover-grade'
 import { scoreBrand, priorityOf, PRIORITIES, PRIORITY_POINTS, DEFAULT_CATEGORY_PRIORITY, type Priority, dollarsToCents, normUs, normBiz, cleanResearchRow, shortMoney, type FitResult, type ResearchRow } from '@/lib/brand-fit'
 import { buildStock, bestDealStage, refileMoves, remapPlanDays, brandKey } from '@/lib/stock'
 import { buyerKind, isBuyerTitle, countBuyers, BUYER_TARGET } from '@/lib/buyers'
@@ -914,7 +917,8 @@ function brandStage(b: PlanBrand): BrandStage | null {
 
 // ---- The queue rules (Leo, Oct 12 2026; src/lib/queue-rules.ts) --------
 // What the system picks by itself: only brands nobody has reached out to,
-// and no giants. By hand: a reached brand rests two weeks from its first
+// and no giants (giants.ts, or 1,500+ people on LinkedIn — conglomerates
+// never). By hand: a reached brand rests two weeks from its first
 // outreach; a giant asks first ("Add anyway" OKs that brand). People
 // already waiting at such brands are skipped, never removed.
 // Setting outreachGiants (GIANTS_KEY) = { on: boolean, ok: [brandId] } —
@@ -981,7 +985,7 @@ function giantIds(v: unknown): string[] {
 }
 // Records Leo's "Add anyway" for the giants among `brands` (others in
 // the list are ignored) and lets `q` through for them at once.
-async function okGiants(q: QueueCtx, allow: unknown, brands: Array<{ id: string; name: string; aka: string | null; salesCents: bigint | null }>): Promise<void> {
+async function okGiants(q: QueueCtx, allow: unknown, brands: Array<{ id: string; name: string; aka: string | null; salesCents: bigint | null; liMembers: number | null }>): Promise<void> {
   const want = new Set(giantIds(allow))
   const add = brands.filter(b => want.has(b.id) && !q.giantOk.has(b.id) && !!giantOf(b)).map(b => b.id)
   if (!add.length) return
@@ -989,7 +993,7 @@ async function okGiants(q: QueueCtx, allow: unknown, brands: Array<{ id: string;
   await writeGiants(q.giantsOn, q.giantOk)
 }
 type GateBrand = {
-  id: string; name: string; aka: string | null; salesCents: bigint | null
+  id: string; name: string; aka: string | null; salesCents: bigint | null; liMembers: number | null
   targets: Array<{
     status: string; sentAt: Date | null; emailedAt?: Date | null; updatedAt?: Date | null
     _count?: { emails: number }; emails?: Array<{ sentAt: Date | null }>
@@ -1009,7 +1013,7 @@ function outreachRows(b: GateBrand): OutreachRow[] {
 // the queue's own gate and the Schedule all ask here, so they agree.
 function brandGate(b: GateBrand, q: QueueCtx, auto: boolean, day?: string): Gate {
   return queueGate(
-    { name: b.name, aka: b.aka, salesCents: b.salesCents, rows: outreachRows(b) },
+    { name: b.name, aka: b.aka, salesCents: b.salesCents, liMembers: b.liMembers, rows: outreachRows(b) },
     { auto, giantsOn: q.giantsOn || q.giantOk.has(b.id), day: day ?? q.today, nextSending: nextSendingOf(q.extras) },
   )
 }
@@ -2658,7 +2662,8 @@ function brandFit(b: FitFacts, reachable: number, rates: AcceptRates | null, now
     salesCents: centsNum(b.salesCents), fundingCents: centsNum(b.fundingCents), lastRoundAt: b.lastRoundAt,
     usStatus: b.usStatus, sponsorsCollege: b.sponsorsCollege, bizStatus: b.bizStatus, acquiredBy: b.acquiredBy,
     researchedAt: b.researchedAt,
-    reachable, need: workNeed({ ...b, big: isBigBrand(b) }), acceptRate: rateOrNull(rates, b.category), priority: categoryPriority(b.category), now,
+    reachable, need: workNeed({ ...b, big: isBigBrand(b) }), acceptRate: rateOrNull(rates, b.category), priority: categoryPriority(b.category),
+    giant: giantOf(b), now,
   })
 }
 // Who a Best fit day may pick: a brand nobody there has been reached at
@@ -2677,7 +2682,7 @@ function bestFitEligible(b: PlanBrand, f: FitResult, q: QueueCtx, opts: { allowS
     && !heldGiant(b, q)
 }
 // A giant the system must not pick: giants are off and this one wasn't OK'd.
-function heldGiant(b: { id: string; name: string; aka: string | null; salesCents: bigint | null }, q: QueueCtx): boolean {
+function heldGiant(b: { id: string; name: string; aka: string | null; salesCents: bigint | null; liMembers: number | null }, q: QueueCtx): boolean {
   return !q.giantsOn && !q.giantOk.has(b.id) && !!giantOf(b)
 }
 // Every brand a Best fit day could pick, best first. Brands with nobody
@@ -3688,6 +3693,114 @@ async function undoCheck(db: any, recs: any[]) {
 }
 // A log entry's merges, newest first.
 const undoOrder = (entries: MergeEntry[]) => [...entries].sort((a, b) => b.at.localeCompare(a.at)).flatMap(e => [...e.recs].reverse())
+
+// ---------------------------------------------------------------
+// Discover → Brands (addDiscoveredBrand, addDiscoveredBulk)
+// ---------------------------------------------------------------
+
+const DISCOVER_BULK_KEY = 'discoverBulkLast'
+
+// The category a find is filed under: one of our keys as the bench has
+// it, else the keyword rules.
+function discoveryCategory(d: { name: string; category?: string | null }) {
+  const benchCat = String(d.category ?? '').trim().toLowerCase()
+  return isCategoryKey(benchCat) ? benchCat : guessCategory(d.name, d.category)
+}
+
+// A find becomes a Brand (or joins the one with its exact name).
+async function promoteDiscovery(db: any, d: any, tier?: any): Promise<{ brandId: string; created: boolean }> {
+  // Tier = how big the brand is. It used to default to "established"
+  // (big), so every find from Discover — Coco5, a $10M-raise sports
+  // drink — was filed as a giant and the LinkedIn fill did it last
+  // (Leo, Oct 6 2026: "why is coco5 established"). Now: the hunt's
+  // "midsize" sign → growth; otherwise left blank until LinkedIn's
+  // headcount (liMembers) sizes it. A tier passed in still wins.
+  if (!TIER_KEYS.includes(tier)) tier = String(d.signals || '').split(',').includes('midsize') ? 'growth' : null
+  let brand = await db.brand.findFirst({ where: { name: { equals: d.name, mode: 'insensitive' } } })
+  let created = false
+  if (!brand) {
+    // The bench holds whatever the model or a Cowork import wrote
+    // ("Beverage", "energy drinks"); anything that isn't one of our keys
+    // goes through the keyword rules instead.
+    brand = await db.brand.create({
+      data: {
+        name: d.name, category: discoveryCategory(d), tier,
+        website: d.website ?? null, linkedinUrl: d.linkedinUrl ?? null,
+        source: 'discover',
+        notes: [d.reason ? `Discover: ${d.reason}` : '', d.activation ? `Activation idea: ${d.activation}` : '',
+          d.sourceUrl ? `Found in: ${d.sourceUrl}` : ''].filter(Boolean).join('\n') || null,
+      },
+    })
+    created = true
+  }
+  await db.discoveredBrand.update({ where: { id: d.id }, data: { status: 'added', brandId: brand.id } })
+  return { brandId: brand.id, created }
+}
+
+// The finds of one grade waiting for review, as they'd be filed; the ones
+// that may already be on the roster are held back, named — and so is any
+// other find with the same name, website or LinkedIn page as a held one
+// (two "Lucky Energy Drinks" finds, one held: the other would make the
+// duplicate the hold is there to stop). Finds that are one brand (same
+// name, website or LinkedIn page — "Cann" and "Cann Social Tonics" at
+// drinkcann.com) share a `group`: the best-scored one names the brand and
+// the others join it (`joins`).
+async function discoverBulkPlan(grade: string) {
+  const { rows } = await handlers.listDiscoveries({})
+  const pool = rows.filter((r: any) => !(r.inSystem || r.status === 'added') && r.grade?.grade === grade)
+  const roster = await prisma.brand.findMany({ select: { id: true, name: true, aka: true, website: true, linkedinUrl: true, passedAt: true } })
+  const marks = (r: any) => [brandKey(r.name) && 'n:' + brandKey(r.name), websiteDomain(r.website) && 'w:' + websiteDomain(r.website),
+    companySlug(r.linkedinUrl) && 'l:' + companySlug(r.linkedinUrl)].filter(Boolean) as string[]
+  const out: any[] = []
+  const held: any[] = []
+  for (const r of pool) {
+    const m = matchRoster({ name: r.name, aka: [], website: r.website ?? null, linkedinUrl: r.linkedinUrl ?? null } as any, roster)
+    if (m.length) { held.push({ id: r.id, name: r.name, match: m[0].name, why: m[0].why }); continue }
+    out.push({
+      id: r.id, name: r.name, category: discoveryCategory(r), score: r.grade.score, source: r.source,
+      signals: r.signals ?? null, website: r.website ?? null, linkedinUrl: r.linkedinUrl ?? null, reason: r.reason ?? null,
+    })
+  }
+  // A find that's the same brand as a held one is held with it (until no
+  // more join: a held twin can bring in a third by its website).
+  const heldBy = new Map<string, any>()
+  for (const h of held) for (const k of marks(pool.find((r: any) => r.id === h.id))) if (!heldBy.has(k)) heldBy.set(k, h)
+  for (let again = true; again;) {
+    again = false
+    for (let i = out.length - 1; i >= 0; i--) {
+      const h = marks(out[i]).map(k => heldBy.get(k)).find(Boolean)
+      if (!h) continue
+      const twin = { id: out[i].id, name: out[i].name, match: h.match, why: h.why, sameAs: h.name }
+      held.push(twin)
+      for (const k of marks(out[i])) if (!heldBy.has(k)) heldBy.set(k, twin)
+      out.splice(i, 1)
+      again = true
+    }
+  }
+  // Best score first; between equals, the find that knows more (website,
+  // LinkedIn page) names the brand.
+  const links = (r: any) => Number(!!r.website) + Number(!!r.linkedinUrl)
+  out.sort((a, b) => b.score - a.score || links(b) - links(a) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+  // One brand, several finds (joined through any shared mark): the best
+  // scored leads the group.
+  const up = out.map((_, i) => i)
+  const find = (i: number): number => (up[i] === i ? i : (up[i] = find(up[i])))
+  const firstWith = new Map<string, number>()
+  out.forEach((r, i) => {
+    for (const k of marks(r)) {
+      const j = firstWith.get(k)
+      if (j === undefined) firstWith.set(k, i)
+      else { const a = find(i), b = find(j); if (a !== b) up[Math.max(a, b)] = Math.min(a, b) }
+    }
+  })
+  out.forEach((r, i) => {
+    const lead = out[find(i)]
+    r.group = lead.id
+    if (lead !== r) r.joins = lead.name
+  })
+  const sig = out.map(r => r.id + ':' + r.group).sort().join(',') + '#' + held.map(h => h.id).sort().join(',')
+  return { rows: out, held, sig }
+}
 
 // ---------------------------------------------------------------
 // Categorisation
@@ -7130,41 +7243,66 @@ const handlers: Record<string, Handler> = {
   // keyword guess if none, never a model call). Facts (sales, funding,
   // college / music…) are never written here: they go to the research
   // review on Stock take → Brand Fit, like every other Claude research.
-  async chatAddBrand({ brand: raw, facts, apply, notSame }: any) {
+  // The "Add a brand" chat (docs/add-a-brand-chat.md). Preview by
+  // default: the cleaned card, possible matches on the roster, and the
+  // facts exactly as they'd be written. Leo's yes on that card is the
+  // review (Leo, Oct 12 2026: "my yes is the review, so skip Stock take"):
+  // apply makes the brand and writes those facts onto it in one go. Only
+  // ever a brand it makes — facts never land on an existing one this way.
+  async chatAddBrand({ brand: raw, facts, apply, notSame, expect }: any) {
     const { row, error } = cleanChatBrand(raw)
     if (error || !row) throw new Error(error ?? 'Could not read the brand')
     const asked = checkCategory(row.category)
     const category = asked ?? guessCategory(row.name, [row.about, row.website].filter(Boolean).join(' '))
-    let factRow: any = null
+    let factRow: ResearchRow | null = null
     if (facts && typeof facts === 'object' && Object.keys(facts).length) {
-      const { error: fe } = cleanResearchRow({ ...facts, name: row.name })
-      if (fe) throw new Error(fe)
-      factRow = { ...facts, name: row.name }
+      const { row: fr, error: fe } = cleanResearchRow({ ...facts, name: row.name })
+      if (fe || !fr) throw new Error(fe ?? 'Could not read the facts')
+      factRow = fr
     }
+    // What the card says the brand will carry: each fact against a brand
+    // that has none yet.
+    const blank = Object.fromEntries(Object.keys(FIT_COLUMNS_SELECT).map(k => [k, null])) as Record<FactField, any>
+    const factLines = factRow ? factChanges(blank, factRow).map(c => ({ label: c.label, value: c.toText })) : []
     const roster = await prisma.brand.findMany({ select: { id: true, name: true, aka: true, website: true, linkedinUrl: true, passedAt: true } })
     const matches = matchRoster(row, roster)
     const card = { ...row, category }
-    if (!apply) return { preview: true, brand: card, matches, facts: factRow }
+    // The card Leo says yes to, as one string: with facts, apply writes
+    // only what that card showed (anything else → preview again).
+    const sig = JSON.stringify([row.name, category, factLines])
+    if (!apply) return { preview: true, brand: card, matches, facts: factLines, expect: sig }
+    if (factLines.length && expect !== sig) {
+      throw new Error('These facts aren\u2019t the ones on the card Leo said yes to — preview again and show him the new card')
+    }
     // An exact name clash is the unique index: never a second copy.
     if (matches.length && (!notSame || matches.some(m => m.name.toLowerCase() === row.name.toLowerCase()))) {
       throw new Error('Already on the roster as ' + matches.map(m => '"' + m.name + '"').join(', ') + ' — not added')
     }
     const day = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' })
-    const made = await prisma.brand.create({
-      data: {
-        name: row.name, category, tier: row.tier,
-        website: row.website, linkedinUrl: row.linkedinUrl,
-        aka: row.aka.length ? row.aka.join(', ') : null,
-        about: row.about,
-        notes: chatNotes(row, day),
-        source: 'chat',
-      },
+    const made = await prisma.$transaction(async tx => {
+      const b = await tx.brand.create({
+        data: {
+          name: row.name, category, tier: row.tier,
+          website: row.website, linkedinUrl: row.linkedinUrl,
+          aka: row.aka.length ? row.aka.join(', ') : null,
+          about: row.about,
+          notes: chatNotes(row, day),
+          source: 'chat',
+        },
+      })
+      const changes = factRow ? factChanges(b, factRow) : []
+      if (!changes.length) return b
+      // Researched, like a reviewed research import: off the research
+      // list for 90 days.
+      const data: Record<string, any> = { researchedAt: new Date() }
+      for (const c of changes) data[c.field] = c.to
+      return tx.brand.update({ where: { id: b.id }, data })
     })
-    const staged = factRow ? await handlers.researchStage({ rows: [{ ...factRow, id: made.id }], by: 'Add a brand chat' }) : null
     return {
       created: { id: made.id, name: made.name, category: made.category },
       link: (process.env.SITE_URL || 'https://sb-digitaldashboard.vercel.app') + '/app.html#brand/' + made.id,
-      factsStaged: staged ? staged.staged : 0,
+      factsWritten: factLines.length,
+      facts: factLines,
     }
   },
 
@@ -10314,6 +10452,42 @@ const handlers: Record<string, Handler> = {
     }
   },
 
+  // Show Board → Access codes lookup. Searches the whole roster in the
+  // database (it used to filter a cached listBrands — 500 rows in no order,
+  // so most brands were never found), by name or also-known-as, people
+  // (Brand.kind 'person') and archived brands included. Exact, then
+  // starts-with, then the rest.
+  async boardCodeLookup({ q }: any) {
+    const query = String(q ?? '').trim().slice(0, 120)
+    if (query.length < 2) return { brands: [] }
+    const rows = await prisma.brand.findMany({
+      where: {
+        OR: [
+          { name: { contains: query, mode: 'insensitive' } },
+          { aka: { contains: query, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, name: true, aka: true, kind: true, boardCode: true, passedAt: true },
+      orderBy: { name: 'asc' },
+      take: 200,
+    })
+    const want = query.toLowerCase()
+    const rank = (b: { name: string; aka: string | null }) => {
+      const n = b.name.toLowerCase()
+      if (n === want) return 0
+      if (n.startsWith(want)) return 1
+      if (n.includes(want)) return 2
+      return 3 // matched on aka only
+    }
+    rows.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name))
+    return {
+      brands: rows.slice(0, 30).map(b => ({
+        id: b.id, name: b.name, boardCode: b.boardCode, person: b.kind === 'person', archived: !!b.passedAt,
+        aka: rank(b) === 3 ? b.aka : null,
+      })),
+    }
+  },
+
   // One log: { contactId } for someone on file, else { brandId | newBrand,
   // name, title, linkedinUrl, … }, and stage 'sent' | 'accepted'.
   async logLinkedInPerson({ contactId, brandId, newBrand, name, title, linkedinUrl, email, phone, location, notes, stage, __user }: any) {
@@ -11739,6 +11913,32 @@ const handlers: Record<string, Handler> = {
   // people and their saved profile links, plus each person's outreach
   // status so already-contacted people are visible at a glance. The
   // company-People-page and title-search URLs are built client-side.
+  // Outreach → People → Fill schedule (Leo, Oct 12 2026: "make me a schedule
+  // for the brands that run in the linkedin fills"): the fill's own worklist
+  // (buildLiList — the same function the script asks, li-list-db.ts) with the
+  // run's setup — Brand Fit floor (the script's default 50), very big brands
+  // skipped, focus word, research list, Sales Navigator — cut into its days at
+  // LI_PER_DAY a day. Read-only.
+  async fillSchedule({ minFit = 50, focus = 'electrolyte', research = true, salesNav = true, skipGiants = true }: any) {
+    const floor = Math.max(0, Math.min(100, Number(minFit) || 0))
+    const word = String(focus ?? '').trim().slice(0, 60)
+    const list = await buildLiList(prisma, { action: 'liList', minFit: floor, focus: word, research: research !== false, salesNav: salesNav !== false, skipGiants: skipGiants !== false })
+    // Brands (and research names) the fill already read today count against
+    // today's 100 — the script keeps its own count; this is the server's view.
+    const today = localDayKey()
+    const [log, rlog] = await Promise.all([readLiLog(prisma), readLiResearch(prisma)])
+    const doneToday = [...Object.values(log), ...Object.values(rlog)]
+      .filter(m => m && m.at && localDayKey(new Date(m.at)) === today).length
+    const label = (key: string) => NY_DAY_LABEL.format(new Date(key + 'T12:00:00Z'))
+    const days = splitFillDays(list.items, { today, doneToday, perDay: LI_PER_DAY, focus: word, dayLabel: label })
+    return {
+      today, doneToday, perDay: LI_PER_DAY, minFit: floor, focus: word,
+      total: list.items.length, belowFit: list.belowFit, bigSkipped: list.bigSkipped, resting: list.resting, underCap: list.underCap,
+      planned: list.planned, research: list.research, reachedLast: list.reachedLast, giantsLast: list.giantsLast,
+      days: days.map(d => ({ ...d, label: label(d.day) })),
+    }
+  },
+
   async linkedinPeople() {
     const brands = await prisma.brand.findMany({
       include: {
@@ -11858,6 +12058,22 @@ const handlers: Record<string, Handler> = {
     delete review[brand.id]
     await writeJsonSetting(prisma, LI_REVIEW_KEY, review)
     return { ok: true, name: brand.name, removedPage: entry?.why === 'wrong' ? brand.linkedinUrl : null }
+  },
+
+  // Look again: the brand goes back to the LinkedIn fill — "None of
+  // these" and its month's rest after a search that found nothing clear
+  // are forgotten, so the next run searches it (Oct 12 2026: Arizona
+  // Beverages and Crodino, searched while the window was hidden).
+  async liPageRetry({ brandId }: { brandId: string }) {
+    const brand = await prisma.brand.findUnique({ where: { id: String(brandId) }, select: { id: true, name: true, linkedinUrl: true } })
+    if (!brand) throw new Error('Brand not found')
+    const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
+    const wasNone = confirmed[brand.id] === 'none'
+    if (wasNone) { delete confirmed[brand.id]; await writeJsonSetting(prisma, LI_CONFIRMED_KEY, confirmed) }
+    const log = await readLiLog(prisma)
+    const rested = !!log[brand.id]
+    if (rested) { delete log[brand.id]; await writeJsonSetting(prisma, LI_SWEEP_KEY, log) }
+    return { ok: true, name: brand.name, linkedinUrl: brand.linkedinUrl, wasNone, rested }
   },
 
   // The fill runs on one LinkedIn account (the first one it ran on).
@@ -13041,16 +13257,38 @@ const handlers: Record<string, Handler> = {
     const sourceOf = (q: string) => /^(Claude hunt|🔥)/.test(q) ? 'Claude hunt'
       : /^LinkedIn/.test(q) ? 'LinkedIn' : /^Research list/.test(q) ? 'Research list' : 'Search'
     const link: { id: string; brandId: string }[] = []
-    const out = rows.map((r: any) => {
-      const existing = (r.brandId && byId.get(r.brandId)) || byName.get(String(r.name).toLowerCase())
+    const matched = rows.map((r: any) => (r.brandId && byId.get(r.brandId)) || byName.get(String(r.name).toLowerCase()) || null)
+    // The grade (discover-grade.ts): a find on the roster by its brand's
+    // own Brand Fit, the rest by what Discover knows.
+    const rates = await recentAcceptRates()
+    const now = new Date()
+    const onRoster = Array.from(new Set(matched.filter(Boolean).map((b: any) => b.id))) as string[]
+    const facts = onRoster.length ? await prisma.brand.findMany({
+      where: { id: { in: onRoster } },
+      select: { id: true, name: true, aka: true, category: true, tier: true, workPeople: true, ...FIT_SELECT,
+        contacts: { select: { email: true, linkedinUrl: true } } },
+    }) : []
+    const fitById = new Map(facts.map(b => [b.id, brandFit(b, b.contacts.filter(isReachable).length, rates, now)]))
+    const out = rows.map((r: any, i: number) => {
+      const existing = matched[i]
       if (existing && !r.brandId) { link.push({ id: r.id, brandId: existing.id }); r.brandId = existing.id; r.status = 'added' }
-      return { ...r, source: sourceOf(r.query), inSystem: !!existing, contactCount: existing?._count.contacts ?? 0 }
+      const fit = existing && fitById.get(existing.id)
+      const raw = String(r.category ?? '').trim().toLowerCase()
+      const cat = isCategoryKey(raw) ? raw : guessCategory(r.name, r.category)
+      const g = fit ? gradeFromFit(fit) : gradeDiscovery(
+        { category: cat, signals: r.signals, hasParent: !!parentOf(r.name, null), giant: giantOf({ name: r.name }) },
+        { priority: categoryPriority(cat), acceptRate: rateOrNull(rates, cat), now })
+      return { ...r, source: sourceOf(r.query), inSystem: !!existing, contactCount: existing?._count.contacts ?? 0, grade: g }
     })
     // A brand added since by any other path: remember the link.
     for (const l of link) {
       await (prisma as any).discoveredBrand.update({ where: { id: l.id }, data: { brandId: l.brandId, status: 'added' } })
     }
-    return { rows: out }
+    // The last bulk add, for its Undo line (a day).
+    const bulk = await readJsonSetting<any>(prisma, DISCOVER_BULK_KEY, null)
+    const bulkUndo = bulk && Array.isArray(bulk.rows) && Date.now() - Date.parse(bulk.at) < 864e5
+      ? { at: bulk.at, grade: bulk.grade, n: bulk.rows.filter((r: any) => r.created).length } : null
+    return { rows: out, bulkUndo }
   },
 
   // Promote a discovery to a real Brand. It arrives contact-less, so it
@@ -13058,33 +13296,143 @@ const handlers: Record<string, Handler> = {
   async addDiscoveredBrand({ id, tier }: any) {
     const d = await (prisma as any).discoveredBrand.findUnique({ where: { id } })
     if (!d) throw new Error('Not found')
-    // Tier = how big the brand is. It used to default to "established"
-    // (big), so every find from Discover — Coco5, a $10M-raise sports
-    // drink — was filed as a giant and the LinkedIn fill did it last
-    // (Leo, Oct 6 2026: "why is coco5 established"). Now: the hunt's
-    // "midsize" sign → growth; otherwise left blank until LinkedIn's
-    // headcount (liMembers) sizes it. A tier passed in still wins.
-    if (!TIER_KEYS.includes(tier)) tier = String(d.signals || '').split(',').includes('midsize') ? 'growth' : null
-    let brand = await prisma.brand.findFirst({ where: { name: { equals: d.name, mode: 'insensitive' } } })
-    if (!brand) {
-      // The bench holds whatever the model or a Cowork import wrote
-      // ("Beverage", "energy drinks"). Saved as-is that brand sits under
-      // no chip at all, not even No category, so anything that isn't one
-      // of our keys goes through the keyword rules instead.
-      const benchCat = String(d.category ?? '').trim().toLowerCase()
-      const category = isCategoryKey(benchCat) ? benchCat : guessCategory(d.name, d.category)
-      brand = await prisma.brand.create({
-        data: {
-          name: d.name, category, tier,
-          website: d.website ?? null, linkedinUrl: d.linkedinUrl ?? null,
-          source: 'discover',
-          notes: [d.reason ? `Discover: ${d.reason}` : '', (d as any).activation ? `Activation idea: ${(d as any).activation}` : '',
-            d.sourceUrl ? `Found in: ${d.sourceUrl}` : ''].filter(Boolean).join('\n') || null,
-        },
-      })
+    const { brandId } = await promoteDiscovery(prisma, d, tier)
+    return { ok: true, brandId }
+  },
+
+  // Every find of one grade at once (Leo, Oct 13 2026: "build 3" — add
+  // every A-grade find). Preview by default: the finds waiting for review
+  // with that grade, each as it would be filed, and the ones left out
+  // because they may already be on the roster (same name / aka, LinkedIn
+  // page or website — the chat's matchRoster). Confirm with the preview's
+  // `expect` and the ticked `ids` adds them in one transaction; finds that
+  // are one brand (the preview's `group`) become one. Undo = undoDiscoverBulk.
+  async addDiscoveredBulk({ grade = 'A', confirm = false, ids, expect }: any) {
+    if (!['A', 'B'].includes(grade)) throw new Error('Grade A or B')
+    const plan = await discoverBulkPlan(grade)
+    const summary = { grade, rows: plan.rows, held: plan.held, expect: plan.sig }
+    if (!confirm) return { applied: false, ...summary }
+    if (expect !== plan.sig) return { applied: false, stale: true, ...summary }
+    const want = new Set((Array.isArray(ids) ? ids : plan.rows.map(r => r.id)).map(String))
+    const pick = plan.rows.filter(r => want.has(r.id))
+    if (!pick.length) throw new Error('Tick at least one brand to add')
+    const at = new Date().toISOString()
+    const made = await prisma.$transaction(async tx => {
+      const out: { discId: string; brandId: string; created: boolean; name: string; prevStatus: string; stamp?: string }[] = []
+      const byGroup = new Map<string, string>()
+      for (const r of pick) {
+        const d = await (tx as any).discoveredBrand.findUnique({ where: { id: r.id } })
+        if (!d || d.status === 'added' || d.status === 'dismissed' || d.brandId) continue
+        const twin = byGroup.get(r.group)
+        if (twin) {
+          // The second find of one brand: it fills what the first left empty.
+          const b = await tx.brand.findUnique({ where: { id: twin }, select: { website: true, linkedinUrl: true } })
+          const fill: Record<string, string> = {}
+          if (b && !b.website && d.website) fill.website = d.website
+          if (b && !b.linkedinUrl && d.linkedinUrl) fill.linkedinUrl = d.linkedinUrl
+          if (Object.keys(fill).length) await tx.brand.update({ where: { id: twin }, data: fill })
+          await (tx as any).discoveredBrand.update({ where: { id: d.id }, data: { status: 'added', brandId: twin } })
+          out.push({ discId: d.id, brandId: twin, created: false, name: d.name, prevStatus: d.status })
+          continue
+        }
+        const res = await promoteDiscovery(tx, d)
+        byGroup.set(r.group, res.brandId)
+        out.push({ discId: d.id, brandId: res.brandId, created: res.created, name: d.name, prevStatus: d.status })
+      }
+      // Each new brand as the add left it: Undo takes back only a brand
+      // nobody has changed since (stamp = its updatedAt now).
+      const mine = out.filter(o => o.created).map(o => o.brandId)
+      const stamps = new Map((await tx.brand.findMany({ where: { id: { in: mine } }, select: { id: true, updatedAt: true } }))
+        .map(b => [b.id, b.updatedAt.toISOString()]))
+      for (const o of out) if (o.created) o.stamp = stamps.get(o.brandId)
+      await writeJsonSetting(tx, DISCOVER_BULK_KEY, { at, grade, rows: out })
+      return out
+    }, { maxWait: 10000, timeout: 120000 })
+    return { applied: true, ...summary, added: made.filter(m => m.created).length, linked: made.filter(m => !m.created).length, names: made.filter(m => m.created).map(m => m.name) }
+  },
+
+  // Takes the last bulk add back: the brands it made that nothing has
+  // touched since are deleted and every find linked to them goes back to
+  // To review. Touched = the brand itself edited (facts, notes, a Show
+  // Board code, a merge into it, the LinkedIn fill saving its page — its
+  // updatedAt moved), or anything on it: people, outreach, a deal, show,
+  // activation, document, partner record, board visit or request, ops
+  // mail, a Schedule day. A touched brand stays, named. Preview first;
+  // confirm sends the preview's `expect`, and the delete itself only takes
+  // a brand still bare (anything new on one → stale, nothing changes).
+  async undoDiscoverBulk({ confirm = false, expect }: any) {
+    const last = await readJsonSetting<any>(prisma, DISCOVER_BULK_KEY, null)
+    if (!last || !Array.isArray(last.rows) || !last.rows.length) throw new Error('Nothing to undo')
+    const made = last.rows.filter((r: any) => r.created)
+    const stampOf = new Map<string, string | undefined>(made.map((r: any) => [r.brandId, r.stamp]))
+    const createdIds = [...stampOf.keys()]
+    const brands = await prisma.brand.findMany({
+      where: { id: { in: createdIds } },
+      select: { id: true, name: true, createdAt: true, updatedAt: true, boardCode: true, partner: { select: { id: true } },
+        _count: { select: { contacts: true, targets: true, deals: true, shows: true, activations: true, documents: true, boardVisits: true } } },
+    })
+    const ids = brands.map(b => b.id)
+    const tally = async (rows: { brandId: string | null }[]) => {
+      const m = new Map<string, number>()
+      for (const r of rows) if (r.brandId) m.set(r.brandId, (m.get(r.brandId) ?? 0) + 1)
+      return m
     }
-    await (prisma as any).discoveredBrand.update({ where: { id }, data: { status: 'added', brandId: brand.id } })
-    return { ok: true, brandId: brand.id }
+    const requests = await tally(ids.length ? await (prisma as any).boardAccessRequest.findMany({ where: { brandId: { in: ids } }, select: { brandId: true } }) : [])
+    const mail = await tally(ids.length ? await (prisma as any).opsMessage.findMany({ where: { brandId: { in: ids } }, select: { brandId: true } }) : [])
+    const plan = await readPlanRaw()
+    const planned = new Set(Object.values(plan).flatMap((d: any) => (d?.brandIds ?? []) as string[]))
+    const goes: { id: string; name: string }[] = []
+    const stays: { name: string; why: string }[] = []
+    for (const b of brands) {
+      const c = b._count
+      const stamp = stampOf.get(b.id)
+      // An add from before stamps were kept: edited = changed 2+ min after it was made.
+      const edited = stamp ? b.updatedAt.getTime() !== Date.parse(stamp) : b.updatedAt.getTime() - b.createdAt.getTime() > 120e3
+      const why = c.contacts ? `${c.contacts} ${c.contacts === 1 ? 'person' : 'people'} on file`
+        : c.targets ? 'in outreach' : c.deals ? 'has a deal' : c.shows ? 'on a show' : c.activations ? 'has an activation'
+        : c.documents ? 'has a document' : b.partner ? 'has a partner record' : c.boardVisits ? 'opened the Show Board'
+        : requests.get(b.id) ? 'asked for the Show Board' : mail.get(b.id) ? 'has ops mail'
+        : planned.has(b.id) ? 'on a Schedule day' : b.boardCode ? 'has a Show Board code'
+        : edited ? 'edited since' : null
+      if (why) stays.push({ name: b.name, why }); else goes.push({ id: b.id, name: b.name })
+    }
+    const goIds = goes.map(g => g.id).sort()
+    // Every find linked to a brand that goes: the add's own (back to what
+    // they were) and any linked since by name (back to To review).
+    const linked = goIds.length ? await (prisma as any).discoveredBrand.findMany({ where: { brandId: { in: goIds } }, select: { id: true, name: true } }) : []
+    const own = new Map<string, any>(last.rows.filter((r: any) => goIds.includes(r.brandId)).map((r: any) => [r.discId, r]))
+    const sig = last.at + '#' + goIds.join(',') + '#' + stays.map(x => x.name + ':' + x.why).sort().join(',') + '#' + linked.map((l: any) => l.id).sort().join(',')
+    const preview = { at: last.at, goes: goes.map(g => g.name), stays, backToReview: linked.length, expect: sig }
+    if (!confirm) return { applied: false, ...preview }
+    if (expect !== sig) return { applied: false, stale: true, ...preview }
+    try {
+      await prisma.$transaction(async tx => {
+        for (const l of linked) {
+          const r = own.get(l.id)
+          await (tx as any).discoveredBrand.updateMany({ where: { id: l.id, brandId: { in: goIds } }, data: { status: r?.prevStatus || 'new', brandId: null } })
+        }
+        if (goIds.length) {
+          // Only brands still bare and unchanged: anything that landed on one
+          // since the preview leaves the count short and undoes it all.
+          const gone = await tx.brand.deleteMany({
+            where: {
+              id: { in: goIds }, boardCode: null, partner: { is: null },
+              contacts: { none: {} }, targets: { none: {} }, deals: { none: {} }, shows: { none: {} },
+              activations: { none: {} }, documents: { none: {} }, boardVisits: { none: {} },
+              OR: brands.filter(b => goIds.includes(b.id)).map(b => ({ id: b.id, updatedAt: b.updatedAt })),
+            },
+          })
+          if (gone.count !== goIds.length) throw new Error('STALE_UNDO')
+          // A find linked by name since the preview: back to To review too.
+          await (tx as any).discoveredBrand.updateMany({ where: { brandId: { in: goIds } }, data: { status: 'new', brandId: null } })
+        }
+        await tx.setting.deleteMany({ where: { key: DISCOVER_BULK_KEY } })
+      }, { maxWait: 10000, timeout: 60000 })
+    } catch (e: any) {
+      if (e?.message !== 'STALE_UNDO') throw e
+      return { ...(await handlers.undoDiscoverBulk({})), stale: true }
+    }
+    return { applied: true, ...preview }
   },
 
   // Bulk insert for Discover rows researched OUTSIDE the site (e.g. a

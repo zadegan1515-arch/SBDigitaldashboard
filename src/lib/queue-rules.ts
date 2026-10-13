@@ -11,9 +11,13 @@
 //  - By hand, a brand that was reached out to rests REST_DAYS from its
 //    first outreach ("it should not be reached out to again until two
 //    weeks after initial outreach"); from that day on it can go again.
-//  - Giants (giants.ts: household names, the big parent companies and
-//    their brands, $1B+ sales) are held back for now: the system never
-//    picks one, and a hand add asks first ("Add anyway" OKs that brand).
+//  - Giants (giants.ts: household names, the big parent companies' brands,
+//    $1B+ sales) and brands with 1,500+ people on LinkedIn (Leo, Oct 12
+//    2026: "not reach out to any brand with over 1500 employees") are held
+//    back for now: the system never picks one, and a hand add asks first
+//    ("Add anyway" OKs that brand). Conglomerates — the parent companies
+//    themselves (Diageo, Molson Coors, PepsiCo…) — are never held back
+//    (Leo: "yes except for congomerates"): he works them as one account.
 //  - People already waiting in the queue at such brands are skipped, not
 //    removed: nothing here changes data.
 //
@@ -36,6 +40,7 @@
 // node scripts/test-queue-rules.mjs
 
 import { giantWhy } from './giants'
+import { isParentCompany } from './parents'
 
 export const REST_DAYS = 14
 
@@ -163,7 +168,7 @@ export type Gate = { reason: GateReason; first?: Date; until?: string; why?: str
 // nextSending: the sending days, for a part-sent brand's second sitting
 // day (hand paths only); without it the sitting is its first day alone.
 export function queueGate(
-  b: { name: string; aka?: string | null; salesCents?: bigint | number | null; rows: OutreachRow[] },
+  b: { name: string; aka?: string | null; salesCents?: bigint | number | null; liMembers?: number | null; rows: OutreachRow[] },
   opts: { auto: boolean; giantsOn: boolean; day: string; nextSending?: NextSending },
 ): Gate {
   const s = sittingOf(b.rows, opts.nextSending)
@@ -181,11 +186,34 @@ export function queueGate(
   return null
 }
 
-// Why the brand is a giant, or null (giants.ts on its name, its other
-// names and its sales when we know them).
-export function giantOf(b: { name: string; aka?: string | null; salesCents?: bigint | number | null }): string | null {
+// "Very big": this many people on LinkedIn (the People tab's "associated
+// members", Brand.liMembers) — held back like a giant, and the LinkedIn
+// fill's "Skip very big brands" leaves it off.
+export const VERY_BIG_LI = 1500
+
+// A conglomerate: one of the parent companies in parents.ts itself, by its
+// name or any aka (Diageo, Molson Coors, PepsiCo, Bacardi…), not one of its
+// brands. Leo reaches them as one account (Diageo's brands were combined
+// into it), so neither the giants list nor the 1,500 rule holds one back.
+// Their brands (Smirnoff, Bud Light…) are still giants.
+export function isConglomerate(b: { name: string; aka?: string | null }): boolean {
+  return isParentCompany(b.name, b.aka ?? null)
+}
+
+// 1,500+ people on LinkedIn, and not a conglomerate.
+export function veryBigWhy(b: { name: string; aka?: string | null; liMembers?: number | null }): string | null {
+  if ((b.liMembers ?? 0) < VERY_BIG_LI || isConglomerate(b)) return null
+  return VERY_BIG_LI.toLocaleString('en-US') + '+ people on LinkedIn'
+}
+
+// Why the brand is held back as a giant, or null: giants.ts on its name,
+// its other names and its sales when we know them, else 1,500+ people on
+// LinkedIn. A conglomerate never is.
+export function giantOf(b: { name: string; aka?: string | null; salesCents?: bigint | number | null; liMembers?: number | null }): string | null {
+  if (isConglomerate(b)) return null
   const cents = b.salesCents == null ? null : Number(b.salesCents)
   return giantWhy(b.name, { aka: b.aka ?? null, salesUsd: cents == null || !isFinite(cents) ? null : cents / 100 })
+    ?? veryBigWhy(b)
 }
 
 // Ready for a second try (second-try, Oct 12 2026): a brand reached out to

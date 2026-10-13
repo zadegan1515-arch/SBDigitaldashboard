@@ -28,6 +28,8 @@ on:
       - 'src/lib/queue-check.ts'
       - 'src/lib/buyers.ts'
       - 'src/lib/claude-hunt.ts'
+      - 'src/lib/discover-grade.ts'
+      - 'scripts/test-discover*'
       - 'src/lib/build-ideas.ts'
       - 'src/lib/brand-search.ts'
       - 'src/lib/plan-week.ts'
@@ -79,6 +81,8 @@ on:
       - 'src/lib/queue-check.ts'
       - 'src/lib/buyers.ts'
       - 'src/lib/claude-hunt.ts'
+      - 'src/lib/discover-grade.ts'
+      - 'scripts/test-discover*'
       - 'src/lib/build-ideas.ts'
       - 'src/lib/brand-search.ts'
       - 'src/lib/plan-week.ts'
@@ -138,10 +142,10 @@ jobs:
       - name: Types
         run: npx tsc --noEmit
       - name: Rules
-        run: node scripts/test-brand-fit.mjs && node scripts/test-brand-size.mjs && node scripts/test-stock.mjs && node scripts/test-work-log.mjs && node scripts/test-no-send.mjs && node scripts/test-queue-check.mjs && node scripts/test-claude-hunt.mjs && node scripts/test-chat-add.mjs && node scripts/test-brand-search.mjs && node scripts/test-plan-week.mjs && node scripts/test-carry.mjs && node scripts/test-queue-rules.mjs && node scripts/test-today-order.mjs && node scripts/test-same-person.mjs && node scripts/test-brand-work.mjs && node scripts/test-outcomes.mjs && node scripts/test-skip-day.mjs
+        run: node scripts/test-brand-fit.mjs && node scripts/test-brand-size.mjs && node scripts/test-stock.mjs && node scripts/test-work-log.mjs && node scripts/test-no-send.mjs && node scripts/test-queue-check.mjs && node scripts/test-claude-hunt.mjs && node scripts/test-chat-add.mjs && node scripts/test-brand-search.mjs && node scripts/test-plan-week.mjs && node scripts/test-carry.mjs && node scripts/test-queue-rules.mjs && node scripts/test-today-order.mjs && node scripts/test-same-person.mjs && node scripts/test-brand-work.mjs && node scripts/test-outcomes.mjs && node scripts/test-skip-day.mjs && node scripts/test-discover-grade.mjs
       - name: The page against a fake dashboard
-        run: node scripts/test-brand-fit-ui.js && node scripts/test-brands-table.js && node scripts/test-today.js && node scripts/test-schedule.js && node scripts/test-outreach-lists.js
+        run: node scripts/test-brand-fit-ui.js && node scripts/test-brands-table.js && node scripts/test-today.js && node scripts/test-schedule.js && node scripts/test-outreach-lists.js && node scripts/test-discover.js
       - name: The handlers on a real database
-        run: node scripts/test-brand-fit-e2e.js && node scripts/test-today-e2e.js && node scripts/test-chat-add-e2e.js && node scripts/test-combine-e2e.js && node scripts/test-queue-e2e.js && node scripts/test-plan-brands-e2e.js && node scripts/test-schedule-reads-e2e.js
+        run: node scripts/test-brand-fit-e2e.js && node scripts/test-today-e2e.js && node scripts/test-chat-add-e2e.js && node scripts/test-combine-e2e.js && node scripts/test-queue-e2e.js && node scripts/test-plan-brands-e2e.js && node scripts/test-schedule-reads-e2e.js && node scripts/test-discover-bulk-e2e.js
         env:
           E2E_DATABASE_URL: postgresql://postgres:e2e@localhost:5432/sbe2e

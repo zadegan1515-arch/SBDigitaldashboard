@@ -279,6 +279,30 @@ export function industryFits(category: string | null | undefined, subtitle: stri
   return !!re && re.test(String(subtitle || ''))
 }
 
+// What a brand of the category sells, in the words a page's own line
+// uses. Only for an exact name in an industry that doesn't fit (Leo, Oct
+// 12 2026: a page whose description says "Instant focus in a pouch" is a
+// pouch brand, whatever industry it picked on LinkedIn).
+const PRODUCT_WORDS: Record<string, RegExp> = {
+  electrolytes: /electrolyte|hydration|drink mix/i,
+  energy: /energy drink|energy shot|caffeine|paraxanthine|\bdrinks?\b|in a pouch|(?:energy|caffeine|focus) pouch/i,
+  beverage: /\bdrinks?\b|beverage|\bteas?\b|soda|sparkling|juice|water/i,
+  rtd: /seltzer|cocktail|\bbeer|hard (?:tea|lemonade|cider)|spiked|\bdrinks?\b/i,
+  spirits: /vodka|tequila|whisk|bourbon|\brum\b|\bgin\b|mezcal|liqueur|spirits|aperitiv/i,
+  alcohol: /vodka|tequila|whisk|bourbon|\brum\b|\bgin\b|wine|\bbeer|seltzer|cocktail|spirits/i,
+  nicotine: /nicotine pouch|snus|\bvape|\btobacco/i,
+  beauty: /skin ?care|cosmetic|makeup|serum|beauty/i,
+  wellness: /supplement|vitamin|protein|wellness/i,
+  athletic: /apparel|footwear|sneaker|activewear|athletic/i,
+  apparel: /apparel|clothing|footwear|streetwear/i,
+}
+export function descriptionFits(category: string | null | undefined, subtitle: string | null | undefined): boolean {
+  const re = PRODUCT_WORDS[String(category || '')]
+  if (!re) return false
+  const rest = String(subtitle || '').split(/\s*[•·]\s*/).slice(1).join(' • ')
+  return re.test(rest)
+}
+
 export type LiCompany = { slug: string; name: string; subtitle?: string | null }
 
 // Which search result is this brand's company page. Wrong is worse than
@@ -308,7 +332,10 @@ export function decideCompanyMatch(
   if (exact.length) {
     if (!checkable) return exact.length === 1 ? { pick: exact[0], reason: 'exact' } : { pick: null, reason: 'unclear' }
     const fit = exact.filter(fits)
-    return fit.length ? { pick: mostFollowed(fit), reason: 'exact' } : { pick: null, reason: 'unclear' }
+    if (fit.length) return { pick: mostFollowed(fit), reason: 'exact' }
+    // One exact name whose own line says it sells what the brand sells.
+    const says = exact.filter(c => descriptionFits(brand.category, c.subtitle))
+    return says.length === 1 ? { pick: says[0], reason: 'exact' } : { pick: null, reason: 'unclear' }
   }
   const near = list.slice(0, 3).filter(c => {
     const cn = normalizeCompany(c.name)

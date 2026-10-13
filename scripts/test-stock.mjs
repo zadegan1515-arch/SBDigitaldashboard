@@ -20,7 +20,7 @@ execSync(
   ' --target es2020 --module esnext --moduleResolution bundler --skipLibCheck',
   { stdio: 'inherit' },
 )
-const { placeBrand, refileMoves, remapPlanDays, stateOf, buildStock, brandKey, bestDealStage, LANES, SORTABLE } =
+const { placeBrand, refileMoves, remapPlanDays, stateOf, buildStock, brandKey, bestDealStage, LANES, SORTABLE, knownSpellings, secondSearchName } =
   await import(pathToFileURL(join(out, 'stock.js')).href)
 const { guessCategory } = await import(pathToFileURL(join(out, 'category-hints.js')).href)
 
@@ -266,6 +266,17 @@ for (const l of LANES) for (const k of new Set(l.known.flatMap(x => x.split('|')
   is('hide on: row list still matches counts', [...on.lanes, ...on.others].every(r => r.brands.length === r.counts.total), true)
   is('within a state, best fit first', rtd(off).brands.filter(b => b.state === 'ready').map(b => b.name), ['Big Seltzer', 'Mid Seltzer', 'Tiny Seltzer'])
   is('fit rides along on the row brand', rtd(off).brands.find(b => b.name === 'Big Seltzer').fit.score, 70)
+}
+
+// The LinkedIn fill's second search (Oct 12 2026: Arizona Beverages found nothing).
+{
+  is('known spellings: Arizona Beverages = AriZona', knownSpellings('Arizona Beverages', null), ['AriZona', 'Arizona Iced Tea'])
+  is('known spellings: never its own name', knownSpellings('AriZona', null), ['Arizona Iced Tea'])
+  is('known spellings: unknown brand', knownSpellings('Saloo', null), [])
+  is('second search: aka first', secondSearchName('818 Spirits', '818 Tequila, 818'), '818 Tequila')
+  is('second search: a spelling our lists know', secondSearchName('Arizona Beverages', null), 'AriZona')
+  is('second search: name without what it sells', [secondSearchName('Anua Skincare'), secondSearchName('HyTier Energy'), secondSearchName('ADAPT Nutrition')], ['Anua', 'HyTier', 'ADAPT'])
+  is('second search: nothing to try', secondSearchName('Saloo'), '')
 }
 
 console.log(`${pass} passed, ${fail} failed`)

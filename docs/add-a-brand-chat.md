@@ -6,6 +6,10 @@ and add it to the dashboard — **only after Leo says yes**.
 
 Leo reads this on his phone. Keep every reply short, in plain words, no code.
 
+Before the first brand in a chat, run `git pull origin main` and re-read this file,
+so you follow the latest version. It changes. Since Oct 12 2026, facts Leo says
+yes to go straight onto the new brand.
+
 ## Each brand, step by step
 
 1. **Who is it?** Read the screenshot: the handle, the name on the product, the
@@ -29,22 +33,31 @@ Leo reads this on his phone. Keep every reply short, in plain words, no code.
    You can't sign in to SponsorUnited or LinkedIn. Leo's own tools do that once
    the brand is added (see "After adding" below).
 4. **Preview.** Run `node scripts/cc.mjs chatAddBrand '<json>'` **without**
-   `apply`. It cleans the brand and lists every brand already on the dashboard
+   `apply`. It cleans the brand, lists every brand already on the dashboard
    that could be the same one (same name or also-known-as, same LinkedIn page,
-   same website).
-5. **Show Leo the card** and ask "Add it?":
+   same website), and returns `facts`: each fact exactly as it will be written
+   (`{ label, value }`, e.g. "Raised · $45M"). A fact you sent as unknown
+   isn't in the list, because it writes nothing. It also returns `expect`, a
+   stamp of this card.
+5. **Show Leo the card** and ask "Add it?". Put every line of the preview's
+   `facts` on the card, word for word. Leo's yes is his review of those facts.
+   They go on the brand with no Stock take step, so the card must show all of them:
    > **Poppi** — prebiotic soda · Soda, Water & Other Drinks
    > drinkpoppi.com · LinkedIn ✓ · @drinkpoppi
-   > Raised $45M (2023) · sponsors college: not found
+   > In the US: yes · Raised: $45M · Last round: 2023-06
    > Already on the dashboard? No
 
    If the preview found possible matches, name them and ask whether this brand
-   is the same company.
-6. **Only on Leo's yes**, run the same call with `"apply": true`. If Leo said a
-   matched brand is a different company, also send `"notSame": true`. A brand
-   with exactly the same name is never added twice. Reply with the brand's link.
-   If you sent facts, add one line: "Facts are waiting for your review on Stock
-   take → Brand Fit."
+   is the same company. If Leo corrects a fact ("it's $40M"), run the preview
+   again with the fix and show the new card before adding.
+6. **Only on Leo's yes**, run the same call (the same brand and facts as the
+   card he said yes to) with `"apply": true` and the preview's `"expect"`.
+   Facts that differ from that card are refused, so preview again and show him.
+   It makes the brand and writes
+   the facts onto it in one go, and the brand counts as researched (off the
+   research list for 90 days). If Leo said a matched brand is a different company, also send `"notSame": true`.
+   A brand with exactly the same name is never added twice. Reply with the
+   brand's link.
 
 ## The call
 
@@ -73,11 +86,13 @@ node scripts/cc.mjs chatAddBrand '{
   keyword rules guess.
 - **tier**: `emerging` (small) / `growth` (mid-size) / `established` (big), or
   leave it out.
-- **facts** are optional. Send only what you actually found. They are not written
-  to the brand; they wait for Leo's review on Stock take → Brand Fit.
+- **facts** are optional. Send only what you actually found. They show on the
+  card, and on Leo's yes they are written onto the new brand. His yes is the
+  review, so they skip Stock take → Brand Fit.
   `sales` / `funding` take dollar amounts ("$12M"), `lastRound` is `YYYY-MM`,
-  `us` and `sponsorsCollege` are yes / no / unknown, and `status` is active /
-  closed / acquired (with `acquiredBy`).
+  `us` and `sponsorsCollege` are yes / no / unknown, `status` is active /
+  closed / acquired (with `acquiredBy`), and `note` holds where you found them
+  (it shows as "Sources" on the brand page). Leave the website out of `facts`; it goes in `brand`.
 
 ## After adding (tell Leo when it matters)
 
@@ -92,6 +107,10 @@ node scripts/cc.mjs chatAddBrand '{
 - Never add a brand without Leo's yes, and never add more than he asked for.
 - Never add contacts or people, never change outreach, and never archive,
   merge or delete anything.
-- Never write facts directly to a brand (they always go to the review).
+- Never write facts onto a brand that was already on the dashboard. For one of
+  those, stage them for Leo's review on Stock take → Brand Fit:
+  `node scripts/cc.mjs researchStage '{"rows":[{"id":"<brandId>", …facts}]}'`.
+  Facts go straight onto a brand only when this chat makes it, and only the ones
+  on the card Leo said yes to.
 - Never use the Anthropic API or anything that costs money.
 - Never print or repeat tokens or other secrets.
