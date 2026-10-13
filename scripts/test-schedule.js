@@ -94,6 +94,9 @@ let embedSug = false;
 let bigs13 = 0;
 let failAdd = '';
 let undoToday = false;
+// Section 14 (second review, Oct 13 2026): a waiting card on the one day for
+// a part-sent brand's rest; Plan my week's Undo onto today.
+let endsCard = false;
 const SUG = ['s1', 's2', 's3', 's4', 's5', 's6'].map((id, i) => ({ id, name: 'Sug ' + (i + 1), category: 'energy', going: 3, label: { kind: 'ready', reachable: 3, need: 3, onFile: 3 }, fit: { score: 80 - i }, people: [] }));
 const GIANT_CARD = { id: 'g1', name: 'Red Bull', category: 'energy', state: 'blocked', going: 0, people: [], giant: true, reason: 'giant', reasonText: 'A giant (a household name) — held back for now. Add anyway to send it.' };
 const PLAN = () => ({
@@ -109,7 +112,8 @@ const PLAN = () => ({
     {
       date: '2026-10-07', today: true, category: 'bestfit', auto: true, total: 7, sent: 0, offTheme: 1,
       pinned: [{ id: 'p1', name: 'BodyArmor', category: 'electrolytes', state: 'going', going: 2, people: [{ name: 'Ann' }] }]
-        .concat(waitCard ? [{ id: 'p9', name: 'Waiting Co', category: 'energy', state: 'going', going: 4, people: [], waits: '2026-10-08' }] : []),
+        .concat(waitCard ? [{ id: 'p9', name: 'Waiting Co', category: 'energy', state: 'going', going: 4, people: [], waits: '2026-10-08' }] : [])
+        .concat(endsCard ? [{ id: 'p8', name: 'Lastday Co', category: 'energy', state: 'going', going: 2, people: [], waits: '2026-10-08', sittingEnds: true, restsUntil: 'Tue Oct 20' }] : []),
       brands: [{ id: 'a1', name: 'Celsius', going: 4, people: [{ name: 'Bo' }], category: 'energy' }],
       sentPeople: [], overflow: [],
     },
@@ -172,6 +176,13 @@ const H = {
     : { brandId: id, brandName: id, added: true, state: 'going', going: 4, people: [] })) }),
   setGiantsOn: ({ on }) => { giantsOn = !!on; return { giantsOn }; },
   passBrandToday: ({ brandId }) => ({ id: brandId, name: brandId, passedToday: true, unqueued: 0 }),
+  // The × on today's card of a brand part-sent today: its rest is pinned
+  // first on its next sending day (pinRestOfSitting).
+  planRemoveBrand: ({ date }) => ({ ok: true, unqueued: 1, passedToday: date === '2026-10-07', restOn: '2026-10-08', restOnLabel: 'Thu Oct 8' }),
+  undoPlanWeek: ({ preview }) => (preview
+    ? { ok: true, preview: true, lock: true, brands: [{ date: '2026-10-07', id: 'p1', name: 'BodyArmor' }], categories: [], movedBack: [],
+        stay: [{ id: 'p2', name: 'Halfsent Co' }], unqueue: [{ brand: 'BodyArmor', people: 2 }] }
+    : { ok: true, brands: [{ date: '2026-10-07', id: 'p1', name: 'BodyArmor' }], unqueued: 2 }),
   allowGiant: ({ brandId }) => ({ ok: true, brandId, name: 'Red Bull' }),
   matchBrandList: ({ text }) => ({ lines: text.split('\n').map((t) => ({ input: t, brand: null, suggestions: [] })) }),
   planApplyCategory: ({ date, category, preview, keepPins, expect, applyIfNone }) => {
@@ -779,6 +790,35 @@ async function main() {
   assert.match(dialogs[0], /Out of today’s list, back to waiting: Moved Co \(2 people\)/);
   undoToday = false;
   console.log('✓ 13 review fixes: one big company in Fill to 30, stale ticks dropped, a failed add reads + Add, Plan my week over the flat 30, Undo names today\'s list');
+
+  // 14. Second review (Oct 13 2026) ----------------------------------------
+  skipDays = [];
+  // a. × on today's card of a brand part-sent today: "the rest goes out Thu",
+  // not "back tomorrow".
+  await page.evaluate(() => sdRefresh());
+  await page.waitForSelector('[data-drop="2026-10-07"] [data-sdunpin="p1"]');
+  await page.click('[data-drop="2026-10-07"] [data-sdunpin="p1"]');
+  await waitFor(() => count('planRemoveBrand') >= 1, 'the ×');
+  await page.waitForFunction(() => /the rest of it goes out Thu Oct 8/.test(document.getElementById('toast').textContent));
+  assert.doesNotMatch(await page.textContent('#toast'), /back tomorrow/);
+  // b. Waiting on the one day for its rest: it says it rests after, not
+  // "goes out <day>".
+  endsCard = true;
+  await page.evaluate(() => sdRefresh());
+  await page.waitForSelector('[data-drop="2026-10-07"] [data-dragb="p8"]');
+  const ends = await page.textContent('[data-drop="2026-10-07"] [data-dragb="p8"]');
+  assert.match(ends, /the rest of its first outreach — move it up or send today anyway, or it rests until Tue Oct 20/);
+  assert.doesNotMatch(ends, /goes out Thu/);
+  endsCard = false;
+  // c. Plan my week's Undo onto today names who leaves today's list and who
+  // stays (sent today).
+  dialogs.length = 0;
+  const pwu = count('undoPlanWeek');
+  await page.evaluate(() => sdPwUndo());
+  await waitFor(() => count('undoPlanWeek') === pwu + 2, 'preview then apply');
+  assert.match(dialogs[0], /Out of today’s LinkedIn list, back to waiting: BodyArmor \(2 people\)/);
+  assert.match(dialogs[0], /Stays on today \(already sent some today\): Halfsent Co/);
+  console.log('✓ 14 second review: × on a part-sent brand names the day for its rest, a waiting card on that day says it rests after, Plan my week\'s Undo names today\'s list');
 
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All Schedule checks passed.');

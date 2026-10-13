@@ -22,7 +22,7 @@ import { pathToFileURL } from 'node:url'
 // queue rules whether a brand may move; route.ts carryBrands).
 const out = mkdtempSync(join(tmpdir(), 'carry-test-'))
 execSync(
-  'npx tsc src/lib/carry.ts src/lib/queue-rules.ts --outDir ' + out +
+  'npx tsc src/lib/carry.ts src/lib/queue-rules.ts src/lib/chosen.ts --outDir ' + out +
   ' --target es2020 --module esnext --moduleResolution bundler --skipLibCheck',
   { stdio: 'inherit' },
 )
@@ -33,6 +33,7 @@ for (const f of readdirSync(out).filter(f => f.endsWith('.js'))) {
 }
 const { rollWindow, findUnsent, planCarry, carryOrder, carryTimes } = await import(pathToFileURL(join(out, 'carry.js')).href)
 const { queueGate } = await import(pathToFileURL(join(out, 'queue-rules.js')).href)
+const { parseChosen, addChosen, CHOSEN_MAX } = await import(pathToFileURL(join(out, 'chosen.js')).href)
 
 let pass = 0, fail = 0
 const is = (label, got, want) => {
@@ -256,6 +257,36 @@ const waitsOn = (order, size, cap = 30) => {
 is('carryOrder: a half-sent brand already on the day still goes first',
   carryOrder(['own', 'half'], [{ id: 'half', tier: 0 }]), ['half', 'own'])
 is('carryOrder: no tier reads as a carried pin', carryOrder(['own'], [{ id: 'c' }]), ['c', 'own'])
+// Review fix, Oct 13 2026: a day's own pin finishing its first sitting there
+// (pinned for its rest by Off queue / the Schedule's ×) goes with the
+// half-sent, ahead of the brands planned on the day they missed.
+is('carryOrder: the day\'s own finishing pin goes with tier 0',
+  carryOrder(['own', 'rest'], [{ id: 'half', tier: 0 }, { id: 'p1', tier: 1 }, { id: 'p2', tier: 1 }, { id: 'shown', tier: 3 }], ['rest']),
+  ['half', 'rest', 'p1', 'p2', 'own', 'shown'])
+is('carryOrder: finishing pins keep the day\'s order among themselves',
+  carryOrder(['a', 'r2', 'b', 'r1'], [], ['r1', 'r2']), ['r2', 'r1', 'a', 'b'])
+{
+  const P = name => ({ name, refusal: null, passedOn: null, pinnedOn: null, people: 3 })
+  const unsent = new Map()
+  for (let i = 0; i < 10; i++) unsent.set('p' + i, { from: '2026-10-12', stamped: [], tier: 1, at: i })
+  const r = planCarry(unsent, new Map([...unsent.keys()].map(id => [id, P(id)])), '2026-10-13', ['x3'], 40, ['x3'])
+  is('planCarry: a finishing pin on the day goes before ten carried pins', r.dayIds[0], 'x3')
+  is('planCarry: without it, behind them (as before)', planCarry(unsent, new Map([...unsent.keys()].map(id => [id, P(id)])), '2026-10-13', ['x3'], 40).dayIds[10], 'x3')
+}
+
+// ---- chosen people (src/lib/chosen.ts) -------------------------------------
+{
+  const m = parseChosen({ t1: '2026-10-12', t2: '2026-09-01', t3: 'junk', t4: '2026-10-20', t5: '2026-09-13' }, '2026-10-13')
+  is('chosen: the last 30 days, oldest first; junk, too old and future left out', [...m.entries()], [['t5', '2026-09-13'], ['t1', '2026-10-12']])
+  is('chosen: nothing stored', parseChosen(null, '2026-10-13').size, 0)
+  is('chosen: an array is not a map', parseChosen(['t1'], '2026-10-13').size, 0)
+  const a = addChosen(m, ['t5', 't9', ''], '2026-10-13')
+  is('chosen: chosen again moves to today, newest last', [...a.entries()], [['t1', '2026-10-12'], ['t5', '2026-10-13'], ['t9', '2026-10-13']])
+  const big = new Map()
+  for (let i = 0; i < CHOSEN_MAX; i++) big.set('o' + i, '2026-10-01')
+  const b = addChosen(big, ['new'], '2026-10-13')
+  is('chosen: past the most kept, the oldest goes', [b.size, b.has('o0'), b.has('new')], [CHOSEN_MAX, false, true])
+}
 {
   const prev = { to: '2026-10-14', brands: [{ id: 'a', from: '2026-10-13', since: '2026-10-08', times: 2 }, { id: 'b', from: '2026-10-13' }] }
   const t = carryTimes(prev, [{ id: 'a', from: '2026-10-14' }, { id: 'b', from: '2026-10-14' }, { id: 'c', from: '2026-10-14' }])

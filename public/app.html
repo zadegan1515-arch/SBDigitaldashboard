@@ -6544,7 +6544,7 @@ function pdApply(name) {
     s.busy = false;
     var word = pdDayWord(args.date);
     var sum = sdSummary(r.results || []);
-    var text = (word === 'today' ? 'Today' : word) + ' — ' + sum + (r.opened ? ' · ' + word + ' is a sending day now' : '');
+    var text = (word === 'today' ? 'Today' : word) + ' — ' + sum + (r.opened ? ' · ' + word + ' is a sending day now' : '') + sdResatText(r.resat);
     toast(text);
     s.key = ''; s.addDay = false; s.prev = null; s.shown = null; s.err = ''; s.giants = false; s.giantIds = null;
     pdDays(true).catch(function () {});
@@ -6622,6 +6622,7 @@ function pdHtml(name) {
   else if (p.opening) notes.push(Word + ' isn’t a sending day yet. Adding opens it as one (a one-off, like an extra Friday)' +
     (typeof p.room === 'number' ? ' with room for ' + p.room + ' under LinkedIn’s weekly limit' : '') +
     '; the rest fills with best-fit brands up to that.');
+  if ((p.resat || []).length) notes.push(sdResatLine(p.resat) + '.');
   if (waiting.length) {
     notes.push(sdPlural(waiting.length, 'brand waits', 'brands wait') + ': ' + word + ' already has ' + (p.dayPeople || 0) + ' of its ' + (p.cap || sdCap()) +
       '. Brands go out in the day’s order, so ' + (waiting.length === 1 ? 'it goes' : 'they go') +
@@ -11332,6 +11333,7 @@ var SD_SHORT = {
   donotemail: 'do-not-email',
   notus: 'not sold in the US',
   passedtoday: 'passed for today',
+  leftout: 'its people left out today',
   // The queue rules (Leo, Oct 12 2026): only brands nobody has reached;
   // a reached brand rests two weeks; giants wait for "Add anyway".
   reached: 'already reached out',
@@ -12113,9 +12115,19 @@ function sdPwUndo() {
       return sdDayTag(c.date) + ' back to ' + sdThemeWord(c.to);
     });
     var moved = (p.movedBack || []).map(function (m) { return m.name + ' back to ' + sdDayTag(m.to); });
-    if (!lines.length && !cats.length) { toast('Nothing left to undo — those brands have moved since'); return; }
+    // A day that has since become today: its brands' people come out of
+    // today's LinkedIn list; one that already sent today stays on it.
+    var unq = (p.unqueue || []).map(function (u) { return u.brand + ' (' + sdPlural(u.people, 'person', 'people') + ')'; });
+    var stays = (p.stay || []).map(function (x) { return x.name; });
+    if (!lines.length && !cats.length) {
+      toast(stays.length ? 'Nothing to undo — ' + stays.join(', ') + ' already sent today, so ' + (stays.length === 1 ? 'it stays' : 'they stay')
+        : 'Nothing left to undo — those brands have moved since');
+      return;
+    }
     if (!window.confirm((p.lock ? 'Undo the lock?' : 'Undo the last Plan my week?') + '\n\n' +
         (lines.length ? 'Takes ' + sdPlural((p.brands || []).length, 'brand', 'brands') + ' back off their days:\n' + lines.join('\n') : 'No brands to take off.') +
+        (unq.length ? '\n\nOut of today’s LinkedIn list, back to waiting: ' + unq.join(', ') : '') +
+        (stays.length ? '\n\nStays on today (already sent some today): ' + stays.join(', ') : '') +
         (moved.length ? '\n\nPuts back: ' + moved.join(', ') : '') +
         (cats.length ? '\n\nCategories: ' + cats.join(', ') : '') +
         '\n\nNobody is deleted. Brands you moved since are left where you put them.')) return;
@@ -12144,7 +12156,7 @@ function sdAddExtraDay(date) {
     r = r || {};
     // Not in the extras after an add means Tue/Wed/Thu already covers it.
     var regular = r.already || (Array.isArray(r.extraDays) && r.extraDays.indexOf(date) === -1);
-    toast(r.message || (regular ? sdDayName(date) + ' is already a sending day' : sdDayName(date) + ' is a sending day now'));
+    toast((r.message || (regular ? sdDayName(date) + ' is already a sending day' : sdDayName(date) + ' is a sending day now')) + sdResatText(r.resat));
     return sdRefresh();
   }).catch(function (e) { SCHED.extraBusy = false; renderSchedExtra(); toast(e.message); });
 }
@@ -12164,7 +12176,7 @@ function sdRemoveExtraDay(date) {
   if (!window.confirm('Remove ' + sdDayLabel(date) + ' as a sending day?' +
       (names.length
         ? '\n\n' + (names.length === 1 ? 'Its pinned brand goes' : 'Its ' + names.length + ' pinned brands go') + ' back to unscheduled: ' + list + '.' +
-          (isToday ? ' Their people not invited yet come back out of today’s queue.' : '')
+          (isToday ? ' Their people not invited yet come back out of today’s queue; one that already sent some today goes first on the next sending day instead.' : '')
         : '') +
       // The server only un-stamps the pinned brands' people. Whoever the
       // rotation already put in today's queue stays there, so say so
@@ -12177,8 +12189,10 @@ function sdRemoveExtraDay(date) {
   sdPlanCall('setExtraSendingDay', { date: date, on: false }).then(function (r) {
     var gone = (r && r.removedBrands) || [];
     delete SCHED.fill[date];
+    var rest = (r && r.restOn) || [];
     toast(((r && r.message) || sdDayName(date) + ' is no longer a sending day') +
       (gone.length ? ' · ' + sdPlural(gone.length, 'brand', 'brands') + ' back to unscheduled' : '') +
+      rest.map(function (x) { return ' · the rest of ' + x.name + ' goes out ' + x.label; }).join('') +
       (r && r.unqueued ? ' · ' + sdPlural(r.unqueued, 'person', 'people') + ' back in the pool' : ''));
     return sdRefresh();
   }).catch(function (e) { toast(e.message); sdRefresh(); });
@@ -12755,7 +12769,12 @@ function sdPinnedCard(p, key, i, n) {
   var body;
   var isToday = key === SCHED.today;
   var short = sdIsShort(SCHED.labels[p.id]);
-  if (p.state === 'going' && p.waits) {
+  if (p.state === 'going' && p.waits && p.sittingEnds) {
+    // Its one day for the rest of its first outreach: past it, it rests.
+    body = '<div class="sd-line"><b class="warn">Waits</b> · ' + sdPlural(p.going || 0, 'person', 'people') +
+        ' · the rest of its first outreach — move it up' + (isToday ? ' or send today anyway' : '') +
+        ', or it rests' + (p.restsUntil ? ' until ' + esc(p.restsUntil) : ' two weeks') + '</div>';
+  } else if (p.state === 'going' && p.waits) {
     body = '<div class="sd-line"><b class="warn">Waits</b> · ' + sdPlural(p.going || 0, 'person', 'people') +
         (p.waits !== 'later' ? ' · goes out ' + esc(sdDayName(p.waits)) + ' unless you move it up' : ' · move it up to send it first') + '</div>';
   } else if (p.state === 'going') {
@@ -12875,6 +12894,17 @@ function sdThemeCard(key, pv) {
   '</div>';
 }
 
+// Part-sent brands a calendar change moves to the new day for the rest of
+// their first outreach (resitPinned on the server — opened between their
+// first day and the day they were pinned to, that day would have them rest).
+function sdResatText(list) {
+  return (list || []).map(function (x) { return ' · ' + x.name + ' moves to ' + x.label + ' (the rest of its first outreach)'; }).join('');
+}
+function sdResatLine(list) {
+  return (list || []).length ? 'Moves to its new day for the rest of its first outreach: ' +
+    list.map(function (x) { return x.name + ' → ' + x.label; }).join(', ') : '';
+}
+
 // "(adds it as a sending day)", or for a day Leo took off (skip-day)
 // "(send on it after all)". `d` = { key, skipped? }.
 function sdOffWord(d) {
@@ -12905,6 +12935,7 @@ function sdDayMoveCard(key, m) {
   if (pv.to && pv.whole && pv.category) notes.push(T + ' takes ' + W + '’s category too: ' + sdThemeWord(pv.category) + '.');
   if (pv.categoryLost) notes.push(W + '’s category (' + sdThemeWord(pv.categoryLost) + ') stays behind' + (pv.to ? ' — ' + T + ' keeps ' + sdThemeWord(pv.toCategory) : '') + '.');
   if ((pv.offTheme || []).length) notes.push('Not ' + sdThemeWord(pv.toCategory) + ', still going (planned by hand): ' + pv.offTheme.join(', ') + '.');
+  if ((pv.resat || []).length) notes.push(sdResatLine(pv.resat) + '.');
   return '<div class="sd-theme">' +
     '<div><b>' + esc(W) + ' off' + (pv.to ? ' → ' + esc(T) : '') + '.</b> ' +
       (rows.length ? (pv.to ? 'Its planned brands:' : 'Its planned brands go back to waiting:') : 'Nothing is planned on it.') + '</div>' +
@@ -12938,7 +12969,7 @@ function sdDayMoveGo(key) {
     if (r && r.stale) { m.busy = false; m.pv = r; renderSchedDays(); return; }
     delete SCHED.dayMove[key];
     toast((r && r.message ? r.message : sdDayName(key) + ' is off') +
-      (r && r.back && r.back.length ? ' · back to waiting: ' + r.back.join(', ') : ''));
+      (r && r.back && r.back.length ? ' · back to waiting: ' + r.back.join(', ') : '') + sdResatText(r && r.resat));
     return sdRefresh();
   }).catch(function (e) { m.busy = false; m.err = e.message; m.pv = null; renderSchedDays(); toast(e.message); });
 }
@@ -12955,9 +12986,10 @@ function sdSkipUndo(date) {
     // The day it moved to is today: those brands' people come back out of
     // today's list (anyone already invited stays).
     if ((p.unqueue || []).length) lines.push('Out of today’s list, back to waiting: ' + p.unqueue.map(function (u) { return u.brand + ' (' + sdPlural(u.people, 'person', 'people') + ')'; }).join(', '));
+    if ((p.resat || []).length) lines.push(sdResatLine(p.resat));
     if (!window.confirm('Send on ' + sdDayName(date) + ' after all?' + (lines.length ? '\n\n' + lines.join('\n') : '') + '\n\nNobody is deleted.')) return;
     return sdPlanCall('undoMoveDay', { date: date }).then(function (r) {
-      toast(sdDayName(date) + ' is a sending day again' + (r && r.unqueued ? ' · ' + sdPlural(r.unqueued, 'person', 'people') + ' out of today’s list' : ''));
+      toast(sdDayName(date) + ' is a sending day again' + (r && r.unqueued ? ' · ' + sdPlural(r.unqueued, 'person', 'people') + ' out of today’s list' : '') + sdResatText(r && r.resat));
       return sdRefresh();
     });
   }).catch(function (e) { toast(e.message); });
@@ -14680,7 +14712,7 @@ var SCHED_DRAG = null;
       t.disabled = true;
       sdPlanCall('moveCarried', { to: cto, addDay: cadd }).then(function (r) {
         toast(r && r.ok === false ? (r.message || 'Nothing moved')
-          : 'Moved ' + sdPlural((r && r.moved) || 0, 'brand', 'brands') + ' to ' + sdDayTag(cto) + (r && r.opened ? ' · ' + sdDayName(cto) + ' is a sending day now' : ''));
+          : 'Moved ' + sdPlural((r && r.moved) || 0, 'brand', 'brands') + ' to ' + sdDayTag(cto) + (r && r.opened ? ' · ' + sdDayName(cto) + ' is a sending day now' : '') + sdResatText(r && r.resat));
         return sdRefresh();
       }).catch(function (err) { toast(err.message); sdRefresh(); });
       return;
@@ -14724,10 +14756,11 @@ var SCHED_DRAG = null;
               ' for the next sending day: ' + nowWait.join(', ') + '.' : '') +
             (movedWait.length ? '\n\nToo many to fit ' + sdDayName(lto) + '’s ' + sdCap() + ' — these wait for the day after: ' + movedWait.join(', ') + '.' : '') +
             (stay.length ? '\n\nStaying put: ' + stay.map(function (x) { return x.name + ' — ' + x.why; }).join('; ') : '') +
+            ((pv.resat || []).length ? '\n\n' + sdResatLine(pv.resat) + '.' : '') +
             '\n\nNobody is deleted. Anyone already invited today is left alone.')) { reset(); return; }
         return sdPlanCall('moveUnsent', { to: lto, addDay: ladd }).then(function (r) {
           toast('Moved ' + sdPlural(((r && r.moved) || []).length, 'brand', 'brands') + ' to ' + sdDayTag(lto) +
-            (r && r.opened ? ' · ' + sdDayName(lto) + ' is a sending day now' : ''));
+            (r && r.opened ? ' · ' + sdDayName(lto) + ' is a sending day now' : '') + sdResatText(r && r.resat));
           return sdRefresh();
         });
       }).catch(function (err) { toast(err.message); sdRefresh(); });
@@ -14948,7 +14981,10 @@ var SCHED_DRAG = null;
       var uname = t.getAttribute('data-sdn');
       t.disabled = true;
       sdPlanCall('planRemoveBrand', { date: t.getAttribute('data-sdday'), brandId: t.getAttribute('data-sdunpin') }).then(function (r) {
-        toast(uname + (r.passedToday ? ' off today — back tomorrow' : ' unpinned') + (r.unqueued ? ' · ' + sdPlural(r.unqueued, 'person', 'people') + ' back in the pool' : ''));
+        // Part-sent today on its first day: the rest goes out on its next
+        // sending day (pinned first there), not "back tomorrow".
+        toast(uname + (r.restOn ? ' off today — the rest of it goes out ' + r.restOnLabel
+          : r.passedToday ? ' off today — back tomorrow' : ' unpinned') + (r.unqueued ? ' · ' + sdPlural(r.unqueued, 'person', 'people') + ' back in the pool' : ''));
         return sdRefresh();
       }).catch(function (err) { toast(err.message); sdRefresh(); });
       return;

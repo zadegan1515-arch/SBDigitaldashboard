@@ -55,6 +55,7 @@ import { countBuyers, BUYER_TARGET } from '@/lib/buyers'
 import { noBuyerFirst } from '@/lib/coverage'
 import { giantWhy } from '@/lib/giants'
 import { giantOf, rowReached, parseGiants, GIANTS_KEY, nyDayKey } from '@/lib/queue-rules'
+import { noteChosenIds } from '@/lib/chosen'
 
 const prisma = new PrismaClient()
 
@@ -1428,6 +1429,11 @@ export async function POST(req: NextRequest) {
     }
     let added = 0, targetsCreated = 0, failed = 0
     const errors: string[] = []
+    // Send to dashboard (one person Leo sent from their profile) is his
+    // pick: chosen (src/lib/chosen.ts), so the queue's flagged hold-back
+    // never sets them aside for someone else.
+    const handPicked = body.handPicked === true && plan.rows.length === 1
+    const chosenIds: string[] = []
     for (const r of plan.rows) {
       if (r.verdict !== 'add') continue
       try {
@@ -1443,14 +1449,18 @@ export async function POST(req: NextRequest) {
           },
         })
         added++
-        await prisma.target.create({
+        const t = await prisma.target.create({
           data: { brandId: brand.id, contactId: contact.id, fitScore: r.fit, assignedTo: brand.owner ?? null },
         })
+        if (handPicked) chosenIds.push(t.id)
         targetsCreated++
       } catch (err: any) {
         failed++
         if (errors.length < 10) errors.push(`${r.name}: ${err?.message ?? 'error'}`)
       }
+    }
+    if (chosenIds.length) {
+      try { await noteChosenIds(prisma, chosenIds, nyDayKey(new Date())) } catch { /* non-fatal */ }
     }
     if (!viaParent) await saveMembers(brand.id, body.members)
     // Zach's SB · Read people (via 'log') read this brand: off "Read on

@@ -98,8 +98,17 @@ export function findUnsent(input: {
 // the fill. A carried brand already pinned to the day keeps its place
 // among the day's own pins — unless it is half-sent, which always goes
 // first. Leo can still reorder the day afterwards.
-export function carryOrder(dayIds: string[], carried: Array<{ id: string; tier?: CarryTier }>): string[] {
-  const front0 = carried.filter(c => c.tier === 0).map(c => c.id)
+// first = the day's own pins finishing their first sitting there (part-sent
+// and pinned for the rest — Off queue / the Schedule's × put one first on
+// its next sending day): the same deadline as a half-sent brand, so they go
+// with tier 0, in the day's order, ahead of the brands planned on the day
+// they missed. Behind those, one waited past the 30 and then rested two
+// weeks with its rest never sent (review fix, Oct 13 2026).
+export function carryOrder(dayIds: string[], carried: Array<{ id: string; tier?: CarryTier }>, first: string[] = []): string[] {
+  const front0 = [
+    ...carried.filter(c => c.tier === 0).map(c => c.id),
+    ...dayIds.filter(id => first.includes(id)),
+  ]
   const own = dayIds.filter(id => !front0.includes(id))
   const front1 = carried.filter(c => (c.tier ?? 1) === 1 && !own.includes(c.id)).map(c => c.id)
   const back = carried.filter(c => c.tier === 3 && !own.includes(c.id)).map(c => c.id)
@@ -149,12 +158,14 @@ export type CarryFacts = {
 // unstamp = queue stamps to take off: the moved brands' and those of a
 // brand planned for another day (it goes out on that day instead).
 export type Moved = { id: string; name: string; people: number; from: string; tier: CarryTier }
+// first: the day's own pins finishing their sitting there (carryOrder).
 export function planCarry(
   unsent: Map<string, Unsent>,
   facts: ReadonlyMap<string, CarryFacts>,
   to: string,
   dayIds: string[],
   max: number,
+  first: string[] = [],
 ): {
   moved: Moved[]
   left: Array<{ id: string; name: string; why: string }>
@@ -194,5 +205,5 @@ export function planCarry(
     unstamp.push(...u.stamped)
     moved.push({ id, name: f.name, people, from: u.from, tier: tierOf(u) })
   }
-  return { moved, left, unstamp, dayIds: carryOrder(dayIds, moved) }
+  return { moved, left, unstamp, dayIds: carryOrder(dayIds, moved, first) }
 }
