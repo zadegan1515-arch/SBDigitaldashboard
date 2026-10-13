@@ -1403,6 +1403,20 @@
     padding:17px 20px;margin-bottom:10px;display:flex;align-items:center;gap:16px;box-shadow:var(--shadow);
     transition:border-color .15s}
   .target.clickable{cursor:pointer}
+  /* Zach's list under an accepted person on the brand page */
+  .b-zt{margin:-6px 0 12px 22px}
+  .b-zt .zt-list{border-radius:0 0 12px 12px;box-shadow:none}
+  .b-zt .zt-row{padding:9px 16px}
+  .b-zt .zt-who b{font-size:13.5px;color:var(--ink-2)}
+  .b-zt .zt-comp{padding:2px 16px 16px}
+  .b-zt-done{margin:-4px 0 12px 22px;font-size:13px;color:var(--ink-3)}
+  @media (max-width:600px){
+    /* a person's buttons go under their name instead of off the screen */
+    #brand-body .target{flex-wrap:wrap}
+    #brand-body .target>.t-actions{flex:1 1 100%;justify-content:flex-start}
+    .b-zt,.b-zt-done{margin-left:10px}
+    .b-zt .zt-side{flex-wrap:wrap;justify-content:flex-end}
+  }
   .target.clickable:hover{border-color:rgba(79,131,247,.5)}
   .t-main{min-width:0;flex:1}
   .t-line{font-size:13.5px}
@@ -4243,10 +4257,14 @@ function ztMiniHtml(p) {
     dots.map(function (d) { return '<i class="' + d[0] + '"></i>'; }).join('<b></b>') + '</span>';
 }
 
-function ztRowInner(p) {
+// `inBrand`: the card sits under the person's own row on the brand page,
+// so it says what it is instead of repeating their name.
+function ztRowInner(p, inBrand) {
   var st = ztStage(p), meta = ZT_STAGE[st], since = ztSince(p), label = ztStageLabel(p);
-  return '<span class="zt-av" aria-hidden="true">' + esc(ztInitials(p.name)) + '</span>' +
-    '<span class="zt-who"><b>' + esc(p.name) + '</b>' + (p.title ? '<span>' + esc(p.title) + '</span>' : '') + '</span>' +
+  return (inBrand
+      ? '<span class="zt-who"><b>Zach’s list</b><span>the steps after the accept</span></span>'
+      : '<span class="zt-av" aria-hidden="true">' + esc(ztInitials(p.name)) + '</span>' +
+        '<span class="zt-who"><b>' + esc(p.name) + '</b>' + (p.title ? '<span>' + esc(p.title) + '</span>' : '') + '</span>') +
     '<span class="zt-side">' +
       '<span class="zt-flags">' +
         (p.handNote ? '<span title="Note: ' + esc(p.handNote) + '">' + ZT_ICON.note + '</span>' : '') +
@@ -4261,10 +4279,10 @@ function ztRowInner(p) {
     '<span class="zt-chev" aria-hidden="true">›</span>';
 }
 
-function ztItemHtml(p) {
+function ztItemHtml(p, inBrand) {
   var open = ZT_CUR === p.targetId;
   return '<div class="zt-item' + (open ? ' open' : '') + (ztFilterOf(p) !== 'todo' ? ' wait' : '') + '" data-zt="' + esc(p.targetId) + '"><div class="zt-inner">' +
-    '<div class="zt-row" tabindex="0" role="button" aria-expanded="' + open + '">' + ztRowInner(p) + '</div>' +
+    '<div class="zt-row" tabindex="0" role="button" aria-expanded="' + open + '">' + ztRowInner(p, inBrand) + '</div>' +
     '<div class="zt-exp"><div class="zt-exp-in">' + (open ? ztCompHtml(p) : '') + '</div></div>' +
   '</div></div>';
 }
@@ -4931,7 +4949,28 @@ function gotoZachList() {
   gotoView('dashboard');
 }
 
-function ztItemEl(id) { return id ? document.querySelector('#zach-todo .zt-item[data-zt="' + id + '"]') : null; }
+// A person's card: on Home (Zach's list) or under their row on the brand
+// page. Both can be in the page at once; the one on screen is the one.
+function ztItemEl(id) {
+  if (!id) return null;
+  var all = document.querySelectorAll('.zt-item[data-zt="' + id + '"]');
+  for (var i = 0; i < all.length; i++) if (all[i].offsetParent !== null) return all[i];
+  return all[0] || null;
+}
+// The card being worked is the brand page's.
+function ztInBrand(id) {
+  var it = ztItemEl(id);
+  return !!(it && it.closest('.b-zt'));
+}
+// After a step that keeps the person listed: Home redraws its list where
+// they've moved filter; the brand page redraws the card and the row's pill.
+function ztAfter(id) {
+  var p = ZT_BY_ID[id];
+  if (!p) return;
+  if (ztInBrand(id)) { ztRedrawOpen(id); bztSyncRow(id); return; }
+  if (ztMatch(p, ZT_FILTER)) { ztRedrawOpen(id); ztRefreshHead(); }
+  else { ZT_FILTER = ztFilterOf(p); ztRender(); }
+}
 
 function ztFit(ta) {
   if (!ta || !ta.scrollHeight) return;
@@ -4977,7 +5016,7 @@ function ztRefreshSteps(id) {
 }
 function ztRefreshRow(id) {
   var p = ZT_BY_ID[id], item = ztItemEl(id), el = item && item.querySelector('.zt-row');
-  if (p && el) el.innerHTML = ztRowInner(p);
+  if (p && el) el.innerHTML = ztRowInner(p, !!item.closest('.b-zt'));
 }
 // Redraw one open row in place (its step changed but it stays listed).
 function ztRedrawOpen(id) {
@@ -5030,11 +5069,14 @@ function ztApply(p, step, on, date) {
 function ztDo(id, step, btn, off) {
   var p = ZT_BY_ID[id];
   if (!p || !step) return;
+  var inBrand = ztInBrand(id);
   var args = { targetId: id, step: step };
   if (off) {
     args.on = false;
-    api('handStep', args).then(function () { ztApply(p, step, false); delete ZT_PANEL[id]; ztRedrawOpen(id); ztRefreshHead(); })
-      .catch(function (err) { toast(err.message); });
+    api('handStep', args).then(function () {
+      ztApply(p, step, false); delete ZT_PANEL[id]; ztRedrawOpen(id);
+      if (inBrand) bztSyncRow(id); else ztRefreshHead();
+    }).catch(function (err) { toast(err.message); });
     return;
   }
   if (step === 'call') {
@@ -5054,9 +5096,9 @@ function ztDo(id, step, btn, off) {
     var wasOpen = ZT_CUR === id;
     ztApply(p, step, true, args.date);
     var gone = step === 'call' || step === 'skip';
-    if (step !== 'wantsEmail' && step !== 'liPath') ZT.done.unshift({ targetId: id, brandId: p.brandId, brandName: p.brandName, name: p.name, email: p.email,
+    if (step !== 'wantsEmail' && step !== 'liPath' && ZT && ZT.done) ZT.done.unshift({ targetId: id, brandId: p.brandId, brandName: p.brandName, name: p.name, email: p.email,
       kind: step === 'skip' ? 'skipped' : step, at: new Date().toISOString(), callAt: step === 'call' ? p.callAt : null });
-    if (step === 'call') {
+    if (step === 'call' && ZT) {
       ZT.calls = (ZT.calls || []).concat([{ targetId: id, brandId: p.brandId, brandName: p.brandName, name: p.name, title: p.title, callAt: p.callAt }])
         .sort(function (a, b) { return new Date(a.callAt) - new Date(b.callAt); });
     }
@@ -5066,6 +5108,14 @@ function ztDo(id, step, btn, off) {
     if (step !== 'wantsEmail' && step !== 'liPath') delete ZT_PANEL[id];
     if (step !== 'wantsEmail' && step !== 'liPath') ztUndoBar(ZT_DONE_TEXT[step] + ': ' + name + (step === 'call' ? ' on ' + shortDate(p.callAt) : ''), function () { ztUndo(id, step); });
     renderActionPanel();
+    // On the brand page: the card stays under the row on its next step;
+    // a finished person (call booked, not needed) becomes one line.
+    if (inBrand) {
+      if (btn && btn.isConnected) btn.disabled = false;
+      if (gone) { if (ZT_CUR === id) ZT_CUR = null; bztFill(); } else ztRedrawOpen(id);
+      bztSyncRow(id);
+      return;
+    }
     if (!gone && ztMatch(p, ZT_FILTER)) {
       // Still on screen: stay open on the new step.
       ztRedrawOpen(id);
@@ -5098,14 +5148,16 @@ function ztDrop(id) {
 
 function ztUndo(id, kind) {
   ztUndoHide();
+  // Taken back on the brand page: it reloads that brand's cards.
+  var inBrand = bztActive();
   api('handStep', { targetId: id, step: kind === 'skipped' ? 'skip' : kind, on: false })
     .then(function () {
       ZT_FILTER = 'todo';
       ZT_CUR = id;
-      return renderZachTodo();
+      return inBrand ? bztLoad(BZT.brandId) : renderZachTodo();
     })
     .then(function () {
-      if (ZT_BY_ID[id] && !ztMatch(ZT_BY_ID[id], ZT_FILTER)) { ZT_FILTER = ztFilterOf(ZT_BY_ID[id]); ztRender(); }
+      if (!inBrand && ZT_BY_ID[id] && !ztMatch(ZT_BY_ID[id], ZT_FILTER)) { ZT_FILTER = ztFilterOf(ZT_BY_ID[id]); ztRender(); }
       renderActionPanel();
       toast('Undone');
     })
@@ -5129,7 +5181,8 @@ function ztUndoHide() {
 }
 document.getElementById('zt-undo-btn').addEventListener('click', function () { if (ZT_UNDO_FN) ZT_UNDO_FN(); });
 
-document.getElementById('zach-todo').addEventListener('click', function (e) {
+// The card's events, on Home and on the brand page (ztBindBrand below).
+function ztOnClick(e) {
   var t = e.target;
   var zs = t.closest('[data-zsopen]');
   if (zs) { zsOpen(zs.getAttribute('data-zsopen')); return; }
@@ -5194,8 +5247,7 @@ document.getElementById('zach-todo').addEventListener('click', function (e) {
       ztApply(p, last.step, false);
       delete ZT_PANEL[id];
       toast('Back a step: “' + last.label + '” undone');
-      if (ztMatch(p, ZT_FILTER)) { ztRedrawOpen(id); ztRefreshHead(); }
-      else { ZT_FILTER = ztFilterOf(p); ztRender(); }
+      ztAfter(id);
     }).catch(function (err) { toast(err.message); btn.disabled = false; });
     return;
   }
@@ -5255,9 +5307,10 @@ document.getElementById('zach-todo').addEventListener('click', function (e) {
       toast('Back to the template');
     }).catch(function (err) { toast(err.message); btn.disabled = false; });
   }
-});
+}
+document.getElementById('zach-todo').addEventListener('click', ztOnClick);
 
-document.getElementById('zach-todo').addEventListener('input', function (e) {
+function ztOnInput(e) {
   var el = e.target;
   if (el.hasAttribute('data-ztbody') || el.hasAttribute('data-ztnote') || el.hasAttribute('data-ztdm') || el.hasAttribute('data-ztnudge') || el.hasAttribute('data-ztlidm')) { ztFit(el); return; }
   var item = el.closest('[data-zt]'), id = item && item.getAttribute('data-zt'), p = id && ZT_BY_ID[id];
@@ -5272,12 +5325,13 @@ document.getElementById('zach-todo').addEventListener('input', function (e) {
     var a = item.querySelector('.zt-addr');
     if (a) a.innerHTML = ztAddrHtml(p, el.value.trim());
   }
-});
+}
+document.getElementById('zach-todo').addEventListener('input', ztOnInput);
 
 // Everything saves on change, like the rest of the site. Nothing here
 // redraws the open email: change fires on the way out of one field,
 // often on the way into the next, and a redraw would drop that focus.
-document.getElementById('zach-todo').addEventListener('change', function (e) {
+function ztOnChange(e) {
   var el = e.target, item = el.closest('[data-zt]');
   var id = item && item.getAttribute('data-zt'), p = id && ZT_BY_ID[id];
   if (!p) return;
@@ -5296,8 +5350,7 @@ document.getElementById('zach-todo').addEventListener('change', function (e) {
     api('handStep', { targetId: id, step: 'wantsEmail', on: on }).then(function () {
       ztApply(p, 'wantsEmail', on);
       toast(on ? (p.emailedAt ? 'Marked: wants an email (already emailed)' : 'Marked: wants an email. Email first, then the call') : 'Unticked: no email needed');
-      if (ztMatch(p, ZT_FILTER)) { ztRedrawOpen(id); ztRefreshHead(); }
-      else { ZT_FILTER = ztFilterOf(p); ztRender(); }
+      ztAfter(id);
     }).catch(function (err) { el.checked = !on; el.disabled = false; toast(err.message); });
     return;
   }
@@ -5379,10 +5432,11 @@ document.getElementById('zach-todo').addEventListener('change', function (e) {
     if (ed) ed.innerHTML = ztEdStateHtml(p);
     api('saveHandEmail', args).catch(function (err) { toast(err.message); });
   }
-});
+}
+document.getElementById('zach-todo').addEventListener('change', ztOnChange);
 
 // Leaving the note box puts the note back as a callout.
-document.getElementById('zach-todo').addEventListener('focusout', function (e) {
+function ztOnFocusOut(e) {
   var el = e.target;
   if (!el.hasAttribute || !el.hasAttribute('data-ztnote')) return;
   var item = el.closest('[data-zt]'), id = item && item.getAttribute('data-zt'), p = id && ZT_BY_ID[id];
@@ -5391,12 +5445,13 @@ document.getElementById('zach-todo').addEventListener('focusout', function (e) {
   var nb = item.querySelector('.zt-noteblock');
   if (nb) nb.innerHTML = ztNoteHtml(p);
   ztRefreshRow(id);
-});
+}
+document.getElementById('zach-todo').addEventListener('focusout', ztOnFocusOut);
 
 // Keys, only while focus is in this list and not in a box being typed
 // in: up/down (or j/k) move, Enter opens, Esc closes, E ticks the step
 // the person is on, G opens Gmail when the step is the email.
-document.getElementById('zach-todo').addEventListener('keydown', function (e) {
+function ztOnKey(e) {
   if (e.altKey || e.metaKey || e.ctrlKey) return;
   var el = e.target;
   var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable;
@@ -5418,7 +5473,7 @@ document.getElementById('zach-todo').addEventListener('keydown', function (e) {
   var row = el.closest && el.closest('.zt-row');
   if (row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); ztToggle(id); return; }
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'j' || e.key === 'k') {
-    var rows = Array.prototype.slice.call(document.querySelectorAll('#zach-todo .zt-row'));
+    var rows = Array.prototype.slice.call((e.currentTarget || document).querySelectorAll('.zt-row'));
     if (!rows.length) return;
     var at = item ? rows.indexOf(item.querySelector('.zt-row')) : -1;
     var step = (e.key === 'ArrowDown' || e.key === 'j') ? 1 : -1;
@@ -5430,6 +5485,107 @@ document.getElementById('zach-todo').addEventListener('keydown', function (e) {
   var k = e.key.toLowerCase();
   if (k === 'e') { e.preventDefault(); ztDo(id, ZT_FINAL[ztStage(ZT_BY_ID[id])]); }
   else if (k === 'g' && ztPanelOf(ZT_BY_ID[id]) === 'email') { e.preventDefault(); ztGmail(id); }
+}
+document.getElementById('zach-todo').addEventListener('keydown', ztOnKey);
+
+// --- Zach's list on the brand page ---
+// (Leo, Oct 13 2026: "you should be able to do the steps after they
+// accept an invite on a company's card".) Under each person who accepted,
+// the same card as Home: the next step, the messages to copy, the ticks.
+// zachTodo({ brandId }) gives that brand's people; each person is one
+// object (ZT_BY_ID), shared with Home's list, so a tick here is the same
+// tick there. A finished person (call booked, not needed) is one line
+// with Undo.
+var BZT = { brandId: null, seq: 0, ids: [], calls: [], done: [] };
+
+function bztActive() {
+  var v = document.getElementById('brand');
+  return !!(BZT.brandId && v && v.classList.contains('active') &&
+    CURRENT_BRAND && CURRENT_BRAND.brand && CURRENT_BRAND.brand.id === BZT.brandId);
+}
+
+// One person, the same object everywhere (Home's list keeps it too).
+function bztAdopt(p) {
+  ZT_BY_ID[p.targetId] = p;
+  if (ZT && ZT.brands) ZT.brands.forEach(function (g) {
+    g.people = g.people.map(function (x) { return x.targetId === p.targetId ? p : x; });
+  });
+}
+
+function bztLoad(brandId) {
+  var mine = ++BZT.seq;
+  return api('zachTodo', { brandId: brandId }).then(function (r) {
+    if (mine !== BZT.seq) return;
+    ztTakeDays(r);
+    if (!ZT) ZT = { brands: [], done: [], calls: [], people: 0, noAddress: 0, held: [] };
+    ZT.template = r.template; ZT.dmTemplate = r.dmTemplate; ZT.firstTemplate = r.firstTemplate; ZT.finalTemplate = r.finalTemplate;
+    HAND_TPL = r.template;
+    var ids = [];
+    r.brands.forEach(function (g) {
+      g.people.forEach(function (p) { p.brandId = g.id; p.brandName = g.name; p.brand = g; bztAdopt(p); ids.push(p.targetId); });
+    });
+    BZT.brandId = brandId;
+    BZT.ids = ids;
+    BZT.calls = r.calls || [];
+    BZT.done = r.done || [];
+    bztFill();
+  }).catch(function (e) {
+    if (mine !== BZT.seq) return;
+    document.querySelectorAll('#brand-body [data-bzt]').forEach(function (slot) {
+      slot.innerHTML = '<div class="b-zt-done">Could not load Zach’s list: ' + esc(e.message) + '</div>';
+    });
+  });
+}
+
+// What a finished person's line says, or null.
+function bztDoneLine(id) {
+  var p = ZT_BY_ID[id];
+  var call = (p && p.callAt) || ((BZT.calls.filter(function (c) { return c.targetId === id; })[0] || {}).callAt);
+  if (call) return { text: 'Call scheduled for ' + new Date(call).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), kind: 'call' };
+  var skipped = (p && p.skippedAt) || BZT.done.some(function (d) { return d.targetId === id && d.kind === 'skipped'; });
+  if (skipped) return { text: 'Not needed', kind: 'skipped' };
+  return null;
+}
+
+function bztFill() {
+  document.querySelectorAll('#brand-body [data-bzt]').forEach(function (slot) {
+    var id = slot.getAttribute('data-bzt'), p = ZT_BY_ID[id];
+    var listed = BZT.ids.indexOf(id) !== -1 && p && !p.callAt && !p.skippedAt;
+    if (listed) {
+      slot.innerHTML = '<div class="zt-list">' + ztItemHtml(p, true) + '</div>';
+      slot.querySelectorAll('.zt-item.open .zt-body').forEach(ztFit);
+      return;
+    }
+    var d = bztDoneLine(id);
+    slot.innerHTML = d
+      ? '<div class="b-zt-done">Zach’s list: ' + esc(d.text) + ' · <button class="zt-linkbtn" data-bztundo="' + esc(id) + '" data-kind="' + d.kind + '">Undo</button></div>'
+      : '';
+  });
+}
+
+// The person's own row above the card: its pill follows the steps
+// (accepted → replied when they answer).
+function bztSyncRow(id) {
+  var p = ZT_BY_ID[id], slot = document.querySelector('#brand-body [data-bzt="' + id + '"]');
+  var row = slot && slot.previousElementSibling;
+  var pill = row && row.querySelector('[data-cstate]');
+  if (!p || !pill) return;
+  pill.className = 'status ' + p.status;
+  pill.textContent = liWords({ status: p.status, repliedAt: p.repliedAt, sentAt: p.invitedAt });
+}
+
+// The card's events on the brand page: the same handlers as Home's list,
+// only for clicks and keys inside a card.
+['click', 'input', 'change', 'focusout', 'keydown'].forEach(function (type) {
+  var fn = { click: ztOnClick, input: ztOnInput, change: ztOnChange, focusout: ztOnFocusOut, keydown: ztOnKey }[type];
+  document.getElementById('brand-body').addEventListener(type, function (e) {
+    if (!e.target.closest || !e.target.closest('.b-zt')) return;
+    if (type === 'click') {
+      var u = e.target.closest('[data-bztundo]');
+      if (u) { u.disabled = true; ztUndo(u.getAttribute('data-bztundo'), u.getAttribute('data-kind')); return; }
+    }
+    fn.call(this, e);
+  });
 });
 
 // --- the template editor (modal) ---
@@ -5793,6 +5949,7 @@ document.getElementById('zt-tsave').addEventListener('click', function () {
     else if (kind === 'first') { if (ZT) { ZT.firstTemplate = t; ztRender(); } }
     else if (kind === 'final') { if (ZT) { ZT.finalTemplate = t; ztRender(); } }
     else { HAND_TPL = t; if (ZT) { ZT.template = t; ztRender(); } }
+    if (bztActive()) bztFill();
     ztCloseTpl();
     toast(kind === 'email' ? 'Template saved. Every email nobody edited uses it now' : 'Template saved. Every card nobody edited uses it now');
   }).catch(function (err) { btn.disabled = false; toast(err.message); });
@@ -7924,7 +8081,11 @@ function loadBrand(brandId) {
             (c.linkedinUrl ? '<a class="btn-ghost" href="' + esc(c.linkedinUrl) +
               '" target="_blank" rel="noopener">↗ LinkedIn</a>' : '') +
             '<button class="btn-ghost" data-cedit="' + esc(c.id) + '" title="Fix their name, title, LinkedIn or email — a rename regenerates their drafts">✎ Edit</button>' +
-          '</div></div>';
+          '</div></div>' +
+          // They accepted: Zach's list's steps for them, right here
+          // (bztLoad fills it).
+          (ct && (ct.status === 'accepted' || ct.status === 'replied') && !person
+            ? '<div class="b-zt" data-bzt="' + esc(ct.id) + '"></div>' : '');
       }).join('')
       // No one on file: the ways to find them, right here — search the
       // brand on SponsorUnited (name copied when we have no profile id)
@@ -8140,6 +8301,12 @@ function loadBrand(brandId) {
       ? head + boardAccess + contacts + outreach + shows + details + docs + activity
       : head + contacts + outreach + shows + details + boardAccess + docs + activity;
     if (!person) bpLoad(b.id);
+    // Zach's list under the people who accepted: drawn from what's known
+    // straight away (a refresh keeps an open card), then read fresh.
+    if (box.querySelector('[data-bzt]')) {
+      if (BZT.brandId === b.id) bztFill();
+      bztLoad(b.id);
+    } else if (BZT.brandId !== b.id) { BZT.brandId = null; BZT.ids = []; }
 
     box.querySelector('#b-kind').onclick = function () {
       var to = person ? null : 'person';

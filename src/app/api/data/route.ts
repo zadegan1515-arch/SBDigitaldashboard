@@ -10661,15 +10661,19 @@ const handlers: Record<string, Handler> = {
   // order of their oldest invite (an accept going cold is the expensive
   // kind of nothing). Carries the template, the Done list for the last
   // HAND_DONE_DAYS, and whatever brand rule held back.
-  async zachTodo() {
+  // `brandId`: one brand's people only (the brand page shows their steps
+  // under each person — Leo, Oct 13 2026: "you should be able to do the
+  // steps after they accept an invite on a company's card").
+  async zachTodo({ brandId }: any = {}) {
     const since = new Date(Date.now() - HAND_DONE_DAYS * 24 * 60 * 60 * 1000)
+    const one = typeof brandId === 'string' && brandId ? { brandId } : {}
     const [template, dmTemplate, firstTemplate, finalTemplate, rows, doneRows] = await Promise.all([
       readHandTemplate(),
       readHandTemplate('dm'),
       readHandTemplate('first'),
       readHandTemplate('final'),
       prisma.target.findMany({
-        where: HAND_WAITING,
+        where: { AND: [HAND_WAITING, one] },
         include: {
           brand: { select: { id: true, name: true, category: true, about: true, website: true, linkedinUrl: true, passedAt: true, doNotEmail: true, notes: true } },
           contact: { select: { id: true, name: true, title: true, email: true, linkedinUrl: true } },
@@ -10689,6 +10693,7 @@ const handlers: Record<string, Handler> = {
       }),
       prisma.target.findMany({
         where: {
+          ...one,
           OR: [
             { dmSentAt: { gte: since } }, { nudgedAt: { gte: since } }, { emailedAt: { gte: since } },
             { handSkippedAt: { gte: since } }, { callBookedAt: { gte: since } }, { handLiSentAt: { gte: since } },
@@ -10703,7 +10708,7 @@ const handlers: Record<string, Handler> = {
       }),
     ])
     const calls = await prisma.target.findMany({
-      where: { callAt: { gte: startOfLocalDay() } },
+      where: { ...one, callAt: { gte: startOfLocalDay() } },
       select: { id: true, callAt: true, brand: { select: { id: true, name: true } }, contact: { select: { name: true, title: true } } },
       orderBy: { callAt: 'asc' },
       take: 40,

@@ -129,6 +129,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   at two stages shows under both), its most urgent person leads, countdown "in 3d / today / 2d late";
   "N late · N due today · N brands" on top. A click opens that person on the left under their filter
   (`zsOpen`); a call opens the brand page. Read-only. `node scripts/test-zach-status.js`.
+  **On the brand page too** (Leo, Oct 13 2026: "you should be able to do the steps after they accept an invite on a
+  company's card"): under each person whose outreach is accepted / replied, the same card (`.b-zt` slot, `bzt*` in
+  app.html; `zachTodo({ brandId })` = one brand's people, booked calls and done steps), one person object shared with
+  Home's list (`bztAdopt`, `ZT_BY_ID`), the same handlers (`ztOnClick`… bound on `#brand-body` inside `.b-zt`;
+  `ztItemEl` takes the copy on screen, `ztInBrand`/`ztAfter` redraw the card and the row's pill, `bztSyncRow`); a
+  finished person (call booked / Not needed) is one line with Undo. `NODE_PATH=$(npm root -g) node scripts/test-brand-zach.js`.
   "← Back a step" on an open card undoes the latest tick (`ztLastStep`). The stage is computed on
   the page (`ztStage`); every tick/undo is `handStep` (dm, nudge, replied,
   wantsEmail, liPath, liSent, emailed, call, skip). Fields: `dmSentAt`, `nudgedAt`,

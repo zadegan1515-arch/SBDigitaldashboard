@@ -753,6 +753,30 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.ok(hugeYes.queued !== false, 'Add anyway lets it go: ' + JSON.stringify(hugeYes))
     ok('1,500+ on LinkedIn asks first (Add anyway), 1,499 and a conglomerate go')
 
+    // Zach's list for one brand (the brand page's cards): that brand's
+    // people only, the same fields; Home's call still gets everyone.
+    {
+      await prisma.brand.create({ data: { id: 'zb1', name: 'Zeta Seltzer', category: 'rtd' } });
+      await prisma.brand.create({ data: { id: 'zb2', name: 'Omega Pouch', category: 'nicotine' } });
+      const za = await prisma.contact.create({ data: { brandId: 'zb1', name: 'Zed Able', title: 'Head of Partnerships' } });
+      const zb = await prisma.contact.create({ data: { brandId: 'zb2', name: 'Oz Bright', title: 'CMO' } });
+      const zc = await prisma.contact.create({ data: { brandId: 'zb1', name: 'Zia Call', title: 'VP Marketing' } });
+      const zt1 = await prisma.target.create({ data: { brandId: 'zb1', contactId: za.id, status: 'accepted', sentAt: new Date() } });
+      await prisma.target.create({ data: { brandId: 'zb2', contactId: zb.id, status: 'replied', sentAt: new Date() } });
+      const zt3 = await prisma.target.create({ data: { brandId: 'zb1', contactId: zc.id, status: 'replied', sentAt: new Date(), callAt: new Date(Date.now() + 3 * 864e5), callBookedAt: new Date() } });
+      const one = await data('zachTodo', { brandId: 'zb1' });
+      assert.deepEqual(one.brands.map(g => [g.id, g.people.map(p => p.name)]), [['zb1', ['Zed Able']]]);
+      assert.deepEqual(one.calls.map(c => c.targetId), [zt3.id], 'the booked call, for its line on the brand page');
+      assert.ok(one.done.every(d => d.brandId === 'zb1') && one.done.some(d => d.targetId === zt3.id && d.kind === 'call'));
+      assert.ok(one.firstTemplate && one.finalTemplate && one.template, 'the templates come with it');
+      const home = await data('zachTodo', {});
+      const names = home.brands.flatMap(g => g.people.map(p => p.name));
+      assert.ok(names.includes('Zed Able') && names.includes('Oz Bright'), 'Home still gets every brand');
+      await data('handStep', { targetId: zt1.id, step: 'dm' });
+      assert.ok((await data('zachTodo', { brandId: 'zb1' })).brands[0].people[0].dmSentAt, 'a tick shows on the brand\'s next read');
+      ok('zachTodo({ brandId }): one brand\'s people, its booked call and ticks; Home unchanged')
+    }
+
     console.log(n + ' checks passed');
   } catch (e) {
     console.error('FAILED:', e.stack || e.message);
