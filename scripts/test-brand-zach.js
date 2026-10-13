@@ -8,8 +8,11 @@
 //      finished one (call booked) is one line with Undo.
 //   2. The card opens with the first LinkedIn message from the template;
 //      its tick is handStep, the card stays on the next step.
-//   3. "They replied" turns the row's pill from accepted to replied;
-//      ← Back a step takes the last tick back.
+//   3. "They replied" turns the row's pill from accepted to replied and
+//      reads the page again (the Outreach row follows); an address typed
+//      in the card's To box reaches the person's ✎ Edit form; ← Back a
+//      step takes the ticks back. Copy DM on the Outreach row copies the
+//      card's message.
 //   4. Not needed folds the card to one line; its Undo brings it back.
 //   5. Home's list (the same people) still ticks on Home while the brand
 //      page's copy is in the page too; back on the brand page it shows
@@ -28,12 +31,17 @@ catch (e) { console.error('Needs playwright: NODE_PATH=$(npm root -g) node scrip
 const ROOT = path.join(__dirname, '..', 'public');
 const calls = [];
 const all = (fn) => calls.filter((c) => c.fn === fn);
+// Waits (in Node) until the fake server has seen what we expect.
+async function until(ok, what) {
+  for (let i = 0; i < 100; i++) { if (ok()) return; await new Promise((r) => setTimeout(r, 50)); }
+  throw new Error('timed out waiting for ' + what);
+}
 const DAY = 864e5;
 const ago = (d) => new Date(Date.now() - d * DAY).toISOString();
 const ahead = (d) => new Date(Date.now() + d * DAY).toISOString();
 
 // Who's where on the fake server.
-const S = { skipped: false, replied: false, dm: {} };
+const S = { skipped: false, replied: false, wants: false, dm: {} };
 const target = (id, contactId, status) => ({ id, contactId, status, sentAt: ago(12), emails: [], drafts: [], shelved: false, contact: { name: '' } });
 const BRAND = {
   brand: {
@@ -54,6 +62,15 @@ const BRAND = {
   boardViews: { count: 0, last: null, recent: [] }, fit: null, samePeople: [],
 };
 BRAND.brand.targets.forEach((t) => { t.contact = { name: BRAND.brand.contacts.find((c) => c.id === t.contactId).name }; });
+// The queue's own first DM, older than Leo's template.
+BRAND.brand.targets[0].drafts = [{ id: 'd1', variant: 'man', firstMessage: 'OLD queue text', connectionNote: 'Hi Alex', createdAt: ago(12) }];
+// The page reads the brand as the fake server has it now.
+function getBrand() {
+  const t1 = BRAND.brand.targets[0];
+  t1.status = S.replied || S.wants ? 'replied' : 'accepted';
+  t1.dmSentAt = S.dm.t1 || null;
+  return BRAND;
+}
 
 const person = (targetId, contactId, name, extra) => Object.assign({
   targetId, status: 'accepted', contactId, name, title: 'Marketing', email: null, linkedinUrl: null,
@@ -67,8 +84,11 @@ function zachTodo(a) {
   const mine = a.brandId === 'b1' || !a.brandId;   // Home: every brand
   const people = [];
   if (mine) {
-    people.push(person('t1', 'c1', 'Alex Seamon', { dmSentAt: S.dm.t1 || null, status: S.replied ? 'replied' : 'accepted', repliedAt: S.replied ? ago(0) : null }));
+    people.push(person('t1', 'c1', 'Alex Seamon', { dmSentAt: S.dm.t1 || null, status: S.replied || S.wants ? 'replied' : 'accepted',
+      repliedAt: S.replied || S.wants ? ago(0) : null, wantsEmailAt: S.wants ? ago(0) : null }));
     if (!S.skipped) people.push(person('t2', 'c2', 'Beth Baker', { dmSentAt: S.dm.t2 || null }));
+    // On the list but not one of the page's rows (another contact at the brand).
+    people.push(person('t5', 'c5', 'Eve Elm'));
   }
   return {
     template: { subject: 'SB × (BRAND)', body: 'Hi (NAME)' }, dmTemplate: { subject: '', body: 'Great to hear from you' },
@@ -87,11 +107,13 @@ const H = {
   getActionQueue: () => ({ count: 0, items: [] }), appVersion: () => ({ sha: 'test' }), getDashboard: () => ({}),
   listBrands: () => [], categoryReach: () => ({ categories: {}, newFromLinkedIn: 0 }),
   zachTodo,
-  getBrand: () => BRAND,
+  getBrand,
+  setHandTo: (a) => ({ email: a.email, contactName: 'Alex Seamon', replaced: null, contactId: 'c1', notes: null }),
   brandPlanLine: () => ({}),
   handStep: (a) => {
     if (a.step === 'skip') S.skipped = a.on !== false;
     if (a.step === 'replied') S.replied = a.on !== false;
+    if (a.step === 'wantsEmail') { S.wants = a.on !== false; if (a.on !== false) S.replied = true; }
     if (a.step === 'dm') S.dm[a.targetId] = a.on === false ? null : new Date().toISOString();
     return { contactName: a.targetId === 't1' ? 'Alex Seamon' : 'Beth Baker' };
   },
@@ -108,7 +130,9 @@ async function main() {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = 'http://127.0.0.1:' + server.address().port;
   const browser = await chromium.launch(process.env.PLAYWRIGHT_BROWSERS_PATH || !fs.existsSync('/opt/pw-browsers/chromium') ? {} : { executablePath: '/opt/pw-browsers/chromium' });
-  const page = await browser.newPage({ viewport: { width: 1360, height: 900 } });
+  const ctx = await browser.newContext({ viewport: { width: 1360, height: 900 } });
+  await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base });
+  const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('dialog', (d) => d.accept());
@@ -145,6 +169,8 @@ async function main() {
   await page.waitForSelector('#brand-body [data-bzt="t1"] .zt-item.open .zt-comp');
   const msg = await page.$eval('#brand-body [data-bzt="t1"] [data-ztdm]', (el) => el.value);
   assert.equal(msg, 'Thanks for connecting, Alex! What is Alpha Water focused on with college this year?');
+  await page.click('#brand-body [data-bcopy="t1"][data-variant="dm"]');
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), msg, 'the Outreach row’s Copy DM copies the card’s message');
   await page.click('#brand-body [data-bzt="t1"] [data-ztact="step"][data-step="dm"]');
   await page.waitForFunction(() => /Waiting on reply/.test(document.querySelector('#brand-body [data-bzt="t1"] .zt-row').textContent));
   assert.deepEqual(all('handStep').map((c) => c.args), [{ targetId: 't1', step: 'dm' }]);
@@ -155,13 +181,35 @@ async function main() {
   const pill = '#brand-body [data-bzt="t1"]';
   const rowPill = () => page.$eval(pill, (el) => el.previousElementSibling.querySelector('[data-cstate]').textContent);
   assert.equal(await rowPill(), 'LinkedIn · accepted');
+  let reads = all('getBrand').length;
   await page.click('#brand-body [data-bzt="t1"] [data-ztact="step"][data-step="replied"]');
   await page.waitForFunction((s) => /^replied/.test(document.querySelector(s).previousElementSibling.querySelector('[data-cstate]').textContent), pill);
   assert.match(await page.textContent('#brand-body [data-bzt="t1"] .zt-row'), /Replied: email or LinkedIn\?/);
-  await page.click('#brand-body [data-bzt="t1"] [data-ztact="back"]');
+  await page.waitForFunction(() => /Replied ✓/.test(document.querySelector('#brand-body').textContent));
+  assert.ok(all('getBrand').length > reads, 'a card step reads the page again, so the Outreach row follows');
+  assert.ok(await page.$('#brand-body [data-bzt="t1"] .zt-item.open'), 'the card stays open through the refresh');
+  // Email path: the To box; the address reaches ✎ Edit.
+  await page.click('#brand-body [data-bzt="t1"] [data-ztnode="wantEmail"]');
+  await page.waitForSelector('#brand-body [data-bzt="t1"] [data-ztto]');
+  await page.fill('#brand-body [data-bzt="t1"] [data-ztto]', 'alex@alphawater.com');
+  await page.press('#brand-body [data-bzt="t1"] [data-ztto]', 'Tab');
+  await page.waitForFunction(() => CURRENT_BRAND.brand.contacts[0].email === 'alex@alphawater.com');
+  assert.deepEqual(all('setHandTo').slice(-1)[0].args, { targetId: 't1', email: 'alex@alphawater.com' });
+  await page.click('#brand-body [data-cedit="c1"]');
+  await page.waitForSelector('#nc-email');
+  assert.equal(await page.inputValue('#nc-email'), 'alex@alphawater.com', 'the Edit form shows the address the card saved');
+  await page.click('#nc-cancel');
+  // Back twice: the email pick, then the reply.
+  for (let i = 0; i < 2; i++) {
+    const before = all('handStep').length;
+    const gets = all('getBrand').length;
+    await page.click('#brand-body [data-bzt="t1"] [data-ztact="back"]');
+    await until(() => all('handStep').length > before && all('getBrand').length > gets && all('zachTodo').slice(-1)[0], 'Back a step and the refresh');
+    await page.waitForTimeout(200);
+  }
   await page.waitForFunction((s) => document.querySelector(s).previousElementSibling.querySelector('[data-cstate]').textContent === 'LinkedIn · accepted', pill);
-  assert.deepEqual(all('handStep').slice(-2).map((c) => [c.args.step, c.args.on]), [['replied', undefined], ['replied', false]]);
-  console.log('✓ 3. They replied turns the row’s pill to replied; ← Back a step takes it back');
+  assert.deepEqual(all('handStep').slice(-2).map((c) => [c.args.step, c.args.on]), [['wantsEmail', false], ['replied', false]]);
+  console.log('✓ 3. They replied turns the pill and the Outreach row; the To address reaches ✎ Edit; ← Back a step takes them back');
 
   // 4 ---------------------------------------------------------------
   await page.click('#brand-body [data-bzt="t2"] .zt-row');
@@ -179,6 +227,9 @@ async function main() {
   // 5 ---------------------------------------------------------------
   await page.evaluate(() => loadDashboard());
   await page.waitForSelector('#zach-todo .zt-item[data-zt="t2"]');
+  // Home's rows keep each person's name (the second at a brand too).
+  const homeWho = await page.$$eval('#zach-todo .zt-item .zt-who b', (els) => els.map((e) => e.textContent));
+  assert.ok(homeWho.length >= 1 && homeWho.every((w) => w !== 'Zach’s list'), 'Home names every person: ' + homeWho.join(', '));
   // The card left open on the brand page is the open one on Home too.
   if (!(await page.$('#zach-todo .zt-item[data-zt="t2"].open'))) await page.click('#zach-todo .zt-item[data-zt="t2"] .zt-row');
   await page.waitForSelector('#zach-todo .zt-item[data-zt="t2"].open .zt-comp');

@@ -4655,7 +4655,7 @@ function ztListHtml(c) {
       '<div class="zt-glabel"><span class="zt-gname" data-ztbrand="' + esc(g.id) + '" title="Open the brand page">' + esc(g.name) + '</span>' +
         (sub ? '<span>' + esc(sub) + '</span>' : '') +
         (g.hold ? '<span class="zt-noaddr" title="Set on the brand page. They still show here because they accepted.">Brand ' + esc(g.hold) + '</span>' : '') + '</div>' +
-      x.people.map(ztItemHtml).join('') +
+      x.people.map(function (p) { return ztItemHtml(p); }).join('') +
     '</div>';
   }).join('') +
   (rest > 0 ? '<button class="zt-more" data-ztact="more">Show ' + rest + ' more ' + (rest === 1 ? 'brand' : 'brands') + '</button>' : '') +
@@ -4967,7 +4967,7 @@ function ztInBrand(id) {
 function ztAfter(id) {
   var p = ZT_BY_ID[id];
   if (!p) return;
-  if (ztInBrand(id)) { ztRedrawOpen(id); bztSyncRow(id); return; }
+  if (ztInBrand(id)) { ztRedrawOpen(id); bztSyncRow(id); bztRefresh(); return; }
   if (ztMatch(p, ZT_FILTER)) { ztRedrawOpen(id); ztRefreshHead(); }
   else { ZT_FILTER = ztFilterOf(p); ztRender(); }
 }
@@ -5075,7 +5075,7 @@ function ztDo(id, step, btn, off) {
     args.on = false;
     api('handStep', args).then(function () {
       ztApply(p, step, false); delete ZT_PANEL[id]; ztRedrawOpen(id);
-      if (inBrand) bztSyncRow(id); else ztRefreshHead();
+      if (inBrand) { bztSyncRow(id); bztRefresh(); } else ztRefreshHead();
     }).catch(function (err) { toast(err.message); });
     return;
   }
@@ -5114,6 +5114,7 @@ function ztDo(id, step, btn, off) {
       if (btn && btn.isConnected) btn.disabled = false;
       if (gone) { if (ZT_CUR === id) ZT_CUR = null; bztFill(); } else ztRedrawOpen(id);
       bztSyncRow(id);
+      bztRefresh();
       return;
     }
     if (!gone && ztMatch(p, ZT_FILTER)) {
@@ -5154,7 +5155,7 @@ function ztUndo(id, kind) {
     .then(function () {
       ZT_FILTER = 'todo';
       ZT_CUR = id;
-      return inBrand ? bztLoad(BZT.brandId) : renderZachTodo();
+      return inBrand ? loadBrand(BZT.brandId) : renderZachTodo();
     })
     .then(function () {
       if (!inBrand && ZT_BY_ID[id] && !ztMatch(ZT_BY_ID[id], ZT_FILTER)) { ZT_FILTER = ztFilterOf(ZT_BY_ID[id]); ztRender(); }
@@ -5409,6 +5410,7 @@ function ztOnChange(e) {
     }
     api('setHandTo', { targetId: id, email: v }).then(function (r) {
       p.email = r.email;
+      bztPatchContact(r);
       if (el.isConnected && el.value.trim() === v) el.value = r.email;
       if (a && a.isConnected) a.innerHTML = ztAddrHtml(p, r.email);
       ztRefreshRow(id);
@@ -5561,6 +5563,25 @@ function bztFill() {
       ? '<div class="b-zt-done">Zach’s list: ' + esc(d.text) + ' · <button class="zt-linkbtn" data-bztundo="' + esc(id) + '" data-kind="' + d.kind + '">Undo</button></div>'
       : '';
   });
+}
+
+// The rest of the brand page after a step on a card: the Outreach row
+// and counts read the same fields (texted back, replied), so the page
+// reads them again. The card itself redraws from what's known (open
+// stays open), then from the fresh read.
+function bztRefresh() {
+  if (bztActive()) loadBrand(BZT.brandId);
+}
+
+// An address saved in the card's To box: the brand page's copy of the
+// contact takes it (and the note keeping the old one), so its ✎ Edit
+// form never writes the old values back.
+function bztPatchContact(r) {
+  var cs = CURRENT_BRAND && CURRENT_BRAND.brand && CURRENT_BRAND.brand.contacts;
+  var c = cs && r && r.contactId && cs.filter(function (x) { return x.id === r.contactId; })[0];
+  if (!c) return;
+  c.email = r.email;
+  if (r.notes !== undefined) c.notes = r.notes;
 }
 
 // The person's own row above the card: its pill follows the steps
@@ -20307,6 +20328,9 @@ document.getElementById('brand-body').addEventListener('click', function (e) {
   var d = want === 'dm' ? drafts[0]
     : drafts.filter(function (x) { return x.variant === want; })[0] || drafts[0];
   var text = d && (want === 'dm' ? d.firstMessage : d.connectionNote);
+  // Someone on Zach's list: the first message his card shows (Leo's
+  // template, or the card's own edit).
+  if (want === 'dm' && ZT_BY_ID[tid]) text = ztFirstText(ZT_BY_ID[tid]) || text;
   if (!text) { toast('Nothing drafted for that yet'); return; }
   navigator.clipboard.writeText(text).then(function () {
     toast(want === 'dm' ? 'First DM copied — paste it into your LinkedIn chat'
@@ -20355,7 +20379,10 @@ document.getElementById('brand-body').addEventListener('click', function (e) {
     pill.after(rbtn);
   }
   toast(actn === 'replied' ? 'Reply logged' : 'Accepted logged');
+  // Then the page again: Zach's list card under the person follows (an
+  // accept brings it up, a reply moves it on).
   api('setTargetStatus', { targetId: tid, status: actn, actor: ME.owner || null })
+    .then(function () { if (CURRENT_BRAND) loadBrand(CURRENT_BRAND.brand.id); })
     .catch(function (err) { toast(err.message); if (CURRENT_BRAND) loadBrand(CURRENT_BRAND.brand.id); });
 });
 

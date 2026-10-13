@@ -10920,7 +10920,7 @@ const handlers: Record<string, Handler> = {
     if (!t) throw new Error('Person not found')
     const old = t.contact.email
     if (old && old.toLowerCase() === clean.toLowerCase()) {
-      return { email: old, contactName: t.contact.name, replaced: null }
+      return { email: old, contactName: t.contact.name, replaced: null, contactId: t.contactId, notes: t.contact.notes }
     }
     const stamp = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' })
     const notes = old
@@ -10929,9 +10929,10 @@ const handlers: Record<string, Handler> = {
     const c = await prisma.contact.update({
       where: { id: t.contactId },
       data: { email: clean, ...(notes !== undefined ? { notes } : {}) },
-      select: { email: true, name: true },
+      select: { email: true, name: true, notes: true },
     })
-    return { email: c.email, contactName: c.name, replaced: old }
+    // contactId + notes: the brand page's copy of the contact follows.
+    return { email: c.email, contactName: c.name, replaced: old, contactId: t.contactId, notes: c.notes }
   },
 
   // "No email needed" (a call already booked on LinkedIn, say): off
