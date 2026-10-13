@@ -96,20 +96,36 @@ for (const p of PARENTS) {
   }
 }
 
+// Every name a parent company goes by (name, search, aka) → the parent,
+// built once. The lookups below used to run PARENTS.find with looseKey
+// over ~70 names on every call — 3–9 calls per brand on each Schedule
+// read, half its time at 1,500 brands (parent-lookup, Oct 2026). The
+// first parent to claim a key keeps it, the order PARENTS.find had.
+// No memo of arbitrary names: ingest passes any name it reads.
+const PARENT_BY_KEY = new Map<string, Parent>()
+for (const p of PARENTS) {
+  for (const n of [p.name, p.search, ...(p.aka ?? [])]) {
+    const k = looseKey(n)
+    if (k && !PARENT_BY_KEY.has(k)) PARENT_BY_KEY.set(k, p)
+  }
+}
+
 // The parent company a name IS ("Diageo", "Molson Coors"), not one of
 // its brands. Bacardi is both, and a brand of its own first, so a name
 // that is also one of the parent's brands isn't counted here.
 export function parentCompanyOf(name: string | null | undefined): Parent | null {
-  const k = looseKey(name)
+  return companyByKey(looseKey(name))
+}
+function companyByKey(k: string): Parent | null {
   if (!k || BY_KEY.has(k)) return null
-  return PARENTS.find(p => [p.name, p.search, ...(p.aka ?? [])].some(n => looseKey(n) === k)) ?? null
+  return PARENT_BY_KEY.get(k) ?? null
 }
 
 // A parent by any name it goes by, its namesake brand included.
 export function findParent(name: string | null | undefined): Parent | null {
   const k = looseKey(name)
   if (!k) return null
-  return PARENTS.find(p => [p.name, p.search, ...(p.aka ?? [])].some(n => looseKey(n) === k)) ?? null
+  return PARENT_BY_KEY.get(k) ?? null
 }
 
 // Every spelling of every brand a parent owns, for a combined parent
@@ -124,19 +140,23 @@ export function parentBrandNames(p: Parent): string[] {
 // The parent company itself has no parent, even when its "also known as"
 // lists its brands (Diageo, after its brands were combined into it).
 export function parentOf(name: string | null | undefined, aka?: string | null): Parent | null {
-  if (parentCompanyOf(name)) return null
-  for (const n of [name, ...String(aka || '').split(/[,;]/)]) {
-    const p = BY_KEY.get(looseKey(n))
-    if (p) return p
+  // The name's key once: it answers both questions.
+  const own = looseKey(name)
+  if (companyByKey(own)) return null
+  const p = BY_KEY.get(own)
+  if (p) return p
+  if (!aka) return null
+  for (const n of String(aka).split(/[,;]/)) {
+    const q = BY_KEY.get(looseKey(n))
+    if (q) return q
   }
   return null
 }
 
 // The parent company itself, by its name or any aka ("Molson Coors",
 // "Diageo"): always a big company.
-const PARENT_KEYS = new Set(PARENTS.flatMap(p => [p.name, p.search, ...(p.aka ?? [])].map(looseKey)).filter(Boolean))
 export function isParentCompany(name: string | null | undefined, aka?: string | null): boolean {
-  return [name, ...String(aka || '').split(/[,;]/)].some(n => { const k = looseKey(n); return !!k && PARENT_KEYS.has(k) })
+  return [name, ...String(aka || '').split(/[,;]/)].some(n => { const k = looseKey(n); return !!k && PARENT_BY_KEY.has(k) })
 }
 
 // The words of a name, for whole-word finding ("Sol" isn't in "Solutions").

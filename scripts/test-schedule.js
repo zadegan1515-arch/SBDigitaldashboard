@@ -80,6 +80,10 @@ let carryCard = false;
 // Section 11: an automatic row on the Best fit Tuesday, days taken off.
 let auto13 = false;
 let skipDays = [];
+// Section 12: the answer's stamp (an unchanged one answers { unchanged })
+// and the Fill box's suggestions carried by the Schedule itself.
+let stampVal = '';
+let embedSug = false;
 const SUG = ['s1', 's2', 's3', 's4', 's5', 's6'].map((id, i) => ({ id, name: 'Sug ' + (i + 1), category: 'energy', going: 3, label: { kind: 'ready', reachable: 3, need: 3, onFile: 3 }, fit: { score: 80 - i }, people: [] }));
 const GIANT_CARD = { id: 'g1', name: 'Red Bull', category: 'energy', state: 'blocked', going: 0, people: [], giant: true, reason: 'giant', reasonText: 'A giant (a household name) — held back for now. Add anyway to send it.' };
 const PLAN = () => ({
@@ -131,7 +135,22 @@ const H = {
   zachTodo: () => ({ rows: [], people: [] }),
   getActionQueue: () => ({ count: 0, items: [] }),
   appVersion: () => ({ sha: 'test' }),
-  getOutreachPlan: () => PLAN(),
+  getOutreachPlan: (args) => {
+    if (stampVal && args.since === stampVal) return { unchanged: true, stamp: stampVal };
+    const p = PLAN();
+    p.stamp = stampVal;
+    if (embedSug) p.categories = [{ category: 'energy', total: 5, reached: 1, setAside: 0, stages: { replied: 0, accepted: 0, contacted: 1 }, notReached: { ready: 3, thin: 1, none: 0 }, days: [] }];
+    // Every day with open spots carries its list, as the server does.
+    if (embedSug && args.suggest) {
+      for (const d of p.days) {
+        if ((d.cap != null ? d.cap : 30) - d.total <= 0) continue;
+        const category = d.category === 'bestfit' ? '' : d.category;
+        d.suggest = { category, data: { date: d.date, category, brands: d.date === '2026-10-13' ? SUG.filter((b) => !pinned13.includes(b.id)) : [], others: [], needPeople: [], needPeopleTotal: 0, hiddenSmall: 0, ruledOut: 0, hideSmall: !!args.hideSmall } };
+      }
+    }
+    return p;
+  },
+  setBrandPassed: ({ brandId, passed, unpin }) => ({ id: brandId, name: brandId, passed: !!passed, unpinned: unpin ? ['2026-10-07'] : [] }),
   categoryCoverage: () => ({ weeks: [], rows: [] }),
   categoryBrands: ({ category }) => ({ category, brands: [] }),
   suggestForDay: ({ date }) => ({ brands: date === '2026-10-13' ? SUG.filter((b) => !pinned13.includes(b.id)) : [], others: [], needPeople: [], hiddenSmall: 0 }),
@@ -145,8 +164,14 @@ const H = {
   passBrandToday: ({ brandId }) => ({ id: brandId, name: brandId, passedToday: true, unqueued: 0 }),
   allowGiant: ({ brandId }) => ({ ok: true, brandId, name: 'Red Bull' }),
   matchBrandList: ({ text }) => ({ lines: text.split('\n').map((t) => ({ input: t, brand: null, suggestions: [] })) }),
-  planApplyCategory: ({ date, category, preview, keepPins, expect }) => {
-    if (category === 'beauty' && preview !== false) return { date, category, changes: 0, unpin: [], unqueue: [], reopen: null, expect: 'sig0' };
+  planApplyCategory: ({ date, category, preview, keepPins, expect, applyIfNone }) => {
+    // Nothing to take off: the server applies it in the same call when the
+    // page asks it to (applyIfNone), else answers the empty preview.
+    if (category === 'beauty' && preview !== false) {
+      if (!applyIfNone) return { date, category, changes: 0, unpin: [], unqueue: [], reopen: null, expect: 'sig0' };
+      themeUndo = { date, at: 'now', categoryBefore: null };
+      return { applied: true, date, category, unpinned: 0, unqueued: 0, undo: true };
+    }
     if (preview !== false) {
       return {
         date, category, changes: 2, expect: 'sig1', reopen: null,
@@ -310,11 +335,14 @@ async function main() {
   await page.waitForFunction(() => !document.querySelector('.sd-theme'));
   const go = calls.filter((c) => c.fn === 'planApplyCategory' && c.args.preview === false).slice(-1)[0];
   assert.deepEqual([go.args.date, go.args.category, go.args.expect, go.args.keepPins], ['2026-10-08', 'betting', 'sig1', false]);
-  // Nothing to take off: applied at once.
-  const before = applies();
+  // Nothing to take off: applied at once, in the one call (applyIfNone —
+  // one-request-per-click: no preview, then apply).
+  const before = applies(), asked = count('planApplyCategory');
   await page.selectOption('[data-sdcatsel="2026-10-13"]', 'beauty');
-  await waitFor(() => applies() > before, 'the direct apply');
-  assert.equal(last('planApplyCategory').args.expect, 'sig0');
+  await waitFor(() => calls.slice(-3).some((c) => c.fn === 'getOutreachPlan') && count('planApplyCategory') > asked, 'the direct apply and its refresh');
+  assert.equal(count('planApplyCategory'), asked + 1, 'one call');
+  assert.equal(last('planApplyCategory').args.applyIfNone, true);
+  assert.equal(applies(), before, 'no second, apply-only call');
   // Make the day match: asks with the day's own category (Best fit = null).
   await page.waitForSelector('[data-sdmatch="2026-10-07"]');
   await page.click('[data-sdmatch="2026-10-07"]');
@@ -605,6 +633,79 @@ async function main() {
   assert.match(bpLine[1], /On today’s list \(picked automatically/);
   auto13 = false;
   console.log('✓ 11 may-change tags on later days, Lock this day, Move this day to… (preview, stale, apply, take off, Cancel), the off chip\'s Undo');
+
+  // 12. Faster page (Oct 2026): the Fill box lists come with the Schedule,
+  //     quick clicks share one refresh, a tab return with nothing changed
+  //     reads nothing else and redraws nothing, the folded section waits
+  //     until it opens, Off today and Archive are one call each ----------
+  pinned13 = [];
+  embedSug = true;
+  const sug12 = count('suggestForDay');
+  // (Section 8's added rows have let go by now in real time.)
+  await page.evaluate(() => { SCHED.adding = {}; document.getElementById('sched-catfold').open = false; return sdRefresh(); });
+  await page.waitForSelector('[data-sdfillbox="2026-10-13"] [data-sdmissadd="s1"]', { state: 'attached' });
+  assert.deepEqual([last('getOutreachPlan').args.suggest, last('getOutreachPlan').args.hideSmall], [true, true], 'the refresh asks for the lists');
+  assert.equal(count('suggestForDay'), sug12, 'no suggestForDay: the Schedule brought the list');
+  assert.equal(await page.$eval('[data-sdfill20="2026-10-13"]', (b) => b.disabled), false, 'Fill to 30 ready at once');
+  // Two quick adds while the first is still out: one refresh for both.
+  slowAdd = 300;
+  const plans12 = count('getOutreachPlan'), adds12 = count('planAddBrands');
+  await page.evaluate(() => { sdAdd('2026-10-13', ['s1'], { quiet: true }); sdAdd('2026-10-13', ['s2'], { quiet: true }); });
+  await waitFor(() => count('planAddBrands') === adds12 + 2 && count('getOutreachPlan') > plans12, 'both adds and a refresh');
+  await page.waitForTimeout(400);
+  slowAdd = 0;
+  assert.equal(count('getOutreachPlan'), plans12 + 1, 'one refresh after the two adds, not two');
+  assert.equal(count('suggestForDay'), sug12, 'and still no suggestForDay');
+  // Back on the tab with nothing changed: one small check, nothing redrawn.
+  stampVal = 'st1';
+  await page.evaluate(() => sdRefresh());
+  await waitFor(() => true, '');
+  await page.waitForFunction(() => SCHED.stamp === 'st1');
+  const before12 = { cov: count('categoryCoverage'), brands: count('categoryBrands'), retry: count('secondTryBrands'), sug: count('suggestForDay'), plans: count('getOutreachPlan') };
+  await page.evaluate(() => { document.querySelector('#sched-days .sd-day').setAttribute('data-mark', '1'); SCHED.loadedAt = 0; window.dispatchEvent(new Event('focus')); });
+  await waitFor(() => count('getOutreachPlan') === before12.plans + 1, 'the quiet check');
+  await page.waitForTimeout(150);
+  assert.equal(last('getOutreachPlan').args.since, 'st1', 'the check sends the stamp');
+  assert.deepEqual([count('categoryCoverage'), count('categoryBrands'), count('secondTryBrands'), count('suggestForDay')], [before12.cov, before12.brands, before12.retry, before12.sug], 'nothing else read');
+  assert.equal(await page.$eval('#sched-days .sd-day', (el) => el.getAttribute('data-mark')), '1', 'nothing redrawn');
+  // Something changed: the answer is drawn, and the rest read again.
+  stampVal = 'st2';
+  await page.evaluate(() => { SCHED.loadedAt = 0; window.dispatchEvent(new Event('focus')); });
+  await page.waitForFunction(() => !document.querySelector('#sched-days .sd-day[data-mark]'));
+  await waitFor(() => count('secondTryBrands') > before12.retry, 'Ready for a second try read again');
+  assert.equal(count('categoryCoverage'), before12.cov, 'coverage waits while its fold is shut');
+  // Folded with a category open: a change reads nothing for it; opening
+  // the fold reads it once, and coverage with it.
+  await page.evaluate(() => { document.getElementById('sched-catfold').open = true; sdOpenCat('energy'); });
+  await waitFor(() => count('categoryBrands') > before12.brands, 'the open category');
+  await waitFor(() => count('categoryCoverage') === before12.cov + 1, 'coverage, stale since the tab return, read on opening');
+  await page.waitForTimeout(150);
+  await page.evaluate(() => { document.getElementById('sched-catfold').open = false; });
+  await page.waitForTimeout(50);
+  const cb12 = count('categoryBrands'), cov12 = count('categoryCoverage');
+  await page.evaluate(() => sdAdd('2026-10-13', ['s3'], { quiet: true }));
+  await page.waitForTimeout(300);
+  assert.equal(count('categoryBrands'), cb12, 'folded: the change reads nothing for the category');
+  await page.evaluate(() => { document.getElementById('sched-catfold').open = true; });
+  await waitFor(() => count('categoryBrands') === cb12 + 1, 'opening reads it once');
+  await page.waitForTimeout(200);
+  assert.equal(count('categoryBrands'), cb12 + 1, 'exactly once');
+  assert.equal(count('categoryCoverage'), cov12, 'coverage only reads again after a tab return (an add changes no invite)');
+  await page.evaluate(() => { document.getElementById('sched-catfold').open = false; SCHED.openCat = null; });
+  // Off today: the Pass alone. Archive on a pinned card: one call.
+  const moves12 = count('planMoveBrand'), passes12 = count('passBrandToday'), removes12 = count('planRemoveBrand');
+  await page.evaluate(() => sdMove('a1', 'Celsius', '', ''));
+  await waitFor(() => count('passBrandToday') === passes12 + 1, 'the Pass');
+  assert.equal(count('planMoveBrand'), moves12, 'no planMoveBrand first');
+  await page.click('[data-drop="2026-10-07"] [data-dragb="p1"] .sd-cm > summary');
+  await page.click('[data-drop="2026-10-07"] [data-spass="p1"]');
+  await waitFor(() => count('setBrandPassed') === 1, 'Archive');
+  assert.deepEqual(last('setBrandPassed').args, { brandId: 'p1', passed: true, unpin: true });
+  await page.waitForTimeout(150);
+  assert.equal(count('planRemoveBrand'), removes12, 'no second call to take it off its day');
+  embedSug = false;
+  stampVal = '';
+  console.log('✓ 12 faster page: Fill box lists come with the Schedule, two quick adds = one refresh, an unchanged tab return reads and redraws nothing, the shut fold waits, Off today / Archive one call each');
 
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All Schedule checks passed.');

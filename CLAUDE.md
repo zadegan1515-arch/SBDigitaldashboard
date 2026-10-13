@@ -183,7 +183,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   on screen = Plan for Zach / What went out / **More ▾** (Plan my week, Undo week plan, Category priority,
   + Add a sending day, Hide too small), the LinkedIn weekly line only when it warns, the find box, the
   contacts check as one line (nothing when every brand is ready), the day columns, Categories & coverage
-  folded (`#sched-catfold`, remembered in localStorage `sb.schedCats`). A card is one row — name, contacts
+  folded (`#sched-catfold`, remembered in localStorage `sb.schedCats`; drawn and read only while open). A card is one row — name, contacts
   dot, tags, × (Unpin, or Pass today on today's automatic rows) and ⋯ (up / down, ⤒ Move to top, Move to, Send today anyway,
   LinkedIn people, SponsorUnited, Archive, links); a day's ⋯ has Move what's left (today) / **Move this day to…** and
   **Lock this day** (later days, below) / Remove this sending day / See every brand; Invited today is a fold.
@@ -357,6 +357,24 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   to tomorrow; today's note says move a brand or send anyway (a reorder frees nothing there). Today's queue
   end to end (the roll's part-sent / Pass cases, one order, reloads, Leave out, Off queue, Withdrew, adds,
   ready if you have room): `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-queue-e2e.js`.
+  **Faster page** (Leo, Oct 12 2026: "make the schedule as efficient as possible" — the same answers, fewer and
+  lighter reads; at 1,500 brands getOutreachPlan ~1.1 s → ~0.33 s, its reply ~200 → ~50 KB; a refresh with an open
+  Fill box ~1.6 s in two requests → ~0.37 s in one; Plan my week ~1.55 s → ~0.4 s; the LinkedIn tab's first open
+  ~0.9 s → ~0.4 s): the roster loads through
+  `loadPlanBrands` (`src/lib/plan-brands.ts`, home of `PLAN_BRAND_SELECT`: the nested read's own brand / contact /
+  target statements, flat, its per-target contact and first-email parts rebuilt in memory — the same rows in the same
+  order — `E2E_DATABASE_URL=… node scripts/test-plan-brands-e2e.js`); getOutreachPlan's other reads go
+  in one `Promise.all`, `labels` only for brands on screen, no bench / runway / per-day health (unread since
+  f2ffc10); parents.ts looks names up in a map built once. `stamp` on every reply; `since` = the page's last stamp
+  → `{ unchanged }` (`scheduleStamp`: the day, a 10-minute tick, count + latest updatedAt of Brand / Contact /
+  Target / EmailMessage and the outreach settings it reads — a setting it starts to read goes in that list), so a
+  tab return with nothing changed reads and redraws nothing; Categories & coverage is drawn, and Coverage / What
+  gets answered / an open category read, only while its fold is open (`sdCatsCatchUp`). `suggest: true` puts each
+  open day's Fill box list on the day (`days[].suggest`, `suggestionsFor` = suggestForDay's answer). Quick clicks
+  share one refresh (`SCHED.planPending` / `refAfter`); the category menu is one call (`applyIfNone`), Off today
+  is `passBrandToday` alone, a card's Archive `setBrandPassed({ unpin })`; Plan my week hands its roster to
+  getOutreachPlan (`__roster` — POST drops every `__` argument from the wire). Every /api/data reply has
+  `Server-Timing: <fn>;dur=<ms>` for measuring the live site. `E2E_DATABASE_URL=… node scripts/test-schedule-reads-e2e.js`.
   **Categories chart** (Leo: "a chart that shows what category of brands we have reached out
   to and u can click on it"): replaced the tiles. One bar per category, length = brands in play
   (set aside left out), steps Replied / Accepted / Invited or emailed / Not reached (one blue
@@ -365,7 +383,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Least reached, a Table view, tooltips on hover and focus; a click opens the drill-in, whose
   header also gives the last invite and the 6-week accept rate (from Coverage).
   Thin / no-one brands link "LinkedIn people ↗" (`liPeopleUrl`) for the LinkedIn capture script;
-  the tab refreshes on focus so a capture shows up. "The rest of …" rows (past a day's 30) have
+  the tab checks on focus (the stamp) and redraws when a capture or anything else changed. "The rest of …" rows (past a day's 30) have
   **Add** (pins to that day; the fill makes room) and "Other day…". **Plan my week** (`planWeek`
   preview → apply, `undoPlanWeek` via Setting `planWeekLast`; the rules are pure in
   `src/lib/plan-week.ts`, `node scripts/test-plan-week.mjs`): the next 3 sending days — keeps pins
@@ -398,7 +416,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (sent people stay in their card, `getTodayQueue.sentList`; a finished brand folds to one line). **Ready if you have
   room** = whole brands (`getTodayQueue.moreBrands` + `openSpots`, `oqMoreCard`): **Add to today (N)** when it fits the
   open spots, else the Put on a day picker — never one person to Mark sent (one send made the brand reached and
-  stranded its rest for two weeks). **Brands not reached yet** (`nextBestBrands` → `renderNextBest`, `#nextbest`) sits under the queue in the main column (Leo, Oct 7 2026 — it was in the right rail, off screen); **+ Add to today** = `queueBrandTargets`.
+  stranded its rest for two weeks). Its first open of a sending day drafts everyone in one transaction
+  (`ensureTemplateDrafts`, man then woman a millisecond apart; `queueBrandTargets` makes a brand's new people in one
+  insert, in pick order) and Going stale asks `listTargets({ status: 'sent', sentBefore })` — the same top 200, cut
+  on the server. **Brands not reached yet** (`nextBestBrands` → `renderNextBest`, `#nextbest`) sits under the queue in the main column (Leo, Oct 7 2026 — it was in the right rail, off screen); **+ Add to today** = `queueBrandTargets`.
   **Add a brand from the queue** (Leo, Oct 8 2026: "i should be able to add a brand from the queue"): the LinkedIn tab's
   add box (`#oq-addbar`) sticks just under the header (`--head-h`, measured from `.header-stick`; the rail uses it too)
   and uses the Schedule's search (`searchPlanBrands` for today: spelling slips, aka, contacts label, what Add does);
@@ -614,13 +635,14 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   the Add box has a Brand / Person switch (`nbSetKind`, `NB_KIND`). A person = `Brand.kind = 'person'`
   (`createBrand({ kind: 'person', name, email, phone })` → `addPerson` in route.ts): archived + do-not-email from
   birth (so every outreach path skips them), no category, board code minted, email / phone on a Contact (no
-  Target); a name already on file is refused. Left out of `listBrands` and `categoryReach`; found by search and
+  Target); a name already on file is refused. Left out of `listBrands`, `categoryReach` and Coverage (`categoryCoverage`); found by search and
   on Show Board → In talks ("· person"). Their page (`.b-person` on `#brand-body`) leads with Show Board access
   open; Schedule / Brand Fit / outreach buttons hidden. **This is a person…** / **It's a brand, not a person** on
   the brand page = `setBrandKind` (preview, then `confirm`; to person also archives, shelves queued people,
   do-not-email; back only drops the mark). `node scripts/test-add-person.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-person-e2e.js`.
-- `src/app/api/data/route.ts` — every server function. Add a handler = add a key to `handlers`.
+- `src/app/api/data/route.ts` — every server function. Add a handler = add a key to `handlers`. Arguments named
+  `__…` are the server's own (`__user`, `__roster`) and never taken from a request; replies carry `Server-Timing`.
 - `src/app/api/ingest/route.ts` + `scripts/sponsorunited-capture.user.js` — SponsorUnited contact
   capture (INGEST_TOKEN-gated, CORS-open). **Two different caps, don't confuse them:**
   `CONTACT_CAP_PER_BRAND = 25` (ingest + `importContacts`) is how many people we keep *on file* per

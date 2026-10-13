@@ -21,7 +21,7 @@ execSync(
 // Node wants the extension the bundler doesn't.
 writeFileSync(join(out, 'parents.js'), readFileSync(join(out, 'parents.js'), 'utf8').replace("from './li-capture'", "from './li-capture.js'"))
 const lib = await import(pathToFileURL(join(out, 'li-capture.js')).href)
-const { parentOf, decideParentPage, PARENTS, siblingNamed, whyLeaveOut, parentCompanyOf, findParent, parentBrandNames } = await import(pathToFileURL(join(out, 'parents.js')).href)
+const { parentOf, decideParentPage, PARENTS, siblingNamed, whyLeaveOut, parentCompanyOf, findParent, parentBrandNames, isParentCompany } = await import(pathToFileURL(join(out, 'parents.js')).href)
 const { companySlug, profileSlug, profileUrl, storedProfileUrl, cleanName, personKey, roleFromHeadline, isBuyer,
   normalizeCompany, decideCompanyMatch, focusTerms, matchesFocus,
   parseFollowers, industryOf, categoryFromIndustry, judgeDiscovery, decideResearchMatch, nearName, pageLooksWrong,
@@ -255,6 +255,41 @@ t('a parent company combined into one brand has no parent itself; Bacardi is sti
   assert.equal(findParent('Nobody Inc'), null)
   const names = parentBrandNames(findParent('Diageo'))
   for (const n of ['Ketel One', 'Cîroc', 'Ciroc', 'DeLeon', 'Lagavulin']) assert.ok(names.includes(n), n)
+})
+
+// parent-lookup (Oct 2026): the lookups read a map built once instead of
+// PARENTS.find over every name on each call. The old find-based versions,
+// kept here verbatim, must answer exactly the same for every spelling.
+t('the parent lookups answer exactly what the old PARENTS.find versions did', () => {
+  const looseKey = (s) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ').replace(/\b(inc|llc|ltd|co|corp|company|the|brands?|group|holdings?|beverages?)\b/g, ' ').replace(/[^a-z0-9]+/g, '')
+  const BY = new Map()
+  for (const p of PARENTS) for (const b of p.brands) for (const n of b.split('|')) { const k = looseKey(n); if (k && !BY.has(k)) BY.set(k, p) }
+  const namesOf = (p) => [p.name, p.search, ...(p.aka ?? [])]
+  const oldCompany = (name) => { const k = looseKey(name); if (!k || BY.has(k)) return null; return PARENTS.find(p => namesOf(p).some(n => looseKey(n) === k)) ?? null }
+  const oldFind = (name) => { const k = looseKey(name); if (!k) return null; return PARENTS.find(p => namesOf(p).some(n => looseKey(n) === k)) ?? null }
+  const oldParentOf = (name, aka) => { if (oldCompany(name)) return null; for (const n of [name, ...String(aka || '').split(/[,;]/)]) { const p = BY.get(looseKey(n)); if (p) return p } return null }
+  const KEYS = new Set(PARENTS.flatMap(p => namesOf(p).map(looseKey)).filter(Boolean))
+  const oldIsParent = (name, aka) => [name, ...String(aka || '').split(/[,;]/)].some(n => { const k = looseKey(n); return !!k && KEYS.has(k) })
+  const names = [...new Set(PARENTS.flatMap(p => [...namesOf(p), ...p.brands, ...(p.others ?? [])].flatMap(x => x.split('|'))))]
+  const tries = [...names, ...names.map(n => n.toUpperCase()), ...names.map(n => 'The ' + n + ' Company'), ...names.map(n => n + ' Inc.'),
+    'Liquid Death', 'Nobody Inc', '', null, undefined, '  ', 'Monster', 'Monster Energy', 'monster beverage corp', 'Beam Suntory', 'Gallo', 'Bacardi', 'Heineken', 'Coca-Cola', 'Sazerac Company']
+  const akas = [null, '', 'Captain Morgan', 'Diageo', 'Nobody, Ketel One', 'Some; Thing', 'Monster Energy, Bang']
+  let checked = 0
+  for (const n of tries) {
+    assert.equal(parentCompanyOf(n), oldCompany(n), 'parentCompanyOf ' + n)
+    assert.equal(findParent(n), oldFind(n), 'findParent ' + n)
+    for (const a of akas) {
+      assert.equal(parentOf(n, a), oldParentOf(n, a), 'parentOf ' + n + ' / ' + a)
+      assert.equal(isParentCompany(n, a), oldIsParent(n, a), 'isParentCompany ' + n + ' / ' + a)
+      checked++
+    }
+  }
+  assert.ok(checked > 1000, 'checked ' + checked)
+  // Monster Energy is both a brand key and the parent's aka: a brand first.
+  assert.equal(parentCompanyOf('Monster Energy'), null)
+  assert.equal(parentOf('Monster Energy').name, 'Monster Beverage')
+  assert.equal(findParent('Monster Energy').name, 'Monster Beverage')
 })
 
 t("a parent's own page: its exact name, the most followed", () => {

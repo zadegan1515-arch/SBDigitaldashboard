@@ -696,35 +696,13 @@
   .chip.active{background:var(--accent-soft);color:#aac6ff;border-color:rgba(79,131,247,.5);font-weight:600}
   .chip .n{opacity:.6;margin-left:5px;font-variant-numeric:tabular-nums}
   .hint{font-size:13.5px;color:var(--ink-3);margin:-8px 0 14px}
-  /* Category runway meters. One series, so no legend — the heading says
-     what is plotted. Colour is a status read (running dry / fine) and
-     never carries it alone: every row states the days in words, which is
-     also what makes the amber/green pair legal for protan viewers, where
-     they sit at the bottom of the separation band. */
-  .rw-row{display:grid;grid-template-columns:1fr auto;gap:3px 10px;align-items:center;
-    padding:8px;border-radius:9px;cursor:pointer;transition:background .12s ease}
-  .rw-row:hover,.rw-row.rw-on{background:var(--surface-2)}
-  .rw-track{grid-column:1 / -1}
-  .rw-sub{grid-column:1 / -1}
-  .rw-open{padding:2px 8px 12px}
+  /* Column headings and the empty line, shared by Stock take's lanes and
+     the re-file preview (the Schedule's runway meters that used them are
+     gone — trim-response). */
   .rw-col-h{font-size:12.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
     color:var(--ink-3);margin-bottom:4px}
   .rw-col-h .n{color:var(--ink-3);font-weight:500;margin-left:5px;text-transform:none;letter-spacing:0}
-  .rw-brand{display:flex;gap:8px;align-items:baseline;padding:3px 0;font-size:13.5px}
-  .rw-brand a{color:var(--ink-1);text-decoration:none;flex:1;min-width:0;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .rw-brand a:hover{color:var(--accent-hi)}
-  .rw-tag{font-size:12.5px;color:var(--ink-3);white-space:nowrap}
   .rw-empty{font-size:13px;color:var(--ink-3);padding:2px 0}
-  .rw-row:hover{background:var(--surface-2)}
-  .rw-name{font-size:13px;color:var(--ink-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .rw-sub{font-size:12.5px;color:var(--ink-3);margin-top:2px}
-  /* Track is the surface one step up; the fill is the only loud thing. */
-  .rw-track{position:relative;height:8px;border-radius:5px;background:var(--surface-2);overflow:visible}
-  .rw-fill{height:100%;border-radius:0 4px 4px 0;background:var(--accent);transition:width .2s ease}
-  /* One day's worth, as a hairline — the threshold that decides whether
-     a category can carry a whole day on its own. */
-  .rw-val{font-size:13px;color:var(--ink-2);text-align:right;white-space:nowrap}
   /* Brands > Stock take. Each bar is one ordered series (nobody on file
      > people > reached > replied > deal), so it is one blue stepped dim
      to bright, checked as an ordinal ramp against this surface, with
@@ -7512,12 +7490,9 @@ function bpOff() {
   var today = key === r.today;
   BP.busy = true;
   bpRender();
-  api('planRemoveBrand', { date: key, brandId: id }).then(function (x) {
-    return today ? api('passBrandToday', { brandId: id }).then(function (p) {
-      x.unqueued = (x.unqueued || 0) + ((p && p.unqueued) || 0);
-      return x;
-    }) : x;
-  }).then(function (x) {
+  // Off today is the Pass alone (passBrandToday unpins and un-stamps it
+  // itself); a later day just comes off.
+  (today ? api('passBrandToday', { brandId: id }) : api('planRemoveBrand', { date: key, brandId: id })).then(function (x) {
     var text = today ? 'Passed — off outreach for 2 weeks' : 'Off ' + W;
     text += x.unqueued ? ' · ' + sdPlural(x.unqueued, 'person', 'people') + ' back in the pool.' : '.';
     toast(name + ' — ' + text);
@@ -11302,7 +11277,19 @@ var SCHED = {
   // didn't go out on their day and now sit on a later one.
   carry: null,
   // Coverage, last six weeks (categoryCoverage).
-  cov: null, covBusy: false, covErr: ''
+  cov: null, covBusy: false, covErr: '',
+  // Plan writes not answered yet (sdPlanCall). While any is, a refresh
+  // waits for the last of them (refAfter) — two quick clicks are one
+  // read of the Schedule, not two (one-request-per-click).
+  planPending: 0, refAfter: null, refAfterGo: null,
+  // The answer's stamp (getOutreachPlan.stamp): coming back to the tab
+  // sends it, and an unchanged Schedule is not read or redrawn again
+  // (quiet-refresh).
+  stamp: '',
+  // Categories & coverage drawn while folded? Not any more: what changed
+  // since it was last drawn (catsStale) or read (covStale) catches up
+  // when it opens.
+  catsStale: false, covStale: false
 };
 
 function schedDayKey(offset) {
@@ -12218,10 +12205,25 @@ function sdTake(d) {
   SCHED.themeUndo = d.themeUndo || null;
   SCHED.priority = d.priority || SCHED.priority || {};
   SCHED.carry = d.carry || null;
+  SCHED.stamp = d.stamp || '';
   // Fill-box suggestions are asked for again after every change too (a
   // brand just added is no longer a suggestion), drawn from the old
   // answer until the new one lands.
   SCHED.sugGen += 1;
+  // …and they come with the Schedule now (getOutreachPlan suggest: the
+  // same answer suggestForDay gives): each day with open spots carries its
+  // box's list, so Fill to 30 is ready the moment the days are drawn. An
+  // older suggestForDay still on its way no longer counts.
+  (d.days || []).forEach(function (day) {
+    var sg = day.suggest;
+    if (!sg || !sg.data) return;
+    delete day.suggest;
+    if (!!sg.data.hideSmall !== !!HIDE_SMALL) return;
+    var ck = day.date + '|' + (sg.category || '');
+    SCHED.sug[ck] = { data: sg.data, gen: SCHED.sugGen };
+    SCHED.sugReq[ck] = ++SCHED.sugSeq;
+    SCHED.sugBusy[ck] = null;
+  });
   // Category drill-ins are read again after every change: a brand just
   // added has a new "Pinned" tag, and one just reached moved columns.
   // The old answer stays on screen until the new one lands (catGen marks
@@ -12231,14 +12233,29 @@ function sdTake(d) {
   SCHED.catGen += 1;
 }
 
-function sdRefresh() {
+// opts.quiet = coming back to the tab: sends the last answer's stamp, and
+// an unchanged Schedule is neither read again nor redrawn (quiet-refresh).
+// While plan writes are on their way, the refresh waits for the last of
+// them and runs once for all (one-request-per-click); its promise always
+// settles, so callers can chain on it.
+function sdRefresh(opts) {
+  var quiet = !!(opts && opts.quiet);
+  if (SCHED.planPending > 0) {
+    if (quiet) return Promise.resolve(null);
+    if (!SCHED.refAfter) SCHED.refAfter = new Promise(function (resolve) { SCHED.refAfterGo = resolve; });
+    return SCHED.refAfter;
+  }
+  var waiting = SCHED.refAfterGo;
+  SCHED.refAfter = null;
+  SCHED.refAfterGo = null;
   var mine = ++SCHED.refSeq;
   SCHED.loadedAt = Date.now();
   // Keep my place: the thing just clicked stays where it was on screen
   // through the redraw (a brand added from a Fill box becomes a card above
   // the box, which pushed every suggestion under the mouse down a card).
   var sv = document.getElementById('schedule');
-  if (sv && sv.classList.contains('active')) {
+  var hold = function () {
+    if (!sv || !sv.classList.contains('active')) return;
     // A row added from a Fill box is the thing to hold even after a
     // redraw replaced the button clicked (two quick adds: the second
     // add's refresh comes after the first one's redraw) — unless Leo has
@@ -12249,14 +12266,23 @@ function sdRefresh() {
       if (frow) PLACE_HIT = { el: frow, at: Date.now() };
     }
     keepPlace(sv);
-  }
+  };
+  // A quiet check holds the place only once it knows it will redraw.
+  if (!quiet) hold();
   sdBusy(1);
-  return api('getOutreachPlan').then(function (d) {
+  var args = { suggest: true, hideSmall: HIDE_SMALL };
+  if (quiet && SCHED.stamp) args.since = SCHED.stamp;
+  var p = api('getOutreachPlan', args).then(function (d) {
     sdBusy(-1);
-    if (mine !== SCHED.refSeq) return;
+    if (mine !== SCHED.refSeq) return null;
+    if (d && d.unchanged) return d;
+    if (quiet) hold();
     sdTake(d);
     renderSchedAll();
-  }).catch(function (e) { sdBusy(-1); if (mine === SCHED.refSeq) toast(e.message); });
+    return d;
+  }).catch(function (e) { sdBusy(-1); if (mine === SCHED.refSeq) toast(e.message); return null; });
+  if (waiting) p.then(waiting, waiting);
+  return p;
 }
 
 function loadSchedule() {
@@ -12266,13 +12292,14 @@ function loadSchedule() {
   try { var rf = document.getElementById('sched-retryfold'); if (rf && localStorage.getItem('sb.schedRetry') === '1') rf.open = true; } catch (e) {}
   var box = document.getElementById('sched-days');
   if (!SCHED.order.length) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
-  sdLoadCoverage();
-  sdLoadOutcomes();
+  // Coverage and What gets answered only while their fold is open; opening
+  // it reads them (quiet-refresh).
+  if (sdCatsOpen()) { sdLoadCoverage(); sdLoadOutcomes(); } else SCHED.covStale = true;
   sdLoadRetry();
   var mine = ++SCHED.refSeq;
   SCHED.loadedAt = Date.now();
   sdBusy(1);
-  return api('getOutreachPlan').then(function (d) {
+  return api('getOutreachPlan', { suggest: true, hideSmall: HIDE_SMALL }).then(function (d) {
     sdBusy(-1);
     if (mine !== SCHED.refSeq) return;
     sdTake(d);
@@ -12305,9 +12332,24 @@ function renderSchedAll() {
   renderSchedCarry();
   renderSchedCheck();
   renderSchedDays();
-  renderSchedCats();
-  renderSchedCov();
+  // Categories & coverage is folded by default: drawn only while open
+  // (quiet-refresh — it was rebuilt, and an open category re-read, on every
+  // click); opening it catches up (sdCatsCatchUp).
+  if (sdCatsOpen()) { renderSchedCats(); renderSchedCov(); }
+  else SCHED.catsStale = true;
   renderSchedPast();
+}
+
+function sdCatsOpen() {
+  var cf = document.getElementById('sched-catfold');
+  return !!(cf && cf.open);
+}
+// The fold just opened: draw what changed while it was shut, and read
+// coverage and What gets answered if a change since made them stale.
+function sdCatsCatchUp() {
+  if (SCHED.catsStale) { SCHED.catsStale = false; renderSchedCats(); renderSchedCov(); }
+  if (SCHED.covStale || !SCHED.cov) { SCHED.covStale = false; sdLoadCoverage(); }
+  if (!SCHED.out) sdLoadOutcomes();
 }
 
 // --- adding, moving, removing ----------------------------------
@@ -12320,11 +12362,19 @@ function renderSchedAll() {
 var SD_Q = Promise.resolve();
 function sdPlanCall(fn, args) {
   sdBusy(1);
+  SCHED.planPending += 1;
   var run = SD_Q.then(function () { return api(fn, args); });
   // Counted down before the caller's own .then runs (registered first),
   // and that .then starts the refresh, which counts up again, so there is
   // no gap where Fill to 30 wakes on the old numbers.
-  run.then(function () { sdBusy(-1); }, function () { sdBusy(-1); });
+  var done = function () {
+    SCHED.planPending = Math.max(0, SCHED.planPending - 1);
+    sdBusy(-1);
+    // The last write answered and nobody asked for the refresh that was
+    // waiting on it: run it.
+    if (!SCHED.planPending && SCHED.refAfter) setTimeout(function () { if (!SCHED.planPending && SCHED.refAfter) sdRefresh(); }, 0);
+  };
+  run.then(done, done);
   SD_Q = run.catch(function () {});
   return run;
 }
@@ -12518,13 +12568,13 @@ function sdMove(id, name, from, to) {
   // off; it is back in the rotation tomorrow, and adding it to today
   // again lifts the pass.
   var offToday = !to && (!from || from === SCHED.today);
-  return sdPlanCall('planMoveBrand', { brandId: id, from: from || '', to: to || '' }).then(function (r) {
-    if (!offToday) return r;
-    return api('passBrandToday', { brandId: id }).then(function (p) {
-      r.unqueued = (r.unqueued || 0) + ((p && p.unqueued) || 0);
-      return r;
-    });
-  }).then(function (r) {
+  // Off today is the Pass alone: passBrandToday takes it off every day it
+  // is pinned to and out of today's list itself (it used to follow a
+  // planMoveBrand — two trips for one click).
+  return (offToday
+    ? sdPlanCall('passBrandToday', { brandId: id })
+    : sdPlanCall('planMoveBrand', { brandId: id, from: from || '', to: to || '' })
+  ).then(function (r) {
     if (to) {
       var res = r.result ? Object.assign({ brandId: id, brandName: name }, r.result) : null;
       if (res && r.unqueued && !res.unqueued) res.unqueued = r.unqueued;
@@ -13397,6 +13447,8 @@ function sdHideSmallChanged() {
 }
 
 function sdLoadFills() {
+  // A plan write is on its way: the refresh after it brings the lists.
+  if (SCHED.planPending) return;
   SCHED.order.forEach(function (key) {
     if (document.querySelector('#sched-days [data-sdfillbox="' + key + '"]')) sdLoadFill(key);
   });
@@ -13876,6 +13928,7 @@ function sdOpenCat(key, scroll) {
   // The drill-in lives in the Categories & coverage fold: open it.
   var cf = document.getElementById('sched-catfold');
   if (cf && !cf.open) cf.open = true;
+  SCHED.catsStale = false;
   renderSchedCats();
   if (scroll) {
     var el = document.getElementById('sd-drill');
@@ -14353,14 +14406,13 @@ function sfPaste() {
 // The menu replaces the day's list (planApplyCategory). The preview
 // writes nothing; nothing to take off → applied at once; otherwise the
 // day shows what comes off (sdThemeCard) and waits for Leo.
+// One call: with nothing to take off, the server applies the category
+// there and then (applyIfNone); otherwise the answer is the preview card.
 function sdThemeAsk(key, cat, sel) {
   if (sel) sel.disabled = true;
-  api('planApplyCategory', { date: key, category: cat }).then(function (pv) {
-    if (!pv.changes) {
-      SCHED.theme[key] = pv;
-      return sdThemeApply(key, false);
-    }
-    SCHED.theme[key] = pv;
+  sdPlanCall('planApplyCategory', { date: key, category: cat, applyIfNone: true }).then(function (r) {
+    if (r && r.applied) return sdThemeDone(key, r);
+    SCHED.theme[key] = r;
     renderSchedDays();
   }).catch(function (err) { toast(err.message); sdRefresh(); });
 }
@@ -14378,16 +14430,21 @@ function sdThemeApply(key, keep) {
       renderSchedDays();
       return;
     }
-    delete SCHED.theme[key];
-    var bits = [];
-    if (r.unpinned) bits.push(sdPlural(r.unpinned, 'brand', 'brands') + ' off');
-    if (r.unqueued) bits.push(sdPlural(r.unqueued, 'person', 'people') + ' back to waiting');
-    toast(sdDayTag(key) + ' → ' + sdThemeWord(r.category) + (bits.length ? ' · ' + bits.join(' · ') : ''));
-    // The day's suggestions follow the new category.
-    var f = SCHED.fill[key];
-    if (f) { f.all = false; f.summary = ''; }
-    return sdRefresh();
+    return sdThemeDone(key, r);
   }).catch(function (err) { delete SCHED.theme[key]; toast(err.message); sdRefresh(); });
+}
+
+// A category change applied (the card's Replace, or straight away).
+function sdThemeDone(key, r) {
+  delete SCHED.theme[key];
+  var bits = [];
+  if (r.unpinned) bits.push(sdPlural(r.unpinned, 'brand', 'brands') + ' off');
+  if (r.unqueued) bits.push(sdPlural(r.unqueued, 'person', 'people') + ' back to waiting');
+  toast(sdDayTag(key) + ' → ' + sdThemeWord(r.category) + (bits.length ? ' · ' + bits.join(' · ') : ''));
+  // The day's suggestions follow the new category.
+  var f = SCHED.fill[key];
+  if (f) { f.all = false; f.summary = ''; }
+  return sdRefresh();
 }
 
 function sdThemeUndo() {
@@ -14480,7 +14537,10 @@ var SCHED_DRAG = null;
     if (d.matches('[data-sdsugfold]')) sdFillState(d.getAttribute('data-sdsugfold')).open = d.open;
     else if (d.matches('[data-sdoverfold]')) SCHED.overOpen[d.getAttribute('data-sdoverfold')] = d.open;
     else if (d.matches('[data-sdsentfold]')) SCHED.sentFold = d.open;
-    else if (d.id === 'sched-catfold') { try { localStorage.setItem('sb.schedCats', d.open ? '1' : ''); } catch (err) {} }
+    else if (d.id === 'sched-catfold') {
+      try { localStorage.setItem('sb.schedCats', d.open ? '1' : ''); } catch (err) {}
+      if (d.open) sdCatsCatchUp();
+    }
     else if (d.id === 'sched-retryfold') { try { localStorage.setItem('sb.schedRetry', d.open ? '1' : ''); } catch (err) {} }
   }, true);
 
@@ -14946,11 +15006,9 @@ var SCHED_DRAG = null;
       var xday = t.getAttribute('data-sdday');
       if (!window.confirm('Archive ' + xname + '?\n\nIt comes off the schedule, the queue and next best until you bring it back from the Archived tab. Nobody is deleted.')) return;
       t.disabled = true;
-      api('setBrandPassed', { brandId: xid, passed: true }).then(function () {
-        // A pinned card would otherwise stay on its day as "Won't go
-        // out · Archived" — take it off the day too.
-        return xday ? sdPlanCall('planRemoveBrand', { date: xday, brandId: xid }) : null;
-      }).then(function () {
+      // A pinned card would otherwise stay on its day as "Won't go out ·
+      // Archived": unpin takes it off its day in the same call.
+      sdPlanCall('setBrandPassed', { brandId: xid, passed: true, unpin: !!xday }).then(function () {
         toast('Archived ' + xname + ' — bring back any time from the Archived tab');
         return sdRefresh();
       }).catch(function (err) { toast(err.message); sdRefresh(); });
@@ -15126,9 +15184,15 @@ var SCHED_DRAG = null;
       [].some.call(sec.querySelectorAll('#sf-q'), function (el) { return el.value.trim() !== ''; }) ||
       SCHED.extraBusy || (SCHED.pw && SCHED.pw.applying);
     if (busy) return;
-    sdRefresh();
-    sdLoadCoverage();
-    sdLoadRetry();
+    // Quiet: the last answer's stamp goes with it, and when nothing has
+    // changed nothing is read or redrawn (Leo alt-tabs to Gmail, LinkedIn
+    // or a sheet all day). Only focus fires coming back from the LinkedIn
+    // fill's popup, so both events stay.
+    sdRefresh({ quiet: true }).then(function (d) {
+      if (!d || d.unchanged) return;
+      if (sdCatsOpen()) sdLoadCoverage(); else SCHED.covStale = true;
+      sdLoadRetry();
+    });
   }
   window.addEventListener('focus', sdBackInView);
   document.addEventListener('visibilitychange', sdBackInView);
@@ -16297,7 +16361,11 @@ function loadOutreach() {
   // waiting on their DM (first), and everyone marked sent today (last,
   // so a mis-click is one “↩ Not sent” away instead of vanishing).
   var call = mode === 'today'
-    ? Promise.all([Promise.resolve([]), api('getTodayQueue'), api('listTargets', { status: 'sent' })])
+    // Going stale asks only for invites a week old (sentBefore, with a
+    // minute's slack — the cut below is the exact one): the top 200 sent,
+    // as before, without the recent ones' brands and drafts on the wire.
+    ? Promise.all([Promise.resolve([]), api('getTodayQueue'),
+        api('listTargets', { status: 'sent', sentBefore: new Date(Date.now() - 7 * 864e5 + 60e3).toISOString() })])
         .then(function (r) {
           if (!mine()) return null;
           var midnight = new Date(); midnight.setHours(0, 0, 0, 0);
