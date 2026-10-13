@@ -160,6 +160,30 @@ const H = {
     points: { top: 30, middle: 15, low: 0, skip: 0 },
   }),
   setCategoryPriority: ({ category, priority }) => ({ ok: true, category, priority }),
+  // What gets answered (read-only) and Ready for a second try (hand-only).
+  outcomeTable: () => ({
+    days: 180, acceptAfterDays: 7, replyAfterDays: 19, few: 30,
+    overall: { n: 120, accepted: 36, acceptRate: 0.3, replyN: 90, replied: 9, replyRate: 0.1 },
+    byCategory: [{ key: 'electrolytes', n: 40, accepted: 24, acceptRate: 0.58, replyN: 30, replied: 4, replyRate: 0.13, few: false },
+      { key: 'beauty', n: 6, accepted: 1, acceptRate: 0.27, replyN: 4, replied: 0, replyRate: 0.08, few: true }],
+    bySize: [{ key: 'target', n: 80, accepted: 26, acceptRate: 0.32, replyN: 60, replied: 6, replyRate: 0.1, few: false }],
+    byBuyer: [{ key: 'partnerships', n: 50, accepted: 20, acceptRate: 0.39, replyN: 40, replied: 5, replyRate: 0.12, few: false }],
+    byThreads: [{ key: '3', n: 31, accepted: 14, acceptRate: 0.44, replyN: 25, replied: 3, replyRate: 0.12, few: false }],
+    suggestions: [{ category: 'electrolytes', from: 'middle', to: 'top', ratio: 1.9, text: 'accepts 1.9× the average (24 of 40) — make it Top?' }],
+  }),
+  secondTryBrands: () => ({
+    total: 2, day: '2026-10-08', staleDays: 21,
+    brands: [
+      { id: 'r1', name: 'Quiet Open Co', category: 'energy', fit: 70, label: { kind: 'ready', reachable: 6, need: 3, onFile: 6 }, invited: 3, firstAt: '2026-09-15T15:00:00Z',
+        open: [{ targetId: 'to1', name: 'Old Invite', sentAt: '2026-09-15T15:00:00Z' }], going: 2, people: [{ name: 'New Nia', title: 'Head of Partnerships' }] },
+      { id: 'r2', name: 'Quiet Done Co', category: 'beauty', fit: 60, label: { kind: 'ready', reachable: 5, need: 3, onFile: 5 }, invited: 3, firstAt: '2026-09-10T15:00:00Z',
+        open: [], going: 2, people: [{ name: 'Next Ned', title: 'Brand Manager' }] },
+    ],
+  }),
+  markInvitesWithdrawn: ({ targetIds, preview }) => (preview
+    ? { preview: true, will: targetIds.map((id) => ({ id, name: 'Old Invite', brand: 'Quiet Open Co' })), skipped: [] }
+    : { ok: true, withdrawn: targetIds.length, skipped: [], brands: [] }),
+  planDayChoices: () => ({ today: '2026-10-07', days: [{ key: '2026-10-08', label: 'Thu Oct 8' }, { key: '2026-10-13', label: 'Tue Oct 13' }], offDay: null }),
 };
 
 const server = http.createServer((req, res) => {
@@ -436,6 +460,39 @@ async function main() {
   carryCard = false;
   cap13 = null;
   console.log('✓ 9 a day LinkedIn\'s week caps says so and fills to it; a carried card says how long, Move to top sends it first');
+
+  // 10. Day header counts brands; What gets answered is read-only and only
+  //     suggests; Ready for a second try is by hand only ----------------
+  assert.match(await page.textContent('[data-drop="2026-10-07"] .sd-day-n'), /2 brands/, 'BodyArmor + Celsius');
+  const prio10 = count('setCategoryPriority');
+  await page.evaluate(() => { document.getElementById('sched-catfold').open = true; });
+  await page.waitForSelector('#sched-out .sd-out');
+  const out = await page.textContent('#sched-out');
+  assert.match(out, /What gets answered/);
+  assert.match(out, /accepts counted 7\+ days/);
+  assert.match(out, /too few to tell/, 'a small cell says so');
+  assert.match(out, /Brands with/);
+  assert.equal(count('setCategoryPriority'), prio10, 'nothing changes by itself');
+  await page.click('[data-sdoutprio="electrolytes"]');
+  await waitFor(() => count('setCategoryPriority') === prio10 + 1, 'the confirmed suggestion');
+  assert.deepEqual(last('setCategoryPriority').args, { category: 'electrolytes', priority: 'top' });
+  assert.match(await page.textContent('#sched-retryfold > summary'), /Ready for a second try \(2\)/, 'the count shows folded');
+  await page.click('#sched-retryfold > summary');
+  await page.waitForSelector('[data-sdretrywd="r1"]');
+  assert.equal(await page.$('[data-sdretryday="r1"]'), null, 'invites still out: withdraw first, no day picker yet');
+  await page.click('[data-sdretrywd="r1"]');
+  await waitFor(() => calls.filter((c) => c.fn === 'markInvitesWithdrawn').length === 2, 'preview then log');
+  const wd = calls.filter((c) => c.fn === 'markInvitesWithdrawn');
+  assert.deepEqual([wd[0].args.preview, wd[1].args.preview, wd[1].args.targetIds], [true, undefined, ['to1']], 'previewed, then exactly what it showed');
+  await page.waitForSelector('[data-sdretryday="r2"] [data-pdday]');
+  const adds10 = count('planAddBrands');
+  await page.selectOption('[data-sdretryday="r2"] [data-pdday]', '2026-10-08');
+  await waitFor(() => count('planAddBrands') === adds10 + 1, 'the day preview');
+  assert.equal(last('planAddBrands').args.preview, true, 'Put on a day previews first');
+  await page.click('[data-sdretryday="r2"] [data-pdapply]');
+  await waitFor(() => count('planAddBrands') === adds10 + 2, 'the add');
+  assert.deepEqual([last('planAddBrands').args.date, last('planAddBrands').args.brandIds], ['2026-10-08', ['r2']]);
+  console.log('✓ 10 day header counts brands; What gets answered only suggests; a second try goes on a day by hand, invites withdrawn first');
 
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All Schedule checks passed.');

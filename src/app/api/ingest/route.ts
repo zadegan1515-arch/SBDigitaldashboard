@@ -49,11 +49,12 @@ import { logLinkedInPerson, personOnFile, undoLinkedInLog, checkNewPerson } from
 import { nameFromSlug, isLogStage } from '@/lib/li-log'
 import { guessCategory } from '@/lib/category-hints'
 import { dueDays, shortOnPeople, plannedFirst } from '@/lib/planned-first'
-import { brandSize, sizeRank, cleanMembers, BIG_BRAND_WORK } from '@/lib/brand-size'
+import { brandSize, sizeRank, cleanMembers } from '@/lib/brand-size'
+import { isBigBrand, workCount, keepInPlay, brandNames } from '@/lib/brand-work'
 import { countBuyers, BUYER_TARGET } from '@/lib/buyers'
 import { noBuyerFirst } from '@/lib/coverage'
 import { giantWhy } from '@/lib/giants'
-import { giantOf, rowReached, parseGiants, GIANTS_KEY } from '@/lib/queue-rules'
+import { giantOf, rowReached, parseGiants, GIANTS_KEY, nyDayKey } from '@/lib/queue-rules'
 
 const prisma = new PrismaClient()
 
@@ -104,32 +105,33 @@ async function findBrandForCapture(name: string, externalId: string | null) {
   return brand
 }
 
-// Mirror of reconcileBrandTargets in /api/data: keep only the top few
-// (by fit) queued per brand, shelving the rest. Already-contacted people
-// count against the cap. Nothing is deleted.
-// Four per brand in the send queue, matching /api/data — a cold brand now
-// opens with up to four threads. Not the 25-contact file cap above.
+// Mirror of reconcileBrandTargets in /api/data: the same limit, one rule
+// (src/lib/brand-work.ts — picks, Oct 12 2026): a brand keeps its own
+// number in play (Leo's, else ten at a big company, four at an established
+// brand, three elsewhere), already-contacted people first, best LinkedIn
+// buyers next; the rest are next in line. Nobody in today's list is taken
+// out. Nothing is deleted. Four is only the fallback. Not the 25-contact
+// file cap below.
 const TARGET_CAP_PER_BRAND = 4
-// A big company works ten at a time (Leo, Oct 7 2026) — isBigBrand in
-// /api/data, the same rule.
-function isBigBrand(b: { name: string; aka: string | null; tier: string | null; liMembers: number | null }): boolean {
-  if (isParentCompany(b.name, b.aka)) return true
-  return brandSize({ liMembers: b.liMembers, tier: b.tier, hasParent: !!parentOf(b.name, b.aka) }) === 'big'
-}
 async function reconcileBrandTargets(brandId: string) {
   const b = await prisma.brand.findUnique({ where: { id: brandId }, select: { name: true, aka: true, tier: true, liMembers: true, workPeople: true } })
-  const perBrand = b ? Math.max(TARGET_CAP_PER_BRAND, b.workPeople ?? (isBigBrand(b) ? BIG_BRAND_WORK : 0)) : TARGET_CAP_PER_BRAND
+  const perBrand = b ? workCount(b) : TARGET_CAP_PER_BRAND
   // Anyone written to — an accept logged with no invite date too.
   const worked = await prisma.target.count({
     where: { brandId, OR: [{ sentAt: { not: null } }, { status: { in: ['sent', 'accepted', 'replied', 'converted'] } }] },
   })
-  const room = Math.max(0, perBrand - worked)
   const active = await prisma.target.findMany({
     where: { brandId, status: { in: ['queued', 'drafted'] }, shelved: false },
     orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
-    select: { id: true },
+    select: { id: true, fitScore: true, queuedFor: true, contact: { select: { title: true, linkedinUrl: true, email: true } } },
   })
-  const shelve = active.slice(room).map(t => t.id)
+  // In today's list = stamped on today's New York day.
+  const todayKey = nyDayKey(new Date())
+  const { next } = keepInPlay(active.map(t => ({
+    id: t.id, title: t.contact.title, linkedinUrl: t.contact.linkedinUrl, email: t.contact.email, fit: t.fitScore,
+    today: !!t.queuedFor && nyDayKey(t.queuedFor) >= todayKey,
+  })), perBrand, worked, b ? brandNames(b) : undefined)
+  const shelve = next.map(t => t.id)
   // "cap": only waiting behind the brand's limit — "next in line", not
   // shelved on purpose.
   if (shelve.length) await prisma.target.updateMany({ where: { id: { in: shelve } }, data: { shelved: true, shelvedHow: 'cap' } })

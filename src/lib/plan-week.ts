@@ -35,6 +35,73 @@ export function weekCap(key: string, counts: ReadonlyMap<string, number>, daily:
   return Math.max(0, Math.min(daily, limit - before))
 }
 
+// ── Filling a day by brand ────────────────────────────────────────────
+// The one rule the Schedule's preview (getOutreachPlan), the real queue
+// (getTodayQueue) and Plan my week (planWeekDays below) fill a day by, so
+// the number the Schedule shows is the number that goes out.
+//
+// Automatic picks, best first (compareAuto): a brand with as many people
+// we can reach as it works at once (Ready) before one short of them
+// (Oct 12 2026: short brands are ranked below the ready ones, not held
+// back — the LinkedIn fill can still find them people before their turn),
+// then the higher Brand Fit.
+export function compareAuto(x: { fit: number; short?: boolean }, y: { fit: number; short?: boolean }): number {
+  return Number(!!x.short) - Number(!!y.short) || y.fit - x.fit
+}
+
+// At most one big company on a Best fit day (Leo, Oct 12 2026: "a Best fit
+// day takes at most one big company (10 invites); the rest of the day goes
+// to smaller brands"). `onDay` = big companies the day holds already (its
+// pins, today's list, what went out today). A second big one waits like a
+// brand that doesn't fit: skipped, not counted, still offered for later.
+// Category days and brands Leo puts on a day by hand are not held to it.
+export const BIG_PER_BEST_FIT_DAY = 1
+export function bigFits(big: boolean | undefined, onDay: number, bestFit: boolean): boolean {
+  return !big || !bestFit || onDay < BIG_PER_BEST_FIT_DAY
+}
+
+// A brand a day may take: `size` = how many people it would put in play;
+// held = already part-worked today (goes first, its rest joins the list);
+// short = fewer reachable people than it works; big = a big company.
+export type FillGroup = { id: string; size: number; fit: number; held: boolean; short?: boolean; big?: boolean }
+export function orderFillGroups<T extends FillGroup>(groups: T[]): T[] {
+  // Stable: equal groups keep the order they came in.
+  return groups
+    .map((g, i) => ({ g, i }))
+    .sort((a, b) => Number(b.g.held) - Number(a.g.held) || compareAuto(a.g, b.g) || a.i - b.i)
+    .map(x => x.g)
+}
+// Whole brands while they fit in `room`. A brand that doesn't fit is
+// skipped rather than ending the fill, so a four-person brand with three
+// spots left doesn't leave the day three short. allowPartial: only a day
+// that starts empty may split a brand (see getTodayQueue) — a day with a
+// few spots left leaves them open; only then, and only when nothing fits
+// whole, does the best brand go in partly. bigLimit: a Best fit day's one
+// big company (bigFits).
+export function fillWholeBrands<T extends FillGroup>(groups: T[], room: number, allowPartial = true,
+  bigLimit?: { bestFit: boolean; onDay: number }): {
+  whole: T[]; partial: { group: T; take: number } | null; skipped: T[]
+} {
+  const whole: T[] = []
+  const skipped: T[] = []
+  let used = 0
+  let bigs = bigLimit?.onDay ?? 0
+  const bestFit = !!bigLimit?.bestFit
+  for (const g of groups) {
+    if (g.size <= 0 || used >= room || used + g.size > room || !bigFits(g.big, bigs, bestFit)) { skipped.push(g); continue }
+    whole.push(g)
+    used += g.size
+    if (g.big) bigs += 1
+  }
+  if (!whole.length && room > 0 && allowPartial) {
+    const first = groups.find(g => g.size > 0 && bigFits(g.big, bigs, bestFit))
+    if (first) {
+      return { whole, partial: { group: first, take: Math.min(room, first.size) }, skipped: skipped.filter(g => g !== first) }
+    }
+  }
+  return { whole, partial: null, skipped }
+}
+
 // For each day key: the invites in the seven days ending that day. Days
 // before today count what actually went out (`sent`); today and later count
 // what the schedule sends (`planned` — today's number already includes what
@@ -93,12 +160,13 @@ export function acceptRates(invites: Array<{ category: string | null; accepted: 
 // fit = its Brand Fit score: a Best fit day takes the highest first.
 // skip: its category is set to Skip — only a day Leo gave that category
 // takes it. notBest: Best fit would never pick it (Schedule's rule).
-export type WeekCand = { id: string; category: string | null; ready: boolean; size: number; fit?: number; skip?: boolean; notBest?: boolean }
+// big: a big company — a Best fit day takes one (bigFits).
+export type WeekCand = { id: string; category: string | null; ready: boolean; size: number; fit?: number; skip?: boolean; notBest?: boolean; big?: boolean }
 // A planned day as it stands: the brands already pinned to it (and how many
 // people each sends) and the category Leo set, if any. waits: a pin past
 // the day's 30 in the day's order — it goes on the next sending day, so
 // the day doesn't count it (the Schedule's own rule, route.ts waitingOnDay).
-export type WeekDayIn = { date: string; kept: Array<{ id: string; going: number; waits?: boolean }>; category: string | null }
+export type WeekDayIn = { date: string; kept: Array<{ id: string; going: number; waits?: boolean; big?: boolean }>; category: string | null }
 export type WeekSource = 'yours' | 'asked' | 'picked' | 'bestfit' | 'full' | 'none'
 export type WeekDayOut = {
   date: string
@@ -218,18 +286,23 @@ export function planWeekDays(opts: {
     const readyNow = category ? avail(category).filter(c => c.ready).length : 0
     const add: WeekDayOut['add'] = []
     let left = room
+    // A Best fit day's one big company (bigFits): the day's own pins count.
+    let bigs = day.kept.filter(k => k.big && !k.waits && k.going > 0).length
+    const bestFitDay = source === 'bestfit'
     const take = (list: WeekCand[], from: 'day' | 'related' | 'other') => {
       for (const c of list) {
         if (left <= 0) return
-        if (used.has(c.id) || c.size > left) continue
+        if (used.has(c.id) || c.size > left || !bigFits(c.big, bigs, bestFitDay)) continue
         add.push({ id: c.id, from, size: c.size })
         used.add(c.id)
         left -= c.size
+        if (c.big) bigs += 1
       }
     }
     if (room > 0 && source === 'bestfit') {
+      // Ready before short, then the highest Brand Fit (compareAuto).
       const all = [...byCat.values()].flat().filter(c => !used.has(c.id) && !c.skip && !c.notBest && (c.fit ?? 0) >= 0)
-        .sort((x, y) => (y.fit ?? 0) - (x.fit ?? 0))
+        .sort((x, y) => compareAuto({ fit: x.fit ?? 0, short: !x.ready }, { fit: y.fit ?? 0, short: !y.ready }))
       take(all, 'day')
     } else if (room > 0) {
       if (category) take(avail(category), 'day')

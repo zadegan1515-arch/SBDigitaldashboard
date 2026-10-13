@@ -7,8 +7,13 @@
 //      small < 20 · target 20–499 · big 500+.
 //   2. Not measured yet: owned by a parent company we know (parents.ts —
 //      Diageo, Pernod Ricard, Monster…) → big; else the brand's tier:
-//      established → big, growth → target, emerging → small.
-//   3. Otherwise unknown, until the fill reads its page.
+//      growth → target, emerging → small.
+//   3. Otherwise unknown, until the fill reads its page — an established
+//      tier too (Oct 12 2026): Notion imports default to established, and
+//      the guess made a brand a "big company" that opened ten threads and
+//      ranked top of a Best fit day. Big = measured 500+ or a parent only;
+//      unmeasured established brands sit with "unknown", so the fill
+//      measures them sooner.
 //
 // The fill goes target → unknown → small → big (Leo's pick), after the
 // brands asked for by name, the Schedule's short brands and the focus word.
@@ -38,7 +43,6 @@ export function brandSize(b: { liMembers?: number | null; tier?: string | null; 
   const measured = sizeFromMembers(b.liMembers)
   if (measured) return measured
   if (b.hasParent) return 'big'
-  if (b.tier === 'established') return 'big'
   if (b.tier === 'growth') return 'target'
   if (b.tier === 'emerging') return 'small'
   return 'unknown'

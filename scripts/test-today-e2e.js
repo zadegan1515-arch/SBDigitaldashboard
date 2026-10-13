@@ -329,9 +329,10 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     }
     await data('importContacts', { rows: [{ brandName: 'Cap Co', name: 'Cap Extra', title: 'Brand Director' }] }) // runs the limit for Cap Co
     const capRows = await prisma.target.findMany({ where: { brandId: 'cap_b' }, orderBy: { fitScore: 'desc' } })
-    assert.deepEqual(capRows.map(t => [t.shelved, t.shelvedHow]), [[false, null], [false, null], [false, null], [false, null], [true, 'cap'], [true, 'cap']], 'the two past the four are next in line')
-    // Two shelved by hand (the best two): the brand works three, so one
-    // spot opens — and it goes to someone next in line, never a hand shelve.
+    // The brand works three (picks, Oct 12 2026 — it used to keep four).
+    assert.deepEqual(capRows.map(t => [t.shelved, t.shelvedHow]), [[false, null], [false, null], [false, null], [true, 'cap'], [true, 'cap'], [true, 'cap']], 'the three past the three are next in line')
+    // Two shelved by hand (the best two): the brand works three, so two
+    // spots open — and they go to people next in line, never a hand shelve.
     await data('setTargetShelved', { targetId: capRows[0].id, shelved: true })
     await data('setTargetShelved', { targetId: capRows[1].id, shelved: true })
     const hand = await prisma.target.findUnique({ where: { id: capRows[0].id } })
@@ -341,7 +342,8 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(after.find(t => t.id === capRows[0].id).shelved, true, 'the hand-shelved people stay shelved')
     assert.equal(after.find(t => t.id === capRows[1].id).shelved, true)
     const back = after.find(t => t.id === capRows[4].id)
-    assert.deepEqual([back.shelved, back.shelvedHow], [false, null], 'the best next-in-line person fills the open spot')
+    assert.deepEqual([back.shelved, back.shelvedHow], [false, null], 'the best next-in-line people fill the open spots')
+    assert.deepEqual([after.find(t => t.id === capRows[3].id).shelved, after.find(t => t.id === capRows[5].id).shelvedHow], [false, 'cap'], 'two spots, two back; the third waits')
     // The one-time relabel: rows shelved before shelvedHow existed (no
     // label, last changed before `before`); preview, then only what it showed.
     await prisma.$executeRawUnsafe(`UPDATE "Target" SET "shelvedHow" = NULL, "updatedAt" = NOW() - INTERVAL '2 days' WHERE "brandId" = 'cap_b' AND "shelvedHow" = 'cap'`)
@@ -356,6 +358,65 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(mk2.marked, mk1.people)
     assert.equal(await prisma.target.count({ where: { shelvedHow: 'cap' } }), before1 + mk1.people)
     ok('a big company opens with ten; next in line ≠ shelved; only next in line comes back by itself; relabel previews first')
+
+    // 11b. Each brand opens with exactly its number, best LinkedIn buyers
+    //      first (picks, Oct 12 2026); a brand is big only when measured
+    //      (big-brand-size) — an established tier alone works four.
+    const mkBrand = async (id, x, people) => {
+      await prisma.brand.create({ data: { id, name: id, category: 'snacks', usStatus: 'yes', ...x } })
+      const out = []
+      for (const [name, title, li, email] of people) {
+        out.push(await prisma.contact.create({ data: { brandId: id, name, title, linkedinUrl: li === false ? null : 'https://www.linkedin.com/in/' + name.replace(/\W/g, '') + '/', email: email || null } }))
+      }
+      return out
+    }
+    const stampedNames = async (id) => (await prisma.target.findMany({
+      where: { brandId: id, shelved: false, status: { in: ['queued', 'drafted'] }, queuedFor: { not: null } }, include: { contact: true },
+    })).map(t => t.contact.name).sort()
+    await mkBrand('Six Buyers', {}, [
+      ['Accountant Al', 'Senior Accountant'], ['Mail Mo', 'Partnerships Director', false, 'mo@six.example'],
+      ['Brand Bo', 'Brand Manager'], ['Mark Mia', 'Marketing Manager'], ['Event Eve', 'Events Manager'], ['Part Pat', 'Head of Partnerships'],
+    ])
+    const six = await data('queueBrandTargets', { brandId: 'Six Buyers' })
+    assert.equal(six.count, 3, 'six people, works three: ' + JSON.stringify(six))
+    assert.deepEqual(await stampedNames('Six Buyers'), ['Event Eve', 'Mark Mia', 'Part Pat'], 'partnerships > events > marketing, LinkedIn before an email-only contact, never the accountant')
+    const again = await data('queueBrandTargets', { brandId: 'Six Buyers' })
+    assert.equal(again.queued, false, 'asking again stamps nobody new')
+    assert.equal((await stampedNames('Six Buyers')).length, 3)
+    // Four waiting from the old limit (at least four) at a brand that works
+    // three: three go when it comes up, the fourth is next in line.
+    const four = await mkBrand('Four Waiting', {}, [['F1', 'Senior Accountant'], ['F2', 'Marketing Lead'], ['F3', 'Partnerships Lead'], ['F4', 'Events Lead']])
+    for (const c of four) await prisma.target.create({ data: { brandId: 'Four Waiting', contactId: c.id, status: 'queued', fitScore: 40 } })
+    await data('queueBrandTargets', { brandId: 'Four Waiting' })
+    const fw = await prisma.target.findMany({ where: { brandId: 'Four Waiting' }, include: { contact: true } })
+    assert.deepEqual(fw.filter(t => t.queuedFor).map(t => t.contact.name).sort(), ['F2', 'F3', 'F4'])
+    assert.deepEqual(fw.filter(t => t.shelved).map(t => [t.contact.name, t.shelvedHow]), [['F1', 'cap']], 'trimmed as it comes up, next in line')
+    // Leo's "work 1" is one, and a new number trims who waits past it.
+    await mkBrand('Work One', {}, [['W1', 'Head of Partnerships'], ['W2', 'Brand Manager'], ['W3', 'Marketing Manager']])
+    await data('updateBrand', { brandId: 'Work One', workPeople: 1 })
+    assert.equal((await data('queueBrandTargets', { brandId: 'Work One' })).count, 1)
+    assert.deepEqual(await stampedNames('Work One'), ['W1'])
+    // Established, measured mid-size: four. Established, not measured: four
+    // too — no longer a "big company" that opens ten.
+    const estPeople = Array.from({ length: 12 }, (_, i) => ['Est ' + i, 'Brand Manager'])
+    await mkBrand('Est Measured', { tier: 'established', liMembers: 200 }, estPeople.map(([n, t]) => ['M' + n, t]))
+    await mkBrand('Est Guess', { tier: 'established' }, estPeople.map(([n, t]) => ['G' + n, t]))
+    await mkBrand('Big Measured', { liMembers: 900 }, estPeople.map(([n, t]) => ['B' + n, t]))
+    assert.equal((await data('queueBrandTargets', { brandId: 'Est Measured' })).count, 4)
+    assert.equal((await data('queueBrandTargets', { brandId: 'Est Guess' })).count, 4, 'an established tier alone is not big')
+    assert.equal((await data('getBrand', { brandId: 'Est Guess' })).big, false)
+    assert.equal((await data('queueBrandTargets', { brandId: 'Big Measured' })).count, 10, 'measured 500+ is big')
+    // The limit never takes anyone out of today's list: five stamped today
+    // at a brand that works three stay when a capture runs the limit.
+    const td = await mkBrand('Today Five', {}, [['T1', 'CMO'], ['T2', 'CMO'], ['T3', 'CMO'], ['T4', 'CMO'], ['T5', 'CMO']])
+    for (const c of td) await prisma.target.create({ data: { brandId: 'Today Five', contactId: c.id, status: 'queued', queuedFor: new Date() } })
+    await data('importContacts', { rows: [{ brandName: 'Today Five', name: 'T6', title: 'CMO', linkedinUrl: 'https://www.linkedin.com/in/t6x/' }] })
+    assert.equal(await prisma.target.count({ where: { brandId: 'Today Five', shelved: true, contactId: { in: td.map(c => c.id) } } }), 0, 'today\'s five stay')
+    const t6 = await prisma.target.findFirst({ where: { brandId: 'Today Five', contact: { name: 'T6' } } })
+    assert.deepEqual([t6.shelved, t6.shelvedHow], [true, 'cap'], 'the new one waits — next in line')
+    // Out of the way of the sections below (nothing of theirs in today's list).
+    await prisma.brand.updateMany({ where: { id: { in: ['Six Buyers', 'Four Waiting', 'Work One', 'Est Measured', 'Est Guess', 'Big Measured', 'Today Five'] } }, data: { passedAt: new Date() } })
+    ok('each brand opens with exactly its number, best LinkedIn buyers first; trims as it comes up; never out of today\'s list; big only when measured')
 
     // 12. A day Leo gives a category fills from the whole category, best
     //     Brand Fit first (category-days) — a Skip category included, since
@@ -421,6 +482,83 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(lab.f4.need, 4, 'an established brand of 120 works 4, not a big company\'s 10')
     await data('setCategoryPriority', { category: 'fintech', priority: 'low' })
     ok('a category day: whole category best first, Skip OK when Leo picks it, too small out; Fill never splits; the week sizes the day; labels agree')
+
+    // 13. A Best fit day takes one big company and gives the rest of the
+    //     day to smaller brands (Leo, Oct 12 2026) — the Schedule's preview
+    //     and Plan my week alike; a brand short of people ranks below the
+    //     ready ones, even with a higher Brand Fit (thin-held-back).
+    const op13 = await data('getOutreachPlan', {})
+    const later13 = op13.days.filter(d => d.date > op13.today).map(d => d.date)
+    for (const d of later13) await data('planSetCategory', { date: d, category: null })
+    const top13 = { category: 'electrolytes', salesCents: 200 * M, sponsorsCollege: true, usStatus: 'yes' }
+    const ten = (p) => Array.from({ length: 10 }, (_, i) => [p + i, 'Head of Partnerships'])
+    await mkBrand('BigHydraA', { ...top13, liMembers: 900 }, ten('HA'))
+    await mkBrand('BigHydraB', { ...top13, liMembers: 800 }, ten('HB'))
+    await mkBrand('MidHydra', { ...top13, salesCents: 2 * M, liMembers: 120 }, [['MH1', 'Head of Partnerships'], ['MH2', 'Brand Manager'], ['MH3', 'Events Lead']])
+    await mkBrand('ThinHydra', { ...top13, liMembers: 130 }, [['TH1', 'Head of Partnerships']])
+    const op13b = await data('getOutreachPlan', {})
+    const ids13 = (k) => (op13b.days.find(d => d.date === k).brands || []).map(b => b.id)
+    const d1 = ids13(later13[0]), d2 = ids13(later13[1])
+    assert.ok(d1.includes('BigHydraA') && !d1.includes('BigHydraB'), 'one big company on a Best fit day: ' + JSON.stringify(d1))
+    assert.ok(d2.includes('BigHydraB') && !d2.includes('BigHydraA'), 'the second goes on the next Best fit day: ' + JSON.stringify(d2))
+    assert.ok(d1.includes('MidHydra') && d1.includes('ThinHydra') && d1.indexOf('MidHydra') < d1.indexOf('ThinHydra'),
+      'Ready before short, whatever the fit: ' + JSON.stringify(d1))
+    const pw13 = await data('planWeek', {})
+    const add13 = (i) => pw13.days[i].add.map(a => a.id)
+    assert.ok(add13(0).includes('BigHydraA') && !add13(0).includes('BigHydraB'), 'Plan my week: one big company a Best fit day: ' + JSON.stringify(add13(0)))
+    assert.ok(add13(1).includes('BigHydraB'), 'and the other the next day')
+    assert.ok(add13(0).indexOf('MidHydra') < add13(0).indexOf('ThinHydra'), 'Plan my week: Ready before short')
+    ok('a Best fit day takes one big company, the rest smaller brands; Ready before short — the Schedule and Plan my week agree')
+
+    // 14. What gets answered (read-only, suggestions only) and Ready for a
+    //     second try (hand-only) — outcome-table and second-try, Oct 12 2026.
+    const daysAgo = (k) => new Date(Date.now() - k * 864e5)
+    const seedInvites = async (id, category, n, yes, at) => {
+      await prisma.brand.create({ data: { id, name: id, category, usStatus: 'yes' } })
+      for (let i = 0; i < n; i++) {
+        const c = await prisma.contact.create({ data: { brandId: id, name: id + ' I' + i, title: 'Head of Partnerships', linkedinUrl: 'https://www.linkedin.com/in/' + id + i + '/' } })
+        await prisma.target.create({ data: { brandId: id, contactId: c.id, status: i < yes ? 'accepted' : 'sent', sentAt: at } })
+      }
+    }
+    await seedInvites('OutBeauty', 'beauty', 40, 32, daysAgo(30))
+    await seedInvites('OutSnacks', 'snacks', 60, 6, daysAgo(30))
+    await seedInvites('OutYoung', 'beauty', 10, 0, daysAgo(3)) // too young to judge
+    const ot = await data('outcomeTable', {})
+    const cat14 = (k) => ot.byCategory.find(c => c.key === k)
+    assert.deepEqual([cat14('beauty').n, cat14('beauty').accepted], [40, 32], 'only invites old enough to answer: ' + JSON.stringify(cat14('beauty')))
+    assert.ok(ot.bySize.length && ot.byBuyer.some(c => c.key === 'partnerships') && ot.byThreads.length, 'every grouping')
+    const sugs = ot.suggestions.map(x => [x.category, x.from, x.to])
+    assert.ok(sugs.some(x => x[0] === 'beauty' && x[2] === 'top') && sugs.some(x => x[0] === 'snacks' && x[2] === 'low'), 'suggests, both ways: ' + JSON.stringify(sugs))
+    const pr14 = (await data('getCategoryPriority', {})).categories
+    assert.equal(pr14.find(c => c.key === 'beauty').priority, 'middle', 'nothing changes by itself')
+
+    // Quiet Co: three invites a month ago, nobody answered (two withdrawn,
+    // one still out), rested — and three new buyers on file.
+    const quiet14 = await mkBrand('Quiet Co', { category: 'energy' }, [['Q1', 'Brand Manager'], ['Q2', 'Marketing Lead'], ['Q3', 'Events Lead'],
+      ['QN1', 'Head of Partnerships'], ['QN2', 'Partnerships Manager'], ['QN3', 'Sponsorship Lead']])
+    const qOpen = await prisma.target.create({ data: { brandId: 'Quiet Co', contactId: quiet14[0].id, status: 'sent', sentAt: daysAgo(30) } })
+    await prisma.target.create({ data: { brandId: 'Quiet Co', contactId: quiet14[1].id, status: 'withdrawn', sentAt: daysAgo(30) } })
+    await prisma.target.create({ data: { brandId: 'Quiet Co', contactId: quiet14[2].id, status: 'withdrawn', sentAt: daysAgo(30) } })
+    const answered14 = await mkBrand('Answered Co', { category: 'energy' }, [['A1', 'Brand Manager'], ['AN1', 'Head of Partnerships']])
+    await prisma.target.create({ data: { brandId: 'Answered Co', contactId: answered14[0].id, status: 'accepted', sentAt: daysAgo(30) } })
+    const waiting14 = await mkBrand('Waiting Co', { category: 'energy' }, [['WA1', 'Brand Manager'], ['WA2', 'Brand Manager'], ['WAN1', 'Head of Partnerships']])
+    await prisma.target.create({ data: { brandId: 'Waiting Co', contactId: waiting14[0].id, status: 'sent', sentAt: daysAgo(30) } })
+    await prisma.target.create({ data: { brandId: 'Waiting Co', contactId: waiting14[1].id, status: 'sent', sentAt: daysAgo(10) } })
+    let st14 = await data('secondTryBrands', {})
+    const qRow = () => st14.brands.find(b => b.id === 'Quiet Co')
+    assert.ok(qRow(), 'an unanswered, rested brand with new buyers is offered: ' + JSON.stringify(st14.brands.map(b => b.name)))
+    assert.deepEqual(qRow().open.map(o => o.targetId), [qOpen.id], 'its invite still out is named, to withdraw first')
+    assert.ok(qRow().going >= 1 && qRow().people.every(p => /^QN/.test(p.name)), 'only new people would go: ' + JSON.stringify(qRow().people))
+    assert.ok(!st14.brands.some(b => b.id === 'Answered Co'), 'someone accepted: never')
+    assert.ok(!st14.brands.some(b => b.id === 'Waiting Co'), 'an invite under 21 days may still be accepted')
+    const opp = await data('getOutreachPlan', {})
+    assert.ok(!opp.days.some(d => (d.brands || []).some(b => b.id === 'Quiet Co')), 'never picked by itself')
+    await data('markInvitesWithdrawn', { targetIds: [qOpen.id] })
+    st14 = await data('secondTryBrands', {})
+    assert.deepEqual(qRow().open, [], 'withdrawn: nothing still out')
+    const pv14 = await data('planAddBrands', { date: st14.day, brandIds: ['Quiet Co'], preview: true })
+    assert.deepEqual([pv14.results[0].added, pv14.results[0].state], [true, 'going'], 'by hand it goes: ' + JSON.stringify(pv14.results[0]))
+    ok('What gets answered: only old-enough invites, every grouping, suggestions that change nothing; a second try is offered by hand only')
 
     console.log(n + ' checks passed');
   } catch (e) {

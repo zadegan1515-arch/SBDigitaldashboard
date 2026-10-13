@@ -14,7 +14,7 @@ for (const f of readdirSync(out).filter(f => f.endsWith('.js'))) {
   const p = join(out, f)
   writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, "from '$1.js'"))
 }
-const { checkBrandQueue, personProblem } = await import(pathToFileURL(join(out, 'queue-check.js')).href)
+const { checkBrandQueue, personProblem, comparePicks, sortPicks, leaveOutFlagged, buyerRank } = await import(pathToFileURL(join(out, 'queue-check.js')).href)
 
 let n = 0
 const t = (name, fn) => { fn(); n++; console.log('  ok — ' + name) }
@@ -50,5 +50,26 @@ t('one candidate replaces one person; the weakest gets it', () => {
   const r = checkBrandQueue([{ targetId: 't1', name: 'A', title: 'Brand Manager' }, { targetId: 't2', name: 'B', title: 'Store Manager' }],
     [o('pp', 'VP Partnerships')])
   assert.equal(r[1].better.contactId, 'pp'); assert.equal(r[0].better, null)
+})
+t('pick order: a buyer, then a LinkedIn link, then partnerships > events > marketing = founder, then fit, then email (picks, Oct 12 2026)', () => {
+  const li = 'https://www.linkedin.com/in/x'
+  const ppl = [
+    { id: 'acct', title: 'Senior Accountant', linkedinUrl: li, fit: 99 },
+    { id: 'mailPP', title: 'VP Partnerships', linkedinUrl: null, email: 'a@b.co', fit: 90 },
+    { id: 'mk', title: 'Marketing Manager', linkedinUrl: li, fit: 70 },
+    { id: 'fd', title: 'Founder', linkedinUrl: li, fit: 70, email: 'f@b.co' },
+    { id: 'ev', title: 'Experiential Marketing Lead', linkedinUrl: li, fit: 10 },
+    { id: 'pp', title: 'Head of Partnerships', linkedinUrl: li, fit: 20 },
+  ]
+  assert.deepEqual(sortPicks(ppl).map(x => x.id), ['pp', 'ev', 'fd', 'mk', 'mailPP', 'acct'])
+  assert.deepEqual([buyerRank('Partnerships'), buyerRank('Events'), buyerRank('Brand Manager'), buyerRank('CEO'), buyerRank('Accountant')], [3, 2, 1, 1, 0])
+  assert.ok(comparePicks({ title: 'CMO', linkedinUrl: li, fit: 50 }, { title: 'CMO', linkedinUrl: li, fit: 50 }) === 0, 'equal people tie')
+  assert.deepEqual(sortPicks([{ id: 'a', title: 'CMO' }, { id: 'b', title: 'CMO' }]).map(x => x.id), ['a', 'b'], 'stable')
+})
+t('flagged people stay out while anyone unflagged is reachable — waiting or already in play', () => {
+  const c = [{ title: 'Accountant' }, { title: 'Brand Manager' }, { title: '' }]
+  assert.deepEqual(leaveOutFlagged(c, undefined, false).map(x => x.title), ['Brand Manager'])
+  assert.deepEqual(leaveOutFlagged([{ title: 'Accountant' }], undefined, true), [], 'a buyer in play: no flagged filler on the next load')
+  assert.deepEqual(leaveOutFlagged([{ title: 'Accountant' }], undefined, false).length, 1, 'nobody else: a worse door beats no door')
 })
 console.log(n + ' queue-check tests passed')

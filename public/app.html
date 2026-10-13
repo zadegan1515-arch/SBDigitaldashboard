@@ -1020,6 +1020,18 @@
      more invites (the dark-surface steps of the sequential ramp; ink
      flips to dark on the two brightest). */
   .sd-covp{padding:14px 16px}
+  /* What gets answered (outcome-table) and Ready for a second try */
+  .sd-out-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:12px}
+  .sd-cov.sd-out{min-width:0}
+  .sd-out-h{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:0}
+  .sd-out td.sd-out-few{color:var(--ink-3)}
+  .sd-out-sugs{margin-bottom:12px}
+  .sd-out-sug{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--border-soft);font-size:13.5px}
+  .sd-out-sug:last-child{border-bottom:0}
+  .sd-retry{padding:10px 0;border-bottom:1px solid var(--border-soft)}
+  .sd-retry:last-child{border-bottom:0}
+  .sd-retry-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .sd-retry .sd-fix{align-items:center;font-size:13px;margin-top:6px}
   .sd-covwrap{overflow-x:auto;margin-top:10px}
   .sd-cov{width:100%;border-collapse:separate;border-spacing:2px;font-size:13.5px;min-width:780px}
   .sd-cov th,.sd-cov td{padding:0;text-align:center;font-weight:500;color:var(--ink-2);vertical-align:middle}
@@ -1970,6 +1982,13 @@
         <summary>Categories &amp; coverage</summary>
         <div id="sched-cats"></div>
         <div id="sched-cov"></div>
+        <div id="sched-out"></div>
+      </details>
+      <!-- Brands that never answered, rested: put back on a day by hand only
+           (second-try, Oct 12 2026). -->
+      <details class="sd-fold" id="sched-retryfold">
+        <summary>Ready for a second try<span id="sched-retry-n" class="sd-dim"></span></summary>
+        <div id="sched-retry"></div>
       </details>
       <div id="sched-past" style="margin-top:10px"></div>
     </section>
@@ -12107,9 +12126,12 @@ function loadSchedule() {
   showView('schedule');
   // Categories & coverage stays folded unless Leo left it open.
   try { var cf = document.getElementById('sched-catfold'); if (cf && localStorage.getItem('sb.schedCats') === '1') cf.open = true; } catch (e) {}
+  try { var rf = document.getElementById('sched-retryfold'); if (rf && localStorage.getItem('sb.schedRetry') === '1') rf.open = true; } catch (e) {}
   var box = document.getElementById('sched-days');
   if (!SCHED.order.length) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   sdLoadCoverage();
+  sdLoadOutcomes();
+  sdLoadRetry();
   var mine = ++SCHED.refSeq;
   SCHED.loadedAt = Date.now();
   sdBusy(1);
@@ -12674,6 +12696,9 @@ function sdDayHtml(key) {
     : open === 0 ? '<span class="sd-st good">Full ✓</span>'
     : '<span class="sd-st warn">' + open + ' open</span>';
   var sub = isToday ? (day.sent || 0) + ' sent · ' + Math.max(0, total - (day.sent || 0)) + ' queued' : '';
+  // "N brands" next to the invites (big-brand-size, Oct 12 2026), so a day
+  // a few big companies take up is plain to see.
+  var brandN = sdDayBrandCount(day, isToday);
 
   var catSel = '<select class="inp sd-catsel" data-sdcatsel="' + esc(key) + '" title="What this day works: Best fit, or one category"' +
     (pending ? ' disabled' : '') + '>' + sdCatOptions(planned) + '</select>';
@@ -12700,6 +12725,7 @@ function sdDayHtml(key) {
     '</div>' +
     catSel +
     '<div class="sd-day-n"><span><b>' + total + '</b> / ' + fillCap +
+      (brandN ? ' · <span title="Brands going out this day (a big company works 10 at once — a Best fit day takes one)">' + sdPlural(brandN, 'brand', 'brands') + '</span>' : '') +
       (fillCap < cap ? ' <span class="sd-dim" title="LinkedIn allows about ' + ((SCHED.linkedinWeek && SCHED.linkedinWeek.limit) || 100) +
         ' invites in any 7 days. The days before this one leave it ' + fillCap + ', so the automatic picks stop there; brands you add by hand still go.">· week limit</span>' : '') +
       (sub ? ' · ' + esc(sub) : '') + '</span>' + status + '</div>' +
@@ -12746,6 +12772,16 @@ function sdDayHtml(key) {
 
   if (isToday) html += sdSentHtml(day);
   return html + '</div>';
+}
+
+// How many brands a day sends: pins going out (not waiting) or sent, the
+// automatic rows, and today the brands that already went.
+function sdDayBrandCount(day, isToday) {
+  var seen = {};
+  (day.pinned || []).forEach(function (p) { if ((p.state === 'going' && !p.waits) || p.state === 'sent') seen[p.id] = 1; });
+  (day.brands || []).forEach(function (b) { seen[b.id] = 1; });
+  if (isToday) (day.sentPeople || []).forEach(function (t) { if (t.brandId) seen[t.brandId] = 1; });
+  return Object.keys(seen).length;
 }
 
 // Days a batch of brands can move to: the Schedule's other days, plus the
@@ -13779,6 +13815,152 @@ function renderSchedCov() {
   window.addEventListener('scroll', hide, { passive: true });
 })();
 
+// --- what gets answered (outcome-table, Oct 12 2026) -------------
+// Read-only: LinkedIn invites of the last six months that are old enough
+// to have an answer (accepts after 7 days, replies after 19 — Zach's
+// list's own cadence), by category, company size, buyer type and people
+// invited per brand (outcomeTable, src/lib/outcomes.ts). Leo: results only
+// suggest — a suggestion changes a category's priority only on his click,
+// after a confirm.
+var SD_OUT_SIZE = { small: 'Small (under 20 on LinkedIn)', target: 'Mid-size (20–499)', unknown: 'Size not known yet', big: 'Big company (500+ or a parent’s)' };
+var SD_OUT_BUYER = { partnerships: 'Partnerships', events: 'Events / experiential', marketing: 'Marketing / brand', founder: 'Founder / CEO', other: 'Not a buyer title' };
+function sdLoadOutcomes() {
+  if (SCHED.outBusy) return;
+  SCHED.outBusy = true;
+  api('outcomeTable', {}).then(function (d) {
+    SCHED.outBusy = false; SCHED.out = d; SCHED.outErr = '';
+    renderSchedOut();
+  }).catch(function (e) { SCHED.outBusy = false; SCHED.outErr = e.message; renderSchedOut(); });
+}
+function sdOutRate(rate, yes, n, few) {
+  if (!n) return '<td class="sd-cov-sum">–</td>';
+  return '<td class="sd-cov-sum' + (few ? ' sd-out-few' : '') + '" title="' + esc(yes + ' of ' + n + (few ? ' — too few to tell yet' : '')) + '">' +
+    sdPct(rate) + '<span class="sd-dim"> · ' + yes + '/' + n + '</span></td>';
+}
+function sdOutTable(title, unit, cells, nameOf) {
+  if (!cells || !cells.length) return '';
+  return '<div class="panel sd-covp"><h3 class="sd-out-h">' + esc(title) + '</h3>' +
+    '<div class="sd-covwrap"><table class="sd-cov sd-out"><thead><tr><th scope="col" class="sd-cov-c">' + esc(unit) + '</th>' +
+      '<th scope="col" class="sd-cov-sum">Accepted</th><th scope="col" class="sd-cov-sum">Replied</th><th scope="col"></th></tr></thead><tbody>' +
+    cells.map(function (c) {
+      return '<tr><th scope="row" class="sd-cov-c">' + esc(nameOf(c.key)) + '</th>' +
+        sdOutRate(c.acceptRate, c.accepted, c.n, c.few) + sdOutRate(c.replyRate, c.replied, c.replyN, c.replyN < (SCHED.out.few || 30)) +
+        '<td class="sd-cov-last">' + (c.few ? '<span class="sd-dim">too few to tell</span>' : '') + '</td></tr>';
+    }).join('') + '</tbody></table></div></div>';
+}
+function renderSchedOut() {
+  var box = document.getElementById('sched-out');
+  if (!box) return;
+  var d = SCHED.out;
+  if (!d) { box.innerHTML = SCHED.outErr ? '<div class="sd-note" style="margin-top:24px">Results could not load: ' + esc(SCHED.outErr) + '</div>' : ''; return; }
+  var o = d.overall || {};
+  var head = '<div class="sd-cats-h"><h2 class="sd-h2">What gets answered</h2>' +
+    '<span class="sd-dim">LinkedIn invites of the last ' + Math.round((d.days || 180) / 30) + ' months · accepts counted ' + d.acceptAfterDays +
+      '+ days after the invite (' + sdPct(o.acceptRate) + ' of ' + (o.n || 0) + '), replies ' + d.replyAfterDays + '+ days (' + sdPct(o.replyRate) + ' of ' + (o.replyN || 0) + '). ' +
+      'Read-only — nothing here changes a score.</span></div>';
+  if (!o.n) { box.innerHTML = head + '<div class="sd-note">No invites old enough to judge yet.</div>'; return; }
+  var sug = (d.suggestions || []).map(function (x) {
+    return '<div class="sd-out-sug"><b>' + esc(sdCatName(x.category)) + '</b> <span>' + esc(x.text) + '</span>' +
+      '<span class="sd-dim">now ' + esc(SD_PRIO_WORD[x.from] || x.from) + '</span>' +
+      '<button class="btn-ghost sd-sm" data-sdoutprio="' + esc(x.category) + '" data-to="' + esc(x.to) + '" title="Changes ' + esc(sdCatName(x.category)) + '’s category priority — you confirm first">Make it ' + esc(SD_PRIO_WORD[x.to] || x.to) + '…</button></div>';
+  }).join('');
+  box.innerHTML = head +
+    (sug ? '<div class="panel sd-covp sd-out-sugs"><h3 class="sd-out-h">Worth a look</h3>' + sug + '</div>' : '') +
+    '<div class="sd-out-grid">' +
+      sdOutTable('By category', 'Category', d.byCategory, function (k) { return sdCatName(k || null); }) +
+      sdOutTable('By company size', 'Size', d.bySize, function (k) { return SD_OUT_SIZE[k] || k; }) +
+      sdOutTable('By who was invited', 'Title', d.byBuyer, function (k) { return SD_OUT_BUYER[k] || k; }) +
+      sdOutTable('By people invited per brand', 'Brands with', d.byThreads, function (k) { return k + (k === '1' ? ' person' : ' people') + ' invited'; }) +
+    '</div>';
+}
+document.addEventListener('click', function (e) {
+  var b = e.target.closest && e.target.closest('[data-sdoutprio]');
+  if (!b) return;
+  e.preventDefault();
+  var cat = b.getAttribute('data-sdoutprio'), to = b.getAttribute('data-to');
+  if (!window.confirm('Make ' + sdCatName(cat) + ' a ' + (SD_PRIO_WORD[to] || to) + ' priority category?\n\nBrand Fit scores and Best fit days follow it from now on. You can change it back under More ▾ → Category priority.')) return;
+  b.disabled = true;
+  api('setCategoryPriority', { category: cat, priority: to }).then(function () {
+    SCHED.priority[cat] = to;
+    toast(sdCatName(cat) + ' → ' + (SD_PRIO_WORD[to] || to));
+    sdLoadOutcomes();
+    sdRefresh();
+  }).catch(function (err) { b.disabled = false; toast(err.message); });
+});
+
+// --- ready for a second try (second-try, Oct 12 2026) ------------
+// Brands reached before that never answered and have rested their two
+// weeks: who would go now, by Leo's hand only (secondTryBrands). Invites
+// still out 21+ days are logged withdrawn first (markInvitesWithdrawn,
+// previewed); then Put on a day — the usual picker, preview first.
+function sdLoadRetry() {
+  if (SCHED.retryBusy) return;
+  SCHED.retryBusy = true;
+  api('secondTryBrands', {}).then(function (d) {
+    SCHED.retryBusy = false; SCHED.retry = d; SCHED.retryErr = '';
+    renderSchedRetry();
+  }).catch(function (e) { SCHED.retryBusy = false; SCHED.retryErr = e.message; renderSchedRetry(); });
+}
+function sdRetryRow(b) {
+  var name = 'retry:' + b.id;
+  pdCtx(name, {
+    ids: function () { return [b.id]; },
+    render: function () { var el = document.querySelector('[data-sdretryday="' + b.id + '"]'); if (el) el.innerHTML = pdHtml(name); },
+    done: function () { sdRefresh(); sdLoadRetry(); },
+  });
+  var open = b.open || [];
+  var oldest = open.length ? open.map(function (x) { return x.sentAt; }).sort()[0] : null;
+  return '<div class="sd-retry">' +
+    '<div class="sd-retry-h">' +
+      '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
+      sdLabelDot(b.label) +
+      '<span class="sd-dim">' + esc(sdCatName(b.category)) + ' · Fit ' + esc(String(b.fit)) + ' · ' + sdPlural(b.invited || 0, 'invite', 'invites') +
+        (b.firstAt ? ' from ' + esc(shortDate(b.firstAt)) : '') + ', no answer' + (b.pinnedOn ? ' · on ' + esc(sdDayName(b.pinnedOn)) + ' already' : '') + '</span>' +
+    '</div>' +
+    '<div class="sd-line">Would go: <b>' + sdPlural(b.going || 0, 'person', 'people') + '</b>' + ((b.people || []).length ? ' · ' + sdNames(b.people) : '') + '</div>' +
+    (open.length
+      ? '<div class="sd-fix"><span class="sd-dim">' + sdPlural(open.length, 'invite is', 'invites are') + ' still out' + (oldest ? ' since ' + esc(shortDate(oldest)) : '') +
+          ' — withdraw ' + (open.length === 1 ? 'it' : 'them') + ' on Zach’s LinkedIn, then log it here first.</span>' +
+          '<button class="btn-ghost sd-sm" data-sdretrywd="' + esc(b.id) + '">Log ' + (open.length === 1 ? 'it' : 'them') + ' withdrawn…</button></div>'
+      : '<div class="sd-fix sd-retry-pd" data-sdretryday="' + esc(b.id) + '">' + pdHtml(name) + '</div>') +
+  '</div>';
+}
+function renderSchedRetry() {
+  var box = document.getElementById('sched-retry');
+  var n = document.getElementById('sched-retry-n');
+  if (!box) return;
+  var d = SCHED.retry;
+  if (n) n.textContent = d && d.total ? ' (' + d.total + ')' : '';
+  if (!d) { box.innerHTML = SCHED.retryErr ? '<div class="sd-note">Could not load: ' + esc(SCHED.retryErr) + '</div>' : ''; return; }
+  if (!d.brands || !d.brands.length) {
+    box.innerHTML = '<div class="sd-note">No brand is ready for a second try: none reached before has gone two weeks without an answer and has someone new to invite.</div>';
+    return;
+  }
+  box.innerHTML = '<div class="sd-note">Reached before, nobody answered, two weeks rested — and someone new there. Nothing here goes out by itself.</div>' +
+    '<div class="panel sd-covp">' + d.brands.map(sdRetryRow).join('') + '</div>' +
+    (d.total > d.brands.length ? '<div class="sd-dim">' + (d.total - d.brands.length) + ' more, lower Brand Fit.</div>' : '');
+}
+document.addEventListener('click', function (e) {
+  var b = e.target.closest && e.target.closest('[data-sdretrywd]');
+  if (!b) return;
+  e.preventDefault();
+  var row = ((SCHED.retry || {}).brands || []).filter(function (x) { return x.id === b.getAttribute('data-sdretrywd'); })[0];
+  if (!row) return;
+  var ids = (row.open || []).map(function (x) { return x.targetId; });
+  b.disabled = true;
+  api('markInvitesWithdrawn', { targetIds: ids, preview: true }).then(function (p) {
+    var will = (p && p.will) || [];
+    if (!will.length) { toast('Nothing to log — they have moved on since'); sdLoadRetry(); return; }
+    if (!window.confirm('Log ' + sdPlural(will.length, 'invite', 'invites') + ' at ' + row.name + ' as withdrawn on LinkedIn?\n\n' +
+        will.map(function (w) { return w.name; }).join(', ') +
+        '\n\nThey still count as sent in the stats. Nothing is deleted.')) { b.disabled = false; return; }
+    return api('markInvitesWithdrawn', { targetIds: will.map(function (w) { return w.id; }) }).then(function (r) {
+      toast('Logged ' + sdPlural(r.withdrawn || 0, 'invite', 'invites') + ' as withdrawn');
+      sdLoadRetry();
+    });
+  }).catch(function (err) { b.disabled = false; toast(err.message); });
+});
+
 // --- typeahead -------------------------------------------------
 
 // --- find a brand → put it on a day ------------------------------
@@ -14060,6 +14242,7 @@ var SCHED_DRAG = null;
     else if (d.matches('[data-sdoverfold]')) SCHED.overOpen[d.getAttribute('data-sdoverfold')] = d.open;
     else if (d.matches('[data-sdsentfold]')) SCHED.sentFold = d.open;
     else if (d.id === 'sched-catfold') { try { localStorage.setItem('sb.schedCats', d.open ? '1' : ''); } catch (err) {} }
+    else if (d.id === 'sched-retryfold') { try { localStorage.setItem('sb.schedRetry', d.open ? '1' : ''); } catch (err) {} }
   }, true);
 
   sec.addEventListener('keydown', function (e) {
@@ -14684,6 +14867,7 @@ var SCHED_DRAG = null;
     if (busy) return;
     sdRefresh();
     sdLoadCoverage();
+    sdLoadRetry();
   }
   window.addEventListener('focus', sdBackInView);
   document.addEventListener('visibilitychange', sdBackInView);
@@ -15274,6 +15458,10 @@ function targetRow(t) {
       (t.status === 'withdrawn' || t.status === 'passed'
         ? '<button class="btn-draft" data-act="requeue" title="Put them back in the queue to re-send">Re-queue</button>' : '') +
       (li ? '<a class="btn-ghost" href="' + esc(li) + '" target="_blank" rel="noopener">Profile ↗</a>' : '') +
+      // No LinkedIn link on file (picks, Oct 12 2026): Zach needs their
+      // profile to invite them — a people search for them at the brand.
+      (!li && isPre ? '<a class="btn-ghost" href="' + esc('https://www.linkedin.com/search/results/people/?keywords=' +
+        encodeURIComponent(t.contact.name + ' ' + t.brand.name)) + '" target="_blank" rel="noopener" title="No LinkedIn link on file — search LinkedIn for them at ' + esc(t.brand.name) + '">Find on LinkedIn ↗</a>' : '') +
       (isPre ? '<button class="btn-ghost" data-act="sent" title="Log that the invite went out">Mark sent ✓</button>' : '') +
       (t.status === 'sent' || t.status === 'accepted'
         ? '<button class="btn-ghost" data-act="replied" title="Did they write back? Click when they do">Replied?</button>' : '') +

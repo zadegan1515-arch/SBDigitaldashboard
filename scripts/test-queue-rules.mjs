@@ -27,7 +27,7 @@ for (const f of readdirSync(out).filter(f => f.endsWith('.js'))) {
   const p = join(out, f)
   writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, "from '$1.js'"))
 }
-const { REST_DAYS, rowReached, firstOutreachAt, restUntilDay, queueGate, giantOf, nyDayKey, sittingOf } = await import(pathToFileURL(join(out, 'queue-rules.js')).href)
+const { REST_DAYS, rowReached, firstOutreachAt, restUntilDay, queueGate, giantOf, nyDayKey, sittingOf, secondTryOf, STALE_INVITE_DAYS } = await import(pathToFileURL(join(out, 'queue-rules.js')).href)
 
 let pass = 0, fail = 0
 const is = (label, got, want) => {
@@ -138,6 +138,24 @@ is('sittingOf: the days and when the rest starts', sittingOf(both.rows, next) &&
 }, { days: ['2026-10-13', '2026-10-14'], restFrom: '2026-10-14', until: '2026-10-28' })
 is('sittingOf: never reached', sittingOf([row()], next), null)
 is('a giant part-sent: still the giant question on its second day', queueGate({ ...tue, name: 'Red Bull' }, { auto: false, giantsOn: false, day: '2026-10-14', nextSending: next })?.reason, 'giant')
+
+
+// ---- ready for a second try (hand-only, Oct 12 2026) -------------------------
+{
+  const now = d('2026-11-10')
+  const st = (rows, day = '2026-11-10') => secondTryOf(rows, { day, now, nextSending: next })
+  is('stale invites: 21 days', STALE_INVITE_DAYS, 21)
+  is('never reached: not a second try', st([row()]).why, 'never')
+  const quiet = [row({ status: 'withdrawn', sentAt: d('2026-10-13') }), row({ status: 'withdrawn', sentAt: d('2026-10-13') }), row()]
+  is('unanswered and rested: ready', [st(quiet).ok, st(quiet).until], [true, '2026-10-27'])
+  is('still resting: not yet', st(quiet, '2026-10-20').why, 'resting')
+  is('anyone accepted: never a second try', st([...quiet, row({ status: 'accepted', sentAt: d('2026-10-13') })]).why, 'answered')
+  is('a "no" counts as an answer', st([...quiet, row({ status: 'declined', sentAt: d('2026-10-13') })]).why, 'answered')
+  const oldOpen = [row({ status: 'sent', sentAt: d('2026-10-13') }), row({ status: 'sent', sentAt: d('2026-10-13') })]
+  is('invites still out, 28 days old: ready, withdraw them first', [st(oldOpen).ok, st(oldOpen).open], [true, 2])
+  is('an invite out under 21 days may still be accepted', st([...oldOpen, row({ status: 'sent', sentAt: d('2026-10-30') })]).why, 'waiting')
+  is('and the system never picks one by itself (auto → reached)', queueGate({ name: 'Quiet Co', rows: quiet }, { auto: true, giantsOn: false, day: '2026-11-10' })?.reason, 'reached')
+}
 
 // ---- giants -------------------------------------------------------------------
 is('household name, any spelling', giantOf({ name: 'Monster Energy Co.' }), 'a household name')

@@ -34,6 +34,11 @@ on:
       - 'src/lib/carry.ts'
       - 'src/lib/queue-rules.ts'
       - 'src/lib/today-order.ts'
+      - 'src/lib/brand-work.ts'
+      - 'src/lib/outcomes.ts'
+      - 'scripts/test-brand-work.mjs'
+      - 'scripts/test-outcomes.mjs'
+      - 'scripts/test-queue-check.mjs'
       - 'scripts/test-queue-rules.mjs'
       - 'scripts/test-carry.mjs'
       - 'scripts/test-queue-e2e.js'
@@ -75,6 +80,11 @@ on:
       - 'src/lib/carry.ts'
       - 'src/lib/queue-rules.ts'
       - 'src/lib/today-order.ts'
+      - 'src/lib/brand-work.ts'
+      - 'src/lib/outcomes.ts'
+      - 'scripts/test-brand-work.mjs'
+      - 'scripts/test-outcomes.mjs'
+      - 'scripts/test-queue-check.mjs'
       - 'scripts/test-queue-rules.mjs'
       - 'scripts/test-carry.mjs'
       - 'scripts/test-queue-e2e.js'
@@ -118,7 +128,7 @@ jobs:
       - name: Types
         run: npx tsc --noEmit
       - name: Rules
-        run: node scripts/test-brand-fit.mjs && node scripts/test-brand-size.mjs && node scripts/test-stock.mjs && node scripts/test-work-log.mjs && node scripts/test-no-send.mjs && node scripts/test-queue-check.mjs && node scripts/test-claude-hunt.mjs && node scripts/test-chat-add.mjs && node scripts/test-brand-search.mjs && node scripts/test-plan-week.mjs && node scripts/test-carry.mjs && node scripts/test-queue-rules.mjs && node scripts/test-today-order.mjs && node scripts/test-same-person.mjs
+        run: node scripts/test-brand-fit.mjs && node scripts/test-brand-size.mjs && node scripts/test-stock.mjs && node scripts/test-work-log.mjs && node scripts/test-no-send.mjs && node scripts/test-queue-check.mjs && node scripts/test-claude-hunt.mjs && node scripts/test-chat-add.mjs && node scripts/test-brand-search.mjs && node scripts/test-plan-week.mjs && node scripts/test-carry.mjs && node scripts/test-queue-rules.mjs && node scripts/test-today-order.mjs && node scripts/test-same-person.mjs && node scripts/test-brand-work.mjs && node scripts/test-outcomes.mjs
       - name: The page against a fake dashboard
         run: node scripts/test-brand-fit-ui.js && node scripts/test-brands-table.js && node scripts/test-today.js && node scripts/test-schedule.js && node scripts/test-outreach-lists.js
       - name: The handlers on a real database

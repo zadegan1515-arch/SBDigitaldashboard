@@ -87,6 +87,13 @@ t('no money known: LinkedIn size stands in', () => {
   assert.equal(small.tooSmall, true)
 })
 
+t('an established tier with no headcount scores as size not known, not big (Oct 12 2026)', () => {
+  const est = scoreBrand({ ...base, tier: 'established' })
+  assert.equal(est.size, 'unknown')
+  assert.equal(est.score, scoreBrand({ ...base }).score)
+  assert.ok(scoreBrand({ ...base, tier: 'established', liMembers: 900 }).score > est.score, 'measured 500+ is big')
+})
+
 t('category priority: Top 30, Middle 15, Low 0, Skip 0 (Leo, Oct 7 2026)', () => {
   const pts = (c, priority) => scoreBrand({ ...base, category: c, priority }).reasons.find(r => /priority category/.test(r.text)).points
   for (const c of ['spirits', 'rtd', 'alcohol', 'beverage', 'energy', 'electrolytes', 'nicotine']) assert.equal(pts(c), 30, c)

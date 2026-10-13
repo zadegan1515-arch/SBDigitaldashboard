@@ -27,10 +27,17 @@ t('headcount wins over parent and tier', () => {
 })
 t('not measured: a known parent is big, then tier, else unknown', () => {
   assert.equal(brandSize({ hasParent: true, tier: 'emerging' }), 'big')
-  assert.equal(brandSize({ tier: 'established' }), 'big')
   assert.equal(brandSize({ tier: 'growth' }), 'target')
   assert.equal(brandSize({ tier: 'emerging' }), 'small')
   assert.equal(brandSize({}), 'unknown')
+})
+t('big only when measured (500+) or owned by a parent — an established tier is a guess (Oct 12 2026)', () => {
+  assert.equal(brandSize({ tier: 'established' }), 'unknown', 'Notion imports default to established')
+  assert.equal(brandSize({ tier: 'established', liMembers: 500 }), 'big')
+  assert.equal(brandSize({ tier: 'established', liMembers: 499 }), 'target')
+  assert.equal(brandSize({ tier: 'established', hasParent: true }), 'big')
+  // …so the fill measures it sooner: unknown comes before big.
+  assert.ok(sizeRank(brandSize({ tier: 'established' })) < sizeRank('big'))
 })
 t('order: target, unknown, small, big', () => {
   const s = ['big', 'small', 'unknown', 'target'].sort((a, b) => sizeRank(a) - sizeRank(b))

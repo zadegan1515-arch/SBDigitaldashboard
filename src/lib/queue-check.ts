@@ -44,6 +44,42 @@ export function personProblem(title: string | null | undefined, names?: string[]
   return null
 }
 
+// Who at a brand goes first when the queue opens it (picks — Oct 12 2026:
+// each brand opens with exactly its number, best LinkedIn buyers first, so
+// the same 30 invites reach more brands). In order: a buyer the rules
+// above don't flag, then someone Zach can invite on LinkedIn (an email-only
+// contact can't take a LinkedIn slot ahead of them), partnerships > events
+// > marketing = founder, the person's fit score (scoreFit / Target.fitScore
+// in route.ts), then an email on file. The queue (queueBrandTargets), its
+// preview (previewBrandPicks) and the limit (reconcileBrandTargets, both
+// copies) all sort by it, so the Schedule names who really goes.
+export type PickPerson = { title: string | null; linkedinUrl?: string | null; email?: string | null; fit?: number | null }
+export function buyerRank(title: string | null | undefined): number {
+  const k = buyerKind(title)
+  return k ? RANK[k] : 0
+}
+export function comparePicks(a: PickPerson, b: PickPerson, names?: string[]): number {
+  return Number(!!personProblem(a.title, names)) - Number(!!personProblem(b.title, names)) ||
+    Number(!!b.linkedinUrl) - Number(!!a.linkedinUrl) ||
+    buyerRank(b.title) - buyerRank(a.title) ||
+    (b.fit ?? 0) - (a.fit ?? 0) ||
+    Number(!!b.email) - Number(!!a.email)
+}
+// A sorted copy; equal people keep the order they came in.
+export function sortPicks<T extends PickPerson>(list: T[], names?: string[]): T[] {
+  return list.map((p, i) => ({ p, i })).sort((x, y) => comparePicks(x.p, y.p, names) || x.i - y.i).map(x => x.p)
+}
+// Flagged people (not a buyer, no title, refused by the LinkedIn rules)
+// stay out of the queue's own picks while anyone unflagged is reachable at
+// the brand — waiting to be picked, or already in play (`unflaggedInPlay`:
+// otherwise the next load would fill the brand's count with them). A brand
+// with nobody else still gets worked: a worse door beats no door. "+ Person"
+// is a click on purpose and skips this.
+export function leaveOutFlagged<T extends { title: string | null }>(cands: T[], names: string[] | undefined, unflaggedInPlay: boolean): T[] {
+  const ok = cands.filter(c => !personProblem(c.title, names))
+  return ok.length ? ok : unflaggedInPlay ? [] : cands
+}
+
 function rankOf(title: string | null | undefined, names?: string[]): number {
   if (personProblem(title, names)) return 0
   const k = buyerKind(title)

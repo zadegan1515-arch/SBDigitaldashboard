@@ -187,3 +187,27 @@ export function giantOf(b: { name: string; aka?: string | null; salesCents?: big
   const cents = b.salesCents == null ? null : Number(b.salesCents)
   return giantWhy(b.name, { aka: b.aka ?? null, salesUsd: cents == null || !isFinite(cents) ? null : cents / 100 })
 }
+
+// Ready for a second try (second-try, Oct 12 2026): a brand reached out to
+// before that never answered — nobody accepted, replied or said no — and
+// whose two-week rest is over. Hand-only: the Schedule lists them for Leo
+// to put on a day; nothing the system picks by itself ever takes one (the
+// rule above, auto → 'reached', still holds). An invite still out older
+// than STALE_INVITE_DAYS doesn't stop it — the row offers to log those
+// withdrawn first (`open`); a younger one does ('waiting': it may still be
+// accepted). `day` = the day it would go (New York key).
+export const STALE_INVITE_DAYS = 21
+const ANSWERED = ['accepted', 'replied', 'converted', 'declined']
+export type SecondTry =
+  | { ok: false; why: 'never' | 'answered' | 'resting' | 'waiting' }
+  | { ok: true; first: Date; until: string; open: number }
+export function secondTryOf(rows: OutreachRow[], opts: { day: string; now: Date; nextSending?: NextSending }): SecondTry {
+  const s = sittingOf(rows, opts.nextSending)
+  if (!s) return { ok: false, why: 'never' }
+  if (rows.some(t => ANSWERED.includes(t.status))) return { ok: false, why: 'answered' }
+  if (opts.day < s.until) return { ok: false, why: 'resting' }
+  const out = rows.filter(t => t.status === 'sent' && t.sentAt)
+  const cutoff = opts.now.getTime() - STALE_INVITE_DAYS * 864e5
+  if (out.some(t => t.sentAt!.getTime() > cutoff)) return { ok: false, why: 'waiting' }
+  return { ok: true, first: s.first, until: s.until, open: out.length }
+}

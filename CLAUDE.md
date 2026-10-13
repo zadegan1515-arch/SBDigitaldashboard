@@ -276,6 +276,31 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (`liList`) reads brands already reached, then held giants (brands and research names), **last** —
   their people are ready for later, but they never take a day's visits first (`reachedLast`, `giantsLast`;
   the Schedule's brands and names Leo asked for keep their place). The email machine keeps its own rules.
+  **Each brand opens with exactly its number** (picks, Leo's yes Oct 12 2026): `workPeople ?? recommendWorkPeople`
+  (3, 4 at an established brand, 10 at a big company; the narrower 3/2/1 only once written to — a brand inside its
+  first sitting, part-sent next day included, keeps the opening number, and everyone still waiting from it goes
+  — the part-sent rule wins over the trim: `brandWork` / `finishingSitting` in route.ts). Best LinkedIn
+  buyers first — `comparePicks` / `sortPicks` in `src/lib/queue-check.ts`: a title the rules don't flag → a LinkedIn
+  link (an email-only contact no longer takes a slot first; it used to be email first) → partnerships > events >
+  marketing = founder → person fit → email; flagged people stay out while anyone unflagged is reachable
+  (`leaveOutFlagged`; "+ Person" excepted). Same order in queueBrandTargets, previewBrandPicks (so the Schedule's
+  "3 going" is what goes), and the limit: `reconcileBrandTargets` (both copies) = `workCount` / `keepInPlay` in
+  `src/lib/brand-work.ts` (`node scripts/test-brand-work.mjs`) — it used to keep at least 4, so a brand that works 3
+  sent 4 and "work 1" kept 4; `updateBrand` re-runs it on a new number or tier. A brand already holding more is
+  trimmed **as it comes up** (Leo's default): queueBrandTargets promotes only its number, the rest of the pool →
+  next in line (`shelvedHow 'cap'`); no bulk change, never anyone out of today's list (keepInPlay keeps today's
+  stamps first); fillSize and the gated stamp stop at the number too. A queued person with no LinkedIn link: the
+  add warns "no LinkedIn link yet" and the row has **Find on LinkedIn ↗** (a people search).
+  **Big = measured** (big-brand-size, Oct 12 2026): `isBigBrand` (brand-work.ts) = 500+ on LinkedIn or a parents.ts
+  link; an unmeasured established brand is "size not known" (works 4, 15 size points; the fill measures it sooner).
+  **One big company a Best fit day** (Leo's yes): `bigFits` / `BIG_PER_BEST_FIT_DAY` in plan-week.ts, one rule for
+  getTodayQueue's fill, getOutreachPlan's day preview (`fillWholeBrands(…, { bestFit, onDay })` — moved to
+  plan-week.ts with `orderFillGroups`) and planWeekDays: a big one already on the day (pins going, today's list,
+  sent today) counts, a second waits like a brand that doesn't fit; category days and hand adds aren't held to
+  it. Each day's header says "N brands" beside the invites (`sdDayBrandCount`). **Ready before short** (thin,
+  Leo's default: ranked below, not held back): `compareAuto` — every automatic pick (bestFitRanked, autoDayRanked,
+  orderFillGroups, Plan my week's Best fit, the Fill box's Best fit list) takes Ready brands before Thin ones,
+  then Brand Fit; the LinkedIn fill can still find a thin brand people before its turn.
   **Who goes first** (Leo, Sep 2026): a day's planned brands go out in their plan order
   (`plan[day].brandIds`) — numbered on the cards, ↑ ↓ or drag a card within its day
   (`planReorderDay`). Whole brands in that order while they fit in the day's 30 (after anyone sent
@@ -327,7 +352,14 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `SENT_TODAY.day`). Hand pins, adds and Send today anyway stay on the flat 30 with the warning. Opening a
   day says its room ("with room for 10", `openingRoom`: Put on a day's addDay preview, Move what's left). **Coverage** (`categoryCoverage`): categories × the last 6 weeks (Mon–Sun, New York),
   invites per week + share accepted (accepted/replied, withdrawn uncounted); 90-day accept rates
-  (smoothed, cached 10 min) also order the Fill box's other categories. **Outreach → LinkedIn** = one card per brand
+  (smoothed, cached 10 min) also order the Fill box's other categories. **What gets answered** (outcome-table,
+  Oct 12 2026 — Leo: results only suggest, he approves): under Coverage, read-only (`outcomeTable`, pure in
+  `src/lib/outcomes.ts`, `node scripts/test-outcomes.mjs`): the last 6 months of LinkedIn invites old enough to
+  answer (accepts after 7 days, replies — a reply or a call booked — after 19 = 2 + 10 + 7, Zach's list's cadence)
+  by category, company size, buyer type and people invited per brand (per brand); smoothed (5 invites of the
+  average), n on every cell, "too few to tell" under 30. Suggestions name a category's priority one step
+  ("accepts 1.9× the average — make it Top?", Skip never) and change it only on **Make it …** + a confirm
+  (`setCategoryPriority`); Brand Fit's weights and stored fitScore are never touched. **Outreach → LinkedIn** = one card per brand
   (sent people stay in their card, `getTodayQueue.sentList`; a finished brand folds to one line). **Ready if you have
   room** = whole brands (`getTodayQueue.moreBrands` + `openSpots`, `oqMoreCard`): **Add to today (N)** when it fits the
   open spots, else the Put on a day picker — never one person to Mark sent (one send made the brand reached and
@@ -344,7 +376,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   from before today (since Oct 12 2026; logged "Invite from <date> withdrawn on LinkedIn"); only one
   sent today is a mistake taken back and uncounts the send. "Plan them" pins brands with someone new to the
   next sending day. A send out of the queue is always dated now (`setTargetStatus`), even on a row
-  carrying an earlier invite's date.
+  carrying an earlier invite's date. **Ready for a second try** (second-try, Oct 12 2026 — hand only, the queue
+  rules still keep every reached brand out of the automatic picks): a fold under Categories & coverage, its count
+  on the summary (`secondTryBrands`; rule `secondTryOf` in queue-rules.ts): reached before, nobody accepted,
+  replied or said no, no deal, the 14 days over, not set aside / a held giant — and a buyer there the first try
+  didn't invite (previewBrandPicks as if its old invites were withdrawn), best Brand Fit first. An invite still
+  out 21+ days → **Log it withdrawn…** (markInvitesWithdrawn, previewed) first; one under 21 days keeps the brand
+  off (it may still be accepted). Then the usual Put on a day picker (planAddBrands preview → Add).
 - **Brand Fit** (Leo, Oct 2026: "a filter process to determine which brands we should reach out to").
   Rules pure in `src/lib/brand-fit.ts` (`node scripts/test-brand-fit.mjs`), computed on the fly (never
   stored; `Target.fitScore` is the per-person score, a different thing). Score 0–100, every point with a
@@ -552,8 +590,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   brand — under 25 a brand imports whole, at 25 it stops taking new rows; best titles first, nothing
   existing is removed. `TARGET_CAP_PER_BRAND = 4` is how many we keep *in the queue* per brand — **10 at a big
   company** (Leo, Oct 7 2026: "for bigger brands we should expand the limit to 10 a day"; `isBigBrand` = 500+ on
-  LinkedIn, owned by a parent in parents.ts, or that parent itself (`isParentCompany`), else established tier;
-  `BIG_BRAND_WORK` in brand-size.ts; a cold big brand opens with 10 (`recommendWorkPeople`), its contacts label needs
+  LinkedIn measured, owned by a parent in parents.ts, or that parent itself (`isParentCompany`) — an established
+  tier alone no longer counts (Oct 12 2026); shared by both routes in `src/lib/brand-work.ts`;
+  `BIG_BRAND_WORK` in brand-size.ts; the limit itself is now each brand's own number (`workCount`), not at least 4; a cold big brand opens with 10 (`recommendWorkPeople`), its contacts label needs
   10 (`workNeed({ big })`), the brand page's Work menu goes 1–4, 6, 8, 10). People past the limit are **next in line**,
   not shelved (Leo: "people should only be shelved if they're actually shelved"): `Target.shelvedHow = 'cap'` (set by
   `reconcileBrandTargets` in /api/data and /api/ingest) reads "next in line" / **Queue now** on the brand page and comes
@@ -624,7 +663,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   target brands → the research list → size unknown → small → big, emptiest first within each. Size =
   `Brand.liMembers` (the People tab's "N associated members", saved by every fill read and hand scan of the
   brand's own page, never a parent's; small < 20, target 20–499, big 500+), else a known parent → big, else
-  tier (established big / growth target / emerging small), else unknown. `liList` items carry `size` +
+  tier (growth target / emerging small; established is a guess → unknown since Oct 12 2026, so it's measured
+  sooner), else unknown. `liList` items carry `size` +
   `members`; the setup panel shows the counts, `whyItem` names the size. Per brand:
   no page → LinkedIn company search → `liMatched` (`decideCompanyMatch`: exact name/aka **in an industry
   that fits the category** — Native the deodorant had a home-care agency's page — most followers wins,

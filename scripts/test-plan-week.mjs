@@ -20,7 +20,8 @@ execSync(
   ' --target es2020 --module esnext --moduleResolution bundler --skipLibCheck',
   { stdio: 'inherit' },
 )
-const { linkedinWindows, acceptRates, planWeekDays, weekCap, LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR } =
+const { linkedinWindows, acceptRates, planWeekDays, weekCap, LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR,
+  orderFillGroups, fillWholeBrands, bigFits, compareAuto, BIG_PER_BEST_FIT_DAY } =
   await import(pathToFileURL(join(out, 'plan-week.js')).href)
 
 let pass = 0, fail = 0
@@ -280,6 +281,42 @@ const fillCat = (cat, n, size = 4, prefix = cat) => Array.from({ length: n }, (_
   const p = planWeekDays(base({ cands, cap: 30, days: [day(DAYS[0], [{ id: 'k1', going: 20 }, { id: 'k2', going: 15, waits: true }], 'energy')] }))
   is('a waiting pin is not counted on its day', [p[0].keptPeople, p[0].total], [20, 25])
   is('so the day is not "over", and fills its room', p[0].add.map(a => a.id), ['x'])
+}
+
+
+// ---- filling a day: Ready before short, one big company on Best fit (Oct 12 2026) ----
+{
+  const g = (id, size, fit, x = {}) => ({ id, size, fit, held: false, ...x })
+  // Short brands are ranked below the ready ones, not held back.
+  is('Ready first, then Brand Fit', orderFillGroups([g('thinTop', 3, 90, { short: true }), g('ready', 3, 60), g('ready2', 3, 70)]).map(x => x.id),
+    ['ready2', 'ready', 'thinTop'])
+  is('a part-worked brand still goes first', orderFillGroups([g('a', 3, 90), g('held', 3, 10, { held: true, short: true })]).map(x => x.id), ['held', 'a'])
+  is('compareAuto', [compareAuto({ fit: 50 }, { fit: 90, short: true }) < 0, compareAuto({ fit: 50 }, { fit: 60 }) > 0], [true, true])
+  is('one big company a Best fit day', BIG_PER_BEST_FIT_DAY, 1)
+  is('bigFits', [bigFits(true, 0, true), bigFits(true, 1, true), bigFits(false, 5, true), bigFits(true, 3, false)], [true, false, true, true])
+  const groups = [g('big1', 10, 80, { big: true }), g('big2', 10, 78, { big: true }), g('m1', 4, 70), g('m2', 4, 60), g('m3', 3, 50)]
+  const bf = fillWholeBrands(groups, 30, true, { bestFit: true, onDay: 0 })
+  is('Best fit: one big company, the rest smaller brands', bf.whole.map(x => x.id), ['big1', 'm1', 'm2', 'm3'])
+  is('the second big one waits like a brand that doesn\'t fit', bf.skipped.map(x => x.id), ['big2'])
+  is('a category day is not held to it', fillWholeBrands(groups, 30, true, { bestFit: false, onDay: 0 }).whole.map(x => x.id), ['big1', 'big2', 'm1', 'm2'])
+  is('no limit given: as before', fillWholeBrands(groups, 30).whole.map(x => x.id), ['big1', 'big2', 'm1', 'm2'])
+  is('a big one already on the day (a pin, today\'s list) counts', fillWholeBrands(groups, 30, true, { bestFit: true, onDay: 1 }).whole.map(x => x.id), ['m1', 'm2', 'm3'])
+  // Nothing fits whole: the partial never breaks the one-big rule.
+  const part = fillWholeBrands([g('bigA', 10, 90, { big: true }), g('m', 6, 50)], 4, true, { bestFit: true, onDay: 1 })
+  is('the partial skips a second big company', [part.partial && part.partial.group.id, part.partial && part.partial.take], ['m', 4])
+
+  // Plan my week, a Best fit day: one big company, Ready before short.
+  const cands = [
+    { ...cand('B1', 'energy', 10), fit: 80, big: true }, { ...cand('B2', 'spirits', 10), fit: 79, big: true },
+    { ...cand('T', 'rtd', 3, false), fit: 95 }, { ...cand('m1', 'energy', 4), fit: 60 }, { ...cand('m2', 'rtd', 4), fit: 55 },
+  ]
+  const p = planWeekDays({ ...base({ cands, cap: 30, days: [day(DAYS[0]), day(DAYS[1])] }), openDays: undefined })
+  is('Plan my week: one big company a Best fit day; short after ready', p[0].add.map(a => a.id), ['B1', 'm1', 'm2', 'T'])
+  is('the next Best fit day takes the other', p[1].add.map(a => a.id), ['B2'])
+  const pin = planWeekDays({ ...base({ cands, cap: 30, days: [day(DAYS[0], [{ id: 'pinBig', going: 10, big: true }])] }), openDays: undefined })
+  is('a big pin is the day\'s one', pin[0].add.map(a => a.id), ['m1', 'm2', 'T'])
+  const cat = planWeekDays(base({ cands, cap: 30, days: [day(DAYS[0], [], 'energy')] }))
+  is('a category day takes its big ones', cat[0].add.filter(a => a.from === 'day').map(a => a.id), ['B1', 'm1'])
 }
 
 console.log(fail ? `plan-week: ${pass} passed, ${fail} FAILED` : `plan-week: all ${pass} passed`)
