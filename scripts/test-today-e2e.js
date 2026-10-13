@@ -357,6 +357,71 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(await prisma.target.count({ where: { shelvedHow: 'cap' } }), before1 + mk1.people)
     ok('a big company opens with ten; next in line ≠ shelved; only next in line comes back by itself; relabel previews first')
 
+    // 12. A day Leo gives a category fills from the whole category, best
+    //     Brand Fit first (category-days) — a Skip category included, since
+    //     he chose it; too small still out — and Fill to 30 never puts a
+    //     brand into fewer spots than it needs. LinkedIn's week sizes the
+    //     day (week-limit): seeded invites six days ago leave today 2 open.
+    //     The LinkedIn tab and the Schedule label a brand the same way
+    //     (label-select).
+    const ppl = async (id, k) => {
+      for (let i = 0; i < k; i++) await prisma.contact.create({ data: { brandId: id, name: id + ' P' + i, title: 'Head of Partnerships', linkedinUrl: 'https://www.linkedin.com/in/' + id + i + '/' } })
+    }
+    await data('setCategoryPriority', { category: 'fintech', priority: 'skip' })
+    const tk12 = nyKey(new Date())
+    await data('planSetCategory', { date: tk12, category: 'fintech' })
+    const startNY = new Date(new Date(tk12 + 'T12:00:00Z').getTime() - 6 * 864e5)
+    const listed12 = async () => (await data('getTodayQueue', {})).targets.length
+    const q0 = await data('getTodayQueue', {})
+    const used = q0.sentToday + q0.targets.length
+    // 100 − (what today holds + 2) invites six days ago: today's own picks
+    // may take 2 more; the Schedule's later days aren't touched by them.
+    await prisma.brand.create({ data: { id: 'wk_past', name: 'Past Week Co', category: 'snacks', passedAt: new Date() } })
+    const seedN = 100 - (used + 2)
+    for (let i = 0; i < seedN; i++) {
+      const c = await prisma.contact.create({ data: { brandId: 'wk_past', name: 'Past ' + i, linkedinUrl: 'https://www.linkedin.com/in/past' + i + '/' } })
+      await prisma.target.create({ data: { brandId: 'wk_past', contactId: c.id, status: 'sent', sentAt: startNY } })
+    }
+    // Four people, an established brand of 120 on LinkedIn: works 4, not 10.
+    await prisma.brand.create({ data: { id: 'f4', name: 'Four Fin', category: 'fintech', tier: 'established', liMembers: 120, usStatus: 'yes' } })
+    await ppl('f4', 4)
+    // Too small (5 on LinkedIn): fits the two spots, never picked.
+    await prisma.brand.create({ data: { id: 'f0', name: 'Tiny Fin', category: 'fintech', liMembers: 5, usStatus: 'yes' } })
+    await ppl('f0', 1)
+    const q1 = await data('getTodayQueue', {})
+    assert.equal(q1.dayCap, used + 2, 'today\'s own picks stop at what LinkedIn\'s week leaves: ' + JSON.stringify([q1.dayCap, used]))
+    assert.equal(q1.cap, 30, 'hand adds stay on the flat 30')
+    let f12 = await data('fillToday', {})
+    assert.equal(f12.added, 0, 'a four-person brand never goes into two spots: ' + JSON.stringify(f12))
+    assert.deepEqual([f12.shortBy, f12.smallest], [2, 4], 'and the answer says why')
+    assert.equal(await prisma.target.count({ where: { brandId: 'f0', queuedFor: { not: null } } }), 0, 'too small stays out')
+    // A two-person brand, nobody waiting in the pool (contacts only): it
+    // goes — the whole category, not the pool's 300.
+    await prisma.brand.create({ data: { id: 'f2', name: 'Two Fin', category: 'fintech', liMembers: 60, usStatus: 'yes' } })
+    await ppl('f2', 2)
+    f12 = await data('fillToday', {})
+    assert.deepEqual([f12.added, f12.brands, f12.shortBy], [2, ['Two Fin'], 0], 'the two-person brand fills the two spots: ' + JSON.stringify(f12))
+    assert.equal(await listed12(), used + 2 - q0.sentToday, 'today is at its room, not past it')
+    // A later day given the Skip category still shows its brands.
+    const op12 = await data('getOutreachPlan', {})
+    const later12 = op12.days.find(d => d.date > op12.today)
+    await data('planSetCategory', { date: later12.date, category: 'fintech' })
+    const op12b = await data('getOutreachPlan', {})
+    const l12 = op12b.days.find(d => d.date === later12.date)
+    assert.ok((l12.brands || []).some(b => b.id === 'f4'), 'a Skip category Leo gave the day still fills it: ' + JSON.stringify(l12.brands))
+    assert.ok(!(l12.brands || []).some(b => b.id === 'f0'), 'too small never')
+    assert.equal(l12.cap, 30, 'a later day out of the seeded week has its 30')
+    // Four Fin by hand (past today's room — hand adds go): now on the
+    // LinkedIn tab too, labelled the way the Schedule labels it.
+    await data('queueBrandTargets', { brandId: 'f4' })
+    const lab = (await data('getTodayQueue', {})).labels
+    const opl = (await data('getOutreachPlan', {})).labels
+    assert.ok(lab.f4 && lab.f2, 'both labelled on the LinkedIn tab')
+    assert.deepEqual([lab.f4.need, lab.f4.kind], [opl.f4.need, opl.f4.kind], 'the LinkedIn tab and the Schedule agree')
+    assert.equal(lab.f4.need, 4, 'an established brand of 120 works 4, not a big company\'s 10')
+    await data('setCategoryPriority', { category: 'fintech', priority: 'low' })
+    ok('a category day: whole category best first, Skip OK when Leo picks it, too small out; Fill never splits; the week sizes the day; labels agree')
+
     console.log(n + ' checks passed');
   } catch (e) {
     console.error('FAILED:', e.stack || e.message);

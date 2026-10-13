@@ -162,17 +162,21 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `outreachPlan` = `{ "YYYY-MM-DD": { category, brandIds } }`, one brand on one day) — full width,
   today (if a sending day) + the next 3 sending days as columns. Every brand carries a **contacts label**
   (`contactLabel`, same on server and page): reachable = email OR LinkedIn; need = `workPeople` ??
-  (established 4 : 3); Ready ≥ need, Thin 1..need-1, No one reachable 0. A brand goes out **whole**,
+  (big company 10 : established 4 : 3 — `workNeed`; every reply that labels reads `LABEL_BRAND_SELECT`, and
+  `isBigBrand` / `contactLabel` require name, aka and liMembers so a short select fails tsc — the LinkedIn tab
+  used to call a 120-person established brand "big, works 10" while the Schedule said 4); Ready ≥ need,
+  Thin 1..need-1, No one reachable 0. A brand goes out **whole**,
   opened to its thread count (`previewBrandPicks` mirrors `queueBrandTargets` without writing;
   `fillWholeBrands` is shared by the preview and `getTodayQueue`, so what the Schedule says is what
   the LinkedIn tab stamps; a day never passes 30 — `DAILY_SEND_LIMIT` in route.ts, Leo's call Sep 28
-  2026, up from 20; the page shows the server's number via `sdCap()` / `SENT_TODAY.cap`, never a literal). Pinned cards say who goes or exactly why not
+  2026, up from 20; the page shows the server's number via `sdCap()` / `SENT_TODAY.cap`, never a literal;
+  the system's own picks stop sooner when LinkedIn's week leaves less — `days[].cap` / `sdCap(key)`, below). Pinned cards say who goes or exactly why not
   (`outreachGate` + `reasonText`). **Kept simple** (Leo, Oct 7 2026: "a little clunky there's a lot going on"):
   on screen = Plan for Zach / What went out / **More ▾** (Plan my week, Undo week plan, Category priority,
   + Add a sending day, Hide too small), the LinkedIn weekly line only when it warns, the find box, the
   contacts check as one line (nothing when every brand is ready), the day columns, Categories & coverage
   folded (`#sched-catfold`, remembered in localStorage `sb.schedCats`). A card is one row — name, contacts
-  dot, tags, × (Unpin, or Pass today on today's automatic rows) and ⋯ (up / down, Move to, Send today anyway,
+  dot, tags, × (Unpin, or Pass today on today's automatic rows) and ⋯ (up / down, ⤒ Move to top, Move to, Send today anyway,
   LinkedIn people, SponsorUnited, Archive, links); a day's ⋯ has Move what's left / Remove this sending day /
   See every brand; Invited today is a fold. Adding: **Find a brand** box above the days (`renderSchedFind`,
   `sf*`; never redrawn, so focus and text survive refreshes): day chips (last pick in localStorage
@@ -185,7 +189,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (`matchBrandList`; a list pasted into the box opens it for the chosen day). The day's **Fill box** = "N open
   spots · Fill to 30" + a "Suggestions" fold (`suggestForDay`; follows the day's category — no menu of its own;
   Best fit = every category, best fit first; on a category day Fill to 30 takes only that category, other
-  categories listed under it with + Add), category drill-in with multi-select (`categoryBrands`). Moving: drag onto a
+  categories listed under it with + Add). **Rows stay under the mouse** (fillbox-misclick: a quick second + Add
+  landed on the next brand, or on a name): going busy only greys Fill to 30 (`sdFillBtnState`, no redraw), the
+  "Adds …" line is always one line (greyed while stale), a clicked row turns "Adding…" → "Added ✓" in place and
+  keeps its slot (`SCHED.adding`, `sdKeepAdding`, ~8 s after the list drops it), the + Add button has a fixed
+  width, and `sdRefresh` holds the clicked row on screen (keepPlace; `SCHED.fillHit` when a redraw replaced the
+  button) as the added brand's card lands above the box; tick rows → **Add N ticked** = one `planAddBrands`
+  (`SCHED.fillSel`). Category drill-in with multi-select (`categoryBrands`). Moving: drag onto a
   day or "Move to" (`planMoveBrand`; moving off today un-stamps unsent people, nothing shelved). Plan
   writes go through `planAddBrands` / `planMoveBrand` / `planRemoveBrand` / `planSetCategory`.
   **Put on a day outside the Schedule** (Leo: "make sure adding brands to days is easy"): the brand
@@ -199,10 +209,19 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   a sending day; `planAddBrands` refuses a non-sending day without it.
   **Best fit is the default day** (Leo, Oct 7 2026: "from now on … just put the best fit brands that we haven't
   reached out to there"; replaced the category rotation by date): a day without a category = `BEST_FIT_DAY`
-  ('bestfit'; `dayTheme(cat) = cat || 'bestfit'`, `inDayTheme` / `isCategoryTheme` in route.ts) — in getTodayQueue,
-  getOutreachPlan, fillToday (hands a Best fit day to getTodayQueue), suggestForDay ('bestfit' = every category,
+  ('bestfit'; `dayTheme(cat) = cat || 'bestfit'`, `isCategoryTheme` / `autoDayRanked` in route.ts) — in getTodayQueue,
+  getOutreachPlan, fillToday (hands every day to getTodayQueue), suggestForDay ('bestfit' = every category,
   fit first, Skip left out) and Plan my week (an open day stays Best fit, `source: 'bestfit'`; "Let the plan pick
-  a category" = the old rules via `__pick` / `openDays: 'pick'`). Who: `bestFitRanked` / `bestFitEligible` /
+  a category" = the old rules via `__pick` / `openDays: 'pick'`). **A day Leo gives a category** reads the
+  whole of that category the same way (`autoDayRanked` — getTodayQueue, the Schedule's day rows, fillToday; it used
+  to read only the 300 best people waiting in the pool, across categories, so a category day came up short and
+  disagreed with Plan my week): never reached, best Brand Fit first, too small and out of business out like
+  everywhere, but a **Skip** category still goes on its own day (Leo's default, Oct 12 2026: he chose it —
+  `bestFitEligible(…, { allowSkip })`). **Fill to 30** (`fillToday`) asks getTodayQueue for every theme: whole
+  brands while they fit the day's room, never a 10-person brand into 2 spots, "already" only when the day is full;
+  it answers `brands` and, when spots stay open, `smallest` ("nothing in Energy fits whole — the smallest needs 4");
+  a today closed by Move what's left adds nobody. getTodayQueue reads the day's ranking on a full day too, so
+  Ready if you have room offers the next whole brands. Who: `bestFitRanked` / `bestFitEligible` /
   `BEST_FIT_BRAND_WHERE` — brands **never reached** (no invite, no email; a "Withdrew" doesn't count), not archived /
   do-not-email / not US / in talks / out of business, not too small, not a **Skip** category; read from brands,
   not the waiting pool (a brand with nobody queued yet is still a pick — queueBrandTargets opens it), best
@@ -231,7 +250,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   **Betting set aside** (Leo, Oct 7 2026: "put all the betting aside for now and not have them in any outreach"): `betting: 'skip'` in `DEFAULT_CATEGORY_PRIORITY` (brand-fit.ts) — never auto-picked, and nextBestBrands leaves Skip categories out; a hand add still works. Put it back with Category priority.
   **Queue rules** (Leo, Oct 12 2026: "i dont want brand i have already reached out to to be in the queue
   and i also dont want to reach out to super big brands yet"; rules pure in `src/lib/queue-rules.ts`,
-  `node scripts/test-queue-rules.mjs`). **Whatever the system picks by itself** — a category day's pool
+  `node scripts/test-queue-rules.mjs`). **Whatever the system picks by itself** — a category day
   (getTodayQueue, the Schedule's day rows, fillToday), Best fit, Add more / the bench, the Fill box,
   Plan my week, next best — takes **only brands nobody has reached out to** (an invite ever, logged
   outside the queue or withdrawn; an accept/reply; a hand or machine email — `notReachedBefore(dayStart)`
@@ -294,10 +313,19 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   pick a category" gives it one that can fill it (never the day before's,
   least recently worked first, then accept rate), fills to 30 with whole brands (category →
   `RELATED_CATEGORIES` → the rest), never takes a brand in today's queue; nothing is written until
-  Apply. **LinkedIn weekly limit**: ~100 invites per rolling 7 days (`LINKEDIN_WEEK_LIMIT`, warns
-  from 80; `getOutreachPlan.linkedinWeek`) — top-right line + a note on any day that would pass it;
-  it only warns. At 30 a day, Tue–Thu is 90: the 80 note shows most weeks, and an extra sending day
-  passes 100. **Coverage** (`categoryCoverage`): categories × the last 6 weeks (Mon–Sun, New York),
+  Apply. A day's pins are counted the Schedule's way (plan-week-waits): one past the day's 30 **waits →
+  <day>** and counts on the next planned day, first (it used to read "Over by 5" for a day the Schedule showed
+  at 30); each day fills only to what LinkedIn's week leaves it (`counts` → `weekCap`, `days[].cap`).
+  **LinkedIn weekly limit**: ~100 invites per rolling 7 days (`LINKEDIN_WEEK_LIMIT`, warns past 90 —
+  `LINKEDIN_WEEK_NEAR`; a normal Tue–Thu at 30 is 90 and warns about nothing; `getOutreachPlan.linkedinWeek`) —
+  top-right line + a note on any day that would pass it, saying the real choice ("this week goes over by 6; Fri
+  can take 10 — take a brand off it": a later day is in the same seven days). **Extra days are sized to what's
+  left** (Leo, Oct 12 2026): the system's own picks fill each day only to `weekCap` = min(30, 100 − invites in the
+  6 days before it), in date order (pure in plan-week.ts; getTodayQueue `dayCap` via `todayWeekCap`, fillToday,
+  getOutreachPlan `days[].cap`, Plan my week) — an extra Friday after a full week takes ~10, and the page's
+  "Fill to N", open spots and "/ N · week limit" read it (`sdCap(key)`; the LinkedIn tab's Fill reads
+  `SENT_TODAY.day`). Hand pins, adds and Send today anyway stay on the flat 30 with the warning. Opening a
+  day says its room ("with room for 10", `openingRoom`: Put on a day's addDay preview, Move what's left). **Coverage** (`categoryCoverage`): categories × the last 6 weeks (Mon–Sun, New York),
   invites per week + share accepted (accepted/replied, withdrawn uncounted); 90-day accept rates
   (smoothed, cached 10 min) also order the Fill box's other categories. **Outreach → LinkedIn** = one card per brand
   (sent people stay in their card, `getTodayQueue.sentList`; a finished brand folds to one line). **Ready if you have
@@ -888,9 +916,16 @@ cloud environment's settings).
   sitting — Leo, Oct 12 2026), and the automatic fill's picks Best fit
   would still pick. What the day only showed, and the fill's own picks at brands already reached / Skip / too
   small (Setting `outreachAutoQueued`, written by getTodayQueue), go back to waiting — so the day stays best fit.
+  **Carried brands go first** (carry-front; Leo's default, Oct 12 2026 — on the end of a full day they waited
+  and rolled again, the oldest never went): `carryOrder` puts half-sent brands first (their rest must finish that
+  day or they rest), then brands planned (or queued by hand) on the day they missed — older day first, their plan
+  order — then the day's own pins in Leo's order, then what was only shown or picked by the fill (`CarryTier`
+  0 / 1 / 3 from `findUnsent`, `auto` = outreachAutoQueued; unsentOn reads stamps in queue order); Leo can still
+  reorder (⋯ → ⤒ Move to top). moveCarried uses the same order; Move what's left's question names the day's own
+  brands that would then wait (`nowWait`, `movedWait`).
   Rules pure in `src/lib/carry.ts` (`node scripts/test-carry.mjs`); last roll in Setting
-  `outreachCarry` (Schedule "Carried over" note + "From <day>" tags, **Move them to…** =
-  `moveCarried`), `outreachCarryDone` = { day, through, running } (one request claims the roll with a
+  `outreachCarry` (per brand `tier`, `since`, `times` — `carryTimes`; Schedule "Carried over" note + "From <day> ·
+  carried 2×" tags, **Move them to…** = `moveCarried`), `outreachCarryDone` = { day, through, running } (one request claims the roll with a
   conditional write; others wait for it; a claim older than 30 s is taken over). Today's column has **Move what's left
   to…** (`moveUnsent`, previewed) — it closes today to automatic picks (Setting `outreachDayClosed`;
   hand-adds still go). Both menus offer the next off weekday "(adds it as a sending day)".

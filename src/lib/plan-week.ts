@@ -7,16 +7,32 @@
 // LinkedIn stops a personal account at roughly a hundred connection invites
 // a week, counted over the last seven days rather than Monday to Sunday.
 // The Schedule warns before a day would take those seven days past it (and
-// a little before, from 80). Nothing is blocked: the limit is LinkedIn's,
-// not ours, and it moves.
+// a little before, past 90 — a normal Tue–Thu at 30 a day is 90 and warns
+// about nothing). Hand adds are never blocked: the limit is LinkedIn's,
+// not ours, and it moves. The system's own picks keep under it (weekCap).
 export const LINKEDIN_WEEK_LIMIT = 100
-export const LINKEDIN_WEEK_NEAR = 80
+export const LINKEDIN_WEEK_NEAR = 90
 export type LinkedInWindow = { count: number; over: number; near: boolean }
 
 // The day key n days after `key` (noon UTC is the same calendar date in
 // New York, so the key never slides).
 function shiftKey(key: string, n: number): string {
   return new Date(new Date(`${key}T12:00:00Z`).getTime() + n * 864e5).toISOString().slice(0, 10)
+}
+
+// How many invites the system's own picks may put on `key` (Leo, Oct 12
+// 2026: an extra sending day is sized to what LinkedIn's weekly limit
+// leaves — an extra Friday after a full Tue–Thu takes about 10, not 30):
+// the day's own limit, or what the six days before it leave of the week's
+// hundred, whichever is less. counts = invites per day key — what went out
+// before today, what the Schedule sends from today on — filled in by the
+// caller in date order, so every seven-day window stays at the limit. Hand
+// pins, adds and "Send today anyway" stay on the flat day limit (the
+// Schedule warns when they pass the week).
+export function weekCap(key: string, counts: ReadonlyMap<string, number>, daily: number, limit = LINKEDIN_WEEK_LIMIT): number {
+  let before = 0
+  for (let i = 1; i <= 6; i++) before += counts.get(shiftKey(key, -i)) ?? 0
+  return Math.max(0, Math.min(daily, limit - before))
 }
 
 // For each day key: the invites in the seven days ending that day. Days
@@ -79,8 +95,10 @@ export function acceptRates(invites: Array<{ category: string | null; accepted: 
 // takes it. notBest: Best fit would never pick it (Schedule's rule).
 export type WeekCand = { id: string; category: string | null; ready: boolean; size: number; fit?: number; skip?: boolean; notBest?: boolean }
 // A planned day as it stands: the brands already pinned to it (and how many
-// people each sends) and the category Leo set, if any.
-export type WeekDayIn = { date: string; kept: Array<{ id: string; going: number }>; category: string | null }
+// people each sends) and the category Leo set, if any. waits: a pin past
+// the day's 30 in the day's order — it goes on the next sending day, so
+// the day doesn't count it (the Schedule's own rule, route.ts waitingOnDay).
+export type WeekDayIn = { date: string; kept: Array<{ id: string; going: number; waits?: boolean }>; category: string | null }
 export type WeekSource = 'yours' | 'asked' | 'picked' | 'bestfit' | 'full' | 'none'
 export type WeekDayOut = {
   date: string
@@ -95,6 +113,9 @@ export type WeekDayOut = {
   add: Array<{ id: string; from: 'day' | 'related' | 'other'; size: number }>
   addPeople: number
   total: number
+  // What the plan could fill the day to: the day's limit, or less when
+  // LinkedIn's weekly limit leaves less (weekCap).
+  cap: number
 }
 
 // The days in order. For each: keep what is pinned and Leo's category; a day
@@ -119,6 +140,10 @@ export function planWeekDays(opts: {
   // A day without a category: 'bestfit' (the default since Oct 7 2026)
   // keeps it Best fit; 'pick' gives it a category, the rules above.
   openDays?: 'bestfit' | 'pick'
+  // Invites per day key outside the plan (what went out, today's number):
+  // with it, each day fills only to what LinkedIn's week leaves (weekCap),
+  // the plan's own days counted as it goes. Without it, every day gets cap.
+  counts?: ReadonlyMap<string, number>
 }): WeekDayOut[] {
   const { cap, lastSent, rateOf, related } = opts
   const forced = opts.forced ?? {}
@@ -145,10 +170,13 @@ export function planWeekDays(opts: {
   const rateStep = (k: string | null) => Math.round(rateOf(k) * 20)
   const chosen: string[] = []
   let prev = opts.prev
+  const counts = opts.counts ? new Map(opts.counts) : null
 
   return opts.days.map(day => {
-    const keptPeople = day.kept.reduce((n, k) => n + k.going, 0)
-    const room = Math.max(0, cap - keptPeople)
+    // A pin that waits goes on the next sending day: not this day's.
+    const keptPeople = day.kept.reduce((n, k) => n + (k.waits ? 0 : k.going), 0)
+    const dayCap = counts ? weekCap(day.date, counts, cap) : cap
+    const room = Math.max(0, dayCap - keptPeople)
     let category = day.category
     let source: WeekSource = category ? 'yours' : room === 0 ? 'full' : 'none'
     const before = prev
@@ -219,6 +247,7 @@ export function planWeekDays(opts: {
     prev = category ?? prev
     const addPeople = add.reduce((n, a) => n + a.size, 0)
     const repeat = source === 'picked' && category !== null && category === before
-    return { date: day.date, category, source, readyNow, repeat, keptPeople, add, addPeople, total: keptPeople + addPeople }
+    if (counts) counts.set(day.date, keptPeople + addPeople)
+    return { date: day.date, category, source, readyNow, repeat, keptPeople, add, addPeople, total: keptPeople + addPeople, cap: dayCap }
   })
 }

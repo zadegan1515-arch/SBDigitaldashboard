@@ -30,6 +30,14 @@
 //   7. A later day's automatic row has the × too ("Not now" = a Pass, two
 //      weeks), and today's "planned brands wait" note says to move a brand
 //      or Send today anyway — reordering today frees nothing.
+//   8. The Fill box (fillbox-misclick): two + Add clicks 100 ms apart and a
+//      third the moment the refresh lands add exactly the brands under the
+//      mouse — the rows never move; the clicked row reads "Adding…"; ticked
+//      rows go in one call ("Add 2 ticked").
+//   9. The numbers (week-limit, carry-front): a day whose LinkedIn week
+//      leaves 10 says "/ 10 · week limit" and Fill to 10, an over day says
+//      what it can take; a carried card reads "From Tue · carried 2×" and
+//      ⋯ → Move to top sends it first.
 //
 // Run: NODE_PATH=$(npm root -g) node scripts/test-schedule.js   (~6s)
 
@@ -55,6 +63,13 @@ let themeUndo = null;
 let giantsOn = false;
 let giantCard = false;
 let waitCard = false;
+// The Fill box test: brands added to Tue Oct 13 show as its pins, the
+// add answers slowly (a plan call in flight), the day can be capped.
+let pinned13 = [];
+let slowAdd = 0;
+let cap13 = null;
+let carryCard = false;
+const SUG = ['s1', 's2', 's3', 's4', 's5', 's6'].map((id, i) => ({ id, name: 'Sug ' + (i + 1), category: 'energy', going: 3, label: { kind: 'ready', reachable: 3, need: 3, onFile: 3 }, fit: { score: 80 - i }, people: [] }));
 const GIANT_CARD = { id: 'g1', name: 'Red Bull', category: 'energy', state: 'blocked', going: 0, people: [], giant: true, reason: 'giant', reasonText: 'A giant (a household name) — held back for now. Add anyway to send it.' };
 const PLAN = () => ({
   queueRules: { giantsOn, giantsHeld: 7, giantsOk: 0, restDays: 14 },
@@ -62,7 +77,7 @@ const PLAN = () => ({
   pool: { total: 40, cap: 30 },
   priority: PRIORITY,
   themeUndo,
-  linkedinWeek: { sentLast7: 40, limit: 100, near: 80, days: {} },
+  linkedinWeek: { sentLast7: 40, limit: 100, near: 90, days: carryCard ? { '2026-10-13': { count: 106, over: 6, near: true } } : {} },
   plan: { '2026-10-07': { category: null, brandIds: ['p1'] }, '2026-10-08': { category: 'spirits', brandIds: [] } },
   labels: {},
   days: [
@@ -79,8 +94,14 @@ const PLAN = () => ({
       sentPeople: [], overflow: [],
     },
     {
-      date: '2026-10-13', category: 'bestfit', auto: true, total: 0, sent: 0, offTheme: 0,
-      pinned: giantCard ? [GIANT_CARD] : [], brands: [], sentPeople: [], overflow: [],
+      date: '2026-10-13', category: 'bestfit', auto: true, total: pinned13.length * 3 + (carryCard ? 6 : 0), sent: 0, offTheme: 0,
+      ...(cap13 != null ? { cap: cap13 } : {}),
+      pinned: (giantCard ? [GIANT_CARD] : []).concat(pinned13.map((id) => ({ id, name: 'Sug ' + id.slice(1), category: 'energy', state: 'going', going: 3, people: [] })))
+        .concat(carryCard ? [
+          { id: 'k1', name: 'Own Co', category: 'energy', state: 'going', going: 3, people: [] },
+          { id: 'k2', name: 'Carried Co', category: 'energy', state: 'going', going: 3, people: [], carriedFrom: '2026-10-08', carriedTimes: 2, carriedSince: '2026-10-07' },
+        ] : []),
+      brands: [], sentPeople: [], overflow: [],
     },
   ],
   categories: [], past: [], extraDays: [], nextOffDay: '2026-10-09',
@@ -102,10 +123,11 @@ const H = {
   getOutreachPlan: () => PLAN(),
   categoryCoverage: () => ({ weeks: [], rows: [] }),
   categoryBrands: ({ category }) => ({ category, brands: [] }),
-  suggestForDay: () => ({ brands: [], others: [], needPeople: [], hiddenSmall: 0 }),
+  suggestForDay: ({ date }) => ({ brands: date === '2026-10-13' ? SUG.filter((b) => !pinned13.includes(b.id)) : [], others: [], needPeople: [], hiddenSmall: 0 }),
+  planReorderDay: ({ date, brandIds }) => ({ ok: true, date, brandIds, changed: true, waiting: [] }),
   searchPlanBrands: ({ q }) => ({ brands: /^cel/i.test(q) ? ROWS : /^red/i.test(q) ? [GIANT_ROW] : [] }),
   // g* brands are giants: refused unless the add says allowGiants.
-  planAddBrands: ({ date, brandIds, allowGiants }) => ({ ok: true, results: brandIds.map((id) => (/^g/.test(id) && !(allowGiants || []).includes(id)
+  planAddBrands: ({ date, brandIds, allowGiants }) => ({ ok: true, results: brandIds.map((id) => (/^s\d/.test(id) && date === '2026-10-13' && pinned13.push(id), /^g/.test(id) && !(allowGiants || []).includes(id)
     ? { brandId: id, brandName: 'Giant ' + id, added: false, state: 'refused', going: 0, reason: 'giant', reasonText: 'A giant (a household name) — held back for now. Add anyway to send it.' }
     : { brandId: id, brandName: id, added: true, state: 'going', going: 4, people: [] })) }),
   setGiantsOn: ({ on }) => { giantsOn = !!on; return { giantsOn }; },
@@ -160,6 +182,7 @@ async function main() {
     if (url.startsWith(base + '/api/data')) {
       const { fn, args } = JSON.parse(route.request().postData() || '{}');
       calls.push({ fn, args: args || {} });
+      if (fn === 'planAddBrands' && slowAdd) await new Promise((r) => setTimeout(r, slowAdd));
       let body;
       try { body = { ok: true, data: H[fn] ? H[fn](args || {}) : {} }; }
       catch (e) { body = { ok: false, error: e.message }; }
@@ -357,6 +380,62 @@ async function main() {
   assert.doesNotMatch(todayCol, /Drag to change who goes first/);
   waitCard = false;
   console.log('✓ 7 Not now (a Pass) on any day\'s automatic row; today\'s waiting note says move or send anyway');
+
+  // 8. The Fill box: rows stay under the mouse ------------------------
+  const sugFold = '[data-sdfillbox="2026-10-13"] details[data-sdsugfold]';
+  await page.waitForSelector('[data-sdfillbox="2026-10-13"] [data-sdmissadd="s1"]', { state: 'attached' });
+  await page.click(sugFold + ' > summary');
+  await page.waitForSelector('[data-sdmissadd="s1"]');
+  const at = async (id) => {
+    const b = await page.$('[data-sdfillbox="2026-10-13"] [data-sdmissadd="' + id + '"]');
+    const r = await b.boundingBox();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  };
+  const p1 = await at('s1'), p2 = await at('s2'), p3 = await at('s3');
+  const adds8 = count('planAddBrands');
+  const plans8 = count('getOutreachPlan');
+  slowAdd = 250;
+  await page.mouse.click(p1.x, p1.y);
+  await page.waitForTimeout(100);
+  assert.match(await page.textContent('[data-sdfillbox="2026-10-13"]'), /Adding…/, 'the clicked row reads Adding…');
+  assert.match(await page.textContent('[data-sdfillbox="2026-10-13"] [data-sdaddsline]'), /Adds/, 'the Adds line stays while a call is out');
+  await page.mouse.click(p2.x, p2.y);
+  // The moment the first add's refresh lands, click the third row's spot.
+  await waitFor(() => count('getOutreachPlan') > plans8, 'the refresh after the first add');
+  await page.mouse.click(p3.x, p3.y);
+  await waitFor(() => count('planAddBrands') === adds8 + 3, 'three adds');
+  slowAdd = 0;
+  assert.deepEqual(calls.filter((c) => c.fn === 'planAddBrands').slice(-3).map((c) => [c.args.date, c.args.brandIds]),
+    [['2026-10-13', ['s1']], ['2026-10-13', ['s2']], ['2026-10-13', ['s3']]], 'exactly the rows clicked');
+  // Ticked rows: one call.
+  await page.waitForSelector('[data-sdfck="s4"]');
+  await page.check('[data-sdfck="s4"]');
+  await page.check('[data-sdfck="s5"]');
+  assert.equal(await page.textContent('[data-sdfilltick="2026-10-13"]'), 'Add 2 ticked');
+  const adds8b = count('planAddBrands');
+  await page.click('[data-sdfilltick="2026-10-13"]');
+  await waitFor(() => count('planAddBrands') === adds8b + 1, 'the ticked add');
+  assert.deepEqual(last('planAddBrands').args.brandIds, ['s4', 's5'], 'both ticked, one call');
+  console.log('✓ 8 Fill box: quick clicks add the rows under the mouse, Adding… in place, Add N ticked in one call');
+
+  // 9. LinkedIn's week caps a day's own picks; carried cards go first ----
+  pinned13 = [];
+  cap13 = 10;
+  carryCard = true;
+  await page.evaluate(() => sdRefresh());
+  await page.waitForFunction(() => /week limit/.test(document.querySelector('[data-drop="2026-10-13"] .sd-day-n').textContent));
+  assert.match(await page.textContent('[data-drop="2026-10-13"] .sd-day-n'), /6 \/ 10/);
+  assert.match(await page.textContent('[data-sdfill20="2026-10-13"]'), /Fill to 10/);
+  assert.match(await page.textContent('[data-drop="2026-10-13"]'), /From Thu Oct 8 · carried 2×/);
+  // Over the week: the real choice, not "move people to a later day".
+  assert.match(await page.textContent('[data-drop="2026-10-13"] .sd-liwarn'), /This week goes over by 6; Tue Oct 13 can take 10\. Take a brand off it/);
+  await page.click('[data-drop="2026-10-13"] [data-dragb="k2"] .sd-cm > summary');
+  await page.click('[data-sdtop="k2"]');
+  await waitFor(() => count('planReorderDay') === 1, 'Move to top');
+  assert.deepEqual(last('planReorderDay').args, { date: '2026-10-13', brandIds: ['k2', 'k1'] });
+  carryCard = false;
+  cap13 = null;
+  console.log('✓ 9 a day LinkedIn\'s week caps says so and fills to it; a carried card says how long, Move to top sends it first');
 
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All Schedule checks passed.');

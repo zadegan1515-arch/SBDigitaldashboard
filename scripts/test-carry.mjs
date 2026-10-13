@@ -6,8 +6,11 @@
 // the day's queue who never went; a pinned or shown brand that sent
 // nobody), and what stays put and why (archived, passed that day or inside
 // a Pass's two weeks, planned elsewhere, nobody left, day full), and that a
-// part-sent brand's rest moves to the next sending day only. Compiles the
-// lib with queue-rules.ts. Run: node scripts/test-carry.mjs
+// part-sent brand's rest moves to the next sending day only — and where
+// the moved ones land on the new day (carry-front: half-sent first, then
+// the brands planned on the day they missed, then the day's own pins, then
+// what was only shown). Compiles the lib with queue-rules.ts.
+// Run: node scripts/test-carry.mjs
 
 import { execSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -28,7 +31,7 @@ for (const f of readdirSync(out).filter(f => f.endsWith('.js'))) {
   const p = join(out, f)
   writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, "from '$1.js'"))
 }
-const { rollWindow, findUnsent, planCarry } = await import(pathToFileURL(join(out, 'carry.js')).href)
+const { rollWindow, findUnsent, planCarry, carryOrder, carryTimes } = await import(pathToFileURL(join(out, 'carry.js')).href)
 const { queueGate } = await import(pathToFileURL(join(out, 'queue-rules.js')).href)
 
 let pass = 0, fail = 0
@@ -36,6 +39,8 @@ const is = (label, got, want) => {
   if (JSON.stringify(got) === JSON.stringify(want)) { pass++; return }
   fail++; console.log('✗', label, '— got', JSON.stringify(got), 'want', JSON.stringify(want))
 }
+// What moved and which day it missed (the tier is checked on its own below).
+const fs = u => u && { from: u.from, stamped: u.stamped }
 
 // ---- which days the roll looks at ---------------------------------------
 is('first run: the last week', rollWindow('2026-09-26', {}),
@@ -60,10 +65,12 @@ is('junk in the marker: the last week', rollWindow('2026-09-26', { day: 'x', thr
     pins: { '2026-09-25': ['ghost', 'poppi'] },
     shown: { day: '2026-09-25', brandIds: ['reign', 'ghost'] },
   })
-  is('people in the queue who never went carry, even at a brand that sent someone', u.get('celsius'), { from: '2026-09-25', stamped: ['t1', 't2'] })
-  is('a pinned brand that sent nobody carries', u.get('poppi'), { from: '2026-09-25', stamped: [] })
+  is('people in the queue who never went carry, even at a brand that sent someone', fs(u.get('celsius')), { from: '2026-09-25', stamped: ['t1', 't2'] })
+  is('a pinned brand that sent nobody carries', fs(u.get('poppi')), { from: '2026-09-25', stamped: [] })
   is('a pinned brand that sent someone that day does not', u.has('ghost'), false)
-  is('a brand the rotation showed that day carries', u.get('reign'), { from: '2026-09-25', stamped: [] })
+  is('a brand the rotation showed that day carries', fs(u.get('reign')), { from: '2026-09-25', stamped: [] })
+  is('tiers: half-sent 0, pinned 1 (its place on the day), only shown 3',
+    [u.get('celsius').tier, u.get('poppi').tier, u.get('poppi').at, u.get('reign').tier], [0, 1, 1, 3])
   is('stamps from outside the window are not looked at', u.has('old'), false)
   is('nothing else', [...u.keys()].sort(), ['celsius', 'poppi', 'reign'])
 }
@@ -75,8 +82,9 @@ is('junk in the marker: the last week', rollWindow('2026-09-26', { day: 'x', thr
     pins: { '2026-09-24': ['y'], '2026-09-25': ['y'] },
     shown: { day: '2026-09-23', brandIds: ['z'] },
   })
-  is('a brand due on two days: the later day, all its stamps', u.get('x'), { from: '2026-09-25', stamped: ['a', 'b'] })
-  is('sent on one day, pinned again the next and not sent: carries from the later day', u.get('y'), { from: '2026-09-25', stamped: [] })
+  is('a brand due on two days: the later day, all its stamps', fs(u.get('x')), { from: '2026-09-25', stamped: ['a', 'b'] })
+  is('sent on one day, pinned again the next and not sent: carries from the later day', fs(u.get('y')), { from: '2026-09-25', stamped: [] })
+  is('stamped with no fill log: queued by hand, tier 1', u.get('x').tier, 1)
   is('a snapshot of another day is ignored', u.has('z'), false)
 }
 is('a broken snapshot is ignored', [...findUnsent({ days: ['2026-09-25'], stamped: [], sent: [], pins: {}, shown: { day: 'nope', brandIds: 'x' } }).keys()], [])
@@ -104,9 +112,9 @@ is('a broken snapshot is ignored', [...findUnsent({ days: ['2026-09-25'], stampe
   ])
   const r = planCarry(unsent, facts, '2026-09-29', ['g', 'kept'], 40)
   is('moved, with who goes', r.moved, [
-    { id: 'a', name: 'Alpha', people: 2, from: '2026-09-25' },
-    { id: 'b', name: 'Bravo', people: 4, from: '2026-09-25' },
-    { id: 'g', name: 'Golf', people: 3, from: '2026-09-25' },
+    { id: 'a', name: 'Alpha', people: 2, from: '2026-09-25', tier: 1 },
+    { id: 'b', name: 'Bravo', people: 4, from: '2026-09-25', tier: 1 },
+    { id: 'g', name: 'Golf', people: 3, from: '2026-09-25', tier: 1 },
   ])
   is('stayed, each with why', r.left.map(x => [x.name, x.why]), [
     ['Charlie', 'Archived. Bring it back from its brand page first.'],
@@ -114,7 +122,9 @@ is('a broken snapshot is ignored', [...findUnsent({ days: ['2026-09-25'], stampe
     ['Echo', 'Planned for Wed Sep 30 already'],
     ['Foxtrot', 'Nobody left to invite'],
   ])
-  is('the day keeps what it had and gains the moved, once each', r.dayIds, ['g', 'kept', 'a', 'b'])
+  // Carried pins go ahead of the day's own (carry-front); Golf was on the
+  // day already and keeps its place among the day's own.
+  is('the day keeps what it had and gains the moved, once each — carried first', r.dayIds, ['a', 'b', 'g', 'kept'])
   is('unstamp: the moved brands, and one planned elsewhere; not the refused', r.unstamp.sort(), ['a1', 'a2', 'e1'])
 }
 {
@@ -169,15 +179,90 @@ is('a broken snapshot is ignored', [...findUnsent({ days: ['2026-09-25'], stampe
     sent: [{ brandId: 'acme', day: '2026-10-13' }, { brandId: 'acme', day: '2026-10-13' }],
     pins: {}, shown: null,
   })
-  is('half-sent: its unsent people carry', unsent.get('acme'), { from: '2026-10-13', stamped: ['w1', 'w2'] })
+  is('half-sent: its unsent people carry, first', [fs(unsent.get('acme')), unsent.get('acme').tier], [{ from: '2026-10-13', stamped: ['w1', 'w2'] }, 0])
   const factsFor = (to) => {
     const g = queueGate({ name: 'Acme', rows }, { auto: false, giantsOn: false, day: to, nextSending: next })
     return new Map([['acme', { name: 'Acme', refusal: g ? g.reason + (g.until ? ' until ' + g.until : '') : null, passedOn: null, pinnedOn: null, people: 0 }]])
   }
   const wed = planCarry(unsent, factsFor('2026-10-14'), '2026-10-14', [], 40)
-  is('the next sending day: it moves, the same two people', [wed.moved, wed.unstamp], [[{ id: 'acme', name: 'Acme', people: 2, from: '2026-10-13' }], ['w1', 'w2']])
+  is('the next sending day: it moves, the same two people, half-sent', [wed.moved, wed.unstamp], [[{ id: 'acme', name: 'Acme', people: 2, from: '2026-10-13', tier: 0 }], ['w1', 'w2']])
   const thu = planCarry(unsent, factsFor('2026-10-15'), '2026-10-15', [], 40)
   is('a day later (Wednesday missed): it stays, resting two weeks', [thu.moved.length, thu.left.map(x => x.why)], [0, ['resting until 2026-10-27']])
+}
+
+// ---- carry-front: carried brands go first (Leo's call, Oct 12 2026) ---------
+// The day's 30 is charged in plan order (route.ts waitingOnDay), mirrored
+// here so the cases read as what the Schedule would show.
+const waitsOn = (order, size, cap = 30) => {
+  const out = []
+  let used = 0
+  for (const id of order) {
+    const n = size[id] ?? 0
+    if (n <= 0) continue
+    if (used + n > cap) out.push(id)
+    else used += n
+  }
+  return out
+}
+{
+  // Who the fill queued vs who Leo queued by hand, and the plan's order.
+  const u = findUnsent({
+    days: ['2026-10-13'],
+    stamped: [
+      { id: 'f1', brandId: 'fillco', day: '2026-10-13' },
+      { id: 'h1', brandId: 'handco', day: '2026-10-13' },
+      { id: 'p1', brandId: 'pin2', day: '2026-10-13' },
+    ],
+    sent: [],
+    pins: { '2026-10-13': ['pin1', 'pin2'] },
+    shown: { day: '2026-10-13', brandIds: ['shownco'] },
+    auto: { '2026-10-13': ['fillco'] },
+  })
+  is('tiers: pinned by its place, by hand 1, the fill 3, shown 3',
+    ['pin1', 'pin2', 'handco', 'fillco', 'shownco'].map(id => [id, u.get(id).tier]),
+    [['pin1', 1], ['pin2', 1], ['handco', 1], ['fillco', 3], ['shownco', 3]])
+  is('a pin keeps its place on the day it missed', [u.get('pin1').at, u.get('pin2').at], [0, 1])
+}
+{
+  // A full Wednesday (Leo's own three 10-person pins) and a carried pin of
+  // Tuesday's: the carried brand goes, Wednesday's last one waits instead.
+  const F = (name, people) => ({ name, refusal: null, passedOn: null, pinnedOn: null, people })
+  const r = planCarry(new Map([['tue', { from: '2026-10-13', stamped: [], tier: 1, at: 0 }]]),
+    new Map([['tue', F('Tuesday Co', 10)]]), '2026-10-14', ['w1', 'w2', 'w3'], 40)
+  is('a carried pin goes before a full day\'s own', r.dayIds, ['tue', 'w1', 'w2', 'w3'])
+  is('…so the day\'s last brand is the one that waits', waitsOn(r.dayIds, { tue: 10, w1: 10, w2: 10, w3: 10 }), ['w3'])
+}
+{
+  const F = (name) => ({ name, refusal: null, passedOn: null, pinnedOn: null, people: 3 })
+  const unsent = new Map([
+    ['pinned', { from: '2026-10-13', stamped: [], tier: 1, at: 0 }],
+    ['half', { from: '2026-10-13', stamped: ['h1'], tier: 0, at: 1e6 }],
+    ['shown', { from: '2026-10-13', stamped: [], tier: 3, at: 1e6 + 1 }],
+  ])
+  const facts = new Map([['pinned', F('Pinned')], ['half', F('Half')], ['shown', F('Shown')]])
+  const r = planCarry(unsent, facts, '2026-10-14', ['own1', 'own2'], 40)
+  is('half-sent first, then the carried pin, the day\'s own, then what was only shown',
+    r.dayIds, ['half', 'pinned', 'own1', 'own2', 'shown'])
+  const full = planCarry(unsent, facts, '2026-10-14', ['own1', 'own2'], 4)
+  is('a day near its brand limit: the shown one is left, not the half-sent', [full.moved.map(m => m.id), full.left.map(x => x.id)], [['half', 'pinned'], ['shown']])
+  // Two missed days: the older one first, then each day's own order.
+  const two = planCarry(new Map([
+    ['b2', { from: '2026-10-08', stamped: [], tier: 1, at: 1 }],
+    ['newer', { from: '2026-10-13', stamped: [], tier: 1, at: 0 }],
+    ['b1', { from: '2026-10-08', stamped: [], tier: 1, at: 0 }],
+  ]), new Map([['b1', F('B1')], ['b2', F('B2')], ['newer', F('Newer')]]), '2026-10-14', [], 40)
+  is('carried pins: the day they missed, then their place on it', two.dayIds, ['b1', 'b2', 'newer'])
+}
+is('carryOrder: a half-sent brand already on the day still goes first',
+  carryOrder(['own', 'half'], [{ id: 'half', tier: 0 }]), ['half', 'own'])
+is('carryOrder: no tier reads as a carried pin', carryOrder(['own'], [{ id: 'c' }]), ['c', 'own'])
+{
+  const prev = { to: '2026-10-14', brands: [{ id: 'a', from: '2026-10-13', since: '2026-10-08', times: 2 }, { id: 'b', from: '2026-10-13' }] }
+  const t = carryTimes(prev, [{ id: 'a', from: '2026-10-14' }, { id: 'b', from: '2026-10-14' }, { id: 'c', from: '2026-10-14' }])
+  is('rolled again from the day it was moved to: one more time, same first day', t.get('a'), { since: '2026-10-08', times: 3 })
+  is('an old log without since: its from day', t.get('b'), { since: '2026-10-13', times: 2 })
+  is('new to the roll: once', t.get('c'), { since: '2026-10-14', times: 1 })
+  is('a log from another day does not count', carryTimes({ to: '2026-10-01', brands: [{ id: 'a', from: '2026-09-30' }] }, [{ id: 'a', from: '2026-10-14' }]).get('a'), { since: '2026-10-14', times: 1 })
 }
 
 console.log(fail ? `carry: ${pass} passed, ${fail} FAILED` : `carry: all ${pass} passed`)

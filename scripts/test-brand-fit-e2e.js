@@ -85,7 +85,10 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await prisma.brand.create({ data: { id: 'b_nous', name: 'NoUS Energy', category: 'energy', usStatus: 'no' } });
     await prisma.brand.create({ data: { id: 'b_shut', name: 'Shut Down Drinks', category: 'energy', bizStatus: 'closed' } });
     await prisma.brand.create({ data: { id: 'b_kid', name: 'Ketel One', category: 'spirits', liMembers: 4 } });
-    for (const id of ['b_big', 'b_tiny', 'b_poor', 'b_mid', 'b_euro', 'b_talk', 'b_nous', 'b_shut', 'b_kid']) await prisma.contact.createMany({ data: people(id, 4) });
+    // An energy brand nothing is known about yet: today's energy day picks
+    // it by itself (a closed brand never is — category-days, Oct 12 2026).
+    await prisma.brand.create({ data: { id: 'b_new', name: 'Fresh Energy', category: 'energy' } });
+    for (const id of ['b_big', 'b_tiny', 'b_poor', 'b_mid', 'b_euro', 'b_talk', 'b_nous', 'b_shut', 'b_kid', 'b_new']) await prisma.contact.createMany({ data: people(id, 4) });
     // Queued pool people at the brand confirmed not in the US: the daily
     // rotation must never pick them.
     for (const c of await prisma.contact.findMany({ where: { brandId: 'b_nous' } })) {
@@ -167,6 +170,9 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const plan0 = await data('getOutreachPlan');
     const rotation = plan0.days.flatMap(d => (d.brands || []).map(b => b.id));
     assert.ok(!rotation.includes('b_nous'), 'the rotation never shows it');
+    // A day Leo gave a category reads the whole category the way Best fit
+    // does (category-days): a closed brand is never picked by itself.
+    assert.ok(rotation.includes('b_new') && !rotation.includes('b_shut'), 'the energy day: never reached, not closed: ' + JSON.stringify(rotation));
     const tq = await data('getTodayQueue');
     assert.equal(tq.sendingDay, true, 'today is a sending day for this check');
     assert.ok(!(tq.targets || []).some(t => t.brandId === 'b_nous'), 'today\'s queue never stamps it');
@@ -205,7 +211,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await prisma.setting.upsert({ where: { key: 'outreachPlan' }, create: { key: 'outreachPlan', value: planVal }, update: { value: planVal } });
     const rl = await data('researchList', {});
     assert.ok(rl.rows.some(r => r.id === 'b_euro'), 'the Schedule\'s next two weeks (pinned)');
-    assert.ok(rl.rows.some(r => r.id === 'b_shut'), '…and the rotation shown on today');
+    assert.ok(rl.rows.some(r => r.id === 'b_new'), '…and the rotation shown on today');
     assert.ok(!rl.rows.some(r => r.id === 'b_nous' || r.id === 'b_big'), 'never one ruled out or researched');
     assert.match(rl.text, /Euro Only Soda/);
     assert.match(rl.text, /"id":"b_euro"/);

@@ -20,7 +20,7 @@ execSync(
   ' --target es2020 --module esnext --moduleResolution bundler --skipLibCheck',
   { stdio: 'inherit' },
 )
-const { linkedinWindows, acceptRates, planWeekDays, LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR } =
+const { linkedinWindows, acceptRates, planWeekDays, weekCap, LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR } =
   await import(pathToFileURL(join(out, 'plan-week.js')).href)
 
 let pass = 0, fail = 0
@@ -31,7 +31,10 @@ const is = (label, got, want) => {
 
 // ---- LinkedIn's seven days --------------------------------------------
 {
-  is('limit and warning line', [LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR], [100, 80])
+  // A normal Tue–Thu at 30 a day is 90: no warning (week-limit).
+  is('limit and warning line', [LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR], [100, 90])
+  const normal = linkedinWindows(['2026-10-15'], new Map([['2026-10-13', 30], ['2026-10-14', 30], ['2026-10-15', 30]]), new Map(), '2026-10-13')
+  is('a normal week (3 × 30) is not near', [normal['2026-10-15'].count, normal['2026-10-15'].near], [90, false])
   const today = '2026-09-25' // a Friday
   const sent = new Map([['2026-09-22', 20], ['2026-09-23', 20], ['2026-09-24', 18], ['2026-09-25', 7], ['2026-09-18', 20]])
   // Today's planned number already includes this morning's 7.
@@ -242,6 +245,41 @@ const fillCat = (cat, n, size = 4, prefix = cat) => Array.from({ length: n }, (_
   is('nor a top-up', topUp[0].add.some(a => a.id === 's1'), false)
   const his = planWeekDays(base({ cands: sk, cap: 8, days: [day(DAYS[0], [], 'tech')] }))
   is('only Leo\'s own tech day takes it', his[0].add.map(a => a.id)[0], 's1')
+}
+
+// ---- what LinkedIn's week leaves a day (Leo, Oct 12 2026) ------------------
+{
+  // Tue–Thu at 30, then an extra Friday: the Friday's own picks take 10.
+  const wk = new Map([['2026-10-13', 30], ['2026-10-14', 30], ['2026-10-15', 30]])
+  is('an extra Friday after a full week: 10', weekCap('2026-10-16', wk, 30), 10)
+  is('a regular Tuesday after last week\'s Wed + Thu (60): the full 30', weekCap('2026-10-20', new Map([['2026-10-14', 30], ['2026-10-15', 30]]), 30), 30)
+  is('the day itself is not counted, only the six before it', weekCap('2026-10-15', new Map([['2026-10-15', 99]]), 30), 30)
+  is('a week already past the limit: nothing, never below 0', weekCap('2026-10-16', new Map([['2026-10-14', 70], ['2026-10-15', 50]]), 30), 0)
+  // Mon after the Friday: Tue..Sun = 30 + 30 + 30 + 10.
+  const withFri = new Map([...wk, ['2026-10-16', 10]])
+  is('and the Monday after it: 0', weekCap('2026-10-19', withFri, 30), 0)
+  is('a quiet week leaves the day its own limit', weekCap('2026-10-16', new Map([['2026-10-14', 12]]), 30), 30)
+
+  // Plan my week: each day sized as it goes, the plan's own days counted.
+  const DAY3 = ['2026-10-14', '2026-10-15', '2026-10-16']
+  const many = Array.from({ length: 30 }, (_, i) => ({ ...cand('b' + i, 'energy', 5), fit: 90 - i }))
+  const p = planWeekDays({ ...base({ cands: many, cap: 30, days: DAY3.map(d => day(d)) }), openDays: undefined,
+    counts: new Map([['2026-10-13', 30]]) })
+  is('Wed 30, Thu 30, the extra Fri what the week leaves', p.map(d => [d.cap, d.total]), [[30, 30], [30, 30], [10, 10]])
+  const flat = planWeekDays({ ...base({ cands: many, cap: 30, days: DAY3.map(d => day(d)) }), openDays: undefined })
+  is('no counts: every day the flat cap', flat.map(d => d.cap), [30, 30, 30])
+  // Hand pins stay on the flat 30: a Friday with 20 pinned keeps them.
+  const pinned = planWeekDays({ ...base({ cands: many, cap: 30, days: [day('2026-10-16', [{ id: 'pin', going: 20 }])] }), openDays: undefined,
+    counts: wk })
+  is('pins are kept past the week\'s room; nothing added', [pinned[0].keptPeople, pinned[0].add.length, pinned[0].cap], [20, 0, 10])
+}
+
+// ---- a pin that waits (plan-week-waits) ------------------------------------
+{
+  const cands = [cand('x', 'energy', 5)]
+  const p = planWeekDays(base({ cands, cap: 30, days: [day(DAYS[0], [{ id: 'k1', going: 20 }, { id: 'k2', going: 15, waits: true }], 'energy')] }))
+  is('a waiting pin is not counted on its day', [p[0].keptPeople, p[0].total], [20, 25])
+  is('so the day is not "over", and fills its room', p[0].add.map(a => a.id), ['x'])
 }
 
 console.log(fail ? `plan-week: ${pass} passed, ${fail} FAILED` : `plan-week: all ${pass} passed`)
