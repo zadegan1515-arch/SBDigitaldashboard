@@ -89,9 +89,17 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `personProblem` = no title / not a buyer title (buyers.ts) / refused by the LinkedIn rules (student, store,
   investor…); `checkBrandQueue` offers an uncontacted person at the same brand with a LinkedIn link and a stronger
   title — partnerships > events > marketing = founder — one candidate per person, weakest first). **Copy for Zach**
-  = plain text (company, • name — title, link), flagged people left out unless "send anyway" is ticked. **Swap** =
+  = plain text (company, • name — title, link), flagged people left out unless "send anyway" is ticked — **no invite
+  notes** (Leo sends the invites himself; format unchanged). **Swap** =
   `queueContact` (the better person) + `passContact` (the flagged one); **Leave out** = `passContact`; Queue on the
-  brand page undoes either. `node scripts/test-queue-check.mjs`; page + e2e in test-today*.
+  brand page undoes either. **Flagged people stop holding spots** (copy-flagged, Oct 12 2026): the header counts
+  "N flagged" (problem only — `todaySendList.flagged`) and "N could swap" (a better person alone, `swaps`); the copy
+  button says "Copy for Zach (27) — 3 flagged still hold spots today"; **Leave out the N flagged** (`slHeld` = flagged,
+  not "send anyway") = `leaveOutPeople` (preview names each one and why → confirm: one transaction, status passed +
+  out of today, so the next load fills their room; Setting `sendListLeftOut`) and "left out N · Undo" the same day
+  (`undoLeaveOutPeople`: back with the status and stamp they had). `getTodayQueue` attaches `problem` to everyone
+  still to send, so the LinkedIn tab's rows show the same ⚠ (`targetRow`). `node scripts/test-queue-check.mjs`; page +
+  e2e in test-today*, the LinkedIn-tab flag in test-outreach-lists.
 - **Home → For Zach to do** (`zachTodo` + `renderZachTodo`; deep link `app.html#zach`) — **everyone who
   accepted a LinkedIn invite** until they're finished (`HAND_WAITING` in `route.ts`: accepted/replied,
   no `callAt`, no `handSkippedAt`). Replied by email still shows (Email step ticked, "replied by
@@ -177,8 +185,35 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   contacts check as one line (nothing when every brand is ready), the day columns, Categories & coverage
   folded (`#sched-catfold`, remembered in localStorage `sb.schedCats`). A card is one row — name, contacts
   dot, tags, × (Unpin, or Pass today on today's automatic rows) and ⋯ (up / down, ⤒ Move to top, Move to, Send today anyway,
-  LinkedIn people, SponsorUnited, Archive, links); a day's ⋯ has Move what's left / Remove this sending day /
-  See every brand; Invited today is a fold. Adding: **Find a brand** box above the days (`renderSchedFind`,
+  LinkedIn people, SponsorUnited, Archive, links); a day's ⋯ has Move what's left (today) / **Move this day to…** and
+  **Lock this day** (later days, below) / Remove this sending day / See every brand; Invited today is a fold.
+  **Lock the days** (lock-days; Leo, Oct 12 2026: **only when he clicks Lock** — his Oct 7 rule that open days
+  re-rank stays): a later day's automatic rows re-rank on every load as people are found and brands are added, so
+  they're tagged "Best fit · may change" ("may change" on a category day; today's aren't — its rows go into the
+  LinkedIn list as they are). **Lock this day** (day ⋯) and Plan for Zach's **Lock these days** (`lockDays`,
+  `lockRows`) name every brand first, then pin exactly the rows on screen in order = `planWeek({ apply, lock: true,
+  days })` — same Undo as Plan my week (More ▾ "Undo the lock"; `planWeekLast.lock`). A brand pinned nowhere but
+  shown on a day is "Shown on Thu (not locked)" on the brand page (`planDayChoices.brand.shownOn`), "Shown on Thu,
+  not locked · Add moves it to Wed" in the add boxes (`planBrandRow.shownOn`) and in Put on a day's preview
+  (`planAddPreview` results `shownOn`) — read from Setting `outreachShownDays` (`readShownOn`). Plan my week also
+  leaves out every brand in **today's column** (pins and automatic rows, stamped or not — it used to move today's
+  top picks to tomorrow on a sending morning). **Move this day to…** (skip-day; Thanksgiving, Dec 24, Dec 31 are
+  Thursdays this year): a later day's ⋯ → a later day, the next off day (opens it) or "No day — take it off" →
+  `moveDay` preview card in the day (each planned brand: going / waits past the 30 / can't go there and why → back
+  to waiting; the category: onto a day with nothing planned the whole plan moves — category and pins in order —
+  else the pins go at the end and the day's category stays behind, named; hand pins outside the target's category
+  named) → **Move the day** sends the preview's `expect` (changed since = `stale`, shown again). The day goes **off**:
+  Setting `outreachSkipDays` = { day: SkipLog } (`src/lib/skip-day.ts`, `node scripts/test-skip-day.mjs`), folded
+  into `readExtraDays()` as `.skips`, so `isSendingKey` / `planningDays` / `scheduleDays` / `nextSendingAfter` / the
+  queue rules' next sending day / the morning roll all skip it: no column, no automatic picks, Plan my week leaves it
+  out, nothing is put on it (an extra day moved is closed too). The toolbar shows "Thu off · Undo"
+  (`getOutreachPlan.skipDays`) = `undoMoveDay` (preview, then: the day back with its category and the brands still
+  where the move put them or pinned nowhere now; ones Leo moved since stay, named; the target's category back if
+  unchanged; a day the move opened closes once empty). Wherever a menu offers "(adds it as a sending day)" a day
+  taken off reads "(send on it after all)" (`sdOffWord`, `planDayChoices.offDay.skipped`) and picking it reopens it
+  — `openDay(key, extras)`, used by setExtraSendingDay / planAddBrands / moveUnsent / moveCarried / moveDay (its
+  Undo goes; the plan that moved stays). undoPlanWeek never puts a brand back on a day taken off; undoDayTheme
+  refuses one. Adding: **Find a brand** box above the days (`renderSchedFind`,
   `sf*`; never redrawn, so focus and text survive refreshes): day chips (last pick in localStorage
   `sb.schedFindDay`), rows from `searchPlanBrands` = the whole roster ranked in memory by
   `src/lib/brand-search.ts` (exact → starts with → word → contains → aka → spelling slip "did you mean";
@@ -437,7 +472,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   that only builds text to copy — **Leo sends it himself** (his call; no email, no approve button). Plan =
   the Schedule's days read fresh (`getOutreachPlan`; `olPlanDay`: pinned brands going + the rotation's
   rows, and on today the invites already sent (`sentPeople`), noted as sent; a brand that waits is named,
-  a blocked one left out), day chips tick days in/out. What went out = `sentByCompany({ from, to })`:
+  a blocked one left out), day chips tick days in/out; a later day with automatic rows reads "(not locked)" in the
+  text, and **Lock these days** pins the ticked days' rows (lock-days, under Outreach → Schedule; "Locked … · Undo"
+  in the window). What went out = `sentByCompany({ from, to })`:
   LinkedIn invites dated in those New York days, any status (the LinkedIn tab's "sent today" count;
   a same-day Withdrew clears the date, an older one keeps it), by company in send order — **LinkedIn only** (his call); Today / Yesterday /
   This week / Last week or typed dates. `node scripts/test-outreach-lists.js`.
@@ -936,7 +973,8 @@ cloud environment's settings).
 ## Conventions
 - **Outreach runs Tuesday / Wednesday / Thursday only** — no Mondays, no Fridays, no weekends —
   **plus one-off extra days** Leo opens with "+ Add a sending day" (Setting `outreachExtraDays`,
-  `setExtraSendingDay`; past keys prune). `OUTREACH_DOWS = [2,3,4]` in `src/app/api/data/route.ts`
+  `setExtraSendingDay`; past keys prune), **minus days he takes off** with Move this day to… (Setting
+  `outreachSkipDays`, read with the extras as `.skips`; skip-day under Outreach → Schedule). `OUTREACH_DOWS = [2,3,4]` in `src/app/api/data/route.ts`
   (`isOutreachDay(d, extras)`, `planningDays`) — every caller passes the extras; the page reads the
   server's days / `getTodayQueue.sendingDay`, `OUTREACH_DOWS` in app.html is only a fallback. On an
   off day "today" is absent from the schedule, the auto-fill picks nobody and `fillToday` refuses.

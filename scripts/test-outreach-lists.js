@@ -15,6 +15,11 @@
 //      listed. A total when there's more than one day.
 //   3. Unticking a day takes it out of the text; Copy puts exactly the
 //      text on screen on the clipboard.
+//   2b. Lock these days (lock-days; Leo, Oct 12 2026: only when he clicks
+//      Lock): a later day with automatic rows reads "(not locked)" in the
+//      text; Lock names every brand first, then pins exactly those rows in
+//      order (planWeek apply, lock) — today is never locked — and Undo
+//      asks what comes off first (undoPlanWeek).
 //   4. What went out: LinkedIn invites per company for today, then the
 //      quick ranges (Yesterday, This week, Last week) and typed dates ask
 //      the server for the right days; an empty day says so and can't be
@@ -77,8 +82,14 @@ const H = {
   appVersion: () => ({ sha: 'test' }),
   getOutreachPlan: () => PLAN,
   sentByCompany: ({ from, to }) => (from === '2000-01-01' ? { from, to, total: 0, companies: [] } : { from, to, ...SENT }),
-  getTodayQueue: () => ({ targets: [], sentList: [], more: [], theme: 'energy', labels: {}, sendingDay: true, sentToday: 0, cap: 30 }),
+  // One person the queue check flags (copy-flagged): the LinkedIn tab shows
+  // the same ⚠ as Today's list for Zach.
+  getTodayQueue: () => ({ targets: [{ id: 'tq1', brandId: 'bq', status: 'queued', sentAt: null, drafts: [],
+    contact: { name: 'Sam Store', title: 'Store Manager', linkedinUrl: null }, brand: { id: 'bq', name: 'Echo Pouch', category: 'nicotine' },
+    problem: 'looks like store staff (Store Manager)' }], sentList: [], more: [], theme: 'energy', labels: {}, sendingDay: true, sentToday: 0, cap: 30 }),
   listTargets: () => [],
+  planWeek: ({ days }) => ({ ok: true, lock: true, undo: true, days: days.map((d) => ({ date: d.date, ok: true, added: d.brandIds.length, people: 4, refused: [] })) }),
+  undoPlanWeek: ({ preview }) => ({ ok: true, preview: !!preview, lock: true, brands: [{ date: '2026-09-30', id: 'b6', name: 'Ghost' }], categories: [], movedBack: [] }),
   nextBestBrands: () => ({ brands: [{ id: 'nb1', name: 'Liquid Death', category: 'beverage', contacts: 3, why: ['growth'] }] }),
   queueBrandTargets: ({ brandId }) => ({ queued: true, count: 2, name: brandId }),
   // The queue's add box (Oct 8 2026) uses the Schedule's search.
@@ -104,6 +115,8 @@ async function main() {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
+  const dialogs = [];
+  page.on('dialog', (d) => { dialogs.push(d.message()); d.accept(); });
   await page.route('**/*', async (route) => {
     const url = route.request().url();
     if (url.startsWith(base + '/api/data')) {
@@ -137,6 +150,8 @@ async function main() {
     return t.parentNode === n.parentNode && !n.closest('#oq-rail') &&
       (t.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING);
   }), 'not-reached brands sit under the queue');
+  await page.waitForSelector('#targets .target[data-id="tq1"]');
+  assert.match(await page.textContent('#targets .target[data-id="tq1"] .t-meta'), /⚠ looks like store staff \(Store Manager\)/, 'the LinkedIn tab flags them too');
   await page.click('#nextbest [data-nbq="nb1"]');
   for (let i = 0; i < 50 && !calls.some((c) => c.fn === 'queueBrandTargets'); i++) await page.waitForTimeout(20);
   assert.strictEqual(calls.find((c) => c.fn === 'queueBrandTargets').args.brandId, 'nb1', 'Add to today queues the brand');
@@ -186,7 +201,7 @@ async function main() {
     '• Liquid I.V. — 3',
     'Waiting for a later day: Nuun',
     '',
-    'Wed Sep 30 · Energy Drinks — 7 people, 2 companies',
+    'Wed Sep 30 (not locked) · Energy Drinks — 7 people, 2 companies',
     '• Celsius — 3',
     '• Ghost — 4',
     '',
@@ -196,6 +211,23 @@ async function main() {
   assert.equal(await page.textContent('#ol-meta'), '2 days · 17 people · 5 companies');
   assert.deepEqual(await page.$$eval('#ol-ctrl [data-olday]', (b) => b.map((x) => x.textContent)), ['Tue Sep 29 · 10', 'Wed Sep 30 · 7']);
   console.log('✓ 2 the plan: companies and people by day, sent added in, waiting named, blocked left out');
+
+  // 2b. Lock these days ---------------------------------------------------
+  assert.match(await page.textContent('#ol-ctrl .ol-lock'), /Wed Sep 30 isn’t locked/, 'only the later day with automatic rows is unlocked');
+  let nGet = calls.filter((c) => c.fn === 'getOutreachPlan').length;
+  await page.click('#ol-ctrl [data-ollock]');
+  for (let i = 0; i < 100 && !calls.some((c) => c.fn === 'planWeek'); i++) await page.waitForTimeout(20);
+  assert.match(dialogs[0], /Lock Wed Sep 30\?[\s\S]*Wed Sep 30: 1\. Ghost \(4\)/, 'Lock names every brand first: ' + dialogs[0]);
+  assert.deepEqual(calls.find((c) => c.fn === 'planWeek').args, { apply: true, lock: true, days: [{ date: '2026-09-30', brandIds: ['b6'] }] },
+    'exactly the rows on screen, in order; today is never locked');
+  await page.waitForFunction(() => /Locked Wed Sep 30: 1 brand pinned/.test(document.getElementById('ol-ctrl').textContent));
+  assert.ok(calls.filter((c) => c.fn === 'getOutreachPlan').length > nGet, 'the list reads the days again after a lock');
+  await page.click('#ol-ctrl [data-olunlock]');
+  for (let i = 0; i < 100 && calls.filter((c) => c.fn === 'undoPlanWeek').length < 2; i++) await page.waitForTimeout(20);
+  assert.deepEqual(calls.filter((c) => c.fn === 'undoPlanWeek').map((c) => c.args), [{ preview: true }, {}], 'Undo previews, then undoes');
+  assert.match(dialogs[1], /^Undo the lock\?[\s\S]*Wed Sep 30: Ghost/);
+  await page.waitForFunction(() => /isn’t locked/.test(document.getElementById('ol-ctrl').textContent));
+  console.log('✓ 2b Lock these days: "(not locked)" in the text, Lock names the brands then pins exactly them, Undo asks first');
 
   // 3. Untick a day, copy ------------------------------------------------
   await page.click('#ol-ctrl [data-olday="2026-09-30"]');

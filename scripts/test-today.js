@@ -71,7 +71,10 @@ const H = {
   addWorkLog: (a) => ({ day: a.day, saved: 2, chats: [], needs: 1 }),
   setWorkNeedDone: (a) => ({ id: a.id, needsDone: a.done ? [a.index] : [] }),
   pickBuildIdea: (a) => ({ picked: a.on ? [a.id] : [] }),
-  todaySendList: () => ({ day: TODAY, sendingDay: true, cap: 30, sentToday: 0, people: 3, flagged: 2, brands: [
+  // flagged = the queue check's problem only, swaps = a better person
+  // alone (copy-flagged); leftOut = the last Leave out, for its Undo.
+  todaySendList: () => ({ day: TODAY, sendingDay: true, cap: 30, sentToday: 0, people: 3, flagged: 1, swaps: 1,
+    leftOut: S.leftOut ? { at: 'x', n: 1, names: ['Sam Store'] } : null, brands: [
     { brandId: 'b1', name: 'Alpha Water', people: [
       { targetId: 't1', contactId: 'c1', name: 'Ann Able', title: 'Head of Partnerships', linkedinUrl: 'https://www.linkedin.com/in/ann', problem: null, better: null },
       { targetId: 't2', contactId: 'c2', name: 'Sam Store', title: 'Store Manager', linkedinUrl: 'https://www.linkedin.com/in/sam', problem: 'looks like store staff (Store Manager)',
@@ -90,6 +93,9 @@ const H = {
   audienceEventStats: () => ({ rsvps: 120, checkins: 90, showRate: 75, revenueCents: 0, bySource: {}, byTicket: {}, bySchool: { UCLA: 50, USC: 40 }, byClassYear: { '2027': 30 }, byAgeBand: {}, ambassadors: [], repeatCount: 40 }),
   queueContact: (a) => ({ queued: true, contactName: 'Pat Partner' }),
   passContact: (a) => ({ passed: true, contactName: 'Sam Store' }),
+  leaveOutPeople: (a) => (a.confirm ? (S.leftOut = true, { ok: true, left: a.targetIds.length, people: [] })
+    : { preview: true, people: a.targetIds.map((id) => ({ targetId: id, name: 'Sam Store', brand: 'Alpha Water', problem: 'looks like store staff (Store Manager)' })) }),
+  undoLeaveOutPeople: () => (S.leftOut = false, { ok: true, back: 1, names: ['Sam Store'] }),
   deleteWorkLog: (a) => (a.confirm ? { deleted: a.id, title: 'Brand hunt' } : { preview: true, day: TODAY, title: 'Brand hunt', chars: 24 }),
 };
 
@@ -193,14 +199,34 @@ async function main() {
   await page.evaluate(() => { window.__copied = null; navigator.clipboard.writeText = (t) => { window.__copied = t; return Promise.resolve(); }; window.scrollTo(0, 0); });
   await page.click('#hm-sendlist');
   await page.waitForSelector('#hm-send .sl-row');
-  assert.match(await page.textContent('#hm-send .sl-head'), /3 people · 2 companies · 2 to check/);
+  // Flagged counts the problem only; a better person alone is "could swap".
+  assert.match(await page.textContent('#hm-send .sl-head'), /3 people · 2 companies · 1 flagged · 1 could swap/);
   assert.match(await page.textContent('#hm-send .sl-row.bad .sl-flag'), /store staff/);
+  // The copy says who still holds a spot (copy-flagged); the format is unchanged.
+  assert.equal((await page.textContent('#hm-send [data-sl-copy]')).trim(), 'Copy for Zach (2) — 1 flagged still holds a spot today');
   await page.click('#hm-send [data-sl-copy]');
   let copied = await page.evaluate(() => window.__copied);
   assert.match(copied, /LinkedIn invites for .* — 2 people, 2 companies/);
   assert.ok(copied.includes('• Ann Able — Head of Partnerships\n  https://www.linkedin.com/in/ann'));
   assert.ok(!copied.includes('Sam Store'), 'a flagged person is left out of the copy');
+  assert.ok(!/note|Note ·/.test(copied), 'no invite notes in the copy (Leo sends them himself)');
+  // Leave out the 1 flagged: the server names them first (the dialog), then
+  // only the named ids go, then the list reloads; Undo puts them back.
+  S.dialog = '';
+  const sends0 = S.calls.filter((f) => f === 'todaySendList').length;
+  await page.click('#hm-send [data-sl-leaveout]');
+  for (let i = 0; i < 50 && !(S.args.leaveOutPeople || []).some((a) => a.confirm); i++) await page.waitForTimeout(20);
+  assert.deepEqual(S.args.leaveOutPeople, [{ targetIds: ['t2'] }, { targetIds: ['t2'], confirm: true }]);
+  assert.match(S.dialog, /Leave out 1 person from today\?[\s\S]*Sam Store \(Alpha Water\) — looks like store staff/);
+  for (let i = 0; i < 50 && S.calls.filter((f) => f === 'todaySendList').length === sends0; i++) await page.waitForTimeout(20);
+  await page.waitForSelector('#hm-send [data-sl-undo]');
+  assert.match(await page.textContent('#hm-send .sl-head'), /left out 1 Undo/);
+  await page.click('#hm-send [data-sl-undo]');
+  for (let i = 0; i < 50 && !S.args.undoLeaveOutPeople; i++) await page.waitForTimeout(20);
+  await page.waitForFunction(() => !document.querySelector('#hm-send [data-sl-undo]'));
   await page.check('#hm-send [data-sl-keep="t2"]');
+  assert.equal(await page.$('#hm-send [data-sl-leaveout]'), null, 'send anyway: nobody held, no Leave out');
+  assert.equal((await page.textContent('#hm-send [data-sl-copy]')).trim(), 'Copy for Zach (3)');
   await page.click('#hm-send [data-sl-copy]');
   copied = await page.evaluate(() => window.__copied);
   assert.ok(copied.includes('Sam Store'), 'send anyway puts them back');
@@ -208,7 +234,7 @@ async function main() {
   await page.waitForTimeout(300);
   assert.deepEqual(S.args.queueContact[0], { contactId: 'c9' });
   assert.deepEqual(S.args.passContact[0], { contactId: 'c2' });
-  console.log('ok 6 - today’s list: flags, copy for Zach (flagged left out), send anyway, swap');
+  console.log('ok 6 - today’s list: flags, copy for Zach (flagged left out, who holds a spot), Leave out the flagged + Undo, send anyway, swap');
 
   // 8 ---------------------------------------------------------------
   await page.evaluate(() => window.scrollTo(0, 0));

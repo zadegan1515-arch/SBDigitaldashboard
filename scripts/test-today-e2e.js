@@ -560,6 +560,176 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual([pv14.results[0].added, pv14.results[0].state], [true, 'going'], 'by hand it goes: ' + JSON.stringify(pv14.results[0]))
     ok('What gets answered: only old-enough invites, every grouping, suggestions that change nothing; a second try is offered by hand only')
 
+    // 15. Lock these days (lock-days; Leo, Oct 12 2026: only when he clicks
+    //     Lock). A later day's automatic rows are "Shown on <day>, not
+    //     locked" on the brand page and in the add boxes; Plan my week never
+    //     takes a brand from today's column; Lock pins exactly the rows, in
+    //     order, with one Undo.
+    const planKey = async () => JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } }))?.value || '{}')
+    // Today's list not opened yet: everyone waiting goes back to the pool,
+    // so today's column shows automatic rows nobody has stamped — the ones
+    // Plan my week used to move to tomorrow.
+    await prisma.target.updateMany({ where: { queuedFor: { not: null }, sentAt: null, status: { in: ['queued', 'drafted'] } }, data: { queuedFor: null } })
+    let op15 = await data('getOutreachPlan', {})
+    let day15 = op15.days.find(d => !d.today && (d.brands || []).length)
+    if (!day15) {
+      await mk('lock1', 'Lock One', 'energy')
+      await mk('lock2', 'Lock Two', 'energy')
+      op15 = await data('getOutreachPlan', {})
+      day15 = op15.days.find(d => !d.today && (d.brands || []).length)
+    }
+    assert.ok(day15, 'a later day shows automatic rows')
+    const ids15 = day15.brands.map(b => b.id)
+    const name15 = day15.brands[0].name
+    const other15 = op15.days.filter(d => !d.today && d.date !== day15.date).map(d => d.date)[0]
+    const pdc15 = await data('planDayChoices', { brandId: ids15[0] })
+    assert.deepEqual([pdc15.brand.pinnedOn, pdc15.brand.shownOn], [null, day15.date], 'the brand page: shown there, not pinned')
+    const sr15 = await data('searchPlanBrands', { q: name15, date: other15 })
+    const row15 = sr15.brands.find(b => b.id === ids15[0])
+    assert.ok(row15 && row15.shownOn === day15.date, 'the add box knows where it shows: ' + JSON.stringify(row15))
+    assert.match(row15.text, /^Shown on .+, not locked · Add moves it to /)
+    const pa15 = await data('planAddBrands', { date: other15, brandIds: [ids15[0]], preview: true })
+    assert.equal(pa15.results[0].shownOn, day15.date, 'Put on a day says so too')
+    const todayCol15 = op15.days.find(d => d.today)
+    if (todayCol15) {
+      assert.ok((todayCol15.brands || []).some(b => !b.inQueue), 'today shows automatic rows nobody has stamped yet')
+      const onToday = new Set([...(todayCol15.brands || []).map(b => b.id), ...(todayCol15.pinned || []).map(p => p.id)])
+      const pw15 = await data('planWeek', {})
+      const taken = pw15.days.flatMap(d => d.add.map(a => a.id)).filter(id => onToday.has(id))
+      assert.deepEqual(taken, [], 'Plan my week never takes a brand from today\'s column')
+    }
+    const before15 = ((await planKey())[day15.date]?.brandIds) || []
+    const lk15 = await data('planWeek', { apply: true, lock: true, days: [{ date: day15.date, brandIds: ids15 }] })
+    assert.equal(lk15.days[0].added, ids15.length, 'every row pinned: ' + JSON.stringify(lk15.days[0]))
+    assert.deepEqual((await planKey())[day15.date].brandIds, [...before15, ...ids15], 'exactly the rows, in their order')
+    op15 = await data('getOutreachPlan', {})
+    assert.equal(op15.planWeekLast.lock, true, 'the Undo knows it was a lock')
+    assert.ok(!op15.days.find(d => d.date === day15.date).brands.some(b => ids15.includes(b.id)), 'locked rows are pins now, not automatic rows')
+    assert.equal((await data('planDayChoices', { brandId: ids15[0] })).brand.pinnedOn, day15.date)
+    const un15 = await data('undoPlanWeek', { preview: true })
+    assert.equal(un15.lock, true)
+    assert.equal(un15.brands.length, ids15.length)
+    await data('undoPlanWeek', {})
+    assert.deepEqual(((await planKey())[day15.date]?.brandIds) || [], before15, 'Undo takes the lock back off')
+    ok('lock-days: shown-not-locked on the brand page and add boxes, Plan my week leaves today\'s column alone, Lock pins exactly the rows, Undo')
+
+    // 16. Move or cancel a whole future sending day (skip-day). The day goes
+    //     off — no column, no picks, Plan my week leaves it out, nothing can
+    //     be put on it without opening it — its plan moves (category and
+    //     pins onto an empty day), Undo brings it all back, a day taken off
+    //     with no target sends its pins back to waiting, and opening it
+    //     again ("send on it after all") just reopens it.
+    let op16 = await data('getOutreachPlan', {})
+    const D16 = op16.days.filter(d => !d.today).map(d => d.date)[1]
+    await mk('skipco', 'Skip Co', 'energy')
+    await data('planAddBrands', { date: D16, brandIds: ['skipco'] })
+    const p16 = await planKey()
+    p16[D16].category = 'energy'
+    await prisma.setting.update({ where: { key: 'outreachPlan' }, data: { value: JSON.stringify(p16) } })
+    const pins16 = p16[D16].brandIds
+    const off16 = (await data('planDayChoices', {})).offDay.key
+    await assert.rejects(data('moveDay', { from: D16, to: off16 }), /not a sending day/, 'an off day needs addDay')
+    await assert.rejects(data('moveDay', { from: today, to: off16, addDay: true }), /today has Move what/, 'today has its own move')
+    const pv16 = await data('moveDay', { from: D16, to: off16, addDay: true })
+    assert.equal(pv16.preview, true, 'no confirm = a preview')
+    assert.deepEqual([pv16.opening, pv16.whole, pv16.category], [true, true, 'energy'], 'onto an empty day the whole plan moves')
+    const sk16 = pv16.results.find(r => r.brandId === 'skipco')
+    assert.deepEqual([sk16.added, sk16.movedFrom], [true, D16])
+    assert.deepEqual((await planKey())[D16].brandIds, pins16, 'a preview writes nothing')
+    const stale16 = await data('moveDay', { from: D16, to: off16, addDay: true, confirm: true, expect: 'nope' })
+    assert.equal(stale16.stale, true, 'a changed day is shown again')
+    assert.deepEqual((await planKey())[D16].brandIds, pins16)
+    const mv16 = await data('moveDay', { from: D16, to: off16, addDay: true, confirm: true, expect: pv16.expect })
+    assert.deepEqual([mv16.ok, mv16.opened], [true, true])
+    op16 = await data('getOutreachPlan', {})
+    assert.ok(!op16.days.some(d => d.date === D16), 'no column for a day taken off')
+    assert.deepEqual(op16.skipDays.map(x => [x.date, x.to]), [[D16, off16]], 'the off chip')
+    assert.ok(op16.extraDays.includes(off16), 'the target opened as a sending day')
+    const pl16 = await planKey()
+    assert.equal(pl16[D16], undefined, 'nothing left pinned on the day off')
+    assert.deepEqual([pl16[off16].category, pl16[off16].brandIds], ['energy', pins16], 'category and pins, in order')
+    assert.ok(!(await data('planWeek', {})).days.some(d => d.date === D16), 'Plan my week leaves it out')
+    await assert.rejects(data('planAddBrands', { date: D16, brandIds: ['skipco'], preview: true }), /not a sending day/, 'nothing goes on it unless it is opened')
+    const pdc16 = await data('planDayChoices', {})
+    assert.ok(!pdc16.days.some(d => d.key === D16), 'the Put on a day menus leave it out')
+    if (pdc16.offDay && pdc16.offDay.key === D16) assert.equal(pdc16.offDay.skipped, true, 'offered back as "send on it after all"')
+    const un16 = await data('undoMoveDay', { date: D16, preview: true })
+    assert.ok(un16.back.includes('Skip Co'))
+    assert.deepEqual([un16.categoryBack, un16.closeTo], [true, true], 'the target\'s category goes back and the day it opened closes')
+    assert.equal((await planKey())[off16].brandIds.length, pins16.length, 'an Undo preview writes nothing')
+    await data('undoMoveDay', { date: D16 })
+    op16 = await data('getOutreachPlan', {})
+    assert.ok(op16.days.some(d => d.date === D16), 'a sending day again')
+    assert.deepEqual(op16.skipDays, [])
+    assert.ok(!op16.extraDays.includes(off16), 'the opened day closed')
+    const pl16b = await planKey()
+    assert.deepEqual([pl16b[D16].category, pl16b[D16].brandIds], ['energy', pins16], 'its plan is back')
+    assert.equal(pl16b[off16], undefined)
+    // Taken off with no target: back to waiting.
+    const pv16b = await data('moveDay', { from: D16 })
+    assert.ok(pv16b.results.every(r => r.state === 'back'))
+    await data('moveDay', { from: D16, confirm: true, expect: pv16b.expect })
+    assert.equal((await planKey())[D16], undefined)
+    assert.equal((await data('planDayChoices', { brandId: 'skipco' })).brand.pinnedOn, null, 'Skip Co is pinned nowhere')
+    // Opened again from a menu: the day comes back (empty), its Undo with it.
+    const re16 = await data('setExtraSendingDay', { date: D16, on: true })
+    assert.equal(re16.reopened, true)
+    op16 = await data('getOutreachPlan', {})
+    assert.ok(op16.days.some(d => d.date === D16) && !op16.skipDays.length && !op16.extraDays.includes(D16), 'a regular day again, not an extra one')
+    // A day moved onto one taken off earlier: that one comes back, only the
+    // moved day is off, and its Undo leaves the reopened day open.
+    const E16 = op16.days.filter(d => !d.today && d.date !== D16).map(d => d.date).slice(-1)[0]
+    const pvx16 = await data('moveDay', { from: D16 })
+    await data('moveDay', { from: D16, confirm: true, expect: pvx16.expect })
+    await mk('skipco2', 'Skip Co Two', 'energy')
+    await data('planAddBrands', { date: E16, brandIds: ['skipco2'] })
+    const pve16 = await data('moveDay', { from: E16, to: D16, addDay: true })
+    assert.deepEqual([pve16.opening, pve16.reopens], [true, true], 'says it sends on that day after all')
+    await data('moveDay', { from: E16, to: D16, addDay: true, confirm: true, expect: pve16.expect })
+    op16 = await data('getOutreachPlan', {})
+    assert.deepEqual(op16.skipDays.map(x => x.date), [E16], 'the target came back; only the moved day is off')
+    assert.ok(op16.days.some(d => d.date === D16) && !op16.extraDays.includes(D16))
+    assert.ok((await planKey())[D16].brandIds.includes('skipco2'))
+    const une16 = await data('undoMoveDay', { date: E16, preview: true })
+    assert.equal(une16.closeTo, false, 'a day reopened (not opened) by the move stays open')
+    await data('undoMoveDay', { date: E16 })
+    assert.ok((await planKey())[E16].brandIds.includes('skipco2') && !((await planKey())[D16]?.brandIds || []).includes('skipco2'))
+    ok('skip-day: Move this day previews, refuses stale, moves the whole plan onto an empty day, the day goes off everywhere, Undo, take it off, reopen')
+
+    // 17. Today's list for Zach: flagged people stop holding spots
+    //     (copy-flagged). The LinkedIn tab sees the same flag; Leave out
+    //     previews, then takes them off today; Undo puts them back.
+    const fl17 = await mkBrand('Flag Co', { category: 'nicotine' }, [['Fred Front', 'Store Manager'], ['Pia Partner', 'Head of Partnerships']])
+    const fred = await prisma.target.create({ data: { brandId: 'Flag Co', contactId: fl17[0].id, status: 'drafted', queuedFor: new Date() } })
+    await prisma.target.create({ data: { brandId: 'Flag Co', contactId: fl17[1].id, status: 'queued', queuedFor: new Date() } })
+    const tq17 = await data('getTodayQueue', {})
+    const fredRow = tq17.targets.find(t => t.id === fred.id)
+    assert.ok(fredRow, 'Fred is in today\'s list')
+    assert.match(fredRow.problem, /store staff/, 'the LinkedIn tab gets the flag')
+    assert.equal(tq17.targets.find(t => t.contact.name === 'Pia Partner').problem, null)
+    let sl17 = await data('todaySendList', {})
+    const flagged17 = sl17.brands.flatMap(b => b.people).filter(p => p.problem).length
+    assert.equal(sl17.flagged, flagged17, 'flagged = the problem ones only')
+    assert.equal(typeof sl17.swaps, 'number')
+    const lpv = await data('leaveOutPeople', { targetIds: [fred.id] })
+    assert.deepEqual(lpv.people.map(p => [p.name, p.brand]), [['Fred Front', 'Flag Co']])
+    assert.match(lpv.people[0].problem, /store staff/)
+    assert.equal((await prisma.target.findUnique({ where: { id: fred.id } })).status, 'drafted', 'a preview changes nothing')
+    const lo = await data('leaveOutPeople', { targetIds: [fred.id], confirm: true })
+    assert.equal(lo.left, 1)
+    let fredNow = await prisma.target.findUnique({ where: { id: fred.id } })
+    assert.deepEqual([fredNow.status, fredNow.queuedFor], ['passed', null], 'off today and skipped')
+    sl17 = await data('todaySendList', {})
+    assert.deepEqual([sl17.leftOut.n, sl17.leftOut.names], [1, ['Fred Front']], 'the Undo is offered')
+    assert.ok(!sl17.brands.flatMap(b => b.people).some(p => p.name === 'Fred Front'))
+    const ul = await data('undoLeaveOutPeople', {})
+    assert.deepEqual(ul.names, ['Fred Front'])
+    fredNow = await prisma.target.findUnique({ where: { id: fred.id } })
+    assert.equal(fredNow.status, 'drafted', 'back as he was')
+    assert.ok(fredNow.queuedFor && nyKey(fredNow.queuedFor) === today, 'back in today\'s list')
+    assert.equal((await data('undoLeaveOutPeople', {})).ok, false, 'one Undo')
+    ok('copy-flagged: the LinkedIn tab gets the flag, flagged counts problems only, Leave out previews then frees the spots, Undo puts them back')
+
     console.log(n + ' checks passed');
   } catch (e) {
     console.error('FAILED:', e.stack || e.message);

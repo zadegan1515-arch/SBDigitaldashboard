@@ -979,6 +979,8 @@
   .sd-carry{display:flex;gap:6px 12px;align-items:center;flex-wrap:wrap;margin-top:12px;padding:10px 14px;border-radius:10px;
     background:rgba(79,131,247,.08);border:1px solid rgba(79,131,247,.3);font-size:13.5px}
   .sd-tag.carried{color:#aac6ff;border-color:rgba(79,131,247,.4);background:var(--accent-soft)}
+  .sd-tag.maychange{border-style:dashed}
+  .sd-tag.off{color:#f2918c;border-color:rgba(240,113,107,.4)}
   .sd-left{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--border-soft);padding-top:10px}
   /* LinkedIn's weekly limit: the line in the top row, and a day's note */
   .sd-rules{font-size:13px;color:var(--ink-3);margin-right:14px}
@@ -1411,6 +1413,7 @@
   .t-brand{font-weight:600}
   .t-sep{color:var(--ink-3);margin:0 5px}
   .t-title{color:var(--ink-2)}
+  .t-flag{color:var(--warn);font-weight:600}
   .t-meta{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:13px;color:var(--ink-3);flex-wrap:wrap}
   .status{font-weight:700;padding:2px 9px;border-radius:999px;font-size:12px;letter-spacing:.02em;background:var(--surface-2);color:var(--ink-2)}
   .status.sent{background:rgba(97,165,250,.14);color:#82b6fb}
@@ -1495,6 +1498,7 @@
   .ol-ctrl{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
   .ol-ctrl .inp{width:auto;padding:5px 8px;font-size:13.5px}
   .ol-ctrl .chip{font-size:13px}
+  .ol-lock{flex-basis:100%;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ink-2);margin-top:4px}
   .ol-text{white-space:pre-wrap;font-size:13px;line-height:1.6;margin-top:12px;padding:12px 14px;
     background:var(--surface-2);border:1px solid var(--border-soft);border-radius:10px;max-height:52vh;overflow:auto;
     user-select:text;-webkit-user-select:text}
@@ -3625,6 +3629,15 @@ function slLoad() {
     .catch(function (e) { box.innerHTML = '<div class="panel sl"><div class="dl-empty">Could not read today’s list: ' + esc(e.message) + '</div></div>'; });
 }
 function slIncluded(p) { return !p.problem || !!SL_KEEP[p.targetId]; }
+// Flagged people the copy leaves out — they still hold a spot in today's
+// 30 until Leave out takes them off (copy-flagged).
+function slHeld() {
+  var out = [];
+  (SL ? SL.brands : []).forEach(function (b) {
+    b.people.forEach(function (p) { if (!slIncluded(p)) out.push({ targetId: p.targetId, name: p.name, brand: b.name, problem: p.problem }); });
+  });
+  return out;
+}
 function slText() {
   var r = SL, rows = [], n = 0, cos = 0;
   r.brands.forEach(function (b) {
@@ -3646,10 +3659,19 @@ function slRender() {
   if (!box || !SL) return;
   var r = SL;
   var t = slText();
+  var held = slHeld();
+  // Flagged = not a buyer / no title (the copy leaves them out); a better
+  // person alone is only a suggestion (copy-flagged).
   var head = '<div class="sl-head"><div><b>Today’s LinkedIn list</b> <span class="sl-meta">' +
     plural(r.people, 'person', 'people') + ' · ' + plural(r.brands.length, 'company', 'companies') +
-    (r.flagged ? ' · <span class="sl-warn">' + r.flagged + ' to check</span>' : ' · all look right') + '</span></div>' +
-    '<div class="sl-acts"><button class="btn-solid" data-sl-copy' + (t.n ? '' : ' disabled') + '>Copy for Zach (' + t.n + ')</button>' +
+    (r.flagged ? ' · <span class="sl-warn">' + r.flagged + ' flagged</span>' : '') +
+    (r.swaps ? ' · ' + plural(r.swaps, 'could swap', 'could swap') : '') +
+    (!r.flagged && !r.swaps ? ' · all look right' : '') +
+    (r.leftOut ? ' · left out ' + r.leftOut.n + ' <a href="#" data-sl-undo title="Put them back in today’s list: ' + esc(r.leftOut.names.join(', ')) + '">Undo</a>' : '') + '</span></div>' +
+    '<div class="sl-acts">' +
+      (held.length ? '<button class="btn-ghost" data-sl-leaveout title="Takes them off today and skips them, so their spots go to other brands — you see who first">Leave out the ' + held.length + ' flagged</button>' : '') +
+      '<button class="btn-solid" data-sl-copy' + (t.n ? '' : ' disabled') + '>Copy for Zach (' + t.n + ')' +
+        (held.length ? ' — ' + held.length + ' flagged still hold' + (held.length === 1 ? 's a spot' : ' spots') + ' today' : '') + '</button>' +
     '<button class="btn-ghost" data-sl-close aria-label="Close">✕</button></div></div>';
   if (!r.sendingDay && !r.people) {
     box.innerHTML = '<div class="panel sl">' + head + '<div class="dl-empty">Not a sending day — outreach goes Tuesday to Thursday.</div></div>';
@@ -3691,6 +3713,34 @@ document.addEventListener('click', function (ev) {
   if (!t.closest('#hm-send')) return;
   if (t.closest('[data-sl-close]')) { SL_OPEN = false; SL = null; document.getElementById('hm-send').innerHTML = ''; return; }
   if (t.closest('[data-sl-copy]')) { var x = slText(); if (x.n) copyText(x.text); return; }
+  // Leave out the N flagged (copy-flagged): the server names who goes
+  // first, then they come off today and the list reloads (the freed spots
+  // fill from the day's picks). Separate from Copy on purpose.
+  if ((el = t.closest('[data-sl-leaveout]'))) {
+    var held = slHeld();
+    if (!held.length) return;
+    el.disabled = true;
+    api('leaveOutPeople', { targetIds: held.map(function (p) { return p.targetId; }) }).then(function (pv) {
+      var list = (pv && pv.people) || [];
+      if (!list.length) { toast('Nobody to leave out — the list changed'); return slLoad(); }
+      if (!window.confirm('Leave out ' + plural(list.length, 'person', 'people') + ' from today?\n\n' +
+          list.map(function (p) { return p.name + ' (' + p.brand + ')' + (p.problem ? ' — ' + p.problem : ''); }).join('\n') +
+          '\n\nThey come off today’s list and are skipped from now on (Queue on the brand page brings one back). Their spots go to other brands. Undo puts them all back.')) { el.disabled = false; return; }
+      return api('leaveOutPeople', { targetIds: list.map(function (p) { return p.targetId; }), confirm: true }).then(function (r) {
+        toast('Left out ' + plural((r && r.left) || 0, 'person', 'people') + ' — their spots are free');
+        return slLoad();
+      });
+    }).catch(function (e) { el.disabled = false; toast(e.message); });
+    return;
+  }
+  if ((el = t.closest('[data-sl-undo]'))) {
+    ev.preventDefault();
+    api('undoLeaveOutPeople', {}).then(function (r) {
+      toast(r && r.ok ? 'Back in today’s list: ' + ((r.names || []).join(', ') || 'nobody') : ((r && r.message) || 'Nothing to undo'));
+      return slLoad();
+    }).catch(function (e) { toast(e.message); });
+    return;
+  }
   if ((el = t.closest('[data-rc-brand2]'))) { ev.preventDefault(); loadBrand(el.getAttribute('data-rc-brand2')); return; }
   if ((el = t.closest('[data-sl-out]'))) {
     el.disabled = true;
@@ -6541,6 +6591,8 @@ function pdRow(x) {
     : '<span class="pd-warn">Added, won’t go out · ' + esc(x.reasonText || SD_SHORT[x.reason] || 'nobody to invite') + '</span>';
   var also = [];
   if (x.movedFrom) also.push('moves from ' + pdDayWord(x.movedFrom));
+  // An automatic row somewhere (lock-days): the add pins it.
+  else if (x.shownOn) also.push('shown on ' + pdDayWord(x.shownOn) + ' now, not locked');
   if (x.unqueued) also.push(sdPlural(x.unqueued, 'person', 'people') + ' come out of today’s queue');
   return '<div class="sd-drow"><span class="pd-name">' + esc(x.brandName || 'Brand') + '</span>' +
     '<span class="pd-what">' + what + (also.length ? ' <span class="sd-dim">· ' + esc(also.join(' · ')) + '</span>' : '') + '</span></div>';
@@ -6566,7 +6618,7 @@ function pdHtml(name) {
   };
   var opts = (d.days || []).map(function (x) {
     return opt(x.key, (x.today ? 'Today · ' : '') + x.label + (x.category ? ' · ' + (CAT_NAMES[x.category] || x.category) : '') + (x.extra ? ' (extra day)' : ''), false);
-  }).join('') + (d.offDay ? opt(d.offDay.key, d.offDay.label + ' (adds it as a sending day)', true) : '');
+  }).join('') + (d.offDay ? opt(d.offDay.key, d.offDay.label + sdOffWord(d.offDay), true) : '');
   var html = '<span>Put on a day</span><select class="inp pd-sel" data-pdday="' + esc(name) + '"' + (locked || !n || n > 40 ? ' disabled' : '') +
       ' title="' + (n > 40 ? 'Up to 40 brands at a time' : 'Put the ticked brands on one of the Schedule’s days — you see who goes out before anything is added') + '">' +
     '<option value="">Pick a day…</option>' + opts + '</select>' +
@@ -6587,7 +6639,9 @@ function pdHtml(name) {
   var people = going.reduce(function (t, x) { return t + (x.going || 0); }, 0);
   var after = (p.dayPeople || 0) + people;
   var notes = [];
-  if (p.opening) notes.push(Word + ' isn’t a sending day yet. Adding opens it as one (a one-off, like an extra Friday)' +
+  if (p.opening && p.reopens) notes.push(Word + ' was taken off. Adding makes it a sending day again' +
+    (typeof p.room === 'number' ? ' with room for ' + p.room + ' under LinkedIn’s weekly limit' : '') + '.');
+  else if (p.opening) notes.push(Word + ' isn’t a sending day yet. Adding opens it as one (a one-off, like an extra Friday)' +
     (typeof p.room === 'number' ? ' with room for ' + p.room + ' under LinkedIn’s weekly limit' : '') +
     '; the rest fills with best-fit brands up to that.');
   if (waiting.length) {
@@ -7379,6 +7433,12 @@ function bpRender() {
     where = '<b>' + sdPlural(b.inTodayQueue, 'person', 'people') + '</b> in today’s queue, not sent yet';
   } else if (b.sentToday) {
     where = sdPlural(b.sentToday, 'person', 'people') + ' invited today';
+  } else if (b.shownOn) {
+    // An automatic row on that day (lock-days): it can change until the
+    // day is locked; putting it on a day pins it.
+    where = b.shownOn === r.today
+      ? 'On <b>today</b>’s list <span class="sd-dim">(picked automatically — its people go in when the LinkedIn tab opens)</span>'
+      : 'Shown on <b>' + esc(bpWord(b.shownOn)) + '</b> <span class="sd-dim" title="Picked automatically — it can change as people are found and brands are added. Putting it on a day pins it.">(not locked)</span>';
   } else {
     where = 'Not on a day';
   }
@@ -7386,7 +7446,7 @@ function bpRender() {
     return '<option value="' + esc(d.key) + '">' +
       esc((d.today ? 'Today · ' : '') + d.label + (d.category ? ' · ' + (CAT_NAMES[d.category] || d.category) : '') + (d.extra ? ' (extra day)' : '')) + '</option>';
   }).join('') +
-    (r.offDay && (!restFrom || r.offDay.key >= restFrom) ? '<option value="' + esc(r.offDay.key) + '" data-add="1">' + esc(r.offDay.label + ' (adds it as a sending day)') + '</option>' : '');
+    (r.offDay && (!restFrom || r.offDay.key >= restFrom) ? '<option value="' + esc(r.offDay.key) + '" data-add="1">' + esc(r.offDay.label + sdOffWord(r.offDay)) + '</option>' : '');
   var moving = !!(b.pinnedOn || b.inTodayQueue);
   var lock = BP.busy ? ' disabled' : '';
   html += '<span>' + where + '</span>' +
@@ -7419,7 +7479,9 @@ function bpPut(key, addDay) {
   if (!b || BP.busy) return;
   var W = bpWord(key);
   var asks = [];
-  if (addDay) asks.push(W + ' isn’t a sending day. This opens it as one (a one-off, like an extra Friday); the rest fills with best-fit brands like any sending day.');
+  if (addDay) asks.push(r.offDay && r.offDay.key === key && r.offDay.skipped
+    ? W + ' was taken off. This makes it a sending day again; the rest fills with best-fit brands like any sending day.'
+    : W + ' isn’t a sending day. This opens it as one (a one-off, like an extra Friday); the rest fills with best-fit brands like any sending day.');
   if (key !== r.today && b.inTodayQueue) {
     asks.push(sdPlural(b.inTodayQueue, 'person', 'people') + ' here ' + (b.inTodayQueue === 1 ? 'is' : 'are') +
       ' in today’s queue. Putting it on ' + W + ' takes them back out of today — nobody is deleted, they go out on ' + W + ' instead.');
@@ -11164,6 +11226,9 @@ document.getElementById('reached-list').addEventListener('click', function (e) {
 var SCHED = {
   plan: {}, names: {}, days: {}, order: [], labels: {}, categories: [], past: [],
   today: '', pool: null,
+  // Days Leo took off (skip-day; getOutreachPlan.skipDays), and a day's
+  // "Move this day to…" waiting for his yes: dateKey -> { to, addDay, pv, busy }.
+  skipDays: [], dayMove: {},
   // Leo's category priority (getOutreachPlan.priority): the day menus
   // list categories Top → Skip.
   priority: {},
@@ -11411,7 +11476,8 @@ function renderSchedExtra() {
     '<details class="sd-more" id="sd-more"' + (SCHED.extraOpen ? ' open' : '') + '><summary class="btn-ghost sd-sm">More ▾</summary><div class="sd-menu">' +
       '<button class="btn-ghost sd-sm" data-sdpw="1"' + (pwOn ? ' disabled' : '') +
         ' title="Fills the next three sending days to ' + sdCap() + ' with whole brands, best fit first. You see it all before anything changes.">Plan my week…</button>' +
-      (SCHED.planWeekLast && !pwOn ? '<button class="btn-ghost sd-sm" data-sdpwundo="1" title="Take the last Plan my week back off">Undo the week plan</button>' : '') +
+      (SCHED.planWeekLast && !pwOn ? '<button class="btn-ghost sd-sm" data-sdpwundo="1" title="Take the last ' + (SCHED.planWeekLast.lock ? 'Lock' : 'Plan my week') + ' back off">' +
+        (SCHED.planWeekLast.lock ? 'Undo the lock' : 'Undo the week plan') + '</button>' : '') +
       '<button class="btn-ghost sd-sm" data-cpopen="1" title="Which categories Best fit puts first: Top, Middle, Low or Skip">Category priority…</button>' +
       '<hr>' +
       (SCHED.extraOpen
@@ -11423,6 +11489,11 @@ function renderSchedExtra() {
       (extras.length ? '<div class="sd-menu-row"><span class="sd-dim">Extra days:</span> ' + tags + '</div>' : '') +
       '<div class="sd-menu-row">' + hideSmallBox('sched') + '</div>' +
     '</div></details>' +
+    // Days taken off (skip-day): one chip each, with its Undo.
+    (SCHED.skipDays || []).map(function (x) {
+      return '<span class="sd-tag off" title="' + esc(x.to ? 'Its plan moved to ' + sdDayName(x.to) + '. Undo makes it a sending day again and brings its plan back.' : 'Nothing goes out this day. Undo makes it a sending day again.') + '">' +
+        esc(sdDayName(x.date)) + ' off</span><a href="#" class="sd-link" data-sdskipundo="' + esc(x.date) + '">Undo</a>';
+    }).join('') +
     (undo
       ? '<span class="sd-dim">Changed ' + esc(sdDayTag(undo.date)) + '’s category.</span>' +
         '<a href="#" class="sd-link" data-sdthemeundo="1" title="Put that day back as it was: its category, its planned brands and the people taken out of today’s queue">Undo</a>'
@@ -11482,10 +11553,11 @@ function sdLiWeekChip() {
 // out = LinkedIn invites dated in a day or a range, by company
 // (sentByCompany; LinkedIn only, his call). What's on screen is exactly
 // what Copy takes.
-var OL = { tab: 'plan', plan: null, planErr: '', off: {}, sent: null, sentErr: '', from: '', to: '', seq: 0, text: '' };
+var OL = { tab: 'plan', plan: null, planErr: '', off: {}, sent: null, sentErr: '', from: '', to: '', seq: 0, text: '', locked: '', locking: false };
 
 function olOpen(tab) {
   OL.tab = tab === 'sent' ? 'sent' : 'plan';
+  OL.locked = '';
   document.getElementById('ol-scrim').classList.add('open');
   olLoad();
 }
@@ -11549,13 +11621,56 @@ function olPlanDay(day) {
   };
 }
 
+// Lock these days (lock-days; Leo, Oct 12 2026: only when he clicks Lock —
+// his Oct 7 rule that open days re-rank stays). A later day's automatic
+// rows re-rank on every load as people are found and brands are added;
+// Lock pins exactly the rows on screen, in that order (planWeek apply with
+// lock: one Undo, like Plan my week's). Today is never locked: its rows go
+// into the LinkedIn list as they are.
+function lockRows(day, today) {
+  if (!day || !(day.date > today)) return [];
+  return (day.brands || []).filter(function (b) { return !b.inQueue; });
+}
+// The ticked later days that have automatic rows.
+function olUnlocked(d) {
+  return (d.days || []).filter(function (day) { return !OL.off[day.date] && lockRows(day, d.today).length; });
+}
+function lockDays(days, today) {
+  var list = days.map(function (day) { return { day: day, rows: lockRows(day, today) }; })
+    .filter(function (x) { return x.rows.length; });
+  if (!list.length) { toast('Nothing to lock — no automatic picks on those days'); return Promise.resolve(null); }
+  var names = list.map(function (x) { return sdDayName(x.day.date); }).join(', ');
+  var lines = list.map(function (x) {
+    return sdDayName(x.day.date) + ': ' + x.rows.map(function (b, i) { return (i + 1) + '. ' + b.name + ' (' + sdPeopleOf(b).n + ')'; }).join(', ');
+  });
+  if (!window.confirm('Lock ' + names + '?\n\nPins these brands to their day in this order, so the list stops changing:\n\n' +
+      lines.join('\n') + '\n\nNobody is invited yet. Undo takes them back off.')) return Promise.resolve(null);
+  return sdPlanCall('planWeek', {
+    apply: true, lock: true,
+    days: list.map(function (x) { return { date: x.day.date, brandIds: x.rows.map(function (b) { return b.id; }) }; })
+  }).then(function (r) {
+    var added = 0, refused = [];
+    ((r && r.days) || []).forEach(function (x) {
+      added += x.added || 0;
+      (x.refused || []).forEach(function (f) { refused.push(f.name); });
+      if (!x.ok && x.error) refused.push(sdDayName(x.date) + ' (' + x.error + ')');
+    });
+    var text = 'Locked ' + names + ': ' + sdPlural(added, 'brand', 'brands') + ' pinned' + (refused.length ? ' · couldn’t pin ' + refused.join(', ') : '') + '.';
+    toast(text);
+    if (SCHED.order.length) sdRefresh();
+    return text;
+  });
+}
+
 function olPlanText(d) {
   var out = [], people = 0, cos = 0, days = 0;
   (d.days || []).forEach(function (day) {
     if (OL.off[day.date]) return;
     var x = olPlanDay(day);
     days += 1; people += x.people; cos += x.rows.length;
-    var head = sdDayName(day.date) + (day.date === d.today ? ' (today)' : '') +
+    // A later day with automatic rows can still change (lock-days): the
+    // list says so until Leo locks it.
+    var head = sdDayName(day.date) + (day.date === d.today ? ' (today)' : lockRows(day, d.today).length ? ' (not locked)' : '') +
       (day.category ? ' · ' + sdCatName(day.category) : '') + ' — ' +
       (x.rows.length ? sdPlural(x.people, 'person', 'people') + ', ' + sdPlural(x.rows.length, 'company', 'companies') +
         (x.sent ? ' (' + x.sent + ' already sent)' : '') : 'nothing planned yet');
@@ -11610,11 +11725,20 @@ function olRender() {
   var built = null;
   if (OL.tab === 'plan') {
     var d = OL.plan;
+    var unlocked = d ? olUnlocked(d) : [];
     ctrl.innerHTML = d && (d.days || []).length
       ? '<span class="hint" style="margin:0">Days:</span>' + d.days.map(function (day) {
           return '<button class="chip' + (OL.off[day.date] ? '' : ' active') + '" data-olday="' + esc(day.date) + '"' +
             ' title="Tick or untick this day in the list">' + esc(sdDayName(day.date)) + ' · ' + olPlanDay(day).people + '</button>';
-        }).join('')
+        }).join('') +
+        (OL.locked
+          ? '<div class="ol-lock">' + esc(OL.locked) + ' <a href="#" class="sd-link" data-olunlock="1">Undo</a></div>'
+          : unlocked.length
+          ? '<div class="ol-lock"><span>' + esc(unlocked.map(function (x) { return sdDayName(x.date); }).join(', ')) +
+              (unlocked.length === 1 ? ' isn’t' : ' aren’t') + ' locked: the picks can change as people are found and brands are added.</span>' +
+              '<button class="btn-ghost sd-sm" data-ollock="1"' + (OL.locking ? ' disabled' : '') +
+              ' title="Pins exactly these brands to their days, in this order — you see the list first">' + (OL.locking ? 'Locking…' : 'Lock these days') + '</button></div>'
+          : '')
       : '';
     if (d) built = olPlanText(d);
     box.textContent = built ? (built.text || 'Nothing on the days ticked.')
@@ -11676,7 +11800,17 @@ document.addEventListener('click', function (e) {
       olRender();
       return;
     }
-    if ((t = e.target.closest('[data-olpreset]'))) { olPreset(t.getAttribute('data-olpreset')); olLoad(); }
+    if ((t = e.target.closest('[data-olpreset]'))) { olPreset(t.getAttribute('data-olpreset')); olLoad(); return; }
+    if ((t = e.target.closest('[data-ollock]')) && OL.plan && !OL.locking) {
+      OL.locking = true;
+      olRender();
+      lockDays(olUnlocked(OL.plan), OL.plan.today).then(function (text) {
+        OL.locking = false;
+        if (text) { OL.locked = text; olLoad(); } else olRender();
+      }, function (err) { OL.locking = false; toast(err.message); olRender(); });
+      return;
+    }
+    if ((t = e.target.closest('[data-olunlock]'))) { e.preventDefault(); sdPwUndo(); }
   });
   scrim.addEventListener('change', function (e) {
     var t = e.target;
@@ -11990,7 +12124,7 @@ function sdPwUndo() {
     });
     var moved = (p.movedBack || []).map(function (m) { return m.name + ' back to ' + sdDayTag(m.to); });
     if (!lines.length && !cats.length) { toast('Nothing left to undo — those brands have moved since'); return; }
-    if (!window.confirm('Undo the last Plan my week?\n\n' +
+    if (!window.confirm((p.lock ? 'Undo the lock?' : 'Undo the last Plan my week?') + '\n\n' +
         (lines.length ? 'Takes ' + sdPlural((p.brands || []).length, 'brand', 'brands') + ' back off their days:\n' + lines.join('\n') : 'No brands to take off.') +
         (moved.length ? '\n\nPuts back: ' + moved.join(', ') : '') +
         (cats.length ? '\n\nCategories: ' + cats.join(', ') : '') +
@@ -11998,8 +12132,10 @@ function sdPwUndo() {
     return sdPlanCall('undoPlanWeek', {}).then(function (r) {
       SCHED.pwDone = null;
       SCHED.planWeekLast = null;
-      toast('Week plan undone · ' + sdPlural(((r && r.brands) || []).length, 'brand', 'brands') + ' off');
-      return sdRefresh();
+      toast((p.lock ? 'Lock undone' : 'Week plan undone') + ' · ' + sdPlural(((r && r.brands) || []).length, 'brand', 'brands') + ' off');
+      // Undo from Plan for Zach: its list reads the days again.
+      if (document.getElementById('ol-scrim').classList.contains('open')) { OL.locked = ''; olLoad(); }
+      return SCHED.order.length ? sdRefresh() : null;
     });
   }).catch(function (e) { toast(e.message); });
 }
@@ -12074,6 +12210,7 @@ function sdTake(d) {
   SCHED.pool = d.pool || null;
   document.querySelectorAll('[data-daycap]').forEach(function (el) { el.textContent = sdCap(); });
   SCHED.extraDays = d.extraDays || [];
+  SCHED.skipDays = d.skipDays || [];
   SCHED.nextOffDay = d.nextOffDay || '';
   SCHED.linkedinWeek = d.linkedinWeek || null;
   SCHED.queueRules = d.queueRules || null;
@@ -12612,8 +12749,13 @@ function sdPinnedCard(p, key, i, n) {
 
 function sdAutoCard(b, key, isToday) {
   var pp = sdPeopleOf(b);
+  // A later day's automatic row re-ranks as people are found and brands
+  // are added, until the day is locked (lock-days).
+  var best = (SCHED.days[key] || {}).category === 'bestfit';
   var tags = (b.topUp ? '<span class="sd-tag">' + esc(sdCatName(b.category)) + '</span>' : '') +
-    (b.inQueue ? '<span class="sd-tag good" title="Its people are in today’s LinkedIn list">in today’s queue</span>' : '');
+    (b.inQueue ? '<span class="sd-tag good" title="Its people are in today’s LinkedIn list">in today’s queue</span>' : '') +
+    (!isToday ? '<span class="sd-tag maychange" title="Picked automatically — it can change as people are found and brands are added. ⋯ on the day → Lock this day (or Plan for Zach → Lock these days) pins it.">' +
+      (best ? 'Best fit · ' : '') + 'may change</span>' : '');
   var body = '<div class="sd-line"><b>' + pp.n + ' going</b>' +
     (pp.names.length ? ' · ' + sdNames(pp.names) : '') +
     (b.later ? ' <span class="sd-dim" title="Ready too, but past the day’s ' + sdCap() + ' — they go out next time">+' + b.later + ' next time</span>' : '') +
@@ -12677,6 +12819,91 @@ function sdThemeCard(key, pv) {
   '</div>';
 }
 
+// "(adds it as a sending day)", or for a day Leo took off (skip-day)
+// "(send on it after all)". `d` = { key, skipped? }.
+function sdOffWord(d) {
+  var off = d && (d.skipped || (SCHED.skipDays || []).some(function (x) { return x.date === d.key; }));
+  return off ? ' (send on it after all)' : ' (adds it as a sending day)';
+}
+
+// Move this day to… (skip-day): moveDay's preview for one day, waiting for
+// Leo's yes — each planned brand, where it goes or why it can't, and what
+// the day's category does. Nothing changes until Move the day.
+function sdDayMoveCard(key, m) {
+  var pv = m.pv;
+  var W = sdDayName(key);
+  if (!pv) return '<div class="sd-theme"><div class="sd-dim">' + (m.err ? esc(m.err) : 'Checking what moves…') + '</div>' +
+    '<div class="sd-theme-f"><a href="#" class="sd-link" data-sdmdayx="' + esc(key) + '">Cancel</a></div></div>';
+  var T = pv.to ? sdDayName(pv.to) : '';
+  var rows = (pv.results || []).map(function (x) {
+    var what = !pv.to ? 'back to waiting'
+      : !x.added ? 'can’t go on ' + T + ' (' + (x.reasonText || SD_SHORT[x.reason] || 'refused') + ') · back to waiting'
+      : x.state === 'going' && x.waits ? 'waits · past ' + T + '’s ' + (pv.cap || sdCap()) + (x.waits !== 'later' ? ', goes out ' + sdDayName(x.waits) : '')
+      : x.state === 'going' ? sdPlural(x.going || 0, 'person', 'people') + ' on ' + T
+      : 'on ' + T + ', won’t go out · ' + (x.reasonText || SD_SHORT[x.reason] || 'nobody to invite');
+    return '<li><b>' + esc(x.brandName || 'a brand') + '</b> <span class="sd-dim">' + esc(what) + '</span></li>';
+  });
+  var notes = [];
+  if (pv.opening) notes.push(pv.reopens ? T + ' was taken off; this makes it a sending day again.'
+    : T + ' isn’t a sending day yet; this opens it as one' + (typeof pv.room === 'number' ? ' (room for ' + pv.room + ' under LinkedIn’s weekly limit)' : '') + '.');
+  if (pv.to && pv.whole && pv.category) notes.push(T + ' takes ' + W + '’s category too: ' + sdThemeWord(pv.category) + '.');
+  if (pv.categoryLost) notes.push(W + '’s category (' + sdThemeWord(pv.categoryLost) + ') stays behind' + (pv.to ? ' — ' + T + ' keeps ' + sdThemeWord(pv.toCategory) : '') + '.');
+  if ((pv.offTheme || []).length) notes.push('Not ' + sdThemeWord(pv.toCategory) + ', still going (planned by hand): ' + pv.offTheme.join(', ') + '.');
+  return '<div class="sd-theme">' +
+    '<div><b>' + esc(W) + ' off' + (pv.to ? ' → ' + esc(T) : '') + '.</b> ' +
+      (rows.length ? (pv.to ? 'Its planned brands:' : 'Its planned brands go back to waiting:') : 'Nothing is planned on it.') + '</div>' +
+    (rows.length ? '<ul>' + rows.join('') + '</ul>' : '') +
+    notes.map(function (t) { return '<div class="sd-dim">' + esc(t) + '</div>'; }).join('') +
+    '<div class="sd-dim">Nothing goes out on ' + esc(W) + '; its automatic picks go to other days by themselves. Undo brings it back.</div>' +
+    (pv.stale ? '<div class="pd-warn">The day changed since — this is the new list.</div>' : '') +
+    '<div class="sd-theme-f">' +
+      '<button class="btn-solid sd-sm" data-sdmdaygo="' + esc(key) + '"' + (m.busy ? ' disabled' : '') + '>' + (m.busy ? 'Saving…' : pv.to ? 'Move the day' : 'Take the day off') + '</button>' +
+      '<a href="#" class="sd-link" data-sdmdayx="' + esc(key) + '">Cancel</a>' +
+    '</div>' +
+  '</div>';
+}
+
+function sdDayMoveAsk(key, to, addDay) {
+  var m = SCHED.dayMove[key] = { to: to, addDay: !!addDay, pv: null, busy: false, err: '' };
+  renderSchedDays();
+  api('moveDay', { from: key, to: to || null, addDay: !!addDay, preview: true }).then(function (pv) {
+    if (SCHED.dayMove[key] !== m) return;
+    m.pv = pv;
+    renderSchedDays();
+  }).catch(function (e) { if (SCHED.dayMove[key] === m) { m.err = e.message; renderSchedDays(); } });
+}
+
+function sdDayMoveGo(key) {
+  var m = SCHED.dayMove[key];
+  if (!m || !m.pv || m.busy) return;
+  m.busy = true;
+  renderSchedDays();
+  sdPlanCall('moveDay', { from: key, to: m.to || null, addDay: m.addDay, confirm: true, expect: m.pv.expect }).then(function (r) {
+    if (r && r.stale) { m.busy = false; m.pv = r; renderSchedDays(); return; }
+    delete SCHED.dayMove[key];
+    toast((r && r.message ? r.message : sdDayName(key) + ' is off') +
+      (r && r.back && r.back.length ? ' · back to waiting: ' + r.back.join(', ') : ''));
+    return sdRefresh();
+  }).catch(function (e) { m.busy = false; m.err = e.message; m.pv = null; renderSchedDays(); toast(e.message); });
+}
+
+// "Thu off — Undo": asks the server what comes back, says so, then does it.
+function sdSkipUndo(date) {
+  api('undoMoveDay', { date: date, preview: true }).then(function (p) {
+    if (!p || !p.ok) { toast((p && p.message) || 'Nothing to undo'); return sdRefresh(); }
+    var lines = [];
+    if (p.back.length) lines.push('Back on ' + sdDayName(date) + ': ' + p.back.join(', '));
+    if (p.stay.length) lines.push('Stay where you put them since: ' + p.stay.map(function (x) { return x.name + (x.onLabel ? ' (' + x.onLabel + ')' : ''); }).join(', '));
+    if (p.categoryBack && p.to) lines.push(sdDayName(p.to) + '’s category goes back');
+    if (p.closeTo && p.to) lines.push(sdDayName(p.to) + ' stops being a sending day (nothing else is on it)');
+    if (!window.confirm('Send on ' + sdDayName(date) + ' after all?' + (lines.length ? '\n\n' + lines.join('\n') : '') + '\n\nNobody is deleted.')) return;
+    return sdPlanCall('undoMoveDay', { date: date }).then(function () {
+      toast(sdDayName(date) + ' is a sending day again');
+      return sdRefresh();
+    });
+  }).catch(function (e) { toast(e.message); });
+}
+
 function sdDayHtml(key) {
   var day = SCHED.days[key] || {};
   // cap = the flat 30 hand pins are held to; fillCap = what the automatic
@@ -12709,6 +12936,15 @@ function sdDayHtml(key) {
     dayMenu.push('<div class="sd-menu-row"><select class="inp sd-mini" data-sdleft="' + esc(key) + '" title="Moves what hasn’t gone out today to a later day. Left alone, it moves to the next sending day on its own tomorrow morning.">' +
       '<option value="">Move what’s left to…</option>' + sdLaterTargets(key) + '</select></div>');
   }
+  // A later day moves or comes off whole (skip-day): you see what happens
+  // to each planned brand before anything changes.
+  if (!isToday) {
+    dayMenu.push('<div class="sd-menu-row"><select class="inp sd-mini" data-sdmoveday="' + esc(key) + '" title="Take this day off — its plan moves to the day you pick, or its brands go back to waiting. You see it first; Undo brings it back.">' +
+      '<option value="">Move this day to…</option>' + sdLaterTargets(key, true) + '<option value="__none">No day — take it off</option></select></div>');
+  }
+  if (!isToday && lockRows({ date: key, brands: auto }, SCHED.today).length) {
+    dayMenu.push('<button class="btn-ghost sd-sm" data-sdlock="' + esc(key) + '" title="Pins the automatic picks to this day in this order, so the list stops changing — you see it first">Lock this day</button>');
+  }
   if (day.extra) dayMenu.push('<button class="btn-ghost sd-sm" data-sdxrm="' + esc(key) + '" title="Stop sending on this day">Remove this sending day</button>');
   if (planned && planned !== 'bestfit') dayMenu.push('<button class="btn-ghost sd-sm" data-sdseecat="' + esc(planned) + '">See every ' + esc(sdCatName(planned)) + ' brand</button>');
 
@@ -12735,6 +12971,7 @@ function sdDayHtml(key) {
   // The category menu replaces the day's list (Leo, Oct 7 2026: "make
   // sure that happens"): a pending change shows what comes off; a day
   // that doesn't match its category any more offers the same in one click.
+  if (SCHED.dayMove[key]) html += sdDayMoveCard(key, SCHED.dayMove[key]);
   if (pending) html += sdThemeCard(key, pending);
   else if (day.offTheme > 0) {
     html += '<div class="sd-match">' + sdPlural(day.offTheme, 'brand doesn’t', 'brands don’t') + ' fit ' + esc(sdThemeWord(planned)) +
@@ -12787,14 +13024,16 @@ function sdDayBrandCount(day, isToday) {
 // Days a batch of brands can move to: the Schedule's other days, plus the
 // next weekday nothing goes out on (moving there opens it as a sending
 // day). `skip` = the day they are on now.
-function sdLaterTargets(skip) {
-  var list = SCHED.order.filter(function (k) { return k !== skip && k >= SCHED.today; }).map(function (k) { return { key: k, add: false }; });
+// afterToday leaves today out (Move this day to…: a day's plan goes to a
+// later day, never straight into today's list).
+function sdLaterTargets(skip, afterToday) {
+  var list = SCHED.order.filter(function (k) { return k !== skip && (afterToday ? k > SCHED.today : k >= SCHED.today); }).map(function (k) { return { key: k, add: false }; });
   var off = SCHED.nextOffDay;
   if (off && off !== skip && off > SCHED.today && SCHED.order.indexOf(off) === -1) list.push({ key: off, add: true });
   list.sort(function (a, b) { return a.key < b.key ? -1 : a.key > b.key ? 1 : 0; });
   return list.map(function (x) {
     return '<option value="' + esc(x.key) + '"' + (x.add ? ' data-add="1"' : '') + '>' +
-      esc(x.add ? sdDayName(x.key) + ' (adds it as a sending day)' : sdDayTag(x.key)) + '</option>';
+      esc(x.add ? sdDayName(x.key) + sdOffWord({ key: x.key }) : sdDayTag(x.key)) + '</option>';
   }).join('');
 }
 
@@ -14337,6 +14576,18 @@ var SCHED_DRAG = null;
       }).catch(function (err) { toast(err.message); sdRefresh(); });
       return;
     }
+    // Move this day to… (skip-day): the preview card, nothing written yet.
+    if (t.matches('[data-sdmoveday]')) {
+      if (!t.value) return;
+      var mdk = t.getAttribute('data-sdmoveday');
+      var mdTo = t.value === '__none' ? '' : t.value;
+      var mdAdd = !!(t.selectedOptions[0] && t.selectedOptions[0].getAttribute('data-add'));
+      t.value = '';
+      var mdMenu = t.closest('details');
+      if (mdMenu) mdMenu.open = false;
+      sdDayMoveAsk(mdk, mdTo, mdAdd);
+      return;
+    }
     if (t.matches('[data-sdleft]')) {
       if (!t.value) return;
       var lto = t.value;
@@ -14664,6 +14915,16 @@ var SCHED_DRAG = null;
       return;
     }
     if ((t = e.target.closest('[data-sdxrm]'))) { e.preventDefault(); sdRemoveExtraDay(t.getAttribute('data-sdxrm')); return; }
+    // Move this day to… (skip-day): confirm, cancel, the chip's Undo.
+    if ((t = e.target.closest('[data-sdmdaygo]'))) { sdDayMoveGo(t.getAttribute('data-sdmdaygo')); return; }
+    if ((t = e.target.closest('[data-sdmdayx]'))) { e.preventDefault(); delete SCHED.dayMove[t.getAttribute('data-sdmdayx')]; renderSchedDays(); return; }
+    if ((t = e.target.closest('[data-sdskipundo]'))) { e.preventDefault(); sdSkipUndo(t.getAttribute('data-sdskipundo')); return; }
+    // Lock this day (lock-days): its automatic picks pinned, in order.
+    if ((t = e.target.closest('[data-sdlock]'))) {
+      var lk = t.getAttribute('data-sdlock');
+      lockDays([SCHED.days[lk] || { date: lk }], SCHED.today).catch(function (err) { toast(err.message); sdRefresh(); });
+      return;
+    }
     if ((t = e.target.closest('[data-sdseecat]'))) { e.preventDefault(); sdOpenCat(t.getAttribute('data-sdseecat'), true); return; }
     // Not now (an automatic row's ×, any day): a Pass, off outreach for
     // two weeks and back by itself — which is the whole point of it being
@@ -15430,6 +15691,8 @@ function targetRow(t) {
       (t.brand.category ? '<span>' + esc(CAT_NAMES[t.brand.category] || t.brand.category) + '</span>' : '') +
       (isPre && QUEUE_THEME && t.brand.category && t.brand.category !== QUEUE_THEME
         ? '<span class="fit" title="Not today’s category — filling the day up to ' + SENT_TODAY.cap + '">top-up</span>' : '') +
+      // The same ⚠ Today's list for Zach shows (copy-flagged).
+      (isPre && t.problem ? '<span class="t-flag" title="The queue check flags them — Home → Today’s list for Zach can leave them out">⚠ ' + esc(t.problem) + '</span>' : '') +
       (t.brand.workPeople ? '<span>·</span><span class="fit" title="This brand’s people-to-work setting (brand page)">work ' + t.brand.workPeople + '</span>' : '') +
       (t.nextStep ? '<span>·</span><span class="fit">▸ ' + esc(t.nextStep) +
         (t.followUpAt ? ' (' + shortDate(t.followUpAt) + ')' : '') + '</span>' : '') +

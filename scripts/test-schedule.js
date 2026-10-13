@@ -34,6 +34,14 @@
 //      third the moment the refresh lands add exactly the brands under the
 //      mouse — the rows never move; the clicked row reads "Adding…"; ticked
 //      rows go in one call ("Add 2 ticked").
+//  11. Less planning work (Oct 12 2026): a later day's automatic rows are
+//      tagged "may change" (Best fit · may change on a Best fit day), today's
+//      aren't; ⋯ → Lock this day names the brands, then pins exactly them
+//      (planWeek apply, lock); ⋯ → Move this day to… (later days only)
+//      previews, a stale answer shows again, Move the day sends the
+//      preview's expect; "No day — take it off" sends no target; the "Thu
+//      off" chip's Undo previews, then undoes; a day taken off reads "(send
+//      on it after all)" in the add-a-day menus.
 //   9. The numbers (week-limit, carry-front): a day whose LinkedIn week
 //      leaves 10 says "/ 10 · week limit" and Fill to 10, an over day says
 //      what it can take; a carried card reads "From Tue · carried 2×" and
@@ -69,6 +77,9 @@ let pinned13 = [];
 let slowAdd = 0;
 let cap13 = null;
 let carryCard = false;
+// Section 11: an automatic row on the Best fit Tuesday, days taken off.
+let auto13 = false;
+let skipDays = [];
 const SUG = ['s1', 's2', 's3', 's4', 's5', 's6'].map((id, i) => ({ id, name: 'Sug ' + (i + 1), category: 'energy', going: 3, label: { kind: 'ready', reachable: 3, need: 3, onFile: 3 }, fit: { score: 80 - i }, people: [] }));
 const GIANT_CARD = { id: 'g1', name: 'Red Bull', category: 'energy', state: 'blocked', going: 0, people: [], giant: true, reason: 'giant', reasonText: 'A giant (a household name) — held back for now. Add anyway to send it.' };
 const PLAN = () => ({
@@ -101,10 +112,10 @@ const PLAN = () => ({
           { id: 'k1', name: 'Own Co', category: 'energy', state: 'going', going: 3, people: [] },
           { id: 'k2', name: 'Carried Co', category: 'energy', state: 'going', going: 3, people: [], carriedFrom: '2026-10-08', carriedTimes: 2, carriedSince: '2026-10-07' },
         ] : []),
-      brands: [], sentPeople: [], overflow: [],
+      brands: auto13 ? [{ id: 'a3', name: 'Olipop', going: 3, people: [], category: 'beverage' }] : [], sentPeople: [], overflow: [],
     },
   ],
-  categories: [], past: [], extraDays: [], nextOffDay: '2026-10-09',
+  categories: [], past: [], extraDays: [], skipDays, nextOffDay: '2026-10-09',
 });
 
 const ROWS = [
@@ -184,6 +195,25 @@ const H = {
     ? { preview: true, will: targetIds.map((id) => ({ id, name: 'Old Invite', brand: 'Quiet Open Co' })), skipped: [] }
     : { ok: true, withdrawn: targetIds.length, skipped: [], brands: [] }),
   planDayChoices: () => ({ today: '2026-10-07', days: [{ key: '2026-10-08', label: 'Thu Oct 8' }, { key: '2026-10-13', label: 'Tue Oct 13' }], offDay: null }),
+  // Section 11: Lock, Move this day to…, its Undo.
+  planWeek: ({ days }) => ({ ok: true, lock: true, undo: true, days: days.map((d) => ({ date: d.date, ok: true, added: d.brandIds.length, people: 4, refused: [] })) }),
+  moveDay: ({ from, to, confirm, expect }) => {
+    const pv = {
+      preview: true, from, to: to || null, opening: false, whole: false, category: 'spirits', categoryLost: to ? 'spirits' : null, toCategory: to ? 'bestfit' : null, offTheme: [],
+      results: to ? [{ brandId: 'x1', brandName: 'Moved Co', added: true, state: 'going', going: 3 }, { brandId: 'x2', brandName: 'Refused Co', added: false, state: 'refused', reasonText: 'Resting until Oct 20' }]
+        : [{ brandId: 'x1', brandName: 'Moved Co', added: false, state: 'back' }],
+      cap: 30, expect: 'mv1',
+    };
+    if (!confirm) return pv;
+    if (expect === 'mv1') return { ...pv, expect: 'mv2', stale: true };
+    skipDays = [{ date: from, to: to || null }];
+    return { ok: true, from, to: to || null, moved: 1, back: ['Refused Co'], message: 'Thu Oct 8 is off · its plan moved to Tue Oct 13' };
+  },
+  undoMoveDay: ({ date, preview }) => {
+    if (preview) return { ok: true, preview: true, date, to: '2026-10-13', back: ['Moved Co', 'Refused Co'], stay: [], categoryBack: false, closeTo: false };
+    skipDays = [];
+    return { ok: true, date };
+  },
 };
 
 const server = http.createServer((req, res) => {
@@ -200,7 +230,8 @@ async function main() {
   const page = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  page.on('dialog', (d) => d.accept());
+  const dialogs = [];
+  page.on('dialog', (d) => { dialogs.push(d.message()); d.accept(); });
   await page.route('**/*', async (route) => {
     const url = route.request().url();
     if (url.startsWith(base + '/api/data')) {
@@ -493,6 +524,87 @@ async function main() {
   await waitFor(() => count('planAddBrands') === adds10 + 2, 'the add');
   assert.deepEqual([last('planAddBrands').args.date, last('planAddBrands').args.brandIds], ['2026-10-08', ['r2']]);
   console.log('✓ 10 day header counts brands; What gets answered only suggests; a second try goes on a day by hand, invites withdrawn first');
+
+  // 11. Less planning work: may-change tags, Lock this day, Move this day to…
+  auto13 = true;
+  await page.evaluate(() => sdRefresh());
+  await page.waitForSelector('[data-drop="2026-10-13"] [data-dragb="a3"]');
+  assert.match(await page.textContent('[data-drop="2026-10-13"] [data-dragb="a3"] .sd-card-h'), /Best fit · may change/, 'a Best fit day\'s automatic row');
+  const tag08 = await page.textContent('[data-drop="2026-10-08"] [data-dragb="a2"] .sd-card-h');
+  assert.match(tag08, /may change/);
+  assert.doesNotMatch(tag08, /Best fit/, 'a category day\'s row is just "may change"');
+  assert.doesNotMatch(await page.textContent('[data-drop="2026-10-07"] [data-dragb="a1"] .sd-card-h'), /may change/, 'today\'s rows go into the list as they are');
+  assert.equal(await page.$('[data-drop="2026-10-07"] [data-sdlock]'), null, 'today is never locked');
+  assert.equal(await page.$('[data-drop="2026-10-07"] [data-sdmoveday]'), null, 'today has Move what\'s left, not Move this day');
+  await page.click('[data-drop="2026-10-08"] .sd-day-h .sd-cm > summary');
+  dialogs.length = 0;
+  await page.click('[data-sdlock="2026-10-08"]');
+  await waitFor(() => count('planWeek') === 1, 'the lock');
+  assert.match(dialogs[0], /Lock Thu Oct 8\?[\s\S]*1\. Patrón \(4\)/, 'Lock names the brands first');
+  assert.deepEqual(last('planWeek').args, { apply: true, lock: true, days: [{ date: '2026-10-08', brandIds: ['a2'] }] }, 'exactly the automatic rows, in order');
+  await page.waitForSelector('[data-drop="2026-10-08"] [data-sdmoveday]', { state: 'attached' });
+  const openDayMenu = async (k) => {
+    if (!await page.isVisible('[data-sdmoveday="' + k + '"]')) await page.click('[data-drop="' + k + '"] .sd-day-h .sd-cm > summary');
+  };
+  await openDayMenu('2026-10-08');
+  // Only later days are targets: today never is.
+  const targets = await page.$$eval('[data-sdmoveday="2026-10-08"] option', (os) => os.map((o) => o.value));
+  assert.deepEqual(targets, ['', '2026-10-09', '2026-10-13', '__none'], 'later days, the next off day, or no day: ' + targets);
+  await page.selectOption('[data-sdmoveday="2026-10-08"]', '2026-10-13');
+  await waitFor(() => count('moveDay') === 1, 'the preview');
+  assert.deepEqual(last('moveDay').args, { from: '2026-10-08', to: '2026-10-13', addDay: false, preview: true });
+  await page.waitForSelector('[data-sdmdaygo="2026-10-08"]');
+  const mcard = await page.textContent('[data-drop="2026-10-08"] .sd-theme');
+  assert.match(mcard, /Thu Oct 8 off → Tue Oct 13\./);
+  assert.match(mcard, /Moved Co 3 people on Tue Oct 13/);
+  assert.match(mcard, /Refused Co can’t go on Tue Oct 13 \(Resting until Oct 20\) · back to waiting/);
+  assert.match(mcard, /Thu Oct 8’s category \(Spirits[^)]*\) stays behind/);
+  await page.click('[data-sdmdaygo="2026-10-08"]');
+  await waitFor(() => count('moveDay') === 2, 'the first apply');
+  assert.deepEqual(last('moveDay').args, { from: '2026-10-08', to: '2026-10-13', addDay: false, confirm: true, expect: 'mv1' });
+  await page.waitForFunction(() => /The day changed since/.test(document.querySelector('[data-drop="2026-10-08"] .sd-theme').textContent));
+  await page.click('[data-sdmdaygo="2026-10-08"]');
+  await waitFor(() => count('moveDay') === 3, 'the apply after stale');
+  assert.equal(last('moveDay').args.expect, 'mv2', 'the new preview\'s signature');
+  await page.waitForSelector('#sched-extra [data-sdskipundo="2026-10-08"]');
+  assert.match(await page.textContent('#sched-extra'), /Thu Oct 8 off/);
+  dialogs.length = 0;
+  await page.click('#sched-extra [data-sdskipundo="2026-10-08"]');
+  await waitFor(() => count('undoMoveDay') === 2, 'Undo preview then apply');
+  assert.deepEqual(calls.filter((c) => c.fn === 'undoMoveDay').map((c) => c.args), [{ date: '2026-10-08', preview: true }, { date: '2026-10-08' }]);
+  assert.match(dialogs[0], /Send on Thu Oct 8 after all\?[\s\S]*Back on Thu Oct 8: Moved Co, Refused Co/);
+  await page.waitForFunction(() => !document.querySelector('#sched-extra [data-sdskipundo]'));
+  // No day: the brands go back to waiting.
+  await openDayMenu('2026-10-08');
+  await page.selectOption('[data-sdmoveday="2026-10-08"]', '__none');
+  await waitFor(() => count('moveDay') === 4, 'the take-it-off preview');
+  assert.deepEqual(last('moveDay').args, { from: '2026-10-08', to: null, addDay: false, preview: true });
+  await page.waitForSelector('[data-sdmdaygo="2026-10-08"]');
+  assert.match(await page.textContent('[data-drop="2026-10-08"] .sd-theme'), /Its planned brands go back to waiting/);
+  assert.match(await page.textContent('[data-sdmdaygo="2026-10-08"]'), /Take the day off/);
+  await page.click('[data-sdmdayx="2026-10-08"]');
+  await page.waitForFunction(() => !document.querySelector('[data-sdmdaygo="2026-10-08"]'));
+  assert.equal(count('moveDay'), 4, 'Cancel writes nothing');
+  // A day taken off is offered back as "send on it after all".
+  assert.equal(await page.evaluate(() => { SCHED.skipDays = [{ date: '2026-10-09' }]; return sdOffWord({ key: '2026-10-09' }); }), ' (send on it after all)');
+  assert.equal(await page.evaluate(() => { SCHED.skipDays = []; return sdOffWord({ key: '2026-10-09' }); }), ' (adds it as a sending day)');
+  // The brand page says where an automatic row is (lock-days d).
+  const bpLine = await page.evaluate(() => {
+    var slot = document.createElement('div'); slot.id = 'b-plan'; document.body.appendChild(slot);
+    BP.id = 'z9'; BP.note = null;
+    BP.data = { today: '2026-10-07', days: [{ key: '2026-10-08', label: 'Thu Oct 8' }], offDay: null, brand: { id: 'z9', name: 'Zed', shownOn: '2026-10-08', going: 0 } };
+    bpRender();
+    var t1 = slot.textContent;
+    BP.data.brand.shownOn = '2026-10-07';
+    bpRender();
+    var t2 = slot.textContent;
+    slot.remove();
+    return [t1, t2];
+  });
+  assert.match(bpLine[0], /Shown on Thu Oct 8 \(not locked\)/, 'not "Not on a day": ' + bpLine[0]);
+  assert.match(bpLine[1], /On today’s list \(picked automatically/);
+  auto13 = false;
+  console.log('✓ 11 may-change tags on later days, Lock this day, Move this day to… (preview, stale, apply, take off, Cancel), the off chip\'s Undo');
 
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All Schedule checks passed.');
