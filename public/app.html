@@ -11496,7 +11496,7 @@ function sdRulesChip() {
   var r = SCHED.queueRules;
   if (!r) return '';
   var tip = 'The days only pick brands nobody has reached out to yet. A brand you add by hand that was reached before waits ' +
-    r.restDays + ' days from its first outreach. Giants (household names, the big parent companies and their brands, $1B+ in sales) ' +
+    r.restDays + ' days from its first outreach. Giants (household names, the big parent companies’ brands, $1B+ in sales, 1,500+ people on LinkedIn — never a conglomerate like Diageo itself) ' +
     (r.giantsOn ? 'go like any other brand.' : 'are held back: nothing picks them, and adding one asks first.');
   return '<span class="sd-rules" title="' + esc(tip) + '">New brands only · ' +
     (r.giantsOn
@@ -14191,7 +14191,7 @@ var SCHED_DRAG = null;
     if ((t = e.target.closest('[data-sdgiants]'))) {
       e.preventDefault();
       var gOn = t.getAttribute('data-sdgiants') === '1';
-      if (gOn && !window.confirm('Allow giants?\n\nThe days will pick household names, the big parent companies and their brands, and $1B+ brands like any other.')) return;
+      if (gOn && !window.confirm('Allow giants?\n\nThe days will pick household names, the big parent companies’ brands, $1B+ brands and brands with 1,500+ people on LinkedIn like any other.')) return;
       sdPlanCall('setGiantsOn', { on: gOn }).then(function () {
         toast(gOn ? 'Giants allowed — the days can pick them now' : 'Giants held back again');
         return sdRefresh();

@@ -774,7 +774,8 @@ function brandStage(b: PlanBrand): BrandStage | null {
 
 // ---- The queue rules (Leo, Oct 12 2026; src/lib/queue-rules.ts) --------
 // What the system picks by itself: only brands nobody has reached out to,
-// and no giants. By hand: a reached brand rests two weeks from its first
+// and no giants (giants.ts, or 1,500+ people on LinkedIn — conglomerates
+// never). By hand: a reached brand rests two weeks from its first
 // outreach; a giant asks first ("Add anyway" OKs that brand). People
 // already waiting at such brands are skipped, never removed.
 // Setting outreachGiants (GIANTS_KEY) = { on: boolean, ok: [brandId] } —
@@ -793,7 +794,7 @@ function giantIds(v: unknown): string[] {
 }
 // Records Leo's "Add anyway" for the giants among `brands` (others in
 // the list are ignored) and lets `q` through for them at once.
-async function okGiants(q: QueueCtx, allow: unknown, brands: Array<{ id: string; name: string; aka: string | null; salesCents: bigint | null }>): Promise<void> {
+async function okGiants(q: QueueCtx, allow: unknown, brands: Array<{ id: string; name: string; aka: string | null; salesCents: bigint | null; liMembers: number | null }>): Promise<void> {
   const want = new Set(giantIds(allow))
   const add = brands.filter(b => want.has(b.id) && !q.giantOk.has(b.id) && !!giantOf(b)).map(b => b.id)
   if (!add.length) return
@@ -801,7 +802,7 @@ async function okGiants(q: QueueCtx, allow: unknown, brands: Array<{ id: string;
   await writeGiants(q.giantsOn, q.giantOk)
 }
 type GateBrand = {
-  id: string; name: string; aka: string | null; salesCents: bigint | null
+  id: string; name: string; aka: string | null; salesCents: bigint | null; liMembers: number | null
   targets: Array<{
     status: string; sentAt: Date | null; emailedAt?: Date | null; updatedAt?: Date | null
     _count?: { emails: number }; emails?: Array<{ sentAt: Date | null }>
@@ -817,7 +818,7 @@ function outreachRows(b: GateBrand): OutreachRow[] {
 // unless a later Schedule day is asked about).
 function brandGate(b: GateBrand, q: QueueCtx, auto: boolean, day?: string): Gate {
   return queueGate(
-    { name: b.name, aka: b.aka, salesCents: b.salesCents, rows: outreachRows(b) },
+    { name: b.name, aka: b.aka, salesCents: b.salesCents, liMembers: b.liMembers, rows: outreachRows(b) },
     { auto, giantsOn: q.giantsOn || q.giantOk.has(b.id), day: day ?? q.today },
   )
 }
@@ -2057,7 +2058,7 @@ function bestFitEligible(b: PlanBrand, f: FitResult, q: QueueCtx): boolean {
     && !heldGiant(b, q)
 }
 // A giant the system must not pick: giants are off and this one wasn't OK'd.
-function heldGiant(b: { id: string; name: string; aka: string | null; salesCents: bigint | null }, q: QueueCtx): boolean {
+function heldGiant(b: { id: string; name: string; aka: string | null; salesCents: bigint | null; liMembers: number | null }, q: QueueCtx): boolean {
   return !q.giantsOn && !q.giantOk.has(b.id) && !!giantOf(b)
 }
 // Every brand a Best fit day could pick, best first. Brands with nobody
@@ -4014,7 +4015,7 @@ const handlers: Record<string, Handler> = {
       orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
       take: 300,
       // brandId comes back so the day can be filled a brand at a time.
-      select: { id: true, brandId: true, fitScore: true, brand: { select: { category: true, name: true, aka: true, salesCents: true } } },
+      select: { id: true, brandId: true, fitScore: true, brand: { select: { category: true, name: true, aka: true, salesCents: true, liMembers: true } } },
     })).filter(c => !heldGiant({ id: c.brandId, ...c.brand }, gateQ))
     // A category Leo picked on the Schedule, else Best fit (dayTheme).
     const theme = dayTheme(planDay?.category)
@@ -9225,7 +9226,7 @@ const handlers: Record<string, Handler> = {
       readPlan(),
       prisma.target.findMany({
         where: { status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, brand: { AND: [NOT_IN_CONVERSATION, notReachedBefore(startOfDay)] } },
-        select: { brandId: true, brand: { select: { category: true, name: true, aka: true, salesCents: true } } },
+        select: { brandId: true, brand: { select: { category: true, name: true, aka: true, salesCents: true, liMembers: true } } },
       }),
     ])
     const allCandidates = pooled.filter(c => !heldGiant({ id: c.brandId, ...c.brand }, q))
@@ -9259,7 +9260,7 @@ const handlers: Record<string, Handler> = {
         category: theme,
       },
       select: {
-        id: true, name: true, aka: true, salesCents: true,
+        id: true, name: true, aka: true, salesCents: true, liMembers: true,
         targets: { select: { status: true, shelved: true, sentAt: true } },
       },
     })

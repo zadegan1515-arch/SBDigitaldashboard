@@ -368,7 +368,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     {
       // The fill's order by size: target, not measured, small, big.
       await prisma.brand.createMany({ data: [
-        { id: 'sz_big', name: 'Size Big', category: 'beverage', liMembers: 2400 },
+        { id: 'sz_big', name: 'Size Big', category: 'beverage', liMembers: 900 },
         { id: 'sz_small', name: 'Size Small', category: 'beverage', liMembers: 7 },
         { id: 'sz_none', name: 'Size None', category: 'beverage' },
         { id: 'sz_mid', name: 'Size Mid', category: 'beverage', liMembers: 120 },
@@ -386,7 +386,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       // their size; the rest after, in the usual order (coverage.ts).
       await prisma.brand.createMany({ data: [
         { id: 'gp_mid', name: 'Gap Mid', category: 'beverage', liMembers: 120 },
-        { id: 'gp_big', name: 'Gap Big', category: 'beverage', liMembers: 2400 },
+        { id: 'gp_big', name: 'Gap Big', category: 'beverage', liMembers: 900 }, // big, under 1,500 (held back like a giant past it)
         { id: 'gp_has', name: 'Has Buyer Mid', category: 'beverage', liMembers: 120 },
         { id: 'gp_other', name: 'Gap Other Titles', category: 'beverage', liMembers: 120 },
       ] })
@@ -643,16 +643,19 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       const giant = await prisma.brand.create({ data: { name: 'Skoal', category: 'nicotine', linkedinUrl: 'https://www.linkedin.com/company/skoal-e2e/' } })
       const huge = await prisma.brand.create({ data: { name: 'Hugeco Drinks', category: 'beverage', liMembers: 1600, linkedinUrl: 'https://www.linkedin.com/company/hugeco/' } })
       const mid = await prisma.brand.create({ data: { name: 'Midco Drinks', category: 'beverage', liMembers: 80, linkedinUrl: 'https://www.linkedin.com/company/midco/' } })
+      // A conglomerate is never skipped (Leo: "yes except for congomerates").
+      const cong = await prisma.brand.create({ data: { name: 'Brown-Forman', category: 'spirits', liMembers: 5200, linkedinUrl: 'https://www.linkedin.com/company/brown-forman-e2e/' } })
       const ids = (j) => j.items.map(i => i.brandId)
       const kept = (await ingest({ action: 'liList', me: leo, focus: '' })).j
-      assert.ok([giant.id, huge.id, mid.id].every(id => ids(kept).includes(id)), 'without the skip, all three are on the list')
+      assert.ok([giant.id, huge.id, mid.id, cong.id].every(id => ids(kept).includes(id)), 'without the skip, all four are on the list')
       const skip = (await ingest({ action: 'liList', me: leo, focus: '', skipGiants: true })).j
       assert.ok(!ids(skip).includes(giant.id) && !ids(skip).includes(huge.id), 'the giant and the 1,600-person brand are skipped')
       assert.ok(ids(skip).includes(mid.id), 'a mid-size brand stays')
+      assert.ok(ids(skip).includes(cong.id), 'a conglomerate stays, 5,200 on LinkedIn or not')
       assert.ok(skip.bigSkipped >= 2)
-      await prisma.brand.deleteMany({ where: { id: { in: [giant.id, huge.id, mid.id] } } })
+      await prisma.brand.deleteMany({ where: { id: { in: [giant.id, huge.id, mid.id, cong.id] } } })
     }
-    ok('very big brands skipped: a household name and a 1,500+ company are left off, a mid-size brand stays');
+    ok('very big brands skipped: a household name and a 1,500+ company are left off, a mid-size brand and a conglomerate stay');
 
     // Outreach → People's Fill schedule is the same list, cut into days.
     {

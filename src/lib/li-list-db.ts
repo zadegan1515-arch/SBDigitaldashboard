@@ -16,7 +16,7 @@ import { brandSize, sizeRank } from './brand-size'
 import { countBuyers, BUYER_TARGET } from './buyers'
 import { noBuyerFirst } from './coverage'
 import { giantWhy } from './giants'
-import { giantOf, rowReached, parseGiants, GIANTS_KEY } from './queue-rules'
+import { giantOf, veryBigWhy, rowReached, parseGiants, GIANTS_KEY, VERY_BIG_LI } from './queue-rules'
 
 // How many people we keep on file per brand (Leo, Sep 2026) — see
 // /api/ingest. The fill only reads brands under it.
@@ -25,9 +25,10 @@ export const CONTACT_CAP_PER_BRAND = 25
 // brand read since then without it is due once for it.
 export const SN_SINCE = Date.parse('2026-10-12T04:00:00Z')
 // "Very big" for the fill's skip: 1,500+ people on LinkedIn (Leo, Oct 12 2026:
-// "not reach out to any brand with over 1500 employees"); giants.ts covers the
-// household names whatever their page says.
-export const VERY_BIG_LI = 1500
+// "not reach out to any brand with over 1500 employees"; queue-rules.ts, the
+// same line the Schedule holds back — conglomerates never); giants.ts covers
+// the household names whatever their page says.
+export { VERY_BIG_LI }
 
 // A big company works ten at a time (Leo, Oct 7 2026) — isBigBrand in
 // /api/data, the same rule.
@@ -100,12 +101,13 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     .map(b => b.id))
   // Very big brands left off altogether (Leo, Oct 12 2026: "skip the very big
   // brands"): the giants the Schedule holds back (giants.ts — household names,
-  // the big parents and their brands, $1B+ sales) and anything with 1,500+
-  // people on LinkedIn, unless Leo OK'd that brand. The Schedule's own brands
-  // and names he asked for still go.
+  // the big parents' brands, $1B+ sales) and anything with 1,500+ people on
+  // LinkedIn, unless Leo OK'd that brand. Conglomerates (the parent companies
+  // themselves) are read like any brand. The Schedule's own brands and names
+  // he asked for still go.
   const skipBig = body.skipGiants === true
-  const veryBig = (b: { id: string; liMembers: number | null }) =>
-    giantIds.has(b.id) || (!giants.ok.has(b.id) && (b.liMembers ?? 0) >= VERY_BIG_LI)
+  const veryBig = (b: { id: string; name: string; aka: string | null; liMembers: number | null }) =>
+    giantIds.has(b.id) || (!giants.ok.has(b.id) && !!veryBigWhy(b))
   const all = everyBrand
   const reachedIds = new Set(all
     .filter(b => b.targets.some(t => rowReached({ status: t.status, sentAt: t.sentAt, emailedAt: t.emailedAt, emails: t._count.emails })))
