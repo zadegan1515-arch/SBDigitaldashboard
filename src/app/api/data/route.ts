@@ -2041,7 +2041,8 @@ function brandFit(b: FitFacts, reachable: number, rates: AcceptRates | null, now
     salesCents: centsNum(b.salesCents), fundingCents: centsNum(b.fundingCents), lastRoundAt: b.lastRoundAt,
     usStatus: b.usStatus, sponsorsCollege: b.sponsorsCollege, bizStatus: b.bizStatus, acquiredBy: b.acquiredBy,
     researchedAt: b.researchedAt,
-    reachable, need: workNeed({ ...b, big: isBigBrand(b) }), acceptRate: rateOrNull(rates, b.category), priority: categoryPriority(b.category), now,
+    reachable, need: workNeed({ ...b, big: isBigBrand(b) }), acceptRate: rateOrNull(rates, b.category), priority: categoryPriority(b.category),
+    giant: giantOf(b), now,
   })
 }
 // Who a Best fit day may pick: a brand nobody there has been reached at
@@ -11845,7 +11846,7 @@ const handlers: Record<string, Handler> = {
       const raw = String(r.category ?? '').trim().toLowerCase()
       const cat = isCategoryKey(raw) ? raw : guessCategory(r.name, r.category)
       const g = fit ? gradeFromFit(fit) : gradeDiscovery(
-        { category: cat, signals: r.signals, hasParent: !!parentOf(r.name, null) },
+        { category: cat, signals: r.signals, hasParent: !!parentOf(r.name, null), giant: giantOf({ name: r.name }) },
         { priority: categoryPriority(cat), acceptRate: rateOrNull(rates, cat), now })
       return { ...r, source: sourceOf(r.query), inSystem: !!existing, contactCount: existing?._count.contacts ?? 0, grade: g }
     })

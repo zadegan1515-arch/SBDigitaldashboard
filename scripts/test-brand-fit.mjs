@@ -78,13 +78,35 @@ t('sales and funding: only the stronger one counts', () => {
   assert.equal(both.score, sales.score)
 })
 
-t('no money known: LinkedIn size stands in', () => {
+t('no money known: LinkedIn size stands in — mid-size (20–499) scores the most (Leo, Oct 12 2026)', () => {
   const big = scoreBrand({ ...base, liMembers: 900 })
   const target = scoreBrand({ ...base, liMembers: 120 })
   const unknown = scoreBrand({ ...base })
   const small = scoreBrand({ ...base, liMembers: 9 })
-  assert.ok(big.score > target.score && target.score > unknown.score && unknown.score > small.score)
+  assert.ok(target.score > big.score && big.score > unknown.score && unknown.score > small.score,
+    [target.score, big.score, unknown.score, small.score].join(' '))
   assert.equal(small.tooSmall, true)
+  const funded = scoreBrand({ ...base, fundingCents: 30 * M })
+  assert.ok(funded.score > target.score, 'a size guess never beats real money')
+})
+
+t('money to spend but not too big: $10M–$500M in sales scores the most (Leo, Oct 12 2026)', () => {
+  const pts = (sales) => scoreBrand({ ...base, salesCents: sales * M }).reasons.find(r => /^sales/.test(r.text))
+  assert.equal(pts(10).points, 40); assert.equal(pts(300).points, 40); assert.equal(pts(500).points, 40)
+  assert.match(pts(300).text, /sweet spot/)
+  assert.equal(pts(5).points, 22, 'small but real')
+  assert.equal(pts(700).points, 24, 'big')
+  assert.equal(pts(2000).points, 8, '$1B+ = a giant')
+  assert.equal(pts(0.5).points, 0)
+  assert.ok(scoreBrand({ ...base, salesCents: 50 * M }).score > scoreBrand({ ...base, salesCents: 800 * M }).score)
+})
+
+t('a giant gets the giant\'s points whatever its money says', () => {
+  const g = scoreBrand({ ...base, salesCents: 200 * M, giant: 'household name' })
+  const ok = scoreBrand({ ...base, salesCents: 200 * M })
+  assert.equal(ok.score - g.score, 32)
+  assert.ok(g.reasons.some(r => /giant \(household name\)/.test(r.text) && r.points === 8))
+  assert.equal(g.reasons.reduce((s, r) => s + r.points, 0), g.score, 'points still add up')
 })
 
 t('category priority: Top 30, Middle 15, Low 0, Skip 0 (Leo, Oct 7 2026)', () => {
@@ -113,7 +135,7 @@ t('category beats money unless the gap is huge', () => {
 })
 
 t('score stays 0..100 and every point has a reason', () => {
-  const top = scoreBrand({ ...base, salesCents: 900 * M, sponsorsCollege: true, acceptRate: 0.9 })
+  const top = scoreBrand({ ...base, salesCents: 300 * M, sponsorsCollege: true, acceptRate: 0.9 })
   assert.equal(top.score, 100)
   assert.equal(top.reasons.reduce((s, r) => s + r.points, 0), 100)
   const bottom = scoreBrand({ category: 'software', reachable: 0, need: 3, acceptRate: 0, now, salesCents: 0, sponsorsCollege: false })

@@ -5,12 +5,12 @@
 //
 // A find that isn't on the roster yet is scored with what Discover knows:
 // its category (Leo's priority), the hunt's "already sponsors college /
-// music" sign, "mid-size and growing" as a growth-tier size, and a parent
-// company from parents.ts. Money isn't known and nobody is on file yet —
+// music" sign, "mid-size and growing" as a growth-tier size, a parent
+// company from parents.ts, and whether it's a giant (giants.ts). Money isn't known and nobody is on file yet —
 // the same as any new brand. A find already on the roster uses that brand's
 // own Brand Fit (facts, people, size).
 //
-// Letters (a find with no people tops out in the low 70s):
+// Letters (a find with no people tops out in the upper 70s):
 //   A  60+  — a Top category with a real sign, or a brand already doing well
 //   B  45+  — worth adding
 //   C  30+  — only if there's room
@@ -55,13 +55,14 @@ export function hasSign(signals: string | null | undefined, sign: string): boole
 
 // A find not on the roster yet: what Discover knows, as Brand Fit input.
 export function discoveryFitInput(
-  row: { category: string | null; signals?: string | null; hasParent?: boolean },
+  row: { category: string | null; signals?: string | null; hasParent?: boolean; giant?: string | null },
   ctx: { priority: Priority; acceptRate: number | null; now: Date },
 ): FitInput {
   return {
     category: row.category,
     tier: hasSign(row.signals, 'midsize') ? 'growth' : null, // addDiscoveredBrand files it the same way
     hasParent: !!row.hasParent,
+    giant: row.giant ?? null,
     sponsorsCollege: hasSign(row.signals, 'sponsors') ? true : null,
     reachable: 0,
     need: 4,
@@ -72,7 +73,7 @@ export function discoveryFitInput(
 }
 
 export function gradeDiscovery(
-  row: { category: string | null; signals?: string | null; hasParent?: boolean },
+  row: { category: string | null; signals?: string | null; hasParent?: boolean; giant?: string | null },
   ctx: { priority: Priority; acceptRate: number | null; now: Date },
 ): DiscoverGrade {
   return gradeFromFit(scoreBrand(discoveryFitInput(row, ctx)))

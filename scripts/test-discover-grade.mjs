@@ -48,7 +48,7 @@ t('a Top category with no sign → B', () => {
   assert.equal(gradeDiscovery({ category: 'energy', signals: '' }, ctx('top')).grade, 'B')
 })
 
-t('a Middle category with no sign → C; with both signs → B', () => {
+t('a Middle category with no sign → C; mid-size and sponsoring college → B', () => {
   assert.equal(gradeDiscovery({ category: 'snacks', signals: null }, ctx('middle')).grade, 'C')
   assert.equal(gradeDiscovery({ category: 'snacks', signals: 'sponsors,midsize' }, ctx('middle')).grade, 'B')
 })
@@ -70,6 +70,12 @@ t('a Skip category is always D, and says why', () => {
   const f = scoreBrand({ category: 'betting', priority: 'skip', salesCents: 500 * 1e6 * 100, sponsorsCollege: true, reachable: 4, need: 4, now })
   const g2 = gradeFromFit(f)
   assert.equal(g2.grade, 'D'); assert.equal(g2.capped, 'Skip category')
+})
+
+t('a giant find grades low', () => {
+  const g = gradeDiscovery({ category: 'energy', signals: 'sponsors,midsize', giant: 'household name' }, ctx('top'))
+  assert.equal(g.grade, 'B', JSON.stringify(g.score))
+  assert.ok(g.score < gradeDiscovery({ category: 'energy', signals: 'sponsors,midsize' }, ctx('top')).score)
 })
 
 t('not sold in the US / closed → D', () => {
