@@ -4,11 +4,11 @@
 // into the run's days), so the schedule is always what the run really reads.
 // Read-only.
 import { PrismaClient } from '@prisma/client'
-import { focusTerms, matchesFocus } from './li-capture'
+import { focusTerms, matchesFocus, decideCompanyMatch, pageLooksWrong } from './li-capture'
 import { readLiLog, liRestsNow, readLiResearch, researchResting, LI_SCRIPT_VERSION } from './li-sweep'
 import { readHiddenLog } from './li-hidden'
 import { parentOf, isParentCompany, LI_PARENT_PAGES_KEY } from './parents'
-import { readJsonSetting, LI_CONFIRMED_KEY, type Confirmed } from './li-review'
+import { readJsonSetting, LI_CONFIRMED_KEY, LI_REVIEW_KEY, type Confirmed, type Review } from './li-review'
 import { LANES, RESEARCH_EXTRA, brandKey, secondSearchName } from './stock'
 import { dueDays, shortOnPeople, plannedFirst, workNeed } from './planned-first'
 import { scoreBrand, priorityOf } from './brand-fit'
@@ -25,6 +25,8 @@ export const CONTACT_CAP_PER_BRAND = 25
 // The day the fill's Sales Navigator step shipped (New York midnight): a
 // brand read since then without it is due once for it.
 export const SN_SINCE = Date.parse('2026-10-12T04:00:00Z')
+// The company-match fix (decideCompanyMatch / pageLooksWrong) shipped.
+export const REMATCH_SINCE = Date.parse('2026-10-13T12:00:00Z')
 // "Very big" for the fill's skip: 1,500+ people on LinkedIn (Leo, Oct 12 2026:
 // "not reach out to any brand with over 1500 employees"; queue-rules.ts, the
 // same line the Schedule holds back — conglomerates never); giants.ts covers
@@ -134,7 +136,18 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     if (body.salesNav !== true || !b.linkedinUrl || !m || m.sn || m.snRetried) return false
     return !!m.snMissed || Date.parse(m.at) >= SN_SINCE || (!!h && h.likely > 0 && !h.zachAt)
   }
-  const restsNow = (b: { id: string; name: string; aka: string | null }) => liRestsNow(log[b.id], !!parentOf(b.name, b.aka))
+  // Read before the Oct 13 2026 match fix and put on "Which LinkedIn page
+  // is theirs?": due again once when its saved results now resolve (a
+  // same-named company in another trade, LinkedIn's bare "Manufacturing").
+  const review = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
+  const rematch = (b: { id: string; name: string; aka: string | null; category?: string | null }) => {
+    const e = review[b.id], m = log[b.id]
+    if (!e || (m && Date.parse(m.at) >= REMATCH_SINCE)) return false
+    if (e.why === 'wrong') return !!e.pageIndustry && !pageLooksWrong(b.category, e.pageIndustry)
+    return e.why === 'unclear' && !!decideCompanyMatch(b, e.candidates || []).pick
+  }
+  const restsNow = (b: { id: string; name: string; aka: string | null; category?: string | null }) =>
+    liRestsNow(log[b.id], !!parentOf(b.name, b.aka)) && !rematch(b)
   const resting = underCap.filter(b => restsNow(b) && !snRetry(b)).length
   // Brands Leo said have no LinkedIn page ("None of these") aren't searched again.
   const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})

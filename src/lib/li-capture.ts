@@ -335,7 +335,10 @@ export function decideCompanyMatch(
     if (fit.length) return { pick: mostFollowed(fit), reason: 'exact' }
     // One exact name whose own line says it sells what the brand sells.
     const says = exact.filter(c => descriptionFits(brand.category, c.subtitle))
-    return says.length === 1 ? { pick: says[0], reason: 'exact' } : { pick: null, reason: 'unclear' }
+    if (says.length === 1) return { pick: says[0], reason: 'exact' }
+    // No exact name fits: a same-named company in another trade doesn't
+    // hide the brand's own page further down (Oct 13 2026: Sierra Nevada
+    // Corporation, the defense firm, blocked Sierra Nevada Brewing Co.).
   }
   const near = list.slice(0, 3).filter(c => {
     const cn = normalizeCompany(c.name)
@@ -343,7 +346,18 @@ export function decideCompanyMatch(
     return hit && fits(c)
   })
   if (near.length) return { pick: mostFollowed(near), reason: 'near' }
+  // LinkedIn's bare "Manufacturing" says nothing either way (NJOY, G FUEL,
+  // Onda): one exact name under it is the brand's page.
+  const generic = exact.filter(c => genericIndustry(brand.category, c.subtitle))
+  if (checkable && generic.length === 1) return { pick: generic[0], reason: 'exact' }
   return { pick: null, reason: 'unclear' }
+}
+
+// Product categories where LinkedIn's catch-all "Manufacturing" industry
+// is neither a fit nor a sign of another company.
+const GENERIC_OK = /^(?:electrolytes|energy|beverage|rtd|spirits|alcohol|athletic|nicotine|cpg|apparel|beauty|wellness|tech|home)$/
+export function genericIndustry(category: string | null | undefined, subtitle: string | null | undefined): boolean {
+  return GENERIC_OK.test(String(category || '')) && /^manufacturing$/i.test(industryOf(subtitle))
 }
 
 // The first of the most-followed; results with no count lose to any count.
@@ -365,7 +379,7 @@ export function industryCheckable(category: string | null | undefined): boolean 
 // category can be checked, LinkedIn shows an industry, and it doesn't fit.
 export function pageLooksWrong(category: string | null | undefined, industry: string | null | undefined): boolean {
   const ind = String(industry || '').trim()
-  return industryCheckable(category) && !!ind && !industryFits(category, ind)
+  return industryCheckable(category) && !!ind && !industryFits(category, ind) && !genericIndustry(category, ind)
 }
 
 // Discovery's "already on the roster" test: one name is the other plus

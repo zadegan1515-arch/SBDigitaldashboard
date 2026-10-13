@@ -239,6 +239,17 @@ t('an exact name needs a fitting industry too (Native the deodorant, not the car
   assert.equal(pageLooksWrong('beauty', 'Personal Care Product Manufacturing'), false)
   assert.equal(pageLooksWrong('beauty', ''), false, 'no industry shown: no verdict')
   assert.equal(pageLooksWrong('unresolved', 'Individual and Family Services'), false)
+  // Oct 13 2026 run: a same-named company in another trade, and LinkedIn's bare "Manufacturing".
+  const snc = bev('Sierra Nevada Corporation', 'Defense and Space Manufacturing • Sparks, NV • 200K followers')
+  const snb = bev('Sierra Nevada Brewing Co.', 'Food and Beverage Manufacturing • Chico, CA • 60K followers')
+  assert.equal(decideCompanyMatch({ name: 'Sierra Nevada', category: 'rtd' }, [snc, snb]).pick?.name, 'Sierra Nevada Brewing Co.')
+  assert.equal(decideCompanyMatch({ name: 'NJOY', category: 'nicotine' }, [bev('NJOY', 'Manufacturing • Scottsdale, AZ • 20K followers')]).pick?.name, 'NJOY')
+  assert.equal(decideCompanyMatch({ name: 'G FUEL', category: 'energy' }, [bev('G FUEL', 'Manufacturing • 30K followers'), bev('G Fuel Logistics', 'Truck Transportation')]).pick?.name, 'G FUEL')
+  assert.equal(decideCompanyMatch({ name: 'Zone', category: 'energy' }, [bev('Zone', 'Manufacturing'), bev('Zone', 'Manufacturing • 2K followers')]).reason, 'unclear', 'two bare Manufacturing pages: Leo picks')
+  assert.equal(decideCompanyMatch({ name: 'Zone', category: 'software' }, [bev('Zone', 'Manufacturing')]).reason, 'unclear', 'not a product category')
+  assert.equal(pageLooksWrong('nicotine', 'Manufacturing'), false)
+  assert.equal(pageLooksWrong('electrolytes', 'Manufacturing'), false)
+  assert.equal(pageLooksWrong('energy', 'Defense and Space Manufacturing'), true)
 })
 
 t('parent companies: the brands whose people are under them, by any spelling', () => {

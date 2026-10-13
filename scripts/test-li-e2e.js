@@ -452,6 +452,31 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.ok(!(await data('linkedinPeople')).pageReview.some(e => e.brandId === 'b_alp'), 'not back on Leo\'s list');
     ok('"None of these" sticks: off the worklist (a parent brand only for the parent\'s page), never back on Leo\'s list');
 
+    // Read before the Oct 13 2026 match fix and parked on Leo's list: due again
+    // when the saved results now resolve; still unclear → keeps resting.
+    {
+      const old = '2026-10-12T15:00:00.000Z';
+      await prisma.brand.create({ data: { id: 'b_snb', name: 'Sierra Nevada Test', aka: 'Sierra Nevada', category: 'rtd' } });
+      await prisma.brand.create({ data: { id: 'b_zon', name: 'Zonex Test', aka: 'Zone', category: 'energy' } });
+      const sweep = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liSweepLog' } })).value);
+      for (const id of ['b_snb', 'b_zon']) sweep[id] = { at: old, added: 0, v: 2, note: 'no clear LinkedIn page' };
+      await prisma.setting.update({ where: { key: 'liSweepLog' }, data: { value: JSON.stringify(sweep) } });
+      const rev = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liPageReview' } }))?.value || '{}');
+      rev.b_snb = { at: old, why: 'unclear', saved: null, pageIndustry: null, candidates: [
+        { slug: 'sierra-nevada-corporation', name: 'Sierra Nevada Corporation', subtitle: 'Defense and Space Manufacturing • 200K followers' },
+        { slug: 'sierra-nevada-brewing-co', name: 'Sierra Nevada Brewing Co.', subtitle: 'Food and Beverage Manufacturing • 60K followers' }] };
+      rev.b_zon = { at: old, why: 'unclear', saved: null, pageIndustry: null, candidates: [
+        { slug: 'zone-a', name: 'Zone', subtitle: 'Manufacturing' }, { slug: 'zone-b', name: 'Zone', subtitle: 'Manufacturing • 2K followers' }] };
+      await prisma.setting.upsert({ where: { key: 'liPageReview' }, update: { value: JSON.stringify(rev) }, create: { key: 'liPageReview', value: JSON.stringify(rev) } });
+      const l = (await ingest({ action: 'liList', focus: '', me: { slug: 'leo-z', name: 'Leo Z' } })).j;
+      assert.ok(l.items.some(i => i.brandId === 'b_snb'), 'Sierra Nevada back on the worklist');
+      assert.ok(!l.items.some(i => i.brandId === 'b_zon'), 'Zone still resting');
+      const m = (await ingest({ action: 'liMatched', brandId: 'b_snb', candidates: rev.b_snb.candidates.map(c => ({ url: 'https://www.linkedin.com/company/' + c.slug + '/', name: c.name, subtitle: c.subtitle })), me: { slug: 'leo-z', name: 'Leo Z' } })).j;
+      assert.equal((await prisma.brand.findUnique({ where: { id: 'b_snb' } })).linkedinUrl, 'https://www.linkedin.com/company/sierra-nevada-brewing-co/', JSON.stringify(m));
+      await prisma.brand.deleteMany({ where: { id: { in: ['b_snb', 'b_zon'] } } });
+    }
+    ok('a brand parked before the match fix whose results now resolve is read again (Sierra Nevada Brewing, not the defense firm)');
+
     // Everything the run did, with the people's names.
     const detail = await data('liRunDetail', { id: run.id });
     const ld = detail.brands.find(b => b.name === 'Liquid Death');
