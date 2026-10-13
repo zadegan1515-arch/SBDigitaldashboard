@@ -77,7 +77,10 @@ export function orderFillGroups<T extends FillGroup>(groups: T[]): T[] {
 // that starts empty may split a brand (see getTodayQueue) — a day with a
 // few spots left leaves them open; only then, and only when nothing fits
 // whole, does the best brand go in partly. bigLimit: a Best fit day's one
-// big company (bigFits).
+// big company (bigFits). A held group (already in today's list) is that
+// day's own: `onDay` counts it already, so it is never refused as "a
+// second big company" — getTodayQueue tops it up all the same, and the
+// Schedule's preview must say so (review fix, Oct 13 2026).
 export function fillWholeBrands<T extends FillGroup>(groups: T[], room: number, allowPartial = true,
   bigLimit?: { bestFit: boolean; onDay: number }): {
   whole: T[]; partial: { group: T; take: number } | null; skipped: T[]
@@ -87,14 +90,15 @@ export function fillWholeBrands<T extends FillGroup>(groups: T[], room: number, 
   let used = 0
   let bigs = bigLimit?.onDay ?? 0
   const bestFit = !!bigLimit?.bestFit
+  const bigOk = (g: T) => g.held || bigFits(g.big, bigs, bestFit)
   for (const g of groups) {
-    if (g.size <= 0 || used >= room || used + g.size > room || !bigFits(g.big, bigs, bestFit)) { skipped.push(g); continue }
+    if (g.size <= 0 || used >= room || used + g.size > room || !bigOk(g)) { skipped.push(g); continue }
     whole.push(g)
     used += g.size
-    if (g.big) bigs += 1
+    if (g.big && !g.held) bigs += 1
   }
   if (!whole.length && room > 0 && allowPartial) {
-    const first = groups.find(g => g.size > 0 && bigFits(g.big, bigs, bestFit))
+    const first = groups.find(g => g.size > 0 && bigOk(g))
     if (first) {
       return { whole, partial: { group: first, take: Math.min(room, first.size) }, skipped: skipped.filter(g => g !== first) }
     }

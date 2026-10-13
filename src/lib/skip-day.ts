@@ -36,8 +36,10 @@ export type SkipLog = {
 const isKey = (k: unknown): k is string => typeof k === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(k)
 const ids = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && !!x) : [])
 
-// The stored days, today on (a day that has gone is spent). Anything
-// malformed is dropped rather than trusted.
+// The stored days from `today` on (a day that has gone is spent; route.ts
+// asks from a few weeks back only for the days a part-sent brand's sitting
+// is judged by — sitting-history). Anything malformed is dropped rather
+// than trusted.
 export function parseSkipDays(raw: unknown, today: string): Map<string, SkipLog> {
   const out = new Map<string, SkipLog>()
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out
@@ -80,7 +82,10 @@ export function dayMoveShape(from: DayPlan | undefined, to: DayPlan | undefined)
 //  - anything Leo moved since stays where he put it (named).
 // The target's category goes back if the move set it and nobody changed it
 // since; a target the move opened closes when nothing is left on it.
-export function undoDayMove(plan: Plan, date: string, log: SkipLog): {
+// keep: brands that stay on `to` whatever the move did — route.ts passes
+// the ones that already sent someone there when `to` has become today (a
+// brand that went out today is never taken off it).
+export function undoDayMove(plan: Plan, date: string, log: SkipLog, opts: { keep?: ReadonlySet<string> } = {}): {
   plan: Plan; back: string[]; stay: Array<{ id: string; on: string | null }>; categoryBack: boolean; closeTo: boolean
 } {
   const next: Plan = {}
@@ -92,7 +97,8 @@ export function undoDayMove(plan: Plan, date: string, log: SkipLog): {
   const stay: Array<{ id: string; on: string | null }> = []
   for (const id of log.pins) {
     const now = on.get(id) ?? null
-    if (moved.has(id) ? now === log.to && !!log.to : !now) back.push(id)
+    const kept = !!now && now === log.to && !!opts.keep?.has(id)
+    if (!kept && (moved.has(id) ? now === log.to && !!log.to : !now)) back.push(id)
     else stay.push({ id, on: now })
   }
   const to = log.to

@@ -42,6 +42,11 @@
 //      preview's expect; "No day — take it off" sends no target; the "Thu
 //      off" chip's Undo previews, then undoes; a day taken off reads "(send
 //      on it after all)" in the add-a-day menus.
+//  13. Review fixes (Oct 13 2026): Fill to 30 on a Best fit day holding a
+//      big company adds no second one; a tick on a brand that left the list
+//      is dropped (never added unseen); a failed add reads "+ Add" again,
+//      not "Added ✓"; Plan my week's "Over by" is against the flat 30, not
+//      the week's room; the off chip's Undo names who leaves today's list.
 //   9. The numbers (week-limit, carry-front): a day whose LinkedIn week
 //      leaves 10 says "/ 10 · week limit" and Fill to 10, an over day says
 //      what it can take; a carried card reads "From Tue · carried 2×" and
@@ -84,6 +89,11 @@ let skipDays = [];
 // and the Fill box's suggestions carried by the Schedule itself.
 let stampVal = '';
 let embedSug = false;
+// Section 13: big companies on the Best fit Tuesday, an add that fails,
+// an Undo whose target day is today.
+let bigs13 = 0;
+let failAdd = '';
+let undoToday = false;
 const SUG = ['s1', 's2', 's3', 's4', 's5', 's6'].map((id, i) => ({ id, name: 'Sug ' + (i + 1), category: 'energy', going: 3, label: { kind: 'ready', reachable: 3, need: 3, onFile: 3 }, fit: { score: 80 - i }, people: [] }));
 const GIANT_CARD = { id: 'g1', name: 'Red Bull', category: 'energy', state: 'blocked', going: 0, people: [], giant: true, reason: 'giant', reasonText: 'A giant (a household name) — held back for now. Add anyway to send it.' };
 const PLAN = () => ({
@@ -109,7 +119,7 @@ const PLAN = () => ({
       sentPeople: [], overflow: [],
     },
     {
-      date: '2026-10-13', category: 'bestfit', auto: true, total: pinned13.length * 3 + (carryCard ? 6 : 0), sent: 0, offTheme: 0,
+      date: '2026-10-13', category: 'bestfit', auto: true, total: pinned13.length * 3 + (carryCard ? 6 : 0), sent: 0, offTheme: 0, bigs: bigs13,
       ...(cap13 != null ? { cap: cap13 } : {}),
       pinned: (giantCard ? [GIANT_CARD] : []).concat(pinned13.map((id) => ({ id, name: 'Sug ' + id.slice(1), category: 'energy', state: 'going', going: 3, people: [] })))
         .concat(carryCard ? [
@@ -157,7 +167,7 @@ const H = {
   planReorderDay: ({ date, brandIds }) => ({ ok: true, date, brandIds, changed: true, waiting: [] }),
   searchPlanBrands: ({ q }) => ({ brands: /^cel/i.test(q) ? ROWS : /^red/i.test(q) ? [GIANT_ROW] : [] }),
   // g* brands are giants: refused unless the add says allowGiants.
-  planAddBrands: ({ date, brandIds, allowGiants }) => ({ ok: true, results: brandIds.map((id) => (/^s\d/.test(id) && date === '2026-10-13' && pinned13.push(id), /^g/.test(id) && !(allowGiants || []).includes(id)
+  planAddBrands: ({ date, brandIds, allowGiants }) => (failAdd && brandIds.includes(failAdd) ? (() => { throw new Error('Server error'); })() : { ok: true, results: brandIds.map((id) => (/^s\d/.test(id) && date === '2026-10-13' && pinned13.push(id), /^g/.test(id) && !(allowGiants || []).includes(id)
     ? { brandId: id, brandName: 'Giant ' + id, added: false, state: 'refused', going: 0, reason: 'giant', reasonText: 'A giant (a household name) — held back for now. Add anyway to send it.' }
     : { brandId: id, brandName: id, added: true, state: 'going', going: 4, people: [] })) }),
   setGiantsOn: ({ on }) => { giantsOn = !!on; return { giantsOn }; },
@@ -235,7 +245,8 @@ const H = {
     return { ok: true, from, to: to || null, moved: 1, back: ['Refused Co'], message: 'Thu Oct 8 is off · its plan moved to Tue Oct 13' };
   },
   undoMoveDay: ({ date, preview }) => {
-    if (preview) return { ok: true, preview: true, date, to: '2026-10-13', back: ['Moved Co', 'Refused Co'], stay: [], categoryBack: false, closeTo: false };
+    if (preview) return { ok: true, preview: true, date, to: '2026-10-13', back: ['Moved Co', 'Refused Co'], stay: [], categoryBack: false, closeTo: false,
+      unqueue: undoToday ? [{ brand: 'Moved Co', people: 2 }] : [] };
     skipDays = [];
     return { ok: true, date };
   },
@@ -706,6 +717,68 @@ async function main() {
   embedSug = false;
   stampVal = '';
   console.log('✓ 12 faster page: Fill box lists come with the Schedule, two quick adds = one refresh, an unchanged tab return reads and redraws nothing, the shut fold waits, Off today / Archive one call each');
+
+  // 13. Review fixes ------------------------------------------------------
+  pinned13 = [];
+  await page.evaluate(() => { SCHED.adding = {}; SCHED.fillSel = {}; return sdRefresh(); });
+  await page.waitForSelector('[data-sdfillbox="2026-10-13"] [data-sdmissadd="s1"]', { state: 'attached' });
+  if (!await page.isVisible('[data-sdmissadd="s1"]')) await page.click(sugFold + ' > summary');
+  // a. A Best fit day holding a big company: Fill to 30 adds no second one.
+  SUG[0].big = true; SUG[1].big = true;
+  bigs13 = 1;
+  await page.evaluate(() => sdRefresh());
+  await page.waitForFunction(() => (SCHED.days['2026-10-13'] || {}).bigs === 1);
+  await page.waitForFunction(() => sdFillReady('2026-10-13'));
+  assert.deepEqual(await page.evaluate(() => sdFillTip('2026-10-13').fit.ids), ['s3', 's4', 's5', 's6'], 'no big one while the day holds one');
+  bigs13 = 0;
+  await page.evaluate(() => sdRefresh());
+  await page.waitForFunction(() => (SCHED.days['2026-10-13'] || {}).bigs === 0 && sdFillReady('2026-10-13'));
+  assert.deepEqual(await page.evaluate(() => sdFillTip('2026-10-13').fit.ids), ['s1', 's3', 's4', 's5', 's6'], 'one big one, never two');
+  delete SUG[0].big; delete SUG[1].big;
+  // b. A tick on a brand that left the list is dropped, never added unseen.
+  await page.waitForSelector('[data-sdfck="s4"]');
+  await page.check('[data-sdfck="s4"]');
+  await page.check('[data-sdfck="s5"]');
+  pinned13 = ['s4'];   // s4 went onto the day another way (dragged, Fill to 30)
+  await page.evaluate(() => sdRefresh());
+  await page.waitForFunction(() => !document.querySelector('[data-sdfillbox="2026-10-13"] [data-sdfck="s4"]') &&
+    /Add 1 ticked/.test((document.querySelector('[data-sdfilltick="2026-10-13"]') || {}).textContent || ''));
+  const adds13 = count('planAddBrands');
+  await page.click('[data-sdfilltick="2026-10-13"]');
+  await waitFor(() => count('planAddBrands') === adds13 + 1, 'the ticked add');
+  assert.deepEqual(last('planAddBrands').args.brandIds, ['s5'], 'only the tick still on the list');
+  // c. A failed add: the row reads "+ Add" again, not "Added ✓".
+  await page.waitForSelector('[data-sdfillbox="2026-10-13"] [data-sdmissadd="s6"]');
+  failAdd = 's6';
+  await page.click('[data-sdfillbox="2026-10-13"] [data-sdmissadd="s6"]');
+  await waitFor(() => last('planAddBrands').args.brandIds[0] === 's6', 'the failing add');
+  await page.waitForFunction(() => { const b = document.querySelector('[data-sdfillbox="2026-10-13"] [data-sdmissadd="s6"]'); return b && /\+ Add/.test(b.textContent) && !b.disabled; });
+  assert.equal(await page.$eval('[data-sdfillbox="2026-10-13"] .sd-orow[data-dragb="s6"]', (r) => r.classList.contains('sd-adding')), false, 'the failed row is not held as added');
+  failAdd = '';
+  // d. Plan my week: hand pins past the week's room aren't "Over by".
+  const pwDay = await page.evaluate(() => {
+    var keep = SCHED.pw;
+    SCHED.pw = { data: { linkedin: { limit: 100, near: 90 } }, off: {} };
+    var a = sdPwDayHtml({ date: '2026-10-16', cap: 10, keptPeople: 20, kept: [], add: [] });
+    var b = sdPwDayHtml({ date: '2026-10-16', cap: 10, keptPeople: 33, kept: [], add: [] });
+    SCHED.pw = keep;
+    return [a, b];
+  });
+  assert.doesNotMatch(pwDay[0], /Over by/, 'twenty hand-pinned people on a week-capped day: not over');
+  assert.match(pwDay[0], /Full ✓/);
+  assert.match(pwDay[1], /Over by 3/, 'past the flat 30 still says so');
+  // e. The off chip's Undo onto today names who leaves today's list.
+  undoToday = true;
+  skipDays = [{ date: '2026-10-08', to: '2026-10-13' }];
+  await page.evaluate(() => sdRefresh());
+  await page.waitForSelector('#sched-extra [data-sdskipundo="2026-10-08"]');
+  dialogs.length = 0;
+  const undo13 = count('undoMoveDay');
+  await page.click('#sched-extra [data-sdskipundo="2026-10-08"]');
+  await waitFor(() => count('undoMoveDay') === undo13 + 2, 'Undo preview then apply');
+  assert.match(dialogs[0], /Out of today’s list, back to waiting: Moved Co \(2 people\)/);
+  undoToday = false;
+  console.log('✓ 13 review fixes: one big company in Fill to 30, stale ticks dropped, a failed add reads + Add, Plan my week over the flat 30, Undo names today\'s list');
 
   assert.deepEqual(errors, [], 'no page errors');
   console.log('All Schedule checks passed.');

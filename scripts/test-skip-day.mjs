@@ -115,5 +115,18 @@ is('same category: nothing lost',
   is('nothing planned: no entry, the opened day closes', [r.plan['2026-11-26'], r.closeTo], [undefined, true])
 }
 
+{
+  // The target has become today and b already sent someone there: b stays
+  // on it (a brand that went out today is never taken off it), a comes back.
+  const l = log({ to: '2026-11-25', pins: ['a', 'b'], moved: ['a', 'b'] })
+  const r = undoDayMove({ '2026-11-25': { category: null, brandIds: ['a', 'b'] } }, '2026-11-26', l, { keep: new Set(['b']) })
+  is('keep: a brand that sent on the target stays there', [r.back, r.stay, r.plan['2026-11-25'], r.plan['2026-11-26']],
+    [['a'], [{ id: 'b', on: '2026-11-25' }], { category: null, brandIds: ['b'] }, { category: null, brandIds: ['a'] }])
+}
+// The history (sitting-history): route.ts reads from a few weeks back for
+// the days a part-sent brand's sitting is judged by.
+is('read from further back, a day gone by is kept',
+  [...parseSkipDays({ '2026-11-19': log(), '2026-10-01': log() }, '2026-11-01').keys()], ['2026-11-19'])
+
 console.log(`${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

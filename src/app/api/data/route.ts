@@ -67,7 +67,7 @@ import { checkBrandQueue, sortPicks, leaveOutFlagged, personProblem } from '@/li
 import { isBigBrand, workCount, keepInPlay, brandNames, type BigBrandFacts } from '@/lib/brand-work'
 import { queueGate, giantOf, sittingOf, secondTryOf, nyDayKey, STALE_INVITE_DAYS, REST_DAYS, GIANTS_KEY, parseGiants, type Gate, type OutreachRow } from '@/lib/queue-rules'
 import { sortToday, compareTodayBrands } from '@/lib/today-order'
-import { PLAN_BRAND_SELECT, loadPlanBrands, type PlanBrand } from '@/lib/plan-brands'
+import { PLAN_BRAND_SELECT, SENT_EMAIL, loadPlanBrands, type PlanBrand } from '@/lib/plan-brands'
 import { parseSkipDays, dayMoveShape, undoDayMove, type SkipLog } from '@/lib/skip-day'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import {
@@ -401,15 +401,29 @@ function addDaysKey(key: string, n: number): string {
 // every day check (isSendingKey, planningDays, scheduleDays,
 // nextSendingAfter, the queue rules' next sending day) sees them without
 // another argument.
-type ExtraDays = ReadonlySet<string> & { readonly skips?: ReadonlySet<string> }
-type DaySet = Set<string> & { skips?: Set<string> }
+// `past` = the days opened or taken off that have gone by, the last
+// DAY_HISTORY_DAYS of them (sitting-history, below).
+type PastDays = { before: string; extras: ReadonlySet<string>; skips: ReadonlySet<string> }
+type ExtraDays = ReadonlySet<string> & { readonly skips?: ReadonlySet<string>; readonly past?: PastDays }
+type DaySet = Set<string> & { skips?: Set<string>; past?: PastDays }
 const EXTRA_DAYS_MAX = 60
 const SKIP_DAYS_KEY = 'outreachSkipDays'
+// sitting-history: a part-sent brand's sitting runs on to the next sending
+// day as the calendar was THEN (queue-rules.ts sittingOf; Leo, Oct 12
+// 2026: "the rest go out on the next sending day"). Rebuilt from today's
+// calendar it moved: once Thanksgiving's day off had gone by, Wednesday's
+// part-sent brand read its sitting as Wed + Thu, and the Tuesday it was
+// carried to said "rests two weeks"; an extra Friday that had gone by let
+// a brand finish a second time the Tuesday after. So the days Leo opened
+// or took off stay stored this long after they pass — past the two weeks'
+// rest and a week more no sitting can still be running.
+const DAY_HISTORY_DAYS = REST_DAYS + 7
 
-// Past days are dropped as they are read, so a Friday that has been and
-// gone never counts again and the list can't grow without bound. Read
-// once per request and handed to every day check below — two reads in one
-// request could disagree if Leo added a day in between.
+// Every day check looks forward: past days are left out of the set as
+// they are read, so a Friday that has been and gone never counts again,
+// and they fall out of the setting once they are older than the history.
+// Read once per request and handed to every day check below — two reads
+// in one request could disagree if Leo added a day in between.
 async function readExtraDays(): Promise<DaySet> {
   const [row, skipRaw] = await Promise.all([
     prisma.setting.findUnique({ where: { key: 'outreachExtraDays' } }),
@@ -418,8 +432,12 @@ async function readExtraDays(): Promise<DaySet> {
   let raw: any = []
   try { raw = row ? JSON.parse(row.value) : [] } catch { raw = [] }
   const today = localDayKey()
-  const days: DaySet = new Set<string>((Array.isArray(raw) ? raw : []).filter((k: any) => isDayKey(k) && k >= today))
-  days.skips = new Set(parseSkipDays(skipRaw, today).keys())
+  const since = addDaysKey(today, -DAY_HISTORY_DAYS)
+  const all: string[] = (Array.isArray(raw) ? raw : []).filter((k: any) => isDayKey(k) && k >= since)
+  const skipAll = [...parseSkipDays(skipRaw, since).keys()]
+  const days: DaySet = new Set<string>(all.filter(k => k >= today))
+  days.skips = new Set(skipAll.filter(k => k >= today))
+  days.past = { before: today, extras: new Set(all.filter(k => k < today)), skips: new Set(skipAll.filter(k => k < today)) }
   lastExtraDays = days
   return days
 }
@@ -428,10 +446,17 @@ async function readExtraDays(): Promise<DaySet> {
 // them — every request that reaches one has read them first.
 let lastExtraDays: ExtraDays = new Set<string>()
 
+// Returns the days from today on (what the page lists). The days gone by
+// stay as stored (sitting-history) — the set handed in holds today on only.
 async function writeExtraDays(days: ExtraDays): Promise<string[]> {
   const today = localDayKey()
+  const since = addDaysKey(today, -DAY_HISTORY_DAYS)
   const list = [...days].filter(k => isDayKey(k) && k >= today).sort().slice(0, EXTRA_DAYS_MAX)
-  const value = JSON.stringify(list)
+  const row = await prisma.setting.findUnique({ where: { key: 'outreachExtraDays' } })
+  let stored: any = []
+  try { stored = row ? JSON.parse(row.value) : [] } catch { stored = [] }
+  const past = [...new Set<string>((Array.isArray(stored) ? stored : []).filter((k: any) => isDayKey(k) && k >= since && k < today))].sort()
+  const value = JSON.stringify([...past, ...list])
   await prisma.setting.upsert({
     where: { key: 'outreachExtraDays' },
     create: { key: 'outreachExtraDays', value },
@@ -439,18 +464,26 @@ async function writeExtraDays(days: ExtraDays): Promise<string[]> {
   })
   const kept: DaySet = new Set(list)
   if (days.skips) kept.skips = new Set(days.skips)
+  kept.past = { before: today, extras: new Set(past), skips: days.past?.skips ?? new Set<string>() }
   lastExtraDays = kept
   return list
 }
 
-// The days Leo took off (skip-day), each with what its move did, for Undo.
+// The days Leo took off (skip-day), each with what its move did, for Undo
+// — today on; the ones gone by are only history (sitting-history).
 async function readSkipDays(): Promise<Map<string, SkipLog>> {
   return parseSkipDays(await readJsonSetting<unknown>(prisma, SKIP_DAYS_KEY, {}), localDayKey())
 }
 async function writeSkipDays(days: Map<string, SkipLog>, extras?: DaySet): Promise<void> {
   const today = localDayKey()
+  const since = addDaysKey(today, -DAY_HISTORY_DAYS)
+  // The days gone by stay as stored (sitting-history); `days` holds today on.
+  const stored = await readJsonSetting<unknown>(prisma, SKIP_DAYS_KEY, {})
+  const past = stored && typeof stored === 'object' && !Array.isArray(stored)
+    ? Object.entries(stored as Record<string, unknown>).filter(([k]) => isDayKey(k) && k >= since && k < today)
+    : []
   const keep = [...days.entries()].filter(([k]) => k >= today).sort(([a], [b]) => (a < b ? -1 : 1)).slice(0, EXTRA_DAYS_MAX)
-  await writeJsonSetting(prisma, SKIP_DAYS_KEY, Object.fromEntries(keep))
+  await writeJsonSetting(prisma, SKIP_DAYS_KEY, Object.fromEntries([...past, ...keep]))
   if (extras) extras.skips = new Set(keep.map(([k]) => k))
 }
 
@@ -839,10 +872,24 @@ async function readQueueCtx(): Promise<QueueCtx> {
   return { giantsOn: g.on, giantOk: g.ok, today: localDayKey(), extras }
 }
 // The sending day after a day key, for queue-rules.ts (Tue–Thu only when
-// the extra days aren't at hand).
+// the extra days aren't at hand) — a day gone by as the calendar was then
+// (sitting-history): a part-sent brand's sitting is judged by the days Leo
+// had opened or taken off when it happened, not by today's list.
 const NO_EXTRAS: ExtraDays = new Set<string>()
+function wasSendingKey(key: string, extras: ExtraDays): boolean {
+  const p = extras.past
+  if (!p || key >= p.before) return isSendingKey(key, extras)
+  return p.extras.has(key) || (isRegularSendingKey(key) && !p.skips.has(key))
+}
 function nextSendingOf(extras: ExtraDays | undefined) {
-  return (key: string) => nextSendingAfter(key, extras ?? NO_EXTRAS)
+  const ex = extras ?? NO_EXTRAS
+  return (key: string): string | null => {
+    for (let k = 1; k < 60; k++) {
+      const d = addDaysKey(key, k)
+      if (wasSendingKey(d, ex)) return d
+    }
+    return null
+  }
 }
 async function writeGiants(on: boolean, ok: Set<string>): Promise<void> {
   await writeJsonSetting(prisma, GIANTS_KEY, { on, ok: [...ok].slice(-500) })
@@ -1038,7 +1085,7 @@ function finishingSitting(b: WorkBrand, day: string, extras?: ExtraDays): boolea
 // must not say "Nobody would go out" for a brand the click then queues.
 function previewBrandPicks(
   b: PlanBrand,
-  opts: { forToday: boolean; dayStart?: Date; explicitAdd?: boolean; queue?: QueueRule; day?: string },
+  opts: { forToday: boolean; dayStart?: Date; explicitAdd?: boolean; queue?: QueueRule; day?: string; extras?: ExtraDays },
 ): { reason: OutreachReason | null; people: PreviewPerson[] } {
   const dayStart = opts.dayStart ?? startOfLocalDay()
   const gate = outreachGate(b, { forToday: opts.forToday && !opts.explicitAdd, dayStart, queue: opts.queue })
@@ -1050,7 +1097,7 @@ function previewBrandPicks(
     .sort((x, y) => Number(y.isDecisionMaker) - Number(x.isDecisionMaker))
   // The day it would go: asked, else today or the next sending day (where
   // a part-sent brand's rest goes).
-  const extras = opts.queue?.q.extras ?? lastExtraDays
+  const extras = opts.extras ?? opts.queue?.q.extras ?? lastExtraDays
   const day = opts.day ?? opts.queue?.day ?? (opts.forToday ? localDayKey() : nextSendingAfter(localDayKey(), extras) ?? localDayKey())
   const work = brandWork(b, reachable, day, extras)
   const names = brandNames(b)
@@ -1060,7 +1107,19 @@ function previewBrandPicks(
     const c = contactOf.get(t.contactId)
     return { t, title: t.contact.title, linkedinUrl: c?.linkedinUrl ?? null, email: c?.email ?? null, fit: t.fitScore }
   }
-  const live = b.targets.filter(t => !t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied'].includes(t.status))
+  const liveAll = b.targets.filter(t => !t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied'].includes(t.status))
+  // Flagged people stay out while anyone unflagged is reachable — the ones
+  // waiting in the pool too, as queueBrandTargets sets them aside (next in
+  // line); never anyone already in today's list.
+  const flagged = (title: string | null) => !!personProblem(title, names)
+  const targeted = new Set(b.targets.map(t => t.contactId))
+  const freshAll = reachable.filter(c => !targeted.has(c.id))
+  const capShelved = b.targets.filter(t => t.shelved && t.shelvedHow === 'cap' && ['queued', 'drafted'].includes(t.status))
+  const holdFlagged = liveAll.some(t => !flagged(t.contact.title)) ||
+    capShelved.some(t => !flagged(t.contact.title)) || freshAll.some(c => !flagged(c.title))
+  const live = holdFlagged
+    ? liveAll.filter(t => !(['queued', 'drafted'].includes(t.status) && !(t.queuedFor && t.queuedFor >= dayStart) && flagged(t.contact.title)))
+    : liveAll
   // On a later day, people already in TODAY's queue are going out today,
   // not that day — they show on today's column. Counting them here too
   // put the same three people on two days.
@@ -1086,15 +1145,17 @@ function previewBrandPicks(
     return { reason: contacted.length >= work && !live.some(inTodayQueue) ? 'contacted' : nobody(), people: [] }
   }
   const room = work - live.length
-  const revivable = sortPicks(b.targets
-    .filter(t => t.shelved && t.shelvedHow === 'cap' && ['queued', 'drafted'].includes(t.status))
+  const revivable = sortPicks(capShelved
+    .filter(t => !(holdFlagged && flagged(t.contact.title)))
     .map(asPick), names)
     .map(x => x.t)
     .slice(0, room)
-  const targeted = new Set(b.targets.map(t => t.contactId))
-  const fresh = dropExecsAtBigBrands(reachable.filter(c => !targeted.has(c.id)), b.tier, live.some(t => !isExecTitle(t.contact.title)))
+  // Flagged people out first, then executives at a big brand (the order
+  // queueBrandTargets uses — a founder who is the only real buyer goes).
+  const fresh = dropExecsAtBigBrands(leaveOutFlagged(freshAll, names, live.some(t => !flagged(t.contact.title))), b.tier,
+    live.some(t => !isExecTitle(t.contact.title) && !flagged(t.contact.title)))
   const picks = sortPicks(
-    leaveOutFlagged(fresh, names, live.some(t => !personProblem(t.contact.title, names))).map(c => ({ ...c, fit: scoreFit(c.title, b.tier) })),
+    fresh.map(c => ({ ...c, fit: scoreFit(c.title, b.tier) })),
     names,
   ).slice(0, room - revivable.length)
   const people = [
@@ -1605,16 +1666,20 @@ async function readRefileLog(): Promise<RefileLog | null> {
 // change of every table it reads, the settings it reads included (not
 // the two it writes itself). A deleted row changes the count; every write
 // through Prisma moves updatedAt. A setting getOutreachPlan starts to read
-// belongs in this list.
+// belongs in this list. The stamp also decides whether the page reads the
+// second-try list again on a tab return, so what secondTryBrands reads is
+// in it too — Deal: a deal added elsewhere takes a brand off that list
+// (review fix, Oct 13 2026).
 async function scheduleStamp(): Promise<string> {
   const keys = ['outreachPlan', 'outreachExtraDays', SKIP_DAYS_KEY, GIANTS_KEY, CARRY_KEY, CARRY_DONE_KEY,
-    DAY_CLOSED_KEY, AUTO_QUEUED_KEY, PLAN_WEEK_KEY, DAY_THEME_KEY, CATEGORY_PRIORITY_KEY]
+    DAY_CLOSED_KEY, AUTO_QUEUED_KEY, PLAN_WEEK_KEY, DAY_THEME_KEY, CATEGORY_PRIORITY_KEY, OPENED_TODAY_KEY]
   const rows = await prisma.$queryRaw<Array<{ s: string }>>`
     SELECT concat_ws('|',
       (SELECT count(*)::text || ':' || coalesce(max("updatedAt")::text, '') FROM "Brand"),
       (SELECT count(*)::text || ':' || coalesce(max("updatedAt")::text, '') FROM "Contact"),
       (SELECT count(*)::text || ':' || coalesce(max("updatedAt")::text, '') FROM "Target"),
       (SELECT count(*)::text || ':' || coalesce(max("updatedAt")::text, '') FROM "EmailMessage"),
+      (SELECT count(*)::text || ':' || coalesce(max("updatedAt")::text, '') FROM "Deal"),
       (SELECT count(*)::text || ':' || coalesce(max("updatedAt")::text, '') FROM "Setting" WHERE "key" = ANY(${keys}))
     ) AS s`
   return [localDayKey(), Math.floor(Date.now() / 600e3), rows[0]?.s ?? ''].join('|')
@@ -1839,6 +1904,7 @@ async function planAddCore(plan: OutreachPlan, date: string, brandIds: unknown, 
     const adding = new Set(addedBrands.map(x => x.b.id))
     await queuePlannedToday({ category: day.category, brandIds: day.brandIds.filter(id => !adding.has(id)) })
   }
+  const openedNow: string[] = []
   for (const { b, result } of addedBrands) {
     // Planning it by hand ends a Pass's two weeks.
     if (b.passedUntil && !forToday) {
@@ -1888,6 +1954,8 @@ async function planAddCore(plan: OutreachPlan, date: string, brandIds: unknown, 
       }),
       prisma.target.count({ where: { brandId: b.id, sentAt: { gte: dayStart } } }),
     ])
+    // Opened today by hand: a reload never tops it up (queuePlannedToday).
+    if (stamped.length || sentN > 0) openedNow.push(b.id)
     if (qr?.queued || stamped.length) {
       result.state = 'going'
       result.going = stamped.length
@@ -1906,6 +1974,7 @@ async function planAddCore(plan: OutreachPlan, date: string, brandIds: unknown, 
       result.reasonText = reasonText(why, { ...reasonCtx(b, q), message: failure ?? undefined })
     }
   }
+  await noteOpenedToday(openedNow)
   // A later day: an added brand past the day's 30 (in the day's order)
   // waits, and the answer says so instead of "3 going out". Today's adds
   // go straight into today's list — adding to today is sending today.
@@ -1930,14 +1999,16 @@ async function planAddCore(plan: OutreachPlan, date: string, brandIds: unknown, 
 // full), moved from another day, people taken out of today's queue, and
 // who would go out — today from the queue's own preview, a later day
 // from the preview after those people are back in the pool.
-async function planAddPreview(plan: OutreachPlan, date: string, brandIds: unknown, allowGiants: unknown = []) {
+// ctx: the queue rules to judge by — moveDay's preview hands in the
+// calendar its apply will see (the moved day already off).
+async function planAddPreview(plan: OutreachPlan, date: string, brandIds: unknown, allowGiants: unknown = [], ctx?: QueueCtx) {
   const today = localDayKey()
   const forToday = date === today
   const ids = [...new Set((Array.isArray(brandIds) ? brandIds : []).map(String).filter(Boolean))].slice(0, 40)
   const brands: PlanBrand[] = ids.length
     ? await prisma.brand.findMany({ where: { id: { in: ids } }, select: PLAN_BRAND_SELECT })
     : []
-  const q0 = await readQueueCtx()
+  const q0 = ctx ?? await readQueueCtx()
   const byId = new Map(brands.map(b => [b.id, b]))
   // A giant Leo is about to "Add anyway" previews as added (nothing saved).
   const q: QueueCtx = { ...q0, giantOk: new Set([...q0.giantOk, ...giantIds(allowGiants)]) }
@@ -1968,7 +2039,7 @@ async function planAddPreview(plan: OutreachPlan, date: string, brandIds: unknow
     const sim: PlanBrand = unqueued
       ? { ...b, targets: b.targets.map(t => (inToday(t) ? { ...t, queuedFor: null } : t)) }
       : b
-    const p = previewBrandPicks(sim, { forToday, dayStart, explicitAdd: forToday, day: date })
+    const p = previewBrandPicks(sim, { forToday, dayStart, explicitAdd: forToday, day: date, extras: q.extras })
     const sentToday = forToday && !p.people.length && b.targets.some(t => t.sentAt && t.sentAt >= dayStart)
     results.push({
       brandId: id, brandName: b.name, added: true,
@@ -2006,7 +2077,7 @@ async function planAddPreview(plan: OutreachPlan, date: string, brandIds: unknow
       : []
     const size = new Map<string, number>()
     for (const b of on) {
-      const n = planRefusal(b, q, date) ? 0 : previewBrandPicks(b, { forToday: false, dayStart, day: date }).people.length
+      const n = planRefusal(b, q, date) ? 0 : previewBrandPicks(b, { forToday: false, dayStart, day: date, extras: q.extras }).people.length
       size.set(b.id, n)
       dayPeople += n
     }
@@ -2014,7 +2085,7 @@ async function planAddPreview(plan: OutreachPlan, date: string, brandIds: unknow
     // In the day's order, the added ones last: the ones past the 30 wait.
     const waiting = waitingOnDay(dayIds, id => size.get(id) ?? 0)
     if (waiting.size) {
-      const to = nextSendingAfter(date, await readExtraDays()) ?? 'later'
+      const to = nextSendingAfter(date, q.extras) ?? 'later'
       for (const r of results) if (r.added && waiting.has(r.brandId)) r.waits = to
     }
   }
@@ -2022,9 +2093,11 @@ async function planAddPreview(plan: OutreachPlan, date: string, brandIds: unknow
 }
 
 // Today's planned brands (Schedule) into today's queue, in the order Leo
-// set on the Schedule (Leo: "set who goes first"). A brand already in
-// today's list or already worked today is in, as it is — never topped up
-// by a reload. The rest go whole, in
+// set on the Schedule (Leo: "set who goes first"). A brand opened today
+// already (outreachOpenedToday) is in, as it is — never topped up by a
+// reload; one with someone listed or sent before it was opened (queued
+// from its brand page, an invite logged with SB · Log) goes up to its
+// number once. The rest go whole, in
 // order, while they fit in the day's 30 — counting everyone already sent
 // or in the list; one that doesn't fit waits (a smaller one after it can
 // still go), and the morning roll moves it to the next sending day like
@@ -2045,12 +2118,14 @@ async function queuePlannedToday(planDay: PlanDay | null, opts: { dryRun?: boole
   if (!order.length) return { skipped, waiting, would: 0 }
   const dayStart = startOfLocalDay()
   const q = await readQueueCtx()
-  const [brands, sentToday, stampedRows, gated] = await Promise.all([
+  const [brands, sentToday, stampedRows, gated, opened] = await Promise.all([
     prisma.brand.findMany({ where: { id: { in: order } }, select: PLAN_BRAND_SELECT }),
     prisma.target.count({ where: { sentAt: { gte: dayStart } } }),
     prisma.target.findMany({ where: { queuedFor: { gte: dayStart }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } }, select: { brandId: true } }),
     gatedStampBrands(dayStart, q),
+    readOpenedToday(),
   ])
+  const nowOpened: string[] = []
   // People skipped by the queue rules take no room.
   const stampedToday = stampedRows.filter(t => !gated.has(t.brandId)).length
   const byId = new Map(brands.map(b => [b.id, b]))
@@ -2073,15 +2148,20 @@ async function queuePlannedToday(planDay: PlanDay | null, opts: { dryRun?: boole
     // before the queue rules): the card already says why; never stamp it.
     const refused = planRefusal(b, q)
     if (refused && refused !== 'inconversation') { skipped.push({ brandId: bid, brandName: b.name, reason: refused }); continue }
+    // Opened today already (by the plan or a hand add to today): it went
+    // in whole the first time, so a reload adds nobody to it. Topping it up
+    // again on every load pushed a 30-person day to 35, refilled a spot Leo
+    // had just left out, and let executives step in
+    // (no-new-people-on-reload). Not "anyone of theirs is listed or sent
+    // today": one person queued from the brand page, or one invite logged
+    // with SB · Log before the tab loaded, then kept the rest of a planned
+    // brand from ever going (review fix, Oct 13 2026).
+    if (opened.has(bid)) continue
     const inList = b.targets.filter(t =>
       t.queuedFor && t.queuedFor >= dayStart && ['queued', 'drafted'].includes(t.status) && !t.shelved).length
-    const sentHere = b.targets.filter(t => t.sentAt && t.sentAt >= dayStart).length
-    // Already in today's list, or already worked today: it went in whole
-    // the first time, so a reload adds nobody to it. Topping it up again
-    // on every load pushed a 30-person day to 35, refilled a spot Leo had
-    // just left out, and let executives step in (no-new-people-on-reload).
-    if (inList || sentHere) continue
-    const size = previewBrandPicks(b, { forToday: true, dayStart }).people.length
+    // Who it adds: the preview names the people already listed too, and
+    // they are counted in `used` already.
+    const size = Math.max(0, previewBrandPicks(b, { forToday: true, dayStart }).people.length - inList)
     if (size > 0 && used + size > DAILY_SEND_LIMIT) {
       waiting.push({ brandId: bid, brandName: b.name, people: size })
       continue
@@ -2090,6 +2170,9 @@ async function queuePlannedToday(planDay: PlanDay | null, opts: { dryRun?: boole
       used += size
       continue
     }
+    const sentHere = b.targets.filter(t => t.sentAt && t.sentAt >= dayStart).length
+    // In today's list or worked today and nobody more would go: it's in.
+    if (!size && (inList || sentHere)) { nowOpened.push(bid); continue }
     const before = inList
     try {
       const r: any = await (handlers.queueBrandTargets as Handler)({ brandId: bid })
@@ -2099,9 +2182,31 @@ async function queuePlannedToday(planDay: PlanDay | null, opts: { dryRun?: boole
     } catch (e: any) {
       skipped.push({ brandId: bid, brandName: b.name, reason: e?.message ?? 'error' })
     }
-    used += Math.max(0, (await stampedNow(bid)) - before)
+    const after = await stampedNow(bid)
+    used += Math.max(0, after - before)
+    // Opened only once someone is in: a brand nobody could go out for is
+    // tried again on the next load (Leo may have added a person since).
+    if (after > 0 || sentHere) nowOpened.push(bid)
   }
+  if (nowOpened.length) await noteOpenedToday(nowOpened)
   return { skipped, waiting, would: used - start }
+}
+
+// Which planned brands were opened into today's list today (Setting
+// outreachOpenedToday = { day, ids }): by the plan (queuePlannedToday) or a
+// hand add to today (planAddCore). queuePlannedToday never tops one up
+// again today; the Schedule's today card reads it too.
+const OPENED_TODAY_KEY = 'outreachOpenedToday'
+async function readOpenedToday(): Promise<Set<string>> {
+  const v = await readJsonSetting<{ day?: unknown; ids?: unknown } | null>(prisma, OPENED_TODAY_KEY, null)
+  return new Set(v && v.day === localDayKey() && Array.isArray(v.ids) ? v.ids.map(String) : [])
+}
+async function noteOpenedToday(ids: string[]): Promise<void> {
+  if (!ids.length) return
+  const have = await readOpenedToday()
+  if (ids.every(id => have.has(id))) return
+  for (const id of ids) have.add(id)
+  await writeJsonSetting(prisma, OPENED_TODAY_KEY, { day: localDayKey(), ids: [...have].slice(-2000) })
 }
 
 // The sending day after `key` — where a planned brand that doesn't fit
@@ -2255,6 +2360,8 @@ function suggestionsFor(
       linkedinUrl: b.linkedinUrl, externalId: b.externalId,
       text: `${people.length} would go out`,
       related: !!(b.category && related.has(b.category)),
+      // A big company: Fill to 30 takes one a Best fit day at most.
+      big: isBigBrand(b),
     }))
 
   const ranked = rankRows(open.filter(inCat), false)
@@ -4617,7 +4724,7 @@ const handlers: Record<string, Handler> = {
     // sent yet). Otherwise every reload of a day left with two open
     // spots split the next brand to fill them — the half-brand Leo's
     // rule forbids. Those spots stay open for the Fill box.
-    const first = groups.find(g => bigFits(g.big, bigs, bestFitDay))
+    const first = groups.find(g => g.held || bigFits(g.big, bigs, bestFitDay))
     const dayWasEmpty = handPicked.length === 0 && sentToday === 0
     if (!queuedBrands.size && dayWasEmpty && roomLeft > 0 && first) {
       const got = await queueWhole(first)
@@ -4667,6 +4774,10 @@ const handlers: Record<string, Handler> = {
     // Open spots: today's 30 less who went and who's listed (none on a day
     // nothing goes out — those cards offer another day instead).
     const openSpots = sendingDay ? Math.max(0, room - handPicked.length - newIds.length) : 0
+    // "Add to today" is a hand add: it is held to the flat 30, not to what
+    // LinkedIn's week leaves the automatic picks (Leo, Oct 12 2026) — the
+    // page warns when the week is what's short (review fix, Oct 13 2026).
+    const handSpots = sendingDay ? Math.max(0, DAILY_SEND_LIMIT - sentToday - handPicked.length - newIds.length) : 0
     // (A full day never read its brands: those are read here.)
     const moreGroups = groups.filter(g => !queuedBrands.has(g.id) && !g.held && (g.people === null || g.people.length > 0)).slice(0, 12)
     const moreLoad = moreGroups.filter(g => !g.people).map(g => g.id)
@@ -4727,7 +4838,7 @@ const handlers: Record<string, Handler> = {
         ? { ...t, problem: personProblem(t.contact?.title, [t.brand?.name, ...String(t.brand?.aka ?? '').split(/[,;]/).map((x: string) => x.trim())].filter(Boolean)) }
         : t),
       more: [],
-      moreBrands, openSpots,
+      moreBrands, openSpots, handSpots,
       sentList: await ensureTemplateDrafts(sentList),
       labels,
     }
@@ -7324,7 +7435,18 @@ const handlers: Record<string, Handler> = {
           where: { OR: [{ email: { not: null } }, { linkedinUrl: { not: null } }] },
           orderBy: { isDecisionMaker: 'desc' },
         },
-        targets: { include: { contact: { select: { name: true, title: true } } } },
+        // The emails the machine sent count as outreach (queue-rules.ts),
+        // as in PLAN_BRAND_SELECT: without them a brand emailed weeks ago
+        // read a later invite as its first outreach, opened whole as if
+        // finishing its sitting while the Schedule said nobody goes
+        // (review fix, Oct 13 2026).
+        targets: {
+          include: {
+            contact: { select: { name: true, title: true } },
+            _count: { select: { emails: { where: SENT_EMAIL } } },
+            emails: { where: SENT_EMAIL, select: { sentAt: true }, orderBy: { sentAt: 'asc' }, take: 1 },
+          },
+        },
       },
     })
     if (!brand) throw new Error('Brand not found')
@@ -7397,12 +7519,26 @@ const handlers: Record<string, Handler> = {
     // number now, as it comes up, never in bulk. "+ Person" (force) adds
     // exactly one: the best waiting person if there is one.
     const startOfDay = startOfLocalDay()
-    const pooled = sortPicks(pending.filter(t => !t.queuedFor || t.queuedFor < startOfDay).map(asPick), names).map(x => x.t)
+    // Flagged people (queue-check.ts: no buyer title, refused by the
+    // LinkedIn rules) stay out while anyone unflagged is reachable here —
+    // the people waiting and the ones next in line too, not only new picks:
+    // a flagged person waiting in the pool went ahead of an unflagged buyer
+    // with no target yet (review fix, Oct 13 2026). They wait next in line;
+    // nobody in today's list is touched. "+ Person" (force) skips this.
+    const flagged = (title: string | null) => !!personProblem(title, names)
+    const targeted = new Set(brand.targets.map(t => t.contactId))
+    const freshAll = brand.contacts.filter(c => !targeted.has(c.id))
+    const capShelved = brand.targets.filter(t => t.shelved && t.shelvedHow === 'cap' && ['queued', 'drafted'].includes(t.status))
+    const holdFlagged = !force && (live.some(t => !flagged(t.contact.title)) ||
+      capShelved.some(t => !flagged(t.contact.title)) || freshAll.some(c => !flagged(c.title)))
+    const pooledAll = sortPicks(pending.filter(t => !t.queuedFor || t.queuedFor < startOfDay).map(asPick), names).map(x => x.t)
+    const pooled = holdFlagged ? pooledAll.filter(t => !flagged(t.contact.title)) : pooledAll
+    const heldBack = pooledAll.filter(t => !pooled.includes(t))
     const promoteN = force ? Math.min(1, pooled.length)
       : finishing ? pooled.length
-      : Math.max(0, WORK_PER_BRAND - (live.length - pooled.length))
+      : Math.max(0, WORK_PER_BRAND - (live.length - pooledAll.length))
     const promote = pooled.slice(0, promoteN)
-    const nextInLine = force ? [] : pooled.slice(promoteN)
+    const nextInLine = force ? [] : [...pooled.slice(promoteN), ...heldBack]
     const promotedNames: string[] = []
     if (stamp && promote.length) {
       await prisma.target.updateMany({
@@ -7457,8 +7593,8 @@ const handlers: Record<string, Handler> = {
     // Only people waiting behind the limit ("cap") — someone shelved on
     // purpose stays shelved until Leo promotes them. Best first (picks);
     // never the people just set aside above.
-    const revivable = sortPicks(brand.targets
-      .filter(t => t.shelved && t.shelvedHow === 'cap' && ['queued', 'drafted'].includes(t.status) && !nextInLine.includes(t))
+    const revivable = sortPicks(capShelved
+      .filter(t => !nextInLine.includes(t) && !(holdFlagged && flagged(t.contact.title)))
       .map(asPick), names)
       .map(x => x.t)
       .slice(0, room)
@@ -7474,14 +7610,19 @@ const handlers: Record<string, Handler> = {
     // someone Zach can invite on LinkedIn ahead of an email-only contact
     // (it used to be email first), real buyers first, people the title
     // rules flag left out while anyone else is reachable.
-    const targeted = new Set(brand.targets.map(t => t.contactId))
-    // "+ Person" (force) may still reach an executive — or a flagged
-    // title — on purpose.
-    const fresh = dropExecsAtBigBrands(brand.contacts.filter(c => !targeted.has(c.id)), brand.tier,
-      !force && live.some(t => !isExecTitle(t.contact.title)))
+    // Flagged people out first, then executives at a big brand: the other
+    // way round a founder who was the only real buyer was dropped for the
+    // flagged staff, who then went because nobody unflagged was left
+    // (review fix, Oct 13 2026). A flagged non-executive in play doesn't
+    // keep the founder out either. "+ Person" (force) may still reach an
+    // executive — or a flagged title — on purpose.
+    const inPlayNow = live.filter(t => !nextInLine.includes(t))
+    const fresh = force
+      ? dropExecsAtBigBrands(freshAll, brand.tier, false)
+      : dropExecsAtBigBrands(leaveOutFlagged(freshAll, names, inPlayNow.some(t => !flagged(t.contact.title))), brand.tier,
+          inPlayNow.some(t => !isExecTitle(t.contact.title) && !flagged(t.contact.title)))
     const picks = sortPicks(
-      (force ? fresh : leaveOutFlagged(fresh, names, live.some(t => !nextInLine.includes(t) && !personProblem(t.contact.title, names))))
-        .map(c => ({ ...c, fit: scoreFit(c.title, brand.tier) })),
+      fresh.map(c => ({ ...c, fit: scoreFit(c.title, brand.tier) })),
       names,
     ).slice(0, room - revivable.length)
 
@@ -7636,7 +7777,7 @@ const handlers: Record<string, Handler> = {
       extras, brands, candidates, everyBrand, q,
       sentTodayN, stampedRaw, sentLog,
       carryLog, closedToday, planRates, autoToday,
-      shownHad, dayRowsHad, pw, themeLog, skipDays,
+      shownHad, dayRowsHad, pw, themeLog, skipDays, openedToday,
     ] = await Promise.all([
       // Read once: every day check in this request uses the same list.
       readExtraDays(),
@@ -7705,6 +7846,7 @@ const handlers: Record<string, Handler> = {
       readPlanWeekLog(),
       readJsonSetting<DayThemeLog | null>(prisma, DAY_THEME_KEY, null),
       readSkipDays(),
+      readOpenedToday(),
     ])
     const planned = new Set(Object.values(plan).flatMap((d: any) => d?.brandIds ?? []))
     const totalPool = candidates.length
@@ -7789,6 +7931,18 @@ const handlers: Record<string, Handler> = {
           .filter(t => t.queuedFor && t.queuedFor >= startToday && ['queued', 'drafted'].includes(t.status) && !t.shelved)
           .sort((x, y) => y.fitScore - x.fitScore)
         const sent = b.targets.filter(t => t.sentAt && t.sentAt >= startToday)
+        // Someone listed or sent before the plan opened it (queued from its
+        // brand page, an invite logged with SB · Log): the LinkedIn tab
+        // still opens it up to its number once (queuePlannedToday), so the
+        // card says so — `pendingAdds` = who that adds.
+        if ((stamped.length || sent.length) && !openedToday.has(b.id)) {
+          const p = previewBrandPicks(b, { forToday: true, dayStart })
+          const adds = Math.max(0, p.people.length - stamped.length)
+          if (adds > 0) {
+            return { ...base, state: 'going', going: p.people.length, sentToday: sent.length, pendingQueue: true,
+              pendingAdds: adds, stampedNow: stamped.length, people: p.people.slice(0, 6), reason: null, reasonText: null }
+          }
+        }
         if (stamped.length) {
           return { ...base, state: 'going', going: stamped.length, sentToday: sent.length, pendingQueue: false,
             people: stamped.slice(0, 6).map(personOf), reason: null, reasonText: null }
@@ -7897,15 +8051,18 @@ const handlers: Record<string, Handler> = {
             carriedSince: carried?.since ?? null,
             waits: null as string | null,
           }
+          // Who the card adds to the day (its people already listed count
+          // in the day's stamped number).
+          const adds = (card as { pendingAdds?: number }).pendingAdds ?? card.going
           if (card.state === 'going' && (!isToday || card.pendingQueue)) {
-            if (pinUsed + card.going > DAILY_SEND_LIMIT) card.waits = waitsTo ?? 'later'
-            else pinUsed += card.going
+            if (pinUsed + adds > DAILY_SEND_LIMIT) card.waits = waitsTo ?? 'later'
+            else pinUsed += adds
           }
           return card
         })
       const plannedCount = pinned
         .filter(p => p.state === 'going' && (!isToday || p.pendingQueue) && !p.waits)
-        .reduce((n, p) => n + p.going, 0)
+        .reduce((n, p) => n + ((p as { pendingAdds?: number }).pendingAdds ?? p.going), 0)
       // Today only: what's already stamped into the queue and what
       // already went out both take up room before the simulation fills.
       // A brand pinned to today is its own card. One pinned to a LATER
@@ -8012,6 +8169,9 @@ const handlers: Record<string, Handler> = {
       available = available.filter(c => !usedUp.has(c.brand.id))
       for (const id of usedUp) bestTaken.add(id)
       const autoGoing = goingNow.reduce((n, x) => n + x.n, 0)
+      // Big companies the day holds, its automatic rows included — the
+      // Fill box's Fill to 30 holds a Best fit day to one (sdFitPick).
+      const bigsOnDay = theme !== BEST_FIT_DAY ? 0 : bigOnDay + goingNow.filter(x => x.g.big && !x.g.held).length
       // `people` names who goes (first six, for the card); `going` is
       // the real count.
       type DayRow = { id: string; name: string; people: PreviewPerson[]; going: number; later?: number; website: string | null; linkedinUrl: string | null; externalId: string | null; topUp: boolean; inQueue: boolean; category: string | null }
@@ -8093,6 +8253,7 @@ const handlers: Record<string, Handler> = {
         // What the automatic picks fill the day to (above): the page's
         // "Fill to N" and open spots read it.
         cap: autoCap,
+        bigs: bigsOnDay,
         ready: Math.min(DAILY_SEND_LIMIT, total),
         total,
         over: Math.max(0, total - DAILY_SEND_LIMIT),
@@ -9091,7 +9252,20 @@ const handlers: Record<string, Handler> = {
     const fromDay: PlanDay = plan[from] ?? { category: null, brandIds: [] }
     const toDay: PlanDay | undefined = dst ? plan[dst] : undefined
     const shape = dayMoveShape(fromDay, dst ? toDay : undefined)
-    const sig = JSON.stringify([from, dst, fromDay.category ?? null, fromDay.brandIds, toDay?.category ?? null, toDay?.brandIds ?? []])
+    // The calendar the apply below works on: `from` off (an extra day
+    // closed), the target open. The preview judges by it too — a part-sent
+    // brand's sitting and every "waits until" day read it — so what Leo
+    // confirms is what happens (review fix, Oct 13 2026). It is in the
+    // signature: a day opened or taken off since shows the preview again.
+    const sim: DaySet = new Set([...extras].filter(k => k !== from))
+    sim.skips = new Set([...(extras.skips ?? []), from])
+    sim.past = extras.past
+    if (opening) {
+      if (sim.skips.has(dst)) sim.skips.delete(dst)
+      else sim.add(dst)
+    }
+    const sig = JSON.stringify([from, dst, fromDay.category ?? null, fromDay.brandIds, toDay?.category ?? null, toDay?.brandIds ?? [],
+      [...extras].sort(), [...(extras.skips ?? [])].sort()])
 
     const pins = fromDay.brandIds
     const named = pins.length ? await prisma.brand.findMany({ where: { id: { in: pins } }, select: { id: true, name: true, category: true } }) : []
@@ -9100,9 +9274,9 @@ const handlers: Record<string, Handler> = {
       // On the target: planAddPreview on a copy of the plan whose target
       // carries the moved category (a day with nothing planned takes it),
       // so its waits read the day as it would be.
-      const sim: OutreachPlan = { ...plan }
-      if (dst && shape.whole && fromDay.category) sim[dst] = { category: fromDay.category, brandIds: toDay?.brandIds ?? [] }
-      const p = dst && pins.length ? await planAddPreview(sim, dst, pins) : null
+      const simPlan: OutreachPlan = { ...plan }
+      if (dst && shape.whole && fromDay.category) simPlan[dst] = { category: fromDay.category, brandIds: toDay?.brandIds ?? [] }
+      const p = dst && pins.length ? await planAddPreview(simPlan, dst, pins, [], { ...(await readQueueCtx()), extras: sim }) : null
       const results = p ? p.results : pins.map(id => ({
         brandId: id, brandName: byId.get(id)?.name ?? 'a brand', added: false, state: 'back', going: 0,
         reason: null, reasonText: 'back to waiting', movedFrom: null, people: [] as PreviewPerson[],
@@ -9177,7 +9351,29 @@ const handlers: Record<string, Handler> = {
     const log = skips.get(String(date))
     if (!log) return { ok: false, message: 'Nothing to undo' }
     const plan = await readPlan()
-    const r = undoDayMove(plan, date, log)
+    // The target may have become today (a later day moved to an earlier
+    // one): its brands are in today's list by now. One that already sent
+    // someone today stays on today; the rest come off it, and their unsent
+    // people come back out of today's queue (as planMoveBrand does) — they
+    // went out today all the same before (review fix, Oct 13 2026).
+    const today = localDayKey()
+    const dayStart = startOfLocalDay()
+    const toIsToday = log.to === today
+    const sentThere = toIsToday && log.moved.length
+      ? new Set((await prisma.target.findMany({
+          where: { brandId: { in: log.moved }, sentAt: { gte: dayStart } }, select: { brandId: true }, distinct: ['brandId'],
+        })).map(t => t.brandId))
+      : new Set<string>()
+    const r = undoDayMove(plan, date, log, { keep: sentThere })
+    // Today stays a sending day: closing it would strand what is in its list.
+    const closeTo = r.closeTo && !!log.to && !toIsToday
+    const listed = toIsToday && r.back.length
+      ? await prisma.target.groupBy({
+          by: ['brandId'],
+          where: { brandId: { in: r.back }, status: { in: ['queued', 'drafted'] }, queuedFor: { gte: dayStart }, sentAt: null },
+          _count: true,
+        })
+      : []
     const ids = [...new Set([...r.back, ...r.stay.map(x => x.id)])]
     const named = ids.length ? await prisma.brand.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : []
     const nameOf = new Map(named.map(b => [b.id, b.name]))
@@ -9185,19 +9381,23 @@ const handlers: Record<string, Handler> = {
       date, label: dayLabel(date), to: log.to, toLabel: log.to ? dayLabel(log.to) : null, category: log.category,
       back: r.back.map(id => nameOf.get(id) ?? 'a brand'),
       stay: r.stay.filter(x => nameOf.has(x.id)).map(x => ({ name: nameOf.get(x.id)!, on: x.on, onLabel: x.on ? dayLabel(x.on) : null })),
-      categoryBack: r.categoryBack, closeTo: r.closeTo && !!log.to,
+      categoryBack: r.categoryBack, closeTo,
+      // People coming back out of today's list (the target is today).
+      unqueue: listed.filter(x => x._count > 0).map(x => ({ brand: nameOf.get(x.brandId) ?? 'a brand', people: x._count })),
     }
     if (preview) return { ok: true, preview: true, ...summary }
     const extras = await readExtraDays()
     skips.delete(date)
     await writeSkipDays(skips, extras)
     if (log.wasExtra) extras.add(date)
-    if (summary.closeTo && log.to && extras.has(log.to)) extras.delete(log.to)
-    if (log.wasExtra || summary.closeTo) await writeExtraDays(extras)
+    if (closeTo && log.to && extras.has(log.to)) extras.delete(log.to)
+    if (log.wasExtra || closeTo) await writeExtraDays(extras)
     // Back on a day that has since become today: queuePlannedToday stamps
     // its brands when the LinkedIn tab next opens, like any of today's pins.
     await writePlan(r.plan)
-    return { ok: true, ...summary }
+    let unqueued = 0
+    if (toIsToday) for (const id of r.back) unqueued += await unstampToday(id)
+    return { ok: true, ...summary, unqueued }
   },
 
   // "Didn't get to it": what's left of today — pinned brands with nothing
@@ -9875,7 +10075,13 @@ const handlers: Record<string, Handler> = {
     const fresh = after.filter(t => !before.has(t.id))
     const brands = [...new Set(fresh.map(t => t.brand.name))]
     const sentToday = await prisma.target.count({ where: { sentAt: { gte: startOfDay } } })
-    const dayCap = Number(r?.dayCap) || DAILY_SEND_LIMIT
+    // 0 is an answer (LinkedIn's week used up), not a missing one.
+    const dayCap = typeof r?.dayCap === 'number' ? r.dayCap : DAILY_SEND_LIMIT
+    // The week leaves nothing for automatic picks today: say that, not
+    // "30 open, nothing fits" (review fix, Oct 13 2026).
+    if (!fresh.length && dayCap < DAILY_SEND_LIMIT && dayCap - sentToday <= 0) {
+      return { added: 0, shortBy: 0, theme, weekFull: true, dayCap }
+    }
     const shortBy = Math.max(0, dayCap - sentToday - after.length)
     // Nothing more fits whole: the smallest brand next in line, so the
     // answer says why ("smallest needs 4").
@@ -10409,20 +10615,38 @@ const handlers: Record<string, Handler> = {
   // is passed for today, so neither the plan nor Best fit stamps it again
   // on the next load — it used to shelve them, and a planned brand came
   // straight back with new people. Tomorrow it is in play again.
+  // A brand that already sent someone today, on the day its first
+  // outreach began: the rest of that outreach goes out on the next sending
+  // day, its one sitting day for it (Leo, Oct 12 2026: "If Zach sends only
+  // some of a brand's people one day, the rest go out on the next sending
+  // day") — so it is pinned at the front of that day. Taken off with
+  // nothing more, the morning roll never carried it (it sent today) and
+  // nothing picks a reached brand by itself: its other people never went
+  // (review fix, Oct 13 2026).
   async unqueueBrand({ brandId }: any) {
     const id = String(brandId || '')
-    const brand = await prisma.brand.findUnique({ where: { id }, select: { name: true } })
+    const brand = await prisma.brand.findUnique({ where: { id }, select: PLAN_BRAND_SELECT })
     if (!brand) throw new Error('Brand not found')
     const today = localDayKey()
+    const dayStart = startOfLocalDay()
+    const extras = await readExtraDays()
     const plan = await readPlan()
     const planned = !!plan[today]?.brandIds?.includes(id)
-    if (planned) {
-      plan[today].brandIds = plan[today].brandIds.filter(x => x !== id)
-      await writePlan(plan)
+    if (planned) plan[today].brandIds = plan[today].brandIds.filter(x => x !== id)
+    const sentToday = brand.targets.some(t => t.sentAt && t.sentAt >= dayStart)
+    const sitting = sentToday ? sittingOf(outreachRows(brand), nextSendingOf(extras)) : null
+    const restOn = sitting && sitting.days[0] === today && sitting.days[1] ? sitting.days[1] : null
+    if (restOn) {
+      for (const k of Object.keys(plan)) {
+        if (k >= today && plan[k]?.brandIds?.includes(id)) plan[k].brandIds = plan[k].brandIds.filter(x => x !== id)
+      }
+      const day = plan[restOn] ?? { category: null, brandIds: [] }
+      plan[restOn] = { category: day.category ?? null, brandIds: [id, ...(day.brandIds ?? [])] }
     }
+    if (planned || restOn) await writePlan(plan)
     const count = await unstampToday(id)
     await prisma.brand.update({ where: { id }, data: { passedTodayAt: new Date() } })
-    return { brandName: brand.name, count, offPlan: planned, todayOnly: true }
+    return { brandName: brand.name, count, offPlan: planned, todayOnly: true, restOn, restOnLabel: restOn ? dayLabel(restOn) : null }
   },
 
   // Flip one target in or out of the queue by hand. Promoting past the

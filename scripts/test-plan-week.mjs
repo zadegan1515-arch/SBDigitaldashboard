@@ -304,6 +304,10 @@ const fillCat = (cat, n, size = 4, prefix = cat) => Array.from({ length: n }, (_
   // Nothing fits whole: the partial never breaks the one-big rule.
   const part = fillWholeBrands([g('bigA', 10, 90, { big: true }), g('m', 6, 50)], 4, true, { bestFit: true, onDay: 1 })
   is('the partial skips a second big company', [part.partial && part.partial.group.id, part.partial && part.partial.take], ['m', 4])
+  // A big brand already in today's list (held) is the day's one: onDay
+  // counts it, and it is still topped up — never refused as a second.
+  const held = fillWholeBrands([g('X', 9, 90, { big: true, held: true }), g('big2', 10, 80, { big: true }), g('m', 4, 50)], 30, false, { bestFit: true, onDay: 1 })
+  is('a held big brand is taken; a second big one still waits', [held.whole.map(x => x.id), held.skipped.map(x => x.id)], [['X', 'm'], ['big2']])
 
   // Plan my week, a Best fit day: one big company, Ready before short.
   const cands = [

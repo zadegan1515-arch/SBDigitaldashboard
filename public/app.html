@@ -11944,7 +11944,10 @@ function sdPwDayHtml(day) {
   var ticked = sdPwTicked(day);
   var total = (day.keptPeople || 0) + ticked.reduce(function (s, b) { return s + b.going; }, 0);
   var open = Math.max(0, cap - total);
-  var over = Math.max(0, total - cap);
+  // Over = past the flat 30: hand pins aren't held to what the week leaves
+  // the automatic picks (Leo, Oct 12 2026) — the Schedule says "Full ✓" for
+  // the same day, and the LinkedIn line below carries the week's warning.
+  var over = Math.max(0, total - sdCap());
   var status = over > 0 ? '<span class="sd-st bad">Over by ' + over + '</span>'
     : open === 0 ? '<span class="sd-st good">Full ✓</span>'
     : '<span class="sd-st warn">' + sdPlural(open, 'open spot', 'open spots') + '</span>';
@@ -12409,7 +12412,7 @@ function sdFillBtnState() {
 function sdInTodayQueue(id) {
   var day = SCHED.days[SCHED.today];
   if (!day) return '';
-  var hit = (day.pinned || []).filter(function (p) { return p.id === id && p.state === 'going' && !p.pendingQueue; })[0] ||
+  var hit = (day.pinned || []).filter(function (p) { return p.id === id && p.state === 'going' && (!p.pendingQueue || p.stampedNow > 0); })[0] ||
     (day.brands || []).filter(function (b) { return b.id === id && b.inQueue; })[0];
   return hit ? hit.name || SCHED.names[id] || 'a brand' : '';
 }
@@ -12468,8 +12471,11 @@ function sdTakeResults(key, results) {
 // list, "+ Add" in open spots, the drill-in's Add to…, the bulk bar.
 // One path, so they all report the same way. Resolves to the summary
 // (or null on an error, which has already been toasted).
+// withResults: resolve with { sum, results } (every brand's planAddBrands
+// answer, the giants' second call included) instead of the summary.
 function sdAdd(key, ids, opts) {
   opts = opts || {};
+  var done = function (sum, results) { return opts.withResults ? { sum: sum, results: results } : sum; };
   ids = (ids || []).filter(function (x, i, a) { return x && a.indexOf(x) === i; });
   if (!ids.length) return Promise.resolve(null);
   if (ids.length > 40) { toast('40 at a time — adding the first 40'); ids = ids.slice(0, 40); }
@@ -12506,13 +12512,13 @@ function sdAdd(key, ids, opts) {
         sdTakeResults(key, all);
         var sum2 = sdSummary(all);
         if (!opts.quiet) toast(sdDayTag(key) + ' — ' + sum2);
-        return sdRefresh().then(function () { return sum2; });
+        return sdRefresh().then(function () { return done(sum2, all); });
       });
     }
     sdTakeResults(key, results);
     var sum = sdSummary(results);
     if (!opts.quiet) toast(sdDayTag(key) + ' — ' + sum);
-    return sdRefresh().then(function () { return sum; });
+    return sdRefresh().then(function () { return done(sum, results); });
   }).catch(function (e) {
     toast(e.message);
     // Redraw so the button or Add to… menu that was disabled for this
@@ -12946,9 +12952,12 @@ function sdSkipUndo(date) {
     if (p.stay.length) lines.push('Stay where you put them since: ' + p.stay.map(function (x) { return x.name + (x.onLabel ? ' (' + x.onLabel + ')' : ''); }).join(', '));
     if (p.categoryBack && p.to) lines.push(sdDayName(p.to) + '’s category goes back');
     if (p.closeTo && p.to) lines.push(sdDayName(p.to) + ' stops being a sending day (nothing else is on it)');
+    // The day it moved to is today: those brands' people come back out of
+    // today's list (anyone already invited stays).
+    if ((p.unqueue || []).length) lines.push('Out of today’s list, back to waiting: ' + p.unqueue.map(function (u) { return u.brand + ' (' + sdPlural(u.people, 'person', 'people') + ')'; }).join(', '));
     if (!window.confirm('Send on ' + sdDayName(date) + ' after all?' + (lines.length ? '\n\n' + lines.join('\n') : '') + '\n\nNobody is deleted.')) return;
-    return sdPlanCall('undoMoveDay', { date: date }).then(function () {
-      toast(sdDayName(date) + ' is a sending day again');
+    return sdPlanCall('undoMoveDay', { date: date }).then(function (r) {
+      toast(sdDayName(date) + ' is a sending day again' + (r && r.unqueued ? ' · ' + sdPlural(r.unqueued, 'person', 'people') + ' out of today’s list' : ''));
       return sdRefresh();
     });
   }).catch(function (e) { toast(e.message); });
@@ -13181,11 +13190,21 @@ function sdSugGoing(b) {
 // What "Fill to 30" adds: suggestions in their order, each one only if
 // the whole brand fits in what is left, so a brand is never half-sent.
 // A brand too big is skipped and the fill keeps going with smaller ones.
-function sdFitPick(rows, open) {
+// A Best fit day holds one big company at most (Leo, Oct 12 2026), its
+// pins and automatic rows counted (getOutreachPlan days[].bigs): a second
+// one waits, as it does in the day's own picks. "+ Add" on its row is
+// still a hand add.
+function sdFitPick(rows, open, key) {
   var left = open, ids = [], names = [];
+  var bestFit = key != null && sdFillCat(key) === '';
+  var bigs = bestFit ? (SCHED.days[key] || {}).bigs || 0 : 0;
   rows.forEach(function (b) {
     var n = sdSugGoing(b);
-    if (n > 0 && n <= left && ids.length < 40) { ids.push(b.id); names.push(b.name); left -= n; }
+    if (bestFit && b.big && bigs >= 1) return;
+    if (n > 0 && n <= left && ids.length < 40) {
+      ids.push(b.id); names.push(b.name); left -= n;
+      if (b.big) bigs += 1;
+    }
   });
   return { ids: ids, names: names, people: open - left };
 }
@@ -13257,23 +13276,36 @@ function sdAddFromFill(key, ids) {
   var adding = SCHED.adding[key] = SCHED.adding[key] || {};
   var lists = [['brands', sdFillRows(key)], ['others', sdFillOthers(key)]];
   ids = ids.filter(function (id) { return id && !adding[id]; });
-  if (!ids.length) return;
+  // Only brands the box lists now: a tick left on one that has gone from
+  // the list is dropped, never added unseen.
+  var listed = [];
   ids.forEach(function (id) {
     for (var i = 0; i < lists.length; i++) {
       var at = lists[i][1].map(function (b) { return b.id; }).indexOf(id);
-      if (at >= 0) { adding[id] = { state: 'adding', at: Date.now(), idx: at, list: lists[i][0], row: lists[i][1][at] }; break; }
+      if (at >= 0) { adding[id] = { state: 'adding', at: Date.now(), idx: at, list: lists[i][0], row: lists[i][1][at] }; listed.push(id); break; }
     }
     if (SCHED.fillSel[key]) delete SCHED.fillSel[key][id];
   });
+  ids = listed;
+  if (!ids.length) { sdRenderFill(key); return; }
   // In place, not a redraw of the box: nothing under the mouse moves, and
   // the button just clicked stays the thing the refresh holds on screen
   // (keepPlace in sdRefresh).
   sdMarkAdding(key, ids, 'Adding…');
   SCHED.fillHit = { key: key, id: ids[ids.length - 1], at: Date.now() };
-  sdAdd(key, ids).then(function () {
-    var now = Date.now();
-    ids.forEach(function (id) { if (adding[id]) { adding[id].state = 'added'; adding[id].at = now; } });
-    sdMarkAdding(key, ids, 'Added ✓');
+  sdAdd(key, ids, { withResults: true }).then(function (r) {
+    // "Added ✓" only on the ones that landed: a failed, cancelled or
+    // refused add (a giant declined) reads "+ Add" again.
+    var landed = {};
+    ((r && r.results) || []).forEach(function (x) { if (x && x.added) landed[x.brandId] = 1; });
+    var now = Date.now(), ok = [], back = 0;
+    ids.forEach(function (id) {
+      if (!adding[id]) return;
+      if (landed[id]) { adding[id].state = 'added'; adding[id].at = now; ok.push(id); }
+      else { delete adding[id]; back++; }
+    });
+    if (back) sdRenderFill(key);
+    sdMarkAdding(key, ok, 'Added ✓');
   });
 }
 
@@ -13339,7 +13371,7 @@ function sdNeedRow(b, allCats) {
 // Fill to 30's state for a day: whether it can go now, and its tooltip.
 function sdFillTip(key) {
   var f = sdFillState(key);
-  var fit = sdFitPick(sdFillPool(key), sdOpenSpots(key));
+  var fit = sdFitPick(sdFillPool(key), sdOpenSpots(key), key);
   var ready = sdFillReady(key);
   return {
     ready: ready, fit: fit, go: !!(fit.ids.length && ready),
@@ -13349,12 +13381,25 @@ function sdFillTip(key) {
   };
 }
 
+// Ticks only for rows the box lists now (review fix, Oct 13 2026): a
+// tick left on a brand that went to another day, or out of the list when
+// the day's category changed, was still in "Add N ticked" — invisible,
+// and a click pinned it back here.
+function sdPruneFillSel(key) {
+  var sel = SCHED.fillSel[key];
+  if (!sel) return;
+  var have = {};
+  sdFillRows(key).concat(sdFillOthers(key)).forEach(function (b) { if (!sdIsAdding(key, b.id)) have[b.id] = 1; });
+  Object.keys(sel).forEach(function (id) { if (!have[id]) delete sel[id]; });
+}
+
 function sdFillInner(key) {
   var f = sdFillState(key);
   var cat = sdFillCat(key);
   var open = sdOpenSpots(key);
   var ent = SCHED.sug[key + '|' + cat];
   var data = ent && ent.data;
+  if (data) sdPruneFillSel(key);
   var rows = sdFillRows(key);
   var pool = sdFillPool(key);
   var st = sdFillTip(key);
@@ -13442,6 +13487,8 @@ function sdLoadFill(key) {
 // until the new ones land.
 function sdHideSmallChanged() {
   SCHED.sugGen += 1;
+  // A new list: ticks on the old one don't carry over.
+  SCHED.fillSel = {};
   SCHED.order.forEach(function (key) { sdRenderFill(key); });
   sdLoadFills();
 }
@@ -13457,7 +13504,7 @@ function sdLoadFills() {
 function sdFillTo20(key) {
   var f = sdFillState(key);
   if (!sdFillReady(key)) { toast('One moment — the list is catching up with the last change'); return; }
-  var fit = sdFitPick(sdFillPool(key), sdOpenSpots(key));
+  var fit = sdFitPick(sdFillPool(key), sdOpenSpots(key), key);
   if (!fit.ids.length) { toast('Nothing in the list fits whole into the open spots'); return; }
   f.busy = true;
   f.summary = '';
@@ -14441,9 +14488,11 @@ function sdThemeDone(key, r) {
   if (r.unpinned) bits.push(sdPlural(r.unpinned, 'brand', 'brands') + ' off');
   if (r.unqueued) bits.push(sdPlural(r.unqueued, 'person', 'people') + ' back to waiting');
   toast(sdDayTag(key) + ' → ' + sdThemeWord(r.category) + (bits.length ? ' · ' + bits.join(' · ') : ''));
-  // The day's suggestions follow the new category.
+  // The day's suggestions follow the new category — the ticks made on the
+  // old list go with it.
   var f = SCHED.fill[key];
   if (f) { f.all = false; f.summary = ''; }
+  SCHED.fillSel[key] = {};
   return sdRefresh();
 }
 
@@ -15941,7 +15990,7 @@ function oqBrandCard(g) {
 // brand reached, and its other people sat out the two-week rest. Add to
 // today when it fits the open spots (queueBrandTargets), else Put on a
 // day (the usual picker: preview first, then Add).
-var OQ_MORE = { list: [], open: 0 };
+var OQ_MORE = { list: [], open: 0, auto: 0 };
 function oqMoreCard(m) {
   var fits = OQ_MORE.open >= m.size;
   var cat = m.category ? (CAT_NAMES[m.category] || m.category) : '';
@@ -16393,7 +16442,10 @@ function loadOutreach() {
           // LinkedIn's week leaves (about 10 on an extra Friday).
           SENT_TODAY.day = typeof tq.dayCap === 'number' ? tq.dayCap : null;
           OQ_LABELS = tq.labels || {};
-          OQ_MORE = { list: tq.moreBrands || [], open: typeof tq.openSpots === 'number' ? tq.openSpots : 0 };
+          // open = room for a hand add (the flat 30); auto = what LinkedIn's
+          // week leaves the automatic picks (less after a heavy week).
+          var autoOpen = typeof tq.openSpots === 'number' ? tq.openSpots : 0;
+          OQ_MORE = { list: tq.moreBrands || [], open: typeof tq.handSpots === 'number' ? tq.handSpots : autoOpen, auto: autoOpen };
           return { accepted: [], list: list, theme: tq.theme || null, more: OQ_MORE.list, sentToday: sentToday, stale: stale };
         })
     : api('listTargets', { status: statusFilter }).then(function (l) { return { accepted: [], list: l || [], theme: null, more: [], sentToday: [], stale: [] }; });
@@ -16441,12 +16493,13 @@ function loadOutreach() {
     if (fb) fb.onclick = function () {
       fb.disabled = true; fb.textContent = 'Filling…';
       api('fillToday').then(function (f) {
-        var fcap = f.dayCap || sdFillDayCap();
+        var fcap = typeof f.dayCap === 'number' ? f.dayCap : sdFillDayCap();
         var theme = f.theme && f.theme !== 'bestfit' ? (CAT_NAMES[f.theme] || f.theme) : 'Best fit';
         var who = (f.brands || []).length ? ' (' + f.brands.slice(0, 4).join(', ') + (f.brands.length > 4 ? ' +' + (f.brands.length - 4) : '') + ')' : '';
         if (f.offDay) toast('Today isn’t a sending day' + (f.nextDay ? '. Next one: ' + shortDate(f.nextDay + 'T12:00:00') : '') +
           ' — to send today, add it as an extra day on the Schedule tab.');
         else if (f.closed) toast('What was left today moved to ' + shortDate(f.closedTo + 'T12:00:00') + ', so nothing is added by itself today. Add brands by hand.');
+        else if (f.weekFull) toast('LinkedIn’s weekly limit leaves nothing today — add brands by hand (Send today anyway) or wait for tomorrow.');
         else if (f.already) toast('Today is already full at ' + fcap);
         else if (f.shortBy > 0) toast((f.added ? 'Added ' + f.added + who : 'Nothing added') + ' — ' + f.shortBy + ' open: ' +
           (f.smallest ? 'nothing in ' + theme + ' fits whole (the smallest needs ' + f.smallest + ').'
@@ -16505,7 +16558,8 @@ function loadOutreach() {
     var moreBlock = (r.more || []).length
       ? '<div class="count-head" style="margin-top:24px">' + (r.theme === 'bestfit' ? 'Next best fit' : 'More in ' + (r.theme ? esc(CAT_NAMES[r.theme] || r.theme) : 'this category')) + ' — ready if you have room <span class="n">' + r.more.length + '</span></div>' +
         '<div class="hint" style="margin:2px 0 10px">' + (OQ_MORE.open > 0
-          ? sdPlural(OQ_MORE.open, 'open spot', 'open spots') + ' today — add a whole brand.'
+          ? sdPlural(OQ_MORE.open, 'open spot', 'open spots') + ' today — add a whole brand.' +
+            (OQ_MORE.auto < OQ_MORE.open ? ' LinkedIn’s week leaves ' + OQ_MORE.auto + ' for automatic picks; past that, adds go over its ~100.' : '')
           : 'Today’s ' + SENT_TODAY.cap + ' are taken — put one on another day.') +
           ' A brand goes out whole: its first outreach is all its people.</div>' +
         '<div data-oqsec="more">' + r.more.map(oqMoreCard).join('') + '</div>'
@@ -20521,8 +20575,13 @@ document.getElementById('targets').addEventListener('click', function (e) {
       if (t2 && t2.brandId === uqBrand && (t2.status === 'queued' || t2.status === 'drafted')) r2.remove();
     });
     refreshBrandCard(uqBrand);
-    toast('Off today’s list — it can come back tomorrow');
+    // A brand that already sent someone today (its first day) keeps the
+    // rest of that outreach for the next sending day — the reply names it.
     api('unqueueBrand', { brandId: uqBrand })
+      .then(function (r) {
+        toast(r && r.restOn ? 'Off today — the rest of ' + (r.brandName || 'it') + ' goes out ' + r.restOnLabel
+          : 'Off today’s list — it can come back tomorrow');
+      })
       .catch(function (err) { toast(err.message); loadOutreach(); });
     return;
   }

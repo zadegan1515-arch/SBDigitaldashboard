@@ -32,7 +32,9 @@ const TARGET_FIELDS = {
 // An email the machine actually sent counts as reaching the brand, same
 // as a LinkedIn invite; the first one's date starts the brand's two-week
 // rest (queue-rules.ts).
-const SENT_EMAIL = { direction: 'out', status: 'sent' }
+// queueBrandTargets reads the same two fields, so the queue and its
+// preview agree on when a brand's first outreach was.
+export const SENT_EMAIL = { direction: 'out', status: 'sent' }
 
 export const PLAN_BRAND_SELECT = Prisma.validator<Prisma.BrandSelect>()({
   ...BRAND_FIELDS,

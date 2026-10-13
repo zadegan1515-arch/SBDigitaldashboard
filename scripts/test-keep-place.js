@@ -52,6 +52,9 @@ const S = {
   // The LinkedIn tab's extras (4d): whole brands ready if there's room,
   // open spots, the sent-today and going-stale rows, the last args seen.
   more: [], open: 0, sentList: [], stale: [], last: {},
+  // hand = room for a hand add (the flat 30) when LinkedIn's week leaves
+  // the automatic picks less; restOn = Off queue on a part-sent brand.
+  hand: null, restOn: null,
   brands: {},            // id -> getBrand payload
   dne: {},               // brand id -> doNotEmail
   drafts: [],            // email queue
@@ -190,12 +193,13 @@ const H = {
   deleteEmailDraft: ({ id }) => { S.drafts = S.drafts.filter((x) => x.id !== id); return { ok: true }; },
   getTodayQueue: () => ({
     targets: S.queue, sentList: S.sentList, more: [], moreBrands: S.more, openSpots: S.open, theme: 'energy', labels: {}, sendingDay: true,
+    ...(S.hand != null ? { handSpots: S.hand } : {}),
     sentToday: S.sentList.length, cap: S.dayCap,
   }),
   listTargets: () => S.stale,
   setTargetStatus: (a) => { S.last.setTargetStatus = a; return { ok: true }; },
   queueBrandTargets: (a) => { S.last.queueBrandTargets = a; return { queued: true, count: 3, contactName: 'Mo, Ma and Mi' }; },
-  unqueueBrand: (a) => { S.last.unqueueBrand = a; return { brandName: 'Queue Brand 0', count: 2, todayOnly: true }; },
+  unqueueBrand: (a) => { S.last.unqueueBrand = a; return { brandName: 'Queue Brand 0', count: 2, todayOnly: true, restOn: S.restOn, restOnLabel: S.restOn ? 'Thu Oct 8' : null }; },
   planDayChoices: () => ({ today: '2026-10-07', days: [{ key: '2026-10-07', label: 'Wed Oct 7', today: true }, { key: '2026-10-08', label: 'Thu Oct 8' }], offDay: null }),
   listBrands: () => S.list,
   categoryReach: () => ({ categories: {}, newFromLinkedIn: 0 }),
@@ -490,8 +494,30 @@ async function main() {
   await page.click('#targets .target[data-id="q0"] [data-act="unqueue"]');
   await answered('unqueueBrand', n);
   assert.deepEqual(S.last.unqueueBrand, { brandId: 'qb0' });
-  assert.match(await page.textContent('#toast'), /Off today’s list — it can come back tomorrow/);
-  S.more = []; S.open = 0; S.sentList = []; S.stale = [];
+  await page.waitForFunction(() => /Off today’s list — it can come back tomorrow/.test(document.getElementById('toast').textContent));
+  // A part-sent brand: the rest of its first outreach goes out on the next
+  // sending day, and the toast names it.
+  S.restOn = '2026-10-08';
+  n = count('getTodayQueue');
+  await page.evaluate(() => loadOutreach());
+  await answered('getTodayQueue', n);
+  await page.waitForSelector('#targets .target[data-id="q1"] [data-act="unqueue"]');
+  n = count('unqueueBrand');
+  await page.click('#targets .target[data-id="q1"] [data-act="unqueue"]');
+  await answered('unqueueBrand', n);
+  await page.waitForFunction(() => /Off today — the rest of Queue Brand 0 goes out Thu Oct 8/.test(document.getElementById('toast').textContent));
+  S.restOn = null;
+  // LinkedIn's week leaves the automatic picks nothing, the flat 30 still
+  // has 20: Add to today stays (a hand add), and the hint says what binds.
+  S.open = 0; S.hand = 20;
+  n = count('getTodayQueue');
+  await page.evaluate(() => loadOutreach());
+  await answered('getTodayQueue', n);
+  await page.waitForSelector('[data-oqmore="mb2"] [data-oqmoreadd]');
+  const moreHint = await page.textContent('#targets');
+  assert.match(moreHint, /20 open spots today — add a whole brand\. LinkedIn’s week leaves 0 for automatic picks/);
+  assert.doesNotMatch(moreHint, /Today’s 30 are taken/, 'not "taken" with 20 of the 30 free');
+  S.more = []; S.open = 0; S.hand = null; S.sentList = []; S.stale = [];
   console.log('✓ 4d LinkedIn tab: whole brands if there\'s room, Withdrew keeps an old invite counted, Off queue is today only');
 
   await page.evaluate(() => gotoView('brands'));
