@@ -368,9 +368,15 @@ async function main() {
   assert.deepEqual([go.args.date, go.args.category, go.args.expect, go.args.keepPins], ['2026-10-08', 'betting', 'sig1', false]);
   // Nothing to take off: applied at once, in the one call (applyIfNone —
   // one-request-per-click: no preview, then apply).
-  const before = applies(), asked = count('planApplyCategory');
+  const before = applies(), asked = count('planApplyCategory'), from = calls.length;
   await page.selectOption('[data-sdcatsel="2026-10-13"]', 'beauty');
-  await waitFor(() => calls.slice(-3).some((c) => c.fn === 'getOutreachPlan') && count('planApplyCategory') > asked, 'the direct apply and its refresh');
+  // A refresh anywhere after the apply (other reads may follow it, so not
+  // "among the last few calls" — that raced on a slower CI runner).
+  const refreshedAfterApply = () => {
+    const i = calls.findIndex((c, j) => j >= from && c.fn === 'planApplyCategory');
+    return i >= 0 && calls.slice(i + 1).some((c) => c.fn === 'getOutreachPlan');
+  };
+  await waitFor(refreshedAfterApply, 'the direct apply and its refresh');
   assert.equal(count('planApplyCategory'), asked + 1, 'one call');
   assert.equal(last('planApplyCategory').args.applyIfNone, true);
   assert.equal(applies(), before, 'no second, apply-only call');
