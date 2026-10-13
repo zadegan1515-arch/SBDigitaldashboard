@@ -241,8 +241,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   days from its first outreach** (New York day keys; a later Schedule day is judged as of that day; the
   day a brand opens is its own sitting, so the rest of its people that day still go; an accept logged
   without an invite date counts from the row's last change and is never a sitting). **Giants**
-  (`giants.ts`: household names, parent companies and their brands, $1B+ sales) are held back: nothing
-  picks them, and a hand add asks — **Add anyway** (`allowGiants` on planAddBrands, `allowGiant` on
+  (`giantOf` in queue-rules.ts: giants.ts — household names, the big parents' brands, $1B+ sales — or
+  **1,500+ people on LinkedIn**, `VERY_BIG_LI` / `veryBigWhy`; Leo, Oct 12 2026) are held back: nothing
+  picks them, and a hand add asks — **Add anyway**. **Conglomerates are never held** (Leo: "yes except
+  for congomerates"; `isConglomerate` = `isParentCompany`, parents.ts: Diageo, Molson Coors, PepsiCo,
+  Coca-Cola, Monster Energy, Heineken, Bacardi, Brown-Forman, Campari, Gallo on the roster) — he works them
+  as one account; their brands (Smirnoff, Bud Light…) still are giants. Brand Fit's giant points use the
+  same `giantOf`. **Add anyway** (`allowGiants` on planAddBrands, `allowGiant` on
   queueBrandTargets/queueContact, the giant card's button → `allowGiant`) OKs that brand for good.
   Setting `outreachGiants` = { on, ok: [brandId] }; the Schedule's toolbar line "New brands only ·
   Giants: held back (N) Allow" is `setGiantsOn` (`getOutreachPlan.queueRules`). People already stamped
@@ -735,10 +740,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   **Mid-size first** (1.36; Leo, Oct 12 2026: "i want to target the midsized brands mainly"): with a floor the list
   goes **size first** — target (20–499 on LinkedIn) → not measured → small → big — then, within a size, no buyer yet
   first, then best fit (`midFirst`; `noBuyerFirst` only without a floor). The floor defaults to **50** (`FIT_DEFAULT`):
-  Brand Fit gives big companies 30 size points vs mid-size 22, and at 60 only 14 of 49 mid-size brands passed (vs 100
-  of 207 big). **Very big brands skipped** (1.35, "Skip very big brands", GM `sbLiSkipBig`, on by default →
+  set while Brand Fit still gave big companies 30 size points vs mid-size 22 (at 60 only 14 of 49 mid-size brands
+  passed, vs 100 of 207 big); since Oct 12 mid-size gets 26 and big 18. **Very big brands skipped** (1.35, "Skip very big brands", GM `sbLiSkipBig`, on by default →
   `skipGiants`): held giants (giants.ts) and anything with **1,500+ on LinkedIn** (`VERY_BIG_LI`; Leo: "not reach out
-  to any brand with over 1500 employees"), unless Leo OK'd the brand; giant research names too (`bigSkipped`).
+  to any brand with over 1500 employees"), unless Leo OK'd the brand — never a conglomerate (`veryBigWhy`, the
+  Schedule's rule); giant research names too (`bigSkipped`).
   **Faster**: with Sales Navigator the People tab gets a glance only (`SN_GLANCE`, 2 scrolls / 40 people — Sales
   Navigator reads the people), a brand under 50 on LinkedIn (`SN_SMALL`) gets only the marketing search, and brands
   with a saved LinkedIn page go before the ones the run has to search for (`paged`). The worklist lives in `src/lib/li-list-db.ts` (`buildLiList`, shared by liList and
