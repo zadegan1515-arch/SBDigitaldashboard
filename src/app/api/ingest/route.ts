@@ -1034,6 +1034,8 @@ export async function POST(req: NextRequest) {
           keepMembers = false
           outcome = { ...outcome, skip: null, clean: false }
           const industry = String(body.companyIndustry).replace(/\s+/g, ' ').trim().slice(0, 120)
+          // The page note keeps it off the fill until Leo picks the page.
+          body.note = 'its saved LinkedIn page looks like another company (' + industry + ') — pick the right one on Outreach → People'
           const list = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
           await writeJsonSetting(prisma, LI_REVIEW_KEY, addToReview(list, b.id, { why: 'wrong', saved: b.linkedinUrl || companyPageUrl(pageSlug), pageIndustry: industry }))
         }
@@ -1054,7 +1056,11 @@ export async function POST(req: NextRequest) {
           snMissed: body.snMissed === true,
           snRetried: body.retry === true && body.salesNav !== true,
         })
-      } catch { /* non-fatal */ }
+      } catch (err: any) {
+        // The mark decides whether the brand is read again: the script keeps
+        // it and sends it again (its run pauses if this keeps failing).
+        return NextResponse.json({ ok: false, error: 'Could not save the visit: ' + (err?.message || 'database error') }, { status: 500, headers: cors })
+      }
       if (keepMembers) await saveMembers(brandId, body.members)
     }
     // "LinkedIn Member" cards the read saw (script 1.30+; older copies

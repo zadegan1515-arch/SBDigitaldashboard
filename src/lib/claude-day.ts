@@ -18,7 +18,7 @@ const READ_NAMES = new Set(['claudeDay', 'dayRecap', 'weeklyScore', 'staleDeals'
   'categoryCoverage', 'outcomeTable', 'fillSchedule', 'liRunDetail', 'linkedinPeople', 'suggestForDay', 'sentByCompany', 'secondTryBrands',
   'boardCodeLookup', 'sponsorUrl', 'segmentsOverview', 'audienceEventStats', 'appVersion', 'researchList', 'planDayChoices', 'nextBestBrands',
   'staleInvites', 'repliedOverview', 'buyerCoverage', 'brandLookup', 'brandTimeline', 'brandStock', 'brandPlanLine', 'scheduleStamp',
-  'suMatchQueue', 'sheetStatus', 'whoAmI', 'me', 'findDuplicates', 'sponsorReport'])
+  'suMatchQueue', 'sheetStatus', 'whoAmI', 'me', 'findDuplicates', 'sponsorReport', 'search', 'checkEmailReplies'])
 const isRead = (fn: string) => READ_VERB.test(fn) || READ_NAMES.has(fn)
 
 // Calls that change only with confirm / apply; without it they preview.

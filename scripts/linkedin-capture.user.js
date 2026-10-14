@@ -2425,7 +2425,7 @@
       again: !!item.again, review: st.review || 0,
       // Was Sales Navigator meant to be used (a run with it off never
       // clears a Sales Navigator issue); the page a very-big count came from.
-      snOn: !!job.snWanted, companyIndustry: st.skip ? st.pageIndustry || '' : undefined, companyUrl: st.skip ? st.pageUrl || null : undefined,
+      snOn: job.snWanted != null ? !!job.snWanted : job.salesNav !== false, companyIndustry: st.skip ? st.pageIndustry || '' : undefined, companyUrl: st.skip ? st.pageUrl || null : undefined,
       // One key per post: a post retried after a timeout counts once.
       key: job.id + ':' + job.at + ':' + (item.brandId || item.name),
       // People LinkedIn hid from this account, view by view — only when a
@@ -2450,9 +2450,14 @@
     var job = loadFill();
     if (!job || !job.outbox || !job.outbox.length) return Promise.resolve();
     outboxBusy = true;
-    return runPost(job.outbox[0]).then(function () {
+    var sent = job.outbox[0], runId = job.id;
+    return runPost(sent).then(function (r) {
+      // Not saved (the dashboard's own error, after its retries): keep it;
+      // the run pauses and Continue sends it again.
+      if (!r || !r.ok) throw new Error('The dashboard didn\'t save ' + (sent.name || 'the last brand') + '\'s visit' + (r && r.error ? ': ' + r.error : '') + '.');
       var j = loadFill();
-      if (j && j.outbox && j.outbox.length) { j.outbox = j.outbox.slice(1); saveFill(j); }
+      if (!j || j.id !== runId) return;
+      if (j.outbox && j.outbox.length && j.outbox[0].key === sent.key) { j.outbox = j.outbox.slice(1); saveFill(j); }
       return flushOutbox();
     }).then(function () { outboxBusy = false; }, function (e) { outboxBusy = false; throw e; });
   }
@@ -2675,7 +2680,11 @@
     if (!HAS_GM) return openBroken();
     if (!token()) return openSetup();
     var job = loadFill();
-    if (job && !job.done && !ownsFill(job) && staleFill(job)) job = null;
+    if (job && !job.done && !ownsFill(job) && staleFill(job)) {
+      // A run left behind: its unsent visit marks still go to the dashboard.
+      (job.outbox || []).forEach(function (b) { runPost(b).catch(function () {}); });
+      job = null;
+    }
     if (job && !job.done) {
       if (ownsFill(job)) return renderFill(job, job.paused ? 'Paused: ' + job.paused : 'Running.');
       return freshPanel([

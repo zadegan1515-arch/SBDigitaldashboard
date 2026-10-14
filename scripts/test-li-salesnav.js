@@ -111,6 +111,10 @@ const server = http.createServer((req, res) => {
       if (dashFail.n > 0 && body.action === dashFail.action) {
         dashFail.n--;
         if (dashFail.how === 'drop') return req.socket.destroy();
+        if (dashFail.how === '500') {
+          res.writeHead(500, Object.assign({ 'Content-Type': 'application/json' }, cors));
+          return res.end('{"ok":false,"error":"Could not save the visit: database error"}');
+        }
         res.writeHead(502, Object.assign({ 'Content-Type': 'text/html' }, cors));
         return res.end('<html><body>Bad gateway</body></html>');
       }
@@ -520,7 +524,20 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
       dashFail.n = 0; dashFail.action = null;
       assert.match(paused, /Paused: Could not reach the dashboard/);
       assert.equal(r.calls.filter(b => b.action === 'liCapture').length, 0);
-      ok('a dashboard down past the retries pauses the run');
+      // The visit itself not saved (the dashboard's error, past the retries):
+      // kept, and the run pauses rather than losing it.
+      dashFail.action = 'liSwept'; dashFail.n = 99; dashFail.how = '500';
+      let paused2 = '';
+      await run([item('b-flaky', 'Flaky Dash', 'flaky-dash')], {
+        during: async (pg) => {
+          await pg.waitForFunction(() => /Paused: The dashboard didn't save Flaky Dash's visit/.test((document.getElementById('sbli-panel') || {}).innerText || ''), null, { timeout: 30000 });
+          paused2 = await pg.innerText('#sbli-panel');
+          await pg.click('#sblifillstop');
+        },
+      });
+      dashFail.n = 0; dashFail.action = null;
+      assert.match(paused2, /database error/);
+      ok('a dashboard down past the retries pauses the run; so does a visit it couldn\'t save');
     }
 
     // Under 50 on LinkedIn: only the marketing search (the partnerships one

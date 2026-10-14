@@ -127,7 +127,7 @@ export const SN_ISSUES = ['snNoLoad', 'snNoId', 'snOtherCompany', 'snLeft', 'par
 export function nextMark(prev: LiMark | undefined, mark: Omit<LiMark, 'at'>, at: string): LiMark {
   const before = prev ? markOutcome(prev) : null
   if (mark.snOff && !mark.issue && !mark.clean && !mark.skip && before?.issue && SN_ISSUES.includes(before.issue)) {
-    return { at, ...mark, issue: before.issue, issueNote: prev!.issueNote || null, tries: prev!.tries || 1 }
+    return { at, ...mark, issue: before.issue, issueNote: prev!.issueNote || null, tries: triesOf(prev!) }
   }
   const tries = nextTries(prev, mark)
   return { at, ...mark, ...(mark.issue ? { tries } : {}) }
@@ -151,13 +151,19 @@ export async function readLiLog(db: SettingStore): Promise<LiLog> {
   }
 }
 
+// Failed runs so far on a mark with an issue. A legacy snRetried mark had
+// its one retry already: one more.
+export function triesOf(mark: LiMark): number {
+  return mark.tries || (mark.snRetried && !mark.sn ? LI_RETRY_MAX - 1 : 1)
+}
+
 // Failed runs in a row: the same run posting twice (a retried post, the
 // in-run second try) counts once; a clean read starts over.
 export function nextTries(prev: LiMark | undefined, mark: Pick<LiMark, 'issue' | 'run'>): number {
   if (!mark.issue) return 0
   const before = prev ? markOutcome(prev).issue : null
   if (!prev || !before) return 1
-  const n = prev.tries || 1
+  const n = triesOf(prev)
   return prev.run && mark.run && prev.run === mark.run ? n : n + 1
 }
 
@@ -218,12 +224,13 @@ export function liDue(mark: LiMark | undefined, hasParent: boolean, now = Date.n
   // or one the run hasn't tried yet.
   const at = Date.parse(mark.at)
   const { clean, issue } = markOutcome(mark)
-  // (Not a brand whose read went wrong: that goes through its retries.)
-  if (!issue && hasParent && !mark.added && (/could not find .+ on LinkedIn/.test(mark.note || '') || !mark.parentTried)) return due
+  // (Not a brand whose read went wrong: that goes through its retries; nor
+  // one whose saved page is another company's — that waits for Leo's pick.)
+  if (!issue && hasParent && !mark.added && !/looks like another company/i.test(mark.note || '') &&
+    (/could not find .+ on LinkedIn/.test(mark.note || '') || !mark.parentTried)) return due
   const month = Number.isFinite(at) ? at + LI_REST_DAYS * 864e5 : 0
   if (issue) {
-    // A legacy snRetried mark had its one retry already: one more.
-    const tries = mark.tries || (mark.snRetried && !mark.sn ? LI_RETRY_MAX - 1 : 1)
+    const tries = triesOf(mark)
     if (tries < LI_RETRY_MAX || now >= month) return { ...due, retry: true, issue, tries }
     return { due: false, retry: false, stuck: true, back: new Date(month).toISOString(), issue, tries }
   }

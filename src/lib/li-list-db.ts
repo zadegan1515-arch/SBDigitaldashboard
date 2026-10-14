@@ -5,7 +5,7 @@
 // Read-only.
 import { PrismaClient } from '@prisma/client'
 import { focusTerms, matchesFocus, decideCompanyMatch, pageLooksWrong } from './li-capture'
-import { readLiLog, liDue, issueWords, readLiResearch, researchResting, LI_SCRIPT_VERSION, SN_SINCE, SN_ISSUES } from './li-sweep'
+import { readLiLog, liDue, issueWords, readLiResearch, researchResting, LI_SCRIPT_VERSION, SN_SINCE, SN_ISSUES, LI_REST_DAYS } from './li-sweep'
 import { readHiddenLog } from './li-hidden'
 import { parentOf, isParentCompany, LI_PARENT_PAGES_KEY } from './parents'
 import { readJsonSetting, LI_CONFIRMED_KEY, LI_REVIEW_KEY, type Confirmed, type Review } from './li-review'
@@ -130,7 +130,17 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
   // whose buyers LinkedIn hid ("LinkedIn Member") is read once more with it
   // (not after Zach's account has read it).
   const hiddenLog = body.salesNav === true ? await readHiddenLog(prisma) : {}
-  const dueOf = (b: { id: string; name: string; aka: string | null }) => liDue(log[b.id], !!parentOf(b.name, b.aka))
+  // A Sales Navigator issue a run with it switched off already read (it
+  // kept the issue): that kind of run leaves it for a month — only Sales
+  // Navigator can clear it.
+  const dueOf = (b: { id: string; name: string; aka: string | null }) => {
+    const m = log[b.id], d = liDue(m, !!parentOf(b.name, b.aka))
+    if (body.salesNav !== true && m?.snOff && d.due && SN_ISSUES.includes(d.issue || '')) {
+      const back = Date.parse(m.at) + LI_REST_DAYS * 864e5
+      if (Date.now() < back) return { ...d, due: false, retry: false, back: new Date(back).toISOString() }
+    }
+    return d
+  }
   const hiddenOld = (b: { id: string; linkedinUrl: string | null }) => {
     const m = log[b.id], h = hiddenLog[b.id]
     if (body.salesNav !== true || !b.linkedinUrl || !m || m.clean !== undefined || m.issue !== undefined || m.sn || m.snRetried) return false

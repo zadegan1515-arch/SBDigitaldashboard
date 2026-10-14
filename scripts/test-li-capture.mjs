@@ -417,6 +417,12 @@ t('review fixes: a parent brand\'s issue still counts; a legacy failed retry isn
   const on = sweep.nextMark(prev, { seen: 4, added: 1, v, clean: true, issue: null, run: 'r3' }, ago(0))
   assert.deepEqual([on.clean, on.issue, on.tries], [true, null, undefined])
   assert.equal(sweep.sweptOutcome({ done: false, snOn: false }).snOff, true)
+  // One more try for a legacy failed retry — in every place that counts.
+  const after = sweep.nextMark(legacy, { seen: 0, added: 0, v, issue: 'snNoLoad', run: 'r1' }, ago(0))
+  assert.equal(after.tries, sweep.LI_RETRY_MAX, 'its 1.38 try failed too')
+  assert.equal(sweep.liDue(after, false, now).stuck, true)
+  // A saved page that's another company's waits for Leo's pick, parent or not.
+  assert.equal(sweep.liDue({ at: ago(1), seen: 0, added: 0, v, clean: false, issue: null, note: 'its saved LinkedIn page looks like another company (Defense) — pick the right one on Outreach → People' }, true, now).due, false)
 })
 
 t('tries count runs, not posts: the same run posting twice is one try; a clean read starts over', () => {

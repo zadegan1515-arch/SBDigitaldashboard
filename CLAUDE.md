@@ -987,7 +987,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (after the Schedule's and asked-for names; the Brand Fit floor still applies), for `LI_RETRY_MAX` = 3 runs (`tries`
   count runs — `nextTries`, the same run posting twice is one), then it waits a month ("stuck" on the report) — a brand with
   a parent too; no clear page / a People-tab-only read → the old month. A run with Sales Navigator off never clears a
-  Sales Navigator issue (`nextMark`, `snOff`; `SN_ISSUES` aren't put first on such a run). Legacy marks (`markOutcome`):
+  Sales Navigator issue (`nextMark`, `snOff`) and leaves it a month (`dueOf` in li-list-db) — a run with it on reads it first.
+  The visit's save failing on the dashboard answers 500, so the run keeps the mark and pauses. Legacy marks (`markOutcome`):
   `sn` → clean; a People-tab read since Sales Navigator shipped (incl. a failed `snRetried`, which gets one more try) →
   issue `noSalesNav` (not a page problem — `PAGE_NOTE`); older reads that found people → clean. `markLiSwept` is
   advisory-locked. A very-big skip's headcount is kept only when its page passes the page check (else the page goes on

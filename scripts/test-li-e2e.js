@@ -681,6 +681,15 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       await setMark({ ...m, at: new Date(Date.now() - 400 * 864e5).toISOString() });
       assert.equal(await itemOf(true), undefined, 'and still off a year later');
       assert.equal(await itemOf(true, { ignoreRest: true }) && true, true, 'only by hand (ignoreRest)');
+      // A run with Sales Navigator off reads it: the issue stays (only Sales
+      // Navigator clears it), and such runs leave it for a month.
+      await swept('r4b', { done: false, salesNav: false, issue: 'snNoLoad' });
+      await swept('r4c', { done: false, salesNav: false, issue: null, snOn: false });
+      const offMark = await markOf();
+      assert.deepEqual([offMark.issue, offMark.tries, offMark.snOff], ['snNoLoad', 1, true]);
+      assert.equal(await itemOf(false), undefined, 'a run with it off leaves it');
+      assert.equal((await itemOf(true) || {}).retry, true, 'a run with it on reads it first');
+      await swept('r4d', { done: true, salesNav: true, issue: null });
       // An older copy (no `done`) that read the People tab with Sales Navigator on: an issue.
       await ingest({ action: 'liSwept', me: leo, brandId: sn.id, seen: 1, added: 0, note: '', snMissed: true, hidden: [] });
       assert.equal((await itemOf(true) || {}).issue, 'noSalesNav');
