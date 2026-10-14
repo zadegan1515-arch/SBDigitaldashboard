@@ -1087,6 +1087,19 @@ model BoardAccessRequest {
 // Home → Today: what Leo's Claude Code chats did, pasted in (or posted by a
 // session through scripts/cc.mjs addWorkLog). One row per chat; the raw text
 // is kept as pasted, the sorted piles (src/lib/work-log.ts) beside it.
+// A change a Claude session made through /api/data with the dashboard
+// token (Claude Code, the Add a brand chat, the daily routines) — Home →
+// Claude's day lists them (src/lib/claude-day.ts). Words + short args only.
+model ClaudeAction {
+  id   String   @id @default(cuid())
+  at   DateTime @default(now())
+  fn   String
+  text String
+  args String?
+
+  @@index([at])
+}
+
 model WorkLog {
   id    String @id @default(cuid())
   // New York day key "YYYY-MM-DD" the work belongs to.

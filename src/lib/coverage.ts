@@ -13,9 +13,11 @@
 //   zach     people Leo's free LinkedIn hides ("LinkedIn Member") look
 //            like buyers: Zach's account reads them (li-hidden.ts —
 //            "Read on Zach's LinkedIn" on Outreach → People)
-//   resting  the fill read it lately and found nobody with a buyer title
-//            (or its page wouldn't open); back on the fill's list a month
-//            after that visit — meanwhile SponsorUnited or by hand
+//   resting  the fill read it and found nobody with a buyer title. A
+//            clean read (Sales Navigator, every search to its end) isn't
+//            read again by itself (Leo, Oct 14 2026) — SponsorUnited, Zach
+//            or by hand; a read with an issue that outlasted its retries,
+//            or one with no clear page, is back a month after the visit
 //   noPage   Leo said LinkedIn has no page for it, and there's no parent
 //            company to look under: SponsorUnited or by hand only
 //   full     25 on file and none a buyer: the fill can't add anyone
@@ -26,7 +28,7 @@
 // node scripts/test-coverage.mjs
 
 import { countBuyers, BUYER_TARGET } from './buyers'
-import { liRestsNow, LI_REST_DAYS, type LiMark } from './li-sweep'
+import { liDue, issueWords, type LiMark } from './li-sweep'
 
 export type CoverState = 'covered' | 'off' | 'full' | 'page' | 'zach' | 'noPage' | 'resting' | 'next'
 
@@ -62,7 +64,7 @@ export type Cover = {
   state: CoverState
   buyers: number
   // resting: the fill's note from that visit, when it was, and the day
-  // the brand is back on the fill's list.
+  // the brand is back on the fill's list (null: read in full, not by itself).
   note?: string | null
   at?: string | null
   back?: string | null
@@ -81,13 +83,13 @@ export function coverOf(b: CoverInput, opts: { cap: number; now?: number }): Cov
   // no parent to look under — the fill never visits it.
   if (!b.linkedinUrl && b.confirmed === 'none' && !b.hasParent) return { state: 'noPage', buyers }
   const now = opts.now ?? Date.now()
-  if (liRestsNow(b.mark, !!b.hasParent, now)) {
-    const at = b.mark!.at
+  const due = liDue(b.mark, !!b.hasParent, now)
+  if (!due.due) {
     return {
       state: 'resting', buyers,
-      note: b.mark!.note || null,
-      at,
-      back: new Date(Date.parse(at) + LI_REST_DAYS * 864e5).toISOString(),
+      note: (due.stuck ? issueWords(due.issue) + (b.mark!.issueNote ? ' — ' + b.mark!.issueNote : '') : b.mark!.note) || null,
+      at: b.mark!.at,
+      back: due.back,
     }
   }
   return { state: 'next', buyers }

@@ -5,9 +5,12 @@
 // Read-only, a forecast: each run asks for the list fresh, so brands read,
 // added or planned in between move it. Pure — scripts/test-fill-schedule.mjs.
 
+import { issueWords } from './li-sweep'
+
 export type FillItem = {
   brandId?: string | null; name: string; category?: string | null; contacts?: number; fit?: number | null
   research?: boolean; asked?: boolean; lane?: string; planned?: string; hiddenRetry?: boolean
+  retry?: boolean; issue?: string | null; tries?: number
   noBuyer?: boolean; focus?: boolean; last?: 'reached' | 'giant'; size?: string; parent?: { name: string } | null
 }
 export type FillRow = {
@@ -23,6 +26,8 @@ export function fillWhy(i: FillItem, focus: string, dayLabel: (key: string) => s
   // Read last wins: that's where the run puts it, Sales Navigator retry or not.
   if (i.last === 'reached') return 'Already reached out — read last'
   if (i.last === 'giant') return 'Giant, held back — read last'
+  // Back because the last read went wrong (li-sweep.ts liDue).
+  if (i.retry) return 'Read again — ' + (issueWords(i.issue) || 'last read had an issue') + (i.tries && i.tries > 1 ? ' (try ' + (i.tries + 1) + ')' : '')
   if (i.hiddenRetry) return 'Back for Sales Navigator (buyers hidden last time)'
   const bits: string[] = []
   if (i.research) bits.push('Research list' + (i.lane ? ' · ' + i.lane : ''))

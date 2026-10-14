@@ -39,6 +39,13 @@ export type RunBrand = {
   // many of them look like buyers (li-hidden.ts; script 1.30+).
   hiddenPeople?: number | null
   hiddenLikely?: number | null
+  // Script 1.38: what went wrong (li-sweep.ts ISSUE_WORDS), whether this
+  // was the brand's second try in the run, lookalikes sent to Discover, and
+  // the post's own key (a post retried after a timeout counts once).
+  issue?: string | null
+  again?: boolean
+  review?: number
+  key?: string | null
 }
 export type RunReport = {
   id: string
@@ -56,6 +63,9 @@ export type RunReport = {
   samples: Array<{ at: string; name: string; problem: string; sample: string }>
   newBrands: number
   hiddenMs?: number
+  // Lookalikes sent to Discover for review (1.38) and brands with an issue.
+  review?: number
+  issues?: number
 }
 
 export type RunEvent = {
@@ -81,6 +91,10 @@ export type RunEvent = {
   members?: number | null
   hiddenPeople?: number | null
   hiddenLikely?: number | null
+  issue?: string | null
+  again?: boolean
+  review?: number
+  key?: string | null
 }
 
 const str = (v: unknown, n: number) => (v == null || v === '' ? null : String(v).slice(0, n))
@@ -111,6 +125,8 @@ export function applyRunEvent(reports: RunReport[], ev: RunEvent, now = new Date
     run.items = ev.items == null ? null : num(ev.items)
     run.status = 'running'
   } else if (ev.kind === 'brand') {
+    const key = str(ev.key, 120)
+    if (key && run.brands.some(x => x.key === key)) return list
     const b: RunBrand = {
       at,
       name: str(ev.name, 120) || '(unnamed)',
@@ -125,9 +141,15 @@ export function applyRunEvent(reports: RunReport[], ev: RunEvent, now = new Date
       members: ev.members == null ? null : num(ev.members),
       hiddenPeople: ev.hiddenPeople == null ? null : num(ev.hiddenPeople),
       hiddenLikely: ev.hiddenLikely == null ? null : num(ev.hiddenLikely),
+      issue: str(ev.issue, 40),
+      again: ev.again === true,
+      review: num(ev.review),
+      key,
     }
     if (run.brands.length < KEEP_BRANDS) run.brands.push(b)
     run.added += b.added
+    if (b.review) run.review = (run.review || 0) + b.review
+    if (b.issue) run.issues = (run.issues || 0) + 1
     run.hiddenMs = (run.hiddenMs || 0) + (b.hiddenMs || 0)
     if (b.problem) {
       run.problems++

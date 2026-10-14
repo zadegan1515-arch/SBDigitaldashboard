@@ -497,6 +497,13 @@ export function looksLikeSeller(name: string | null | undefined, notes?: string 
   return SELLER_NAME.test(String(name || '')) || /(?:—|,)\s*(?:spectator sports|sports teams)/i.test(String(notes || ''))
 }
 
+// Never a lookalike, whatever brand it sits next to (Oct 14 2026: the run's
+// lookalikes chained from a drink brand into therapy apps, hospitals, phone
+// makers and grocery chains — "Mental Health Care" fits /health/ in the
+// drink and wellness lanes). Only here: the page-matching rules
+// (INDUSTRY_FITS) still use those words.
+const DISCOVER_NOT = /health ?care|hospital|medical|mental health|clinic|pharmaceutical|biotech|computers? and electronics|semiconductor|telecommunication|software|textile manufacturing|retail groceries|grocer|supermarket|hospitality|government|non-?profit|education|e-learning/i
+
 export function judgeDiscovery(
   c: { name: string; subtitle?: string | null },
   sourceCategory?: string | null,
@@ -504,7 +511,7 @@ export function judgeDiscovery(
   const followers = parseFollowers(c.subtitle)
   const industry = industryOf(c.subtitle)
   if (followers == null || followers < DISCOVER_MIN_FOLLOWERS) return { ok: false, reason: 'small' }
-  if (!industry || NOT_A_BRAND.test(industry)) return { ok: false, reason: 'industry' }
+  if (!industry || NOT_A_BRAND.test(industry) || DISCOVER_NOT.test(industry)) return { ok: false, reason: 'industry' }
   if (SELLS_SPONSORSHIP.test(industry) || SELLER_NAME.test(c.name)) return { ok: false, reason: 'industry' }
   if (sourceCategory && industryFits(sourceCategory, industry)) return { ok: true, category: sourceCategory, followers, industry }
   const cat = categoryFromIndustry(industry)

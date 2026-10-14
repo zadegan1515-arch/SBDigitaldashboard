@@ -66,6 +66,16 @@ t('read lately with nobody found: resting, with the note and the day it is back'
   assert.equal(c.back, new Date(Date.parse(at) + 30 * 864e5).toISOString())
 })
 
+t('read in full through Sales Navigator, nobody a buyer: resting with no day back (Oct 14 2026); a stuck issue says what went wrong', () => {
+  const at = daysAgo(40)
+  const c = coverOf({ titles: [], linkedinUrl: 'https://www.linkedin.com/company/x/', mark: { at, seen: 30, added: 0, v: 2, clean: true, issue: null, note: 'nobody new' } }, opts)
+  assert.equal(c.state, 'resting'); assert.equal(c.back, null)
+  const s = coverOf({ titles: [], linkedinUrl: 'https://www.linkedin.com/company/x/', mark: { at: daysAgo(2), seen: 0, added: 0, v: 2, issue: 'snNoLoad', issueNote: 'twice', tries: 3 } }, opts)
+  assert.equal(s.state, 'resting'); assert.match(s.note, /results didn’t load — twice/)
+  assert.equal(s.back, new Date(Date.parse(daysAgo(2)) + 30 * 864e5).toISOString())
+  assert.equal(S({ mark: { at: daysAgo(2), seen: 0, added: 0, v: 2, issue: 'snNoLoad', tries: 1 } }), 'next', 'an issue under its retries: next')
+})
+
 t('back on the list: a visit over a month old, an old reader, a "too big" skip, a parent not yet searched', () => {
   assert.equal(S({ mark: { at: daysAgo(31), seen: 0, added: 0, v: 2 } }), 'next')
   assert.equal(S({ mark: { at: daysAgo(3), seen: 9, added: 0, v: 1 } }), 'next')

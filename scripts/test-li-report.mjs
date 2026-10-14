@@ -41,6 +41,16 @@ t('a run: start, brands, a pause, carry on, finish', () => {
   assert.equal(run.startedAt, at(0).toISOString()); assert.equal(run.lastAt, at(5).toISOString())
 })
 
+t('1.38: a retried post counts once; issues, second tries and lookalikes sent to Discover add up', () => {
+  let r = applyRunEvent([], { kind: 'brand', run: 'f9', name: 'A', brandId: 'a', seen: 9, added: 2, key: 'f9:0:a:1', review: 3 }, at(0))
+  r = applyRunEvent(r, { kind: 'brand', run: 'f9', name: 'A', brandId: 'a', seen: 9, added: 2, key: 'f9:0:a:1', review: 3 }, at(1))
+  r = applyRunEvent(r, { kind: 'brand', run: 'f9', name: 'B', brandId: 'b', seen: 0, added: 0, key: 'f9:1:b:1', issue: 'snNoLoad' }, at(2))
+  r = applyRunEvent(r, { kind: 'brand', run: 'f9', name: 'B', brandId: 'b', seen: 7, added: 1, key: 'f9:1:b:2', again: true }, at(3))
+  assert.equal(r[0].brands.length, 3); assert.equal(r[0].added, 3)
+  assert.equal(r[0].review, 3); assert.equal(r[0].issues, 1)
+  assert.equal(r[0].brands[2].again, true); assert.equal(r[0].brands[1].issue, 'snNoLoad')
+})
+
 t('each brand keeps its time and hidden time; the run adds up the hidden minutes', () => {
   let r = applyRunEvent([], { kind: 'brand', run: 'f3', name: 'A', seen: 5, added: 1, ms: 90000, hiddenMs: 0 }, at(0))
   r = applyRunEvent(r, { kind: 'brand', run: 'f3', name: 'B', seen: 5, added: 1, ms: 840000, hiddenMs: 720000 }, at(1))

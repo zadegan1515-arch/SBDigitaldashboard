@@ -31,7 +31,7 @@ import {
   type SuCandidate,
 } from '@/lib/su-match'
 import { companySlug, companyPageUrl, profileSlug, profileUrl, storedProfileUrl, cleanName, personKey, roleFromHeadline, isBuyer, decideCompanyMatch, normalizeCompany, cleanBrandName, judgeDiscovery, industryFits, decideResearchMatch, nearName, pageLooksWrong, type LiCompany } from '@/lib/li-capture'
-import { markLiSwept, markLiResearch, LI_READER, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
+import { markLiSwept, markLiResearch, sweptOutcome, LI_READER, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
 import { recordRun } from '@/lib/li-report'
 import { recordHidden, markZachRead, updateHiddenLog, summarizeHidden, cleanViews } from '@/lib/li-hidden'
 import { PARENTS, parentOf, decideParentPage, siblingNamed, isParentCompany, LI_PARENT_PAGES_KEY } from '@/lib/parents'
@@ -144,9 +144,9 @@ async function reconcileBrandTargets(brandId: string) {
 // seven hundred engineers. Nothing already in the database is removed
 // by this; the cap only stops new rows once a brand is at 25.
 
-// New brands the LinkedIn run may add in a day (lookalikes and keyword
-// searches together). Lookalikes of lookalikes never end; this keeps the
-// roster growing at a pace outreach can use.
+// New brands the LinkedIn run may add in a day (keyword searches), and
+// lookalikes it may send to Discover for review in a day. Lookalikes of
+// lookalikes never end; this keeps both at a pace Leo can look at.
 const DISCOVER_CAP_PER_DAY = 50
 
 // Save a brand's SponsorUnited profile id, and remember SponsorUnited's
@@ -778,11 +778,15 @@ export async function POST(req: NextRequest) {
 
   // action: "liDiscover" — companies LinkedIn put in front of the run:
   // the lookalikes next to a brand ("Pages people also viewed") or a
-  // company search for a word Leo gave. Leo's call (Sep 2026): straight
-  // into the dashboard, consumer industries and 5K+ followers only
-  // (judgeDiscovery). Anything already a brand, or dismissed on the
-  // Discover page before, is left alone. Each one also gets a Discover
-  // row (status "added") so the page shows where it came from.
+  // company search for a word Leo gave. Consumer industries and 5K+
+  // followers only (judgeDiscovery). Anything already a brand, or
+  // dismissed on the Discover page before, is left alone.
+  //   lookalikes → Brands → Discover, To review, graded there (Leo, Oct 14
+  //     2026: the last run's 60 lookalikes took 63% of its people and
+  //     chained into mental-health apps and Middle East food groups); never
+  //     a brand by themselves, never read by the run. One row per company,
+  //     whichever brand it was found next to.
+  //   a keyword search → straight into the dashboard as before (off by default).
   if (body.action === 'liDiscover') {
     const source = body.source === 'search' ? 'search' : 'lookalike'
     const from = String(body.from || '').trim().slice(0, 80)
@@ -792,9 +796,9 @@ export async function POST(req: NextRequest) {
     const label = source === 'search' ? `LinkedIn search: ${from}` : `LinkedIn: similar to ${fromBrand?.name || from}`
 
     // Rolling day, so a run that crosses midnight can't add 100.
-    let room = DISCOVER_CAP_PER_DAY - await prisma.brand.count({
-      where: { source: 'linkedin-discover', createdAt: { gte: new Date(Date.now() - 864e5) } },
-    })
+    let room = DISCOVER_CAP_PER_DAY - (source === 'lookalike'
+      ? await prisma.discoveredBrand.count({ where: { query: { startsWith: 'LinkedIn: similar to' }, status: 'new', createdAt: { gte: new Date(Date.now() - 864e5) } } })
+      : await prisma.brand.count({ where: { source: 'linkedin-discover', createdAt: { gte: new Date(Date.now() - 864e5) } } }))
 
     const brands = await prisma.brand.findMany({ select: { name: true, aka: true, linkedinUrl: true } })
     const knownNames = new Set<string>()
@@ -808,8 +812,15 @@ export async function POST(req: NextRequest) {
     const dismissed = await prisma.discoveredBrand.findMany({ where: { status: 'dismissed' }, select: { name: true, linkedinUrl: true } })
     const dismissedNames = new Set(dismissed.map(d => normalizeCompany(d.name)))
     const dismissedSlugs = new Set(dismissed.map(d => companySlug(d.linkedinUrl)).filter(Boolean) as string[])
+    // Already waiting on Discover (any source): no second row.
+    const waiting = source === 'lookalike'
+      ? await prisma.discoveredBrand.findMany({ where: { status: 'new' }, select: { name: true, linkedinUrl: true } })
+      : []
+    const waitingNames = new Set(waiting.map(d => normalizeCompany(d.name)))
+    const waitingSlugs = new Set(waiting.map(d => companySlug(d.linkedinUrl)).filter(Boolean) as string[])
 
-    const tally = { known: 0, dismissed: 0, small: 0, industry: 0, giant: 0, capped: 0 }
+    const tally = { known: 0, dismissed: 0, waiting: 0, small: 0, industry: 0, giant: 0, capped: 0 }
+    const review: Array<{ name: string; category: string; linkedinUrl: string }> = []
     const created: Array<{ brandId: string; name: string; category: string; linkedinUrl: string }> = []
     const seen = new Set<string>()
     for (const raw of (Array.isArray(body.companies) ? body.companies : []).slice(0, 40)) {
@@ -825,6 +836,7 @@ export async function POST(req: NextRequest) {
       const nearKnown = (set: Set<string>) => set.has(key) || Array.from(set).some(n => nearName(n, key))
       if (!key || knownSlugs.has(slug) || nearKnown(knownNames)) { tally.known++; continue }
       if (dismissedSlugs.has(slug) || nearKnown(dismissedNames)) { tally.dismissed++; continue }
+      if (source === 'lookalike' && (waitingSlugs.has(slug) || waitingNames.has(key))) { tally.waiting++; continue }
       const verdict = judgeDiscovery({ name, subtitle }, fromBrand?.category ?? null)
       if ('reason' in verdict) { tally[verdict.reason]++; continue }
       // Leo, Oct 6 2026: no giants (src/lib/giants.ts).
@@ -837,6 +849,22 @@ export async function POST(req: NextRequest) {
       const category = byName !== 'unresolved' && byName !== verdict.category && industryFits(byName, verdict.industry)
         ? byName : verdict.category
       const how = source === 'search' ? `LinkedIn search for "${from}"` : `LinkedIn, similar to ${fromBrand?.name || from}`
+      if (source === 'lookalike') {
+        // To review on Discover; Leo adds it (or Add all A's does).
+        try {
+          await prisma.discoveredBrand.upsert({
+            where: { query_name: { query: label, name } },
+            create: {
+              query: label, name, category, linkedinUrl: companyPageUrl(slug), status: 'new',
+              reason: `${verdict.industry} · ${verdict.followers.toLocaleString('en-US')} followers`,
+            },
+            update: {},
+          })
+        } catch { tally.known++; continue }
+        waitingNames.add(key); waitingSlugs.add(slug); room--
+        review.push({ name, category, linkedinUrl: companyPageUrl(slug) })
+        continue
+      }
       let brand
       try {
         brand = await prisma.brand.create({
@@ -866,7 +894,7 @@ export async function POST(req: NextRequest) {
       } catch { /* the log row is a nicety */ }
       created.push({ brandId: brand.id, name, category, linkedinUrl: brand.linkedinUrl! })
     }
-    return NextResponse.json({ ok: true, label, created, ...tally, cap: DISCOVER_CAP_PER_DAY }, { headers: cors })
+    return NextResponse.json({ ok: true, label, created, review, ...tally, cap: DISCOVER_CAP_PER_DAY }, { headers: cors })
   }
 
   // action: "liResearch" — a name from the research list, and LinkedIn's
@@ -985,19 +1013,25 @@ export async function POST(req: NextRequest) {
 
   // action: "liSwept" — one brand visited: how many people were read,
   // how many added, and a note when something stopped it ("no clear
-  // LinkedIn page"). Drives the 30-day rest and the dashboard's note.
+  // LinkedIn page"). Its outcome decides whether the brand is read again
+  // (li-sweep.ts liDue): clean = Sales Navigator read every search to its
+  // end (or the parent company's page gave people) — never again by
+  // itself; an issue (script 1.38's `issue`, a misread page, or a run that
+  // meant to use Sales Navigator and didn't) = first on the next run.
   if (body.action === 'liSwept') {
     const brandId = String(body.brandId || '')
+    const outcome = sweptOutcome(body)
     if (brandId) {
       try {
         await markLiSwept(prisma, brandId, {
+          ...outcome,
           seen: Math.max(0, Number(body.seen) || 0),
           added: Math.max(0, Number(body.added) || 0),
           note: body.note ? String(body.note).slice(0, 160) : null,
           v: Number(body.reader) || 0,
           parentTried: body.parentTried === true,
           // Read through Sales Navigator (script 1.31+); or meant to be and
-          // read on the People tab instead; or that was its one retry.
+          // read on the People tab instead (an older copy's fallback).
           sn: body.salesNav === true,
           snMissed: body.snMissed === true,
           snRetried: body.retry === true && body.salesNav !== true,
@@ -1029,6 +1063,7 @@ export async function POST(req: NextRequest) {
           note: body.note || null, problem: body.problem || null, sample: body.sample || null,
           ms: body.ms ?? null, hiddenMs: body.hiddenMs, via: body.via || null, members: body.members ?? null,
           hiddenPeople: hiddenSum ? hiddenSum.n : null, hiddenLikely: hiddenSum ? hiddenSum.likely : null,
+          issue: outcome?.issue ?? null, again: body.again === true, review: body.review, key: body.key ? String(body.key) : null,
         })
       } catch { /* the report is a nicety; the sweep log above is what counts */ }
     }

@@ -40,7 +40,7 @@ export const PARENTS: Parent[] = [
     others: ['Laphroaig', 'Hibiki', 'Yamazaki', 'Toki', 'Roku', 'Haku', 'Canadian Club', "Teacher's", 'Effen', 'On The Rocks', '-196', 'Midori', 'Sipsmith', 'Legent', "Booker's", 'Old Grand-Dad', 'Larios', 'Tres Generaciones', 'DeKuyper', 'Cruzan'] },
   { name: 'Campari Group', search: 'Campari Group', brands: ['Aperol', 'Campari', 'Espolòn|Espolon', 'Wild Turkey', 'SKYY', 'Crodino'],
     others: ['Appleton', 'Grand Marnier', 'Courvoisier', 'Montelobos', 'Cinzano', 'Cynar', 'Averna', 'Bulldog Gin', "Russell's Reserve"] },
-  { name: 'Proximo Spirits', search: 'Proximo Spirits', brands: ['Jose Cuervo', '1800 Tequila|1800', 'Kraken Rum|Kraken', 'Hangar 1'],
+  { name: 'Proximo Spirits', search: 'Proximo Spirits', brands: ['Jose Cuervo', '1800 Tequila|1800', 'Kraken Rum|Kraken', 'Hangar 1', 'Gran Coramino'],
     others: ['Dobel', 'Gran Centenario', 'Bushmills', 'Three Olives', "Stranahan's", 'Proper No. Twelve|Proper 12', 'Pendleton', 'Boodles'] },
   { name: 'Sazerac', search: 'Sazerac Company', aka: ['Sazerac'], brands: ['Fireball', 'Buffalo Trace', 'Pinnacle Vodka|Pinnacle', 'Southern Comfort'],
     others: ['BuzzBallz', 'Svedka', 'Paul Masson', "Myers's", 'Eagle Rare', 'Pappy Van Winkle', "Blanton's", 'Weller', 'Taaka', 'Wheatley', '99 Brand|99 Schnapps'] },
@@ -56,7 +56,8 @@ export const PARENTS: Parent[] = [
     others: ['Larceny', 'Pikesville', 'Christian Brothers', 'Hpnotiq', 'PAMA', "Burnett's", 'Admiral Nelson', 'Lunazul', 'Rittenhouse'] },
   { name: 'Mark Anthony Brands', search: 'Mark Anthony Brands', brands: ['White Claw', "Mike's Hard Lemonade|Mike's"],
     others: ['Cayman Jack', "Mike's Harder"] },
-  { name: 'Anheuser-Busch', search: 'Anheuser-Busch', brands: ['Bud Light', 'Michelob Ultra', 'Busch Light', 'Natural Light|Natty Light', 'Stella Artois', 'Cutwater Spirits|Cutwater', 'Goose Island'],
+  { name: 'Anheuser-Busch', search: 'Anheuser-Busch', brands: ['Bud Light', 'Michelob Ultra', 'Busch Light', 'Natural Light|Natty Light', 'Stella Artois', 'Cutwater Spirits|Cutwater', 'Goose Island',
+    'Estrella Jalisco', 'Rolling Rock'],
     others: ['Budweiser', 'Michelob', 'Busch', 'Stella', 'NÜTRL|Nutrl', 'Golden Road', 'Elysian', 'Shock Top', 'Babe Wine', 'Kona'] },
   { name: 'Molson Coors', search: 'Molson Coors Beverage Company', aka: ['Molson Coors'], brands: ['Coors Light', 'Miller Lite', 'Keystone Light', 'Blue Moon', 'Vizzy'],
     others: ['Coors Banquet', 'Miller High Life', 'Miller Genuine Draft', "Leinenkugel's", 'Topo Chico Hard Seltzer', 'Simply Spiked', 'ZOA', 'Peroni', "Hamm's"] },
@@ -76,6 +77,17 @@ export const PARENTS: Parent[] = [
     others: ['Dr Pepper', 'Canada Dry', '7UP|7 Up', 'Snapple', 'Bai', 'A&W', 'Sunkist', 'Squirt', 'Green Mountain', "Mott's", 'Clamato', 'Hawaiian Punch'] },
   { name: 'National Beverage Corp.', search: 'National Beverage Corp.', aka: ['National Beverage'], brands: ['Rip It', 'LaCroix'],
     others: ['Shasta', 'Faygo', 'Everfresh'] },
+  // Oct 14 2026: brands the run found no page for (their people sit at the
+  // owner). Not "on!" (Altria): its name is the word "On", which would
+  // search the owner's people for anyone with "on" in their title.
+  { name: 'Altria', search: 'Altria', aka: ['Altria Group'], brands: ['NJOY'],
+    others: ['Marlboro', 'Copenhagen', 'Skoal', 'Black & Mild'] },
+  { name: 'Reynolds American', search: 'Reynolds American', aka: ['Reynolds American Inc.', 'R.J. Reynolds Tobacco Company', 'RJ Reynolds'],
+    brands: ['Vuse', 'Grizzly'], others: ['Camel', 'Newport', 'Velo', 'Kodiak', 'Pall Mall'] },
+  { name: 'The Kraft Heinz Company', search: 'The Kraft Heinz Company', aka: ['Kraft Heinz'], brands: ['MiO'],
+    others: ['Kool-Aid', 'Crystal Light', 'Capri Sun', 'Heinz', 'Oscar Mayer', 'Lunchables', 'Jell-O'] },
+  { name: 'Imperial Brands', search: 'Imperial Brands', aka: ['ITG Brands'], brands: ['Zone|ZONE X|Zonex'],
+    others: ['Winston'] },
 ]
 
 // The same loose key Stock take uses (kept here so this file stays pure).

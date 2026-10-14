@@ -98,7 +98,8 @@ const ago = (d) => new Date(Date.now() - d * 864e5);
     ] });
     const setting = (key, value) => prisma.setting.create({ data: { key, value: JSON.stringify(value) } });
     await setting('liSweepLog', {
-      b_rest: { at: ago(2).toISOString(), seen: 40, added: 0, v: 2, note: 'big company (173 people) — nobody new in its partnerships, sponsorship, brand manager, marketing searches' },
+      // A People-tab read (Sales Navigator off) that found nobody: back in a month.
+      b_rest: { at: ago(2).toISOString(), seen: 40, added: 0, v: 2, clean: false, issue: null, note: 'big company (173 people) — nobody new in its partnerships, sponsorship, brand manager, marketing searches' },
       // Read long ago: due again.
       b_next: { at: ago(45).toISOString(), seen: 3, added: 0, v: 2 },
       b_zach: { at: ago(3).toISOString(), seen: 4, added: 0, v: 2 },

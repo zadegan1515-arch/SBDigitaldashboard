@@ -39,11 +39,19 @@ catch (e) {
 }
 
 const PORT = 4623;
-const SCRIPT = fs.readFileSync(path.join(__dirname, 'linkedin-capture.user.js'), 'utf8')
+const RAW = fs.readFileSync(path.join(__dirname, 'linkedin-capture.user.js'), 'utf8');
+// Each wait the test shortens must still be in the script, or the test
+// would quietly run with LinkedIn's real waits.
+for (const lit of ['document.hidden ? 60000 : 30000', 'var DASH_RETRY_MS = [5000, 15000, 30000, 60000, 60000, 60000];']) {
+  assert.ok(RAW.includes(lit), 'the script still has: ' + lit);
+}
+const SCRIPT = RAW
   .replace("'https://sb-digitaldashboard.vercel.app/api/ingest'", "'http://127.0.0.1:" + PORT + "/api/ingest'")
   .replace(/function rand\(a, b\) \{[^}]*\}/, 'function rand() { return 30; }')
   // Sales Navigator's results wait: seconds on LinkedIn, too long for a test.
-  .replace('document.hidden ? 60000 : 30000', '2500');
+  .replace('document.hidden ? 60000 : 30000', '2500')
+  // The dashboard retry: minutes in real life.
+  .replace('var DASH_RETRY_MS = [5000, 15000, 30000, 60000, 60000, 60000];', 'var DASH_RETRY_MS = [100, 100, 100];');
 
 // ---- fake LinkedIn ------------------------------------------------
 function peopleCard(slug, name, headline) {
@@ -82,11 +90,15 @@ function salesPage(items, total) {
     '</script></body></html>';
 }
 
-const COMPANY_IDS = { 'liquid-death': '1234', 'big-co': '5678', 'wrong-id': '7777', 'no-sn': '9999', 'tiny-co': '4321', 'tiny-two': '4322', 'stuck-one': '4401', 'stuck-two': '4402', 'small-sn': '4501' };
+const COMPANY_IDS = { 'liquid-death': '1234', 'big-co': '5678', 'wrong-id': '7777', 'no-sn': '9999', 'tiny-co': '4321', 'tiny-two': '4322', 'stuck-one': '4401', 'stuck-two': '4402', 'small-sn': '4501',
+  'part-co': '4601', 'big-parent': '4701', 'huge-ok': '4801', 'flaky-dash': '4901', 'empty-tab': '4999' };
 const salesQueries = [];
 
 const sent = [];
 let fillItems = [];
+// The dashboard misbehaving: the next N calls of an action drop the
+// connection (or answer 502 with a page).
+const dashFail = { action: null, n: 0, how: 'drop' };
 const server = http.createServer((req, res) => {
   const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
   if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
@@ -95,12 +107,18 @@ const server = http.createServer((req, res) => {
     req.on('data', c => { raw += c; });
     req.on('end', () => {
       const body = JSON.parse(raw);
+      if (dashFail.n > 0 && body.action === dashFail.action) {
+        dashFail.n--;
+        if (dashFail.how === 'drop') return req.socket.destroy();
+        res.writeHead(502, Object.assign({ 'Content-Type': 'text/html' }, cors));
+        return res.end('<html><body>Bad gateway</body></html>');
+      }
       res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, cors));
       if (body.action === 'liVersion' || body.action === 'liRun') return res.end('{"ok":true}');
       sent.push(body);
       if (body.action === 'liList') {
         return res.end(JSON.stringify({ ok: true, items: fillItems, cap: 25, noPage: 0, resting: 0, research: 0, planned: 0, noBuyer: 0,
-          hiddenRetry: fillItems.filter(i => i.hiddenRetry).length }));
+          retry: fillItems.filter(i => i.retry).length, hiddenRetry: fillItems.filter(i => i.retry).length }));
       }
       if (body.action === 'liCapture') {
         return res.end(JSON.stringify({ ok: true, brand: { id: body.brandId, name: body.companyName }, added: (body.rows || []).length, have: 5, cap: 25 }));
@@ -149,6 +167,22 @@ const server = http.createServer((req, res) => {
       return res.end(salesPage([lead(mid(40), 'Sam Sponsor', 'Sponsorship Manager', 'Liquid Death, Inc.')], 1));
     }
     if (co === '5678') return res.end(salesPage([lead(mid(50), 'Bea Big', 'VP Marketing', 'Big Co')], 1));
+    if (co === '4801') return res.end(salesPage([lead(mid(80), 'Hu Ok', 'VP Marketing', 'huge-ok')], 1));
+    if (co === '4901') return res.end(salesPage([lead(mid(90), 'Fay Flaky', 'Brand Manager', 'flaky-dash')], 1));
+    // Says 40, draws 20 on its first page however often it's loaded; page 2
+    // has the 15 it should.
+    if (co === '4601' && kind === 'fn' && page === 1) {
+      const items = [];
+      for (let k = 1; k <= 20; k++) items.push(lead(mid(600 + k), 'Part ' + k, 'Brand Manager', 'part-co'));
+      return res.end(salesPage(items, 40));
+    }
+    if (co === '4601' && kind === 'fn' && page === 2) {
+      const items = [];
+      for (let k = 26; k <= 40; k++) items.push(lead(mid(600 + k), 'Part ' + k, 'Brand Manager', 'part-co'));
+      return res.end(salesPage(items, 40));
+    }
+    // A brand under its parent: the parent's people who name it.
+    if (co === '4701') return res.end(salesPage([lead(mid(70), 'Kim Kid', 'Brand Manager, Kid Brand', 'Big Parent')], 1));
     // A brand with nobody in marketing: Sales Navigator's own empty page,
     // no results count on it (Leo's first run, Oct 12 2026).
     // A results page that never draws (a slow or hidden window).
@@ -172,7 +206,15 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/company/big-co/people/') {
     return res.end(peoplePage('Big Co', peopleCard('bob-b', 'Bob B', 'Engineer'), '<h2>12,345 associated members</h2>'));
   }
-  for (const slug of ['no-id', 'wrong-id', 'no-sn', 'after-no-sn', 'tiny-co', 'tiny-two', 'stuck-one', 'stuck-two']) {
+  for (const slug of ['huge-co', 'huge-ok']) {
+    if (url.pathname === '/company/' + slug + '/people/') return res.end(peoplePage(slug, peopleCard(slug + '-1', 'Hu Ge', 'Engineer'), '<h2>2,400 associated members</h2>'));
+  }
+  if (url.pathname === '/company/big-parent/people/') {
+    return res.end(peoplePage('Big Parent', url.searchParams.get('keywords') ? '' : peopleCard('bp-1', 'Pat Parent', 'CEO at Big Parent')));
+  }
+  // A People tab with nobody on it: still Sales Navigator (1.38).
+  if (url.pathname === '/company/empty-tab/people/') return res.end(peoplePage('Empty Tab', ''));
+  for (const slug of ['no-id', 'wrong-id', 'no-sn', 'after-no-sn', 'tiny-co', 'tiny-two', 'stuck-one', 'stuck-two', 'part-co', 'flaky-dash']) {
     if (url.pathname === '/company/' + slug + '/people/') {
       const kw = url.searchParams.get('keywords') || '';
       return res.end(peoplePage(slug, peopleCard(slug + '-' + (kw || 'all'), 'Person ' + slug + ' ' + (kw || 'all'), 'Brand Manager at ' + slug)));
@@ -256,7 +298,7 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
         },
       });
       assert.equal(r.calls.find(b => b.action === 'liList').salesNav, true, 'the worklist is asked for with Sales Navigator on');
-      assert.match(snLine, /from Sales Navigator/);
+      assert.match(snLine, /Every brand through Sales Navigator/);
       assert.deepEqual(r.calls.filter(b => /^li(Capture|Swept|Discover)$/.test(b.action)).map(where), [
         'liCapture:b-ld:/company/liquid-death/people/',
         'liCapture:b-ld:/company/liquid-death/',
@@ -281,6 +323,9 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
 
       const swept = r.calls.find(b => b.action === 'liSwept');
       assert.equal(swept.salesNav, true);
+      assert.equal(swept.done, true, 'read in full: the dashboard won\'t bring it back by itself');
+      assert.equal(swept.issue, null);
+      assert.deepEqual([swept.shown, swept.read], [25 + 3 + 1, 25 + 3 + 1], 'every result Sales Navigator counted was on screen');
       assert.equal(swept.via, 'Sales Navigator');
       assert.equal(swept.added, 1 + 25 + 1 + 1);
       assert.deepEqual(swept.hidden, [{ q: 'marketing', url: 'http://127.0.0.1:' + PORT + '/company/liquid-death/people/?keywords=marketing', heads: ['Director of Brand Marketing'] }],
@@ -307,19 +352,34 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
       ok('a big company goes straight to Sales Navigator; its page is checked on the first save');
     }
 
-    // 3 + 4. No company id; an id that shows another company's people.
+    // 3 + 4. No company id (its page loaded twice for it); an id that shows
+    // another company's people. Never the People tab's views (1.38): each is
+    // an issue, tried again at the end of the run, then left for the next.
     {
       const r = await run([item('b-noid', 'No Id', 'no-id'), item('b-wrong', 'Wrong Id', 'wrong-id')]);
       assert.deepEqual(r.calls.filter(b => /^li(Capture|Swept)$/.test(b.action)).map(where), [
-        'liCapture:b-noid:/company/no-id/people/', 'liCapture:b-noid:/company/no-id/people/?keywords=marketing', 'liCapture:b-noid:/company/no-id/people/?keywords=partnerships', 'liSwept:b-noid',
-        'liCapture:b-wrong:/company/wrong-id/people/', 'liCapture:b-wrong:/company/wrong-id/people/?keywords=marketing', 'liCapture:b-wrong:/company/wrong-id/people/?keywords=partnerships', 'liSwept:b-wrong',
-      ], 'both get the People tab views; nobody saved from the wrong company');
+        'liCapture:b-noid:/company/no-id/people/', 'liSwept:b-noid',
+        'liCapture:b-wrong:/company/wrong-id/people/', 'liSwept:b-wrong',
+        'liCapture:b-noid:/company/no-id/people/', 'liSwept:b-noid',
+        'liCapture:b-wrong:/company/wrong-id/people/', 'liSwept:b-wrong',
+      ], 'no keyword views; nobody saved from the wrong company; each tried twice');
       const sw = r.calls.filter(b => b.action === 'liSwept');
-      assert.match(sw[0].via, /Sales Navigator: could not find its LinkedIn company id/);
-      assert.match(sw[1].via, /Sales Navigator: Sales Navigator showed another company's people \(Totally Other Inc\)/);
-      assert.ok(sw.every(s => s.salesNav === false));
-      assert.match(r.panel, /from Sales Navigator|Run finished/);
-      ok('no company id, or another company\'s people: nobody saved from it, the People tab views instead');
+      assert.deepEqual(sw.map(x => x.issue), ['snNoId', 'snOtherCompany', 'snNoId', 'snOtherCompany']);
+      assert.deepEqual(sw.map(x => x.again), [false, false, true, true]);
+      assert.ok(sw.every(x => x.salesNav === false && x.done === false));
+      assert.match(sw[1].note, /another company's people \(Totally Other Inc\)/);
+      assert.equal(r.queries.filter(q => q.co === '7777').length, 2);
+      assert.match(r.panel, /Went wrong — first on the next run \(2\)/);
+      ok('no company id, or another company\'s people: an issue — tried again at the end, never the People tab');
+    }
+
+    // An empty People tab still goes to Sales Navigator (it used to stop).
+    {
+      const r = await run([item('b-empty', 'Empty Tab', 'empty-tab')]);
+      assert.deepEqual(r.queries.map(q => q.co), ['4999', '4999']);
+      const sw = r.calls.find(b => b.action === 'liSwept');
+      assert.equal(sw.salesNav, true); assert.equal(sw.done, true);
+      ok('a People tab with nobody on it goes on to Sales Navigator');
     }
 
     // Brands with nobody in marketing ("No matches found") are empty
@@ -332,17 +392,97 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
       ok('"No matches found" is an empty search: Sales Navigator stays on for the run');
     }
 
-    // Results that never load, twice in a row: those two get the People
-    // tab; Sales Navigator stays on (Leo: "i dont want the sales navigator
-    // to be off").
+    // Results that never load: loaded once more, then an issue — the brand
+    // goes again at the end of the run; Sales Navigator stays on.
     {
       const r = await run([item('b-st1', 'Stuck One', 'stuck-one'), item('b-st2', 'Stuck Two', 'stuck-two'), item('b-ld', 'Liquid Death', 'liquid-death')]);
       const sw = r.calls.filter(b => b.action === 'liSwept');
-      assert.deepEqual(sw.map(s => s.salesNav), [false, false, true]);
-      assert.match(sw[0].via, /Sales Navigator's results did not load/);
-      assert.deepEqual(sw.map(s => s.snMissed), [true, true, false], 'the two it couldn\'t read through Sales Navigator are due once more');
+      assert.deepEqual(sw.map(x => x.brandId), ['b-st1', 'b-st2', 'b-ld', 'b-st1', 'b-st2'], 'the stuck two again after the rest');
+      assert.deepEqual(sw.map(x => x.salesNav), [false, false, true, false, false]);
+      assert.deepEqual(sw.map(x => x.issue), ['snNoLoad', 'snNoLoad', null, 'snNoLoad', 'snNoLoad']);
+      assert.deepEqual(sw.map(x => x.again), [false, false, false, true, true]);
+      assert.equal(r.queries.filter(q => q.co === '4401').length, 4, 'loaded twice on each try');
+      assert.ok(!r.calls.some(b => b.action === 'liCapture' && /keywords=/.test(b.companyUrl)), 'never the People tab views');
       assert.match(r.panel, /Run finished/);
-      ok('a Sales Navigator page that doesn\'t load costs that brand only: Sales Navigator stays on');
+      ok('a Sales Navigator page that doesn\'t load: once more, then tried again at the end of the run');
+    }
+
+    // A page that draws only part of what Sales Navigator says it has: loaded
+    // once more, the rest still read, and the brand is an issue (read again).
+    {
+      const r = await run([item('b-part', 'Part Co', 'part-co')]);
+      assert.deepEqual(r.queries.map(q => q.kind + q.page), ['fn1', 'fn1', 'fn2', 'kw1', 'fn1', 'fn1', 'fn2', 'kw1'], 'page 1 twice, page 2 because the count says 40; the whole brand again at the end');
+      const sw = r.calls.filter(b => b.action === 'liSwept');
+      assert.deepEqual(sw.map(x => x.issue), ['partial', 'partial']);
+      assert.match(sw[0].issueNote, /read 20 of 25 on Sales Navigator’s marketing & business development/);
+      assert.equal(sw[0].added, 1 + 20 + 15, 'what it did read is saved');
+      assert.deepEqual([sw[0].shown, sw[0].read], [25 + 15, 20 + 15]);
+      ok('a page that draws 20 of 25: loaded again, the rest read, the brand comes back');
+    }
+
+    // A brand under its parent: the parent's company in Sales Navigator,
+    // searched for the brand's name.
+    {
+      const r = await run([{ brandId: 'b-kid', name: 'Kid Brand', aka: null, category: 'spirits', linkedinUrl: null, noPage: true, contacts: 0,
+        parent: { name: 'Big Parent', search: 'Big Parent', slug: 'big-parent' } }]);
+      assert.deepEqual(r.queries.map(q => q.co + ':' + q.kind), ['4701:fn', '4701:kw']);
+      assert.match(r.queries[0].q, /keywords:"Kid Brand",filters:List\(\(type:CURRENT_COMPANY,values:List\(\(id:urn:li:organization:4701,text:Big Parent/);
+      assert.match(r.queries[0].q, /type:FUNCTION/);
+      assert.match(r.queries[1].q, /keywords:"Kid Brand" AND \(partnership OR partnerships OR sponsorship OR sponsorships\)/);
+      const caps = r.calls.filter(b => b.action === 'liCapture');
+      assert.ok(caps.every(c => c.viaParent === true), 'saved as the brand\'s people, never the parent\'s page');
+      assert.deepEqual(caps[1].rows.map(x => x.name), ['Kim Kid']);
+      const sw = r.calls.find(b => b.action === 'liSwept');
+      assert.equal(sw.via, 'Sales Navigator via Big Parent');
+      assert.equal(sw.done, true); assert.equal(sw.parentTried, true);
+      ok('a brand under its parent: Sales Navigator on the parent\'s company, searched for its name');
+    }
+
+    // Skip very big brands: 1,500+ on the People tab ends the brand there —
+    // unless the dashboard says it may be read (bigOk).
+    {
+      const r = await run([item('b-huge', 'Huge Co', 'huge-co', { bigOk: false }), item('b-hok', 'Huge OK', 'huge-ok', { bigOk: true })],
+        { setup: async (pg) => { await pg.check('#sbliskipbig'); } });
+      assert.equal(r.calls.find(b => b.action === 'liList').skipGiants, true);
+      const sw = r.calls.filter(b => b.action === 'liSwept');
+      assert.equal(sw[0].skipped, 'veryBig'); assert.equal(sw[0].members, 2400); assert.equal(sw[0].done, false);
+      assert.match(sw[0].note, /very big — 2,400 on LinkedIn, skipped/);
+      assert.ok(!r.calls.some(b => b.action === 'liCapture' && b.brandId === 'b-huge'), 'nothing read');
+      assert.deepEqual(r.queries.map(q => q.co), ['4801', '4801'], 'only the OK\'d one goes to Sales Navigator');
+      assert.equal(sw[1].salesNav, true);
+      ok('1,500+ on LinkedIn: skipped at its People tab, headcount saved; an OK\'d one is read');
+    }
+
+    // The dashboard drops two saves: the run waits and tries again — no
+    // pause, each save lands once. A 502 page is tried again the same way.
+    {
+      dashFail.action = 'liCapture'; dashFail.n = 2; dashFail.how = 'drop';
+      const r = await run([item('b-flaky', 'Flaky Dash', 'flaky-dash')]);
+      assert.equal(dashFail.n, 0);
+      assert.equal(r.calls.filter(b => b.action === 'liCapture').length, 3, 'People tab + two Sales Navigator searches, each once');
+      assert.equal(r.calls.find(b => b.action === 'liSwept').done, true);
+      assert.match(r.panel, /Run finished/);
+      dashFail.action = 'liSwept'; dashFail.n = 1; dashFail.how = '502';
+      const r2 = await run([item('b-flaky', 'Flaky Dash', 'flaky-dash')]);
+      assert.equal(dashFail.n, 0);
+      assert.equal(r2.calls.filter(b => b.action === 'liSwept').length, 1);
+      ok('a dashboard that drops a call or answers 502 is tried again; the run carries on');
+    }
+    // Down past the retries: the run pauses, as before.
+    {
+      dashFail.action = 'liCapture'; dashFail.n = 99; dashFail.how = 'drop';
+      let paused = '';
+      const r = await run([item('b-flaky', 'Flaky Dash', 'flaky-dash')], {
+        during: async (pg) => {
+          await pg.waitForFunction(() => /Paused: Could not reach the dashboard/.test((document.getElementById('sbli-panel') || {}).innerText || ''), null, { timeout: 30000 });
+          paused = await pg.innerText('#sbli-panel');
+          await pg.click('#sblifillstop');
+        },
+      });
+      dashFail.n = 0; dashFail.action = null;
+      assert.match(paused, /Paused: Could not reach the dashboard/);
+      assert.equal(r.calls.filter(b => b.action === 'liCapture').length, 0);
+      ok('a dashboard down past the retries pauses the run');
     }
 
     // Under 50 on LinkedIn: only the marketing search (the partnerships one
@@ -376,16 +516,22 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
       ok('the start panel asks for Brand Fit 50+ and skips very big brands by default');
     }
 
-    // 5. No Sales Navigator on the account: off for the rest of the run.
+    // 5. No Sales Navigator on the account: the run pauses (every brand goes
+    // through it now) — never the People tab's views.
     {
-      const r = await run([item('b-nosn', 'No SN', 'no-sn'), item('b-after', 'After', 'after-no-sn')]);
-      assert.deepEqual(r.calls.filter(b => /^li(Capture|Swept)$/.test(b.action)).map(where), [
-        'liCapture:b-nosn:/company/no-sn/people/', 'liCapture:b-nosn:/company/no-sn/people/?keywords=marketing', 'liCapture:b-nosn:/company/no-sn/people/?keywords=partnerships', 'liSwept:b-nosn',
-        'liCapture:b-after:/company/after-no-sn/people/', 'liCapture:b-after:/company/after-no-sn/people/?keywords=marketing', 'liCapture:b-after:/company/after-no-sn/people/?keywords=partnerships', 'liSwept:b-after',
-      ]);
-      assert.equal(r.queries.length, 1, 'Sales Navigator tried once, never again that run');
-      assert.match(r.calls.filter(b => b.action === 'liSwept')[0].via, /isn't open on this LinkedIn account/);
-      ok('an account without Sales Navigator: the run uses the People tab from then on');
+      let paused = '';
+      const r = await run([item('b-nosn', 'No SN', 'no-sn'), item('b-after', 'After', 'after-no-sn')], {
+        during: async (pg) => {
+          await pg.waitForFunction(() => /Paused: Sales Navigator isn't open on this LinkedIn account/.test((document.getElementById('sbli-panel') || {}).innerText || ''), null, { timeout: 30000 });
+          paused = await pg.innerText('#sbli-panel');
+          await pg.click('#sblifillstop');
+        },
+      });
+      assert.match(paused, /Open Sales Navigator in this window once/);
+      assert.equal(r.queries.length, 1);
+      assert.ok(!r.calls.some(b => b.action === 'liCapture' && /keywords=/.test(b.companyUrl)));
+      assert.ok(!r.calls.some(b => b.brandId === 'b-after'), 'nothing more until Leo carries on');
+      ok('an account without Sales Navigator: the run pauses and says so');
     }
 
     // 6. Off by hand: remembered, sent, and the run never goes there.
@@ -397,9 +543,10 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
       ok('switched off: the worklist knows, and the run never opens Sales Navigator');
     }
 
-    // The brands back for Sales Navigator are named on the setup panel.
+    // The brands back because their last read went wrong are named on the
+    // setup panel, and the run says why it reads one.
     {
-      fillItems = [item('b-ld', 'Liquid Death', 'liquid-death', { hiddenRetry: true })];
+      fillItems = [item('b-ld', 'Liquid Death', 'liquid-death', { retry: true, hiddenRetry: true, issue: 'snNoLoad', issueText: 'Sales Navigator’s results didn’t load', tries: 1 })];
       const ctx = await browser.newContext();
       const pg = await ctx.newPage();
       await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
@@ -408,9 +555,13 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
       await pg.click('#sblifillopen');
       await pg.click('#sblifilllook');
       await pg.waitForSelector('#sblisnretry');
-      assert.match(await pg.innerText('#sblisnretry'), /^1 brands read before without Sales Navigator .* are back for it/);
+      assert.match(await pg.innerText('#sblisnretry'), /^1 brand whose last read went wrong .* go first/);
+      await pg.uncheck('#sblilook');
+      await pg.click('#sblifillstart');
+      await pg.waitForSelector('#sblinow');
+      assert.match(await pg.innerText('#sblinow'), /read again first — Sales Navigator’s results didn’t load/);
       await ctx.close();
-      ok('the setup panel names the brands back on the list for Sales Navigator');
+      ok('the setup panel names the brands whose last read went wrong; the run says why');
     }
 
     console.log(n + ' checks passed');

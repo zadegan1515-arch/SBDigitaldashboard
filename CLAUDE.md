@@ -71,6 +71,21 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `node scripts/cc.mjs dayRecap` before choosing what to build. Tests: `node scripts/test-work-log.mjs`,
   `NODE_PATH=$(npm root -g) node scripts/test-today.js` (page, fake /api/data),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-today-e2e.js` (real handlers).
+- **Home → Claude's day** (Leo, Oct 14 2026: "at the end of each day i want a review of everything that was updated
+  through claude"; his picks: on the dashboard, opens itself; site changes, data Claude changed, what Claude needs).
+  **Claude’s day ▸** in Home's header (before Today's recap), and by itself on the first visit after **5pm New York**
+  (per browser, localStorage `sb.claudeDaySeen`; it also marks the morning recap seen so it doesn't open on a second
+  evening visit). Same full-screen cards as the recap (`drawCards`, `openClaudeDay`, `cd*` in app.html), ‹ › for other
+  days. Data = `claudeDay({ day })` (read-only): **What Claude changed on the site** = Claude's commits on `main` that day
+  (GitHub's public API, trailers / merges out, `readCommit`; cached in Setting `claudeCommits`, 10 min today, for good
+  once the day is over; optional `GITHUB_TOKEN`); **in the data** = table `ClaudeAction` — every `/api/data` write made
+  with the dashboard token (`a.__user === 'CLI'`, i.e. `node scripts/cc.mjs …` from a Claude session), worded by
+  `actionText` (reads, previews, refusals and addWorkLog are never logged) — plus the brand hunt's Discover finds;
+  **what the sessions said** = the day's WorkLog chats; **what Claude needs from you** = their NEED blocks (ticked here,
+  `setWorkNeedDone`), open needs from the 6 days before, and review queues (research to review, Discover finds). Rules
+  pure in `src/lib/claude-day.ts`: `node scripts/test-claude-day.mjs`; page: `NODE_PATH=$(npm root -g) node
+  scripts/test-claude-day.js`. **Every Claude session that changes something should end by logging itself**
+  (`node scripts/cc.mjs addWorkLog '{"text":"…"}'`, NEED blocks for Leo's to-dos) — that's the "sessions said" card.
 - **Leo's picked ideas, built Oct 6 2026** (retired from `build-ideas.ts`): **Weekly scoreboard** on Home (`#hm-score`,
   `weeklyScore` / `setWeeklyGoals`, Setting `weeklyGoals`, defaults `WEEKLY_GOALS_DEFAULT`): invites / accepted /
   replied / calls booked / deals / brands added per New York week (Mon–Sun), this week vs goal + 8 weeks of bars.
@@ -629,8 +644,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   DB side `src/lib/coverage-db.ts`; `listBrands({ coverage: true })` → `cover` per row, so a count and
   the rows its **Show them** opens are one list): **next** — the LinkedIn fill reads it next (Start the
   LinkedIn fill ↗; "about N days" at `LI_PER_DAY` = the script's DAILY_CAP); **page** — on "Which LinkedIn
-  page is theirs?" (Pick their pages → Outreach → People's card); **resting** — read in the last 30 days,
-  nobody with a buyer title (the fill's note + "back on the fill <date>" on the row); **zach** — LinkedIn hid
+  page is theirs?" (Pick their pages → Outreach → People's card); **resting** — read, nobody with a buyer title (since 1.38 a clean read has no day back — "read in full" on the row;
+  a stuck issue or a no-page read: "back on the fill <date>", a month on; the fill's note); **zach** — LinkedIn hid
   their buyer-looking people from Leo's account (li-hidden.ts; "Read on Zach's LinkedIn"); **noPage** — Leo said
   None of these and there's no parent; **full** — 25 on file, none a buyer. Same rest rule as the
   worklist (`liRestsNow`, li-sweep.ts). Needs people splits by these reasons (`BR.why` chips); rows that
@@ -948,6 +963,43 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   it has the repo attached; a session a routine makes fresh has no repo and can't push — which reads
   the reports and fixes/pushes LinkedIn-tool bugs only; needs `REPORT_TOKEN` +
   `sb-digitaldashboard.vercel.app` allowed in the cloud environment.
+  **Script 1.38 — every brand through Sales Navigator, read again only when something went wrong** (Leo, Oct 14 2026:
+  "make sure that each brand goes to the sales navigator and if a brand capture does not get all the people or … times
+  out … make sure that it runs again and make sure that brands that have already been run don't run again unless there's
+  an issue with the people that they got"). With the switch on (default) every brand ends in Sales Navigator: an empty
+  People tab too, a big company, and a brand read under its parent (the parent's company id, keywords `"<brand>"` —
+  `snUrl(…, brandKw)`, saved `viaParent`, via "Sales Navigator via <parent>"). **Nothing falls back to the People tab's
+  views**: no company id → its page once more (`sn-id` phase) → issue `snNoId`; a results page that doesn't load / leaves
+  the search → loaded once more (`snTrouble`) → `snNoLoad` / `snLeft`; another company's people → `snOtherCompany`; a page
+  drawing fewer cards than Sales Navigator's own count says (`snTotal`, "28 results"; cards counted once each,
+  `snRead().cards`) → loaded once more, then the rest is read and the brand is `partial`; a page that won't open → `noOpen`;
+  the dashboard not saving → `save`. A brand with an issue goes **again at the end of the run** (`item.again`, once), and
+  its liSwept carries `issue` / `issueNote` / `done` / `shown` / `read` / `again` / `key`. An account without Sales
+  Navigator **pauses** the run (`snNoAccount`). The People tab's views (PASSES, BIG_PASSES) are only for a run with the
+  switch off (test-li-script.js's suite). **The dashboard decides re-reads** (`src/lib/li-sweep.ts`): `sweptOutcome` turns
+  a liSwept into the mark (`clean` = done with no issue; a misread page = issue `reading`; older copies: a Sales Navigator
+  read is clean, `snMissed` an issue) and `liDue` decides: **clean → never by itself** (kept for good in `liSweepLog`;
+  `liPageRetry` / `liPagePick` are the ways back); **issue → first on the next run** (after the Schedule's and asked-for
+  names; past the Brand Fit floor), for `LI_RETRY_MAX` = 3 runs (`tries` count runs — `nextTries`, the same run posting
+  twice is one), then it waits a month ("stuck" on the report); no clear page / a People-tab-only read → the old month.
+  Legacy marks (`markOutcome`): sn → clean; a People-tab read since Sales Navigator shipped → issue `noSalesNav` (not a
+  page problem — `PAGE_NOTE`); older reads that found people → clean. `markLiSwept` is advisory-locked. List items carry
+  `retry`, `issue`, `issueText`, `tries`, `bigOk`; the reply `retry`, `stuck`, `skipBig`. **Skip very big brands mid-run**:
+  the People tab's count ≥ `VERY_BIG` (1,500) with the switch on (`job.skipBig`) and `item.bigOk === false` → skipped, liSwept
+  `skipped: 'veryBig'` + members (saved, so the next list leaves it out; the mark is never clean); `bigOk` = the Schedule's,
+  asked-for, OK'd giants, conglomerates. **Similar pages → Discover** (Leo's pick): liDiscover `lookalike` writes
+  DiscoveredBrand rows (status `new`, query "LinkedIn: similar to X", graded on Discover; one row per company — a waiting
+  one isn't added twice; the 50-a-day cap counts those rows) and never a brand; the run never reads them (`created` is
+  empty; keyword searches still make brands). `judgeDiscovery` also refuses `DISCOVER_NOT` industries (health care,
+  hospitals, mental health, pharma, software, computers and electronics, textile manufacturing, groceries, hospitality,
+  education…). **Dashboard retry**: the run's calls (`runPost`) wait 5 s → 1 min (`DASH_RETRY_MS`, ~4 min) on a dropped
+  connection, a timeout or a 5xx before the run pauses. Run reports: brand events dedupe by `key`, carry `issue` / `again` /
+  `review`; runs count `issues` and `review`; `/api/reports/linkedin` lists `issues` (brand, issue, tries, stuck);
+  `liRunDetail.toReview` = the Discover rows a run sent. Fill schedule: "Read again — <what went wrong>". Parents added
+  Oct 14 (parents.ts, so their brands are giants too): Altria (NJOY), Reynolds American (Vuse, Grizzly), Kraft Heinz (MiO),
+  Imperial Brands (ZONE X), Proximo (Gran Coramino), Anheuser-Busch (Estrella Jalisco, Rolling Rock). Tests:
+  `test-li-capture.mjs` (liDue, sweptOutcome, nextTries, DISCOVER_NOT), `test-li-salesnav.js` (18), `test-li-script.js`,
+  `test-li-e2e.js`, `test-li-report.mjs`, `test-coverage.mjs`, `test-fill-schedule.mjs`.
   **Sales Navigator** (Leo, Oct 12 2026: "build out the fill for a Sales Navigator page on my own account"; script
   1.31, still Leo's account only): with the setup panel's "Use Sales Navigator" on (default, GM `sbLiSalesNav`), a brand's
   People tab is read whole as before (headcount, page check, lookalikes — kept in the step as `look`), then **instead of**

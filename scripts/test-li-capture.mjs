@@ -215,6 +215,18 @@ t('a lookalike needs 5K followers and a consumer industry', () => {
   assert.equal(judgeDiscovery({ name: 'Venmo', subtitle: 'Financial Services • 200K followers' }, 'fintech').ok, true, 'a fintech lookalike of a fintech brand')
   assert.equal(judgeDiscovery({ name: 'Venmo', subtitle: 'Financial Services • 200K followers' }).ok, false, 'but not from a keyword search')
 })
+t('a lookalike in health care, tech hardware, groceries or textiles never passes (the Oct 14 run\'s chain)', () => {
+  for (const [name, sub, from] of [
+    ['Charlie Health', 'Mental Health Care • 60K followers', 'wellness'],
+    ['Spring Health', 'Hospitals and Health Care • 90K followers', 'electrolytes'],
+    ['OnePlus', 'Computers and Electronics Manufacturing • 2M followers', 'tech'],
+    ['SNOCKS', 'Textile Manufacturing • 40K followers', 'athletic'],
+    ['Al Rawabi', 'Retail Groceries • 30K followers', 'beverage'],
+    ['Headspace', 'Software Development • 300K followers', 'wellness'],
+  ]) assert.deepEqual(judgeDiscovery({ name, subtitle: sub }, from), { ok: false, reason: 'industry' }, name)
+  assert.equal(judgeDiscovery({ name: 'Jose Cuervo', subtitle: 'Beverage Manufacturing • 250,512 followers' }, 'alcohol').ok, true, 'drinks still pass')
+  assert.equal(judgeDiscovery({ name: 'Liquid Death', subtitle: 'Food and Beverage Services • 300K followers' }, 'beverage').ok, true, 'food and beverage services still pass')
+})
 
 t('a lookalike whose LinkedIn name adds what it sells is already on the roster', () => {
   const k = (s) => normalizeCompany(s)
@@ -346,14 +358,68 @@ execSync(
   { stdio: 'inherit' },
 )
 const sweep = await import(pathToFileURL(join(out, 'li-sweep.js')).href)
-t('a brand the old scripts skipped as too big is due at once (big brands are searched now); others rest a month', () => {
+t('a brand the old scripts skipped as too big is due at once (big brands are searched now)', () => {
   const now = Date.parse('2026-10-01T00:00:00Z')
   const ago = d => new Date(now - d * 864e5).toISOString()
   const v = sweep.LI_READER
-  assert.equal(sweep.liResting({ at: ago(1), seen: 0, added: 0, note: 'too big — 12,345 people on LinkedIn (skips 100+)', v }, now), false)
-  assert.equal(sweep.liResting({ at: ago(40), seen: 0, added: 0, note: 'too big — 12,345 people on LinkedIn (skips 100+)', v }, now), false)
-  assert.equal(sweep.liResting({ at: ago(40), seen: 3, added: 1, note: '', v }, now), false)
-  assert.equal(sweep.liResting({ at: ago(10), seen: 3, added: 1, note: '', v }, now), true)
+  assert.equal(sweep.liRestsNow({ at: ago(1), seen: 0, added: 0, note: 'too big — 12,345 people on LinkedIn (skips 100+)', v }, false, now), false)
+  assert.equal(sweep.liRestsNow({ at: ago(40), seen: 0, added: 0, note: 'too big — 12,345 people on LinkedIn (skips 100+)', v }, false, now), false)
+})
+
+// --- Oct 14 2026: read again only when something went wrong ----------
+t('a clean read never comes back by itself; an older read that found people is done too', () => {
+  const now = Date.parse('2026-12-01T00:00:00Z')
+  const ago = d => new Date(now - d * 864e5).toISOString()
+  const v = sweep.LI_READER
+  const clean = { at: ago(400), seen: 30, added: 4, v, clean: true, issue: null }
+  assert.deepEqual(sweep.liDue(clean, false, now), { due: false, retry: false, stuck: false, back: null, issue: null, tries: 0 })
+  assert.equal(sweep.liRestsNow({ at: ago(90), seen: 12, added: 0, v, sn: true }, false, now), true, 'a Sales Navigator read from 1.31–1.37 is clean')
+  assert.equal(sweep.liRestsNow({ at: '2026-09-21T00:00:00Z', seen: 3, added: 1, v }, false, now), true, 'People-tab read before Sales Navigator that found people')
+  assert.equal(sweep.liRestsNow({ at: '2026-09-21T00:00:00Z', seen: 3, added: 0, v }, false, now), false, '…one that found nobody keeps the month (long over)')
+  assert.equal(sweep.liRestsNow({ at: ago(10), seen: 3, added: 0, v, clean: false, issue: null }, false, now), true, 'no page / page review: the month')
+  assert.equal(sweep.liRestsNow({ at: ago(40), seen: 3, added: 0, v, clean: false, issue: null }, false, now), false)
+  assert.equal(sweep.liRestsNow({ at: ago(1), seen: 3, added: 1, v: 1, clean: true }, false, now), false, 'an old reader proves nothing')
+})
+t('an issue goes first on the next run, for 3 runs; then it rests a month and shows as stuck', () => {
+  const now = Date.parse('2026-12-01T00:00:00Z')
+  const ago = d => new Date(now - d * 864e5).toISOString()
+  const v = sweep.LI_READER
+  const d1 = sweep.liDue({ at: ago(1), seen: 0, added: 0, v, issue: 'snNoLoad', tries: 1 }, false, now)
+  assert.equal(d1.due && d1.retry, true); assert.equal(d1.issue, 'snNoLoad')
+  assert.equal(sweep.liDue({ at: ago(1), seen: 0, added: 0, v, issue: 'partial', tries: 2 }, false, now).retry, true)
+  const stuck = sweep.liDue({ at: ago(1), seen: 0, added: 0, v, issue: 'partial', tries: 3 }, false, now)
+  assert.equal(stuck.due, false); assert.equal(stuck.stuck, true); assert.equal(stuck.back, new Date(Date.parse(ago(1)) + 30 * 864e5).toISOString())
+  assert.equal(sweep.liDue({ at: ago(31), seen: 0, added: 0, v, issue: 'partial', tries: 3 }, false, now).retry, true, 'a month on, tried again')
+  assert.equal(sweep.liDue({ at: '2026-10-13T00:00:00Z', seen: 5, added: 0, v, snMissed: true }, false, now).retry, true, 'an older copy that read the People tab instead')
+  assert.equal(sweep.liDue({ at: '2026-10-13T00:00:00Z', seen: 5, added: 2, v }, false, now).issue, 'noSalesNav', 'any read since Sales Navigator shipped without it')
+  assert.equal(sweep.liDue({ at: '2026-10-13T00:00:00Z', seen: 0, added: 0, v, note: 'no clear LinkedIn page — pick it on Outreach → People' }, false, now).issue, null, 'a page problem is Leo\'s list, not a retry')
+  assert.equal(sweep.liDue({ at: '2026-10-13T00:00:00Z', seen: 0, added: 0, v, snMissed: true, note: 'its saved LinkedIn page looks like another company — pick the right one' }, false, now).retry, false)
+  assert.equal(sweep.liDue({ at: ago(1), seen: 0, added: 0, v, skip: 'veryBig', clean: false }, false, now).due, true, 'skipped at 1,500+: the list decides (saved headcount)')
+  assert.equal(sweep.liDue({ at: ago(1), seen: 4, added: 0, v, clean: true, issue: null }, true, now).due, true, 'nobody on its own page and the parent not searched yet')
+  assert.equal(sweep.liDue({ at: ago(1), seen: 4, added: 0, v, clean: true, issue: null, parentTried: true }, true, now).due, false)
+})
+t('tries count runs, not posts: the same run posting twice is one try; a clean read starts over', () => {
+  assert.equal(sweep.nextTries(undefined, { issue: 'snNoLoad', run: 'r1' }), 1)
+  const m1 = { at: 'x', seen: 0, added: 0, issue: 'snNoLoad', tries: 1, run: 'r1' }
+  assert.equal(sweep.nextTries(m1, { issue: 'snNoLoad', run: 'r1' }), 1, 'the in-run second try')
+  assert.equal(sweep.nextTries(m1, { issue: 'partial', run: 'r2' }), 2)
+  assert.equal(sweep.nextTries({ ...m1, tries: 2, run: 'r2' }, { issue: 'partial', run: 'r3' }), 3)
+  assert.equal(sweep.nextTries(m1, { issue: null, run: 'r2' }), 0)
+  assert.equal(sweep.nextTries({ at: 'x', seen: 1, added: 1, clean: true }, { issue: 'save', run: 'r9' }), 1)
+})
+t('a liSwept becomes an outcome: 1.38 says done / issue; older copies are read as before', () => {
+  const o = sweep.sweptOutcome({ salesNav: true, done: true, issue: null, run: 'r1', shown: '28', read: 28 })
+  assert.deepEqual(o, { clean: true, issue: null, issueNote: null, run: 'r1', skip: null, shown: 28, read: 28 })
+  const p = sweep.sweptOutcome({ salesNav: false, done: false, issue: 'partial', issueNote: 'read 18 of 28', run: 'r1' })
+  assert.equal(p.clean, false); assert.equal(p.issue, 'partial'); assert.equal(p.issueNote, 'read 18 of 28')
+  assert.equal(sweep.sweptOutcome({ done: true, problem: 'every title came out blank' }).issue, 'reading', 'a misread page is an issue')
+  assert.equal(sweep.sweptOutcome({ done: true, issue: 'made-up' }).issue, 'reading', 'an unknown code still counts as an issue')
+  assert.equal(sweep.sweptOutcome({ done: true, skipped: 'veryBig' }).clean, false)
+  assert.equal(sweep.sweptOutcome({ done: true, viaParent: true }).clean, true, 'a parent page read to its end')
+  assert.equal(sweep.sweptOutcome({ salesNav: true }).clean, true, '1.37: a Sales Navigator read')
+  assert.equal(sweep.sweptOutcome({ salesNav: false, snMissed: true }).issue, 'noSalesNav', '1.37: the People tab instead')
+  assert.equal(sweep.sweptOutcome({ salesNav: false }).clean, false, '1.37 with it off: the old month')
+  assert.equal(sweep.issueWords('snNoLoad'), 'Sales Navigator’s results didn’t load')
 })
 
 // --- the October rules (the Sep 30 run's wrong people) --------------

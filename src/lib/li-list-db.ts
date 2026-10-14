@@ -5,7 +5,7 @@
 // Read-only.
 import { PrismaClient } from '@prisma/client'
 import { focusTerms, matchesFocus, decideCompanyMatch, pageLooksWrong } from './li-capture'
-import { readLiLog, liRestsNow, readLiResearch, researchResting, LI_SCRIPT_VERSION } from './li-sweep'
+import { readLiLog, liDue, issueWords, readLiResearch, researchResting, LI_SCRIPT_VERSION, SN_SINCE } from './li-sweep'
 import { readHiddenLog } from './li-hidden'
 import { parentOf, isParentCompany, LI_PARENT_PAGES_KEY } from './parents'
 import { readJsonSetting, LI_CONFIRMED_KEY, LI_REVIEW_KEY, type Confirmed, type Review } from './li-review'
@@ -23,8 +23,8 @@ import { isBigBrand } from './brand-work'
 // /api/ingest. The fill only reads brands under it.
 export const CONTACT_CAP_PER_BRAND = 25
 // The day the fill's Sales Navigator step shipped (New York midnight): a
-// brand read since then without it is due once for it.
-export const SN_SINCE = Date.parse('2026-10-12T04:00:00Z')
+// brand read since then without it is due for it (li-sweep.ts markOutcome).
+export { SN_SINCE }
 // The company-match fix (decideCompanyMatch / pageLooksWrong) shipped.
 export const REMATCH_SINCE = Date.parse('2026-10-13T12:00:00Z')
 // "Very big" for the fill's skip: 1,500+ people on LinkedIn (Leo, Oct 12 2026:
@@ -122,20 +122,21 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     const p = parentOf(name, aka)
     return p ? { name: p.name, search: p.search, slug: parentPages[p.name] || null } : null
   }
-  // With Sales Navigator (script 1.31+, Leo, Oct 12 2026): a brand read
-  // on the People tab whose buyers LinkedIn hid ("LinkedIn Member") is
-  // due again at once — Sales Navigator names them. Once per brand (the
-  // mark's `sn`), and not after Zach's account has read it.
+  // Read again only when the last read had an issue (li-sweep.ts liDue —
+  // Leo, Oct 14 2026: "make sure that brands that have already been run
+  // don't run again unless there's an issue with the people that they got"):
+  // those go first, right after the Schedule's and the names Leo asked for;
+  // a clean read stays off. A People-tab read from before Sales Navigator
+  // whose buyers LinkedIn hid ("LinkedIn Member") is read once more with it
+  // (not after Zach's account has read it).
   const hiddenLog = body.salesNav === true ? await readHiddenLog(prisma) : {}
-  // Also every brand read without it since it shipped, or that a run with
-  // it on had to read on the People tab (Leo, Oct 12 2026: "make sure it
-  // hits every brand that it skipped"). Once: a retry that still can't use
-  // it (no company id…) is marked and rests like any other read.
-  const snRetry = (b: { id: string; linkedinUrl: string | null }) => {
+  const dueOf = (b: { id: string; name: string; aka: string | null }) => liDue(log[b.id], !!parentOf(b.name, b.aka))
+  const hiddenOld = (b: { id: string; linkedinUrl: string | null }) => {
     const m = log[b.id], h = hiddenLog[b.id]
-    if (body.salesNav !== true || !b.linkedinUrl || !m || m.sn || m.snRetried) return false
-    return !!m.snMissed || Date.parse(m.at) >= SN_SINCE || (!!h && h.likely > 0 && !h.zachAt)
+    if (body.salesNav !== true || !b.linkedinUrl || !m || m.clean !== undefined || m.issue !== undefined || m.sn || m.snRetried) return false
+    return Date.parse(m.at) < SN_SINCE && !!h && h.likely > 0 && !h.zachAt
   }
+  const retryOf = (b: { id: string; name: string; aka: string | null; linkedinUrl: string | null }) => dueOf(b).retry || hiddenOld(b)
   // Read before the Oct 13 2026 match fix and put on "Which LinkedIn page
   // is theirs?": due again once when its saved results now resolve (a
   // same-named company in another trade, LinkedIn's bare "Manufacturing").
@@ -147,12 +148,15 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     return e.why === 'unclear' && !!decideCompanyMatch(b, e.candidates || []).pick
   }
   const restsNow = (b: { id: string; name: string; aka: string | null; category?: string | null }) =>
-    liRestsNow(log[b.id], !!parentOf(b.name, b.aka)) && !rematch(b)
-  const resting = underCap.filter(b => restsNow(b) && !snRetry(b)).length
+    !dueOf(b).due && !rematch(b)
+  const resting = underCap.filter(b => restsNow(b) && !hiddenOld(b)).length
+  // Of those: read in full (never back by itself), and stuck (an issue
+  // that outlasted its retries — back in a month).
+  const stuck = underCap.filter(b => dueOf(b).stuck && !rematch(b)).length
   // Brands Leo said have no LinkedIn page ("None of these") aren't searched again.
   const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
   const items = underCap
-    .filter(b => ignoreRest || !restsNow(b) || snRetry(b))
+    .filter(b => ignoreRest || !restsNow(b) || hiddenOld(b))
     .filter(b => b.linkedinUrl || confirmed[b.id] !== 'none' || parentOf(b.name, b.aka))
     .map(b => ({
       brandId: b.id, name: b.name, aka: b.aka, category: b.category,
@@ -168,8 +172,14 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
       // (brand-size.ts; Leo, Oct 2026).
       size: brandSize({ liMembers: b.liMembers, tier: b.tier, hasParent: !!parentOf(b.name, b.aka) }),
       members: b.liMembers ?? null,
-      // Back only for Sales Navigator (it rests otherwise).
-      hiddenRetry: restsNow(b) && snRetry(b),
+      // Back because the last read had an issue (or, before Sales Navigator,
+      // hid its buyers): it goes first. `hiddenRetry` = the same, for 1.37.
+      retry: retryOf(b),
+      issue: dueOf(b).issue || (hiddenOld(b) ? 'noSalesNav' : null),
+      tries: dueOf(b).tries,
+      issueNote: log[b.id]?.issueNote || null,
+      issueText: issueWords(dueOf(b).issue || (hiddenOld(b) ? 'noSalesNav' : null)) || null,
+      hiddenRetry: retryOf(b),
       fit: fitOf.get(b.id)?.score ?? null,
     }))
     // Mid-size first (Leo, Oct 12 2026: "i want to target the midsized brands
@@ -256,7 +266,8 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     : []
   const short = new Set(dueBrands.filter(b => shortOnPeople({ ...b, big: isBigBrand(b) })).map(b => b.id))
   const { first: planned, rest: unplanned } = plannedFirst(items, due, short)
-  const fitted = unplanned.filter(i => fitOk(i.brandId))
+  // A brand back for a retry passed the floor once already: it stays.
+  const fitted = unplanned.filter(i => i.retry || fitOk(i.brandId))
   const belowFit = unplanned.length - fitted.length
   const byId = new Map(everyBrand.map(b => [b.id, b] as const))
   const rest = skipBig ? fitted.filter(i => !veryBig(byId.get(i.brandId)!)) : fitted
@@ -280,7 +291,7 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
   // asked for keep their place.
   const tail = (i: any) => (i.planned || i.asked) ? 0
     : (i.research ? i.giant : giantIds.has(i.brandId)) ? 2
-    : !i.research && reachedIds.has(i.brandId) ? 1 : 0
+    : !i.research && reachedIds.has(i.brandId) && !i.retry ? 1 : 0
   // The brands back for Sales Navigator go right after the Schedule's and
   // the names Leo asked for: their buyers are known to be there.
   const lead = sorted.filter(i => i.planned || i.asked)
@@ -290,16 +301,23 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
   // Brands with a LinkedIn page before those the run has to search for (a
   // search often finds no clear page — a visit for nothing).
   const paged = (xs: any[]) => [...xs.filter(i => i.research || i.linkedinUrl), ...xs.filter(i => !i.research && !i.linkedinUrl)]
-  const ordered = [...lead, ...paged(front.filter(i => i.hiddenRetry)), ...paged(front.filter(i => !i.hiddenRetry)),
+  const ordered = [...lead, ...paged(front.filter(i => i.retry)), ...paged(front.filter(i => !i.retry)),
     ...[1, 2].flatMap(n => sorted.filter(i => tail(i) === n))]
     .map(i => (tail(i) ? { ...i, noBuyer: false, focus: false, last: tail(i) === 1 ? 'reached' : 'giant' } : i))
+    // Whether the run may read it past 1,500 on LinkedIn (script 1.38 skips
+    // at its People tab's count when Skip very big brands is on): the
+    // Schedule's brands, names Leo asked for, giants he OK'd, conglomerates.
+    .map(i => ({ ...i, bigOk: !skipBig || !!i.planned || !!i.asked || (!!i.brandId && giants.ok.has(i.brandId)) || isParentCompany(i.name, i.aka ?? null) }))
   const reachedLast = (i: any) => i.last === 'reached'
   return {
     items: ordered,
     // Brands on the list with nobody in marketing / partnerships yet —
     // they go right after the Schedule's (the panel says so).
     noBuyer: ordered.filter(i => i.noBuyer && !i.research && !i.planned).length,
-    hiddenRetry: ordered.filter(i => i.hiddenRetry).length,
+    hiddenRetry: ordered.filter(i => i.retry).length,
+    retry: ordered.filter(i => i.retry).length,
+    stuck,
+    skipBig,
     minFit, belowFit, bigSkipped,
     research: research.length,
     researchFocus: ordered.filter(i => i.research && i.focus).length,

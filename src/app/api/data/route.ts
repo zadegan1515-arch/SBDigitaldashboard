@@ -36,7 +36,7 @@ import { newBoardCode } from '@/lib/board-access'
 import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import { regionFlag } from '@/lib/region'
 import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hints'
-import { readLiLog, readLiResearch, LI_SCRIPT_VERSION, LI_SWEEP_KEY } from '@/lib/li-sweep'
+import { readLiLog, readLiResearch, issueWords, LI_SCRIPT_VERSION, LI_SWEEP_KEY } from '@/lib/li-sweep'
 import { buildLiList } from '@/lib/li-list-db'
 import { splitFillDays } from '@/lib/fill-schedule'
 import { readHiddenLog, updateHiddenLog, markZachRead, clearZachRead, zachDue, ZACH_REST_DAYS, type HiddenEntry } from '@/lib/li-hidden'
@@ -53,6 +53,7 @@ import {
 import { LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR, linkedinWindows, acceptRates, planWeekDays, weekCap, orderFillGroups, fillWholeBrands, bigFits, compareAuto, type AcceptRates } from '@/lib/plan-week'
 import { findDuplicateGroups, pairKey, websiteDomain } from '@/lib/duplicates'
 import { cleanChatBrand, matchRoster, chatNotes } from '@/lib/chat-add'
+import { actionText, argsBrief, readCommit, type DayCommit } from '@/lib/claude-day'
 import { findLinkedInPeople, logLinkedInPerson, undoLinkedInLog, checkNewPerson } from '@/lib/li-log-db'
 import { isLogStage } from '@/lib/li-log'
 import { rollWindow, findUnsent, planCarry, carryOrder, carryTimes, type Unsent, type CarryFacts, type CarryTier, type Moved } from '@/lib/carry'
@@ -3698,6 +3699,47 @@ const undoOrder = (entries: MergeEntry[]) => [...entries].sort((a, b) => b.at.lo
 // Discover → Brands (addDiscoveredBrand, addDiscoveredBulk)
 // ---------------------------------------------------------------
 
+// ---------------------------------------------------------------
+// Claude's day: Claude's commits on main (src/lib/claude-day.ts)
+// ---------------------------------------------------------------
+
+// The repo is public, so GitHub answers without a token (60 an hour);
+// GITHUB_TOKEN, if set in Vercel, raises that. A day is read at most every
+// 10 minutes and kept for 14 days (Setting claudeCommits); a past day read
+// after it ended is never read again.
+const CLAUDE_COMMITS_KEY = 'claudeCommits'
+const GITHUB_REPO = (process.env.VERCEL_GIT_REPO_OWNER && process.env.VERCEL_GIT_REPO_SLUG)
+  ? process.env.VERCEL_GIT_REPO_OWNER + '/' + process.env.VERCEL_GIT_REPO_SLUG
+  : 'zadegan1515-arch/SBDigitaldashboard'
+async function dayCommits(day: string, lo: Date, hi: Date, today: string): Promise<{ list: DayCommit[]; error?: string }> {
+  const cache = await readJsonSetting<Record<string, { at: string; list: DayCommit[] }>>(prisma, CLAUDE_COMMITS_KEY, {})
+  const c = cache[day]
+  const fresh = c && (day < today ? Date.parse(c.at) >= hi.getTime() : Date.now() - Date.parse(c.at) < 10 * 60 * 1000)
+  if (fresh) return { list: c.list }
+  try {
+    const url = `https://api.github.com/repos/${GITHUB_REPO}/commits?sha=main&per_page=100&since=${lo.toISOString()}&until=${hi.toISOString()}`
+    const res = await fetch(url, {
+      headers: {
+        Accept: 'application/vnd.github+json', 'User-Agent': 'sb-command-center',
+        ...(process.env.GITHUB_TOKEN ? { Authorization: 'Bearer ' + process.env.GITHUB_TOKEN } : {}),
+      },
+      signal: AbortSignal.timeout(8000),
+      cache: 'no-store',
+    })
+    if (!res.ok) throw new Error('GitHub ' + res.status)
+    const raw: any[] = await res.json()
+    const list = raw.map(readCommit).filter((x): x is DayCommit => !!x).sort((a, b) => a.at.localeCompare(b.at))
+    const keep: Record<string, { at: string; list: DayCommit[] }> = {}
+    const oldest = addDaysKey(today, -14)
+    for (const [k, v] of Object.entries(cache)) if (k >= oldest) keep[k] = v
+    keep[day] = { at: new Date().toISOString(), list }
+    await writeJsonSetting(prisma, CLAUDE_COMMITS_KEY, keep)
+    return { list }
+  } catch (e: any) {
+    return { list: c?.list ?? [], error: 'GitHub didn’t answer (' + String(e?.message || e).slice(0, 60) + ')' + (c ? ' — showing what it said last' : '') }
+  }
+}
+
 const DISCOVER_BULK_KEY = 'discoverBulkLast'
 
 // The category a find is filed under: one of our keys as the bench has
@@ -4183,6 +4225,45 @@ const handlers: Record<string, Handler> = {
   // + Zach's list steps; found = Discover rows + brands created that day.
   // `to` (a later day key) makes it a range — the Friday wrap-up reads
   // Monday..today this way; a range has no to-do and no "last sending day".
+  // Home → Claude's day (Leo, Oct 14 2026: "at the end of each day i want a
+  // review of everything that was updated through claude"): Claude's commits
+  // on main that New York day (the site), its logged writes (the data,
+  // ClaudeAction), the day's work logs (what the sessions said they did),
+  // and what's waiting on Leo from them — open NEEDs from the last 7 days'
+  // logs, research staged for review, brand-hunt finds. Read-only.
+  async claudeDay({ day }: any = {}) {
+    const today = localDayKey()
+    const d = isDayKey(day) && day <= today ? day : today
+    const lo = dayStartOf(d)
+    const hi = dayStartOf(addDaysKey(d, 1))
+    const [recap, actions, commits, older] = await Promise.all([
+      handlers.dayRecap({ day: d }),
+      (prisma as any).claudeAction.findMany({ where: { at: { gte: lo, lt: hi } }, orderBy: { at: 'asc' }, take: 500 }),
+      dayCommits(d, lo, hi, today),
+      prisma.workLog.findMany({ where: { day: { gte: addDaysKey(d, -6), lt: d } }, orderBy: { createdAt: 'asc' } }),
+    ])
+    // Open NEEDs from the six days before, shaped like the recap's.
+    const olderNeeds: any[] = []
+    for (const l of older) {
+      let parsed: any = {}, doneIdx: number[] = []
+      try { parsed = JSON.parse(l.parsed) } catch {}
+      try { doneIdx = JSON.parse(l.needsDone) } catch {}
+      const needs = (parsed.needs ?? []).map((n: any, i: number) => ({ ...n, i, done: doneIdx.includes(i) || !!needClearedBy(n, recap.asks) }))
+        .filter((n: any) => !n.done)
+      if (needs.length) olderNeeds.push({ id: l.id, title: l.title, day: l.day, needs })
+    }
+    const hunt = recap.found.discovered.filter((f: any) => f.source === 'Claude hunt')
+    return {
+      day: d, today, isToday: d === today,
+      commits: commits.list, commitsError: commits.error ?? null,
+      actions: actions.map((x: any) => ({ at: x.at, fn: x.fn, text: x.text })),
+      hunt: { found: hunt.length, added: hunt.filter((f: any) => f.status === 'added').length, names: hunt.slice(0, 12).map((f: any) => f.name) },
+      chats: recap.chats,
+      olderNeeds,
+      asks: recap.asks.filter((x: any) => x.key === 'research' || x.key === 'discover'),
+    }
+  },
+
   async dayRecap({ day, to }: any = {}) {
     const today = localDayKey()
     const d = isDayKey(day) ? day : today
@@ -11940,6 +12021,7 @@ const handlers: Record<string, Handler> = {
     return {
       today, doneToday, perDay: LI_PER_DAY, minFit: floor, focus: word,
       total: list.items.length, belowFit: list.belowFit, bigSkipped: list.bigSkipped, resting: list.resting, underCap: list.underCap,
+      retry: list.retry, stuck: list.stuck,
       planned: list.planned, research: list.research, reachedLast: list.reachedLast, giantsLast: list.giantsLast,
       days: days.map(d => ({ ...d, label: label(d.day) })),
     }
@@ -12197,14 +12279,23 @@ const handlers: Record<string, Handler> = {
       orderBy: { createdAt: 'asc' },
     })
     const madeIds = new Set(made.map(b => b.id))
+    // Lookalikes the run sent to Discover for review (script 1.38) — not brands.
+    const queued = await prisma.discoveredBrand.findMany({
+      where: { query: { startsWith: 'LinkedIn: similar to' }, createdAt: { gte: from, lte: to } },
+      select: { name: true, category: true, query: true, reason: true, status: true },
+      orderBy: { createdAt: 'asc' },
+      take: 200,
+    })
     return {
       run: { id: run.id, startedAt: run.startedAt, lastAt: run.lastAt, status: run.status, script: run.script, added: run.added },
       brands: run.brands.map(b => ({
         name: b.name, brandId: b.brandId || null, added: b.added, seen: b.seen, note: b.note || null, problem: b.problem || null,
         ms: b.ms ?? null, isNew: !!(b.brandId && madeIds.has(b.brandId)), via: b.via || null, members: b.members ?? null,
+        issue: b.issue ? issueWords(b.issue) : null, again: !!b.again,
         people: people.filter(p => p.brandId === b.brandId).map(p => ({ name: p.name, title: p.title, linkedinUrl: p.linkedinUrl })),
       })),
       newBrands: made.map(b => ({ name: b.name, category: b.category, how: b.source === 'research' ? 'research list' : 'similar pages' })),
+      toReview: queued.map(d => ({ name: d.name, category: d.category, from: d.query.replace(/^LinkedIn: similar to /, ''), why: d.reason, status: d.status })),
     }
   },
 
@@ -14275,6 +14366,12 @@ export async function POST(req: NextRequest) {
     } catch {}
     const t0 = Date.now()
     const data = await handler(a)
+    // A change Claude made (the dashboard token): kept for Home → Claude's
+    // day. Never holds up or fails the answer.
+    if (a.__user === 'CLI') {
+      const text = actionText(String(fn), a, data)
+      if (text) await (prisma as any).claudeAction.create({ data: { fn: String(fn).slice(0, 80), text: text.slice(0, 400), args: argsBrief(a) || null } }).catch(() => {})
+    }
     // How long the handler took, for the browser's Network panel (Timing):
     // the way to measure the live Schedule without logging anything.
     return NextResponse.json({ ok: true, data }, { headers: { 'Server-Timing': `${String(fn).replace(/[^A-Za-z0-9]/g, '')};dur=${Date.now() - t0}` } })

@@ -533,9 +533,11 @@
   .rc-top{display:flex;align-items:center;gap:14px;padding:16px 24px;position:absolute;top:0;left:0;right:0;z-index:2;pointer-events:none}
   .rc-top>*{pointer-events:auto}
   .rc-day{font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-hi)}
-  .rc-x{all:unset;cursor:pointer;margin-left:auto;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--ink-2);
+  .rc-x{all:unset;pointer-events:auto;cursor:pointer;margin-left:auto;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--ink-2);
     background:rgba(255,255,255,.06);font-size:16px}
   .rc-x:hover,.rc-x:focus-visible{background:rgba(255,255,255,.14);color:#fff}
+  .rc-nav{all:unset;cursor:pointer;display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;color:var(--ink-2);font-size:18px;vertical-align:middle}
+  .rc-nav:hover,.rc-nav:focus-visible{background:rgba(255,255,255,.14);color:#fff}
   .rc-dots{position:absolute;right:22px;top:50%;transform:translateY(-50%);display:grid;gap:10px;z-index:2}
   .rc-dot{all:unset;cursor:pointer;width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.22);transition:all .2s}
   .rc-dot.on{background:var(--accent-hi);height:22px;border-radius:5px}
@@ -1809,6 +1811,7 @@
           <button class="btn-ghost" id="hm-sendlist" title="Today’s LinkedIn invites by company, checked for people who don’t fit — copy it for Zach">Today’s list for Zach</button>
           <button class="btn-ghost" id="hm-paste" title="Paste what your Claude Code chats did — saved under today">+ Paste what Claude did</button>
           <button class="btn-ghost" id="hm-week" title="The week so far: who went out, who answered, what got found — with Copy for Zach">This week ▸</button>
+          <button class="btn-ghost" id="hm-claudeday" title="Everything Claude changed today — the site, the data — and what it needs from you">Claude’s day ▸</button>
           <button class="btn-solid" id="hm-recap">Today’s recap ▸</button>
         </div>
       </div>
@@ -3363,11 +3366,15 @@ function drawRecap(at, data) {
   var r = data || RC;
   if (!r) return;
   RC_SHOW = r;
-  var cards = rcCards(r);
+  drawCards(rcCards(r), at, (r.range ? 'Week of ' + esc(keyLabel(r.day, true)) + ' – ' + esc(keyLabel(r.to)) : esc(keyLabel(r.day, true)) + (r.isToday ? ' · today' : '')));
+  if (r.isToday) lsSet('sb.recapSeen', r.day);
+}
+// The full-screen cards (the recap, Claude's day): `top` is the line's HTML.
+function drawCards(cards, at, top) {
   var start = typeof at === 'string' ? Math.max(0, cards.findIndex(function (c) { return c.key === at; })) : (at || 0);
   var box = document.getElementById('recap');
   box.innerHTML =
-    '<div class="rc-top"><span class="rc-day">' + (r.range ? 'Week of ' + esc(keyLabel(r.day, true)) + ' – ' + esc(keyLabel(r.to)) : esc(keyLabel(r.day, true)) + (r.isToday ? ' · today' : '')) + '</span>' +
+    '<div class="rc-top"><span class="rc-day">' + top + '</span>' +
       '<button class="rc-x" data-rc-close title="Close (Esc)" aria-label="Close">✕</button></div>' +
     '<div class="rc-dots">' + cards.map(function (c, i) { return '<button class="rc-dot" data-rc-dot="' + i + '" title="' + esc(c.title) + '" aria-label="' + esc(c.title) + '"></button>'; }).join('') + '</div>' +
     '<div class="rc-track" id="rc-track">' + cards.map(function (c, i) {
@@ -3390,7 +3397,84 @@ function drawRecap(at, data) {
   track.style.scrollBehavior = '';
   rcDots();
   box.querySelector('.rc-x').focus({ preventScroll: true });
-  if (r.isToday) lsSet('sb.recapSeen', r.day);
+}
+
+// ---- Claude's day (Leo, Oct 14 2026: "at the end of each day i want a
+// review of everything that was updated through claude") ----
+// The same full-screen cards: what Claude changed on the site (its commits
+// on main), in the data (claudeDay.actions — every write a Claude session
+// made with the dashboard token), what its sessions logged, and what it
+// needs from Leo. Opens by itself after 5pm New York on the first visit of
+// the day (localStorage sb.claudeDaySeen) when there's anything to show;
+// "Claude's day ▸" on Home any time; ‹ › for another day.
+var CD = null;
+function cdTime(at) { return new Date(at).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }); }
+function cdHasAny(cd) { return !!(cd.commits.length || cd.actions.length || cd.chats.length || cd.hunt.found); }
+function cdCards(cd) {
+  var cards = [], h;
+  // 1. The site
+  if (cd.commits.length) {
+    h = '<div class="rc-lead">' + plural(cd.commits.length, 'update') + ' went live on the dashboard.</div><div class="rc-list">' +
+      cd.commits.slice().reverse().map(function (c) {
+        return '<div class="rc-row"><div class="grow"><span class="nm">' + esc(c.title) + '</span>' +
+          (c.lines.length ? '<div class="ppl">' + c.lines.slice(0, 4).map(function (l) { return '• ' + rcText(l); }).join('<br>') + '</div>' : '') +
+          '<div class="sm">' + esc(cdTime(c.at)) + (c.url ? ' · <a href="' + esc(c.url) + '" target="_blank" rel="noopener">the change ↗</a>' : '') + '</div></div></div>';
+      }).join('') + '</div>';
+  } else h = '<div class="rc-empty">No changes to the site ' + (cd.isToday ? 'today' : 'that day') + '.</div>';
+  if (cd.commitsError) h += '<div class="hint" style="margin-top:10px">' + esc(cd.commitsError) + '</div>';
+  cards.push({ key: 'site', step: 'Site', title: 'What Claude changed on the site', body: h, acts: '' });
+  // 2. The data
+  var rows = cd.actions.map(function (a) { return { at: a.at, text: a.text }; });
+  if (cd.hunt.found) rows.push({ at: null, text: 'Brand hunt: found ' + plural(cd.hunt.found, 'brand') + ' for Discover' + (cd.hunt.added ? ' (' + cd.hunt.added + ' added since)' : '') + (cd.hunt.names.length ? ' — ' + cd.hunt.names.slice(0, 6).join(', ') + (cd.hunt.found > 6 ? '…' : '') : '') });
+  h = rows.length
+    ? '<div class="rc-lead">' + plural(rows.length, 'change') + ' made by Claude.</div><div class="rc-list">' + rows.map(function (x) {
+        return '<div class="rc-row"><div class="grow">' + rcText(x.text) + (x.at ? '<div class="sm">' + esc(cdTime(x.at)) + '</div>' : '') + '</div></div>';
+      }).join('') + '</div>'
+    : '<div class="rc-empty">Claude didn’t change any data ' + (cd.isToday ? 'today' : 'that day') + '.</div>';
+  cards.push({ key: 'data', step: 'Data', title: 'What Claude changed in the data', body: h,
+    acts: cd.hunt.found ? '<button class="btn-ghost" data-rc-go="discover">Review on Discover</button>' : '' });
+  // 3. What the sessions said (their logs)
+  if (cd.chats.length) {
+    h = '<div class="rc-lead">' + plural(cd.chats.length, 'Claude session') + ' logged what they did.</div><div class="rc-list">' + cd.chats.map(function (c) {
+      return '<div class="rc-row"><div class="grow"><span class="nm">' + esc(c.title) + '</span>' +
+        (c.done.length ? '<div class="ppl">' + c.done.slice(0, 6).map(function (d) { return '• ' + rcText(d); }).join('<br>') + '</div>' : '') +
+        (c.done.length > 6 ? '<div class="rc-more">+ ' + (c.done.length - 6) + ' more in Today’s log</div>' : '') + '</div></div>';
+    }).join('') + '</div>';
+    cards.push({ key: 'did', step: 'Sessions', title: 'What Claude’s sessions said', body: h, acts: '<button class="btn-ghost" data-rc-go="log">Open Today’s log</button>' });
+  }
+  // 4. What Claude needs from Leo
+  h = '';
+  if (cd.asks.length) h += '<div class="rc-h">Waiting in the dashboard</div><div class="rc-list">' + cd.asks.map(function (a) {
+    return '<div class="rc-row"><span class="rc-tag w">' + a.n + '</span><div class="grow">' + esc(a.label) + '</div>' +
+      '<button class="btn-ghost" data-rc-go="' + esc(a.view) + '">Open →</button></div>';
+  }).join('') + '</div>';
+  var open = [];
+  cd.chats.forEach(function (c) { c.needs.forEach(function (n) { if (!n.done) open.push({ chat: c, need: n }); }); });
+  cd.olderNeeds.forEach(function (c) { c.needs.forEach(function (n) { open.push({ chat: { id: c.id, title: c.title + ' · ' + keyLabel(c.day) }, need: n }); }); });
+  if (open.length) h += '<div class="rc-h">From Claude’s sessions</div><div class="rc-list">' + open.map(function (x) {
+    return '<div class="rc-row">' + needHtml(x.chat, x.need) + '</div>';
+  }).join('') + '</div>';
+  if (!h) h = '<div class="rc-empty">Nothing is waiting on you. 🎉</div>';
+  cards.push({ key: 'needs', step: 'Needs you', title: 'What Claude needs from you', body: h, acts: '' });
+  cards.forEach(function (c, i) { c.i = i; });
+  return cards;
+}
+function openClaudeDay(day, at, data) {
+  return (data ? Promise.resolve(data) : api('claudeDay', day ? { day: day } : {})).then(function (cd) {
+    CD = cd;
+    RC_SHOW = cd;
+    var top = '<button class="rc-nav" data-cd-day="' + esc(keyShift(cd.day, -1)) + '" title="The day before" aria-label="The day before">‹</button> ' +
+      'Claude’s day · ' + esc(keyLabel(cd.day, true)) + (cd.isToday ? ' · today' : '') +
+      (cd.day < cd.today ? ' <button class="rc-nav" data-cd-day="' + esc(keyShift(cd.day, 1)) + '" title="The day after" aria-label="The day after">›</button>' : '');
+    drawCards(cdCards(cd), at || 0, top);
+    if (cd.isToday) lsSet('sb.claudeDaySeen', cd.day);
+    return cd;
+  }).catch(function (e) { toast('Could not load Claude’s day: ' + e.message); });
+}
+// After 5pm New York the first visit of the day opens Claude's day (when
+// there's anything in it) instead of the morning recap.
+function cdEvening() {
+  return +new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false }) % 24 >= 17;
 }
 function rcOnScroll() {
   var track = document.getElementById('rc-track');
@@ -3491,6 +3575,7 @@ document.addEventListener('click', function (ev) {
   var el;
   if ((el = t.closest('[data-rc-open]'))) { openRecap(el.getAttribute('data-rc-open')); return; }
   if (t.closest('#hm-recap')) { openRecap(0); return; }
+  if (t.closest('#hm-claudeday')) { openClaudeDay(); return; }
   if (t.closest('[data-dl-hide]')) { DL_SHOW = false; DL_PASTE = false; renderDayLog(); return; }
   if (t.closest('#hm-paste')) {
     DL_PASTE = true;
@@ -3528,6 +3613,7 @@ document.addEventListener('click', function (ev) {
   // Inside the recap
   if (!t.closest('#recap')) return;
   if (t.closest('[data-rc-close]')) { closeRecap(); return; }
+  if ((el = t.closest('[data-cd-day]'))) { openClaudeDay(el.getAttribute('data-cd-day')); return; }
   if ((el = t.closest('[data-rc-dot]'))) { rcGo(+el.getAttribute('data-rc-dot')); return; }
   if (t.closest('[data-rc-next]')) { rcGo(+t.closest('.rc-card').getAttribute('data-rc-i') + 1); return; }
   if ((el = t.closest('[data-rc-brand]'))) { ev.preventDefault(); closeRecap(); loadBrand(el.getAttribute('data-rc-brand')); return; }
@@ -3609,6 +3695,16 @@ function maybeAutoRecap() {
   var today = nyKey();
   var asked = location.hash === '#today';
   if (!asked && (location.hash && location.hash !== '#') ) return;
+  // Evening: Claude's day first (once a day, when it has anything).
+  if (!asked && cdEvening() && lsGet('sb.claudeDaySeen') !== today) {
+    // Shown in the evening, it stands for the day's recap too (one screen
+    // opening by itself a day, not two).
+    api('claudeDay', {}).then(function (cd) {
+      if (cdHasAny(cd)) { lsSet('sb.recapSeen', today); return openClaudeDay(null, 0, cd); }
+      lsSet('sb.claudeDaySeen', today);
+    }).catch(function () {});
+    return;
+  }
   if (!asked && (RC_DAYS.indexOf(keyDow(today)) < 0 || lsGet('sb.recapSeen') === today)) return;
   // Give Zach's list a moment so "What to do today" can count it, and let
   // the opening logo animation (#sb-intro) finish first.
@@ -6338,8 +6434,8 @@ function renderCoverage() {
             ' a day, on your computer with LinkedIn open in its window.">Next on the LinkedIn fill · about ' + days + (days === 1 ? ' day' : ' days') + '</span>') +
           row('page', '<span title="The fill wasn\u2019t sure which LinkedIn page is theirs. One click each; the next run reads them.">Pick their LinkedIn page</span>') +
           row('zach', '<span title="Your LinkedIn showed their marketing / partnerships people as \u201cLinkedIn Member\u201d (outside your network). Zach\u2019s account sees them: SB \u00b7 Read people on each link.">Hidden from your LinkedIn · Zach reads them</span>') +
-          row('resting', '<span title="LinkedIn showed nobody in marketing / partnerships on a recent read. Sooner: open one and add someone, or try SponsorUnited.">LinkedIn found nobody' +
-            (c.back ? ' · back on the fill ' + esc(shortDate(c.back)) : '') + '</span>') +
+          row('resting', '<span title="The LinkedIn fill read them and found nobody in marketing / partnerships. A full read isn\u2019t done again by itself: open one and add someone, try SponsorUnited, or Zach\u2019s account.">LinkedIn found nobody' +
+            (c.back ? ' · some back on the fill ' + esc(shortDate(c.back)) : '') + '</span>') +
           row('noPage', '<span title="You said they have no LinkedIn page. Try SponsorUnited or add someone by hand.">No LinkedIn page</span>') +
           row('full', '<span title="25 people on file and none in marketing / partnerships, so the fill can\u2019t add more. Open one and add the right person.">25 on file, no buyer</span>') +
         '</div>'
@@ -6475,7 +6571,7 @@ function brCoverLine(b) {
   if (c.state === 'resting') {
     var note = c.note || 'nobody in marketing / partnerships';
     return '<div class="br-sub br-cvl" title="' + esc('From the LinkedIn fill\u2019s visit ' + shortDate(c.at) + ': ' + note) + '">LinkedIn found nobody ' +
-      esc(shortDate(c.at)) + ' · back on the fill ' + esc(shortDate(c.back)) + '</div>';
+      esc(shortDate(c.at)) + (c.back ? ' · back on the fill ' + esc(shortDate(c.back)) : ' · read in full') + '</div>';
   }
   if (c.state === 'noPage') return '<div class="br-sub br-cvl" title="Try SponsorUnited, or add someone by hand">No LinkedIn page</div>';
   if (c.state === 'full') return '<div class="br-sub br-cvl" title="25 people on file and none in marketing / partnerships — open it and add the right person">25 on file, no buyer</div>';
@@ -10485,6 +10581,8 @@ function renderLiRuns(runs, latest, owner) {
       '<span class="status ' + (r.status === 'paused' ? 'declined' : r.status === 'finished' ? 'accepted' : 'sent') + '" style="margin-left:8px">' + esc(STATUS[r.status] || r.status) + '</span></div>' +
     '<div class="t-meta" style="margin-top:6px">' + r.brands.length + ' brand' + (r.brands.length === 1 ? '' : 's') + ' done · ' +
       r.added + ' people added' + (r.newBrands ? ' · ' + r.newBrands + ' new brand' + (r.newBrands === 1 ? '' : 's') : '') +
+      (r.review ? ' · ' + r.review + ' similar page' + (r.review === 1 ? '' : 's') + ' sent to Discover' : '') +
+      (r.issues ? ' · <span style="color:var(--warn)">' + r.issues + ' with an issue (read again first next run)</span>' : '') +
       ' · last word ' + esc(when(r.lastAt)) + '</div>' +
     (function () {
       // People LinkedIn hid from Leo's account on this run (script 1.30+).
@@ -10543,10 +10641,12 @@ function renderLiRuns(runs, latest, owner) {
 function liRunDetailHtml(d) {
   var when = new Date(d.run.startedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   var rows = d.brands.map(function (b) {
-    var what = b.added ? b.added + ' added' : (b.problem || b.note || 'nobody new');
+    var what = b.added ? b.added + ' added' : (b.problem || b.issue || b.note || 'nobody new');
     return '<div class="t-meta" style="padding:7px 0;border-top:1px solid var(--border-soft)">' +
       '<b style="color:var(--ink-1)">' + esc(b.name) + '</b>' +
       (b.isNew ? ' <span class="status accepted" title="The run added this brand">new</span>' : '') +
+      (b.again ? ' <span class="status sent" title="Its first try in this run went wrong, so the run came back to it">second try</span>' : '') +
+      (b.issue && b.added ? ' <span style="color:var(--warn)">· ' + esc(b.issue) + ' — read again next run</span>' : '') +
       ' — <span style="color:' + (b.added ? 'var(--good)' : b.problem ? 'var(--bad)' : 'var(--ink-3)') + '">' + esc(what) + '</span>' +
       (b.added && b.via ? ' <span style="color:var(--ink-3)">(' + esc(b.via) + ')</span>' : '') +
       (b.people.length
@@ -10563,6 +10663,8 @@ function liRunDetailHtml(d) {
     (rows || '<div class="t-meta">It hasn\u2019t finished a brand yet.</div>') +
     (d.newBrands.length ? '<div class="t-meta" style="padding-top:7px;border-top:1px solid var(--border-soft)">New brands it added: ' +
       d.newBrands.map(function (b) { return esc(b.name) + ' <span style="color:var(--ink-3)">(' + esc(b.how) + ')</span>'; }).join(', ') + '</div>' : '') +
+    (d.toReview && d.toReview.length ? '<div class="t-meta" style="padding-top:7px;border-top:1px solid var(--border-soft)">Similar pages sent to Brands \u2192 Discover for review: ' +
+      d.toReview.map(function (b) { return esc(b.name) + ' <span style="color:var(--ink-3)">(next to ' + esc(b.from) + ')</span>'; }).join(', ') + '</div>' : '') +
   '</div>';
 }
 function liRunDetailText(d) {
@@ -10572,9 +10674,10 @@ function liRunDetailText(d) {
   d.brands.forEach(function (b) {
     lines.push('- ' + b.name + (b.isNew ? ' (new)' : '') + ': ' + (b.added
       ? b.added + ' added' + (b.via ? ' (' + b.via + ')' : '') + ' — ' + b.people.map(function (p) { return p.name + (p.title ? ' (' + p.title + ')' : ''); }).join(', ')
-      : (b.problem || b.note || 'nobody new')));
+      : (b.problem || b.issue || b.note || 'nobody new')));
   });
   if (d.newBrands.length) lines.push('New brands: ' + d.newBrands.map(function (b) { return b.name; }).join(', '));
+  if (d.toReview && d.toReview.length) lines.push('Sent to Discover: ' + d.toReview.map(function (b) { return b.name; }).join(', '));
   return lines.join('\n');
 }
 
@@ -10683,7 +10786,8 @@ function renderFillSched() {
       d.minFit && d.belowFit ? d.belowFit + ' under Fit ' + d.minFit + ' left out' : '',
       d.bigSkipped ? d.bigSkipped + ' very big brand' + (d.bigSkipped === 1 ? '' : 's') + ' skipped (giants, 1,500+ on LinkedIn)' : '',
       d.minFit ? 'mid-size brands first' : '',
-      d.resting ? d.resting + ' resting (read lately)' : '',
+      d.retry ? d.retry + ' read again first (something went wrong last time)' : '',
+      d.resting ? d.resting + ' read already, not read again' + (d.stuck ? ' (' + d.stuck + ' stuck after 3 tries — back in a month)' : '') : '',
       d.planned ? d.planned + ' on the Schedule go first, whatever their fit' : '',
       d.research ? d.research + ' research-list name' + (d.research === 1 ? '' : 's') + ' (not on the roster yet, no fit score)' : '',
     ].filter(Boolean).join(' · ') + '</div>';

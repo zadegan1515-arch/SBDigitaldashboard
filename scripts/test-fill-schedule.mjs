@@ -3,13 +3,15 @@
 // Run: node scripts/test-fill-schedule.mjs
 
 import { execSync } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const out = mkdtempSync(join(tmpdir(), 'fill-schedule-test-'))
 execSync('npx tsc src/lib/fill-schedule.ts --outDir ' + out + ' --target es2020 --module esnext --moduleResolution bundler --skipLibCheck', { stdio: 'inherit' })
+// Node wants the extension the bundler doesn't.
+for (const f of readdirSync(out)) if (f.endsWith('.js')) writeFileSync(join(out, f), readFileSync(join(out, f), 'utf8').replace(/from '\.\/([\w-]+)'/g, "from './$1.js'"))
 const { splitFillDays, fillWhy } = await import(pathToFileURL(join(out, 'fill-schedule.js')).href)
 
 let pass = 0, fail = 0
@@ -37,6 +39,8 @@ is('research', fillWhy({ name: 'X', research: true, lane: 'Energy drinks', focus
 is('no buyer', fillWhy({ name: 'X', brandId: 'x', noBuyer: true }, ''), 'No buyer on file')
 is('reached last', fillWhy({ name: 'X', brandId: 'x', last: 'reached', noBuyer: true }, ''), 'Already reached out — read last')
 is('read last beats the Sales Navigator retry', fillWhy({ name: 'X', brandId: 'x', last: 'reached', hiddenRetry: true }, ''), 'Already reached out — read last')
+is('a read that went wrong', fillWhy({ name: 'X', brandId: 'x', retry: true, issue: 'snNoLoad', tries: 1 }, ''), 'Read again — Sales Navigator’s results didn’t load')
+is('…for the third time', fillWhy({ name: 'X', brandId: 'x', retry: true, issue: 'partial', tries: 2 }, ''), 'Read again — didn’t read all the people (try 3)')
 is('giant last', fillWhy({ name: 'X', brandId: 'x', last: 'giant' }, ''), 'Giant, held back — read last')
 is('plain', fillWhy({ name: 'X', brandId: 'x' }, ''), 'Under 25 people on file')
 
