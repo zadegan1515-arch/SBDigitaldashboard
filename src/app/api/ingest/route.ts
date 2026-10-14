@@ -797,7 +797,7 @@ export async function POST(req: NextRequest) {
 
     // Rolling day, so a run that crosses midnight can't add 100.
     let room = DISCOVER_CAP_PER_DAY - (source === 'lookalike'
-      ? await prisma.discoveredBrand.count({ where: { query: { startsWith: 'LinkedIn: similar to' }, status: 'new', createdAt: { gte: new Date(Date.now() - 864e5) } } })
+      ? await prisma.discoveredBrand.count({ where: { query: { startsWith: 'LinkedIn: similar to' }, createdAt: { gte: new Date(Date.now() - 864e5) } } })
       : await prisma.brand.count({ where: { source: 'linkedin-discover', createdAt: { gte: new Date(Date.now() - 864e5) } } }))
 
     const brands = await prisma.brand.findMany({ select: { name: true, aka: true, linkedinUrl: true } })
@@ -1020,7 +1020,25 @@ export async function POST(req: NextRequest) {
   // meant to use Sales Navigator and didn't) = first on the next run.
   if (body.action === 'liSwept') {
     const brandId = String(body.brandId || '')
-    const outcome = sweptOutcome(body)
+    let outcome = sweptOutcome(body)
+    // Skipped at 1,500+ on its People tab: only if that page is the brand's
+    // (a wrongly saved page — another, bigger company — would otherwise
+    // brand it a giant). Same check as the run's reads (liCapture checkPage).
+    let keepMembers = true
+    if (brandId && outcome.skip === 'veryBig') {
+      try {
+        const b = await prisma.brand.findUnique({ where: { id: brandId }, select: { id: true, category: true, linkedinUrl: true } })
+        const pageSlug = companySlug(String(body.companyUrl || '')) || companySlug(b?.linkedinUrl)
+        const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
+        if (b && pageSlug && confirmed[b.id] !== pageSlug && pageLooksWrong(b.category, body.companyIndustry)) {
+          keepMembers = false
+          outcome = { ...outcome, skip: null, clean: false }
+          const industry = String(body.companyIndustry).replace(/\s+/g, ' ').trim().slice(0, 120)
+          const list = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
+          await writeJsonSetting(prisma, LI_REVIEW_KEY, addToReview(list, b.id, { why: 'wrong', saved: b.linkedinUrl || companyPageUrl(pageSlug), pageIndustry: industry }))
+        }
+      } catch { /* non-fatal */ }
+    }
     if (brandId) {
       try {
         await markLiSwept(prisma, brandId, {
@@ -1037,7 +1055,7 @@ export async function POST(req: NextRequest) {
           snRetried: body.retry === true && body.salesNav !== true,
         })
       } catch { /* non-fatal */ }
-      await saveMembers(brandId, body.members)
+      if (keepMembers) await saveMembers(brandId, body.members)
     }
     // "LinkedIn Member" cards the read saw (script 1.30+; older copies
     // send nothing, which leaves the list alone): likely buyers go on

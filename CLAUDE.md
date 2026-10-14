@@ -973,17 +973,25 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   the search → loaded once more (`snTrouble`) → `snNoLoad` / `snLeft`; another company's people → `snOtherCompany`; a page
   drawing fewer cards than Sales Navigator's own count says (`snTotal`, "28 results"; cards counted once each,
   `snRead().cards`) → loaded once more, then the rest is read and the brand is `partial`; a page that won't open → `noOpen`;
-  the dashboard not saving → `save`. A brand with an issue goes **again at the end of the run** (`item.again`, once), and
-  its liSwept carries `issue` / `issueNote` / `done` / `shown` / `read` / `again` / `key`. An account without Sales
+  the dashboard not saving → `save`. A brand whose own read went wrong still gets its parent's read (`brandIssue` →
+  `tryParent`, which carries `issue` / `partial` / `problem` along). A brand with an issue goes **again at the end of the
+  run** (`item.again`, once), and its liSwept carries `issue` / `issueNote` / `done` / `shown` / `read` / `again` / `key` /
+  `snOn`; it waits in the run's `outbox` until the dashboard has it (`flushOutbox` at the top of `runFill`; down past the
+  retries → pause, Continue sends it). A page 2 Sales Navigator doesn't have (it drops the number) ends that search
+  (`snNextOrDone`); paging follows Sales Navigator's count when it shows one; "LinkedIn Member"-only pages aren't misreads. An account without Sales
   Navigator **pauses** the run (`snNoAccount`). The People tab's views (PASSES, BIG_PASSES) are only for a run with the
   switch off (test-li-script.js's suite). **The dashboard decides re-reads** (`src/lib/li-sweep.ts`): `sweptOutcome` turns
   a liSwept into the mark (`clean` = done with no issue; a misread page = issue `reading`; older copies: a Sales Navigator
   read is clean, `snMissed` an issue) and `liDue` decides: **clean → never by itself** (kept for good in `liSweepLog`;
-  `liPageRetry` / `liPagePick` are the ways back); **issue → first on the next run** (after the Schedule's and asked-for
-  names; past the Brand Fit floor), for `LI_RETRY_MAX` = 3 runs (`tries` count runs — `nextTries`, the same run posting
-  twice is one), then it waits a month ("stuck" on the report); no clear page / a People-tab-only read → the old month.
-  Legacy marks (`markOutcome`): sn → clean; a People-tab read since Sales Navigator shipped → issue `noSalesNav` (not a
-  page problem — `PAGE_NOTE`); older reads that found people → clean. `markLiSwept` is advisory-locked. List items carry
+  `liPageRetry` / `liPagePick` are the ways back, through the same lock — `updateLiLog`); **issue → first on the next run**
+  (after the Schedule's and asked-for names; the Brand Fit floor still applies), for `LI_RETRY_MAX` = 3 runs (`tries`
+  count runs — `nextTries`, the same run posting twice is one), then it waits a month ("stuck" on the report) — a brand with
+  a parent too; no clear page / a People-tab-only read → the old month. A run with Sales Navigator off never clears a
+  Sales Navigator issue (`nextMark`, `snOff`; `SN_ISSUES` aren't put first on such a run). Legacy marks (`markOutcome`):
+  `sn` → clean; a People-tab read since Sales Navigator shipped (incl. a failed `snRetried`, which gets one more try) →
+  issue `noSalesNav` (not a page problem — `PAGE_NOTE`); older reads that found people → clean. `markLiSwept` is
+  advisory-locked. A very-big skip's headcount is kept only when its page passes the page check (else the page goes on
+  Leo's list, `why: 'wrong'`). List items carry
   `retry`, `issue`, `issueText`, `tries`, `bigOk`; the reply `retry`, `stuck`, `skipBig`. **Skip very big brands mid-run**:
   the People tab's count ≥ `VERY_BIG` (1,500) with the switch on (`job.skipBig`) and `item.bigOk === false` → skipped, liSwept
   `skipped: 'veryBig'` + members (saved, so the next list leaves it out; the mark is never clean); `bigOk` = the Schedule's,
@@ -992,9 +1000,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   one isn't added twice; the 50-a-day cap counts those rows) and never a brand; the run never reads them (`created` is
   empty; keyword searches still make brands). `judgeDiscovery` also refuses `DISCOVER_NOT` industries (health care,
   hospitals, mental health, pharma, software, computers and electronics, textile manufacturing, groceries, hospitality,
-  education…). **Dashboard retry**: the run's calls (`runPost`) wait 5 s → 1 min (`DASH_RETRY_MS`, ~4 min) on a dropped
+  education…). The lookalike cap counts every row sent in the rolling day, added or dismissed since. **Dashboard retry**: the run's calls (`runPost`) wait 5 s → 1 min (`DASH_RETRY_MS`, ~4 min) on a dropped
   connection, a timeout or a 5xx before the run pauses. Run reports: brand events dedupe by `key`, carry `issue` / `again` /
-  `review`; runs count `issues` and `review`; `/api/reports/linkedin` lists `issues` (brand, issue, tries, stuck);
+  `review`; runs count `review` and `issues` (brands whose last try went wrong — `issueBy`); `/api/reports/linkedin` lists
+  `issues` (brand, issue, tries, stuck / retry / back from `liDue`; stuck ones stay listed until they're back);
   `liRunDetail.toReview` = the Discover rows a run sent. Fill schedule: "Read again — <what went wrong>". Parents added
   Oct 14 (parents.ts, so their brands are giants too): Altria (NJOY), Reynolds American (Vuse, Grizzly), Kraft Heinz (MiO),
   Imperial Brands (ZONE X), Proximo (Gran Coramino), Anheuser-Busch (Estrella Jalisco, Rolling Rock). Tests:

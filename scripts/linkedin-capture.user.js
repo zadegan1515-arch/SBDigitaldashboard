@@ -1611,7 +1611,9 @@
   }
 
   function snReadingProblem(got) {
-    if (!got.rows.length) return got.links >= 3 ? 'Sales Navigator showed ' + got.links + ' people but the reader made out none' : null;
+    // "LinkedIn Member" cards were read fine — there's just no name to read.
+    var readable = (got.cards != null ? got.cards : got.links) - got.hidden.length;
+    if (!got.rows.length) return readable >= 3 ? 'Sales Navigator showed ' + readable + ' people but the reader made out none' : null;
     if (got.rows.length >= 3 && got.rows.every(function (r) { return !r.title; })) return 'every Sales Navigator title came out blank (' + got.rows.length + ' people)';
     return null;
   }
@@ -1620,6 +1622,7 @@
   function snWhyNot() {
     var p = location.pathname;
     if (/^\/sales\/contract/.test(p)) return { pause: 'Sales Navigator asked which contract to use. Pick it, then press Continue' };
+    if (onSalesSearch()) return null;
     if (/^\/(sales|premium)\//.test(p) || SN_UPSELL.test(pageText(6000))) return { text: 'Sales Navigator isn\'t open on this LinkedIn account', wholeRun: true };
     return null;
   }
@@ -1683,6 +1686,12 @@
     var stop = linkedinSaysStop();
     if (stop) return pauseFill(job, stop + '. Leave LinkedIn alone for a day before pressing Continue.');
     if (job.paused) return renderFill(job, 'Paused: ' + job.paused);
+    // The last brand's visit mark first (and the run's end waits for it).
+    if (job.outbox && job.outbox.length) {
+      if (outboxBusy) return;
+      setFillStatus('Saving ' + (job.outbox[0].name || 'the last brand') + '…');
+      return flushOutbox().then(function () { runFill(); }, fillError);
+    }
     if (job.day !== todayKey()) { job.day = todayKey(); job.doneToday = 0; saveFill(job); }
     if (job.pausedUntil && Date.now() < job.pausedUntil) {
       renderFill(job, 'Done for today (' + DAILY_CAP + ' brands). Carries on ' + new Date(job.pausedUntil).toLocaleString() + ' if this tab stays open.');
@@ -1734,6 +1743,9 @@
         st.navs = 0; saveFill(job);
         return fillSales(item);
       }
+      // Asked for a later page and Sales Navigator showed another (it has
+      // no such page): that search is done.
+      if (st.navs > 0 && onSalesSearch() && st.snPage > 1) return snNextOrDone(job, item);
       if (st.navs > 0) {
         var why = snWhyNot();
         if (why && why.pause) return pauseFill(job, why.pause);
@@ -1801,6 +1813,11 @@
       parentTried: true, ownNote: why, triedAka: true, seen: st.seen || 0, seenUrls: st.seenUrls || [], added: 0, navs: 0,
       startedAt: st.startedAt || Date.now(), hiddenMs: st.hiddenMs || 0, members: st.members || null,
       hidRead: st.hidRead || 0, hidViews: st.hidViews || [], salesNav: !!st.salesNav,
+      // What went wrong on its own page still counts after the parent's read
+      // (the brand goes again; 1.38 review).
+      issue: st.issue || null, issueNote: st.issueNote || null, partial: st.partial || null,
+      problem: st.problem || null, sample: st.sample || null,
+      snShown: st.snShown, snSeen: st.snSeen, review: st.review || 0,
     };
     job.nextAt = Date.now() + secs(BETWEEN_PAGES);
     saveFill(job);
@@ -1961,6 +1978,8 @@
         if (!sameStep(jobV, at0)) return null;
         // Its headcount is saved with the visit, so the next list leaves it out.
         jobV.step.members = veryBig; jobV.step.skip = 'veryBig';
+        // The dashboard checks the page is the brand's before it keeps the count.
+        jobV.step.pageIndustry = companyIndustry(); jobV.step.pageUrl = location.href;
         finishBrand(jobV, 'very big — ' + veryBig.toLocaleString('en-US') + ' on LinkedIn, skipped (Skip very big brands)', true);
         return null;
       }
@@ -2093,7 +2112,28 @@
   function brandIssue(job, code, words) {
     var st = job.step || (job.step = { seen: 0, added: 0 });
     st.issue = code; st.issueNote = words;
+    // Its own page went wrong: its parent company's people are still read
+    // (the issue rides along, so the brand still comes back).
+    if (st.kind !== 'parent' && tryParent(job, words)) return;
     finishBrand(job, words);
+  }
+  // The current Sales Navigator search is done: the next one, or the brand's
+  // read through Sales Navigator is.
+  function snNextOrDone(job, item) {
+    var st = job.step;
+    st.snReloads = 0; st.navs = 0;
+    if (!st.full && st.snI < SN_SEARCHES.length - 1 && !(st.members != null && st.members < SN_SMALL)) {
+      st.snI++; st.snPage = 1;
+      job.nextAt = Date.now() + secs(BETWEEN_PAGES);
+      saveFill(job);
+      return runFill();
+    }
+    // Done. Sales Navigator named whoever it could, so the hidden people
+    // that count now are the ones it still couldn't.
+    st.salesNav = true; st.snVia = st.snFrom;
+    st.hidViews = st.snHid || [];
+    st.hidRead = (st.hidRead || 0) + 1;
+    return afterPeople(job, item);
   }
   // A Sales Navigator page that didn't come out right: loaded once more
   // (reload), then an issue.
@@ -2231,21 +2271,16 @@
       st.snReloads = 0;
       var full = r.have >= r.cap;
       if (full) st.full = true;
-      // The next page while this one was full — or Sales Navigator's count
-      // says there's more than a short page showed.
-      if (!full && page < search.pages && (shown >= SN_PAGE_SIZE || (totalN != null && page * SN_PAGE_SIZE < totalN))) { st.snPage++; st.navs = 0; }
-      else if (!full && st.snI < SN_SEARCHES.length - 1 && !(st.members != null && st.members < SN_SMALL)) { st.snI++; st.snPage = 1; st.navs = 0; }
-      else {
-        // Done. Sales Navigator named whoever it could, so the hidden
-        // people that count now are the ones it still couldn't.
-        st.salesNav = true; st.snVia = st0.snFrom;
-        st.hidViews = st.snHid || [];
-        st.hidRead = (st.hidRead || 0) + 1;
-        return afterPeople(job2, item);
+      // The next page: by Sales Navigator's own count when it gives one (a
+      // search of exactly 25 never asks for an empty page 2), else while a
+      // page comes back full.
+      if (!full && page < search.pages && (totalN != null ? page * SN_PAGE_SIZE < totalN : shown >= SN_PAGE_SIZE)) {
+        st.snPage++; st.navs = 0;
+        job2.nextAt = Date.now() + secs(BETWEEN_PAGES);
+        saveFill(job2);
+        return runFill();
       }
-      job2.nextAt = Date.now() + secs(BETWEEN_PAGES);
-      saveFill(job2);
-      runFill();
+      return snNextOrDone(job2, item);
     }).catch(fillError);
   }
 
@@ -2372,7 +2407,10 @@
     // decides whether a brand is read again) only takes the ones with a
     // brandId — a research name that never became a brand is logged by
     // liResearch.
-    var swept = runPost({
+    // Kept with the run until the dashboard has it (runFill sends it first,
+    // with the dashboard retry; still down → the run pauses and Continue
+    // sends it again): this mark decides whether the brand is read again.
+    var body = {
       action: 'liSwept', brandId: item.brandId || null, run: job.id, script: VERSION, name: item.name,
       seen: st.seen, added: st.added, note: note || '', problem: st.problem || null, sample: st.sample || null,
       ms: st.startedAt ? Date.now() - st.startedAt : null, hiddenMs: st.hiddenMs || 0,
@@ -2385,12 +2423,16 @@
       done: !!st.salesNav || !!st.full, issue: issue, issueNote: issueNote,
       skipped: st.skip || null, shown: st.snShown != null ? st.snShown : null, read: st.snSeen != null ? st.snSeen : null,
       again: !!item.again, review: st.review || 0,
+      // Was Sales Navigator meant to be used (a run with it off never
+      // clears a Sales Navigator issue); the page a very-big count came from.
+      snOn: !!job.snWanted, companyIndustry: st.skip ? st.pageIndustry || '' : undefined, companyUrl: st.skip ? st.pageUrl || null : undefined,
       // One key per post: a post retried after a timeout counts once.
       key: job.id + ':' + job.at + ':' + (item.brandId || item.name),
       // People LinkedIn hid from this account, view by view — only when a
       // view was read (no page read says nothing about who's hidden).
       hidden: st.hidRead ? (st.hidViews || []) : undefined,
-    }).catch(function () {});
+    };
+    job.outbox = (job.outbox || []).concat([body]);
     job.results.push({ name: item.name, added: st.added, note: note || null, via: via, hidden: hiddenTotal(st.hidViews), issue: !!issue, again: !!item.again });
     if (again) job.items.push(Object.assign({}, item, { again: 1, againWhy: issueNote || note || 'its first try went wrong' }));
     job.at++;
@@ -2399,16 +2441,27 @@
     job.nextAt = Date.now() + secs(quick ? BETWEEN_PAGES : BETWEEN_BRANDS);
     if (job.doneToday >= DAILY_CAP && job.at < job.items.length) job.pausedUntil = tomorrowMorning();
     saveFill(job);
-    // The last brand's visit mark lands before the run says it's finished
-    // (up to 15 s): a run started right after would otherwise redo it.
-    if (job.at >= job.items.length) {
-      Promise.race([swept, new Promise(function (r) { setTimeout(r, 15000); })]).then(function () { runFill(); });
-    } else runFill();
+    runFill();
+  }
+
+  // The visit marks waiting to reach the dashboard, oldest first.
+  var outboxBusy = false;
+  function flushOutbox() {
+    var job = loadFill();
+    if (!job || !job.outbox || !job.outbox.length) return Promise.resolve();
+    outboxBusy = true;
+    return runPost(job.outbox[0]).then(function () {
+      var j = loadFill();
+      if (j && j.outbox && j.outbox.length) { j.outbox = j.outbox.slice(1); saveFill(j); }
+      return flushOutbox();
+    }).then(function () { outboxBusy = false; }, function (e) { outboxBusy = false; throw e; });
   }
 
   function finishFill(job, stopped) {
     clearTimeout(fillTimer);
     fillHalt.stopped = true;
+    // A visit mark still waiting (the run stopped while the dashboard was down).
+    (job.outbox || []).forEach(function (b) { runPost(b).catch(function () {}); });
     clearFill();
     runEvent(job, 'finish', { stopped: !!stopped, newBrands: (job.newBrands || []).length, hiddenMs: job.hiddenMs || 0 });
     var results = job.results || [];

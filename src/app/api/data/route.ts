@@ -36,7 +36,7 @@ import { newBoardCode } from '@/lib/board-access'
 import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import { regionFlag } from '@/lib/region'
 import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hints'
-import { readLiLog, readLiResearch, issueWords, LI_SCRIPT_VERSION, LI_SWEEP_KEY } from '@/lib/li-sweep'
+import { readLiLog, readLiResearch, issueWords, updateLiLog, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
 import { buildLiList } from '@/lib/li-list-db'
 import { splitFillDays } from '@/lib/fill-schedule'
 import { readHiddenLog, updateHiddenLog, markZachRead, clearZachRead, zachDue, ZACH_REST_DAYS, type HiddenEntry } from '@/lib/li-hidden'
@@ -12119,8 +12119,7 @@ const handlers: Record<string, Handler> = {
     await writeJsonSetting(prisma, LI_REVIEW_KEY, review)
     // Its last visit rests it for a month; a page Leo just picked should
     // be read on the next run instead.
-    const log = await readLiLog(prisma)
-    if (log[brand.id]) { delete log[brand.id]; await writeJsonSetting(prisma, LI_SWEEP_KEY, log) }
+    await updateLiLog(prisma, log => { delete log[brand.id] })
     // Hidden people counted on the page that turned out not to be theirs
     // would send Zach to another company.
     const was = companySlug(brand.linkedinUrl)
@@ -12158,9 +12157,7 @@ const handlers: Record<string, Handler> = {
     const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
     const wasNone = confirmed[brand.id] === 'none'
     if (wasNone) { delete confirmed[brand.id]; await writeJsonSetting(prisma, LI_CONFIRMED_KEY, confirmed) }
-    const log = await readLiLog(prisma)
-    const rested = !!log[brand.id]
-    if (rested) { delete log[brand.id]; await writeJsonSetting(prisma, LI_SWEEP_KEY, log) }
+    const rested = await updateLiLog(prisma, log => { const had = !!log[brand.id]; delete log[brand.id]; return had })
     return { ok: true, name: brand.name, linkedinUrl: brand.linkedinUrl, wasNone, rested }
   },
 

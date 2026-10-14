@@ -10,13 +10,24 @@
 // Pure here: which calls are changes and how they read, and how a commit
 // reads. /api/data logs and reads. node scripts/test-claude-day.mjs
 
-// Reads, never logged (a preview or stale answer isn't a change either).
-const READ_FN = /^(get|list|search|find|read|load|preview|check|count|claudeDay|dayRecap|weeklyScore|staleDeals|todaySendList|zachTodo|categoryReach|categoryBrands|categoryCoverage|outcomeTable|fillSchedule|liRunDetail|linkedinPeople|suggestForDay|sentByCompany|secondTryBrands|boardCodeLookup|sponsorUrl|segmentsOverview|audienceEventStats|appVersion|researchList|planDayChoices|nextBestBrands|staleInvites|repliedOverview|buyerCoverage|brandLookup|brandTimeline|brandStock|brandPlanLine|scheduleStamp|suMatchQueue|sheetStatus|whoAmI|me)/
+// Reads, never logged (a preview or stale answer isn't a change either):
+// a read verb followed by a capital (getBrand — not mergePeople), or one of
+// the read-only handlers by its whole name.
+const READ_VERB = /^(?:get|list|search|find|read|load|preview|count)[A-Z]/
+const READ_NAMES = new Set(['claudeDay', 'dayRecap', 'weeklyScore', 'staleDeals', 'todaySendList', 'zachTodo', 'categoryReach', 'categoryBrands',
+  'categoryCoverage', 'outcomeTable', 'fillSchedule', 'liRunDetail', 'linkedinPeople', 'suggestForDay', 'sentByCompany', 'secondTryBrands',
+  'boardCodeLookup', 'sponsorUrl', 'segmentsOverview', 'audienceEventStats', 'appVersion', 'researchList', 'planDayChoices', 'nextBestBrands',
+  'staleInvites', 'repliedOverview', 'buyerCoverage', 'brandLookup', 'brandTimeline', 'brandStock', 'brandPlanLine', 'scheduleStamp',
+  'suMatchQueue', 'sheetStatus', 'whoAmI', 'me', 'findDuplicates', 'sponsorReport'])
+const isRead = (fn: string) => READ_VERB.test(fn) || READ_NAMES.has(fn)
 
 // Calls that change only with confirm / apply; without it they preview.
 const NEEDS_YES: Record<string, string[]> = {
   planWeek: ['apply'], fitArchive: ['apply', 'confirm'], refileCategories: ['apply', 'confirm'],
+  deleteBrand: ['confirm'], mergeBrands: ['confirm'],
 }
+// Calls that preview unless told preview: false.
+const PREVIEW_BY_DEFAULT = new Set(['researchImport', 'researchUndo'])
 
 // The work-log itself shows on the review as "What Claude did".
 const NOT_SHOWN = new Set(['addWorkLog'])
@@ -37,10 +48,13 @@ export function fnWords(fn: string): string {
 // What a Claude call changed, in words; null = nothing to show (a read, a
 // preview, a refusal, the work log).
 export function actionText(fn: string, args: any, result: any): string | null {
-  if (!fn || READ_FN.test(fn) || NOT_SHOWN.has(fn)) return null
+  if (!fn || isRead(fn) || NOT_SHOWN.has(fn)) return null
   const a = args && typeof args === 'object' ? args : {}
   const r = result && typeof result === 'object' ? result : {}
   if (a.preview === true || a.dryRun === true || r.preview === true || r.applied === false || r.stale === true || r.noop) return null
+  // Refusals and previews that say so in their own words.
+  if (r.ok === false || r.deleted === false || r.merged === false || r.queued === false) return null
+  if (PREVIEW_BY_DEFAULT.has(fn) && a.preview !== false) return null
   const yes = NEEDS_YES[fn]
   if (yes && !yes.some(k => a[k])) return null
   const brand = s(r.brand?.name || r.brandName || r.name || a.name || a.brandName || '')
@@ -51,7 +65,7 @@ export function actionText(fn: string, args: any, result: any): string | null {
     case 'undoMergePeople': return 'Took back a merge of people on file twice'
     case 'chatAddBrand': return `Added ${s(r.brand?.name || a.brand?.name || 'a brand')} from the Add a brand chat${r.factsWritten ? ' (with its facts)' : ''}`
     case 'researchStage': return `Staged Brand Fit research for ${plural(count(a.rows), 'brand')} — waiting for your review`
-    case 'researchImport': return `Saved reviewed Brand Fit facts for ${plural(Number(r.applied ?? r.saved ?? count(a.brands)) || 0, 'brand')}`
+    case 'researchImport': return `Saved reviewed Brand Fit facts for ${plural(Number(r.updated ?? r.applied ?? r.saved ?? count(a.brands)) || 0, 'brand')}`
     case 'importContacts': return `Added ${plural(Number(r.added ?? r.created ?? count(a.rows)) || 0, 'person', 'people')}${a.source ? ' (' + s(a.source, 20) + ')' : ''}`
     case 'reviewNewBrands': return `${a.action === 'archive' ? 'Archived' : 'Kept'} ${plural(count(a.ids), 'brand')} from New from LinkedIn`
     case 'saveHandTemplate': return `Saved the ${s(a.kind || 'email')} message template on Zach's list`

@@ -13,7 +13,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import { timingSafeEqual } from 'crypto'
 import { readRuns } from '@/lib/li-report'
-import { readLiLog, readLiResearch, markOutcome, issueWords, LI_SCRIPT_VERSION, LI_READER, LI_RETRY_MAX } from '@/lib/li-sweep'
+import { readLiLog, readLiResearch, markOutcome, issueWords, liDue, LI_SCRIPT_VERSION, LI_READER } from '@/lib/li-sweep'
+import { parentOf } from '@/lib/parents'
 import { readCoverCounts } from '@/lib/coverage-db'
 import { LI_REVIEW_KEY, type Review } from '@/lib/li-review'
 
@@ -46,11 +47,15 @@ export async function GET(req: NextRequest) {
   const reviewed = Object.entries(review).filter(([, e]) => e && Date.parse(e.at) >= since)
   // Brands whose last read had an issue (li-sweep.ts): retried first on the
   // next run, stuck after LI_RETRY_MAX runs — the morning check fixes these.
-  const issues = Object.entries(sweep).filter(([, m]) => m && markOutcome(m).issue && Date.parse(m.at) >= since)
-  const ids = Array.from(new Set([...noted.map(([id]) => id), ...reviewed.map(([id]) => id), ...issues.map(([id]) => id)]))
+  // Stuck ones stay listed until they're back on the list (a month).
+  const issueMarks = Object.entries(sweep).filter(([, m]) => m && markOutcome(m).issue)
+  const ids = Array.from(new Set([...noted.map(([id]) => id), ...reviewed.map(([id]) => id), ...issueMarks.map(([id]) => id)]))
   const names = ids.length
-    ? await prisma.brand.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, category: true } })
+    ? await prisma.brand.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, category: true, aka: true } })
     : []
+  const brandOf = new Map(names.map(b => [b.id, b]))
+  const dueOf = (id: string, m: any) => { const b = brandOf.get(id); return liDue(m, !!(b && parentOf(b.name, b.aka))) }
+  const issues = issueMarks.filter(([id, m]) => Date.parse(m.at) >= since || dueOf(id, m).stuck)
   const nameOf = new Map(names.map(b => [b.id, b.name]))
   const categoryOf = new Map(names.map(b => [b.id, b.category]))
 
@@ -68,9 +73,8 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => Date.parse(b[1].at) - Date.parse(a[1].at))
       .slice(0, 100)
       .map(([id, m]) => {
-        const issue = markOutcome(m).issue
-        const tries = m.tries || 1
-        return { brand: nameOf.get(id) || id, at: m.at, issue, words: issueWords(issue), note: m.issueNote || m.note || null, tries, stuck: tries >= LI_RETRY_MAX, shown: m.shown ?? null, read: m.read ?? null }
+        const d = dueOf(id, m), issue = d.issue || markOutcome(m).issue
+        return { brand: nameOf.get(id) || id, at: m.at, issue, words: issueWords(issue), note: m.issueNote || m.note || null, tries: d.tries, stuck: d.stuck, retry: d.retry, back: d.back, shown: m.shown ?? null, read: m.read ?? null }
       }),
     // Every brand a buyer (coverage.ts): brands in play, how many have a
     // marketing / partnerships person, and what stands in the way of the

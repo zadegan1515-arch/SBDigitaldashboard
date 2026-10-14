@@ -701,6 +701,16 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       const bc = withSkip.items.find(i => i.name === 'Blank Cards');
       assert.ok(bc && bc.bigOk === false, 'with it on, an ordinary brand may be skipped at 1,500+');
       assert.equal(withSkip.skipBig, true);
+      // Skipped at 1,500+ on a page that isn't the brand's (another, bigger
+      // company): the count isn't kept, and the page goes on Leo's list.
+      const wb = await prisma.brand.create({ data: { name: 'Wrongbig Seltzer', category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/wrongbig-defense/' } });
+      await ingest({ action: 'liSwept', me: leo, brandId: wb.id, run: 'r7', name: 'Wrongbig Seltzer', seen: 0, added: 0, note: 'very big', hidden: [],
+        done: false, issue: null, skipped: 'veryBig', members: 9000, companyIndustry: 'Defense and Space Manufacturing', companyUrl: wb.linkedinUrl });
+      assert.equal((await prisma.brand.findUnique({ where: { id: wb.id } })).liMembers, null, 'another company\'s headcount never lands on the brand');
+      const rv = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liPageReview' } })).value);
+      assert.equal(rv[wb.id] && rv[wb.id].why, 'wrong');
+      const wm = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liSweepLog' } })).value)[wb.id];
+      assert.deepEqual([wm.skip, wm.clean, wm.issue], [null, false, null], 'a page problem: the old month');
     }
     ok('read again only when something went wrong: issues first for 3 runs then a month, clean never back, 1,500+ skips saved');
 
@@ -769,7 +779,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       assert.ok(sch.days.every(d => d.rows.length <= sch.perDay), 'never more than a day\'s worth')
       assert.ok(rows.every(r => r.why), 'each says why it is there')
       const hi = await data('fillSchedule', { minFit: 100 })
-      assert.ok(hi.days.flatMap(d => d.rows).every(r => r.research || r.fit >= 100 || /Schedule|Asked|Read again/.test(r.why)), 'the floor holds (a read that went wrong goes again whatever its fit)')
+      assert.ok(hi.days.flatMap(d => d.rows).every(r => r.research || r.fit >= 100 || /Schedule|Asked/.test(r.why)), 'the floor holds, for a read that went wrong too')
     }
     ok('Fill schedule: the fill\'s own list in its order, a day\'s worth a day, with the floor');
 

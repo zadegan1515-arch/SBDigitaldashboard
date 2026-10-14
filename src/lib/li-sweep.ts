@@ -55,6 +55,8 @@ export type LiMark = {
   sn?: boolean; snMissed?: boolean; snRetried?: boolean
   clean?: boolean; issue?: string | null; issueNote?: string | null; tries?: number; run?: string | null
   skip?: string | null; shown?: number | null; read?: number | null
+  // Read by a run with Sales Navigator switched off (1.38).
+  snOff?: boolean
 }
 export type LiLog = Record<string, LiMark>
 
@@ -82,7 +84,8 @@ export const issueWords = (issue: string | null | undefined) => (issue ? ISSUE_W
 const PAGE_NOTE = /no clear LinkedIn page|no LinkedIn page|looks like another company|its LinkedIn page is saved on|could not find .+ on LinkedIn/i
 export function markOutcome(mark: LiMark): { clean: boolean; issue: string | null } {
   if (mark.clean !== undefined || mark.issue !== undefined) return { clean: !!mark.clean && !mark.issue, issue: mark.issue || null }
-  if (mark.sn || mark.snRetried) return { clean: true, issue: null }
+  // snRetried without sn = its one retry still couldn't use Sales Navigator.
+  if (mark.sn) return { clean: true, issue: null }
   if ((mark.snMissed || Date.parse(mark.at) >= SN_SINCE) && !PAGE_NOTE.test(mark.note || '')) return { clean: false, issue: 'noSalesNav' }
   return { clean: !!mark.added, issue: null }
 }
@@ -94,7 +97,7 @@ export function markOutcome(mark: LiMark): { clean: boolean; issue: string | nul
 // a Sales Navigator read is clean, a run that meant to use it and read the
 // People tab is an issue, anything else keeps the old month's rest.
 export const ISSUE_CODES = Object.keys(ISSUE_WORDS)
-export function sweptOutcome(body: any): Pick<LiMark, 'clean' | 'issue' | 'issueNote' | 'run' | 'skip' | 'shown' | 'read'> {
+export function sweptOutcome(body: any): Pick<LiMark, 'clean' | 'issue' | 'issueNote' | 'run' | 'skip' | 'shown' | 'read' | 'snOff'> {
   const b = body && typeof body === 'object' ? body : {}
   const sn = b.salesNav === true
   const num = (v: unknown) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Math.max(0, Math.round(Number(v))))
@@ -111,7 +114,23 @@ export function sweptOutcome(body: any): Pick<LiMark, 'clean' | 'issue' | 'issue
     skip,
     shown: num(b.shown),
     read: num(b.read),
+    ...(b.snOn === false ? { snOff: true } : {}),
   }
+}
+
+// The issues that only a Sales Navigator read can clear.
+export const SN_ISSUES = ['snNoLoad', 'snNoId', 'snOtherCompany', 'snLeft', 'partial', 'noSalesNav']
+
+// The mark a visit leaves, given the one before: a run with Sales Navigator
+// switched off that ends with nothing wrong doesn't clear a Sales Navigator
+// issue (nor count as a try) — the brand still needs it.
+export function nextMark(prev: LiMark | undefined, mark: Omit<LiMark, 'at'>, at: string): LiMark {
+  const before = prev ? markOutcome(prev) : null
+  if (mark.snOff && !mark.issue && !mark.clean && !mark.skip && before?.issue && SN_ISSUES.includes(before.issue)) {
+    return { at, ...mark, issue: before.issue, issueNote: prev!.issueNote || null, tries: prev!.tries || 1 }
+  }
+  const tries = nextTries(prev, mark)
+  return { at, ...mark, ...(mark.issue ? { tries } : {}) }
 }
 
 type SettingStore = {
@@ -149,8 +168,7 @@ export async function markLiSwept(db: SettingStore & { $transaction?: any }, bra
   const write = async (tx: any) => {
     if (tx.$queryRaw) await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${LI_SWEEP_KEY}))::text`
     const log = await readLiLog(tx)
-    const tries = nextTries(log[brandId], mark)
-    log[brandId] = { at: new Date().toISOString(), ...mark, ...(mark.issue ? { tries } : {}) }
+    log[brandId] = nextMark(log[brandId], mark, new Date().toISOString())
     const cutoff = Date.now() - LI_KEEP_DAYS * 864e5
     const kept: LiLog = {}
     const bigCutoff = Date.now() - LI_BIG_REST_DAYS * 864e5
@@ -162,6 +180,23 @@ export async function markLiSwept(db: SettingStore & { $transaction?: any }, bra
   }
   if (typeof db.$transaction === 'function') await db.$transaction(write, { maxWait: 10000, timeout: 20000 })
   else await write(db)
+}
+
+// Any other change to the visit log (Leo's page pick, "send it back to the
+// fill") under the same lock, so it can't be undone by a visit landing at
+// the same moment — a clean mark lost that way would bury the brand.
+export async function updateLiLog<T>(db: SettingStore & { $transaction?: any }, fn: (log: LiLog) => T): Promise<T> {
+  let out: T
+  const write = async (tx: any) => {
+    if (tx.$queryRaw) await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${LI_SWEEP_KEY}))::text`
+    const log = await readLiLog(tx)
+    out = fn(log)
+    const v = JSON.stringify(log)
+    await tx.setting.upsert({ where: { key: LI_SWEEP_KEY }, create: { key: LI_SWEEP_KEY, value: v }, update: { value: v } })
+  }
+  if (typeof db.$transaction === 'function') await db.$transaction(write, { maxWait: 10000, timeout: 20000 })
+  else await write(db)
+  return out!
 }
 
 // Whether the fill reads a brand now (the worklist, liList, and All brands'
@@ -181,12 +216,14 @@ export function liDue(mark: LiMark | undefined, hasParent: boolean, now = Date.n
   if (mark.skip === 'veryBig') return due
   // A parent whose page wasn't found (script ≤1.20 marked it tried anyway),
   // or one the run hasn't tried yet.
-  if (hasParent && !mark.added && (/could not find .+ on LinkedIn/.test(mark.note || '') || !mark.parentTried)) return due
   const at = Date.parse(mark.at)
   const { clean, issue } = markOutcome(mark)
+  // (Not a brand whose read went wrong: that goes through its retries.)
+  if (!issue && hasParent && !mark.added && (/could not find .+ on LinkedIn/.test(mark.note || '') || !mark.parentTried)) return due
   const month = Number.isFinite(at) ? at + LI_REST_DAYS * 864e5 : 0
   if (issue) {
-    const tries = mark.tries || 1
+    // A legacy snRetried mark had its one retry already: one more.
+    const tries = mark.tries || (mark.snRetried && !mark.sn ? LI_RETRY_MAX - 1 : 1)
     if (tries < LI_RETRY_MAX || now >= month) return { ...due, retry: true, issue, tries }
     return { due: false, retry: false, stuck: true, back: new Date(month).toISOString(), issue, tries }
   }

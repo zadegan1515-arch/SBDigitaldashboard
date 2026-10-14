@@ -63,9 +63,11 @@ export type RunReport = {
   samples: Array<{ at: string; name: string; problem: string; sample: string }>
   newBrands: number
   hiddenMs?: number
-  // Lookalikes sent to Discover for review (1.38) and brands with an issue.
+  // Lookalikes sent to Discover for review (1.38) and brands whose last try
+  // in the run had an issue (issueBy: each brand's last word, brandId|name).
   review?: number
   issues?: number
+  issueBy?: Record<string, string | null>
 }
 
 export type RunEvent = {
@@ -149,7 +151,11 @@ export function applyRunEvent(reports: RunReport[], ev: RunEvent, now = new Date
     if (run.brands.length < KEEP_BRANDS) run.brands.push(b)
     run.added += b.added
     if (b.review) run.review = (run.review || 0) + b.review
-    if (b.issue) run.issues = (run.issues || 0) + 1
+    // A brand that went wrong and then came out fine on its second try
+    // isn't one with an issue; one that failed twice counts once.
+    const by = run.issueBy || (run.issueBy = {})
+    by[b.brandId || b.name] = b.issue || null
+    run.issues = Object.values(by).filter(Boolean).length
     run.hiddenMs = (run.hiddenMs || 0) + (b.hiddenMs || 0)
     if (b.problem) {
       run.problems++

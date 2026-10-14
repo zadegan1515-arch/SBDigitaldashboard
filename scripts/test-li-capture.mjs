@@ -398,6 +398,27 @@ t('an issue goes first on the next run, for 3 runs; then it rests a month and sh
   assert.equal(sweep.liDue({ at: ago(1), seen: 4, added: 0, v, clean: true, issue: null }, true, now).due, true, 'nobody on its own page and the parent not searched yet')
   assert.equal(sweep.liDue({ at: ago(1), seen: 4, added: 0, v, clean: true, issue: null, parentTried: true }, true, now).due, false)
 })
+t('review fixes: a parent brand\'s issue still counts; a legacy failed retry isn\'t clean; a run with Sales Navigator off keeps its issue', () => {
+  const now = Date.parse('2026-12-01T00:00:00Z')
+  const ago = d => new Date(now - d * 864e5).toISOString()
+  const v = sweep.LI_READER
+  assert.equal(sweep.liDue({ at: ago(1), seen: 0, added: 0, v, issue: 'snNoId', tries: 3 }, true, now).stuck, true, 'parent not tried, own read failed 3 runs: stuck')
+  const r1 = sweep.liDue({ at: ago(1), seen: 0, added: 0, v, issue: 'snNoId', tries: 1 }, true, now)
+  assert.deepEqual([r1.retry, r1.issue], [true, 'snNoId'])
+  const legacy = { at: '2026-10-12T20:00:00Z', v, sn: false, snMissed: true, snRetried: true, seen: 5, added: 0 }
+  assert.equal(sweep.markOutcome(legacy).clean, false, 'its one retry still had no Sales Navigator')
+  const ld = sweep.liDue(legacy, false, Date.parse('2026-10-14T00:00:00Z'))
+  assert.deepEqual([ld.retry, ld.tries], [true, sweep.LI_RETRY_MAX - 1], 'one more try')
+  const prev = { at: ago(2), seen: 0, added: 0, v, issue: 'snNoLoad', issueNote: 'did not load', tries: 2, run: 'r1' }
+  const off = sweep.nextMark(prev, { seen: 4, added: 1, v, clean: false, issue: null, snOff: true, run: 'r2' }, ago(0))
+  assert.deepEqual([off.issue, off.tries, off.issueNote], ['snNoLoad', 2, 'did not load'], 'kept, not counted as a try')
+  const noRead = sweep.nextMark(prev, { seen: 0, added: 0, v, clean: false, issue: 'noOpen', snOff: true, run: 'r2' }, ago(0))
+  assert.equal(noRead.issue, 'noOpen', 'its own issue wins')
+  const on = sweep.nextMark(prev, { seen: 4, added: 1, v, clean: true, issue: null, run: 'r3' }, ago(0))
+  assert.deepEqual([on.clean, on.issue, on.tries], [true, null, undefined])
+  assert.equal(sweep.sweptOutcome({ done: false, snOn: false }).snOff, true)
+})
+
 t('tries count runs, not posts: the same run posting twice is one try; a clean read starts over', () => {
   assert.equal(sweep.nextTries(undefined, { issue: 'snNoLoad', run: 'r1' }), 1)
   const m1 = { at: 'x', seen: 0, added: 0, issue: 'snNoLoad', tries: 1, run: 'r1' }

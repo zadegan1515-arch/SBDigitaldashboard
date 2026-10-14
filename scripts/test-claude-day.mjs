@@ -23,6 +23,18 @@ t('reads, previews, refusals and the work log are never changes', () => {
   assert.equal(C.actionText('reviewNewBrands', { ids: ['a'], action: 'archive', preview: true }, { preview: true }), null)
   assert.equal(C.actionText('planWeek', {}, { days: [] }), null, 'Plan my week only changes with apply')
   assert.equal(C.actionText('addWorkLog', { text: 'x' }, { saved: 1 }), null, 'the log shows as its own card')
+  assert.equal(C.actionText('me', {}, {}), null)
+  assert.equal(C.actionText('deleteBrand', { brandId: 'b' }, { deleted: false, summary: {} }), null, 'a delete preview')
+  assert.equal(C.actionText('researchImport', { stagedAt: 'x' }, { changes: [] }), null, 'previews unless preview: false')
+  assert.equal(C.actionText('undoPlanWeek', {}, { ok: false, message: 'Nothing to undo' }), null, 'a refusal')
+  assert.equal(C.actionText('queueBrandTargets', { brandId: 'b' }, { queued: false, reason: 'notus' }), null)
+  assert.equal(C.actionText('mergeBrands', { fromId: 'a', toId: 'b' }, { merged: false }), null, 'merge preview')
+})
+
+t('merges are changes (mergeX is not a read)', () => {
+  assert.equal(C.actionText('mergePeople', { brandId: 'b', confirm: true, expect: 'x' }, { applied: true, brand: { name: 'Acme' } }), 'Merged people on file twice at Acme')
+  assert.equal(C.actionText('mergeBrands', { fromId: 'a', toId: 'b', confirm: true }, { merged: true }), 'Merge brands')
+  assert.equal(C.actionText('researchImport', { preview: false }, { updated: 4 }), 'Saved reviewed Brand Fit facts for 4 brands')
 })
 
 t('known changes read in words', () => {

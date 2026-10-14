@@ -77,7 +77,7 @@ function lead(id, name, title, company) {
 const mid = (n) => 'ACwAAA' + String(n).padStart(4, '0') + 'BbCcDdEeFfGgHhIiJjKk';
 // Results draw only once they're scrolled into view.
 function salesPage(items, total) {
-  return '<!doctype html><html><body><main><div>' + total + ' results</div>' +
+  return '<!doctype html><html><body><main>' + (total == null ? '' : '<div>' + total + ' results</div>') +
     '<div id="search-results-container" style="height:400px;overflow-y:auto"><ol>' +
     items.map((html, i) => '<li class="sn-slot" style="min-height:120px" data-i="' + i + '"></li>').join('') +
     '</ol></div></main><script>' +
@@ -91,7 +91,8 @@ function salesPage(items, total) {
 }
 
 const COMPANY_IDS = { 'liquid-death': '1234', 'big-co': '5678', 'wrong-id': '7777', 'no-sn': '9999', 'tiny-co': '4321', 'tiny-two': '4322', 'stuck-one': '4401', 'stuck-two': '4402', 'small-sn': '4501',
-  'part-co': '4601', 'big-parent': '4701', 'huge-ok': '4801', 'flaky-dash': '4901', 'empty-tab': '4999' };
+  'part-co': '4601', 'big-parent': '4701', 'huge-ok': '4801', 'flaky-dash': '4901', 'empty-tab': '4999',
+  'hidden-co': '5101', 'no-count': '5201', 'part-co-p': '4601' };
 const salesQueries = [];
 
 const sent = [];
@@ -121,7 +122,8 @@ const server = http.createServer((req, res) => {
           retry: fillItems.filter(i => i.retry).length, hiddenRetry: fillItems.filter(i => i.retry).length }));
       }
       if (body.action === 'liCapture') {
-        return res.end(JSON.stringify({ ok: true, brand: { id: body.brandId, name: body.companyName }, added: (body.rows || []).length, have: 5, cap: 25 }));
+        // b-nonew: everyone already on file (a second try).
+        return res.end(JSON.stringify({ ok: true, brand: { id: body.brandId, name: body.companyName }, added: body.brandId === 'b-nonew' ? 0 : (body.rows || []).length, have: 5, cap: 25 }));
       }
       res.end('{"ok":true}');
     });
@@ -138,6 +140,13 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/sales/search/people' && /organization%3A9999|organization:9999/.test(req.url)) {
     salesQueries.push({ co: '9999', kind: 'redirect', page: 1, q: '' });
     res.writeHead(302, { Location: '/premium/products/?family=SALES' });
+    return res.end();
+  }
+  // No such page 2: Sales Navigator drops the page number.
+  if (url.pathname === '/sales/search/people' && /organization%3A5201|organization:5201/.test(req.url) && url.searchParams.get('page') === '2') {
+    salesQueries.push({ co: '5201', kind: 'clamped', page: 2, q: '' });
+    url.searchParams.delete('page');
+    res.writeHead(302, { Location: url.pathname + '?' + url.searchParams.toString() });
     return res.end();
   }
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -181,6 +190,14 @@ const server = http.createServer((req, res) => {
       for (let k = 26; k <= 40; k++) items.push(lead(mid(600 + k), 'Part ' + k, 'Brand Manager', 'part-co'));
       return res.end(salesPage(items, 40));
     }
+    // Only "LinkedIn Member" results (all with lead links): read fine, nobody to name.
+    if (co === '5101') return res.end(salesPage([1, 2, 3, 4].map(n => lead(mid(510 + n), 'LinkedIn Member', 'Marketing Manager', 'hidden-co')), 4));
+    // No results count on the page and a full first page.
+    if (co === '5201' && kind === 'fn') {
+      const items = [];
+      for (let k = 1; k <= 25; k++) items.push(lead(mid(520 + k), 'Count ' + k, 'Brand Manager', 'no-count'));
+      return res.end(salesPage(items, null));
+    }
     // A brand under its parent: the parent's people who name it.
     if (co === '4701') return res.end(salesPage([lead(mid(70), 'Kim Kid', 'Brand Manager, Kid Brand', 'Big Parent')], 1));
     // A brand with nobody in marketing: Sales Navigator's own empty page,
@@ -214,7 +231,7 @@ const server = http.createServer((req, res) => {
   }
   // A People tab with nobody on it: still Sales Navigator (1.38).
   if (url.pathname === '/company/empty-tab/people/') return res.end(peoplePage('Empty Tab', ''));
-  for (const slug of ['no-id', 'wrong-id', 'no-sn', 'after-no-sn', 'tiny-co', 'tiny-two', 'stuck-one', 'stuck-two', 'part-co', 'flaky-dash']) {
+  for (const slug of ['no-id', 'wrong-id', 'no-sn', 'after-no-sn', 'tiny-co', 'tiny-two', 'stuck-one', 'stuck-two', 'part-co', 'flaky-dash', 'hidden-co', 'no-count', 'part-co-p']) {
     if (url.pathname === '/company/' + slug + '/people/') {
       const kw = url.searchParams.get('keywords') || '';
       return res.end(peoplePage(slug, peopleCard(slug + '-' + (kw || 'all'), 'Person ' + slug + ' ' + (kw || 'all'), 'Brand Manager at ' + slug)));
@@ -436,6 +453,27 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
       assert.equal(sw.via, 'Sales Navigator via Big Parent');
       assert.equal(sw.done, true); assert.equal(sw.parentTried, true);
       ok('a brand under its parent: Sales Navigator on the parent\'s company, searched for its name');
+    }
+
+    // Review fixes. A page of only "LinkedIn Member" results isn't a misread;
+    // a page 2 Sales Navigator doesn't have moves on (no pause); a brand whose
+    // own read came out short still comes back after its parent's read.
+    {
+      const r = await run([item('b-hid', 'Hidden Co', 'hidden-co'), item('b-cnt', 'No Count', 'no-count'),
+        item('b-nonew', 'Part Parent', 'part-co-p', { parent: { name: 'Big Parent', search: 'Big Parent', slug: 'big-parent' } })]);
+      const sw = r.calls.filter(b => b.action === 'liSwept');
+      const hid = sw.find(x => x.brandId === 'b-hid');
+      assert.deepEqual([hid.problem, hid.issue, hid.done], [null, null, true], 'all hidden: read fine');
+      assert.equal(hid.hidden[0].heads.length, 4);
+      const cnt = sw.find(x => x.brandId === 'b-cnt');
+      assert.deepEqual([cnt.done, cnt.issue], [true, null]);
+      assert.deepEqual(r.queries.filter(q => q.co === '5201').map(q => q.kind + q.page), ['fn1', 'clamped2', 'fn1', 'kw1'], 'page 2 dropped → the next search');
+      const pp = sw.filter(x => x.brandId === 'b-nonew');
+      assert.deepEqual(pp.map(x => x.issue), ['partial', 'partial'], 'the parent\'s clean read doesn\'t wash out its own short page');
+      assert.deepEqual(pp.map(x => x.via), ['Sales Navigator via Big Parent', 'Sales Navigator via Big Parent']);
+      assert.ok(pp.every(x => x.parentTried === true));
+      assert.match(r.panel, /Run finished/);
+      ok('review fixes: hidden-only pages read fine, a missing page 2 moves on, a short own page survives the parent\'s read');
     }
 
     // Skip very big brands: 1,500+ on the People tab ends the brand there —

@@ -10579,7 +10579,12 @@ function renderLiRuns(runs, latest, owner) {
     '<div class="t-line"><b>Last LinkedIn run</b><span class="t-sep">·</span>' +
       '<span class="t-title">started ' + esc(when(r.startedAt)) + (r.script ? ' · script ' + esc(r.script) : '') + '</span>' +
       '<span class="status ' + (r.status === 'paused' ? 'declined' : r.status === 'finished' ? 'accepted' : 'sent') + '" style="margin-left:8px">' + esc(STATUS[r.status] || r.status) + '</span></div>' +
-    '<div class="t-meta" style="margin-top:6px">' + r.brands.length + ' brand' + (r.brands.length === 1 ? '' : 's') + ' done · ' +
+    '<div class="t-meta" style="margin-top:6px">' + (function () {
+      // A brand tried twice in the run (1.38's second try) is one brand.
+      var seen = {}; r.brands.forEach(function (x) { seen[x.brandId || x.name] = 1; });
+      var nb = Object.keys(seen).length;
+      return nb + ' brand' + (nb === 1 ? '' : 's');
+    })() + ' done · ' +
       r.added + ' people added' + (r.newBrands ? ' · ' + r.newBrands + ' new brand' + (r.newBrands === 1 ? '' : 's') : '') +
       (r.review ? ' · ' + r.review + ' similar page' + (r.review === 1 ? '' : 's') + ' sent to Discover' : '') +
       (r.issues ? ' · <span style="color:var(--warn)">' + r.issues + ' with an issue (read again first next run)</span>' : '') +

@@ -47,8 +47,11 @@ t('1.38: a retried post counts once; issues, second tries and lookalikes sent to
   r = applyRunEvent(r, { kind: 'brand', run: 'f9', name: 'B', brandId: 'b', seen: 0, added: 0, key: 'f9:1:b:1', issue: 'snNoLoad' }, at(2))
   r = applyRunEvent(r, { kind: 'brand', run: 'f9', name: 'B', brandId: 'b', seen: 7, added: 1, key: 'f9:1:b:2', again: true }, at(3))
   assert.equal(r[0].brands.length, 3); assert.equal(r[0].added, 3)
-  assert.equal(r[0].review, 3); assert.equal(r[0].issues, 1)
+  assert.equal(r[0].review, 3); assert.equal(r[0].issues, 0, 'B came out fine on its second try')
   assert.equal(r[0].brands[2].again, true); assert.equal(r[0].brands[1].issue, 'snNoLoad')
+  r = applyRunEvent(r, { kind: 'brand', run: 'f9', name: 'C', brandId: 'c', seen: 0, added: 0, key: 'f9:2:c:1', issue: 'snNoId' }, at(4))
+  r = applyRunEvent(r, { kind: 'brand', run: 'f9', name: 'C', brandId: 'c', seen: 0, added: 0, key: 'f9:3:c:2', issue: 'snNoId', again: true }, at(5))
+  assert.equal(r[0].issues, 1, 'C failed twice: one brand')
 })
 
 t('each brand keeps its time and hidden time; the run adds up the hidden minutes', () => {

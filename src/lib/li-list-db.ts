@@ -5,7 +5,7 @@
 // Read-only.
 import { PrismaClient } from '@prisma/client'
 import { focusTerms, matchesFocus, decideCompanyMatch, pageLooksWrong } from './li-capture'
-import { readLiLog, liDue, issueWords, readLiResearch, researchResting, LI_SCRIPT_VERSION, SN_SINCE } from './li-sweep'
+import { readLiLog, liDue, issueWords, readLiResearch, researchResting, LI_SCRIPT_VERSION, SN_SINCE, SN_ISSUES } from './li-sweep'
 import { readHiddenLog } from './li-hidden'
 import { parentOf, isParentCompany, LI_PARENT_PAGES_KEY } from './parents'
 import { readJsonSetting, LI_CONFIRMED_KEY, LI_REVIEW_KEY, type Confirmed, type Review } from './li-review'
@@ -136,7 +136,12 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     if (body.salesNav !== true || !b.linkedinUrl || !m || m.clean !== undefined || m.issue !== undefined || m.sn || m.snRetried) return false
     return Date.parse(m.at) < SN_SINCE && !!h && h.likely > 0 && !h.zachAt
   }
-  const retryOf = (b: { id: string; name: string; aka: string | null; linkedinUrl: string | null }) => dueOf(b).retry || hiddenOld(b)
+  // A Sales Navigator issue goes first only on a run that uses it (with the
+  // switch off it's just due — and that read doesn't clear it, li-sweep.ts).
+  const retryOf = (b: { id: string; name: string; aka: string | null; linkedinUrl: string | null }) => {
+    const d = dueOf(b)
+    return (d.retry && (body.salesNav === true || !SN_ISSUES.includes(d.issue || ''))) || hiddenOld(b)
+  }
   // Read before the Oct 13 2026 match fix and put on "Which LinkedIn page
   // is theirs?": due again once when its saved results now resolve (a
   // same-named company in another trade, LinkedIn's bare "Manufacturing").
@@ -266,8 +271,9 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     : []
   const short = new Set(dueBrands.filter(b => shortOnPeople({ ...b, big: isBigBrand(b) })).map(b => b.id))
   const { first: planned, rest: unplanned } = plannedFirst(items, due, short)
-  // A brand back for a retry passed the floor once already: it stays.
-  const fitted = unplanned.filter(i => i.retry || fitOk(i.brandId))
+  // A retry meets the floor like any brand (the floor may have changed, or
+  // its facts — a Skip category, not sold in the US).
+  const fitted = unplanned.filter(i => fitOk(i.brandId))
   const belowFit = unplanned.length - fitted.length
   const byId = new Map(everyBrand.map(b => [b.id, b] as const))
   const rest = skipBig ? fitted.filter(i => !veryBig(byId.get(i.brandId)!)) : fitted
