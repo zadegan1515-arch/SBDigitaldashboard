@@ -211,6 +211,14 @@
   .zt-arrow{color:var(--ink-3);font-size:13px}
   .zt-extra{margin-left:auto;display:flex;gap:14px;align-items:center}
   .zt-skip{background:none;border:none;color:var(--ink-3);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:6px 2px}
+  .zt-skip.zt-nobtn:hover{color:#f0a0a0}
+  .zt-pick.zt-nopick{border-color:rgba(229,100,100,.5)}
+  .zt-pick.zt-nopick:hover{background:rgba(229,100,100,.08)}
+  .zt-stoplist{margin:0;padding-left:18px}
+  .zt-callout.left{background:var(--surface-1);border:1px solid var(--border);color:var(--ink-2)}
+  .zt-stoplist li{margin:2px 0}
+  .zt-step.now.zt-stopbtn{background:#c94a4a;border-color:#c94a4a;box-shadow:none}
+  .zt-step.now.zt-stopbtn:hover{background:#d85a5a;border-color:#d85a5a}
   .zt-item.wait .zt-row{opacity:.62}
   .zt-item.wait.open .zt-row{opacity:1}
   .zt-next{white-space:nowrap}
@@ -4216,9 +4224,11 @@ var ZT_STAGE = {
 var ZT_FINAL = { soon: 'dm', dm: 'dm', nudge: 'nudge', waiting: 'replied', noreply: 'replied', pick: null, email: 'emailed', lidm: 'liSent', call: 'call' };
 var ZT_DONE_TEXT = {
   dm: 'Texted back', nudge: 'Final reach-out sent', emailed: 'Emailed', liSent: 'Replied on LinkedIn', replied: 'They replied',
-  wantsEmail: 'They want email', liPath: 'They want LinkedIn', skipped: 'Not needed', skip: 'Not needed', call: 'Call scheduled'
+  wantsEmail: 'They want email', liPath: 'They want LinkedIn', skipped: 'Not needed', skip: 'Not needed', call: 'Call scheduled',
+  declined: 'Doesn’t want to continue'
 };
 var ZT_PANEL = {};         // targetId -> the box someone clicked in the flow
+var ZT_STOP = {};          // targetId -> the whole-brand preview on its card (ztDecline)
 
 // The cadence (Leo, Oct 5 2026): the first message is due 2 days after
 // the accept; no answer 10 days after it, the final reach-out is due; 7
@@ -4503,7 +4513,45 @@ function ztPanelHtml(p) {
   var h = function (t, sub) { return '<div class="zt-ph">' + esc(t) + (sub ? '<span>' + sub + '</span>' : '') + '</div>'; };
   var unpick = function (step) { return '<button class="zt-skip" data-ztact="step" data-step="' + step + '" data-off="1" title="Not this path after all">Not this path</button>'; };
   var out;
-  if (panel === 'dm' || panel === 'nudge') {
+  if (panel === 'declined') {
+    // "Doesn't want to continue" (Leo, Oct 15 2026): just them, or the
+    // whole brand — the brand only after a look at everything it stops.
+    var pv = ZT_STOP[id], bn = p.brandName || 'the brand';
+    if (pv && (pv.preview || pv.stale)) {
+      var names = function (xs) { return esc(xs.slice(0, 8).join(', ') + (xs.length > 8 ? ' and ' + (xs.length - 8) + ' more' : '')); };
+      var li2 = function (label, xs) { return xs && xs.length ? '<li>' + label + ': ' + names(xs) + '</li>' : ''; };
+      var left = [
+        (pv.calls || []).length ? 'Calls booked: ' + names(pv.calls.map(function (c) { return c.name + (c.day ? ' (' + c.day + ')' : ''); })) + ' — cancel them yourself' : '',
+        (pv.invites || []).length ? 'Invites still out on LinkedIn: ' + names(pv.invites) + ' — withdraw them there if you want' : '',
+        (pv.deals || []).length ? 'Open deals: ' + names(pv.deals) : '',
+        pv.drafts ? pv.drafts + (pv.drafts === 1 ? ' email draft' : ' email drafts') + ' won’t send' : ''
+      ].filter(Boolean);
+      out = h('Stop everyone at ' + bn + '?', 'Nothing changes until you press Stop') +
+        (pv.stale ? '<div class="zt-callout warn">Something changed at ' + esc(bn) + ' since you looked. This is what it stops now.</div>' : '') +
+        '<div class="zt-callout warn"><ul class="zt-stoplist">' +
+          '<li>Nobody at ' + esc(bn) + ' is contacted again: no invites, LinkedIn messages, follow-ups or emails, by the system or by hand.</li>' +
+          li2('Off Zach’s list with ' + esc(ztFirst(p)), pv.others) +
+          li2('Out of today’s LinkedIn list', pv.today) +
+          li2('Out of the queue (never contacted)', pv.waiting) +
+          ((pv.days || []).length ? '<li>Off the Schedule: ' + esc(pv.days.join(', ')) + '</li>' : '') +
+          '<li>' + (pv.archived ? 'Already archived' : 'Archived') + (pv.doNotEmail ? (pv.archived ? ' and do not email' : '; already do not email') : ' and marked do not email') + '</li>' +
+        '</ul></div>' +
+        (left.length ? '<div class="zt-callout left"><b>Left as they are:</b><ul class="zt-stoplist">' + left.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul></div>' : '') +
+        '<div class="zt-acts">' +
+          '<button class="zt-step now zt-stopbtn" data-ztact="declinebrand">Stop everyone at ' + esc(bn) + '</button>' +
+          '<button class="zt-skip" data-ztact="declineback">Back</button>' +
+        '</div>';
+    } else {
+      out = h('They don’t want to continue', 'Who should we stop reaching out to?') +
+        '<div class="zt-picks">' +
+          '<button class="zt-pick zt-nopick" data-ztact="decline" data-scope="person"><b>Just ' + esc(ztFirst(p)) + '</b>' +
+            '<span>Never contacted again. Others at ' + esc(bn) + ' stay as they are</span></button>' +
+          '<button class="zt-pick zt-nopick" data-ztact="decline" data-scope="brand"><b>Everyone at ' + esc(bn) + '</b>' +
+            '<span>Nobody there is contacted again. You’ll see who first</span></button>' +
+        '</div>' +
+        '<div class="zt-acts"><button class="zt-skip" data-ztact="declinecancel">Cancel</button></div>';
+    }
+  } else if (panel === 'dm' || panel === 'nudge') {
     var w = ztDmWindow(p), wd = function (d) { return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); };
     var fd = ztFinalDue(p), fdays = fd ? ztDaysTo(fd) : 0;
     out = h(panel === 'dm' ? 'Text them on LinkedIn' : 'Send the final reach-out',
@@ -4669,7 +4717,8 @@ function ztCompHtml(p) {
       '<span class="zt-extra">' +
         (function () { var l = ztLastStep(p); return l
           ? '<button class="zt-skip" data-ztact="back" title="Undo “' + esc(l.label) + '”">← Back a step</button>' : ''; })() +
-        '<button class="zt-skip" data-ztact="step" data-step="skip" title="They said no, or it’s handled somewhere else: off the list">Not needed</button>' +
+        '<button class="zt-skip zt-nobtn" data-ztnode="declined" title="They said no: never contact them again, or nobody at their brand">Doesn’t want to continue</button>' +
+        '<button class="zt-skip" data-ztact="step" data-step="skip" title="Handled somewhere else: off the list (nothing else changes)">Not needed</button>' +
       '</span></div>' +
     '<div class="zt-noteblock">' + ztNoteHtml(p) + '</div>' +
     '<div class="zt-flowwrap">' + ztFlowHtml(p) + '<div class="zt-panel">' + ztPanelHtml(p) + '</div></div>' +
@@ -4772,7 +4821,8 @@ function ztListHtml(c) {
 }
 
 function ztDoneWhen(x) {
-  return x.kind === 'call' && x.callAt ? 'Call booked for ' + shortDate(x.callAt) : (ZT_DONE_TEXT[x.kind] || x.kind) + ' · ' + shortDate(x.at);
+  return x.kind === 'call' && x.callAt ? 'Call booked for ' + shortDate(x.callAt)
+    : (ZT_DONE_TEXT[x.kind] || x.kind) + (x.kind === 'declined' && x.scope === 'brand' ? ' (whole brand)' : '') + ' · ' + shortDate(x.at);
 }
 
 function ztFootHtml(c) {
@@ -5054,7 +5104,7 @@ function renderZachTodo() {
     var keep = r.brands.map(function (g) { return g.people.map(function (p) { return ztFresher(p, sent); }); });
     ZT_BY_ID = {};
     r.brands.forEach(function (g, i) {
-      g.people = keep[i].filter(function (p) { return !p.callAt && !p.skippedAt; });
+      g.people = keep[i].filter(function (p) { return !p.callAt && !p.skippedAt && !p.declinedAt && !p.brandStoppedAt; });
       g.people.forEach(function (p) { p.brandId = g.id; p.brandName = g.name; p.brand = g; ZT_BY_ID[p.targetId] = p; });
     });
     r.brands = r.brands.filter(function (g) { return g.people.length; });
@@ -5274,18 +5324,102 @@ function ztUndo(id, kind) {
   ztUndoHide();
   // Taken back on the brand page: it reloads that brand's cards.
   var inBrand = bztActive();
+  var said = null;
   api('handStep', { targetId: id, step: kind === 'skipped' ? 'skip' : kind, on: false })
-    .then(function () {
+    .then(function (r) {
       ZT_FILTER = 'todo';
       ZT_CUR = id;
+      if (kind === 'declined') {
+        said = r || {};
+        // The whole brand back: archive, do not email and the queue came
+        // back too, so its page reads it all again.
+        if (inBrand && said.scope === 'brand') { ZT_CUR = null; return loadBrand(BZT.brandId); }
+      }
       return inBrand ? bztLoad(BZT.brandId).then(function () { bztSyncRow(id); bztSyncOutreach(id); }) : renderZachTodo();
     })
     .then(function () {
       if (!inBrand && ZT_BY_ID[id] && !ztMatch(ZT_BY_ID[id], ZT_FILTER)) { ZT_FILTER = ztFilterOf(ZT_BY_ID[id]); ztRender(); }
       renderActionPanel();
-      toast('Undone');
+      toast(said ? ztStopUndoText(said) : 'Undone');
     })
     .catch(function (err) { toast(err.message); });
+}
+
+// What the Undo of "doesn't want to continue" says: who can be reached
+// again, what came back, and what stayed as it was (changed since).
+function ztStopUndoText(r) {
+  var who = r.scope === 'brand' ? 'everyone at ' + (r.brandName || 'the brand') : (r.contactName || 'them');
+  return 'Undone: you can reach out to ' + who + ' again' +
+    ((r.back || []).length ? ' · back: ' + r.back.join(', ') : '') +
+    ((r.stays || []).length ? ' · left as they are: ' + r.stays.join(', ') : '');
+}
+
+// "Doesn't want to continue" (Leo, Oct 15 2026: "some people respond but i
+// want to make sure we dont reach out to them again"). Just them: one click,
+// off the list and never contacted again. The whole brand: the first click
+// shows what it stops on the card (stopContact's preview); Stop sends the
+// preview's `expect` (anything changed since → shown again). Everyone at
+// the brand leaves the list. Undo (the bar, the Done fold, the brand page)
+// puts it back.
+function ztDecline(id, scope, btn) {
+  var p = ZT_BY_ID[id];
+  if (!p || (scope !== 'person' && scope !== 'brand')) return;
+  var inBrand = ztInBrand(id);
+  var pv = ZT_STOP[id];
+  var args = { targetId: id, step: 'declined', scope: scope };
+  if (scope === 'brand') { if (pv && pv.expect) args.expect = pv.expect; else args.preview = true; }
+  if (btn) btn.disabled = true;
+  api('handStep', args).then(function (r) {
+    if (r.preview || r.stale) {
+      ZT_STOP[id] = r;
+      ZT_PANEL[id] = 'declined';
+      ztRedrawOpen(id);
+      return;
+    }
+    var brandWide = (r.scope || scope) === 'brand';
+    var now = new Date().toISOString();
+    var wasOpen = ZT_CUR === id;
+    delete ZT_STOP[id];
+    delete ZT_PANEL[id];
+    p._at = Date.now();
+    p.declinedAt = now;
+    p.declinedScope = brandWide ? 'brand' : 'person';
+    var gone = [id];
+    if (brandWide) Object.keys(ZT_BY_ID).forEach(function (k) {
+      var x = ZT_BY_ID[k];
+      if (k !== id && x && x.brandId === p.brandId) { x._at = Date.now(); x.brandStoppedAt = now; gone.push(k); }
+    });
+    if (ZT && ZT.done) ZT.done.unshift({ targetId: id, brandId: p.brandId, brandName: p.brandName, name: p.name, email: p.email, kind: 'declined', scope: p.declinedScope, at: now });
+    if (brandWide && ZT && ZT.calls) ZT.calls = ZT.calls.filter(function (c) { return c.brandId !== p.brandId; });
+    ztUndoBar(ZT_DONE_TEXT.declined + ': ' + (brandWide ? 'everyone at ' + p.brandName : (r.contactName || p.name)), function () { ztUndo(id, 'declined'); });
+    renderActionPanel();
+    if (inBrand) {
+      if (ZT_CUR === id) ZT_CUR = null;
+      // The whole brand is archived, do not email, its queue set aside:
+      // the page reads it again. Just them: the card becomes one line.
+      if (brandWide && BZT.brandId) { loadBrand(BZT.brandId); return; }
+      BZT.declined = BZT.declined.filter(function (d) { return d.targetId !== id; }).concat([{ targetId: id, name: p.name, at: now, scope: 'person' }]);
+      bztFill();
+      bztSyncRow(id);
+      bztSyncOutreach(id);
+      return;
+    }
+    // Home: they fold away and the next person (not one leaving) opens.
+    var ids = Array.prototype.map.call(document.querySelectorAll('#zach-todo .zt-item'), function (el) { return el.getAttribute('data-zt'); });
+    var i = ids.indexOf(id), next = null;
+    var order = ids.slice(i + 1).concat(ids.slice(0, Math.max(i, 0)).reverse());
+    for (var j = 0; j < order.length && !next; j++) if (gone.indexOf(order[j]) === -1) next = order[j];
+    gone.forEach(function (k) { var it = ztItemEl(k); if (it) it.classList.add('leaving'); });
+    setTimeout(function () {
+      gone.forEach(ztDrop);
+      if (wasOpen) ZT_CUR = null;
+      ztRender();
+      if (wasOpen && next && ZT_BY_ID[next] && ztItemEl(next)) {
+        ztOpen(next);
+        ztItemEl(next).querySelector('.zt-row').focus({ preventScroll: true });
+      }
+    }, 280);
+  }).catch(function (err) { toast(err.message); if (btn && btn.isConnected) btn.disabled = false; });
 }
 
 var ZT_UNDO_T = null, ZT_UNDO_FN = null;
@@ -5347,6 +5481,7 @@ function ztOnClick(e) {
     if ((key === 'wantLi' || key === 'lidm') && !np.liPathAt && !np.liSentAt) { ZT_PANEL[nid] = 'lidm'; ztDo(nid, 'liPath'); return; }
     if (key === 'wantEmail') key = 'email';
     if (key === 'wantLi') key = 'lidm';
+    if (key === 'declined') delete ZT_STOP[nid];
     ZT_PANEL[nid] = key;
     ztRedrawOpen(nid);
     return;
@@ -5363,6 +5498,10 @@ function ztOnClick(e) {
   var id = item && item.getAttribute('data-zt'), p = id && ZT_BY_ID[id];
   if (!p) return;
   if (act === 'step') { ztDo(id, btn.getAttribute('data-step'), btn, btn.hasAttribute('data-off')); return; }
+  if (act === 'decline') { ztDecline(id, btn.getAttribute('data-scope'), btn); return; }
+  if (act === 'declinebrand') { ztDecline(id, 'brand', btn); return; }
+  if (act === 'declineback') { delete ZT_STOP[id]; ztRedrawOpen(id); return; }
+  if (act === 'declinecancel') { delete ZT_STOP[id]; delete ZT_PANEL[id]; ztRedrawOpen(id); return; }
   if (act === 'back') {
     var last = ztLastStep(p);
     if (!last) return;
@@ -5622,7 +5761,7 @@ document.getElementById('zach-todo').addEventListener('keydown', ztOnKey);
 // object (ZT_BY_ID), shared with Home's list, so a tick here is the same
 // tick there. A finished person (call booked, not needed) is one line
 // with Undo.
-var BZT = { brandId: null, seq: 0, ids: [], calls: [], done: [] };
+var BZT = { brandId: null, seq: 0, ids: [], calls: [], done: [], declined: [], brandStopped: null };
 
 function bztActive() {
   var v = document.getElementById('brand');
@@ -5657,6 +5796,8 @@ function bztLoad(brandId) {
     BZT.ids = ids;
     BZT.calls = r.calls || [];
     BZT.done = r.done || [];
+    BZT.declined = r.declined || [];
+    BZT.brandStopped = r.brandStopped || null;
     bztFill();
   }).catch(function (e) {
     if (mine !== BZT.seq) return;
@@ -5669,6 +5810,12 @@ function bztLoad(brandId) {
 // What a finished person's line says, or null.
 function bztDoneLine(id) {
   var p = ZT_BY_ID[id];
+  // Doesn't want to continue: their own line (with Undo); everyone else at a
+  // brand that said it stays off the list (the banner up top has the Undo).
+  var dec = BZT.declined.filter(function (d) { return d.targetId === id; })[0] ||
+    (p && p.declinedAt ? { scope: p.declinedScope } : null);
+  if (dec) return { text: 'Doesn’t want to continue — ' + (dec.scope === 'brand' ? 'nobody at the brand is contacted' : 'never contacted again'), kind: 'declined' };
+  if (BZT.brandStopped || (p && p.brandStoppedAt)) return { text: 'off — the brand said they don’t want to continue', kind: null };
   var call = (p && p.callAt) || ((BZT.calls.filter(function (c) { return c.targetId === id; })[0] || {}).callAt);
   if (call) return { text: 'Call scheduled for ' + new Date(call).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), kind: 'call' };
   var skipped = (p && p.skippedAt) || BZT.done.some(function (d) { return d.targetId === id && d.kind === 'skipped'; });
@@ -5679,7 +5826,7 @@ function bztDoneLine(id) {
 function bztFill() {
   document.querySelectorAll('#brand-body [data-bzt]').forEach(function (slot) {
     var id = slot.getAttribute('data-bzt'), p = ZT_BY_ID[id];
-    var listed = BZT.ids.indexOf(id) !== -1 && p && !p.callAt && !p.skippedAt;
+    var listed = BZT.ids.indexOf(id) !== -1 && p && !p.callAt && !p.skippedAt && !p.declinedAt && !p.brandStoppedAt;
     // A card someone is typing in stays as it is (it saves on change).
     var typing = document.activeElement;
     if (listed && typing && slot.contains(typing) && /^(INPUT|TEXTAREA|SELECT)$/.test(typing.tagName) &&
@@ -5691,7 +5838,7 @@ function bztFill() {
     }
     var d = bztDoneLine(id);
     slot.innerHTML = d
-      ? '<div class="b-zt-done">Zach’s list: ' + esc(d.text) + ' · <button class="zt-linkbtn" data-bztundo="' + esc(id) + '" data-kind="' + d.kind + '">Undo</button></div>'
+      ? '<div class="b-zt-done">Zach’s list: ' + esc(d.text) + (d.kind ? ' · <button class="zt-linkbtn" data-bztundo="' + esc(id) + '" data-kind="' + d.kind + '">Undo</button>' : '') + '</div>'
       : '';
   });
 }
@@ -5707,6 +5854,7 @@ function bztSyncOutreach(id) {
   t.status = p.status;
   t.dmSentAt = p.dmSentAt || null;
   t.repliedAt = p.repliedAt || null;
+  t.handDeclinedAt = p.declinedAt || null;
   var pill = document.querySelector('#brand-body [data-opill="' + id + '"]');
   if (pill) { pill.className = 'status ' + t.status; pill.textContent = liWords(t); }
   var box = document.querySelector('#brand-body [data-ostep="' + id + '"]');
@@ -5736,7 +5884,7 @@ function bztSyncRow(id) {
   var pill = row && row.querySelector('[data-cstate]');
   if (!p || !pill) return;
   pill.className = 'status ' + p.status;
-  pill.textContent = liWords({ status: p.status, repliedAt: p.repliedAt, sentAt: p.invitedAt });
+  pill.textContent = liWords({ status: p.status, repliedAt: p.repliedAt, sentAt: p.invitedAt, handDeclinedAt: p.declinedAt });
 }
 
 // The card's events on the brand page: the same handlers as Home's list,
@@ -7679,6 +7827,8 @@ var BRAND_EDIT_OPEN = null;
 // the LinkedIn invite, logged by hand; email is its own line, and a
 // draft always says it has not gone.
 function liWords(t) {
+  // They said they don't want to continue (Zach's list): that's the story now.
+  if (t.handDeclinedAt) return 'doesn’t want to continue';
   switch (t.status) {
     case 'queued': case 'drafted': return 'LinkedIn · not sent yet';
     case 'sent': return 'LinkedIn · invite sent' + (t.sentAt ? ' ' + shortDate(t.sentAt) : '');
@@ -7712,6 +7862,12 @@ function emailWords(t) {
 // Replied?) and Replied ✓. Its own box so a step ticked on Zach's list
 // card above can redraw just this (bztSyncOutreach).
 function bOutreachStep(t, dr) {
+  // Said they don't want to continue — them or the whole brand: nothing to log.
+  var stopped = CURRENT_BRAND && CURRENT_BRAND.brand && CURRENT_BRAND.brand.stoppedAt;
+  if (t.handDeclinedAt || stopped) {
+    return '<span class="b-ostep" data-ostep="' + esc(t.id) + '">' + (t.handDeclinedAt
+      ? '<span class="status declined" style="font-size:13px;padding:5px 12px" title="Never contacted again. Undo it on Zach’s list card above">Doesn’t want to continue</span>' : '') + '</span>';
+  }
   return '<span class="b-ostep" data-ostep="' + esc(t.id) + '">' +
     (t.status === 'sent'
       ? '<button class="btn-draft" data-bract="accepted" data-brt="' + esc(t.id) + '" title="Did they accept the invite?">Accepted?</button>' +
@@ -7965,6 +8121,14 @@ function loadBrand(brandId) {
             (b.topProducts ? ' Known for ' + esc(b.topProducts) + '.' : '') + '</div>'
         : person ? (b.notes ? '<div style="font-size:14px;color:var(--ink-2);margin:8px 0 0">' + esc(b.notes) + '</div>' : '')
         : '<div class="hint" style="margin:8px 0 0">No summary yet — open “Details &amp; notes” below and fill in “What they do”.</div>') +
+      // They said they don't want to continue (Zach's list, whole brand):
+      // nobody here is contacted until the Undo.
+      (b.stoppedAt
+        ? '<div class="panel panel-pad" id="b-stopped" style="margin-top:14px;border-color:#c94a4a">' +
+            '<b style="color:#f0a0a0">They said they don’t want to continue</b> · ' + esc(shortDate(b.stoppedAt)) +
+            ' — nobody at ' + esc(b.name) + ' is contacted again: no invites, LinkedIn messages, follow-ups or emails. ' +
+            '<button class="btn-ghost" id="b-stop-undo" style="margin-left:6px" title="Reach out to them again: puts back what the stop changed">Undo</button></div>'
+        : '') +
       // Where it stands on the Schedule, and a menu to put it on a day
       // (filled by bpLoad once the page is up).
       '<div id="b-plan" class="b-plan"></div>' +
@@ -8034,7 +8198,9 @@ function loadBrand(brandId) {
           '<button class="btn-ghost" id="b-edit-toggle">Edit</button>' +
           '<a class="btn-ghost b-nop" href="' + esc(liCompany) + '" target="_blank" rel="noopener" title="Their LinkedIn People tab \u2014 press the SB pill there to add the buyers">LinkedIn people ↗</a>' +
           '<a class="btn-ghost b-nop" href="' + esc(suUrl) + '" target="_blank" rel="noopener">' + suLabel + '</a>' +
-          (b.doNotEmail
+          (b.stoppedAt
+            ? '<button class="btn-ghost" id="b-dne" disabled title="They said they don’t want to continue: Undo that at the top first">Do not email</button>'
+            : b.doNotEmail
             ? '<button class="btn-ghost" id="b-dne" style="border-color:var(--accent);color:var(--accent)" title="This brand is excluded from all outreach emails — click to allow again">Do not email</button>'
             : '<button class="btn-ghost" id="b-dne" title="Exclude this brand from all outreach emails (intros and follow-ups)">Emails on</button>') +
           // Same rule as the server: established 3, growth 2,
@@ -8072,7 +8238,9 @@ function loadBrand(brandId) {
               }).join('') +
             '</select>';
           })() +
-          (b.passedAt
+          (b.stoppedAt
+            ? '<button class="btn-ghost" id="b-pass" disabled title="They said they don’t want to continue: Undo that at the top first">Archived</button>'
+            : b.passedAt
             ? '<button class="btn-ghost" id="b-pass" style="border-color:var(--warn);color:var(--warn)" title="Archived — hidden from all outreach. Click to bring it back.">Archived — bring back</button>'
             : '<button class="btn-ghost" id="b-pass" title="Take this brand off outreach (queue, picks, schedule, next best) until you bring it back">Archive brand</button>') +
           '<button class="btn-ghost" id="b-merge">Merge duplicate…</button>' +
@@ -8218,6 +8386,10 @@ function loadBrand(brandId) {
         // went cold) still says what happened.
         var otherState = ct && !live && !inPlay && !skipped && !shelvedFresh;
         var em = ct ? emailWords(ct) : null;
+        // They said they don't want to continue (Zach's list): never
+        // queued or logged again, nor anyone at a brand that said it.
+        var said = !!(c.doNotContactAt || (ct && ct.handDeclinedAt));
+        var off = said || !!b.stoppedAt;
         return '<div class="target"><div class="t-main">' +
           '<div class="t-line"><span class="t-brand">' + esc(c.name) + '</span>' +
             (c.title ? '<span class="t-sep">·</span><span class="t-title">' + esc(c.title) + '</span>' : '') + '</div>' +
@@ -8248,15 +8420,16 @@ function loadBrand(brandId) {
             (shelvedFresh ? '<span class="status" data-cstate title="Shelved and never contacted — → Queue brings them back" style="font-size:13px;padding:5px 12px;color:var(--ink-3)">shelved · not contacted</span>' : '') +
             (inPlay || otherState ? '<span class="status ' + esc(ct.status) + '" data-cstate style="font-size:13px;padding:5px 12px">' + esc(liWords(ct)) + '</span>' : '') +
             (skipped ? '<span class="status passed" data-cstate style="font-size:13px;padding:5px 12px">skipped</span>' : '') +
+            (said && !(ct && ct.handDeclinedAt) ? '<span class="status declined" style="font-size:13px;padding:5px 12px" title="They said they don’t want to continue: never contacted again">doesn’t want to continue</span>' : '') +
             (em ? '<span class="status ' + em.cls + '" style="font-size:13px;padding:5px 12px">' + esc(em.text) + '</span>' : '') +
-            (!inToday && !inPlay
+            (!inToday && !inPlay && !off
               ? '<button class="btn-draft" data-cqueue="' + esc(c.id) + '" title="Put this exact person into TODAY’s list, past the cap if needed">→ Queue</button>' : '') +
-            (!inPlay && !skipped
+            (!inPlay && !skipped && !off
               ? '<button class="btn-ghost danger" data-cskip="' + esc(c.id) + '" title="Skip this person — out of the queue and the auto-pick will never suggest them; Queue brings them back">Skip</button>' : '') +
             // Sent straight from LinkedIn, not through the queue: one click
             // logs it (src/lib/li-log.ts) — no → Queue, no "Invite sent"
             // first. Accepted goes onto Zach's list with no invite date.
-            lilChoices(ct ? ct.status : null).map(function (s) {
+            (off ? [] : lilChoices(ct ? ct.status : null)).map(function (s) {
               return s === 'accepted'
                 ? '<button class="btn-ghost' + (ct && ct.status === 'sent' ? '' : ' mini') + '" data-clog="accepted" data-cid="' + esc(c.id) +
                   '" title="They accepted on LinkedIn: straight onto Zach’s list, no queue">They accepted ✓</button>'
@@ -8664,6 +8837,17 @@ function loadBrand(brandId) {
         }).catch(function (e) { toast(e.message); btn.disabled = false; });
       });
     });
+
+    // The banner's Undo of "they don't want to continue" (whole brand).
+    var stopUndo = document.getElementById('b-stop-undo');
+    if (stopUndo) stopUndo.onclick = function () {
+      if (!confirm('Reach out to ' + b.name + ' again?\n\nIt comes off the archive and do not email (unless they were set before), and the people the stop set aside go back where they were. Anything changed since stays as it is.')) return;
+      stopUndo.disabled = true;
+      api('undoStopContact', { brandId: b.id }).then(function (r) {
+        toast(ztStopUndoText(r));
+        loadBrand(b.id);
+      }).catch(function (e) { toast(e.message); stopUndo.disabled = false; });
+    };
 
     document.getElementById('b-dne').onclick = function () {
       api('updateBrand', { brandId: b.id, doNotEmail: !b.doNotEmail })
@@ -11797,6 +11981,7 @@ function schedDayKeys(count) {
 // The full sentence (reasonText) comes from the server and goes on the
 // card itself; these only have to fit inside a bracket.
 var SD_SHORT = {
+  stopped: 'said they don’t want to continue',
   nopeople: 'nobody on file',
   unreachable: 'no LinkedIn or email',
   inconversation: 'already in talks',

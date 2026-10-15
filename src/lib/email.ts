@@ -446,6 +446,8 @@ export async function draftDailyEmails(limit = 5) {
       status: { notIn: ['replied', 'converted', 'declined', 'dead', 'accepted'] },
       emailedAt: null,
       emails: { some: { direction: 'out', kind: 'intro', status: 'sent', sentAt: { lte: cutoff1 } } },
+      // Nobody who said they don't want to continue, nor their brand.
+      handDeclinedAt: null, contact: { doNotContactAt: null }, brand: { stoppedAt: null },
     },
     include: {
       brand: true, contact: true,
@@ -515,12 +517,14 @@ export async function draftDailyEmails(limit = 5) {
       where: {
         status: { in: ['queued', 'drafted', 'sent'] },
         shelved: false,
-        contact: { email: { not: null } },
+        contact: { email: { not: null }, doNotContactAt: null },
+        handDeclinedAt: null,
         emails: { none: {} },
         // A "do not email" flag — or the word "skip" in the brand's
         // notes — keeps the whole brand out of the machine.
         brand: {
           doNotEmail: false,
+          stoppedAt: null,
           NOT: { notes: { contains: 'skip', mode: 'insensitive' } },
           // Brand Fit's hard no: confirmed not sold in the US (null-safe).
           AND: [{ OR: [{ usStatus: null }, { usStatus: { not: 'no' } }] }],
@@ -721,6 +725,12 @@ function htmlBody(text: string, emailId: string, withLogo = false): string {
 // Send exactly one draft: to + any CC, marked sent, one-pager attached.
 // Shared by "Send all", the per-card Send button, and the 9am cron.
 async function deliverDraft(d: any, _transporter: any, attachment: { filename: string; content: Buffer } | null) {
+  // Never to someone who said they don't want to continue, nor anyone at a
+  // brand that said it (Zach's list, Oct 15 2026) — a draft written before
+  // stays a draft; the step's Undo lets it go again.
+  if (d.target?.handDeclinedAt || d.target?.contact?.doNotContactAt || d.target?.brand?.stoppedAt) {
+    throw new Error('They said they don’t want to continue — not sent')
+  }
   const to = d.toEmail || d.target.contact.email
   if (!to) throw new Error('No recipient address on this draft')
   if (!(await domainAcceptsMail(to))) throw new Error(`${to} — domain has no mail server (bounce protection)`)
@@ -857,13 +867,15 @@ async function sendBatch(statuses: string[], limit?: number) {
   const transporter = makeTransport()
   const attachment = await onePagerAttachment()
 
+  // (Held, not sent, while they or their brand don't want to continue.)
+  const notStopped = { target: { handDeclinedAt: null, contact: { doNotContactAt: null }, brand: { stoppedAt: null } } }
   const drafts = await prisma.emailMessage.findMany({
-    where: { direction: 'out', status: { in: statuses } },
+    where: { direction: 'out', status: { in: statuses }, ...notStopped },
     include: { target: { include: { contact: true, brand: true } } },
     orderBy: { createdAt: 'asc' },
     take,
   })
-  const queued = await prisma.emailMessage.count({ where: { direction: 'out', status: { in: statuses } } })
+  const queued = await prisma.emailMessage.count({ where: { direction: 'out', status: { in: statuses }, ...notStopped } })
   const held = Math.max(0, queued - drafts.length)
 
   let sent = 0, failed = 0
@@ -1019,6 +1031,7 @@ export async function draftBrandIntro(brandId: string) {
   const { mode } = await sendMode()
   if (mode === 'none') throw new Error('No sending account connected — connect Google on the Outreach page.')
   const b = await prisma.brand.findUnique({ where: { id: brandId } })
+  if (b?.stoppedAt) throw new Error(`${b.name} said they don’t want to continue — no email.`)
   if (b && ((b as any).doNotEmail || /skip/i.test(b.notes ?? ''))) {
     throw new Error('This brand is marked do-not-email (flag or "skip" in notes). Clear that first.')
   }
@@ -1030,7 +1043,8 @@ export async function draftBrandIntro(brandId: string) {
     where: {
       brandId, shelved: false,
       status: { in: ['queued', 'drafted', 'sent'] },
-      contact: { email: { not: null } },
+      contact: { email: { not: null }, doNotContactAt: null },
+      handDeclinedAt: null,
     },
     include: { brand: true, contact: true },
     orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
@@ -1060,9 +1074,10 @@ export async function listExhausted() {
     where: {
       status: { notIn: ['replied', 'converted', 'declined', 'dead'] },
       emails: { some: { direction: 'out', kind: 'followup2', status: 'sent', sentAt: { lte: cutoff } } },
+      handDeclinedAt: null, contact: { doNotContactAt: null }, brand: { stoppedAt: null },
     },
     include: {
-      brand: { select: { id: true, name: true, contacts: { select: { id: true, name: true, title: true, email: true }, where: { email: { not: null } } } } },
+      brand: { select: { id: true, name: true, contacts: { select: { id: true, name: true, title: true, email: true }, where: { email: { not: null }, doNotContactAt: null } } } },
       contact: { select: { id: true, name: true, title: true, email: true } },
       emails: { orderBy: { sentAt: 'desc' } },
     },
@@ -1112,6 +1127,7 @@ export async function emailDifferentContact(targetId: string, contactId: string)
   const contact = await prisma.contact.findUnique({ where: { id: contactId } })
   if (!contact || contact.brandId !== old.brandId) throw new Error('That contact is not at this brand')
   if (!contact.email) throw new Error('That contact has no email address')
+  if (old.brand.stoppedAt || contact.doNotContactAt) throw new Error('They said they don’t want to continue — no email')
 
   await prisma.target.update({ where: { id: targetId }, data: { status: 'dead' } })
   await prisma.targetEvent.create({
@@ -1145,6 +1161,7 @@ export async function draftFinalNudge(targetId: string) {
   })
   if (!t) throw new Error('Target not found')
   if (!t.contact.email) throw new Error('No email on this contact')
+  if (t.handDeclinedAt || t.contact.doNotContactAt || t.brand.stoppedAt) throw new Error('They said they don’t want to continue — no email')
   const intro = t.emails.find(e => e.kind === 'intro' && e.status === 'sent')
   let parsed: any = null
   try { parsed = parseEmailJson(await askClaude(followup2Prompt(t, intro), 800)) } catch (err) { if (!isBillingError(err)) throw err }

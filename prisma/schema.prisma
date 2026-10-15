@@ -103,6 +103,13 @@ model Brand {
   // Pass (Leo, Oct 7 2026): off every automatic outreach pick until then (14 days).
   passedUntil   DateTime?
 
+  // The whole brand said they don't want to continue (Leo, Oct 15 2026: "make
+  // sure we dont reach out to them again"; Zach's list → Doesn't want to
+  // continue → Everyone at the brand). Also archived + do-not-email; only its
+  // own Undo brings it back (Setting brandStopLog has what it changed).
+  stoppedAt DateTime?
+  stoppedBy String?
+
   // How many people to work at once at this brand (1-4). Null = follow
   // recommendWorkPeople, which opens three or four threads at a brand
   // nobody has written to yet and narrows once one is running. Set on
@@ -170,6 +177,12 @@ model Contact {
   // call, who they report to, when they said to come back. Free text —
   // it is a notepad, not a field to report on.
   notes String?
+
+  // Said they don't want to continue (Zach's list, Oct 15 2026): never
+  // contacted again — no invite, DM, follow-up or email, never queued. Goes
+  // with the person through moves and merges; only its Undo clears it.
+  doNotContactAt DateTime?
+  doNotContactBy String?
 
   targets Target[]
 
@@ -258,9 +271,14 @@ model Target {
   // Leo's note for Zach about this person: what they said on LinkedIn,
   // the address they gave, what to lead with.
   handNote String?
-  // "Not needed" (they said no, or it's handled elsewhere): off Zach's
-  // list without claiming an email went out.
+  // "Not needed" (handled somewhere else): off Zach's list without
+  // claiming an email went out.
   handSkippedAt DateTime?
+  // "Doesn't want to continue" on Zach's list (Oct 15 2026): when, and
+  // whether it was just them ('person') or the whole brand ('brand'). The
+  // status stays as it was (accepted / replied — they were reached).
+  handDeclinedAt    DateTime?
+  handDeclinedScope String?
   // The two paths after a reply on Zach's list. Either or both can be
   // picked: Email (handWantsEmailAt, done = emailedAt) and LinkedIn DM
   // (handLiPathAt, done = handLiSentAt). handDm is this person's own

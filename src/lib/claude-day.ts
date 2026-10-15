@@ -79,10 +79,24 @@ export function actionText(fn: string, args: any, result: any): string | null {
     case 'planAddBrands': return `Put ${plural(count(a.brandIds) || count(r.added), 'brand')} on ${s(a.date || 'a day')}`
     case 'setBrandPassed': return `${a.passed === false ? 'Brought back' : 'Archived'} ${brand || 'a brand'}`
     case 'notSamePerson': return a.undo ? 'Took back a "not the same person"' : 'Marked two people as not the same person'
+    case 'stopContact': return stopText(a, r, true)
+    case 'undoStopContact': return stopText(a, r, false)
+    case 'handStep':
+      if (a.step === 'declined') return stopText(a, r, a.on !== false)
+      return `Zach's list: ${s(a.step, 20)}${a.on === false ? ' undone' : ''}${r.contactName ? ' — ' + s(r.contactName) : ''}`
   }
   // Anything else: its name, with the one thing it was about.
   const about = s(a.parent || a.name || a.category || a.kind || a.day || a.date || '', 40)
   return fnWords(fn) + (about ? ' — ' + about : '')
+}
+
+// "Doesn't want to continue" (Zach's list): who, and whether the whole brand.
+function stopText(a: any, r: any, on: boolean): string {
+  const who = s(r.contactName || 'someone')
+  const brand = r.scope === 'brand' || a.scope === 'brand'
+  return on
+    ? `Marked ${who}: doesn't want to continue${brand ? ` — the whole brand${r.brandName ? ' (' + s(r.brandName) + ')' : ''}` : ''}`
+    : `Took back "doesn't want to continue" for ${who}${brand ? ' (whole brand)' : ''}`
 }
 
 // The part of a call worth keeping beside its words: short values only,

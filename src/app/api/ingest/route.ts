@@ -52,6 +52,7 @@ import { giantWhy } from '@/lib/giants'
 import { giantOf, rowReached, parseGiants, GIANTS_KEY, nyDayKey } from '@/lib/queue-rules'
 import { noteChosenIds, readChosenIds } from '@/lib/chosen'
 import { buildLiList, CONTACT_CAP_PER_BRAND } from '@/lib/li-list-db'
+import { stopIndex, stoppedMatch, stopWords } from '@/lib/do-not-contact'
 
 const prisma = new PrismaClient()
 
@@ -382,12 +383,17 @@ async function planLinkedin(body: any) {
   // a parent — so someone working on a sister brand is left out.
   const parent = brand ? parentOf(brand.name, brand.aka) : null
   const ownNames = brand ? ownNamesOf(brand) : null
+  // Someone who said they don't want to continue (a second copy of them —
+  // another link form, a renamed headline) is never added again.
+  const stopped = await prisma.contact.findMany({ where: { doNotContactAt: { not: null } }, select: { id: true, brandId: true, name: true, linkedinUrl: true, email: true }, take: 5000 })
+  const stopIx = stopIndex(stopped)
 
   const rows: LiRow[] = cards.map(c => {
     const role = roleFromHeadline(c.headline, companyName || brand?.name || null)
     const row: LiRow = { name: c.name, role, linkedinUrl: c.url, slug: c.slug, verdict: 'add', fit: scoreFit(role, brand?.tier ?? null) }
     const key = personKey(c.name)
     if (mineSlugs.has(c.slug) || (key && mineKeys.has(key))) row.verdict = 'dupe'
+    else if (stoppedMatch(stopIx, { brandId: brand?.id, name: c.name, linkedinUrl: c.url })) row.verdict = 'dupe'
     else if (elsewhere.has(c.slug)) { row.verdict = 'elsewhere'; row.at = elsewhere.get(c.slug) }
     // One person Leo sent from their profile is his pick: no title filter.
     else if (handPicked) { if (!brand) row.verdict = 'noBrand' }
@@ -1138,6 +1144,7 @@ export async function POST(req: NextRequest) {
   // saving anything. The script shows this before Leo confirms.
   if (body.action === 'liPreview') {
     const plan = await planLinkedin(body)
+    if (plan.brand?.stoppedAt) return NextResponse.json({ ok: false, error: stopWords({ at: plan.brand.stoppedAt }, plan.brand.name), ...liSummary(plan) }, { status: 400, headers: cors })
     // Leo reading a People page by hand: the "LinkedIn Member" cards it
     // saw are worth Zach's look even when nobody is new to add — kept here
     // only when the page itself says whose it is (the brand's saved page,
@@ -1272,6 +1279,8 @@ export async function POST(req: NextRequest) {
     if (!brand) {
       return NextResponse.json({ ok: false, error: plan.notFound ? `No brand called "${plan.notFound}" in the dashboard.` : 'Pick the dashboard brand first.', ...liSummary(plan) }, { status: 400, headers: cors })
     }
+    // The whole brand said they don't want to continue: nobody added.
+    if (brand.stoppedAt) return NextResponse.json({ ok: false, error: stopWords({ at: brand.stoppedAt }, brand.name), ...liSummary(plan) }, { status: 400, headers: cors })
     // Read on the brand's parent company's page (the fill says so; a hand
     // read on Diageo's tab for Captain Morgan is worked out here): the
     // people are the brand's, the page and its headcount are not.
@@ -1437,6 +1446,7 @@ export async function POST(req: NextRequest) {
   // Only a hand-run capture from the panel may create a brand.
   const createIfMissing = body.createIfMissing === true
   const touched = new Set<string>()
+  let suStopIx: ReturnType<typeof stopIndex> | null = null
   // brandId -> how many more people this brand can take in this batch.
   // Counted once per brand from what is already stored, then kept in
   // step as rows land, so a 40-person capture doesn't need 40 counts.
@@ -1503,6 +1513,12 @@ export async function POST(req: NextRequest) {
 
       const dupe = await prisma.contact.findFirst({ where: { brandId: brand.id, name: row.name } })
       if (dupe) { result.skipped++; continue }
+      // Never someone who said they don't want to continue.
+      if (!suStopIx) {
+        const people = await prisma.contact.findMany({ where: { doNotContactAt: { not: null } }, select: { id: true, brandId: true, name: true, linkedinUrl: true, email: true }, take: 5000 })
+        suStopIx = stopIndex(people)
+      }
+      if (stoppedMatch(suStopIx, { brandId: brand.id, name: row.name, linkedinUrl: row.linkedinUrl, email: row.email })) { result.skipped++; continue }
 
       // The cap. Checked after the duplicate check, so re-capturing a
       // brand we already hold doesn't report its own people as capped.
@@ -1529,7 +1545,8 @@ export async function POST(req: NextRequest) {
       result.contactsCreated++
       room.set(brand.id, (room.get(brand.id) ?? 1) - 1)
 
-      if (dm && contact.linkedinUrl) {
+      // (Never queued at a brand that said it doesn't want to continue.)
+      if (dm && contact.linkedinUrl && !brand.stoppedAt) {
         await prisma.target.create({
           data: {
             brandId: brand.id,

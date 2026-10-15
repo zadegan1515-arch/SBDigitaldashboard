@@ -102,7 +102,9 @@ const ago = (d) => new Date(Date.now() - d * 864e5);
       b_rest: { at: ago(2).toISOString(), seen: 40, added: 0, v: 2, clean: false, issue: null, note: 'big company (173 people) — nobody new in its partnerships, sponsorship, brand manager, marketing searches' },
       // Read long ago: due again.
       b_next: { at: ago(45).toISOString(), seen: 3, added: 0, v: 2 },
-      b_zach: { at: ago(3).toISOString(), seen: 4, added: 0, v: 2 },
+      // (Written the 1.38 way: a relative date on an old-style mark crossed
+      // Sales Navigator's ship date and read as "read again".)
+      b_zach: { at: ago(3).toISOString(), seen: 4, added: 0, v: 2, clean: false, issue: null },
     });
     const hid = (likely, slug) => ({ at: ago(3).toISOString(), by: 'fill', n: likely + 1, likely, titles: likely ? ['Brand Manager', 'Partnerships Lead'] : [],
       url: 'https://www.linkedin.com/company/' + slug + '/people/?keywords=marketing', q: 'marketing' });

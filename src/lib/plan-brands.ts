@@ -18,13 +18,13 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 const BRAND_FIELDS = {
   id: true, name: true, aka: true, category: true, tier: true, workPeople: true,
   website: true, linkedinUrl: true, externalId: true,
-  passedAt: true, passedTodayAt: true, passedUntil: true, doNotEmail: true,
+  passedAt: true, passedTodayAt: true, passedUntil: true, doNotEmail: true, stoppedAt: true,
   // Brand Fit facts (brandFit in route.ts) — the Fill box and Plan my
   // week rank and hide by them.
   liMembers: true, salesCents: true, fundingCents: true, lastRoundAt: true, usStatus: true,
   sponsorsCollege: true, bizStatus: true, acquiredBy: true, researchedAt: true,
 } as const
-const CONTACT_FIELDS = { id: true, name: true, title: true, email: true, linkedinUrl: true, isDecisionMaker: true } as const
+const CONTACT_FIELDS = { id: true, name: true, title: true, email: true, linkedinUrl: true, isDecisionMaker: true, doNotContactAt: true } as const
 const TARGET_FIELDS = {
   id: true, status: true, shelved: true, shelvedHow: true, queuedFor: true, sentAt: true, repliedAt: true,
   emailedAt: true, updatedAt: true, fitScore: true, contactId: true,

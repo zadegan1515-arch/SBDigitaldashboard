@@ -31,6 +31,15 @@ t('reads, previews, refusals and the work log are never changes', () => {
   assert.equal(C.actionText('mergeBrands', { fromId: 'a', toId: 'b' }, { merged: false }), null, 'merge preview')
 })
 
+t('"doesn’t want to continue": the step and its Undo read in words; the brand preview is not a change', () => {
+  assert.equal(C.actionText('handStep', { targetId: 't', step: 'declined', scope: 'person' }, { ok: true, scope: 'person', contactName: 'Beth Lee' }), "Marked Beth Lee: doesn't want to continue")
+  assert.equal(C.actionText('handStep', { targetId: 't', step: 'declined', scope: 'brand', preview: true }, { preview: true }), null)
+  assert.equal(C.actionText('handStep', { targetId: 't', step: 'declined', scope: 'brand', expect: 'x' }, { ok: true, scope: 'brand', contactName: 'Beth Lee', brandName: 'Alpha Water' }), "Marked Beth Lee: doesn't want to continue — the whole brand (Alpha Water)")
+  assert.equal(C.actionText('handStep', { targetId: 't', step: 'declined', on: false }, { ok: true, scope: 'person', contactName: 'Beth Lee' }), 'Took back "doesn\'t want to continue" for Beth Lee')
+  assert.equal(C.actionText('handStep', { targetId: 't', step: 'declined', scope: 'brand', expect: 'old' }, { stale: true }), null, 'stale')
+  assert.equal(C.actionText('handStep', { targetId: 't', step: 'dm' }, { contactName: 'Beth Lee' }), "Zach's list: dm — Beth Lee")
+})
+
 t('merges are changes (mergeX is not a read)', () => {
   assert.equal(C.actionText('mergePeople', { brandId: 'b', confirm: true, expect: 'x' }, { applied: true, brand: { name: 'Acme' } }), 'Merged people on file twice at Acme')
   assert.equal(C.actionText('mergeBrands', { fromId: 'a', toId: 'b', confirm: true }, { merged: true }), 'Merge brands')

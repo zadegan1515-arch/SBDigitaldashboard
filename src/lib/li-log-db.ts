@@ -9,6 +9,7 @@
 import type { PrismaClient, TargetStatus } from '@prisma/client'
 import { cleanName, profileSlug, profileUrl } from './li-capture'
 import { findOnFile, isLogStage, logChoices, logWrite, nameFromSlug, type LogStage } from './li-log'
+import { stopIndex, stoppedMatch, stopWords } from './do-not-contact'
 
 type Db = PrismaClient
 
@@ -31,11 +32,13 @@ export type OnFilePerson = {
   sentAt: Date | null
   choices: LogStage[]
   by: 'link' | 'name'
+  // Said they don't want to continue (them, or their whole brand): no log.
+  stopped?: boolean
 }
 
 const PERSON_SELECT = {
-  id: true, name: true, title: true, linkedinUrl: true, brandId: true,
-  brand: { select: { id: true, name: true, passedAt: true } },
+  id: true, name: true, title: true, linkedinUrl: true, brandId: true, doNotContactAt: true,
+  brand: { select: { id: true, name: true, passedAt: true, stoppedAt: true } },
   targets: { select: { id: true, status: true, sentAt: true }, take: 1 },
 } as const
 
@@ -50,9 +53,21 @@ function toPerson(c: any, by: 'link' | 'name'): OnFilePerson {
     targetId: t?.id ?? null,
     status: t?.status ?? null,
     sentAt: t?.sentAt ?? null,
-    choices: logChoices(t?.status ?? null),
+    choices: c.doNotContactAt || c.brand.stoppedAt ? [] : logChoices(t?.status ?? null),
     by,
+    stopped: !!(c.doNotContactAt || c.brand.stoppedAt),
   }
+}
+
+// Logging an invite or an accept is reaching out: never for someone who said
+// they don't want to continue, a second copy of them, or anyone at a brand
+// that said it.
+async function assertLoggable(db: Db, c: { id?: string; brandId: string; name: string; linkedinUrl?: string | null; email?: string | null; doNotContactAt?: Date | null }, brand: { name: string; stoppedAt?: Date | null }) {
+  if (brand.stoppedAt) throw new Error(stopWords({ at: brand.stoppedAt }, brand.name))
+  if (c.doNotContactAt) throw new Error(stopWords({ name: c.name, at: c.doNotContactAt }))
+  const people = await db.contact.findMany({ where: { doNotContactAt: { not: null } }, select: { id: true, brandId: true, name: true, linkedinUrl: true, email: true, doNotContactAt: true }, take: 5000 })
+  const twin = stoppedMatch(stopIndex(people.map(p => ({ ...p, at: p.doNotContactAt }))), c)
+  if (twin && twin.id !== c.id) throw new Error(stopWords({ name: twin.name, at: twin.at }))
 }
 
 // Stored links vary ("…/in/Jane-Doe-12ab/?trk=…", accents written as
@@ -184,6 +199,7 @@ export async function logLinkedInPerson(db: Db, input: LogInput, h: LogHelpers):
       select: { id: true, brandId: true, name: true, linkedinUrl: true },
     })
     const found = findOnFile(pool, { url: rawUrl, name, brandId })
+    if (!found) await assertLoggable(db, { brandId, name, linkedinUrl: slug ? profileUrl(slug) : null, email: clip(input.email, 200) }, brand)
     if (found && found.contact.brandId !== brandId) {
       const at = await db.brand.findUnique({ where: { id: found.contact.brandId }, select: { name: true } })
       throw new Error(`${found.contact.name} is already on file at ${at?.name ?? 'another brand'}. Log them there — or, if they moved, use “They moved company →” on their card.`)
@@ -217,6 +233,7 @@ export async function logLinkedInPerson(db: Db, input: LogInput, h: LogHelpers):
     }
   }
   if (!contact) throw new Error('Person not found')
+  await assertLoggable(db, contact, contact.brand)
 
   const t = contact.targets[0] ?? null
   const w = logWrite(t && { status: t.status, sentAt: t.sentAt, queuedFor: t.queuedFor, shelved: t.shelved }, stage, new Date())

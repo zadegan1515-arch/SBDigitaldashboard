@@ -173,6 +173,28 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   so the cap isn't involved. Done fold (30 days) and Calls booked, each with Undo. No CC (Leo's call); one-pager is a download button. The email
   machine skips brands with an accepted/replied/hand-emailed person, and skips follow-ups to accepted
   or hand-emailed people. Results → "To email" is now a pointer here.
+- **Doesn't want to continue** (Leo, Oct 15 2026: "some people respond but i want to make sure we dont reach out
+  to them again"; his call: the step asks **just this person or the whole brand**). On every open card of Zach's list
+  (Home and the brand page), beside Not needed (now only "handled somewhere else"; `ZT_STOP`, `ztDecline` in app.html).
+  **Just <first>** = one click, `handStep({ step: 'declined', scope: 'person' })` → `stopContact`: `Target.handDeclinedAt`
+  / `handDeclinedScope` + `Contact.doNotContactAt` / `doNotContactBy` (goes with the person; a merge carries it). Their
+  status stays accepted / replied (they were reached — never `declined`, which reads as never reached). **Everyone at
+  <brand>** = a preview on the card first (the others on Zach's list, today's list, the pool and next in line, coming
+  Schedule days; left as they are: calls booked, invites still out, open deals, email drafts — those never send) → Stop
+  sends its `expect` (changed since → `stale`, shown again): `Brand.stoppedAt` / `stoppedBy` + archived + do not email,
+  everyone not yet contacted set aside on purpose, off coming days, Setting `brandStopLog` for the Undo. Nobody is
+  reached again, by the system or by hand: `HAND_WAITING` / `NOT_STOPPED` (Zach's list, calls, Needs action, follow-ups
+  due), `assertNotStopped` (handStep, markEmailed, queueContact, setTargetStatus), queueBrandTargets, reason `stopped`
+  (outreachGate / planRefusal), `isReachable`, the email machine (send and draft paths), Archive's Bring back / Emails on
+  refused while it stands — and **second copies** of the person (`src/lib/do-not-contact.ts`, `stopIndex` /
+  `stoppedMatch`: the same LinkedIn profile or personal email anywhere, the same full name at the brand) are refused by
+  upsertContact, importContacts (`optedOut`), the LinkedIn capture (a dupe), the SponsorUnited capture and SB · Log
+  (`assertLoggable`). The brand page: the person's card becomes one line with Undo, the pill says "doesn't want to
+  continue", a stopped brand has a banner (`#b-stopped`, Undo asks, then `undoStopContact({ brandId })`), no → Queue or
+  log buttons. Undo (the bar, the Done fold — "(whole brand)" — the card's line, the banner) puts back exactly what it
+  changed; anything changed since stays, named (`stays`). Claude's day words it (`stopText`). `node
+  scripts/test-do-not-contact.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-do-not-contact.js`,
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-stop-e2e.js`.
 - **Invites sent straight from LinkedIn** (Leo, Sep 2026: an unlogged invite that got accepted meant
   Add person → Queue → Invite sent → Accepted). Now one step, **never through a day's queue**: rules pure
   in `src/lib/li-log.ts` (`node scripts/test-li-log.mjs`), writes in `src/lib/li-log-db.ts` (shared by
