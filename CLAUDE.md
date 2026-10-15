@@ -672,13 +672,18 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   list / Search, from `listDiscoveries`' `source`) and a category dropdown; one row per brand (name,
   category · source, sign tags, the why on one line) with **Add** and **×**; a row opens for the pitch
   and links (Source, Website, LinkedIn, SponsorUnited). The old "describe a niche" search box is gone
-  (it needed paid API calls). **Every find is graded** (Leo, Oct 12 2026: "grade each brand that is found in the
-  discover brands"; `src/lib/discover-grade.ts`, `node scripts/test-discover-grade.mjs`): Brand Fit as a letter — A 60+ /
-  B 45+ / C 30+ / D; Skip category, not US or closed = D, too small caps at C. A find on the roster grades on its brand's
-  own Brand Fit; a new one on what Discover knows (category priority, the `sponsors` sign, `midsize` = growth tier, a
-  parent) — money and people unknown, so a new find tops out in the low 70s. `listDiscoveries` returns `grade` per row;
-  the page shows the letter, a grade filter and **Best grade first** (default) / Newest first; an open row lists the
-  points. **Add all A's** (Leo, Oct 13 2026 — 88 of 106 waiting finds were A): the To review bar's button (`dcBulkOpen`,
+  (it needed paid API calls). **Every find is scored and graded** (Leo, Oct 12 + Oct 15 2026: "grade each brand that is found in the
+  discover brands" … "have a score presented for each of the brands that i have to accept or deny"; `src/lib/discover-grade.ts`
+  + `src/lib/find-evidence.ts`, `node scripts/test-discover-grade.mjs`). A find not on the roster gets the **find score** (0–100,
+  every point with a reason): category priority (Top 25 / Middle 12 / Low 0) + what its write-up proves, read by rules
+  (`readFind`, no model call) — sales in the $10M–$500M sweet spot 25 ($1M–$10M 12, $500M–$1B 10) or raised $5M+ 20 / $1M+ 10
+  (a parent named or a giant = 0, too big for now), stores (1,000+ 15 / 300+ 10 / fewer 5 / "growing" sign 6, +5 for a big
+  retailer named), already pays for college / music (official partner, licensed, NIL, sponsor, tour, festival 20 · the hunt's
+  sign 12 · only popular with students 6), growing fast 10, 18–24 sign 5. A find on the roster grades on its brand's own Brand
+  Fit. Letters **A 65+ / B 50+ / C 40+ / D** (Skip / not US / closed = D, too small caps at C) — on Oct 15 the 171 finds split
+  ~17 / 52 / 63 / 39 (Brand Fit alone had made 137 of them A). The page: a score box per row (number + letter; a click opens every
+  point), the points as chips under the why, big **Accept** / **Deny** buttons (`addDiscoveredBrand` / `dismissDiscovered`), a
+  heading per grade under **Best grade first** (default; Newest first) and a grade filter. **Add all A's** (Leo, Oct 13 2026 — 88 of 106 waiting finds were A): the To review bar's button (`dcBulkOpen`,
   `#dc-bulk`) → `addDiscoveredBulk({ grade: 'A' })` preview = every A waiting, each as it'd be filed (`discoveryCategory`,
   same as one Add), and the ones held back because they may already be on the roster (chat-add's `matchRoster`: name /
   aka, LinkedIn page, website) — and any other find with a held one's name / website / LinkedIn page (`sameAs`) → ticks

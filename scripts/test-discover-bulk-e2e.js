@@ -63,27 +63,29 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     // On the roster already: Lucky Energy (its website).
     await prisma.brand.create({ data: { id: 'lucky', name: 'Lucky Energy', category: 'energy', website: 'https://luckyenergy.com/' } });
     const q = 'Claude hunt · Oct 13';
-    const find = (id, name, category, signals, extra) => prisma.discoveredBrand.create({ data: { id, query: q, name, category, signals, reason: 'why ' + name, ...(extra || {}) } });
+    // A write-up that proves money, shelves and college spend: an A on the find score (find-evidence.ts).
+    const PROOF = ' raised a $12M Series A, sold in 2,000+ stores, official partner of Big Ten athletics.'
+    const find = (id, name, category, signals, extra) => prisma.discoveredBrand.create({ data: { id, query: q, name, category, signals, reason: name + PROOF, ...(extra || {}) } });
     await find('koloa', 'Koloa Rum', 'spirits', 'sponsors,genz,midsize', { website: 'https://koloarum.com/' });
     // The same brand from a second search: it joins the first.
-    await prisma.discoveredBrand.create({ data: { id: 'koloa2', query: 'LinkedIn: similar to Bacardi', name: 'Koloa Rum', category: 'spirits', signals: 'sponsors,genz,midsize' } });
+    await prisma.discoveredBrand.create({ data: { id: 'koloa2', query: 'LinkedIn: similar to Bacardi', name: 'Koloa Rum', category: 'spirits', signals: 'sponsors,genz,midsize', reason: 'Koloa Rum' + PROOF } });
     await find('bayou', 'Bayou Rum', 'spirits', 'sponsors,genz', { activation: 'Tasting at tailgates', sourceUrl: 'https://news.example.com/bayou' });
     await find('soju', 'Hello Soju', 'rtd', 'sponsors,genz,midsize');
     await find('luckyd', 'Lucky Energy Drinks', 'energy', 'sponsors,genz', { website: 'https://www.luckyenergy.com' });
     // The held one's namesake from another search, no website: held too.
-    await prisma.discoveredBrand.create({ data: { id: 'luckyd2', query: 'Research list: energy', name: 'Lucky Energy Drinks', category: 'energy', signals: 'sponsors,genz', linkedinUrl: 'https://www.linkedin.com/company/lucky-energy-drinks/' } });
+    await prisma.discoveredBrand.create({ data: { id: 'luckyd2', query: 'Research list: energy', name: 'Lucky Energy Drinks', category: 'energy', signals: 'sponsors,genz', reason: 'Lucky' + PROOF, linkedinUrl: 'https://www.linkedin.com/company/lucky-energy-drinks/' } });
     // Two names, one website: one brand.
     await find('cann', 'Cann', 'rtd', 'sponsors,genz,midsize', { website: 'https://drinkcann.com' });
     await find('cann2', 'Cann Social Tonics', 'rtd', 'sponsors,genz,midsize', { website: 'https://www.drinkcann.com/shop' });
     await find('tide', 'Tide Seltzer', 'rtd', 'sponsors,genz,midsize');
-    await find('shirt', 'Shirt Co', 'apparel', '');
+    await find('shirt', 'Shirt Co', 'apparel', '', { reason: 'A shirt company.' });
     await find('done', 'Done Co', 'spirits', 'sponsors', { status: 'added' });
 
     const listed = (await data('listDiscoveries', {})).rows;
     const gradeOf = id => listed.find(r => r.id === id).grade.grade;
     for (const id of ['koloa', 'koloa2', 'bayou', 'soju', 'luckyd', 'luckyd2', 'cann', 'cann2', 'tide']) assert.equal(gradeOf(id), 'A', id + ' is grade A: ' + JSON.stringify(listed.find(r => r.id === id).grade));
     assert.notEqual(gradeOf('shirt'), 'A');
-    ok('the finds grade as expected (a Top category with college / music signs = A)');
+    ok('the finds grade as expected (a Top category whose write-up proves money, shelves and college spend = A)');
 
     const pv = await data('addDiscoveredBulk', { grade: 'A' });
     assert.equal(pv.applied, false);
@@ -113,7 +115,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const koloa = await prisma.brand.findFirst({ where: { name: 'Koloa Rum' } });
     assert.deepEqual({ source: koloa.source, tier: koloa.tier, category: koloa.category, website: koloa.website }, { source: 'discover', tier: 'growth', category: 'spirits', website: 'https://koloarum.com/' });
     const bayou = await prisma.brand.findFirst({ where: { name: 'Bayou Rum' } });
-    assert.match(bayou.notes, /Discover: why Bayou Rum[\s\S]*Activation idea: Tasting at tailgates[\s\S]*Found in: https:\/\/news\.example\.com\/bayou/);
+    assert.match(bayou.notes, /Discover: Bayou Rum raised a \$12M Series A[\s\S]*Activation idea: Tasting at tailgates[\s\S]*Found in: https:\/\/news\.example\.com\/bayou/);
     assert.equal(bayou.tier, null);
     const cann = await prisma.brand.findFirst({ where: { name: 'Cann' } });
     assert.equal(await prisma.brand.count({ where: { name: 'Cann Social Tonics' } }), 0, 'two finds at one website, one brand');

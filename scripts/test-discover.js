@@ -102,10 +102,16 @@ async function main() {
   await page.waitForFunction(() => typeof window.loadDiscover === 'function');
   await page.evaluate(() => gotoView('discover'));
   await page.waitForSelector('#disc-body .dc-row');
-  const names = () => page.$$eval('#disc-body .dc-row b', (bs) => bs.map((b) => b.textContent));
+  const names = () => page.$$eval('#disc-body .dc-row .dc-name b', (bs) => bs.map((b) => b.textContent));
 
   assert.deepEqual(await names(), BY_GRADE, 'To review lists everything not added, best grade first');
-  assert.deepEqual(await page.$$eval('#disc-body .dc-grade', (e) => e.map((x) => x.textContent)), ['A', 'A', 'B', 'C', 'D'], 'every row shows its grade');
+  assert.deepEqual(await page.$$eval('#disc-body .dc-score', (e) => e.map((x) => x.textContent)), ['69A', '62A', '52B', '37C', '22D'], 'every row shows its score and grade');
+  assert.deepEqual(await page.$$eval('#disc-body .dc-ghead b', (e) => e.map((x) => x.textContent)), ['A', 'B', 'C', 'D'], 'grouped under a heading per grade');
+  assert.match(await page.textContent('[data-disc="d2"] .dc-pts'), /\+30Top priority category/, 'the points show on the row');
+  assert.equal(await page.textContent('[data-disc="d2"] [data-dcact="add"]'), 'Accept');
+  assert.equal(await page.textContent('[data-disc="d2"] [data-dcact="dismiss"]'), 'Deny');
+  const btn = await page.$eval('[data-disc="d2"] [data-dcact="add"]', (b) => b.getBoundingClientRect().height);
+  assert.ok(btn >= 40, 'Accept is a big button (' + btn + 'px)');
   assert.match(await page.textContent('[data-dctab="review"]'), /5/);
   assert.match(await page.textContent('[data-dctab="added"]'), /1/);
   assert.equal(await page.$('#disc-q'), null, 'the old search box is gone');
@@ -132,7 +138,7 @@ async function main() {
   await page.click('[data-disc="d0"] .dc-name');
   await page.waitForSelector('[data-disc="d0"] .dc-more');
   assert.match(await page.textContent('[data-disc="d0"] .dc-more'), /Sampling at the door/);
-  assert.match(await page.textContent('[data-disc="d0"] .dc-more'), /Grade\s*D · 22\/100[\s\S]*\+30Top priority category/);
+  assert.match(await page.textContent('[data-disc="d0"] .dc-more'), /Score\s*22\/100 · D[\s\S]*\+30Top priority category/);
   assert.ok(await page.$('[data-disc="d0"] a[href="https://news.example.com/0"]'));
   console.log('✓ a row opens for the pitch and links');
 

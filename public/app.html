@@ -1370,37 +1370,49 @@
   .dc-bar .chip .n{margin-left:6px;color:var(--ink-3);font-weight:500}
   .dc-bar .inp{padding:6px 10px;font-size:13.5px;max-width:220px}
   .dc-list{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-1);overflow:hidden}
-  .dc-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 16px;align-items:center;padding:12px 16px;border-top:1px solid var(--border-soft)}
+  .dc-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:6px 18px;align-items:center;padding:16px 18px;border-top:1px solid var(--border-soft)}
   .dc-row:first-child{border-top:0}
   .dc-row:hover{background:rgba(255,255,255,.02)}
   .dc-row.open{background:var(--surface-2)}
   .dc-main{min-width:0;cursor:pointer}
   .dc-name{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
   .dc-meta{margin-right:4px}
-  .dc-name b{font-size:14px;font-weight:600}
+  .dc-name b{font-size:15.5px;font-weight:600}
   .dc-meta{font-size:13px;color:var(--ink-3)}
-  .dc-grade{flex:none;align-self:center;display:inline-grid;place-items:center;width:24px;height:24px;border-radius:6px;font-size:13px;font-weight:800;border:1px solid}
-  .dc-grade.g-A{color:var(--good);border-color:var(--good);background:rgba(62,207,142,.12)}
-  .dc-grade.g-B{color:var(--blue);border-color:var(--blue);background:rgba(67,198,232,.1)}
-  .dc-grade.g-C{color:var(--warn);border-color:var(--warn);background:rgba(232,182,76,.1)}
-  .dc-grade.g-D{color:var(--ink-3);border-color:var(--border);background:transparent}
   .dc-reasons{margin:4px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px}
   .dc-reasons .pt{display:inline-block;min-width:34px;font-weight:700;color:var(--ink-3)}
   .dc-reasons .ok .pt{color:var(--good)}
   .dc-sign{font-size:12.5px;color:#55d9a2;background:rgba(62,207,142,.1);border-radius:999px;padding:1px 8px}
   .dc-why{font-size:13.5px;color:var(--ink-2);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .dc-row.open .dc-why{white-space:normal}
-  .dc-act{display:flex;align-items:center;gap:6px}
-  .dc-add{padding:6px 16px;font-size:13.5px}
-  .dc-x{width:30px;height:30px;border-radius:999px;border:1px solid var(--border);background:transparent;color:var(--ink-3);cursor:pointer;font-size:16px;line-height:1}
-  .dc-x:hover{color:var(--bad);border-color:rgba(240,113,107,.5)}
+  .dc-act{display:flex;align-items:center;gap:10px}
+  /* Accept / Deny (Leo, Oct 15 2026: "make this bigger") */
+  .dc-act .dc-add{padding:12px 30px;font-size:15.5px;font-weight:700;min-width:118px;justify-content:center}
+  .dc-x{padding:11px 26px;min-width:104px;border-radius:999px;border:1px solid var(--border);background:transparent;color:var(--ink-2);cursor:pointer;font-size:15.5px;font-weight:600;line-height:1.2}
+  .dc-x:hover{color:var(--bad);border-color:rgba(240,113,107,.6);background:rgba(240,113,107,.08)}
+  /* The score box on each row: the number, the letter and what it means */
+  .dc-score{width:76px;text-align:center;border-radius:12px;padding:8px 4px;border:1px solid var(--border);cursor:pointer}
+  .dc-score .n{font-size:26px;font-weight:800;line-height:1}
+  .dc-score .l{font-size:12.5px;font-weight:700;margin-top:4px;letter-spacing:.02em}
+  .dc-score.g-A{color:var(--good);border-color:var(--good);background:rgba(62,207,142,.12)}
+  .dc-score.g-B{color:var(--blue);border-color:var(--blue);background:rgba(67,198,232,.1)}
+  .dc-score.g-C{color:var(--warn);border-color:var(--warn);background:rgba(232,182,76,.1)}
+  .dc-score.g-D{color:var(--ink-3);background:transparent}
+  .dc-pts{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+  .dc-pt{font-size:12.5px;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--border-soft);border-radius:999px;padding:2px 9px}
+  .dc-pt b{color:var(--good);font-weight:700;margin-right:3px}
+  .dc-pt.no{color:var(--ink-3)}
+  .dc-ghead{display:flex;align-items:baseline;gap:10px;padding:12px 18px 8px;border-top:1px solid var(--border);background:var(--surface-2);font-size:13.5px;color:var(--ink-2)}
+  .dc-ghead:first-child{border-top:0}
+  .dc-ghead b{font-size:15px}
+  .dc-ghead .g-A{color:var(--good)} .dc-ghead .g-B{color:var(--blue)} .dc-ghead .g-C{color:var(--warn)} .dc-ghead .g-D{color:var(--ink-3)}
   .dc-done{font-size:13px;color:var(--ink-3)}
   .dc-more{grid-column:1/-1;font-size:13.5px;color:var(--ink-2);display:flex;flex-direction:column;gap:8px;padding-top:4px}
   .dc-k{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-right:8px}
   .dc-links{display:flex;gap:14px;flex-wrap:wrap}
   .dc-links a{color:var(--accent-hi)}
   .dc-empty{padding:40px 16px;text-align:center;color:var(--ink-3);border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-1)}
-  @media (max-width:600px){ .dc-row{grid-template-columns:1fr} .dc-bar .inp{max-width:none;flex:1} }
+  @media (max-width:600px){ .dc-row{grid-template-columns:auto minmax(0,1fr)} .dc-act{grid-column:1/-1} .dc-act button{flex:1} .dc-bar .inp{max-width:none;flex:1} }
   .target{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);
     padding:17px 20px;margin-bottom:10px;display:flex;align-items:center;gap:16px;box-shadow:var(--shadow);
     transition:border-color .15s}
@@ -2217,7 +2229,7 @@
     <section class="view page wide" id="discover">
       <div class="eyebrow">Discover</div>
       <h1>New brands to review</h1>
-      <div class="sub" id="dc-sub">Claude finds up to 50 a day. Add the ones worth pitching, dismiss the rest.</div>
+      <div class="sub" id="dc-sub">Claude finds up to 50 a day. Each has a score out of 100 — accept the ones worth pitching, deny the rest.</div>
       <div id="dc-bar" class="dc-bar"></div>
       <div id="dc-bulk"></div>
       <div id="disc-body"></div>
@@ -18432,7 +18444,19 @@ function dcRender() {
       : 'Nothing added yet.') + '</div>';
     return;
   }
-  body.innerHTML = '<div class="dc-list">' + rows.map(dcRow).join('') + '</div>';
+  // Best grade first: a heading per grade, so the list reads as groups.
+  var GW = { A: 'Strong fit — accept', B: 'Worth adding', C: 'Maybe', D: 'Probably pass' };
+  var html = '', last = null;
+  rows.forEach(function (r) {
+    var g = r.grade && r.grade.grade;
+    if (DC.sort === 'grade' && g && g !== last) {
+      var n = rows.filter(function (x) { return x.grade && x.grade.grade === g; }).length;
+      html += '<div class="dc-ghead"><b class="g-' + g + '">' + g + '</b><span>' + GW[g] + '</span><span style="color:var(--ink-3)">· ' + n + '</span></div>';
+      last = g;
+    }
+    html += dcRow(r);
+  });
+  body.innerHTML = '<div class="dc-list">' + html + '</div>';
 }
 
 function dcRow(r) {
@@ -18448,23 +18472,29 @@ function dcRow(r) {
   var actions = dcAdded(r)
     ? '<span class="dc-done">Added' + (r.inSystem ? ' · ' + r.contactCount + (r.contactCount === 1 ? ' person' : ' people') : '') + '</span>' +
       (r.brandId ? '<button class="btn-ghost sd-sm" data-dcact="open">Open</button>' : '')
-    : '<button class="btn-solid dc-add" data-dcact="add">Add</button>' +
-      '<button class="dc-x" data-dcact="dismiss" title="Not a fit — dismiss" aria-label="Dismiss ' + esc(r.name) + '">×</button>';
+    : '<button class="btn-solid dc-add" data-dcact="add" title="Add to Brands">Accept</button>' +
+      '<button class="dc-x" data-dcact="dismiss" title="Not a fit — dismiss" aria-label="Deny ' + esc(r.name) + '">Deny</button>';
   var g = r.grade;
-  var badge = g ? '<span class="dc-grade g-' + g.grade + '" title="' + esc('Grade ' + g.grade + ' · ' + g.score + '/100 · ' + g.word + (g.capped ? ' — ' + g.capped : '')) + '">' + g.grade + '</span>' : '';
-  var gradeMore = g ? '<div><span class="dc-k">Grade</span><b>' + g.grade + '</b> · ' + g.score + '/100 Brand Fit · ' + esc(g.word) +
+  var badge = g ? '<div class="dc-score g-' + g.grade + '" data-dcact="toggle" title="' + esc(g.score + '/100 · ' + g.word + (g.capped ? ' — ' + g.capped : '') + ' · click for every point') + '">' +
+      '<div class="n">' + g.score + '</div><div class="l">' + g.grade + '</div></div>' : '<div></div>';
+  // The points that made the score, biggest first, on the row itself.
+  var pts = g ? (g.reasons || []).filter(function (x) { return x.points > 0; }).sort(function (a, b) { return b.points - a.points; })
+      .map(function (x) { return '<span class="dc-pt"><b>+' + x.points + '</b>' + esc(x.text) + '</span>'; }).join('') +
+      (g.capped ? '<span class="dc-pt no">' + esc(g.capped) + '</span>' : '') : '';
+  var gradeMore = g ? '<div><span class="dc-k">Score</span><b>' + g.score + '/100 · ' + g.grade + '</b> · ' + esc(g.word) +
       (g.capped ? ' <span style="color:var(--warn)">— ' + esc(g.capped) + '</span>' : '') +
-      (dcAdded(r) ? '' : ' <span style="color:var(--ink-3)">(money and people get known once it’s added)</span>') +
+      (dcAdded(r) ? ' <span style="color:var(--ink-3)">(its Brand Fit)</span>' : ' <span style="color:var(--ink-3)">(from what the find’s write-up proves)</span>') +
       '<ul class="dc-reasons">' + (g.reasons || []).map(function (x) {
         return '<li class="' + (x.good ? 'ok' : '') + '"><span class="pt">+' + x.points + '</span>' + esc(x.text) + '</li>';
       }).join('') + '</ul></div>' : '';
-  return '<div class="dc-row' + (open ? ' open' : '') + '" data-disc="' + esc(r.id) + '">' +
+  return '<div class="dc-row' + (open ? ' open' : '') + '" data-disc="' + esc(r.id) + '">' + badge +
     '<div class="dc-main" data-dcact="toggle">' +
-      '<div class="dc-name">' + badge + '<b>' + esc(r.name) + '</b><span class="dc-meta">' + esc(meta) + '</span>' +
+      '<div class="dc-name"><b>' + esc(r.name) + '</b><span class="dc-meta">' + esc(meta) + '</span>' +
         signs.map(function (k) {
           return '<span class="dc-sign" title="' + esc(DC_SIGNS_LONG[k]) + '">' + esc(DC_SIGNS[k]) + '</span>';
         }).join('') + '</div>' +
       (r.reason ? '<div class="dc-why">' + esc(r.reason) + '</div>' : '') +
+      (pts ? '<div class="dc-pts">' + pts + '</div>' : '') +
     '</div>' +
     '<div class="dc-act">' + actions + '</div>' +
     (open ? '<div class="dc-more">' + gradeMore +

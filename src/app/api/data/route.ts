@@ -13370,7 +13370,8 @@ const handlers: Record<string, Handler> = {
       const raw = String(r.category ?? '').trim().toLowerCase()
       const cat = isCategoryKey(raw) ? raw : guessCategory(r.name, r.category)
       const g = fit ? gradeFromFit(fit) : gradeDiscovery(
-        { category: cat, signals: r.signals, hasParent: !!parentOf(r.name, null), giant: giantOf({ name: r.name }) },
+        { category: cat, signals: r.signals, hasParent: !!parentOf(r.name, null), giant: giantOf({ name: r.name }),
+          text: [r.reason, r.activation].filter(Boolean).join(' ') },
         { priority: categoryPriority(cat), acceptRate: rateOrNull(rates, cat), now })
       return { ...r, source: sourceOf(r.query), inSystem: !!existing, contactCount: existing?._count.contacts ?? 0, grade: g }
     })

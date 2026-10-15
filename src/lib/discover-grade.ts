@@ -1,30 +1,31 @@
 // A grade on every brand Brands → Discover finds (Leo, Oct 12 2026: "grade
 // each brand that is found in the discover brands"). Rules only, no model
-// call: the grade is Brand Fit (brand-fit.ts) turned into a letter, so a
-// find and the brand it becomes are judged by one rule.
+// call: a score out of 100 with a reason for every point, as a letter.
 //
-// A find that isn't on the roster yet is scored with what Discover knows:
-// its category (Leo's priority), the hunt's "already sponsors college /
-// music" sign, "mid-size and growing" as a growth-tier size, a parent
-// company from parents.ts, and whether it's a giant (giants.ts). Money isn't known and nobody is on file yet —
-// the same as any new brand. A find already on the roster uses that brand's
-// own Brand Fit (facts, people, size).
+// A find that isn't on the roster yet gets the find score (find-evidence.ts,
+// Oct 15 2026): category priority plus what its write-up proves — money
+// raised or sales (the $10M–$500M sweet spot), how many stores, already paying
+// for college / music, growing fast. Brand Fit couldn't tell the hunt's finds
+// apart (137 of 171 were an A on category and signs alone). A find already on
+// the roster uses that brand's own Brand Fit (facts, people, size).
 //
-// Letters (a find with no people tops out in the upper 70s):
-//   A  60+  — a Top category with a real sign, or a brand already doing well
-//   B  45+  — worth adding
-//   C  30+  — only if there's room
-//   D       — under 30, or a Skip category / not sold in the US / closed
+// Letters (set so the 171 finds of Oct 15 2026 split about 17 / 52 / 63 / 39;
+// a Top category that pays for college, nothing else known, is 45 = C):
+//   A  65+  — strong fit, accept
+//   B  50+  — worth adding
+//   C  40+  — maybe
+//   D       — under 40, or a Skip category / not sold in the US / closed
 // Too small caps the grade at C.
 //
 //   node scripts/test-discover-grade.mjs
 
-import { scoreBrand, type FitInput, type FitResult, type FitReason, type Priority } from './brand-fit'
+import { type FitResult, type FitReason, type Priority } from './brand-fit'
+import { scoreFind } from './find-evidence'
 
 export type Grade = 'A' | 'B' | 'C' | 'D'
-export const GRADE_BARS: Array<[Grade, number]> = [['A', 60], ['B', 45], ['C', 30]]
+export const GRADE_BARS: Array<[Grade, number]> = [['A', 65], ['B', 50], ['C', 40]]
 export const GRADE_WORD: Record<Grade, string> = {
-  A: 'Strong fit', B: 'Worth adding', C: 'Only if there’s room', D: 'Weak fit',
+  A: 'Strong fit — accept', B: 'Worth adding', C: 'Maybe', D: 'Probably pass',
 }
 
 export function letterFor(score: number): Grade {
@@ -53,28 +54,14 @@ export function hasSign(signals: string | null | undefined, sign: string): boole
   return String(signals ?? '').split(',').map(s => s.trim()).includes(sign)
 }
 
-// A find not on the roster yet: what Discover knows, as Brand Fit input.
-export function discoveryFitInput(
-  row: { category: string | null; signals?: string | null; hasParent?: boolean; giant?: string | null },
-  ctx: { priority: Priority; acceptRate: number | null; now: Date },
-): FitInput {
-  return {
-    category: row.category,
-    tier: hasSign(row.signals, 'midsize') ? 'growth' : null, // addDiscoveredBrand files it the same way
-    hasParent: !!row.hasParent,
-    giant: row.giant ?? null,
-    sponsorsCollege: hasSign(row.signals, 'sponsors') ? true : null,
-    reachable: 0,
-    need: 4,
-    acceptRate: ctx.acceptRate,
-    priority: ctx.priority,
-    now: ctx.now,
-  }
-}
+type FindRow = { category: string | null; signals?: string | null; hasParent?: boolean; giant?: string | null; text?: string | null }
 
-export function gradeDiscovery(
-  row: { category: string | null; signals?: string | null; hasParent?: boolean; giant?: string | null },
-  ctx: { priority: Priority; acceptRate: number | null; now: Date },
-): DiscoverGrade {
-  return gradeFromFit(scoreBrand(discoveryFitInput(row, ctx)))
+// A find not on the roster yet: the find score (find-evidence.ts), which
+// reads the write-up. Skip / giant / too-small rules as gradeFromFit.
+export function gradeDiscovery(row: FindRow, ctx: { priority: Priority; acceptRate: number | null; now: Date }): DiscoverGrade {
+  const fs = scoreFind({ priority: ctx.priority, signals: row.signals, text: row.text, giant: row.giant, hasParent: row.hasParent })
+  let grade = letterFor(fs.score)
+  let capped: string | null = null
+  if (ctx.priority === 'skip') { grade = 'D'; capped = 'Skip category' }
+  return { grade, score: fs.score, word: GRADE_WORD[grade], capped, reasons: fs.reasons }
 }

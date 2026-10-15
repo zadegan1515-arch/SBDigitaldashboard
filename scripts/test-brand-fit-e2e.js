@@ -331,7 +331,8 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     ] });
     const disc = (await data('listDiscoveries')).rows;
     const dg = (name) => disc.find(r => r.name === name).grade;
-    assert.equal(dg('Hydra Kick').grade, 'A', JSON.stringify(dg('Hydra Kick')));
+    assert.equal(dg('Hydra Kick').score, 48, JSON.stringify(dg('Hydra Kick'))); // Top 25 + sponsors 12 + growing 6 + 18–24 5
+    assert.equal(dg('Hydra Kick').grade, 'C');
     assert.equal(dg('Plain Tees').grade, 'D');
     assert.ok(/Top priority/.test(dg('Odd Wording Co').reasons.map(r => r.text).join(' ')), 'a loose category is read as ours (energy)');
     const bigFit = (await data('getBrand', { brandId: 'b_big' })).fit.score;
