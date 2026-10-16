@@ -177,24 +177,34 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   to them again"; his call: the step asks **just this person or the whole brand**). On every open card of Zach's list
   (Home and the brand page), beside Not needed (now only "handled somewhere else"; `ZT_STOP`, `ztDecline` in app.html).
   **Just <first>** = one click, `handStep({ step: 'declined', scope: 'person' })` → `stopContact`: `Target.handDeclinedAt`
-  / `handDeclinedScope` + `Contact.doNotContactAt` / `doNotContactBy` (goes with the person; a merge carries it). Their
-  status stays accepted / replied (they were reached — never `declined`, which reads as never reached). **Everyone at
-  <brand>** = a preview on the card first (the others on Zach's list, today's list, the pool and next in line, coming
-  Schedule days; left as they are: calls booked, invites still out, open deals, email drafts — those never send) → Stop
-  sends its `expect` (changed since → `stale`, shown again): `Brand.stoppedAt` / `stoppedBy` + archived + do not email,
-  everyone not yet contacted set aside on purpose, off coming days, Setting `brandStopLog` for the Undo. Nobody is
-  reached again, by the system or by hand: `HAND_WAITING` / `NOT_STOPPED` (Zach's list, calls, Needs action, follow-ups
-  due), `assertNotStopped` (handStep, markEmailed, queueContact, setTargetStatus), queueBrandTargets, reason `stopped`
-  (outreachGate / planRefusal), `isReachable`, the email machine (send and draft paths), Archive's Bring back / Emails on
-  refused while it stands — and **second copies** of the person (`src/lib/do-not-contact.ts`, `stopIndex` /
-  `stoppedMatch`: the same LinkedIn profile or personal email anywhere, the same full name at the brand) are refused by
-  upsertContact, importContacts (`optedOut`), the LinkedIn capture (a dupe), the SponsorUnited capture and SB · Log
-  (`assertLoggable`). The brand page: the person's card becomes one line with Undo, the pill says "doesn't want to
-  continue", a stopped brand has a banner (`#b-stopped`, Undo asks, then `undoStopContact({ brandId })`), no → Queue or
-  log buttons. Undo (the bar, the Done fold — "(whole brand)" — the card's line, the banner) puts back exactly what it
-  changed; anything changed since stays, named (`stays`). Claude's day words it (`stopText`). `node
-  scripts/test-do-not-contact.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-do-not-contact.js`,
-  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-stop-e2e.js`.
+  / `handDeclinedScope` + `Contact.doNotContactAt` / `doNotContactBy`. Their status stays accepted / replied (they were
+  reached — never `declined`, which reads as never reached). **Their other copies** (`src/lib/do-not-contact.ts`,
+  `stopTwins` / `stoppedMatch`: the same LinkedIn profile or personal email anywhere, the same full name at the brand)
+  are marked in the same moment and their waiting rows set aside (Setting `personStopLog`); the toast names them.
+  **Everyone at <brand>** = a preview on the card first (the others on Zach's list, today's list, the pool and next in
+  line, coming Schedule days, their other copies; left as they are: calls booked, invites still out, open deals, email
+  drafts — those never send) → Stop sends its `expect` (changed since → `stale`, shown again): `Brand.stoppedAt` /
+  `stoppedBy` + archived + do not email, everyone not yet contacted set aside on purpose, off coming days, Setting
+  `brandStopLog` for the Undo. A person stopped on their own can still **widen** to their brand (the brand's Undo then
+  leaves them stopped, `targetBefore`). Nobody is reached again, by the system or by hand: `HAND_WAITING` / `NOT_STOPPED`
+  (Zach's list, Needs action, follow-ups due, Results' "They accepted — send the DM" via `listTargets`, "They replied —
+  keep it moving"), `assertNotStopped` (handStep, markEmailed, queueContact, setTargetStatus incl. DM sent,
+  setTargetShelved's Promote), queueBrandTargets (never promotes a marked copy's row), reason `stopped` (outreachGate /
+  planRefusal), `isReachable`, the email machine (send and draft paths), Archive's Bring back / Emails on refused while it
+  stands, **mergeBrands / combineParent refuse** a stopped brand (a merge would end or spread it) — and new copies are
+  refused by upsertContact, importContacts (`optedOut`), the LinkedIn capture (a dupe), the SponsorUnited capture and SB
+  · Log (`assertLoggable`). A **call booked** there stays in Calls booked marked "Said they don't want to continue —
+  cancel it" (`calls[].stopped`, off the status board; the brand page's line too, with **Cancelled**). The brand page: the
+  person's card becomes one line with Undo, the pill says "doesn't want to continue", a stopped brand has a banner
+  (`#b-stopped`), no → Queue / log / Promote buttons. **Undo** (the bar, the Done fold — "(whole brand)" — the card's line,
+  the banner; `ztUndoStop`) asks `undoStopContact({ preview: true })` first and, for a whole brand, names what comes back
+  in a confirm (rule 6); it reads its record inside the stop's locks (`brandStopLog` then `personStopLog`), puts back
+  exactly what changed — the person and every copy marked at that moment (cleared by its time), people set aside, the
+  Schedule days (one the stop emptied comes back as Best fit while still a sending day) — and names what stays
+  (`stays`: changed since, a day gone by or taken off, no record). Merging the person's copies keeps the mark on the
+  copy that stays, and its Undo gives every copy the mark as it stands then (`undoSamePerson`). Claude's day words it
+  (`stopText`; a stop that already stood is no change). `node scripts/test-do-not-contact.mjs`, `NODE_PATH=$(npm root
+  -g) node scripts/test-do-not-contact.js`, `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-stop-e2e.js`.
 - **Invites sent straight from LinkedIn** (Leo, Sep 2026: an unlogged invite that got accepted meant
   Add person → Queue → Invite sent → Accepted). Now one step, **never through a day's queue**: rules pure
   in `src/lib/li-log.ts` (`node scripts/test-li-log.mjs`), writes in `src/lib/li-log-db.ts` (shared by

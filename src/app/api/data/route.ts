@@ -74,7 +74,7 @@ import { sortToday, compareTodayBrands } from '@/lib/today-order'
 import { PLAN_BRAND_SELECT, SENT_EMAIL, loadPlanBrands, type PlanBrand } from '@/lib/plan-brands'
 import { parseSkipDays, dayMoveShape, undoDayMove, type SkipLog } from '@/lib/skip-day'
 import { CHOSEN_KEY, readChosenIds, noteChosenIds } from '@/lib/chosen'
-import { stopIndex, stoppedMatch, stopWords } from '@/lib/do-not-contact'
+import { stopIndex, stoppedMatch, stopWords, stopKeys } from '@/lib/do-not-contact'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
@@ -3380,6 +3380,10 @@ async function combinePlan(parentName: unknown) {
   if (partners.length > 1) blocks.push('More than one of these has a partner record (' + partners.map(p => all.find(b => b.id === p.brandId)?.name).join(', ') + ')')
   const codes = [keeper, ...going].filter(b => b?.boardCode)
   if (codes.length > 1) blocks.push('More than one has a Show Board code (' + codes.map(b => b!.name).join(', ') + ') — only one can stay')
+  // "Doesn't want to continue" for a whole brand lives on that brand: going
+  // into the company would end it, the company holding it would spread it.
+  const stopped = [keeper, ...going].filter(b => b?.stoppedAt)
+  if (stopped.length) blocks.push(stopped.map(b => b!.name).join(', ') + ' said they don\u2019t want to continue — Undo that on its page first (combining would end the stop or spread it)')
 
   // The same person filed under two of these brands (they'll be one
   // brand): merged on apply, the way mergePeople does it (Leo: "merge if
@@ -3663,6 +3667,10 @@ async function undoSamePerson(tx: any, rec: any) {
     for (const [k, v] of Object.entries(before)) if (!after || sameVal(now[k], after[k])) back[k] = v
     if (Object.keys(back).length) await tx[model].update({ where: { id }, data: reviveRow(modelName, back) })
   }
+  // "Doesn't want to continue" as it stands now goes with every copy the
+  // undo makes: still said → all of them keep it (its Undo clears them all,
+  // by its time); taken back since → none of them gets an old one back.
+  const nowKeep = await tx.contact.findUnique({ where: { id: rec.keepId }, select: { doNotContactAt: true, doNotContactBy: true } })
   await revert('contact', rec.keepId, rec.keepBefore, rec.keepAfter, 'Contact')
   for (const d of [...rec.drops].reverse()) {
     const row = { ...d.row }
@@ -3681,6 +3689,13 @@ async function undoSamePerson(tx: any, rec: any) {
         await tx.draft.updateMany({ where: { id }, data: { createdAt: new Date(at) } })
       }
     }
+  }
+  const group = [rec.keepId, ...rec.drops.map((d: any) => d.row.id)]
+  if (nowKeep?.doNotContactAt) {
+    await tx.contact.updateMany({ where: { id: { in: group }, doNotContactAt: null }, data: { doNotContactAt: nowKeep.doNotContactAt, doNotContactBy: nowKeep.doNotContactBy } })
+  } else {
+    await tx.contact.updateMany({ where: { id: { in: group }, doNotContactAt: { not: null } }, data: { doNotContactAt: null, doNotContactBy: null } })
+    await tx.target.updateMany({ where: { contactId: { in: group }, handDeclinedAt: { not: null } }, data: { handDeclinedAt: null, handDeclinedScope: null } })
   }
 }
 
@@ -4246,7 +4261,174 @@ type BrandStop = {
   // Who the stop set aside, as they were (shelved: next in line, 'cap').
   shelved: { id: string; queuedFor: string | null; shelvedHow: string | null; shelved?: boolean }[]
   pins: { day: string; index: number }[]
+  // Stopped through someone who had already said it for themselves: the
+  // Undo of the brand leaves them stopped.
+  targetBefore?: { scope: string } | null
 }
+type StopShelved = BrandStop['shelved'][number]
+
+// The person's other copies (src/lib/do-not-contact.ts): the same LinkedIn
+// profile or personal email anywhere, the same full name at their brand —
+// re-captured, re-imported or added again before they said no. A stop marks
+// them too, with the stop's own time (its Undo clears by that time), and
+// sets aside their queued rows; what it set aside goes in personStopLog.
+const PERSON_STOP_KEY = 'personStopLog'
+type PersonStop = { at: string; twins: string[]; shelved: StopShelved[] }
+type StopTwin = { id: string; brandId: string; name: string; linkedinUrl: string | null; email: string | null; doNotContactAt: Date | null; brand: { name: string } }
+async function stopTwins(db: any, c: { id: string; brandId: string; name: string; linkedinUrl: string | null; email: string | null }): Promise<StopTwin[]> {
+  const { slug, email } = stopKeys(c)
+  const OR: Prisma.ContactWhereInput[] = [{ brandId: c.brandId }]
+  if (slug) OR.push({ linkedinUrl: { contains: slug, mode: 'insensitive' } })
+  if (email) OR.push({ email: { equals: email, mode: 'insensitive' } })
+  const rows: StopTwin[] = await db.contact.findMany({
+    where: { id: { not: c.id }, OR },
+    select: { id: true, brandId: true, name: true, linkedinUrl: true, email: true, doNotContactAt: true, brand: { select: { name: true } } },
+    take: 500,
+  })
+  const ix = stopIndex([{ id: c.id, brandId: c.brandId, name: c.name, linkedinUrl: c.linkedinUrl, email: c.email }])
+  return rows.filter(r => stoppedMatch(ix, r))
+}
+// Marks the copies and sets aside their rows not contacted yet (not `skip`:
+// the brand stop's own list). What it changed, for the Undo.
+async function stopTwinsApply(tx: any, twins: StopTwin[], at: Date, actor: string | null, skip: string[]): Promise<PersonStop> {
+  const flag = twins.filter(c => !c.doNotContactAt).map(c => c.id)
+  if (flag.length) await tx.contact.updateMany({ where: { id: { in: flag }, doNotContactAt: null }, data: { doNotContactAt: at, doNotContactBy: actor } })
+  const ts: { id: string; queuedFor: Date | null; shelved: boolean; shelvedHow: string | null }[] = twins.length
+    ? await tx.target.findMany({
+        where: { contactId: { in: twins.map(c => c.id) }, id: { notIn: skip }, status: { in: ['queued', 'drafted'] }, OR: [{ shelved: false }, { shelvedHow: 'cap' }] },
+        select: { id: true, queuedFor: true, shelved: true, shelvedHow: true },
+      })
+    : []
+  if (ts.length) await tx.target.updateMany({ where: { id: { in: ts.map(x => x.id) } }, data: { shelved: true, shelvedHow: null, queuedFor: null } })
+  return { at: at.toISOString(), twins: flag, shelved: ts.map(x => ({ id: x.id, queuedFor: x.queuedFor?.toISOString() ?? null, shelvedHow: x.shelvedHow, shelved: x.shelved })) }
+}
+// One writer at a time: the caller holds the PERSON_STOP_KEY lock.
+async function changePersonLog(tx: any, change: (log: Record<string, PersonStop>) => void) {
+  const log = await readJsonSetting<Record<string, PersonStop>>(tx, PERSON_STOP_KEY, {})
+  change(log)
+  const keep = Object.entries(log).sort((a, b) => Date.parse(b[1].at) - Date.parse(a[1].at)).slice(0, 500)
+  await writeJsonSetting(tx, PERSON_STOP_KEY, Object.fromEntries(keep))
+}
+const twinWords = (twins: StopTwin[]) => twins.map(c => c.name + (c.brand?.name ? ' (' + c.brand.name + ')' : ''))
+
+// People a stop set aside, back — only those still exactly as it left them
+// (set aside on purpose, never contacted); anyone else is named. `write`
+// false only says.
+async function unshelveStopped(db: any, list: StopShelved[], today: string, write: boolean) {
+  const back: string[] = [], stays: string[] = []
+  if (!list.length) return { back, stays }
+  const now: { id: string; status: string; shelved: boolean; shelvedHow: string | null; contact: { name: string } }[] =
+    await db.target.findMany({ where: { id: { in: list.map(x => x.id) } }, select: { id: true, status: true, shelved: true, shelvedHow: true, contact: { select: { name: true } } } })
+  for (const x of list) {
+    const n = now.find(r => r.id === x.id)
+    if (!n) continue
+    if (!n.shelved || n.shelvedHow !== null || !['queued', 'drafted'].includes(n.status)) { stays.push(n.contact.name); continue }
+    const qf = !x.shelved && x.queuedFor && localDayKey(new Date(x.queuedFor)) >= today ? new Date(x.queuedFor) : null
+    if (write) await db.target.update({ where: { id: n.id }, data: { shelved: !!x.shelved, shelvedHow: x.shelvedHow, queuedFor: qf } })
+    back.push(n.contact.name + (qf && localDayKey(qf) === today ? ' (today’s list)' : x.shelved ? ' (next in line)' : ''))
+  }
+  return { back, stays }
+}
+
+// The Undo of a stop, read (write false) or done (write true, inside both
+// stop locks — BRAND_STOP_KEY then PERSON_STOP_KEY — so its record is read
+// fresh): the brand's archive, do-not-email and set-aside people where
+// nothing moved them since; the person's mark and every copy marked at the
+// same moment. `t` = the person whose step it was (null: the brand banner).
+async function undoStopCore(db: any, t: any | null, brand: any | null, write: boolean, actor: string | null) {
+  const today = localDayKey()
+  const back: string[] = [], stays: string[] = []
+  const ms = (d: Date | string | null | undefined) => (d ? new Date(d).getTime() : NaN)
+  const brandScope = t ? t.handDeclinedScope === 'brand' : !!brand?.stoppedAt
+  let pins: { day: string; index: number }[] = []
+  let unarchive = false, emailsOn = false, widened = false
+  if (brandScope && brand) {
+    const fresh = await db.brand.findUnique({ where: { id: brand.id } })
+    if (fresh?.stoppedAt) {
+      const log = await readJsonSetting<Record<string, BrandStop>>(db, BRAND_STOP_KEY, {})
+      const e = log[fresh.id]
+      const data: Prisma.BrandUpdateInput = { stoppedAt: null, stoppedBy: null }
+      if (e) {
+        if (ms(fresh.passedAt) === ms(e.at)) { data.passedAt = e.before.passedAt ? new Date(e.before.passedAt) : null; unarchive = !e.before.passedAt }
+        else if (fresh.passedAt && !e.before.passedAt) stays.push('it was archived again since, so it stays archived')
+        if (!e.before.doNotEmail && fresh.doNotEmail) { data.doNotEmail = false; emailsOn = true }
+        if (ms(fresh.passedTodayAt) === ms(e.at)) data.passedTodayAt = e.before.passedTodayAt ? new Date(e.before.passedTodayAt) : null
+        const r = await unshelveStopped(db, e.shelved || [], today, write)
+        back.push(...r.back)
+        stays.push(...r.stays)
+        pins = e.pins || []
+        widened = e.targetBefore?.scope === 'person'
+      } else {
+        stays.push('no record of what the stop changed: it stays archived and do not email (bring it back on its page)')
+      }
+      if (write) {
+        await db.brand.update({ where: { id: fresh.id }, data })
+        if (e) { delete log[fresh.id]; await writeJsonSetting(db, BRAND_STOP_KEY, log) }
+      }
+    }
+  }
+  let twins = 0
+  if (t) {
+    const fresh = await db.target.findUnique({ where: { id: t.id }, select: { handDeclinedAt: true, contactId: true } })
+    if (fresh?.handDeclinedAt && widened) {
+      stays.push(`${t.contact.name} said it for themselves first, so they still aren't contacted (Undo that on their card)`)
+      if (write) {
+        await db.target.update({ where: { id: t.id }, data: { handDeclinedScope: 'person' } })
+        await db.targetEvent.create({ data: { targetId: t.id, kind: 'took back “doesn’t want to continue”', actor, detail: 'whole brand — they still aren’t contacted' } })
+      }
+    } else if (fresh?.handDeclinedAt) {
+      const at = fresh.handDeclinedAt
+      const plog = await readJsonSetting<Record<string, PersonStop>>(db, PERSON_STOP_KEY, {})
+      const pe = plog[t.id]
+      twins = await db.contact.count({ where: { doNotContactAt: at, id: { not: fresh.contactId } } })
+      if (pe) {
+        const r = await unshelveStopped(db, pe.shelved || [], today, write)
+        back.push(...r.back)
+        stays.push(...r.stays)
+      }
+      if (write) {
+        await db.target.update({ where: { id: t.id }, data: { handDeclinedAt: null, handDeclinedScope: null } })
+        // Their mark and every copy marked in the same moment (twins, a merge's carry).
+        await db.contact.updateMany({ where: { doNotContactAt: at }, data: { doNotContactAt: null, doNotContactBy: null } })
+        if (pe) await changePersonLog(db, log => { delete log[t.id] })
+        await db.targetEvent.create({ data: { targetId: t.id, kind: 'took back “doesn’t want to continue”', actor, detail: brandScope ? 'whole brand' : 'just them' } })
+      }
+    }
+  }
+  return { brandScope, back, stays, pins, unarchive, emailsOn, twins }
+}
+
+// A stopped brand back on the coming days it came off — a day the stop
+// emptied (and so dropped) comes back as Best fit while it's still a sending
+// day; one gone by, taken off, or a brand planned elsewhere since is named.
+async function repinStopped(brandId: string, pins: { day: string; index: number }[], write: boolean) {
+  const out = { days: [] as string[], stays: [] as string[] }
+  if (!pins.length) return out
+  const today = localDayKey()
+  const label = (k: string) => NY_DAY_LABEL.format(new Date(k + 'T12:00:00Z'))
+  const gone = pins.filter(x => x.day < today)
+  if (gone.length) out.stays.push('not back on ' + gone.map(x => label(x.day)).join(', ') + ' — gone by')
+  const coming = pins.filter(x => x.day >= today)
+  if (!coming.length) return out
+  const [plan, extras] = await Promise.all([readPlan(), readExtraDays()])
+  const elsewhere = Object.keys(plan).filter(k => k >= today && plan[k]?.brandIds?.includes(brandId)).sort()
+  if (elsewhere.length) {
+    out.stays.push('not back on ' + coming.map(x => label(x.day)).join(', ') + ' — it’s on ' + elsewhere.map(label).join(', ') + ' now')
+    return out
+  }
+  for (const x of coming) {
+    if (!plan[x.day]) {
+      if (!isSendingKey(x.day, extras)) { out.stays.push('not back on ' + label(x.day) + ' — not a sending day now'); continue }
+      plan[x.day] = { category: null, brandIds: [] }
+    }
+    const ids = plan[x.day].brandIds || (plan[x.day].brandIds = [])
+    ids.splice(Math.min(x.index, ids.length), 0, brandId)
+    out.days.push(label(x.day))
+  }
+  if (write && out.days.length) await writePlan(plan)
+  return out
+}
+
 // What stopping a whole brand does, before it does it (rule 6).
 async function brandStopPlan(brandId: string, targetId: string) {
   const today = localDayKey()
@@ -5338,6 +5520,10 @@ const handlers: Record<string, Handler> = {
           }
         : {}),
     }
+    // Results' "They accepted — send the DM" and the reply lists: nobody who
+    // said they don't want to continue (nor their brand). AND, so the brand /
+    // contact filters above stay.
+    if (status === 'accepted' || status === 'replied') where.AND = [NOT_STOPPED]
     const include = { brand: true, contact: true, drafts: { orderBy: { createdAt: 'desc' as const }, take: 2 } }
     const orderBy: Prisma.TargetOrderByWithRelationInput[] = [{ fitScore: 'desc' }, { createdAt: 'asc' }]
     const cut = sentBefore ? new Date(sentBefore) : null
@@ -5364,6 +5550,7 @@ const handlers: Record<string, Handler> = {
     // Never back into the queue or a new send for someone who said they
     // don't want to continue (a reply, a "no" or a deal can still be logged).
     if (['queued', 'drafted', 'sent', 'accepted'].includes(String(status)) && status !== before.status) assertNotStopped(before)
+    if (dmSent) assertNotStopped(before)
 
     const now = new Date()
     // "Withdrew" on an invite sent today is a mistake taken back: the send
@@ -6749,6 +6936,9 @@ const handlers: Record<string, Handler> = {
       prisma.brand.findUnique({ where: { id: toId }, include: { partner: true } }),
     ])
     if (!from || !to) throw new Error('Brand not found')
+    // A brand that said it doesn't want to continue keeps that on its own
+    // row: merged away it would end, merged into it would spread.
+    for (const b of [from, to]) if (b.stoppedAt) throw new Error(`${b.name} said they don't want to continue — Undo that on its page first, then merge (a merge would end the stop or spread it to the other brand's people)`)
 
     // Shows both brands are attached to: the keeper's row wins, the
     // duplicate's copy (and its auto-deal, by cascade) is dropped.
@@ -7971,7 +8161,7 @@ const handlers: Record<string, Handler> = {
         // (review fix, Oct 13 2026).
         targets: {
           include: {
-            contact: { select: { name: true, title: true } },
+            contact: { select: { name: true, title: true, doNotContactAt: true } },
             _count: { select: { emails: { where: SENT_EMAIL } } },
             emails: { where: SENT_EMAIL, select: { sentAt: true }, orderBy: { sentAt: 'asc' }, take: 1 },
           },
@@ -7982,9 +8172,11 @@ const handlers: Record<string, Handler> = {
     // The whole brand said they don't want to continue: not even "+ Person".
     assertNotStopped({ brand })
     if (brand.passedAt) throw new Error(`${brand.name} is passed — bring it back from its brand page first.`)
-    // Nobody who said they don't want to continue, nor a second copy of them.
+    // Nobody who said they don't want to continue, nor a second copy of them:
+    // not picked fresh, and a row of theirs still waiting is never promoted.
     const stopIx = await loadStopIndex()
     brand.contacts = brand.contacts.filter(c => !c.doNotContactAt && !stoppedMatch(stopIx, c))
+    brand.targets = brand.targets.filter(t => !(t.contact.doNotContactAt && ['queued', 'drafted'].includes(t.status)))
     // Brand Fit's hard no: nobody at a brand confirmed not sold in the US
     // goes in the queue — not by the rotation, the plan, Fill to 30, Next
     // best, nor a click. Change "Sold in the US" on the brand page first.
@@ -10934,9 +11126,11 @@ const handlers: Record<string, Handler> = {
         take: 300,
       }),
     ])
+    // A call booked with someone who has since said they don't want to
+    // continue (or their brand) stays listed, marked, so it can be cancelled.
     const calls = await prisma.target.findMany({
-      where: { ...one, ...NOT_STOPPED, callAt: { gte: startOfLocalDay() } },
-      select: { id: true, callAt: true, brand: { select: { id: true, name: true } }, contact: { select: { name: true, title: true } } },
+      where: { ...one, callAt: { gte: startOfLocalDay() } },
+      select: { id: true, callAt: true, handDeclinedAt: true, brand: { select: { id: true, name: true, stoppedAt: true } }, contact: { select: { name: true, title: true, doNotContactAt: true } } },
       orderBy: { callAt: 'asc' },
       take: 40,
     })
@@ -11040,7 +11234,10 @@ const handlers: Record<string, Handler> = {
       dmAfterDays: HAND_DM_DAYS,
       nudgeAfterDays: HAND_NUDGE_DAYS,
       quietAfterDays: HAND_QUIET_DAYS,
-      calls: calls.map(c => ({ targetId: c.id, brandId: c.brand.id, brandName: c.brand.name, name: c.contact.name, title: c.contact.title, callAt: c.callAt })),
+      calls: calls.map(c => ({
+        targetId: c.id, brandId: c.brand.id, brandName: c.brand.name, name: c.contact.name, title: c.contact.title, callAt: c.callAt,
+        ...(c.handDeclinedAt || c.contact.doNotContactAt || c.brand.stoppedAt ? { stopped: true } : {}),
+      })),
       ...(one.brandId ? { declined, brandStopped } : {}),
     }
   },
@@ -11117,35 +11314,48 @@ const handlers: Record<string, Handler> = {
   // respond but i want to make sure we dont reach out to them again"; the step
   // asks — his call — just this person, or the whole brand).
   //   person → Contact.doNotContactAt + the step on their row (handDeclinedAt);
-  //            their status stays (they were reached). One click: it's one person.
+  //            their status stays (they were reached). One click: it's one
+  //            person — and their other copies (stopTwins), marked with them.
   //   brand  → preview first (who else stops, who leaves today's list and the
-  //            pool, the Schedule days it comes off, what's named but left as it
-  //            is: booked calls, invites still out, open deals, waiting drafts),
-  //            then with the preview's `expect` (anything changed since → stale):
-  //            Brand.stoppedAt + archived + do-not-email, queued people set
-  //            aside, coming days unpinned. What changed goes in Setting
-  //            brandStopLog for the Undo.
+  //            pool, the Schedule days it comes off, their other copies, what's
+  //            named but left as it is: booked calls, invites still out, open
+  //            deals, waiting drafts), then with the preview's `expect`
+  //            (anything changed since → stale): Brand.stoppedAt + archived +
+  //            do-not-email, people not contacted yet set aside, coming days
+  //            unpinned. What changed goes in Setting brandStopLog for the Undo.
+  //            A person stopped on their own can still widen to their brand.
   async stopContact({ targetId, scope, preview = false, expect, __user }: any) {
     const sc = scope === 'brand' ? 'brand' : scope === 'person' ? 'person' : null
     if (!sc) throw new Error('Just this person, or the whole brand?')
     const t = await prisma.target.findUnique({ where: { id: String(targetId || '') }, include: { contact: true, brand: true } })
     if (!t) throw new Error('Person not found')
     const actor = __user ?? null
-    if (t.handDeclinedAt) return { already: true, scope: t.handDeclinedScope || 'person', contactName: t.contact.name }
+    const who = { contactName: t.contact.name, brandName: t.brand.name }
+    const widen = sc === 'brand' && !!t.handDeclinedAt && t.handDeclinedScope !== 'brand' && !t.brand.stoppedAt
+    if (t.handDeclinedAt && !widen) return { already: true, scope: t.handDeclinedScope || 'person', ...who }
     if (sc === 'person') {
       const now = new Date()
-      await prisma.$transaction([
-        prisma.target.update({ where: { id: t.id }, data: { handDeclinedAt: now, handDeclinedScope: 'person' } }),
-        ...(t.contact.doNotContactAt ? [] : [prisma.contact.update({ where: { id: t.contactId }, data: { doNotContactAt: now, doNotContactBy: actor } })]),
-        prisma.targetEvent.create({ data: { targetId: t.id, kind: 'doesn’t want to continue', actor, detail: 'just them' } }),
-      ])
-      return { ok: true, scope: 'person', contactName: t.contact.name, brandName: t.brand.name, at: now }
+      const twins = await stopTwins(prisma, t.contact)
+      const done = await prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${PERSON_STOP_KEY}))::text`
+        const fresh = await tx.target.findUnique({ where: { id: t.id }, select: { handDeclinedAt: true } })
+        if (fresh?.handDeclinedAt) return null
+        await tx.target.update({ where: { id: t.id }, data: { handDeclinedAt: now, handDeclinedScope: 'person' } })
+        if (!t.contact.doNotContactAt) await tx.contact.update({ where: { id: t.contactId }, data: { doNotContactAt: now, doNotContactBy: actor } })
+        const pe = await stopTwinsApply(tx, twins, now, actor, [])
+        if (pe.twins.length || pe.shelved.length) await changePersonLog(tx, log => { log[t.id] = pe })
+        await tx.targetEvent.create({ data: { targetId: t.id, kind: 'doesn’t want to continue', actor, detail: 'just them' } })
+        return pe
+      }, { maxWait: 10000, timeout: 20000 })
+      if (!done) return { already: true, scope: 'person', ...who }
+      return { ok: true, scope: 'person', ...who, at: now, twins: twinWords(twins) }
     }
-    if (t.brand.stoppedAt) return { already: true, scope: 'brand', contactName: t.contact.name }
-    const p = await brandStopPlan(t.brandId, t.id)
-    const shown = { scope: 'brand' as const, contactName: t.contact.name, brandName: t.brand.name, ...p.show, expect: p.sig }
+    if (t.brand.stoppedAt) return { already: true, scope: 'brand', ...who }
+    const [p, twins] = await Promise.all([brandStopPlan(t.brandId, t.id), widen ? Promise.resolve([] as StopTwin[]) : stopTwins(prisma, t.contact)])
+    const sig = JSON.stringify([p.sig, twins.map(c => c.id).sort()])
+    const shown = { scope: 'brand' as const, ...who, ...p.show, twins: twinWords(twins), expect: sig }
     if (preview) return { preview: true, ...shown }
-    if (String(expect || '') !== p.sig) return { stale: true, ...shown }
+    if (String(expect || '') !== sig) return { stale: true, ...shown }
     const now = new Date()
     const today = localDayKey()
     const todayPinned = p.pins.some(x => x.day === today)
@@ -11154,9 +11364,11 @@ const handlers: Record<string, Handler> = {
       before: { passedAt: t.brand.passedAt?.toISOString() ?? null, doNotEmail: t.brand.doNotEmail, passedTodayAt: t.brand.passedTodayAt?.toISOString() ?? null },
       shelved: p.shelve.map(x => ({ id: x.id, queuedFor: x.queuedFor?.toISOString() ?? null, shelvedHow: x.shelvedHow, shelved: x.shelved })),
       pins: p.pins,
+      targetBefore: widen ? { scope: 'person' } : null,
     }
     await prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${BRAND_STOP_KEY}))::text`
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${PERSON_STOP_KEY}))::text`
       const fresh = await tx.brand.findUnique({ where: { id: t.brandId }, select: { stoppedAt: true } })
       if (fresh?.stoppedAt) throw new Error(`${t.brand.name} already said they don't want to continue`)
       await tx.brand.update({
@@ -11166,16 +11378,19 @@ const handlers: Record<string, Handler> = {
       if (p.shelve.length) {
         await tx.target.updateMany({ where: { id: { in: p.shelve.map(x => x.id) }, status: { in: ['queued', 'drafted'] } }, data: { shelved: true, shelvedHow: null, queuedFor: null } })
       }
-      await tx.target.update({ where: { id: t.id }, data: { handDeclinedAt: now, handDeclinedScope: 'brand' } })
-      if (!t.contact.doNotContactAt) await tx.contact.update({ where: { id: t.contactId }, data: { doNotContactAt: now, doNotContactBy: actor } })
+      // Widened from their own stop: their mark keeps its own time (it stays
+      // when the brand's Undo runs).
+      await tx.target.update({ where: { id: t.id }, data: widen ? { handDeclinedScope: 'brand' } : { handDeclinedAt: now, handDeclinedScope: 'brand' } })
+      if (!widen) {
+        if (!t.contact.doNotContactAt) await tx.contact.update({ where: { id: t.contactId }, data: { doNotContactAt: now, doNotContactBy: actor } })
+        const pe = await stopTwinsApply(tx, twins, now, actor, p.shelve.map(x => x.id))
+        if (pe.twins.length || pe.shelved.length) await changePersonLog(tx, log => { log[t.id] = pe })
+      }
       await tx.targetEvent.create({ data: { targetId: t.id, kind: 'doesn’t want to continue', actor, detail: `whole brand — nobody at ${t.brand.name} is contacted` } })
-      const row = await tx.setting.findUnique({ where: { key: BRAND_STOP_KEY } })
-      let log: Record<string, BrandStop> = {}
-      try { log = row ? JSON.parse(row.value) || {} : {} } catch { log = {} }
+      const log = await readJsonSetting<Record<string, BrandStop>>(tx, BRAND_STOP_KEY, {})
       log[t.brandId] = entry
       const keep = Object.entries(log).sort((a, b) => Date.parse(b[1].at) - Date.parse(a[1].at)).slice(0, 500)
-      const v = JSON.stringify(Object.fromEntries(keep))
-      await tx.setting.upsert({ where: { key: BRAND_STOP_KEY }, create: { key: BRAND_STOP_KEY, value: v }, update: { value: v } })
+      await writeJsonSetting(tx, BRAND_STOP_KEY, Object.fromEntries(keep))
     }, { maxWait: 10000, timeout: 20000 })
     // Off the coming Schedule days (as Archive's unpin does).
     if (p.pins.length) {
@@ -11186,80 +11401,34 @@ const handlers: Record<string, Handler> = {
     return { ok: true, ...shown, at: now }
   },
 
-  // The Undo of either: the person can be contacted again; for the whole
-  // brand, exactly what the stop changed comes back where nothing moved it
-  // since (a brand archived by hand after stays archived, a person queued
-  // again or passed since stays as they are) — named in `stays`. `brandId`
-  // alone: the brand page's banner, when the person who said it isn't known.
-  async undoStopContact({ targetId, brandId, __user }: any) {
+  // The Undo of either: the person (and every copy marked with them) can be
+  // contacted again; for the whole brand, exactly what the stop changed comes
+  // back where nothing moved it since (a brand archived again by hand stays
+  // archived, a person queued or passed since stays as they are, a Schedule
+  // day gone by or taken off is named) — `stays`. `preview` says it all
+  // first (the page shows it before a whole brand comes back — rule 6).
+  // `brandId` alone: the brand page's banner.
+  async undoStopContact({ targetId, brandId, preview = false, __user }: any) {
     let t = targetId ? await prisma.target.findUnique({ where: { id: String(targetId) }, include: { contact: true, brand: true } }) : null
     if (!t && brandId) t = await prisma.target.findFirst({ where: { brandId: String(brandId), handDeclinedScope: 'brand', handDeclinedAt: { not: null } }, include: { contact: true, brand: true } })
     const brand = t ? t.brand : brandId ? await prisma.brand.findUnique({ where: { id: String(brandId) } }) : null
     if (!t && !brand) throw new Error('Person not found')
     const actor = __user ?? null
-    const stays: string[] = []
-    const back: string[] = []
-    const ms = (d: Date | string | null | undefined) => (d ? new Date(d).getTime() : NaN)
-    const brandScope = t ? t.handDeclinedScope === 'brand' : !!brand?.stoppedAt
-    if (brandScope && brand?.stoppedAt) {
-      const row = await prisma.setting.findUnique({ where: { key: BRAND_STOP_KEY } })
-      let log: Record<string, BrandStop> = {}
-      try { log = row ? JSON.parse(row.value) || {} : {} } catch { log = {} }
-      const e = log[brand.id]
-      const today = localDayKey()
-      await prisma.$transaction(async tx => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${BRAND_STOP_KEY}))::text`
-        const data: Prisma.BrandUpdateInput = { stoppedAt: null, stoppedBy: null }
-        if (e) {
-          if (ms(brand.passedAt) === ms(e.at)) data.passedAt = e.before.passedAt ? new Date(e.before.passedAt) : null
-          else if (brand.passedAt && !e.before.passedAt) stays.push('archived since')
-          if (!e.before.doNotEmail && brand.doNotEmail) data.doNotEmail = false
-          if (ms(brand.passedTodayAt) === ms(e.at)) data.passedTodayAt = e.before.passedTodayAt ? new Date(e.before.passedTodayAt) : null
-        }
-        await tx.brand.update({ where: { id: brand.id }, data })
-        if (e?.shelved.length) {
-          const now = await tx.target.findMany({ where: { id: { in: e.shelved.map(x => x.id) } }, select: { id: true, status: true, shelved: true, shelvedHow: true, contact: { select: { name: true } } } })
-          for (const x of e.shelved) {
-            const n = now.find(r => r.id === x.id)
-            if (!n) continue
-            if (!n.shelved || n.shelvedHow !== null || !['queued', 'drafted'].includes(n.status)) { stays.push(n.contact.name); continue }
-            const qf = x.queuedFor && localDayKey(new Date(x.queuedFor)) >= today ? new Date(x.queuedFor) : null
-            await tx.target.update({ where: { id: n.id }, data: { shelved: !!x.shelved, shelvedHow: x.shelvedHow, queuedFor: x.shelved ? null : qf } })
-            back.push(n.contact.name)
-          }
-        }
-        if (e) {
-          delete log[brand.id]
-          await tx.setting.upsert({ where: { key: BRAND_STOP_KEY }, create: { key: BRAND_STOP_KEY, value: JSON.stringify(log) }, update: { value: JSON.stringify(log) } })
-        }
-      }, { maxWait: 10000, timeout: 20000 })
-      // Back on the days it came off, where they're still coming and it isn't
-      // planned anywhere else since.
-      const repinned: string[] = []
-      if (e?.pins.length) {
-        const plan = await readPlan()
-        const elsewhere = Object.keys(plan).some(k => k >= today && plan[k]?.brandIds?.includes(brand.id))
-        if (!elsewhere) {
-          for (const x of e.pins) {
-            if (x.day < today || !plan[x.day]) continue
-            const ids = plan[x.day].brandIds || (plan[x.day].brandIds = [])
-            ids.splice(Math.min(x.index, ids.length), 0, brand.id)
-            repinned.push(x.day)
-          }
-          if (repinned.length) await writePlan(plan)
-        }
-      }
-      if (repinned.length) back.push('back on ' + repinned.map(k => NY_DAY_LABEL.format(new Date(k + 'T12:00:00Z'))).join(', '))
+    const who = { contactName: t?.contact.name ?? null, brandName: brand?.name ?? null }
+    const scopeOf = (bs: boolean) => (bs ? 'brand' : 'person')
+    if (!t?.handDeclinedAt && !brand?.stoppedAt) return { ok: true, already: true, scope: scopeOf(t?.handDeclinedScope === 'brand'), ...who, back: [], stays: [] }
+    if (preview) {
+      const r = await undoStopCore(prisma, t, brand, false, actor)
+      const pin = r.brandScope && brand ? await repinStopped(brand.id, r.pins, false) : { days: [], stays: [] }
+      return { preview: true, scope: scopeOf(r.brandScope), ...who, back: r.back, days: pin.days, stays: [...r.stays, ...pin.stays], unarchive: r.unarchive, emailsOn: r.emailsOn, twins: r.twins }
     }
-    if (t && t.handDeclinedAt) {
-      const at = t.handDeclinedAt
-      await prisma.$transaction([
-        prisma.target.update({ where: { id: t.id }, data: { handDeclinedAt: null, handDeclinedScope: null } }),
-        ...(ms(t.contact.doNotContactAt) === ms(at) ? [prisma.contact.update({ where: { id: t.contactId }, data: { doNotContactAt: null, doNotContactBy: null } })] : []),
-        prisma.targetEvent.create({ data: { targetId: t.id, kind: 'took back “doesn’t want to continue”', actor, detail: brandScope ? 'whole brand' : 'just them' } }),
-      ])
-    }
-    return { ok: true, scope: brandScope ? 'brand' : 'person', contactName: t?.contact.name ?? null, brandName: brand?.name ?? null, back, stays }
+    const r = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${BRAND_STOP_KEY}))::text`
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${PERSON_STOP_KEY}))::text`
+      return undoStopCore(tx, t, brand, true, actor)
+    }, { maxWait: 10000, timeout: 20000 })
+    const pin = r.brandScope && brand ? await repinStopped(brand.id, r.pins, true) : { days: [], stays: [] }
+    return { ok: true, scope: scopeOf(r.brandScope), ...who, back: [...r.back, ...(pin.days.length ? ['back on ' + pin.days.join(', ')] : [])], stays: [...r.stays, ...pin.stays], twins: r.twins }
   },
 
   async handTemplate({ kind }: any = {}) {
@@ -11354,9 +11523,9 @@ const handlers: Record<string, Handler> = {
       orderBy: [{ repliedAt: 'desc' }, { updatedAt: 'desc' }],
       select: {
         id: true, status: true, sentAt: true, repliedAt: true,
-        nextStep: true, followUpAt: true,
-        brand: { select: { id: true, name: true, category: true } },
-        contact: { select: { name: true, title: true, linkedinUrl: true } },
+        nextStep: true, followUpAt: true, handDeclinedAt: true,
+        brand: { select: { id: true, name: true, category: true, stoppedAt: true } },
+        contact: { select: { name: true, title: true, linkedinUrl: true, doNotContactAt: true } },
       },
     })
 
@@ -11383,7 +11552,9 @@ const handlers: Record<string, Handler> = {
     }
 
     return {
-      people: replied.map(t => ({
+      // Keep it moving — never with someone who said they don't want to
+      // continue (the brand counts above still count their reply).
+      people: replied.filter(t => !t.handDeclinedAt && !t.contact.doNotContactAt && !t.brand.stoppedAt).map(t => ({
         id: t.id, status: t.status,
         brandId: t.brand.id, brand: t.brand.name,
         person: t.contact.name, title: t.contact.title,
@@ -11643,6 +11814,12 @@ const handlers: Record<string, Handler> = {
   },
 
   async setTargetShelved({ targetId, shelved }: any) {
+    // Promote / Queue now never brings back someone who said they don't want
+    // to continue, or anyone at their brand (the stop set them aside).
+    if (!shelved) {
+      const t = await prisma.target.findUnique({ where: { id: String(targetId || '') }, include: { contact: { select: { name: true, doNotContactAt: true } }, brand: { select: { name: true, stoppedAt: true } } } })
+      if (t) assertNotStopped(t)
+    }
     return prisma.target.update({
       where: { id: targetId },
       data: { shelved: !!shelved, shelvedHow: null },

@@ -53,19 +53,21 @@ let n = 0;
 const ok = (name) => { n++; console.log('  ok — ' + name); };
 const DAY = 864e5;
 const ago = (d) => new Date(Date.now() - d * DAY);
-// A coming Tue–Thu (New York day key), a week or more out.
-function comingSendingDay() {
-  for (let i = 7; i < 20; i++) {
+// Coming Tue–Thu days (New York day keys), a week or more out.
+function comingSendingDays(count) {
+  const out = [];
+  for (let i = 7; i < 30 && out.length < count; i++) {
     const k = new Date(Date.now() + i * DAY).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
     const dow = new Date(k + 'T12:00:00Z').getUTCDay();
-    if (dow >= 2 && dow <= 4) return k;
+    if (dow >= 2 && dow <= 4) out.push(k);
   }
-  throw new Error('no sending day');
+  return out;
 }
 const zachIds = async (args) => {
   const z = await data('zachTodo', args || {});
   return z.brands.flatMap((g) => g.people.map((p) => p.targetId)).sort();
 };
+const readPlan = async (prisma) => JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value);
 
 (async () => {
   let server = null, prisma = null;
@@ -91,7 +93,9 @@ const zachIds = async (args) => {
     ok('the dashboard runs locally (' + Math.round((Date.now() - t0) / 1000) + ' s to first answer)');
 
     // Alpha Water: two accepted (Alex, Beth), one in today's list (Dana), one
-    // waiting in the pool (Ed), one invite still out (Fay). Bravo: Zoe accepted.
+    // waiting in the pool (Ed), one invite still out (Fay), a call booked
+    // (Carl). Bravo: Zoe accepted, and a second copy of Alex (same LinkedIn
+    // profile, another link form) waiting in its pool.
     await prisma.brand.create({ data: { id: 'alpha', name: 'Alpha Water', category: 'electrolytes', tier: 'growth', usStatus: 'yes' } });
     await prisma.brand.create({ data: { id: 'bravo', name: 'Bravo Soda', category: 'beverage', tier: 'growth', usStatus: 'yes' } });
     const person = async (id, brandId, name, title, li, t) => {
@@ -104,19 +108,26 @@ const zachIds = async (args) => {
     await person('dana', 'alpha', 'Dana Dunn', 'Marketing Manager', 'https://www.linkedin.com/in/danadunn/', { status: 'queued', queuedFor: new Date() });
     await person('ed', 'alpha', 'Ed Ellis', 'Events Manager', 'https://www.linkedin.com/in/edellis/', { status: 'queued' });
     await person('fay', 'alpha', 'Fay Fox', 'Head of Brand', 'https://www.linkedin.com/in/fayfox/', { status: 'sent', sentAt: ago(3) });
+    await person('carl', 'alpha', 'Carl Cole', 'VP Marketing', 'https://www.linkedin.com/in/carlcole/', { status: 'replied', sentAt: ago(12), repliedAt: ago(4), callAt: new Date(Date.now() + 3 * DAY) });
     await person('zoe', 'bravo', 'Zoe Zhang', 'Partnerships Lead', 'https://www.linkedin.com/in/zoezhang/', { status: 'accepted', sentAt: ago(9) });
-    const day = comingSendingDay();
-    await prisma.setting.create({ data: { key: 'outreachPlan', value: JSON.stringify({ [day]: { category: null, brandIds: ['bravo', 'alpha'] } }) } });
+    await person('alex2', 'bravo', 'Alex S.', 'Brand Manager', 'http://linkedin.com/in/AlexSeamon', { status: 'queued' });
+    const [day, day2] = comingSendingDays(2);
+    // day2 holds only Alpha: the stop empties it (and so drops it).
+    await prisma.setting.create({ data: { key: 'outreachPlan', value: JSON.stringify({ [day]: { category: null, brandIds: ['bravo', 'alpha'] }, [day2]: { category: null, brandIds: ['alpha'] } }) } });
     assert.deepEqual(await zachIds(), ['t_alex', 't_beth', 't_zoe']);
     ok('Zach’s list has everyone who accepted');
 
     // ---- just them ----
     const r1 = await data('handStep', { targetId: 't_alex', step: 'declined', scope: 'person' });
     assert.equal(r1.scope, 'person');
+    assert.deepEqual(r1.twins, ['Alex S. (Bravo Soda)'], 'their other copy is named');
     let alex = await prisma.contact.findUnique({ where: { id: 'c_alex' }, include: { targets: true } });
     assert.ok(alex.doNotContactAt, 'the person is marked');
     assert.equal(alex.targets[0].status, 'accepted', 'their status stays (they were reached)');
     assert.equal(alex.targets[0].handDeclinedScope, 'person');
+    let alex2 = await prisma.contact.findUnique({ where: { id: 'c_alex2' }, include: { targets: true } });
+    assert.equal(alex2.doNotContactAt?.getTime(), alex.doNotContactAt.getTime(), 'the other copy is marked at the same moment');
+    assert.ok(alex2.targets[0].shelved && alex2.targets[0].shelvedHow === null, 'its waiting row is set aside');
     assert.deepEqual(await zachIds(), ['t_beth', 't_zoe'], 'off Zach’s list; the others at the brand stay');
     let z = await data('zachTodo');
     assert.ok(z.done.some((d) => d.targetId === 't_alex' && d.kind === 'declined' && d.scope === 'person'), 'in the Done fold');
@@ -125,10 +136,13 @@ const zachIds = async (args) => {
     assert.equal(z.brandStopped, null);
     const again = await data('handStep', { targetId: 't_alex', step: 'declined', scope: 'person' });
     assert.equal(again.already, true, 'a second click changes nothing');
-    ok('just them: marked, status kept, off Zach’s list, the others stay');
+    ok('just them: marked with their other copy, status kept, off Zach’s list, the others stay');
 
     await refused('handStep', { targetId: 't_alex', step: 'dm' }, /Alex Seamon said they don't want to continue/);
     await refused('queueContact', { contactId: 'c_alex' }, /don't want to continue/);
+    await refused('queueContact', { contactId: 'c_alex2' }, /don't want to continue/);
+    await refused('setTargetShelved', { targetId: 't_alex2', shelved: false }, /don't want to continue/);
+    await refused('setTargetStatus', { targetId: 't_alex', dmSent: true }, /don't want to continue/);
     await refused('upsertContact', { brandId: 'alpha', name: 'alex seamon', title: 'Partnerships' }, /don't want to continue/);
     await refused('upsertContact', { brandId: 'bravo', name: 'A. Seamon', linkedinUrl: 'http://linkedin.com/in/AlexSeamon' }, /don't want to continue/);
     const imp = await data('importContacts', { rows: [
@@ -136,18 +150,30 @@ const zachIds = async (args) => {
       { brandName: 'Bravo Soda', name: 'Alexander Seamon', linkedinUrl: 'https://www.linkedin.com/in/AlexSeamon' },
     ] });
     assert.equal(imp.optedOut, 2, JSON.stringify(imp));
-    assert.equal(await prisma.contact.count({ where: { name: { contains: 'Seamon', mode: 'insensitive' } } }), 1, 'no second copy anywhere');
-    assert.equal(await prisma.contact.count({ where: { brandId: 'alpha', name: 'Alex Seamon' } }), 1, 'no second copy');
-    ok('nothing reaches them again: no step, no queue, no second copy by hand or import');
+    assert.equal(await prisma.contact.count({ where: { name: { contains: 'Seamon', mode: 'insensitive' } } }), 1, 'no new copy anywhere');
+    const accepted = await data('listTargets', { status: 'accepted' });
+    assert.ok(!accepted.some((t) => t.id === 't_alex'), 'off Results’ “They accepted — send the DM”');
+    await data('queueBrandTargets', { brandId: 'bravo' }).catch(() => {});
+    assert.ok((await prisma.target.findUnique({ where: { id: 't_alex2' } })).shelved, 'the queue never promotes the other copy');
+    ok('nothing reaches them again: no step, no queue, no Results prompt, no copy by hand or import');
 
-    await data('handStep', { targetId: 't_alex', step: 'declined', on: false });
+    const upv = await data('undoStopContact', { targetId: 't_alex', preview: true });
+    assert.equal(upv.preview, true);
+    assert.equal(upv.twins, 1);
+    assert.ok((await prisma.contact.findUnique({ where: { id: 'c_alex' } })).doNotContactAt, 'a preview writes nothing');
+    const u1 = await data('handStep', { targetId: 't_alex', step: 'declined', on: false });
+    assert.equal(u1.twins, 1);
+    assert.ok(u1.back.some((x) => x.startsWith('Alex S.')), JSON.stringify(u1));
     alex = await prisma.contact.findUnique({ where: { id: 'c_alex' }, include: { targets: true } });
+    alex2 = await prisma.contact.findUnique({ where: { id: 'c_alex2' }, include: { targets: true } });
     assert.equal(alex.doNotContactAt, null);
     assert.equal(alex.targets[0].handDeclinedAt, null);
+    assert.equal(alex2.doNotContactAt, null, 'the other copy too');
+    assert.ok(!alex2.targets[0].shelved, 'its row back in the pool');
     assert.deepEqual(await zachIds(), ['t_alex', 't_beth', 't_zoe']);
     await data('handStep', { targetId: 't_alex', step: 'dm' });
     await data('handStep', { targetId: 't_alex', step: 'dm', on: false });
-    ok('Undo: they’re back on the list and can be written to');
+    ok('Undo (previewed): they and their other copy are back and can be written to');
 
     // ---- the whole brand ----
     const pv = await data('handStep', { targetId: 't_alex', step: 'declined', scope: 'brand', preview: true });
@@ -156,13 +182,15 @@ const zachIds = async (args) => {
     assert.deepEqual(pv.today, ['Dana Dunn']);
     assert.deepEqual(pv.waiting, ['Ed Ellis']);
     assert.deepEqual(pv.invites, ['Fay Fox']);
-    assert.equal(pv.days.length, 1);
+    assert.deepEqual(pv.calls.map((c) => c.name), ['Carl Cole']);
+    assert.deepEqual(pv.twins, ['Alex S. (Bravo Soda)']);
+    assert.equal(pv.days.length, 2);
     assert.equal(pv.archived, false);
     assert.equal(pv.doNotEmail, false);
     let alpha = await prisma.brand.findUnique({ where: { id: 'alpha' } });
     assert.equal(alpha.stoppedAt, null, 'a preview writes nothing');
     assert.equal(alpha.passedAt, null);
-    ok('the whole brand: a preview names who stops and what’s left as it is, writes nothing');
+    ok('the whole brand: a preview names who stops, their other copy and what’s left as it is, writes nothing');
 
     const st = await data('handStep', { targetId: 't_alex', step: 'declined', scope: 'brand', expect: 'not-the-preview' });
     assert.equal(st.stale, true, 'an expect that isn’t the preview’s is shown again');
@@ -176,44 +204,111 @@ const zachIds = async (args) => {
     assert.ok(tOf('dana').shelved && !tOf('dana').queuedFor, 'out of today’s list');
     assert.ok(tOf('ed').shelved, 'out of the pool');
     assert.equal(tOf('fay').status, 'sent', 'an invite still out is left as it is');
+    assert.ok((await prisma.contact.findUnique({ where: { id: 'c_alex2' } })).doNotContactAt, 'their other copy is marked');
     assert.deepEqual(await zachIds(), ['t_zoe'], 'nobody at the brand on Zach’s list; another brand stays');
-    let plan = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value);
+    let plan = await readPlan(prisma);
     assert.deepEqual(plan[day].brandIds, ['bravo'], 'off the coming Schedule day');
+    assert.equal(plan[day2], undefined, 'the day it emptied is gone');
     z = await data('zachTodo', { brandId: 'alpha' });
     assert.ok(z.brandStopped && z.brandStopped.targetId === 't_alex');
-    ok('Stop: archived, do not email, its queue set aside, off the Schedule, off Zach’s list');
+    assert.deepEqual(z.calls.map((c) => [c.name, !!c.stopped]), [['Carl Cole', true]], 'the booked call stays listed, marked, to cancel');
+    ok('Stop: archived, do not email, its queue set aside, off the Schedule, off Zach’s list; the call stays to cancel');
 
     await refused('queueBrandTargets', { brandId: 'alpha' }, /Alpha Water said they don't want to continue/);
     await refused('queueContact', { contactId: 'c_dana' }, /don't want to continue/);
+    await refused('setTargetShelved', { targetId: 't_dana', shelved: false }, /don't want to continue/);
     await refused('handStep', { targetId: 't_beth', step: 'dm' }, /Alpha Water said they don't want to continue/);
     await refused('setBrandPassed', { brandId: 'alpha', passed: false }, /don't want to continue/);
     await refused('updateBrand', { brandId: 'alpha', doNotEmail: false }, /Alpha Water said they don't want to continue/);
+    await refused('mergeBrands', { fromId: 'alpha', toId: 'bravo' }, /Alpha Water said they don't want to continue/);
+    await refused('mergeBrands', { fromId: 'bravo', toId: 'alpha' }, /Alpha Water said they don't want to continue/);
     await data('updateBrand', { brandId: 'alpha', doNotEmail: false, notes: 'Said no on LinkedIn' });
     assert.equal((await prisma.brand.findUnique({ where: { id: 'alpha' } })).doNotEmail, true, 'do not email stays on');
     const up = await call('upsertContact', { brandId: 'alpha', name: 'Gus Gray', title: 'Brand Manager' });
     if (up.ok) assert.equal(await prisma.target.count({ where: { brandId: 'alpha', contact: { name: 'Gus Gray' } } }), 0, 'a person added later is never queued');
-    ok('nothing at the brand can be queued, written to, un-archived or emailed until the Undo');
+    const ro = await data('repliedOverview');
+    assert.ok(!ro.people.some((x) => x.id === 't_carl'), 'off “They replied — keep it moving”');
+    assert.ok(!(await data('listTargets', { status: 'accepted' })).some((t) => t.brandId === 'alpha'), 'off “They accepted — send the DM”');
+    ok('nothing at the brand can be queued, promoted, written to, merged away, un-archived or emailed until the Undo');
 
     // Someone changed since the stop stays as they are.
     await prisma.target.update({ where: { id: 't_ed' }, data: { status: 'passed' } });
+    const bpv = await data('undoStopContact', { brandId: 'alpha', preview: true });
+    assert.equal(bpv.scope, 'brand');
+    assert.ok(bpv.unarchive && bpv.emailsOn, 'says it comes off the archive, emails on');
+    assert.ok(bpv.back.includes('Dana Dunn (today’s list)'), JSON.stringify(bpv));
+    assert.ok(bpv.stays.includes('Ed Ellis'), 'changed since → named');
+    assert.equal(bpv.days.length, 2, 'both days, the one it emptied too');
+    assert.ok((await prisma.brand.findUnique({ where: { id: 'alpha' } })).stoppedAt, 'the Undo’s preview writes nothing');
     const u = await data('undoStopContact', { brandId: 'alpha' });
     assert.equal(u.scope, 'brand');
-    assert.ok(u.back.includes('Dana Dunn'), JSON.stringify(u));
+    assert.ok(u.back.includes('Dana Dunn (today’s list)'), JSON.stringify(u));
     assert.ok(u.stays.includes('Ed Ellis'), 'changed since → stays, named');
-    assert.ok(u.back.some((x) => /^back on /.test(x)), 'back on the Schedule day');
+    assert.ok(u.back.some((x) => /^back on /.test(x)), 'back on the Schedule days');
     alpha = await prisma.brand.findUnique({ where: { id: 'alpha' }, include: { targets: true, contacts: true } });
     assert.ok(!alpha.stoppedAt && !alpha.passedAt && !alpha.doNotEmail, 'not stopped, not archived, emails on');
     const dana = alpha.targets.find((t) => t.id === 't_dana');
     assert.ok(!dana.shelved && dana.queuedFor, 'Dana back in today’s list');
     assert.equal(alpha.contacts.find((c) => c.id === 'c_alex').doNotContactAt, null, 'Alex can be reached again');
-    plan = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value);
+    assert.equal((await prisma.contact.findUnique({ where: { id: 'c_alex2' } })).doNotContactAt, null, 'and their other copy');
+    plan = await readPlan(prisma);
     assert.deepEqual(plan[day].brandIds, ['bravo', 'alpha'], 'back where it was on the day');
+    assert.deepEqual(plan[day2] && plan[day2].brandIds, ['alpha'], 'the day it emptied is back, with it');
     assert.deepEqual(await zachIds(), ['t_alex', 't_beth', 't_zoe']);
-    ok('Undo by brand puts back exactly what the stop changed; someone changed since stays, named');
+    ok('Undo by brand (previewed) puts back exactly what the stop changed, the emptied day too; someone changed since stays, named');
+
+    // ---- widen: just them first, then the whole brand through them ----
+    await data('handStep', { targetId: 't_alex', step: 'declined', scope: 'person' });
+    const wpv = await data('handStep', { targetId: 't_alex', step: 'declined', scope: 'brand', preview: true });
+    assert.equal(wpv.preview, true, 'a person stopped on their own can still widen to the brand');
+    assert.deepEqual(wpv.twins, [], 'their copy is already marked');
+    const w = await data('handStep', { targetId: 't_alex', step: 'declined', scope: 'brand', expect: wpv.expect });
+    assert.equal(w.ok, true);
+    assert.ok((await prisma.brand.findUnique({ where: { id: 'alpha' } })).stoppedAt, 'the brand is stopped');
+    const wu = await data('handStep', { targetId: 't_alex', step: 'declined', on: false });
+    assert.equal(wu.scope, 'brand');
+    assert.ok(wu.stays.some((x) => /said it for themselves first/.test(x)), JSON.stringify(wu));
+    assert.equal((await prisma.brand.findUnique({ where: { id: 'alpha' } })).stoppedAt, null, 'the brand is back');
+    alex = await prisma.contact.findUnique({ where: { id: 'c_alex' }, include: { targets: true } });
+    assert.ok(alex.doNotContactAt && alex.targets[0].handDeclinedScope === 'person', 'Alex still isn’t contacted');
+    await data('handStep', { targetId: 't_alex', step: 'declined', on: false });
+    assert.equal((await prisma.contact.findUnique({ where: { id: 'c_alex' } })).doNotContactAt, null);
+    assert.equal((await prisma.contact.findUnique({ where: { id: 'c_alex2' } })).doNotContactAt, null);
+    ok('widened to the brand: the brand’s Undo leaves the person who said it themselves stopped; theirs takes it back');
 
     const ev = await prisma.targetEvent.findMany({ where: { targetId: 't_alex', kind: { contains: 'continue' } }, orderBy: { createdAt: 'asc' } });
-    assert.deepEqual(ev.map((e) => e.detail), ['just them', 'just them', 'whole brand — nobody at Alpha Water is contacted', 'whole brand']);
+    assert.deepEqual(ev.map((e) => e.detail), ['just them', 'just them', 'whole brand — nobody at Alpha Water is contacted', 'whole brand',
+      'just them', 'whole brand — nobody at Alpha Water is contacted', 'whole brand — they still aren’t contacted', 'just them']);
     ok('each step and Undo is on the person’s history');
+
+    // ---- the same person twice at one brand: merges keep the mark straight ----
+    await prisma.brand.create({ data: { id: 'charlie', name: 'Charlie Chews', category: 'beverage', tier: 'growth', usStatus: 'yes' } });
+    await person('cam1', 'charlie', 'Cam Cole', 'Head of Partnerships', 'https://www.linkedin.com/in/camcole/', { status: 'replied', sentAt: ago(9), repliedAt: ago(3) });
+    await person('cam2', 'charlie', 'Cam Cole', 'Partnerships', null, { status: 'accepted', sentAt: ago(9) });
+    // (a) the copy that said it is merged away; the stop is taken back; then the merge.
+    await data('handStep', { targetId: 't_cam2', step: 'declined', scope: 'person' });
+    let mp = await data('mergePeople', { brandId: 'charlie' });
+    await data('mergePeople', { brandId: 'charlie', confirm: true, expect: mp.expect });
+    const kept = await prisma.target.findFirst({ where: { brandId: 'charlie' } });
+    assert.ok(kept.handDeclinedAt, 'the outreach row that stays carries the mark');
+    await data('undoStopContact', { targetId: kept.id });
+    await data('undoMergePeople', { brandId: 'charlie', confirm: true });
+    let cams = await prisma.contact.findMany({ where: { brandId: 'charlie' }, include: { targets: true } });
+    assert.equal(cams.length, 2);
+    assert.ok(cams.every((c) => !c.doNotContactAt && c.targets.every((t) => !t.handDeclinedAt)), 'taken back before the merge’s Undo: no copy comes back marked');
+    // (b) merged first, then the stop, then the merge's Undo: both copies keep it, and its Undo clears both.
+    mp = await data('mergePeople', { brandId: 'charlie' });
+    await data('mergePeople', { brandId: 'charlie', confirm: true, expect: mp.expect });
+    const kept2 = await prisma.target.findFirst({ where: { brandId: 'charlie' } });
+    await data('handStep', { targetId: kept2.id, step: 'declined', scope: 'person' });
+    await data('undoMergePeople', { brandId: 'charlie', confirm: true });
+    cams = await prisma.contact.findMany({ where: { brandId: 'charlie' } });
+    assert.equal(cams.length, 2);
+    assert.ok(cams.every((c) => c.doNotContactAt) && cams[0].doNotContactAt.getTime() === cams[1].doNotContactAt.getTime(), 'still said: both copies keep it');
+    await data('undoStopContact', { targetId: kept2.id });
+    cams = await prisma.contact.findMany({ where: { brandId: 'charlie' } });
+    assert.ok(cams.every((c) => !c.doNotContactAt), 'its Undo clears both');
+    ok('merging the person’s two copies, and undoing it, never strands the mark on one of them');
 
     console.log('stop e2e: all ' + n + ' passed');
   } catch (e) {

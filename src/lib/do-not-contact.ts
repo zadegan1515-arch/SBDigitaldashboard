@@ -51,6 +51,11 @@ export function stoppedMatch(ix: StopIndex, c: { brandId?: string | null; name?:
   return null
 }
 
+// What to look a person's other copies up by (stopTwins in route.ts).
+export function stopKeys(c: { linkedinUrl?: unknown; email?: unknown }): { slug: string; email: string } {
+  return { slug: linkedinSlug(c.linkedinUrl), email: emailOf(c.email) }
+}
+
 const dayWords = (at: Date | string | null | undefined) => {
   const d = at ? new Date(at) : null
   return d && !isNaN(d.getTime()) ? ' (' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }) + ')' : ''

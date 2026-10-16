@@ -57,7 +57,7 @@ function zachTodo(a) {
     firstTemplate: { subject: '', body: 'Thanks for connecting, (NAME)!' }, finalTemplate: { subject: '', body: 'One last note' },
     brands, people: brands.reduce((n, g) => n + g.people.length, 0), noAddress: 0, held: [], done,
     doneDays: 30, dmAfterDays: 2, nudgeAfterDays: 10, quietAfterDays: 7,
-    calls: S.brandStopped ? [] : [{ targetId: 't3', brandId: 'b1', brandName: 'Alpha Water', name: 'Carl Cole', title: 'VP Marketing', callAt: ahead(3) }],
+    calls: [Object.assign({ targetId: 't3', brandId: 'b1', brandName: 'Alpha Water', name: 'Carl Cole', title: 'VP Marketing', callAt: ahead(3) }, S.brandStopped ? { stopped: true } : {})],
     ...(a.brandId ? {
       declined: Object.keys(S.declined).map((id) => ({ targetId: id, name: NAMES[id], at: S.at[id], scope: S.declined[id] })),
       brandStopped: S.brandStopped ? { at: S.brandStopped, by: 'leo@example.com', targetId: 't1', name: 'Alex Seamon' } : null,
@@ -79,7 +79,7 @@ function handStep(a) {
     if (scope === 'brand') S.brandStopped = null;
     return { ok: true, scope, contactName: NAMES[a.targetId], brandName: 'Alpha Water', back: scope === 'brand' ? ['Dana Dunn'] : [], stays: [] };
   }
-  if (a.scope === 'person') { S.declined[a.targetId] = 'person'; S.at[a.targetId] = new Date().toISOString(); return { ok: true, scope: 'person', contactName: NAMES[a.targetId], brandName: 'Alpha Water' }; }
+  if (a.scope === 'person') { S.declined[a.targetId] = 'person'; S.at[a.targetId] = new Date().toISOString(); return { ok: true, scope: 'person', contactName: NAMES[a.targetId], brandName: 'Alpha Water', twins: a.targetId === 't1' ? ['Alex S. (Bravo Soda)'] : [] }; }
   if (a.preview) return { preview: true, ...PREVIEW, expect: S.sig };
   if (a.expect !== S.sig) return { stale: true, ...PREVIEW, others: ['Beth Baker', 'Gus Gray'], expect: S.sig };
   if (S.staleOnce) { S.staleOnce = false; S.sig = 'sig-2'; return { stale: true, ...PREVIEW, others: ['Beth Baker', 'Gus Gray'], expect: S.sig }; }
@@ -114,7 +114,19 @@ const H = {
   getActionQueue: () => ({ count: 0, items: [] }), appVersion: () => ({ sha: 'test' }), getDashboard: () => ({}),
   listBrands: () => [], categoryReach: () => ({ categories: {}, newFromLinkedIn: 0 }),
   zachTodo, getBrand, handStep, brandPlanLine: () => ({}),
-  undoStopContact: (a) => { assert.equal(a.brandId, 'b1'); S.brandStopped = null; delete S.declined.t1; return { ok: true, scope: 'brand', brandName: 'Alpha Water', contactName: 'Alex Seamon', back: ['Dana Dunn', 'back on Thu, Oct 22'], stays: [] }; },
+  // The Undo: asked first (preview), then done — by person or by brand.
+  undoStopContact: (a) => {
+    const id = a.targetId || Object.keys(S.declined).find((k) => S.declined[k] === 'brand');
+    const scope = a.brandId ? 'brand' : S.declined[id];
+    if (a.preview) {
+      return scope === 'brand'
+        ? { preview: true, scope, brandName: 'Alpha Water', contactName: NAMES[id], back: ['Dana Dunn (today’s list)'], days: ['Thu, Oct 22'], stays: ['Ed Ellis'], unarchive: true, emailsOn: true, twins: 1 }
+        : { preview: true, scope, brandName: 'Alpha Water', contactName: NAMES[id], back: [], days: [], stays: [], twins: 0 };
+    }
+    if (scope === 'brand') S.brandStopped = null;
+    delete S.declined[id];
+    return { ok: true, scope, brandName: 'Alpha Water', contactName: NAMES[id], back: scope === 'brand' ? ['Dana Dunn (today’s list)', 'back on Thu, Oct 22'] : [], stays: [], twins: scope === 'brand' ? 1 : 0 };
+  },
 };
 
 const server = http.createServer((req, res) => {
@@ -175,9 +187,11 @@ async function main() {
   assert.deepEqual(all('handStep').slice(-1)[0].args, { targetId: 't1', step: 'declined', scope: 'person' });
   assert.ok(await onHome('t2'), 'the others at the brand stay on the list');
   assert.match(await page.textContent('#zt-undo-text'), /Doesn’t want to continue: Alex Seamon/);
+  await page.waitForFunction(() => /other copy is marked too: Alex S\. \(Bravo Soda\)/.test(document.body.textContent));
   await page.click('#zt-undo-btn');
   await page.waitForSelector(home('t1'));
-  assert.deepEqual(all('handStep').slice(-1)[0].args, { targetId: 't1', step: 'declined', on: false });
+  assert.deepEqual(all('undoStopContact').map((c) => c.args), [{ targetId: 't1', preview: true }, { targetId: 't1' }], 'the Undo asks, then takes it back');
+  assert.equal(dialogs.length, 0, 'just them: no question to answer');
   // Again, then from the Done fold.
   await openHome('t1');
   await page.click(home('t1') + ' [data-ztnode="declined"]');
@@ -188,7 +202,7 @@ async function main() {
   await page.evaluate(() => { document.getElementById('zt-done').open = true; });
   await page.click('#zt-done [data-ztundo="t1"][data-kind="declined"]');
   await page.waitForSelector(home('t1'));
-  assert.deepEqual(all('handStep').slice(-1)[0].args, { targetId: 't1', step: 'declined', on: false });
+  assert.deepEqual(all('undoStopContact').slice(-1)[0].args, { targetId: 't1' });
   console.log('✓ 1. Home: Just them takes one person off (the brand’s others stay); the Undo bar and the Done fold bring them back');
 
   // 2 ---------------------------------------------------------------
@@ -224,7 +238,7 @@ async function main() {
   assert.match(await page.textContent('#zt-undo-text'), /Doesn’t want to continue: everyone at Alpha Water/);
   await page.evaluate(() => renderZachTodo());
   await page.waitForFunction(() => /Doesn’t want to continue \(whole brand\) · /.test((document.querySelector('#zt-done') || {}).textContent || ''));
-  assert.ok(!(await page.$('#zt-calls')) || !/Carl Cole/.test(await page.textContent('#zt-calls')), 'the brand’s call is off Calls booked');
+  assert.match(await page.textContent('#zt-calls'), /Carl Cole[\s\S]*Said they don’t want to continue — cancel it[\s\S]*Cancelled/, 'the brand’s call stays listed, marked, to cancel');
   assert.ok(all('handStep').length - before >= 3);
   console.log('✓ 2. Home, the whole brand: a preview first (named, left-as-is too), Back, a stale answer shown again, then the brand leaves the list');
 
@@ -237,14 +251,19 @@ async function main() {
   assert.equal(await page.$('#brand-body [data-cqueue]'), null, 'no → Queue for anyone at the brand');
   assert.equal(await page.$('#brand-body [data-clog]'), null, 'no invite / accept logging');
   assert.equal(await page.$('#brand-body [data-bract]'), null, 'nothing to log on the Outreach rows');
+  assert.equal(await page.$('#brand-body [data-shelf]'), null, 'no Promote / Queue now for anyone the stop set aside');
   await page.waitForFunction(() => /Zach’s list: Doesn’t want to continue — nobody at the brand is contacted · Undo/.test(document.querySelector('#brand-body [data-bzt="t1"]').textContent));
   assert.match(await page.textContent('#brand-body [data-bzt="t2"]'), /Zach’s list: off — the brand said they don’t want to continue$/);
   assert.match(await page.textContent('#brand-body [data-opill="t1"]'), /doesn’t want to continue/);
   const reads = all('getBrand').length;
+  const before4 = all('undoStopContact').length;
   await page.click('#b-stop-undo');
   await page.waitForFunction(() => !document.querySelector('#b-stopped'));
-  assert.match(dialogs.slice(-1)[0] || '', /Reach out to Alpha Water again\?/, 'the banner’s Undo asks first');
-  assert.ok(all('undoStopContact').length === 1 && all('getBrand').length > reads, 'undoStopContact by brand, then the page reads it again');
+  const ask = dialogs.slice(-1)[0] || '';
+  assert.match(ask, /Reach out to everyone at Alpha Water again\?/, 'the banner’s Undo asks first');
+  assert.match(ask, /Off the archive, emails on again[\s\S]*Back in the queue: Dana Dunn \(today’s list\)[\s\S]*Back on the Schedule: Thu, Oct 22[\s\S]*other copy can be reached again too[\s\S]*Left as they are: Ed Ellis/, ask);
+  assert.deepEqual(all('undoStopContact').slice(before4).map((c) => c.args), [{ brandId: 'b1', preview: true }, { brandId: 'b1' }], 'previewed, then undoStopContact by brand');
+  assert.ok(all('getBrand').length > reads, 'then the page reads it again');
   await page.waitForSelector('#brand-body [data-bzt="t1"] .zt-item');
   assert.ok(await page.$('#brand-body [data-cqueue="c4"]'), '→ Queue is back');
   console.log('✓ 4. a brand that said it: the banner (Undo asks, then undoStopContact by brand), locked toggles, nothing to queue or log');
@@ -262,7 +281,7 @@ async function main() {
   assert.ok(await page.$('#brand-body [data-bzt="t1"] .zt-item'), 'the others keep their cards');
   await page.click('#brand-body [data-bzt="t2"] [data-bztundo]');
   await page.waitForSelector('#brand-body [data-bzt="t2"] .zt-item');
-  assert.deepEqual(all('handStep').slice(-1)[0].args, { targetId: 't2', step: 'declined', on: false });
+  assert.deepEqual(all('undoStopContact').slice(-1)[0].args, { targetId: 't2' });
   console.log('✓ 3. brand page: just them folds the card to one line with Undo, the pill says so, in place');
 
   await page.setViewportSize({ width: 390, height: 800 });

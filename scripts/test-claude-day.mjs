@@ -37,6 +37,9 @@ t('"doesn’t want to continue": the step and its Undo read in words; the brand 
   assert.equal(C.actionText('handStep', { targetId: 't', step: 'declined', scope: 'brand', expect: 'x' }, { ok: true, scope: 'brand', contactName: 'Beth Lee', brandName: 'Alpha Water' }), "Marked Beth Lee: doesn't want to continue — the whole brand (Alpha Water)")
   assert.equal(C.actionText('handStep', { targetId: 't', step: 'declined', on: false }, { ok: true, scope: 'person', contactName: 'Beth Lee' }), 'Took back "doesn\'t want to continue" for Beth Lee')
   assert.equal(C.actionText('handStep', { targetId: 't', step: 'declined', scope: 'brand', expect: 'old' }, { stale: true }), null, 'stale')
+  assert.equal(C.actionText('handStep', { targetId: 't', step: 'declined', scope: 'brand' }, { already: true, scope: 'person', contactName: 'Beth Lee' }), null, 'a stop that already stood changed nothing')
+  assert.equal(C.actionText('undoStopContact', { brandId: 'b', preview: true }, { preview: true, scope: 'brand' }), null, 'the Undo’s preview')
+  assert.equal(C.actionText('undoStopContact', { brandId: 'b' }, { ok: true, scope: 'brand', contactName: 'Beth Lee' }), 'Took back "doesn\'t want to continue" for Beth Lee (whole brand)')
   assert.equal(C.actionText('handStep', { targetId: 't', step: 'dm' }, { contactName: 'Beth Lee' }), "Zach's list: dm — Beth Lee")
 })
 
