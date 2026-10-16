@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — Log LinkedIn Invites
 // @namespace    sbagency.command-center
-// @version      1.2
+// @version      1.3
 // @description  For Zach's LinkedIn: on someone's profile, log that you invited them or that they accepted; on a company's People page, read the marketing / partnerships people you can see into the SB Command Center. Only when you click.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -54,7 +54,7 @@
   var INGEST_URL = 'https://sb-digitaldashboard.vercel.app/api/ingest';
   var DASH_URL = 'https://sb-digitaldashboard.vercel.app/app.html';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.2';
+  var VERSION = '1.3';
   // The dashboard refuses LinkedIn calls from an older card reader
   // (LI_READER in src/lib/li-sweep.ts). This reads a profile, not cards,
   // and sends the current number so its calls are let through.
@@ -382,6 +382,8 @@
 
   // "LinkedIn · invite sent Sep 20" — where someone on file stands.
   function stateWords(p) {
+    // 1.3: they (or their brand) said they don't want to continue.
+    if (p.stopped) return 'doesn\'t want to continue';
     var d = p.sentAt ? new Date(p.sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
     switch (p.status) {
       case null: case undefined: case '': return 'not contacted yet';
@@ -425,7 +427,9 @@
         h('div', { style: 'margin-bottom:4px' }, ['On file at ', b(pp.brand.name), pp.brand.archived ? ' (archived)' : '', ' · ' + stateWords(pp)]),
         pp.title ? h('div', { style: 'font-size:12px;color:#555', text: pp.title }) : null,
       ];
-      if (pp.choices && pp.choices.length) {
+      if (pp.stopped) {
+        kids.push(h('div', { style: 'margin-top:8px;color:#b3261e', text: 'They (or ' + pp.brand.name + ') said they don\'t want to continue — don\'t reach out. Nothing to log.' }));
+      } else if (pp.choices && pp.choices.length) {
         kids = kids.concat(stageButtons(pp.choices, function (stage, btn) { logProfile({ contactId: pp.contactId, stage: stage }, btn); }));
       } else {
         kids.push(h('div', { style: 'margin-top:8px;color:#137333', text: pp.status === 'accepted' ? 'Already accepted: they\'re on Zach\'s list.' : 'Already ' + stateWords(pp) + '. Nothing to log.' }));

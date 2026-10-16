@@ -191,13 +191,18 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   keep it moving"), `assertNotStopped` (handStep, markEmailed, queueContact, setTargetStatus incl. DM sent,
   setTargetShelved's Promote), queueBrandTargets (never promotes a marked copy's row), reason `stopped` (outreachGate /
   planRefusal), `isReachable`, the email machine (send and draft paths), Archive's Bring back / Emails on refused while it
-  stands, **mergeBrands / combineParent refuse** a stopped brand (a merge would end or spread it) — and new copies are
-  refused by upsertContact, importContacts (`optedOut`), the LinkedIn capture (a dupe), the SponsorUnited capture and SB
-  · Log (`assertLoggable`). A **call booked** there stays in Calls booked marked "Said they don't want to continue —
+  stands, **mergeBrands / combineParent / undoCombineParent refuse** a stopped brand (a merge would end or spread it),
+  today's list and the pool never show or count a marked row however it came back (`NOT_MARKED` — an Undo of a merge or
+  a Leave out can revive one; undoLeaveOutPeople skips them, undoSamePerson sets them aside on the stop's record) — and
+  new copies are refused by upsertContact, importContacts (`optedOut`), the LinkedIn capture (a dupe), the SponsorUnited
+  capture and SB · Log (`assertLoggable`; 1.3 and + Add from LinkedIn say "doesn't want to continue", never "on Zach's
+  list"). The LinkedIn tab's rows say it with nothing to send (`targetRow`); the recap lists a stop but never counts it as
+  outreach (`steps[].stop`). A **call booked** there stays in Calls booked marked "Said they don't want to continue —
   cancel it" (`calls[].stopped`, off the status board; the brand page's line too, with **Cancelled**). The brand page: the
   person's card becomes one line with Undo, the pill says "doesn't want to continue", a stopped brand has a banner
   (`#b-stopped`), no → Queue / log / Promote buttons. **Undo** (the bar, the Done fold — "(whole brand)" — the card's line,
-  the banner; `ztUndoStop`) asks `undoStopContact({ preview: true })` first and, for a whole brand, names what comes back
+  the banner; `ztUndoStop`; through a person it only takes back their own mark — a brand stopped through someone else
+  stays, said in the toast) asks `undoStopContact({ preview: true })` first and, for a whole brand, names what comes back
   in a confirm (rule 6); it reads its record inside the stop's locks (`brandStopLog` then `personStopLog`), puts back
   exactly what changed — the person and every copy marked at that moment (cleared by its time), people set aside, the
   Schedule days (one the stop emptied comes back as Best fit while still a sending day) — and names what stays
@@ -1174,7 +1179,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   from 1.0; it ignores `latest`, Tampermonkey's daily update keeps it current). Pill bottom-left, or just
   above the People pill if both are installed. Same install by paste, same Trusted Types rules (`h()`,
   never innerHTML). **Since 1.1** (Leo, Oct 6 2026: Leo's LinkedIn hides out-of-network people as "LinkedIn Member", Zach's
-  bigger network shows them): on a company's People page the pill is **SB · Read people** → **Read this page**
+  bigger network shows them; **1.3**, Oct 16 2026: someone who said they don't want to continue reads so, nothing to
+  log): on a company's People page the pill is **SB · Read people** → **Read this page**
   (only on that click; scrolls that page + Show more, ≤150 people) → `liPreview` → **Add** → `liCapture` (`via: 'log'`,
   no `me` so the Leo-only lock doesn't apply; buyers only, 25 cap). Still no run, no fill, no navigation by itself.
   **1.2** (Oct 7 2026): nobody new → the button is "Nobody new — mark <brand> read" (sends the same `liCapture`, adds

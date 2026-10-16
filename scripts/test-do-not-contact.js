@@ -35,7 +35,7 @@ const ago = (d) => new Date(Date.now() - d * DAY).toISOString();
 const ahead = (d) => new Date(Date.now() + d * DAY).toISOString();
 
 // The fake server: who said no, and whether the whole brand did.
-const S = { declined: {}, at: {}, brandStopped: null, sig: 'sig-1', staleOnce: false };
+const S = { declined: {}, at: {}, brandStopped: null, sig: 'sig-1', staleOnce: false, alreadyFor: null };
 const NAMES = { t1: 'Alex Seamon', t2: 'Beth Baker', t9: 'Zoe Zhang' };
 
 const person = (targetId, contactId, name, extra) => Object.assign({
@@ -73,6 +73,7 @@ const PREVIEW = {
 };
 function handStep(a) {
   if (a.step !== 'declined') return { contactName: NAMES[a.targetId] };
+  if (S.alreadyFor === a.targetId) return { already: true, scope: a.scope, contactName: NAMES[a.targetId], brandName: 'Bravo Soda' };
   if (a.on === false) {
     const scope = S.declined[a.targetId];
     delete S.declined[a.targetId];
@@ -145,7 +146,8 @@ async function main() {
   const errors = [];
   const dialogs = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  page.on('dialog', (d) => { dialogs.push(d.message()); d.accept(); });
+  let dismissNext = false;
+  page.on('dialog', (d) => { dialogs.push(d.message()); if (dismissNext) { dismissNext = false; d.dismiss(); } else d.accept(); });
   await page.route('**/*', async (route) => {
     const url = route.request().url();
     if (url.startsWith(base + '/api/data')) {
@@ -240,6 +242,27 @@ async function main() {
   await page.waitForFunction(() => /Doesn’t want to continue \(whole brand\) · /.test((document.querySelector('#zt-done') || {}).textContent || ''));
   assert.match(await page.textContent('#zt-calls'), /Carl Cole[\s\S]*Said they don’t want to continue — cancel it[\s\S]*Cancelled/, 'the brand’s call stays listed, marked, to cancel');
   assert.ok(all('handStep').length - before >= 3);
+  // The whole brand's Undo from the Done fold asks; Cancel changes nothing and the button works again.
+  await page.evaluate(() => { document.getElementById('zt-done').open = true; });
+  const u0 = all('undoStopContact').length;
+  dismissNext = true;
+  await page.click('#zt-done [data-ztundo="t1"][data-kind="declined"]');
+  for (let i = 0; i < 40 && all('undoStopContact').length === u0; i++) await page.waitForTimeout(50);
+  await page.waitForTimeout(300);
+  assert.match(dialogs.slice(-1)[0] || '', /Reach out to everyone at Alpha Water again\?/, 'the whole brand’s Undo asks');
+  assert.deepEqual(all('undoStopContact').slice(u0).map((c) => c.args), [{ targetId: 't1', preview: true }], 'Cancel: only the preview was asked');
+  assert.equal(await page.$eval('#zt-done [data-ztundo="t1"][data-kind="declined"]', (b) => b.disabled), false, 'the Undo button works again');
+  assert.ok(S.brandStopped, 'still stopped');
+  // Already stopped elsewhere: nothing changes here — no Undo bar, no Done row.
+  S.alreadyFor = 't9';
+  const done0 = await page.evaluate(() => (ZT.done || []).length);
+  await openHome('t9');
+  await page.click(home('t9') + ' [data-ztnode="declined"]');
+  await page.click(home('t9') + ' [data-ztact="decline"][data-scope="person"]');
+  await page.waitForFunction(() => /Zoe Zhang was already marked — nothing changed/.test(document.body.textContent));
+  assert.equal(await page.evaluate(() => (ZT.done || []).filter((d) => d.targetId === 't9').length), 0, 'no Done row');
+  assert.ok(done0 >= 0);
+  S.alreadyFor = null;
   console.log('✓ 2. Home, the whole brand: a preview first (named, left-as-is too), Back, a stale answer shown again, then the brand leaves the list');
 
   // 4 (the stopped brand) -------------------------------------------
@@ -283,6 +306,16 @@ async function main() {
   await page.waitForSelector('#brand-body [data-bzt="t2"] .zt-item');
   assert.deepEqual(all('undoStopContact').slice(-1)[0].args, { targetId: 't2' });
   console.log('✓ 3. brand page: just them folds the card to one line with Undo, the pill says so, in place');
+
+  // The LinkedIn tab's rows and + Add from LinkedIn say it, and offer nothing to send.
+  const row = await page.evaluate(() => targetRow({ id: 'tx', brandId: 'b1', status: 'accepted', updatedAt: new Date(Date.now() - 9 * 864e5).toISOString(), handDeclinedAt: new Date().toISOString(),
+    drafts: [{ id: 'd', firstMessage: 'hi' }], contact: { name: 'Alex Seamon', title: 'Brand', linkedinUrl: 'https://www.linkedin.com/in/alex' }, brand: { name: 'Alpha Water', category: 'electrolytes' } }));
+  assert.match(row, /doesn’t want to continue/);
+  assert.ok(!/Copy DM|DM overdue|DM sent|Mark sent|Re-queue/.test(row), 'nothing to send or log on the LinkedIn tab');
+  const lil = await page.evaluate(() => lilRowHtml({ stopped: true, choices: [], status: 'accepted', name: 'Alex Seamon', title: 'Brand', contactId: 'c1', brand: { name: 'Alpha Water' } }));
+  assert.match(lil, /doesn’t want to continue — don’t contact/);
+  assert.ok(!/on Zach’s list/.test(lil), 'never “on Zach’s list”');
+  console.log('✓ 6. the LinkedIn tab and + Add from LinkedIn say it, with nothing to send or log');
 
   await page.setViewportSize({ width: 390, height: 800 });
   const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

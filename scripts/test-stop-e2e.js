@@ -310,6 +310,45 @@ const readPlan = async (prisma) => JSON.parse((await prisma.setting.findUnique({
     assert.ok(cams.every((c) => !c.doNotContactAt), 'its Undo clears both');
     ok('merging the person’s two copies, and undoing it, never strands the mark on one of them');
 
+    // ---- second review ----
+    // A marked copy's row that comes back stamped for today (as an Undo of a
+    // merge or of a Leave out can bring it) never shows in today's list.
+    await data('handStep', { targetId: 't_alex', step: 'declined', scope: 'person' });
+    await prisma.target.update({ where: { id: 't_alex2' }, data: { shelved: false, shelvedHow: null, queuedFor: new Date() } });
+    const tq = JSON.stringify(await data('getTodayQueue'));
+    assert.ok(!tq.includes('t_alex2'), 'a marked copy’s row is not in today’s list');
+    assert.ok(!JSON.stringify(await data('todaySendList')).includes('Alex S.'), 'nor in Copy for Zach');
+    const recap = await data('dayRecap');
+    assert.ok(recap.reached.steps.some((x) => x.name === 'Alex Seamon' && x.stop), 'the recap lists it as a stop, not as outreach');
+    // Through someone else: the brand stops via Beth while Alex has his own mark.
+    const bpv2 = await data('handStep', { targetId: 't_beth', step: 'declined', scope: 'brand', preview: true });
+    await data('handStep', { targetId: 't_beth', step: 'declined', scope: 'brand', expect: bpv2.expect });
+    const noop = await data('undoStopContact', { targetId: 't_dana' });
+    assert.equal(noop.already, true, 'an Undo through someone with no mark of their own changes nothing');
+    assert.ok((await prisma.brand.findUnique({ where: { id: 'alpha' } })).stoppedAt, 'the brand stays stopped');
+    const ua = await data('undoStopContact', { targetId: 't_alex' });
+    assert.equal(ua.brandStopped, true);
+    assert.ok(ua.stays.some((x) => /whole brand's stop stands/.test(x)), JSON.stringify(ua));
+    assert.ok(!(await zachIds()).includes('t_alex'), 'still off Zach’s list: the brand’s stop stands');
+    // The combine's Undo on a stopped company is refused.
+    await prisma.setting.upsert({ where: { key: 'parentCombineLast' }, create: { key: 'parentCombineLast', value: JSON.stringify({ parent: 'Alpha', keeperId: 'alpha', at: new Date().toISOString(), brands: [{ id: 'gone1', name: 'Alpha Label' }], moved: {}, people: [] }) }, update: {} });
+    const uc = await data('undoCombineParent', {});
+    assert.ok(uc.blocks.some((x) => /Alpha Water said they don't want to continue/.test(x)), JSON.stringify(uc.blocks));
+    await refused('undoCombineParent', { confirm: true }, /Alpha Water said they don't want to continue/);
+    await prisma.setting.delete({ where: { key: 'parentCombineLast' } });
+    await data('undoStopContact', { brandId: 'alpha' });
+    assert.equal((await prisma.brand.findUnique({ where: { id: 'alpha' } })).stoppedAt, null);
+    ok('today’s list never shows a marked copy’s row; the recap doesn’t count a stop; Undo through the wrong person changes nothing; the brand’s stop outlives a person’s Undo; a combine’s Undo is refused');
+
+    // A copy whose LinkedIn link is stored percent-encoded (an accented name) is found.
+    await prisma.brand.create({ data: { id: 'delta', name: 'Delta Drinks', category: 'beverage', tier: 'growth', usStatus: 'yes' } });
+    await person('maria', 'delta', 'María López', 'Brand Partnerships', 'https://www.linkedin.com/in/maría-lópez-12/', { status: 'accepted', sentAt: ago(9) });
+    await person('maria2', 'bravo', 'Maria L.', 'Marketing', 'https://www.linkedin.com/in/mar%C3%ADa-l%C3%B3pez-12/', { status: 'queued' });
+    const rm = await data('handStep', { targetId: 't_maria', step: 'declined', scope: 'person' });
+    assert.deepEqual(rm.twins, ['Maria L. (Bravo Soda)']);
+    assert.ok((await prisma.contact.findUnique({ where: { id: 'c_maria2' } })).doNotContactAt, 'the encoded copy is marked');
+    ok('a copy stored with a percent-encoded LinkedIn link is marked too');
+
     console.log('stop e2e: all ' + n + ' passed');
   } catch (e) {
     console.error(e);

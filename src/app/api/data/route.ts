@@ -2307,7 +2307,7 @@ async function queuePlannedToday(planDay: PlanDay | null, opts: { dryRun?: boole
   const [brands, sentToday, stampedRows, gated, opened] = await Promise.all([
     prisma.brand.findMany({ where: { id: { in: order } }, select: PLAN_BRAND_SELECT }),
     prisma.target.count({ where: { sentAt: { gte: dayStart } } }),
-    prisma.target.findMany({ where: { queuedFor: { gte: dayStart }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } }, select: { brandId: true } }),
+    prisma.target.findMany({ where: { queuedFor: { gte: dayStart }, status: { in: ['queued', 'drafted'] }, shelved: false, ...NOT_MARKED, brand: { passedAt: null } }, select: { brandId: true } }),
     gatedStampBrands(dayStart, q),
     readOpenedToday(),
   ])
@@ -3692,7 +3692,28 @@ async function undoSamePerson(tx: any, rec: any) {
   }
   const group = [rec.keepId, ...rec.drops.map((d: any) => d.row.id)]
   if (nowKeep?.doNotContactAt) {
-    await tx.contact.updateMany({ where: { id: { in: group }, doNotContactAt: null }, data: { doNotContactAt: nowKeep.doNotContactAt, doNotContactBy: nowKeep.doNotContactBy } })
+    const at = nowKeep.doNotContactAt
+    await tx.contact.updateMany({ where: { id: { in: group }, doNotContactAt: null }, data: { doNotContactAt: at, doNotContactBy: nowKeep.doNotContactBy } })
+    // A copy's row the undo brought back waiting (today's list, the pool,
+    // next in line) is set aside, as the stop would have — and goes on that
+    // stop's record, so its Undo brings it back.
+    const live: { id: string; queuedFor: Date | null; shelved: boolean; shelvedHow: string | null }[] = await tx.target.findMany({
+      where: { contactId: { in: group }, status: { in: ['queued', 'drafted'] }, OR: [{ shelved: false }, { shelvedHow: 'cap' }] },
+      select: { id: true, queuedFor: true, shelved: true, shelvedHow: true },
+    })
+    if (live.length) {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${PERSON_STOP_KEY}))::text`
+      await tx.target.updateMany({ where: { id: { in: live.map(x => x.id) } }, data: { shelved: true, shelvedHow: null, queuedFor: null } })
+      const holder = await tx.target.findFirst({ where: { handDeclinedAt: at }, select: { id: true } })
+      if (holder) {
+        await changePersonLog(tx, log => {
+          const e = log[holder.id] ?? { at: at.toISOString(), twins: [], shelved: [] }
+          e.shelved = [...(e.shelved || []).filter(x => !live.some(l => l.id === x.id)),
+            ...live.map(x => ({ id: x.id, queuedFor: x.queuedFor?.toISOString() ?? null, shelvedHow: x.shelvedHow, shelved: x.shelved }))]
+          log[holder.id] = e
+        })
+      }
+    }
   } else {
     await tx.contact.updateMany({ where: { id: { in: group }, doNotContactAt: { not: null } }, data: { doNotContactAt: null, doNotContactBy: null } })
     await tx.target.updateMany({ where: { contactId: { in: group }, handDeclinedAt: { not: null } }, data: { handDeclinedAt: null, handDeclinedScope: null } })
@@ -4223,6 +4244,10 @@ const HAND_WAITING: Prisma.TargetWhereInput = {
 // or everyone at their brand. Never contacted again — every list of people
 // to write to, follow up or queue leaves them out (src/lib/do-not-contact.ts).
 const NOT_STOPPED: Prisma.TargetWhereInput = { handDeclinedAt: null, contact: { doNotContactAt: null }, brand: { stoppedAt: null } }
+// Today's list and the pool never show or count a row of someone marked —
+// however it came back (an Undo of a merge, a Leave out or a log can revive
+// a copy's row). A stopped brand is archived, so the brand side is covered.
+const NOT_MARKED: Prisma.TargetWhereInput = { handDeclinedAt: null, contact: { doNotContactAt: null } }
 // Everyone who said it, as the index a new or second copy of them is
 // recognised by (the same LinkedIn profile or email anywhere, the same name
 // at the brand).
@@ -4278,7 +4303,8 @@ type StopTwin = { id: string; brandId: string; name: string; linkedinUrl: string
 async function stopTwins(db: any, c: { id: string; brandId: string; name: string; linkedinUrl: string | null; email: string | null }): Promise<StopTwin[]> {
   const { slug, email } = stopKeys(c)
   const OR: Prisma.ContactWhereInput[] = [{ brandId: c.brandId }]
-  if (slug) OR.push({ linkedinUrl: { contains: slug, mode: 'insensitive' } })
+  // Stored as typed or percent-encoded (an accented name): both spellings.
+  if (slug) for (const f of new Set([slug, encodeURIComponent(slug)])) OR.push({ linkedinUrl: { contains: '/in/' + f, mode: 'insensitive' } })
   if (email) OR.push({ email: { equals: email, mode: 'insensitive' } })
   const rows: StopTwin[] = await db.contact.findMany({
     where: { id: { not: c.id }, OR },
@@ -4319,6 +4345,8 @@ async function unshelveStopped(db: any, list: StopShelved[], today: string, writ
   if (!list.length) return { back, stays }
   const now: { id: string; status: string; shelved: boolean; shelvedHow: string | null; contact: { name: string } }[] =
     await db.target.findMany({ where: { id: { in: list.map(x => x.id) } }, select: { id: true, status: true, shelved: true, shelvedHow: true, contact: { select: { name: true } } } })
+  const gone = list.filter(x => !now.some(r => r.id === x.id)).length
+  if (gone) stays.push(gone === 1 ? 'a row no longer on file (merged since)' : gone + ' rows no longer on file (merged since)')
   for (const x of list) {
     const n = now.find(r => r.id === x.id)
     if (!n) continue
@@ -4588,7 +4616,8 @@ const handlers: Record<string, Handler> = {
     }
     const person = (t: { brandId: string; brand: { name: string }; contact: { name: string } }) =>
       ({ brandId: t.brandId, brand: t.brand.name, name: t.contact.name })
-    const steps: Array<{ brandId: string; brand: string; name: string; step: string }> = []
+    // `stop`: "doesn't want to continue" — listed, never counted as outreach.
+    const steps: Array<{ brandId: string; brand: string; name: string; step: string; stop?: boolean }> = []
     for (const t of hand) {
       const p = person(t)
       const at = (x: Date | null) => !!x && x >= lo && x < hi
@@ -4597,7 +4626,7 @@ const handlers: Record<string, Handler> = {
       if (at(t.handLiSentAt)) steps.push({ ...p, step: 'LinkedIn DM' })
       if (at(t.emailedAt)) steps.push({ ...p, step: 'Email' })
       if (at(t.callBookedAt)) steps.push({ ...p, step: 'Call booked' + (t.callAt ? ' for ' + localDayKey(t.callAt) : '') })
-      if (at(t.handDeclinedAt)) steps.push({ ...p, step: 'Doesn’t want to continue' + (t.handDeclinedScope === 'brand' ? ' (whole brand)' : '') })
+      if (at(t.handDeclinedAt)) steps.push({ ...p, step: 'Doesn’t want to continue' + (t.handDeclinedScope === 'brand' ? ' (whole brand)' : ''), stop: true })
     }
 
     // Early on a sending day nothing has gone out yet: say what the last
@@ -4808,7 +4837,8 @@ const handlers: Record<string, Handler> = {
   async undoLeaveOutPeople() {
     const log = await readJsonSetting<LeftOutLog | null>(prisma, LEFT_OUT_KEY, null)
     if (!log || log.day !== localDayKey()) return { ok: false, message: 'Nothing to undo' }
-    const now = await prisma.target.findMany({ where: { id: { in: log.rows.map(r => r.targetId) }, status: 'passed', sentAt: null }, select: { id: true } })
+    // Never back into today's list for someone marked since (or their brand).
+    const now = await prisma.target.findMany({ where: { id: { in: log.rows.map(r => r.targetId) }, status: 'passed', sentAt: null, ...NOT_STOPPED }, select: { id: true } })
     const still = new Set(now.map(t => t.id))
     const back = log.rows.filter(r => still.has(r.targetId))
     await prisma.$transaction(back.map(r => prisma.target.update({
@@ -5222,7 +5252,7 @@ const handlers: Record<string, Handler> = {
     const handPicked = (await prisma.target.findMany({
       // A brand marked not sold in the US after its people were stamped
       // today drops out of the list (they stay in the pool, untouched).
-      where: { queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null, AND: [SOLD_IN_US] } },
+      where: { queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, ...NOT_MARKED, brand: { passedAt: null, AND: [SOLD_IN_US] } },
       include,
       orderBy: { queuedFor: 'desc' },
     })).filter(t => !gatedIds.has(t.brandId))
@@ -5263,7 +5293,7 @@ const handlers: Record<string, Handler> = {
     // never surface in Today again.
     const themed = (bestById.size
       ? await prisma.target.findMany({
-          where: { brandId: { in: [...bestById.keys()] }, status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false },
+          where: { brandId: { in: [...bestById.keys()] }, status: { in: ['queued', 'drafted'] }, queuedFor: null, shelved: false, ...NOT_MARKED },
           orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
           // brandId comes back so the day can be filled a brand at a time.
           select: { id: true, brandId: true, fitScore: true },
@@ -7119,6 +7149,9 @@ const handlers: Record<string, Handler> = {
     const check = await undoCheck(prisma, people)
     const blocks: string[] = [...check.blocks]
     if (clash.length) blocks.unshift('Already on the roster again: ' + clash.map(c => c.name).join(', '))
+    // The company said it doesn't want to continue: putting its brands back
+    // would end that for everyone there but the person who said it.
+    if (keeper.stoppedAt) blocks.unshift(`${keeper.name} said they don't want to continue — Undo that on its page first (putting its brands back would end the stop)`)
     const staysAsIs = check.staysAsIs
     const preview = {
       parent: last.parent, at: last.at, brands: names, back, movedSince: stayed,
@@ -7128,6 +7161,10 @@ const handlers: Record<string, Handler> = {
     if (preview.blocks.length) throw new Error(preview.blocks[0])
 
     await prisma.$transaction(async tx => {
+      // Not stopped in the meantime (the stop takes this lock first).
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${BRAND_STOP_KEY}))::text`
+      const k = await tx.brand.findUnique({ where: { id: keeper.id }, select: { stoppedAt: true } })
+      if (k?.stoppedAt) throw new Error(`${keeper.name} said they don't want to continue — Undo that on its page first`)
       // The merged people first: their second copies come back on the
       // company, and the move below takes them home with everything else.
       for (const r of people) await undoSamePerson(tx, r)
@@ -8560,7 +8597,7 @@ const handlers: Record<string, Handler> = {
       readQueueCtx(),
       prisma.target.count({ where: { sentAt: { gte: startToday } } }),
       prisma.target.findMany({
-        where: { queuedFor: { gte: startToday }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null } },
+        where: { queuedFor: { gte: startToday }, status: { in: ['queued', 'drafted'] }, shelved: false, ...NOT_MARKED, brand: { passedAt: null } },
         orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
         select: {
           fitScore: true, queuedFor: true,
@@ -11013,7 +11050,7 @@ const handlers: Record<string, Handler> = {
       const qc = await readQueueCtx()
       const [rows, gated] = await Promise.all([
         prisma.target.findMany({
-          where: { queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, brand: { passedAt: null, AND: [SOLD_IN_US] } },
+          where: { queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, ...NOT_MARKED, brand: { passedAt: null, AND: [SOLD_IN_US] } },
           select: { id: true, brandId: true, brand: { select: { name: true } } },
         }),
         gatedStampBrands(startOfDay, qc),
@@ -11416,11 +11453,16 @@ const handlers: Record<string, Handler> = {
     const actor = __user ?? null
     const who = { contactName: t?.contact.name ?? null, brandName: brand?.name ?? null }
     const scopeOf = (bs: boolean) => (bs ? 'brand' : 'person')
-    if (!t?.handDeclinedAt && !brand?.stoppedAt) return { ok: true, already: true, scope: scopeOf(t?.handDeclinedScope === 'brand'), ...who, back: [], stays: [] }
+    // Through a person: only their own mark (a brand stopped through someone
+    // else is undone on its banner). By brand: only while it's stopped.
+    if (t ? !t.handDeclinedAt : !brand?.stoppedAt) return { ok: true, already: true, scope: scopeOf(t?.handDeclinedScope === 'brand'), ...who, back: [], stays: [] }
+    // Just them, at a brand that's still stopped: they stay unreachable.
+    const brandStill = (r: { brandScope: boolean }) => (!r.brandScope && brand?.stoppedAt
+      ? [`the whole brand's stop stands — nobody at ${brand.name} is contacted (Undo it on the brand page)`] : [])
     if (preview) {
       const r = await undoStopCore(prisma, t, brand, false, actor)
       const pin = r.brandScope && brand ? await repinStopped(brand.id, r.pins, false) : { days: [], stays: [] }
-      return { preview: true, scope: scopeOf(r.brandScope), ...who, back: r.back, days: pin.days, stays: [...r.stays, ...pin.stays], unarchive: r.unarchive, emailsOn: r.emailsOn, twins: r.twins }
+      return { preview: true, scope: scopeOf(r.brandScope), ...who, back: r.back, days: pin.days, stays: [...r.stays, ...pin.stays, ...brandStill(r)], unarchive: r.unarchive, emailsOn: r.emailsOn, twins: r.twins, brandStopped: !r.brandScope && !!brand?.stoppedAt }
     }
     const r = await prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${BRAND_STOP_KEY}))::text`
@@ -11428,7 +11470,7 @@ const handlers: Record<string, Handler> = {
       return undoStopCore(tx, t, brand, true, actor)
     }, { maxWait: 10000, timeout: 20000 })
     const pin = r.brandScope && brand ? await repinStopped(brand.id, r.pins, true) : { days: [], stays: [] }
-    return { ok: true, scope: scopeOf(r.brandScope), ...who, back: [...r.back, ...(pin.days.length ? ['back on ' + pin.days.join(', ')] : [])], stays: [...r.stays, ...pin.stays], twins: r.twins }
+    return { ok: true, scope: scopeOf(r.brandScope), ...who, back: [...r.back, ...(pin.days.length ? ['back on ' + pin.days.join(', ')] : [])], stays: [...r.stays, ...pin.stays, ...brandStill(r)], twins: r.twins, brandStopped: !r.brandScope && !!brand?.stoppedAt }
   },
 
   async handTemplate({ kind }: any = {}) {
