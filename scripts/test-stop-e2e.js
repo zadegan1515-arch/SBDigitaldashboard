@@ -349,6 +349,35 @@ const readPlan = async (prisma) => JSON.parse((await prisma.setting.findUnique({
     assert.ok((await prisma.contact.findUnique({ where: { id: 'c_maria2' } })).doNotContactAt, 'the encoded copy is marked');
     ok('a copy stored with a percent-encoded LinkedIn link is marked too');
 
+    // ---- third review ----
+    // Copies of copies: a SponsorUnited copy shares their email; a LinkedIn
+    // copy of that one shares its name at its brand.
+    await prisma.brand.create({ data: { id: 'echo', name: 'Echo Energy', category: 'energy', tier: 'growth', usStatus: 'yes' } });
+    await prisma.brand.create({ data: { id: 'fox', name: 'Fox Fizz', category: 'beverage', tier: 'growth', usStatus: 'yes' } });
+    await person('eve', 'echo', 'Eve Eng', 'Partnerships Lead', 'https://www.linkedin.com/in/eveeng/', { status: 'accepted', sentAt: ago(9) });
+    await prisma.contact.update({ where: { id: 'c_eve' }, data: { email: 'eve@eng.com' } });
+    await prisma.contact.create({ data: { id: 'c_eve2', brandId: 'fox', name: 'Eve Eng', title: 'Marketing', email: 'Eve@eng.com', source: 'sponsorunited' } });
+    await person('eve3', 'fox', 'Eve Eng', 'Brand Manager', 'https://www.linkedin.com/in/eveeng-2/', { status: 'queued' });
+    const re = await data('handStep', { targetId: 't_eve', step: 'declined', scope: 'person' });
+    assert.deepEqual(re.twins.sort(), ['Eve Eng (Fox Fizz)', 'Eve Eng (Fox Fizz)'], JSON.stringify(re.twins));
+    assert.ok((await prisma.target.findUnique({ where: { id: 't_eve3' } })).shelved, 'the copy of a copy’s waiting row is set aside');
+    await data('undoStopContact', { targetId: 't_eve' });
+    assert.equal(await prisma.contact.count({ where: { brandId: 'fox', doNotContactAt: { not: null } } }), 0, 'its Undo clears every copy');
+    assert.ok(!(await prisma.target.findUnique({ where: { id: 't_eve3' } })).shelved, 'and brings the row back');
+    // A copy filed after the stop (an old import) merged with a marked one:
+    // the merge carries the mark, and its waiting row goes aside on the stop's record.
+    await data('handStep', { targetId: 't_eve', step: 'declined', scope: 'person' });
+    await prisma.contact.create({ data: { id: 'c_eve4', brandId: 'fox', name: 'Eve Eng', title: 'Head of Brand', linkedinUrl: 'https://www.linkedin.com/in/eve-eng-4/', source: 'linkedin' } });
+    await prisma.target.create({ data: { id: 't_eve4', brandId: 'fox', contactId: 'c_eve4', status: 'queued', queuedFor: new Date() } });
+    const mf = await data('mergePeople', { brandId: 'fox' });
+    await data('mergePeople', { brandId: 'fox', confirm: true, expect: mf.expect });
+    const foxLive = () => prisma.target.count({ where: { brandId: 'fox', status: { in: ['queued', 'drafted'] }, shelved: false } });
+    assert.equal(await foxLive(), 0, 'after the merge nobody of theirs is waiting');
+    assert.ok(!JSON.stringify(await data('getTodayQueue')).includes('t_eve4'), 'and nothing of theirs is in today’s list');
+    await data('undoStopContact', { targetId: 't_eve' });
+    assert.equal(await foxLive(), 1, 'the stop’s Undo brings the row the merge set aside back');
+    ok('copies of copies are marked; a merge that carries the mark sets the waiting row aside, and the stop’s Undo brings it back');
+
     console.log('stop e2e: all ' + n + ' passed');
   } catch (e) {
     console.error(e);

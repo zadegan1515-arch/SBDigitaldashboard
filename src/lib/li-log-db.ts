@@ -294,9 +294,14 @@ export async function undoLinkedInLog(db: Db, u: any, actor: string | null) {
   if (!targetId || !isLogStage(u?.stage)) throw new Error('Nothing to undo')
   const t = await db.target.findUnique({
     where: { id: targetId },
-    include: { contact: true, events: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    include: { contact: true, brand: { select: { stoppedAt: true } }, events: { orderBy: { createdAt: 'desc' }, take: 1 } },
   })
   if (!t) return { undone: true, name: null as string | null, removed: false }
+  // Marked since (they, a copy of them, or their brand said they don't want
+  // to continue): putting the row back could put them back in the queue.
+  if (t.contact.doNotContactAt || t.handDeclinedAt || t.brand.stoppedAt) {
+    throw new Error("They said they don't want to continue — undo it on the brand page instead.")
+  }
   const last = t.events[0]
   const fresh = (d: Date) => Date.now() - d.getTime() < UNDO_WINDOW_MS
   if (t.status !== u.stage || !last || last.toStatus !== u.stage || !fresh(last.createdAt)) {

@@ -1228,7 +1228,9 @@ function previewBrandPicks(
     const c = contactOf.get(t.contactId)
     return { t, title: t.contact.title, linkedinUrl: c?.linkedinUrl ?? null, email: c?.email ?? null, fit: t.fitScore }
   }
-  const liveAll = b.targets.filter(t => !t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied'].includes(t.status))
+  // A row of someone marked as not wanting to continue never goes (the queue drops it too).
+  const marked = (t: PlanBrand['targets'][number]) => ['queued', 'drafted'].includes(t.status) && !!contactOf.get(t.contactId)?.doNotContactAt
+  const liveAll = b.targets.filter(t => !t.shelved && ['queued', 'drafted', 'sent', 'accepted', 'replied'].includes(t.status) && !marked(t))
   // Flagged people stay out while anyone unflagged is reachable — the ones
   // waiting in the pool too, as queueBrandTargets sets them aside (next in
   // line); never anyone already in today's list, nobody chosen for a day's
@@ -1239,7 +1241,7 @@ function previewBrandPicks(
   const flagged = (title: string | null) => !!personProblem(title, names)
   const targeted = new Set(b.targets.map(t => t.contactId))
   const freshAll = reachable.filter(c => !targeted.has(c.id))
-  const capShelved = b.targets.filter(t => t.shelved && t.shelvedHow === 'cap' && ['queued', 'drafted'].includes(t.status))
+  const capShelved = b.targets.filter(t => t.shelved && t.shelvedHow === 'cap' && ['queued', 'drafted'].includes(t.status) && !marked(t))
   const holdFlagged = !finishingSitting(b, day, extras) &&
     (liveAll.some(t => ['queued', 'drafted'].includes(t.status) && !flagged(t.contact.title)) ||
       capShelved.some(t => !flagged(t.contact.title)) || freshAll.some(c => !flagged(c.title)))
@@ -3285,7 +3287,7 @@ async function reconcileBrandTargets(brandId: string, perBrandArg?: number) {
     where: { brandId, ...INVITED_WHERE },
   })
   const active = await prisma.target.findMany({
-    where: { brandId, status: { in: ['queued', 'drafted'] }, shelved: false },
+    where: { brandId, status: { in: ['queued', 'drafted'] }, shelved: false, ...NOT_MARKED },
     orderBy: [{ fitScore: 'desc' }, { createdAt: 'asc' }],
     select: IN_PLAY_SELECT,
   })
@@ -3636,6 +3638,9 @@ async function applySamePerson(tx: any, p: PersonMergePlan) {
     keepBefore.doNotContactAt = null; keepBefore.doNotContactBy = null
   }
   if (Object.keys(data).length) await tx.contact.update({ where: { id: p.keepId }, data })
+  // Marked (carried here, or already): a row of theirs still waiting goes aside.
+  const markAt = (data.doNotContactAt ?? keepRow.doNotContactAt) as Date | null
+  if (markAt) await setAsideMarked(tx, [p.keepId], new Date(markAt))
   return { keepId: p.keepId, name: p.name, keepBefore, keepAfter: data, drops }
 }
 
@@ -3694,26 +3699,9 @@ async function undoSamePerson(tx: any, rec: any) {
   if (nowKeep?.doNotContactAt) {
     const at = nowKeep.doNotContactAt
     await tx.contact.updateMany({ where: { id: { in: group }, doNotContactAt: null }, data: { doNotContactAt: at, doNotContactBy: nowKeep.doNotContactBy } })
-    // A copy's row the undo brought back waiting (today's list, the pool,
-    // next in line) is set aside, as the stop would have — and goes on that
-    // stop's record, so its Undo brings it back.
-    const live: { id: string; queuedFor: Date | null; shelved: boolean; shelvedHow: string | null }[] = await tx.target.findMany({
-      where: { contactId: { in: group }, status: { in: ['queued', 'drafted'] }, OR: [{ shelved: false }, { shelvedHow: 'cap' }] },
-      select: { id: true, queuedFor: true, shelved: true, shelvedHow: true },
-    })
-    if (live.length) {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${PERSON_STOP_KEY}))::text`
-      await tx.target.updateMany({ where: { id: { in: live.map(x => x.id) } }, data: { shelved: true, shelvedHow: null, queuedFor: null } })
-      const holder = await tx.target.findFirst({ where: { handDeclinedAt: at }, select: { id: true } })
-      if (holder) {
-        await changePersonLog(tx, log => {
-          const e = log[holder.id] ?? { at: at.toISOString(), twins: [], shelved: [] }
-          e.shelved = [...(e.shelved || []).filter(x => !live.some(l => l.id === x.id)),
-            ...live.map(x => ({ id: x.id, queuedFor: x.queuedFor?.toISOString() ?? null, shelvedHow: x.shelvedHow, shelved: x.shelved }))]
-          log[holder.id] = e
-        })
-      }
-    }
+    // A copy's row the undo brought back waiting is set aside, as the stop
+    // would have, on that stop's record.
+    await setAsideMarked(tx, group, at)
   } else {
     await tx.contact.updateMany({ where: { id: { in: group }, doNotContactAt: { not: null } }, data: { doNotContactAt: null, doNotContactBy: null } })
     await tx.target.updateMany({ where: { contactId: { in: group }, handDeclinedAt: { not: null } }, data: { handDeclinedAt: null, handDeclinedScope: null } })
@@ -4300,19 +4288,34 @@ type StopShelved = BrandStop['shelved'][number]
 const PERSON_STOP_KEY = 'personStopLog'
 type PersonStop = { at: string; twins: string[]; shelved: StopShelved[] }
 type StopTwin = { id: string; brandId: string; name: string; linkedinUrl: string | null; email: string | null; doNotContactAt: Date | null; brand: { name: string } }
+// Copies of copies too (a SponsorUnited copy sharing their email, and a
+// LinkedIn copy of that one by name at its brand), a few hops out.
 async function stopTwins(db: any, c: { id: string; brandId: string; name: string; linkedinUrl: string | null; email: string | null }): Promise<StopTwin[]> {
-  const { slug, email } = stopKeys(c)
-  const OR: Prisma.ContactWhereInput[] = [{ brandId: c.brandId }]
-  // Stored as typed or percent-encoded (an accented name): both spellings.
-  if (slug) for (const f of new Set([slug, encodeURIComponent(slug)])) OR.push({ linkedinUrl: { contains: '/in/' + f, mode: 'insensitive' } })
-  if (email) OR.push({ email: { equals: email, mode: 'insensitive' } })
-  const rows: StopTwin[] = await db.contact.findMany({
-    where: { id: { not: c.id }, OR },
-    select: { id: true, brandId: true, name: true, linkedinUrl: true, email: true, doNotContactAt: true, brand: { select: { name: true } } },
-    take: 500,
-  })
-  const ix = stopIndex([{ id: c.id, brandId: c.brandId, name: c.name, linkedinUrl: c.linkedinUrl, email: c.email }])
-  return rows.filter(r => stoppedMatch(ix, r))
+  type Known = { id: string; brandId: string; name: string; linkedinUrl: string | null; email: string | null }
+  const known: Known[] = [{ id: c.id, brandId: c.brandId, name: c.name, linkedinUrl: c.linkedinUrl, email: c.email }]
+  const found: StopTwin[] = []
+  let frontier: Known[] = known.slice()
+  for (let hop = 0; hop < 3 && frontier.length; hop++) {
+    const OR: Prisma.ContactWhereInput[] = []
+    for (const f of frontier) {
+      const { slug, email } = stopKeys(f)
+      OR.push({ brandId: f.brandId })
+      // Stored as typed or percent-encoded (an accented name): both spellings.
+      if (slug) for (const v of new Set([slug, encodeURIComponent(slug)])) OR.push({ linkedinUrl: { contains: '/in/' + v, mode: 'insensitive' } })
+      if (email) OR.push({ email: { equals: email, mode: 'insensitive' } })
+    }
+    const rows: StopTwin[] = await db.contact.findMany({
+      where: { id: { notIn: known.map(k => k.id) }, OR },
+      select: { id: true, brandId: true, name: true, linkedinUrl: true, email: true, doNotContactAt: true, brand: { select: { name: true } } },
+      take: 500,
+    })
+    const ix = stopIndex(known)
+    const next = rows.filter(r => stoppedMatch(ix, r))
+    found.push(...next)
+    known.push(...next)
+    frontier = next
+  }
+  return found
 }
 // Marks the copies and sets aside their rows not contacted yet (not `skip`:
 // the brand stop's own list). What it changed, for the Undo.
@@ -4334,6 +4337,30 @@ async function changePersonLog(tx: any, change: (log: Record<string, PersonStop>
   change(log)
   const keep = Object.entries(log).sort((a, b) => Date.parse(b[1].at) - Date.parse(a[1].at)).slice(0, 500)
   await writeJsonSetting(tx, PERSON_STOP_KEY, Object.fromEntries(keep))
+}
+// A marked person's rows still waiting (today's list, the pool, next in
+// line) set aside — on the stop's record (the target whose handDeclinedAt is
+// the mark's time), so its Undo brings them back. A merge that carries the
+// mark onto a copy with a waiting row, and a merge's Undo, both come here.
+// Takes PERSON_STOP_KEY (order: BRAND → PERSON → MERGE).
+async function setAsideMarked(tx: any, contactIds: string[], at: Date): Promise<number> {
+  const live: { id: string; queuedFor: Date | null; shelved: boolean; shelvedHow: string | null }[] = await tx.target.findMany({
+    where: { contactId: { in: contactIds }, status: { in: ['queued', 'drafted'] }, OR: [{ shelved: false }, { shelvedHow: 'cap' }] },
+    select: { id: true, queuedFor: true, shelved: true, shelvedHow: true },
+  })
+  if (!live.length) return 0
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${PERSON_STOP_KEY}))::text`
+  await tx.target.updateMany({ where: { id: { in: live.map(x => x.id) } }, data: { shelved: true, shelvedHow: null, queuedFor: null } })
+  const holder = await tx.target.findFirst({ where: { handDeclinedAt: at }, select: { id: true } })
+  if (holder) {
+    await changePersonLog(tx, log => {
+      const e = log[holder.id] ?? { at: at.toISOString(), twins: [], shelved: [] }
+      e.shelved = [...(e.shelved || []).filter(x => !live.some(l => l.id === x.id)),
+        ...live.map(x => ({ id: x.id, queuedFor: x.queuedFor?.toISOString() ?? null, shelvedHow: x.shelvedHow, shelved: x.shelved }))]
+      log[holder.id] = e
+    })
+  }
+  return live.length
 }
 const twinWords = (twins: StopTwin[]) => twins.map(c => c.name + (c.brand?.name ? ' (' + c.brand.name + ')' : ''))
 
@@ -5353,7 +5380,7 @@ const handlers: Record<string, Handler> = {
     // today. The count is the queue's real answer, not the estimate, and
     // it is what the room is charged.
     const stampedIds = async (brandId: string) => (await prisma.target.findMany({
-      where: { brandId, queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false },
+      where: { brandId, queuedFor: { gte: startOfDay }, status: { in: ['queued', 'drafted'] }, shelved: false, ...NOT_MARKED },
       select: { id: true },
     })).map(t => t.id)
     const queueWhole = async (g: (typeof groups)[number]): Promise<string[]> => {

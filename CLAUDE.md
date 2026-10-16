@@ -179,8 +179,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   **Just <first>** = one click, `handStep({ step: 'declined', scope: 'person' })` → `stopContact`: `Target.handDeclinedAt`
   / `handDeclinedScope` + `Contact.doNotContactAt` / `doNotContactBy`. Their status stays accepted / replied (they were
   reached — never `declined`, which reads as never reached). **Their other copies** (`src/lib/do-not-contact.ts`,
-  `stopTwins` / `stoppedMatch`: the same LinkedIn profile or personal email anywhere, the same full name at the brand)
-  are marked in the same moment and their waiting rows set aside (Setting `personStopLog`); the toast names them.
+  `stopTwins` / `stoppedMatch`: the same LinkedIn profile — typed or percent-encoded — or personal email anywhere, the
+  same full name at the brand; copies of copies too, a few hops) are marked in the same moment and their waiting rows set
+  aside (Setting `personStopLog`); the toast names them.
   **Everyone at <brand>** = a preview on the card first (the others on Zach's list, today's list, the pool and next in
   line, coming Schedule days, their other copies; left as they are: calls booked, invites still out, open deals, email
   drafts — those never send) → Stop sends its `expect` (changed since → `stale`, shown again): `Brand.stoppedAt` /
@@ -192,8 +193,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   setTargetShelved's Promote), queueBrandTargets (never promotes a marked copy's row), reason `stopped` (outreachGate /
   planRefusal), `isReachable`, the email machine (send and draft paths), Archive's Bring back / Emails on refused while it
   stands, **mergeBrands / combineParent / undoCombineParent refuse** a stopped brand (a merge would end or spread it),
-  today's list and the pool never show or count a marked row however it came back (`NOT_MARKED` — an Undo of a merge or
-  a Leave out can revive one; undoLeaveOutPeople skips them, undoSamePerson sets them aside on the stop's record) — and
+  a marked person's row still waiting is set aside on the stop's record wherever one appears (`setAsideMarked`: a
+  merge that carries the mark, a merge's Undo), undoLeaveOutPeople skips them, undoLinkedInLog refuses, and today's
+  list, the pool, the queue's count (`reconcileBrandTargets`) and the Schedule's preview (`previewBrandPicks`) leave them
+  out (`NOT_MARKED`) — and
   new copies are refused by upsertContact, importContacts (`optedOut`), the LinkedIn capture (a dupe), the SponsorUnited
   capture and SB · Log (`assertLoggable`; 1.3 and + Add from LinkedIn say "doesn't want to continue", never "on Zach's
   list"). The LinkedIn tab's rows say it with nothing to send (`targetRow`); the recap lists a stop but never counts it as
