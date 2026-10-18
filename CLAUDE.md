@@ -32,7 +32,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 ## Where things live
 - `public/app.html` — the whole UI. Top nav is six groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
   `showView`): Home · Brands (All brands / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
-  Schedule / Email / People / Archived / Email stats) ·
+  Week plan / Schedule / Email / People / Archived / Email stats) ·
   **Show Board** (Overview = code lookup (`boardCodeLookup`: the whole roster by name / aka, people and archived too — it used to filter listBrands' first 500; `test-board-lookup.js`) + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
   exact NY times and time on board; **every** board open is logged, gate on or off (anonymous = "Visitor") / **In talks** = per-brand engagement cards (code, viewers, opens, timed minutes
@@ -247,6 +247,39 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   removes a person the log made). The brand card says "invited outside the queue" for an accept with no
   invite date, and a draft written after the send is "The first DM, ready to copy", never "the note that
   went out".
+- **Outreach → Week plan** (Leo, Oct 18 2026: "a page that fills up to around 100 brands … the top 100 ranked … a search
+  bar to add brands … add brands … by filtering through categories … have the brands i want to reach out to in a week set
+  up before … then … randomly put them into the days for the week which i should be able to move between days"; his picks:
+  a **bank spent week by week**, an **even mix of rank**, a spread day takes **only brands from the list**). Rules pure in
+  `src/lib/week-bank.ts` (`node scripts/test-week-bank.mjs`); `wp*` / `WP` in app.html (`#weekplan`, tab between Results
+  and Schedule). **The list** (Setting `weekBank` = { size, hand, removed }; `buildBank` in route.ts) = brands Leo added
+  (search box = `searchPlanBrands` for the week's first day; Browse a category = `weekBankBrowse`, Add the top N / ticks;
+  a giant's Add anyway OKs it, `okGiants`) + the brands a Best fit day would pick by itself (`bestFitEligible`, someone
+  would go out, not going out today), **best Brand Fit first** (`compareBank`: fit, then ready, then name — not Ready
+  before short), up to its number (`weekBankSize`, 10–300, default 100; hand adds count toward it). It is worked out on
+  every read: a brand reached drops out and the next one comes in. × = `weekBankRemove` (remembered — the list never puts
+  it back; on a row already on a day it asks and takes it off that day too, `offDays`); Put back = `weekBankPutBack`. A
+  hand add leaves once something goes out to it after it was added (`handSpent`) or it's archived / do-not-email / not US /
+  in talks / stopped (pruned on the next `weekBank` read). Advisory-locked writes (`updateBankState`). **The week**:
+  `planWeeks` = this week (Mon–Sun, New York) while it has a sending day after today, and next week; today is never a
+  column. Each day's room = `weekRooms` (30, or what LinkedIn's 100 in 7 days leaves — days counted full in date order)
+  less its pins going (`weekColumns`, from getOutreachPlan's cards). **Spread** (`weekSpread`, preview → apply,
+  `seed` = the shuffle; Shuffle again = a new seed): `spreadWeek` deals the list's waiting brands in rank order, each
+  whole, onto the fitting day dealt the fewest brands so far (ties at random) — #1–#3 on three different days, #4–#6 the
+  same — never past a day's room, one big company a day (`BIG_PER_BEST_FIT_DAY`); a brand too big for every room left is
+  passed over (named) and waits for next week. Apply writes exactly the preview's days through `planAddCore` (a brand
+  pinned elsewhere since is left there, named), marks every spread day **list-only** (Setting `outreachListDays` = { day:
+  { at, by } }) and logs Setting `weekSpreadLast` for `undoWeekSpread` (preview → confirm: off what still sits where it put
+  it, a moved one stays, days it marked go back; today's never touched). **A list-only day** has no automatic picks:
+  getOutreachPlan's rows (`list: true`, offTheme 0), getTodayQueue (`listDay`; its fill only for Fill to 30 — `__fill`
+  from fillToday — and then from the list, its order; Ready if you have room = the list), Plan my week (`WeekDayIn.list`
+  → source `list`, nothing added), the morning roll treats it like a Best fit day (what was only shown goes back);
+  its Fill box / suggestForDay offer the list (`bankSuggestRows`, `data.list`). `setListDay` = **Keep it to my list** /
+  **Let Best fit fill open spots** (Week plan's columns; the Schedule's day ⋯). Moving on the page = the Schedule's
+  handlers: Move to… / drag between days (`planMoveBrand`), × and Off the days (`planRemoveBrand`), Put on… / drag a list
+  row onto a day (`planAddBrands`). The Schedule shows a list day with a **Week list** tag and no category menu; the
+  LinkedIn tab says "Today takes only your week list". Tests: `node scripts/test-week-bank.mjs`, `NODE_PATH=$(npm root -g)
+  node scripts/test-week-plan.js` (page), `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-week-plan-e2e.js`.
 - **Outreach → Schedule** (`getOutreachPlan` + the `sd*` / `renderSched*` code; plan in Setting
   `outreachPlan` = `{ "YYYY-MM-DD": { category, brandIds } }`, one brand on one day) — full width,
   today (if a sending day) + the next 3 sending days as columns. Every brand carries a **contacts label**
@@ -637,7 +670,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   changed since is skipped, named, and left waiting in the batch. Rows match by id, else exact name / aka
   (`researchMatcher`); a brand listed twice — the later row wins. One transaction, Undo `researchUndo` (only fields
   still as the import left them). Never write facts without that review — the one exception is a brand the "Add a
-  brand" chat makes, where Leo's yes on the card that showed the facts is the review. **Suggest Archive**
+  brand" chat makes, where Leo sending the brand is his yes (Oct 18 2026) and the card it shows after names every fact written. **Suggest Archive**
   (`fitArchive` preview → apply, Undo `fitArchiveUndo`; Setting `fitArchiveLast`): confirmed not US,
   closed/acquired, or researched with every signal known to be absent (sales AND funding looked up and
   under the bars, no college / music found, not a Top category) and a low score; never a brand in talks (reply, deal,
@@ -758,12 +791,16 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `DASHBOARD_TOKEN` in its environment — no API spend) follows `docs/add-a-brand-chat.md`: reads the
   screenshot / name, `brandLookup`, researches the open web (site, LinkedIn page, what they sell, money,
   college / music), previews `chatAddBrand` (rules pure in `src/lib/chat-add.ts`: possible matches by
-  name / aka, LinkedIn page, website — the Duplicates signals; `node scripts/test-chat-add.mjs`), shows
-  Leo a card, and only on his yes applies: Brand `source: 'chat'`, notes say where it came from. A
-  possible match is refused unless Leo says it's a different company (`notSame`; an exact name never).
-  **Facts: Leo's yes is the review** (Leo, Oct 12 2026: "my yes is the review, so skip Stock take"): the
-  preview returns `facts` = each fact as it'll be written (`factChanges` against a blank brand, `{ label, value }`),
-  the card shows them all, and apply (with the preview's `expect`; other facts are refused) writes them onto the
+  name / aka, LinkedIn page, website — the Duplicates signals; `node scripts/test-chat-add.mjs`) and applies.
+  **Every brand Leo sends is a yes** once real information is found — its own website or checked LinkedIn page, and
+  what it sells (Leo, Oct 18 2026: "every brand Leo sends is a yes when real info is found. Ask only when it might
+  match a brand already on the dashboard"); no info → nothing added, the chat says what's missing. Brand
+  `source: 'chat'`, notes say where it came from. A possible match stops the chat to ask; apply refuses it unless Leo
+  says it's a different company (`notSame`; an exact name never). After adding it shows Leo the card with every fact
+  and the link; a fact he corrects is fixed on that brand alone (`updateBrand({ brandId, facts })`).
+  **Facts: Leo sending it is the review** (Oct 12 2026: "my yes is the review, so skip Stock take"; Oct 18: the send is
+  the yes): the preview returns `facts` = each fact as it'll be written (`factChanges` against a blank brand,
+  `{ label, value }`), and apply (with the preview's `expect`; other facts are refused) writes them onto the
   brand it makes in the same transaction (+ `researchedAt`; `factsWritten`). Never onto a brand that was already there — those still go to `researchStage`. It can't
   sign in to SponsorUnited or LinkedIn — the LinkedIn fill and SU sweep pick the brand up from there.
 - **One brand per parent company** (Leo, Oct 8 2026: "make all of the brands under Diageo one big brand on the site and
