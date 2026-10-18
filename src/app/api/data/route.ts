@@ -10417,6 +10417,58 @@ const handlers: Record<string, Handler> = {
   // unscheduled (named in the reply), and if the day is today their
   // unsent people come back out of today's queue, as planRemoveBrand does.
   // Nothing is deleted — the brands and their people are all still there.
+  // The "Reached" tag (Leo, Oct 18 2026: "all over the site for any brand
+  // that has been reached out to i want a tag that shows that"): every
+  // brand reached out to, by isReached's rule — an invite ever (logged
+  // outside the queue, withdrawn since: it still went), an accept or reply,
+  // a hand email, an email the machine sent. Per brand id: [first day, last
+  // day, stage, invited, emailed] — New York day keys; stage = brandStage's
+  // r(eplied) / a(ccepted) / i(nvited) / e(mailed) / w(ithdrawn). The page
+  // reads it once and paints the tag wherever a brand shows (rbTag).
+  async reachedBrands() {
+    const rows = await prisma.target.findMany({
+      where: {
+        OR: [
+          { sentAt: { not: null } },
+          { status: { in: ['accepted', 'replied', 'converted'] as TargetStatus[] } },
+          { emailedAt: { not: null } },
+          { emails: { some: SENT_EMAIL } },
+        ],
+      },
+      select: {
+        brandId: true, status: true, sentAt: true, emailedAt: true, repliedAt: true, updatedAt: true,
+        emails: { where: SENT_EMAIL, select: { sentAt: true }, orderBy: { sentAt: 'desc' }, take: 1 },
+      },
+    })
+    type Acc = { first: number; last: number; rank: number; invited: number; emailed: number }
+    const RANK: Record<string, number> = { r: 5, a: 4, i: 3, e: 2, w: 1 }
+    const by = new Map<string, Acc>()
+    for (const t of rows) {
+      const email = t.emails[0]?.sentAt ?? null
+      const stage = ['replied', 'converted'].includes(t.status) ? 'r'
+        : t.status === 'accepted' ? 'a'
+        : t.sentAt && t.status !== 'withdrawn' ? 'i'
+        : t.emailedAt || email ? 'e'
+        : t.status === 'withdrawn' ? 'w' : 'i'
+      // An accept logged with no invite date dates from the row's last change.
+      const dates = [t.sentAt, t.emailedAt, email, t.repliedAt].filter((d): d is Date => !!d).map(d => d.getTime())
+      if (!dates.length) dates.push(t.updatedAt.getTime())
+      const a = by.get(t.brandId) ?? { first: Infinity, last: 0, rank: 0, invited: 0, emailed: 0 }
+      a.first = Math.min(a.first, ...dates)
+      a.last = Math.max(a.last, ...dates)
+      a.rank = Math.max(a.rank, RANK[stage])
+      if (t.sentAt) a.invited += 1
+      if (t.emailedAt || email) a.emailed += 1
+      by.set(t.brandId, a)
+    }
+    const STAGE = ['', 'w', 'e', 'i', 'a', 'r']
+    const brands: Record<string, [string, string, string, number, number]> = {}
+    for (const [id, a] of by) {
+      brands[id] = [localDayKey(new Date(a.first)), localDayKey(new Date(a.last)), STAGE[a.rank], a.invited, a.emailed]
+    }
+    return { brands, count: by.size }
+  },
+
   // ── Outreach → Week plan ──────────────────────────────────────────
   // The list (Setting weekBank) and the week it is spent on. week = 'this'
   // | 'next' | a Monday key; the first week offered when it's missing (this

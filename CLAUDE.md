@@ -273,7 +273,18 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   up before … then … randomly put them into the days for the week which i should be able to move between days"; his picks:
   a **bank spent week by week**, an **even mix of rank**, a spread day takes **only brands from the list**). Rules pure in
   `src/lib/week-bank.ts` (`node scripts/test-week-bank.mjs`); `wp*` / `WP` in app.html (`#weekplan`, tab between Results
-  and Schedule). **The list** (Setting `weekBank` = { size, hand, removed }; `buildBank` in route.ts) = brands Leo added
+  and Schedule). **Layout** (Leo, same day: "clean this page up … make each brand bigger … make sure that adding and
+  removing brands does not glitch"): the list pane on the left, the week pane on the right, each filling the screen under
+  the title (`wpFit` → `--wp-h`) and scrolling on its own (`wpPaint` keeps each pane's scroll) — so a brand put on a day
+  never moves the list under the mouse; stacked (week first) under 1100px. One big card per brand (`wpCardHtml`: rank,
+  name, Brand Fit box, category, people, contacts, Reached tag, where it is) with a **button per day** (lit = it's on that
+  day; another day moves it, the lit one takes it off) and **Remove**; day cards (`wpDayCard`) have → <day> and ↩ Back to
+  list; drag works list → day, day → day, day → list. The search box / category menu (static, never redrawn) turn the
+  list pane into results (+ Add to list / Add anyway / Added ✓; a category: Add the top N, ticks) with × Back to your list.
+  **No glitches** (`wpDo`): every change shows at once on the page's own copy, the buttons of a brand being saved wait
+  (`WP.pending`), and the page reads `weekBank` once the last change is answered (`wpRead`, dropped if another change
+  started meanwhile); a refusal says why and that read puts the truth back. A brand removed stays in its place as "Taken
+  off your list · Undo" for 15 s (`WP.gone`, Undo = `weekBankPutBack`). **The list** (Setting `weekBank` = { size, hand, removed }; `buildBank` in route.ts) = brands Leo added
   (search box = `searchPlanBrands` for the week's first day; Browse a category = `weekBankBrowse`, Add the top N / ticks;
   a giant's Add anyway OKs it, `okGiants`) + the brands a Best fit day would pick by itself (`bestFitEligible`, someone
   would go out, not going out today), **best Brand Fit first** (`compareBank`: fit, then ready, then name — not Ready
@@ -301,6 +312,19 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   row onto a day (`planAddBrands`). The Schedule shows a list day with a **Week list** tag and no category menu; the
   LinkedIn tab says "Today takes only your week list". Tests: `node scripts/test-week-bank.mjs`, `NODE_PATH=$(npm root -g)
   node scripts/test-week-plan.js` (page), `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-week-plan-e2e.js`.
+- **The Reached tag** (Leo, Oct 18 2026: "all over the site for any brand that has been reached out to i want a tag that
+  shows that"): `reachedBrands` = every brand reached out to by `isReached`'s rule (an invite ever — logged outside the
+  queue or withdrawn since, an accept / reply, a hand or machine email) → { id: [first day, last day, stage r/a/i/e/w,
+  invited, emailed] }. The page keeps one map (`RB`, `rbLoad`: at the start, every tab change and window focus — at most
+  every 30 s — and after any call in `RB_WRITES`, e.g. setTargetStatus / logLinkedInPerson / markEmailed / handStep);
+  `rbTag(id)` draws a slot the map fills ("Reached Oct 12", purple; tooltip = first/last day, how many invited / emailed,
+  how far it got), painted again when the map lands (`rbPaint`). On: Brands table, the brand page header, Needs contacts,
+  Stock take, Brand Fit review, People, fill schedule, Read on Zach's LinkedIn, the Schedule's cards / Fill box / find box /
+  drill-in / contacts check / Plan my week, Week plan, the LinkedIn tab's brand cards, All targets, Archived, global search,
+  Today's list for Zach, Deals board, Show Board requests / In talks / visits / code lookup, Partners, Discover (added),
+  Clarify, Duplicates. Left off lists where every brand is reached by definition (Results, Zach's list and its status
+  board, sent today, the recap). A new brand list: add `rbTag(<brand id>)` next to the name.
+  `NODE_PATH=$(npm root -g) node scripts/test-reached-tag.js`.
 - **Outreach → Schedule** (`getOutreachPlan` + the `sd*` / `renderSched*` code; plan in Setting
   `outreachPlan` = `{ "YYYY-MM-DD": { category, brandIds } }`, one brand on one day) — full width,
   today (if a sending day) + the next 3 sending days as columns. Every brand carries a **contacts label**
