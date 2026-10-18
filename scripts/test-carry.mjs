@@ -194,7 +194,7 @@ is('a broken snapshot is ignored', [...findUnsent({ days: ['2026-09-25'], stampe
   const wed = planCarry(unsent, factsFor('2026-10-14'), '2026-10-14', [], 40)
   is('the next sending day: it moves, the same two people, half-sent', [wed.moved, wed.unstamp], [[{ id: 'acme', name: 'Acme', people: 2, from: '2026-10-13', tier: 0 }], ['w1', 'w2']])
   const thu = planCarry(unsent, factsFor('2026-10-15'), '2026-10-15', [], 40)
-  is('a day later (Wednesday missed): it stays, resting two weeks', [thu.moved.length, thu.left.map(x => x.why)], [0, ['resting until 2026-10-27']])
+  is('a day later (Wednesday missed): it stays, resting a week', [thu.moved.length, thu.left.map(x => x.why)], [0, ['resting until 2026-10-20']])
 }
 
 // ---- carry-front: carried brands go first (Leo's call, Oct 12 2026) ---------

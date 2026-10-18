@@ -84,6 +84,7 @@ export function actionText(fn: string, args: any, result: any): string | null {
     case 'weekBankSize': return `Set the week list to ${Number(r.size ?? a.size) || 0} brands`
     case 'weekSpread': return `Spread the week list onto ${plural(count(a.days), 'day')} (${Array.isArray(r.days) ? r.days.reduce((n: number, d: any) => n + (Number(d?.added) || 0), 0) : 0} brands)`
     case 'undoWeekSpread': return 'Took back the last week list spread'
+    case 'reachAgain': return `Reached out again at ${s(r.brandName) || 'a brand'}: ${plural(count(r.people), 'person', 'people')} on ${s(r.label || a.date)}`
     case 'setListDay': return `${a.on === false ? 'Let Best fit fill' : 'Kept to the week list:'} ${s(a.date)}`
     case 'planAddBrands': return `Put ${plural(count(a.brandIds) || count(r.added), 'brand')} on ${s(a.date || 'a day')}`
     case 'setBrandPassed': return `${a.passed === false ? 'Brought back' : 'Archived'} ${brand || 'a brand'}`

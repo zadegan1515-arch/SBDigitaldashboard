@@ -12,7 +12,11 @@
 //     Fill box offers the list;
 //   • Undo takes the spread back off and the days fill with Best fit again;
 //   • today kept to the list: nothing automatic in today's list, Fill to 30
-//     takes from the list (top first), and Best fit again once let go.
+//     takes from the list (top first), and Best fit again once let go;
+//   • Reach out again: a brand reached a week+ ago that nobody answered,
+//     with decision makers never contacted, is recommended (not under a
+//     week, not after an accept); reachAgain puts exactly those people on
+//     the day (chosen), refuses under a week, and onto today queues them.
 //
 // Run: E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-week-plan-e2e.js
 const path = require('path');
@@ -137,7 +141,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     wb = await data('weekBank', {});
     assert.equal(wb.bank.rows.length, 10, 'hand adds count toward the number');
     const reach = wb.bank.rows.find(r => r.id === 'reach');
-    assert.ok(reach && reach.how === 'hand' && reach.where === 'cant' && /rests two weeks/.test(reach.why), 'the reached one: added by hand, resting');
+    assert.ok(reach && reach.how === 'hand' && reach.where === 'cant' && /rests a week/.test(reach.why), 'the reached one: added by hand, resting');
     assert.equal(wb.bank.rows.find(r => r.id === 'giant')?.where, 'waiting', 'the OK’d giant can go');
     assert.equal(wb.bank.autoLeft, 5, 'two hand adds pushed two system picks past the number');
 
@@ -259,6 +263,66 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const wb2 = await data('weekBank', {});
     assert.ok(![...listed].some(id => wb2.bank.rows.some(r => r.id === id && r.where === 'waiting')), 'today’s brands aren’t waiting on the list any more');
     ok('today kept to the list: nothing automatic, Fill to 30 from the list, top first');
+
+    // 6. Reach out again ---------------------------------------------------
+    // Reached 9 days ago (two invites, nobody answered), with two people who
+    // decide there never contacted — and one who doesn't decide.
+    const mkAgain = async (id, name, daysAgo, opts = {}) => {
+      await prisma.brand.create({ data: { id, name, category: 'energy', tier: 'growth', liMembers: 120, usStatus: 'yes', salesCents: BigInt(80 * M) } });
+      const people = [['Head of Partnerships', true], ['Brand Manager', true], ['Events Manager', false], ['VP Marketing', false], ['Sales Associate', false]];
+      for (let i = 0; i < people.length; i++) {
+        const c = await prisma.contact.create({ data: { brandId: id, name: name + ' ' + people[i][0], title: people[i][0], linkedinUrl: 'https://www.linkedin.com/in/' + id + i } });
+        if (people[i][1]) {
+          await prisma.target.create({ data: { brandId: id, contactId: c.id, status: i === 0 && opts.accepted ? 'accepted' : 'sent', sentAt: new Date(Date.now() - daysAgo * 864e5) } });
+        }
+      }
+    };
+    await mkAgain('ag', 'Again Co', 9);
+    await mkAgain('ag2', 'Today Again', 10);
+    await mkAgain('soon', 'Soon Co', 3);
+    await mkAgain('acc', 'Accepted Co', 9, { accepted: true });
+    wb = await data('weekBank', {});
+    const ag = wb.again.rows.find(r => r.id === 'ag');
+    assert.ok(ag, 'reached 9 days ago with decision makers never contacted: recommended');
+    assert.equal(ag.state, 'due', 'due (1 to 2 weeks)');
+    assert.equal(ag.daysSince, 9);
+    assert.deepEqual(ag.fresh.map(c => c.title), ['Events Manager', 'VP Marketing'], 'the decision makers nobody contacted, events first; never the sales associate');
+    assert.equal(ag.going, 2, 'both go');
+    assert.equal(ag.invited, 2);
+    for (const id of ['soon', 'acc', 'reach']) assert.ok(!wb.again.rows.some(r => r.id === id), id + ': not recommended (under a week, or someone accepted)');
+    assert.ok(!wb.bank.rows.some(r => r.id === 'ag'), 'never on the list by itself (reached)');
+    ok('Reach out again: a week or more since the last outreach, nobody answered, decision makers never contacted — not under a week, not after an accept');
+
+    const no = await data('reachAgain', { brandId: 'soon', date: wb.days[0].date });
+    assert.equal(no.ok, false);
+    assert.equal(no.why, 'soon', 'under a week: refused, says why');
+    assert.match(no.text, /less than a week ago/);
+    const day = wb.days[0].date;
+    const ra = await data('reachAgain', { brandId: 'ag', date: day });
+    assert.equal(ra.ok, true, 'put on ' + day);
+    assert.deepEqual(ra.people.map(p => p.name).sort(), ['Again Co Events Manager', 'Again Co VP Marketing']);
+    const plan3 = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value);
+    assert.ok(plan3[day].brandIds.includes('ag'), 'pinned on that day');
+    const newRows = await prisma.target.findMany({ where: { brandId: 'ag', status: 'queued' }, include: { contact: true } });
+    assert.deepEqual(newRows.map(t => t.contact.title).sort(), ['Events Manager', 'VP Marketing'], 'a waiting row for each, nobody else');
+    const chosen = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachChosen' } })).value);
+    assert.ok(newRows.every(t => chosen[t.id]), 'chosen people (they go first and all go)');
+    op = await data('getOutreachPlan', {});
+    const card = op.days.find(x => x.date === day)?.pinned.find(p => p.id === 'ag');
+    assert.ok(card && card.state === 'going', 'the Schedule says it goes');
+    assert.deepEqual(card.people.map(p => p.name).sort(), ['Again Co Events Manager', 'Again Co VP Marketing'], 'exactly them — though the brand has invites out');
+    wb = await data('weekBank', {});
+    assert.equal(wb.again.rows.find(r => r.id === 'ag')?.pinnedOn, day, 'the card says where it is');
+    ok('reachAgain: those people on that day (chosen, so they go though the brand has invites out); under a week refused');
+
+    // Onto today (opened above): they're in today's LinkedIn list now.
+    const rt = await data('reachAgain', { brandId: 'ag2', date: today });
+    assert.equal(rt.ok, true);
+    tq = await data('getTodayQueue', {});
+    const ag2Rows = await prisma.target.findMany({ where: { brandId: 'ag2', status: { in: ['queued', 'drafted'] } }, include: { contact: true } });
+    assert.deepEqual(ag2Rows.map(t => t.contact.title).sort(), ['Events Manager', 'VP Marketing'], 'rows for the two never contacted');
+    assert.deepEqual(tq.targets.filter(t => t.brandId === 'ag2').map(t => t.id).sort(), ag2Rows.map(t => t.id).sort(), 'in today’s list: exactly them');
+    ok('reachAgain onto today: straight into today’s LinkedIn list');
 
     console.log('week plan e2e: all ' + n + ' passed');
   } catch (e) {

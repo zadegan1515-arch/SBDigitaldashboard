@@ -1007,74 +1007,62 @@
   .rb-slot{display:inline-flex;vertical-align:middle;margin-left:6px}
   .rb-slot:empty{display:none}
   .rb-tag{display:inline-block;font-size:12px;font-weight:700;line-height:1.5;padding:0 8px;border-radius:999px;color:#c9b3ff;background:rgba(157,122,255,.12);border:1px solid rgba(157,122,255,.4);white-space:nowrap;letter-spacing:0;text-transform:none}
-  /* Outreach → Week plan: the list (left) and the week (right), each scrolling on its own */
+  /* Outreach → Week plan: the week as a strip of day tiles that stays in view, the brands as a grid filling the page */
   .wp-steps{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap}
   .wp-steps b{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--accent-soft);color:var(--accent-hi);align-items:center;justify-content:center;font-size:12.5px;margin-right:4px}
-  .wp-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:18px;margin-top:18px;align-items:start}
-  /* Both panes fill the screen under the title (--wp-h, wpFit), so the page
-     itself never scrolls them under the header — each pane scrolls inside. */
-  #weekplan.page{padding-bottom:16px}
-  .wp-pane{background:var(--surface-1);border:1px solid var(--border);border-radius:14px;display:flex;flex-direction:column;min-width:0;
-    height:var(--wp-h,calc(100vh - 340px));min-height:520px;overflow:hidden}
-  .wp-pane.sd-over{outline:2px dashed var(--accent-hi);outline-offset:-2px}
-  .wp-pane-h{padding:16px 18px 12px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:10px}
-  .wp-pane-h h2{font-family:var(--display);font-size:20px;font-weight:800;margin:0;letter-spacing:-.01em}
+  #weekplan.page{padding-bottom:70px}
+  .wp-bar{position:sticky;top:var(--head-h,0px);z-index:25;margin:16px 0 20px;padding:12px 14px;background:var(--surface-1);border:1px solid var(--border);border-radius:14px;
+    display:flex;flex-direction:column;gap:10px;box-shadow:0 8px 22px rgba(0,0,0,.28)}
+  .wp-bar h2,.wp-main-h h2{font-family:var(--display);font-size:20px;font-weight:800;margin:0;letter-spacing:-.01em}
   .wp-h-row{display:flex;gap:8px 12px;flex-wrap:wrap;align-items:center}
   .wp-weeks{display:flex;gap:6px;flex-wrap:wrap}
   .wp-big{font-family:var(--display);font-size:24px;font-weight:800;color:var(--ink-1);letter-spacing:-.02em;line-height:1}
-  .wp-meter{flex:1 1 140px;min-width:120px}
+  .wp-meter{flex:0 1 160px;min-width:100px}
   .wp-spread{font-size:14.5px;padding:9px 16px}
-  .wp-holds{margin-left:auto;display:inline-flex;align-items:center;gap:8px}
-  .wp-size{width:84px;padding:6px 8px;font-size:14px}
-  .wp-addrow{display:flex;gap:10px;flex-wrap:wrap}
-  .wp-addrow #wp-q{flex:1 1 220px;min-width:0;font-size:14.5px;padding:9px 12px}
-  .wp-addrow #wp-cat{flex:0 1 240px;min-width:0;font-size:14px}
-  .wp-back{font-size:13.5px;font-weight:700;color:var(--accent-hi);text-decoration:none;margin-left:auto;white-space:nowrap}
-  .wp-scroll{overflow:auto;flex:1;padding:14px 16px 24px;display:flex;flex-direction:column;gap:10px;min-height:0}
-  .wp-pv{padding:12px 14px;border:1px solid rgba(79,131,247,.45);background:var(--accent-soft);border-radius:10px;display:flex;flex-direction:column;gap:8px;font-size:14px;line-height:1.5}
-  /* a brand on the list: big, one card each */
-  .wp-b{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:13px 15px;display:flex;flex-direction:column;gap:9px;transition:opacity .15s,border-color .2s,box-shadow .2s;flex:none}
-  .wp-b[draggable="true"]{cursor:grab}
-  .wp-b.placed{border-color:rgba(62,207,142,.35)}
-  .wp-b.busy{opacity:.6}
-  .wp-b.ghost{border-style:dashed;opacity:.8}
-  .wp-b.flash{border-color:var(--accent-hi);box-shadow:0 0 0 2px rgba(79,131,247,.25)}
-  .wp-b.hl{outline:2px solid var(--accent-hi);outline-offset:-1px}
-  .wp-b.sd-dragging,.wp-dc.sd-dragging{opacity:.45}
-  .wp-b-h,.wp-dc-h{display:flex;align-items:center;gap:10px;min-width:0}
-  .wp-b-rank{font-family:var(--display);font-weight:800;font-size:15px;color:var(--ink-3);min-width:38px;flex:none}
-  .wp-b-name{font-family:var(--display);font-size:17.5px;font-weight:800;color:var(--ink-1);text-decoration:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:-.01em}
-  .wp-b-name:hover,.wp-dc-name:hover{color:var(--accent-hi)}
-  .wp-fitbox{margin-left:auto;flex:none;font-family:var(--display);font-weight:800;font-size:16px;min-width:40px;text-align:center;padding:3px 9px;border-radius:9px;background:var(--accent-soft);color:var(--accent-hi)}
-  .wp-fitbox.sm{font-size:14px;min-width:34px;padding:2px 7px}
-  .wp-b-meta{font-size:13.5px;color:var(--ink-2);display:flex;gap:6px 12px;flex-wrap:wrap;align-items:center}
-  .wp-b-meta .rb-slot,.wp-dc-meta .rb-slot{margin-left:0}
-  .wp-b-act,.wp-dc-act{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .wp-status{font-size:13.5px;font-weight:700}
-  .wp-status.day{color:#8fe0bb}.wp-status.wait{color:var(--ink-3);font-weight:600}.wp-status.cant{color:#f2918c;font-weight:600}.wp-status.today{color:#aac6ff}
-  .wp-daybtn,.wp-rm,.wp-addbtn{font:inherit;font-size:13.5px;font-weight:700;padding:7px 13px;border-radius:9px;border:1px solid var(--border);background:var(--surface-1);color:var(--ink-1);cursor:pointer;white-space:nowrap;min-height:34px}
-  .wp-daybtn:hover:not(:disabled){border-color:var(--accent-hi);color:var(--accent-hi)}
-  .wp-daybtn.on{background:rgba(62,207,142,.14);border-color:rgba(62,207,142,.55);color:#8fe0bb}
-  .wp-daybtn.on:hover:not(:disabled){border-color:rgba(240,113,107,.6);color:#f2918c}
-  .wp-rm{background:transparent;color:var(--ink-3);font-weight:600}
-  .wp-rm:hover:not(:disabled){color:#f2918c;border-color:rgba(240,113,107,.5)}
-  .wp-addbtn{background:var(--accent);border-color:var(--accent);color:#fff}
-  .wp-addbtn.anyway{background:transparent;color:#eec777;border-color:rgba(232,182,76,.5)}
-  .wp-daybtn:disabled,.wp-rm:disabled,.wp-addbtn:disabled{opacity:.55;cursor:default}
-  .wp-tick{width:18px;height:18px;flex:none;accent-color:var(--accent)}
-  .wp-more{align-self:center;margin-top:4px}
-  .wp-removed{margin-top:10px}
-  .wp-mini{display:flex;gap:10px;align-items:center;padding:8px 2px;border-bottom:1px solid var(--border)}
-  .wp-mini .btn-ghost{margin-left:auto}
-  /* a day of the week, and the brands on it */
-  .wp-day{border:1px solid var(--border);border-radius:12px;background:var(--surface-2);padding:14px 16px;display:flex;flex-direction:column;gap:10px;flex:none}
-  .wp-day.sd-over{outline:2px dashed var(--accent-hi);outline-offset:-2px;background:rgba(79,131,247,.05)}
+  /* a day of the week as a tile: click it to see and move its brands, drop a brand on it */
+  .wp-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+  .wp-tile{border:1px solid var(--border);border-radius:11px;background:var(--surface-2);padding:9px 12px;display:flex;flex-direction:column;gap:6px;cursor:pointer;min-width:0;
+    transition:border-color .15s,background .15s;outline:none}
+  .wp-tile:hover,.wp-tile:focus-visible{border-color:rgba(79,131,247,.55)}
+  .wp-tile.open{border-color:var(--accent-hi);background:rgba(79,131,247,.08)}
+  .wp-tile.sd-over,.wp-open.sd-over,.wp-main.sd-over{outline:2px dashed var(--accent-hi);outline-offset:-2px;background:rgba(79,131,247,.1)}
+  .wp-tile-h{display:flex;align-items:center;gap:8px;min-width:0}
+  .wp-tile-t{font-family:var(--display);font-weight:800;font-size:16px;white-space:nowrap}
+  .wp-tile-h .sd-tag{flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .wp-tile-n{margin-left:auto;font-size:13.5px;color:var(--ink-2);white-space:nowrap;flex:none}
+  .wp-tile-n b{font-family:var(--display);font-size:19px;font-weight:800;color:var(--ink-1)}
+  .wp-tile .sd-meter{margin:0;background:var(--surface-1)}
+  .wp-tile-b{font-size:13px;color:var(--ink-2);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:3em}
+  .wp-tn{cursor:grab;color:var(--ink-1)}
+  .wp-tn:hover{color:var(--accent-hi)}
+  .wp-tile-b .new{color:#8fe0bb;font-weight:700}
+  .wp-tile-f{font-size:12.5px;color:var(--ink-3);display:flex;gap:6px;align-items:center;white-space:nowrap}
+  .wp-tile-f .sd-st{font-size:12.5px}
+  /* stuck under the header: a slim strip (the space it gave up stays as its
+     margin, so the list under it never moves — wpBarFit) */
+  .wp-bar.compact{padding:8px 12px;gap:8px}
+  .wp-bar.compact .wp-tile{padding:7px 11px;gap:5px}
+  .wp-bar.compact .wp-tile-b,.wp-bar.compact .wp-last{display:none}
+  .wp-bar.compact h2{font-size:17px}
+  .wp-bar.compact .wp-big{font-size:20px}
+  .wp-bar.compact .wp-spread{padding:6px 12px;font-size:13.5px}
+  .wp-tile-f .wp-caret{margin-left:auto;font-size:13px;color:var(--accent-hi);font-weight:700}
+  /* the open day (or the spread's preview): drops down over the list, never pushes it */
+  .wp-open{position:absolute;left:-1px;right:-1px;top:100%;margin-top:8px;max-height:min(62vh,600px);overflow:auto;z-index:26;
+    background:var(--surface-1);border:1px solid rgba(79,131,247,.5);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;
+    box-shadow:0 18px 40px rgba(0,0,0,.45)}
+  .wp-open[hidden]{display:none}
+  .wp-open.pv{border-color:rgba(62,207,142,.5)}
+  .wp-x{margin-left:8px;font:inherit;font-size:15px;font-weight:700;width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--ink-2);cursor:pointer;flex:none}
+  .wp-x:hover{color:var(--ink-1);border-color:var(--accent-hi)}
+  .wp-pvday{font-size:14px;line-height:1.55}
+  .wp-pvday b{font-family:var(--display)}
   .wp-day-h{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap}
   .wp-day-t{font-family:var(--display);font-weight:800;font-size:19px;letter-spacing:-.01em}
   .wp-day-n{margin-left:auto;font-size:14px;color:var(--ink-2)}
   .wp-day-n b{font-family:var(--display);font-size:22px;font-weight:800;color:var(--ink-1)}
-  .wp-day-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:9px}
-  .wp-dc{background:var(--surface-1);border:1px solid var(--border);border-radius:10px;padding:11px 13px;display:flex;flex-direction:column;gap:7px;cursor:grab;min-width:0}
+  .wp-day-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:9px}
+  .wp-dc{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:11px 13px;display:flex;flex-direction:column;gap:7px;cursor:grab;min-width:0}
   .wp-dc.new{border-style:dashed;border-color:rgba(62,207,142,.55);cursor:default}
   .wp-dc.busy{opacity:.6}
   .wp-dc.blocked{border-color:rgba(240,113,107,.4)}
@@ -1083,14 +1071,71 @@
   .wp-dc-meta{font-size:13px;color:var(--ink-2);display:flex;gap:4px 8px;flex-wrap:wrap;align-items:center;line-height:1.45}
   .wp-dc-act .wp-daybtn,.wp-dc-act .wp-rm{padding:5px 10px;min-height:30px;font-size:13px}
   .wp-foot{font-size:13px;color:var(--ink-3);line-height:1.5;display:flex;gap:6px 10px;flex-wrap:wrap;align-items:center}
-  @media (max-width:1100px){
-    .wp-split{grid-template-columns:minmax(0,1fr)}
-    #weekplan.page{padding-bottom:70px}
-    .wp-pane{height:auto;min-height:0;overflow:visible}
-    .wp-scroll{overflow:visible}
-    .wp-weekpane{order:-1}
+  /* the brands: the whole page, a grid of big cards */
+  .wp-main{border-radius:14px}
+  .wp-main-h{display:flex;flex-direction:column;gap:10px}
+  .wp-holds{margin-left:auto;display:inline-flex;align-items:center;gap:8px}
+  .wp-size{width:84px;padding:6px 8px;font-size:14px}
+  .wp-addrow{display:flex;gap:10px;flex-wrap:wrap}
+  .wp-addrow #wp-q{flex:1 1 320px;min-width:0;font-size:15px;padding:10px 13px}
+  .wp-addrow #wp-cat{flex:0 1 260px;min-width:0;font-size:14px}
+  .wp-back{font-size:13.5px;font-weight:700;color:var(--accent-hi);text-decoration:none;margin-left:auto;white-space:nowrap}
+  .wp-sec{margin-top:20px}
+  .wp-sec-h{display:flex;align-items:baseline;gap:6px 12px;flex-wrap:wrap;margin-bottom:10px}
+  .wp-sec-h h3{font-family:var(--display);font-size:17.5px;font-weight:800;margin:0;letter-spacing:-.01em}
+  .wp-sec-n{font-family:var(--display);font-size:17.5px;font-weight:800;color:var(--ink-3)}
+  .wp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
+  .wp-b{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:9px;transition:opacity .15s,border-color .2s,box-shadow .2s;min-width:0}
+  .wp-b[draggable="true"]{cursor:grab}
+  .wp-b.placed{border-color:rgba(62,207,142,.4)}
+  .wp-b.busy{opacity:.6}
+  .wp-b.ghost{border-style:dashed;opacity:.8}
+  .wp-b.flash{border-color:var(--accent-hi);box-shadow:0 0 0 2px rgba(79,131,247,.25)}
+  .wp-b.hl{outline:2px solid var(--accent-hi);outline-offset:-1px}
+  .wp-b.again{border-color:rgba(157,122,255,.35)}
+  .wp-b.again.late{border-color:rgba(232,182,76,.45)}
+  .wp-b.again.placed{border-color:rgba(62,207,142,.4)}
+  .wp-b.sd-dragging,.wp-dc.sd-dragging{opacity:.45}
+  .wp-b-h,.wp-dc-h{display:flex;align-items:center;gap:10px;min-width:0}
+  .wp-b-rank{font-family:var(--display);font-weight:800;font-size:15px;color:var(--ink-3);min-width:34px;flex:none}
+  .wp-b-name{font-family:var(--display);font-size:18px;font-weight:800;color:var(--ink-1);text-decoration:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:-.01em}
+  .wp-b-name:hover,.wp-dc-name:hover{color:var(--accent-hi)}
+  .wp-fitbox{margin-left:auto;flex:none;font-family:var(--display);font-weight:800;font-size:16px;min-width:40px;text-align:center;padding:3px 9px;border-radius:9px;background:var(--accent-soft);color:var(--accent-hi)}
+  .wp-fitbox.sm{font-size:14px;min-width:34px;padding:2px 7px}
+  .wp-b-meta{font-size:13.5px;color:var(--ink-2);display:flex;gap:6px 12px;flex-wrap:wrap;align-items:center}
+  .wp-b-meta .rb-slot,.wp-dc-meta .rb-slot{margin-left:0}
+  .wp-again-why{font-size:13.5px;color:var(--ink-2);line-height:1.5}
+  .wp-again-who{font-size:13.5px;color:var(--ink-1);line-height:1.5;display:flex;flex-direction:column;gap:2px}
+  .wp-again-who .sd-dim{font-size:12.5px}
+  .sd-tag.again{color:#c9b3ff;border-color:rgba(157,122,255,.4)}
+  .wp-b-act,.wp-dc-act{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .wp-b-where{margin-top:auto;padding-top:2px}
+  .wp-b-act{margin-top:auto}
+  .wp-b-where + .wp-b-act{margin-top:0}
+  .wp-status{font-size:13.5px;font-weight:700}
+  .wp-status.day{color:#8fe0bb}.wp-status.wait{color:var(--ink-3);font-weight:600}.wp-status.cant{color:#f2918c;font-weight:600}.wp-status.today{color:#aac6ff}
+  .wp-daybtn,.wp-rm,.wp-addbtn{font:inherit;font-size:13.5px;font-weight:700;padding:7px 13px;border-radius:9px;border:1px solid var(--border);background:var(--surface-1);color:var(--ink-1);cursor:pointer;white-space:nowrap;min-height:34px}
+  .wp-daybtn:hover:not(:disabled){border-color:var(--accent-hi);color:var(--accent-hi)}
+  .wp-daybtn.on{background:rgba(62,207,142,.14);border-color:rgba(62,207,142,.55);color:#8fe0bb}
+  .wp-daybtn.on:hover:not(:disabled){border-color:rgba(240,113,107,.6);color:#f2918c}
+  .wp-daybtn.anyway{color:#eec777;border-color:rgba(232,182,76,.45)}
+  .wp-rm{background:transparent;color:var(--ink-3);font-weight:600}
+  .wp-rm:hover:not(:disabled){color:#f2918c;border-color:rgba(240,113,107,.5)}
+  .wp-addbtn{background:var(--accent);border-color:var(--accent);color:#fff}
+  .wp-addbtn.anyway{background:transparent;color:#eec777;border-color:rgba(232,182,76,.5)}
+  .wp-daybtn:disabled,.wp-rm:disabled,.wp-addbtn:disabled{opacity:.55;cursor:default}
+  .wp-tick{width:18px;height:18px;flex:none;accent-color:var(--accent)}
+  .wp-more{display:block;margin:12px auto 0}
+  .wp-removed{margin-top:18px}
+  .wp-mini{display:flex;gap:10px;align-items:center;padding:8px 2px;border-bottom:1px solid var(--border)}
+  .wp-mini .btn-ghost{margin-left:auto}
+  @media (max-width:820px){
+    .wp-bar{position:relative;top:auto}
+    .wp-strip{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(200px,78%);overflow-x:auto;padding-bottom:4px}
+    .wp-grid,.wp-day-cards{grid-template-columns:minmax(0,1fr)}
+    .wp-holds{margin-left:0}
+    .wp-open{max-height:70vh}
   }
-  @media (max-width:820px){.wp-holds{margin-left:0}.wp-day-cards{grid-template-columns:minmax(0,1fr)}.wp-pane-h,.wp-scroll{padding-left:12px;padding-right:12px}}
   /* Unsent work rolled to a later day */
   .sd-carry{display:flex;gap:6px 12px;align-items:center;flex-wrap:wrap;margin-top:12px;padding:10px 14px;border-radius:10px;
     background:rgba(79,131,247,.08);border:1px solid rgba(79,131,247,.3);font-size:13.5px}
@@ -2262,30 +2307,32 @@
 
     <!-- WEEK PLAN (Leo, Oct 18 2026): the list of brands to reach — ~100, the
          top by Brand Fit plus what he adds — spread onto the week's sending
-         days as an even mix of rank. The list on the left, the week on the
-         right, each scrolling on its own (a brand put on a day never moves
-         the list under the mouse). The search box and category menu are never
-         redrawn, so typing survives every refresh. -->
+         days as an even mix of rank. The brands fill the page as a grid of
+         big cards ("i want the brands to be the entire page"); the week is a
+         strip of day tiles on top that stays in view — drop a brand on a day,
+         click a day to see and move its brands (it drops down over the list,
+         so the list never moves). Reach out again: brands reached before with
+         decision makers never contacted. The search box and category menu are
+         never redrawn, so typing survives every refresh. -->
     <section class="view page wide" id="weekplan">
       <div class="eyebrow">Outreach</div>
       <h1>Week plan</h1>
       <div class="sub wp-steps"><span><b>1</b> Build your list</span><span class="sd-dim">→</span><span><b>2</b> Spread it onto the week</span><span class="sd-dim">→</span><span><b>3</b> Move brands between days</span></div>
-      <div class="wp-split">
-        <div class="wp-pane" id="wp-listpane">
-          <div class="wp-pane-h">
-            <div id="wp-listhead"></div>
-            <div class="wp-addrow">
-              <input class="inp" id="wp-q" placeholder="Search a brand to add…" autocomplete="off" aria-label="Search a brand to add to your list">
-              <select class="inp" id="wp-cat" aria-label="Add from a category"><option value="">Add from a category…</option></select>
-            </div>
-            <div id="wp-filters"></div>
+      <div class="wp-bar" id="wp-bar">
+        <div id="wp-weekhead"></div>
+        <div class="wp-strip" id="wp-strip"></div>
+        <div class="wp-open" id="wp-dayopen" hidden></div>
+      </div>
+      <div class="wp-main" id="wp-listpane">
+        <div class="wp-main-h">
+          <div id="wp-listhead"></div>
+          <div class="wp-addrow">
+            <input class="inp" id="wp-q" placeholder="Search any brand to add…" autocomplete="off" aria-label="Search a brand to add to your list">
+            <select class="inp" id="wp-cat" aria-label="Add from a category"><option value="">Add from a category…</option></select>
           </div>
-          <div class="wp-scroll" id="wp-list"></div>
+          <div id="wp-filters"></div>
         </div>
-        <div class="wp-pane wp-weekpane">
-          <div class="wp-pane-h" id="wp-weekhead"></div>
-          <div class="wp-scroll" id="wp-days"></div>
-        </div>
+        <div id="wp-list"></div>
       </div>
     </section>
 
@@ -9810,7 +9857,7 @@ function loadBrand(brandId, focusContactId) {
               if (sdAskGiants([{ brandName: r.brandName, reasonText: r.reasonText }])) return go(true);
               btn.disabled = false;
             } else if (r.reason === 'resting') {
-              toast((r.brandName || r.contactName) + ': ' + (r.reasonText || 'reached out already — it rests two weeks.'));
+              toast((r.brandName || r.contactName) + ': ' + (r.reasonText || 'reached out already — it rests a week.'));
               btn.disabled = false;
             } else {
               toast(r.contactName + ' is already in play (' + r.status + ')');
@@ -13069,7 +13116,7 @@ var SD_SHORT = {
   // The queue rules (Leo, Oct 12 2026): only brands nobody has reached;
   // a reached brand rests two weeks; giants wait for "Add anyway".
   reached: 'already reached out',
-  resting: 'reached out, resting two weeks',
+  resting: 'reached out, resting a week',
   giant: 'a giant, held back'
 };
 
@@ -14513,7 +14560,7 @@ function sdPinnedCard(p, key, i, n) {
     // Its one day for the rest of its first outreach: past it, it rests.
     body = '<div class="sd-line"><b class="warn">Waits</b> · ' + sdPlural(p.going || 0, 'person', 'people') +
         ' · the rest of its first outreach — move it up' + (isToday ? ' or send today anyway' : '') +
-        ', or it rests' + (p.restsUntil ? ' until ' + esc(p.restsUntil) : ' two weeks') + '</div>';
+        ', or it rests' + (p.restsUntil ? ' until ' + esc(p.restsUntil) : ' a week') + '</div>';
   } else if (p.state === 'going' && p.waits) {
     body = '<div class="sd-line"><b class="warn">Waits</b> · ' + sdPlural(p.going || 0, 'person', 'people') +
         (p.waits !== 'later' ? ' · goes out ' + esc(sdDayName(p.waits)) + ' unless you move it up' : ' · move it up to send it first') + '</div>';
@@ -15717,7 +15764,7 @@ function renderSchedDrillBody() {
       '<span class="status ' + st.pill + '">' + esc(o.stage || 'reached') + '</span>' +
       (o.stale ? '<span class="sd-tag warn">Going stale</span>' : '') +
       '<span class="sd-dim">' + esc(o.detail || '') + '</span>' +
-      (b.restUntil ? '<span class="sd-dim" title="Reached out already: it can go on a day again by hand two weeks after its first outreach">· rests until ' + esc(sdDayName(b.restUntil)) + '</span>' : '') +
+      (b.restUntil ? '<span class="sd-dim" title="Reached out already: it can go on a day again by hand a week after it was last reached">· rests until ' + esc(sdDayName(b.restUntil)) + '</span>' : '') +
       '<span class="sd-sp"></span>' +
       '<span class="sd-dim">' + ((b.label && b.label.reachable) || 0) + ' reachable</span>' +
     '</div>';
@@ -16118,10 +16165,10 @@ function renderSchedRetry() {
   if (n) n.textContent = d && d.total ? ' (' + d.total + ')' : '';
   if (!d) { box.innerHTML = SCHED.retryErr ? '<div class="sd-note">Could not load: ' + esc(SCHED.retryErr) + '</div>' : ''; return; }
   if (!d.brands || !d.brands.length) {
-    box.innerHTML = '<div class="sd-note">No brand is ready for a second try: none reached before has gone two weeks without an answer and has someone new to invite.</div>';
+    box.innerHTML = '<div class="sd-note">No brand is ready for a second try: none reached before has gone a week without an answer and has someone new to invite.</div>';
     return;
   }
-  box.innerHTML = '<div class="sd-note">Reached before, nobody answered, two weeks rested — and someone new there. Nothing here goes out by itself.</div>' +
+  box.innerHTML = '<div class="sd-note">Reached before, nobody answered, a week rested — and someone new there. Nothing here goes out by itself.</div>' +
     '<div class="panel sd-covp">' + d.brands.map(sdRetryRow).join('') + '</div>' +
     (d.total > d.brands.length ? '<div class="sd-dim">' + (d.total - d.brands.length) + ' more, lower Brand Fit.</div>' : '');
 }
@@ -21573,17 +21620,22 @@ opsBody.addEventListener('change', function (ev) {
 // week which i should be able to move between days". His picks: the list
 // is a bank spent week by week; the top of it is dealt onto the days as an
 // even mix of rank; a day spread from the list takes only brands from it.
-// Cleaned up the same day ("make each brand bigger … make sure that adding
-// and removing brands does not glitch a lot and its easy"): the list on the
-// left and the week on the right, each scrolling on its own, so a brand put
-// on a day never moves the list under the mouse; one big card per brand
-// with a button per day (on = it's on that day; click another to move it,
-// click it again to take it off); every change shows at once (wpDo) and the
-// page reads the server once the clicks stop; a brand taken off leaves an
-// Undo where it was.
-// Server: weekBank / weekSpread / undoWeekSpread / weekBankSize / Add /
-// Remove / PutBack / Browse / setListDay (src/lib/week-bank.ts); days are
-// the Schedule's own planAddBrands / planMoveBrand / planRemoveBrand.
+// The same day: "make sure that adding and removing brands does not glitch"
+// — every change shows at once (wpDo) and the page reads the server once
+// the clicks stop; a brand taken off leaves an Undo where it was. Then "i
+// want the brands to be the entire page … make it easier for brands that i
+// add" + "filters for brands that i have and have not reached out to" +
+// "recommend for me to reach out to brands again if there are decision
+// makers who i did not reach out to yet … around 1 to 2 weeks later": the
+// brands fill the page as a grid (Added by you · Reach out again · Top by
+// Brand Fit), the week is a strip of day tiles that stays in view (a day
+// opens over the list, so the list never moves), search and category
+// results carry a button per day (add + put on that day in one click), and
+// the Outreach filter (Reached out / Not reached out) runs over all of it.
+// Server: weekBank (its `again` rows: src/lib/reach-again.ts) / weekSpread /
+// undoWeekSpread / weekBankSize / Add / Remove / PutBack / Browse /
+// setListDay / reachAgain (src/lib/week-bank.ts); days are the Schedule's
+// own planAddBrands / planMoveBrand / planRemoveBrand.
 
 var WP = {
   data: null, week: '', seq: 0,
@@ -21597,11 +21649,19 @@ var WP = {
   gone: {},
   // brandId -> when it was just added (its card lights up).
   flash: {},
+  // brandId -> true: acted on under the current filter, so it stays on
+  // screen (where it was) until the filter changes.
+  stick: {},
+  // The card a click was on: held where it is on screen while the page
+  // redraws ({ id, at }).
+  anchor: null,
+  // The day open over the list ('' = none).
+  open: '',
   // The spread waiting for Leo's yes (weekSpread preview), and what the
   // last one did.
   pv: null, pvBusy: false, applying: false, done: null,
-  filter: 'all', shown: 40,
-  // The list pane shows the list, search results or a category.
+  filter: 'all', shown: 40, againAll: false,
+  // The list area shows the list, search results or a category.
   q: '', qSeq: 0, rows: [], hl: 0, qFor: '',
   cat: '', catData: null, catSeq: 0, catSel: {}, catAll: false,
   added: {}
@@ -21613,6 +21673,9 @@ function wpDays() { return (WP.data && WP.data.days) || []; }
 function wpFirstDay() { var d = wpDays(); return d.length ? d[0].date : ''; }
 function wpRows() { return (WP.data && WP.data.bank && WP.data.bank.rows) || []; }
 function wpById() { var m = {}; wpRows().forEach(function (r) { m[r.id] = r; }); return m; }
+function wpAgain() { return (WP.data && WP.data.again && WP.data.again.rows) || []; }
+function wpAgainById() { var m = {}; wpAgain().forEach(function (a) { m[a.id] = a; }); return m; }
+function wpAgainWhere(a) { return a.inToday ? 'today' : a.pinnedOn ? 'day' : 'waiting'; }
 function wpDay(date) { return wpDays().filter(function (d) { return d.date === date; })[0] || null; }
 function wpShort(key) { return new Date(key + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' }); }
 
@@ -21622,7 +21685,7 @@ function loadWeekPlan() {
   showView('weekplan');
   var turn = viewTurn('weekplan');
   wpFillCats();
-  if (!WP.data) document.getElementById('wp-days').innerHTML = '<div class="sd-empty">Loading…</div>';
+  if (!WP.data) document.getElementById('wp-strip').innerHTML = '<div class="sd-empty">Loading…</div>';
   WP.gone = {};
   var mine = ++WP.seq;
   return api('weekBank', { week: WP.week || undefined }).then(function (d) {
@@ -21634,7 +21697,7 @@ function loadWeekPlan() {
     wpRenderAll();
   }).catch(function (e) {
     if (mine !== WP.seq) return;
-    document.getElementById('wp-days').innerHTML = '<div class="sd-empty">Could not load: ' + esc(e.message) + '</div>';
+    document.getElementById('wp-strip').innerHTML = '<div class="sd-empty">Could not load: ' + esc(e.message) + '</div>';
   });
 }
 
@@ -21652,11 +21715,12 @@ function wpRead() {
   }).catch(function () {});
 }
 
-// One change: shown at once (local), then sent; when the last change is
-// answered the page reads the server. A refusal or an error says why and
-// the read puts the page back to what really happened.
+// One change: shown at once (local), then sent (o.fn + o.args, or o.run()
+// for more than one call); when the last change is answered the page reads
+// the server. A refusal or an error says why and the read puts the page
+// back to what really happened.
 function wpDo(o) {
-  (o.ids || []).forEach(function (id) { WP.pending[id] = true; });
+  (o.ids || []).forEach(function (id) { WP.pending[id] = true; WP.stick[id] = true; });
   WP.pv = null;
   if (o.local) o.local();
   wpRenderAll();
@@ -21667,8 +21731,10 @@ function wpDo(o) {
     if (WP.writes === 0) wpRead(); else WP.needRead = true;
     wpRenderAll();
   };
-  return api(o.fn, o.args).then(function (r) {
-    var msg = o.done ? o.done(r) : null;
+  var call;
+  try { call = o.run ? o.run() : api(o.fn, o.args); } catch (e) { call = Promise.reject(e); }
+  return Promise.resolve(call).then(function (r) {
+    var msg = o.done ? o.done(r || {}) : null;
     if (msg) toast(msg);
     finish();
     return r;
@@ -21676,28 +21742,62 @@ function wpDo(o) {
 }
 
 // ── drawing ────────────────────────────────────────────────────────
-// The panes' height: the screen under the title (wide screens only; a
-// narrow one stacks them and the page scrolls).
-function wpFit() {
-  var sp = document.querySelector('#weekplan .wp-split');
-  if (!sp || !document.getElementById('weekplan').classList.contains('active')) return;
-  if (window.innerWidth <= 1100) { sp.style.removeProperty('--wp-h'); return; }
-  var top = sp.getBoundingClientRect().top + window.scrollY;
-  sp.style.setProperty('--wp-h', Math.max(520, window.innerHeight - top - 16) + 'px');
+// The card a click was on stays where it is on screen while everything
+// redraws (a tile or a section above it changing never moves it).
+function wpHold() {
+  var a = WP.anchor;
+  if (!a || Date.now() - a.at > 4000) return null;
+  var el = document.querySelector('#wp-list [data-wpid="' + a.id + '"]');
+  return el ? { id: a.id, top: el.getBoundingClientRect().top } : null;
 }
-window.addEventListener('resize', wpFit);
+function wpUnhold(h) {
+  if (!h) return;
+  var el = document.querySelector('#wp-list [data-wpid="' + h.id + '"]');
+  if (!el) return;
+  var d = el.getBoundingClientRect().top - h.top;
+  if (Math.abs(d) > 1) window.scrollBy(0, d);
+}
 
 function wpRenderAll() {
   if (!WP.data) return;
-  wpFit();
+  var h = wpHold();
   wpRenderWeekHead();
-  wpRenderDays();
+  wpRenderStrip();
+  wpRenderOpen();
   wpRenderListHead();
   wpRenderList();
   rbPaint(document.getElementById('weekplan'));
+  wpBarFit(true);
+  wpUnhold(h);
 }
 
-// Redraw a scrolling box without moving its scroll.
+// The week bar, once it sticks under the header, goes slim (no brand
+// names, no last-spread line). The height it gives up stays as its bottom
+// margin, so nothing under it moves. `again` = measure again (a redraw).
+function wpBarFit(again) {
+  var bar = document.getElementById('wp-bar');
+  var sec = document.getElementById('weekplan');
+  if (!bar || !sec || !sec.classList.contains('active')) return;
+  var steps = sec.querySelector('.wp-steps');
+  var headH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--head-h')) || 0;
+  var stuck = window.innerWidth > 820 && !!steps && steps.getBoundingClientRect().bottom + 16 < headH - 4;
+  if (stuck === bar.classList.contains('compact') && !(stuck && again)) return;
+  bar.classList.remove('compact');
+  bar.style.marginBottom = '';
+  if (!stuck) return;
+  var full = bar.getBoundingClientRect().height;
+  var base = parseFloat(getComputedStyle(bar).marginBottom) || 0;
+  bar.classList.add('compact');
+  bar.style.marginBottom = (base + Math.max(0, full - bar.getBoundingClientRect().height)) + 'px';
+}
+(function () {
+  var queued = false;
+  var fit = function () { if (queued) return; queued = true; requestAnimationFrame(function () { queued = false; wpBarFit(false); }); };
+  window.addEventListener('scroll', fit, { passive: true });
+  window.addEventListener('resize', function () { wpBarFit(true); });
+})();
+
+// Redraw a box without moving its scroll.
 function wpPaint(id, html) {
   var el = document.getElementById(id);
   if (!el) return;
@@ -21720,7 +21820,13 @@ function wpPeople(d) {
   return (d.pinned || []).filter(function (p) { return p.state === 'going' && !p.waits; })
     .reduce(function (n, p) { return n + (p.going || 0); }, 0);
 }
+function wpPvDays() {
+  var m = {};
+  if (WP.pv) WP.pv.days.forEach(function (d) { m[d.date] = d; });
+  return m;
+}
 
+// The bar's first row: the week, how full it is, Spread, the last spread.
 function wpRenderWeekHead() {
   var d = WP.data;
   var chips = d.weeks.map(function (w) {
@@ -21731,58 +21837,37 @@ function wpRenderWeekHead() {
   days.forEach(function (x) { cap += x.cap || 0; used += Math.min(x.cap || 0, wpPeople(x)); });
   var waitingGo = wpRows().filter(function (r) { return r.where === 'waiting' && r.going > 0; }).length;
   var room = Math.max(0, cap - used);
-  var html = '<div class="wp-h-row"><h2>The week</h2><div class="wp-weeks">' + chips + '</div></div>';
+  var html = '<div class="wp-h-row"><h2>The week</h2><div class="wp-weeks">' + chips + '</div>';
   if (days.length) {
-    html += '<div class="wp-h-row"><span class="wp-big">' + used + '</span><span class="sd-dim">of ' + cap + ' spots planned</span>' +
-      '<div class="sd-meter wp-meter' + (room === 0 ? ' good' : '') + '"><i style="width:' + (cap ? Math.min(100, used / cap * 100) : 0) + '%"></i></div></div>';
+    html += '<span class="wp-big">' + used + '</span><span class="sd-dim">of ' + cap + ' spots planned</span>' +
+      '<div class="sd-meter wp-meter' + (room === 0 ? ' good' : '') + '"><i style="width:' + (cap ? Math.min(100, used / cap * 100) : 0) + '%"></i></div>';
   }
-  if (WP.pv) html += wpPvHtml();
+  html += '<span class="sd-sp"></span>';
+  var why = !days.length ? 'No sending days that week — add one on the Schedule.'
+    : !waitingGo ? 'Nothing on your list is waiting for a day.'
+    : room <= 0 ? 'The week is full.' : '';
+  if (WP.pv) html += '<span class="wp-status day">Preview open below</span>';
+  else if (why) html += '<span class="sd-dim">' + esc(why) + '</span>';
   else {
-    var why = !days.length ? 'No sending days that week — add one on the Schedule.'
-      : !waitingGo ? 'Nothing on your list is waiting for a day.'
-      : room <= 0 ? 'The week is full.' : '';
-    html += '<div class="wp-h-row">' +
-      (why ? '<span class="sd-dim">' + esc(why) + '</span>'
-        : '<button class="btn-solid wp-spread" data-wpspread="1"' + (WP.pvBusy ? ' disabled' : '') + ' title="Deals the top of your list onto the days, whole brands, so every day gets a fair share of the best ones. You see it first.">' +
-            (WP.pvBusy ? 'Dealing…' : '✦ Spread the top of my list onto the week') + '</button>') +
-      (d.spreadLast ? '<span class="sd-dim">Last spread ' + esc(wpTime(d.spreadLast.at)) + ' · <a href="#" data-wpundo="1">Undo it</a></span>' : '') +
-    '</div>';
+    html += '<button class="btn-solid wp-spread" data-wpspread="1"' + (WP.pvBusy ? ' disabled' : '') + ' title="Deals the top of your list onto the days, whole brands, so every day gets a fair share of the best ones. You see it first.">' +
+      (WP.pvBusy ? 'Dealing…' : '✦ Spread the top of my list onto the week') + '</button>';
   }
-  if (WP.done && Date.now() - WP.done.at < 120000) html += '<div class="sd-flash good">' + esc(WP.done.text) + ' <a href="#" class="sd-x" data-wpdonex="1" title="Dismiss">×</a></div>';
-  document.getElementById('wp-weekhead').innerHTML = html;
+  if (WP.done && Date.now() - WP.done.at < 120000) html += '<span class="sd-dim wp-last">' + esc(WP.done.text) + (d.spreadLast ? ' · <a href="#" data-wpundo="1">Undo it</a>' : '') + '</span>';
+  else if (d.spreadLast) html += '<span class="sd-dim wp-last">Last spread ' + esc(wpTime(d.spreadLast.at)) + ' · <a href="#" data-wpundo="1">Undo it</a></span>';
+  document.getElementById('wp-weekhead').innerHTML = html + '</div>';
 }
 
-function wpPvHtml() {
-  var pv = WP.pv;
-  var ranks = [];
-  pv.days.forEach(function (d) { d.add.forEach(function (a) { ranks.push(a.rank); }); });
-  var top = ranks.length ? Math.max.apply(null, ranks) : 0;
-  var html = '<div class="wp-pv"><div><b>Preview</b> — ' + sdPlural(pv.placed, 'brand', 'brands') + ', ' + sdPlural(pv.people, 'person', 'people') +
-    (top ? ', from the top ' + top + ' of your list' : '') + '. ' +
-    (pv.waitNext ? sdPlural(pv.waitNext, 'brand waits', 'brands wait') + ' on the list for next week. ' : '') +
-    'These days then take only brands from your list.</div>';
-  if ((pv.passedOver || []).length) {
-    html += '<div class="sd-dim">Passed over: ' + pv.passedOver.slice(0, 6).map(function (x) {
-      return '#' + x.rank + ' ' + esc(x.name) + ' (' + esc(x.why) + ')';
-    }).join(', ') + (pv.passedOver.length > 6 ? ' +' + (pv.passedOver.length - 6) + ' more' : '') + '</div>';
-  }
-  html += '<div class="wp-h-row"><button class="btn-solid" data-wpapply="1"' + (WP.applying || !pv.placed ? ' disabled' : '') + '>' +
-      (WP.applying ? 'Putting them on…' : 'Put them on the days') + '</button>' +
-    '<button class="btn-ghost" data-wpshuffle="1"' + (WP.pvBusy || WP.applying ? ' disabled' : '') + ' title="Deal again — the same brands, a different mix of days">' + (WP.pvBusy ? 'Dealing…' : 'Shuffle again') + '</button>' +
-    '<button class="btn-ghost" data-wppvx="1">Cancel</button></div></div>';
-  return html;
-}
-
-function wpRenderDays() {
+// One tile a day: how full, how it fills, the brands on it (each can be
+// dragged to another day). A click opens the day over the list.
+function wpRenderStrip() {
   var days = wpDays();
+  var el = document.getElementById('wp-strip');
   if (!days.length) {
-    wpPaint('wp-days', '<div class="sd-empty">No sending days that week. Add one on the Schedule (More ▾ → + Add a sending day).</div>');
+    el.innerHTML = '<div class="sd-empty">No sending days that week. Add one on the Schedule (More ▾ → + Add a sending day).</div>';
     return;
   }
-  var pvDays = {};
-  if (WP.pv) WP.pv.days.forEach(function (d) { pvDays[d.date] = d; });
-  var byId = wpById();
-  wpPaint('wp-days', days.map(function (d) {
+  var pvDays = wpPvDays();
+  el.innerHTML = days.map(function (d) {
     var adds = pvDays[d.date] ? pvDays[d.date].add : [];
     var people = wpPeople(d) + adds.reduce(function (n, a) { return n + a.going; }, 0);
     var cap = d.cap || sdCap();
@@ -21793,30 +21878,103 @@ function wpRenderDays() {
     var mode = d.list
       ? '<span class="sd-tag list" title="Takes only brands from your list">Your list only</span>'
       : '<span class="sd-tag" title="Not spread from your list: Best fit fills its open spots by itself">' + esc(d.category && d.category !== 'bestfit' ? sdCatName(d.category) : '★ Best fit') + '</span>';
-    var html = '<div class="wp-day" data-wpdrop="' + esc(d.date) + '">' +
-      '<div class="wp-day-h"><span class="wp-day-t">' + esc(sdDayName(d.date)) + '</span>' + mode +
-        '<span class="wp-day-n"><b>' + people + '</b> / ' + cap + (cap < (WP.data.cap || 30) ? ' <span class="sd-dim" title="LinkedIn allows about 100 invites in any 7 days; the days before this one leave it ' + cap + '">· week limit</span>' : '') + '</span>' + status + '</div>' +
-      '<div class="sd-meter' + (people > cap ? ' bad' : open === 0 ? ' good' : '') + '"><i style="width:' + (cap ? Math.min(100, people / cap * 100) : 100) + '%"></i></div>';
-    var cards = (d.pinned || []).map(function (p) { return wpDayCard(p, d, byId, false); }).join('') +
-      adds.map(function (a) { return wpDayCard(a, d, byId, true); }).join('');
-    html += cards ? '<div class="wp-day-cards">' + cards + '</div>'
-      : '<div class="sd-empty">Nothing on ' + esc(wpShort(d.date)) + ' yet — press a ' + esc(wpShort(d.date)) + ' button on a brand, or drag one here.</div>';
-    if (!WP.pv) {
-      html += d.list
-        ? '<div class="wp-foot"><span>Only brands from your list go this day.</span><a href="#" data-wplist="' + esc(d.date) + '" data-on="0" title="Its open spots fill with Best fit picks again">Let Best fit fill the open spots</a></div>'
-        : '<div class="wp-foot"><span>' + (d.auto ? '+ Best fit adds ' + sdPlural(d.auto, 'brand', 'brands') + ' (' + sdPlural(d.autoPeople, 'person', 'people') + ') by itself.' : 'Open spots fill with Best fit by itself.') + '</span>' +
-          '<button class="btn-ghost sd-sm" data-wplist="' + esc(d.date) + '" data-on="1" title="No automatic picks this day: only brands from your list">Only my list</button></div>';
-    }
-    return html + '</div>';
-  }).join(''));
+    var pins = d.pinned || [];
+    var names = pins.slice(0, 6).map(function (p) {
+      return '<span class="wp-tn" draggable="true" data-wpdrag="' + esc(p.id) + '" data-wpfrom="' + esc(d.date) + '" data-wpn="' + esc(p.name) + '" title="Drag to another day">' + esc(p.name) + '</span>';
+    }).join(' · ') + (pins.length > 6 ? ' · +' + (pins.length - 6) + ' more' : '');
+    var body = pins.length || adds.length
+      ? names + (adds.length ? (pins.length ? ' · ' : '') + '<span class="new">+' + adds.length + ' new</span>' : '')
+      : '<span class="sd-dim">Nothing yet — drop a brand here</span>';
+    var isOpen = WP.open === d.date;
+    var limit = cap < (WP.data.cap || 30) ? 'LinkedIn allows about 100 invites in any 7 days; the days before this one leave it ' + cap : 'Up to ' + cap + ' people a day';
+    return '<div class="wp-tile' + (isOpen ? ' open' : '') + '" data-wpdrop="' + esc(d.date) + '" data-wptile="' + esc(d.date) + '" role="button" tabindex="0" aria-expanded="' + isOpen + '" title="Click to see and move its brands">' +
+      '<div class="wp-tile-h"><span class="wp-tile-t">' + esc(sdDayName(d.date)) + '</span>' + mode + '<span class="wp-tile-n" title="' + esc(limit) + '"><b>' + people + '</b> / ' + cap + '</span></div>' +
+      '<div class="sd-meter' + (people > cap ? ' bad' : open === 0 ? ' good' : '') + '"><i style="width:' + (cap ? Math.min(100, people / cap * 100) : 100) + '%"></i></div>' +
+      '<div class="wp-tile-b">' + body + '</div>' +
+      '<div class="wp-tile-f">' + status + '<span>· ' + sdPlural(pins.length, 'brand', 'brands') + (!d.list && d.auto ? ' · + ' + d.auto + ' Best fit' : '') + '</span><span class="wp-caret">' + (isOpen ? 'Close ▴' : 'See them ▾') + '</span></div>' +
+    '</div>';
+  }).join('');
 }
 
-// A brand on a day: big name, its place on the list and fit, who goes, and
-// a button per other day (move) + Back to list.
-function wpDayCard(p, day, byId, isNew) {
+// Over the list, under the strip: the spread's preview while it waits for
+// a yes, else the open day with its brands.
+function wpRenderOpen() {
+  var el = document.getElementById('wp-dayopen');
+  if (!el) return;
+  if (WP.pv) {
+    el.hidden = false;
+    el.classList.add('pv');
+    el.removeAttribute('data-wpdrop');
+    wpPaint('wp-dayopen', wpPvHtml());
+    return;
+  }
+  el.classList.remove('pv');
+  var d = WP.open ? wpDay(WP.open) : null;
+  if (!d) {
+    WP.open = '';
+    el.hidden = true;
+    el.innerHTML = '';
+    el.removeAttribute('data-wpdrop');
+    return;
+  }
+  el.hidden = false;
+  el.setAttribute('data-wpdrop', d.date);
+  var people = wpPeople(d);
+  var cap = d.cap || sdCap();
+  var open = Math.max(0, cap - people);
+  var byId = wpById(), ag = wpAgainById();
+  var cards = (d.pinned || []).map(function (p) { return wpDayCard(p, d, byId, ag, false); }).join('');
+  var html = '<div class="wp-day-h"><span class="wp-day-t">' + esc(sdDayName(d.date)) + '</span>' +
+      (d.list ? '<span class="sd-tag list">Your list only</span>' : '<span class="sd-tag">' + esc(d.category && d.category !== 'bestfit' ? sdCatName(d.category) : '★ Best fit') + '</span>') +
+      '<span class="wp-day-n"><b>' + people + '</b> / ' + cap + '</span>' +
+      (people > cap ? '<span class="sd-st bad">Over by ' + (people - cap) + '</span>' : open === 0 ? '<span class="sd-st good">Full ✓</span>' : '<span class="sd-st warn">' + open + ' open</span>') +
+      '<button class="wp-x" data-wpclose="1" title="Close (Esc)" aria-label="Close">✕</button></div>' +
+    (cards ? '<div class="wp-day-cards">' + cards + '</div>'
+      : '<div class="sd-empty">Nothing on ' + esc(wpShort(d.date)) + ' yet — press + ' + esc(wpShort(d.date)) + ' on a brand, or drag one onto the day.</div>') +
+    (d.list
+      ? '<div class="wp-foot"><span>Only brands from your list go this day.</span><a href="#" data-wplist="' + esc(d.date) + '" data-on="0" title="Its open spots fill with Best fit picks again">Let Best fit fill the open spots</a></div>'
+      : '<div class="wp-foot"><span>' + (d.auto ? '+ Best fit adds ' + sdPlural(d.auto, 'brand', 'brands') + ' (' + sdPlural(d.autoPeople, 'person', 'people') + ') by itself.' : 'Open spots fill with Best fit by itself.') + '</span>' +
+          '<button class="btn-ghost sd-sm" data-wplist="' + esc(d.date) + '" data-on="1" title="No automatic picks this day: only brands from your list">Only my list</button></div>');
+  wpPaint('wp-dayopen', html);
+}
+
+function wpPvHtml() {
+  var pv = WP.pv;
+  var ranks = [];
+  pv.days.forEach(function (d) { d.add.forEach(function (a) { ranks.push(a.rank); }); });
+  var top = ranks.length ? Math.max.apply(null, ranks) : 0;
+  var html = '<div class="wp-day-h"><span class="wp-day-t">Preview</span><span class="sd-dim">nothing is written until you say so</span>' +
+    '<button class="wp-x" data-wppvx="1" title="Cancel" aria-label="Cancel">✕</button></div>' +
+    '<div>' + sdPlural(pv.placed, 'brand', 'brands') + ', ' + sdPlural(pv.people, 'person', 'people') +
+    (top ? ', from the top ' + top + ' of your list' : '') + '. ' +
+    (pv.waitNext ? sdPlural(pv.waitNext, 'brand waits', 'brands wait') + ' on the list for next week. ' : '') +
+    'These days then take only brands from your list.</div>';
+  html += pv.days.map(function (d) {
+    return '<div class="wp-pvday"><b>' + esc(sdDayName(d.date)) + '</b> · ' +
+      (d.add.length ? '+' + sdPlural(d.add.length, 'brand', 'brands') + ', ' + sdPlural(d.addPeople, 'person', 'people') + ': ' +
+        d.add.map(function (a) { return '#' + a.rank + ' ' + esc(a.name); }).join(', ')
+        : '<span class="sd-dim">nothing new</span>') +
+      ' <span class="sd-dim">(' + d.total + ' / ' + (d.cap || sdCap()) + ')</span></div>';
+  }).join('');
+  if ((pv.passedOver || []).length) {
+    html += '<div class="sd-dim">Passed over: ' + pv.passedOver.slice(0, 6).map(function (x) {
+      return '#' + x.rank + ' ' + esc(x.name) + ' (' + esc(x.why) + ')';
+    }).join(', ') + (pv.passedOver.length > 6 ? ' +' + (pv.passedOver.length - 6) + ' more' : '') + '</div>';
+  }
+  html += '<div class="wp-h-row"><button class="btn-solid" data-wpapply="1"' + (WP.applying || !pv.placed ? ' disabled' : '') + '>' +
+      (WP.applying ? 'Putting them on…' : 'Put them on the days') + '</button>' +
+    '<button class="btn-ghost" data-wpshuffle="1"' + (WP.pvBusy || WP.applying ? ' disabled' : '') + ' title="Deal again — the same brands, a different mix of days">' + (WP.pvBusy ? 'Dealing…' : 'Shuffle again') + '</button>' +
+    '<button class="btn-ghost" data-wppvx="1">Cancel</button></div>';
+  return html;
+}
+
+// A brand on a day: its place on the list and fit, who goes, and a button
+// per other day (move) + Back to list.
+function wpDayCard(p, day, byId, ag, isNew) {
   var r = byId[p.id];
+  var a = ag[p.id];
   var rank = isNew ? p.rank : r ? r.rank : 0;
-  var fit = isNew ? p.fit : r ? r.fit : null;
+  var fit = isNew ? p.fit : r ? r.fit : a ? a.fit : null;
   var busy = !!WP.pending[p.id];
   var line;
   if (isNew || (p.state === 'going' && !p.waits)) {
@@ -21832,13 +21990,14 @@ function wpDayCard(p, day, byId, isNew) {
     wpDays().filter(function (x) { return x.date !== day.date; }).map(function (x) {
       return '<button class="wp-daybtn" data-wpmove="' + esc(p.id) + '" data-wpfrom="' + esc(day.date) + '" data-wpto="' + esc(x.date) + '" data-wpn="' + esc(p.name) + '" title="Move it to ' + esc(sdDayName(x.date)) + '"' + (busy ? ' disabled' : '') + '>→ ' + esc(wpShort(x.date)) + '</button>';
     }).join('') +
-    '<button class="wp-rm" data-wpoff="' + esc(p.id) + '" data-wpday="' + esc(day.date) + '" data-wpn="' + esc(p.name) + '" title="Take it off ' + esc(sdDayName(day.date)) + ' — it waits on your list again"' + (busy ? ' disabled' : '') + '>↩ Back to list</button>';
+    '<button class="wp-rm" data-wpoff="' + esc(p.id) + '" data-wpday="' + esc(day.date) + '" data-wpn="' + esc(p.name) + '" title="Take it off ' + esc(sdDayName(day.date)) + (a ? '' : ' — it waits on your list again') + '"' + (busy ? ' disabled' : '') + '>' + (r || !a ? '↩ Back to list' : '× Off the day') + '</button>';
   return '<div class="wp-dc' + (isNew ? ' new' : '') + (busy ? ' busy' : '') + (!isNew && p.state === 'blocked' ? ' blocked' : '') + '"' +
       (isNew ? '' : ' draggable="true" data-wpdrag="' + esc(p.id) + '" data-wpfrom="' + esc(day.date) + '" data-wpn="' + esc(p.name) + '"') + '>' +
     '<div class="wp-dc-h">' + (rank ? '<span class="wp-dc-rank" title="Its place on your list">#' + rank + '</span>' : '') +
       '<a href="#" class="wp-dc-name" data-wpopen="' + esc(p.id) + '" title="' + esc(p.name) + '">' + esc(p.name) + '</a>' +
       (fit != null ? '<span class="wp-fitbox sm" title="Brand Fit">' + fit + '</span>' : '') + '</div>' +
-    '<div class="wp-dc-meta">' + line + (p.big ? ' · <span title="A big company: works 10 people at once">big</span>' : '') + rbTag(p.id) + '</div>' +
+    '<div class="wp-dc-meta">' + line + (a ? ' <span class="sd-tag again" title="Reached before — these are its decision makers nobody has contacted">reach again</span>' : '') +
+      (p.big ? ' · <span title="A big company: works 10 people at once">big</span>' : '') + rbTag(p.id) + '</div>' +
     '<div class="wp-dc-act">' + acts + '</div>' +
   '</div>';
 }
@@ -21849,18 +22008,39 @@ function wpRenderListHead() {
   if (sz && document.activeElement === sz) return;
   var b = WP.data.bank;
   var rows = wpRows();
+  var ag = WP.data.again;
   document.getElementById('wp-listhead').innerHTML =
     '<div class="wp-h-row"><h2>Your list</h2><span class="wp-big">' + rows.length + '</span><span class="sd-dim">brands</span>' +
       '<label class="sd-dim wp-holds">Holds up to <input type="number" class="inp wp-size" data-wpsize="1" min="10" max="300" step="10" value="' + b.size + '" aria-label="How many brands the list holds"></label></div>' +
     '<div class="sd-dim">Best Brand Fit first' + (b.hand ? ' · ' + b.hand + ' added by you' : '') +
-      (b.autoLeft ? ' · ' + b.autoLeft + ' more would come in if it held more' : '') + '</div>';
+      (b.autoLeft ? ' · ' + b.autoLeft + ' more would come in if it held more' : '') +
+      (ag && ag.total ? ' · <b>' + sdPlural(ag.total, 'brand', 'brands') + ' to reach out to again</b>' : '') + '</div>';
 }
 
-// The list pane's body: search results, a category, or the list.
+// The list with the cards taken off a moment ago back in their places.
+function wpListWithGhosts() {
+  var list = wpRows().slice();
+  var now = Date.now();
+  Object.keys(WP.gone).map(function (id) { return WP.gone[id]; })
+    .filter(function (g) { return now - g.at < WP_GONE_MS && !list.some(function (r) { return r.id === g.row.id; }); })
+    .sort(function (a, b) { return a.idx - b.idx; })
+    .forEach(function (g) { list.splice(Math.min(g.idx, list.length), 0, Object.assign({}, g.row, { ghost: true })); });
+  return list;
+}
+function wpSec(title, n, sub, cards, more) {
+  return '<div class="wp-sec"><div class="wp-sec-h"><h3>' + esc(title) + '</h3><span class="wp-sec-n">' + n + '</span>' +
+    (sub ? '<span class="sd-dim">' + sub + '</span>' : '') + '</div><div class="wp-grid">' + cards + '</div>' + (more || '') + '</div>';
+}
+
+// The page's body: search results, a category, or the list in its three
+// parts — Added by you, Reach out again, Top by Brand Fit.
 function wpRenderList() {
   var bar = document.getElementById('wp-filters');
   if (WP.q.trim().length >= 2) {
-    bar.innerHTML = '<div class="wp-h-row"><b>Results for “' + esc(WP.q) + '”</b><a href="#" class="wp-back" data-wpclear="1">× Back to your list</a></div>';
+    var rs = WP.qFor === WP.q ? WP.rows : [];
+    bar.innerHTML = '<div class="wp-h-row"><b>Results for “' + esc(WP.q) + '”</b>' +
+      (rs.length ? reachSelect('weekplan', reachCounts(rs, wpReached)) : '') +
+      '<a href="#" class="wp-back" data-wpclear="1">× Back to your list</a></div>';
     wpPaint('wp-list', wpSearchHtml());
     return;
   }
@@ -21869,29 +22049,57 @@ function wpRenderList() {
     wpPaint('wp-list', wpCatHtml());
     return;
   }
-  var rows = wpRows();
-  var n = { all: rows.length, waiting: 0, day: 0, today: 0, cant: 0 };
-  rows.forEach(function (r) { n[r.where] = (n[r.where] || 0) + 1; });
+  var rows = wpListWithGhosts();
+  var ag = wpAgainById();
+  var bank = wpById();
+  // A brand Leo added that is due to be reached again shows as its
+  // reach-again card, in his part of the list.
+  var again = wpAgain().filter(function (a) { return !bank[a.id]; });
+  var n = { all: 0, waiting: 0, day: 0, today: 0, cant: 0 };
+  rows.forEach(function (r) { if (!r.ghost) { n.all++; n[r.where] = (n[r.where] || 0) + 1; } });
+  again.forEach(function (a) { n.all++; n[wpAgainWhere(a)]++; });
+  if (WP.filter !== 'all' && !n[WP.filter]) WP.filter = 'all';
   var chip = function (k, label) {
     if (k !== 'all' && !n[k]) return '';
     return '<button class="chip' + (WP.filter === k ? ' active' : '') + '" data-wpfilter="' + k + '">' + label + ' ' + n[k] + '</button>';
   };
-  if (WP.filter !== 'all' && !n[WP.filter]) WP.filter = 'all';
-  bar.innerHTML = '<div class="chips">' + chip('all', 'All') + chip('waiting', 'Waiting') + chip('day', 'On a day') +
-    chip('today', 'In today’s list') + chip('cant', 'Can’t go yet') + '</div>';
-  // Taken off a moment ago: back in its place with Undo.
-  var list = rows.slice();
-  var now = Date.now();
-  Object.keys(WP.gone).map(function (id) { return WP.gone[id]; })
-    .filter(function (g) { return now - g.at < WP_GONE_MS && !list.some(function (r) { return r.id === g.row.id; }); })
-    .sort(function (a, b) { return a.idx - b.idx; })
-    .forEach(function (g) { list.splice(Math.min(g.idx, list.length), 0, Object.assign({}, g.row, { ghost: true })); });
-  if (WP.filter !== 'all') list = list.filter(function (r) { return r.ghost || r.where === WP.filter; });
-  var shown = list.slice(0, WP.shown);
-  var html = list.length
-    ? shown.map(wpCardHtml).join('') +
-      (list.length > shown.length ? '<button class="btn-ghost wp-more" data-wpmore="1">Show ' + Math.min(40, list.length - shown.length) + ' more (' + (list.length - shown.length) + ' left)</button>' : '')
-    : '<div class="sd-empty">Nothing on your list. Search above, or pick a category.</div>';
+  var everyone = rows.filter(function (r) { return !r.ghost; }).concat(again);
+  bar.innerHTML = '<div class="wp-h-row"><div class="chips">' + chip('all', 'All') + chip('waiting', 'Waiting') + chip('day', 'On a day') +
+    chip('today', 'In today’s list') + chip('cant', 'Can’t go yet') + '</div>' +
+    reachSelect('weekplan', reachCounts(everyone, function (x) { return !!x.fresh || !!x.reached; })) + '</div>';
+  var fits = function (where, id, reached) {
+    return (WP.filter === 'all' || where === WP.filter || WP.stick[id]) && reachOk('weekplan', reached);
+  };
+  var keep = function (r) {
+    if (r.ghost) return true;
+    var a = ag[r.id];
+    return a ? fits(wpAgainWhere(a), r.id, true) : fits(r.where, r.id, !!r.reached);
+  };
+  var card = function (r) { return !r.ghost && ag[r.id] ? wpAgainCardHtml(ag[r.id]) : wpCardHtml(r); };
+  var hand = rows.filter(function (r) { return r.how === 'hand' && keep(r); });
+  var auto = rows.filter(function (r) { return r.how !== 'hand' && keep(r); });
+  var agR = again.filter(function (a) { return fits(wpAgainWhere(a), a.id, true); });
+  var html = '';
+  if (hand.length) html += wpSec('Added by you', hand.filter(function (r) { return !r.ghost; }).length, 'They stay on the list until something goes out to them', hand.map(card).join(''));
+  if (agR.length) {
+    var late = agR.filter(function (a) { return a.state === 'late'; }).length;
+    var agShown = WP.againAll ? agR : agR.slice(0, 6);
+    html += wpSec('Reach out again', agR.length,
+      'Reached before, nobody answered yet, and someone who decides there was never contacted · 1 to 2 weeks after the last outreach' + (late ? ' · ' + late + ' late' : ''),
+      agShown.map(function (a) { return wpAgainCardHtml(a); }).join(''),
+      agR.length > agShown.length ? '<button class="btn-ghost wp-more" data-wpagainall="1">Show all ' + agR.length + '</button>' : '');
+  }
+  if (auto.length) {
+    var shown = auto.slice(0, WP.shown);
+    html += wpSec('Top by Brand Fit', auto.filter(function (r) { return !r.ghost; }).length, 'Never reached out to · best first',
+      shown.map(card).join(''),
+      auto.length > shown.length ? '<button class="btn-ghost wp-more" data-wpmore="1">Show ' + Math.min(40, auto.length - shown.length) + ' more (' + (auto.length - shown.length) + ' left)</button>' : '');
+  }
+  if (!html) {
+    html = n.all
+      ? '<div class="sd-empty">Nothing here with this filter.</div>'
+      : '<div class="sd-empty">Nothing on your list. Search above, or pick a category.</div>';
+  }
   var removed = WP.data.bank.removed || [];
   if (removed.length) {
     html += '<details class="sd-fold wp-removed"><summary>Taken off the list (' + removed.length + ')</summary>' +
@@ -21904,11 +22112,25 @@ function wpRenderList() {
   wpPaint('wp-list', html);
 }
 
+// A button per day on a card. on = the day it is on (click it again to
+// take it off).
+function wpDayBtns(attr, id, name, on, busy, opts) {
+  opts = opts || {};
+  return wpDays().map(function (d) {
+    var lit = on === d.date;
+    var open = Math.max(0, (d.cap || 30) - wpPeople(d));
+    return '<button class="wp-daybtn' + (lit ? ' on' : '') + (opts.anyway ? ' anyway' : '') + '" ' + attr + '="' + esc(id) + '" data-wpto="' + esc(d.date) + '" data-wpn="' + esc(name) + '"' +
+      (opts.giant ? ' data-wpgiant="1"' : '') + (busy ? ' disabled' : '') +
+      ' title="' + esc(lit ? 'On ' + sdDayName(d.date) + ' — click to take it off' : (opts.verb || 'Put it on') + ' ' + sdDayName(d.date) + ' (' + open + ' open)') + '" aria-pressed="' + lit + '">' +
+      (lit ? '✓ ' : '+ ') + esc(wpShort(d.date)) + '</button>';
+  }).join('');
+}
+
 // One brand on the list, big: its place, name and fit; its category, how
 // many people go, its contacts; where it is; a button per day and Remove.
-function wpCardHtml(r) {
+function wpCardHtml(r, opts) {
   if (r.ghost) {
-    return '<div class="wp-b ghost"><div class="wp-b-h"><span class="wp-b-rank">#' + r.rank + '</span>' +
+    return '<div class="wp-b ghost" data-wpid="' + esc(r.id) + '"><div class="wp-b-h"><span class="wp-b-rank">#' + r.rank + '</span>' +
       '<span class="wp-b-name">' + esc(r.name) + '</span></div>' +
       '<div class="wp-b-act"><span class="sd-dim">Taken off your list.</span>' +
       '<button class="btn-ghost sd-sm" data-wpundo1="' + esc(r.id) + '" data-wpn="' + esc(r.name) + '">Undo</button></div></div>';
@@ -21919,15 +22141,9 @@ function wpCardHtml(r) {
     : r.where === 'cant' ? '<span class="wp-status cant" title="' + esc(r.why || '') + '">' + esc(r.why || 'Can’t go out yet') + '</span>'
     : '<span class="wp-status wait">Waiting for a day</span>';
   var canPlace = (r.where === 'waiting' && r.going > 0) || r.where === 'day';
-  var days = canPlace ? wpDays().map(function (d) {
-    var on = r.where === 'day' && r.day === d.date;
-    var open = Math.max(0, (d.cap || 30) - wpPeople(d));
-    return '<button class="wp-daybtn' + (on ? ' on' : '') + '" data-wpput="' + esc(r.id) + '" data-wpto="' + esc(d.date) + '" data-wpn="' + esc(r.name) + '"' +
-      (busy ? ' disabled' : '') + ' title="' + esc(on ? 'On ' + sdDayName(d.date) + ' — click to take it off' : 'Put it on ' + sdDayName(d.date) + ' (' + open + ' open)') + '" aria-pressed="' + on + '">' +
-      (on ? '✓ ' : '+ ') + esc(wpShort(d.date)) + '</button>';
-  }).join('') : '';
+  var days = canPlace ? wpDayBtns('data-wpput', r.id, r.name, r.where === 'day' ? r.day : '', busy) : '';
   var flash = WP.flash[r.id] && Date.now() - WP.flash[r.id] < 4000;
-  return '<div class="wp-b' + (busy ? ' busy' : '') + (flash ? ' flash' : '') + (r.where === 'day' ? ' placed' : '') + '"' +
+  return '<div class="wp-b' + (busy ? ' busy' : '') + (flash ? ' flash' : '') + (r.where === 'day' ? ' placed' : '') + (opts && opts.hl ? ' hl' : '') + '" data-wpid="' + esc(r.id) + '"' +
       (r.where === 'waiting' && r.going > 0 ? ' draggable="true" data-wpdrag="' + esc(r.id) + '" data-wpfrom="" data-wpn="' + esc(r.name) + '"' : '') + '>' +
     '<div class="wp-b-h"><span class="wp-b-rank">#' + r.rank + '</span>' +
       '<a href="#" class="wp-b-name" data-wpopen="' + esc(r.id) + '" title="' + esc(r.name) + '">' + esc(r.name) + '</a>' +
@@ -21936,8 +22152,38 @@ function wpCardHtml(r) {
       (r.going ? '<span>' + sdPlural(r.going, 'person', 'people') + '</span>' : '') + sdLabel(r.label) +
       (r.how === 'hand' ? '<span class="sd-tag day" title="You put it on the list">added by you</span>' : '') +
       (r.big ? '<span class="sd-tag" title="A big company: works 10 people at once">big</span>' : '') + rbTag(r.id) + '</div>' +
-    '<div class="wp-b-act">' + status + '<span class="sd-sp"></span>' + days +
+    '<div class="wp-b-where">' + status + '</div>' +
+    '<div class="wp-b-act">' + days + '<span class="sd-sp"></span>' +
       '<button class="wp-rm" data-wprm="' + esc(r.id) + '" data-wpn="' + esc(r.name) + '"' + (busy ? ' disabled' : '') + ' title="Take it off your list">Remove</button></div>' +
+  '</div>';
+}
+
+// A brand to reach out to again: when it was reached, who decides there
+// and was never contacted, and a button per day (those people go that day).
+function wpAgainCardHtml(a, opts) {
+  var busy = !!WP.pending[a.id];
+  var where = wpAgainWhere(a);
+  var flash = WP.flash[a.id] && Date.now() - WP.flash[a.id] < 4000;
+  var when = a.state === 'late'
+    ? '<span class="sd-tag warn" title="More than 2 weeks since the last outreach — still worth it">late · ' + a.daysSince + ' days</span>'
+    : '<span class="sd-tag good" title="1 to 2 weeks since the last outreach">due by ' + esc(sdDayName(a.dueBy)) + '</span>';
+  var who = (a.fresh || []).slice(0, 3).map(function (c) {
+    return '<span><b>' + esc(c.name) + '</b>' + (c.title ? ' — ' + esc(c.title) : '') + '</span>';
+  }).join('') + (a.freshTotal > 3 ? '<span class="sd-dim">+' + (a.freshTotal - 3) + ' more on file</span>' : '');
+  var status = where === 'day' ? '<span class="wp-status day">On ' + esc(sdDayName(a.pinnedOn)) + ' ✓</span>'
+    : where === 'today' ? '<span class="wp-status today">In today’s LinkedIn list</span>'
+    : '<span class="wp-status wait">' + sdPlural(a.going, 'person goes', 'people go') + ' on the day you pick</span>';
+  var days = where === 'today' ? '' : wpDayBtns('data-wpagain', a.id, a.name, a.pinnedOn || '', busy, { verb: 'Reach out again on' });
+  return '<div class="wp-b again' + (a.state === 'late' ? ' late' : '') + (where === 'day' ? ' placed' : '') + (busy ? ' busy' : '') + (flash ? ' flash' : '') + (opts && opts.hl ? ' hl' : '') + '" data-wpid="' + esc(a.id) + '"' +
+      (where === 'waiting' ? ' draggable="true" data-wpdrag="' + esc(a.id) + '" data-wpfrom="" data-wpkind="again" data-wpn="' + esc(a.name) + '"' : '') + '>' +
+    '<div class="wp-b-h"><a href="#" class="wp-b-name" data-wpopen="' + esc(a.id) + '" title="' + esc(a.name) + '">' + esc(a.name) + '</a>' +
+      '<span class="wp-fitbox" title="Brand Fit">' + a.fit + '</span></div>' +
+    '<div class="wp-b-meta">' + (a.category ? '<span>' + esc(sdCatName(a.category)) + '</span>' : '') + sdLabel(a.label) + when + rbTag(a.id) + '</div>' +
+    '<div class="wp-again-why">Last outreach ' + esc(sdDayName(a.last)) + ' (' + sdPlural(a.daysSince, 'day', 'days') + ' ago) · ' +
+      sdPlural(a.invited || 0, 'invite', 'invites') + (a.emailed ? ' · ' + a.emailed + ' emailed' : '') + ' · no answer yet</div>' +
+    '<div class="wp-again-who"><span class="sd-dim">Never contacted — they decide:</span>' + who + '</div>' +
+    '<div class="wp-b-where">' + status + '</div>' +
+    (days ? '<div class="wp-b-act">' + days + '</div>' : '') +
   '</div>';
 }
 
@@ -21990,31 +22236,42 @@ function wpBrowse(cat) {
   }).catch(function (e) { if (mine === WP.catSeq) { WP.catData = { err: e.message }; wpRenderList(); } });
 }
 
-// A search / category result: what adding it means, and one button.
+// A search / category result. On the list already: its list card. Due to
+// be reached again: its reach-again card. Else what adding it means, +
+// Add to list, and a button per day — on the list AND on that day in one
+// click (Leo: "make it easier for brands that i add").
 function wpAddCardHtml(b, i, opts) {
+  var hl = !!(opts && opts.hl && i === WP.hl);
   var on = wpById()[b.id];
+  if (on) return wpCardHtml(on, { hl: hl });
+  var ag = wpAgainById()[b.id];
+  if (ag) return wpAgainCardHtml(ag, { hl: hl });
   var fit = b.fit && typeof b.fit === 'object' ? b.fit.score : b.fit;
   var added = WP.added[b.id];
-  var btn = on ? '<span class="wp-status day">On your list · #' + on.rank + '</span>'
-    : added === 'busy' ? '<button class="wp-addbtn" disabled>Adding…</button>'
+  var anyway = b.action === 'addAnyway';
+  var btn = added === 'busy' ? '<button class="wp-addbtn" disabled>Adding…</button>'
     : added ? '<span class="wp-status day">Added ✓</span>'
     : b.action === 'none' ? ''
-    : '<button class="wp-addbtn' + (b.action === 'addAnyway' ? ' anyway' : '') + '" data-wpadd="' + esc(b.id) + '" data-wpn="' + esc(b.name) + '"' + (b.giant ? ' data-wpgiant="1"' : '') +
-        (b.action === 'addAnyway' ? ' title="' + esc(b.text || '') + '"' : '') + '>' + (b.action === 'addAnyway' ? 'Add anyway' : '+ Add to list') + '</button>';
-  var tick = opts && opts.tick && !on && !added && b.action !== 'none'
+    : '<button class="wp-addbtn' + (anyway ? ' anyway' : '') + '" data-wpadd="' + esc(b.id) + '" data-wpn="' + esc(b.name) + '"' + (b.giant ? ' data-wpgiant="1"' : '') +
+        (anyway ? ' title="' + esc(b.text || '') + '"' : '') + '>' + (anyway ? 'Add anyway' : '+ Add to list') + '</button>' +
+      wpDayBtns('data-wpaddday', b.id, b.name, '', false, { anyway: anyway, giant: !!b.giant, verb: anyway ? 'Add it anyway and put it on' : 'Add it to your list and put it on' });
+  var tick = opts && opts.tick && !added && b.action !== 'none'
     ? '<input type="checkbox" class="wp-tick" data-wptick="' + esc(b.id) + '"' + (WP.catSel[b.id] ? ' checked' : '') + ' aria-label="Tick ' + esc(b.name) + '">' : '';
-  return '<div class="wp-b' + (opts && opts.hl && i === WP.hl ? ' hl' : '') + '">' +
+  return '<div class="wp-b' + (hl ? ' hl' : '') + (added === 'busy' ? ' busy' : '') + '" data-wpid="' + esc(b.id) + '">' +
     '<div class="wp-b-h">' + tick + '<a href="#" class="wp-b-name" data-wpopen="' + esc(b.id) + '" title="' + esc(b.name) + '">' + esc(b.name) + '</a>' +
       (fit != null ? '<span class="wp-fitbox" title="Brand Fit">' + fit + '</span>' : '') + '</div>' +
     '<div class="wp-b-meta">' + (b.category ? '<span>' + esc(sdCatName(b.category)) + '</span>' : '') + sdLabel(b.label) + rbTag(b.id) + '</div>' +
-    '<div class="wp-b-act"><span class="sd-dim">' + esc(b.text || '') + '</span><span class="sd-sp"></span>' + btn + '</div>' +
+    '<div class="wp-b-meta"><span class="sd-dim">' + esc(b.text || '') + '</span></div>' +
+    '<div class="wp-b-act">' + btn + '</div>' +
   '</div>';
 }
 
 function wpSearchHtml() {
   if (WP.qFor !== WP.q) return '<div class="sd-empty">Searching…</div>';
   if (!WP.rows.length) return '<div class="sd-empty">No brand matches “' + esc(WP.q) + '”.</div>';
-  return WP.rows.map(function (b, i) { return wpAddCardHtml(b, i, { hl: true }); }).join('');
+  var list = WP.rows.filter(function (b) { return reachOk('weekplan', wpReached(b)); });
+  if (!list.length) return '<div class="sd-empty">No match ' + (REACH_F.weekplan === 'yes' ? 'has been reached out to.' : 'is still waiting for its first outreach.') + '</div>';
+  return '<div class="wp-grid">' + list.map(function (b) { return wpAddCardHtml(b, WP.rows.indexOf(b), { hl: true }); }).join('') + '</div>';
 }
 
 // A category's brands under the Outreach filter (reached = the Reached
@@ -22026,7 +22283,7 @@ function wpCatRows() {
 function wpCatTicked() {
   return wpCatRows().filter(function (b) { return WP.catSel[b.id]; }).map(function (b) { return b.id; });
 }
-REACH_DRAW.weekplan = function () { wpRenderList(); };
+REACH_DRAW.weekplan = function () { WP.stick = {}; wpRenderList(); };
 function wpCatAddable() {
   var byId = wpById();
   return wpCatRows().filter(function (b) { return !byId[b.id] && !WP.added[b.id]; });
@@ -22056,7 +22313,7 @@ function wpCatHtml() {
   if (!list.length && (d.brands || []).length) return '<div class="sd-empty">No ' + esc(sdCatName(WP.cat)) + ' brand here ' + (REACH_F.weekplan === 'yes' ? 'has been reached out to.' : 'is still waiting for its first outreach.') + '</div>';
   if (!list.length) return '<div class="sd-empty">No ' + esc(sdCatName(WP.cat)) + ' brand can go out right now.</div>';
   var shown = WP.catAll ? list : list.slice(0, 30);
-  return shown.map(function (b, i) { return wpAddCardHtml(b, i, { tick: true }); }).join('') +
+  return '<div class="wp-grid">' + shown.map(function (b, i) { return wpAddCardHtml(b, i, { tick: true }); }).join('') + '</div>' +
     (list.length > shown.length ? '<button class="btn-ghost wp-more" data-wpcatall="1">Show all ' + list.length + '</button>' : '');
 }
 
@@ -22082,9 +22339,44 @@ function wpAdd(ids, giants) {
   });
 }
 
+// From a search or a category, straight onto a day: on the list first,
+// then on the day (the Schedule's own planAddBrands).
+function wpAddDay(id, name, to, giant) {
+  var src = (WP.rows || []).concat((WP.catData && WP.catData.brands) || []).filter(function (x) { return x.id === id; })[0] || {};
+  var giants = giant ? [id] : [];
+  WP.added[id] = 'busy';
+  return wpDo({
+    ids: [id],
+    run: function () {
+      return api('weekBankAdd', { brandIds: [id], allowGiants: giants }).then(function (r) {
+        var no = ((r && r.refused) || [])[0];
+        if (no) return { refused: no };
+        return api('planAddBrands', { date: to, brandIds: [id], allowGiants: giants }).then(function (p) { return { plan: p }; });
+      });
+    },
+    local: function () {
+      var td = wpDay(to);
+      if (td && !(td.pinned || []).some(function (p) { return p.id === id; })) {
+        td.pinned = (td.pinned || []).concat([{ id: id, name: name, category: src.category || null, state: 'going', going: src.going || 0, waits: null, people: [], big: false }]);
+      }
+    },
+    done: function (res) {
+      if (res.refused) { delete WP.added[id]; return name + ' not added: ' + (res.refused.text || 'can’t go out'); }
+      WP.added[id] = true;
+      WP.flash[id] = Date.now();
+      var out = ((res.plan && res.plan.results) || [])[0];
+      if (out && out.added === false) return name + ' is on your list, but can’t go on ' + sdDayName(to) + (out.reasonText ? ': ' + out.reasonText : '');
+      return name + ' → your list and ' + sdDayName(to) + (out && out.going ? ' · ' + sdPlural(out.going, 'person', 'people') : '') +
+        (out && out.waits ? ' (waits — past the day’s ' + sdCap() + ')' : '');
+    }
+  });
+}
+
 // Put a brand on a day (from the list or another day). Shown at once.
 function wpPlace(id, name, to) {
   var r = wpById()[id];
+  // A brand Leo added that is due to be reached again goes the reach-again way.
+  if (r && wpAgainById()[id]) return wpAgainPlace(id, name, to);
   var from = r && r.where === 'day' ? r.day : '';
   if (from === to) return wpOff(id, name, from);
   var going = r ? r.going : 0;
@@ -22117,9 +22409,40 @@ function wpPlace(id, name, to) {
   });
 }
 
+// Reach out again on a day: its decision makers nobody contacted go that
+// day (reachAgain); on a day already, another day moves it, its own day
+// takes it off.
+function wpAgainPlace(id, name, to) {
+  var a = wpAgainById()[id];
+  if (!a) return;
+  var from = a.pinnedOn || '';
+  if (from === to) return wpOff(id, name, from);
+  if (from) return wpMoveCard(id, name, from, to);
+  return wpDo({
+    ids: [id], fn: 'reachAgain', args: { brandId: id, date: to },
+    local: function () {
+      a.pinnedOn = to;
+      var r = wpById()[id];
+      if (r) { r.where = 'day'; r.day = to; }
+      var td = wpDay(to);
+      if (td && !(td.pinned || []).some(function (p) { return p.id === id; })) {
+        td.pinned = (td.pinned || []).concat([{ id: id, name: name, category: a.category, state: 'going', going: a.going, waits: null, people: (a.fresh || []).slice(0, a.going), big: !!a.big }]);
+      }
+    },
+    done: function (r) {
+      if (!r || r.ok === false) return name + ' can’t go on ' + sdDayName(to) + (r && r.text ? ': ' + r.text : '');
+      WP.flash[id] = Date.now();
+      var who = (r.people || []).map(function (p) { return p.name; });
+      return name + ' → ' + sdDayName(to) + ': ' + (who.length > 3 ? sdPlural(who.length, 'person', 'people') : who.join(', ')) +
+        (r.waits ? ' (waits — past the day’s ' + sdCap() + ')' : '');
+    }
+  });
+}
+
 function wpMoveCard(id, name, from, to) {
-  if (wpById()[id]) return wpPlace(id, name, to);
-  // A brand on the day that isn't on the list (planned on the Schedule).
+  if (wpById()[id] && !wpAgainById()[id]) return wpPlace(id, name, to);
+  // A brand on the day that isn't a plain list row: planned on the
+  // Schedule, or reached out to again.
   return wpDo({
     ids: [id], fn: 'planMoveBrand', args: { brandId: id, from: from, to: to },
     local: function () {
@@ -22127,6 +22450,9 @@ function wpMoveCard(id, name, from, to) {
       var card = fd && (fd.pinned || []).filter(function (p) { return p.id === id; })[0];
       if (fd) fd.pinned = (fd.pinned || []).filter(function (p) { return p.id !== id; });
       if (td && card) td.pinned = (td.pinned || []).concat([card]);
+      var a = wpAgainById()[id], r = wpById()[id];
+      if (a) a.pinnedOn = to;
+      if (r) { r.where = 'day'; r.day = to; }
     },
     done: function (res) {
       if (res && res.ok === false) return name + ' can’t go on ' + sdDayName(to) + (res.result && res.result.reasonText ? ': ' + res.result.reasonText : '');
@@ -22135,17 +22461,18 @@ function wpMoveCard(id, name, from, to) {
   });
 }
 
-// Off a day: it waits on the list again.
+// Off a day: it waits on the list (or in Reach out again) again.
 function wpOff(id, name, from) {
-  var r = wpById()[id];
+  var r = wpById()[id], a = wpAgainById()[id];
   return wpDo({
     ids: [id], fn: 'planRemoveBrand', args: { date: from, brandId: id },
     local: function () {
       var fd = wpDay(from);
       if (fd) fd.pinned = (fd.pinned || []).filter(function (p) { return p.id !== id; });
       if (r) { r.where = 'waiting'; r.day = null; }
+      if (a) a.pinnedOn = null;
     },
-    done: function () { return name + ' is off ' + sdDayName(from) + (r ? ' — waiting on your list' : ''); }
+    done: function () { return name + ' is off ' + sdDayName(from) + (r ? ' — waiting on your list' : a ? ' — back in Reach out again' : ''); }
   });
 }
 
@@ -22197,7 +22524,8 @@ function wpSpread() {
     if (!pv || pv.ok === false) { toast((pv && pv.message) || 'Nothing to spread'); wpRenderWeekHead(); return; }
     WP.pv = pv;
     wpRenderWeekHead();
-    wpRenderDays();
+    wpRenderStrip();
+    wpRenderOpen();
   }).catch(function (e) { WP.pvBusy = false; toast(e.message); wpRenderWeekHead(); });
 }
 
@@ -22205,7 +22533,7 @@ function wpApply() {
   var pv = WP.pv;
   if (!pv || WP.applying) return;
   WP.applying = true;
-  wpRenderWeekHead();
+  wpRenderOpen();
   var days = pv.days.map(function (d) { return { date: d.date, brandIds: d.add.map(function (a) { return a.id; }) }; });
   WP.writes += 1; WP.wseq += 1;
   return api('weekSpread', { apply: true, days: days }).then(function (r) {
@@ -22218,13 +22546,15 @@ function wpApply() {
       (x.elsewhere || []).forEach(function (f) { moved.push(f.name + ' (on ' + f.on + ')'); });
       (x.waits || []).forEach(function (n) { waits.push(n); });
     });
-    WP.done = { at: Date.now(), text: 'Put ' + sdPlural(added, 'brand', 'brands') + ' (' + sdPlural(people, 'person', 'people') + ') on ' + sdPlural(days.length, 'day', 'days') + '.' +
+    var text = 'Put ' + sdPlural(added, 'brand', 'brands') + ' (' + sdPlural(people, 'person', 'people') + ') on ' + sdPlural(days.length, 'day', 'days');
+    WP.done = { at: Date.now(), text: text };
+    toast(text + '.' +
       (refused.length ? ' Couldn’t go: ' + refused.join(', ') + '.' : '') +
       (moved.length ? ' Left where you put them: ' + moved.join(', ') + '.' : '') +
-      (waits.length ? ' Wait for the next day: ' + waits.join(', ') + '.' : '') };
+      (waits.length ? ' Wait for the next day: ' + waits.join(', ') + '.' : ''));
     WP.writes -= 1;
     return wpRead();
-  }).catch(function (e) { WP.applying = false; WP.writes -= 1; toast(e.message); wpRenderWeekHead(); });
+  }).catch(function (e) { WP.applying = false; WP.writes -= 1; toast(e.message); wpRenderOpen(); });
 }
 
 function wpUndo() {
@@ -22238,6 +22568,12 @@ function wpUndo() {
     WP.done = null;
     return wpDo({ fn: 'undoWeekSpread', args: {}, done: function (r) { return 'Spread taken back · ' + sdPlural((r.off || []).length, 'brand', 'brands') + ' off their days'; } });
   }).catch(function (e) { toast(e.message); });
+}
+
+function wpToggleDay(date) {
+  WP.open = WP.open === date ? '' : date;
+  wpRenderStrip();
+  wpRenderOpen();
 }
 
 (function () {
@@ -22258,22 +22594,30 @@ function wpUndo() {
     } else if (e.key === 'Escape') { q.value = ''; wpSearch(''); }
   });
   cat.addEventListener('change', function () { wpBrowse(cat.value); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || !sec.classList.contains('active') || e.target === q) return;
+    if (WP.pv) { WP.pv = null; wpRenderAll(); }
+    else if (WP.open) wpToggleDay(WP.open);
+  });
 
   sec.addEventListener('click', function (e) {
     var t;
+    // A button on a card: that card stays where it is while the page redraws.
+    var cardEl = e.target.closest('#wp-list [data-wpid]');
+    if (cardEl && e.target.closest('button')) WP.anchor = { id: cardEl.getAttribute('data-wpid'), at: Date.now() };
     if ((t = e.target.closest('[data-wpopen]'))) { e.preventDefault(); loadBrand(t.getAttribute('data-wpopen')); return; }
     if ((t = e.target.closest('[data-wpweek]'))) {
       var w = t.getAttribute('data-wpweek');
       if (w === WP.week) return;
-      WP.week = w; WP.pv = null; WP.done = null;
+      WP.week = w; WP.pv = null; WP.done = null; WP.open = '';
       loadWeekPlan();
       return;
     }
     if ((t = e.target.closest('[data-wpspread]')) || (t = e.target.closest('[data-wpshuffle]'))) { wpSpread(); return; }
     if ((t = e.target.closest('[data-wpapply]'))) { wpApply(); return; }
-    if ((t = e.target.closest('[data-wppvx]'))) { WP.pv = null; wpRenderWeekHead(); wpRenderDays(); return; }
+    if ((t = e.target.closest('[data-wppvx]'))) { WP.pv = null; wpRenderAll(); return; }
     if ((t = e.target.closest('[data-wpundo]'))) { e.preventDefault(); wpUndo(); return; }
-    if ((t = e.target.closest('[data-wpdonex]'))) { e.preventDefault(); WP.done = null; wpRenderWeekHead(); return; }
+    if ((t = e.target.closest('[data-wpclose]'))) { WP.open = ''; wpRenderStrip(); wpRenderOpen(); return; }
     if ((t = e.target.closest('[data-wplist]'))) {
       e.preventDefault();
       var lk = t.getAttribute('data-wplist'), on = t.getAttribute('data-on') === '1';
@@ -22283,6 +22627,8 @@ function wpUndo() {
       return;
     }
     if ((t = e.target.closest('[data-wpput]'))) { wpPlace(t.getAttribute('data-wpput'), t.getAttribute('data-wpn'), t.getAttribute('data-wpto')); return; }
+    if ((t = e.target.closest('[data-wpagain]'))) { wpAgainPlace(t.getAttribute('data-wpagain'), t.getAttribute('data-wpn'), t.getAttribute('data-wpto')); return; }
+    if ((t = e.target.closest('[data-wpaddday]'))) { wpAddDay(t.getAttribute('data-wpaddday'), t.getAttribute('data-wpn'), t.getAttribute('data-wpto'), t.hasAttribute('data-wpgiant')); return; }
     if ((t = e.target.closest('[data-wpmove]'))) { wpMoveCard(t.getAttribute('data-wpmove'), t.getAttribute('data-wpn'), t.getAttribute('data-wpfrom'), t.getAttribute('data-wpto')); return; }
     if ((t = e.target.closest('[data-wpoff]'))) { wpOff(t.getAttribute('data-wpoff'), t.getAttribute('data-wpn'), t.getAttribute('data-wpday')); return; }
     if ((t = e.target.closest('[data-wprm]'))) { wpRemove(t.getAttribute('data-wprm'), t.getAttribute('data-wpn')); return; }
@@ -22294,8 +22640,10 @@ function wpUndo() {
         done: function () { return pn + ' is back on your list'; } });
       return;
     }
-    if ((t = e.target.closest('[data-wpfilter]'))) { WP.filter = t.getAttribute('data-wpfilter'); WP.shown = 40; wpRenderList(); return; }
+    if ((t = e.target.closest('[data-wptile]'))) { wpToggleDay(t.getAttribute('data-wptile')); return; }
+    if ((t = e.target.closest('[data-wpfilter]'))) { WP.filter = t.getAttribute('data-wpfilter'); WP.shown = 40; WP.stick = {}; wpRenderList(); return; }
     if ((t = e.target.closest('[data-wpmore]'))) { WP.shown += 40; wpRenderList(); return; }
+    if ((t = e.target.closest('[data-wpagainall]'))) { WP.againAll = true; wpRenderList(); return; }
     if ((t = e.target.closest('[data-wpclear]'))) { e.preventDefault(); q.value = ''; wpSearch(''); q.focus(); return; }
     if ((t = e.target.closest('[data-wpadd]'))) {
       var aid = t.getAttribute('data-wpadd');
@@ -22316,6 +22664,10 @@ function wpUndo() {
     if ((t = e.target.closest('[data-wpcatx]'))) { e.preventDefault(); cat.value = ''; wpBrowse(''); return; }
     if ((t = e.target.closest('[data-wpcatall]'))) { WP.catAll = true; wpRenderList(); return; }
   });
+  sec.addEventListener('keydown', function (e) {
+    var t = e.target.closest && e.target.closest('[data-wptile]');
+    if (t && e.target === t && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); wpToggleDay(t.getAttribute('data-wptile')); }
+  });
   sec.addEventListener('change', function (e) {
     var t = e.target;
     if (t.hasAttribute('data-wpsize')) {
@@ -22330,12 +22682,12 @@ function wpUndo() {
     }
   });
 
-  // Drag a list card onto a day, a day's card onto another day, or back
-  // onto the list.
+  // Drag a card onto a day tile (or the open day), a day's brand onto
+  // another day, or back onto the list.
   sec.addEventListener('dragstart', function (e) {
     var el = e.target.closest && e.target.closest('[data-wpdrag]');
     if (!el) return;
-    WP_DRAG = { id: el.getAttribute('data-wpdrag'), from: el.getAttribute('data-wpfrom') || '', name: el.getAttribute('data-wpn') || '' };
+    WP_DRAG = { id: el.getAttribute('data-wpdrag'), from: el.getAttribute('data-wpfrom') || '', name: el.getAttribute('data-wpn') || '', kind: el.getAttribute('data-wpkind') || '' };
     try { e.dataTransfer.setData('text/plain', WP_DRAG.name); e.dataTransfer.effectAllowed = 'move'; } catch (x) {}
     el.classList.add('sd-dragging');
   });
@@ -22374,6 +22726,7 @@ function wpUndo() {
     if (d.to === g.from) return;
     if (!d.to) wpOff(g.id, g.name, g.from);
     else if (g.from) wpMoveCard(g.id, g.name, g.from, d.to);
+    else if (g.kind === 'again') wpAgainPlace(g.id, g.name, d.to);
     else wpPlace(g.id, g.name, d.to);
   });
 })();
@@ -22991,7 +23344,7 @@ function queueToast(r, retry) {
     toast(r.brandName + ' is marked not sold in the US — change “Sold in the US” on its brand page to reach out.');
   } else if (r.reason === 'resting') {
     // Reached out already: it rests two weeks from the first outreach.
-    toast((r.brandName || r.contactName) + ': ' + (r.reasonText || 'reached out already — it rests two weeks.'));
+    toast((r.brandName || r.contactName) + ': ' + (r.reasonText || 'reached out already — it rests a week.'));
   } else if (r.reason === 'giant') {
     toast((r.brandName || r.contactName) + ' is a giant — held back for now. Add it on the Schedule with “Add anyway”.');
   } else if (r.reason === 'inconversation') {

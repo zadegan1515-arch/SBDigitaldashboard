@@ -59,6 +59,7 @@ import { findLinkedInPeople, logLinkedInPerson, undoLinkedInLog, checkNewPerson 
 import { isLogStage } from '@/lib/li-log'
 import { rollWindow, findUnsent, planCarry, carryOrder, carryTimes, type Unsent, type CarryFacts, type CarryTier, type Moved } from '@/lib/carry'
 import { BANK_KEY, bankSize, cleanBank, addToBank, removeFromBank, putBack, handSpent, composeBank, planWeeks, weekRooms, spreadWeek, seeded, type BankState, type BankCand } from '@/lib/week-bank'
+import { reachAgainOf, AGAIN_FROM_DAYS, AGAIN_DUE_DAYS, type Again } from '@/lib/reach-again'
 import { workNeed, dueDays } from '@/lib/planned-first'
 import { searchHit, type SearchHit } from '@/lib/brand-search'
 import { gradeDiscovery, gradeFromFit } from '@/lib/discover-grade'
@@ -1415,7 +1416,7 @@ function reasonText(reason: string | null | undefined, ctx: ReasonCtx = {}): str
     case 'passedtoday': return 'Passed for today.'
     case 'leftout': return 'In today’s list already — its people were left out, so nobody more goes today.'
     case 'reached': return `Already reached out${on(ctx.firstAt)}. Only brands nobody has heard from are picked — add it by hand to go again.`
-    case 'resting': return `Reached out${on(ctx.firstAt)} — it rests two weeks${ctx.restUntil ? `, until ${dayLabel(ctx.restUntil)}` : ''}.`
+    case 'resting': return `Reached out${on(ctx.firstAt)} — it rests a week${ctx.restUntil ? `, until ${dayLabel(ctx.restUntil)}` : ''}.`
     case 'giant': return `A giant${ctx.giant ? ` (${ctx.giant})` : ''} — held back for now. Add anyway to send it.`
     case 'dayfull': return `That day already has ${PLAN_DAY_MAX} brands pinned.`
     case 'notfound': return 'Brand not found.'
@@ -2490,7 +2491,7 @@ function planBrandRow(b: PlanBrand, ctx: PlanRowCtx) {
     : status === 'donotemail' ? 'Marked do-not-email'
     : status === 'notus' ? 'Not sold in the US — ruled out'
     : status === 'inconversation' ? `Replied${rc.repliedAt ? ' ' + shortDate(rc.repliedAt) : ''} · in talks`
-    : status === 'resting' ? `Reached out${rc.firstAt ? ' ' + shortDate(rc.firstAt) : ''} · rests until ${gate?.until ? dayLabel(gate.until) : 'two weeks on'}`
+    : status === 'resting' ? `Reached out${rc.firstAt ? ' ' + shortDate(rc.firstAt) : ''} · rests until ${gate?.until ? dayLabel(gate.until) : 'a week on'}`
     : pinnedOn ? `On ${dayLabel(pinnedOn)} already`
     : inTodayQueue && action !== 'none' ? `${inTodayQueue} in today's queue — Add moves them to ${dayLabel(ctx.date)}`
     // An automatic row on a day (lock-days): it may change until locked.
@@ -3159,6 +3160,8 @@ type BankRow = {
   rank: number; id: string; name: string; category: string | null; tier: string | null
   fit: number; label: ContactsLabel; going: number; people: PreviewPerson[]; big: boolean
   how: 'hand' | 'auto'; addedAt: string | null
+  // Reached out before (isReached — the Reached tag's rule): only a hand add can be.
+  reached: boolean
   where: 'day' | 'today' | 'waiting' | 'cant'; day: string | null; why: string | null
   linkedinUrl: string | null; website: string | null; externalId: string | null
 }
@@ -3213,7 +3216,7 @@ function buildBank(ctx: BankCtx, state: BankState, opts: { day?: string } = {}) 
     return {
       rank: i + 1, id: b.id, name: b.name, category: b.category, tier: b.tier,
       fit: c.fit, label: x.label, going: x.people.length, people: x.people.slice(0, 4), big: isBigBrand(b),
-      how: c.how, addedAt: handAt.get(b.id) ?? null,
+      how: c.how, addedAt: handAt.get(b.id) ?? null, reached: isReached(b),
       where, day: where === 'day' ? pinned : null,
       why: where === 'cant' ? reasonText(x.refusal ?? x.reason ?? 'exhausted', reasonCtx(b, ctx.q)) : null,
       linkedinUrl: b.linkedinUrl, website: b.website, externalId: b.externalId,
@@ -3271,6 +3274,92 @@ function weekColumns(keys: string[], cur: any, marks: Record<string, ListDayMark
   })
   const rooms = new Map(weekRooms(cols.map(c => ({ date: c.date, kept: c.keptPeople })), counts, DAILY_SEND_LIMIT).map(r => [r.date, r]))
   return cols.map(c => ({ ...c, cap: rooms.get(c.date)?.cap ?? DAILY_SEND_LIMIT, room: rooms.get(c.date)?.room ?? 0 }))
+}
+
+// ---------------------------------------------------------------
+// Outreach → Week plan → Reach out again (src/lib/reach-again.ts)
+// ---------------------------------------------------------------
+// Leo, Oct 18 2026: "recommend for me to reach out to brands again if
+// there are decision makers who i did not reach out to yet … it should be
+// around 1 to 2 weeks later". A brand reached before, nobody there
+// answered, a week or more since the last outreach, and someone who
+// decides there never contacted. Hand only, like everything for a brand
+// already reached: the list recommends, Leo's click puts it on a day.
+
+// The brand's case, read from the rows loadPlanBrands gives.
+function againOf(b: PlanBrand, opts: { today: string; deal: boolean; q: QueueCtx; rates?: AcceptRates | null }): Again {
+  const names = brandNames(b)
+  const contacts = b.contacts.map(c => ({
+    id: c.id, name: c.name, title: c.title, isDecisionMaker: c.isDecisionMaker,
+    reachable: isReachable(c),
+    stopped: !!c.doNotContactAt || !!stoppedMatch(lastStopIx, { ...c, brandId: b.id }),
+    flagged: !!personProblem(c.title, names),
+  }))
+  const targets = b.targets.map(t => ({
+    contactId: t.contactId, status: t.status, shelved: t.shelved, shelvedHow: t.shelvedHow,
+    sentAt: t.sentAt, emailedAt: t.emailedAt, emailSentAt: t.emails?.[0]?.sentAt ?? null, updatedAt: t.updatedAt,
+  }))
+  const answered = b.targets.some(t => ['accepted', 'replied', 'converted', 'declined'].includes(t.status))
+  const f = opts.rates !== undefined ? planBrandFit(b, opts.rates) : null
+  const off = !!b.stoppedAt || !!b.passedAt || b.doNotEmail || b.usStatus === 'no' || passedNow(b) ||
+    heldGiant(b, opts.q) || !!f?.ruledOut || !!f?.bizNote
+  return reachAgainOf({ contacts, targets, today: opts.today, answered, deal: opts.deal, off })
+}
+// How many of them go: the brand's opening number (Leo's Work number,
+// else 3 — 4 at an established brand or a Top category's, 10 at a big
+// company), as a first outreach would.
+function againCount(b: PlanBrand): number {
+  return b.workPeople ?? recommendWorkPeople(b, b.contacts.filter(isReachable), true)
+}
+type AgainNo = Extract<Again, { ok: false }>
+function againWhyText(a: Again): string {
+  if (a.ok) return ''
+  const no = a as AgainNo
+  switch (no.why) {
+    case 'never': return 'Never reached out to — it goes out the usual way.'
+    case 'answered': return 'Someone there answered — they’re on Zach’s list.'
+    case 'deal': return 'There’s a deal with them.'
+    case 'off': return 'Set aside (archived, do not email, not in the US, on a Pass or held back as a giant).'
+    case 'soon': return `Reached out to less than a week ago — again from ${no.from ? dayLabel(no.from) : 'next week'}.`
+    case 'nobody': return 'Every decision maker there has been reached already.'
+  }
+  return ''
+}
+type AgainRow = {
+  id: string; name: string; category: string | null; tier: string | null; fit: number; label: ContactsLabel
+  state: 'due' | 'late'; last: string; daysSince: number; dueBy: string
+  fresh: Array<{ id: string; name: string; title: string | null }>; freshTotal: number; going: number
+  invited: number; emailed: number; pinnedOn: string | null; inToday: boolean; big: boolean
+  linkedinUrl: string | null; website: string | null; externalId: string | null
+}
+// Every brand to reach again: late first (longest waiting), then due,
+// best Brand Fit first within each.
+function againRows(brands: PlanBrand[], opts: { today: string; deals: Set<string>; q: QueueCtx; rates: AcceptRates | null; plan: OutreachPlan }): AgainRow[] {
+  const pinnedOn = pinnedDays(opts.plan, opts.today)
+  const dayStart = startOfLocalDay()
+  const rows: AgainRow[] = []
+  for (const b of brands) {
+    if (!isReached(b)) continue
+    const a = againOf(b, { today: opts.today, deal: opts.deals.has(b.id), q: opts.q, rates: opts.rates })
+    if (!a.ok) continue
+    const f = planBrandFit(b, opts.rates)
+    const n = againCount(b)
+    const pin = pinnedOn.get(b.id) ?? null
+    rows.push({
+      id: b.id, name: b.name, category: b.category, tier: b.tier, fit: f.score, label: contactLabel(b, b.contacts),
+      state: a.state, last: a.last, daysSince: a.daysSince, dueBy: a.dueBy,
+      fresh: a.fresh.slice(0, 6).map(c => ({ id: c.id, name: c.name, title: c.title })), freshTotal: a.fresh.length,
+      going: Math.min(n, a.fresh.length),
+      invited: b.targets.filter(wasInvited).length,
+      emailed: b.targets.filter(t => t.emailedAt || t._count.emails > 0).length,
+      pinnedOn: pin && pin > opts.today ? pin : null,
+      inToday: pin === opts.today || b.targets.some(t => !!t.queuedFor && t.queuedFor >= dayStart && !t.sentAt && ['queued', 'drafted'].includes(t.status)),
+      big: isBigBrand(b),
+      linkedinUrl: b.linkedinUrl, website: b.website, externalId: b.externalId,
+    })
+  }
+  return rows.sort((x, y) => Number(y.state === 'late') - Number(x.state === 'late') ||
+    (x.state === 'late' ? y.daysSince - x.daysSince : 0) || y.fit - x.fit || x.name.localeCompare(y.name))
 }
 
 // ---------------------------------------------------------------
@@ -10484,11 +10573,16 @@ const handlers: Record<string, Handler> = {
     const today = localDayKey()
     const weeks = planWeeks(today, k => isSendingKey(k, ctx.q.extras))
     const pick = weeks.find(w => w.which === week || w.start === week) ?? weeks[0]
-    const [marks, spreadLog] = await Promise.all([readListDayMarks(), readWeekSpreadLog()])
+    const [marks, spreadLog, deals] = await Promise.all([
+      readListDayMarks(), readWeekSpreadLog(),
+      prisma.deal.findMany({ select: { brandId: true }, distinct: ['brandId'] }),
+    ])
     const cur: any = await (handlers.getOutreachPlan as Handler)({ __roster: ctx.brands })
     const brandById = new Map(ctx.brands.map(b => [b.id, b]))
     const days = weekColumns(pick.days, cur, marks, brandById)
     const bank = buildBank(ctx, ctx.state, { day: pick.days[0] })
+    // Reach out again: reached before, a decision maker never contacted.
+    const again = againRows(ctx.brands, { today, deals: new Set(deals.map(d => d.brandId)), q: ctx.q, rates: ctx.rates, plan: ctx.plan })
     // Hand adds that left the list (reached since, archived…) leave the
     // stored list too.
     if (bank.spent.length) {
@@ -10516,9 +10610,76 @@ const handlers: Record<string, Handler> = {
       spreadLast: spreadLog && spreadLog.days.some(d => d.date > today)
         ? { at: spreadLog.at, days: spreadLog.days.filter(d => d.date > today).map(d => ({ date: d.date, added: d.added.length })) }
         : null,
+      again: {
+        rows: again.slice(0, 120), total: again.length,
+        due: again.filter(r => r.state === 'due').length, late: again.filter(r => r.state === 'late').length,
+        fromDays: AGAIN_FROM_DAYS, dueDays: AGAIN_DUE_DAYS,
+      },
       cap: DAILY_SEND_LIMIT,
       linkedin: { limit: LINKEDIN_WEEK_LIMIT, sentLast7: cur?.linkedinWeek?.sentLast7 ?? 0 },
       priority: Object.fromEntries(CATEGORY_KEYS.map(k => [k, categoryPriority(k)])),
+    }
+  },
+
+  // Reach out again (Week plan): the brand's decision makers nobody has
+  // contacted go on `date` — up to its opening number (againCount), or the
+  // ones Leo names (contactIds, each still never contacted). They're chosen
+  // people (src/lib/chosen.ts): they go first and all go, as anyone queued
+  // by hand does, though the brand already has invites out. Nothing is
+  // written when the brand can't go that day (resting, a giant held back,
+  // the day full) — the answer says why.
+  async reachAgain({ brandId, date, contactIds }: any) {
+    const today = localDayKey()
+    const extras = await readExtraDays()
+    if (!isDayKey(date) || date < today || !isSendingKey(date, extras)) throw new Error('Pick an upcoming sending day')
+    const b = await prisma.brand.findUnique({ where: { id: String(brandId ?? '') }, select: { ...PLAN_BRAND_SELECT, owner: true } })
+    if (!b) throw new Error('Brand not found')
+    const [q, deal, rates] = await Promise.all([
+      readQueueCtx(),
+      prisma.deal.findFirst({ where: { brandId: b.id }, select: { id: true } }),
+      recentAcceptRates(),
+    ])
+    const a = againOf(b, { today, deal: !!deal, q, rates })
+    if (!a.ok) return { ok: false, why: (a as AgainNo).why, text: againWhyText(a), brandName: b.name }
+    const want = Array.isArray(contactIds) && contactIds.length ? new Set(contactIds.map(String)) : null
+    const pick = want ? a.fresh.filter(c => want.has(c.id)) : a.fresh.slice(0, againCount(b))
+    if (!pick.length) return { ok: false, why: 'nobody', text: 'Those people have been reached since.', brandName: b.name }
+    const no = planRefusal(b, q, date)
+    if (no) return { ok: false, why: no, text: reasonText(no, reasonCtx(b, q)), brandName: b.name }
+    const plan = await readPlan()
+    if (!(plan[date]?.brandIds ?? []).includes(b.id) && (plan[date]?.brandIds ?? []).length >= PLAN_DAY_MAX) {
+      return { ok: false, why: 'dayfull', text: reasonText('dayfull', {}), brandName: b.name }
+    }
+    // Their rows: one waiting (next in line, or never shelved) comes back
+    // into the pool; anyone without one gets a new row.
+    const rowOf = new Map(b.targets.map(t => [t.contactId, t]))
+    const ids = await prisma.$transaction(async tx => {
+      const out: string[] = []
+      for (const c of pick) {
+        const t = rowOf.get(c.id)
+        if (t) {
+          await tx.target.update({
+            where: { id: t.id },
+            data: { shelved: false, shelvedHow: null, status: ['queued', 'drafted'].includes(t.status) ? t.status : 'queued' },
+          })
+          out.push(t.id)
+        } else {
+          const made = await tx.target.create({
+            data: { brandId: b.id, contactId: c.id, fitScore: scoreFit(c.title, b.tier), assignedTo: b.owner ?? null },
+          })
+          out.push(made.id)
+        }
+      }
+      return out
+    })
+    await noteChosen(ids)
+    const core = await planAddCore(plan, date, [b.id])
+    const r = core.results[0] ?? {}
+    return {
+      ok: !!r.added, brandId: b.id, brandName: b.name, date, label: dayLabel(date),
+      people: pick.map(c => ({ name: c.name, title: c.title })),
+      going: r.going ?? 0, state: r.state ?? null, waits: r.waits ?? null,
+      movedFrom: r.movedFrom ?? null, text: r.added ? null : r.reasonText ?? null,
     }
   },
 

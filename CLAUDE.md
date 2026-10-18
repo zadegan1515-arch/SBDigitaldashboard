@@ -273,18 +273,42 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   up before … then … randomly put them into the days for the week which i should be able to move between days"; his picks:
   a **bank spent week by week**, an **even mix of rank**, a spread day takes **only brands from the list**). Rules pure in
   `src/lib/week-bank.ts` (`node scripts/test-week-bank.mjs`); `wp*` / `WP` in app.html (`#weekplan`, tab between Results
-  and Schedule). **Layout** (Leo, same day: "clean this page up … make each brand bigger … make sure that adding and
-  removing brands does not glitch"): the list pane on the left, the week pane on the right, each filling the screen under
-  the title (`wpFit` → `--wp-h`) and scrolling on its own (`wpPaint` keeps each pane's scroll) — so a brand put on a day
-  never moves the list under the mouse; stacked (week first) under 1100px. One big card per brand (`wpCardHtml`: rank,
-  name, Brand Fit box, category, people, contacts, Reached tag, where it is) with a **button per day** (lit = it's on that
-  day; another day moves it, the lit one takes it off) and **Remove**; day cards (`wpDayCard`) have → <day> and ↩ Back to
-  list; drag works list → day, day → day, day → list. The search box / category menu (static, never redrawn) turn the
-  list pane into results (+ Add to list / Add anyway / Added ✓; a category: Add the top N, ticks) with × Back to your list.
+  and Schedule). **Layout** (Leo, Oct 18 2026, third pass: "i want the brands to be the entire page … make it easier for
+  brands that i add"): the brands fill the page as a grid of big cards (`.wp-grid`) in three parts — **Added by you**,
+  **Reach out again** (below), **Top by Brand Fit** (40, then Show more) — and the week is a **strip of day tiles**
+  (`#wp-bar`, `wpRenderStrip`: name, how it fills, n / cap, meter, its brands, open spots) that sticks under the header;
+  once stuck it goes slim (`wpBarFit`: names and the last-spread line hidden; the height it gives up stays as its bottom
+  margin, so the list never moves). A tile click opens that day **over the list** (`#wp-dayopen`, absolute under the bar,
+  `wpRenderOpen`: its cards `wpDayCard` with → <day> / ↩ Back to list, Only my list / Let Best fit fill; ✕ or Esc closes);
+  the spread's preview shows there too. One big card per brand (`wpCardHtml`: rank, name, Brand Fit box, category,
+  people, contacts, Reached tag, where it is) with a **button per day** (lit = it's on that day; another day moves it, the
+  lit one takes it off) and **Remove**; drag works card → tile (or the open day), tile name / day card → another tile,
+  day card → the list. The search box / category menu (static, never redrawn) turn the page into results: a brand on the
+  list shows its list card, one due again its reach-again card, else + Add to list / Add anyway / Added ✓ **and a button
+  per day** (`wpAddDay` = weekBankAdd then planAddBrands — on the list and on that day in one click); a category: Add the
+  top N, ticks; × Back to your list. **The Outreach filter** (`reachSelect('weekplan')`, the site's Reached out / Not
+  reached out, `row.reached` = isReached) runs over the list, Reach out again and search / category results; status chips
+  All / Waiting / On a day / In today's list / Can't go yet (a card acted on stays until the filter changes, `WP.stick`).
   **No glitches** (`wpDo`): every change shows at once on the page's own copy, the buttons of a brand being saved wait
   (`WP.pending`), and the page reads `weekBank` once the last change is answered (`wpRead`, dropped if another change
-  started meanwhile); a refusal says why and that read puts the truth back. A brand removed stays in its place as "Taken
-  off your list · Undo" for 15 s (`WP.gone`, Undo = `weekBankPutBack`). **The list** (Setting `weekBank` = { size, hand, removed }; `buildBank` in route.ts) = brands Leo added
+  started meanwhile); a refusal says why and that read puts the truth back; the card a click was on is held where it is
+  on screen through every redraw (`wpHold` / `wpUnhold`). A brand removed stays in its place as "Taken off your list ·
+  Undo" for 15 s (`WP.gone`, Undo = `weekBankPutBack`). **Reach out again** (Leo, Oct 18 2026: "recommend for me to reach
+  out to brands again if there are decision makers who i did not reach out to yet, also if i reach out to a brand again
+  it should be around 1 to 2 weeks later"; rules pure in `src/lib/reach-again.ts`, `node scripts/test-reach-again.mjs`):
+  `weekBank.again` (`againRows` / `againOf` in route.ts) = brands reached before, **nobody answered** (no accept, reply or
+  no — they'd be on Zach's list), no deal, not set aside (archived, do-not-email, not US, stopped, on a Pass, a held
+  giant, closed / ruled out), **a week or more since the last outreach** of any kind (invite, hand or machine email;
+  `AGAIN_FROM_DAYS` = REST_DAYS), and a **decision maker never contacted** (`freshDecisionMakers`: a buyer title —
+  partnerships > events > marketing = founder — or marked decision maker, reachable, not stopped, not flagged by the queue
+  check, no outreach on any row of theirs, not passed or shelved by hand; next in line counts as fresh). **Due** days
+  7–14, **late** after (still listed, late first). The card: when, the last outreach, the people never contacted, a
+  button per day → `reachAgain({ brandId, date, contactIds? })`: refuses with why (`againWhyText`; under a week, resting,
+  the day full) before writing; else up to the brand's opening number of them (`againCount`) get a waiting row (new, or
+  next in line brought back), are **chosen** (`noteChosen` — chosen people go first and all go, though the brand has
+  invites out, which a plain re-add never sends past) and the brand is pinned on that day (`planAddCore`; onto today it
+  queues them now). Its lit day / ↩ / drag use planMoveBrand / planRemoveBrand like any card. The Schedule's **Ready for a
+  second try** fold stays (its own stricter rule: withdraw invites 21+ days old first). **The list** (Setting `weekBank` = { size, hand, removed }; `buildBank` in route.ts) = brands Leo added
   (search box = `searchPlanBrands` for the week's first day; Browse a category = `weekBankBrowse`, Add the top N / ticks;
   a giant's Add anyway OKs it, `okGiants`) + the brands a Best fit day would pick by itself (`bestFitEligible`, someone
   would go out, not going out today), **best Brand Fit first** (`compareBank`: fit, then ready, then name — not Ready
@@ -472,15 +496,16 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   outside the queue or withdrawn; an accept/reply; a hand or machine email — `notReachedBefore(dayStart)`
   in SQL, `brandGate(b, q, true)` in code; the old category-day pool only skipped replied brands, so it
   re-pitched invited ones). **By hand** (planAddBrands, planMoveBrand, the brand page, queueBrandTargets,
-  queueContact, Send today anyway, today's planned brands, the morning roll) a reached brand **rests 14
-  days from its first outreach** (New York day keys; a later Schedule day is judged as of that day; the
+  queueContact, Send today anyway, today's planned brands, the morning roll) a reached brand **rests 7
+  days from its first outreach** (`REST_DAYS`; Leo, Oct 18 2026: "if i reach out to a brand again it should be around 1 to
+  2 weeks later" — it was 14; Week plan → Reach out again recommends from day 7, due by day 14) (New York day keys; a later Schedule day is judged as of that day; the
   day a brand opens is its own sitting, so the rest of its people that day still go; an accept logged
   without an invite date counts from the row's last change and is never a sitting). **Part-sent brands**
   (Leo, Oct 12 2026: "If Zach sends only some of a brand's people one day, the rest go out on the next
   sending day"): by hand the sitting runs on to the next sending day after its first day (`sittingOf`,
   `nextSending` from `QueueCtx.extras` — extra days count), so the morning roll carries the rest there,
   queuePlannedToday stamps them and the gate, gatedStampBrands and the Schedule let them through — that
-  one day only (a day later it rests); the 14 days then count from the sitting's last day anything went
+  one day only (a day later it rests); the 7 days then count from the sitting's last day anything went
   out. The system's own picks still never take it. The next sending day is **the calendar as it was**
   (review fix, Oct 13 2026 — sitting-history): days opened or taken off stay stored `DAY_HISTORY_DAYS`
   (REST_DAYS + 7) after they pass (`readExtraDays().past`, `wasSendingKey` in `nextSendingOf`; writeExtraDays /
@@ -672,7 +697,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   carrying an earlier invite's date. **Ready for a second try** (second-try, Oct 12 2026 — hand only, the queue
   rules still keep every reached brand out of the automatic picks): a fold under Categories & coverage, its count
   on the summary (`secondTryBrands`; rule `secondTryOf` in queue-rules.ts): reached before, nobody accepted,
-  replied or said no, no deal, the 14 days over, not set aside / a held giant — and a buyer there the first try
+  replied or said no, no deal, the week's rest over, not set aside / a held giant — and a buyer there the first try
   didn't invite (previewBrandPicks as if its old invites were withdrawn), best Brand Fit first. An invite still
   out 21+ days → **Log it withdrawn…** (markInvitesWithdrawn, previewed) first; one under 21 days keeps the brand
   off (it may still be accepted). Then the usual Put on a day picker (planAddBrands preview → Add).

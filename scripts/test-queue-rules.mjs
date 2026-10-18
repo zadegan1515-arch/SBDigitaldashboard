@@ -61,9 +61,9 @@ is('an accept logged without a date uses its last change', firstOutreachAt([
 is('not-reached rows never set the date', firstOutreachAt([
   row({ updatedAt: d('2026-01-01') }), row({ status: 'sent', sentAt: d('2026-10-05') }),
 ])?.toISOString(), d('2026-10-05').toISOString())
-is('two weeks', REST_DAYS, 14)
-is('rests until the same weekday two weeks on', restUntilDay(d('2026-10-01')), '2026-10-15')
-is('late evening counts as that New York day', restUntilDay(new Date('2026-10-02T02:30:00Z')), '2026-10-15')
+is('a week (Oct 18 2026: reach again 1 to 2 weeks later)', REST_DAYS, 7)
+is('rests until the same weekday a week on', restUntilDay(d('2026-10-01')), '2026-10-08')
+is('late evening counts as that New York day', restUntilDay(new Date('2026-10-02T02:30:00Z')), '2026-10-08')
 is('New York day keys', nyDayKey(new Date('2026-10-02T03:59:00Z')), '2026-10-01')
 
 // ---- the gate ---------------------------------------------------------------
@@ -77,22 +77,22 @@ is('the system never picks a reached brand, however long ago', [
   gate(reachedOn('2026-08-01'), { auto: true, giantsOn: true })?.reason,
 ], ['reached', 'reached'])
 const r3 = gate(reachedOn('2026-10-09'), { auto: false })
-is('by hand: rests two weeks from the first outreach', [r3?.reason, r3?.until], ['resting', '2026-10-23'])
-is('by hand: on the 14th day it can go again', gate(reachedOn('2026-09-28'), { auto: false }), null)
-is('by hand: still resting on day 13', gate(reachedOn('2026-09-29'), { auto: false })?.reason, 'resting')
+is('by hand: rests a week from the first outreach', [r3?.reason, r3?.until], ['resting', '2026-10-16'])
+is('by hand: on the 7th day it can go again', gate(reachedOn('2026-10-05'), { auto: false }), null)
+is('by hand: still resting on day 6', gate(reachedOn('2026-10-06'), { auto: false })?.reason, 'resting')
 is('the day it opened is its sitting: more people that day are fine', [
   gate(reachedOn(today), { auto: true }), gate(reachedOn(today), { auto: false }),
 ], [null, null])
 is('a later Schedule day is judged as of that day', [
-  gate(reachedOn('2026-10-09'), { auto: false, day: '2026-10-22' })?.reason,
-  gate(reachedOn('2026-10-09'), { auto: false, day: '2026-10-23' }),
+  gate(reachedOn('2026-10-09'), { auto: false, day: '2026-10-15' })?.reason,
+  gate(reachedOn('2026-10-09'), { auto: false, day: '2026-10-16' }),
   gate(reachedOn(today), { auto: false, day: '2026-10-13' })?.reason,
 ], ['resting', null, 'resting'])
 const loggedAccept = { name: 'Mid Co', rows: [row({ status: 'accepted', updatedAt: d(today) })] }
 is('an accept logged without a date is never a sitting (Zach\'s list touches it daily)', [
   gate(loggedAccept, { auto: true })?.reason, gate(loggedAccept, { auto: false })?.reason,
   gate(loggedAccept, { auto: false })?.until,
-], ['reached', 'resting', '2026-10-26'])
+], ['reached', 'resting', '2026-10-19'])
 const red = { name: 'Red Bull', rows: [row()] }
 is('a giant is held back from the picks', gate(red, { auto: true }), { reason: 'giant', why: 'a household name' })
 is('a giant by hand: a question (giant), not a rest', gate(red, { auto: false })?.reason, 'giant')
@@ -121,11 +121,11 @@ const hand = (b, day, nx = next) => queueGate(b, { auto: false, giantsOn: false,
 is('part-sent on Tue: by hand the rest go Wed (the same sitting)', hand(tue, '2026-10-14'), null)
 is('…the system still never picks it Wed', queueGate(tue, { auto: true, giantsOn: false, day: '2026-10-14', nextSending: next })?.reason, 'reached')
 const thu = hand(tue, '2026-10-15')
-is('…only that one day: Thu it rests, two weeks from Tue (nothing went Wed)', [thu?.reason, thu?.until], ['resting', '2026-10-27'])
+is('…only that one day: Thu it rests, a week from Tue (nothing went Wed)', [thu?.reason, thu?.until], ['resting', '2026-10-20'])
 const both = partSent(['2026-10-13', '2026-10-14'])
 const thu2 = hand(both, '2026-10-15')
-is('the rest went Wed: the two weeks start after it', [thu2?.reason, thu2?.until], ['resting', '2026-10-28'])
-is('…so it can go again two weeks after Wed, not Tue', [hand(both, '2026-10-27')?.reason, hand(both, '2026-10-28')], ['resting', null])
+is('the rest went Wed: the week starts after it', [thu2?.reason, thu2?.until], ['resting', '2026-10-21'])
+is('…so it can go again a week after Wed, not Tue', [hand(both, '2026-10-20')?.reason, hand(both, '2026-10-21')], ['resting', null])
 const thursday = partSent(['2026-10-15'])
 is('part-sent on Thu: the next sending day is Tue (no Fri–Mon)', [hand(thursday, '2026-10-20'), hand(thursday, '2026-10-16')?.reason], [null, 'resting'])
 const withFri = sendingAfter(['2026-10-16'])
@@ -135,7 +135,7 @@ const undatedAccept = { name: 'Mid Co', rows: [row({ status: 'accepted', updated
 is('an accept logged without its invite never opens a sitting, nor a second day', hand(undatedAccept, '2026-10-14')?.reason, 'resting')
 is('sittingOf: the days and when the rest starts', sittingOf(both.rows, next) && {
   days: sittingOf(both.rows, next).days, restFrom: sittingOf(both.rows, next).restFrom, until: sittingOf(both.rows, next).until,
-}, { days: ['2026-10-13', '2026-10-14'], restFrom: '2026-10-14', until: '2026-10-28' })
+}, { days: ['2026-10-13', '2026-10-14'], restFrom: '2026-10-14', until: '2026-10-21' })
 is('sittingOf: never reached', sittingOf([row()], next), null)
 is('a giant part-sent: still the giant question on its second day', queueGate({ ...tue, name: 'Red Bull' }, { auto: false, giantsOn: false, day: '2026-10-14', nextSending: next })?.reason, 'giant')
 
@@ -147,8 +147,8 @@ is('a giant part-sent: still the giant question on its second day', queueGate({ 
   is('stale invites: 21 days', STALE_INVITE_DAYS, 21)
   is('never reached: not a second try', st([row()]).why, 'never')
   const quiet = [row({ status: 'withdrawn', sentAt: d('2026-10-13') }), row({ status: 'withdrawn', sentAt: d('2026-10-13') }), row()]
-  is('unanswered and rested: ready', [st(quiet).ok, st(quiet).until], [true, '2026-10-27'])
-  is('still resting: not yet', st(quiet, '2026-10-20').why, 'resting')
+  is('unanswered and rested: ready', [st(quiet).ok, st(quiet).until], [true, '2026-10-20'])
+  is('still resting: not yet', st(quiet, '2026-10-19').why, 'resting')
   is('anyone accepted: never a second try', st([...quiet, row({ status: 'accepted', sentAt: d('2026-10-13') })]).why, 'answered')
   is('a "no" counts as an answer', st([...quiet, row({ status: 'declined', sentAt: d('2026-10-13') })]).why, 'answered')
   const oldOpen = [row({ status: 'sent', sentAt: d('2026-10-13') }), row({ status: 'sent', sentAt: d('2026-10-13') })]
