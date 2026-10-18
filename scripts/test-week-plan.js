@@ -123,7 +123,7 @@ const H = {
   weekBank: () => {
     const again = [
       againRow('ag1', { name: 'Liquid Again', pinnedOn: AGAIN_ON.ag1 || null }),
-      againRow('ag2', { name: 'Late Labs', state: 'late', daysSince: 19, last: '2026-09-29', dueBy: '2026-10-13', fit: 60, freshTotal: 5,
+      againRow('ag2', { name: 'Late Labs', state: 'late', daysSince: 19, last: '2026-09-29', dueBy: '2026-10-13', fit: 60, freshTotal: 5, accepted: 1, abroad: 2,
         fresh: [1, 2, 3, 4, 5].map((i) => ({ id: 'l' + i, name: 'Lee ' + i, title: 'Marketing Manager' })), going: 3, pinnedOn: AGAIN_ON.ag2 || null }),
     ];
     const days = WEEK.days.map((d) => Object.assign({}, d, {
@@ -391,8 +391,8 @@ async function main() {
   // 5. Reach out again ----------------------------------------------------------
   const ag1 = await page.textContent(cardOf('ag1'));
   assert.match(ag1, /Liquid Again[\s\S]*72[\s\S]*Energy Drinks[\s\S]*due by Fri Oct 23[\s\S]*Last outreach Fri Oct 9 \(9 days ago\) · 3 invites · no answer yet[\s\S]*Never contacted — they decide:[\s\S]*Dana Lee — Head of Partnerships[\s\S]*Sam Roe — Events Lead[\s\S]*2 people go on the day you pick[\s\S]*\+ Tue[\s\S]*\+ Wed[\s\S]*\+ Thu/, 'when, who, how many, a button per day');
-  assert.match(await page.textContent(cardOf('ag2')), /Late Labs[\s\S]*late · 19 days[\s\S]*\+2 more on file/, 'a late one says so, and how many more');
-  assert.match(await page.textContent('#wp-list .wp-sec:nth-of-type(2)'), /1 to 2 weeks after the last outreach · 1 late/);
+  assert.match(await page.textContent(cardOf('ag2')), /Late Labs[\s\S]*late · 19 days[\s\S]*1 accepted, on Zach’s list — no reply yet[\s\S]*\+2 more on file[\s\S]*2 people outside the US left out/, 'a late one says so, how many more, an accept, and who was left out for being abroad');
+  assert.match(await page.textContent('#wp-list .wp-sec:nth-of-type(2)'), /1 to 2 weeks after the last outreach · people outside the US left out · 1 late/);
   SLOW.fn = 'reachAgain'; SLOW.ms = 600;
   n = count('reachAgain');
   await page.click(cardOf('ag1') + ' [data-wpagain="ag1"][data-wpto="2026-10-21"]');

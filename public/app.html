@@ -23066,7 +23066,7 @@ function wpRenderList() {
     var late = agR.filter(function (a) { return a.state === 'late'; }).length;
     var agShown = WP.againAll ? agR : agR.slice(0, 6);
     html += wpSec('Reach out again', agR.length,
-      'Reached before, nobody answered yet, and someone who decides there was never contacted · 1 to 2 weeks after the last outreach' + (late ? ' · ' + late + ' late' : ''),
+      'Reached before, nobody replied yet, and someone who decides there was never contacted · 1 to 2 weeks after the last outreach · people outside the US left out' + (late ? ' · ' + late + ' late' : ''),
       agShown.map(function (a) { return wpAgainCardHtml(a); }).join(''),
       agR.length > agShown.length ? '<button class="btn-ghost wp-more" data-wpagainall="1">Show all ' + agR.length + '</button>' : '');
   }
@@ -23150,7 +23150,8 @@ function wpAgainCardHtml(a, opts) {
     : '<span class="sd-tag good" title="1 to 2 weeks since the last outreach">due by ' + esc(sdDayName(a.dueBy)) + '</span>';
   var who = (a.fresh || []).slice(0, 3).map(function (c) {
     return '<span><b>' + esc(c.name) + '</b>' + (c.title ? ' — ' + esc(c.title) : '') + '</span>';
-  }).join('') + (a.freshTotal > 3 ? '<span class="sd-dim">+' + (a.freshTotal - 3) + ' more on file</span>' : '');
+  }).join('') + (a.freshTotal > 3 ? '<span class="sd-dim">+' + (a.freshTotal - 3) + ' more on file</span>' : '') +
+    (a.abroad ? '<span class="sd-dim" title="Their title or location is outside the US, and the company is based in the US">' + sdPlural(a.abroad, 'person', 'people') + ' outside the US left out</span>' : '');
   var status = where === 'day' ? '<span class="wp-status day">On ' + esc(sdDayName(a.pinnedOn)) + ' ✓</span>'
     : where === 'today' ? '<span class="wp-status today">In today’s LinkedIn list</span>'
     : '<span class="wp-status wait">' + sdPlural(a.going, 'person goes', 'people go') + ' on the day you pick</span>';
@@ -23159,9 +23160,11 @@ function wpAgainCardHtml(a, opts) {
       (where === 'waiting' ? ' draggable="true" data-wpdrag="' + esc(a.id) + '" data-wpfrom="" data-wpkind="again" data-wpn="' + esc(a.name) + '"' : '') + '>' +
     '<div class="wp-b-h"><a href="#" class="wp-b-name" data-wpopen="' + esc(a.id) + '" title="' + esc(a.name) + '">' + esc(a.name) + '</a>' +
       '<span class="wp-fitbox" title="Brand Fit">' + a.fit + '</span></div>' +
-    '<div class="wp-b-meta">' + (a.category ? '<span>' + esc(sdCatName(a.category)) + '</span>' : '') + sdLabel(a.label) + when + rbTag(a.id) + '</div>' +
+    '<div class="wp-b-meta">' + (a.category ? '<span>' + esc(sdCatName(a.category)) + '</span>' : '') + sdLabel(a.label) + when +
+      (a.basedAbroad ? '<span class="sd-tag" title="Most of its people on file are outside the US, so people abroad can go too — people in the US first">based outside the US</span>' : '') + rbTag(a.id) + '</div>' +
     '<div class="wp-again-why">Last outreach ' + esc(sdDayName(a.last)) + ' (' + sdPlural(a.daysSince, 'day', 'days') + ' ago) · ' +
-      sdPlural(a.invited || 0, 'invite', 'invites') + (a.emailed ? ' · ' + a.emailed + ' emailed' : '') + ' · no answer yet</div>' +
+      sdPlural(a.invited || 0, 'invite', 'invites') + (a.emailed ? ' · ' + a.emailed + ' emailed' : '') +
+      (a.accepted ? ' · ' + a.accepted + ' accepted, on Zach’s list — no reply yet' : ' · no answer yet') + '</div>' +
     '<div class="wp-again-who"><span class="sd-dim">Never contacted — they decide:</span>' + who + '</div>' +
     '<div class="wp-b-where">' + status + '</div>' +
     (days ? '<div class="wp-b-act">' + days + '</div>' : '') +

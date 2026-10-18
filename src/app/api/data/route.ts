@@ -61,6 +61,7 @@ import { isLogStage } from '@/lib/li-log'
 import { rollWindow, findUnsent, planCarry, carryOrder, carryTimes, type Unsent, type CarryFacts, type CarryTier, type Moved } from '@/lib/carry'
 import { BANK_KEY, bankSize, cleanBank, addToBank, removeFromBank, putBack, handSpent, composeBank, planWeeks, weekRooms, spreadWeek, seeded, type BankState, type BankCand } from '@/lib/week-bank'
 import { reachAgainOf, AGAIN_FROM_DAYS, AGAIN_DUE_DAYS, type Again } from '@/lib/reach-again'
+import { personWhere, basedAbroad } from '@/lib/abroad'
 import { workNeed, dueDays } from '@/lib/planned-first'
 import { searchHit, type SearchHit } from '@/lib/brand-search'
 import { gradeDiscovery, gradeFromFit } from '@/lib/discover-grade'
@@ -3296,24 +3297,65 @@ function weekColumns(keys: string[], cur: any, marks: Record<string, ListDayMark
 // decides there never contacted. Hand only, like everything for a brand
 // already reached: the list recommends, Leo's click puts it on a day.
 
-// The brand's case, read from the rows loadPlanBrands gives.
-function againOf(b: PlanBrand, opts: { today: string; deal: boolean; q: QueueCtx; rates?: AcceptRates | null }): Again {
+// What the roster read leaves out, for the brands asked about: a deal, a
+// call booked or put in talks by hand (someone replied), people's locations,
+// the company's hq, and Zach's messages to people who accepted.
+type AgainExtras = {
+  deals: Set<string>; talks: Set<string>; loc: Map<string, string>; hq: Map<string, string>; dms: Map<string, Date[]>
+}
+async function loadAgainExtras(brandIds: string[]): Promise<AgainExtras> {
+  const ids = brandIds.length ? brandIds : ['-']
+  const [deals, calls, added, locs, hqs, dms] = await Promise.all([
+    prisma.deal.findMany({ where: { brandId: { in: ids } }, select: { brandId: true }, distinct: ['brandId'] }),
+    prisma.target.findMany({ where: { brandId: { in: ids }, OR: [{ callBookedAt: { not: null } }, { callAt: { not: null } }] }, select: { brandId: true }, distinct: ['brandId'] }),
+    prisma.brand.findMany({ where: { id: { in: ids }, talksAddedAt: { not: null } }, select: { id: true } }),
+    prisma.contact.findMany({ where: { brandId: { in: ids }, location: { not: null } }, select: { id: true, location: true } }),
+    prisma.brand.findMany({ where: { id: { in: ids }, hq: { not: null } }, select: { id: true, hq: true } }),
+    prisma.target.findMany({ where: { brandId: { in: ids }, OR: [{ dmSentAt: { not: null } }, { nudgedAt: { not: null } }] }, select: { brandId: true, dmSentAt: true, nudgedAt: true } }),
+  ])
+  const dm = new Map<string, Date[]>()
+  for (const t of dms) dm.set(t.brandId, [...(dm.get(t.brandId) ?? []), ...[t.dmSentAt, t.nudgedAt].filter((x): x is Date => !!x)])
+  return {
+    deals: new Set(deals.map(d => d.brandId)),
+    talks: new Set([...calls.map(c => c.brandId), ...added.map(a => a.id)]),
+    loc: new Map(locs.map(c => [c.id, c.location as string])),
+    hq: new Map(hqs.map(b => [b.id, b.hq as string])),
+    dms: dm,
+  }
+}
+// Someone at the brand replied (Leo, Oct 18 2026: "if someone has replied
+// then we prob shouldnt reach out to their company again"): a reply logged
+// anywhere, a no, someone who doesn't want to continue, a call booked or the
+// brand put in talks. An accept alone doesn't count.
+function repliedAtBrand(b: PlanBrand, ex: AgainExtras): boolean {
+  return b.targets.some(t => ['replied', 'converted', 'declined'].includes(t.status) || !!t.repliedAt) ||
+    b.contacts.some(c => !!c.doNotContactAt) || ex.talks.has(b.id)
+}
+
+// The brand's case, read from the rows loadPlanBrands gives (+ the extras).
+function againOf(b: PlanBrand, opts: { today: string; q: QueueCtx; ex: AgainExtras; rates?: AcceptRates | null }): Again & { basedAbroad?: boolean } {
   const names = brandNames(b)
+  const loc = (id: string) => opts.ex.loc.get(id) ?? null
   const contacts = b.contacts.map(c => ({
     id: c.id, name: c.name, title: c.title, isDecisionMaker: c.isDecisionMaker,
     reachable: isReachable(c),
     stopped: !!c.doNotContactAt || !!stoppedMatch(lastStopIx, { ...c, brandId: b.id }),
     flagged: !!personProblem(c.title, names),
+    where: personWhere({ title: c.title, location: loc(c.id) }, names),
   }))
   const targets = b.targets.map(t => ({
     contactId: t.contactId, status: t.status, shelved: t.shelved, shelvedHow: t.shelvedHow,
     sentAt: t.sentAt, emailedAt: t.emailedAt, emailSentAt: t.emails?.[0]?.sentAt ?? null, updatedAt: t.updatedAt,
   }))
-  const answered = b.targets.some(t => ['accepted', 'replied', 'converted', 'declined'].includes(t.status))
   const f = opts.rates !== undefined ? planBrandFit(b, opts.rates) : null
   const off = !!b.stoppedAt || !!b.passedAt || b.doNotEmail || b.usStatus === 'no' || passedNow(b) ||
     heldGiant(b, opts.q) || !!f?.ruledOut || !!f?.bizNote
-  return reachAgainOf({ contacts, targets, today: opts.today, answered, deal: opts.deal, off })
+  const abroad = basedAbroad({ hq: opts.ex.hq.get(b.id) ?? null }, b.contacts.map(c => ({ location: loc(c.id) })))
+  const a = reachAgainOf({
+    contacts, targets, today: opts.today, answered: repliedAtBrand(b, opts.ex), deal: opts.ex.deals.has(b.id), off,
+    alsoAt: opts.ex.dms.get(b.id) ?? [], basedAbroad: abroad,
+  })
+  return { ...a, basedAbroad: abroad }
 }
 // How many of them go: the brand's opening number (Leo's Work number,
 // else 3 — 4 at an established brand or a Top category's, 10 at a big
@@ -3327,7 +3369,7 @@ function againWhyText(a: Again): string {
   const no = a as AgainNo
   switch (no.why) {
     case 'never': return 'Never reached out to — it goes out the usual way.'
-    case 'answered': return 'Someone there answered — they’re on Zach’s list.'
+    case 'answered': return 'Someone there replied — we don’t reach out to the company again.'
     case 'deal': return 'There’s a deal with them.'
     case 'off': return 'Set aside (archived, do not email, not in the US, on a Pass or held back as a giant).'
     case 'soon': return `Reached out to less than a week ago — again from ${no.from ? dayLabel(no.from) : 'next week'}.`
@@ -3340,17 +3382,20 @@ type AgainRow = {
   state: 'due' | 'late'; last: string; daysSince: number; dueBy: string
   fresh: Array<{ id: string; name: string; title: string | null }>; freshTotal: number; going: number
   invited: number; emailed: number; pinnedOn: string | null; inToday: boolean; big: boolean
+  // Accepted and on Zach's list (no reply yet); decision makers left out for
+  // working outside the US; the company is based outside the US.
+  accepted: number; abroad: number; basedAbroad: boolean
   linkedinUrl: string | null; website: string | null; externalId: string | null
 }
 // Every brand to reach again: late first (longest waiting), then due,
 // best Brand Fit first within each.
-function againRows(brands: PlanBrand[], opts: { today: string; deals: Set<string>; q: QueueCtx; rates: AcceptRates | null; plan: OutreachPlan }): AgainRow[] {
+function againRows(brands: PlanBrand[], opts: { today: string; ex: AgainExtras; q: QueueCtx; rates: AcceptRates | null; plan: OutreachPlan }): AgainRow[] {
   const pinnedOn = pinnedDays(opts.plan, opts.today)
   const dayStart = startOfLocalDay()
   const rows: AgainRow[] = []
   for (const b of brands) {
     if (!isReached(b)) continue
-    const a = againOf(b, { today: opts.today, deal: opts.deals.has(b.id), q: opts.q, rates: opts.rates })
+    const a = againOf(b, { today: opts.today, ex: opts.ex, q: opts.q, rates: opts.rates })
     if (!a.ok) continue
     const f = planBrandFit(b, opts.rates)
     const n = againCount(b)
@@ -3365,6 +3410,8 @@ function againRows(brands: PlanBrand[], opts: { today: string; deals: Set<string
       pinnedOn: pin && pin > opts.today ? pin : null,
       inToday: pin === opts.today || b.targets.some(t => !!t.queuedFor && t.queuedFor >= dayStart && !t.sentAt && ['queued', 'drafted'].includes(t.status)),
       big: isBigBrand(b),
+      accepted: b.targets.filter(t => t.status === 'accepted').length,
+      abroad: a.abroad, basedAbroad: !!a.basedAbroad,
       linkedinUrl: b.linkedinUrl, website: b.website, externalId: b.externalId,
     })
   }
@@ -10657,16 +10704,16 @@ const handlers: Record<string, Handler> = {
     const today = localDayKey()
     const weeks = planWeeks(today, k => isSendingKey(k, ctx.q.extras))
     const pick = weeks.find(w => w.which === week || w.start === week) ?? weeks[0]
-    const [marks, spreadLog, deals] = await Promise.all([
+    const [marks, spreadLog, ex] = await Promise.all([
       readListDayMarks(), readWeekSpreadLog(),
-      prisma.deal.findMany({ select: { brandId: true }, distinct: ['brandId'] }),
+      loadAgainExtras(ctx.brands.filter(isReached).map(b => b.id)),
     ])
     const cur: any = await (handlers.getOutreachPlan as Handler)({ __roster: ctx.brands })
     const brandById = new Map(ctx.brands.map(b => [b.id, b]))
     const days = weekColumns(pick.days, cur, marks, brandById)
     const bank = buildBank(ctx, ctx.state, { day: pick.days[0] })
     // Reach out again: reached before, a decision maker never contacted.
-    const again = againRows(ctx.brands, { today, deals: new Set(deals.map(d => d.brandId)), q: ctx.q, rates: ctx.rates, plan: ctx.plan })
+    const again = againRows(ctx.brands, { today, ex, q: ctx.q, rates: ctx.rates, plan: ctx.plan })
     // Hand adds that left the list (reached since, archived…) leave the
     // stored list too.
     if (bank.spent.length) {
@@ -10718,12 +10765,8 @@ const handlers: Record<string, Handler> = {
     if (!isDayKey(date) || date < today || !isSendingKey(date, extras)) throw new Error('Pick an upcoming sending day')
     const b = await prisma.brand.findUnique({ where: { id: String(brandId ?? '') }, select: { ...PLAN_BRAND_SELECT, owner: true } })
     if (!b) throw new Error('Brand not found')
-    const [q, deal, rates] = await Promise.all([
-      readQueueCtx(),
-      prisma.deal.findFirst({ where: { brandId: b.id }, select: { id: true } }),
-      recentAcceptRates(),
-    ])
-    const a = againOf(b, { today, deal: !!deal, q, rates })
+    const [q, ex, rates] = await Promise.all([readQueueCtx(), loadAgainExtras([b.id]), recentAcceptRates()])
+    const a = againOf(b, { today, q, ex, rates })
     if (!a.ok) return { ok: false, why: (a as AgainNo).why, text: againWhyText(a), brandName: b.name }
     const want = Array.isArray(contactIds) && contactIds.length ? new Set(contactIds.map(String)) : null
     const pick = want ? a.fresh.filter(c => want.has(c.id)) : a.fresh.slice(0, againCount(b))

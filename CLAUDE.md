@@ -341,12 +341,20 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Undo" for 15 s (`WP.gone`, Undo = `weekBankPutBack`). **Reach out again** (Leo, Oct 18 2026: "recommend for me to reach
   out to brands again if there are decision makers who i did not reach out to yet, also if i reach out to a brand again
   it should be around 1 to 2 weeks later"; rules pure in `src/lib/reach-again.ts`, `node scripts/test-reach-again.mjs`):
-  `weekBank.again` (`againRows` / `againOf` in route.ts) = brands reached before, **nobody answered** (no accept, reply or
-  no — they'd be on Zach's list), no deal, not set aside (archived, do-not-email, not US, stopped, on a Pass, a held
-  giant, closed / ruled out), **a week or more since the last outreach** of any kind (invite, hand or machine email;
-  `AGAIN_FROM_DAYS` = REST_DAYS), and a **decision maker never contacted** (`freshDecisionMakers`: a buyer title —
+  `weekBank.again` (`againRows` / `againOf` in route.ts) = brands reached before, **nobody replied** (Leo: "if someone has
+  replied then we prob shouldnt reach out to their company again" — `repliedAtBrand`: a reply anywhere, a no, someone who
+  doesn't want to continue, a call booked, put in talks; **an accept alone doesn't stop it** — the card says "N accepted,
+  on Zach's list"), no deal, not set aside (archived, do-not-email, not US, stopped, on a Pass, a held
+  giant, closed / ruled out), **a week or more since the last outreach** of any kind (invite, hand or machine email,
+  **Zach's DM / final reach-out to someone who accepted** — `alsoAt`; `AGAIN_FROM_DAYS` = REST_DAYS), and a **decision
+  maker never contacted** (`freshDecisionMakers`: a buyer title —
   partnerships > events > marketing = founder — or marked decision maker, reachable, not stopped, not flagged by the queue
-  check, no outreach on any row of theirs, not passed or shelved by hand; next in line counts as fresh). **Due** days
+  check, no outreach on any row of theirs, not passed or shelved by hand; next in line counts as fresh), **in the US
+  unless the company is based outside it** (Leo, Oct 18 2026; `src/lib/abroad.ts`, `node scripts/test-abroad.mjs`:
+  `personWhere` = a region in the title — "UK Partnerships Manager", "DACH", "APAC", "Canada & Latin America"; "North
+  America" = the US — else `Contact.location`; `basedAbroad` = `Brand.hq`, else more people on file located abroad than
+  in the US; not known = the US. Left out people are counted, "N outside the US left out"; at a company based abroad
+  people in the US go first; `loadAgainExtras` reads locations, hq, calls / talks, deals and DMs). **Due** days
   7–14, **late** after (still listed, late first). The card: when, the last outreach, the people never contacted, a
   button per day → `reachAgain({ brandId, date, contactIds? })`: refuses with why (`againWhyText`; under a week, resting,
   the day full) before writing; else up to the brand's opening number of them (`againCount`) get a waiting row (new, or

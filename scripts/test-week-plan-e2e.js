@@ -141,7 +141,11 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     wb = await data('weekBank', {});
     assert.equal(wb.bank.rows.length, 10, 'hand adds count toward the number');
     const reach = wb.bank.rows.find(r => r.id === 'reach');
-    assert.ok(reach && reach.how === 'hand' && reach.where === 'cant' && /rests a week/.test(reach.why), 'the reached one: added by hand, resting');
+    // Resting — unless the week's first day is the next sending day after its
+    // invite (3 days ago), which still belongs to its first sitting (the
+    // part-sent rule), as on a Sunday or Monday.
+    assert.ok(reach && reach.how === 'hand' && (reach.where === 'cant' ? /rests a week/.test(reach.why) : reach.where === 'waiting'),
+      'the reached one: added by hand, resting (or finishing its first sitting): ' + JSON.stringify(reach && { where: reach.where, why: reach.why }));
     assert.equal(wb.bank.rows.find(r => r.id === 'giant')?.where, 'waiting', 'the OK’d giant can go');
     assert.equal(wb.bank.autoLeft, 5, 'two hand adds pushed two system picks past the number');
 
@@ -269,29 +273,45 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     // decide there never contacted — and one who doesn't decide.
     const mkAgain = async (id, name, daysAgo, opts = {}) => {
       await prisma.brand.create({ data: { id, name, category: 'energy', tier: 'growth', liMembers: 120, usStatus: 'yes', salesCents: BigInt(80 * M) } });
-      const people = [['Head of Partnerships', true], ['Brand Manager', true], ['Events Manager', false], ['VP Marketing', false], ['Sales Associate', false]];
+      const people = [['Head of Partnerships', true], ['Brand Manager', true], ['Events Manager', false], ['VP Marketing', false], ['Sales Associate', false],
+        ['UK Partnerships Manager', false], ['Partnerships Lead', false, 'London, England, United Kingdom']];
       for (let i = 0; i < people.length; i++) {
-        const c = await prisma.contact.create({ data: { brandId: id, name: name + ' ' + people[i][0], title: people[i][0], linkedinUrl: 'https://www.linkedin.com/in/' + id + i } });
+        const c = await prisma.contact.create({ data: { brandId: id, name: name + ' ' + people[i][0], title: people[i][0], linkedinUrl: 'https://www.linkedin.com/in/' + id + i,
+          location: people[i][2] || (opts.abroad ? 'Berlin, Germany' : i < 2 ? 'Austin, Texas, United States' : null) } });
         if (people[i][1]) {
-          await prisma.target.create({ data: { brandId: id, contactId: c.id, status: i === 0 && opts.accepted ? 'accepted' : 'sent', sentAt: new Date(Date.now() - daysAgo * 864e5) } });
+          await prisma.target.create({ data: { brandId: id, contactId: c.id, status: i === 0 && opts.status ? opts.status : 'sent', sentAt: new Date(Date.now() - daysAgo * 864e5),
+            dmSentAt: i === 0 && opts.dmDaysAgo != null ? new Date(Date.now() - opts.dmDaysAgo * 864e5) : null } });
         }
       }
     };
     await mkAgain('ag', 'Again Co', 9);
     await mkAgain('ag2', 'Today Again', 10);
     await mkAgain('soon', 'Soon Co', 3);
-    await mkAgain('acc', 'Accepted Co', 9, { accepted: true });
+    await mkAgain('acc', 'Accepted Co', 9, { status: 'accepted' });
+    await mkAgain('accdm', 'Messaged Co', 12, { status: 'accepted', dmDaysAgo: 4 });
+    await mkAgain('rep', 'Replied Co', 9, { status: 'replied' });
+    await mkAgain('call', 'Call Co', 9);
+    await prisma.target.updateMany({ where: { brandId: 'call', status: 'sent' }, data: { callBookedAt: new Date() } });
+    await mkAgain('de', 'Berlin Co', 9, { abroad: true });
     wb = await data('weekBank', {});
     const ag = wb.again.rows.find(r => r.id === 'ag');
     assert.ok(ag, 'reached 9 days ago with decision makers never contacted: recommended');
     assert.equal(ag.state, 'due', 'due (1 to 2 weeks)');
     assert.equal(ag.daysSince, 9);
-    assert.deepEqual(ag.fresh.map(c => c.title), ['Events Manager', 'VP Marketing'], 'the decision makers nobody contacted, events first; never the sales associate');
+    assert.deepEqual(ag.fresh.map(c => c.title), ['Events Manager', 'VP Marketing'], 'the decision makers nobody contacted, events first; never the sales associate, never the two outside the US');
+    assert.equal(ag.abroad, 2, 'the UK title and the one in London: left out, counted');
+    assert.equal(ag.basedAbroad, false);
     assert.equal(ag.going, 2, 'both go');
     assert.equal(ag.invited, 2);
-    for (const id of ['soon', 'acc', 'reach']) assert.ok(!wb.again.rows.some(r => r.id === id), id + ': not recommended (under a week, or someone accepted)');
+    for (const id of ['soon', 'rep', 'call', 'accdm', 'reach']) assert.ok(!wb.again.rows.some(r => r.id === id), id + ': not recommended (under a week, replied, a call booked, a DM 4 days ago)');
+    const acc = wb.again.rows.find(r => r.id === 'acc');
+    assert.ok(acc && acc.accepted === 1, 'someone only accepted: still recommended, and it says so');
+    const de = wb.again.rows.find(r => r.id === 'de');
+    assert.ok(de && de.basedAbroad, 'a company whose people are abroad: based abroad');
+    assert.deepEqual(de.fresh.map(c => c.title).sort(), ['Events Manager', 'Partnerships Lead', 'UK Partnerships Manager', 'VP Marketing'], 'its people abroad can go');
+    assert.equal(de.abroad, 0, 'nobody left out for being abroad there');
     assert.ok(!wb.bank.rows.some(r => r.id === 'ag'), 'never on the list by itself (reached)');
-    ok('Reach out again: a week or more since the last outreach, nobody answered, decision makers never contacted — not under a week, not after an accept');
+    ok('Reach out again: a week since the last outreach (Zach’s DMs count), nobody replied, decision makers never contacted, in the US unless the company is based abroad; an accept alone doesn’t stop it');
 
     const no = await data('reachAgain', { brandId: 'soon', date: wb.days[0].date });
     assert.equal(no.ok, false);

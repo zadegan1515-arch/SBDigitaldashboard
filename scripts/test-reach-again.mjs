@@ -11,7 +11,7 @@ import { pathToFileURL } from 'node:url'
 
 const out = mkdtempSync(join(tmpdir(), 'reach-again-test-'))
 execSync(
-  'npx tsc src/lib/reach-again.ts --outDir ' + out +
+  'npx tsc src/lib/reach-again.ts src/lib/abroad.ts --outDir ' + out +
   ' --target es2020 --module esnext --moduleResolution bundler --skipLibCheck',
   { stdio: 'inherit' },
 )
@@ -75,6 +75,22 @@ is('nobody reachable, stopped or flagged', R.freshDecisionMakers([
 is('every decision maker already contacted: nobody', at('2026-10-20', [
   ...['a', 'b', 'c', 'd', 'f'].map(id => row(id, { status: 'sent', sentAt: d('2026-10-01') })),
 ]).why, 'nobody')
+// Zach's DMs to someone who accepted move the clock (Leo: an accept alone
+// doesn't stop it — a reply does, and the caller passes answered).
+is('a DM to an accepted person moves the clock', at('2026-10-20', invitedOn('2026-10-01'), { alsoAt: [d('2026-10-16')] }).why, 'soon')
+is('…and once it has been a week, due', at('2026-10-23', invitedOn('2026-10-01'), { alsoAt: [d('2026-10-16')] }).state, 'due')
+
+// Outside the US (Leo: skip them "unless the company is based outside the us").
+const intl = [
+  person('uk', 'UK Partnerships Manager', { where: 'abroad' }), person('us', 'Partnerships Manager', { where: 'us' }),
+  person('nk', 'Head of Events'), person('fr', 'Partnerships Marketing Manager France', { where: 'abroad' }),
+]
+const u = R.reachAgainOf({ contacts: intl, targets: invitedOn('2026-10-08'), today: '2026-10-16', answered: false, deal: false, off: false })
+is('a US company: people abroad left out, and counted', [u.fresh.map(c => c.id), u.abroad], [['us', 'nk'], 2])
+const g = R.reachAgainOf({ contacts: intl, targets: invitedOn('2026-10-08'), today: '2026-10-16', answered: false, deal: false, off: false, basedAbroad: true })
+is('a company based abroad: everyone, people in the US first, then unknown', [g.fresh.map(c => c.id), g.abroad], [['us', 'nk', 'uk', 'fr'], 0])
+is('only people abroad at a US company: nobody', R.reachAgainOf({ contacts: [intl[0], intl[3]], targets: invitedOn('2026-10-08'), today: '2026-10-16', answered: false, deal: false, off: false }).why, 'nobody')
+
 is('days between New York keys', [R.daysBetween('2026-10-08', '2026-10-15'), R.daysBetween('2026-10-31', '2026-11-02')], [7, 2])
 
 console.log(fail ? `\n${fail} failed, ${pass} passed` : `reach-again: all ${pass} passed`)
