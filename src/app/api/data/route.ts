@@ -46,6 +46,7 @@ import { whyLeaveOut, parentOf, parentCompanyOf, findParent, parentBrandNames, L
 import { samePeopleGroups, pickKeeper, mergeFields, targetBeats, pairKey as personPairKey, type PersonRow, type MergeFields } from '@/lib/same-person'
 import { BIG_BRAND_WORK, brandSize } from '@/lib/brand-size'
 import { outcomeRates, ACCEPT_AFTER_DAYS as OUTCOME_ACCEPT_DAYS, type OutcomeInvite } from '@/lib/outcomes'
+import { versionOf, isVersion, testOn, FIRST_TEST_KEY, firstTestTable } from '@/lib/first-test'
 import {
   readJsonSetting, writeJsonSetting, LI_REVIEW_KEY, LI_CONFIRMED_KEY, LI_OWNER_KEY,
   updateReviewState, openReview,
@@ -4365,6 +4366,17 @@ const HAND_FIRST_TEMPLATE_DEFAULT = {
     'I have also attached our deck for you to check out in the meantime. Thanks!',
 }
 
+// The first message test (Oct 18 2026, src/lib/first-test.ts): version B
+// of the first LinkedIn message, one for a man and one for a woman (the
+// rep picks, as with the invite notes — the site never guesses gender).
+// Leo pasted both, so they're the default, not stand-ins.
+const HAND_FIRST_B_KEY = 'handFirstDmTemplateB'
+const HAND_FIRST_BW_KEY = 'handFirstDmTemplateBW'
+const FIRST_B_PITCH = "I'm Zach with SB Agency, we book top artist talent for fraternities and sororities across the country. " +
+  'Would love to chat more and see if (BRAND) is interested in activating at these events, or if we can help build out other college activations for you.'
+const HAND_FIRST_B_DEFAULT = { subject: '', body: "(NAME) – what's up man! " + FIRST_B_PITCH }
+const HAND_FIRST_BW_DEFAULT = { subject: '', body: 'Hey (NAME), great to meet you! ' + FIRST_B_PITCH }
+
 // The final reach-out ("Send the final reach-out"): LinkedIn, 10 days
 // after the first message when they haven't answered. Body only. A
 // stand-in until Leo saves his; a card someone edited keeps its own
@@ -4376,23 +4388,25 @@ const HAND_FINAL_TEMPLATE_STANDIN = {
     'I’d love to show you what we’re putting together this season. Happy to send the deck whenever it’s useful. Thanks!',
 }
 
-type HandTemplateKind = 'email' | 'dm' | 'first' | 'final'
+type HandTemplateKind = 'email' | 'dm' | 'first' | 'firstB' | 'firstBW' | 'final'
 function handTemplateKind(kind: any): HandTemplateKind {
-  return kind === 'dm' || kind === 'first' || kind === 'final' ? kind : 'email'
+  return kind === 'dm' || kind === 'first' || kind === 'firstB' || kind === 'firstBW' || kind === 'final' ? kind : 'email'
 }
 function handTemplateKey(kind: HandTemplateKind) {
   return kind === 'dm' ? HAND_DM_TEMPLATE_KEY : kind === 'first' ? HAND_FIRST_TEMPLATE_KEY
+    : kind === 'firstB' ? HAND_FIRST_B_KEY : kind === 'firstBW' ? HAND_FIRST_BW_KEY
     : kind === 'final' ? HAND_FINAL_TEMPLATE_KEY : HAND_TEMPLATE_KEY
 }
 
 // (NAME) or (FIRST NAME) -> first name, (BRAND) or (COMPANY) -> brand,
 // (TITLE) -> job title. Same as handFill in app.html.
+// [Name] / [Brand] work too (Leo writes them that way).
 function handFillText(text: string, p: { name: string; brandName: string; title: string | null }) {
   const first = String(p.name || '').trim().split(/\s+/)[0] || 'there'
   return String(text || '')
-    .replace(/\((?:first\s*)?name\)/gi, first)
-    .replace(/\((?:brand|company)\)/gi, p.brandName || '')
-    .replace(/\(title\)/gi, p.title || '')
+    .replace(/[(\[](?:first\s*)?name[)\]]/gi, first)
+    .replace(/[(\[](?:brand|company)[)\]]/gi, p.brandName || '')
+    .replace(/[(\[]title[)\]]/gi, p.title || '')
 }
 
 // The email Zach sends when they replied and want email. Leo pasted his
@@ -4415,7 +4429,7 @@ const HAND_EMAIL_TEMPLATE_DEFAULT = {
 
 async function readHandTemplate(kind: HandTemplateKind = 'email') {
   const key = handTemplateKey(kind)
-  if (kind === 'first') {
+  if (kind === 'first' || kind === 'firstB' || kind === 'firstBW') {
     const row = await prisma.setting.findUnique({ where: { key } })
     try {
       const v = row ? JSON.parse(row.value) : null
@@ -4423,7 +4437,8 @@ async function readHandTemplate(kind: HandTemplateKind = 'email') {
         return { subject: '', body: v.body as string, standIn: false, savedAt: v.savedAt ?? null, savedBy: v.savedBy ?? null }
       }
     } catch { /* fall through to Leo's default */ }
-    return { ...HAND_FIRST_TEMPLATE_DEFAULT, standIn: false, savedAt: null, savedBy: null }
+    const def = kind === 'firstB' ? HAND_FIRST_B_DEFAULT : kind === 'firstBW' ? HAND_FIRST_BW_DEFAULT : HAND_FIRST_TEMPLATE_DEFAULT
+    return { ...def, standIn: false, savedAt: null, savedBy: null }
   }
   const standIn = kind === 'dm' ? HAND_DM_TEMPLATE_STANDIN : kind === 'final' ? HAND_FINAL_TEMPLATE_STANDIN : HAND_TEMPLATE_STANDIN
   const row = await prisma.setting.findUnique({ where: { key } })
@@ -11429,6 +11444,45 @@ const handlers: Record<string, Handler> = {
   // suggestions name a category priority for Leo to confirm on the page
   // (setCategoryPriority). Brand Fit's weights and stored fitScore are
   // never touched here.
+  // Which first message gets replies (Oct 18 2026 — src/lib/first-test.ts):
+  // every first message Zach's list recorded as A or B, answered before the
+  // final reach-out or not, and both versions' text (B for a man / a
+  // woman). Read-only.
+  async firstMessageTest() {
+    const [rows, saved, a, b, bw] = await Promise.all([
+      prisma.target.findMany({
+        where: { handFirstVariant: { not: null }, dmSentAt: { not: null } },
+        select: {
+          handFirstVariant: true, dmSentAt: true, nudgedAt: true, status: true, repliedAt: true, handWantsEmailAt: true,
+          handLiPathAt: true, callBookedAt: true, handDeclinedAt: true, updatedAt: true,
+        },
+      }),
+      readJsonSetting<any>(prisma, FIRST_TEST_KEY, null),
+      readHandTemplate('first'),
+      readHandTemplate('firstB'),
+      readHandTemplate('firstBW'),
+    ])
+    const table = firstTestTable(rows.map(r => ({
+      variant: r.handFirstVariant, dmSentAt: r.dmSentAt, nudgedAt: r.nudgedAt, status: r.status, repliedAt: r.repliedAt,
+      wantsEmailAt: r.handWantsEmailAt, liPathAt: r.handLiPathAt, callBookedAt: r.callBookedAt, declinedAt: r.handDeclinedAt, updatedAt: r.updatedAt,
+    })), new Date(), { judgeDays: HAND_NUDGE_DAYS })
+    return {
+      ...table,
+      on: testOn(saved),
+      changedAt: saved?.at ?? null,
+      changedBy: saved?.by ?? null,
+      texts: { A: a.body, B: b.body, BW: bw.body },
+    }
+  },
+
+  // Stop the first message test (everyone gets A again; what was recorded
+  // stays on Results) or start it again.
+  async setFirstTest({ on, __user }: any) {
+    const value = { on: on !== false, at: new Date().toISOString(), by: __user ?? null }
+    await writeJsonSetting(prisma, FIRST_TEST_KEY, value)
+    return value
+  },
+
   async outcomeTable({ days = 180 }: any = {}) {
     const n = Math.max(30, Math.min(365, Number(days) || 180))
     await loadCategoryPriority()
@@ -11932,11 +11986,14 @@ const handlers: Record<string, Handler> = {
   async zachTodo({ brandId }: any = {}) {
     const since = new Date(Date.now() - HAND_DONE_DAYS * 24 * 60 * 60 * 1000)
     const one = typeof brandId === 'string' && brandId ? { brandId } : {}
-    const [template, dmTemplate, firstTemplate, finalTemplate, rows, doneRows] = await Promise.all([
+    const [template, dmTemplate, firstTemplate, firstBTemplate, firstBWTemplate, finalTemplate, testSaved, rows, doneRows] = await Promise.all([
       readHandTemplate(),
       readHandTemplate('dm'),
       readHandTemplate('first'),
+      readHandTemplate('firstB'),
+      readHandTemplate('firstBW'),
       readHandTemplate('final'),
+      readJsonSetting<unknown>(prisma, FIRST_TEST_KEY, null),
       prisma.target.findMany({
         where: { AND: [HAND_WAITING, one] },
         include: {
@@ -12034,6 +12091,10 @@ const handlers: Record<string, Handler> = {
         draftId: dr?.id ?? null,
         dmOwn,
         dm: dmOwn ? dr!.firstMessage : null,
+        // The first message test: this brand's version (the same for
+        // everyone there), and the one that went out, once it has.
+        firstVersion: testOn(testSaved) ? versionOf(t.brand.id) : 'A',
+        firstSent: t.handFirstVariant,
         // Their own final reach-out; null = Leo's template.
         final: t.handFinal,
       })
@@ -12072,6 +12133,9 @@ const handlers: Record<string, Handler> = {
       template,
       dmTemplate,
       firstTemplate,
+      firstBTemplate,
+      firstBWTemplate,
+      firstTest: { on: testOn(testSaved) },
       finalTemplate,
       brands,
       people,
@@ -12104,7 +12168,7 @@ const handlers: Record<string, Handler> = {
   //   skip       not needed — handled elsewhere (handSkippedAt)
   //   declined   doesn't want to continue      (stopContact: `scope` person | brand;
   //                                             on: false = undoStopContact)
-  async handStep({ targetId, step, on = true, date, scope, preview, expect, __user }: any) {
+  async handStep({ targetId, step, on = true, date, scope, preview, expect, version, __user }: any) {
     if (step === 'declined') {
       return on ? handlers.stopContact({ targetId, scope, preview, expect, __user }) : handlers.undoStopContact({ targetId, __user })
     }
@@ -12131,7 +12195,15 @@ const handlers: Record<string, Handler> = {
     let data: Prisma.TargetUpdateInput
     let label: string
     switch (step) {
-      case 'dm': data = { dmSentAt: on ? now : null }; label = 'texted back on LinkedIn'; break
+      // The page sends `version` (A / B) when the card showed that version
+      // of the first message; a card someone rewrote sends none. Off the
+      // test (stopped) nothing is recorded.
+      case 'dm': {
+        const v = on && isVersion(version) && testOn(await readJsonSetting<unknown>(prisma, FIRST_TEST_KEY, null)) ? version : null
+        data = { dmSentAt: on ? now : null, handFirstVariant: v }
+        label = 'texted back on LinkedIn'
+        break
+      }
       case 'liPath': data = { handLiPathAt: on ? now : null }; label = 'talking on LinkedIn'; break
       case 'liSent': data = { handLiSentAt: on ? now : null }; label = 'replied on LinkedIn'; break
       case 'nudge': data = { nudgedAt: on ? now : null }; label = 'sent the final reach-out on LinkedIn'; break

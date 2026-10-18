@@ -195,6 +195,9 @@
     line-height:1.65;padding:14px;resize:vertical;outline:none;min-height:150px}
   .zt-mailfoot{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;padding:9px 14px;border-top:1px solid var(--border-soft);font-size:13px;color:var(--ink-3)}
   .zt-edstate{display:inline-flex;align-items:center;gap:8px;margin-right:auto}
+  .zt-ver{font-size:12.5px;font-weight:600;color:var(--ink-3);white-space:nowrap}
+  .zt-bg{display:inline-flex;gap:6px;margin-left:auto;padding:6px 0}
+  .zt-bgc{padding:4px 11px;font-size:12.5px}
   .zt-edited{color:#ab9fff;font-weight:600}
   .zt-steps{display:flex;align-items:center;gap:8px;margin-top:14px;flex-wrap:wrap}
   .zt-step{display:inline-flex;align-items:center;gap:9px;padding:8px 14px 8px 9px;border-radius:12px;
@@ -1158,6 +1161,12 @@
   .rcd .rcd-pct{font-weight:700;color:var(--ink-1)}
   .rcd .rcd-dim{color:var(--ink-3)}
   @media (max-width:600px){ .rcd .rcd-bar{width:auto;min-width:64px} .rcd th,.rcd td{padding-right:8px} }
+  .rcf-foot{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-top:10px}
+  .rcf-msgs{flex:1;min-width:240px;font-size:13.5px}
+  .rcf-msgs summary{cursor:pointer;color:var(--ink-2)}
+  .rcf-msg{margin-top:8px}
+  .rcf-msg b{font-size:12.5px;color:var(--ink-3)}
+  .rcf-msg p{margin:2px 0 0;white-space:pre-wrap;color:var(--ink-2)}
   .sd-out-wide{grid-column:1/-1}
   .sd-out-sug{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--border-soft);font-size:13.5px}
   .sd-out-sug:last-child{border-bottom:0}
@@ -2426,6 +2435,7 @@
       <div class="sub" id="rc-sub">Everyone we've contacted on LinkedIn or by email, grouped by brand.</div>
       <div class="kpi-row" id="rc-kpis"></div>
       <div id="rc-depth"></div>
+      <div id="rc-firsttest"></div>
       <div id="rc-toemail"></div>
       <div id="rc-accepted"></div>
       <div id="rc-followups"></div>
@@ -2767,7 +2777,7 @@
     <div class="modal-head">
       <h2 id="zt-tpl-h">Templates</h2>
       <p>Every card on Zach’s list starts from this. A card someone already edited keeps its own version.</p>
-      <div class="zt-tabs"><button class="chip active" data-tpltab="email">Email</button><button class="chip" data-tpltab="first">First LinkedIn message</button><button class="chip" data-tpltab="final">Final reach-out</button><button class="chip" data-tpltab="dm">LinkedIn DM</button></div>
+      <div class="zt-tabs"><button class="chip active" data-tpltab="email">Email</button><button class="chip" data-tpltab="first">First LinkedIn message</button><button class="chip" data-tpltab="firstB">Test B · man</button><button class="chip" data-tpltab="firstBW">Test B · woman</button><button class="chip" data-tpltab="final">Final reach-out</button><button class="chip" data-tpltab="dm">LinkedIn DM</button></div>
     </div>
     <div class="modal-body zt-tplgrid">
       <div>
@@ -5185,12 +5195,13 @@ var HAND_TPL = null;       // the template; the Results tab's Email button reads
 
 // (NAME) or (FIRST NAME) -> first name, (BRAND) or (COMPANY) -> brand,
 // (TITLE) -> job title. Case doesn't matter.
+// (NAME) or [Name] — the same as handFillText on the server.
 function handFill(text, p) {
   var first = String(p.name || '').trim().split(/\s+/)[0] || 'there';
   return String(text || '')
-    .replace(/\((?:first\s*)?name\)/gi, first)
-    .replace(/\((?:brand|company)\)/gi, p.brandName || '')
-    .replace(/\(title\)/gi, p.title || '');
+    .replace(/[(\[](?:first\s*)?name[)\]]/gi, first)
+    .replace(/[(\[](?:brand|company)[)\]]/gi, p.brandName || '')
+    .replace(/[(\[]title[)\]]/gi, p.title || '');
 }
 
 // This person's email as it stands: their own edit where there is one,
@@ -5671,10 +5682,25 @@ function ztPanelHtml(p) {
 }
 
 // The first LinkedIn message: their own edit where someone rewrote it on
-// the card, Leo's template everywhere else.
+// the card, else their brand's version of the first message test (Oct 18
+// 2026, src/lib/first-test.ts): A = Leo's first message, B = his test
+// version, for a man or a woman (ZT_BG; the rep picks, a man's first).
+var ZT_BG = {};   // targetId -> 'woman' when version B is set to a woman's
+function ztFirstVersion(p) {
+  return ZT && ZT.firstTest && ZT.firstTest.on && p.firstVersion === 'B' ? 'B' : 'A';
+}
 function ztFirstText(p) {
   if (p.dmOwn) return p.dm || '';
+  if (ztFirstVersion(p) === 'B') {
+    var t = ZT_BG[p.targetId] === 'woman' ? ZT.firstBWTemplate : ZT.firstBTemplate;
+    return handFill((t || { body: '' }).body, p);
+  }
   return handFill(((ZT && ZT.firstTemplate) || { body: '' }).body, p);
+}
+// What "Messaged" records: the version the card showed — nothing for a card
+// someone rewrote, or while the test is stopped.
+function ztVersionSent(p) {
+  return ZT && ZT.firstTest && ZT.firstTest.on && !p.dmOwn ? ztFirstVersion(p) : null;
 }
 
 // The final reach-out: their own edit where someone rewrote it on the
@@ -5688,8 +5714,21 @@ function ztMsgHtml(p, kind) {
   var text = kind === 'dm' ? ztFirstText(p) : ztFinalText(p);
   var rows = Math.min(10, Math.max(3, String(text || '').split('\n').length + 1));
   var what = kind === 'dm' ? 'LinkedIn message' : 'Final reach-out on LinkedIn';
+  // The first message test: which version this brand gets, and for version
+  // B the man's / woman's text (the rep picks, as with the invite notes).
+  var ver = kind === 'dm' && !p.dmOwn && ZT && ZT.firstTest && ZT.firstTest.on ? ztFirstVersion(p) : '';
+  var verHtml = ver
+    ? '<span class="zt-ver" title="The first message test: every brand gets version A or B, and Results shows which gets more answers">Test · version ' + ver + '</span>' +
+      (ver === 'B'
+        ? '<span class="zt-bg" role="group" aria-label="Version B for">' +
+            ['man', 'woman'].map(function (g) {
+              var on = (ZT_BG[p.targetId] === 'woman' ? 'woman' : 'man') === g;
+              return '<button class="chip zt-bgc' + (on ? ' active' : '') + '" data-ztact="bgender" data-g="' + g + '" aria-pressed="' + on + '">For a ' + g + '</button>';
+            }).join('') + '</span>'
+        : '')
+    : '';
   return '<div class="zt-mail">' +
-    '<div class="zt-field"><span class="zt-flbl" style="width:auto">' + what + '</span></div>' +
+    '<div class="zt-field"><span class="zt-flbl" style="width:auto">' + what + '</span>' + verHtml + '</div>' +
     '<textarea class="zt-body" style="min-height:0" rows="' + rows + '" ' + (kind === 'dm' ? 'data-ztdm' : 'data-ztnudge') +
       ' aria-label="' + what + ' to ' + esc(p.name) + '">' + esc(text || '') + '</textarea>' +
     '<div class="zt-mailfoot"><span class="zt-edstate">' + (kind === 'dm'
@@ -6290,6 +6329,7 @@ function ztDo(id, step, btn, off) {
   if (!p || !step) return;
   var inBrand = ztInBrand(id);
   var args = { targetId: id, step: step };
+  if (step === 'dm' && !off) { var ver = ztVersionSent(p); if (ver) args.version = ver; }
   if (off) {
     args.on = false;
     api('handStep', args).then(function () {
@@ -6641,6 +6681,11 @@ function ztOnClick(e) {
     return;
   }
   if (act === 'gmail') { ztGmail(id); return; }
+  if (act === 'bgender') {
+    if (btn.getAttribute('data-g') === 'woman') ZT_BG[id] = 'woman'; else delete ZT_BG[id];
+    ztRedrawOpen(id);
+    return;
+  }
   if (act === 'copydm' || act === 'copynudge') {
     var box = item.querySelector(act === 'copydm' ? '[data-ztdm]' : '[data-ztnudge]');
     var text = box ? box.value : (act === 'copydm' ? ztFirstText(p) : ztFinalText(p));
@@ -6889,6 +6934,7 @@ function bztLoad(brandId) {
     ztTakeDays(r);
     if (!ZT) ZT = { brands: [], done: [], calls: [], people: 0, noAddress: 0, held: [] };
     ZT.template = r.template; ZT.dmTemplate = r.dmTemplate; ZT.firstTemplate = r.firstTemplate; ZT.finalTemplate = r.finalTemplate;
+    ZT.firstBTemplate = r.firstBTemplate; ZT.firstBWTemplate = r.firstBWTemplate; ZT.firstTest = r.firstTest;
     HAND_TPL = r.template;
     var ids = [];
     r.brands.forEach(function (g) {
@@ -7033,9 +7079,9 @@ function ztPrevHtml(text, p) {
     return v ? '<span class="zt-fill-tok">' + esc(v) + '</span>' : '<span class="zt-bad-tok">' + missing + '</span>';
   };
   return esc(text)
-    .replace(/\((?:first\s*)?name\)/gi, function () { return tok(first, 'no name'); })
-    .replace(/\((?:brand|company)\)/gi, function () { return tok(p.brandName, 'no brand'); })
-    .replace(/\(title\)/gi, function () { return tok(p.title, 'no title on file'); });
+    .replace(/[(\[](?:first\s*)?name[)\]]/gi, function () { return tok(first, 'no name'); })
+    .replace(/[(\[](?:brand|company)[)\]]/gi, function () { return tok(p.brandName, 'no brand'); })
+    .replace(/[(\[]title[)\]]/gi, function () { return tok(p.title, 'no title on file'); });
 }
 function ztPreview() {
   var ppl = ztTplPeople();
@@ -7046,18 +7092,24 @@ function ztPreview() {
 }
 var ZT_TPL_KIND = 'email';
 function ztOpenTpl(kind) {
-  ZT_TPL_KIND = kind === 'dm' || kind === 'first' || kind === 'final' ? kind : 'email';
+  ZT_TPL_KIND = kind === 'dm' || kind === 'first' || kind === 'firstB' || kind === 'firstBW' || kind === 'final' ? kind : 'email';
   var noSubj = ZT_TPL_KIND !== 'email';
   document.querySelectorAll('#zt-scrim [data-tpltab]').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-tpltab') === ZT_TPL_KIND); });
   document.getElementById('zt-tsubj-wrap').hidden = noSubj;
   document.getElementById('zt-prev-subj').hidden = noSubj;
   document.getElementById('zt-tbody-lbl').textContent = ZT_TPL_KIND === 'dm' ? 'LinkedIn message (when they want to keep it in the chat)'
-    : ZT_TPL_KIND === 'first' ? 'First LinkedIn message (Text them on LinkedIn, ' + ZT_DAYS.dm + ' days after they accept, on a Tue–Thu)'
+    : ZT_TPL_KIND === 'first' ? 'First LinkedIn message (Text them on LinkedIn, ' + ZT_DAYS.dm + ' days after they accept, on a Tue–Thu) · the test’s version A'
+    : ZT_TPL_KIND === 'firstB' ? 'First message test · version B, for a man (half the brands get it; Results shows which gets more answers)'
+    : ZT_TPL_KIND === 'firstBW' ? 'First message test · version B, for a woman'
     : ZT_TPL_KIND === 'final' ? 'Final reach-out on LinkedIn (' + ZT_DAYS.final + ' days after the first message, if they haven’t answered)' : 'Email';
   var t = ZT_TPL_KIND === 'dm'
     ? ((ZT && ZT.dmTemplate) || { subject: '', body: '', standIn: true })
     : ZT_TPL_KIND === 'first'
     ? ((ZT && ZT.firstTemplate) || { subject: '', body: '' })
+    : ZT_TPL_KIND === 'firstB'
+    ? ((ZT && ZT.firstBTemplate) || { subject: '', body: '' })
+    : ZT_TPL_KIND === 'firstBW'
+    ? ((ZT && ZT.firstBWTemplate) || { subject: '', body: '' })
     : ZT_TPL_KIND === 'final'
     ? ((ZT && ZT.finalTemplate) || { subject: '', body: '', standIn: true })
     : ((ZT && ZT.template) || HAND_TPL || { subject: '', body: '', standIn: true });
@@ -7381,6 +7433,8 @@ document.getElementById('zt-tsave').addEventListener('click', function () {
     btn.disabled = false;
     if (kind === 'dm') { if (ZT) { ZT.dmTemplate = t; ztRender(); } }
     else if (kind === 'first') { if (ZT) { ZT.firstTemplate = t; ztRender(); } }
+    else if (kind === 'firstB') { if (ZT) { ZT.firstBTemplate = t; ztRender(); } }
+    else if (kind === 'firstBW') { if (ZT) { ZT.firstBWTemplate = t; ztRender(); } }
     else if (kind === 'final') { if (ZT) { ZT.finalTemplate = t; ztRender(); } }
     else { HAND_TPL = t; if (ZT) { ZT.template = t; ztRender(); } }
     if (bztActive()) bztFill();
@@ -13059,9 +13113,69 @@ function renderRcDepth() {
   }).catch(function () { box.innerHTML = ''; });
 }
 
+// Which first message gets answered (Leo, Oct 18 2026 — the first message
+// test, src/lib/first-test.ts): every brand gets version A (his first
+// message) or B (his test version) on Zach's list; an answer counts when it
+// came before the final reach-out. Stop the test = everyone gets A again.
+function renderFirstTest() {
+  var box = document.getElementById('rc-firsttest');
+  if (!box) return;
+  api('firstMessageTest', {}).then(function (d) {
+    var pc = function (x) { return x == null ? '—' : Math.round(x * 100) + '%'; };
+    var vs = d.versions || [];
+    var any = vs.some(function (v) { return v.sent; });
+    var rows = vs.map(function (v) {
+      var tip = 'Version ' + v.key + ': ' + v.answered + ' of ' + v.judged + ' answered before the final reach-out' +
+        (v.saidNo ? ' (' + v.saidNo + ' said no)' : '') + (v.waiting ? '; ' + v.waiting + ' still waiting' : '') + (v.few ? ' — too few to tell yet' : '');
+      return '<tr title="' + esc(tip) + '">' +
+        '<th scope="row">Version ' + v.key + (v.key === 'A' ? '<span class="rcd-dim"> · your first message</span>' : '<span class="rcd-dim"> · the test</span>') + '</th>' +
+        '<td class="rcd-bar"><span class="rcd-track" aria-hidden="true"><i style="width:' + Math.round((v.rate || 0) * 100) + '%"></i></span></td>' +
+        '<td class="rcd-pct">' + pc(v.rate) + '</td>' +
+        '<td class="rcd-dim">' + v.answered + ' of ' + v.judged + ' answered' + (v.saidNo ? ' · ' + v.saidNo + ' said no' : '') + '</td>' +
+        '<td class="rcd-dim">' + (v.waiting ? v.waiting + ' waiting' : '') + '</td>' +
+        '<td class="rcd-dim">' + (v.judged && v.few ? 'too few to tell' : '') + '</td></tr>';
+    }).join('');
+    var tx = d.texts || {};
+    var msgs = '<details class="rcf-msgs"><summary>See the two messages</summary>' +
+      '<div class="rcf-msg"><b>A</b><p>' + esc(tx.A || '') + '</p></div>' +
+      '<div class="rcf-msg"><b>B · for a man</b><p>' + esc(tx.B || '') + '</p></div>' +
+      '<div class="rcf-msg"><b>B · for a woman</b><p>' + esc(tx.BW || '') + '</p></div>' +
+      '<div class="hint" style="margin:6px 0 0">Change them on Home → Zach’s list → Edit template.</div></details>';
+    box.innerHTML =
+      '<div class="count-head" style="margin-top:18px">First message test <span class="n">' +
+        (d.on ? (d.startedAt ? 'since ' + esc(shortDate(d.startedAt)) : 'on') : 'stopped') + '</span></div>' +
+      '<div class="panel panel-pad">' +
+        (any
+          ? '<div class="rcd-wrap" data-scroll="rcf"><table class="rcd"><thead><tr><th scope="col">Message</th><th scope="col"></th>' +
+              '<th scope="col">Answered</th><th scope="col">Messages</th><th scope="col"></th><th scope="col"></th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+          : '<div class="hint" style="margin:0 0 6px">' + (d.on
+              ? 'Running. Every first message Zach marks Messaged on his list counts here.'
+              : 'Stopped before any first message was counted.') + '</div>') +
+        '<div class="hint" style="margin:8px 0 0">Each brand gets A or B. A message counts once it’s answered, the final reach-out goes, or ' + (d.judgeDays || 10) + ' days pass.</div>' +
+        '<div class="rcf-foot">' + msgs +
+          '<button class="btn-ghost sd-sm" data-rcft="' + (d.on ? 'stop' : 'start') + '">' + (d.on ? 'Stop the test' : 'Start the test again') + '</button></div>' +
+      '</div>';
+  }).catch(function () { box.innerHTML = ''; });
+}
+document.getElementById('rc-firsttest').addEventListener('click', function (e) {
+  var b = e.target.closest('[data-rcft]');
+  if (!b) return;
+  var on = b.getAttribute('data-rcft') === 'start';
+  if (!window.confirm(on
+    ? 'Start the first message test again?\n\nHalf the brands get version B again on Zach’s list.'
+    : 'Stop the first message test?\n\nEveryone gets your first message (A) again. What’s been counted stays here.')) return;
+  b.disabled = true;
+  api('setFirstTest', { on: on }).then(function () {
+    if (ZT) { ZT.firstTest = { on: on }; }
+    toast(on ? 'The test is on again' : 'Test stopped. Everyone gets version A');
+    renderFirstTest();
+  }).catch(function (err) { b.disabled = false; toast(err.message); });
+});
+
 function loadReached() {
   showView('reached');
   renderRcDepth();
+  renderFirstTest();
   var box = document.getElementById('reached-list');
   if (!RC_DATA.length) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   return api('listReached').then(function (d) {
