@@ -1426,8 +1426,6 @@
     padding:8px;background:var(--surface-2,#1b1b22);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
   .bq-menu .btn-ghost{text-align:left;width:100%}
   .br-bar .chip .n{margin-left:6px;color:var(--ink-3);font-weight:500}
-  .seg-b[data-brfit="hi"]:not(.on) .n{color:var(--good)}
-  .seg-b[data-brfit="mid"]:not(.on) .n{color:var(--warn)}
   .br-chk{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;color:var(--ink-2)}
   .br-chk .inp{padding:5px 9px;font-size:13.5px}
   .br-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-1)}
@@ -7526,6 +7524,7 @@ function renderCoverage() {
 function cvShow(state) {
   BR.show = 'need';
   BR.why = state || '';
+  BR.fit = ''; // the card's count is of every score
   brRender();
   applyBrandFilter();
   var t = document.getElementById('brands-list');
