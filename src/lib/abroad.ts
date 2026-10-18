@@ -59,7 +59,8 @@ const ABROAD_WORDS = [
 ]
 // Codes only as capitals ("UK", not "uk"): "CA" is never here — in a
 // location it's California.
-const ABROAD_CODES = /\b(?:UK|U\.K\.|EMEA|APAC|LATAM|LatAm|DACH|ANZ|UAE|EU|GB|CEE|MENA)\b/
+// (Not DE — "DE&I" — nor IT or ES.)
+const ABROAD_CODES = /\b(?:UK|U\.K\.|EMEA|APAC|LATAM|LatAm|DACH|ANZ|UAE|EU|GB|CEE|MENA|FR|NL|JP|AU|NZ|MX|BR)\b/
 const US_TITLE = /\b(?:US|U\.S\.|USA|U\.S\.A\.|United States|North America|North American|NA|Americas)\b/
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

@@ -38,6 +38,10 @@ const titles = {
   'Brand Manager, Indiana': null,
   'Asian American Marketing Lead': null,
   'Founder & CEO': null,
+  'Junior Partnerships Manager FR': 'abroad',
+  'Brand Manager - MX': 'abroad',
+  'DE&I Manager': null,
+  'IT Manager': null,
 }
 for (const [t, w] of Object.entries(titles)) is('title: ' + t, A.titleWhere(t), w)
 is('the brand’s own name never counts', A.titleWhere('Brand Manager, Canada Dry', ['Canada Dry']), null)
