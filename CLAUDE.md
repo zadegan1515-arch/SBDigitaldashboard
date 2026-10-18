@@ -614,6 +614,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   next in line (`shelvedHow 'cap'`); no bulk change, never anyone out of today's list (keepInPlay keeps today's
   stamps first); fillSize and the gated stamp stop at the number too. A queued person with no LinkedIn link: the
   add warns "no LinkedIn link yet" and the row has **Find on LinkedIn ↗** (a people search).
+  **People outside the US** (Leo, Oct 18 2026: "yes" — Reach out again's rule for the whole queue): at a company based
+  in the US, nobody whose title names another region ("UK Partnerships Manager", "DACH", "APAC", "… FR") or whose
+  `Contact.location` is abroad is picked by the system — not new, and not waiting in the pool (set aside next in line,
+  `shelvedHow 'cap'`, like a flagged title; never anyone in today's list) — in queueBrandTargets and previewBrandPicks
+  alike (`abroadTest` in route.ts over `src/lib/abroad.ts`; based abroad = `Brand.hq`, else more people on file with an
+  email or LinkedIn located abroad than in the US; `hq` and `location` are in plan-brands.ts's fields). Chosen people
+  (queued by hand) and "+ Person" still go; one already in today's list, or queued by hand, carries the ⚠ "Works outside
+  the US" (`ABROAD_PROBLEM`, `loadAbroadCheck`) on Today's list for Zach, the LinkedIn tab and Leave out the flagged, and
+  is never offered as a Swap. The contacts label still counts them.
   **Big = measured** (big-brand-size, Oct 12 2026): `isBigBrand` (brand-work.ts) = 500+ on LinkedIn or a parents.ts
   link; an unmeasured established brand is "size not known" (works 4, 15 size points; the fill measures it sooner).
   **One big company a Best fit day** (Leo's yes): `bigFits` / `BIG_PER_BEST_FIT_DAY` in plan-week.ts, one rule for
