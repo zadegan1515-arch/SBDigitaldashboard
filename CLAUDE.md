@@ -30,12 +30,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 `src/app/api/data/route.ts`.
 
 ## Where things live
-- `public/app.html` — the whole UI. Top nav is six groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
+- `public/app.html` — the whole UI. Top nav is seven groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
   `showView`): Home · Brands (All brands / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
-  Week plan / Schedule / Email / People / Archived / Email stats) ·
+  Week plan / Schedule / Email / People / Archived / Email stats) · **In talks** (one view, below) ·
   **Show Board** (Overview = code lookup (`boardCodeLookup`: the whole roster by name / aka, people and archived too — it used to filter listBrands' first 500; `test-board-lookup.js`) + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
-  exact NY times and time on board; **every** board open is logged, gate on or off (anonymous = "Visitor") / **In talks** = per-brand engagement cards (code, viewers, opens, timed minutes
+  exact NY times and time on board; **every** board open is logged, gate on or off (anonymous = "Visitor") / **Board codes** (was "In talks" until the In talks tab; view id still `talks`, `listTalks`) = per-brand engagement cards (code, viewers, opens, timed minutes
   via the board's 60s heartbeat → `BoardVisit.lastSeenAt`, picked shows, visit log) / Requests /
   Shows) · **Deals** (Board = the old Pipeline / Sponsorships) · **Audience** (Events / Attendees —
   attendee capture, sponsorship module Phase 1) · Operations (Materials / Team —
@@ -123,6 +123,38 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `node scripts/cc.mjs <fn> @file.json` reads args from a file. Tests: `node scripts/test-chat-log.mjs`,
   `node scripts/test-chat-log-hook.mjs`, `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-chat-log-e2e.js`,
   page in `test-claude-day.js` (4 — the #chats page).
+- **In talks** (Leo, Oct 18 2026: "for the brands where the call has been scheduled i want u to put them there … a
+  different type of layout … cleaner and more complex … notes for each brand … the person/people we reached out to and
+  accepted … their linkedin and even email … the website and brand socials like instagram and tiktok … an overview … not
+  more than 4 sentences … an activation idea … editable … a copy button that we can paste into a new chat with instructions
+  on how to brainstorm"; his picks: a call booked puts a brand in by itself + an Add button; its own top tab; list + profile;
+  Claude's daily check writes the overview and idea, no API spend). Top tab between Outreach and Show Board (`#intalks`,
+  `IT` / `it*` in app.html, its own `.it-` look: a two-pane workspace — brands down the left, one brand's profile on the
+  right; a phone shows the list, a tap the profile with ‹ All brands). **Who's in** (rules pure in `src/lib/in-talks.ts`,
+  `talksState`): any Target with `callBookedAt` (or `callAt`), or `Brand.talksAddedAt` (+ Add to In talks — the brand page's
+  line `bTalksLine`, or the list's "Replied, not in talks" offers = brands with a reply, `suggestTalks`); **Take off In talks**
+  / × = `Brand.talksRemovedAt`, which wins over anything older (a newer call or add brings it back; nothing else changes).
+  `listInTalks` (read; `talksMembership` shared with `listTalksToFill`) = per brand: why / since, next and last call, the
+  people who answered (`isTalksPerson`: accepted, replied anywhere, or a call — Home → Accepted's stage words, furthest
+  first) with LinkedIn, email (Gmail compose — nothing sends) and phone, invited-no-answer, others on file, the journey
+  (`talksJourney`: Invited → Accepted → Replied → Call booked → Deal, first date each), Brand Fit, LinkedIn size, sales,
+  raised, sponsors, Show Board opens + Copy board link, the deal, dated notes, and the profile; order `compareTalks` (calls
+  coming up soonest first, then latest activity, stopped last). **Profile** fields on Brand: `instagramUrl`, `tiktokUrl`,
+  `overview`/`overviewBy`/`overviewAt`, `activationIdea`/`activationIdeaBy`/`activationIdeaAt` — `saveTalksProfile` (only the
+  fields sent; links through `cleanLink` — a handle, @handle or any link → the account URL, "none" = '' = they have none, empty
+  = null = look again; a Claude session's overview ≤ 4 sentences, `sentenceCount`; `onlyEmpty` never touches a filled field;
+  `*By` "Claude" for the dashboard token). **Notes** = table `BrandNote` (`addBrandNote` / `editBrandNote` /
+  `deleteBrandNote` — without `confirm` it only names the note; the page's confirm quotes it); Brand.notes shows under them
+  as "On the brand page". Notes move with mergeBrands (and the profile fills what the keeper lacks), combineParent and its
+  Undo (`COMBINE_TABLES`), deleteBrand names them, undoDiscoverBulk treats a brand with notes as touched. **Copy for a new
+  chat** (`itPrompt`): SB Agency, the brand, links, facts, overview, where we are (call, people, deal, board opens), our
+  notes, the current idea, then the brainstorm steps (what they want → up to 3 questions → 5 different ideas → a plan:
+  show, campus, content, where/when, team, rough budget lines kept apart from sponsorship and booking money, totals-only
+  reporting → a short version to paste back); 21+ for rtd / spirits / alcohol. **Claude's daily check**: the cloud session
+  "In talks (daily)" follows `docs/in-talks.md` (`listTalksToFill` → research → `saveTalksProfile` with `onlyEmpty` →
+  `addWorkLog`); every write is a ClaudeAction (`actionText`). Show Board's old "In talks" sub-tab is **Board codes**.
+  Tests: `node scripts/test-in-talks.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-in-talks.js` (page),
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-in-talks-e2e.js`.
 - **Leo's picked ideas, built Oct 6 2026** (retired from `build-ideas.ts`): **Weekly scoreboard** on Home (`#hm-score`,
   `weeklyScore` / `setWeeklyGoals`, Setting `weeklyGoals`, defaults `WEEKLY_GOALS_DEFAULT`): invites / accepted /
   replied / calls booked / deals / brands added per New York week (Mon–Sun), this week vs goal + 8 weeks of bars.
@@ -204,7 +236,20 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `firstMessage` edited and ≠ the queue's stock text; Reset to template clears it). The **final
   reach-out** follows a fourth, Setting `handFinalTemplate` (stand-in until Leo saves his; the modal's
   Final reach-out tab); a card's edit is `Target.handFinal` (null = the template; `saveHandEmail`
-  `final`), no longer the queue draft's nudge. Leo's note is
+  `final`), no longer the queue draft's nudge. **The first message test** (Leo, Oct 18 2026: "lets do 1" — which first
+  message gets replies; 1 in 6 accept, 1 in 20 reply; rules pure in `src/lib/first-test.ts`, `node scripts/test-first-test.mjs`):
+  **A** = the first message template, **B** = Leo's test version for a man / a woman (Settings `handFirstDmTemplateB` /
+  `handFirstDmTemplateBW`, his text as the default; Edit template's **Test B · man** / **Test B · woman** tabs, kinds
+  `firstB` / `firstBW`). **Every brand is A or B** (his pick: the same for everyone there) — `versionOf(brandId)`, a stable
+  hash, nothing stored until it goes; zachTodo sends `firstVersion` per person + `firstTest.on`. The card says "Test ·
+  version A/B"; a B card has **For a man / For a woman** (`ZT_BG`, the rep picks — never guessed). **Messaged** sends the
+  version the card showed (`ztVersionSent`; none for a card someone rewrote, `dmOwn`) → `Target.handFirstVariant` (Undo
+  clears it). An answer (reply, a path picked, a call, a no) counts when it came after the first message and **before the
+  final reach-out**; judged once answered, the final went, or `HAND_NUDGE_DAYS` passed. Results → **First message test**
+  (`#rc-firsttest`, `renderFirstTest`, `firstMessageTest`): answered of judged per version, said no, waiting, too few to
+  tell under 30, the messages, **Stop the test** / Start again (`setFirstTest`, Setting `firstMsgTest` = { on, at, by };
+  no row = on; stopped = A for everyone, nothing recorded). `[Name]` / `[Brand]` fill like `(NAME)` / `(BRAND)` everywhere.
+  `NODE_PATH=$(npm root -g) node scripts/test-first-test.js`; real handlers in test-today-e2e. Leo's note is
   `Target.handNote`; To writes `Contact.email` (old address kept in the contact's notes).
   Open in Gmail (compose URL, `authuser` = signed-in email) / Copy: **nothing sends from the site**,
   so the cap isn't involved. Done fold (30 days) and Calls booked, each with Undo. No CC (Leo's call); one-pager is a download button. The email
@@ -713,7 +758,21 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   nicotine, electrolytes Top +30; clothing, athletic, tech, AI, fintech Low 0; the rest Middle +15; Skip = 0 and never
   auto-picked; `priorityOf`, editable per category — replaced the flat 18–24 bonus, so a Top brand with money
   unknown beats a Low brand with $50M raised, and only a $100M+ Low brand beats a tiny Top one), already sponsors
-  college / music (15), people we can reach (10), the category's 90-day accept rate (5); while sales aren't known the stronger of funding and the size
+  college / music (15), people we can reach (10), the category's 90-day accept rate (5), and **fits a student's day**
+  (Leo, Oct 18 2026: "neuro should definitely be higher given that the ideal candidates are people who study and do
+  work" — he chose Brand Fit as well as Discover; `src/lib/student-fit.ts`, `node scripts/test-student-fit.mjs`): made
+  for studying / focus 20 (nootropic, focus drinks / pouches, studying, finals week, caffeine gum / mints / pouches),
+  nights out / the morning after 15, game day / campus life 15 (where the product lives — campus stores, game-day tees,
+  licensed college gear, a school's licensed beer or bourbon — never a campus tour / ambassadors / reps / a tailgate
+  sponsorship, which is marketing), energy / hydration / workout 10 (energy drinks, electrolytes, coconut water,
+  protein, caffeine and coffee, activewear and running gear; a name like "Raze Energy" too); first tier
+  that matches. Words count only as the product's use — never "a clinical study", "a focus market", "while studying at"
+  (a founder story), "3rd-party tested", "caffeine-free" / "no sugar or caffeine", the morning-after pill, "Gen Z energy",
+  a hydrating sunscreen or shampoo, sampling at tailgates (both Oct 18 reviews' cases are in the test). Read from the
+  brand's About, products and the line of its notes that starts "Discover: " (`brandWriteUp` / `discoverWriteUp` —
+  never the Activation idea, never Leo's own notes) plus its name for energy only. On top of the 100: a total past it
+  shows "the score stops at 100" with the difference (`capAt100`), so the points still add up. `FIT_SELECT` /
+  `FitFacts` / plan-brands.ts carry about / topProducts / notes, required so a read without them fails tsc; while sales aren't known the stronger of funding and the size
   estimate counts (a parent company's brand keeps the parent's size). **Ruled out** = confirmed not sold
   in the US only (Leo's one hard no): nobody there is ever queued or emailed — `SOLD_IN_US` guard in
   `NOT_IN_CONVERSATION` (the rotation's pool), `fillToday`, `nextBestBrands`, today's list, the email
@@ -796,7 +855,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   whose title is partnerships/sponsorship, events/experiential, marketing/brand or founder/CEO
   (`src/lib/buyers.ts`, counted in `listBrands` → `buyers`, `buyerPeople`; `node scripts/test-buyers.mjs`);
   a brand is covered at **1** (`BR_TARGET`, Leo's call). Filters All / Needs people / Has enough,
-  Hide too small, Hide archived, sort (fewest buyers first by default), search by name or aka. A row opens in place:
+  Hide too small, Hide archived, sort (fewest buyers first by default), search by name or aka. **Brand Fit counts**
+  (Leo, Oct 18 2026: "a count for brands that are above 75 then brands 50-75 then less than 50"): the toolbar's
+  **Brand Fit** group — Any · Above 75 · 50–75 · Under 50 (`BR_BANDS`, `brBand`, `BR.fit`, a `brSeg` like Show and
+  Outreach) — counts the brands in play (archived / do-not-email left out, `brInPlay`) over the rows every other filter
+  shows (`brShown({ anyFit: true })`: category, Show, Outreach, search, Hide too small), so a count is exactly what its
+  click shows ("Showing N of M" agrees); a second click or Clear filters clears it; not on New from LinkedIn. A row opens in place:
   category, tier, website, LinkedIn page, aka, notes save on change (`updateBrand`); **Add a person**
   (`upsertContact`); the name opens the brand page. The tick bar (re-file, Put on a day) is unchanged.
   Stock take (lanes, ideas, re-file) and Needs contacts (SponsorUnited worklist) left the sub-tabs and
@@ -859,9 +923,18 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (`readFind`, no model call) — sales in the $10M–$500M sweet spot 25 ($1M–$10M 12, $500M–$1B 10) or raised $5M+ 20 / $1M+ 10
   (a parent named or a giant = 0, too big for now), stores (1,000+ 15 / 300+ 10 / fewer 5 / "growing" sign 6, +5 for a big
   retailer named), already pays for college / music (official partner, licensed, NIL, sponsor, tour, festival 20 · the hunt's
-  sign 12 · only popular with students 6), growing fast 10, 18–24 sign 5. A find on the roster grades on its brand's own Brand
+  sign 12 · only popular with students 6), **fits a student's day** (Oct 18 2026 — the Brand Fit rule above, read from the
+  find's write-up (+ name for energy), never the pitch: studying / focus 20, nights out 15, game day / campus 15, energy /
+  hydration 10), growing fast 10 (since Oct 18 also a launch, from the write-up only — `launchIn`: "first mass-retail",
+  "national launch", "rolling out to Kroger", "expanding into Walmart", "added 400 stores", "into Target", "went
+  national", "entered Texas", "into CA, CO, FL" (state codes only right after the verb), "a distribution deal"; stores, markets
+  and distribution only — never a footprint that just is ("in 48 states", "ships to 50 states"), a national ad campaign or
+  award, "expanding into apparel" / "its social reach", or a launch dated before last year — the first year after it in its
+  clause ("into Walmart (1,200 stores) in 2016"), else one just before that isn't a founding year), 18–24 sign 5.
+  A find on the roster grades on its brand's own Brand
   Fit. Letters **A 65+ / B 50+ / C 40+ / D** (Skip / not US / closed = D, too small caps at C) — on Oct 15 the 171 finds split
-  ~17 / 52 / 63 / 39 (Brand Fit alone had made 137 of them A). The page: a score box per row (number + letter; a click opens every
+  ~17 / 52 / 63 / 39 (Brand Fit alone had made 137 of them A); on Oct 18, with the student fit and launches, the 186 waiting
+  ~30 / 66 / 53 / 37 (was 2 / 64 / 67 / 53) and Neuro 46 C → 76 A as a find, 63 B → 83 A on the roster. The page: a score box per row (number + letter; a click opens every
   point), the points as chips under the why, big **Accept** / **Deny** buttons (`addDiscoveredBrand` / `dismissDiscovered`), a
   heading per grade under **Best grade first** (default; Newest first) and a grade filter. **Add all A's** (Leo, Oct 13 2026 — 88 of 106 waiting finds were A): the To review bar's button (`dcBulkOpen`,
   `#dc-bulk`) → `addDiscoveredBulk({ grade: 'A' })` preview = every A waiting, each as it'd be filed (`discoveryCategory`,

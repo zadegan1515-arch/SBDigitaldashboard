@@ -92,6 +92,12 @@ export function actionText(fn: string, args: any, result: any): string | null {
     // A second click on a stop that already stands changed nothing.
     case 'stopContact': return r.already ? null : stopText(a, r, true)
     case 'undoStopContact': return r.already ? null : stopText(a, r, false)
+    // In talks (the top tab).
+    case 'setInTalks': return `${a.on === false ? 'Took' : 'Put'} ${brand || 'a brand'} ${a.on === false ? 'off' : 'on'} In talks`
+    case 'saveTalksProfile': return Array.isArray(r.saved) && r.saved.length ? `Wrote ${brand || 'a brand'}'s In talks ${r.saved.join(', ')}` : null
+    case 'addBrandNote': return `Added a note on ${brand || 'a brand'} (In talks)`
+    case 'editBrandNote': return `Edited a note on ${brand || 'a brand'} (In talks)`
+    case 'deleteBrandNote': return `Deleted a note on ${brand || 'a brand'} (In talks)`
     case 'handStep':
       if (a.step === 'declined') return r.already ? null : stopText(a, r, a.on !== false)
       return `Zach's list: ${s(a.step, 20)}${a.on === false ? ' undone' : ''}${r.contactName ? ' — ' + s(r.contactName) : ''}`
