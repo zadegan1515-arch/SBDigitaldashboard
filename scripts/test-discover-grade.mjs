@@ -148,7 +148,17 @@ t('launches count as growth, once; a footprint that just is doesn’t', () => {
   ]) assert.equal(grow(w).length, 0, w)
   for (const w of ['Acme (founded 2014) is rolling out to 500 new Kroger stores.', 'expanded into the U.S. market', 'went nationwide at ~2,700 ALDI stores in March 2026',
     'expanded into nearly 250 H-E-B stores in Apr 2026, its largest rollout', 'Protein Pop to retail with a Target launch in April 2026', 'into 3,800+ Walmart stores in Apr 2025',
-    'launching in 35 states', 'launched Apr 24 2026 exclusively at Walmart stores nationwide', 'deal expanding across PA, CT and the Northeast']) assert.equal(grow(w).length, 1, w)
+    'launching in 35 states', 'launched Apr 24 2026 exclusively at Walmart stores nationwide', 'deal expanding across PA, CT and the Northeast',
+    // the third review (real finds)
+    'went national at Whole Foods, Total Wine and Carnival (Feb 2026)', 'Foley Family Wines took it national as exclusive US distributor, per 2025 coverage',
+    'entered Texas via Capital Reyes June 2026', 'Aug 2026 LibDib expansion into CA, CO, FL, IL, NY', 'in Mar 2025 launched in Florida with community activations',
+    'expanding into Southern California via Breakthru (May 2026)', 'Mar 2026 signed Los Angeles Distributing to expand across SoCal', 'expanded into NY',
+    'June 2026 Reyes Beverage Group deal took it to 20 states', 'launched May 14 2026 on GoPuff in Philadelphia with NY, CA, FL rollout',
+    'June 2026 Reyes and Martignetti distribution deals across 20+ states', 'rolling into Indiana retail', 'relaunched 2026 with Crescent Crown distribution in LA',
+    'launched in the US market in June 2025', 'Aug 2026 125-store DFW c-store commitment', 'launched its RTD line nationwide at The Vitamin Shoppe in Jul 2026',
+    'went from H-E-B to 1,750+ Target stores nationwide in Feb 2026', 'growing on the West Coast: Fred Meyer (Dec 2025)', 'rolling into specialty, large-format retail',
+    'expanding city by city from Feb 2026, Denver first']) assert.equal(grow(w).length, 1, w)
+  for (const w of ['expanding into apparel in a new way', 'rolled out a campaign to me and you']) assert.equal(grow(w).length, 0, w + ' (state codes only right after the verb)')
 })
 
 t('a find on the roster grades on its brand’s own Brand Fit', () => {

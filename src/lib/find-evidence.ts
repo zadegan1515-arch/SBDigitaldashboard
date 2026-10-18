@@ -130,10 +130,11 @@ const GROWTH = /\b(fastest[- ]growing|doubled|tripled|triple[- ]digit|double[- ]
 // "ships to 50 states"), a national ad campaign or award, "expanding into
 // apparel" or "its team", and never a launch from years ago (launchIn).
 const SHOP_NAMES = "walmart|target(?! (?:audiences?|demo\\w*|markets?|consumers?|customers?|groups?|segments?|ages?|field|center|centre|arena|stadium)\\b)|kroger|costco|whole foods|publix|h-e-b|heb|7-eleven|trader joe'?s|total wine|cvs|walgreens|albertsons|safeway|sprouts|wegmans|meijer|hy-vee|circle k|wawa|sheetz|bevmo|sam'?s club|harris teeter|dick'?s|foot locker|ulta|sephora|aldi|food lion|giant eagle|hannaford|stop & shop|ralphs|vons|fresh thyme|natural grocers|erewhon|gopuff|buc-ee'?s|dollar general|family dollar|rite aid|quiktrip|racetrac|casey'?s|winn-dixie|shoprite|jewel-osco|vitamin shoppe|gnc|bj'?s|five below|urban outfitters|pacsun|zumiez|nordstrom|best buy"
-const US_STATES = 'alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|wyoming|socal|norcal|the bay area|chicago|atlanta|austin|dallas|houston|miami|nyc|los angeles|boston|denver|seattle|phoenix|philadelphia'
+const STATE_CODES = '(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|DFW)(?=[\\s,.;)/]|$)'
+const US_STATES = 'southern california|northern california|new england|the pacific northwest|the bay area|alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|wyoming|socal|norcal|the bay area|chicago|atlanta|austin|dallas|houston|miami|nyc|los angeles|boston|denver|seattle|phoenix|philadelphia'
 // Where a launch goes: stores, markets, distribution, a retailer, a region.
 const WHERE = '(?:(?:(?:about|nearly|over|more than|roughly|all|more|new|another|national|nationwide)\\s+)*(?:~?[\\d,]+\\+?\\s+)?(?:[\\w&\'-]+\\s+){0,3}(?:markets?|states|regions?|retail(?:ers)?|distribution|stores|doors|accounts|grocery|grocers|c-stores|convenience|chains?|outlets|locations)\\b' +
-  '|(?:~?[\\d,]+\\+?\\s+)?(?:' + SHOP_NAMES + ')\\b|the (?:US|U\\.?S\\.?|Southeast|Northeast|Midwest|West Coast|East Coast|South|West)(?![\\w])|Canada\\b|Mexico\\b|(?:' + US_STATES + ')\\b)'
+  '|(?:~?[\\d,]+\\+?\\s+)?(?:the\\s+)?(?:' + SHOP_NAMES + ')\\b|the (?:US|U\\.?S\\.?|Southeast|Northeast|Midwest|West Coast|East Coast|South|West)(?![\\w])|Canada\\b|Mexico\\b|(?:' + US_STATES + ')\\b)'
 const LAUNCH = new RegExp('\\b(' + [
   'first (mass|national)[- ]?retail',
   'national (launch|rollout|roll-out|expansion)',
@@ -141,14 +142,24 @@ const LAUNCH = new RegExp('\\b(' + [
   '(went|goes|going|gone|rolled out|rolling out|launched|launching) nationwide\\b',
   'launch(ed|es|ing)? (a |its )?(nationwide|national(ly)?)\\b(?! (ad|ads|tv|marketing|media|campaigns?|spots?|commercials?|contests?|tours?|sweepstakes|promotions?|search|awards?)\\b)',
   '(secured|signed|landed|gained|moved to|won)\\s+(?:[\\w&-]+\\s+){0,3}(national|nationwide)\\s+(distribut\\w*|retail\\w*|accounts?|roll-?out|placement)',
-  'expan(d|ds|ded|ding|sion)\\s+(in)?to\\s+' + WHERE,
-  'expanding\\s+(across\\s+(?:[\\w,&.]+\\s+){0,4}?' + WHERE + '|its\\s+(?:[\\w.]+\\s+)?(footprint|distribution|retail presence|store count))',
-  'roll(ed|ing|s)? out\\s+(to|in|into|across|at)\\s+' + WHERE,
+  'expan(d|ds|ded|ding|sion)\\s+((in)?to|across)\\s+(?:[\\w,&.]+\\s+){0,4}?' + WHERE,
+  'expanding\\s+its\\s+(?:[\\w.]+\\s+)?(footprint|distribution|retail presence|store count)',
+  'roll(ed|ing|s)?( out)?\\s+(to|in|into|across|at)\\s+(?:[\\w,&.]+\\s+){0,4}?' + WHERE,
+  '(went|goes|going|gone|took (it|them))\\s+national\\b', 'took (it|them) to \\d+\\+? (more |new )?states',
+  '(entered|entering|enters)\\s+' + WHERE, 'launch(ed|es|ing)?\\s+(in|into)\\s+' + WHERE,
+  'launch\\w*\\b[^.;]{0,30}?\\bnationwide\\b', 'growing\\s+(on|across|in|into)\\s+' + WHERE,
+  '(re)?launch\\w*\\b[^.;]{0,40}?\\bdistribut(ion|or)\\b', '(distribution|distributors?) (deals?|agreements?|partnerships?)\\b',
+  '[\\d,]+-(store|door)\\s+(?:[\\w-]+\\s+){0,2}(commitment|deal|roll-?out|expansion|launch)', 'went from\\b[^.;]{0,40}?\\bto\\s+(?:~?[\\d,]+\\+?\\s+)?(?:[\\w&\'-]+\\s+){0,2}(stores|doors|states|markets)\\b',
+  'city[- ]by[- ]city', 'new cities',
+  // state codes ("into NY", "into CA, CO, FL", "FL rollout") only right after the verb or before "rollout" —
+  // never after skipped words, where "in", "or", "me" are just words
+  '(expan(d|ds|ded|ding|sion)\\s+((in)?to|across)|roll(ed|ing|s)?( out)?\\s+(to|in|into|across)|entered|entering|enters|launch(ed|es|ing)?\\s+(in|into))\\s+' + STATE_CODES,
+  STATE_CODES + '\\s+roll-?outs?',
   '(retail|national|nationwide|store|grocery|regional|statewide)\\s+roll-?outs?',
   'roll-?outs?\\s+(to|into|across|at|in)\\s+' + WHERE,
   'new (retail (partners?|accounts?|doors|chains?|distribution)|distribution|markets?|states|stores|doors|accounts)\\b',
   '(add|added|adding|adds) [\\d,]+\\+? (?:[A-Za-z-]+ ){0,2}(stores|doors|accounts|retailers|locations|states|markets)\\b',
-  'launch(ed|es|ing)?\\b[^.;]{0,40}?\\b(in|at|into) (?:all )?(?:~?[\\d,]+\\+? (?:[\\w&\'-]+ ){0,2}(stores|doors)\\b|(?:' + SHOP_NAMES + ')\\b)',
+  'launch(ed|es|ing)?\\b[^.;]{0,40}?\\b(in|at|into|on) (?:all |the )?(?:~?[\\d,]+\\+? (?:[\\w&\'-]+ ){0,2}(stores|doors)\\b|(?:' + SHOP_NAMES + ')\\b)',
   '(entered|entering|enters|into) (?:~?[\\d,]+\\+? )?(?:' + SHOP_NAMES + ')\\b',
   '(?:' + SHOP_NAMES + ') (launch|roll-?out|expansion|debut)\\b',
   'going national',

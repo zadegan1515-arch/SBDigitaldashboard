@@ -100,6 +100,16 @@ t('second review: recovery drinks, founder stories, caffeine-free pouches, the m
     ['known for dorm room pop-ups and campus ambassadors', 'X', 0], ['Residential solar panels and home batteries', 'Sunrun Energy', 0],
     ['Kids drink with no sugar or caffeine', 'X', 0], ['Herbal soda (zero sugar/caffeine)', 'X', 0],
     ['Nicotine-free caffeine energy pouch (100/200mg)', 'Wip', 20], ['Nicotine-free caffeine (100mg) pouches', 'X', 20],
+    ['Canned cocktail made for partying', 'X', 15], ['Rave fashion brand', 'X', 15], ['Earned rave reviews from critics', 'X', 0],
+    ['Presenting sponsor of the ESPN pregame show', 'X', 0],
+    // the third review (real finds and roster brands)
+    ["Grace Beverley's activewear brand aimed at Gen Z", 'TALA', 10], ['Running-shoe brand (owned by Designer Brands)', 'Topo Athletic', 10],
+    ["Licensed 'moment' T-shirt maker built on NIL: school + athlete co-licensed shirts", 'BreakingT', 15], ['College NIL apparel brand (NIL Store network)', 'Campus Ink', 15],
+    ['Cheap-tallboy college staple in New England.', 'Narragansett Beer', 15], ['an officially licensed Washington State hard cider sold at GESA Field on football Saturdays', 'Tieton', 15],
+    ["Brews Virginia Tech's first licensed beer, Fightin' Hokies Lager", 'Hardywood', 15], ["Wabash Reserve, K-State Athletics' officially licensed bourbon since 2021", 'Boot Hill', 15],
+    ['Exclusive craft beer of Tennessee Athletics: Vol Lager is the only beer licensed to carry the Power T, sold at Neyland', 'Yee-Haw', 15],
+    ["Emma Chamberlain's coffee brand built on Gen Z; RTD lattes/cold brew at Walmart", 'Chamberlain Coffee', 10],
+    ['Coffee liqueur from Australia', 'Mr Black', 0], ['Licensed Disney character plush toys', 'X', 0],
   ]
   for (const [text, name, want] of cases) assert.equal(S.studentUse(text, name)?.points ?? 0, want, text)
   assert.equal(pts(S.brandWriteUp({ topProducts: 'Greens powder, colostrum, energy' })), 10, 'a product list’s bare "energy" is its energy drink')

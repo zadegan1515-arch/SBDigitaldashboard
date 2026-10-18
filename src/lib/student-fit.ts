@@ -69,7 +69,7 @@ export const STUDENT_USES: Tier[] = [
     points: 15, label: 'made for nights out / the morning after',
     re: new RegExp('\\b(' + [
       'hangovers?', 'nights? out', 'after a (long |big )?night( of (drinking|partying))?\\b', 'morning[- ]after(?![- ]pills?)\\b',
-      'nightlife', 'nightclubs?', 'clubbing', 'party-?goers?', 'raves?\\b(?! reviews?)', 'raving\\b', 'pre-?gam(e|es|ing)\\b', 'darties',
+      'nightlife', 'nightclubs?', 'clubbing', 'party-?goers?', 'raves?\\b(?! reviews?)', 'raving\\b', 'pre-?gam(e|es|ing)\\b(?![- ](shows?|coverage|sponsor\\w*)\\b)', 'darties', 'partying\\b',
       // a party, not "3rd-party tested", "party-size bags", "party packs", a birthday party
       "(?<!(third|3rd|birthday|kids'?|tea|dinner|slumber|watch)[- ])part(y|ies)\\b(?![- ](size[ds]?|packs?|supplies|favou?rs|city|trays?|platters?|mix(es)?)\\b)",
       'late[- ]night\\b(?! (show|talk|tv|television|host|with)\\b)',
@@ -94,6 +94,8 @@ export const STUDENT_USES: Tier[] = [
       '(collegiate|college|university|ncaa)[- ](apparel|headwear|line|gear|merch\\w*|collection|licensed|licen[cs]es?)\\b',
       'licensed (college|collegiate|university|ncaa)', '(college|collegiate|university|ncaa|school) licen[cs](es|ed|ing)\\b',
       'licensed (by|with) \\d+\\+? (schools|colleges|universities)', 'school[- ]spirit', 'fan[- ]apparel',
+      '(college|collegiate|university|ncaa)( nil)?[- ](apparel|gear|merch\\w*|tees?|t-shirts?|shirts?)\\b', '(college|campus)[- ](staples?|favou?rites?)\\b',
+      'football saturdays',
     ].join('|') + ')', 'i'),
   },
   {
@@ -108,11 +110,20 @@ export const STUDENT_USES: Tier[] = [
       '(?<!(deep|skin|lip|facial|intense|moisture|hair|scalp|lasting)[- ])hydrat(e|es|ing|ion)\\b(?![- ](\\w+[- ]){0,2}' + BEAUTY + '\\b)',
       'pre-?workout', 'post-?workout', 'workouts?\\b', 'gym\\b', 'protein\\b', 'sports drinks?',
       '(weight)?lifting (gear|apparel|belts?|straps?|shoes)', 'training (gear|apparel|shoes|shorts)', 'fitness (apparel|gear|drinks?|brand)',
+      'activewear', 'running[- ](shoes?|apparel|gear|shorts)', 'run[- ]specialty',
+      // coffee is caffeine — never a coffee liqueur, a coffee-flavored drink or a coffee shop page
+      'coffee\\b(?![- ](liqueurs?|flavou?r\\w*|shops?|tables?|houses?|cups?))', 'cold[- ]brew', 'espresso', 'yerba mat[eé]', 'matcha', 'guayusa',
       // caffeine in it — never "caffeine-free", "zero caffeine", a caffeine eye cream
       CAFFEINE + '\\b(?![- ](\\w+[- ])?' + BEAUTY + '\\b)',
     ].join('|') + ')', 'i'),
   },
 ]
+// A school-licensed product: "Virginia Tech's first licensed beer",
+// "K-State Athletics' officially licensed bourbon", "co-licensed shirts" —
+// "licensed" near the product and a school somewhere in the write-up.
+const LICENSED_ITEM = /\b((co-)?licensed\b[^.;]{0,50}?\b(beers?|ales?|lagers?|ipas?|ciders?|bourbons?|whiske?ys?|spirits?|vodkas?|seltzers?|wines?|tees?|t-shirts?|shirts?|cans)|(beers?|ales?|lagers?|ciders?|bourbons?|whiske?ys?|spirits?|vodkas?|seltzers?)\b[^.;]{0,20}?\blicensed)\b/i
+const SCHOOL = /\b(athletics|universit(y|ies)|college|collegiate|school|ncaa|campus|football|stadium|big (ten|12)|sec|acc|pac-12|sun belt|state|tech)\b/i
+
 // A brand's own name can say energy / hydration ("Raze Energy", "Prime
 // Hydration") — never the 20 (Focus Brands is a restaurant group), and
 // never when the write-up is about power or beauty (Sunrun Energy, a
@@ -127,6 +138,8 @@ export function studentUse(text: string | null | undefined, name?: string | null
     for (const u of STUDENT_USES) {
       const m = t.match(u.re)
       if (m) return { points: u.points, label: u.label, word: m[0].trim() }
+      const lic = u === STUDENT_USES[2] && SCHOOL.test(t) ? t.match(LICENSED_ITEM) : null
+      if (lic) return { points: u.points, label: u.label, word: lic[0].trim() }
     }
   }
   if (NAME_ENERGY.test(String(name ?? '')) && !NOT_A_DRINK.test(t)) {
