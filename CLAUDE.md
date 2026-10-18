@@ -86,6 +86,22 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   pure in `src/lib/claude-day.ts`: `node scripts/test-claude-day.mjs`; page: `NODE_PATH=$(npm root -g) node
   scripts/test-claude-day.js`. **Every Claude session that changes something should end by logging itself**
   (`node scripts/cc.mjs addWorkLog '{"text":"…"}'`, NEED blocks for Leo's to-dos) — that's the "sessions said" card.
+- **Home → Your chats** (Leo, Oct 17 2026: "i usually use more than 4 chats a day … i sometimes forget what each one is
+  about … tells me what chat did what, and what each chat needs from me"). One `WorkLog` row per claude.ai chat per New
+  York day (`source: 'session'`, `sessionId`, `url`, `about`, `ask`/`asks` = Leo's messages that day, `status` working ·
+  needs · done, `question` = what its last reply asks, `lastAt`), written only by `chatLog({ session, event: prompt |
+  reply | question | summary, … })` — rules pure in `src/lib/chat-log.ts` (a reply sorted by work-log.ts's rules, the
+  question it ends on, secrets masked, Leo's ticks carried by the need's words, an older post never winds a chat back).
+  Shown as Home's **Claude chats today** tile (`data-cd-open="chats"`) and **Claude's day → Your chats**, its first card
+  (`chCard`/`chRow`/`chState` in app.html: Needs you → Working → No reply yet (working 2 h+) → Done; the title opens
+  the chat); their NEEDs and questions are on the Needs card too; a chat's older days' needs give way to its latest day.
+  Pasted logs keep the "sessions said" card. `chatLog` is never a ClaudeAction. Fed by **the chat itself**
+  (`scripts/chat-log-hook.mjs` from Claude Code hooks — UserPromptSubmit / Stop / PreToolUse AskUserQuestion|ExitPlanMode;
+  detached post, nothing on stdout, quiet without `DASHBOARD_TOKEN`) and/or **the chat review** (`docs/chat-review.md`:
+  a chat reads Leo's other chats with list_sessions / list_events and posts `summary`; `listChatLogs` = what's logged).
+  `node scripts/cc.mjs <fn> @file.json` reads args from a file. Tests: `node scripts/test-chat-log.mjs`,
+  `node scripts/test-chat-log-hook.mjs`, `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-chat-log-e2e.js`,
+  page in `test-claude-day.js` (4).
 - **Leo's picked ideas, built Oct 6 2026** (retired from `build-ideas.ts`): **Weekly scoreboard** on Home (`#hm-score`,
   `weeklyScore` / `setWeeklyGoals`, Setting `weeklyGoals`, defaults `WEEKLY_GOALS_DEFAULT`): invites / accepted /
   replied / calls booked / deals / brands added per New York week (Mon–Sun), this week vs goal + 8 weeks of bars.

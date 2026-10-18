@@ -578,6 +578,20 @@
   .rc-more{font-size:13.5px;color:var(--ink-3);padding:4px 2px}
   .rc-idea .btn-ghost{white-space:nowrap}
   .rc-idea.picked{border-color:rgba(62,207,142,.45)}
+  /* Your chats (Claude's day, first card): one row per Claude chat */
+  .rc-tag.ch{min-width:86px;text-align:center;flex:none}
+  .ch-row .nm a{color:#fff;text-decoration:none}
+  .ch-row .nm a:hover,.ch-row .nm a:focus-visible{text-decoration:underline}
+  .ch-row .about{font-size:13.5px;color:var(--ink-2);margin-top:2px}
+  .ch-row .ask{font-size:13.5px;color:var(--ink-2);margin-top:6px}
+  .ch-row .ask i{font-style:normal;color:var(--ink-3)}
+  .ch-row .did{font-size:13.5px;color:var(--ink-2);margin-top:6px;line-height:1.5}
+  .ch-row details summary{cursor:pointer;font-size:13px;color:var(--ink-3);margin-top:6px}
+  .ch-row details .did{margin-top:2px}
+  .ch-row .need{padding:6px 0 0}
+  .ch-q{margin-top:8px;padding:8px 12px;border-left:3px solid var(--warn);background:rgba(232,182,76,.08);border-radius:0 8px 8px 0;font-size:13.5px;color:var(--ink-1)}
+  .ch-q i{font-style:normal;color:var(--warn);font-weight:700}
+  .ch-row .sm{margin-top:6px}
   .rc-hint{position:absolute;bottom:14px;left:0;right:0;text-align:center;font-size:13px;color:var(--ink-3);pointer-events:none}
   @media (max-width:700px){
     .rc-card{padding:72px 18px 56px}
@@ -3219,10 +3233,16 @@ function renderGlance() {
     ['needs', 'Needs you', c.needs,
       c.needs ? 'Reviews and steps only you can do' : 'Nothing waiting on you', 'var(--bad)'],
   ];
+  // Your chats: opens Claude's day at its first card (what each chat did and needs).
+  var ch = chCounts(r.chats);
+  var chSub = !ch.all ? 'None logged yet today'
+    : [ch.needs ? ch.needs + ' need' + (ch.needs === 1 ? 's' : '') + ' you' : '', ch.working ? ch.working + ' working' : ''].filter(Boolean).join(' · ') || 'All caught up';
   box.innerHTML = tiles.map(function (x, i) {
     return '<button class="hm-tile" data-rc-open="' + x[0] + '" style="--tc:' + x[4] + '">' +
       '<span class="k">' + x[1] + '</span><span class="v">' + x[2] + '</span><span class="s">' + esc(x[3]) + '</span></button>';
-  }).join('');
+  }).join('') +
+    '<button class="hm-tile" data-cd-open="chats" style="--tc:var(--accent-hi)" title="What each Claude chat did today and what it needs from you">' +
+      '<span class="k">Claude chats today</span><span class="v">' + ch.all + '</span><span class="s">' + esc(chSub) + '</span></button>';
 }
 
 // ---- the recap overlay ----
@@ -3368,13 +3388,14 @@ function rcCards(r) {
   return cards;
 }
 
-function needHtml(chat, n) {
+// `inChat`: drawn inside the chat's own row, so the chat's name is left off.
+function needHtml(chat, n, inChat) {
   return '<label class="need' + (n.done ? ' done' : '') + '">' +
     '<input type="checkbox" data-need="' + esc(chat.id) + '" data-i="' + n.i + '"' + (n.done ? ' checked' : '') + (n.auto ? ' disabled' : '') + '>' +
     '<span><span class="nl">' + rcText(n.label) + '</span>' +
     (n.auto ? '<div class="from">Done — ' + esc(n.auto) + '</div>' : '') +
     (n.steps.length ? '<ol>' + n.steps.map(function (s) { return '<li>' + rcText(s) + '</li>'; }).join('') + '</ol>' : '') +
-    '<div class="from">' + esc(chat.title) + '</div></span></label>';
+    (inChat ? '' : '<div class="from">' + esc(chat.title) + '</div>') + '</span></label>';
 }
 
 // Always drawn from a fresh read, so anything done since the page loaded
@@ -3433,8 +3454,71 @@ function drawCards(cards, at, top) {
 var CD = null;
 function cdTime(at) { return new Date(at).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }); }
 function cdHasAny(cd) { return !!(cd.commits.length || cd.actions.length || cd.chats.length || cd.hunt.found); }
+
+// ---- Your chats (Leo, Oct 17 2026: "i sometimes forget what each one is
+// about … tells me what chat did what, and what each chat needs from me") ----
+// One row per Claude chat a day (WorkLog source "session", chat-log.ts):
+// what Leo asked it, what its last reply says it did, its NEEDs and the
+// question it ended on. The state is worked out here from the needs Leo
+// ticked, so a ticked need moves the chat to Done without a reload.
+var CH_STALL_MS = 120 * 60000;   // = CHAT_STALL_MIN in chat-log.ts
+function chIsSession(c) { return c.source === 'session' || !!c.sessionId; }
+function chState(c) {
+  if (c.status === 'working') return c.lastAt && Date.now() - new Date(c.lastAt).getTime() > CH_STALL_MS ? 'stalled' : 'working';
+  return c.needs.some(function (n) { return !n.done; }) || c.question ? 'needs' : 'done';
+}
+var CH_ORDER = { needs: 0, working: 1, stalled: 2, done: 3 };
+function chSorted(chats) {
+  return chats.filter(chIsSession).slice().sort(function (a, b) {
+    return CH_ORDER[chState(a)] - CH_ORDER[chState(b)] || String(b.lastAt || b.createdAt).localeCompare(String(a.lastAt || a.createdAt));
+  });
+}
+function chCounts(chats) {
+  var n = { all: 0, needs: 0, working: 0 };
+  chats.filter(chIsSession).forEach(function (c) { var s = chState(c); n.all++; if (s === 'needs') n.needs++; if (s === 'working') n.working++; });
+  return n;
+}
+function chTitle(c) {
+  return c.url ? '<a href="' + esc(c.url) + '" target="_blank" rel="noopener" title="Open this chat">' + esc(c.title) + ' ↗</a>' : esc(c.title);
+}
+var CH_TAG = { needs: ['r', 'Needs you'], working: ['', 'Working'], stalled: ['w', 'No reply yet'], done: ['g', 'Done'] };
+function chRow(c) {
+  var s = chState(c);
+  var tag = CH_TAG[s];
+  var asks = c.asks || [];
+  var open = c.needs.filter(function (n) { return !n.done; });
+  var when = c.lastAt ? cdTime(c.lastAt) : '';
+  var h = '<div class="rc-row ch-row" data-ch="' + esc(c.id) + '"><span class="rc-tag ch ' + tag[0] + '">' + tag[1] + '</span><div class="grow">' +
+    '<span class="nm">' + chTitle(c) + '</span>' +
+    (c.about ? '<div class="about">' + rcText(c.about) + '</div>' : '');
+  if (c.ask) h += '<div class="ask"><i>' + (s === 'working' || s === 'stalled' ? 'Working on' : 'You asked') + ':</i> “' + rcText(c.ask) + '”' +
+    (asks.length > 1 ? ' <i>· ' + plural(asks.length, 'message') + ' today</i>' : '') + '</div>';
+  if (c.done.length) {
+    h += '<div class="did">' + c.done.slice(0, 4).map(function (d) { return '• ' + rcText(d); }).join('<br>') + '</div>';
+    if (c.done.length > 4) h += '<details><summary>+ ' + (c.done.length - 4) + ' more it did</summary><div class="did">' +
+      c.done.slice(4).map(function (d) { return '• ' + rcText(d); }).join('<br>') + '</div></details>';
+  }
+  if (c.question) h += '<div class="ch-q"><i>It asks:</i> ' + rcText(c.question) + '</div>';
+  open.forEach(function (n) { h += needHtml(c, n, true); });
+  if (asks.length > 1) h += '<details><summary>Everything you asked it today (' + asks.length + ')</summary><div class="did">' +
+    asks.map(function (a) { return esc(cdTime(a.at)) + ' — ' + rcText(a.ask); }).join('<br>') + '</div></details>';
+  h += '<div class="sm">' + (s === 'stalled' ? 'Started ' + esc(when) + ', nothing since — open it to check' : s === 'working' ? 'Since ' + esc(when) : when ? 'Last reply ' + esc(when) : '') + '</div>';
+  return h + '</div></div>';
+}
+function chCard(cd) {
+  var list = chSorted(cd.chats), n = chCounts(cd.chats);
+  var h = list.length
+    ? '<div class="rc-lead"><b>' + plural(n.all, 'chat') + '</b> ' + (cd.isToday ? 'today' : 'that day') +
+        (n.needs ? ' · <b>' + n.needs + '</b> need' + (n.needs === 1 ? 's' : '') + ' you' : '') + (n.working ? ' · ' + n.working + ' working' : '') +
+        '. A title opens the chat.</div><div class="rc-list">' + list.map(chRow).join('') + '</div>'
+    : '<div class="rc-empty">No chats have logged ' + (cd.isToday ? 'yet today' : 'that day') + '.</div>';
+  return { key: 'chats', step: 'Chats', title: cd.isToday ? 'Your chats today' : 'Your chats', body: h, acts: '' };
+}
+
 function cdCards(cd) {
   var cards = [], h;
+  // 0. Your chats: what each one did and needs
+  if (cd.chats.some(chIsSession)) cards.push(chCard(cd));
   // 1. The site
   if (cd.commits.length) {
     h = '<div class="rc-lead">' + plural(cd.commits.length, 'update') + ' went live on the dashboard.</div><div class="rc-list">' +
@@ -3456,9 +3540,11 @@ function cdCards(cd) {
     : '<div class="rc-empty">Claude didn’t change any data ' + (cd.isToday ? 'today' : 'that day') + '.</div>';
   cards.push({ key: 'data', step: 'Data', title: 'What Claude changed in the data', body: h,
     acts: cd.hunt.found ? '<button class="btn-ghost" data-rc-go="discover">Review on Discover</button>' : '' });
-  // 3. What the sessions said (their logs)
-  if (cd.chats.length) {
-    h = '<div class="rc-lead">' + plural(cd.chats.length, 'Claude session') + ' logged what they did.</div><div class="rc-list">' + cd.chats.map(function (c) {
+  // 3. What the sessions said (pasted or posted reports; chats that log
+  // themselves are on the first card)
+  var pasted = cd.chats.filter(function (c) { return !chIsSession(c); });
+  if (pasted.length) {
+    h = '<div class="rc-lead">' + plural(pasted.length, 'Claude session') + ' logged what they did.</div><div class="rc-list">' + pasted.map(function (c) {
       return '<div class="rc-row"><div class="grow"><span class="nm">' + esc(c.title) + '</span>' +
         (c.done.length ? '<div class="ppl">' + c.done.slice(0, 6).map(function (d) { return '• ' + rcText(d); }).join('<br>') + '</div>' : '') +
         (c.done.length > 6 ? '<div class="rc-more">+ ' + (c.done.length - 6) + ' more in Today’s log</div>' : '') + '</div></div>';
@@ -3476,6 +3562,10 @@ function cdCards(cd) {
   cd.olderNeeds.forEach(function (c) { c.needs.forEach(function (n) { open.push({ chat: { id: c.id, title: c.title + ' · ' + keyLabel(c.day) }, need: n }); }); });
   if (open.length) h += '<div class="rc-h">From Claude’s sessions</div><div class="rc-list">' + open.map(function (x) {
     return '<div class="rc-row">' + needHtml(x.chat, x.need) + '</div>';
+  }).join('') + '</div>';
+  var asking = chSorted(cd.chats).filter(function (c) { return c.question && c.status !== 'working'; });
+  if (asking.length) h += '<div class="rc-h">Chats waiting on your answer</div><div class="rc-list">' + asking.map(function (c) {
+    return '<div class="rc-row"><div class="grow"><span class="nm">' + chTitle(c) + '</span><div class="ppl">' + rcText(c.question) + '</div></div></div>';
   }).join('') + '</div>';
   if (!h) h = '<div class="rc-empty">Nothing is waiting on you. 🎉</div>';
   cards.push({ key: 'needs', step: 'Needs you', title: 'What Claude needs from you', body: h, acts: '' });
@@ -3576,10 +3666,13 @@ function renderDayLog() {
       '<span class="m">' + plural(ch.done.length, 'thing') + ' done' + (ch.needs.length ? ' · ' + (openNeeds ? '<span style="color:var(--bad)">' + openNeeds + ' need</span>' : 'needs done ✓') : '') +
         (ch.ideas.length ? ' · ' + plural(ch.ideas.length, 'idea') : '') + ' · ' + new Date(ch.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + '</span></summary>' +
       '<div class="dl-body">' +
+        (chIsSession(ch) ? '<div>' + (ch.url ? '<a href="' + esc(ch.url) + '" target="_blank" rel="noopener">Open the chat ↗</a>' : '') +
+          (ch.ask ? '<div class="hint">You asked: “' + esc(ch.ask) + '”</div>' : '') +
+          (ch.question ? '<div class="hint">It asks: ' + esc(ch.question) + '</div>' : '') + '</div>' : '') +
         (ch.done.length ? '<div><h4>Done</h4><ul>' + ch.done.map(function (d) { return '<li>' + rcText(d) + '</li>'; }).join('') + '</ul></div>' : '') +
         (ch.needs.length ? '<div><h4>Needs you</h4>' + ch.needs.map(function (n) { return needHtml(ch, n); }).join('') + '</div>' : '') +
         (ch.ideas.length ? '<div><h4>Ideas</h4><ul>' + ch.ideas.map(function (d) { return '<li>' + rcText(d) + '</li>'; }).join('') + '</ul></div>' : '') +
-        '<details><summary class="hint" style="cursor:pointer">What was pasted</summary><pre>' + esc(ch.raw) + '</pre></details>' +
+        (ch.raw ? '<details><summary class="hint" style="cursor:pointer">' + (chIsSession(ch) ? 'Its last reply' : 'What was pasted') + '</summary><pre>' + esc(ch.raw) + '</pre></details>' : '') +
         '<div><button class="btn-ghost" data-dl-del="' + esc(ch.id) + '">Delete this chat…</button></div>' +
       '</div></details>';
   }).join('') : '<div class="dl-empty">No Claude chats logged ' + (r.isToday ? 'today yet' : 'that day') + '.</div>';
@@ -3597,6 +3690,7 @@ document.addEventListener('click', function (ev) {
   var t = ev.target;
   var el;
   if ((el = t.closest('[data-rc-open]'))) { openRecap(el.getAttribute('data-rc-open')); return; }
+  if ((el = t.closest('[data-cd-open]'))) { openClaudeDay(null, el.getAttribute('data-cd-open')); return; }
   if (t.closest('#hm-recap')) { openRecap(0); return; }
   if (t.closest('#hm-claudeday')) { openClaudeDay(); return; }
   if (t.closest('[data-dl-hide]')) { DL_SHOW = false; DL_PASTE = false; renderDayLog(); return; }
@@ -3676,11 +3770,23 @@ document.addEventListener('change', function (ev) {
   if (t.matches && t.matches('[data-dl-pick]')) { dlLoad(t.value); return; }
   if (t.matches && t.matches('[data-need]')) {
     var id = t.getAttribute('data-need'), i = +t.getAttribute('data-i'), done = t.checked;
-    var lab = t.closest('.need'); if (lab) lab.classList.toggle('done', done);
-    [RC, DL_DATA, RC_SHOW].forEach(function (r) {
+    // The same need can show twice (a chat's row and the Needs you card).
+    document.querySelectorAll('[data-need="' + id + '"][data-i="' + i + '"]').forEach(function (box) {
+      box.checked = done;
+      var lab = box.closest('.need'); if (lab) lab.classList.toggle('done', done);
+    });
+    [RC, DL_DATA, RC_SHOW, CD].forEach(function (r) {
       if (!r) return;
       r.chats.forEach(function (c) { if (c.id === id) c.needs.forEach(function (n) { if (n.i === i) n.done = done; }); });
+      (r.olderNeeds || []).forEach(function (c) { if (c.id === id) c.needs.forEach(function (n) { if (n.i === i) n.done = done; }); });
     });
+    // A chat with nothing left open reads Done on its row.
+    var row = !document.getElementById('recap').hidden && document.querySelector('#recap [data-ch="' + id + '"]');
+    var chat = row && CD && CD.chats.filter(function (c) { return c.id === id; })[0];
+    if (row && chat) {
+      var tg = row.querySelector('.rc-tag.ch'), tag = CH_TAG[chState(chat)];
+      if (tg) { tg.className = 'rc-tag ch ' + tag[0]; tg.textContent = tag[1]; }
+    }
     api('setWorkNeedDone', { id: id, index: i, done: done }).then(function () {
       renderGlance();
       if (document.getElementById('recap').hidden) renderDayLog();

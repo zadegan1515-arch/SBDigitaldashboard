@@ -67,6 +67,10 @@ import { buyerKind, isBuyerTitle, countBuyers, BUYER_TARGET } from '@/lib/buyers
 import { readCoverFacts, brandCover } from '@/lib/coverage-db'
 import { LI_PER_DAY } from '@/lib/coverage'
 import { parseWorkLog, WORK_LOG_MAX_CHARS } from '@/lib/work-log'
+import {
+  sessionKey, sessionUrl, redactSecrets, askLine, chatTitle, digestReply, digestSummary, carryTicks, addAsk, chatStatus,
+  CHAT_REPLY_MAX, type ChatAsk,
+} from '@/lib/chat-log'
 import { BUILD_IDEAS } from '@/lib/build-ideas'
 import { checkBrandQueue, sortPicks, leaveOutFlagged, personProblem } from '@/lib/queue-check'
 import { isBigBrand, workCount, keepInPlay, brandNames, type BigBrandFacts } from '@/lib/brand-work'
@@ -4583,9 +4587,16 @@ const handlers: Record<string, Handler> = {
       dayCommits(d, lo, hi, today),
       prisma.workLog.findMany({ where: { day: { gte: addDaysKey(d, -6), lt: d } }, orderBy: { createdAt: 'asc' } }),
     ])
-    // Open NEEDs from the six days before, shaped like the recap's.
+    // Open NEEDs from the six days before, shaped like the recap's. A chat
+    // that logged again later stands by its latest day: what it asked for
+    // then is in that day's reply if it's still needed.
+    const latestDay = new Map<string, string>()
+    for (const l of [...older, ...recap.chats.map((c: any) => ({ sessionId: c.sessionId, day: d }))]) {
+      if (l.sessionId && (latestDay.get(l.sessionId) ?? '') < l.day) latestDay.set(l.sessionId, l.day)
+    }
     const olderNeeds: any[] = []
     for (const l of older) {
+      if (l.sessionId && latestDay.get(l.sessionId) !== l.day) continue
       let parsed: any = {}, doneIdx: number[] = []
       try { parsed = JSON.parse(l.parsed) } catch {}
       try { doneIdx = JSON.parse(l.needsDone) } catch {}
@@ -4740,8 +4751,13 @@ const handlers: Record<string, Handler> = {
       let doneIdx: number[] = []
       try { parsed = JSON.parse(l.parsed) } catch { /* raw is still there */ }
       try { doneIdx = JSON.parse(l.needsDone) } catch { /* none ticked */ }
+      // Leo's messages to a chat that logs itself (not the recap's `asks`).
+      let chatAsks: any[] = []
+      try { chatAsks = l.asks ? JSON.parse(l.asks) : [] } catch { /* none kept */ }
       return {
         id: l.id, title: l.title, raw: l.raw, source: l.source, addedBy: l.addedBy, createdAt: l.createdAt,
+        // A chat that logs itself (Home → Your chats, chat-log.ts).
+        sessionId: l.sessionId, url: l.url, about: l.about, ask: l.ask, asks: chatAsks, status: l.status, question: l.question, lastAt: l.lastAt,
         done: parsed.done ?? [], ideas: parsed.ideas ?? [],
         needs: (parsed.needs ?? []).map((n: any, i: number) => {
           const auto = needClearedBy(n, asks)
@@ -5093,6 +5109,97 @@ const handlers: Record<string, Handler> = {
     if (!confirm) return { preview: true, day: row.day, title: row.title, chars: row.raw.length }
     await prisma.workLog.delete({ where: { id: row.id } })
     return { deleted: row.id, title: row.title }
+  },
+
+  // Home → Your chats (src/lib/chat-log.ts): where one Claude chat stands
+  // today. Posted by the chat itself or by the hourly chat review
+  // (docs/chat-review.md), through scripts/cc.mjs — never by the page:
+  //   prompt   — Leo sent it a message (`ask`): it's working on it
+  //   reply    — it finished a reply (`reply` = the text): sorted by the
+  //              work-log rules into done / NEED / ideas + the question it ends on
+  //   question — it's asking Leo something (`question`)
+  //   summary  — a review's own summary (`did`, `needs`, `question`, `about`,
+  //              `asks`, `status`)
+  // One WorkLog row per chat per New York day (source "session"); Leo's ticks
+  // on its needs carry over; a post older than the row's latest never winds it
+  // back (`at` = when it happened).
+  async chatLog({ session, event, title, firstAsk, ask, asks, reply, question, about, did, needs, ideas, status, at, __user }: any) {
+    const sid = sessionKey(session)
+    if (!sid) throw new Error('Which chat? Send its session id')
+    const ev = ['prompt', 'reply', 'question', 'summary'].includes(event) ? String(event) : null
+    if (!ev) throw new Error('event must be prompt, reply, question or summary')
+    const now = new Date()
+    const t = at ? new Date(at) : now
+    const when = Number.isFinite(t.getTime()) && t.getTime() <= now.getTime() + 5 * 60000 ? t : now
+    const d = localDayKey(when)
+    const json = <T,>(s: string | null | undefined, dflt: T): T => { try { return s ? JSON.parse(s) : dflt } catch { return dflt } }
+    return prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'chatLog:' + sid}))::text`
+      const row = await tx.workLog.findFirst({ where: { sessionId: sid, day: d } })
+      if (row?.lastAt && when < row.lastAt) return { id: row.id, day: d, status: row.status, skipped: 'older' }
+      let parsed = json<{ done: string[]; needs: any[]; ideas: string[] }>(row?.parsed, { done: [], needs: [], ideas: [] })
+      let ticks = json<number[]>(row?.needsDone, [])
+      let dayAsks = json<ChatAsk[]>(row?.asks, [])
+      let q: string | null = row?.question ?? null
+      let raw = row?.raw ?? ''
+      let st = row?.status ?? 'done'
+      let lastAsk: string | null = row?.ask ?? null
+      const stamp = when.toISOString()
+      const take = (a: unknown, at2?: unknown) => {
+        const line = askLine(a)
+        if (!line) return
+        dayAsks = addAsk(dayAsks, typeof at2 === 'string' ? at2 : stamp, line)
+        lastAsk = line
+      }
+      if (ev === 'prompt') {
+        take(ask)
+        st = 'working'
+        q = null   // a message to the chat answers what it last asked
+      } else if (ev === 'question') {
+        const line = askLine(question, 300)
+        if (line) q = line
+        st = 'needs'
+      } else {
+        const dg = ev === 'reply' ? digestReply(reply) : digestSummary({ did, needs, ideas, question })
+        if (ev === 'summary') {
+          for (const a of Array.isArray(asks) ? asks : []) take(typeof a === 'string' ? a : a?.ask, a?.at)
+          if (ask) take(ask)
+        }
+        ticks = carryTicks(parsed.needs, ticks, dg.needs)
+        parsed = { done: dg.done, needs: dg.needs, ideas: dg.ideas }
+        q = dg.question
+        raw = ev === 'reply'
+          ? redactSecrets(String(reply ?? '').slice(0, CHAT_REPLY_MAX))
+          : [dg.done.length ? 'What it did:\n' + dg.done.map(x => '- ' + x).join('\n') : '',
+             ...dg.needs.map(n => 'NEED: ' + n.label + n.steps.map((s, i) => '\n' + (i + 1) + '. ' + s).join('')),
+             q ? 'It asks: ' + q : ''].filter(Boolean).join('\n\n')
+        const open = dg.needs.filter((_, i) => !ticks.includes(i)).length
+        st = ev === 'summary' && ['working', 'needs', 'done'].includes(status) ? status : chatStatus(open, q, false)
+      }
+      const given = String(title ?? '').trim()
+      const name = given ? chatTitle(given, null) : row?.title || chatTitle('', firstAsk || dayAsks[0]?.ask || lastAsk)
+      const line = String(about ?? '').trim() ? askLine(about, 200) : row?.about ?? null
+      const data = {
+        title: name, raw, parsed: JSON.stringify(parsed), needsDone: JSON.stringify(ticks),
+        url: sessionUrl(sid), about: line, ask: lastAsk, asks: JSON.stringify(dayAsks), status: st, question: q, lastAt: when,
+      }
+      const saved = row
+        ? await tx.workLog.update({ where: { id: row.id }, data, select: { id: true } })
+        : await tx.workLog.create({ data: { ...data, day: d, sessionId: sid, source: 'session', addedBy: __user ?? null }, select: { id: true } })
+      return { id: saved.id, day: d, status: st, title: name, needs: parsed.needs.filter((_, i) => !ticks.includes(i)).length, question: q }
+    })
+  },
+
+  // The chats logged in the last `days` New York days (default 2) — what the
+  // hourly chat review reads first, so it only reads chats that moved since.
+  async listChatLogs({ days = 2 }: any = {}) {
+    const n = Math.min(14, Math.max(1, Math.round(Number(days) || 2)))
+    const rows = await prisma.workLog.findMany({
+      where: { source: 'session', day: { gte: addDaysKey(localDayKey(), 1 - n) } },
+      orderBy: [{ lastAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
+      select: { sessionId: true, day: true, title: true, status: true, lastAt: true },
+    })
+    return { chats: rows }
   },
 
   // "Build this" on an idea: remembered so the next Claude session sees it.
