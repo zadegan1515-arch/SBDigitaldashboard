@@ -2,8 +2,10 @@
 // command center … send a picture of a brand from instagram or type in a
 // name and it will find the brand … and add it"). A saved Claude session
 // reads the picture or name, looks the brand up on the open web (free —
-// Claude's subscription, no API spend), shows Leo what it found, and on
-// his yes calls chatAddBrand in src/app/api/data/route.ts. The playbook
+// Claude's subscription, no API spend) and calls chatAddBrand in
+// src/app/api/data/route.ts. Every brand Leo sends is a yes once real
+// information is found (Leo, Oct 18 2026); the chat asks only when the
+// preview finds a brand on the roster it might already be. The playbook
 // it follows is docs/add-a-brand-chat.md.
 //
 // Pure: the row the chat sends, cleaned, and which brands on the roster it

@@ -167,6 +167,8 @@ t('fits a student’s day: up to 20 on top, read from what the brand says it is'
   assert.equal(leo.score, scoreBrand({ ...base, category: 'spirits', name: 'Casa X' }).score, 'Leo’s own notes are never read')
   const full = scoreBrand({ ...base, salesCents: 300 * M, sponsorsCollege: true, acceptRate: 0.9, about: 'Caffeine gum for finals week' })
   assert.equal(full.score, 100, 'still out of 100')
+  assert.equal(full.reasons.reduce((s, r) => s + r.points, 0), 100, 'a line says the score stops at 100, so the points add up')
+  assert.equal(scoreBrand({ ...base, name: 'Raze Energy' }).reasons.find(r => /energy \//.test(r.text)).points, 10, 'a name says energy')
 })
 
 t('ruled out: only confirmed not in the US; closed / acquired go to suggest Archive', () => {

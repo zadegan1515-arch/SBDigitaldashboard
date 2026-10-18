@@ -37,7 +37,7 @@
 // hand this file plain numbers (exact up to ~$90 trillion).
 
 import { brandSize, sizeFromMembers, type BrandSize } from './brand-size'
-import { brandWriteUp, discoverWriteUp, studentUse, studentReason } from './student-fit'
+import { brandWriteUp, discoverWriteUp, studentUse, studentReason, capAt100 } from './student-fit'
 
 export const TOO_SMALL_SALES_CENTS = 1_000_000 * 100 // $1M
 export const BIG_FUNDING_CENTS = 5_000_000 * 100 // $5M raised = "a lot of venture money"
@@ -277,7 +277,7 @@ export function scoreBrand(b: FitInput): FitResult {
 
   // 3b. Fits a student's day (student-fit.ts).
   const said = !!(String(b.about ?? '').trim() || String(b.topProducts ?? '').trim() || discoverWriteUp(b.notes))
-  reasons.push(studentReason(studentUse(brandWriteUp(b)), said))
+  reasons.push(studentReason(studentUse(brandWriteUp(b), b.name), said))
 
   // 4. People we can reach.
   if (b.reachable >= b.need && b.reachable > 0) add(true, b.reachable + ' people we can reach', 10)
@@ -291,7 +291,7 @@ export function scoreBrand(b: FitInput): FitResult {
     add(p >= 3, 'category accepts ' + Math.round(b.acceptRate * 100) + '% of invites', p)
   }
 
-  const score = Math.max(0, Math.min(100, reasons.reduce((s, r) => s + r.points, 0)))
+  const score = capAt100(reasons)
 
   const us = normUs(b.usStatus)
   const biz = normBiz(b.bizStatus)

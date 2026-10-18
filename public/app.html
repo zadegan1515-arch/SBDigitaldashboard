@@ -18764,12 +18764,13 @@ function dcRow(r) {
   // The points that made the score, biggest first, on the row itself.
   var pts = g ? (g.reasons || []).filter(function (x) { return x.points > 0; }).sort(function (a, b) { return b.points - a.points; })
       .map(function (x) { return '<span class="dc-pt"><b>+' + x.points + '</b>' + esc(x.text) + '</span>'; }).join('') +
+      (g.reasons || []).filter(function (x) { return x.points < 0; }).map(function (x) { return '<span class="dc-pt no">' + esc(x.text) + '</span>'; }).join('') +
       (g.capped ? '<span class="dc-pt no">' + esc(g.capped) + '</span>' : '') : '';
   var gradeMore = g ? '<div><span class="dc-k">Score</span><b>' + g.score + '/100 · ' + g.grade + '</b> · ' + esc(g.word) +
       (g.capped ? ' <span style="color:var(--warn)">— ' + esc(g.capped) + '</span>' : '') +
       (dcAdded(r) ? ' <span style="color:var(--ink-3)">(its Brand Fit)</span>' : ' <span style="color:var(--ink-3)">(from what the find’s write-up proves)</span>') +
       '<ul class="dc-reasons">' + (g.reasons || []).map(function (x) {
-        return '<li class="' + (x.good ? 'ok' : '') + '"><span class="pt">+' + x.points + '</span>' + esc(x.text) + '</li>';
+        return '<li class="' + (x.good ? 'ok' : '') + '"><span class="pt">' + (x.points < 0 ? '−' + (-x.points) : '+' + x.points) + '</span>' + esc(x.text) + '</li>';
       }).join('') + '</ul></div>' : '';
   return '<div class="dc-row' + (open ? ' open' : '') + '" data-disc="' + esc(r.id) + '">' + badge +
     '<div class="dc-main" data-dcact="toggle">' +

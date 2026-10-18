@@ -593,12 +593,16 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   college / music (15), people we can reach (10), the category's 90-day accept rate (5), and **fits a student's day**
   (Leo, Oct 18 2026: "neuro should definitely be higher given that the ideal candidates are people who study and do
   work" — he chose Brand Fit as well as Discover; `src/lib/student-fit.ts`, `node scripts/test-student-fit.mjs`): made
-  for studying / focus 20 (nootropic, focus, caffeine gum / pouches…), nights out / the morning after 15, game day /
-  campus life 15 (where the product lives — campus stores, game-day tees, licensed college gear — never a campus tour /
-  ambassadors, which is marketing), energy / hydration / workout 10; first tier that matches, read from the brand's
-  name, About, products and the "Discover: …" line of its notes (`brandWriteUp` — never the Activation idea, never
-  Leo's own notes), on top of the 100 (the total still stops at 100; `FIT_SELECT` / `FitFacts` / plan-brands.ts carry
-  about / topProducts / notes, required so a read without them fails tsc); while sales aren't known the stronger of funding and the size
+  for studying / focus 20 (nootropic, focus drinks / pouches, studying, finals week, caffeine gum / mints / pouches),
+  nights out / the morning after 15, game day / campus life 15 (where the product lives — campus stores, game-day tees,
+  licensed college gear — never a campus tour / ambassadors / reps / a tailgate sponsorship, which is marketing), energy
+  / hydration / workout 10 (energy drinks, electrolytes, protein, caffeine; a name like "Raze Energy" too); first tier
+  that matches. Words count only as the product's use — never "a clinical study", "a focus market", "3rd-party tested",
+  "caffeine-free", "Gen Z energy", skincare's "hydrating" (the Oct 18 review's cases are in the test). Read from the
+  brand's About, products and the line of its notes that starts "Discover: " (`brandWriteUp` / `discoverWriteUp` —
+  never the Activation idea, never Leo's own notes) plus its name for energy only. On top of the 100: a total past it
+  shows "the score stops at 100" with the difference (`capAt100`), so the points still add up. `FIT_SELECT` /
+  `FitFacts` / plan-brands.ts carry about / topProducts / notes, required so a read without them fails tsc; while sales aren't known the stronger of funding and the size
   estimate counts (a parent company's brand keeps the parent's size). **Ruled out** = confirmed not sold
   in the US only (Leo's one hard no): nobody there is ever queued or emailed — `SOLD_IN_US` guard in
   `NOT_IN_CONVERSATION` (the rotation's pool), `fillToday`, `nextBestBrands`, today's list, the email
@@ -629,7 +633,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   changed since is skipped, named, and left waiting in the batch. Rows match by id, else exact name / aka
   (`researchMatcher`); a brand listed twice — the later row wins. One transaction, Undo `researchUndo` (only fields
   still as the import left them). Never write facts without that review — the one exception is a brand the "Add a
-  brand" chat makes, where Leo's yes on the card that showed the facts is the review. **Suggest Archive**
+  brand" chat makes, where Leo sending the brand is his yes (Oct 18 2026) and the card it shows after names every fact written. **Suggest Archive**
   (`fitArchive` preview → apply, Undo `fitArchiveUndo`; Setting `fitArchiveLast`): confirmed not US,
   closed/acquired, or researched with every signal known to be absent (sales AND funding looked up and
   under the bars, no college / music found, not a Top category) and a low score; never a brand in talks (reply, deal,
@@ -728,13 +732,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (a parent named or a giant = 0, too big for now), stores (1,000+ 15 / 300+ 10 / fewer 5 / "growing" sign 6, +5 for a big
   retailer named), already pays for college / music (official partner, licensed, NIL, sponsor, tour, festival 20 · the hunt's
   sign 12 · only popular with students 6), **fits a student's day** (Oct 18 2026 — the Brand Fit rule above, read from the
-  find's name + write-up, never the pitch: studying / focus 20, nights out 15, game day / campus 15, energy / hydration 10),
-  growing fast 10 (since Oct 18 also a launch, from the write-up only — "first mass-retail", "national launch", "rolling
-  out", "expanding into", "added 400 stores", "into Target"; a footprint that just is, "in 48 states", isn't), 18–24 sign 5.
+  find's write-up (+ name for energy), never the pitch: studying / focus 20, nights out 15, game day / campus 15, energy /
+  hydration 10), growing fast 10 (since Oct 18 also a launch, from the write-up only — `launchIn`: "first mass-retail",
+  "national launch", "rolling out to Kroger", "expanding into Walmart", "added 400 stores", "into Target"; stores, markets
+  and distribution only — never a footprint that just is ("in 48 states", "ships to 50 states"), a national ad campaign or
+  award, "expanding into apparel", or a launch whose sentence only names years before last year), 18–24 sign 5.
   A find on the roster grades on its brand's own Brand
   Fit. Letters **A 65+ / B 50+ / C 40+ / D** (Skip / not US / closed = D, too small caps at C) — on Oct 15 the 171 finds split
   ~17 / 52 / 63 / 39 (Brand Fit alone had made 137 of them A); on Oct 18, with the student fit and launches, the 186 waiting
-  ~17 / 65 / 61 / 43 (was 2 / 64 / 67 / 53) and Neuro 46 C → 76 A as a find, 63 B → 83 A on the roster. The page: a score box per row (number + letter; a click opens every
+  ~16 / 61 / 64 / 45 (was 2 / 64 / 67 / 53) and Neuro 46 C → 76 A as a find, 63 B → 83 A on the roster. The page: a score box per row (number + letter; a click opens every
   point), the points as chips under the why, big **Accept** / **Deny** buttons (`addDiscoveredBrand` / `dismissDiscovered`), a
   heading per grade under **Best grade first** (default; Newest first) and a grade filter. **Add all A's** (Leo, Oct 13 2026 — 88 of 106 waiting finds were A): the To review bar's button (`dcBulkOpen`,
   `#dc-bulk`) → `addDiscoveredBulk({ grade: 'A' })` preview = every A waiting, each as it'd be filed (`discoveryCategory`,
@@ -755,12 +761,16 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `DASHBOARD_TOKEN` in its environment — no API spend) follows `docs/add-a-brand-chat.md`: reads the
   screenshot / name, `brandLookup`, researches the open web (site, LinkedIn page, what they sell, money,
   college / music), previews `chatAddBrand` (rules pure in `src/lib/chat-add.ts`: possible matches by
-  name / aka, LinkedIn page, website — the Duplicates signals; `node scripts/test-chat-add.mjs`), shows
-  Leo a card, and only on his yes applies: Brand `source: 'chat'`, notes say where it came from. A
-  possible match is refused unless Leo says it's a different company (`notSame`; an exact name never).
-  **Facts: Leo's yes is the review** (Leo, Oct 12 2026: "my yes is the review, so skip Stock take"): the
-  preview returns `facts` = each fact as it'll be written (`factChanges` against a blank brand, `{ label, value }`),
-  the card shows them all, and apply (with the preview's `expect`; other facts are refused) writes them onto the
+  name / aka, LinkedIn page, website — the Duplicates signals; `node scripts/test-chat-add.mjs`) and applies.
+  **Every brand Leo sends is a yes** once real information is found — its own website or checked LinkedIn page, and
+  what it sells (Leo, Oct 18 2026: "every brand Leo sends is a yes when real info is found. Ask only when it might
+  match a brand already on the dashboard"); no info → nothing added, the chat says what's missing. Brand
+  `source: 'chat'`, notes say where it came from. A possible match stops the chat to ask; apply refuses it unless Leo
+  says it's a different company (`notSame`; an exact name never). After adding it shows Leo the card with every fact
+  and the link; a fact he corrects is fixed on that brand alone (`updateBrand({ brandId, facts })`).
+  **Facts: Leo sending it is the review** (Oct 12 2026: "my yes is the review, so skip Stock take"; Oct 18: the send is
+  the yes): the preview returns `facts` = each fact as it'll be written (`factChanges` against a blank brand,
+  `{ label, value }`), and apply (with the preview's `expect`; other facts are refused) writes them onto the
   brand it makes in the same transaction (+ `researchedAt`; `factsWritten`). Never onto a brand that was already there — those still go to `researchStage`. It can't
   sign in to SponsorUnited or LinkedIn — the LinkedIn fill and SU sweep pick the brand up from there.
 - **One brand per parent company** (Leo, Oct 8 2026: "make all of the brands under Diageo one big brand on the site and

@@ -161,9 +161,9 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     };
 
     // ---- A. The morning roll ---------------------------------------------
-    // Today is a sending day (an extra one if it isn't Tue–Thu) and a
-    // category day, so the Schedule's "shown" rows count for the roll.
-    await data('setExtraSendingDay', { date: today, on: true });
+    // Today is a sending day (an extra one if it isn't Tue–Thu, opened just
+    // before the first plan read, below) and a category day, so the
+    // Schedule's "shown" rows count for the roll.
     // Holdlate: one of three sent yesterday, the other two stamped and never
     // sent — and it sits on a later day too (queued for yesterday by hand
     // while it was planned there).
@@ -211,6 +211,14 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     for (const c of kyp.slice(0, 2)) await prisma.target.create({ data: { brandId: 'kay', contactId: c.id, status: 'sent', sentAt: noonNY(yday), queuedFor: noonNY(yday) } });
     const kayRest = (await prisma.target.create({ data: { brandId: 'kay', contactId: kyp[2].id, status: 'queued', queuedFor: new Date(noonNY(yday).getTime() + 3600e3) } })).id;
 
+    // Opening an off day reads the plan, and the first plan read of the day
+    // runs the roll — so today opens only now, with everything above in
+    // place (opened first, the roll ran on an empty database and this
+    // failed on every Friday–Monday run). Yesterday sent people too, so on a
+    // run after an off day it was an extra day (kept once it has gone by:
+    // sitting-history).
+    if (![2, 3, 4].includes(new Date(yday + 'T12:00:00Z').getUTCDay())) await setting('outreachExtraDays', [yday]);
+    await data('setExtraSendingDay', { date: today, on: true });
     let plan = await data('getOutreachPlan');  // the first plan read of the day: the roll
     const hlFirst = plan.plan[today].brandIds.slice(0, 3);
     assert.deepEqual([hlFirst.slice().sort(), plan.plan[today].brandIds.slice(3)], [['half', 'hl', 'kay'], ['jam', 'four']], 'Halfway, Kaykay and Holdlate (half-sent) first, then Jamjar and Fourway (queued by hand): ' + JSON.stringify(plan.plan[today]));

@@ -21,7 +21,7 @@
 //
 //   node scripts/test-discover-grade.mjs
 
-import { studentUse, studentReason } from './student-fit'
+import { studentUse, studentReason, capAt100 } from './student-fit'
 
 export interface FindEvidence {
   fundingCents: number | null
@@ -106,14 +106,16 @@ export function readFind(text: string | null | undefined): FindEvidence {
 //   fits a student's    made for studying / focus 20 · nights out / the
 //   day                 morning after 15 · game day / campus life 15 ·
 //                       energy / hydration / workout 10 (student-fit.ts;
-//                       read from what the brand is — name + write-up,
+//                       read from the write-up, + the name for energy,
 //                       never our pitch idea). Leo, Oct 18 2026: "neuro
 //                       should definitely be higher given that the ideal
 //                       candidates are people who study and do work".
 //   growing fast        "fastest-growing", "doubled", "+50%", "triple-digit",
 //                       and launches (Oct 18 2026): "first mass-retail",
-//                       "national launch", "rolling out", "expanding into",
-//                       "added 400 stores", "into Target" 10
+//                       "national launch", "rolling out to", "expanding
+//                       into Walmart", "added 400 stores" — not history
+//                       (launchIn) 10
+//   past 100            "the score stops at 100" with the difference
 //   aims at 18–24       the hunt's sign 5
 export interface FindScore { score: number; reasons: Array<{ good: boolean | null; text: string; points: number }> }
 
@@ -123,24 +125,49 @@ const AUDIENCE = /\b(college students|campus|sororit|fraternit|students|gen ?z|t
 const GROWTH = /\b(fastest[- ]growing|doubled|tripled|triple[- ]digit|double[- ]digit|\d{2,3}%\s*(growth|yoy|year|up)|up\s+\d{2,3}%|\d{2,3}%\+?\s+yoy|growth of \d{2,3}%)/i
 // A launch or a push into new stores is growth too (Leo's yes, Oct 18
 // 2026). Read on the write-up only, like the student fit: a pitch idea
-// "launching at a campus show" is ours, not theirs. A footprint that just
-// is ("in 48 states", "with national distribution") isn't a launch.
-const SHOP_NAMES = "walmart|target|kroger|costco|whole foods|publix|h-e-b|heb|7-eleven|trader joe'?s|total wine|cvs|walgreens|albertsons|safeway|sprouts|wegmans|meijer|hy-vee|circle k|wawa|sheetz|bevmo|sam'?s club|harris teeter|dick'?s|foot locker|ulta|sephora"
-export const LAUNCH = new RegExp('\\b(' + [
+// "launching at a campus show" is ours, not theirs. Only stores, markets
+// and distribution count — never a footprint that just is ("in 48 states",
+// "ships to 50 states"), a national ad campaign or award, "expanding into
+// apparel" or "its team", and never a launch from years ago (launchIn).
+const SHOP_NAMES = "walmart|target(?! (?:audiences?|demo\\w*|markets?|consumers?|customers?|groups?|segments?|ages?)\\b)|kroger|costco|whole foods|publix|h-e-b|heb|7-eleven|trader joe'?s|total wine|cvs|walgreens|albertsons|safeway|sprouts|wegmans|meijer|hy-vee|circle k|wawa|sheetz|bevmo|sam'?s club|harris teeter|dick'?s|foot locker|ulta|sephora"
+const WHERE = '(?:(?:all |more |new |national |nationwide )?(?:[\\d,]+\\+? )?(?:[A-Za-z-]+ ){0,2}(?:markets?|states|regions?|retail(?:ers)?|distribution|stores|doors|accounts|grocery|grocers|c-stores|convenience|chains?|outlets|locations)\\b' +
+  '|(?:' + SHOP_NAMES + ')\\b|the (?:US|U\\.S\\.|Southeast|Northeast|Midwest|West Coast|East Coast|South|West)\\b|Canada\\b|Mexico\\b)'
+const LAUNCH = new RegExp('\\b(' + [
   'first (mass|national)[- ]?retail',
   'national (launch|rollout|roll-out|expansion)',
   'nationwide (launch|rollout|roll-out|retail|expansion)',
-  'launch(ed|es|ing)? (a |its )?(nationwide|nationally|national)',
-  '(secured|signed|landed|gained|moved to|won)\\s+(?:[\\w&-]+\\s+){0,3}(national|nationwide)\\b',
-  'expan(d|ds|ded|ding|sion) (in)?to\\b',
-  'expanding (across|its|distribution|into)',
-  'roll(ed|ing|s)? out', 'rollout', 'roll-out',
-  'new (retail|distribution|markets?|states)',
-  '(add|added|adding|adds) [\\d,]+\\+? (?:[A-Za-z-]+ ){0,2}(stores|doors|accounts|retailers|locations|states)',
-  'launch(ed|es|ing)? (in|at|into) (?:all )?(?:[\\d,]+\\+? (?:[A-Za-z-]+ ){0,2}(stores|doors)|(?:' + SHOP_NAMES + ')\\b)',
+  'launch(ed|es|ing)? (a |its )?(nationwide|national(ly)?)\\b(?! (ad|ads|tv|marketing|media|campaigns?|spots?|commercials?|contests?|tours?|sweepstakes|promotions?|search|awards?)\\b)',
+  '(secured|signed|landed|gained|moved to|won)\\s+(?:[\\w&-]+\\s+){0,3}(national|nationwide)\\s+(distribut\\w*|retail\\w*|accounts?|roll-?out|placement)',
+  'expan(d|ds|ded|ding|sion)\\s+(in)?to\\s+' + WHERE,
+  'expanding\\s+(across|its\\s+(?:[\\w.]+\\s+)?(footprint|distribution|retail|reach))\\b',
+  'roll(ed|ing|s)? out\\s+(to|in|into|across|at)\\s+' + WHERE,
+  '(retail|national|nationwide|store|grocery|regional|statewide)\\s+roll-?outs?',
+  'roll-?outs?\\s+(to|into|across|at|in)\\s+' + WHERE,
+  'new (retail|distribution|markets?|states|stores|doors|accounts)\\b',
+  '(add|added|adding|adds) [\\d,]+\\+? (?:[A-Za-z-]+ ){0,2}(stores|doors|accounts|retailers|locations|states|markets)\\b',
+  'launch(ed|es|ing)? (in|at|into) (?:all )?(?:[\\d,]+\\+? (?:[A-Za-z-]+ ){0,2}(stores|doors)\\b|(?:' + SHOP_NAMES + ')\\b)',
   '(entered|entering|enters|into) (?:' + SHOP_NAMES + ')\\b',
-  'going national', '(into|to) \\d+ (new )?states', '\\d+ new states',
-].join('|') + ')', 'i')
+  'going national',
+  '(expand\\w*|grow\\w*|roll\\w* out|launch\\w*) (in)?to \\d+ (more |new )?states',
+  '\\d+ new (states|markets)',
+].join('|') + ')', 'gi')
+
+// The first launch in the write-up that isn't history: a clause that only
+// names years before last year ("launched at Whole Foods in 2013", "into
+// Walmart since 2015") is the brand's past, not growth now.
+export function launchIn(text: string, now: Date = new Date()): string | null {
+  const t = String(text ?? '')
+  for (const m of Array.from(t.matchAll(LAUNCH))) {
+    const at = m.index ?? 0
+    const from = Math.max(t.lastIndexOf('. ', at), t.lastIndexOf('; ', at), t.lastIndexOf('(', at)) + 1
+    const ends = [t.indexOf('. ', at), t.indexOf('; ', at), t.indexOf(')', at)].filter(i => i >= 0)
+    const clause = t.slice(from, ends.length ? Math.min(...ends) : t.length)
+    const years = Array.from(clause.matchAll(/\b(19|20)\d{2}\b/g)).map(y => Number(y[0]))
+    if (years.length && Math.max(...years) < now.getUTCFullYear() - 1) continue
+    return m[0].trim()
+  }
+  return null
+}
 
 export function scoreFind(f: {
   priority: 'top' | 'middle' | 'low' | 'skip'
@@ -153,10 +180,10 @@ export function scoreFind(f: {
   // pitch) for the rest, as before.
   name?: string | null
   writeUp?: string | null
+  now?: Date // for "a launch years ago isn't growth" (launchIn)
 }): FindScore {
   const t = String(f.text ?? '')
   const writeUp = String(f.writeUp ?? '').trim()
-  const what = [String(f.name ?? '').trim(), writeUp].filter(Boolean).join(' · ')
   const ev = readFind(t)
   const sign = (s: string) => String(f.signals ?? '').split(',').map(x => x.trim()).includes(s)
   const reasons: FindScore['reasons'] = []
@@ -189,14 +216,14 @@ export function scoreFind(f: {
   else if (AUDIENCE.test(t)) add(null, 'popular with students, no sponsorship yet', 6)
   else add(false, 'no college / music spend found', 0)
 
-  // Fits a student's day (student-fit.ts). The name alone counts too
-  // ("NERD Focus"); "isn't on file" only when there's no write-up.
-  reasons.push(studentReason(studentUse(what), !!writeUp))
+  // Fits a student's day (student-fit.ts) — the write-up, and the name
+  // for energy ("Raze Energy"); "isn't on file" only when there's no write-up.
+  reasons.push(studentReason(studentUse(writeUp, f.name), !!writeUp))
 
-  const launch = what.match(LAUNCH)
+  const launch = launchIn(writeUp, f.now)
   if (GROWTH.test(t)) add(true, 'growing fast', 10)
-  else if (launch) add(true, 'growing fast (“' + launch[0].trim() + '”)', 10)
+  else if (launch) add(true, 'growing fast (“' + launch + '”)', 10)
   if (sign('genz')) add(true, 'aims at 18–24', 5)
 
-  return { score: Math.max(0, Math.min(100, reasons.reduce((n, r) => n + r.points, 0))), reasons }
+  return { score: capAt100(reasons), reasons }
 }

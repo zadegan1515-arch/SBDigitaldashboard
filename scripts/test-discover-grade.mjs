@@ -93,6 +93,11 @@ t('a Low category with nothing proven → D; Skip → D whatever it proves', () 
 t('every point has a reason, score stays 0..100', () => {
   const g = scoreFind({ priority: 'top', signals: 'genz', text: '$40M in sales, doubled, 9,000 stores at Walmart, official partner of the SEC, festival sponsor.' })
   assert.equal(g.reasons.reduce((s, r) => s + r.points, 0), g.score); assert.ok(g.score <= 100)
+  // With the student fit a total can pass 100: a line says the score stops there.
+  const w = 'Nootropic gum, $40M in sales, doubled, 9,000 stores at Walmart, official partner of the SEC, festival sponsor.'
+  const top = scoreFind({ priority: 'top', signals: 'genz', text: w, writeUp: w, name: 'Max', now })
+  assert.equal(top.score, 100); assert.equal(top.reasons.reduce((s, r) => s + r.points, 0), 100)
+  assert.ok(top.reasons.some(r => r.points < 0 && /stops at 100/.test(r.text)))
 })
 
 // Leo, Oct 18 2026: "neuro should definitely be higher given that the ideal
@@ -120,14 +125,21 @@ t('the student fit and launches read the brand’s write-up, never our pitch', (
 })
 
 t('launches count as growth, once; a footprint that just is doesn’t', () => {
-  const grow = (w) => scoreFind({ priority: 'middle', name: 'X', writeUp: w, text: w }).reasons.filter(x => /growing fast/.test(x.text))
-  for (const w of ['national launch in all 2,300+ Albertsons stores', 'rolling out to Kroger', 'added 400 SoCal stores in 2024',
-    'expanding into Walmart', 'moved to Shaw-Ross national distribution in Jan 2025', 'Pure line into Target 2026']) {
+  const grow = (w) => scoreFind({ priority: 'middle', name: 'X', writeUp: w, text: w, now }).reasons.filter(x => /growing fast/.test(x.text))
+  for (const w of ['national launch in all 2,300+ Albertsons stores', 'rolling out to Kroger', 'added 400 SoCal stores in 2026',
+    'expanding into Walmart', 'moved to Shaw-Ross national distribution in Jan 2025', 'Pure line into Target 2026',
+    '2025 rollout into 1,309 Publix stores', 'expanding its US footprint: signed Republic National Distributing', 'expanding to 9 more states']) {
     assert.equal(grow(w).length, 1, w)
   }
   assert.equal(grow('sales doubled, then a national launch').length, 1, 'never twice')
   assert.equal(grow('doubled').at(0).text, 'growing fast')
-  for (const w of ['sold in 48 states', 'a music-led brand with national distribution', 'launched in 2019']) assert.equal(grow(w).length, 0, w)
+  // The review of Oct 18 2026: none of these is a launch.
+  for (const w of ['sold in 48 states', 'a music-led brand with national distribution', 'launched in 2019', 'DTC brand that ships to 48 states',
+    'Sold to 30 states via distributors', 'the CEO called it an expansion into collegiate sponsorships', 'expanding into year-round apparel',
+    'the family expand to include Gin Sul', 'Expanded to 12 flavors', 'Expanding its team in Austin', 'Won a national award at Expo West 2024',
+    'Gained national attention on TikTok', 'Landed national press in Forbes', 'Signed NIL deals with national champion Georgia athletes',
+    'Launched a national ad campaign with NIL athletes', 'Rolled out a TikTok campaign with creators', 'Taps into target audiences on TikTok',
+    'Founded in 2012; launched at Whole Foods in 2013', 'Launched at Target in 2017.', 'Sold into Walmart since 2015']) assert.equal(grow(w).length, 0, w)
 })
 
 t('a find on the roster grades on its brand’s own Brand Fit', () => {

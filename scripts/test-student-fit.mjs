@@ -27,40 +27,57 @@ t('made for studying / focus = 20', () => {
   assert.equal(pts('Neuro caffeine/nootropic energy gum and mints'), 20)
   assert.equal(pts('Nicotine-free focus pouches (paraxanthine)'), 20)
   assert.equal(pts('Functional sparkling tea (mood/focus, tea caffeine)'), 20)
+  assert.equal(pts('Texas-born focus energy drink'), 20)
   assert.equal(pts('Caffeine gum started by college students'), 20)
+  assert.equal(pts('Caffeine (nicotine-free) pouch founded by a student'), 20, 'words between caffeine and pouch')
   assert.equal(pts('Louisville caffeinated sparkling water (75mg caffeine + L-theanine)'), 20)
-  assert.equal(pts('NERD Focus'), 20, 'the name alone counts')
+  assert.equal(pts('Mushroom (lion’s mane, cordyceps) energy drink'.replace('’', "'")), 20)
+  assert.equal(pts('a snack for late-night studying'), 20)
 })
 
-t('"focused on" / "youth-focused" / "a focus on" is not a focus product', () => {
-  assert.equal(label("Unilever's youth-focused men's fragrance"), null)
-  assert.equal(label('tequila in expansion mode, focused on on-premise growth'), null)
-  assert.equal(label('with a focus on Gen Z'), null)
-  assert.equal(label('a case study in brand building'), null)
+// The review of Oct 18 2026: every one of these scored 20 before.
+t('a study, a focus market, eye exams, brain freeze are not studying', () => {
+  for (const s of ['with a Gen Z focus', 'Kombucha brand with a strong regional focus in Texas', 'Tested flavors with student focus groups',
+    'Apparel brand with a laser focus squarely on Gen Z women', 'Its main focus is clean ingredients', 'Texas is a focus market for the brand',
+    'with a focus on Gen Z', "Unilever's youth-focused men's fragrance", 'tequila in expansion mode, focused on on-premise growth',
+    'A 2025 Circana study named it the top RTD with Gen Z', 'Supplement backed by a clinical study.', 'Study abroad travel company', 'a case study in brand building',
+    'DTC eyewear with free eye exams', 'Slushie mix known for brain freeze', 'Streetwear label Brain Dead', 'The brain behind the brand is a former Nike designer',
+    'Mental health app offering cognitive behavioral therapy']) assert.notEqual(pts(s), 20, s)
+  assert.equal(S.studentUse('NERD Focus'), null, 'a name never earns the 20 (Focus Brands is a restaurant group)')
 })
 
 t('nights out / the morning after = 15', () => {
   assert.equal(pts('Isotonic hydration born as a hangover drink'), 15, 'hangover beats hydration')
   assert.equal(pts('Late-night warm cookie delivery brand'), 15)
   assert.equal(pts('Round single-serve canned cocktails with grab-and-go party appeal'), 15)
-  assert.equal(label('ships through a third-party warehouse'), null)
+  assert.equal(pts('Protein powder, 3rd-party tested for purity'), 10, '3rd-party tested is protein, not a party')
+  assert.equal(pts('Protein powder, 3rd party tested.'), 10)
+  for (const s of ['ships through a third-party warehouse', 'Chips in party-size bags', 'Candy brand selling party packs', 'appeared on Late Night with Seth Meyers'])
+    assert.equal(label(s), null, s)
 })
 
-t('game day / campus life = 15 — where the product lives, not campus marketing', () => {
-  assert.equal(pts('Kansas City gameday/vintage tee brand licensed with 50–60 schools'), 15)
-  assert.equal(pts('Licensed collegiate headwear maker'), 15)
-  assert.equal(pts('sold at the Liacouras Center and campus bodegas'), 15)
-  assert.equal(pts('big with students and tailgaters'), 15)
-  assert.equal(label("ran a 'Dakine Days' campus tour with gear and giveaways with campus surf clubs"), null)
-  assert.equal(label('a large campus ambassador program'), null)
-  assert.equal(label('previewed at college game-day activations in Austin'), null)
+t('game day / campus life = 15 — where the product lives, never campus marketing', () => {
+  for (const s of ['Kansas City gameday/vintage tee brand licensed with 50–60 schools', 'Licensed collegiate headwear maker', 'sold at the Liacouras Center and campus bodegas',
+    'big with students and tailgaters', 'the it-drink of tailgates and beach days', 'Late-night cookies built around college campuses',
+    'Built on campus — once in ~5,000 university bookstores', 'on campuses via Compass Group dining', 'Chicken finger chain with fanatical college-town followings',
+    'owns the yoga and campus-wear market']) assert.equal(pts(s), 15, s)
+  for (const s of ["ran a 'Dakine Days' campus tour with gear and giveaways with campus surf clubs", 'a large campus ambassador program', 'A large campus brand ambassador program',
+    'previewed at college game-day activations in Austin', 'Ran a sampling tour across 30 campuses', 'Brand ambassadors on 100+ campuses', 'Hires campus reps at 40 schools',
+    'Campus sponsorships at five SEC schools', 'Ran campus pop-ups at 12 schools', 'HQ on a 40-acre corporate campus in Ohio', 'a campus ambassador program at 50 campuses',
+    'Sampling on 40 college campuses this fall', 'Official Rum of McNeese Athletics (Jul 2025) incl. tailgate sponsorship', 'Ran a tailgate tour across SEC schools',
+    'Tailgate activations at Texas A&M', 'Presenting sponsor of ESPN College GameDay', 'ambassadors on campus hand out samples']) assert.equal(label(s), null, s)
 })
 
-t('energy / hydration / workout = 10', () => {
-  assert.equal(pts('Zero-sugar electrolyte powder'), 10)
-  assert.equal(pts('Protein snack brand big in gym culture'), 10)
-  assert.equal(pts('High-caffeine coffee brand'), 10)
-  assert.equal(label('Canned vodka of UFC. High-energy, young-male skew.'), null, 'a vibe, not a product')
+t('energy / hydration / workout = 10 — the product, never a vibe, solar power or skincare', () => {
+  for (const s of ['Zero-sugar electrolyte powder', 'Protein snack brand big in gym culture', 'High-caffeine coffee brand', 'Celsius sparkling energy drinks',
+    'Clean-label daily hydration powder', 'Energy drink in a mint flavor']) assert.equal(pts(s), 10, s)
+  for (const s of ['Canned vodka of UFC. High-energy, young-male skew.', 'Herbal soda, caffeine-free and zero sugar', 'Zero caffeine kids drink',
+    'Candle brand that brings good energy to every room', 'Solar panels for clean energy at home', 'Energy Star certified appliances',
+    'Apparel with the energy of LA streetwear', 'Skincare with hydrating hyaluronic serum and a caffeine eye cream', 'Face moisturizer for deep hydration',
+    'Gen Z energy and humor in its ads', 'Hard seltzer brewed with solar energy']) assert.equal(label(s), null, s)
+  assert.equal(S.studentUse('', 'Raze Energy').points, 10, 'a name says energy')
+  assert.equal(S.studentUse('Premium tequila', 'Prime Hydration').points, 10)
+  assert.equal(S.studentUse('Serum for deep skin care', 'Hydrate Labs'), null, 'skincare never')
 })
 
 t('first tier that matches wins; nothing → null', () => {
@@ -71,27 +88,35 @@ t('first tier that matches wins; nothing → null', () => {
   assert.equal(S.studentUse('Mojo: Nicotine-free Energy Pouches').word, 'Energy Pouches', 'the words as written')
 })
 
-t('a roster brand: name, About, products and the Discover write-up — never the pitch or Leo’s notes', () => {
+t('a roster brand: About, products and the Discover line — never the pitch or Leo’s notes', () => {
   const notes = "Discover: Neuro caffeine/nootropic energy gum and mints. First mass-retail entry Feb 2026.\n" +
     "Activation idea: Finals-week 'Study Hall' pop-up before a campus show.\nFound in: https://example.com/neuro"
   assert.equal(S.discoverWriteUp(notes), 'Neuro caffeine/nootropic energy gum and mints. First mass-retail entry Feb 2026.')
-  assert.equal(S.discoverWriteUp('ACQUIRED-- NOT IN PLAY Discover: Spiked lemonade. Activation idea: party bus'), 'Spiked lemonade.')
+  assert.equal(S.discoverWriteUp('ACQUIRED-- NOT IN PLAY\nDiscover: Spiked lemonade. activation idea: party bus'), 'Spiked lemonade.', 'case-insensitive split')
+  assert.equal(S.discoverWriteUp('Leo: saw on Discover: party at the frat\nDiscover: Premium tequila'), 'Premium tequila', 'only a line that starts with it')
+  assert.equal(S.discoverWriteUp('Discover: Hangover drink\r\nActivation idea: frat party'), 'Hangover drink')
   assert.equal(S.discoverWriteUp('Zach Knows - SKIP'), '')
   assert.equal(S.discoverWriteUp(null), '')
   const pitchOnly = 'Discover: Premium tequila from Jalisco.\nActivation idea: Finals-week study break at a campus party.'
-  assert.equal(S.studentUse(S.brandWriteUp({ name: 'Casa X', notes: pitchOnly })), null, 'our pitch is never read')
-  assert.equal(S.studentUse(S.brandWriteUp({ name: 'Casa X', notes: 'Leo: they want a party at the game-day tailgate' })), null, 'Leo’s notes are never read')
-  assert.equal(pts(S.brandWriteUp({ name: 'Neuro', notes })), 20)
-  assert.equal(pts(S.brandWriteUp({ name: 'Liquid I.V.', about: 'Hydration multiplier popular for hangover recovery' })), 15)
-  assert.equal(pts(S.brandWriteUp({ name: 'Buoy', topProducts: 'Hydration drops' })), 10)
+  assert.equal(S.studentUse(S.brandWriteUp({ notes: pitchOnly }), 'Casa X'), null, 'our pitch is never read')
+  assert.equal(S.studentUse(S.brandWriteUp({ notes: 'Leo: they want a party at the game-day tailgate' }), 'Casa X'), null, 'Leo’s notes are never read')
+  assert.equal(pts(S.brandWriteUp({ notes })), 20)
+  assert.equal(pts(S.brandWriteUp({ about: 'Hydration multiplier popular for hangover recovery' })), 15)
+  assert.equal(pts(S.brandWriteUp({ topProducts: 'Hydration drops' })), 10)
 })
 
-t('the reason line says what matched, or why nothing did', () => {
+t('the reason line says what matched, or why nothing did; past 100 says the score stops there', () => {
   const r = S.studentReason(S.studentUse('nootropic gum'), true)
   assert.deepEqual(r, { good: true, text: 'made for studying / focus (“nootropic”)', points: 20 })
   assert.equal(S.studentReason(null, true).points, 0)
   assert.match(S.studentReason(null, true).text, /no student use named/)
   assert.match(S.studentReason(null, false).text, /isn’t on file/)
+  const rs = [{ good: true, text: 'a', points: 70 }, { good: true, text: 'b', points: 45 }]
+  assert.equal(S.capAt100(rs), 100)
+  assert.equal(rs.reduce((n, x) => n + x.points, 0), 100, 'the points still add up to the score')
+  assert.equal(rs.at(-1).points, -15)
+  const under = [{ good: true, text: 'a', points: 60 }]
+  assert.equal(S.capAt100(under), 60); assert.equal(under.length, 1)
 })
 
 console.log(`student-fit: ${n} passed`)

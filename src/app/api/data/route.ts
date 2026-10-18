@@ -7700,19 +7700,17 @@ const handlers: Record<string, Handler> = {
 
   // The "Add a brand" chat (src/lib/chat-add.ts, docs/add-a-brand-chat.md):
   // a Claude session Leo sends an Instagram screenshot or a name to. It
-  // researches on the open web, shows Leo the card, and only on his yes
-  // calls this with apply. Preview = the cleaned brand + what on the roster
-  // it could already be. Apply refuses a possible duplicate unless Leo said
-  // it's a different company (notSame). Category is always a real key (the
-  // keyword guess if none, never a model call). Facts (sales, funding,
-  // college / music…) are never written here: they go to the research
-  // review on Stock take → Brand Fit, like every other Claude research.
-  // The "Add a brand" chat (docs/add-a-brand-chat.md). Preview by
-  // default: the cleaned card, possible matches on the roster, and the
-  // facts exactly as they'd be written. Leo's yes on that card is the
-  // review (Leo, Oct 12 2026: "my yes is the review, so skip Stock take"):
-  // apply makes the brand and writes those facts onto it in one go. Only
-  // ever a brand it makes — facts never land on an existing one this way.
+  // researches on the open web, previews, and applies. Every brand Leo sends
+  // is a yes once real information is found (Leo, Oct 18 2026: it used to
+  // ask "Add it?" first); it asks only when the preview finds a possible
+  // match. Preview by default: the cleaned card, what on the roster it could
+  // already be, and the facts exactly as they'd be written. Apply refuses a
+  // possible duplicate unless Leo said it's a different company (notSame;
+  // an exact name never) and makes the brand and writes those facts onto it
+  // in one go — Leo sending the brand is the review (Oct 12 2026: "skip
+  // Stock take"); the chat shows him every fact after. Only ever a brand it
+  // makes — facts never land on an existing one this way. Category is
+  // always a real key (the keyword guess if none, never a model call).
   async chatAddBrand({ brand: raw, facts, apply, notSame, expect }: any) {
     const { row, error } = cleanChatBrand(raw)
     if (error || !row) throw new Error(error ?? 'Could not read the brand')

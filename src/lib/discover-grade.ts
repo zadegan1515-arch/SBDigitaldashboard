@@ -67,7 +67,7 @@ type FindRow = {
 export function gradeDiscovery(row: FindRow, ctx: { priority: Priority; acceptRate: number | null; now: Date }): DiscoverGrade {
   const fs = scoreFind({
     priority: ctx.priority, signals: row.signals, text: row.text, giant: row.giant, hasParent: row.hasParent,
-    name: row.name, writeUp: row.writeUp,
+    name: row.name, writeUp: row.writeUp, now: ctx.now,
   })
   let grade = letterFor(fs.score)
   let capped: string | null = null
