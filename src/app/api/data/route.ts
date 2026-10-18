@@ -84,6 +84,10 @@ import { stopIndex, stoppedMatch, stopWords, stopKeys } from '@/lib/do-not-conta
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import { isAccepted, acceptedWhen, acceptedStage } from '@/lib/accepted'
 import {
+  talksState, suggestTalks, isTalksPerson, talksPersonStage, stageRank, talksJourney, compareTalks, cleanLink, sentenceCount, missingFields,
+  OVERVIEW_MAX_SENTENCES, OVERVIEW_MAX_CHARS, IDEA_MAX_CHARS, NOTE_MAX_CHARS, type TalksState,
+} from '@/lib/in-talks'
+import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
   listAttendees, listDupCandidates, mergeAttendees, deleteAttendee, importAttendees, segmentsOverview,
 } from '@/lib/audience'
@@ -3524,7 +3528,7 @@ async function reconcileBrandTargets(brandId: string, perBrandArg?: number) {
 
 const COMBINE_LAST_KEY = 'parentCombineLast'
 // Everything that hangs off a brand (Partner, one per brand, apart).
-const COMBINE_TABLES = ['contact', 'target', 'deal', 'showSponsor', 'document', 'activation', 'boardVisit', 'boardAccessRequest', 'opsMessage', 'discoveredBrand'] as const
+const COMBINE_TABLES = ['contact', 'target', 'deal', 'showSponsor', 'document', 'activation', 'boardVisit', 'boardAccessRequest', 'opsMessage', 'discoveredBrand', 'brandNote'] as const
 type CombineTable = (typeof COMBINE_TABLES)[number]
 
 const nameWords = (s: unknown) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -4751,6 +4755,51 @@ async function handWaitingIds(): Promise<Set<string>> {
 // The brand-facing Show Board link (what a brand is sent). SPONSOR_HOST only
 // when Leo has actually attached that domain in Vercel — otherwise its links
 // 404, so the fallback is the page on the deployment itself, which always works.
+// In talks (src/lib/in-talks.ts): which brands are in — a call booked or a
+// hand add, a removal wins over anything older — and which replied brands
+// to offer (+ Add). One read shared by listInTalks and listTalksToFill.
+async function talksMembership() {
+  const [calls, hand, replies] = await Promise.all([
+    prisma.target.findMany({ where: { OR: [{ callBookedAt: { not: null } }, { callAt: { not: null } }] }, select: { brandId: true, callBookedAt: true, createdAt: true } }),
+    prisma.brand.findMany({ where: { talksAddedAt: { not: null } }, select: { id: true } }),
+    prisma.target.findMany({
+      where: { OR: [{ status: { in: ['replied', 'converted'] } }, { repliedAt: { not: null } }] },
+      select: { brandId: true, repliedAt: true, updatedAt: true, contact: { select: { name: true, title: true } } },
+    }),
+  ])
+  const ids = [...new Set([...calls.map(c => c.brandId), ...hand.map(h => h.id), ...replies.map(r => r.brandId)])]
+  const brands = ids.length ? await prisma.brand.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true, category: true, kind: true, talksAddedAt: true, talksRemovedAt: true, stoppedAt: true },
+  }) : []
+  const callsBy = new Map<string, Date[]>()
+  // A call from before callBookedAt was kept counts from the row's creation
+  // (never its last change, or any later edit would undo a Take off).
+  for (const c of calls) callsBy.set(c.brandId, [...(callsBy.get(c.brandId) ?? []), c.callBookedAt ?? c.createdAt])
+  const repliesBy = new Map<string, typeof replies>()
+  for (const r of replies) repliesBy.set(r.brandId, [...(repliesBy.get(r.brandId) ?? []), r])
+  const states = new Map<string, TalksState>()
+  const onIds: string[] = []
+  const suggest: { id: string; name: string; category: string | null; repliedAt: string; who: string | null }[] = []
+  for (const b of brands) {
+    const st = talksState({ addedAt: b.talksAddedAt, removedAt: b.talksRemovedAt, callsBooked: callsBy.get(b.id) ?? [] })
+    if (st.on) { states.set(b.id, st); onIds.push(b.id); continue }
+    if (b.kind === 'person') continue
+    const rs = (repliesBy.get(b.id) ?? []).map(r => ({ at: r.repliedAt ?? r.updatedAt, who: r.contact.name + (r.contact.title ? ' — ' + r.contact.title : '') }))
+      .sort((x, y) => y.at.getTime() - x.at.getTime())
+    if (suggestTalks({ replies: rs.map(r => r.at), removedAt: b.talksRemovedAt, on: false, stopped: !!b.stoppedAt })) {
+      suggest.push({ id: b.id, name: b.name, category: b.category, repliedAt: rs[0].at.toISOString(), who: rs[0].who })
+    }
+  }
+  suggest.sort((x, y) => y.repliedAt.localeCompare(x.repliedAt))
+  return { onIds, states, suggest }
+}
+// Who wrote it, as the profile shows it: a Claude session's dashboard token
+// reads as "Claude".
+function talksBy(user: unknown): string | null {
+  return user === 'CLI' ? 'Claude' : user ? String(user) : null
+}
+
 function sponsorBoardUrl(): string {
   const host = (process.env.SPONSOR_HOST || '').trim()
   return host
@@ -7297,7 +7346,7 @@ const handlers: Record<string, Handler> = {
     const brand = await prisma.brand.findUnique({
       where: { id: brandId },
       include: {
-        _count: { select: { contacts: true, targets: true, shows: true, deals: true } },
+        _count: { select: { contacts: true, targets: true, shows: true, deals: true, brandNotes: true } },
         shows: { select: { valueCents: true } },
       },
     })
@@ -7310,6 +7359,7 @@ const handlers: Record<string, Handler> = {
       targets: brand._count.targets,
       shows: brand._count.shows,
       deals: brand._count.deals,
+      notes: brand._count.brandNotes,
       attachedCents,
     }
 
@@ -7330,7 +7380,7 @@ const handlers: Record<string, Handler> = {
     if (!fromId || !toId) throw new Error('Pick both brands')
     if (fromId === toId) throw new Error('That is the same brand')
     const [from, to] = await Promise.all([
-      prisma.brand.findUnique({ where: { id: fromId }, include: { partner: true, _count: { select: { contacts: true, targets: true, shows: true, deals: true, documents: true, activations: true, boardVisits: true } } } }),
+      prisma.brand.findUnique({ where: { id: fromId }, include: { partner: true, _count: { select: { contacts: true, targets: true, shows: true, deals: true, documents: true, activations: true, boardVisits: true, brandNotes: true } } } }),
       prisma.brand.findUnique({ where: { id: toId }, include: { partner: true } }),
     ])
     if (!from || !to) throw new Error('Brand not found')
@@ -7353,6 +7403,7 @@ const handlers: Record<string, Handler> = {
       shows: from._count.shows - dupShowIds.length, dupShows: dupShowIds.length,
       deals: from._count.deals, documents: from._count.documents,
       activations: from._count.activations, boardVisits: from._count.boardVisits,
+      notes: from._count.brandNotes,
     }
     if (!confirm) return { merged: false, summary }
 
@@ -7367,6 +7418,12 @@ const handlers: Record<string, Handler> = {
     for (const k of ['liMembers', 'liMembersAt', 'salesCents', 'fundingCents', 'lastRoundAt', 'usStatus', 'sponsorsCollege', 'sponsorNote', 'bizStatus', 'acquiredBy', 'researchedAt', 'researchNote'] as const) {
       if (to[k] == null && from[k] != null) fill[k] = from[k]
     }
+    // The In talks profile, fill-if-empty the same way: socials, and the
+    // overview / idea with who wrote them; a hand add the keeper lacks.
+    for (const k of ['instagramUrl', 'tiktokUrl'] as const) if (to[k] == null && from[k] != null) fill[k] = from[k]
+    if (to.overview == null && from.overview != null) Object.assign(fill, { overview: from.overview, overviewBy: from.overviewBy, overviewAt: from.overviewAt })
+    if (to.activationIdea == null && from.activationIdea != null) Object.assign(fill, { activationIdea: from.activationIdea, activationIdeaBy: from.activationIdeaBy, activationIdeaAt: from.activationIdeaAt })
+    if (from.talksAddedAt && (!to.talksAddedAt || from.talksAddedAt > to.talksAddedAt)) Object.assign(fill, { talksAddedAt: from.talksAddedAt, talksAddedBy: from.talksAddedBy })
     // The keeper answers to the duplicate's names from now on, so the
     // next capture or paste under the old name finds it instead of making
     // the brand again.
@@ -7389,6 +7446,7 @@ const handlers: Record<string, Handler> = {
       await tx.boardAccessRequest.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
       await tx.opsMessage.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
       await tx.discoveredBrand.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
+      await tx.brandNote.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
       // Partner is one-per-brand: move it only if the keeper has none.
       if (from.partner && !to.partner) {
         await tx.partner.update({ where: { brandId: fromId }, data: { brandId: toId } })
@@ -7767,8 +7825,14 @@ const handlers: Record<string, Handler> = {
     const peopleMergeUndo = lastMerge && Date.now() - Date.parse(lastMerge.at) < 864e5
       ? { at: lastMerge.at, people: lastMerge.recs.map((r: any) => r.name) } : null
 
+    // In talks (the top tab): a call booked or a hand add, a removal wins.
+    const talks = talksState({
+      addedAt: brand.talksAddedAt, removedAt: brand.talksRemovedAt,
+      callsBooked: brand.targets.filter(t => t.callBookedAt || t.callAt).map(t => t.callBookedAt ?? t.createdAt),
+    })
+
     return {
-      brand: brandOut, events, money, fit, liHidden, samePeople, peopleMergeUndo,
+      brand: brandOut, events, money, fit, liHidden, samePeople, peopleMergeUndo, talks,
       // A big company works ten at a time, a Top category's brand four
       // (the Work menu's suggestion).
       big: isBigBrand(brand),
@@ -14107,6 +14171,237 @@ const handlers: Record<string, Handler> = {
     return { people, total: people.length, brands: new Set(people.map(p => p.brandId)).size }
   },
 
+  // -------- In talks (Leo, Oct 18 2026; rules in src/lib/in-talks.ts) --------
+  // The top tab: every brand with a call booked, plus any put there by hand
+  // (Add to In talks), each with the people who answered, its links, the
+  // overview and activation idea, dated notes, its deal and Show Board
+  // activity — and brands that replied but aren't there yet (+ Add).
+  async listInTalks() {
+    const now = new Date()
+    const { onIds, states, suggest } = await talksMembership()
+    const today = startOfLocalDay(now)
+    const [full, visits, rates] = await Promise.all([
+      onIds.length ? prisma.brand.findMany({
+        where: { id: { in: onIds } },
+        include: {
+          contacts: { select: { id: true, name: true, title: true, email: true, phone: true, linkedinUrl: true, doNotContactAt: true } },
+          targets: {
+            select: {
+              id: true, contactId: true, status: true, sentAt: true, repliedAt: true, updatedAt: true, dmSentAt: true, callAt: true,
+              callBookedAt: true, handDeclinedAt: true, emailedAt: true,
+              events: { where: { toStatus: 'accepted' }, orderBy: { createdAt: 'asc' }, take: 1, select: { createdAt: true } },
+              emails: { where: { direction: 'in' }, take: 1, select: { id: true } },
+            },
+          },
+          brandNotes: { orderBy: { createdAt: 'desc' }, select: { id: true, text: true, by: true, createdAt: true, updatedAt: true } },
+          deals: { orderBy: { updatedAt: 'desc' }, select: { id: true, name: true, stage: true, valueCents: true, nextStep: true, followUpAt: true, createdAt: true, updatedAt: true } },
+        },
+      }) : Promise.resolve([] as any[]),
+      onIds.length ? prisma.boardVisit.groupBy({ by: ['brandId'], where: { brandId: { in: onIds } }, _count: { _all: true }, _max: { createdAt: true } }) : Promise.resolve([] as any[]),
+      recentAcceptRates(),
+    ])
+    const visitBy = new Map<string, { opens: number; lastAt: Date | null }>(visits.map((v: any) => [v.brandId, { opens: v._count._all, lastAt: v._max.createdAt }]))
+    const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null)
+    const brands = full.map((b: any) => {
+      const st = states.get(b.id)!
+      const contactOf = new Map<string, any>(b.contacts.map((c: any) => [c.id, c]))
+      const people: any[] = []
+      const invited: any[] = []
+      const reached = new Set<string>()
+      let lastAt: Date | null = null
+      const touch = (d: Date | null | undefined) => { if (d && (!lastAt || d > lastAt)) lastAt = d }
+      let nextCall: { at: Date; name: string } | null = null
+      let lastCall: { at: Date; name: string } | null = null
+      for (const t of b.targets) {
+        const c = contactOf.get(t.contactId)
+        if (!c) continue
+        const facts = {
+          status: t.status, sentAt: t.sentAt, repliedAt: t.repliedAt, updatedAt: t.updatedAt, dmSentAt: t.dmSentAt,
+          callAt: t.callAt, callBookedAt: t.callBookedAt, handDeclinedAt: t.handDeclinedAt, acceptedAt: t.events[0]?.createdAt ?? null,
+          emailReply: t.emails.length > 0, contactStopped: !!c.doNotContactAt, brandStopped: !!b.stoppedAt,
+        }
+        if (isTalksPerson(facts)) {
+          const s = talksPersonStage(facts, now)
+          reached.add(c.id)
+          ;[t.repliedAt, facts.acceptedAt, t.dmSentAt, t.emailedAt, t.callBookedAt].forEach(touch)
+          if (t.callAt && !t.handDeclinedAt && !c.doNotContactAt) {
+            if (t.callAt >= today) { if (!nextCall || t.callAt < nextCall.at) nextCall = { at: t.callAt, name: c.name } }
+            else if (!lastCall || t.callAt > lastCall.at) lastCall = { at: t.callAt, name: c.name }
+          }
+          people.push({
+            targetId: t.id, contactId: c.id, name: c.name, title: c.title, email: c.email, phone: c.phone, linkedinUrl: c.linkedinUrl,
+            stage: s.stage, label: s.label, invitedAt: iso(t.sentAt), acceptedAt: iso(facts.acceptedAt),
+            repliedAt: iso(t.repliedAt), repliedBy: facts.emailReply ? 'email' : (['replied', 'converted'].includes(t.status) || t.repliedAt ? 'linkedin' : null),
+            callAt: iso(t.callAt), callBookedAt: iso(t.callBookedAt), emailedAt: iso(t.emailedAt),
+            _accepted: isAccepted(facts), _replied: ['replied', 'converted'].includes(t.status) || !!t.repliedAt,
+          })
+        } else if (t.sentAt && t.status === 'sent') {
+          reached.add(c.id)
+          invited.push({ contactId: c.id, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl, invitedAt: iso(t.sentAt) })
+        }
+      }
+      people.sort((x, y) => stageRank(x.stage) - stageRank(y.stage) || x.name.localeCompare(y.name))
+      invited.sort((x, y) => (y.invitedAt || '').localeCompare(x.invitedAt || ''))
+      ;[b.talksAddedAt, ...b.brandNotes.map((n: any) => n.createdAt), ...b.deals.map((d: any) => d.updatedAt)].forEach(touch)
+      const deal = b.deals.find((d: any) => d.stage !== 'lost') ?? b.deals[0] ?? null
+      const journey = talksJourney(people.map(p => ({
+        invitedAt: p.invitedAt ? new Date(p.invitedAt) : null, acceptedAt: p.acceptedAt ? new Date(p.acceptedAt) : null, accepted: p._accepted,
+        repliedAt: p.repliedAt ? new Date(p.repliedAt) : null, replied: p._replied,
+        callBookedAt: p.callBookedAt ? new Date(p.callBookedAt) : null, callAt: p.callAt ? new Date(p.callAt) : null,
+      })).concat(invited.map(p => ({ invitedAt: new Date(p.invitedAt), acceptedAt: null, accepted: false, repliedAt: null, replied: false, callBookedAt: null, callAt: null }))),
+      deal ? { stage: deal.stage, createdAt: deal.createdAt } : null)
+      const v = visitBy.get(b.id)
+      const fit = brandFit(b, b.contacts.filter(isReachable).length, rates, now)
+      return {
+        id: b.id, name: b.name, category: b.category, tier: b.tier, kind: b.kind,
+        website: b.website, linkedinUrl: b.linkedinUrl, instagramUrl: b.instagramUrl, tiktokUrl: b.tiktokUrl,
+        about: b.about, topProducts: b.topProducts, brandNotes: b.notes,
+        liMembers: b.liMembers, salesCents: b.salesCents, fundingCents: b.fundingCents, lastRoundAt: iso(b.lastRoundAt),
+        sponsorsCollege: b.sponsorsCollege, sponsorNote: b.sponsorNote, usStatus: b.usStatus, fit: fit.score,
+        overview: b.overview, overviewBy: b.overviewBy, overviewAt: iso(b.overviewAt),
+        idea: b.activationIdea, ideaBy: b.activationIdeaBy, ideaAt: iso(b.activationIdeaAt),
+        why: st.why, since: iso(st.since), addedBy: st.why === 'hand' ? b.talksAddedBy : null,
+        stopped: iso(b.stoppedAt), archived: !!b.passedAt,
+        nextCall: nextCall ? { at: iso((nextCall as any).at), name: (nextCall as any).name } : null,
+        lastCall: lastCall ? { at: iso((lastCall as any).at), name: (lastCall as any).name } : null,
+        people: people.map(({ _accepted, _replied, ...p }) => p), invited,
+        others: b.contacts.filter((c: any) => !reached.has(c.id)).length,
+        notes: b.brandNotes.map((n: any) => ({ id: n.id, text: n.text, by: n.by, at: iso(n.createdAt), editedAt: n.updatedAt.getTime() - n.createdAt.getTime() > 1000 ? iso(n.updatedAt) : null })),
+        deal: deal ? { id: deal.id, name: deal.name, stage: deal.stage, valueCents: deal.valueCents, nextStep: deal.nextStep, followUpAt: iso(deal.followUpAt) } : null,
+        board: { code: b.boardCode, opens: v?.opens ?? 0, lastAt: iso(v?.lastAt) },
+        journey: journey.map(s => ({ ...s, at: iso(s.at) })),
+        lastAt: iso(lastAt),
+        _sort: { name: b.name, stopped: !!b.stoppedAt, nextCallAt: nextCall ? (nextCall as any).at : null, lastAt },
+      }
+    })
+    brands.sort((x: any, y: any) => compareTalks(x._sort, y._sort))
+    return {
+      brands: brands.map(({ _sort, ...x }: any) => x),
+      suggestions: suggest,
+      sponsorUrl: sponsorBoardUrl(),
+      today: localDayKey(now),
+    }
+  },
+
+  // Add to In talks / Take off In talks (a removal wins over an older call
+  // or add; a newer call or add brings the brand back). Nothing else changes.
+  async setInTalks({ brandId, on = true, __user }: any) {
+    const b = await prisma.brand.findUnique({ where: { id: String(brandId || '') }, select: { id: true, name: true } })
+    if (!b) throw new Error('Brand not found')
+    const now = new Date()
+    await prisma.brand.update({
+      where: { id: b.id },
+      data: on ? { talksAddedAt: now, talksAddedBy: talksBy(__user) } : { talksRemovedAt: now },
+    })
+    return { brandId: b.id, brandName: b.name, on: !!on }
+  },
+
+  // The profile's own words and links: overview, activation idea, website,
+  // Instagram, TikTok. Only the fields sent change; onlyEmpty (Claude's daily
+  // check) never touches a field already filled — '' (none found) included.
+  // A Claude-written overview keeps to four sentences.
+  async saveTalksProfile({ brandId, overview, activationIdea, website, instagramUrl, tiktokUrl, onlyEmpty = false, __user }: any) {
+    const b = await prisma.brand.findUnique({
+      where: { id: String(brandId || '') },
+      select: { id: true, name: true, overview: true, activationIdea: true, website: true, instagramUrl: true, tiktokUrl: true },
+    })
+    if (!b) throw new Error('Brand not found')
+    const claude = __user === 'CLI'
+    const by = talksBy(__user)
+    const now = new Date()
+    const data: Record<string, any> = {}
+    const saved: string[] = []
+    const kept: string[] = []
+    const put = (field: 'overview' | 'activationIdea' | 'website' | 'instagramUrl' | 'tiktokUrl', value: string | null, label: string) => {
+      if (onlyEmpty && b[field] != null) { kept.push(label); return false }
+      if ((b[field] ?? null) === value) return false
+      data[field] = value
+      saved.push(label)
+      return true
+    }
+    const text = (v: unknown) => String(v ?? '').replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+    if (overview !== undefined) {
+      const t = text(overview)
+      if (t.length > OVERVIEW_MAX_CHARS) throw new Error(`The overview is too long — keep it under ${OVERVIEW_MAX_CHARS} characters`)
+      const n = sentenceCount(t)
+      if (claude && n > OVERVIEW_MAX_SENTENCES) throw new Error(`That overview has ${n} sentences — keep it to ${OVERVIEW_MAX_SENTENCES} at most`)
+      if (put('overview', t || null, 'overview')) { data.overviewBy = t ? by : null; data.overviewAt = t ? now : null }
+    }
+    if (activationIdea !== undefined) {
+      const t = text(activationIdea)
+      if (t.length > IDEA_MAX_CHARS) throw new Error(`The idea is too long — keep it under ${IDEA_MAX_CHARS} characters`)
+      if (put('activationIdea', t || null, 'activation idea')) { data.activationIdeaBy = t ? by : null; data.activationIdeaAt = t ? now : null }
+    }
+    // A website can't be "none": cleared = null.
+    if (website !== undefined) put('website', cleanLink('website', website) || null, 'website')
+    if (instagramUrl !== undefined) put('instagramUrl', cleanLink('instagram', instagramUrl), 'Instagram')
+    if (tiktokUrl !== undefined) put('tiktokUrl', cleanLink('tiktok', tiktokUrl), 'TikTok')
+    const after = Object.keys(data).length
+      ? await prisma.brand.update({ where: { id: b.id }, data, select: { overview: true, overviewBy: true, overviewAt: true, activationIdea: true, activationIdeaBy: true, activationIdeaAt: true, website: true, instagramUrl: true, tiktokUrl: true } })
+      : await prisma.brand.findUnique({ where: { id: b.id }, select: { overview: true, overviewBy: true, overviewAt: true, activationIdea: true, activationIdeaBy: true, activationIdeaAt: true, website: true, instagramUrl: true, tiktokUrl: true } })
+    return { brandId: b.id, brandName: b.name, saved, kept, noop: !saved.length, profile: after }
+  },
+
+  // Dated notes on a brand (In talks → Notes). Delete asks first: without
+  // confirm it only says which note would go.
+  async addBrandNote({ brandId, text, __user }: any) {
+    const t = String(text ?? '').trim()
+    if (!t) throw new Error('Write the note first')
+    if (t.length > NOTE_MAX_CHARS) throw new Error(`That note is too long — keep it under ${NOTE_MAX_CHARS} characters`)
+    const b = await prisma.brand.findUnique({ where: { id: String(brandId || '') }, select: { id: true, name: true } })
+    if (!b) throw new Error('Brand not found')
+    const n = await prisma.brandNote.create({ data: { brandId: b.id, text: t, by: talksBy(__user) } })
+    return { brandId: b.id, brandName: b.name, note: { id: n.id, text: n.text, by: n.by, at: n.createdAt.toISOString(), editedAt: null } }
+  },
+  async editBrandNote({ id, text }: any) {
+    const t = String(text ?? '').trim()
+    if (!t) throw new Error('A note can’t be empty — delete it instead')
+    if (t.length > NOTE_MAX_CHARS) throw new Error(`That note is too long — keep it under ${NOTE_MAX_CHARS} characters`)
+    const old = await prisma.brandNote.findUnique({ where: { id: String(id || '') }, include: { brand: { select: { name: true } } } })
+    if (!old) throw new Error('That note is gone')
+    if (old.text === t) return { noop: true, brandName: old.brand.name }
+    const n = await prisma.brandNote.update({ where: { id: old.id }, data: { text: t } })
+    return { brandId: n.brandId, brandName: old.brand.name, note: { id: n.id, text: n.text, by: n.by, at: n.createdAt.toISOString(), editedAt: n.updatedAt.toISOString() } }
+  },
+  async deleteBrandNote({ id, confirm = false }: any) {
+    const old = await prisma.brandNote.findUnique({ where: { id: String(id || '') }, include: { brand: { select: { name: true } } } })
+    if (!old) throw new Error('That note is gone')
+    const note = { id: old.id, text: old.text, by: old.by, at: old.createdAt.toISOString() }
+    if (!confirm) return { deleted: false, brandName: old.brand.name, note }
+    await prisma.brandNote.delete({ where: { id: old.id } })
+    return { deleted: true, brandId: old.brandId, brandName: old.brand.name, note }
+  },
+
+  // For Claude's daily In talks check (docs/in-talks.md): the brands in
+  // talks with something never filled — overview, idea, website, Instagram,
+  // TikTok — and what's known about them. Read-only.
+  async listTalksToFill() {
+    const { onIds } = await talksMembership()
+    if (!onIds.length) return { brands: [], rules: { overviewMaxSentences: OVERVIEW_MAX_SENTENCES } }
+    const rows = await prisma.brand.findMany({
+      where: { id: { in: onIds } },
+      select: {
+        id: true, name: true, aka: true, category: true, tier: true, website: true, linkedinUrl: true, instagramUrl: true, tiktokUrl: true,
+        about: true, topProducts: true, sponsorNote: true, overview: true, activationIdea: true, liMembers: true, notes: true,
+        brandNotes: { orderBy: { createdAt: 'desc' }, take: 8, select: { text: true, createdAt: true } },
+        targets: {
+          where: { OR: [{ status: { in: ['accepted', 'replied', 'converted'] } }, { callAt: { not: null } }, { repliedAt: { not: null } }] },
+          select: { status: true, callAt: true, contact: { select: { name: true, title: true } } },
+        },
+      },
+    })
+    const brands = rows.map(b => ({
+      id: b.id, name: b.name, aka: b.aka, category: b.category, tier: b.tier,
+      website: b.website, linkedinUrl: b.linkedinUrl, instagramUrl: b.instagramUrl, tiktokUrl: b.tiktokUrl,
+      about: b.about, topProducts: b.topProducts, sponsorNote: b.sponsorNote, liMembers: b.liMembers,
+      overview: b.overview, activationIdea: b.activationIdea, brandPageNotes: b.notes,
+      missing: missingFields(b),
+      people: b.targets.map(t => `${t.contact.name}${t.contact.title ? ' — ' + t.contact.title : ''} (${t.callAt ? 'call ' + localDayKey(t.callAt) : t.status})`),
+      notes: b.brandNotes.map(n => `${localDayKey(n.createdAt)}: ${n.text}`),
+    })).filter(b => b.missing.length)
+    return { brands, rules: { overviewMaxSentences: OVERVIEW_MAX_SENTENCES } }
+  },
+
   // -------- deal room --------
 
   // One screen per deal: the brand's people, the show and its
@@ -14743,7 +15038,7 @@ const handlers: Record<string, Handler> = {
     const brands = await prisma.brand.findMany({
       where: { id: { in: createdIds } },
       select: { id: true, name: true, createdAt: true, updatedAt: true, boardCode: true, partner: { select: { id: true } },
-        _count: { select: { contacts: true, targets: true, deals: true, shows: true, activations: true, documents: true, boardVisits: true } } },
+        _count: { select: { contacts: true, targets: true, deals: true, shows: true, activations: true, documents: true, boardVisits: true, brandNotes: true } } },
     })
     const ids = brands.map(b => b.id)
     const tally = async (rows: { brandId: string | null }[]) => {
@@ -14764,7 +15059,7 @@ const handlers: Record<string, Handler> = {
       const edited = stamp ? b.updatedAt.getTime() !== Date.parse(stamp) : b.updatedAt.getTime() - b.createdAt.getTime() > 120e3
       const why = c.contacts ? `${c.contacts} ${c.contacts === 1 ? 'person' : 'people'} on file`
         : c.targets ? 'in outreach' : c.deals ? 'has a deal' : c.shows ? 'on a show' : c.activations ? 'has an activation'
-        : c.documents ? 'has a document' : b.partner ? 'has a partner record' : c.boardVisits ? 'opened the Show Board'
+        : c.documents ? 'has a document' : c.brandNotes ? 'has notes' : b.partner ? 'has a partner record' : c.boardVisits ? 'opened the Show Board'
         : requests.get(b.id) ? 'asked for the Show Board' : mail.get(b.id) ? 'has ops mail'
         : planned.has(b.id) ? 'on a Schedule day' : b.boardCode ? 'has a Show Board code'
         : edited ? 'edited since' : null
@@ -14792,7 +15087,7 @@ const handlers: Record<string, Handler> = {
             where: {
               id: { in: goIds }, boardCode: null, partner: { is: null },
               contacts: { none: {} }, targets: { none: {} }, deals: { none: {} }, shows: { none: {} },
-              activations: { none: {} }, documents: { none: {} }, boardVisits: { none: {} },
+              activations: { none: {} }, documents: { none: {} }, boardVisits: { none: {} }, brandNotes: { none: {} },
               OR: brands.filter(b => goIds.includes(b.id)).map(b => ({ id: b.id, updatedAt: b.updatedAt })),
             },
           })

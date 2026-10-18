@@ -129,7 +129,27 @@ model Brand {
   about       String?
   topProducts String?
 
+  // In talks (Leo, Oct 18 2026 — top tab, src/lib/in-talks.ts): a brand with
+  // a call booked is in talks by itself; talksAddedAt = put there by hand
+  // (Add to In talks), talksRemovedAt = taken off by hand (wins over
+  // anything older — a later call or add brings it back).
+  talksAddedAt   DateTime?
+  talksAddedBy   String?
+  talksRemovedAt DateTime?
+  // Its In talks profile: socials, an overview (≤ 4 sentences, Claude's daily
+  // check writes it) and an activation idea anyone can edit. *By = who wrote
+  // it last ("Claude" or a teammate's first name).
+  instagramUrl     String?
+  tiktokUrl        String?
+  overview         String?
+  overviewBy       String?
+  overviewAt       DateTime?
+  activationIdea   String?
+  activationIdeaBy String?
+  activationIdeaAt DateTime?
+
   contacts    Contact[]
+  brandNotes  BrandNote[]
   targets     Target[]
   partner     Partner?
   shows       ShowSponsor[]
@@ -1148,4 +1168,19 @@ model WorkLog {
 
   @@index([day])
   @@index([sessionId])
+}
+
+// A dated note on a brand (In talks → Notes; Leo, Oct 18 2026). One row per
+// note, newest first on the page. Brand.notes (the brand page's free text)
+// stays as it is.
+model BrandNote {
+  id        String   @id @default(cuid())
+  brandId   String
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  text      String
+  by        String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([brandId])
 }

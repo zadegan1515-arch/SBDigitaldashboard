@@ -30,12 +30,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 `src/app/api/data/route.ts`.
 
 ## Where things live
-- `public/app.html` — the whole UI. Top nav is six groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
+- `public/app.html` — the whole UI. Top nav is seven groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
   `showView`): Home · Brands (All brands / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
-  Week plan / Schedule / Email / People / Archived / Email stats) ·
+  Week plan / Schedule / Email / People / Archived / Email stats) · **In talks** (one view, below) ·
   **Show Board** (Overview = code lookup (`boardCodeLookup`: the whole roster by name / aka, people and archived too — it used to filter listBrands' first 500; `test-board-lookup.js`) + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
-  exact NY times and time on board; **every** board open is logged, gate on or off (anonymous = "Visitor") / **In talks** = per-brand engagement cards (code, viewers, opens, timed minutes
+  exact NY times and time on board; **every** board open is logged, gate on or off (anonymous = "Visitor") / **Board codes** (was "In talks" until the In talks tab; view id still `talks`, `listTalks`) = per-brand engagement cards (code, viewers, opens, timed minutes
   via the board's 60s heartbeat → `BoardVisit.lastSeenAt`, picked shows, visit log) / Requests /
   Shows) · **Deals** (Board = the old Pipeline / Sponsorships) · **Audience** (Events / Attendees —
   attendee capture, sponsorship module Phase 1) · Operations (Materials / Team —
@@ -117,6 +117,38 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `node scripts/cc.mjs <fn> @file.json` reads args from a file. Tests: `node scripts/test-chat-log.mjs`,
   `node scripts/test-chat-log-hook.mjs`, `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-chat-log-e2e.js`,
   page in `test-claude-day.js` (4).
+- **In talks** (Leo, Oct 18 2026: "for the brands where the call has been scheduled i want u to put them there … a
+  different type of layout … cleaner and more complex … notes for each brand … the person/people we reached out to and
+  accepted … their linkedin and even email … the website and brand socials like instagram and tiktok … an overview … not
+  more than 4 sentences … an activation idea … editable … a copy button that we can paste into a new chat with instructions
+  on how to brainstorm"; his picks: a call booked puts a brand in by itself + an Add button; its own top tab; list + profile;
+  Claude's daily check writes the overview and idea, no API spend). Top tab between Outreach and Show Board (`#intalks`,
+  `IT` / `it*` in app.html, its own `.it-` look: a two-pane workspace — brands down the left, one brand's profile on the
+  right; a phone shows the list, a tap the profile with ‹ All brands). **Who's in** (rules pure in `src/lib/in-talks.ts`,
+  `talksState`): any Target with `callBookedAt` (or `callAt`), or `Brand.talksAddedAt` (+ Add to In talks — the brand page's
+  line `bTalksLine`, or the list's "Replied, not in talks" offers = brands with a reply, `suggestTalks`); **Take off In talks**
+  / × = `Brand.talksRemovedAt`, which wins over anything older (a newer call or add brings it back; nothing else changes).
+  `listInTalks` (read; `talksMembership` shared with `listTalksToFill`) = per brand: why / since, next and last call, the
+  people who answered (`isTalksPerson`: accepted, replied anywhere, or a call — Home → Accepted's stage words, furthest
+  first) with LinkedIn, email (Gmail compose — nothing sends) and phone, invited-no-answer, others on file, the journey
+  (`talksJourney`: Invited → Accepted → Replied → Call booked → Deal, first date each), Brand Fit, LinkedIn size, sales,
+  raised, sponsors, Show Board opens + Copy board link, the deal, dated notes, and the profile; order `compareTalks` (calls
+  coming up soonest first, then latest activity, stopped last). **Profile** fields on Brand: `instagramUrl`, `tiktokUrl`,
+  `overview`/`overviewBy`/`overviewAt`, `activationIdea`/`activationIdeaBy`/`activationIdeaAt` — `saveTalksProfile` (only the
+  fields sent; links through `cleanLink` — a handle, @handle or any link → the account URL, "none" = '' = they have none, empty
+  = null = look again; a Claude session's overview ≤ 4 sentences, `sentenceCount`; `onlyEmpty` never touches a filled field;
+  `*By` "Claude" for the dashboard token). **Notes** = table `BrandNote` (`addBrandNote` / `editBrandNote` /
+  `deleteBrandNote` — without `confirm` it only names the note; the page's confirm quotes it); Brand.notes shows under them
+  as "On the brand page". Notes move with mergeBrands (and the profile fills what the keeper lacks), combineParent and its
+  Undo (`COMBINE_TABLES`), deleteBrand names them, undoDiscoverBulk treats a brand with notes as touched. **Copy for a new
+  chat** (`itPrompt`): SB Agency, the brand, links, facts, overview, where we are (call, people, deal, board opens), our
+  notes, the current idea, then the brainstorm steps (what they want → up to 3 questions → 5 different ideas → a plan:
+  show, campus, content, where/when, team, rough budget lines kept apart from sponsorship and booking money, totals-only
+  reporting → a short version to paste back); 21+ for rtd / spirits / alcohol. **Claude's daily check**: the cloud session
+  "In talks (daily)" follows `docs/in-talks.md` (`listTalksToFill` → research → `saveTalksProfile` with `onlyEmpty` →
+  `addWorkLog`); every write is a ClaudeAction (`actionText`). Show Board's old "In talks" sub-tab is **Board codes**.
+  Tests: `node scripts/test-in-talks.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-in-talks.js` (page),
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-in-talks-e2e.js`.
 - **Leo's picked ideas, built Oct 6 2026** (retired from `build-ideas.ts`): **Weekly scoreboard** on Home (`#hm-score`,
   `weeklyScore` / `setWeeklyGoals`, Setting `weeklyGoals`, defaults `WEEKLY_GOALS_DEFAULT`): invites / accepted /
   replied / calls booked / deals / brands added per New York week (Mon–Sun), this week vs goal + 8 weeks of bars.
