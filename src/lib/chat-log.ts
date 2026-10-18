@@ -55,16 +55,23 @@ function cut(s: string, n: number): string {
   return t.length > n ? t.slice(0, n - 1).trimEnd() + '…' : t
 }
 
-// What Leo typed, as one short line (no secrets).
+// A message the system put in the chat, not Leo: a scheduled task's wake-up,
+// a background task finishing, a subagent's report, a webhook.
+const MACHINE = /^\s*<(task-notification|agent-message|system-reminder|webhook-payload|other-session|wake|child-session-event|teammate-message|scheduled-[a-z-]+|local-command-[a-z]+|command-[a-z]+|bash-[a-z]+)\b/i
+export function isMachineText(s: unknown): boolean {
+  return MACHINE.test(String(s ?? ''))
+}
+
+// What Leo typed, as one short line (no secrets); '' for a system message.
 export function askLine(ask: unknown, n = CHAT_ASK_MAX): string {
-  return cut(redactSecrets(ask), n)
+  return isMachineText(ask) ? '' : cut(redactSecrets(ask), n)
 }
 
 // The chat's name: the title Leo gave it, else the first thing he asked.
 export function chatTitle(given: unknown, firstAsk: unknown, fallback = 'Claude chat'): string {
   const g = cleanLine(redactSecrets(given))
   if (g) return cut(g, 90)
-  const a = cleanLine(redactSecrets(String(firstAsk ?? '').split(/\r?\n/).find(l => l.trim()) ?? ''))
+  const a = isMachineText(firstAsk) ? '' : cleanLine(redactSecrets(String(firstAsk ?? '').split(/\r?\n/).find(l => l.trim()) ?? ''))
   return a ? cut(a, 80) : fallback
 }
 
@@ -156,7 +163,7 @@ export function carryTicks(oldNeeds: WorkNeed[], oldDone: number[], newNeeds: Wo
 // The day's messages to the chat, oldest first; the same message twice in a
 // row is one (a retried post).
 export function addAsk(asks: ChatAsk[], at: string, ask: string): ChatAsk[] {
-  const list = Array.isArray(asks) ? asks.filter(a => a && typeof a.ask === 'string') : []
+  const list = Array.isArray(asks) ? asks.filter(a => a && typeof a.ask === 'string' && !isMachineText(a.ask)) : []
   const t = askLine(ask)
   if (!t) return list
   if (list.length && list[list.length - 1].ask === t) return list

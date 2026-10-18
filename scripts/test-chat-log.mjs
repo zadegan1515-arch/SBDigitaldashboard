@@ -111,6 +111,14 @@ for (let i = 0; i < 30; i++) many = L.addAsk(many, 't' + i, 'ask ' + i)
 is('kept to the last 20', [many.length, many[0].ask], [20, 'ask 10'])
 is('secret in an ask hidden', L.askLine('here: sk-ant-abcdefghijk123'), 'here: [hidden]')
 
+// System messages are never Leo's asks
+is('wake-up is machine', L.isMachineText('<task-notification> <task-type>queued</task-type>'), true)
+is('subagent report is machine', L.isMachineText('  <agent-message from="x">'), true)
+is('Leo’s words are not', L.isMachineText('why is <b> bold'), false)
+is('askLine drops a wake-up', L.askLine('<task-notification>x</task-notification>'), '')
+is('addAsk drops old wake-ups', L.addAsk([{ at: 't0', ask: '<task-notification> x' }], 't1', 'real ask').map(a => a.ask), ['real ask'])
+is('no title from a wake-up', L.chatTitle('', '<task-notification> x'), 'Claude chat')
+
 // Status
 is('working', L.chatStatus(2, 'x?', true), 'working')
 is('needs: open need', L.chatStatus(1, null, false), 'needs')

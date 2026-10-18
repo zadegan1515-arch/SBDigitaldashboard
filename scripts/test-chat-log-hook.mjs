@@ -50,6 +50,9 @@ is('empty transcript', readTranscript(''), { firstAsk: null, lastAsk: null, titl
 is('a broken line is skipped', readTranscript('{bad\n' + user('hi')).firstAsk, 'hi')
 is('tool result is not a prompt', promptText(JSON.parse(user([{ type: 'tool_result', content: 'x' }]))), null)
 is('meta row is not a prompt', promptText(JSON.parse(user('x', { isMeta: true }))), null)
+is('a scheduled wake-up is not a prompt', promptText(JSON.parse(user('<task-notification> <task-type>queued-remote-notifications</task-type>'))), null)
+is('a subagent report is not a prompt', promptText(JSON.parse(user('<agent-message from="a1"> [Subagent hand-back] …'))), null)
+is('the first real ask after a wake-up', readTranscript([user('<task-notification>x</task-notification>'), user('look at Mug')].join('\n')).firstAsk, 'look at Mug')
 
 const env = { CLAUDE_CODE_REMOTE_SESSION_ID: 'cse_01HfnTwnbPnSCv3BvLWgsbiJ' }
 const p1 = buildPost({ hook_event_name: 'UserPromptSubmit', prompt: 'how do we pitch them?' }, env, t)

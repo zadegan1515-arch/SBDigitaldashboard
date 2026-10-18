@@ -121,6 +121,21 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual([r.status, r.title, r.needs], ['needs', 'Brands reappearing after dismissal', 1])
     ok('a question marks it needs you; a summary fills another chat whole')
 
+    // 5b. A scheduled wake-up is never "what Leo asked"; a name-only summary
+    // renames a chat and leaves the rest (what it did, its time) as it was.
+    const W = 'session_01GWamcfgkNySHoXBwJAn6Ho'
+    await data('chatLog', { session: W, event: 'prompt', firstAsk: 'This session runs the daily brand hunt; a routine wakes it every morning.', ask: '<task-notification> <task-type>queued</task-type>', at: iso(90000) })
+    await data('chatLog', { session: W, event: 'reply', reply: 'Saved 17 brands to Discover.', at: iso(80000) })
+    let w = await prisma.workLog.findFirst({ where: { sessionId: W } })
+    assert.deepEqual([w.ask, JSON.parse(w.asks).length], [null, 0], 'no wake-up as an ask')
+    r = await data('chatLog', { session: W, event: 'summary', title: 'Brand hunt (daily)', about: 'Finds new brands for Discover every morning' })
+    const w2 = await prisma.workLog.findFirst({ where: { sessionId: W } })
+    assert.deepEqual([w2.title, w2.about, JSON.parse(w2.parsed).done, w2.lastAt.getTime(), w2.status],
+      ['Brand hunt (daily)', 'Finds new brands for Discover every morning', ['Saved 17 brands to Discover.'], w.lastAt.getTime(), 'done'])
+    await data('chatLog', { session: W, event: 'reply', reply: 'Saved 3 more.' })
+    assert.equal((await prisma.workLog.findFirst({ where: { sessionId: W } })).title, 'Brand hunt (daily)', 'the name sticks')
+    ok('a wake-up is never an ask; a name-only summary renames and keeps the rest')
+
     // 6. The day reads them; chatLog is never a "change Claude made".
     const rec = await data('dayRecap', {})
     const mine = rec.chats.find(c => c.sessionId === 'session_01HfnTwnbPnSCv3BvLWgsbiJ')
@@ -138,13 +153,13 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       parsed: JSON.stringify({ done: [], needs: [{ label: 'Still open', steps: [] }], ideas: [] }) } })
     const cd = await data('claudeDay', {})
     assert.deepEqual(cd.olderNeeds.map(o => o.title), ['Quiet chat'])
-    assert.equal(cd.chats.filter(c => c.source === 'session').length, 2)
+    assert.equal(cd.chats.filter(c => c.source === 'session').length, 3)
     ok('Claude’s day: a chat’s older needs give way to its latest day; a quiet chat’s stay')
 
     // 8. The review's read, a bad id, and pastes unchanged.
     const l = await data('listChatLogs', {})
-    assert.equal(l.chats.length, 4)
-    assert.equal(l.chats[0].sessionId, S2, 'latest first')
+    assert.equal(l.chats.length, 5)
+    assert.equal(l.chats[0].sessionId, W, 'latest first')
     const bad = await call('chatLog', { session: 'x y', event: 'prompt' })
     assert.equal(bad.ok, false)
     const bad2 = await call('chatLog', { session: S, event: 'nope' })

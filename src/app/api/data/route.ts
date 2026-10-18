@@ -69,7 +69,7 @@ import { readCoverFacts, brandCover } from '@/lib/coverage-db'
 import { LI_PER_DAY } from '@/lib/coverage'
 import { parseWorkLog, WORK_LOG_MAX_CHARS } from '@/lib/work-log'
 import {
-  sessionKey, sessionUrl, redactSecrets, askLine, chatTitle, digestReply, digestSummary, carryTicks, addAsk, chatStatus,
+  sessionKey, sessionUrl, redactSecrets, askLine, chatTitle, digestReply, digestSummary, carryTicks, addAsk, chatStatus, isMachineText,
   CHAT_REPLY_MAX, type ChatAsk,
 } from '@/lib/chat-log'
 import { BUILD_IDEAS } from '@/lib/build-ideas'
@@ -5341,14 +5341,18 @@ const handlers: Record<string, Handler> = {
     return prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'chatLog:' + sid}))::text`
       const row = await tx.workLog.findFirst({ where: { sessionId: sid, day: d } })
-      if (row?.lastAt && when < row.lastAt) return { id: row.id, day: d, status: row.status, skipped: 'older' }
+      // A summary with only a name / one-liner (the evening review naming a
+      // scheduled chat) leaves what it did, needs and its time as they are.
+      const nameOnly = ev === 'summary' && !!row && did == null && needs == null && ideas == null && question == null && asks == null && ask == null && status == null
+      if (!nameOnly && row?.lastAt && when < row.lastAt) return { id: row.id, day: d, status: row.status, skipped: 'older' }
       let parsed = json<{ done: string[]; needs: any[]; ideas: string[] }>(row?.parsed, { done: [], needs: [], ideas: [] })
       let ticks = json<number[]>(row?.needsDone, [])
-      let dayAsks = json<ChatAsk[]>(row?.asks, [])
+      // System messages (a scheduled wake-up, a background task) were never Leo's asks.
+      let dayAsks = json<ChatAsk[]>(row?.asks, []).filter(a => a && !isMachineText(a.ask))
       let q: string | null = row?.question ?? null
       let raw = row?.raw ?? ''
       let st = row?.status ?? 'done'
-      let lastAsk: string | null = row?.ask ?? null
+      let lastAsk: string | null = row?.ask && !isMachineText(row.ask) ? row.ask : (dayAsks[dayAsks.length - 1]?.ask ?? null)
       const stamp = when.toISOString()
       const take = (a: unknown, at2?: unknown) => {
         const line = askLine(a)
@@ -5364,7 +5368,7 @@ const handlers: Record<string, Handler> = {
         const line = askLine(question, 300)
         if (line) q = line
         st = 'needs'
-      } else {
+      } else if (!nameOnly) {
         const dg = ev === 'reply' ? digestReply(reply) : digestSummary({ did, needs, ideas, question })
         if (ev === 'summary') {
           for (const a of Array.isArray(asks) ? asks : []) take(typeof a === 'string' ? a : a?.ask, a?.at)
@@ -5382,11 +5386,13 @@ const handlers: Record<string, Handler> = {
         st = ev === 'summary' && ['working', 'needs', 'done'].includes(status) ? status : chatStatus(open, q, false)
       }
       const given = String(title ?? '').trim()
-      const name = given ? chatTitle(given, null) : row?.title || chatTitle('', firstAsk || dayAsks[0]?.ask || lastAsk)
+      const name = given ? chatTitle(given, null)
+        : row?.title && !isMachineText(row.title) ? row.title : chatTitle('', firstAsk || dayAsks[0]?.ask || lastAsk)
       const line = String(about ?? '').trim() ? askLine(about, 200) : row?.about ?? null
       const data = {
         title: name, raw, parsed: JSON.stringify(parsed), needsDone: JSON.stringify(ticks),
-        url: sessionUrl(sid), about: line, ask: lastAsk, asks: JSON.stringify(dayAsks), status: st, question: q, lastAt: when,
+        url: sessionUrl(sid), about: line, ask: lastAsk, asks: JSON.stringify(dayAsks), status: st, question: q,
+        lastAt: nameOnly && row?.lastAt ? row.lastAt : when,
       }
       const saved = row
         ? await tx.workLog.update({ where: { id: row.id }, data, select: { id: true } })

@@ -38,6 +38,9 @@ export function promptText(row) {
     .replace(/<(command-name|command-message|command-args|local-command-stdout|local-command-stderr)>[\s\S]*?<\/\1>/g, '')
     .trim()
   if (!text || /^\[Request interrupted/.test(text) || /^Caveat: The messages below/.test(text)) return null
+  // A system message in the chat (a scheduled wake-up, a background task, a
+  // subagent's report) — not Leo. Same list as isMachineText in chat-log.ts.
+  if (/^<(task-notification|agent-message|system-reminder|webhook-payload|other-session|wake|child-session-event|teammate-message|scheduled-[a-z-]+|local-command-[a-z]+|command-[a-z]+|bash-[a-z]+)\b/i.test(text)) return null
   return text
 }
 
