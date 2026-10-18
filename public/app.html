@@ -578,22 +578,45 @@
   .rc-more{font-size:13.5px;color:var(--ink-3);padding:4px 2px}
   .rc-idea .btn-ghost{white-space:nowrap}
   .rc-idea.picked{border-color:rgba(62,207,142,.45)}
-  /* Your chats (Claude's day, first card): one row per Claude chat */
-  .rc-tag.ch{min-width:86px;text-align:center;flex:none}
-  .ch-row .nm a{color:#fff;text-decoration:none}
-  .ch-row .nm a:hover,.ch-row .nm a:focus-visible{text-decoration:underline}
-  .ch-row .about{font-size:13.5px;color:var(--ink-2);margin-top:2px}
-  .ch-row .ask{font-size:13.5px;color:var(--ink-2);margin-top:6px}
-  .ch-row .ask i{font-style:normal;color:var(--ink-3)}
-  .ch-row .did{font-size:13.5px;color:var(--ink-2);margin-top:6px;line-height:1.5}
-  .ch-row details summary{cursor:pointer;font-size:13px;color:var(--ink-3);margin-top:6px}
-  .ch-row details .did{margin-top:2px}
-  .ch-row .need{padding:6px 0 0}
-  .ch-q{margin-top:8px;padding:8px 12px;border-left:3px solid var(--warn);background:rgba(232,182,76,.08);border-radius:0 8px 8px 0;font-size:13.5px;color:var(--ink-1)}
-  .ch-q i{font-style:normal;color:var(--warn);font-weight:700}
-  .ch-row .sm{margin-top:6px}
-  .ch-row .grow{overflow-wrap:anywhere}
-  @media (max-width:600px){.ch-row{flex-wrap:wrap;gap:6px}.ch-row .grow{flex-basis:100%}.rc-tag.ch{min-width:0}}
+  /* Your chats — its own page (Leo, Oct 17 2026: "simple and concise in bigger text") */
+  .chp-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  #chats h1{margin-top:14px}
+  .chp-dayname{font-size:16px;font-weight:700;color:var(--ink-2);min-width:150px;text-align:center}
+  .chp-sum{display:flex;gap:40px;flex-wrap:wrap;margin:20px 0 4px}
+  .chp-sum div{display:flex;flex-direction:column}
+  .chp-sum b{font-family:var(--display);font-size:46px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+  .chp-sum span{font-size:16px;color:var(--ink-2);margin-top:6px}
+  .chp-sum .r b{color:var(--bad)}
+  .chp-sum .g b{color:var(--good)}
+  .chp-h{font-size:15px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:34px 0 12px}
+  .chp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:16px;align-items:start}
+  @media (max-width:600px){.chp-grid{grid-template-columns:1fr}}
+  .chp-card{background:var(--surface-1);border:1px solid var(--border);border-left:5px solid var(--accent);border-radius:var(--radius);
+    padding:20px 22px;font-size:17px;line-height:1.5;color:var(--ink-1);overflow-wrap:anywhere}
+  .chp-card.needs{border-left-color:var(--bad)}
+  .chp-card.stalled{border-left-color:var(--warn)}
+  .chp-card.done{border-left-color:var(--good)}
+  .chp-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px}
+  .chp-title{font-size:22px;font-weight:800;color:#fff;text-decoration:none;line-height:1.25}
+  a.chp-title:hover,a.chp-title:focus-visible{text-decoration:underline}
+  .chp-open{font-size:15px;font-weight:700;color:var(--accent-hi);white-space:nowrap;text-decoration:none;overflow-wrap:normal}
+  .chp-open:hover{text-decoration:underline}
+  .chp-about{color:var(--ink-2);margin:6px 0 0}
+  .chp-line{margin:14px 0 0}
+  .chp-label{font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin:18px 0 6px}
+  .chp-needs{margin-top:16px;padding:14px 16px;border-radius:10px;background:rgba(240,113,107,.08);border:1px solid rgba(240,113,107,.28)}
+  .chp-needs .chp-label{margin-top:0;color:var(--bad)}
+  .chp-need{display:flex;gap:12px;align-items:flex-start;padding:6px 0;cursor:pointer}
+  .chp-need input{width:20px;height:20px;margin-top:5px;accent-color:var(--good);flex:none}
+  .chp-need ol{margin:4px 0 0 22px;color:var(--ink-2)}
+  .chp-need.done b{text-decoration:line-through;color:var(--ink-3)}
+  .chp-need.done ol{display:none}
+  .chp-q{margin:6px 0 0;font-weight:600}
+  .chp-did{margin:0 0 0 22px;color:var(--ink-2)}
+  .chp-did li{margin:3px 0}
+  .chp-more summary{cursor:pointer;color:var(--ink-3);font-size:15px;margin-top:6px}
+  .chp-time{font-size:14.5px;color:var(--ink-3);margin-top:16px}
+  .chp-empty{font-size:18px;color:var(--ink-3);padding:34px 0}
   .rc-hint{position:absolute;bottom:14px;left:0;right:0;text-align:center;font-size:13px;color:var(--ink-3);pointer-events:none}
   @media (max-width:700px){
     .rc-card{padding:72px 18px 56px}
@@ -1877,6 +1900,7 @@
           <button class="btn-ghost" id="hm-sendlist" title="Today’s LinkedIn invites by company, checked for people who don’t fit — copy it for Zach">Today’s list for Zach</button>
           <button class="btn-ghost" id="hm-paste" title="Paste what your Claude Code chats did — saved under today">+ Paste what Claude did</button>
           <button class="btn-ghost" id="hm-week" title="The week so far: who went out, who answered, what got found — with Copy for Zach">This week ▸</button>
+          <button class="btn-ghost" id="hm-chats" title="What each Claude chat did today and what it needs from you">Your chats ▸</button>
           <button class="btn-ghost" id="hm-claudeday" title="Everything Claude changed today — the site, the data — and what it needs from you">Claude’s day ▸</button>
           <button class="btn-solid" id="hm-recap">Today’s recap ▸</button>
         </div>
@@ -2053,6 +2077,19 @@
          top by Brand Fit plus what he adds — spread onto the week's sending
          days as an even mix of rank. The add bar is never redrawn, so
          typing in it survives every refresh. -->
+    <!-- Your chats (Leo, Oct 17 2026): what each Claude chat did and needs, its own page. -->
+    <section class="view page" id="chats">
+      <div class="chp-top">
+        <button class="btn-ghost" data-chp-home>← Home</button>
+        <span style="flex:1"></span>
+        <button class="btn-ghost" data-chp-day="-1" title="The day before" aria-label="The day before">‹</button>
+        <span class="chp-dayname" id="chp-day">Today</span>
+        <button class="btn-ghost" data-chp-day="1" id="chp-next" title="The day after" aria-label="The day after">›</button>
+      </div>
+      <h1>Your chats</h1>
+      <div id="chp-body"></div>
+    </section>
+
     <section class="view page wide" id="weekplan">
       <div class="eyebrow">Outreach</div>
       <h1>Week plan</h1>
@@ -2754,6 +2791,7 @@ var GROUP_OF = {
   pipeline: 'pipeline', sponsorships: 'pipeline',
   audience: 'audience', attendees: 'audience', segments: 'audience',
   materials: 'operations', team: 'operations',
+  chats: 'dashboard',
 };
 
 // --- keep my place ---------------------------------------------
@@ -3292,7 +3330,7 @@ function renderGlance() {
     return '<button class="hm-tile" data-rc-open="' + x[0] + '" style="--tc:' + x[4] + '">' +
       '<span class="k">' + x[1] + '</span><span class="v">' + x[2] + '</span><span class="s">' + esc(x[3]) + '</span></button>';
   }).join('') +
-    '<button class="hm-tile" data-cd-open="chats" style="--tc:var(--accent-hi)" title="What each Claude chat did today and what it needs from you">' +
+    '<button class="hm-tile" data-chp-open style="--tc:var(--accent-hi)" title="What each Claude chat did today and what it needs from you">' +
       '<span class="k">Claude chats today</span><span class="v">' + ch.all + '</span><span class="s">' + esc(chSub) + '</span></button>';
 }
 
@@ -3532,44 +3570,81 @@ function chCounts(chats) {
 function chTitle(c) {
   return c.url ? '<a href="' + esc(c.url) + '" target="_blank" rel="noopener" title="Open this chat">' + esc(c.title) + ' ↗</a>' : esc(c.title);
 }
-var CH_TAG = { needs: ['r', 'Needs you'], working: ['', 'Working'], stalled: ['w', 'No reply yet'], done: ['g', 'Done'] };
-function chRow(c) {
-  var s = chState(c);
-  var tag = CH_TAG[s];
-  var asks = c.asks || [];
-  var open = c.needs.filter(function (n) { return !n.done; });
-  var when = c.lastAt ? cdTime(c.lastAt) : '';
-  var h = '<div class="rc-row ch-row" data-ch="' + esc(c.id) + '"><span class="rc-tag ch ' + tag[0] + '">' + tag[1] + '</span><div class="grow">' +
-    '<span class="nm">' + chTitle(c) + '</span>' +
-    (c.about ? '<div class="about">' + rcText(c.about) + '</div>' : '');
-  if (c.ask) h += '<div class="ask"><i>' + (s === 'working' || s === 'stalled' ? 'Working on' : 'You asked') + ':</i> “' + rcText(c.ask) + '”' +
-    (asks.length > 1 ? ' <i>· ' + plural(asks.length, 'message') + ' today</i>' : '') + '</div>';
-  if (c.done.length) {
-    h += '<div class="did">' + c.done.slice(0, 4).map(function (d) { return '• ' + rcText(d); }).join('<br>') + '</div>';
-    if (c.done.length > 4) h += '<details><summary>+ ' + (c.done.length - 4) + ' more it did</summary><div class="did">' +
-      c.done.slice(4).map(function (d) { return '• ' + rcText(d); }).join('<br>') + '</div></details>';
-  }
-  if (c.question) h += '<div class="ch-q"><i>It asks:</i> ' + rcText(c.question) + '</div>';
-  open.forEach(function (n) { h += needHtml(c, n, true); });
-  if (asks.length > 1) h += '<details><summary>Everything you asked it today (' + asks.length + ')</summary><div class="did">' +
-    asks.map(function (a) { return esc(cdTime(a.at)) + ' — ' + rcText(a.ask); }).join('<br>') + '</div></details>';
-  h += '<div class="sm">' + (s === 'stalled' ? 'Started ' + esc(when) + ', nothing since — open it to check' : s === 'working' ? 'Since ' + esc(when) : when ? 'Last reply ' + esc(when) : '') + '</div>';
-  return h + '</div></div>';
+
+// The page (#chats, its own view; Leo, Oct 17 2026: "make it its own page
+// and make it simple and concise in bigger text"): three numbers, then the
+// chats under Needs you / Working / Done, one card each — its name (opens
+// it), one line on what it's for, what it needs (tick it off), up to three
+// things it did. Data = dayRecap's chats (today's, or ‹ › another day).
+var CHP = null;        // the day on screen (dayRecap's answer)
+var CHP_DAY = null;    // null = today
+function loadChats(day) {
+  day = day || null;
+  var again = showView('chats', day !== CHP_DAY);
+  CHP_DAY = day;
+  var turn = viewTurn('chats');
+  var body = document.getElementById('chp-body');
+  if (!again) body.innerHTML = '<div class="chp-empty">Loading…</div>';
+  return api('dayRecap', day ? { day: day } : {}).then(function (r) {
+    if (!turn()) return;
+    CHP = r;
+    if (r.isToday) { RC = r; renderGlance(); }
+    chpRender();
+  }).catch(function (e) { if (turn()) body.innerHTML = '<div class="chp-empty">Could not load your chats: ' + esc(e.message) + '</div>'; });
 }
-function chCard(cd) {
-  var list = chSorted(cd.chats), n = chCounts(cd.chats);
-  var h = list.length
-    ? '<div class="rc-lead"><b>' + plural(n.all, 'chat') + '</b> ' + (cd.isToday ? 'today' : 'that day') +
-        (n.needs ? ' · <b>' + n.needs + '</b> need' + (n.needs === 1 ? 's' : '') + ' you' : '') + (n.working ? ' · ' + n.working + ' working' : '') +
-        '. A title opens the chat.</div><div class="rc-list">' + list.map(chRow).join('') + '</div>'
-    : '<div class="rc-empty">No chats have logged ' + (cd.isToday ? 'yet today' : 'that day') + '.</div>';
-  return { key: 'chats', step: 'Chats', title: cd.isToday ? 'Your chats today' : 'Your chats', body: h, acts: '' };
+function chpGroups(chats) {
+  var g = { needs: [], working: [], done: [] };
+  chSorted(chats).forEach(function (c) { var s = chState(c); (s === 'needs' ? g.needs : s === 'done' ? g.done : g.working).push(c); });
+  return g;
+}
+function chpSum(g) {
+  return '<div class="chp-sum">' +
+    '<div class="r"><b>' + g.needs.length + '</b><span>need you</span></div>' +
+    '<div><b>' + g.working.length + '</b><span>working</span></div>' +
+    '<div class="g"><b>' + g.done.length + '</b><span>done</span></div></div>';
+}
+function chpRender() {
+  var r = CHP, body = document.getElementById('chp-body');
+  if (!r || !body) return;
+  document.getElementById('chp-day').textContent = r.isToday ? 'Today' : keyLabel(r.day, true);
+  document.getElementById('chp-next').disabled = r.day >= r.today;
+  var g = chpGroups(r.chats);
+  if (!g.needs.length && !g.working.length && !g.done.length) {
+    body.innerHTML = '<div class="chp-empty">No chats ' + (r.isToday ? 'yet today. They show up here by themselves as you use them.' : 'that day.') + '</div>';
+    return;
+  }
+  var part = function (title, list) {
+    return list.length ? '<h2 class="chp-h">' + title + '</h2><div class="chp-grid">' + list.map(chpCard).join('') + '</div>' : '';
+  };
+  body.innerHTML = '<div id="chp-sum">' + chpSum(g) + '</div>' + part('Needs you', g.needs) + part('Working', g.working) + part('Done', g.done);
+}
+function chpCard(c) {
+  var s = chState(c);
+  var when = c.lastAt ? cdTime(c.lastAt) : '';
+  var link = function (inner, cls) { return c.url ? '<a class="' + cls + '" href="' + esc(c.url) + '" target="_blank" rel="noopener">' + inner + '</a>' : ''; };
+  var h = '<article class="chp-card ' + s + '" data-chp="' + esc(c.id) + '"><div class="chp-head">' +
+    (c.url ? link(esc(c.title), 'chp-title') : '<span class="chp-title">' + esc(c.title) + '</span>') + link('Open chat ↗', 'chp-open') + '</div>';
+  if (c.about) h += '<p class="chp-about">' + rcText(c.about) + '</p>';
+  if (s === 'working' && c.ask) h += '<p class="chp-line"><b>Working on:</b> ' + rcText(c.ask) + '</p>';
+  if (s === 'stalled') h += '<p class="chp-line"><b>No reply since ' + esc(when) + '</b> — open it to check on it.</p>';
+  var open = c.needs.filter(function (n) { return !n.done; });
+  if (open.length || c.question) {
+    h += '<div class="chp-needs"><div class="chp-label">It needs from you</div>' + open.map(function (n) {
+      return '<label class="chp-need"><input type="checkbox" data-need="' + esc(c.id) + '" data-i="' + n.i + '"><span><b>' + rcText(n.label) + '</b>' +
+        (n.steps.length ? '<ol>' + n.steps.map(function (x) { return '<li>' + rcText(x) + '</li>'; }).join('') + '</ol>' : '') + '</span></label>';
+    }).join('') + (c.question ? '<p class="chp-q">' + rcText(c.question) + '</p>' : '') + '</div>';
+  }
+  if (c.done.length) {
+    var li = function (d) { return '<li>' + rcText(d) + '</li>'; };
+    h += '<div class="chp-label">What it did</div><ul class="chp-did">' + c.done.slice(0, 3).map(li).join('') + '</ul>';
+    if (c.done.length > 3) h += '<details class="chp-more"><summary>' + (c.done.length - 3) + ' more</summary><ul class="chp-did">' + c.done.slice(3).map(li).join('') + '</ul></details>';
+  }
+  h += '<div class="chp-time">' + (s === 'working' ? 'Working since ' + esc(when) : s === 'stalled' ? '' : when ? 'Last reply ' + esc(when) : '') + '</div>';
+  return h + '</article>';
 }
 
 function cdCards(cd) {
   var cards = [], h;
-  // 0. Your chats: what each one did and needs
-  if (cd.chats.some(chIsSession)) cards.push(chCard(cd));
   // 1. The site
   if (cd.commits.length) {
     h = '<div class="rc-lead">' + plural(cd.commits.length, 'update') + ' went live on the dashboard.</div><div class="rc-list">' +
@@ -3619,7 +3694,8 @@ function cdCards(cd) {
     return '<div class="rc-row"><div class="grow"><span class="nm">' + chTitle(c) + '</span><div class="ppl">' + rcText(c.question) + '</div></div></div>';
   }).join('') + '</div>';
   if (!h) h = '<div class="rc-empty">Nothing is waiting on you. 🎉</div>';
-  cards.push({ key: 'needs', step: 'Needs you', title: 'What Claude needs from you', body: h, acts: '' });
+  cards.push({ key: 'needs', step: 'Needs you', title: 'What Claude needs from you', body: h,
+    acts: cd.chats.some(chIsSession) ? '<button class="btn-ghost" data-rc-go="chats">Your chats →</button>' : '' });
   cards.forEach(function (c, i) { c.i = i; });
   return cards;
 }
@@ -3741,7 +3817,15 @@ document.addEventListener('click', function (ev) {
   var t = ev.target;
   var el;
   if ((el = t.closest('[data-rc-open]'))) { openRecap(el.getAttribute('data-rc-open')); return; }
-  if ((el = t.closest('[data-cd-open]'))) { openClaudeDay(null, el.getAttribute('data-cd-open')); return; }
+  if (t.closest('[data-chp-open]') || t.closest('#hm-chats')) { CHP_DAY = null; gotoView('chats'); return; }
+  if (t.closest('[data-chp-home]')) { gotoView('dashboard'); return; }
+  if ((el = t.closest('[data-chp-day]'))) {
+    if (!CHP) return;
+    var dk = keyShift(CHP.day, +el.getAttribute('data-chp-day'));
+    if (dk > CHP.today) return;
+    loadChats(dk === CHP.today ? null : dk);
+    return;
+  }
   if (t.closest('#hm-recap')) { openRecap(0); return; }
   if (t.closest('#hm-claudeday')) { openClaudeDay(); return; }
   if (t.closest('[data-dl-hide]')) { DL_SHOW = false; DL_PASTE = false; renderDayLog(); return; }
@@ -3821,22 +3905,23 @@ document.addEventListener('change', function (ev) {
   if (t.matches && t.matches('[data-dl-pick]')) { dlLoad(t.value); return; }
   if (t.matches && t.matches('[data-need]')) {
     var id = t.getAttribute('data-need'), i = +t.getAttribute('data-i'), done = t.checked;
-    // The same need can show twice (a chat's row and the Needs you card).
+    // The same need can show twice (the Your chats page and a card).
     document.querySelectorAll('[data-need="' + id + '"][data-i="' + i + '"]').forEach(function (box) {
       box.checked = done;
-      var lab = box.closest('.need'); if (lab) lab.classList.toggle('done', done);
+      var lab = box.closest('.need, .chp-need'); if (lab) lab.classList.toggle('done', done);
     });
-    [RC, DL_DATA, RC_SHOW, CD].forEach(function (r) {
+    [RC, DL_DATA, RC_SHOW, CD, CHP].forEach(function (r) {
       if (!r) return;
       r.chats.forEach(function (c) { if (c.id === id) c.needs.forEach(function (n) { if (n.i === i) n.done = done; }); });
       (r.olderNeeds || []).forEach(function (c) { if (c.id === id) c.needs.forEach(function (n) { if (n.i === i) n.done = done; }); });
     });
-    // A chat with nothing left open reads Done on its row.
-    var row = !document.getElementById('recap').hidden && document.querySelector('#recap [data-ch="' + id + '"]');
-    var chat = row && CD && CD.chats.filter(function (c) { return c.id === id; })[0];
-    if (row && chat) {
-      var tg = row.querySelector('.rc-tag.ch'), tag = CH_TAG[chState(chat)];
-      if (tg) { tg.className = 'rc-tag ch ' + tag[0]; tg.textContent = tag[1]; }
+    // Your chats: the numbers and the card's colour follow (the card moves
+    // to Done on the next load, not under the mouse).
+    var card = document.querySelector('#chats [data-chp="' + id + '"]');
+    var chat = card && CHP && CHP.chats.filter(function (c) { return c.id === id; })[0];
+    if (card && chat) {
+      card.className = 'chp-card ' + chState(chat);
+      var sum = document.getElementById('chp-sum'); if (sum) sum.innerHTML = chpSum(chpGroups(CHP.chats));
     }
     api('setWorkNeedDone', { id: id, index: i, done: done }).then(function () {
       renderGlance();
@@ -3863,6 +3948,8 @@ document.addEventListener('keydown', function (ev) {
 // have been done in another tab or on another screen).
 function homeRefreshOnReturn() {
   if (document.visibilityState === 'hidden') return;
+  var chats = document.getElementById('chats');
+  if (chats && chats.classList.contains('active') && document.getElementById('recap').hidden) { loadChats(CHP_DAY).catch(function () {}); return; }
   var home = document.getElementById('dashboard');
   if (!home || !home.classList.contains('active') || !document.getElementById('recap').hidden) return;
   loadToday().catch(function () {});
@@ -21366,6 +21453,7 @@ function gotoViewNow(id) {
   if (id === 'clarify') loadClarify();
   if (id === 'materials') showView('materials');
   if (id === 'team') loadTeam();
+  if (id === 'chats') loadChats();
 }
 
 // Coming back from the Google consent screen.

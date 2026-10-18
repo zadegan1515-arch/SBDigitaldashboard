@@ -135,51 +135,73 @@ async function main() {
   console.log('✓ 3. seen today stays shut; 10am opens the morning recap');
 
   // 4 ---------------------------------------------------------------
-  // Your chats: chats that log themselves (WorkLog source "session") — the
-  // Home tile counts them, opens Claude's day on their card; one row each,
-  // needs-you first, working, stalled, done; a title opens the chat; a
-  // ticked need turns its row Done.
+  // Your chats — its own page (Leo, Oct 17 2026: "simple and concise in
+  // bigger text"): the Home tile and "Your chats ▸" open it; three numbers,
+  // then Needs you / Working / Done, one card a chat; a title opens the chat;
+  // a ticked need turns its card Done; ‹ reads the day before. Claude's day
+  // no longer carries the chats, only a button to the page.
   const at = (h, m) => new Date(Date.UTC(2026, 9, 14, h, m)).toISOString();
   const sess = (id, o) => Object.assign({ id, source: 'session', sessionId: 'session_0' + id + 'abcdefghij', url: 'https://claude.ai/code/session_0' + id + 'abcdefghij',
     raw: 'reply', createdAt: at(18, 0), done: [], ideas: [], needs: [], asks: [], about: null, ask: null, question: null, status: 'done', lastAt: at(20, 0) }, o);
   const chats = [
     sess('s5', { title: 'Copy button size', done: ['Made the copy button bigger'], lastAt: at(21, 50) }),
     sess('s2', { title: 'BRAND PLANNING', status: 'working', ask: 'plan next week', lastAt: at(22, 30) }),
-    sess('s1', { title: 'Mug root beer', ask: 'how do we pitch Mug?', asks: [{ at: at(19, 0), ask: 'look up Mug' }, { at: at(21, 0), ask: 'how do we pitch Mug?' }],
+    sess('s1', { title: 'Mug root beer', about: 'How to pitch Mug', ask: 'how do we pitch Mug?',
       done: ['No ambassador program — pitch one', 'They run TikTok Lives', 'Yung Gravy track', 'Kittle deal', 'Fetch Day 2024'], status: 'needs', lastAt: at(21, 40),
       needs: [{ i: 0, label: 'Mug’s people on the dashboard', steps: ['Search PepsiCo people for MUG', 'Send to dashboard'], done: false }] }),
     sess('s3', { title: 'Brands reappearing', question: 'Want the same fix on Stock take?', status: 'needs', done: ['Dismissed brands stay dismissed'], lastAt: at(21, 0) }),
     sess('s4', { title: 'LinkedIn volume', status: 'working', ask: 'what if we send 40 a day?', lastAt: at(19, 0) }),
     { id: 'p1', title: 'Pasted report', raw: 'x', source: 'paste', done: ['Something pasted'], ideas: [], needs: [] },
   ];
-  H.dayRecap = () => Object.assign({}, RECAP, { chats });
+  H.dayRecap = (a) => Object.assign({}, RECAP, a && a.day && a.day !== DAY ? { day: a.day, isToday: false, chats: [] } : { chats });
   const cdBase = H.claudeDay;
   H.claudeDay = (a) => Object.assign(cdBase(a), { chats, olderNeeds: [] });
   const four = await openAt(browser, base, DAY + 'T22:45:00Z', ctx);   // seen today: nothing opens by itself
-  await four.page.waitForSelector('#hm-glance [data-cd-open="chats"]', { timeout: 15000 });
-  assert.match(await four.page.textContent('#hm-glance [data-cd-open="chats"]'), /Claude chats today\s*5\s*2 need you · 1 working/);
-  await four.page.click('#hm-glance [data-cd-open="chats"]');
-  await four.page.waitForSelector('#recap:not([hidden]) .ch-row', { timeout: 15000 });
-  const t4 = await four.page.$$eval('#recap .rc-card h2', (els) => els.map((e) => e.textContent));
-  assert.deepEqual(t4, ['Your chats today', 'What Claude changed on the site', 'What Claude changed in the data', 'What Claude’s sessions said', 'What Claude needs from you']);
-  const rows = await four.page.$$eval('#recap .ch-row', (els) => els.map((e) => [e.querySelector('.nm').textContent, e.querySelector('.rc-tag').textContent]));
-  assert.deepEqual(rows, [['Mug root beer ↗', 'Needs you'], ['Brands reappearing ↗', 'Needs you'], ['BRAND PLANNING ↗', 'Working'], ['LinkedIn volume ↗', 'No reply yet'], ['Copy button size ↗', 'Done']]);
-  assert.equal(await four.page.getAttribute('#recap [data-ch="s1"] .nm a', 'href'), 'https://claude.ai/code/session_0s1abcdefghij');
-  const mug = await four.page.textContent('#recap [data-ch="s1"]');
-  assert.match(mug, /You asked: “how do we pitch Mug\?” · 2 messages today[\s\S]*No ambassador program[\s\S]*\+ 1 more it did[\s\S]*Mug’s people on the dashboard[\s\S]*Search PepsiCo people/);
-  assert.match(await four.page.textContent('#recap [data-ch="s3"]'), /It asks: Want the same fix on Stock take\?/);
-  assert.match(await four.page.textContent('#recap [data-ch="s4"]'), /Working on: “what if we send 40 a day\?”[\s\S]*nothing since — open it to check/);
-  // The pasted report stays on the sessions card, not in Your chats.
-  assert.match(await four.page.textContent('#recap [data-rc-i="3"]'), /Pasted report/);
-  assert.doesNotMatch(await four.page.textContent('#recap [data-rc-i="3"]'), /Mug root beer/);
-  // Needs you: the chat's need and the question waiting on an answer.
-  assert.match(await four.page.textContent('#recap [data-rc-i="4"]'), /Mug’s people on the dashboard[\s\S]*Chats waiting on your answer[\s\S]*Brands reappearing[\s\S]*Want the same fix/);
-  await four.page.check('#recap [data-ch="s1"] [data-need="s1"]');
-  await four.page.waitForTimeout(200);
+  const P = four.page;
+  await P.waitForSelector('#hm-glance [data-chp-open]', { timeout: 15000 });
+  assert.match(await P.textContent('#hm-glance [data-chp-open]'), /Claude chats today\s*5\s*2 need you · 1 working/);
+  await P.click('#hm-glance [data-chp-open]');
+  await P.waitForSelector('#chats.active .chp-card', { timeout: 15000 });
+  assert.equal(await P.isHidden('#recap'), true, 'its own page, not the full-screen cards');
+  assert.deepEqual(await P.$$eval('#chp-sum b', (els) => els.map((e) => e.textContent)), ['2', '2', '1']);
+  assert.deepEqual(await P.$$eval('#chats .chp-h', (els) => els.map((e) => e.textContent)), ['Needs you', 'Working', 'Done']);
+  assert.deepEqual(await P.$$eval('#chats .chp-card .chp-title', (els) => els.map((e) => e.textContent)),
+    ['Mug root beer', 'Brands reappearing', 'BRAND PLANNING', 'LinkedIn volume', 'Copy button size']);
+  assert.equal(await P.getAttribute('#chats [data-chp="s1"] .chp-title', 'href'), 'https://claude.ai/code/session_0s1abcdefghij');
+  assert.equal(await P.getAttribute('#chats [data-chp="s1"] .chp-open', 'href'), 'https://claude.ai/code/session_0s1abcdefghij');
+  const mug = await P.textContent('#chats [data-chp="s1"]');
+  assert.match(mug, /How to pitch Mug[\s\S]*It needs from you[\s\S]*Mug’s people on the dashboard[\s\S]*Search PepsiCo people[\s\S]*What it did[\s\S]*No ambassador program[\s\S]*Yung Gravy track[\s\S]*2 more/);
+  assert.equal(await P.$eval('#chats [data-chp="s1"] .chp-did', (e) => e.children.length), 3, 'three things it did, the rest folded');
+  assert.equal(await P.isVisible('#chats [data-chp="s1"] .chp-more li'), false, 'past three: folded');
+  assert.match(await P.textContent('#chats [data-chp="s3"]'), /It needs from you[\s\S]*Want the same fix on Stock take\?/);
+  assert.match(await P.textContent('#chats [data-chp="s2"]'), /Working on: plan next week[\s\S]*Working since/);
+  assert.match(await P.textContent('#chats [data-chp="s4"]'), /No reply since [\s\S]*open it to check/);
+  assert.equal(await P.$('#chats [data-chp="p1"]'), null, 'a pasted report is not a chat card');
+  const fs1 = await P.$eval('#chats [data-chp="s1"]', (e) => parseFloat(getComputedStyle(e).fontSize));
+  assert.ok(fs1 >= 17, 'bigger text: ' + fs1);
+  await P.check('#chats [data-chp="s1"] [data-need="s1"]');
+  await P.waitForTimeout(200);
   assert.deepEqual(all('setWorkNeedDone').slice(-1)[0].args, { id: 's1', index: 0, done: true });
-  assert.equal(await four.page.textContent('#recap [data-ch="s1"] .rc-tag'), 'Done', 'nothing left open: Done');
-  assert.equal(await four.page.isChecked('#recap [data-rc-i="4"] [data-need="s1"]'), true, 'the same need on Needs you ticks too');
-  console.log('✓ 4. Your chats: the Home tile, one row a chat (needs you → working → stalled → done), links, ticks');
+  assert.match(await P.getAttribute('#chats [data-chp="s1"]', 'class'), /\bdone\b/, 'nothing left open: Done');
+  assert.deepEqual(await P.$$eval('#chp-sum b', (els) => els.map((e) => e.textContent)), ['1', '2', '2']);
+  await P.click('#chats [data-chp-day="-1"]');
+  await P.waitForFunction(() => /October 13/.test(document.getElementById('chp-day').textContent));
+  assert.equal(all('dayRecap').slice(-1)[0].args.day, '2026-10-13');
+  assert.match(await P.textContent('#chp-body'), /No chats that day/);
+  await P.click('#chats [data-chp-home]');
+  await P.waitForSelector('#dashboard.active');
+  await P.click('#hm-chats');
+  await P.waitForFunction(() => /Today/.test(document.getElementById('chp-day').textContent) && document.querySelector('#chats .chp-card'));
+  // Claude's day: no chats card any more; its Needs card has the way there.
+  await P.click('[data-chp-home]');
+  await P.click('#hm-claudeday');
+  await P.waitForSelector('#recap:not([hidden]) .rc-card');
+  assert.deepEqual(await P.$$eval('#recap .rc-card h2', (els) => els.map((e) => e.textContent)),
+    ['What Claude changed on the site', 'What Claude changed in the data', 'What Claude’s sessions said', 'What Claude needs from you']);
+  assert.match(await P.textContent('#recap [data-rc-i="3"]'), /Chats waiting on your answer[\s\S]*Brands reappearing/);
+  await P.click('#recap [data-rc-go="chats"]');
+  await P.waitForSelector('#chats.active .chp-card');
+  console.log('✓ 4. Your chats page: tile and button open it, needs you → working → done, links, ticks, other days; Claude’s day points to it');
 
   assert.deepEqual(errors.concat(again.errors, morning.errors, four.errors), [], 'no page errors');
   await browser.close();

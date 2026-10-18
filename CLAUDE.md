@@ -92,16 +92,22 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   needs · done, `question` = what its last reply asks, `lastAt`), written only by `chatLog({ session, event: prompt |
   reply | question | summary, … })` — rules pure in `src/lib/chat-log.ts` (a reply sorted by work-log.ts's rules, the
   question it ends on, secrets masked, Leo's ticks carried by the need's words, an older post never winds a chat back).
-  Shown as Home's **Claude chats today** tile (`data-cd-open="chats"`) and **Claude's day → Your chats**, its first card
-  (`chCard`/`chRow`/`chState` in app.html: Needs you → Working → No reply yet (working 2 h+) → Done; the title opens
-  the chat); their NEEDs and questions are on the Needs card too; a chat's older days' needs give way to its latest day.
+  Shown on **its own page** (Leo, Oct 17 2026: "make it its own page and make it simple and concise in bigger text"):
+  view `#chats` (`loadChats`, `chp*` in app.html; data = `dayRecap`'s chats, ‹ › other days), opened by Home's **Claude
+  chats today** tile (`data-chp-open`), **Your chats ▸** in Home's header and Claude's day's Needs card — three big
+  numbers (need you / working / done), then a card per chat under Needs you → Working → Done (`chState`: working 2 h+
+  with no reply = "No reply since …"): its name (opens the chat), one line on what it's for, **It needs from you**
+  (NEEDs to tick + its question), up to three things it did (the rest folded), 17px+ text. A tick turns the card Done
+  in place (it moves on the next load). Claude's day no longer has a chats card; its Needs card still lists their
+  NEEDs and "Chats waiting on your answer"; a chat's older days' needs give way to its latest day.
   Pasted logs keep the "sessions said" card. `chatLog` is never a ClaudeAction. Fed by **the chat itself**
-  (`scripts/chat-log-hook.mjs` from Claude Code hooks — UserPromptSubmit / Stop / PreToolUse AskUserQuestion|ExitPlanMode;
-  detached post, nothing on stdout, quiet without `DASHBOARD_TOKEN`) and/or **the chat review** (`docs/chat-review.md`:
+  (`scripts/chat-log-hook.mjs` from Claude Code hooks in **`.claude/settings.json`** (Leo's yes, Oct 17 2026) —
+  UserPromptSubmit / Stop / PreToolUse AskUserQuestion|ExitPlanMode; detached post, nothing on stdout, quiet without
+  `DASHBOARD_TOKEN`; a chat started before the hook was on main doesn't log) and/or **the chat review** (`docs/chat-review.md`:
   a chat reads Leo's other chats with list_sessions / list_events and posts `summary`; `listChatLogs` = what's logged).
   `node scripts/cc.mjs <fn> @file.json` reads args from a file. Tests: `node scripts/test-chat-log.mjs`,
   `node scripts/test-chat-log-hook.mjs`, `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-chat-log-e2e.js`,
-  page in `test-claude-day.js` (4).
+  page in `test-claude-day.js` (4 — the #chats page).
 - **Leo's picked ideas, built Oct 6 2026** (retired from `build-ideas.ts`): **Weekly scoreboard** on Home (`#hm-score`,
   `weeklyScore` / `setWeeklyGoals`, Setting `weeklyGoals`, defaults `WEEKLY_GOALS_DEFAULT`): invites / accepted /
   replied / calls booked / deals / brands added per New York week (Mon–Sun), this week vs goal + 8 weeks of bars.
