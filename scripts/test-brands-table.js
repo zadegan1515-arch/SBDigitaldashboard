@@ -178,7 +178,8 @@ async function main() {
   // The category dropdown switches the list.
   await page.selectOption('#brands-list [data-brcat]', 'energy');
   await page.waitForFunction(() => /Energy/.test(document.getElementById('brands-title').textContent));
-  assert.equal(await page.$eval('#brands-list [data-brcat]', (s) => s.value), 'energy');
+  // The title changes at once; the table (and its dropdown) once the list is read.
+  await page.waitForFunction(() => { const s = document.querySelector('#brands-list [data-brcat]'); return s && s.value === 'energy'; });
   await page.selectOption('#brands-list [data-brcat]', 'all');
   await page.waitForFunction(() => document.getElementById('brands-title').textContent === 'All brands');
   console.log('✓ the category dropdown switches the list');
