@@ -102,3 +102,72 @@ export async function writeJsonSetting(db: SettingStore, key: string, value: unk
   const v = JSON.stringify(value)
   await db.setting.upsert({ where: { key }, create: { key, value: v }, update: { value: v } })
 }
+
+// Already answered? Leo said "None of these" (confirmed "none"), or picked
+// the page this entry is about. Such an entry is a leftover (Oct 18 2026:
+// two answers written at once each put back the brand the other had just
+// cleared) and never shows again. `page` = the brand's saved page now,
+// when the caller knows it: a search entry for a brand that has since got
+// the page Leo picked is a leftover too.
+const slugOf = (u: string | null | undefined) => {
+  const m = String(u || '').match(/\/company\/([^/?#]+)/i)
+  if (!m) return ''
+  try { return decodeURIComponent(m[1]).toLowerCase() } catch { return m[1].toLowerCase() }
+}
+export function answered(entry: ReviewEntry | undefined, confirmed: string | undefined | null, page?: string | null): boolean {
+  if (!entry || !confirmed) return false
+  if (confirmed === 'none') return true
+  const pick = confirmed.toLowerCase()
+  if (entry.why === 'wrong') return slugOf(entry.saved) === pick
+  return page !== undefined && slugOf(page) === pick
+}
+
+// The list without its answered leftovers.
+export function openReview(review: Review, confirmed: Confirmed, pageOf?: (id: string) => string | null | undefined): Review {
+  const out: Review = {}
+  for (const [id, e] of Object.entries(review || {})) {
+    if (e && !answered(e, confirmed[id], pageOf ? pageOf(id) ?? null : undefined)) out[id] = e
+  }
+  return out
+}
+
+// Every change to the list and to Leo's answers goes through here: one
+// writer at a time (advisory lock), both settings read fresh inside it,
+// answered leftovers pruned on the way out. Before this each writer read
+// the whole list, changed one brand and wrote the whole list back, so two
+// "None of these" clicks close together (or a click while the fill was
+// saving) put back the brand the other had cleared.
+export async function updateReviewState<T>(
+  db: SettingStore & { $transaction?: any },
+  fn: (review: Review, confirmed: Confirmed) => T,
+): Promise<T> {
+  let out: T
+  const work = async (tx: any) => {
+    if (tx.$queryRaw) await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${LI_REVIEW_KEY}))::text`
+    const review = await readJsonSetting<Review>(tx, LI_REVIEW_KEY, {})
+    const confirmed = await readJsonSetting<Confirmed>(tx, LI_CONFIRMED_KEY, {})
+    const r0 = JSON.stringify(review), c0 = JSON.stringify(confirmed)
+    out = fn(review, confirmed)
+    const next = openReview(review, confirmed)
+    if (JSON.stringify(next) !== r0) await writeJsonSetting(tx, LI_REVIEW_KEY, next)
+    if (JSON.stringify(confirmed) !== c0) await writeJsonSetting(tx, LI_CONFIRMED_KEY, confirmed)
+  }
+  if (typeof db.$transaction === 'function') await db.$transaction(work, { maxWait: 10000, timeout: 20000 })
+  else await work(db)
+  return out!
+}
+
+// A finding the fill wants Leo to look at — unless he already said the
+// brand has no page. Returns whether it went on the list.
+export async function putOnReview(
+  db: SettingStore & { $transaction?: any },
+  brandId: string,
+  found: Parameters<typeof addToReview>[2],
+): Promise<boolean> {
+  return updateReviewState(db, (review, confirmed) => {
+    if (confirmed[brandId] === 'none') return false
+    const next = addToReview(review, brandId, found)
+    review[brandId] = next[brandId]
+    return !answered(review[brandId], confirmed[brandId])
+  })
+}

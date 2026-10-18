@@ -16,7 +16,7 @@ import { readRuns } from '@/lib/li-report'
 import { readLiLog, readLiResearch, markOutcome, issueWords, liDue, LI_SCRIPT_VERSION, LI_READER } from '@/lib/li-sweep'
 import { parentOf } from '@/lib/parents'
 import { readCoverCounts } from '@/lib/coverage-db'
-import { LI_REVIEW_KEY, type Review } from '@/lib/li-review'
+import { LI_REVIEW_KEY, LI_CONFIRMED_KEY, openReview, readJsonSetting, type Review, type Confirmed } from '@/lib/li-review'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
     readRuns(prisma), readLiLog(prisma), readLiResearch(prisma), readCoverCounts(prisma),
     prisma.setting.findUnique({ where: { key: LI_REVIEW_KEY } }),
   ])
+  const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
   const since = Date.now() - 14 * 864e5
   const noted = Object.entries(sweep).filter(([, m]) => m && m.note && Date.parse(m.at) >= since)
   // "Which LinkedIn page is theirs?": the brands the search couldn't place
@@ -44,7 +45,8 @@ export async function GET(req: NextRequest) {
   // a brand with no clear page from a matching rule that's off.
   let review: Review = {}
   try { review = reviewRow ? JSON.parse(reviewRow.value) : {} } catch { review = {} }
-  const reviewed = Object.entries(review).filter(([, e]) => e && Date.parse(e.at) >= since)
+  // Answered ones ("None of these", or a leftover of a pick) aren't questions.
+  const reviewed = Object.entries(openReview(review, confirmed)).filter(([, e]) => e && Date.parse(e.at) >= since)
   // Brands whose last read had an issue (li-sweep.ts): retried first on the
   // next run, stuck after LI_RETRY_MAX runs — the morning check fixes these.
   // Stuck ones stay listed until they're back on the list (a month).

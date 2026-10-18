@@ -954,6 +954,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   with a parent — sends it with `noPage` and the script (≥1.29) goes straight to the parent's page, never its own
   name; a run that fetched its list before the mark gets `liMatched` → `markedNone` (nothing back on the list, no
   second-name search).
+  **One writer at a time** (Oct 18 2026 — answered brands came back: each answer read the whole list, cleared one brand
+  and wrote it all back, so two clicks close together undid each other): every change to `liPageReview` /
+  `liPageConfirmed` goes through `updateReviewState` (li-review.ts, advisory lock, both read fresh), the fill's findings
+  through `putOnReview` (never a brand marked none); `answered` / `openReview` drop leftovers on every read (People list,
+  coverage, recap count, report) and prune them on the next write. The card goes the moment it's saved.
   **Leo's LinkedIn only** (his call, Sep 30): every call carries `me` (from LinkedIn's own
   `/voyager/api/me`, csrf = JSESSIONID, cached 30 min per tab; else the nav photo's alt); ingest
   claims the first account into Setting `liOwner` and answers 403 `notOwner` to any other on the fill /

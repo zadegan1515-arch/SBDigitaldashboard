@@ -7,7 +7,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { coverOf, coverCounts, type Cover, type CoverCounts } from './coverage'
 import { readLiLog, type LiLog } from './li-sweep'
-import { readJsonSetting, LI_REVIEW_KEY, LI_CONFIRMED_KEY, type Review, type Confirmed } from './li-review'
+import { readJsonSetting, answered, LI_REVIEW_KEY, LI_CONFIRMED_KEY, type Review, type Confirmed } from './li-review'
 import { parentOf } from './parents'
 import { readHiddenLog, zachDue, type HiddenLog } from './li-hidden'
 
@@ -45,7 +45,8 @@ export function brandCover(b: CoverBrand, f: CoverFacts, now = Date.now()): Cove
     linkedinUrl: b.linkedinUrl,
     hasParent: !!parentOf(b.name, b.aka ?? null),
     mark: f.log[b.id],
-    inReview: !!f.review[b.id],
+    // An entry Leo already answered is a leftover, not a question (li-review.ts).
+    inReview: !!f.review[b.id] && !answered(f.review[b.id], f.confirmed[b.id], b.linkedinUrl ?? null),
     confirmed: f.confirmed[b.id] ?? null,
     zachDue: zachDue(f.hidden[b.id], now),
   }, { cap: COVER_CAP, now })

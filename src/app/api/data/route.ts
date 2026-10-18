@@ -48,6 +48,7 @@ import { BIG_BRAND_WORK, brandSize } from '@/lib/brand-size'
 import { outcomeRates, ACCEPT_AFTER_DAYS as OUTCOME_ACCEPT_DAYS, type OutcomeInvite } from '@/lib/outcomes'
 import {
   readJsonSetting, writeJsonSetting, LI_REVIEW_KEY, LI_CONFIRMED_KEY, LI_OWNER_KEY,
+  updateReviewState, openReview,
   type Review, type Confirmed, type LiOwner,
 } from '@/lib/li-review'
 import { LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR, linkedinWindows, acceptRates, planWeekDays, weekCap, orderFillGroups, fillWholeBrands, bigFits, compareAuto, type AcceptRates } from '@/lib/plan-week'
@@ -4712,10 +4713,14 @@ const handlers: Record<string, Handler> = {
     ask('research', stagedLeft, 'researched brands to review (Brand Fit)', 'stock')
     ask('access', access, 'Show Board access requests to approve', 'board')
     // Only brands still in play — the People tab hides the rest.
+    const confirmedPages = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
     const reviewIds = Object.keys(review || {})
-    const reviewLeft = reviewIds.length
-      ? await prisma.brand.count({ where: { id: { in: reviewIds }, passedAt: null, doNotEmail: false } })
-      : 0
+    const reviewRows = reviewIds.length
+      ? await prisma.brand.findMany({ where: { id: { in: reviewIds }, passedAt: null, doNotEmail: false }, select: { id: true, linkedinUrl: true } })
+      : []
+    const pageNow = new Map(reviewRows.map(b => [b.id, b.linkedinUrl]))
+    const reviewLeft = Object.keys(openReview((review || {}) as Review, confirmedPages, id => pageNow.get(id) ?? null))
+      .filter(id => pageNow.has(id)).length
     ask('lipage', reviewLeft, 'brands: which LinkedIn page is theirs?', 'linkedin')
     // People Leo's LinkedIn hides at brands in play (li-hidden.ts): Zach's.
     try {
@@ -12633,8 +12638,13 @@ const handlers: Record<string, Handler> = {
     // morning check, not this page.
     const runs = (await readRuns(prisma)).slice(0, 3).map(r => ({ ...r, samples: r.samples.map(x => ({ at: x.at, name: x.name, problem: x.problem })) }))
     // "Which LinkedIn page is theirs?" — brands the fill wasn't sure of.
-    const review = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
+    // Answered ones never show, even a leftover from before the lock.
     const byId = new Map(brands.map(b => [b.id, b]))
+    const review = openReview(
+      await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {}),
+      await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {}),
+      id => byId.get(id)?.linkedinUrl ?? null,
+    )
     const pageReview = Object.entries(review)
       .filter(([id]) => byId.has(id))
       .map(([id, e]) => {
@@ -12677,12 +12687,12 @@ const handlers: Record<string, Handler> = {
     if (owner) throw new Error(`That page is already saved on ${owner.name}. Merge the two brands, or pick another page.`)
     const linkedinUrl = companyPageUrl(slug)
     await prisma.brand.update({ where: { id: brand.id }, data: { linkedinUrl } })
-    const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
-    confirmed[brand.id] = slug
-    await writeJsonSetting(prisma, LI_CONFIRMED_KEY, confirmed)
-    const review = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
-    delete review[brand.id]
-    await writeJsonSetting(prisma, LI_REVIEW_KEY, review)
+    // Under the list's lock, so an answer landing at the same moment can't
+    // put this brand back (li-review.ts updateReviewState).
+    await updateReviewState(prisma, (review, confirmed) => {
+      confirmed[brand.id] = slug
+      delete review[brand.id]
+    })
     // Its last visit rests it for a month; a page Leo just picked should
     // be read on the next run instead.
     await updateLiLog(prisma, log => { delete log[brand.id] })
@@ -12698,18 +12708,19 @@ const handlers: Record<string, Handler> = {
   async liPageNone({ brandId }: { brandId: string }) {
     const brand = await prisma.brand.findUnique({ where: { id: String(brandId) }, select: { id: true, name: true, linkedinUrl: true } })
     if (!brand) throw new Error('Brand not found')
-    const review = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
-    const entry = review[brand.id]
+    // Marked and taken off in one locked write (li-review.ts): two clicks
+    // close together used to each write back the brand the other cleared.
+    const entry = await updateReviewState(prisma, (review, confirmed) => {
+      const e = review[brand.id]
+      confirmed[brand.id] = 'none'
+      delete review[brand.id]
+      return e
+    })
     if (entry?.why === 'wrong' && brand.linkedinUrl) {
       await prisma.brand.update({ where: { id: brand.id }, data: { linkedinUrl: null } })
       const was = companySlug(brand.linkedinUrl)
       if (was) await dropHiddenFrom(brand.id, was)
     }
-    const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
-    confirmed[brand.id] = 'none'
-    await writeJsonSetting(prisma, LI_CONFIRMED_KEY, confirmed)
-    delete review[brand.id]
-    await writeJsonSetting(prisma, LI_REVIEW_KEY, review)
     return { ok: true, name: brand.name, removedPage: entry?.why === 'wrong' ? brand.linkedinUrl : null }
   },
 
@@ -12720,9 +12731,11 @@ const handlers: Record<string, Handler> = {
   async liPageRetry({ brandId }: { brandId: string }) {
     const brand = await prisma.brand.findUnique({ where: { id: String(brandId) }, select: { id: true, name: true, linkedinUrl: true } })
     if (!brand) throw new Error('Brand not found')
-    const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
-    const wasNone = confirmed[brand.id] === 'none'
-    if (wasNone) { delete confirmed[brand.id]; await writeJsonSetting(prisma, LI_CONFIRMED_KEY, confirmed) }
+    const wasNone = await updateReviewState(prisma, (_review, confirmed) => {
+      const was = confirmed[brand.id] === 'none'
+      if (was) delete confirmed[brand.id]
+      return was
+    })
     const rested = await updateLiLog(prisma, log => { const had = !!log[brand.id]; delete log[brand.id]; return had })
     return { ok: true, name: brand.name, linkedinUrl: brand.linkedinUrl, wasNone, rested }
   },

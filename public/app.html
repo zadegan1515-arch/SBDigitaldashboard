@@ -11304,10 +11304,20 @@ document.getElementById('linkedin').addEventListener('click', function (e) {
   if (!row) return;
   var brandId = row.getAttribute('data-lirv');
   var entry = LI_REVIEW.filter(function (x) { return x.brandId === brandId; })[0] || {};
-  var done = function (msg) { toast(msg); loadLinkedin(); };
-  var fail = function (err) { toast(err.message || String(err)); };
+  // One answer per card at a time; the card goes the moment it's saved
+  // (Oct 18 2026: answered brands sat there, and came back, until a reload).
+  if (row.__busy && t.closest('[data-lirv-pick],[data-lirv-save],[data-lirv-none]')) return;
+  var busy = function (on) { row.__busy = on; row.style.opacity = on ? '0.5' : ''; };
+  var done = function (msg) {
+    toast(msg);
+    LI_REVIEW = LI_REVIEW.filter(function (x) { return x.brandId !== brandId; });
+    renderLiReview(LI_REVIEW);
+    loadLinkedin();
+  };
+  var fail = function (err) { busy(false); toast(err.message || String(err)); };
   var pick = t.closest('[data-lirv-pick]');
   if (pick) {
+    busy(true);
     api('liPagePick', { brandId: brandId, url: 'https://www.linkedin.com/company/' + pick.getAttribute('data-lirv-pick') + '/' })
       .then(function () { done(entry.name + '\u2019s page saved — the next run reads it'); }).catch(fail);
     return;
@@ -11315,6 +11325,7 @@ document.getElementById('linkedin').addEventListener('click', function (e) {
   if (t.closest('[data-lirv-save]')) {
     var url = (row.querySelector('[data-lirv-url]').value || '').trim();
     if (!url) return toast('Paste their LinkedIn company page link first');
+    busy(true);
     api('liPagePick', { brandId: brandId, url: url })
       .then(function () { done(entry.name + '\u2019s page saved — the next run reads it'); }).catch(fail);
     return;
@@ -11324,6 +11335,7 @@ document.getElementById('linkedin').addEventListener('click', function (e) {
       ? 'Remove ' + entry.name + '\u2019s saved LinkedIn page (' + entry.saved + ') and stop looking for one?'
       : 'Stop looking for ' + entry.name + '\u2019s LinkedIn page?';
     if (!confirm(msg)) return;
+    busy(true);
     api('liPageNone', { brandId: brandId }).then(function () { done('Done — the fill stops looking for ' + entry.name); }).catch(fail);
   }
 });
