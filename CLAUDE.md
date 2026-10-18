@@ -331,7 +331,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   invited, emailed] }. The page keeps one map (`RB`, `rbLoad`: at the start, every tab change and window focus — at most
   every 30 s — and after any call in `RB_WRITES`, e.g. setTargetStatus / logLinkedInPerson / markEmailed / handStep);
   `rbTag(id)` draws a slot the map fills ("Reached Oct 12", purple; tooltip = first/last day, how many invited / emailed,
-  how far it got), painted again when the map lands (`rbPaint`). On: Brands table, the brand page header, Needs contacts,
+  how far it got), painted again when the map lands (`rbPaint`). On: Brands table (its Outreach column), the brand page header, Needs contacts,
   Stock take, Brand Fit review, People, fill schedule, Read on Zach's LinkedIn, the Schedule's cards / Fill box / find box /
   drill-in / contacts check / Plan my week, Week plan, the LinkedIn tab's brand cards, All targets, Archived, global search,
   Today's list for Zach, Deals board, Show Board requests / In talks / visits / code lookup, Partners, Discover (added),
@@ -774,7 +774,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   much going on"): search + one **More ▾** menu (Brand Fit, SponsorUnited worklist, Lanes & re-file,
   Duplicates, Fill summaries — same ids `bq-*`), one **category dropdown** (`brCatSelect`, `data-brcat`;
   the chip row is gone), filters on one line, archived hidden by default. One row per brand:
-  Category · Tier · Fit · **Buyers** (the edit row shows everyone else on file). **Buyers** = people on file
+  Category · Tier · Fit · **Buyers** (the edit row shows everyone else on file). **Easier to read** (Leo, Oct 18 2026: "too
+  hard to look at can u make it easier to see and interact with"): one filter panel (`.br-tools`) — category, **Show**
+  and **Outreach** as button rows (`brSeg`), Sort; "Showing N of M brands" + **Clear filters** (`data-brclear`: Show,
+  Outreach, search); Hide too small / Hide archived — and the table Brand · **Outreach** (`brOutCell`: the Reached tag +
+  Replied / N invited / N emailed; else N queued / Not yet, hidden once the tag fills) · Category · Tier · Fit · Buyers (0 = grey with an amber dot,
+  not ⚠), 14–15px text, striped rows, a click on a heading sorts (`brHead`, `data-brsorth`; Buyers flips fewest / most;
+  the Sort menu follows), and on a desktop the heading row sticks under the top bar. **Buyers** = people on file
   whose title is partnerships/sponsorship, events/experiential, marketing/brand or founder/CEO
   (`src/lib/buyers.ts`, counted in `listBrands` → `buyers`, `buyerPeople`; `node scripts/test-buyers.mjs`);
   a brand is covered at **1** (`BR_TARGET`, Leo's call). Filters All / Needs people / Has enough,
@@ -805,6 +811,17 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   amber). The "People on file" card (`renderFillProgress` — brands with anyone on file, the SponsorUnited
   sweep) is folded to one line under it (`FP_OPEN`).
   `node scripts/test-coverage-e2e.js` (real handlers, throwaway Postgres).
+- **Outreach filter on every brand list** (Leo, Oct 18 2026: "anywhere on the site where i sort brands … a filter [for]
+  outreached to meaning that we have sent a request to at least one person there"): one dropdown **Outreach: Any /
+  Reached out (N) / Not reached out (N)** (`reachSelect` / `reachOk` / `REACH_F` / `REACH_DRAW` in app.html) on All brands
+  (there a row of buttons in the filter panel, `data-brreach`), Stock take (a lane's brand list, "Brands (3 of 40)"), Discover (reset by a tab change), Outreach → People, Week plan's
+  browse a category (Add the top N follows it) and the Schedule's category drill-in. Reached out = **the Reached tag's
+  rule** (`isReached` / `REACHED_WHERE` in route.ts, which `reachedBrands` reads too): an invite ever, an accept logged
+  from LinkedIn, a hand or machine email — so a brand with the purple tag is always under Reached out. Data: listBrands
+  `outreach.invited` / `emailed`, brandStock `invited` / `emailed`, linkedinPeople `reached`, listDiscoveries `reached`,
+  planBrandRow `reached`, categoryBrands' `group === 'reached'`.
+  Per list, for the visit (not remembered). `NODE_PATH=$(npm root -g) node scripts/test-reach-filter.js`,
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-reach-filter-e2e.js`.
 - **Daily Claude brand hunt** (Leo, Oct 2026: "a process for Claude to find new brands … it shouldn't
   necessarily be through LinkedIn"). Routine "Discover: daily brand hunt" (5:52 New York) wakes the cloud
   session "Brand hunt (daily)" — repo attached, `REPORT_TOKEN` in its environment; a fresh empty session

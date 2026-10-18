@@ -691,6 +691,17 @@ function wasInvited(t: { sentAt: Date | null; status: string }): boolean {
 const INVITED_WHERE: Prisma.TargetWhereInput = {
   OR: [{ sentAt: { not: null } }, { status: { in: ['sent', 'accepted', 'replied', 'converted'] } }],
 }
+// isReached as a query: an invite ever, an accept or reply, a hand or machine
+// email. The Reached tag (reachedBrands) and the page's Outreach filter
+// ("Reached out / Not reached out") both read it, so they always agree.
+const REACHED_WHERE: Prisma.TargetWhereInput = {
+  OR: [
+    { sentAt: { not: null } },
+    { status: { in: ['accepted', 'replied', 'converted'] as TargetStatus[] } },
+    { emailedAt: { not: null } },
+    { emails: { some: SENT_EMAIL } },
+  ],
+}
 
 // A brand we have already reached out to. Leo's rule: once an invite has
 // gone to anyone there, the brand stops being offered as something to
@@ -2491,7 +2502,9 @@ function planBrandRow(b: PlanBrand, ctx: PlanRowCtx) {
     : status === 'reached' ? `${rc.sentAt ? 'Invited' : 'Emailed'}${lastTouch ? ' ' + shortDate(lastTouch) : ''} · already reached`
     : going > 0 ? `${going} would go out`
     : 'Nobody would go out'
-  return { id: b.id, name: b.name, category: b.category, externalId: b.externalId, label, pinnedOn, shownOn, status, action, text, going, inTodayQueue, giant: status === 'giant' }
+  // reached = the Reached tag's rule (isReached) — the page's Outreach
+  // filter (Reached out / Not reached out).
+  return { id: b.id, name: b.name, category: b.category, externalId: b.externalId, label, pinnedOn, shownOn, status, action, text, going, inTodayQueue, giant: status === 'giant', reached }
 }
 
 // A day's Fill box (suggestForDay): open brands that could go out that
@@ -10442,14 +10455,7 @@ const handlers: Record<string, Handler> = {
   // reads it once and paints the tag wherever a brand shows (rbTag).
   async reachedBrands() {
     const rows = await prisma.target.findMany({
-      where: {
-        OR: [
-          { sentAt: { not: null } },
-          { status: { in: ['accepted', 'replied', 'converted'] as TargetStatus[] } },
-          { emailedAt: { not: null } },
-          { emails: { some: SENT_EMAIL } },
-        ],
-      },
+      where: REACHED_WHERE,
       select: {
         brandId: true, status: true, sentAt: true, emailedAt: true, repliedAt: true, updatedAt: true,
         emails: { where: SENT_EMAIL, select: { sentAt: true }, orderBy: { sentAt: 'desc' }, take: 1 },
@@ -13382,6 +13388,8 @@ const handlers: Record<string, Handler> = {
   async linkedinPeople() {
     const brands = await prisma.brand.findMany({
       include: {
+        // People reached there (the Reached tag's rule) — the Outreach filter.
+        _count: { select: { targets: { where: REACHED_WHERE } } },
         contacts: {
           select: {
             id: true, name: true, title: true, linkedinUrl: true,
@@ -13401,6 +13409,7 @@ const handlers: Record<string, Handler> = {
       linkedinUrl: b.linkedinUrl,
       // So the "Under 25" worklist can leave out brands off outreach.
       archived: !!b.passedAt, doNotEmail: b.doNotEmail,
+      reached: b._count.targets,
       liNote: liLog[b.id]?.note || null,
       contacts: b.contacts.map(c => ({
         id: c.id, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl,
@@ -14748,7 +14757,7 @@ const handlers: Record<string, Handler> = {
       where: { status: { not: 'dismissed' }, ...(query ? { query } : {}) },
       orderBy: { createdAt: 'desc' }, take: 600,
     })
-    const brands = await prisma.brand.findMany({ select: { id: true, name: true, _count: { select: { contacts: true } } } })
+    const brands = await prisma.brand.findMany({ select: { id: true, name: true, _count: { select: { contacts: true, targets: { where: REACHED_WHERE } } } } })
     const byId = new Map(brands.map(b => [b.id, b]))
     const byName = new Map(brands.map(b => [b.name.toLowerCase(), b]))
     const sourceOf = (q: string) => /^(Claude hunt|🔥)/.test(q) ? 'Claude hunt'
@@ -14776,7 +14785,9 @@ const handlers: Record<string, Handler> = {
         { category: cat, signals: r.signals, hasParent: !!parentOf(r.name, null), giant: giantOf({ name: r.name }),
           text: [r.reason, r.activation].filter(Boolean).join(' ') },
         { priority: categoryPriority(cat), acceptRate: rateOrNull(rates, cat), now })
-      return { ...r, source: sourceOf(r.query), inSystem: !!existing, contactCount: existing?._count.contacts ?? 0, grade: g }
+      // reached = its brand carries the Reached tag (the Outreach filter);
+      // a find not on the roster never does.
+      return { ...r, source: sourceOf(r.query), inSystem: !!existing, contactCount: existing?._count.contacts ?? 0, reached: (existing?._count.targets ?? 0) > 0, grade: g }
     })
     // A brand added since by any other path: remember the link.
     for (const l of link) {

@@ -111,8 +111,11 @@ async function main() {
   await page.click('#bq-more > summary');
   assert.ok(await page.isHidden('#brand-cat-chips'), 'no chip row');
   assert.ok(await page.$('#brands-list [data-brcat]'), 'one category dropdown');
-  const heads = await page.$$eval('#brands-list thead th', (ts) => ts.map((t) => t.textContent.trim()).filter(Boolean));
-  assert.deepEqual(heads, ['Brand', 'Category', 'Tier', 'Fit', 'Buyers']);
+  // Oct 18 2026 ("too hard to look at"): an Outreach column; a heading
+  // sorts on a click, the sorted one marked with its arrow.
+  const heads = await page.$$eval('#brands-list thead th', (ts) => ts.map((t) => t.textContent.replace(/[▲▼]/g, '').trim()).filter(Boolean));
+  assert.deepEqual(heads, ['Brand', 'Outreach', 'Category', 'Tier', 'Fit', 'Buyers']);
+  assert.match(await page.textContent('#brands-list th.sorted'), /Buyers▲/, 'fewest buyers first, marked');
   assert.deepEqual(await names(), ['Alpha Energy', 'Charlie Spirits', 'Bravo Soda'], 'archived hidden by default');
   await page.uncheck('[data-brarch]');
   console.log('✓ More menu, category dropdown, five columns, archived hidden by default');
