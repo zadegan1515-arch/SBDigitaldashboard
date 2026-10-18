@@ -776,6 +776,38 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       await data('handStep', { targetId: zt1.id, step: 'dm' });
       assert.ok((await data('zachTodo', { brandId: 'zb1' })).brands[0].people[0].dmSentAt, 'a tick shows on the brand\'s next read');
       ok('zachTodo({ brandId }): one brand\'s people, its booked call and ticks; Home unchanged')
+
+      // The first message test (Oct 18 2026): a brand's version on every
+      // card there, B's two templates, the version saved with Messaged, the
+      // count on Results, an Undo clears it, Stop records nothing.
+      const zp = one.brands[0].people[0];
+      assert.ok(['A', 'B'].includes(zp.firstVersion), 'a version for the card: ' + zp.firstVersion);
+      assert.ok(one.firstTest.on, 'on with no setting');
+      assert.match(one.firstBTemplate.body, /what's up man!/);
+      assert.match(one.firstBWTemplate.body, /great to meet you!/);
+      const zt1row = () => prisma.target.findUnique({ where: { id: zt1.id } });
+      await data('handStep', { targetId: zt1.id, step: 'dm', on: false });
+      await data('handStep', { targetId: zt1.id, step: 'dm', version: 'B' });
+      assert.equal((await zt1row()).handFirstVariant, 'B', 'Messaged saves the version');
+      await data('handStep', { targetId: zt1.id, step: 'dm', version: 'Z' });
+      assert.equal((await zt1row()).handFirstVariant, null, 'only A or B');
+      await data('handStep', { targetId: zt1.id, step: 'dm', version: 'A' });
+      await prisma.target.update({ where: { id: zt1.id }, data: { dmSentAt: new Date(Date.now() - 3 * 864e5), repliedAt: new Date(Date.now() - 864e5), status: 'replied' } })
+      const ft = await data('firstMessageTest');
+      const fa = ft.versions.find(v => v.key === 'A')
+      assert.deepEqual([fa.sent, fa.judged, fa.answered], [1, 1, 1], 'answered before the final reach-out: counted')
+      assert.match(ft.texts.B, /what's up man!/)
+      assert.equal(ft.on, true)
+      await data('handStep', { targetId: zt1.id, step: 'dm', on: false });
+      assert.equal((await zt1row()).handFirstVariant, null, 'Undo clears the version');
+      await data('setFirstTest', { on: false });
+      await data('handStep', { targetId: zt1.id, step: 'dm', version: 'B' });
+      assert.equal((await zt1row()).handFirstVariant, null, 'stopped: nothing recorded');
+      const off = await data('zachTodo', { brandId: 'zb1' });
+      assert.deepEqual([off.firstTest.on, off.brands.length ? off.brands[0].people[0].firstVersion : 'A'], [false, 'A'], 'stopped: everyone gets A');
+      assert.equal((await data('firstMessageTest')).on, false);
+      await data('setFirstTest', { on: true });
+      ok('first message test: a version per brand, saved with Messaged (A / B only), counted on Results, Undo clears it, Stop records nothing')
     }
 
     console.log(n + ' checks passed');

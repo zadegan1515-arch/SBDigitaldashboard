@@ -255,6 +255,11 @@ model Target {
   // When the first DM after an accept actually went out — clears the
   // person from Today's "They accepted — send the DM" list.
   dmSentAt DateTime?
+  // Which first message went out (Oct 18 2026, the first message test —
+  // src/lib/first-test.ts): 'A' = Leo's first message, 'B' = his test
+  // version. Null = sent outside the test (before it, while it was off,
+  // or a card someone rewrote).
+  handFirstVariant String?
 
   // When an email went to this person by hand, out of Zach's own mailbox.
   // Accepts usually end in "email me" — this is what clears them off the
