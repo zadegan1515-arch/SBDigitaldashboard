@@ -592,6 +592,8 @@
   .ch-q{margin-top:8px;padding:8px 12px;border-left:3px solid var(--warn);background:rgba(232,182,76,.08);border-radius:0 8px 8px 0;font-size:13.5px;color:var(--ink-1)}
   .ch-q i{font-style:normal;color:var(--warn);font-weight:700}
   .ch-row .sm{margin-top:6px}
+  .ch-row .grow{overflow-wrap:anywhere}
+  @media (max-width:600px){.ch-row{flex-wrap:wrap;gap:6px}.ch-row .grow{flex-basis:100%}.rc-tag.ch{min-width:0}}
   .rc-hint{position:absolute;bottom:14px;left:0;right:0;text-align:center;font-size:13px;color:var(--ink-3);pointer-events:none}
   @media (max-width:700px){
     .rc-card{padding:72px 18px 56px}
