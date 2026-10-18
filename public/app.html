@@ -1338,6 +1338,7 @@
   .br-table td{padding:9px 10px;border-top:1px solid var(--border-soft);vertical-align:middle}
   .br-row{cursor:pointer}
   .br-row:hover td{background:rgba(255,255,255,.025)}
+  .br-row.br-z td{background:rgba(255,255,255,.03)}
   .br-row.is-open td{background:var(--accent-soft)}
   .br-row.sel td{background:rgba(79,131,247,.08)}
   .br-row.off{opacity:.55}
@@ -1370,6 +1371,71 @@
   .br-add{display:grid;grid-template-columns:1fr 1fr;gap:6px}
   .br-add .inp{font-size:13.5px;padding:6px 9px;width:100%}
   .br-add button{justify-self:start}
+  /* All brands, easier to read and use (Leo, Oct 18 2026: "this is also too hard to look at can u make it easier to
+     see and interact with"): one filter panel with button groups, a count of what shows, bigger text, striped rows,
+     an Outreach column, headings that sort, and the heading row staying on screen while the list scrolls. */
+  .br-tools{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;
+    margin:12px 0;display:flex;flex-direction:column;gap:10px}
+  .br-tools-row{display:flex;align-items:center;gap:10px 22px;flex-wrap:wrap}
+  .br-tools .inp{padding:7px 10px;font-size:14px}
+  .br-tools .br-chk,.br-tools .hs-switch{font-size:14px;color:var(--ink-2)}
+  .br-tools .br-chk input,.br-tools .hs-switch input{width:16px;height:16px;accent-color:var(--accent)}
+  .br-grp{display:inline-flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .br-grp-l{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface-0)}
+  .seg-b{font:inherit;font-size:14px;font-weight:600;color:var(--ink-2);background:none;border:0;padding:7px 14px;cursor:pointer;
+    display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+  .seg-b+.seg-b{border-left:1px solid var(--border)}
+  .seg-b:hover{color:var(--ink-1);background:rgba(255,255,255,.05)}
+  .seg-b.on{background:var(--accent-soft);color:#d6e4ff;box-shadow:inset 0 -2px 0 var(--accent)}
+  .seg-b .n{font-size:12.5px;font-weight:600;color:var(--ink-3);background:rgba(255,255,255,.07);border-radius:99px;padding:0 7px;line-height:20px}
+  .seg-b.on .n{color:#d6e4ff;background:rgba(79,131,247,.28)}
+  .seg-b:focus-visible{outline:2px solid var(--ring);outline-offset:-2px}
+  .br-count{font-size:14px;color:var(--ink-3)}
+  .br-count b{color:var(--ink-1);font-weight:700}
+  .br-count a{margin-left:8px}
+  .br-tools .br-why{margin:0;padding-top:10px;border-top:1px solid var(--border-soft)}
+  .br-table{font-size:14px}
+  .br-table th{padding:11px 14px;color:var(--ink-3)}
+  .br-table th.br-num{text-align:right}
+  .br-table th[data-brsorth]{cursor:pointer;user-select:none}
+  .br-table th[data-brsorth]:hover{color:var(--ink-1)}
+  .br-table th.sorted{color:#d6e4ff}
+  .br-table th .br-arrow{margin-left:5px;font-size:11.5px}
+  .br-table td{padding:12px 14px}
+  .br-row:hover td,.br-row.br-z:hover td{background:rgba(255,255,255,.065)}
+  .br-row.sel td{background:rgba(79,131,247,.1)}
+  .br-row.is-open td{background:var(--accent-soft)}
+  .br-name .br-link{font-size:15px;font-weight:600;color:var(--ink-1)}
+  .br-name .br-link:hover{color:var(--accent-hi);text-decoration:underline;text-underline-offset:3px}
+  .br-caret{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:6px;border:1px solid transparent;
+    font-size:12px;margin-right:6px;padding:0;vertical-align:middle}
+  .br-row:hover .br-caret,.br-caret:focus-visible{border-color:var(--border);color:var(--ink-1);background:var(--surface-2)}
+  .br-sub{font-size:13px;margin:3px 0 0 30px}
+  .br-cat{color:var(--ink-2)}
+  .br-tier{color:var(--ink-3);text-transform:capitalize}
+  .br-out{white-space:nowrap;font-size:13.5px;color:var(--ink-3)}
+  .br-out i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;vertical-align:1px;background:var(--border)}
+  .br-out.replied{color:var(--good)} .br-out.replied i{background:var(--good)}
+  .br-out.invited{color:#a9c4ff} .br-out.invited i{background:var(--accent)}
+  .br-out.queued{color:var(--ink-2)} .br-out.queued i{background:var(--ink-3)}
+  .br-out .d{color:var(--ink-3);margin-left:6px}
+  .br-buy{font-size:15px}
+  .br-buy.low{color:var(--ink-3);font-weight:600}
+  .br-buy.low::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--warn);margin-right:7px;vertical-align:2px}
+  .br-name .status{margin-left:6px}
+  @media (min-width:821px){
+    .br-wrap{overflow:visible}
+    .br-table thead th{top:var(--head-h,0px);z-index:3;box-shadow:0 1px 0 var(--border)}
+    .br-table thead th:first-child{border-top-left-radius:var(--radius)}
+    .br-table thead th:last-child{border-top-right-radius:var(--radius)}
+  }
+  @media (max-width:820px){
+    .br-tools-row{gap:10px 14px}
+    .br-grp{width:100%}
+    .seg{display:flex;width:100%}
+    .seg-b{flex:1 1 0;justify-content:center;flex-wrap:wrap;white-space:normal;text-align:center;padding:7px 6px;font-size:13.5px;gap:4px 6px}
+  }
   /* Every brand a buyer (coverage card on All brands) */
   .cv-card{margin-top:14px}
   .cv-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px}
@@ -7330,6 +7396,7 @@ function brShown(anyReach) {
     if (by === 'most') return (brBuyers(y) - brBuyers(x)) || (brPeople(y) - brPeople(x)) || x.name.localeCompare(y.name);
     if (by === 'people') return (brPeople(y) - brPeople(x)) || x.name.localeCompare(y.name);
     if (by === 'touch') return (brTouch(y) - brTouch(x)) || x.name.localeCompare(y.name);
+    if (by === 'cat') return brCatName(x).localeCompare(brCatName(y)) || x.name.localeCompare(y.name);
     // Fewest buyers: the brands that need work first; archived last.
     return (!!x.passedAt - !!y.passedAt) || (brBuyers(x) - brBuyers(y)) || (brPeople(x) - brPeople(y)) || x.name.localeCompare(y.name);
   });
@@ -7337,12 +7404,19 @@ function brShown(anyReach) {
 }
 
 function brState(b) {
-  if (b.passedAt) return '<span class="status passed">archived</span>';
+  return b.passedAt ? '<span class="status passed">archived</span>' : '';
+}
+function brCatName(b) { return b.category ? (CAT_NAMES[b.category] || b.category) : '\uffff'; }
+// The Outreach column: where outreach stands at the brand, in words.
+// Reached out = a LinkedIn invite to someone there (the Outreach filter).
+function brOutCell(b) {
   var o = b.outreach || {};
-  if (o.replied) return '<span class="status replied">replied</span>';
-  if (o.invited) return '<span class="status sent">reached</span>';
-  if (o.queued) return '<span class="status queued">queued</span>';
-  return '';
+  var when = function (d) { return d ? '<span class="d">· ' + esc(shortDate(d)) + '</span>' : ''; };
+  if (o.replied) return '<span class="br-out replied" title="Someone there replied"><i></i>Replied' + when(o.lastRepliedAt) + '</span>';
+  if (o.invited) return '<span class="br-out invited" title="' + esc(REACH_TIP) + '"><i></i>Reached out · ' + o.invited + (o.invited === 1 ? ' person' : ' people') + when(o.lastSentAt) + '</span>';
+  if (o.queued) return '<span class="br-out queued" title="People queued for a LinkedIn invite, not sent yet"><i></i>' + o.queued + ' queued</span>';
+  if (o.emailed) return '<span class="br-out" title="Emailed, no LinkedIn invite yet"><i></i>Emailed only</span>';
+  return '<span class="br-out" title="Nobody there has had a LinkedIn invite"><i></i>Not yet</span>';
 }
 
 // Under the name of a brand with nobody in marketing / partnerships, when
@@ -7368,8 +7442,9 @@ function brBuyerCell(b) {
   var tip = n ? ['partnerships', 'events', 'marketing', 'founder'].filter(function (x) { return k[x]; })
       .map(function (x) { return k[x] + ' ' + BR_KIND[x].toLowerCase(); }).join(' · ')
     : 'No marketing / partnerships person on file';
-  return '<span class="br-buy ' + (n >= BR_TARGET ? 'ok' : 'low') + '" title="' + esc(tip) + '">' +
-    n + ' <span aria-hidden="true">' + (n >= BR_TARGET ? '✓' : '⚠') + '</span></span>';
+  return n >= BR_TARGET
+    ? '<span class="br-buy ok" title="' + esc(tip) + '">' + n + ' <span aria-hidden="true">✓</span></span>'
+    : '<span class="br-buy low" title="' + esc(tip) + ' — Needs people lists these">' + n + '</span>';
 }
 
 function brEditRow(b) {
@@ -7393,7 +7468,7 @@ function brEditRow(b) {
       (p.linkedin ? ' <span class="br-has" title="Has a LinkedIn link">in</span>' : '') + '</li>';
   }).join('');
   var others = brPeople(b) - brBuyers(b);
-  return '<tr class="br-open" data-bropen="' + esc(b.id) + '"><td colspan="6"><div class="br-edit">' +
+  return '<tr class="br-open" data-bropen="' + esc(b.id) + '"><td colspan="7"><div class="br-edit">' +
     '<div class="br-fields">' + cat + tier +
       f('website', 'Website', b.website, 'brand.com') +
       f('linkedinUrl', 'LinkedIn page', b.linkedinUrl, 'linkedin.com/company/…') +
@@ -7423,15 +7498,16 @@ function brEditRow(b) {
   '</div></td></tr>';
 }
 
-function brRow(b) {
+function brRow(b, i) {
   var newNote = lastCategory === 'new'
     ? '<div class="br-sub">' + esc(b.source === 'research' ? 'Research list' : 'LinkedIn run') + ' · added ' + esc(shortDate(b.createdAt)) + '</div>' : '';
   var open = !!BR_OPEN[b.id];
-  return '<tr class="br-row' + (b.passedAt ? ' off' : '') + (BB.sel[b.id] ? ' sel' : '') + (open ? ' is-open' : '') + '" data-brow="' + esc(b.id) + '" data-name="' + esc(b.name) + '">' +
+  return '<tr class="br-row' + (i % 2 ? ' br-z' : '') + (b.passedAt ? ' off' : '') + (BB.sel[b.id] ? ' sel' : '') + (open ? ' is-open' : '') + '" data-brow="' + esc(b.id) + '" data-name="' + esc(b.name) + '">' +
     '<td class="br-tick"><label data-bsel="' + esc(b.id) + '" title="Select to re-file or put on a day">' +
       '<input type="checkbox" data-bselcb="' + esc(b.id) + '" data-name="' + esc(b.name) + '"' + (BB.sel[b.id] ? ' checked' : '') + '></label></td>' +
     '<td class="br-name"><button class="br-caret" data-bract="toggle" aria-expanded="' + (open ? 'true' : 'false') + '" title="' + (open ? 'Close' : 'Edit details and add people') + '">' + (open ? '▾' : '▸') + '</button>' +
-      '<span class="t-brand br-link" data-brand="' + esc(b.id) + '" title="Open the brand page">' + esc(b.name) + '</span> ' + brState(b) + newNote + brCoverLine(b) + '</td>' +
+      '<span class="t-brand br-link" data-brand="' + esc(b.id) + '" title="Open the brand page">' + esc(b.name) + '</span>' + brState(b) + newNote + brCoverLine(b) + '</td>' +
+    '<td class="br-outc">' + brOutCell(b) + '</td>' +
     '<td class="br-cat">' + esc(b.category ? (CAT_NAMES[b.category] || b.category) : '—') + '</td>' +
     '<td class="br-tier">' + esc(b.tier || '—') + '</td>' +
     '<td class="br-fit">' + fitTags(b.fit, { noUs: true }) + '</td>' +
@@ -7439,46 +7515,79 @@ function brRow(b) {
   '</tr>' + (open ? brEditRow(b) : '');
 }
 
+// A row of buttons, one of them on (the Show and Outreach groups).
+function brSeg(label, attr, items, cur, tip) {
+  return '<div class="br-grp"' + (tip ? ' title="' + esc(tip) + '"' : '') + '><span class="br-grp-l">' + esc(label) + '</span>' +
+    '<div class="seg" role="group" aria-label="' + esc(label) + '">' + items.map(function (it) {
+      var on = cur === it[0];
+      return '<button type="button" class="seg-b' + (on ? ' on' : '') + '" ' + attr + '="' + it[0] + '" aria-pressed="' + on + '"' +
+        (it[3] ? ' title="' + esc(it[3]) + '"' : '') + '>' + esc(it[1]) + (it[2] != null ? '<span class="n">' + it[2] + '</span>' : '') + '</button>';
+    }).join('') + '</div></div>';
+}
+var BR_SORTS = [['fewest', 'Fewest buyers first'], ['most', 'Most buyers first'], ['fit', 'Best fit first'], ['touch', 'Latest outreach first'],
+  ['name', 'Name A–Z'], ['cat', 'Category A–Z'], ['people', 'Most people']];
+// A heading that sorts: its key, and the sort a click picks.
+function brHead(label, key, cls, tip) {
+  var on = key && (BR.sort === key || (key === 'buyers' && (BR.sort === 'fewest' || BR.sort === 'most')));
+  var arrow = !on ? '' : key === 'buyers' ? (BR.sort === 'most' ? '▼' : '▲') : key === 'name' || key === 'cat' ? '▲' : '▼';
+  return '<th' + (cls || on ? ' class="' + (cls || '') + (on ? ' sorted' : '') + '"' : '') +
+    (key ? ' data-brsorth="' + key + '" aria-sort="' + (on ? (arrow === '▲' ? 'ascending' : 'descending') : 'none') + '"' : '') +
+    ' title="' + esc((tip ? tip + ' · ' : '') + (key ? 'Click to sort' : '')) + '">' + label +
+    (on ? '<span class="br-arrow" aria-hidden="true">' + arrow + '</span>' : '') + '</th>';
+}
+function brFiltered() {
+  return BR.show !== 'all' || !!BR.why || !!REACH_F.brands || !!(document.getElementById('bq').value || '').trim();
+}
 function brRender() {
   var box = document.getElementById('brands-list');
   var rows = brShown();
   var need = BR_LIST.filter(brNeeds).length;
   var enough = BR_LIST.filter(brCovered).length;
-  var chip = function (key, label, n) {
-    return '<button class="chip' + (BR.show === key ? ' active' : '') + '" data-brshow="' + key + '">' + label + '<span class="n">' + n + '</span></button>';
-  };
-  var sorts = [['fewest', 'Fewest buyers first'], ['fit', 'Best fit first'], ['most', 'Most buyers first'], ['people', 'Most people'], ['touch', 'Last touched'], ['name', 'Name A–Z']];
-  var bar = '<div class="br-bar">' + brCatSelect() +
-    chip('all', 'All', BR_LIST.length) + chip('need', 'Needs people', need) + chip('enough', 'Has enough', enough) +
-    (lastCategory === 'new' ? '' : hideSmallBox('brands')) +
-    '<label class="br-chk"><input type="checkbox" data-brarch' + (BR.hideArchived ? ' checked' : '') + '> Hide archived</label>' +
-    reachSelect('brands', reachCounts(brShown(true), brReached)) +
-    '<span style="flex:1"></span>' +
-    '<label class="br-chk">Sort <select class="inp" data-brsort>' + sorts.map(function (s) {
-      return '<option value="' + s[0] + '"' + (BR.sort === s[0] ? ' selected' : '') + '>' + s[1] + '</option>';
-    }).join('') + '</select></label>' +
-  '</div>';
+  var rc = reachCounts(brShown(true), brReached);
+  var tools = '<div class="br-tools">' +
+    '<div class="br-tools-row">' +
+      brCatSelect() +
+      brSeg('Show', 'data-brshow', [['all', 'All', BR_LIST.length], ['need', 'Needs people', need, 'Nobody in marketing / partnerships on file yet'],
+        ['enough', 'Has enough', enough, 'At least one marketing / partnerships person on file']], BR.show) +
+      brSeg('Outreach', 'data-brreach', [['', 'Any'], ['yes', 'Reached out', rc.yes], ['no', 'Not reached out', rc.no]], REACH_F.brands || '', REACH_TIP) +
+      '<span style="flex:1"></span>' +
+      '<label class="br-chk"><span class="br-grp-l">Sort</span><select class="inp" data-brsort>' + BR_SORTS.map(function (s) {
+        return '<option value="' + s[0] + '"' + (BR.sort === s[0] ? ' selected' : '') + '>' + s[1] + '</option>';
+      }).join('') + '</select></label>' +
+    '</div>' +
+    '<div class="br-tools-row">' +
+      '<span class="br-count">Showing <b>' + rows.length + '</b> of ' + BR_LIST.length + (BR_LIST.length === 1 ? ' brand' : ' brands') +
+        (brFiltered() ? '<a href="#" data-brclear="1">Clear filters</a>' : '') + '</span>' +
+      '<span style="flex:1"></span>' +
+      (lastCategory === 'new' ? '' : hideSmallBox('brands')) +
+      '<label class="br-chk"><input type="checkbox" data-brarch' + (BR.hideArchived ? ' checked' : '') + '> Hide archived</label>' +
+    '</div>';
   // Needs people, split by what stands in the way (the card's rows).
   if (BR.show === 'need') {
     var cc = cvCounts(BR_LIST);
-    bar += '<div class="br-bar br-why">' +
-      '<button class="chip' + (BR.why ? '' : ' active') + '" data-brwhy="">Any reason<span class="n">' + cc.need + '</span></button>' +
-      CV_ORDER.filter(function (k) { return cc[k] || BR.why === k; }).map(function (k) {
-        return '<button class="chip' + (BR.why === k ? ' active' : '') + '" data-brwhy="' + k + '">' + CV_WHY[k] + '<span class="n">' + cc[k] + '</span></button>';
-      }).join('') +
+    tools += '<div class="br-tools-row br-why">' +
+      brSeg('Why', 'data-brwhy', [['', 'Any reason', cc.need]].concat(CV_ORDER.filter(function (k) { return cc[k] || BR.why === k; }).map(function (k) {
+        return [k, CV_WHY[k], cc[k]];
+      })), BR.why || '') +
     '</div>';
   }
-  var head = '<tr><th class="br-tick"><label title="Select every brand shown"><input type="checkbox" data-bball></label></th><th>Brand</th><th>Category</th><th>Tier</th>' +
-    '<th title="Brand Fit 0–100: budget and venture money weigh most; open a brand for the reasons">Fit</th>' +
-    '<th class="br-num" title="Partnerships, marketing, events or founder / CEO titles on file">Buyers</th></tr>';
+  tools += '</div>';
+  var head = '<tr><th class="br-tick"><label title="Select every brand shown"><input type="checkbox" data-bball></label></th>' +
+    brHead('Brand', 'name') +
+    brHead('Outreach', 'touch', '', REACH_TIP) +
+    brHead('Category', 'cat') +
+    brHead('Tier', '') +
+    brHead('Fit', 'fit', '', 'Brand Fit 0–100: budget and venture money weigh most; open a brand for the reasons') +
+    brHead('Buyers', 'buyers', 'br-num', 'Partnerships, marketing, events or founder / CEO titles on file') + '</tr>';
   var hidden = (document.getElementById('bq').value || '').trim() ? 0
     : BR_LIST.filter(function (b) { return brSmallHidden(b) && !(BR.hideArchived && b.passedAt); }).length;
   var hiddenNote = hidden ? '<div class="hint" style="margin:8px 0 0">' + hidden + (hidden === 1 ? ' brand' : ' brands') +
     ' too small hidden (sales under $1M or under 20 people on LinkedIn, nobody contacted) — <a href="#" data-brshowsmall="1">show them</a></div>' : '';
-  box.innerHTML = bar + (rows.length
+  box.innerHTML = tools + (rows.length
     ? '<div class="br-wrap" data-scroll="brands-table"><table class="br-table"><thead>' + head + '</thead><tbody>' +
         rows.map(brRow).join('') + '</tbody></table></div>'
-    : '<div class="panel"><div class="empty"><h3>' + (BR_LIST.length ? 'No brands match' : 'No brands here') + '</h3></div></div>') + hiddenNote;
+    : '<div class="panel"><div class="empty"><h3>' + (BR_LIST.length ? 'No brands match' : 'No brands here') + '</h3>' +
+        (BR_LIST.length && brFiltered() ? '<p><a href="#" data-brclear="1">Clear filters</a></p>' : '') + '</div></div>') + hiddenNote;
   bbAllBox();
 }
 
@@ -7486,6 +7595,22 @@ function brById(id) { return BR_LIST.filter(function (b) { return b.id === id; }
 REACH_DRAW.brands = function () { brRender(); applyBrandFilter(); };
 
 document.getElementById('brands-list').addEventListener('click', function (e) {
+  var reach = e.target.closest('[data-brreach]');
+  if (reach) { REACH_F.brands = reach.getAttribute('data-brreach'); brRender(); applyBrandFilter(); return; }
+  var sorth = e.target.closest('[data-brsorth]');
+  if (sorth) {
+    var k = sorth.getAttribute('data-brsorth');
+    BR.sort = k === 'buyers' ? (BR.sort === 'fewest' ? 'most' : 'fewest') : k;
+    brRender(); applyBrandFilter();
+    return;
+  }
+  if (e.target.closest('[data-brclear]')) {
+    e.preventDefault();
+    BR.show = 'all'; BR.why = ''; REACH_F.brands = '';
+    document.getElementById('bq').value = '';
+    brRender(); applyBrandFilter();
+    return;
+  }
   var show = e.target.closest('[data-brshow]');
   if (show) { BR.show = show.getAttribute('data-brshow'); BR.why = ''; brRender(); applyBrandFilter(); return; }
   var why = e.target.closest('[data-brwhy]');

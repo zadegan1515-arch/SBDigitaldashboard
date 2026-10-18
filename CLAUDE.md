@@ -727,7 +727,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   much going on"): search + one **More ▾** menu (Brand Fit, SponsorUnited worklist, Lanes & re-file,
   Duplicates, Fill summaries — same ids `bq-*`), one **category dropdown** (`brCatSelect`, `data-brcat`;
   the chip row is gone), filters on one line, archived hidden by default. One row per brand:
-  Category · Tier · Fit · **Buyers** (the edit row shows everyone else on file). **Buyers** = people on file
+  Category · Tier · Fit · **Buyers** (the edit row shows everyone else on file). **Easier to read** (Leo, Oct 18 2026: "too
+  hard to look at can u make it easier to see and interact with"): one filter panel (`.br-tools`) — category, **Show**
+  and **Outreach** as button rows (`brSeg`), Sort; "Showing N of M brands" + **Clear filters** (`data-brclear`: Show,
+  Outreach, search); Hide too small / Hide archived — and the table Brand · **Outreach** (`brOutCell`: Replied / Reached
+  out · N people · date / N queued / Emailed only / Not yet) · Category · Tier · Fit · Buyers (0 = grey with an amber dot,
+  not ⚠), 14–15px text, striped rows, a click on a heading sorts (`brHead`, `data-brsorth`; Buyers flips fewest / most;
+  the Sort menu follows), and on a desktop the heading row sticks under the top bar. **Buyers** = people on file
   whose title is partnerships/sponsorship, events/experiential, marketing/brand or founder/CEO
   (`src/lib/buyers.ts`, counted in `listBrands` → `buyers`, `buyerPeople`; `node scripts/test-buyers.mjs`);
   a brand is covered at **1** (`BR_TARGET`, Leo's call). Filters All / Needs people / Has enough,
@@ -760,8 +766,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `node scripts/test-coverage-e2e.js` (real handlers, throwaway Postgres).
 - **Outreach filter on every brand list** (Leo, Oct 18 2026: "anywhere on the site where i sort brands … a filter [for]
   outreached to meaning that we have sent a request to at least one person there"): one dropdown **Outreach: Any /
-  Reached out (N) / Not reached out (N)** (`reachSelect` / `reachOk` / `REACH_F` / `REACH_DRAW` in app.html) on All brands,
-  Stock take (a lane's brand list, "Brands (3 of 40)"), Discover (reset by a tab change), Outreach → People, Week plan's
+  Reached out (N) / Not reached out (N)** (`reachSelect` / `reachOk` / `REACH_F` / `REACH_DRAW` in app.html) on All brands
+  (there a row of buttons in the filter panel, `data-brreach`), Stock take (a lane's brand list, "Brands (3 of 40)"), Discover (reset by a tab change), Outreach → People, Week plan's
   browse a category (Add the top N follows it) and the Schedule's category drill-in. Reached out = a LinkedIn invite to
   someone there — `wasInvited` / `INVITED_WHERE` (an accept logged straight from LinkedIn counts; an email alone doesn't,
   so the drill-in's "Reached" column can hold a brand that's "Not reached out"). Data: listBrands `outreach.invited`,

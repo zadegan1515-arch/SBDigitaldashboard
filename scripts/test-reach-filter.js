@@ -5,7 +5,8 @@
 // list with filters has the same dropdown — Any / Reached out (N) / Not
 // reached out (N) — and it shows exactly the brands with (or without) a
 // LinkedIn invite to someone there:
-//   1. Brands → All brands (with Hide archived and the chips)
+//   1. Brands → All brands (buttons there; with Hide archived, Show, the
+//      Outreach column, headings that sort, Showing N of M and Clear filters)
 //   2. Outreach → People (with its chips and the filter box)
 //   3. Brands → Stock take (a lane's brand list and its count)
 //   4. Brands → Discover (the Added tab; a tab change resets it)
@@ -140,26 +141,50 @@ async function main() {
   const texts = (sel) => page.$$eval(sel, (els) => els.map((e) => e.textContent.trim()));
 
   // 1. All brands --------------------------------------------------------
+  // Oct 18 2026 ("too hard to look at"): here the filter is a row of
+  // buttons in the filter panel, with a "Showing N of M" line and Clear.
   await page.evaluate(() => gotoView('brands'));
   await page.waitForSelector('#brands-list .br-table');
-  const brSel = '#brands-list select[data-reachf="brands"]';
   const brNames = () => page.$$eval('#brands-list [data-brow]', (rs) => rs.map((r) => r.getAttribute('data-name')));
-  assert.deepEqual(await opts(brSel), [['', 'Any'], ['yes', 'Reached out (2)'], ['no', 'Not reached out (1)']], 'counts what Hide archived leaves');
-  assert.match(await page.getAttribute('#brands-list .reach-f', 'title'), /LinkedIn invite went to at least one person/);
-  await page.selectOption(brSel, 'yes');
+  const segs = () => page.$$eval('#brands-list [data-brreach]', (bs) => bs.map((b) => [b.getAttribute('data-brreach'), b.textContent, b.classList.contains('on')]));
+  const shown = async () => (await page.textContent('#brands-list .br-count')).replace(/\s+/g, ' ').trim();
+  assert.deepEqual(await segs(), [['', 'Any', true], ['yes', 'Reached out2', false], ['no', 'Not reached out1', false]], 'counts what Hide archived leaves');
+  assert.match(await page.getAttribute('#brands-list .br-grp[title]', 'title'), /LinkedIn invite went to at least one person/);
+  assert.equal(await shown(), 'Showing 3 of 4 brands', 'no Clear while nothing is filtered');
+  await page.click('#brands-list [data-brreach="yes"]');
   assert.deepEqual(await brNames(), ['Charlie Spirits', 'Bravo Soda'], 'only brands with an invite out');
-  await page.selectOption(brSel, 'no');
+  assert.equal(await shown(), 'Showing 2 of 4 brandsClear filters');
+  assert.match(await page.textContent('[data-brow="b3"] .br-out'), /Reached out · 1 person/, 'the Outreach column says so');
+  await page.click('#brands-list [data-brreach="no"]');
   assert.deepEqual(await brNames(), ['Alpha Energy']);
+  assert.match(await page.textContent('[data-brow="b1"] .br-out'), /Not yet/);
   await page.uncheck('[data-brarch]');
-  assert.equal(await page.$eval(brSel, (s) => s.value), 'no', 'the choice holds through a redraw');
-  assert.deepEqual(await opts(brSel), [['', 'Any'], ['yes', 'Reached out (3)'], ['no', 'Not reached out (1)']], 'archived counted once shown');
-  await page.selectOption(brSel, 'yes');
+  assert.deepEqual((await segs()).map((x) => x[2]), [false, false, true], 'the choice holds through a redraw');
+  assert.deepEqual((await segs()).map((x) => x[1]), ['Any', 'Reached out3', 'Not reached out1'], 'archived counted once shown');
+  await page.click('#brands-list [data-brreach="yes"]');
   assert.deepEqual(await brNames(), ['Charlie Spirits', 'Bravo Soda', 'Delta Gone']);
   await page.click('#brands-list [data-brshow="enough"]');
-  assert.deepEqual(await brNames(), ['Charlie Spirits', 'Bravo Soda'], 'with the Has enough chip');
-  await page.selectOption(brSel, '');
-  assert.equal((await brNames()).length, 2, 'Any = the chip alone');
-  console.log('✓ 1 All brands: Reached out / Not reached out, counts follow Hide archived, works with the chips');
+  assert.deepEqual(await brNames(), ['Charlie Spirits', 'Bravo Soda'], 'with the Has enough button');
+  // A heading sorts: Brand = A–Z, Buyers flips fewest / most.
+  await page.click('#brands-list th[data-brsorth="name"]');
+  assert.equal(await page.$eval('[data-brsort]', (s) => s.value), 'name', 'the Sort menu follows');
+  assert.deepEqual(await brNames(), ['Bravo Soda', 'Charlie Spirits']);
+  await page.click('#brands-list th[data-brsorth="buyers"]');
+  assert.equal(await page.$eval('[data-brsort]', (s) => s.value), 'fewest');
+  await page.click('#brands-list th[data-brsorth="buyers"]');
+  assert.equal(await page.$eval('[data-brsort]', (s) => s.value), 'most');
+  assert.deepEqual(await brNames(), ['Bravo Soda', 'Charlie Spirits']);
+  assert.match(await page.textContent('#brands-list th.sorted'), /Buyers▼/);
+  await page.selectOption('[data-brsort]', 'fewest');
+  // Clear filters: Show, Outreach and the search box back to all.
+  await page.fill('#bq', 'zzz');
+  assert.match(await page.textContent('#brands-list .empty'), /No brands match/);
+  await page.click('#brands-list .empty [data-brclear]');
+  assert.equal(await page.inputValue('#bq'), '');
+  assert.deepEqual((await segs()).map((x) => x[2]), [true, false, false]);
+  assert.equal((await brNames()).length, 4);
+  assert.equal(await shown(), 'Showing 4 of 4 brands');
+  console.log('✓ 1 All brands: Reached out / Not reached out buttons, the Outreach column, headings sort, Showing N of M, Clear filters');
 
   // 2. Outreach → People ---------------------------------------------------
   await page.evaluate(() => gotoView('linkedin'));
@@ -251,7 +276,7 @@ async function main() {
   // Phone width: the dropdown never pushes the page sideways.
   await page.setViewportSize({ width: 390, height: 800 });
   await page.evaluate(() => gotoView('brands'));
-  await page.waitForSelector('#brands-list select[data-reachf="brands"]');
+  await page.waitForSelector('#brands-list [data-brreach]');
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'no sideways scroll on a phone');
   console.log('✓ fits a phone');
 
