@@ -110,6 +110,8 @@ t('second review: recovery drinks, founder stories, caffeine-free pouches, the m
     ['Exclusive craft beer of Tennessee Athletics: Vol Lager is the only beer licensed to carry the Power T, sold at Neyland', 'Yee-Haw', 15],
     ["Emma Chamberlain's coffee brand built on Gen Z; RTD lattes/cold brew at Walmart", 'Chamberlain Coffee', 10],
     ['Coffee liqueur from Australia', 'Mr Black', 0], ['Licensed Disney character plush toys', 'X', 0],
+    ['a dream to create active wear that helped women', 'Oner Active', 10], ['An inclusive, custom-designed athletic apparel line', 'Buffbunny', 10],
+    ["Milwaukee brewery behind Marquette's first licensed beer (Golden Ale, via Learfield)", 'Third Space Brewing', 15],
   ]
   for (const [text, name, want] of cases) assert.equal(S.studentUse(text, name)?.points ?? 0, want, text)
   assert.equal(pts(S.brandWriteUp({ topProducts: 'Greens powder, colostrum, energy' })), 10, 'a product list’s bare "energy" is its energy drink')

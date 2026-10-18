@@ -730,7 +730,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   whose title is partnerships/sponsorship, events/experiential, marketing/brand or founder/CEO
   (`src/lib/buyers.ts`, counted in `listBrands` → `buyers`, `buyerPeople`; `node scripts/test-buyers.mjs`);
   a brand is covered at **1** (`BR_TARGET`, Leo's call). Filters All / Needs people / Has enough,
-  Hide too small, Hide archived, sort (fewest buyers first by default), search by name or aka. A row opens in place:
+  Hide too small, Hide archived, sort (fewest buyers first by default), search by name or aka. **Brand Fit counts**
+  (Leo, Oct 18 2026: "a count for brands that are above 75 then brands 50-75 then less than 50"): a row of three chips
+  under the filters — Fit 76+ · 50–75 · Under 50 (`BR_BANDS`, `brBand`, `BR.fit`) — of the brands in play (archived /
+  do-not-email left out, `brInPlay`), counted over the rows the other filters show (`brShown(true)`: category, Needs
+  people, search, Hide too small), so a count is exactly what its click shows; a second click clears it; not on New from
+  LinkedIn. A row opens in place:
   category, tier, website, LinkedIn page, aka, notes save on change (`updateBrand`); **Add a person**
   (`upsertContact`); the name opens the brand page. The tick bar (re-file, Put on a day) is unchanged.
   Stock take (lanes, ideas, re-file) and Needs contacts (SponsorUnited worklist) left the sub-tabs and
@@ -793,7 +798,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   A find on the roster grades on its brand's own Brand
   Fit. Letters **A 65+ / B 50+ / C 40+ / D** (Skip / not US / closed = D, too small caps at C) — on Oct 15 the 171 finds split
   ~17 / 52 / 63 / 39 (Brand Fit alone had made 137 of them A); on Oct 18, with the student fit and launches, the 186 waiting
-  ~29 / 66 / 54 / 37 (was 2 / 64 / 67 / 53) and Neuro 46 C → 76 A as a find, 63 B → 83 A on the roster. The page: a score box per row (number + letter; a click opens every
+  ~30 / 66 / 53 / 37 (was 2 / 64 / 67 / 53) and Neuro 46 C → 76 A as a find, 63 B → 83 A on the roster. The page: a score box per row (number + letter; a click opens every
   point), the points as chips under the why, big **Accept** / **Deny** buttons (`addDiscoveredBrand` / `dismissDiscovered`), a
   heading per grade under **Best grade first** (default; Newest first) and a grade filter. **Add all A's** (Leo, Oct 13 2026 — 88 of 106 waiting finds were A): the To review bar's button (`dcBulkOpen`,
   `#dc-bulk`) → `addDiscoveredBulk({ grade: 'A' })` preview = every A waiting, each as it'd be filed (`discoveryCategory`,

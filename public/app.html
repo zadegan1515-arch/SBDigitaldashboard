@@ -1327,6 +1327,10 @@
     padding:8px;background:var(--surface-2,#1b1b22);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
   .bq-menu .btn-ghost{text-align:left;width:100%}
   .br-bar .chip .n{margin-left:6px;color:var(--ink-3);font-weight:500}
+  .br-fit{margin-top:-4px}
+  .br-fit-k{font-size:12.5px;font-weight:600;color:var(--ink-3);margin-right:2px}
+  .br-fit .chip.br-fit-hi .n{color:var(--good);font-weight:700}
+  .br-fit .chip.br-fit-mid .n{color:var(--warn);font-weight:700}
   .br-chk{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;color:var(--ink-2)}
   .br-chk .inp{padding:5px 9px;font-size:13.5px}
   .br-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-1)}
@@ -6884,7 +6888,15 @@ document.getElementById('cover-card').addEventListener('click', function (e) {
 // re-file and the SponsorUnited worklist are buttons in the header.
 var BR_LIST = [];
 var BR_TARGET = 1;
-var BR = { show: 'all', why: '', sort: 'fewest', hideArchived: true };
+var BR = { show: 'all', why: '', sort: 'fewest', hideArchived: true, fit: '' };
+// Brand Fit counts above the table (Leo, Oct 18 2026: "a count for brands
+// that are above 75 then brands 50-75 then less than 50"): brands in play
+// only (archived / do-not-email are off). A count is the rows its click
+// shows — it follows the other filters (category, Needs people, search,
+// Hide too small); a second click clears it.
+var BR_BANDS = [['hi', 'Fit 76+', 'Brand Fit above 75'], ['mid', '50–75', 'Brand Fit 50 to 75'], ['lo', 'Under 50', 'Brand Fit under 50']];
+function brBand(b) { var s = brFit(b); return s < 0 ? '' : s > 75 ? 'hi' : s >= 50 ? 'mid' : 'lo'; }
+function brInPlay(b) { return !b.passedAt && !b.doNotEmail; }
 var BR_REACH = null; // categoryReach: invited / total per category, for the dropdown
 // One dropdown for the category (it was a row of 20+ chips).
 function brCatSelect() {
@@ -6926,9 +6938,10 @@ function brMatches(b, ql) {
 // finds them; New from LinkedIn is a review list and never hides.
 function brSmallHidden(b) { return HIDE_SMALL && !!b.hideSmall && lastCategory !== 'new'; }
 function brFit(b) { return b.fit ? b.fit.score : -1; }
-function brShown() {
+function brShown(noBand) {
   var ql = (document.getElementById('bq').value || '').trim().toLowerCase();
   var rows = BR_LIST.filter(function (b) {
+    if (!noBand && BR.fit && lastCategory !== 'new' && (!brInPlay(b) || brBand(b) !== BR.fit)) return false;
     if (BR.hideArchived && b.passedAt) return false;
     if (!ql && brSmallHidden(b)) return false;
     if (BR.show === 'need' && (!brNeeds(b) || (BR.why && brCoverState(b) !== BR.why))) return false;
@@ -7069,6 +7082,19 @@ function brRender() {
       return '<option value="' + s[0] + '"' + (BR.sort === s[0] ? ' selected' : '') + '>' + s[1] + '</option>';
     }).join('') + '</select></label>' +
   '</div>';
+  // Brand Fit counts: 76+ / 50–75 / under 50 of the brands below, in play.
+  if (lastCategory !== 'new') {
+    var bandN = { hi: 0, mid: 0, lo: 0 };
+    brShown(true).forEach(function (b) { var k = brInPlay(b) && brBand(b); if (k) bandN[k]++; });
+    bar += '<div class="br-bar br-fit" role="group" aria-label="Brand Fit counts">' +
+      '<span class="br-fit-k" title="Brands still in play — archived and do-not-email left out">Brand Fit</span>' +
+      BR_BANDS.map(function (x) {
+        return '<button class="chip br-fit-' + x[0] + (BR.fit === x[0] ? ' active' : '') + '" data-brfit="' + x[0] + '" title="' + x[2] +
+          (BR.fit === x[0] ? ' — click again to show every score' : ' — click to show just these') + '" aria-pressed="' + (BR.fit === x[0]) + '">' +
+          x[1] + '<span class="n">' + bandN[x[0]] + '</span></button>';
+      }).join('') +
+    '</div>';
+  }
   // Needs people, split by what stands in the way (the card's rows).
   if (BR.show === 'need') {
     var cc = cvCounts(BR_LIST);
@@ -7100,6 +7126,8 @@ document.getElementById('brands-list').addEventListener('click', function (e) {
   if (show) { BR.show = show.getAttribute('data-brshow'); BR.why = ''; brRender(); applyBrandFilter(); return; }
   var why = e.target.closest('[data-brwhy]');
   if (why) { BR.why = why.getAttribute('data-brwhy'); brRender(); applyBrandFilter(); return; }
+  var band = e.target.closest('[data-brfit]');
+  if (band) { var k = band.getAttribute('data-brfit'); BR.fit = BR.fit === k ? '' : k; brRender(); return; }
   if (e.target.closest('[data-brshowsmall]')) { e.preventDefault(); setHideSmall(false); brRender(); return; }
   var pass = e.target.closest('[data-blpass]');
   if (pass) {

@@ -178,7 +178,8 @@ async function main() {
   // The category dropdown switches the list.
   await page.selectOption('#brands-list [data-brcat]', 'energy');
   await page.waitForFunction(() => /Energy/.test(document.getElementById('brands-title').textContent));
-  assert.equal(await page.$eval('#brands-list [data-brcat]', (s) => s.value), 'energy');
+  // The title changes before the list has redrawn: wait for the new list's menu.
+  await page.waitForFunction(() => (document.querySelector('#brands-list [data-brcat]') || {}).value === 'energy');
   await page.selectOption('#brands-list [data-brcat]', 'all');
   await page.waitForFunction(() => document.getElementById('brands-title').textContent === 'All brands');
   console.log('✓ the category dropdown switches the list');
@@ -383,6 +384,36 @@ async function main() {
   console.log('✓ Team: turned-away sign-ins listed with one-click Add; moving on before it answers stays put');
 
   // Phone width: no sideways page scroll.
+  // Brand Fit counts (Leo, Oct 18 2026: "a count for brands that are above
+  // 75 then brands 50-75 then less than 50"): in play only, a click shows
+  // exactly those rows, a second click clears it, counts follow the search.
+  reset();
+  Object.assign(S.list[0], { fit: { score: 82 } });
+  Object.assign(S.list[1], { fit: { score: 75 } });
+  Object.assign(S.list[2], { fit: { score: 49 } });
+  Object.assign(S.list[3], { fit: { score: 90 } }); // archived: never counted
+  S.list.push(row('b5', 'Echo Off', 1, 2, { doNotEmail: true, fit: { score: 88 } }), row('b6', 'Foxtrot Fizz', 1, 3, { fit: { score: 76 } }), row('b7', 'Golf Gum', 1, 3, { fit: { score: 50 } }));
+  await page.evaluate(() => gotoView('brands'));
+  await page.evaluate(() => loadBrands('all'));
+  await page.waitForSelector('#brands-list [data-brfit="hi"]');
+  const bands = () => page.$$eval('#brands-list [data-brfit]', (bs) => bs.map((b) => b.getAttribute('data-brfit') + ':' + b.querySelector('.n').textContent));
+  assert.deepEqual(await bands(), ['hi:2', 'mid:2', 'lo:1'], '76+ = Alpha 82, Foxtrot 76; 50–75 = Bravo 75, Golf 50; under 50 = Charlie 49 — archived and do-not-email left out');
+  await page.click('#brands-list [data-brfit="hi"]');
+  assert.deepEqual((await names()).sort(), ['Alpha Energy', 'Foxtrot Fizz'], 'a click shows just those');
+  assert.equal(await page.getAttribute('#brands-list [data-brfit="hi"]', 'aria-pressed'), 'true');
+  await page.click('#brands-list [data-brfit="lo"]');
+  assert.deepEqual(await names(), ['Charlie Spirits']);
+  await page.click('#brands-list [data-brfit="lo"]');
+  assert.ok((await names()).length >= 5, 'a second click shows every score again');
+  await page.fill('#bq', 'golf');
+  assert.deepEqual(await bands(), ['hi:0', 'mid:1', 'lo:0'], 'counts follow the search');
+  await page.fill('#bq', '');
+  await page.evaluate(() => loadBrands('new'));
+  await page.waitForFunction(() => !document.querySelector('#brands-list [data-brfit]'));
+  await page.evaluate(() => loadBrands('all'));
+  await page.waitForSelector('#brands-list [data-brfit="hi"]');
+  console.log('✓ Brand Fit counts: 76+ / 50–75 / under 50 of the brands in play; a click shows them, again clears; they follow the search');
+
   await page.setViewportSize({ width: 390, height: 800 });
   await page.evaluate(() => gotoView('brands'));
   await page.waitForSelector('#brands-list .br-table');

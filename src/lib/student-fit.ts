@@ -110,7 +110,7 @@ export const STUDENT_USES: Tier[] = [
       '(?<!(deep|skin|lip|facial|intense|moisture|hair|scalp|lasting)[- ])hydrat(e|es|ing|ion)\\b(?![- ](\\w+[- ]){0,2}' + BEAUTY + '\\b)',
       'pre-?workout', 'post-?workout', 'workouts?\\b', 'gym\\b', 'protein\\b', 'sports drinks?',
       '(weight)?lifting (gear|apparel|belts?|straps?|shoes)', 'training (gear|apparel|shoes|shorts)', 'fitness (apparel|gear|drinks?|brand)',
-      'activewear', 'running[- ](shoes?|apparel|gear|shorts)', 'run[- ]specialty',
+      'active[- ]?wear\\b', 'athletic (apparel|wear|clothing)\\b', 'gym ?(wear|apparel|clothing)\\b', 'running[- ](shoes?|apparel|gear|shorts)', 'run[- ]specialty',
       // coffee is caffeine — never a coffee liqueur, a coffee-flavored drink or a coffee shop page
       'coffee\\b(?![- ](liqueurs?|flavou?r\\w*|shops?|tables?|houses?|cups?))', 'cold[- ]brew', 'espresso', 'yerba mat[eé]', 'matcha', 'guayusa',
       // caffeine in it — never "caffeine-free", "zero caffeine", a caffeine eye cream
@@ -122,7 +122,7 @@ export const STUDENT_USES: Tier[] = [
 // "K-State Athletics' officially licensed bourbon", "co-licensed shirts" —
 // "licensed" near the product and a school somewhere in the write-up.
 const LICENSED_ITEM = /\b((co-)?licensed\b[^.;]{0,50}?\b(beers?|ales?|lagers?|ipas?|ciders?|bourbons?|whiske?ys?|spirits?|vodkas?|seltzers?|wines?|tees?|t-shirts?|shirts?|cans)|(beers?|ales?|lagers?|ciders?|bourbons?|whiske?ys?|spirits?|vodkas?|seltzers?)\b[^.;]{0,20}?\blicensed)\b/i
-const SCHOOL = /\b(athletics|universit(y|ies)|college|collegiate|school|ncaa|campus|football|stadium|big (ten|12)|sec|acc|pac-12|sun belt|state|tech)\b/i
+const SCHOOL = /\b(learfield|clc|student-athletes?|athletics|universit(y|ies)|college|collegiate|school|ncaa|campus|football|stadium|big (ten|12)|sec|acc|pac-12|sun belt|state|tech)\b/i
 
 // A brand's own name can say energy / hydration ("Raze Energy", "Prime
 // Hydration") — never the 20 (Focus Brands is a restaurant group), and
