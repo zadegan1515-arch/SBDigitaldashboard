@@ -10,9 +10,8 @@ export type BuildIdea = { id: string; title: string; why: string; area: string }
 export const BUILD_IDEAS: BuildIdea[] = [
   // Built Oct 6 2026 and retired from here: weekly scoreboard, brand
   // timeline, stale deal nudges, Friday wrap-up, Zach's list on a phone,
-  // sponsor report after a show.
-  { id: 'dm-test', area: 'Outreach', title: 'Which first message gets replies',
-    why: 'About 1 in 6 people accept but only 1 in 20 reply. Alternate two versions of the first LinkedIn message on Zach\'s list and show the reply rate of each on Results.' },
+  // sponsor report after a show. Built Oct 18 2026: which first message
+  // gets replies (the first message test, src/lib/first-test.ts).
   { id: 'reply-inbox', area: 'Outreach', title: 'One inbox for every reply',
     why: 'LinkedIn accepts, LinkedIn replies and email replies in one list on Home, newest first, each with its next step.' },
   { id: 'su-batch', area: 'Brands', title: 'SponsorUnited lookups in bulk',

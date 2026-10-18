@@ -78,8 +78,8 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(g.brand.kind, 'person');
     const talks = await data('listTalks');
     const t = talks.talks.find(x => x.brand.id === p.id);
-    assert.ok(t && t.brand.kind === 'person' && t.code === p.boardCode, 'on In talks, marked person');
-    ok('the person is on Show Board → In talks with their code');
+    assert.ok(t && t.brand.kind === 'person' && t.code === p.boardCode, 'on Board codes, marked person');
+    ok('the person is on Show Board → Board codes with their code');
 
     // Never on the roster or in the category counts.
     await prisma.brand.create({ data: { id: 'realbrand', name: 'Real Brand', category: 'energy' } });

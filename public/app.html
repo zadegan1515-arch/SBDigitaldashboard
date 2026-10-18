@@ -195,6 +195,9 @@
     line-height:1.65;padding:14px;resize:vertical;outline:none;min-height:150px}
   .zt-mailfoot{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;padding:9px 14px;border-top:1px solid var(--border-soft);font-size:13px;color:var(--ink-3)}
   .zt-edstate{display:inline-flex;align-items:center;gap:8px;margin-right:auto}
+  .zt-ver{font-size:12.5px;font-weight:600;color:var(--ink-3);white-space:nowrap}
+  .zt-bg{display:inline-flex;gap:6px;margin-left:auto;padding:6px 0}
+  .zt-bgc{padding:4px 11px;font-size:12.5px}
   .zt-edited{color:#ab9fff;font-weight:600}
   .zt-steps{display:flex;align-items:center;gap:8px;margin-top:14px;flex-wrap:wrap}
   .zt-step{display:inline-flex;align-items:center;gap:9px;padding:8px 14px 8px 9px;border-radius:12px;
@@ -1158,6 +1161,12 @@
   .rcd .rcd-pct{font-weight:700;color:var(--ink-1)}
   .rcd .rcd-dim{color:var(--ink-3)}
   @media (max-width:600px){ .rcd .rcd-bar{width:auto;min-width:64px} .rcd th,.rcd td{padding-right:8px} }
+  .rcf-foot{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-top:10px}
+  .rcf-msgs{flex:1;min-width:240px;font-size:13.5px}
+  .rcf-msgs summary{cursor:pointer;color:var(--ink-2)}
+  .rcf-msg{margin-top:8px}
+  .rcf-msg b{font-size:12.5px;color:var(--ink-3)}
+  .rcf-msg p{margin:2px 0 0;white-space:pre-wrap;color:var(--ink-2)}
   .sd-out-wide{grid-column:1/-1}
   .sd-out-sug{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--border-soft);font-size:13.5px}
   .sd-out-sug:last-child{border-bottom:0}
@@ -1964,6 +1973,196 @@
   @keyframes sbiPen{to{-webkit-mask-position:0 0,0 0;mask-position:0 0,0 0}}
   @keyframes sbiLight{to{transform:translateX(82%)}}
   @keyframes sbiBail{to{opacity:0;visibility:hidden}}
+  /* ---- In talks (Leo, Oct 18 2026: "a different type of layout compared to the rest of the site … cleaner and
+     more complex"). Its own look: a two-pane workspace — brands down the left, one brand's profile on the right. ---- */
+  #intalks.page{padding-top:30px}
+  .it-top{display:flex;align-items:flex-end;gap:14px 24px;flex-wrap:wrap;margin-bottom:20px}
+  .it-top .sub{max-width:760px}
+  .it-shell{display:grid;grid-template-columns:304px minmax(0,1fr);align-items:start;border:1px solid var(--border);border-radius:20px;
+    background:linear-gradient(180deg,#101016 0%,#0c0c11 100%);box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 18px 50px rgba(0,0,0,.35);min-height:560px}
+  .it-rail{position:sticky;top:calc(var(--head-h,76px) + 10px);max-height:calc(100vh - var(--head-h,76px) - 20px);display:flex;flex-direction:column;
+    border-right:1px solid var(--border-soft);border-radius:20px 0 0 20px;min-width:0}
+  .it-rail-head{padding:16px 16px 12px;display:flex;flex-direction:column;gap:10px}
+  .it-find{width:100%;background:rgba(255,255,255,.035);border:1px solid var(--border-soft);border-radius:10px;padding:8px 11px 8px 30px;
+    font:inherit;font-size:13.5px;color:var(--ink-1)}
+  .it-find::placeholder{color:var(--ink-3)}
+  .it-find:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--ring)}
+  .it-findwrap{position:relative}
+  .it-findwrap:before{content:'⌕';position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--ink-3);font-size:13px}
+  .it-list{overflow:auto;padding:0 10px 10px;flex:1 1 auto;min-height:0}
+  .it-glabel{display:flex;justify-content:space-between;align-items:center;padding:14px 8px 6px;font-size:11.5px;font-weight:700;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+  .it-glabel span{font-variant-numeric:tabular-nums;letter-spacing:0;font-weight:600}
+  .it-item{display:flex;gap:11px;align-items:center;width:100%;text-align:left;padding:9px 10px;border-radius:12px;border:1px solid transparent;
+    background:none;color:var(--ink-1);font:inherit;cursor:pointer;position:relative;transition:background .15s,border-color .15s}
+  .it-item:hover{background:rgba(255,255,255,.035)}
+  .it-item.on{background:linear-gradient(90deg,rgba(79,131,247,.16),rgba(79,131,247,.05));border-color:rgba(79,131,247,.35)}
+  .it-item.on:before{content:'';position:absolute;left:-10px;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--accent)}
+  .it-item:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
+  .it-item-txt{display:flex;flex-direction:column;min-width:0;gap:2px}
+  .it-item-txt b{font-weight:650;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .it-item-sub{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .it-dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--ink-3)}
+  .it-dot.t-call{background:var(--accent-hi);box-shadow:0 0 0 3px rgba(111,157,255,.18)}
+  .it-dot.t-had{background:var(--good)}
+  .it-dot.t-deal{background:var(--warn)}
+  .it-dot.t-stop{background:var(--bad)}
+  .it-mono{flex:none;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-family:var(--display);font-weight:800;
+    font-size:13px;letter-spacing:.02em;background:hsl(var(--h,220) 38% 20%);color:hsl(var(--h,220) 80% 82%);border:1px solid hsl(var(--h,220) 40% 30%)}
+  .it-mono.lg{width:64px;height:64px;border-radius:18px;font-size:22px}
+  .it-sug{border-top:1px solid var(--border-soft);padding:6px 10px 12px;flex:none;max-height:42%;overflow:auto}
+  .it-sug summary{list-style:none;cursor:pointer;padding:10px 8px 6px;font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--ink-3);display:flex;justify-content:space-between}
+  .it-sug summary::-webkit-details-marker{display:none}
+  .it-sug summary:after{content:'▸';letter-spacing:0}
+  .it-sug[open] summary:after{content:'▾'}
+  .it-sug-row{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:10px}
+  .it-sug-row:hover{background:rgba(255,255,255,.03)}
+  .it-sug-row .t{min-width:0;flex:1;display:flex;flex-direction:column}
+  .it-sug-row .t b{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .it-sug-row .t span{font-size:12.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .it-main{min-width:0;padding:0 0 28px}
+  .it-back{display:none}
+  /* profile */
+  .it-hero{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:20px;align-items:start;padding:28px 30px 24px;
+    border-radius:0 20px 0 0;background:radial-gradient(120% 140% at 0% 0%,hsl(var(--h,220) 55% 30% / .30),transparent 55%),
+    linear-gradient(180deg,rgba(255,255,255,.02),transparent);border-bottom:1px solid var(--border-soft)}
+  .it-kicker{font-size:12.5px;color:var(--ink-3);display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+  .it-kicker .sep{opacity:.5}
+  .it-name{font-family:var(--display);font-size:32px;font-weight:800;letter-spacing:-.03em;line-height:1.08;margin:4px 0 12px;word-break:break-word}
+  .it-links{display:flex;flex-wrap:wrap;gap:6px}
+  .it-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;border:1px solid var(--border);
+    background:rgba(255,255,255,.03);color:var(--ink-2);font:inherit;font-size:13px;font-weight:550;text-decoration:none;cursor:pointer;white-space:nowrap}
+  .it-chip:hover{border-color:#3a3a46;color:var(--ink-1);background:rgba(255,255,255,.06)}
+  .it-chip svg{width:14px;height:14px;flex:none}
+  .it-chip.ghost{border-style:dashed;color:var(--ink-3)}
+  .it-chip .h{color:var(--ink-3);font-weight:500}
+  .it-side{display:flex;flex-direction:column;gap:10px;align-items:stretch;min-width:210px}
+  .it-callcard{border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:rgba(0,0,0,.25);display:flex;flex-direction:column;gap:2px}
+  .it-callcard .lbl{font-size:11.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+  .it-callcard b{font-family:var(--display);font-size:19px;font-weight:800;letter-spacing:-.01em}
+  .it-callcard span{font-size:12.5px;color:var(--ink-3)}
+  .it-callcard.t-call{border-color:rgba(111,157,255,.5);background:linear-gradient(160deg,rgba(79,131,247,.22),rgba(79,131,247,.05))}
+  .it-callcard.t-call .lbl{color:var(--accent-hi)}
+  .it-callcard.t-had{border-color:rgba(62,207,142,.35)}
+  .it-callcard.t-had .lbl{color:var(--good)}
+  .it-callcard.t-stop{border-color:rgba(240,113,107,.45)}
+  .it-callcard.t-stop .lbl{color:var(--bad)}
+  .it-side-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .it-linkedit{margin:0 30px;padding:16px 0 4px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:10px;align-items:end;border-bottom:1px solid var(--border-soft)}
+  .it-linkedit label{font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);display:flex;flex-direction:column;gap:5px}
+  .it-linkedit .inp{width:100%;font-size:13.5px;text-transform:none;letter-spacing:0;font-weight:400}
+  .it-linkedit .it-hint{grid-column:1/-1;padding-bottom:10px}
+  .it-journey{list-style:none;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));margin:0;padding:20px 30px 6px;counter-reset:j}
+  .it-journey li{position:relative;display:flex;flex-direction:column;gap:3px;padding-top:20px;min-width:0}
+  .it-journey li:before{content:'';position:absolute;top:5px;left:12px;right:-12px;height:2px;background:var(--border)}
+  .it-journey li:last-child:before{display:none}
+  .it-journey li.done:before{background:linear-gradient(90deg,var(--accent),rgba(79,131,247,.45))}
+  .it-journey li.done.last:before{background:var(--border)}
+  .it-jdot{position:absolute;top:0;left:0;width:12px;height:12px;border-radius:50%;border:2px solid #3a3a46;background:#0c0c11}
+  .it-journey li.done .it-jdot{border-color:var(--accent);background:var(--accent)}
+  .it-journey li.last .it-jdot{box-shadow:0 0 0 4px rgba(79,131,247,.22)}
+  .it-journey b{font-size:13px;font-weight:650;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .it-journey li.done b{color:var(--ink-1)}
+  .it-journey span{font-size:12.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .it-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;margin:18px 30px 0;border:1px solid var(--border-soft);
+    border-radius:14px;overflow:hidden;background:var(--border-soft)}
+  .it-fact{background:#0f0f15;padding:12px 14px;min-width:0}
+  .it-fact .k{font-size:11.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+  .it-fact .v{font-family:var(--display);font-size:18px;font-weight:750;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .it-fact .v small{font-family:'Inter',sans-serif;font-size:12.5px;font-weight:500;color:var(--ink-3);margin-left:4px}
+  .it-fact .n{font-size:12.5px;color:var(--ink-3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .it-fact .it-mini{margin-top:6px}
+  .it-cols{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:18px;padding:18px 30px 0}
+  .it-col{display:flex;flex-direction:column;gap:18px;min-width:0}
+  .it-card{border:1px solid var(--border-soft);border-radius:16px;background:rgba(255,255,255,.018);padding:18px 20px;min-width:0}
+  .it-card-h{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+  .it-card-h h3{font-size:12px;font-weight:750;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
+  .it-card-h .it-count{font-size:12.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .it-card-h .it-by{font-size:12.5px;color:var(--ink-3)}
+  .it-card-h .grow{flex:1}
+  .it-mini{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;border:1px solid var(--border);background:none;
+    color:var(--ink-2);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap}
+  .it-mini:hover{border-color:#3a3a46;color:var(--ink-1)}
+  .it-mini.danger:hover{border-color:rgba(240,113,107,.5);color:#f2918c}
+  .it-overview{font-size:15px;line-height:1.7;color:var(--ink-1);max-width:72ch}
+  .it-empty{font-size:13.5px;color:var(--ink-3);line-height:1.6}
+  .it-empty b{color:var(--ink-2);font-weight:600}
+  .it-idea{border-color:rgba(79,131,247,.32);background:linear-gradient(170deg,rgba(79,131,247,.10),rgba(255,255,255,.015) 45%)}
+  .it-idea-title{font-family:var(--display);font-size:19px;font-weight:800;letter-spacing:-.015em;line-height:1.25;margin-bottom:8px}
+  .it-idea-body p{font-size:14.5px;line-height:1.7;color:var(--ink-1);max-width:72ch}
+  .it-idea-body p+p{margin-top:10px}
+  .it-idea-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--border-soft)}
+  .it-hint{font-size:12.5px;color:var(--ink-3);line-height:1.5}
+  .it-ta{font-size:14px;line-height:1.65}
+  .it-edit-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .it-page .btn-solid.sm{padding:6px 14px;font-size:13px}
+  .it-noteadd{display:flex;gap:8px;align-items:flex-end}
+  .it-noteadd textarea{min-height:44px}
+  .it-noteadd .btn-solid{white-space:nowrap;flex:none}
+  .it-notes{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column}
+  .it-note{position:relative;padding:12px 0 12px 18px;border-top:1px solid var(--border-soft)}
+  .it-note:before{content:'';position:absolute;left:3px;top:19px;width:7px;height:7px;border-radius:50%;background:hsl(var(--h,220) 60% 60%)}
+  .it-note-meta{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-3)}
+  .it-note-meta b{color:var(--ink-2);font-weight:650}
+  .it-note-acts{margin-left:auto;display:flex;gap:6px;opacity:0;transition:opacity .15s}
+  .it-note:hover .it-note-acts,.it-note:focus-within .it-note-acts{opacity:1}
+  .it-note-txt{font-size:14px;line-height:1.6;margin-top:4px;white-space:pre-wrap;word-break:break-word}
+  .it-oldnote{margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.025);font-size:13px;color:var(--ink-2);white-space:pre-wrap;word-break:break-word}
+  .it-oldnote span{display:block;font-size:11.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+  .it-person{display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;padding:12px 0;border-top:1px solid var(--border-soft)}
+  .it-person:first-of-type{border-top:none;padding-top:2px}
+  .it-av{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;background:#1e1e28;color:var(--ink-2);border:1px solid var(--border)}
+  .it-pname{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:650;font-size:14.5px}
+  .it-ptitle{font-size:13px;color:var(--ink-2);margin-top:1px}
+  .it-pmeta{font-size:12.5px;color:var(--ink-3);margin-top:3px}
+  .it-pacts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .it-stage{display:inline-flex;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:650;border:1px solid var(--border);color:var(--ink-2);white-space:nowrap}
+  .it-stage.s-call{border-color:rgba(111,157,255,.5);color:#bcd0ff;background:rgba(79,131,247,.12)}
+  .it-stage.s-replied,.it-stage.s-converted{border-color:rgba(62,207,142,.4);color:#9ae6c4}
+  .it-stage.s-stopped,.it-stage.s-declined{border-color:rgba(240,113,107,.45);color:#f2a19c}
+  .it-fold{margin-top:10px;border-top:1px solid var(--border-soft);padding-top:10px}
+  .it-fold summary{cursor:pointer;font-size:13px;color:var(--ink-3)}
+  .it-fold-row{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;color:var(--ink-2)}
+  .it-fold-row .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .it-more{font-size:12.5px;color:var(--ink-3);margin-top:10px}
+  .it-more a{color:var(--accent-hi);cursor:pointer;text-decoration:none}
+  .it-deal{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .it-deal b{font-size:14.5px}
+  .it-blank{padding:70px 30px;text-align:center}
+  .it-blank h3{font-family:var(--display);font-size:20px;font-weight:800;margin-bottom:6px}
+  .it-blank p{color:var(--ink-3);font-size:13.5px;max-width:460px;margin:0 auto}
+  @media (max-width:1200px){
+    .it-cols{grid-template-columns:minmax(0,1fr)}
+    /* one column: who we're talking to right after the overview */
+    .it-col{display:contents}
+    .it-cols>.it-col>.it-card:nth-child(1){order:1}
+    .it-cols>.it-col:nth-child(2)>.it-card{order:2}
+    .it-cols>.it-col:nth-child(1)>.it-card:nth-child(n+2){order:3}
+    .it-hero{grid-template-columns:auto minmax(0,1fr)}
+    .it-side{grid-column:1/-1;flex-direction:row;flex-wrap:wrap;min-width:0;align-items:center}
+    .it-side .it-callcard{flex:1 1 220px}
+  }
+  @media (max-width:900px){
+    #intalks.page{padding-top:18px}
+    .it-shell{display:block;border-radius:16px;min-height:0}
+    .it-rail{position:static;max-height:none;border-right:none;border-radius:16px}
+    .it-shell.show-profile .it-rail{display:none}
+    .it-shell:not(.show-profile) .it-main{display:none}
+    .it-back{display:inline-flex;margin:14px 0 0 16px}
+    .it-hero{padding:18px 16px;gap:14px;border-radius:0}
+    .it-hero>.it-mono.lg{display:none}
+    .it-hero{grid-template-columns:minmax(0,1fr)}
+    .it-journey b{white-space:normal;font-size:12.5px}
+    .it-name{font-size:25px}
+    .it-journey{padding:16px 16px 4px;grid-template-columns:repeat(5,minmax(58px,1fr));overflow-x:auto}
+    .it-facts,.it-linkedit{margin-left:16px;margin-right:16px}
+    .it-linkedit{grid-template-columns:minmax(0,1fr)}
+    .it-cols{padding:16px 16px 0}
+    .it-card{padding:16px}
+    .it-noteadd{flex-direction:column;align-items:stretch}
+    .it-note-acts{opacity:1}
+  }
 </style>
 </head>
 <body>
@@ -2049,6 +2248,7 @@
         <button class="nav-item active" data-view="dashboard">Home</button>
         <button class="nav-item" data-view="brands">Brands</button>
         <button class="nav-item" data-view="outreach">Outreach</button>
+        <button class="nav-item" data-view="intalks">In talks</button>
         <button class="nav-item" data-view="board">Show Board</button>
         <button class="nav-item" data-view="pipeline">Deals</button>
         <button class="nav-item" data-view="audience">Audience</button>
@@ -2235,6 +2435,7 @@
       <div class="sub" id="rc-sub">Everyone we've contacted on LinkedIn or by email, grouped by brand.</div>
       <div class="kpi-row" id="rc-kpis"></div>
       <div id="rc-depth"></div>
+      <div id="rc-firsttest"></div>
       <div id="rc-toemail"></div>
       <div id="rc-accepted"></div>
       <div id="rc-followups"></div>
@@ -2451,10 +2652,22 @@
       <div id="bd-activity"></div>
     </section>
 
-    <!-- SHOW BOARD: IN TALKS -->
+    <!-- IN TALKS (Leo, Oct 18 2026): brands with a call booked + any added by hand — its own workspace look -->
+    <section class="view page it-page" id="intalks">
+      <div class="it-top">
+        <div>
+          <div class="eyebrow">In talks</div>
+          <h1>Brands we’re talking to</h1>
+          <div class="sub" id="it-sub">Loading…</div>
+        </div>
+      </div>
+      <div id="it-body"></div>
+    </section>
+
+    <!-- SHOW BOARD: BOARD CODES (was "In talks" until the In talks tab, Oct 18 2026) -->
     <section class="view page" id="talks">
       <div class="eyebrow">Show Board</div>
-      <h1>In talks</h1>
+      <h1>Board codes</h1>
       <div class="sub" id="tk-sub">Every brand holding a board code, with what they've done on it.</div>
       <div id="tk-list" style="margin-top:18px"></div>
     </section>
@@ -2564,7 +2777,7 @@
     <div class="modal-head">
       <h2 id="zt-tpl-h">Templates</h2>
       <p>Every card on Zach’s list starts from this. A card someone already edited keeps its own version.</p>
-      <div class="zt-tabs"><button class="chip active" data-tpltab="email">Email</button><button class="chip" data-tpltab="first">First LinkedIn message</button><button class="chip" data-tpltab="final">Final reach-out</button><button class="chip" data-tpltab="dm">LinkedIn DM</button></div>
+      <div class="zt-tabs"><button class="chip active" data-tpltab="email">Email</button><button class="chip" data-tpltab="first">First LinkedIn message</button><button class="chip" data-tpltab="firstB">Test B · man</button><button class="chip" data-tpltab="firstBW">Test B · woman</button><button class="chip" data-tpltab="final">Final reach-out</button><button class="chip" data-tpltab="dm">LinkedIn DM</button></div>
     </div>
     <div class="modal-body zt-tplgrid">
       <div>
@@ -3071,7 +3284,7 @@ function refreshAfterSponsorChange() {
 var SUBTABS = {
   brands: [['brands', 'All brands'], ['discover', 'Discover'], ['clarify', 'Clarify']],
   outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['weekplan', 'Week plan'], ['schedule', 'Schedule'], ['email-out', 'Email'], ['linkedin', 'People'], ['passed', 'Archived'], ['results', 'Email stats']],
-  board: [['board', 'Overview'], ['talks', 'In talks'], ['requests', 'Requests'], ['shows', 'Shows']],
+  board: [['board', 'Overview'], ['talks', 'Board codes'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
   audience: [['audience', 'Events'], ['attendees', 'Attendees'], ['segments', 'Segments']],
   operations: [['materials', 'Materials'], ['team', 'Team']],
@@ -3080,6 +3293,7 @@ var GROUP_OF = {
   brands: 'brands', brand: 'brands', discover: 'brands', clarify: 'brands', needs: 'brands', stock: 'brands',
   outreach: 'outreach', 'email-out': 'outreach', reached: 'outreach', schedule: 'outreach', weekplan: 'outreach', linkedin: 'outreach', results: 'outreach', passed: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
+  intalks: 'intalks',
   pipeline: 'pipeline', sponsorships: 'pipeline',
   audience: 'audience', attendees: 'audience', segments: 'audience',
   materials: 'operations', team: 'operations',
@@ -3515,6 +3729,9 @@ function navRestore(s) {
       runSearch(a.q);
     } else if (s.v === 'brands') {
       if (a.c === 'noprofile') loadBrandsNoProfile(); else loadBrands(a.c || 'all');
+    } else if (s.v === 'intalks') {
+      IT.edit = null; IT.links = false; IT.mobile = !!a.b;
+      loadInTalks(a.b || null);
     } else if (s.v === 'activations') {
       var m = /^#activations(?:\/([^\/]+))?(?:\/([a-z]+))?/.exec(location.hash || '');
       actOpenId = (m && m[1]) || null; actTab = (m && m[2]) || 'overview';
@@ -4978,12 +5195,13 @@ var HAND_TPL = null;       // the template; the Results tab's Email button reads
 
 // (NAME) or (FIRST NAME) -> first name, (BRAND) or (COMPANY) -> brand,
 // (TITLE) -> job title. Case doesn't matter.
+// (NAME) or [Name] — the same as handFillText on the server.
 function handFill(text, p) {
   var first = String(p.name || '').trim().split(/\s+/)[0] || 'there';
   return String(text || '')
-    .replace(/\((?:first\s*)?name\)/gi, first)
-    .replace(/\((?:brand|company)\)/gi, p.brandName || '')
-    .replace(/\(title\)/gi, p.title || '');
+    .replace(/[(\[](?:first\s*)?name[)\]]/gi, first)
+    .replace(/[(\[](?:brand|company)[)\]]/gi, p.brandName || '')
+    .replace(/[(\[]title[)\]]/gi, p.title || '');
 }
 
 // This person's email as it stands: their own edit where there is one,
@@ -5464,10 +5682,25 @@ function ztPanelHtml(p) {
 }
 
 // The first LinkedIn message: their own edit where someone rewrote it on
-// the card, Leo's template everywhere else.
+// the card, else their brand's version of the first message test (Oct 18
+// 2026, src/lib/first-test.ts): A = Leo's first message, B = his test
+// version, for a man or a woman (ZT_BG; the rep picks, a man's first).
+var ZT_BG = {};   // targetId -> 'woman' when version B is set to a woman's
+function ztFirstVersion(p) {
+  return ZT && ZT.firstTest && ZT.firstTest.on && p.firstVersion === 'B' ? 'B' : 'A';
+}
 function ztFirstText(p) {
   if (p.dmOwn) return p.dm || '';
+  if (ztFirstVersion(p) === 'B') {
+    var t = ZT_BG[p.targetId] === 'woman' ? ZT.firstBWTemplate : ZT.firstBTemplate;
+    return handFill((t || { body: '' }).body, p);
+  }
   return handFill(((ZT && ZT.firstTemplate) || { body: '' }).body, p);
+}
+// What "Messaged" records: the version the card showed — nothing for a card
+// someone rewrote, or while the test is stopped.
+function ztVersionSent(p) {
+  return ZT && ZT.firstTest && ZT.firstTest.on && !p.dmOwn ? ztFirstVersion(p) : null;
 }
 
 // The final reach-out: their own edit where someone rewrote it on the
@@ -5481,8 +5714,21 @@ function ztMsgHtml(p, kind) {
   var text = kind === 'dm' ? ztFirstText(p) : ztFinalText(p);
   var rows = Math.min(10, Math.max(3, String(text || '').split('\n').length + 1));
   var what = kind === 'dm' ? 'LinkedIn message' : 'Final reach-out on LinkedIn';
+  // The first message test: which version this brand gets, and for version
+  // B the man's / woman's text (the rep picks, as with the invite notes).
+  var ver = kind === 'dm' && !p.dmOwn && ZT && ZT.firstTest && ZT.firstTest.on ? ztFirstVersion(p) : '';
+  var verHtml = ver
+    ? '<span class="zt-ver" title="The first message test: every brand gets version A or B, and Results shows which gets more answers">Test · version ' + ver + '</span>' +
+      (ver === 'B'
+        ? '<span class="zt-bg" role="group" aria-label="Version B for">' +
+            ['man', 'woman'].map(function (g) {
+              var on = (ZT_BG[p.targetId] === 'woman' ? 'woman' : 'man') === g;
+              return '<button class="chip zt-bgc' + (on ? ' active' : '') + '" data-ztact="bgender" data-g="' + g + '" aria-pressed="' + on + '">For a ' + g + '</button>';
+            }).join('') + '</span>'
+        : '')
+    : '';
   return '<div class="zt-mail">' +
-    '<div class="zt-field"><span class="zt-flbl" style="width:auto">' + what + '</span></div>' +
+    '<div class="zt-field"><span class="zt-flbl" style="width:auto">' + what + '</span>' + verHtml + '</div>' +
     '<textarea class="zt-body" style="min-height:0" rows="' + rows + '" ' + (kind === 'dm' ? 'data-ztdm' : 'data-ztnudge') +
       ' aria-label="' + what + ' to ' + esc(p.name) + '">' + esc(text || '') + '</textarea>' +
     '<div class="zt-mailfoot"><span class="zt-edstate">' + (kind === 'dm'
@@ -6083,6 +6329,7 @@ function ztDo(id, step, btn, off) {
   if (!p || !step) return;
   var inBrand = ztInBrand(id);
   var args = { targetId: id, step: step };
+  if (step === 'dm' && !off) { var ver = ztVersionSent(p); if (ver) args.version = ver; }
   if (off) {
     args.on = false;
     api('handStep', args).then(function () {
@@ -6434,6 +6681,11 @@ function ztOnClick(e) {
     return;
   }
   if (act === 'gmail') { ztGmail(id); return; }
+  if (act === 'bgender') {
+    if (btn.getAttribute('data-g') === 'woman') ZT_BG[id] = 'woman'; else delete ZT_BG[id];
+    ztRedrawOpen(id);
+    return;
+  }
   if (act === 'copydm' || act === 'copynudge') {
     var box = item.querySelector(act === 'copydm' ? '[data-ztdm]' : '[data-ztnudge]');
     var text = box ? box.value : (act === 'copydm' ? ztFirstText(p) : ztFinalText(p));
@@ -6682,6 +6934,7 @@ function bztLoad(brandId) {
     ztTakeDays(r);
     if (!ZT) ZT = { brands: [], done: [], calls: [], people: 0, noAddress: 0, held: [] };
     ZT.template = r.template; ZT.dmTemplate = r.dmTemplate; ZT.firstTemplate = r.firstTemplate; ZT.finalTemplate = r.finalTemplate;
+    ZT.firstBTemplate = r.firstBTemplate; ZT.firstBWTemplate = r.firstBWTemplate; ZT.firstTest = r.firstTest;
     HAND_TPL = r.template;
     var ids = [];
     r.brands.forEach(function (g) {
@@ -6826,9 +7079,9 @@ function ztPrevHtml(text, p) {
     return v ? '<span class="zt-fill-tok">' + esc(v) + '</span>' : '<span class="zt-bad-tok">' + missing + '</span>';
   };
   return esc(text)
-    .replace(/\((?:first\s*)?name\)/gi, function () { return tok(first, 'no name'); })
-    .replace(/\((?:brand|company)\)/gi, function () { return tok(p.brandName, 'no brand'); })
-    .replace(/\(title\)/gi, function () { return tok(p.title, 'no title on file'); });
+    .replace(/[(\[](?:first\s*)?name[)\]]/gi, function () { return tok(first, 'no name'); })
+    .replace(/[(\[](?:brand|company)[)\]]/gi, function () { return tok(p.brandName, 'no brand'); })
+    .replace(/[(\[]title[)\]]/gi, function () { return tok(p.title, 'no title on file'); });
 }
 function ztPreview() {
   var ppl = ztTplPeople();
@@ -6839,18 +7092,24 @@ function ztPreview() {
 }
 var ZT_TPL_KIND = 'email';
 function ztOpenTpl(kind) {
-  ZT_TPL_KIND = kind === 'dm' || kind === 'first' || kind === 'final' ? kind : 'email';
+  ZT_TPL_KIND = kind === 'dm' || kind === 'first' || kind === 'firstB' || kind === 'firstBW' || kind === 'final' ? kind : 'email';
   var noSubj = ZT_TPL_KIND !== 'email';
   document.querySelectorAll('#zt-scrim [data-tpltab]').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-tpltab') === ZT_TPL_KIND); });
   document.getElementById('zt-tsubj-wrap').hidden = noSubj;
   document.getElementById('zt-prev-subj').hidden = noSubj;
   document.getElementById('zt-tbody-lbl').textContent = ZT_TPL_KIND === 'dm' ? 'LinkedIn message (when they want to keep it in the chat)'
-    : ZT_TPL_KIND === 'first' ? 'First LinkedIn message (Text them on LinkedIn, ' + ZT_DAYS.dm + ' days after they accept, on a Tue–Thu)'
+    : ZT_TPL_KIND === 'first' ? 'First LinkedIn message (Text them on LinkedIn, ' + ZT_DAYS.dm + ' days after they accept, on a Tue–Thu) · the test’s version A'
+    : ZT_TPL_KIND === 'firstB' ? 'First message test · version B, for a man (half the brands get it; Results shows which gets more answers)'
+    : ZT_TPL_KIND === 'firstBW' ? 'First message test · version B, for a woman'
     : ZT_TPL_KIND === 'final' ? 'Final reach-out on LinkedIn (' + ZT_DAYS.final + ' days after the first message, if they haven’t answered)' : 'Email';
   var t = ZT_TPL_KIND === 'dm'
     ? ((ZT && ZT.dmTemplate) || { subject: '', body: '', standIn: true })
     : ZT_TPL_KIND === 'first'
     ? ((ZT && ZT.firstTemplate) || { subject: '', body: '' })
+    : ZT_TPL_KIND === 'firstB'
+    ? ((ZT && ZT.firstBTemplate) || { subject: '', body: '' })
+    : ZT_TPL_KIND === 'firstBW'
+    ? ((ZT && ZT.firstBWTemplate) || { subject: '', body: '' })
     : ZT_TPL_KIND === 'final'
     ? ((ZT && ZT.finalTemplate) || { subject: '', body: '', standIn: true })
     : ((ZT && ZT.template) || HAND_TPL || { subject: '', body: '', standIn: true });
@@ -7174,6 +7433,8 @@ document.getElementById('zt-tsave').addEventListener('click', function () {
     btn.disabled = false;
     if (kind === 'dm') { if (ZT) { ZT.dmTemplate = t; ztRender(); } }
     else if (kind === 'first') { if (ZT) { ZT.firstTemplate = t; ztRender(); } }
+    else if (kind === 'firstB') { if (ZT) { ZT.firstBTemplate = t; ztRender(); } }
+    else if (kind === 'firstBW') { if (ZT) { ZT.firstBWTemplate = t; ztRender(); } }
     else if (kind === 'final') { if (ZT) { ZT.finalTemplate = t; ztRender(); } }
     else { HAND_TPL = t; if (ZT) { ZT.template = t; ztRender(); } }
     if (bztActive()) bztFill();
@@ -8613,6 +8874,7 @@ function confirmMergeBrands(fromId, toId, onDone) {
     if (s.deals) moves.push(s.deals + ' deal' + (s.deals === 1 ? '' : 's'));
     if (s.documents) moves.push(s.documents + ' document' + (s.documents === 1 ? '' : 's'));
     if (s.activations) moves.push(s.activations + ' activation' + (s.activations === 1 ? '' : 's'));
+    if (s.notes) moves.push(s.notes + ' In talks note' + (s.notes === 1 ? '' : 's'));
     var msg = 'Merge "' + s.from + '" into "' + s.to + '"?\n\n' +
       (moves.length
         ? 'Moves to ' + s.to + ':\n• ' + moves.join('\n• ') + '\n\n'
@@ -9143,6 +9405,8 @@ function loadBrand(brandId, focusContactId) {
             (b.topProducts ? ' Known for ' + esc(b.topProducts) + '.' : '') + '</div>'
         : person ? (b.notes ? '<div style="font-size:14px;color:var(--ink-2);margin:8px 0 0">' + esc(b.notes) + '</div>' : '')
         : '<div class="hint" style="margin:8px 0 0">No summary yet — open “Details &amp; notes” below and fill in “What they do”.</div>') +
+      // In talks (the top tab): it's there, or + Add to In talks.
+      bTalksLine(d) +
       // They said they don't want to continue (Zach's list, whole brand):
       // nobody here is contacted until the Undo.
       (b.stoppedAt
@@ -9913,6 +10177,7 @@ function loadBrand(brandId, focusContactId) {
       inp.focus();
     };
 
+    bTalksBind(b);
     document.getElementById('b-delete').onclick = function () {
       confirmDeleteBrand(b.id, function () {
         toast('Brand deleted');
@@ -10685,6 +10950,7 @@ function confirmDeleteBrand(brandId, onDone) {
     if (s.shows) extras.push(s.shows + ' attached show' + (s.shows === 1 ? '' : 's') +
       (s.attachedCents ? ' worth ' + money(s.attachedCents) : ''));
     if (s.deals) extras.push(s.deals + ' pipeline deal' + (s.deals === 1 ? '' : 's'));
+    if (s.notes) extras.push(s.notes + ' In talks note' + (s.notes === 1 ? '' : 's'));
     var msg = 'Delete brand "' + s.name + '" permanently?';
     if (extras.length) msg += '\n\nThis also removes:\n• ' + extras.join('\n• ');
     msg += '\n\nThis cannot be undone.';
@@ -12867,9 +13133,69 @@ function renderRcDepth() {
   }).catch(function () { box.innerHTML = ''; });
 }
 
+// Which first message gets answered (Leo, Oct 18 2026 — the first message
+// test, src/lib/first-test.ts): every brand gets version A (his first
+// message) or B (his test version) on Zach's list; an answer counts when it
+// came before the final reach-out. Stop the test = everyone gets A again.
+function renderFirstTest() {
+  var box = document.getElementById('rc-firsttest');
+  if (!box) return;
+  api('firstMessageTest', {}).then(function (d) {
+    var pc = function (x) { return x == null ? '—' : Math.round(x * 100) + '%'; };
+    var vs = d.versions || [];
+    var any = vs.some(function (v) { return v.sent; });
+    var rows = vs.map(function (v) {
+      var tip = 'Version ' + v.key + ': ' + v.answered + ' of ' + v.judged + ' answered before the final reach-out' +
+        (v.saidNo ? ' (' + v.saidNo + ' said no)' : '') + (v.waiting ? '; ' + v.waiting + ' still waiting' : '') + (v.few ? ' — too few to tell yet' : '');
+      return '<tr title="' + esc(tip) + '">' +
+        '<th scope="row">Version ' + v.key + (v.key === 'A' ? '<span class="rcd-dim"> · your first message</span>' : '<span class="rcd-dim"> · the test</span>') + '</th>' +
+        '<td class="rcd-bar"><span class="rcd-track" aria-hidden="true"><i style="width:' + Math.round((v.rate || 0) * 100) + '%"></i></span></td>' +
+        '<td class="rcd-pct">' + pc(v.rate) + '</td>' +
+        '<td class="rcd-dim">' + v.answered + ' of ' + v.judged + ' answered' + (v.saidNo ? ' · ' + v.saidNo + ' said no' : '') + '</td>' +
+        '<td class="rcd-dim">' + (v.waiting ? v.waiting + ' waiting' : '') + '</td>' +
+        '<td class="rcd-dim">' + (v.judged && v.few ? 'too few to tell' : '') + '</td></tr>';
+    }).join('');
+    var tx = d.texts || {};
+    var msgs = '<details class="rcf-msgs"><summary>See the two messages</summary>' +
+      '<div class="rcf-msg"><b>A</b><p>' + esc(tx.A || '') + '</p></div>' +
+      '<div class="rcf-msg"><b>B · for a man</b><p>' + esc(tx.B || '') + '</p></div>' +
+      '<div class="rcf-msg"><b>B · for a woman</b><p>' + esc(tx.BW || '') + '</p></div>' +
+      '<div class="hint" style="margin:6px 0 0">Change them on Home → Zach’s list → Edit template.</div></details>';
+    box.innerHTML =
+      '<div class="count-head" style="margin-top:18px">First message test <span class="n">' +
+        (d.on ? (d.startedAt ? 'since ' + esc(shortDate(d.startedAt)) : 'on') : 'stopped') + '</span></div>' +
+      '<div class="panel panel-pad">' +
+        (any
+          ? '<div class="rcd-wrap" data-scroll="rcf"><table class="rcd"><thead><tr><th scope="col">Message</th><th scope="col"></th>' +
+              '<th scope="col">Answered</th><th scope="col">Messages</th><th scope="col"></th><th scope="col"></th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+          : '<div class="hint" style="margin:0 0 6px">' + (d.on
+              ? 'Running. Every first message Zach marks Messaged on his list counts here.'
+              : 'Stopped before any first message was counted.') + '</div>') +
+        '<div class="hint" style="margin:8px 0 0">Each brand gets A or B. A message counts once it’s answered, the final reach-out goes, or ' + (d.judgeDays || 10) + ' days pass.</div>' +
+        '<div class="rcf-foot">' + msgs +
+          '<button class="btn-ghost sd-sm" data-rcft="' + (d.on ? 'stop' : 'start') + '">' + (d.on ? 'Stop the test' : 'Start the test again') + '</button></div>' +
+      '</div>';
+  }).catch(function () { box.innerHTML = ''; });
+}
+document.getElementById('rc-firsttest').addEventListener('click', function (e) {
+  var b = e.target.closest('[data-rcft]');
+  if (!b) return;
+  var on = b.getAttribute('data-rcft') === 'start';
+  if (!window.confirm(on
+    ? 'Start the first message test again?\n\nHalf the brands get version B again on Zach’s list.'
+    : 'Stop the first message test?\n\nEveryone gets your first message (A) again. What’s been counted stays here.')) return;
+  b.disabled = true;
+  api('setFirstTest', { on: on }).then(function () {
+    if (ZT) { ZT.firstTest = { on: on }; }
+    toast(on ? 'The test is on again' : 'Test stopped. Everyone gets version A');
+    renderFirstTest();
+  }).catch(function (err) { b.disabled = false; toast(err.message); });
+});
+
 function loadReached() {
   showView('reached');
   renderRcDepth();
+  renderFirstTest();
   var box = document.getElementById('reached-list');
   if (!RC_DATA.length) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   return api('listReached').then(function (d) {
@@ -19419,7 +19745,641 @@ function loadRequests() {
   });
 }
 
-// --- show board: in talks ---------------------------------------
+// --- In talks ----------------------------------------------------
+//
+// Leo, Oct 18 2026: "for the brands where the call has been scheduled i want
+// u to put them there … a different type of layout … cleaner and more
+// complex … notes for each brand … the person/people we reached out to and
+// accepted … their linkedin and even email … the website and brand socials
+// like instagram and tiktok … an overview … not more than 4 sentences … an
+// activation idea … editable … a copy button that we can paste into a new
+// chat with instructions on how to brainstorm ideas and make an activation".
+// His picks: a call booked puts a brand here by itself, + Add to In talks puts
+// any other (a brand that replied is offered at the bottom of the list); its
+// own top tab; brands down the left, one brand's profile on the right; Claude's
+// daily check writes the overview and idea (no API spend). Data =
+// listInTalks; writes = setInTalks, saveTalksProfile, addBrandNote,
+// editBrandNote, deleteBrandNote (route.ts; rules in src/lib/in-talks.ts).
+
+var IT = { data: null, sel: null, want: null, q: '', edit: null, links: false, mobile: false, drafts: {} };
+try { IT.sel = localStorage.getItem('sb.itSel') || null; } catch (e) {}
+
+function itById(id) {
+  return ((IT.data && IT.data.brands) || []).filter(function (b) { return b.id === id; })[0] || null;
+}
+function itSetSel(id) {
+  IT.sel = id || null;
+  try { if (id) localStorage.setItem('sb.itSel', id); } catch (e) {}
+}
+
+// New York day keys, so "today" and "in 3 days" agree with the rest of the site.
+function itKey(x) {
+  return new Date(x).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+}
+function itDay(x) { return new Date(x).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }); }
+function itDayLong(x) { return new Date(x).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/New_York' }); }
+function itDaysFromToday(x) {
+  return Math.round((Date.parse(itKey(x) + 'T12:00:00Z') - Date.parse(itKey(new Date()) + 'T12:00:00Z')) / 864e5);
+}
+function itRel(x) {
+  var n = itDaysFromToday(x);
+  return n === 0 ? 'today' : n === 1 ? 'tomorrow' : n === -1 ? 'yesterday' : n > 1 ? 'in ' + n + ' days' : -n + ' days ago';
+}
+function itHue(name) {
+  var h = 0, s = String(name || '');
+  for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
+  return h;
+}
+function itInitials(name) {
+  var w = String(name || '').replace(/[^A-Za-z0-9 ]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return '?';
+  return (w.length === 1 ? w[0].slice(0, 2) : w[0][0] + w[1][0]).toUpperCase();
+}
+function itHref(u) { return !u ? '' : /^https?:\/\//i.test(u) ? u : 'https://' + u; }
+function itHost(u) { return String(u || '').replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, ''); }
+function itHandle(u) {
+  var m = /(?:instagram\.com\/|tiktok\.com\/@)([A-Za-z0-9._]+)/i.exec(u || '');
+  return m ? '@' + m[1] : '';
+}
+var IT_ICON = {
+  web: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9M12 3c-2.5 2.7-3.8 5.7-3.8 9s1.3 6.3 3.8 9"/></svg>',
+  ig: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.3" cy="6.7" r=".6" fill="currentColor"/></svg>',
+  tt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v11.5a3.5 3.5 0 1 1-3.5-3.5"/><path d="M14 3c.4 2.6 2.4 4.6 5 5"/></svg>',
+  li: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M8 10.5V17M8 7.5v.01M12 17v-6.5M12 13.5a2.5 2.5 0 0 1 5 0V17"/></svg>',
+  mail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7 8.5 6 8.5-6"/></svg>',
+  phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>'
+};
+
+// Where a brand stands, one line (the list and the hero).
+function itStatus(b) {
+  if (b.stopped) return { cls: 'stop', text: 'Said they don’t want to continue' };
+  if (b.nextCall) {
+    var n = itDaysFromToday(b.nextCall.at);
+    return { cls: 'call', text: 'Call ' + (n === 0 ? 'today' : n === 1 ? 'tomorrow' : itDayLong(b.nextCall.at)) };
+  }
+  if (b.lastCall) return { cls: 'had', text: 'Had a call ' + itDay(b.lastCall.at) };
+  if (b.deal && b.deal.stage !== 'lost') return { cls: 'deal', text: 'Deal · ' + b.deal.stage };
+  if (b.why === 'hand') return { cls: 'hand', text: 'Added ' + (b.since ? itDay(b.since) : '') + (b.addedBy ? ' by ' + b.addedBy : '') };
+  return { cls: 'hand', text: 'In talks since ' + (b.since ? itDay(b.since) : '—') };
+}
+
+function loadInTalks(selId) {
+  // The brand asked for wins once the fresh list has it (the cached list
+  // drawn first may not have it yet — a brand just added).
+  if (selId) { itSetSel(selId); IT.want = selId; }
+  NAV_ARGS = IT.sel ? { b: IT.sel } : null;
+  var again = showView('intalks');
+  var mine = viewTurn('intalks');
+  var body = document.getElementById('it-body');
+  if (!again) {
+    if (IT.data) renderInTalks();
+    else body.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  }
+  return api('listInTalks').then(function (d) {
+    if (!mine()) return;
+    IT.data = d;
+    if (d.sponsorUrl) SPONSOR_URL = d.sponsorUrl;
+    renderInTalks();
+    IT.want = null;
+    // The brand picked once the list landed is this page's own, so Back
+    // from the next brand comes back to it.
+    var cur = history.state && history.state.sbNav;
+    if (cur && cur.v === 'intalks' && IT.sel && !(cur.a && cur.a.b)) {
+      navStamp(Object.assign({}, cur, { a: { b: IT.sel } }));
+      NAV.cur = { v: 'intalks', a: { b: IT.sel } };
+    }
+  }).catch(function (e) {
+    if (!mine()) return;
+    body.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+}
+
+function renderInTalks() {
+  var d = IT.data;
+  if (!d) return;
+  var list = d.brands || [];
+  if (IT.want && itById(IT.want)) IT.sel = IT.want;
+  if (IT.sel && !itById(IT.sel)) IT.sel = null;
+  if (!IT.sel && list.length) IT.sel = list[0].id;
+  var calls = list.filter(function (b) { return b.nextCall && !b.stopped; }).length;
+  document.getElementById('it-sub').textContent = list.length
+    ? list.length + ' brand' + (list.length === 1 ? '' : 's') + (calls ? ' · ' + calls + ' call' + (calls === 1 ? '' : 's') + ' coming up' : '') +
+      ' · a call booked on Zach’s list puts a brand here by itself'
+    : 'A call booked on Zach’s list puts a brand here by itself — or add one that replied.';
+  var body = document.getElementById('it-body');
+  if (!body.querySelector('.it-shell')) {
+    body.innerHTML = '<div class="it-shell">' +
+      '<aside class="it-rail">' +
+        '<div class="it-rail-head"><div class="it-findwrap"><input class="it-find" id="it-find" type="search" autocomplete="off" placeholder="Find a brand or person"></div></div>' +
+        '<div class="it-list" id="it-list"></div>' +
+        '<div id="it-sugbox"></div>' +
+      '</aside>' +
+      '<div class="it-main" id="it-main"></div>' +
+    '</div>';
+    document.getElementById('it-find').value = IT.q;
+  }
+  body.querySelector('.it-shell').classList.toggle('show-profile', !!IT.mobile && !!IT.sel);
+  itRenderRail();
+  itRenderMain();
+}
+
+function itRenderRail() {
+  var d = IT.data, el = document.getElementById('it-list');
+  if (!d || !el) return;
+  var keep = el.scrollTop;
+  var q = IT.q.trim().toLowerCase();
+  var rows = (d.brands || []).filter(function (b) {
+    if (!q) return true;
+    return b.name.toLowerCase().indexOf(q) !== -1 ||
+      (b.people || []).some(function (p) { return (p.name || '').toLowerCase().indexOf(q) !== -1; });
+  });
+  var item = function (b) {
+    var st = itStatus(b);
+    return '<button class="it-item' + (b.id === IT.sel ? ' on' : '') + '" data-it-sel="' + esc(b.id) + '" style="--h:' + itHue(b.name) + '">' +
+      '<span class="it-mono">' + esc(itInitials(b.name)) + '</span>' +
+      '<span class="it-item-txt"><b>' + esc(b.name) + '</b>' +
+        '<span class="it-item-sub"><i class="it-dot t-' + st.cls + '"></i>' + esc(st.text) + '</span></span></button>';
+  };
+  var group = function (label, bs) {
+    return bs.length ? '<div class="it-glabel">' + esc(label) + '<span>' + bs.length + '</span></div>' + bs.map(item).join('') : '';
+  };
+  var up = rows.filter(function (b) { return b.nextCall && !b.stopped; });
+  var talking = rows.filter(function (b) { return !b.nextCall && !b.stopped; });
+  var stopped = rows.filter(function (b) { return b.stopped; });
+  el.innerHTML = rows.length
+    ? group('Calls coming up', up) + group(up.length ? 'Talking' : 'In talks', talking) + group('Said they’re out', stopped)
+    : '<div class="it-empty" style="padding:14px 8px">' + (q ? 'Nothing in talks matches “' + esc(IT.q) + '”.' : 'No brands in talks yet.') + '</div>';
+  el.scrollTop = keep;
+
+  var sug = d.suggestions || [];
+  var box = document.getElementById('it-sugbox');
+  var wasOpen = box.querySelector('details') ? box.querySelector('details').open : !(d.brands || []).length;
+  box.innerHTML = sug.length
+    ? '<details class="it-sug"' + (wasOpen ? ' open' : '') + '><summary>Replied, not in talks <span>' + sug.length + '</span></summary>' +
+        sug.map(function (s) {
+          return '<div class="it-sug-row"><span class="t"><b>' + esc(s.name) + '</b><span>replied ' + esc(itDay(s.repliedAt)) +
+            (s.who ? ' · ' + esc(s.who) : '') + '</span></span>' +
+            '<button class="it-mini" data-it-add="' + esc(s.id) + '" title="Put ' + esc(s.name) + ' in talks">+ Add</button>' +
+            '<button class="it-mini" data-it-notnow="' + esc(s.id) + '" title="Stop offering it here — a new reply offers it again" aria-label="Not now">×</button></div>';
+        }).join('') + '</details>'
+    : '';
+}
+
+function itRenderMain() {
+  var el = document.getElementById('it-main');
+  if (!el) return;
+  var b = itById(IT.sel);
+  if (!b) {
+    el.innerHTML = '<div class="it-blank"><h3>Nobody in talks yet</h3><p>When a call gets booked on Zach’s list, that brand lands here with its people, links, an overview and an activation idea. ' +
+      ((IT.data && IT.data.suggestions || []).length ? 'Brands that replied are on the left — + Add puts one in talks now.' : '') + '</p></div>';
+    return;
+  }
+  var st = itStatus(b);
+  var hue = itHue(b.name);
+  var cat = CAT_NAMES[b.category] || b.category || '';
+
+  // --- hero
+  var chips = [];
+  if (b.website) chips.push('<a class="it-chip" href="' + esc(itHref(b.website)) + '" target="_blank" rel="noopener">' + IT_ICON.web + esc(itHost(b.website)) + '</a>');
+  if (b.instagramUrl) chips.push('<a class="it-chip" href="' + esc(b.instagramUrl) + '" target="_blank" rel="noopener">' + IT_ICON.ig + 'Instagram <span class="h">' + esc(itHandle(b.instagramUrl)) + '</span></a>');
+  if (b.tiktokUrl) chips.push('<a class="it-chip" href="' + esc(b.tiktokUrl) + '" target="_blank" rel="noopener">' + IT_ICON.tt + 'TikTok <span class="h">' + esc(itHandle(b.tiktokUrl)) + '</span></a>');
+  if (b.linkedinUrl) chips.push('<a class="it-chip" href="' + esc(itHref(b.linkedinUrl)) + '" target="_blank" rel="noopener">' + IT_ICON.li + 'LinkedIn</a>');
+  var missing = [!b.website && 'website', b.instagramUrl == null && 'Instagram', b.tiktokUrl == null && 'TikTok'].filter(Boolean);
+  chips.push('<button class="it-chip ghost" data-it-links>' + (missing.length ? '+ ' + missing.join(', ') : 'Edit links') + '</button>');
+
+  var callCard = b.stopped
+    ? '<div class="it-callcard t-stop"><span class="lbl">Stopped</span><b>Doesn’t want to continue</b><span>since ' + esc(itDay(b.stopped)) + '</span></div>'
+    : b.nextCall
+    ? '<div class="it-callcard t-call"><span class="lbl">Call booked</span><b>' + esc(itDayLong(b.nextCall.at)) + '</b><span>' + esc(itRel(b.nextCall.at)) + ' · with ' + esc(b.nextCall.name) + '</span></div>'
+    : b.lastCall
+    ? '<div class="it-callcard t-had"><span class="lbl">Last call</span><b>' + esc(itDayLong(b.lastCall.at)) + '</b><span>' + esc(itRel(b.lastCall.at)) + ' · with ' + esc(b.lastCall.name) + '</span></div>'
+    : '<div class="it-callcard"><span class="lbl">No call booked yet</span><b>' + esc(st.text) + '</b><span>Book it on Zach’s list (Home)</span></div>';
+
+  var hero = '<div class="it-hero">' +
+    '<span class="it-mono lg">' + esc(itInitials(b.name)) + '</span>' +
+    '<div style="min-width:0">' +
+      '<div class="it-kicker">' + (cat ? '<span>' + esc(cat) + '</span>' : '') + (b.tier ? '<span class="sep">·</span><span>' + esc(b.tier) + '</span>' : '') +
+        '<span class="sep">·</span><span>in talks since ' + esc(b.since ? itDay(b.since) : '—') + (b.why === 'hand' ? ' (added by hand)' : '') + '</span>' +
+        (b.archived ? '<span class="sep">·</span><span>archived</span>' : '') + '</div>' +
+      '<h2 class="it-name">' + esc(b.name) + '</h2>' +
+      '<div class="it-links">' + chips.join('') + '</div>' +
+    '</div>' +
+    '<div class="it-side">' + callCard +
+      '<div class="it-side-acts"><button class="it-mini" data-it-brand>Brand page →</button>' +
+        '<button class="it-mini danger" data-it-remove title="Off this list — its notes, idea and links stay">Take off In talks</button></div>' +
+    '</div></div>';
+
+  var linkEdit = IT.links
+    ? '<div class="it-linkedit">' +
+        '<label>Website<input class="inp" data-it-link="website" value="' + esc(itDraft(b, 'website', b.website || '')) + '" placeholder="brand.com"></label>' +
+        '<label>Instagram<input class="inp" data-it-link="instagramUrl" value="' + esc(itDraft(b, 'instagramUrl', b.instagramUrl === '' ? 'none' : (b.instagramUrl || ''))) + '" placeholder="@handle or link"></label>' +
+        '<label>TikTok<input class="inp" data-it-link="tiktokUrl" value="' + esc(itDraft(b, 'tiktokUrl', b.tiktokUrl === '' ? 'none' : (b.tiktokUrl || ''))) + '" placeholder="@handle or link"></label>' +
+        '<div class="it-edit-acts" style="margin:0"><button class="btn-solid sm" data-it-links-save>Save</button><button class="btn-ghost sm" data-it-links-cancel>Cancel</button></div>' +
+        '<div class="it-hint">Type “none” when they have no account — Claude’s daily check won’t look again. Leave a box empty and it will.</div>' +
+      '</div>'
+    : '';
+
+  // --- journey
+  var steps = b.journey || [];
+  var lastDone = -1;
+  steps.forEach(function (s, i) { if (s.done) lastDone = i; });
+  var journey = '<ol class="it-journey">' + steps.map(function (s, i) {
+    return '<li class="' + (s.done ? 'done' : '') + (i === lastDone ? ' last' : '') + '"><span class="it-jdot"></span><b>' + esc(s.label) + '</b><span>' +
+      (s.at ? esc(itDay(s.at)) : s.done ? '✓' : '—') + '</span></li>';
+  }).join('') + '</ol>';
+
+  // --- facts
+  var facts = [];
+  facts.push('<div class="it-fact"><div class="k">Brand Fit</div><div class="v">' + (b.fit != null ? b.fit : '—') + '<small>/ 100</small></div></div>');
+  if (b.liMembers) facts.push('<div class="it-fact"><div class="k">On LinkedIn</div><div class="v">' + esc(b.liMembers >= 1000 ? (Math.round(b.liMembers / 100) / 10) + 'K' : String(b.liMembers)) + '<small>people</small></div></div>');
+  if (b.salesCents != null) facts.push('<div class="it-fact"><div class="k">Sales</div><div class="v">' + esc(shortMoney(b.salesCents)) + '<small>a year</small></div></div>');
+  if (b.fundingCents != null) facts.push('<div class="it-fact"><div class="k">Raised</div><div class="v">' + esc(shortMoney(b.fundingCents)) + '</div>' + (b.lastRoundAt ? '<div class="n">last round ' + esc(String(b.lastRoundAt).slice(0, 7)) + '</div>' : '') + '</div>');
+  if (b.sponsorNote || b.sponsorsCollege != null) facts.push('<div class="it-fact"><div class="k">Already sponsors</div><div class="v" style="font-size:15px">' +
+    (b.sponsorsCollege === true ? 'College / music' : b.sponsorsCollege === false ? 'None found' : '—') + '</div>' + (b.sponsorNote ? '<div class="n" title="' + esc(b.sponsorNote) + '">' + esc(b.sponsorNote) + '</div>' : '') + '</div>');
+  var bd = b.board || {};
+  facts.push('<div class="it-fact"><div class="k">Show Board</div><div class="v">' + (bd.opens || 0) + '<small>open' + (bd.opens === 1 ? '' : 's') + '</small></div><div class="n">' +
+    (bd.lastAt ? 'last ' + esc(itDay(bd.lastAt)) : bd.code ? 'code ' + esc(bd.code) + ' — not opened' : 'no code yet — make one on the brand page') + '</div>' +
+    (bd.code ? '<button class="it-mini" data-it-board>Copy board link</button>' : '') + '</div>');
+
+  // --- cards
+  var overview = '<section class="it-card">' +
+    '<div class="it-card-h"><h3>Overview</h3>' + (b.overview && b.overviewBy ? '<span class="it-by">' + esc(b.overviewBy) + (b.overviewAt ? ' · ' + esc(itDay(b.overviewAt)) : '') + '</span>' : '') +
+      '<span class="grow"></span>' + (IT.edit === 'overview' ? '' : '<button class="it-mini" data-it-edit="overview">' + (b.overview ? 'Edit' : 'Write it') + '</button>') + '</div>' +
+    (IT.edit === 'overview'
+      ? '<textarea class="field-box it-ta" data-it-field="overview" rows="6">' + esc(itDraft(b, 'overview', b.overview || '')) + '</textarea>' +
+        '<div class="it-edit-acts"><button class="btn-solid sm" data-it-save="overview">Save</button><button class="btn-ghost sm" data-it-cancel>Cancel</button>' +
+        '<span class="it-hint">Claude keeps it to 4 sentences. Save it empty to have Claude write a fresh one tomorrow.</span></div>'
+      : b.overview
+      ? '<p class="it-overview">' + esc(b.overview) + '</p>'
+      : '<div class="it-empty"><b>Claude writes this on its daily check</b> — it’ll be here tomorrow morning.' + (b.about ? '<br>From the brand page: ' + esc(b.about) : '') + '</div>') +
+    '</section>';
+
+  var ideaText = b.idea || '';
+  var idea = '<section class="it-card it-idea">' +
+    '<div class="it-card-h"><h3>Activation idea</h3>' + (b.idea && b.ideaBy ? '<span class="it-by">' + esc(b.ideaBy) + (b.ideaAt ? ' · ' + esc(itDay(b.ideaAt)) : '') + '</span>' : '') +
+      '<span class="grow"></span>' + (IT.edit === 'idea' ? '' : '<button class="it-mini" data-it-edit="idea">' + (b.idea ? 'Edit' : 'Write one') + '</button>') + '</div>' +
+    (IT.edit === 'idea'
+      ? '<textarea class="field-box it-ta" data-it-field="idea" rows="12" placeholder="A title on the first line, a blank line, then what happens.">' + esc(itDraft(b, 'idea', ideaText)) + '</textarea>' +
+        '<div class="it-edit-acts"><button class="btn-solid sm" data-it-save="idea">Save</button><button class="btn-ghost sm" data-it-cancel>Cancel</button>' +
+        '<span class="it-hint">First line = the idea’s name.</span></div>'
+      : ideaText ? itIdeaHtml(ideaText)
+      : '<div class="it-empty"><b>No idea yet</b> — Claude adds one on its daily check, or write your own.</div>') +
+    '<div class="it-idea-foot"><button class="btn-solid sm" data-it-copy>Copy for a new chat</button>' +
+      '<span class="it-hint">Copies this brand, our notes and step-by-step brainstorm instructions. Paste it into a new Claude chat, then paste the final idea back here.</span></div>' +
+    '</section>';
+
+  var notesList = (b.notes || []).map(function (n) {
+    var editing = IT.edit === 'note:' + n.id;
+    return '<li class="it-note">' +
+      '<div class="it-note-meta"><b>' + esc(itDay(n.at)) + '</b>' + (n.by ? '<span>' + esc(n.by) + '</span>' : '') + (n.editedAt ? '<span>· edited</span>' : '') +
+        (editing ? '' : '<span class="it-note-acts"><button class="it-mini" data-it-note-edit="' + esc(n.id) + '">Edit</button>' +
+          '<button class="it-mini danger" data-it-note-del="' + esc(n.id) + '">Delete</button></span>') + '</div>' +
+      (editing
+        ? '<textarea class="field-box it-ta" data-it-field="note:' + esc(n.id) + '" rows="3" style="margin-top:6px">' + esc(itDraft(b, 'note:' + n.id, n.text)) + '</textarea>' +
+          '<div class="it-edit-acts"><button class="btn-solid sm" data-it-note-save="' + esc(n.id) + '">Save</button><button class="btn-ghost sm" data-it-cancel>Cancel</button></div>'
+        : '<div class="it-note-txt">' + esc(n.text) + '</div>') +
+      '</li>';
+  }).join('');
+  var notes = '<section class="it-card">' +
+    '<div class="it-card-h"><h3>Notes</h3><span class="it-count">' + ((b.notes || []).length || '') + '</span></div>' +
+    '<div class="it-noteadd"><textarea class="field-box it-ta" data-it-field="note:new" rows="2" placeholder="What was said, what’s next… (⌘↵ adds it)">' + esc(itDraft(b, 'note:new', '')) + '</textarea>' +
+      '<button class="btn-solid sm" data-it-note-add>Add note</button></div>' +
+    (notesList ? '<ul class="it-notes">' + notesList + '</ul>' : '') +
+    (b.brandNotes ? '<div class="it-oldnote"><span>On the brand page</span>' + esc(b.brandNotes) + '</div>' : '') +
+    '</section>';
+
+  var people = (b.people || []).map(function (p) {
+    var meta = [];
+    if (p.acceptedAt) meta.push('accepted ' + itDay(p.acceptedAt));
+    else if (p.invitedAt) meta.push('invited ' + itDay(p.invitedAt));
+    if (p.repliedAt) meta.push('replied ' + itDay(p.repliedAt) + (p.repliedBy === 'email' ? ' by email' : ''));
+    if (p.emailedAt) meta.push('emailed ' + itDay(p.emailedAt));
+    if (p.callAt) meta.push('call ' + itDay(p.callAt));
+    var acts = [];
+    if (p.linkedinUrl) acts.push('<a class="it-chip" href="' + esc(itHref(p.linkedinUrl)) + '" target="_blank" rel="noopener">' + IT_ICON.li + 'LinkedIn</a>');
+    if (p.email) {
+      acts.push('<a class="it-chip" href="' + esc(gmailCompose(p.email, 'SB Agency × ' + b.name, '')) + '" target="_blank" rel="noopener" title="Opens a Gmail draft — nothing sends from here">' + IT_ICON.mail + 'Email</a>');
+      acts.push('<button class="it-chip" data-it-copytext="' + esc(p.email) + '" title="Copy ' + esc(p.email) + '">' + esc(p.email) + '</button>');
+    }
+    if (p.phone) acts.push('<a class="it-chip" href="tel:' + esc(String(p.phone).replace(/[^0-9+]/g, '')) + '">' + IT_ICON.phone + esc(p.phone) + '</a>');
+    if (!p.email) acts.push('<span class="it-hint" style="align-self:center">no email on file</span>');
+    return '<div class="it-person">' +
+      '<span class="it-av">' + esc(itInitials(p.name)) + '</span>' +
+      '<div style="min-width:0"><div class="it-pname">' + esc(p.name) + '<span class="it-stage s-' + esc(p.stage) + '">' + esc(p.label) + '</span></div>' +
+        (p.title ? '<div class="it-ptitle">' + esc(p.title) + '</div>' : '') +
+        (meta.length ? '<div class="it-pmeta">' + esc(meta.join(' · ')) + '</div>' : '') +
+        '<div class="it-pacts">' + acts.join('') + '</div></div></div>';
+  }).join('');
+  var inv = b.invited || [];
+  var peopleCard = '<section class="it-card">' +
+    '<div class="it-card-h"><h3>Who we’re talking to</h3><span class="it-count">' + ((b.people || []).length || '') + '</span></div>' +
+    (people || '<div class="it-empty">Nobody here has accepted or replied yet.</div>') +
+    (inv.length ? '<details class="it-fold"><summary>Invited, no answer yet · ' + inv.length + '</summary>' + inv.map(function (p) {
+      return '<div class="it-fold-row"><span class="t">' + esc(p.name) + (p.title ? ' — ' + esc(p.title) : '') + '</span>' +
+        '<span class="it-hint">' + esc(itDay(p.invitedAt)) + '</span>' +
+        (p.linkedinUrl ? '<a class="it-mini" href="' + esc(itHref(p.linkedinUrl)) + '" target="_blank" rel="noopener">LinkedIn ↗</a>' : '') + '</div>';
+    }).join('') + '</details>' : '') +
+    (b.others ? '<div class="it-more">' + b.others + ' more ' + (b.others === 1 ? 'person' : 'people') + ' on file · <a data-it-brand>see them on the brand page</a></div>' : '') +
+    '</section>';
+
+  var dealCard = b.deal
+    ? '<section class="it-card"><div class="it-card-h"><h3>Deal</h3><span class="grow"></span><button class="it-mini" data-it-deals>Open Deals →</button></div>' +
+        '<div class="it-deal"><b>' + esc(b.deal.name) + '</b><span class="it-stage">' + esc(b.deal.stage) + '</span>' +
+        (b.deal.valueCents ? '<span class="it-hint">' + esc(money(b.deal.valueCents)) + ' sponsorship</span>' : '') + '</div>' +
+        (b.deal.nextStep || b.deal.followUpAt ? '<div class="it-hint" style="margin-top:6px">Next: ' + esc(b.deal.nextStep || '—') + (b.deal.followUpAt ? ' · due ' + esc(itDay(b.deal.followUpAt)) : '') + '</div>' : '') +
+      '</section>'
+    : '';
+
+  el.innerHTML = '<div class="it-profile" style="--h:' + hue + '">' +
+    '<button class="btn-ghost sm it-back" data-it-back>‹ All brands</button>' +
+    hero + linkEdit + journey +
+    '<div class="it-facts">' + facts.join('') + '</div>' +
+    '<div class="it-cols"><div class="it-col">' + overview + idea + notes + '</div>' +
+      '<div class="it-col">' + peopleCard + dealCard + '</div></div>' +
+    '</div>';
+}
+
+// The idea as written: first line its name (when more follows), then paragraphs.
+function itIdeaHtml(text) {
+  var parts = String(text).replace(/\r\n/g, '\n').trim().split(/\n\s*\n/);
+  var title = '';
+  var firstLines = parts[0].split('\n');
+  if (parts.length > 1 && firstLines.length === 1 && parts[0].length <= 90) title = parts.shift();
+  else if (firstLines.length > 1 && firstLines[0].length <= 90 && !/[.!?]$/.test(firstLines[0])) { title = firstLines.shift(); parts[0] = firstLines.join('\n'); }
+  return (title ? '<div class="it-idea-title">' + esc(title) + '</div>' : '') +
+    '<div class="it-idea-body">' + parts.map(function (p) { return '<p>' + esc(p.trim()).replace(/\n/g, '<br>') + '</p>'; }).join('') + '</div>';
+}
+
+// Typed text that isn't saved yet survives a redraw (and switching brands).
+function itDraft(b, field, fallback) {
+  var k = b.id + '|' + field;
+  return Object.prototype.hasOwnProperty.call(IT.drafts, k) ? IT.drafts[k] : fallback;
+}
+function itDropDraft(b, field) { delete IT.drafts[b.id + '|' + field]; }
+
+// "Copy for a new chat": everything a fresh Claude chat needs to brainstorm
+// an activation with Leo, and how to go about it.
+function itPrompt(b) {
+  var L = [];
+  var cat = CAT_NAMES[b.category] || b.category || '';
+  var adult = /^(rtd|spirits|alcohol)$/.test(b.category || '');
+  L.push('Help me brainstorm and build a brand activation for ' + b.name + '. Read everything below first, then follow the steps at the end.');
+  L.push('');
+  L.push('ABOUT SB AGENCY (us)');
+  L.push('- The largest college concert producer in the US: 500+ shows a year in 100+ tier-1 college markets, run with 100+ Greek-life (fraternity and sorority) campus networks.');
+  L.push('- What a brand can buy: presence inside the shows (sampling, pop-ups, stage / concourse / perimeter signage), campus seeding before show day (house drops to Greek chapters, managed student ambassadors), a content engine (our pro photo and video crews at the shows, student UGC, full commercial rights to all the media), and data-backed recaps (students reached, samples handed out, impressions).');
+  L.push('- Some shows are 21+. Anything with alcohol stays 21+ and compliant: nothing goes to chapter houses or anyone under 21.');
+  if (SPONSOR_URL) L.push('- Our Show Board (the upcoming shows a brand can pick from): ' + SPONSOR_URL);
+  L.push('');
+  L.push('THE BRAND');
+  L.push('Name: ' + b.name + (cat ? ' (' + cat + ')' : '') + (adult ? ' — an alcohol brand: 21+ only' : ''));
+  var links = [];
+  if (b.website) links.push('website ' + itHref(b.website));
+  if (b.instagramUrl) links.push('Instagram ' + b.instagramUrl);
+  if (b.tiktokUrl) links.push('TikTok ' + b.tiktokUrl);
+  if (b.linkedinUrl) links.push('LinkedIn ' + itHref(b.linkedinUrl));
+  if (links.length) L.push('Links: ' + links.join(' · '));
+  var facts = [];
+  if (b.liMembers) facts.push('about ' + b.liMembers + ' people on LinkedIn');
+  if (b.salesCents != null) facts.push('sales ' + shortMoney(b.salesCents) + ' a year');
+  if (b.fundingCents != null) facts.push('raised ' + shortMoney(b.fundingCents));
+  if (b.sponsorNote) facts.push('already sponsors: ' + b.sponsorNote);
+  if (facts.length) L.push('Facts: ' + facts.join(' · '));
+  if (b.overview) L.push('Overview: ' + b.overview);
+  else if (b.about) L.push('What they do: ' + b.about);
+  L.push('');
+  L.push('WHERE WE ARE WITH THEM');
+  if (b.stopped) L.push('They said they don’t want to continue (' + itDay(b.stopped) + ').');
+  else if (b.nextCall) L.push('Call booked for ' + itDayLong(b.nextCall.at) + ' with ' + b.nextCall.name + '.');
+  else if (b.lastCall) L.push('We had a call on ' + itDayLong(b.lastCall.at) + ' with ' + b.lastCall.name + '.');
+  else L.push('No call booked yet.');
+  (b.people || []).forEach(function (p) { L.push('- ' + p.name + (p.title ? ', ' + p.title : '') + ' — ' + p.label); });
+  if (b.deal) L.push('Deal: ' + b.deal.name + ' — ' + b.deal.stage + (b.deal.nextStep ? ' (next: ' + b.deal.nextStep + ')' : ''));
+  var bd = b.board || {};
+  if (bd.opens) L.push('They’ve opened our Show Board ' + bd.opens + ' time' + (bd.opens === 1 ? '' : 's') + (bd.lastAt ? ' (last ' + itDay(bd.lastAt) + ')' : '') + '.');
+  var notes = (b.notes || []).slice(0, 12);
+  if (notes.length) {
+    L.push('');
+    L.push('OUR NOTES (newest first)');
+    notes.forEach(function (n) { L.push('- ' + itDay(n.at) + (n.by ? ' (' + n.by + ')' : '') + ': ' + n.text.replace(/\s*\n\s*/g, ' / ')); });
+  }
+  L.push('');
+  L.push('CURRENT ACTIVATION IDEA');
+  L.push(b.idea ? b.idea : 'None yet — start fresh.');
+  L.push('');
+  L.push('HOW TO BRAINSTORM');
+  L.push('1. First, in 2–3 lines: what does this brand most likely want from college students right now (trial, retail sales near campus, sign-ups, content, brand love), and why? Use the overview, our notes and the call. If you can browse, look at their Instagram, TikTok and recent news first.');
+  L.push('2. Ask me up to 3 short questions if something important is missing (budget range, which semester, which markets, what they said on the call). If I say “skip”, go with your best guesses and say what you assumed.');
+  L.push('3. Give 5 different ideas, each a different kind — e.g. a sampling moment at the show, an on-stage or artist moment, a campus / Greek house drop before show day, a semester-long ambassador program, a content series or giveaway. For each: a name, one sentence on what happens, why it fits this brand, and what we’d measure.');
+  L.push('4. Pick the strongest (or build on the current idea if it’s still the best) and turn it into an activation plan:');
+  L.push('   • The idea in one line');
+  L.push('   • At the show — what a student sees and does, step by step');
+  L.push('   • On campus before show day');
+  L.push('   • Content — what our crews capture and what the brand posts');
+  L.push('   • Where and when — which kinds of schools and shows, how many, a rough timeline');
+  L.push('   • Team — staff and ambassadors needed');
+  L.push('   • Rough budget lines — product, staff, build, travel. These are activation costs only: never add them to the sponsorship fee or to show booking money — those are separate lines.');
+  L.push('   • What we report back — totals only (students reached, samples, content pieces, impressions), never anyone’s personal details.');
+  L.push('5. End with a short version for our dashboard: a title (8 words max) on the first line, a blank line, then 3–5 plain sentences. I’ll paste it into ' + b.name + '’s Activation idea box.');
+  L.push('');
+  L.push('Keep it plain English, short and concrete. No hype.');
+  return L.join('\n');
+}
+
+function itSelect(id) {
+  if (!itById(id)) return;
+  var same = id === IT.sel;
+  itSetSel(id);
+  IT.edit = null; IT.links = false; IT.mobile = true;
+  if (!same) {
+    NAV_ARGS = { b: id };
+    showView('intalks', true);   // a page of its own: Back goes to the brand before
+  }
+  renderInTalks();
+}
+
+function itSaveProfile(b, args, done) {
+  args.brandId = b.id;
+  return api('saveTalksProfile', args).then(function (r) {
+    var p = r.profile || {};
+    b.overview = p.overview; b.overviewBy = p.overviewBy; b.overviewAt = p.overviewAt;
+    b.idea = p.activationIdea; b.ideaBy = p.activationIdeaBy; b.ideaAt = p.activationIdeaAt;
+    b.website = p.website; b.instagramUrl = p.instagramUrl; b.tiktokUrl = p.tiktokUrl;
+    if (done) done(r);
+    renderInTalks();
+    toast(r.saved && r.saved.length ? 'Saved ' + r.saved.join(', ') : 'Nothing changed');
+  }).catch(function (e) { toast(e.message); });
+}
+
+(function () {
+  var view = document.getElementById('intalks');
+  view.addEventListener('input', function (e) {
+    var t = e.target;
+    if (t.id === 'it-find') { IT.q = t.value; itRenderRail(); return; }
+    var b = itById(IT.sel);
+    if (!b) return;
+    var f = t.getAttribute('data-it-field') || t.getAttribute('data-it-link');
+    if (f) IT.drafts[b.id + '|' + f] = t.value;
+  });
+  view.addEventListener('keydown', function (e) {
+    var t = e.target;
+    if (t.getAttribute && t.getAttribute('data-it-field') === 'note:new' && e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      var btn = view.querySelector('[data-it-note-add]');
+      if (btn) btn.click();
+    }
+    if (t.id === 'it-find' && e.key === 'Enter') {
+      var first = view.querySelector('.it-item');
+      if (first) itSelect(first.getAttribute('data-it-sel'));
+    }
+  });
+  view.addEventListener('click', function (e) {
+    var t = e.target.closest('button, a');
+    if (!t || !view.contains(t)) return;
+    var b = itById(IT.sel);
+    var v;
+    if ((v = t.getAttribute('data-it-sel'))) { itSelect(v); return; }
+    if (t.hasAttribute('data-it-back')) { IT.mobile = false; renderInTalks(); window.scrollTo(0, 0); return; }
+    if ((v = t.getAttribute('data-it-add'))) {
+      t.disabled = true;
+      api('setInTalks', { brandId: v, on: true }).then(function (r) {
+        toast(r.brandName + ' is in talks');
+        itSetSel(v); IT.mobile = true;
+        return loadInTalks();
+      }).catch(function (er) { t.disabled = false; toast(er.message); });
+      return;
+    }
+    if ((v = t.getAttribute('data-it-notnow'))) {
+      t.disabled = true;
+      api('setInTalks', { brandId: v, on: false }).then(function (r) {
+        toast('Not offering ' + r.brandName + ' here — a new reply brings it back');
+        return loadInTalks();
+      }).catch(function (er) { t.disabled = false; toast(er.message); });
+      return;
+    }
+    if (!b) return;
+    if (t.hasAttribute('data-it-brand')) { e.preventDefault(); loadBrand(b.id); return; }
+    if (t.hasAttribute('data-it-deals')) { gotoView('pipeline'); return; }
+    if (t.hasAttribute('data-it-remove')) {
+      if (!window.confirm('Take ' + b.name + ' off In talks?\n\nIts notes, overview, idea and links stay. + Add to In talks on its brand page (or a new call booked) brings it back.')) return;
+      api('setInTalks', { brandId: b.id, on: false }).then(function (r) {
+        toast(r.brandName + ' is off In talks');
+        IT.sel = null; IT.mobile = false;
+        return loadInTalks();
+      }).catch(function (er) { toast(er.message); });
+      return;
+    }
+    if (t.hasAttribute('data-it-board')) {
+      if (b.board && b.board.code) ztCopy(SPONSOR_URL + '?code=' + encodeURIComponent(b.board.code), 'Show Board link copied — it carries ' + b.name + '’s code');
+      return;
+    }
+    if (t.hasAttribute('data-it-copy')) { ztCopy(itPrompt(b), 'Copied — paste it into a new Claude chat'); return; }
+    if ((v = t.getAttribute('data-it-copytext'))) { ztCopy(v, 'Copied ' + v); return; }
+    if (t.hasAttribute('data-it-links')) { IT.links = !IT.links; renderInTalks(); return; }
+    if (t.hasAttribute('data-it-links-cancel')) {
+      ['website', 'instagramUrl', 'tiktokUrl'].forEach(function (f) { itDropDraft(b, f); });
+      IT.links = false; renderInTalks(); return;
+    }
+    if (t.hasAttribute('data-it-links-save')) {
+      var args = {};
+      view.querySelectorAll('[data-it-link]').forEach(function (inp) { args[inp.getAttribute('data-it-link')] = inp.value; });
+      t.disabled = true;
+      itSaveProfile(b, args, function () {
+        ['website', 'instagramUrl', 'tiktokUrl'].forEach(function (f) { itDropDraft(b, f); });
+        IT.links = false;
+      }).then(function () { t.disabled = false; });
+      return;
+    }
+    if ((v = t.getAttribute('data-it-edit'))) {
+      IT.edit = v; renderInTalks();
+      var ta = view.querySelector('[data-it-field="' + v + '"]');
+      if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+      return;
+    }
+    if (t.hasAttribute('data-it-cancel')) {
+      if (IT.edit) itDropDraft(b, IT.edit);
+      IT.edit = null; renderInTalks(); return;
+    }
+    if ((v = t.getAttribute('data-it-save'))) {
+      var box = view.querySelector('[data-it-field="' + v + '"]');
+      var a = {};
+      a[v === 'idea' ? 'activationIdea' : 'overview'] = box ? box.value : '';
+      t.disabled = true;
+      itSaveProfile(b, a, function () { itDropDraft(b, v); IT.edit = null; }).then(function () { t.disabled = false; });
+      return;
+    }
+    if (t.hasAttribute('data-it-note-add')) {
+      var nb = view.querySelector('[data-it-field="note:new"]');
+      var txt = nb ? nb.value.trim() : '';
+      if (!txt) { toast('Write the note first'); if (nb) nb.focus(); return; }
+      t.disabled = true;
+      api('addBrandNote', { brandId: b.id, text: txt }).then(function (r) {
+        b.notes = [r.note].concat(b.notes || []);
+        itDropDraft(b, 'note:new');
+        renderInTalks();
+        toast('Note added');
+      }).catch(function (er) { t.disabled = false; toast(er.message); });
+      return;
+    }
+    if ((v = t.getAttribute('data-it-note-edit'))) {
+      IT.edit = 'note:' + v; renderInTalks();
+      var nta = view.querySelector('[data-it-field="note:' + v + '"]');
+      if (nta) nta.focus();
+      return;
+    }
+    if ((v = t.getAttribute('data-it-note-save'))) {
+      var eb = view.querySelector('[data-it-field="note:' + v + '"]');
+      t.disabled = true;
+      api('editBrandNote', { id: v, text: eb ? eb.value : '' }).then(function (r) {
+        if (r.note) b.notes = (b.notes || []).map(function (n) { return n.id === v ? r.note : n; });
+        itDropDraft(b, 'note:' + v);
+        IT.edit = null;
+        renderInTalks();
+        toast(r.noop ? 'Nothing changed' : 'Note saved');
+      }).catch(function (er) { t.disabled = false; toast(er.message); });
+      return;
+    }
+    if ((v = t.getAttribute('data-it-note-del'))) {
+      var note = (b.notes || []).filter(function (n) { return n.id === v; })[0];
+      if (!note) return;
+      var shown = note.text.length > 240 ? note.text.slice(0, 240) + '…' : note.text;
+      if (!window.confirm('Delete this note from ' + itDay(note.at) + '?\n\n“' + shown + '”\n\nThis can’t be undone.')) return;
+      api('deleteBrandNote', { id: v, confirm: true }).then(function () {
+        b.notes = (b.notes || []).filter(function (n) { return n.id !== v; });
+        renderInTalks();
+        toast('Note deleted');
+      }).catch(function (er) { toast(er.message); });
+      return;
+    }
+  });
+})();
+
+// The brand page's In talks line: where it stands, and the way in or out.
+function bTalksLine(d) {
+  var t = d.talks || {};
+  if (d.brand.kind === 'person') return '';
+  return t.on
+    ? '<div class="b-talks" style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13.5px">' +
+        '<span class="it-stage s-call">In talks</span><span style="color:var(--ink-3)">' +
+        (t.why === 'call' ? 'a call was booked' : 'added by hand') + (t.since ? ' · since ' + esc(itDay(t.since)) : '') + '</span>' +
+        '<button class="btn-ghost sm" id="b-talks-open">Open its In talks profile →</button></div>'
+    : '<div class="b-talks" style="margin-top:10px"><button class="btn-ghost sm" id="b-talks-add" title="Put this brand on the In talks tab: notes, people, links, an overview and an activation idea">+ Add to In talks</button></div>';
+}
+function bTalksBind(b) {
+  var o = document.getElementById('b-talks-open');
+  if (o) o.onclick = function () { IT.mobile = true; loadInTalks(b.id); };
+  var a = document.getElementById('b-talks-add');
+  if (a) a.onclick = function () {
+    a.disabled = true;
+    api('setInTalks', { brandId: b.id, on: true }).then(function (r) {
+      toast(r.brandName + ' is in talks — Claude writes its overview and idea on the next daily check');
+      IT.mobile = true;
+      loadInTalks(b.id);
+    }).catch(function (e) { a.disabled = false; toast(e.message); });
+  };
+}
+
+// --- show board: board codes (was "in talks") -------------------
 //
 // One card per brand with a board code: their code, who's been looking,
 // how often and how long, what they picked, and the raw visit log.
@@ -22428,6 +23388,7 @@ function gotoViewNow(id) {
   if (id === 'activations') loadActivations();
   if (id === 'operations') showView('materials');
   if (id === 'talks') loadTalks();
+  if (id === 'intalks') loadInTalks();
   if (id === 'results') loadResults();
   if (id === 'discover') loadDiscover();
   if (id === 'clarify') loadClarify();
@@ -22494,6 +23455,13 @@ function gotoViewNow(id) {
     });
     loadLinkedin();
   }, 50);
+})();
+
+// Deep link: #intalks or #intalks/<brandId> — the In talks tab (at that brand).
+(function () {
+  var m = /^#intalks(?:\/([^\/]+))?/.exec(location.hash || '');
+  if (!m) return;
+  setTimeout(function () { IT.mobile = !!m[1]; loadInTalks(m[1] || null); }, 50);
 })();
 
 // Deep link: #clarify — Brands → Clarify.
