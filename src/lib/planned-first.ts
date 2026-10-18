@@ -12,17 +12,20 @@ import { BIG_BRAND_WORK } from './brand-size'
 // How many people a brand works at once: Leo's number if he set one,
 // else ten at a big company (brand-size.ts — 500+ on LinkedIn, owned by a
 // parent company, or the parent itself; Leo, Oct 7 2026), four at an
-// established brand and three elsewhere.
-export function workNeed(b: { tier: string | null; workPeople: number | null; liMembers?: number | null; big?: boolean }): number {
+// established brand or a Top category's brand (`top` = isTopCategory in
+// brand-fit.ts, Leo's category priority; Oct 18 2026 — People per brand:
+// the 4th person accepts as often as the 1st), three elsewhere. `top` is
+// required so a caller can't leave the category out and quietly get three.
+export function workNeed(b: { tier: string | null; workPeople: number | null; liMembers?: number | null; big?: boolean; top: boolean }): number {
   if (b.workPeople) return b.workPeople
   if (b.big) return BIG_BRAND_WORK
-  return b.tier === 'established' ? 4 : 3
+  return b.tier === 'established' || b.top ? 4 : 3
 }
 
 // Short on people: fewer reachable (a LinkedIn or an email) than it
 // works at once — the Schedule's Thin or No one reachable.
 export function shortOnPeople(b: {
-  tier: string | null; workPeople: number | null; big?: boolean
+  tier: string | null; workPeople: number | null; big?: boolean; top: boolean
   contacts: Array<{ email: string | null; linkedinUrl: string | null }>
 }): boolean {
   return b.contacts.filter(c => !!(c.email || c.linkedinUrl)).length < workNeed(b)

@@ -235,7 +235,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `outreachPlan` = `{ "YYYY-MM-DD": { category, brandIds } }`, one brand on one day) — full width,
   today (if a sending day) + the next 3 sending days as columns. Every brand carries a **contacts label**
   (`contactLabel`, same on server and page): reachable = email OR LinkedIn; need = `workPeople` ??
-  (big company 10 : established 4 : 3 — `workNeed`; every reply that labels reads `LABEL_BRAND_SELECT`, and
+  (big company 10 : established or a **Top category** 4 : 3 — `workNeed`, `top` required; every reply that labels reads `LABEL_BRAND_SELECT` (category included), and
   `isBigBrand` / `contactLabel` require name, aka and liMembers so a short select fails tsc — the LinkedIn tab
   used to call a 120-person established brand "big, works 10" while the Schedule said 4); Ready ≥ need,
   Thin 1..need-1, No one reachable 0. A brand goes out **whole**,
@@ -410,7 +410,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   their people are ready for later, but they never take a day's visits first (`reachedLast`, `giantsLast`;
   the Schedule's brands and names Leo asked for keep their place). The email machine keeps its own rules.
   **Each brand opens with exactly its number** (picks, Leo's yes Oct 12 2026): `workPeople ?? recommendWorkPeople`
-  (3, 4 at an established brand, 10 at a big company; the narrower 3/2/1 only once written to — a brand inside its
+  (3, 4 at an established brand **or a Top category's** — Leo, Oct 18 2026, after People per brand showed the 4th person accepts as often as the 1st: `isTopCategory` (brand-fit.ts) on his Category priority, `topCat` in route.ts, loaded before every /api/data handler; ingest and the fill read the Setting; the brand page gets `getBrand.top` — 10 at a big company; the narrower 3/2/1 only once written to — a brand inside its
   first sitting, part-sent next day included, keeps the opening number, and everyone still waiting from it goes
   — the part-sent rule wins over the trim: `brandWork` / `finishingSitting` in route.ts). Best LinkedIn
   buyers first — `comparePicks` / `sortPicks` in `src/lib/queue-check.ts`: a title the rules don't flag → a LinkedIn

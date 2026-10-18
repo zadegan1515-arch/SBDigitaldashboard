@@ -61,7 +61,7 @@ import { rollWindow, findUnsent, planCarry, carryOrder, carryTimes, type Unsent,
 import { workNeed, dueDays } from '@/lib/planned-first'
 import { searchHit, type SearchHit } from '@/lib/brand-search'
 import { gradeDiscovery, gradeFromFit } from '@/lib/discover-grade'
-import { scoreBrand, priorityOf, PRIORITIES, PRIORITY_POINTS, DEFAULT_CATEGORY_PRIORITY, type Priority, dollarsToCents, normUs, normBiz, cleanResearchRow, shortMoney, type FitResult, type ResearchRow } from '@/lib/brand-fit'
+import { scoreBrand, priorityOf, isTopCategory, PRIORITIES, PRIORITY_POINTS, DEFAULT_CATEGORY_PRIORITY, type Priority, dollarsToCents, normUs, normBiz, cleanResearchRow, shortMoney, type FitResult, type ResearchRow } from '@/lib/brand-fit'
 import { buildStock, bestDealStage, refileMoves, remapPlanDays, brandKey } from '@/lib/stock'
 import { buyerKind, isBuyerTitle, countBuyers, BUYER_TARGET } from '@/lib/buyers'
 import { readCoverFacts, brandCover } from '@/lib/coverage-db'
@@ -780,7 +780,7 @@ async function dropHiddenFrom(brandId: string, slug: string) {
 // alone no longer counts), shared with /api/ingest.
 
 function recommendWorkPeople(
-  brand: BigBrandFacts,
+  brand: BigBrandFacts & { category: string | null },
   contacts: Array<{ title: string | null; email: string | null; linkedinUrl: string | null }>,
   cold = false,
 ): number {
@@ -793,9 +793,11 @@ function recommendWorkPeople(
   // narrower counts apply, so we don't pile onto a thread in motion.
   // Either way the brand's reachable people are the real ceiling.
   // A big company opens with ten (Leo, Oct 7 2026) — many buyers, and
-  // nobody there owns campus.
+  // nobody there owns campus. A Top category's brand opens with four
+  // (Oct 18 2026 — People per brand: the 4th person accepts as often as
+  // the 1st; workNeed in planned-first.ts, the same rule).
   const n = cold
-    ? (isBigBrand(brand) ? BIG_BRAND_WORK : brand.tier === 'established' ? 4 : 3)
+    ? (isBigBrand(brand) ? BIG_BRAND_WORK : brand.tier === 'established' || topCat(brand.category) ? 4 : 3)
     : (brand.tier === 'established' ? 3 : brand.tier === 'growth' ? 2 : founderLed ? 1 : 2)
   return Math.max(1, Math.min(n, Math.max(reachable, 1)))
 }
@@ -870,18 +872,18 @@ function isReachable(c: { email: string | null; linkedinUrl: string | null; doNo
 // labels brands asks for the same fields, so the LinkedIn tab and the
 // Schedule can't call one brand Ready and Thin.
 const LABEL_BRAND_SELECT = Prisma.validator<Prisma.BrandSelect>()({
-  id: true, name: true, aka: true, tier: true, workPeople: true, liMembers: true,
+  id: true, name: true, aka: true, category: true, tier: true, workPeople: true, liMembers: true,
   contacts: { select: { email: true, linkedinUrl: true, doNotContactAt: true } },
 })
 
 // Ready / Thin / No one reachable. Shown on every brand on the Schedule
 // so a short day explains itself before anyone clicks.
 function contactLabel(
-  brand: BigBrandFacts & { workPeople: number | null },
+  brand: BigBrandFacts & { workPeople: number | null; category: string | null },
   contacts: Array<{ email: string | null; linkedinUrl: string | null }>,
 ): ContactsLabel {
   const reachable = contacts.filter(isReachable).length
-  const need = workNeed({ ...brand, big: isBigBrand(brand) })
+  const need = workNeed({ ...brand, big: isBigBrand(brand), top: topCat(brand.category) })
   return {
     kind: reachable === 0 ? 'none' : reachable >= need ? 'ready' : 'thin',
     reachable, need, onFile: contacts.length,
@@ -1140,7 +1142,8 @@ type PreviewPerson = { name: string; title: string | null }
 
 // How many people a brand puts in play when it is opened or topped up:
 // Leo's number for it, else the rules (recommendWorkPeople — a cold brand
-// opens with 3, 4 at an established brand, 10 at a big company; fewer once
+// opens with 3, 4 at an established brand or a Top category's, 10 at a big
+// company; fewer once
 // someone there has been written to), never more than its reachable bench.
 // The queue (queueBrandTargets) and its preview (previewBrandPicks) read
 // the same number, so the Schedule's "3 going" is what goes.
@@ -1150,7 +1153,7 @@ type PreviewPerson = { name: string; title: string | null }
 // sittingOf; Leo, Oct 12 2026: "the rest go out on the next sending day"),
 // so the rest of that first outreach goes whole, not at the narrower count.
 type WorkBrand = BigBrandFacts & {
-  id: string; salesCents: bigint | null; workPeople: number | null
+  id: string; category: string | null; salesCents: bigint | null; workPeople: number | null
   targets: GateBrand['targets']
 }
 function brandWork(b: WorkBrand,
@@ -2643,6 +2646,12 @@ async function loadCategoryPriority(force = false): Promise<Record<string, strin
 function categoryPriority(category: string | null | undefined): Priority {
   return priorityOf(category, categoryPriorityMemo.map)
 }
+// A Top category's brand opens with four people (workNeed, Oct 18 2026).
+// Every request loads the priorities first (POST below), so the Schedule,
+// the queue and the labels read the same list.
+function topCat(category: string | null | undefined): boolean {
+  return isTopCategory(category, categoryPriorityMemo.map)
+}
 
 async function recentAcceptRates(): Promise<AcceptRates> {
   await loadCategoryPriority()
@@ -2682,7 +2691,7 @@ function brandFit(b: FitFacts, reachable: number, rates: AcceptRates | null, now
     salesCents: centsNum(b.salesCents), fundingCents: centsNum(b.fundingCents), lastRoundAt: b.lastRoundAt,
     usStatus: b.usStatus, sponsorsCollege: b.sponsorsCollege, bizStatus: b.bizStatus, acquiredBy: b.acquiredBy,
     researchedAt: b.researchedAt,
-    reachable, need: workNeed({ ...b, big: isBigBrand(b) }), acceptRate: rateOrNull(rates, b.category), priority: categoryPriority(b.category),
+    reachable, need: workNeed({ ...b, big: isBigBrand(b), top: topCat(b.category) }), acceptRate: rateOrNull(rates, b.category), priority: categoryPriority(b.category),
     giant: giantOf(b), now,
   })
 }
@@ -3275,15 +3284,16 @@ function inPlayRows(rows: Array<{ id: string; fitScore: number; queuedFor: Date 
 
 async function reconcileBrandTargets(brandId: string, perBrandArg?: number) {
   // The brand's own number (picks, Oct 12 2026): Leo's, else ten at a big
-  // company, four at an established brand, three elsewhere — workCount in
+  // company, four at an established brand or a Top category's, three
+  // elsewhere — workCount in
   // src/lib/brand-work.ts, the same rule as /api/ingest and the queue. It
   // used to keep at least four, so a brand that works three sent four and
   // "work 1" still kept four. Today's list is never touched (keepInPlay),
   // nor anyone chosen for a day's list (src/lib/chosen.ts — the number
   // holds only the system's own picks); the rest stay best LinkedIn buyer
   // first.
-  const b = await prisma.brand.findUnique({ where: { id: brandId }, select: { name: true, aka: true, tier: true, liMembers: true, workPeople: true } })
-  const perBrand = perBrandArg ?? (b ? workCount(b) : TARGET_CAP_PER_BRAND)
+  const b = await prisma.brand.findUnique({ where: { id: brandId }, select: { name: true, aka: true, category: true, tier: true, liMembers: true, workPeople: true } })
+  const perBrand = perBrandArg ?? (b ? workCount(b, categoryPriorityMemo.map) : TARGET_CAP_PER_BRAND)
   const worked = await prisma.target.count({
     where: { brandId, ...INVITED_WHERE },
   })
@@ -6268,7 +6278,7 @@ const handlers: Record<string, Handler> = {
       const ts = b.targets
       const f = brandFit(b, b.contacts.filter(isReachable).length, rates, now)
       return {
-        fit: { score: f.score, tooSmall: f.tooSmall, tooSmallWhy: f.tooSmallWhy, usUnknown: f.usUnknown, ruledOut: f.ruledOut, bizNote: f.bizNote },
+        fit: { score: f.score, tooSmall: f.tooSmall, tooSmallWhy: f.tooSmallWhy, usUnknown: f.usUnknown, ruledOut: f.ruledOut, bizNote: f.bizNote, priority: f.priority },
         id: b.id, name: b.name, aka: b.aka, category: b.category, tier: b.tier,
         about: b.about, topProducts: b.topProducts, linkedinUrl: b.linkedinUrl,
         externalId: b.externalId, archived: !!b.passedAt, doNotEmail: b.doNotEmail,
@@ -7433,8 +7443,10 @@ const handlers: Record<string, Handler> = {
 
     return {
       brand: brandOut, events, money, fit, liHidden, samePeople, peopleMergeUndo,
-      // A big company works ten at a time (the Work menu's suggestion).
+      // A big company works ten at a time, a Top category's brand four
+      // (the Work menu's suggestion).
       big: isBigBrand(brand),
+      top: topCat(brand.category),
       accessRequests: pendingAccess,
       boardViews: { count: boardViewCount, last: lastVisit, recent: recentVisits },
       sponsorUrl: sponsorBoardUrl(),
@@ -14960,6 +14972,9 @@ export async function POST(req: NextRequest) {
       }
     } catch {}
     const t0 = Date.now()
+    // Leo's category priority, before any brand's number is worked out
+    // (topCat: a Top category's brand opens with four). Kept a minute.
+    await loadCategoryPriority()
     const data = await handler(a)
     // A change Claude made (the dashboard token): kept for Home → Claude's
     // day. Never holds up or fails the answer.
