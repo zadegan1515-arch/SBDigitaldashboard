@@ -77,6 +77,7 @@ import { parseSkipDays, dayMoveShape, undoDayMove, type SkipLog } from '@/lib/sk
 import { CHOSEN_KEY, readChosenIds, noteChosenIds } from '@/lib/chosen'
 import { stopIndex, stoppedMatch, stopWords, stopKeys } from '@/lib/do-not-contact'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
+import { isAccepted, acceptedWhen, acceptedStage } from '@/lib/accepted'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
   listAttendees, listDupCandidates, mergeAttendees, deleteAttendee, importAttendees, segmentsOverview,
@@ -13405,6 +13406,49 @@ const handlers: Record<string, Handler> = {
       return { brand: g.brand, people, lastAt, deal: dealByBrand[g.brand.id] ?? null }
     }).sort((a, b) => (b.lastAt || '').localeCompare(a.lastAt || ''))
     return { brands: rows, totals }
+  },
+
+  // Home → Accepted on LinkedIn (Leo, Oct 18 2026): everyone who accepted a
+  // LinkedIn invite, newest first, with their brand and title — a click opens
+  // the brand page at that person. Read-only; the rules are src/lib/accepted.ts.
+  async acceptedPeople() {
+    const rows = await prisma.target.findMany({
+      where: {
+        OR: [
+          { status: 'accepted' },
+          { status: { in: ['replied', 'converted', 'declined'] }, events: { some: { toStatus: 'accepted' } } },
+          { status: { in: ['replied', 'converted'] }, sentAt: { not: null } },
+        ],
+      },
+      select: {
+        id: true, status: true, sentAt: true, repliedAt: true, updatedAt: true, dmSentAt: true, callAt: true, handDeclinedAt: true,
+        brand: { select: { id: true, name: true, category: true, stoppedAt: true, passedAt: true } },
+        contact: { select: { id: true, name: true, title: true, linkedinUrl: true, doNotContactAt: true } },
+        events: { where: { toStatus: 'accepted' }, orderBy: { createdAt: 'asc' }, take: 1, select: { createdAt: true } },
+        emails: { where: { direction: 'in' }, take: 1, select: { id: true } },
+      },
+      take: 5000,
+    })
+    const now = new Date()
+    const people = []
+    for (const t of rows) {
+      const facts = {
+        status: t.status, sentAt: t.sentAt, repliedAt: t.repliedAt, updatedAt: t.updatedAt, dmSentAt: t.dmSentAt,
+        callAt: t.callAt, handDeclinedAt: t.handDeclinedAt, acceptedAt: t.events[0]?.createdAt ?? null,
+        emailReply: t.emails.length > 0, contactStopped: !!t.contact.doNotContactAt, brandStopped: !!t.brand.stoppedAt,
+      }
+      if (!isAccepted(facts)) continue
+      const w = acceptedWhen(facts)
+      const s = acceptedStage(facts, now)
+      people.push({
+        targetId: t.id, contactId: t.contact.id, name: t.contact.name, title: t.contact.title, linkedinUrl: t.contact.linkedinUrl,
+        brandId: t.brand.id, brandName: t.brand.name, category: t.brand.category, archived: !!t.brand.passedAt,
+        at: w.at.toISOString(), kind: w.kind, invitedAt: t.sentAt ? t.sentAt.toISOString() : null,
+        stage: s.stage, label: s.label,
+      })
+    }
+    people.sort((a, b) => b.at.localeCompare(a.at) || a.name.localeCompare(b.name))
+    return { people, total: people.length, brands: new Set(people.map(p => p.brandId)).size }
   },
 
   // -------- deal room --------

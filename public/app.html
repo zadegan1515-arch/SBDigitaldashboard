@@ -469,7 +469,7 @@
   .zach-back{display:none}
   #dashboard.zach-only .hm-glance,#dashboard.zach-only #hm-send,#dashboard.zach-only #action-panel,#dashboard.zach-only #hm-stale,
   #dashboard.zach-only #hm-score,#dashboard.zach-only #day-log,#dashboard.zach-only .hm-more,#dashboard.zach-only #todos-head,
-  #dashboard.zach-only #todos,#dashboard.zach-only .hm-btns,#dashboard.zach-only #zach-todo .zs{display:none!important}
+  #dashboard.zach-only #todos,#dashboard.zach-only #hm-accepted,#dashboard.zach-only .hm-btns,#dashboard.zach-only #zach-todo .zs{display:none!important}
   #dashboard.zach-only .zach-back{display:block;margin-top:18px}
   @media (max-width:640px){
     .zt-item{min-height:52px}
@@ -1457,6 +1457,31 @@
   .status.drafted,.status.proposed{background:rgba(138,123,255,.15);color:#ab9fff}
   .status.requested{background:rgba(246,143,94,.14);color:#f8a077}
   .target.sel{outline:2px solid var(--accent);outline-offset:-2px}
+  /* The person a click came for (search, Home → Accepted on LinkedIn): their
+     row on the brand page, scrolled to and lit up. */
+  .target.b-focus{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 2px var(--ring)}
+  .target.b-focus.b-focus-in{animation:b-focus-in 1.4s ease-out 1}
+  @keyframes b-focus-in{0%{box-shadow:0 0 0 7px var(--ring)}100%{box-shadow:0 0 0 2px var(--ring)}}
+  /* Home → Accepted on LinkedIn */
+  .ac-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 10px}
+  .ac-head .chip{padding:5px 12px;font-size:13px}
+  .ac-head .inp{margin-left:auto;width:240px;max-width:100%}
+  .ac-sum{font-size:13.5px;color:var(--ink-2);margin:-4px 0 10px}
+  .ac-sum b{color:var(--ink-1)}
+  .target.ac-row{padding:11px 16px;margin-bottom:6px;gap:12px}
+  .ac-row .t-brand{color:var(--ink-1)}
+  .ac-co{font-weight:600;color:#aac6ff}
+  .ac-when{flex:none;text-align:right;font-size:13px;color:var(--ink-2);white-space:nowrap}
+  .ac-when span{display:block;font-size:12px;color:var(--ink-3);margin-top:2px}
+  .ac-row .status.stopped,.ac-row .status.said{background:rgba(201,74,74,.15);color:#f0a0a0}
+  .ac-more{display:flex;gap:8px;margin:8px 0 0}
+  @media (max-width:600px){ .ac-head .inp{margin-left:0;width:100%} .target.ac-row{flex-wrap:wrap} }
+  /* Back / forward between pages (Leo, Oct 18 2026) */
+  .nav-hist{display:flex;gap:4px;flex:none}
+  .nh-btn{width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:var(--surface-1);
+    color:var(--ink-2);font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0 0 2px}
+  .nh-btn:hover:not(:disabled){border-color:rgba(79,131,247,.5);color:var(--ink-1)}
+  .nh-btn:disabled{opacity:.35;cursor:default}
   /* The re-file checkbox makes a Brands row wider than a phone: let the
      buttons drop to their own line instead of scrolling the page. */
   @media (max-width:600px){
@@ -1797,6 +1822,10 @@
   <main class="main">
     <div class="header-stick">
       <div class="topbar">
+        <div class="nav-hist">
+          <button class="nh-btn" id="nav-back" title="Back a page" aria-label="Back a page" disabled>&#8249;</button>
+          <button class="nh-btn" id="nav-fwd" title="Forward a page" aria-label="Forward a page" disabled>&#8250;</button>
+        </div>
         <div class="search-wrap">
           <span class="search-icon">⌕</span>
           <input class="search-input" id="q" type="text" autocomplete="off"
@@ -1844,6 +1873,9 @@
       <div class="zach-back"><button class="btn-ghost" data-zachall>Show the whole Home ↓</button></div>
       <div id="action-panel" style="margin-top:20px"></div>
       <div id="hm-stale"></div>
+      <!-- Leo, Oct 18 2026: everyone who accepted on LinkedIn, newest first;
+           a click opens their brand page at them (renderAccepted). -->
+      <div id="hm-accepted"></div>
       <details class="fold hm-more" id="hm-more">
         <summary class="section-head">Numbers &amp; categories <span class="n">targets, sponsorship revenue, brands by category</span></summary>
         <div class="kpi-row" id="kpis" style="margin-top:6px"></div>
@@ -2455,6 +2487,18 @@
 
 <div id="recap" class="rc" hidden role="dialog" aria-modal="true" aria-label="Today’s recap"></div>
 <script>
+// Back / forward (navRecord, below): every page is a history entry carrying
+// its record in history.state.sbNav. Screens that write their place into the
+// address (Activations, Operations, the logo) call history.replaceState({}, …);
+// keep the entry's record through those.
+(function () {
+  var rs = history.replaceState;
+  history.replaceState = function (state, title, url) {
+    var cur = history.state;
+    if (cur && cur.sbNav && !(state && state.sbNav)) state = Object.assign({}, state || {}, { sbNav: cur.sbNav });
+    return url === undefined ? rs.call(history, state, title) : rs.call(history, state, title, url);
+  };
+})();
 // Leo, Oct 6 2026: "anytime you go on to the command center I want it to
 // go to the home page". Screens like Activations write where you are into
 // the address bar, so a reload or a reopened tab used to land back there.
@@ -2981,6 +3025,14 @@ function placeApply(recs) {
 function showView(id, fresh) {
   var view = document.getElementById(id);
   var again = !fresh && !NAV_FRESH && !!view && view.classList.contains('active');
+  navRecord(id, again);
+  // Leo, Oct 18 2026: a search stays in the top bar only on its results —
+  // any other page starts with the bar empty (and a search still being typed
+  // doesn't pull you back to it).
+  if (!again && id !== 'search') {
+    var qb = document.getElementById('q');
+    if (qb && qb.value) { qb.value = ''; clearTimeout(searchTimer); }
+  }
   if (again) keepPlace(view); else placeEnd();
   document.querySelectorAll('.nav-item').forEach(function (b) { if (!b.closest('#act-tabs') && !b.closest('#sub-tabs')) b.classList.remove('active'); });
   document.querySelectorAll('.view').forEach(function (v) { v.classList.toggle('active', v.id === id); });
@@ -2998,6 +3050,166 @@ function showView(id, fresh) {
   if (!again) window.scrollTo(0, 0);
   return again;
 }
+
+// The person a click came for, on their brand page: lit up, and scrolled to
+// the middle of the screen the first time. Held there for a moment while the
+// Schedule line and Zach's cards above it fill in, unless you scroll first.
+function bFocusApply(brandId) {
+  var f = B_FOCUS;
+  if (!f || f.brandId !== brandId) return;
+  var box = document.getElementById('brand-body');
+  var sel = window.CSS && CSS.escape ? CSS.escape(f.contactId) : f.contactId;
+  var row = box.querySelector('[data-pcid="' + sel + '"]');
+  if (!row) {
+    if (f.scroll) { f.scroll = false; toast('They’re not on ' + ((CURRENT_BRAND && CURRENT_BRAND.brand.name) || 'this brand') + '’s people any more'); }
+    return;
+  }
+  row.classList.add('b-focus');
+  if (!f.scroll) return;
+  f.scroll = false;
+  row.classList.add('b-focus-in');
+  var mid = function () {
+    var r = row.getBoundingClientRect();
+    return r.top + r.height / 2 - window.innerHeight / 2;
+  };
+  window.scrollBy(0, mid());
+  var t0 = Date.now(), stop = false;
+  var quit = function () { stop = true; };
+  ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (ev) {
+    window.addEventListener(ev, quit, { once: true, capture: true, passive: true });
+  });
+  (function hold() {
+    if (stop || !row.isConnected) return;
+    var d = mid();
+    if (Math.abs(d) > 4) window.scrollBy(0, d);
+    if (Date.now() - t0 < 1500) setTimeout(hold, 80);
+  })();
+}
+
+// --- back / forward between pages ------------------------------
+// Leo, Oct 18 2026: "u should be able to move back and forth between pages
+// on the command center like moving back a page". Every page change — a view
+// not already showing, another brand, another search — is a browser history
+// entry whose state.sbNav = { v: view, a: what it showed (a loader sets
+// NAV_ARGS just before its showView: brand + person, search words, category),
+// i: its place in the tab's history, y: the scroll when you left it }. The
+// browser's back / forward (and a trackpad swipe) and the ‹ › buttons by the
+// search bar walk them; popstate redraws that page with its own loader
+// (navRestore). The address never changes for it, so a reload still starts on
+// Home. A search being typed, or a tab clicked twice, replaces its entry.
+var NAV = { i: 0, max: 0, pop: false, ready: false, cur: null };
+var NAV_ARGS = null;
+
+function navSame(x, y) { return JSON.stringify(x || null) === JSON.stringify(y || null); }
+function navSave() { try { sessionStorage.setItem('sb.navMax', String(NAV.max)); } catch (e) {} }
+function navButtons() {
+  var b = document.getElementById('nav-back'), f = document.getElementById('nav-fwd');
+  if (b) b.disabled = NAV.i <= 0;
+  if (f) f.disabled = NAV.i >= NAV.max;
+}
+function navStamp(rec) {
+  history.replaceState(Object.assign({}, history.state || {}, { sbNav: rec }), '');
+}
+
+function navRecord(id, again) {
+  var a = NAV_ARGS || null;
+  NAV_ARGS = null;
+  if (again || NAV.pop || !NAV.ready) return;
+  var cur = history.state && history.state.sbNav;
+  if (cur && cur.v === id && (id === 'search' || navSame(cur.a, a))) {
+    navStamp({ v: id, a: a, i: NAV.i });
+    NAV.cur = { v: id, a: a };
+    return;
+  }
+  if (cur) navStamp(Object.assign({}, cur, { y: window.scrollY }));
+  NAV.i += 1;
+  NAV.max = NAV.i;
+  NAV.cur = { v: id, a: a };
+  history.pushState({ sbNav: { v: id, a: a, i: NAV.i } }, '', location.pathname + location.search);
+  navSave(); navButtons();
+}
+
+// Back to a page's scroll once its content is tall enough again; stops the
+// moment you scroll or click yourself.
+function navScrollTo(y) {
+  if (!(y > 0)) return;
+  var t0 = Date.now(), stop = false, hit = 0;
+  var quit = function () { stop = true; };
+  ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (ev) {
+    window.addEventListener(ev, quit, { once: true, capture: true, passive: true });
+  });
+  (function tick() {
+    if (stop) return;
+    if (document.documentElement.scrollHeight - window.innerHeight >= y - 2) {
+      if (Math.abs(window.scrollY - y) >= 1) window.scrollTo(0, y);
+      if (!hit) hit = Date.now();
+      if (Date.now() - hit > 800) return;   // held while late content settles
+    }
+    if (Date.now() - t0 < 5000) setTimeout(tick, 60);
+  })();
+}
+
+function navRestore(s) {
+  var a = s.a || {};
+  NAV.pop = true; NAV_FRESH = true;
+  try {
+    if (s.v !== 'activations') actMode(false);
+    if (s.v === 'brand' && a.b) {
+      loadBrand(a.b, a.p || null);
+      if (s.y && B_FOCUS) B_FOCUS.scroll = false;
+    } else if (s.v === 'search' && a.q) {
+      document.getElementById('q').value = a.q;
+      runSearch(a.q);
+    } else if (s.v === 'brands') {
+      if (a.c === 'noprofile') loadBrandsNoProfile(); else loadBrands(a.c || 'all');
+    } else if (s.v === 'activations') {
+      var m = /^#activations(?:\/([^\/]+))?(?:\/([a-z]+))?/.exec(location.hash || '');
+      actOpenId = (m && m[1]) || null; actTab = (m && m[2]) || 'overview';
+      loadActivations(!!actOpenId);
+    } else if (s.v === 'operations') {
+      var o = /^#operations(?:\/([^\/]+))?/.exec(location.hash || '');
+      opsOpenId = (o && o[1]) || null;
+      loadOperations();
+    } else {
+      gotoViewNow(s.v);
+      var el = document.getElementById(s.v);
+      if (el && !el.classList.contains('active')) showView(s.v);
+    }
+  } finally { NAV.pop = false; NAV_FRESH = false; }
+  NAV.cur = { v: s.v, a: s.a || null };
+  navScrollTo(s.y || 0);
+}
+
+window.addEventListener('popstate', function (e) {
+  var s = e.state && e.state.sbNav;
+  if (!s) {
+    // A plain "#…" link made this entry; it's still the page on screen.
+    NAV.i += 1; NAV.max = NAV.i;
+    navStamp(Object.assign({}, NAV.cur || { v: 'dashboard', a: null }, { i: NAV.i }));
+    navSave(); navButtons();
+    return;
+  }
+  NAV.i = s.i || 0;
+  if (NAV.i > NAV.max) NAV.max = NAV.i;
+  navSave(); navButtons();
+  navRestore(s);
+});
+document.getElementById('nav-back').addEventListener('click', function () { if (NAV.i > 0) history.back(); });
+document.getElementById('nav-fwd').addEventListener('click', function () { if (NAV.i < NAV.max) history.forward(); });
+
+(function navInit() {
+  try { history.scrollRestoration = 'manual'; } catch (e) {}
+  var s = history.state && history.state.sbNav;
+  var m = 0;
+  try { m = Number(sessionStorage.getItem('sb.navMax')) || 0; } catch (e) {}
+  NAV.i = s && s.i > 0 ? s.i : 0;
+  NAV.max = s ? Math.max(NAV.i, m) : 0;
+  // Opening or reloading always lands on Home (above), so this entry is Home.
+  NAV.cur = { v: 'dashboard', a: null };
+  navStamp({ v: 'dashboard', a: null, i: NAV.i });
+  NAV.ready = true;
+  navSave(); navButtons();
+})();
 
 // --- dashboard -------------------------------------------------
 
@@ -3025,10 +3237,138 @@ function renderActionPanel() {
   }).catch(function () { box.innerHTML = ''; });
 }
 
+// --- Home → Accepted on LinkedIn ------------------------------
+// Leo, Oct 18 2026: "a list of all of the most recent and in total people that
+// have been accepted on linkedin and the brand and the title from each brand,
+// then u should be able to click on their card and it takes u to their page of
+// the brand". acceptedPeople (src/lib/accepted.ts) = everyone, newest first;
+// the counts and the 7 / 30 days / All chips are worked out here. A card opens
+// the brand page at that person, highlighted (data-focus → loadBrand).
+var AC = { rows: null, range: 'all', q: '', limit: 25, err: '' };
+var AC_STEP = 25;
+var AC_RANGES = [['7', 'Last 7 days', 7], ['30', 'Last 30 days', 30], ['all', 'All', 0]];
+
+function acSince(days) {
+  if (!days) return 0;
+  var d = new Date(); d.setHours(0, 0, 0, 0);
+  return d.getTime() - (days - 1) * 864e5;   // today counts as one of the days
+}
+function acInRange(p, days) { return new Date(p.at).getTime() >= acSince(days); }
+function acDays(key) { return (AC_RANGES.filter(function (r) { return r[0] === key; })[0] || AC_RANGES[2])[2]; }
+function acAgo(iso) {
+  var a = new Date(iso); a.setHours(0, 0, 0, 0);
+  var b = new Date(); b.setHours(0, 0, 0, 0);
+  var n = Math.round((b - a) / 864e5);
+  return n <= 0 ? 'today' : n === 1 ? 'yesterday' : n + ' days ago';
+}
+function acDate(iso) {
+  var d = new Date(iso);
+  return d.toLocaleDateString('en-US', d.getFullYear() === new Date().getFullYear()
+    ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function acCls(stage) {
+  return { stopped: 'stopped', declined: 'said', call: 'converted', converted: 'converted', replied: 'replied', messaged: 'sent' }[stage] || 'accepted';
+}
+function acRow(p) {
+  return '<div class="target clickable ac-row" data-brand="' + esc(p.brandId) + '" data-focus="' + esc(p.contactId) + '" title="Open ' + esc(p.brandName) + ' at ' + esc(p.name) + '">' +
+    '<div class="t-main"><div class="t-line"><span class="t-brand">' + esc(p.name) + '</span>' +
+      (p.title ? '<span class="t-sep">·</span><span class="t-title">' + esc(p.title) + '</span>' : '') + '</div>' +
+    '<div class="t-meta"><span class="ac-co">' + esc(p.brandName) + '</span>' +
+      (p.category && CAT_NAMES[p.category] ? '<span>· ' + esc(CAT_NAMES[p.category]) + '</span>' : '') +
+      (p.archived ? '<span>· archived</span>' : '') +
+      '<span class="status ' + acCls(p.stage) + '">' + esc(p.label) + '</span>' +
+      (p.linkedinUrl ? '<a class="sd-link" href="' + esc(p.linkedinUrl) + '" target="_blank" rel="noopener">LinkedIn ↗</a>' : '') +
+    '</div></div>' +
+    '<div class="ac-when">' + (p.kind === 'replied' ? 'replied ' : 'accepted ') + esc(acDate(p.at)) +
+      '<span>' + esc(acAgo(p.at)) + '</span></div></div>';
+}
+
+function renderAccepted() {
+  var box = document.getElementById('hm-accepted');
+  if (!box) return;
+  var mine = viewTurn('hm-accepted');
+  if (!AC.rows) acDraw();
+  return api('acceptedPeople').then(function (d) {
+    if (!mine()) return;
+    AC.rows = d.people || []; AC.err = '';
+    acDraw();
+  }).catch(function (e) { if (!mine()) return; AC.err = e.message; acDraw(); });
+}
+
+// The card's frame is drawn once, so the filter box keeps its cursor and
+// text through a refresh; acFill redraws the counts, chips and list.
+function acDraw() {
+  var box = document.getElementById('hm-accepted');
+  if (!box.querySelector('#ac-q')) {
+    box.innerHTML =
+      '<div class="section-head">Accepted on LinkedIn <span class="n" id="ac-n"></span></div>' +
+      '<div class="ac-sum" id="ac-sum"></div>' +
+      '<div class="ac-head"><span id="ac-chips" class="chips" style="margin:0"></span>' +
+        '<input class="inp" id="ac-q" placeholder="Filter by name, brand or title…" autocomplete="off"></div>' +
+      '<div id="ac-list"></div>';
+    box.querySelector('#ac-q').value = AC.q;
+  }
+  acFill();
+}
+
+function acFill() {
+  var box = document.getElementById('hm-accepted');
+  var list = box.querySelector('#ac-list');
+  if (!AC.rows) {
+    list.innerHTML = AC.err ? '<div class="hint">Could not load: ' + esc(AC.err) + '</div>' : '<div class="hint">Loading…</div>';
+    return;
+  }
+  var all = AC.rows;
+  var n7 = all.filter(function (p) { return acInRange(p, 7); }).length;
+  var n30 = all.filter(function (p) { return acInRange(p, 30); }).length;
+  var brands = {}; all.forEach(function (p) { brands[p.brandId] = 1; });
+  var nb = Object.keys(brands).length;
+  box.querySelector('#ac-n').textContent = all.length + (all.length === 1 ? ' person' : ' people');
+  box.querySelector('#ac-sum').innerHTML = all.length
+    ? '<b>' + n7 + '</b> in the last 7 days · <b>' + n30 + '</b> in the last 30 days · <b>' + all.length + '</b> in total, at ' + nb + ' brand' + (nb === 1 ? '' : 's')
+    : '';
+  var counts = { '7': n7, '30': n30, all: all.length };
+  box.querySelector('#ac-chips').innerHTML = AC_RANGES.map(function (r) {
+    return '<button class="chip' + (AC.range === r[0] ? ' active' : '') + '" data-acr="' + r[0] + '">' + r[1] + ' (' + counts[r[0]] + ')</button>';
+  }).join('');
+  var days = acDays(AC.range);
+  var q = AC.q.trim().toLowerCase();
+  var rows = all.filter(function (p) {
+    if (!acInRange(p, days)) return false;
+    return !q || [p.name, p.title, p.brandName].join(' ').toLowerCase().indexOf(q) !== -1;
+  });
+  if (!all.length) { list.innerHTML = '<div class="hint">Nobody has accepted on LinkedIn yet.</div>'; return; }
+  if (!rows.length) {
+    list.innerHTML = '<div class="hint">' + (q ? 'Nobody matches “' + esc(AC.q.trim()) + '”' : 'Nobody accepted in the ' + esc(AC_RANGES.filter(function (r) { return r[0] === AC.range; })[0][1].toLowerCase())) +
+      (AC.range !== 'all' ? ' — <a href="#" data-acr="all">see everyone</a>' : '') + '.</div>';
+    return;
+  }
+  var shown = rows.slice(0, AC.limit);
+  var left = rows.length - shown.length;
+  list.innerHTML = shown.map(acRow).join('') +
+    (left > 0
+      ? '<div class="ac-more"><button class="btn-ghost" data-acmore>Show ' + Math.min(left, AC_STEP) + ' more</button>' +
+          (left > AC_STEP ? '<button class="btn-ghost" data-acall>Show all ' + rows.length + '</button>' : '') + '</div>'
+      : '');
+}
+
+document.getElementById('hm-accepted').addEventListener('click', function (e) {
+  var r = e.target.closest('[data-acr]');
+  if (r) { e.preventDefault(); AC.range = r.getAttribute('data-acr'); AC.limit = AC_STEP; acFill(); return; }
+  if (e.target.closest('[data-acmore]')) { AC.limit += AC_STEP; acFill(); return; }
+  if (e.target.closest('[data-acall]')) { AC.limit = Infinity; acFill(); return; }
+});
+document.getElementById('hm-accepted').addEventListener('input', function (e) {
+  if (e.target.id !== 'ac-q') return;
+  AC.q = e.target.value; AC.limit = AC_STEP;
+  acFill();
+});
+
 function loadDashboard() {
   showView('dashboard');
   renderZachTodo();
   renderActionPanel();
+  renderAccepted();
   loadScore(); loadStale();
   loadToday().catch(function (e) { var g = document.getElementById('hm-glance'); if (g) g.innerHTML = '<div class="hint">Could not load today: ' + esc(e.message) + '</div>'; });
   document.getElementById('today-date').textContent =
@@ -6432,6 +6772,7 @@ function renderFillProgress() {
 // matched to a SponsorUnited page, so nothing else in the site shows
 // them as a group.
 function loadBrandsNoProfile() {
+  NAV_ARGS = { c: 'noprofile' };
   showView('brands', true);
   BRANDS_SHOWN = 'noprofile';
   var box = document.getElementById('brands-list');
@@ -6467,6 +6808,7 @@ var BRANDS_SHOWN = '';
 
 function loadBrands(category) {
   category = category || 'all';
+  NAV_ARGS = { c: category };
   var again = showView('brands', BRANDS_SHOWN !== category);
   BRANDS_SHOWN = category;
   lastCategory = category;
@@ -8153,10 +8495,19 @@ document.getElementById('brand-body').addEventListener('click', function (e) {
   if (e.target.closest('[data-bpsched]')) { e.preventDefault(); gotoView('schedule'); }
 });
 
-function loadBrand(brandId) {
+// The person a click came for (search results, Home → Accepted on LinkedIn —
+// Leo, Oct 18 2026: "it should take u to the brand page and exactly where they
+// are in the brands list of people and it should be highlighted"): their People
+// row is scrolled to once and stays lit while the page is up (bFocusApply).
+var B_FOCUS = null;   // { brandId, contactId, scroll }
+
+function loadBrand(brandId, focusContactId) {
   // The brand already on screen again = a button on its page finished:
   // refresh in place. Another brand opens at the top.
+  NAV_ARGS = focusContactId ? { b: brandId, p: focusContactId } : { b: brandId };
   var again = showView('brand', !(CURRENT_BRAND && CURRENT_BRAND.brand && CURRENT_BRAND.brand.id === brandId));
+  if (focusContactId) B_FOCUS = { brandId: brandId, contactId: focusContactId, scroll: true };
+  else if (!again) B_FOCUS = null;
   var box = document.getElementById('brand-body');
   if (!again) {
     box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
@@ -8473,7 +8824,7 @@ function loadBrand(brandId) {
         // queued or logged again, nor anyone at a brand that said it.
         var said = !!(c.doNotContactAt || (ct && ct.handDeclinedAt));
         var off = said || !!b.stoppedAt;
-        return '<div class="target"><div class="t-main">' +
+        return '<div class="target" data-pcid="' + esc(c.id) + '"><div class="t-main">' +
           '<div class="t-line"><span class="t-brand">' + esc(c.name) + '</span>' +
             (c.title ? '<span class="t-sep">·</span><span class="t-title">' + esc(c.title) + '</span>' : '') + '</div>' +
           '<div class="t-meta">' +
@@ -8743,6 +9094,7 @@ function loadBrand(brandId) {
       if (BZT.brandId === b.id) bztFill();
       bztLoad(b.id);
     } else if (BZT.brandId !== b.id) { BZT.brandId = null; BZT.ids = []; }
+    bFocusApply(b.id);
 
     box.querySelector('#b-kind').onclick = function () {
       var to = person ? null : 'person';
@@ -16406,6 +16758,7 @@ var SEARCH_SHOWN = '';
 function runSearch(q) {
   // A new query starts at the top; the same one again (after an edit
   // from its results) keeps the place.
+  NAV_ARGS = { q: q };
   showView('search', q !== SEARCH_SHOWN);
   SEARCH_SHOWN = q;
   document.getElementById('search-title').textContent = '“' + q + '”';
@@ -16436,7 +16789,7 @@ function runSearch(q) {
     if (d.contacts.length) {
       out += '<div class="res-group"><div class="section-head">People <span class="n">' +
         d.contacts.length + '</span></div>' + d.contacts.map(function (c) {
-        return '<div class="target clickable" data-brand="' + esc(c.brand.id) + '">' +
+        return '<div class="target clickable" data-brand="' + esc(c.brand.id) + '" data-focus="' + esc(c.id) + '" title="Open ' + esc(c.brand.name) + ' at ' + esc(c.name) + '">' +
           '<div class="t-main"><div class="t-line"><span class="t-brand">' + esc(c.name) + '</span>' +
           '<span class="t-sep">·</span><span class="t-title">' + esc(c.brand.name) + '</span></div>' +
           '<div class="t-meta"><span>' + esc(c.title || '—') + '</span>' +
@@ -20645,13 +20998,14 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'li-zach', 'li-sched', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity', 'st-lanes', 'st-others'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'li-zach', 'li-sched', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity', 'st-lanes', 'st-others', 'hm-accepted'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
     if (e.target.closest('a')) return;   // let real links through
     if (e.target.closest('[data-nbq]') || e.target.closest('[data-nbp]') || e.target.closest('[data-nbtoday]') || e.target.closest('[data-nbperson]') || e.target.closest('[data-nbslot]') || e.target.closest('[data-rcact]') || e.target.closest('[data-rcstage]') || e.target.closest('[data-unpass]') || e.target.closest('[data-blpass]') || e.target.closest('[data-bsel]')) return;   // controls with their own handlers
-    loadBrand(el.getAttribute('data-brand'));
+    // data-focus = a person's card: their brand page, at them.
+    loadBrand(el.getAttribute('data-brand'), el.getAttribute('data-focus') || null);
   });
 });
 
