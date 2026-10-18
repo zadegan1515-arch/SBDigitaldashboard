@@ -13,8 +13,11 @@
 //      saveTalksProfile; notes add (⌘↵), edit and delete (the confirm names it).
 //   6. Copy for a new chat: the brand, our notes, the idea and the brainstorm
 //      steps (21+ for an alcohol brand), money lines kept apart.
-//   7. Replied brands: + Add puts one in talks and opens it; × hides it;
-//      Take off In talks asks first.
+//   7. Replied brands: a card opens the brand's profile (not in talks yet);
+//      a deal stage there starts its deal and puts it in talks, Lost takes it
+//      off the list; a stage on a brand in talks moves its deal. + Add puts one
+//      in talks and opens it; × hides it; Take off In talks asks first.
+//      Notes sit to the right of the activation idea.
 //   8. The brand page: + Add to In talks, or Open its In talks profile.
 //   9. A phone: the list, a tap opens the profile with ‹ All brands, no
 //      sideways scroll. No page errors.
@@ -73,6 +76,8 @@ let BRANDS = [
 let SUGGEST = [
   { id: 'b5', name: 'SpikedAde', category: 'rtd', repliedAt: at(-3), who: 'Zach Fagin — Associate Trade Marketing Manager' },
   { id: 'b6', name: 'Neutonic', category: 'energy', repliedAt: at(-6), who: 'Kerry Szostak' },
+  { id: 'b7', name: 'Arizona Beverages', category: 'beverage', repliedAt: at(-30), who: 'Thomas Reed' },
+  { id: 'b8', name: 'Update', category: 'energy', repliedAt: at(-31), who: 'Nicole Arnold' },
 ];
 const byId = (id) => BRANDS.find((b) => b.id === id);
 const clean = (kind, v) => {
@@ -91,7 +96,26 @@ const H = {
   zachTodo: () => ({ brands: [], people: 0, done: [], calls: [], held: [] }),
   brandPlanLine: () => ({}), acceptedPeople: () => ({ people: [], total: 0, brands: 0 }),
   listTalks: () => ({ talks: [] }),
-  listInTalks: () => ({ brands: JSON.parse(JSON.stringify(BRANDS)), suggestions: SUGGEST, sponsorUrl: 'https://shows.example.com', today: '2026-10-18' }),
+  listInTalks: (a) => {
+    const s = a.preview && !byId(a.preview) ? SUGGEST.find((x) => x.id === a.preview) : null;
+    return {
+      brands: JSON.parse(JSON.stringify(BRANDS)), suggestions: SUGGEST, sponsorUrl: 'https://shows.example.com', today: '2026-10-18',
+      preview: s ? base({ id: s.id, name: s.name, category: s.category, why: 'reply', since: s.repliedAt, preview: true, repliedAt: s.repliedAt, journey: journey(3),
+        people: [{ targetId: 't_' + s.id, contactId: 'c_' + s.id, name: s.who, title: 'Brand Manager', email: null, phone: null, linkedinUrl: null,
+          stage: 'replied', label: 'replied', invitedAt: at(-40), acceptedAt: at(-35), repliedAt: s.repliedAt, repliedBy: 'linkedin', callAt: null, callBookedAt: null, emailedAt: null }] }) : null,
+    };
+  },
+  setTalksDeal: (a) => {
+    let b = byId(a.brandId);
+    const s = SUGGEST.find((x) => x.id === a.brandId);
+    const from = b && b.deal ? b.deal.stage : null;
+    const created = !(b && b.deal);
+    if (!b && a.stage === 'lost') { SUGGEST = SUGGEST.filter((x) => x.id !== a.brandId); return { brandId: a.brandId, brandName: s.name, stage: 'lost', from, created, addedToTalks: false, dismissed: true }; }
+    const added = !b;
+    if (!b) { SUGGEST = SUGGEST.filter((x) => x.id !== a.brandId); b = base({ id: a.brandId, name: s.name, why: 'hand', addedBy: 'Leo', since: at(0), lastAt: at(0) }); BRANDS.push(b); }
+    b.deal = Object.assign(b.deal || { id: 'd_' + b.id, name: b.name, valueCents: 0, nextStep: null, followUpAt: null, source: 'manual' }, { stage: a.stage });
+    return { brandId: b.id, brandName: b.name, stage: a.stage, from, created, addedToTalks: added, dismissed: false };
+  },
   setInTalks: (a) => {
     if (a.on) {
       const s = SUGGEST.find((x) => x.id === a.brandId);
@@ -237,7 +261,8 @@ async function main() {
   await page.click('#it-list [data-it-sel="b2"]');
   await page.waitForFunction(() => document.querySelector('.it-name').textContent === 'Garage Beer');
   assert.ok(/Last call/.test(await text('.it-hero')));
-  assert.ok(/proposal/.test(await text('.it-col:nth-child(2)')) && /\$15,000 sponsorship/.test(await text('.it-col:nth-child(2)')));
+  assert.ok(/proposal/.test(await text('.it-cols')) && /\$15,000 sponsorship/.test(await text('.it-cols')));
+  assert.equal(await page.getAttribute('[data-it-stage="proposal"]', 'aria-pressed'), 'true', 'the deal stage shows lit');
   assert.ok(/no email on file/.test(await text('.it-person')));
   assert.ok(/\+ website, Instagram, TikTok/.test(await text('[data-it-links]')), 'missing links offered');
   await page.click('#nav-back');
@@ -305,8 +330,47 @@ async function main() {
   assert.ok(p1.includes('OUR NOTES') && p1.includes('Jason wants Texas schools first') && p1.includes('Call booked for') && !p1.includes('21+ only'), 'Electrolit prompt');
   console.log('✓ Copy for a new chat: brand, people, deal, notes, idea and the brainstorm steps');
 
-  // 7. Replied brands; Take off
+  // Notes to the right of the activation idea (Leo, Oct 18 2026).
+  const box = (sel) => page.evaluate((sel) => { const r = document.querySelector(sel).closest('.it-card').getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top }; }, sel);
+  const ideaBox = await box('[data-it-copy]'), notesBox = await box('[data-it-note-add]');
+  assert.ok(notesBox.l >= ideaBox.r && Math.abs(notesBox.t - ideaBox.t) < 2, 'notes beside the idea: ' + JSON.stringify([ideaBox, notesBox]));
+  console.log('✓ notes sit to the right of the activation idea');
+
+  // 7a. A "Replied, not in talks" card opens the brand; a deal stage puts it in talks
   assert.ok(/Replied, not in talks/.test(await text('.it-sug summary')));
+  await page.click('.it-sug summary');
+  await page.click('[data-it-sug="b7"]');
+  await page.waitForFunction(() => document.querySelector('.it-name') && document.querySelector('.it-name').textContent === 'Arizona Beverages');
+  assert.ok(/Not in talks yet/.test(await text('.it-pvbar')) && /not in talks yet/.test(await text('.it-hero')));
+  assert.ok(await page.isVisible('.it-hero [data-it-add="b7"]') && !(await page.$('.it-hero [data-it-remove]')), 'a look, not on the list: + Add, no Take off');
+  assert.ok(/Thomas Reed/.test(await text('.it-person')), 'its people show');
+  assert.ok((await page.getAttribute('.it-sug-row:has([data-it-sug="b7"])', 'class')).includes('on'), 'the card is lit');
+  assert.ok(/moves Arizona Beverages into In talks/.test(await text('.it-stagebar')));
+  await page.click('#nav-back');
+  await page.waitForFunction(() => document.querySelector('.it-name').textContent === 'Electrolit');
+  await page.click('#nav-fwd');
+  await page.waitForFunction(() => document.querySelector('.it-name') && document.querySelector('.it-name').textContent === 'Arizona Beverages');
+  await page.click('[data-it-stage="proposal"]');
+  await page.waitForSelector('#it-list [data-it-sel="b7"].on');
+  assert.deepEqual(last('setTalksDeal').args, { brandId: 'b7', stage: 'proposal' });
+  assert.equal(await page.getAttribute('[data-it-stage="proposal"]', 'aria-pressed'), 'true');
+  assert.ok(!(await page.$('.it-pvbar')) && !(await page.$('[data-it-sug="b7"]')), 'in talks now, off the Replied list');
+  console.log('✓ a Replied card opens the brand; a deal stage starts its deal and puts it in talks; ‹ › work');
+
+  // 7b. A stage on a brand in talks moves its deal; Lost on a Replied card takes it off the list
+  await page.click('#it-list [data-it-sel="b2"]');
+  await page.click('[data-it-stage="verbal"]');
+  await page.waitForFunction(() => document.querySelector('[data-it-stage="verbal"]').getAttribute('aria-pressed') === 'true');
+  assert.deepEqual(last('setTalksDeal').args, { brandId: 'b2', stage: 'verbal' });
+  await page.click('[data-it-sug="b8"]');
+  await page.waitForFunction(() => document.querySelector('.it-name') && document.querySelector('.it-name').textContent === 'Update');
+  await page.click('[data-it-stage="lost"]');
+  await page.waitForFunction(() => !document.querySelector('[data-it-sug="b8"]') && document.querySelector('.it-name') && document.querySelector('.it-name').textContent !== 'Update');
+  assert.ok(!(await page.$('#it-list [data-it-sel="b8"]')), 'Lost never puts it in talks');
+  await page.evaluate(() => { const d = document.querySelector('.it-sug'); if (d) d.open = false; });
+  console.log('✓ a stage on a brand in talks moves its deal; Lost on a Replied card takes it off the list');
+
+  // 7. Replied brands; Take off
   await page.click('.it-sug summary');
   await page.click('[data-it-add="b5"]');
   await page.waitForFunction(() => document.querySelector('.it-name') && document.querySelector('.it-name').textContent === 'SpikedAde');
@@ -350,7 +414,7 @@ async function main() {
   console.log('✓ a phone: the list, a tap opens the profile with ‹ All brands, no sideways scroll');
 
   assert.deepEqual(errors, [], 'page errors: ' + errors.join(' | '));
-  console.log('\nin-talks page: all 9 passed');
+  console.log('\nin-talks page: all 12 passed');
   await browser.close();
   server.close();
 }

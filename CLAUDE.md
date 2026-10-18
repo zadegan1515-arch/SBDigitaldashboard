@@ -139,7 +139,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   first) with LinkedIn, email (Gmail compose — nothing sends) and phone, invited-no-answer, others on file, the journey
   (`talksJourney`: Invited → Accepted → Replied → Call booked → Deal, first date each), Brand Fit, LinkedIn size, sales,
   raised, sponsors, Show Board opens + Copy board link, the deal, dated notes, and the profile; order `compareTalks` (calls
-  coming up soonest first, then latest activity, stopped last). **Profile** fields on Brand: `instagramUrl`, `tiktokUrl`,
+  coming up soonest first, then latest activity, stopped last). **A "Replied, not in talks" card opens the brand** (Leo, Oct 18 2026: "u
+  should be able to click on these cards and adjust the deal flow"): `listInTalks({ preview })` builds that brand's profile
+  the same way and returns it as `preview` (never in `brands`; `itPreview` / `IT.pv` / `itCur`, kept through refresh and
+  ‹ › by `IT.pvSeen`), with "Not in talks yet", + Add to In talks and Not now. **Deal stage** under the journey on every
+  profile (`.it-stagebar`, `IT_STAGES`: Conversation · Proposal sent · Verbal yes · Won · Lost) = `setTalksDeal` (moves the
+  deal the profile shows — newest open, else newest — or starts one, `DEAL_STAGES`; a brand not in talks goes in, his pick,
+  except Lost, which takes it off the Replied offers instead; a show / Notion deal is refused). The profile's cards sit in
+  rows of two: Overview | Who we're talking to, **Activation idea | Notes** (Leo: "move the notes to the right of the
+  activation idea"), then Deal. **Profile** fields on Brand: `instagramUrl`, `tiktokUrl`,
   `overview`/`overviewBy`/`overviewAt`, `activationIdea`/`activationIdeaBy`/`activationIdeaAt` — `saveTalksProfile` (only the
   fields sent; links through `cleanLink` — a handle, @handle or any link → the account URL, "none" = '' = they have none, empty
   = null = look again; a Claude session's overview ≤ 4 sentences, `sentenceCount`; `onlyEmpty` never touches a filled field;

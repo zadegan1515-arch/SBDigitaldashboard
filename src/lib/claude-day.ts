@@ -95,6 +95,7 @@ export function actionText(fn: string, args: any, result: any): string | null {
     // In talks (the top tab).
     case 'setInTalks': return `${a.on === false ? 'Took' : 'Put'} ${brand || 'a brand'} ${a.on === false ? 'off' : 'on'} In talks`
     case 'saveTalksProfile': return Array.isArray(r.saved) && r.saved.length ? `Wrote ${brand || 'a brand'}'s In talks ${r.saved.join(', ')}` : null
+    case 'setTalksDeal': return `${r.created ? 'Started' : 'Moved'} ${s(r.brandName) || 'a brand'}'s deal ${r.created ? 'at' : 'to'} ${s(a.stage, 20)}${r.addedToTalks ? ' (now in talks)' : ''}`
     case 'addBrandNote': return `Added a note on ${brand || 'a brand'} (In talks)`
     case 'editBrandNote': return `Edited a note on ${brand || 'a brand'} (In talks)`
     case 'deleteBrandNote': return `Deleted a note on ${brand || 'a brand'} (In talks)`

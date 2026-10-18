@@ -144,6 +144,8 @@ const FIRST_MESSAGE_MAX = 600
 // weekly-limit warning or asks to verify the account, drop this back
 // to 10 for a week.
 const DAILY_SEND_LIMIT = 30
+// A deal's stages, in order (the Deals board, Results, In talks → Deal stage).
+const DEAL_STAGES = ['conversation', 'proposal', 'verbal', 'closed', 'lost'] as const
 
 // Vercel functions run in UTC, so a naive setHours(0,0,0,0) makes "today"
 // start at 7 or 8pm the previous evening for anyone on the east coast —
@@ -14465,13 +14467,18 @@ const handlers: Record<string, Handler> = {
   // (Add to In talks), each with the people who answered, its links, the
   // overview and activation idea, dated notes, its deal and Show Board
   // activity — and brands that replied but aren't there yet (+ Add).
-  async listInTalks() {
+  // `preview` = a brand that isn't in talks (a "Replied, not in talks" card
+  // clicked): its profile comes back as `preview`, built the same way, and it
+  // stays off `brands` (Leo, Oct 18 2026: click the card, adjust the deal).
+  async listInTalks({ preview }: any = {}) {
     const now = new Date()
     const { onIds, states, suggest } = await talksMembership()
     const today = startOfLocalDay(now)
+    const pv = typeof preview === 'string' && preview && !onIds.includes(preview) ? preview : null
+    const ids = pv ? [...onIds, pv] : onIds
     const [full, visits, rates] = await Promise.all([
-      onIds.length ? prisma.brand.findMany({
-        where: { id: { in: onIds } },
+      ids.length ? prisma.brand.findMany({
+        where: { id: { in: ids } },
         include: {
           contacts: { select: { id: true, name: true, title: true, email: true, phone: true, linkedinUrl: true, doNotContactAt: true } },
           targets: {
@@ -14483,16 +14490,17 @@ const handlers: Record<string, Handler> = {
             },
           },
           brandNotes: { orderBy: { createdAt: 'desc' }, select: { id: true, text: true, by: true, createdAt: true, updatedAt: true } },
-          deals: { orderBy: { updatedAt: 'desc' }, select: { id: true, name: true, stage: true, valueCents: true, nextStep: true, followUpAt: true, createdAt: true, updatedAt: true } },
+          deals: { orderBy: { updatedAt: 'desc' }, select: { id: true, name: true, stage: true, valueCents: true, nextStep: true, followUpAt: true, createdAt: true, updatedAt: true, source: true } },
         },
       }) : Promise.resolve([] as any[]),
-      onIds.length ? prisma.boardVisit.groupBy({ by: ['brandId'], where: { brandId: { in: onIds } }, _count: { _all: true }, _max: { createdAt: true } }) : Promise.resolve([] as any[]),
+      ids.length ? prisma.boardVisit.groupBy({ by: ['brandId'], where: { brandId: { in: ids } }, _count: { _all: true }, _max: { createdAt: true } }) : Promise.resolve([] as any[]),
       recentAcceptRates(),
     ])
     const visitBy = new Map<string, { opens: number; lastAt: Date | null }>(visits.map((v: any) => [v.brandId, { opens: v._count._all, lastAt: v._max.createdAt }]))
     const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null)
-    const brands = full.map((b: any) => {
-      const st = states.get(b.id)!
+    const pvReply = pv ? suggest.find(x => x.id === pv)?.repliedAt ?? null : null
+    const brands = full.filter((b: any) => b.kind !== 'person' || b.id !== pv).map((b: any) => {
+      const st: any = states.get(b.id) ?? { on: false, why: 'reply', since: pvReply ? new Date(pvReply) : null }
       const contactOf = new Map<string, any>(b.contacts.map((c: any) => [c.id, c]))
       const people: any[] = []
       const invited: any[] = []
@@ -14556,20 +14564,59 @@ const handlers: Record<string, Handler> = {
         people: people.map(({ _accepted, _replied, ...p }) => p), invited,
         others: b.contacts.filter((c: any) => !reached.has(c.id)).length,
         notes: b.brandNotes.map((n: any) => ({ id: n.id, text: n.text, by: n.by, at: iso(n.createdAt), editedAt: n.updatedAt.getTime() - n.createdAt.getTime() > 1000 ? iso(n.updatedAt) : null })),
-        deal: deal ? { id: deal.id, name: deal.name, stage: deal.stage, valueCents: deal.valueCents, nextStep: deal.nextStep, followUpAt: iso(deal.followUpAt) } : null,
+        deal: deal ? { id: deal.id, name: deal.name, stage: deal.stage, valueCents: deal.valueCents, nextStep: deal.nextStep, followUpAt: iso(deal.followUpAt), source: deal.source } : null,
         board: { code: b.boardCode, opens: v?.opens ?? 0, lastAt: iso(v?.lastAt) },
         journey: journey.map(s => ({ ...s, at: iso(s.at) })),
         lastAt: iso(lastAt),
         _sort: { name: b.name, stopped: !!b.stoppedAt, nextCallAt: nextCall ? (nextCall as any).at : null, lastAt },
       }
     })
-    brands.sort((x: any, y: any) => compareTalks(x._sort, y._sort))
+    const pvRow = pv ? brands.find((x: any) => x.id === pv) ?? null : null
+    const onList = brands.filter((x: any) => x.id !== pv)
+    onList.sort((x: any, y: any) => compareTalks(x._sort, y._sort))
+    const strip = ({ _sort, ...x }: any) => x
     return {
-      brands: brands.map(({ _sort, ...x }: any) => x),
+      brands: onList.map(strip),
+      preview: pvRow ? { ...strip(pvRow), preview: true, repliedAt: pvReply } : null,
       suggestions: suggest,
       sponsorUrl: sponsorBoardUrl(),
       today: localDayKey(now),
     }
+  },
+
+  // In talks → Deal stage (Leo, Oct 18 2026: "u should be able to click on
+  // these cards and adjust the deal flow"; his picks: the profile gets the
+  // stages, and setting one moves the brand into In talks). Moves the brand's
+  // deal (the one the profile shows: the newest still open, else the newest)
+  // or starts one at that stage. A brand not in talks goes in — except on
+  // Lost, which takes it off the "Replied, not in talks" offers instead.
+  // A deal synced from a show or Notion is refused, as on the Deals board.
+  async setTalksDeal({ brandId, stage, __user }: any) {
+    if (!(DEAL_STAGES as readonly string[]).includes(stage)) throw new Error('Unknown stage')
+    const b = await prisma.brand.findUnique({
+      where: { id: String(brandId || '') },
+      select: {
+        id: true, name: true, kind: true, talksAddedAt: true, talksRemovedAt: true,
+        targets: { where: { OR: [{ callBookedAt: { not: null } }, { callAt: { not: null } }] }, select: { callBookedAt: true, createdAt: true } },
+        deals: { orderBy: { updatedAt: 'desc' }, select: { id: true, stage: true, source: true } },
+      },
+    })
+    if (!b) throw new Error('Brand not found')
+    if (b.kind === 'person') throw new Error(b.name + ' is a person, not a brand — no deal here')
+    const deal = b.deals.find(d => d.stage !== 'lost') ?? b.deals[0] ?? null
+    if (deal?.source === 'sponsorship') throw new Error('This deal mirrors a show — change the sponsorship status instead.')
+    if (deal?.source === 'notion') throw new Error('This deal mirrors Notion — change its Stage there (it syncs nightly, or hit Sync now).')
+    const on = talksState({ addedAt: b.talksAddedAt, removedAt: b.talksRemovedAt, callsBooked: b.targets.map(t => t.callBookedAt ?? t.createdAt) }).on
+    const now = new Date()
+    const addToTalks = !on && stage !== 'lost'
+    const dismiss = !on && stage === 'lost'
+    await prisma.$transaction(async tx => {
+      if (deal) await tx.deal.update({ where: { id: deal.id }, data: { stage } })
+      else await tx.deal.create({ data: { brandId: b.id, name: b.name, stage, valueCents: 0, source: 'manual' } })
+      if (addToTalks) await tx.brand.update({ where: { id: b.id }, data: { talksAddedAt: now, talksAddedBy: talksBy(__user) } })
+      if (dismiss) await tx.brand.update({ where: { id: b.id }, data: { talksRemovedAt: now } })
+    })
+    return { brandId: b.id, brandName: b.name, stage, from: deal?.stage ?? null, created: !deal, addedToTalks: addToTalks, dismissed: dismiss }
   },
 
   // Add to In talks / Take off In talks (a removal wins over an older call
@@ -15439,8 +15486,7 @@ const handlers: Record<string, Handler> = {
   // Stage-only move for the pipeline board. Manual deals only —
   // sponsorship-sourced deals mirror their show and are locked here.
   async setDealStage({ id, stage }: any) {
-    const STAGES = ['conversation', 'proposal', 'verbal', 'closed', 'lost']
-    if (!STAGES.includes(stage)) throw new Error('Unknown stage')
+    if (!(DEAL_STAGES as readonly string[]).includes(stage)) throw new Error('Unknown stage')
     const deal = await prisma.deal.findUnique({ where: { id } })
     if (!deal) throw new Error('Deal not found')
     if (deal.source === 'sponsorship') throw new Error('This deal mirrors a show — change the sponsorship status instead.')
