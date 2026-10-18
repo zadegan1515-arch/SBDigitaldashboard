@@ -73,5 +73,47 @@ t('suggests a priority change only with enough invites, one step at a time, neve
 t('nothing to judge yet: empty, no NaN', () => {
   const r = outcomeRates([inv({ at: ago(1) })], { now })
   assert.deepEqual([r.overall.n, r.overall.acceptRate, r.byCategory.length], [0, null, 0])
+  assert.deepEqual([r.depth.personRate, r.depth.model, r.depth.byOrder], [null, [], []])
+})
+// People per brand (people-per-brand, Oct 18 2026): accepts only, raw rates.
+const at = (brandId, x = {}) => ({ ...inv(x), brandId })
+t('people per brand: each person by place in the brand’s line, by send time', () => {
+  const list = [
+    // Listed out of order: the 08:00 invite is the brand's 1st.
+    at('a', { at: new Date(ago(30).getTime() + 2 * 36e5) }), at('a', { at: ago(30), accepted: true }), at('a', { at: new Date(ago(30).getTime() + 36e5) }),
+    at('b', { at: ago(30), accepted: true }), at('b', { at: ago(30) }), at('b', { at: ago(30) }), at('b', { at: ago(30) }), at('b', { at: ago(30), accepted: true }),
+    at('c', { at: ago(30) }), at('c', { at: ago(2), accepted: true }), // 2nd too young to judge
+  ]
+  const d = outcomeRates(list, { now }).depth
+  assert.deepEqual(d.byOrder.map(c => [c.key, c.people, c.peopleYes]), [['1', 3, 2], ['2', 2, 0], ['3', 2, 0], ['4', 1, 0], ['5+', 1, 1]])
+  assert.equal(d.byOrder[0].personRate, 2 / 3)
+  assert.equal(d.personRate, 3 / 9, 'the 2-day-old invite is too young to count')
+})
+t('people per brand: first day vs in all — a second try later counts in all, not the first day', () => {
+  const list = [
+    at('a', { day: '2026-09-15', at: ago(28) }), at('a', { day: '2026-09-15', at: ago(28) }), at('a', { day: '2026-09-15', at: ago(28) }),
+    at('a', { day: '2026-10-01', at: ago(12), accepted: true }), // a second try, accepted
+    at('b', { day: '2026-09-16', at: ago(27), accepted: true }), at('b', { day: '2026-09-16', at: ago(27) }), at('b', { day: '2026-09-16', at: ago(27) }),
+  ]
+  const d = outcomeRates(list, { now }).depth
+  const f3 = d.byFirstDay.find(c => c.key === '3')
+  assert.deepEqual([f3.brands, f3.brandsYes, f3.people, f3.peopleYes], [2, 1, 6, 1], 'a: no yes on its first day; b: yes')
+  assert.deepEqual(d.byTotal.map(c => [c.key, c.brands, c.brandsYes, c.people]), [['3', 1, 1, 3], ['4', 1, 1, 4]])
+  assert.equal(f3.few, true, 'under 30 brands: too few to tell')
+})
+t('people per brand: by Brand Fit band, and the separate-chances model', () => {
+  const list = [
+    at('hi', { fit: 72, accepted: true }), at('hi', { fit: 72 }),
+    at('mid', { fit: 50 }), at('lo', { fit: 49.9 }), at('none', { fit: null, accepted: true }),
+  ]
+  const d = outcomeRates(list, { now }).depth
+  assert.deepEqual(d.byFit.map(c => [c.key, c.brands, c.brandsYes, c.people]), [['65+', 1, 1, 2], ['50–64', 1, 0, 1], ['under 50', 1, 0, 1], ['not scored', 1, 1, 1]])
+  const p = 2 / 5
+  assert.equal(d.personRate, p)
+  const m4 = d.model.find(m => m.k === 4)
+  assert.ok(Math.abs(m4.brandChance - (1 - (1 - p) ** 4)) < 1e-12)
+  assert.ok(Math.abs(m4.adds - p * (1 - p) ** 3) < 1e-12, 'the 4th person adds what the first three left')
+  assert.ok(Math.abs(m4.brandsPerDay - (30 / 4) * m4.brandChance) < 1e-12)
+  assert.deepEqual(d.model.map(m => m.k), [1, 2, 3, 4, 5, 6])
 })
 console.log(n + ' outcomes tests passed')
