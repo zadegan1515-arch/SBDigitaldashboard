@@ -323,5 +323,15 @@ const fillCat = (cat, n, size = 4, prefix = cat) => Array.from({ length: n }, (_
   is('a category day takes its big ones', cat[0].add.filter(a => a.from === 'day').map(a => a.id), ['B1', 'm1'])
 }
 
+// ---- a day spread from the week list (Outreach → Week plan, Oct 18 2026) ----
+{
+  const cands = [{ ...cand('a', 'energy', 4), fit: 90 }, { ...cand('b', 'energy', 4), fit: 80 }, { ...cand('c', 'energy', 4), fit: 70 }]
+  const p = planWeekDays({ ...base({ cands, cap: 12, days: [{ ...day(DAYS[0], [{ id: 'k', going: 3 }]), list: true }, day(DAYS[1])] }), openDays: undefined })
+  is('a list day: source list, nothing added', [p[0].source, p[0].add.length, p[0].total], ['list', 0, 3])
+  is('…and its brands stay for the next day', p[1].add.map(a => a.id), ['a', 'b', 'c'])
+  const forced = planWeekDays({ ...base({ cands, cap: 12, forced: { [DAYS[0]]: 'energy' }, days: [{ ...day(DAYS[0]), list: true }] }), openDays: undefined })
+  is('a category asked for in the preview doesn’t override the list', [forced[0].source, forced[0].add.length], ['list', 0])
+}
+
 console.log(fail ? `plan-week: ${pass} passed, ${fail} FAILED` : `plan-week: all ${pass} passed`)
 process.exit(fail ? 1 : 0)

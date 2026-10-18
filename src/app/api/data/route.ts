@@ -58,6 +58,7 @@ import { actionText, argsBrief, readCommit, type DayCommit } from '@/lib/claude-
 import { findLinkedInPeople, logLinkedInPerson, undoLinkedInLog, checkNewPerson } from '@/lib/li-log-db'
 import { isLogStage } from '@/lib/li-log'
 import { rollWindow, findUnsent, planCarry, carryOrder, carryTimes, type Unsent, type CarryFacts, type CarryTier, type Moved } from '@/lib/carry'
+import { BANK_KEY, bankSize, cleanBank, addToBank, removeFromBank, putBack, handSpent, composeBank, planWeeks, weekRooms, spreadWeek, seeded, type BankState, type BankCand } from '@/lib/week-bank'
 import { workNeed, dueDays } from '@/lib/planned-first'
 import { searchHit, type SearchHit } from '@/lib/brand-search'
 import { gradeDiscovery, gradeFromFit } from '@/lib/discover-grade'
@@ -1736,7 +1737,9 @@ async function rollOverUnsent(): Promise<void> {
     // brands planned by hand and people put in the queue. What the day
     // only showed goes back with every brand never reached and is ranked
     // again by Brand Fit, so the day stays best fit.
-    const toBestFit = !!to && !isCategoryTheme(plan[to]?.category)
+    // A day that takes only the week list (Week plan) the same way: what
+    // the day before only showed goes back to waiting.
+    const toBestFit = !!to && (!isCategoryTheme(plan[to]?.category) || (await readListDays()).has(to))
     const unsent = await unsentOn(days, plan, { shown: !toBestFit })
     if (toBestFit && unsent.size) {
       // Queued by the automatic fill itself (outreachAutoQueued — never a
@@ -1819,7 +1822,8 @@ async function readRefileLog(): Promise<RefileLog | null> {
 // (review fix, Oct 13 2026).
 async function scheduleStamp(): Promise<string> {
   const keys = ['outreachPlan', 'outreachExtraDays', SKIP_DAYS_KEY, GIANTS_KEY, CARRY_KEY, CARRY_DONE_KEY,
-    DAY_CLOSED_KEY, AUTO_QUEUED_KEY, PLAN_WEEK_KEY, DAY_THEME_KEY, CATEGORY_PRIORITY_KEY, OPENED_TODAY_KEY, CHOSEN_KEY]
+    DAY_CLOSED_KEY, AUTO_QUEUED_KEY, PLAN_WEEK_KEY, DAY_THEME_KEY, CATEGORY_PRIORITY_KEY, OPENED_TODAY_KEY, CHOSEN_KEY,
+    LIST_DAYS_KEY, BANK_KEY]
   const rows = await prisma.$queryRaw<Array<{ s: string }>>`
     SELECT concat_ws('|',
       (SELECT count(*)::text || ':' || coalesce(max("updatedAt")::text, '') FROM "Brand"),
@@ -3059,6 +3063,196 @@ async function readPlanWeekLog(): Promise<PlanWeekLog | null> {
       })),
     }
   } catch { return null }
+}
+
+// ---------------------------------------------------------------
+// Outreach → Week plan: the list of brands to reach (src/lib/week-bank.ts)
+// ---------------------------------------------------------------
+// Leo, Oct 18 2026: a list of ~100 brands, the top ranked by Brand Fit plus
+// any he adds (search, a category), spent week by week; the top of it is
+// dealt onto the week's sending days as an even mix of rank, and a day
+// spread from the list takes only brands from the list — no automatic
+// picks there (getTodayQueue, the Schedule's day rows, Plan my week); its
+// Fill box, Fill to 30 and Ready if you have room take from the list.
+// Setting outreachListDays = { day: { at, by } }: the days that take only
+// the list. Setting weekSpreadLast: the last spread, for its Undo.
+const LIST_DAYS_KEY = 'outreachListDays'
+const WEEK_SPREAD_KEY = 'weekSpreadLast'
+type ListDayMark = { at: string; by: string | null }
+async function readListDayMarks(): Promise<Record<string, ListDayMark>> {
+  const v = await readJsonSetting<Record<string, any>>(prisma, LIST_DAYS_KEY, {})
+  const today = localDayKey()
+  const out: Record<string, ListDayMark> = {}
+  for (const [k, m] of Object.entries(v && typeof v === 'object' ? v : {})) {
+    if (isDayKey(k) && k >= today) out[k] = { at: String((m as any)?.at ?? ''), by: (m as any)?.by ?? null }
+  }
+  return out
+}
+async function readListDays(): Promise<Set<string>> {
+  return new Set(Object.keys(await readListDayMarks()))
+}
+async function writeListDayMarks(marks: Record<string, ListDayMark>): Promise<void> {
+  const today = localDayKey()
+  await writeJsonSetting(prisma, LIST_DAYS_KEY, Object.fromEntries(Object.entries(marks).filter(([k]) => k >= today)))
+}
+
+async function readBankState(): Promise<BankState> {
+  return cleanBank(await readJsonSetting<unknown>(prisma, BANK_KEY, null))
+}
+// One writer at a time: two quick clicks (+ Add, ×) each read the list
+// and wrote it back, and the second undid the first.
+async function updateBankState(fn: (s: BankState) => BankState): Promise<BankState> {
+  return prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${BANK_KEY}))::text`
+    const row = await tx.setting.findUnique({ where: { key: BANK_KEY } })
+    let v: unknown = null
+    try { v = row ? JSON.parse(row.value) : null } catch { v = null }
+    const next = fn(cleanBank(v))
+    const value = JSON.stringify(next)
+    await tx.setting.upsert({ where: { key: BANK_KEY }, create: { key: BANK_KEY, value }, update: { value } })
+    return next
+  })
+}
+
+type WeekSpreadLog = { at: string; by: string | null; days: Array<{ date: string; added: string[]; listBefore: boolean }> }
+async function readWeekSpreadLog(): Promise<WeekSpreadLog | null> {
+  const v: any = await readJsonSetting<unknown>(prisma, WEEK_SPREAD_KEY, null)
+  if (!v || !Array.isArray(v.days)) return null
+  return {
+    at: String(v.at ?? ''), by: v.by ?? null,
+    days: v.days.filter((d: any) => isDayKey(d?.date)).map((d: any) => ({
+      date: d.date, added: Array.isArray(d.added) ? d.added.map(String) : [], listBefore: d.listBefore === true,
+    })),
+  }
+}
+
+// The last time anything went out to a brand: an invite or an email.
+function lastOutreachAt(b: PlanBrand): string | null {
+  let ms = 0
+  for (const t of b.targets) {
+    for (const d of [t.sentAt, t.emailedAt, t.emails?.[0]?.sentAt ?? null]) if (d && d.getTime() > ms) ms = d.getTime()
+  }
+  return ms ? new Date(ms).toISOString() : null
+}
+
+// One brand on the list, as the page shows it. where: on a coming day
+// (`day`), in today's list, waiting for a day, or can't go (why).
+type BankRow = {
+  rank: number; id: string; name: string; category: string | null; tier: string | null
+  fit: number; label: ContactsLabel; going: number; people: PreviewPerson[]; big: boolean
+  how: 'hand' | 'auto'; addedAt: string | null
+  where: 'day' | 'today' | 'waiting' | 'cant'; day: string | null; why: string | null
+  linkedinUrl: string | null; website: string | null; externalId: string | null
+}
+type BankCtx = { brands: PlanBrand[]; rates: AcceptRates; q: QueueCtx; plan: OutreachPlan }
+
+// The list as it stands: Leo's hand adds still in play, then the brands a
+// Best fit day would pick by itself (bestFitEligible — never reached, not a
+// giant held back, not Skip, not too small — with someone who would go
+// out), best Brand Fit first, up to the list's number. Brands going out
+// today are spent: not a system pick any more. `day` = the day the people
+// are counted for (the week's first sending day).
+function buildBank(ctx: BankCtx, state: BankState, opts: { day?: string } = {}) {
+  const today = localDayKey()
+  const dayStart = startOfLocalDay()
+  const pinnedOn = pinnedDays(ctx.plan, today)
+  const day = opts.day ?? planningDays(1, ctx.q.extras, { afterToday: true })[0]?.key ?? today
+  const handAt = new Map(state.hand.map(h => [h.id, h.at]))
+  const inToday = (b: PlanBrand) => pinnedOn.get(b.id) === today || b.targets.some(t =>
+    !!t.queuedFor && t.queuedFor >= dayStart && !t.sentAt && !t.shelved && ['queued', 'drafted'].includes(t.status))
+  type Info = { b: PlanBrand; label: ContactsLabel; people: PreviewPerson[]; refusal: string | null; reason: string | null; isToday: boolean }
+  const info = new Map<string, Info>()
+  const cands: BankCand[] = []
+  // Hand adds no longer on the list: reached since they were added, or off
+  // for good (archived, do-not-email, not in the US, in talks, stopped).
+  const spent: string[] = []
+  for (const b of ctx.brands) {
+    const hand = handAt.has(b.id)
+    const off = !!b.stoppedAt || !!b.passedAt || b.doNotEmail || b.usStatus === 'no' || inConversation(b)
+    if (hand && (off || handSpent(handAt.get(b.id)!, lastOutreachAt(b)))) { spent.push(b.id); continue }
+    if (!hand && (off || isReached(b))) continue
+    const f = planBrandFit(b, ctx.rates)
+    const isToday = inToday(b)
+    let auto = !isToday && bestFitEligible(b, f, ctx.q)
+    if (!hand && !auto) continue
+    const refusal = hand ? planRefusal(b, ctx.q, day) : null
+    const p = previewBrandPicks(b, { forToday: false, dayStart, day, explicitAdd: hand })
+    if (!p.people.length) auto = false
+    if (!hand && !auto) continue
+    const label = contactLabel(b, b.contacts)
+    info.set(b.id, { b, label, people: p.people, refusal, reason: p.reason, isToday })
+    cands.push({ id: b.id, name: b.name, fit: f.score, ready: label.kind === 'ready', auto })
+  }
+  const { list, autoLeft } = composeBank(cands, state)
+  const rows: BankRow[] = list.map((c, i) => {
+    const x = info.get(c.id)!
+    const b = x.b
+    const pinned = pinnedOn.get(b.id) ?? null
+    const where: BankRow['where'] = x.isToday ? 'today'
+      : pinned ? 'day'
+      : x.refusal || !x.people.length ? 'cant'
+      : 'waiting'
+    return {
+      rank: i + 1, id: b.id, name: b.name, category: b.category, tier: b.tier,
+      fit: c.fit, label: x.label, going: x.people.length, people: x.people.slice(0, 4), big: isBigBrand(b),
+      how: c.how, addedAt: handAt.get(b.id) ?? null,
+      where, day: where === 'day' ? pinned : null,
+      why: where === 'cant' ? reasonText(x.refusal ?? x.reason ?? 'exhausted', reasonCtx(b, ctx.q)) : null,
+      linkedinUrl: b.linkedinUrl, website: b.website, externalId: b.externalId,
+    }
+  })
+  return { rows, autoLeft, spent, day }
+}
+
+// The list's waiting brands as a day's Fill box rows (suggestionsFor's
+// shape), best first: what a day that takes only the list offers.
+function bankSuggestRows(rows: BankRow[], take = 24) {
+  return rows.filter(r => r.where === 'waiting' && r.going > 0).slice(0, take).map(r => ({
+    id: r.id, name: r.name, category: r.category, tier: r.tier, label: r.label,
+    fit: { score: r.fit }, going: r.going, people: r.people.map(p => ({ name: p.name, title: p.title })),
+    linkedinUrl: r.linkedinUrl, externalId: r.externalId,
+    text: `#${r.rank} on your list · ${r.going} would go out`, related: false, big: r.big, rank: r.rank,
+  }))
+}
+async function loadBankCtx(): Promise<BankCtx & { state: BankState }> {
+  const plan = await readPlan()
+  const [brands, rates, q, state] = await Promise.all([loadPlanBrands(prisma), recentAcceptRates(), readQueueCtx(), readBankState()])
+  return { plan, brands, rates, q, state }
+}
+
+// The week's sending days as columns: what is pinned on each (the
+// Schedule's own cards), how many people that is, and the room left under
+// the day's 30 and LinkedIn's week (weekRooms). cur = getOutreachPlan's
+// answer (its days, its LinkedIn counts).
+function weekColumns(keys: string[], cur: any, marks: Record<string, ListDayMark>, brandById: Map<string, PlanBrand>) {
+  const curDay = new Map<string, any>(((cur?.days ?? []) as any[]).map(d => [d.date as string, d]))
+  const counts = new Map<string, number>(
+    Object.entries(cur?.linkedinWeek?.sentByDay ?? {}).map(([k, v]) => [k, Number(v) || 0] as [string, number]))
+  for (const d of (cur?.days ?? []) as any[]) if (!keys.includes(d.date)) counts.set(d.date, Number(d.total) || 0)
+  const cols = keys.map(k => {
+    const d = curDay.get(k)
+    const pinned = ((d?.pinned ?? []) as any[])
+    const going = pinned.filter(p => p.state === 'going' && !p.waits)
+    const keptPeople = going.reduce((n, p) => n + (Number(p.going) || 0), 0)
+    const bigs = going.filter(p => { const b = brandById.get(p.id); return !!b && isBigBrand(b) }).length
+    const autoRows = marks[k] ? [] : ((d?.brands ?? []) as any[])
+    return {
+      date: k, label: dayLabel(k), list: !!marks[k],
+      category: d?.category ?? BEST_FIT_DAY,
+      keptPeople, bigs,
+      pinned: pinned.map(p => ({
+        id: p.id, name: p.name, category: p.category ?? null, state: p.state, going: Number(p.going) || 0,
+        waits: p.waits ?? null, reasonText: p.reasonText ?? null, people: (p.people ?? []).slice(0, 4),
+        linkedinUrl: p.linkedinUrl ?? null, website: p.website ?? null, carriedFrom: p.carriedFrom ?? null,
+        big: (() => { const b = brandById.get(p.id); return !!b && isBigBrand(b) })(),
+      })),
+      // A day not spread from the list: what Best fit adds by itself.
+      auto: autoRows.length,
+      autoPeople: autoRows.reduce((n: number, r: any) => n + (Number(r.going) || 0), 0),
+    }
+  })
+  const rooms = new Map(weekRooms(cols.map(c => ({ date: c.date, kept: c.keptPeople })), counts, DAILY_SEND_LIMIT).map(r => [r.date, r]))
+  return cols.map(c => ({ ...c, cap: rooms.get(c.date)?.cap ?? DAILY_SEND_LIMIT, room: rooms.get(c.date)?.room ?? 0 }))
 }
 
 // ---------------------------------------------------------------
@@ -5228,7 +5422,10 @@ const handlers: Record<string, Handler> = {
   //
   // Now: unsent work carries over first, and new targets only top up
   // whatever room is left in today's budget.
-  async getTodayQueue() {
+  // __fill: Fill to 30 asked (fillToday) — on a day that takes only the
+  // week list (Week plan), the fill takes from the list; a plain load adds
+  // nobody there.
+  async getTodayQueue({ __fill = false }: any = {}) {
     const startOfDay = startOfLocalDay()
     // Whether anything goes out today — Tuesday to Thursday, or a day Leo
     // opened on the Schedule. The LinkedIn tab reads this flag instead of
@@ -5308,7 +5505,11 @@ const handlers: Record<string, Handler> = {
     // Nor after "Move what's left" closed today (readTodayClosed): the
     // room it freed must not fill straight back up from the rotation.
     const closedToday = await readTodayClosed()
-    const roomLeft = sendingDay && !closedToday ? Math.max(0, room - handPicked.length) : 0
+    // Spread from the week list (Week plan): only brands from the list go
+    // today — no automatic picks; Fill to 30 and Ready if you have room
+    // take from the list instead.
+    const listToday = (await readListDays()).has(todayKey)
+    const roomLeft = sendingDay && !closedToday && (!listToday || __fill) ? Math.max(0, room - handPicked.length) : 0
     const rankRates = await recentAcceptRates()
     // The day's picks read brands, not the pool (autoDayRanked): a brand
     // nobody has been queued at yet is still a pick (queueBrandTargets
@@ -5325,9 +5526,24 @@ const handlers: Record<string, Handler> = {
     // Best fit day, reopened with its next people — a planned brand whose
     // people Leo had just left out (review fix, Oct 13 2026).
     const todayPinned = new Set<string>(planDay?.brandIds ?? [])
-    const ranked = autoDayRanked(theme, await loadPlanBrands(prisma,
-      { ...BEST_FIT_BRAND_WHERE, ...notPassedToday(), ...(isCategoryTheme(theme) ? { category: theme } : {}) },
-    ), rankRates, gateQ).filter(x => !laterPinned.has(x.b.id) && !todayPinned.has(x.b.id))
+    const ranked = (listToday
+      ? await (async () => {
+          // The list's waiting brands, in the list's order (best Brand Fit
+          // first), as the day's ranking.
+          const all = await loadPlanBrands(prisma)
+          const byId = new Map(all.map(b => [b.id, b]))
+          const bank = buildBank({ brands: all, rates: rankRates, q: gateQ, plan: fullPlan }, await readBankState(), { day: todayKey })
+          return bank.rows
+            .filter(r => r.where === 'waiting' && r.going > 0)
+            .map(r => byId.get(r.id)!)
+            .filter(b => !!b && !(b.passedTodayAt && b.passedTodayAt >= startOfDay))
+            // short: false — the fill keeps the list's own order (its
+            // ties already put ready brands first).
+            .map(b => ({ b, fit: planBrandFit(b, rankRates).score, short: false, big: isBigBrand(b) }))
+        })()
+      : autoDayRanked(theme, await loadPlanBrands(prisma,
+          { ...BEST_FIT_BRAND_WHERE, ...notPassedToday(), ...(isCategoryTheme(theme) ? { category: theme } : {}) },
+        ), rankRates, gateQ)).filter(x => !laterPinned.has(x.b.id) && !todayPinned.has(x.b.id))
     const bestById = new Map(ranked.map(x => [x.b.id, x]))
     // People already waiting in the pool at those brands. Includes
     // 'drafted': drafting from the All-targets tab sets the status without
@@ -5557,6 +5773,8 @@ const handlers: Record<string, Handler> = {
       plannedWaiting,
       waitingTo: plannedWaiting.length ? nextSendingAfter(todayKey, todayExtras) : null,
       theme, sendingDay,
+      // Today takes only the week list (Week plan).
+      listDay: listToday,
       // What was left today moved to this day ("Move what's left").
       closedTo: closedToday?.to ?? null,
       // The queue check's flag on each person still to send (copy-flagged):
@@ -7712,19 +7930,17 @@ const handlers: Record<string, Handler> = {
 
   // The "Add a brand" chat (src/lib/chat-add.ts, docs/add-a-brand-chat.md):
   // a Claude session Leo sends an Instagram screenshot or a name to. It
-  // researches on the open web, shows Leo the card, and only on his yes
-  // calls this with apply. Preview = the cleaned brand + what on the roster
-  // it could already be. Apply refuses a possible duplicate unless Leo said
-  // it's a different company (notSame). Category is always a real key (the
-  // keyword guess if none, never a model call). Facts (sales, funding,
-  // college / music…) are never written here: they go to the research
-  // review on Stock take → Brand Fit, like every other Claude research.
-  // The "Add a brand" chat (docs/add-a-brand-chat.md). Preview by
-  // default: the cleaned card, possible matches on the roster, and the
-  // facts exactly as they'd be written. Leo's yes on that card is the
-  // review (Leo, Oct 12 2026: "my yes is the review, so skip Stock take"):
-  // apply makes the brand and writes those facts onto it in one go. Only
-  // ever a brand it makes — facts never land on an existing one this way.
+  // researches on the open web, previews, and applies. Every brand Leo sends
+  // is a yes once real information is found (Leo, Oct 18 2026: it used to
+  // ask "Add it?" first); it asks only when the preview finds a possible
+  // match. Preview by default: the cleaned card, what on the roster it could
+  // already be, and the facts exactly as they'd be written. Apply refuses a
+  // possible duplicate unless Leo said it's a different company (notSame;
+  // an exact name never) and makes the brand and writes those facts onto it
+  // in one go — Leo sending the brand is the review (Oct 12 2026: "skip
+  // Stock take"); the chat shows him every fact after. Only ever a brand it
+  // makes — facts never land on an existing one this way. Category is
+  // always a real key (the keyword guess if none, never a model call).
   async chatAddBrand({ brand: raw, facts, apply, notSame, expect }: any) {
     const { row, error } = cleanChatBrand(raw)
     if (error || !row) throw new Error(error ?? 'Could not read the brand')
@@ -8601,7 +8817,7 @@ const handlers: Record<string, Handler> = {
       extras, brands, candidates, everyBrand, q,
       sentTodayN, stampedRaw, sentLog,
       carryLog, closedToday, planRates, autoToday,
-      shownHad, dayRowsHad, pw, themeLog, skipDays, openedToday,
+      shownHad, dayRowsHad, pw, themeLog, skipDays, openedToday, , listDays,
     ] = await Promise.all([
       // Read once: every day check in this request uses the same list.
       readExtraDays(),
@@ -8677,6 +8893,8 @@ const handlers: Record<string, Handler> = {
       // ten-minute tick (review fix, Oct 13 2026). Read fresh — what the
       // ranking below and `priority` read.
       loadCategoryPriority(true),
+      // Days that take only the week list (Week plan): no automatic rows.
+      readListDays(),
     ])
     const planned = new Set(Object.values(plan).flatMap((d: any) => d?.brandIds ?? []))
     const totalPool = candidates.length
@@ -8864,6 +9082,7 @@ const handlers: Record<string, Handler> = {
       // against Tuesday.
       const isToday = key === todayKey
       const theme = dayTheme(plan[key]?.category)
+      const listDay = listDays.has(key)
       // Hand-planned brands send that day too, as their own cards. Their
       // people count toward the 30: on a later day from the preview (it
       // used to count only people already waiting in the pool, so a
@@ -8945,7 +9164,9 @@ const handlers: Record<string, Handler> = {
       type Cand = (typeof usable)[number]
       const themeByBrand = new Map<string, Cand[]>()
       const dayRanked = rankedFor(theme)
-      if (!(isToday && closedToday)) {
+      // Nothing automatic once "Move what's left" closed today, nor on a
+      // day spread from the week list (it takes only the list).
+      if (!(isToday && closedToday) && !listDay) {
         const pooledBy = new Map<string, Cand[]>()
         for (const c of usable) pooledBy.set(c.brand.id, [...(pooledBy.get(c.brand.id) ?? []), c])
         for (const x of dayRanked) {
@@ -9088,7 +9309,10 @@ const handlers: Record<string, Handler> = {
       const offQueued = new Set(alreadyIn.filter(t => !startedToday.has(t.brand.id) && !belongs(t.brand.id, t.brand.category)).map(t => t.brand.id)).size
       return {
         date: key,
-        offTheme: offPins + offQueued,
+        // A list day has no theme to fall out of.
+        offTheme: listDay ? 0 : offPins + offQueued,
+        // Takes only brands from the week list (Week plan).
+        list: listDay,
         // The client used to assume day one was today; now it's told.
         today: isToday,
         // Only a sending day because Leo opened it (Remove day undoes it).
@@ -9233,8 +9457,16 @@ const handlers: Record<string, Handler> = {
     if (suggest) {
       const pinnedOn = pinnedDays(plan, todayKey)
       const lists = new Map<string, ReturnType<typeof suggestionsFor>>()
+      // A day that takes only the week list offers the list's waiting
+      // brands, best first (the same list on every such day).
+      let bankRows: ReturnType<typeof bankSuggestRows> | null = null
       for (const d of days as any[]) {
         if (!(d.cap - d.total > 0)) continue
+        if (d.list) {
+          if (!bankRows) bankRows = bankSuggestRows(buildBank({ brands: everyBrand, rates: planRates, q, plan: plan as OutreachPlan }, await readBankState()).rows)
+          d.suggest = { category: '', data: { date: d.date, category: '', brands: bankRows, others: [], needPeople: [], needPeopleTotal: 0, hiddenSmall: 0, ruledOut: 0, hideSmall: !!hideSmall, list: true } }
+          continue
+        }
         const category = d.category === BEST_FIT_DAY ? '' : d.category
         const kind = (d.today ? 'today|' : 'later|') + category
         let list = lists.get(kind)
@@ -9903,12 +10135,15 @@ const handlers: Record<string, Handler> = {
     const weekCounts = new Map<string, number>(
       Object.entries(cur?.linkedinWeek?.sentByDay ?? {}).map(([k, v]) => [k, Number(v) || 0] as [string, number]))
     for (const d of (cur?.days ?? []) as any[]) if (!planKeys.has(d.date)) weekCounts.set(d.date, Number(d.total) || 0)
+    const listDays = await readListDays()
     const plannedDays = planWeekDays({
       // A day stored as Best fit is a day with no category to planWeekDays.
+      // A day spread from the week list takes nothing more (list).
       days: weekDays.map(d => ({
         date: d.key,
         kept: kept.get(d.key)!.map(k => { const b = brandById.get(k.id); return { ...k, big: !!b && isBigBrand(b) } }),
         category: forceBest.has(d.key) || plan[d.key]?.category === BEST_FIT_DAY ? null : plan[d.key]?.category ?? null,
+        list: listDays.has(d.key),
       })),
       // A Skip category is never picked or topped up from; a Best fit day
       // takes only what the Schedule's Best fit would (bestFitEligible).
@@ -9928,7 +10163,8 @@ const handlers: Record<string, Handler> = {
     const out = plannedDays.map(d => {
       const last = d.category ? lastSent.get(d.category) : undefined
       const r = d.category ? rates.raw.get(d.category) : undefined
-      const why = d.source === 'yours' ? 'Your pick for this day'
+      const why = d.source === 'list' ? 'Your week list — this day takes only brands from it (Outreach → Week plan)'
+        : d.source === 'yours' ? 'Your pick for this day'
         : d.source === 'asked' ? 'Your pick'
         : d.source === 'full' ? 'Full already'
         : d.source === 'none' ? 'Nothing left that could go out'
@@ -10073,6 +10309,281 @@ const handlers: Record<string, Handler> = {
   // unscheduled (named in the reply), and if the day is today their
   // unsent people come back out of today's queue, as planRemoveBrand does.
   // Nothing is deleted — the brands and their people are all still there.
+  // ── Outreach → Week plan ──────────────────────────────────────────
+  // The list (Setting weekBank) and the week it is spent on. week = 'this'
+  // | 'next' | a Monday key; the first week offered when it's missing (this
+  // week while it has a sending day after today, else next week).
+  async weekBank({ week }: any = {}) {
+    const ctx = await loadBankCtx()
+    const today = localDayKey()
+    const weeks = planWeeks(today, k => isSendingKey(k, ctx.q.extras))
+    const pick = weeks.find(w => w.which === week || w.start === week) ?? weeks[0]
+    const [marks, spreadLog] = await Promise.all([readListDayMarks(), readWeekSpreadLog()])
+    const cur: any = await (handlers.getOutreachPlan as Handler)({ __roster: ctx.brands })
+    const brandById = new Map(ctx.brands.map(b => [b.id, b]))
+    const days = weekColumns(pick.days, cur, marks, brandById)
+    const bank = buildBank(ctx, ctx.state, { day: pick.days[0] })
+    // Hand adds that left the list (reached since, archived…) leave the
+    // stored list too.
+    if (bank.spent.length) {
+      const gone = new Set(bank.spent)
+      await updateBankState(st => ({ ...st, hand: st.hand.filter(h => !gone.has(h.id)) }))
+    }
+    const removedIds = Object.keys(ctx.state.removed)
+    const removed = removedIds
+      .map(id => brandById.get(id))
+      .filter((b): b is PlanBrand => !!b && !isReached(b) && !b.passedAt)
+      .map(b => ({ id: b.id, name: b.name, category: b.category, at: ctx.state.removed[b.id] }))
+      .sort((a, b) => b.at.localeCompare(a.at))
+    return {
+      today,
+      weeks: weeks.map(w => ({ start: w.start, which: w.which, days: w.days, labels: w.days.map(dayLabel) })),
+      week: pick.start, which: pick.which,
+      days,
+      bank: {
+        size: ctx.state.size, rows: bank.rows, autoLeft: bank.autoLeft,
+        hand: bank.rows.filter(r => r.how === 'hand').length,
+        waiting: bank.rows.filter(r => r.where === 'waiting').length,
+        onDays: bank.rows.filter(r => r.where === 'day').length,
+        removed,
+      },
+      spreadLast: spreadLog && spreadLog.days.some(d => d.date > today)
+        ? { at: spreadLog.at, days: spreadLog.days.filter(d => d.date > today).map(d => ({ date: d.date, added: d.added.length })) }
+        : null,
+      cap: DAILY_SEND_LIMIT,
+      linkedin: { limit: LINKEDIN_WEEK_LIMIT, sentLast7: cur?.linkedinWeek?.sentLast7 ?? 0 },
+      priority: Object.fromEntries(CATEGORY_KEYS.map(k => [k, categoryPriority(k)])),
+    }
+  },
+
+  // How many brands the list holds (Leo: "around 100 … i can add more or
+  // have less").
+  async weekBankSize({ size }: any) {
+    const n = bankSize(size)
+    await updateBankState(st => ({ ...st, size: n }))
+    return { ok: true, size: n }
+  },
+
+  // Brands Leo puts on the list by hand (the search box, a category). They
+  // stay on it until something goes out to them. A giant he says "Add
+  // anyway" to is OK'd for good, as everywhere (allowGiants).
+  async weekBankAdd({ brandIds, allowGiants = [] }: any) {
+    const ids = [...new Set((Array.isArray(brandIds) ? brandIds : []).map(String).filter(Boolean))].slice(0, 100)
+    if (!ids.length) throw new Error('No brands to add')
+    const brands = await prisma.brand.findMany({ where: { id: { in: ids } }, select: PLAN_BRAND_SELECT })
+    const q = await readQueueCtx()
+    await okGiants(q, allowGiants, brands)
+    const refused: Array<{ id: string; name: string; text: string | null }> = []
+    const ok: string[] = []
+    for (const b of brands) {
+      const no = b.stoppedAt ? 'stopped' : b.passedAt ? 'archived' : b.doNotEmail ? 'donotemail' : b.usStatus === 'no' ? 'notus' : inConversation(b) ? 'inconversation' : null
+      if (no) refused.push({ id: b.id, name: b.name, text: reasonText(no, reasonCtx(b, q)) })
+      else ok.push(b.id)
+    }
+    let added: string[] = []
+    if (ok.length) {
+      await updateBankState(st => {
+        const r = addToBank(st, ok, new Date().toISOString())
+        added = r.added
+        return r.state
+      })
+    }
+    const nameOf = new Map(brands.map(b => [b.id, b.name]))
+    return { ok: true, added: added.map(id => ({ id, name: nameOf.get(id) ?? '' })), already: ok.length - added.length, refused }
+  },
+
+  // Off the list, and the list never puts it back by itself. offDays: also
+  // off the coming day it sits on (never today's list — the LinkedIn tab
+  // does that).
+  async weekBankRemove({ brandIds, offDays = false }: any) {
+    const ids = [...new Set((Array.isArray(brandIds) ? brandIds : []).map(String).filter(Boolean))].slice(0, 300)
+    if (!ids.length) throw new Error('No brands to take off')
+    await updateBankState(st => removeFromBank(st, ids, new Date().toISOString()))
+    const off: Array<{ id: string; date: string }> = []
+    if (offDays) {
+      const plan = await readPlan()
+      const today = localDayKey()
+      const drop = new Set(ids)
+      for (const k of Object.keys(plan)) {
+        if (k <= today) continue
+        const keep = plan[k].brandIds.filter(id => !drop.has(id))
+        for (const id of plan[k].brandIds) if (drop.has(id)) off.push({ id, date: k })
+        plan[k].brandIds = keep
+      }
+      if (off.length) await writePlan(plan)
+    }
+    return { ok: true, removed: ids.length, offDays: off.map(o => ({ ...o, label: dayLabel(o.date) })) }
+  },
+
+  async weekBankPutBack({ brandIds }: any) {
+    const ids = (Array.isArray(brandIds) ? brandIds : []).map(String).filter(Boolean)
+    await updateBankState(st => putBack(st, ids))
+    return { ok: true, back: ids.length }
+  },
+
+  // A category's brands for the list's "Add from a category": best Brand
+  // Fit first, each with what adding it means for the week's first day
+  // (planBrandRow — the Schedule's add box's own words). Brands that can't
+  // go out at all (archived, in talks, not in the US) are counted, not listed.
+  async weekBankBrowse({ category, day }: any) {
+    const cat = !category || category === 'uncategorised' ? null : checkCategory(String(category))
+    const [brands, ctx, rates] = await Promise.all([
+      loadPlanBrands(prisma, { category: cat }),
+      planRowCtx(isDayKey(day) ? day : undefined),
+      recentAcceptRates(),
+    ])
+    let setAside = 0
+    const rows = brands
+      .map(b => ({ b, f: planBrandFit(b, rates), row: planBrandRow(b, ctx) }))
+      .filter(x => { if (x.row.action === 'none') { setAside++; return false } return true })
+      .sort((x, y) => Number(x.row.action !== 'add') - Number(y.row.action !== 'add') || y.f.score - x.f.score || x.b.name.localeCompare(y.b.name))
+      .slice(0, 120)
+      .map(({ b, f, row }) => ({ ...row, fit: fitBrief(f), tier: b.tier, big: isBigBrand(b) }))
+    return { category: cat, date: ctx.date, brands: rows, setAside, total: brands.length }
+  },
+
+  // Spread the top of the list onto the week (Leo's pick: an even mix of
+  // rank — src/lib/week-bank.ts spreadWeek). Preview (default) writes
+  // nothing: each day's brands, and who waits for next week. seed = which
+  // shuffle (the page sends a new one for Shuffle again). Apply writes
+  // exactly the days it is handed — the preview's — through planAddCore
+  // (each brand whole, refused with a reason if it can't go), and from then
+  // on those days take only brands from the list. Undo: undoWeekSpread.
+  async weekSpread({ week, seed, apply = false, days: picks, __user }: any = {}) {
+    const today = localDayKey()
+    if (apply) {
+      const extras = await readExtraDays()
+      const list = (Array.isArray(picks) ? picks : []).slice(0, 7)
+      if (!list.length) throw new Error('Nothing to spread')
+      const plan = await readPlan()
+      const marks = await readListDayMarks()
+      const pinnedNow = pinnedDays(plan, today)
+      const at = new Date().toISOString()
+      const log: WeekSpreadLog = { at, by: __user ?? null, days: [] }
+      const results: any[] = []
+      for (const d of list) {
+        const date = String(d?.date ?? '')
+        if (!isDayKey(date) || date <= today || !isSendingKey(date, extras)) {
+          results.push({ date, ok: false, error: 'Not an upcoming sending day', added: 0, people: 0, refused: [], elsewhere: [] })
+          continue
+        }
+        const want = [...new Set((Array.isArray(d?.brandIds) ? d.brandIds : []).map(String).filter(Boolean))] as string[]
+        // Put on another day since the preview (another tab, the Schedule):
+        // left where Leo put it.
+        const elsewhere = want.filter(id => pinnedNow.has(id) && pinnedNow.get(id) !== date)
+        const ids = want.filter(id => !elsewhere.includes(id))
+        const onDay = new Set(plan[date]?.brandIds ?? [])
+        const core = ids.length ? await planAddCore(plan, date, ids) : { results: [] as any[] }
+        const added = core.results.filter((r: any) => r.added && !onDay.has(r.brandId))
+        log.days.push({ date, added: added.map((r: any) => r.brandId), listBefore: !!marks[date] })
+        if (!marks[date]) marks[date] = { at, by: __user ?? null }
+        const names = elsewhere.length ? await prisma.brand.findMany({ where: { id: { in: elsewhere } }, select: { id: true, name: true } }) : []
+        results.push({
+          date, label: dayLabel(date), ok: true,
+          added: added.length,
+          people: added.reduce((n: number, r: any) => n + (r.going || 0), 0),
+          waits: added.filter((r: any) => r.waits).map((r: any) => r.brandName),
+          refused: core.results.filter((r: any) => !r.added).map((r: any) => ({ name: r.brandName, text: r.reasonText })),
+          elsewhere: names.map(b => ({ name: b.name, on: dayLabel(pinnedNow.get(b.id)!) })),
+        })
+      }
+      await writeListDayMarks(marks)
+      if (log.days.length) await writeJsonSetting(prisma, WEEK_SPREAD_KEY, log)
+      return { ok: true, days: results }
+    }
+
+    const ctx = await loadBankCtx()
+    const weeks = planWeeks(today, k => isSendingKey(k, ctx.q.extras))
+    const pick = weeks.find(w => w.which === week || w.start === week) ?? weeks[0]
+    if (!pick.days.length) return { ok: false, message: 'No sending days that week', days: [], left: [] }
+    const marks = await readListDayMarks()
+    const cur: any = await (handlers.getOutreachPlan as Handler)({ __roster: ctx.brands })
+    const brandById = new Map(ctx.brands.map(b => [b.id, b]))
+    const cols = weekColumns(pick.days, cur, marks, brandById)
+    const bank = buildBank(ctx, ctx.state, { day: pick.days[0] })
+    const waiting = bank.rows.filter(r => r.where === 'waiting' && r.going > 0)
+    const s = Number.isFinite(Number(seed)) && seed !== null && seed !== '' ? Math.floor(Math.abs(Number(seed))) : Math.floor(Math.random() * 1e9)
+    const dealt = spreadWeek(
+      cols.map(c => ({ date: c.date, room: c.room, bigs: c.bigs })),
+      waiting.map(r => ({ id: r.id, size: r.going, big: r.big })),
+      seeded(s),
+    )
+    const rowById = new Map(bank.rows.map(r => [r.id, r]))
+    const brief = (r: BankRow) => ({ id: r.id, rank: r.rank, name: r.name, category: r.category, fit: r.fit, label: r.label, going: r.going, people: r.people, big: r.big, how: r.how })
+    // Brands passed over though a lower one went: too big for the room
+    // left, or a second big company for every day.
+    const placed = new Set(Object.values(dealt.put).flat())
+    const lowestPlaced = Math.max(0, ...[...placed].map(id => rowById.get(id)?.rank ?? 0))
+    const passedOver = dealt.left
+      .map(l => ({ r: rowById.get(l.id)!, why: l.why }))
+      .filter(x => x.r && x.r.rank < lowestPlaced)
+      .map(x => ({ ...brief(x.r), why: x.why === 'big' ? 'every day already has a big company' : `too big for the room left (${x.r.going} people)` }))
+    return {
+      ok: true, seed: s, week: pick.start, which: pick.which,
+      days: cols.map(c => {
+        const add = (dealt.put[c.date] ?? []).map(id => brief(rowById.get(id)!))
+        const addPeople = add.reduce((n, a) => n + a.going, 0)
+        return { ...c, add, addPeople, total: c.keptPeople + addPeople }
+      }),
+      placed: placed.size,
+      people: [...placed].reduce((n, id) => n + (rowById.get(id)?.going ?? 0), 0),
+      // On the list, not going this week: they wait for next week.
+      waitNext: waiting.length - placed.size,
+      passedOver,
+      cantGo: bank.rows.filter(r => r.where === 'cant').length,
+    }
+  },
+
+  // Takes the last spread back off: its brands come off their days while
+  // they are still where it put them (one Leo moved since is his now), and
+  // a day it made list-only goes back to Best fit. Days from today on are
+  // left alone (today's list is going out). preview = say what would
+  // change, change nothing.
+  async undoWeekSpread({ preview = false }: any = {}) {
+    const log = await readWeekSpreadLog()
+    const today = localDayKey()
+    if (!log || !log.days.some(d => d.date > today)) return { ok: false, message: 'Nothing to undo' }
+    const plan = await readPlan()
+    const marks = await readListDayMarks()
+    const off: Array<{ id: string; date: string }> = []
+    const stays: string[] = []
+    for (const d of log.days) {
+      if (d.date <= today) { stays.push(...d.added); continue }
+      for (const id of d.added) {
+        if (plan[d.date]?.brandIds?.includes(id)) off.push({ id, date: d.date })
+        else stays.push(id)
+      }
+    }
+    const unmark = log.days.filter(d => d.date > today && !d.listBefore && marks[d.date]).map(d => d.date)
+    const ids = [...new Set([...off.map(o => o.id), ...stays])]
+    const names = new Map((ids.length ? await prisma.brand.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : []).map(b => [b.id, b.name]))
+    const out = {
+      ok: true,
+      off: off.map(o => ({ name: names.get(o.id) ?? '', day: dayLabel(o.date) })),
+      stays: [...new Set(stays)].map(id => names.get(id) ?? '').filter(Boolean),
+      unmark: unmark.map(dayLabel),
+    }
+    if (preview) return { ...out, preview: true }
+    for (const o of off) plan[o.date].brandIds = plan[o.date].brandIds.filter(x => x !== o.id)
+    await writePlan(plan)
+    for (const k of unmark) delete marks[k]
+    await writeListDayMarks(marks)
+    await prisma.setting.deleteMany({ where: { key: WEEK_SPREAD_KEY } })
+    return out
+  },
+
+  // A day takes only the list (on), or goes back to Best fit's automatic
+  // picks for its open spots (off).
+  async setListDay({ date, on = true, __user }: any) {
+    if (!isDayKey(date)) throw new Error('Bad date')
+    if (date < localDayKey()) throw new Error('That day has passed')
+    const marks = await readListDayMarks()
+    if (on) marks[date] = marks[date] ?? { at: new Date().toISOString(), by: __user ?? null }
+    else delete marks[date]
+    await writeListDayMarks(marks)
+    return { ok: true, date, list: !!marks[date] }
+  },
+
   async setExtraSendingDay({ date, on, preview = false }: any) {
     if (!isDayKey(date)) throw new Error('Bad date')
     const today = localDayKey()
@@ -10484,10 +10995,16 @@ const handlers: Record<string, Handler> = {
     // as `others`, related categories first.
     // Other categories are ranked by how often they accept (last 90
     // days), so a top-up leans on the kinds of brand that say yes.
-    const [brands, fitRates] = await Promise.all([
+    const [brands, fitRates, listDays] = await Promise.all([
       loadPlanBrands(prisma),
       recentAcceptRates(),
+      readListDays(),
     ])
+    // A day that takes only the week list offers the list (Week plan).
+    if (listDays.has(ctx.date)) {
+      const rows = buildBank({ brands, rates: fitRates, q: ctx.q, plan: await readPlan() }, await readBankState()).rows
+      return { date: ctx.date, category: '', brands: bankSuggestRows(rows, Math.max(1, Math.min(40, Number(take) || 24))), others: [], needPeople: [], needPeopleTotal: 0, hiddenSmall: 0, ruledOut: 0, hideSmall: !!hideSmall, list: true }
+    }
     return suggestionsFor(brands, fitRates, ctx, { category, take, hideSmall })
   },
 
@@ -11128,7 +11645,7 @@ const handlers: Record<string, Handler> = {
     // "already covered" with spots open, and put a ten-person brand into
     // two spots.
     const before = new Set((await listedToday()).map(t => t.id))
-    const r: any = await (handlers.getTodayQueue as Handler)({})
+    const r: any = await (handlers.getTodayQueue as Handler)({ __fill: true })
     const after = await listedToday()
     const fresh = after.filter(t => !before.has(t.id))
     const brands = [...new Set(fresh.map(t => t.brand.name))]
@@ -11145,9 +11662,11 @@ const handlers: Record<string, Handler> = {
     // answer says why ("smallest needs 4").
     const sizes = ((r?.moreBrands ?? []) as any[]).map(m => Number(m.size) || 0).filter(n => n > 0)
     const smallest = shortBy && sizes.length ? Math.min(...sizes) : null
+    // Filled from the week list (Week plan), not the day's theme.
+    const list = !!r?.listDay
     return fresh.length || shortBy
-      ? { added: fresh.length, brands, shortBy, smallest, theme, dayCap }
-      : { added: 0, shortBy: 0, theme, already: true, dayCap }
+      ? { added: fresh.length, brands, shortBy, smallest, theme, dayCap, list }
+      : { added: 0, shortBy: 0, theme, already: true, dayCap, list }
   },
 
   // Which build is serving — the client compares on window focus and

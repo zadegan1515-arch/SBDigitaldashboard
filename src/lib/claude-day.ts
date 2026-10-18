@@ -18,13 +18,14 @@ const READ_NAMES = new Set(['claudeDay', 'dayRecap', 'weeklyScore', 'staleDeals'
   'categoryCoverage', 'outcomeTable', 'fillSchedule', 'liRunDetail', 'linkedinPeople', 'suggestForDay', 'sentByCompany', 'secondTryBrands',
   'boardCodeLookup', 'sponsorUrl', 'segmentsOverview', 'audienceEventStats', 'appVersion', 'researchList', 'planDayChoices', 'nextBestBrands',
   'staleInvites', 'repliedOverview', 'buyerCoverage', 'brandLookup', 'brandTimeline', 'brandStock', 'brandPlanLine', 'scheduleStamp',
-  'suMatchQueue', 'sheetStatus', 'whoAmI', 'me', 'findDuplicates', 'sponsorReport', 'search', 'checkEmailReplies'])
+  'suMatchQueue', 'sheetStatus', 'whoAmI', 'me', 'findDuplicates', 'sponsorReport', 'search', 'checkEmailReplies',
+  'weekBank', 'weekBankBrowse'])
 const isRead = (fn: string) => READ_VERB.test(fn) || READ_NAMES.has(fn)
 
 // Calls that change only with confirm / apply; without it they preview.
 const NEEDS_YES: Record<string, string[]> = {
   planWeek: ['apply'], fitArchive: ['apply', 'confirm'], refileCategories: ['apply', 'confirm'],
-  deleteBrand: ['confirm'], mergeBrands: ['confirm'],
+  deleteBrand: ['confirm'], mergeBrands: ['confirm'], weekSpread: ['apply'],
 }
 // Calls that preview unless told preview: false.
 const PREVIEW_BY_DEFAULT = new Set(['researchImport', 'researchUndo'])
@@ -76,6 +77,13 @@ export function actionText(fn: string, args: any, result: any): string | null {
     case 'createBrand': return `Added ${s(a.name || brand || 'a brand')}`
     case 'updateBrand': return `Edited ${brand || 'a brand'}${a.facts ? ' (facts)' : ''}`
     case 'upsertContact': return `${a.id ? 'Edited' : 'Added'} ${s(a.name || 'a person')}`
+    case 'weekBankAdd': return `Put ${plural(count(r.added), 'brand')} on the week list`
+    case 'weekBankRemove': return `Took ${plural(count(a.brandIds), 'brand')} off the week list`
+    case 'weekBankPutBack': return `Put ${plural(count(a.brandIds), 'brand')} back on the week list`
+    case 'weekBankSize': return `Set the week list to ${Number(r.size ?? a.size) || 0} brands`
+    case 'weekSpread': return `Spread the week list onto ${plural(count(a.days), 'day')} (${Array.isArray(r.days) ? r.days.reduce((n: number, d: any) => n + (Number(d?.added) || 0), 0) : 0} brands)`
+    case 'undoWeekSpread': return 'Took back the last week list spread'
+    case 'setListDay': return `${a.on === false ? 'Let Best fit fill' : 'Kept to the week list:'} ${s(a.date)}`
     case 'planAddBrands': return `Put ${plural(count(a.brandIds) || count(r.added), 'brand')} on ${s(a.date || 'a day')}`
     case 'setBrandPassed': return `${a.passed === false ? 'Brought back' : 'Archived'} ${brand || 'a brand'}`
     case 'notSamePerson': return a.undo ? 'Took back a "not the same person"' : 'Marked two people as not the same person'
