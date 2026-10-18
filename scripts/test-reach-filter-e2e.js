@@ -1,10 +1,11 @@
 // scripts/test-reach-filter-e2e.js — the Outreach filter's data against the
 // real handlers and a throwaway Postgres (wiped). Every brand list the
-// dropdown sits on says whether a LinkedIn invite went to someone there
-// (route.ts wasInvited: an invite date, or a row past the invite): listBrands'
-// outreach.invited, linkedinPeople's invited, listDiscoveries' reached, and
-// planBrandRow's / categoryBrands' invited. An email alone, a queued person or
-// an invite taken back the same day (no date) is not reached out.
+// dropdown sits on says whether the brand was reached out to by the Reached
+// tag's rule (isReached / REACHED_WHERE: an invite ever, an accept logged from
+// LinkedIn, an email), the same as reachedBrands: listBrands' outreach.invited /
+// emailed, linkedinPeople's reached, listDiscoveries' reached, planBrandRow's
+// reached and categoryBrands' Reached group. A queued person or an invite taken
+// back the same day (no date) is not reached out.
 // Run: E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-reach-filter-e2e.js
 const path = require('path');
 const { spawn, execSync } = require('child_process');
@@ -39,7 +40,7 @@ let n = 0;
 const ok = (name) => { n++; console.log('  ok — ' + name); };
 
 // Brand id → reached out? (what every list must say)
-const WANT = { rSent: true, rAccept: true, rOldWithdrawn: true, rEmail: false, rQueued: false, rTodayWithdrawn: false };
+const WANT = { rSent: true, rAccept: true, rOldWithdrawn: true, rEmail: true, rQueued: false, rTodayWithdrawn: false };
 
 (async () => {
   let server = null, prisma = null;
@@ -101,31 +102,34 @@ const WANT = { rSent: true, rAccept: true, rOldWithdrawn: true, rEmail: false, r
       if (some) assert.ok(Object.values(got).includes(true) && Object.values(got).includes(false), what + ' lists both kinds');
     };
 
-    check('listBrands', await data('listBrands', { take: 5000 }), b => b.outreach && b.outreach.invited > 0);
-    const lb = Object.fromEntries((await data('listBrands', { take: 5000 })).map(b => [b.id, b.outreach.invited]));
-    assert.equal(lb.rSent, 1, 'counts people invited, not the queued one');
-    ok('All brands: invited counts people with an invite (an accept logged from LinkedIn and an old withdrawn invite too)');
+    const tag = (await data('reachedBrands')).brands;
+    check('reachedBrands (the tag)', Object.keys(WANT).map(id => ({ id })), b => !!tag[b.id]);
+    ok('the Reached tag: invites (an accept logged from LinkedIn, an old withdrawn invite) and emails');
 
-    check('linkedinPeople', (await data('linkedinPeople')).brands, b => b.invited > 0);
+    const lbs = await data('listBrands', { take: 5000 });
+    check('listBrands', lbs, b => b.outreach && (b.outreach.invited > 0 || b.outreach.emailed > 0));
+    assert.equal(lbs.find(b => b.id === 'rSent').outreach.invited, 1, 'counts people invited, not the queued one');
+    ok('All brands: the same brands as the tag');
+
+    check('linkedinPeople', (await data('linkedinPeople')).brands, b => b.reached > 0);
     ok('Outreach → People: the same');
 
     const cb = await data('categoryBrands', { category: 'energy' });
-    check('categoryBrands', cb.brands, b => b.invited);
-    assert.equal(cb.brands.find(b => b.id === 'rEmail').group, 'reached', 'the drill-in still files an email-only brand under Reached');
-    ok('Schedule drill-in: the same — an email-only brand is Reached there but not "reached out"');
+    check('categoryBrands', cb.brands, b => b.group === 'reached');
+    ok('Schedule drill-in: its Reached column is the same');
 
     const wb = await data('weekBankBrowse', { category: 'energy' });
-    check('weekBankBrowse', wb.brands, b => b.invited, true);
+    check('weekBankBrowse', wb.brands, b => b.reached, true);
     assert.ok(!wb.brands.some(b => b.id === 'rSent'), 'a brand resting after this week\'s invite is set aside there, as before');
     ok('Week plan → a category: the same');
 
     const sp = await data('searchPlanBrands', { q: 'Co' });
-    check('searchPlanBrands', sp.brands, b => b.invited);
+    check('searchPlanBrands', sp.brands, b => b.reached);
     ok('the find boxes\' rows carry it too');
 
     const disc = (await data('listDiscoveries')).rows;
     const dr = Object.fromEntries(disc.map(r => [r.name, r.reached]));
-    assert.deepEqual(dr, { 'Sent Co': true, 'Email Only Co': false, 'Accept Log Co': true, 'Nobody Yet Co': false });
+    assert.deepEqual(dr, { 'Sent Co': true, 'Email Only Co': true, 'Accept Log Co': true, 'Nobody Yet Co': false });
     ok('Discover: a find\'s brand on the roster (linked or by name) says whether it was reached out to; one not on it never was');
 
     console.log(n + ' checks passed');
