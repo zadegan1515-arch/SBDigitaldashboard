@@ -1213,6 +1213,36 @@ async function secondSittingOn(ids: string[], day: string, extras: ExtraDays): P
   return ids.filter(id => on.has(id))
 }
 
+// People outside the US (Leo, Oct 18 2026: skip them "unless the company is
+// based outside the us" — src/lib/abroad.ts): a region in their title or
+// where they are. One test for the queue's own picks (queueBrandTargets and
+// its preview), Reach out again and the queue check's ⚠. Whether the company
+// is based abroad is read from its hq, else where its people on file (an
+// email or a LinkedIn) are.
+const ABROAD_PROBLEM = 'Works outside the US (the company is based in the US)'
+type AbroadPerson = { title: string | null; location?: string | null }
+function abroadTest(
+  b: { hq?: string | null; contacts: Array<{ location?: string | null; email?: string | null; linkedinUrl?: string | null }> },
+  names: string[],
+): (p: AbroadPerson) => boolean {
+  const onFile = b.contacts.filter(c => c.email || c.linkedinUrl)
+  if (basedAbroad({ hq: b.hq ?? null }, onFile)) return () => false
+  return p => personWhere(p, names) === 'abroad'
+}
+// The same test for the people of these brands, read in one go (the queue
+// check's ⚠ on Today's list for Zach, the LinkedIn tab and Leave out).
+async function loadAbroadCheck(brandIds: string[]): Promise<(brandId: string, contactId: string, title: string | null) => boolean> {
+  const ids = [...new Set(brandIds.filter(Boolean))]
+  if (!ids.length) return () => false
+  const bs = await prisma.brand.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true, aka: true, hq: true, contacts: { select: { id: true, location: true, email: true, linkedinUrl: true } } },
+  })
+  const tests = new Map(bs.map(b => [b.id, abroadTest(b, brandNames(b))]))
+  const loc = new Map(bs.flatMap(b => b.contacts.map(c => [c.id, c.location] as [string, string | null])))
+  return (brandId, contactId, title) => !!tests.get(brandId)?.({ title, location: loc.get(contactId) ?? null })
+}
+
 // Who queueBrandTargets WOULD put in play for this brand, without writing
 // anything: people already waiting in the pool, shelved people it would
 // revive, then new picks up to the brand's thread count — same order
@@ -1266,16 +1296,19 @@ function previewBrandPicks(
   // go counts — not people already invited (queueBrandTargets' rule).
   const chosen = opts.chosen ?? opts.queue?.q.chosen ?? lastChosen
   const flagged = (title: string | null) => !!personProblem(title, names)
+  // Outside the US at a company based in the US: never the system's pick,
+  // waiting or new (queueBrandTargets' rule); someone chosen still goes.
+  const isAbroad = abroadTest(b, names)
+  const onFileById = new Map(b.contacts.filter(c => c.email || c.linkedinUrl).map(c => [c.id, c]))
+  const abroadT = (t: PlanBrand['targets'][number]) => isAbroad({ title: t.contact.title, location: onFileById.get(t.contactId)?.location ?? null })
   const targeted = new Set(b.targets.map(t => t.contactId))
-  const freshAll = reachable.filter(c => !targeted.has(c.id))
+  const freshAll = reachable.filter(c => !targeted.has(c.id) && !isAbroad(c))
   const capShelved = b.targets.filter(t => t.shelved && t.shelvedHow === 'cap' && ['queued', 'drafted'].includes(t.status) && !marked(t))
   const holdFlagged = !finishingSitting(b, day, extras) &&
-    (liveAll.some(t => ['queued', 'drafted'].includes(t.status) && !flagged(t.contact.title)) ||
-      capShelved.some(t => !flagged(t.contact.title)) || freshAll.some(c => !flagged(c.title)))
-  const live = holdFlagged
-    ? liveAll.filter(t => !(['queued', 'drafted'].includes(t.status) && !(t.queuedFor && t.queuedFor >= dayStart) &&
-        flagged(t.contact.title) && !chosen.has(t.id)))
-    : liveAll
+    (liveAll.some(t => ['queued', 'drafted'].includes(t.status) && !flagged(t.contact.title) && !abroadT(t)) ||
+      capShelved.some(t => !flagged(t.contact.title) && !abroadT(t)) || freshAll.some(c => !flagged(c.title)))
+  const pooledHere = (t: PlanBrand['targets'][number]) => ['queued', 'drafted'].includes(t.status) && !(t.queuedFor && t.queuedFor >= dayStart)
+  const live = liveAll.filter(t => !(pooledHere(t) && !chosen.has(t.id) && ((holdFlagged && flagged(t.contact.title)) || abroadT(t))))
   // On a later day, people already in TODAY's queue are going out today,
   // not that day — they show on today's column. Counting them here too
   // put the same three people on two days.
@@ -1304,7 +1337,7 @@ function previewBrandPicks(
   }
   const room = work - live.length
   const revivable = chosenFirst(sortPicks(capShelved
-    .filter(t => !(holdFlagged && flagged(t.contact.title) && !chosen.has(t.id)))
+    .filter(t => chosen.has(t.id) || !((holdFlagged && flagged(t.contact.title)) || abroadT(t)))
     .map(asPick), names)
     .map(x => x.t), chosen)
     .slice(0, room)
@@ -3297,19 +3330,15 @@ function weekColumns(keys: string[], cur: any, marks: Record<string, ListDayMark
 // already reached: the list recommends, Leo's click puts it on a day.
 
 // What the roster read leaves out, for the brands asked about: a deal, a
-// call booked or put in talks by hand (someone replied), people's locations,
-// the company's hq, and Zach's messages to people who accepted.
-type AgainExtras = {
-  deals: Set<string>; talks: Set<string>; loc: Map<string, string>; hq: Map<string, string>; dms: Map<string, Date[]>
-}
+// call booked or put in talks by hand (someone replied), and Zach's messages
+// to people who accepted.
+type AgainExtras = { deals: Set<string>; talks: Set<string>; dms: Map<string, Date[]> }
 async function loadAgainExtras(brandIds: string[]): Promise<AgainExtras> {
   const ids = brandIds.length ? brandIds : ['-']
-  const [deals, calls, added, locs, hqs, dms] = await Promise.all([
+  const [deals, calls, added, dms] = await Promise.all([
     prisma.deal.findMany({ where: { brandId: { in: ids } }, select: { brandId: true }, distinct: ['brandId'] }),
     prisma.target.findMany({ where: { brandId: { in: ids }, OR: [{ callBookedAt: { not: null } }, { callAt: { not: null } }] }, select: { brandId: true }, distinct: ['brandId'] }),
     prisma.brand.findMany({ where: { id: { in: ids }, talksAddedAt: { not: null } }, select: { id: true } }),
-    prisma.contact.findMany({ where: { brandId: { in: ids }, location: { not: null } }, select: { id: true, location: true } }),
-    prisma.brand.findMany({ where: { id: { in: ids }, hq: { not: null } }, select: { id: true, hq: true } }),
     prisma.target.findMany({ where: { brandId: { in: ids }, OR: [{ dmSentAt: { not: null } }, { nudgedAt: { not: null } }] }, select: { brandId: true, dmSentAt: true, nudgedAt: true } }),
   ])
   const dm = new Map<string, Date[]>()
@@ -3317,8 +3346,6 @@ async function loadAgainExtras(brandIds: string[]): Promise<AgainExtras> {
   return {
     deals: new Set(deals.map(d => d.brandId)),
     talks: new Set([...calls.map(c => c.brandId), ...added.map(a => a.id)]),
-    loc: new Map(locs.map(c => [c.id, c.location as string])),
-    hq: new Map(hqs.map(b => [b.id, b.hq as string])),
     dms: dm,
   }
 }
@@ -3334,13 +3361,12 @@ function repliedAtBrand(b: PlanBrand, ex: AgainExtras): boolean {
 // The brand's case, read from the rows loadPlanBrands gives (+ the extras).
 function againOf(b: PlanBrand, opts: { today: string; q: QueueCtx; ex: AgainExtras; rates?: AcceptRates | null }): Again & { basedAbroad?: boolean } {
   const names = brandNames(b)
-  const loc = (id: string) => opts.ex.loc.get(id) ?? null
   const contacts = b.contacts.map(c => ({
     id: c.id, name: c.name, title: c.title, isDecisionMaker: c.isDecisionMaker,
     reachable: isReachable(c),
     stopped: !!c.doNotContactAt || !!stoppedMatch(lastStopIx, { ...c, brandId: b.id }),
     flagged: !!personProblem(c.title, names),
-    where: personWhere({ title: c.title, location: loc(c.id) }, names),
+    where: personWhere({ title: c.title, location: c.location }, names),
   }))
   const targets = b.targets.map(t => ({
     contactId: t.contactId, status: t.status, shelved: t.shelved, shelvedHow: t.shelvedHow,
@@ -3349,7 +3375,9 @@ function againOf(b: PlanBrand, opts: { today: string; q: QueueCtx; ex: AgainExtr
   const f = opts.rates !== undefined ? planBrandFit(b, opts.rates) : null
   const off = !!b.stoppedAt || !!b.passedAt || b.doNotEmail || b.usStatus === 'no' || passedNow(b) ||
     heldGiant(b, opts.q) || !!f?.ruledOut || !!f?.bizNote
-  const abroad = basedAbroad({ hq: opts.ex.hq.get(b.id) ?? null }, b.contacts.map(c => ({ location: loc(c.id) })))
+  // The queue's own test (abroadTest): based abroad by its hq, else by where
+  // its people on file are.
+  const abroad = basedAbroad({ hq: b.hq }, b.contacts.filter(c => c.email || c.linkedinUrl))
   const a = reachAgainOf({
     contacts, targets, today: opts.today, answered: repliedAtBrand(b, opts.ex), deal: opts.ex.deals.has(b.id), off,
     alsoAt: opts.ex.dms.get(b.id) ?? [], basedAbroad: abroad,
@@ -5231,7 +5259,7 @@ const handlers: Record<string, Handler> = {
       },
     }) : []
     const today = startOfLocalDay()
-    const stopIx = await loadStopIndex()
+    const [stopIx, abroadOf] = await Promise.all([loadStopIndex(), loadAbroadCheck(brandIds)])
     const out = brands.map(b => {
       const queued = toSend.filter(t => t.brandId === b.id)
       const queuedIds = new Set(queued.map(t => t.contactId))
@@ -5243,7 +5271,9 @@ const handlers: Record<string, Handler> = {
           // Written to, or set aside on purpose (passed, withdrawn…): never offered.
           contacted: (!!t && (wasInvited(t) || ['passed', 'declined', 'dead', 'withdrawn'].includes(t.status))) ||
             // Said they don't want to continue (or a second copy of them).
-            !!c.doNotContactAt || !!stoppedMatch(stopIx, { ...c, brandId: b.id }),
+            !!c.doNotContactAt || !!stoppedMatch(stopIx, { ...c, brandId: b.id }) ||
+            // Outside the US at a company based in the US: never offered instead.
+            abroadOf(b.id, c.id, c.title),
           queued: !!t && !!t.queuedFor && t.queuedFor >= today && ['queued', 'drafted'].includes(t.status),
         }
       })
@@ -5252,7 +5282,8 @@ const handlers: Record<string, Handler> = {
         brandId: b.id, name: b.name,
         people: queued.map((t, i) => ({
           targetId: t.id, contactId: t.contactId, name: t.contact.name, title: t.contact.title,
-          linkedinUrl: t.contact.linkedinUrl, problem: flags[i].problem, better: flags[i].better,
+          linkedinUrl: t.contact.linkedinUrl,
+          problem: flags[i].problem ?? (abroadOf(b.id, t.contactId, t.contact.title) ? ABROAD_PROBLEM : null), better: flags[i].better,
         })),
       }
     })
@@ -5285,11 +5316,13 @@ const handlers: Record<string, Handler> = {
     const dayStart = startOfLocalDay()
     const rows = ids.length ? await prisma.target.findMany({
       where: { id: { in: ids }, status: { in: ['queued', 'drafted'] }, sentAt: null, queuedFor: { gte: dayStart } },
-      select: { id: true, status: true, queuedFor: true, contact: { select: { name: true, title: true } }, brand: { select: { name: true, aka: true } } },
+      select: { id: true, status: true, queuedFor: true, brandId: true, contactId: true, contact: { select: { name: true, title: true } }, brand: { select: { name: true, aka: true } } },
     }) : []
+    const abroadOf = await loadAbroadCheck(rows.map(t => t.brandId))
     const people = rows.map(t => ({
       targetId: t.id, name: t.contact.name, brand: t.brand.name,
-      problem: personProblem(t.contact.title, [t.brand.name, ...String(t.brand.aka ?? '').split(/[,;]/).map(x => x.trim())].filter(Boolean)),
+      problem: personProblem(t.contact.title, [t.brand.name, ...String(t.brand.aka ?? '').split(/[,;]/).map(x => x.trim())].filter(Boolean)) ??
+        (abroadOf(t.brandId, t.contactId, t.contact.title) ? ABROAD_PROBLEM : null),
     }))
     if (!confirm) return { preview: true, people, skipped: ids.length - rows.length }
     if (!rows.length) return { ok: true, left: 0, people: [] }
@@ -6035,6 +6068,9 @@ const handlers: Record<string, Handler> = {
       autoIds: autoLog && Array.isArray(autoLog[todayKey]) ? autoLog[todayKey].map(String) : [],
       newest,
     })
+    // People outside the US at a company based in the US (abroadTest): the
+    // same ⚠ as a flagged title on the rows still to send.
+    const todayAbroad = await loadAbroadCheck(todayList.filter((t: any) => !t.sentAt && ['queued', 'drafted'].includes(t.status)).map((t: any) => t.brandId))
 
     // "Ready if you have room" — the next WHOLE brands after today's list
     // (more-whole-brands), each with who it would put in play: Add to today
@@ -6107,7 +6143,8 @@ const handlers: Record<string, Handler> = {
       // The queue check's flag on each person still to send (copy-flagged):
       // the LinkedIn tab shows the same ⚠ as Today's list for Zach.
       targets: (await ensureTemplateDrafts(todayList)).map((t: any) => ['queued', 'drafted'].includes(t.status) && !t.sentAt
-        ? { ...t, problem: personProblem(t.contact?.title, [t.brand?.name, ...String(t.brand?.aka ?? '').split(/[,;]/).map((x: string) => x.trim())].filter(Boolean)) }
+        ? { ...t, problem: personProblem(t.contact?.title, [t.brand?.name, ...String(t.brand?.aka ?? '').split(/[,;]/).map((x: string) => x.trim())].filter(Boolean)) ??
+            (todayAbroad(t.brandId, t.contactId, t.contact?.title ?? null) ? ABROAD_PROBLEM : null) }
         : t),
       more: [],
       moreBrands, openSpots, handSpots,
@@ -8810,6 +8847,10 @@ const handlers: Record<string, Handler> = {
     if (!brand) throw new Error('Brand not found')
     // The whole brand said they don't want to continue: not even "+ Person".
     assertNotStopped({ brand })
+    // People outside the US (abroadTest): read off everyone on file with an
+    // email or a LinkedIn, before the stop filter — as previewBrandPicks does.
+    const isAbroad = abroadTest(brand, brandNames(brand))
+    const locationOf = new Map(brand.contacts.map(c => [c.id, c.location]))
     if (brand.passedAt) throw new Error(`${brand.name} is passed — bring it back from its brand page first.`)
     // Nobody who said they don't want to continue, nor a second copy of them:
     // not picked fresh, and a row of theirs still waiting is never promoted.
@@ -8898,19 +8939,23 @@ const handlers: Record<string, Handler> = {
     // Only someone unflagged who could still go counts: people already
     // invited are no alternative (review fixes, Oct 13 2026).
     const flagged = (title: string | null) => !!personProblem(title, names)
+    // Outside the US at a company based in the US (Leo, Oct 18 2026): never
+    // picked — new or waiting in the pool, set aside next in line like a
+    // flagged title — unless chosen by hand; "+ Person" (force) is a click.
+    const abroadT = (t: (typeof brand.targets)[number]) => isAbroad({ title: t.contact.title, location: locationOf.get(t.contactId) ?? null })
     const chosen = await readChosen()
     const targeted = new Set(brand.targets.map(t => t.contactId))
-    const freshAll = brand.contacts.filter(c => !targeted.has(c.id))
+    const freshAll = brand.contacts.filter(c => !targeted.has(c.id) && (force || !isAbroad(c)))
     const capShelved = brand.targets.filter(t => t.shelved && t.shelvedHow === 'cap' && ['queued', 'drafted'].includes(t.status))
-    const holdFlagged = !force && !finishing && (pending.some(t => !flagged(t.contact.title)) ||
-      capShelved.some(t => !flagged(t.contact.title)) || freshAll.some(c => !flagged(c.title)))
+    const holdFlagged = !force && !finishing && (pending.some(t => !flagged(t.contact.title) && !abroadT(t)) ||
+      capShelved.some(t => !flagged(t.contact.title) && !abroadT(t)) || freshAll.some(c => !flagged(c.title)))
     // People chosen for a day's list go first and all go, past the number
     // too: the cut ranks a flagged or weaker title last, so it set aside
     // the person Leo queued (or Sent to the dashboard) and stamped the
     // buyers waiting beside them (review fix, Oct 13 2026). Only the
     // system's own picks are held to the number.
     const pooledAll = chosenFirst(sortPicks(pending.filter(t => !t.queuedFor || t.queuedFor < startOfDay).map(asPick), names).map(x => x.t), chosen)
-    const pooled = holdFlagged ? pooledAll.filter(t => !flagged(t.contact.title) || chosen.has(t.id)) : pooledAll
+    const pooled = pooledAll.filter(t => chosen.has(t.id) || ((!holdFlagged || !flagged(t.contact.title)) && (force || !abroadT(t))))
     const heldBack = pooledAll.filter(t => !pooled.includes(t))
     const promoteN = force ? Math.min(1, pooled.length)
       : finishing ? pooled.length
@@ -8972,7 +9017,7 @@ const handlers: Record<string, Handler> = {
     // purpose stays shelved until Leo promotes them. Best first (picks);
     // never the people just set aside above.
     const revivable = chosenFirst(sortPicks(capShelved
-      .filter(t => !nextInLine.includes(t) && !(holdFlagged && flagged(t.contact.title) && !chosen.has(t.id)))
+      .filter(t => !nextInLine.includes(t) && (chosen.has(t.id) || !((holdFlagged && flagged(t.contact.title)) || (!force && abroadT(t)))))
       .map(asPick), names)
       .map(x => x.t), chosen)
       .slice(0, room)
