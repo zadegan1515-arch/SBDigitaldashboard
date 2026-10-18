@@ -8456,16 +8456,18 @@ function loadBrand(brandId) {
               return t.sentAt || ['sent', 'accepted', 'replied', 'converted'].indexOf(t.status) !== -1;
             });
             // A big company opens with ten (Leo, Oct 7 2026; d.big = the
-            // server's isBigBrand).
-            var big = !!d.big;
+            // server's isBigBrand), a Top category's brand four (Oct 18
+            // 2026 — People per brand; d.top = the server's topCat).
+            var big = !!d.big, top = !!d.top;
             var sug = cold
-              ? (big ? 10 : b.tier === 'established' ? 4 : 3)
+              ? (big ? 10 : b.tier === 'established' || top ? 4 : 3)
               : (b.tier === 'established' ? 3 : b.tier === 'growth' ? 2 : founder ? 1 : 2);
             sug = Math.max(1, Math.min(sug, Math.max(reach, 1)));
             var why = cold
               ? (big ? 'nobody written to yet — open ten threads at a big company'
                 : b.tier === 'established'
                   ? 'nobody written to yet — open four threads at a big brand'
+                  : top ? 'nobody written to yet — open four threads in a Top category'
                   : 'nobody written to yet — open three threads')
               : b.tier === 'established' ? 'big org — several possible buyers'
               : b.tier === 'growth' ? 'growth brand — two threads is the sweet spot'
@@ -10230,7 +10232,8 @@ function stPlanList(r) {
     return Number(!!x.plannedOn) - Number(!!y.plannedOn) || y.people - x.people || x.name.localeCompare(y.name);
   });
 }
-function stPlanGuess(b) { return Math.min(b.people, b.tier === 'established' ? 4 : 3); }
+// Four at an established brand or a Top category's (the server's workNeed).
+function stPlanGuess(b) { return Math.min(b.people, b.tier === 'established' || (b.fit && b.fit.priority === 'top') ? 4 : 3); }
 function stPlanIds(key) {
   var sel = ST_PLAN_SEL[key] || {};
   return Object.keys(sel).filter(function (id) { return sel[id]; });

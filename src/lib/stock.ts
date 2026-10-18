@@ -53,6 +53,7 @@ export type StockBrand = {
 export type StockFit = {
   score: number; tooSmall: boolean; tooSmallWhy?: string | null; usUnknown: boolean
   ruledOut: string | null; bizNote?: string | null
+  priority?: string // the category's priority: a Top one opens with four (stPlanGuess)
 }
 
 export type Lane = {
