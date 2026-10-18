@@ -638,7 +638,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   by category, company size, buyer type and people invited per brand (per brand); smoothed (5 invites of the
   average), n on every cell, "too few to tell" under 30. Suggestions name a category's priority one step
   ("accepts 1.9× the average — make it Top?", Skip never) and change it only on **Make it …** + a confirm
-  (`setCategoryPriority`); Brand Fit's weights and stored fitScore are never touched. **People per brand** (Oct 18 2026 — Leo: "when we do more than 3 people do we have a higher probability of getting an acceptance"; accepts only, his call): under it, `outcomeTable.depth` (`depthTable`, outcomes.ts): each person by place in the brand's line (send order), brands by people invited the first day / in all, by Brand Fit today, and "if separate chances" (1 − (1 − p)^k at the overall per-person rate) beside them; raw rates, too few to tell under 30. **Outreach → LinkedIn** = one card per brand
+  (`setCategoryPriority`); Brand Fit's weights and stored fitScore are never touched. **People per brand** (Oct 18 2026 — Leo: "when we do more than 3 people do we have a higher probability of getting an acceptance"; accepts only, his call): under it, `outcomeTable.depth` (`depthTable`, outcomes.ts): each person by place in the brand's line (send order), brands by people invited the first day / in all, by Brand Fit today, and "if separate chances" (1 − (1 − p)^k at the overall per-person rate) beside them; raw rates, too few to tell under 30. **On Results too** (Leo, Oct 18 2026: "on the results page a count for when we do
+  outreach to x amount of people the percentage for an acceptance"): **Acceptance by people reached** under the tiles
+  (`#rc-depth`, `renderRcDepth`, `rcd*` CSS) = `depth.byTotal`: per people count, the share of brands where someone
+  accepted (bar), N of M brands, each person's rate, too few to tell; read beside listReached, no card when nothing
+  to judge or on an error. `NODE_PATH=$(npm root -g) node scripts/test-results-depth.js`. **Outreach → LinkedIn** = one card per brand
   (sent people stay in their card, `getTodayQueue.sentList`; a finished brand folds to one line). **Ready if you have
   room** = whole brands (`getTodayQueue.moreBrands` + `handSpots`, `oqMoreCard`): **Add to today (N)** when it fits the
   open spots — a hand add, so against the flat 30 (`handSpots`), not what LinkedIn's week leaves the automatic picks

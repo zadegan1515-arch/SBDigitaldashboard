@@ -1122,6 +1122,19 @@
   .sd-out td.sd-out-few{color:var(--ink-3)}
   .sd-out-sugs{margin-bottom:12px}
   .sd-out-depth .sd-cats-h{margin:20px 0 10px}
+  /* Results → Acceptance by people reached (rcd*) */
+  .rcd-wrap{overflow-x:auto}
+  .rcd{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+  .rcd th,.rcd td{padding:7px 12px 7px 0;text-align:left;white-space:nowrap;vertical-align:middle}
+  .rcd thead th{font-size:12.5px;font-weight:600;color:var(--ink-3)}
+  .rcd tbody th{font-weight:600;color:var(--ink-1)}
+  .rcd tbody tr+tr th,.rcd tbody tr+tr td{border-top:1px solid var(--border-soft)}
+  .rcd .rcd-bar{width:40%;min-width:120px}
+  .rcd-track{display:block;height:8px;border-radius:4px;background:var(--border)}
+  .rcd-track i{display:block;height:100%;min-width:2px;border-radius:0 4px 4px 0;background:var(--accent)}
+  .rcd .rcd-pct{font-weight:700;color:var(--ink-1)}
+  .rcd .rcd-dim{color:var(--ink-3)}
+  @media (max-width:600px){ .rcd .rcd-bar{width:auto;min-width:64px} .rcd th,.rcd td{padding-right:8px} }
   .sd-out-wide{grid-column:1/-1}
   .sd-out-sug{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--border-soft);font-size:13.5px}
   .sd-out-sug:last-child{border-bottom:0}
@@ -2130,6 +2143,7 @@
       <h1>Results</h1>
       <div class="sub" id="rc-sub">Everyone we've contacted on LinkedIn or by email, grouped by brand.</div>
       <div class="kpi-row" id="rc-kpis"></div>
+      <div id="rc-depth"></div>
       <div id="rc-toemail"></div>
       <div id="rc-accepted"></div>
       <div id="rc-followups"></div>
@@ -12511,8 +12525,49 @@ function renderSentDays() {
   }).catch(function () { box.innerHTML = ''; });
 }
 
+// Acceptance by people reached (Leo, Oct 18 2026: "on the results page a
+// count for when we do outreach to x amount of people the percentage for an
+// acceptance"): brands by how many people were invited there in all → the
+// share where someone accepted, and each person's rate (outcomeTable.depth
+// .byTotal — the Schedule's People per brand; accepts counted 7+ days after
+// the invite). Read beside listReached, never holding it up.
+var RC_DEPTH_KEYS = ['1', '2', '3', '4', '5–9', '10+'];
+function renderRcDepth() {
+  var box = document.getElementById('rc-depth');
+  if (!box) return;
+  api('outcomeTable', {}).then(function (d) {
+    var dp = d && d.depth;
+    var by = {};
+    ((dp && dp.byTotal) || []).forEach(function (c) { by[c.key] = c; });
+    var keys = RC_DEPTH_KEYS.filter(function (k) { return by[k] && by[k].brands; });
+    if (!keys.length || dp.personRate == null) { box.innerHTML = ''; return; }
+    var pc = function (x) { return x == null ? '—' : Math.round(x * 100) + '%'; };
+    var rows = keys.map(function (k) {
+      var c = by[k];
+      var who = k + (k === '1' ? ' person' : ' people');
+      var tip = who + ' invited: someone accepted at ' + c.brandsYes + ' of ' + c.brands + ' brands; ' +
+        c.peopleYes + ' of ' + c.people + ' people accepted' + (c.few ? ' — too few to tell yet' : '');
+      return '<tr title="' + esc(tip) + '">' +
+        '<th scope="row">' + esc(who) + '</th>' +
+        '<td class="rcd-bar"><span class="rcd-track" aria-hidden="true"><i style="width:' + Math.round((c.brandRate || 0) * 100) + '%"></i></span></td>' +
+        '<td class="rcd-pct">' + pc(c.brandRate) + '</td>' +
+        '<td class="rcd-dim">' + c.brandsYes + ' of ' + c.brands + ' brand' + (c.brands === 1 ? '' : 's') + '</td>' +
+        '<td>' + pc(c.personRate) + '<span class="rcd-dim"> · ' + c.peopleYes + ' of ' + c.people + '</span></td>' +
+        '<td class="rcd-dim">' + (c.few ? 'too few to tell' : '') + '</td></tr>';
+    }).join('');
+    box.innerHTML =
+      '<div class="count-head" style="margin-top:18px">Acceptance by people reached <span class="n">invites ' + (d.acceptAfterDays || 7) + '+ days old</span></div>' +
+      '<div class="panel panel-pad"><div class="rcd-wrap" data-scroll="rcd"><table class="rcd">' +
+        '<thead><tr><th scope="col">People invited</th><th scope="col"></th>' +
+          '<th scope="col">Someone accepted</th><th scope="col">Brands</th><th scope="col">Each person</th><th scope="col"></th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table></div>' +
+        '<div class="hint" style="margin:8px 0 0">Each person accepts about ' + pc(dp.personRate) + ' on their own, so more people mostly means more chances.</div></div>';
+  }).catch(function () { box.innerHTML = ''; });
+}
+
 function loadReached() {
   showView('reached');
+  renderRcDepth();
   var box = document.getElementById('reached-list');
   if (!RC_DATA.length) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   return api('listReached').then(function (d) {
