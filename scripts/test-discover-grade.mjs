@@ -139,7 +139,16 @@ t('launches count as growth, once; a footprint that just is doesn’t', () => {
     'the family expand to include Gin Sul', 'Expanded to 12 flavors', 'Expanding its team in Austin', 'Won a national award at Expo West 2024',
     'Gained national attention on TikTok', 'Landed national press in Forbes', 'Signed NIL deals with national champion Georgia athletes',
     'Launched a national ad campaign with NIL athletes', 'Rolled out a TikTok campaign with creators', 'Taps into target audiences on TikTok',
-    'Founded in 2012; launched at Whole Foods in 2013', 'Launched at Target in 2017.', 'Sold into Walmart since 2015']) assert.equal(grow(w).length, 0, w)
+    'Founded in 2012; launched at Whole Foods in 2013', 'Launched at Target in 2017.', 'Sold into Walmart since 2015',
+    // the second review
+    'Expanded into Walmart (1,200 stores) in 2016.', 'Rolled out to 500 Kroger stores (CA, TX) in 2015.', 'Launched nationally in the U.S. in 2012 and now sells in 40 states.',
+    'Expanded into Target in Jan. 2016.', 'Rolled out to Kroger with Acme Inc. in 2015.', 'added 400 SoCal stores in 2024 and its flavor sold out again in Mar 2025.',
+    'expanded into Canada in 2016 and launched a new flavor in 2026', 'Lifestyle brand expanding across apparel, accessories and home goods.',
+    'Expanding its social reach with a new campaign.', 'Debuted new retail-ready packaging in 2026.', 'Hard seltzer that launched at Target Field with the Twins.',
+  ]) assert.equal(grow(w).length, 0, w)
+  for (const w of ['Acme (founded 2014) is rolling out to 500 new Kroger stores.', 'expanded into the U.S. market', 'went nationwide at ~2,700 ALDI stores in March 2026',
+    'expanded into nearly 250 H-E-B stores in Apr 2026, its largest rollout', 'Protein Pop to retail with a Target launch in April 2026', 'into 3,800+ Walmart stores in Apr 2025',
+    'launching in 35 states', 'launched Apr 24 2026 exclusively at Walmart stores nationwide', 'deal expanding across PA, CT and the Northeast']) assert.equal(grow(w).length, 1, w)
 })
 
 t('a find on the roster grades on its brand’s own Brand Fit', () => {

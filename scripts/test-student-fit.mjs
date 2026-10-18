@@ -80,6 +80,31 @@ t('energy / hydration / workout = 10 — the product, never a vibe, solar power 
   assert.equal(S.studentUse('Serum for deep skin care', 'Hydrate Labs'), null, 'skincare never')
 })
 
+// The second review of Oct 18 2026.
+t('second review: recovery drinks, founder stories, caffeine-free pouches, the morning-after pill, licensed gear, workouts, skincare, power', () => {
+  const cases = [
+    ['Electrolyte + adaptogen hydration and recovery drink from Austin', "Sap's", 10], ['Protein recovery drink for post-workout', 'X', 10],
+    ['Festival/rave and Y2K fashion brand aimed squarely at Gen Z partygoers', 'Dolls Kill', 15], ['Hard seltzer made for darties and pregames', 'X', 15],
+    ['Drink mix that helps you bounce back after a night of drinking', 'X', 15],
+    ['Tequila brand founded by two friends while studying at Ole Miss; in 400 Texas stores', 'Tequila X', 0],
+    ['Hard seltzer started by three Duke grads when studying abroad in Spain', 'X', 0], ['Spirits company that donates to scholarships for study abroad', 'X', 0],
+    ['Caffeine-free herbal pouches, a nicotine alternative', 'P', 0], ['Nicotine pouch brand sold next to energy drinks and gum at c-stores', 'P', 10],
+    ['Zero caffeine mints and gum', 'P', 0], ['Emergency contraception (morning-after pill) brand at Walmart and Target', 'Julie', 0],
+    ['Vodka built around college game day; signed a multi-school deal through Learfield', 'GameDay Vodka', 15], ['Presenting sponsor of ESPN College GameDay', 'X', 0],
+    ['Indianapolis vintage college apparel brand; 180+ university licenses', 'Homefield', 15], ['Teen/young-adult mall retailer with an NCAA licensed collection', 'X', 15],
+    ['Sock brand that holds 300+ NCAA licenses', 'X', 15], ['Boise-based lifting gear and apparel brand', 'Gymreapers', 10], ['Workout apparel and training gear', 'X', 10],
+    ['Coconut water brand backed by L.A. Libations', 'X', 10], ["Otsuka's Japanese ion drink launched in the US", 'Pocari', 10],
+    ['Hydrating sunscreen and SPF lip balm', 'Supergoop', 0], ['Hydrating shampoo and hair masks', 'OUAI', 0],
+    ['Electrolyte drink mix co-founded by a celebrity makeup artist', 'Glow Hydration', 10], ['Zero-sugar energy drink; its founder also started a lotion brand', 'Raze Energy', 10],
+    ['Ran sampling at tailgates across the SEC', 'X', 0], ['Official tailgate partner of Ohio State Athletics', 'X', 0], ['Hosted tailgates at 12 schools', 'X', 0],
+    ['known for dorm room pop-ups and campus ambassadors', 'X', 0], ['Residential solar panels and home batteries', 'Sunrun Energy', 0],
+    ['Kids drink with no sugar or caffeine', 'X', 0], ['Herbal soda (zero sugar/caffeine)', 'X', 0],
+    ['Nicotine-free caffeine energy pouch (100/200mg)', 'Wip', 20], ['Nicotine-free caffeine (100mg) pouches', 'X', 20],
+  ]
+  for (const [text, name, want] of cases) assert.equal(S.studentUse(text, name)?.points ?? 0, want, text)
+  assert.equal(pts(S.brandWriteUp({ topProducts: 'Greens powder, colostrum, energy' })), 10, 'a product list’s bare "energy" is its energy drink')
+})
+
 t('first tier that matches wins; nothing → null', () => {
   assert.equal(pts('nootropic energy drink for the gym'), 20)
   assert.equal(S.studentUse('Premium tequila from Jalisco'), null)

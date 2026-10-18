@@ -646,8 +646,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   nights out / the morning after 15, game day / campus life 15 (where the product lives — campus stores, game-day tees,
   licensed college gear — never a campus tour / ambassadors / reps / a tailgate sponsorship, which is marketing), energy
   / hydration / workout 10 (energy drinks, electrolytes, protein, caffeine; a name like "Raze Energy" too); first tier
-  that matches. Words count only as the product's use — never "a clinical study", "a focus market", "3rd-party tested",
-  "caffeine-free", "Gen Z energy", skincare's "hydrating" (the Oct 18 review's cases are in the test). Read from the
+  that matches. Words count only as the product's use — never "a clinical study", "a focus market", "while studying at"
+  (a founder story), "3rd-party tested", "caffeine-free" / "no sugar or caffeine", the morning-after pill, "Gen Z energy",
+  a hydrating sunscreen or shampoo, sampling at tailgates (both Oct 18 reviews' cases are in the test). Read from the
   brand's About, products and the line of its notes that starts "Discover: " (`brandWriteUp` / `discoverWriteUp` —
   never the Activation idea, never Leo's own notes) plus its name for energy only. On top of the 100: a total past it
   shows "the score stops at 100" with the difference (`capAt100`), so the points still add up. `FIT_SELECT` /
@@ -785,11 +786,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   hydration 10), growing fast 10 (since Oct 18 also a launch, from the write-up only — `launchIn`: "first mass-retail",
   "national launch", "rolling out to Kroger", "expanding into Walmart", "added 400 stores", "into Target"; stores, markets
   and distribution only — never a footprint that just is ("in 48 states", "ships to 50 states"), a national ad campaign or
-  award, "expanding into apparel", or a launch whose sentence only names years before last year), 18–24 sign 5.
+  award, "expanding into apparel" / "its social reach", or a launch dated before last year — the first year after it in its
+  clause ("into Walmart (1,200 stores) in 2016"), else one just before that isn't a founding year), 18–24 sign 5.
   A find on the roster grades on its brand's own Brand
   Fit. Letters **A 65+ / B 50+ / C 40+ / D** (Skip / not US / closed = D, too small caps at C) — on Oct 15 the 171 finds split
   ~17 / 52 / 63 / 39 (Brand Fit alone had made 137 of them A); on Oct 18, with the student fit and launches, the 186 waiting
-  ~16 / 61 / 64 / 45 (was 2 / 64 / 67 / 53) and Neuro 46 C → 76 A as a find, 63 B → 83 A on the roster. The page: a score box per row (number + letter; a click opens every
+  ~18 / 62 / 64 / 42 (was 2 / 64 / 67 / 53) and Neuro 46 C → 76 A as a find, 63 B → 83 A on the roster. The page: a score box per row (number + letter; a click opens every
   point), the points as chips under the why, big **Accept** / **Deny** buttons (`addDiscoveredBrand` / `dismissDiscovered`), a
   heading per grade under **Best grade first** (default; Newest first) and a grade filter. **Add all A's** (Leo, Oct 13 2026 — 88 of 106 waiting finds were A): the To review bar's button (`dcBulkOpen`,
   `#dc-bulk`) → `addDiscoveredBulk({ grade: 'A' })` preview = every A waiting, each as it'd be filed (`discoveryCategory`,

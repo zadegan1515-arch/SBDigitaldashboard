@@ -129,41 +129,69 @@ const GROWTH = /\b(fastest[- ]growing|doubled|tripled|triple[- ]digit|double[- ]
 // and distribution count — never a footprint that just is ("in 48 states",
 // "ships to 50 states"), a national ad campaign or award, "expanding into
 // apparel" or "its team", and never a launch from years ago (launchIn).
-const SHOP_NAMES = "walmart|target(?! (?:audiences?|demo\\w*|markets?|consumers?|customers?|groups?|segments?|ages?)\\b)|kroger|costco|whole foods|publix|h-e-b|heb|7-eleven|trader joe'?s|total wine|cvs|walgreens|albertsons|safeway|sprouts|wegmans|meijer|hy-vee|circle k|wawa|sheetz|bevmo|sam'?s club|harris teeter|dick'?s|foot locker|ulta|sephora"
-const WHERE = '(?:(?:all |more |new |national |nationwide )?(?:[\\d,]+\\+? )?(?:[A-Za-z-]+ ){0,2}(?:markets?|states|regions?|retail(?:ers)?|distribution|stores|doors|accounts|grocery|grocers|c-stores|convenience|chains?|outlets|locations)\\b' +
-  '|(?:' + SHOP_NAMES + ')\\b|the (?:US|U\\.S\\.|Southeast|Northeast|Midwest|West Coast|East Coast|South|West)\\b|Canada\\b|Mexico\\b)'
+const SHOP_NAMES = "walmart|target(?! (?:audiences?|demo\\w*|markets?|consumers?|customers?|groups?|segments?|ages?|field|center|centre|arena|stadium)\\b)|kroger|costco|whole foods|publix|h-e-b|heb|7-eleven|trader joe'?s|total wine|cvs|walgreens|albertsons|safeway|sprouts|wegmans|meijer|hy-vee|circle k|wawa|sheetz|bevmo|sam'?s club|harris teeter|dick'?s|foot locker|ulta|sephora|aldi|food lion|giant eagle|hannaford|stop & shop|ralphs|vons|fresh thyme|natural grocers|erewhon|gopuff|buc-ee'?s|dollar general|family dollar|rite aid|quiktrip|racetrac|casey'?s|winn-dixie|shoprite|jewel-osco|vitamin shoppe|gnc|bj'?s|five below|urban outfitters|pacsun|zumiez|nordstrom|best buy"
+const US_STATES = 'alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|wyoming|socal|norcal|the bay area|chicago|atlanta|austin|dallas|houston|miami|nyc|los angeles|boston|denver|seattle|phoenix|philadelphia'
+// Where a launch goes: stores, markets, distribution, a retailer, a region.
+const WHERE = '(?:(?:(?:about|nearly|over|more than|roughly|all|more|new|another|national|nationwide)\\s+)*(?:~?[\\d,]+\\+?\\s+)?(?:[\\w&\'-]+\\s+){0,3}(?:markets?|states|regions?|retail(?:ers)?|distribution|stores|doors|accounts|grocery|grocers|c-stores|convenience|chains?|outlets|locations)\\b' +
+  '|(?:~?[\\d,]+\\+?\\s+)?(?:' + SHOP_NAMES + ')\\b|the (?:US|U\\.?S\\.?|Southeast|Northeast|Midwest|West Coast|East Coast|South|West)(?![\\w])|Canada\\b|Mexico\\b|(?:' + US_STATES + ')\\b)'
 const LAUNCH = new RegExp('\\b(' + [
   'first (mass|national)[- ]?retail',
   'national (launch|rollout|roll-out|expansion)',
   'nationwide (launch|rollout|roll-out|retail|expansion)',
+  '(went|goes|going|gone|rolled out|rolling out|launched|launching) nationwide\\b',
   'launch(ed|es|ing)? (a |its )?(nationwide|national(ly)?)\\b(?! (ad|ads|tv|marketing|media|campaigns?|spots?|commercials?|contests?|tours?|sweepstakes|promotions?|search|awards?)\\b)',
   '(secured|signed|landed|gained|moved to|won)\\s+(?:[\\w&-]+\\s+){0,3}(national|nationwide)\\s+(distribut\\w*|retail\\w*|accounts?|roll-?out|placement)',
   'expan(d|ds|ded|ding|sion)\\s+(in)?to\\s+' + WHERE,
-  'expanding\\s+(across|its\\s+(?:[\\w.]+\\s+)?(footprint|distribution|retail|reach))\\b',
+  'expanding\\s+(across\\s+(?:[\\w,&.]+\\s+){0,4}?' + WHERE + '|its\\s+(?:[\\w.]+\\s+)?(footprint|distribution|retail presence|store count))',
   'roll(ed|ing|s)? out\\s+(to|in|into|across|at)\\s+' + WHERE,
   '(retail|national|nationwide|store|grocery|regional|statewide)\\s+roll-?outs?',
   'roll-?outs?\\s+(to|into|across|at|in)\\s+' + WHERE,
-  'new (retail|distribution|markets?|states|stores|doors|accounts)\\b',
+  'new (retail (partners?|accounts?|doors|chains?|distribution)|distribution|markets?|states|stores|doors|accounts)\\b',
   '(add|added|adding|adds) [\\d,]+\\+? (?:[A-Za-z-]+ ){0,2}(stores|doors|accounts|retailers|locations|states|markets)\\b',
-  'launch(ed|es|ing)? (in|at|into) (?:all )?(?:[\\d,]+\\+? (?:[A-Za-z-]+ ){0,2}(stores|doors)\\b|(?:' + SHOP_NAMES + ')\\b)',
-  '(entered|entering|enters|into) (?:' + SHOP_NAMES + ')\\b',
+  'launch(ed|es|ing)?\\b[^.;]{0,40}?\\b(in|at|into) (?:all )?(?:~?[\\d,]+\\+? (?:[\\w&\'-]+ ){0,2}(stores|doors)\\b|(?:' + SHOP_NAMES + ')\\b)',
+  '(entered|entering|enters|into) (?:~?[\\d,]+\\+? )?(?:' + SHOP_NAMES + ')\\b',
+  '(?:' + SHOP_NAMES + ') (launch|roll-?out|expansion|debut)\\b',
   'going national',
-  '(expand\\w*|grow\\w*|roll\\w* out|launch\\w*) (in)?to \\d+ (more |new )?states',
+  '(expand\\w*|grow\\w*|roll\\w* out|launch\\w*) (in|into|to) \\d+ (more |new )?states',
   '\\d+ new (states|markets)',
 ].join('|') + ')', 'gi')
 
-// The first launch in the write-up that isn't history: a clause that only
-// names years before last year ("launched at Whole Foods in 2013", "into
-// Walmart since 2015") is the brand's past, not growth now.
+// A launch's clause runs to a ";" or to a "." that ends a sentence (not
+// "U.S.", "Inc.", "Jan." or a period before a lowercase word or a number).
+const ABBR = /(^|\s)(inc|co|corp|ltd|llc|st|mt|dr|no|vs|mr|mrs|ms|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|[a-z](\.[a-z])+)$/i
+function clauseEnd(t: string, from: number): number {
+  for (let i = from; i < t.length; i++) {
+    if (t[i] === ';') return i
+    if (t[i] === '.' && /^\s+[A-Z]/.test(t.slice(i + 1, i + 3)) && !ABBR.test(t.slice(Math.max(0, i - 12), i))) return i
+  }
+  return t.length
+}
+function clauseStart(t: string, at: number): number {
+  for (let i = at - 1; i >= 0; i--) {
+    if (t[i] === ';') return i + 1
+    if (t[i] === '.' && /^\s+[A-Z]/.test(t.slice(i + 1, i + 3)) && !ABBR.test(t.slice(Math.max(0, i - 12), i))) return i + 1
+  }
+  return 0
+}
+
+// The first launch in the write-up that isn't history. Its year is the
+// first one after it in the same clause ("expanded into Walmart (1,200
+// stores) in 2016", "into Walmart since 2015"), else one just before it
+// ("In 2016 it expanded…") that isn't a founding year ("(founded 2014) is
+// rolling out…"); a year before last year makes it the brand's past.
 export function launchIn(text: string, now: Date = new Date()): string | null {
   const t = String(text ?? '')
   for (const m of Array.from(t.matchAll(LAUNCH))) {
     const at = m.index ?? 0
-    const from = Math.max(t.lastIndexOf('. ', at), t.lastIndexOf('; ', at), t.lastIndexOf('(', at)) + 1
-    const ends = [t.indexOf('. ', at), t.indexOf('; ', at), t.indexOf(')', at)].filter(i => i >= 0)
-    const clause = t.slice(from, ends.length ? Math.min(...ends) : t.length)
-    const years = Array.from(clause.matchAll(/\b(19|20)\d{2}\b/g)).map(y => Number(y[0]))
-    if (years.length && Math.max(...years) < now.getUTCFullYear() - 1) continue
+    const end = at + m[0].length
+    const after = t.slice(end, clauseEnd(t, end)).match(/\b(19|20)\d{2}\b/)
+    let year = after ? Number(after[0]) : null
+    if (year == null) {
+      const before = t.slice(Math.max(clauseStart(t, at), at - 30), at)
+      const ys = Array.from(before.matchAll(/\b(19|20)\d{2}\b/g)).filter(y => !/(founded|founding|est\.?|established|started|born|since)\s*(in\s*)?$/i.test(before.slice(0, y.index)))
+      if (ys.length) year = Number(ys[ys.length - 1][0])
+    }
+    if (year != null && year < now.getUTCFullYear() - 1) continue
     return m[0].trim()
   }
   return null

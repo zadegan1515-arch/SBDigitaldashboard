@@ -30,10 +30,15 @@ export interface StudentUse {
 
 // Each tier names the product's use, not a word that happens to appear:
 // "a clinical study", "a focus market", "3rd-party tested", "caffeine-free",
-// "campus ambassadors", "Gen Z energy" never count (review, Oct 18 2026).
-// `skip` = a write-up the tier never reads (skincare's "hydrating serum").
-type Tier = { points: number; label: string; re: RegExp; skip?: RegExp }
-const SKINCARE = /\b(skin ?care|serums?|moisturi[sz]\w*|lotions?|eye creams?|face (wash|creams?|masks?)|cosmetics?|make-?up)\b/i
+// "campus ambassadors", "Gen Z energy", a hydrating sunscreen never count
+// (reviews, Oct 18 2026 — their cases are in the test).
+type Tier = { points: number; label: string; re: RegExp }
+// Beauty nouns: "hydrating serum", "caffeine eye cream" are skincare.
+const BEAUTY = '(serums?|creams?|masks?|lotions?|moisturi\\w*|skin\\w*|toners?|lip\\w*|face|facial|cleansers?|sunscreens?|spf|shampoos?|conditioners?|hair\\w*|balms?|mists?|primers?|foundations?|scrubs?|eye)'
+// "zero caffeine", "no sugar or caffeine", "zero sugar/caffeine"
+const NO_CAFFEINE = '(?<!(zero|no|without|non|low|less|free of)[- ]([\\w-]+ ?(or|and|\\/|,) ?)?)'
+const CAFFEINE = NO_CAFFEINE + '(caffeine|caffeinated)(?![- ]free)'
+const MARKETING = '(sampling|samples|hosted|hosts|hosting|ran|runs|throws?|threw|sponsor\\w*|official|activations?|events?|booths?|pop-?ups?|ambassadors?|reps?|tours?|giveaways?|hires?|recruit\\w*|marketing)'
 
 export const STUDENT_USES: Tier[] = [
   {
@@ -47,21 +52,24 @@ export const STUDENT_USES: Tier[] = [
       'focus\\s*(\\/|and|&|\\+)\\s*(energy|clarity|calm|mood)\\b',
       '(boosts?|improves?|sharpens?|supports?|enhances?) (your |mental )?focus\\b',
       'mental (focus|energy|clarity|performance)\\b', 'focus-(boosting|enhancing)',
-      // studying — never "a study found", "study abroad"
+      // studying the product is for — never a founder "while studying at", "a study found", study abroad
       'stud(y|ying)[- ](sessions?|breaks?|aid|snacks?|fuel|buddy|hall|nights?|drinks?)\\b',
-      "(for|while|when) (you(?:'re)? )?stud(y|ying)\\b", 'studying\\b(?! abroad)',
+      "(for|while|when) you(?:'re)? stud(y|ying)\\b", 'for studying\\b(?! abroad)', 'helps? (you )?study\\b',
+      '(late[- ]night|all[- ]night|long|cram(ming)?) study(ing)?\\b',
       '(finals|exams?)[- ](week|season|time|prep|cramming)\\b', 'final exams', 'all-nighters?', 'cram(ming)? sessions?',
       'productivity',
       'brain[- ](health|boost\\w*|fuel|food|fog|power|support|function)\\b',
       'cognitive (function|performance|support|boost\\w*|health|enhanc\\w*|energy)\\b',
-      // caffeine / energy gum, mints, pouches — "Caffeine (nicotine-free) pouch" too
-      '(caffeine|caffeinated|energy)\\b[^.;:]{0,25}?\\b(gum|mints|pouch(es)?)\\b', '(caffeine|caffeinated|energy) mint\\b',
+      // caffeine / energy gum, mints, pouches — "Caffeine (nicotine-free) pouch" too, never "caffeine-free pouches"
+      '(' + NO_CAFFEINE + '(caffeine|caffeinated)(?![- ]free)|energy)( \\([^)]{1,30}\\))?[- ](gum|mints?|pouch(es)?)\\b',
+      '(' + NO_CAFFEINE + '(caffeine|caffeinated)|energy) energy (gum|pouch(es)?)\\b',
     ].join('|') + ')', 'i'),
   },
   {
     points: 15, label: 'made for nights out / the morning after',
     re: new RegExp('\\b(' + [
-      'hangovers?', 'nights? out', 'morning[- ]after', 'recovery drinks?', 'nightlife', 'nightclubs?', 'clubbing',
+      'hangovers?', 'nights? out', 'after a (long |big )?night( of (drinking|partying))?\\b', 'morning[- ]after(?![- ]pills?)\\b',
+      'nightlife', 'nightclubs?', 'clubbing', 'party-?goers?', 'raves?\\b(?! reviews?)', 'raving\\b', 'pre-?gam(e|es|ing)\\b', 'darties',
       // a party, not "3rd-party tested", "party-size bags", "party packs", a birthday party
       "(?<!(third|3rd|birthday|kids'?|tea|dinner|slumber|watch)[- ])part(y|ies)\\b(?![- ](size[ds]?|packs?|supplies|favou?rs|city|trays?|platters?|mix(es)?)\\b)",
       'late[- ]night\\b(?! (show|talk|tv|television|host|with)\\b)',
@@ -72,46 +80,56 @@ export const STUDENT_USES: Tier[] = [
     points: 15, label: 'made for game day / campus life',
     // Where the product lives (campus stores and dining, campus crowds,
     // campus-wear, game-day tees, licensed college gear) — never a campus
-    // tour, ambassadors, reps, sampling, a tailgate sponsorship or ESPN's
-    // College GameDay: those are marketing and count under college / music.
+    // tour, ambassadors, reps, sampling at tailgates, a tailgate partner,
+    // dorm pop-ups or ESPN's College GameDay: those are marketing and
+    // count under college / music.
     re: new RegExp('\\b(' + [
-      '(?<!sponsor(s|ed|ing)? (of )?(the )?)tailgat(e|es|ing|ers?)\\b(?![- ](sponsor\\w*|activations?|tours?|events?|series|sampling|pop-?ups?|takeovers?|marketing|programs?)\\b)',
-      '(?<!college )game[- ]?days?\\b(?![- ](activations?|tours?|campus|pop-?ups?|events?|sampling|sponsor\\w*|takeovers?)\\b)',
-      'dorms?\\b', 'dorm[- ]rooms?',
+      '(?<!' + MARKETING + '\\s((at|of|the|its|a|an|for)\\s){0,2})tailgat(e|es|ing|ers?)\\b(?![- ](sponsor\\w*|partner\\w*|activations?|tours?|events?|series|sampling|pop-?ups?|takeovers?|marketing|programs?)\\b)',
+      '(?<!college )gameday\\b(?![- ](activations?|tours?|campus|pop-?ups?|events?|sampling|sponsor\\w*|takeovers?)\\b)',
+      'game[- ]days?\\b(?![- ](activations?|tours?|campus|pop-?ups?|events?|sampling|sponsor\\w*|takeovers?)\\b)',
+      '(?<!' + MARKETING + '\\s((at|of|the|its|a|an|for|in)\\s){0,2})dorm(s|[- ]rooms?)?\\b(?![- ](rooms?[- ])?(pop-?ups?|tours?|events?|sampling|activations?|ambassadors?|takeovers?|deliver\\w*)\\b)',
       'campus(es)?[- ](stores?|bookstores?|dining|bodegas?|markets?|convenience|c-stores?|shops?|wear|life|crowds?|favou?rites?|staples?|only|kitchens?|cafes?|coffee)\\b',
-      '(?<!(ambassadors?|reps?|sampling|events?|tours?|activations?|marketing|pop-?ups?|booths?|giveaways?|hires?|recruit\\w*|sponsor\\w*)\\s(\\w+\\s){0,2})(on|around|across) (college )?campus(es)?\\b(?![- ](tours?|events?|sampling|ambassadors?|reps?|activations?|marketing|sponsor\\w*|pop-?ups?|takeovers?)\\b)',
+      '(?<!' + MARKETING + '\\s(\\w+\\s){0,2})(on|around|across) (college )?campus(es)?\\b(?![- ](tours?|events?|sampling|ambassadors?|reps?|activations?|marketing|sponsor\\w*|pop-?ups?|takeovers?)\\b)',
       '(university|college|campus) bookstores?', 'college[- ]towns?',
-      'collegiate (apparel|headwear|line|gear|merch\\w*|collection)', 'licensed (college|collegiate)', 'school[- ]spirit', 'fan[- ]apparel',
+      '(collegiate|college|university|ncaa)[- ](apparel|headwear|line|gear|merch\\w*|collection|licensed|licen[cs]es?)\\b',
+      'licensed (college|collegiate|university|ncaa)', '(college|collegiate|university|ncaa|school) licen[cs](es|ed|ing)\\b',
+      'licensed (by|with) \\d+\\+? (schools|colleges|universities)', 'school[- ]spirit', 'fan[- ]apparel',
     ].join('|') + ')', 'i'),
   },
   {
     points: 10, label: 'energy / hydration / workout',
-    skip: SKINCARE,
     re: new RegExp('\\b(' + [
       // energy the product — never "Gen Z energy", "solar energy", "Energy Star"
       'energy[- ](drinks?|shots?|chews?|gels?|gum|bars?|boosts?|powders?|supplements?|waters?|seltzers?|sodas?|teas?|coffees?|beverages?|brand|line|pouch(es)?|mix(es)?|tabs|tablets|blend|chocolates?|snacks?)\\b',
       '(natural|sustained|plant-based|balanced|organic|functional|zero-sugar|sugar-free|sparkling|all-day) energy\\b',
       'for (natural |sustained |all-day )?energy\\b',
-      'electrolytes?', 'isotonic', 'hydrat(e|es|ing|ion)\\b', 'pre-?workout', 'gym\\b', 'protein\\b', 'sports drinks?',
-      // caffeine in it — never "caffeine-free", "zero caffeine"
-      '(?<!(zero|no|without|non|low|less|free of)[- ])caffein(e|ated)\\b(?![- ]free)',
+      'electrolytes?', 'isotonic', 'coconut water', 'ion (drink|supply|water)\\b', 'recovery (drinks?|mix(es)?)\\b',
+      // hydration you drink — never a hydrating serum, sunscreen or shampoo
+      '(?<!(deep|skin|lip|facial|intense|moisture|hair|scalp|lasting)[- ])hydrat(e|es|ing|ion)\\b(?![- ](\\w+[- ]){0,2}' + BEAUTY + '\\b)',
+      'pre-?workout', 'post-?workout', 'workouts?\\b', 'gym\\b', 'protein\\b', 'sports drinks?',
+      '(weight)?lifting (gear|apparel|belts?|straps?|shoes)', 'training (gear|apparel|shoes|shorts)', 'fitness (apparel|gear|drinks?|brand)',
+      // caffeine in it — never "caffeine-free", "zero caffeine", a caffeine eye cream
+      CAFFEINE + '\\b(?![- ](\\w+[- ])?' + BEAUTY + '\\b)',
     ].join('|') + ')', 'i'),
   },
 ]
 // A brand's own name can say energy / hydration ("Raze Energy", "Prime
-// Hydration") — never the 20 (Focus Brands is a restaurant group).
+// Hydration") — never the 20 (Focus Brands is a restaurant group), and
+// never when the write-up is about power or beauty (Sunrun Energy, a
+// hydrating sunscreen).
 const NAME_ENERGY = /\b(energy|hydration|hydrate|electrolytes?|protein|fuel)\b/i
+const NOT_A_DRINK = new RegExp('\\b(solar|utility|utilities|electricity|renewable|power (plant|grid)|batter(y|ies)|oil and gas|natural gas|wind farms?|skin ?care|cosmetics?|make-?up|' + BEAUTY + ')\\b', 'i')
 
 // name = the brand's name, read only for the energy tier.
 export function studentUse(text: string | null | undefined, name?: string | null): StudentUse | null {
   const t = String(text ?? '')
-  for (const u of STUDENT_USES) {
-    if (!t.trim() || (u.skip && u.skip.test(t))) continue
-    const m = t.match(u.re)
-    if (m) return { points: u.points, label: u.label, word: m[0].trim() }
+  if (t.trim()) {
+    for (const u of STUDENT_USES) {
+      const m = t.match(u.re)
+      if (m) return { points: u.points, label: u.label, word: m[0].trim() }
+    }
   }
-  const n = String(name ?? '').match(NAME_ENERGY)
-  if (n && !SKINCARE.test(t)) {
+  if (NAME_ENERGY.test(String(name ?? '')) && !NOT_A_DRINK.test(t)) {
     const e = STUDENT_USES[STUDENT_USES.length - 1]
     return { points: e.points, label: e.label, word: String(name).trim() }
   }
@@ -132,7 +150,10 @@ export function discoverWriteUp(notes: string | null | undefined): string {
 // (the name goes to studentUse on its own). Leo's own notes and the pitch
 // are left out.
 export function brandWriteUp(b: { about?: string | null; topProducts?: string | null; notes?: string | null }): string {
-  return [b.about, b.topProducts, discoverWriteUp(b.notes)].map(x => String(x ?? '').trim()).filter(Boolean).join(' · ')
+  // A product list's bare "energy" item is its energy drink ("Greens
+  // powder, colostrum, energy").
+  const products = String(b.topProducts ?? '').replace(/(^|,)\s*energy\s*(?=,|$)/gi, '$1 energy drinks')
+  return [b.about, products, discoverWriteUp(b.notes)].map(x => String(x ?? '').trim()).filter(Boolean).join(' · ')
 }
 
 // The reason line both scores show. hasText = the brand says something
