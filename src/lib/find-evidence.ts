@@ -21,6 +21,8 @@
 //
 //   node scripts/test-discover-grade.mjs
 
+import { studentUse, studentReason, capAt100 } from './student-fit'
+
 export interface FindEvidence {
   fundingCents: number | null
   salesCents: number | null
@@ -101,7 +103,19 @@ export function readFind(text: string | null | undefined): FindEvidence {
 //   pays for college /  an official partner, licensed, NIL, sponsor, tour,
 //   music               festival 20 · the hunt's sign alone 12 ·
 //                       only popular with students 6
-//   growing fast        "fastest-growing", "doubled", "+50%", "triple-digit" 10
+//   fits a student's    made for studying / focus 20 · nights out / the
+//   day                 morning after 15 · game day / campus life 15 ·
+//                       energy / hydration / workout 10 (student-fit.ts;
+//                       read from the write-up, + the name for energy,
+//                       never our pitch idea). Leo, Oct 18 2026: "neuro
+//                       should definitely be higher given that the ideal
+//                       candidates are people who study and do work".
+//   growing fast        "fastest-growing", "doubled", "+50%", "triple-digit",
+//                       and launches (Oct 18 2026): "first mass-retail",
+//                       "national launch", "rolling out to", "expanding
+//                       into Walmart", "added 400 stores" — not history
+//                       (launchIn) 10
+//   past 100            "the score stops at 100" with the difference
 //   aims at 18–24       the hunt's sign 5
 export interface FindScore { score: number; reasons: Array<{ good: boolean | null; text: string; points: number }> }
 
@@ -109,6 +123,90 @@ const RETAILERS = /\b(walmart|target|kroger|costco|whole foods|publix|h-e-b|heb|
 const SPENDS = /\b(official\s+[\w\s'-]{0,40}\b(of|partner)|licensed|NIL|collective|sponsor(s|ed|ship)?|presenting|presented|title partner|partner(ed|ship)? with|tour\b|festival|activation|sampling)/i
 const AUDIENCE = /\b(college students|campus|sororit|fraternit|students|gen ?z|tailgat)/i
 const GROWTH = /\b(fastest[- ]growing|doubled|tripled|triple[- ]digit|double[- ]digit|\d{2,3}%\s*(growth|yoy|year|up)|up\s+\d{2,3}%|\d{2,3}%\+?\s+yoy|growth of \d{2,3}%)/i
+// A launch or a push into new stores is growth too (Leo's yes, Oct 18
+// 2026). Read on the write-up only, like the student fit: a pitch idea
+// "launching at a campus show" is ours, not theirs. Only stores, markets
+// and distribution count — never a footprint that just is ("in 48 states",
+// "ships to 50 states"), a national ad campaign or award, "expanding into
+// apparel" or "its team", and never a launch from years ago (launchIn).
+const SHOP_NAMES = "walmart|target(?! (?:audiences?|demo\\w*|markets?|consumers?|customers?|groups?|segments?|ages?|field|center|centre|arena|stadium)\\b)|kroger|costco|whole foods|publix|h-e-b|heb|7-eleven|trader joe'?s|total wine|cvs|walgreens|albertsons|safeway|sprouts|wegmans|meijer|hy-vee|circle k|wawa|sheetz|bevmo|sam'?s club|harris teeter|dick'?s|foot locker|ulta|sephora|aldi|food lion|giant eagle|hannaford|stop & shop|ralphs|vons|fresh thyme|natural grocers|erewhon|gopuff|buc-ee'?s|dollar general|family dollar|rite aid|quiktrip|racetrac|casey'?s|winn-dixie|shoprite|jewel-osco|vitamin shoppe|gnc|bj'?s|five below|urban outfitters|pacsun|zumiez|nordstrom|best buy"
+const STATE_CODES = '(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|DFW)(?=[\\s,.;)/]|$)'
+const US_STATES = 'southern california|northern california|new england|the pacific northwest|the bay area|alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|wyoming|socal|norcal|the bay area|chicago|atlanta|austin|dallas|houston|miami|nyc|los angeles|boston|denver|seattle|phoenix|philadelphia'
+// Where a launch goes: stores, markets, distribution, a retailer, a region.
+const WHERE = '(?:(?:(?:about|nearly|over|more than|roughly|all|more|new|another|national|nationwide)\\s+)*(?:~?[\\d,]+\\+?\\s+)?(?:[\\w&\'-]+\\s+){0,3}(?:markets?|states|regions?|retail(?:ers)?|distribution|stores|doors|accounts|grocery|grocers|c-stores|convenience|chains?|outlets|locations)\\b' +
+  '|(?:~?[\\d,]+\\+?\\s+)?(?:the\\s+)?(?:' + SHOP_NAMES + ')\\b|the (?:US|U\\.?S\\.?|Southeast|Northeast|Midwest|West Coast|East Coast|South|West)(?![\\w])|Canada\\b|Mexico\\b|(?:' + US_STATES + ')\\b)'
+const LAUNCH = new RegExp('\\b(' + [
+  'first (mass|national)[- ]?retail',
+  'national (launch|rollout|roll-out|expansion)',
+  'nationwide (launch|rollout|roll-out|retail|expansion)',
+  '(went|goes|going|gone|rolled out|rolling out|launched|launching) nationwide\\b',
+  'launch(ed|es|ing)? (a |its )?(nationwide|national(ly)?)\\b(?! (ad|ads|tv|marketing|media|campaigns?|spots?|commercials?|contests?|tours?|sweepstakes|promotions?|search|awards?)\\b)',
+  '(secured|signed|landed|gained|moved to|won)\\s+(?:[\\w&-]+\\s+){0,3}(national|nationwide)\\s+(distribut\\w*|retail\\w*|accounts?|roll-?out|placement)',
+  'expan(d|ds|ded|ding|sion)\\s+((in)?to|across)\\s+(?:[\\w,&.]+\\s+){0,4}?' + WHERE,
+  'expanding\\s+its\\s+(?:[\\w.]+\\s+)?(footprint|distribution|retail presence|store count)',
+  'roll(ed|ing|s)?( out)?\\s+(to|in|into|across|at)\\s+(?:[\\w,&.]+\\s+){0,4}?' + WHERE,
+  '(went|goes|going|gone|took (it|them))\\s+national\\b', 'took (it|them) to \\d+\\+? (more |new )?states',
+  '(entered|entering|enters)\\s+' + WHERE, 'launch(ed|es|ing)?\\s+(in|into)\\s+' + WHERE,
+  'launch\\w*\\b[^.;]{0,30}?\\bnationwide\\b', 'growing\\s+(on|across|in|into)\\s+' + WHERE,
+  '(re)?launch\\w*\\b[^.;]{0,40}?\\bdistribut(ion|or)\\b', '(distribution|distributors?) (deals?|agreements?|partnerships?)\\b',
+  '[\\d,]+-(store|door)\\s+(?:[\\w-]+\\s+){0,2}(commitment|deal|roll-?out|expansion|launch)', 'went from\\b[^.;]{0,40}?\\bto\\s+(?:~?[\\d,]+\\+?\\s+)?(?:[\\w&\'-]+\\s+){0,2}(stores|doors|states|markets)\\b',
+  'city[- ]by[- ]city', 'new cities',
+  // state codes ("into NY", "into CA, CO, FL", "FL rollout") only right after the verb or before "rollout" —
+  // never after skipped words, where "in", "or", "me" are just words
+  '(expan(d|ds|ded|ding|sion)\\s+((in)?to|across)|roll(ed|ing|s)?( out)?\\s+(to|in|into|across)|entered|entering|enters|launch(ed|es|ing)?\\s+(in|into))\\s+' + STATE_CODES,
+  STATE_CODES + '\\s+roll-?outs?',
+  '(retail|national|nationwide|store|grocery|regional|statewide)\\s+roll-?outs?',
+  'roll-?outs?\\s+(to|into|across|at|in)\\s+' + WHERE,
+  'new (retail (partners?|accounts?|doors|chains?|distribution)|distribution|markets?|states|stores|doors|accounts)\\b',
+  '(add|added|adding|adds) [\\d,]+\\+? (?:[A-Za-z-]+ ){0,2}(stores|doors|accounts|retailers|locations|states|markets)\\b',
+  'launch(ed|es|ing)?\\b[^.;]{0,40}?\\b(in|at|into|on) (?:all |the )?(?:~?[\\d,]+\\+? (?:[\\w&\'-]+ ){0,2}(stores|doors)\\b|(?:' + SHOP_NAMES + ')\\b)',
+  '(entered|entering|enters|into) (?:~?[\\d,]+\\+? )?(?:' + SHOP_NAMES + ')\\b',
+  '(?:' + SHOP_NAMES + ') (launch|roll-?out|expansion|debut)\\b',
+  'going national',
+  '(expand\\w*|grow\\w*|roll\\w* out|launch\\w*) (in|into|to) \\d+ (more |new )?states',
+  '\\d+ new (states|markets)',
+].join('|') + ')', 'gi')
+
+// A launch's clause runs to a ";" or to a "." that ends a sentence (not
+// "U.S.", "Inc.", "Jan." or a period before a lowercase word or a number).
+const ABBR = /(^|\s)(inc|co|corp|ltd|llc|st|mt|dr|no|vs|mr|mrs|ms|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|[a-z](\.[a-z])+)$/i
+function clauseEnd(t: string, from: number): number {
+  for (let i = from; i < t.length; i++) {
+    if (t[i] === ';') return i
+    if (t[i] === '.' && /^\s+[A-Z]/.test(t.slice(i + 1, i + 3)) && !ABBR.test(t.slice(Math.max(0, i - 12), i))) return i
+  }
+  return t.length
+}
+function clauseStart(t: string, at: number): number {
+  for (let i = at - 1; i >= 0; i--) {
+    if (t[i] === ';') return i + 1
+    if (t[i] === '.' && /^\s+[A-Z]/.test(t.slice(i + 1, i + 3)) && !ABBR.test(t.slice(Math.max(0, i - 12), i))) return i + 1
+  }
+  return 0
+}
+
+// The first launch in the write-up that isn't history. Its year is the
+// first one after it in the same clause ("expanded into Walmart (1,200
+// stores) in 2016", "into Walmart since 2015"), else one just before it
+// ("In 2016 it expanded…") that isn't a founding year ("(founded 2014) is
+// rolling out…"); a year before last year makes it the brand's past.
+export function launchIn(text: string, now: Date = new Date()): string | null {
+  const t = String(text ?? '')
+  for (const m of Array.from(t.matchAll(LAUNCH))) {
+    const at = m.index ?? 0
+    const end = at + m[0].length
+    const after = t.slice(end, clauseEnd(t, end)).match(/\b(19|20)\d{2}\b/)
+    let year = after ? Number(after[0]) : null
+    if (year == null) {
+      const before = t.slice(Math.max(clauseStart(t, at), at - 30), at)
+      const ys = Array.from(before.matchAll(/\b(19|20)\d{2}\b/g)).filter(y => !/(founded|founding|est\.?|established|started|born|since)\s*(in\s*)?$/i.test(before.slice(0, y.index)))
+      if (ys.length) year = Number(ys[ys.length - 1][0])
+    }
+    if (year != null && year < now.getUTCFullYear() - 1) continue
+    return m[0].trim()
+  }
+  return null
+}
 
 export function scoreFind(f: {
   priority: 'top' | 'middle' | 'low' | 'skip'
@@ -116,8 +214,15 @@ export function scoreFind(f: {
   text?: string | null
   giant?: string | null
   hasParent?: boolean
+  // What the brand is: its name and the find's write-up, never our pitch
+  // idea. Read for the student fit and launches; `text` (write-up +
+  // pitch) for the rest, as before.
+  name?: string | null
+  writeUp?: string | null
+  now?: Date // for "a launch years ago isn't growth" (launchIn)
 }): FindScore {
   const t = String(f.text ?? '')
+  const writeUp = String(f.writeUp ?? '').trim()
   const ev = readFind(t)
   const sign = (s: string) => String(f.signals ?? '').split(',').map(x => x.trim()).includes(s)
   const reasons: FindScore['reasons'] = []
@@ -150,8 +255,14 @@ export function scoreFind(f: {
   else if (AUDIENCE.test(t)) add(null, 'popular with students, no sponsorship yet', 6)
   else add(false, 'no college / music spend found', 0)
 
+  // Fits a student's day (student-fit.ts) — the write-up, and the name
+  // for energy ("Raze Energy"); "isn't on file" only when there's no write-up.
+  reasons.push(studentReason(studentUse(writeUp, f.name), !!writeUp))
+
+  const launch = launchIn(writeUp, f.now)
   if (GROWTH.test(t)) add(true, 'growing fast', 10)
+  else if (launch) add(true, 'growing fast (“' + launch + '”)', 10)
   if (sign('genz')) add(true, 'aims at 18–24', 5)
 
-  return { score: Math.max(0, Math.min(100, reasons.reduce((n, r) => n + r.points, 0))), reasons }
+  return { score: capAt100(reasons), reasons }
 }

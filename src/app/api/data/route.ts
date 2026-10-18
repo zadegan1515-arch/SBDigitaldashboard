@@ -59,6 +59,8 @@ import { findLinkedInPeople, logLinkedInPerson, undoLinkedInLog, checkNewPerson 
 import { isLogStage } from '@/lib/li-log'
 import { rollWindow, findUnsent, planCarry, carryOrder, carryTimes, type Unsent, type CarryFacts, type CarryTier, type Moved } from '@/lib/carry'
 import { BANK_KEY, bankSize, cleanBank, addToBank, removeFromBank, putBack, handSpent, composeBank, planWeeks, weekRooms, spreadWeek, seeded, type BankState, type BankCand } from '@/lib/week-bank'
+import { reachAgainOf, AGAIN_FROM_DAYS, AGAIN_DUE_DAYS, type Again } from '@/lib/reach-again'
+import { personWhere, basedAbroad } from '@/lib/abroad'
 import { workNeed, dueDays } from '@/lib/planned-first'
 import { searchHit, type SearchHit } from '@/lib/brand-search'
 import { gradeDiscovery, gradeFromFit } from '@/lib/discover-grade'
@@ -83,6 +85,10 @@ import { CHOSEN_KEY, readChosenIds, noteChosenIds } from '@/lib/chosen'
 import { stopIndex, stoppedMatch, stopWords, stopKeys } from '@/lib/do-not-contact'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import { isAccepted, acceptedWhen, acceptedStage } from '@/lib/accepted'
+import {
+  talksState, suggestTalks, isTalksPerson, talksPersonStage, stageRank, talksJourney, compareTalks, cleanLink, sentenceCount, missingFields,
+  OVERVIEW_MAX_SENTENCES, OVERVIEW_MAX_CHARS, IDEA_MAX_CHARS, NOTE_MAX_CHARS, type TalksState,
+} from '@/lib/in-talks'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
   listAttendees, listDupCandidates, mergeAttendees, deleteAttendee, importAttendees, segmentsOverview,
@@ -138,6 +144,8 @@ const FIRST_MESSAGE_MAX = 600
 // weekly-limit warning or asks to verify the account, drop this back
 // to 10 for a week.
 const DAILY_SEND_LIMIT = 30
+// A deal's stages, in order (the Deals board, Results, In talks → Deal stage).
+const DEAL_STAGES = ['conversation', 'proposal', 'verbal', 'closed', 'lost'] as const
 
 // Vercel functions run in UTC, so a naive setHours(0,0,0,0) makes "today"
 // start at 7 or 8pm the previous evening for anyone on the east coast —
@@ -690,6 +698,17 @@ function wasInvited(t: { sentAt: Date | null; status: string }): boolean {
 const INVITED_WHERE: Prisma.TargetWhereInput = {
   OR: [{ sentAt: { not: null } }, { status: { in: ['sent', 'accepted', 'replied', 'converted'] } }],
 }
+// isReached as a query: an invite ever, an accept or reply, a hand or machine
+// email. The Reached tag (reachedBrands) and the page's Outreach filter
+// ("Reached out / Not reached out") both read it, so they always agree.
+const REACHED_WHERE: Prisma.TargetWhereInput = {
+  OR: [
+    { sentAt: { not: null } },
+    { status: { in: ['accepted', 'replied', 'converted'] as TargetStatus[] } },
+    { emailedAt: { not: null } },
+    { emails: { some: SENT_EMAIL } },
+  ],
+}
 
 // A brand we have already reached out to. Leo's rule: once an invite has
 // gone to anyone there, the brand stops being offered as something to
@@ -1196,6 +1215,36 @@ async function secondSittingOn(ids: string[], day: string, extras: ExtraDays): P
   return ids.filter(id => on.has(id))
 }
 
+// People outside the US (Leo, Oct 18 2026: skip them "unless the company is
+// based outside the us" — src/lib/abroad.ts): a region in their title or
+// where they are. One test for the queue's own picks (queueBrandTargets and
+// its preview), Reach out again and the queue check's ⚠. Whether the company
+// is based abroad is read from its hq, else where its people on file (an
+// email or a LinkedIn) are.
+const ABROAD_PROBLEM = 'Works outside the US (the company is based in the US)'
+type AbroadPerson = { title: string | null; location?: string | null }
+function abroadTest(
+  b: { hq?: string | null; contacts: Array<{ location?: string | null; email?: string | null; linkedinUrl?: string | null }> },
+  names: string[],
+): (p: AbroadPerson) => boolean {
+  const onFile = b.contacts.filter(c => c.email || c.linkedinUrl)
+  if (basedAbroad({ hq: b.hq ?? null }, onFile)) return () => false
+  return p => personWhere(p, names) === 'abroad'
+}
+// The same test for the people of these brands, read in one go (the queue
+// check's ⚠ on Today's list for Zach, the LinkedIn tab and Leave out).
+async function loadAbroadCheck(brandIds: string[]): Promise<(brandId: string, contactId: string, title: string | null) => boolean> {
+  const ids = [...new Set(brandIds.filter(Boolean))]
+  if (!ids.length) return () => false
+  const bs = await prisma.brand.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true, aka: true, hq: true, contacts: { select: { id: true, location: true, email: true, linkedinUrl: true } } },
+  })
+  const tests = new Map(bs.map(b => [b.id, abroadTest(b, brandNames(b))]))
+  const loc = new Map(bs.flatMap(b => b.contacts.map(c => [c.id, c.location] as [string, string | null])))
+  return (brandId, contactId, title) => !!tests.get(brandId)?.({ title, location: loc.get(contactId) ?? null })
+}
+
 // Who queueBrandTargets WOULD put in play for this brand, without writing
 // anything: people already waiting in the pool, shelved people it would
 // revive, then new picks up to the brand's thread count — same order
@@ -1249,16 +1298,19 @@ function previewBrandPicks(
   // go counts — not people already invited (queueBrandTargets' rule).
   const chosen = opts.chosen ?? opts.queue?.q.chosen ?? lastChosen
   const flagged = (title: string | null) => !!personProblem(title, names)
+  // Outside the US at a company based in the US: never the system's pick,
+  // waiting or new (queueBrandTargets' rule); someone chosen still goes.
+  const isAbroad = abroadTest(b, names)
+  const onFileById = new Map(b.contacts.filter(c => c.email || c.linkedinUrl).map(c => [c.id, c]))
+  const abroadT = (t: PlanBrand['targets'][number]) => isAbroad({ title: t.contact.title, location: onFileById.get(t.contactId)?.location ?? null })
   const targeted = new Set(b.targets.map(t => t.contactId))
-  const freshAll = reachable.filter(c => !targeted.has(c.id))
+  const freshAll = reachable.filter(c => !targeted.has(c.id) && !isAbroad(c))
   const capShelved = b.targets.filter(t => t.shelved && t.shelvedHow === 'cap' && ['queued', 'drafted'].includes(t.status) && !marked(t))
   const holdFlagged = !finishingSitting(b, day, extras) &&
-    (liveAll.some(t => ['queued', 'drafted'].includes(t.status) && !flagged(t.contact.title)) ||
-      capShelved.some(t => !flagged(t.contact.title)) || freshAll.some(c => !flagged(c.title)))
-  const live = holdFlagged
-    ? liveAll.filter(t => !(['queued', 'drafted'].includes(t.status) && !(t.queuedFor && t.queuedFor >= dayStart) &&
-        flagged(t.contact.title) && !chosen.has(t.id)))
-    : liveAll
+    (liveAll.some(t => ['queued', 'drafted'].includes(t.status) && !flagged(t.contact.title) && !abroadT(t)) ||
+      capShelved.some(t => !flagged(t.contact.title) && !abroadT(t)) || freshAll.some(c => !flagged(c.title)))
+  const pooledHere = (t: PlanBrand['targets'][number]) => ['queued', 'drafted'].includes(t.status) && !(t.queuedFor && t.queuedFor >= dayStart)
+  const live = liveAll.filter(t => !(pooledHere(t) && !chosen.has(t.id) && ((holdFlagged && flagged(t.contact.title)) || abroadT(t))))
   // On a later day, people already in TODAY's queue are going out today,
   // not that day — they show on today's column. Counting them here too
   // put the same three people on two days.
@@ -1287,7 +1339,7 @@ function previewBrandPicks(
   }
   const room = work - live.length
   const revivable = chosenFirst(sortPicks(capShelved
-    .filter(t => !(holdFlagged && flagged(t.contact.title) && !chosen.has(t.id)))
+    .filter(t => chosen.has(t.id) || !((holdFlagged && flagged(t.contact.title)) || abroadT(t)))
     .map(asPick), names)
     .map(x => x.t), chosen)
     .slice(0, room)
@@ -1404,7 +1456,7 @@ function reasonText(reason: string | null | undefined, ctx: ReasonCtx = {}): str
     case 'passedtoday': return 'Passed for today.'
     case 'leftout': return 'In today’s list already — its people were left out, so nobody more goes today.'
     case 'reached': return `Already reached out${on(ctx.firstAt)}. Only brands nobody has heard from are picked — add it by hand to go again.`
-    case 'resting': return `Reached out${on(ctx.firstAt)} — it rests two weeks${ctx.restUntil ? `, until ${dayLabel(ctx.restUntil)}` : ''}.`
+    case 'resting': return `Reached out${on(ctx.firstAt)} — it rests a week${ctx.restUntil ? `, until ${dayLabel(ctx.restUntil)}` : ''}.`
     case 'giant': return `A giant${ctx.giant ? ` (${ctx.giant})` : ''} — held back for now. Add anyway to send it.`
     case 'dayfull': return `That day already has ${PLAN_DAY_MAX} brands pinned.`
     case 'notfound': return 'Brand not found.'
@@ -2479,7 +2531,7 @@ function planBrandRow(b: PlanBrand, ctx: PlanRowCtx) {
     : status === 'donotemail' ? 'Marked do-not-email'
     : status === 'notus' ? 'Not sold in the US — ruled out'
     : status === 'inconversation' ? `Replied${rc.repliedAt ? ' ' + shortDate(rc.repliedAt) : ''} · in talks`
-    : status === 'resting' ? `Reached out${rc.firstAt ? ' ' + shortDate(rc.firstAt) : ''} · rests until ${gate?.until ? dayLabel(gate.until) : 'two weeks on'}`
+    : status === 'resting' ? `Reached out${rc.firstAt ? ' ' + shortDate(rc.firstAt) : ''} · rests until ${gate?.until ? dayLabel(gate.until) : 'a week on'}`
     : pinnedOn ? `On ${dayLabel(pinnedOn)} already`
     : inTodayQueue && action !== 'none' ? `${inTodayQueue} in today's queue — Add moves them to ${dayLabel(ctx.date)}`
     // An automatic row on a day (lock-days): it may change until locked.
@@ -2490,7 +2542,9 @@ function planBrandRow(b: PlanBrand, ctx: PlanRowCtx) {
     : status === 'reached' ? `${rc.sentAt ? 'Invited' : 'Emailed'}${lastTouch ? ' ' + shortDate(lastTouch) : ''} · already reached`
     : going > 0 ? `${going} would go out`
     : 'Nobody would go out'
-  return { id: b.id, name: b.name, category: b.category, externalId: b.externalId, label, pinnedOn, shownOn, status, action, text, going, inTodayQueue, giant: status === 'giant' }
+  // reached = the Reached tag's rule (isReached) — the page's Outreach
+  // filter (Reached out / Not reached out).
+  return { id: b.id, name: b.name, category: b.category, externalId: b.externalId, label, pinnedOn, shownOn, status, action, text, going, inTodayQueue, giant: status === 'giant', reached }
 }
 
 // A day's Fill box (suggestForDay): open brands that could go out that
@@ -2675,15 +2729,20 @@ async function recentAcceptRates(): Promise<AcceptRates> {
 // computed on the fly (accept rates and reachable people move daily, so
 // nothing is stored). `Target.fitScore` is the per-person score — a
 // different thing; the brand's is `fit` in every response.
+// about / topProducts / notes: what the brand says it is, for the
+// student fit (student-fit.ts) — required, so a read that leaves them out
+// fails tsc instead of scoring the brand lower on one page than another.
 const FIT_SELECT = {
   liMembers: true, salesCents: true, fundingCents: true, lastRoundAt: true, usStatus: true,
   sponsorsCollege: true, bizStatus: true, acquiredBy: true, researchedAt: true,
+  about: true, topProducts: true, notes: true,
 } as const
 type FitFacts = {
   name: string; aka: string | null; category: string | null; tier: string | null; workPeople: number | null
   liMembers: number | null; salesCents: bigint | null; fundingCents: bigint | null; lastRoundAt: Date | null
   usStatus: string | null; sponsorsCollege: boolean | null; bizStatus: string | null; acquiredBy: string | null
   researchedAt: Date | null
+  about: string | null; topProducts: string | null; notes: string | null
 }
 function centsNum(v: bigint | number | null | undefined): number | null {
   return v == null ? null : Number(v)
@@ -2701,7 +2760,7 @@ function brandFit(b: FitFacts, reachable: number, rates: AcceptRates | null, now
     usStatus: b.usStatus, sponsorsCollege: b.sponsorsCollege, bizStatus: b.bizStatus, acquiredBy: b.acquiredBy,
     researchedAt: b.researchedAt,
     reachable, need: workNeed({ ...b, big: isBigBrand(b), top: topCat(b.category) }), acceptRate: rateOrNull(rates, b.category), priority: categoryPriority(b.category),
-    giant: giantOf(b), now,
+    giant: giantOf(b), name: b.name, about: b.about, topProducts: b.topProducts, notes: b.notes, now,
   })
 }
 // Who a Best fit day may pick: a brand nobody there has been reached at
@@ -3146,6 +3205,8 @@ type BankRow = {
   rank: number; id: string; name: string; category: string | null; tier: string | null
   fit: number; label: ContactsLabel; going: number; people: PreviewPerson[]; big: boolean
   how: 'hand' | 'auto'; addedAt: string | null
+  // Reached out before (isReached — the Reached tag's rule): only a hand add can be.
+  reached: boolean
   where: 'day' | 'today' | 'waiting' | 'cant'; day: string | null; why: string | null
   linkedinUrl: string | null; website: string | null; externalId: string | null
 }
@@ -3200,7 +3261,7 @@ function buildBank(ctx: BankCtx, state: BankState, opts: { day?: string } = {}) 
     return {
       rank: i + 1, id: b.id, name: b.name, category: b.category, tier: b.tier,
       fit: c.fit, label: x.label, going: x.people.length, people: x.people.slice(0, 4), big: isBigBrand(b),
-      how: c.how, addedAt: handAt.get(b.id) ?? null,
+      how: c.how, addedAt: handAt.get(b.id) ?? null, reached: isReached(b),
       where, day: where === 'day' ? pinned : null,
       why: where === 'cant' ? reasonText(x.refusal ?? x.reason ?? 'exhausted', reasonCtx(b, ctx.q)) : null,
       linkedinUrl: b.linkedinUrl, website: b.website, externalId: b.externalId,
@@ -3261,6 +3322,133 @@ function weekColumns(keys: string[], cur: any, marks: Record<string, ListDayMark
 }
 
 // ---------------------------------------------------------------
+// Outreach → Week plan → Reach out again (src/lib/reach-again.ts)
+// ---------------------------------------------------------------
+// Leo, Oct 18 2026: "recommend for me to reach out to brands again if
+// there are decision makers who i did not reach out to yet … it should be
+// around 1 to 2 weeks later". A brand reached before, nobody there
+// answered, a week or more since the last outreach, and someone who
+// decides there never contacted. Hand only, like everything for a brand
+// already reached: the list recommends, Leo's click puts it on a day.
+
+// What the roster read leaves out, for the brands asked about: a deal, a
+// call booked or put in talks by hand (someone replied), and Zach's messages
+// to people who accepted.
+type AgainExtras = { deals: Set<string>; talks: Set<string>; dms: Map<string, Date[]> }
+async function loadAgainExtras(brandIds: string[]): Promise<AgainExtras> {
+  const ids = brandIds.length ? brandIds : ['-']
+  const [deals, calls, added, dms] = await Promise.all([
+    prisma.deal.findMany({ where: { brandId: { in: ids } }, select: { brandId: true }, distinct: ['brandId'] }),
+    prisma.target.findMany({ where: { brandId: { in: ids }, OR: [{ callBookedAt: { not: null } }, { callAt: { not: null } }] }, select: { brandId: true }, distinct: ['brandId'] }),
+    prisma.brand.findMany({ where: { id: { in: ids }, talksAddedAt: { not: null } }, select: { id: true } }),
+    prisma.target.findMany({ where: { brandId: { in: ids }, OR: [{ dmSentAt: { not: null } }, { nudgedAt: { not: null } }] }, select: { brandId: true, dmSentAt: true, nudgedAt: true } }),
+  ])
+  const dm = new Map<string, Date[]>()
+  for (const t of dms) dm.set(t.brandId, [...(dm.get(t.brandId) ?? []), ...[t.dmSentAt, t.nudgedAt].filter((x): x is Date => !!x)])
+  return {
+    deals: new Set(deals.map(d => d.brandId)),
+    talks: new Set([...calls.map(c => c.brandId), ...added.map(a => a.id)]),
+    dms: dm,
+  }
+}
+// Someone at the brand replied (Leo, Oct 18 2026: "if someone has replied
+// then we prob shouldnt reach out to their company again"): a reply logged
+// anywhere, a no, someone who doesn't want to continue, a call booked or the
+// brand put in talks. An accept alone doesn't count.
+function repliedAtBrand(b: PlanBrand, ex: AgainExtras): boolean {
+  return b.targets.some(t => ['replied', 'converted', 'declined'].includes(t.status) || !!t.repliedAt) ||
+    b.contacts.some(c => !!c.doNotContactAt) || ex.talks.has(b.id)
+}
+
+// The brand's case, read from the rows loadPlanBrands gives (+ the extras).
+function againOf(b: PlanBrand, opts: { today: string; q: QueueCtx; ex: AgainExtras; rates?: AcceptRates | null }): Again & { basedAbroad?: boolean } {
+  const names = brandNames(b)
+  const contacts = b.contacts.map(c => ({
+    id: c.id, name: c.name, title: c.title, isDecisionMaker: c.isDecisionMaker,
+    reachable: isReachable(c),
+    stopped: !!c.doNotContactAt || !!stoppedMatch(lastStopIx, { ...c, brandId: b.id }),
+    flagged: !!personProblem(c.title, names),
+    where: personWhere({ title: c.title, location: c.location }, names),
+  }))
+  const targets = b.targets.map(t => ({
+    contactId: t.contactId, status: t.status, shelved: t.shelved, shelvedHow: t.shelvedHow,
+    sentAt: t.sentAt, emailedAt: t.emailedAt, emailSentAt: t.emails?.[0]?.sentAt ?? null, updatedAt: t.updatedAt,
+  }))
+  const f = opts.rates !== undefined ? planBrandFit(b, opts.rates) : null
+  const off = !!b.stoppedAt || !!b.passedAt || b.doNotEmail || b.usStatus === 'no' || passedNow(b) ||
+    heldGiant(b, opts.q) || !!f?.ruledOut || !!f?.bizNote
+  // The queue's own test (abroadTest): based abroad by its hq, else by where
+  // its people on file are.
+  const abroad = basedAbroad({ hq: b.hq }, b.contacts.filter(c => c.email || c.linkedinUrl))
+  const a = reachAgainOf({
+    contacts, targets, today: opts.today, answered: repliedAtBrand(b, opts.ex), deal: opts.ex.deals.has(b.id), off,
+    alsoAt: opts.ex.dms.get(b.id) ?? [], basedAbroad: abroad,
+  })
+  return { ...a, basedAbroad: abroad }
+}
+// How many of them go: the brand's opening number (Leo's Work number,
+// else 3 — 4 at an established brand or a Top category's, 10 at a big
+// company), as a first outreach would.
+function againCount(b: PlanBrand): number {
+  return b.workPeople ?? recommendWorkPeople(b, b.contacts.filter(isReachable), true)
+}
+type AgainNo = Extract<Again, { ok: false }>
+function againWhyText(a: Again): string {
+  if (a.ok) return ''
+  const no = a as AgainNo
+  switch (no.why) {
+    case 'never': return 'Never reached out to — it goes out the usual way.'
+    case 'answered': return 'Someone there replied — we don’t reach out to the company again.'
+    case 'deal': return 'There’s a deal with them.'
+    case 'off': return 'Set aside (archived, do not email, not in the US, on a Pass or held back as a giant).'
+    case 'soon': return `Reached out to less than a week ago — again from ${no.from ? dayLabel(no.from) : 'next week'}.`
+    case 'nobody': return 'Every decision maker there has been reached already.'
+  }
+  return ''
+}
+type AgainRow = {
+  id: string; name: string; category: string | null; tier: string | null; fit: number; label: ContactsLabel
+  state: 'due' | 'late'; last: string; daysSince: number; dueBy: string
+  fresh: Array<{ id: string; name: string; title: string | null }>; freshTotal: number; going: number
+  invited: number; emailed: number; pinnedOn: string | null; inToday: boolean; big: boolean
+  // Accepted and on Zach's list (no reply yet); decision makers left out for
+  // working outside the US; the company is based outside the US.
+  accepted: number; abroad: number; basedAbroad: boolean
+  linkedinUrl: string | null; website: string | null; externalId: string | null
+}
+// Every brand to reach again: late first (longest waiting), then due,
+// best Brand Fit first within each.
+function againRows(brands: PlanBrand[], opts: { today: string; ex: AgainExtras; q: QueueCtx; rates: AcceptRates | null; plan: OutreachPlan }): AgainRow[] {
+  const pinnedOn = pinnedDays(opts.plan, opts.today)
+  const dayStart = startOfLocalDay()
+  const rows: AgainRow[] = []
+  for (const b of brands) {
+    if (!isReached(b)) continue
+    const a = againOf(b, { today: opts.today, ex: opts.ex, q: opts.q, rates: opts.rates })
+    if (!a.ok) continue
+    const f = planBrandFit(b, opts.rates)
+    const n = againCount(b)
+    const pin = pinnedOn.get(b.id) ?? null
+    rows.push({
+      id: b.id, name: b.name, category: b.category, tier: b.tier, fit: f.score, label: contactLabel(b, b.contacts),
+      state: a.state, last: a.last, daysSince: a.daysSince, dueBy: a.dueBy,
+      fresh: a.fresh.slice(0, 6).map(c => ({ id: c.id, name: c.name, title: c.title })), freshTotal: a.fresh.length,
+      going: Math.min(n, a.fresh.length),
+      invited: b.targets.filter(wasInvited).length,
+      emailed: b.targets.filter(t => t.emailedAt || t._count.emails > 0).length,
+      pinnedOn: pin && pin > opts.today ? pin : null,
+      inToday: pin === opts.today || b.targets.some(t => !!t.queuedFor && t.queuedFor >= dayStart && !t.sentAt && ['queued', 'drafted'].includes(t.status)),
+      big: isBigBrand(b),
+      accepted: b.targets.filter(t => t.status === 'accepted').length,
+      abroad: a.abroad, basedAbroad: !!a.basedAbroad,
+      linkedinUrl: b.linkedinUrl, website: b.website, externalId: b.externalId,
+    })
+  }
+  return rows.sort((x, y) => Number(y.state === 'late') - Number(x.state === 'late') ||
+    (x.state === 'late' ? y.daysSince - x.daysSince : 0) || y.fit - x.fit || x.name.localeCompare(y.name))
+}
+
+// ---------------------------------------------------------------
 // LinkedIn draft templates — no model call, no spend, never blocks
 // ---------------------------------------------------------------
 
@@ -3314,6 +3502,48 @@ function templateLinkedInDraft(target: { brand: any; contact: any }, variant: st
     `Do you have 15 minutes for a quick chat later this week? ` +
     `I have also attached our deck for you to check out in the meantime. Thanks!`
   return { connectionNote, firstMessage, nudge }
+}
+
+// Leo's first LinkedIn message is the drafts' "First DM" too (Oct 18 2026:
+// "yes" — the LinkedIn tab, the brand page and their Copy DM used to show
+// the old "Thanks for connecting…" text above). Drafts keep what was
+// stored; every read that hands drafts to the page swaps in his man /
+// woman message, filled, unless someone really rewrote the draft. The
+// same rule decides a card's own text on Zach's list (zachTodo's dmOwn).
+type FirstTemplates = { man: string; woman: string }
+async function readFirstTemplates(): Promise<FirstTemplates> {
+  const [man, woman] = await Promise.all([readHandTemplate('firstB'), readHandTemplate('firstBW')])
+  return { man: man.body, woman: woman.body }
+}
+function firstFill(tpl: FirstTemplates, variant: string, brand: any, contact: any) {
+  return handFillText(variant === 'woman' ? tpl.woman : tpl.man,
+    { name: contact?.name ?? '', brandName: brand?.name ?? '', title: contact?.title ?? null })
+}
+// Own = edited by hand and not any stock text: the old queue text, or Leo's
+// message for a man or a woman (the LinkedIn tab saves a box on blur, so an
+// untouched box comes back "edited" holding the template it showed).
+function ownFirstMessage(d: any, brand: any, contact: any, tpl: FirstTemplates) {
+  const text = String(d?.firstMessage ?? '').trim()
+  if (!d?.editedByHuman || !text || !brand || !contact) return false
+  const stock = [
+    templateLinkedInDraft({ brand, contact }, d.variant).firstMessage,
+    firstFill(tpl, 'man', brand, contact),
+    firstFill(tpl, 'woman', brand, contact),
+  ]
+  return !stock.some(s => s.trim() === text)
+}
+// In place, on the drafts of each target (brand / contact from the target,
+// or given when the target doesn't carry them — getBrand's).
+function leoFirstDrafts(targets: any[], tpl: FirstTemplates, brand?: any) {
+  for (const t of targets ?? []) {
+    const b = brand ?? t?.brand
+    for (const d of t?.drafts ?? []) {
+      if (!d || (d.variant !== 'man' && d.variant !== 'woman')) continue
+      if (!b || !t.contact || ownFirstMessage(d, b, t.contact, tpl)) continue
+      d.firstMessage = firstFill(tpl, d.variant, b, t.contact)
+    }
+  }
+  return targets
 }
 
 // Every target headed for the Today queue arrives pre-drafted, so a
@@ -3524,7 +3754,7 @@ async function reconcileBrandTargets(brandId: string, perBrandArg?: number) {
 
 const COMBINE_LAST_KEY = 'parentCombineLast'
 // Everything that hangs off a brand (Partner, one per brand, apart).
-const COMBINE_TABLES = ['contact', 'target', 'deal', 'showSponsor', 'document', 'activation', 'boardVisit', 'boardAccessRequest', 'opsMessage', 'discoveredBrand'] as const
+const COMBINE_TABLES = ['contact', 'target', 'deal', 'showSponsor', 'document', 'activation', 'boardVisit', 'boardAccessRequest', 'opsMessage', 'discoveredBrand', 'brandNote'] as const
 type CombineTable = (typeof COMBINE_TABLES)[number]
 
 const nameWords = (s: unknown) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -4348,6 +4578,19 @@ const HAND_FIRST_TEMPLATE_DEFAULT = {
     'I have also attached our deck for you to check out in the meantime. Thanks!',
 }
 
+// The first LinkedIn message ("Text them on LinkedIn"), one for a man and
+// one for a woman — the rep picks, as with the invite notes; the site never
+// guesses gender. Leo, Oct 18 2026: "just make it the version b for man and
+// woman, get rid of version a" (a one-day A/B test was dropped; the keys
+// keep its B name). His text is the default, not a stand-in. The old single
+// template (handFirstDmTemplate, kind 'first') is no longer used.
+const HAND_FIRST_B_KEY = 'handFirstDmTemplateB'
+const HAND_FIRST_BW_KEY = 'handFirstDmTemplateBW'
+const FIRST_B_PITCH = "I'm Zach with SB Agency, we book top artist talent for fraternities and sororities across the country. " +
+  'Would love to chat more and see if (BRAND) is interested in activating at these events, or if we can help build out other college activations for you.'
+const HAND_FIRST_B_DEFAULT = { subject: '', body: "(NAME) – what's up man! " + FIRST_B_PITCH }
+const HAND_FIRST_BW_DEFAULT = { subject: '', body: 'Hey (NAME), great to meet you! ' + FIRST_B_PITCH }
+
 // The final reach-out ("Send the final reach-out"): LinkedIn, 10 days
 // after the first message when they haven't answered. Body only. A
 // stand-in until Leo saves his; a card someone edited keeps its own
@@ -4359,23 +4602,25 @@ const HAND_FINAL_TEMPLATE_STANDIN = {
     'I’d love to show you what we’re putting together this season. Happy to send the deck whenever it’s useful. Thanks!',
 }
 
-type HandTemplateKind = 'email' | 'dm' | 'first' | 'final'
+type HandTemplateKind = 'email' | 'dm' | 'first' | 'firstB' | 'firstBW' | 'final'
 function handTemplateKind(kind: any): HandTemplateKind {
-  return kind === 'dm' || kind === 'first' || kind === 'final' ? kind : 'email'
+  return kind === 'dm' || kind === 'first' || kind === 'firstB' || kind === 'firstBW' || kind === 'final' ? kind : 'email'
 }
 function handTemplateKey(kind: HandTemplateKind) {
   return kind === 'dm' ? HAND_DM_TEMPLATE_KEY : kind === 'first' ? HAND_FIRST_TEMPLATE_KEY
+    : kind === 'firstB' ? HAND_FIRST_B_KEY : kind === 'firstBW' ? HAND_FIRST_BW_KEY
     : kind === 'final' ? HAND_FINAL_TEMPLATE_KEY : HAND_TEMPLATE_KEY
 }
 
 // (NAME) or (FIRST NAME) -> first name, (BRAND) or (COMPANY) -> brand,
 // (TITLE) -> job title. Same as handFill in app.html.
+// [Name] / [Brand] work too (Leo writes them that way).
 function handFillText(text: string, p: { name: string; brandName: string; title: string | null }) {
   const first = String(p.name || '').trim().split(/\s+/)[0] || 'there'
   return String(text || '')
-    .replace(/\((?:first\s*)?name\)/gi, first)
-    .replace(/\((?:brand|company)\)/gi, p.brandName || '')
-    .replace(/\(title\)/gi, p.title || '')
+    .replace(/[(\[](?:first\s*)?name[)\]]/gi, first)
+    .replace(/[(\[](?:brand|company)[)\]]/gi, p.brandName || '')
+    .replace(/[(\[]title[)\]]/gi, p.title || '')
 }
 
 // The email Zach sends when they replied and want email. Leo pasted his
@@ -4398,7 +4643,7 @@ const HAND_EMAIL_TEMPLATE_DEFAULT = {
 
 async function readHandTemplate(kind: HandTemplateKind = 'email') {
   const key = handTemplateKey(kind)
-  if (kind === 'first') {
+  if (kind === 'first' || kind === 'firstB' || kind === 'firstBW') {
     const row = await prisma.setting.findUnique({ where: { key } })
     try {
       const v = row ? JSON.parse(row.value) : null
@@ -4406,7 +4651,8 @@ async function readHandTemplate(kind: HandTemplateKind = 'email') {
         return { subject: '', body: v.body as string, standIn: false, savedAt: v.savedAt ?? null, savedBy: v.savedBy ?? null }
       }
     } catch { /* fall through to Leo's default */ }
-    return { ...HAND_FIRST_TEMPLATE_DEFAULT, standIn: false, savedAt: null, savedBy: null }
+    const def = kind === 'firstB' ? HAND_FIRST_B_DEFAULT : kind === 'firstBW' ? HAND_FIRST_BW_DEFAULT : HAND_FIRST_TEMPLATE_DEFAULT
+    return { ...def, standIn: false, savedAt: null, savedBy: null }
   }
   const standIn = kind === 'dm' ? HAND_DM_TEMPLATE_STANDIN : kind === 'final' ? HAND_FINAL_TEMPLATE_STANDIN : HAND_TEMPLATE_STANDIN
   const row = await prisma.setting.findUnique({ where: { key } })
@@ -4751,6 +4997,51 @@ async function handWaitingIds(): Promise<Set<string>> {
 // The brand-facing Show Board link (what a brand is sent). SPONSOR_HOST only
 // when Leo has actually attached that domain in Vercel — otherwise its links
 // 404, so the fallback is the page on the deployment itself, which always works.
+// In talks (src/lib/in-talks.ts): which brands are in — a call booked or a
+// hand add, a removal wins over anything older — and which replied brands
+// to offer (+ Add). One read shared by listInTalks and listTalksToFill.
+async function talksMembership() {
+  const [calls, hand, replies] = await Promise.all([
+    prisma.target.findMany({ where: { OR: [{ callBookedAt: { not: null } }, { callAt: { not: null } }] }, select: { brandId: true, callBookedAt: true, createdAt: true } }),
+    prisma.brand.findMany({ where: { talksAddedAt: { not: null } }, select: { id: true } }),
+    prisma.target.findMany({
+      where: { OR: [{ status: { in: ['replied', 'converted'] } }, { repliedAt: { not: null } }] },
+      select: { brandId: true, repliedAt: true, updatedAt: true, contact: { select: { name: true, title: true } } },
+    }),
+  ])
+  const ids = [...new Set([...calls.map(c => c.brandId), ...hand.map(h => h.id), ...replies.map(r => r.brandId)])]
+  const brands = ids.length ? await prisma.brand.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true, category: true, kind: true, talksAddedAt: true, talksRemovedAt: true, stoppedAt: true },
+  }) : []
+  const callsBy = new Map<string, Date[]>()
+  // A call from before callBookedAt was kept counts from the row's creation
+  // (never its last change, or any later edit would undo a Take off).
+  for (const c of calls) callsBy.set(c.brandId, [...(callsBy.get(c.brandId) ?? []), c.callBookedAt ?? c.createdAt])
+  const repliesBy = new Map<string, typeof replies>()
+  for (const r of replies) repliesBy.set(r.brandId, [...(repliesBy.get(r.brandId) ?? []), r])
+  const states = new Map<string, TalksState>()
+  const onIds: string[] = []
+  const suggest: { id: string; name: string; category: string | null; repliedAt: string; who: string | null }[] = []
+  for (const b of brands) {
+    const st = talksState({ addedAt: b.talksAddedAt, removedAt: b.talksRemovedAt, callsBooked: callsBy.get(b.id) ?? [] })
+    if (st.on) { states.set(b.id, st); onIds.push(b.id); continue }
+    if (b.kind === 'person') continue
+    const rs = (repliesBy.get(b.id) ?? []).map(r => ({ at: r.repliedAt ?? r.updatedAt, who: r.contact.name + (r.contact.title ? ' — ' + r.contact.title : '') }))
+      .sort((x, y) => y.at.getTime() - x.at.getTime())
+    if (suggestTalks({ replies: rs.map(r => r.at), removedAt: b.talksRemovedAt, on: false, stopped: !!b.stoppedAt })) {
+      suggest.push({ id: b.id, name: b.name, category: b.category, repliedAt: rs[0].at.toISOString(), who: rs[0].who })
+    }
+  }
+  suggest.sort((x, y) => y.repliedAt.localeCompare(x.repliedAt))
+  return { onIds, states, suggest }
+}
+// Who wrote it, as the profile shows it: a Claude session's dashboard token
+// reads as "Claude".
+function talksBy(user: unknown): string | null {
+  return user === 'CLI' ? 'Claude' : user ? String(user) : null
+}
+
 function sponsorBoardUrl(): string {
   const host = (process.env.SPONSOR_HOST || '').trim()
   return host
@@ -5012,7 +5303,7 @@ const handlers: Record<string, Handler> = {
       },
     }) : []
     const today = startOfLocalDay()
-    const stopIx = await loadStopIndex()
+    const [stopIx, abroadOf] = await Promise.all([loadStopIndex(), loadAbroadCheck(brandIds)])
     const out = brands.map(b => {
       const queued = toSend.filter(t => t.brandId === b.id)
       const queuedIds = new Set(queued.map(t => t.contactId))
@@ -5024,7 +5315,9 @@ const handlers: Record<string, Handler> = {
           // Written to, or set aside on purpose (passed, withdrawn…): never offered.
           contacted: (!!t && (wasInvited(t) || ['passed', 'declined', 'dead', 'withdrawn'].includes(t.status))) ||
             // Said they don't want to continue (or a second copy of them).
-            !!c.doNotContactAt || !!stoppedMatch(stopIx, { ...c, brandId: b.id }),
+            !!c.doNotContactAt || !!stoppedMatch(stopIx, { ...c, brandId: b.id }) ||
+            // Outside the US at a company based in the US: never offered instead.
+            abroadOf(b.id, c.id, c.title),
           queued: !!t && !!t.queuedFor && t.queuedFor >= today && ['queued', 'drafted'].includes(t.status),
         }
       })
@@ -5033,7 +5326,8 @@ const handlers: Record<string, Handler> = {
         brandId: b.id, name: b.name,
         people: queued.map((t, i) => ({
           targetId: t.id, contactId: t.contactId, name: t.contact.name, title: t.contact.title,
-          linkedinUrl: t.contact.linkedinUrl, problem: flags[i].problem, better: flags[i].better,
+          linkedinUrl: t.contact.linkedinUrl,
+          problem: flags[i].problem ?? (abroadOf(b.id, t.contactId, t.contact.title) ? ABROAD_PROBLEM : null), better: flags[i].better,
         })),
       }
     })
@@ -5066,11 +5360,13 @@ const handlers: Record<string, Handler> = {
     const dayStart = startOfLocalDay()
     const rows = ids.length ? await prisma.target.findMany({
       where: { id: { in: ids }, status: { in: ['queued', 'drafted'] }, sentAt: null, queuedFor: { gte: dayStart } },
-      select: { id: true, status: true, queuedFor: true, contact: { select: { name: true, title: true } }, brand: { select: { name: true, aka: true } } },
+      select: { id: true, status: true, queuedFor: true, brandId: true, contactId: true, contact: { select: { name: true, title: true } }, brand: { select: { name: true, aka: true } } },
     }) : []
+    const abroadOf = await loadAbroadCheck(rows.map(t => t.brandId))
     const people = rows.map(t => ({
       targetId: t.id, name: t.contact.name, brand: t.brand.name,
-      problem: personProblem(t.contact.title, [t.brand.name, ...String(t.brand.aka ?? '').split(/[,;]/).map(x => x.trim())].filter(Boolean)),
+      problem: personProblem(t.contact.title, [t.brand.name, ...String(t.brand.aka ?? '').split(/[,;]/).map(x => x.trim())].filter(Boolean)) ??
+        (abroadOf(t.brandId, t.contactId, t.contact.title) ? ABROAD_PROBLEM : null),
     }))
     if (!confirm) return { preview: true, people, skipped: ids.length - rows.length }
     if (!rows.length) return { ok: true, left: 0, people: [] }
@@ -5822,6 +6118,9 @@ const handlers: Record<string, Handler> = {
       autoIds: autoLog && Array.isArray(autoLog[todayKey]) ? autoLog[todayKey].map(String) : [],
       newest,
     })
+    // People outside the US at a company based in the US (abroadTest): the
+    // same ⚠ as a flagged title on the rows still to send.
+    const todayAbroad = await loadAbroadCheck(todayList.filter((t: any) => !t.sentAt && ['queued', 'drafted'].includes(t.status)).map((t: any) => t.brandId))
 
     // "Ready if you have room" — the next WHOLE brands after today's list
     // (more-whole-brands), each with who it would put in play: Add to today
@@ -5872,11 +6171,14 @@ const handlers: Record<string, Handler> = {
     // build its "sent today" rows from listTargets({ status: 'sent' }),
     // which is capped at 200 and loses anyone who has already accepted
     // — so a quick accept made a send vanish from the day it went out.
-    const sentList = await prisma.target.findMany({
-      where: { sentAt: { gte: startOfDay } },
-      include,
-      orderBy: { sentAt: 'desc' },
-    })
+    const [sentList, firstTpl] = await Promise.all([
+      prisma.target.findMany({
+        where: { sentAt: { gte: startOfDay } },
+        include,
+        orderBy: { sentAt: 'desc' },
+      }),
+      readFirstTemplates(),
+    ])
 
     return {
       plannedSkipped, sentToday, cap: DAILY_SEND_LIMIT,
@@ -5893,12 +6195,13 @@ const handlers: Record<string, Handler> = {
       closedTo: closedToday?.to ?? null,
       // The queue check's flag on each person still to send (copy-flagged):
       // the LinkedIn tab shows the same ⚠ as Today's list for Zach.
-      targets: (await ensureTemplateDrafts(todayList)).map((t: any) => ['queued', 'drafted'].includes(t.status) && !t.sentAt
-        ? { ...t, problem: personProblem(t.contact?.title, [t.brand?.name, ...String(t.brand?.aka ?? '').split(/[,;]/).map((x: string) => x.trim())].filter(Boolean)) }
+      targets: leoFirstDrafts(await ensureTemplateDrafts(todayList), firstTpl).map((t: any) => ['queued', 'drafted'].includes(t.status) && !t.sentAt
+        ? { ...t, problem: personProblem(t.contact?.title, [t.brand?.name, ...String(t.brand?.aka ?? '').split(/[,;]/).map((x: string) => x.trim())].filter(Boolean)) ??
+            (todayAbroad(t.brandId, t.contactId, t.contact?.title ?? null) ? ABROAD_PROBLEM : null) }
         : t),
       more: [],
       moreBrands, openSpots, handSpots,
-      sentList: await ensureTemplateDrafts(sentList),
+      sentList: leoFirstDrafts(await ensureTemplateDrafts(sentList), firstTpl),
       labels,
     }
   },
@@ -5945,7 +6248,7 @@ const handlers: Record<string, Handler> = {
     // copy buttons must serve the current templates too — refresh any
     // never-hand-edited draft that predates them.
     await ensureTemplateDrafts(rows.filter(t => !['declined', 'dead', 'converted', 'passed'].includes(t.status)))
-    return rows
+    return leoFirstDrafts(rows, await readFirstTemplates())
   },
 
   async setTargetStatus({ targetId, status, actor, nextStep, followUpAt, clearFollowUp, clearSent, dmSent }: any) {
@@ -6100,12 +6403,22 @@ const handlers: Record<string, Handler> = {
       })
     }
 
+    leoFirstDrafts([{ brand: target.brand, contact: target.contact, drafts }], await readFirstTemplates())
     return drafts
   },
 
   // Any field left out stays as it is (Zach's list sends only the DM or
   // only the follow-up).
   async saveDraft({ draftId, connectionNote, firstMessage, nudge }: any) {
+    // A First DM saved as Leo's template (or the old queue text) is kept as
+    // empty = "follow the template", so it changes when he changes his.
+    if (typeof firstMessage === 'string' && firstMessage.trim()) {
+      const d = await prisma.draft.findUnique({ where: { id: draftId }, select: { variant: true, target: { select: { brand: { select: { name: true, category: true } }, contact: { select: { name: true, title: true } } } } } })
+      if (d && (d.variant === 'man' || d.variant === 'woman') &&
+          !ownFirstMessage({ variant: d.variant, firstMessage, editedByHuman: true }, d.target.brand, d.target.contact, await readFirstTemplates())) {
+        firstMessage = ''
+      }
+    }
     return prisma.draft.update({
       where: { id: draftId },
       // Human edits are the training signal for improving prompts.
@@ -7303,7 +7616,7 @@ const handlers: Record<string, Handler> = {
     const brand = await prisma.brand.findUnique({
       where: { id: brandId },
       include: {
-        _count: { select: { contacts: true, targets: true, shows: true, deals: true } },
+        _count: { select: { contacts: true, targets: true, shows: true, deals: true, brandNotes: true } },
         shows: { select: { valueCents: true } },
       },
     })
@@ -7316,6 +7629,7 @@ const handlers: Record<string, Handler> = {
       targets: brand._count.targets,
       shows: brand._count.shows,
       deals: brand._count.deals,
+      notes: brand._count.brandNotes,
       attachedCents,
     }
 
@@ -7336,7 +7650,7 @@ const handlers: Record<string, Handler> = {
     if (!fromId || !toId) throw new Error('Pick both brands')
     if (fromId === toId) throw new Error('That is the same brand')
     const [from, to] = await Promise.all([
-      prisma.brand.findUnique({ where: { id: fromId }, include: { partner: true, _count: { select: { contacts: true, targets: true, shows: true, deals: true, documents: true, activations: true, boardVisits: true } } } }),
+      prisma.brand.findUnique({ where: { id: fromId }, include: { partner: true, _count: { select: { contacts: true, targets: true, shows: true, deals: true, documents: true, activations: true, boardVisits: true, brandNotes: true } } } }),
       prisma.brand.findUnique({ where: { id: toId }, include: { partner: true } }),
     ])
     if (!from || !to) throw new Error('Brand not found')
@@ -7359,6 +7673,7 @@ const handlers: Record<string, Handler> = {
       shows: from._count.shows - dupShowIds.length, dupShows: dupShowIds.length,
       deals: from._count.deals, documents: from._count.documents,
       activations: from._count.activations, boardVisits: from._count.boardVisits,
+      notes: from._count.brandNotes,
     }
     if (!confirm) return { merged: false, summary }
 
@@ -7373,6 +7688,12 @@ const handlers: Record<string, Handler> = {
     for (const k of ['liMembers', 'liMembersAt', 'salesCents', 'fundingCents', 'lastRoundAt', 'usStatus', 'sponsorsCollege', 'sponsorNote', 'bizStatus', 'acquiredBy', 'researchedAt', 'researchNote'] as const) {
       if (to[k] == null && from[k] != null) fill[k] = from[k]
     }
+    // The In talks profile, fill-if-empty the same way: socials, and the
+    // overview / idea with who wrote them; a hand add the keeper lacks.
+    for (const k of ['instagramUrl', 'tiktokUrl'] as const) if (to[k] == null && from[k] != null) fill[k] = from[k]
+    if (to.overview == null && from.overview != null) Object.assign(fill, { overview: from.overview, overviewBy: from.overviewBy, overviewAt: from.overviewAt })
+    if (to.activationIdea == null && from.activationIdea != null) Object.assign(fill, { activationIdea: from.activationIdea, activationIdeaBy: from.activationIdeaBy, activationIdeaAt: from.activationIdeaAt })
+    if (from.talksAddedAt && (!to.talksAddedAt || from.talksAddedAt > to.talksAddedAt)) Object.assign(fill, { talksAddedAt: from.talksAddedAt, talksAddedBy: from.talksAddedBy })
     // The keeper answers to the duplicate's names from now on, so the
     // next capture or paste under the old name finds it instead of making
     // the brand again.
@@ -7395,6 +7716,7 @@ const handlers: Record<string, Handler> = {
       await tx.boardAccessRequest.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
       await tx.opsMessage.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
       await tx.discoveredBrand.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
+      await tx.brandNote.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
       // Partner is one-per-brand: move it only if the keeper has none.
       if (from.partner && !to.partner) {
         await tx.partner.update({ where: { brandId: fromId }, data: { brandId: toId } })
@@ -7697,6 +8019,7 @@ const handlers: Record<string, Handler> = {
       await ensureTemplateDrafts(withBrand)
       withBrand.forEach((w, i) => { unwritten[i].drafts = w.drafts; unwritten[i].status = w.status })
     }
+    leoFirstDrafts(brand.targets, await readFirstTemplates(), { name: brand.name, category: brand.category })
 
     const events = await prisma.targetEvent.findMany({
       where: { target: { brandId } },
@@ -7773,8 +8096,14 @@ const handlers: Record<string, Handler> = {
     const peopleMergeUndo = lastMerge && Date.now() - Date.parse(lastMerge.at) < 864e5
       ? { at: lastMerge.at, people: lastMerge.recs.map((r: any) => r.name) } : null
 
+    // In talks (the top tab): a call booked or a hand add, a removal wins.
+    const talks = talksState({
+      addedAt: brand.talksAddedAt, removedAt: brand.talksRemovedAt,
+      callsBooked: brand.targets.filter(t => t.callBookedAt || t.callAt).map(t => t.callBookedAt ?? t.createdAt),
+    })
+
     return {
-      brand: brandOut, events, money, fit, liHidden, samePeople, peopleMergeUndo,
+      brand: brandOut, events, money, fit, liHidden, samePeople, peopleMergeUndo, talks,
       // A big company works ten at a time, a Top category's brand four
       // (the Work menu's suggestion).
       big: isBigBrand(brand),
@@ -8582,6 +8911,10 @@ const handlers: Record<string, Handler> = {
     if (!brand) throw new Error('Brand not found')
     // The whole brand said they don't want to continue: not even "+ Person".
     assertNotStopped({ brand })
+    // People outside the US (abroadTest): read off everyone on file with an
+    // email or a LinkedIn, before the stop filter — as previewBrandPicks does.
+    const isAbroad = abroadTest(brand, brandNames(brand))
+    const locationOf = new Map(brand.contacts.map(c => [c.id, c.location]))
     if (brand.passedAt) throw new Error(`${brand.name} is passed — bring it back from its brand page first.`)
     // Nobody who said they don't want to continue, nor a second copy of them:
     // not picked fresh, and a row of theirs still waiting is never promoted.
@@ -8670,19 +9003,23 @@ const handlers: Record<string, Handler> = {
     // Only someone unflagged who could still go counts: people already
     // invited are no alternative (review fixes, Oct 13 2026).
     const flagged = (title: string | null) => !!personProblem(title, names)
+    // Outside the US at a company based in the US (Leo, Oct 18 2026): never
+    // picked — new or waiting in the pool, set aside next in line like a
+    // flagged title — unless chosen by hand; "+ Person" (force) is a click.
+    const abroadT = (t: (typeof brand.targets)[number]) => isAbroad({ title: t.contact.title, location: locationOf.get(t.contactId) ?? null })
     const chosen = await readChosen()
     const targeted = new Set(brand.targets.map(t => t.contactId))
-    const freshAll = brand.contacts.filter(c => !targeted.has(c.id))
+    const freshAll = brand.contacts.filter(c => !targeted.has(c.id) && (force || !isAbroad(c)))
     const capShelved = brand.targets.filter(t => t.shelved && t.shelvedHow === 'cap' && ['queued', 'drafted'].includes(t.status))
-    const holdFlagged = !force && !finishing && (pending.some(t => !flagged(t.contact.title)) ||
-      capShelved.some(t => !flagged(t.contact.title)) || freshAll.some(c => !flagged(c.title)))
+    const holdFlagged = !force && !finishing && (pending.some(t => !flagged(t.contact.title) && !abroadT(t)) ||
+      capShelved.some(t => !flagged(t.contact.title) && !abroadT(t)) || freshAll.some(c => !flagged(c.title)))
     // People chosen for a day's list go first and all go, past the number
     // too: the cut ranks a flagged or weaker title last, so it set aside
     // the person Leo queued (or Sent to the dashboard) and stamped the
     // buyers waiting beside them (review fix, Oct 13 2026). Only the
     // system's own picks are held to the number.
     const pooledAll = chosenFirst(sortPicks(pending.filter(t => !t.queuedFor || t.queuedFor < startOfDay).map(asPick), names).map(x => x.t), chosen)
-    const pooled = holdFlagged ? pooledAll.filter(t => !flagged(t.contact.title) || chosen.has(t.id)) : pooledAll
+    const pooled = pooledAll.filter(t => chosen.has(t.id) || ((!holdFlagged || !flagged(t.contact.title)) && (force || !abroadT(t))))
     const heldBack = pooledAll.filter(t => !pooled.includes(t))
     const promoteN = force ? Math.min(1, pooled.length)
       : finishing ? pooled.length
@@ -8744,7 +9081,7 @@ const handlers: Record<string, Handler> = {
     // purpose stays shelved until Leo promotes them. Best first (picks);
     // never the people just set aside above.
     const revivable = chosenFirst(sortPicks(capShelved
-      .filter(t => !nextInLine.includes(t) && !(holdFlagged && flagged(t.contact.title) && !chosen.has(t.id)))
+      .filter(t => !nextInLine.includes(t) && (chosen.has(t.id) || !((holdFlagged && flagged(t.contact.title)) || (!force && abroadT(t)))))
       .map(asPick), names)
       .map(x => x.t), chosen)
       .slice(0, room)
@@ -10433,14 +10770,7 @@ const handlers: Record<string, Handler> = {
   // reads it once and paints the tag wherever a brand shows (rbTag).
   async reachedBrands() {
     const rows = await prisma.target.findMany({
-      where: {
-        OR: [
-          { sentAt: { not: null } },
-          { status: { in: ['accepted', 'replied', 'converted'] as TargetStatus[] } },
-          { emailedAt: { not: null } },
-          { emails: { some: SENT_EMAIL } },
-        ],
-      },
+      where: REACHED_WHERE,
       select: {
         brandId: true, status: true, sentAt: true, emailedAt: true, repliedAt: true, updatedAt: true,
         emails: { where: SENT_EMAIL, select: { sentAt: true }, orderBy: { sentAt: 'desc' }, take: 1 },
@@ -10484,11 +10814,16 @@ const handlers: Record<string, Handler> = {
     const today = localDayKey()
     const weeks = planWeeks(today, k => isSendingKey(k, ctx.q.extras))
     const pick = weeks.find(w => w.which === week || w.start === week) ?? weeks[0]
-    const [marks, spreadLog] = await Promise.all([readListDayMarks(), readWeekSpreadLog()])
+    const [marks, spreadLog, ex] = await Promise.all([
+      readListDayMarks(), readWeekSpreadLog(),
+      loadAgainExtras(ctx.brands.filter(isReached).map(b => b.id)),
+    ])
     const cur: any = await (handlers.getOutreachPlan as Handler)({ __roster: ctx.brands })
     const brandById = new Map(ctx.brands.map(b => [b.id, b]))
     const days = weekColumns(pick.days, cur, marks, brandById)
     const bank = buildBank(ctx, ctx.state, { day: pick.days[0] })
+    // Reach out again: reached before, a decision maker never contacted.
+    const again = againRows(ctx.brands, { today, ex, q: ctx.q, rates: ctx.rates, plan: ctx.plan })
     // Hand adds that left the list (reached since, archived…) leave the
     // stored list too.
     if (bank.spent.length) {
@@ -10516,9 +10851,72 @@ const handlers: Record<string, Handler> = {
       spreadLast: spreadLog && spreadLog.days.some(d => d.date > today)
         ? { at: spreadLog.at, days: spreadLog.days.filter(d => d.date > today).map(d => ({ date: d.date, added: d.added.length })) }
         : null,
+      again: {
+        rows: again.slice(0, 120), total: again.length,
+        due: again.filter(r => r.state === 'due').length, late: again.filter(r => r.state === 'late').length,
+        fromDays: AGAIN_FROM_DAYS, dueDays: AGAIN_DUE_DAYS,
+      },
       cap: DAILY_SEND_LIMIT,
       linkedin: { limit: LINKEDIN_WEEK_LIMIT, sentLast7: cur?.linkedinWeek?.sentLast7 ?? 0 },
       priority: Object.fromEntries(CATEGORY_KEYS.map(k => [k, categoryPriority(k)])),
+    }
+  },
+
+  // Reach out again (Week plan): the brand's decision makers nobody has
+  // contacted go on `date` — up to its opening number (againCount), or the
+  // ones Leo names (contactIds, each still never contacted). They're chosen
+  // people (src/lib/chosen.ts): they go first and all go, as anyone queued
+  // by hand does, though the brand already has invites out. Nothing is
+  // written when the brand can't go that day (resting, a giant held back,
+  // the day full) — the answer says why.
+  async reachAgain({ brandId, date, contactIds }: any) {
+    const today = localDayKey()
+    const extras = await readExtraDays()
+    if (!isDayKey(date) || date < today || !isSendingKey(date, extras)) throw new Error('Pick an upcoming sending day')
+    const b = await prisma.brand.findUnique({ where: { id: String(brandId ?? '') }, select: { ...PLAN_BRAND_SELECT, owner: true } })
+    if (!b) throw new Error('Brand not found')
+    const [q, ex, rates] = await Promise.all([readQueueCtx(), loadAgainExtras([b.id]), recentAcceptRates()])
+    const a = againOf(b, { today, q, ex, rates })
+    if (!a.ok) return { ok: false, why: (a as AgainNo).why, text: againWhyText(a), brandName: b.name }
+    const want = Array.isArray(contactIds) && contactIds.length ? new Set(contactIds.map(String)) : null
+    const pick = want ? a.fresh.filter(c => want.has(c.id)) : a.fresh.slice(0, againCount(b))
+    if (!pick.length) return { ok: false, why: 'nobody', text: 'Those people have been reached since.', brandName: b.name }
+    const no = planRefusal(b, q, date)
+    if (no) return { ok: false, why: no, text: reasonText(no, reasonCtx(b, q)), brandName: b.name }
+    const plan = await readPlan()
+    if (!(plan[date]?.brandIds ?? []).includes(b.id) && (plan[date]?.brandIds ?? []).length >= PLAN_DAY_MAX) {
+      return { ok: false, why: 'dayfull', text: reasonText('dayfull', {}), brandName: b.name }
+    }
+    // Their rows: one waiting (next in line, or never shelved) comes back
+    // into the pool; anyone without one gets a new row.
+    const rowOf = new Map(b.targets.map(t => [t.contactId, t]))
+    const ids = await prisma.$transaction(async tx => {
+      const out: string[] = []
+      for (const c of pick) {
+        const t = rowOf.get(c.id)
+        if (t) {
+          await tx.target.update({
+            where: { id: t.id },
+            data: { shelved: false, shelvedHow: null, status: ['queued', 'drafted'].includes(t.status) ? t.status : 'queued' },
+          })
+          out.push(t.id)
+        } else {
+          const made = await tx.target.create({
+            data: { brandId: b.id, contactId: c.id, fitScore: scoreFit(c.title, b.tier), assignedTo: b.owner ?? null },
+          })
+          out.push(made.id)
+        }
+      }
+      return out
+    })
+    await noteChosen(ids)
+    const core = await planAddCore(plan, date, [b.id])
+    const r = core.results[0] ?? {}
+    return {
+      ok: !!r.added, brandId: b.id, brandName: b.name, date, label: dayLabel(date),
+      people: pick.map(c => ({ name: c.name, title: c.title })),
+      going: r.going ?? 0, state: r.state ?? null, waits: r.waits ?? null,
+      movedFrom: r.movedFrom ?? null, text: r.added ? null : r.reasonText ?? null,
     }
   },
 
@@ -11868,10 +12266,11 @@ const handlers: Record<string, Handler> = {
   async zachTodo({ brandId }: any = {}) {
     const since = new Date(Date.now() - HAND_DONE_DAYS * 24 * 60 * 60 * 1000)
     const one = typeof brandId === 'string' && brandId ? { brandId } : {}
-    const [template, dmTemplate, firstTemplate, finalTemplate, rows, doneRows] = await Promise.all([
+    const [template, dmTemplate, firstBTemplate, firstBWTemplate, finalTemplate, rows, doneRows] = await Promise.all([
       readHandTemplate(),
       readHandTemplate('dm'),
-      readHandTemplate('first'),
+      readHandTemplate('firstB'),
+      readHandTemplate('firstBW'),
       readHandTemplate('final'),
       prisma.target.findMany({
         where: { AND: [HAND_WAITING, one] },
@@ -11941,8 +12340,7 @@ const handlers: Record<string, Handler> = {
       // The first message follows Leo's template unless someone really
       // rewrote it on the card (the queue's autosave marks untouched
       // drafts edited too, so an unchanged queue text doesn't count).
-      const dmOwn = !!(dr && dr.editedByHuman && dr.firstMessage?.trim() &&
-        dr.firstMessage !== templateLinkedInDraft({ brand: t.brand, contact: t.contact }, dr.variant).firstMessage)
+      const dmOwn = !!dr && ownFirstMessage(dr, t.brand, t.contact, { man: firstBTemplate.body, woman: firstBWTemplate.body })
       g.people.push({
         targetId: t.id,
         status: t.status,
@@ -12007,7 +12405,9 @@ const handlers: Record<string, Handler> = {
     return {
       template,
       dmTemplate,
-      firstTemplate,
+      // The first LinkedIn message: for a man / for a woman.
+      firstBTemplate,
+      firstBWTemplate,
       finalTemplate,
       brands,
       people,
@@ -13316,6 +13716,8 @@ const handlers: Record<string, Handler> = {
   async linkedinPeople() {
     const brands = await prisma.brand.findMany({
       include: {
+        // People reached there (the Reached tag's rule) — the Outreach filter.
+        _count: { select: { targets: { where: REACHED_WHERE } } },
         contacts: {
           select: {
             id: true, name: true, title: true, linkedinUrl: true,
@@ -13335,6 +13737,7 @@ const handlers: Record<string, Handler> = {
       linkedinUrl: b.linkedinUrl,
       // So the "Under 25" worklist can leave out brands off outreach.
       archived: !!b.passedAt, doNotEmail: b.doNotEmail,
+      reached: b._count.targets,
       liNote: liLog[b.id]?.note || null,
       contacts: b.contacts.map(c => ({
         id: c.id, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl,
@@ -14165,6 +14568,282 @@ const handlers: Record<string, Handler> = {
     return { people, total: people.length, brands: new Set(people.map(p => p.brandId)).size }
   },
 
+  // -------- In talks (Leo, Oct 18 2026; rules in src/lib/in-talks.ts) --------
+  // The top tab: every brand with a call booked, plus any put there by hand
+  // (Add to In talks), each with the people who answered, its links, the
+  // overview and activation idea, dated notes, its deal and Show Board
+  // activity — and brands that replied but aren't there yet (+ Add).
+  // `preview` = a brand that isn't in talks (a "Replied, not in talks" card
+  // clicked): its profile comes back as `preview`, built the same way, and it
+  // stays off `brands` (Leo, Oct 18 2026: click the card, adjust the deal).
+  async listInTalks({ preview }: any = {}) {
+    const now = new Date()
+    const { onIds, states, suggest } = await talksMembership()
+    const today = startOfLocalDay(now)
+    const pv = typeof preview === 'string' && preview && !onIds.includes(preview) ? preview : null
+    const ids = pv ? [...onIds, pv] : onIds
+    const [full, visits, rates] = await Promise.all([
+      ids.length ? prisma.brand.findMany({
+        where: { id: { in: ids } },
+        include: {
+          contacts: { select: { id: true, name: true, title: true, email: true, phone: true, linkedinUrl: true, doNotContactAt: true } },
+          targets: {
+            select: {
+              id: true, contactId: true, status: true, sentAt: true, repliedAt: true, updatedAt: true, dmSentAt: true, callAt: true,
+              callBookedAt: true, handDeclinedAt: true, emailedAt: true,
+              events: { where: { toStatus: 'accepted' }, orderBy: { createdAt: 'asc' }, take: 1, select: { createdAt: true } },
+              emails: { where: { direction: 'in' }, take: 1, select: { id: true } },
+            },
+          },
+          brandNotes: { orderBy: { createdAt: 'desc' }, select: { id: true, text: true, by: true, createdAt: true, updatedAt: true } },
+          deals: { orderBy: { updatedAt: 'desc' }, select: { id: true, name: true, stage: true, valueCents: true, nextStep: true, followUpAt: true, createdAt: true, updatedAt: true, source: true } },
+        },
+      }) : Promise.resolve([] as any[]),
+      ids.length ? prisma.boardVisit.groupBy({ by: ['brandId'], where: { brandId: { in: ids } }, _count: { _all: true }, _max: { createdAt: true } }) : Promise.resolve([] as any[]),
+      recentAcceptRates(),
+    ])
+    const visitBy = new Map<string, { opens: number; lastAt: Date | null }>(visits.map((v: any) => [v.brandId, { opens: v._count._all, lastAt: v._max.createdAt }]))
+    const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null)
+    const pvReply = pv ? suggest.find(x => x.id === pv)?.repliedAt ?? null : null
+    const brands = full.filter((b: any) => b.kind !== 'person' || b.id !== pv).map((b: any) => {
+      const st: any = states.get(b.id) ?? { on: false, why: 'reply', since: pvReply ? new Date(pvReply) : null }
+      const contactOf = new Map<string, any>(b.contacts.map((c: any) => [c.id, c]))
+      const people: any[] = []
+      const invited: any[] = []
+      const reached = new Set<string>()
+      let lastAt: Date | null = null
+      const touch = (d: Date | null | undefined) => { if (d && (!lastAt || d > lastAt)) lastAt = d }
+      let nextCall: { at: Date; name: string } | null = null
+      let lastCall: { at: Date; name: string } | null = null
+      for (const t of b.targets) {
+        const c = contactOf.get(t.contactId)
+        if (!c) continue
+        const facts = {
+          status: t.status, sentAt: t.sentAt, repliedAt: t.repliedAt, updatedAt: t.updatedAt, dmSentAt: t.dmSentAt,
+          callAt: t.callAt, callBookedAt: t.callBookedAt, handDeclinedAt: t.handDeclinedAt, acceptedAt: t.events[0]?.createdAt ?? null,
+          emailReply: t.emails.length > 0, contactStopped: !!c.doNotContactAt, brandStopped: !!b.stoppedAt,
+        }
+        if (isTalksPerson(facts)) {
+          const s = talksPersonStage(facts, now)
+          reached.add(c.id)
+          ;[t.repliedAt, facts.acceptedAt, t.dmSentAt, t.emailedAt, t.callBookedAt].forEach(touch)
+          if (t.callAt && !t.handDeclinedAt && !c.doNotContactAt) {
+            if (t.callAt >= today) { if (!nextCall || t.callAt < nextCall.at) nextCall = { at: t.callAt, name: c.name } }
+            else if (!lastCall || t.callAt > lastCall.at) lastCall = { at: t.callAt, name: c.name }
+          }
+          people.push({
+            targetId: t.id, contactId: c.id, name: c.name, title: c.title, email: c.email, phone: c.phone, linkedinUrl: c.linkedinUrl,
+            stage: s.stage, label: s.label, invitedAt: iso(t.sentAt), acceptedAt: iso(facts.acceptedAt),
+            repliedAt: iso(t.repliedAt), repliedBy: facts.emailReply ? 'email' : (['replied', 'converted'].includes(t.status) || t.repliedAt ? 'linkedin' : null),
+            callAt: iso(t.callAt), callBookedAt: iso(t.callBookedAt), emailedAt: iso(t.emailedAt),
+            _accepted: isAccepted(facts), _replied: ['replied', 'converted'].includes(t.status) || !!t.repliedAt,
+          })
+        } else if (t.sentAt && t.status === 'sent') {
+          reached.add(c.id)
+          invited.push({ contactId: c.id, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl, invitedAt: iso(t.sentAt) })
+        }
+      }
+      people.sort((x, y) => stageRank(x.stage) - stageRank(y.stage) || x.name.localeCompare(y.name))
+      invited.sort((x, y) => (y.invitedAt || '').localeCompare(x.invitedAt || ''))
+      ;[b.talksAddedAt, ...b.brandNotes.map((n: any) => n.createdAt), ...b.deals.map((d: any) => d.updatedAt)].forEach(touch)
+      const deal = b.deals.find((d: any) => d.stage !== 'lost') ?? b.deals[0] ?? null
+      const journey = talksJourney(people.map(p => ({
+        invitedAt: p.invitedAt ? new Date(p.invitedAt) : null, acceptedAt: p.acceptedAt ? new Date(p.acceptedAt) : null, accepted: p._accepted,
+        repliedAt: p.repliedAt ? new Date(p.repliedAt) : null, replied: p._replied,
+        callBookedAt: p.callBookedAt ? new Date(p.callBookedAt) : null, callAt: p.callAt ? new Date(p.callAt) : null,
+      })).concat(invited.map(p => ({ invitedAt: new Date(p.invitedAt), acceptedAt: null, accepted: false, repliedAt: null, replied: false, callBookedAt: null, callAt: null }))),
+      deal ? { stage: deal.stage, createdAt: deal.createdAt } : null)
+      const v = visitBy.get(b.id)
+      const fit = brandFit(b, b.contacts.filter(isReachable).length, rates, now)
+      return {
+        id: b.id, name: b.name, category: b.category, tier: b.tier, kind: b.kind,
+        website: b.website, linkedinUrl: b.linkedinUrl, instagramUrl: b.instagramUrl, tiktokUrl: b.tiktokUrl,
+        about: b.about, topProducts: b.topProducts, brandNotes: b.notes,
+        liMembers: b.liMembers, salesCents: b.salesCents, fundingCents: b.fundingCents, lastRoundAt: iso(b.lastRoundAt),
+        sponsorsCollege: b.sponsorsCollege, sponsorNote: b.sponsorNote, usStatus: b.usStatus, fit: fit.score,
+        overview: b.overview, overviewBy: b.overviewBy, overviewAt: iso(b.overviewAt),
+        idea: b.activationIdea, ideaBy: b.activationIdeaBy, ideaAt: iso(b.activationIdeaAt),
+        why: st.why, since: iso(st.since), addedBy: st.why === 'hand' ? b.talksAddedBy : null,
+        stopped: iso(b.stoppedAt), archived: !!b.passedAt,
+        nextCall: nextCall ? { at: iso((nextCall as any).at), name: (nextCall as any).name } : null,
+        lastCall: lastCall ? { at: iso((lastCall as any).at), name: (lastCall as any).name } : null,
+        people: people.map(({ _accepted, _replied, ...p }) => p), invited,
+        others: b.contacts.filter((c: any) => !reached.has(c.id)).length,
+        notes: b.brandNotes.map((n: any) => ({ id: n.id, text: n.text, by: n.by, at: iso(n.createdAt), editedAt: n.updatedAt.getTime() - n.createdAt.getTime() > 1000 ? iso(n.updatedAt) : null })),
+        deal: deal ? { id: deal.id, name: deal.name, stage: deal.stage, valueCents: deal.valueCents, nextStep: deal.nextStep, followUpAt: iso(deal.followUpAt), source: deal.source } : null,
+        board: { code: b.boardCode, opens: v?.opens ?? 0, lastAt: iso(v?.lastAt) },
+        journey: journey.map(s => ({ ...s, at: iso(s.at) })),
+        lastAt: iso(lastAt),
+        _sort: { name: b.name, stopped: !!b.stoppedAt, nextCallAt: nextCall ? (nextCall as any).at : null, lastAt },
+      }
+    })
+    const pvRow = pv ? brands.find((x: any) => x.id === pv) ?? null : null
+    const onList = brands.filter((x: any) => x.id !== pv)
+    onList.sort((x: any, y: any) => compareTalks(x._sort, y._sort))
+    const strip = ({ _sort, ...x }: any) => x
+    return {
+      brands: onList.map(strip),
+      preview: pvRow ? { ...strip(pvRow), preview: true, repliedAt: pvReply } : null,
+      suggestions: suggest,
+      sponsorUrl: sponsorBoardUrl(),
+      today: localDayKey(now),
+    }
+  },
+
+  // In talks → Deal stage (Leo, Oct 18 2026: "u should be able to click on
+  // these cards and adjust the deal flow"; his picks: the profile gets the
+  // stages, and setting one moves the brand into In talks). Moves the brand's
+  // deal (the one the profile shows: the newest still open, else the newest)
+  // or starts one at that stage. A brand not in talks goes in — except on
+  // Lost, which takes it off the "Replied, not in talks" offers instead.
+  // A deal synced from a show or Notion is refused, as on the Deals board.
+  async setTalksDeal({ brandId, stage, __user }: any) {
+    if (!(DEAL_STAGES as readonly string[]).includes(stage)) throw new Error('Unknown stage')
+    const b = await prisma.brand.findUnique({
+      where: { id: String(brandId || '') },
+      select: {
+        id: true, name: true, kind: true, talksAddedAt: true, talksRemovedAt: true,
+        targets: { where: { OR: [{ callBookedAt: { not: null } }, { callAt: { not: null } }] }, select: { callBookedAt: true, createdAt: true } },
+        deals: { orderBy: { updatedAt: 'desc' }, select: { id: true, stage: true, source: true } },
+      },
+    })
+    if (!b) throw new Error('Brand not found')
+    if (b.kind === 'person') throw new Error(b.name + ' is a person, not a brand — no deal here')
+    const deal = b.deals.find(d => d.stage !== 'lost') ?? b.deals[0] ?? null
+    if (deal?.source === 'sponsorship') throw new Error('This deal mirrors a show — change the sponsorship status instead.')
+    if (deal?.source === 'notion') throw new Error('This deal mirrors Notion — change its Stage there (it syncs nightly, or hit Sync now).')
+    const on = talksState({ addedAt: b.talksAddedAt, removedAt: b.talksRemovedAt, callsBooked: b.targets.map(t => t.callBookedAt ?? t.createdAt) }).on
+    const now = new Date()
+    const addToTalks = !on && stage !== 'lost'
+    const dismiss = !on && stage === 'lost'
+    await prisma.$transaction(async tx => {
+      if (deal) await tx.deal.update({ where: { id: deal.id }, data: { stage } })
+      else await tx.deal.create({ data: { brandId: b.id, name: b.name, stage, valueCents: 0, source: 'manual' } })
+      if (addToTalks) await tx.brand.update({ where: { id: b.id }, data: { talksAddedAt: now, talksAddedBy: talksBy(__user) } })
+      if (dismiss) await tx.brand.update({ where: { id: b.id }, data: { talksRemovedAt: now } })
+    })
+    return { brandId: b.id, brandName: b.name, stage, from: deal?.stage ?? null, created: !deal, addedToTalks: addToTalks, dismissed: dismiss }
+  },
+
+  // Add to In talks / Take off In talks (a removal wins over an older call
+  // or add; a newer call or add brings the brand back). Nothing else changes.
+  async setInTalks({ brandId, on = true, __user }: any) {
+    const b = await prisma.brand.findUnique({ where: { id: String(brandId || '') }, select: { id: true, name: true } })
+    if (!b) throw new Error('Brand not found')
+    const now = new Date()
+    await prisma.brand.update({
+      where: { id: b.id },
+      data: on ? { talksAddedAt: now, talksAddedBy: talksBy(__user) } : { talksRemovedAt: now },
+    })
+    return { brandId: b.id, brandName: b.name, on: !!on }
+  },
+
+  // The profile's own words and links: overview, activation idea, website,
+  // Instagram, TikTok. Only the fields sent change; onlyEmpty (Claude's daily
+  // check) never touches a field already filled — '' (none found) included.
+  // A Claude-written overview keeps to four sentences.
+  async saveTalksProfile({ brandId, overview, activationIdea, website, instagramUrl, tiktokUrl, onlyEmpty = false, __user }: any) {
+    const b = await prisma.brand.findUnique({
+      where: { id: String(brandId || '') },
+      select: { id: true, name: true, overview: true, activationIdea: true, website: true, instagramUrl: true, tiktokUrl: true },
+    })
+    if (!b) throw new Error('Brand not found')
+    const claude = __user === 'CLI'
+    const by = talksBy(__user)
+    const now = new Date()
+    const data: Record<string, any> = {}
+    const saved: string[] = []
+    const kept: string[] = []
+    const put = (field: 'overview' | 'activationIdea' | 'website' | 'instagramUrl' | 'tiktokUrl', value: string | null, label: string) => {
+      if (onlyEmpty && b[field] != null) { kept.push(label); return false }
+      if ((b[field] ?? null) === value) return false
+      data[field] = value
+      saved.push(label)
+      return true
+    }
+    const text = (v: unknown) => String(v ?? '').replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+    if (overview !== undefined) {
+      const t = text(overview)
+      if (t.length > OVERVIEW_MAX_CHARS) throw new Error(`The overview is too long — keep it under ${OVERVIEW_MAX_CHARS} characters`)
+      const n = sentenceCount(t)
+      if (claude && n > OVERVIEW_MAX_SENTENCES) throw new Error(`That overview has ${n} sentences — keep it to ${OVERVIEW_MAX_SENTENCES} at most`)
+      if (put('overview', t || null, 'overview')) { data.overviewBy = t ? by : null; data.overviewAt = t ? now : null }
+    }
+    if (activationIdea !== undefined) {
+      const t = text(activationIdea)
+      if (t.length > IDEA_MAX_CHARS) throw new Error(`The idea is too long — keep it under ${IDEA_MAX_CHARS} characters`)
+      if (put('activationIdea', t || null, 'activation idea')) { data.activationIdeaBy = t ? by : null; data.activationIdeaAt = t ? now : null }
+    }
+    // A website can't be "none": cleared = null.
+    if (website !== undefined) put('website', cleanLink('website', website) || null, 'website')
+    if (instagramUrl !== undefined) put('instagramUrl', cleanLink('instagram', instagramUrl), 'Instagram')
+    if (tiktokUrl !== undefined) put('tiktokUrl', cleanLink('tiktok', tiktokUrl), 'TikTok')
+    const after = Object.keys(data).length
+      ? await prisma.brand.update({ where: { id: b.id }, data, select: { overview: true, overviewBy: true, overviewAt: true, activationIdea: true, activationIdeaBy: true, activationIdeaAt: true, website: true, instagramUrl: true, tiktokUrl: true } })
+      : await prisma.brand.findUnique({ where: { id: b.id }, select: { overview: true, overviewBy: true, overviewAt: true, activationIdea: true, activationIdeaBy: true, activationIdeaAt: true, website: true, instagramUrl: true, tiktokUrl: true } })
+    return { brandId: b.id, brandName: b.name, saved, kept, noop: !saved.length, profile: after }
+  },
+
+  // Dated notes on a brand (In talks → Notes). Delete asks first: without
+  // confirm it only says which note would go.
+  async addBrandNote({ brandId, text, __user }: any) {
+    const t = String(text ?? '').trim()
+    if (!t) throw new Error('Write the note first')
+    if (t.length > NOTE_MAX_CHARS) throw new Error(`That note is too long — keep it under ${NOTE_MAX_CHARS} characters`)
+    const b = await prisma.brand.findUnique({ where: { id: String(brandId || '') }, select: { id: true, name: true } })
+    if (!b) throw new Error('Brand not found')
+    const n = await prisma.brandNote.create({ data: { brandId: b.id, text: t, by: talksBy(__user) } })
+    return { brandId: b.id, brandName: b.name, note: { id: n.id, text: n.text, by: n.by, at: n.createdAt.toISOString(), editedAt: null } }
+  },
+  async editBrandNote({ id, text }: any) {
+    const t = String(text ?? '').trim()
+    if (!t) throw new Error('A note can’t be empty — delete it instead')
+    if (t.length > NOTE_MAX_CHARS) throw new Error(`That note is too long — keep it under ${NOTE_MAX_CHARS} characters`)
+    const old = await prisma.brandNote.findUnique({ where: { id: String(id || '') }, include: { brand: { select: { name: true } } } })
+    if (!old) throw new Error('That note is gone')
+    if (old.text === t) return { noop: true, brandName: old.brand.name }
+    const n = await prisma.brandNote.update({ where: { id: old.id }, data: { text: t } })
+    return { brandId: n.brandId, brandName: old.brand.name, note: { id: n.id, text: n.text, by: n.by, at: n.createdAt.toISOString(), editedAt: n.updatedAt.toISOString() } }
+  },
+  async deleteBrandNote({ id, confirm = false }: any) {
+    const old = await prisma.brandNote.findUnique({ where: { id: String(id || '') }, include: { brand: { select: { name: true } } } })
+    if (!old) throw new Error('That note is gone')
+    const note = { id: old.id, text: old.text, by: old.by, at: old.createdAt.toISOString() }
+    if (!confirm) return { deleted: false, brandName: old.brand.name, note }
+    await prisma.brandNote.delete({ where: { id: old.id } })
+    return { deleted: true, brandId: old.brandId, brandName: old.brand.name, note }
+  },
+
+  // For Claude's daily In talks check (docs/in-talks.md): the brands in
+  // talks with something never filled — overview, idea, website, Instagram,
+  // TikTok — and what's known about them. Read-only.
+  async listTalksToFill() {
+    const { onIds } = await talksMembership()
+    if (!onIds.length) return { brands: [], rules: { overviewMaxSentences: OVERVIEW_MAX_SENTENCES } }
+    const rows = await prisma.brand.findMany({
+      where: { id: { in: onIds } },
+      select: {
+        id: true, name: true, aka: true, category: true, tier: true, website: true, linkedinUrl: true, instagramUrl: true, tiktokUrl: true,
+        about: true, topProducts: true, sponsorNote: true, overview: true, activationIdea: true, liMembers: true, notes: true,
+        brandNotes: { orderBy: { createdAt: 'desc' }, take: 8, select: { text: true, createdAt: true } },
+        targets: {
+          where: { OR: [{ status: { in: ['accepted', 'replied', 'converted'] } }, { callAt: { not: null } }, { repliedAt: { not: null } }] },
+          select: { status: true, callAt: true, contact: { select: { name: true, title: true } } },
+        },
+      },
+    })
+    const brands = rows.map(b => ({
+      id: b.id, name: b.name, aka: b.aka, category: b.category, tier: b.tier,
+      website: b.website, linkedinUrl: b.linkedinUrl, instagramUrl: b.instagramUrl, tiktokUrl: b.tiktokUrl,
+      about: b.about, topProducts: b.topProducts, sponsorNote: b.sponsorNote, liMembers: b.liMembers,
+      overview: b.overview, activationIdea: b.activationIdea, brandPageNotes: b.notes,
+      missing: missingFields(b),
+      people: b.targets.map(t => `${t.contact.name}${t.contact.title ? ' — ' + t.contact.title : ''} (${t.callAt ? 'call ' + localDayKey(t.callAt) : t.status})`),
+      notes: b.brandNotes.map(n => `${localDayKey(n.createdAt)}: ${n.text}`),
+    })).filter(b => b.missing.length)
+    return { brands, rules: { overviewMaxSentences: OVERVIEW_MAX_SENTENCES } }
+  },
+
   // -------- deal room --------
 
   // One screen per deal: the brand's people, the show and its
@@ -14682,7 +15361,7 @@ const handlers: Record<string, Handler> = {
       where: { status: { not: 'dismissed' }, ...(query ? { query } : {}) },
       orderBy: { createdAt: 'desc' }, take: 600,
     })
-    const brands = await prisma.brand.findMany({ select: { id: true, name: true, _count: { select: { contacts: true } } } })
+    const brands = await prisma.brand.findMany({ select: { id: true, name: true, _count: { select: { contacts: true, targets: { where: REACHED_WHERE } } } } })
     const byId = new Map(brands.map(b => [b.id, b]))
     const byName = new Map(brands.map(b => [b.name.toLowerCase(), b]))
     const sourceOf = (q: string) => /^(Claude hunt|🔥)/.test(q) ? 'Claude hunt'
@@ -14708,9 +15387,11 @@ const handlers: Record<string, Handler> = {
       const cat = isCategoryKey(raw) ? raw : guessCategory(r.name, r.category)
       const g = fit ? gradeFromFit(fit) : gradeDiscovery(
         { category: cat, signals: r.signals, hasParent: !!parentOf(r.name, null), giant: giantOf({ name: r.name }),
-          text: [r.reason, r.activation].filter(Boolean).join(' ') },
+          text: [r.reason, r.activation].filter(Boolean).join(' '), name: r.name, writeUp: r.reason },
         { priority: categoryPriority(cat), acceptRate: rateOrNull(rates, cat), now })
-      return { ...r, source: sourceOf(r.query), inSystem: !!existing, contactCount: existing?._count.contacts ?? 0, grade: g }
+      // reached = its brand carries the Reached tag (the Outreach filter);
+      // a find not on the roster never does.
+      return { ...r, source: sourceOf(r.query), inSystem: !!existing, contactCount: existing?._count.contacts ?? 0, reached: (existing?._count.targets ?? 0) > 0, grade: g }
     })
     // A brand added since by any other path: remember the link.
     for (const l of link) {
@@ -14801,7 +15482,7 @@ const handlers: Record<string, Handler> = {
     const brands = await prisma.brand.findMany({
       where: { id: { in: createdIds } },
       select: { id: true, name: true, createdAt: true, updatedAt: true, boardCode: true, partner: { select: { id: true } },
-        _count: { select: { contacts: true, targets: true, deals: true, shows: true, activations: true, documents: true, boardVisits: true } } },
+        _count: { select: { contacts: true, targets: true, deals: true, shows: true, activations: true, documents: true, boardVisits: true, brandNotes: true } } },
     })
     const ids = brands.map(b => b.id)
     const tally = async (rows: { brandId: string | null }[]) => {
@@ -14822,7 +15503,7 @@ const handlers: Record<string, Handler> = {
       const edited = stamp ? b.updatedAt.getTime() !== Date.parse(stamp) : b.updatedAt.getTime() - b.createdAt.getTime() > 120e3
       const why = c.contacts ? `${c.contacts} ${c.contacts === 1 ? 'person' : 'people'} on file`
         : c.targets ? 'in outreach' : c.deals ? 'has a deal' : c.shows ? 'on a show' : c.activations ? 'has an activation'
-        : c.documents ? 'has a document' : b.partner ? 'has a partner record' : c.boardVisits ? 'opened the Show Board'
+        : c.documents ? 'has a document' : c.brandNotes ? 'has notes' : b.partner ? 'has a partner record' : c.boardVisits ? 'opened the Show Board'
         : requests.get(b.id) ? 'asked for the Show Board' : mail.get(b.id) ? 'has ops mail'
         : planned.has(b.id) ? 'on a Schedule day' : b.boardCode ? 'has a Show Board code'
         : edited ? 'edited since' : null
@@ -14850,7 +15531,7 @@ const handlers: Record<string, Handler> = {
             where: {
               id: { in: goIds }, boardCode: null, partner: { is: null },
               contacts: { none: {} }, targets: { none: {} }, deals: { none: {} }, shows: { none: {} },
-              activations: { none: {} }, documents: { none: {} }, boardVisits: { none: {} },
+              activations: { none: {} }, documents: { none: {} }, boardVisits: { none: {} }, brandNotes: { none: {} },
               OR: brands.filter(b => goIds.includes(b.id)).map(b => ({ id: b.id, updatedAt: b.updatedAt })),
             },
           })
@@ -14911,8 +15592,7 @@ const handlers: Record<string, Handler> = {
   // Stage-only move for the pipeline board. Manual deals only —
   // sponsorship-sourced deals mirror their show and are locked here.
   async setDealStage({ id, stage }: any) {
-    const STAGES = ['conversation', 'proposal', 'verbal', 'closed', 'lost']
-    if (!STAGES.includes(stage)) throw new Error('Unknown stage')
+    if (!(DEAL_STAGES as readonly string[]).includes(stage)) throw new Error('Unknown stage')
     const deal = await prisma.deal.findUnique({ where: { id } })
     if (!deal) throw new Error('Deal not found')
     if (deal.source === 'sponsorship') throw new Error('This deal mirrors a show — change the sponsorship status instead.')

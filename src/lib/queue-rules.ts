@@ -9,8 +9,11 @@
 //    queue, or withdrawn after it went, counts), no email, no accept or
 //    reply.
 //  - By hand, a brand that was reached out to rests REST_DAYS from its
-//    first outreach ("it should not be reached out to again until two
-//    weeks after initial outreach"); from that day on it can go again.
+//    first outreach; from that day on it can go again. Two weeks at first
+//    ("it should not be reached out to again until two weeks after initial
+//    outreach"), a week since Oct 18 2026 (Leo: "if i reach out to a brand
+//    again it should be around 1 to 2 weeks later" — src/lib/reach-again.ts
+//    recommends it from day 7, due by day 14).
 //  - Giants (giants.ts: household names, the big parent companies' brands,
 //    $1B+ sales) and brands with 1,500+ people on LinkedIn (Leo, Oct 12
 //    2026: "not reach out to any brand with over 1500 employees") are held
@@ -42,7 +45,7 @@
 import { giantWhy } from './giants'
 import { isParentCompany } from './parents'
 
-export const REST_DAYS = 14
+export const REST_DAYS = 7
 
 // Setting outreachGiants = { on: boolean, ok: [brandId] }: the Schedule's
 // Giants switch and the giants Leo OK'd one at a time ("Add anyway").

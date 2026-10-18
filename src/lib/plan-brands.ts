@@ -23,8 +23,13 @@ const BRAND_FIELDS = {
   // week rank and hide by them.
   liMembers: true, salesCents: true, fundingCents: true, lastRoundAt: true, usStatus: true,
   sponsorsCollege: true, bizStatus: true, acquiredBy: true, researchedAt: true,
+  // Where it's based (abroad.ts — people outside the US stay out of the picks
+  // unless the company is based abroad).
+  hq: true,
+  // What the brand says it is, for Brand Fit's student fit (student-fit.ts).
+  about: true, topProducts: true, notes: true,
 } as const
-const CONTACT_FIELDS = { id: true, name: true, title: true, email: true, linkedinUrl: true, isDecisionMaker: true, doNotContactAt: true } as const
+const CONTACT_FIELDS = { id: true, name: true, title: true, email: true, linkedinUrl: true, isDecisionMaker: true, doNotContactAt: true, location: true } as const
 const TARGET_FIELDS = {
   id: true, status: true, shelved: true, shelvedHow: true, queuedFor: true, sentAt: true, repliedAt: true,
   emailedAt: true, updatedAt: true, fitScore: true, contactId: true,

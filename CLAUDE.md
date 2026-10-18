@@ -30,12 +30,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 `src/app/api/data/route.ts`.
 
 ## Where things live
-- `public/app.html` — the whole UI. Top nav is six groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
+- `public/app.html` — the whole UI. Top nav is seven groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
   `showView`): Home · Brands (All brands / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
-  Week plan / Schedule / Email / People / Archived / Email stats) ·
+  Week plan / Schedule / Email / People / Archived / Email stats) · **In talks** (one view, below) ·
   **Show Board** (Overview = code lookup (`boardCodeLookup`: the whole roster by name / aka, people and archived too — it used to filter listBrands' first 500; `test-board-lookup.js`) + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
-  exact NY times and time on board; **every** board open is logged, gate on or off (anonymous = "Visitor") / **In talks** = per-brand engagement cards (code, viewers, opens, timed minutes
+  exact NY times and time on board; **every** board open is logged, gate on or off (anonymous = "Visitor") / **Board codes** (was "In talks" until the In talks tab; view id still `talks`, `listTalks`) = per-brand engagement cards (code, viewers, opens, timed minutes
   via the board's 60s heartbeat → `BoardVisit.lastSeenAt`, picked shows, visit log) / Requests /
   Shows) · **Deals** (Board = the old Pipeline / Sponsorships) · **Audience** (Events / Attendees —
   attendee capture, sponsorship module Phase 1) · Operations (Materials / Team —
@@ -123,6 +123,46 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `node scripts/cc.mjs <fn> @file.json` reads args from a file. Tests: `node scripts/test-chat-log.mjs`,
   `node scripts/test-chat-log-hook.mjs`, `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-chat-log-e2e.js`,
   page in `test-claude-day.js` (4 — the #chats page).
+- **In talks** (Leo, Oct 18 2026: "for the brands where the call has been scheduled i want u to put them there … a
+  different type of layout … cleaner and more complex … notes for each brand … the person/people we reached out to and
+  accepted … their linkedin and even email … the website and brand socials like instagram and tiktok … an overview … not
+  more than 4 sentences … an activation idea … editable … a copy button that we can paste into a new chat with instructions
+  on how to brainstorm"; his picks: a call booked puts a brand in by itself + an Add button; its own top tab; list + profile;
+  Claude's daily check writes the overview and idea, no API spend). Top tab between Outreach and Show Board (`#intalks`,
+  `IT` / `it*` in app.html, its own `.it-` look: a two-pane workspace — brands down the left, one brand's profile on the
+  right; a phone shows the list, a tap the profile with ‹ All brands). **Who's in** (rules pure in `src/lib/in-talks.ts`,
+  `talksState`): any Target with `callBookedAt` (or `callAt`), or `Brand.talksAddedAt` (+ Add to In talks — the brand page's
+  line `bTalksLine`, or the list's "Replied, not in talks" offers = brands with a reply, `suggestTalks`); **Take off In talks**
+  / × = `Brand.talksRemovedAt`, which wins over anything older (a newer call or add brings it back; nothing else changes).
+  `listInTalks` (read; `talksMembership` shared with `listTalksToFill`) = per brand: why / since, next and last call, the
+  people who answered (`isTalksPerson`: accepted, replied anywhere, or a call — Home → Accepted's stage words, furthest
+  first) with LinkedIn, email (Gmail compose — nothing sends) and phone, invited-no-answer, others on file, the journey
+  (`talksJourney`: Invited → Accepted → Replied → Call booked → Deal, first date each), Brand Fit, LinkedIn size, sales,
+  raised, sponsors, Show Board opens + Copy board link, the deal, dated notes, and the profile; order `compareTalks` (calls
+  coming up soonest first, then latest activity, stopped last). **A "Replied, not in talks" card opens the brand** (Leo, Oct 18 2026: "u
+  should be able to click on these cards and adjust the deal flow"): `listInTalks({ preview })` builds that brand's profile
+  the same way and returns it as `preview` (never in `brands`; `itPreview` / `IT.pv` / `itCur`, kept through refresh and
+  ‹ › by `IT.pvSeen`), with "Not in talks yet", + Add to In talks and Not now. **Deal stage** under the journey on every
+  profile (`.it-stagebar`, `IT_STAGES`: Conversation · Proposal sent · Verbal yes · Won · Lost) = `setTalksDeal` (moves the
+  deal the profile shows — newest open, else newest — or starts one, `DEAL_STAGES`; a brand not in talks goes in, his pick,
+  except Lost, which takes it off the Replied offers instead; a show / Notion deal is refused). The profile's cards sit in
+  rows of two: Overview | Who we're talking to, **Activation idea | Notes** (Leo: "move the notes to the right of the
+  activation idea"), then Deal. **Profile** fields on Brand: `instagramUrl`, `tiktokUrl`,
+  `overview`/`overviewBy`/`overviewAt`, `activationIdea`/`activationIdeaBy`/`activationIdeaAt` — `saveTalksProfile` (only the
+  fields sent; links through `cleanLink` — a handle, @handle or any link → the account URL, "none" = '' = they have none, empty
+  = null = look again; a Claude session's overview ≤ 4 sentences, `sentenceCount`; `onlyEmpty` never touches a filled field;
+  `*By` "Claude" for the dashboard token). **Notes** = table `BrandNote` (`addBrandNote` / `editBrandNote` /
+  `deleteBrandNote` — without `confirm` it only names the note; the page's confirm quotes it); Brand.notes shows under them
+  as "On the brand page". Notes move with mergeBrands (and the profile fills what the keeper lacks), combineParent and its
+  Undo (`COMBINE_TABLES`), deleteBrand names them, undoDiscoverBulk treats a brand with notes as touched. **Copy for a new
+  chat** (`itPrompt`): SB Agency, the brand, links, facts, overview, where we are (call, people, deal, board opens), our
+  notes, the current idea, then the brainstorm steps (what they want → up to 3 questions → 5 different ideas → a plan:
+  show, campus, content, where/when, team, rough budget lines kept apart from sponsorship and booking money, totals-only
+  reporting → a short version to paste back); 21+ for rtd / spirits / alcohol. **Claude's daily check**: the cloud session
+  "In talks (daily)" follows `docs/in-talks.md` (`listTalksToFill` → research → `saveTalksProfile` with `onlyEmpty` →
+  `addWorkLog`); every write is a ClaudeAction (`actionText`). Show Board's old "In talks" sub-tab is **Board codes**.
+  Tests: `node scripts/test-in-talks.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-in-talks.js` (page),
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-in-talks-e2e.js`.
 - **Leo's picked ideas, built Oct 6 2026** (retired from `build-ideas.ts`): **Weekly scoreboard** on Home (`#hm-score`,
   `weeklyScore` / `setWeeklyGoals`, Setting `weeklyGoals`, defaults `WEEKLY_GOALS_DEFAULT`): invites / accepted /
   replied / calls booked / deals / brands added per New York week (Mon–Sun), this week vs goal + 8 weeks of bars.
@@ -198,10 +238,22 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `handSkippedAt`. Two templates (Settings `handEmailTemplate`, `handDmTemplate`; placeholders
   (NAME) (BRAND) (TITLE); the email one is Leo's text by default (`HAND_EMAIL_TEMPLATE_DEFAULT`), the DM one a stand-in until he saves his), edited in one modal with tabs and a live
   preview; per-person edits in `Target.handSubject/handBody/handDm` (null = follow the template).
-  The first LinkedIn message ("Text them on LinkedIn") follows a third template, Setting
-  `handFirstDmTemplate` (Leo's pasted text is the default; "Edit template" on the card or the modal's
-  First LinkedIn message tab); a card keeps its own text only when someone really rewrote it (draft
-  `firstMessage` edited and ≠ the queue's stock text; Reset to template clears it). The **final
+  The first LinkedIn message ("Text them on LinkedIn") is **Leo's message for a man / for a woman** (Oct 18 2026: "just
+  make it the version b for man and woman, get rid of version a" — a one-day A/B test was dropped; the keys keep its B
+  name): Settings `handFirstDmTemplateB` (man) / `handFirstDmTemplateBW` (woman), his text as the default; zachTodo sends
+  `firstBTemplate` / `firstBWTemplate`; Edit template's **First message · man** / **First message · woman** tabs (kinds
+  `firstB` / `firstBW`; the old single `handFirstDmTemplate`, kind `first`, is unused and opens the man's). Every card has
+  **For a man / For a woman** (`ZT_BG`, a man's first — the rep picks, never guessed) and its Edit template opens the one
+  shown; Results → They accepted's **Copy DM · M / · W** copy the same (`rcFirstReady`). A card keeps its own text only
+  when someone really rewrote it (`ownFirstMessage`: edited and ≠ any stock text — the old queue text, his man or woman
+  message; Reset to template clears it; no man / woman switch then). **The queue drafts' First DM is his message too**
+  (Leo's yes, Oct 18 2026): stored drafts keep the old "Thanks for connecting…" text, and every read that hands drafts to
+  the page (getTodayQueue, listTargets, getBrand, generateDrafts) swaps in his man / woman text, filled (`leoFirstDrafts`),
+  unless it's their own; saveDraft stores a First DM equal to a stock text as '' (= follow the template, so it changes when
+  he changes his), and the LinkedIn tab's blur save sends only a box that changed. Copy buttons: the LinkedIn tab's
+  **DM · M / DM · W**, the brand page's **Copy DM · M / · W** (on Zach's list: the card's own edit, else that template) and
+  its draft fold (FIRST DM · FOR A MAN / A WOMAN, `bFirstDmHtml`). `[Name]` / `[Brand]` fill like `(NAME)` / `(BRAND)`
+  everywhere. `Target.handFirstVariant` is left over from the test, unused. `NODE_PATH=$(npm root -g) node scripts/test-first-message.js`. The **final
   reach-out** follows a fourth, Setting `handFinalTemplate` (stand-in until Leo saves his; the modal's
   Final reach-out tab); a card's edit is `Target.handFinal` (null = the template; `saveHandEmail`
   `final`), no longer the queue draft's nudge. Leo's note is
@@ -273,18 +325,50 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   up before … then … randomly put them into the days for the week which i should be able to move between days"; his picks:
   a **bank spent week by week**, an **even mix of rank**, a spread day takes **only brands from the list**). Rules pure in
   `src/lib/week-bank.ts` (`node scripts/test-week-bank.mjs`); `wp*` / `WP` in app.html (`#weekplan`, tab between Results
-  and Schedule). **Layout** (Leo, same day: "clean this page up … make each brand bigger … make sure that adding and
-  removing brands does not glitch"): the list pane on the left, the week pane on the right, each filling the screen under
-  the title (`wpFit` → `--wp-h`) and scrolling on its own (`wpPaint` keeps each pane's scroll) — so a brand put on a day
-  never moves the list under the mouse; stacked (week first) under 1100px. One big card per brand (`wpCardHtml`: rank,
-  name, Brand Fit box, category, people, contacts, Reached tag, where it is) with a **button per day** (lit = it's on that
-  day; another day moves it, the lit one takes it off) and **Remove**; day cards (`wpDayCard`) have → <day> and ↩ Back to
-  list; drag works list → day, day → day, day → list. The search box / category menu (static, never redrawn) turn the
-  list pane into results (+ Add to list / Add anyway / Added ✓; a category: Add the top N, ticks) with × Back to your list.
+  and Schedule). **Layout** (Leo, Oct 18 2026, third pass: "i want the brands to be the entire page … make it easier for
+  brands that i add"): the brands fill the page as a grid of big cards (`.wp-grid`) in three parts — **Added by you**,
+  **Reach out again** (below), **Top by Brand Fit** (40, then Show more) — and the week is a **strip of day tiles**
+  (`#wp-bar`, `wpRenderStrip`: name, how it fills, n / cap, meter, its brands, open spots) that sticks under the header;
+  once stuck it goes slim (`wpBarFit`: names and the last-spread line hidden; the height it gives up stays as its bottom
+  margin, so the list never moves). A tile click opens that day **over the list** (`#wp-dayopen`, absolute under the bar,
+  `wpRenderOpen`: its cards `wpDayCard` with → <day> / ↩ Back to list, Only my list / Let Best fit fill; ✕ or Esc closes);
+  the spread's preview shows there too. One big card per brand (`wpCardHtml`: rank, name, Brand Fit box, category,
+  people, contacts, Reached tag, where it is) with a **button per day** (lit = it's on that day; another day moves it, the
+  lit one takes it off) and **Remove**; drag works card → tile (or the open day), tile name / day card → another tile,
+  day card → the list. The search box / category menu (static, never redrawn) turn the page into results: a brand on the
+  list shows its list card, one due again its reach-again card, else + Add to list / Add anyway / Added ✓ **and a button
+  per day** (`wpAddDay` = weekBankAdd then planAddBrands — on the list and on that day in one click); a category: Add the
+  top N, ticks; × Back to your list. **The Outreach filter** (`reachSelect('weekplan')`, the site's Reached out / Not
+  reached out, `row.reached` = isReached) runs over the list, Reach out again and search / category results; status chips
+  All / Waiting / On a day / In today's list / Can't go yet (a card acted on stays until the filter changes, `WP.stick`).
   **No glitches** (`wpDo`): every change shows at once on the page's own copy, the buttons of a brand being saved wait
   (`WP.pending`), and the page reads `weekBank` once the last change is answered (`wpRead`, dropped if another change
-  started meanwhile); a refusal says why and that read puts the truth back. A brand removed stays in its place as "Taken
-  off your list · Undo" for 15 s (`WP.gone`, Undo = `weekBankPutBack`). **The list** (Setting `weekBank` = { size, hand, removed }; `buildBank` in route.ts) = brands Leo added
+  started meanwhile); a refusal says why and that read puts the truth back; the card a click was on is held where it is
+  on screen through every redraw (`wpHold` / `wpUnhold`). A brand removed stays in its place as "Taken off your list ·
+  Undo" for 15 s (`WP.gone`, Undo = `weekBankPutBack`). **Reach out again** (Leo, Oct 18 2026: "recommend for me to reach
+  out to brands again if there are decision makers who i did not reach out to yet, also if i reach out to a brand again
+  it should be around 1 to 2 weeks later"; rules pure in `src/lib/reach-again.ts`, `node scripts/test-reach-again.mjs`):
+  `weekBank.again` (`againRows` / `againOf` in route.ts) = brands reached before, **nobody replied** (Leo: "if someone has
+  replied then we prob shouldnt reach out to their company again" — `repliedAtBrand`: a reply anywhere, a no, someone who
+  doesn't want to continue, a call booked, put in talks; **an accept alone doesn't stop it** — the card says "N accepted,
+  on Zach's list"), no deal, not set aside (archived, do-not-email, not US, stopped, on a Pass, a held
+  giant, closed / ruled out), **a week or more since the last outreach** of any kind (invite, hand or machine email,
+  **Zach's DM / final reach-out to someone who accepted** — `alsoAt`; `AGAIN_FROM_DAYS` = REST_DAYS), and a **decision
+  maker never contacted** (`freshDecisionMakers`: a buyer title —
+  partnerships > events > marketing = founder — or marked decision maker, reachable, not stopped, not flagged by the queue
+  check, no outreach on any row of theirs, not passed or shelved by hand; next in line counts as fresh), **in the US
+  unless the company is based outside it** (Leo, Oct 18 2026; `src/lib/abroad.ts`, `node scripts/test-abroad.mjs`:
+  `personWhere` = a region in the title — "UK Partnerships Manager", "DACH", "APAC", "Canada & Latin America"; "North
+  America" = the US — else `Contact.location`; `basedAbroad` = `Brand.hq`, else more people on file located abroad than
+  in the US; not known = the US. Left out people are counted, "N outside the US left out"; at a company based abroad
+  people in the US go first; `loadAgainExtras` reads locations, hq, calls / talks, deals and DMs). **Due** days
+  7–14, **late** after (still listed, late first). The card: when, the last outreach, the people never contacted, a
+  button per day → `reachAgain({ brandId, date, contactIds? })`: refuses with why (`againWhyText`; under a week, resting,
+  the day full) before writing; else up to the brand's opening number of them (`againCount`) get a waiting row (new, or
+  next in line brought back), are **chosen** (`noteChosen` — chosen people go first and all go, though the brand has
+  invites out, which a plain re-add never sends past) and the brand is pinned on that day (`planAddCore`; onto today it
+  queues them now). Its lit day / ↩ / drag use planMoveBrand / planRemoveBrand like any card. The Schedule's **Ready for a
+  second try** fold stays (its own stricter rule: withdraw invites 21+ days old first). **The list** (Setting `weekBank` = { size, hand, removed }; `buildBank` in route.ts) = brands Leo added
   (search box = `searchPlanBrands` for the week's first day; Browse a category = `weekBankBrowse`, Add the top N / ticks;
   a giant's Add anyway OKs it, `okGiants`) + the brands a Best fit day would pick by itself (`bestFitEligible`, someone
   would go out, not going out today), **best Brand Fit first** (`compareBank`: fit, then ready, then name — not Ready
@@ -318,7 +402,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   invited, emailed] }. The page keeps one map (`RB`, `rbLoad`: at the start, every tab change and window focus — at most
   every 30 s — and after any call in `RB_WRITES`, e.g. setTargetStatus / logLinkedInPerson / markEmailed / handStep);
   `rbTag(id)` draws a slot the map fills ("Reached Oct 12", purple; tooltip = first/last day, how many invited / emailed,
-  how far it got), painted again when the map lands (`rbPaint`). On: Brands table, the brand page header, Needs contacts,
+  how far it got), painted again when the map lands (`rbPaint`). On: Brands table (its Outreach column), the brand page header, Needs contacts,
   Stock take, Brand Fit review, People, fill schedule, Read on Zach's LinkedIn, the Schedule's cards / Fill box / find box /
   drill-in / contacts check / Plan my week, Week plan, the LinkedIn tab's brand cards, All targets, Archived, global search,
   Today's list for Zach, Deals board, Show Board requests / In talks / visits / code lookup, Partners, Discover (added),
@@ -472,15 +556,16 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   outside the queue or withdrawn; an accept/reply; a hand or machine email — `notReachedBefore(dayStart)`
   in SQL, `brandGate(b, q, true)` in code; the old category-day pool only skipped replied brands, so it
   re-pitched invited ones). **By hand** (planAddBrands, planMoveBrand, the brand page, queueBrandTargets,
-  queueContact, Send today anyway, today's planned brands, the morning roll) a reached brand **rests 14
-  days from its first outreach** (New York day keys; a later Schedule day is judged as of that day; the
+  queueContact, Send today anyway, today's planned brands, the morning roll) a reached brand **rests 7
+  days from its first outreach** (`REST_DAYS`; Leo, Oct 18 2026: "if i reach out to a brand again it should be around 1 to
+  2 weeks later" — it was 14; Week plan → Reach out again recommends from day 7, due by day 14) (New York day keys; a later Schedule day is judged as of that day; the
   day a brand opens is its own sitting, so the rest of its people that day still go; an accept logged
   without an invite date counts from the row's last change and is never a sitting). **Part-sent brands**
   (Leo, Oct 12 2026: "If Zach sends only some of a brand's people one day, the rest go out on the next
   sending day"): by hand the sitting runs on to the next sending day after its first day (`sittingOf`,
   `nextSending` from `QueueCtx.extras` — extra days count), so the morning roll carries the rest there,
   queuePlannedToday stamps them and the gate, gatedStampBrands and the Schedule let them through — that
-  one day only (a day later it rests); the 14 days then count from the sitting's last day anything went
+  one day only (a day later it rests); the 7 days then count from the sitting's last day anything went
   out. The system's own picks still never take it. The next sending day is **the calendar as it was**
   (review fix, Oct 13 2026 — sitting-history): days opened or taken off stay stored `DAY_HISTORY_DAYS`
   (REST_DAYS + 7) after they pass (`readExtraDays().past`, `wasSendingKey` in `nextSendingOf`; writeExtraDays /
@@ -535,6 +620,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   next in line (`shelvedHow 'cap'`); no bulk change, never anyone out of today's list (keepInPlay keeps today's
   stamps first); fillSize and the gated stamp stop at the number too. A queued person with no LinkedIn link: the
   add warns "no LinkedIn link yet" and the row has **Find on LinkedIn ↗** (a people search).
+  **People outside the US** (Leo, Oct 18 2026: "yes" — Reach out again's rule for the whole queue): at a company based
+  in the US, nobody whose title names another region ("UK Partnerships Manager", "DACH", "APAC", "… FR") or whose
+  `Contact.location` is abroad is picked by the system — not new, and not waiting in the pool (set aside next in line,
+  `shelvedHow 'cap'`, like a flagged title; never anyone in today's list) — in queueBrandTargets and previewBrandPicks
+  alike (`abroadTest` in route.ts over `src/lib/abroad.ts`; based abroad = `Brand.hq`, else more people on file with an
+  email or LinkedIn located abroad than in the US; `hq` and `location` are in plan-brands.ts's fields). Chosen people
+  (queued by hand) and "+ Person" still go; one already in today's list, or queued by hand, carries the ⚠ "Works outside
+  the US" (`ABROAD_PROBLEM`, `loadAbroadCheck`) on Today's list for Zach, the LinkedIn tab and Leave out the flagged, and
+  is never offered as a Swap. The contacts label still counts them.
   **Big = measured** (big-brand-size, Oct 12 2026): `isBigBrand` (brand-work.ts) = 500+ on LinkedIn or a parents.ts
   link; an unmeasured established brand is "size not known" (works 4, 15 size points; the fill measures it sooner).
   **One big company a Best fit day** (Leo's yes): `bigFits` / `BIG_PER_BEST_FIT_DAY` in plan-week.ts, one rule for
@@ -672,7 +766,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   carrying an earlier invite's date. **Ready for a second try** (second-try, Oct 12 2026 — hand only, the queue
   rules still keep every reached brand out of the automatic picks): a fold under Categories & coverage, its count
   on the summary (`secondTryBrands`; rule `secondTryOf` in queue-rules.ts): reached before, nobody accepted,
-  replied or said no, no deal, the 14 days over, not set aside / a held giant — and a buyer there the first try
+  replied or said no, no deal, the week's rest over, not set aside / a held giant — and a buyer there the first try
   didn't invite (previewBrandPicks as if its old invites were withdrawn), best Brand Fit first. An invite still
   out 21+ days → **Log it withdrawn…** (markInvitesWithdrawn, previewed) first; one under 21 days keeps the brand
   off (it may still be accepted). Then the usual Put on a day picker (planAddBrands preview → Add).
@@ -688,7 +782,21 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   nicotine, electrolytes Top +30; clothing, athletic, tech, AI, fintech Low 0; the rest Middle +15; Skip = 0 and never
   auto-picked; `priorityOf`, editable per category — replaced the flat 18–24 bonus, so a Top brand with money
   unknown beats a Low brand with $50M raised, and only a $100M+ Low brand beats a tiny Top one), already sponsors
-  college / music (15), people we can reach (10), the category's 90-day accept rate (5); while sales aren't known the stronger of funding and the size
+  college / music (15), people we can reach (10), the category's 90-day accept rate (5), and **fits a student's day**
+  (Leo, Oct 18 2026: "neuro should definitely be higher given that the ideal candidates are people who study and do
+  work" — he chose Brand Fit as well as Discover; `src/lib/student-fit.ts`, `node scripts/test-student-fit.mjs`): made
+  for studying / focus 20 (nootropic, focus drinks / pouches, studying, finals week, caffeine gum / mints / pouches),
+  nights out / the morning after 15, game day / campus life 15 (where the product lives — campus stores, game-day tees,
+  licensed college gear, a school's licensed beer or bourbon — never a campus tour / ambassadors / reps / a tailgate
+  sponsorship, which is marketing), energy / hydration / workout 10 (energy drinks, electrolytes, coconut water,
+  protein, caffeine and coffee, activewear and running gear; a name like "Raze Energy" too); first tier
+  that matches. Words count only as the product's use — never "a clinical study", "a focus market", "while studying at"
+  (a founder story), "3rd-party tested", "caffeine-free" / "no sugar or caffeine", the morning-after pill, "Gen Z energy",
+  a hydrating sunscreen or shampoo, sampling at tailgates (both Oct 18 reviews' cases are in the test). Read from the
+  brand's About, products and the line of its notes that starts "Discover: " (`brandWriteUp` / `discoverWriteUp` —
+  never the Activation idea, never Leo's own notes) plus its name for energy only. On top of the 100: a total past it
+  shows "the score stops at 100" with the difference (`capAt100`), so the points still add up. `FIT_SELECT` /
+  `FitFacts` / plan-brands.ts carry about / topProducts / notes, required so a read without them fails tsc; while sales aren't known the stronger of funding and the size
   estimate counts (a parent company's brand keeps the parent's size). **Ruled out** = confirmed not sold
   in the US only (Leo's one hard no): nobody there is ever queued or emailed — `SOLD_IN_US` guard in
   `NOT_IN_CONVERSATION` (the rotation's pool), `fillToday`, `nextBestBrands`, today's list, the email
@@ -761,11 +869,22 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   much going on"): search + one **More ▾** menu (Brand Fit, SponsorUnited worklist, Lanes & re-file,
   Duplicates, Fill summaries — same ids `bq-*`), one **category dropdown** (`brCatSelect`, `data-brcat`;
   the chip row is gone), filters on one line, archived hidden by default. One row per brand:
-  Category · Tier · Fit · **Buyers** (the edit row shows everyone else on file). **Buyers** = people on file
+  Category · Tier · Fit · **Buyers** (the edit row shows everyone else on file). **Easier to read** (Leo, Oct 18 2026: "too
+  hard to look at can u make it easier to see and interact with"): one filter panel (`.br-tools`) — category, **Show**
+  and **Outreach** as button rows (`brSeg`), Sort; "Showing N of M brands" + **Clear filters** (`data-brclear`: Show,
+  Outreach, search); Hide too small / Hide archived — and the table Brand · **Outreach** (`brOutCell`: the Reached tag +
+  Replied / N invited / N emailed; else N queued / Not yet, hidden once the tag fills) · Category · Tier · Fit · Buyers (0 = grey with an amber dot,
+  not ⚠), 14–15px text, striped rows, a click on a heading sorts (`brHead`, `data-brsorth`; Buyers flips fewest / most;
+  the Sort menu follows), and on a desktop the heading row sticks under the top bar. **Buyers** = people on file
   whose title is partnerships/sponsorship, events/experiential, marketing/brand or founder/CEO
   (`src/lib/buyers.ts`, counted in `listBrands` → `buyers`, `buyerPeople`; `node scripts/test-buyers.mjs`);
   a brand is covered at **1** (`BR_TARGET`, Leo's call). Filters All / Needs people / Has enough,
-  Hide too small, Hide archived, sort (fewest buyers first by default), search by name or aka. A row opens in place:
+  Hide too small, Hide archived, sort (fewest buyers first by default), search by name or aka. **Brand Fit counts**
+  (Leo, Oct 18 2026: "a count for brands that are above 75 then brands 50-75 then less than 50"): the toolbar's
+  **Brand Fit** group — Any · Above 75 · 50–75 · Under 50 (`BR_BANDS`, `brBand`, `BR.fit`, a `brSeg` like Show and
+  Outreach) — counts the brands in play (archived / do-not-email left out, `brInPlay`) over the rows every other filter
+  shows (`brShown({ anyFit: true })`: category, Show, Outreach, search, Hide too small), so a count is exactly what its
+  click shows ("Showing N of M" agrees); a second click or Clear filters clears it; not on New from LinkedIn. A row opens in place:
   category, tier, website, LinkedIn page, aka, notes save on change (`updateBrand`); **Add a person**
   (`upsertContact`); the name opens the brand page. The tick bar (re-file, Put on a day) is unchanged.
   Stock take (lanes, ideas, re-file) and Needs contacts (SponsorUnited worklist) left the sub-tabs and
@@ -792,6 +911,17 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   amber). The "People on file" card (`renderFillProgress` — brands with anyone on file, the SponsorUnited
   sweep) is folded to one line under it (`FP_OPEN`).
   `node scripts/test-coverage-e2e.js` (real handlers, throwaway Postgres).
+- **Outreach filter on every brand list** (Leo, Oct 18 2026: "anywhere on the site where i sort brands … a filter [for]
+  outreached to meaning that we have sent a request to at least one person there"): one dropdown **Outreach: Any /
+  Reached out (N) / Not reached out (N)** (`reachSelect` / `reachOk` / `REACH_F` / `REACH_DRAW` in app.html) on All brands
+  (there a row of buttons in the filter panel, `data-brreach`), Stock take (a lane's brand list, "Brands (3 of 40)"), Discover (reset by a tab change), Outreach → People, Week plan's
+  browse a category (Add the top N follows it) and the Schedule's category drill-in. Reached out = **the Reached tag's
+  rule** (`isReached` / `REACHED_WHERE` in route.ts, which `reachedBrands` reads too): an invite ever, an accept logged
+  from LinkedIn, a hand or machine email — so a brand with the purple tag is always under Reached out. Data: listBrands
+  `outreach.invited` / `emailed`, brandStock `invited` / `emailed`, linkedinPeople `reached`, listDiscoveries `reached`,
+  planBrandRow `reached`, categoryBrands' `group === 'reached'`.
+  Per list, for the visit (not remembered). `NODE_PATH=$(npm root -g) node scripts/test-reach-filter.js`,
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-reach-filter-e2e.js`.
 - **Daily Claude brand hunt** (Leo, Oct 2026: "a process for Claude to find new brands … it shouldn't
   necessarily be through LinkedIn"). Routine "Discover: daily brand hunt" (5:52 New York) wakes the cloud
   session "Brand hunt (daily)" — repo attached, `REPORT_TOKEN` in its environment; a fresh empty session
@@ -817,9 +947,18 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (`readFind`, no model call) — sales in the $10M–$500M sweet spot 25 ($1M–$10M 12, $500M–$1B 10) or raised $5M+ 20 / $1M+ 10
   (a parent named or a giant = 0, too big for now), stores (1,000+ 15 / 300+ 10 / fewer 5 / "growing" sign 6, +5 for a big
   retailer named), already pays for college / music (official partner, licensed, NIL, sponsor, tour, festival 20 · the hunt's
-  sign 12 · only popular with students 6), growing fast 10, 18–24 sign 5. A find on the roster grades on its brand's own Brand
+  sign 12 · only popular with students 6), **fits a student's day** (Oct 18 2026 — the Brand Fit rule above, read from the
+  find's write-up (+ name for energy), never the pitch: studying / focus 20, nights out 15, game day / campus 15, energy /
+  hydration 10), growing fast 10 (since Oct 18 also a launch, from the write-up only — `launchIn`: "first mass-retail",
+  "national launch", "rolling out to Kroger", "expanding into Walmart", "added 400 stores", "into Target", "went
+  national", "entered Texas", "into CA, CO, FL" (state codes only right after the verb), "a distribution deal"; stores, markets
+  and distribution only — never a footprint that just is ("in 48 states", "ships to 50 states"), a national ad campaign or
+  award, "expanding into apparel" / "its social reach", or a launch dated before last year — the first year after it in its
+  clause ("into Walmart (1,200 stores) in 2016"), else one just before that isn't a founding year), 18–24 sign 5.
+  A find on the roster grades on its brand's own Brand
   Fit. Letters **A 65+ / B 50+ / C 40+ / D** (Skip / not US / closed = D, too small caps at C) — on Oct 15 the 171 finds split
-  ~17 / 52 / 63 / 39 (Brand Fit alone had made 137 of them A). The page: a score box per row (number + letter; a click opens every
+  ~17 / 52 / 63 / 39 (Brand Fit alone had made 137 of them A); on Oct 18, with the student fit and launches, the 186 waiting
+  ~30 / 66 / 53 / 37 (was 2 / 64 / 67 / 53) and Neuro 46 C → 76 A as a find, 63 B → 83 A on the roster. The page: a score box per row (number + letter; a click opens every
   point), the points as chips under the why, big **Accept** / **Deny** buttons (`addDiscoveredBrand` / `dismissDiscovered`), a
   heading per grade under **Best grade first** (default; Newest first) and a grade filter. **Add all A's** (Leo, Oct 13 2026 — 88 of 106 waiting finds were A): the To review bar's button (`dcBulkOpen`,
   `#dc-bulk`) → `addDiscoveredBulk({ grade: 'A' })` preview = every A waiting, each as it'd be filed (`discoveryCategory`,

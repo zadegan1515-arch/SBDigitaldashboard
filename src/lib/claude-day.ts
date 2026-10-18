@@ -84,6 +84,7 @@ export function actionText(fn: string, args: any, result: any): string | null {
     case 'weekBankSize': return `Set the week list to ${Number(r.size ?? a.size) || 0} brands`
     case 'weekSpread': return `Spread the week list onto ${plural(count(a.days), 'day')} (${Array.isArray(r.days) ? r.days.reduce((n: number, d: any) => n + (Number(d?.added) || 0), 0) : 0} brands)`
     case 'undoWeekSpread': return 'Took back the last week list spread'
+    case 'reachAgain': return `Reached out again at ${s(r.brandName) || 'a brand'}: ${plural(count(r.people), 'person', 'people')} on ${s(r.label || a.date)}`
     case 'setListDay': return `${a.on === false ? 'Let Best fit fill' : 'Kept to the week list:'} ${s(a.date)}`
     case 'planAddBrands': return `Put ${plural(count(a.brandIds) || count(r.added), 'brand')} on ${s(a.date || 'a day')}`
     case 'setBrandPassed': return `${a.passed === false ? 'Brought back' : 'Archived'} ${brand || 'a brand'}`
@@ -91,6 +92,13 @@ export function actionText(fn: string, args: any, result: any): string | null {
     // A second click on a stop that already stands changed nothing.
     case 'stopContact': return r.already ? null : stopText(a, r, true)
     case 'undoStopContact': return r.already ? null : stopText(a, r, false)
+    // In talks (the top tab).
+    case 'setInTalks': return `${a.on === false ? 'Took' : 'Put'} ${brand || 'a brand'} ${a.on === false ? 'off' : 'on'} In talks`
+    case 'saveTalksProfile': return Array.isArray(r.saved) && r.saved.length ? `Wrote ${brand || 'a brand'}'s In talks ${r.saved.join(', ')}` : null
+    case 'setTalksDeal': return `${r.created ? 'Started' : 'Moved'} ${s(r.brandName) || 'a brand'}'s deal ${r.created ? 'at' : 'to'} ${s(a.stage, 20)}${r.addedToTalks ? ' (now in talks)' : ''}`
+    case 'addBrandNote': return `Added a note on ${brand || 'a brand'} (In talks)`
+    case 'editBrandNote': return `Edited a note on ${brand || 'a brand'} (In talks)`
+    case 'deleteBrandNote': return `Deleted a note on ${brand || 'a brand'} (In talks)`
     case 'handStep':
       if (a.step === 'declined') return r.already ? null : stopText(a, r, a.on !== false)
       return `Zach's list: ${s(a.step, 20)}${a.on === false ? ' undone' : ''}${r.contactName ? ' — ' + s(r.contactName) : ''}`

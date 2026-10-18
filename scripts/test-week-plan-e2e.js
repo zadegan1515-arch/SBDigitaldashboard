@@ -12,7 +12,13 @@
 //     Fill box offers the list;
 //   • Undo takes the spread back off and the days fill with Best fit again;
 //   • today kept to the list: nothing automatic in today's list, Fill to 30
-//     takes from the list (top first), and Best fit again once let go.
+//     takes from the list (top first), and Best fit again once let go;
+//   • Reach out again: a brand reached a week+ ago that nobody answered,
+//     with decision makers never contacted, is recommended (not under a
+//     week, not after an accept); reachAgain puts exactly those people on
+//     the day (chosen), refuses under a week, and onto today queues them;
+//   • people outside the US stay out of the normal queue's picks unless the
+//     company is based abroad, and a hand pick of one is flagged.
 //
 // Run: E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-week-plan-e2e.js
 const path = require('path');
@@ -137,7 +143,11 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     wb = await data('weekBank', {});
     assert.equal(wb.bank.rows.length, 10, 'hand adds count toward the number');
     const reach = wb.bank.rows.find(r => r.id === 'reach');
-    assert.ok(reach && reach.how === 'hand' && reach.where === 'cant' && /rests two weeks/.test(reach.why), 'the reached one: added by hand, resting');
+    // Resting — unless the week's first day is the next sending day after its
+    // invite (3 days ago), which still belongs to its first sitting (the
+    // part-sent rule), as on a Sunday or Monday.
+    assert.ok(reach && reach.how === 'hand' && (reach.where === 'cant' ? /rests a week/.test(reach.why) : reach.where === 'waiting'),
+      'the reached one: added by hand, resting (or finishing its first sitting): ' + JSON.stringify(reach && { where: reach.where, why: reach.why }));
     assert.equal(wb.bank.rows.find(r => r.id === 'giant')?.where, 'waiting', 'the OK’d giant can go');
     assert.equal(wb.bank.autoLeft, 5, 'two hand adds pushed two system picks past the number');
 
@@ -259,6 +269,127 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const wb2 = await data('weekBank', {});
     assert.ok(![...listed].some(id => wb2.bank.rows.some(r => r.id === id && r.where === 'waiting')), 'today’s brands aren’t waiting on the list any more');
     ok('today kept to the list: nothing automatic, Fill to 30 from the list, top first');
+
+    // 6. Reach out again ---------------------------------------------------
+    // Reached 9 days ago (two invites, nobody answered), with two people who
+    // decide there never contacted — and one who doesn't decide.
+    const mkAgain = async (id, name, daysAgo, opts = {}) => {
+      await prisma.brand.create({ data: { id, name, category: 'energy', tier: 'growth', liMembers: 120, usStatus: 'yes', salesCents: BigInt(80 * M) } });
+      const people = [['Head of Partnerships', true], ['Brand Manager', true], ['Events Manager', false], ['VP Marketing', false], ['Sales Associate', false],
+        ['UK Partnerships Manager', false], ['Partnerships Lead', false, 'London, England, United Kingdom']];
+      for (let i = 0; i < people.length; i++) {
+        const c = await prisma.contact.create({ data: { brandId: id, name: name + ' ' + people[i][0], title: people[i][0], linkedinUrl: 'https://www.linkedin.com/in/' + id + i,
+          location: people[i][2] || (opts.abroad ? 'Berlin, Germany' : i < 2 ? 'Austin, Texas, United States' : null) } });
+        if (people[i][1]) {
+          await prisma.target.create({ data: { brandId: id, contactId: c.id, status: i === 0 && opts.status ? opts.status : 'sent', sentAt: new Date(Date.now() - daysAgo * 864e5),
+            dmSentAt: i === 0 && opts.dmDaysAgo != null ? new Date(Date.now() - opts.dmDaysAgo * 864e5) : null } });
+        }
+      }
+    };
+    await mkAgain('ag', 'Again Co', 9);
+    await mkAgain('ag2', 'Today Again', 10);
+    await mkAgain('soon', 'Soon Co', 3);
+    await mkAgain('acc', 'Accepted Co', 9, { status: 'accepted' });
+    await mkAgain('accdm', 'Messaged Co', 12, { status: 'accepted', dmDaysAgo: 4 });
+    await mkAgain('rep', 'Replied Co', 9, { status: 'replied' });
+    await mkAgain('call', 'Call Co', 9);
+    await prisma.target.updateMany({ where: { brandId: 'call', status: 'sent' }, data: { callBookedAt: new Date() } });
+    await mkAgain('de', 'Berlin Co', 9, { abroad: true });
+    wb = await data('weekBank', {});
+    const ag = wb.again.rows.find(r => r.id === 'ag');
+    assert.ok(ag, 'reached 9 days ago with decision makers never contacted: recommended');
+    assert.equal(ag.state, 'due', 'due (1 to 2 weeks)');
+    assert.equal(ag.daysSince, 9);
+    assert.deepEqual(ag.fresh.map(c => c.title), ['Events Manager', 'VP Marketing'], 'the decision makers nobody contacted, events first; never the sales associate, never the two outside the US');
+    assert.equal(ag.abroad, 2, 'the UK title and the one in London: left out, counted');
+    assert.equal(ag.basedAbroad, false);
+    assert.equal(ag.going, 2, 'both go');
+    assert.equal(ag.invited, 2);
+    for (const id of ['soon', 'rep', 'call', 'accdm', 'reach']) assert.ok(!wb.again.rows.some(r => r.id === id), id + ': not recommended (under a week, replied, a call booked, a DM 4 days ago)');
+    const acc = wb.again.rows.find(r => r.id === 'acc');
+    assert.ok(acc && acc.accepted === 1, 'someone only accepted: still recommended, and it says so');
+    const de = wb.again.rows.find(r => r.id === 'de');
+    assert.ok(de && de.basedAbroad, 'a company whose people are abroad: based abroad');
+    assert.deepEqual(de.fresh.map(c => c.title).sort(), ['Events Manager', 'Partnerships Lead', 'UK Partnerships Manager', 'VP Marketing'], 'its people abroad can go');
+    assert.equal(de.abroad, 0, 'nobody left out for being abroad there');
+    assert.ok(!wb.bank.rows.some(r => r.id === 'ag'), 'never on the list by itself (reached)');
+    ok('Reach out again: a week since the last outreach (Zach’s DMs count), nobody replied, decision makers never contacted, in the US unless the company is based abroad; an accept alone doesn’t stop it');
+
+    const no = await data('reachAgain', { brandId: 'soon', date: wb.days[0].date });
+    assert.equal(no.ok, false);
+    assert.equal(no.why, 'soon', 'under a week: refused, says why');
+    assert.match(no.text, /less than a week ago/);
+    const day = wb.days[0].date;
+    const ra = await data('reachAgain', { brandId: 'ag', date: day });
+    assert.equal(ra.ok, true, 'put on ' + day);
+    assert.deepEqual(ra.people.map(p => p.name).sort(), ['Again Co Events Manager', 'Again Co VP Marketing']);
+    const plan3 = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value);
+    assert.ok(plan3[day].brandIds.includes('ag'), 'pinned on that day');
+    const newRows = await prisma.target.findMany({ where: { brandId: 'ag', status: 'queued' }, include: { contact: true } });
+    assert.deepEqual(newRows.map(t => t.contact.title).sort(), ['Events Manager', 'VP Marketing'], 'a waiting row for each, nobody else');
+    const chosen = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachChosen' } })).value);
+    assert.ok(newRows.every(t => chosen[t.id]), 'chosen people (they go first and all go)');
+    op = await data('getOutreachPlan', {});
+    const card = op.days.find(x => x.date === day)?.pinned.find(p => p.id === 'ag');
+    assert.ok(card && card.state === 'going', 'the Schedule says it goes');
+    assert.deepEqual(card.people.map(p => p.name).sort(), ['Again Co Events Manager', 'Again Co VP Marketing'], 'exactly them — though the brand has invites out');
+    wb = await data('weekBank', {});
+    assert.equal(wb.again.rows.find(r => r.id === 'ag')?.pinnedOn, day, 'the card says where it is');
+    ok('reachAgain: those people on that day (chosen, so they go though the brand has invites out); under a week refused');
+
+    // Onto today (opened above): they're in today's LinkedIn list now.
+    const rt = await data('reachAgain', { brandId: 'ag2', date: today });
+    assert.equal(rt.ok, true);
+    tq = await data('getTodayQueue', {});
+    const ag2Rows = await prisma.target.findMany({ where: { brandId: 'ag2', status: { in: ['queued', 'drafted'] } }, include: { contact: true } });
+    assert.deepEqual(ag2Rows.map(t => t.contact.title).sort(), ['Events Manager', 'VP Marketing'], 'rows for the two never contacted');
+    assert.deepEqual(tq.targets.filter(t => t.brandId === 'ag2').map(t => t.id).sort(), ag2Rows.map(t => t.id).sort(), 'in today’s list: exactly them');
+    ok('reachAgain onto today: straight into today’s LinkedIn list');
+
+    // 7. People outside the US in the normal queue ---------------------------
+    // (Leo, Oct 18 2026: skip them unless the company is based outside the US.)
+    const mkIntl = async (id, name, people) => {
+      await prisma.brand.create({ data: { id, name, category: 'energy', tier: 'growth', liMembers: 120, usStatus: 'yes', salesCents: BigInt(80 * M) } });
+      const ids = {};
+      for (let i = 0; i < people.length; i++) {
+        const [title, location] = people[i];
+        const c = await prisma.contact.create({ data: { brandId: id, name: name + ' ' + title, title, location: location || null, linkedinUrl: 'https://www.linkedin.com/in/' + id + i } });
+        ids[title] = c.id;
+      }
+      return ids;
+    };
+    const US_PEOPLE = [['UK Partnerships Manager'], ['Partnerships Lead', 'London, England, United Kingdom'], ['Head of Events', 'Austin, Texas, United States'], ['Brand Manager', 'Chicago, IL']];
+    await mkIntl('usco', 'US Co', US_PEOPLE);
+    const pvUs = await data('planAddBrands', { date: wb.days[0].date, brandIds: ['usco'], preview: true });
+    const pvPeople = (pvUs.results || [])[0]?.people?.map(p => p.title).sort();
+    assert.deepEqual(pvPeople, ['Brand Manager', 'Head of Events'], 'the Schedule’s preview: only the people in the US');
+    const qu = await data('queueBrandTargets', { brandId: 'usco' });
+    assert.equal(qu.queued, true);
+    let rows = await prisma.target.findMany({ where: { brandId: 'usco' }, include: { contact: true } });
+    assert.deepEqual(rows.map(t => t.contact.title).sort(), ['Brand Manager', 'Head of Events'], 'the queue picks the same two — never the UK title or the one in London');
+    // Someone abroad already waiting in the pool (picked before this rule): next in line, never stamped.
+    const ids2 = await mkIntl('usco2', 'US Two', US_PEOPLE);
+    await prisma.target.create({ data: { brandId: 'usco2', contactId: ids2['UK Partnerships Manager'], fitScore: 50 } });
+    await data('queueBrandTargets', { brandId: 'usco2' });
+    rows = await prisma.target.findMany({ where: { brandId: 'usco2' }, include: { contact: true } });
+    const uk = rows.find(t => t.contact.title === 'UK Partnerships Manager');
+    assert.ok(uk.shelved && uk.shelvedHow === 'cap' && !uk.queuedFor, 'a pooled person abroad is set aside next in line');
+    assert.ok(rows.filter(t => t.queuedFor).every(t => ['Head of Events', 'Brand Manager'].includes(t.contact.title)), 'only the people in the US go today');
+    // A company based abroad: its people abroad go (the US one first).
+    await mkIntl('deco', 'Berlin Two', [['UK Partnerships Manager', 'Berlin, Germany'], ['Head of Events', 'Munich, Germany'], ['Brand Manager', 'Hamburg, Germany']]);
+    await data('queueBrandTargets', { brandId: 'deco' });
+    rows = await prisma.target.findMany({ where: { brandId: 'deco' }, include: { contact: true } });
+    assert.ok(rows.some(t => t.contact.title === 'UK Partnerships Manager' && t.queuedFor), 'based abroad: the UK partnerships manager goes');
+    // Chosen by hand: they go — and Today's list for Zach flags them.
+    const qc = await data('queueContact', { contactId: (await mkIntl('usco3', 'US Three', [['UK Partnerships Manager'], ['Head of Events', 'Austin, Texas, United States']]))['UK Partnerships Manager'] });
+    assert.equal(qc.queued, true, 'queued by hand: it goes');
+    const sl = await data('todaySendList', {});
+    const flaggedRow = sl.brands.find(b => b.brandId === 'usco3')?.people.find(p => p.title === 'UK Partnerships Manager');
+    assert.ok(flaggedRow && /outside the US/.test(flaggedRow.problem || ''), 'Today’s list for Zach flags them: ' + JSON.stringify(flaggedRow));
+    assert.ok(sl.brands.find(b => b.brandId === 'usco3').people.every(p => p.title !== 'Head of Events' || !p.problem), 'nobody else is flagged for it');
+    tq = await data('getTodayQueue', {});
+    assert.ok(/outside the US/.test(tq.targets.find(t => t.brandId === 'usco3' && t.contact?.title === 'UK Partnerships Manager')?.problem || ''), 'the LinkedIn tab too');
+    ok('the normal queue: people outside the US left out at a US company (new, waiting, the preview alike), picked at a company based abroad, flagged when queued by hand');
 
     console.log('week plan e2e: all ' + n + ' passed');
   } catch (e) {

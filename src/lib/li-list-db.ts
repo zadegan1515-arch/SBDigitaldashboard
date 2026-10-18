@@ -82,7 +82,8 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
       acquiredBy: b.acquiredBy, researchedAt: b.researchedAt,
       reachable: b.contacts.filter(c => !!(c.email || c.linkedinUrl)).length,
       need: workNeed({ tier: b.tier, workPeople: b.workPeople, liMembers: b.liMembers, big, top: isTopCategory(b.category, priorities) }),
-      acceptRate: null, priority: priorityOf(b.category, priorities), giant: giantOf(b), now,
+      acceptRate: null, priority: priorityOf(b.category, priorities), giant: giantOf(b),
+      name: b.name, about: b.about, topProducts: b.topProducts, notes: b.notes, now,
     })
     return [b.id, f] as const
   }))

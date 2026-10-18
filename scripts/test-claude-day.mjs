@@ -18,6 +18,8 @@ t('reads, previews, refusals and the work log are never changes', () => {
   assert.equal(C.actionText('getBrand', { brandId: 'b1' }, {}), null)
   assert.equal(C.actionText('listDiscoveries', {}, {}), null)
   assert.equal(C.actionText('zachTodo', { brandId: 'b1' }, {}), null)
+  assert.equal(C.actionText('reachAgain', { brandId: 'b1', date: '2026-10-20' }, { ok: true, brandName: 'Alpha', label: 'Tue Oct 20', people: [{}, {}] }), 'Reached out again at Alpha: 2 people on Tue Oct 20')
+  assert.equal(C.actionText('reachAgain', { brandId: 'b1', date: '2026-10-20' }, { ok: false, why: 'soon' }), null, 'refused')
   assert.equal(C.actionText('combineParent', { parent: 'Diageo' }, { applied: false }), null, 'a preview')
   assert.equal(C.actionText('mergePeople', { brandId: 'b' }, { stale: true }), null, 'stale')
   assert.equal(C.actionText('reviewNewBrands', { ids: ['a'], action: 'archive', preview: true }, { preview: true }), null)
