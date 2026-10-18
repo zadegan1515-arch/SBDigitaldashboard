@@ -654,7 +654,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   changed since is skipped, named, and left waiting in the batch. Rows match by id, else exact name / aka
   (`researchMatcher`); a brand listed twice — the later row wins. One transaction, Undo `researchUndo` (only fields
   still as the import left them). Never write facts without that review — the one exception is a brand the "Add a
-  brand" chat makes, where Leo's yes on the card that showed the facts is the review. **Suggest Archive**
+  brand" chat makes, where Leo sending the brand is his yes (Oct 18 2026) and the card it shows after names every fact written. **Suggest Archive**
   (`fitArchive` preview → apply, Undo `fitArchiveUndo`; Setting `fitArchiveLast`): confirmed not US,
   closed/acquired, or researched with every signal known to be absent (sales AND funding looked up and
   under the bars, no college / music found, not a Top category) and a low score; never a brand in talks (reply, deal,
@@ -775,12 +775,16 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `DASHBOARD_TOKEN` in its environment — no API spend) follows `docs/add-a-brand-chat.md`: reads the
   screenshot / name, `brandLookup`, researches the open web (site, LinkedIn page, what they sell, money,
   college / music), previews `chatAddBrand` (rules pure in `src/lib/chat-add.ts`: possible matches by
-  name / aka, LinkedIn page, website — the Duplicates signals; `node scripts/test-chat-add.mjs`), shows
-  Leo a card, and only on his yes applies: Brand `source: 'chat'`, notes say where it came from. A
-  possible match is refused unless Leo says it's a different company (`notSame`; an exact name never).
-  **Facts: Leo's yes is the review** (Leo, Oct 12 2026: "my yes is the review, so skip Stock take"): the
-  preview returns `facts` = each fact as it'll be written (`factChanges` against a blank brand, `{ label, value }`),
-  the card shows them all, and apply (with the preview's `expect`; other facts are refused) writes them onto the
+  name / aka, LinkedIn page, website — the Duplicates signals; `node scripts/test-chat-add.mjs`) and applies.
+  **Every brand Leo sends is a yes** once real information is found — its own website or checked LinkedIn page, and
+  what it sells (Leo, Oct 18 2026: "every brand Leo sends is a yes when real info is found. Ask only when it might
+  match a brand already on the dashboard"); no info → nothing added, the chat says what's missing. Brand
+  `source: 'chat'`, notes say where it came from. A possible match stops the chat to ask; apply refuses it unless Leo
+  says it's a different company (`notSame`; an exact name never). After adding it shows Leo the card with every fact
+  and the link; a fact he corrects is fixed on that brand alone (`updateBrand({ brandId, facts })`).
+  **Facts: Leo sending it is the review** (Oct 12 2026: "my yes is the review, so skip Stock take"; Oct 18: the send is
+  the yes): the preview returns `facts` = each fact as it'll be written (`factChanges` against a blank brand,
+  `{ label, value }`), and apply (with the preview's `expect`; other facts are refused) writes them onto the
   brand it makes in the same transaction (+ `researchedAt`; `factsWritten`). Never onto a brand that was already there — those still go to `researchStage`. It can't
   sign in to SponsorUnited or LinkedIn — the LinkedIn fill and SU sweep pick the brand up from there.
 - **One brand per parent company** (Leo, Oct 8 2026: "make all of the brands under Diageo one big brand on the site and
