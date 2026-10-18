@@ -2490,7 +2490,10 @@ function planBrandRow(b: PlanBrand, ctx: PlanRowCtx) {
     : status === 'reached' ? `${rc.sentAt ? 'Invited' : 'Emailed'}${lastTouch ? ' ' + shortDate(lastTouch) : ''} · already reached`
     : going > 0 ? `${going} would go out`
     : 'Nobody would go out'
-  return { id: b.id, name: b.name, category: b.category, externalId: b.externalId, label, pinnedOn, shownOn, status, action, text, going, inTodayQueue, giant: status === 'giant' }
+  // invited = a LinkedIn invite went to someone there (wasInvited) — the
+  // page's Outreach filter (Reached out / Not reached out). An email alone
+  // doesn't count, unlike `reached` above.
+  return { id: b.id, name: b.name, category: b.category, externalId: b.externalId, label, pinnedOn, shownOn, status, action, text, going, inTodayQueue, giant: status === 'giant', invited: b.targets.some(wasInvited) }
 }
 
 // A day's Fill box (suggestForDay): open brands that could go out that
@@ -11402,6 +11405,8 @@ const handlers: Record<string, Handler> = {
         id: b.id, name: b.name, tier: b.tier, externalId: b.externalId,
         website: b.website, linkedinUrl: b.linkedinUrl,
         label, group,
+        // The Outreach filter's test (a LinkedIn invite to someone there).
+        invited: ts.some(wasInvited),
         setAsideWhy: group === 'setAside' ? (b.passedAt ? 'archived' : b.doNotEmail ? 'donotemail' : 'notus') : null,
         outreach: {
           stage, stale, people,
@@ -13258,6 +13263,8 @@ const handlers: Record<string, Handler> = {
   async linkedinPeople() {
     const brands = await prisma.brand.findMany({
       include: {
+        // People invited on LinkedIn there — the Outreach filter.
+        _count: { select: { targets: { where: INVITED_WHERE } } },
         contacts: {
           select: {
             id: true, name: true, title: true, linkedinUrl: true,
@@ -13277,6 +13284,7 @@ const handlers: Record<string, Handler> = {
       linkedinUrl: b.linkedinUrl,
       // So the "Under 25" worklist can leave out brands off outreach.
       archived: !!b.passedAt, doNotEmail: b.doNotEmail,
+      invited: b._count.targets,
       liNote: liLog[b.id]?.note || null,
       contacts: b.contacts.map(c => ({
         id: c.id, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl,
@@ -14624,7 +14632,7 @@ const handlers: Record<string, Handler> = {
       where: { status: { not: 'dismissed' }, ...(query ? { query } : {}) },
       orderBy: { createdAt: 'desc' }, take: 600,
     })
-    const brands = await prisma.brand.findMany({ select: { id: true, name: true, _count: { select: { contacts: true } } } })
+    const brands = await prisma.brand.findMany({ select: { id: true, name: true, _count: { select: { contacts: true, targets: { where: INVITED_WHERE } } } } })
     const byId = new Map(brands.map(b => [b.id, b]))
     const byName = new Map(brands.map(b => [b.name.toLowerCase(), b]))
     const sourceOf = (q: string) => /^(Claude hunt|🔥)/.test(q) ? 'Claude hunt'
@@ -14652,7 +14660,9 @@ const handlers: Record<string, Handler> = {
         { category: cat, signals: r.signals, hasParent: !!parentOf(r.name, null), giant: giantOf({ name: r.name }),
           text: [r.reason, r.activation].filter(Boolean).join(' ') },
         { priority: categoryPriority(cat), acceptRate: rateOrNull(rates, cat), now })
-      return { ...r, source: sourceOf(r.query), inSystem: !!existing, contactCount: existing?._count.contacts ?? 0, grade: g }
+      // reached = its brand has had a LinkedIn invite go to someone (the
+      // Outreach filter); a find not on the roster never has.
+      return { ...r, source: sourceOf(r.query), inSystem: !!existing, contactCount: existing?._count.contacts ?? 0, reached: (existing?._count.targets ?? 0) > 0, grade: g }
     })
     // A brand added since by any other path: remember the link.
     for (const l of link) {

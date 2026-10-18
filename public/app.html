@@ -2148,6 +2148,7 @@
         <button class="chip" data-lif="profiles">Saved profiles</button>
         <button class="chip" data-lif="none">Nobody yet</button>
         <button class="chip" data-lif="thin" title="Brands with room under the 25-people cap, emptiest first — open People ↗ and press the SB pill">Under 25</button>
+        <span id="li-reach"></span>
         <a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" style="text-decoration:none;margin-left:6px" title="Opens LinkedIn in a window of its own and starts the fill there by itself — the Schedule's short brands, then every brand with nobody in marketing / partnerships, electrolytes first within each; the research list and lookalikes on. Keep working here; leave that window alone, with a corner of it in view (minimized or fully covered, Chrome slows it). Needs the LinkedIn capture script in Tampermonkey.">Start the LinkedIn fill ↗</a>
         <input class="inp" id="li-q" placeholder="Filter brands…" autocomplete="off" style="margin-left:auto;width:220px">
       </div>
@@ -2182,6 +2183,7 @@
       <div style="margin:-4px 0 10px">
         <label class="hs-switch" title="Too small = sales under $1M, or (sales not known) under 20 people on LinkedIn. Only brands nobody has contacted are hidden.">
           <input type="checkbox" id="st-small" data-hidesmall="stock" checked> Hide too small</label>
+        <span id="st-reach" style="margin-left:14px"></span>
       </div>
       <div id="st-refile"></div>
       <div id="st-fit"></div>
@@ -2683,6 +2685,44 @@ function hideSmallBox(where) {
   return '<label class="hs-switch" title="Too small = sales under $1M, or (sales not known) under 20 people on LinkedIn">' +
     '<input type="checkbox" data-hidesmall="' + esc(where) + '"' + (HIDE_SMALL ? ' checked' : '') + '> Hide too small</label>';
 }
+// The Outreach filter (Leo, Oct 18 2026: "anywhere on the site where i sort
+// brands … a filter [for] outreached to, meaning that we have sent a request
+// to at least one person there"). Reached out = a LinkedIn invite went to at
+// least one person at the brand — the server's wasInvited: an invite date, or
+// a row past the invite, so an accept logged straight from LinkedIn counts.
+// An email alone doesn't. One dropdown, the same on every brand list
+// (All brands, Stock take, Discover, Outreach → People, Week plan's
+// category, the Schedule's category); each list keeps its own choice for
+// the visit (REACH_F[list]) and redraws itself (REACH_DRAW[list]).
+var REACH_F = {};
+var REACH_DRAW = {};
+var REACH_TIP = 'Reached out = a LinkedIn invite went to at least one person there (an accept logged straight from LinkedIn counts too; an email alone doesn’t)';
+function reachOk(list, reached) {
+  var f = REACH_F[list];
+  return !f || (f === 'yes') === !!reached;
+}
+// How many of `rows` each choice would show, for the dropdown's options.
+function reachCounts(rows, isReached) {
+  var c = { yes: 0, no: 0 };
+  rows.forEach(function (r) { c[isReached(r) ? 'yes' : 'no'] += 1; });
+  return c;
+}
+function reachSelect(list, counts) {
+  var f = REACH_F[list] || '';
+  var n = function (k) { return counts ? ' (' + (counts[k] || 0) + ')' : ''; };
+  var opt = function (v, label) { return '<option value="' + v + '"' + (f === v ? ' selected' : '') + '>' + label + '</option>'; };
+  return '<label class="br-chk reach-f" title="' + esc(REACH_TIP) + '">Outreach ' +
+    '<select class="inp" data-reachf="' + esc(list) + '" aria-label="Outreach: reached out or not">' +
+      opt('', 'Any') + opt('yes', 'Reached out' + n('yes')) + opt('no', 'Not reached out' + n('no')) +
+    '</select></label>';
+}
+document.addEventListener('change', function (e) {
+  var s = e.target && e.target.closest ? e.target.closest('select[data-reachf]') : null;
+  if (!s) return;
+  var list = s.getAttribute('data-reachf');
+  REACH_F[list] = s.value;
+  if (REACH_DRAW[list]) REACH_DRAW[list]();
+});
 // The tags a brand row carries. `f` may be missing (old payloads).
 function fitTags(f, opts) {
   if (!f) return '';
@@ -7270,13 +7310,17 @@ function brMatches(b, ql) {
 // finds them; New from LinkedIn is a review list and never hides.
 function brSmallHidden(b) { return HIDE_SMALL && !!b.hideSmall && lastCategory !== 'new'; }
 function brFit(b) { return b.fit ? b.fit.score : -1; }
-function brShown() {
+// Reached out: a LinkedIn invite to someone there (listBrands' outreach.invited).
+function brReached(b) { return ((b.outreach && b.outreach.invited) || 0) > 0; }
+// The rows on screen. anyReach = leave the Outreach filter out (its counts).
+function brShown(anyReach) {
   var ql = (document.getElementById('bq').value || '').trim().toLowerCase();
   var rows = BR_LIST.filter(function (b) {
     if (BR.hideArchived && b.passedAt) return false;
     if (!ql && brSmallHidden(b)) return false;
     if (BR.show === 'need' && (!brNeeds(b) || (BR.why && brCoverState(b) !== BR.why))) return false;
     if (BR.show === 'enough' && !brCovered(b)) return false;
+    if (!anyReach && !reachOk('brands', brReached(b))) return false;
     return brMatches(b, ql);
   });
   var by = BR.sort;
@@ -7408,6 +7452,7 @@ function brRender() {
     chip('all', 'All', BR_LIST.length) + chip('need', 'Needs people', need) + chip('enough', 'Has enough', enough) +
     (lastCategory === 'new' ? '' : hideSmallBox('brands')) +
     '<label class="br-chk"><input type="checkbox" data-brarch' + (BR.hideArchived ? ' checked' : '') + '> Hide archived</label>' +
+    reachSelect('brands', reachCounts(brShown(true), brReached)) +
     '<span style="flex:1"></span>' +
     '<label class="br-chk">Sort <select class="inp" data-brsort>' + sorts.map(function (s) {
       return '<option value="' + s[0] + '"' + (BR.sort === s[0] ? ' selected' : '') + '>' + s[1] + '</option>';
@@ -7438,6 +7483,7 @@ function brRender() {
 }
 
 function brById(id) { return BR_LIST.filter(function (b) { return b.id === id; })[0]; }
+REACH_DRAW.brands = function () { brRender(); applyBrandFilter(); };
 
 document.getElementById('brands-list').addEventListener('click', function (e) {
   var show = e.target.closest('[data-brshow]');
@@ -10501,9 +10547,16 @@ function stNext(r, goal) {
   return out;
 }
 
+// Reached out: a LinkedIn invite to someone there (brandStock's `invited`).
+function stReached(b) { return (b.invited || 0) > 0; }
+function stShownBrands(r) { return r.brands.filter(function (b) { return reachOk('stock', stReached(b)); }); }
 function stBrands(r) {
+  var shown = stShownBrands(r);
+  if (r.brands.length && !shown.length) {
+    return '<div class="rw-empty">' + (REACH_F.stock === 'yes' ? 'Nobody here has had a LinkedIn invite yet.' : 'Every brand here has had a LinkedIn invite.') + '</div>';
+  }
   var html = ST_STATES.map(function (s) {
-    var list = r.brands.filter(function (b) { return b.state === s[0]; });
+    var list = shown.filter(function (b) { return b.state === s[0]; });
     if (!list.length) return '';
     return '<div class="st-group"><div class="rw-col-h">' + esc(s[1]) + '<span class="n">' + list.length + '</span></div>' +
       list.map(function (b) {
@@ -10556,7 +10609,7 @@ function stActs(r) {
   var ready = stPlanList(r).length;
   return '<div class="st-acts">' +
     (c.total ? '<button class="btn-ghost sd-sm' + (open === 'brands' ? ' on' : '') + '" data-sttoggle="brands">' +
-      (open === 'brands' ? 'Hide brands' : 'Brands (' + c.total + ')') + '</button>' : '') +
+      (open === 'brands' ? 'Hide brands' : 'Brands (' + (REACH_F.stock ? stShownBrands(r).length + ' of ' + c.total : c.total) + ')') + '</button>' : '') +
     (ready ? '<button class="btn-ghost sd-sm' + (open === 'plan' ? ' on' : '') + '" data-sttoggle="plan" title="Put brands with people nobody has contacted yet on a Schedule day">' +
       (open === 'plan' ? 'Hide ready brands' : 'Put on a day (' + ready + ' ready)') + '</button>' : '') +
     (r.ideas.length ? '<button class="btn-ghost sd-sm' + (open === 'ideas' ? ' on' : '') + '" data-sttoggle="ideas">' +
@@ -10667,6 +10720,7 @@ function stLine(r) {
 }
 
 function stDraw(r) { return r.priority ? stCard(r) : stLine(r); }
+REACH_DRAW.stock = function () { if (ST_DATA) renderStock(); };
 
 function stRedraw(key) {
   var el = stCardEl(key), r = stRow(key);
@@ -10697,6 +10751,8 @@ function renderStock() {
   document.getElementById('st-legend').innerHTML = ST_STATES.map(function (s) {
     return '<span class="st-key"><span class="st-sw st-' + s[0] + '"></span>' + esc(s[1]) + '</span>';
   }).join('');
+  var reach = document.getElementById('st-reach');
+  if (reach) reach.innerHTML = reachSelect('stock', reachCounts(stRows().reduce(function (all, r) { return all.concat(r.brands); }, []), stReached));
   document.getElementById('st-lanes-n').textContent = sum(d.lanes) + ' brands · goal ' + d.goal + ' in play per lane';
   document.getElementById('st-lanes').innerHTML = d.lanes.map(stCard).join('');
   document.getElementById('st-others-n').textContent = sum(d.others) + ' brands';
@@ -11251,6 +11307,7 @@ function liBuyerUrl(b) {
     encodeURIComponent(b.name + ' marketing');
 }
 
+function liReached(b) { return (b.invited || 0) > 0; }
 function renderLinkedin() {
   var box = document.getElementById('li-list');
   var q = (document.getElementById('li-q').value || '').trim().toLowerCase();
@@ -11261,6 +11318,10 @@ function renderLinkedin() {
     if (LI_FILTER === 'thin') return b.contacts.length < LI_CAP && !b.archived && !b.doNotEmail;
     return true;
   });
+  // The Outreach filter, counted on what the chips and the box leave.
+  var reach = document.getElementById('li-reach');
+  if (reach) reach.innerHTML = reachSelect('people', reachCounts(rows, liReached));
+  rows = rows.filter(function (b) { return reachOk('people', liReached(b)); });
   // The worklist reads emptiest first, like the SponsorUnited sweep.
   if (LI_FILTER === 'thin') {
     rows = rows.slice().sort(function (a, b) {
@@ -11890,6 +11951,7 @@ document.querySelectorAll('#linkedin .chip[data-lif]').forEach(function (ch) {
   });
 });
 document.getElementById('li-q').addEventListener('input', function () { renderLinkedin(); });
+REACH_DRAW.people = function () { renderLinkedin(); };
 
 // --- reached (everyone we've contacted, by brand) --------------
 
@@ -15179,6 +15241,7 @@ function renderSchedDrill(focus) {
       '<span class="sd-dim">' + sdPlural(all.length, 'brand', 'brands') + ' · ' + g.reached.length + ' reached · ' +
         notReached + ' not reached yet · ' + g.setAside.length + ' set aside' + esc(covWords) + '</span>' +
       '<span class="sd-sp"></span>' +
+      reachSelect('sched', reachCounts(all, sdReached)) +
       '<input class="inp" data-sdcq="1" placeholder="Filter brands…" autocomplete="off" value="' + esc(SCHED.catQ) + '">' +
       '<a href="#" class="sd-x" data-sdcat="' + esc(key) + '" title="Close">×</a>' +
     '</div>' +
@@ -15192,12 +15255,17 @@ function renderSchedDrill(focus) {
   if (data._gen !== SCHED.catGen) sdLoadCat(key);
 }
 
+// The Outreach filter (invited = a LinkedIn invite to someone there) and
+// the filter box: the drill-in's rows.
+function sdReached(b) { return !!b.invited; }
+function sdDrillShows(b, q) { return (!q || b.name.toLowerCase().indexOf(q) !== -1) && reachOk('sched', sdReached(b)); }
+REACH_DRAW.sched = function () { renderSchedDrillBody(); };
 function renderSchedDrillBody() {
   var box = document.getElementById('sd-drill-body');
   var data = SCHED.catCache[SCHED.openCat];
   if (!box || !data) return;
   var q = (SCHED.catQ || '').toLowerCase();
-  var g = sdDrillGroups((data.brands || []).filter(function (b) { return !q || b.name.toLowerCase().indexOf(q) !== -1; }));
+  var g = sdDrillGroups((data.brands || []).filter(function (b) { return sdDrillShows(b, q); }));
   var addTo = function (b) {
     return '<select class="inp sd-mini" data-sdaddto="' + esc(b.id) + '" data-sdn="' + esc(b.name) + '"><option value="">Add to…</option>' + sdDayOpts(null, false) + '</select>';
   };
@@ -15272,8 +15340,8 @@ function renderSchedDrillBody() {
     }).join('') +
     group('Set aside', g.setAside, asideRow);
   box.innerHTML = '<div class="sd-drill-cols">' +
-    '<div><div class="sd-col-h">Not reached yet</div>' + (left || '<div class="sd-dim">Nothing here' + (q ? ' matches.' : '.') + '</div>') + '</div>' +
-    '<div><div class="sd-col-h">Reached</div>' + (right || '<div class="sd-dim">Nothing here' + (q ? ' matches.' : ' yet.') + '</div>') + '</div>' +
+    '<div><div class="sd-col-h">Not reached yet</div>' + (left || '<div class="sd-dim">Nothing here' + (q || REACH_F.sched ? ' matches.' : '.') + '</div>') + '</div>' +
+    '<div><div class="sd-col-h">Reached</div>' + (right || '<div class="sd-dim">Nothing here' + (q || REACH_F.sched ? ' matches.' : ' yet.') + '</div>') + '</div>' +
   '</div>';
   renderSchedBulk();
 }
@@ -16502,7 +16570,7 @@ var SCHED_DRAG = null;
       var data = SCHED.catCache[SCHED.openCat];
       var q = (SCHED.catQ || '').toLowerCase();
       ((data && data.brands) || []).forEach(function (b) {
-        if (b.group === 'notReached' && b.label && b.label.kind === 'ready' && (!q || b.name.toLowerCase().indexOf(q) !== -1)) SCHED.catSel[b.id] = true;
+        if (b.group === 'notReached' && b.label && b.label.kind === 'ready' && sdDrillShows(b, q)) SCHED.catSel[b.id] = true;
       });
       renderSchedDrillBody();
       return;
@@ -19283,14 +19351,23 @@ function loadDiscover() {
 
 function dcAdded(r) { return r.inSystem || r.status === 'added'; }
 
-function dcShown() {
+// Reached out: the find's brand on the roster has had a LinkedIn invite go
+// to someone (listDiscoveries' `reached`); a find not on the roster hasn't.
+function dcReached(r) { return !!r.reached; }
+// The rows the tab and dropdowns leave. anyReach = without the Outreach
+// filter (its counts).
+function dcFiltered(anyReach) {
   return DC.rows.filter(function (r) {
     if ((DC.tab === 'added') !== dcAdded(r)) return false;
     if (DC.source && r.source !== DC.source) return false;
     if (DC.cat && r.category !== DC.cat) return false;
     if (DC.grade && !(r.grade && r.grade.grade === DC.grade)) return false;
+    if (!anyReach && !reachOk('discover', dcReached(r))) return false;
     return true;
-  }).map(function (r, i) { return { r: r, i: i }; }).sort(function (a, b) {
+  });
+}
+function dcShown() {
+  return dcFiltered().map(function (r, i) { return { r: r, i: i }; }).sort(function (a, b) {
     if (DC.sort === 'grade') {
       var ga = a.r.grade ? a.r.grade.score : -1, gb = b.r.grade ? b.r.grade.score : -1;
       var la = a.r.grade ? DC_GRADE_ORDER[a.r.grade.grade] : 9, lb = b.r.grade ? DC_GRADE_ORDER[b.r.grade.grade] : 9;
@@ -19327,6 +19404,7 @@ function dcRender() {
       cats.map(function (k) { return '<option value="' + esc(k) + '"' + (DC.cat === k ? ' selected' : '') + '>' + esc(CAT_NAMES[k]) + '</option>'; }).join('') + '</select>' +
     '<select class="inp" data-dcsel="grade" aria-label="Grade"><option value="">All grades</option>' +
       ['A', 'B', 'C', 'D'].map(function (g) { return '<option value="' + g + '"' + (DC.grade === g ? ' selected' : '') + '>Grade ' + g + ' (' + gradeN(g) + ')</option>'; }).join('') + '</select>' +
+    reachSelect('discover', reachCounts(dcFiltered(true), dcReached)) +
     '<select class="inp" data-dcsel="sort" aria-label="Sort"><option value="grade"' + (DC.sort === 'grade' ? ' selected' : '') + '>Best grade first</option>' +
       '<option value="new"' + (DC.sort === 'new' ? ' selected' : '') + '>Newest first</option></select>';
 
@@ -19335,7 +19413,7 @@ function dcRender() {
   if (!rows.length) {
     body.innerHTML = '<div class="dc-empty">' + (DC.tab === 'review'
       ? (review ? 'Nothing here with these filters.' : 'All caught up — the next batch lands tomorrow morning.')
-      : 'Nothing added yet.') + '</div>';
+      : (added ? 'Nothing here with these filters.' : 'Nothing added yet.')) + '</div>';
     return;
   }
   // Best grade first: a heading per grade, so the list reads as groups.
@@ -19402,9 +19480,10 @@ document.getElementById('dc-bar').addEventListener('click', function (e) {
   if (e.target.closest('[data-dcundo]')) { e.preventDefault(); dcBulkUndo(); return; }
   var t = e.target.closest('[data-dctab]');
   if (!t) return;
-  DC.tab = t.getAttribute('data-dctab'); DC.source = ''; DC.cat = ''; DC.grade = '';
+  DC.tab = t.getAttribute('data-dctab'); DC.source = ''; DC.cat = ''; DC.grade = ''; REACH_F.discover = '';
   dcRender();
 });
+REACH_DRAW.discover = function () { dcRender(); };
 document.getElementById('dc-bar').addEventListener('change', function (e) {
   var sel = e.target.closest('[data-dcsel]');
   if (!sel) return;
@@ -21427,6 +21506,16 @@ function wpAddRowHtml(b, i, opts) {
     '<span class="wp-acts">' + btn + '</span></div>';
 }
 
+// A category's brands under the Outreach filter (invited = a LinkedIn
+// invite to someone there), and the ticks among them.
+function wpReached(b) { return !!b.invited; }
+function wpCatRows() {
+  return ((WP.catData && WP.catData.brands) || []).filter(function (b) { return reachOk('weekplan', wpReached(b)); });
+}
+function wpCatTicked() {
+  return wpCatRows().filter(function (b) { return WP.catSel[b.id]; }).map(function (b) { return b.id; });
+}
+REACH_DRAW.weekplan = function () { wpRenderResults(); };
 function wpRenderResults() {
   var box = document.getElementById('wp-results');
   if (!box) return;
@@ -21443,17 +21532,19 @@ function wpRenderResults() {
     else if (d.err) html += '<span class="sd-dim">Could not load: ' + esc(d.err) + '</span>';
     else {
       var byId = wpById();
-      var addable = (d.brands || []).filter(function (b) { return !byId[b.id]; });
-      var ticked = Object.keys(WP.catSel).filter(function (id) { return WP.catSel[id]; });
+      var catRows = wpCatRows();
+      var addable = catRows.filter(function (b) { return !byId[b.id]; });
+      var ticked = wpCatTicked();
       var top10 = addable.filter(function (b) { return b.action === 'add'; }).slice(0, 10);
-      html += '<span class="sd-dim">' + sdPlural((d.brands || []).length, 'brand', 'brands') + ' that can go out, best Brand Fit first' +
+      html += reachSelect('weekplan', reachCounts(d.brands || [], wpReached)) +
+        '<span class="sd-dim">' + (REACH_F.weekplan ? catRows.length + ' of ' : '') + sdPlural((d.brands || []).length, 'brand', 'brands') + ' that can go out, best Brand Fit first' +
         (d.setAside ? ' · ' + d.setAside + ' set aside (archived, in talks…)' : '') + '</span>' +
         (top10.length ? '<button class="btn-ghost sd-sm" data-wpaddtop="1" title="' + esc(top10.map(function (b) { return b.name; }).join(', ')) + '">Add the top ' + top10.length + '</button>' : '') +
         (ticked.length ? '<button class="btn-draft sd-sm" data-wpaddticked="1">Add ' + ticked.length + ' ticked</button>' : '');
     }
     html += '<span class="sd-sp"></span><a href="#" class="sd-x" data-wpcatx="1" title="Close">×</a></div>';
     if (d && !d.err) {
-      var list = d.brands || [];
+      var list = wpCatRows();
       var shown = WP.catAll ? list : list.slice(0, 25);
       html += '<div class="wp-rows" style="margin-top:8px">' + shown.map(function (b, i) { return wpAddRowHtml(b, i, { tick: true }); }).join('') + '</div>' +
         (list.length > shown.length ? '<a href="#" class="sd-link" data-wpcatall="1" style="display:inline-block;margin-top:8px">Show all ' + list.length + '</a>' : '');
@@ -21609,13 +21700,13 @@ function wpPut(id, name, date) {
     }
     if ((t = e.target.closest('[data-wpaddtop]'))) {
       var byId = wpById();
-      var top = ((WP.catData && WP.catData.brands) || []).filter(function (b) { return !byId[b.id] && b.action === 'add'; }).slice(0, 10);
+      var top = wpCatRows().filter(function (b) { return !byId[b.id] && b.action === 'add'; }).slice(0, 10);
       wpAdd(top.map(function (b) { return b.id; }), []);
       return;
     }
     if ((t = e.target.closest('[data-wpaddticked]'))) {
-      var rows = (WP.catData && WP.catData.brands) || [];
-      var ids = Object.keys(WP.catSel).filter(function (k) { return WP.catSel[k]; });
+      var rows = wpCatRows();
+      var ids = wpCatTicked();
       var giants = rows.filter(function (b) { return WP.catSel[b.id] && b.giant; }).map(function (b) { return b.id; });
       WP.catSel = {};
       wpAdd(ids, giants);

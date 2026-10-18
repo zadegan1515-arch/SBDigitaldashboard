@@ -758,6 +758,16 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   amber). The "People on file" card (`renderFillProgress` — brands with anyone on file, the SponsorUnited
   sweep) is folded to one line under it (`FP_OPEN`).
   `node scripts/test-coverage-e2e.js` (real handlers, throwaway Postgres).
+- **Outreach filter on every brand list** (Leo, Oct 18 2026: "anywhere on the site where i sort brands … a filter [for]
+  outreached to meaning that we have sent a request to at least one person there"): one dropdown **Outreach: Any /
+  Reached out (N) / Not reached out (N)** (`reachSelect` / `reachOk` / `REACH_F` / `REACH_DRAW` in app.html) on All brands,
+  Stock take (a lane's brand list, "Brands (3 of 40)"), Discover (reset by a tab change), Outreach → People, Week plan's
+  browse a category (Add the top N follows it) and the Schedule's category drill-in. Reached out = a LinkedIn invite to
+  someone there — `wasInvited` / `INVITED_WHERE` (an accept logged straight from LinkedIn counts; an email alone doesn't,
+  so the drill-in's "Reached" column can hold a brand that's "Not reached out"). Data: listBrands `outreach.invited`,
+  brandStock `invited`, linkedinPeople `invited`, listDiscoveries `reached`, planBrandRow / categoryBrands `invited`.
+  Per list, for the visit (not remembered). `NODE_PATH=$(npm root -g) node scripts/test-reach-filter.js`,
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-reach-filter-e2e.js`.
 - **Daily Claude brand hunt** (Leo, Oct 2026: "a process for Claude to find new brands … it shouldn't
   necessarily be through LinkedIn"). Routine "Discover: daily brand hunt" (5:52 New York) wakes the cloud
   session "Brand hunt (daily)" — repo attached, `REPORT_TOKEN` in its environment; a fresh empty session
