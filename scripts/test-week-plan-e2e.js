@@ -94,6 +94,13 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const rc = await prisma.contact.findFirst({ where: { brandId: 'reach' } });
     await prisma.target.create({ data: { brandId: 'reach', contactId: rc.id, status: 'sent', sentAt: new Date(Date.now() - 3 * 864e5) } });
 
+    // 0. The Reached tag's map (reachedBrands) ------------------------------
+    const rb = await data('reachedBrands', {});
+    assert.deepEqual(Object.keys(rb.brands), ['reach'], 'only the brand reached out to');
+    const three = nyKey(new Date(Date.now() - 3 * 864e5));
+    assert.deepEqual(rb.brands.reach, [three, three, 'i', 1, 0], 'its first and last day, invite out, one invited');
+    ok('reachedBrands: the brands reached out to, with when and how');
+
     // 1. The list ------------------------------------------------------
     let wb = await data('weekBank', {});
     const ids = () => wb.bank.rows.map(r => r.id);

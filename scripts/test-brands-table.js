@@ -111,8 +111,11 @@ async function main() {
   await page.click('#bq-more > summary');
   assert.ok(await page.isHidden('#brand-cat-chips'), 'no chip row');
   assert.ok(await page.$('#brands-list [data-brcat]'), 'one category dropdown');
-  const heads = await page.$$eval('#brands-list thead th', (ts) => ts.map((t) => t.textContent.trim()).filter(Boolean));
-  assert.deepEqual(heads, ['Brand', 'Category', 'Tier', 'Fit', 'Buyers']);
+  // Oct 18 2026 ("too hard to look at"): an Outreach column; a heading
+  // sorts on a click, the sorted one marked with its arrow.
+  const heads = await page.$$eval('#brands-list thead th', (ts) => ts.map((t) => t.textContent.replace(/[▲▼]/g, '').trim()).filter(Boolean));
+  assert.deepEqual(heads, ['Brand', 'Outreach', 'Category', 'Tier', 'Fit', 'Buyers']);
+  assert.match(await page.textContent('#brands-list th.sorted'), /Buyers▲/, 'fewest buyers first, marked');
   assert.deepEqual(await names(), ['Alpha Energy', 'Charlie Spirits', 'Bravo Soda'], 'archived hidden by default');
   await page.uncheck('[data-brarch]');
   console.log('✓ More menu, category dropdown, five columns, archived hidden by default');
@@ -178,8 +181,8 @@ async function main() {
   // The category dropdown switches the list.
   await page.selectOption('#brands-list [data-brcat]', 'energy');
   await page.waitForFunction(() => /Energy/.test(document.getElementById('brands-title').textContent));
-  // The title changes before the list has redrawn: wait for the new list's menu.
-  await page.waitForFunction(() => (document.querySelector('#brands-list [data-brcat]') || {}).value === 'energy');
+  // The title changes at once; the table (and its dropdown) once the list is read.
+  await page.waitForFunction(() => { const s = document.querySelector('#brands-list [data-brcat]'); return s && s.value === 'energy'; });
   await page.selectOption('#brands-list [data-brcat]', 'all');
   await page.waitForFunction(() => document.getElementById('brands-title').textContent === 'All brands');
   console.log('✓ the category dropdown switches the list');
@@ -396,7 +399,7 @@ async function main() {
   await page.evaluate(() => gotoView('brands'));
   await page.evaluate(() => loadBrands('all'));
   await page.waitForSelector('#brands-list [data-brfit="hi"]');
-  const bands = () => page.$$eval('#brands-list [data-brfit]', (bs) => bs.map((b) => b.getAttribute('data-brfit') + ':' + b.querySelector('.n').textContent));
+  const bands = () => page.$$eval('#brands-list [data-brfit]:not([data-brfit=""])', (bs) => bs.map((b) => b.getAttribute('data-brfit') + ':' + b.querySelector('.n').textContent));
   assert.deepEqual(await bands(), ['hi:2', 'mid:2', 'lo:1'], '76+ = Alpha 82, Foxtrot 76; 50–75 = Bravo 75, Golf 50; under 50 = Charlie 49 — archived and do-not-email left out');
   await page.click('#brands-list [data-brfit="hi"]');
   assert.deepEqual((await names()).sort(), ['Alpha Energy', 'Foxtrot Fizz'], 'a click shows just those');
@@ -405,6 +408,10 @@ async function main() {
   assert.deepEqual(await names(), ['Charlie Spirits']);
   await page.click('#brands-list [data-brfit="lo"]');
   assert.ok((await names()).length >= 5, 'a second click shows every score again');
+  await page.click('#brands-list [data-brfit="mid"]');
+  assert.match(await page.textContent('#brands-list .br-count'), /Showing 2 of/, 'the count line agrees');
+  await page.click('#brands-list [data-brclear]');
+  assert.equal(await page.getAttribute('#brands-list [data-brfit=""]', 'aria-pressed'), 'true', 'Clear filters clears it too');
   await page.fill('#bq', 'golf');
   assert.deepEqual(await bands(), ['hi:0', 'mid:1', 'lo:0'], 'counts follow the search');
   await page.fill('#bq', '');

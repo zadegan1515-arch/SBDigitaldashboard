@@ -23,13 +23,18 @@ Reads only. Never sends a message to another chat, never changes one, never acts
 anyway.
 
 1. What's logged already: `node scripts/cc.mjs listChatLogs '{"days":2}'` → `sessionId`, `day`, `lastAt`.
-2. Leo's chats: `list_sessions` with `mine: true`, `limit: 15`. Skip this review chat itself.
-   A chat needs a summary when its `updated_at` is today (New York) and later than its logged `lastAt`
-   (or it isn't logged today). Nothing moved → stop; post nothing.
-3. For each one that moved: `list_events` with `kinds: ["result"]`, `limit: 100` → the newest event's
-   `result.internal_anthropic_catchall.result` is its latest reply. None on that page → page back with
-   `before_id` = `first_id` (at most 3 pages). Its `status_bucket`: WORKING = still working on something;
-   BLOCKED = waiting on Leo (a question or a permission).
+2. Leo's chats: `list_sessions` with `mine: true`, `limit: 10` (more pages with `after_id` only while
+   the last one was still updated today). Skip this review chat itself. Long-running chats ("Add a
+   brand", "Brand hunt (daily)", "Huge CHAT") sit far down the list by creation date — `get_session`
+   them by id. A chat needs a summary when its `updated_at` is today (New York) and later than its
+   logged `lastAt` (or it isn't logged today). Nothing moved → stop; post nothing.
+3. What each one says, cheapest first:
+   - `post_turn_summary` on the session (after a reply): `status_detail` / `recent_action` = what it
+     did, `needs_action` = what it needs from Leo, `status_category` (`need_input` = waiting on him).
+     `task_summary` while it works. `status_bucket`: WORKING = working, BLOCKED = waiting on Leo.
+   - Only when that isn't enough (a NEED block's steps): `list_events` with `kinds: ["assistant"]`,
+     `limit: 100` → the text blocks after its last tool call are its latest reply. (`kinds: ["result"]`
+     holds only the reply's last paragraph.)
 4. Write a summary (short, plain words — CLAUDE.md rule 8) to a file and post it:
 
    ```

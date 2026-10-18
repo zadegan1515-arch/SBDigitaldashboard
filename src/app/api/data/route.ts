@@ -82,6 +82,7 @@ import { parseSkipDays, dayMoveShape, undoDayMove, type SkipLog } from '@/lib/sk
 import { CHOSEN_KEY, readChosenIds, noteChosenIds } from '@/lib/chosen'
 import { stopIndex, stoppedMatch, stopWords, stopKeys } from '@/lib/do-not-contact'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
+import { isAccepted, acceptedWhen, acceptedStage } from '@/lib/accepted'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
   listAttendees, listDupCandidates, mergeAttendees, deleteAttendee, importAttendees, segmentsOverview,
@@ -688,6 +689,17 @@ function wasInvited(t: { sentAt: Date | null; status: string }): boolean {
 // The same test as a query, for counts.
 const INVITED_WHERE: Prisma.TargetWhereInput = {
   OR: [{ sentAt: { not: null } }, { status: { in: ['sent', 'accepted', 'replied', 'converted'] } }],
+}
+// isReached as a query: an invite ever, an accept or reply, a hand or machine
+// email. The Reached tag (reachedBrands) and the page's Outreach filter
+// ("Reached out / Not reached out") both read it, so they always agree.
+const REACHED_WHERE: Prisma.TargetWhereInput = {
+  OR: [
+    { sentAt: { not: null } },
+    { status: { in: ['accepted', 'replied', 'converted'] as TargetStatus[] } },
+    { emailedAt: { not: null } },
+    { emails: { some: SENT_EMAIL } },
+  ],
 }
 
 // A brand we have already reached out to. Leo's rule: once an invite has
@@ -2489,7 +2501,9 @@ function planBrandRow(b: PlanBrand, ctx: PlanRowCtx) {
     : status === 'reached' ? `${rc.sentAt ? 'Invited' : 'Emailed'}${lastTouch ? ' ' + shortDate(lastTouch) : ''} · already reached`
     : going > 0 ? `${going} would go out`
     : 'Nobody would go out'
-  return { id: b.id, name: b.name, category: b.category, externalId: b.externalId, label, pinnedOn, shownOn, status, action, text, going, inTodayQueue, giant: status === 'giant' }
+  // reached = the Reached tag's rule (isReached) — the page's Outreach
+  // filter (Reached out / Not reached out).
+  return { id: b.id, name: b.name, category: b.category, externalId: b.externalId, label, pinnedOn, shownOn, status, action, text, going, inTodayQueue, giant: status === 'giant', reached }
 }
 
 // A day's Fill box (suggestForDay): open brands that could go out that
@@ -10421,6 +10435,51 @@ const handlers: Record<string, Handler> = {
   // unscheduled (named in the reply), and if the day is today their
   // unsent people come back out of today's queue, as planRemoveBrand does.
   // Nothing is deleted — the brands and their people are all still there.
+  // The "Reached" tag (Leo, Oct 18 2026: "all over the site for any brand
+  // that has been reached out to i want a tag that shows that"): every
+  // brand reached out to, by isReached's rule — an invite ever (logged
+  // outside the queue, withdrawn since: it still went), an accept or reply,
+  // a hand email, an email the machine sent. Per brand id: [first day, last
+  // day, stage, invited, emailed] — New York day keys; stage = brandStage's
+  // r(eplied) / a(ccepted) / i(nvited) / e(mailed) / w(ithdrawn). The page
+  // reads it once and paints the tag wherever a brand shows (rbTag).
+  async reachedBrands() {
+    const rows = await prisma.target.findMany({
+      where: REACHED_WHERE,
+      select: {
+        brandId: true, status: true, sentAt: true, emailedAt: true, repliedAt: true, updatedAt: true,
+        emails: { where: SENT_EMAIL, select: { sentAt: true }, orderBy: { sentAt: 'desc' }, take: 1 },
+      },
+    })
+    type Acc = { first: number; last: number; rank: number; invited: number; emailed: number }
+    const RANK: Record<string, number> = { r: 5, a: 4, i: 3, e: 2, w: 1 }
+    const by = new Map<string, Acc>()
+    for (const t of rows) {
+      const email = t.emails[0]?.sentAt ?? null
+      const stage = ['replied', 'converted'].includes(t.status) ? 'r'
+        : t.status === 'accepted' ? 'a'
+        : t.sentAt && t.status !== 'withdrawn' ? 'i'
+        : t.emailedAt || email ? 'e'
+        : t.status === 'withdrawn' ? 'w' : 'i'
+      // An accept logged with no invite date dates from the row's last change.
+      const dates = [t.sentAt, t.emailedAt, email, t.repliedAt].filter((d): d is Date => !!d).map(d => d.getTime())
+      if (!dates.length) dates.push(t.updatedAt.getTime())
+      const a = by.get(t.brandId) ?? { first: Infinity, last: 0, rank: 0, invited: 0, emailed: 0 }
+      a.first = Math.min(a.first, ...dates)
+      a.last = Math.max(a.last, ...dates)
+      a.rank = Math.max(a.rank, RANK[stage])
+      if (t.sentAt) a.invited += 1
+      if (t.emailedAt || email) a.emailed += 1
+      by.set(t.brandId, a)
+    }
+    const STAGE = ['', 'w', 'e', 'i', 'a', 'r']
+    const brands: Record<string, [string, string, string, number, number]> = {}
+    for (const [id, a] of by) {
+      brands[id] = [localDayKey(new Date(a.first)), localDayKey(new Date(a.last)), STAGE[a.rank], a.invited, a.emailed]
+    }
+    return { brands, count: by.size }
+  },
+
   // ── Outreach → Week plan ──────────────────────────────────────────
   // The list (Setting weekBank) and the week it is spent on. week = 'this'
   // | 'next' | a Monday key; the first week offered when it's missing (this
@@ -13262,6 +13321,8 @@ const handlers: Record<string, Handler> = {
   async linkedinPeople() {
     const brands = await prisma.brand.findMany({
       include: {
+        // People reached there (the Reached tag's rule) — the Outreach filter.
+        _count: { select: { targets: { where: REACHED_WHERE } } },
         contacts: {
           select: {
             id: true, name: true, title: true, linkedinUrl: true,
@@ -13281,6 +13342,7 @@ const handlers: Record<string, Handler> = {
       linkedinUrl: b.linkedinUrl,
       // So the "Under 25" worklist can leave out brands off outreach.
       archived: !!b.passedAt, doNotEmail: b.doNotEmail,
+      reached: b._count.targets,
       liNote: liLog[b.id]?.note || null,
       contacts: b.contacts.map(c => ({
         id: c.id, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl,
@@ -14068,6 +14130,49 @@ const handlers: Record<string, Handler> = {
     return { brands: rows, totals }
   },
 
+  // Home → Accepted on LinkedIn (Leo, Oct 18 2026): everyone who accepted a
+  // LinkedIn invite, newest first, with their brand and title — a click opens
+  // the brand page at that person. Read-only; the rules are src/lib/accepted.ts.
+  async acceptedPeople() {
+    const rows = await prisma.target.findMany({
+      where: {
+        OR: [
+          { status: 'accepted' },
+          { status: { in: ['replied', 'converted', 'declined'] }, events: { some: { toStatus: 'accepted' } } },
+          { status: { in: ['replied', 'converted'] }, sentAt: { not: null } },
+        ],
+      },
+      select: {
+        id: true, status: true, sentAt: true, repliedAt: true, updatedAt: true, dmSentAt: true, callAt: true, handDeclinedAt: true,
+        brand: { select: { id: true, name: true, category: true, stoppedAt: true, passedAt: true } },
+        contact: { select: { id: true, name: true, title: true, linkedinUrl: true, doNotContactAt: true } },
+        events: { where: { toStatus: 'accepted' }, orderBy: { createdAt: 'asc' }, take: 1, select: { createdAt: true } },
+        emails: { where: { direction: 'in' }, take: 1, select: { id: true } },
+      },
+      take: 5000,
+    })
+    const now = new Date()
+    const people = []
+    for (const t of rows) {
+      const facts = {
+        status: t.status, sentAt: t.sentAt, repliedAt: t.repliedAt, updatedAt: t.updatedAt, dmSentAt: t.dmSentAt,
+        callAt: t.callAt, handDeclinedAt: t.handDeclinedAt, acceptedAt: t.events[0]?.createdAt ?? null,
+        emailReply: t.emails.length > 0, contactStopped: !!t.contact.doNotContactAt, brandStopped: !!t.brand.stoppedAt,
+      }
+      if (!isAccepted(facts)) continue
+      const w = acceptedWhen(facts)
+      const s = acceptedStage(facts, now)
+      people.push({
+        targetId: t.id, contactId: t.contact.id, name: t.contact.name, title: t.contact.title, linkedinUrl: t.contact.linkedinUrl,
+        brandId: t.brand.id, brandName: t.brand.name, category: t.brand.category, archived: !!t.brand.passedAt,
+        at: w.at.toISOString(), kind: w.kind, invitedAt: t.sentAt ? t.sentAt.toISOString() : null,
+        stage: s.stage, label: s.label,
+      })
+    }
+    people.sort((a, b) => b.at.localeCompare(a.at) || a.name.localeCompare(b.name))
+    return { people, total: people.length, brands: new Set(people.map(p => p.brandId)).size }
+  },
+
   // -------- deal room --------
 
   // One screen per deal: the brand's people, the show and its
@@ -14585,7 +14690,7 @@ const handlers: Record<string, Handler> = {
       where: { status: { not: 'dismissed' }, ...(query ? { query } : {}) },
       orderBy: { createdAt: 'desc' }, take: 600,
     })
-    const brands = await prisma.brand.findMany({ select: { id: true, name: true, _count: { select: { contacts: true } } } })
+    const brands = await prisma.brand.findMany({ select: { id: true, name: true, _count: { select: { contacts: true, targets: { where: REACHED_WHERE } } } } })
     const byId = new Map(brands.map(b => [b.id, b]))
     const byName = new Map(brands.map(b => [b.name.toLowerCase(), b]))
     const sourceOf = (q: string) => /^(Claude hunt|🔥)/.test(q) ? 'Claude hunt'
@@ -14613,7 +14718,9 @@ const handlers: Record<string, Handler> = {
         { category: cat, signals: r.signals, hasParent: !!parentOf(r.name, null), giant: giantOf({ name: r.name }),
           text: [r.reason, r.activation].filter(Boolean).join(' '), name: r.name, writeUp: r.reason },
         { priority: categoryPriority(cat), acceptRate: rateOrNull(rates, cat), now })
-      return { ...r, source: sourceOf(r.query), inSystem: !!existing, contactCount: existing?._count.contacts ?? 0, grade: g }
+      // reached = its brand carries the Reached tag (the Outreach filter);
+      // a find not on the roster never does.
+      return { ...r, source: sourceOf(r.query), inSystem: !!existing, contactCount: existing?._count.contacts ?? 0, reached: (existing?._count.targets ?? 0) > 0, grade: g }
     })
     // A brand added since by any other path: remember the link.
     for (const l of link) {

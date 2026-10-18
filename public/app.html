@@ -469,7 +469,7 @@
   .zach-back{display:none}
   #dashboard.zach-only .hm-glance,#dashboard.zach-only #hm-send,#dashboard.zach-only #action-panel,#dashboard.zach-only #hm-stale,
   #dashboard.zach-only #hm-score,#dashboard.zach-only #day-log,#dashboard.zach-only .hm-more,#dashboard.zach-only #todos-head,
-  #dashboard.zach-only #todos,#dashboard.zach-only .hm-btns,#dashboard.zach-only #zach-todo .zs{display:none!important}
+  #dashboard.zach-only #todos,#dashboard.zach-only #hm-accepted,#dashboard.zach-only .hm-btns,#dashboard.zach-only #zach-todo .zs{display:none!important}
   #dashboard.zach-only .zach-back{display:block;margin-top:18px}
   @media (max-width:640px){
     .zt-item{min-height:52px}
@@ -578,20 +578,45 @@
   .rc-more{font-size:13.5px;color:var(--ink-3);padding:4px 2px}
   .rc-idea .btn-ghost{white-space:nowrap}
   .rc-idea.picked{border-color:rgba(62,207,142,.45)}
-  /* Your chats (Claude's day, first card): one row per Claude chat */
-  .rc-tag.ch{min-width:86px;text-align:center;flex:none}
-  .ch-row .nm a{color:#fff;text-decoration:none}
-  .ch-row .nm a:hover,.ch-row .nm a:focus-visible{text-decoration:underline}
-  .ch-row .about{font-size:13.5px;color:var(--ink-2);margin-top:2px}
-  .ch-row .ask{font-size:13.5px;color:var(--ink-2);margin-top:6px}
-  .ch-row .ask i{font-style:normal;color:var(--ink-3)}
-  .ch-row .did{font-size:13.5px;color:var(--ink-2);margin-top:6px;line-height:1.5}
-  .ch-row details summary{cursor:pointer;font-size:13px;color:var(--ink-3);margin-top:6px}
-  .ch-row details .did{margin-top:2px}
-  .ch-row .need{padding:6px 0 0}
-  .ch-q{margin-top:8px;padding:8px 12px;border-left:3px solid var(--warn);background:rgba(232,182,76,.08);border-radius:0 8px 8px 0;font-size:13.5px;color:var(--ink-1)}
-  .ch-q i{font-style:normal;color:var(--warn);font-weight:700}
-  .ch-row .sm{margin-top:6px}
+  /* Your chats — its own page (Leo, Oct 17 2026: "simple and concise in bigger text") */
+  .chp-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  #chats h1{margin-top:14px}
+  .chp-dayname{font-size:16px;font-weight:700;color:var(--ink-2);min-width:150px;text-align:center}
+  .chp-sum{display:flex;gap:40px;flex-wrap:wrap;margin:20px 0 4px}
+  .chp-sum div{display:flex;flex-direction:column}
+  .chp-sum b{font-family:var(--display);font-size:46px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+  .chp-sum span{font-size:16px;color:var(--ink-2);margin-top:6px}
+  .chp-sum .r b{color:var(--bad)}
+  .chp-sum .g b{color:var(--good)}
+  .chp-h{font-size:15px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:34px 0 12px}
+  .chp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:16px;align-items:start}
+  @media (max-width:600px){.chp-grid{grid-template-columns:1fr}}
+  .chp-card{background:var(--surface-1);border:1px solid var(--border);border-left:5px solid var(--accent);border-radius:var(--radius);
+    padding:20px 22px;font-size:17px;line-height:1.5;color:var(--ink-1);overflow-wrap:anywhere}
+  .chp-card.needs{border-left-color:var(--bad)}
+  .chp-card.stalled{border-left-color:var(--warn)}
+  .chp-card.done{border-left-color:var(--good)}
+  .chp-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px}
+  .chp-title{font-size:22px;font-weight:800;color:#fff;text-decoration:none;line-height:1.25}
+  a.chp-title:hover,a.chp-title:focus-visible{text-decoration:underline}
+  .chp-open{font-size:15px;font-weight:700;color:var(--accent-hi);white-space:nowrap;text-decoration:none;overflow-wrap:normal}
+  .chp-open:hover{text-decoration:underline}
+  .chp-about{color:var(--ink-2);margin:6px 0 0}
+  .chp-line{margin:14px 0 0}
+  .chp-label{font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin:18px 0 6px}
+  .chp-needs{margin-top:16px;padding:14px 16px;border-radius:10px;background:rgba(240,113,107,.08);border:1px solid rgba(240,113,107,.28)}
+  .chp-needs .chp-label{margin-top:0;color:var(--bad)}
+  .chp-need{display:flex;gap:12px;align-items:flex-start;padding:6px 0;cursor:pointer}
+  .chp-need input{width:20px;height:20px;margin-top:5px;accent-color:var(--good);flex:none}
+  .chp-need ol{margin:4px 0 0 22px;color:var(--ink-2)}
+  .chp-need.done b{text-decoration:line-through;color:var(--ink-3)}
+  .chp-need.done ol{display:none}
+  .chp-q{margin:6px 0 0;font-weight:600}
+  .chp-did{margin:0 0 0 22px;color:var(--ink-2)}
+  .chp-did li{margin:3px 0}
+  .chp-more summary{cursor:pointer;color:var(--ink-3);font-size:15px;margin-top:6px}
+  .chp-time{font-size:14.5px;color:var(--ink-3);margin-top:16px}
+  .chp-empty{font-size:18px;color:var(--ink-3);padding:34px 0}
   .rc-hint{position:absolute;bottom:14px;left:0;right:0;text-align:center;font-size:13px;color:var(--ink-3);pointer-events:none}
   @media (max-width:700px){
     .rc-card{padding:72px 18px 56px}
@@ -978,33 +1003,94 @@
   .sd-extra input[type=date]{padding:5px 8px;font-size:13.5px}
   .sd-tag.extra{color:#c9b3ff;border-color:rgba(157,122,255,.45);background:rgba(157,122,255,.1)}
   .sd-tag.list{color:#8fe0bb;border-color:rgba(62,207,142,.4);background:rgba(62,207,142,.08)}
-  /* Outreach → Week plan */
-  .wp-head{display:flex;flex-direction:column;gap:10px;margin-top:16px}
-  .wp-weeks,.wp-bar{display:flex;gap:8px 10px;flex-wrap:wrap;align-items:center}
-  .wp-pv{padding:12px 14px;border:1px solid rgba(79,131,247,.45);background:var(--accent-soft);border-radius:10px;display:flex;flex-direction:column;gap:8px;font-size:13.5px;line-height:1.5}
-  .wp-card.wp-new{border-color:rgba(62,207,142,.55);border-style:dashed;cursor:default}
-  .wp-foot{font-size:13px;color:var(--ink-3);line-height:1.5;display:flex;gap:6px 10px;flex-wrap:wrap;align-items:center}
-  .wp-list-h{display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap;margin-top:28px}
-  .wp-list-h h2{font-family:var(--display);font-size:20px;font-weight:800;margin:0;letter-spacing:-.01em}
-  .wp-size{width:84px;padding:5px 8px}
-  .wp-addbar{margin-top:12px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+  /* The Reached tag (rbTag): on every brand reached out to, across the site. */
+  .rb-slot{display:inline-flex;vertical-align:middle;margin-left:6px}
+  .rb-slot:empty{display:none}
+  .rb-tag{display:inline-block;font-size:12px;font-weight:700;line-height:1.5;padding:0 8px;border-radius:999px;color:#c9b3ff;background:rgba(157,122,255,.12);border:1px solid rgba(157,122,255,.4);white-space:nowrap;letter-spacing:0;text-transform:none}
+  /* Outreach → Week plan: the list (left) and the week (right), each scrolling on its own */
+  .wp-steps{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap}
+  .wp-steps b{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--accent-soft);color:var(--accent-hi);align-items:center;justify-content:center;font-size:12.5px;margin-right:4px}
+  .wp-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:18px;margin-top:18px;align-items:start}
+  /* Both panes fill the screen under the title (--wp-h, wpFit), so the page
+     itself never scrolls them under the header — each pane scrolls inside. */
+  #weekplan.page{padding-bottom:16px}
+  .wp-pane{background:var(--surface-1);border:1px solid var(--border);border-radius:14px;display:flex;flex-direction:column;min-width:0;
+    height:var(--wp-h,calc(100vh - 340px));min-height:520px;overflow:hidden}
+  .wp-pane.sd-over{outline:2px dashed var(--accent-hi);outline-offset:-2px}
+  .wp-pane-h{padding:16px 18px 12px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:10px}
+  .wp-pane-h h2{font-family:var(--display);font-size:20px;font-weight:800;margin:0;letter-spacing:-.01em}
+  .wp-h-row{display:flex;gap:8px 12px;flex-wrap:wrap;align-items:center}
+  .wp-weeks{display:flex;gap:6px;flex-wrap:wrap}
+  .wp-big{font-family:var(--display);font-size:24px;font-weight:800;color:var(--ink-1);letter-spacing:-.02em;line-height:1}
+  .wp-meter{flex:1 1 140px;min-width:120px}
+  .wp-spread{font-size:14.5px;padding:9px 16px}
+  .wp-holds{margin-left:auto;display:inline-flex;align-items:center;gap:8px}
+  .wp-size{width:84px;padding:6px 8px;font-size:14px}
   .wp-addrow{display:flex;gap:10px;flex-wrap:wrap}
-  .wp-addrow #wp-q{flex:1 1 260px;min-width:0}
-  .wp-addrow #wp-cat{flex:0 1 280px;min-width:0}
-  .wp-rows{display:flex;flex-direction:column;gap:6px}
-  .wp-row{display:flex;gap:6px 10px;align-items:center;flex-wrap:wrap;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-1);min-width:0}
-  .wp-row.hl{outline:2px solid var(--accent-hi);outline-offset:-1px}
-  .wp-row[draggable="true"]{cursor:grab}
-  .wp-row.sd-dragging{opacity:.45}
-  .wp-rank{font-family:var(--display);font-weight:800;font-size:13.5px;color:var(--ink-3);min-width:34px}
-  .wp-fit{font-size:12.5px;font-weight:700;color:var(--ink-2);background:var(--surface-2);border-radius:6px;padding:2px 7px;white-space:nowrap}
-  .wp-going{font-size:13px;color:var(--ink-2);white-space:nowrap}
-  .wp-why{font-size:13px;color:#f2918c;min-width:0;flex:1 1 200px}
-  .wp-text{font-size:13px;color:var(--ink-3);min-width:0;flex:1 1 200px}
-  .wp-acts{display:flex;gap:6px;align-items:center;margin-left:auto}
-  #wp-list{margin-top:12px}
-  #wp-results:empty{display:none}
-  @media (max-width:820px){#wp-days.sd-days{grid-template-columns:minmax(0,1fr)}.wp-acts{margin-left:0}}
+  .wp-addrow #wp-q{flex:1 1 220px;min-width:0;font-size:14.5px;padding:9px 12px}
+  .wp-addrow #wp-cat{flex:0 1 240px;min-width:0;font-size:14px}
+  .wp-back{font-size:13.5px;font-weight:700;color:var(--accent-hi);text-decoration:none;margin-left:auto;white-space:nowrap}
+  .wp-scroll{overflow:auto;flex:1;padding:14px 16px 24px;display:flex;flex-direction:column;gap:10px;min-height:0}
+  .wp-pv{padding:12px 14px;border:1px solid rgba(79,131,247,.45);background:var(--accent-soft);border-radius:10px;display:flex;flex-direction:column;gap:8px;font-size:14px;line-height:1.5}
+  /* a brand on the list: big, one card each */
+  .wp-b{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:13px 15px;display:flex;flex-direction:column;gap:9px;transition:opacity .15s,border-color .2s,box-shadow .2s;flex:none}
+  .wp-b[draggable="true"]{cursor:grab}
+  .wp-b.placed{border-color:rgba(62,207,142,.35)}
+  .wp-b.busy{opacity:.6}
+  .wp-b.ghost{border-style:dashed;opacity:.8}
+  .wp-b.flash{border-color:var(--accent-hi);box-shadow:0 0 0 2px rgba(79,131,247,.25)}
+  .wp-b.hl{outline:2px solid var(--accent-hi);outline-offset:-1px}
+  .wp-b.sd-dragging,.wp-dc.sd-dragging{opacity:.45}
+  .wp-b-h,.wp-dc-h{display:flex;align-items:center;gap:10px;min-width:0}
+  .wp-b-rank{font-family:var(--display);font-weight:800;font-size:15px;color:var(--ink-3);min-width:38px;flex:none}
+  .wp-b-name{font-family:var(--display);font-size:17.5px;font-weight:800;color:var(--ink-1);text-decoration:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:-.01em}
+  .wp-b-name:hover,.wp-dc-name:hover{color:var(--accent-hi)}
+  .wp-fitbox{margin-left:auto;flex:none;font-family:var(--display);font-weight:800;font-size:16px;min-width:40px;text-align:center;padding:3px 9px;border-radius:9px;background:var(--accent-soft);color:var(--accent-hi)}
+  .wp-fitbox.sm{font-size:14px;min-width:34px;padding:2px 7px}
+  .wp-b-meta{font-size:13.5px;color:var(--ink-2);display:flex;gap:6px 12px;flex-wrap:wrap;align-items:center}
+  .wp-b-meta .rb-slot,.wp-dc-meta .rb-slot{margin-left:0}
+  .wp-b-act,.wp-dc-act{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .wp-status{font-size:13.5px;font-weight:700}
+  .wp-status.day{color:#8fe0bb}.wp-status.wait{color:var(--ink-3);font-weight:600}.wp-status.cant{color:#f2918c;font-weight:600}.wp-status.today{color:#aac6ff}
+  .wp-daybtn,.wp-rm,.wp-addbtn{font:inherit;font-size:13.5px;font-weight:700;padding:7px 13px;border-radius:9px;border:1px solid var(--border);background:var(--surface-1);color:var(--ink-1);cursor:pointer;white-space:nowrap;min-height:34px}
+  .wp-daybtn:hover:not(:disabled){border-color:var(--accent-hi);color:var(--accent-hi)}
+  .wp-daybtn.on{background:rgba(62,207,142,.14);border-color:rgba(62,207,142,.55);color:#8fe0bb}
+  .wp-daybtn.on:hover:not(:disabled){border-color:rgba(240,113,107,.6);color:#f2918c}
+  .wp-rm{background:transparent;color:var(--ink-3);font-weight:600}
+  .wp-rm:hover:not(:disabled){color:#f2918c;border-color:rgba(240,113,107,.5)}
+  .wp-addbtn{background:var(--accent);border-color:var(--accent);color:#fff}
+  .wp-addbtn.anyway{background:transparent;color:#eec777;border-color:rgba(232,182,76,.5)}
+  .wp-daybtn:disabled,.wp-rm:disabled,.wp-addbtn:disabled{opacity:.55;cursor:default}
+  .wp-tick{width:18px;height:18px;flex:none;accent-color:var(--accent)}
+  .wp-more{align-self:center;margin-top:4px}
+  .wp-removed{margin-top:10px}
+  .wp-mini{display:flex;gap:10px;align-items:center;padding:8px 2px;border-bottom:1px solid var(--border)}
+  .wp-mini .btn-ghost{margin-left:auto}
+  /* a day of the week, and the brands on it */
+  .wp-day{border:1px solid var(--border);border-radius:12px;background:var(--surface-2);padding:14px 16px;display:flex;flex-direction:column;gap:10px;flex:none}
+  .wp-day.sd-over{outline:2px dashed var(--accent-hi);outline-offset:-2px;background:rgba(79,131,247,.05)}
+  .wp-day-h{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap}
+  .wp-day-t{font-family:var(--display);font-weight:800;font-size:19px;letter-spacing:-.01em}
+  .wp-day-n{margin-left:auto;font-size:14px;color:var(--ink-2)}
+  .wp-day-n b{font-family:var(--display);font-size:22px;font-weight:800;color:var(--ink-1)}
+  .wp-day-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:9px}
+  .wp-dc{background:var(--surface-1);border:1px solid var(--border);border-radius:10px;padding:11px 13px;display:flex;flex-direction:column;gap:7px;cursor:grab;min-width:0}
+  .wp-dc.new{border-style:dashed;border-color:rgba(62,207,142,.55);cursor:default}
+  .wp-dc.busy{opacity:.6}
+  .wp-dc.blocked{border-color:rgba(240,113,107,.4)}
+  .wp-dc-rank{font-family:var(--display);font-weight:800;font-size:13.5px;color:var(--ink-3);flex:none}
+  .wp-dc-name{font-family:var(--display);font-weight:800;font-size:15.5px;color:var(--ink-1);text-decoration:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .wp-dc-meta{font-size:13px;color:var(--ink-2);display:flex;gap:4px 8px;flex-wrap:wrap;align-items:center;line-height:1.45}
+  .wp-dc-act .wp-daybtn,.wp-dc-act .wp-rm{padding:5px 10px;min-height:30px;font-size:13px}
+  .wp-foot{font-size:13px;color:var(--ink-3);line-height:1.5;display:flex;gap:6px 10px;flex-wrap:wrap;align-items:center}
+  @media (max-width:1100px){
+    .wp-split{grid-template-columns:minmax(0,1fr)}
+    #weekplan.page{padding-bottom:70px}
+    .wp-pane{height:auto;min-height:0;overflow:visible}
+    .wp-scroll{overflow:visible}
+    .wp-weekpane{order:-1}
+  }
+  @media (max-width:820px){.wp-holds{margin-left:0}.wp-day-cards{grid-template-columns:minmax(0,1fr)}.wp-pane-h,.wp-scroll{padding-left:12px;padding-right:12px}}
   /* Unsent work rolled to a later day */
   .sd-carry{display:flex;gap:6px 12px;align-items:center;flex-wrap:wrap;margin-top:12px;padding:10px 14px;border-radius:10px;
     background:rgba(79,131,247,.08);border:1px solid rgba(79,131,247,.3);font-size:13.5px}
@@ -1059,6 +1145,19 @@
   .sd-out td.sd-out-few{color:var(--ink-3)}
   .sd-out-sugs{margin-bottom:12px}
   .sd-out-depth .sd-cats-h{margin:20px 0 10px}
+  /* Results → Acceptance by people reached (rcd*) */
+  .rcd-wrap{overflow-x:auto}
+  .rcd{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+  .rcd th,.rcd td{padding:7px 12px 7px 0;text-align:left;white-space:nowrap;vertical-align:middle}
+  .rcd thead th{font-size:12.5px;font-weight:600;color:var(--ink-3)}
+  .rcd tbody th{font-weight:600;color:var(--ink-1)}
+  .rcd tbody tr+tr th,.rcd tbody tr+tr td{border-top:1px solid var(--border-soft)}
+  .rcd .rcd-bar{width:40%;min-width:120px}
+  .rcd-track{display:block;height:8px;border-radius:4px;background:var(--border)}
+  .rcd-track i{display:block;height:100%;min-width:2px;border-radius:0 4px 4px 0;background:var(--accent)}
+  .rcd .rcd-pct{font-weight:700;color:var(--ink-1)}
+  .rcd .rcd-dim{color:var(--ink-3)}
+  @media (max-width:600px){ .rcd .rcd-bar{width:auto;min-width:64px} .rcd th,.rcd td{padding-right:8px} }
   .sd-out-wide{grid-column:1/-1}
   .sd-out-sug{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--border-soft);font-size:13.5px}
   .sd-out-sug:last-child{border-bottom:0}
@@ -1327,10 +1426,8 @@
     padding:8px;background:var(--surface-2,#1b1b22);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
   .bq-menu .btn-ghost{text-align:left;width:100%}
   .br-bar .chip .n{margin-left:6px;color:var(--ink-3);font-weight:500}
-  .br-fit{margin-top:-4px}
-  .br-fit-k{font-size:12.5px;font-weight:600;color:var(--ink-3);margin-right:2px}
-  .br-fit .chip.br-fit-hi .n{color:var(--good);font-weight:700}
-  .br-fit .chip.br-fit-mid .n{color:var(--warn);font-weight:700}
+  .seg-b[data-brfit="hi"]:not(.on) .n{color:var(--good)}
+  .seg-b[data-brfit="mid"]:not(.on) .n{color:var(--warn)}
   .br-chk{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;color:var(--ink-2)}
   .br-chk .inp{padding:5px 9px;font-size:13.5px}
   .br-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-1)}
@@ -1340,6 +1437,7 @@
   .br-table td{padding:9px 10px;border-top:1px solid var(--border-soft);vertical-align:middle}
   .br-row{cursor:pointer}
   .br-row:hover td{background:rgba(255,255,255,.025)}
+  .br-row.br-z td{background:rgba(255,255,255,.03)}
   .br-row.is-open td{background:var(--accent-soft)}
   .br-row.sel td{background:rgba(79,131,247,.08)}
   .br-row.off{opacity:.55}
@@ -1372,6 +1470,72 @@
   .br-add{display:grid;grid-template-columns:1fr 1fr;gap:6px}
   .br-add .inp{font-size:13.5px;padding:6px 9px;width:100%}
   .br-add button{justify-self:start}
+  /* All brands, easier to read and use (Leo, Oct 18 2026: "this is also too hard to look at can u make it easier to
+     see and interact with"): one filter panel with button groups, a count of what shows, bigger text, striped rows,
+     an Outreach column, headings that sort, and the heading row staying on screen while the list scrolls. */
+  .br-tools{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;
+    margin:12px 0;display:flex;flex-direction:column;gap:10px}
+  .br-tools-row{display:flex;align-items:center;gap:10px 22px;flex-wrap:wrap}
+  .br-tools .inp{padding:7px 10px;font-size:14px}
+  .br-tools .br-chk,.br-tools .hs-switch{font-size:14px;color:var(--ink-2)}
+  .br-tools .br-chk input,.br-tools .hs-switch input{width:16px;height:16px;accent-color:var(--accent)}
+  .br-grp{display:inline-flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .br-grp-l{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface-0)}
+  .seg-b{font:inherit;font-size:14px;font-weight:600;color:var(--ink-2);background:none;border:0;padding:7px 14px;cursor:pointer;
+    display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+  .seg-b+.seg-b{border-left:1px solid var(--border)}
+  .seg-b:hover{color:var(--ink-1);background:rgba(255,255,255,.05)}
+  .seg-b.on{background:var(--accent-soft);color:#d6e4ff;box-shadow:inset 0 -2px 0 var(--accent)}
+  .seg-b .n{font-size:12.5px;font-weight:600;color:var(--ink-3);background:rgba(255,255,255,.07);border-radius:99px;padding:0 7px;line-height:20px}
+  .seg-b.on .n{color:#d6e4ff;background:rgba(79,131,247,.28)}
+  .seg-b:focus-visible{outline:2px solid var(--ring);outline-offset:-2px}
+  .br-count{font-size:14px;color:var(--ink-3)}
+  .br-count b{color:var(--ink-1);font-weight:700}
+  .br-count a{margin-left:8px}
+  .br-tools .br-why{margin:0;padding-top:10px;border-top:1px solid var(--border-soft)}
+  .br-table{font-size:14px}
+  .br-table th{padding:11px 14px;color:var(--ink-3)}
+  .br-table th.br-num{text-align:right}
+  .br-table th[data-brsorth]{cursor:pointer;user-select:none}
+  .br-table th[data-brsorth]:hover{color:var(--ink-1)}
+  .br-table th.sorted{color:#d6e4ff}
+  .br-table th .br-arrow{margin-left:5px;font-size:11.5px}
+  .br-table td{padding:12px 14px}
+  .br-row:hover td,.br-row.br-z:hover td{background:rgba(255,255,255,.065)}
+  .br-row.sel td{background:rgba(79,131,247,.1)}
+  .br-row.is-open td{background:var(--accent-soft)}
+  .br-name .br-link{font-size:15px;font-weight:600;color:var(--ink-1)}
+  .br-name .br-link:hover{color:var(--accent-hi);text-decoration:underline;text-underline-offset:3px}
+  .br-caret{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:6px;border:1px solid transparent;
+    font-size:12px;margin-right:6px;padding:0;vertical-align:middle}
+  .br-row:hover .br-caret,.br-caret:focus-visible{border-color:var(--border);color:var(--ink-1);background:var(--surface-2)}
+  .br-sub{font-size:13px;margin:3px 0 0 30px}
+  .br-cat{color:var(--ink-2)}
+  .br-tier{color:var(--ink-3);text-transform:capitalize}
+  .br-out{white-space:nowrap;font-size:13.5px;color:var(--ink-3)}
+  .br-out i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;vertical-align:1px;background:var(--border)}
+  .br-out .d{color:var(--ink-3);margin-left:8px}
+  .br-out .rb-slot:empty+.br-out-r,.br-out .rb-slot:empty+.d{margin-left:0}
+  .br-out .rb-slot:not(:empty)~.br-nyet{display:none}
+  .br-nyet.queued{color:var(--ink-2)} .br-nyet.queued i{background:var(--ink-3)}
+  .br-out-r{color:var(--good);font-weight:600;margin-left:8px}
+  .br-buy{font-size:15px}
+  .br-buy.low{color:var(--ink-3);font-weight:600}
+  .br-buy.low::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--warn);margin-right:7px;vertical-align:2px}
+  .br-name .status{margin-left:6px}
+  @media (min-width:821px){
+    .br-wrap{overflow:visible}
+    .br-table thead th{top:var(--head-h,0px);z-index:3;box-shadow:0 1px 0 var(--border)}
+    .br-table thead th:first-child{border-top-left-radius:var(--radius)}
+    .br-table thead th:last-child{border-top-right-radius:var(--radius)}
+  }
+  @media (max-width:820px){
+    .br-tools-row{gap:10px 14px}
+    .br-grp{width:100%}
+    .seg{display:flex;width:100%}
+    .seg-b{flex:1 1 0;justify-content:center;flex-wrap:wrap;white-space:normal;text-align:center;padding:7px 6px;font-size:13.5px;gap:4px 6px}
+  }
   /* Every brand a buyer (coverage card on All brands) */
   .cv-card{margin-top:14px}
   .cv-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px}
@@ -1505,6 +1669,31 @@
   .status.drafted,.status.proposed{background:rgba(138,123,255,.15);color:#ab9fff}
   .status.requested{background:rgba(246,143,94,.14);color:#f8a077}
   .target.sel{outline:2px solid var(--accent);outline-offset:-2px}
+  /* The person a click came for (search, Home → Accepted on LinkedIn): their
+     row on the brand page, scrolled to and lit up. */
+  .target.b-focus{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 2px var(--ring)}
+  .target.b-focus.b-focus-in{animation:b-focus-in 1.4s ease-out 1}
+  @keyframes b-focus-in{0%{box-shadow:0 0 0 7px var(--ring)}100%{box-shadow:0 0 0 2px var(--ring)}}
+  /* Home → Accepted on LinkedIn */
+  .ac-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 10px}
+  .ac-head .chip{padding:5px 12px;font-size:13px}
+  .ac-head .inp{margin-left:auto;width:240px;max-width:100%}
+  .ac-sum{font-size:13.5px;color:var(--ink-2);margin:-4px 0 10px}
+  .ac-sum b{color:var(--ink-1)}
+  .target.ac-row{padding:11px 16px;margin-bottom:6px;gap:12px}
+  .ac-row .t-brand{color:var(--ink-1)}
+  .ac-co{font-weight:600;color:#aac6ff}
+  .ac-when{flex:none;text-align:right;font-size:13px;color:var(--ink-2);white-space:nowrap}
+  .ac-when span{display:block;font-size:12px;color:var(--ink-3);margin-top:2px}
+  .ac-row .status.stopped,.ac-row .status.said{background:rgba(201,74,74,.15);color:#f0a0a0}
+  .ac-more{display:flex;gap:8px;margin:8px 0 0}
+  @media (max-width:600px){ .ac-head .inp{margin-left:0;width:100%} .target.ac-row{flex-wrap:wrap} }
+  /* Back / forward between pages (Leo, Oct 18 2026) */
+  .nav-hist{display:flex;gap:4px;flex:none}
+  .nh-btn{width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:var(--surface-1);
+    color:var(--ink-2);font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0 0 2px}
+  .nh-btn:hover:not(:disabled){border-color:rgba(79,131,247,.5);color:var(--ink-1)}
+  .nh-btn:disabled{opacity:.35;cursor:default}
   /* The re-file checkbox makes a Brands row wider than a phone: let the
      buttons drop to their own line instead of scrolling the page. */
   @media (max-width:600px){
@@ -1845,6 +2034,10 @@
   <main class="main">
     <div class="header-stick">
       <div class="topbar">
+        <div class="nav-hist">
+          <button class="nh-btn" id="nav-back" title="Back a page" aria-label="Back a page" disabled>&#8249;</button>
+          <button class="nh-btn" id="nav-fwd" title="Forward a page" aria-label="Forward a page" disabled>&#8250;</button>
+        </div>
         <div class="search-wrap">
           <span class="search-icon">⌕</span>
           <input class="search-input" id="q" type="text" autocomplete="off"
@@ -1879,6 +2072,7 @@
           <button class="btn-ghost" id="hm-sendlist" title="Today’s LinkedIn invites by company, checked for people who don’t fit — copy it for Zach">Today’s list for Zach</button>
           <button class="btn-ghost" id="hm-paste" title="Paste what your Claude Code chats did — saved under today">+ Paste what Claude did</button>
           <button class="btn-ghost" id="hm-week" title="The week so far: who went out, who answered, what got found — with Copy for Zach">This week ▸</button>
+          <button class="btn-ghost" id="hm-chats" title="What each Claude chat did today and what it needs from you">Your chats ▸</button>
           <button class="btn-ghost" id="hm-claudeday" title="Everything Claude changed today — the site, the data — and what it needs from you">Claude’s day ▸</button>
           <button class="btn-solid" id="hm-recap">Today’s recap ▸</button>
         </div>
@@ -1892,6 +2086,9 @@
       <div class="zach-back"><button class="btn-ghost" data-zachall>Show the whole Home ↓</button></div>
       <div id="action-panel" style="margin-top:20px"></div>
       <div id="hm-stale"></div>
+      <!-- Leo, Oct 18 2026: everyone who accepted on LinkedIn, newest first;
+           a click opens their brand page at them (renderAccepted). -->
+      <div id="hm-accepted"></div>
       <details class="fold hm-more" id="hm-more">
         <summary class="section-head">Numbers &amp; categories <span class="n">targets, sponsorship revenue, brands by category</span></summary>
         <div class="kpi-row" id="kpis" style="margin-top:6px"></div>
@@ -2039,6 +2236,7 @@
       <h1>Results</h1>
       <div class="sub" id="rc-sub">Everyone we've contacted on LinkedIn or by email, grouped by brand.</div>
       <div class="kpi-row" id="rc-kpis"></div>
+      <div id="rc-depth"></div>
       <div id="rc-toemail"></div>
       <div id="rc-accepted"></div>
       <div id="rc-followups"></div>
@@ -2051,25 +2249,46 @@
       <div id="reached-list" style="margin-top:14px"></div>
     </section>
 
+    <!-- Your chats (Leo, Oct 17 2026): what each Claude chat did and needs, its own page. -->
+    <section class="view page" id="chats">
+      <div class="chp-top">
+        <button class="btn-ghost" data-chp-home>← Home</button>
+        <span style="flex:1"></span>
+        <button class="btn-ghost" data-chp-day="-1" title="The day before" aria-label="The day before">‹</button>
+        <span class="chp-dayname" id="chp-day">Today</span>
+        <button class="btn-ghost" data-chp-day="1" id="chp-next" title="The day after" aria-label="The day after">›</button>
+      </div>
+      <h1>Your chats</h1>
+      <div id="chp-body"></div>
+    </section>
+
     <!-- WEEK PLAN (Leo, Oct 18 2026): the list of brands to reach — ~100, the
          top by Brand Fit plus what he adds — spread onto the week's sending
-         days as an even mix of rank. The add bar is never redrawn, so
-         typing in it survives every refresh. -->
+         days as an even mix of rank. The list on the left, the week on the
+         right, each scrolling on its own (a brand put on a day never moves
+         the list under the mouse). The search box and category menu are never
+         redrawn, so typing survives every refresh. -->
     <section class="view page wide" id="weekplan">
       <div class="eyebrow">Outreach</div>
       <h1>Week plan</h1>
-      <div class="sub">Your list of brands to reach, best Brand Fit first. Spread the top of it onto the week — every day gets a fair mix of the best brands — then move them between days.</div>
-      <div id="wp-head" class="wp-head"></div>
-      <div id="wp-days" class="sd-days"></div>
-      <div id="wp-listhead"></div>
-      <div class="panel wp-addbar" id="wp-addbar">
-        <div class="wp-addrow">
-          <input class="inp" id="wp-q" placeholder="Search a brand to add to the list…" autocomplete="off" aria-label="Search a brand to add to the list">
-          <select class="inp" id="wp-cat" aria-label="Browse a category"><option value="">Or browse a category…</option></select>
+      <div class="sub wp-steps"><span><b>1</b> Build your list</span><span class="sd-dim">→</span><span><b>2</b> Spread it onto the week</span><span class="sd-dim">→</span><span><b>3</b> Move brands between days</span></div>
+      <div class="wp-split">
+        <div class="wp-pane" id="wp-listpane">
+          <div class="wp-pane-h">
+            <div id="wp-listhead"></div>
+            <div class="wp-addrow">
+              <input class="inp" id="wp-q" placeholder="Search a brand to add…" autocomplete="off" aria-label="Search a brand to add to your list">
+              <select class="inp" id="wp-cat" aria-label="Add from a category"><option value="">Add from a category…</option></select>
+            </div>
+            <div id="wp-filters"></div>
+          </div>
+          <div class="wp-scroll" id="wp-list"></div>
         </div>
-        <div id="wp-results"></div>
+        <div class="wp-pane wp-weekpane">
+          <div class="wp-pane-h" id="wp-weekhead"></div>
+          <div class="wp-scroll" id="wp-days"></div>
+        </div>
       </div>
-      <div id="wp-list"></div>
     </section>
 
     <!-- OUTREACH SCHEDULE -->
@@ -2118,6 +2337,7 @@
         <button class="chip" data-lif="profiles">Saved profiles</button>
         <button class="chip" data-lif="none">Nobody yet</button>
         <button class="chip" data-lif="thin" title="Brands with room under the 25-people cap, emptiest first — open People ↗ and press the SB pill">Under 25</button>
+        <span id="li-reach"></span>
         <a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" style="text-decoration:none;margin-left:6px" title="Opens LinkedIn in a window of its own and starts the fill there by itself — the Schedule's short brands, then every brand with nobody in marketing / partnerships, electrolytes first within each; the research list and lookalikes on. Keep working here; leave that window alone, with a corner of it in view (minimized or fully covered, Chrome slows it). Needs the LinkedIn capture script in Tampermonkey.">Start the LinkedIn fill ↗</a>
         <input class="inp" id="li-q" placeholder="Filter brands…" autocomplete="off" style="margin-left:auto;width:220px">
       </div>
@@ -2152,6 +2372,7 @@
       <div style="margin:-4px 0 10px">
         <label class="hs-switch" title="Too small = sales under $1M, or (sales not known) under 20 people on LinkedIn. Only brands nobody has contacted are hidden.">
           <input type="checkbox" id="st-small" data-hidesmall="stock" checked> Hide too small</label>
+        <span id="st-reach" style="margin-left:14px"></span>
       </div>
       <div id="st-refile"></div>
       <div id="st-fit"></div>
@@ -2524,6 +2745,18 @@
 
 <div id="recap" class="rc" hidden role="dialog" aria-modal="true" aria-label="Today’s recap"></div>
 <script>
+// Back / forward (navRecord, below): every page is a history entry carrying
+// its record in history.state.sbNav. Screens that write their place into the
+// address (Activations, Operations, the logo) call history.replaceState({}, …);
+// keep the entry's record through those.
+(function () {
+  var rs = history.replaceState;
+  history.replaceState = function (state, title, url) {
+    var cur = history.state;
+    if (cur && cur.sbNav && !(state && state.sbNav)) state = Object.assign({}, state || {}, { sbNav: cur.sbNav });
+    return url === undefined ? rs.call(history, state, title) : rs.call(history, state, title, url);
+  };
+})();
 // Leo, Oct 6 2026: "anytime you go on to the command center I want it to
 // go to the home page". Screens like Activations write where you are into
 // the address bar, so a reload or a reopened tab used to land back there.
@@ -2579,9 +2812,67 @@ function api(fn, args) {
   .then(function (r) { return r.json(); })
   .then(function (j) {
     if (!j.ok) throw new Error(j.error || 'Request failed');
+    // Something that can reach a brand: the Reached tags read again.
+    if (RB_WRITES[fn]) rbStale();
     return j.data;
   });
 }
+
+// --- the Reached tag ---------------------------------------------
+// Leo, Oct 18 2026: "all over the site for any brand that has been reached
+// out to i want a tag that shows that". One map for the whole page
+// (reachedBrands: isReached's rule — an invite ever, an accept or reply, an
+// email), read on load, on every tab change and when the window comes back
+// (at most every 30 s), and again after anything that can reach a brand.
+// rbTag(id) draws a slot that is filled from the map, so a list drawn
+// before the map lands is painted when it does (rbPaint).
+var RB = { map: null, at: 0, busy: null };
+var RB_WRITES = {
+  setTargetStatus: 1, markEmailed: 1, handStep: 1, logLinkedInPerson: 1, undoLinkedInLog: 1, markInvitesWithdrawn: 1,
+  setTargetShelved: 1, mergeBrands: 1, combineParent: 1, undoCombineParent: 1, sendEmail: 1, sendDraft: 1
+};
+function rbLoad(force) {
+  if (RB.busy) return RB.busy;
+  if (!force && RB.map && Date.now() - RB.at < 30000) return Promise.resolve(RB.map);
+  RB.busy = api('reachedBrands').then(function (d) {
+    RB.map = (d && d.brands) || {};
+    RB.at = Date.now();
+    RB.busy = null;
+    rbPaint();
+    return RB.map;
+  }).catch(function () { RB.busy = null; return RB.map; });
+  return RB.busy;
+}
+function rbStale() { RB.at = 0; setTimeout(function () { rbLoad(); }, 400); }
+function rbDay(key) {
+  var d = new Date(key + 'T12:00:00');
+  var opts = { month: 'short', day: 'numeric' };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString('en-US', opts);
+}
+var RB_STAGE = { r: 'they replied', a: 'they accepted', i: 'invite out', e: 'emailed', w: 'invite withdrawn' };
+function rbInner(id) {
+  var r = RB.map && RB.map[id];
+  if (!r) return '';
+  var how = [];
+  if (r[3]) how.push(r[3] + (r[3] === 1 ? ' person' : ' people') + ' invited on LinkedIn');
+  if (r[4]) how.push(r[4] + ' emailed');
+  var tip = 'Reached out — last ' + rbDay(r[1]) + (r[0] !== r[1] ? ', first ' + rbDay(r[0]) : '') +
+    (how.length ? ' · ' + how.join(' · ') : '') + (RB_STAGE[r[2]] ? ' · ' + RB_STAGE[r[2]] : '');
+  return '<span class="rb-tag" title="' + esc(tip) + '">Reached ' + esc(rbDay(r[1])) + '</span>';
+}
+function rbTag(id) {
+  if (!id) return '';
+  return '<span class="rb-slot" data-rb="' + esc(id) + '">' + rbInner(id) + '</span>';
+}
+function rbPaint(root) {
+  (root || document).querySelectorAll('[data-rb]').forEach(function (el) {
+    var h = rbInner(el.getAttribute('data-rb'));
+    if (el.innerHTML !== h) el.innerHTML = h;
+  });
+}
+// Whether a brand has been reached (for code that decides what to show).
+function rbReached(id) { return !!(RB.map && RB.map[id]); }
 
 // One hide timer, cleared on every call. Each toast used to start its
 // own, so the first one's timer hid the second a moment after it
@@ -2641,6 +2932,44 @@ function hideSmallBox(where) {
   return '<label class="hs-switch" title="Too small = sales under $1M, or (sales not known) under 20 people on LinkedIn">' +
     '<input type="checkbox" data-hidesmall="' + esc(where) + '"' + (HIDE_SMALL ? ' checked' : '') + '> Hide too small</label>';
 }
+// The Outreach filter (Leo, Oct 18 2026: "anywhere on the site where i sort
+// brands … a filter [for] outreached to, meaning that we have sent a request
+// to at least one person there"). Reached out = the Reached tag's rule
+// (isReached on the server, REACHED_WHERE): an invite ever, an accept or
+// reply, an email — so the tag and the filter always agree. One dropdown,
+// the same on every brand list
+// (All brands, Stock take, Discover, Outreach → People, Week plan's
+// category, the Schedule's category); each list keeps its own choice for
+// the visit (REACH_F[list]) and redraws itself (REACH_DRAW[list]).
+var REACH_F = {};
+var REACH_DRAW = {};
+var REACH_TIP = 'Reached out = someone there got a LinkedIn invite or an email from us (an accept logged straight from LinkedIn counts too) — the brands with the Reached tag';
+function reachOk(list, reached) {
+  var f = REACH_F[list];
+  return !f || (f === 'yes') === !!reached;
+}
+// How many of `rows` each choice would show, for the dropdown's options.
+function reachCounts(rows, isReached) {
+  var c = { yes: 0, no: 0 };
+  rows.forEach(function (r) { c[isReached(r) ? 'yes' : 'no'] += 1; });
+  return c;
+}
+function reachSelect(list, counts) {
+  var f = REACH_F[list] || '';
+  var n = function (k) { return counts ? ' (' + (counts[k] || 0) + ')' : ''; };
+  var opt = function (v, label) { return '<option value="' + v + '"' + (f === v ? ' selected' : '') + '>' + label + '</option>'; };
+  return '<label class="br-chk reach-f" title="' + esc(REACH_TIP) + '">Outreach ' +
+    '<select class="inp" data-reachf="' + esc(list) + '" aria-label="Outreach: reached out or not">' +
+      opt('', 'Any') + opt('yes', 'Reached out' + n('yes')) + opt('no', 'Not reached out' + n('no')) +
+    '</select></label>';
+}
+document.addEventListener('change', function (e) {
+  var s = e.target && e.target.closest ? e.target.closest('select[data-reachf]') : null;
+  if (!s) return;
+  var list = s.getAttribute('data-reachf');
+  REACH_F[list] = s.value;
+  if (REACH_DRAW[list]) REACH_DRAW[list]();
+});
 // The tags a brand row carries. `f` may be missing (old payloads).
 function fitTags(f, opts) {
   if (!f) return '';
@@ -2756,6 +3085,7 @@ var GROUP_OF = {
   pipeline: 'pipeline', sponsorships: 'pipeline',
   audience: 'audience', attendees: 'audience', segments: 'audience',
   materials: 'operations', team: 'operations',
+  chats: 'dashboard',
 };
 
 // --- keep my place ---------------------------------------------
@@ -3050,6 +3380,14 @@ function placeApply(recs) {
 function showView(id, fresh) {
   var view = document.getElementById(id);
   var again = !fresh && !NAV_FRESH && !!view && view.classList.contains('active');
+  navRecord(id, again);
+  // Leo, Oct 18 2026: a search stays in the top bar only on its results —
+  // any other page starts with the bar empty (and a search still being typed
+  // doesn't pull you back to it).
+  if (!again && id !== 'search') {
+    var qb = document.getElementById('q');
+    if (qb && qb.value) { qb.value = ''; clearTimeout(searchTimer); }
+  }
   if (again) keepPlace(view); else placeEnd();
   document.querySelectorAll('.nav-item').forEach(function (b) { if (!b.closest('#act-tabs') && !b.closest('#sub-tabs')) b.classList.remove('active'); });
   document.querySelectorAll('.view').forEach(function (v) { v.classList.toggle('active', v.id === id); });
@@ -3067,6 +3405,166 @@ function showView(id, fresh) {
   if (!again) window.scrollTo(0, 0);
   return again;
 }
+
+// The person a click came for, on their brand page: lit up, and scrolled to
+// the middle of the screen the first time. Held there for a moment while the
+// Schedule line and Zach's cards above it fill in, unless you scroll first.
+function bFocusApply(brandId) {
+  var f = B_FOCUS;
+  if (!f || f.brandId !== brandId) return;
+  var box = document.getElementById('brand-body');
+  var sel = window.CSS && CSS.escape ? CSS.escape(f.contactId) : f.contactId;
+  var row = box.querySelector('[data-pcid="' + sel + '"]');
+  if (!row) {
+    if (f.scroll) { f.scroll = false; toast('They’re not on ' + ((CURRENT_BRAND && CURRENT_BRAND.brand.name) || 'this brand') + '’s people any more'); }
+    return;
+  }
+  row.classList.add('b-focus');
+  if (!f.scroll) return;
+  f.scroll = false;
+  row.classList.add('b-focus-in');
+  var mid = function () {
+    var r = row.getBoundingClientRect();
+    return r.top + r.height / 2 - window.innerHeight / 2;
+  };
+  window.scrollBy(0, mid());
+  var t0 = Date.now(), stop = false;
+  var quit = function () { stop = true; };
+  ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (ev) {
+    window.addEventListener(ev, quit, { once: true, capture: true, passive: true });
+  });
+  (function hold() {
+    if (stop || !row.isConnected) return;
+    var d = mid();
+    if (Math.abs(d) > 4) window.scrollBy(0, d);
+    if (Date.now() - t0 < 1500) setTimeout(hold, 80);
+  })();
+}
+
+// --- back / forward between pages ------------------------------
+// Leo, Oct 18 2026: "u should be able to move back and forth between pages
+// on the command center like moving back a page". Every page change — a view
+// not already showing, another brand, another search — is a browser history
+// entry whose state.sbNav = { v: view, a: what it showed (a loader sets
+// NAV_ARGS just before its showView: brand + person, search words, category),
+// i: its place in the tab's history, y: the scroll when you left it }. The
+// browser's back / forward (and a trackpad swipe) and the ‹ › buttons by the
+// search bar walk them; popstate redraws that page with its own loader
+// (navRestore). The address never changes for it, so a reload still starts on
+// Home. A search being typed, or a tab clicked twice, replaces its entry.
+var NAV = { i: 0, max: 0, pop: false, ready: false, cur: null };
+var NAV_ARGS = null;
+
+function navSame(x, y) { return JSON.stringify(x || null) === JSON.stringify(y || null); }
+function navSave() { try { sessionStorage.setItem('sb.navMax', String(NAV.max)); } catch (e) {} }
+function navButtons() {
+  var b = document.getElementById('nav-back'), f = document.getElementById('nav-fwd');
+  if (b) b.disabled = NAV.i <= 0;
+  if (f) f.disabled = NAV.i >= NAV.max;
+}
+function navStamp(rec) {
+  history.replaceState(Object.assign({}, history.state || {}, { sbNav: rec }), '');
+}
+
+function navRecord(id, again) {
+  var a = NAV_ARGS || null;
+  NAV_ARGS = null;
+  if (again || NAV.pop || !NAV.ready) return;
+  var cur = history.state && history.state.sbNav;
+  if (cur && cur.v === id && (id === 'search' || navSame(cur.a, a))) {
+    navStamp({ v: id, a: a, i: NAV.i });
+    NAV.cur = { v: id, a: a };
+    return;
+  }
+  if (cur) navStamp(Object.assign({}, cur, { y: window.scrollY }));
+  NAV.i += 1;
+  NAV.max = NAV.i;
+  NAV.cur = { v: id, a: a };
+  history.pushState({ sbNav: { v: id, a: a, i: NAV.i } }, '', location.pathname + location.search);
+  navSave(); navButtons();
+}
+
+// Back to a page's scroll once its content is tall enough again; stops the
+// moment you scroll or click yourself.
+function navScrollTo(y) {
+  if (!(y > 0)) return;
+  var t0 = Date.now(), stop = false, hit = 0;
+  var quit = function () { stop = true; };
+  ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (ev) {
+    window.addEventListener(ev, quit, { once: true, capture: true, passive: true });
+  });
+  (function tick() {
+    if (stop) return;
+    if (document.documentElement.scrollHeight - window.innerHeight >= y - 2) {
+      if (Math.abs(window.scrollY - y) >= 1) window.scrollTo(0, y);
+      if (!hit) hit = Date.now();
+      if (Date.now() - hit > 800) return;   // held while late content settles
+    }
+    if (Date.now() - t0 < 5000) setTimeout(tick, 60);
+  })();
+}
+
+function navRestore(s) {
+  var a = s.a || {};
+  NAV.pop = true; NAV_FRESH = true;
+  try {
+    if (s.v !== 'activations') actMode(false);
+    if (s.v === 'brand' && a.b) {
+      loadBrand(a.b, a.p || null);
+      if (s.y && B_FOCUS) B_FOCUS.scroll = false;
+    } else if (s.v === 'search' && a.q) {
+      document.getElementById('q').value = a.q;
+      runSearch(a.q);
+    } else if (s.v === 'brands') {
+      if (a.c === 'noprofile') loadBrandsNoProfile(); else loadBrands(a.c || 'all');
+    } else if (s.v === 'activations') {
+      var m = /^#activations(?:\/([^\/]+))?(?:\/([a-z]+))?/.exec(location.hash || '');
+      actOpenId = (m && m[1]) || null; actTab = (m && m[2]) || 'overview';
+      loadActivations(!!actOpenId);
+    } else if (s.v === 'operations') {
+      var o = /^#operations(?:\/([^\/]+))?/.exec(location.hash || '');
+      opsOpenId = (o && o[1]) || null;
+      loadOperations();
+    } else {
+      gotoViewNow(s.v);
+      var el = document.getElementById(s.v);
+      if (el && !el.classList.contains('active')) showView(s.v);
+    }
+  } finally { NAV.pop = false; NAV_FRESH = false; }
+  NAV.cur = { v: s.v, a: s.a || null };
+  navScrollTo(s.y || 0);
+}
+
+window.addEventListener('popstate', function (e) {
+  var s = e.state && e.state.sbNav;
+  if (!s) {
+    // A plain "#…" link made this entry; it's still the page on screen.
+    NAV.i += 1; NAV.max = NAV.i;
+    navStamp(Object.assign({}, NAV.cur || { v: 'dashboard', a: null }, { i: NAV.i }));
+    navSave(); navButtons();
+    return;
+  }
+  NAV.i = s.i || 0;
+  if (NAV.i > NAV.max) NAV.max = NAV.i;
+  navSave(); navButtons();
+  navRestore(s);
+});
+document.getElementById('nav-back').addEventListener('click', function () { if (NAV.i > 0) history.back(); });
+document.getElementById('nav-fwd').addEventListener('click', function () { if (NAV.i < NAV.max) history.forward(); });
+
+(function navInit() {
+  try { history.scrollRestoration = 'manual'; } catch (e) {}
+  var s = history.state && history.state.sbNav;
+  var m = 0;
+  try { m = Number(sessionStorage.getItem('sb.navMax')) || 0; } catch (e) {}
+  NAV.i = s && s.i > 0 ? s.i : 0;
+  NAV.max = s ? Math.max(NAV.i, m) : 0;
+  // Opening or reloading always lands on Home (above), so this entry is Home.
+  NAV.cur = { v: 'dashboard', a: null };
+  navStamp({ v: 'dashboard', a: null, i: NAV.i });
+  NAV.ready = true;
+  navSave(); navButtons();
+})();
 
 // --- dashboard -------------------------------------------------
 
@@ -3094,10 +3592,138 @@ function renderActionPanel() {
   }).catch(function () { box.innerHTML = ''; });
 }
 
+// --- Home → Accepted on LinkedIn ------------------------------
+// Leo, Oct 18 2026: "a list of all of the most recent and in total people that
+// have been accepted on linkedin and the brand and the title from each brand,
+// then u should be able to click on their card and it takes u to their page of
+// the brand". acceptedPeople (src/lib/accepted.ts) = everyone, newest first;
+// the counts and the 7 / 30 days / All chips are worked out here. A card opens
+// the brand page at that person, highlighted (data-focus → loadBrand).
+var AC = { rows: null, range: 'all', q: '', limit: 25, err: '' };
+var AC_STEP = 25;
+var AC_RANGES = [['7', 'Last 7 days', 7], ['30', 'Last 30 days', 30], ['all', 'All', 0]];
+
+function acSince(days) {
+  if (!days) return 0;
+  var d = new Date(); d.setHours(0, 0, 0, 0);
+  return d.getTime() - (days - 1) * 864e5;   // today counts as one of the days
+}
+function acInRange(p, days) { return new Date(p.at).getTime() >= acSince(days); }
+function acDays(key) { return (AC_RANGES.filter(function (r) { return r[0] === key; })[0] || AC_RANGES[2])[2]; }
+function acAgo(iso) {
+  var a = new Date(iso); a.setHours(0, 0, 0, 0);
+  var b = new Date(); b.setHours(0, 0, 0, 0);
+  var n = Math.round((b - a) / 864e5);
+  return n <= 0 ? 'today' : n === 1 ? 'yesterday' : n + ' days ago';
+}
+function acDate(iso) {
+  var d = new Date(iso);
+  return d.toLocaleDateString('en-US', d.getFullYear() === new Date().getFullYear()
+    ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function acCls(stage) {
+  return { stopped: 'stopped', declined: 'said', call: 'converted', converted: 'converted', replied: 'replied', messaged: 'sent' }[stage] || 'accepted';
+}
+function acRow(p) {
+  return '<div class="target clickable ac-row" data-brand="' + esc(p.brandId) + '" data-focus="' + esc(p.contactId) + '" title="Open ' + esc(p.brandName) + ' at ' + esc(p.name) + '">' +
+    '<div class="t-main"><div class="t-line"><span class="t-brand">' + esc(p.name) + '</span>' +
+      (p.title ? '<span class="t-sep">·</span><span class="t-title">' + esc(p.title) + '</span>' : '') + '</div>' +
+    '<div class="t-meta"><span class="ac-co">' + esc(p.brandName) + '</span>' +
+      (p.category && CAT_NAMES[p.category] ? '<span>· ' + esc(CAT_NAMES[p.category]) + '</span>' : '') +
+      (p.archived ? '<span>· archived</span>' : '') +
+      '<span class="status ' + acCls(p.stage) + '">' + esc(p.label) + '</span>' +
+      (p.linkedinUrl ? '<a class="sd-link" href="' + esc(p.linkedinUrl) + '" target="_blank" rel="noopener">LinkedIn ↗</a>' : '') +
+    '</div></div>' +
+    '<div class="ac-when">' + (p.kind === 'replied' ? 'replied ' : 'accepted ') + esc(acDate(p.at)) +
+      '<span>' + esc(acAgo(p.at)) + '</span></div></div>';
+}
+
+function renderAccepted() {
+  var box = document.getElementById('hm-accepted');
+  if (!box) return;
+  var mine = viewTurn('hm-accepted');
+  if (!AC.rows) acDraw();
+  return api('acceptedPeople').then(function (d) {
+    if (!mine()) return;
+    AC.rows = d.people || []; AC.err = '';
+    acDraw();
+  }).catch(function (e) { if (!mine()) return; AC.err = e.message; acDraw(); });
+}
+
+// The card's frame is drawn once, so the filter box keeps its cursor and
+// text through a refresh; acFill redraws the counts, chips and list.
+function acDraw() {
+  var box = document.getElementById('hm-accepted');
+  if (!box.querySelector('#ac-q')) {
+    box.innerHTML =
+      '<div class="section-head">Accepted on LinkedIn <span class="n" id="ac-n"></span></div>' +
+      '<div class="ac-sum" id="ac-sum"></div>' +
+      '<div class="ac-head"><span id="ac-chips" class="chips" style="margin:0"></span>' +
+        '<input class="inp" id="ac-q" placeholder="Filter by name, brand or title…" autocomplete="off"></div>' +
+      '<div id="ac-list"></div>';
+    box.querySelector('#ac-q').value = AC.q;
+  }
+  acFill();
+}
+
+function acFill() {
+  var box = document.getElementById('hm-accepted');
+  var list = box.querySelector('#ac-list');
+  if (!AC.rows) {
+    list.innerHTML = AC.err ? '<div class="hint">Could not load: ' + esc(AC.err) + '</div>' : '<div class="hint">Loading…</div>';
+    return;
+  }
+  var all = AC.rows;
+  var n7 = all.filter(function (p) { return acInRange(p, 7); }).length;
+  var n30 = all.filter(function (p) { return acInRange(p, 30); }).length;
+  var brands = {}; all.forEach(function (p) { brands[p.brandId] = 1; });
+  var nb = Object.keys(brands).length;
+  box.querySelector('#ac-n').textContent = all.length + (all.length === 1 ? ' person' : ' people');
+  box.querySelector('#ac-sum').innerHTML = all.length
+    ? '<b>' + n7 + '</b> in the last 7 days · <b>' + n30 + '</b> in the last 30 days · <b>' + all.length + '</b> in total, at ' + nb + ' brand' + (nb === 1 ? '' : 's')
+    : '';
+  var counts = { '7': n7, '30': n30, all: all.length };
+  box.querySelector('#ac-chips').innerHTML = AC_RANGES.map(function (r) {
+    return '<button class="chip' + (AC.range === r[0] ? ' active' : '') + '" data-acr="' + r[0] + '">' + r[1] + ' (' + counts[r[0]] + ')</button>';
+  }).join('');
+  var days = acDays(AC.range);
+  var q = AC.q.trim().toLowerCase();
+  var rows = all.filter(function (p) {
+    if (!acInRange(p, days)) return false;
+    return !q || [p.name, p.title, p.brandName].join(' ').toLowerCase().indexOf(q) !== -1;
+  });
+  if (!all.length) { list.innerHTML = '<div class="hint">Nobody has accepted on LinkedIn yet.</div>'; return; }
+  if (!rows.length) {
+    list.innerHTML = '<div class="hint">' + (q ? 'Nobody matches “' + esc(AC.q.trim()) + '”' : 'Nobody accepted in the ' + esc(AC_RANGES.filter(function (r) { return r[0] === AC.range; })[0][1].toLowerCase())) +
+      (AC.range !== 'all' ? ' — <a href="#" data-acr="all">see everyone</a>' : '') + '.</div>';
+    return;
+  }
+  var shown = rows.slice(0, AC.limit);
+  var left = rows.length - shown.length;
+  list.innerHTML = shown.map(acRow).join('') +
+    (left > 0
+      ? '<div class="ac-more"><button class="btn-ghost" data-acmore>Show ' + Math.min(left, AC_STEP) + ' more</button>' +
+          (left > AC_STEP ? '<button class="btn-ghost" data-acall>Show all ' + rows.length + '</button>' : '') + '</div>'
+      : '');
+}
+
+document.getElementById('hm-accepted').addEventListener('click', function (e) {
+  var r = e.target.closest('[data-acr]');
+  if (r) { e.preventDefault(); AC.range = r.getAttribute('data-acr'); AC.limit = AC_STEP; acFill(); return; }
+  if (e.target.closest('[data-acmore]')) { AC.limit += AC_STEP; acFill(); return; }
+  if (e.target.closest('[data-acall]')) { AC.limit = Infinity; acFill(); return; }
+});
+document.getElementById('hm-accepted').addEventListener('input', function (e) {
+  if (e.target.id !== 'ac-q') return;
+  AC.q = e.target.value; AC.limit = AC_STEP;
+  acFill();
+});
+
 function loadDashboard() {
   showView('dashboard');
   renderZachTodo();
   renderActionPanel();
+  renderAccepted();
   loadScore(); loadStale();
   loadToday().catch(function (e) { var g = document.getElementById('hm-glance'); if (g) g.innerHTML = '<div class="hint">Could not load today: ' + esc(e.message) + '</div>'; });
   document.getElementById('today-date').textContent =
@@ -3294,7 +3920,7 @@ function renderGlance() {
     return '<button class="hm-tile" data-rc-open="' + x[0] + '" style="--tc:' + x[4] + '">' +
       '<span class="k">' + x[1] + '</span><span class="v">' + x[2] + '</span><span class="s">' + esc(x[3]) + '</span></button>';
   }).join('') +
-    '<button class="hm-tile" data-cd-open="chats" style="--tc:var(--accent-hi)" title="What each Claude chat did today and what it needs from you">' +
+    '<button class="hm-tile" data-chp-open style="--tc:var(--accent-hi)" title="What each Claude chat did today and what it needs from you">' +
       '<span class="k">Claude chats today</span><span class="v">' + ch.all + '</span><span class="s">' + esc(chSub) + '</span></button>';
 }
 
@@ -3534,44 +4160,81 @@ function chCounts(chats) {
 function chTitle(c) {
   return c.url ? '<a href="' + esc(c.url) + '" target="_blank" rel="noopener" title="Open this chat">' + esc(c.title) + ' ↗</a>' : esc(c.title);
 }
-var CH_TAG = { needs: ['r', 'Needs you'], working: ['', 'Working'], stalled: ['w', 'No reply yet'], done: ['g', 'Done'] };
-function chRow(c) {
-  var s = chState(c);
-  var tag = CH_TAG[s];
-  var asks = c.asks || [];
-  var open = c.needs.filter(function (n) { return !n.done; });
-  var when = c.lastAt ? cdTime(c.lastAt) : '';
-  var h = '<div class="rc-row ch-row" data-ch="' + esc(c.id) + '"><span class="rc-tag ch ' + tag[0] + '">' + tag[1] + '</span><div class="grow">' +
-    '<span class="nm">' + chTitle(c) + '</span>' +
-    (c.about ? '<div class="about">' + rcText(c.about) + '</div>' : '');
-  if (c.ask) h += '<div class="ask"><i>' + (s === 'working' || s === 'stalled' ? 'Working on' : 'You asked') + ':</i> “' + rcText(c.ask) + '”' +
-    (asks.length > 1 ? ' <i>· ' + plural(asks.length, 'message') + ' today</i>' : '') + '</div>';
-  if (c.done.length) {
-    h += '<div class="did">' + c.done.slice(0, 4).map(function (d) { return '• ' + rcText(d); }).join('<br>') + '</div>';
-    if (c.done.length > 4) h += '<details><summary>+ ' + (c.done.length - 4) + ' more it did</summary><div class="did">' +
-      c.done.slice(4).map(function (d) { return '• ' + rcText(d); }).join('<br>') + '</div></details>';
-  }
-  if (c.question) h += '<div class="ch-q"><i>It asks:</i> ' + rcText(c.question) + '</div>';
-  open.forEach(function (n) { h += needHtml(c, n, true); });
-  if (asks.length > 1) h += '<details><summary>Everything you asked it today (' + asks.length + ')</summary><div class="did">' +
-    asks.map(function (a) { return esc(cdTime(a.at)) + ' — ' + rcText(a.ask); }).join('<br>') + '</div></details>';
-  h += '<div class="sm">' + (s === 'stalled' ? 'Started ' + esc(when) + ', nothing since — open it to check' : s === 'working' ? 'Since ' + esc(when) : when ? 'Last reply ' + esc(when) : '') + '</div>';
-  return h + '</div></div>';
+
+// The page (#chats, its own view; Leo, Oct 17 2026: "make it its own page
+// and make it simple and concise in bigger text"): three numbers, then the
+// chats under Needs you / Working / Done, one card each — its name (opens
+// it), one line on what it's for, what it needs (tick it off), up to three
+// things it did. Data = dayRecap's chats (today's, or ‹ › another day).
+var CHP = null;        // the day on screen (dayRecap's answer)
+var CHP_DAY = null;    // null = today
+function loadChats(day) {
+  day = day || null;
+  var again = showView('chats', day !== CHP_DAY);
+  CHP_DAY = day;
+  var turn = viewTurn('chats');
+  var body = document.getElementById('chp-body');
+  if (!again) body.innerHTML = '<div class="chp-empty">Loading…</div>';
+  return api('dayRecap', day ? { day: day } : {}).then(function (r) {
+    if (!turn()) return;
+    CHP = r;
+    if (r.isToday) { RC = r; renderGlance(); }
+    chpRender();
+  }).catch(function (e) { if (turn()) body.innerHTML = '<div class="chp-empty">Could not load your chats: ' + esc(e.message) + '</div>'; });
 }
-function chCard(cd) {
-  var list = chSorted(cd.chats), n = chCounts(cd.chats);
-  var h = list.length
-    ? '<div class="rc-lead"><b>' + plural(n.all, 'chat') + '</b> ' + (cd.isToday ? 'today' : 'that day') +
-        (n.needs ? ' · <b>' + n.needs + '</b> need' + (n.needs === 1 ? 's' : '') + ' you' : '') + (n.working ? ' · ' + n.working + ' working' : '') +
-        '. A title opens the chat.</div><div class="rc-list">' + list.map(chRow).join('') + '</div>'
-    : '<div class="rc-empty">No chats have logged ' + (cd.isToday ? 'yet today' : 'that day') + '.</div>';
-  return { key: 'chats', step: 'Chats', title: cd.isToday ? 'Your chats today' : 'Your chats', body: h, acts: '' };
+function chpGroups(chats) {
+  var g = { needs: [], working: [], done: [] };
+  chSorted(chats).forEach(function (c) { var s = chState(c); (s === 'needs' ? g.needs : s === 'done' ? g.done : g.working).push(c); });
+  return g;
+}
+function chpSum(g) {
+  return '<div class="chp-sum">' +
+    '<div class="r"><b>' + g.needs.length + '</b><span>need you</span></div>' +
+    '<div><b>' + g.working.length + '</b><span>working</span></div>' +
+    '<div class="g"><b>' + g.done.length + '</b><span>done</span></div></div>';
+}
+function chpRender() {
+  var r = CHP, body = document.getElementById('chp-body');
+  if (!r || !body) return;
+  document.getElementById('chp-day').textContent = r.isToday ? 'Today' : keyLabel(r.day, true);
+  document.getElementById('chp-next').disabled = r.day >= r.today;
+  var g = chpGroups(r.chats);
+  if (!g.needs.length && !g.working.length && !g.done.length) {
+    body.innerHTML = '<div class="chp-empty">No chats ' + (r.isToday ? 'yet today. They show up here by themselves as you use them.' : 'that day.') + '</div>';
+    return;
+  }
+  var part = function (title, list) {
+    return list.length ? '<h2 class="chp-h">' + title + '</h2><div class="chp-grid">' + list.map(chpCard).join('') + '</div>' : '';
+  };
+  body.innerHTML = '<div id="chp-sum">' + chpSum(g) + '</div>' + part('Needs you', g.needs) + part('Working', g.working) + part('Done', g.done);
+}
+function chpCard(c) {
+  var s = chState(c);
+  var when = c.lastAt ? cdTime(c.lastAt) : '';
+  var link = function (inner, cls) { return c.url ? '<a class="' + cls + '" href="' + esc(c.url) + '" target="_blank" rel="noopener">' + inner + '</a>' : ''; };
+  var h = '<article class="chp-card ' + s + '" data-chp="' + esc(c.id) + '"><div class="chp-head">' +
+    (c.url ? link(esc(c.title), 'chp-title') : '<span class="chp-title">' + esc(c.title) + '</span>') + link('Open chat ↗', 'chp-open') + '</div>';
+  if (c.about) h += '<p class="chp-about">' + rcText(c.about) + '</p>';
+  if (s === 'working' && c.ask) h += '<p class="chp-line"><b>Working on:</b> ' + rcText(c.ask) + '</p>';
+  if (s === 'stalled') h += '<p class="chp-line"><b>No reply since ' + esc(when) + '</b> — open it to check on it.</p>';
+  var open = c.needs.filter(function (n) { return !n.done; });
+  if (open.length || c.question) {
+    h += '<div class="chp-needs"><div class="chp-label">It needs from you</div>' + open.map(function (n) {
+      return '<label class="chp-need"><input type="checkbox" data-need="' + esc(c.id) + '" data-i="' + n.i + '"><span><b>' + rcText(n.label) + '</b>' +
+        (n.steps.length ? '<ol>' + n.steps.map(function (x) { return '<li>' + rcText(x) + '</li>'; }).join('') + '</ol>' : '') + '</span></label>';
+    }).join('') + (c.question ? '<p class="chp-q">' + rcText(c.question) + '</p>' : '') + '</div>';
+  }
+  if (c.done.length) {
+    var li = function (d) { return '<li>' + rcText(d) + '</li>'; };
+    h += '<div class="chp-label">What it did</div><ul class="chp-did">' + c.done.slice(0, 3).map(li).join('') + '</ul>';
+    if (c.done.length > 3) h += '<details class="chp-more"><summary>' + (c.done.length - 3) + ' more</summary><ul class="chp-did">' + c.done.slice(3).map(li).join('') + '</ul></details>';
+  }
+  h += '<div class="chp-time">' + (s === 'working' ? 'Working since ' + esc(when) : s === 'stalled' ? '' : when ? 'Last reply ' + esc(when) : '') + '</div>';
+  return h + '</article>';
 }
 
 function cdCards(cd) {
   var cards = [], h;
-  // 0. Your chats: what each one did and needs
-  if (cd.chats.some(chIsSession)) cards.push(chCard(cd));
   // 1. The site
   if (cd.commits.length) {
     h = '<div class="rc-lead">' + plural(cd.commits.length, 'update') + ' went live on the dashboard.</div><div class="rc-list">' +
@@ -3621,7 +4284,8 @@ function cdCards(cd) {
     return '<div class="rc-row"><div class="grow"><span class="nm">' + chTitle(c) + '</span><div class="ppl">' + rcText(c.question) + '</div></div></div>';
   }).join('') + '</div>';
   if (!h) h = '<div class="rc-empty">Nothing is waiting on you. 🎉</div>';
-  cards.push({ key: 'needs', step: 'Needs you', title: 'What Claude needs from you', body: h, acts: '' });
+  cards.push({ key: 'needs', step: 'Needs you', title: 'What Claude needs from you', body: h,
+    acts: cd.chats.some(chIsSession) ? '<button class="btn-ghost" data-rc-go="chats">Your chats →</button>' : '' });
   cards.forEach(function (c, i) { c.i = i; });
   return cards;
 }
@@ -3743,7 +4407,15 @@ document.addEventListener('click', function (ev) {
   var t = ev.target;
   var el;
   if ((el = t.closest('[data-rc-open]'))) { openRecap(el.getAttribute('data-rc-open')); return; }
-  if ((el = t.closest('[data-cd-open]'))) { openClaudeDay(null, el.getAttribute('data-cd-open')); return; }
+  if (t.closest('[data-chp-open]') || t.closest('#hm-chats')) { CHP_DAY = null; gotoView('chats'); return; }
+  if (t.closest('[data-chp-home]')) { gotoView('dashboard'); return; }
+  if ((el = t.closest('[data-chp-day]'))) {
+    if (!CHP) return;
+    var dk = keyShift(CHP.day, +el.getAttribute('data-chp-day'));
+    if (dk > CHP.today) return;
+    loadChats(dk === CHP.today ? null : dk);
+    return;
+  }
   if (t.closest('#hm-recap')) { openRecap(0); return; }
   if (t.closest('#hm-claudeday')) { openClaudeDay(); return; }
   if (t.closest('[data-dl-hide]')) { DL_SHOW = false; DL_PASTE = false; renderDayLog(); return; }
@@ -3823,22 +4495,23 @@ document.addEventListener('change', function (ev) {
   if (t.matches && t.matches('[data-dl-pick]')) { dlLoad(t.value); return; }
   if (t.matches && t.matches('[data-need]')) {
     var id = t.getAttribute('data-need'), i = +t.getAttribute('data-i'), done = t.checked;
-    // The same need can show twice (a chat's row and the Needs you card).
+    // The same need can show twice (the Your chats page and a card).
     document.querySelectorAll('[data-need="' + id + '"][data-i="' + i + '"]').forEach(function (box) {
       box.checked = done;
-      var lab = box.closest('.need'); if (lab) lab.classList.toggle('done', done);
+      var lab = box.closest('.need, .chp-need'); if (lab) lab.classList.toggle('done', done);
     });
-    [RC, DL_DATA, RC_SHOW, CD].forEach(function (r) {
+    [RC, DL_DATA, RC_SHOW, CD, CHP].forEach(function (r) {
       if (!r) return;
       r.chats.forEach(function (c) { if (c.id === id) c.needs.forEach(function (n) { if (n.i === i) n.done = done; }); });
       (r.olderNeeds || []).forEach(function (c) { if (c.id === id) c.needs.forEach(function (n) { if (n.i === i) n.done = done; }); });
     });
-    // A chat with nothing left open reads Done on its row.
-    var row = !document.getElementById('recap').hidden && document.querySelector('#recap [data-ch="' + id + '"]');
-    var chat = row && CD && CD.chats.filter(function (c) { return c.id === id; })[0];
-    if (row && chat) {
-      var tg = row.querySelector('.rc-tag.ch'), tag = CH_TAG[chState(chat)];
-      if (tg) { tg.className = 'rc-tag ch ' + tag[0]; tg.textContent = tag[1]; }
+    // Your chats: the numbers and the card's colour follow (the card moves
+    // to Done on the next load, not under the mouse).
+    var card = document.querySelector('#chats [data-chp="' + id + '"]');
+    var chat = card && CHP && CHP.chats.filter(function (c) { return c.id === id; })[0];
+    if (card && chat) {
+      card.className = 'chp-card ' + chState(chat);
+      var sum = document.getElementById('chp-sum'); if (sum) sum.innerHTML = chpSum(chpGroups(CHP.chats));
     }
     api('setWorkNeedDone', { id: id, index: i, done: done }).then(function () {
       renderGlance();
@@ -3865,6 +4538,8 @@ document.addEventListener('keydown', function (ev) {
 // have been done in another tab or on another screen).
 function homeRefreshOnReturn() {
   if (document.visibilityState === 'hidden') return;
+  var chats = document.getElementById('chats');
+  if (chats && chats.classList.contains('active') && document.getElementById('recap').hidden) { loadChats(CHP_DAY).catch(function () {}); return; }
   var home = document.getElementById('dashboard');
   if (!home || !home.classList.contains('active') || !document.getElementById('recap').hidden) return;
   loadToday().catch(function () {});
@@ -3973,7 +4648,7 @@ function slRender() {
     return;
   }
   var body = r.brands.map(function (b) {
-    return '<div class="sl-brand"><a href="#" class="sl-bn" data-rc-brand2="' + esc(b.brandId) + '">' + esc(b.name) + '</a>' +
+    return '<div class="sl-brand"><a href="#" class="sl-bn" data-rc-brand2="' + esc(b.brandId) + '">' + esc(b.name) + '</a>' + rbTag(b.brandId) +
       b.people.map(function (p) {
         var flag = '';
         if (p.problem) flag += '<div class="sl-flag">⚠ ' + esc(p.problem) +
@@ -6593,6 +7268,7 @@ function renderFillProgress() {
 // matched to a SponsorUnited page, so nothing else in the site shows
 // them as a group.
 function loadBrandsNoProfile() {
+  NAV_ARGS = { c: 'noprofile' };
   showView('brands', true);
   BRANDS_SHOWN = 'noprofile';
   var box = document.getElementById('brands-list');
@@ -6628,6 +7304,7 @@ var BRANDS_SHOWN = '';
 
 function loadBrands(category) {
   category = category || 'all';
+  NAV_ARGS = { c: category };
   var again = showView('brands', BRANDS_SHOWN !== category);
   BRANDS_SHOWN = category;
   lastCategory = category;
@@ -6894,7 +7571,7 @@ var BR = { show: 'all', why: '', sort: 'fewest', hideArchived: true, fit: '' };
 // only (archived / do-not-email are off). A count is the rows its click
 // shows — it follows the other filters (category, Needs people, search,
 // Hide too small); a second click clears it.
-var BR_BANDS = [['hi', 'Fit 76+', 'Brand Fit above 75'], ['mid', '50–75', 'Brand Fit 50 to 75'], ['lo', 'Under 50', 'Brand Fit under 50']];
+var BR_BANDS = [['hi', 'Above 75', 'Brand Fit 76–100'], ['mid', '50–75', 'Brand Fit 50 to 75'], ['lo', 'Under 50', 'Brand Fit under 50']];
 function brBand(b) { var s = brFit(b); return s < 0 ? '' : s > 75 ? 'hi' : s >= 50 ? 'mid' : 'lo'; }
 function brInPlay(b) { return !b.passedAt && !b.doNotEmail; }
 var BR_REACH = null; // categoryReach: invited / total per category, for the dropdown
@@ -6938,14 +7615,21 @@ function brMatches(b, ql) {
 // finds them; New from LinkedIn is a review list and never hides.
 function brSmallHidden(b) { return HIDE_SMALL && !!b.hideSmall && lastCategory !== 'new'; }
 function brFit(b) { return b.fit ? b.fit.score : -1; }
-function brShown(noBand) {
+// Reached out: the Reached tag's rule — an invite (incl. an accept logged
+// from LinkedIn) or an email (listBrands' outreach.invited / emailed).
+function brReached(b) { var o = b.outreach || {}; return (o.invited || 0) > 0 || (o.emailed || 0) > 0; }
+// The rows on screen. opts.anyReach = leave the Outreach filter out (its
+// counts); opts.anyFit = leave the Brand Fit filter out (its counts).
+function brShown(opts) {
+  opts = opts || {};
   var ql = (document.getElementById('bq').value || '').trim().toLowerCase();
   var rows = BR_LIST.filter(function (b) {
-    if (!noBand && BR.fit && lastCategory !== 'new' && (!brInPlay(b) || brBand(b) !== BR.fit)) return false;
+    if (!opts.anyFit && BR.fit && lastCategory !== 'new' && (!brInPlay(b) || brBand(b) !== BR.fit)) return false;
     if (BR.hideArchived && b.passedAt) return false;
     if (!ql && brSmallHidden(b)) return false;
     if (BR.show === 'need' && (!brNeeds(b) || (BR.why && brCoverState(b) !== BR.why))) return false;
     if (BR.show === 'enough' && !brCovered(b)) return false;
+    if (!opts.anyReach && !reachOk('brands', brReached(b))) return false;
     return brMatches(b, ql);
   });
   var by = BR.sort;
@@ -6955,6 +7639,7 @@ function brShown(noBand) {
     if (by === 'most') return (brBuyers(y) - brBuyers(x)) || (brPeople(y) - brPeople(x)) || x.name.localeCompare(y.name);
     if (by === 'people') return (brPeople(y) - brPeople(x)) || x.name.localeCompare(y.name);
     if (by === 'touch') return (brTouch(y) - brTouch(x)) || x.name.localeCompare(y.name);
+    if (by === 'cat') return brCatName(x).localeCompare(brCatName(y)) || x.name.localeCompare(y.name);
     // Fewest buyers: the brands that need work first; archived last.
     return (!!x.passedAt - !!y.passedAt) || (brBuyers(x) - brBuyers(y)) || (brPeople(x) - brPeople(y)) || x.name.localeCompare(y.name);
   });
@@ -6962,12 +7647,25 @@ function brShown(noBand) {
 }
 
 function brState(b) {
-  if (b.passedAt) return '<span class="status passed">archived</span>';
+  return b.passedAt ? '<span class="status passed">archived</span>' : '';
+}
+function brCatName(b) { return b.category ? (CAT_NAMES[b.category] || b.category) : '\uffff'; }
+// The Outreach column: the Reached tag (the same on every list) and how
+// far it got, or what's waiting. Reached = the Outreach filter's rule.
+// The tag's slot is always there (filled from the page's Reached map, like
+// every other list); "Not yet" / "N queued" hide once it fills.
+function brOutCell(b) {
   var o = b.outreach || {};
-  if (o.replied) return '<span class="status replied">replied</span>';
-  if (o.invited) return '<span class="status sent">reached</span>';
-  if (o.queued) return '<span class="status queued">queued</span>';
-  return '';
+  var bits = [];
+  if (o.invited) bits.push(o.invited + ' invited');
+  if (o.emailed) bits.push(o.emailed + ' emailed');
+  return '<span class="br-out">' + rbTag(b.id) +
+    (o.replied ? '<span class="br-out-r">Replied</span>' : '') +
+    (bits.length ? '<span class="d">' + esc(bits.join(' · ')) + '</span>' : '') +
+    (brReached(b) ? ''
+      : o.queued ? '<span class="br-nyet queued" title="People queued for a LinkedIn invite, not sent yet"><i></i>' + o.queued + ' queued</span>'
+      : '<span class="br-nyet" title="Nobody there has had an invite or an email from us"><i></i>Not yet</span>') +
+  '</span>';
 }
 
 // Under the name of a brand with nobody in marketing / partnerships, when
@@ -6993,8 +7691,9 @@ function brBuyerCell(b) {
   var tip = n ? ['partnerships', 'events', 'marketing', 'founder'].filter(function (x) { return k[x]; })
       .map(function (x) { return k[x] + ' ' + BR_KIND[x].toLowerCase(); }).join(' · ')
     : 'No marketing / partnerships person on file';
-  return '<span class="br-buy ' + (n >= BR_TARGET ? 'ok' : 'low') + '" title="' + esc(tip) + '">' +
-    n + ' <span aria-hidden="true">' + (n >= BR_TARGET ? '✓' : '⚠') + '</span></span>';
+  return n >= BR_TARGET
+    ? '<span class="br-buy ok" title="' + esc(tip) + '">' + n + ' <span aria-hidden="true">✓</span></span>'
+    : '<span class="br-buy low" title="' + esc(tip) + ' — Needs people lists these">' + n + '</span>';
 }
 
 function brEditRow(b) {
@@ -7018,7 +7717,7 @@ function brEditRow(b) {
       (p.linkedin ? ' <span class="br-has" title="Has a LinkedIn link">in</span>' : '') + '</li>';
   }).join('');
   var others = brPeople(b) - brBuyers(b);
-  return '<tr class="br-open" data-bropen="' + esc(b.id) + '"><td colspan="6"><div class="br-edit">' +
+  return '<tr class="br-open" data-bropen="' + esc(b.id) + '"><td colspan="7"><div class="br-edit">' +
     '<div class="br-fields">' + cat + tier +
       f('website', 'Website', b.website, 'brand.com') +
       f('linkedinUrl', 'LinkedIn page', b.linkedinUrl, 'linkedin.com/company/…') +
@@ -7048,15 +7747,16 @@ function brEditRow(b) {
   '</div></td></tr>';
 }
 
-function brRow(b) {
+function brRow(b, i) {
   var newNote = lastCategory === 'new'
     ? '<div class="br-sub">' + esc(b.source === 'research' ? 'Research list' : 'LinkedIn run') + ' · added ' + esc(shortDate(b.createdAt)) + '</div>' : '';
   var open = !!BR_OPEN[b.id];
-  return '<tr class="br-row' + (b.passedAt ? ' off' : '') + (BB.sel[b.id] ? ' sel' : '') + (open ? ' is-open' : '') + '" data-brow="' + esc(b.id) + '" data-name="' + esc(b.name) + '">' +
+  return '<tr class="br-row' + (i % 2 ? ' br-z' : '') + (b.passedAt ? ' off' : '') + (BB.sel[b.id] ? ' sel' : '') + (open ? ' is-open' : '') + '" data-brow="' + esc(b.id) + '" data-name="' + esc(b.name) + '">' +
     '<td class="br-tick"><label data-bsel="' + esc(b.id) + '" title="Select to re-file or put on a day">' +
       '<input type="checkbox" data-bselcb="' + esc(b.id) + '" data-name="' + esc(b.name) + '"' + (BB.sel[b.id] ? ' checked' : '') + '></label></td>' +
     '<td class="br-name"><button class="br-caret" data-bract="toggle" aria-expanded="' + (open ? 'true' : 'false') + '" title="' + (open ? 'Close' : 'Edit details and add people') + '">' + (open ? '▾' : '▸') + '</button>' +
-      '<span class="t-brand br-link" data-brand="' + esc(b.id) + '" title="Open the brand page">' + esc(b.name) + '</span> ' + brState(b) + newNote + brCoverLine(b) + '</td>' +
+      '<span class="t-brand br-link" data-brand="' + esc(b.id) + '" title="Open the brand page">' + esc(b.name) + '</span>' + brState(b) + newNote + brCoverLine(b) + '</td>' +
+    '<td class="br-outc">' + brOutCell(b) + '</td>' +
     '<td class="br-cat">' + esc(b.category ? (CAT_NAMES[b.category] || b.category) : '—') + '</td>' +
     '<td class="br-tier">' + esc(b.tier || '—') + '</td>' +
     '<td class="br-fit">' + fitTags(b.fit, { noUs: true }) + '</td>' +
@@ -7064,64 +7764,108 @@ function brRow(b) {
   '</tr>' + (open ? brEditRow(b) : '');
 }
 
+// A row of buttons, one of them on (the Show and Outreach groups).
+function brSeg(label, attr, items, cur, tip) {
+  return '<div class="br-grp"' + (tip ? ' title="' + esc(tip) + '"' : '') + '><span class="br-grp-l">' + esc(label) + '</span>' +
+    '<div class="seg" role="group" aria-label="' + esc(label) + '">' + items.map(function (it) {
+      var on = cur === it[0];
+      return '<button type="button" class="seg-b' + (on ? ' on' : '') + '" ' + attr + '="' + it[0] + '" aria-pressed="' + on + '"' +
+        (it[3] ? ' title="' + esc(it[3]) + '"' : '') + '>' + esc(it[1]) + (it[2] != null ? '<span class="n">' + it[2] + '</span>' : '') + '</button>';
+    }).join('') + '</div></div>';
+}
+var BR_SORTS = [['fewest', 'Fewest buyers first'], ['most', 'Most buyers first'], ['fit', 'Best fit first'], ['touch', 'Latest outreach first'],
+  ['name', 'Name A–Z'], ['cat', 'Category A–Z'], ['people', 'Most people']];
+// A heading that sorts: its key, and the sort a click picks.
+function brHead(label, key, cls, tip) {
+  var on = key && (BR.sort === key || (key === 'buyers' && (BR.sort === 'fewest' || BR.sort === 'most')));
+  var arrow = !on ? '' : key === 'buyers' ? (BR.sort === 'most' ? '▼' : '▲') : key === 'name' || key === 'cat' ? '▲' : '▼';
+  return '<th' + (cls || on ? ' class="' + (cls || '') + (on ? ' sorted' : '') + '"' : '') +
+    (key ? ' data-brsorth="' + key + '" aria-sort="' + (on ? (arrow === '▲' ? 'ascending' : 'descending') : 'none') + '"' : '') +
+    ' title="' + esc((tip ? tip + ' · ' : '') + (key ? 'Click to sort' : '')) + '">' + label +
+    (on ? '<span class="br-arrow" aria-hidden="true">' + arrow + '</span>' : '') + '</th>';
+}
+function brFiltered() {
+  return BR.show !== 'all' || !!BR.why || !!REACH_F.brands || (!!BR.fit && lastCategory !== 'new') || !!(document.getElementById('bq').value || '').trim();
+}
 function brRender() {
   var box = document.getElementById('brands-list');
   var rows = brShown();
   var need = BR_LIST.filter(brNeeds).length;
   var enough = BR_LIST.filter(brCovered).length;
-  var chip = function (key, label, n) {
-    return '<button class="chip' + (BR.show === key ? ' active' : '') + '" data-brshow="' + key + '">' + label + '<span class="n">' + n + '</span></button>';
-  };
-  var sorts = [['fewest', 'Fewest buyers first'], ['fit', 'Best fit first'], ['most', 'Most buyers first'], ['people', 'Most people'], ['touch', 'Last touched'], ['name', 'Name A–Z']];
-  var bar = '<div class="br-bar">' + brCatSelect() +
-    chip('all', 'All', BR_LIST.length) + chip('need', 'Needs people', need) + chip('enough', 'Has enough', enough) +
-    (lastCategory === 'new' ? '' : hideSmallBox('brands')) +
-    '<label class="br-chk"><input type="checkbox" data-brarch' + (BR.hideArchived ? ' checked' : '') + '> Hide archived</label>' +
-    '<span style="flex:1"></span>' +
-    '<label class="br-chk">Sort <select class="inp" data-brsort>' + sorts.map(function (s) {
-      return '<option value="' + s[0] + '"' + (BR.sort === s[0] ? ' selected' : '') + '>' + s[1] + '</option>';
-    }).join('') + '</select></label>' +
-  '</div>';
-  // Brand Fit counts: 76+ / 50–75 / under 50 of the brands below, in play.
-  if (lastCategory !== 'new') {
-    var bandN = { hi: 0, mid: 0, lo: 0 };
-    brShown(true).forEach(function (b) { var k = brInPlay(b) && brBand(b); if (k) bandN[k]++; });
-    bar += '<div class="br-bar br-fit" role="group" aria-label="Brand Fit counts">' +
-      '<span class="br-fit-k" title="Brands still in play — archived and do-not-email left out">Brand Fit</span>' +
-      BR_BANDS.map(function (x) {
-        return '<button class="chip br-fit-' + x[0] + (BR.fit === x[0] ? ' active' : '') + '" data-brfit="' + x[0] + '" title="' + x[2] +
-          (BR.fit === x[0] ? ' — click again to show every score' : ' — click to show just these') + '" aria-pressed="' + (BR.fit === x[0]) + '">' +
-          x[1] + '<span class="n">' + bandN[x[0]] + '</span></button>';
-      }).join('') +
+  var rc = reachCounts(brShown({ anyReach: true }), brReached);
+  // Brand Fit counts: above 75 / 50–75 / under 50 of the brands in play the
+  // other filters show — a count is exactly what its click shows.
+  var bandN = { hi: 0, mid: 0, lo: 0 };
+  brShown({ anyFit: true }).forEach(function (b) { var k = brInPlay(b) && brBand(b); if (k) bandN[k]++; });
+  var tools = '<div class="br-tools">' +
+    '<div class="br-tools-row">' +
+      brCatSelect() +
+      brSeg('Show', 'data-brshow', [['all', 'All', BR_LIST.length], ['need', 'Needs people', need, 'Nobody in marketing / partnerships on file yet'],
+        ['enough', 'Has enough', enough, 'At least one marketing / partnerships person on file']], BR.show) +
+      brSeg('Outreach', 'data-brreach', [['', 'Any'], ['yes', 'Reached out', rc.yes], ['no', 'Not reached out', rc.no]], REACH_F.brands || '', REACH_TIP) +
+      (lastCategory === 'new' ? '' : brSeg('Brand Fit', 'data-brfit', [['', 'Any']].concat(BR_BANDS.map(function (x) { return [x[0], x[1], bandN[x[0]], x[2]]; })),
+        BR.fit || '', 'Brand Fit of the brands still in play — archived and do-not-email left out')) +
+      '<span style="flex:1"></span>' +
+      '<label class="br-chk"><span class="br-grp-l">Sort</span><select class="inp" data-brsort>' + BR_SORTS.map(function (s) {
+        return '<option value="' + s[0] + '"' + (BR.sort === s[0] ? ' selected' : '') + '>' + s[1] + '</option>';
+      }).join('') + '</select></label>' +
+    '</div>' +
+    '<div class="br-tools-row">' +
+      '<span class="br-count">Showing <b>' + rows.length + '</b> of ' + BR_LIST.length + (BR_LIST.length === 1 ? ' brand' : ' brands') +
+        (brFiltered() ? '<a href="#" data-brclear="1">Clear filters</a>' : '') + '</span>' +
+      '<span style="flex:1"></span>' +
+      (lastCategory === 'new' ? '' : hideSmallBox('brands')) +
+      '<label class="br-chk"><input type="checkbox" data-brarch' + (BR.hideArchived ? ' checked' : '') + '> Hide archived</label>' +
     '</div>';
-  }
   // Needs people, split by what stands in the way (the card's rows).
   if (BR.show === 'need') {
     var cc = cvCounts(BR_LIST);
-    bar += '<div class="br-bar br-why">' +
-      '<button class="chip' + (BR.why ? '' : ' active') + '" data-brwhy="">Any reason<span class="n">' + cc.need + '</span></button>' +
-      CV_ORDER.filter(function (k) { return cc[k] || BR.why === k; }).map(function (k) {
-        return '<button class="chip' + (BR.why === k ? ' active' : '') + '" data-brwhy="' + k + '">' + CV_WHY[k] + '<span class="n">' + cc[k] + '</span></button>';
-      }).join('') +
+    tools += '<div class="br-tools-row br-why">' +
+      brSeg('Why', 'data-brwhy', [['', 'Any reason', cc.need]].concat(CV_ORDER.filter(function (k) { return cc[k] || BR.why === k; }).map(function (k) {
+        return [k, CV_WHY[k], cc[k]];
+      })), BR.why || '') +
     '</div>';
   }
-  var head = '<tr><th class="br-tick"><label title="Select every brand shown"><input type="checkbox" data-bball></label></th><th>Brand</th><th>Category</th><th>Tier</th>' +
-    '<th title="Brand Fit 0–100: budget and venture money weigh most; open a brand for the reasons">Fit</th>' +
-    '<th class="br-num" title="Partnerships, marketing, events or founder / CEO titles on file">Buyers</th></tr>';
+  tools += '</div>';
+  var head = '<tr><th class="br-tick"><label title="Select every brand shown"><input type="checkbox" data-bball></label></th>' +
+    brHead('Brand', 'name') +
+    brHead('Outreach', 'touch', '', REACH_TIP) +
+    brHead('Category', 'cat') +
+    brHead('Tier', '') +
+    brHead('Fit', 'fit', '', 'Brand Fit 0–100: budget and venture money weigh most; open a brand for the reasons') +
+    brHead('Buyers', 'buyers', 'br-num', 'Partnerships, marketing, events or founder / CEO titles on file') + '</tr>';
   var hidden = (document.getElementById('bq').value || '').trim() ? 0
     : BR_LIST.filter(function (b) { return brSmallHidden(b) && !(BR.hideArchived && b.passedAt); }).length;
   var hiddenNote = hidden ? '<div class="hint" style="margin:8px 0 0">' + hidden + (hidden === 1 ? ' brand' : ' brands') +
     ' too small hidden (sales under $1M or under 20 people on LinkedIn, nobody contacted) — <a href="#" data-brshowsmall="1">show them</a></div>' : '';
-  box.innerHTML = bar + (rows.length
+  box.innerHTML = tools + (rows.length
     ? '<div class="br-wrap" data-scroll="brands-table"><table class="br-table"><thead>' + head + '</thead><tbody>' +
         rows.map(brRow).join('') + '</tbody></table></div>'
-    : '<div class="panel"><div class="empty"><h3>' + (BR_LIST.length ? 'No brands match' : 'No brands here') + '</h3></div></div>') + hiddenNote;
+    : '<div class="panel"><div class="empty"><h3>' + (BR_LIST.length ? 'No brands match' : 'No brands here') + '</h3>' +
+        (BR_LIST.length && brFiltered() ? '<p><a href="#" data-brclear="1">Clear filters</a></p>' : '') + '</div></div>') + hiddenNote;
   bbAllBox();
 }
 
 function brById(id) { return BR_LIST.filter(function (b) { return b.id === id; })[0]; }
+REACH_DRAW.brands = function () { brRender(); applyBrandFilter(); };
 
 document.getElementById('brands-list').addEventListener('click', function (e) {
+  var reach = e.target.closest('[data-brreach]');
+  if (reach) { REACH_F.brands = reach.getAttribute('data-brreach'); brRender(); applyBrandFilter(); return; }
+  var sorth = e.target.closest('[data-brsorth]');
+  if (sorth) {
+    var k = sorth.getAttribute('data-brsorth');
+    BR.sort = k === 'buyers' ? (BR.sort === 'fewest' ? 'most' : 'fewest') : k;
+    brRender(); applyBrandFilter();
+    return;
+  }
+  if (e.target.closest('[data-brclear]')) {
+    e.preventDefault();
+    BR.show = 'all'; BR.why = ''; REACH_F.brands = ''; BR.fit = '';
+    document.getElementById('bq').value = '';
+    brRender(); applyBrandFilter();
+    return;
+  }
   var show = e.target.closest('[data-brshow]');
   if (show) { BR.show = show.getAttribute('data-brshow'); BR.why = ''; brRender(); applyBrandFilter(); return; }
   var why = e.target.closest('[data-brwhy]');
@@ -7770,7 +8514,7 @@ function dupRender() {
         ].filter(Boolean).join(' · ');
         return '<div class="osp-p">' +
           '<label title="The brand everything is merged into"><input type="radio" name="dupkeep-' + gi + '" data-dupkeep="' + gi + '" value="' + esc(m.id) + '"' + (isKeep ? ' checked' : '') + '> ' +
-            '<span class="n">' + esc(m.name) + '</span><span class="sd-dim">' + esc(facts) + '</span></label>' +
+            '<span class="n">' + esc(m.name) + rbTag(m.id) + '</span><span class="sd-dim">' + esc(facts) + '</span></label>' +
           '<a href="#" class="sd-link" data-dupopen="' + esc(m.id) + '">Open</a>' +
           (isKeep
             ? '<span class="sd-tag good">Keep</span>'
@@ -8011,7 +8755,7 @@ function renderSuProposals(showAll) {
       shown.map(function (p) {
         return '<div class="panel panel-pad" data-suprow="' + esc(p.brandId) + '" style="margin-bottom:8px">' +
           '<div style="display:flex;gap:10px;align-items:center">' +
-            '<b style="font-size:13px;flex:1">' + esc(p.brandName) + '</b>' +
+            '<b style="font-size:13px;flex:1">' + esc(p.brandName) + rbTag(p.brandId) + '</b>' +
             '<button class="btn-ghost mini" data-sudismiss="' + esc(p.brandId) + '" title="None of these SponsorUnited pages is this brand — they won’t be suggested for it again">None of these</button>' +
           '</div>' +
           p.candidates.map(function (c) {
@@ -8338,10 +9082,20 @@ document.getElementById('brand-body').addEventListener('click', function (e) {
   if (e.target.closest('[data-bpsched]')) { e.preventDefault(); gotoView('schedule'); }
 });
 
-function loadBrand(brandId) {
+// The person a click came for (search results, Home → Accepted on LinkedIn —
+// Leo, Oct 18 2026: "it should take u to the brand page and exactly where they
+// are in the brands list of people and it should be highlighted"): their People
+// row is scrolled to once and stays lit while the page is up (bFocusApply).
+var B_FOCUS = null;   // { brandId, contactId, scroll }
+
+function loadBrand(brandId, focusContactId) {
+  rbLoad();
   // The brand already on screen again = a button on its page finished:
   // refresh in place. Another brand opens at the top.
+  NAV_ARGS = focusContactId ? { b: brandId, p: focusContactId } : { b: brandId };
   var again = showView('brand', !(CURRENT_BRAND && CURRENT_BRAND.brand && CURRENT_BRAND.brand.id === brandId));
+  if (focusContactId) B_FOCUS = { brandId: brandId, contactId: focusContactId, scroll: true };
+  else if (!again) B_FOCUS = null;
   var box = document.getElementById('brand-body');
   if (!again) {
     box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
@@ -8380,6 +9134,7 @@ function loadBrand(brandId) {
         (person ? 'Person · gets the Show Board' : esc(CAT_NAMES[b.category] || b.category || 'Uncategorized')) +
         (b.tier ? ' · ' + esc(b.tier) : '') +
         (b.partner ? ' · ' + esc(b.partner.lifecycle.replace(/_/g, ' ')) : '') +
+        rbTag(b.id) +
       '</div>' +
       // Two-sentence summary right under the name: what they do + what
       // they're known for. Lives in the About / Best sellers fields.
@@ -8660,7 +9415,7 @@ function loadBrand(brandId) {
         // queued or logged again, nor anyone at a brand that said it.
         var said = !!(c.doNotContactAt || (ct && ct.handDeclinedAt));
         var off = said || !!b.stoppedAt;
-        return '<div class="target"><div class="t-main">' +
+        return '<div class="target" data-pcid="' + esc(c.id) + '"><div class="t-main">' +
           '<div class="t-line"><span class="t-brand">' + esc(c.name) + '</span>' +
             (c.title ? '<span class="t-sep">·</span><span class="t-title">' + esc(c.title) + '</span>' : '') + '</div>' +
           '<div class="t-meta">' +
@@ -8930,6 +9685,7 @@ function loadBrand(brandId) {
       if (BZT.brandId === b.id) bztFill();
       bztLoad(b.id);
     } else if (BZT.brandId !== b.id) { BZT.brandId = null; BZT.ids = []; }
+    bFocusApply(b.id);
 
     box.querySelector('#b-kind').onclick = function () {
       var to = person ? null : 'person';
@@ -10068,7 +10824,7 @@ function loadNeeds() {
         '<div class="target" style="margin-bottom:0">' +
           '<div class="t-main">' +
             '<div class="t-line"><span class="t-brand" data-brand="' + esc(b.id) + '" style="cursor:pointer">' +
-              esc(b.name) + '</span></div>' +
+              esc(b.name) + '</span>' + rbTag(b.id) + '</div>' +
             (tag ? '<div class="t-meta"><span>' + esc(tag) + '</span></div>' : '') +
             // The usual reason a brand sits here with nobody: SponsorUnited
             // files it under another name, so captures never find it. Fixing
@@ -10175,9 +10931,16 @@ function stNext(r, goal) {
   return out;
 }
 
+// Reached out: the Reached tag's rule — invited or emailed (brandStock's counts).
+function stReached(b) { return (b.invited || 0) > 0 || (b.emailed || 0) > 0; }
+function stShownBrands(r) { return r.brands.filter(function (b) { return reachOk('stock', stReached(b)); }); }
 function stBrands(r) {
+  var shown = stShownBrands(r);
+  if (r.brands.length && !shown.length) {
+    return '<div class="rw-empty">' + (REACH_F.stock === 'yes' ? 'No brand here has been reached out to yet.' : 'Every brand here has been reached out to.') + '</div>';
+  }
   var html = ST_STATES.map(function (s) {
-    var list = r.brands.filter(function (b) { return b.state === s[0]; });
+    var list = shown.filter(function (b) { return b.state === s[0]; });
     if (!list.length) return '';
     return '<div class="st-group"><div class="rw-col-h">' + esc(s[1]) + '<span class="n">' + list.length + '</span></div>' +
       list.map(function (b) {
@@ -10196,7 +10959,7 @@ function stBrands(r) {
           tags.push('filed under ' + (b.category ? (CAT_NAMES[b.category] || b.category) : 'no category'));
         }
         return '<div class="st-brand">' +
-          '<span class="st-bname" data-brand="' + esc(b.id) + '">' + esc(b.name) + '</span>' +
+          '<span class="st-bname" data-brand="' + esc(b.id) + '">' + esc(b.name) + '</span>' + rbTag(b.id) +
           '<span class="st-tag">' + esc(tags.join(' · ')) + '</span>' +
           (b.fit ? fitTags(b.fit, { noUs: true }) : '') +
           (b.state === 'needs' ? '<a class="sd-link" href="' + esc(liPeopleUrl(b)) + '" target="_blank" rel="noopener">People ↗</a>' : '') +
@@ -10230,7 +10993,7 @@ function stActs(r) {
   var ready = stPlanList(r).length;
   return '<div class="st-acts">' +
     (c.total ? '<button class="btn-ghost sd-sm' + (open === 'brands' ? ' on' : '') + '" data-sttoggle="brands">' +
-      (open === 'brands' ? 'Hide brands' : 'Brands (' + c.total + ')') + '</button>' : '') +
+      (open === 'brands' ? 'Hide brands' : 'Brands (' + (REACH_F.stock ? stShownBrands(r).length + ' of ' + c.total : c.total) + ')') + '</button>' : '') +
     (ready ? '<button class="btn-ghost sd-sm' + (open === 'plan' ? ' on' : '') + '" data-sttoggle="plan" title="Put brands with people nobody has contacted yet on a Schedule day">' +
       (open === 'plan' ? 'Hide ready brands' : 'Put on a day (' + ready + ' ready)') + '</button>' : '') +
     (r.ideas.length ? '<button class="btn-ghost sd-sm' + (open === 'ideas' ? ' on' : '') + '" data-sttoggle="ideas">' +
@@ -10341,6 +11104,7 @@ function stLine(r) {
 }
 
 function stDraw(r) { return r.priority ? stCard(r) : stLine(r); }
+REACH_DRAW.stock = function () { if (ST_DATA) renderStock(); };
 
 function stRedraw(key) {
   var el = stCardEl(key), r = stRow(key);
@@ -10371,6 +11135,8 @@ function renderStock() {
   document.getElementById('st-legend').innerHTML = ST_STATES.map(function (s) {
     return '<span class="st-key"><span class="st-sw st-' + s[0] + '"></span>' + esc(s[1]) + '</span>';
   }).join('');
+  var reach = document.getElementById('st-reach');
+  if (reach) reach.innerHTML = reachSelect('stock', reachCounts(stRows().reduce(function (all, r) { return all.concat(r.brands); }, []), stReached));
   document.getElementById('st-lanes-n').textContent = sum(d.lanes) + ' brands · goal ' + d.goal + ' in play per lane';
   document.getElementById('st-lanes').innerHTML = d.lanes.map(stCard).join('');
   document.getElementById('st-others-n').textContent = sum(d.others) + ' brands';
@@ -10603,7 +11369,7 @@ function fitRender() {
         var none = !r.changes.length;
         return '<label class="fit-row"><input type="checkbox" data-fitr="' + esc(r.brandId) + '"' +
             (FIT.roff[r.brandId] ? '' : ' checked') + '>' +
-          '<span class="grow"><a href="#" data-fitopen="' + esc(r.brandId) + '"><b>' + esc(r.brandName) + '</b></a>' +
+          '<span class="grow"><a href="#" data-fitopen="' + esc(r.brandId) + '"><b>' + esc(r.brandName) + '</b></a>' + rbTag(r.brandId) +
             (r.input && r.input.toLowerCase() !== r.brandName.toLowerCase() ? ' <span class="hint" style="margin:0">(“' + esc(r.input) + '”)</span>' : '') +
             (r.archived ? ' <span class="sd-tag">archived</span>' : '') +
             '<div class="fit-chg">' + (none ? 'Nothing new — matches what’s saved (marks it researched)'
@@ -10650,7 +11416,7 @@ function fitRender() {
           if (b.queued) notes.push(b.queued + ' queued — shelved too');
           if (b.plannedLabel) notes.push('on the Schedule ' + b.plannedLabel + ' — comes off');
           return '<label class="fit-row"><input type="checkbox" data-fita="' + esc(b.id) + '"' + (FIT.aoff[b.id] ? '' : ' checked') + '>' +
-            '<span class="grow"><a href="#" data-fitopen="' + esc(b.id) + '"><b>' + esc(b.name) + '</b></a>' +
+            '<span class="grow"><a href="#" data-fitopen="' + esc(b.id) + '"><b>' + esc(b.name) + '</b></a>' + rbTag(b.id) +
               (b.category ? ' <span class="hint" style="margin:0">' + esc(CAT_NAMES[b.category] || b.category) + '</span>' : '') +
               ' <span class="sd-tag' + (b.ruledOut ? ' bad' : '') + '">' + esc(b.why) + '</span>' +
               (notes.length ? '<div class="fit-chg">' + esc(notes.join(' · ')) + '</div>' : '') +
@@ -10925,6 +11691,7 @@ function liBuyerUrl(b) {
     encodeURIComponent(b.name + ' marketing');
 }
 
+function liReached(b) { return (b.reached || 0) > 0; }
 function renderLinkedin() {
   var box = document.getElementById('li-list');
   var q = (document.getElementById('li-q').value || '').trim().toLowerCase();
@@ -10935,6 +11702,10 @@ function renderLinkedin() {
     if (LI_FILTER === 'thin') return b.contacts.length < LI_CAP && !b.archived && !b.doNotEmail;
     return true;
   });
+  // The Outreach filter, counted on what the chips and the box leave.
+  var reach = document.getElementById('li-reach');
+  if (reach) reach.innerHTML = reachSelect('people', reachCounts(rows, liReached));
+  rows = rows.filter(function (b) { return reachOk('people', liReached(b)); });
   // The worklist reads emptiest first, like the SponsorUnited sweep.
   if (LI_FILTER === 'thin') {
     rows = rows.slice().sort(function (a, b) {
@@ -10964,7 +11735,7 @@ function renderLinkedin() {
     }).join('');
     return '<div class="target" data-brand="' + esc(b.id) + '" style="align-items:flex-start">' +
       '<div class="t-main">' +
-        '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(b.name) + '</span>' +
+        '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(b.name) + '</span>' + rbTag(b.id) +
           (tag ? '<span class="t-sep">·</span><span class="t-title">' + esc(tag) + '</span>' : '') + '</div>' +
         (people || '<div class="t-meta" style="margin-top:7px"><span>Nobody saved yet — open People ↗ and press the SB pill there.</span></div>') +
         // Left by the LinkedIn fill when it couldn't do this brand itself.
@@ -11269,7 +12040,7 @@ function renderFillSched() {
       day.rows.map(function (r, i) {
         return '<div style="display:flex;gap:10px;align-items:baseline;padding:6px 0;flex-wrap:wrap">' +
           '<span class="t-meta" style="width:28px;text-align:right">' + (i + 1) + '</span>' +
-          (r.brandId ? '<span class="t-brand" data-brand="' + esc(r.brandId) + '" style="cursor:pointer">' + esc(r.name) + '</span>'
+          (r.brandId ? '<span class="t-brand" data-brand="' + esc(r.brandId) + '" style="cursor:pointer">' + esc(r.name) + '</span>' + rbTag(r.brandId) + rbTag(r.brandId)
             : '<span class="t-brand">' + esc(r.name) + '</span>') +
           (r.category ? '<span class="t-meta">' + esc(CAT_NAMES[r.category] || r.category) + '</span>' : '') +
           (r.fit != null ? '<span class="t-meta">Fit <b>' + r.fit + '</b></span>' : '') +
@@ -11322,7 +12093,7 @@ function renderLiZach(list, done, restDays) {
       ? '<details style="margin-top:10px"><summary class="t-meta" style="cursor:pointer">Read on Zach\u2019s lately (' + done.length + ')</summary>' +
           done.map(function (r) {
             return '<div class="t-meta" style="margin-top:6px;display:flex;gap:8px;align-items:center">' +
-              '<span class="t-brand" data-brand="' + esc(r.brandId) + '" style="cursor:pointer">' + esc(r.name) + '</span>' +
+              '<span class="t-brand" data-brand="' + esc(r.brandId) + '" style="cursor:pointer">' + esc(r.name) + '</span>' + rbTag(r.brandId) +
               '<span>' + esc(shortDate(r.zachAt)) + (r.zachAdded ? ' · ' + r.zachAdded + ' added' : '') + '</span>' +
               '<button class="btn-ghost sd-sm" data-zach-undo="' + esc(r.brandId) + '" style="margin-left:auto">Back on the list</button></div>';
           }).join('') +
@@ -11564,6 +12335,7 @@ document.querySelectorAll('#linkedin .chip[data-lif]').forEach(function (ch) {
   });
 });
 document.getElementById('li-q').addEventListener('input', function () { renderLinkedin(); });
+REACH_DRAW.people = function () { renderLinkedin(); };
 
 // --- reached (everyone we've contacted, by brand) --------------
 
@@ -12056,8 +12828,49 @@ function renderSentDays() {
   }).catch(function () { box.innerHTML = ''; });
 }
 
+// Acceptance by people reached (Leo, Oct 18 2026: "on the results page a
+// count for when we do outreach to x amount of people the percentage for an
+// acceptance"): brands by how many people were invited there in all → the
+// share where someone accepted, and each person's rate (outcomeTable.depth
+// .byTotal — the Schedule's People per brand; accepts counted 7+ days after
+// the invite). Read beside listReached, never holding it up.
+var RC_DEPTH_KEYS = ['1', '2', '3', '4', '5–9', '10+'];
+function renderRcDepth() {
+  var box = document.getElementById('rc-depth');
+  if (!box) return;
+  api('outcomeTable', {}).then(function (d) {
+    var dp = d && d.depth;
+    var by = {};
+    ((dp && dp.byTotal) || []).forEach(function (c) { by[c.key] = c; });
+    var keys = RC_DEPTH_KEYS.filter(function (k) { return by[k] && by[k].brands; });
+    if (!keys.length || dp.personRate == null) { box.innerHTML = ''; return; }
+    var pc = function (x) { return x == null ? '—' : Math.round(x * 100) + '%'; };
+    var rows = keys.map(function (k) {
+      var c = by[k];
+      var who = k + (k === '1' ? ' person' : ' people');
+      var tip = who + ' invited: someone accepted at ' + c.brandsYes + ' of ' + c.brands + ' brands; ' +
+        c.peopleYes + ' of ' + c.people + ' people accepted' + (c.few ? ' — too few to tell yet' : '');
+      return '<tr title="' + esc(tip) + '">' +
+        '<th scope="row">' + esc(who) + '</th>' +
+        '<td class="rcd-bar"><span class="rcd-track" aria-hidden="true"><i style="width:' + Math.round((c.brandRate || 0) * 100) + '%"></i></span></td>' +
+        '<td class="rcd-pct">' + pc(c.brandRate) + '</td>' +
+        '<td class="rcd-dim">' + c.brandsYes + ' of ' + c.brands + ' brand' + (c.brands === 1 ? '' : 's') + '</td>' +
+        '<td>' + pc(c.personRate) + '<span class="rcd-dim"> · ' + c.peopleYes + ' of ' + c.people + '</span></td>' +
+        '<td class="rcd-dim">' + (c.few ? 'too few to tell' : '') + '</td></tr>';
+    }).join('');
+    box.innerHTML =
+      '<div class="count-head" style="margin-top:18px">Acceptance by people reached <span class="n">invites ' + (d.acceptAfterDays || 7) + '+ days old</span></div>' +
+      '<div class="panel panel-pad"><div class="rcd-wrap" data-scroll="rcd"><table class="rcd">' +
+        '<thead><tr><th scope="col">People invited</th><th scope="col"></th>' +
+          '<th scope="col">Someone accepted</th><th scope="col">Brands</th><th scope="col">Each person</th><th scope="col"></th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table></div>' +
+        '<div class="hint" style="margin:8px 0 0">Each person accepts about ' + pc(dp.personRate) + ' on their own, so more people mostly means more chances.</div></div>';
+  }).catch(function () { box.innerHTML = ''; });
+}
+
 function loadReached() {
   showView('reached');
+  renderRcDepth();
   var box = document.getElementById('reached-list');
   if (!RC_DATA.length) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   return api('listReached').then(function (d) {
@@ -13604,7 +14417,7 @@ function renderSchedCheck() {
     (SCHED.checkOpen && list.length
       ? '<div class="sd-check-list">' + list.map(function (x) {
           return '<div class="sd-check-item">' + sdMark(x.kind === 'blocked' ? 'none' : x.kind) +
-            '<a href="#" class="sd-bname" data-sopen="' + esc(x.id) + '">' + esc(x.name) + '</a>' +
+            '<a href="#" class="sd-bname" data-sopen="' + esc(x.id) + '">' + esc(x.name) + '</a>' + rbTag(x.id) +
             '<span class="sd-dim">' + esc(sdDayTag(x.key)) + '</span>' +
             '<span class="sd-check-why' + (x.kind === 'blocked' ? ' bad' : '') + '">' + esc(x.why) + '</span>' +
             (x.li ? '<span class="sd-sp"></span>' + sdLiLink(x) : '') +
@@ -13693,7 +14506,7 @@ function sdCard(o) {
       ' data-dragb="' + esc(o.id) + '" data-dragn="' + esc(o.name) + '" data-dragfrom="' + esc(o.from) + '">' +
     '<div class="sd-card-h">' +
       (o.ord ? '<span class="sd-ord" title="Goes out in this order — drag, or use ⋯ → up / down">' + o.ord + '</span>' : '') +
-      '<a href="#" class="sd-bname" data-sopen="' + esc(o.id) + '">' + esc(o.name) + '</a>' +
+      '<a href="#" class="sd-bname" data-sopen="' + esc(o.id) + '">' + esc(o.name) + '</a>' + rbTag(o.id) +
       sdLabelDot(SCHED.labels[o.id]) +
       (o.tags || '') +
       '<span class="sd-sp"></span>' +
@@ -14125,7 +14938,7 @@ function sdOverRow(b, key) {
     ? 'Queue ' + b.name + ' for today. Today can go past ' + sdCap() + '; the header says by how much.'
     : 'Put ' + b.name + ' on ' + sdDayTag(key) + '. The day still stops at ' + sdCap() + ': whatever no longer fits moves down to this list.';
   return '<div class="sd-orow" draggable="true" data-dragb="' + esc(b.id) + '" data-dragn="' + esc(b.name) + '" data-dragfrom="">' +
-    '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
+    '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' + rbTag(b.id) +
     sdLabel(SCHED.labels[b.id]) +
     '<span class="sd-dim">' + n + ' would go</span>' +
     '<span class="sd-sp"></span>' +
@@ -14335,7 +15148,7 @@ function sdSugRow(b, key, open, allCats) {
   // Draggable like a card: drop it on another day to pin it there.
   return '<div class="sd-orow' + (a ? ' sd-adding' : '') + '"' + (a ? '' : ' draggable="true"') + ' data-dragb="' + esc(b.id) + '" data-dragn="' + esc(b.name) + '" data-dragfrom="">' +
     '<input type="checkbox"' + (a ? '' : ' data-sdfck="' + esc(b.id) + '" data-sdday="' + esc(key) + '"') + (ticked ? ' checked' : '') + off + ' aria-label="Tick ' + esc(b.name) + '">' +
-    '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
+    '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' + rbTag(b.id) +
     (allCats ? '<span class="sd-tag">' + esc(sdCatName(b.category)) + '</span>' : '') +
     fitTags(b.fit, { noUs: true }) +
     sdExtLinks(b) +
@@ -14352,7 +15165,7 @@ function sdSugRow(b, key, open, allCats) {
 function sdNeedRow(b, allCats) {
   var onFile = b.onFile || 0;
   return '<div class="sd-orow">' + sdMark('none') +
-    '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
+    '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' + rbTag(b.id) +
     (allCats ? '<span class="sd-tag">' + esc(sdCatName(b.category)) + '</span>' : '') +
     fitTags(b.fit, { noUs: true }) +
     '<span class="sd-dim">' + (onFile ? esc(onFile + ' on file, no LinkedIn or email') : 'Nobody on file') + '</span>' +
@@ -14853,6 +15666,7 @@ function renderSchedDrill(focus) {
       '<span class="sd-dim">' + sdPlural(all.length, 'brand', 'brands') + ' · ' + g.reached.length + ' reached · ' +
         notReached + ' not reached yet · ' + g.setAside.length + ' set aside' + esc(covWords) + '</span>' +
       '<span class="sd-sp"></span>' +
+      reachSelect('sched', reachCounts(all, sdReached)) +
       '<input class="inp" data-sdcq="1" placeholder="Filter brands…" autocomplete="off" value="' + esc(SCHED.catQ) + '">' +
       '<a href="#" class="sd-x" data-sdcat="' + esc(key) + '" title="Close">×</a>' +
     '</div>' +
@@ -14866,12 +15680,17 @@ function renderSchedDrill(focus) {
   if (data._gen !== SCHED.catGen) sdLoadCat(key);
 }
 
+// The Outreach filter (the Reached column = the Reached tag's rule) and the
+// filter box: the drill-in's rows.
+function sdReached(b) { return b.group === 'reached'; }
+function sdDrillShows(b, q) { return (!q || b.name.toLowerCase().indexOf(q) !== -1) && reachOk('sched', sdReached(b)); }
+REACH_DRAW.sched = function () { renderSchedDrillBody(); };
 function renderSchedDrillBody() {
   var box = document.getElementById('sd-drill-body');
   var data = SCHED.catCache[SCHED.openCat];
   if (!box || !data) return;
   var q = (SCHED.catQ || '').toLowerCase();
-  var g = sdDrillGroups((data.brands || []).filter(function (b) { return !q || b.name.toLowerCase().indexOf(q) !== -1; }));
+  var g = sdDrillGroups((data.brands || []).filter(function (b) { return sdDrillShows(b, q); }));
   var addTo = function (b) {
     return '<select class="inp sd-mini" data-sdaddto="' + esc(b.id) + '" data-sdn="' + esc(b.name) + '"><option value="">Add to…</option>' + sdDayOpts(null, false) + '</select>';
   };
@@ -14880,7 +15699,7 @@ function renderSchedDrillBody() {
   var goRow = function (b) {
     return '<div class="sd-drow">' +
       '<input type="checkbox" data-sdck="' + esc(b.id) + '"' + (SCHED.catSel[b.id] ? ' checked' : '') + '>' +
-      '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' + tier(b) +
+      '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' + rbTag(b.id) + tier(b) +
       '<span class="sd-dim">' + ((b.label && b.label.reachable) || 0) + ' reachable</span>' + pinTag(b) +
       (b.giant ? '<span class="sd-tag warn" title="A giant (' + esc(b.giant) + ') — held back for now: the days never pick it, and adding it asks first">Giant</span>' : '') +
       (b.queued ? '<span class="sd-tag good">' + b.queued + ' queued</span>' : '') +
@@ -14892,7 +15711,7 @@ function renderSchedDrillBody() {
     var onFile = (b.label && b.label.onFile) || 0;
     return '<div data-sdwrap="1"><div class="sd-drow">' +
       sdMark('none') +
-      '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' + tier(b) +
+      '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' + rbTag(b.id) + tier(b) +
       '<span class="sd-dim">' + (onFile ? onFile + ' on file, no LinkedIn or email' : 'Nobody on file') + '</span>' + pinTag(b) +
       '<span class="sd-sp"></span>' + sdLiLink(b) +
       '<button class="btn-ghost sd-sm" data-sdsu="' + esc(b.externalId || '') + '" data-suname="' + esc(b.name) + '">SponsorUnited ↗</button>' +
@@ -14915,7 +15734,7 @@ function renderSchedDrillBody() {
     var o = b.outreach || {};
     var st = STAGE[o.stage] || STAGE.invited;
     return '<div class="sd-drow">' +
-      '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
+      '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' + rbTag(b.id) +
       '<span class="status ' + st.pill + '">' + esc(o.stage || 'reached') + '</span>' +
       (o.stale ? '<span class="sd-tag warn">Going stale</span>' : '') +
       '<span class="sd-dim">' + esc(o.detail || '') + '</span>' +
@@ -14926,7 +15745,7 @@ function renderSchedDrillBody() {
   };
   var asideRow = function (b) {
     return '<div class="sd-drow">' +
-      '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
+      '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' + rbTag(b.id) +
       '<span class="sd-dim">' + (b.setAsideWhy === 'donotemail' ? 'Do-not-email' : b.setAsideWhy === 'notus' ? 'Not sold in the US' : 'Archived') + '</span>' +
       '<span class="sd-sp"></span>' +
       '<button class="btn-ghost sd-sm" data-sopen="' + esc(b.id) + '">Open brand</button>' +
@@ -14946,8 +15765,8 @@ function renderSchedDrillBody() {
     }).join('') +
     group('Set aside', g.setAside, asideRow);
   box.innerHTML = '<div class="sd-drill-cols">' +
-    '<div><div class="sd-col-h">Not reached yet</div>' + (left || '<div class="sd-dim">Nothing here' + (q ? ' matches.' : '.') + '</div>') + '</div>' +
-    '<div><div class="sd-col-h">Reached</div>' + (right || '<div class="sd-dim">Nothing here' + (q ? ' matches.' : ' yet.') + '</div>') + '</div>' +
+    '<div><div class="sd-col-h">Not reached yet</div>' + (left || '<div class="sd-dim">Nothing here' + (q || REACH_F.sched ? ' matches.' : '.') + '</div>') + '</div>' +
+    '<div><div class="sd-col-h">Reached</div>' + (right || '<div class="sd-dim">Nothing here' + (q || REACH_F.sched ? ' matches.' : ' yet.') + '</div>') + '</div>' +
   '</div>';
   renderSchedBulk();
 }
@@ -15299,7 +16118,7 @@ function sdRetryRow(b) {
   var oldest = open.length ? open.map(function (x) { return x.sentAt; }).sort()[0] : null;
   return '<div class="sd-retry">' +
     '<div class="sd-retry-h">' +
-      '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
+      '<a href="#" class="sd-bname" data-sopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' + rbTag(b.id) +
       sdLabelDot(b.label) +
       '<span class="sd-dim">' + esc(sdCatName(b.category)) + ' · Fit ' + esc(String(b.fit)) + ' · ' + sdPlural(b.invited || 0, 'invite', 'invites') +
         (b.firstAt ? ' from ' + esc(shortDate(b.firstAt)) : '') + ', no answer' + (b.pinnedOn ? ' · on ' + esc(sdDayName(b.pinnedOn)) + ' already' : '') + '</span>' +
@@ -16176,7 +16995,7 @@ var SCHED_DRAG = null;
       var data = SCHED.catCache[SCHED.openCat];
       var q = (SCHED.catQ || '').toLowerCase();
       ((data && data.brands) || []).forEach(function (b) {
-        if (b.group === 'notReached' && b.label && b.label.kind === 'ready' && (!q || b.name.toLowerCase().indexOf(q) !== -1)) SCHED.catSel[b.id] = true;
+        if (b.group === 'notReached' && b.label && b.label.kind === 'ready' && sdDrillShows(b, q)) SCHED.catSel[b.id] = true;
       });
       renderSchedDrillBody();
       return;
@@ -16324,7 +17143,7 @@ function loadPassed() {
       var tag = [CAT_NAMES[b.category] || b.category, b.tier].filter(Boolean).join(' · ');
       return '<div class="target" data-brand="' + esc(b.id) + '">' +
         '<div class="t-main">' +
-          '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(b.name) + '</span>' +
+          '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(b.name) + '</span>' + rbTag(b.id) +
             (tag ? '<span class="t-sep">·</span><span class="t-title">' + esc(tag) + '</span>' : '') + '</div>' +
           '<div class="t-meta"><span>archived ' + shortDate(b.passedAt) + '</span><span>· ' + b.contacts + ' contact' + (b.contacts === 1 ? '' : 's') + '</span></div>' +
         '</div>' +
@@ -16669,6 +17488,7 @@ var SEARCH_SHOWN = '';
 function runSearch(q) {
   // A new query starts at the top; the same one again (after an edit
   // from its results) keeps the place.
+  NAV_ARGS = { q: q };
   showView('search', q !== SEARCH_SHOWN);
   SEARCH_SHOWN = q;
   document.getElementById('search-title').textContent = '“' + q + '”';
@@ -16687,7 +17507,7 @@ function runSearch(q) {
       out += '<div class="res-group"><div class="section-head">Brands <span class="n">' +
         d.brands.length + '</span></div>' + d.brands.map(function (b) {
         return '<div class="target clickable" data-brand="' + esc(b.id) + '">' +
-          '<div class="t-main"><div class="t-line"><span class="t-brand">' + esc(b.name) + '</span>' +
+          '<div class="t-main"><div class="t-line"><span class="t-brand">' + esc(b.name) + '</span>' + rbTag(b.id) +
           (b.tier ? '<span class="t-sep">·</span><span class="t-title">' + esc(b.tier) + '</span>' : '') +
           '</div><div class="t-meta"><span>' + esc(CAT_NAMES[b.category] || b.category || '—') + '</span>' +
           '<span>· ' + b._count.contacts + ' contacts</span>' +
@@ -16699,9 +17519,9 @@ function runSearch(q) {
     if (d.contacts.length) {
       out += '<div class="res-group"><div class="section-head">People <span class="n">' +
         d.contacts.length + '</span></div>' + d.contacts.map(function (c) {
-        return '<div class="target clickable" data-brand="' + esc(c.brand.id) + '">' +
+        return '<div class="target clickable" data-brand="' + esc(c.brand.id) + '" data-focus="' + esc(c.id) + '" title="Open ' + esc(c.brand.name) + ' at ' + esc(c.name) + '">' +
           '<div class="t-main"><div class="t-line"><span class="t-brand">' + esc(c.name) + '</span>' +
-          '<span class="t-sep">·</span><span class="t-title">' + esc(c.brand.name) + '</span></div>' +
+          '<span class="t-sep">·</span><span class="t-title">' + esc(c.brand.name) + '</span>' + rbTag(c.brand.id) + '</div>' +
           '<div class="t-meta"><span>' + esc(c.title || '—') + '</span>' +
           (c.isDecisionMaker ? '<span class="status replied">decision maker</span>' : '') +
           '</div></div><div class="t-actions">' +
@@ -16955,7 +17775,7 @@ function groupedTargetRows(list) {
     // closes the block off.
     if (rows.length === 1) return '<div style="margin-top:16px">' + targetRow(rows[0]) + '</div>';
     return '<div style="margin:16px 0 6px;display:flex;align-items:baseline;gap:8px">' +
-        '<span style="font-size:13px;font-weight:700;font-family:var(--display)" data-brand="' + esc(bid) + '"><span class="t-brand" style="cursor:pointer">' + esc(rows[0].brand.name) + '</span></span>' +
+        '<span style="font-size:13px;font-weight:700;font-family:var(--display)" data-brand="' + esc(bid) + '"><span class="t-brand" style="cursor:pointer">' + esc(rows[0].brand.name) + '</span>' + rbTag(bid) + '</span>' +
         '<span class="n">' + rows.length + ' people</span></div>' +
       '<div style="border-left:2px solid var(--border);padding-left:10px;margin-bottom:16px">' + rows.map(targetRow).join('') + '</div>';
   }).join('');
@@ -17054,7 +17874,7 @@ function oqBrandCard(g) {
   var cat = b.category ? (CAT_NAMES[b.category] || b.category) : '';
   return '<div class="oq-brand" data-bcard="' + esc(g.brandId) + '">' +
     '<div class="oq-bh">' +
-      '<span class="oq-bname" data-brand="' + esc(g.brandId) + '">' + esc(b.name || '') + '</span>' +
+      '<span class="oq-bname" data-brand="' + esc(g.brandId) + '">' + esc(b.name || '') + '</span>' + rbTag(g.brandId) +
       (cat ? '<span class="oq-bcat">' + esc(cat) + '</span>' : '') +
       sdLabel(OQ_LABELS[g.brandId]) +
       '<span class="oq-bprog"><span data-oqcount>' + c.sent + ' of ' + c.total + ' sent</span>' + oqBar(c.sent, c.total) + '</span>' +
@@ -17083,7 +17903,7 @@ function oqMoreCard(m) {
   });
   return '<div class="oq-brand" data-oqmore="' + esc(m.brandId) + '">' +
     '<div class="oq-bh">' +
-      '<span class="oq-bname" data-brand="' + esc(m.brandId) + '">' + esc(m.brandName) + '</span>' +
+      '<span class="oq-bname" data-brand="' + esc(m.brandId) + '">' + esc(m.brandName) + '</span>' + rbTag(m.brandId) +
       (cat ? '<span class="oq-bcat">' + esc(cat) + '</span>' : '') +
       sdLabel(OQ_LABELS[m.brandId]) +
       '<span class="sd-dim">' + esc(sdPlural(m.size, 'person', 'people')) +
@@ -17103,7 +17923,7 @@ function oqDoneCard(g) {
   return '<div class="oq-brand oq-done" data-bcard="' + esc(g.brandId) + '" data-done="1">' +
     '<div class="oq-bh">' +
       '<span class="oq-ok">✓</span>' +
-      '<span class="oq-bname" data-brand="' + esc(g.brandId) + '">' + esc(b.name || '') + '</span>' +
+      '<span class="oq-bname" data-brand="' + esc(g.brandId) + '">' + esc(b.name || '') + '</span>' + rbTag(g.brandId) +
       '<span class="oq-dsum" data-oqcount>' + esc(c.sent + ' invited today' + (c.sent ? ' · ' + oqNames(c.sentRows) : '')) + '</span>' +
       '<button class="btn-ghost mini" data-oqfold="' + esc(g.brandId) + '">' + (open ? 'Hide people' : 'Show people') + '</button>' +
     '</div>' +
@@ -18506,7 +19326,7 @@ function loadPipeline() {
             var locked = x.source === 'sponsorship' || x.source === 'notion';
             return '<div class="panel panel-pad" style="margin-bottom:8px;padding:10px" data-deal="' + esc(x.id) + '">' +
               '<div style="display:flex;align-items:baseline;gap:6px">' +
-                '<a href="#" data-brand="' + esc(x.brandId) + '" style="font-weight:600;font-size:13px;color:inherit;text-decoration:none">' + esc(x.brand.name) + '</a>' +
+                '<a href="#" data-brand="' + esc(x.brandId) + '" style="font-weight:600;font-size:13px;color:inherit;text-decoration:none">' + esc(x.brand.name) + '</a>' + rbTag(x.brandId) +
                 '<span class="amount" style="margin-left:auto;font-size:13.5px">' + money(x.valueCents) + '</span></div>' +
               (x.eventRef || x.name !== x.brand.name ? '<div style="font-size:13px;color:var(--ink-3);margin-top:2px">' + esc(x.eventRef || x.name) + '</div>' : '') +
               '<div style="font-size:12.5px;color:var(--ink-3);margin-top:3px">' +
@@ -18581,7 +19401,7 @@ function loadRequests() {
       // Just the line the brand typed, not the whole generated request text.
       var note = ((/^Notes: (.+)$/m).exec(r.notes || '') || [])[1] || '';
       return '<div class="req-card" data-brand="' + esc(r.brand.id) + '">' +
-        '<div class="req-top"><span class="req-brand">' + esc(r.brand.name) + '</span>' +
+        '<div class="req-top"><span class="req-brand">' + esc(r.brand.name) + '</span>' + rbTag(r.brand.id) +
           '<span class="req-stage' + (r.stage === 'closed' ? ' won' : r.stage === 'lost' ? ' lost' : '') + '">' + esc(STAGE_TAG[r.stage] || r.stage) + '</span>' +
           '<span class="req-date">' + shortDate(r.createdAt) + '</span></div>' +
         (c ? '<div class="req-who">' + esc(c.name || '') +
@@ -18631,7 +19451,7 @@ function loadTalks() {
         : 'Code sent — not opened yet';
       return '<div class="panel panel-pad" style="margin-bottom:10px">' +
         '<div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap">' +
-          '<a href="#" data-tk-brand="' + esc(t.brand.id) + '" style="font-family:var(--display);font-weight:700;font-size:16px;color:inherit;text-decoration:none">' + esc(t.brand.name) + '</a>' + (t.brand.kind === 'person' ? ' <span class="n" style="font-size:12.5px;color:var(--ink-3)">· person</span>' : '') +
+          '<a href="#" data-tk-brand="' + esc(t.brand.id) + '" style="font-family:var(--display);font-weight:700;font-size:16px;color:inherit;text-decoration:none">' + esc(t.brand.name) + '</a>' + rbTag(t.brand.id) + (t.brand.kind === 'person' ? ' <span class="n" style="font-size:12.5px;color:var(--ink-3)">· person</span>' : '') +
           '<code style="font-size:13px;font-weight:700;letter-spacing:.07em;color:var(--ink-2)">' + esc(t.code) + '</code>' +
           '<span style="margin-left:auto;font-size:13.5px;color:var(--ink-3)">' + esc(stat) + '</span></div>' +
         (t.viewers.length ? '<div style="font-size:13px;color:var(--ink-2);margin-top:6px">' + t.viewers.map(esc).join(' · ') + '</div>' : '') +
@@ -18796,7 +19616,7 @@ function boardFeedHtml(visits) {
     var full = new Date(v.createdAt).toLocaleString('en-US', { timeZone: BD_TZ, weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET';
     out.push('<div class="bd-visit"' + (v.brand ? ' data-brand="' + esc(v.brand.id) + '"' : '') + '>' +
       '<div class="bd-av' + cls + '">' + esc(initials) + '</div>' +
-      '<div class="bd-who"><div class="bd-who-name">' + esc(name) + '</div>' +
+      '<div class="bd-who"><div class="bd-who-name">' + esc(name) + (v.brand ? rbTag(v.brand.id) : '') + '</div>' +
         '<div class="bd-who-mail">' + (v.email ? esc(v.email) : v.brand ? 'opened from their link' : 'no code, no email') + '</div></div>' +
       (mins ? '<span class="bd-dur" title="time the board stayed open">' + (mins >= 60 ? Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min' : mins + ' min') + '</span>' : '') +
       '<div class="bd-when" title="' + esc(full) + '"><div class="bd-when-t">' + esc(bdTime(v.createdAt)) + '</div>' +
@@ -18898,7 +19718,7 @@ document.getElementById('bd-q').addEventListener('input', function () {
         var tags = (b.person ? ' · person' : '') + (b.archived && !b.person ? ' · archived' : '') +
           (b.aka ? ' · aka ' + b.aka : '') + (b.boardCode ? ' · has code' : '');
         return '<div class="clickable" data-bdpick="' + esc(b.id) + '" style="padding:10px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid var(--border)">' +
-          esc(b.name) + (tags ? ' <span style="color:var(--ink-3);font-size:13px">' + esc(tags) + '</span>' : '') + '</div>';
+          esc(b.name) + rbTag(b.id) + (tags ? ' <span style="color:var(--ink-3);font-size:13px">' + esc(tags) + '</span>' : '') + '</div>';
       }).join('') || '<div style="padding:10px 12px;font-size:13px;color:var(--ink-3)">No brand with that name</div>';
       box.style.display = 'block';
     }).catch(function (e) {
@@ -18956,14 +19776,23 @@ function loadDiscover() {
 
 function dcAdded(r) { return r.inSystem || r.status === 'added'; }
 
-function dcShown() {
+// Reached out: the find's brand on the roster carries the Reached tag
+// (listDiscoveries' `reached`); a find not on the roster never does.
+function dcReached(r) { return !!r.reached; }
+// The rows the tab and dropdowns leave. anyReach = without the Outreach
+// filter (its counts).
+function dcFiltered(anyReach) {
   return DC.rows.filter(function (r) {
     if ((DC.tab === 'added') !== dcAdded(r)) return false;
     if (DC.source && r.source !== DC.source) return false;
     if (DC.cat && r.category !== DC.cat) return false;
     if (DC.grade && !(r.grade && r.grade.grade === DC.grade)) return false;
+    if (!anyReach && !reachOk('discover', dcReached(r))) return false;
     return true;
-  }).map(function (r, i) { return { r: r, i: i }; }).sort(function (a, b) {
+  });
+}
+function dcShown() {
+  return dcFiltered().map(function (r, i) { return { r: r, i: i }; }).sort(function (a, b) {
     if (DC.sort === 'grade') {
       var ga = a.r.grade ? a.r.grade.score : -1, gb = b.r.grade ? b.r.grade.score : -1;
       var la = a.r.grade ? DC_GRADE_ORDER[a.r.grade.grade] : 9, lb = b.r.grade ? DC_GRADE_ORDER[b.r.grade.grade] : 9;
@@ -19000,6 +19829,7 @@ function dcRender() {
       cats.map(function (k) { return '<option value="' + esc(k) + '"' + (DC.cat === k ? ' selected' : '') + '>' + esc(CAT_NAMES[k]) + '</option>'; }).join('') + '</select>' +
     '<select class="inp" data-dcsel="grade" aria-label="Grade"><option value="">All grades</option>' +
       ['A', 'B', 'C', 'D'].map(function (g) { return '<option value="' + g + '"' + (DC.grade === g ? ' selected' : '') + '>Grade ' + g + ' (' + gradeN(g) + ')</option>'; }).join('') + '</select>' +
+    reachSelect('discover', reachCounts(dcFiltered(true), dcReached)) +
     '<select class="inp" data-dcsel="sort" aria-label="Sort"><option value="grade"' + (DC.sort === 'grade' ? ' selected' : '') + '>Best grade first</option>' +
       '<option value="new"' + (DC.sort === 'new' ? ' selected' : '') + '>Newest first</option></select>';
 
@@ -19008,7 +19838,7 @@ function dcRender() {
   if (!rows.length) {
     body.innerHTML = '<div class="dc-empty">' + (DC.tab === 'review'
       ? (review ? 'Nothing here with these filters.' : 'All caught up — the next batch lands tomorrow morning.')
-      : 'Nothing added yet.') + '</div>';
+      : (added ? 'Nothing here with these filters.' : 'Nothing added yet.')) + '</div>';
     return;
   }
   // Best grade first: a heading per grade, so the list reads as groups.
@@ -19057,7 +19887,7 @@ function dcRow(r) {
       }).join('') + '</ul></div>' : '';
   return '<div class="dc-row' + (open ? ' open' : '') + '" data-disc="' + esc(r.id) + '">' + badge +
     '<div class="dc-main" data-dcact="toggle">' +
-      '<div class="dc-name"><b>' + esc(r.name) + '</b><span class="dc-meta">' + esc(meta) + '</span>' +
+      '<div class="dc-name"><b>' + esc(r.name) + '</b>' + (r.brandId ? rbTag(r.brandId) : '') + '<span class="dc-meta">' + esc(meta) + '</span>' +
         signs.map(function (k) {
           return '<span class="dc-sign" title="' + esc(DC_SIGNS_LONG[k]) + '">' + esc(DC_SIGNS[k]) + '</span>';
         }).join('') + '</div>' +
@@ -19076,9 +19906,10 @@ document.getElementById('dc-bar').addEventListener('click', function (e) {
   if (e.target.closest('[data-dcundo]')) { e.preventDefault(); dcBulkUndo(); return; }
   var t = e.target.closest('[data-dctab]');
   if (!t) return;
-  DC.tab = t.getAttribute('data-dctab'); DC.source = ''; DC.cat = ''; DC.grade = '';
+  DC.tab = t.getAttribute('data-dctab'); DC.source = ''; DC.cat = ''; DC.grade = ''; REACH_F.discover = '';
   dcRender();
 });
+REACH_DRAW.discover = function () { dcRender(); };
 document.getElementById('dc-bar').addEventListener('change', function (e) {
   var sel = e.target.closest('[data-dcsel]');
   if (!sel) return;
@@ -19308,7 +20139,7 @@ function loadCRM() {
     var el = document.getElementById('partners');
     el.innerHTML = list.length ? list.map(function (p) {
       return '<div class="target clickable" data-brand="' + esc(p.brandId) + '"><div class="t-main"><div class="t-line">' +
-        '<span class="t-brand">' + esc(p.brand.name) + '</span>' +
+        '<span class="t-brand">' + esc(p.brand.name) + '</span>' + rbTag(p.brandId) +
         '<span class="t-sep">·</span><span class="t-title">' + esc(p.lifecycle.replace(/_/g, ' ')) + '</span>' +
         '</div>' + (p.owner ? '<div class="t-meta"><span>' + esc(p.owner) + '</span></div>' : '') +
         '</div><div class="t-actions"><button class="btn-ghost" data-act="open">Open →</button></div></div>';
@@ -20764,35 +21595,57 @@ opsBody.addEventListener('change', function (ev) {
 // week which i should be able to move between days". His picks: the list
 // is a bank spent week by week; the top of it is dealt onto the days as an
 // even mix of rank; a day spread from the list takes only brands from it.
+// Cleaned up the same day ("make each brand bigger … make sure that adding
+// and removing brands does not glitch a lot and its easy"): the list on the
+// left and the week on the right, each scrolling on its own, so a brand put
+// on a day never moves the list under the mouse; one big card per brand
+// with a button per day (on = it's on that day; click another to move it,
+// click it again to take it off); every change shows at once (wpDo) and the
+// page reads the server once the clicks stop; a brand taken off leaves an
+// Undo where it was.
 // Server: weekBank / weekSpread / undoWeekSpread / weekBankSize / Add /
-// Remove / PutBack / Browse / setListDay (src/lib/week-bank.ts). Moving a
-// brand between days is the Schedule's own planMoveBrand.
+// Remove / PutBack / Browse / setListDay (src/lib/week-bank.ts); days are
+// the Schedule's own planAddBrands / planMoveBrand / planRemoveBrand.
 
 var WP = {
   data: null, week: '', seq: 0,
+  // Writes on their way, a counter that moves with each one, and a read
+  // asked for while they were out (it runs after the last one).
+  writes: 0, wseq: 0, needRead: false,
+  // brandId -> true while its change is on the way (its buttons wait).
+  pending: {},
+  // brandId -> { row, idx, at }: taken off the list, kept in its place
+  // with Undo for a little while.
+  gone: {},
+  // brandId -> when it was just added (its card lights up).
+  flash: {},
   // The spread waiting for Leo's yes (weekSpread preview), and what the
-  // last Apply did.
+  // last one did.
   pv: null, pvBusy: false, applying: false, done: null,
-  filter: 'all', showAll: false,
-  // The search box (never redrawn) and its rows.
+  filter: 'all', shown: 40,
+  // The list pane shows the list, search results or a category.
   q: '', qSeq: 0, rows: [], hl: 0, qFor: '',
-  // Browse a category: its rows and the ticked ones.
   cat: '', catData: null, catSeq: 0, catSel: {}, catAll: false,
-  busy: 0
+  added: {}
 };
-var WP_SHOW = 40;
+var WP_GONE_MS = 15000;
 var WP_DRAG = null;
 
 function wpDays() { return (WP.data && WP.data.days) || []; }
 function wpFirstDay() { var d = wpDays(); return d.length ? d[0].date : ''; }
 function wpRows() { return (WP.data && WP.data.bank && WP.data.bank.rows) || []; }
 function wpById() { var m = {}; wpRows().forEach(function (r) { m[r.id] = r; }); return m; }
+function wpDay(date) { return wpDays().filter(function (d) { return d.date === date; })[0] || null; }
+function wpShort(key) { return new Date(key + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' }); }
 
+// Opening the tab (and coming back to it): a fresh read. Ghost rows and
+// highlights from before are dropped.
 function loadWeekPlan() {
   showView('weekplan');
   var turn = viewTurn('weekplan');
-  if (!WP.data) document.getElementById('wp-days').innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   wpFillCats();
+  if (!WP.data) document.getElementById('wp-days').innerHTML = '<div class="sd-empty">Loading…</div>';
+  WP.gone = {};
   var mine = ++WP.seq;
   return api('weekBank', { week: WP.week || undefined }).then(function (d) {
     if (mine !== WP.seq || !turn()) return;
@@ -20803,27 +21656,76 @@ function loadWeekPlan() {
     wpRenderAll();
   }).catch(function (e) {
     if (mine !== WP.seq) return;
-    document.getElementById('wp-days').innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+    document.getElementById('wp-days').innerHTML = '<div class="sd-empty">Could not load: ' + esc(e.message) + '</div>';
   });
 }
 
-function wpRenderAll() {
-  wpRenderHead();
-  wpRenderDays();
-  wpRenderList();
-  wpRenderResults();
+// The server's answer again, quietly, once no change is on its way — and
+// dropped if one started while it was out (it would show the old state).
+function wpRead() {
+  if (WP.writes > 0) { WP.needRead = true; return Promise.resolve(); }
+  WP.needRead = false;
+  var mine = ++WP.seq, at = WP.wseq;
+  return api('weekBank', { week: WP.week || undefined }).then(function (d) {
+    if (mine !== WP.seq) return;
+    if (at !== WP.wseq || WP.writes > 0) { WP.needRead = true; return; }
+    WP.data = d;
+    wpRenderAll();
+  }).catch(function () {});
 }
 
-// A change: the preview (if any) is out of date, then the page reads again.
-function wpCall(fn, args, msg) {
+// One change: shown at once (local), then sent; when the last change is
+// answered the page reads the server. A refusal or an error says why and
+// the read puts the page back to what really happened.
+function wpDo(o) {
+  (o.ids || []).forEach(function (id) { WP.pending[id] = true; });
   WP.pv = null;
-  WP.busy += 1;
-  return api(fn, args).then(function (r) {
-    WP.busy -= 1;
-    var m = typeof msg === 'function' ? msg(r) : msg;
-    if (m) toast(m);
-    return loadWeekPlan().then(function () { return r; });
-  }).catch(function (e) { WP.busy -= 1; toast(e.message); loadWeekPlan(); });
+  if (o.local) o.local();
+  wpRenderAll();
+  WP.writes += 1; WP.wseq += 1;
+  var finish = function () {
+    WP.writes -= 1;
+    (o.ids || []).forEach(function (id) { delete WP.pending[id]; });
+    if (WP.writes === 0) wpRead(); else WP.needRead = true;
+    wpRenderAll();
+  };
+  return api(o.fn, o.args).then(function (r) {
+    var msg = o.done ? o.done(r) : null;
+    if (msg) toast(msg);
+    finish();
+    return r;
+  }).catch(function (e) { toast(e.message); finish(); });
+}
+
+// ── drawing ────────────────────────────────────────────────────────
+// The panes' height: the screen under the title (wide screens only; a
+// narrow one stacks them and the page scrolls).
+function wpFit() {
+  var sp = document.querySelector('#weekplan .wp-split');
+  if (!sp || !document.getElementById('weekplan').classList.contains('active')) return;
+  if (window.innerWidth <= 1100) { sp.style.removeProperty('--wp-h'); return; }
+  var top = sp.getBoundingClientRect().top + window.scrollY;
+  sp.style.setProperty('--wp-h', Math.max(520, window.innerHeight - top - 16) + 'px');
+}
+window.addEventListener('resize', wpFit);
+
+function wpRenderAll() {
+  if (!WP.data) return;
+  wpFit();
+  wpRenderWeekHead();
+  wpRenderDays();
+  wpRenderListHead();
+  wpRenderList();
+  rbPaint(document.getElementById('weekplan'));
+}
+
+// Redraw a scrolling box without moving its scroll.
+function wpPaint(id, html) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  var top = el.scrollTop;
+  el.innerHTML = html;
+  el.scrollTop = top;
 }
 
 function wpWeekLabel(w) {
@@ -20836,29 +21738,40 @@ function wpTime(iso) {
   var d = new Date(iso);
   return isNaN(d.getTime()) ? '' : d.toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' });
 }
+function wpPeople(d) {
+  return (d.pinned || []).filter(function (p) { return p.state === 'going' && !p.waits; })
+    .reduce(function (n, p) { return n + (p.going || 0); }, 0);
+}
 
-function wpRenderHead() {
-  var box = document.getElementById('wp-head');
+function wpRenderWeekHead() {
   var d = WP.data;
-  if (!d) { box.innerHTML = ''; return; }
-  var b = d.bank;
   var chips = d.weeks.map(function (w) {
     return '<button class="chip' + (w.start === d.week ? ' active' : '') + '" data-wpweek="' + esc(w.start) + '">' + esc(wpWeekLabel(w)) + '</button>';
   }).join('');
   var days = wpDays();
-  var room = days.reduce(function (n, x) { return n + (x.room || 0); }, 0);
+  var cap = 0, used = 0;
+  days.forEach(function (x) { cap += x.cap || 0; used += Math.min(x.cap || 0, wpPeople(x)); });
   var waitingGo = wpRows().filter(function (r) { return r.where === 'waiting' && r.going > 0; }).length;
-  var spread = !days.length ? '<span class="sd-dim">No sending days this week.</span>'
-    : !waitingGo ? '<span class="sd-dim">Nothing on your list is waiting for a day.</span>'
-    : room <= 0 ? '<span class="sd-dim">The week is full.</span>'
-    : '<button class="btn-solid" data-wpspread="1"' + (WP.pvBusy ? ' disabled' : '') + ' title="Deals the top of your list onto the days, whole brands, so every day gets a fair share of the best ones. You see it first.">' +
-        (WP.pvBusy && !WP.pv ? 'Dealing…' : 'Spread the top of the list onto the week') + '</button>' +
-      '<span class="sd-dim">' + room + ' open spots across ' + sdPlural(days.length, 'day', 'days') + '</span>';
-  var html = '<div class="wp-weeks">' + chips + '</div><div class="wp-bar">' + (WP.pv ? '' : spread) +
-    (d.spreadLast && !WP.pv ? '<span class="sd-dim">Last spread ' + esc(wpTime(d.spreadLast.at)) + ' · <a href="#" data-wpundo="1">Undo</a></span>' : '') + '</div>';
-  if (WP.done && Date.now() - WP.done.at < 120000) html += '<div class="sd-flash good">' + esc(WP.done.text) + ' <a href="#" class="sd-x" data-wpdonex="1" title="Dismiss">×</a></div>';
+  var room = Math.max(0, cap - used);
+  var html = '<div class="wp-h-row"><h2>The week</h2><div class="wp-weeks">' + chips + '</div></div>';
+  if (days.length) {
+    html += '<div class="wp-h-row"><span class="wp-big">' + used + '</span><span class="sd-dim">of ' + cap + ' spots planned</span>' +
+      '<div class="sd-meter wp-meter' + (room === 0 ? ' good' : '') + '"><i style="width:' + (cap ? Math.min(100, used / cap * 100) : 0) + '%"></i></div></div>';
+  }
   if (WP.pv) html += wpPvHtml();
-  box.innerHTML = html;
+  else {
+    var why = !days.length ? 'No sending days that week — add one on the Schedule.'
+      : !waitingGo ? 'Nothing on your list is waiting for a day.'
+      : room <= 0 ? 'The week is full.' : '';
+    html += '<div class="wp-h-row">' +
+      (why ? '<span class="sd-dim">' + esc(why) + '</span>'
+        : '<button class="btn-solid wp-spread" data-wpspread="1"' + (WP.pvBusy ? ' disabled' : '') + ' title="Deals the top of your list onto the days, whole brands, so every day gets a fair share of the best ones. You see it first.">' +
+            (WP.pvBusy ? 'Dealing…' : '✦ Spread the top of my list onto the week') + '</button>') +
+      (d.spreadLast ? '<span class="sd-dim">Last spread ' + esc(wpTime(d.spreadLast.at)) + ' · <a href="#" data-wpundo="1">Undo it</a></span>' : '') +
+    '</div>';
+  }
+  if (WP.done && Date.now() - WP.done.at < 120000) html += '<div class="sd-flash good">' + esc(WP.done.text) + ' <a href="#" class="sd-x" data-wpdonex="1" title="Dismiss">×</a></div>';
+  document.getElementById('wp-weekhead').innerHTML = html;
 }
 
 function wpPvHtml() {
@@ -20869,182 +21782,195 @@ function wpPvHtml() {
   var html = '<div class="wp-pv"><div><b>Preview</b> — ' + sdPlural(pv.placed, 'brand', 'brands') + ', ' + sdPlural(pv.people, 'person', 'people') +
     (top ? ', from the top ' + top + ' of your list' : '') + '. ' +
     (pv.waitNext ? sdPlural(pv.waitNext, 'brand waits', 'brands wait') + ' on the list for next week. ' : '') +
-    'From now on these days take only brands from your list.</div>';
+    'These days then take only brands from your list.</div>';
   if ((pv.passedOver || []).length) {
     html += '<div class="sd-dim">Passed over: ' + pv.passedOver.slice(0, 6).map(function (x) {
       return '#' + x.rank + ' ' + esc(x.name) + ' (' + esc(x.why) + ')';
     }).join(', ') + (pv.passedOver.length > 6 ? ' +' + (pv.passedOver.length - 6) + ' more' : '') + '</div>';
   }
-  html += '<div class="wp-bar"><button class="btn-solid" data-wpapply="1"' + (WP.applying || !pv.placed ? ' disabled' : '') + '>' +
+  html += '<div class="wp-h-row"><button class="btn-solid" data-wpapply="1"' + (WP.applying || !pv.placed ? ' disabled' : '') + '>' +
       (WP.applying ? 'Putting them on…' : 'Put them on the days') + '</button>' +
     '<button class="btn-ghost" data-wpshuffle="1"' + (WP.pvBusy || WP.applying ? ' disabled' : '') + ' title="Deal again — the same brands, a different mix of days">' + (WP.pvBusy ? 'Dealing…' : 'Shuffle again') + '</button>' +
     '<button class="btn-ghost" data-wppvx="1">Cancel</button></div></div>';
   return html;
 }
 
-function wpThemeWord(d) {
-  if (d.list) return '<span class="sd-tag list" title="Takes only brands from your week list">Week list</span>';
-  return '<span class="sd-tag" title="Not spread from your list yet: Best fit fills its open spots by itself">' + esc(d.category && d.category !== 'bestfit' ? sdCatName(d.category) : '★ Best fit') + '</span>';
-}
-
 function wpRenderDays() {
-  var box = document.getElementById('wp-days');
   var days = wpDays();
-  if (!WP.data) return;
   if (!days.length) {
-    box.style.setProperty('--sd-n', '1');
-    box.innerHTML = '<div class="panel"><div class="empty"><p>No sending days that week. Add one on the Schedule (More ▾ → + Add a sending day).</p></div></div>';
+    wpPaint('wp-days', '<div class="sd-empty">No sending days that week. Add one on the Schedule (More ▾ → + Add a sending day).</div>');
     return;
   }
-  box.style.setProperty('--sd-n', String(days.length));
-  box.classList.toggle('sd-n1', days.length === 1);
   var pvDays = {};
   if (WP.pv) WP.pv.days.forEach(function (d) { pvDays[d.date] = d; });
   var byId = wpById();
-  box.innerHTML = days.map(function (d) {
-    var pv = pvDays[d.date];
-    var adds = pv ? pv.add : [];
-    var addPeople = adds.reduce(function (n, a) { return n + a.going; }, 0);
-    var people = d.keptPeople + addPeople;
+  wpPaint('wp-days', days.map(function (d) {
+    var adds = pvDays[d.date] ? pvDays[d.date].add : [];
+    var people = wpPeople(d) + adds.reduce(function (n, a) { return n + a.going; }, 0);
     var cap = d.cap || sdCap();
     var open = Math.max(0, cap - people);
     var status = people > cap ? '<span class="sd-st bad">Over by ' + (people - cap) + '</span>'
       : open === 0 ? '<span class="sd-st good">Full ✓</span>'
       : '<span class="sd-st warn">' + open + ' open</span>';
-    var brands = d.pinned.filter(function (p) { return p.state === 'going' && !p.waits; }).length + adds.length;
-    var html = '<div class="panel sd-day" data-wpdrop="' + esc(d.date) + '">' +
-      '<div class="sd-day-h"><div class="sd-day-t">' + esc(sdDayName(d.date)) + '</div>' + wpThemeWord(d) + '</div>' +
-      '<div class="sd-day-n"><span><b>' + people + '</b> / ' + cap + (brands ? ' · ' + sdPlural(brands, 'brand', 'brands') : '') +
-        (cap < (WP.data.cap || 30) ? ' <span class="sd-dim" title="LinkedIn allows about 100 invites in any 7 days; the days before this one leave it ' + cap + '">· week limit</span>' : '') + '</span>' + status + '</div>' +
+    var mode = d.list
+      ? '<span class="sd-tag list" title="Takes only brands from your list">Your list only</span>'
+      : '<span class="sd-tag" title="Not spread from your list: Best fit fills its open spots by itself">' + esc(d.category && d.category !== 'bestfit' ? sdCatName(d.category) : '★ Best fit') + '</span>';
+    var html = '<div class="wp-day" data-wpdrop="' + esc(d.date) + '">' +
+      '<div class="wp-day-h"><span class="wp-day-t">' + esc(sdDayName(d.date)) + '</span>' + mode +
+        '<span class="wp-day-n"><b>' + people + '</b> / ' + cap + (cap < (WP.data.cap || 30) ? ' <span class="sd-dim" title="LinkedIn allows about 100 invites in any 7 days; the days before this one leave it ' + cap + '">· week limit</span>' : '') + '</span>' + status + '</div>' +
       '<div class="sd-meter' + (people > cap ? ' bad' : open === 0 ? ' good' : '') + '"><i style="width:' + (cap ? Math.min(100, people / cap * 100) : 100) + '%"></i></div>';
-    html += d.pinned.map(function (p) { return wpCard(p, d, byId, false); }).join('');
-    html += adds.map(function (a) { return wpCard(a, d, byId, true); }).join('');
-    if (!d.pinned.length && !adds.length) html += '<div class="sd-empty">Nothing on this day yet.</div>';
-    if (!d.list && !WP.pv) {
-      html += '<div class="wp-foot">' + (d.auto ? '<span>+ Best fit adds ' + sdPlural(d.auto, 'brand', 'brands') + ' (' + sdPlural(d.autoPeople, 'person', 'people') + ') by itself.</span>' : '<span>Open spots fill with Best fit by itself.</span>') +
-        '<button class="btn-ghost sd-sm" data-wplist="' + esc(d.date) + '" data-on="1" title="No automatic picks this day: only brands from your list">Keep it to my list</button></div>';
-    } else if (d.list && !WP.pv) {
-      html += '<div class="wp-foot"><span>Only brands from your list.</span><a href="#" data-wplist="' + esc(d.date) + '" data-on="0" title="Its open spots fill with Best fit picks again">Let Best fit fill open spots</a></div>';
+    var cards = (d.pinned || []).map(function (p) { return wpDayCard(p, d, byId, false); }).join('') +
+      adds.map(function (a) { return wpDayCard(a, d, byId, true); }).join('');
+    html += cards ? '<div class="wp-day-cards">' + cards + '</div>'
+      : '<div class="sd-empty">Nothing on ' + esc(wpShort(d.date)) + ' yet — press a ' + esc(wpShort(d.date)) + ' button on a brand, or drag one here.</div>';
+    if (!WP.pv) {
+      html += d.list
+        ? '<div class="wp-foot"><span>Only brands from your list go this day.</span><a href="#" data-wplist="' + esc(d.date) + '" data-on="0" title="Its open spots fill with Best fit picks again">Let Best fit fill the open spots</a></div>'
+        : '<div class="wp-foot"><span>' + (d.auto ? '+ Best fit adds ' + sdPlural(d.auto, 'brand', 'brands') + ' (' + sdPlural(d.autoPeople, 'person', 'people') + ') by itself.' : 'Open spots fill with Best fit by itself.') + '</span>' +
+          '<button class="btn-ghost sd-sm" data-wplist="' + esc(d.date) + '" data-on="1" title="No automatic picks this day: only brands from your list">Only my list</button></div>';
     }
     return html + '</div>';
-  }).join('');
+  }).join(''));
 }
 
-function wpDayOpts(skip) {
-  return wpDays().filter(function (d) { return d.date !== skip; }).map(function (d) {
-    return '<option value="' + esc(d.date) + '">' + esc(sdDayName(d.date)) + '</option>';
-  }).join('');
-}
-
-function wpCard(p, day, byId, isNew) {
+// A brand on a day: big name, its place on the list and fit, who goes, and
+// a button per other day (move) + Back to list.
+function wpDayCard(p, day, byId, isNew) {
   var r = byId[p.id];
   var rank = isNew ? p.rank : r ? r.rank : 0;
+  var fit = isNew ? p.fit : r ? r.fit : null;
+  var busy = !!WP.pending[p.id];
   var line;
-  if (isNew) {
-    line = '<b>' + p.going + ' going</b>' + ((p.people || []).length ? ' · ' + sdNames(p.people) : '');
-  } else if (p.state === 'going' && p.waits) {
-    line = '<b class="warn">Waits</b> · ' + sdPlural(p.going, 'person', 'people') + ' · past the day’s ' + sdCap() + (p.waits !== 'later' ? ', goes ' + esc(sdDayName(p.waits)) : '');
+  if (isNew || (p.state === 'going' && !p.waits)) {
+    line = '<b>' + p.going + ' going</b>' + ((p.people || []).length ? ' · ' + sdNames(p.people.slice(0, 3)) : '');
   } else if (p.state === 'going') {
-    line = '<b>' + p.going + ' going</b>' + ((p.people || []).length ? ' · ' + sdNames(p.people) : '');
+    line = '<b class="warn">Waits</b> · past the day’s ' + sdCap() + (p.waits && p.waits !== 'later' ? ', goes ' + esc(sdDayName(p.waits)) : '');
   } else if (p.state === 'sent') {
     line = 'Invited already';
   } else {
     line = '<b class="bad">Won’t go out</b> · ' + esc(p.reasonText || 'Nobody to invite.');
   }
-  var acts = isNew ? '' :
-    '<select class="inp sd-mini" data-wpmove="' + esc(p.id) + '" data-wpfrom="' + esc(day.date) + '" data-wpn="' + esc(p.name) + '" title="Move it to another day">' +
-      '<option value="">Move to…</option>' + wpDayOpts(day.date) + '<option value="__off">Off the days (back to the list)</option></select>' +
-    '<button class="btn-ghost sd-cardx" data-wpoff="' + esc(p.id) + '" data-wpday="' + esc(day.date) + '" data-wpn="' + esc(p.name) + '" title="Take it off this day — it goes back to waiting on your list" aria-label="Take ' + esc(p.name) + ' off ' + esc(sdDayName(day.date)) + '">×</button>';
-  return '<div class="sd-card wp-card' + (isNew ? ' wp-new' : '') + (!isNew && p.state === 'blocked' ? ' blocked' : '') + (!isNew && p.waits ? ' waits' : '') + '"' +
+  var acts = isNew ? '<span class="sd-tag good" title="Goes on this day when you press Put them on the days">new</span>' :
+    wpDays().filter(function (x) { return x.date !== day.date; }).map(function (x) {
+      return '<button class="wp-daybtn" data-wpmove="' + esc(p.id) + '" data-wpfrom="' + esc(day.date) + '" data-wpto="' + esc(x.date) + '" data-wpn="' + esc(p.name) + '" title="Move it to ' + esc(sdDayName(x.date)) + '"' + (busy ? ' disabled' : '') + '>→ ' + esc(wpShort(x.date)) + '</button>';
+    }).join('') +
+    '<button class="wp-rm" data-wpoff="' + esc(p.id) + '" data-wpday="' + esc(day.date) + '" data-wpn="' + esc(p.name) + '" title="Take it off ' + esc(sdDayName(day.date)) + ' — it waits on your list again"' + (busy ? ' disabled' : '') + '>↩ Back to list</button>';
+  return '<div class="wp-dc' + (isNew ? ' new' : '') + (busy ? ' busy' : '') + (!isNew && p.state === 'blocked' ? ' blocked' : '') + '"' +
       (isNew ? '' : ' draggable="true" data-wpdrag="' + esc(p.id) + '" data-wpfrom="' + esc(day.date) + '" data-wpn="' + esc(p.name) + '"') + '>' +
-    '<div class="sd-card-h">' +
-      (rank ? '<span class="sd-ord" title="Its place on your list">#' + rank + '</span>' : '') +
-      '<a href="#" class="sd-bname" data-wpopen="' + esc(p.id) + '">' + esc(p.name) + '</a>' +
-      (r ? sdLabelDot(r.label) : isNew ? sdLabelDot(p.label) : '') +
-      (r || isNew ? '<span class="wp-fit" title="Brand Fit">' + (isNew ? p.fit : r.fit) + '</span>' : '') +
-      (isNew ? '<span class="sd-tag good" title="Goes on this day when you press Put them on the days">new</span>' : '') +
-      (p.big ? '<span class="sd-tag" title="A big company: works 10 people at once — one a day">big</span>' : '') +
-      (!isNew && p.carriedFrom ? '<span class="sd-tag carried" title="Didn’t go out on ' + esc(sdDayName(p.carriedFrom)) + ', so it moved here">From ' + esc(sdDayName(p.carriedFrom)) + '</span>' : '') +
-      '<span class="sd-sp"></span>' + acts +
-    '</div>' +
-    '<div class="sd-line">' + line + '</div>' +
+    '<div class="wp-dc-h">' + (rank ? '<span class="wp-dc-rank" title="Its place on your list">#' + rank + '</span>' : '') +
+      '<a href="#" class="wp-dc-name" data-wpopen="' + esc(p.id) + '" title="' + esc(p.name) + '">' + esc(p.name) + '</a>' +
+      (fit != null ? '<span class="wp-fitbox sm" title="Brand Fit">' + fit + '</span>' : '') + '</div>' +
+    '<div class="wp-dc-meta">' + line + (p.big ? ' · <span title="A big company: works 10 people at once">big</span>' : '') + rbTag(p.id) + '</div>' +
+    '<div class="wp-dc-act">' + acts + '</div>' +
   '</div>';
 }
 
-// The list's own header: the number it holds and the filters. Drawn
-// outside the add bar, which is never redrawn.
+function wpRenderListHead() {
+  // Never under the cursor: a number being typed survives a refresh.
+  var sz = document.querySelector('#wp-listhead [data-wpsize]');
+  if (sz && document.activeElement === sz) return;
+  var b = WP.data.bank;
+  var rows = wpRows();
+  document.getElementById('wp-listhead').innerHTML =
+    '<div class="wp-h-row"><h2>Your list</h2><span class="wp-big">' + rows.length + '</span><span class="sd-dim">brands</span>' +
+      '<label class="sd-dim wp-holds">Holds up to <input type="number" class="inp wp-size" data-wpsize="1" min="10" max="300" step="10" value="' + b.size + '" aria-label="How many brands the list holds"></label></div>' +
+    '<div class="sd-dim">Best Brand Fit first' + (b.hand ? ' · ' + b.hand + ' added by you' : '') +
+      (b.autoLeft ? ' · ' + b.autoLeft + ' more would come in if it held more' : '') + '</div>';
+}
+
+// The list pane's body: search results, a category, or the list.
 function wpRenderList() {
-  var head = document.getElementById('wp-listhead');
-  var box = document.getElementById('wp-list');
-  var d = WP.data;
-  if (!d) { head.innerHTML = ''; box.innerHTML = ''; return; }
-  var b = d.bank;
+  var bar = document.getElementById('wp-filters');
+  if (WP.q.trim().length >= 2) {
+    bar.innerHTML = '<div class="wp-h-row"><b>Results for “' + esc(WP.q) + '”</b><a href="#" class="wp-back" data-wpclear="1">× Back to your list</a></div>';
+    wpPaint('wp-list', wpSearchHtml());
+    return;
+  }
+  if (WP.cat) {
+    bar.innerHTML = wpCatBarHtml();
+    wpPaint('wp-list', wpCatHtml());
+    return;
+  }
   var rows = wpRows();
   var n = { all: rows.length, waiting: 0, day: 0, today: 0, cant: 0 };
   rows.forEach(function (r) { n[r.where] = (n[r.where] || 0) + 1; });
   var chip = function (k, label) {
     if (k !== 'all' && !n[k]) return '';
-    return '<button class="chip' + (WP.filter === k ? ' active' : '') + '" data-wpfilter="' + k + '">' + label + ' (' + n[k] + ')</button>';
+    return '<button class="chip' + (WP.filter === k ? ' active' : '') + '" data-wpfilter="' + k + '">' + label + ' ' + n[k] + '</button>';
   };
-  head.innerHTML = '<div class="wp-list-h"><h2>Your list</h2>' +
-    '<label class="sd-dim">Holds <input type="number" class="inp wp-size" data-wpsize="1" min="10" max="300" step="10" value="' + b.size + '" aria-label="How many brands the list holds"> brands</label>' +
-    '<span class="sd-dim">best Brand Fit first' + (b.hand ? ' · ' + b.hand + ' added by you' : '') +
-      (b.autoLeft ? ' · ' + b.autoLeft + ' more past the number' : '') + '</span></div>' +
-    '<div class="chips" style="margin-top:10px">' + chip('all', 'All') + chip('waiting', 'Waiting') + chip('day', 'On a day') +
-      chip('today', 'In today’s list') + chip('cant', 'Can’t go yet') + '</div>';
-  var list = rows.filter(function (r) { return WP.filter === 'all' || r.where === WP.filter; });
-  if (WP.filter !== 'all' && !list.length) { WP.filter = 'all'; list = rows; }
-  var shown = WP.showAll ? list : list.slice(0, WP_SHOW);
+  if (WP.filter !== 'all' && !n[WP.filter]) WP.filter = 'all';
+  bar.innerHTML = '<div class="chips">' + chip('all', 'All') + chip('waiting', 'Waiting') + chip('day', 'On a day') +
+    chip('today', 'In today’s list') + chip('cant', 'Can’t go yet') + '</div>';
+  // Taken off a moment ago: back in its place with Undo.
+  var list = rows.slice();
+  var now = Date.now();
+  Object.keys(WP.gone).map(function (id) { return WP.gone[id]; })
+    .filter(function (g) { return now - g.at < WP_GONE_MS && !list.some(function (r) { return r.id === g.row.id; }); })
+    .sort(function (a, b) { return a.idx - b.idx; })
+    .forEach(function (g) { list.splice(Math.min(g.idx, list.length), 0, Object.assign({}, g.row, { ghost: true })); });
+  if (WP.filter !== 'all') list = list.filter(function (r) { return r.ghost || r.where === WP.filter; });
+  var shown = list.slice(0, WP.shown);
   var html = list.length
-    ? '<div class="wp-rows">' + shown.map(wpRowHtml).join('') + '</div>' +
-      (list.length > shown.length ? '<a href="#" class="sd-link" data-wpall="1" style="display:inline-block;margin-top:8px">Show all ' + list.length + '</a>' : '')
-    : '<div class="sd-empty">Nothing on your list. Search above, or browse a category.</div>';
-  if ((b.removed || []).length) {
-    html += '<details class="sd-fold" style="margin-top:14px"><summary>Taken off the list (' + b.removed.length + ')</summary><div class="wp-rows">' +
-      b.removed.map(function (x) {
-        return '<div class="wp-row"><a href="#" class="sd-bname" data-wpopen="' + esc(x.id) + '">' + esc(x.name) + '</a>' +
-          (x.category ? '<span class="sd-tag">' + esc(sdCatName(x.category)) + '</span>' : '') +
-          '<span class="wp-text">taken off ' + esc(wpTime(x.at)) + '</span>' +
-          '<span class="wp-acts"><button class="btn-ghost sd-sm" data-wpputback="' + esc(x.id) + '" data-wpn="' + esc(x.name) + '">Put back</button></span></div>';
-      }).join('') + '</div></details>';
+    ? shown.map(wpCardHtml).join('') +
+      (list.length > shown.length ? '<button class="btn-ghost wp-more" data-wpmore="1">Show ' + Math.min(40, list.length - shown.length) + ' more (' + (list.length - shown.length) + ' left)</button>' : '')
+    : '<div class="sd-empty">Nothing on your list. Search above, or pick a category.</div>';
+  var removed = WP.data.bank.removed || [];
+  if (removed.length) {
+    html += '<details class="sd-fold wp-removed"><summary>Taken off the list (' + removed.length + ')</summary>' +
+      removed.map(function (x) {
+        return '<div class="wp-mini"><a href="#" class="wp-dc-name" data-wpopen="' + esc(x.id) + '">' + esc(x.name) + '</a>' +
+          '<span class="sd-dim">' + esc(x.category ? sdCatName(x.category) : '') + '</span>' +
+          '<button class="btn-ghost sd-sm" data-wpputback="' + esc(x.id) + '" data-wpn="' + esc(x.name) + '">Put back</button></div>';
+      }).join('') + '</details>';
   }
-  box.innerHTML = html;
+  wpPaint('wp-list', html);
 }
 
-function wpWhereHtml(r) {
-  if (r.where === 'day') return '<span class="sd-tag day">On ' + esc(sdDayName(r.day)) + '</span>';
-  if (r.where === 'today') return '<span class="sd-tag good">In today’s list</span>';
-  if (r.where === 'cant') return '<span class="wp-why" title="' + esc(r.why || '') + '">' + esc(r.why || 'Can’t go yet') + '</span>';
-  return '<span class="sd-tag">Waiting</span>';
-}
-
-function wpRowHtml(r) {
-  var drag = r.where === 'waiting' && r.going > 0;
-  var put = drag && wpDays().length
-    ? '<select class="inp sd-mini" data-wpput="' + esc(r.id) + '" data-wpn="' + esc(r.name) + '" title="Put it on a day now"><option value="">Put on…</option>' + wpDayOpts('') + '</select>'
-    : '';
-  return '<div class="wp-row"' + (drag ? ' draggable="true" data-wpdrag="' + esc(r.id) + '" data-wpfrom="" data-wpn="' + esc(r.name) + '" title="Drag onto a day"' : '') + '>' +
-    '<span class="wp-rank">#' + r.rank + '</span>' +
-    '<a href="#" class="sd-bname" data-wpopen="' + esc(r.id) + '">' + esc(r.name) + '</a>' +
-    (r.category ? '<span class="sd-tag">' + esc(sdCatName(r.category)) + '</span>' : '') +
-    (r.how === 'hand' ? '<span class="sd-tag day" title="You put it on the list">added by you</span>' : '') +
-    (r.big ? '<span class="sd-tag" title="A big company: works 10 people at once">big</span>' : '') +
-    '<span class="wp-fit" title="Brand Fit">Fit ' + r.fit + '</span>' + sdLabelDot(r.label) +
-    (r.going ? '<span class="wp-going">' + sdPlural(r.going, 'person', 'people') + '</span>' : '') +
-    wpWhereHtml(r) +
-    '<span class="wp-acts">' + put +
-      '<button class="btn-ghost sd-cardx" data-wprm="' + esc(r.id) + '" data-wpn="' + esc(r.name) + '" title="Take it off your list" aria-label="Take ' + esc(r.name) + ' off your list">×</button></span>' +
+// One brand on the list, big: its place, name and fit; its category, how
+// many people go, its contacts; where it is; a button per day and Remove.
+function wpCardHtml(r) {
+  if (r.ghost) {
+    return '<div class="wp-b ghost"><div class="wp-b-h"><span class="wp-b-rank">#' + r.rank + '</span>' +
+      '<span class="wp-b-name">' + esc(r.name) + '</span></div>' +
+      '<div class="wp-b-act"><span class="sd-dim">Taken off your list.</span>' +
+      '<button class="btn-ghost sd-sm" data-wpundo1="' + esc(r.id) + '" data-wpn="' + esc(r.name) + '">Undo</button></div></div>';
+  }
+  var busy = !!WP.pending[r.id];
+  var status = r.where === 'day' ? '<span class="wp-status day">On ' + esc(sdDayName(r.day)) + ' ✓</span>'
+    : r.where === 'today' ? '<span class="wp-status today">In today’s LinkedIn list</span>'
+    : r.where === 'cant' ? '<span class="wp-status cant" title="' + esc(r.why || '') + '">' + esc(r.why || 'Can’t go out yet') + '</span>'
+    : '<span class="wp-status wait">Waiting for a day</span>';
+  var canPlace = (r.where === 'waiting' && r.going > 0) || r.where === 'day';
+  var days = canPlace ? wpDays().map(function (d) {
+    var on = r.where === 'day' && r.day === d.date;
+    var open = Math.max(0, (d.cap || 30) - wpPeople(d));
+    return '<button class="wp-daybtn' + (on ? ' on' : '') + '" data-wpput="' + esc(r.id) + '" data-wpto="' + esc(d.date) + '" data-wpn="' + esc(r.name) + '"' +
+      (busy ? ' disabled' : '') + ' title="' + esc(on ? 'On ' + sdDayName(d.date) + ' — click to take it off' : 'Put it on ' + sdDayName(d.date) + ' (' + open + ' open)') + '" aria-pressed="' + on + '">' +
+      (on ? '✓ ' : '+ ') + esc(wpShort(d.date)) + '</button>';
+  }).join('') : '';
+  var flash = WP.flash[r.id] && Date.now() - WP.flash[r.id] < 4000;
+  return '<div class="wp-b' + (busy ? ' busy' : '') + (flash ? ' flash' : '') + (r.where === 'day' ? ' placed' : '') + '"' +
+      (r.where === 'waiting' && r.going > 0 ? ' draggable="true" data-wpdrag="' + esc(r.id) + '" data-wpfrom="" data-wpn="' + esc(r.name) + '"' : '') + '>' +
+    '<div class="wp-b-h"><span class="wp-b-rank">#' + r.rank + '</span>' +
+      '<a href="#" class="wp-b-name" data-wpopen="' + esc(r.id) + '" title="' + esc(r.name) + '">' + esc(r.name) + '</a>' +
+      '<span class="wp-fitbox" title="Brand Fit">' + r.fit + '</span></div>' +
+    '<div class="wp-b-meta">' + (r.category ? '<span>' + esc(sdCatName(r.category)) + '</span>' : '') +
+      (r.going ? '<span>' + sdPlural(r.going, 'person', 'people') + '</span>' : '') + sdLabel(r.label) +
+      (r.how === 'hand' ? '<span class="sd-tag day" title="You put it on the list">added by you</span>' : '') +
+      (r.big ? '<span class="sd-tag" title="A big company: works 10 people at once">big</span>' : '') + rbTag(r.id) + '</div>' +
+    '<div class="wp-b-act">' + status + '<span class="sd-sp"></span>' + days +
+      '<button class="wp-rm" data-wprm="' + esc(r.id) + '" data-wpn="' + esc(r.name) + '"' + (busy ? ' disabled' : '') + ' title="Take it off your list">Remove</button></div>' +
   '</div>';
 }
 
-// --- adding to the list: the search box and a category ----------
+// ── adding: search and categories ───────────────────────────────────
 function wpFillCats() {
   var sel = document.getElementById('wp-cat');
   if (!sel || sel.options.length > 1) return;
   var prio = (WP.data && WP.data.priority) || SCHED.priority || {};
   var groups = { top: [], middle: [], low: [], skip: [] };
   CAT_KEYS.forEach(function (k) { (groups[prio[k]] || groups.middle).push(k); });
-  sel.innerHTML = '<option value="">Or browse a category…</option>' + ['top', 'middle', 'low', 'skip'].map(function (p) {
+  sel.innerHTML = '<option value="">Add from a category…</option>' + ['top', 'middle', 'low', 'skip'].map(function (p) {
     if (!groups[p].length) return '';
     return '<optgroup label="' + SD_PRIO_WORD[p] + ' priority">' + groups[p].map(function (k) {
       return '<option value="' + esc(k) + '">' + esc(CAT_NAMES[k]) + '</option>';
@@ -21055,7 +21981,9 @@ function wpFillCats() {
 function wpSearch(q) {
   WP.q = q;
   var mine = ++WP.qSeq;
-  if (q.trim().length < 2) { WP.rows = []; WP.qFor = ''; wpRenderResults(); return; }
+  if (q.trim().length < 2) { WP.rows = []; WP.qFor = ''; wpRenderList(); return; }
+  if (WP.cat) { WP.cat = ''; WP.catData = null; document.getElementById('wp-cat').value = ''; }
+  wpRenderList();
   setTimeout(function () {
     if (mine !== WP.qSeq) return;
     api('searchPlanBrands', { q: q, date: wpFirstDay() || undefined }).then(function (d) {
@@ -21063,7 +21991,7 @@ function wpSearch(q) {
       WP.rows = (d && d.brands) || [];
       WP.qFor = q;
       WP.hl = 0;
-      wpRenderResults();
+      wpRenderList();
     }).catch(function (e) { if (mine === WP.qSeq) toast(e.message); });
   }, 180);
 }
@@ -21073,101 +22001,235 @@ function wpBrowse(cat) {
   WP.catSel = {};
   WP.catAll = false;
   WP.catData = null;
+  if (cat && WP.q) { WP.q = ''; WP.rows = []; document.getElementById('wp-q').value = ''; }
   var mine = ++WP.catSeq;
-  wpRenderResults();
+  wpRenderList();
   if (!cat) return;
   api('weekBankBrowse', { category: cat, day: wpFirstDay() || undefined }).then(function (d) {
     if (mine !== WP.catSeq) return;
     WP.catData = d;
-    wpRenderResults();
-  }).catch(function (e) { if (mine === WP.catSeq) { WP.catData = { err: e.message }; wpRenderResults(); } });
+    wpRenderList();
+  }).catch(function (e) { if (mine === WP.catSeq) { WP.catData = { err: e.message }; wpRenderList(); } });
 }
 
-// One search / category row: what adding it means, and its button.
-function wpAddRowHtml(b, i, opts) {
+// A search / category result: what adding it means, and one button.
+function wpAddCardHtml(b, i, opts) {
   var on = wpById()[b.id];
   var fit = b.fit && typeof b.fit === 'object' ? b.fit.score : b.fit;
-  var btn = on ? '<span class="sd-tag good">On your list · #' + on.rank + '</span>'
+  var added = WP.added[b.id];
+  var btn = on ? '<span class="wp-status day">On your list · #' + on.rank + '</span>'
+    : added === 'busy' ? '<button class="wp-addbtn" disabled>Adding…</button>'
+    : added ? '<span class="wp-status day">Added ✓</span>'
     : b.action === 'none' ? ''
-    : '<button class="btn-draft sd-sm" data-wpadd="' + esc(b.id) + '" data-wpn="' + esc(b.name) + '"' + (b.giant ? ' data-wpgiant="1"' : '') +
-        (b.action === 'addAnyway' ? ' title="' + esc(b.text || '') + '"' : '') + '>' + (b.action === 'addAnyway' ? 'Add anyway' : '+ Add') + '</button>';
-  var tick = opts && opts.tick && !on && b.action !== 'none'
-    ? '<input type="checkbox" data-wptick="' + esc(b.id) + '"' + (WP.catSel[b.id] ? ' checked' : '') + ' aria-label="Tick ' + esc(b.name) + '">' : '';
-  return '<div class="wp-row' + (opts && opts.hl && i === WP.hl ? ' hl' : '') + '">' + tick +
-    '<a href="#" class="sd-bname" data-wpopen="' + esc(b.id) + '">' + esc(b.name) + '</a>' +
-    (b.category && !(opts && opts.tick) ? '<span class="sd-tag">' + esc(sdCatName(b.category)) + '</span>' : '') +
-    (fit != null ? '<span class="wp-fit" title="Brand Fit">Fit ' + fit + '</span>' : '') + sdLabelDot(b.label) +
-    '<span class="wp-text">' + esc(b.text || '') + '</span>' +
-    '<span class="wp-acts">' + btn + '</span></div>';
+    : '<button class="wp-addbtn' + (b.action === 'addAnyway' ? ' anyway' : '') + '" data-wpadd="' + esc(b.id) + '" data-wpn="' + esc(b.name) + '"' + (b.giant ? ' data-wpgiant="1"' : '') +
+        (b.action === 'addAnyway' ? ' title="' + esc(b.text || '') + '"' : '') + '>' + (b.action === 'addAnyway' ? 'Add anyway' : '+ Add to list') + '</button>';
+  var tick = opts && opts.tick && !on && !added && b.action !== 'none'
+    ? '<input type="checkbox" class="wp-tick" data-wptick="' + esc(b.id) + '"' + (WP.catSel[b.id] ? ' checked' : '') + ' aria-label="Tick ' + esc(b.name) + '">' : '';
+  return '<div class="wp-b' + (opts && opts.hl && i === WP.hl ? ' hl' : '') + '">' +
+    '<div class="wp-b-h">' + tick + '<a href="#" class="wp-b-name" data-wpopen="' + esc(b.id) + '" title="' + esc(b.name) + '">' + esc(b.name) + '</a>' +
+      (fit != null ? '<span class="wp-fitbox" title="Brand Fit">' + fit + '</span>' : '') + '</div>' +
+    '<div class="wp-b-meta">' + (b.category ? '<span>' + esc(sdCatName(b.category)) + '</span>' : '') + sdLabel(b.label) + rbTag(b.id) + '</div>' +
+    '<div class="wp-b-act"><span class="sd-dim">' + esc(b.text || '') + '</span><span class="sd-sp"></span>' + btn + '</div>' +
+  '</div>';
 }
 
-function wpRenderResults() {
-  var box = document.getElementById('wp-results');
-  if (!box) return;
-  var html = '';
-  if (WP.q.trim().length >= 2) {
-    html += WP.rows.length
-      ? '<div class="wp-rows">' + WP.rows.map(function (b, i) { return wpAddRowHtml(b, i, { hl: true }); }).join('') + '</div>'
-      : WP.qFor === WP.q ? '<div class="sd-dim">No brand matches “' + esc(WP.q) + '”.</div>' : '<div class="sd-dim">Searching…</div>';
-  }
-  if (WP.cat) {
-    var d = WP.catData;
-    html += '<div class="wp-bar" style="margin-top:' + (html ? '12px' : '0') + '"><b>' + esc(sdCatName(WP.cat)) + '</b>';
-    if (!d) html += '<span class="sd-dim">Loading…</span>';
-    else if (d.err) html += '<span class="sd-dim">Could not load: ' + esc(d.err) + '</span>';
-    else {
-      var byId = wpById();
-      var addable = (d.brands || []).filter(function (b) { return !byId[b.id]; });
-      var ticked = Object.keys(WP.catSel).filter(function (id) { return WP.catSel[id]; });
-      var top10 = addable.filter(function (b) { return b.action === 'add'; }).slice(0, 10);
-      html += '<span class="sd-dim">' + sdPlural((d.brands || []).length, 'brand', 'brands') + ' that can go out, best Brand Fit first' +
-        (d.setAside ? ' · ' + d.setAside + ' set aside (archived, in talks…)' : '') + '</span>' +
-        (top10.length ? '<button class="btn-ghost sd-sm" data-wpaddtop="1" title="' + esc(top10.map(function (b) { return b.name; }).join(', ')) + '">Add the top ' + top10.length + '</button>' : '') +
-        (ticked.length ? '<button class="btn-draft sd-sm" data-wpaddticked="1">Add ' + ticked.length + ' ticked</button>' : '');
-    }
-    html += '<span class="sd-sp"></span><a href="#" class="sd-x" data-wpcatx="1" title="Close">×</a></div>';
-    if (d && !d.err) {
-      var list = d.brands || [];
-      var shown = WP.catAll ? list : list.slice(0, 25);
-      html += '<div class="wp-rows" style="margin-top:8px">' + shown.map(function (b, i) { return wpAddRowHtml(b, i, { tick: true }); }).join('') + '</div>' +
-        (list.length > shown.length ? '<a href="#" class="sd-link" data-wpcatall="1" style="display:inline-block;margin-top:8px">Show all ' + list.length + '</a>' : '');
-    }
-  }
-  box.innerHTML = html;
+function wpSearchHtml() {
+  if (WP.qFor !== WP.q) return '<div class="sd-empty">Searching…</div>';
+  if (!WP.rows.length) return '<div class="sd-empty">No brand matches “' + esc(WP.q) + '”.</div>';
+  return WP.rows.map(function (b, i) { return wpAddCardHtml(b, i, { hl: true }); }).join('');
 }
 
-function wpAdd(ids, giants, names) {
+// A category's brands under the Outreach filter (reached = the Reached
+// tag's rule), and the ticks among them.
+function wpReached(b) { return !!b.reached; }
+function wpCatRows() {
+  return ((WP.catData && WP.catData.brands) || []).filter(function (b) { return reachOk('weekplan', wpReached(b)); });
+}
+function wpCatTicked() {
+  return wpCatRows().filter(function (b) { return WP.catSel[b.id]; }).map(function (b) { return b.id; });
+}
+REACH_DRAW.weekplan = function () { wpRenderList(); };
+function wpCatAddable() {
+  var byId = wpById();
+  return wpCatRows().filter(function (b) { return !byId[b.id] && !WP.added[b.id]; });
+}
+function wpCatBarHtml() {
+  var d = WP.catData;
+  var html = '<div class="wp-h-row"><b>' + esc(sdCatName(WP.cat)) + '</b>';
+  if (d && !d.err) {
+    var top10 = wpCatAddable().filter(function (b) { return b.action === 'add'; }).slice(0, 10);
+    var ticked = wpCatTicked();
+    html += (ticked.length ? '<button class="btn-solid sd-sm" data-wpaddticked="1">Add ' + ticked.length + ' ticked</button>' : '') +
+      (top10.length ? '<button class="btn-ghost sd-sm" data-wpaddtop="1" title="' + esc(top10.map(function (b) { return b.name; }).join(', ')) + '">Add the top ' + top10.length + '</button>' : '');
+  }
+  html += '<a href="#" class="wp-back" data-wpcatx="1">× Back to your list</a></div>';
+  if (d && !d.err) {
+    html += '<div class="wp-h-row">' + reachSelect('weekplan', reachCounts(d.brands || [], wpReached)) +
+      '<span class="sd-dim">' + (REACH_F.weekplan ? wpCatRows().length + ' of ' : '') + sdPlural((d.brands || []).length, 'brand', 'brands') + ' that can go out, best Brand Fit first' +
+      (d.setAside ? ' · ' + d.setAside + ' set aside (archived, in talks…)' : '') + '</span></div>';
+  }
+  return html;
+}
+function wpCatHtml() {
+  var d = WP.catData;
+  if (!d) return '<div class="sd-empty">Loading…</div>';
+  if (d.err) return '<div class="sd-empty">Could not load: ' + esc(d.err) + '</div>';
+  var list = wpCatRows();
+  if (!list.length && (d.brands || []).length) return '<div class="sd-empty">No ' + esc(sdCatName(WP.cat)) + ' brand here ' + (REACH_F.weekplan === 'yes' ? 'has been reached out to.' : 'is still waiting for its first outreach.') + '</div>';
+  if (!list.length) return '<div class="sd-empty">No ' + esc(sdCatName(WP.cat)) + ' brand can go out right now.</div>';
+  var shown = WP.catAll ? list : list.slice(0, 30);
+  return shown.map(function (b, i) { return wpAddCardHtml(b, i, { tick: true }); }).join('') +
+    (list.length > shown.length ? '<button class="btn-ghost wp-more" data-wpcatall="1">Show all ' + list.length + '</button>' : '');
+}
+
+// ── the changes ──────────────────────────────────────────────────────
+function wpAdd(ids, giants) {
+  ids = ids.filter(function (id) { return !wpById()[id]; });
   if (!ids.length) return;
-  return wpCall('weekBankAdd', { brandIds: ids, allowGiants: giants || [] }, function (r) {
-    var added = (r.added || []).map(function (x) { return x.name; });
-    var no = (r.refused || []).map(function (x) { return x.name + ' (' + (x.text || 'can’t go out') + ')'; });
-    return (added.length ? 'On your list: ' + (added.length > 3 ? added.length + ' brands' : added.join(', ')) : (names || 'Already on your list')) +
-      (no.length ? ' · not added: ' + no.join('; ') : '');
+  ids.forEach(function (id) { WP.added[id] = 'busy'; });
+  return wpDo({
+    fn: 'weekBankAdd', args: { brandIds: ids, allowGiants: giants || [] },
+    local: function () {},
+    done: function (r) {
+      var now = Date.now();
+      (r.added || []).forEach(function (x) { WP.added[x.id] = true; WP.flash[x.id] = now; });
+      (r.refused || []).forEach(function (x) { delete WP.added[x.id]; });
+      ids.forEach(function (id) { if (WP.added[id] === 'busy') WP.added[id] = true; });
+      WP.catSel = {};
+      var names = (r.added || []).map(function (x) { return x.name; });
+      var no = (r.refused || []).map(function (x) { return x.name + ' (' + (x.text || 'can’t go out') + ')'; });
+      return (names.length ? 'Added to your list: ' + (names.length > 3 ? names.length + ' brands' : names.join(', ')) : 'Already on your list') +
+        (no.length ? ' · not added: ' + no.join('; ') : '');
+    }
   });
 }
 
-// --- the spread ----------------------------------------------------
+// Put a brand on a day (from the list or another day). Shown at once.
+function wpPlace(id, name, to) {
+  var r = wpById()[id];
+  var from = r && r.where === 'day' ? r.day : '';
+  if (from === to) return wpOff(id, name, from);
+  var going = r ? r.going : 0;
+  return wpDo({
+    ids: [id],
+    fn: from ? 'planMoveBrand' : 'planAddBrands',
+    args: from ? { brandId: id, from: from, to: to } : { date: to, brandIds: [id] },
+    local: function () {
+      var card = null;
+      if (from) {
+        var fd = wpDay(from);
+        if (fd) {
+          card = (fd.pinned || []).filter(function (p) { return p.id === id; })[0] || null;
+          fd.pinned = (fd.pinned || []).filter(function (p) { return p.id !== id; });
+        }
+      }
+      var td = wpDay(to);
+      if (td) {
+        td.pinned = (td.pinned || []).concat([card || { id: id, name: name, category: r && r.category, state: 'going', going: going, waits: null, people: (r && r.people) || [], big: !!(r && r.big) }]);
+      }
+      if (r) { r.where = 'day'; r.day = to; }
+    },
+    done: function (res) {
+      var out = from ? (res && res.result) : ((res && res.results) || [])[0];
+      if ((from && res && res.ok === false) || (out && out.added === false)) {
+        return name + ' can’t go on ' + sdDayName(to) + (out && out.reasonText ? ': ' + out.reasonText : '');
+      }
+      return name + ' → ' + sdDayName(to) + (out && out.waits ? ' (waits — past the day’s ' + sdCap() + ')' : '');
+    }
+  });
+}
+
+function wpMoveCard(id, name, from, to) {
+  if (wpById()[id]) return wpPlace(id, name, to);
+  // A brand on the day that isn't on the list (planned on the Schedule).
+  return wpDo({
+    ids: [id], fn: 'planMoveBrand', args: { brandId: id, from: from, to: to },
+    local: function () {
+      var fd = wpDay(from), td = wpDay(to);
+      var card = fd && (fd.pinned || []).filter(function (p) { return p.id === id; })[0];
+      if (fd) fd.pinned = (fd.pinned || []).filter(function (p) { return p.id !== id; });
+      if (td && card) td.pinned = (td.pinned || []).concat([card]);
+    },
+    done: function (res) {
+      if (res && res.ok === false) return name + ' can’t go on ' + sdDayName(to) + (res.result && res.result.reasonText ? ': ' + res.result.reasonText : '');
+      return name + ' → ' + sdDayName(to);
+    }
+  });
+}
+
+// Off a day: it waits on the list again.
+function wpOff(id, name, from) {
+  var r = wpById()[id];
+  return wpDo({
+    ids: [id], fn: 'planRemoveBrand', args: { date: from, brandId: id },
+    local: function () {
+      var fd = wpDay(from);
+      if (fd) fd.pinned = (fd.pinned || []).filter(function (p) { return p.id !== id; });
+      if (r) { r.where = 'waiting'; r.day = null; }
+    },
+    done: function () { return name + ' is off ' + sdDayName(from) + (r ? ' — waiting on your list' : ''); }
+  });
+}
+
+// Off the list. On a day already: it asks, and comes off the day too. The
+// card stays where it was with Undo.
+function wpRemove(id, name) {
+  var rows = wpRows();
+  var idx = -1;
+  rows.forEach(function (x, i) { if (x.id === id) idx = i; });
+  var r = rows[idx];
+  if (!r) return;
+  if (r.where === 'day' && !confirm('Take ' + name + ' off your list and off ' + sdDayName(r.day) + '?')) return;
+  var day = r.where === 'day' ? r.day : '';
+  return wpDo({
+    ids: [id], fn: 'weekBankRemove', args: day ? { brandIds: [id], offDays: true } : { brandIds: [id] },
+    local: function () {
+      WP.gone[id] = { row: Object.assign({}, r), idx: idx, at: Date.now() };
+      WP.data.bank.rows = rows.filter(function (x) { return x.id !== id; });
+      if (day) { var fd = wpDay(day); if (fd) fd.pinned = (fd.pinned || []).filter(function (p) { return p.id !== id; }); }
+      setTimeout(function () { if (WP.gone[id] && Date.now() - WP.gone[id].at >= WP_GONE_MS) { delete WP.gone[id]; wpRenderList(); } }, WP_GONE_MS + 50);
+    },
+    done: function () { return name + ' is off your list' + (day ? ' and off ' + sdDayName(day) : ''); }
+  });
+}
+
+function wpUndoRemove(id, name) {
+  var g = WP.gone[id];
+  delete WP.gone[id];
+  return wpDo({
+    ids: [id], fn: 'weekBankPutBack', args: { brandIds: [id] },
+    local: function () {
+      if (g && !wpById()[id]) {
+        var row = Object.assign({}, g.row, { where: g.row.where === 'day' ? 'waiting' : g.row.where, day: null });
+        WP.data.bank.rows.splice(Math.min(g.idx, WP.data.bank.rows.length), 0, row);
+      }
+    },
+    done: function () { return name + ' is back on your list'; }
+  });
+}
+
 function wpSpread() {
   if (WP.pvBusy) return;
   WP.pvBusy = true;
   WP.done = null;
-  wpRenderHead();
+  wpRenderWeekHead();
   var seed = Math.floor(Math.random() * 1e9);
   return api('weekSpread', { week: WP.week, seed: seed }).then(function (pv) {
     WP.pvBusy = false;
-    if (!pv || pv.ok === false) { toast((pv && pv.message) || 'Nothing to spread'); wpRenderHead(); return; }
+    if (!pv || pv.ok === false) { toast((pv && pv.message) || 'Nothing to spread'); wpRenderWeekHead(); return; }
     WP.pv = pv;
-    wpRenderHead();
+    wpRenderWeekHead();
     wpRenderDays();
-  }).catch(function (e) { WP.pvBusy = false; toast(e.message); wpRenderHead(); });
+  }).catch(function (e) { WP.pvBusy = false; toast(e.message); wpRenderWeekHead(); });
 }
 
 function wpApply() {
   var pv = WP.pv;
   if (!pv || WP.applying) return;
   WP.applying = true;
-  wpRenderHead();
+  wpRenderWeekHead();
   var days = pv.days.map(function (d) { return { date: d.date, brandIds: d.add.map(function (a) { return a.id; }) }; });
+  WP.writes += 1; WP.wseq += 1;
   return api('weekSpread', { apply: true, days: days }).then(function (r) {
     WP.applying = false;
     WP.pv = null;
@@ -21182,41 +22244,22 @@ function wpApply() {
       (refused.length ? ' Couldn’t go: ' + refused.join(', ') + '.' : '') +
       (moved.length ? ' Left where you put them: ' + moved.join(', ') + '.' : '') +
       (waits.length ? ' Wait for the next day: ' + waits.join(', ') + '.' : '') };
-    return loadWeekPlan();
-  }).catch(function (e) { WP.applying = false; toast(e.message); wpRenderHead(); });
+    WP.writes -= 1;
+    return wpRead();
+  }).catch(function (e) { WP.applying = false; WP.writes -= 1; toast(e.message); wpRenderWeekHead(); });
 }
 
 function wpUndo() {
   return api('undoWeekSpread', { preview: true }).then(function (pv) {
-    if (!pv || pv.ok === false) { toast((pv && pv.message) || 'Nothing to undo'); return loadWeekPlan(); }
+    if (!pv || pv.ok === false) { toast((pv && pv.message) || 'Nothing to undo'); return wpRead(); }
     var msg = 'Take the last spread back off?\n\n' +
       (pv.off.length ? 'Comes off its day: ' + pv.off.map(function (o) { return o.name + ' (' + o.day + ')'; }).join(', ') : 'Nothing is still where it put it.') +
       (pv.stays.length ? '\n\nStays where it is (moved since, or going out today): ' + pv.stays.join(', ') : '') +
       (pv.unmark.length ? '\n\nBest fit fills the open spots again on: ' + pv.unmark.join(', ') : '');
     if (!confirm(msg)) return;
     WP.done = null;
-    return wpCall('undoWeekSpread', {}, function (r) { return 'Spread taken back · ' + sdPlural((r.off || []).length, 'brand', 'brands') + ' off their days'; });
+    return wpDo({ fn: 'undoWeekSpread', args: {}, done: function (r) { return 'Spread taken back · ' + sdPlural((r.off || []).length, 'brand', 'brands') + ' off their days'; } });
   }).catch(function (e) { toast(e.message); });
-}
-
-function wpMove(id, name, from, to) {
-  if (!to) {
-    var onList = !!wpById()[id];
-    return wpCall('planRemoveBrand', { date: from, brandId: id }, name + ' is off ' + sdDayName(from) + (onList ? ' — waiting on your list' : ''));
-  }
-  return wpCall('planMoveBrand', { brandId: id, from: from, to: to }, function (r) {
-    var res = r && r.result;
-    if (r && r.ok === false) return name + ' can’t go on ' + sdDayName(to) + (res && res.reasonText ? ': ' + res.reasonText : '');
-    return name + ' → ' + sdDayName(to) + (res && res.waits ? ' (waits — past the day’s ' + sdCap() + ')' : '');
-  });
-}
-
-function wpPut(id, name, date) {
-  return wpCall('planAddBrands', { date: date, brandIds: [id] }, function (r) {
-    var res = (r && r.results || [])[0];
-    if (res && !res.added) return name + ' can’t go on ' + sdDayName(date) + (res.reasonText ? ': ' + res.reasonText : '');
-    return name + ' → ' + sdDayName(date) + (res && res.waits ? ' (waits — past the day’s ' + sdCap() + ')' : '');
-  });
 }
 
 (function () {
@@ -21227,13 +22270,13 @@ function wpPut(id, name, date) {
   q.addEventListener('input', function () { wpSearch(q.value); });
   q.addEventListener('keydown', function (e) {
     var rows = WP.rows;
-    if (e.key === 'ArrowDown' && rows.length) { e.preventDefault(); WP.hl = Math.min(rows.length - 1, WP.hl + 1); wpRenderResults(); }
-    else if (e.key === 'ArrowUp' && rows.length) { e.preventDefault(); WP.hl = Math.max(0, WP.hl - 1); wpRenderResults(); }
+    if (e.key === 'ArrowDown' && rows.length) { e.preventDefault(); WP.hl = Math.min(rows.length - 1, WP.hl + 1); wpRenderList(); }
+    else if (e.key === 'ArrowUp' && rows.length) { e.preventDefault(); WP.hl = Math.max(0, WP.hl - 1); wpRenderList(); }
     else if (e.key === 'Enter') {
       e.preventDefault();
       // Enter adds a plain add only — never an "Add anyway", never rows for older text.
       var b = WP.qFor === q.value ? rows[WP.hl] : null;
-      if (b && b.action === 'add' && !wpById()[b.id]) wpAdd([b.id], [], b.name);
+      if (b && b.action === 'add' && !wpById()[b.id] && !WP.added[b.id]) wpAdd([b.id], []);
     } else if (e.key === 'Escape') { q.value = ''; wpSearch(''); }
   });
   cat.addEventListener('change', function () { wpBrowse(cat.value); });
@@ -21248,79 +22291,69 @@ function wpPut(id, name, date) {
       loadWeekPlan();
       return;
     }
-    if ((t = e.target.closest('[data-wpspread]'))) { wpSpread(); return; }
-    if ((t = e.target.closest('[data-wpshuffle]'))) { wpSpread(); return; }
+    if ((t = e.target.closest('[data-wpspread]')) || (t = e.target.closest('[data-wpshuffle]'))) { wpSpread(); return; }
     if ((t = e.target.closest('[data-wpapply]'))) { wpApply(); return; }
-    if ((t = e.target.closest('[data-wppvx]'))) { WP.pv = null; wpRenderHead(); wpRenderDays(); return; }
+    if ((t = e.target.closest('[data-wppvx]'))) { WP.pv = null; wpRenderWeekHead(); wpRenderDays(); return; }
     if ((t = e.target.closest('[data-wpundo]'))) { e.preventDefault(); wpUndo(); return; }
-    if ((t = e.target.closest('[data-wpdonex]'))) { e.preventDefault(); WP.done = null; wpRenderHead(); return; }
+    if ((t = e.target.closest('[data-wpdonex]'))) { e.preventDefault(); WP.done = null; wpRenderWeekHead(); return; }
     if ((t = e.target.closest('[data-wplist]'))) {
       e.preventDefault();
       var lk = t.getAttribute('data-wplist'), on = t.getAttribute('data-on') === '1';
-      wpCall('setListDay', { date: lk, on: on }, sdDayName(lk) + (on ? ': only brands from your list' : ': open spots fill with Best fit again'));
+      wpDo({ fn: 'setListDay', args: { date: lk, on: on },
+        local: function () { var d = wpDay(lk); if (d) { d.list = on; if (on) { d.auto = 0; d.autoPeople = 0; } } },
+        done: function () { return sdDayName(lk) + (on ? ': only brands from your list' : ': open spots fill with Best fit again'); } });
       return;
     }
-    if ((t = e.target.closest('[data-wpoff]'))) { wpMove(t.getAttribute('data-wpoff'), t.getAttribute('data-wpn'), t.getAttribute('data-wpday'), ''); return; }
-    if ((t = e.target.closest('[data-wpfilter]'))) { WP.filter = t.getAttribute('data-wpfilter'); WP.showAll = false; wpRenderList(); return; }
-    if ((t = e.target.closest('[data-wpall]'))) { e.preventDefault(); WP.showAll = true; wpRenderList(); return; }
-    if ((t = e.target.closest('[data-wprm]'))) {
-      var id = t.getAttribute('data-wprm'), nm = t.getAttribute('data-wpn');
-      var r = wpById()[id];
-      if (r && r.where === 'day') {
-        if (!confirm('Take ' + nm + ' off your list and off ' + sdDayName(r.day) + '?')) return;
-        wpCall('weekBankRemove', { brandIds: [id], offDays: true }, nm + ' is off your list and off ' + sdDayName(r.day));
-      } else {
-        wpCall('weekBankRemove', { brandIds: [id] }, nm + ' is off your list — Put back is at the bottom');
-      }
+    if ((t = e.target.closest('[data-wpput]'))) { wpPlace(t.getAttribute('data-wpput'), t.getAttribute('data-wpn'), t.getAttribute('data-wpto')); return; }
+    if ((t = e.target.closest('[data-wpmove]'))) { wpMoveCard(t.getAttribute('data-wpmove'), t.getAttribute('data-wpn'), t.getAttribute('data-wpfrom'), t.getAttribute('data-wpto')); return; }
+    if ((t = e.target.closest('[data-wpoff]'))) { wpOff(t.getAttribute('data-wpoff'), t.getAttribute('data-wpn'), t.getAttribute('data-wpday')); return; }
+    if ((t = e.target.closest('[data-wprm]'))) { wpRemove(t.getAttribute('data-wprm'), t.getAttribute('data-wpn')); return; }
+    if ((t = e.target.closest('[data-wpundo1]'))) { wpUndoRemove(t.getAttribute('data-wpundo1'), t.getAttribute('data-wpn')); return; }
+    if ((t = e.target.closest('[data-wpputback]'))) {
+      var pid = t.getAttribute('data-wpputback'), pn = t.getAttribute('data-wpn');
+      wpDo({ ids: [pid], fn: 'weekBankPutBack', args: { brandIds: [pid] },
+        local: function () { WP.data.bank.removed = (WP.data.bank.removed || []).filter(function (x) { return x.id !== pid; }); },
+        done: function () { return pn + ' is back on your list'; } });
       return;
     }
-    if ((t = e.target.closest('[data-wpputback]'))) { wpCall('weekBankPutBack', { brandIds: [t.getAttribute('data-wpputback')] }, t.getAttribute('data-wpn') + ' is back on your list'); return; }
+    if ((t = e.target.closest('[data-wpfilter]'))) { WP.filter = t.getAttribute('data-wpfilter'); WP.shown = 40; wpRenderList(); return; }
+    if ((t = e.target.closest('[data-wpmore]'))) { WP.shown += 40; wpRenderList(); return; }
+    if ((t = e.target.closest('[data-wpclear]'))) { e.preventDefault(); q.value = ''; wpSearch(''); q.focus(); return; }
     if ((t = e.target.closest('[data-wpadd]'))) {
       var aid = t.getAttribute('data-wpadd');
-      t.disabled = true; t.textContent = 'Adding…';
-      wpAdd([aid], t.hasAttribute('data-wpgiant') ? [aid] : [], t.getAttribute('data-wpn'));
+      wpAdd([aid], t.hasAttribute('data-wpgiant') ? [aid] : []);
       return;
     }
     if ((t = e.target.closest('[data-wpaddtop]'))) {
-      var byId = wpById();
-      var top = ((WP.catData && WP.catData.brands) || []).filter(function (b) { return !byId[b.id] && b.action === 'add'; }).slice(0, 10);
-      wpAdd(top.map(function (b) { return b.id; }), []);
+      wpAdd(wpCatAddable().filter(function (b) { return b.action === 'add'; }).slice(0, 10).map(function (b) { return b.id; }), []);
       return;
     }
     if ((t = e.target.closest('[data-wpaddticked]'))) {
-      var rows = (WP.catData && WP.catData.brands) || [];
-      var ids = Object.keys(WP.catSel).filter(function (k) { return WP.catSel[k]; });
+      var rows = wpCatRows();
+      var ids = wpCatTicked();
       var giants = rows.filter(function (b) { return WP.catSel[b.id] && b.giant; }).map(function (b) { return b.id; });
-      WP.catSel = {};
       wpAdd(ids, giants);
       return;
     }
     if ((t = e.target.closest('[data-wpcatx]'))) { e.preventDefault(); cat.value = ''; wpBrowse(''); return; }
-    if ((t = e.target.closest('[data-wpcatall]'))) { e.preventDefault(); WP.catAll = true; wpRenderResults(); return; }
+    if ((t = e.target.closest('[data-wpcatall]'))) { WP.catAll = true; wpRenderList(); return; }
   });
   sec.addEventListener('change', function (e) {
     var t = e.target;
     if (t.hasAttribute('data-wpsize')) {
       var n = Math.round(Number(t.value));
       if (!isFinite(n) || n <= 0) { toast('Not a number'); return; }
-      wpCall('weekBankSize', { size: n }, function (r) { return 'Your list holds ' + r.size + ' brands'; });
+      wpDo({ fn: 'weekBankSize', args: { size: n }, done: function (r) { return 'Your list holds up to ' + r.size + ' brands'; } });
       return;
     }
-    if (t.hasAttribute('data-wpmove')) {
-      var to = t.value;
-      if (!to) return;
-      wpMove(t.getAttribute('data-wpmove'), t.getAttribute('data-wpn'), t.getAttribute('data-wpfrom'), to === '__off' ? '' : to);
-      return;
+    if (t.hasAttribute('data-wptick')) {
+      WP.catSel[t.getAttribute('data-wptick')] = t.checked;
+      document.getElementById('wp-filters').innerHTML = wpCatBarHtml();
     }
-    if (t.hasAttribute('data-wpput')) {
-      if (!t.value) return;
-      wpPut(t.getAttribute('data-wpput'), t.getAttribute('data-wpn'), t.value);
-      return;
-    }
-    if (t.hasAttribute('data-wptick')) { WP.catSel[t.getAttribute('data-wptick')] = t.checked; wpRenderResults(); }
   });
 
-  // Drag a card between days, or a waiting row onto a day.
+  // Drag a list card onto a day, a day's card onto another day, or back
+  // onto the list.
   sec.addEventListener('dragstart', function (e) {
     var el = e.target.closest && e.target.closest('[data-wpdrag]');
     if (!el) return;
@@ -21334,33 +22367,41 @@ function wpPut(id, name, date) {
     sec.querySelectorAll('.sd-over').forEach(function (d) { d.classList.remove('sd-over'); });
     WP_DRAG = null;
   });
+  var dropOf = function (e) {
+    var col = e.target.closest('[data-wpdrop]');
+    if (col) return { el: col, to: col.getAttribute('data-wpdrop') };
+    var list = e.target.closest('#wp-listpane');
+    if (list && WP_DRAG && WP_DRAG.from) return { el: list, to: '' };
+    return null;
+  };
   sec.addEventListener('dragover', function (e) {
     if (!WP_DRAG) return;
-    var col = e.target.closest('[data-wpdrop]');
-    if (!col || col.getAttribute('data-wpdrop') === WP_DRAG.from) return;
+    var d = dropOf(e);
+    if (!d || d.to === WP_DRAG.from) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    col.classList.add('sd-over');
+    d.el.classList.add('sd-over');
   });
   sec.addEventListener('dragleave', function (e) {
-    var col = e.target.closest('[data-wpdrop]');
-    if (col && !col.contains(e.relatedTarget)) col.classList.remove('sd-over');
+    var d = dropOf(e);
+    if (d && !d.el.contains(e.relatedTarget)) d.el.classList.remove('sd-over');
   });
   sec.addEventListener('drop', function (e) {
-    var col = e.target.closest('[data-wpdrop]');
-    if (!col || !WP_DRAG) return;
+    var d = dropOf(e);
+    if (!d || !WP_DRAG) return;
     e.preventDefault();
-    col.classList.remove('sd-over');
-    var to = col.getAttribute('data-wpdrop');
-    var d = WP_DRAG;
+    d.el.classList.remove('sd-over');
+    var g = WP_DRAG;
     WP_DRAG = null;
-    if (to === d.from) return;
-    if (d.from) wpMove(d.id, d.name, d.from, to);
-    else wpPut(d.id, d.name, to);
+    if (d.to === g.from) return;
+    if (!d.to) wpOff(g.id, g.name, g.from);
+    else if (g.from) wpMoveCard(g.id, g.name, g.from, d.to);
+    else wpPlace(g.id, g.name, d.to);
   });
 })();
 
 function gotoView(id) {
+  rbLoad();
   NAV_FRESH = true;
   try { gotoViewNow(id); } finally { NAV_FRESH = false; }
 }
@@ -21393,6 +22434,7 @@ function gotoViewNow(id) {
   if (id === 'clarify') loadClarify();
   if (id === 'materials') showView('materials');
   if (id === 'team') loadTeam();
+  if (id === 'chats') loadChats();
 }
 
 // Coming back from the Google consent screen.
@@ -21521,13 +22563,14 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'li-zach', 'li-sched', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity', 'st-lanes', 'st-others'].forEach(function (id) {
+['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'li-zach', 'li-sched', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity', 'st-lanes', 'st-others', 'hm-accepted'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
     if (e.target.closest('a')) return;   // let real links through
     if (e.target.closest('[data-nbq]') || e.target.closest('[data-nbp]') || e.target.closest('[data-nbtoday]') || e.target.closest('[data-nbperson]') || e.target.closest('[data-nbslot]') || e.target.closest('[data-rcact]') || e.target.closest('[data-rcstage]') || e.target.closest('[data-unpass]') || e.target.closest('[data-blpass]') || e.target.closest('[data-bsel]')) return;   // controls with their own handlers
-    loadBrand(el.getAttribute('data-brand'));
+    // data-focus = a person's card: their brand page, at them.
+    loadBrand(el.getAttribute('data-brand'), el.getAttribute('data-focus') || null);
   });
 });
 
@@ -21875,7 +22918,7 @@ function renderNextBest() {
         var tag = [CAT_NAMES[b.category] || b.category].filter(Boolean).join('');
         return '<div class="target" data-brand="' + esc(b.id) + '">' +
           '<div class="t-main">' +
-            '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(b.name) + '</span>' +
+            '<div class="t-line"><span class="t-brand" style="cursor:pointer">' + esc(b.name) + '</span>' + rbTag(b.id) +
               (tag ? '<span class="t-sep">·</span><span class="t-title">' + esc(tag) + '</span>' : '') + '</div>' +
             '<div class="t-meta"><span>' + esc((b.why || []).join(' · ')) + '</span></div>' +
           '</div>' +
@@ -23136,6 +24179,9 @@ Promise.all([
 });
 
 loadRateCard();
+// The Reached tags: read once at the start, again when the window comes back.
+rbLoad();
+window.addEventListener('focus', function () { rbLoad(); });
 
 loadDashboard().catch(function (e) {
   document.getElementById('dash-sub').textContent = 'Could not connect: ' + e.message;
