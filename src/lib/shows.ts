@@ -35,7 +35,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000
 // Bumped when parseSheet changes what it lists: a cache written by an older
 // parser counts as stale, so the next read rebuilds it from the sheet (the
 // old list stays up if the sheet can't be read).
-const PARSER_VERSION = 4
+const PARSER_VERSION = 5
 
 export type Show = {
   id: string
@@ -267,6 +267,14 @@ function col(hdr: string[], ...names: string[]) {
   return -1
 }
 
+// A row SB only produces ("Production", "Local - Production") has no act
+// to show a brand (Leo: "skip production only shows"). Same rule as the
+// sboy-site sync script.
+function productionOnly(artist: string) {
+  const a = artist.trim().toLowerCase()
+  return a.startsWith('production') || a.endsWith('- production') || a === 'local'
+}
+
 export type SheetParse = { shows: Show[]; tables: number; rowsSeen: number; rejected: { reason: string; row: string }[] }
 
 export function parseSheet(tabs: { title: string; gid?: number; rows: string[][] }[], overrides: Record<string, string> = {}): SheetParse {
@@ -293,6 +301,7 @@ export function parseSheet(tabs: { title: string; gid?: number; rows: string[][]
         const date = parseShowDate(rawDate)
         if (!date) { rejected.push({ reason: 'no date', row: label }); continue }
         if (!artist) { rejected.push({ reason: 'no artist', row: label }); continue }
+        if (productionOnly(artist)) { rejected.push({ reason: 'production only', row: label }); continue }
         if (!school) { rejected.push({ reason: 'no school', row: label }); continue }
         const info = schoolInfo(school)
         const typeRaw = get(cType).toLowerCase()
