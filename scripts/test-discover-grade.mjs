@@ -95,12 +95,51 @@ t('every point has a reason, score stays 0..100', () => {
   assert.equal(g.reasons.reduce((s, r) => s + r.points, 0), g.score); assert.ok(g.score <= 100)
 })
 
+// Leo, Oct 18 2026: "neuro should definitely be higher given that the ideal
+// candidates are people who study and do work" — it was 46 C.
+const NEURO = 'Neuro caffeine/nootropic energy gum and mints. First mass-retail entry Feb 2026 with Walmart endcaps in 202 stores ' +
+  '(CA, TX, NV, OR, OK), with the full line to follow later in 2026. Says it is in 10,000+ stores (Whole Foods, CVS, Albertsons).'
+const NEURO_PITCH = "Finals-week 'Study Hall' pop-up before a campus show: free Neuro packs at the door plus a branded chill-out zone in the venue."
+t('fits a student’s day: Neuro, made for studying, is an A (was 46 C)', () => {
+  const g = gradeDiscovery({ category: 'energy', name: 'Neuro', writeUp: NEURO, text: NEURO + ' ' + NEURO_PITCH }, ctx('top'))
+  const r = (re) => g.reasons.find(x => re.test(x.text))
+  assert.equal(r(/studying \/ focus/).points, 20)
+  assert.match(r(/studying/).text, /nootropic/)
+  assert.equal(r(/growing fast/).points, 10, 'a first mass-retail entry is growth')
+  assert.match(r(/growing fast/).text, /First mass-retail/)
+  assert.equal(g.score, 76); assert.equal(g.grade, 'A')
+})
+
+t('the student fit and launches read the brand’s write-up, never our pitch', () => {
+  const g = scoreFind({ priority: 'top', name: 'Casa X', writeUp: 'Premium tequila from Jalisco.',
+    text: 'Premium tequila from Jalisco. Finals-week study break at a campus party, launching at Walmart.' })
+  assert.equal(g.reasons.find(x => /student use/.test(x.text)).points, 0)
+  assert.ok(!g.reasons.some(x => /growing fast/.test(x.text)))
+  const none = scoreFind({ priority: 'top', name: 'Casa X' })
+  assert.match(none.reasons.find(x => x.points === 0 && /on file/.test(x.text)).text, /isn’t on file/)
+})
+
+t('launches count as growth, once; a footprint that just is doesn’t', () => {
+  const grow = (w) => scoreFind({ priority: 'middle', name: 'X', writeUp: w, text: w }).reasons.filter(x => /growing fast/.test(x.text))
+  for (const w of ['national launch in all 2,300+ Albertsons stores', 'rolling out to Kroger', 'added 400 SoCal stores in 2024',
+    'expanding into Walmart', 'moved to Shaw-Ross national distribution in Jan 2025', 'Pure line into Target 2026']) {
+    assert.equal(grow(w).length, 1, w)
+  }
+  assert.equal(grow('sales doubled, then a national launch').length, 1, 'never twice')
+  assert.equal(grow('doubled').at(0).text, 'growing fast')
+  for (const w of ['sold in 48 states', 'a music-led brand with national distribution', 'launched in 2019']) assert.equal(grow(w).length, 0, w)
+})
+
 t('a find on the roster grades on its brand’s own Brand Fit', () => {
   const f = scoreBrand({ category: 'energy', priority: 'top', salesCents: 120 * M, sponsorsCollege: true, reachable: 4, need: 4, acceptRate: 0.3, now })
   const g = gradeFromFit(f); assert.equal(g.score, f.score); assert.equal(g.grade, 'A')
   assert.equal(gradeFromFit(scoreBrand({ category: 'energy', priority: 'top', usStatus: 'no', reachable: 4, need: 4, now })).capped, 'not sold in the US')
   const small = scoreBrand({ category: 'energy', priority: 'top', salesCents: 500_000 * 100, sponsorsCollege: true, reachable: 4, need: 4, now })
   assert.ok(small.tooSmall); assert.ok(['C', 'D'].includes(gradeFromFit(small).grade))
+  // Neuro on the roster (Oct 18 2026: 63 B) — its write-up lives in its notes.
+  const neuro = scoreBrand({ category: 'energy', priority: 'top', tier: 'growth', name: 'Neuro', reachable: 0, need: 4, now,
+    notes: 'Discover: ' + NEURO + '\nActivation idea: ' + NEURO_PITCH + '\nFound in: https://example.com' })
+  assert.equal(neuro.score, 83); assert.equal(gradeFromFit(neuro).grade, 'A')
 })
 
 console.log(n + ' passed')

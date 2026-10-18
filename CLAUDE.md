@@ -590,7 +590,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   nicotine, electrolytes Top +30; clothing, athletic, tech, AI, fintech Low 0; the rest Middle +15; Skip = 0 and never
   auto-picked; `priorityOf`, editable per category — replaced the flat 18–24 bonus, so a Top brand with money
   unknown beats a Low brand with $50M raised, and only a $100M+ Low brand beats a tiny Top one), already sponsors
-  college / music (15), people we can reach (10), the category's 90-day accept rate (5); while sales aren't known the stronger of funding and the size
+  college / music (15), people we can reach (10), the category's 90-day accept rate (5), and **fits a student's day**
+  (Leo, Oct 18 2026: "neuro should definitely be higher given that the ideal candidates are people who study and do
+  work" — he chose Brand Fit as well as Discover; `src/lib/student-fit.ts`, `node scripts/test-student-fit.mjs`): made
+  for studying / focus 20 (nootropic, focus, caffeine gum / pouches…), nights out / the morning after 15, game day /
+  campus life 15 (where the product lives — campus stores, game-day tees, licensed college gear — never a campus tour /
+  ambassadors, which is marketing), energy / hydration / workout 10; first tier that matches, read from the brand's
+  name, About, products and the "Discover: …" line of its notes (`brandWriteUp` — never the Activation idea, never
+  Leo's own notes), on top of the 100 (the total still stops at 100; `FIT_SELECT` / `FitFacts` / plan-brands.ts carry
+  about / topProducts / notes, required so a read without them fails tsc); while sales aren't known the stronger of funding and the size
   estimate counts (a parent company's brand keeps the parent's size). **Ruled out** = confirmed not sold
   in the US only (Leo's one hard no): nobody there is ever queued or emailed — `SOLD_IN_US` guard in
   `NOT_IN_CONVERSATION` (the rotation's pool), `fillToday`, `nextBestBrands`, today's list, the email
@@ -719,9 +727,14 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (`readFind`, no model call) — sales in the $10M–$500M sweet spot 25 ($1M–$10M 12, $500M–$1B 10) or raised $5M+ 20 / $1M+ 10
   (a parent named or a giant = 0, too big for now), stores (1,000+ 15 / 300+ 10 / fewer 5 / "growing" sign 6, +5 for a big
   retailer named), already pays for college / music (official partner, licensed, NIL, sponsor, tour, festival 20 · the hunt's
-  sign 12 · only popular with students 6), growing fast 10, 18–24 sign 5. A find on the roster grades on its brand's own Brand
+  sign 12 · only popular with students 6), **fits a student's day** (Oct 18 2026 — the Brand Fit rule above, read from the
+  find's name + write-up, never the pitch: studying / focus 20, nights out 15, game day / campus 15, energy / hydration 10),
+  growing fast 10 (since Oct 18 also a launch, from the write-up only — "first mass-retail", "national launch", "rolling
+  out", "expanding into", "added 400 stores", "into Target"; a footprint that just is, "in 48 states", isn't), 18–24 sign 5.
+  A find on the roster grades on its brand's own Brand
   Fit. Letters **A 65+ / B 50+ / C 40+ / D** (Skip / not US / closed = D, too small caps at C) — on Oct 15 the 171 finds split
-  ~17 / 52 / 63 / 39 (Brand Fit alone had made 137 of them A). The page: a score box per row (number + letter; a click opens every
+  ~17 / 52 / 63 / 39 (Brand Fit alone had made 137 of them A); on Oct 18, with the student fit and launches, the 186 waiting
+  ~17 / 65 / 61 / 43 (was 2 / 64 / 67 / 53) and Neuro 46 C → 76 A as a find, 63 B → 83 A on the roster. The page: a score box per row (number + letter; a click opens every
   point), the points as chips under the why, big **Accept** / **Deny** buttons (`addDiscoveredBrand` / `dismissDiscovered`), a
   heading per grade under **Best grade first** (default; Newest first) and a grade filter. **Add all A's** (Leo, Oct 13 2026 — 88 of 106 waiting finds were A): the To review bar's button (`dcBulkOpen`,
   `#dc-bulk`) → `addDiscoveredBulk({ grade: 'A' })` preview = every A waiting, each as it'd be filed (`discoveryCategory`,

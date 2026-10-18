@@ -23,6 +23,8 @@ const BRAND_FIELDS = {
   // week rank and hide by them.
   liMembers: true, salesCents: true, fundingCents: true, lastRoundAt: true, usStatus: true,
   sponsorsCollege: true, bizStatus: true, acquiredBy: true, researchedAt: true,
+  // What the brand says it is, for Brand Fit's student fit (student-fit.ts).
+  about: true, topProducts: true, notes: true,
 } as const
 const CONTACT_FIELDS = { id: true, name: true, title: true, email: true, linkedinUrl: true, isDecisionMaker: true, doNotContactAt: true } as const
 const TARGET_FIELDS = {

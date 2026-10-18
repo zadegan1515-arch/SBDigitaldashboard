@@ -17,6 +17,13 @@
 //     clothing and tech at the bottom.
 //   - Also counts: already sponsors college / music, people we can reach
 //     on file, and how well the category converts.
+//   - Fits a student's day (Oct 18 2026, student-fit.ts — the same rule
+//     the Discover score uses; Leo chose both): made for studying / focus
+//     20, nights out / the morning after 15, game day / campus life 15,
+//     energy / hydration / workout 10, read from the brand's name, About,
+//     products and Discover write-up. On top of the 100 (the total still
+//     stops at 100), so a brand made for studying ranks higher in Best fit
+//     and the Schedule.
 //   - Ruled out: confirmed not sold in the US. Unknown → kept, tagged "US?".
 //     Out of business / acquired → suggested for Archive, Leo decides.
 //   - Too small (a switch, on by default): sales under $1M; sales not
@@ -30,6 +37,7 @@
 // hand this file plain numbers (exact up to ~$90 trillion).
 
 import { brandSize, sizeFromMembers, type BrandSize } from './brand-size'
+import { brandWriteUp, discoverWriteUp, studentUse, studentReason } from './student-fit'
 
 export const TOO_SMALL_SALES_CENTS = 1_000_000 * 100 // $1M
 export const BIG_FUNDING_CENTS = 5_000_000 * 100 // $5M raised = "a lot of venture money"
@@ -82,6 +90,13 @@ export interface FitInput {
   acceptRate?: number | null // the category's smoothed accept rate, 0..1
   priority?: Priority // the category's priority (default from DEFAULT_CATEGORY_PRIORITY)
   giant?: string | null // giants.ts's reason it's a giant (queue-rules giantOf), or null
+  // What the brand says it is (student-fit.ts): name, About, products,
+  // the Discover write-up in its notes (Leo's own notes and our pitch
+  // idea are never read).
+  name?: string | null
+  about?: string | null
+  topProducts?: string | null
+  notes?: string | null
   now: Date
 }
 
@@ -259,6 +274,10 @@ export function scoreBrand(b: FitInput): FitResult {
   const pr = b.priority ?? priorityOf(b.category)
   add(pr === 'top' ? true : pr === 'middle' ? null : false,
     PRIORITY_WORD[pr] + ' priority category' + (pr === 'skip' ? ' — never picked automatically' : ''), PRIORITY_POINTS[pr])
+
+  // 3b. Fits a student's day (student-fit.ts).
+  const said = !!(String(b.about ?? '').trim() || String(b.topProducts ?? '').trim() || discoverWriteUp(b.notes))
+  reasons.push(studentReason(studentUse(brandWriteUp(b)), said))
 
   // 4. People we can reach.
   if (b.reachable >= b.need && b.reachable > 0) add(true, b.reachable + ' people we can reach', 10)

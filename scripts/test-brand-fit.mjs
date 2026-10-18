@@ -149,6 +149,26 @@ t('score stays 0..100 and every point has a reason', () => {
   assert.equal(bottom.score, 0)
 })
 
+// Leo, Oct 18 2026 ("the ideal candidates are people who study and do
+// work"; he chose Brand Fit as well as Discover): a brand whose name, About,
+// products or Discover write-up says it's made for a student's day ranks
+// higher — on top of the 100, the total still stops at 100.
+t('fits a student’s day: up to 20 on top, read from what the brand says it is', () => {
+  const plain = scoreBrand({ ...base, category: 'spirits', name: 'Casa X', about: 'Premium tequila from Jalisco' })
+  const study = scoreBrand({ ...base, category: 'spirits', name: 'Casa X', about: 'Premium tequila from Jalisco', topProducts: 'Nootropic focus shots' })
+  assert.equal(study.score - plain.score, 20)
+  const line = study.reasons.find(r => /studying/.test(r.text))
+  assert.equal(line.points, 20); assert.equal(line.good, true)
+  assert.match(plain.reasons.find(r => /student use/.test(r.text)).text, /no student use named/)
+  assert.match(scoreBrand({ ...base }).reasons.find(r => r.points === 0 && /on file/.test(r.text)).text, /isn’t on file/)
+  const hang = scoreBrand({ ...base, name: 'HOIST', notes: 'Discover: Isotonic hydration born as a hangover drink.\nActivation idea: Finals week study hall' })
+  assert.equal(hang.reasons.find(r => /nights out/.test(r.text)).points, 15, 'the write-up counts, the pitch doesn’t')
+  const leo = scoreBrand({ ...base, category: 'spirits', name: 'Casa X', notes: 'Leo: pitch them a study-break party' })
+  assert.equal(leo.score, scoreBrand({ ...base, category: 'spirits', name: 'Casa X' }).score, 'Leo’s own notes are never read')
+  const full = scoreBrand({ ...base, salesCents: 300 * M, sponsorsCollege: true, acceptRate: 0.9, about: 'Caffeine gum for finals week' })
+  assert.equal(full.score, 100, 'still out of 100')
+})
+
 t('ruled out: only confirmed not in the US; closed / acquired go to suggest Archive', () => {
   assert.equal(scoreBrand({ ...base, usStatus: 'no' }).ruledOut, 'not sold in the US')
   assert.equal(scoreBrand({ ...base, usStatus: 'no' }).archiveWhy, 'not sold in the US')

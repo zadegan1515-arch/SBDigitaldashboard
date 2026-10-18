@@ -30,6 +30,8 @@ on:
       - 'src/lib/claude-hunt.ts'
       - 'src/lib/discover-grade.ts'
       - 'src/lib/find-evidence.ts'
+      - 'src/lib/student-fit.ts'
+      - 'scripts/test-student-fit.mjs'
       - 'scripts/test-discover*'
       - 'src/lib/build-ideas.ts'
       - 'src/lib/brand-search.ts'
@@ -92,6 +94,8 @@ on:
       - 'src/lib/claude-hunt.ts'
       - 'src/lib/discover-grade.ts'
       - 'src/lib/find-evidence.ts'
+      - 'src/lib/student-fit.ts'
+      - 'scripts/test-student-fit.mjs'
       - 'scripts/test-discover*'
       - 'src/lib/build-ideas.ts'
       - 'src/lib/brand-search.ts'
@@ -160,7 +164,7 @@ jobs:
       - name: Types
         run: npx tsc --noEmit
       - name: Rules
-        run: node scripts/test-brand-fit.mjs && node scripts/test-brand-size.mjs && node scripts/test-stock.mjs && node scripts/test-work-log.mjs && node scripts/test-no-send.mjs && node scripts/test-queue-check.mjs && node scripts/test-claude-hunt.mjs && node scripts/test-chat-add.mjs && node scripts/test-brand-search.mjs && node scripts/test-plan-week.mjs && node scripts/test-carry.mjs && node scripts/test-queue-rules.mjs && node scripts/test-today-order.mjs && node scripts/test-same-person.mjs && node scripts/test-brand-work.mjs && node scripts/test-outcomes.mjs && node scripts/test-skip-day.mjs && node scripts/test-discover-grade.mjs && node scripts/test-claude-day.mjs && node scripts/test-do-not-contact.mjs
+        run: node scripts/test-brand-fit.mjs && node scripts/test-brand-size.mjs && node scripts/test-stock.mjs && node scripts/test-work-log.mjs && node scripts/test-no-send.mjs && node scripts/test-queue-check.mjs && node scripts/test-claude-hunt.mjs && node scripts/test-chat-add.mjs && node scripts/test-brand-search.mjs && node scripts/test-plan-week.mjs && node scripts/test-carry.mjs && node scripts/test-queue-rules.mjs && node scripts/test-today-order.mjs && node scripts/test-same-person.mjs && node scripts/test-brand-work.mjs && node scripts/test-outcomes.mjs && node scripts/test-skip-day.mjs && node scripts/test-discover-grade.mjs && node scripts/test-student-fit.mjs && node scripts/test-claude-day.mjs && node scripts/test-do-not-contact.mjs
       - name: The page against a fake dashboard
         run: node scripts/test-brand-fit-ui.js && node scripts/test-brands-table.js && node scripts/test-today.js && node scripts/test-schedule.js && node scripts/test-outreach-lists.js && node scripts/test-discover.js && node scripts/test-brand-zach.js && node scripts/test-claude-day.js && node scripts/test-do-not-contact.js
       - name: The handlers on a real database

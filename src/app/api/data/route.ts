@@ -2656,15 +2656,20 @@ async function recentAcceptRates(): Promise<AcceptRates> {
 // computed on the fly (accept rates and reachable people move daily, so
 // nothing is stored). `Target.fitScore` is the per-person score — a
 // different thing; the brand's is `fit` in every response.
+// about / topProducts / notes: what the brand says it is, for the
+// student fit (student-fit.ts) — required, so a read that leaves them out
+// fails tsc instead of scoring the brand lower on one page than another.
 const FIT_SELECT = {
   liMembers: true, salesCents: true, fundingCents: true, lastRoundAt: true, usStatus: true,
   sponsorsCollege: true, bizStatus: true, acquiredBy: true, researchedAt: true,
+  about: true, topProducts: true, notes: true,
 } as const
 type FitFacts = {
   name: string; aka: string | null; category: string | null; tier: string | null; workPeople: number | null
   liMembers: number | null; salesCents: bigint | null; fundingCents: bigint | null; lastRoundAt: Date | null
   usStatus: string | null; sponsorsCollege: boolean | null; bizStatus: string | null; acquiredBy: string | null
   researchedAt: Date | null
+  about: string | null; topProducts: string | null; notes: string | null
 }
 function centsNum(v: bigint | number | null | undefined): number | null {
   return v == null ? null : Number(v)
@@ -2682,7 +2687,7 @@ function brandFit(b: FitFacts, reachable: number, rates: AcceptRates | null, now
     usStatus: b.usStatus, sponsorsCollege: b.sponsorsCollege, bizStatus: b.bizStatus, acquiredBy: b.acquiredBy,
     researchedAt: b.researchedAt,
     reachable, need: workNeed({ ...b, big: isBigBrand(b) }), acceptRate: rateOrNull(rates, b.category), priority: categoryPriority(b.category),
-    giant: giantOf(b), now,
+    giant: giantOf(b), name: b.name, about: b.about, topProducts: b.topProducts, notes: b.notes, now,
   })
 }
 // Who a Best fit day may pick: a brand nobody there has been reached at
@@ -13937,7 +13942,7 @@ const handlers: Record<string, Handler> = {
       const cat = isCategoryKey(raw) ? raw : guessCategory(r.name, r.category)
       const g = fit ? gradeFromFit(fit) : gradeDiscovery(
         { category: cat, signals: r.signals, hasParent: !!parentOf(r.name, null), giant: giantOf({ name: r.name }),
-          text: [r.reason, r.activation].filter(Boolean).join(' ') },
+          text: [r.reason, r.activation].filter(Boolean).join(' '), name: r.name, writeUp: r.reason },
         { priority: categoryPriority(cat), acceptRate: rateOrNull(rates, cat), now })
       return { ...r, source: sourceOf(r.query), inSystem: !!existing, contactCount: existing?._count.contacts ?? 0, grade: g }
     })

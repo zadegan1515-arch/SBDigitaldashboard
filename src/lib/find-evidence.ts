@@ -21,6 +21,8 @@
 //
 //   node scripts/test-discover-grade.mjs
 
+import { studentUse, studentReason } from './student-fit'
+
 export interface FindEvidence {
   fundingCents: number | null
   salesCents: number | null
@@ -101,7 +103,17 @@ export function readFind(text: string | null | undefined): FindEvidence {
 //   pays for college /  an official partner, licensed, NIL, sponsor, tour,
 //   music               festival 20 · the hunt's sign alone 12 ·
 //                       only popular with students 6
-//   growing fast        "fastest-growing", "doubled", "+50%", "triple-digit" 10
+//   fits a student's    made for studying / focus 20 · nights out / the
+//   day                 morning after 15 · game day / campus life 15 ·
+//                       energy / hydration / workout 10 (student-fit.ts;
+//                       read from what the brand is — name + write-up,
+//                       never our pitch idea). Leo, Oct 18 2026: "neuro
+//                       should definitely be higher given that the ideal
+//                       candidates are people who study and do work".
+//   growing fast        "fastest-growing", "doubled", "+50%", "triple-digit",
+//                       and launches (Oct 18 2026): "first mass-retail",
+//                       "national launch", "rolling out", "expanding into",
+//                       "added 400 stores", "into Target" 10
 //   aims at 18–24       the hunt's sign 5
 export interface FindScore { score: number; reasons: Array<{ good: boolean | null; text: string; points: number }> }
 
@@ -109,6 +121,26 @@ const RETAILERS = /\b(walmart|target|kroger|costco|whole foods|publix|h-e-b|heb|
 const SPENDS = /\b(official\s+[\w\s'-]{0,40}\b(of|partner)|licensed|NIL|collective|sponsor(s|ed|ship)?|presenting|presented|title partner|partner(ed|ship)? with|tour\b|festival|activation|sampling)/i
 const AUDIENCE = /\b(college students|campus|sororit|fraternit|students|gen ?z|tailgat)/i
 const GROWTH = /\b(fastest[- ]growing|doubled|tripled|triple[- ]digit|double[- ]digit|\d{2,3}%\s*(growth|yoy|year|up)|up\s+\d{2,3}%|\d{2,3}%\+?\s+yoy|growth of \d{2,3}%)/i
+// A launch or a push into new stores is growth too (Leo's yes, Oct 18
+// 2026). Read on the write-up only, like the student fit: a pitch idea
+// "launching at a campus show" is ours, not theirs. A footprint that just
+// is ("in 48 states", "with national distribution") isn't a launch.
+const SHOP_NAMES = "walmart|target|kroger|costco|whole foods|publix|h-e-b|heb|7-eleven|trader joe'?s|total wine|cvs|walgreens|albertsons|safeway|sprouts|wegmans|meijer|hy-vee|circle k|wawa|sheetz|bevmo|sam'?s club|harris teeter|dick'?s|foot locker|ulta|sephora"
+export const LAUNCH = new RegExp('\\b(' + [
+  'first (mass|national)[- ]?retail',
+  'national (launch|rollout|roll-out|expansion)',
+  'nationwide (launch|rollout|roll-out|retail|expansion)',
+  'launch(ed|es|ing)? (a |its )?(nationwide|nationally|national)',
+  '(secured|signed|landed|gained|moved to|won)\\s+(?:[\\w&-]+\\s+){0,3}(national|nationwide)\\b',
+  'expan(d|ds|ded|ding|sion) (in)?to\\b',
+  'expanding (across|its|distribution|into)',
+  'roll(ed|ing|s)? out', 'rollout', 'roll-out',
+  'new (retail|distribution|markets?|states)',
+  '(add|added|adding|adds) [\\d,]+\\+? (?:[A-Za-z-]+ ){0,2}(stores|doors|accounts|retailers|locations|states)',
+  'launch(ed|es|ing)? (in|at|into) (?:all )?(?:[\\d,]+\\+? (?:[A-Za-z-]+ ){0,2}(stores|doors)|(?:' + SHOP_NAMES + ')\\b)',
+  '(entered|entering|enters|into) (?:' + SHOP_NAMES + ')\\b',
+  'going national', '(into|to) \\d+ (new )?states', '\\d+ new states',
+].join('|') + ')', 'i')
 
 export function scoreFind(f: {
   priority: 'top' | 'middle' | 'low' | 'skip'
@@ -116,8 +148,15 @@ export function scoreFind(f: {
   text?: string | null
   giant?: string | null
   hasParent?: boolean
+  // What the brand is: its name and the find's write-up, never our pitch
+  // idea. Read for the student fit and launches; `text` (write-up +
+  // pitch) for the rest, as before.
+  name?: string | null
+  writeUp?: string | null
 }): FindScore {
   const t = String(f.text ?? '')
+  const writeUp = String(f.writeUp ?? '').trim()
+  const what = [String(f.name ?? '').trim(), writeUp].filter(Boolean).join(' · ')
   const ev = readFind(t)
   const sign = (s: string) => String(f.signals ?? '').split(',').map(x => x.trim()).includes(s)
   const reasons: FindScore['reasons'] = []
@@ -150,7 +189,13 @@ export function scoreFind(f: {
   else if (AUDIENCE.test(t)) add(null, 'popular with students, no sponsorship yet', 6)
   else add(false, 'no college / music spend found', 0)
 
+  // Fits a student's day (student-fit.ts). The name alone counts too
+  // ("NERD Focus"); "isn't on file" only when there's no write-up.
+  reasons.push(studentReason(studentUse(what), !!writeUp))
+
+  const launch = what.match(LAUNCH)
   if (GROWTH.test(t)) add(true, 'growing fast', 10)
+  else if (launch) add(true, 'growing fast (“' + launch[0].trim() + '”)', 10)
   if (sign('genz')) add(true, 'aims at 18–24', 5)
 
   return { score: Math.max(0, Math.min(100, reasons.reduce((n, r) => n + r.points, 0))), reasons }

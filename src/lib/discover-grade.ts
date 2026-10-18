@@ -5,7 +5,8 @@
 // A find that isn't on the roster yet gets the find score (find-evidence.ts,
 // Oct 15 2026): category priority plus what its write-up proves — money
 // raised or sales (the $10M–$500M sweet spot), how many stores, already paying
-// for college / music, growing fast. Brand Fit couldn't tell the hunt's finds
+// for college / music, fits a student's day (made for studying, nights out,
+// game day, energy — Oct 18 2026), growing fast. Brand Fit couldn't tell the hunt's finds
 // apart (137 of 171 were an A on category and signs alone). A find already on
 // the roster uses that brand's own Brand Fit (facts, people, size).
 //
@@ -54,12 +55,20 @@ export function hasSign(signals: string | null | undefined, sign: string): boole
   return String(signals ?? '').split(',').map(s => s.trim()).includes(sign)
 }
 
-type FindRow = { category: string | null; signals?: string | null; hasParent?: boolean; giant?: string | null; text?: string | null }
+// text = the write-up and our pitch idea; name + writeUp = what the brand is
+// (the student fit and launches read only that).
+type FindRow = {
+  category: string | null; signals?: string | null; hasParent?: boolean; giant?: string | null; text?: string | null
+  name?: string | null; writeUp?: string | null
+}
 
 // A find not on the roster yet: the find score (find-evidence.ts), which
 // reads the write-up. Skip / giant / too-small rules as gradeFromFit.
 export function gradeDiscovery(row: FindRow, ctx: { priority: Priority; acceptRate: number | null; now: Date }): DiscoverGrade {
-  const fs = scoreFind({ priority: ctx.priority, signals: row.signals, text: row.text, giant: row.giant, hasParent: row.hasParent })
+  const fs = scoreFind({
+    priority: ctx.priority, signals: row.signals, text: row.text, giant: row.giant, hasParent: row.hasParent,
+    name: row.name, writeUp: row.writeUp,
+  })
   let grade = letterFor(fs.score)
   let capped: string | null = null
   if (ctx.priority === 'skip') { grade = 'D'; capped = 'Skip category' }
