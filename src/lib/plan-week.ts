@@ -170,8 +170,10 @@ export type WeekCand = { id: string; category: string | null; ready: boolean; si
 // people each sends) and the category Leo set, if any. waits: a pin past
 // the day's 30 in the day's order — it goes on the next sending day, so
 // the day doesn't count it (the Schedule's own rule, route.ts waitingOnDay).
-export type WeekDayIn = { date: string; kept: Array<{ id: string; going: number; waits?: boolean; big?: boolean }>; category: string | null }
-export type WeekSource = 'yours' | 'asked' | 'picked' | 'bestfit' | 'full' | 'none'
+// list: the day takes only brands from Leo's week list (Outreach → Week
+// plan, src/lib/week-bank.ts) — Plan my week keeps its pins and adds nothing.
+export type WeekDayIn = { date: string; kept: Array<{ id: string; going: number; waits?: boolean; big?: boolean }>; category: string | null; list?: boolean }
+export type WeekSource = 'yours' | 'asked' | 'picked' | 'bestfit' | 'full' | 'none' | 'list'
 export type WeekDayOut = {
   date: string
   category: string | null
@@ -248,12 +250,14 @@ export function planWeekDays(opts: {
     // A pin that waits goes on the next sending day: not this day's.
     const keptPeople = day.kept.reduce((n, k) => n + (k.waits ? 0 : k.going), 0)
     const dayCap = counts ? weekCap(day.date, counts, cap) : cap
-    const room = Math.max(0, dayCap - keptPeople)
+    const room = day.list ? 0 : Math.max(0, dayCap - keptPeople)
     let category = day.category
-    let source: WeekSource = category ? 'yours' : room === 0 ? 'full' : 'none'
+    let source: WeekSource = day.list ? 'list' : category ? 'yours' : room === 0 ? 'full' : 'none'
     const before = prev
     const f = forced[day.date]
-    if (f && f !== '__pick') {
+    if (day.list) {
+      // Leo's week list decides this day (nothing picked, nothing added).
+    } else if (f && f !== '__pick') {
       category = f
       source = 'asked'
     } else if (!category && !f && room > 0 && opts.openDays !== 'pick') {
