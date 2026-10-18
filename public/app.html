@@ -2054,9 +2054,11 @@
   .it-sug summary::-webkit-details-marker{display:none}
   .it-sug summary:after{content:'▸';letter-spacing:0}
   .it-sug[open] summary:after{content:'▾'}
-  .it-sug-row{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:10px}
+  .it-sug-row{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:10px;border:1px solid transparent}
   .it-sug-row:hover{background:rgba(255,255,255,.03)}
-  .it-sug-row .t{min-width:0;flex:1;display:flex;flex-direction:column}
+  .it-sug-row.on{background:linear-gradient(90deg,rgba(79,131,247,.16),rgba(79,131,247,.05));border-color:rgba(79,131,247,.35)}
+  .it-sug-row .t{min-width:0;flex:1;display:flex;flex-direction:column;background:none;border:0;padding:0;margin:0;text-align:left;color:inherit;font:inherit;cursor:pointer}
+  .it-sug-row .t:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring);border-radius:6px}
   .it-sug-row .t b{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .it-sug-row .t span{font-size:12.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .it-main{min-width:0;padding:0 0 28px}
@@ -2111,8 +2113,20 @@
   .it-fact .v small{font-family:'Inter',sans-serif;font-size:12.5px;font-weight:500;color:var(--ink-3);margin-left:4px}
   .it-fact .n{font-size:12.5px;color:var(--ink-3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
   .it-fact .it-mini{margin-top:6px}
-  .it-cols{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:18px;padding:18px 30px 0}
-  .it-col{display:flex;flex-direction:column;gap:18px;min-width:0}
+  /* Rows of two (Leo, Oct 18 2026: notes to the right of the activation idea):
+     Overview | Who we're talking to · Activation idea | Notes · Deal. */
+  .it-cols{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:18px;padding:18px 30px 0;align-items:start}
+  /* Deal stage, under the journey: a click moves the deal (setTalksDeal). */
+  .it-stagebar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 30px 0;padding:12px 14px;border:1px solid var(--border-soft);border-radius:14px;background:rgba(255,255,255,.018)}
+  .it-stagebar .lbl{font-size:12px;font-weight:750;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);margin-right:4px}
+  .it-stagebtn{padding:6px 13px;border-radius:999px;border:1px solid var(--border);background:none;color:var(--ink-2);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .it-stagebtn:hover:not(:disabled){border-color:rgba(79,131,247,.5);color:var(--ink-1)}
+  .it-stagebtn.on{background:var(--accent);border-color:var(--accent);color:#fff;cursor:default}
+  .it-stagebtn.lost.on{background:rgba(201,74,74,.85);border-color:rgba(201,74,74,.85)}
+  .it-stagebtn:disabled:not(.on){opacity:.5;cursor:default}
+  .it-stagebar .it-hint{margin-left:4px}
+  .it-pvbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 30px 0;padding:10px 14px;border-radius:12px;border:1px dashed rgba(79,131,247,.45);font-size:13.5px;color:var(--ink-2)}
+  .it-pvbar b{color:var(--ink-1)}
   .it-card{border:1px solid var(--border-soft);border-radius:16px;background:rgba(255,255,255,.018);padding:18px 20px;min-width:0}
   .it-card-h{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
   .it-card-h h3{font-size:12px;font-weight:750;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
@@ -2171,12 +2185,8 @@
   .it-blank h3{font-family:var(--display);font-size:20px;font-weight:800;margin-bottom:6px}
   .it-blank p{color:var(--ink-3);font-size:13.5px;max-width:460px;margin:0 auto}
   @media (max-width:1200px){
+    /* one column: overview, who we're talking to, idea, notes, deal */
     .it-cols{grid-template-columns:minmax(0,1fr)}
-    /* one column: who we're talking to right after the overview */
-    .it-col{display:contents}
-    .it-cols>.it-col>.it-card:nth-child(1){order:1}
-    .it-cols>.it-col:nth-child(2)>.it-card{order:2}
-    .it-cols>.it-col:nth-child(1)>.it-card:nth-child(n+2){order:3}
     .it-hero{grid-template-columns:auto minmax(0,1fr)}
     .it-side{grid-column:1/-1;flex-direction:row;flex-wrap:wrap;min-width:0;align-items:center}
     .it-side .it-callcard{flex:1 1 220px}
@@ -2194,7 +2204,7 @@
     .it-journey b{white-space:normal;font-size:12.5px}
     .it-name{font-size:25px}
     .it-journey{padding:16px 16px 4px;grid-template-columns:repeat(5,minmax(58px,1fr));overflow-x:auto}
-    .it-facts,.it-linkedit{margin-left:16px;margin-right:16px}
+    .it-facts,.it-linkedit,.it-stagebar,.it-pvbar{margin-left:16px;margin-right:16px}
     .it-linkedit{grid-template-columns:minmax(0,1fr)}
     .it-cols{padding:16px 16px 0}
     .it-card{padding:16px}
@@ -19748,12 +19758,19 @@ function loadRequests() {
 // listInTalks; writes = setInTalks, saveTalksProfile, addBrandNote,
 // editBrandNote, deleteBrandNote (route.ts; rules in src/lib/in-talks.ts).
 
-var IT = { data: null, sel: null, want: null, q: '', edit: null, links: false, mobile: false, drafts: {} };
+var IT = { data: null, sel: null, want: null, q: '', edit: null, links: false, mobile: false, drafts: {}, pv: null, pvSeen: {} };
 try { IT.sel = localStorage.getItem('sb.itSel') || null; } catch (e) {}
 
 function itById(id) {
   return ((IT.data && IT.data.brands) || []).filter(function (b) { return b.id === id; })[0] || null;
 }
+// The brand on the right: one in talks, or a "Replied, not in talks" card
+// opened for a look (IT.pv = { id, b } — b null while it loads).
+function itCur() {
+  return itById(IT.sel) || (IT.pv && IT.pv.id === IT.sel ? IT.pv.b : null);
+}
+var IT_STAGES = [['conversation', 'Conversation'], ['proposal', 'Proposal sent'], ['verbal', 'Verbal yes'], ['closed', 'Won'], ['lost', 'Lost']];
+function itStageName(k) { return (IT_STAGES.filter(function (x) { return x[0] === k; })[0] || [k, k])[1]; }
 function itSetSel(id) {
   IT.sel = id || null;
   try { if (id) localStorage.setItem('sb.itSel', id); } catch (e) {}
@@ -19800,6 +19817,7 @@ var IT_ICON = {
 // Where a brand stands, one line (the list and the hero).
 function itStatus(b) {
   if (b.stopped) return { cls: 'stop', text: 'Said they don’t want to continue' };
+  if (b.preview) return { cls: 'hand', text: 'Replied' + (b.repliedAt ? ' ' + itDay(b.repliedAt) : '') + ' · not in talks yet' };
   if (b.nextCall) {
     var n = itDaysFromToday(b.nextCall.at);
     return { cls: 'call', text: 'Call ' + (n === 0 ? 'today' : n === 1 ? 'tomorrow' : itDayLong(b.nextCall.at)) };
@@ -19814,6 +19832,10 @@ function loadInTalks(selId) {
   // The brand asked for wins once the fresh list has it (the cached list
   // drawn first may not have it yet — a brand just added).
   if (selId) { itSetSel(selId); IT.want = selId; }
+  // A "Replied, not in talks" card opened this visit stays open through a
+  // refresh, Back and Forward (its profile shows Loading… until it lands).
+  var pvId = IT.sel && IT.pvSeen[IT.sel] && !itById(IT.sel) ? IT.sel : null;
+  if (pvId && !(IT.pv && IT.pv.id === pvId)) IT.pv = { id: pvId, b: null };
   NAV_ARGS = IT.sel ? { b: IT.sel } : null;
   var again = showView('intalks');
   var mine = viewTurn('intalks');
@@ -19822,9 +19844,10 @@ function loadInTalks(selId) {
     if (IT.data) renderInTalks();
     else body.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   }
-  return api('listInTalks').then(function (d) {
+  return api('listInTalks', pvId ? { preview: pvId } : {}).then(function (d) {
     if (!mine()) return;
     IT.data = d;
+    IT.pv = d.preview ? { id: d.preview.id, b: d.preview } : null;
     if (d.sponsorUrl) SPONSOR_URL = d.sponsorUrl;
     renderInTalks();
     IT.want = null;
@@ -19846,7 +19869,7 @@ function renderInTalks() {
   if (!d) return;
   var list = d.brands || [];
   if (IT.want && itById(IT.want)) IT.sel = IT.want;
-  if (IT.sel && !itById(IT.sel)) IT.sel = null;
+  if (IT.sel && !itById(IT.sel) && !(IT.pv && IT.pv.id === IT.sel)) IT.sel = null;
   if (!IT.sel && list.length) IT.sel = list[0].id;
   var calls = list.filter(function (b) { return b.nextCall && !b.stopped; }).length;
   document.getElementById('it-sub').textContent = list.length
@@ -19904,8 +19927,8 @@ function itRenderRail() {
   box.innerHTML = sug.length
     ? '<details class="it-sug"' + (wasOpen ? ' open' : '') + '><summary>Replied, not in talks <span>' + sug.length + '</span></summary>' +
         sug.map(function (s) {
-          return '<div class="it-sug-row"><span class="t"><b>' + esc(s.name) + '</b><span>replied ' + esc(itDay(s.repliedAt)) +
-            (s.who ? ' · ' + esc(s.who) : '') + '</span></span>' +
+          return '<div class="it-sug-row' + (s.id === IT.sel ? ' on' : '') + '"><button class="t" data-it-sug="' + esc(s.id) + '" title="Open ' + esc(s.name) + ' — set its deal stage"><b>' + esc(s.name) + '</b><span>replied ' + esc(itDay(s.repliedAt)) +
+            (s.who ? ' · ' + esc(s.who) : '') + '</span></button>' +
             '<button class="it-mini" data-it-add="' + esc(s.id) + '" title="Put ' + esc(s.name) + ' in talks">+ Add</button>' +
             '<button class="it-mini" data-it-notnow="' + esc(s.id) + '" title="Stop offering it here — a new reply offers it again" aria-label="Not now">×</button></div>';
         }).join('') + '</details>'
@@ -19915,7 +19938,11 @@ function itRenderRail() {
 function itRenderMain() {
   var el = document.getElementById('it-main');
   if (!el) return;
-  var b = itById(IT.sel);
+  if (IT.pv && IT.pv.id === IT.sel && !IT.pv.b) {
+    el.innerHTML = '<div class="it-blank"><p>Loading…</p></div>';
+    return;
+  }
+  var b = itCur();
   if (!b) {
     el.innerHTML = '<div class="it-blank"><h3>Nobody in talks yet</h3><p>When a call gets booked on Zach’s list, that brand lands here with its people, links, an overview and an activation idea. ' +
       ((IT.data && IT.data.suggestions || []).length ? 'Brands that replied are on the left — + Add puts one in talks now.' : '') + '</p></div>';
@@ -19946,14 +19973,19 @@ function itRenderMain() {
     '<span class="it-mono lg">' + esc(itInitials(b.name)) + '</span>' +
     '<div style="min-width:0">' +
       '<div class="it-kicker">' + (cat ? '<span>' + esc(cat) + '</span>' : '') + (b.tier ? '<span class="sep">·</span><span>' + esc(b.tier) + '</span>' : '') +
-        '<span class="sep">·</span><span>in talks since ' + esc(b.since ? itDay(b.since) : '—') + (b.why === 'hand' ? ' (added by hand)' : '') + '</span>' +
+        (b.preview
+          ? '<span class="sep">·</span><span>replied ' + esc(b.repliedAt ? itDay(b.repliedAt) : '—') + ' · not in talks yet</span>'
+          : '<span class="sep">·</span><span>in talks since ' + esc(b.since ? itDay(b.since) : '—') + (b.why === 'hand' ? ' (added by hand)' : '') + '</span>') +
         (b.archived ? '<span class="sep">·</span><span>archived</span>' : '') + '</div>' +
       '<h2 class="it-name">' + esc(b.name) + '</h2>' +
       '<div class="it-links">' + chips.join('') + '</div>' +
     '</div>' +
     '<div class="it-side">' + callCard +
       '<div class="it-side-acts"><button class="it-mini" data-it-brand>Brand page →</button>' +
-        '<button class="it-mini danger" data-it-remove title="Off this list — its notes, idea and links stay">Take off In talks</button></div>' +
+        (b.preview
+          ? '<button class="it-mini" data-it-add="' + esc(b.id) + '" title="Put ' + esc(b.name) + ' in talks">+ Add to In talks</button>' +
+            '<button class="it-mini" data-it-notnow="' + esc(b.id) + '" title="Stop offering it here — a new reply offers it again">Not now</button>'
+          : '<button class="it-mini danger" data-it-remove title="Off this list — its notes, idea and links stay">Take off In talks</button>') + '</div>' +
     '</div></div>';
 
   var linkEdit = IT.links
@@ -19974,6 +20006,24 @@ function itRenderMain() {
     return '<li class="' + (s.done ? 'done' : '') + (i === lastDone ? ' last' : '') + '"><span class="it-jdot"></span><b>' + esc(s.label) + '</b><span>' +
       (s.at ? esc(itDay(s.at)) : s.done ? '✓' : '—') + '</span></li>';
   }).join('') + '</ol>';
+
+  // --- deal stage (Leo, Oct 18 2026: "click on these cards and adjust the deal
+  // flow"): one click moves the deal or starts it, and puts a brand that only
+  // replied into In talks (Lost takes it off the Replied list instead).
+  var dl = b.deal;
+  var synced = dl && (dl.source === 'sponsorship' || dl.source === 'notion');
+  var stageBar = '<div class="it-stagebar"><span class="lbl">Deal stage</span>' +
+    (synced
+      ? '<span class="it-stage">' + esc(itStageName(dl.stage)) + '</span><span class="it-hint">synced from its ' + (dl.source === 'notion' ? 'Notion page' : 'show') + ' — change it there</span>'
+      : IT_STAGES.map(function (x) {
+          var on = !!dl && dl.stage === x[0];
+          return '<button class="it-stagebtn' + (on ? ' on' : '') + (x[0] === 'lost' ? ' lost' : '') + '" data-it-stage="' + x[0] + '" aria-pressed="' + on + '">' + x[1] + '</button>';
+        }).join('') +
+        (dl ? '' : '<span class="it-hint">' + (b.preview ? 'Pick one to start the deal — it moves ' + esc(b.name) + ' into In talks' : 'No deal yet — pick one to start it') + '</span>')) +
+    '</div>';
+  var pvBar = b.preview
+    ? '<div class="it-pvbar"><b>Not in talks yet</b><span>— set a deal stage or + Add to In talks to put it on the list.</span></div>'
+    : '';
 
   // --- facts
   var facts = [];
@@ -20079,10 +20129,9 @@ function itRenderMain() {
 
   el.innerHTML = '<div class="it-profile" style="--h:' + hue + '">' +
     '<button class="btn-ghost sm it-back" data-it-back>‹ All brands</button>' +
-    hero + linkEdit + journey +
+    hero + linkEdit + pvBar + journey + stageBar +
     '<div class="it-facts">' + facts.join('') + '</div>' +
-    '<div class="it-cols"><div class="it-col">' + overview + idea + notes + '</div>' +
-      '<div class="it-col">' + peopleCard + dealCard + '</div></div>' +
+    '<div class="it-cols">' + overview + peopleCard + idea + notes + dealCard + '</div>' +
     '</div>';
 }
 
@@ -20173,6 +20222,30 @@ function itPrompt(b) {
   return L.join('\n');
 }
 
+// A "Replied, not in talks" card: its profile on the right, read fresh
+// (listInTalks with `preview`), so its deal stage can be set from there.
+function itPreview(id) {
+  if (itById(id)) { itSelect(id); return; }
+  var same = id === IT.sel;
+  itSetSel(id);
+  IT.pvSeen[id] = true;
+  if (!IT.pv || IT.pv.id !== id) IT.pv = { id: id, b: null };
+  IT.edit = null; IT.links = false; IT.mobile = true;
+  if (!same) {
+    NAV_ARGS = { b: id };
+    showView('intalks', true);   // Back goes to the brand before
+  }
+  renderInTalks();
+  var mine = viewTurn('intalks');
+  return api('listInTalks', { preview: id }).then(function (d) {
+    if (!mine()) return;
+    IT.data = d;
+    IT.pv = d.preview ? { id: d.preview.id, b: d.preview } : null;
+    if (!d.preview && !itById(id)) { toast('Could not open that brand'); IT.sel = null; }
+    renderInTalks();
+  }).catch(function (e) { if (mine()) toast(e.message); });
+}
+
 function itSelect(id) {
   if (!itById(id)) return;
   var same = id === IT.sel;
@@ -20203,7 +20276,7 @@ function itSaveProfile(b, args, done) {
   view.addEventListener('input', function (e) {
     var t = e.target;
     if (t.id === 'it-find') { IT.q = t.value; itRenderRail(); return; }
-    var b = itById(IT.sel);
+    var b = itCur();
     if (!b) return;
     var f = t.getAttribute('data-it-field') || t.getAttribute('data-it-link');
     if (f) IT.drafts[b.id + '|' + f] = t.value;
@@ -20223,15 +20296,16 @@ function itSaveProfile(b, args, done) {
   view.addEventListener('click', function (e) {
     var t = e.target.closest('button, a');
     if (!t || !view.contains(t)) return;
-    var b = itById(IT.sel);
+    var b = itCur();
     var v;
     if ((v = t.getAttribute('data-it-sel'))) { itSelect(v); return; }
+    if ((v = t.getAttribute('data-it-sug'))) { itPreview(v); return; }
     if (t.hasAttribute('data-it-back')) { IT.mobile = false; renderInTalks(); window.scrollTo(0, 0); return; }
     if ((v = t.getAttribute('data-it-add'))) {
       t.disabled = true;
       api('setInTalks', { brandId: v, on: true }).then(function (r) {
         toast(r.brandName + ' is in talks');
-        itSetSel(v); IT.mobile = true;
+        itSetSel(v); IT.mobile = true; IT.pv = null; delete IT.pvSeen[v];
         return loadInTalks();
       }).catch(function (er) { t.disabled = false; toast(er.message); });
       return;
@@ -20240,11 +20314,26 @@ function itSaveProfile(b, args, done) {
       t.disabled = true;
       api('setInTalks', { brandId: v, on: false }).then(function (r) {
         toast('Not offering ' + r.brandName + ' here — a new reply brings it back');
+        if (IT.sel === v) { IT.sel = null; IT.pv = null; IT.mobile = false; }
+        delete IT.pvSeen[v];
         return loadInTalks();
       }).catch(function (er) { t.disabled = false; toast(er.message); });
       return;
     }
     if (!b) return;
+    if ((v = t.getAttribute('data-it-stage'))) {
+      if (b.deal && b.deal.stage === v) return;
+      view.querySelectorAll('[data-it-stage]').forEach(function (x) { x.disabled = true; });
+      api('setTalksDeal', { brandId: b.id, stage: v }).then(function (r) {
+        toast((r.created ? 'Deal started at ' : 'Deal moved to ') + itStageName(r.stage) +
+          (r.addedToTalks ? ' — ' + r.brandName + ' is in talks now' : '') +
+          (r.dismissed ? ' — ' + r.brandName + ' is off the Replied list' : ''));
+        if (r.dismissed) { IT.sel = null; IT.pv = null; IT.mobile = false; delete IT.pvSeen[r.brandId]; }
+        else { itSetSel(r.brandId); if (r.addedToTalks) { IT.pv = null; delete IT.pvSeen[r.brandId]; } }
+        return loadInTalks();
+      }).catch(function (er) { toast(er.message); renderInTalks(); });
+      return;
+    }
     if (t.hasAttribute('data-it-brand')) { e.preventDefault(); loadBrand(b.id); return; }
     if (t.hasAttribute('data-it-deals')) { gotoView('pipeline'); return; }
     if (t.hasAttribute('data-it-remove')) {

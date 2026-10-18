@@ -139,7 +139,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   first) with LinkedIn, email (Gmail compose — nothing sends) and phone, invited-no-answer, others on file, the journey
   (`talksJourney`: Invited → Accepted → Replied → Call booked → Deal, first date each), Brand Fit, LinkedIn size, sales,
   raised, sponsors, Show Board opens + Copy board link, the deal, dated notes, and the profile; order `compareTalks` (calls
-  coming up soonest first, then latest activity, stopped last). **Profile** fields on Brand: `instagramUrl`, `tiktokUrl`,
+  coming up soonest first, then latest activity, stopped last). **A "Replied, not in talks" card opens the brand** (Leo, Oct 18 2026: "u
+  should be able to click on these cards and adjust the deal flow"): `listInTalks({ preview })` builds that brand's profile
+  the same way and returns it as `preview` (never in `brands`; `itPreview` / `IT.pv` / `itCur`, kept through refresh and
+  ‹ › by `IT.pvSeen`), with "Not in talks yet", + Add to In talks and Not now. **Deal stage** under the journey on every
+  profile (`.it-stagebar`, `IT_STAGES`: Conversation · Proposal sent · Verbal yes · Won · Lost) = `setTalksDeal` (moves the
+  deal the profile shows — newest open, else newest — or starts one, `DEAL_STAGES`; a brand not in talks goes in, his pick,
+  except Lost, which takes it off the Replied offers instead; a show / Notion deal is refused). The profile's cards sit in
+  rows of two: Overview | Who we're talking to, **Activation idea | Notes** (Leo: "move the notes to the right of the
+  activation idea"), then Deal. **Profile** fields on Brand: `instagramUrl`, `tiktokUrl`,
   `overview`/`overviewBy`/`overviewAt`, `activationIdea`/`activationIdeaBy`/`activationIdeaAt` — `saveTalksProfile` (only the
   fields sent; links through `cleanLink` — a handle, @handle or any link → the account URL, "none" = '' = they have none, empty
   = null = look again; a Claude session's overview ≤ 4 sentences, `sentenceCount`; `onlyEmpty` never touches a filled field;
@@ -612,6 +620,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   next in line (`shelvedHow 'cap'`); no bulk change, never anyone out of today's list (keepInPlay keeps today's
   stamps first); fillSize and the gated stamp stop at the number too. A queued person with no LinkedIn link: the
   add warns "no LinkedIn link yet" and the row has **Find on LinkedIn ↗** (a people search).
+  **People outside the US** (Leo, Oct 18 2026: "yes" — Reach out again's rule for the whole queue): at a company based
+  in the US, nobody whose title names another region ("UK Partnerships Manager", "DACH", "APAC", "… FR") or whose
+  `Contact.location` is abroad is picked by the system — not new, and not waiting in the pool (set aside next in line,
+  `shelvedHow 'cap'`, like a flagged title; never anyone in today's list) — in queueBrandTargets and previewBrandPicks
+  alike (`abroadTest` in route.ts over `src/lib/abroad.ts`; based abroad = `Brand.hq`, else more people on file with an
+  email or LinkedIn located abroad than in the US; `hq` and `location` are in plan-brands.ts's fields). Chosen people
+  (queued by hand) and "+ Person" still go; one already in today's list, or queued by hand, carries the ⚠ "Works outside
+  the US" (`ABROAD_PROBLEM`, `loadAbroadCheck`) on Today's list for Zach, the LinkedIn tab and Leave out the flagged, and
+  is never offered as a Swap. The contacts label still counts them.
   **Big = measured** (big-brand-size, Oct 12 2026): `isBigBrand` (brand-work.ts) = 500+ on LinkedIn or a parents.ts
   link; an unmeasured established brand is "size not known" (works 4, 15 size points; the fill measures it sooner).
   **One big company a Best fit day** (Leo's yes): `bigFits` / `BIG_PER_BEST_FIT_DAY` in plan-week.ts, one rule for

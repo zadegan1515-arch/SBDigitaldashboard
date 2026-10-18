@@ -191,6 +191,42 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     r = await data('deleteBrand', { brandId: 'bc' });
     assert.equal(r.summary.notes, 2, 'delete names the notes that go');
     ok('merging moves the notes and fills the profile; delete names the notes first');
+
+    // 8. A "Replied, not in talks" card opened for a look; its deal stage
+    // (Leo, Oct 18 2026: "click on these cards and adjust the deal flow").
+    await prisma.brand.create({ data: { id: 'bd', name: 'Delta Pouch', category: 'nicotine' } });
+    await prisma.brand.create({ data: { id: 'be', name: 'Echo Energy', category: 'energy' } });
+    await mk('bd', 'Gil Gold', 'Brand Manager', 'gil@delta.com', { status: 'replied', sentAt: D(8), repliedAt: D(2) }, D(6));
+    await mk('be', 'Hal Hart', 'Marketing', null, { status: 'replied', sentAt: D(8), repliedAt: D(3) }, D(6));
+    r = await data('listInTalks', { preview: 'bd' });
+    assert.ok(!r.brands.some(b => b.id === 'bd') && r.suggestions.some(x => x.id === 'bd'), 'a look keeps it off the list');
+    assert.equal(r.preview.id, 'bd');
+    assert.equal(r.preview.preview, true);
+    assert.ok(r.preview.repliedAt);
+    assert.deepEqual(r.preview.people.map(p => p.name), ['Gil Gold']);
+    assert.equal(r.preview.deal, null);
+    assert.equal((await data('listInTalks', { preview: 'ba' })).preview, null, 'a brand on the list is no preview');
+    r = await data('setTalksDeal', { brandId: 'bd', stage: 'proposal' });
+    assert.deepEqual([r.created, r.addedToTalks, r.dismissed, r.from], [true, true, false, null]);
+    r = await data('listInTalks');
+    const dd = r.brands.find(b => b.id === 'bd');
+    assert.ok(dd && dd.deal.stage === 'proposal' && dd.deal.source === 'manual', 'a deal started, in talks');
+    assert.equal(dd.journey[4].label, 'Deal · proposal');
+    assert.ok(!r.suggestions.some(x => x.id === 'bd'), 'off the Replied list');
+    r = await data('setTalksDeal', { brandId: 'bd', stage: 'verbal' });
+    assert.deepEqual([r.created, r.addedToTalks, r.from], [false, false, 'proposal']);
+    assert.equal(await prisma.deal.count({ where: { brandId: 'bd' } }), 1, 'the same deal moves');
+    r = await data('setTalksDeal', { brandId: 'be', stage: 'lost' });
+    assert.deepEqual([r.dismissed, r.addedToTalks], [true, false]);
+    r = await data('listInTalks');
+    assert.ok(!r.brands.some(b => b.id === 'be') && !r.suggestions.some(x => x.id === 'be'), 'Lost: off the offers, never in talks');
+    await prisma.deal.create({ data: { brandId: 'ba', name: 'Alpha show', stage: 'verbal', source: 'notion' } });
+    await assert.rejects(data('setTalksDeal', { brandId: 'ba', stage: 'closed' }), /Notion/);
+    await assert.rejects(data('setTalksDeal', { brandId: 'bd', stage: 'maybe' }), /Unknown stage/);
+    await assert.rejects(data('setTalksDeal', { brandId: 'bp', stage: 'proposal' }), /person/);
+    const dealWords = (await prisma.claudeAction.findMany({ where: { fn: 'setTalksDeal' }, orderBy: { at: 'asc' } })).map(x => x.text);
+    assert.deepEqual(dealWords, ["Started Delta Pouch's deal at proposal (now in talks)", "Moved Delta Pouch's deal to verbal", "Started Echo Energy's deal at lost"]);
+    ok('a Replied card opens for a look; a deal stage starts the deal and puts it in talks, moves it after, Lost takes it off the offers; synced deals refused');
   } finally {
     if (prisma) await prisma.$disconnect().catch(() => {});
     if (server) { try { process.kill(-server.pid, 'SIGTERM'); } catch (e) {} }
