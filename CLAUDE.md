@@ -86,6 +86,21 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   pure in `src/lib/claude-day.ts`: `node scripts/test-claude-day.mjs`; page: `NODE_PATH=$(npm root -g) node
   scripts/test-claude-day.js`. **Every Claude session that changes something should end by logging itself**
   (`node scripts/cc.mjs addWorkLog '{"text":"…"}'`, NEED blocks for Leo's to-dos) — that's the "sessions said" card.
+- **Home → Accepted on LinkedIn** (Leo, Oct 18 2026: "a list of all of the most recent and in total people that have
+  been accepted on linkedin and the brand and the title … click on their card and it takes u to their page of the brand";
+  his pick: a card on Home, `#hm-accepted`, `ac*` in app.html). `acceptedPeople` (read-only) = everyone accepted, newest
+  first — rules pure in `src/lib/accepted.ts` (`node scripts/test-accepted.mjs`): status accepted; replied / converted /
+  said no with an accept on record; a LinkedIn reply with no accept logged (invite sent, no inbound email). Not an undone
+  accept (back to sent) or an email-only reply. Dated by the first accept event, else the reply; one stage word
+  (doesn't want to continue > said no > call booked > converted > replied > messaged > accepted). The card: counts (7 days
+  / 30 days / total, brands), chips Last 7 days / Last 30 days / All, a filter box (name, brand, title), 25 then Show
+  more; a card opens the brand page at that person. Hidden in `zach-only`. Page: `NODE_PATH=$(npm root -g) node
+  scripts/test-accepted.js`; real handlers: `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-accepted-e2e.js`.
+- **A person's card opens their brand page at them** (Leo, Oct 18 2026: search → "exactly where they are in the brands
+  list of people and it should be highlighted"): a card with `data-brand` + `data-focus="<contactId>"` (search's People,
+  Home → Accepted) → `loadBrand(brandId, contactId)` → `B_FOCUS`; the brand page's People rows carry `data-pcid`, and
+  `bFocusApply` lights the row (`.b-focus`) and centres it once (held ~1.5 s while the Schedule line / Zach's cards fill
+  in, unless you scroll). It stays lit through refreshes of that page; another brand clears it.
 - **Home → Your chats** (Leo, Oct 17 2026: "i usually use more than 4 chats a day … i sometimes forget what each one is
   about … tells me what chat did what, and what each chat needs from me"). One `WorkLog` row per claude.ai chat per New
   York day (`source: 'session'`, `sessionId`, `url`, `about`, `ask`/`asks` = Leo's messages that day, `status` working ·
@@ -605,7 +620,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   by category, company size, buyer type and people invited per brand (per brand); smoothed (5 invites of the
   average), n on every cell, "too few to tell" under 30. Suggestions name a category's priority one step
   ("accepts 1.9× the average — make it Top?", Skip never) and change it only on **Make it …** + a confirm
-  (`setCategoryPriority`); Brand Fit's weights and stored fitScore are never touched. **People per brand** (Oct 18 2026 — Leo: "when we do more than 3 people do we have a higher probability of getting an acceptance"; accepts only, his call): under it, `outcomeTable.depth` (`depthTable`, outcomes.ts): each person by place in the brand's line (send order), brands by people invited the first day / in all, by Brand Fit today, and "if separate chances" (1 − (1 − p)^k at the overall per-person rate) beside them; raw rates, too few to tell under 30. **Outreach → LinkedIn** = one card per brand
+  (`setCategoryPriority`); Brand Fit's weights and stored fitScore are never touched. **People per brand** (Oct 18 2026 — Leo: "when we do more than 3 people do we have a higher probability of getting an acceptance"; accepts only, his call): under it, `outcomeTable.depth` (`depthTable`, outcomes.ts): each person by place in the brand's line (send order), brands by people invited the first day / in all, by Brand Fit today, and "if separate chances" (1 − (1 − p)^k at the overall per-person rate) beside them; raw rates, too few to tell under 30. **On Results too** (Leo, Oct 18 2026: "on the results page a count for when we do
+  outreach to x amount of people the percentage for an acceptance"): **Acceptance by people reached** under the tiles
+  (`#rc-depth`, `renderRcDepth`, `rcd*` CSS) = `depth.byTotal`: per people count, the share of brands where someone
+  accepted (bar), N of M brands, each person's rate, too few to tell; read beside listReached, no card when nothing
+  to judge or on an error. `NODE_PATH=$(npm root -g) node scripts/test-results-depth.js`. **Outreach → LinkedIn** = one card per brand
   (sent people stay in their card, `getTodayQueue.sentList`; a finished brand folds to one line). **Ready if you have
   room** = whole brands (`getTodayQueue.moreBrands` + `handSpots`, `oqMoreCard`): **Add to today (N)** when it fits the
   open spots — a hand add, so against the flat 30 (`handSpots`), not what LinkedIn's week leaves the automatic picks
@@ -1373,6 +1392,16 @@ cloud environment's settings).
 - EventStaff `status`: invited · onboarding · ready · confirmed · declined · no_show · done. Local confirmed/declined/no_show/done are never overwritten by a platform sync.
 - Ops: rules classify, a hand edit (`reviewedAt`) is never overwritten by rescan. Paid vendor invoice linked to a budget line → sets that line's final cost.
 - UI edits save on `change`; re-render after money/status edits.
+- **Back / forward between pages** (Leo, Oct 18 2026; his pick: the browser's buttons + ‹ › by the search bar,
+  `#nav-back` / `#nav-fwd`): every page change is a history entry, `history.state.sbNav = { v, a, i, y }` — `showView`
+  → `navRecord` (a loader sets `NAV_ARGS` just before its showView: loadBrand `{ b, p }`, runSearch `{ q }`, loadBrands
+  `{ c }`); popstate → `navRestore` redraws with that page's loader (Activations / Operations read their place from the
+  address) and `navScrollTo(y)` puts you back where you were. A search being typed or a tab clicked twice replaces its
+  entry; a plain `#` link isn't a page (stamped as the page on screen). The address isn't changed, so opening or
+  reloading still lands on Home; `history.replaceState({}, …)` keeps an entry's record (shim at the top of the script).
+  **The top search bar is empty on every page but its results** (Leo: "their name should not be in the search bar
+  still"): showView clears `#q` (and a pending search) on any other page; Back to the results puts the words back.
+  `test-accepted.js` covers both.
 - **Keep my place** (Leo, Sep 2026: buttons "reload the page"): a loader re-run for the screen already
   showing is a refresh — `showView(id)` returns true, so skip the "Loading…" placeholder and guard the
   draw with `viewTurn(id)`. `keepPlace` (showView runs it) holds the clicked thing where it was on
