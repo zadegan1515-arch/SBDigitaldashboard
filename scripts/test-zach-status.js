@@ -62,7 +62,7 @@ function payload() {
   return {
     template: { subject: 'Hi (NAME)', body: 'Email for (BRAND)', standIn: false, savedAt: null, savedBy: null },
     dmTemplate: { subject: '', body: 'DM for (BRAND)', standIn: false },
-    firstTemplate: { subject: '', body: 'Hey (NAME), great to be connected.', standIn: false },
+    firstBTemplate: { subject: '', body: 'Hey (NAME), great to be connected.', standIn: false },
     finalTemplate: { subject: '', body: S.finalTpl, standIn: S.finalStandIn },
     brands: [
       brand('bA', 'Alpha Water', [person('tA', 'Ann Able', { acceptedAt: ago(1) })]),                    // soon: due tomorrow

@@ -769,7 +769,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       assert.deepEqual(one.brands.map(g => [g.id, g.people.map(p => p.name)]), [['zb1', ['Zed Able']]]);
       assert.deepEqual(one.calls.map(c => c.targetId), [zt3.id], 'the booked call, for its line on the brand page');
       assert.ok(one.done.every(d => d.brandId === 'zb1') && one.done.some(d => d.targetId === zt3.id && d.kind === 'call'));
-      assert.ok(one.firstTemplate && one.finalTemplate && one.template, 'the templates come with it');
+      assert.ok(one.firstBTemplate && one.firstBWTemplate && one.finalTemplate && one.template, 'the templates come with it');
       const home = await data('zachTodo', {});
       const names = home.brands.flatMap(g => g.people.map(p => p.name));
       assert.ok(names.includes('Zed Able') && names.includes('Oz Bright'), 'Home still gets every brand');
@@ -777,37 +777,16 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       assert.ok((await data('zachTodo', { brandId: 'zb1' })).brands[0].people[0].dmSentAt, 'a tick shows on the brand\'s next read');
       ok('zachTodo({ brandId }): one brand\'s people, its booked call and ticks; Home unchanged')
 
-      // The first message test (Oct 18 2026): a brand's version on every
-      // card there, B's two templates, the version saved with Messaged, the
-      // count on Results, an Undo clears it, Stop records nothing.
-      const zp = one.brands[0].people[0];
-      assert.ok(['A', 'B'].includes(zp.firstVersion), 'a version for the card: ' + zp.firstVersion);
-      assert.ok(one.firstTest.on, 'on with no setting');
+      // The first LinkedIn message (Oct 18 2026): Leo's, for a man / a woman;
+      // no version A, nothing recorded with Messaged.
       assert.match(one.firstBTemplate.body, /what's up man!/);
       assert.match(one.firstBWTemplate.body, /great to meet you!/);
-      const zt1row = () => prisma.target.findUnique({ where: { id: zt1.id } });
+      assert.equal(one.firstTemplate, undefined, 'no single first message (version A) any more');
       await data('handStep', { targetId: zt1.id, step: 'dm', on: false });
       await data('handStep', { targetId: zt1.id, step: 'dm', version: 'B' });
-      assert.equal((await zt1row()).handFirstVariant, 'B', 'Messaged saves the version');
-      await data('handStep', { targetId: zt1.id, step: 'dm', version: 'Z' });
-      assert.equal((await zt1row()).handFirstVariant, null, 'only A or B');
-      await data('handStep', { targetId: zt1.id, step: 'dm', version: 'A' });
-      await prisma.target.update({ where: { id: zt1.id }, data: { dmSentAt: new Date(Date.now() - 3 * 864e5), repliedAt: new Date(Date.now() - 864e5), status: 'replied' } })
-      const ft = await data('firstMessageTest');
-      const fa = ft.versions.find(v => v.key === 'A')
-      assert.deepEqual([fa.sent, fa.judged, fa.answered], [1, 1, 1], 'answered before the final reach-out: counted')
-      assert.match(ft.texts.B, /what's up man!/)
-      assert.equal(ft.on, true)
-      await data('handStep', { targetId: zt1.id, step: 'dm', on: false });
-      assert.equal((await zt1row()).handFirstVariant, null, 'Undo clears the version');
-      await data('setFirstTest', { on: false });
-      await data('handStep', { targetId: zt1.id, step: 'dm', version: 'B' });
-      assert.equal((await zt1row()).handFirstVariant, null, 'stopped: nothing recorded');
-      const off = await data('zachTodo', { brandId: 'zb1' });
-      assert.deepEqual([off.firstTest.on, off.brands.length ? off.brands[0].people[0].firstVersion : 'A'], [false, 'A'], 'stopped: everyone gets A');
-      assert.equal((await data('firstMessageTest')).on, false);
-      await data('setFirstTest', { on: true });
-      ok('first message test: a version per brand, saved with Messaged (A / B only), counted on Results, Undo clears it, Stop records nothing')
+      const zr = await prisma.target.findUnique({ where: { id: zt1.id } });
+      assert.deepEqual([!!zr.dmSentAt, zr.handFirstVariant], [true, null], 'Messaged ticks; no version kept');
+      ok('the first message: Leo\'s for a man / a woman, no version A, Messaged keeps no version')
     }
 
     console.log(n + ' checks passed');

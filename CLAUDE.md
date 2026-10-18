@@ -230,26 +230,19 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `handSkippedAt`. Two templates (Settings `handEmailTemplate`, `handDmTemplate`; placeholders
   (NAME) (BRAND) (TITLE); the email one is Leo's text by default (`HAND_EMAIL_TEMPLATE_DEFAULT`), the DM one a stand-in until he saves his), edited in one modal with tabs and a live
   preview; per-person edits in `Target.handSubject/handBody/handDm` (null = follow the template).
-  The first LinkedIn message ("Text them on LinkedIn") follows a third template, Setting
-  `handFirstDmTemplate` (Leo's pasted text is the default; "Edit template" on the card or the modal's
-  First LinkedIn message tab); a card keeps its own text only when someone really rewrote it (draft
-  `firstMessage` edited and ≠ the queue's stock text; Reset to template clears it). The **final
+  The first LinkedIn message ("Text them on LinkedIn") is **Leo's message for a man / for a woman** (Oct 18 2026: "just
+  make it the version b for man and woman, get rid of version a" — a one-day A/B test was dropped; the keys keep its B
+  name): Settings `handFirstDmTemplateB` (man) / `handFirstDmTemplateBW` (woman), his text as the default; zachTodo sends
+  `firstBTemplate` / `firstBWTemplate`; Edit template's **First message · man** / **First message · woman** tabs (kinds
+  `firstB` / `firstBW`; the old single `handFirstDmTemplate`, kind `first`, is unused and opens the man's). Every card has
+  **For a man / For a woman** (`ZT_BG`, a man's first — the rep picks, never guessed) and its Edit template opens the one
+  shown; Results → They accepted's **Copy DM · M / · W** copy the same (`rcFirstReady`). A card keeps its own text only
+  when someone really rewrote it (draft `firstMessage` edited and ≠ the queue's stock text; Reset to template clears it;
+  no man / woman switch then). `[Name]` / `[Brand]` fill like `(NAME)` / `(BRAND)` everywhere. `Target.handFirstVariant`
+  is left over from the test, unused. `NODE_PATH=$(npm root -g) node scripts/test-first-message.js`. The **final
   reach-out** follows a fourth, Setting `handFinalTemplate` (stand-in until Leo saves his; the modal's
   Final reach-out tab); a card's edit is `Target.handFinal` (null = the template; `saveHandEmail`
-  `final`), no longer the queue draft's nudge. **The first message test** (Leo, Oct 18 2026: "lets do 1" — which first
-  message gets replies; 1 in 6 accept, 1 in 20 reply; rules pure in `src/lib/first-test.ts`, `node scripts/test-first-test.mjs`):
-  **A** = the first message template, **B** = Leo's test version for a man / a woman (Settings `handFirstDmTemplateB` /
-  `handFirstDmTemplateBW`, his text as the default; Edit template's **Test B · man** / **Test B · woman** tabs, kinds
-  `firstB` / `firstBW`). **Every brand is A or B** (his pick: the same for everyone there) — `versionOf(brandId)`, a stable
-  hash, nothing stored until it goes; zachTodo sends `firstVersion` per person + `firstTest.on`. The card says "Test ·
-  version A/B"; a B card has **For a man / For a woman** (`ZT_BG`, the rep picks — never guessed). **Messaged** sends the
-  version the card showed (`ztVersionSent`; none for a card someone rewrote, `dmOwn`) → `Target.handFirstVariant` (Undo
-  clears it). An answer (reply, a path picked, a call, a no) counts when it came after the first message and **before the
-  final reach-out**; judged once answered, the final went, or `HAND_NUDGE_DAYS` passed. Results → **First message test**
-  (`#rc-firsttest`, `renderFirstTest`, `firstMessageTest`): answered of judged per version, said no, waiting, too few to
-  tell under 30, the messages, **Stop the test** / Start again (`setFirstTest`, Setting `firstMsgTest` = { on, at, by };
-  no row = on; stopped = A for everyone, nothing recorded). `[Name]` / `[Brand]` fill like `(NAME)` / `(BRAND)` everywhere.
-  `NODE_PATH=$(npm root -g) node scripts/test-first-test.js`; real handlers in test-today-e2e. Leo's note is
+  `final`), no longer the queue draft's nudge. Leo's note is
   `Target.handNote`; To writes `Contact.email` (old address kept in the contact's notes).
   Open in Gmail (compose URL, `authuser` = signed-in email) / Copy: **nothing sends from the site**,
   so the cap isn't involved. Done fold (30 days) and Calls booked, each with Undo. No CC (Leo's call); one-pager is a download button. The email

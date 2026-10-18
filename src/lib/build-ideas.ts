@@ -10,8 +10,8 @@ export type BuildIdea = { id: string; title: string; why: string; area: string }
 export const BUILD_IDEAS: BuildIdea[] = [
   // Built Oct 6 2026 and retired from here: weekly scoreboard, brand
   // timeline, stale deal nudges, Friday wrap-up, Zach's list on a phone,
-  // sponsor report after a show. Built Oct 18 2026: which first message
-  // gets replies (the first message test, src/lib/first-test.ts).
+  // sponsor report after a show. Oct 18 2026: which first message
+  // gets replies — built, then dropped the same day (Leo kept one message).
   { id: 'reply-inbox', area: 'Outreach', title: 'One inbox for every reply',
     why: 'LinkedIn accepts, LinkedIn replies and email replies in one list on Home, newest first, each with its next step.' },
   { id: 'su-batch', area: 'Brands', title: 'SponsorUnited lookups in bulk',

@@ -92,7 +92,7 @@ function zachTodo(a) {
   }
   return {
     template: { subject: 'SB × (BRAND)', body: 'Hi (NAME)' }, dmTemplate: { subject: '', body: 'Great to hear from you' },
-    firstTemplate: TPL, finalTemplate: { subject: '', body: 'One last note' },
+    firstBTemplate: TPL, firstBWTemplate: { subject: '', body: 'Hey (NAME), great to meet you!' }, finalTemplate: { subject: '', body: 'One last note' },
     brands: people.length ? [{ id: 'b1', name: 'Alpha Water', category: 'electrolytes', website: 'alphawater.com', linkedinUrl: null, hold: null, people }] : [],
     people: people.length, noAddress: 0, held: [],
     done: mine && S.skipped ? [{ targetId: 't2', brandId: 'b1', brandName: 'Alpha Water', name: 'Beth Baker', kind: 'skipped', at: ago(0) }] : [],
