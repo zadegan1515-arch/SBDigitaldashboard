@@ -107,16 +107,22 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   needs · done, `question` = what its last reply asks, `lastAt`), written only by `chatLog({ session, event: prompt |
   reply | question | summary, … })` — rules pure in `src/lib/chat-log.ts` (a reply sorted by work-log.ts's rules, the
   question it ends on, secrets masked, Leo's ticks carried by the need's words, an older post never winds a chat back).
-  Shown as Home's **Claude chats today** tile (`data-cd-open="chats"`) and **Claude's day → Your chats**, its first card
-  (`chCard`/`chRow`/`chState` in app.html: Needs you → Working → No reply yet (working 2 h+) → Done; the title opens
-  the chat); their NEEDs and questions are on the Needs card too; a chat's older days' needs give way to its latest day.
+  Shown on **its own page** (Leo, Oct 17 2026: "make it its own page and make it simple and concise in bigger text"):
+  view `#chats` (`loadChats`, `chp*` in app.html; data = `dayRecap`'s chats, ‹ › other days), opened by Home's **Claude
+  chats today** tile (`data-chp-open`), **Your chats ▸** in Home's header and Claude's day's Needs card — three big
+  numbers (need you / working / done), then a card per chat under Needs you → Working → Done (`chState`: working 2 h+
+  with no reply = "No reply since …"): its name (opens the chat), one line on what it's for, **It needs from you**
+  (NEEDs to tick + its question), up to three things it did (the rest folded), 17px+ text. A tick turns the card Done
+  in place (it moves on the next load). Claude's day no longer has a chats card; its Needs card still lists their
+  NEEDs and "Chats waiting on your answer"; a chat's older days' needs give way to its latest day.
   Pasted logs keep the "sessions said" card. `chatLog` is never a ClaudeAction. Fed by **the chat itself**
-  (`scripts/chat-log-hook.mjs` from Claude Code hooks — UserPromptSubmit / Stop / PreToolUse AskUserQuestion|ExitPlanMode;
-  detached post, nothing on stdout, quiet without `DASHBOARD_TOKEN`) and/or **the chat review** (`docs/chat-review.md`:
+  (`scripts/chat-log-hook.mjs` from Claude Code hooks in **`.claude/settings.json`** (Leo's yes, Oct 17 2026) —
+  UserPromptSubmit / Stop / PreToolUse AskUserQuestion|ExitPlanMode; detached post, nothing on stdout, quiet without
+  `DASHBOARD_TOKEN`; a chat started before the hook was on main doesn't log) and/or **the chat review** (`docs/chat-review.md`:
   a chat reads Leo's other chats with list_sessions / list_events and posts `summary`; `listChatLogs` = what's logged).
   `node scripts/cc.mjs <fn> @file.json` reads args from a file. Tests: `node scripts/test-chat-log.mjs`,
   `node scripts/test-chat-log-hook.mjs`, `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-chat-log-e2e.js`,
-  page in `test-claude-day.js` (4).
+  page in `test-claude-day.js` (4 — the #chats page).
 - **In talks** (Leo, Oct 18 2026: "for the brands where the call has been scheduled i want u to put them there … a
   different type of layout … cleaner and more complex … notes for each brand … the person/people we reached out to and
   accepted … their linkedin and even email … the website and brand socials like instagram and tiktok … an overview … not
@@ -299,7 +305,18 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   up before … then … randomly put them into the days for the week which i should be able to move between days"; his picks:
   a **bank spent week by week**, an **even mix of rank**, a spread day takes **only brands from the list**). Rules pure in
   `src/lib/week-bank.ts` (`node scripts/test-week-bank.mjs`); `wp*` / `WP` in app.html (`#weekplan`, tab between Results
-  and Schedule). **The list** (Setting `weekBank` = { size, hand, removed }; `buildBank` in route.ts) = brands Leo added
+  and Schedule). **Layout** (Leo, same day: "clean this page up … make each brand bigger … make sure that adding and
+  removing brands does not glitch"): the list pane on the left, the week pane on the right, each filling the screen under
+  the title (`wpFit` → `--wp-h`) and scrolling on its own (`wpPaint` keeps each pane's scroll) — so a brand put on a day
+  never moves the list under the mouse; stacked (week first) under 1100px. One big card per brand (`wpCardHtml`: rank,
+  name, Brand Fit box, category, people, contacts, Reached tag, where it is) with a **button per day** (lit = it's on that
+  day; another day moves it, the lit one takes it off) and **Remove**; day cards (`wpDayCard`) have → <day> and ↩ Back to
+  list; drag works list → day, day → day, day → list. The search box / category menu (static, never redrawn) turn the
+  list pane into results (+ Add to list / Add anyway / Added ✓; a category: Add the top N, ticks) with × Back to your list.
+  **No glitches** (`wpDo`): every change shows at once on the page's own copy, the buttons of a brand being saved wait
+  (`WP.pending`), and the page reads `weekBank` once the last change is answered (`wpRead`, dropped if another change
+  started meanwhile); a refusal says why and that read puts the truth back. A brand removed stays in its place as "Taken
+  off your list · Undo" for 15 s (`WP.gone`, Undo = `weekBankPutBack`). **The list** (Setting `weekBank` = { size, hand, removed }; `buildBank` in route.ts) = brands Leo added
   (search box = `searchPlanBrands` for the week's first day; Browse a category = `weekBankBrowse`, Add the top N / ticks;
   a giant's Add anyway OKs it, `okGiants`) + the brands a Best fit day would pick by itself (`bestFitEligible`, someone
   would go out, not going out today), **best Brand Fit first** (`compareBank`: fit, then ready, then name — not Ready
@@ -327,6 +344,19 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   row onto a day (`planAddBrands`). The Schedule shows a list day with a **Week list** tag and no category menu; the
   LinkedIn tab says "Today takes only your week list". Tests: `node scripts/test-week-bank.mjs`, `NODE_PATH=$(npm root -g)
   node scripts/test-week-plan.js` (page), `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-week-plan-e2e.js`.
+- **The Reached tag** (Leo, Oct 18 2026: "all over the site for any brand that has been reached out to i want a tag that
+  shows that"): `reachedBrands` = every brand reached out to by `isReached`'s rule (an invite ever — logged outside the
+  queue or withdrawn since, an accept / reply, a hand or machine email) → { id: [first day, last day, stage r/a/i/e/w,
+  invited, emailed] }. The page keeps one map (`RB`, `rbLoad`: at the start, every tab change and window focus — at most
+  every 30 s — and after any call in `RB_WRITES`, e.g. setTargetStatus / logLinkedInPerson / markEmailed / handStep);
+  `rbTag(id)` draws a slot the map fills ("Reached Oct 12", purple; tooltip = first/last day, how many invited / emailed,
+  how far it got), painted again when the map lands (`rbPaint`). On: Brands table (its Outreach column), the brand page header, Needs contacts,
+  Stock take, Brand Fit review, People, fill schedule, Read on Zach's LinkedIn, the Schedule's cards / Fill box / find box /
+  drill-in / contacts check / Plan my week, Week plan, the LinkedIn tab's brand cards, All targets, Archived, global search,
+  Today's list for Zach, Deals board, Show Board requests / In talks / visits / code lookup, Partners, Discover (added),
+  Clarify, Duplicates. Left off lists where every brand is reached by definition (Results, Zach's list and its status
+  board, sent today, the recap). A new brand list: add `rbTag(<brand id>)` next to the name.
+  `NODE_PATH=$(npm root -g) node scripts/test-reached-tag.js`.
 - **Outreach → Schedule** (`getOutreachPlan` + the `sd*` / `renderSched*` code; plan in Setting
   `outreachPlan` = `{ "YYYY-MM-DD": { category, brandIds } }`, one brand on one day) — full width,
   today (if a sending day) + the next 3 sending days as columns. Every brand carries a **contacts label**
@@ -646,7 +676,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   by category, company size, buyer type and people invited per brand (per brand); smoothed (5 invites of the
   average), n on every cell, "too few to tell" under 30. Suggestions name a category's priority one step
   ("accepts 1.9× the average — make it Top?", Skip never) and change it only on **Make it …** + a confirm
-  (`setCategoryPriority`); Brand Fit's weights and stored fitScore are never touched. **People per brand** (Oct 18 2026 — Leo: "when we do more than 3 people do we have a higher probability of getting an acceptance"; accepts only, his call): under it, `outcomeTable.depth` (`depthTable`, outcomes.ts): each person by place in the brand's line (send order), brands by people invited the first day / in all, by Brand Fit today, and "if separate chances" (1 − (1 − p)^k at the overall per-person rate) beside them; raw rates, too few to tell under 30. **Outreach → LinkedIn** = one card per brand
+  (`setCategoryPriority`); Brand Fit's weights and stored fitScore are never touched. **People per brand** (Oct 18 2026 — Leo: "when we do more than 3 people do we have a higher probability of getting an acceptance"; accepts only, his call): under it, `outcomeTable.depth` (`depthTable`, outcomes.ts): each person by place in the brand's line (send order), brands by people invited the first day / in all, by Brand Fit today, and "if separate chances" (1 − (1 − p)^k at the overall per-person rate) beside them; raw rates, too few to tell under 30. **On Results too** (Leo, Oct 18 2026: "on the results page a count for when we do
+  outreach to x amount of people the percentage for an acceptance"): **Acceptance by people reached** under the tiles
+  (`#rc-depth`, `renderRcDepth`, `rcd*` CSS) = `depth.byTotal`: per people count, the share of brands where someone
+  accepted (bar), N of M brands, each person's rate, too few to tell; read beside listReached, no card when nothing
+  to judge or on an error. `NODE_PATH=$(npm root -g) node scripts/test-results-depth.js`. **Outreach → LinkedIn** = one card per brand
   (sent people stay in their card, `getTodayQueue.sentList`; a finished brand folds to one line). **Ready if you have
   room** = whole brands (`getTodayQueue.moreBrands` + `handSpots`, `oqMoreCard`): **Add to today (N)** when it fits the
   open spots — a hand add, so against the flat 30 (`handSpots`), not what LinkedIn's week leaves the automatic picks
@@ -759,7 +793,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   much going on"): search + one **More ▾** menu (Brand Fit, SponsorUnited worklist, Lanes & re-file,
   Duplicates, Fill summaries — same ids `bq-*`), one **category dropdown** (`brCatSelect`, `data-brcat`;
   the chip row is gone), filters on one line, archived hidden by default. One row per brand:
-  Category · Tier · Fit · **Buyers** (the edit row shows everyone else on file). **Buyers** = people on file
+  Category · Tier · Fit · **Buyers** (the edit row shows everyone else on file). **Easier to read** (Leo, Oct 18 2026: "too
+  hard to look at can u make it easier to see and interact with"): one filter panel (`.br-tools`) — category, **Show**
+  and **Outreach** as button rows (`brSeg`), Sort; "Showing N of M brands" + **Clear filters** (`data-brclear`: Show,
+  Outreach, search); Hide too small / Hide archived — and the table Brand · **Outreach** (`brOutCell`: the Reached tag +
+  Replied / N invited / N emailed; else N queued / Not yet, hidden once the tag fills) · Category · Tier · Fit · Buyers (0 = grey with an amber dot,
+  not ⚠), 14–15px text, striped rows, a click on a heading sorts (`brHead`, `data-brsorth`; Buyers flips fewest / most;
+  the Sort menu follows), and on a desktop the heading row sticks under the top bar. **Buyers** = people on file
   whose title is partnerships/sponsorship, events/experiential, marketing/brand or founder/CEO
   (`src/lib/buyers.ts`, counted in `listBrands` → `buyers`, `buyerPeople`; `node scripts/test-buyers.mjs`);
   a brand is covered at **1** (`BR_TARGET`, Leo's call). Filters All / Needs people / Has enough,
@@ -790,6 +830,17 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   amber). The "People on file" card (`renderFillProgress` — brands with anyone on file, the SponsorUnited
   sweep) is folded to one line under it (`FP_OPEN`).
   `node scripts/test-coverage-e2e.js` (real handlers, throwaway Postgres).
+- **Outreach filter on every brand list** (Leo, Oct 18 2026: "anywhere on the site where i sort brands … a filter [for]
+  outreached to meaning that we have sent a request to at least one person there"): one dropdown **Outreach: Any /
+  Reached out (N) / Not reached out (N)** (`reachSelect` / `reachOk` / `REACH_F` / `REACH_DRAW` in app.html) on All brands
+  (there a row of buttons in the filter panel, `data-brreach`), Stock take (a lane's brand list, "Brands (3 of 40)"), Discover (reset by a tab change), Outreach → People, Week plan's
+  browse a category (Add the top N follows it) and the Schedule's category drill-in. Reached out = **the Reached tag's
+  rule** (`isReached` / `REACHED_WHERE` in route.ts, which `reachedBrands` reads too): an invite ever, an accept logged
+  from LinkedIn, a hand or machine email — so a brand with the purple tag is always under Reached out. Data: listBrands
+  `outreach.invited` / `emailed`, brandStock `invited` / `emailed`, linkedinPeople `reached`, listDiscoveries `reached`,
+  planBrandRow `reached`, categoryBrands' `group === 'reached'`.
+  Per list, for the visit (not remembered). `NODE_PATH=$(npm root -g) node scripts/test-reach-filter.js`,
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-reach-filter-e2e.js`.
 - **Daily Claude brand hunt** (Leo, Oct 2026: "a process for Claude to find new brands … it shouldn't
   necessarily be through LinkedIn"). Routine "Discover: daily brand hunt" (5:52 New York) wakes the cloud
   session "Brand hunt (daily)" — repo attached, `REPORT_TOKEN` in its environment; a fresh empty session
