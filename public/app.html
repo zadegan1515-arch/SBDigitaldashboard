@@ -1044,6 +1044,8 @@
   .sd-out-h{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:0}
   .sd-out td.sd-out-few{color:var(--ink-3)}
   .sd-out-sugs{margin-bottom:12px}
+  .sd-out-depth .sd-cats-h{margin:20px 0 10px}
+  .sd-out-wide{grid-column:1/-1}
   .sd-out-sug{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--border-soft);font-size:13.5px}
   .sd-out-sug:last-child{border-bottom:0}
   .sd-retry{padding:10px 0;border-bottom:1px solid var(--border-soft)}
@@ -15065,8 +15067,61 @@ function renderSchedOut() {
       sdOutTable('By category', 'Category', d.byCategory, function (k) { return sdCatName(k || null); }) +
       sdOutTable('By company size', 'Size', d.bySize, function (k) { return SD_OUT_SIZE[k] || k; }) +
       sdOutTable('By who was invited', 'Title', d.byBuyer, function (k) { return SD_OUT_BUYER[k] || k; }) +
-      sdOutTable('By people invited per brand', 'Brands with', d.byThreads, function (k) { return k + (k === '1' ? ' person' : ' people') + ' invited'; }) +
-    '</div>';
+    '</div>' + sdOutDepth(d.depth);
+}
+// People per brand (people-per-brand, Oct 18 2026 — Leo: "if we do more than
+// 3 people do we have a higher probability of getting an acceptance"):
+// accepts only, raw rates. A brand is a yes when anyone there accepted;
+// "If separate chances" is what the overall per-person rate alone gives
+// a brand with that many people (depthTable in src/lib/outcomes.ts).
+var SD_DEPTH_ORDER = { '1': '1st person', '2': '2nd person', '3': '3rd person', '4': '4th person', '5+': '5th or later' };
+var SD_DEPTH_KEYS = ['1', '2', '3', '4', '5–9', '10+'];
+function sdDepthHead(unit, cols) {
+  return '<thead><tr><th scope="col" class="sd-cov-c">' + esc(unit) + '</th>' +
+    cols.map(function (c) { return '<th scope="col" class="sd-cov-sum">' + esc(c) + '</th>'; }).join('') + '<th scope="col"></th></tr></thead>';
+}
+function sdDepthFew(few) { return '<td class="sd-cov-last">' + (few ? '<span class="sd-dim">too few to tell</span>' : '') + '</td>'; }
+function sdOutDepth(dp) {
+  if (!dp || dp.personRate == null) return '';
+  var few = (SCHED.out && SCHED.out.few) || 30;
+  var model = {};
+  (dp.model || []).forEach(function (m) { model[m.k] = m; });
+  var fd = {}, tot = {};
+  (dp.byFirstDay || []).forEach(function (c) { fd[c.key] = c; });
+  (dp.byTotal || []).forEach(function (c) { tot[c.key] = c; });
+  var none = '<td class="sd-cov-sum">–</td>';
+  var brandTd = function (c) { return c ? sdOutRate(c.brandRate, c.brandsYes, c.brands, c.few) : none; };
+  var byCount = SD_DEPTH_KEYS.filter(function (k) { return fd[k] || tot[k]; }).map(function (k) {
+    var m = model[Number(k)];
+    var c = fd[k];
+    return '<tr><th scope="row" class="sd-cov-c">' + esc(k + (k === '1' ? ' person' : ' people')) + '</th>' +
+      brandTd(c) + brandTd(tot[k]) +
+      '<td class="sd-cov-sum sd-dim">' + (m ? sdPct(m.brandChance) : '') + '</td>' +
+      (c ? sdOutRate(c.personRate, c.peopleYes, c.people, c.people < few) : none) +
+      sdDepthFew((!c || c.few) && (!tot[k] || tot[k].few)) + '</tr>';
+  }).join('');
+  var byOrder = (dp.byOrder || []).map(function (c) {
+    return '<tr><th scope="row" class="sd-cov-c">' + esc(SD_DEPTH_ORDER[c.key] || c.key) + '</th>' +
+      sdOutRate(c.personRate, c.peopleYes, c.people, c.few) + sdDepthFew(c.few) + '</tr>';
+  }).join('');
+  var byFit = (dp.byFit || []).map(function (c) {
+    return '<tr><th scope="row" class="sd-cov-c">' + esc(c.key === 'not scored' ? 'Not scored' : 'Fit ' + c.key) + '</th>' +
+      brandTd(c) + sdOutRate(c.personRate, c.peopleYes, c.people, c.people < few) + sdDepthFew(c.few) + '</tr>';
+  }).join('');
+  var m3 = model[3], m4 = model[4];
+  var line = 'Each person accepts ' + sdPct(dp.personRate) +
+    (m3 && m4 ? '. As separate chances, 3 a brand gets ' + sdPct(m3.brandChance) + ' of brands a yes and 4 gets ' + sdPct(m4.brandChance) +
+      ': the 4th person adds ' + Math.round(m4.adds * 100) + ' points, a new brand’s 1st adds ' + Math.round(model[1].adds * 100) + '.' : '.');
+  var panel = function (title, unit, cols, rows, wide) {
+    return rows ? '<div class="panel sd-covp' + (wide ? ' sd-out-wide' : '') + '"><h3 class="sd-out-h">' + esc(title) + '</h3><div class="sd-covwrap"><table class="sd-cov sd-out">' +
+      sdDepthHead(unit, cols) + '<tbody>' + rows + '</tbody></table></div></div>' : '';
+  };
+  return '<div class="sd-out-depth"><div class="sd-cats-h"><h3 class="sd-out-h">People per brand</h3><span class="sd-dim">' + esc(line) + '</span></div>' +
+    '<div class="sd-out-grid">' +
+      panel('Brands by people invited', 'Brands with', ['Yes · first day', 'Yes · in all', 'If separate chances', 'Each person'], byCount, true) +
+      panel('Each person, by place in the brand’s line', 'Invited', ['Accepted'], byOrder) +
+      panel('By Brand Fit (today)', 'Brands at', ['Someone accepted', 'Each person'], byFit) +
+    '</div></div>';
 }
 document.addEventListener('click', function (e) {
   var b = e.target.closest && e.target.closest('[data-sdoutprio]');

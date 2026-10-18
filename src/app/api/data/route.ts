@@ -11202,6 +11202,22 @@ const handlers: Record<string, Handler> = {
         events: { where: { toStatus: 'accepted' }, take: 1, select: { id: true } },
       },
     })
+    // Each brand's Brand Fit today, for people per brand by fit.
+    const brandIds = [...new Set(rows.map(t => t.brandId))]
+    const [facts, rates] = await Promise.all([
+      brandIds.length
+        ? prisma.brand.findMany({
+            where: { id: { in: brandIds } },
+            select: {
+              id: true, name: true, aka: true, category: true, tier: true, workPeople: true, ...FIT_SELECT,
+              contacts: { select: { email: true, linkedinUrl: true, doNotContactAt: true } },
+            },
+          })
+        : Promise.resolve([]),
+      recentAcceptRates(),
+    ])
+    const now = new Date()
+    const fitOf = new Map(facts.map(b => [b.id, brandFit(b, b.contacts.filter(isReachable).length, rates, now).score]))
     const invites: OutcomeInvite[] = rows.map(t => ({
       brandId: t.brandId, at: t.sentAt!,
       category: t.brand.category ?? null,
@@ -11209,9 +11225,11 @@ const handlers: Record<string, Handler> = {
       buyer: buyerKind(t.contact.title),
       accepted: ['accepted', 'replied', 'converted'].includes(t.status) || t.events.length > 0,
       replied: ['replied', 'converted'].includes(t.status) || !!t.repliedAt || !!t.callAt,
+      day: localDayKey(t.sentAt!),
+      fit: fitOf.get(t.brandId) ?? null,
     }))
     const table = outcomeRates(invites, {
-      now: new Date(), priorityOf: categoryPriority,
+      now, priorityOf: categoryPriority,
       acceptAfterDays: OUTCOME_ACCEPT_DAYS, replyAfterDays: HAND_DM_DAYS + HAND_NUDGE_DAYS + HAND_QUIET_DAYS,
     })
     return { days: n, ...table }

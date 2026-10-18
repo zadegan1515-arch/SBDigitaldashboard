@@ -37,6 +37,39 @@ export type OutcomeInvite = {
   buyer: BuyerKind | null // the person's title (buyerKind); null = not a buyer title
   accepted: boolean // accepted, replied or converted — or an accept logged before a decline
   replied: boolean // wrote back, or a call booked
+  day?: string // the invite's New York day key (people per brand: a brand's first day); else its UTC date
+  fit?: number | null // the brand's Brand Fit today (people per brand: by fit)
+}
+
+// How many people to invite at a brand (people-per-brand, Oct 18 2026 —
+// Leo: "if we do more than 3 people do we have a higher probability of
+// getting an acceptance"; accepts only, his call — replies are too few
+// yet). A brand counts as a yes when anyone there accepted. Raw rates,
+// not pulled toward the average: the point is the trend across groups.
+export type DepthCell = {
+  key: string
+  brands: number; brandsYes: number; brandRate: number | null // brands, and brands where someone accepted
+  people: number; peopleYes: number; personRate: number | null // each invite
+  few: boolean // under FEW brands (FEW people in byOrder)
+}
+// If each person accepts at the overall rate on their own: a brand's chance
+// of a yes with k invited, what the k-th person adds, and brands with a yes
+// per DEPTH_DAY invites (a full day) at k a brand.
+export type DepthModel = { k: number; brandChance: number; adds: number; brandsPerDay: number }
+export type DepthTable = {
+  personRate: number | null
+  byOrder: DepthCell[] // each person by when they were invited at the brand: 1, 2, 3, 4, 5+
+  byFirstDay: DepthCell[] // brands by how many went out on their first day (that day's invites only)
+  byTotal: DepthCell[] // brands by how many were invited there in all
+  byFit: DepthCell[] // brands by Brand Fit today
+  model: DepthModel[]
+  day: number
+}
+export const DEPTH_DAY = 30 // DAILY_SEND_LIMIT in route.ts
+export const FIT_BANDS: Array<[string, number]> = [['65+', 65], ['50–64', 50], ['under 50', -Infinity]]
+export function fitBand(fit: number | null | undefined): string {
+  if (fit == null) return 'not scored'
+  return FIT_BANDS.find(([, min]) => fit >= min)![0]
 }
 
 export type OutcomeCell = {
@@ -54,6 +87,7 @@ export type OutcomeTable = {
   bySize: OutcomeCell[]
   byBuyer: OutcomeCell[]
   byThreads: OutcomeCell[]
+  depth: DepthTable
   suggestions: OutcomeSuggestion[]
   acceptAfterDays: number; replyAfterDays: number; few: number
 }
@@ -168,7 +202,82 @@ export function outcomeRates(
     bySize: group(t => t.size, SIZE_ORDER),
     byBuyer: group(t => t.buyer ?? 'other', BUYER_ORDER),
     byThreads,
+    depth: depthTable(invites, now, aDays),
     suggestions,
     acceptAfterDays: aDays, replyAfterDays: rDays, few: FEW,
+  }
+}
+
+const dayOf = (t: OutcomeInvite) => t.day ?? new Date(ms(t.at)).toISOString().slice(0, 10)
+const rate = (yes: number, n: number) => (n ? yes / n : null)
+const ORDER_KEYS = ['1', '2', '3', '4', '5+']
+const FIT_ORDER = [...FIT_BANDS.map(b => b[0]), 'not scored']
+
+// People per brand: is the 4th person less likely to accept than the 1st,
+// and does a brand with more people invited get a yes more often than the
+// overall per-person rate alone would give it?
+export function depthTable(invites: OutcomeInvite[], now: number, aDays: number): DepthTable {
+  const old = (t: OutcomeInvite) => now - ms(t.at) >= aDays * DAY
+  const byBrand = new Map<string, OutcomeInvite[]>()
+  for (const t of invites) {
+    const l = byBrand.get(t.brandId)
+    if (l) l.push(t); else byBrand.set(t.brandId, [t])
+  }
+  const cells = (order: string[]) => {
+    const m = new Map<string, DepthCell>()
+    const at = (k: string) => {
+      let c = m.get(k)
+      if (!c) { c = { key: k, brands: 0, brandsYes: 0, brandRate: null, people: 0, peopleYes: 0, personRate: null, few: true }; m.set(k, c) }
+      return c
+    }
+    // A brand's judged invites under one key: one brand, its people.
+    const add = (k: string, judged: OutcomeInvite[]) => {
+      if (!judged.length) return
+      const c = at(k)
+      c.brands++
+      if (judged.some(t => t.accepted)) c.brandsYes++
+      c.people += judged.length
+      c.peopleYes += judged.filter(t => t.accepted).length
+    }
+    const done = (perPerson = false) => [...m.values()]
+      .map(c => ({ ...c, brandRate: rate(c.brandsYes, c.brands), personRate: rate(c.peopleYes, c.people), few: (perPerson ? c.people : c.brands) < FEW }))
+      .sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key))
+    return { add, at, done }
+  }
+  const order = cells(ORDER_KEYS)
+  const first = cells(THREAD_ORDER)
+  const total = cells(THREAD_ORDER)
+  const fit = cells(FIT_ORDER)
+  for (const list of byBrand.values()) {
+    // Invite order at the brand: by send time (a day's batch goes out in
+    // the queue's order, best buyers first); a tie keeps the list's order.
+    const sorted = list.map((t, i) => ({ t, i })).sort((a, b) => ms(a.t.at) - ms(b.t.at) || a.i - b.i).map(x => x.t)
+    sorted.forEach((t, i) => {
+      if (!old(t)) return
+      const c = order.at(i >= 4 ? '5+' : String(i + 1))
+      c.brands++; c.people++
+      if (t.accepted) { c.brandsYes++; c.peopleYes++ }
+    })
+    const firstDay = dayOf(sorted[0])
+    const dayOne = sorted.filter(t => dayOf(t) === firstDay)
+    first.add(threadsKey(dayOne.length), dayOne.filter(old))
+    const judged = sorted.filter(old)
+    total.add(threadsKey(sorted.length), judged)
+    fit.add(fitBand(sorted[0].fit), judged)
+  }
+  const all = invites.filter(old)
+  const p = rate(all.filter(t => t.accepted).length, all.length)
+  const model: DepthModel[] = p == null ? [] : [1, 2, 3, 4, 5, 6].map(k => {
+    const brandChance = 1 - Math.pow(1 - p, k)
+    return { k, brandChance, adds: p * Math.pow(1 - p, k - 1), brandsPerDay: (DEPTH_DAY / k) * brandChance }
+  })
+  return {
+    personRate: p,
+    byOrder: order.done(true),
+    byFirstDay: first.done(),
+    byTotal: total.done(),
+    byFit: fit.done(),
+    model,
+    day: DEPTH_DAY,
   }
 }
