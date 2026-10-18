@@ -237,9 +237,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `firstB` / `firstBW`; the old single `handFirstDmTemplate`, kind `first`, is unused and opens the man's). Every card has
   **For a man / For a woman** (`ZT_BG`, a man's first — the rep picks, never guessed) and its Edit template opens the one
   shown; Results → They accepted's **Copy DM · M / · W** copy the same (`rcFirstReady`). A card keeps its own text only
-  when someone really rewrote it (draft `firstMessage` edited and ≠ the queue's stock text; Reset to template clears it;
-  no man / woman switch then). `[Name]` / `[Brand]` fill like `(NAME)` / `(BRAND)` everywhere. `Target.handFirstVariant`
-  is left over from the test, unused. `NODE_PATH=$(npm root -g) node scripts/test-first-message.js`. The **final
+  when someone really rewrote it (`ownFirstMessage`: edited and ≠ any stock text — the old queue text, his man or woman
+  message; Reset to template clears it; no man / woman switch then). **The queue drafts' First DM is his message too**
+  (Leo's yes, Oct 18 2026): stored drafts keep the old "Thanks for connecting…" text, and every read that hands drafts to
+  the page (getTodayQueue, listTargets, getBrand, generateDrafts) swaps in his man / woman text, filled (`leoFirstDrafts`),
+  unless it's their own; saveDraft stores a First DM equal to a stock text as '' (= follow the template, so it changes when
+  he changes his), and the LinkedIn tab's blur save sends only a box that changed. Copy buttons: the LinkedIn tab's
+  **DM · M / DM · W**, the brand page's **Copy DM · M / · W** (on Zach's list: the card's own edit, else that template) and
+  its draft fold (FIRST DM · FOR A MAN / A WOMAN, `bFirstDmHtml`). `[Name]` / `[Brand]` fill like `(NAME)` / `(BRAND)`
+  everywhere. `Target.handFirstVariant` is left over from the test, unused. `NODE_PATH=$(npm root -g) node scripts/test-first-message.js`. The **final
   reach-out** follows a fourth, Setting `handFinalTemplate` (stand-in until Leo saves his; the modal's
   Final reach-out tab); a card's edit is `Target.handFinal` (null = the template; `saveHandEmail`
   `final`), no longer the queue draft's nudge. Leo's note is

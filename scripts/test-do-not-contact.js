@@ -311,7 +311,7 @@ async function main() {
   const row = await page.evaluate(() => targetRow({ id: 'tx', brandId: 'b1', status: 'accepted', updatedAt: new Date(Date.now() - 9 * 864e5).toISOString(), handDeclinedAt: new Date().toISOString(),
     drafts: [{ id: 'd', firstMessage: 'hi' }], contact: { name: 'Alex Seamon', title: 'Brand', linkedinUrl: 'https://www.linkedin.com/in/alex' }, brand: { name: 'Alpha Water', category: 'electrolytes' } }));
   assert.match(row, /doesn’t want to continue/);
-  assert.ok(!/Copy DM|DM overdue|DM sent|Mark sent|Re-queue/.test(row), 'nothing to send or log on the LinkedIn tab');
+  assert.ok(!/Copy DM|DM · [MW]|DM overdue|DM sent|Mark sent|Re-queue/.test(row), 'nothing to send or log on the LinkedIn tab');
   const lil = await page.evaluate(() => lilRowHtml({ stopped: true, choices: [], status: 'accepted', name: 'Alex Seamon', title: 'Brand', contactId: 'c1', brand: { name: 'Alpha Water' } }));
   assert.match(lil, /doesn’t want to continue — don’t contact/);
   assert.ok(!/on Zach’s list/.test(lil), 'never “on Zach’s list”');

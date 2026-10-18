@@ -787,6 +787,36 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       const zr = await prisma.target.findUnique({ where: { id: zt1.id } });
       assert.deepEqual([!!zr.dmSentAt, zr.handFirstVariant], [true, null], 'Messaged ticks; no version kept');
       ok('the first message: Leo\'s for a man / a woman, no version A, Messaged keeps no version')
+
+      // The drafts' First DM (Oct 18 2026, Leo's "yes"): the brand page, the
+      // LinkedIn tab's lists and their Copy DM get his man / woman message,
+      // filled; what was stored stays; an untouched box saved on blur keeps
+      // following the template; a real rewrite is kept.
+      const firstOf = async (tid) => {
+        const gb = await data('getBrand', { brandId: 'zb1' })
+        const t = gb.brand.targets.find(x => x.id === tid)
+        return { man: t.drafts.find(d => d.variant === 'man'), woman: t.drafts.find(d => d.variant === 'woman') }
+      }
+      let f = await firstOf(zt1.id)
+      assert.ok(f.man && f.woman, 'getBrand wrote their man / woman drafts')
+      assert.match(f.man.firstMessage, /^Zed – what's up man! I'm Zach with SB Agency/)
+      assert.match(f.man.firstMessage, /see if Zeta Seltzer is interested in activating/)
+      assert.match(f.woman.firstMessage, /^Hey Zed, great to meet you! I'm Zach with SB Agency/)
+      assert.match((await prisma.draft.findUnique({ where: { id: f.man.id } })).firstMessage, /^Thanks for connecting, Zed!/, 'the stored text is left as it was')
+      const lt = (await data('listTargets', { status: 'accepted', search: 'Zed Able' })).find(x => x.id === zt1.id)
+      assert.equal(lt.drafts.find(d => d.variant === 'woman').firstMessage, f.woman.firstMessage, 'listTargets hands over the same')
+      await data('saveDraft', { draftId: f.woman.id, firstMessage: f.woman.firstMessage })
+      await data('saveHandTemplate', { kind: 'firstBW', body: 'Hi [Name], new words for (BRAND).' })
+      f = await firstOf(zt1.id)
+      assert.equal(f.woman.firstMessage, 'Hi Zed, new words for Zeta Seltzer.', 'an untouched box saved as "edited" follows the new template')
+      let zp = (await data('zachTodo', { brandId: 'zb1' })).brands[0].people[0]
+      assert.deepEqual([zp.dmOwn, zp.dm], [false, null], 'and Zach\'s list reads it as the template')
+      await data('saveDraft', { draftId: f.woman.id, firstMessage: 'Zed, my own words' })
+      f = await firstOf(zt1.id)
+      assert.equal(f.woman.firstMessage, 'Zed, my own words', 'a rewrite is kept')
+      zp = (await data('zachTodo', { brandId: 'zb1' })).brands[0].people[0]
+      assert.deepEqual([zp.dmOwn, zp.dm], [true, 'Zed, my own words'], 'and Zach\'s card shows it')
+      ok('the drafts\' First DM: Leo\'s man / woman message, filled; an untouched save follows the template, a rewrite stays')
     }
 
     console.log(n + ' checks passed');

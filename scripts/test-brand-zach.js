@@ -173,6 +173,8 @@ async function main() {
   assert.equal(msg, 'Thanks for connecting, Alex! What is Alpha Water focused on with college this year?');
   await page.click('#brand-body [data-bcopy="t1"][data-variant="dm"]');
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), msg, 'the Outreach row’s Copy DM copies the card’s message');
+  await page.click('#brand-body [data-bcopy="t1"][data-variant="dm"][data-g="woman"]');
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Hey Alex, great to meet you!', 'its · W copies Leo’s message for a woman');
   await page.click('#brand-body [data-bzt="t1"] [data-ztact="step"][data-step="dm"]');
   await page.waitForFunction(() => /Waiting on reply/.test(document.querySelector('#brand-body [data-bzt="t1"] .zt-row').textContent));
   assert.deepEqual(all('handStep').map((c) => c.args), [{ targetId: 't1', step: 'dm' }]);

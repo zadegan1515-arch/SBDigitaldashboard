@@ -3474,6 +3474,48 @@ function templateLinkedInDraft(target: { brand: any; contact: any }, variant: st
   return { connectionNote, firstMessage, nudge }
 }
 
+// Leo's first LinkedIn message is the drafts' "First DM" too (Oct 18 2026:
+// "yes" — the LinkedIn tab, the brand page and their Copy DM used to show
+// the old "Thanks for connecting…" text above). Drafts keep what was
+// stored; every read that hands drafts to the page swaps in his man /
+// woman message, filled, unless someone really rewrote the draft. The
+// same rule decides a card's own text on Zach's list (zachTodo's dmOwn).
+type FirstTemplates = { man: string; woman: string }
+async function readFirstTemplates(): Promise<FirstTemplates> {
+  const [man, woman] = await Promise.all([readHandTemplate('firstB'), readHandTemplate('firstBW')])
+  return { man: man.body, woman: woman.body }
+}
+function firstFill(tpl: FirstTemplates, variant: string, brand: any, contact: any) {
+  return handFillText(variant === 'woman' ? tpl.woman : tpl.man,
+    { name: contact?.name ?? '', brandName: brand?.name ?? '', title: contact?.title ?? null })
+}
+// Own = edited by hand and not any stock text: the old queue text, or Leo's
+// message for a man or a woman (the LinkedIn tab saves a box on blur, so an
+// untouched box comes back "edited" holding the template it showed).
+function ownFirstMessage(d: any, brand: any, contact: any, tpl: FirstTemplates) {
+  const text = String(d?.firstMessage ?? '').trim()
+  if (!d?.editedByHuman || !text || !brand || !contact) return false
+  const stock = [
+    templateLinkedInDraft({ brand, contact }, d.variant).firstMessage,
+    firstFill(tpl, 'man', brand, contact),
+    firstFill(tpl, 'woman', brand, contact),
+  ]
+  return !stock.some(s => s.trim() === text)
+}
+// In place, on the drafts of each target (brand / contact from the target,
+// or given when the target doesn't carry them — getBrand's).
+function leoFirstDrafts(targets: any[], tpl: FirstTemplates, brand?: any) {
+  for (const t of targets ?? []) {
+    const b = brand ?? t?.brand
+    for (const d of t?.drafts ?? []) {
+      if (!d || (d.variant !== 'man' && d.variant !== 'woman')) continue
+      if (!b || !t.contact || ownFirstMessage(d, b, t.contact, tpl)) continue
+      d.firstMessage = firstFill(tpl, d.variant, b, t.contact)
+    }
+  }
+  return targets
+}
+
 // Every target headed for the Today queue arrives pre-drafted, so a
 // day's outreach is copy-paste from the first row. Free (templates), so
 // safe to run on every load.
@@ -6085,11 +6127,14 @@ const handlers: Record<string, Handler> = {
     // build its "sent today" rows from listTargets({ status: 'sent' }),
     // which is capped at 200 and loses anyone who has already accepted
     // — so a quick accept made a send vanish from the day it went out.
-    const sentList = await prisma.target.findMany({
-      where: { sentAt: { gte: startOfDay } },
-      include,
-      orderBy: { sentAt: 'desc' },
-    })
+    const [sentList, firstTpl] = await Promise.all([
+      prisma.target.findMany({
+        where: { sentAt: { gte: startOfDay } },
+        include,
+        orderBy: { sentAt: 'desc' },
+      }),
+      readFirstTemplates(),
+    ])
 
     return {
       plannedSkipped, sentToday, cap: DAILY_SEND_LIMIT,
@@ -6106,12 +6151,12 @@ const handlers: Record<string, Handler> = {
       closedTo: closedToday?.to ?? null,
       // The queue check's flag on each person still to send (copy-flagged):
       // the LinkedIn tab shows the same ⚠ as Today's list for Zach.
-      targets: (await ensureTemplateDrafts(todayList)).map((t: any) => ['queued', 'drafted'].includes(t.status) && !t.sentAt
+      targets: leoFirstDrafts(await ensureTemplateDrafts(todayList), firstTpl).map((t: any) => ['queued', 'drafted'].includes(t.status) && !t.sentAt
         ? { ...t, problem: personProblem(t.contact?.title, [t.brand?.name, ...String(t.brand?.aka ?? '').split(/[,;]/).map((x: string) => x.trim())].filter(Boolean)) }
         : t),
       more: [],
       moreBrands, openSpots, handSpots,
-      sentList: await ensureTemplateDrafts(sentList),
+      sentList: leoFirstDrafts(await ensureTemplateDrafts(sentList), firstTpl),
       labels,
     }
   },
@@ -6158,7 +6203,7 @@ const handlers: Record<string, Handler> = {
     // copy buttons must serve the current templates too — refresh any
     // never-hand-edited draft that predates them.
     await ensureTemplateDrafts(rows.filter(t => !['declined', 'dead', 'converted', 'passed'].includes(t.status)))
-    return rows
+    return leoFirstDrafts(rows, await readFirstTemplates())
   },
 
   async setTargetStatus({ targetId, status, actor, nextStep, followUpAt, clearFollowUp, clearSent, dmSent }: any) {
@@ -6313,12 +6358,22 @@ const handlers: Record<string, Handler> = {
       })
     }
 
+    leoFirstDrafts([{ brand: target.brand, contact: target.contact, drafts }], await readFirstTemplates())
     return drafts
   },
 
   // Any field left out stays as it is (Zach's list sends only the DM or
   // only the follow-up).
   async saveDraft({ draftId, connectionNote, firstMessage, nudge }: any) {
+    // A First DM saved as Leo's template (or the old queue text) is kept as
+    // empty = "follow the template", so it changes when he changes his.
+    if (typeof firstMessage === 'string' && firstMessage.trim()) {
+      const d = await prisma.draft.findUnique({ where: { id: draftId }, select: { variant: true, target: { select: { brand: { select: { name: true, category: true } }, contact: { select: { name: true, title: true } } } } } })
+      if (d && (d.variant === 'man' || d.variant === 'woman') &&
+          !ownFirstMessage({ variant: d.variant, firstMessage, editedByHuman: true }, d.target.brand, d.target.contact, await readFirstTemplates())) {
+        firstMessage = ''
+      }
+    }
     return prisma.draft.update({
       where: { id: draftId },
       // Human edits are the training signal for improving prompts.
@@ -7919,6 +7974,7 @@ const handlers: Record<string, Handler> = {
       await ensureTemplateDrafts(withBrand)
       withBrand.forEach((w, i) => { unwritten[i].drafts = w.drafts; unwritten[i].status = w.status })
     }
+    leoFirstDrafts(brand.targets, await readFirstTemplates(), { name: brand.name, category: brand.category })
 
     const events = await prisma.targetEvent.findMany({
       where: { target: { brandId } },
@@ -12231,8 +12287,7 @@ const handlers: Record<string, Handler> = {
       // The first message follows Leo's template unless someone really
       // rewrote it on the card (the queue's autosave marks untouched
       // drafts edited too, so an unchanged queue text doesn't count).
-      const dmOwn = !!(dr && dr.editedByHuman && dr.firstMessage?.trim() &&
-        dr.firstMessage !== templateLinkedInDraft({ brand: t.brand, contact: t.contact }, dr.variant).firstMessage)
+      const dmOwn = !!dr && ownFirstMessage(dr, t.brand, t.contact, { man: firstBTemplate.body, woman: firstBWTemplate.body })
       g.people.push({
         targetId: t.id,
         status: t.status,

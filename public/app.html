@@ -9148,6 +9148,19 @@ function emailWords(t) {
   return w;
 }
 
+// The brand page's draft fold: the first DM for a man and for a woman
+// (Leo's message, Oct 18 2026), one when both read the same (own text).
+function bFirstDmHtml(drafts) {
+  var by = function (v) { return drafts.filter(function (x) { return x.variant === v; })[0]; };
+  var m = by('man'), w = by('woman');
+  var box = function (label, text) {
+    return '<div style="font-size:13.5px;color:var(--ink-2);margin-top:8px;white-space:pre-wrap"><b style="color:var(--ink-3);font-size:12.5px">' + label + '</b><br>' + esc(text || '') + '</div>';
+  };
+  if (m && w && m.firstMessage !== w.firstMessage) return box('FIRST DM · FOR A MAN', m.firstMessage) + box('FIRST DM · FOR A WOMAN', w.firstMessage);
+  var one = m || w || drafts[0];
+  return one ? box('FIRST DM', one.firstMessage) : '';
+}
+
 // The brand page's Outreach row, the part that follows the invite:
 // Accepted? / Replied? while it's out, then Accepted ✓ (Copy DM, DM sent,
 // Replied?) and Replied ✓. Its own box so a step ticked on Zach's list
@@ -9169,7 +9182,8 @@ function bOutreachStep(t, dr) {
         '<button class="btn-ghost mini" data-bract="unsend" data-brt="' + esc(t.id) + '" title="No invite actually went out? Puts them back as not sent and uncounts it">↩ Undo</button>' : '') +
     (t.status === 'accepted'
       ? '<span class="status accepted" style="font-size:13px;padding:5px 12px">Accepted ✓</span>' +
-        (dr ? '<button class="btn-draft" data-bcopy="' + esc(t.id) + '" data-variant="dm" title="Copy the first DM">Copy DM</button>' : '') +
+        (dr ? '<button class="btn-draft" data-bcopy="' + esc(t.id) + '" data-variant="dm" data-g="man" title="Copy the first DM — Leo’s message for a man">Copy DM · M</button>' +
+          '<button class="btn-draft" data-bcopy="' + esc(t.id) + '" data-variant="dm" data-g="woman" title="Copy the first DM — Leo’s message for a woman">· W</button>' : '') +
         (t.dmSentAt ? '' : '<button class="btn-ghost" data-bract="dmsent" data-brt="' + esc(t.id) + '" title="Logged: the DM went out">DM sent ✓</button>') +
         '<button class="btn-ghost" data-bract="replied" data-brt="' + esc(t.id) + '" title="Did they write back?">Replied?</button>' : '') +
     (t.status === 'replied' || t.status === 'converted'
@@ -9869,7 +9883,7 @@ function loadBrand(brandId, focusContactId) {
                     (went || canSend
                       ? '<div style="font-size:13.5px;color:var(--ink-2);margin-top:6px;white-space:pre-wrap"><b style="color:var(--ink-3);font-size:12.5px">INVITE NOTE</b><br>' + esc(dr.connectionNote) + '</div>'
                       : '') +
-                    '<div style="font-size:13.5px;color:var(--ink-2);margin-top:8px;white-space:pre-wrap"><b style="color:var(--ink-3);font-size:12.5px">FIRST DM</b><br>' + esc(dr.firstMessage) + '</div>' +
+                    bFirstDmHtml(t.drafts || []) +
                   '</details>';
                 })()
               : '') +
@@ -18025,7 +18039,8 @@ function targetRow(t) {
       (t.status === 'replied' || t.status === 'converted'
         ? '<span class="status replied" style="font-size:13px;padding:5px 12px">Replied ✓</span>' : '') +
       (t.status === 'accepted' && d
-        ? '<button class="btn-draft" data-act="copymsg" title="Copy the DM and paste it into your LinkedIn chat with them">Copy DM</button>' : '') +
+        ? '<button class="btn-draft" data-act="copymsg" data-variant="man" title="Copy Leo’s first message for a man and paste it into your LinkedIn chat with them">DM · M</button>' +
+          '<button class="btn-draft" data-act="copymsg" data-variant="woman" title="Copy Leo’s first message for a woman">DM · W</button>' : '') +
       (t.status === 'accepted' && !t.dmSentAt
         ? '<button class="btn-ghost" data-act="dmsent" title="Logged: the DM went out — clears them from today’s send-the-DM list">DM sent ✓</button>' : '') +
       (t.status === 'withdrawn' || t.status === 'passed'
@@ -23973,12 +23988,18 @@ document.getElementById('brand-body').addEventListener('click', function (e) {
   var want = cb.getAttribute('data-variant');
   var tgt = ((CURRENT_BRAND && CURRENT_BRAND.brand.targets) || []).filter(function (x) { return x.id === tid; })[0];
   var drafts = (tgt && tgt.drafts) || [];
-  var d = want === 'dm' ? drafts[0]
-    : drafts.filter(function (x) { return x.variant === want; })[0] || drafts[0];
+  // Copy DM · M / · W: Leo's first message for a man / a woman (the
+  // server hands each draft his text unless someone rewrote it).
+  var g = cb.getAttribute('data-g') || 'man';
+  var d = drafts.filter(function (x) { return x.variant === (want === 'dm' ? g : want); })[0] || drafts[0];
   var text = d && (want === 'dm' ? d.firstMessage : d.connectionNote);
-  // Someone on Zach's list: the first message his card shows (Leo's
-  // template, or the card's own edit).
-  if (want === 'dm' && ZT_BY_ID[tid]) text = ztFirstText(ZT_BY_ID[tid]) || text;
+  // Someone on Zach's list: what their card says — its own edit, else
+  // Leo's template for the one picked here.
+  var zp = want === 'dm' && ZT_BY_ID[tid];
+  if (zp) {
+    var zt = ZT && (g === 'woman' ? ZT.firstBWTemplate : ZT.firstBTemplate);
+    text = (zp.dmOwn ? zp.dm : zt && handFill(zt.body, zp)) || text;
+  }
   if (!text) { toast('Nothing drafted for that yet'); return; }
   navigator.clipboard.writeText(text).then(function () {
     toast(want === 'dm' ? 'First DM copied — paste it into your LinkedIn chat'
@@ -24787,10 +24808,18 @@ document.getElementById('targets').addEventListener('blur', function (e) {
   var block = ta.closest('.tmpl');
   var note = block.querySelector('textarea[data-key="connectionNote"]');
   var msg = block.querySelector('textarea[data-key="firstMessage"]');
+  // Only a box someone changed is saved: an untouched First DM kept as
+  // "edited" would stop following Leo's template when he changes it.
+  var noteNew = note && note.value !== note.defaultValue;
+  var msgNew = msg && msg.value !== msg.defaultValue;
+  if (!noteNew && !msgNew) return;
   api('saveDraft', {
     draftId: ta.getAttribute('data-draft'),
-    connectionNote: note ? note.value : '',
-    firstMessage: msg ? msg.value : ''
+    connectionNote: noteNew ? note.value : undefined,
+    firstMessage: msgNew ? msg.value : undefined
+  }).then(function () {
+    if (noteNew) note.defaultValue = note.value;
+    if (msgNew) msg.defaultValue = msg.value;
   }).catch(function () { toast('Could not save edit'); });
 }, true);
 
