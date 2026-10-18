@@ -68,6 +68,12 @@ export function priorityOf(category: string | null | undefined, custom?: Record<
   if (v && (PRIORITIES as string[]).includes(v)) return v as Priority
   return DEFAULT_CATEGORY_PRIORITY[c] ?? 'middle'
 }
+// A Top category's brand opens with four people, not three (workNeed in
+// planned-first.ts; Leo, Oct 18 2026 — People per brand showed the 4th
+// person accepts as often as the 1st).
+export function isTopCategory(category: string | null | undefined, custom?: Record<string, string> | null): boolean {
+  return priorityOf(category, custom) === 'top'
+}
 
 export type UsStatus = 'yes' | 'no'
 export type BizStatus = 'active' | 'closed' | 'acquired'

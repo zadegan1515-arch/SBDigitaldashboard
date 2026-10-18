@@ -32,7 +32,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 ## Where things live
 - `public/app.html` — the whole UI. Top nav is six groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
   `showView`): Home · Brands (All brands / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
-  Schedule / Email / People / Archived / Email stats) ·
+  Week plan / Schedule / Email / People / Archived / Email stats) ·
   **Show Board** (Overview = code lookup (`boardCodeLookup`: the whole roster by name / aka, people and archived too — it used to filter listBrands' first 500; `test-board-lookup.js`) + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
   exact NY times and time on board; **every** board open is logged, gate on or off (anonymous = "Visitor") / **In talks** = per-brand engagement cards (code, viewers, opens, timed minutes
@@ -86,6 +86,22 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   pure in `src/lib/claude-day.ts`: `node scripts/test-claude-day.mjs`; page: `NODE_PATH=$(npm root -g) node
   scripts/test-claude-day.js`. **Every Claude session that changes something should end by logging itself**
   (`node scripts/cc.mjs addWorkLog '{"text":"…"}'`, NEED blocks for Leo's to-dos) — that's the "sessions said" card.
+- **Home → Your chats** (Leo, Oct 17 2026: "i usually use more than 4 chats a day … i sometimes forget what each one is
+  about … tells me what chat did what, and what each chat needs from me"). One `WorkLog` row per claude.ai chat per New
+  York day (`source: 'session'`, `sessionId`, `url`, `about`, `ask`/`asks` = Leo's messages that day, `status` working ·
+  needs · done, `question` = what its last reply asks, `lastAt`), written only by `chatLog({ session, event: prompt |
+  reply | question | summary, … })` — rules pure in `src/lib/chat-log.ts` (a reply sorted by work-log.ts's rules, the
+  question it ends on, secrets masked, Leo's ticks carried by the need's words, an older post never winds a chat back).
+  Shown as Home's **Claude chats today** tile (`data-cd-open="chats"`) and **Claude's day → Your chats**, its first card
+  (`chCard`/`chRow`/`chState` in app.html: Needs you → Working → No reply yet (working 2 h+) → Done; the title opens
+  the chat); their NEEDs and questions are on the Needs card too; a chat's older days' needs give way to its latest day.
+  Pasted logs keep the "sessions said" card. `chatLog` is never a ClaudeAction. Fed by **the chat itself**
+  (`scripts/chat-log-hook.mjs` from Claude Code hooks — UserPromptSubmit / Stop / PreToolUse AskUserQuestion|ExitPlanMode;
+  detached post, nothing on stdout, quiet without `DASHBOARD_TOKEN`) and/or **the chat review** (`docs/chat-review.md`:
+  a chat reads Leo's other chats with list_sessions / list_events and posts `summary`; `listChatLogs` = what's logged).
+  `node scripts/cc.mjs <fn> @file.json` reads args from a file. Tests: `node scripts/test-chat-log.mjs`,
+  `node scripts/test-chat-log-hook.mjs`, `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-chat-log-e2e.js`,
+  page in `test-claude-day.js` (4).
 - **Leo's picked ideas, built Oct 6 2026** (retired from `build-ideas.ts`): **Weekly scoreboard** on Home (`#hm-score`,
   `weeklyScore` / `setWeeklyGoals`, Setting `weeklyGoals`, defaults `WEEKLY_GOALS_DEFAULT`): invites / accepted /
   replied / calls booked / deals / brands added per New York week (Mon–Sun), this week vs goal + 8 weeks of bars.
@@ -231,11 +247,44 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   removes a person the log made). The brand card says "invited outside the queue" for an accept with no
   invite date, and a draft written after the send is "The first DM, ready to copy", never "the note that
   went out".
+- **Outreach → Week plan** (Leo, Oct 18 2026: "a page that fills up to around 100 brands … the top 100 ranked … a search
+  bar to add brands … add brands … by filtering through categories … have the brands i want to reach out to in a week set
+  up before … then … randomly put them into the days for the week which i should be able to move between days"; his picks:
+  a **bank spent week by week**, an **even mix of rank**, a spread day takes **only brands from the list**). Rules pure in
+  `src/lib/week-bank.ts` (`node scripts/test-week-bank.mjs`); `wp*` / `WP` in app.html (`#weekplan`, tab between Results
+  and Schedule). **The list** (Setting `weekBank` = { size, hand, removed }; `buildBank` in route.ts) = brands Leo added
+  (search box = `searchPlanBrands` for the week's first day; Browse a category = `weekBankBrowse`, Add the top N / ticks;
+  a giant's Add anyway OKs it, `okGiants`) + the brands a Best fit day would pick by itself (`bestFitEligible`, someone
+  would go out, not going out today), **best Brand Fit first** (`compareBank`: fit, then ready, then name — not Ready
+  before short), up to its number (`weekBankSize`, 10–300, default 100; hand adds count toward it). It is worked out on
+  every read: a brand reached drops out and the next one comes in. × = `weekBankRemove` (remembered — the list never puts
+  it back; on a row already on a day it asks and takes it off that day too, `offDays`); Put back = `weekBankPutBack`. A
+  hand add leaves once something goes out to it after it was added (`handSpent`) or it's archived / do-not-email / not US /
+  in talks / stopped (pruned on the next `weekBank` read). Advisory-locked writes (`updateBankState`). **The week**:
+  `planWeeks` = this week (Mon–Sun, New York) while it has a sending day after today, and next week; today is never a
+  column. Each day's room = `weekRooms` (30, or what LinkedIn's 100 in 7 days leaves — days counted full in date order)
+  less its pins going (`weekColumns`, from getOutreachPlan's cards). **Spread** (`weekSpread`, preview → apply,
+  `seed` = the shuffle; Shuffle again = a new seed): `spreadWeek` deals the list's waiting brands in rank order, each
+  whole, onto the fitting day dealt the fewest brands so far (ties at random) — #1–#3 on three different days, #4–#6 the
+  same — never past a day's room, one big company a day (`BIG_PER_BEST_FIT_DAY`); a brand too big for every room left is
+  passed over (named) and waits for next week. Apply writes exactly the preview's days through `planAddCore` (a brand
+  pinned elsewhere since is left there, named), marks every spread day **list-only** (Setting `outreachListDays` = { day:
+  { at, by } }) and logs Setting `weekSpreadLast` for `undoWeekSpread` (preview → confirm: off what still sits where it put
+  it, a moved one stays, days it marked go back; today's never touched). **A list-only day** has no automatic picks:
+  getOutreachPlan's rows (`list: true`, offTheme 0), getTodayQueue (`listDay`; its fill only for Fill to 30 — `__fill`
+  from fillToday — and then from the list, its order; Ready if you have room = the list), Plan my week (`WeekDayIn.list`
+  → source `list`, nothing added), the morning roll treats it like a Best fit day (what was only shown goes back);
+  its Fill box / suggestForDay offer the list (`bankSuggestRows`, `data.list`). `setListDay` = **Keep it to my list** /
+  **Let Best fit fill open spots** (Week plan's columns; the Schedule's day ⋯). Moving on the page = the Schedule's
+  handlers: Move to… / drag between days (`planMoveBrand`), × and Off the days (`planRemoveBrand`), Put on… / drag a list
+  row onto a day (`planAddBrands`). The Schedule shows a list day with a **Week list** tag and no category menu; the
+  LinkedIn tab says "Today takes only your week list". Tests: `node scripts/test-week-bank.mjs`, `NODE_PATH=$(npm root -g)
+  node scripts/test-week-plan.js` (page), `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-week-plan-e2e.js`.
 - **Outreach → Schedule** (`getOutreachPlan` + the `sd*` / `renderSched*` code; plan in Setting
   `outreachPlan` = `{ "YYYY-MM-DD": { category, brandIds } }`, one brand on one day) — full width,
   today (if a sending day) + the next 3 sending days as columns. Every brand carries a **contacts label**
   (`contactLabel`, same on server and page): reachable = email OR LinkedIn; need = `workPeople` ??
-  (big company 10 : established 4 : 3 — `workNeed`; every reply that labels reads `LABEL_BRAND_SELECT`, and
+  (big company 10 : established or a **Top category** 4 : 3 — `workNeed`, `top` required; every reply that labels reads `LABEL_BRAND_SELECT` (category included), and
   `isBigBrand` / `contactLabel` require name, aka and liMembers so a short select fails tsc — the LinkedIn tab
   used to call a 120-person established brand "big, works 10" while the Schedule said 4); Ready ≥ need,
   Thin 1..need-1, No one reachable 0. A brand goes out **whole**,
@@ -410,7 +459,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   their people are ready for later, but they never take a day's visits first (`reachedLast`, `giantsLast`;
   the Schedule's brands and names Leo asked for keep their place). The email machine keeps its own rules.
   **Each brand opens with exactly its number** (picks, Leo's yes Oct 12 2026): `workPeople ?? recommendWorkPeople`
-  (3, 4 at an established brand, 10 at a big company; the narrower 3/2/1 only once written to — a brand inside its
+  (3, 4 at an established brand **or a Top category's** — Leo, Oct 18 2026, after People per brand showed the 4th person accepts as often as the 1st: `isTopCategory` (brand-fit.ts) on his Category priority, `topCat` in route.ts, loaded before every /api/data handler; ingest and the fill read the Setting; the brand page gets `getBrand.top` — 10 at a big company; the narrower 3/2/1 only once written to — a brand inside its
   first sitting, part-sent next day included, keeps the opening number, and everyone still waiting from it goes
   — the part-sent rule wins over the trim: `brandWork` / `finishingSitting` in route.ts). Best LinkedIn
   buyers first — `comparePicks` / `sortPicks` in `src/lib/queue-check.ts`: a title the rules don't flag → a LinkedIn
@@ -550,7 +599,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   by category, company size, buyer type and people invited per brand (per brand); smoothed (5 invites of the
   average), n on every cell, "too few to tell" under 30. Suggestions name a category's priority one step
   ("accepts 1.9× the average — make it Top?", Skip never) and change it only on **Make it …** + a confirm
-  (`setCategoryPriority`); Brand Fit's weights and stored fitScore are never touched. **Outreach → LinkedIn** = one card per brand
+  (`setCategoryPriority`); Brand Fit's weights and stored fitScore are never touched. **People per brand** (Oct 18 2026 — Leo: "when we do more than 3 people do we have a higher probability of getting an acceptance"; accepts only, his call): under it, `outcomeTable.depth` (`depthTable`, outcomes.ts): each person by place in the brand's line (send order), brands by people invited the first day / in all, by Brand Fit today, and "if separate chances" (1 − (1 − p)^k at the overall per-person rate) beside them; raw rates, too few to tell under 30. **Outreach → LinkedIn** = one card per brand
   (sent people stay in their card, `getTodayQueue.sentList`; a finished brand folds to one line). **Ready if you have
   room** = whole brands (`getTodayQueue.moreBrands` + `handSpots`, `oqMoreCard`): **Add to today (N)** when it fits the
   open spots — a hand add, so against the flat 30 (`handSpots`), not what LinkedIn's week leaves the automatic picks
@@ -977,6 +1026,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   with a parent — sends it with `noPage` and the script (≥1.29) goes straight to the parent's page, never its own
   name; a run that fetched its list before the mark gets `liMatched` → `markedNone` (nothing back on the list, no
   second-name search).
+  **One writer at a time** (Oct 18 2026 — answered brands came back: each answer read the whole list, cleared one brand
+  and wrote it all back, so two clicks close together undid each other): every change to `liPageReview` /
+  `liPageConfirmed` goes through `updateReviewState` (li-review.ts, advisory lock, both read fresh), the fill's findings
+  through `putOnReview` (never a brand marked none); `answered` / `openReview` drop leftovers on every read (People list,
+  coverage, recap count, report) and prune them on the next write. The card goes the moment it's saved.
   **Leo's LinkedIn only** (his call, Sep 30): every call carries `me` (from LinkedIn's own
   `/voyager/api/me`, csrf = JSESSIONID, cached 30 min per tab; else the nav photo's alt); ingest
   claims the first account into Setting `liOwner` and answers 403 `notOwner` to any other on the fill /

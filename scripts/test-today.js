@@ -131,8 +131,9 @@ async function main() {
   await page.goto(base + '/app.html#today');
   await page.waitForSelector('#recap:not([hidden]) .rc-card', { timeout: 8000 });
   const tiles = await page.$$eval('#hm-glance .hm-tile', (els) => els.map((e) => e.querySelector('.k').textContent + '=' + e.querySelector('.v').textContent));
-  // reached = 3 invites + 1 step; todo = 7 queued + 1 action; found = Flerish + Huel; needs = 1 ask + 1 pasted need
-  assert.deepEqual(tiles, ['Reached out today=4', 'To do today=8', 'Brands found today=2', 'Needs you=2']);
+  // reached = 3 invites + 1 step; todo = 7 queued + 1 action; found = Flerish + Huel; needs = 1 ask + 1 pasted need;
+  // Claude chats = chats that log themselves (a pasted report isn't one)
+  assert.deepEqual(tiles, ['Reached out today=4', 'To do today=8', 'Brands found today=2', 'Needs you=2', 'Claude chats today=0']);
   console.log('ok 1 - #today opens the recap; tiles count each section');
 
   // 2 ---------------------------------------------------------------

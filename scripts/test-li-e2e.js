@@ -474,6 +474,35 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.ok(!(await data('linkedinPeople')).pageReview.some(e => e.brandId === 'b_alp'), 'not back on Leo\'s list');
     ok('"None of these" sticks: off the worklist (a parent brand only for the parent\'s page), never back on Leo\'s list');
 
+    // Oct 18 2026: brands came back after "None of these". Each answer read
+    // the whole list, cleared one brand and wrote it all back, so answers
+    // close together undid each other. Six at once now all stick, the
+    // fill can't put one back, and a leftover from before never shows.
+    {
+      const ids = ['b_nn1', 'b_nn2', 'b_nn3', 'b_nn4', 'b_nn5', 'b_nn6'];
+      for (const id of ids) await prisma.brand.create({ data: { id, name: 'Nonesuch ' + id, category: 'energy' } });
+      for (const id of ids) await ingest({ action: 'liMatched', brandId: id, candidates: [{ url: 'https://www.linkedin.com/company/' + id + '-a/', name: 'Other ' + id, subtitle: 'Software Development' }], me: { slug: 'leo-z', name: 'Leo Z' } });
+      assert.equal((await data('linkedinPeople')).pageReview.filter(e => ids.includes(e.brandId)).length, 6, 'all six on the list');
+      await Promise.all(ids.map(id => data('liPageNone', { brandId: id })));
+      assert.ok(!(await data('linkedinPeople')).pageReview.some(e => ids.includes(e.brandId)), 'all six off the list');
+      const conf = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liPageConfirmed' } })).value);
+      assert.deepEqual(ids.map(id => conf[id]), ids.map(() => 'none'), 'every answer kept');
+      const rawRev = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liPageReview' } })).value);
+      assert.ok(!ids.some(id => rawRev[id]), 'gone from the stored list too');
+      // The run reads a page saved on one since (a hand scan) and it looks wrong: not back.
+      await prisma.brand.update({ where: { id: 'b_nn1' }, data: { linkedinUrl: 'https://www.linkedin.com/company/b_nn1-a/' } });
+      await ingest({ action: 'liCapture', brandId: 'b_nn1', checkPage: true, companyUrl: 'https://www.linkedin.com/company/b_nn1-a/', companyIndustry: 'Software Development', people: [], me: { slug: 'leo-z', name: 'Leo Z' } });
+      await ingest({ action: 'liMatched', brandId: 'b_nn1', recheck: true, candidates: [{ url: 'https://www.linkedin.com/company/b_nn1-b/', name: 'Other', subtitle: 'Software Development' }], me: { slug: 'leo-z', name: 'Leo Z' } });
+      assert.ok(!(await data('linkedinPeople')).pageReview.some(e => e.brandId === 'b_nn1'), 'the fill never puts it back');
+      // A leftover from before the fix: stored, but never shown or counted.
+      const rv = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liPageReview' } })).value);
+      rv.b_nn2 = { at: new Date().toISOString(), why: 'unclear', saved: null, pageIndustry: null, candidates: [] };
+      await prisma.setting.update({ where: { key: 'liPageReview' }, data: { value: JSON.stringify(rv) } });
+      assert.ok(!(await data('linkedinPeople')).pageReview.some(e => e.brandId === 'b_nn2'), 'a leftover never shows');
+      await prisma.brand.deleteMany({ where: { id: { in: ids } } });
+    }
+    ok('Six "None of these" at once all stick; the fill and old leftovers never bring one back');
+
     // Read before the Oct 13 2026 match fix and parked on Leo's list: due again
     // when the saved results now resolve; still unclear → keeps resting.
     {

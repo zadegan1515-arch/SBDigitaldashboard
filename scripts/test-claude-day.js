@@ -134,7 +134,54 @@ async function main() {
   assert.doesNotMatch(await morning.page.textContent('#recap .rc-day'), /Claude/, 'the morning recap, not Claude’s day');
   console.log('✓ 3. seen today stays shut; 10am opens the morning recap');
 
-  assert.deepEqual(errors.concat(again.errors, morning.errors), [], 'no page errors');
+  // 4 ---------------------------------------------------------------
+  // Your chats: chats that log themselves (WorkLog source "session") — the
+  // Home tile counts them, opens Claude's day on their card; one row each,
+  // needs-you first, working, stalled, done; a title opens the chat; a
+  // ticked need turns its row Done.
+  const at = (h, m) => new Date(Date.UTC(2026, 9, 14, h, m)).toISOString();
+  const sess = (id, o) => Object.assign({ id, source: 'session', sessionId: 'session_0' + id + 'abcdefghij', url: 'https://claude.ai/code/session_0' + id + 'abcdefghij',
+    raw: 'reply', createdAt: at(18, 0), done: [], ideas: [], needs: [], asks: [], about: null, ask: null, question: null, status: 'done', lastAt: at(20, 0) }, o);
+  const chats = [
+    sess('s5', { title: 'Copy button size', done: ['Made the copy button bigger'], lastAt: at(21, 50) }),
+    sess('s2', { title: 'BRAND PLANNING', status: 'working', ask: 'plan next week', lastAt: at(22, 30) }),
+    sess('s1', { title: 'Mug root beer', ask: 'how do we pitch Mug?', asks: [{ at: at(19, 0), ask: 'look up Mug' }, { at: at(21, 0), ask: 'how do we pitch Mug?' }],
+      done: ['No ambassador program — pitch one', 'They run TikTok Lives', 'Yung Gravy track', 'Kittle deal', 'Fetch Day 2024'], status: 'needs', lastAt: at(21, 40),
+      needs: [{ i: 0, label: 'Mug’s people on the dashboard', steps: ['Search PepsiCo people for MUG', 'Send to dashboard'], done: false }] }),
+    sess('s3', { title: 'Brands reappearing', question: 'Want the same fix on Stock take?', status: 'needs', done: ['Dismissed brands stay dismissed'], lastAt: at(21, 0) }),
+    sess('s4', { title: 'LinkedIn volume', status: 'working', ask: 'what if we send 40 a day?', lastAt: at(19, 0) }),
+    { id: 'p1', title: 'Pasted report', raw: 'x', source: 'paste', done: ['Something pasted'], ideas: [], needs: [] },
+  ];
+  H.dayRecap = () => Object.assign({}, RECAP, { chats });
+  const cdBase = H.claudeDay;
+  H.claudeDay = (a) => Object.assign(cdBase(a), { chats, olderNeeds: [] });
+  const four = await openAt(browser, base, DAY + 'T22:45:00Z', ctx);   // seen today: nothing opens by itself
+  await four.page.waitForSelector('#hm-glance [data-cd-open="chats"]', { timeout: 15000 });
+  assert.match(await four.page.textContent('#hm-glance [data-cd-open="chats"]'), /Claude chats today\s*5\s*2 need you · 1 working/);
+  await four.page.click('#hm-glance [data-cd-open="chats"]');
+  await four.page.waitForSelector('#recap:not([hidden]) .ch-row', { timeout: 15000 });
+  const t4 = await four.page.$$eval('#recap .rc-card h2', (els) => els.map((e) => e.textContent));
+  assert.deepEqual(t4, ['Your chats today', 'What Claude changed on the site', 'What Claude changed in the data', 'What Claude’s sessions said', 'What Claude needs from you']);
+  const rows = await four.page.$$eval('#recap .ch-row', (els) => els.map((e) => [e.querySelector('.nm').textContent, e.querySelector('.rc-tag').textContent]));
+  assert.deepEqual(rows, [['Mug root beer ↗', 'Needs you'], ['Brands reappearing ↗', 'Needs you'], ['BRAND PLANNING ↗', 'Working'], ['LinkedIn volume ↗', 'No reply yet'], ['Copy button size ↗', 'Done']]);
+  assert.equal(await four.page.getAttribute('#recap [data-ch="s1"] .nm a', 'href'), 'https://claude.ai/code/session_0s1abcdefghij');
+  const mug = await four.page.textContent('#recap [data-ch="s1"]');
+  assert.match(mug, /You asked: “how do we pitch Mug\?” · 2 messages today[\s\S]*No ambassador program[\s\S]*\+ 1 more it did[\s\S]*Mug’s people on the dashboard[\s\S]*Search PepsiCo people/);
+  assert.match(await four.page.textContent('#recap [data-ch="s3"]'), /It asks: Want the same fix on Stock take\?/);
+  assert.match(await four.page.textContent('#recap [data-ch="s4"]'), /Working on: “what if we send 40 a day\?”[\s\S]*nothing since — open it to check/);
+  // The pasted report stays on the sessions card, not in Your chats.
+  assert.match(await four.page.textContent('#recap [data-rc-i="3"]'), /Pasted report/);
+  assert.doesNotMatch(await four.page.textContent('#recap [data-rc-i="3"]'), /Mug root beer/);
+  // Needs you: the chat's need and the question waiting on an answer.
+  assert.match(await four.page.textContent('#recap [data-rc-i="4"]'), /Mug’s people on the dashboard[\s\S]*Chats waiting on your answer[\s\S]*Brands reappearing[\s\S]*Want the same fix/);
+  await four.page.check('#recap [data-ch="s1"] [data-need="s1"]');
+  await four.page.waitForTimeout(200);
+  assert.deepEqual(all('setWorkNeedDone').slice(-1)[0].args, { id: 's1', index: 0, done: true });
+  assert.equal(await four.page.textContent('#recap [data-ch="s1"] .rc-tag'), 'Done', 'nothing left open: Done');
+  assert.equal(await four.page.isChecked('#recap [data-rc-i="4"] [data-need="s1"]'), true, 'the same need on Needs you ticks too');
+  console.log('✓ 4. Your chats: the Home tile, one row a chat (needs you → working → stalled → done), links, ticks');
+
+  assert.deepEqual(errors.concat(again.errors, morning.errors, four.errors), [], 'no page errors');
   await browser.close();
   server.close();
   console.log('Claude’s day: all passed');

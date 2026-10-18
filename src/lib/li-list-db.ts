@@ -11,7 +11,7 @@ import { parentOf, isParentCompany, LI_PARENT_PAGES_KEY } from './parents'
 import { readJsonSetting, LI_CONFIRMED_KEY, LI_REVIEW_KEY, type Confirmed, type Review } from './li-review'
 import { LANES, RESEARCH_EXTRA, brandKey, secondSearchName } from './stock'
 import { dueDays, shortOnPeople, plannedFirst, workNeed } from './planned-first'
-import { scoreBrand, priorityOf } from './brand-fit'
+import { scoreBrand, priorityOf, isTopCategory } from './brand-fit'
 import { brandSize, sizeRank } from './brand-size'
 import { countBuyers, BUYER_TARGET } from './buyers'
 import { noBuyerFirst } from './coverage'
@@ -81,7 +81,7 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
       lastRoundAt: b.lastRoundAt, usStatus: b.usStatus, sponsorsCollege: b.sponsorsCollege, bizStatus: b.bizStatus,
       acquiredBy: b.acquiredBy, researchedAt: b.researchedAt,
       reachable: b.contacts.filter(c => !!(c.email || c.linkedinUrl)).length,
-      need: workNeed({ tier: b.tier, workPeople: b.workPeople, liMembers: b.liMembers, big }),
+      need: workNeed({ tier: b.tier, workPeople: b.workPeople, liMembers: b.liMembers, big, top: isTopCategory(b.category, priorities) }),
       acceptRate: null, priority: priorityOf(b.category, priorities), giant: giantOf(b),
       name: b.name, about: b.about, topProducts: b.topProducts, notes: b.notes, now,
     })
@@ -277,10 +277,10 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
   const dueBrands = dueIds.length
     ? await prisma.brand.findMany({
         where: { id: { in: dueIds } },
-        select: { id: true, name: true, aka: true, tier: true, liMembers: true, workPeople: true, contacts: { select: { email: true, linkedinUrl: true } } },
+        select: { id: true, name: true, aka: true, category: true, tier: true, liMembers: true, workPeople: true, contacts: { select: { email: true, linkedinUrl: true } } },
       })
     : []
-  const short = new Set(dueBrands.filter(b => shortOnPeople({ ...b, big: isBigBrand(b) })).map(b => b.id))
+  const short = new Set(dueBrands.filter(b => shortOnPeople({ ...b, big: isBigBrand(b), top: isTopCategory(b.category, priorities) })).map(b => b.id))
   const { first: planned, rest: unplanned } = plannedFirst(items, due, short)
   // A retry meets the floor like any brand (the floor may have changed, or
   // its facts — a Skip category, not sold in the US).

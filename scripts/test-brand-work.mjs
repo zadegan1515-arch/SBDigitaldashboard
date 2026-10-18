@@ -36,6 +36,15 @@ t('the brand\'s number: Leo\'s, else 10 big, 4 established, 3 elsewhere', () => 
   assert.equal(workCount(brand({ tier: 'established', liMembers: 900 })), 10)
   assert.equal(workCount(brand({ workPeople: 1, liMembers: 900 })), 1, 'Leo\'s number wins')
 })
+t('a Top category\'s brand works four (Oct 18 2026 — People per brand); Leo\'s priorities decide which', () => {
+  assert.equal(workCount(brand({ category: 'electrolytes' }), {}), 4, 'electrolytes is Top by default')
+  assert.equal(workCount(brand({ category: 'beauty' }), {}), 3, 'Middle stays three')
+  assert.equal(workCount(brand({ category: 'apparel' }), null), 3, 'Low stays three')
+  assert.equal(workCount(brand({ category: 'beauty' }), { beauty: 'top' }), 4, 'made Top on the Schedule')
+  assert.equal(workCount(brand({ category: 'energy' }), { energy: 'middle' }), 3, 'taken off Top')
+  assert.equal(workCount(brand({ category: 'energy', liMembers: 900 }), {}), 10, 'a big company still ten')
+  assert.equal(workCount(brand({ category: 'energy', workPeople: 2 }), {}), 2, 'Leo\'s number still wins')
+})
 const p = (id, title, x = {}) => ({ id, title, linkedinUrl: 'https://www.linkedin.com/in/' + id, email: null, fit: 50, ...x })
 t('six buyers waiting at a brand that works three: three stay, three are next in line, best first', () => {
   const six = [p('mk1', 'Marketing Manager', { fit: 60 }), p('acct', 'Senior Accountant', { fit: 90 }), p('pp', 'Head of Partnerships', { fit: 40 }),

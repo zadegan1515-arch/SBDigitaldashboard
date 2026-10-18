@@ -85,5 +85,12 @@ is('big but Leo set 4: his number', workNeed({ tier: 'established', workPeople: 
 is('big: four reachable is short', shortOnPeople({ tier: null, workPeople: null, big: true, contacts: Array.from({ length: 4 }, () => ({ email: null, linkedinUrl: 'x' })) }), true)
 is('not big: established still four', workNeed({ tier: 'established', workPeople: null }), 4)
 
+// ---- a Top category's brand works four (Oct 18 2026 — People per brand) ----
+is('Top category: four', workNeed({ tier: 'growth', workPeople: null, top: true }), 4)
+is('Top but Leo set 2: his number', workNeed({ tier: null, workPeople: 2, top: true }), 2)
+is('Top and big: ten', workNeed({ tier: null, workPeople: null, big: true, top: true }), 10)
+is('Top: three reachable is short', shortOnPeople({ tier: null, workPeople: null, top: true, contacts: P(3) }), true)
+is('Top: four reachable is ready', shortOnPeople({ tier: null, workPeople: null, top: true, contacts: P(4) }), false)
+
 console.log(fail ? `planned-first: ${pass} passed, ${fail} FAILED` : `planned-first: all ${pass} passed`)
 process.exit(fail ? 1 : 0)

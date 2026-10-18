@@ -18,7 +18,7 @@ execSync(
   { stdio: 'inherit' },
 )
 const { applyRunEvent } = await import(pathToFileURL(join(out, 'li-report.js')).href)
-const { addToReview, sameMember } = await import(pathToFileURL(join(out, 'li-review.js')).href)
+const { addToReview, sameMember, answered, openReview, putOnReview, updateReviewState } = await import(pathToFileURL(join(out, 'li-review.js')).href)
 
 let n = 0
 function t(name, fn) { fn(); n++; console.log('  ok — ' + name) }
@@ -119,5 +119,37 @@ t('same LinkedIn member: profile links when both known, else names; nothing to g
   assert.equal(sameMember({ slug: 'leo-z' }, { name: 'Leo Z' }), null)
   assert.equal(sameMember(null, { slug: 'leo-z' }), null)
 })
+
+t('"None of these" and a picked page are answers: their leftovers never show', () => {
+  const e = (why, saved = null) => ({ at: at(0).toISOString(), why, saved, pageIndustry: null, candidates: [] })
+  assert.equal(answered(e('unclear'), 'none'), true)
+  assert.equal(answered(e('wrong', 'https://www.linkedin.com/company/hydralyte/'), 'none'), true)
+  assert.equal(answered(e('unclear'), undefined), false, 'no answer yet')
+  assert.equal(answered(e('wrong', 'https://www.linkedin.com/company/hydralyte/'), 'hydralyte'), true, 'the page he picked')
+  assert.equal(answered(e('wrong', 'https://www.linkedin.com/company/other-co/'), 'hydralyte'), false, 'another page that looks wrong is a new question')
+  assert.equal(answered(e('unclear'), 'arizona-beverage-co'), false, 'page unknown: kept')
+  assert.equal(answered(e('unclear'), 'arizona-beverage-co', 'https://www.linkedin.com/company/arizona-beverage-co/'), true, 'it has the page he picked now')
+  assert.equal(answered(e('unclear'), 'arizona-beverage-co', null), false, 'the picked page is gone: a real question again')
+  const r = openReview({ a: e('unclear'), b: e('unclear'), c: e('none') }, { a: 'none' })
+  assert.deepEqual(Object.keys(r), ['b', 'c'])
+})
+
+await (async () => {
+  // A fake store whose reads and writes interleave the way two requests do.
+  const store = { liPageReview: JSON.stringify({ x: { at: 'a', why: 'unclear', saved: null, pageIndustry: null, candidates: [] } }) }
+  const db = { setting: {
+    findUnique: async ({ where }) => store[where.key] != null ? { value: store[where.key] } : null,
+    upsert: async ({ where, update }) => { store[where.key] = update.value },
+  } }
+  assert.equal(await putOnReview(db, 'x', { why: 'unclear' }), true)
+  await updateReviewState(db, (rv, c) => { c.x = 'none'; delete rv.x })
+  assert.equal(await putOnReview(db, 'x', { why: 'wrong', saved: 'https://www.linkedin.com/company/x/' }), false, 'never back after None')
+  assert.deepEqual(JSON.parse(store.liPageReview), {})
+  // A leftover written before the lock is pruned on the next write.
+  store.liPageReview = JSON.stringify({ x: { at: 'a', why: 'unclear', saved: null, pageIndustry: null, candidates: [] } })
+  await putOnReview(db, 'y', { why: 'none' })
+  assert.deepEqual(Object.keys(JSON.parse(store.liPageReview)), ['y'])
+  n++
+})()
 
 console.log(n + ' checks passed')

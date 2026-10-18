@@ -228,6 +228,17 @@ const H = {
     bySize: [{ key: 'target', n: 80, accepted: 26, acceptRate: 0.32, replyN: 60, replied: 6, replyRate: 0.1, few: false }],
     byBuyer: [{ key: 'partnerships', n: 50, accepted: 20, acceptRate: 0.39, replyN: 40, replied: 5, replyRate: 0.12, few: false }],
     byThreads: [{ key: '3', n: 31, accepted: 14, acceptRate: 0.44, replyN: 25, replied: 3, replyRate: 0.12, few: false }],
+    // People per brand (people-per-brand): accepts only, raw rates.
+    depth: {
+      personRate: 0.165, day: 30,
+      byOrder: [{ key: '1', brands: 90, brandsYes: 16, brandRate: 0.18, people: 90, peopleYes: 16, personRate: 0.18, few: false },
+        { key: '4', brands: 26, brandsYes: 4, brandRate: 0.15, people: 26, peopleYes: 4, personRate: 0.15, few: true }],
+      byFirstDay: [{ key: '3', brands: 33, brandsYes: 14, brandRate: 0.42, people: 99, peopleYes: 17, personRate: 0.17, few: false }],
+      byTotal: [{ key: '3', brands: 21, brandsYes: 9, brandRate: 0.43, people: 63, peopleYes: 11, personRate: 0.17, few: true },
+        { key: '4', brands: 26, brandsYes: 13, brandRate: 0.5, people: 104, peopleYes: 17, personRate: 0.16, few: true }],
+      byFit: [{ key: '65+', brands: 12, brandsYes: 6, brandRate: 0.5, people: 40, peopleYes: 8, personRate: 0.2, few: true }],
+      model: [1, 2, 3, 4, 5, 6].map((k) => ({ k, brandChance: 1 - Math.pow(0.835, k), adds: 0.165 * Math.pow(0.835, k - 1), brandsPerDay: (30 / k) * (1 - Math.pow(0.835, k)) })),
+    },
     suggestions: [{ category: 'electrolytes', from: 'middle', to: 'top', ratio: 1.9, text: 'accepts 1.9× the average (24 of 40) — make it Top?' }],
   }),
   secondTryBrands: () => ({
@@ -568,6 +579,13 @@ async function main() {
   assert.match(out, /accepts counted 7\+ days/);
   assert.match(out, /too few to tell/, 'a small cell says so');
   assert.match(out, /Brands with/);
+  // People per brand: each person's rate, the separate-chances line, the 4th vs a new brand's 1st.
+  assert.match(out, /People per brand/);
+  assert.match(out, /Each person accepts 17%\. As separate chances, 3 a brand gets 42% of brands a yes and 4 gets 51%: the 4th person adds 10 points, a new brand’s 1st adds 17\./);
+  assert.match(out, /4th person\s*15% · 4\/26/, 'each person by place in the brand’s line');
+  assert.match(out, /3 people\s*42% · 14\/33\s*43% · 9\/21\s*42%\s*17% · 17\/99/, 'first day, in all, separate chances, each person');
+  assert.match(out, /4 people\s*–\s*50% · 13\/26\s*51%/, 'no first-day group: a dash');
+  assert.match(out, /Fit 65\+/);
   assert.equal(count('setCategoryPriority'), prio10, 'nothing changes by itself');
   await page.click('[data-sdoutprio="electrolytes"]');
   await waitFor(() => count('setCategoryPriority') === prio10 + 1, 'the confirmed suggestion');

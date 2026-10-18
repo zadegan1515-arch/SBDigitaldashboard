@@ -36,7 +36,7 @@ import { recordRun } from '@/lib/li-report'
 import { recordHidden, markZachRead, updateHiddenLog, summarizeHidden, cleanViews } from '@/lib/li-hidden'
 import { PARENTS, parentOf, decideParentPage, siblingNamed, isParentCompany, LI_PARENT_PAGES_KEY } from '@/lib/parents'
 import {
-  addToReview, sameMember, readJsonSetting, writeJsonSetting,
+  sameMember, readJsonSetting, writeJsonSetting, putOnReview, updateReviewState,
   LI_REVIEW_KEY, LI_CONFIRMED_KEY, LI_OWNER_KEY, type Review, type Confirmed, type LiOwner,
 } from '@/lib/li-review'
 import { brandKey, knownSpellings } from '@/lib/stock'
@@ -106,15 +106,17 @@ async function findBrandForCapture(name: string, externalId: string | null) {
 // Mirror of reconcileBrandTargets in /api/data: the same limit, one rule
 // (src/lib/brand-work.ts — picks, Oct 12 2026): a brand keeps its own
 // number in play (Leo's, else ten at a big company, four at an established
-// brand, three elsewhere), already-contacted people first, best LinkedIn
+// brand or a Top category's, three elsewhere), already-contacted people first, best LinkedIn
 // buyers next; the rest are next in line. Nobody in today's list is taken
 // out, nor anyone chosen for a day's list (src/lib/chosen.ts — Send to
 // dashboard's pick, noted just before this runs). Nothing is deleted.
 // Four is only the fallback. Not the 25-contact file cap below.
 const TARGET_CAP_PER_BRAND = 4
 async function reconcileBrandTargets(brandId: string) {
-  const b = await prisma.brand.findUnique({ where: { id: brandId }, select: { name: true, aka: true, tier: true, liMembers: true, workPeople: true } })
-  const perBrand = b ? workCount(b) : TARGET_CAP_PER_BRAND
+  const b = await prisma.brand.findUnique({ where: { id: brandId }, select: { name: true, aka: true, category: true, tier: true, liMembers: true, workPeople: true } })
+  // Leo's category priority: a Top category's brand works four (workNeed).
+  const priorities = b ? await readJsonSetting<Record<string, string>>(prisma, 'categoryPriority', {}) : null
+  const perBrand = b ? workCount(b, priorities) : TARGET_CAP_PER_BRAND
   // Anyone written to — an accept logged with no invite date too.
   const worked = await prisma.target.count({
     where: { brandId, OR: [{ sentAt: { not: null } }, { status: { in: ['sent', 'accepted', 'replied', 'converted'] } }] },
@@ -751,14 +753,13 @@ export async function POST(req: NextRequest) {
     // Beverages) — matched like an "also known as".
     const known = knownSpellings(brand.name, brand.aka)
     const { pick, reason } = decideCompanyMatch({ ...brand, aka: [brand.aka, ...known].filter(Boolean).join(', ') || null }, candidates)
-    const review = async (why: 'unclear' | 'none' | 'wrong') => {
-      const list = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
-      await writeJsonSetting(prisma, LI_REVIEW_KEY, addToReview(list, brand.id, {
-        why, saved: recheck ? brand.linkedinUrl : null,
-        candidates: (pick ? [pick, ...candidates.filter(c => c.slug !== pick.slug)] : candidates)
-          .slice(0, 6).map(c => ({ slug: c.slug, name: c.name, subtitle: c.subtitle || '' })),
-      }))
-    }
+    // Locked, and never for a brand Leo said has no page (li-review.ts
+    // putOnReview — Oct 18 2026: brands came back after "None of these").
+    const review = (why: 'unclear' | 'none' | 'wrong') => putOnReview(prisma, brand.id, {
+      why, saved: recheck ? brand.linkedinUrl : null,
+      candidates: (pick ? [pick, ...candidates.filter(c => c.slug !== pick.slug)] : candidates)
+        .slice(0, 6).map(c => ({ slug: c.slug, name: c.name, subtitle: c.subtitle || '' })),
+    })
     // A saved page is never swapped by the run itself: the results go on
     // Leo's list, the one that fits first.
     if (recheck) {
@@ -777,8 +778,7 @@ export async function POST(req: NextRequest) {
     const linkedinUrl = companyPageUrl(pick.slug)
     await prisma.brand.update({ where: { id: brand.id }, data: { linkedinUrl } })
     // Found under its other name after the first try went on the list.
-    const list = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
-    if (list[brand.id]) { delete list[brand.id]; await writeJsonSetting(prisma, LI_REVIEW_KEY, list) }
+    await updateReviewState(prisma, list => { delete list[brand.id] })
     return NextResponse.json({ ok: true, outcome: 'attached', how: reason, name: pick.name, linkedinUrl }, { headers: cors })
   }
 
@@ -1042,8 +1042,7 @@ export async function POST(req: NextRequest) {
           const industry = String(body.companyIndustry).replace(/\s+/g, ' ').trim().slice(0, 120)
           // The page note keeps it off the fill until Leo picks the page.
           body.note = 'its saved LinkedIn page looks like another company (' + industry + ') — pick the right one on Outreach → People'
-          const list = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
-          await writeJsonSetting(prisma, LI_REVIEW_KEY, addToReview(list, b.id, { why: 'wrong', saved: b.linkedinUrl || companyPageUrl(pageSlug), pageIndustry: industry }))
+          await putOnReview(prisma, b.id, { why: 'wrong', saved: b.linkedinUrl || companyPageUrl(pageSlug), pageIndustry: industry })
         }
       } catch { /* non-fatal */ }
     }
@@ -1254,8 +1253,7 @@ export async function POST(req: NextRequest) {
       const confirmed = await readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {})
       if (b && pageSlug && confirmed[b.id] !== pageSlug && pageLooksWrong(b.category, body.companyIndustry)) {
         const industry = String(body.companyIndustry).replace(/\s+/g, ' ').trim().slice(0, 120)
-        const list = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
-        await writeJsonSetting(prisma, LI_REVIEW_KEY, addToReview(list, b.id, { why: 'wrong', saved: b.linkedinUrl || companyPageUrl(pageSlug), pageIndustry: industry }))
+        await putOnReview(prisma, b.id, { why: 'wrong', saved: b.linkedinUrl || companyPageUrl(pageSlug), pageIndustry: industry })
         return NextResponse.json({ ok: true, pageMismatch: true, industry, added: 0, have: 0, cap: CONTACT_CAP_PER_BRAND }, { headers: cors })
       }
     }

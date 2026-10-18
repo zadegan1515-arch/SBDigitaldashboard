@@ -1131,6 +1131,21 @@ model WorkLog {
   source    String @default("paste")
   addedBy   String?
   createdAt DateTime @default(now())
+  // A chat that logs itself (Home → Your chats, src/lib/chat-log.ts; source
+  // "session"): one row per claude.ai chat per day, updated as it goes.
+  // sessionId "session_…", url opens the chat, ask = Leo's latest message,
+  // asks = JSON [{ at, ask }] of the day's messages, about = one line on what
+  // the chat is for, status working · needs · done, question = what it last
+  // asked Leo, lastAt = its latest activity.
+  sessionId String?
+  url       String?
+  about     String?
+  ask       String?
+  asks      String?
+  status    String?
+  question  String?
+  lastAt    DateTime?
 
   @@index([day])
+  @@index([sessionId])
 }

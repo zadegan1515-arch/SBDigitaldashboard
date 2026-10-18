@@ -3,11 +3,13 @@
 // both kept at least four in play: a brand that works three sent four, and
 // Leo's "work 1" still kept four). Oct 12 2026 (picks): each brand opens
 // with exactly its number — Leo's own, else ten at a big company, four at
-// an established brand, three elsewhere (workNeed, planned-first.ts) —
+// an established brand or a Top category's (Oct 18 2026), three elsewhere
+// (workNeed, planned-first.ts) —
 // best LinkedIn buyers first (comparePicks, queue-check.ts).
 // Pure: the routes load the rows and write what comes back.
 // node scripts/test-brand-work.mjs
 
+import { isTopCategory } from './brand-fit'
 import { brandSize } from './brand-size'
 import { isParentCompany, parentOf } from './parents'
 import { workNeed } from './planned-first'
@@ -27,9 +29,11 @@ export function isBigBrand(b: BigBrandFacts): boolean {
 }
 
 // How many people the brand keeps in play (written to + waiting) — what
-// the limit holds it to, and what a cold brand opens with.
-export function workCount(b: BigBrandFacts & { workPeople: number | null }): number {
-  return workNeed({ tier: b.tier, workPeople: b.workPeople, big: isBigBrand(b) })
+// the limit holds it to, and what a cold brand opens with. `priorities` =
+// Leo's category priority (Setting categoryPriority): a Top category's
+// brand works four (Oct 18 2026).
+export function workCount(b: BigBrandFacts & { workPeople: number | null; category: string | null }, priorities: Record<string, string> | null): number {
+  return workNeed({ tier: b.tier, workPeople: b.workPeople, big: isBigBrand(b), top: isTopCategory(b.category, priorities) })
 }
 
 // The limit for one brand: of the people waiting in the queue (`active`),
