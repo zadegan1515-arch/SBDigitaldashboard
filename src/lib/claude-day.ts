@@ -30,8 +30,9 @@ const NEEDS_YES: Record<string, string[]> = {
 // Calls that preview unless told preview: false.
 const PREVIEW_BY_DEFAULT = new Set(['researchImport', 'researchUndo'])
 
-// The work-log itself shows on the review as "What Claude did".
-const NOT_SHOWN = new Set(['addWorkLog'])
+// The work-log itself shows on the review as "What Claude did"; a chat
+// logging where it stands (chatLog) is the "Your chats" card.
+const NOT_SHOWN = new Set(['addWorkLog', 'chatLog'])
 
 const s = (v: unknown, n = 60) => {
   const t = String(v ?? '').replace(/\s+/g, ' ').trim()

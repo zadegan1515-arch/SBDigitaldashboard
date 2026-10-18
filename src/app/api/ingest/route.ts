@@ -106,15 +106,17 @@ async function findBrandForCapture(name: string, externalId: string | null) {
 // Mirror of reconcileBrandTargets in /api/data: the same limit, one rule
 // (src/lib/brand-work.ts — picks, Oct 12 2026): a brand keeps its own
 // number in play (Leo's, else ten at a big company, four at an established
-// brand, three elsewhere), already-contacted people first, best LinkedIn
+// brand or a Top category's, three elsewhere), already-contacted people first, best LinkedIn
 // buyers next; the rest are next in line. Nobody in today's list is taken
 // out, nor anyone chosen for a day's list (src/lib/chosen.ts — Send to
 // dashboard's pick, noted just before this runs). Nothing is deleted.
 // Four is only the fallback. Not the 25-contact file cap below.
 const TARGET_CAP_PER_BRAND = 4
 async function reconcileBrandTargets(brandId: string) {
-  const b = await prisma.brand.findUnique({ where: { id: brandId }, select: { name: true, aka: true, tier: true, liMembers: true, workPeople: true } })
-  const perBrand = b ? workCount(b) : TARGET_CAP_PER_BRAND
+  const b = await prisma.brand.findUnique({ where: { id: brandId }, select: { name: true, aka: true, category: true, tier: true, liMembers: true, workPeople: true } })
+  // Leo's category priority: a Top category's brand works four (workNeed).
+  const priorities = b ? await readJsonSetting<Record<string, string>>(prisma, 'categoryPriority', {}) : null
+  const perBrand = b ? workCount(b, priorities) : TARGET_CAP_PER_BRAND
   // Anyone written to — an accept logged with no invite date too.
   const worked = await prisma.target.count({
     where: { brandId, OR: [{ sentAt: { not: null } }, { status: { in: ['sent', 'accepted', 'replied', 'converted'] } }] },

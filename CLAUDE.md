@@ -101,6 +101,22 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Home → Accepted) → `loadBrand(brandId, contactId)` → `B_FOCUS`; the brand page's People rows carry `data-pcid`, and
   `bFocusApply` lights the row (`.b-focus`) and centres it once (held ~1.5 s while the Schedule line / Zach's cards fill
   in, unless you scroll). It stays lit through refreshes of that page; another brand clears it.
+- **Home → Your chats** (Leo, Oct 17 2026: "i usually use more than 4 chats a day … i sometimes forget what each one is
+  about … tells me what chat did what, and what each chat needs from me"). One `WorkLog` row per claude.ai chat per New
+  York day (`source: 'session'`, `sessionId`, `url`, `about`, `ask`/`asks` = Leo's messages that day, `status` working ·
+  needs · done, `question` = what its last reply asks, `lastAt`), written only by `chatLog({ session, event: prompt |
+  reply | question | summary, … })` — rules pure in `src/lib/chat-log.ts` (a reply sorted by work-log.ts's rules, the
+  question it ends on, secrets masked, Leo's ticks carried by the need's words, an older post never winds a chat back).
+  Shown as Home's **Claude chats today** tile (`data-cd-open="chats"`) and **Claude's day → Your chats**, its first card
+  (`chCard`/`chRow`/`chState` in app.html: Needs you → Working → No reply yet (working 2 h+) → Done; the title opens
+  the chat); their NEEDs and questions are on the Needs card too; a chat's older days' needs give way to its latest day.
+  Pasted logs keep the "sessions said" card. `chatLog` is never a ClaudeAction. Fed by **the chat itself**
+  (`scripts/chat-log-hook.mjs` from Claude Code hooks — UserPromptSubmit / Stop / PreToolUse AskUserQuestion|ExitPlanMode;
+  detached post, nothing on stdout, quiet without `DASHBOARD_TOKEN`) and/or **the chat review** (`docs/chat-review.md`:
+  a chat reads Leo's other chats with list_sessions / list_events and posts `summary`; `listChatLogs` = what's logged).
+  `node scripts/cc.mjs <fn> @file.json` reads args from a file. Tests: `node scripts/test-chat-log.mjs`,
+  `node scripts/test-chat-log-hook.mjs`, `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-chat-log-e2e.js`,
+  page in `test-claude-day.js` (4).
 - **Leo's picked ideas, built Oct 6 2026** (retired from `build-ideas.ts`): **Weekly scoreboard** on Home (`#hm-score`,
   `weeklyScore` / `setWeeklyGoals`, Setting `weeklyGoals`, defaults `WEEKLY_GOALS_DEFAULT`): invites / accepted /
   replied / calls booked / deals / brands added per New York week (Mon–Sun), this week vs goal + 8 weeks of bars.
@@ -283,7 +299,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `outreachPlan` = `{ "YYYY-MM-DD": { category, brandIds } }`, one brand on one day) — full width,
   today (if a sending day) + the next 3 sending days as columns. Every brand carries a **contacts label**
   (`contactLabel`, same on server and page): reachable = email OR LinkedIn; need = `workPeople` ??
-  (big company 10 : established 4 : 3 — `workNeed`; every reply that labels reads `LABEL_BRAND_SELECT`, and
+  (big company 10 : established or a **Top category** 4 : 3 — `workNeed`, `top` required; every reply that labels reads `LABEL_BRAND_SELECT` (category included), and
   `isBigBrand` / `contactLabel` require name, aka and liMembers so a short select fails tsc — the LinkedIn tab
   used to call a 120-person established brand "big, works 10" while the Schedule said 4); Ready ≥ need,
   Thin 1..need-1, No one reachable 0. A brand goes out **whole**,
@@ -458,7 +474,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   their people are ready for later, but they never take a day's visits first (`reachedLast`, `giantsLast`;
   the Schedule's brands and names Leo asked for keep their place). The email machine keeps its own rules.
   **Each brand opens with exactly its number** (picks, Leo's yes Oct 12 2026): `workPeople ?? recommendWorkPeople`
-  (3, 4 at an established brand, 10 at a big company; the narrower 3/2/1 only once written to — a brand inside its
+  (3, 4 at an established brand **or a Top category's** — Leo, Oct 18 2026, after People per brand showed the 4th person accepts as often as the 1st: `isTopCategory` (brand-fit.ts) on his Category priority, `topCat` in route.ts, loaded before every /api/data handler; ingest and the fill read the Setting; the brand page gets `getBrand.top` — 10 at a big company; the narrower 3/2/1 only once written to — a brand inside its
   first sitting, part-sent next day included, keeps the opening number, and everyone still waiting from it goes
   — the part-sent rule wins over the trim: `brandWork` / `finishingSitting` in route.ts). Best LinkedIn
   buyers first — `comparePicks` / `sortPicks` in `src/lib/queue-check.ts`: a title the rules don't flag → a LinkedIn

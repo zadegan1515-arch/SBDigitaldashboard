@@ -494,7 +494,8 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const ten = (p) => Array.from({ length: 10 }, (_, i) => [p + i, 'Head of Partnerships'])
     await mkBrand('BigHydraA', { ...top13, liMembers: 900 }, ten('HA'))
     await mkBrand('BigHydraB', { ...top13, liMembers: 800 }, ten('HB'))
-    await mkBrand('MidHydra', { ...top13, salesCents: 2 * M, liMembers: 120 }, [['MH1', 'Head of Partnerships'], ['MH2', 'Brand Manager'], ['MH3', 'Events Lead']])
+    // Four people: an electrolytes brand (a Top category) works four (Oct 18 2026).
+    await mkBrand('MidHydra', { ...top13, salesCents: 2 * M, liMembers: 120 }, [['MH1', 'Head of Partnerships'], ['MH2', 'Brand Manager'], ['MH3', 'Events Lead'], ['MH4', 'Marketing Director']])
     await mkBrand('ThinHydra', { ...top13, liMembers: 130 }, [['TH1', 'Head of Partnerships']])
     const op13b = await data('getOutreachPlan', {})
     const ids13 = (k) => (op13b.days.find(d => d.date === k).brands || []).map(b => b.id)

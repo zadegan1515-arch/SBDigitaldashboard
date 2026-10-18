@@ -5,6 +5,7 @@
 //   node scripts/cc.mjs listOps '{"status":"open"}'
 //   node scripts/cc.mjs scanOps
 //   node scripts/cc.mjs getEmailStatus
+//   node scripts/cc.mjs chatLog @/tmp/chat.json     # args from a JSON file (long text, no quoting)
 //
 // Needs DASHBOARD_TOKEN in the environment (or in .env.local). The same
 // value must be set in Vercel. Never print it, never commit it.
@@ -12,7 +13,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const fn = process.argv[2]
-const args = process.argv[3] ? JSON.parse(process.argv[3]) : {}
+const argText = process.argv[3]
+const args = !argText ? {} : JSON.parse(argText.startsWith('@') ? fs.readFileSync(argText.slice(1), 'utf8') : argText)
 if (!fn) { console.error('usage: node scripts/cc.mjs <fn> [jsonArgs]'); process.exit(2) }
 
 let token = process.env.DASHBOARD_TOKEN

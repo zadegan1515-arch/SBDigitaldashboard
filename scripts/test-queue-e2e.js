@@ -194,16 +194,17 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     for (const c of await mkPeople('passy', BUYERS)) await prisma.target.create({ data: { brandId: 'passy', contactId: c.id, status: 'queued' } });
     await setting('outreachDayRows', { day: yday, brandIds: ['passy'] });
     // Jamjar: someone with no title on file Leo queued by hand yesterday
-    // (flagged), and three buyers waiting in the pool (the LinkedIn fill
+    // (flagged), and four buyers waiting in the pool (the LinkedIn fill
     // made their targets). Kaykay: two buyers sent yesterday, the Sales
-    // Manager Leo queued with them left, nobody else. Fourway: its three and
-    // a fourth Leo added himself, all in yesterday's list, nobody sent.
+    // Manager Leo queued with them left, nobody else. Fourway: its four and
+    // a fifth Leo added himself, all in yesterday's list, nobody sent.
+    // (Electrolytes is a Top category: its brands work four — Oct 18 2026.)
     await mkBrand('jam', 'Jamjar Juice', 'electrolytes');
-    const jp = await mkPeople('jam', [null, ...BUYERS]);
+    const jp = await mkPeople('jam', [null, ...BUYERS, 'Events Lead']);
     const jamie = (await prisma.target.create({ data: { brandId: 'jam', contactId: jp[0].id, status: 'queued', queuedFor: new Date(noonNY(yday).getTime() + 2 * 3600e3) } })).id;
     for (const c of jp.slice(1)) await prisma.target.create({ data: { brandId: 'jam', contactId: c.id, status: 'queued' } });
     await mkBrand('four', 'Fourway Fizz', 'electrolytes');
-    const fwp = await mkPeople('four', [...BUYERS, 'Sales Manager']);
+    const fwp = await mkPeople('four', [...BUYERS, 'Events Lead', 'Sales Manager']);
     const fourIds = [];
     for (const [i, c] of fwp.entries()) fourIds.push((await prisma.target.create({ data: { brandId: 'four', contactId: c.id, status: 'queued', queuedFor: new Date(noonNY(yday).getTime() + 4 * 3600e3 + i) } })).id);
     await mkBrand('kay', 'Kaykay Kombucha', 'electrolytes');
@@ -215,15 +216,15 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const hlFirst = plan.plan[today].brandIds.slice(0, 3);
     assert.deepEqual([hlFirst.slice().sort(), plan.plan[today].brandIds.slice(3)], [['half', 'hl', 'kay'], ['jam', 'four']], 'Halfway, Kaykay and Holdlate (half-sent) first, then Jamjar and Fourway (queued by hand): ' + JSON.stringify(plan.plan[today]));
     assert.ok(!(plan.plan[holdDay]?.brandIds || []).includes('hl'), 'Holdlate is off the later day: its rest goes today');
-    assert.deepEqual((plan.carry?.brands || []).filter(b => b.id !== 'hl').map(b => [b.id, b.from, b.people]), [['half', yday, 2], ['kay', yday, 1], ['jam', yday, 1], ['four', yday, 4]], 'the carry note names them');
+    assert.deepEqual((plan.carry?.brands || []).filter(b => b.id !== 'hl').map(b => [b.id, b.from, b.people]), [['half', yday, 2], ['kay', yday, 1], ['jam', yday, 1], ['four', yday, 5]], 'the carry note names them');
     assert.deepEqual((plan.carry?.brands || []).filter(b => b.id === 'hl').map(b => [b.from, b.people]), [[yday, 2]], 'Holdlate too');
     const todayCol = plan.days.find(d => d.date === today);
     const halfCard = todayCol.pinned.find(p => p.id === 'half');
     assert.deepEqual([halfCard.state, halfCard.going], ['going', 2], 'the Schedule: its two going today, not "resting"');
     const jamCard = todayCol.pinned.find(p => p.id === 'jam');
-    assert.deepEqual([jamCard.state, jamCard.going, jamCard.people.some(x => x.name === 'jam P0')], ['going', 3, true], 'the Schedule: the person Leo queued goes: ' + JSON.stringify(jamCard));
+    assert.deepEqual([jamCard.state, jamCard.going, jamCard.people.some(x => x.name === 'jam P0')], ['going', 4, true], 'the Schedule: the person Leo queued goes: ' + JSON.stringify(jamCard));
     const fourCard = todayCol.pinned.find(p => p.id === 'four');
-    assert.deepEqual([fourCard.state, fourCard.going], ['going', 4], 'the Schedule: all four of yesterday\'s list go: ' + JSON.stringify(fourCard));
+    assert.deepEqual([fourCard.state, fourCard.going], ['going', 5], 'the Schedule: all five of yesterday\'s list go: ' + JSON.stringify(fourCard));
     assert.ok(!plan.days.some(d => d.brands.concat(d.pinned).some(b => b.id === 'passy')), 'Passy on no day');
     let tq = await data('getTodayQueue');
     assert.deepEqual(tq.targets.filter(t => t.brandId === 'half').map(t => t.id).sort(), halfRest.sort(), 'the rest of Halfway is in today\'s list');
@@ -238,9 +239,9 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     // roll, goes again — not set aside next in line for the buyers.
     const jamT = await prisma.target.findUnique({ where: { id: jamie } });
     assert.deepEqual([jamT.shelved, !!jamT.queuedFor], [false, true], 'Jamie is in today\'s list: ' + JSON.stringify(jamT));
-    assert.equal(tq.targets.filter(t => t.brandId === 'jam').length, 3, 'Jamie and two buyers (its three)');
-    assert.equal(await prisma.target.count({ where: { brandId: 'jam', shelved: true, shelvedHow: 'cap' } }), 1, 'the third buyer is next in line, not Jamie');
-    assert.deepEqual(tq.targets.filter(t => t.brandId === 'four').map(t => t.id).sort(), fourIds.slice().sort(), 'all four of Fourway, the one Leo added past its number too');
+    assert.equal(tq.targets.filter(t => t.brandId === 'jam').length, 4, 'Jamie and three buyers (its four)');
+    assert.equal(await prisma.target.count({ where: { brandId: 'jam', shelved: true, shelvedHow: 'cap' } }), 1, 'the fourth buyer is next in line, not Jamie');
+    assert.deepEqual(tq.targets.filter(t => t.brandId === 'four').map(t => t.id).sort(), fourIds.slice().sort(), 'all five of Fourway, the one Leo added past its number too');
     assert.equal(await prisma.target.count({ where: { brandId: 'four', shelved: true } }), 0, 'nobody at Fourway set aside');
     const kayT = await prisma.target.findUnique({ where: { id: kayRest } });
     assert.deepEqual([kayT.shelved, !!kayT.queuedFor], [false, true], 'the rest of Kaykay goes (its sitting\'s second day): ' + JSON.stringify(kayT));
@@ -268,7 +269,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await mkBrand('bigx', 'Bigxo Energy', 'energy', { liMembers: 800 });
     await mkPeople('bigx', ['Brand Manager', 'Head of Partnerships', 'Marketing Director', 'CEO', 'Founder', 'CFO']);
     await mkBrand('topE', 'Topper Electrolytes', 'electrolytes');
-    await mkPeople('topE', BUYERS);
+    await mkPeople('topE', [...BUYERS, 'Events Lead']);   // a Top category works four: Ready
     await mkBrand('midS', 'Middle Beauty', 'beauty');
     await mkPeople('midS', BUYERS);
     await mkBrand('lowA', 'Lowly Apparel', 'apparel');
@@ -288,7 +289,13 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     plan = await data('getOutreachPlan');
     const col = plan.days.find(d => d.date === today);
     assert.deepEqual([col.pinned.map(p => p.id), col.brands.map(r => r.id)], [['half', 'bigx'], ['topE', 'midS', 'lowA']], 'the Schedule\'s today column too');
-    ok('one order for today on every load (LinkedIn tab, Zach\'s list, the Schedule); a reload adds nobody');
+    // A Top category's brand works four, a Middle or Low one three (Oct 18
+    // 2026 — People per brand); the LinkedIn tab and the Schedule agree.
+    const labQ = (await data('getTodayQueue')).labels;
+    assert.deepEqual(['topE', 'midS', 'lowA'].map(id => [plan.labels[id]?.need, labQ[id]?.need]), [[4, 4], [3, 3], [3, 3]], 'need: Top four, Middle and Low three');
+    assert.equal(q1.targets.filter(t => t.brandId === 'topE').length, 4, 'Topper opens with its four');
+    assert.equal(q1.targets.filter(t => t.brandId === 'midS').length, 3, 'Middle Beauty with its three');
+    ok('one order for today on every load (LinkedIn tab, Zach\'s list, the Schedule); a reload adds nobody; a Top category opens with four');
 
     // ---- D. Leave out, + Person, Off queue --------------------------------
     await data('passContact', { contactId: bigStamped[0].contactId });
@@ -622,7 +629,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await setToday(null, ['loT']);
     tq = await data('getTodayQueue');
     const loIn = tq.targets.filter(t => t.brandId === 'loT');
-    assert.equal(loIn.length, 3, 'opened with its three');
+    assert.equal(loIn.length, 4, 'opened with its four (RTD is a Top category)');
     for (const t of loIn) await data('passContact', { contactId: t.contactId });
     tq = await data('getTodayQueue');
     assert.equal(tq.targets.filter(t => t.brandId === 'loT').length, 0, 'Leave out: the Best fit fill doesn\'t reopen it');
@@ -713,16 +720,17 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual([hxT.shelved, !!hxT.queuedFor], [false, true], 'the queue: in today\'s list, not set aside: ' + JSON.stringify(hxT));
     ok('a flagged person Leo queued by hand still goes from the pool');
 
-    // ---- Z. Sent to the dashboard, three buyers waiting beside them -------
+    // ---- Z. Sent to the dashboard, four buyers waiting beside them --------
+    // (RTD is a Top category: its brands work four — Oct 18 2026.)
     // Send to dashboard on a LinkedIn profile, through /api/ingest as the
-    // userscript sends it, at a brand whose three buyers the fill made
+    // userscript sends it, at a brand whose four buyers the fill made
     // targets for. A weaker title than theirs: the capture's own limit
     // (reconcileBrandTargets → keepInPlay) set the pick aside next in line in
     // the same request, and the queue never brought them back (fourth
     // review); then the brand's number cut them when it came up.
     await unstampAll();
     await mkBrand('sdz', 'Sentdash Seltzer', 'rtd');
-    const sz = await mkPeople('sdz', BUYERS);
+    const sz = await mkPeople('sdz', [...BUYERS, 'Events Lead']);
     for (const c of sz) await prisma.target.create({ data: { brandId: 'sdz', contactId: c.id, status: 'queued' } });
     const sent = await ingest({
       action: 'liCapture', handPicked: true, createIfMissing: true,
@@ -738,21 +746,21 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(szCap.length, 1, 'one buyer next in line instead: ' + JSON.stringify(sent));
     const pvz = await data('planAddBrands', { date: today, brandIds: ['sdz'], preview: true });
     const pvzPeople = pvz.results[0].people.map(x => x.name);
-    assert.ok(pvzPeople.includes('Sam Social') && pvzPeople.length === 3, 'the preview: Leo\'s pick and two buyers: ' + JSON.stringify(pvzPeople));
+    assert.ok(pvzPeople.includes('Sam Social') && pvzPeople.length === 4, 'the preview: Leo\'s pick and three buyers: ' + JSON.stringify(pvzPeople));
     await data('queueBrandTargets', { brandId: 'sdz' });
     const szNow = await prisma.target.findMany({ where: { brandId: 'sdz' } });
     const szPick = szNow.find(t => t.id === samT.id);
     assert.deepEqual([szPick.shelved, !!szPick.queuedFor], [false, true], 'Leo\'s pick is in today\'s list: ' + JSON.stringify(szPick));
-    assert.deepEqual([szNow.filter(t => t.queuedFor).length, szNow.filter(t => t.shelvedHow === 'cap').length], [3, 1], 'its three: the pick and two buyers; one buyer next in line');
+    assert.deepEqual([szNow.filter(t => t.queuedFor).length, szNow.filter(t => t.shelvedHow === 'cap').length], [4, 1], 'its four: the pick and three buyers; one buyer next in line');
     await prisma.brand.update({ where: { id: 'sdz' }, data: { passedAt: new Date() } });
     await unstampAll();
     ok('a person sent to the dashboard (through /api/ingest) goes, the brand\'s number filled around them');
 
-    // + Add person on the brand page (upsertContact) beside three
+    // + Add person on the brand page (upsertContact) beside four
     // partnerships buyers: Leo's pick too — chosen, so the number never cuts
     // them; and a notes-only Save (the page sends its tier back) trims nobody.
     await mkBrand('hdz', 'Handadd Hard Seltzer', 'rtd');
-    const hz = await mkPeople('hdz', ['Head of Partnerships', 'Partnerships Manager', 'Director of Partnerships']);
+    const hz = await mkPeople('hdz', ['Head of Partnerships', 'Partnerships Manager', 'Director of Partnerships', 'Sponsorship Manager']);
     for (const c of hz) await prisma.target.create({ data: { brandId: 'hdz', contactId: c.id, status: 'queued' } });
     const hand = await data('upsertContact', { brandId: 'hdz', name: 'Hana Hand', title: 'Brand Marketing Manager', linkedinUrl: 'https://www.linkedin.com/in/hana-hand-hdz/' });
     const hanaT = await prisma.target.findFirst({ where: { contactId: hand.id } });
@@ -765,7 +773,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await data('queueBrandTargets', { brandId: 'hdz' });
     const hanaNow = await prisma.target.findUnique({ where: { id: hanaT.id } });
     assert.deepEqual([hanaNow.shelved, !!hanaNow.queuedFor], [false, true], 'the hand add is in today\'s list: ' + JSON.stringify(hanaNow));
-    assert.equal(await prisma.target.count({ where: { brandId: 'hdz', queuedFor: { not: null } } }), 3, 'the brand\'s three: the hand add and two buyers');
+    assert.equal(await prisma.target.count({ where: { brandId: 'hdz', queuedFor: { not: null } } }), 4, 'the brand\'s four: the hand add and three buyers');
     await prisma.brand.update({ where: { id: 'hdz' }, data: { passedAt: new Date() } });
     await unstampAll();
     ok('a person added by hand on the brand page goes; a notes-only Save trims nobody');
