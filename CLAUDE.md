@@ -31,7 +31,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 
 ## Where things live
 - `public/app.html` — the whole UI. Top nav is seven groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
-  `showView`): Home · Brands (All brands / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
+  `showView`): Home · Brands (All brands / Recently added / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
   Week plan / Schedule / Email / People / Archived / Email stats) · **In talks** (one view, below) ·
   **Show Board** (Overview = code lookup (`boardCodeLookup`: the whole roster by name / aka, people and archived too — it used to filter listBrands' first 500; `test-board-lookup.js`) + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
@@ -782,7 +782,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   nicotine, electrolytes Top +30; clothing, athletic, tech, AI, fintech Low 0; the rest Middle +15; Skip = 0 and never
   auto-picked; `priorityOf`, editable per category — replaced the flat 18–24 bonus, so a Top brand with money
   unknown beats a Low brand with $50M raised, and only a $100M+ Low brand beats a tiny Top one), already sponsors
-  college / music (15), people we can reach (10), the category's 90-day accept rate (5), and **fits a student's day**
+  college / music (15), people we can reach (10), the category's 90-day accept rate (5), **added by Leo** +5 (Oct 19
+  2026: "brands that we add from Claude, like the add a brand tab, or add a brand chat … priority … plus five points";
+  `addedByLeo` / `ADDED_SOURCES` in brand-fit.ts: source `chat` = the Add a brand chat, `site` = typed into the site's
+  add boxes — `createBrand` (+ Add brand, the Schedule's and the LinkedIn tab's "add as a new brand"); for good, also
+  after the Recently added tab; Discover Accepts don't count — Leo's pick; brands typed in before Oct 19 were saved
+  `manual`, shared with the seed import, Stock take's bulk add and splitBrand, so they aren't marked), and **fits a student's day**
   (Leo, Oct 18 2026: "neuro should definitely be higher given that the ideal candidates are people who study and do
   work" — he chose Brand Fit as well as Discover; `src/lib/student-fit.ts`, `node scripts/test-student-fit.mjs`): made
   for studying / focus 20 (nootropic, focus drinks / pouches, studying, finals week, caffeine gum / mints / pouches),
@@ -884,7 +889,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   **Brand Fit** group — Any · Above 75 · 50–75 · Under 50 (`BR_BANDS`, `brBand`, `BR.fit`, a `brSeg` like Show and
   Outreach) — counts the brands in play (archived / do-not-email left out, `brInPlay`) over the rows every other filter
   shows (`brShown({ anyFit: true })`: category, Show, Outreach, search, Hide too small), so a count is exactly what its
-  click shows ("Showing N of M" agrees); a second click or Clear filters clears it; not on New from LinkedIn. A row opens in place:
+  click shows ("Showing N of M" agrees); a second click or Clear filters clears it; not on New from LinkedIn.
+  **Recently added** (Leo, Oct 19 2026: "brands that we add from Claude … should be … under a recently added tab"): a
+  Brands sub-tab (view id `recent` = the brands view on `listBrands({ category: 'recent' })`, `recentAddWhere`: source
+  `chat` / `site`, the last `RECENT_ADD_DAYS` = 30; `BR_TAB` lights the sub-tab; also in the category dropdown with
+  `categoryReach.recentlyAdded`), newest first (sort `added`, put back on leaving), each row "Add a brand chat / + Add
+  brand · added <date>", never hidden as too small. A row opens in place:
   category, tier, website, LinkedIn page, aka, notes save on change (`updateBrand`); **Add a person**
   (`upsertContact`); the name opens the brand page. The tick bar (re-file, Put on a day) is unchanged.
   Stock take (lanes, ideas, re-file) and Needs contacts (SponsorUnited worklist) left the sub-tabs and

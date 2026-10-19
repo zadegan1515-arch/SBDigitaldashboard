@@ -3331,7 +3331,7 @@ function refreshAfterSponsorChange() {
 // The top nav holds five groups; the views inside a group show as a
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
-  brands: [['brands', 'All brands'], ['discover', 'Discover'], ['clarify', 'Clarify']],
+  brands: [['brands', 'All brands'], ['recent', 'Recently added'], ['discover', 'Discover'], ['clarify', 'Clarify']],
   outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['weekplan', 'Week plan'], ['schedule', 'Schedule'], ['email-out', 'Email'], ['linkedin', 'People'], ['passed', 'Archived'], ['results', 'Email stats']],
   board: [['board', 'Overview'], ['talks', 'Board codes'], ['requests', 'Requests'], ['shows', 'Shows']],
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
@@ -3339,7 +3339,7 @@ var SUBTABS = {
   operations: [['materials', 'Materials'], ['team', 'Team']],
 };
 var GROUP_OF = {
-  brands: 'brands', brand: 'brands', discover: 'brands', clarify: 'brands', needs: 'brands', stock: 'brands',
+  brands: 'brands', recent: 'brands', brand: 'brands', discover: 'brands', clarify: 'brands', needs: 'brands', stock: 'brands',
   outreach: 'outreach', 'email-out': 'outreach', reached: 'outreach', schedule: 'outreach', weekplan: 'outreach', linkedin: 'outreach', results: 'outreach', passed: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
   intalks: 'intalks',
@@ -3659,8 +3659,10 @@ function showView(id, fresh) {
   var tabs = SUBTABS[group];
   if (tabs) {
     bar.style.display = '';
+    // Recently added is the brands view listing those brands (loadBrands('recent')).
+    var lit = id === 'brands' && BR_TAB === 'recent' ? 'recent' : id;
     bar.innerHTML = tabs.map(function (t) {
-      return '<button class="nav-item' + (t[0] === id ? ' active' : '') + '" data-view="' + t[0] + '">' + t[1] + '</button>';
+      return '<button class="nav-item' + (t[0] === lit ? ' active' : '') + '" data-view="' + t[0] + '">' + t[1] + '</button>';
     }).join('');
   } else { bar.style.display = 'none'; bar.innerHTML = ''; }
   if (!again) window.scrollTo(0, 0);
@@ -7592,9 +7594,17 @@ function loadBrandsNoProfile() {
 // The same list again is a refresh (kept in place); another opens fresh.
 var BRANDS_SHOWN = '';
 
+// Recently added (Leo, Oct 19 2026): brands he added himself — the Add a brand
+// chat or + Add brand — in the last 30 days, newest first. The sub-tab is
+// the brands view on that list (BR_TAB lights it).
+var BR_TAB = 'brands';
 function loadBrands(category) {
   category = category || 'all';
   NAV_ARGS = { c: category };
+  BR_TAB = category === 'recent' ? 'recent' : 'brands';
+  // That list opens newest first; leaving it puts the table's own sort back.
+  if (category === 'recent' && lastCategory !== 'recent') { BR.sortWas = BR.sort; BR.sort = 'added'; }
+  else if (category !== 'recent' && lastCategory === 'recent' && BR.sort === 'added') { BR.sort = BR.sortWas || 'fewest'; }
   var again = showView('brands', BRANDS_SHOWN !== category);
   BRANDS_SHOWN = category;
   lastCategory = category;
@@ -7603,6 +7613,7 @@ function loadBrands(category) {
 
   document.getElementById('brands-title').textContent =
     category === 'all' ? 'All brands' : category === 'none' ? 'No category' : category === 'new' ? 'New from LinkedIn'
+      : category === 'recent' ? 'Recently added'
       : (CAT_NAMES[category] || category);
   // Category filter chips — flip between categories without leaving the page.
   // "No category" sits after Needs Clarification: brands that arrived from
@@ -7673,6 +7684,10 @@ function loadBrands(category) {
       ? (list.length
           ? list.length + (list.length === 1 ? ' brand' : ' brands') + ' added by LinkedIn in the last 14 days. Tick to Keep, Archive or re-file.'
           : 'Nothing new to look at.')
+      : category === 'recent'
+      ? (list.length
+          ? list.length + (list.length === 1 ? ' brand' : ' brands') + ' you added in the last 30 days (the Add a brand chat or + Add brand) — each gets +5 in Brand Fit, so it goes out sooner.'
+          : 'Nothing added in the last 30 days. Brands you send the Add a brand chat or type into + Add brand show here.')
       : cc.inPlay + ' brands in play · ' + cc.covered + ' have a buyer · ' + cc.need + ' need one';
 
     renderCoverage();
@@ -7874,6 +7889,7 @@ function brCatSelect() {
   return '<select class="inp" data-brcat title="Which brands: a category, the LinkedIn run\'s new ones, or unfiled">' +
     opt('all', 'All categories') +
     opt('new', 'New from LinkedIn' + (cr.newFromLinkedIn ? ' (' + cr.newFromLinkedIn + ')' : '')) +
+    opt('recent', 'Recently added' + (cr.recentlyAdded ? ' (' + cr.recentlyAdded + ')' : '')) +
     CAT_KEYS.map(function (k) { return opt(k, CAT_NAMES[k] + n(k)); }).join('') +
     opt('none', 'No category' + n('uncategorised')) +
   '</select>';
@@ -7904,7 +7920,7 @@ function brMatches(b, ql) {
 // Hide too small (Brand Fit): what the server flags hideSmall — too small
 // and nobody's touched it, the same rule as Stock take. A search still
 // finds them; New from LinkedIn is a review list and never hides.
-function brSmallHidden(b) { return HIDE_SMALL && !!b.hideSmall && lastCategory !== 'new'; }
+function brSmallHidden(b) { return HIDE_SMALL && !!b.hideSmall && lastCategory !== 'new' && lastCategory !== 'recent'; }
 function brFit(b) { return b.fit ? b.fit.score : -1; }
 // Reached out: the Reached tag's rule — an invite (incl. an accept logged
 // from LinkedIn) or an email (listBrands' outreach.invited / emailed).
@@ -7926,6 +7942,7 @@ function brShown(opts) {
   var by = BR.sort;
   rows.sort(function (x, y) {
     if (by === 'name') return x.name.localeCompare(y.name);
+    if (by === 'added') return (+new Date(y.createdAt || 0) - +new Date(x.createdAt || 0)) || x.name.localeCompare(y.name);
     if (by === 'fit') return (!!x.passedAt - !!y.passedAt) || (brFit(y) - brFit(x)) || x.name.localeCompare(y.name);
     if (by === 'most') return (brBuyers(y) - brBuyers(x)) || (brPeople(y) - brPeople(x)) || x.name.localeCompare(y.name);
     if (by === 'people') return (brPeople(y) - brPeople(x)) || x.name.localeCompare(y.name);
@@ -8040,7 +8057,9 @@ function brEditRow(b) {
 
 function brRow(b, i) {
   var newNote = lastCategory === 'new'
-    ? '<div class="br-sub">' + esc(b.source === 'research' ? 'Research list' : 'LinkedIn run') + ' · added ' + esc(shortDate(b.createdAt)) + '</div>' : '';
+    ? '<div class="br-sub">' + esc(b.source === 'research' ? 'Research list' : 'LinkedIn run') + ' · added ' + esc(shortDate(b.createdAt)) + '</div>'
+    : lastCategory === 'recent'
+    ? '<div class="br-sub">' + esc(b.source === 'chat' ? 'Add a brand chat' : '+ Add brand') + ' · added ' + esc(shortDate(b.createdAt)) + '</div>' : '';
   var open = !!BR_OPEN[b.id];
   return '<tr class="br-row' + (i % 2 ? ' br-z' : '') + (b.passedAt ? ' off' : '') + (BB.sel[b.id] ? ' sel' : '') + (open ? ' is-open' : '') + '" data-brow="' + esc(b.id) + '" data-name="' + esc(b.name) + '">' +
     '<td class="br-tick"><label data-bsel="' + esc(b.id) + '" title="Select to re-file or put on a day">' +
@@ -8065,7 +8084,7 @@ function brSeg(label, attr, items, cur, tip) {
     }).join('') + '</div></div>';
 }
 var BR_SORTS = [['fewest', 'Fewest buyers first'], ['most', 'Most buyers first'], ['fit', 'Best fit first'], ['touch', 'Latest outreach first'],
-  ['name', 'Name A–Z'], ['cat', 'Category A–Z'], ['people', 'Most people']];
+  ['added', 'Newest added first'], ['name', 'Name A–Z'], ['cat', 'Category A–Z'], ['people', 'Most people']];
 // A heading that sorts: its key, and the sort a click picks.
 function brHead(label, key, cls, tip) {
   var on = key && (BR.sort === key || (key === 'buyers' && (BR.sort === 'fewest' || BR.sort === 'most')));
@@ -8105,7 +8124,7 @@ function brRender() {
       '<span class="br-count">Showing <b>' + rows.length + '</b> of ' + BR_LIST.length + (BR_LIST.length === 1 ? ' brand' : ' brands') +
         (brFiltered() ? '<a href="#" data-brclear="1">Clear filters</a>' : '') + '</span>' +
       '<span style="flex:1"></span>' +
-      (lastCategory === 'new' ? '' : hideSmallBox('brands')) +
+      (lastCategory === 'new' || lastCategory === 'recent' ? '' : hideSmallBox('brands')) +
       '<label class="br-chk"><input type="checkbox" data-brarch' + (BR.hideArchived ? ' checked' : '') + '> Hide archived</label>' +
     '</div>';
   // Needs people, split by what stands in the way (the card's rows).
@@ -8746,7 +8765,8 @@ var DUP_WHY = { name: 'Same name', linkedin: 'Same LinkedIn page', website: 'Sam
 var BRAND_SOURCE = {
   'linkedin-discover': 'LinkedIn run', research: 'research list', linkedin: 'LinkedIn capture',
   sponsorunited: 'SponsorUnited', 'sponsor-page': 'sponsor page', request: 'sponsor page', 'board-access': 'Show Board',
-  notion: 'Notion', sheet: 'the CRM sheet', discover: 'Discover', import: 'an import', archive: 'past shows'
+  notion: 'Notion', sheet: 'the CRM sheet', discover: 'Discover', import: 'an import', archive: 'past shows',
+  chat: 'the Add a brand chat', site: '+ Add brand'
 };
 
 function dupLoad() {
@@ -23753,6 +23773,7 @@ function gotoViewNow(id) {
   if (id !== 'activations') actMode(false);
   if (id === 'dashboard') loadDashboard();
   if (id === 'brands') loadBrands('all');
+  if (id === 'recent') loadBrands('recent');
   if (id === 'outreach') loadOutreach();
   if (id === 'email-out') loadEmailOutreach();
   if (id === 'reached') loadReached();

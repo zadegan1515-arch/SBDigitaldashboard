@@ -107,6 +107,8 @@ node scripts/cc.mjs chatAddBrand '{
 
 ## After adding (tell Leo when it matters)
 
+- **Recently added:** the brand shows on Brands → Recently added for 30 days, and it
+  gets +5 in Brand Fit for good (it goes out sooner).
 - **LinkedIn people:** a brand added with its LinkedIn page gets read by Leo's
   LinkedIn fill on its next run, in his browser.
 - **SponsorUnited people:** the brand shows on Needs contacts, and Leo's

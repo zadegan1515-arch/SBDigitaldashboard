@@ -45,7 +45,7 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     prisma.brand.findMany({
       where: { doNotEmail: false, passedAt: null },
       select: {
-        id: true, name: true, aka: true, about: true, topProducts: true, notes: true, salesCents: true,
+        id: true, name: true, aka: true, about: true, topProducts: true, notes: true, source: true, salesCents: true,
         category: true, linkedinUrl: true, tier: true, liMembers: true, _count: { select: { contacts: true } },
         contacts: { select: { title: true, email: true, linkedinUrl: true } },
         // Brand Fit's facts (brand-fit.ts), for the fit floor below.
@@ -83,7 +83,7 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
       reachable: b.contacts.filter(c => !!(c.email || c.linkedinUrl)).length,
       need: workNeed({ tier: b.tier, workPeople: b.workPeople, liMembers: b.liMembers, big, top: isTopCategory(b.category, priorities) }),
       acceptRate: null, priority: priorityOf(b.category, priorities), giant: giantOf(b),
-      name: b.name, about: b.about, topProducts: b.topProducts, notes: b.notes, now,
+      name: b.name, about: b.about, topProducts: b.topProducts, notes: b.notes, source: b.source, now,
     })
     return [b.id, f] as const
   }))
