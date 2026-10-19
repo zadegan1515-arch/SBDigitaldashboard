@@ -170,6 +170,24 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual([pr.source, pr.sessionId], ['paste', null])
     ok('listChatLogs latest first; junk refused; a paste is still a paste')
 
+    // 9. A new day keeps the chat's name and one-liner from its last day,
+    // not its setup text; a title the chat sends still wins.
+    const L = 'session_01CarryNameAbcdefgh'
+    await prisma.workLog.create({ data: { day: shift(today, -2), title: 'LinkedIn run check (daily)', about: 'Reads the run reports every morning', raw: 'x', parsed: '{}', source: 'session', sessionId: L } })
+    await prisma.workLog.create({ data: { day: shift(today, -3), title: 'An older name', raw: 'x', parsed: '{}', source: 'session', sessionId: L } })
+    r = await data('chatLog', { session: L, event: 'prompt', firstAsk: "You are the SB Command Center's LinkedIn morning-check session.", ask: '<scheduled-task> wake up', at: iso(70000) })
+    let lr = await prisma.workLog.findFirst({ where: { sessionId: L, day: today } })
+    assert.deepEqual([r.title, lr.title, lr.about], ['LinkedIn run check (daily)', 'LinkedIn run check (daily)', 'Reads the run reports every morning'])
+    await data('chatLog', { session: L, event: 'reply', reply: 'No run in 26 hours.', at: iso(60000) })
+    lr = await prisma.workLog.findFirst({ where: { sessionId: L, day: today } })
+    assert.equal(lr.title, 'LinkedIn run check (daily)', 'still its name after the reply')
+    const N = 'session_01BrandNewChatAbcd'
+    r = await data('chatLog', { session: N, event: 'prompt', firstAsk: 'fix the brand page', ask: 'fix the brand page', at: iso(50000) })
+    assert.equal(r.title, 'fix the brand page', 'a chat with no earlier day is named by its first ask')
+    r = await data('chatLog', { session: L, event: 'reply', title: 'LI check (renamed)', reply: 'ok', at: iso(40000) })
+    assert.equal(r.title, 'LI check (renamed)', 'a title the chat sends wins')
+    ok('a new day keeps the chat’s name and one-liner; a sent title still wins')
+
     console.log(`chat-log e2e: all ${n} passed`)
   } catch (e) {
     console.error('✗', e && e.stack || e)

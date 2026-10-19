@@ -106,7 +106,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   York day (`source: 'session'`, `sessionId`, `url`, `about`, `ask`/`asks` = Leo's messages that day, `status` working ·
   needs · done, `question` = what its last reply asks, `lastAt`), written only by `chatLog({ session, event: prompt |
   reply | question | summary, … })` — rules pure in `src/lib/chat-log.ts` (a reply sorted by work-log.ts's rules, the
-  question it ends on, secrets masked, Leo's ticks carried by the need's words, an older post never winds a chat back).
+  question it ends on, secrets masked, Leo's ticks carried by the need's words, an older post never winds a chat back, a new day keeps the name and one-liner of its last day).
   Shown on **its own page** (Leo, Oct 17 2026: "make it its own page and make it simple and concise in bigger text"):
   view `#chats` (`loadChats`, `chp*` in app.html; data = `dayRecap`'s chats, ‹ › other days), opened by Home's **Claude
   chats today** tile (`data-chp-open`), **Your chats ▸** in Home's header and Claude's day's Needs card — three big

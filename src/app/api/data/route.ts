@@ -5682,9 +5682,16 @@ const handlers: Record<string, Handler> = {
         st = ev === 'summary' && ['working', 'needs', 'done'].includes(status) ? status : chatStatus(open, q, false)
       }
       const given = String(title ?? '').trim()
-      const name = given ? chatTitle(given, null)
-        : row?.title && !isMachineText(row.title) ? row.title : chatTitle('', firstAsk || dayAsks[0]?.ask || lastAsk)
-      const line = String(about ?? '').trim() ? askLine(about, 200) : row?.about ?? null
+      // A chat keeps its name and one-liner from day to day: a scheduled chat
+      // renamed by the evening review used to start each morning named after
+      // its setup text again.
+      const rowName = row?.title && !isMachineText(row.title) ? row.title : null
+      const prev = !row || (!given && !rowName)
+        ? await tx.workLog.findFirst({ where: { sessionId: sid, source: 'session', day: { lt: d } }, orderBy: { day: 'desc' }, select: { title: true, about: true } })
+        : null
+      const prevName = prev?.title && !isMachineText(prev.title) ? prev.title : null
+      const name = given ? chatTitle(given, null) : rowName ?? prevName ?? chatTitle('', firstAsk || dayAsks[0]?.ask || lastAsk)
+      const line = String(about ?? '').trim() ? askLine(about, 200) : row?.about ?? prev?.about ?? null
       const data = {
         title: name, raw, parsed: JSON.stringify(parsed), needsDone: JSON.stringify(ticks),
         url: sessionUrl(sid), about: line, ask: lastAsk, asks: JSON.stringify(dayAsks), status: st, question: q,
