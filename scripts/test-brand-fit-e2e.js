@@ -345,12 +345,17 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     // 30 days and carry +5 in Brand Fit for good. Nothing else counts.
     const site = await data('createBrand', { name: 'Typed In Tonic', category: 'beverage' });
     assert.equal(site.brand.source, 'site');
+    // + Add brand's Paste a list counts too; Stock take's lane ideas don't.
+    await data('addBrandsBulk', { text: 'Pasted Pop', category: 'beverage', apply: true, site: true });
+    await data('addBrandsBulk', { text: 'Lane Idea Cola', category: 'beverage', apply: true });
+    assert.equal((await prisma.brand.findUnique({ where: { name: 'Pasted Pop' } })).source, 'site');
+    assert.equal((await prisma.brand.findUnique({ where: { name: 'Lane Idea Cola' } })).source, 'manual');
     await prisma.brand.create({ data: { id: 'b_chat_old', name: 'Old Chat Add', category: 'beverage', source: 'chat', createdAt: new Date(Date.now() - 40 * 864e5) } });
     await prisma.brand.create({ data: { id: 'b_chat_new', name: 'New Chat Add', category: 'beverage', source: 'chat' } });
     await prisma.brand.create({ data: { id: 'b_plain', name: 'Plain Import Co', category: 'beverage' } });
     const recent = (await data('listBrands', { category: 'recent', take: 5000, fit: true })).map(b => b.name).sort();
-    assert.deepEqual(recent, ['New Chat Add', 'Typed In Tonic'], 'the last 30 days of chat and site adds only');
-    assert.equal((await data('categoryReach')).recentlyAdded, 2);
+    assert.deepEqual(recent, ['New Chat Add', 'Pasted Pop', 'Typed In Tonic'], 'the last 30 days of chat and site adds only');
+    assert.equal((await data('categoryReach')).recentlyAdded, 3);
     const fitOf = async (id) => (await data('getBrand', { brandId: id })).fit
     const plus = (f) => f.reasons.find(r => /added by you/.test(r.text))
     const plain = await fitOf('b_plain'), typed = await fitOf(site.brand.id), oldChat = await fitOf('b_chat_old')

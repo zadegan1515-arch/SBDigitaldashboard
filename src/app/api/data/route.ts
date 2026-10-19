@@ -13588,7 +13588,9 @@ const handlers: Record<string, Handler> = {
   // Previews first. Nothing is written until `apply` is set, so the
   // confirm can show exactly which names are new and which are already
   // on the roster under that name or an "also known as".
-  async addBrandsBulk({ text, apply, category: askedCategory, tier }: any) {
+  // site = the + Add brand box's "Paste a list" (Leo added them: Recently
+  // added and +5, like one typed in); Stock take's lane ideas send none.
+  async addBrandsBulk({ text, apply, category: askedCategory, tier, site }: any) {
     const MAX = 200
     // Refused up front, preview included, so the confirm never shows a
     // category the apply would then write through.
@@ -13652,7 +13654,7 @@ const handlers: Record<string, Handler> = {
             category: row.category,
             tier: tier || null,
             website: row.website,
-            source: 'manual',
+            source: site === true ? 'site' : 'manual',
           },
         })
         created.push({ id: b.id, name: b.name, category: b.category ?? 'unresolved' })

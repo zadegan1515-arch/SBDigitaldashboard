@@ -785,7 +785,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   college / music (15), people we can reach (10), the category's 90-day accept rate (5), **added by Leo** +5 (Oct 19
   2026: "brands that we add from Claude, like the add a brand tab, or add a brand chat … priority … plus five points";
   `addedByLeo` / `ADDED_SOURCES` in brand-fit.ts: source `chat` = the Add a brand chat, `site` = typed into the site's
-  add boxes — `createBrand` (+ Add brand, the Schedule's and the LinkedIn tab's "add as a new brand"); for good, also
+  add boxes — `createBrand` (+ Add brand, the Schedule's and the LinkedIn tab's "add as a new brand", Zach's list's + Add
+  from LinkedIn) and + Add brand's Paste a list (`addBrandsBulk({ site: true })`; Stock take's lane ideas stay `manual`); for good, also
   after the Recently added tab; Discover Accepts don't count — Leo's pick; brands typed in before Oct 19 were saved
   `manual`, shared with the seed import, Stock take's bulk add and splitBrand, so they aren't marked), and **fits a student's day**
   (Leo, Oct 18 2026: "neuro should definitely be higher given that the ideal candidates are people who study and do

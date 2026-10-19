@@ -7561,7 +7561,9 @@ function renderFillProgress() {
 // them as a group.
 function loadBrandsNoProfile() {
   NAV_ARGS = { c: 'noprofile' };
+  BR_TAB = 'brands';
   showView('brands', true);
+  document.getElementById('brands-title').textContent = 'No SponsorUnited profile';
   BRANDS_SHOWN = 'noprofile';
   var box = document.getElementById('brands-list');
   document.getElementById('brands-sub').textContent = 'Loading…';
@@ -25099,7 +25101,7 @@ document.getElementById('nb-bulk-check').addEventListener('click', function () {
     var go = document.getElementById('nb-bulk-go');
     if (go) go.onclick = function () {
       go.disabled = true; go.textContent = 'Adding…';
-      api('addBrandsBulk', { text: text, apply: true }).then(function (r) {
+      api('addBrandsBulk', { text: text, apply: true, site: true }).then(function (r) {
         toast(r.created.length + ' added' +
           (r.existing.length ? ' · ' + r.existing.length + ' already there' : '') +
           (r.failed.length ? ' · ' + r.failed.length + ' failed' : ''));
