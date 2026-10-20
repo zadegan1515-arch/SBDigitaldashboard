@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.42
+// @version      1.43
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -86,7 +86,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.42';
+  var VERSION = '1.43';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1718,7 +1718,7 @@
     var due = Date.now() + ms;
     fillTimer = setTimeout(function () {
       // Chrome slowing this window: a hidden page's timer fires late (it
-      // doesn't when Chrome was opened with the Chrome for LinkedIn app).
+      // doesn't in the LinkedIn Fill app's Chrome).
       if (document.hidden && Date.now() - due > 5000) noteSlow();
       try { fn(); } catch (e) { fillError(e); }
     }, ms);
@@ -2853,7 +2853,7 @@
       ]),
       fillStatusEl,
       hiddenMin >= 2 && slowed
-        ? h('div', { id: 'sblihidden', style: 'font-size:12px;margin:0 0 8px;padding:6px 8px;border-radius:6px;background:#fff4e5;color:#7a4b00', text: 'Chrome is slowing this window while it\'s hidden (' + hiddenMin + ' min hidden so far). To keep it at full speed hidden or minimized, open Chrome with the “Chrome for LinkedIn” app — set it up once on the dashboard: Outreach → People → Run it hidden or minimized.' })
+        ? h('div', { id: 'sblihidden', style: 'font-size:12px;margin:0 0 8px;padding:6px 8px;border-radius:6px;background:#fff4e5;color:#7a4b00', text: 'Chrome is slowing this window while it\'s hidden (' + hiddenMin + ' min hidden so far). To keep it at full speed hidden or minimized, run the fill in the “LinkedIn Fill” app — set it up once on the dashboard: Outreach → People → Run it hidden or minimized.' })
         : null,
       job.paused
         ? h('button', { id: 'sblifillgo', style: BTN, text: 'Continue', onclick: continueFill })
