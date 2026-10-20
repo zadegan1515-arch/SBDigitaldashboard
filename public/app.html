@@ -12305,7 +12305,7 @@ function zachText(list) {
 // in the linkedin fills"): fillSchedule = the fill's own worklist (the same
 // liList the script asks) cut into its days, 100 a day, with a Brand Fit floor
 // (remembered per browser, localStorage sb.fillFit; the script's default 50 —
-// mid-size brands first, very big brands skipped, as the run does).
+// best Brand Fit first (Leo, Oct 19 2026), very big brands skipped, as the run does).
 // Read-only — a forecast: every run asks for the list fresh.
 var LI_SCHED = null, LI_SCHED_OPEN = null;
 function fillFitFloor() {
@@ -12336,8 +12336,8 @@ function renderFillSched() {
     '<div class="t-meta" style="margin-top:4px">' + [
       d.minFit && d.belowFit ? d.belowFit + ' under Fit ' + d.minFit + ' left out' : '',
       d.bigSkipped ? d.bigSkipped + ' very big brand' + (d.bigSkipped === 1 ? '' : 's') + ' skipped (giants, 1,500+ on LinkedIn)' : '',
-      d.minFit ? 'mid-size brands first' : '',
-      d.retry ? d.retry + ' read again first (something went wrong last time)' : '',
+      n ? 'best Brand Fit first' : '',
+      d.retry ? d.retry + ' read again (something went wrong last time), in their Brand Fit place' : '',
       d.resting ? d.resting + ' read already, not read again' + (d.stuck ? ' (' + d.stuck + ' stuck after 3 tries — back in a month)' : '') : '',
       d.planned ? d.planned + ' on the Schedule go first, whatever their fit' : '',
       d.research ? d.research + ' research-list name' + (d.research === 1 ? '' : 's') + ' (not on the roster yet, no fit score)' : '',
@@ -12350,7 +12350,7 @@ function renderFillSched() {
       day.rows.map(function (r, i) {
         return '<div style="display:flex;gap:10px;align-items:baseline;padding:6px 0;flex-wrap:wrap">' +
           '<span class="t-meta" style="width:28px;text-align:right">' + (i + 1) + '</span>' +
-          (r.brandId ? '<span class="t-brand" data-brand="' + esc(r.brandId) + '" style="cursor:pointer">' + esc(r.name) + '</span>' + rbTag(r.brandId) + rbTag(r.brandId)
+          (r.brandId ? '<span class="t-brand" data-brand="' + esc(r.brandId) + '" style="cursor:pointer">' + esc(r.name) + '</span>' + rbTag(r.brandId)
             : '<span class="t-brand">' + esc(r.name) + '</span>') +
           (r.category ? '<span class="t-meta">' + esc(CAT_NAMES[r.category] || r.category) + '</span>' : '') +
           (r.fit != null ? '<span class="t-meta">Fit <b>' + r.fit + '</b></span>' : '') +

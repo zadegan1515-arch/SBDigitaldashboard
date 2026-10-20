@@ -12,9 +12,9 @@ import { readJsonSetting, LI_CONFIRMED_KEY, LI_REVIEW_KEY, type Confirmed, type 
 import { LANES, RESEARCH_EXTRA, brandKey, secondSearchName } from './stock'
 import { dueDays, shortOnPeople, plannedFirst, workNeed } from './planned-first'
 import { scoreBrand, priorityOf, isTopCategory } from './brand-fit'
-import { brandSize, sizeRank } from './brand-size'
+import { brandSize } from './brand-size'
 import { countBuyers, BUYER_TARGET } from './buyers'
-import { noBuyerFirst } from './coverage'
+import { byFit } from './fill-schedule'
 import { giantWhy } from './giants'
 import { giantOf, veryBigWhy, rowReached, parseGiants, GIANTS_KEY, VERY_BIG_LI } from './queue-rules'
 import { isBigBrand } from './brand-work'
@@ -198,13 +198,6 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
       hiddenRetry: retryOf(b),
       fit: fitOf.get(b.id)?.score ?? null,
     }))
-    // Mid-size first (Leo, Oct 12 2026: "i want to target the midsized brands
-    // mainly"): target → not measured → small → big. With a fit floor, within
-    // a size the brands with no buyer go first, then best fit.
-    .sort((a, b) => Number(b.focus) - Number(a.focus)
-      || sizeRank(a.size) - sizeRank(b.size)
-      || (minFit ? (Number(b.noBuyer) - Number(a.noBuyer)) || ((b.fit ?? 0) - (a.fit ?? 0)) : 0)
-      || a.contacts - b.contacts || a.name.localeCompare(b.name))
 
   // The research list: Stock take's lane ideas — known brand names not
   // on the roster under any name — for the run to look up on LinkedIn.
@@ -289,37 +282,24 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
   const byId = new Map(everyBrand.map(b => [b.id, b] as const))
   const rest = skipBig ? fitted.filter(i => !veryBig(byId.get(i.brandId)!)) : fitted
   const bigSkipped = fitted.length - rest.length + giantNamesSkipped
-  // After the focus word: target brands, then the research list's names,
-  // then the rest by size (unknown, small, big). Then the brands with no
-  // buyer pulled ahead of all that, each group in that same order — only
-  // the Schedule's brands and the names Leo asked for come before them.
-  const others = rest.filter(i => !i.focus)
-  const bySize = [
-    ...planned,
-    ...research.filter(r => r.focus), ...rest.filter(i => i.focus),
-    ...others.filter(i => i.size === 'target'),
-    ...research.filter(r => !r.focus), ...others.filter(i => i.size !== 'target'),
-  ]
-  // With a fit floor, size leads (mid-size first) and "no buyer yet" only
-  // orders brands within a size; without one, as before.
-  const sorted: any[] = minFit ? bySize : noBuyerFirst<any>(bySize)
-  // Then brands already reached out to, then giants held back — each in
-  // the same order as before. The Schedule's own brands and the names Leo
-  // asked for keep their place.
+  // Best Brand Fit first (Leo, Oct 19 2026: "have the highest rated brands
+  // … ran first then the lower ones after"; it replaced mid-size first and
+  // re-reads first — byFit in fill-schedule.ts, where those only break a
+  // tie). Before them: the Schedule's brands short on people (soonest day
+  // first) and the names Leo asked for. After them: research names (not on
+  // the roster, no score yet), then brands already reached out to, then
+  // giants held back — each best fit first.
   const tail = (i: any) => (i.planned || i.asked) ? 0
     : (i.research ? i.giant : giantIds.has(i.brandId)) ? 2
     : !i.research && reachedIds.has(i.brandId) && !i.retry ? 1 : 0
-  // The brands back for Sales Navigator go right after the Schedule's and
-  // the names Leo asked for: their buyers are known to be there.
-  const lead = sorted.filter(i => i.planned || i.asked)
-  const front = sorted.filter(i => tail(i) === 0 && !lead.includes(i))
+  // The Schedule's: soonest day first, best fit first within a day.
+  const byDay = (a: any, b: any) => (a.planned < b.planned ? -1 : a.planned > b.planned ? 1 : 0)
+  const lead: any[] = [...byFit(planned).sort(byDay), ...research.filter(r => r.asked)]
+  const pool: any[] = [...rest, ...research.filter(r => !r.asked)]
+  const sorted: any[] = [...lead, ...byFit(pool.filter(i => tail(i) === 0 && !i.research)), ...pool.filter(i => tail(i) === 0 && i.research)]
   // The ones moved to the back don't go first for having no buyer or
   // the focus word any more, so the run's panel mustn't say they do.
-  // Brands with a LinkedIn page before those the run has to search for (a
-  // search often finds no clear page — a visit for nothing).
-  const paged = (xs: any[]) => [...xs.filter(i => i.research || i.linkedinUrl), ...xs.filter(i => !i.research && !i.linkedinUrl)]
-  const ordered = [...lead, ...paged(front.filter(i => i.retry)), ...paged(front.filter(i => !i.retry)),
-    ...[1, 2].flatMap(n => sorted.filter(i => tail(i) === n))]
+  const ordered = [...sorted, ...[1, 2].flatMap(n => byFit(pool.filter(i => tail(i) === n)))]
     .map(i => (tail(i) ? { ...i, noBuyer: false, focus: false, last: tail(i) === 1 ? 'reached' : 'giant' } : i))
     // Whether the run may read it past 1,500 on LinkedIn (script 1.38 skips
     // at its People tab's count when Skip very big brands is on): the
@@ -343,7 +323,9 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     planned: planned.length,
     // Of the brands on this list (after any fit floor / big-brand skip).
     sizes: { target: ordered.filter(i => !i.research && i.size === 'target').length, unknown: ordered.filter(i => !i.research && i.size === 'unknown').length, small: ordered.filter(i => !i.research && i.size === 'small').length, big: ordered.filter(i => !i.research && i.size === 'big').length },
-    midFirst: !!minFit,
+    // Best Brand Fit first (script 1.39 says so); mid-size first is gone.
+    fitFirst: true,
+    midFirst: false,
     noPage: items.filter(i => !i.linkedinUrl).length,
     resting,
     underCap: underCap.length,

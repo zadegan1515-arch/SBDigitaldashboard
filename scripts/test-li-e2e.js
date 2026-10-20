@@ -387,7 +387,8 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.ok(bigBev.liMembersAt instanceof Date);
     ok('the People tab\'s headcount is saved on the brand');
     {
-      // The fill's order by size: target, not measured, small, big.
+      // The fill's order: best Brand Fit first (Leo, Oct 19 2026) — Brand Fit
+      // already gives a mid-size brand more than a big one; size only breaks a tie.
       await prisma.brand.createMany({ data: [
         { id: 'sz_big', name: 'Size Big', category: 'beverage', liMembers: 900 },
         { id: 'sz_small', name: 'Size Small', category: 'beverage', liMembers: 7 },
@@ -396,15 +397,18 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
         { id: 'sz_tier', name: 'Size Tier', category: 'beverage', tier: 'growth' },
       ] });
       const l = (await ingest({ action: 'liList' })).j;
-      const order = l.items.filter(i => /^Size /.test(i.name)).map(i => i.name + ':' + i.size);
-      assert.deepEqual(order, ['Size Mid:target', 'Size Tier:target', 'Size None:unknown', 'Size Small:small', 'Size Big:big']);
+      const sz = l.items.filter(i => /^Size /.test(i.name));
+      assert.deepEqual(sz.map(i => i.fit), sz.map(i => i.fit).sort((a, b) => b - a), 'highest score first');
+      assert.equal(sz[0].name, 'Size Mid', 'the measured mid-size brand scores best');
+      assert.equal(sz[sz.length - 1].name, 'Size Small', 'the small one scores lowest');
+      assert.deepEqual(sz.map(i => i.name + ':' + i.size).sort(), ['Size Big:big', 'Size Mid:target', 'Size None:unknown', 'Size Small:small', 'Size Tier:target']);
       assert.equal(l.sizes.target, 2);
       await prisma.brand.deleteMany({ where: { id: { startsWith: 'sz_' } } });
     }
-    ok('the fill goes target brands first, then not measured, small, big last');
+    ok('the fill goes best Brand Fit first; each brand still carries its size');
     {
-      // Brands with no marketing / partnerships person go first, whatever
-      // their size; the rest after, in the usual order (coverage.ts).
+      // Best Brand Fit first; at the same score a brand with no marketing /
+      // partnerships person goes first (other titles don't count).
       await prisma.brand.createMany({ data: [
         { id: 'gp_mid', name: 'Gap Mid', category: 'beverage', liMembers: 120 },
         { id: 'gp_big', name: 'Gap Big', category: 'beverage', liMembers: 900 }, // big, under 1,500 (held back like a giant past it)
@@ -417,12 +421,15 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       ] })
       const l = (await ingest({ action: 'liList' })).j;
       const order = l.items.filter(i => /^(Gap|Has Buyer) /.test(i.name)).map(i => i.name);
-      assert.deepEqual(order, ['Gap Mid', 'Gap Other Titles', 'Gap Big', 'Has Buyer Mid'], 'no buyer first (other titles do not count), each group by size then emptiest');
+      assert.deepEqual(order, ['Gap Mid', 'Gap Other Titles', 'Has Buyer Mid', 'Gap Big'], 'the mid-size three tie on score: no buyer first; the big one scores lower');
+      const fitOf = (n) => l.items.find(i => i.name === n).fit;
+      assert.ok(fitOf('Gap Mid') === fitOf('Has Buyer Mid') && fitOf('Gap Big') < fitOf('Gap Mid'));
       assert.equal(l.items.find(i => i.name === 'Has Buyer Mid').noBuyer, false);
+      assert.equal(l.items.find(i => i.name === 'Gap Other Titles').noBuyer, true);
       await prisma.contact.deleteMany({ where: { brandId: { startsWith: 'gp_' } } });
       await prisma.brand.deleteMany({ where: { id: { startsWith: 'gp_' } } });
     }
-    ok('brands with no marketing / partnerships person go first, whatever their size');
+    ok('best fit first; at the same score, brands with no marketing / partnerships person go first');
     assert.equal(run.problems, 1);
     assert.equal(run.samples[0].name, 'Blank Cards');
     assert.match(run.samples[0].problem, /every title came out blank/);
@@ -762,29 +769,27 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       assert.equal(high.minFit, floor)
       assert.ok(high.items.filter(i => !i.research && !i.planned).every(i => i.fit >= floor), 'only brands at the floor or above')
       assert.ok(high.belowFit > 0, 'the rest are counted as left out')
-      // Mid-size first (Leo: "i want to target the midsized brands mainly"),
-      // then by size; within a size, no buyer yet first, then best fit.
-      const rank = { target: 0, unknown: 1, small: 2, big: 3 }
-      const plain = high.items.filter(i => !i.research && !i.planned && !i.hiddenRetry && !i.last)
-      assert.ok(plain.every((i, k) => k === 0 || rank[plain[k - 1].size] <= rank[i.size]), 'size leads: mid-size first')
-      for (const size of Object.keys(rank)) for (const nb of [true, false]) {
-        const sc = plain.filter(i => i.size === size && !!i.noBuyer === nb).map(i => i.fit)
-        assert.deepEqual(sc, [...sc].sort((a, b) => b - a), 'best fit first within a size')
+      // Best Brand Fit first (Leo, Oct 19 2026: "have the highest rated brands
+      // … ran first then the lower ones after"), re-reads included.
+      for (const list of [high, all]) {
+        const plain = list.items.filter(i => !i.research && !i.planned && !i.last).map(i => i.fit)
+        assert.deepEqual(plain, [...plain].sort((a, b) => b - a), 'highest score first')
+        assert.equal(list.fitFirst, true)
+        assert.equal(list.midFirst, false)
       }
-      assert.equal(high.midFirst, true)
     }
     {
-      // A big company with the better score still comes after a mid-size one.
+      // A big company with the better score goes before a mid-size one now.
       const bigCo = await prisma.brand.create({ data: { name: 'Bigco Energy', category: 'energy', liMembers: 600, linkedinUrl: 'https://www.linkedin.com/company/bigco-energy/' } })
       const midCo = await prisma.brand.create({ data: { name: 'Middleton Snacks', category: 'wellness', liMembers: 80, linkedinUrl: 'https://www.linkedin.com/company/middleton-snacks/' } })
       const j = (await ingest({ action: 'liList', me: leo, focus: '', minFit: 1 })).j
       const at = (id) => j.items.findIndex(i => i.brandId === id)
       assert.ok(at(midCo.id) >= 0 && at(bigCo.id) >= 0)
       assert.ok(j.items[at(bigCo.id)].fit > j.items[at(midCo.id)].fit, 'the big one scores higher')
-      assert.ok(at(midCo.id) < at(bigCo.id), 'but the mid-size one goes first')
+      assert.ok(at(bigCo.id) < at(midCo.id), 'and goes first')
       await prisma.brand.deleteMany({ where: { id: { in: [bigCo.id, midCo.id] } } })
     }
-    ok('a Brand Fit floor: every brand carries its score, the ones under it are left off; mid-size first, then best fit');
+    ok('a Brand Fit floor: every brand carries its score, the ones under it are left off; best fit first');
 
     // Very big brands skipped (Leo: "skip the very big brands"): a giant by
     // name and one with 1,500+ on LinkedIn are off the list; the rest stay.
