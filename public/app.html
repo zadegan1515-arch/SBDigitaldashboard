@@ -509,7 +509,7 @@
   .dl-paste textarea{width:100%;min-height:150px;resize:vertical;background:var(--surface-0);color:var(--ink-1);border:1px solid var(--border);
     border-radius:10px;padding:12px 14px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
   .dl-paste textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--ring)}
-  /* Outreach → People → Run it behind other windows (the Chrome for LinkedIn app). */
+  /* Outreach → People → Run it hidden or minimized (the Chrome for LinkedIn app). */
   .li-fast{padding:16px 20px}
   .li-fast h3{margin:0 0 4px;font-size:16px}
   .li-fast ol{margin:10px 0 0;padding-left:20px;font-size:14px;line-height:1.6;color:var(--ink-2)}
@@ -2594,8 +2594,8 @@
         <button class="chip" data-lif="none">Nobody yet</button>
         <button class="chip" data-lif="thin" title="Brands with room under the 25-people cap, emptiest first — open People ↗ and press the SB pill">Under 25</button>
         <span id="li-reach"></span>
-        <a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" style="text-decoration:none;margin-left:6px" title="Opens LinkedIn in a window of its own and starts the fill there by itself — the Schedule's short brands, then every brand with nobody in marketing / partnerships, electrolytes first within each; the research list and lookalikes on. Keep working here; leave that window alone. Chrome slows it while it's hidden behind other windows unless Chrome was opened with the Chrome for LinkedIn app (Run it behind other windows). Needs the LinkedIn capture script in Tampermonkey.">Start the LinkedIn fill ↗</a>
-        <button class="btn-ghost" id="li-fast-btn" data-li-fast style="margin-left:6px" title="Set up once on a Mac: the fill then runs at full speed while you work full screen on something else">Run it behind other windows</button>
+        <a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" style="text-decoration:none;margin-left:6px" title="Opens LinkedIn in a window of its own and starts the fill there by itself — the Schedule's short brands, then every brand with nobody in marketing / partnerships, electrolytes first within each; the research list and lookalikes on. Keep working here; leave that window alone, minimized if you like. Chrome slows it while it's hidden unless Chrome was opened with the Chrome for LinkedIn app (Run it hidden or minimized). Needs the LinkedIn capture script in Tampermonkey.">Start the LinkedIn fill ↗</a>
+        <button class="btn-ghost" id="li-fast-btn" data-li-fast style="margin-left:6px" title="Set up once on a Mac: the fill then keeps full speed minimized or behind your other windows">Run it hidden or minimized</button>
         <input class="inp" id="li-q" placeholder="Filter brands…" autocomplete="off" style="margin-left:auto;width:220px">
       </div>
       <div class="hint" id="li-script-hint" style="margin-top:10px;display:none">
@@ -12184,7 +12184,7 @@ function renderLiRuns(runs, latest, owner) {
       if (avg == null && hid < 2) return '';
       return '<div class="t-meta" style="margin-top:6px' + (hid >= 2 ? ';color:var(--warn)' : '') + '">' +
         (avg != null ? 'About ' + avg + ' min a brand' : '') +
-        (hid >= 2 ? (avg != null ? ' · ' : '') + hid + ' min with its window hidden, which slows it — <a href="#" data-li-fast="open">run it behind other windows</a>.' : '') +
+        (hid >= 2 ? (avg != null ? ' · ' : '') + hid + ' min with its window hidden — Chrome slows that unless it was opened with the <a href="#" data-li-fast="open">Chrome for LinkedIn app</a>.' : '') +
         '</div>';
     })() +
     (lastPause ? '<div class="t-meta" style="margin-top:6px;color:var(--bad)">Paused: ' + esc(lastPause.why) + '</div>' : '') +
@@ -12667,7 +12667,7 @@ document.addEventListener('click', function (e) {
   try { win.focus(); } catch (err) {}
 });
 
-// Run it behind other windows (Leo, Oct 20 2026: "ideally i dont want to have
+// Run it hidden or minimized (Leo, Oct 20 2026: "ideally i dont want to have
 // the linkedin page super visible and i want to be able to be fullscreen on
 // something else"). Chrome slows a window it can't see — a run behind a full
 // screen app took 3–5 min a brand and 1 in 3 Sales Navigator pages never
@@ -12688,15 +12688,15 @@ var LI_FAST_CMD = "mkdir -p ~/Applications && osacompile -o ~/Applications/'Chro
   " && defaults write com.google.Chrome NSAppSleepDisabled -bool YES" +
   " && open ~/Applications";
 function liFastHtml() {
-  return '<h3>Run the fill behind other windows (Mac)</h3>' +
-    '<div class="t-meta">Chrome slows a window you can’t see. Opened with this app it doesn’t, so the fill keeps full speed while you work full screen on anything. Set it up once:</div>' +
+  return '<h3>Run the fill hidden or minimized (Mac)</h3>' +
+    '<div class="t-meta">Chrome slows a window you can’t see. Opened with this app it doesn’t, so the fill keeps full speed minimized or behind your other windows. Set it up once:</div>' +
     '<ol>' +
       '<li>Open Terminal: press ⌘ Space, type <b>Terminal</b>, press Return.</li>' +
       '<li>Paste this and press Return. It makes an app called <b>Chrome for LinkedIn</b>:' +
         '<div class="cmd"><code id="li-fast-cmd">' + esc(LI_FAST_CMD) + '</code>' +
         '<button class="btn-solid" data-li-fast-copy>Copy</button></div></li>' +
       '<li>A Finder window opens. Double-click <b>Chrome for LinkedIn</b>: it closes Chrome and opens it again with your tabs. The first time, click <b>OK</b> when it asks to control Google Chrome.</li>' +
-      '<li>Drag it to your Dock and open Chrome with it from now on (after a restart too). Start the LinkedIn fill as usual and leave its window behind your other windows. Don’t minimize it.</li>' +
+      '<li>Drag it to your Dock and open Chrome with it from now on (after a restart too). Start the LinkedIn fill as usual, then minimize its window or leave it behind your other windows.</li>' +
     '</ol>' +
     '<div class="t-meta" style="margin-top:10px">To check it worked: in Chrome open <b>chrome://version</b>. The Command Line row lists --disable-backgrounding-occluded-windows.</div>';
 }

@@ -1439,16 +1439,24 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   already-loaded feed is caught by `hashchange`. Chrome slows a minimized or fully covered window to ~a
   step a minute, so the script counts hidden time (`flushHidden` on every save → `hiddenMs` per brand
   and run, plus each brand's `ms`), warns in its panel from 2 min, and the "Last LinkedIn run" card shows
-  minutes a brand and hidden minutes. **Run it behind other windows** (Leo, Oct 20 2026: "i dont want to have the linkedin
-  page super visible and i want to be able to be fullscreen on something else"; he's on a Mac): the runs showed ~40 s a brand
-  and no Sales Navigator page failing on screen, 3–5 min and 1 in 3 not drawing hidden. Outreach → People's **Run it behind
-  other windows** (`#li-fast`, `liFastHtml`, `LI_FAST_CMD` in app.html; the run card's hidden line and the script's
-  `#sblihidden` warning point there, 1.41) = one Terminal paste that makes `~/Applications/Chrome for LinkedIn.app`
-  (osacompile: quits Chrome, reopens it with `--restore-last-session --disable-backgrounding-occluded-windows
-  --disable-renderer-backgrounding --disable-background-timer-throttling`) and turns App Nap off for Chrome
-  (`NSAppSleepDisabled`). Opened that way a covered window isn't hidden to the page, so `hiddenMs` stays ~0; minimized
-  still slows it. If runs still show hidden time or `snNoLoad` after that, the next step (Leo's "2 if needed") is the
-  script not counting a page that didn't load while hidden as an issue — reload it once the window is back.
+  minutes a brand and hidden minutes. **Run it hidden or minimized** (Leo, Oct 20 2026: "i dont want to have the linkedin
+  page super visible and i want to be able to be fullscreen on something else", then "i want to have it minimized"; he's on
+  a Mac): the runs showed ~40 s a brand and no Sales Navigator page failing on screen, 3–5 min and 1 in 3 not drawing hidden.
+  Two parts. **Script 1.42 reads Sales Navigator's results as data**: from the brand's page (People tab) it makes the
+  results page's own request — `GET /sales-api/salesApiLeadSearch?q=searchQuery&query=<snQuery>&start&count=25&decorationId`
+  (csrf = JSESSIONID, `snAsk`) — and never opens `/sales/search/people`, so nothing has to draw (`snFromData`: member id from
+  `entityUrn` → linkedin.com/in/<id>, the current job at the brand when there are two, "LinkedIn Member" / no id = hidden,
+  `paging.total` for the next page; via "Sales Navigator (data)"). A decoration it turns down (400 / 500) → the next of
+  `SN_DECOS` (…LeadSearchResult-14, 16, 15, 13, 12), the one that answers kept in GM `sbLiSnDeco`; any other failure → that
+  brand reads the results page as before (`snDataFailed`, `st.snPageOnly`), `SN_DATA_TRIES` = 3 in a row → pages for the rest
+  of the run (`job.snDataOff`, said on the panel's Sales Navigator line); 429 pauses the run. Unverified against the real
+  endpoint until Leo's first run on 1.42 — reports show "(data)" in `via` when it worked. **Chrome for LinkedIn** keeps the
+  run's own steps at full speed hidden: Outreach → People's **Run it hidden or minimized** (`#li-fast`, `liFastHtml`,
+  `LI_FAST_CMD` in app.html; the run card's hidden line and the script's `#sblihidden` warning point there) = one Terminal
+  paste that makes `~/Applications/Chrome for LinkedIn.app` (osacompile: quits Chrome, reopens it with
+  `--restore-last-session --disable-backgrounding-occluded-windows --disable-renderer-backgrounding
+  --disable-background-timer-throttling`) and turns App Nap off for Chrome (`NSAppSleepDisabled`). The panel's warning shows
+  only when a hidden page's timer really fired late (`later` → `noteSlow`, `job.slowAt`, last 10 min).
   It still needs Leo's computer awake with that window open. A run untouched for 10 min (`staleFill`; live
   tabs heartbeat `touchedAt` each minute) no longer blocks a new one (electrolyte first, research list + lookalikes on) — Claude can't run it from the
   cloud; it needs Leo's browser and LinkedIn login. Menu / preview link **"Copy a sample for Claude"** copies what the reader made of

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.41
+// @version      1.42
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -86,7 +86,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.41';
+  var VERSION = '1.42';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1422,7 +1422,7 @@
   }
   // brandKw: a brand read under its parent company — the parent's people
   // whose profile names the brand ("Ketel One" at Diageo).
-  function snUrl(coId, coName, search, page, brandKw) {
+  function snQuery(coId, coName, search, brandKw) {
     var filters = ['(type:CURRENT_COMPANY,values:List((id:urn%3Ali%3Aorganization%3A' + coId + ',text:' + restli(coName) + ',selectionType:INCLUDED)))'];
     var kw = search.keywords || '';
     if (brandKw) kw = '"' + String(brandKw).replace(/"/g, '') + '"' + (kw ? ' AND (' + kw + ')' : '');
@@ -1431,8 +1431,88 @@
         return '(id:' + f[0] + ',text:' + restli(f[1]) + ',selectionType:INCLUDED)';
       }).join(',') + '))');
     }
-    var query = '(' + (kw ? 'keywords:' + restli(kw) + ',' : '') + 'filters:List(' + filters.join(',') + '))';
-    return location.origin + '/sales/search/people?query=' + query + (page > 1 ? '&page=' + page : '');
+    return '(' + (kw ? 'keywords:' + restli(kw) + ',' : '') + 'filters:List(' + filters.join(',') + '))';
+  }
+  function snUrl(coId, coName, search, page, brandKw) {
+    return location.origin + '/sales/search/people?query=' + snQuery(coId, coName, search, brandKw) + (page > 1 ? '&page=' + page : '');
+  }
+
+  // Sales Navigator's results as data (1.42; Leo, Oct 20 2026: the fill
+  // should keep going with its window minimized). Its results page only
+  // draws people once they're on screen, so a minimized or covered window
+  // read nobody ("results did not load", 1 in 3 brands hidden). The page
+  // gets its people from this request; the fill now makes the same one
+  // itself from the brand's own page — the same search, the same 25 a
+  // page, nothing to draw — and never opens the results page. Anything
+  // unexpected (an error, an answer without people in it) and that brand
+  // reads the results page as before; three in a row and the run reads
+  // pages for the rest of it. LinkedIn saying "too many requests" pauses.
+  var SN_DATA_KEY = 'sbLiSnDeco';
+  var SN_DATA_TRIES = 3;
+  // How the answer is shaped. LinkedIn moves the number now and then; the
+  // one that worked is remembered, the rest are tried after it.
+  var SN_DECOS = [14, 16, 15, 13, 12].map(function (n) { return 'com.linkedin.sales.deco.desktop.searchv2.LeadSearchResult-' + n; });
+  function snDataOn(job) { return !!job && job.snData !== false && !job.snDataOff; }
+  function snAsk(query, start) {
+    var m = document.cookie.match(/JSESSIONID="?([^";]+)"?/);
+    if (!m || typeof fetch !== 'function') return Promise.resolve({ why: 'no LinkedIn session to ask with' });
+    var saved = null;
+    try { saved = GM_getValue(SN_DATA_KEY, null); } catch (e) {}
+    var decos = (saved ? [saved] : []).concat(SN_DECOS.filter(function (d) { return d !== saved; }));
+    var i = 0;
+    function next() {
+      if (i >= decos.length) return Promise.resolve({ why: 'LinkedIn turned down every way of asking' });
+      var deco = decos[i++];
+      var ask = fetch('/sales-api/salesApiLeadSearch?q=searchQuery&query=' + query + '&start=' + start + '&count=' + SN_PAGE_SIZE +
+        '&decorationId=' + encodeURIComponent(deco), {
+        credentials: 'include',
+        headers: { 'csrf-token': m[1], accept: 'application/json', 'x-restli-protocol-version': '2.0.0', 'x-li-lang': 'en_US' },
+      });
+      var timeout = new Promise(function (res) { setTimeout(function () { res(null); }, 20000); });
+      return Promise.race([ask, timeout]).then(function (r) {
+        if (!r) return { why: 'no answer in 20 s' };
+        if (r.status === 429) return { halt: 'LinkedIn said “too many requests”' };
+        // An answer shape it doesn't know: the next one.
+        if (r.status === 400 || r.status === 500) return next();
+        if (!r.ok) return { why: 'LinkedIn answered ' + r.status };
+        return r.json().then(function (j) {
+          if (!j || !Array.isArray(j.elements)) return next();
+          try { GM_setValue(SN_DATA_KEY, deco); } catch (e) {}
+          return { json: j };
+        }, function () { return { why: 'its answer wasn’t data' }; });
+      }, function () { return { why: 'the request failed' }; });
+    }
+    return next();
+  }
+  // The answer's people, as the page reader gives them: the member id the
+  // page's lead links carry (linkedin.com/in/<id>), the job at the brand
+  // when they hold more than one, "LinkedIn Member" as hidden.
+  function snFromData(j, names) {
+    var els = j && Array.isArray(j.elements) ? j.elements : null;
+    if (!els) return null;
+    var rows = [], hidden = [], ids = {}, named = 0;
+    els.forEach(function (e) {
+      if (!e || typeof e !== 'object') return;
+      if (e.fullName || e.firstName || e.lastName) named++;
+      var idm = /salesProfile:\(([A-Za-z0-9_-]+)/.exec(String(e.entityUrn || ''));
+      var id = idm ? idm[1] : null;
+      var poss = (Array.isArray(e.currentPositions) ? e.currentPositions : []).filter(function (p) { return p && typeof p === 'object'; });
+      var pos = poss.filter(function (p) { return p.companyName && sameCompany(p.companyName, names); })[0] || poss[0] || {};
+      var title = personName(String(pos.title || '')).slice(0, 200);
+      var company = String(pos.companyName || (pos.companyUrnResolutionResult && pos.companyUrnResolutionResult.name) || '')
+        .replace(/^\s*(?:at\s+)?/i, '').slice(0, 120);
+      var name = personName(String(e.fullName || [e.firstName, e.lastName].filter(Boolean).join(' ') || ''));
+      if (id) ids[id] = 1;
+      if (!name || !id || /^linkedin member$/i.test(name)) { hidden.push(String(title || e.headline || '').slice(0, 160)); return; }
+      if (name.length > 80) return;
+      rows.push({ name: name, title: title, company: company, linkedinUrl: 'https://www.linkedin.com/in/' + id + '/' });
+    });
+    // An answer whose people the fill can't make out (LinkedIn renamed its
+    // fields): read the page instead, never a read that quietly saves nobody.
+    if (els.length && (!named || !Object.keys(ids).length)) return null;
+    if (rows.length >= 3 && rows.every(function (r) { return !r.title; })) return null;
+    var total = j.paging && typeof j.paging.total === 'number' ? j.paging.total : null;
+    return { got: { rows: rows, hidden: hidden, links: Object.keys(ids).length, cards: els.length }, total: total, sample: JSON.stringify(els.slice(0, 3)).slice(0, 1500) };
   }
 
   // LinkedIn's own id for the company page we're on — what Sales
@@ -1635,7 +1715,17 @@
   var fillTimer = null, fillHalt = { stopped: false }, fillStatusEl = null;
   function later(fn, ms) {
     clearTimeout(fillTimer);
-    fillTimer = setTimeout(function () { try { fn(); } catch (e) { fillError(e); } }, ms);
+    var due = Date.now() + ms;
+    fillTimer = setTimeout(function () {
+      // Chrome slowing this window: a hidden page's timer fires late (it
+      // doesn't when Chrome was opened with the Chrome for LinkedIn app).
+      if (document.hidden && Date.now() - due > 5000) noteSlow();
+      try { fn(); } catch (e) { fillError(e); }
+    }, ms);
+  }
+  function noteSlow() {
+    var j = loadFill();
+    if (j && inCharge(j)) { j.slowAt = Date.now(); saveFill(j); }
   }
 
   // discover: { lookalikes: bool, words: [..] } — the new-brand half.
@@ -1770,6 +1860,9 @@
         if (why) return snNoAccount(job, why.text);
       }
       if (st.navs >= 2) return brandIssue(job, 'snLeft', 'its Sales Navigator search would not open');
+      // The results as data, from the page we're on (1.42) — the results
+      // page only when that didn't work for this brand.
+      if (snDataOn(job) && !st.snPageOnly) return fillSales(item, true);
       var sn = SN_SEARCHES[st.snI], atParent = st.snFrom === 'parent';
       return go(job, snUrl(st.coId, st.pageName || (atParent ? item.parent.name : item.name), sn, st.snPage, atParent ? item.name : null),
         'Sales Navigator: ' + item.name + (atParent ? ' at ' + item.parent.name : '') + ' — ' + sn.label + (st.snPage > 1 ? ' (page ' + st.snPage + ')' : ''));
@@ -2228,15 +2321,10 @@
     renderFill(job, 'Sales Navigator back on — from the next brand.');
   }
 
-  function fillSales(item) {
-    var job = loadFill(), at0 = job.at, st0 = job.step;
-    var search = SN_SEARCHES[st0.snI], page = st0.snPage;
-    renderFill(job, 'Reading Sales Navigator — ' + item.name + ' · ' + search.label + (page > 1 ? ' (page ' + page + ')' : ''));
-    fillHalt = { stopped: false };
+  // The results page, drawn and scrolled: { got, total }, or why not.
+  function snPageRead(at0) {
     readPath = location.pathname;
-    var got = null, rows = [], problem = null, sample = null, short = null, totalN = null;
-    var atParent = st0.snFrom === 'parent';
-    waitFor(function () { return snLinks().length || snHiddenLeaves().length || SN_EMPTY.test(pageText(6000)) || !onSalesSearch(); }, document.hidden ? 60000 : 30000).then(function () {
+    return waitFor(function () { return snLinks().length || snHiddenLeaves().length || SN_EMPTY.test(pageText(6000)) || !onSalesSearch(); }, document.hidden ? 60000 : 30000).then(function () {
       if (!sameStep(loadFill(), at0)) return null;
       var stop = linkedinSaysStop();
       if (stop) return { halt: stop };
@@ -2250,19 +2338,56 @@
       readPath = null;
       var stop = linkedinSaysStop();
       if (stop) return { halt: stop };
-      got = snRead();
+      return { got: snRead(), total: snTotal() };
+    });
+  }
+  // The same search as data (1.42): { got, total }, or { fallback: why }.
+  function snDataRead(at0, st0, item, search, page, names) {
+    var atParent = st0.snFrom === 'parent';
+    var query = snQuery(st0.coId, st0.pageName || (atParent ? item.parent.name : item.name), search, atParent ? item.name : null);
+    return snAsk(query, (page - 1) * SN_PAGE_SIZE).then(function (a) {
+      if (!sameStep(loadFill(), at0)) return null;
+      if (a.halt) return { halt: a.halt };
+      var read = a.json ? snFromData(a.json, names) : null;
+      return read || { fallback: a.why || 'its answer had no people list' };
+    });
+  }
+  // The data didn't come: this brand reads the results page instead, and
+  // after SN_DATA_TRIES in a row the run does for the rest of it.
+  function snDataFailed(job, why) {
+    var st = job.step;
+    st.snPageOnly = true; st.navs = 0;
+    job.snDataFails = (job.snDataFails || 0) + 1;
+    if (job.snDataFails >= SN_DATA_TRIES) job.snDataOff = why;
+    saveFill(job);
+    renderFill(job, 'Sales Navigator\'s data didn\'t come (' + why + ') — reading its results page instead');
+    runFill();
+  }
+
+  function fillSales(item, asData) {
+    var job = loadFill(), at0 = job.at, st0 = job.step;
+    var search = SN_SEARCHES[st0.snI], page = st0.snPage;
+    renderFill(job, (asData ? 'Asking Sales Navigator — ' : 'Reading Sales Navigator — ') + item.name + ' · ' + search.label + (page > 1 ? ' (page ' + page + ')' : ''));
+    fillHalt = { stopped: false };
+    var got = null, rows = [], problem = null, sample = null, short = null, totalN = null;
+    var atParent = st0.snFrom === 'parent';
+    var names = [st0.pageName, item.name, akaName(item), atParent ? item.parent.name : null].filter(Boolean);
+    (asData ? snDataRead(at0, st0, item, search, page, names) : snPageRead(at0)).then(function (res) {
+      if (!res) return null;
+      if (res.halt || res.fail || res.fallback) return res;
+      got = res.got;
       // All of this page drawn? Sales Navigator says how many results there
       // are; a page short of its share is loaded once more, then counted as
-      // a read that didn't get everyone (the brand comes back for it).
-      var total = totalN = snTotal(), seenHere = got.cards;
+      // a read that didn't get everyone (the brand comes back for it). The
+      // data gives every result of a page at once, nothing to draw.
+      var total = totalN = res.total, seenHere = got.cards;
       var expect = total == null ? null : Math.max(0, Math.min(SN_PAGE_SIZE, total - (page - 1) * SN_PAGE_SIZE));
-      if (expect != null && seenHere + 1 < expect) {
+      if (!asData && expect != null && seenHere + 1 < expect) {
         short = { seen: seenHere, expect: expect };
         if (!(st0.snReloads >= 1)) return { fail: { code: 'partial', text: 'Sales Navigator drew ' + seenHere + ' of ' + expect + ' on this page', reload: true } };
       }
       // Every result should be the brand (the company filter). Mostly
       // someone else's: the id was wrong — save nobody.
-      var names = [st0.pageName, item.name, akaName(item), atParent ? item.parent.name : null].filter(Boolean);
       var named = got.rows.filter(function (r) { return r.company; });
       var off = named.filter(function (r) { return !sameCompany(r.company, names); });
       if (named.length >= 3 && off.length * 2 > named.length) {
@@ -2272,7 +2397,7 @@
         return { name: r.name, headline: r.title + (r.title && r.company ? ' at ' + r.company : ''), linkedinUrl: r.linkedinUrl };
       });
       problem = snReadingProblem(got);
-      if (problem) sample = sampleText(1500);
+      if (problem) sample = asData ? res.sample || '' : sampleText(1500);
       return runPost({
         action: 'liCapture', brandId: item.brandId,
         // The brand's own page, never Sales Navigator's address: the
@@ -2289,6 +2414,7 @@
       var job2 = loadFill();
       if (!sameStep(job2, at0)) return;
       if (r.halt) return pauseFill(job2, r.halt + '. Leave LinkedIn alone for a day before pressing Continue.');
+      if (r.fallback) return snDataFailed(job2, r.fallback);
       if (r.fail) {
         if (r.fail.pause) return pauseFill(job2, r.fail.pause);
         if (r.fail.wholeRun) return snNoAccount(job2, r.fail.text);
@@ -2305,6 +2431,7 @@
       }
       st.pageChecked = true;
       job2.snFails = 0;
+      if (asData) { st.snData = (st.snData || 0) + 1; job2.snDataFails = 0; }
       var seenUrls = st.seenUrls || [];
       rows.forEach(function (x) { if (seenUrls.indexOf(x.linkedinUrl) < 0) seenUrls.push(x.linkedinUrl); });
       st.seenUrls = seenUrls;
@@ -2451,8 +2578,10 @@
       via = 'big company, ' + size + ': searched ' + searched;
       if (!st.added && !note) note = 'big company (' + size + ') — nobody new in its ' + searched + ' searches';
     }
-    if (st.kind === 'parent' && st.snVia === 'parent') via = 'Sales Navigator via ' + item.parent.name;
-    else if (st.salesNav && st.kind !== 'parent') via = 'Sales Navigator' + (st.snFrom === 'big' ? ', big company (' + (st.members || 0).toLocaleString('en-US') + ' people)' : '');
+    // "(data)": its results came as data (1.42), no results page opened.
+    var snWord = 'Sales Navigator' + (st.snData && !st.snPageOnly ? ' (data)' : '');
+    if (st.kind === 'parent' && st.snVia === 'parent') via = snWord + ' via ' + item.parent.name;
+    else if (st.salesNav && st.kind !== 'parent') via = snWord + (st.snFrom === 'big' ? ', big company (' + (st.members || 0).toLocaleString('en-US') + ' people)' : '');
     // What went wrong, if anything (1.38): an issue stopped the read, or a
     // Sales Navigator page drew only part of its results twice.
     var issue = st.issue || (st.partial ? 'partial' : null);
@@ -2685,7 +2814,9 @@
   function renderFill(job, status) {
     if (!job) return;
     var hiddenMin = Math.floor((job.hiddenMs || 0) / 60000);
-    var key = [job.at, job.added, job.doneToday, job.paused, job.pausedUntil, (job.newBrands || []).length, job.items.length, hiddenMin, job.salesNav, job.snOff, job.reviewSent || 0].join('|');
+    // Slowed in the last 10 minutes (a hidden window's timers came late).
+    var slowed = !!job.slowAt && Date.now() - job.slowAt < 10 * 60000;
+    var key = [job.at, job.added, job.doneToday, job.paused, job.pausedUntil, (job.newBrands || []).length, job.items.length, hiddenMin, job.salesNav, job.snOff, job.reviewSent || 0, slowed, job.snDataOff || ''].join('|');
     if (panel && panel.getAttribute('data-fill') === key && fillStatusEl && fillStatusEl.isConnected) {
       return setFillStatus(status);
     }
@@ -2711,7 +2842,8 @@
       job.fitFirst ? h('div', { id: 'sblifitline', style: 'font-size:12px;color:#555', text: (plannedN ? 'Then b' : 'B') + 'est Brand Fit first' + (cur && cur.fit != null && !cur.planned && !cur.research ? ' — now at ' + cur.fit : '') }) : null,
       cur ? h('div', { id: 'sblinow', style: 'font-size:12px;color:#111;margin-top:4px' }, [b(cur.name), ' — ' + whyItem(job, cur)]) : null,
       h('div', { style: 'font-size:12px;color:#555', text: 'Today: ' + job.doneToday + ' of ' + DAILY_CAP + ' brands' }),
-      h('div', { id: 'sblisnline', style: 'font-size:12px;color:' + (job.snOff ? '#946200' : '#555'), text: job.salesNav ? 'Every brand through Sales Navigator, once a run; one that goes wrong goes first on the next run'
+      h('div', { id: 'sblisnline', style: 'font-size:12px;color:' + (job.snOff ? '#946200' : '#555'), text: job.salesNav ? 'Every brand through Sales Navigator, once a run; one that goes wrong goes first on the next run' +
+          (job.snDataOff ? '. Reading its results pages: its data didn\'t come (' + job.snDataOff + ')' : '. Its results come as data, so this window can be hidden or minimized')
         : job.snOff ? 'Sales Navigator off for this run: ' + job.snOff + ' — using the People tab' : 'Marketing / partnerships people from the People tab (Sales Navigator is off)' }),
       job.salesNav === false ? h('button', { id: 'sblisnon', style: BTN2 + ';margin-top:6px', text: 'Use Sales Navigator again', onclick: guard(snTurnOn) }) : null,
       (job.newBrands || []).length ? h('div', { style: 'font-size:12px;color:#137333', text: job.newBrands.length + ' new brand' + (job.newBrands.length === 1 ? '' : 's') + ' found and added' }) : null,
@@ -2720,8 +2852,8 @@
         h('div', { style: 'height:100%;width:' + pct + '%;background:#111' }),
       ]),
       fillStatusEl,
-      hiddenMin >= 2
-        ? h('div', { id: 'sblihidden', style: 'font-size:12px;margin:0 0 8px;padding:6px 8px;border-radius:6px;background:#fff4e5;color:#7a4b00', text: 'Slowed while this window was hidden: ' + hiddenMin + ' min so far. Chrome slows a hidden window unless it was opened with the “Chrome for LinkedIn” app — set it up once on the dashboard: Outreach → People → Run it behind other windows. Don\'t minimize this window.' })
+      hiddenMin >= 2 && slowed
+        ? h('div', { id: 'sblihidden', style: 'font-size:12px;margin:0 0 8px;padding:6px 8px;border-radius:6px;background:#fff4e5;color:#7a4b00', text: 'Chrome is slowing this window while it\'s hidden (' + hiddenMin + ' min hidden so far). To keep it at full speed hidden or minimized, open Chrome with the “Chrome for LinkedIn” app — set it up once on the dashboard: Outreach → People → Run it hidden or minimized.' })
         : null,
       job.paused
         ? h('button', { id: 'sblifillgo', style: BTN, text: 'Continue', onclick: continueFill })

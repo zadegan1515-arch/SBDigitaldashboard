@@ -24,6 +24,11 @@
 //      panel says so.
 //   6. The setup panel's switch is on by default, remembered, and sent
 //      with the worklist; the brands back for Sales Navigator are named.
+//   7. Its results as data (1.42 — a minimized window never draws the
+//      results page): the same search asked of LinkedIn from the brand's
+//      page, no results page opened; an answer shape it turns down → the
+//      next; anything else → that brand reads the page; three in a row →
+//      pages for the rest of the run; "too many requests" pauses.
 //
 // Run: NODE_PATH=$(npm root -g) node scripts/test-li-salesnav.js
 
@@ -92,8 +97,45 @@ function salesPage(items, total) {
 
 const COMPANY_IDS = { 'liquid-death': '1234', 'big-co': '5678', 'wrong-id': '7777', 'no-sn': '9999', 'tiny-co': '4321', 'tiny-two': '4322', 'stuck-one': '4401', 'stuck-two': '4402', 'small-sn': '4501',
   'part-co': '4601', 'big-parent': '4701', 'huge-ok': '4801', 'flaky-dash': '4901', 'empty-tab': '4999',
-  'hidden-co': '5101', 'no-count': '5201', 'part-co-p': '4601' };
+  'hidden-co': '5101', 'no-count': '5201', 'part-co-p': '4601',
+  'data-co': '6101', 'data-stuck': '6301', 'data-bad1': '6401', 'data-bad2': '6402', 'data-bad3': '6403', 'data-after': '6701', 'data-429': '6801', 'data-odd': '6501', 'data-notitle': '6502' };
 const salesQueries = [];
+// Sales Navigator's results as data (1.42): what the fake LinkedIn answers
+// per company id, and every ask.
+const dataQueries = [];
+const el = (id, name, title, company, extra) => Object.assign({
+  entityUrn: 'urn:li:fs_salesProfile:(' + id + ',NAME_SEARCH,xY1z)', fullName: name,
+  currentPositions: [{ title, companyName: company, current: true }], degree: 3,
+}, extra || {});
+const DATA = {
+  // A shape it doesn't know (-14) is turned down; -16 answers.
+  6101: (kind, start, deco) => {
+    if (/-14$/.test(deco)) return { status: 400, body: { message: 'Invalid decorationId' } };
+    if (kind === 'fn' && start === 0) {
+      const els = [];
+      for (let n = 1; n <= 25; n++) {
+        if (n === 3) els.push(el(mid(6100 + n), 'Two Jobs', 'Consultant', 'Side Gig LLC', { currentPositions: [{ title: 'Consultant', companyName: 'Side Gig LLC', current: true }, { title: 'Head of Brand', companyName: 'Data Co', current: true }] }));
+        else if (n === 5) els.push(el(mid(6100 + n), 'LinkedIn Member', 'Brand Marketing Manager', 'Data Co'));
+        else if (n === 7) els.push(el(mid(6100 + n), 'Elsewhere Person', 'Brand Manager', 'Totally Other Inc'));
+        else els.push(el(mid(6100 + n), 'Data ' + n, 'Brand Manager', 'Data Co'));
+      }
+      return { body: { elements: els, paging: { start: 0, count: 25, total: 27 } } };
+    }
+    if (kind === 'fn' && start === 25) return { body: { elements: [el(mid(6126), 'Data 26', 'Marketing Director', 'Data Co'), el(mid(6127), 'Data 27', 'Brand Manager', 'Data Co')], paging: { start: 25, count: 25, total: 27 } } };
+    if (kind === 'kw') return { body: { elements: [el(mid(6140), 'Pat Partner', 'Partnerships Manager', 'Data Co')], paging: { start: 0, count: 25, total: 1 } } };
+    return { body: { elements: [], paging: { total: 0 } } };
+  },
+  // Its results page never draws (a minimized window); the data does.
+  6301: (kind) => kind === 'fn'
+    ? { body: { elements: [el(mid(6301), 'Stu Stuck', 'Brand Manager', 'data-stuck'), el(mid(6302), 'Sal Stuck', 'Head of Marketing', 'data-stuck')], paging: { total: 2 } } }
+    : { body: { elements: [], paging: { total: 0 } } },
+  6401: () => ({ status: 403, body: {} }), 6402: () => ({ status: 403, body: {} }), 6403: () => ({ status: 403, body: {} }),
+  6701: () => ({ body: { elements: [el(mid(6701), 'Al After', 'Brand Manager', 'data-after')], paging: { total: 1 } } }),
+  6801: () => ({ status: 429, body: {} }),
+  // Answers whose people can't be made out: no member ids; no titles.
+  6501: () => ({ body: { elements: [1, 2, 3].map(k => ({ entityUrn: 'urn:li:member:' + k, fullName: 'Odd ' + k })), paging: { total: 3 } } }),
+  6502: () => ({ body: { elements: [1, 2, 3].map(k => el(mid(6500 + k), 'No Title ' + k, '', 'data-notitle')), paging: { total: 3 } } }),
+};
 
 const sent = [];
 let fillItems = [];
@@ -134,6 +176,16 @@ const server = http.createServer((req, res) => {
     return;
   }
   const url = new URL(req.url, 'http://x');
+  if (url.pathname === '/sales-api/salesApiLeadSearch') {
+    const q = url.searchParams.get('query') || '';
+    const co = (q.match(/urn:li:organization:(\d+)/) || [])[1];
+    const kind = /type:FUNCTION/.test(q) ? 'fn' : /keywords:/.test(q) ? 'kw' : '?';
+    const start = Number(url.searchParams.get('start') || 0), deco = url.searchParams.get('decorationId') || '';
+    dataQueries.push({ co, kind, start, deco, count: url.searchParams.get('count'), csrf: req.headers['csrf-token'] || null, q });
+    const out = DATA[co] ? DATA[co](kind, start, deco) : { status: 404, body: {} };
+    res.writeHead(out.status || 200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(out.body));
+  }
   if (url.pathname === '/voyager/api/organization/companies') {
     const id = COMPANY_IDS[url.searchParams.get('universalName')];
     if (!id || !req.headers['csrf-token']) { res.writeHead(404); return res.end('{}'); }
@@ -208,7 +260,7 @@ const server = http.createServer((req, res) => {
     // no results count on it (Leo's first run, Oct 12 2026).
     // A results page that never draws (a slow or hidden window).
     if (co === '4501') return res.end(salesPage([lead(mid(60), 'Sue Small', 'Head of Marketing', 'small-sn')], 1));
-    if (co === '4401' || co === '4402') return res.end('<!doctype html><html><body><main><div class="spinner"></div></main></body></html>');
+    if (['4401', '4402', '6101', '6301'].includes(co)) return res.end('<!doctype html><html><body><main><div class="spinner"></div></main></body></html>');
     if (co === '4321' || co === '4322') {
       return res.end('<!doctype html><html><body><main><h2>No matches found</h2><p>Remove the Function filter to show leads matching your other filters.</p></main></body></html>');
     }
@@ -235,7 +287,8 @@ const server = http.createServer((req, res) => {
   }
   // A People tab with nobody on it: still Sales Navigator (1.38).
   if (url.pathname === '/company/empty-tab/people/') return res.end(peoplePage('Empty Tab', ''));
-  for (const slug of ['no-id', 'wrong-id', 'no-sn', 'after-no-sn', 'tiny-co', 'tiny-two', 'stuck-one', 'stuck-two', 'part-co', 'flaky-dash', 'hidden-co', 'no-count', 'part-co-p']) {
+  for (const slug of ['no-id', 'wrong-id', 'no-sn', 'after-no-sn', 'tiny-co', 'tiny-two', 'stuck-one', 'stuck-two', 'part-co', 'flaky-dash', 'hidden-co', 'no-count', 'part-co-p',
+    'data-co', 'data-stuck', 'data-bad1', 'data-bad2', 'data-bad3', 'data-after', 'data-429', 'data-odd', 'data-notitle']) {
     if (url.pathname === '/company/' + slug + '/people/') {
       const kw = url.searchParams.get('keywords') || '';
       return res.end(peoplePage(slug, peopleCard(slug + '-' + (kw || 'all'), 'Person ' + slug + ' ' + (kw || 'all'), 'Brand Manager at ' + slug)));
@@ -277,7 +330,7 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
   const run = async (items, opts) => {
     opts = opts || {};
     fillItems = items;
-    const before = sent.length, beforeQ = salesQueries.length;
+    const before = sent.length, beforeQ = salesQueries.length, beforeD = dataQueries.length;
     const ctx = await browser.newContext();
     await ctx.addCookies([{ name: 'JSESSIONID', value: '"ajax:123"', domain: '127.0.0.1', path: '/' }]);
     const pg = await ctx.newPage();
@@ -297,9 +350,10 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
     await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run (finished|stopped)/.test(p.innerText); }, null, { timeout: 120000 });
     const calls = sent.slice(before);
     const queries = salesQueries.slice(beforeQ);
+    const data = dataQueries.slice(beforeD);
     const panel = await pg.innerText('#sbli-panel');
     await ctx.close();
-    return { calls, queries, panel };
+    return { calls, queries, data, panel };
   };
   const where = (b) => b.action + ':' + b.brandId + (b.action === 'liCapture' ? ':' + b.companyUrl.replace('https://www.linkedin.com', '').replace('http://127.0.0.1:' + PORT, '') : '');
 
@@ -655,6 +709,79 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
       assert.match(await pg.innerText('#sblinow'), /read again first — Sales Navigator’s results didn’t load/);
       await ctx.close();
       ok('the setup panel names the brands whose last read went wrong; the run says why');
+    }
+
+    // 7. Sales Navigator's results as data (1.42).
+    {
+      let line = '';
+      const r = await run([item('b-data', 'Data Co', 'data-co'), item('b-dstuck', 'Data Stuck', 'data-stuck')], {
+        during: async (pg) => {
+          await pg.waitForFunction(() => /as data/.test((document.getElementById('sblisnline') || {}).textContent || ''), null, { timeout: 15000 });
+          line = await pg.innerText('#sblisnline');
+        },
+      });
+      assert.match(line, /Its results come as data, so this window can be hidden or minimized/);
+      assert.deepEqual(r.queries.filter(q => q.co === '6101' || q.co === '6301'), [], 'no results page opened');
+      assert.deepEqual(r.data.map(d => d.co + ':' + d.kind + d.start + ':' + d.deco.slice(-2)), [
+        '6101:fn0:14', '6101:fn0:16', '6101:fn25:16', '6101:kw0:16', '6301:fn0:16', '6301:kw0:16',
+      ], 'a shape it turns down → the next, remembered; page 2 by the count; the second search');
+      assert.ok(r.data.every(d => d.csrf === 'ajax:123' && d.count === '25'), 'asked the way LinkedIn\'s own page asks');
+      assert.match(r.data[1].q, /type:CURRENT_COMPANY,values:List\(\(id:urn:li:organization:6101,text:data-co,selectionType:INCLUDED\)\)/);
+      assert.match(r.data[1].q, /type:FUNCTION,values:List\(\(id:15,text:Marketing/);
+      assert.match(r.data[3].q, /keywords:partnership OR partnerships OR sponsorship OR sponsorships/);
+
+      const caps = r.calls.filter(b => b.action === 'liCapture' && b.brandId === 'b-data');
+      assert.equal(caps.length, 4, 'People tab, two pages of the first search, the second search');
+      assert.equal(caps[1].rows.length, 23, '25 less the hidden one and the one at another company');
+      assert.deepEqual(caps[1].rows[0], { name: 'Data 1', headline: 'Brand Manager at Data Co', linkedinUrl: 'https://www.linkedin.com/in/' + mid(6101) + '/' });
+      assert.deepEqual(caps[1].rows.find(x => x.name === 'Two Jobs'), { name: 'Two Jobs', headline: 'Head of Brand at Data Co', linkedinUrl: 'https://www.linkedin.com/in/' + mid(6103) + '/' }, 'the job at the brand, not the first one listed');
+      assert.ok(!caps[1].rows.some(x => x.name === 'Elsewhere Person' || /LinkedIn Member/.test(x.name)));
+      assert.deepEqual(caps[2].rows.map(x => x.name), ['Data 26', 'Data 27']);
+      assert.deepEqual(caps[3].rows, [{ name: 'Pat Partner', headline: 'Partnerships Manager at Data Co', linkedinUrl: 'https://www.linkedin.com/in/' + mid(6140) + '/' }]);
+      const sw = r.calls.filter(b => b.action === 'liSwept');
+      const d1 = sw.find(x => x.brandId === 'b-data');
+      assert.deepEqual([d1.salesNav, d1.done, d1.issue, d1.via], [true, true, null, 'Sales Navigator (data)']);
+      assert.deepEqual([d1.shown, d1.read], [28, 28]);
+      assert.deepEqual(d1.hidden, [{ q: 'marketing', url: 'http://127.0.0.1:' + PORT + '/company/data-co/people/?keywords=marketing', heads: ['Brand Marketing Manager'] }]);
+      ok('Sales Navigator\'s results as data: no results page, every page by the count, the job at the brand, hidden people for Zach');
+
+      const d2 = sw.find(x => x.brandId === 'b-dstuck');
+      assert.deepEqual([d2.salesNav, d2.done, d2.issue, d2.via], [true, true, null, 'Sales Navigator (data)']);
+      assert.deepEqual(r.calls.filter(b => b.action === 'liCapture' && b.brandId === 'b-dstuck').slice(1).map(c => c.rows.map(x => x.name)), [['Stu Stuck', 'Sal Stuck'], []]);
+      ok('a results page that never draws (a minimized window) is no longer a problem: the data is read');
+    }
+    // The data not coming: that brand reads the results page; three in a row
+    // and the run reads pages for the rest of it.
+    {
+      const r = await run([item('b-bad1', 'Bad One', 'data-bad1'), item('b-bad2', 'Bad Two', 'data-bad2'), item('b-bad3', 'Bad Three', 'data-bad3'), item('b-after', 'After', 'data-after')]);
+      assert.deepEqual(r.data.map(d => d.co + ':' + d.kind), ['6401:fn', '6402:fn', '6403:fn'], 'one ask a brand, none after the third');
+      assert.deepEqual(r.queries.map(q => q.co + ':' + q.kind), ['6401:fn', '6401:kw', '6402:fn', '6402:kw', '6403:fn', '6403:kw', '6701:fn', '6701:kw'], 'the results pages instead');
+      const sw = r.calls.filter(b => b.action === 'liSwept');
+      assert.deepEqual(sw.map(x => [x.salesNav, x.done, x.via]), Array(4).fill([true, true, 'Sales Navigator']));
+      ok('the data not coming: the results page instead; three in a row, pages for the rest of the run');
+    }
+    // An answer the fill can't make out: never a read that saves nobody.
+    {
+      const r = await run([item('b-odd', 'Odd', 'data-odd'), item('b-nt', 'No Title', 'data-notitle')]);
+      assert.deepEqual(r.data.map(d => d.co), ['6501', '6502']);
+      assert.deepEqual(r.queries.map(q => q.co + ':' + q.kind), ['6501:fn', '6501:kw', '6502:fn', '6502:kw'], 'their results pages instead');
+      assert.deepEqual(r.calls.filter(b => b.action === 'liSwept').map(x => x.via), ['Sales Navigator', 'Sales Navigator']);
+      ok('an answer with no member ids or no titles: the results page instead');
+    }
+    // "Too many requests": the run pauses before anything else.
+    {
+      let paused = '';
+      const r = await run([item('b-429', 'Busy', 'data-429'), item('b-after', 'After', 'data-after')], {
+        during: async (pg) => {
+          await pg.waitForFunction(() => /Paused: LinkedIn said “too many requests”/.test((document.getElementById('sbli-panel') || {}).innerText || ''), null, { timeout: 30000 });
+          paused = await pg.innerText('#sbli-panel');
+          await pg.click('#sblifillstop');
+        },
+      });
+      assert.match(paused, /Leave LinkedIn alone for a day/);
+      assert.deepEqual(r.queries, [], 'no results page either');
+      assert.ok(!r.calls.some(b => b.brandId === 'b-after'));
+      ok('LinkedIn saying "too many requests" pauses the run');
     }
 
     console.log(n + ' checks passed');

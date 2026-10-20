@@ -92,7 +92,7 @@ async function main() {
   assert.equal(await page.$eval('#li-fast', (e) => e.style.display), 'none', 'folded until asked');
   await page.click('#li-fast-btn');
   const fast = await page.textContent('#li-fast');
-  assert.ok(/Run the fill behind other windows \(Mac\)/.test(fast) && /Chrome for LinkedIn/.test(fast) && /chrome:\/\/version/.test(fast), fast);
+  assert.ok(/Run the fill hidden or minimized \(Mac\)/.test(fast) && /Chrome for LinkedIn/.test(fast) && /chrome:\/\/version/.test(fast), fast);
   const cmd = await page.textContent('#li-fast-cmd');
   for (const f of ['--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--restore-last-session', 'osacompile', 'NSAppSleepDisabled'])
     assert.ok(cmd.includes(f), 'the command has ' + f);
@@ -105,12 +105,12 @@ async function main() {
   await page.evaluate(() => renderLiRuns([{ id: 'r1', startedAt: '2026-10-19T22:35:00Z', lastAt: '2026-10-20T00:24:00Z', script: '1.39', status: 'running',
     added: 3, pauses: [], hiddenMs: 53 * 60000, brands: [{ name: 'Taste Salud', brandId: 'b1', added: 3, ms: 30000 }] }], '1.39', null));
   const run = await page.textContent('#li-runs');
-  assert.ok(/53 min with its window hidden, which slows it — run it behind other windows/.test(run), run);
+  assert.ok(/53 min with its window hidden — Chrome slows that unless it was opened with the Chrome for LinkedIn app/.test(run), run);
   await page.click('#li-runs [data-li-fast="open"]');
   assert.equal(await page.$eval('#li-fast', (e) => e.style.display), '', 'the run card’s link opens the setup');
   await page.click('#li-runs [data-li-fast="open"]');
   assert.equal(await page.$eval('#li-fast', (e) => e.style.display), '', '…and never closes it');
-  console.log('✓ Run it behind other windows: the setup opens from the header and the run card, Copy copies the command');
+  console.log('✓ Run it hidden or minimized: the setup opens from the header and the run card, Copy copies the command');
   await page.click('#li-sched [data-brand="b2"]');
   for (let i = 0; i < 50 && !calls.some((c) => c.fn === 'getBrand'); i++) await page.waitForTimeout(100);
   assert.ok(JSON.stringify(last('getBrand').args).includes('b2'), 'a brand opens its page');
