@@ -1450,12 +1450,18 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `SN_DECOS` (…LeadSearchResult-14, 16, 15, 13, 12), the one that answers kept in GM `sbLiSnDeco`; any other failure → that
   brand reads the results page as before (`snDataFailed`, `st.snPageOnly`), `SN_DATA_TRIES` = 3 in a row → pages for the rest
   of the run (`job.snDataOff`, said on the panel's Sales Navigator line); 429 pauses the run. Unverified against the real
-  endpoint until Leo's first run on 1.42 — reports show "(data)" in `via` when it worked. **Chrome for LinkedIn** keeps the
-  run's own steps at full speed hidden: Outreach → People's **Run it hidden or minimized** (`#li-fast`, `liFastHtml`,
-  `LI_FAST_CMD` in app.html; the run card's hidden line and the script's `#sblihidden` warning point there) = one Terminal
-  paste that makes `~/Applications/Chrome for LinkedIn.app` (osacompile: quits Chrome, reopens it with
-  `--restore-last-session --disable-backgrounding-occluded-windows --disable-renderer-backgrounding
-  --disable-background-timer-throttling`) and turns App Nap off for Chrome (`NSAppSleepDisabled`). The panel's warning shows
+  endpoint until Leo's first run on 1.42 — reports show "(data)" in `via` when it worked. **LinkedIn Fill** — the fill's own Chrome (Leo, Oct 20 2026:
+  "i dont want it to shut down chrome") keeps the run's own steps at full speed hidden or minimized: Outreach → People's
+  **Run it hidden or minimized** (`#li-fast`, `liFastHtml`, `LI_FAST_CMD`, `LI_SCRIPT_URL` in app.html; the run card's hidden
+  line and the script's `#sblihidden` warning point there, 1.43) = one Terminal paste that makes
+  `~/Applications/LinkedIn Fill.app` (osacompile: `open -na "Google Chrome" --args --user-data-dir=$HOME/.sb-linkedin-chrome
+  --no-first-run --no-default-browser-check --disable-backgrounding-occluded-windows --disable-renderer-backgrounding
+  --disable-background-timer-throttling https://www.linkedin.com/feed/#sb-fill`) and turns App Nap off for Chrome
+  (`NSAppSleepDisabled`): a second Chrome beside Leo's, never closing or changing his (switches only take at a Chrome's
+  start; the first version quit his Chrome to restart it), opened on `#sb-fill` so the fill starts there by itself. Set up
+  once in that window: Tampermonkey + Allow User Scripts, the script (Copy link → Install), LinkedIn sign-in, the key
+  (INGEST_TOKEN from Vercel, pasted by Leo). From then on he starts the fill from that app, not the dashboard's Start button
+  (that one opens in his main Chrome — two browsers would each run a fill). The panel's warning shows
   only when a hidden page's timer really fired late (`later` → `noteSlow`, `job.slowAt`, last 10 min).
   It still needs Leo's computer awake with that window open. A run untouched for 10 min (`staleFill`; live
   tabs heartbeat `touchedAt` each minute) no longer blocks a new one (electrolyte first, research list + lookalikes on) — Claude can't run it from the

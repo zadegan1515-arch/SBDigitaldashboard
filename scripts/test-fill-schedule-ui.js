@@ -87,17 +87,19 @@ async function main() {
   await page.screenshot({ path: process.env.SHOT || path.join(require('os').tmpdir(), 'fill-schedule.png'), fullPage: false, clip: await page.$eval('#li-sched', (e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y + window.scrollY, width: r.width, height: Math.min(r.height, 600) }; }) }).catch(() => {});
 
   // Run it behind other windows (Leo, Oct 20 2026): the header button opens
-  // the Mac setup — the one Terminal paste that makes "Chrome for LinkedIn"
+  // the Mac setup — the one Terminal paste that makes "LinkedIn Fill" (its own Chrome)
   // with Chrome's slow-down for hidden windows off — and toggles it shut.
   assert.equal(await page.$eval('#li-fast', (e) => e.style.display), 'none', 'folded until asked');
   await page.click('#li-fast-btn');
   const fast = await page.textContent('#li-fast');
-  assert.ok(/Run the fill hidden or minimized \(Mac\)/.test(fast) && /Chrome for LinkedIn/.test(fast) && /chrome:\/\/version/.test(fast), fast);
+  assert.ok(/Run the fill in its own Chrome \(Mac\)/.test(fast) && /LinkedIn Fill/.test(fast) && /never closed or changed/.test(fast) && /Allow User Scripts/.test(fast) && /INGEST_TOKEN/.test(fast) && /chrome:\/\/version/.test(fast), fast);
   const cmd = await page.textContent('#li-fast-cmd');
-  for (const f of ['--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--restore-last-session', 'osacompile', 'NSAppSleepDisabled'])
+  for (const f of ['--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--user-data-dir=$HOME/.sb-linkedin-chrome', 'open -na', 'https://www.linkedin.com/feed/#sb-fill', 'osacompile', 'NSAppSleepDisabled'])
     assert.ok(cmd.includes(f), 'the command has ' + f);
   assert.equal(cmd, await page.evaluate(() => LI_FAST_CMD), 'the box shows exactly what Copy copies');
+  assert.ok(!/quit/.test(cmd), 'never closes Leo\'s Chrome');
   await page.click('[data-li-fast-copy]');
+  await page.click('[data-li-fast-script]');
   await page.waitForFunction(() => /Copied|Could not copy/.test(document.body.innerText));
   await page.click('#li-fast-btn');
   assert.equal(await page.$eval('#li-fast', (e) => e.style.display), 'none', 'the button closes it again');
@@ -105,7 +107,7 @@ async function main() {
   await page.evaluate(() => renderLiRuns([{ id: 'r1', startedAt: '2026-10-19T22:35:00Z', lastAt: '2026-10-20T00:24:00Z', script: '1.39', status: 'running',
     added: 3, pauses: [], hiddenMs: 53 * 60000, brands: [{ name: 'Taste Salud', brandId: 'b1', added: 3, ms: 30000 }] }], '1.39', null));
   const run = await page.textContent('#li-runs');
-  assert.ok(/53 min with its window hidden — Chrome slows that unless it was opened with the Chrome for LinkedIn app/.test(run), run);
+  assert.ok(/53 min with its window hidden — Chrome slows that unless it runs in the LinkedIn Fill app/.test(run), run);
   await page.click('#li-runs [data-li-fast="open"]');
   assert.equal(await page.$eval('#li-fast', (e) => e.style.display), '', 'the run card’s link opens the setup');
   await page.click('#li-runs [data-li-fast="open"]');

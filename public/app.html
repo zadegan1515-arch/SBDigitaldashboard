@@ -509,7 +509,7 @@
   .dl-paste textarea{width:100%;min-height:150px;resize:vertical;background:var(--surface-0);color:var(--ink-1);border:1px solid var(--border);
     border-radius:10px;padding:12px 14px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
   .dl-paste textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--ring)}
-  /* Outreach → People → Run it hidden or minimized (the Chrome for LinkedIn app). */
+  /* Outreach → People → Run it hidden or minimized (the LinkedIn Fill app). */
   .li-fast{padding:16px 20px}
   .li-fast h3{margin:0 0 4px;font-size:16px}
   .li-fast ol{margin:10px 0 0;padding-left:20px;font-size:14px;line-height:1.6;color:var(--ink-2)}
@@ -2594,7 +2594,7 @@
         <button class="chip" data-lif="none">Nobody yet</button>
         <button class="chip" data-lif="thin" title="Brands with room under the 25-people cap, emptiest first — open People ↗ and press the SB pill">Under 25</button>
         <span id="li-reach"></span>
-        <a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" style="text-decoration:none;margin-left:6px" title="Opens LinkedIn in a window of its own and starts the fill there by itself — the Schedule's short brands, then every brand with nobody in marketing / partnerships, electrolytes first within each; the research list and lookalikes on. Keep working here; leave that window alone, minimized if you like. Chrome slows it while it's hidden unless Chrome was opened with the Chrome for LinkedIn app (Run it hidden or minimized). Needs the LinkedIn capture script in Tampermonkey.">Start the LinkedIn fill ↗</a>
+        <a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" style="text-decoration:none;margin-left:6px" title="Opens LinkedIn in a window of its own and starts the fill there by itself — the Schedule's short brands, then every brand with nobody in marketing / partnerships, electrolytes first within each; the research list and lookalikes on. Keep working here; leave that window alone, minimized if you like. Chrome slows it while it's hidden unless it runs in the LinkedIn Fill app (Run it hidden or minimized). Needs the LinkedIn capture script in Tampermonkey.">Start the LinkedIn fill ↗</a>
         <button class="btn-ghost" id="li-fast-btn" data-li-fast style="margin-left:6px" title="Set up once on a Mac: the fill then keeps full speed minimized or behind your other windows">Run it hidden or minimized</button>
         <input class="inp" id="li-q" placeholder="Filter brands…" autocomplete="off" style="margin-left:auto;width:220px">
       </div>
@@ -12184,7 +12184,7 @@ function renderLiRuns(runs, latest, owner) {
       if (avg == null && hid < 2) return '';
       return '<div class="t-meta" style="margin-top:6px' + (hid >= 2 ? ';color:var(--warn)' : '') + '">' +
         (avg != null ? 'About ' + avg + ' min a brand' : '') +
-        (hid >= 2 ? (avg != null ? ' · ' : '') + hid + ' min with its window hidden — Chrome slows that unless it was opened with the <a href="#" data-li-fast="open">Chrome for LinkedIn app</a>.' : '') +
+        (hid >= 2 ? (avg != null ? ' · ' : '') + hid + ' min with its window hidden — Chrome slows that unless it runs in the <a href="#" data-li-fast="open">LinkedIn Fill app</a>.' : '') +
         '</div>';
     })() +
     (lastPause ? '<div class="t-meta" style="margin-top:6px;color:var(--bad)">Paused: ' + esc(lastPause.why) + '</div>' : '') +
@@ -12647,7 +12647,7 @@ document.getElementById('linkedin').addEventListener('click', function (e) {
 // brings the run's window back to the feed, where the script picks the
 // run up again (or starts one if the last has finished). Sized to sit
 // beside the dashboard; Chrome slows a window that's minimized or fully
-// covered unless it was opened with the Chrome for LinkedIn app (below).
+// covered unless it runs in the LinkedIn Fill app (below).
 // A blocked popup falls back to the link's own new tab.
 var LI_FILL_WINDOW = 'sbLinkedinFill';
 document.addEventListener('click', function (e) {
@@ -12669,42 +12669,49 @@ document.addEventListener('click', function (e) {
 
 // Run it hidden or minimized (Leo, Oct 20 2026: "ideally i dont want to have
 // the linkedin page super visible and i want to be able to be fullscreen on
-// something else"). Chrome slows a window it can't see — a run behind a full
-// screen app took 3–5 min a brand and 1 in 3 Sales Navigator pages never
-// drew, against ~40 s and none on screen. One paste in Terminal makes a Mac
-// app that quits Chrome and opens it again (tabs restored) with that
-// slow-down off — the switches Playwright runs Chrome with — and turns App
-// Nap off for Chrome. Shown on Outreach → People; the run card's hidden line
-// links here.
-var LI_FAST_FLAGS = '--restore-last-session --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling';
-var LI_FAST_CMD = "mkdir -p ~/Applications && osacompile -o ~/Applications/'Chrome for LinkedIn.app'" +
-  " -e 'if application \"Google Chrome\" is running then'" +
-  " -e 'tell application \"Google Chrome\" to quit'" +
-  " -e 'repeat while application \"Google Chrome\" is running'" +
-  " -e 'delay 0.5'" +
-  " -e 'end repeat'" +
-  " -e 'end if'" +
-  " -e 'do shell script \"open -a \\\"Google Chrome\\\" --args " + LI_FAST_FLAGS + "\"'" +
+// something else", then "i dont want it to shut down chrome"). Chrome slows a
+// window it can't see — a run behind a full screen app took 3–5 min a brand
+// and 1 in 3 Sales Navigator pages never drew, against ~40 s and none on
+// screen — and only takes the switches that stop it when it starts. So the
+// fill gets a Chrome of its own: one paste in Terminal makes a Mac app,
+// "LinkedIn Fill", that opens a second Chrome (its own profile folder,
+// ~/.sb-linkedin-chrome, beside Leo's — never closing or changing his) with
+// that slow-down off — the switches Playwright runs Chrome with — on
+// linkedin.com/feed/#sb-fill, so the fill starts there by itself. It turns
+// App Nap off for Chrome too. Set up once in that window: Tampermonkey, the
+// script, LinkedIn sign-in, the key. Shown on Outreach → People; the run
+// card's hidden line links here.
+var LI_FILL_DIR = '$HOME/.sb-linkedin-chrome';
+var LI_FAST_FLAGS = '--user-data-dir=' + LI_FILL_DIR + ' --no-first-run --no-default-browser-check' +
+  ' --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling';
+var LI_FAST_CMD = "mkdir -p ~/Applications && osacompile -o ~/Applications/'LinkedIn Fill.app'" +
+  " -e 'do shell script \"open -na \\\"Google Chrome\\\" --args " + LI_FAST_FLAGS + " https://www.linkedin.com/feed/#sb-fill\"'" +
   " && defaults write com.google.Chrome NSAppSleepDisabled -bool YES" +
   " && open ~/Applications";
+var LI_SCRIPT_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
 function liFastHtml() {
-  return '<h3>Run the fill hidden or minimized (Mac)</h3>' +
-    '<div class="t-meta">Chrome slows a window you can’t see. Opened with this app it doesn’t, so the fill keeps full speed minimized or behind your other windows. Set it up once:</div>' +
+  return '<h3>Run the fill in its own Chrome (Mac)</h3>' +
+    '<div class="t-meta">Chrome slows a window you can’t see. This makes a second Chrome just for the fill that doesn’t, so you can minimize it. Your normal Chrome is never closed or changed.</div>' +
     '<ol>' +
       '<li>Open Terminal: press ⌘ Space, type <b>Terminal</b>, press Return.</li>' +
-      '<li>Paste this and press Return. It makes an app called <b>Chrome for LinkedIn</b>:' +
+      '<li>Paste this and press Return. It makes an app called <b>LinkedIn Fill</b>:' +
         '<div class="cmd"><code id="li-fast-cmd">' + esc(LI_FAST_CMD) + '</code>' +
         '<button class="btn-solid" data-li-fast-copy>Copy</button></div></li>' +
-      '<li>A Finder window opens. Double-click <b>Chrome for LinkedIn</b>: it closes Chrome and opens it again with your tabs. The first time, click <b>OK</b> when it asks to control Google Chrome.</li>' +
-      '<li>Drag it to your Dock and open Chrome with it from now on (after a restart too). Start the LinkedIn fill as usual, then minimize its window or leave it behind your other windows.</li>' +
+      '<li>A Finder window opens. Drag <b>LinkedIn Fill</b> to your Dock, then click it. A second Chrome window opens on LinkedIn.</li>' +
+      '<li>Set up that window once:' +
+        '<div style="margin-top:4px">· Chrome Web Store → search <b>Tampermonkey</b> → Add to Chrome. Then open <b>chrome://extensions</b> → Tampermonkey → Details → turn on <b>Allow User Scripts</b>.</div>' +
+        '<div>· Open the script link <button class="btn-ghost" data-li-fast-script style="padding:2px 10px;font-size:13px">Copy link</button> in that window → <b>Install</b>.</div>' +
+        '<div>· Sign in to LinkedIn, click the <b>SB</b> pill (bottom-left) and paste the dashboard key: <b>INGEST_TOKEN</b> in Vercel → Settings → Environment Variables.</div></li>' +
+      '<li>From then on, click <b>LinkedIn Fill</b> in your Dock instead of Start the LinkedIn fill here. It opens LinkedIn and starts the fill by itself. Minimize it and keep working.</li>' +
     '</ol>' +
-    '<div class="t-meta" style="margin-top:10px">To check it worked: in Chrome open <b>chrome://version</b>. The Command Line row lists --disable-backgrounding-occluded-windows.</div>';
+    '<div class="t-meta" style="margin-top:10px">To check it worked: in that window open <b>chrome://version</b>. The Command Line row lists --disable-backgrounding-occluded-windows.</div>';
 }
 document.addEventListener('click', function (e) {
   var t = e.target && e.target.closest ? e.target : null;
   if (!t) return;
   var copy = t.closest('[data-li-fast-copy]');
   if (copy) { e.preventDefault(); ztCopy(LI_FAST_CMD, 'Copied. Paste it in Terminal and press Return'); return; }
+  if (t.closest('[data-li-fast-script]')) { e.preventDefault(); ztCopy(LI_SCRIPT_URL, 'Link copied. Paste it in the LinkedIn Fill window'); return; }
   var btn = t.closest('[data-li-fast]');
   if (!btn) return;
   e.preventDefault();
