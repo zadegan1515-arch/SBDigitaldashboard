@@ -11,11 +11,13 @@
 //   1. Stages: day-2 message (waits until then, due on the day, late
 //      after), final reach-out 10 days after the message, No response 7
 //      days after the final.
-//   2. The board (Leo, Oct 6: "more defined ... move it higher up"): full
-//      width above the list, one bordered card per stage side by side;
-//      grouped by stage, most urgent first, "N late / due today" counts,
-//      a brand with people at two stages under both.
-//   3. A click on the right opens that person on the left, under the
+//   2. The board (Leo, Oct 6: "more defined ... move it higher up"; Oct
+//      20: "make it easier to read"): full width above the list, a tab per
+//      stage side by side with its count and how many are late / due
+//      today; the open stage below in big rows under Late / Due today /
+//      Coming up, most urgent first; a brand with people at two stages
+//      under both; Show all / Show fewer.
+//   3. A click on the board opens that person in the list, under the
 //      filter they're in (To do / Waiting / No response).
 //   4. The final reach-out follows its own template; a card's edit saves
 //      as that person's own (saveHandEmail final), Reset hands it back;
@@ -170,27 +172,74 @@ async function main() {
   assert.ok(geo.sideBottom <= geo.mainTop, 'the board sits above the list ' + JSON.stringify(geo));
   assert.ok(Math.abs(geo.sideWidth - geo.mainWidth) < 4, 'the board is as wide as the list ' + JSON.stringify(geo));
   assert.equal(geo.pos, 'static');
-  const tops = await page.$$eval('#zach-todo .zs-grp', (els) => els.map((g) => Math.round(g.getBoundingClientRect().top)));
-  assert.ok(tops.length >= 4 && tops[0] === tops[1] && tops[1] === tops[2], 'stages side by side on a wide screen ' + tops);
-  const groups = await page.$$eval('#zach-todo .zs-grp', (els) => els.map((g) => ({
-    head: g.querySelector('.zs-gh span').textContent,
-    rows: Array.from(g.querySelectorAll('.zs-row')).map((r) => r.querySelector('.zs-name b').textContent + ' | ' + r.querySelector('.zs-when').textContent),
-  })));
-  assert.deepEqual(groups, [
-    { head: 'Accepted', rows: ['Charlie Energy | 1d late', 'Bravo Hydration | today', 'Alpha Water | tomorrow'] },
-    { head: 'Messaged', rows: ['Echo Soda | 2d late', 'Bravo Hydration | 1d late', 'Delta Drinks | in 6d'] },
-    { head: 'Final sent', rows: ['Foxtrot Fizz | sent ' + await page.evaluate((d) => shortDate(d), payload().brands[5].people[0].nudgedAt)] },
-    { head: 'Replied / emailed', rows: ['Hotel Tea | email to send'] },
-    { head: 'Call booked', rows: ['Kilo Kombucha | ' + await page.evaluate((d) => shortDate(d), payload().calls[0].callAt)] },
-    { head: 'No response', rows: ['Golf Seltzer | ' + 'final ' + await page.evaluate((d) => shortDate(d), payload().brands[6].people[0].nudgedAt)] },
+  // One tab per stage, side by side; the stage open below is the first one
+  // with something late or due today.
+  const tops = await page.$$eval('#zach-todo .zs-tab', (els) => els.map((g) => Math.round(g.getBoundingClientRect().top)));
+  assert.ok(tops.length === 6 && tops.every((t) => t === tops[0]), 'stage tabs side by side on a wide screen ' + tops);
+  const tabs = await page.$$eval('#zach-todo .zs-tab', (els) => els.map((g) => [
+    g.querySelector('.zs-tab-t').textContent, g.querySelector('.zs-tab-n').firstChild.textContent,
+    g.querySelector('.zs-tab-s').textContent, g.getAttribute('aria-selected')]));
+  const callDay = await page.evaluate((d) => shortDate(d), payload().calls[0].callAt);
+  assert.deepEqual(tabs, [
+    ['First message due', '3', '1 late1 today1 coming up', 'true'],
+    ['Final reach-out due', '3', '2 late1 coming up', 'false'],
+    ['Waiting on a reply', '1', 'final reach-out sent', 'false'],
+    ['Replied', '1', 'keep it going', 'false'],
+    ['Call booked', '1', 'next call ' + callDay, 'false'],
+    ['No response', '1', 'quiet after the final', 'false'],
   ]);
-  const sum = await page.textContent('#zach-todo .zs-sum');
-  assert.equal(sum.replace(/\s+/g, ' ').trim(), '3 late1 due today9 brands');
+  // The open stage: big rows under Late / Due today / Coming up, the
+  // person and when on every row ("today" only in the heading).
+  const panel = () => page.$$eval('#zach-todo .zs-panel .zs-sec', (els) => els.map((sec) => ({
+    head: sec.querySelector('.zs-sh') ? sec.querySelector('.zs-sh').textContent : '',
+    rows: Array.from(sec.querySelectorAll('.zs-row')).map((r) => [r.querySelector('.zs-brand b').textContent,
+      r.querySelector('.zs-who').textContent, (r.querySelector('.zs-last') || {}).textContent || '',
+      (r.querySelector('.zs-when') || {}).textContent || ''].join(' | ')),
+  })));
+  const day = (d) => page.evaluate((x) => shortDate(x), d);
+  const P = payload().brands;
+  assert.deepEqual(await panel(), [
+    { head: 'Late 1', rows: ['Charlie Energy | Cal Crane | accepted ' + await day(P[2].people[0].acceptedAt) + ' | 1 day late'] },
+    { head: 'Due today 1', rows: ['Bravo Hydration | Ben Bright | accepted ' + await day(P[1].people[0].acceptedAt) + ' | '] },
+    { head: 'Coming up 1', rows: ['Alpha Water | Ann Able | accepted ' + await day(P[0].people[0].acceptedAt) + ' | tomorrow'] },
+  ]);
+  const tab = async (k) => { await page.click('#zach-todo [data-zstab="' + k + '"]'); await page.waitForTimeout(80); };
+  await tab('final');
+  assert.equal(await page.getAttribute('#zach-todo [data-zstab="final"]', 'aria-selected'), 'true');
+  assert.equal(await page.evaluate(() => document.activeElement.getAttribute('data-zstab')), 'final', 'focus stays on the tab');
+  assert.deepEqual(await panel(), [
+    { head: 'Late 2', rows: ['Echo Soda | Eve Elm | messaged ' + await day(P[4].people[0].dmSentAt) + ' | 2 days late',
+      'Bravo Hydration | Ida Iver | messaged ' + await day(P[1].people[1].dmSentAt) + ' | 1 day late'] },
+    { head: 'Coming up 1', rows: ['Delta Drinks | Dee Dunn | messaged ' + await day(P[3].people[0].dmSentAt) + ' | in 6 days'] },
+  ]);
+  const one = async (k) => { await tab(k); return (await panel()).map((x) => x.rows).flat(); };
+  assert.deepEqual(await one('sent'), ['Foxtrot Fizz | Fay Fox | messaged ' + await day(P[5].people[0].dmSentAt) + ' | sent ' + await day(P[5].people[0].nudgedAt)]);
+  assert.deepEqual(await one('talk'), ['Hotel Tea | Hal Hart | replied ' + await day(P[7].people[0].repliedAt) + ' | email to send']);
   const hold = await page.textContent('#zach-todo .zs-row[data-zsopen="tH"] em');
   assert.equal(hold, 'do not email');
+  assert.deepEqual(await one('call'), ['Kilo Kombucha | Kim Kane |  | ' + callDay]);
+  assert.deepEqual(await one('quiet'), ['Golf Seltzer | Gus Gray | messaged ' + await day(P[6].people[0].dmSentAt) + ' | final ' + await day(P[6].people[0].nudgedAt)]);
+  // A stage past its rows: "Show all N", then "Show fewer".
+  await tab('msg');
+  await page.evaluate(() => { ZS_SHOW = 2; zsRefresh(); });
+  assert.equal(await page.$$eval('#zach-todo .zs-panel .zs-row', (els) => els.length), 2);
+  assert.equal(await page.textContent('#zach-todo [data-zsmore]'), 'Show all 3');
+  await page.click('#zach-todo [data-zsmore]');
+  assert.equal(await page.$$eval('#zach-todo .zs-panel .zs-row', (els) => els.length), 3);
+  assert.equal(await page.evaluate(() => document.activeElement.getAttribute('data-zsopen')), 'tA', 'focus on the first row that appeared');
+  assert.equal(await page.textContent('#zach-todo [data-zsmore]'), 'Show fewer');
+  await page.click('#zach-todo [data-zsmore]');
+  assert.equal(await page.$$eval('#zach-todo .zs-panel .zs-row', (els) => els.length), 2);
+  await page.evaluate(() => { ZS_SHOW = 12; ZS_MORE = {}; zsRefresh(); });
+  // A ticked step keeps the stage that's open.
+  await tab('final');
+  await page.evaluate(() => ztRefreshHead());
+  assert.equal(await page.getAttribute('#zach-todo [data-zstab="final"]', 'aria-selected'), 'true');
+  const sum = await page.textContent('#zach-todo .zs-sum');
+  assert.equal(sum.replace(/\s+/g, ' ').trim(), '3 late1 due today9 brands');
   const rule = await page.textContent('#zach-todo .zs-rule');
   assert.match(rule, /day 2 .* 10 days later .* 7 quiet days/);
-  console.log('ok 2 - the board: above the list, full width, a card per stage, most urgent first, counts');
+  console.log('ok 2 - the board: above the list, full width, a tab per stage, the open stage under Late / Due today / Coming up, counts');
   if (process.env.SHOT_BOARD) {
     await page.evaluate(() => document.getElementById('zach-todo').scrollIntoView());
     await page.screenshot({ path: process.env.SHOT_BOARD });
@@ -204,7 +253,8 @@ async function main() {
     await page.evaluate(() => ztRender());
   }
 
-  // 3. A click on the right opens them on the left ---------------------
+  // 3. A click on the board opens them in the list ---------------------
+  await tab('quiet');
   await page.click('#zach-todo .zs-row[data-zsopen="tG"]');
   await page.waitForTimeout(400);
   let st = await page.evaluate(() => ({ f: ZT_FILTER, cur: ZT_CUR, open: !!document.querySelector('#zach-todo .zt-item[data-zt="tG"].open') }));
@@ -212,26 +262,30 @@ async function main() {
   const gPanel = await page.textContent('#zach-todo .zt-item[data-zt="tG"] .zt-panel');
   assert.match(gPanel, /No response/);
   assert.match(gPanel, /nothing more goes out/);
+  await tab('msg');
   await page.click('#zach-todo .zs-row[data-zsopen="tA"]');
   await page.waitForTimeout(400);
   st = await page.evaluate(() => ({ f: ZT_FILTER, cur: ZT_CUR }));
   assert.deepEqual(st, { f: 'waiting', cur: 'tA' });
   assert.equal(await page.textContent('#zach-todo .zt-item[data-zt="tA"] .zt-next'), 'Text them tomorrow');
+  await tab('final');
   await page.click('#zach-todo .zs-row[data-zsopen="tE"]');
   await page.waitForTimeout(400);
   st = await page.evaluate(() => ({ f: ZT_FILTER, cur: ZT_CUR }));
   assert.deepEqual(st, { f: 'todo', cur: 'tE' });
   // A call on the right shows its row in the left "Calls booked" fold.
   await page.evaluate(() => { document.getElementById('zt-calls').open = false; });
+  await tab('call');
   await page.click('#zach-todo .zs-row[data-zscall="tK"]');
   await page.waitForTimeout(100);
   assert.equal(await page.evaluate(() => document.getElementById('zt-calls').open), true);
   assert.equal(await page.$eval('#zt-calls [data-ztundo="tK"]', (b) => b.closest('.zt-done-row').classList.contains('zs-flash')), true);
-  // Arrow keys on the right stay on the right (they used to jump to the list).
+  // Arrow keys on the board stay on the board (they used to jump to the list).
+  await tab('final');
   await page.focus('#zach-todo .zs-row[data-zsopen="tD"]');
   await page.keyboard.press('ArrowDown');
   assert.equal(await page.evaluate(() => !!document.activeElement.closest('.zs')), true);
-  console.log('ok 3 - a brand on the right opens its person on the left, under their filter');
+  console.log('ok 3 - a brand on the board opens its person in the list, under their filter');
 
   // 4. The final reach-out's own template ------------------------------
   const box = '#zach-todo .zt-item[data-zt="tE"] [data-ztnudge]';

@@ -213,14 +213,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (`followUpsDue`) uses the same 10 days and the same final text, and drops anyone already sent the final.
   **Where every brand stands** (Leo: "view where we are at with our outreach and what status all the
   brands are at so we dont forget to maintain comms"): a full-width board at the top of Home, above
-  Zach's list (`zs*` in app.html; Leo, Oct 6: "more defined ... lines between the categories ... move it
-  higher up"): one bordered card per stage side by side (`.zs-board` grid, colour edge per stage, "N late"
-  in the card head), 5 rows a stage (3 on a phone) then "N more". Every brand with someone on
-  the list + every call booked, grouped Accepted (first message due) / Messaged (final reach-out due) /
-  Final sent / Replied-emailed / Call booked / No response; a row per brand per stage (a brand with people
-  at two stages shows under both), its most urgent person leads, countdown "in 3d / today / 2d late";
-  "N late · N due today · N brands" on top. A click opens that person on the left under their filter
-  (`zsOpen`); a call opens the brand page. Read-only. `node scripts/test-zach-status.js`.
+  Zach's list (`zs*` in app.html; Leo, Oct 6: "more defined ... lines between the categories ... move it higher up"; **redone Oct 20 2026** — Leo: "make it easier to read"): **a tab per stage** across the top (`.zs-tabs`, `zsTabHtml`: the stage in plain words, a big count of brands, "N late · N today · N coming up" or a short line, colour edge per stage) — First message due / Final reach-out due / Waiting on a reply (final sent) / Replied / Call booked / No response, empty stages left out — and **the open stage below** (`#zs-panel`, `zsPanelHtml`; `ZS_TAB`, null = the first stage with something late or due today, else the first with anyone; kept through redraws, not remembered) in large rows that never cut a name off (brand, up to two people then "+N more", what happened last, and when: "3 days late" / "in 6 days"; a red / blue / green left edge), split **Late / Due today / Coming up** on the two due stages ("today" only in the heading); 12 rows (8 under 1,400px wide, 6 on a phone) then **Show all N** / Show fewer (`ZS_MORE`). Every brand with someone on the list + every call booked; a row per brand per stage (a brand with people at two stages shows under both), its most urgent person leads; "N late · N due today · N brands" on top. A click opens that person in the list under their filter (`zsOpen`); a call shows its row in Calls booked (`zsCall`). Read-only. `node scripts/test-zach-status.js`.
   **On the brand page too** (Leo, Oct 13 2026: "you should be able to do the steps after they accept an invite on a
   company's card"): under each person whose outreach is accepted / replied, the same card (`.b-zt` slot, `bzt*` in
   app.html; `zachTodo({ brandId })` = one brand's people, booked calls and done steps), one person object shared with
