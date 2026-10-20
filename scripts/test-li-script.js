@@ -152,6 +152,8 @@ const runEvents = [];
 let latestVersion = null;
 // What liList hands the fill; each scenario sets its own.
 let fillItems = [];
+// The dashboard's order flag (1.39: best Brand Fit first).
+let fillFitFirst = false;
 const discovered = new Set();
 const homeVisits = [];
 // Company searches the fake LinkedIn served, by keywords.
@@ -232,6 +234,7 @@ const server = http.createServer((req, res) => {
           ok: true, items: fillItems, cap: 25, noPage: fillItems.filter(i => !i.linkedinUrl && !i.research).length, resting: 0, research: fillItems.filter(i => i.research).length,
           planned: fillItems.filter(i => i.planned).length,
           noBuyer: fillItems.filter(i => i.noBuyer && !i.research && !i.planned).length,
+          fitFirst: fillFitFirst,
         }));
       }
       if (body.action === 'liMatched' && body.recheck) {
@@ -803,6 +806,37 @@ const GM_SHIM = `
     }
     ok('brands with no marketing / partnerships person go first; the panel says so and why each is next');
 
+    // 9b'. Best Brand Fit first (1.39; Leo, Oct 19 2026): the setup panel says
+    // the order is by score, and the run leads each brand's reason with it.
+    {
+      fillFitFirst = true;
+      fillItems = [
+        { brandId: 'b-ld', name: 'Liquid Death', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/liquid-death/', contacts: 3, focus: true, noBuyer: true, size: 'target', fit: 83 },
+      ];
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.waitForSelector('#sblipill', { state: 'visible' });
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      await pg.uncheck('#sbliresearch');
+      await pg.uncheck('#sblilook');
+      await pg.click('#sblifilllook');
+      await pg.waitForSelector('#sblifillstart');
+      assert.match(await pg.textContent('#sblifitfirst'), /^Best Brand Fit first, highest score down\./);
+      assert.equal(await pg.$('#sbligapnote'), null, 'no "no buyer first" note');
+      assert.equal(await pg.$('#sblimidnote'), null, 'no "mid-size first" note');
+      assert.match(await pg.textContent('#sbli-panel'), /Between brands with the same score, the 1 matching “electrolyte” go first\./);
+      await pg.click('#sblifillstart');
+      await pg.waitForFunction(() => /Liquid Death — Brand Fit 83 — no marketing \/ partnerships person on file yet/.test((document.getElementById('sblinow') || {}).textContent || ''), null, { timeout: 15000 });
+      assert.match(await pg.textContent('#sblifitline'), /^Best Brand Fit first — now at 83/);
+      assert.equal(await pg.$('#sbligap'), null, 'no "no buyer" progress line');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 60000 });
+      await pg.close();
+      fillFitFirst = false;
+    }
+    ok('best Brand Fit first: the setup panel and the run say the order is by score');
+
     // 9b. Clicks don't stop it; the Pause button does; leaving the page waits.
     {
       fillItems = [{ brandId: 'b-slow', name: 'Slow Brand', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/slow-brand/', contacts: 0, focus: false }];
@@ -975,6 +1009,58 @@ const GM_SHIM = `
       await pg.close();
     }
     ok('the research list: a clear match becomes a brand and gets its people; a telecom called NOS doesn\'t');
+
+    // 11b. One read per brand per run (1.40, Leo, Oct 20 2026: "i think there
+    // are repeats"): a research name whose page is a brand this run already
+    // read is passed over — no second read, no second visit mark.
+    {
+      fillItems = [
+        { brandId: 'b-pow', name: 'Powerade', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/powerade/', contacts: 0, focus: true },
+        { research: true, name: 'Powerade', aka: null, category: 'beverage', lane: 'Electrolytes & hydration', linkedinUrl: null, contacts: 0, focus: true },
+      ];
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      await pg.uncheck('#sblilook');
+      await pg.click('#sblifilllook');
+      await pg.waitForSelector('#sblifillstart');
+      await pg.click('#sblifillstart');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 60000 });
+      const calls = sent.slice(before);
+      assert.equal(calls.filter(b => b.action === 'liSwept' && b.brandId === 'b-pow').length, 1, 'Powerade marked once');
+      const research = calls.findIndex(b => b.action === 'liResearch');
+      assert.ok(research > 0, 'the research name was still looked up');
+      assert.ok(!calls.slice(research).some(b => b.action === 'liCapture' || b.action === 'liSwept'), 'and not read a second time');
+      await pg.close();
+    }
+    ok('a research name whose page is a brand already read this run is not read twice');
+
+    // 11c. …and one whose page is a roster brand further down the run is
+    // passed over: that brand's own item reads it, with its own settings.
+    {
+      fillItems = [
+        { research: true, name: 'Powerade', aka: null, category: 'beverage', lane: 'Electrolytes & hydration', linkedinUrl: null, contacts: 0, focus: true },
+        { brandId: 'b-pow', name: 'Powerade Sports', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/powerade/', contacts: 0, focus: true },
+      ];
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      await pg.uncheck('#sblilook');
+      await pg.click('#sblifilllook');
+      await pg.waitForSelector('#sblifillstart');
+      await pg.click('#sblifillstart');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 60000 });
+      const sw = sent.slice(before).filter(b => b.action === 'liSwept');
+      assert.deepEqual(sw.map(b => [b.brandId, b.name]), [['b-pow', 'Powerade Sports']], 'read once, under its own item');
+      await pg.close();
+    }
+    ok('a research name whose page is a roster brand later in the run leaves it to that brand\'s own item');
 
     // 12. The real card shapes.
     {

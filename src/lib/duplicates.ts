@@ -4,8 +4,11 @@
 // here. Tested by scripts/test-duplicates.mjs.
 //
 // Suggestions only. Nothing merges without Leo's click and the merge's own
-// preview. Three signals: the same name (or a name matching another's
-// "also known as"), the same LinkedIn company page, the same website.
+// preview. Four signals: the same name (or a name matching another's
+// "also known as"), nearly the same name (one is the other plus the word
+// that says what it sells: "Cazcanes" / "Cazcanes Tequila" — Oct 20 2026,
+// the LinkedIn fill read both), the same LinkedIn company page, the same
+// website.
 // Never an email domain — brands under one parent company share one and
 // stay separate (Leo's call) — and a website several brands share is a
 // parent's or a platform's, so it is not a signal at all.
@@ -14,7 +17,7 @@ import { nameKey } from './brand-match'
 import { companySlug } from './li-capture'
 
 export type DupBrand = { id: string; name: string; aka: string | null; website: string | null; linkedinUrl: string | null }
-export type DupWhy = 'name' | 'linkedin' | 'website'
+export type DupWhy = 'name' | 'near' | 'linkedin' | 'website'
 export type DupGroup = { ids: string[]; pairs: Array<{ a: string; b: string; why: DupWhy[] }> }
 
 // Hosts that are somebody else's platform, not the brand's own site.
@@ -38,6 +41,44 @@ export function websiteDomain(url: string | null | undefined): string | null {
   if (!host.includes('.')) return null
   if (SHARED_HOSTS.has(host) || [...SHARED_HOSTS].some(h => host.endsWith('.' + h))) return null
   return host
+}
+
+// A brand's name without the word that says what it sells: "Cazcanes
+// Tequila" → "Cazcanes", "Sierra Nevada Brewing Co." → "Sierra Nevada".
+// Every step counts ("Lucky Energy Drinks" → "Lucky Energy", "Lucky"), but
+// not one under 3 letters once the key drops its little words ("Go
+// Brewing", "The Go Brewing", "Beer"). Only ever compared with another
+// brand's own name — never its also-known-as, and never another core — so
+// two different products of one word ("Ghost Energy", "Ghost Tequila",
+// "Garage Beer" known as "Garage" / "Garage Clothing") never pair on it.
+const SELLS = new RegExp('[\\s,.-]+(?:' + [
+  'tequila', 'mezcal', 'vodka', 'gin', 'rum', 'whiske?y', 'bourbon', 'spirits?', 'distill(?:ery|ing)', 'brew(?:ing|ery|ers)',
+  'beer', '(?:hard )?seltzer', 'cider', 'wines?', 'winery', 'cocktails?', 'coffee', 'tea', 'water', 'energy', 'drinks?',
+  'beverages?', 'nutrition', 'hydration', 'skin ?care', 'beauty', 'cosmetics', 'snacks?', 'foods?', 'apparel', 'footwear',
+  'clothing', 'pouches', 'usa', 'us', 'inc', 'llc', 'ltd', 'co', 'corp', 'company', 'brands?', 'group', 'holdings?',
+].join('|') + ')\\.?$', 'i')
+// The key a near match compares: nameKey with its spaces taken out, so
+// "Body Armor" and "BodyArmor" agree (the chat's brandKey does the same).
+export function nearKey(s: string | null | undefined): string {
+  return nameKey(String(s ?? '')).replace(/\s+/g, '')
+}
+export function coreNames(name: string | null | undefined): string[] {
+  let s = String(name ?? '').replace(/[®™©]+/g, ' ').trim()
+  const whole = nearKey(s)
+  const out: string[] = []
+  for (let i = 0; i < 4; i++) {
+    const t = s.replace(SELLS, '').trim()
+    if (t === s) break
+    s = t
+    const k = nearKey(s)
+    if (k.length >= 3 && k !== whole && !out.some(o => nearKey(o) === k)) out.push(s)
+  }
+  return out
+}
+// The shortest of them ('' when none).
+export function coreName(name: string | null | undefined): string {
+  const all = coreNames(name)
+  return all.length ? all[all.length - 1] : ''
 }
 
 // One key per unordered pair, so "a|b" and "b|a" are the same pair.
@@ -74,19 +115,35 @@ export function findDuplicateGroups(brands: DupBrand[], dismissed: ReadonlySet<s
   }
 
   const edges = new Map<string, Set<DupWhy>>()
+  const link = (a: string, b: string, why: DupWhy) => {
+    if (a === b) return
+    const pk = pairKey(a, b)
+    if (dismissed.has(pk)) return
+    const w = edges.get(pk) ?? new Set<DupWhy>()
+    w.add(why)
+    edges.set(pk, w)
+  }
+  // Nearly the same name: one brand's name (or also-known-as) less its
+  // product word is another brand's own name.
+  const byOwnName = new Map<string, string[]>()
+  for (const b of brands) {
+    const k = nearKey(b.name)
+    if (k.length >= 3) byOwnName.set(k, [...(byOwnName.get(k) ?? []), b.id])
+  }
+  for (const b of brands) {
+    for (const n of namesOf(b)) {
+      for (const c of coreNames(n)) {
+        for (const id of byOwnName.get(nearKey(c)) ?? []) link(b.id, id, 'near')
+      }
+    }
+  }
   for (const [key, set] of byKey) {
     if (set.size < 2) continue
     const why = key.slice(0, key.indexOf(':')) as DupWhy
     if (why === 'website' && set.size > MAX_PER_WEBSITE) continue
     const ids = [...set].sort()
     for (let i = 0; i < ids.length; i++) {
-      for (let j = i + 1; j < ids.length; j++) {
-        const pk = pairKey(ids[i], ids[j])
-        if (dismissed.has(pk)) continue
-        const w = edges.get(pk) ?? new Set<DupWhy>()
-        w.add(why)
-        edges.set(pk, w)
-      }
+      for (let j = i + 1; j < ids.length; j++) link(ids[i], ids[j], why)
     }
   }
 
@@ -111,7 +168,7 @@ export function findDuplicateGroups(brands: DupBrand[], dismissed: ReadonlySet<s
     const root = find(a)
     const g = groups.get(root) ?? { ids: [], pairs: [] }
     for (const id of [a, b]) if (!g.ids.includes(id)) g.ids.push(id)
-    const order: DupWhy[] = ['name', 'linkedin', 'website']
+    const order: DupWhy[] = ['name', 'near', 'linkedin', 'website']
     g.pairs.push({ a, b, why: order.filter(w => why.has(w)) })
     groups.set(root, g)
   }

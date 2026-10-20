@@ -70,7 +70,7 @@ async function main() {
   assert.equal(last('fillSchedule').args.minFit, 50, 'the script’s default floor');
   const text = await page.textContent('#li-sched');
   assert.ok(/3 brands · about 2 days at 100 a day/.test(text), text);
-  assert.ok(/40 read today already/.test(text) && /12 under Fit 50 left out/.test(text) && /3 very big brands skipped/.test(text) && /mid-size brands first/.test(text), text);
+  assert.ok(/40 read today already/.test(text) && /12 under Fit 50 left out/.test(text) && /3 very big brands skipped/.test(text) && /best Brand Fit first/.test(text), text);
   assert.ok(await page.$eval('[data-fsday="2026-10-12"]', (d) => d.open), 'today open');
   assert.ok(!(await page.$eval('[data-fsday="2026-10-13"]', (d) => d.open)), 'later days folded');
   assert.ok(/Today · Mon, Oct 12/.test(text) && /Tomorrow · Tue, Oct 13/.test(text), text);

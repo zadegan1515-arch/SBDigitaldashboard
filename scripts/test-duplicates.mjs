@@ -25,7 +25,7 @@ for (const f of readdirSync(out).filter(f => f.endsWith('.js'))) {
   const p = join(out, f)
   writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, "from '$1.js'"))
 }
-const { findDuplicateGroups, websiteDomain, pairKey } = await import(pathToFileURL(join(out, 'duplicates.js')).href)
+const { findDuplicateGroups, websiteDomain, pairKey, coreName, coreNames } = await import(pathToFileURL(join(out, 'duplicates.js')).href)
 
 let pass = 0, fail = 0
 const is = (label, got, want) => {
@@ -124,6 +124,33 @@ is('pair key is order-free', pairKey('b', 'a'), pairKey('a', 'b'))
   // Two-letter keys still work; one letter never does.
   is('two-letter names can match', findDuplicateGroups([b('1', 'AG1'), b('2', 'AG1 Inc')]).length, 1)
   is('a one-character key never links', findDuplicateGroups([b('1', 'X'), b('2', 'X Inc')]), [])
+}
+
+{
+  // Nearly the same name (Oct 20 2026: the LinkedIn fill read "Cazcanes"
+  // and "Cazcanes Tequila" as two brands): one less the word that says what
+  // it sells is the other's whole name.
+  is('core of a tequila', coreName('Cazcanes Tequila'), 'Cazcanes')
+  is('Brewing Co. both come off', coreName('Sierra Nevada Brewing Co.'), 'Sierra Nevada')
+  is('too short a core', coreName('Go Brewing'), '')
+  is('a name that is only the word', coreName('Energy'), '')
+  is('nothing to take off', coreName('Liquid Death'), '')
+  const g = findDuplicateGroups([b('t', 'Cazcanes Tequila', { linkedinUrl: 'https://www.linkedin.com/company/drinkcazcanes/' }), b('c', 'Cazcanes')])
+  is('Cazcanes / Cazcanes Tequila', g.map(x => x.pairs.map(p => p.why)), [[['near']]])
+  is('Sierra Nevada / … Brewing Co.', findDuplicateGroups([b('1', 'Sierra Nevada'), b('2', 'Sierra Nevada Brewing Co.')]).map(x => x.pairs[0].why), [['near']])
+  is('an also-known-as less its word counts', findDuplicateGroups([b('1', 'SN Brew', { aka: 'Sierra Nevada Brewing' }), b('2', 'Sierra Nevada')]).length, 1)
+  // Review fixes (Oct 20 2026):
+  is('every step is a core', coreNames('Lucky Energy Drinks'), ['Lucky Energy', 'Lucky'])
+  is('one word apart pairs', findDuplicateGroups([b('1', 'Lucky Energy Drinks'), b('2', 'Lucky Energy')]).map(x => x.pairs[0].why), [['near']])
+  is('® and Ltd come off', [coreName('Cazcanes Tequila®'), coreName('Cazcanes Tequila Ltd')], ['Cazcanes', 'Cazcanes'])
+  is('a core short once the key drops "the" never pairs', findDuplicateGroups([b('1', 'Go'), b('2', 'The Go Brewing')]), [])
+  is('another brand\'s also-known-as is no target (Garage Beer / Garage Clothing)',
+    findDuplicateGroups([b('1', 'Garage Beer', { aka: 'Garage' }), b('2', 'Garage Clothing')]), [])
+  is('spacing doesn\'t matter (Body Armor Water / BodyArmor)', findDuplicateGroups([b('1', 'BodyArmor'), b('2', 'Body Armor Water')]).length, 1)
+  is('two products of one word never pair', findDuplicateGroups([b('1', 'Ghost Energy'), b('2', 'Ghost Tequila')]), [])
+  is('a two-letter core never pairs', findDuplicateGroups([b('1', 'Go'), b('2', 'Go Brewing')]), [])
+  is('same name stays "Same name"', findDuplicateGroups([b('1', 'Zulu'), b('2', 'Zulu Inc')])[0].pairs[0].why, ['name'])
+  is('Not duplicates holds for a near pair', findDuplicateGroups([b('t', 'Cazcanes Tequila'), b('c', 'Cazcanes')], new Set([pairKey('c', 't')])), [])
 }
 
 console.log(fail ? `duplicates: ${pass} passed, ${fail} FAILED` : `duplicates: all ${pass} passed`)

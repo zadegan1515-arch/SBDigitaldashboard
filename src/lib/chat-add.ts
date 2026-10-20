@@ -14,7 +14,7 @@
 // a site 4+ brands share). node scripts/test-chat-add.mjs
 
 import { brandKey } from './stock'
-import { websiteDomain } from './duplicates'
+import { websiteDomain, coreNames } from './duplicates'
 import { companySlug, companyPageUrl } from './li-capture'
 
 export type ChatBrand = {
@@ -31,7 +31,7 @@ export type ChatBrand = {
 }
 
 export type RosterBrand = { id: string; name: string; aka: string | null; website: string | null; linkedinUrl: string | null; passedAt?: Date | string | null }
-export type ChatMatch = { id: string; name: string; why: Array<'name' | 'linkedin' | 'website'>; archived: boolean }
+export type ChatMatch = { id: string; name: string; why: Array<'name' | 'near' | 'linkedin' | 'website'>; archived: boolean }
 
 const TIERS = ['emerging', 'growth', 'established'] as const
 // A website more brands than this share is a parent's or a platform's.
@@ -90,6 +90,12 @@ export function cleanChatBrand(raw: any): { row: ChatBrand | null; error: string
 // Brands on the roster this could already be, strongest first.
 export function matchRoster(b: ChatBrand, roster: RosterBrand[]): ChatMatch[] {
   const keys = new Set([b.name, ...b.aka].map(brandKey).filter(Boolean))
+  // Nearly the same name (Oct 20 2026: "Cazcanes" went on beside
+  // "Cazcanes Tequila"): a name less its product word is the other's own
+  // name — the rule Brands → Duplicates uses (duplicates.ts coreNames).
+  const coreKeys = (n: string) => coreNames(n).map(brandKey).filter(k => k.length >= 3)
+  const cores = new Set([b.name, ...b.aka].flatMap(coreKeys))
+  const own = brandKey(b.name)
   const slug = companySlug(b.linkedinUrl)
   const domain = websiteDomain(b.website)
   const perDomain = new Map<string, number>()
@@ -102,12 +108,13 @@ export function matchRoster(b: ChatBrand, roster: RosterBrand[]): ChatMatch[] {
     const why: ChatMatch['why'] = []
     const names = [r.name, ...String(r.aka ?? '').split(/[,;]/)].map(brandKey).filter(Boolean)
     if (names.some(n => keys.has(n))) why.push('name')
+    else if (cores.has(brandKey(r.name)) || (own.length >= 3 && [r.name, ...String(r.aka ?? '').split(/[,;]/)].some(n => coreKeys(n).includes(own)))) why.push('near')
     if (slug && companySlug(r.linkedinUrl) === slug) why.push('linkedin')
     const d = websiteDomain(r.website)
     if (domain && d === domain && (perDomain.get(d) ?? 0) <= MAX_PER_WEBSITE) why.push('website')
     if (why.length) out.push({ id: r.id, name: r.name, why, archived: !!r.passedAt })
   }
-  const rank = (m: ChatMatch) => (m.why.includes('name') ? 0 : m.why.includes('linkedin') ? 1 : 2)
+  const rank = (m: ChatMatch) => (m.why.includes('name') ? 0 : m.why.includes('linkedin') ? 1 : m.why.includes('near') ? 2 : 3)
   return out.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name))
 }
 

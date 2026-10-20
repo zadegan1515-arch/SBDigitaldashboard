@@ -375,23 +375,21 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
 
     // 3 + 4. No company id (its page loaded twice for it); an id that shows
     // another company's people. Never the People tab's views (1.38): each is
-    // an issue, tried again at the end of the run, then left for the next.
+    // an issue, left for the next run — never a second go in this one (1.40).
     {
       const r = await run([item('b-noid', 'No Id', 'no-id'), item('b-wrong', 'Wrong Id', 'wrong-id')]);
       assert.deepEqual(r.calls.filter(b => /^li(Capture|Swept)$/.test(b.action)).map(where), [
         'liCapture:b-noid:/company/no-id/people/', 'liSwept:b-noid',
         'liCapture:b-wrong:/company/wrong-id/people/', 'liSwept:b-wrong',
-        'liCapture:b-noid:/company/no-id/people/', 'liSwept:b-noid',
-        'liCapture:b-wrong:/company/wrong-id/people/', 'liSwept:b-wrong',
-      ], 'no keyword views; nobody saved from the wrong company; each tried twice');
+      ], 'no keyword views; nobody saved from the wrong company; each read once');
       const sw = r.calls.filter(b => b.action === 'liSwept');
-      assert.deepEqual(sw.map(x => x.issue), ['snNoId', 'snOtherCompany', 'snNoId', 'snOtherCompany']);
-      assert.deepEqual(sw.map(x => x.again), [false, false, true, true]);
+      assert.deepEqual(sw.map(x => x.issue), ['snNoId', 'snOtherCompany']);
+      assert.deepEqual(sw.map(x => x.again), [false, false]);
       assert.ok(sw.every(x => x.salesNav === false && x.done === false));
       assert.match(sw[1].note, /another company's people \(Totally Other Inc\)/);
-      assert.equal(r.queries.filter(q => q.co === '7777').length, 2);
+      assert.equal(r.queries.filter(q => q.co === '7777').length, 1);
       assert.match(r.panel, /Went wrong — first on the next run \(2\)/);
-      ok('no company id, or another company\'s people: an issue — tried again at the end, never the People tab');
+      ok('no company id, or another company\'s people: an issue for the next run, never the People tab, never twice in a run');
     }
 
     // An empty People tab still goes to Sales Navigator (it used to stop).
@@ -414,31 +412,71 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
     }
 
     // Results that never load: loaded once more, then an issue — the brand
-    // goes again at the end of the run; Sales Navigator stays on.
+    // waits for the next run (1.40: no second go at the end of this one);
+    // Sales Navigator stays on.
     {
       const r = await run([item('b-st1', 'Stuck One', 'stuck-one'), item('b-st2', 'Stuck Two', 'stuck-two'), item('b-ld', 'Liquid Death', 'liquid-death')]);
       const sw = r.calls.filter(b => b.action === 'liSwept');
-      assert.deepEqual(sw.map(x => x.brandId), ['b-st1', 'b-st2', 'b-ld', 'b-st1', 'b-st2'], 'the stuck two again after the rest');
-      assert.deepEqual(sw.map(x => x.salesNav), [false, false, true, false, false]);
-      assert.deepEqual(sw.map(x => x.issue), ['snNoLoad', 'snNoLoad', null, 'snNoLoad', 'snNoLoad']);
-      assert.deepEqual(sw.map(x => x.again), [false, false, false, true, true]);
-      assert.equal(r.queries.filter(q => q.co === '4401').length, 4, 'loaded twice on each try');
+      assert.deepEqual(sw.map(x => x.brandId), ['b-st1', 'b-st2', 'b-ld'], 'each brand once');
+      assert.deepEqual(sw.map(x => x.salesNav), [false, false, true]);
+      assert.deepEqual(sw.map(x => x.issue), ['snNoLoad', 'snNoLoad', null]);
+      assert.deepEqual(sw.map(x => x.again), [false, false, false]);
+      assert.equal(r.queries.filter(q => q.co === '4401').length, 2, 'loaded twice on its one try');
       assert.ok(!r.calls.some(b => b.action === 'liCapture' && /keywords=/.test(b.companyUrl)), 'never the People tab views');
       assert.match(r.panel, /Run finished/);
-      ok('a Sales Navigator page that doesn\'t load: once more, then tried again at the end of the run');
+      assert.match(r.panel, /Went wrong — first on the next run \(2\)/);
+      assert.ok(!/\(twice\)/.test(r.panel));
+      ok('a Sales Navigator page that doesn\'t load: once more, then the brand waits for the next run');
+    }
+
+    // One read per brand per run (Leo, Oct 20 2026: "i think there are
+    // repeats"): a brand listed twice is read once.
+    {
+      const r = await run([item('b-ld', 'Liquid Death', 'liquid-death'), item('b-tiny', 'Tiny Co', 'tiny-co'), item('b-ld', 'Liquid Death', 'liquid-death')]);
+      const sw = r.calls.filter(b => b.action === 'liSwept');
+      assert.deepEqual(sw.map(x => x.brandId), ['b-ld', 'b-tiny'], 'the second Liquid Death is passed over');
+      assert.deepEqual(r.queries.filter(q => q.co === '1234').map(q => q.kind + q.page), ['fn1', 'fn2', 'kw1'], 'its searches once');
+      assert.match(r.panel, /Run finished/);
+      ok('a brand on the list twice is read once');
+    }
+
+    // A run an older copy (1.38) left with a second try queued at its end:
+    // the new copy drops it — the brand goes first on the next run instead.
+    {
+      const job = {
+        id: 'fold1', owner: 'tOLDTAB', runner: 'pOLD', focus: '', at: 1, step: null, added: 0,
+        items: [item('b-ld', 'Liquid Death', 'liquid-death'), Object.assign(item('b-st1', 'Stuck One', 'stuck-one'), { again: 1, againWhy: 'Sales Navigator\u2019s results did not load' })],
+        results: [{ name: 'Liquid Death', added: 0, note: null, via: 'Sales Navigator', hidden: 0, issue: false, again: false }],
+        day: 'x', doneToday: 1, nextAt: 0, pausedUntil: 0, paused: null, lookalikes: false, newBrands: [], reviewSent: 0,
+        skipBig: false, salesNav: true, snWanted: true, midFirst: false, searches: [], outbox: [], touchedAt: Date.now(),
+      };
+      const before = sent.length, beforeQ = salesQueries.length;
+      const ctx = await browser.newContext();
+      await ctx.addCookies([{ name: 'JSESSIONID', value: '"ajax:123"', domain: '127.0.0.1', path: '/' }]);
+      const pg = await ctx.newPage();
+      await pg.addInitScript('(function(){ try { if (!sessionStorage.getItem("__old_seeded")) { sessionStorage.setItem("sbLiTab", "tOLDTAB"); sessionStorage.setItem("__gm:sbLiFill", ' + JSON.stringify(JSON.stringify(job)) + '); sessionStorage.setItem("__old_seeded", "1"); } } catch (e) {} })();');
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:' + PORT + '/feed/');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run (finished|stopped)/.test(p.innerText); }, null, { timeout: 60000 });
+      const calls = sent.slice(before);
+      assert.ok(!calls.some(b => b.action === 'liSwept' || b.action === 'liCapture'), 'the queued second try is not read');
+      assert.equal(salesQueries.slice(beforeQ).length, 0, 'no Sales Navigator search');
+      assert.match(await pg.innerText('#sbli-panel'), /Run finished/);
+      await ctx.close();
+      ok('a second try an older copy queued is dropped; the run finishes');
     }
 
     // A page that draws only part of what Sales Navigator says it has: loaded
     // once more, the rest still read, and the brand is an issue (read again).
     {
       const r = await run([item('b-part', 'Part Co', 'part-co')]);
-      assert.deepEqual(r.queries.map(q => q.kind + q.page), ['fn1', 'fn1', 'fn2', 'kw1', 'fn1', 'fn1', 'fn2', 'kw1'], 'page 1 twice, page 2 because the count says 40; the whole brand again at the end');
+      assert.deepEqual(r.queries.map(q => q.kind + q.page), ['fn1', 'fn1', 'fn2', 'kw1'], 'page 1 twice, page 2 because the count says 40; the brand once');
       const sw = r.calls.filter(b => b.action === 'liSwept');
-      assert.deepEqual(sw.map(x => x.issue), ['partial', 'partial']);
+      assert.deepEqual(sw.map(x => x.issue), ['partial']);
       assert.match(sw[0].issueNote, /read 20 of 25 on Sales Navigator’s marketing & business development/);
       assert.equal(sw[0].added, 1 + 20 + 15, 'what it did read is saved');
       assert.deepEqual([sw[0].shown, sw[0].read], [25 + 15, 20 + 15]);
-      ok('a page that draws 20 of 25: loaded again, the rest read, the brand comes back');
+      ok('a page that draws 20 of 25: loaded again, the rest read, the brand comes back on the next run');
     }
 
     // A brand under its parent: the parent's company in Sales Navigator,
@@ -473,8 +511,8 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
       assert.deepEqual([cnt.done, cnt.issue], [true, null]);
       assert.deepEqual(r.queries.filter(q => q.co === '5201').map(q => q.kind + q.page), ['fn1', 'clamped2', 'fn1', 'kw1'], 'page 2 dropped → the next search');
       const pp = sw.filter(x => x.brandId === 'b-nonew');
-      assert.deepEqual(pp.map(x => x.issue), ['partial', 'partial'], 'the parent\'s clean read doesn\'t wash out its own short page');
-      assert.deepEqual(pp.map(x => x.via), ['Sales Navigator via Big Parent', 'Sales Navigator via Big Parent']);
+      assert.deepEqual(pp.map(x => x.issue), ['partial'], 'the parent\'s clean read doesn\'t wash out its own short page (read once a run)');
+      assert.deepEqual(pp.map(x => x.via), ['Sales Navigator via Big Parent']);
       assert.ok(pp.every(x => x.parentTried === true));
       assert.match(r.panel, /Run finished/);
       ok('review fixes: hidden-only pages read fine, a missing page 2 moves on, a short own page survives the parent\'s read');

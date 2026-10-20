@@ -64,19 +64,26 @@ const roster = [
   r('7', 'Sister C', { website: 'parentco.com' }), r('8', 'Sister D', { website: 'parentco.com' }),
   r('9', 'Gone Brand', { passedAt: new Date() }),
   r('10', 'Shop on IG', { website: 'instagram.com/shop' }),
+  r('11', 'Cazcanes Tequila'), r('12', 'Ghost Energy', { aka: 'Ghost' }), r('13', 'X'), r('14', 'Monster Energy'),
 ]
 const m = b => matchRoster(clean(b), roster).map(x => x.name + ':' + x.why.join('+'))
 is('name ignoring Inc.', m({ name: 'poppi' }), ['Poppi Inc.:name'])
 is('aka on the roster', m({ name: 'Olipop Soda' }), ['Olipop:name'])
 is('aka the chat sends', m({ name: 'New Name', aka: ['OLI'] }), ['Olipop:name'])
 is('same LinkedIn page, another name', m({ name: 'LD Water', linkedinUrl: 'linkedin.com/company/liquid-death-mountain-water' }), ['Liquid Death:linkedin'])
-is('same website', m({ name: 'Celsius Energy Drink', website: 'celsius.com' }), ['Celsius:website'])
+is('same website (and nearly the same name)', m({ name: 'Celsius Energy Drink', website: 'celsius.com' }), ['Celsius:near+website'])
 is('website 4 brands share is no signal', m({ name: 'Sister E', website: 'www.parentco.com' }), [])
 is('platform link on the roster is no signal', m({ name: 'Shop', website: 'instagram.com/shop' }), [])
 is('archived match is flagged', matchRoster(clean({ name: 'Gone Brand' }), roster)[0].archived, true)
 is('a new brand matches nothing', m({ name: 'Brand New Co', website: 'brandnew.co' }), [])
 is('name match ranks first', m({ name: 'Celsius', linkedinUrl: 'linkedin.com/company/liquid-death-mountain-water' }), ['Celsius:name', 'Liquid Death:linkedin'])
 is('no substring matches', m({ name: 'Pop' }), [])
+// Nearly the same name (Oct 20 2026): "Cazcanes" went on beside "Cazcanes Tequila".
+is('the roster name less its product word', m({ name: 'Cazcanes' }), ['Cazcanes Tequila:near'])
+is('the new name less its product word', m({ name: 'Celsius Energy' }), ['Celsius:near'])
+is('two products of one word are not a match, though one is known as the word', m({ name: 'Ghost Tequila' }), [])
+is('a word apart', m({ name: 'Monster Energy Drink' }), ['Monster Energy:near'])
+is('a one-letter core is no match', m({ name: 'Brand X Energy' }), [])
 
 // ---- notes ---------------------------------------------------------------
 is('notes say where it came from', chatNotes(p, 'Oct 6, 2026'),

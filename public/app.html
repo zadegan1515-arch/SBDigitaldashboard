@@ -2381,7 +2381,7 @@
             <button class="btn-ghost" id="bq-fittools" title="Brand Fit: research brands (sales, venture money, US, college / music) and the Suggest Archive list — on Stock take">Brand Fit: research &amp; archive</button>
             <button class="btn-ghost" id="bq-needs" title="Brands with nobody on file: SponsorUnited names, Find on LinkedIn, Add contact">SponsorUnited worklist</button>
             <button class="btn-ghost" id="bq-stock" title="Every brand in the lanes SB sells, brand ideas to add, and Re-file categories">Lanes, ideas &amp; re-file</button>
-            <button class="btn-ghost" id="bq-dups" title="Brands that look like the same company: the same name, LinkedIn page or website">Duplicates</button>
+            <button class="btn-ghost" id="bq-dups" title="Brands that look like the same company: the same or nearly the same name, LinkedIn page or website">Duplicates</button>
             <button class="btn-ghost" id="bq-fill" title="Fills empty brand summaries from a built-in list of known brands — never overwrites anything you typed">Fill summaries</button>
           </div>
         </details>
@@ -8772,7 +8772,7 @@ document.getElementById('brands-bulk').addEventListener('click', function (e) {
 // same preview + confirm as the brand page, and "Not duplicates" makes
 // the finder stop offering that group.
 var DUP = { open: false, data: null, busy: false, keep: {}, err: '' };
-var DUP_WHY = { name: 'Same name', linkedin: 'Same LinkedIn page', website: 'Same website' };
+var DUP_WHY = { name: 'Same name', near: 'Nearly the same name', linkedin: 'Same LinkedIn page', website: 'Same website' };
 // Where a brand came from, in words (Brand.source).
 var BRAND_SOURCE = {
   'linkedin-discover': 'LinkedIn run', research: 'research list', linkedin: 'LinkedIn capture',
@@ -8810,13 +8810,13 @@ function dupRender() {
   var html = '<div class="panel osp dup">' +
     '<div class="osp-h"><h2>Possible duplicates</h2>' +
       '<span class="sd-dim">' + (groups.length
-        ? sdPlural(d.total, 'group', 'groups') + ' with the same name, LinkedIn page or website. Nothing merges until you confirm; brands under one parent company can share a website, so check those.'
+        ? sdPlural(d.total, 'group', 'groups') + ' with the same (or nearly the same) name, LinkedIn page or website. Nothing merges until you confirm; brands under one parent company can share a website, so check those.'
         : 'None found — no two brands share a name, a LinkedIn page or a website.') + '</span>' +
       '<span class="osp-sp"></span><a href="#" class="sd-link" data-dupclose="1">Close</a></div>';
   html += groups.map(function (g, gi) {
     var why = {};
     g.pairs.forEach(function (p) { p.why.forEach(function (w) { why[w] = true; }); });
-    var weak = !why.name && !why.linkedin;
+    var weak = !why.name && !why.near && !why.linkedin;
     var keepId = DUP.keep[g.members.map(function (m) { return m.id; }).join('|')] || g.keep;
     var keeper = g.members.filter(function (m) { return m.id === keepId; })[0] || g.members[0];
     return '<div class="osp-b" data-dupg="' + gi + '">' +
@@ -12337,7 +12337,7 @@ function zachText(list) {
 // in the linkedin fills"): fillSchedule = the fill's own worklist (the same
 // liList the script asks) cut into its days, 100 a day, with a Brand Fit floor
 // (remembered per browser, localStorage sb.fillFit; the script's default 50 —
-// mid-size brands first, very big brands skipped, as the run does).
+// best Brand Fit first (Leo, Oct 19 2026), very big brands skipped, as the run does).
 // Read-only — a forecast: every run asks for the list fresh.
 var LI_SCHED = null, LI_SCHED_OPEN = null;
 function fillFitFloor() {
@@ -12368,8 +12368,8 @@ function renderFillSched() {
     '<div class="t-meta" style="margin-top:4px">' + [
       d.minFit && d.belowFit ? d.belowFit + ' under Fit ' + d.minFit + ' left out' : '',
       d.bigSkipped ? d.bigSkipped + ' very big brand' + (d.bigSkipped === 1 ? '' : 's') + ' skipped (giants, 1,500+ on LinkedIn)' : '',
-      d.minFit ? 'mid-size brands first' : '',
-      d.retry ? d.retry + ' read again first (something went wrong last time)' : '',
+      n ? 'best Brand Fit first' : '',
+      d.retry ? d.retry + ' read again (something went wrong last time), in their Brand Fit place' : '',
       d.resting ? d.resting + ' read already, not read again' + (d.stuck ? ' (' + d.stuck + ' stuck after 3 tries — back in a month)' : '') : '',
       d.planned ? d.planned + ' on the Schedule go first, whatever their fit' : '',
       d.research ? d.research + ' research-list name' + (d.research === 1 ? '' : 's') + ' (not on the roster yet, no fit score)' : '',
@@ -12382,7 +12382,7 @@ function renderFillSched() {
       day.rows.map(function (r, i) {
         return '<div style="display:flex;gap:10px;align-items:baseline;padding:6px 0;flex-wrap:wrap">' +
           '<span class="t-meta" style="width:28px;text-align:right">' + (i + 1) + '</span>' +
-          (r.brandId ? '<span class="t-brand" data-brand="' + esc(r.brandId) + '" style="cursor:pointer">' + esc(r.name) + '</span>' + rbTag(r.brandId) + rbTag(r.brandId)
+          (r.brandId ? '<span class="t-brand" data-brand="' + esc(r.brandId) + '" style="cursor:pointer">' + esc(r.name) + '</span>' + rbTag(r.brandId)
             : '<span class="t-brand">' + esc(r.name) + '</span>') +
           (r.category ? '<span class="t-meta">' + esc(CAT_NAMES[r.category] || r.category) + '</span>' : '') +
           (r.fit != null ? '<span class="t-meta">Fit <b>' + r.fit + '</b></span>' : '') +

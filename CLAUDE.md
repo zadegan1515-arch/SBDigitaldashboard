@@ -974,7 +974,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   heading per grade under **Best grade first** (default; Newest first) and a grade filter. **Add all A's** (Leo, Oct 13 2026 — 88 of 106 waiting finds were A): the To review bar's button (`dcBulkOpen`,
   `#dc-bulk`) → `addDiscoveredBulk({ grade: 'A' })` preview = every A waiting, each as it'd be filed (`discoveryCategory`,
   same as one Add), and the ones held back because they may already be on the roster (chat-add's `matchRoster`: name /
-  aka, LinkedIn page, website) — and any other find with a held one's name / website / LinkedIn page (`sameAs`) → ticks
+  aka, nearly the same name, LinkedIn page, website) — and any other find with a held one's name / website / LinkedIn page (`sameAs`) → ticks
   → Add sends the preview's `expect` + ticked `ids` (one transaction through `promoteDiscovery`, the single Add's own path).
   Finds that are one brand (same name, website or LinkedIn page, in the batch) share a `group`: the best scored names
   it, the others "same brand as …" join it and fill its empty links. A stale answer reopens it with Leo's unticks kept
@@ -990,7 +990,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `DASHBOARD_TOKEN` in its environment — no API spend) follows `docs/add-a-brand-chat.md`: reads the
   screenshot / name, `brandLookup`, researches the open web (site, LinkedIn page, what they sell, money,
   college / music), previews `chatAddBrand` (rules pure in `src/lib/chat-add.ts`: possible matches by
-  name / aka, LinkedIn page, website — the Duplicates signals; `node scripts/test-chat-add.mjs`) and applies.
+  name / aka, nearly the same name, LinkedIn page, website — the Duplicates signals; `node scripts/test-chat-add.mjs`) and applies.
   **Every brand Leo sends is a yes** once real information is found — its own website or checked LinkedIn page, and
   what it sells (Leo, Oct 18 2026: "every brand Leo sends is a yes when real info is found. Ask only when it might
   match a brand already on the dashboard"); no info → nothing added, the chat says what's missing. Brand
@@ -1047,7 +1047,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   changes), **Archive…** (named first; same as Archive: passedAt + queued people shelved, one
   transaction) or re-file with the usual bar — each leaves the list (`reviewNewBrands`; looked-at ids in
   Setting `newBrandsReviewed`). **Brands → Duplicates** (`findDuplicates`, rules in
-  `src/lib/duplicates.ts`, `node scripts/test-duplicates.mjs`): the same name / also-known-as, LinkedIn
+  `src/lib/duplicates.ts`, `node scripts/test-duplicates.mjs`): the same name / also-known-as, **nearly
+  the same name** (Oct 20 2026, after the LinkedIn fill read "Cazcanes" and "Cazcanes Tequila" as two brands: `coreName`
+  takes the words that say what it sells off the end, one at a time — Tequila, Brewing Co., Energy Drinks… (`coreNames`,
+  3+ letters on the key, spaces ignored) — and one of those must be another brand's own name, never its aka and never
+  another core, so Ghost Energy / Ghost Tequila and Garage Beer (aka Garage) / Garage Clothing don't pair; "Nearly the
+  same name"), LinkedIn
   page or website — never an email domain (parent companies share one; Leo's call), and a website 4+
   brands share or a platform link (linktr.ee, Instagram…) is no signal. Suggestions only: Merge runs the
   brand page's `mergeBrands` preview + confirm (the keeper now takes the merged brand's names as
@@ -1140,13 +1145,16 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Setting `outreachShownDays`, written by `getOutreachPlan`; short = reachable < `workNeed`, the
   same rule as the Schedule's labels; soonest day first; `src/lib/planned-first.ts`,
   `node scripts/test-planned-first.mjs`; the Schedule's contacts check links "Start the LinkedIn
-  fill ↗ — it does these first"), then (after any name Leo asked for, `RESEARCH_EXTRA`) **every brand
-  with no buyer on file** (Leo, Oct 2026 — `noBuyerFirst` in `src/lib/coverage.ts`; items carry
-  `noBuyer`, the reply `noBuyer` = how many; script ≥1.28 says so in the setup panel, the run's
-  progress and `whyItem`), then the rest; within each group a focus word
-  (`focusTerms` — "electrolyte" expands to the hydration shelf by name), then **by size** (Leo, Oct 2026: "classify
-  mid-sized brands as target brands and do those"; `src/lib/brand-size.ts`, `node scripts/test-brand-size.mjs`):
-  target brands → the research list → size unknown → small → big, emptiest first within each. Size =
+  fill ↗ — it does these first"), then any name Leo asked for (`RESEARCH_EXTRA`), then **every brand by Brand Fit,
+  highest first** (Leo, Oct 19 2026: "i want to be as efficient and have the highest rated brands … ran first then the
+  lower ones after"; `byFit` in `src/lib/fill-schedule.ts`, `node scripts/test-fill-schedule.mjs`; `liList.fitFirst`,
+  script ≥1.39 says "Best Brand Fit first" in the setup panel, the run's progress and `whyItem` — "Brand Fit 83 — …").
+  It replaced the old groups — no buyer on file first (`noBuyerFirst`, coverage.ts, now unused by the fill), mid-size
+  first, re-reads first, the focus word first — which now only **break a tie** in score, in this order: a re-read, a
+  saved LinkedIn page, the focus word (`focusTerms` — "electrolyte" expands to the hydration shelf by name), mid-size →
+  not measured → small → big, no buyer yet (items carry `noBuyer`), fewest on file, the name. Then research-list names
+  (not on the roster, no score), then brands already reached out to, then held giants, each best fit first. Size
+  (`src/lib/brand-size.ts`, `node scripts/test-brand-size.mjs`) =
   `Brand.liMembers` (the People tab's "N associated members", saved by every fill read and hand scan of the
   brand's own page, never a parent's; small < 20, target 20–499, big 500+), else a known parent → big, else
   tier (growth target / emerging small; established is a guess → unknown since Oct 12 2026, so it's measured
@@ -1276,17 +1284,23 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   drawing fewer cards than Sales Navigator's own count says (`snTotal`, "28 results"; cards counted once each,
   `snRead().cards`) → loaded once more, then the rest is read and the brand is `partial`; a page that won't open → `noOpen`;
   the dashboard not saving → `save`. A brand whose own read went wrong still gets its parent's read (`brandIssue` →
-  `tryParent`, which carries `issue` / `partial` / `problem` along). A brand with an issue goes **again at the end of the
-  run** (`item.again`, once), and its liSwept carries `issue` / `issueNote` / `done` / `shown` / `read` / `again` / `key` /
-  `snOn`; it waits in the run's `outbox` until the dashboard has it (`flushOutbox` at the top of `runFill`; down past the
+  `tryParent`, which carries `issue` / `partial` / `problem` along). **One read per brand per run** (script 1.40; Leo, Oct 20 2026:
+  "i think there are repeats can we make sure that does not happen" — 1.38 put a brand with an issue at the end of the
+  same run for a second try, 16 of a 92-brand run): a brand with an issue waits for the next run, where it goes first, and
+  `runFill` passes over any item whose brand an earlier item read (`readThisRun` / `passOver`, keyed by brandId, else the
+  name) — a brand listed twice, a research name whose page is a roster brand already read; a research name whose page is
+  a roster brand further down the run is passed over so that brand's own item reads it with its own settings; a pass-over
+  after a loaded search waits like a page step and counts toward the day's 100; a second try a 1.38 or 1.39 copy queued in a live
+  run is dropped before the day's pause (`dropSecondTries`). Its liSwept carries `issue` / `issueNote` / `done` / `shown` /
+  `read` / `again` (always false from 1.40) / `key` / `snOn`; it waits in the run's `outbox` until the dashboard has it (`flushOutbox` at the top of `runFill`; down past the
   retries → pause, Continue sends it). A page 2 Sales Navigator doesn't have (it drops the number) ends that search
   (`snNextOrDone`); paging follows Sales Navigator's count when it shows one; "LinkedIn Member"-only pages aren't misreads. An account without Sales
   Navigator **pauses** the run (`snNoAccount`). The People tab's views (PASSES, BIG_PASSES) are only for a run with the
   switch off (test-li-script.js's suite). **The dashboard decides re-reads** (`src/lib/li-sweep.ts`): `sweptOutcome` turns
   a liSwept into the mark (`clean` = done with no issue; a misread page = issue `reading`; older copies: a Sales Navigator
   read is clean, `snMissed` an issue) and `liDue` decides: **clean → never by itself** (kept for good in `liSweepLog`;
-  `liPageRetry` / `liPagePick` are the ways back, through the same lock — `updateLiLog`); **issue → first on the next run**
-  (after the Schedule's and asked-for names; the Brand Fit floor still applies), for `LI_RETRY_MAX` = 3 runs (`tries`
+  `liPageRetry` / `liPagePick` are the ways back, through the same lock — `updateLiLog`); **issue → back on the next run**
+  (in its Brand Fit place since Oct 19 2026 — it used to go first; the Brand Fit floor still applies), for `LI_RETRY_MAX` = 3 runs (`tries`
   count runs — `nextTries`, the same run posting twice is one), then it waits a month ("stuck" on the report) — a brand with
   a parent too; no clear page / a People-tab-only read → the old month. A run with Sales Navigator off never clears a
   Sales Navigator issue (`nextMark`, `snOff`) and leaves it a month (`dueOf` in li-list-db) — a run with it on reads it first.
@@ -1338,11 +1352,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   score highly"): the setup panel's "Only brands with Brand Fit of at least [60]" (GM `sbLiMinFit`, 0 = every brand)
   → `liList({ minFit })` scores each brand with `scoreBrand` (brand-fit.ts, Leo's category priority, no accept rate)
   and leaves off brands under the floor, too small, not US, closed or Skip (`belowFit` counts them) — never the
-  Schedule's brands or names Leo asked for; with a floor the list goes best fit first (items carry `fit`, the panel
+  Schedule's brands or names Leo asked for; the list goes best fit first, floor or not (items carry `fit`, the panel
   shows it). The Sales Navigator retry (`snRetry`) only applies when the run has Sales Navigator on.
-  **Mid-size first** (1.36; Leo, Oct 12 2026: "i want to target the midsized brands mainly"): with a floor the list
-  goes **size first** — target (20–499 on LinkedIn) → not measured → small → big — then, within a size, no buyer yet
-  first, then best fit (`midFirst`; `noBuyerFirst` only without a floor). The floor defaults to **50** (`FIT_DEFAULT`):
+  **Mid-size first** (1.36–1.38; Leo, Oct 12 2026: "i want to target the midsized brands mainly") was replaced by best
+  Brand Fit first on Oct 19 2026 (above; `midFirst` is false now — Brand Fit already gives mid-size 26 size points vs
+  big 18, so mid-size still wins ties and most close calls). The floor defaults to **50** (`FIT_DEFAULT`):
   set while Brand Fit still gave big companies 30 size points vs mid-size 22 (at 60 only 14 of 49 mid-size brands
   passed, vs 100 of 207 big); since Oct 12 mid-size gets 26 and big 18. **Very big brands skipped** (1.35, "Skip very big brands", GM `sbLiSkipBig`, on by default →
   `skipGiants`): held giants (giants.ts) and anything with **1,500+ on LinkedIn** (`VERY_BIG_LI`; Leo: "not reach out
@@ -1387,7 +1401,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   **Fill schedule** (Leo, Oct 12 2026: "make me a schedule for the brands that run in the linkedin fills"; card `#li-sched`
   on Outreach → People, `renderFillSched`): `fillSchedule({ minFit })` = the fill's own worklist — liList's logic lives in
   `buildLiList` (`src/lib/li-list-db.ts`), shared by /api/ingest and /api/data so the schedule is exactly what the run
-  reads — with the script's defaults (focus electrolyte, research list, Sales Navigator) and a Brand Fit floor (default 60,
+  reads — with the script's defaults (focus electrolyte, research list, Sales Navigator) and a Brand Fit floor (default 50,
   per browser in localStorage `sb.fillFit`; Leo sets the same in the fill's setup panel), cut into calendar days at
   `LI_PER_DAY` (today = what's left after the brands the sweep / research logs show read today; `splitFillDays`,
   `fillWhy` in `src/lib/fill-schedule.ts`). Read-only forecast. `node scripts/test-fill-schedule.mjs`,
@@ -1427,7 +1441,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   page super visible and i want to be able to be fullscreen on something else"; he's on a Mac): the runs showed ~40 s a brand
   and no Sales Navigator page failing on screen, 3–5 min and 1 in 3 not drawing hidden. Outreach → People's **Run it behind
   other windows** (`#li-fast`, `liFastHtml`, `LI_FAST_CMD` in app.html; the run card's hidden line and the script's
-  `#sblihidden` warning point there, 1.39) = one Terminal paste that makes `~/Applications/Chrome for LinkedIn.app`
+  `#sblihidden` warning point there, 1.41) = one Terminal paste that makes `~/Applications/Chrome for LinkedIn.app`
   (osacompile: quits Chrome, reopens it with `--restore-last-session --disable-backgrounding-occluded-windows
   --disable-renderer-backgrounding --disable-background-timer-throttling`) and turns App Nap off for Chrome
   (`NSAppSleepDisabled`). Opened that way a covered window isn't hidden to the page, so `hiddenMs` stays ~0; minimized

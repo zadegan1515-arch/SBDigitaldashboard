@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.39
+// @version      1.41
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -86,7 +86,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.39';
+  var VERSION = '1.41';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1367,10 +1367,16 @@
   // navigator"): every brand does — an empty People tab, a big company and
   // a brand read under its parent (the parent's company, searched for the
   // brand's name) too. Nothing falls back to the People tab's views: a page
-  // that doesn't load is loaded once more, then the brand is an issue,
-  // tried again at the end of the run and first on the next one (the
-  // dashboard keeps count). An account without Sales Navigator pauses the
-  // run. The People tab's views are only for a run with the switch off.
+  // that doesn't load is loaded once more, then the brand is an issue and
+  // goes first on the next run (the dashboard keeps count). An account
+  // without Sales Navigator pauses the run. The People tab's views are only
+  // for a run with the switch off.
+  // 1.40 (Leo, Oct 20 2026: "i think there are repeats can we make sure that
+  // does not happen"): one read per brand per run. The second try at the
+  // end of the run is gone — a brand that went wrong waits for the next
+  // run, where it goes first — and a brand already read this run (a second
+  // try an older copy queued, a research name whose page is a roster
+  // brand's) is passed over.
   var SN_KEY = 'sbLiSalesNav';
   var SN_SEARCHES = [
     { label: 'marketing & business development', q: 'marketing', pages: 3,
@@ -1654,6 +1660,9 @@
       snWanted: discover.salesNav !== false,
       // The dashboard put mid-size brands first (a Brand Fit floor is on).
       midFirst: !!discover.midFirst,
+      // Best Brand Fit first (1.39; Leo, Oct 19 2026: "have the highest rated
+      // brands … ran first then the lower ones after").
+      fitFirst: !!discover.fitFirst,
       searches: (discover.words || []).map(function (q) { return { q: q, page: 1, navs: 0 }; }),
     });
     runEvent(loadFill(), 'start', { focus: focus || '', items: items.length });
@@ -1692,6 +1701,13 @@
       setFillStatus('Saving ' + (job.outbox[0].name || 'the last brand') + '…');
       return flushOutbox().then(function () { runFill(); }, fillError);
     }
+    // A second try an older copy (1.38, 1.39) queued at the end of the run goes
+    // first on the next run instead (1.40) — dropped before the day's pause,
+    // so a run with only those left finishes now, not tomorrow.
+    if (dropSecondTries(job)) {
+      if (job.pausedUntil && job.at >= job.items.length) job.pausedUntil = 0;
+      saveFill(job);
+    }
     if (job.day !== todayKey()) { job.day = todayKey(); job.doneToday = 0; saveFill(job); }
     if (job.pausedUntil && Date.now() < job.pausedUntil) {
       renderFill(job, 'Done for today (' + DAILY_CAP + ' brands). Carries on ' + new Date(job.pausedUntil).toLocaleString() + ' if this tab stays open.');
@@ -1708,6 +1724,8 @@
     if (job.at >= job.items.length) return finishFill(job, false);
     var item = job.items[job.at];
     if (!job.step) {
+      // One read per brand per run: a brand already read is passed over.
+      if (readThisRun(job, item)) return passOver(job);
       job.step = { phase: item.research ? 'research' : peopleUrl(item.linkedinUrl, '') ? 'read' : 'search', pass: 0, triedAka: false, seen: 0, added: 0, navs: 0, startedAt: Date.now(), hiddenMs: 0 };
       saveFill(job);
       // Leo marked it "None of these": never searched under its own name
@@ -1917,10 +1935,17 @@
       if (r && r.serverError) return brandIssue(job2, 'save', r.error || 'the dashboard did not answer');
       var st = job2.step, it = job2.items[job2.at];
       if (r && r.ok && (r.outcome === 'added' || r.outcome === 'exists')) {
+        // Its page is a roster brand further down this run: that brand's own
+        // item reads it, with its own settings (OK'd giant, parent, name).
+        for (var later = job2.at + 1; later < job2.items.length; later++) {
+          if (job2.items[later].brandId === r.brandId) return passOver(job2, true);
+        }
         it.research = false;
         it.brandId = r.brandId;
         it.linkedinUrl = r.linkedinUrl;
         if (r.outcome === 'added') job2.newBrands = (job2.newBrands || []).concat([r.name]);
+        // Its page is a roster brand's this run already read: not twice.
+        if (readThisRun(job2, it)) return passOver(job2, true);
         // Still the same item: its clock and hidden time carry on.
         job2.step = { phase: peopleUrl(r.linkedinUrl, '') ? 'read' : 'search', pass: 0, triedAka: false, seen: 0, added: 0, navs: 0, startedAt: st.startedAt || Date.now(), hiddenMs: st.hiddenMs || 0 };
         job2.nextAt = Date.now() + rand(2000, 4000);
@@ -2106,9 +2131,9 @@
 
   // Something went wrong with this brand's read (1.38, Leo, Oct 14 2026: "if
   // a brand capture does not get all the people … or it times out … make
-  // sure that it runs again"). It's done for now; finishBrand puts it at the
-  // end of the run for a second try, and the dashboard puts it first on the
-  // next run until a read comes out clean.
+  // sure that it runs again"). It's done for this run (one read per brand a
+  // run, 1.40); the dashboard puts it first on the next run until a read
+  // comes out clean.
   function brandIssue(job, code, words) {
     var st = job.step || (job.step = { seen: 0, added: 0 });
     st.issue = code; st.issueNote = words;
@@ -2116,6 +2141,38 @@
     // (the issue rides along, so the brand still comes back).
     if (st.kind !== 'parent' && tryParent(job, words)) return;
     finishBrand(job, words);
+  }
+  // The brand an item reads: its brandId, else (a research name that never
+  // became a brand) its name.
+  function runKey(it) { return it.brandId ? 'b:' + it.brandId : 'n:' + String(it.name || '').trim().toLowerCase(); }
+  // Read (or passed over) earlier in this run: every item before the
+  // current one is done.
+  function readThisRun(job, it) {
+    var k = runKey(it);
+    for (var i = 0; i < job.at && i < job.items.length; i++) if (runKey(job.items[i]) === k) return true;
+    return false;
+  }
+  // On to the next brand without a read or a visit mark. After a page it
+  // loaded (a research name's search), it waits like a step between pages
+  // and the page counts toward the day's brands; otherwise at once.
+  function passOver(job, loaded) {
+    job.step = null;
+    job.at++;
+    if (loaded) {
+      job.doneToday++;
+      if (job.doneToday >= DAILY_CAP && job.at < job.items.length) job.pausedUntil = tomorrowMorning();
+    }
+    job.nextAt = Date.now() + (loaded ? secs(BETWEEN_PAGES) : 500);
+    saveFill(job);
+    return runFill();
+  }
+  // Second tries an older copy put at the end of the run (not one already
+  // under way): off the list.
+  function dropSecondTries(job) {
+    var keep = job.items.filter(function (it, i) { return !it.again || i < job.at || (i === job.at && !!job.step); });
+    if (keep.length === job.items.length) return false;
+    job.items = keep;
+    return true;
   }
   // The current Sales Navigator search is done: the next one, or the brand's
   // read through Sales Navigator is.
@@ -2401,8 +2458,6 @@
     var issue = st.issue || (st.partial ? 'partial' : null);
     var issueNote = st.issueNote || st.partial || null;
     if (issue && !note && issue === 'partial') note = issueNote;
-    // A first try that went wrong goes again at the end of this run.
-    var again = !!issue && !item.again;
     // Every item goes in the run's report; the server's visit log (which
     // decides whether a brand is read again) only takes the ones with a
     // brandId — a research name that never became a brand is logged by
@@ -2434,7 +2489,6 @@
     };
     job.outbox = (job.outbox || []).concat([body]);
     job.results.push({ name: item.name, added: st.added, note: note || null, via: via, hidden: hiddenTotal(st.hidViews), issue: !!issue, again: !!item.again });
-    if (again) job.items.push(Object.assign({}, item, { again: 1, againWhy: issueNote || note || 'its first try went wrong' }));
     job.at++;
     job.step = null;
     job.doneToday++;
@@ -2600,7 +2654,9 @@
   function whyItem(job, item) {
     if (!item) return '';
     var w = whyItemBase(job, item);
-    return item.fit != null && !item.research ? w + ' · Brand Fit ' + item.fit : w;
+    if (item.fit == null || item.research) return w;
+    // Best Brand Fit first (1.39): the score is the reason, so it leads.
+    return job.fitFirst && !item.planned ? 'Brand Fit ' + item.fit + ' — ' + w : w + ' · Brand Fit ' + item.fit;
   }
   function whyItemBase(job, item) {
     if (item.planned) {
@@ -2609,7 +2665,7 @@
     }
     if (item.research) return 'from the research list' + (item.lane ? ' (' + item.lane + ')' : '');
     if (item.again) return 'trying it again — ' + (item.againWhy || 'its first try went wrong');
-    if (item.retry) return 'read again first — ' + (item.issueText || 'its last read went wrong') + (item.tries > 1 ? ' (try ' + (item.tries + 1) + ')' : '');
+    if (item.retry) return (job.fitFirst ? 'read again — ' : 'read again first — ') + (item.issueText || 'its last read went wrong') + (item.tries > 1 ? ' (try ' + (item.tries + 1) + ')' : '');
     if (item.hiddenRetry) return 'read before without Sales Navigator — back for it';
     // Mid-size first (Leo, Oct 12 2026): the size leads the reason.
     if (job.midFirst && item.size) {
@@ -2621,9 +2677,9 @@
     // Schedule's (the dashboard's liList puts them there).
     if (item.noBuyer) return 'no marketing / partnerships person on file yet' + (item.focus ? ' (a “' + (job.focus || 'focus') + '” brand)' : '');
     if (item.focus) return 'a “' + (job.focus || 'focus') + '” brand';
-    var sz = { target: 'a target brand (mid-size)', small: 'a small brand', big: 'a big company — they go last' }[item.size];
+    var sz = { target: 'a target brand (mid-size)', small: 'a small brand', big: job.fitFirst ? 'a big company' : 'a big company — they go last' }[item.size];
     if (sz) return sz + (item.members != null ? ', ' + item.members.toLocaleString('en-US') + ' on LinkedIn' : '');
-    return 'under 25 people, emptiest first';
+    return job.fitFirst ? 'under 25 people on file' : 'under 25 people, emptiest first';
   }
 
   function renderFill(job, status) {
@@ -2639,6 +2695,8 @@
     var isGap = function (i) { return i.noBuyer && !i.planned && !i.research; };
     // Mid-size first: the brands that lead the run, instead of the no-buyer ones.
     if (job.midFirst) isGap = function (i) { return i.size === 'target' && !i.planned && !i.research; };
+    // Best Brand Fit first (1.39): neither leads the run any more.
+    if (job.fitFirst) { isGap = function () { return false; }; focusN = 0; }
     var gapN = job.items.filter(isGap).length;
     var doneOf = function (test) { return job.items.slice(0, at).filter(test).length; };
     var pct = n ? Math.round(at / n * 100) : 100;
@@ -2650,9 +2708,10 @@
       plannedN ? h('div', { style: 'font-size:12px;color:#555', text: 'First, the Schedule\'s brands that are short on people: ' + doneOf(function (i) { return i.planned; }) + ' of ' + plannedN + ' done' }) : null,
       gapN ? h('div', { id: 'sbligap', style: 'font-size:12px;color:#555', text: (plannedN ? 'Then ' : 'First, ') + (job.midFirst ? 'mid-size brands: ' : 'brands with no marketing / partnerships person yet: ') + doneOf(isGap) + ' of ' + gapN + ' done' }) : null,
       focusN ? h('div', { style: 'font-size:12px;color:#555', text: (plannedN || gapN ? 'Then ' : '') + '“' + (job.focus || 'focus') + '” brands: ' + doneOf(function (i) { return i.focus && !i.planned; }) + ' of ' + focusN + ' done' }) : null,
+      job.fitFirst ? h('div', { id: 'sblifitline', style: 'font-size:12px;color:#555', text: (plannedN ? 'Then b' : 'B') + 'est Brand Fit first' + (cur && cur.fit != null && !cur.planned && !cur.research ? ' — now at ' + cur.fit : '') }) : null,
       cur ? h('div', { id: 'sblinow', style: 'font-size:12px;color:#111;margin-top:4px' }, [b(cur.name), ' — ' + whyItem(job, cur)]) : null,
       h('div', { style: 'font-size:12px;color:#555', text: 'Today: ' + job.doneToday + ' of ' + DAILY_CAP + ' brands' }),
-      h('div', { id: 'sblisnline', style: 'font-size:12px;color:' + (job.snOff ? '#946200' : '#555'), text: job.salesNav ? 'Every brand through Sales Navigator; one that goes wrong is tried again at the end'
+      h('div', { id: 'sblisnline', style: 'font-size:12px;color:' + (job.snOff ? '#946200' : '#555'), text: job.salesNav ? 'Every brand through Sales Navigator, once a run; one that goes wrong goes first on the next run'
         : job.snOff ? 'Sales Navigator off for this run: ' + job.snOff + ' — using the People tab' : 'Marketing / partnerships people from the People tab (Sales Navigator is off)' }),
       job.salesNav === false ? h('button', { id: 'sblisnon', style: BTN2 + ';margin-top:6px', text: 'Use Sales Navigator again', onclick: guard(snTurnOn) }) : null,
       (job.newBrands || []).length ? h('div', { style: 'font-size:12px;color:#137333', text: job.newBrands.length + ' new brand' + (job.newBrands.length === 1 ? '' : 's') + ' found and added' }) : null,
@@ -2749,32 +2808,37 @@
         // person right after the Schedule's (Leo, Oct 2026: every brand
         // gets one); the focus word orders brands within each group.
         var gap = j.noBuyer || 0;
-        if (j.midFirst) out.appendChild(h('div', { id: 'sblimidnote', style: 'font-size:12px;color:#111;margin-bottom:6px', text: (j.planned ? 'After the Schedule\'s ' + j.planned + ' brand' + (j.planned === 1 ? '' : 's') + ' short on people: m' : 'M') +
+        if (j.fitFirst) out.appendChild(h('div', { id: 'sblifitfirst', style: 'font-size:12px;color:#111;margin-bottom:6px', text: (j.planned ? 'After the Schedule\'s ' + j.planned + ' brand' + (j.planned === 1 ? '' : 's') + ' short on people: b' : 'B') +
+          'est Brand Fit first, highest score down. Brands already reached out to go last.' }));
+        if (j.midFirst && !j.fitFirst) out.appendChild(h('div', { id: 'sblimidnote', style: 'font-size:12px;color:#111;margin-bottom:6px', text: (j.planned ? 'After the Schedule\'s ' + j.planned + ' brand' + (j.planned === 1 ? '' : 's') + ' short on people: m' : 'M') +
           'id-size brands first' + (j.sizes ? ' (' + j.sizes.target + ', 20–499 on LinkedIn), then ' + j.sizes.unknown + ' not measured yet, ' + j.sizes.small + ' small, ' + j.sizes.big + ' big (500–1,499)' : '') +
           '. Within each, brands with no marketing / partnerships person first, then best Brand Fit.' }));
-        if (gap && !j.midFirst) out.appendChild(h('div', { id: 'sbligapnote', style: 'font-size:12px;color:#111;margin-bottom:6px', text: (j.planned ? 'After the Schedule\'s ' + j.planned + ' brand' + (j.planned === 1 ? '' : 's') + ' short on people, the ' : 'First the ') +
+        if (gap && !j.midFirst && !j.fitFirst) out.appendChild(h('div', { id: 'sbligapnote', style: 'font-size:12px;color:#111;margin-bottom:6px', text: (j.planned ? 'After the Schedule\'s ' + j.planned + ' brand' + (j.planned === 1 ? '' : 's') + ' short on people, the ' : 'First the ') +
           gap + ' brand' + (gap === 1 ? '' : 's') + ' with no marketing / partnerships person on file yet — so every brand gets one. Then the rest, up to 25 people each.' }));
-        if (f) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: first.length
+        if (f && j.fitFirst) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: first.length
+          ? 'Between brands with the same score, the ' + first.length + ' matching “' + f + '” go first.'
+          : 'None match “' + f + '”.' }));
+        else if (f) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: first.length
           ? (gap ? 'Within each, the ' + first.length + ' matching “' + f + '” go first: ' : 'First the ' + first.length + ' matching “' + f + '”: ') +
             first.slice(0, 15).map(function (i) { return i.name; }).join(', ') + (first.length > 15 ? '…' : '') + (gap ? '.' : '. Then everything else, emptiest first.')
           : 'None match “' + f + '” — it goes emptiest first.' }));
-        if (j.sizes && !j.midFirst) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: 'Then by size: ' + j.sizes.target + ' target (mid-size, 20–499 on LinkedIn), ' + j.sizes.unknown + ' not measured yet, ' + j.sizes.small + ' small, ' + j.sizes.big + ' big companies last.' }));
+        if (j.sizes && !j.midFirst && !j.fitFirst) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: 'Then by size: ' + j.sizes.target + ' target (mid-size, 20–499 on LinkedIn), ' + j.sizes.unknown + ' not measured yet, ' + j.sizes.small + ' small, ' + j.sizes.big + ' big companies last.' }));
         if (j.noPage) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.noPage + ' have no LinkedIn page saved; it searches LinkedIn for those and only uses a clear match.' }));
         if (j.minFit) out.appendChild(h('div', { id: 'sblifitnote', style: 'font-size:12px;color:#555;margin-bottom:6px', text: 'Only brands with Brand Fit ' + j.minFit + '+' + (j.belowFit ? ' — ' + j.belowFit + ' lower-scoring, too small or Skip brands left out' : '') + '. The Schedule\'s brands always go.' }));
         if (j.bigSkipped) out.appendChild(h('div', { id: 'sblibignote', style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.bigSkipped + ' very big brands skipped (household names, big parent companies, 1,500+ on LinkedIn).' }));
         var again = j.retry != null ? j.retry : j.hiddenRetry;
-        if (again) out.appendChild(h('div', { id: 'sblisnretry', style: 'font-size:12px;color:#555;margin-bottom:6px', text: again + ' brand' + (again === 1 ? '' : 's') + ' whose last read went wrong (or never went through Sales Navigator) go first, right after the Schedule\'s.' }));
+        if (again) out.appendChild(h('div', { id: 'sblisnretry', style: 'font-size:12px;color:#555;margin-bottom:6px', text: again + ' brand' + (again === 1 ? '' : 's') + ' whose last read went wrong (or never went through Sales Navigator) ' + (j.fitFirst ? 'are read again, in their Brand Fit place.' : 'go first, right after the Schedule\'s.') }));
         if (j.resting) out.appendChild(h('div', { id: 'sbliresting', style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.resting + ' left out: read already — a brand read in full isn\'t read again by itself' + (j.stuck ? '; ' + j.stuck + ' went wrong 3 runs in a row and wait a month' : '') + '.' }));
         if (j.researchWaiting) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.researchWaiting + ' research names left out: LinkedIn had no clear page for them last month.' }));
         out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:8px', text: 'At about ' + DAILY_CAP + ' a day that is roughly ' + Math.ceil(j.items.length / DAILY_CAP) + ' day(s).' }));
-        out.appendChild(h('button', { id: 'sblifillstart', style: BTN, text: 'Start', onclick: function () { startFill(j.items, f, Object.assign(discoverNow(), { midFirst: !!j.midFirst })); } }));
-        if (startNow) { startNow = false; startFill(j.items, f, Object.assign(discoverNow(), { midFirst: !!j.midFirst })); }
+        out.appendChild(h('button', { id: 'sblifillstart', style: BTN, text: 'Start', onclick: function () { startFill(j.items, f, Object.assign(discoverNow(), { midFirst: !!j.midFirst, fitFirst: !!j.fitFirst })); } }));
+        if (startNow) { startNow = false; startFill(j.items, f, Object.assign(discoverNow(), { midFirst: !!j.midFirst, fitFirst: !!j.fitFirst })); }
       }).catch(function (e) { out.textContent = e.message; });
     };
     focus.onkeydown = function (e) { if (e.key === 'Enter') look(); };
     freshPanel([
       head('Fill brands by itself'),
-      h('div', { style: MUTED, text: 'Goes through every brand under 25 people — the ones with no marketing / partnerships person first — one at a time in this tab, and saves the buyers it finds. About ' + DAILY_CAP + ' brands a day, under a minute apart. It pauses if LinkedIn shows a check or a limit.' }),
+      h('div', { style: MUTED, text: 'Goes through every brand under 25 people — best Brand Fit first — one at a time in this tab, and saves the buyers it finds. About ' + DAILY_CAP + ' brands a day, under a minute apart. It pauses if LinkedIn shows a check or a limit.' }),
       h('div', { style: 'font-size:12px;color:#555;margin-bottom:4px', text: 'Start with brands matching (optional):' }),
       h('div', { style: 'display:flex;gap:6px' }, [
         focus,
@@ -2793,7 +2857,7 @@
       ]),
       h('label', { style: 'display:flex;gap:7px;align-items:flex-start;font-size:12px;color:#333;cursor:pointer;margin-top:10px' }, [
         snBox,
-        h('span', { text: 'Use Sales Navigator for every brand — it names people your LinkedIn shows as "LinkedIn Member". A brand it can\'t read is tried again at the end of the run, and first on the next. Untick to use the People tab instead.' }),
+        h('span', { text: 'Use Sales Navigator for every brand — it names people your LinkedIn shows as "LinkedIn Member". Each brand is read once a run; one it can\'t read goes first on the next run. Untick to use the People tab instead.' }),
       ]),
       h('div', { style: 'margin-top:12px;padding-top:10px;border-top:1px solid #eee' }, [
         h('div', { style: 'font-weight:600;margin-bottom:6px', text: 'Find new brands too' }),
