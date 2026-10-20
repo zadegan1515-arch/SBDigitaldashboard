@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.38
+// @version      1.39
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -86,7 +86,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.38';
+  var VERSION = '1.39';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -2662,7 +2662,7 @@
       ]),
       fillStatusEl,
       hiddenMin >= 2
-        ? h('div', { id: 'sblihidden', style: 'font-size:12px;margin:0 0 8px;padding:6px 8px;border-radius:6px;background:#fff4e5;color:#7a4b00', text: 'Slowed while this window was hidden: ' + hiddenMin + ' min so far. Keep it in view — a corner showing is enough; minimized or fully covered, Chrome slows it.' })
+        ? h('div', { id: 'sblihidden', style: 'font-size:12px;margin:0 0 8px;padding:6px 8px;border-radius:6px;background:#fff4e5;color:#7a4b00', text: 'Slowed while this window was hidden: ' + hiddenMin + ' min so far. Chrome slows a hidden window unless it was opened with the “Chrome for LinkedIn” app — set it up once on the dashboard: Outreach → People → Run it behind other windows. Don\'t minimize this window.' })
         : null,
       job.paused
         ? h('button', { id: 'sblifillgo', style: BTN, text: 'Continue', onclick: continueFill })

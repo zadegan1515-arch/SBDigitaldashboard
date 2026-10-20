@@ -509,6 +509,14 @@
   .dl-paste textarea{width:100%;min-height:150px;resize:vertical;background:var(--surface-0);color:var(--ink-1);border:1px solid var(--border);
     border-radius:10px;padding:12px 14px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
   .dl-paste textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--ring)}
+  /* Outreach → People → Run it behind other windows (the Chrome for LinkedIn app). */
+  .li-fast{padding:16px 20px}
+  .li-fast h3{margin:0 0 4px;font-size:16px}
+  .li-fast ol{margin:10px 0 0;padding-left:20px;font-size:14px;line-height:1.6;color:var(--ink-2)}
+  .li-fast li{margin-top:6px}
+  .li-fast .cmd{display:flex;gap:8px;align-items:flex-start;margin-top:6px}
+  .li-fast .cmd code{flex:1;min-width:0;display:block;white-space:pre-wrap;word-break:break-all;background:var(--surface-0);color:var(--ink-1);
+    border:1px solid var(--border);border-radius:10px;padding:10px 12px;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
   .dl-paste .row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
   .dl-chat{border-bottom:1px solid var(--border-soft)}
   .dl-chat:last-child{border-bottom:none}
@@ -2586,7 +2594,8 @@
         <button class="chip" data-lif="none">Nobody yet</button>
         <button class="chip" data-lif="thin" title="Brands with room under the 25-people cap, emptiest first — open People ↗ and press the SB pill">Under 25</button>
         <span id="li-reach"></span>
-        <a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" style="text-decoration:none;margin-left:6px" title="Opens LinkedIn in a window of its own and starts the fill there by itself — the Schedule's short brands, then every brand with nobody in marketing / partnerships, electrolytes first within each; the research list and lookalikes on. Keep working here; leave that window alone, with a corner of it in view (minimized or fully covered, Chrome slows it). Needs the LinkedIn capture script in Tampermonkey.">Start the LinkedIn fill ↗</a>
+        <a class="btn-solid" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" style="text-decoration:none;margin-left:6px" title="Opens LinkedIn in a window of its own and starts the fill there by itself — the Schedule's short brands, then every brand with nobody in marketing / partnerships, electrolytes first within each; the research list and lookalikes on. Keep working here; leave that window alone. Chrome slows it while it's hidden behind other windows unless Chrome was opened with the Chrome for LinkedIn app (Run it behind other windows). Needs the LinkedIn capture script in Tampermonkey.">Start the LinkedIn fill ↗</a>
+        <button class="btn-ghost" id="li-fast-btn" data-li-fast style="margin-left:6px" title="Set up once on a Mac: the fill then runs at full speed while you work full screen on something else">Run it behind other windows</button>
         <input class="inp" id="li-q" placeholder="Filter brands…" autocomplete="off" style="margin-left:auto;width:220px">
       </div>
       <div class="hint" id="li-script-hint" style="margin-top:10px;display:none">
@@ -2594,6 +2603,7 @@
         <a href="https://github.com/zadegan1515-arch/SBDigitaldashboard/blob/main/scripts/linkedin-capture.user.js" target="_blank" rel="noopener">LinkedIn capture script</a>
         in Tampermonkey (copy it there, then Tampermonkey → + → paste → save; on Leo's LinkedIn, not Zach's), press the SB pill there: it reads that page, shows who it found, and adds the marketing and partnership people when you say so. Or let it go through this list by itself: pill → <b>Fill brands by itself</b> (about 100 brands a day). Brands it couldn't do carry a red LinkedIn note here.
       </div>
+      <div class="panel li-fast" id="li-fast" style="margin-top:14px;display:none"></div>
       <div id="li-clean" style="margin-top:14px;display:none"></div>
       <div id="li-review" style="margin-top:14px;display:none"></div>
       <div id="li-zach" style="margin-top:14px;display:none"></div>
@@ -12174,7 +12184,7 @@ function renderLiRuns(runs, latest, owner) {
       if (avg == null && hid < 2) return '';
       return '<div class="t-meta" style="margin-top:6px' + (hid >= 2 ? ';color:var(--warn)' : '') + '">' +
         (avg != null ? 'About ' + avg + ' min a brand' : '') +
-        (hid >= 2 ? (avg != null ? ' · ' : '') + hid + ' min with its window hidden, which slows it — keep the LinkedIn window in view (a corner is enough).' : '') +
+        (hid >= 2 ? (avg != null ? ' · ' : '') + hid + ' min with its window hidden, which slows it — <a href="#" data-li-fast="open">run it behind other windows</a>.' : '') +
         '</div>';
     })() +
     (lastPause ? '<div class="t-meta" style="margin-top:6px;color:var(--bad)">Paused: ' + esc(lastPause.why) + '</div>' : '') +
@@ -12637,8 +12647,8 @@ document.getElementById('linkedin').addEventListener('click', function (e) {
 // brings the run's window back to the feed, where the script picks the
 // run up again (or starts one if the last has finished). Sized to sit
 // beside the dashboard; Chrome slows a window that's minimized or fully
-// covered, so it opens where a corner of it can stay in view. A blocked
-// popup falls back to the link's own new tab.
+// covered unless it was opened with the Chrome for LinkedIn app (below).
+// A blocked popup falls back to the link's own new tab.
 var LI_FILL_WINDOW = 'sbLinkedinFill';
 document.addEventListener('click', function (e) {
   var a = e.target && e.target.closest ? e.target.closest('a[href*="#sb-fill"]') : null;
@@ -12655,6 +12665,58 @@ document.addEventListener('click', function (e) {
   // name (it opened a second one). If LinkedIn cuts the link itself, a
   // second window just shows the run going in the first.
   try { win.focus(); } catch (err) {}
+});
+
+// Run it behind other windows (Leo, Oct 20 2026: "ideally i dont want to have
+// the linkedin page super visible and i want to be able to be fullscreen on
+// something else"). Chrome slows a window it can't see — a run behind a full
+// screen app took 3–5 min a brand and 1 in 3 Sales Navigator pages never
+// drew, against ~40 s and none on screen. One paste in Terminal makes a Mac
+// app that quits Chrome and opens it again (tabs restored) with that
+// slow-down off — the switches Playwright runs Chrome with — and turns App
+// Nap off for Chrome. Shown on Outreach → People; the run card's hidden line
+// links here.
+var LI_FAST_FLAGS = '--restore-last-session --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling';
+var LI_FAST_CMD = "mkdir -p ~/Applications && osacompile -o ~/Applications/'Chrome for LinkedIn.app'" +
+  " -e 'if application \"Google Chrome\" is running then'" +
+  " -e 'tell application \"Google Chrome\" to quit'" +
+  " -e 'repeat while application \"Google Chrome\" is running'" +
+  " -e 'delay 0.5'" +
+  " -e 'end repeat'" +
+  " -e 'end if'" +
+  " -e 'do shell script \"open -a \\\"Google Chrome\\\" --args " + LI_FAST_FLAGS + "\"'" +
+  " && defaults write com.google.Chrome NSAppSleepDisabled -bool YES" +
+  " && open ~/Applications";
+function liFastHtml() {
+  return '<h3>Run the fill behind other windows (Mac)</h3>' +
+    '<div class="t-meta">Chrome slows a window you can’t see. Opened with this app it doesn’t, so the fill keeps full speed while you work full screen on anything. Set it up once:</div>' +
+    '<ol>' +
+      '<li>Open Terminal: press ⌘ Space, type <b>Terminal</b>, press Return.</li>' +
+      '<li>Paste this and press Return. It makes an app called <b>Chrome for LinkedIn</b>:' +
+        '<div class="cmd"><code id="li-fast-cmd">' + esc(LI_FAST_CMD) + '</code>' +
+        '<button class="btn-solid" data-li-fast-copy>Copy</button></div></li>' +
+      '<li>A Finder window opens. Double-click <b>Chrome for LinkedIn</b>: it closes Chrome and opens it again with your tabs. The first time, click <b>OK</b> when it asks to control Google Chrome.</li>' +
+      '<li>Drag it to your Dock and open Chrome with it from now on (after a restart too). Start the LinkedIn fill as usual and leave its window behind your other windows. Don’t minimize it.</li>' +
+    '</ol>' +
+    '<div class="t-meta" style="margin-top:10px">To check it worked: in Chrome open <b>chrome://version</b>. The Command Line row lists --disable-backgrounding-occluded-windows.</div>';
+}
+document.addEventListener('click', function (e) {
+  var t = e.target && e.target.closest ? e.target : null;
+  if (!t) return;
+  var copy = t.closest('[data-li-fast-copy]');
+  if (copy) { e.preventDefault(); ztCopy(LI_FAST_CMD, 'Copied. Paste it in Terminal and press Return'); return; }
+  var btn = t.closest('[data-li-fast]');
+  if (!btn) return;
+  e.preventDefault();
+  var box = document.getElementById('li-fast');
+  if (!box) return;
+  // The run card's link always opens it; the header button toggles.
+  var open = btn.getAttribute('data-li-fast') === 'open' || box.style.display === 'none';
+  if (open && !box.innerHTML) box.innerHTML = liFastHtml();
+  box.style.display = open ? '' : 'none';
+  var hb = document.getElementById('li-fast-btn');
+  if (hb) hb.classList.toggle('on', open);
+  if (open && btn.getAttribute('data-li-fast') === 'open') box.scrollIntoView({ block: 'start', behavior: 'smooth' });
 });
 
 document.querySelectorAll('#linkedin .chip[data-lif]').forEach(function (ch) {
