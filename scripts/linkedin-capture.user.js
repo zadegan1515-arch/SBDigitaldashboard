@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.39
+// @version      1.40
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -86,7 +86,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.39';
+  var VERSION = '1.40';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1371,7 +1371,7 @@
   // goes first on the next run (the dashboard keeps count). An account
   // without Sales Navigator pauses the run. The People tab's views are only
   // for a run with the switch off.
-  // 1.39 (Leo, Oct 20 2026: "i think there are repeats can we make sure that
+  // 1.40 (Leo, Oct 20 2026: "i think there are repeats can we make sure that
   // does not happen"): one read per brand per run. The second try at the
   // end of the run is gone — a brand that went wrong waits for the next
   // run, where it goes first — and a brand already read this run (a second
@@ -1701,8 +1701,8 @@
       setFillStatus('Saving ' + (job.outbox[0].name || 'the last brand') + '…');
       return flushOutbox().then(function () { runFill(); }, fillError);
     }
-    // A second try an older copy queued at the end of the run (1.38) goes
-    // first on the next run instead (1.39) — dropped before the day's pause,
+    // A second try an older copy (1.38, 1.39) queued at the end of the run goes
+    // first on the next run instead (1.40) — dropped before the day's pause,
     // so a run with only those left finishes now, not tomorrow.
     if (dropSecondTries(job)) {
       if (job.pausedUntil && job.at >= job.items.length) job.pausedUntil = 0;
@@ -2132,7 +2132,7 @@
   // Something went wrong with this brand's read (1.38, Leo, Oct 14 2026: "if
   // a brand capture does not get all the people … or it times out … make
   // sure that it runs again"). It's done for this run (one read per brand a
-  // run, 1.39); the dashboard puts it first on the next run until a read
+  // run, 1.40); the dashboard puts it first on the next run until a read
   // comes out clean.
   function brandIssue(job, code, words) {
     var st = job.step || (job.step = { seen: 0, added: 0 });

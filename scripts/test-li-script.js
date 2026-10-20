@@ -1010,7 +1010,7 @@ const GM_SHIM = `
     }
     ok('the research list: a clear match becomes a brand and gets its people; a telecom called NOS doesn\'t');
 
-    // 11b. One read per brand per run (1.39, Leo, Oct 20 2026: "i think there
+    // 11b. One read per brand per run (1.40, Leo, Oct 20 2026: "i think there
     // are repeats"): a research name whose page is a brand this run already
     // read is passed over — no second read, no second visit mark.
     {

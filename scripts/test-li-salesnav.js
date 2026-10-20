@@ -375,7 +375,7 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
 
     // 3 + 4. No company id (its page loaded twice for it); an id that shows
     // another company's people. Never the People tab's views (1.38): each is
-    // an issue, left for the next run — never a second go in this one (1.39).
+    // an issue, left for the next run — never a second go in this one (1.40).
     {
       const r = await run([item('b-noid', 'No Id', 'no-id'), item('b-wrong', 'Wrong Id', 'wrong-id')]);
       assert.deepEqual(r.calls.filter(b => /^li(Capture|Swept)$/.test(b.action)).map(where), [
@@ -412,7 +412,7 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
     }
 
     // Results that never load: loaded once more, then an issue — the brand
-    // waits for the next run (1.39: no second go at the end of this one);
+    // waits for the next run (1.40: no second go at the end of this one);
     // Sales Navigator stays on.
     {
       const r = await run([item('b-st1', 'Stuck One', 'stuck-one'), item('b-st2', 'Stuck Two', 'stuck-two'), item('b-ld', 'Liquid Death', 'liquid-death')]);

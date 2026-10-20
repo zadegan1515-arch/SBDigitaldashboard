@@ -1284,15 +1284,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   drawing fewer cards than Sales Navigator's own count says (`snTotal`, "28 results"; cards counted once each,
   `snRead().cards`) → loaded once more, then the rest is read and the brand is `partial`; a page that won't open → `noOpen`;
   the dashboard not saving → `save`. A brand whose own read went wrong still gets its parent's read (`brandIssue` →
-  `tryParent`, which carries `issue` / `partial` / `problem` along). **One read per brand per run** (script 1.39; Leo, Oct 20 2026:
+  `tryParent`, which carries `issue` / `partial` / `problem` along). **One read per brand per run** (script 1.40; Leo, Oct 20 2026:
   "i think there are repeats can we make sure that does not happen" — 1.38 put a brand with an issue at the end of the
   same run for a second try, 16 of a 92-brand run): a brand with an issue waits for the next run, where it goes first, and
   `runFill` passes over any item whose brand an earlier item read (`readThisRun` / `passOver`, keyed by brandId, else the
   name) — a brand listed twice, a research name whose page is a roster brand already read; a research name whose page is
   a roster brand further down the run is passed over so that brand's own item reads it with its own settings; a pass-over
-  after a loaded search waits like a page step and counts toward the day's 100; a second try a 1.38 copy queued in a live
+  after a loaded search waits like a page step and counts toward the day's 100; a second try a 1.38 or 1.39 copy queued in a live
   run is dropped before the day's pause (`dropSecondTries`). Its liSwept carries `issue` / `issueNote` / `done` / `shown` /
-  `read` / `again` (always false from 1.39) / `key` / `snOn`; it waits in the run's `outbox` until the dashboard has it (`flushOutbox` at the top of `runFill`; down past the
+  `read` / `again` (always false from 1.40) / `key` / `snOn`; it waits in the run's `outbox` until the dashboard has it (`flushOutbox` at the top of `runFill`; down past the
   retries → pause, Continue sends it). A page 2 Sales Navigator doesn't have (it drops the number) ends that search
   (`snNextOrDone`); paging follows Sales Navigator's count when it shows one; "LinkedIn Member"-only pages aren't misreads. An account without Sales
   Navigator **pauses** the run (`snNoAccount`). The People tab's views (PASSES, BIG_PASSES) are only for a run with the
