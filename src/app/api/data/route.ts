@@ -13767,7 +13767,7 @@ const handlers: Record<string, Handler> = {
       today, doneToday, perDay: LI_PER_DAY, minFit: floor, focus: word,
       total: list.items.length, belowFit: list.belowFit, bigSkipped: list.bigSkipped, resting: list.resting, underCap: list.underCap,
       retry: list.retry, stuck: list.stuck,
-      planned: list.planned, research: list.research, reachedLast: list.reachedLast, giantsLast: list.giantsLast,
+      planned: list.planned, mine: list.mine, research: list.research, reachedLast: list.reachedLast, giantsLast: list.giantsLast,
       days: days.map(d => ({ ...d, label: label(d.day) })),
     }
   },

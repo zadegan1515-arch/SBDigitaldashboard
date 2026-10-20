@@ -1073,15 +1073,18 @@
   .wp-bar.compact{padding:8px 12px;gap:8px}
   .wp-bar.compact .wp-tile{padding:7px 11px;gap:5px}
   .wp-bar.compact .wp-tile-b,.wp-bar.compact .wp-last{display:none}
+  .wp-bar.compact .wp-last.fresh{display:inline}
   .wp-bar.compact h2{font-size:17px}
   .wp-bar.compact .wp-big{font-size:20px}
   .wp-bar.compact .wp-spread{padding:6px 12px;font-size:13.5px}
   .wp-tile-f .wp-caret{margin-left:auto;font-size:13px;color:var(--accent-hi);font-weight:700}
-  /* the open day (or the spread's preview): drops down over the list, never pushes it */
+  /* the open day (or the spread's preview): drops down over the list, never pushes it;
+     its height = the room left on screen under the bar (wpOpenFit), so its last row can be reached */
   .wp-open{position:absolute;left:-1px;right:-1px;top:100%;margin-top:8px;max-height:min(62vh,600px);overflow:auto;z-index:26;
     background:var(--surface-1);border:1px solid rgba(79,131,247,.5);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;
     box-shadow:0 18px 40px rgba(0,0,0,.45)}
   .wp-open[hidden]{display:none}
+  .wp-open>.wp-day-h{position:sticky;top:-14px;z-index:2;margin:-14px -16px 0;padding:14px 16px 8px;background:var(--surface-1);border-radius:14px 14px 0 0}
   .wp-open.pv{border-color:rgba(62,207,142,.5)}
   .wp-x{margin-left:8px;font:inherit;font-size:15px;font-weight:700;width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--ink-2);cursor:pointer;flex:none}
   .wp-x:hover{color:var(--ink-1);border-color:var(--accent-hi)}
@@ -12450,6 +12453,7 @@ function renderFillSched() {
       d.retry ? d.retry + ' read again (something went wrong last time), in their Brand Fit place' : '',
       d.resting ? d.resting + ' read already, not read again' + (d.stuck ? ' (' + d.stuck + ' stuck after 3 tries — back in a month)' : '') : '',
       d.planned ? d.planned + ' on the Schedule go first, whatever their fit' : '',
+      d.mine ? d.mine + ' you added yourself (Week plan, Add a brand) go next, whatever their fit' : '',
       d.research ? d.research + ' research-list name' + (d.research === 1 ? '' : 's') + ' (not on the roster yet, no fit score)' : '',
     ].filter(Boolean).join(' · ') + '</div>';
   var days = d.days.map(function (day) {
@@ -22947,6 +22951,7 @@ function wpRenderAll() {
   wpRenderList();
   rbPaint(document.getElementById('weekplan'));
   wpBarFit(true);
+  wpOpenFit();
   wpUnhold(h);
 }
 
@@ -22971,9 +22976,9 @@ function wpBarFit(again) {
 }
 (function () {
   var queued = false;
-  var fit = function () { if (queued) return; queued = true; requestAnimationFrame(function () { queued = false; wpBarFit(false); }); };
+  var fit = function () { if (queued) return; queued = true; requestAnimationFrame(function () { queued = false; wpBarFit(false); wpOpenFit(); }); };
   window.addEventListener('scroll', fit, { passive: true });
-  window.addEventListener('resize', function () { wpBarFit(true); });
+  window.addEventListener('resize', function () { wpBarFit(true); wpOpenFit(); });
 })();
 
 // Redraw a box without moving its scroll.
@@ -23031,7 +23036,7 @@ function wpRenderWeekHead() {
     html += '<button class="btn-solid wp-spread" data-wpspread="1"' + (WP.pvBusy ? ' disabled' : '') + ' title="Deals the top of your list onto the days, whole brands, so every day gets a fair share of the best ones. You see it first.">' +
       (WP.pvBusy ? 'Dealing…' : '✦ Spread the top of my list onto the week') + '</button>';
   }
-  if (WP.done && Date.now() - WP.done.at < 120000) html += '<span class="sd-dim wp-last">' + esc(WP.done.text) + (d.spreadLast ? ' · <a href="#" data-wpundo="1">Undo it</a>' : '') + '</span>';
+  if (WP.done && Date.now() - WP.done.at < 120000) html += '<span class="sd-dim wp-last fresh">' + esc(WP.done.text) + (d.spreadLast ? ' · <a href="#" data-wpundo="1">Undo it</a>' : '') + '</span>';
   else if (d.spreadLast) html += '<span class="sd-dim wp-last">Last spread ' + esc(wpTime(d.spreadLast.at)) + ' · <a href="#" data-wpundo="1">Undo it</a></span>';
   document.getElementById('wp-weekhead').innerHTML = html + '</div>';
 }
@@ -23085,6 +23090,7 @@ function wpRenderOpen() {
     el.classList.add('pv');
     el.removeAttribute('data-wpdrop');
     wpPaint('wp-dayopen', wpPvHtml());
+    wpOpenFit();
     return;
   }
   el.classList.remove('pv');
@@ -23115,6 +23121,40 @@ function wpRenderOpen() {
       : '<div class="wp-foot"><span>' + (d.auto ? '+ Best fit adds ' + sdPlural(d.auto, 'brand', 'brands') + ' (' + sdPlural(d.autoPeople, 'person', 'people') + ') by itself.' : 'Open spots fill with Best fit by itself.') + '</span>' +
           '<button class="btn-ghost sd-sm" data-wplist="' + esc(d.date) + '" data-on="1" title="No automatic picks this day: only brands from your list">Only my list</button></div>');
   wpPaint('wp-dayopen', html);
+  wpOpenFit();
+}
+
+// The open day (or the preview) hangs under the week bar, which sticks under
+// the header. It takes the room left on screen under the bar — no more — so
+// its own scroll reaches its last row (Leo, Oct 20 2026: "when u click on a day
+// u cant scroll down a lot"). Run on every draw, scroll and resize.
+// While it all fits, its scroll stays its own (the page behind doesn't move at
+// its end); while it's cut off, the wheel goes on to the page, which brings
+// the bar up to where it sticks.
+function wpOpenFit() {
+  var el = document.getElementById('wp-dayopen');
+  if (!el) return;
+  if (el.hidden || window.innerWidth <= 820) { el.style.maxHeight = ''; el.style.overscrollBehavior = ''; return; }
+  var room = Math.round(window.innerHeight - el.getBoundingClientRect().top - 12);
+  el.style.maxHeight = Math.max(160, room) + 'px';
+  el.style.overscrollBehavior = room >= 160 ? 'contain' : '';
+}
+// Opening a day (or the preview) low on the screen: bring the bar up to where
+// it sticks, so the day gets the screen under it.
+function wpOpenRoom() {
+  var bar = document.getElementById('wp-bar');
+  var el = document.getElementById('wp-dayopen');
+  if (!bar || !el || el.hidden || window.innerWidth <= 820) return;
+  var headH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--head-h')) || 0;
+  if (window.innerHeight - el.getBoundingClientRect().top >= window.innerHeight * 0.6) return;
+  // far enough that the bar sticks and goes slim (wpBarFit's rule: the steps line under the header)
+  var steps = document.querySelector('#weekplan .wp-steps');
+  var by = Math.max(bar.getBoundingClientRect().top - headH, steps ? steps.getBoundingClientRect().bottom - headH + 24 : 0);
+  if (by <= 1) return;
+  placeEnd();   // a refresh's hold on the place would put the page back
+  window.scrollBy(0, by);
+  wpBarFit(false);
+  wpOpenFit();
 }
 
 function wpPvHtml() {
@@ -23704,10 +23744,12 @@ function wpSpread() {
   return api('weekSpread', { week: WP.week, seed: seed }).then(function (pv) {
     WP.pvBusy = false;
     if (!pv || pv.ok === false) { toast((pv && pv.message) || 'Nothing to spread'); wpRenderWeekHead(); return; }
+    var first = !WP.pv;
     WP.pv = pv;
     wpRenderWeekHead();
     wpRenderStrip();
     wpRenderOpen();
+    if (first) wpOpenRoom();
   }).catch(function (e) { WP.pvBusy = false; toast(e.message); wpRenderWeekHead(); });
 }
 
@@ -23756,6 +23798,7 @@ function wpToggleDay(date) {
   WP.open = WP.open === date ? '' : date;
   wpRenderStrip();
   wpRenderOpen();
+  if (WP.open) wpOpenRoom();
 }
 
 (function () {

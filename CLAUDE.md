@@ -325,7 +325,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   once stuck it goes slim (`wpBarFit`: names and the last-spread line hidden; the height it gives up stays as its bottom
   margin, so the list never moves). A tile click opens that day **over the list** (`#wp-dayopen`, absolute under the bar,
   `wpRenderOpen`: its cards `wpDayCard` with → <day> / ↩ Back to list, Only my list / Let Best fit fill; ✕ or Esc closes);
-  the spread's preview shows there too. One big card per brand (`wpCardHtml`: rank, name, Brand Fit box, category,
+  the spread's preview shows there too. It takes the room left on screen under the bar and scrolls inside to its last
+  brand (Leo, Oct 20 2026: "when u click on a day u cant scroll down a lot" — it was 62vh and ran off the screen):
+  `wpOpenFit` on every draw / scroll / resize, its name and ✕ stick at its top, its scroll stays its own while it fits;
+  opened low on the page, `wpOpenRoom` brings the bar up to where it sticks first (ending a refresh's keep-my-place hold,
+  `placeEnd`), and a fresh "Put N brands · Undo it" line stays on the slim bar (`.wp-last.fresh`). One big card per brand (`wpCardHtml`: rank, name, Brand Fit box, category,
   people, contacts, Reached tag, where it is) with a **button per day** (lit = it's on that day; another day moves it, the
   lit one takes it off) and **Remove**; drag works card → tile (or the open day), tile name / day card → another tile,
   day card → the list. The search box / category menu (static, never redrawn) turn the page into results: a brand on the
@@ -1140,7 +1144,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Setting `outreachShownDays`, written by `getOutreachPlan`; short = reachable < `workNeed`, the
   same rule as the Schedule's labels; soonest day first; `src/lib/planned-first.ts`,
   `node scripts/test-planned-first.mjs`; the Schedule's contacts check links "Start the LinkedIn
-  fill ↗ — it does these first"), then any name Leo asked for (`RESEARCH_EXTRA`), then **every brand by Brand Fit,
+  fill ↗ — it does these first"), then **Leo's own picks, whatever their score** (Leo, Oct 20 2026, on OluKai — Brand Fit
+  37, nobody on file: "why are there no contacts for it"; items `mine`: `list` = put on his Week plan list by hand,
+  Setting `weekBank.hand`; `added` = he added it himself, source chat / site, `addedByLeo`) — past the Brand Fit floor and
+  the very-big skip (`bigOk`), never one confirmed not sold in the US or closed; best fit first; `liList.mine`, the Fill
+  schedule's "N you added yourself … go next" and "You added it" / "On your Week plan list"), then any name Leo asked for
+  (`RESEARCH_EXTRA`), then **every brand by Brand Fit,
   highest first** (Leo, Oct 19 2026: "i want to be as efficient and have the highest rated brands … ran first then the
   lower ones after"; `byFit` in `src/lib/fill-schedule.ts`, `node scripts/test-fill-schedule.mjs`; `liList.fitFirst`,
   script ≥1.39 says "Best Brand Fit first" in the setup panel, the run's progress and `whyItem` — "Brand Fit 83 — …").

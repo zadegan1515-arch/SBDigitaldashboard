@@ -41,7 +41,8 @@
 //   9. The Schedule: a day spread from the list says so (tag, no category
 //      menu, ⋯ → Let Best fit fill its open spots), and its Fill box offers
 //      the list.
-//  10. A phone: the week first, then the brands; no sideways scroll.
+//  10. A long open day fits the screen and scrolls to its last brand.
+//  11. A phone: the week first, then the brands; no sideways scroll.
 //
 // Run: NODE_PATH=$(npm root -g) node scripts/test-week-plan.js   (~10s)
 
@@ -591,7 +592,48 @@ async function main() {
   await page.waitForFunction(() => document.getElementById('weekplan').classList.contains('active'));
   console.log('✓ 9 the Schedule: list days marked, the Fill box from the list, back to Week plan');
 
-  // 10. A phone ------------------------------------------------------------------------
+  // 10. A long day (Leo, Oct 20 2026: "when u click on a day u cant scroll down a lot") --
+  // The open day takes the room left on screen under the bar — no more — so its own
+  // scroll reaches its last brand; opened low on the page, the bar comes up first.
+  WEEK.days[2].pinned = Array.from({ length: 22 }, (_, i) => ({ id: 'L' + i, name: 'Long ' + i, category: 'energy', state: 'going', going: 3,
+    waits: null, reasonText: null, people: [{ name: 'A', title: 'Marketing' }], linkedinUrl: null, website: null, carriedFrom: null, big: false }));
+  await page.setViewportSize({ width: 1440, height: 760 });
+  await page.evaluate(() => loadWeekPlan());
+  await page.waitForFunction(() => /Long 0/.test((document.querySelector('[data-wptile="2026-10-22"]') || {}).textContent || ''));
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(120);
+  await page.click('[data-wptile="2026-10-22"]');
+  await page.waitForSelector('#wp-dayopen:not([hidden]) [data-wpdrag="L21"]');
+  const openFit = () => page.evaluate(() => {
+    const el = document.getElementById('wp-dayopen'), r = el.getBoundingClientRect();
+    return { bottom: r.bottom, vh: innerHeight, y: scrollY, sh: el.scrollHeight, ch: el.clientHeight };
+  });
+  let lf = await openFit();
+  assert.ok(lf.y > 0, 'opened low on the page, the week bar comes up');
+  assert.ok(lf.bottom <= lf.vh, 'the open day ends on screen (' + lf.bottom + ' of ' + lf.vh + ')');
+  assert.ok(lf.sh > lf.ch && lf.ch > lf.vh * 0.5, 'it scrolls inside and takes most of the screen');
+  await page.mouse.move(700, Math.round(lf.bottom - 80));
+  for (let i = 0; i < 12; i++) await page.mouse.wheel(0, 400);
+  await page.waitForTimeout(250);
+  const lend = await page.evaluate(() => {
+    const el = document.getElementById('wp-dayopen');
+    return { y: scrollY, vh: innerHeight, st: el.scrollTop, max: el.scrollHeight - el.clientHeight,
+      card: el.querySelector('[data-wpdrag="L21"]').getBoundingClientRect().bottom, foot: el.querySelector('.wp-foot').getBoundingClientRect().bottom,
+      head: el.querySelector('.wp-day-h').getBoundingClientRect().top - el.getBoundingClientRect().top };
+  });
+  assert.ok(lend.st >= lend.max - 1, 'its scroll reaches the end');
+  assert.ok(lend.card <= lend.vh && lend.foot <= lend.vh, 'the last brand and the foot are on screen');
+  assert.ok(lend.head < 4, 'the day’s name and ✕ stay at its top');
+  assert.equal(lend.y, lf.y, 'the page behind stays put');
+  await page.setViewportSize({ width: 1440, height: 640 });
+  await page.waitForTimeout(250);
+  lf = await openFit();
+  assert.ok(lf.bottom <= lf.vh, 'a shorter window: still ends on screen');
+  await page.keyboard.press('Escape');
+  WEEK.days[2].pinned = [];
+  console.log('✓ 10 a long open day: fits the screen, scrolls to its last brand, the page behind stays put');
+
+  // 11. A phone ------------------------------------------------------------------------
   await page.setViewportSize({ width: 390, height: 800 });
   await page.evaluate(() => loadWeekPlan());
   await page.waitForTimeout(300);
@@ -603,7 +645,7 @@ async function main() {
   assert.ok(phone.over <= 1, 'no sideways scroll on a phone (' + phone.over + 'px)');
   assert.ok(phone.weekFirst, 'the week first, then the brands');
   assert.ok(phone.oneCol, 'one card a row');
-  console.log('✓ 10 a phone: the week first, one card a row, no sideways scroll');
+  console.log('✓ 11 a phone: the week first, one card a row, no sideways scroll');
 
   assert.deepEqual(errors, [], 'no page errors: ' + errors.join(' | '));
   await browser.close();

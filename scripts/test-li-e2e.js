@@ -764,15 +764,15 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     {
       const all = (await ingest({ action: 'liList', me: leo, focus: '' })).j
       assert.ok(all.items.filter(i => !i.research).every(i => typeof i.fit === 'number'), 'each brand carries its Brand Fit')
-      const floor = Math.max(...all.items.filter(i => !i.research && !i.planned).map(i => i.fit))
+      const floor = Math.max(...all.items.filter(i => !i.research && !i.planned && !i.mine).map(i => i.fit))
       const high = (await ingest({ action: 'liList', me: leo, focus: '', minFit: floor })).j
       assert.equal(high.minFit, floor)
-      assert.ok(high.items.filter(i => !i.research && !i.planned).every(i => i.fit >= floor), 'only brands at the floor or above')
+      assert.ok(high.items.filter(i => !i.research && !i.planned && !i.mine).every(i => i.fit >= floor), 'only brands at the floor or above')
       assert.ok(high.belowFit > 0, 'the rest are counted as left out')
       // Best Brand Fit first (Leo, Oct 19 2026: "have the highest rated brands
       // … ran first then the lower ones after"), re-reads included.
       for (const list of [high, all]) {
-        const plain = list.items.filter(i => !i.research && !i.planned && !i.last).map(i => i.fit)
+        const plain = list.items.filter(i => !i.research && !i.planned && !i.mine && !i.last).map(i => i.fit)
         assert.deepEqual(plain, [...plain].sort((a, b) => b - a), 'highest score first')
         assert.equal(list.fitFirst, true)
         assert.equal(list.midFirst, false)
@@ -789,7 +789,34 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       assert.ok(at(bigCo.id) < at(midCo.id), 'and goes first')
       await prisma.brand.deleteMany({ where: { id: { in: [bigCo.id, midCo.id] } } })
     }
-    ok('a Brand Fit floor: every brand carries its score, the ones under it are left off; best fit first');
+    {
+      // Leo's own picks (Oct 20 2026, on OluKai — Brand Fit 37, nobody on file:
+      // "why are there no contacts for it"): a brand he added himself and one he
+      // put on his Week plan list go right after the Schedule's, under the floor
+      // or not, a very big one too; one confirmed not sold in the US stays off.
+      const added = await prisma.brand.create({ data: { name: 'Olukai E2E', category: 'apparel', source: 'chat', website: 'https://olukai.example' } })
+      const listed = await prisma.brand.create({ data: { name: 'Listed Lowfit', category: 'apparel', liMembers: 1700, linkedinUrl: 'https://www.linkedin.com/company/listed-lowfit/' } })
+      const abroad = await prisma.brand.create({ data: { name: 'Abroad Added', category: 'apparel', source: 'site', usStatus: 'no', linkedinUrl: 'https://www.linkedin.com/company/abroad-added/' } })
+      const bank = JSON.stringify({ size: 100, hand: [{ id: listed.id, at: new Date().toISOString() }], removed: {} })
+      await prisma.setting.upsert({ where: { key: 'weekBank' }, create: { key: 'weekBank', value: bank }, update: { value: bank } })
+      const j = (await ingest({ action: 'liList', me: leo, focus: '', minFit: 90, skipGiants: true })).j
+      const at = (id) => j.items.findIndex(i => i.brandId === id)
+      assert.ok(at(added.id) >= 0 && at(listed.id) >= 0, 'both on the list under a floor of 90')
+      assert.ok(j.items[at(added.id)].fit < 90 && j.items[at(listed.id)].fit < 90, 'though they score under it')
+      assert.deepEqual([j.items[at(added.id)].mine, j.items[at(listed.id)].mine], ['added', 'list'])
+      assert.ok(j.items.slice(0, Math.max(at(added.id), at(listed.id)) + 1).every(i => i.planned || i.mine), 'nothing but the Schedule\'s ahead of them')
+      assert.ok(j.items[at(listed.id)].bigOk, 'a very big one isn\'t skipped')
+      assert.equal(at(abroad.id), -1, 'not sold in the US: still off')
+      assert.equal(j.mine, 2)
+      const sch = await data('fillSchedule', { minFit: 90 })
+      const rows = sch.days.flatMap(d => d.rows)
+      assert.equal(sch.mine, 2)
+      assert.equal(rows.find(r => r.brandId === added.id).why, 'You added it')
+      assert.match(rows.find(r => r.brandId === listed.id).why, /Week plan list/)
+      await prisma.setting.delete({ where: { key: 'weekBank' } })
+      await prisma.brand.deleteMany({ where: { id: { in: [added.id, listed.id, abroad.id] } } })
+    }
+    ok('a Brand Fit floor: every brand carries its score, the ones under it are left off; best fit first; Leo\'s own picks whatever their score');
 
     // Very big brands skipped (Leo: "skip the very big brands"): a giant by
     // name and one with 1,500+ on LinkedIn are off the list; the rest stay.
@@ -822,7 +849,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       assert.ok(sch.days.every(d => d.rows.length <= sch.perDay), 'never more than a day\'s worth')
       assert.ok(rows.every(r => r.why), 'each says why it is there')
       const hi = await data('fillSchedule', { minFit: 100 })
-      assert.ok(hi.days.flatMap(d => d.rows).every(r => r.research || r.fit >= 100 || /Schedule|Asked/.test(r.why)), 'the floor holds, for a read that went wrong too')
+      assert.ok(hi.days.flatMap(d => d.rows).every(r => r.research || r.fit >= 100 || /Schedule|Asked|You added|Week plan/.test(r.why)), 'the floor holds, for a read that went wrong too')
     }
     ok('Fill schedule: the fill\'s own list in its order, a day\'s worth a day, with the floor');
 

@@ -9,7 +9,7 @@ import { issueWords } from './li-sweep'
 
 export type FillItem = {
   brandId?: string | null; name: string; category?: string | null; contacts?: number; fit?: number | null
-  research?: boolean; asked?: boolean; lane?: string; planned?: string; hiddenRetry?: boolean
+  research?: boolean; asked?: boolean; lane?: string; planned?: string; hiddenRetry?: boolean; mine?: 'list' | 'added'
   retry?: boolean; issue?: string | null; tries?: number
   noBuyer?: boolean; focus?: boolean; last?: 'reached' | 'giant'; size?: string; parent?: { name: string } | null
 }
@@ -22,6 +22,7 @@ export type FillDay = { day: string; rows: FillRow[] }
 // Why the run takes it where it does — the script's whyItem, in a few words.
 export function fillWhy(i: FillItem, focus: string, dayLabel: (key: string) => string = k => k): string {
   if (i.planned) return 'On the Schedule ' + dayLabel(i.planned) + ', short on people'
+  if (i.mine) return i.mine === 'list' ? 'On your Week plan list (you added it)' : 'You added it'
   if (i.asked) return 'Asked for by name'
   // Read last wins: that's where the run puts it, Sales Navigator retry or not.
   if (i.last === 'reached') return 'Already reached out — read last'

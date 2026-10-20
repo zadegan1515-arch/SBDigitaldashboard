@@ -35,6 +35,8 @@ is('nothing → no days', splitFillDays([], { today: '2026-10-12', doneToday: 0,
 
 is('schedule brand', fillWhy({ name: 'X', brandId: 'x', planned: '2026-10-14' }, '', k => 'Wed'), 'On the Schedule Wed, short on people')
 is('asked', fillWhy({ name: 'X', research: true, asked: true }, ''), 'Asked for by name')
+is('you added it', fillWhy({ name: 'X', brandId: 'x', mine: 'added', noBuyer: true }, ''), 'You added it')
+is('on your Week plan list', fillWhy({ name: 'X', brandId: 'x', mine: 'list' }, ''), 'On your Week plan list (you added it)')
 is('research', fillWhy({ name: 'X', research: true, lane: 'Energy drinks', focus: true }, 'electrolyte'), 'Research list · Energy drinks · focus “electrolyte”')
 is('no buyer', fillWhy({ name: 'X', brandId: 'x', noBuyer: true }, ''), 'No buyer on file')
 is('reached last', fillWhy({ name: 'X', brandId: 'x', last: 'reached', noBuyer: true }, ''), 'Already reached out — read last')

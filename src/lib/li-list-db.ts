@@ -11,7 +11,8 @@ import { parentOf, isParentCompany, LI_PARENT_PAGES_KEY } from './parents'
 import { readJsonSetting, LI_CONFIRMED_KEY, LI_REVIEW_KEY, type Confirmed, type Review } from './li-review'
 import { LANES, RESEARCH_EXTRA, brandKey, secondSearchName } from './stock'
 import { dueDays, shortOnPeople, plannedFirst, workNeed } from './planned-first'
-import { scoreBrand, priorityOf, isTopCategory } from './brand-fit'
+import { scoreBrand, priorityOf, isTopCategory, addedByLeo } from './brand-fit'
+import { BANK_KEY, cleanBank } from './week-bank'
 import { brandSize } from './brand-size'
 import { countBuyers, BUYER_TARGET } from './buyers'
 import { byFit } from './fill-schedule'
@@ -41,7 +42,7 @@ export { isBigBrand }
 export async function buildLiList(prisma: PrismaClient, body: any) {
   const terms = focusTerms(body.focus)
   const log = await readLiLog(prisma)
-  const [everyBrand, giantsSetting] = await Promise.all([
+  const [everyBrand, giantsSetting, bankSetting] = await Promise.all([
     prisma.brand.findMany({
       where: { doNotEmail: false, passedAt: null },
       select: {
@@ -62,6 +63,7 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
       },
     }),
     readJsonSetting<unknown>(prisma, GIANTS_KEY, {}),
+    readJsonSetting<unknown>(prisma, BANK_KEY, null),
   ])
   // Brand Fit, the score on the ratings list (Leo, Oct 12 2026: "can it only
   // fill in the brands that score highly"): the same rules as the dashboard
@@ -275,26 +277,40 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     : []
   const short = new Set(dueBrands.filter(b => shortOnPeople({ ...b, big: isBigBrand(b), top: isTopCategory(b.category, priorities) })).map(b => b.id))
   const { first: planned, rest: unplanned } = plannedFirst(items, due, short)
+  const byId = new Map(everyBrand.map(b => [b.id, b] as const))
+  // Leo's own picks (Leo, Oct 20 2026, on OluKai — Brand Fit 37, nobody on
+  // file: "why are there no contacts for it"): brands he put on his Week plan
+  // list by hand and brands he added himself (the Add a brand chat, + Add
+  // brand — brand-fit.ts ADDED_SOURCES). Whatever their score they go right
+  // after the Schedule's brands short on people, best fit first, and a very
+  // big one isn't skipped. Not one confirmed not sold in the US, or closed.
+  const handIds = new Set(cleanBank(bankSetting).hand.map(h => h.id))
+  const mineOf = (id: string): 'list' | 'added' | null =>
+    handIds.has(id) ? 'list' : addedByLeo(byId.get(id)?.source) ? 'added' : null
+  const mine = unplanned
+    .filter(i => !!mineOf(i.brandId) && !fitOf.get(i.brandId)?.ruledOut && !fitOf.get(i.brandId)?.bizNote)
+    .map(i => ({ ...i, mine: mineOf(i.brandId)! }))
+  const mineIds = new Set(mine.map(i => i.brandId))
+  const others = unplanned.filter(i => !mineIds.has(i.brandId))
   // A retry meets the floor like any brand (the floor may have changed, or
   // its facts — a Skip category, not sold in the US).
-  const fitted = unplanned.filter(i => fitOk(i.brandId))
-  const belowFit = unplanned.length - fitted.length
-  const byId = new Map(everyBrand.map(b => [b.id, b] as const))
+  const fitted = others.filter(i => fitOk(i.brandId))
+  const belowFit = others.length - fitted.length
   const rest = skipBig ? fitted.filter(i => !veryBig(byId.get(i.brandId)!)) : fitted
   const bigSkipped = fitted.length - rest.length + giantNamesSkipped
   // Best Brand Fit first (Leo, Oct 19 2026: "have the highest rated brands
   // … ran first then the lower ones after"; it replaced mid-size first and
   // re-reads first — byFit in fill-schedule.ts, where those only break a
   // tie). Before them: the Schedule's brands short on people (soonest day
-  // first) and the names Leo asked for. After them: research names (not on
+  // first), Leo's own picks and the names he asked for. After them: research names (not on
   // the roster, no score yet), then brands already reached out to, then
   // giants held back — each best fit first.
-  const tail = (i: any) => (i.planned || i.asked) ? 0
+  const tail = (i: any) => (i.planned || i.asked || i.mine) ? 0
     : (i.research ? i.giant : giantIds.has(i.brandId)) ? 2
     : !i.research && reachedIds.has(i.brandId) && !i.retry ? 1 : 0
   // The Schedule's: soonest day first, best fit first within a day.
   const byDay = (a: any, b: any) => (a.planned < b.planned ? -1 : a.planned > b.planned ? 1 : 0)
-  const lead: any[] = [...byFit(planned).sort(byDay), ...research.filter(r => r.asked)]
+  const lead: any[] = [...byFit(planned).sort(byDay), ...byFit(mine), ...research.filter(r => r.asked)]
   const pool: any[] = [...rest, ...research.filter(r => !r.asked)]
   const sorted: any[] = [...lead, ...byFit(pool.filter(i => tail(i) === 0 && !i.research)), ...pool.filter(i => tail(i) === 0 && i.research)]
   // The ones moved to the back don't go first for having no buyer or
@@ -303,8 +319,8 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     .map(i => (tail(i) ? { ...i, noBuyer: false, focus: false, last: tail(i) === 1 ? 'reached' : 'giant' } : i))
     // Whether the run may read it past 1,500 on LinkedIn (script 1.38 skips
     // at its People tab's count when Skip very big brands is on): the
-    // Schedule's brands, names Leo asked for, giants he OK'd, conglomerates.
-    .map(i => ({ ...i, bigOk: !skipBig || !!i.planned || !!i.asked || (!!i.brandId && giants.ok.has(i.brandId)) || isParentCompany(i.name, i.aka ?? null) }))
+    // Schedule's brands, Leo's own picks, names he asked for, giants he OK'd, conglomerates.
+    .map(i => ({ ...i, bigOk: !skipBig || !!i.planned || !!i.mine || !!i.asked || (!!i.brandId && giants.ok.has(i.brandId)) || isParentCompany(i.name, i.aka ?? null) }))
   const reachedLast = (i: any) => i.last === 'reached'
   return {
     items: ordered,
@@ -321,6 +337,8 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     researchWaiting,
     focusCount: ordered.filter(i => i.focus).length,
     planned: planned.length,
+    // Leo's own picks (his Week plan list by hand, brands he added himself).
+    mine: mine.length,
     // Of the brands on this list (after any fit floor / big-brand skip).
     sizes: { target: ordered.filter(i => !i.research && i.size === 'target').length, unknown: ordered.filter(i => !i.research && i.size === 'unknown').length, small: ordered.filter(i => !i.research && i.size === 'small').length, big: ordered.filter(i => !i.research && i.size === 'big').length },
     // Best Brand Fit first (script 1.39 says so); mid-size first is gone.
