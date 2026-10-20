@@ -31,13 +31,37 @@ export function fillWhy(i: FillItem, focus: string, dayLabel: (key: string) => s
   if (i.hiddenRetry) return 'Back for Sales Navigator (buyers hidden last time)'
   const bits: string[] = []
   if (i.research) bits.push('Research list' + (i.lane ? ' · ' + i.lane : ''))
-  // Mid-size first (Leo, Oct 12 2026): the size the run orders by.
+  // Size and the rest only break a tie in Brand Fit now (byFit below).
   if (!i.research && i.size === 'target') bits.push('mid-size')
   else if (!i.research && i.size === 'big') bits.push('big company')
   if (i.noBuyer && !i.research) bits.push('no buyer on file')
   if (i.focus && focus) bits.push('focus “' + focus + '”')
   const why = bits.join(' · ') || 'under 25 people on file'
   return why.charAt(0).toUpperCase() + why.slice(1)
+}
+
+// The fill's order (Leo, Oct 19 2026: "have the highest rated brands … ran
+// first then the lower ones after"): best Brand Fit first. It replaced mid-size
+// first (Oct 12) and "brands whose last read went wrong go first" (Oct 14) —
+// those now only break a tie: a re-read (its buyers are known to be there), a
+// saved LinkedIn page (no search that may find nothing), the focus word,
+// mid-size → not measured → small → big, no buyer on file yet, fewest on file,
+// the name. No score (a research name) goes last.
+export type FitOrderItem = {
+  name: string; fit?: number | null; retry?: boolean; linkedinUrl?: string | null; focus?: boolean
+  size?: string; noBuyer?: boolean; contacts?: number
+}
+const SIZE_TIE: Record<string, number> = { target: 0, unknown: 1, small: 2, big: 3 }
+export function byFit<T extends FitOrderItem>(xs: T[]): T[] {
+  const size = (i: T) => SIZE_TIE[i.size || ''] ?? 4
+  return [...xs].sort((a, b) => (b.fit ?? -1) - (a.fit ?? -1)
+    || Number(!!b.retry) - Number(!!a.retry)
+    || Number(!!b.linkedinUrl) - Number(!!a.linkedinUrl)
+    || Number(!!b.focus) - Number(!!a.focus)
+    || size(a) - size(b)
+    || Number(!!b.noBuyer) - Number(!!a.noBuyer)
+    || (a.contacts ?? 0) - (b.contacts ?? 0)
+    || a.name.localeCompare(b.name))
 }
 
 function addDays(key: string, n: number): string {

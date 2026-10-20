@@ -1660,6 +1660,9 @@
       snWanted: discover.salesNav !== false,
       // The dashboard put mid-size brands first (a Brand Fit floor is on).
       midFirst: !!discover.midFirst,
+      // Best Brand Fit first (1.39; Leo, Oct 19 2026: "have the highest rated
+      // brands … ran first then the lower ones after").
+      fitFirst: !!discover.fitFirst,
       searches: (discover.words || []).map(function (q) { return { q: q, page: 1, navs: 0 }; }),
     });
     runEvent(loadFill(), 'start', { focus: focus || '', items: items.length });
@@ -2651,7 +2654,9 @@
   function whyItem(job, item) {
     if (!item) return '';
     var w = whyItemBase(job, item);
-    return item.fit != null && !item.research ? w + ' · Brand Fit ' + item.fit : w;
+    if (item.fit == null || item.research) return w;
+    // Best Brand Fit first (1.39): the score is the reason, so it leads.
+    return job.fitFirst && !item.planned ? 'Brand Fit ' + item.fit + ' — ' + w : w + ' · Brand Fit ' + item.fit;
   }
   function whyItemBase(job, item) {
     if (item.planned) {
@@ -2660,7 +2665,7 @@
     }
     if (item.research) return 'from the research list' + (item.lane ? ' (' + item.lane + ')' : '');
     if (item.again) return 'trying it again — ' + (item.againWhy || 'its first try went wrong');
-    if (item.retry) return 'read again first — ' + (item.issueText || 'its last read went wrong') + (item.tries > 1 ? ' (try ' + (item.tries + 1) + ')' : '');
+    if (item.retry) return (job.fitFirst ? 'read again — ' : 'read again first — ') + (item.issueText || 'its last read went wrong') + (item.tries > 1 ? ' (try ' + (item.tries + 1) + ')' : '');
     if (item.hiddenRetry) return 'read before without Sales Navigator — back for it';
     // Mid-size first (Leo, Oct 12 2026): the size leads the reason.
     if (job.midFirst && item.size) {
@@ -2672,9 +2677,9 @@
     // Schedule's (the dashboard's liList puts them there).
     if (item.noBuyer) return 'no marketing / partnerships person on file yet' + (item.focus ? ' (a “' + (job.focus || 'focus') + '” brand)' : '');
     if (item.focus) return 'a “' + (job.focus || 'focus') + '” brand';
-    var sz = { target: 'a target brand (mid-size)', small: 'a small brand', big: 'a big company — they go last' }[item.size];
+    var sz = { target: 'a target brand (mid-size)', small: 'a small brand', big: job.fitFirst ? 'a big company' : 'a big company — they go last' }[item.size];
     if (sz) return sz + (item.members != null ? ', ' + item.members.toLocaleString('en-US') + ' on LinkedIn' : '');
-    return 'under 25 people, emptiest first';
+    return job.fitFirst ? 'under 25 people on file' : 'under 25 people, emptiest first';
   }
 
   function renderFill(job, status) {
@@ -2690,6 +2695,8 @@
     var isGap = function (i) { return i.noBuyer && !i.planned && !i.research; };
     // Mid-size first: the brands that lead the run, instead of the no-buyer ones.
     if (job.midFirst) isGap = function (i) { return i.size === 'target' && !i.planned && !i.research; };
+    // Best Brand Fit first (1.39): neither leads the run any more.
+    if (job.fitFirst) { isGap = function () { return false; }; focusN = 0; }
     var gapN = job.items.filter(isGap).length;
     var doneOf = function (test) { return job.items.slice(0, at).filter(test).length; };
     var pct = n ? Math.round(at / n * 100) : 100;
@@ -2701,6 +2708,7 @@
       plannedN ? h('div', { style: 'font-size:12px;color:#555', text: 'First, the Schedule\'s brands that are short on people: ' + doneOf(function (i) { return i.planned; }) + ' of ' + plannedN + ' done' }) : null,
       gapN ? h('div', { id: 'sbligap', style: 'font-size:12px;color:#555', text: (plannedN ? 'Then ' : 'First, ') + (job.midFirst ? 'mid-size brands: ' : 'brands with no marketing / partnerships person yet: ') + doneOf(isGap) + ' of ' + gapN + ' done' }) : null,
       focusN ? h('div', { style: 'font-size:12px;color:#555', text: (plannedN || gapN ? 'Then ' : '') + '“' + (job.focus || 'focus') + '” brands: ' + doneOf(function (i) { return i.focus && !i.planned; }) + ' of ' + focusN + ' done' }) : null,
+      job.fitFirst ? h('div', { id: 'sblifitline', style: 'font-size:12px;color:#555', text: (plannedN ? 'Then b' : 'B') + 'est Brand Fit first' + (cur && cur.fit != null && !cur.planned && !cur.research ? ' — now at ' + cur.fit : '') }) : null,
       cur ? h('div', { id: 'sblinow', style: 'font-size:12px;color:#111;margin-top:4px' }, [b(cur.name), ' — ' + whyItem(job, cur)]) : null,
       h('div', { style: 'font-size:12px;color:#555', text: 'Today: ' + job.doneToday + ' of ' + DAILY_CAP + ' brands' }),
       h('div', { id: 'sblisnline', style: 'font-size:12px;color:' + (job.snOff ? '#946200' : '#555'), text: job.salesNav ? 'Every brand through Sales Navigator, once a run; one that goes wrong goes first on the next run'
@@ -2800,32 +2808,37 @@
         // person right after the Schedule's (Leo, Oct 2026: every brand
         // gets one); the focus word orders brands within each group.
         var gap = j.noBuyer || 0;
-        if (j.midFirst) out.appendChild(h('div', { id: 'sblimidnote', style: 'font-size:12px;color:#111;margin-bottom:6px', text: (j.planned ? 'After the Schedule\'s ' + j.planned + ' brand' + (j.planned === 1 ? '' : 's') + ' short on people: m' : 'M') +
+        if (j.fitFirst) out.appendChild(h('div', { id: 'sblifitfirst', style: 'font-size:12px;color:#111;margin-bottom:6px', text: (j.planned ? 'After the Schedule\'s ' + j.planned + ' brand' + (j.planned === 1 ? '' : 's') + ' short on people: b' : 'B') +
+          'est Brand Fit first, highest score down. Brands already reached out to go last.' }));
+        if (j.midFirst && !j.fitFirst) out.appendChild(h('div', { id: 'sblimidnote', style: 'font-size:12px;color:#111;margin-bottom:6px', text: (j.planned ? 'After the Schedule\'s ' + j.planned + ' brand' + (j.planned === 1 ? '' : 's') + ' short on people: m' : 'M') +
           'id-size brands first' + (j.sizes ? ' (' + j.sizes.target + ', 20–499 on LinkedIn), then ' + j.sizes.unknown + ' not measured yet, ' + j.sizes.small + ' small, ' + j.sizes.big + ' big (500–1,499)' : '') +
           '. Within each, brands with no marketing / partnerships person first, then best Brand Fit.' }));
-        if (gap && !j.midFirst) out.appendChild(h('div', { id: 'sbligapnote', style: 'font-size:12px;color:#111;margin-bottom:6px', text: (j.planned ? 'After the Schedule\'s ' + j.planned + ' brand' + (j.planned === 1 ? '' : 's') + ' short on people, the ' : 'First the ') +
+        if (gap && !j.midFirst && !j.fitFirst) out.appendChild(h('div', { id: 'sbligapnote', style: 'font-size:12px;color:#111;margin-bottom:6px', text: (j.planned ? 'After the Schedule\'s ' + j.planned + ' brand' + (j.planned === 1 ? '' : 's') + ' short on people, the ' : 'First the ') +
           gap + ' brand' + (gap === 1 ? '' : 's') + ' with no marketing / partnerships person on file yet — so every brand gets one. Then the rest, up to 25 people each.' }));
-        if (f) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: first.length
+        if (f && j.fitFirst) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: first.length
+          ? 'Between brands with the same score, the ' + first.length + ' matching “' + f + '” go first.'
+          : 'None match “' + f + '”.' }));
+        else if (f) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: first.length
           ? (gap ? 'Within each, the ' + first.length + ' matching “' + f + '” go first: ' : 'First the ' + first.length + ' matching “' + f + '”: ') +
             first.slice(0, 15).map(function (i) { return i.name; }).join(', ') + (first.length > 15 ? '…' : '') + (gap ? '.' : '. Then everything else, emptiest first.')
           : 'None match “' + f + '” — it goes emptiest first.' }));
-        if (j.sizes && !j.midFirst) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: 'Then by size: ' + j.sizes.target + ' target (mid-size, 20–499 on LinkedIn), ' + j.sizes.unknown + ' not measured yet, ' + j.sizes.small + ' small, ' + j.sizes.big + ' big companies last.' }));
+        if (j.sizes && !j.midFirst && !j.fitFirst) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: 'Then by size: ' + j.sizes.target + ' target (mid-size, 20–499 on LinkedIn), ' + j.sizes.unknown + ' not measured yet, ' + j.sizes.small + ' small, ' + j.sizes.big + ' big companies last.' }));
         if (j.noPage) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.noPage + ' have no LinkedIn page saved; it searches LinkedIn for those and only uses a clear match.' }));
         if (j.minFit) out.appendChild(h('div', { id: 'sblifitnote', style: 'font-size:12px;color:#555;margin-bottom:6px', text: 'Only brands with Brand Fit ' + j.minFit + '+' + (j.belowFit ? ' — ' + j.belowFit + ' lower-scoring, too small or Skip brands left out' : '') + '. The Schedule\'s brands always go.' }));
         if (j.bigSkipped) out.appendChild(h('div', { id: 'sblibignote', style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.bigSkipped + ' very big brands skipped (household names, big parent companies, 1,500+ on LinkedIn).' }));
         var again = j.retry != null ? j.retry : j.hiddenRetry;
-        if (again) out.appendChild(h('div', { id: 'sblisnretry', style: 'font-size:12px;color:#555;margin-bottom:6px', text: again + ' brand' + (again === 1 ? '' : 's') + ' whose last read went wrong (or never went through Sales Navigator) go first, right after the Schedule\'s.' }));
+        if (again) out.appendChild(h('div', { id: 'sblisnretry', style: 'font-size:12px;color:#555;margin-bottom:6px', text: again + ' brand' + (again === 1 ? '' : 's') + ' whose last read went wrong (or never went through Sales Navigator) ' + (j.fitFirst ? 'are read again, in their Brand Fit place.' : 'go first, right after the Schedule\'s.') }));
         if (j.resting) out.appendChild(h('div', { id: 'sbliresting', style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.resting + ' left out: read already — a brand read in full isn\'t read again by itself' + (j.stuck ? '; ' + j.stuck + ' went wrong 3 runs in a row and wait a month' : '') + '.' }));
         if (j.researchWaiting) out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:6px', text: j.researchWaiting + ' research names left out: LinkedIn had no clear page for them last month.' }));
         out.appendChild(h('div', { style: 'font-size:12px;color:#555;margin-bottom:8px', text: 'At about ' + DAILY_CAP + ' a day that is roughly ' + Math.ceil(j.items.length / DAILY_CAP) + ' day(s).' }));
-        out.appendChild(h('button', { id: 'sblifillstart', style: BTN, text: 'Start', onclick: function () { startFill(j.items, f, Object.assign(discoverNow(), { midFirst: !!j.midFirst })); } }));
-        if (startNow) { startNow = false; startFill(j.items, f, Object.assign(discoverNow(), { midFirst: !!j.midFirst })); }
+        out.appendChild(h('button', { id: 'sblifillstart', style: BTN, text: 'Start', onclick: function () { startFill(j.items, f, Object.assign(discoverNow(), { midFirst: !!j.midFirst, fitFirst: !!j.fitFirst })); } }));
+        if (startNow) { startNow = false; startFill(j.items, f, Object.assign(discoverNow(), { midFirst: !!j.midFirst, fitFirst: !!j.fitFirst })); }
       }).catch(function (e) { out.textContent = e.message; });
     };
     focus.onkeydown = function (e) { if (e.key === 'Enter') look(); };
     freshPanel([
       head('Fill brands by itself'),
-      h('div', { style: MUTED, text: 'Goes through every brand under 25 people — the ones with no marketing / partnerships person first — one at a time in this tab, and saves the buyers it finds. About ' + DAILY_CAP + ' brands a day, under a minute apart. It pauses if LinkedIn shows a check or a limit.' }),
+      h('div', { style: MUTED, text: 'Goes through every brand under 25 people — best Brand Fit first — one at a time in this tab, and saves the buyers it finds. About ' + DAILY_CAP + ' brands a day, under a minute apart. It pauses if LinkedIn shows a check or a limit.' }),
       h('div', { style: 'font-size:12px;color:#555;margin-bottom:4px', text: 'Start with brands matching (optional):' }),
       h('div', { style: 'display:flex;gap:6px' }, [
         focus,
