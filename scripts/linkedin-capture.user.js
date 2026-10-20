@@ -1698,6 +1698,13 @@
       setFillStatus('Saving ' + (job.outbox[0].name || 'the last brand') + '…');
       return flushOutbox().then(function () { runFill(); }, fillError);
     }
+    // A second try an older copy queued at the end of the run (1.38) goes
+    // first on the next run instead (1.39) — dropped before the day's pause,
+    // so a run with only those left finishes now, not tomorrow.
+    if (dropSecondTries(job)) {
+      if (job.pausedUntil && job.at >= job.items.length) job.pausedUntil = 0;
+      saveFill(job);
+    }
     if (job.day !== todayKey()) { job.day = todayKey(); job.doneToday = 0; saveFill(job); }
     if (job.pausedUntil && Date.now() < job.pausedUntil) {
       renderFill(job, 'Done for today (' + DAILY_CAP + ' brands). Carries on ' + new Date(job.pausedUntil).toLocaleString() + ' if this tab stays open.');
@@ -1711,9 +1718,6 @@
     // New brands first: the keyword searches run before the first brand,
     // and what they find goes to the front of the line.
     if (job.searches && job.searches.length) return discoverSearchStep(job);
-    // A second try an older copy queued at the end of the run (1.38) goes
-    // first on the next run instead (1.39).
-    if (dropSecondTries(job)) saveFill(job);
     if (job.at >= job.items.length) return finishFill(job, false);
     var item = job.items[job.at];
     if (!job.step) {
@@ -1928,12 +1932,17 @@
       if (r && r.serverError) return brandIssue(job2, 'save', r.error || 'the dashboard did not answer');
       var st = job2.step, it = job2.items[job2.at];
       if (r && r.ok && (r.outcome === 'added' || r.outcome === 'exists')) {
+        // Its page is a roster brand further down this run: that brand's own
+        // item reads it, with its own settings (OK'd giant, parent, name).
+        for (var later = job2.at + 1; later < job2.items.length; later++) {
+          if (job2.items[later].brandId === r.brandId) return passOver(job2, true);
+        }
         it.research = false;
         it.brandId = r.brandId;
         it.linkedinUrl = r.linkedinUrl;
         if (r.outcome === 'added') job2.newBrands = (job2.newBrands || []).concat([r.name]);
         // Its page is a roster brand's this run already read: not twice.
-        if (readThisRun(job2, it)) return passOver(job2);
+        if (readThisRun(job2, it)) return passOver(job2, true);
         // Still the same item: its clock and hidden time carry on.
         job2.step = { phase: peopleUrl(r.linkedinUrl, '') ? 'read' : 'search', pass: 0, triedAka: false, seen: 0, added: 0, navs: 0, startedAt: st.startedAt || Date.now(), hiddenMs: st.hiddenMs || 0 };
         job2.nextAt = Date.now() + rand(2000, 4000);
@@ -2137,15 +2146,20 @@
   // current one is done.
   function readThisRun(job, it) {
     var k = runKey(it);
-    if (it.again) return true;
     for (var i = 0; i < job.at && i < job.items.length; i++) if (runKey(job.items[i]) === k) return true;
     return false;
   }
-  // On to the next brand without a read, a visit mark or a day's count.
-  function passOver(job) {
+  // On to the next brand without a read or a visit mark. After a page it
+  // loaded (a research name's search), it waits like a step between pages
+  // and the page counts toward the day's brands; otherwise at once.
+  function passOver(job, loaded) {
     job.step = null;
     job.at++;
-    job.nextAt = Date.now() + 500;
+    if (loaded) {
+      job.doneToday++;
+      if (job.doneToday >= DAILY_CAP && job.at < job.items.length) job.pausedUntil = tomorrowMorning();
+    }
+    job.nextAt = Date.now() + (loaded ? secs(BETWEEN_PAGES) : 500);
     saveFill(job);
     return runFill();
   }

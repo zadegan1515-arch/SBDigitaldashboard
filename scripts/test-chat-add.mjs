@@ -64,7 +64,7 @@ const roster = [
   r('7', 'Sister C', { website: 'parentco.com' }), r('8', 'Sister D', { website: 'parentco.com' }),
   r('9', 'Gone Brand', { passedAt: new Date() }),
   r('10', 'Shop on IG', { website: 'instagram.com/shop' }),
-  r('11', 'Cazcanes Tequila'), r('12', 'Ghost Energy'),
+  r('11', 'Cazcanes Tequila'), r('12', 'Ghost Energy', { aka: 'Ghost' }), r('13', 'X'), r('14', 'Monster Energy'),
 ]
 const m = b => matchRoster(clean(b), roster).map(x => x.name + ':' + x.why.join('+'))
 is('name ignoring Inc.', m({ name: 'poppi' }), ['Poppi Inc.:name'])
@@ -81,7 +81,9 @@ is('no substring matches', m({ name: 'Pop' }), [])
 // Nearly the same name (Oct 20 2026): "Cazcanes" went on beside "Cazcanes Tequila".
 is('the roster name less its product word', m({ name: 'Cazcanes' }), ['Cazcanes Tequila:near'])
 is('the new name less its product word', m({ name: 'Celsius Energy' }), ['Celsius:near'])
-is('two products of one word are not a match', m({ name: 'Ghost Tequila' }), [])
+is('two products of one word are not a match, though one is known as the word', m({ name: 'Ghost Tequila' }), [])
+is('a word apart', m({ name: 'Monster Energy Drink' }), ['Monster Energy:near'])
+is('a one-letter core is no match', m({ name: 'Brand X Energy' }), [])
 
 // ---- notes ---------------------------------------------------------------
 is('notes say where it came from', chatNotes(p, 'Oct 6, 2026'),

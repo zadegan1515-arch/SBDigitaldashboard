@@ -60,8 +60,10 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     }
     ok('the dashboard runs locally (' + Math.round((Date.now() - t0) / 1000) + ' s to first answer)');
 
-    // On the roster already: Lucky Energy (its website).
-    await prisma.brand.create({ data: { id: 'lucky', name: 'Lucky Energy', category: 'energy', website: 'https://luckyenergy.com/' } });
+    // On the roster already under another name: Lucky Bev (its website).
+    // (Not "Lucky Energy": a find named "Lucky Energy Drinks" now matches
+    // that by nearly the same name, and this checks the website path.)
+    await prisma.brand.create({ data: { id: 'lucky', name: 'Lucky Bev', category: 'energy', website: 'https://luckyenergy.com/' } });
     const q = 'Claude hunt · Oct 13';
     // A write-up that proves money, shelves and college spend: an A on the find score (find-evidence.ts).
     const PROOF = ' raised a $12M Series A, sold in 2,000+ stores, official partner of Big Ten athletics.'
@@ -92,8 +94,8 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual(pv.rows.map(r => r.id).sort(), ['bayou', 'cann', 'cann2', 'koloa', 'koloa2', 'soju', 'tide']);
     const heldBy = Object.fromEntries(pv.held.map(h => [h.id, h]));
     assert.deepEqual(Object.keys(heldBy).sort(), ['luckyd', 'luckyd2']);
-    assert.equal(heldBy.luckyd.match, 'Lucky Energy', 'a find whose website is a roster brand\'s is held back');
-    assert.deepEqual([heldBy.luckyd2.match, heldBy.luckyd2.sameAs], ['Lucky Energy', 'Lucky Energy Drinks'], 'and so is its namesake with nothing to match on');
+    assert.equal(heldBy.luckyd.match, 'Lucky Bev', 'a find whose website is a roster brand\'s is held back');
+    assert.deepEqual([heldBy.luckyd2.match, heldBy.luckyd2.sameAs], ['Lucky Bev', 'Lucky Energy Drinks'], 'and so is its namesake with nothing to match on');
     const row = id => pv.rows.find(r => r.id === id);
     assert.equal(row('soju').category, 'rtd');
     assert.deepEqual([row('koloa2').group, row('koloa2').joins, row('koloa').group, row('koloa').joins], ['koloa', 'Koloa Rum', 'koloa', undefined]);

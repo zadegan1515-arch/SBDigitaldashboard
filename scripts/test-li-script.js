@@ -1004,6 +1004,30 @@ const GM_SHIM = `
     }
     ok('a research name whose page is a brand already read this run is not read twice');
 
+    // 11c. …and one whose page is a roster brand further down the run is
+    // passed over: that brand's own item reads it, with its own settings.
+    {
+      fillItems = [
+        { research: true, name: 'Powerade', aka: null, category: 'beverage', lane: 'Electrolytes & hydration', linkedinUrl: null, contacts: 0, focus: true },
+        { brandId: 'b-pow', name: 'Powerade Sports', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/powerade/', contacts: 0, focus: true },
+      ];
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      await pg.uncheck('#sblilook');
+      await pg.click('#sblifilllook');
+      await pg.waitForSelector('#sblifillstart');
+      await pg.click('#sblifillstart');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 60000 });
+      const sw = sent.slice(before).filter(b => b.action === 'liSwept');
+      assert.deepEqual(sw.map(b => [b.brandId, b.name]), [['b-pow', 'Powerade Sports']], 'read once, under its own item');
+      await pg.close();
+    }
+    ok('a research name whose page is a roster brand later in the run leaves it to that brand\'s own item');
+
     // 12. The real card shapes.
     {
       const before = sent.length;

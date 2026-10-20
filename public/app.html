@@ -8806,7 +8806,7 @@ function dupRender() {
   html += groups.map(function (g, gi) {
     var why = {};
     g.pairs.forEach(function (p) { p.why.forEach(function (w) { why[w] = true; }); });
-    var weak = !why.name && !why.linkedin;
+    var weak = !why.name && !why.near && !why.linkedin;
     var keepId = DUP.keep[g.members.map(function (m) { return m.id; }).join('|')] || g.keep;
     var keeper = g.members.filter(function (m) { return m.id === keepId; })[0] || g.members[0];
     return '<div class="osp-b" data-dupg="' + gi + '">' +

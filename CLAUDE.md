@@ -1049,8 +1049,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Setting `newBrandsReviewed`). **Brands → Duplicates** (`findDuplicates`, rules in
   `src/lib/duplicates.ts`, `node scripts/test-duplicates.mjs`): the same name / also-known-as, **nearly
   the same name** (Oct 20 2026, after the LinkedIn fill read "Cazcanes" and "Cazcanes Tequila" as two brands: `coreName`
-  takes the word that says what it sells off the end — Tequila, Brewing Co., Energy… — and that must be another brand's
-  whole name or aka, never two products of one word like Ghost Energy / Ghost Tequila; "Nearly the same name"), LinkedIn
+  takes the words that say what it sells off the end, one at a time — Tequila, Brewing Co., Energy Drinks… (`coreNames`,
+  3+ letters on the key, spaces ignored) — and one of those must be another brand's own name, never its aka and never
+  another core, so Ghost Energy / Ghost Tequila and Garage Beer (aka Garage) / Garage Clothing don't pair; "Nearly the
+  same name"), LinkedIn
   page or website — never an email domain (parent companies share one; Leo's call), and a website 4+
   brands share or a platform link (linktr.ee, Instagram…) is no signal. Suggestions only: Merge runs the
   brand page's `mergeBrands` preview + confirm (the keeper now takes the merged brand's names as
@@ -1283,8 +1285,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   "i think there are repeats can we make sure that does not happen" — 1.38 put a brand with an issue at the end of the
   same run for a second try, 16 of a 92-brand run): a brand with an issue waits for the next run, where it goes first, and
   `runFill` passes over any item whose brand an earlier item read (`readThisRun` / `passOver`, keyed by brandId, else the
-  name) — a brand listed twice, a research name whose page is a roster brand already read; a second try a 1.38 copy
-  queued in a live run is dropped (`dropSecondTries`). Its liSwept carries `issue` / `issueNote` / `done` / `shown` /
+  name) — a brand listed twice, a research name whose page is a roster brand already read; a research name whose page is
+  a roster brand further down the run is passed over so that brand's own item reads it with its own settings; a pass-over
+  after a loaded search waits like a page step and counts toward the day's 100; a second try a 1.38 copy queued in a live
+  run is dropped before the day's pause (`dropSecondTries`). Its liSwept carries `issue` / `issueNote` / `done` / `shown` /
   `read` / `again` (always false from 1.39) / `key` / `snOn`; it waits in the run's `outbox` until the dashboard has it (`flushOutbox` at the top of `runFill`; down past the
   retries → pause, Continue sends it). A page 2 Sales Navigator doesn't have (it drops the number) ends that search
   (`snNextOrDone`); paging follows Sales Navigator's count when it shows one; "LinkedIn Member"-only pages aren't misreads. An account without Sales

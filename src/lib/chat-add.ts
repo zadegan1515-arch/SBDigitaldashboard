@@ -14,7 +14,7 @@
 // a site 4+ brands share). node scripts/test-chat-add.mjs
 
 import { brandKey } from './stock'
-import { websiteDomain, coreName } from './duplicates'
+import { websiteDomain, coreNames } from './duplicates'
 import { companySlug, companyPageUrl } from './li-capture'
 
 export type ChatBrand = {
@@ -91,8 +91,11 @@ export function cleanChatBrand(raw: any): { row: ChatBrand | null; error: string
 export function matchRoster(b: ChatBrand, roster: RosterBrand[]): ChatMatch[] {
   const keys = new Set([b.name, ...b.aka].map(brandKey).filter(Boolean))
   // Nearly the same name (Oct 20 2026: "Cazcanes" went on beside
-  // "Cazcanes Tequila"): one less its product word is the other's name.
-  const cores = new Set([b.name, ...b.aka].map(n => brandKey(coreName(n))).filter(Boolean))
+  // "Cazcanes Tequila"): a name less its product word is the other's own
+  // name — the rule Brands → Duplicates uses (duplicates.ts coreNames).
+  const coreKeys = (n: string) => coreNames(n).map(brandKey).filter(k => k.length >= 3)
+  const cores = new Set([b.name, ...b.aka].flatMap(coreKeys))
+  const own = brandKey(b.name)
   const slug = companySlug(b.linkedinUrl)
   const domain = websiteDomain(b.website)
   const perDomain = new Map<string, number>()
@@ -105,7 +108,7 @@ export function matchRoster(b: ChatBrand, roster: RosterBrand[]): ChatMatch[] {
     const why: ChatMatch['why'] = []
     const names = [r.name, ...String(r.aka ?? '').split(/[,;]/)].map(brandKey).filter(Boolean)
     if (names.some(n => keys.has(n))) why.push('name')
-    else if (names.some(n => cores.has(n)) || [r.name, ...String(r.aka ?? '').split(/[,;]/)].some(n => keys.has(brandKey(coreName(n))))) why.push('near')
+    else if (cores.has(brandKey(r.name)) || (own.length >= 3 && [r.name, ...String(r.aka ?? '').split(/[,;]/)].some(n => coreKeys(n).includes(own)))) why.push('near')
     if (slug && companySlug(r.linkedinUrl) === slug) why.push('linkedin')
     const d = websiteDomain(r.website)
     if (domain && d === domain && (perDomain.get(d) ?? 0) <= MAX_PER_WEBSITE) why.push('website')

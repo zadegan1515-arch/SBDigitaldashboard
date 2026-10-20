@@ -45,26 +45,40 @@ export function websiteDomain(url: string | null | undefined): string | null {
 
 // A brand's name without the word that says what it sells: "Cazcanes
 // Tequila" → "Cazcanes", "Sierra Nevada Brewing Co." → "Sierra Nevada".
-// '' when nothing comes off or under 3 letters would be left ("Go
-// Brewing", "Beer"). Only ever compared with another brand's whole name,
-// so two different products of one word ("Ghost Energy", "Ghost Tequila")
-// never pair with each other on it.
+// Every step counts ("Lucky Energy Drinks" → "Lucky Energy", "Lucky"), but
+// not one under 3 letters once the key drops its little words ("Go
+// Brewing", "The Go Brewing", "Beer"). Only ever compared with another
+// brand's own name — never its also-known-as, and never another core — so
+// two different products of one word ("Ghost Energy", "Ghost Tequila",
+// "Garage Beer" known as "Garage" / "Garage Clothing") never pair on it.
 const SELLS = new RegExp('[\\s,.-]+(?:' + [
   'tequila', 'mezcal', 'vodka', 'gin', 'rum', 'whiske?y', 'bourbon', 'spirits?', 'distill(?:ery|ing)', 'brew(?:ing|ery|ers)',
   'beer', '(?:hard )?seltzer', 'cider', 'wines?', 'winery', 'cocktails?', 'coffee', 'tea', 'water', 'energy', 'drinks?',
   'beverages?', 'nutrition', 'hydration', 'skin ?care', 'beauty', 'cosmetics', 'snacks?', 'foods?', 'apparel', 'footwear',
-  'clothing', 'pouches', 'usa', 'us', 'inc', 'llc', 'co', 'corp', 'company', 'brands?', 'group',
+  'clothing', 'pouches', 'usa', 'us', 'inc', 'llc', 'ltd', 'co', 'corp', 'company', 'brands?', 'group', 'holdings?',
 ].join('|') + ')\\.?$', 'i')
-export function coreName(name: string | null | undefined): string {
-  const whole = String(name ?? '').trim()
-  let s = whole
-  for (let i = 0; i < 3; i++) {
+// The key a near match compares: nameKey with its spaces taken out, so
+// "Body Armor" and "BodyArmor" agree (the chat's brandKey does the same).
+export function nearKey(s: string | null | undefined): string {
+  return nameKey(String(s ?? '')).replace(/\s+/g, '')
+}
+export function coreNames(name: string | null | undefined): string[] {
+  let s = String(name ?? '').replace(/[®™©]+/g, ' ').trim()
+  const whole = nearKey(s)
+  const out: string[] = []
+  for (let i = 0; i < 4; i++) {
     const t = s.replace(SELLS, '').trim()
     if (t === s) break
     s = t
+    const k = nearKey(s)
+    if (k.length >= 3 && k !== whole && !out.some(o => nearKey(o) === k)) out.push(s)
   }
-  const letters = s.toLowerCase().replace(/[^a-z0-9]+/g, '')
-  return s !== whole && letters.length >= 3 ? s : ''
+  return out
+}
+// The shortest of them ('' when none).
+export function coreName(name: string | null | undefined): string {
+  const all = coreNames(name)
+  return all.length ? all[all.length - 1] : ''
 }
 
 // One key per unordered pair, so "a|b" and "b|a" are the same pair.
@@ -109,13 +123,18 @@ export function findDuplicateGroups(brands: DupBrand[], dismissed: ReadonlySet<s
     w.add(why)
     edges.set(pk, w)
   }
-  // Nearly the same name: one brand's name less its product word is
-  // another's whole name (or also-known-as).
+  // Nearly the same name: one brand's name (or also-known-as) less its
+  // product word is another brand's own name.
+  const byOwnName = new Map<string, string[]>()
+  for (const b of brands) {
+    const k = nearKey(b.name)
+    if (k.length >= 3) byOwnName.set(k, [...(byOwnName.get(k) ?? []), b.id])
+  }
   for (const b of brands) {
     for (const n of namesOf(b)) {
-      const core = nameKey(coreName(n))
-      if (core.length < 2 || core === nameKey(n)) continue
-      for (const id of byKey.get('name:' + core) ?? []) link(b.id, id, 'near')
+      for (const c of coreNames(n)) {
+        for (const id of byOwnName.get(nearKey(c)) ?? []) link(b.id, id, 'near')
+      }
     }
   }
   for (const [key, set] of byKey) {
