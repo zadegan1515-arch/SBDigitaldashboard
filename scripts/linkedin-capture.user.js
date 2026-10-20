@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.38
+// @version      1.39
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -86,7 +86,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.38';
+  var VERSION = '1.39';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1367,10 +1367,16 @@
   // navigator"): every brand does — an empty People tab, a big company and
   // a brand read under its parent (the parent's company, searched for the
   // brand's name) too. Nothing falls back to the People tab's views: a page
-  // that doesn't load is loaded once more, then the brand is an issue,
-  // tried again at the end of the run and first on the next one (the
-  // dashboard keeps count). An account without Sales Navigator pauses the
-  // run. The People tab's views are only for a run with the switch off.
+  // that doesn't load is loaded once more, then the brand is an issue and
+  // goes first on the next run (the dashboard keeps count). An account
+  // without Sales Navigator pauses the run. The People tab's views are only
+  // for a run with the switch off.
+  // 1.39 (Leo, Oct 20 2026: "i think there are repeats can we make sure that
+  // does not happen"): one read per brand per run. The second try at the
+  // end of the run is gone — a brand that went wrong waits for the next
+  // run, where it goes first — and a brand already read this run (a second
+  // try an older copy queued, a research name whose page is a roster
+  // brand's) is passed over.
   var SN_KEY = 'sbLiSalesNav';
   var SN_SEARCHES = [
     { label: 'marketing & business development', q: 'marketing', pages: 3,
@@ -1705,9 +1711,14 @@
     // New brands first: the keyword searches run before the first brand,
     // and what they find goes to the front of the line.
     if (job.searches && job.searches.length) return discoverSearchStep(job);
+    // A second try an older copy queued at the end of the run (1.38) goes
+    // first on the next run instead (1.39).
+    if (dropSecondTries(job)) saveFill(job);
     if (job.at >= job.items.length) return finishFill(job, false);
     var item = job.items[job.at];
     if (!job.step) {
+      // One read per brand per run: a brand already read is passed over.
+      if (readThisRun(job, item)) return passOver(job);
       job.step = { phase: item.research ? 'research' : peopleUrl(item.linkedinUrl, '') ? 'read' : 'search', pass: 0, triedAka: false, seen: 0, added: 0, navs: 0, startedAt: Date.now(), hiddenMs: 0 };
       saveFill(job);
       // Leo marked it "None of these": never searched under its own name
@@ -1921,6 +1932,8 @@
         it.brandId = r.brandId;
         it.linkedinUrl = r.linkedinUrl;
         if (r.outcome === 'added') job2.newBrands = (job2.newBrands || []).concat([r.name]);
+        // Its page is a roster brand's this run already read: not twice.
+        if (readThisRun(job2, it)) return passOver(job2);
         // Still the same item: its clock and hidden time carry on.
         job2.step = { phase: peopleUrl(r.linkedinUrl, '') ? 'read' : 'search', pass: 0, triedAka: false, seen: 0, added: 0, navs: 0, startedAt: st.startedAt || Date.now(), hiddenMs: st.hiddenMs || 0 };
         job2.nextAt = Date.now() + rand(2000, 4000);
@@ -2106,9 +2119,9 @@
 
   // Something went wrong with this brand's read (1.38, Leo, Oct 14 2026: "if
   // a brand capture does not get all the people … or it times out … make
-  // sure that it runs again"). It's done for now; finishBrand puts it at the
-  // end of the run for a second try, and the dashboard puts it first on the
-  // next run until a read comes out clean.
+  // sure that it runs again"). It's done for this run (one read per brand a
+  // run, 1.39); the dashboard puts it first on the next run until a read
+  // comes out clean.
   function brandIssue(job, code, words) {
     var st = job.step || (job.step = { seen: 0, added: 0 });
     st.issue = code; st.issueNote = words;
@@ -2116,6 +2129,33 @@
     // (the issue rides along, so the brand still comes back).
     if (st.kind !== 'parent' && tryParent(job, words)) return;
     finishBrand(job, words);
+  }
+  // The brand an item reads: its brandId, else (a research name that never
+  // became a brand) its name.
+  function runKey(it) { return it.brandId ? 'b:' + it.brandId : 'n:' + String(it.name || '').trim().toLowerCase(); }
+  // Read (or passed over) earlier in this run: every item before the
+  // current one is done.
+  function readThisRun(job, it) {
+    var k = runKey(it);
+    if (it.again) return true;
+    for (var i = 0; i < job.at && i < job.items.length; i++) if (runKey(job.items[i]) === k) return true;
+    return false;
+  }
+  // On to the next brand without a read, a visit mark or a day's count.
+  function passOver(job) {
+    job.step = null;
+    job.at++;
+    job.nextAt = Date.now() + 500;
+    saveFill(job);
+    return runFill();
+  }
+  // Second tries an older copy put at the end of the run (not one already
+  // under way): off the list.
+  function dropSecondTries(job) {
+    var keep = job.items.filter(function (it, i) { return !it.again || i < job.at || (i === job.at && !!job.step); });
+    if (keep.length === job.items.length) return false;
+    job.items = keep;
+    return true;
   }
   // The current Sales Navigator search is done: the next one, or the brand's
   // read through Sales Navigator is.
@@ -2401,8 +2441,6 @@
     var issue = st.issue || (st.partial ? 'partial' : null);
     var issueNote = st.issueNote || st.partial || null;
     if (issue && !note && issue === 'partial') note = issueNote;
-    // A first try that went wrong goes again at the end of this run.
-    var again = !!issue && !item.again;
     // Every item goes in the run's report; the server's visit log (which
     // decides whether a brand is read again) only takes the ones with a
     // brandId — a research name that never became a brand is logged by
@@ -2434,7 +2472,6 @@
     };
     job.outbox = (job.outbox || []).concat([body]);
     job.results.push({ name: item.name, added: st.added, note: note || null, via: via, hidden: hiddenTotal(st.hidViews), issue: !!issue, again: !!item.again });
-    if (again) job.items.push(Object.assign({}, item, { again: 1, againWhy: issueNote || note || 'its first try went wrong' }));
     job.at++;
     job.step = null;
     job.doneToday++;
@@ -2652,7 +2689,7 @@
       focusN ? h('div', { style: 'font-size:12px;color:#555', text: (plannedN || gapN ? 'Then ' : '') + '“' + (job.focus || 'focus') + '” brands: ' + doneOf(function (i) { return i.focus && !i.planned; }) + ' of ' + focusN + ' done' }) : null,
       cur ? h('div', { id: 'sblinow', style: 'font-size:12px;color:#111;margin-top:4px' }, [b(cur.name), ' — ' + whyItem(job, cur)]) : null,
       h('div', { style: 'font-size:12px;color:#555', text: 'Today: ' + job.doneToday + ' of ' + DAILY_CAP + ' brands' }),
-      h('div', { id: 'sblisnline', style: 'font-size:12px;color:' + (job.snOff ? '#946200' : '#555'), text: job.salesNav ? 'Every brand through Sales Navigator; one that goes wrong is tried again at the end'
+      h('div', { id: 'sblisnline', style: 'font-size:12px;color:' + (job.snOff ? '#946200' : '#555'), text: job.salesNav ? 'Every brand through Sales Navigator, once a run; one that goes wrong goes first on the next run'
         : job.snOff ? 'Sales Navigator off for this run: ' + job.snOff + ' — using the People tab' : 'Marketing / partnerships people from the People tab (Sales Navigator is off)' }),
       job.salesNav === false ? h('button', { id: 'sblisnon', style: BTN2 + ';margin-top:6px', text: 'Use Sales Navigator again', onclick: guard(snTurnOn) }) : null,
       (job.newBrands || []).length ? h('div', { style: 'font-size:12px;color:#137333', text: job.newBrands.length + ' new brand' + (job.newBrands.length === 1 ? '' : 's') + ' found and added' }) : null,
@@ -2793,7 +2830,7 @@
       ]),
       h('label', { style: 'display:flex;gap:7px;align-items:flex-start;font-size:12px;color:#333;cursor:pointer;margin-top:10px' }, [
         snBox,
-        h('span', { text: 'Use Sales Navigator for every brand — it names people your LinkedIn shows as "LinkedIn Member". A brand it can\'t read is tried again at the end of the run, and first on the next. Untick to use the People tab instead.' }),
+        h('span', { text: 'Use Sales Navigator for every brand — it names people your LinkedIn shows as "LinkedIn Member". Each brand is read once a run; one it can\'t read goes first on the next run. Untick to use the People tab instead.' }),
       ]),
       h('div', { style: 'margin-top:12px;padding-top:10px;border-top:1px solid #eee' }, [
         h('div', { style: 'font-weight:600;margin-bottom:6px', text: 'Find new brands too' }),

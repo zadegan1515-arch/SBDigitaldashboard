@@ -974,7 +974,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   heading per grade under **Best grade first** (default; Newest first) and a grade filter. **Add all A's** (Leo, Oct 13 2026 — 88 of 106 waiting finds were A): the To review bar's button (`dcBulkOpen`,
   `#dc-bulk`) → `addDiscoveredBulk({ grade: 'A' })` preview = every A waiting, each as it'd be filed (`discoveryCategory`,
   same as one Add), and the ones held back because they may already be on the roster (chat-add's `matchRoster`: name /
-  aka, LinkedIn page, website) — and any other find with a held one's name / website / LinkedIn page (`sameAs`) → ticks
+  aka, nearly the same name, LinkedIn page, website) — and any other find with a held one's name / website / LinkedIn page (`sameAs`) → ticks
   → Add sends the preview's `expect` + ticked `ids` (one transaction through `promoteDiscovery`, the single Add's own path).
   Finds that are one brand (same name, website or LinkedIn page, in the batch) share a `group`: the best scored names
   it, the others "same brand as …" join it and fill its empty links. A stale answer reopens it with Leo's unticks kept
@@ -990,7 +990,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `DASHBOARD_TOKEN` in its environment — no API spend) follows `docs/add-a-brand-chat.md`: reads the
   screenshot / name, `brandLookup`, researches the open web (site, LinkedIn page, what they sell, money,
   college / music), previews `chatAddBrand` (rules pure in `src/lib/chat-add.ts`: possible matches by
-  name / aka, LinkedIn page, website — the Duplicates signals; `node scripts/test-chat-add.mjs`) and applies.
+  name / aka, nearly the same name, LinkedIn page, website — the Duplicates signals; `node scripts/test-chat-add.mjs`) and applies.
   **Every brand Leo sends is a yes** once real information is found — its own website or checked LinkedIn page, and
   what it sells (Leo, Oct 18 2026: "every brand Leo sends is a yes when real info is found. Ask only when it might
   match a brand already on the dashboard"); no info → nothing added, the chat says what's missing. Brand
@@ -1047,7 +1047,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   changes), **Archive…** (named first; same as Archive: passedAt + queued people shelved, one
   transaction) or re-file with the usual bar — each leaves the list (`reviewNewBrands`; looked-at ids in
   Setting `newBrandsReviewed`). **Brands → Duplicates** (`findDuplicates`, rules in
-  `src/lib/duplicates.ts`, `node scripts/test-duplicates.mjs`): the same name / also-known-as, LinkedIn
+  `src/lib/duplicates.ts`, `node scripts/test-duplicates.mjs`): the same name / also-known-as, **nearly
+  the same name** (Oct 20 2026, after the LinkedIn fill read "Cazcanes" and "Cazcanes Tequila" as two brands: `coreName`
+  takes the word that says what it sells off the end — Tequila, Brewing Co., Energy… — and that must be another brand's
+  whole name or aka, never two products of one word like Ghost Energy / Ghost Tequila; "Nearly the same name"), LinkedIn
   page or website — never an email domain (parent companies share one; Leo's call), and a website 4+
   brands share or a platform link (linktr.ee, Instagram…) is no signal. Suggestions only: Merge runs the
   brand page's `mergeBrands` preview + confirm (the keeper now takes the merged brand's names as
@@ -1276,9 +1279,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   drawing fewer cards than Sales Navigator's own count says (`snTotal`, "28 results"; cards counted once each,
   `snRead().cards`) → loaded once more, then the rest is read and the brand is `partial`; a page that won't open → `noOpen`;
   the dashboard not saving → `save`. A brand whose own read went wrong still gets its parent's read (`brandIssue` →
-  `tryParent`, which carries `issue` / `partial` / `problem` along). A brand with an issue goes **again at the end of the
-  run** (`item.again`, once), and its liSwept carries `issue` / `issueNote` / `done` / `shown` / `read` / `again` / `key` /
-  `snOn`; it waits in the run's `outbox` until the dashboard has it (`flushOutbox` at the top of `runFill`; down past the
+  `tryParent`, which carries `issue` / `partial` / `problem` along). **One read per brand per run** (script 1.39; Leo, Oct 20 2026:
+  "i think there are repeats can we make sure that does not happen" — 1.38 put a brand with an issue at the end of the
+  same run for a second try, 16 of a 92-brand run): a brand with an issue waits for the next run, where it goes first, and
+  `runFill` passes over any item whose brand an earlier item read (`readThisRun` / `passOver`, keyed by brandId, else the
+  name) — a brand listed twice, a research name whose page is a roster brand already read; a second try a 1.38 copy
+  queued in a live run is dropped (`dropSecondTries`). Its liSwept carries `issue` / `issueNote` / `done` / `shown` /
+  `read` / `again` (always false from 1.39) / `key` / `snOn`; it waits in the run's `outbox` until the dashboard has it (`flushOutbox` at the top of `runFill`; down past the
   retries → pause, Continue sends it). A page 2 Sales Navigator doesn't have (it drops the number) ends that search
   (`snNextOrDone`); paging follows Sales Navigator's count when it shows one; "LinkedIn Member"-only pages aren't misreads. An account without Sales
   Navigator **pauses** the run (`snNoAccount`). The People tab's views (PASSES, BIG_PASSES) are only for a run with the

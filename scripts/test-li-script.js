@@ -976,6 +976,34 @@ const GM_SHIM = `
     }
     ok('the research list: a clear match becomes a brand and gets its people; a telecom called NOS doesn\'t');
 
+    // 11b. One read per brand per run (1.39, Leo, Oct 20 2026: "i think there
+    // are repeats"): a research name whose page is a brand this run already
+    // read is passed over — no second read, no second visit mark.
+    {
+      fillItems = [
+        { brandId: 'b-pow', name: 'Powerade', aka: null, category: 'beverage', linkedinUrl: 'https://www.linkedin.com/company/powerade/', contacts: 0, focus: true },
+        { research: true, name: 'Powerade', aka: null, category: 'beverage', lane: 'Electrolytes & hydration', linkedinUrl: null, contacts: 0, focus: true },
+      ];
+      const before = sent.length;
+      const pg = await browser.newPage();
+      await pg.addInitScript(GM_SHIM + '\n' + SCRIPT);
+      await pg.goto('http://127.0.0.1:4622/feed/');
+      await pg.click('#sblipill');
+      await pg.click('#sblifillopen');
+      await pg.uncheck('#sblilook');
+      await pg.click('#sblifilllook');
+      await pg.waitForSelector('#sblifillstart');
+      await pg.click('#sblifillstart');
+      await pg.waitForFunction(() => { const p = document.getElementById('sbli-panel'); return p && /Run finished/.test(p.innerText); }, null, { timeout: 60000 });
+      const calls = sent.slice(before);
+      assert.equal(calls.filter(b => b.action === 'liSwept' && b.brandId === 'b-pow').length, 1, 'Powerade marked once');
+      const research = calls.findIndex(b => b.action === 'liResearch');
+      assert.ok(research > 0, 'the research name was still looked up');
+      assert.ok(!calls.slice(research).some(b => b.action === 'liCapture' || b.action === 'liSwept'), 'and not read a second time');
+      await pg.close();
+    }
+    ok('a research name whose page is a brand already read this run is not read twice');
+
     // 12. The real card shapes.
     {
       const before = sent.length;
