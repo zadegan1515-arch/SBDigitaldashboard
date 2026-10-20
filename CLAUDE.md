@@ -838,7 +838,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   closed/acquired, or researched with every signal known to be absent (sales AND funding looked up and
   under the bars, no college / music found, not a Top category) and a low score; never a brand in talks (reply, deal,
   activation); apply = the usual archive (passedAt + queued people shelved) and takes them off upcoming
-  Schedule days. Tests: `test-brand-fit.mjs`, `test-stock.mjs`, `test-brand-fit-ui.js` (page, fake
+  Schedule days. **The whole ranking** (Leo, Oct 20 2026: "send me the ranking for the brand fit with points"):
+  `listBrandFit({ all })` (read-only; `node scripts/cc.mjs listBrandFit`) = every brand in play (archived / do-not-email
+  only with `all`), best first, each with its points and reasons — the brand page's Fit line, the same `brandFit`. Tests: `test-brand-fit.mjs`, `test-stock.mjs`, `test-brand-fit-ui.js` (page, fake
   /api/data), `test-brand-fit-e2e.js` (real handlers, throwaway Postgres:
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-brand-fit-e2e.js`); GitHub Actions
   **Brand Fit** runs them.

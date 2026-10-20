@@ -368,6 +368,27 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(rf('Typed In Tonic') - rf('Plain Import Co'), 5, 'the list agrees with the brand page')
     ok('Recently added: + Add brand and chat adds for 30 days; +5 in Brand Fit for good, nothing else');
 
+    // The whole ranking with its points (Leo, Oct 20 2026: "send me the
+    // ranking for the brand fit with points"): best first, the brand page's
+    // own score and reasons, each brand's points adding up to its score.
+    await prisma.brand.create({ data: { id: 'b_gone', name: 'Gone Fizz', category: 'beverage', passedAt: new Date() } });
+    const rank = await data('listBrandFit', {});
+    assert.ok(!rank.brands.some(b => b.id === 'b_gone'), 'an archived brand is left out');
+    assert.ok(rank.count > 0 && rank.brands.length === rank.count);
+    for (let i = 1; i < rank.brands.length; i++) assert.ok(rank.brands[i - 1].score >= rank.brands[i].score, 'best first');
+    for (const b of rank.brands) {
+      assert.equal(b.reasons.reduce((s, r) => s + r.points, 0), b.score, b.name + '\'s points add up to its score');
+      assert.ok(!b.archived && !b.doNotEmail, 'brands in play only');
+    }
+    for (const id of ['b_mid', 'b_chat_new']) {
+      const one = rank.brands.find(b => b.id === id), page = await fitOf(id);
+      assert.equal(one.score, page.score, id + ': the ranking agrees with the brand page');
+      assert.deepEqual(one.reasons.map(r => r.text), page.reasons.map(r => r.text));
+    }
+    const everyone = await data('listBrandFit', { all: true });
+    assert.ok(everyone.count > rank.count && everyone.brands.some(b => b.id === 'b_gone' && b.archived), 'all: archived ones too');
+    ok('the Brand Fit ranking: every brand in play, best first, the brand page\'s points');
+
     console.log(n + ' checks passed');
   } catch (e) {
     console.error('FAILED:', e.stack || e.message);

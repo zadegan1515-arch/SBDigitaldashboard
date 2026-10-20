@@ -6907,6 +6907,40 @@ const handlers: Record<string, Handler> = {
     return { preview: false, changes, unchanged, missing, applied: changes.length }
   },
 
+  // Every brand's Brand Fit, best first, with each point and why — the
+  // brand page's Fit line for the whole roster in one read (Leo, Oct 20
+  // 2026: "send me the ranking for the brand fit with points"). Read-only.
+  // Brands in play only (archived / do-not-email / people left out) unless
+  // `all`. `reached` = the Reached tag's rule.
+  async listBrandFit({ all = false }: any = {}) {
+    const [brands, rates] = await Promise.all([
+      prisma.brand.findMany({
+        where: all ? {} : { passedAt: null, doNotEmail: false },
+        select: {
+          id: true, name: true, aka: true, kind: true, category: true, tier: true, workPeople: true,
+          passedAt: true, doNotEmail: true, ...FIT_SELECT,
+          contacts: { select: { email: true, linkedinUrl: true, doNotContactAt: true } },
+          _count: { select: { contacts: true, targets: { where: REACHED_WHERE } } },
+        },
+      }),
+      recentAcceptRates(),
+    ])
+    const now = new Date()
+    const rows = brands.filter(b => b.kind !== 'person').map(b => {
+      const f = brandFit(b, b.contacts.filter(isReachable).length, rates, now)
+      return {
+        id: b.id, name: b.name, category: b.category, priority: f.priority, score: f.score,
+        reasons: f.reasons.map(r => ({ points: r.points, text: r.text, good: r.good })),
+        people: b._count.contacts, reachable: b.contacts.filter(isReachable).length,
+        reached: b._count.targets > 0, giant: giantOf(b),
+        tooSmall: f.tooSmall, ruledOut: f.ruledOut, bizNote: f.bizNote, usUnknown: f.usUnknown,
+        archived: !!b.passedAt, doNotEmail: b.doNotEmail,
+      }
+    })
+    rows.sort((x, y) => y.score - x.score || x.name.localeCompare(y.name))
+    return { at: now.toISOString(), count: rows.length, brands: rows }
+  },
+
   // Brands → Stock take: the whole roster in one read — every brand,
   // the lane it sits in (src/lib/stock.ts) and how far outreach got.
   // Reached counts the way Results does (an invite out, or a sent
