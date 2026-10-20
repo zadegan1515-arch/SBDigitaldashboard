@@ -72,7 +72,15 @@ const WANT = { rSent: true, rAccept: true, rOldWithdrawn: true, rEmail: true, rQ
       return prisma.target.create({ data: Object.assign({ brandId, contactId: c.id }, t) });
     };
     await brand('rSent', 'Sent Co');
-    await person('rSent', 'Ann Able', { status: 'sent', sentAt: D(3) });
+    // Invited the day before the sending day ahead of the browse's day B: its
+    // first sitting (that day + the next sending day) is over by B and its rest
+    // (REST_DAYS) still runs on B, whatever day the test runs. A fixed "3 days
+    // back" made it, on a Monday, Friday's half-sent brand finishing Tuesday.
+    const B = (await data('weekBankBrowse', { category: 'energy' })).date;
+    const keyShift = (k, n) => new Date(Date.parse(k + 'T17:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+    let P = keyShift(B, -1);
+    while (![2, 3, 4].includes(new Date(P + 'T17:00:00Z').getUTCDay())) P = keyShift(P, -1);
+    await person('rSent', 'Ann Able', { status: 'sent', sentAt: new Date(keyShift(P, -1) + 'T17:00:00Z') });
     await person('rSent', 'Ann Two', { status: 'queued' });
     await brand('rAccept', 'Accept Log Co');                       // logged straight to accepted, no invite date
     await person('rAccept', 'Ben Bright', { status: 'accepted' });

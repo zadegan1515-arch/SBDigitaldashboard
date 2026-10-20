@@ -27,7 +27,7 @@ const BRAND_FIELDS = {
   // unless the company is based abroad).
   hq: true,
   // What the brand says it is, for Brand Fit's student fit (student-fit.ts).
-  about: true, topProducts: true, notes: true,
+  about: true, topProducts: true, notes: true, source: true,
 } as const
 const CONTACT_FIELDS = { id: true, name: true, title: true, email: true, linkedinUrl: true, isDecisionMaker: true, doNotContactAt: true, location: true } as const
 const TARGET_FIELDS = {

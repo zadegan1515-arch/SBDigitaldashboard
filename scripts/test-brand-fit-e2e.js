@@ -339,6 +339,35 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(dg('Big Funded Energy').score, bigFit, 'a find on the roster grades on its brand\'s Brand Fit');
     ok('Discover: every find graded; one on the roster by its own Brand Fit');
 
+    // Brands Leo adds himself (Oct 19 2026: "should be … under a recently added
+    // tab … and should have priority … plus five points"): + Add brand marks the
+    // brand 'site', the Add a brand chat 'chat'; both list on Recently added for
+    // 30 days and carry +5 in Brand Fit for good. Nothing else counts.
+    const site = await data('createBrand', { name: 'Typed In Tonic', category: 'beverage' });
+    assert.equal(site.brand.source, 'site');
+    // + Add brand's Paste a list counts too; Stock take's lane ideas don't.
+    await data('addBrandsBulk', { text: 'Pasted Pop', category: 'beverage', apply: true, site: true });
+    await data('addBrandsBulk', { text: 'Lane Idea Cola', category: 'beverage', apply: true });
+    assert.equal((await prisma.brand.findUnique({ where: { name: 'Pasted Pop' } })).source, 'site');
+    assert.equal((await prisma.brand.findUnique({ where: { name: 'Lane Idea Cola' } })).source, 'manual');
+    await prisma.brand.create({ data: { id: 'b_chat_old', name: 'Old Chat Add', category: 'beverage', source: 'chat', createdAt: new Date(Date.now() - 40 * 864e5) } });
+    await prisma.brand.create({ data: { id: 'b_chat_new', name: 'New Chat Add', category: 'beverage', source: 'chat' } });
+    await prisma.brand.create({ data: { id: 'b_plain', name: 'Plain Import Co', category: 'beverage' } });
+    const recent = (await data('listBrands', { category: 'recent', take: 5000, fit: true })).map(b => b.name).sort();
+    assert.deepEqual(recent, ['New Chat Add', 'Pasted Pop', 'Typed In Tonic'], 'the last 30 days of chat and site adds only');
+    assert.equal((await data('categoryReach')).recentlyAdded, 3);
+    const fitOf = async (id) => (await data('getBrand', { brandId: id })).fit
+    const plus = (f) => f.reasons.find(r => /added by you/.test(r.text))
+    const plain = await fitOf('b_plain'), typed = await fitOf(site.brand.id), oldChat = await fitOf('b_chat_old')
+    assert.equal(plus(typed).points, 5); assert.match(plus(typed).text, /\+ Add brand/)
+    assert.match(plus(oldChat).text, /Add a brand chat/, 'the +5 stays after the 30 days')
+    assert.equal(plus(plain), undefined)
+    assert.equal(typed.score - plain.score, 5, 'the same brand otherwise, 5 points apart')
+    const roster = await data('listBrands', { take: 5000, fit: true })
+    const rf = (n) => roster.find(b => b.name === n).fit.score
+    assert.equal(rf('Typed In Tonic') - rf('Plain Import Co'), 5, 'the list agrees with the brand page')
+    ok('Recently added: + Add brand and chat adds for 30 days; +5 in Brand Fit for good, nothing else');
+
     console.log(n + ' checks passed');
   } catch (e) {
     console.error('FAILED:', e.stack || e.message);

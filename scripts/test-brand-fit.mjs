@@ -171,6 +171,20 @@ t('fits a student’s day: up to 20 on top, read from what the brand says it is'
   assert.equal(scoreBrand({ ...base, name: 'Raze Energy' }).reasons.find(r => /energy \//.test(r.text)).points, 10, 'a name says energy')
 })
 
+// Leo, Oct 19 2026: brands he adds himself get +5 ("priority … to get outreach").
+t('added by Leo (the Add a brand chat or + Add brand): +5, nothing else', () => {
+  const plain = scoreBrand({ ...base })
+  const chat = scoreBrand({ ...base, source: 'chat' }), site = scoreBrand({ ...base, source: 'site' })
+  assert.equal(chat.score - plain.score, 5); assert.equal(site.score - plain.score, 5)
+  assert.match(chat.reasons.find(r => /added by you/.test(r.text)).text, /Add a brand chat/)
+  assert.match(site.reasons.find(r => /added by you/.test(r.text)).text, /\+ Add brand/)
+  for (const src of ['manual', 'discover', 'linkedin-discover', 'research', 'sponsorunited', null]) {
+    assert.equal(scoreBrand({ ...base, source: src }).score, plain.score, String(src))
+  }
+  const full = scoreBrand({ ...base, salesCents: 300 * M, sponsorsCollege: true, acceptRate: 0.9, source: 'chat' })
+  assert.equal(full.score, 100); assert.equal(full.reasons.reduce((s, r) => s + r.points, 0), 100, 'still adds up past 100')
+})
+
 t('ruled out: only confirmed not in the US; closed / acquired go to suggest Archive', () => {
   assert.equal(scoreBrand({ ...base, usStatus: 'no' }).ruledOut, 'not sold in the US')
   assert.equal(scoreBrand({ ...base, usStatus: 'no' }).archiveWhy, 'not sold in the US')

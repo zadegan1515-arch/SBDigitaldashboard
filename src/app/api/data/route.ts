@@ -64,7 +64,7 @@ import { personWhere, basedAbroad } from '@/lib/abroad'
 import { workNeed, dueDays } from '@/lib/planned-first'
 import { searchHit, type SearchHit } from '@/lib/brand-search'
 import { gradeDiscovery, gradeFromFit } from '@/lib/discover-grade'
-import { scoreBrand, priorityOf, isTopCategory, PRIORITIES, PRIORITY_POINTS, DEFAULT_CATEGORY_PRIORITY, type Priority, dollarsToCents, normUs, normBiz, cleanResearchRow, shortMoney, type FitResult, type ResearchRow } from '@/lib/brand-fit'
+import { scoreBrand, ADDED_SOURCES, priorityOf, isTopCategory, PRIORITIES, PRIORITY_POINTS, DEFAULT_CATEGORY_PRIORITY, type Priority, dollarsToCents, normUs, normBiz, cleanResearchRow, shortMoney, type FitResult, type ResearchRow } from '@/lib/brand-fit'
 import { buildStock, bestDealStage, refileMoves, remapPlanDays, brandKey } from '@/lib/stock'
 import { buyerKind, isBuyerTitle, countBuyers, BUYER_TARGET } from '@/lib/buyers'
 import { readCoverFacts, brandCover } from '@/lib/coverage-db'
@@ -2735,7 +2735,7 @@ async function recentAcceptRates(): Promise<AcceptRates> {
 const FIT_SELECT = {
   liMembers: true, salesCents: true, fundingCents: true, lastRoundAt: true, usStatus: true,
   sponsorsCollege: true, bizStatus: true, acquiredBy: true, researchedAt: true,
-  about: true, topProducts: true, notes: true,
+  about: true, topProducts: true, notes: true, source: true,
 } as const
 type FitFacts = {
   name: string; aka: string | null; category: string | null; tier: string | null; workPeople: number | null
@@ -2743,6 +2743,7 @@ type FitFacts = {
   usStatus: string | null; sponsorsCollege: boolean | null; bizStatus: string | null; acquiredBy: string | null
   researchedAt: Date | null
   about: string | null; topProducts: string | null; notes: string | null
+  source: string // 'chat' / 'site' = Leo added it: +5 (brand-fit.ts addedByLeo)
 }
 function centsNum(v: bigint | number | null | undefined): number | null {
   return v == null ? null : Number(v)
@@ -2760,7 +2761,7 @@ function brandFit(b: FitFacts, reachable: number, rates: AcceptRates | null, now
     usStatus: b.usStatus, sponsorsCollege: b.sponsorsCollege, bizStatus: b.bizStatus, acquiredBy: b.acquiredBy,
     researchedAt: b.researchedAt,
     reachable, need: workNeed({ ...b, big: isBigBrand(b), top: topCat(b.category) }), acceptRate: rateOrNull(rates, b.category), priority: categoryPriority(b.category),
-    giant: giantOf(b), name: b.name, about: b.about, topProducts: b.topProducts, notes: b.notes, now,
+    giant: giantOf(b), name: b.name, about: b.about, topProducts: b.topProducts, notes: b.notes, source: b.source, now,
   })
 }
 // Who a Best fit day may pick: a brand nobody there has been reached at
@@ -3061,6 +3062,14 @@ function mondayKey(key: string): string {
 // LinkedIn". Looked-at ids live in Setting newBrandsReviewed.
 const NEW_BRAND_SOURCES = ['linkedin-discover', 'research']
 const NEW_BRAND_DAYS = 14
+// Brands → Recently added (Leo, Oct 19 2026): brands Leo added himself — the
+// Add a brand chat ('chat') or the site's add boxes ('site') — in the last
+// 30 days. They keep Brand Fit's +5 after they leave the tab.
+const RECENT_ADD_SOURCES = Object.keys(ADDED_SOURCES)
+const RECENT_ADD_DAYS = 30
+function recentAddWhere(): Prisma.BrandWhereInput {
+  return { source: { in: RECENT_ADD_SOURCES }, createdAt: { gte: new Date(Date.now() - RECENT_ADD_DAYS * 864e5) } }
+}
 const REVIEWED_KEY = 'newBrandsReviewed'
 async function readReviewedNew(): Promise<Set<string>> {
   const row = await prisma.setting.findUnique({ where: { key: REVIEWED_KEY } })
@@ -6638,6 +6647,7 @@ const handlers: Record<string, Handler> = {
         kind: null,
         ...(category === 'none' ? { category: null }
           : category === 'new' ? newBrandWhere(reviewed!)
+          : category === 'recent' ? recentAddWhere()
           : category && category !== 'all' ? { category } : {}),
         ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
         ...(noProfile ? { externalId: null, passedAt: null, doNotEmail: false } : {}),
@@ -6755,7 +6765,10 @@ const handlers: Record<string, Handler> = {
       if (reached) { row.reached += 1; all.reached += 1 }
       if (b.passedAt) { row.passed += 1; all.passed += 1 }
     }
-    return { categories: out, all, newFromLinkedIn }
+    // Recently added: the same test listBrands({ category: 'recent' }) uses.
+    const recentSince = Date.now() - RECENT_ADD_DAYS * 864e5
+    const recentlyAdded = brands.filter(b => RECENT_ADD_SOURCES.includes(b.source) && b.createdAt.getTime() >= recentSince).length
+    return { categories: out, all, newFromLinkedIn, recentlyAdded }
   },
 
   // New from LinkedIn, handled in bulk. keep = looked at, fine as it is
@@ -8371,7 +8384,10 @@ const handlers: Record<string, Handler> = {
         linkedinUrl: linkedinUrl || null,
         notes: notes || null,
         owner: owner || null,
-        source: 'manual',
+        // Typed into the site's add boxes (+ Add brand, the Schedule's and
+        // the LinkedIn tab's "add as a new brand"): Leo added it — the
+        // Recently added tab and +5 in Brand Fit (Oct 19 2026).
+        source: 'site',
       },
     })
 
@@ -13572,7 +13588,9 @@ const handlers: Record<string, Handler> = {
   // Previews first. Nothing is written until `apply` is set, so the
   // confirm can show exactly which names are new and which are already
   // on the roster under that name or an "also known as".
-  async addBrandsBulk({ text, apply, category: askedCategory, tier }: any) {
+  // site = the + Add brand box's "Paste a list" (Leo added them: Recently
+  // added and +5, like one typed in); Stock take's lane ideas send none.
+  async addBrandsBulk({ text, apply, category: askedCategory, tier, site }: any) {
     const MAX = 200
     // Refused up front, preview included, so the confirm never shows a
     // category the apply would then write through.
@@ -13636,7 +13654,7 @@ const handlers: Record<string, Handler> = {
             category: row.category,
             tier: tier || null,
             website: row.website,
-            source: 'manual',
+            source: site === true ? 'site' : 'manual',
           },
         })
         created.push({ id: b.id, name: b.name, category: b.category ?? 'unresolved' })

@@ -44,8 +44,8 @@ const H = {
   listOwners: () => [], listActivations: () => [], getRateCard: () => ({}),
   zachTodo: () => ({ rows: [], people: [] }), getActionQueue: () => ({ count: 0, items: [] }),
   getDashboard: () => ({}), appVersion: () => ({ sha: 'test' }),
-  listBrands: () => S.list,
-  categoryReach: () => ({ categories: {}, newFromLinkedIn: 0 }),
+  listBrands: (a) => (a.category === 'recent' ? S.list.filter((b) => b.source === 'chat' || b.source === 'site') : S.list),
+  categoryReach: () => ({ categories: {}, newFromLinkedIn: 0, recentlyAdded: S.list.filter((b) => b.source === 'chat' || b.source === 'site').length }),
   findDuplicates: () => ({ groups: [] }),
   suMatchQueue: () => ({ proposals: S.proposals, missing: 0, capturePending: 0 }),
   suResolveMatch: (a) => { S.resolved.push(a); S.proposals = S.proposals.filter((p) => p.brandId !== a.brandId); return { ok: true, brandId: a.brandId, brandName: 'Halfday Iced Tea' }; },
@@ -98,7 +98,7 @@ async function main() {
 
   // Sub-tabs: Stock take and Needs contacts folded in, still reachable.
   const tabs = await page.$$eval('#sub-tabs .nav-item', (bs) => bs.map((b) => b.textContent));
-  assert.deepEqual(tabs, ['All brands', 'Discover', 'Clarify']);
+  assert.deepEqual(tabs, ['All brands', 'Recently added', 'Discover', 'Clarify']);
   assert.ok(await page.$('#bq-stock') && await page.$('#bq-needs'), 'lanes and worklist buttons');
   console.log('✓ one Brands page; lanes / worklist are buttons');
 
@@ -420,6 +420,34 @@ async function main() {
   await page.evaluate(() => loadBrands('all'));
   await page.waitForSelector('#brands-list [data-brfit="hi"]');
   console.log('✓ Brand Fit counts: 76+ / 50–75 / under 50 of the brands in play; a click shows them, again clears; they follow the search');
+
+  // Recently added (Leo, Oct 19 2026): brands he added himself — the Add a
+  // brand chat or + Add brand — newest first, its own sub-tab, never hidden
+  // as too small; leaving it puts the table's own sort back.
+  reset();
+  const DAY = 864e5;
+  S.list.push(
+    row('r1', 'Chat Older', 0, 1, { source: 'chat', createdAt: new Date(Date.now() - 3 * DAY).toISOString() }),
+    row('r2', 'Site Newest', 0, 1, { source: 'site', createdAt: new Date(Date.now() - DAY).toISOString(), hideSmall: true }),
+    row('r3', 'Chat Newer', 0, 1, { source: 'chat', createdAt: new Date(Date.now() - 2 * DAY).toISOString() }));
+  await page.evaluate(() => gotoView('brands'));
+  await page.waitForSelector('#brands-list .br-table');
+  const sortBefore = await page.$eval('#brands-list [data-brsort]', (s) => s.value);
+  await page.click('#sub-tabs [data-view="recent"]');
+  await page.waitForFunction(() => document.getElementById('brands-title').textContent === 'Recently added');
+  await page.waitForFunction(() => document.querySelectorAll('#brands-list [data-brow]').length === 3);
+  assert.deepEqual(await names(), ['Site Newest', 'Chat Newer', 'Chat Older'], 'newest first — and the too-small one isn’t hidden');
+  assert.match(await page.textContent('#sub-tabs .nav-item.active'), /Recently added/);
+  assert.match(await page.textContent('[data-brow="r2"]'), /\+ Add brand · added/);
+  assert.match(await page.textContent('[data-brow="r1"]'), /Add a brand chat · added/);
+  assert.match(await page.textContent('#brands-sub'), /\+5 in Brand Fit/);
+  assert.ok(!(await page.$('#brands-list [data-hsbox], #brands-list .hs-switch')), 'no Hide too small on this list');
+  assert.equal(await page.$eval('#brands-list [data-brcat]', (s) => s.value), 'recent');
+  await page.click('#sub-tabs [data-view="brands"]');
+  await page.waitForFunction(() => document.getElementById('brands-title').textContent === 'All brands');
+  await page.waitForFunction((v) => (document.querySelector('#brands-list [data-brsort]') || {}).value === v, sortBefore);
+  assert.match(await page.textContent('#sub-tabs .nav-item.active'), /All brands/);
+  console.log('✓ Recently added: its own sub-tab, chat and + Add brand adds newest first, how each came in; All brands gets its sort back');
 
   await page.setViewportSize({ width: 390, height: 800 });
   await page.evaluate(() => gotoView('brands'));

@@ -17,6 +17,11 @@
 //     clothing and tech at the bottom.
 //   - Also counts: already sponsors college / music, people we can reach
 //     on file, and how well the category converts.
+//   - Added by Leo (Oct 19 2026: "brands that we add from Claude, like the
+//     add a brand tab, or add a brand chat … should have priority … plus
+//     five points"): a brand made by the Add a brand chat (source 'chat')
+//     or typed into the site's + Add brand box (source 'site') gets +5, for
+//     good — Best fit, the Schedule and Week plan take it sooner.
 //   - Fits a student's day (Oct 18 2026, student-fit.ts — the same rule
 //     the Discover score uses; Leo chose both): made for studying / focus
 //     20, nights out / the morning after 15, game day / campus life 15,
@@ -75,6 +80,13 @@ export function isTopCategory(category: string | null | undefined, custom?: Reco
   return priorityOf(category, custom) === 'top'
 }
 
+// Brands Leo added himself: how they came in → how the reason line names it.
+export const ADDED_SOURCES: Record<string, string> = { chat: 'the Add a brand chat', site: '+ Add brand' }
+export const ADDED_POINTS = 5
+export function addedByLeo(source: string | null | undefined): string | null {
+  return (source && ADDED_SOURCES[source]) || null
+}
+
 export type UsStatus = 'yes' | 'no'
 export type BizStatus = 'active' | 'closed' | 'acquired'
 
@@ -96,6 +108,7 @@ export interface FitInput {
   acceptRate?: number | null // the category's smoothed accept rate, 0..1
   priority?: Priority // the category's priority (default from DEFAULT_CATEGORY_PRIORITY)
   giant?: string | null // giants.ts's reason it's a giant (queue-rules giantOf), or null
+  source?: string | null // how the brand came in — 'chat' / 'site' = Leo added it (+5)
   // What the brand says it is (student-fit.ts): name, About, products,
   // the Discover write-up in its notes (Leo's own notes and our pitch
   // idea are never read).
@@ -280,6 +293,10 @@ export function scoreBrand(b: FitInput): FitResult {
   const pr = b.priority ?? priorityOf(b.category)
   add(pr === 'top' ? true : pr === 'middle' ? null : false,
     PRIORITY_WORD[pr] + ' priority category' + (pr === 'skip' ? ' — never picked automatically' : ''), PRIORITY_POINTS[pr])
+
+  // 3a. Leo added it himself (the Add a brand chat or + Add brand): +5.
+  const added = addedByLeo(b.source)
+  if (added) add(true, 'added by you (' + added + ')', ADDED_POINTS)
 
   // 3b. Fits a student's day (student-fit.ts).
   const said = !!(String(b.about ?? '').trim() || String(b.topProducts ?? '').trim() || discoverWriteUp(b.notes))
