@@ -205,7 +205,8 @@ async function main() {
 
   // 1. The tab
   const tabs = await page.$$eval('.tabs.cc-only:not(#sub-tabs) .nav-item', (els) => els.map((e) => e.textContent));
-  assert.deepEqual(tabs.slice(0, 5), ['Home', 'Brands', 'Outreach', 'In talks', 'Show Board'], tabs.join(' | '));
+  // Elizabeth's outreach tab sits next to Outreach (Oct 21 2026).
+  assert.deepEqual(tabs.slice(0, 6), ['Home', 'Brands', 'Outreach', 'Elizabeth', 'In talks', 'Show Board'], tabs.join(' | '));
   await page.click('.tabs .nav-item[data-view="board"]');
   await page.waitForSelector('#sub-tabs .nav-item[data-view="talks"]');
   assert.equal(await text('#sub-tabs .nav-item[data-view="talks"]'), 'Board codes');

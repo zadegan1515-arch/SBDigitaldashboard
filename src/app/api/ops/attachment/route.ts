@@ -8,6 +8,7 @@ import { getServerSession } from 'next-auth'
 import { PrismaClient } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
 import { opsGetAttachment } from '@/lib/google'
+import { repAccountOf, REP_ONLY_MESSAGE } from '@/lib/rep-access'
 
 const prisma = new PrismaClient()
 export const dynamic = 'force-dynamic'
@@ -15,6 +16,7 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   const session: any = await getServerSession(authOptions)
   if (!session?.user?.email) return NextResponse.json({ ok: false, error: 'Sign in first' }, { status: 401 })
+  if (await repAccountOf(prisma, session.user.email)) return NextResponse.json({ ok: false, error: REP_ONLY_MESSAGE }, { status: 403 })
   const m = req.nextUrl.searchParams.get('m') || ''
   const a = req.nextUrl.searchParams.get('a') || ''
   const row = await prisma.opsMessage.findUnique({ where: { id: m }, select: { gmailId: true, attachments: true } })

@@ -6,6 +6,10 @@ import '@/lib/bigint-json'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { PrismaClient } from '@prisma/client'
+import { repAccountOf, REP_ONLY_MESSAGE } from '@/lib/rep-access'
+
+const prisma = new PrismaClient()
 import { googleExchangeCode, driveExchangeCode, opsExchangeCode } from '@/lib/google'
 
 export const dynamic = 'force-dynamic'
@@ -14,6 +18,10 @@ export async function GET(req: NextRequest) {
   const session: any = await getServerSession(authOptions)
   if (!session?.user?.email) {
     return NextResponse.json({ ok: false, error: 'Sign in first' }, { status: 401 })
+  }
+  // Elizabeth's account connects nothing (it opens only her outreach).
+  if (await repAccountOf(prisma, session.user.email)) {
+    return NextResponse.json({ ok: false, error: REP_ONLY_MESSAGE }, { status: 403 })
   }
 
   const url = req.nextUrl

@@ -30,9 +30,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 `src/app/api/data/route.ts`.
 
 ## Where things live
-- `public/app.html` — the whole UI. Top nav is seven groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
+- `public/app.html` — the whole UI. Top nav is eight groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
   `showView`): Home · Brands (All brands / Recently added / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
-  Week plan / Schedule / Email / People / Archived / Email stats) · **In talks** (one view, below) ·
+  Week plan / Schedule / Email / People / Archived / Email stats) · **Elizabeth** (Today / Week plan / Follow-ups / Results, below) · **In talks** (one view, below) ·
   **Show Board** (Overview = code lookup (`boardCodeLookup`: the whole roster by name / aka, people and archived too — it used to filter listBrands' first 500; `test-board-lookup.js`) + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
   exact NY times and time on board; **every** board open is logged, gate on or off (anonymous = "Visitor") / **Board codes** (was "In talks" until the In talks tab; view id still `talks`, `listTalks`) = per-brand engagement cards (code, viewers, opens, timed minutes
@@ -163,6 +163,53 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `addWorkLog`); every write is a ClaudeAction (`actionText`). Show Board's old "In talks" sub-tab is **Board codes**.
   Tests: `node scripts/test-in-talks.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-in-talks.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-in-talks-e2e.js`.
+- **Elizabeth** (Leo, Oct 21 2026: "a new outreach tab for Elizabeth to use her email to outreach to some brands … a
+  different part to the site soley for Elizabeth and I want the brands and the same structure for outreach to carry over";
+  his picks: **both** LinkedIn invites from her LinkedIn and emails from her own Gmail, **any brand**, **no rules between her
+  and Zach** (the same person can hear from both), **Tue–Thu, 30 a day**, **her own sign-in sees only her part**). Top tab
+  after Outreach (`elizabeth` group: `#el-today` / `#el-week` / `#el-follow` / `#el-results`, `EL` / `el*` in app.html,
+  `.el-` CSS). Rules pure in `src/lib/rep-outreach.ts` (`node scripts/test-rep-outreach.mjs`); her rows = table
+  **`RepOutreach`** (`rep` 'elizabeth', one row per person per channel `linkedin` | `email`, `day` = the NY day it's on her
+  list, `status` queued · sent · accepted · replied · call · declined · passed · withdrawn, the step dates, `steps` for Back a
+  step, her own `subject` / `body`). Brand / person relations are **SetNull** and the row keeps `brandName` / `name` / `title`
+  / links, so nothing elsewhere takes her history: `mergeBrands` and `combineParent` (+ Undo, `COMBINE_TABLES`) move her rows,
+  `mergePeople` moves a copy's rows to the person who stays (`repMoved`, back on Undo), `deleteBrand` names them
+  (`summary.elizabeth`), `undoDiscoverBulk` treats them as touched, `liCleanup` keeps anyone on her list. Never touches
+  Zach's `Target` rows, his queue, `isReached` or his Reached tag. **Her week** = Setting `repPlan:elizabeth` ({ day:
+  brandIds }) + `repBuilt:elizabeth` (which brands a day's list was made for), every change through `elUpdate` (advisory
+  lock; `rollPlan` first: a past day's unmade brand goes first on her next sending day). `elWeek` = this week's sending days
+  from today + next week's, each with its brands and n / 30, and the list to plan: brands in play (not archived, do-not-email,
+  stopped, not US, closed, too small, Skip) with someone she can still reach, not on her week, nothing of hers there in 14
+  days, best Brand Fit first (`elBank`); `elSearch` = any brand; `elPlan` add / move (her waiting people move with it) /
+  remove; **Fill her week** = `elSpread` (Week plan's `spreadWeek`, preview → apply with its seed + `expect`, `elSpreadUndo`
+  names what comes off). **Today** (`elToday`): on a sending day its first open makes the list (`elBuildToday`): the day's
+  brands in plan order, whole, while they fit the 30 (carried unsent rows count), each opening with its number (`workCount`),
+  best people first (`pickPeople`: unflagged buyer titles, partnerships > events > marketing = founder, then email, then
+  LinkedIn; nobody with `doNotContactAt`; a do-not-email brand LinkedIn only), **email when there's an address, else a
+  LinkedIn invite** (`channelFor`; the row's ⋯ switches it while waiting). Never topped up; one that doesn't fit waits and
+  rolls. A row: **Open in Gmail** (compose URL, `authuser` = her account — the one marked on Team, `repEmail`) / Copy / **Email
+  sent ✓**, or Open profile / **Copy note** (≤ 300) / **Invite sent ✓**; her own wording per email (`elStep` save; the
+  template's own text = '' = follow the template); Leave out; **Take off** (`elTakeOff`, names who comes off first).
+  **Follow-ups** (`elFollow`, `standing`): LinkedIn = Zach's list's cadence (text them 2 days after the accept, final 10
+  days after that, No response 7 days after the final; due dates on Fri–Mon move to Tuesday), an invite unaccepted 21 days =
+  withdraw it; email = follow-up 4 days after, No response 7 days after that; They replied → Call booked (needs its day) /
+  Doesn't want to continue (her row only — Zach's list isn't changed). Every step = `elStep` (refused out of order, refused
+  for anyone who said they don't want to continue; only if the row is unchanged since read), ← Back a step = the last step's
+  fields back. **Results** (`elResults`): 7 / 30 days / all (invites, accepted, emails, replied, calls), each day for two
+  weeks, brands she reached. **A brand's window** (`elBrand`, any brand name in her pages): facts, Fit, her week's days,
+  people with her status, + Her list (`elQueuePeople`), **+ Add a person** (`elAddPerson`: a Contact for everyone, source
+  `elizabeth`; dupes and stopped people refused). **Templates** (Setting `repTemplates:elizabeth`; `elTemplates` /
+  `elSaveTemplate`; email, follow-up email, LinkedIn note, LinkedIn message, final reach-out; signed Elizabeth). **Her
+  Reached tag**: `reachedBrands.el` → a teal "Elizabeth Oct 21" beside Zach's purple tag (`rbEl`), never his. **Her own
+  account**: Operations → Team → **Make it Elizabeth's outreach only** (`setRepAccount`, founding members, never your own
+  account; Setting `repAccounts` = { email: { rep } }, read through `src/lib/rep-access.ts`, 30 s memo). That account's
+  /api/data calls answer 403 except `REP_FNS` (her `el*`, getMe, listOwners, reachedBrands); `/api/google/start` /
+  `callback` and `/api/ops/attachment` refuse it; the page (`getMe.rep` → `body.rep-only`, remembered in localStorage
+  `sb.rep`) hides the sidebar, top tabs, search and + Add brand, never loads Home or the recap, and its SB mark
+  (`#rep-home`) goes to her Today. Leo hasn't set her email yet (his call: "I'll set it myself later"). Nothing sends from
+  the site (rule 7 unchanged). Tests: `node scripts/test-rep-outreach.mjs`, `NODE_PATH=$(npm root -g) node
+  scripts/test-elizabeth.js` (page), `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-elizabeth-e2e.js`
+  (real handlers + a real signed-in session for the lockout).
 - **Leo's picked ideas, built Oct 6 2026** (retired from `build-ideas.ts`): **Weekly scoreboard** on Home (`#hm-score`,
   `weeklyScore` / `setWeeklyGoals`, Setting `weeklyGoals`, defaults `WEEKLY_GOALS_DEFAULT`): invites / accepted /
   replied / calls booked / deals / brands added per New York week (Mon–Sun), this week vs goal + 8 weeks of bars.

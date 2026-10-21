@@ -43,7 +43,7 @@ import { readHiddenLog, updateHiddenLog, markZachRead, clearZachRead, zachDue, Z
 import { readRuns } from '@/lib/li-report'
 import { companySlug, companyPageUrl, profileSlug, looksLikeSeller } from '@/lib/li-capture'
 import { whyLeaveOut, parentOf, parentCompanyOf, findParent, parentBrandNames, LI_PARENT_PAGES_KEY, type Parent } from '@/lib/parents'
-import { samePeopleGroups, pickKeeper, mergeFields, targetBeats, pairKey as personPairKey, type PersonRow, type MergeFields } from '@/lib/same-person'
+import { samePeopleGroups, pickKeeper, mergeFields, targetBeats, pairKey as personPairKey, personNameKey, type PersonRow, type MergeFields } from '@/lib/same-person'
 import { BIG_BRAND_WORK, brandSize } from '@/lib/brand-size'
 import { outcomeRates, ACCEPT_AFTER_DAYS as OUTCOME_ACCEPT_DAYS, type OutcomeInvite } from '@/lib/outcomes'
 import {
@@ -89,6 +89,18 @@ import {
   talksState, suggestTalks, isTalksPerson, talksPersonStage, stageRank, talksJourney, compareTalks, cleanLink, sentenceCount, missingFields,
   OVERVIEW_MAX_SENTENCES, OVERVIEW_MAX_CHARS, IDEA_MAX_CHARS, NOTE_MAX_CHARS, type TalksState,
 } from '@/lib/in-talks'
+import {
+  REP, REP_NAME, REP_DAILY, REP_LI_WEEK, REP_DAYS, REP_PLAN_KEY, REP_TPL_KEY, REP_ACCOUNTS_KEY, PLAN_KEEP_DAYS,
+  TPL_DEFAULTS as REP_TPL_DEFAULTS, TPL_KINDS as REP_TPL_KINDS, STEP_WORD as REP_STEP_WORD,
+  addDays as repAddDays, isSendingKey as repIsSending, onSendingDay as repOnSendingDay, nextSendingAfter as repNextSendingAfter,
+  weekDays as repWeekDays, channelFor as repChannelFor, otherChannel as repOtherChannel, pickPeople as repPickPeople,
+  reachableLeft as repReachableLeft, sortPeople as repSortPeople, fillDay, cleanPlan, dayOf as planDayOf, planPut, planRemove, rollPlan,
+  standing as repStanding, compareStanding as repCompareStanding, stepData as repStepData, stepEntry as repStepEntry,
+  backData as repBackData, readSteps as repReadSteps, cleanTemplates as cleanRepTemplates, cleanAccounts as cleanRepAccounts,
+  countRows as repCountRows, byDay as repByDay, invitesThisWeek as repInvitesThisWeek, brandStageOf as repBrandStageOf, nyKey as repNyKey,
+  type Plan, type Channel as RepChannel, type Person as RepPerson, type StepName as RepStepName,
+} from '@/lib/rep-outreach'
+import { readRepAccounts, repAccountOf, forgetRepAccounts, REP_ONLY_MESSAGE } from '@/lib/rep-access'
 import {
   listAudienceEvents, saveAudienceEvent, deleteAudienceEvent, regenStaffPin, audienceEventStats,
   listAttendees, listDupCandidates, mergeAttendees, deleteAttendee, importAttendees, segmentsOverview,
@@ -3688,6 +3700,8 @@ async function liCleanupCandidates() {
           _count: { select: { emails: true } },
         },
       },
+      // On Elizabeth's list (her own outreach): kept like anyone written to.
+      _count: { select: { repOutreach: true } },
     },
   })
   const people: Array<{ id: string; name: string; title: string | null; linkedinUrl: string | null; brandId: string; brand: string; why: string; other: string | null }> = []
@@ -3697,7 +3711,7 @@ async function liCleanupCandidates() {
     if (!w) continue
     const t = c.targets[0]
     // Written to — or said they don't want to continue (that "no" is kept).
-    if (c.doNotContactAt || (t && (wasInvited(t) || t.emailedAt || t.dmSentAt || t.repliedAt || t.handDeclinedAt || t._count.emails))) { kept++; continue }
+    if (c.doNotContactAt || c._count.repOutreach || (t && (wasInvited(t) || t.emailedAt || t.dmSentAt || t.repliedAt || t.handDeclinedAt || t._count.emails))) { kept++; continue }
     people.push({ id: c.id, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl, brandId: c.brandId, brand: c.brand.name, why: w.why, other: w.other || null })
   }
   people.sort((a, b) => a.brand.localeCompare(b.brand) || a.name.localeCompare(b.name))
@@ -3772,7 +3786,7 @@ async function reconcileBrandTargets(brandId: string, perBrandArg?: number) {
 
 const COMBINE_LAST_KEY = 'parentCombineLast'
 // Everything that hangs off a brand (Partner, one per brand, apart).
-const COMBINE_TABLES = ['contact', 'target', 'deal', 'showSponsor', 'document', 'activation', 'boardVisit', 'boardAccessRequest', 'opsMessage', 'discoveredBrand', 'brandNote'] as const
+const COMBINE_TABLES = ['contact', 'target', 'deal', 'showSponsor', 'document', 'activation', 'boardVisit', 'boardAccessRequest', 'opsMessage', 'discoveredBrand', 'brandNote', 'repOutreach'] as const
 type CombineTable = (typeof COMBINE_TABLES)[number]
 
 const nameWords = (s: unknown) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -4085,6 +4099,17 @@ async function applySamePerson(tx: any, p: PersonMergePlan) {
       Object.assign(rec, { weak, strongId: strong.id, strongWasDrop: dropWins, children, strongBefore, strongAfter: fill, draftDates })
       keepT = { ...strong, ...fill }
     }
+    // Elizabeth's rows on the copy go to the person who stays — each
+    // channel the kept row doesn't have already (one that clashes stays on
+    // the copy and keeps its own name when the copy goes: SetNull).
+    const repRows = await tx.repOutreach.findMany({ where: { contactId: dropId }, select: { id: true, rep: true, channel: true } })
+    rec.repMoved = []
+    for (const r of repRows) {
+      const clash = await tx.repOutreach.findFirst({ where: { rep: r.rep, contactId: p.keepId, channel: r.channel }, select: { id: true } })
+      if (clash) continue
+      await tx.repOutreach.update({ where: { id: r.id }, data: { contactId: p.keepId } })
+      rec.repMoved.push(r.id)
+    }
     await tx.contact.delete({ where: { id: dropId } })
     drops.push(rec)
   }
@@ -4141,6 +4166,7 @@ async function undoSamePerson(tx: any, rec: any) {
     if (row.externalId && await tx.contact.findUnique({ where: { externalId: row.externalId } })) row.externalId = null
     await tx.contact.create({ data: reviveRow('Contact', row) })
     if (d.targetMoved) await tx.target.update({ where: { id: d.targetMoved }, data: { contactId: d.row.id } })
+    if (d.repMoved?.length) await tx.repOutreach.updateMany({ where: { id: { in: d.repMoved }, contactId: rec.keepId }, data: { contactId: d.row.id } })
     if (d.weak) {
       await revert('target', d.strongId, d.strongBefore, d.strongAfter, 'Target')
       if (d.strongWasDrop) await tx.target.update({ where: { id: d.strongId }, data: { contactId: d.row.id } })
@@ -7681,7 +7707,7 @@ const handlers: Record<string, Handler> = {
     const brand = await prisma.brand.findUnique({
       where: { id: brandId },
       include: {
-        _count: { select: { contacts: true, targets: true, shows: true, deals: true, brandNotes: true } },
+        _count: { select: { contacts: true, targets: true, shows: true, deals: true, brandNotes: true, repOutreach: true } },
         shows: { select: { valueCents: true } },
       },
     })
@@ -7695,6 +7721,8 @@ const handlers: Record<string, Handler> = {
       shows: brand._count.shows,
       deals: brand._count.deals,
       notes: brand._count.brandNotes,
+      // Elizabeth's outreach there: kept by name (RepOutreach, SetNull).
+      elizabeth: brand._count.repOutreach,
       attachedCents,
     }
 
@@ -7782,6 +7810,9 @@ const handlers: Record<string, Handler> = {
       await tx.opsMessage.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
       await tx.discoveredBrand.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
       await tx.brandNote.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
+      // Elizabeth's outreach follows the brand (her rows keep their own
+      // brand name as she saw it).
+      await tx.repOutreach.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
       // Partner is one-per-brand: move it only if the keeper has none.
       if (from.partner && !to.partner) {
         await tx.partner.update({ where: { brandId: fromId }, data: { brandId: toId } })
@@ -8592,7 +8623,26 @@ const handlers: Record<string, Handler> = {
     // since let in.
     const allowed = new Set([...managers, ...invited.map(i => i.email.toLowerCase())])
     const denied = (await readDenied()).filter(d => !allowed.has(d.email) && Date.now() - Date.parse(d.at) < 14 * 864e5)
-    return { managers, invited, denied, canManage: Boolean(me && managers.includes(me)) }
+    const reps = await readRepAccounts(prisma, true)
+    return { managers, invited, denied, canManage: Boolean(me && managers.includes(me)), me, reps, repName: REP_NAME }
+  },
+
+  // Mark an account as Elizabeth's (Leo, Oct 21 2026: "her own sign-in, sees
+  // only her part"): it opens only her outreach. Founding members only, and
+  // never your own account (that would lock you out of this page).
+  async setRepAccount({ email, on = true, __user }: any) {
+    const session = await getServerSession(authOptions)
+    const me = session?.user?.email?.toLowerCase()
+    if (!me || !allowlist().includes(me)) throw new Error('Only the founding members can manage access.')
+    const clean = String(email ?? '').trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) throw new Error('That does not look like an email address.')
+    if (clean === me) throw new Error('Not your own account — you would lose this page.')
+    const map = cleanRepAccounts(await readJsonSetting<unknown>(prisma, REP_ACCOUNTS_KEY, {}))
+    if (on) map[clean] = { rep: REP, at: new Date().toISOString(), by: __user ?? me }
+    else delete map[clean]
+    await writeJsonSetting(prisma, REP_ACCOUNTS_KEY, map)
+    forgetRepAccounts()
+    return { ok: true, reps: map }
   },
 
   async addTeamEmail({ email }: any) {
@@ -8633,9 +8683,11 @@ const handlers: Record<string, Handler> = {
       // "Elizabeth Chen" signs in and owns things as "Elizabeth".
       const first = (name ?? '').split(' ')[0]
       const owner = SEED_OWNERS.find(o => o.toLowerCase() === first.toLowerCase()) ?? name ?? email
-      return { email, name, owner }
+      // Marked on Team as Elizabeth's: the page opens only her outreach.
+      const rep = await repAccountOf(prisma, email)
+      return { email, name, owner, rep: rep ? REP_NAME : null }
     } catch {
-      return { email: null, name: null, owner: null }
+      return { email: null, name: null, owner: null, rep: null }
     }
   },
 
@@ -10870,7 +10922,20 @@ const handlers: Record<string, Handler> = {
     for (const [id, a] of by) {
       brands[id] = [localDayKey(new Date(a.first)), localDayKey(new Date(a.last)), STAGE[a.rank], a.invited, a.emailed]
     }
-    return { brands, count: by.size }
+    // Elizabeth's own outreach (her tab): a tag of its own beside Zach's —
+    // it never changes his "reached" (no rules between them, Leo's call).
+    const mine = await prisma.repOutreach.findMany({
+      where: { rep: REP, brandId: { not: null }, sentAt: { not: null } },
+      select: { brandId: true, channel: true, status: true, sentAt: true, acceptedAt: true, repliedAt: true },
+    })
+    const elBy = new Map<string, typeof mine>()
+    for (const r of mine) elBy.set(r.brandId as string, [...(elBy.get(r.brandId as string) ?? []), r])
+    const el: Record<string, [string, string, string, number, number]> = {}
+    for (const [id, rs] of elBy) {
+      const days = rs.map(r => localDayKey(r.sentAt!)).sort()
+      el[id] = [days[0], days[days.length - 1], repBrandStageOf(rs) ?? 'e', rs.filter(r => r.channel === 'linkedin').length, rs.filter(r => r.channel === 'email').length]
+    }
+    return { brands, count: by.size, el }
   },
 
   // ── Outreach → Week plan ──────────────────────────────────────────
@@ -15550,7 +15615,7 @@ const handlers: Record<string, Handler> = {
     const brands = await prisma.brand.findMany({
       where: { id: { in: createdIds } },
       select: { id: true, name: true, createdAt: true, updatedAt: true, boardCode: true, partner: { select: { id: true } },
-        _count: { select: { contacts: true, targets: true, deals: true, shows: true, activations: true, documents: true, boardVisits: true, brandNotes: true } } },
+        _count: { select: { contacts: true, targets: true, deals: true, shows: true, activations: true, documents: true, boardVisits: true, brandNotes: true, repOutreach: true } } },
     })
     const ids = brands.map(b => b.id)
     const tally = async (rows: { brandId: string | null }[]) => {
@@ -15570,7 +15635,7 @@ const handlers: Record<string, Handler> = {
       // An add from before stamps were kept: edited = changed 2+ min after it was made.
       const edited = stamp ? b.updatedAt.getTime() !== Date.parse(stamp) : b.updatedAt.getTime() - b.createdAt.getTime() > 120e3
       const why = c.contacts ? `${c.contacts} ${c.contacts === 1 ? 'person' : 'people'} on file`
-        : c.targets ? 'in outreach' : c.deals ? 'has a deal' : c.shows ? 'on a show' : c.activations ? 'has an activation'
+        : c.targets ? 'in outreach' : c.repOutreach ? 'in Elizabeth’s outreach' : c.deals ? 'has a deal' : c.shows ? 'on a show' : c.activations ? 'has an activation'
         : c.documents ? 'has a document' : c.brandNotes ? 'has notes' : b.partner ? 'has a partner record' : c.boardVisits ? 'opened the Show Board'
         : requests.get(b.id) ? 'asked for the Show Board' : mail.get(b.id) ? 'has ops mail'
         : planned.has(b.id) ? 'on a Schedule day' : b.boardCode ? 'has a Show Board code'
@@ -15600,6 +15665,7 @@ const handlers: Record<string, Handler> = {
               id: { in: goIds }, boardCode: null, partner: { is: null },
               contacts: { none: {} }, targets: { none: {} }, deals: { none: {} }, shows: { none: {} },
               activations: { none: {} }, documents: { none: {} }, boardVisits: { none: {} }, brandNotes: { none: {} },
+              repOutreach: { none: {} },
               OR: brands.filter(b => goIds.includes(b.id)).map(b => ({ id: b.id, updatedAt: b.updatedAt })),
             },
           })
@@ -16424,6 +16490,722 @@ function parseDraft(raw: string): { connectionNote: string; firstMessage: string
 // function timeout; everything else finishes in a fraction of this.
 export const maxDuration = 60
 
+// ── Elizabeth's outreach ──────────────────────────────────────────────
+// Leo, Oct 21 2026: "a new outreach tab for Elizabeth to use her email to
+// outreach to some brands … a different part to the site soley for
+// LEizabth and I want the brands and the same structure for outreach to
+// carry over". His picks: LinkedIn invites (her LinkedIn) and emails (her
+// own Gmail — Open in Gmail; nothing sends from the site); any brand; no
+// rules between her and Zach; Tue–Thu, 30 a day; her own sign-in sees only
+// this (Operations → Team marks the account, REP_FNS below). Rules pure in
+// src/lib/rep-outreach.ts (node scripts/test-rep-outreach.mjs); her rows in
+// RepOutreach; her week in Settings repPlan:elizabeth (+ repBuilt = which
+// brands a day's list was made for). Everyone who said they don't want to
+// continue (Zach's list) stays off her list too.
+
+const REP_BUILT_KEY = 'repBuilt:' + REP
+const REP_SPREAD_KEY = 'repSpreadLast:' + REP
+
+type ElState = { plan: Plan; built: Set<string> }
+type ElTx = Prisma.TransactionClient
+
+async function elReadState(db: ElTx | PrismaClient): Promise<ElState> {
+  const [p, b] = await Promise.all([
+    readJsonSetting<unknown>(db as any, REP_PLAN_KEY, {}),
+    readJsonSetting<unknown>(db as any, REP_BUILT_KEY, { keys: [] }),
+  ])
+  const keys = Array.isArray((b as any)?.keys) ? (b as any).keys.filter((k: unknown) => typeof k === 'string') : []
+  return { plan: cleanPlan(p), built: new Set<string>(keys) }
+}
+async function elWriteState(db: ElTx, st: ElState, today: string) {
+  const from = repAddDays(today, -PLAN_KEEP_DAYS)
+  const keys = [...st.built].filter(k => k.slice(0, 10) >= from).sort()
+  await writeJsonSetting(db as any, REP_PLAN_KEY, st.plan)
+  await writeJsonSetting(db as any, REP_BUILT_KEY, { keys })
+}
+// Every change to her week, one at a time (two clicks close together used
+// to undo each other on the Week plan's list — the same lock pattern).
+async function elUpdate<T>(fn: (st: ElState, tx: ElTx, today: string) => Promise<T> | T): Promise<T> {
+  const today = localDayKey()
+  return prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${REP_PLAN_KEY}))::text`
+    const st = await elReadState(tx)
+    st.plan = rollPlan(st.plan, today, st.built).plan
+    const out = await fn(st, tx, today)
+    await elWriteState(tx, st, today)
+    return out
+  }, { timeout: 20000 })
+}
+
+const EL_BRAND_SELECT = {
+  id: true, name: true, aka: true, kind: true, category: true, tier: true, workPeople: true,
+  website: true, linkedinUrl: true, passedAt: true, doNotEmail: true, stoppedAt: true,
+  ...FIT_SELECT,
+} as const
+const EL_CONTACT_SELECT = { id: true, brandId: true, name: true, title: true, email: true, linkedinUrl: true, doNotContactAt: true } as const
+type ElBrand = Prisma.BrandGetPayload<{ select: typeof EL_BRAND_SELECT }>
+type ElContact = Prisma.ContactGetPayload<{ select: typeof EL_CONTACT_SELECT }>
+type ElRoster = { brands: ElBrand[]; people: Map<string, ElContact[]> }
+
+async function elLoadBrands(db: ElTx | PrismaClient, where: Prisma.BrandWhereInput): Promise<ElRoster> {
+  const brands = await (db as PrismaClient).brand.findMany({ where, select: EL_BRAND_SELECT })
+  const people = new Map<string, ElContact[]>()
+  if (!brands.length) return { brands, people }
+  const ids = brands.map(b => b.id)
+  const contacts = await (db as PrismaClient).contact.findMany({ where: { brandId: { in: ids } }, select: EL_CONTACT_SELECT, orderBy: { createdAt: 'asc' } })
+  for (const c of contacts) {
+    const list = people.get(c.brandId)
+    if (list) list.push(c); else people.set(c.brandId, [c])
+  }
+  return { brands, people }
+}
+// People she can reach at a brand, as pickPeople reads them: a brand marked
+// do-not-email gets LinkedIn invites only.
+function elPeople(b: { doNotEmail: boolean }, list: ElContact[]): RepPerson[] {
+  return list.map(c => ({ ...c, email: b.doNotEmail ? null : c.email }))
+}
+// The contact ids she has a row for, per brand.
+async function elTaken(db: ElTx | PrismaClient, brandIds: string[]): Promise<Map<string, Set<string>>> {
+  const out = new Map<string, Set<string>>()
+  if (!brandIds.length) return out
+  const rows = await (db as PrismaClient).repOutreach.findMany({ where: { rep: REP, brandId: { in: brandIds }, contactId: { not: null } }, select: { brandId: true, contactId: true } })
+  for (const r of rows) {
+    if (!r.brandId || !r.contactId) continue
+    const s = out.get(r.brandId)
+    if (s) s.add(r.contactId); else out.set(r.brandId, new Set([r.contactId]))
+  }
+  return out
+}
+// How many people a brand opens with on her list: the brand's own number
+// (workCount — 3, 4 at an established brand or a Top category's, 10 at a
+// big company), no more than she can still reach there.
+function elSize(b: ElBrand, list: ElContact[], taken: ReadonlySet<string>): { work: number; left: number; size: number } {
+  const work = workCount(b, categoryPriorityMemo.map)
+  const left = repReachableLeft(elPeople(b, list), taken, brandNames(b))
+  return { work, left, size: Math.min(work, left) }
+}
+function elFit(b: ElBrand, list: ElContact[], rates: AcceptRates | null): FitResult {
+  return brandFit(b, list.filter(isReachable).length, rates)
+}
+const elBrandOk = (b: { kind: string | null }) => !b.kind
+// A brand nobody may reach (they said they don't want to continue).
+function elStopped(b: { name: string; stoppedAt: Date | null }): string | null {
+  return b.stoppedAt ? stopWords({ at: b.stoppedAt }, b.name) : null
+}
+
+// Today's list is made once per brand per day, at its first open on a
+// sending day: the brands planned for the day in their order, whole, while
+// they fit what's left of the 30 (carried rows count); one that doesn't fit
+// waits and the roll moves it on. Never topped up after (a person left out
+// frees room for the next brand, not for someone else at theirs).
+async function elBuildToday(by: string | null): Promise<{ waits: Array<{ id: string; need: number }>; nobody: string[] }> {
+  return elUpdate(async (st, tx, today) => {
+    const waits: Array<{ id: string; need: number }> = []
+    const nobody: string[] = []
+    if (!repIsSending(today)) return { waits, nobody }
+    const ids = (st.plan[today] ?? []).filter(id => !st.built.has(today + '|' + id))
+    if (!ids.length) return { waits, nobody }
+    const roster = await elLoadBrands(tx, { id: { in: ids } })
+    const byId = new Map(roster.brands.map(b => [b.id, b]))
+    const taken = await elTaken(tx, ids)
+    // On the list already that day (people added by hand count first).
+    const onDay = await tx.repOutreach.groupBy({ by: ['brandId'], where: { rep: REP, day: today, brandId: { in: ids }, status: { not: 'passed' } }, _count: { _all: true } })
+    const handOn = new Map(onDay.map(g => [g.brandId as string, g._count._all]))
+    const count = await tx.repOutreach.count({ where: { rep: REP, OR: [{ day: today, status: { not: 'passed' } }, { status: 'queued', day: { lt: today } }] } })
+    const sized: Array<{ id: string; size: number }> = []
+    const picks = new Map<string, ReturnType<typeof repPickPeople>>()
+    for (const id of ids) {
+      const b = byId.get(id)
+      if (!b || !elBrandOk(b) || b.stoppedAt) { st.plan = planRemove(st.plan, id); continue }
+      const list = roster.people.get(id) ?? []
+      const t = taken.get(id) ?? new Set<string>()
+      const n = Math.max(0, workCount(b, categoryPriorityMemo.map) - (handOn.get(id) ?? 0))
+      const p = repPickPeople(elPeople(b, list), t, n, brandNames(b))
+      picks.set(id, p)
+      sized.push({ id, size: p.length })
+    }
+    const fill = fillDay(sized, REP_DAILY - count)
+    let stamp = Date.now()
+    for (const id of fill.take) {
+      const b = byId.get(id)!
+      // A millisecond apart, so the list reads in pick order (best first).
+      const data = (picks.get(id) ?? []).map(({ person, channel }) => ({
+        rep: REP, brandId: id, contactId: person.id, brandName: b.name, name: person.name, title: person.title,
+        linkedinUrl: person.linkedinUrl ?? null, email: person.email ?? null, channel, day: today, status: 'queued',
+        createdAt: new Date(stamp++),
+      }))
+      if (data.length) await tx.repOutreach.createMany({ data, skipDuplicates: true })
+      st.built.add(today + '|' + id)
+    }
+    for (const id of fill.none) {
+      // Nobody left to reach there (or only people added by hand): the day
+      // is made for it all the same.
+      st.built.add(today + '|' + id)
+      if (!handOn.get(id)) nobody.push(id)
+    }
+    for (const id of fill.waits) waits.push({ id, need: sized.find(s => s.id === id)?.size ?? 0 })
+    return { waits, nobody }
+  })
+}
+
+const EL_ROW_INCLUDE = {
+  contact: { select: { name: true, title: true, email: true, linkedinUrl: true, doNotContactAt: true } },
+  brand: { select: { id: true, name: true, category: true, website: true, linkedinUrl: true, stoppedAt: true, doNotEmail: true } },
+} as const
+type ElRow = Prisma.RepOutreachGetPayload<{ include: typeof EL_ROW_INCLUDE }>
+// A row for the page: the person as on file now (else as she saw them).
+function elRowOut(r: ElRow, today: string) {
+  const c = r.contact
+  const reach = { email: c?.email ?? r.email, linkedinUrl: c?.linkedinUrl ?? r.linkedinUrl }
+  const blocked = c?.doNotContactAt ? stopWords({ name: c.name, at: c.doNotContactAt })
+    : r.brand?.stoppedAt ? stopWords({ at: r.brand.stoppedAt }, r.brand.name) : null
+  const st = repStanding(r, today)
+  const steps = repReadSteps(r.steps)
+  return {
+    id: r.id, brandId: r.brandId, brand: r.brand?.name ?? r.brandName, contactId: r.contactId,
+    name: c?.name ?? r.name, title: c?.title ?? r.title,
+    email: reach.email ?? null, linkedinUrl: reach.linkedinUrl ?? null,
+    channel: r.channel, other: r.status === 'queued' ? repOtherChannel({ ...reach, email: r.brand?.doNotEmail ? null : reach.email }, r.channel as RepChannel) : null,
+    status: r.status, day: r.day, carried: r.status === 'queued' && !!r.day && r.day < today,
+    sentAt: r.sentAt, acceptedAt: r.acceptedAt, dmAt: r.dmAt, followAt: r.followAt, repliedAt: r.repliedAt,
+    callAt: r.callAt, callBookedAt: r.callBookedAt, doneAt: r.doneAt,
+    subject: r.subject, body: r.body, note: r.note, blocked,
+    stage: st.stage, group: st.group, due: st.due, late: st.late, next: st.next,
+    canBack: steps.length > 0,
+    lastStep: steps.length ? { s: steps[steps.length - 1].s, at: steps[steps.length - 1].at } : null,
+  }
+}
+
+// The Google account her emails open in (authuser): the account marked as
+// hers on Team, when there is one.
+async function elRepEmail(): Promise<string | null> {
+  return Object.keys(await readRepAccounts(prisma)).sort()[0] ?? null
+}
+async function elTemplatesNow() {
+  return cleanRepTemplates(await readJsonSetting<unknown>(prisma, REP_TPL_KEY, {}))
+}
+
+// What the dashboard's brand list shows of a brand (Week plan, search).
+function elBrandCard(b: ElBrand, list: ElContact[], taken: ReadonlySet<string>, rates: AcceptRates | null, plan: Plan) {
+  const f = elFit(b, list, rates)
+  const sz = elSize(b, list, taken)
+  const people = elPeople(b, list).filter(p => !p.doNotContactAt && !taken.has(p.id))
+  return {
+    id: b.id, name: b.name, category: b.category, fit: f.score, tooSmall: f.tooSmall,
+    work: sz.work, left: sz.left, size: sz.size,
+    emails: people.filter(p => repChannelFor(p) === 'email').length,
+    links: people.filter(p => p.linkedinUrl && /linkedin\.com\/in\//i.test(p.linkedinUrl)).length,
+    archived: !!b.passedAt, doNotEmail: b.doNotEmail, stopped: !!b.stoppedAt, notUs: b.usStatus === 'no',
+    day: planDayOf(plan, b.id), reached: taken.size,
+  }
+}
+// The brands she might plan, best Brand Fit first: brands in play (not
+// archived, do-not-email, stopped, not sold in the US, closed, too small or
+// a Skip category), with someone she can still reach, not on her week, and
+// nothing of hers there in the last two weeks.
+async function elBank(plan: Plan, today: string, opts: { cat?: string | null } = {}) {
+  const where: Prisma.BrandWhereInput = { kind: null, passedAt: null, doNotEmail: false, stoppedAt: null, ...(opts.cat ? { category: opts.cat } : {}) }
+  const [roster, rates, recent] = await Promise.all([
+    elLoadBrands(prisma, where),
+    recentAcceptRates(),
+    prisma.repOutreach.findMany({
+      where: { rep: REP, brandId: { not: null }, OR: [{ status: 'queued' }, { sentAt: { gte: new Date(Date.now() - 14 * 864e5) } }] },
+      select: { brandId: true },
+    }),
+  ])
+  const busy = new Set(recent.map(r => r.brandId as string))
+  const planned = new Set(Object.values(plan).flat())
+  const taken = await elTaken(prisma, roster.brands.map(b => b.id))
+  const out = []
+  for (const b of roster.brands) {
+    if (planned.has(b.id) || busy.has(b.id)) continue
+    const list = roster.people.get(b.id) ?? []
+    const t = taken.get(b.id) ?? new Set<string>()
+    const card = elBrandCard(b, list, t, rates, plan)
+    if (!card.size) continue
+    const f = elFit(b, list, rates)
+    if (f.ruledOut || f.bizNote || f.tooSmall || f.priority === 'skip') continue
+    out.push({ ...card, big: isBigBrand(b) })
+  }
+  out.sort((x, y) => y.fit - x.fit || x.name.localeCompare(y.name))
+  return out
+}
+
+const EL_STEPS: RepStepName[] = ['sent', 'accepted', 'dm', 'follow', 'replied', 'call', 'declined', 'withdrawn', 'passed', 'unpass']
+
+const elHandlers: Record<string, Handler> = {
+  // Today's list: made at the first open of a sending day, then read.
+  async elToday({ __user }: any) {
+    const today = localDayKey()
+    const sending = repIsSending(today)
+    const made = await elBuildToday(__user ?? null)
+    const dayStart = startOfLocalDay()
+    const [rows, st, tpl, liRows] = await Promise.all([
+      prisma.repOutreach.findMany({
+        where: { rep: REP, OR: [{ status: 'queued', day: { lte: today } }, { day: today }, { sentAt: { gte: dayStart } }] },
+        include: EL_ROW_INCLUDE, orderBy: { createdAt: 'asc' },
+      }),
+      elReadState(prisma),
+      elTemplatesNow(),
+      prisma.repOutreach.findMany({ where: { rep: REP, channel: 'linkedin', sentAt: { gte: new Date(Date.now() - 8 * 864e5) } }, select: { channel: true, status: true, sentAt: true } }),
+    ])
+    const order = st.plan[today] ?? []
+    const nextDay = sending ? today : repOnSendingDay(today)
+    const ids = [...new Set([...order, ...made.waits.map(w => w.id), ...made.nobody, ...(sending ? [] : st.plan[nextDay] ?? [])])]
+    const roster = ids.length ? await elLoadBrands(prisma, { id: { in: ids } }) : { brands: [], people: new Map() } as ElRoster
+    const byId = new Map(roster.brands.map(b => [b.id, b]))
+    const taken = await elTaken(prisma, ids)
+    const rates = await recentAcceptRates()
+    const groups = new Map<string, any>()
+    for (const r of rows) {
+      const key = r.brandId ?? 'name:' + r.brandName
+      let g = groups.get(key)
+      if (!g) {
+        const b = r.brandId ? byId.get(r.brandId) : null
+        g = {
+          id: r.brandId, name: r.brand?.name ?? r.brandName, category: r.brand?.category ?? null,
+          website: r.brand?.website ?? null, linkedinUrl: r.brand?.linkedinUrl ?? null,
+          fit: b ? elFit(b, roster.people.get(b.id) ?? [], rates).score : null,
+          planned: !!r.brandId && order.includes(r.brandId), from: null as string | null, rows: [] as any[],
+        }
+        groups.set(key, g)
+      }
+      const out = elRowOut(r, today)
+      if (out.carried && (!g.from || (out.day as string) < g.from)) g.from = out.day
+      g.rows.push(out)
+    }
+    // Plan order first, then carried brands (oldest day first), then the rest.
+    const list = [...groups.values()].sort((a, b) => {
+      const ia = a.id ? order.indexOf(a.id) : -1, ib = b.id ? order.indexOf(b.id) : -1
+      if (ia >= 0 || ib >= 0) return (ia < 0 ? 1e6 : ia) - (ib < 0 ? 1e6 : ib)
+      return String(a.from ?? '9').localeCompare(String(b.from ?? '9')) || a.name.localeCompare(b.name)
+    })
+    const counted = rows.filter(r => (r.day === today && r.status !== 'passed') || (r.status === 'queued' && !!r.day && r.day < today)).length
+    const named = (id: string) => byId.get(id)?.name ?? 'A brand'
+    const next = sending ? null : {
+      day: nextDay,
+      brands: (st.plan[nextDay] ?? []).map(id => {
+        const b = byId.get(id)
+        return b ? { id, name: b.name, size: elSize(b, roster.people.get(id) ?? [], taken.get(id) ?? new Set()).size } : null
+      }).filter(Boolean),
+    }
+    return {
+      today, sending, nextSending: repNextSendingAfter(today), cap: REP_DAILY, count: counted,
+      sentToday: rows.filter(r => r.sentAt && r.sentAt >= dayStart).length,
+      liWeek: repInvitesThisWeek(liRows, today), liLimit: REP_LI_WEEK,
+      brands: list,
+      waits: made.waits.length ? made.waits.map(w => ({ id: w.id, name: named(w.id), need: w.need, to: repNextSendingAfter(today) }))
+        : order.filter(id => !st.built.has(today + '|' + id)).map(id => ({ id, name: named(id), need: null, to: repNextSendingAfter(today) })),
+      nobody: order.filter(id => st.built.has(today + '|' + id) && !list.some(g => g.id === id)).map(id => ({ id, name: named(id) })),
+      next, templates: tpl, rep: REP_NAME, repEmail: await elRepEmail(),
+    }
+  },
+
+  // One step on one person: sent / accepted / dm / follow / replied / call
+  // (callDay) / declined / withdrawn / passed (Leave out) / unpass, back (the
+  // latest step taken back), channel (switch a waiting row), save (her own
+  // wording: subject / body / note; null = back to the template).
+  async elStep({ id, step, callDay, channel, subject, body, note, __user }: any) {
+    const r = await prisma.repOutreach.findFirst({ where: { id: String(id ?? ''), rep: REP }, include: EL_ROW_INCLUDE })
+    if (!r) throw new Error('Not on her list any more — reload')
+    const today = localDayKey()
+    const now = new Date()
+    let data: Record<string, any>
+    let word: string
+    if (step === 'back') {
+      const b = repBackData(r)
+      if ('refuse' in b) throw new Error(b.refuse)
+      data = { ...b.data, steps: b.steps as any }
+      word = 'Took back: ' + (REP_STEP_WORD[b.undone] ?? b.undone)
+    } else if (step === 'channel') {
+      if (r.status !== 'queued') throw new Error('Already sent — it stays ' + (r.channel === 'email' ? 'an email' : 'a LinkedIn invite'))
+      const reach = { email: r.brand?.doNotEmail ? null : (r.contact?.email ?? r.email), linkedinUrl: r.contact?.linkedinUrl ?? r.linkedinUrl }
+      const to = channel === 'email' || channel === 'linkedin' ? channel as RepChannel : repOtherChannel(reach, r.channel as RepChannel)
+      if (!to || repChannelFor(reach, to) !== to) throw new Error(to === 'email' ? 'No email on file for them' + (r.brand?.doNotEmail ? ' (the brand is marked do not email)' : '') : 'No LinkedIn link on file for them')
+      if (to === r.channel) return { row: elRowOut(r, today), word: 'No change' }
+      if (r.contactId && await prisma.repOutreach.findFirst({ where: { rep: REP, contactId: r.contactId, channel: to, NOT: { id: r.id } } })) {
+        throw new Error('She has them by ' + (to === 'email' ? 'email' : 'LinkedIn') + ' already')
+      }
+      data = { channel: to }
+      word = to === 'email' ? 'Switched to email' : 'Switched to LinkedIn'
+    } else if (step === 'save') {
+      data = {}
+      const clean = (v: unknown, max: number) => v == null || String(v).trim() === '' ? null : String(v).slice(0, max)
+      if (subject !== undefined) data.subject = clean(subject, 300)
+      if (body !== undefined) data.body = clean(body, 8000)
+      if (note !== undefined) data.note = clean(note, 2000)
+      if (!Object.keys(data).length) throw new Error('Nothing to save')
+      word = 'Saved'
+    } else {
+      if (!EL_STEPS.includes(step)) throw new Error('Unknown step')
+      if (['sent', 'dm', 'follow', 'unpass'].includes(step)) {
+        if (r.contact?.doNotContactAt) throw new Error(stopWords({ name: r.contact.name, at: r.contact.doNotContactAt }))
+        if (r.brand?.stoppedAt) throw new Error(stopWords({ at: r.brand.stoppedAt }, r.brand.name))
+      }
+      const s = repStepData(r, step, now, { callDay })
+      if ('refuse' in s) throw new Error(s.refuse)
+      const entry = repStepEntry(r as any, step, s.data, now, __user ?? null)
+      data = { ...s.data, steps: [...repReadSteps(r.steps), entry] as any }
+      word = REP_STEP_WORD[step as RepStepName]
+    }
+    // Only if nobody changed the row since it was read (a double click, two
+    // windows): otherwise reload and look again.
+    const done = await prisma.repOutreach.updateMany({ where: { id: r.id, updatedAt: r.updatedAt }, data })
+    if (!done.count) throw new Error('Changed since — reload')
+    const fresh = await prisma.repOutreach.findUniqueOrThrow({ where: { id: r.id }, include: EL_ROW_INCLUDE })
+    return { row: elRowOut(fresh, today), word }
+  },
+
+  // Take a brand off her list: its people still waiting (never sent) come
+  // off — named first, then gone on confirm — and it leaves her week.
+  async elTakeOff({ brandId, confirm = false }: any) {
+    const id = String(brandId ?? '')
+    const rows = await prisma.repOutreach.findMany({ where: { rep: REP, brandId: id, status: 'queued' }, select: { id: true, name: true, day: true } })
+    const brand = await prisma.brand.findUnique({ where: { id }, select: { name: true } })
+    const preview = { brand: brand?.name ?? 'This brand', people: rows.map(r => r.name), expect: rows.map(r => r.id).sort().join(',') }
+    if (!confirm) return { applied: false, ...preview }
+    await elUpdate(async (st, tx) => {
+      const now = await tx.repOutreach.findMany({ where: { rep: REP, brandId: id, status: 'queued' }, select: { id: true } })
+      if (now.map(r => r.id).sort().join(',') !== preview.expect) throw new Error('Changed since — look again')
+      if (now.length) await tx.repOutreach.deleteMany({ where: { id: { in: now.map(r => r.id) } } })
+      st.plan = planRemove(st.plan, id)
+    })
+    return { applied: true, ...preview }
+  },
+
+  // Her week: the days (this week's from today on, next week's), what's on
+  // each, and the brands to plan (best Brand Fit first).
+  async elWeek({ cat, limit }: any) {
+    const today = localDayKey()
+    const st = await elUpdate(async s => ({ plan: s.plan, built: new Set(s.built) }))
+    const weeks = repWeekDays(today)
+    const dayKeys = weeks.flatMap(w => w.days)
+    const onWeek = [...new Set(dayKeys.flatMap(d => st.plan[d] ?? []))]
+    const [roster, rates, taken, dayRows, carried, bank] = await Promise.all([
+      onWeek.length ? elLoadBrands(prisma, { id: { in: onWeek } }) : Promise.resolve({ brands: [], people: new Map() } as ElRoster),
+      recentAcceptRates(),
+      elTaken(prisma, onWeek),
+      prisma.repOutreach.groupBy({ by: ['day', 'brandId'], where: { rep: REP, day: { in: dayKeys }, status: { not: 'passed' } }, _count: { _all: true } }),
+      prisma.repOutreach.count({ where: { rep: REP, status: 'queued', day: { lt: today } } }),
+      elBank(st.plan, today, { cat: typeof cat === 'string' && isCategoryKey(cat) ? cat : null }),
+    ])
+    const byId = new Map(roster.brands.map(b => [b.id, b]))
+    const rowsOn = new Map(dayRows.map(g => [g.day + '|' + g.brandId, g._count._all]))
+    const firstDay = dayKeys[0]
+    const days = dayKeys.map(d => {
+      const brands = (st.plan[d] ?? []).map(id => {
+        const b = byId.get(id)
+        if (!b) return null
+        const built = st.built.has(d + '|' + id)
+        const on = rowsOn.get(d + '|' + id) ?? 0
+        const sz = elSize(b, roster.people.get(id) ?? [], taken.get(id) ?? new Set())
+        return {
+          id, name: b.name, category: b.category, fit: elFit(b, roster.people.get(id) ?? [], rates).score,
+          size: built ? on : sz.size + on, built, left: sz.left, stopped: !!b.stoppedAt,
+        }
+      }).filter(Boolean) as any[]
+      const count = brands.reduce((n, b) => n + b.size, 0) + (d === firstDay ? carried : 0)
+      return { date: d, week: weeks.find(w => w.days.includes(d))!.which, today: d === today, brands, count, cap: REP_DAILY, carried: d === firstDay ? carried : 0 }
+    })
+    const n = Math.max(10, Math.min(400, Number(limit) || 60))
+    const last = await readJsonSetting<any>(prisma, REP_SPREAD_KEY, null)
+    return { today, days, bank: bank.slice(0, n), bankTotal: bank.length, cap: REP_DAILY, spreadUndo: last && last.at && !last.undone ? { at: last.at } : null }
+  },
+
+  // Put a brand on a day (op add / move, at `index`), take it off (op
+  // remove — a brand with people waiting on her list goes through
+  // elTakeOff), or reorder.
+  async elPlan({ op, brandId, day, index }: any) {
+    const id = String(brandId ?? '')
+    const today = localDayKey()
+    if (op === 'add' || op === 'move') {
+      if (!isDayKey(day) || day < today || !repIsSending(day)) throw new Error('Pick a Tuesday, Wednesday or Thursday from today on')
+      const b = await prisma.brand.findUnique({ where: { id }, select: { id: true, name: true, kind: true, stoppedAt: true } })
+      if (!b) throw new Error('Brand not found')
+      if (b.kind) throw new Error(`${b.name} is a person, not a brand`)
+      const stop = elStopped(b)
+      if (stop) throw new Error(stop)
+      return elUpdate(async (st, tx) => {
+        const was = planDayOf(st.plan, id)
+        // People already on her list there move with it (to that day's list).
+        if (was && was !== day) {
+          await tx.repOutreach.updateMany({ where: { rep: REP, brandId: id, status: 'queued', day: was }, data: { day } })
+          if (st.built.has(was + '|' + id)) { st.built.delete(was + '|' + id); st.built.add(day + '|' + id) }
+        }
+        st.plan = planPut(st.plan, id, day, index == null ? null : Number(index))
+        return { ok: true, name: b.name, day, from: was }
+      })
+    }
+    if (op === 'remove') {
+      const waiting = await prisma.repOutreach.count({ where: { rep: REP, brandId: id, status: 'queued' } })
+      if (waiting) throw new Error('People there are on her list — use Take off (it names them first)')
+      return elUpdate(async st => { st.plan = planRemove(st.plan, id); return { ok: true } })
+    }
+    throw new Error('Unknown change')
+  },
+
+  // Fill the open days with the best brands on the list (an even mix of
+  // rank — the Week plan's spread): preview, then apply with the same seed.
+  async elSpread({ apply = false, seed, expect, __user }: any) {
+    const today = localDayKey()
+    const st = await elReadState(prisma)
+    const plan = rollPlan(st.plan, today, st.built).plan
+    const dayKeys = repWeekDays(today).flatMap(w => w.days).filter(d => d > today || !(plan[d] ?? []).some(id => st.built.has(d + '|' + id)))
+    const onWeek = [...new Set(dayKeys.flatMap(d => plan[d] ?? []))]
+    const [roster, bank, carried] = await Promise.all([
+      onWeek.length ? elLoadBrands(prisma, { id: { in: onWeek } }) : Promise.resolve({ brands: [], people: new Map() } as ElRoster),
+      elBank(plan, today),
+      prisma.repOutreach.count({ where: { rep: REP, status: 'queued', day: { lt: today } } }),
+    ])
+    const taken = await elTaken(prisma, onWeek)
+    const byId = new Map(roster.brands.map(b => [b.id, b]))
+    const days = dayKeys.map(d => {
+      const used = (plan[d] ?? []).reduce((n, id) => {
+        const b = byId.get(id)
+        return n + (b ? elSize(b, roster.people.get(id) ?? [], taken.get(id) ?? new Set()).size : 0)
+      }, 0) + (d === repOnSendingDay(today) ? carried : 0)
+      const bigs = (plan[d] ?? []).filter(id => { const b = byId.get(id); return b && isBigBrand(b) }).length
+      return { date: d, room: Math.max(0, REP_DAILY - used), bigs }
+    })
+    const s = Number.isFinite(Number(seed)) ? Number(seed) : Date.now() % 1e9
+    const dealt = spreadWeek(days, bank.map(b => ({ id: b.id, size: b.size, big: b.big })), seeded(s))
+    const nameOf = new Map(bank.map(b => [b.id, b]))
+    const put = Object.entries(dealt.put).filter(([, ids]) => ids.length).map(([date, ids]) => ({
+      date, brands: ids.map(id => ({ id, name: nameOf.get(id)?.name ?? '', size: nameOf.get(id)?.size ?? 0, fit: nameOf.get(id)?.fit ?? 0 })),
+    }))
+    const sig = put.map(p => p.date + ':' + p.brands.map(b => b.id).join(',')).join('|')
+    if (!apply) return { applied: false, seed: s, put, expect: sig, rooms: days }
+    if (expect && expect !== sig) return { applied: false, stale: true, seed: s, put, expect: sig, rooms: days }
+    await elUpdate(async (st2, tx) => {
+      for (const p of put) for (const b of p.brands) if (!planDayOf(st2.plan, b.id)) st2.plan = planPut(st2.plan, b.id, p.date)
+      await writeJsonSetting(tx as any, REP_SPREAD_KEY, { at: new Date().toISOString(), by: __user ?? null, put: put.map(p => ({ date: p.date, ids: p.brands.map(b => b.id) })) })
+    })
+    return { applied: true, seed: s, put, expect: sig }
+  },
+
+  // Undo the last spread: brands still on the day it put them, and not yet
+  // made into a list, come off. Named first.
+  async elSpreadUndo({ confirm = false }: any) {
+    const last = await readJsonSetting<any>(prisma, REP_SPREAD_KEY, null)
+    if (!last || !Array.isArray(last.put) || last.undone) throw new Error('Nothing to undo')
+    const st = await elReadState(prisma)
+    const goes: Array<{ id: string; date: string }> = []
+    for (const p of last.put) for (const id of p.ids ?? []) {
+      if ((st.plan[p.date] ?? []).includes(id) && !st.built.has(p.date + '|' + id)) goes.push({ id, date: p.date })
+    }
+    const names = await prisma.brand.findMany({ where: { id: { in: goes.map(g => g.id) } }, select: { id: true, name: true } })
+    const nameOf = new Map(names.map(b => [b.id, b.name]))
+    const preview = { goes: goes.map(g => ({ ...g, name: nameOf.get(g.id) ?? '' })) }
+    if (!confirm) return { applied: false, ...preview }
+    await elUpdate(async st2 => {
+      for (const g of goes) if ((st2.plan[g.date] ?? []).includes(g.id) && !st2.built.has(g.date + '|' + g.id)) st2.plan = planRemove(st2.plan, g.id)
+    })
+    await writeJsonSetting(prisma, REP_SPREAD_KEY, { ...last, undone: new Date().toISOString() })
+    return { applied: true, ...preview }
+  },
+
+  // Any brand by name or aka (spelling slips too), best match first.
+  async elSearch({ q }: any) {
+    const query = String(q ?? '').trim()
+    if (query.length < 2) return { brands: [] }
+    const all = await prisma.brand.findMany({ where: { kind: null }, select: { id: true, name: true, aka: true } })
+    const hits = all
+      .map(b => ({ id: b.id, name: b.name, hit: searchHit(query, b.name, b.aka) }))
+      .filter((x): x is { id: string; name: string; hit: SearchHit } => !!x.hit)
+      .sort((a, b) => a.hit.rank - b.hit.rank || a.name.localeCompare(b.name))
+      .slice(0, 15)
+    if (!hits.length) return { brands: [] }
+    const ids = hits.map(h => h.id)
+    const [roster, rates, taken, st] = await Promise.all([elLoadBrands(prisma, { id: { in: ids } }), recentAcceptRates(), elTaken(prisma, ids), elReadState(prisma)])
+    const byId = new Map(roster.brands.map(b => [b.id, b]))
+    return {
+      brands: hits.map(h => {
+        const b = byId.get(h.id)
+        return b ? { ...elBrandCard(b, roster.people.get(b.id) ?? [], taken.get(b.id) ?? new Set(), rates, st.plan), via: h.hit.via, aka: h.hit.aka ?? null } : null
+      }).filter(Boolean),
+    }
+  },
+
+  // Everyone she has reached: where each stands, earliest step first.
+  async elFollow() {
+    const today = localDayKey()
+    const since = new Date(Date.now() - 30 * 864e5)
+    const [rows, tpl] = await Promise.all([
+      prisma.repOutreach.findMany({
+        where: { rep: REP, status: { notIn: ['queued'] }, OR: [{ status: { in: ['sent', 'accepted', 'replied', 'call'] } }, { updatedAt: { gte: since } }] },
+        include: EL_ROW_INCLUDE,
+      }),
+      elTemplatesNow(),
+    ])
+    const out = rows.map(r => elRowOut(r, today)).filter(r => r.status !== 'passed')
+    const order = rows.map(r => repStanding(r, today))
+    const idx = new Map(rows.map((r, i) => [r.id, order[i]]))
+    out.sort((a, b) => repCompareStanding(idx.get(a.id)!, idx.get(b.id)!) || a.brand.localeCompare(b.brand))
+    return { today, rows: out, templates: tpl, days: REP_DAYS, rep: REP_NAME, repEmail: await elRepEmail() }
+  },
+
+  // Her numbers: the last 7 / 30 days and all time, each day for two weeks,
+  // and every brand she reached.
+  async elResults() {
+    const today = localDayKey()
+    const rows = await prisma.repOutreach.findMany({
+      where: { rep: REP, sentAt: { not: null } },
+      select: { brandId: true, brandName: true, channel: true, status: true, sentAt: true, acceptedAt: true, dmAt: true, followAt: true, repliedAt: true, callAt: true, callBookedAt: true, doneAt: true, brand: { select: { name: true } } },
+    })
+    const brands = new Map<string, { id: string | null; name: string; people: number; first: string; last: string; rows: typeof rows }>()
+    for (const r of rows) {
+      const key = r.brandId ?? 'name:' + r.brandName
+      const k = repNyKey(r.sentAt!)
+      const g = brands.get(key) ?? { id: r.brandId, name: r.brand?.name ?? r.brandName, people: 0, first: k, last: k, rows: [] as typeof rows }
+      g.people += 1
+      if (k < g.first) g.first = k
+      if (k > g.last) g.last = k
+      g.rows.push(r)
+      brands.set(key, g)
+    }
+    return {
+      today,
+      week: repCountRows(rows, repAddDays(today, -6), today),
+      month: repCountRows(rows, repAddDays(today, -29), today),
+      all: repCountRows(rows, null, today),
+      byDay: repByDay(rows, today, 14),
+      brands: [...brands.values()]
+        .map(g => ({ id: g.id, name: g.name, people: g.people, first: g.first, last: g.last, stage: repBrandStageOf(g.rows) }))
+        .sort((a, b) => b.last.localeCompare(a.last) || a.name.localeCompare(b.name)),
+    }
+  },
+
+  // One brand for her: its facts, Brand Fit, the people on file with where
+  // each stands with her, and its day on her week.
+  async elBrand({ brandId }: any) {
+    const id = String(brandId ?? '')
+    const today = localDayKey()
+    const b = await prisma.brand.findUnique({ where: { id }, select: { ...EL_BRAND_SELECT, about: true, topProducts: true, hq: true } })
+    if (!b) throw new Error('Brand not found')
+    const [contacts, rows, rates, st] = await Promise.all([
+      prisma.contact.findMany({ where: { brandId: id }, select: EL_CONTACT_SELECT, orderBy: { createdAt: 'asc' } }),
+      prisma.repOutreach.findMany({ where: { rep: REP, brandId: id }, include: EL_ROW_INCLUDE, orderBy: { createdAt: 'asc' } }),
+      recentAcceptRates(),
+      elReadState(prisma),
+    ])
+    const f = elFit(b, contacts, rates)
+    const mine = new Map<string, ReturnType<typeof elRowOut>[]>()
+    for (const r of rows) if (r.contactId) mine.set(r.contactId, [...(mine.get(r.contactId) ?? []), elRowOut(r, today)])
+    const people = repSortPeople(elPeople(b, contacts), brandNames(b)).map(p => {
+      const c = contacts.find(x => x.id === p.id)!
+      return {
+        id: c.id, name: c.name, title: c.title, email: c.email, linkedinUrl: c.linkedinUrl,
+        channel: repChannelFor(p), problem: personProblem(c.title, brandNames(b)),
+        stopped: c.doNotContactAt ? stopWords({ name: c.name, at: c.doNotContactAt }) : null,
+        rows: mine.get(c.id) ?? [],
+      }
+    })
+    return {
+      brand: {
+        id: b.id, name: b.name, category: b.category, website: b.website, linkedinUrl: b.linkedinUrl, about: b.about,
+        topProducts: b.topProducts, hq: b.hq, archived: !!b.passedAt, doNotEmail: b.doNotEmail, stopped: elStopped(b),
+        person: !!b.kind,
+      },
+      fit: { score: f.score, reasons: f.reasons },
+      work: workCount(b, categoryPriorityMemo.map),
+      people, orphans: rows.filter(r => !r.contactId).map(r => elRowOut(r, today)),
+      day: planDayOf(st.plan, id), built: [...st.built].filter(k => k.endsWith('|' + id)).map(k => k.slice(0, 10)),
+      days: repWeekDays(today).flatMap(w => w.days).map(date => ({ date })),
+      today, sending: repIsSending(today), nextSending: repOnSendingDay(today),
+    }
+  },
+
+  // People she picked herself onto a day's list (today on a sending day,
+  // else her next sending day — or the day the brand is planned).
+  async elQueuePeople({ brandId, contactIds, day }: any) {
+    const id = String(brandId ?? '')
+    const today = localDayKey()
+    const b = await prisma.brand.findUnique({ where: { id }, select: { id: true, name: true, kind: true, stoppedAt: true, doNotEmail: true } })
+    if (!b) throw new Error('Brand not found')
+    const stop = elStopped(b)
+    if (stop) throw new Error(stop)
+    const st = await elReadState(prisma)
+    const planned = planDayOf(st.plan, id)
+    const d = isDayKey(day) && day >= today ? day : planned && planned >= today ? planned : repOnSendingDay(today)
+    const want = (Array.isArray(contactIds) ? contactIds : [contactIds]).map(String).filter(Boolean)
+    const people = await prisma.contact.findMany({ where: { id: { in: want }, brandId: id }, select: EL_CONTACT_SELECT })
+    const taken = (await elTaken(prisma, [id])).get(id) ?? new Set<string>()
+    const by = new Map(people.map(p => [p.id, p]))
+    const added: string[] = [], skipped: Array<{ name: string; why: string }> = []
+    for (const cid of want) {
+      const p = by.get(cid)
+      if (!p) { skipped.push({ name: '?', why: 'not on file at ' + b.name }); continue }
+      if (p.doNotContactAt) { skipped.push({ name: p.name, why: 'said they don’t want to continue' }); continue }
+      if (taken.has(p.id)) { skipped.push({ name: p.name, why: 'already on her list' }); continue }
+      const ch = repChannelFor({ email: b.doNotEmail ? null : p.email, linkedinUrl: p.linkedinUrl })
+      if (!ch) { skipped.push({ name: p.name, why: 'no email or LinkedIn link on file' }); continue }
+      await prisma.repOutreach.create({
+        data: {
+          rep: REP, brandId: id, contactId: p.id, brandName: b.name, name: p.name, title: p.title,
+          linkedinUrl: p.linkedinUrl, email: p.email, channel: ch, day: d, status: 'queued',
+        },
+      })
+      added.push(p.name)
+    }
+    return { day: d, added, skipped }
+  },
+
+  // A person she found (LinkedIn link and / or email), on file at the brand
+  // for everyone; `queue` puts them on her list too.
+  async elAddPerson({ brandId, name, title, linkedinUrl, email, queue = false, day }: any) {
+    const id = String(brandId ?? '')
+    const b = await prisma.brand.findUnique({ where: { id }, select: { id: true, name: true, kind: true, stoppedAt: true } })
+    if (!b) throw new Error('Brand not found')
+    const stop = elStopped(b)
+    if (stop) throw new Error(stop)
+    const nm = String(name ?? '').trim().replace(/\s+/g, ' ').slice(0, 120)
+    if (!nm) throw new Error('Type their name')
+    const slug = profileSlug(linkedinUrl)
+    const link = slug ? `https://www.linkedin.com/in/${slug}` : null
+    if (linkedinUrl && String(linkedinUrl).trim() && !link) throw new Error('That isn’t a LinkedIn profile link (linkedin.com/in/…)')
+    const mail = String(email ?? '').trim().toLowerCase() || null
+    if (mail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) throw new Error('That doesn’t look like an email address')
+    if (!link && !mail) throw new Error('Add their LinkedIn link or email — she needs one to reach them')
+    const onFile = await prisma.contact.findMany({ where: { brandId: id }, select: { id: true, name: true, email: true, linkedinUrl: true } })
+    const dupe = onFile.find(c => (slug && profileSlug(c.linkedinUrl) === slug) || (mail && String(c.email ?? '').toLowerCase() === mail) ||
+      (personNameKey(c.name) && personNameKey(c.name) === personNameKey(nm)))
+    if (dupe) throw new Error(`${dupe.name} is already on file at ${b.name}`)
+    const stopped = stoppedMatch(await loadStopIndex(), { brandId: id, name: nm, linkedinUrl: link, email: mail })
+    if (stopped) throw new Error(stopWords({ name: stopped.name, at: stopped.at }))
+    const c = await prisma.contact.create({
+      data: { brandId: id, name: nm, title: String(title ?? '').trim().slice(0, 200) || null, email: mail, linkedinUrl: link, source: 'elizabeth', isDecisionMaker: !!buyerKind(title) },
+      select: { id: true, name: true },
+    })
+    let queued = null
+    if (queue) queued = await elHandlers.elQueuePeople({ brandId: id, contactIds: [c.id], day })
+    return { contact: c, queued }
+  },
+
+  async elTemplates() {
+    return { templates: await elTemplatesNow(), defaults: REP_TPL_DEFAULTS, kinds: REP_TPL_KINDS }
+  },
+
+  // Save one of her templates (reset = back to the default).
+  async elSaveTemplate({ kind, subject, body, reset = false, __user }: any) {
+    if (!REP_TPL_KINDS.includes(kind)) throw new Error('Unknown template')
+    const all = await readJsonSetting<Record<string, any>>(prisma, REP_TPL_KEY, {})
+    if (reset) delete all[kind]
+    else {
+      const text = String(body ?? '')
+      if (!text.trim()) throw new Error('The message is empty')
+      all[kind] = { subject: String(subject ?? '').slice(0, 300), body: text.slice(0, 8000), savedAt: new Date().toISOString(), savedBy: __user ?? null }
+    }
+    await writeJsonSetting(prisma, REP_TPL_KEY, all)
+    return { templates: await elTemplatesNow() }
+  },
+}
+Object.assign(handlers, elHandlers)
+
+// What an account marked as Elizabeth's may call (everything else answers
+// REP_ONLY_MESSAGE): her handlers, who's signed in, the Reached tags, and
+// the build's version (the page's "the site was updated" bar).
+const REP_FNS = new Set<string>(['getMe', 'listOwners', 'reachedBrands', 'appVersion', ...Object.keys(elHandlers)])
+
 export async function POST(req: NextRequest) {
   try {
     const { fn, args } = await req.json()
@@ -16437,9 +17219,10 @@ export async function POST(req: NextRequest) {
     // __roster from planWeek): never taken from the wire.
     const a: Record<string, any> = {}
     for (const [k, v] of Object.entries(args && typeof args === 'object' ? args : {})) if (!k.startsWith('__')) a[k] = v
+    let email: string | null = null
     try {
       const session: any = await getServerSession(authOptions)
-      const email = session?.user?.email
+      email = session?.user?.email ?? null
       if (email) {
         const first = String(email).split('@')[0].split(/[._-]/)[0]
         a.__user = first.charAt(0).toUpperCase() + first.slice(1)
@@ -16447,6 +17230,11 @@ export async function POST(req: NextRequest) {
         a.__user = 'CLI'   // bearer-token caller (Claude Code / scripts), let through by middleware
       }
     } catch {}
+    // An account marked as Elizabeth's (Operations → Team) opens only her
+    // outreach: her handlers, who's signed in, the Reached tags.
+    if (email && !REP_FNS.has(String(fn)) && await repAccountOf(prisma, email)) {
+      return NextResponse.json({ ok: false, error: REP_ONLY_MESSAGE }, { status: 403 })
+    }
     const t0 = Date.now()
     // Leo's category priority, before any brand's number is worked out
     // (topCat: a Top category's brand opens with four). Kept a minute.

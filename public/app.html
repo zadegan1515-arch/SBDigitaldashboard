@@ -2240,6 +2240,118 @@
     .it-noteadd{flex-direction:column;align-items:stretch}
     .it-note-acts{opacity:1}
   }
+
+  /* Elizabeth's outreach (el-*; Leo, Oct 21 2026): her own Today / Week plan /
+     Follow-ups / Results. Rows read like Zach's list: a person, where they
+     stand, the next buttons. */
+  .el-top{display:flex;align-items:flex-end;gap:14px 24px;flex-wrap:wrap}
+  .el-tools{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .el-stats{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0 4px}
+  .el-stat{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;min-width:150px;flex:0 1 auto}
+  .el-stat b{display:block;font-family:var(--display);font-size:24px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .el-stat span{font-size:12.5px;color:var(--ink-3)}
+  .el-stat em{font-style:normal;font-size:12.5px;color:var(--ink-2);display:block;margin-top:2px}
+  .el-meter{height:6px;border-radius:999px;background:rgba(79,131,247,.16);overflow:hidden;margin-top:8px}
+  .el-meter i{display:block;height:100%;background:var(--accent);border-radius:999px}
+  .el-meter.over i{background:var(--warn)}
+  .el-note{margin:14px 0 0;padding:11px 15px;border-radius:12px;border:1px solid var(--border);background:var(--surface-1);font-size:13.5px;color:var(--ink-2)}
+  .el-note.warn{border-color:rgba(232,182,76,.35);background:rgba(232,182,76,.07);color:#eec777}
+  .el-note b{color:var(--ink-1)}
+  .el-brand{margin-top:16px;background:var(--surface-1);border:1px solid var(--border);border-radius:16px}
+  .el-bh{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;padding:14px 18px;border-bottom:1px solid var(--border-soft)}
+  .el-bh .el-tools{margin-left:auto}
+  .el-bname{font-family:var(--display);font-size:18px;font-weight:800;letter-spacing:-.02em;cursor:pointer;background:none;border:none;color:var(--ink-1);padding:0;text-align:left}
+  .el-bname:hover{color:var(--accent-hi)}
+  .el-meta{font-size:13px;color:var(--ink-3)}
+  .el-fit{display:inline-block;font-size:12.5px;font-weight:700;padding:1px 8px;border-radius:999px;border:1px solid var(--border);color:var(--ink-2);white-space:nowrap}
+  .el-row{display:grid;grid-template-columns:minmax(220px,1.3fr) minmax(160px,1fr) auto;gap:8px 16px;align-items:center;padding:12px 18px;border-top:1px solid var(--border-soft)}
+  .el-brand .el-row:first-of-type{border-top:none}
+  .el-who{display:flex;align-items:center;gap:11px;min-width:0}
+  .el-av{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:13.5px;flex:none;background:var(--accent-soft);color:#aac6ff}
+  .el-name{font-weight:700;font-size:14.5px}
+  .el-sub2{font-size:13px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .el-sub2 .el-blink{color:var(--ink-3);cursor:pointer;background:none;border:none;font:inherit;padding:0}
+  .el-sub2 .el-blink:hover{color:var(--accent-hi)}
+  .el-ch{display:inline-block;font-size:12px;font-weight:700;padding:0 8px;border-radius:999px;margin-left:6px;vertical-align:1px}
+  .el-ch.email{background:rgba(62,207,142,.12);color:#6fe0ad;border:1px solid rgba(62,207,142,.35)}
+  .el-ch.linkedin{background:rgba(79,131,247,.13);color:#aac6ff;border:1px solid rgba(79,131,247,.4)}
+  .el-next{font-size:13.5px;color:var(--ink-2)}
+  .el-next .late{color:var(--bad);font-weight:700}
+  .el-next .due{color:var(--warn);font-weight:700}
+  .el-next .ok{color:#6fe0ad;font-weight:700}
+  .el-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
+  .el-acts .btn-solid.sm{padding:5px 12px;font-size:13px;box-shadow:none}
+  .el-acts .btn-solid:disabled,.el-acts .btn-ghost:disabled{opacity:.5;cursor:default}
+  .el-row.done{opacity:.62}
+  .el-row.done:hover{opacity:1}
+  .el-blocked{font-size:13px;color:#f2918c}
+  .el-mail{grid-column:1 / -1;margin-top:2px}
+  .el-mail summary{cursor:pointer;font-size:13px;color:var(--accent-hi);font-weight:600}
+  .el-mail .inp,.el-mail .field-box{width:100%;margin-top:8px}
+  .el-more{position:relative}
+  .el-more summary{list-style:none;cursor:pointer}
+  .el-more summary::-webkit-details-marker{display:none}
+  .el-more-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:20;background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:6px;display:flex;flex-direction:column;gap:4px;min-width:220px;box-shadow:var(--shadow)}
+  .el-more-menu .btn-ghost{justify-content:flex-start;border-color:transparent;border-radius:8px}
+  .el-callday{padding:4px 8px}
+  .el-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:22px}
+  .el-day{background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:12px 14px;min-height:120px}
+  .el-day.today{border-color:rgba(79,131,247,.55)}
+  .el-day-h{display:flex;align-items:baseline;gap:8px}
+  .el-day-h b{font-family:var(--display);font-size:15.5px}
+  .el-day-h span{margin-left:auto;font-size:13px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .el-day ol{list-style:none;margin-top:10px;display:flex;flex-direction:column;gap:4px}
+  .el-day li{display:flex;align-items:center;gap:4px;font-size:13.5px;padding:4px 6px;border-radius:8px;background:var(--surface-2)}
+  .el-day li .el-dn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;background:none;border:none;color:var(--ink-1);font:inherit;text-align:left;padding:0}
+  .el-day li .el-dn:hover{color:var(--accent-hi)}
+  .el-day li .n{color:var(--ink-3);font-size:12.5px;font-variant-numeric:tabular-nums;margin-right:2px}
+  .el-day li .el-ib{background:none;border:none;color:var(--ink-3);cursor:pointer;font-size:13px;padding:0 3px;font-family:inherit}
+  .el-day li .el-ib:hover{color:var(--ink-1)}
+  .el-day li select{width:62px;flex:none;padding:2px 4px;font-size:12.5px}
+  .el-day li.built{opacity:.72}
+  .el-day .empty-day{font-size:13px;color:var(--ink-3);margin-top:10px}
+  .el-listhead{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:30px 0 12px}
+  .el-listhead #el-q{flex:1;min-width:220px;max-width:460px}
+  .el-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+  .el-card{background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+  .el-card-h{display:flex;align-items:flex-start;gap:8px}
+  .el-card-h .el-bname{font-size:16px;flex:1;min-width:0}
+  .el-days{display:flex;gap:6px;flex-wrap:wrap}
+  .el-dayb{padding:4px 10px;border-radius:999px;border:1px solid var(--border);background:transparent;color:var(--ink-2);font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer}
+  .el-dayb:hover{border-color:#3a3a46;color:var(--ink-1)}
+  .el-dayb.on{background:var(--accent-soft);border-color:rgba(79,131,247,.55);color:#aac6ff}
+  .el-dayb:disabled{opacity:.45;cursor:default}
+  .el-tag{display:inline-block;font-size:12px;font-weight:700;padding:0 8px;border-radius:999px;border:1px solid var(--border);color:var(--ink-3);white-space:nowrap}
+  .el-tag.warn{border-color:rgba(232,182,76,.4);color:#eec777}
+  .el-tag.bad{border-color:rgba(240,113,107,.4);color:#f2918c}
+  .el-spread{margin-top:18px;padding:16px 18px;border-radius:14px;border:1px solid rgba(79,131,247,.45);background:rgba(79,131,247,.06)}
+  .el-spread ul{list-style:none;margin:10px 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+  .el-spread li{font-size:13.5px;color:var(--ink-2)}
+  .el-spread li b{display:block;color:var(--ink-1);margin-bottom:2px}
+  .el-group-h{margin:26px 0 8px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+  .el-table{width:100%;border-collapse:collapse;font-size:13.5px}
+  .el-table th{text-align:left;font-weight:600;color:var(--ink-3);padding:8px 10px;border-bottom:1px solid var(--border)}
+  .el-table td{padding:8px 10px;border-bottom:1px solid var(--border-soft);font-variant-numeric:tabular-nums}
+  .el-bmodal{max-width:780px}
+  .el-bhead{display:flex;align-items:center;gap:10px;padding-bottom:4px}
+  .el-bhead h2{flex:1;font-family:var(--display);font-weight:800;font-size:22px}
+  .el-person{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;padding:10px 0;border-top:1px solid var(--border-soft);align-items:center}
+  .el-addp{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  .el-sec{margin-top:18px;font-size:12.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+  /* her Reached tag, beside Zach's (it never changes his) */
+  .rb-tag.el{color:#8ee3f5;background:rgba(67,198,232,.1);border-color:rgba(67,198,232,.4)}
+  .rb-tag + .rb-tag{margin-left:4px}
+  .rep-brand{display:none;align-items:center;gap:10px;cursor:pointer;font-family:var(--display);font-weight:800;font-size:15px;letter-spacing:-.01em;margin-right:6px}
+  body.rep-only .rep-brand{display:flex}
+  /* An account that opens only Elizabeth's part (Operations → Team) */
+  body.rep-only .sidebar,body.rep-only .tabs.cc-only:not(#sub-tabs),body.rep-only .search-wrap,
+  body.rep-only #btn-add-brand,body.rep-only #dashboard,body.rep-only [data-el-full],body.rep-only .el-teamonly{display:none!important}
+  @media (max-width:820px){
+    .el-row{grid-template-columns:1fr;padding:12px 14px}
+    .el-acts{justify-content:flex-start}
+    .el-addp{grid-template-columns:1fr}
+    .el-stat{min-width:130px}
+  }
 </style>
 </head>
 <body>
@@ -2308,6 +2420,8 @@
   <main class="main">
     <div class="header-stick">
       <div class="topbar">
+        <!-- An account that opens only Elizabeth's part: the SB mark is her home. -->
+        <div class="rep-brand" id="rep-home" role="button" tabindex="0" title="Today"><span class="logo-mark">SB</span><span>Elizabeth’s outreach</span></div>
         <div class="nav-hist">
           <button class="nh-btn" id="nav-back" title="Back a page" aria-label="Back a page" disabled>&#8249;</button>
           <button class="nh-btn" id="nav-fwd" title="Forward a page" aria-label="Forward a page" disabled>&#8250;</button>
@@ -2325,6 +2439,7 @@
         <button class="nav-item active" data-view="dashboard">Home</button>
         <button class="nav-item" data-view="brands">Brands</button>
         <button class="nav-item" data-view="outreach">Outreach</button>
+        <button class="nav-item" data-view="elizabeth">Elizabeth</button>
         <button class="nav-item" data-view="intalks">In talks</button>
         <button class="nav-item" data-view="board">Show Board</button>
         <button class="nav-item" data-view="pipeline">Deals</button>
@@ -2848,6 +2963,65 @@
       <div class="sub">Google sign-in allowlist.</div>
       <div id="team-body" style="margin-top:24px"></div>
     </section>
+
+    <!-- ELIZABETH (Leo, Oct 21 2026: "a different part to the site soley for
+         Elizabeth … the brands and the same structure for outreach to carry
+         over"). Her own week plan, today's list (LinkedIn invites from her
+         LinkedIn, emails from her own Gmail — nothing sends from the site),
+         follow-ups and results; apart from Zach's (el* in this file,
+         src/lib/rep-outreach.ts). An account marked as hers on Team sees only
+         this (body.rep-only). -->
+    <section class="view page wide el-scope" id="el-today">
+      <div class="el-top">
+        <div>
+          <div class="eyebrow">Elizabeth · Outreach</div>
+          <h1>Today</h1>
+          <div class="sub" id="el-today-sub">Loading…</div>
+        </div>
+        <div class="el-tools"><button class="btn-ghost" data-el-tpl-open>Templates</button></div>
+      </div>
+      <div id="el-today-body"></div>
+    </section>
+    <section class="view page wide el-scope" id="el-week">
+      <div class="el-top">
+        <div>
+          <div class="eyebrow">Elizabeth · Outreach</div>
+          <h1>Week plan</h1>
+          <div class="sub">Put brands on her Tue / Wed / Thu, 30 people a day. Each day's list is made from them that morning.</div>
+        </div>
+        <div class="el-tools" id="el-week-tools"></div>
+      </div>
+      <div id="el-spread-box"></div>
+      <div class="el-strip" id="el-strip"></div>
+      <div class="el-listhead">
+        <input class="inp" id="el-q" placeholder="Search any brand to add…" autocomplete="off" aria-label="Search a brand">
+        <select class="inp" id="el-cat" aria-label="Category"><option value="">Every category</option></select>
+        <span class="sd-dim" id="el-list-n"></span>
+      </div>
+      <div id="el-list"></div>
+    </section>
+    <section class="view page wide el-scope" id="el-follow">
+      <div class="el-top">
+        <div>
+          <div class="eyebrow">Elizabeth · Outreach</div>
+          <h1>Follow-ups</h1>
+          <div class="sub" id="el-follow-sub">Loading…</div>
+        </div>
+        <div class="el-tools"><button class="btn-ghost" data-el-tpl-open>Templates</button></div>
+      </div>
+      <div class="chips" id="el-follow-chips" style="margin-top:20px"></div>
+      <div id="el-follow-body"></div>
+    </section>
+    <section class="view page wide el-scope" id="el-results">
+      <div class="el-top">
+        <div>
+          <div class="eyebrow">Elizabeth · Outreach</div>
+          <h1>Results</h1>
+          <div class="sub">What went out and what came back — her LinkedIn invites and emails.</div>
+        </div>
+      </div>
+      <div id="el-results-body"></div>
+    </section>
   </main>
 </div>
 
@@ -3032,6 +3206,49 @@
   </div>
 </div>
 
+<!-- ELIZABETH: one brand, for her -->
+<div class="scrim el-scope" id="el-brand-scrim">
+  <div class="modal el-bmodal" role="dialog" aria-modal="true" aria-labelledby="el-b-name">
+    <div class="modal-head el-bhead"><h2 id="el-b-name">Brand</h2><button class="btn-ghost sm" data-el-close aria-label="Close">✕</button></div>
+    <div class="modal-body" id="el-brand-body"></div>
+  </div>
+</div>
+<!-- ELIZABETH: her templates -->
+<div class="scrim el-scope" id="el-tpl-scrim">
+  <div class="modal zt-modal" role="dialog" aria-modal="true" aria-labelledby="el-tpl-h">
+    <div class="modal-head">
+      <h2 id="el-tpl-h">Elizabeth’s templates</h2>
+      <p>Every person on her list starts from these. Someone whose email she edited keeps her version.</p>
+      <div class="zt-tabs" id="el-tpl-tabs"></div>
+    </div>
+    <div class="modal-body zt-tplgrid">
+      <div>
+        <div id="el-tsubj-wrap"><label class="lbl" for="el-tsubj">Subject</label>
+        <input class="field-box" id="el-tsubj" autocomplete="off"></div>
+        <div class="zt-tokens">Insert
+          <button type="button" class="zt-token" data-el-tok="(NAME)">First name</button>
+          <button type="button" class="zt-token" data-el-tok="(BRAND)">Brand</button>
+          <button type="button" class="zt-token" data-el-tok="(TITLE)">Job title</button>
+        </div>
+        <label class="lbl" for="el-tbody">Message</label>
+        <textarea class="field-box" id="el-tbody" rows="12"></textarea>
+        <div class="hint" id="el-tcount" style="margin:6px 0 0"></div>
+      </div>
+      <div class="zt-preview">
+        <label class="lbl">Preview</label>
+        <div class="zt-prev-subj" id="el-prev-subj"></div>
+        <div class="zt-prev-body" id="el-prev-body"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="sd-dim" id="el-tpl-state" style="margin-right:auto"></span>
+      <button class="btn-ghost" id="el-tpl-reset">Back to the default</button>
+      <button class="btn-ghost" data-el-tpl-close>Close</button>
+      <button class="btn-solid" id="el-tpl-save">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <div id="recap" class="rc" hidden role="dialog" aria-modal="true" aria-label="Today’s recap"></div>
@@ -3117,16 +3334,19 @@ function api(fn, args) {
 // (at most every 30 s), and again after anything that can reach a brand.
 // rbTag(id) draws a slot that is filled from the map, so a list drawn
 // before the map lands is painted when it does (rbPaint).
-var RB = { map: null, at: 0, busy: null };
+var RB = { map: null, el: null, at: 0, busy: null };
 var RB_WRITES = {
   setTargetStatus: 1, markEmailed: 1, handStep: 1, logLinkedInPerson: 1, undoLinkedInLog: 1, markInvitesWithdrawn: 1,
-  setTargetShelved: 1, mergeBrands: 1, combineParent: 1, undoCombineParent: 1, sendEmail: 1, sendDraft: 1
+  setTargetShelved: 1, mergeBrands: 1, combineParent: 1, undoCombineParent: 1, sendEmail: 1, sendDraft: 1,
+  elStep: 1, elTakeOff: 1
 };
 function rbLoad(force) {
   if (RB.busy) return RB.busy;
   if (!force && RB.map && Date.now() - RB.at < 30000) return Promise.resolve(RB.map);
   RB.busy = api('reachedBrands').then(function (d) {
     RB.map = (d && d.brands) || {};
+    // Elizabeth's own outreach (her tab): a tag of its own, never Zach's.
+    RB.el = (d && d.el) || {};
     RB.at = Date.now();
     RB.busy = null;
     rbPaint();
@@ -3143,6 +3363,20 @@ function rbDay(key) {
 }
 var RB_STAGE = { r: 'they replied', a: 'they accepted', i: 'invite out', e: 'emailed', w: 'invite withdrawn' };
 function rbInner(id) {
+  return rbZach(id) + rbEl(id);
+}
+// Her tag: "Elizabeth Oct 21" (teal), beside Zach's purple one.
+function rbEl(id) {
+  var r = RB.el && RB.el[id];
+  if (!r) return '';
+  var how = [];
+  if (r[3]) how.push(r[3] + ' invited on LinkedIn');
+  if (r[4]) how.push(r[4] + ' emailed');
+  var tip = 'Elizabeth reached out — last ' + rbDay(r[1]) + (r[0] !== r[1] ? ', first ' + rbDay(r[0]) : '') +
+    (how.length ? ' · ' + how.join(' · ') : '') + (typeof EL_STAGE_WORD !== 'undefined' && EL_STAGE_WORD[r[2]] ? ' · ' + EL_STAGE_WORD[r[2]] : '');
+  return '<span class="rb-tag el" title="' + esc(tip) + '">Elizabeth ' + esc(rbDay(r[1])) + '</span>';
+}
+function rbZach(id) {
   var r = RB.map && RB.map[id];
   if (!r) return '';
   var how = [];
@@ -3368,6 +3602,7 @@ var SUBTABS = {
   pipeline: [['pipeline', 'Board'], ['sponsorships', 'Sponsorships']],
   audience: [['audience', 'Events'], ['attendees', 'Attendees'], ['segments', 'Segments']],
   operations: [['materials', 'Materials'], ['team', 'Team']],
+  elizabeth: [['el-today', 'Today'], ['el-week', 'Week plan'], ['el-follow', 'Follow-ups'], ['el-results', 'Results']],
 };
 var GROUP_OF = {
   brands: 'brands', recent: 'brands', brand: 'brands', discover: 'brands', clarify: 'brands', needs: 'brands', stock: 'brands',
@@ -3378,6 +3613,7 @@ var GROUP_OF = {
   audience: 'audience', attendees: 'audience', segments: 'audience',
   materials: 'operations', team: 'operations',
   chats: 'dashboard',
+  'el-today': 'elizabeth', 'el-week': 'elizabeth', 'el-follow': 'elizabeth', 'el-results': 'elizabeth',
 };
 
 // --- keep my place ---------------------------------------------
@@ -3670,6 +3906,12 @@ function placeApply(recs) {
 // (no "Loading…") and the place is held. `fresh` = going somewhere new
 // inside the same view (another brand, another list).
 function showView(id, fresh) {
+  // An account that opens only Elizabeth's part: any other page (a deep link,
+  // an old bookmark) lands on her Today instead.
+  if (document.body.classList.contains('rep-only') && !/^el-/.test(id)) {
+    setTimeout(function () { gotoView('el-today'); }, 0);
+    return false;
+  }
   var view = document.getElementById(id);
   var again = !fresh && !NAV_FRESH && !!view && view.classList.contains('active');
   navRecord(id, again);
@@ -4377,6 +4619,7 @@ function needHtml(chat, n, inChat) {
 // Always drawn from a fresh read, so anything done since the page loaded
 // (research saved, finds added, a need ticked) is already gone.
 function openRecap(at, data) {
+  if (document.body.classList.contains('rep-only')) return Promise.resolve();
   if (!data) {
     return loadToday().then(function (r) { drawRecap(at, r); }, function () { if (RC) drawRecap(at, RC); });
   }
@@ -4587,6 +4830,7 @@ function cdCards(cd) {
   return cards;
 }
 function openClaudeDay(day, at, data) {
+  if (document.body.classList.contains('rep-only')) return Promise.resolve();
   return (data ? Promise.resolve(data) : api('claudeDay', day ? { day: day } : {})).then(function (cd) {
     CD = cd;
     RC_SHOW = cd;
@@ -5033,10 +5277,16 @@ document.addEventListener('change', function (ev) {
 function goHomeFromLogo() {
   if (typeof actMode === 'function') actMode(false);
   if (location.hash) history.replaceState({}, '', location.pathname + location.search);
+  // An account that opens only Elizabeth's part: her Today is home.
+  if (document.body.classList.contains('rep-only')) { gotoView('el-today'); window.scrollTo(0, 0); return; }
   gotoView('dashboard');
   window.scrollTo(0, 0);
 }
 document.getElementById('logo-home').addEventListener('click', goHomeFromLogo);
+document.getElementById('rep-home').addEventListener('click', goHomeFromLogo);
+document.getElementById('rep-home').addEventListener('keydown', function (ev) {
+  if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); goHomeFromLogo(); }
+});
 document.getElementById('logo-home').addEventListener('keydown', function (ev) {
   if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); goHomeFromLogo(); }
 });
@@ -21336,11 +21586,26 @@ function loadTeam() {
   if (!again) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
 
   return api('listTeam').then(function (d) {
+    // Elizabeth's outreach only (Leo, Oct 21 2026): that account opens only
+    // her tab. Founding members set it; never on your own account.
+    var reps = d.reps || {};
+    var repLine = function (email) {
+      var on = !!reps[String(email).toLowerCase()];
+      return on ? '<span class="el-tag" style="color:#8ee3f5;border-color:rgba(67,198,232,.4)">' + esc(d.repName || 'Elizabeth') + '’s outreach only</span>' : '';
+    };
+    var repBtn = function (email) {
+      if (!d.canManage || String(email).toLowerCase() === d.me) return '';
+      var on = !!reps[String(email).toLowerCase()];
+      return '<button class="btn-ghost" data-team-rep="' + esc(email) + '" data-on="' + (on ? '0' : '1') + '" title="' +
+        (on ? 'Let this account see the whole site again' : 'This account will open only Elizabeth’s outreach tab') + '">' +
+        (on ? 'Give the whole site back' : 'Make it Elizabeth’s outreach only') + '</button>';
+    };
     var out = '<div class="section-head">Founding members <span class="n">always have access</span></div>';
     out += d.managers.map(function (m) {
       return '<div class="target"><div class="t-main"><div class="t-line">' +
-        '<span class="t-brand">' + esc(m) + '</span></div>' +
-        '<div class="t-meta"><span>set in Vercel — can manage this page</span></div></div></div>';
+        '<span class="t-brand">' + esc(m) + '</span> ' + repLine(m) + '</div>' +
+        '<div class="t-meta"><span>set in Vercel — can manage this page</span></div></div>' +
+        '<div class="t-actions">' + repBtn(m) + '</div></div>';
     }).join('');
 
     out += '<div class="section-head">Added from here <span class="n">' + d.invited.length + '</span></div>';
@@ -21372,9 +21637,9 @@ function loadTeam() {
     out += d.invited.length
       ? d.invited.map(function (p) {
           return '<div class="target"><div class="t-main"><div class="t-line">' +
-            '<span class="t-brand">' + esc(p.email) + '</span></div>' +
+            '<span class="t-brand">' + esc(p.email) + '</span> ' + repLine(p.email) + '</div>' +
             '<div class="t-meta"><span>added by ' + esc(p.addedBy || '—') + ' · ' + when(p.createdAt) + '</span></div></div>' +
-            '<div class="t-actions">' +
+            '<div class="t-actions">' + repBtn(p.email) +
             (d.canManage ? '<button class="btn-ghost danger" data-team-remove="' + esc(p.email) + '">Remove</button>' : '') +
             '</div></div>';
         }).join('')
@@ -21400,6 +21665,19 @@ function loadTeam() {
 }
 
 document.getElementById('team-body').addEventListener('click', function (e) {
+  var rep = e.target.closest('[data-team-rep]');
+  if (rep) {
+    var em = rep.getAttribute('data-team-rep'), on = rep.getAttribute('data-on') === '1';
+    if (!window.confirm(on
+      ? 'Make ' + em + ' Elizabeth’s outreach only?\n\nThat account will open only the Elizabeth tab (Today, Week plan, Follow-ups, Results) — nothing else on the site.'
+      : 'Give ' + em + ' the whole site again?')) return;
+    rep.disabled = true;
+    api('setRepAccount', { email: em, on: on }).then(function () {
+      toast(on ? em + ' now opens only Elizabeth’s outreach' : em + ' sees the whole site again');
+      teamRefresh();
+    }).catch(function (err) { toast(err.message); rep.disabled = false; });
+    return;
+  }
   var add = e.target.closest('[data-team-add-email]');
   if (add) {
     add.disabled = true;
@@ -23964,6 +24242,10 @@ function gotoViewNow(id) {
   if (id === 'materials') showView('materials');
   if (id === 'team') loadTeam();
   if (id === 'chats') loadChats();
+  if (id === 'elizabeth' || id === 'el-today') loadElToday();
+  if (id === 'el-week') loadElWeek();
+  if (id === 'el-follow') loadElFollow();
+  if (id === 'el-results') loadElResults();
 }
 
 // Coming back from the Google consent screen.
@@ -25691,6 +25973,721 @@ document.getElementById('att-q').addEventListener('input', function () {
   window.__attT = setTimeout(loadAttendees, 350);
 });
 
+// --- Elizabeth's outreach ---------------------------------------
+// Leo, Oct 21 2026: "a new outreach tab for Elizabeth to use her email to
+// outreach to some brands … a different part to the site soley for Elizabeth
+// … the brands and the same structure for outreach to carry over". Her own
+// Today (the day's list, made from her week plan: LinkedIn invites from her
+// LinkedIn, emails from her own Gmail — Open in Gmail, nothing sends from the
+// site), Week plan, Follow-ups (Zach's list's cadence) and Results. Server:
+// el* in route.ts, rules in src/lib/rep-outreach.ts. Apart from Zach's
+// outreach (no rules between them, Leo's call). An account marked as hers on
+// Team opens only this (body.rep-only, REP_FNS on the server).
+var EL = {
+  today: null, week: null, follow: null, results: null, tpl: null, repEmail: null,
+  fFilter: null, q: '', qRes: null, qSeq: 0, more: 60, spread: null, brand: null, tplKind: 'email', pending: {},
+};
+var EL_TPL_NAMES = { email: 'Email', follow: 'Follow-up email', note: 'LinkedIn invite note', dm: 'LinkedIn message', final: 'Final reach-out' };
+var EL_TPL_HELP = {
+  email: 'Her first email (Open in Gmail fills it in).',
+  follow: 'The follow-up email, 4 days after the first when they haven’t answered.',
+  note: 'The note on her LinkedIn invite — 300 characters at most.',
+  dm: 'Her first LinkedIn message after they accept (2 days after).',
+  final: 'The last LinkedIn message, 10 days after the first when they haven’t answered.',
+};
+var EL_GROUPS = [
+  ['todo', 'To do'], ['replied', 'Replied — book a call'], ['waiting', 'Waiting'], ['call', 'Calls booked'],
+  ['noreply', 'No response'], ['done', 'Done'],
+];
+var EL_STAGE_WORD = { r: 'they replied', a: 'they accepted', i: 'invite out', e: 'emailed' };
+
+function elDay(key, long) {
+  if (!key) return '';
+  return new Date(key + 'T12:00:00Z').toLocaleDateString('en-US', long
+    ? { timeZone: 'UTC', weekday: 'long', month: 'short', day: 'numeric' }
+    : { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' });
+}
+function elDaysTo(key) { return Math.round((Date.parse(key + 'T12:00:00Z') - Date.parse(nyKey() + 'T12:00:00Z')) / 864e5); }
+function elTimeOf(iso) { return iso ? new Date(iso).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }) : ''; }
+function elFirst(name) { return String(name || '').trim().split(/\s+/)[0] || 'there'; }
+function elFill(text, r) {
+  return String(text || '')
+    .replace(/[(\[](?:first\s*)?name[)\]]/gi, elFirst(r.name))
+    .replace(/[(\[](?:brand|company)[)\]]/gi, r.brand || '')
+    .replace(/[(\[]title[)\]]/gi, r.title || '');
+}
+function elTplOf(kind) { return (EL.tpl && EL.tpl[kind]) || { subject: '', body: '' }; }
+// Her email to this person: her own wording when she edited it, else the template.
+function elMail(r, kind) {
+  kind = kind || 'email';
+  var t = elTplOf(kind), own = kind === 'email';
+  return {
+    subject: own && r.subject != null ? r.subject : elFill(t.subject, r),
+    body: own && r.body != null ? r.body : elFill(t.body, r),
+  };
+}
+function elText(r, kind) {
+  if (kind === 'email' || kind === 'follow') return elMail(r, kind).body;
+  var text = elFill(elTplOf(kind).body, r);
+  return kind === 'note' ? text.slice(0, 300) : text;
+}
+// The compose window in her Google account: hers when she's signed in, else
+// the account marked as hers on Team.
+function elGmail(to, subject, body) {
+  var who = (ME && ME.rep && ME.email) || EL.repEmail || (ME && ME.email) || '';
+  return 'https://mail.google.com/mail/?view=cm&fs=1' + (who ? '&authuser=' + encodeURIComponent(who) : '') +
+    '&to=' + encodeURIComponent(to || '') + '&su=' + encodeURIComponent(subject || '') + '&body=' + encodeURIComponent(body || '');
+}
+function elDue(r) {
+  if (!r.due) return esc(r.next);
+  var d = elDaysTo(r.due);
+  if (r.group === 'todo') {
+    var when2 = r.late ? '<span class="late">' + (-d) + (d === -1 ? ' day' : ' days') + ' late</span>' : '<span class="due">today</span>';
+    return esc(r.next) + ' · ' + when2;
+  }
+  if (r.stage === 'call') return '<span class="ok">Call ' + esc(elDay(r.due)) + '</span>';
+  if (r.group === 'waiting' && r.stage !== 'invited') return esc(r.next) + ' · next step ' + esc(elDay(r.due));
+  if (r.group === 'noreply') return 'No response since ' + esc(elDay(r.due));
+  return esc(r.next);
+}
+function elBtn(r, step, label, cls) {
+  return '<button class="' + (cls || 'btn-ghost sm') + '" data-el-step="' + step + '" data-el-id="' + esc(r.id) + '"' +
+    (EL.pending[r.id] ? ' disabled' : '') + '>' + label + '</button>';
+}
+function elLink(href, label) { return '<a class="btn-ghost sm" href="' + esc(href) + '" target="_blank" rel="noopener">' + label + '</a>'; }
+function elCopyBtn(r, kind, label) { return '<button class="btn-ghost sm" data-el-copy="' + kind + '" data-el-id="' + esc(r.id) + '">' + label + '</button>'; }
+
+// One person, on any of her pages: who, where they stand, the next buttons.
+function elRowHtml(r, where) {
+  var acts = [], more = [];
+  var mail = r.email ? esc(r.email) : '';
+  var sub = [r.title ? esc(r.title) : 'No title on file'];
+  if (where !== 'today' && where !== 'brand') sub.push('<button class="el-blink" data-el-brand="' + esc(r.brandId || '') + '">' + esc(r.brand) + '</button>');
+  if (r.channel === 'email' && mail) sub.push(mail);
+  var next;
+  if (r.blocked) {
+    next = '<span class="el-blocked">' + esc(r.blocked) + '</span>';
+  } else if (r.stage === 'queued') {
+    next = r.carried ? 'From ' + esc(elDay(r.day)) + ' — not sent yet' : r.day && r.day > nyKey() ? 'On her list ' + esc(elDay(r.day)) : 'To send today';
+    if (r.channel === 'email') {
+      var m = elMail(r);
+      acts.push(elLink(elGmail(r.email, m.subject, m.body), 'Open in Gmail ↗'), elCopyBtn(r, 'email', 'Copy'), elBtn(r, 'sent', 'Email sent ✓', 'btn-solid sm'));
+    } else {
+      if (r.linkedinUrl) acts.push(elLink(r.linkedinUrl, 'Open profile ↗'));
+      acts.push(elCopyBtn(r, 'note', 'Copy note'), elBtn(r, 'sent', 'Invite sent ✓', 'btn-solid sm'));
+    }
+    if (r.other) more.push(elBtn(r, 'channel', r.other === 'email' ? 'Send an email instead' : 'Send a LinkedIn invite instead'));
+    more.push(elBtn(r, 'passed', 'Leave them out'));
+  } else if (where === 'today' && r.sentAt && r.group !== 'done') {
+    next = '<span class="ok">✓ ' + (r.channel === 'email' ? 'Email sent' : 'Invite sent') + ' ' + esc(elTimeOf(r.sentAt)) + '</span>';
+  } else {
+    next = elDue(r);
+    switch (r.stage) {
+      case 'invited': acts.push(elBtn(r, 'accepted', 'They accepted ✓', 'btn-solid sm'), elBtn(r, 'replied', 'They replied')); break;
+      case 'oldInvite': acts.push(elBtn(r, 'withdrawn', 'Withdrew it ✓', 'btn-solid sm'), elBtn(r, 'accepted', 'They accepted')); break;
+      case 'dmDue':
+        if (r.linkedinUrl) acts.push(elLink(r.linkedinUrl, 'Open profile ↗'));
+        acts.push(elCopyBtn(r, 'dm', 'Copy message'), elBtn(r, 'dm', 'Messaged ✓', 'btn-solid sm'), elBtn(r, 'replied', 'They replied'));
+        break;
+      case 'finalDue':
+        if (r.linkedinUrl) acts.push(elLink(r.linkedinUrl, 'Open profile ↗'));
+        acts.push(elCopyBtn(r, 'final', 'Copy message'), elBtn(r, 'follow', 'Final sent ✓', 'btn-solid sm'), elBtn(r, 'replied', 'They replied'));
+        break;
+      case 'followDue':
+        var f = elMail(r, 'follow');
+        acts.push(elLink(elGmail(r.email, f.subject, f.body), 'Open in Gmail ↗'), elCopyBtn(r, 'follow', 'Copy'), elBtn(r, 'follow', 'Follow-up sent ✓', 'btn-solid sm'), elBtn(r, 'replied', 'They replied'));
+        break;
+      case 'finalOut': case 'followOut': case 'noreply': acts.push(elBtn(r, 'replied', 'They replied ✓')); break;
+      case 'replied':
+        acts.push('<input type="date" class="inp el-callday" data-el-callday="' + esc(r.id) + '" min="' + nyKey() + '" aria-label="The call’s day">', elBtn(r, 'call', 'Call booked ✓', 'btn-solid sm'));
+        break;
+      case 'passed': acts.push(elBtn(r, 'unpass', 'Put back on her list')); break;
+    }
+    if (['sent', 'accepted', 'replied'].indexOf(r.status) >= 0) more.push(elBtn(r, 'declined', 'Doesn’t want to continue', 'btn-ghost sm danger'));
+  }
+  if (r.canBack) more.push(elBtn(r, 'back', '← Back a step'));
+  if (more.length && !r.blocked) acts.push('<details class="el-more"><summary class="btn-ghost sm" aria-label="More">⋯</summary><div class="el-more-menu">' + more.join('') + '</div></details>');
+  else if (more.length) acts.push(more.join(''));
+  var edit = '';
+  if (r.stage === 'queued' && r.channel === 'email' && !r.blocked) {
+    var em = elMail(r);
+    edit = '<details class="el-mail"><summary>' + (r.subject != null || r.body != null ? 'Her own wording for ' + esc(elFirst(r.name)) + ' — see / edit' : 'See / edit the email') + '</summary>' +
+      '<input class="inp" data-el-subj="' + esc(r.id) + '" value="' + esc(em.subject) + '" aria-label="Subject">' +
+      '<textarea class="field-box" rows="8" data-el-body="' + esc(r.id) + '" aria-label="Email">' + esc(em.body) + '</textarea>' +
+      '<div class="hint" style="margin:6px 0 0">Saved when you click away. Make it match the template again and it follows the template.</div></details>';
+  }
+  var done = r.group === 'done' || (where === 'today' && r.stage !== 'queued');
+  return '<div class="el-row' + (done ? ' done' : '') + '" data-el-row="' + esc(r.id) + '">' +
+    '<div class="el-who"><span class="el-av">' + esc(elFirst(r.name).charAt(0).toUpperCase()) + '</span><div style="min-width:0">' +
+      '<div class="el-name">' + esc(r.name) + '<span class="el-ch ' + esc(r.channel) + '">' + (r.channel === 'email' ? 'Email' : 'LinkedIn') + '</span></div>' +
+      '<div class="el-sub2">' + sub.join(' · ') + '</div></div></div>' +
+    '<div class="el-next">' + next + '</div>' +
+    '<div class="el-acts">' + acts.join('') + '</div>' + edit + '</div>';
+}
+function elFind(id) {
+  var lists = [EL.today && EL.today.brands && EL.today.brands.reduce(function (a, g) { return a.concat(g.rows); }, []),
+    EL.follow && EL.follow.rows, EL.brand && EL.brand.people && EL.brand.people.reduce(function (a, p) { return a.concat(p.rows); }, [])];
+  for (var i = 0; i < lists.length; i++) {
+    var hit = (lists[i] || []).filter(function (r) { return r.id === id; })[0];
+    if (hit) return hit;
+  }
+  return null;
+}
+
+// ---- Today ----
+function loadElToday() {
+  var again = showView('el-today');
+  var turn = viewTurn('el-today');
+  if (!again) document.getElementById('el-today-body').innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  return api('elToday').then(function (d) {
+    if (!turn()) return;
+    EL.today = d; EL.tpl = d.templates; EL.repEmail = d.repEmail || null;
+    renderElToday();
+  }).catch(function (e) {
+    if (!turn()) return;
+    document.getElementById('el-today-body').innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+}
+function renderElToday() {
+  var d = EL.today;
+  var sub = elDay(d.today, true) + ' · ' + (d.sending ? d.count + ' of ' + d.cap + ' on today’s list' : 'not a sending day — next is ' + elDay(d.nextSending, true));
+  document.getElementById('el-today-sub').textContent = sub;
+  var out = '';
+  var queued = 0, sent = d.sentToday;
+  d.brands.forEach(function (g) { g.rows.forEach(function (r) { if (r.stage === 'queued' && !r.blocked) queued++; }); });
+  var pct = Math.min(100, Math.round(100 * (d.count / Math.max(1, d.cap))));
+  var liPct = Math.min(100, Math.round(100 * d.liWeek / Math.max(1, d.liLimit)));
+  out += '<div class="el-stats">' +
+    '<div class="el-stat"><b>' + queued + '</b><span>left to send</span></div>' +
+    '<div class="el-stat"><b>' + sent + '</b><span>sent today</span></div>' +
+    '<div class="el-stat" style="min-width:200px"><b>' + d.count + ' / ' + d.cap + '</b><span>on today’s list</span><div class="el-meter"><i style="width:' + pct + '%"></i></div></div>' +
+    '<div class="el-stat" style="min-width:200px"><b>' + d.liWeek + ' / ' + d.liLimit + '</b><span>LinkedIn invites, last 7 days</span><div class="el-meter' + (d.liWeek >= 90 ? ' over' : '') + '"><i style="width:' + liPct + '%"></i></div></div>' +
+    '</div>';
+  if (d.liWeek >= 90) out += '<div class="el-note warn">Her LinkedIn is near its ~100 invites a week — send emails first, and hold some invites for a few days.</div>';
+  if (!d.sending) {
+    var nb = (d.next && d.next.brands) || [];
+    out += '<div class="el-note">Outreach goes out Tuesday to Thursday. <b>' + esc(elDay(d.nextSending, true)) + '</b>' +
+      (nb.length ? ' has ' + nb.length + (nb.length === 1 ? ' brand' : ' brands') + ' planned: ' + nb.map(function (b) { return esc(b.name) + ' (' + b.size + ')'; }).join(', ') + '.'
+        : ' has nothing planned yet — <a href="#" data-el-goto="el-week">plan her week →</a>') + '</div>';
+  }
+  (d.waits || []).forEach(function (w) {
+    out += '<div class="el-note warn"><b>' + esc(w.name) + '</b> waits — no room left today' + (w.need ? ' (it needs ' + w.need + ')' : '') + '. It goes first on ' + esc(elDay(w.to)) + ', or <a href="#" data-el-goto="el-week">move a brand on Week plan</a>.</div>';
+  });
+  (d.nobody || []).forEach(function (w) {
+    out += '<div class="el-note">Nobody to reach at <b><a href="#" data-el-brand="' + esc(w.id) + '">' + esc(w.name) + '</a></b> — no email or LinkedIn link she hasn’t used. Add a person on its card.</div>';
+  });
+  if (!d.brands.length) {
+    out += '<div class="panel" style="margin-top:16px"><div class="empty"><h3>' + (d.sending ? 'Nothing on today’s list' : 'Nothing waiting') + '</h3>' +
+      '<p>Put brands on her days in <a href="#" data-el-goto="el-week">Week plan</a> — each day’s list is made from them that morning.</p></div></div>';
+  }
+  d.brands.forEach(function (g) {
+    var left = g.rows.filter(function (r) { return r.stage === 'queued'; }).length;
+    out += '<div class="el-brand">' +
+      '<div class="el-bh"><button class="el-bname" data-el-brand="' + esc(g.id || '') + '">' + esc(g.name) + '</button>' + rbTag(g.id) +
+        (g.fit != null ? '<span class="el-fit" title="Brand Fit">Fit ' + g.fit + '</span>' : '') +
+        (g.category ? '<span class="el-meta">' + esc(CAT_NAMES[g.category] || g.category) + '</span>' : '') +
+        (g.from ? '<span class="el-tag warn">From ' + esc(elDay(g.from)) + '</span>' : '') +
+        '<span class="el-meta">' + g.rows.length + (g.rows.length === 1 ? ' person' : ' people') + (left && left < g.rows.length ? ' · ' + left + ' left' : '') + '</span>' +
+        '<span class="el-tools">' +
+          (g.website ? '<a class="btn-ghost sm" href="' + esc(/^https?:/i.test(g.website) ? g.website : 'https://' + g.website) + '" target="_blank" rel="noopener">Website ↗</a>' : '') +
+          (left && g.id ? '<button class="btn-ghost sm" data-el-takeoff="' + esc(g.id) + '">Take off</button>' : '') +
+        '</span></div>' +
+      g.rows.map(function (r) { return elRowHtml(r, 'today'); }).join('') + '</div>';
+  });
+  document.getElementById('el-today-body').innerHTML = out;
+}
+
+// ---- Week plan ----
+function loadElWeek() {
+  var again = showView('el-week');
+  var turn = viewTurn('el-week');
+  if (!again) { document.getElementById('el-strip').innerHTML = ''; document.getElementById('el-list').innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>'; }
+  elCatOptions();
+  var cat = document.getElementById('el-cat').value || null;
+  return api('elWeek', { cat: cat, limit: EL.more }).then(function (d) {
+    if (!turn()) return;
+    EL.week = d;
+    renderElWeek();
+    if (EL.q) elSearchRun(true);
+  }).catch(function (e) {
+    if (!turn()) return;
+    document.getElementById('el-list').innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+}
+function elCatOptions() {
+  var sel = document.getElementById('el-cat');
+  if (sel.options.length > 1) return;
+  sel.innerHTML = '<option value="">Every category</option>' + CAT_KEYS.map(function (k) { return '<option value="' + k + '">' + esc(CAT_NAMES[k]) + '</option>'; }).join('');
+}
+function elDayButtons(b, list) {
+  var days = list || (EL.week && EL.week.days) || [];
+  if (b.stopped) return '<span class="el-tag bad">Said they don’t want to continue</span>';
+  return '<div class="el-days">' + days.map(function (d) {
+    var on = b.day === d.date;
+    return '<button class="el-dayb' + (on ? ' on' : '') + '" data-el-put="' + esc(b.id) + '" data-el-day="' + d.date + '" title="' + (on ? 'On ' + esc(elDay(d.date)) + ' — click to take it off' : 'Put it on ' + esc(elDay(d.date))) + '">' +
+      (on ? '✓ ' : '') + esc(elDay(d.date).replace(/,.*$/, '')) + ' ' + Number(d.date.slice(8)) + '</button>';
+  }).join('') + '</div>';
+}
+function elCardHtml(b) {
+  var tags = [];
+  if (b.archived) tags.push('<span class="el-tag warn">Archived</span>');
+  if (b.doNotEmail) tags.push('<span class="el-tag warn" title="Marked do not email: LinkedIn invites only">Do not email</span>');
+  if (b.notUs) tags.push('<span class="el-tag warn">Not sold in the US</span>');
+  if (b.reached) tags.push('<span class="el-tag">She has ' + b.reached + ' there already</span>');
+  var who = b.size
+    ? b.size + (b.size === 1 ? ' person goes' : ' people go') + ' · ' + b.emails + (b.emails === 1 ? ' email' : ' emails') + ' · ' + b.links + ' on LinkedIn'
+    : 'Nobody she can reach yet — add a person';
+  return '<div class="el-card" data-el-card="' + esc(b.id) + '">' +
+    '<div class="el-card-h"><button class="el-bname" data-el-brand="' + esc(b.id) + '">' + esc(b.name) + '</button>' +
+      '<span class="el-fit" title="Brand Fit">Fit ' + b.fit + '</span></div>' +
+    '<div class="el-meta">' + esc(CAT_NAMES[b.category] || b.category || 'No category') + rbTag(b.id) + '</div>' +
+    '<div class="el-meta">' + who + '</div>' +
+    (tags.length ? '<div>' + tags.join(' ') + '</div>' : '') +
+    elDayButtons(b) + '</div>';
+}
+function renderElWeek() {
+  var d = EL.week;
+  var tools = '<button class="btn-solid" id="el-spread-go" title="Fill the open room on her days with the best brands on the list">Fill her week</button>';
+  if (d.spreadUndo) tools += '<button class="btn-ghost" id="el-spread-undo">Undo the fill</button>';
+  document.getElementById('el-week-tools').innerHTML = tools;
+  var moveOpts = function (cur) {
+    return '<option value="">Move</option>' + d.days.filter(function (x) { return x.date !== cur; }).map(function (x) { return '<option value="' + x.date + '">' + esc(elDay(x.date)) + '</option>'; }).join('');
+  };
+  document.getElementById('el-strip').innerHTML = d.days.map(function (day) {
+    var pct = Math.min(100, Math.round(100 * day.count / Math.max(1, day.cap)));
+    return '<div class="el-day' + (day.today ? ' today' : '') + '">' +
+      '<div class="el-day-h"><b>' + esc(elDay(day.date)) + '</b>' + (day.today ? '<span class="el-tag" style="margin-left:4px">Today</span>' : '') + '<span>' + day.count + ' / ' + day.cap + '</span></div>' +
+      '<div class="el-meter' + (day.count > day.cap ? ' over' : '') + '"><i style="width:' + pct + '%"></i></div>' +
+      (day.carried ? '<div class="el-meta" style="margin-top:6px">+ ' + day.carried + ' carried from earlier days</div>' : '') +
+      (day.brands.length ? '<ol>' + day.brands.map(function (b, i) {
+        return '<li class="' + (b.built ? 'built' : '') + '" title="' + esc(b.name + ' · ' + b.size + (b.built ? ' on the list' : ' would go')) + '">' +
+          '<button class="el-dn" data-el-brand="' + esc(b.id) + '">' + esc(b.name) + '</button><span class="n">' + b.size + '</span>' +
+          (i > 0 && !b.built ? '<button class="el-ib" data-el-up="' + esc(b.id) + '" data-el-day="' + day.date + '" data-el-i="' + (i - 1) + '" title="Earlier in the day" aria-label="Earlier">↑</button>' : '') +
+          '<select class="inp" data-el-move="' + esc(b.id) + '" aria-label="Move to another day">' + moveOpts(day.date) + '</select>' +
+          '<button class="el-ib" data-el-off="' + esc(b.id) + '" title="Take it off her week" aria-label="Take off">×</button></li>';
+      }).join('') + '</ol>' : '<div class="empty-day">Nothing yet — put brands on it below.</div>') + '</div>';
+  }).join('');
+  elRenderList();
+}
+function elRenderList() {
+  var d = EL.week;
+  var box = document.getElementById('el-list');
+  var n = document.getElementById('el-list-n');
+  if (!d) return;
+  if (EL.q && EL.qRes) {
+    n.textContent = EL.qRes.length ? EL.qRes.length + ' found' : '';
+    box.innerHTML = EL.qRes.length ? '<div class="el-cards">' + EL.qRes.map(elCardHtml).join('') + '</div>'
+      : '<div class="panel"><div class="empty"><h3>No brand by that name</h3><p>Add it on the main site first (+ Add brand).</p></div></div>';
+    return;
+  }
+  n.textContent = d.bankTotal + (d.bankTotal === 1 ? ' brand' : ' brands') + ' to plan, best Brand Fit first';
+  box.innerHTML = d.bank.length
+    ? '<div class="el-cards">' + d.bank.map(elCardHtml).join('') + '</div>' +
+      (d.bankTotal > d.bank.length ? '<div style="margin-top:14px;text-align:center"><button class="btn-ghost" data-el-more>Show more (' + (d.bankTotal - d.bank.length) + ' more)</button></div>' : '')
+    : '<div class="panel"><div class="empty"><h3>No brands left to plan here</h3><p>Every brand with someone she can reach is on her week or was reached in the last two weeks. Search for any brand above.</p></div></div>';
+}
+var EL_QT = null;
+function elSearchRun(now) {
+  var q = EL.q;
+  clearTimeout(EL_QT);
+  if (q.length < 2) { EL.qRes = null; elRenderList(); return; }
+  var seq = ++EL.qSeq;
+  EL_QT = setTimeout(function () {
+    api('elSearch', { q: q }).then(function (r) {
+      if (seq !== EL.qSeq) return;
+      EL.qRes = r.brands || [];
+      elRenderList();
+    }).catch(function (e) { toast(e.message); });
+  }, now ? 0 : 250);
+}
+document.getElementById('el-q').addEventListener('input', function () { EL.q = this.value.trim(); elSearchRun(); });
+document.getElementById('el-cat').addEventListener('change', function () { EL.more = 60; loadElWeek(); });
+
+// ---- Follow-ups ----
+function loadElFollow() {
+  var again = showView('el-follow');
+  var turn = viewTurn('el-follow');
+  if (!again) document.getElementById('el-follow-body').innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  return api('elFollow').then(function (d) {
+    if (!turn()) return;
+    EL.follow = d; EL.tpl = d.templates; EL.repEmail = d.repEmail || null;
+    renderElFollow();
+  }).catch(function (e) {
+    if (!turn()) return;
+    document.getElementById('el-follow-body').innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+}
+function renderElFollow() {
+  var d = EL.follow;
+  var by = {};
+  d.rows.forEach(function (r) { (by[r.group] = by[r.group] || []).push(r); });
+  var todo = (by.todo || []).length, late = (by.todo || []).filter(function (r) { return r.late; }).length;
+  document.getElementById('el-follow-sub').textContent = todo
+    ? todo + ' to do today' + (late ? ' · ' + late + ' late' : '') + ' · ' + d.rows.length + ' people reached'
+    : d.rows.length ? 'Nothing due today · ' + d.rows.length + ' people reached' : 'Nobody reached yet — her follow-ups show here once Today’s list goes out.';
+  if (!EL.fFilter || !(by[EL.fFilter] || []).length) {
+    EL.fFilter = ['todo', 'replied', 'waiting', 'call', 'noreply', 'done'].filter(function (g) { return (by[g] || []).length; })[0] || 'todo';
+  }
+  document.getElementById('el-follow-chips').innerHTML = EL_GROUPS.map(function (g) {
+    var c = (by[g[0]] || []).length;
+    return '<button class="chip' + (EL.fFilter === g[0] ? ' active' : '') + '" data-el-ff="' + g[0] + '">' + esc(g[1]) + '<span class="n">' + c + '</span></button>';
+  }).join('');
+  var rows = by[EL.fFilter] || [];
+  var help = {
+    todo: 'Due today or late, earliest step first.',
+    waiting: 'Nothing to do yet — each one says when its next step comes up.',
+    replied: 'They answered: book the call, or mark that they don’t want to continue.',
+    call: 'Calls booked.',
+    noreply: 'No answer after the last follow-up. A reply any time brings them back.',
+    done: 'Withdrawn invites and people who don’t want to continue (last 30 days).',
+  }[EL.fFilter];
+  document.getElementById('el-follow-body').innerHTML =
+    '<div class="sd-dim" style="margin:0 0 6px">' + esc(help) + '</div>' +
+    (rows.length ? '<div class="el-brand">' + rows.map(function (r) { return elRowHtml(r, 'follow'); }).join('') + '</div>'
+      : '<div class="panel"><div class="empty"><h3>Nobody here</h3></div></div>');
+}
+
+// ---- Results ----
+function loadElResults() {
+  var again = showView('el-results');
+  var turn = viewTurn('el-results');
+  if (!again) document.getElementById('el-results-body').innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  return api('elResults').then(function (d) {
+    if (!turn()) return;
+    EL.results = d;
+    renderElResults();
+  }).catch(function (e) {
+    if (!turn()) return;
+    document.getElementById('el-results-body').innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+}
+function elPct(x) { return x == null ? '—' : Math.round(x * 100) + '%'; }
+function renderElResults() {
+  var d = EL.results;
+  var block = function (label, c) {
+    return '<div class="el-group-h">' + esc(label) + '</div><div class="el-stats" style="margin-top:0">' +
+      '<div class="el-stat"><b>' + c.invites + '</b><span>LinkedIn invites</span></div>' +
+      '<div class="el-stat"><b>' + c.accepted + '</b><span>accepted</span><em>' + elPct(c.acceptRate) + ' of invites</em></div>' +
+      '<div class="el-stat"><b>' + c.emails + '</b><span>emails sent</span></div>' +
+      '<div class="el-stat"><b>' + c.replied + '</b><span>replied</span><em>' + elPct(c.replyRate) + ' of what went out</em></div>' +
+      '<div class="el-stat"><b>' + c.calls + '</b><span>calls booked</span></div></div>';
+  };
+  var out = block('Last 7 days', d.week) + block('Last 30 days', d.month) + block('All time', d.all);
+  out += '<div class="el-group-h">Each day, last two weeks</div><div class="panel" style="overflow-x:auto"><table class="el-table"><thead><tr><th>Day</th><th>Invites</th><th>Emails</th><th>Accepted</th><th>Replied</th></tr></thead><tbody>' +
+    d.byDay.map(function (x) {
+      return '<tr><td>' + esc(elDay(x.day)) + '</td><td>' + x.invites + '</td><td>' + x.emails + '</td><td>' + x.accepted + '</td><td>' + x.replied + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+  out += '<div class="el-group-h">Brands she reached (' + d.brands.length + ')</div>';
+  out += d.brands.length ? '<div class="panel" style="overflow-x:auto"><table class="el-table"><thead><tr><th>Brand</th><th>People</th><th>Furthest</th><th>First</th><th>Last</th></tr></thead><tbody>' +
+    d.brands.map(function (b) {
+      return '<tr><td>' + (b.id ? '<a href="#" data-el-brand="' + esc(b.id) + '">' + esc(b.name) + '</a>' : esc(b.name)) + '</td><td>' + b.people + '</td><td>' + esc(EL_STAGE_WORD[b.stage] || '—') + '</td><td>' + esc(elDay(b.first)) + '</td><td>' + esc(elDay(b.last)) + '</td></tr>';
+    }).join('') + '</tbody></table></div>'
+    : '<div class="panel"><div class="empty"><h3>Nothing sent yet</h3></div></div>';
+  document.getElementById('el-results-body').innerHTML = out;
+}
+
+// ---- One brand (a window over any of her pages) ----
+function elOpenBrand(id) {
+  if (!id) return;
+  var scrim = document.getElementById('el-brand-scrim');
+  scrim.classList.add('open');
+  EL.brandId = id;
+  document.getElementById('el-b-name').textContent = 'Loading…';
+  document.getElementById('el-brand-body').innerHTML = '';
+  return elBrandLoad();
+}
+function elBrandLoad() {
+  var id = EL.brandId;
+  return api('elBrand', { brandId: id }).then(function (d) {
+    if (EL.brandId !== id) return;
+    EL.brand = d;
+    renderElBrand();
+  }).catch(function (e) { document.getElementById('el-brand-body').innerHTML = '<div class="el-blocked">' + esc(e.message) + '</div>'; });
+}
+function renderElBrand() {
+  var d = EL.brand, b = d.brand;
+  document.getElementById('el-b-name').textContent = b.name;
+  var links = [];
+  if (b.website) links.push('<a class="btn-ghost sm" href="' + esc(/^https?:/i.test(b.website) ? b.website : 'https://' + b.website) + '" target="_blank" rel="noopener">Website ↗</a>');
+  if (b.linkedinUrl) links.push('<a class="btn-ghost sm" href="' + esc(b.linkedinUrl) + '" target="_blank" rel="noopener">LinkedIn page ↗</a>');
+  links.push('<a class="btn-ghost sm" href="https://www.linkedin.com/search/results/people/?keywords=' + encodeURIComponent(b.name + ' partnerships') + '" target="_blank" rel="noopener">Find people on LinkedIn ↗</a>');
+  links.push('<button class="btn-ghost sm" data-el-full="' + esc(b.id) + '">Open the brand page →</button>');
+  var out = '<div class="el-meta">' + esc(CAT_NAMES[b.category] || b.category || 'No category') + rbTag(b.id) +
+    ' · <span class="el-fit">Fit ' + d.fit.score + '</span> · opens with ' + d.work + (d.work === 1 ? ' person' : ' people') + '</div>';
+  if (b.about) out += '<div style="margin-top:8px;color:var(--ink-2);font-size:13.5px">' + esc(b.about) + '</div>';
+  if (b.stopped) out += '<div class="el-note warn">' + esc(b.stopped) + '</div>';
+  if (b.doNotEmail) out += '<div class="el-note">Marked do not email — her list sends LinkedIn invites only here.</div>';
+  out += '<div class="el-days" style="margin-top:12px">' + links.join('') + '</div>';
+  if (!b.stopped && !b.person) {
+    out += '<div class="el-sec">Her week' + (d.day ? ' — on ' + esc(elDay(d.day, true)) : '') + '</div>' + elDayButtons({ id: b.id, day: d.day, stopped: false }, d.days);
+  }
+  out += '<div class="el-sec">People on file (' + d.people.length + ')</div>';
+  out += d.people.length ? d.people.map(function (p) {
+    var mine = p.rows.map(function (r) { return '<span class="el-tag">' + (r.channel === 'email' ? 'Email' : 'LinkedIn') + ': ' + esc(r.stage === 'queued' ? 'on her list ' + elDay(r.day) : r.next) + '</span>'; }).join(' ');
+    var can = !p.stopped && !p.rows.length && p.channel && !b.stopped;
+    return '<div class="el-person"><div style="min-width:0"><div class="el-name">' + esc(p.name) +
+      (p.linkedinUrl ? ' <a class="el-meta" href="' + esc(p.linkedinUrl) + '" target="_blank" rel="noopener">LinkedIn ↗</a>' : '') + '</div>' +
+      '<div class="el-sub2">' + esc(p.title || 'No title on file') + (p.email ? ' · ' + esc(p.email) : '') + '</div>' +
+      (p.problem ? '<div class="el-meta">⚠ ' + esc(p.problem) + '</div>' : '') +
+      (p.stopped ? '<div class="el-blocked">' + esc(p.stopped) + '</div>' : '') +
+      (mine ? '<div style="margin-top:4px">' + mine + '</div>' : '') + '</div>' +
+      '<div>' + (can ? '<button class="btn-ghost sm" data-el-queue="' + esc(p.id) + '">+ Her list (' + (p.channel === 'email' ? 'email' : 'LinkedIn') + ')</button>'
+        : !p.channel && !p.stopped && !p.rows.length ? '<span class="el-meta">no email or LinkedIn link</span>' : '') + '</div></div>';
+  }).join('') : '<div class="el-meta">Nobody on file yet.</div>';
+  if (!b.stopped) {
+    out += '<div class="el-sec">+ Add a person she found</div>' +
+      '<div class="el-addp"><input class="inp" id="elp-name" placeholder="Name"><input class="inp" id="elp-title" placeholder="Job title">' +
+      '<input class="inp" id="elp-link" placeholder="LinkedIn link (linkedin.com/in/…)"><input class="inp" id="elp-email" placeholder="Email"></div>' +
+      '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn-solid" id="elp-addq">Add + put on her list</button><button class="btn-ghost" id="elp-add">Just add them</button>' +
+      '<span class="sd-dim" style="align-self:center">They’re on file for everyone; only her list sends to them.</span></div>';
+  }
+  document.getElementById('el-brand-body').innerHTML = out;
+}
+function elCloseBrand() {
+  document.getElementById('el-brand-scrim').classList.remove('open');
+  EL.brandId = null; EL.brand = null;
+}
+function elAddPerson(queue) {
+  var v = function (id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  var args = { brandId: EL.brandId, name: v('elp-name'), title: v('elp-title'), linkedinUrl: v('elp-link'), email: v('elp-email'), queue: !!queue };
+  if (!args.name) { toast('Type their name'); return; }
+  api('elAddPerson', args).then(function (r) {
+    var q = r.queued;
+    toast(q && q.added.length ? r.contact.name + ' added — on her list ' + elDay(q.day) : q && q.skipped.length ? r.contact.name + ' added — not on her list: ' + q.skipped[0].why : r.contact.name + ' added');
+    elBrandLoad(); elRefresh();
+  }).catch(function (e) { toast(e.message); });
+}
+
+// ---- Templates ----
+function elOpenTemplates(kind) {
+  var go = function () {
+    EL.tplKind = kind || EL.tplKind || 'email';
+    document.getElementById('el-tpl-scrim').classList.add('open');
+    elTplFill();
+  };
+  if (EL.tpl) return go();
+  api('elTemplates').then(function (t) { EL.tpl = t.templates; go(); }).catch(function (e) { toast(e.message); });
+}
+function elTplFill() {
+  var k = EL.tplKind, t = elTplOf(k);
+  document.getElementById('el-tpl-tabs').innerHTML = ['email', 'follow', 'note', 'dm', 'final'].map(function (x) {
+    return '<button class="chip' + (x === k ? ' active' : '') + '" data-el-tpltab="' + x + '">' + esc(EL_TPL_NAMES[x]) + '</button>';
+  }).join('');
+  var mail = k === 'email' || k === 'follow';
+  document.getElementById('el-tsubj-wrap').hidden = !mail;
+  document.getElementById('el-tsubj').value = t.subject || '';
+  document.getElementById('el-tbody').value = t.body || '';
+  document.getElementById('el-tpl-state').textContent = EL_TPL_HELP[k] + (t.saved ? ' Saved' + (t.savedBy ? ' by ' + t.savedBy : '') + (t.savedAt ? ' ' + when(t.savedAt) : '') + '.' : ' (the default)');
+  elTplPreview();
+}
+function elTplPreview() {
+  var k = EL.tplKind;
+  var sample = { name: 'Jamie Rivera', brand: 'Liquid Death', title: 'Head of Partnerships' };
+  var subj = elFill(document.getElementById('el-tsubj').value, sample);
+  var body = elFill(document.getElementById('el-tbody').value, sample);
+  document.getElementById('el-prev-subj').textContent = k === 'email' || k === 'follow' ? subj : '';
+  document.getElementById('el-prev-body').textContent = body;
+  var cnt = document.getElementById('el-tcount');
+  cnt.textContent = k === 'note' ? body.length + ' / 300 characters (with a sample name)' + (body.length > 300 ? ' — LinkedIn cuts the rest' : '') : '';
+}
+document.getElementById('el-tsubj').addEventListener('input', elTplPreview);
+document.getElementById('el-tbody').addEventListener('input', elTplPreview);
+document.getElementById('el-tpl-save').addEventListener('click', function () {
+  var btn = this; btn.disabled = true;
+  api('elSaveTemplate', { kind: EL.tplKind, subject: document.getElementById('el-tsubj').value, body: document.getElementById('el-tbody').value })
+    .then(function (r) { EL.tpl = r.templates; elTplFill(); toast('Saved — every person on her list who wasn’t edited follows it'); elRefresh(); })
+    .catch(function (e) { toast(e.message); })
+    .then(function () { btn.disabled = false; });
+});
+document.getElementById('el-tpl-reset').addEventListener('click', function () {
+  if (!window.confirm('Put the ' + EL_TPL_NAMES[EL.tplKind] + ' back to the default text?')) return;
+  api('elSaveTemplate', { kind: EL.tplKind, reset: true }).then(function (r) { EL.tpl = r.templates; elTplFill(); toast('Back to the default'); elRefresh(); }).catch(function (e) { toast(e.message); });
+});
+
+// ---- Doing things ----
+function elRefresh() {
+  var on = function (id) { var v = document.getElementById(id); return v && v.classList.contains('active'); };
+  if (on('el-today')) return loadElToday();
+  if (on('el-week')) return loadElWeek();
+  if (on('el-follow')) return loadElFollow();
+  if (on('el-results')) return loadElResults();
+}
+function elStepDo(id, step, extra) {
+  var r = elFind(id);
+  if (step === 'declined' && !window.confirm((r ? r.name : 'They') + ' doesn’t want to continue?\n\nThey come off her follow-ups. (Zach’s list isn’t changed.)')) return;
+  EL.pending[id] = 1;
+  document.querySelectorAll('[data-el-id="' + CSS.escape(id) + '"]').forEach(function (b) { b.disabled = true; });
+  return api('elStep', Object.assign({ id: id, step: step }, extra || {})).then(function (res) {
+    delete EL.pending[id];
+    toast(res.word + (r ? ' — ' + r.name : ''));
+    if (EL.brandId) elBrandLoad();
+    return elRefresh();
+  }).catch(function (e) {
+    delete EL.pending[id];
+    toast(e.message);
+    elRefresh();
+  });
+}
+function elPut(brandId, day, index) {
+  return api('elPlan', { op: 'add', brandId: brandId, day: day, index: index == null ? null : index }).then(function (r) {
+    toast(r.name + (r.from && r.from !== day ? ' moved to ' : ' on ') + elDay(day));
+    if (EL.week) {
+      EL.week.bank = EL.week.bank.filter(function (b) { return b.id !== brandId; });
+      (EL.qRes || []).forEach(function (b) { if (b.id === brandId) b.day = day; });
+    }
+    if (EL.brandId) elBrandLoad();
+    return elRefresh();
+  }).catch(function (e) { toast(e.message); });
+}
+function elTakeOff(brandId) {
+  return api('elTakeOff', { brandId: brandId }).then(function (p) {
+    if (!p.people.length) return api('elPlan', { op: 'remove', brandId: brandId }).then(function () { toast(p.brand + ' is off her week'); elRefresh(); });
+    if (!window.confirm('Take ' + p.brand + ' off her list?\n\nThese people come off (nothing was sent to them):\n• ' + p.people.join('\n• ') + '\n\nThe brand leaves her week too.')) return;
+    return api('elTakeOff', { brandId: brandId, confirm: true }).then(function () {
+      toast(p.brand + ' is off her list');
+      if (EL.brandId) elBrandLoad();
+      elRefresh();
+    });
+  }).catch(function (e) { toast(e.message); });
+}
+function elOff(brandId) {
+  return api('elPlan', { op: 'remove', brandId: brandId }).then(function () { toast('Off her week'); if (EL.brandId) elBrandLoad(); elRefresh(); })
+    .catch(function (e) { if (/Take off/.test(e.message)) return elTakeOff(brandId); toast(e.message); });
+}
+function elSpreadRender() {
+  var box = document.getElementById('el-spread-box');
+  var s = EL.spread;
+  if (!s) { box.innerHTML = ''; return; }
+  var n = s.put.reduce(function (a, p) { return a + p.brands.length; }, 0);
+  box.innerHTML = '<div class="el-spread"><b>' + (n ? 'Fill her week with ' + n + (n === 1 ? ' brand' : ' brands') + '?' : 'Nothing to add — her days are full, or no brand fits the room left.') + '</b>' +
+    (n ? '<ul>' + s.put.map(function (p) {
+      return '<li><b>' + esc(elDay(p.date)) + '</b>' + p.brands.map(function (b) { return esc(b.name) + ' (' + b.size + ')'; }).join(', ') + '</li>';
+    }).join('') + '</ul>' : '') +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' + (n ? '<button class="btn-solid" data-el-spread-apply>Put them on</button><button class="btn-ghost" data-el-spread-shuffle>Shuffle again</button>' : '') +
+    '<button class="btn-ghost" data-el-spread-cancel>Cancel</button></div>' +
+    '<div class="sd-dim" style="margin-top:8px">The best brands on the list, spread so each day gets a mix — whole brands only, never past 30 a day.</div></div>';
+}
+function elSpreadPreview(seed) {
+  return api('elSpread', { seed: seed }).then(function (r) { EL.spread = r; elSpreadRender(); }).catch(function (e) { toast(e.message); });
+}
+
+// One click handler for all of her pages and windows.
+document.addEventListener('click', function (e) {
+  var t = e.target;
+  if (!t.closest || !t.closest('.el-scope')) return;
+  var x;
+  if ((x = t.closest('[data-el-goto]'))) { e.preventDefault(); elCloseBrand(); gotoView(x.getAttribute('data-el-goto')); return; }
+  if ((x = t.closest('[data-el-brand]'))) { e.preventDefault(); elOpenBrand(x.getAttribute('data-el-brand')); return; }
+  if ((x = t.closest('[data-el-full]'))) { var bid = x.getAttribute('data-el-full'); elCloseBrand(); loadBrand(bid); return; }
+  if (t.closest('[data-el-close]') || t.id === 'el-brand-scrim') { elCloseBrand(); return; }
+  if (t.closest('[data-el-tpl-open]')) { elOpenTemplates(); return; }
+  if (t.closest('[data-el-tpl-close]') || t.id === 'el-tpl-scrim') { document.getElementById('el-tpl-scrim').classList.remove('open'); return; }
+  if ((x = t.closest('[data-el-tpltab]'))) { EL.tplKind = x.getAttribute('data-el-tpltab'); elTplFill(); return; }
+  if ((x = t.closest('[data-el-tok]'))) {
+    var ta = document.activeElement && (document.activeElement.id === 'el-tsubj' || document.activeElement.id === 'el-tbody') ? document.activeElement : document.getElementById('el-tbody');
+    var tok = x.getAttribute('data-el-tok'), at = ta.selectionStart || ta.value.length;
+    ta.value = ta.value.slice(0, at) + tok + ta.value.slice(ta.selectionEnd || at);
+    ta.focus(); ta.setSelectionRange(at + tok.length, at + tok.length); elTplPreview(); return;
+  }
+  if ((x = t.closest('[data-el-copy]'))) {
+    var r = elFind(x.getAttribute('data-el-id'));
+    if (!r) return;
+    var kind = x.getAttribute('data-el-copy');
+    var text = elText(r, kind);
+    var words = { email: 'Email copied — subject: ' + elMail(r).subject, follow: 'Follow-up copied — subject: ' + elMail(r, 'follow').subject, note: 'Invite note copied', dm: 'Message copied', final: 'Final message copied' };
+    ztCopy(text, words[kind] || 'Copied');
+    return;
+  }
+  if ((x = t.closest('[data-el-step]'))) {
+    var id = x.getAttribute('data-el-id'), step = x.getAttribute('data-el-step');
+    var extra = {};
+    if (step === 'call') {
+      var row = x.closest('[data-el-row]');
+      var inp = row && row.querySelector('[data-el-callday]');
+      if (!inp || !inp.value) { toast('Pick the call’s day first'); if (inp) inp.focus(); return; }
+      extra.callDay = inp.value;
+    }
+    var det = x.closest('details'); if (det) det.open = false;
+    elStepDo(id, step, extra);
+    return;
+  }
+  if ((x = t.closest('[data-el-takeoff]'))) { elTakeOff(x.getAttribute('data-el-takeoff')); return; }
+  if ((x = t.closest('[data-el-put]'))) {
+    var b2 = x.getAttribute('data-el-put'), day = x.getAttribute('data-el-day');
+    if (x.classList.contains('on')) elOff(b2); else elPut(b2, day);
+    return;
+  }
+  if ((x = t.closest('[data-el-up]'))) { elPut(x.getAttribute('data-el-up'), x.getAttribute('data-el-day'), Number(x.getAttribute('data-el-i'))); return; }
+  if ((x = t.closest('[data-el-off]'))) { elOff(x.getAttribute('data-el-off')); return; }
+  if (t.closest('[data-el-more]')) { EL.more += 60; loadElWeek(); return; }
+  if (t.id === 'el-spread-go') { elSpreadPreview(); return; }
+  if (t.closest('[data-el-spread-shuffle]')) { elSpreadPreview(Math.floor(Math.random() * 1e9)); return; }
+  if (t.closest('[data-el-spread-cancel]')) { EL.spread = null; elSpreadRender(); return; }
+  if (t.closest('[data-el-spread-apply]')) {
+    var sp = EL.spread;
+    api('elSpread', { apply: true, seed: sp.seed, expect: sp.expect }).then(function (r) {
+      if (r.stale) { EL.spread = r; elSpreadRender(); toast('Changed since — here is the fill again'); return; }
+      EL.spread = null; elSpreadRender();
+      var nPut = r.put.reduce(function (a, p) { return a + p.brands.length; }, 0);
+      toast('Put ' + nPut + (nPut === 1 ? ' brand' : ' brands') + ' on her week');
+      loadElWeek();
+    }).catch(function (e2) { toast(e2.message); });
+    return;
+  }
+  if (t.id === 'el-spread-undo') {
+    api('elSpreadUndo').then(function (p) {
+      if (!p.goes.length) { toast('Nothing left to take off — the fill’s brands were moved or their lists made'); return; }
+      if (!window.confirm('Undo the fill? These come off her week:\n• ' + p.goes.map(function (g) { return g.name + ' (' + elDay(g.date) + ')'; }).join('\n• '))) return;
+      return api('elSpreadUndo', { confirm: true }).then(function () { toast('Fill undone'); loadElWeek(); });
+    }).catch(function (e2) { toast(e2.message); });
+    return;
+  }
+  if ((x = t.closest('[data-el-ff]'))) { EL.fFilter = x.getAttribute('data-el-ff'); renderElFollow(); return; }
+  if ((x = t.closest('[data-el-queue]'))) {
+    x.disabled = true;
+    api('elQueuePeople', { brandId: EL.brandId, contactIds: [x.getAttribute('data-el-queue')] }).then(function (r) {
+      toast(r.added.length ? r.added[0] + ' is on her list ' + elDay(r.day) : (r.skipped[0] ? r.skipped[0].name + ': ' + r.skipped[0].why : 'Nobody added'));
+      elBrandLoad(); elRefresh();
+    }).catch(function (e2) { toast(e2.message); x.disabled = false; });
+    return;
+  }
+  if (t.id === 'elp-add') { elAddPerson(false); return; }
+  if (t.id === 'elp-addq') { elAddPerson(true); return; }
+});
+document.addEventListener('change', function (e) {
+  var t = e.target;
+  if (!t.closest || !t.closest('.el-scope')) return;
+  if (t.matches('[data-el-move]') && t.value) { elPut(t.getAttribute('data-el-move'), t.value); return; }
+  // Her own wording for one email: saved on change; the template's own text = follow the template.
+  if (t.matches('[data-el-subj]') || t.matches('[data-el-body]')) {
+    var id = t.getAttribute('data-el-subj') || t.getAttribute('data-el-body');
+    var r = elFind(id);
+    if (!r) return;
+    var isSubj = t.matches('[data-el-subj]');
+    var tpl = elTplOf('email');
+    var def = elFill(isSubj ? tpl.subject : tpl.body, r);
+    var val = t.value.trim() === def.trim() ? '' : t.value;
+    var args = { id: id, step: 'save' };
+    args[isSubj ? 'subject' : 'body'] = val;
+    api('elStep', args).then(function (res) {
+      if (isSubj) r.subject = res.row.subject; else r.body = res.row.body;
+      toast(val ? 'Saved her wording for ' + r.name : 'Back to the template for ' + r.name);
+      elRefresh();
+    }).catch(function (e2) { toast(e2.message); });
+  }
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Escape') return;
+  if (document.getElementById('el-tpl-scrim').classList.contains('open')) document.getElementById('el-tpl-scrim').classList.remove('open');
+  else if (document.getElementById('el-brand-scrim').classList.contains('open')) elCloseBrand();
+});
+
+// ---- An account that opens only her part ----
+function elRepMode(on) {
+  document.body.classList.toggle('rep-only', !!on);
+  lsSet('sb.rep', on ? '1' : '');
+}
+
 // --- sidebar collapse ------------------------------------------
 
 (function () {
@@ -25712,6 +26709,18 @@ document.getElementById('att-q').addEventListener('input', function () {
 
 // --- boot ------------------------------------------------------
 
+// An account marked as Elizabeth's (Operations → Team) opens only her part.
+// The last answer is remembered per browser so her page doesn't start Home
+// first; getMe settles it either way.
+var REP_HINT = lsGet('sb.rep') === '1';
+function bootHome() {
+  loadRateCard();
+  loadDashboard().catch(function (e) {
+    document.getElementById('dash-sub').textContent = 'Could not connect: ' + e.message;
+  });
+  maybeAutoRecap();
+}
+if (REP_HINT) { elRepMode(true); gotoView('el-today'); }
 Promise.all([
   api('getMe').catch(function () { return { owner: null }; }),
   api('listOwners').catch(function () { return []; })
@@ -25722,17 +26731,15 @@ Promise.all([
   document.getElementById('spon-owner').innerHTML =
     '<option value="all">Everyone</option>' +
     OWNERS.map(function (o) { return '<option value="' + esc(o) + '">' + esc(o) + '</option>'; }).join('');
+  if (ME.rep && !REP_HINT) { elRepMode(true); closeRecap(); gotoView('el-today'); }
+  else if (!ME.rep && REP_HINT) { elRepMode(false); bootHome(); }
 });
 
-loadRateCard();
 // The Reached tags: read once at the start, again when the window comes back.
 rbLoad();
 window.addEventListener('focus', function () { rbLoad(); });
 
-loadDashboard().catch(function (e) {
-  document.getElementById('dash-sub').textContent = 'Could not connect: ' + e.message;
-});
-maybeAutoRecap();
+if (!REP_HINT) bootHome();
 window.addEventListener('hashchange', function () { if (location.hash === '#today') openRecap(0); });
 </script>
 </body>

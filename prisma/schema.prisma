@@ -151,6 +151,7 @@ model Brand {
   contacts    Contact[]
   brandNotes  BrandNote[]
   targets     Target[]
+  repOutreach RepOutreach[]
   partner     Partner?
   shows       ShowSponsor[]
   deals       Deal[]
@@ -204,7 +205,8 @@ model Contact {
   doNotContactAt DateTime?
   doNotContactBy String?
 
-  targets Target[]
+  targets     Target[]
+  repOutreach RepOutreach[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1185,5 +1187,61 @@ model BrandNote {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([brandId])
+}
+
+// Elizabeth's outreach (Leo, Oct 21 2026: "a different part to the site
+// solely for Elizabeth … the brands and the same structure for outreach to
+// carry over"; src/lib/rep-outreach.ts). Her own list of people, apart from
+// Zach's Target rows — the same person can be on both (his call: no rules
+// between them). One row per person per channel: a LinkedIn invite from her
+// LinkedIn, or an email she sends from her own Gmail (Open in Gmail —
+// nothing sends from the site). The brand and person are kept by name too,
+// so a merge or a delete elsewhere never takes her history with it (SetNull).
+model RepOutreach {
+  id        String   @id @default(cuid())
+  rep       String   @default("elizabeth")
+  brandId   String?
+  brand     Brand?   @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  brandName String
+  name      String
+  title     String?
+  linkedinUrl String?
+  email     String?
+
+  // 'linkedin' | 'email'
+  channel String
+  // The New York day it's on her list (YYYY-MM-DD). Unsent rows from an
+  // earlier day show on today's list as carried.
+  day     String?
+  // queued · sent · accepted · replied · call · declined · passed · withdrawn
+  status  String   @default("queued")
+
+  sentAt       DateTime?
+  acceptedAt   DateTime?
+  // LinkedIn: the first message after the accept.
+  dmAt         DateTime?
+  // The follow-up: a second email, or LinkedIn's final reach-out.
+  followAt     DateTime?
+  repliedAt    DateTime?
+  callAt       DateTime?
+  callBookedAt DateTime?
+  doneAt       DateTime?
+
+  // Her own wording for this person (null = the template).
+  subject String?
+  body    String?
+  note    String?
+  // Every step, newest last, for "Back a step": [{ s, at, by, before }].
+  steps   Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([rep, contactId, channel])
+  @@index([rep, status])
+  @@index([rep, day])
   @@index([brandId])
 }
