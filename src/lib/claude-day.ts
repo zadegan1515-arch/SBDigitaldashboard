@@ -20,12 +20,21 @@ const READ_NAMES = new Set(['claudeDay', 'dayRecap', 'weeklyScore', 'staleDeals'
   'staleInvites', 'repliedOverview', 'buyerCoverage', 'brandLookup', 'brandTimeline', 'brandStock', 'brandPlanLine', 'scheduleStamp',
   'suMatchQueue', 'sheetStatus', 'whoAmI', 'me', 'findDuplicates', 'sponsorReport', 'search', 'checkEmailReplies',
   'weekBank', 'weekBankBrowse', 'reachedBrands'])
+// Elizabeth's tab (rep-outreach.ts): its reads, and the opening of her day
+// (elToday makes the day's list by itself, like the page opening it).
+for (const fn of ['elToday', 'elWeek', 'elFollow', 'elResults', 'elBrand', 'elSearch', 'elTemplates']) READ_NAMES.add(fn)
 const isRead = (fn: string) => READ_VERB.test(fn) || READ_NAMES.has(fn)
+// A stored action that is really a read (logged before the rules knew its
+// name): Claude's day leaves it out.
+export function isReadAction(fn: string): boolean {
+  return isRead(String(fn || ''))
+}
 
 // Calls that change only with confirm / apply; without it they preview.
 const NEEDS_YES: Record<string, string[]> = {
   planWeek: ['apply'], fitArchive: ['apply', 'confirm'], refileCategories: ['apply', 'confirm'],
   deleteBrand: ['confirm'], mergeBrands: ['confirm'], weekSpread: ['apply'],
+  elSpread: ['apply'], elSpreadUndo: ['confirm'], elTakeOff: ['confirm'],
 }
 // Calls that preview unless told preview: false.
 const PREVIEW_BY_DEFAULT = new Set(['researchImport', 'researchUndo'])
@@ -102,6 +111,16 @@ export function actionText(fn: string, args: any, result: any): string | null {
     case 'handStep':
       if (a.step === 'declined') return r.already ? null : stopText(a, r, a.on !== false)
       return `Zach's list: ${s(a.step, 20)}${a.on === false ? ' undone' : ''}${r.contactName ? ' — ' + s(r.contactName) : ''}`
+    // Elizabeth's tab.
+    case 'elStep': return `Elizabeth's list: ${s(r.word || a.step, 40)}${r.row?.name ? ' — ' + s(r.row.name) : ''}`
+    case 'elPlan': return a.op === 'remove' ? 'Took a brand off Elizabeth’s week' : `Put ${s(r.name) || 'a brand'} on Elizabeth’s ${s(r.day || a.day, 12)}`
+    case 'elSpread': return `Filled Elizabeth’s week (${Array.isArray(r.put) ? r.put.reduce((n: number, p: any) => n + count(p?.brands), 0) : 0} brands)`
+    case 'elSpreadUndo': return 'Took back the fill of Elizabeth’s week'
+    case 'elTakeOff': return `Took ${s(r.brand) || 'a brand'} off Elizabeth’s list${count(r.people) ? ' (' + plural(count(r.people), 'person', 'people') + ')' : ''}`
+    case 'elQueuePeople': return count(r.added) ? `Put ${plural(count(r.added), 'person', 'people')} on Elizabeth’s list` : null
+    case 'elAddPerson': return `Added ${s(r.contact?.name || a.name || 'a person')} (Elizabeth)`
+    case 'elSaveTemplate': return `Saved Elizabeth’s ${s(a.kind, 12)} template${a.reset ? ' (back to the default)' : ''}`
+    case 'setRepAccount': return a.on === false ? 'Gave an account the whole site back' : 'Made an account Elizabeth’s outreach only'
   }
   // Anything else: its name, with the one thing it was about.
   const about = s(a.parent || a.name || a.category || a.kind || a.day || a.date || '', 40)

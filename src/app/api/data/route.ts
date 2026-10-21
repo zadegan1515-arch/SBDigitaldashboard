@@ -54,7 +54,7 @@ import {
 import { LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR, linkedinWindows, acceptRates, planWeekDays, weekCap, orderFillGroups, fillWholeBrands, bigFits, compareAuto, type AcceptRates } from '@/lib/plan-week'
 import { findDuplicateGroups, pairKey, websiteDomain } from '@/lib/duplicates'
 import { cleanChatBrand, matchRoster, chatNotes } from '@/lib/chat-add'
-import { actionText, argsBrief, readCommit, type DayCommit } from '@/lib/claude-day'
+import { actionText, argsBrief, readCommit, isReadAction, type DayCommit } from '@/lib/claude-day'
 import { findLinkedInPeople, logLinkedInPerson, undoLinkedInLog, checkNewPerson } from '@/lib/li-log-db'
 import { isLogStage } from '@/lib/li-log'
 import { rollWindow, findUnsent, planCarry, carryOrder, carryTimes, type Unsent, type CarryFacts, type CarryTier, type Moved } from '@/lib/carry'
@@ -5150,7 +5150,7 @@ const handlers: Record<string, Handler> = {
     return {
       day: d, today, isToday: d === today,
       commits: commits.list, commitsError: commits.error ?? null,
-      actions: actions.map((x: any) => ({ at: x.at, fn: x.fn, text: x.text })),
+      actions: actions.filter((x: any) => !isReadAction(x.fn)).map((x: any) => ({ at: x.at, fn: x.fn, text: x.text })),
       hunt: { found: hunt.length, added: hunt.filter((f: any) => f.status === 'added').length, names: hunt.slice(0, 12).map((f: any) => f.name) },
       chats: recap.chats,
       olderNeeds,
