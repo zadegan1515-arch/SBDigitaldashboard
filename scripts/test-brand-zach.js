@@ -91,8 +91,8 @@ function zachTodo(a) {
     people.push(person('t5', 'c5', 'Eve Elm'));
   }
   return {
-    template: { subject: 'SB × (BRAND)', body: 'Hi (NAME)' }, dmTemplate: { subject: '', body: 'Great to hear from you' },
-    firstBTemplate: TPL, firstBWTemplate: { subject: '', body: 'Hey (NAME), great to meet you!' }, finalTemplate: { subject: '', body: 'One last note' },
+    // The LinkedIn DM is the first message too (Oct 21 2026).
+    template: { subject: 'SB × (BRAND)', body: 'Hi (NAME)' }, dmTemplate: TPL, finalTemplate: { subject: '', body: 'One last note' },
     brands: people.length ? [{ id: 'b1', name: 'Alpha Water', category: 'electrolytes', website: 'alphawater.com', linkedinUrl: null, hold: null, people }] : [],
     people: people.length, noAddress: 0, held: [],
     done: mine && S.skipped ? [{ targetId: 't2', brandId: 'b1', brandName: 'Alpha Water', name: 'Beth Baker', kind: 'skipped', at: ago(0) }] : [],
@@ -173,8 +173,7 @@ async function main() {
   assert.equal(msg, 'Thanks for connecting, Alex! What is Alpha Water focused on with college this year?');
   await page.click('#brand-body [data-bcopy="t1"][data-variant="dm"]');
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), msg, 'the Outreach row’s Copy DM copies the card’s message');
-  await page.click('#brand-body [data-bcopy="t1"][data-variant="dm"][data-g="woman"]');
-  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Hey Alex, great to meet you!', 'its · W copies Leo’s message for a woman');
+  assert.equal((await page.$$('#brand-body [data-bcopy="t1"][data-variant="dm"]')).length, 1, 'one Copy DM, no man / woman');
   await page.click('#brand-body [data-bzt="t1"] [data-ztact="step"][data-step="dm"]');
   await page.waitForFunction(() => /Waiting on reply/.test(document.querySelector('#brand-body [data-bzt="t1"] .zt-row').textContent));
   assert.deepEqual(all('handStep').map((c) => c.args), [{ targetId: 't1', step: 'dm' }]);

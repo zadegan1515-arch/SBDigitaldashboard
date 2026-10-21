@@ -1,17 +1,18 @@
-// scripts/test-first-message.js — the first LinkedIn message (Leo, Oct 18
-// 2026: "just make it the version b for man and woman, get rid of version
-// a"). Drives public/app.html in Chromium against a fake /api/data:
+// scripts/test-first-message.js — the first LinkedIn message ("Text them on
+// LinkedIn") is Leo's LinkedIn DM (Oct 21 2026: "make the text back on
+// linkedin the linkedin dm not the other stuff" — one message for everyone,
+// no man / woman). Drives public/app.html in Chromium against a fake
+// /api/data:
 //
-//   1. On Zach's list every card's first message is Leo's message for a man,
-//      with For a man / For a woman — the woman's on a click — and Copy copies
-//      what's shown ((NAME) and [Name] both filled). No "version" anywhere.
-//   2. Messaged is a plain tick (no version); a card someone rewrote shows its
-//      own words and no man / woman switch.
-//   3. Edit template: First message · man / First message · woman tabs (no
-//      single first message), the card's button opens the one it shows, and
-//      each saves as its own kind.
-//   4. Results: no first message test card; They accepted's Copy DM · M / · W
-//      copy Leo's message filled for that person; no page errors.
+//   1. On Zach's list every card's first message is the LinkedIn DM, filled
+//      ((NAME) / [Name] both), with no For a man / For a woman, and Copy
+//      copies what's shown. No "version" anywhere.
+//   2. Messaged is a plain tick; a card someone rewrote shows its own words.
+//   3. Edit template: Email / LinkedIn DM / Final reach-out (no first-message
+//      tabs); the card's button opens the LinkedIn DM, saved as kind dm, and
+//      the cards follow it.
+//   4. Results: They accepted's one Copy DM copies the LinkedIn DM filled for
+//      that person (the saved one, not an old one); no page errors.
 //
 // Run: NODE_PATH=$(npm root -g) node scripts/test-first-message.js   (~6s)
 const http = require('http');
@@ -34,6 +35,8 @@ const DAY = 864e5;
 const ago = (d) => new Date(Date.now() - d * DAY).toISOString();
 
 const S = { dm: {} };
+const DM_TPL = { subject: '', body: 'Hey (Name), great to be connected. Would love to put something together with [Brand].' };
+// The old man / woman messages: never shown any more.
 const M_TPL = { subject: '', body: "(NAME) – what's up man! Would love to see if (BRAND) is interested." };
 const W_TPL = { subject: '', body: 'Hey [Name], great to meet you! Would love to see if [Brand] is interested.' };
 
@@ -51,8 +54,7 @@ function zachTodo() {
   ].map((g) => ({ category: 'electrolytes', website: null, linkedinUrl: null, hold: null, ...g, people: g.people.filter((p) => !S.dm[p.targetId]) }))
     .filter((g) => g.people.length);
   return {
-    template: { subject: 'SB × (BRAND)', body: 'Hi (NAME)' }, dmTemplate: { subject: '', body: 'Great to hear from you' },
-    firstBTemplate: M_TPL, firstBWTemplate: W_TPL, finalTemplate: { subject: '', body: 'One last note' },
+    template: { subject: 'SB × (BRAND)', body: 'Hi (NAME)' }, dmTemplate: DM_TPL, finalTemplate: { subject: '', body: 'One last note' },
     brands, people: brands.reduce((n, g) => n + g.people.length, 0), noAddress: 0, held: [], done: [],
     doneDays: 30, dmAfterDays: 2, nudgeAfterDays: 10, quietAfterDays: 7, calls: [],
   };
@@ -66,11 +68,11 @@ const H = {
   zachTodo,
   handStep: (a) => { if (a.step === 'dm') S.dm[a.targetId] = a.on === false ? null : new Date().toISOString(); return { contactName: 'them' }; },
   saveHandTemplate: (a) => {
-    const t = { firstB: M_TPL, firstBW: W_TPL }[a.kind];
+    const t = { dm: DM_TPL, firstB: M_TPL, firstBW: W_TPL }[a.kind];
     if (t) t.body = a.body;
     return { subject: '', body: a.body, standIn: false, savedAt: new Date().toISOString(), savedBy: 'Leo' };
   },
-  handTemplate: (a) => ({ firstB: M_TPL, firstBW: W_TPL }[a.kind] || { subject: '', body: '' }),
+  handTemplate: (a) => ({ dm: DM_TPL, firstB: M_TPL, firstBW: W_TPL }[a.kind] || { subject: '', body: '' }),
   listReached: () => ({ brands: [], totals: { invited: 10, accepted: 4, replied: 1 } }),
   sentByDay: () => ({ days: [], cap: 30 }),
   outcomeTable: () => ({ few: 30, acceptAfterDays: 7, depth: { personRate: null, byTotal: [] } }),
@@ -124,19 +126,18 @@ async function main() {
     await page.evaluate(() => loadDashboard());
     await page.waitForSelector(item('pB'));
 
-    // 1. The man's message first, the woman's on a click, Copy -----------
+    // 1. The LinkedIn DM, one for everyone, Copy ---------------------------
     await open('pA');
-    assert.equal(await msg('pA'), "Ann – what's up man! Would love to see if Alpha Water is interested.", 'a man’s first, (NAME) / (BRAND) filled');
-    assert.equal(await page.getAttribute(item('pA') + ' [data-g="man"]', 'aria-pressed'), 'true');
+    assert.equal(await msg('pA'), 'Hey Ann, great to be connected. Would love to put something together with Alpha Water.', '(Name) / [Brand] filled');
+    assert.equal(await page.$(item('pA') + ' [data-g]'), null, 'no For a man / For a woman');
+    assert.doesNotMatch(await page.textContent(item('pA')), /for a (man|woman)/i);
+    assert.match(await page.textContent(item('pA') + ' .zt-mail'), /LinkedIn DM/);
     assert.doesNotMatch(await page.textContent('#zach-todo'), /version/i, 'no version A / B anywhere');
     await open('pB');
-    await page.click(item('pB') + ' [data-g="woman"]');
-    await page.waitForFunction((s) => /great to meet you/.test(document.querySelector(s).value), item('pB') + ' [data-ztdm]');
-    assert.equal(await msg('pB'), 'Hey Ben, great to meet you! Would love to see if Bravo Fizz is interested.', '[Name] / [Brand] filled');
-    assert.equal(await page.getAttribute(item('pB') + ' [data-g="woman"]', 'aria-pressed'), 'true');
+    assert.equal(await msg('pB'), 'Hey Ben, great to be connected. Would love to put something together with Bravo Fizz.');
     await page.click(item('pB') + ' [data-ztact="copydm"]');
-    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Hey Ben, great to meet you! Would love to see if Bravo Fizz is interested.');
-    console.log('✓ 1. the man’s message first, For a woman switches it, Copy copies what’s shown');
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Hey Ben, great to be connected. Would love to put something together with Bravo Fizz.');
+    console.log('✓ 1. the first message is the LinkedIn DM, no man / woman, Copy copies what’s shown');
 
     // 2. Messaged is a plain tick; a rewritten card keeps its words -------
     await page.click(item('pB') + ' [data-ztact="step"][data-step="dm"]');
@@ -144,42 +145,41 @@ async function main() {
     assert.deepEqual(all('handStep')[0].args, { targetId: 'pB', step: 'dm' }, 'no version sent');
     await open('pO');
     assert.equal(await msg('pO'), 'Olive, my own words for Bravo Fizz');
-    assert.equal(await page.$(item('pO') + ' [data-ztact="bgender"]'), null, 'no man / woman on a rewritten card');
     console.log('✓ 2. Messaged is a plain tick; a rewritten card keeps its own words');
 
     // 3. The template editor ----------------------------------------------
     await open('pA');
-    await page.click(item('pA') + ' [data-g="woman"]');
-    await page.waitForSelector(item('pA') + ' [data-ztact="tpl"][data-kind="firstBW"]');
-    await page.click(item('pA') + ' [data-ztact="tpl"][data-kind="firstBW"]');
+    await page.click(item('pA') + ' [data-ztact="tpl"][data-kind="dm"]');
     await page.waitForSelector('#zt-scrim.open');
     const tabs = await page.$$eval('#zt-scrim [data-tpltab]', (bs) => bs.map((b) => b.textContent));
-    assert.ok(tabs.includes('First message · man') && tabs.includes('First message · woman'), 'two first-message tabs: ' + tabs.join(', '));
-    assert.equal(await page.$('#zt-scrim [data-tpltab="first"]'), null, 'no single first message tab');
-    assert.equal(await page.inputValue('#zt-tbody'), W_TPL.body, 'the card’s button opens the woman’s, as shown');
-    assert.match(await page.textContent('#zt-tbody-lbl'), /for a woman/);
-    assert.match(await page.textContent('#zt-prev-body'), /great to meet you/);
-    await page.click('#zt-scrim [data-tpltab="firstB"]');
-    assert.equal(await page.inputValue('#zt-tbody'), M_TPL.body);
-    await page.fill('#zt-tbody', "(NAME), new message for a man at (BRAND).");
+    assert.deepEqual(tabs, ['Email', 'LinkedIn DM', 'Final reach-out'], 'no first-message tabs: ' + tabs.join(', '));
+    assert.equal(await page.inputValue('#zt-tbody'), DM_TPL.body, 'the card’s button opens the LinkedIn DM');
+    assert.match(await page.textContent('#zt-tbody-lbl'), /LinkedIn DM \(Text them on LinkedIn/);
+    assert.match(await page.textContent('#zt-prev-body'), /great to be connected/);
+    await page.fill('#zt-tbody', 'Hey (NAME), new words for (BRAND).');
     await page.click('#zt-tsave');
     await until(() => all('saveHandTemplate').length === 1, 'the save');
-    assert.equal(all('saveHandTemplate')[0].args.kind, 'firstB');
-    await page.waitForFunction(() => ZT.firstBTemplate.body === '(NAME), new message for a man at (BRAND).');
-    console.log('✓ 3. Edit template: First message · man / · woman, opened at the one shown, saved as its own');
+    assert.equal(all('saveHandTemplate')[0].args.kind, 'dm');
+    await page.waitForFunction(() => ZT.dmTemplate.body === 'Hey (NAME), new words for (BRAND).');
+    await open('pA');
+    assert.equal(await msg('pA'), 'Hey Ann, new words for Alpha Water.', 'the cards follow the saved DM');
+    // An old link to the first-message template opens the LinkedIn DM.
+    await page.evaluate(() => ztOpenTpl('firstBW'));
+    assert.equal(await page.getAttribute('#zt-scrim [data-tpltab="dm"]', 'class'), 'chip active');
+    await page.keyboard.press('Escape');
+    console.log('✓ 3. Edit template: Email / LinkedIn DM / Final reach-out; saving the DM changes the cards');
 
-    // 4. Results: no test card; Copy DM · M / · W --------------------------
-    await page.evaluate(() => gotoView('reached'));
-    await page.waitForSelector('#rc-accepted [data-rcdm="copy"][data-g="woman"]');
+    // 4. Results: one Copy DM ---------------------------------------------
+    await page.evaluate(() => { document.getElementById('zt-scrim').classList.remove('open'); gotoView('reached'); });
+    await page.waitForSelector('#rc-accepted [data-rcdm="copy"]');
     assert.equal(await page.$('#rc-firsttest'), null, 'no first message test card');
-    await page.click('#rc-accepted [data-rcdm="copy"][data-g="woman"]');
+    assert.equal((await page.$$('#rc-accepted [data-rcdm="copy"]')).length, 1, 'one Copy DM per person');
+    assert.match(await page.textContent('#rc-accepted'), /Copy DM(?! ·)/);
+    await page.click('#rc-accepted [data-rcdm="copy"]');
     await page.waitForFunction(() => navigator.clipboard.readText().then((t) => /^Hey Rita/.test(t)));
-    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Hey Rita, great to meet you! Would love to see if Rally Pop is interested.');
-    await page.click('#rc-accepted [data-rcdm="copy"][data-g="man"]');
-    await page.waitForFunction(() => navigator.clipboard.readText().then((t) => /^Rita, new message/.test(t)));
-    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Rita, new message for a man at Rally Pop.', 'the saved message, not an old one');
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Hey Rita, new words for Rally Pop.', 'the saved DM, not an old one');
     assert.deepEqual(errors, [], 'no page errors: ' + errors.join(' | '));
-    console.log('✓ 4. Results: no test card; Copy DM · M / · W copy Leo’s message for that person');
+    console.log('✓ 4. Results: one Copy DM copies the LinkedIn DM for that person');
   } finally {
     await browser.close();
     server.close();

@@ -3513,31 +3513,40 @@ function templateLinkedInDraft(target: { brand: any; contact: any }, variant: st
   return { connectionNote, firstMessage, nudge }
 }
 
-// Leo's first LinkedIn message is the drafts' "First DM" too (Oct 18 2026:
-// "yes" — the LinkedIn tab, the brand page and their Copy DM used to show
-// the old "Thanks for connecting…" text above). Drafts keep what was
-// stored; every read that hands drafts to the page swaps in his man /
-// woman message, filled, unless someone really rewrote the draft. The
-// same rule decides a card's own text on Zach's list (zachTodo's dmOwn).
-type FirstTemplates = { man: string; woman: string }
+// The first LinkedIn message after they accept ("Text them on LinkedIn")
+// is Leo's LinkedIn DM template (Oct 21 2026: "make the text back on
+// linkedin the linkedin dm not the other stuff" — one message for
+// everyone, no man / woman; the same template as the "They want LinkedIn
+// → DM to send" step). It is the drafts' "First DM" too: drafts keep what
+// was stored; every read that hands drafts to the page swaps in his DM,
+// filled, unless someone really rewrote the draft. The same rule decides a
+// card's own text on Zach's list (zachTodo's dmOwn).
+// `stock` = texts a draft may hold that still count as "not rewritten":
+// his old man / woman messages (Oct 18) and the old single first message.
+type FirstTemplates = { dm: string; stock: string[] }
 async function readFirstTemplates(): Promise<FirstTemplates> {
-  const [man, woman] = await Promise.all([readHandTemplate('firstB'), readHandTemplate('firstBW')])
-  return { man: man.body, woman: woman.body }
+  const [dm, man, woman, old] = await Promise.all([
+    readHandTemplate('dm'), readHandTemplate('firstB'), readHandTemplate('firstBW'), readHandTemplate('first'),
+  ])
+  return { dm: dm.body, stock: [man.body, woman.body, old.body] }
 }
-function firstFill(tpl: FirstTemplates, variant: string, brand: any, contact: any) {
-  return handFillText(variant === 'woman' ? tpl.woman : tpl.man,
-    { name: contact?.name ?? '', brandName: brand?.name ?? '', title: contact?.title ?? null })
+function firstFillText(text: string, brand: any, contact: any) {
+  return handFillText(text, { name: contact?.name ?? '', brandName: brand?.name ?? '', title: contact?.title ?? null })
 }
-// Own = edited by hand and not any stock text: the old queue text, or Leo's
-// message for a man or a woman (the LinkedIn tab saves a box on blur, so an
-// untouched box comes back "edited" holding the template it showed).
+function firstFill(tpl: FirstTemplates, brand: any, contact: any) {
+  return firstFillText(tpl.dm, brand, contact)
+}
+// Own = edited by hand and not any stock text: the old queue text, Leo's
+// LinkedIn DM, or one of his earlier first messages (the LinkedIn tab saves
+// a box on blur, so an untouched box comes back "edited" holding the
+// template it showed).
 function ownFirstMessage(d: any, brand: any, contact: any, tpl: FirstTemplates) {
   const text = String(d?.firstMessage ?? '').trim()
   if (!d?.editedByHuman || !text || !brand || !contact) return false
   const stock = [
     templateLinkedInDraft({ brand, contact }, d.variant).firstMessage,
-    firstFill(tpl, 'man', brand, contact),
-    firstFill(tpl, 'woman', brand, contact),
+    firstFill(tpl, brand, contact),
+    ...tpl.stock.map(s => firstFillText(s, brand, contact)),
   ]
   return !stock.some(s => s.trim() === text)
 }
@@ -3549,7 +3558,7 @@ function leoFirstDrafts(targets: any[], tpl: FirstTemplates, brand?: any) {
     for (const d of t?.drafts ?? []) {
       if (!d || (d.variant !== 'man' && d.variant !== 'woman')) continue
       if (!b || !t.contact || ownFirstMessage(d, b, t.contact, tpl)) continue
-      d.firstMessage = firstFill(tpl, d.variant, b, t.contact)
+      d.firstMessage = firstFill(tpl, b, t.contact)
     }
   }
   return targets
@@ -4567,18 +4576,20 @@ const HAND_TEMPLATE_STANDIN = {
 // How far back the Done list reaches.
 const HAND_DONE_DAYS = 30
 
-// The LinkedIn DM path's message (they answered and want to keep it in
-// the chat). Body only. Leo's own goes in with the template editor.
+// Leo's LinkedIn DM: the first message after they accept ("Text them on
+// LinkedIn") and the DM path's message (they answered and want to keep it
+// in the chat) — one template (Oct 21 2026). Body only. His text (saved
+// Oct 21, the deck line taken out) is the default; the template editor's
+// LinkedIn DM tab changes it.
 const HAND_DM_TEMPLATE_KEY = 'handDmTemplate'
-const HAND_DM_TEMPLATE_STANDIN = {
+const HAND_DM_TEMPLATE_DEFAULT = {
   subject: '',
-  body: 'Great to hear from you, (NAME)! Would love to set up a quick call to walk through what we could build with (BRAND) this semester. What does your week look like?',
+  body: 'Hey (NAME), great to be connected. Would love to share ideas and put something together with (BRAND). ' +
+    'Do you have 15 minutes for a quick chat later this week?',
 }
 
-// The first LinkedIn message after they accept ("Text them on
-// LinkedIn"). Leo pasted his own (Oct 2026), so it's the default, not a
-// stand-in; he can paste a new one over it in the template editor.
-// A card someone edited by hand keeps its own text.
+// The old single first message (version A, with the deck line), unused
+// since Oct 18 2026; kept as a stock text (readFirstTemplates).
 const HAND_FIRST_TEMPLATE_KEY = 'handFirstDmTemplate'
 const HAND_FIRST_TEMPLATE_DEFAULT = {
   subject: '',
@@ -4587,12 +4598,11 @@ const HAND_FIRST_TEMPLATE_DEFAULT = {
     'I have also attached our deck for you to check out in the meantime. Thanks!',
 }
 
-// The first LinkedIn message ("Text them on LinkedIn"), one for a man and
-// one for a woman — the rep picks, as with the invite notes; the site never
-// guesses gender. Leo, Oct 18 2026: "just make it the version b for man and
-// woman, get rid of version a" (a one-day A/B test was dropped; the keys
-// keep its B name). His text is the default, not a stand-in. The old single
-// template (handFirstDmTemplate, kind 'first') is no longer used.
+// Leo's first LinkedIn messages for a man and for a woman (Oct 18 2026),
+// no longer shown (Oct 21 2026: the first message is the LinkedIn DM). Kept
+// only so a draft still holding one counts as untouched (readFirstTemplates'
+// `stock`) and follows the LinkedIn DM. The old single template
+// (handFirstDmTemplate, kind 'first') is the same.
 const HAND_FIRST_B_KEY = 'handFirstDmTemplateB'
 const HAND_FIRST_BW_KEY = 'handFirstDmTemplateBW'
 const FIRST_B_PITCH = "I'm Zach with SB Agency, we book top artist talent for fraternities and sororities across the country. " +
@@ -4663,7 +4673,7 @@ async function readHandTemplate(kind: HandTemplateKind = 'email') {
     const def = kind === 'firstB' ? HAND_FIRST_B_DEFAULT : kind === 'firstBW' ? HAND_FIRST_BW_DEFAULT : HAND_FIRST_TEMPLATE_DEFAULT
     return { ...def, standIn: false, savedAt: null, savedBy: null }
   }
-  const standIn = kind === 'dm' ? HAND_DM_TEMPLATE_STANDIN : kind === 'final' ? HAND_FINAL_TEMPLATE_STANDIN : HAND_TEMPLATE_STANDIN
+  const standIn = kind === 'final' ? HAND_FINAL_TEMPLATE_STANDIN : HAND_TEMPLATE_STANDIN
   const row = await prisma.setting.findUnique({ where: { key } })
   if (row) {
     try {
@@ -4674,6 +4684,7 @@ async function readHandTemplate(kind: HandTemplateKind = 'email') {
     } catch { /* an unreadable row falls back to the stand-in */ }
   }
   if (kind === 'email') return { ...HAND_EMAIL_TEMPLATE_DEFAULT, standIn: false, savedAt: null, savedBy: null }
+  if (kind === 'dm') return { ...HAND_DM_TEMPLATE_DEFAULT, standIn: false, savedAt: null, savedBy: null }
   return { ...standIn, standIn: true, savedAt: null, savedBy: null }
 }
 
@@ -12323,11 +12334,10 @@ const handlers: Record<string, Handler> = {
   async zachTodo({ brandId }: any = {}) {
     const since = new Date(Date.now() - HAND_DONE_DAYS * 24 * 60 * 60 * 1000)
     const one = typeof brandId === 'string' && brandId ? { brandId } : {}
-    const [template, dmTemplate, firstBTemplate, firstBWTemplate, finalTemplate, rows, doneRows] = await Promise.all([
+    const [template, dmTemplate, firstTpl, finalTemplate, rows, doneRows] = await Promise.all([
       readHandTemplate(),
       readHandTemplate('dm'),
-      readHandTemplate('firstB'),
-      readHandTemplate('firstBW'),
+      readFirstTemplates(),
       readHandTemplate('final'),
       prisma.target.findMany({
         where: { AND: [HAND_WAITING, one] },
@@ -12394,10 +12404,10 @@ const handlers: Record<string, Handler> = {
       const auto = t.emails.find(e => e.direction === 'out')
       const inbound = t.emails.find(e => e.direction === 'in')
       const dr = t.drafts[0] ?? null
-      // The first message follows Leo's template unless someone really
+      // The first message follows Leo's LinkedIn DM unless someone really
       // rewrote it on the card (the queue's autosave marks untouched
       // drafts edited too, so an unchanged queue text doesn't count).
-      const dmOwn = !!dr && ownFirstMessage(dr, t.brand, t.contact, { man: firstBTemplate.body, woman: firstBWTemplate.body })
+      const dmOwn = !!dr && ownFirstMessage(dr, t.brand, t.contact, firstTpl)
       g.people.push({
         targetId: t.id,
         status: t.status,
@@ -12461,10 +12471,9 @@ const handlers: Record<string, Handler> = {
     const people = brands.reduce((n, g) => n + g.people.length, 0)
     return {
       template,
+      // Leo's LinkedIn DM: the first message after they accept ("Text them
+      // on LinkedIn") and the DM once they want to keep it in the chat.
       dmTemplate,
-      // The first LinkedIn message: for a man / for a woman.
-      firstBTemplate,
-      firstBWTemplate,
       finalTemplate,
       brands,
       people,

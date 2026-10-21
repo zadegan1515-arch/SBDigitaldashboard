@@ -229,24 +229,25 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   wantsEmail, liPath, liSent, emailed, call, skip). Fields: `dmSentAt`, `nudgedAt`,
   `handWantsEmailAt`/`emailedAt`, `handLiPathAt`/`handLiSentAt`, `callAt`/`callBookedAt`,
   `handSkippedAt`. Two templates (Settings `handEmailTemplate`, `handDmTemplate`; placeholders
-  (NAME) (BRAND) (TITLE); the email one is Leo's text by default (`HAND_EMAIL_TEMPLATE_DEFAULT`), the DM one a stand-in until he saves his), edited in one modal with tabs and a live
-  preview; per-person edits in `Target.handSubject/handBody/handDm` (null = follow the template).
-  The first LinkedIn message ("Text them on LinkedIn") is **Leo's message for a man / for a woman** (Oct 18 2026: "just
-  make it the version b for man and woman, get rid of version a" — a one-day A/B test was dropped; the keys keep its B
-  name): Settings `handFirstDmTemplateB` (man) / `handFirstDmTemplateBW` (woman), his text as the default; zachTodo sends
-  `firstBTemplate` / `firstBWTemplate`; Edit template's **First message · man** / **First message · woman** tabs (kinds
-  `firstB` / `firstBW`; the old single `handFirstDmTemplate`, kind `first`, is unused and opens the man's). Every card has
-  **For a man / For a woman** (`ZT_BG`, a man's first — the rep picks, never guessed) and its Edit template opens the one
-  shown; Results → They accepted's **Copy DM · M / · W** copy the same (`rcFirstReady`). A card keeps its own text only
-  when someone really rewrote it (`ownFirstMessage`: edited and ≠ any stock text — the old queue text, his man or woman
-  message; Reset to template clears it; no man / woman switch then). **The queue drafts' First DM is his message too**
-  (Leo's yes, Oct 18 2026): stored drafts keep the old "Thanks for connecting…" text, and every read that hands drafts to
-  the page (getTodayQueue, listTargets, getBrand, generateDrafts) swaps in his man / woman text, filled (`leoFirstDrafts`),
-  unless it's their own; saveDraft stores a First DM equal to a stock text as '' (= follow the template, so it changes when
-  he changes his), and the LinkedIn tab's blur save sends only a box that changed. Copy buttons: the LinkedIn tab's
-  **DM · M / DM · W**, the brand page's **Copy DM · M / · W** (on Zach's list: the card's own edit, else that template) and
-  its draft fold (FIRST DM · FOR A MAN / A WOMAN, `bFirstDmHtml`). `[Name]` / `[Brand]` fill like `(NAME)` / `(BRAND)`
-  everywhere. `Target.handFirstVariant` is left over from the test, unused. `NODE_PATH=$(npm root -g) node scripts/test-first-message.js`. The **final
+  (NAME) (BRAND) (TITLE); both Leo's text by default — `HAND_EMAIL_TEMPLATE_DEFAULT`, `HAND_DM_TEMPLATE_DEFAULT`), edited in
+  one modal with tabs (Email · LinkedIn DM · Final reach-out) and a live preview; per-person edits in
+  `Target.handSubject/handBody/handDm` (null = follow the template).
+  **The first LinkedIn message ("Text them on LinkedIn") is the LinkedIn DM** (Leo, Oct 21 2026: "make the text back on
+  linkedin the linkedin dm not the other stuff"; his picks: everywhere, no man / woman, one shared message): the same
+  `handDmTemplate` as the "They want LinkedIn → DM to send" step — "Hey (NAME), great to be connected … 15 minutes for a
+  quick chat later this week?" (he took the deck line out). One message for everyone: no For a man / For a woman, one
+  **Copy DM** on the LinkedIn tab, the brand page (on Zach's list: the card's text, `ztFirstText`) and Results → They
+  accepted (`rcFirstReady` reads kind `dm`); the brand page's draft fold shows FIRST DM (`firstDmDraft` = the man's draft,
+  else any). Edit template on the card opens the LinkedIn DM; old kinds `first` / `firstB` / `firstBW` open it too. His
+  Oct 18 man / woman messages (Settings `handFirstDmTemplateB` / `BW`) and the old single first message (`handFirstDmTemplate`,
+  with the deck line) are no longer shown — kept only as stock texts (`readFirstTemplates().stock`). A card keeps its own
+  text only when someone really rewrote it (`ownFirstMessage`: edited and ≠ any stock text — the old queue text, the
+  LinkedIn DM, his old messages; Reset to template clears it). **The queue drafts' First DM is the LinkedIn DM too**: stored
+  drafts keep the old "Thanks for connecting…" text, and every read that hands drafts to the page (getTodayQueue,
+  listTargets, getBrand, generateDrafts) swaps in the DM, filled, on both drafts (`leoFirstDrafts`), unless it's their own;
+  saveDraft stores a First DM equal to a stock text as '' (= follow the template, so it changes when he changes his), and
+  the LinkedIn tab's blur save sends only a box that changed. The invite notes keep Note · M / · W. `[Name]` / `[Brand]`
+  fill like `(NAME)` / `(BRAND)` everywhere. `Target.handFirstVariant` is left over from an old test, unused. `NODE_PATH=$(npm root -g) node scripts/test-first-message.js`. The **final
   reach-out** follows a fourth, Setting `handFinalTemplate` (stand-in until Leo saves his; the modal's
   Final reach-out tab); a card's edit is `Target.handFinal` (null = the template; `saveHandEmail`
   `final`), no longer the queue draft's nudge. Leo's note is

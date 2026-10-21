@@ -53,8 +53,8 @@ function zachTodo(a) {
   if (!a.brandId) brands.push({ id: 'b2', name: 'Bravo Soda', category: 'beverage', website: null, linkedinUrl: null, hold: null, people: [person('t9', 'c9', 'Zoe Zhang')] });
   const done = Object.keys(S.declined).map((id) => ({ targetId: id, brandId: 'b1', brandName: 'Alpha Water', name: NAMES[id], kind: 'declined', scope: S.declined[id], at: S.at[id] }));
   return {
-    template: { subject: 'SB × (BRAND)', body: 'Hi (NAME)' }, dmTemplate: { subject: '', body: 'Great to hear from you' },
-    firstBTemplate: { subject: '', body: 'Thanks for connecting, (NAME)!' }, firstBWTemplate: { subject: '', body: 'Hey (NAME), thanks for connecting!' }, finalTemplate: { subject: '', body: 'One last note' },
+    template: { subject: 'SB × (BRAND)', body: 'Hi (NAME)' }, dmTemplate: { subject: '', body: 'Thanks for connecting, (NAME)!' },
+    finalTemplate: { subject: '', body: 'One last note' },
     brands, people: brands.reduce((n, g) => n + g.people.length, 0), noAddress: 0, held: [], done,
     doneDays: 30, dmAfterDays: 2, nudgeAfterDays: 10, quietAfterDays: 7,
     calls: [Object.assign({ targetId: 't3', brandId: 'b1', brandName: 'Alpha Water', name: 'Carl Cole', title: 'VP Marketing', callAt: ahead(3) }, S.brandStopped ? { stopped: true } : {})],
