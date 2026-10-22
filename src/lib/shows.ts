@@ -35,7 +35,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000
 // Bumped when parseSheet changes what it lists: a cache written by an older
 // parser counts as stale, so the next read rebuilds it from the sheet (the
 // old list stays up if the sheet can't be read).
-const PARSER_VERSION = 5
+const PARSER_VERSION = 6
 
 export type Show = {
   id: string
@@ -275,6 +275,15 @@ function productionOnly(artist: string) {
   return a.startsWith('production') || a.endsWith('- production') || a === 'local'
 }
 
+// A cell still to be filled in ("TBD", "TBD Hunter", "TBA", "?") isn't a
+// show a brand can pick (Leo, Oct 22 2026: "get rid of this tbd thing").
+// An artist or school like that keeps the row off the list; a chapter like
+// that is just left blank.
+export function placeholder(v: string) {
+  const s = String(v || '').trim()
+  return !s || /^[?\-–—.\s]+$/.test(s) || /\b(tbd|tba|tbc)\b/i.test(s) || /\bto be (determined|announced|confirmed|decided)\b/i.test(s)
+}
+
 export type SheetParse = { shows: Show[]; tables: number; rowsSeen: number; rejected: { reason: string; row: string }[] }
 
 export function parseSheet(tabs: { title: string; gid?: number; rows: string[][] }[], overrides: Record<string, string> = {}): SheetParse {
@@ -293,7 +302,8 @@ export function parseSheet(tabs: { title: string; gid?: number; rows: string[][]
         const row = tab.rows[i] || []
         if (HEADER_HINT(row)) { r = i - 1; break }                     // next table starts
         const get = (c: number) => (c >= 0 ? String(row[c] ?? '').trim() : '')
-        const rawDate = get(cDate), status = get(cStatus), artist = get(cArtist), school = get(cSchool), chapter = get(cChapter)
+        const rawDate = get(cDate), status = get(cStatus), artist = get(cArtist), school = get(cSchool)
+        const chapter = placeholder(get(cChapter)) ? '' : get(cChapter)
         if (!rawDate && !status && !artist && !school) continue        // blank spacer row
         rowsSeen++
         const label = [rawDate, school, chapter, artist].filter(Boolean).join(' · ')
@@ -301,8 +311,10 @@ export function parseSheet(tabs: { title: string; gid?: number; rows: string[][]
         const date = parseShowDate(rawDate)
         if (!date) { rejected.push({ reason: 'no date', row: label }); continue }
         if (!artist) { rejected.push({ reason: 'no artist', row: label }); continue }
+        if (placeholder(artist)) { rejected.push({ reason: 'artist TBD', row: label }); continue }
         if (productionOnly(artist)) { rejected.push({ reason: 'production only', row: label }); continue }
         if (!school) { rejected.push({ reason: 'no school', row: label }); continue }
+        if (placeholder(school)) { rejected.push({ reason: 'school TBD', row: label }); continue }
         const info = schoolInfo(school)
         const typeRaw = get(cType).toLowerCase()
         const type: Show['type'] = /live/.test(typeRaw) ? 'Live act' : /dj/.test(typeRaw) ? 'DJ' : ''

@@ -1545,7 +1545,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   the CONTRACTING tab** (`DEALS_TAB`) of the "SB AGENCY - FULL BUILT CRM" Google Sheet (read-only)
   via the Drive grant — Leo's call; "OLD ACCOUNTING - DO NOT TOUCH" went stale and every other tab
   is ignored. A row is a confirmed show only with a booked status **and** date **and** artist **and**
-  school (Declined Pivot never shows). Two acts at the same school + chapter + date are one listing
+  school (Declined Pivot never shows); an artist or school still "TBD" / "TBA" / "?" doesn't count, a TBD chapter is left blank (`placeholder`; Leo, Oct 22 2026). Two acts at the same school + chapter + date are one listing
   ("A + B"). Bump `PARSER_VERSION` when the parse changes so the cache rebuilds on the next read.
   Past shows from `src/data/show-archive.json`. School abbreviations → name/city/state in `SCHOOL_TABLE`;
   genre auto-tags in `GENRE_ARTISTS` (overrides in Setting `artistGenres`). Cache in Setting `crmShows`
