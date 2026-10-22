@@ -26,8 +26,11 @@ export const CONTACT_CAP_PER_BRAND = 25
 // The day the fill's Sales Navigator step shipped (New York midnight): a
 // brand read since then without it is due for it (li-sweep.ts markOutcome).
 export { SN_SINCE }
-// The company-match fix (decideCompanyMatch / pageLooksWrong) shipped.
-export const REMATCH_SINCE = Date.parse('2026-10-13T12:00:00Z')
+// The last company-match fix (decideCompanyMatch / pageLooksWrong) shipped:
+// a brand parked on "Which LinkedIn page is theirs?" before it, whose saved
+// results now resolve, is read once more (Oct 13; Oct 22 2026 — one exact
+// name with no industry shown).
+export const REMATCH_SINCE = Date.parse('2026-10-22T12:00:00Z')
 // "Very big" for the fill's skip: 1,500+ people on LinkedIn (Leo, Oct 12 2026:
 // "not reach out to any brand with over 1500 employees"; queue-rules.ts, the
 // same line the Schedule holds back — conglomerates never); giants.ts covers
@@ -155,9 +158,8 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     const d = dueOf(b)
     return (d.retry && (body.salesNav === true || !SN_ISSUES.includes(d.issue || ''))) || hiddenOld(b)
   }
-  // Read before the Oct 13 2026 match fix and put on "Which LinkedIn page
-  // is theirs?": due again once when its saved results now resolve (a
-  // same-named company in another trade, LinkedIn's bare "Manufacturing").
+  // Read before the last match fix (REMATCH_SINCE) and put on "Which LinkedIn
+  // page is theirs?": due again once when its saved results now resolve.
   const review = await readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {})
   const rematch = (b: { id: string; name: string; aka: string | null; category?: string | null }) => {
     const e = review[b.id], m = log[b.id]

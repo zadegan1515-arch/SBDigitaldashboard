@@ -350,7 +350,21 @@ export function decideCompanyMatch(
   // Onda): one exact name under it is the brand's page.
   const generic = exact.filter(c => genericIndustry(brand.category, c.subtitle))
   if (checkable && generic.length === 1) return { pick: generic[0], reason: 'exact' }
+  // The only exact name, and its card shows no industry at all — a tiny page
+  // ("Miami, Florida • 3 followers") or a line LinkedIn didn't draw (Oct 21
+  // 2026: Suerox, 10 Torr, New Trail Brewing). Nothing says it's another
+  // company, and the capture's page check still refuses one that is.
+  if (checkable && exact.length === 1 && noIndustryShown(exact[0].subtitle)) return { pick: exact[0], reason: 'exact' }
   return { pick: null, reason: 'unclear' }
+}
+
+// A company card's line with no industry on it: empty, only followers, or
+// a place ("Reno, Nevada", "Austin, TX", "United States").
+const US_STATES = 'Alabama|Alaska|Arizona|Arkansas|California|Colorado|Connecticut|Delaware|Florida|Georgia|Hawaii|Idaho|Illinois|Indiana|Iowa|Kansas|Kentucky|Louisiana|Maine|Maryland|Massachusetts|Michigan|Minnesota|Mississippi|Missouri|Montana|Nebraska|Nevada|New Hampshire|New Jersey|New Mexico|New York|North Carolina|North Dakota|Ohio|Oklahoma|Oregon|Pennsylvania|Rhode Island|South Carolina|South Dakota|Tennessee|Texas|Utah|Vermont|Virginia|Washington|West Virginia|Wisconsin|Wyoming|District of Columbia'
+const PLACE = new RegExp('^(?:[^,]+,\\s*)?(?:[A-Z]{2}|' + US_STATES + '|United States|USA|Canada|Mexico|United Kingdom)$')
+export function noIndustryShown(subtitle: string | null | undefined): boolean {
+  const ind = industryOf(subtitle)
+  return !ind || PLACE.test(ind)
 }
 
 // Product categories where LinkedIn's catch-all "Manufacturing" industry

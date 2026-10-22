@@ -255,6 +255,14 @@ t('an exact name needs a fitting industry too (Native the deodorant, not the car
   const snc = bev('Sierra Nevada Corporation', 'Defense and Space Manufacturing • Sparks, NV • 200K followers')
   const snb = bev('Sierra Nevada Brewing Co.', 'Food and Beverage Manufacturing • Chico, CA • 60K followers')
   assert.equal(decideCompanyMatch({ name: 'Sierra Nevada', category: 'rtd' }, [snc, snb]).pick?.name, 'Sierra Nevada Brewing Co.')
+  // Oct 21 2026 run: one exact name whose card shows no industry at all (a tiny page, or a line LinkedIn didn't
+  // draw) is the brand's page — the capture's own page check still catches another company's.
+  assert.equal(decideCompanyMatch({ name: 'Suerox', category: 'electrolytes' }, [bev('Suerox', 'Miami, Florida • 3 followers')]).pick?.name, 'Suerox')
+  assert.equal(decideCompanyMatch({ name: '10 Torr Distilling & Brewing', category: 'spirits' }, [bev('10 Torr Distilling and Brewing', 'Reno, Nevada • 11 followers')]).pick?.name, '10 Torr Distilling and Brewing')
+  assert.equal(decideCompanyMatch({ name: 'New Trail Brewing', category: 'rtd' }, [bev('New Trail Brewing Company', ''), bev('New Holland Brewing Company', ''), bev('New Belgium Brewing', '')]).pick?.name, 'New Trail Brewing Company')
+  assert.equal(decideCompanyMatch({ name: 'Navy Hill', category: 'rtd' }, [bev('Navy Hill co.', ''), bev('Navy Hill', '')]).reason, 'unclear', 'two exact names, nothing to tell them apart: Leo picks')
+  assert.equal(decideCompanyMatch({ name: 'SLY', category: 'energy' }, [bev('SLY', 'Technology, Information and Internet • San Francisco'), bev('Sly LLC', 'Environmental Services')]).reason, 'unclear', 'an industry shown that does not fit still says no')
+  assert.equal(decideCompanyMatch({ name: 'Ghost', category: 'energy' }, [bev('Ghost', 'Technology, Information and Internet'), bev('Ghost', '')]).reason, 'unclear', 'a second exact name with another trade: Leo picks')
   assert.equal(decideCompanyMatch({ name: 'NJOY', category: 'nicotine' }, [bev('NJOY', 'Manufacturing • Scottsdale, AZ • 20K followers')]).pick?.name, 'NJOY')
   assert.equal(decideCompanyMatch({ name: 'G FUEL', category: 'energy' }, [bev('G FUEL', 'Manufacturing • 30K followers'), bev('G Fuel Logistics', 'Truck Transportation')]).pick?.name, 'G FUEL')
   assert.equal(decideCompanyMatch({ name: 'Zone', category: 'energy' }, [bev('Zone', 'Manufacturing'), bev('Zone', 'Manufacturing • 2K followers')]).reason, 'unclear', 'two bare Manufacturing pages: Leo picks')
