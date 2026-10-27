@@ -139,6 +139,20 @@ export function digestReply(reply: unknown): ChatDigest {
   return { done: p.done, needs: p.needs, ideas: p.ideas, question: lastQuestion(text) }
 }
 
+// A chat that answers several times in a day (the Add a brand chat adds one
+// brand a message; a nightly job reports each morning) keeps each earlier
+// answer's first line: a new reply used to replace everything the chat had
+// done that day. The same reply posted twice isn't kept twice.
+export const EARLIER = 'Earlier today: '
+export const CHAT_EARLIER_KEEP = 8
+export function keepEarlier(prevDone: unknown, newDone: string[]): string[] {
+  const prev = (Array.isArray(prevDone) ? prevDone : []).filter((l): l is string => typeof l === 'string' && !!l)
+  const older = prev.filter(l => l.startsWith(EARLIER))
+  const own = prev.filter(l => !l.startsWith(EARLIER))
+  const head = own[0] && own[0] !== newDone[0] ? [EARLIER + cut(own[0], 300)] : []
+  return [...newDone, ...[...head, ...older].slice(0, CHAT_EARLIER_KEEP)]
+}
+
 // A summary written by the hourly review (structured already): cleaned and capped.
 export function digestSummary(s: { did?: unknown; needs?: unknown; ideas?: unknown; question?: unknown }): ChatDigest {
   const lines = (v: unknown, n: number) => (Array.isArray(v) ? v : [])

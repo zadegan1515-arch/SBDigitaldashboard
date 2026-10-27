@@ -129,5 +129,14 @@ is('stalled after 2h', L.isStalled('working', '2026-10-17T19:30:00Z', now), true
 is('not stalled yet', L.isStalled('working', '2026-10-17T21:00:00Z', now), false)
 is('done never stalls', L.isStalled('done', '2026-10-17T10:00:00Z', now), false)
 
+// A second ask the same day keeps the first answer's first line.
+const E = L.EARLIER
+is('first reply: nothing earlier', L.keepEarlier([], ['Added Carpe.']), ['Added Carpe.'])
+is('a second answer keeps the first', L.keepEarlier(['Added Carpe.', 'mycarpe.com'], ['Added RAW.']), ['Added RAW.', E + 'Added Carpe.'])
+is('older earlier lines follow, newest first', L.keepEarlier(['Added RAW.', E + 'Added Carpe.'], ['Added Snackish.']), ['Added Snackish.', E + 'Added RAW.', E + 'Added Carpe.'])
+is('the same reply twice is kept once', L.keepEarlier(['Added RAW.', E + 'Added Carpe.'], ['Added RAW.']), ['Added RAW.', E + 'Added Carpe.'])
+is('capped', L.keepEarlier(Array.from({ length: 12 }, (_, i) => E + 'x' + i), ['now']).length, 1 + L.CHAT_EARLIER_KEEP)
+is('junk in, nothing kept', L.keepEarlier(null, ['now']), ['now'])
+
 console.log(`${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

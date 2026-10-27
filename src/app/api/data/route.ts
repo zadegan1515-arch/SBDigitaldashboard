@@ -72,7 +72,7 @@ import { LI_PER_DAY } from '@/lib/coverage'
 import { parseWorkLog, WORK_LOG_MAX_CHARS } from '@/lib/work-log'
 import {
   sessionKey, sessionUrl, redactSecrets, askLine, chatTitle, digestReply, digestSummary, carryTicks, addAsk, chatStatus, isMachineText,
-  CHAT_REPLY_MAX, type ChatAsk,
+  keepEarlier, CHAT_REPLY_MAX, type ChatAsk,
 } from '@/lib/chat-log'
 import { BUILD_IDEAS } from '@/lib/build-ideas'
 import { checkBrandQueue, sortPicks, leaveOutFlagged, personProblem } from '@/lib/queue-check'
@@ -5717,7 +5717,9 @@ const handlers: Record<string, Handler> = {
           if (ask) take(ask)
         }
         ticks = carryTicks(parsed.needs, ticks, dg.needs)
-        parsed = { done: dg.done, needs: dg.needs, ideas: dg.ideas }
+        // A reply keeps the day's earlier answers (one line each); a review's summary is the whole day.
+        const done = ev === 'reply' ? keepEarlier(parsed.done, dg.done) : dg.done
+        parsed = { done, needs: dg.needs, ideas: dg.ideas }
         q = dg.question
         raw = ev === 'reply'
           ? redactSecrets(String(reply ?? '').slice(0, CHAT_REPLY_MAX))

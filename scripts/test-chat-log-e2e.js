@@ -188,6 +188,22 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(r.title, 'LI check (renamed)', 'a title the chat sends wins')
     ok('a new day keeps the chat’s name and one-liner; a sent title still wins')
 
+    // 10. Two asks in a day (the Add a brand chat): the second answer keeps the
+    // first one's first line; the same reply posted twice isn't kept twice.
+    const A = 'session_01AddABrandAbcdefgh'
+    await data('chatLog', { session: A, event: 'prompt', ask: 'add carpe', at: iso(40000) })
+    await data('chatLog', { session: A, event: 'reply', reply: 'I added Carpe to the dashboard.\n\nmycarpe.com', at: iso(35000) })
+    await data('chatLog', { session: A, event: 'prompt', ask: 'raw nutrition', at: iso(30000) })
+    await data('chatLog', { session: A, event: 'reply', reply: 'I added RAW Nutrition to the dashboard.', at: iso(25000) })
+    let ar = await prisma.workLog.findFirst({ where: { sessionId: A, day: today } })
+    assert.deepEqual(JSON.parse(ar.parsed).done, ['I added RAW Nutrition to the dashboard.', 'Earlier today: I added Carpe to the dashboard.'])
+    await data('chatLog', { session: A, event: 'reply', reply: 'I added RAW Nutrition to the dashboard.', at: iso(20000) })
+    ar = await prisma.workLog.findFirst({ where: { sessionId: A, day: today } })
+    assert.deepEqual(JSON.parse(ar.parsed).done, ['I added RAW Nutrition to the dashboard.', 'Earlier today: I added Carpe to the dashboard.'], 'the same reply twice is kept once')
+    const rec2 = await data('dayRecap', {})
+    assert.equal(rec2.chats.find(c => c.sessionId === A).done.length, 2)
+    ok('a second answer keeps the first as "Earlier today"; the same reply twice is kept once')
+
     console.log(`chat-log e2e: all ${n} passed`)
   } catch (e) {
     console.error('✗', e && e.stack || e)
