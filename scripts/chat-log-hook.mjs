@@ -78,6 +78,7 @@ function readTranscriptFile(p) {
 }
 
 const clip = (s, n) => (s ? String(s).slice(0, n) : null)
+export const PICTURE_ONLY = '(sent a picture or file)'
 
 // The post for one hook call, or null when there's nothing to say.
 export function buildPost(input, env, tr) {
@@ -86,7 +87,10 @@ export function buildPost(input, env, tr) {
   if (!session) return null
   const base = { session, title: clip(tr.title, 200), firstAsk: clip(tr.firstAsk, MAX_ASK), at: new Date().toISOString() }
   if (ev === 'UserPromptSubmit') {
-    const ask = input.prompt || tr.lastAsk
+    // A message with no words (a screenshot alone — the Add a brand chat gets
+    // those) is said so; it used to post his last typed message again, from
+    // the transcript, which doesn't hold the new message yet.
+    const ask = typeof input.prompt === 'string' ? input.prompt.trim() || PICTURE_ONLY : tr.lastAsk
     return ask ? { ...base, event: 'prompt', ask: clip(ask, MAX_ASK), firstAsk: base.firstAsk || clip(ask, MAX_ASK) } : null
   }
   if (ev === 'Stop') {

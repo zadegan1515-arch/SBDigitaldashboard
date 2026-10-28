@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { readTranscript, buildPost, promptText } from './chat-log-hook.mjs'
+import { readTranscript, buildPost, promptText, PICTURE_ONLY } from './chat-log-hook.mjs'
 
 const HOOK = path.join(path.dirname(fileURLToPath(import.meta.url)), 'chat-log-hook.mjs')
 let pass = 0, fail = 0
@@ -57,6 +57,8 @@ is('the first real ask after a wake-up', readTranscript([user('<task-notificatio
 const env = { CLAUDE_CODE_REMOTE_SESSION_ID: 'cse_01HfnTwnbPnSCv3BvLWgsbiJ' }
 const p1 = buildPost({ hook_event_name: 'UserPromptSubmit', prompt: 'how do we pitch them?' }, env, t)
 is('prompt post', [p1.event, p1.session, p1.ask, p1.title, p1.firstAsk], ['prompt', 'cse_01HfnTwnbPnSCv3BvLWgsbiJ', 'how do we pitch them?', 'MUG', 'can you look into Mug root beer'])
+is('a picture alone is not the last typed message', buildPost({ hook_event_name: 'UserPromptSubmit', prompt: '' }, env, t).ask, PICTURE_ONLY)
+is('no prompt field: the transcript', buildPost({ hook_event_name: 'UserPromptSubmit' }, env, t).ask, 'how do we pitch them?')
 const p2 = buildPost({ hook_event_name: 'Stop', session_id: 'local-1234' }, env, t)
 is('reply post from the transcript', [p2.event, p2.reply.startsWith('Pitch')], ['reply', true])
 is('reply post prefers the hook’s own copy', buildPost({ hook_event_name: 'Stop', last_assistant_message: 'Done.' }, env, t).reply, 'Done.')
