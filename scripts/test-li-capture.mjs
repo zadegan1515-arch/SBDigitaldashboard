@@ -251,6 +251,16 @@ t('an exact name needs a fitting industry too (Native the deodorant, not the car
   assert.equal(pageLooksWrong('beauty', 'Personal Care Product Manufacturing'), false)
   assert.equal(pageLooksWrong('beauty', ''), false, 'no industry shown: no verdict')
   assert.equal(pageLooksWrong('unresolved', 'Individual and Family Services'), false)
+  // Oct 29 2026 run: a page whose top card shows no industry sends its whole info line — a place and followers.
+  // Nothing there says it's another company (Suerox, New Trail Brewing, 10 Torr went on Leo's list as "wrong").
+  assert.equal(pageLooksWrong('electrolytes', 'Miami, Florida'), false)
+  assert.equal(pageLooksWrong('rtd', 'Williamsport, Pennsylvania 212 followers'), false)
+  assert.equal(pageLooksWrong('spirits', 'Reno, Nevada'), false)
+  assert.equal(pageLooksWrong('rtd', '212 followers 2-10 employees'), false)
+  // A real industry on the same line is still judged.
+  assert.equal(pageLooksWrong('beverage', 'International Trade and Development Nicosia 16 followers 2-10 employees'), true)
+  assert.equal(pageLooksWrong('apparel', 'Spectator Sports San Diego, California 117 followers 2-10 employees'), true)
+  assert.equal(pageLooksWrong('beauty', 'Retail Bolingbrook, IL 690K followers 10K+ employees'), true)
   // Oct 13 2026 run: a same-named company in another trade, and LinkedIn's bare "Manufacturing".
   const snc = bev('Sierra Nevada Corporation', 'Defense and Space Manufacturing • Sparks, NV • 200K followers')
   const snb = bev('Sierra Nevada Brewing Co.', 'Food and Beverage Manufacturing • Chico, CA • 60K followers')

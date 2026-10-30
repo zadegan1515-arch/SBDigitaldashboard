@@ -393,8 +393,28 @@ export function industryCheckable(category: string | null | undefined): boolean 
 // category can be checked, LinkedIn shows an industry, and it doesn't fit.
 export function pageLooksWrong(category: string | null | undefined, industry: string | null | undefined): boolean {
   const ind = String(industry || '').trim()
-  return industryCheckable(category) && !!ind && !industryFits(category, ind) && !genericIndustry(category, ind)
+  return industryCheckable(category) && !!ind && !pageShowsNoIndustry(ind) && !industryFits(category, ind) && !genericIndustry(category, ind)
 }
+
+// A brand page's top card with no industry on it: the script then sends the
+// whole info line — a place, followers, a headcount ("Williamsport,
+// Pennsylvania 212 followers", "Miami, Florida"; the Oct 29 2026 run put
+// Suerox, New Trail Brewing and 10 Torr on Leo's list as another company's).
+export function pageShowsNoIndustry(industry: string | null | undefined): boolean {
+  const rest = String(industry || '')
+    .replace(/\s*[\d.,]+\s*[KkMm]?\+?\s*followers\b.*$/i, '')
+    .replace(/\s*[\d,]+(?:-[\d,]+|\+)\s*employees\b.*$/i, '')
+    .trim()
+  if (!rest) return true
+  // The city before the state is a few words, none of them a trade — so
+  // "Retail Bolingbrook, IL" or "Spectator Sports San Diego, California"
+  // is still an industry, judged as before.
+  const m = rest.match(/^(?:([^,]+),\s*)?([^,]+)$/)
+  if (!m || !PLACE.test(rest)) return false
+  const city = (m[1] || '').trim()
+  return !city || (city.split(/\s+/).length <= 3 && !INDUSTRY_WORD.test(city))
+}
+const INDUSTRY_WORD = /\b(?:services?|manufacturing|production|retail|wholesale|trade|development|sports?|food|beverages?|software|technology|internet|marketing|advertising|media|entertainment|health|care|consulting|restaurants?|apparel|fashion|design|education|publishing|hospitality|staffing|recruiting|real estate|construction|financial|banking|insurance|logistics|transportation|wellness|fitness|cosmetics|personal|consumer|goods|products|events|music|gaming|telecommunications|agriculture|farming|breweries|wineries|distilleries|spirits|tobacco|leisure|travel|nonprofit|government|research|legal|pharmaceutical|medical|hospitals?|chemical|textile|furniture|automotive|electronics|computer|it)\b/i
 
 // Discovery's "already on the roster" test: one name is the other plus
 // words ("Waterloo" / "Waterloo Sparkling Water"). Takes normalizeCompany'd

@@ -29,8 +29,9 @@ export { SN_SINCE }
 // The last company-match fix (decideCompanyMatch / pageLooksWrong) shipped:
 // a brand parked on "Which LinkedIn page is theirs?" before it, whose saved
 // results now resolve, is read once more (Oct 13; Oct 22 2026 — one exact
-// name with no industry shown).
-export const REMATCH_SINCE = Date.parse('2026-10-22T12:00:00Z')
+// name with no industry shown; Oct 30 — a saved page whose top card shows
+// no industry isn't another company's).
+export const REMATCH_SINCE = Date.parse('2026-10-30T12:00:00Z')
 // "Very big" for the fill's skip: 1,500+ people on LinkedIn (Leo, Oct 12 2026:
 // "not reach out to any brand with over 1500 employees"; queue-rules.ts, the
 // same line the Schedule holds back — conglomerates never); giants.ts covers
