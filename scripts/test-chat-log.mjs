@@ -135,6 +135,8 @@ is('first reply: nothing earlier', L.keepEarlier([], ['Added Carpe.']), ['Added 
 is('a second answer keeps the first', L.keepEarlier(['Added Carpe.', 'mycarpe.com'], ['Added RAW.']), ['Added RAW.', E + 'Added Carpe.'])
 is('older earlier lines follow, newest first', L.keepEarlier(['Added RAW.', E + 'Added Carpe.'], ['Added Snackish.']), ['Added Snackish.', E + 'Added RAW.', E + 'Added Carpe.'])
 is('the same reply twice is kept once', L.keepEarlier(['Added RAW.', E + 'Added Carpe.'], ['Added RAW.']), ['Added RAW.', E + 'Added Carpe.'])
+is('an earlier line the new answer already says is dropped', L.keepEarlier(['Primo Golf sponsors a LIV team.', E + 'Hunt started.'], ['Saved 16 finds.', 'Primo Golf sponsors a LIV team.']), ['Saved 16 finds.', 'Primo Golf sponsors a LIV team.', E + 'Hunt started.'])
+is('an older earlier line said again is dropped', L.keepEarlier(['Added RAW.', E + 'Added Carpe.'], ['Added Snackish.', 'Added Carpe.']), ['Added Snackish.', 'Added Carpe.', E + 'Added RAW.'])
 is('capped', L.keepEarlier(Array.from({ length: 12 }, (_, i) => E + 'x' + i), ['now']).length, 1 + L.CHAT_EARLIER_KEEP)
 is('junk in, nothing kept', L.keepEarlier(null, ['now']), ['now'])
 
