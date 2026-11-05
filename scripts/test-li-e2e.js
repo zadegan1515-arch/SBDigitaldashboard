@@ -676,7 +676,11 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       const hl0 = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liHidden' } })).value);
       hl0[sn.id] = { at: '2026-10-01T12:00:00Z', by: 'fill', n: 2, likely: 2, titles: ['Brand Manager'], url: null, q: 'marketing' };
       await prisma.setting.update({ where: { key: 'liHidden' }, data: { value: JSON.stringify(hl0) } });
-      assert.equal(await itemOf(false), undefined, 'without Sales Navigator it waits');
+      // Without Sales Navigator it isn't brought back for it (the old month's
+      // rest from Oct 1 has run out by the calendar, so it may be on the list
+      // as an ordinary read — never as this retry).
+      const plain = await itemOf(false);
+      assert.ok(!plain || (!plain.retry && !plain.hiddenRetry), 'without Sales Navigator it isn’t a retry for it');
       const back = await itemOf(true);
       assert.deepEqual([back && back.retry, back && back.issue], [true, 'noSalesNav'], 'back once for Sales Navigator');
 
@@ -713,8 +717,15 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       await swept('r4', { done: true, salesNav: true, issue: null, shown: 9, read: 9 });
       const m = await markOf();
       assert.deepEqual([m.clean, m.issue, m.tries, m.shown, m.read, m.sn], [true, null, undefined, 9, 9, true]);
-      assert.equal(await itemOf(true), undefined, 'read in full: off the list');
-      await setMark({ ...m, at: new Date(Date.now() - 400 * 864e5).toISOString() });
+      // Still short on people and the queue could pick it (supply.ts — Leo,
+      // Nov 5 2026): back once, for a read with founders & events too.
+      const once = await itemOf(true);
+      assert.deepEqual([once && once.reread, once && once.wide, once && once.retry, once && once.kind], [true, true, false, 'reread'], 'still short: one more, wider read');
+      await swept('r4r', { done: true, salesNav: true, issue: null, wide: true, reread: true });
+      const m2 = await markOf();
+      assert.deepEqual([m2.clean, m2.reread, m2.wide], [true, true, true]);
+      assert.equal(await itemOf(true), undefined, 'read in full again: off the list');
+      await setMark({ ...m2, at: new Date(Date.now() - 400 * 864e5).toISOString() });
       assert.equal(await itemOf(true), undefined, 'and still off a year later');
       assert.equal(await itemOf(true, { ignoreRest: true }) && true, true, 'only by hand (ignoreRest)');
       // A run with Sales Navigator off reads it: the issue stays (only Sales

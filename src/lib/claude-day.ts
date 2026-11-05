@@ -19,7 +19,7 @@ const READ_NAMES = new Set(['claudeDay', 'dayRecap', 'weeklyScore', 'staleDeals'
   'boardCodeLookup', 'sponsorUrl', 'segmentsOverview', 'audienceEventStats', 'appVersion', 'researchList', 'planDayChoices', 'nextBestBrands',
   'staleInvites', 'repliedOverview', 'buyerCoverage', 'brandLookup', 'brandTimeline', 'brandStock', 'brandPlanLine', 'scheduleStamp',
   'suMatchQueue', 'sheetStatus', 'whoAmI', 'me', 'findDuplicates', 'sponsorReport', 'search', 'checkEmailReplies',
-  'weekBank', 'weekBankBrowse', 'reachedBrands'])
+  'weekBank', 'weekBankBrowse', 'reachedBrands', 'brandSupply'])
 // Elizabeth's tab (rep-outreach.ts): its reads, and the opening of her day
 // (elToday makes the day's list by itself, like the page opening it).
 for (const fn of ['elToday', 'elWeek', 'elFollow', 'elResults', 'elBrand', 'elSearch', 'elTemplates']) READ_NAMES.add(fn)
@@ -37,7 +37,7 @@ const NEEDS_YES: Record<string, string[]> = {
   elSpread: ['apply'], elSpreadUndo: ['confirm'], elTakeOff: ['confirm'],
 }
 // Calls that preview unless told preview: false.
-const PREVIEW_BY_DEFAULT = new Set(['researchImport', 'researchUndo'])
+const PREVIEW_BY_DEFAULT = new Set(['researchImport', 'researchUndo', 'deadWeight', 'deadWeightUndo'])
 
 // The work-log itself shows on the review as "What Claude did"; a chat
 // logging where it stands (chatLog) is the "Your chats" card.

@@ -12,6 +12,9 @@ export type FillItem = {
   research?: boolean; asked?: boolean; lane?: string; planned?: string; hiddenRetry?: boolean; mine?: 'list' | 'added'
   retry?: boolean; issue?: string | null; tries?: number
   noBuyer?: boolean; focus?: boolean; last?: 'reached' | 'giant'; size?: string; parent?: { name: string } | null
+  // The queue could pick it and it's short on people (supply.ts): first, its
+  // read wider; reread = read in full before, its one more read.
+  short?: boolean; reread?: boolean
 }
 export type FillRow = {
   brandId: string | null; name: string; category: string | null; fit: number | null; contacts: number
@@ -30,6 +33,8 @@ export function fillWhy(i: FillItem, focus: string, dayLabel: (key: string) => s
   // Back because the last read went wrong (li-sweep.ts liDue).
   if (i.retry) return 'Read again — ' + (issueWords(i.issue) || 'last read had an issue') + (i.tries && i.tries > 1 ? ' (try ' + (i.tries + 1) + ')' : '')
   if (i.hiddenRetry) return 'Back for Sales Navigator (buyers hidden last time)'
+  if (i.reread) return 'Read in full, still short on people — one more read with founders & events'
+  if (i.short) return 'Short on people to go out — first, founders & events searched too'
   const bits: string[] = []
   if (i.research) bits.push('Research list' + (i.lane ? ' · ' + i.lane : ''))
   // Size and the rest only break a tie in Brand Fit now (byFit below).

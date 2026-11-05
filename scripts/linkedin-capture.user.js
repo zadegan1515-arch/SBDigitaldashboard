@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.43
+// @version      1.44
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -86,7 +86,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.43';
+  var VERSION = '1.44';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1384,6 +1384,17 @@
     { label: 'partnerships & sponsorship', q: 'partnerships', pages: 2,
       keywords: 'partnership OR partnerships OR sponsorship OR sponsorships' },
   ];
+  // 1.44 (Leo, Nov 5 2026: "clean up the queue brands so that i can get
+  // more"): a brand the queue could pick that is still short on people
+  // (the dashboard marks the item `wide`) also gets its founders, owners and
+  // events / experiential people — buyers the two searches above miss. A
+  // brand read in full before and still short comes back once for it
+  // (`reread`).
+  var SN_WIDE = { label: 'founders & events', q: 'founder', pages: 2,
+    keywords: 'founder OR cofounder OR co-founder OR CEO OR owner OR events OR experiential OR activation' };
+  function snSearches(item) {
+    return item && item.wide ? SN_SEARCHES.concat([SN_WIDE]) : SN_SEARCHES;
+  }
   var SN_PAGE_SIZE = 25;
   // The People tab's first screen or two, when Sales Navigator does the rest.
   var SN_GLANCE = { rounds: 2, people: 40 };
@@ -1863,7 +1874,7 @@
       // The results as data, from the page we're on (1.42) — the results
       // page only when that didn't work for this brand.
       if (snDataOn(job) && !st.snPageOnly) return fillSales(item, true);
-      var sn = SN_SEARCHES[st.snI], atParent = st.snFrom === 'parent';
+      var sn = snSearches(item)[st.snI], atParent = st.snFrom === 'parent';
       return go(job, snUrl(st.coId, st.pageName || (atParent ? item.parent.name : item.name), sn, st.snPage, atParent ? item.name : null),
         'Sales Navigator: ' + item.name + (atParent ? ' at ' + item.parent.name : '') + ' — ' + sn.label + (st.snPage > 1 ? ' (page ' + st.snPage + ')' : ''));
     }
@@ -2272,8 +2283,13 @@
   function snNextOrDone(job, item) {
     var st = job.step;
     st.snReloads = 0; st.navs = 0;
-    if (!st.full && st.snI < SN_SEARCHES.length - 1 && !(st.members != null && st.members < SN_SMALL)) {
-      st.snI++; st.snPage = 1;
+    // A small brand: the marketing search finds its marketing people — the
+    // partnerships one is skipped, never the founders + events one.
+    var list = snSearches(item), next = st.snI + 1;
+    while (next < list.length && list[next] !== SN_WIDE && st.members != null && st.members < SN_SMALL) next++;
+    if (!st.full && next < list.length) {
+      st.snI = next; st.snPage = 1;
+      if (list[next] === SN_WIDE) st.snWide = true;
       job.nextAt = Date.now() + secs(BETWEEN_PAGES);
       saveFill(job);
       return runFill();
@@ -2366,7 +2382,7 @@
 
   function fillSales(item, asData) {
     var job = loadFill(), at0 = job.at, st0 = job.step;
-    var search = SN_SEARCHES[st0.snI], page = st0.snPage;
+    var search = snSearches(item)[st0.snI], page = st0.snPage;
     renderFill(job, (asData ? 'Asking Sales Navigator — ' : 'Reading Sales Navigator — ') + item.name + ' · ' + search.label + (page > 1 ? ' (page ' + page + ')' : ''));
     fillHalt = { stopped: false };
     var got = null, rows = [], problem = null, sample = null, short = null, totalN = null;
@@ -2607,6 +2623,8 @@
       done: !!st.salesNav || !!st.full, issue: issue, issueNote: issueNote,
       skipped: st.skip || null, shown: st.snShown != null ? st.snShown : null, read: st.snSeen != null ? st.snSeen : null,
       again: !!item.again, review: st.review || 0,
+      // Its read took the founders + events search (1.44); its one more read.
+      wide: !!st.snWide, reread: !!item.reread,
       // Was Sales Navigator meant to be used (a run with it off never
       // clears a Sales Navigator issue); the page a very-big count came from.
       snOn: job.snWanted != null ? !!job.snWanted : job.salesNav !== false, companyIndustry: st.skip ? st.pageIndustry || '' : undefined, companyUrl: st.skip ? st.pageUrl || null : undefined,
@@ -2796,6 +2814,9 @@
     if (item.again) return 'trying it again — ' + (item.againWhy || 'its first try went wrong');
     if (item.retry) return (job.fitFirst ? 'read again — ' : 'read again first — ') + (item.issueText || 'its last read went wrong') + (item.tries > 1 ? ' (try ' + (item.tries + 1) + ')' : '');
     if (item.hiddenRetry) return 'read before without Sales Navigator — back for it';
+    // 1.44: brands the queue could pick that are short on people go first.
+    if (item.reread) return 'read in full before and still short on people — one more read, with founders & events';
+    if (item.short) return 'the queue could pick it but it\u2019s short on people — founders & events searched too';
     // Mid-size first (Leo, Oct 12 2026): the size leads the reason.
     if (job.midFirst && item.size) {
       var sw = { target: 'a mid-size brand', unknown: 'size not measured yet', small: 'a small brand', big: 'a big company (500–1,499)' }[item.size];

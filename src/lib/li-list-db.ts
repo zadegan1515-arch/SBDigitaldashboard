@@ -5,7 +5,7 @@
 // Read-only.
 import { PrismaClient } from '@prisma/client'
 import { focusTerms, matchesFocus, decideCompanyMatch, pageLooksWrong } from './li-capture'
-import { readLiLog, liDue, issueWords, readLiResearch, researchResting, LI_SCRIPT_VERSION, SN_SINCE, SN_ISSUES, LI_REST_DAYS } from './li-sweep'
+import { readLiLog, liDue, issueWords, readLiResearch, researchResting, LI_SCRIPT_VERSION, SN_SINCE, SN_ISSUES, LI_REST_DAYS, LI_READER } from './li-sweep'
 import { readHiddenLog } from './li-hidden'
 import { parentOf, isParentCompany, LI_PARENT_PAGES_KEY } from './parents'
 import { readJsonSetting, LI_CONFIRMED_KEY, LI_REVIEW_KEY, type Confirmed, type Review } from './li-review'
@@ -17,7 +17,8 @@ import { brandSize } from './brand-size'
 import { countBuyers, BUYER_TARGET } from './buyers'
 import { byFit } from './fill-schedule'
 import { giantWhy } from './giants'
-import { giantOf, veryBigWhy, rowReached, parseGiants, GIANTS_KEY, VERY_BIG_LI } from './queue-rules'
+import { giantOf, veryBigWhy, rowReached, parseGiants, GIANTS_KEY, VERY_BIG_LI, SMALL_KEY, parseSmall } from './queue-rules'
+import { rereadOpen, fillKindOf } from './supply'
 import { isBigBrand } from './brand-work'
 
 // How many people we keep on file per brand (Leo, Sep 2026) — see
@@ -46,7 +47,7 @@ export { isBigBrand }
 export async function buildLiList(prisma: PrismaClient, body: any) {
   const terms = focusTerms(body.focus)
   const log = await readLiLog(prisma)
-  const [everyBrand, giantsSetting, bankSetting] = await Promise.all([
+  const [everyBrand, giantsSetting, bankSetting, smallSetting] = await Promise.all([
     prisma.brand.findMany({
       where: { doNotEmail: false, passedAt: null },
       select: {
@@ -55,7 +56,7 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
         contacts: { select: { title: true, email: true, linkedinUrl: true } },
         // Brand Fit's facts (brand-fit.ts), for the fit floor below.
         fundingCents: true, lastRoundAt: true, usStatus: true, sponsorsCollege: true, bizStatus: true,
-        acquiredBy: true, researchedAt: true, workPeople: true,
+        acquiredBy: true, researchedAt: true, workPeople: true, stoppedAt: true,
         // Reached out to already (queue-rules.ts): the Schedule's own
         // picks skip those, so the run reads them last.
         targets: {
@@ -68,7 +69,11 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     }),
     readJsonSetting<unknown>(prisma, GIANTS_KEY, {}),
     readJsonSetting<unknown>(prisma, BANK_KEY, null),
+    readJsonSetting<unknown>(prisma, SMALL_KEY, {}),
   ])
+  // Brands → All brands' Too small switch: on, the queue picks them, so the
+  // fill reads them like any other.
+  const smallOn = parseSmall(smallSetting)
   // Brand Fit, the score on the ratings list (Leo, Oct 12 2026: "can it only
   // fill in the brands that score highly"): the same rules as the dashboard
   // (brand-fit.ts, Leo's category priority); the category's accept rate is
@@ -95,7 +100,7 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
   }))
   const fitOk = (id: string) => {
     const f = fitOf.get(id)
-    return !minFit || (!!f && f.score >= minFit && !f.tooSmall && !f.ruledOut && !f.bizNote && f.priority !== 'skip')
+    return !minFit || (!!f && f.score >= minFit && (!f.tooSmall || smallOn) && !f.ruledOut && !f.bizNote && f.priority !== 'skip')
   }
   // Giants held back from outreach (Leo, Oct 12 2026: "not yet" — the
   // Schedule's Giants switch, queue-rules.ts) and brands already reached
@@ -120,6 +125,19 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     .filter(b => b.targets.some(t => rowReached({ status: t.status, sentAt: t.sentAt, emailedAt: t.emailedAt, emails: t._count.emails })))
     .map(b => b.id))
   const underCap = all.filter(b => b._count.contacts < CONTACT_CAP_PER_BRAND)
+  // A brand the queue could pick by itself (never reached, not held back by
+  // a rule — the Schedule's own test) that is short on people to go out
+  // whole (Leo, Nov 5 2026: "clean up the queue brands so that i can get
+  // more"; supply.ts): the fill does these first, best Brand Fit first, and
+  // their read adds a founders + events search (`wide`, script 1.44).
+  const pickable = (b: (typeof all)[number]) => {
+    const f = fitOf.get(b.id)
+    return !!f && !reachedIds.has(b.id) && !giantIds.has(b.id) && !b.stoppedAt && b.usStatus !== 'no' &&
+      !f.ruledOut && !f.bizNote && f.priority !== 'skip' && (!f.tooSmall || smallOn)
+  }
+  const shortNow = (b: (typeof all)[number]) =>
+    shortOnPeople({ ...b, big: isBigBrand(b), top: isTopCategory(b.category, priorities) })
+  const shortPick = new Set(underCap.filter(b => pickable(b) && shortNow(b)).map(b => b.id))
   const ignoreRest = body.ignoreRest === true
   // Brands whose people are under a parent company (parents.ts): the run
   // looks there when the brand's own page gives nobody. One read before
@@ -168,8 +186,10 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     if (e.why === 'wrong') return !!e.pageIndustry && !pageLooksWrong(b.category, e.pageIndustry)
     return e.why === 'unclear' && !!decideCompanyMatch(b, e.candidates || []).pick
   }
+  // Read in full and still short: one more, wider read (supply.ts rereadOpen).
+  const reread = (b: { id: string }) => shortPick.has(b.id) && rereadOpen(log[b.id])
   const restsNow = (b: { id: string; name: string; aka: string | null; category?: string | null }) =>
-    !dueOf(b).due && !rematch(b)
+    !dueOf(b).due && !rematch(b) && !reread(b)
   const resting = underCap.filter(b => restsNow(b) && !hiddenOld(b)).length
   // Of those: read in full (never back by itself), and stuck (an issue
   // that outlasted its retries — back in a month).
@@ -202,6 +222,13 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
       issueText: issueWords(dueOf(b).issue || (hiddenOld(b) ? 'noSalesNav' : null)) || null,
       hiddenRetry: retryOf(b),
       fit: fitOf.get(b.id)?.score ?? null,
+      // The queue could pick it and it's short on people: first, and its read
+      // takes the founders + events search too; `reread` = read in full
+      // before, this is its one more read.
+      short: shortPick.has(b.id),
+      wide: shortPick.has(b.id),
+      reread: reread(b),
+      kind: fillKindOf(log[b.id], { reread: reread(b), reader: LI_READER }),
     }))
 
   // The research list: Stock take's lane ideas — known brand names not
@@ -315,7 +342,10 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
   const byDay = (a: any, b: any) => (a.planned < b.planned ? -1 : a.planned > b.planned ? 1 : 0)
   const lead: any[] = [...byFit(planned).sort(byDay), ...byFit(mine), ...research.filter(r => r.asked)]
   const pool: any[] = [...rest, ...research.filter(r => !r.asked)]
-  const sorted: any[] = [...lead, ...byFit(pool.filter(i => tail(i) === 0 && !i.research)), ...pool.filter(i => tail(i) === 0 && i.research)]
+  // Brands the queue could pick that are short on people go first (supply.ts),
+  // then the rest — each best Brand Fit first.
+  const front = pool.filter(i => tail(i) === 0 && !i.research)
+  const sorted: any[] = [...lead, ...byFit(front.filter(i => i.short)), ...byFit(front.filter(i => !i.short)), ...pool.filter(i => tail(i) === 0 && i.research)]
   // The ones moved to the back don't go first for having no buyer or
   // the focus word any more, so the run's panel mustn't say they do.
   const ordered = [...sorted, ...[1, 2].flatMap(n => byFit(pool.filter(i => tail(i) === n)))]
@@ -331,6 +361,10 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     // they go right after the Schedule's (the panel says so).
     noBuyer: ordered.filter(i => i.noBuyer && !i.research && !i.planned).length,
     hiddenRetry: ordered.filter(i => i.retry).length,
+    // Short on people and the queue could pick them: read first, wider.
+    shortFirst: ordered.filter(i => i.short).length,
+    // Of those, read in full before: their one more read.
+    reread: ordered.filter(i => i.reread).length,
     retry: ordered.filter(i => i.retry).length,
     stuck,
     skipBig,

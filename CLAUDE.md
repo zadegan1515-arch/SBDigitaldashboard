@@ -969,6 +969,33 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   amber). The "People on file" card (`renderFillProgress` — brands with anyone on file, the SponsorUnited
   sweep) is folded to one line under it (`FP_OPEN`).
   `node scripts/test-coverage-e2e.js` (real handlers, throwaway Postgres).
+- **Brands → All brands: What the queue has to work with** (Leo, Nov 5 2026: "give me counts of how many brands need a
+  linkedin fill. what brands have more people we can reach out to again, and overall clean up the queue brands so that i
+  can get more when i want to reach out"; his picks below). A card above Buyer coverage (`#supply-card`, `SUP` / `sup*` in
+  app.html), four tiles, data = `brandSupply({ minFit })` (read-only; brand ids per count, so **Show** narrows the table to
+  exactly them — `BR.sup`, best Brand Fit first, too small ones shown; × or a second click puts it back). Rules pure in
+  `src/lib/supply.ts` (`node scripts/test-supply.mjs`); `supplyStateOf` in route.ts = bestFitEligible split by why:
+  **Ready to go out** (the queue could pick it, enough reachable people to go out whole; about N people / N sending days) ·
+  **Needs a LinkedIn fill** (short on people = the queue could pick it but reachable < `workNeed`, "with nobody to reach";
+  no buyer on file = Buyer coverage's Needs people; on the fill at the Fill schedule's floor, localStorage `sb.fillFit`, the
+  same `buildLiList` the run reads: not read yet / read again / one more, wider read) · **Reach out again** (Week plan's
+  `againRows`, the list with a button per sending day → `reachAgain`) · **Held back by the rules** with a switch each:
+  Giants (`setGiantsOn`), **Too small** (new: Setting `outreachSmall` = { on }, `SMALL_KEY` / `parseSmall` in queue-rules.ts,
+  `QueueCtx.smallOn` — on, bestFitEligible, the LinkedIn fill's floor and the Fill box / Plan my week's Hide too small let them
+  in), Skip categories (→ Category priority), each "Let them in (+N)" = brands that rule alone holds; both switches confirm.
+  **The LinkedIn fill (script 1.44)**: after the Schedule's / Leo's / asked-for brands, brands the queue could pick that are
+  short on people go first, best Brand Fit first (`shortPick` in li-list-db.ts; items `short`, `wide`), and their read adds a
+  third Sales Navigator search, **founders & events** (`SN_WIDE`: founder / co-founder / CEO / owner / events / experiential /
+  activation; a small brand under `SN_SMALL` still gets it), liSwept `wide: true`. A brand **read in full and still short**
+  comes back **once** for that wider read (`rereadOpen`: clean, not `wide`, not `reread`; item `reread`, kind `reread`) —
+  any visit after a clean read sets `LiMark.reread` for good (`nextMark`), so it's once even from an older script (Leo's yes
+  to one more read; his Oct 14 rule otherwise stands). **Archive dead weight** (`deadWeight` preview → ticks → apply,
+  `deadWeightUndo`, Setting `deadWeightLast`; the same archive as Suggest Archive, now shared as `archiveLogged` /
+  `undoArchiveLogged`): not sold in the US, closed / bought, sells sponsorships (`looksLikeSeller`), no LinkedIn page + no
+  parent + nobody reachable, or nobody reachable after a full read whose wider read is done (or won't come: under Fit 50 or
+  not the queue's pick) — never in talks, a deal, an activation, Elizabeth's rows, and "nobody" never for Leo's own picks.
+  Tests: `node scripts/test-supply.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-supply.js` (page),
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-supply-e2e.js`, the wide search in `test-li-salesnav.js`.
 - **Outreach filter on every brand list** (Leo, Oct 18 2026: "anywhere on the site where i sort brands … a filter [for]
   outreached to meaning that we have sent a request to at least one person there"): one dropdown **Outreach: Any /
   Reached out (N) / Not reached out (N)** (`reachSelect` / `reachOk` / `REACH_F` / `REACH_DRAW` in app.html) on All brands

@@ -36,7 +36,8 @@ import { newBoardCode } from '@/lib/board-access'
 import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import { regionFlag } from '@/lib/region'
 import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hints'
-import { readLiLog, readLiResearch, issueWords, updateLiLog, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
+import { readLiLog, readLiResearch, issueWords, updateLiLog, markOutcome, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
+import { holdsOf, supplyOf, queuePickable, onlyHeldBy, rereadOpen, deadWeightOf, DEAD_WORDS, FILL_FIT_DEFAULT, HOLDS, type Hold, type SupplyState, type DeadWhy } from '@/lib/supply'
 import { buildLiList } from '@/lib/li-list-db'
 import { splitFillDays } from '@/lib/fill-schedule'
 import { readHiddenLog, updateHiddenLog, markZachRead, clearZachRead, zachDue, ZACH_REST_DAYS, type HiddenEntry } from '@/lib/li-hidden'
@@ -64,7 +65,7 @@ import { personWhere, basedAbroad } from '@/lib/abroad'
 import { workNeed, dueDays } from '@/lib/planned-first'
 import { searchHit, type SearchHit } from '@/lib/brand-search'
 import { gradeDiscovery, gradeFromFit } from '@/lib/discover-grade'
-import { scoreBrand, ADDED_SOURCES, priorityOf, isTopCategory, PRIORITIES, PRIORITY_POINTS, DEFAULT_CATEGORY_PRIORITY, type Priority, dollarsToCents, normUs, normBiz, cleanResearchRow, shortMoney, type FitResult, type ResearchRow } from '@/lib/brand-fit'
+import { scoreBrand, ADDED_SOURCES, addedByLeo, priorityOf, isTopCategory, PRIORITIES, PRIORITY_POINTS, DEFAULT_CATEGORY_PRIORITY, type Priority, dollarsToCents, normUs, normBiz, cleanResearchRow, shortMoney, type FitResult, type ResearchRow } from '@/lib/brand-fit'
 import { buildStock, bestDealStage, refileMoves, remapPlanDays, brandKey } from '@/lib/stock'
 import { buyerKind, isBuyerTitle, countBuyers, BUYER_TARGET } from '@/lib/buyers'
 import { readCoverFacts, brandCover } from '@/lib/coverage-db'
@@ -77,7 +78,7 @@ import {
 import { BUILD_IDEAS } from '@/lib/build-ideas'
 import { checkBrandQueue, sortPicks, leaveOutFlagged, personProblem } from '@/lib/queue-check'
 import { isBigBrand, workCount, keepInPlay, brandNames, type BigBrandFacts } from '@/lib/brand-work'
-import { queueGate, giantOf, sittingOf, secondTryOf, nyDayKey, STALE_INVITE_DAYS, REST_DAYS, GIANTS_KEY, parseGiants, type Gate, type OutreachRow } from '@/lib/queue-rules'
+import { queueGate, giantOf, sittingOf, secondTryOf, nyDayKey, STALE_INVITE_DAYS, REST_DAYS, GIANTS_KEY, parseGiants, SMALL_KEY, parseSmall, type Gate, type OutreachRow } from '@/lib/queue-rules'
 import { sortToday, compareTodayBrands } from '@/lib/today-order'
 import { PLAN_BRAND_SELECT, SENT_EMAIL, loadPlanBrands, type PlanBrand } from '@/lib/plan-brands'
 import { parseSkipDays, dayMoveShape, undoDayMove, type SkipLog } from '@/lib/skip-day'
@@ -970,11 +971,16 @@ function brandStage(b: PlanBrand): BrandStage | null {
 // on to the next sending day (queue-rules.ts sittingOf), extra days too.
 // chosen: people picked for a day's list (src/lib/chosen.ts) — the flagged
 // hold-back never sets one aside.
-type QueueCtx = { giantsOn: boolean; giantOk: Set<string>; today: string; extras: ExtraDays; chosen: ReadonlySet<string> }
+// smallOn: Brands → All brands' Too small switch (queue-rules.ts SMALL_KEY):
+// too small brands may be picked by the system like any other.
+type QueueCtx = { giantsOn: boolean; giantOk: Set<string>; today: string; extras: ExtraDays; chosen: ReadonlySet<string>; smallOn: boolean }
 async function readQueueCtx(): Promise<QueueCtx> {
-  const [raw, extras, chosen] = await Promise.all([readJsonSetting<unknown>(prisma, GIANTS_KEY, {}), readExtraDays(), readChosen(), readStopIndex()])
+  const [raw, extras, chosen, , small] = await Promise.all([
+    readJsonSetting<unknown>(prisma, GIANTS_KEY, {}), readExtraDays(), readChosen(), readStopIndex(),
+    readJsonSetting<unknown>(prisma, SMALL_KEY, {}),
+  ])
   const g = parseGiants(raw)
-  return { giantsOn: g.on, giantOk: g.ok, today: localDayKey(), extras, chosen }
+  return { giantsOn: g.on, giantOk: g.ok, today: localDayKey(), extras, chosen, smallOn: parseSmall(small) }
 }
 // People picked for a day's list (src/lib/chosen.ts, Setting
 // outreachChosen): queued by hand, or put back in the pool by the morning
@@ -2586,7 +2592,8 @@ function suggestionsFor(
   const open = openAll.filter(b => {
     const f = fits.get(b.id)!
     if (f.ruledOut) { if (inCat(b)) ruledOut++; return false }
-    if (hideSmall && f.tooSmall) { if (inCat(b)) hiddenSmall++; return false }
+    // The Too small switch on: they're picked, so they're offered too.
+    if (hideSmall && f.tooSmall && !ctx.q.smallOn) { if (inCat(b)) hiddenSmall++; return false }
     // A category Leo set to Skip is offered only when he asks for it.
     if (cat === '' && f.priority === 'skip') return false
     return true
@@ -2788,7 +2795,7 @@ function brandFit(b: FitFacts, reachable: number, rates: AcceptRates | null, now
 function bestFitEligible(b: PlanBrand, f: FitResult, q: QueueCtx, opts: { allowSkip?: boolean } = {}): boolean {
   return !b.passedAt && !passedNow(b) && !b.doNotEmail && b.usStatus !== 'no' && !inConversation(b)
     && !isReached(b) && !b.targets.some(wasInvited)
-    && !f.ruledOut && !f.bizNote && !f.tooSmall && (opts.allowSkip || f.priority !== 'skip')
+    && !f.ruledOut && !f.bizNote && (!f.tooSmall || q.smallOn) && (opts.allowSkip || f.priority !== 'skip')
     && !heldGiant(b, q)
 }
 // A giant the system must not pick: giants are off and this one wasn't OK'd.
@@ -2937,6 +2944,129 @@ type FitArchiveLog = {
 type ResearchLog = {
   at: string; by: string | null; undone?: string
   brands: Array<{ id: string; name: string; before: Record<string, any>; after: Record<string, any> }>
+}
+
+// The archive Suggest Archive and Archive dead weight both run: passedAt +
+// queued people shelved in one transaction, off upcoming Schedule days (Undo
+// doesn't put them back on a day), the log kept under `key` for Undo.
+async function archiveLogged(brandIds: string[], key: string, by: string | null) {
+  let log: FitArchiveLog | null = null
+  await prisma.$transaction(async tx => {
+    const still = await tx.brand.findMany({ where: { id: { in: brandIds }, passedAt: null }, select: { id: true, name: true } })
+    const ids = still.map(b => b.id)
+    if (!ids.length) return
+    const shelve = (await tx.target.findMany({
+      where: { brandId: { in: ids }, status: { in: ['queued', 'drafted'] }, shelved: false }, select: { id: true },
+    })).map(t => t.id)
+    const at = new Date()
+    await tx.brand.updateMany({ where: { id: { in: ids }, passedAt: null }, data: { passedAt: at } })
+    await tx.target.updateMany({ where: { id: { in: shelve } }, data: { shelved: true, shelvedHow: null, queuedFor: null } })
+    log = { at: at.toISOString(), by, brands: ids, names: still.map(b => b.name), shelved: shelve, days: [] }
+  }, { timeout: 20000 })
+  if (!log) throw new Error('Those brands are archived already')
+  const done = log as FitArchiveLog
+  const plan = await readPlan()
+  const gone = new Set(done.brands)
+  for (const [day, d] of Object.entries(plan)) {
+    const keep = (d?.brandIds ?? []).filter(id => !gone.has(id))
+    if (keep.length !== (d?.brandIds ?? []).length) {
+      for (const id of d.brandIds) if (gone.has(id)) done.days.push({ id, day })
+      d.brandIds = keep
+    }
+  }
+  if (done.days.length) await writePlan(plan)
+  await writeJsonSetting(prisma, key, done)
+  return { ok: true, archived: done.brands.length, names: done.names, shelved: done.shelved.length, offDays: done.days.length }
+}
+// Its Undo: only brands still archived at that same moment (one archived by
+// hand since stays archived), exactly the people it shelved.
+async function undoArchiveLogged(key: string, preview: boolean) {
+  const last = await readJsonSetting<FitArchiveLog | null>(prisma, key, null)
+  if (!last || last.undone || !Array.isArray(last.brands)) throw new Error('Nothing to undo')
+  const still = await prisma.brand.findMany({
+    where: { id: { in: last.brands }, passedAt: new Date(last.at), stoppedAt: null }, select: { id: true, name: true },
+  })
+  if (preview) return { brands: still.map(b => b.name), at: last.at, total: last.brands.length }
+  const ids = still.map(b => b.id)
+  await prisma.$transaction([
+    prisma.brand.updateMany({ where: { id: { in: ids }, passedAt: new Date(last.at), stoppedAt: null }, data: { passedAt: null } }),
+    prisma.target.updateMany({ where: { id: { in: last.shelved }, brandId: { in: ids } }, data: { shelved: false, shelvedHow: null } }),
+  ])
+  await writeJsonSetting(prisma, key, { ...last, undone: new Date().toISOString() })
+  return { ok: true, back: still.map(b => b.name) }
+}
+
+// Where a brand stands for the queue's own picks (supply.ts) — the same
+// test as bestFitEligible, split by why.
+function supplyStateOf(b: PlanBrand, f: FitResult, q: QueueCtx): { state: SupplyState; holds: Hold[] } {
+  const off = !!b.passedAt || b.doNotEmail || !!b.stoppedAt || b.usStatus === 'no' || !!f.ruledOut || !!f.bizNote
+  const reached = isReached(b) || b.targets.some(wasInvited) || inConversation(b)
+  const holds = holdsOf(
+    { giant: !!giantOf(b) && !q.giantOk.has(b.id), tooSmall: f.tooSmall, skip: f.priority === 'skip' },
+    { giantsOn: q.giantsOn, smallOn: q.smallOn },
+  )
+  const ready = contactLabel(b, b.contacts).kind === 'ready'
+  return { state: supplyOf({ off, reached, pass: passedNow(b), holds, ready }), holds }
+}
+
+const DEAD_WEIGHT_KEY = 'deadWeightLast'
+// Archive dead weight's list: brands in play (not archived, not do-not-email)
+// that can never go out (supply.ts deadWeightOf), worst first.
+async function deadWeightCandidates(pre?: { brands: PlanBrand[]; rates: AcceptRates | null; q: QueueCtx; plan: OutreachPlan }, preEx?: AgainExtras) {
+  const ctx = pre ?? await loadBankCtx()
+  const live = ctx.brands.filter(b => !b.passedAt && !b.doNotEmail && !b.stoppedAt)
+  const ids = live.map(b => b.id)
+  const idList = ids.length ? ids : ['-']
+  const [log, confirmed, ex, acts, reps, bank, last] = await Promise.all([
+    readLiLog(prisma),
+    readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {}),
+    preEx ?? loadAgainExtras(ids),
+    prisma.activation.findMany({ where: { brandId: { in: idList } }, select: { brandId: true }, distinct: ['brandId'] }),
+    prisma.repOutreach.findMany({ where: { brandId: { in: idList } }, select: { brandId: true }, distinct: ['brandId'] }),
+    readBankState(),
+    readJsonSetting<FitArchiveLog | null>(prisma, DEAD_WEIGHT_KEY, null),
+  ])
+  const actSet = new Set(acts.map(a => a.brandId))
+  const repSet = new Set(reps.map(r => r.brandId as string))
+  const handIds = new Set(bank.hand.map(h => h.id))
+  const pinned = pinnedDays(ctx.plan)
+  const order: DeadWhy[] = ['notus', 'closed', 'seller', 'nopage', 'nobody']
+  const out: Array<{
+    id: string; name: string; category: string | null; fit: number; why: DeadWhy; whyText: string; note: string | null
+    onFile: number; contacted: boolean; queued: number; plannedLabel: string | null
+  }> = []
+  for (const b of live) {
+    const f = planBrandFit(b, ctx.rates)
+    const mark = log[b.id]
+    const { state } = supplyStateOf(b, f, ctx.q)
+    const why = deadWeightOf({
+      notUs: b.usStatus === 'no', closed: !!f.bizNote, seller: looksLikeSeller(b.name, b.notes),
+      reachable: b.contacts.filter(isReachable).length,
+      cleanRead: !!mark && markOutcome(mark).clean,
+      // The fill's wider read is still to come (the run's default floor).
+      rereadPending: rereadOpen(mark) && queuePickable(state) && f.score >= FILL_FIT_DEFAULT,
+      noPage: !b.linkedinUrl && confirmed[b.id] === 'none' && !parentOf(b.name, b.aka),
+      inTalks: inConversation(b) || repliedAtBrand(b, ex), deal: ex.deals.has(b.id),
+      activation: actSet.has(b.id), rep: repSet.has(b.id),
+      handPick: handIds.has(b.id) || !!addedByLeo(b.source),
+    })
+    if (!why) continue
+    const on = pinned.get(b.id) ?? null
+    out.push({
+      id: b.id, name: b.name, category: b.category, fit: f.score, why, whyText: DEAD_WORDS[why],
+      note: why === 'closed' ? f.bizNote : why === 'nobody' ? (mark?.note || null) : null,
+      onFile: b.contacts.length,
+      contacted: b.targets.some(wasInvited),
+      queued: b.targets.filter(t => !t.shelved && (t.status === 'queued' || t.status === 'drafted')).length,
+      plannedLabel: on ? dayLabel(on) : null,
+    })
+  }
+  out.sort((a, b) => order.indexOf(a.why) - order.indexOf(b.why) || a.fit - b.fit || a.name.localeCompare(b.name))
+  return {
+    brands: out,
+    last: last && !last.undone && Array.isArray(last.brands)
+      ? { at: last.at, by: last.by, count: last.brands.length, names: last.names.slice(0, 8) } : null,
+  }
 }
 
 async function fitArchiveCandidates() {
@@ -7068,54 +7198,102 @@ const handlers: Record<string, Handler> = {
     const want = new Set((Array.isArray(brandIds) ? brandIds : []).map(String))
     const pick = found.brands.filter(b => want.has(b.id))
     if (!pick.length) throw new Error('Nothing ticked is still on the list — reload and look again')
-    let log: FitArchiveLog | null = null
-    await prisma.$transaction(async tx => {
-      const still = await tx.brand.findMany({ where: { id: { in: pick.map(b => b.id) }, passedAt: null }, select: { id: true, name: true } })
-      const ids = still.map(b => b.id)
-      if (!ids.length) return
-      const shelve = (await tx.target.findMany({
-        where: { brandId: { in: ids }, status: { in: ['queued', 'drafted'] }, shelved: false }, select: { id: true },
-      })).map(t => t.id)
-      const at = new Date()
-      await tx.brand.updateMany({ where: { id: { in: ids }, passedAt: null }, data: { passedAt: at } })
-      await tx.target.updateMany({ where: { id: { in: shelve } }, data: { shelved: true, shelvedHow: null, queuedFor: null } })
-      log = { at: at.toISOString(), by: __user ?? null, brands: ids, names: still.map(b => b.name), shelved: shelve, days: [] }
-    }, { timeout: 20000 })
-    if (!log) throw new Error('Those brands are archived already')
-    const done = log as FitArchiveLog
-    // Off the Schedule's upcoming days too, so they don't sit there as
-    // "Archived" cards. Undo doesn't put them back on a day.
-    const plan = await readPlan()
-    const gone = new Set(done.brands)
-    for (const [day, d] of Object.entries(plan)) {
-      const keep = (d?.brandIds ?? []).filter(id => !gone.has(id))
-      if (keep.length !== (d?.brandIds ?? []).length) {
-        for (const id of d.brandIds) if (gone.has(id)) done.days.push({ id, day })
-        d.brandIds = keep
-      }
-    }
-    if (done.days.length) await writePlan(plan)
-    await writeJsonSetting(prisma, FIT_ARCHIVE_KEY, done)
-    return { ok: true, archived: done.brands.length, names: done.names, shelved: done.shelved.length, offDays: done.days.length }
+    return archiveLogged(pick.map(b => b.id), FIT_ARCHIVE_KEY, __user ?? null)
   },
 
   // Undo the last suggest-Archive: brings back only brands still archived
   // at that same moment (one archived by hand since stays archived) and
   // un-shelves exactly the people it shelved.
   async fitArchiveUndo({ preview = true }: any = {}) {
-    const last = await readJsonSetting<FitArchiveLog | null>(prisma, FIT_ARCHIVE_KEY, null)
-    if (!last || last.undone || !Array.isArray(last.brands)) throw new Error('Nothing to undo')
-    const still = await prisma.brand.findMany({
-      where: { id: { in: last.brands }, passedAt: new Date(last.at), stoppedAt: null }, select: { id: true, name: true },
-    })
-    if (preview) return { brands: still.map(b => b.name), at: last.at, total: last.brands.length }
-    const ids = still.map(b => b.id)
-    await prisma.$transaction([
-      prisma.brand.updateMany({ where: { id: { in: ids }, passedAt: new Date(last.at), stoppedAt: null }, data: { passedAt: null } }),
-      prisma.target.updateMany({ where: { id: { in: last.shelved }, brandId: { in: ids } }, data: { shelved: false, shelvedHow: null } }),
+    return undoArchiveLogged(FIT_ARCHIVE_KEY, preview !== false)
+  },
+
+  // ── Brands → All brands: what the queue has to work with ─────────────
+  // Leo, Nov 5 2026 (src/lib/supply.ts): ready to go out, short on people,
+  // what the LinkedIn fill does next (with the floor `minFit`, the same list
+  // the run reads — li-list-db.ts), Reach out again (Week plan's rule), what
+  // the rules hold back with their switches, and how many brands Archive dead
+  // weight would offer. Read-only: brand ids per count, so a count and the
+  // rows its Show opens are one list.
+  async brandSupply({ minFit = FILL_FIT_DEFAULT }: any = {}) {
+    const floor = Math.max(0, Math.min(100, Math.round(Number(minFit)) || 0))
+    const ctx = await loadBankCtx()
+    const today = localDayKey()
+    const [list, ex] = await Promise.all([
+      buildLiList(prisma, { action: 'liList', minFit: floor, focus: 'electrolyte', research: false, salesNav: true, skipGiants: true }),
+      loadAgainExtras(ctx.brands.map(b => b.id)),
     ])
-    await writeJsonSetting(prisma, FIT_ARCHIVE_KEY, { ...last, undone: new Date().toISOString() })
-    return { ok: true, back: still.map(b => b.name) }
+    const dead = await deadWeightCandidates(ctx, ex)
+    const again = againRows(ctx.brands, { today, ex, q: ctx.q, rates: ctx.rates, plan: ctx.plan })
+    const ids: Record<'ready' | 'short' | 'none' | 'pass' | Hold, string[]> = { ready: [], short: [], none: [], pass: [], giant: [], skip: [], small: [] }
+    const held: Hold[][] = []
+    const skipCats = new Map<string, number>()
+    let readyPeople = 0
+    for (const b of ctx.brands) {
+      const f = planBrandFit(b, ctx.rates)
+      const { state, holds } = supplyStateOf(b, f, ctx.q)
+      const reachable = b.contacts.filter(isReachable).length
+      if (state === 'ready') { ids.ready.push(b.id); readyPeople += Math.min(againCount(b), reachable) }
+      else if (state === 'short') { ids.short.push(b.id); if (!reachable) ids.none.push(b.id) }
+      else if (state === 'pass') ids.pass.push(b.id)
+      else if (state === 'held') {
+        held.push(holds)
+        for (const h of holds) ids[h].push(b.id)
+        if (holds.length === 1 && holds[0] === 'skip') skipCats.set(b.category || '', (skipCats.get(b.category || '') ?? 0) + 1)
+      }
+    }
+    const fill: Record<'new' | 'again' | 'reread', string[]> = { new: [], again: [], reread: [] }
+    for (const i of list.items as any[]) if (i.brandId && fill[i.kind as 'new']) fill[i.kind as 'new'].push(i.brandId)
+    return {
+      today, minFit: floor,
+      switches: { giantsOn: ctx.q.giantsOn, smallOn: ctx.q.smallOn },
+      ids,
+      readyPeople, perDay: DAILY_SEND_LIMIT,
+      // How many more brands each switch lets in (that rule alone holds them).
+      lets: Object.fromEntries(HOLDS.map(h => [h, onlyHeldBy(held, h)])) as Record<Hold, number>,
+      skipCats: [...skipCats].map(([key, n]) => ({ key, n })).sort((a, b) => b.n - a.n),
+      fill: {
+        ids: fill, total: list.items.length, belowFit: list.belowFit, bigSkipped: list.bigSkipped,
+        resting: list.resting, stuck: list.stuck, shortFirst: list.shortFirst, reread: list.reread, perDay: LI_PER_DAY,
+      },
+      again: {
+        total: again.length,
+        due: again.filter(r => r.state === 'due').length,
+        late: again.filter(r => r.state === 'late').length,
+        ids: again.map(r => r.id),
+        rows: again.slice(0, 60).map(r => ({
+          id: r.id, name: r.name, category: r.category, fit: r.fit, state: r.state, last: r.last, daysSince: r.daysSince,
+          dueBy: r.dueBy, fresh: r.fresh.slice(0, 3), freshTotal: r.freshTotal, going: r.going, accepted: r.accepted,
+          pinnedOn: r.pinnedOn, inToday: r.inToday,
+        })),
+      },
+      days: scheduleDays(ctx.plan, ctx.q.extras).slice(0, 4).map(d => ({ date: d.key, label: dayLabel(d.key), today: d.key === today })),
+      dead: { count: dead.brands.length, last: dead.last },
+    }
+  },
+
+  // Brands → All brands' Too small switch (queue-rules.ts SMALL_KEY): on =
+  // too small brands are picked like any other.
+  async setSmallOn({ on }: any) {
+    await writeJsonSetting(prisma, SMALL_KEY, { on: on === true })
+    return { smallOn: on === true }
+  },
+
+  // Archive dead weight (supply.ts deadWeightOf): brands that can never go
+  // out. Preview lists them all ticked, grouped by why; apply archives only
+  // ticked ids a fresh preview still lists — the same archive as Suggest
+  // Archive (passedAt + queued people shelved, off upcoming Schedule days),
+  // with its own Undo.
+  async deadWeight({ preview = true, brandIds, __user }: any = {}) {
+    const found = await deadWeightCandidates()
+    if (preview !== false) return found
+    const want = new Set((Array.isArray(brandIds) ? brandIds : []).map(String))
+    const pick = found.brands.filter(b => want.has(b.id))
+    if (!pick.length) throw new Error('Nothing ticked is still on the list — reload and look again')
+    return archiveLogged(pick.map(b => b.id), DEAD_WEIGHT_KEY, __user ?? null)
+  },
+  async deadWeightUndo({ preview = true }: any = {}) {
+    return undoArchiveLogged(DEAD_WEIGHT_KEY, preview !== false)
   },
 
   // ── Brand Fit: research ──────────────────────────────────────────────
@@ -10621,7 +10799,7 @@ const handlers: Record<string, Handler> = {
       .map(({ b, f }) => ({ b, f, fit: f.score, label: contactLabel(b, b.contacts), people: previewBrandPicks(b, { forToday: false, dayStart }).people }))
       .filter(c => c.people.length > 0)
       // Counted only when someone there would have gone out.
-      .filter(c => { if (hideSmall && c.f.tooSmall) { hiddenSmall++; return false } return true })
+      .filter(c => { if (hideSmall && c.f.tooSmall && !q.smallOn) { hiddenSmall++; return false } return true })
       .sort(compareOpenBrands)
     const byCat = new Map<string, Cand[]>()
     for (const c of cands) {

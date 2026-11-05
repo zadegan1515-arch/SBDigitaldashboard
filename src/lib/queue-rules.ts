@@ -49,6 +49,15 @@ export const REST_DAYS = 7
 
 // Setting outreachGiants = { on: boolean, ok: [brandId] }: the Schedule's
 // Giants switch and the giants Leo OK'd one at a time ("Add anyway").
+// Too small brands (brand-fit.ts isTooSmall: under $1M a year, or under 20
+// on LinkedIn measured) are held back from the automatic picks like giants;
+// Brands → All brands' switch lets them in (Leo, Nov 5 2026 — "switches
+// with counts"). Setting outreachSmall = { on: boolean }, off by default.
+export const SMALL_KEY = 'outreachSmall'
+export function parseSmall(v: unknown): boolean {
+  return !!v && typeof v === 'object' && (v as { on?: unknown }).on === true
+}
+
 export const GIANTS_KEY = 'outreachGiants'
 export function parseGiants(v: unknown): { on: boolean; ok: Set<string> } {
   const o = v && typeof v === 'object' ? (v as { on?: unknown; ok?: unknown }) : {}

@@ -28,7 +28,7 @@ export const LI_READER = 2
 // copies there's an update (the pill turns orange; one click takes it),
 // since Tampermonkey on its own only checks about once a day.
 // scripts/test-li-script.js fails when the two drift apart.
-export const LI_SCRIPT_VERSION = '1.43'
+export const LI_SCRIPT_VERSION = '1.44'
 
 // Sales Navigator in the fill (script 1.31, Oct 12 2026): reads before this
 // were on the People tab only.
@@ -57,6 +57,11 @@ export type LiMark = {
   skip?: string | null; shown?: number | null; read?: number | null
   // Read by a run with Sales Navigator switched off (1.38).
   snOff?: boolean
+  // Its read took the founders + events search too (script 1.44, supply.ts).
+  wide?: boolean
+  // Read again after a clean read (supply.ts rereadOpen — the one more,
+  // wider read for a brand still short on people). Kept from then on.
+  reread?: boolean
 }
 export type LiLog = Record<string, LiMark>
 
@@ -97,7 +102,7 @@ export function markOutcome(mark: LiMark): { clean: boolean; issue: string | nul
 // a Sales Navigator read is clean, a run that meant to use it and read the
 // People tab is an issue, anything else keeps the old month's rest.
 export const ISSUE_CODES = Object.keys(ISSUE_WORDS)
-export function sweptOutcome(body: any): Pick<LiMark, 'clean' | 'issue' | 'issueNote' | 'run' | 'skip' | 'shown' | 'read' | 'snOff'> {
+export function sweptOutcome(body: any): Pick<LiMark, 'clean' | 'issue' | 'issueNote' | 'run' | 'skip' | 'shown' | 'read' | 'snOff' | 'wide'> {
   const b = body && typeof body === 'object' ? body : {}
   const sn = b.salesNav === true
   const num = (v: unknown) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Math.max(0, Math.round(Number(v))))
@@ -115,6 +120,7 @@ export function sweptOutcome(body: any): Pick<LiMark, 'clean' | 'issue' | 'issue
     shown: num(b.shown),
     read: num(b.read),
     ...(b.snOn === false ? { snOff: true } : {}),
+    ...(b.wide === true ? { wide: true } : {}),
   }
 }
 
@@ -124,13 +130,17 @@ export const SN_ISSUES = ['snNoLoad', 'snNoId', 'snOtherCompany', 'snLeft', 'par
 // The mark a visit leaves, given the one before: a run with Sales Navigator
 // switched off that ends with nothing wrong doesn't clear a Sales Navigator
 // issue (nor count as a try) — the brand still needs it.
+// A visit to a brand whose last read was clean is its one more read
+// (supply.ts — the fill only brings a clean brand back for that): the mark
+// says so from then on, so it isn't brought back again.
 export function nextMark(prev: LiMark | undefined, mark: Omit<LiMark, 'at'>, at: string): LiMark {
   const before = prev ? markOutcome(prev) : null
+  const reread = !!prev && (!!prev.reread || (!!before?.clean && !prev.skip)) ? { reread: true } : {}
   if (mark.snOff && !mark.issue && !mark.clean && !mark.skip && before?.issue && SN_ISSUES.includes(before.issue)) {
-    return { at, ...mark, issue: before.issue, issueNote: prev!.issueNote || null, tries: triesOf(prev!) }
+    return { at, ...mark, issue: before.issue, issueNote: prev!.issueNote || null, tries: triesOf(prev!), ...reread }
   }
   const tries = nextTries(prev, mark)
-  return { at, ...mark, ...(mark.issue ? { tries } : {}) }
+  return { at, ...mark, ...(mark.issue ? { tries } : {}), ...reread }
 }
 
 type SettingStore = {

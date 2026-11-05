@@ -1638,6 +1638,57 @@
   .cv-head{margin-bottom:0}
   .cv-head .btn-ghost,.cv-head .btn-solid{padding:5px 12px;font-size:13px;text-decoration:none}
   .cv-tog{background:none;border:0;color:var(--ink-3);font:inherit;font-size:13px;cursor:pointer;padding:4px 2px}
+  /* What the queue has to work with (Leo, Nov 5 2026): four tiles of counts on All brands */
+  .su-card{margin-top:14px;padding:14px 16px}
+  .su-top{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px}
+  .su-top b{font-size:15px}
+  .su-top .su-show{margin-left:auto}
+  .su-grid{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.3fr) minmax(0,.9fr) minmax(0,1.3fr);gap:12px}
+  @media (max-width:1300px){.su-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:700px){.su-grid{grid-template-columns:minmax(0,1fr)}}
+  .su-tile{background:var(--surface-2);border:1px solid var(--border-soft);border-radius:10px;padding:12px 14px;min-width:0}
+  .su-h{font-size:12.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px}
+  .su-big{font-size:30px;font-weight:800;font-family:var(--display);font-variant-numeric:tabular-nums;line-height:1.1}
+  .su-big span{font-size:14px;font-weight:500;color:var(--ink-2);font-family:inherit}
+  .su-ready .su-big{color:var(--good)}
+  .su-sub{font-size:13.5px;color:var(--ink-2);margin:2px 0 8px}
+  .su-dim{font-size:12.5px;color:var(--ink-3);line-height:1.45}
+  .su-foot{margin-top:10px;padding-top:8px;border-top:1px solid var(--border-soft);font-size:13px;color:var(--ink-2)}
+  .su-line{display:flex;gap:10px;align-items:baseline;padding:5px 0}
+  .su-n{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;min-width:36px;text-align:right}
+  .su-w{flex:1;font-size:13.5px;color:var(--ink-2);min-width:0}
+  .su-show{background:none;border:1px solid var(--border);color:var(--accent-hi);font:inherit;font-size:12.5px;border-radius:99px;padding:2px 10px;cursor:pointer;white-space:nowrap}
+  .su-show:hover{border-color:var(--accent)}
+  .su-show.on{background:var(--accent-soft);border-color:var(--accent)}
+  .su-fill{margin-top:8px;padding-top:8px;border-top:1px solid var(--border-soft)}
+  .su-fill-h{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ink-2);margin-bottom:2px}
+  .su-floor.inp{width:58px;height:28px;padding:2px 6px;font-size:13px;min-height:0}
+  .su-go{display:inline-block;margin-top:8px;padding:5px 12px;font-size:13px;text-decoration:none}
+  .su-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
+  .su-acts .btn-ghost,.su-ra .btn-ghost{padding:4px 10px;font-size:13px}
+  .su-rule{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--border-soft)}
+  .su-rule:first-of-type{border-top:0;padding-top:0}
+  .su-rw{flex:1;min-width:0;font-size:13.5px;color:var(--ink-2)}
+  .su-rw b{color:var(--ink-1)}
+  .su-on{color:var(--good)}
+  .su-ra{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
+  .su-again,.su-dead{margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+  .su-sec{font-weight:600;font-size:14px;margin-bottom:6px}
+  .su-arow{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border-soft);flex-wrap:wrap}
+  .su-aname{min-width:0;flex:1 1 320px;font-size:14px}
+  .su-link{cursor:pointer;color:var(--ink-1)}
+  .su-link:hover{color:var(--accent-hi);text-decoration:underline}
+  .su-fit{font-size:12.5px;color:var(--ink-3)}
+  .su-adays{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .su-day{padding:4px 10px;font-size:13px}
+  .su-dgrp{margin-top:10px}
+  .su-dh{font-size:13px;font-weight:600;color:var(--ink-2);margin-bottom:2px}
+  .su-drow{display:flex;gap:10px;align-items:flex-start;padding:5px 0;font-size:13.5px;cursor:pointer}
+  .su-drow input{margin-top:3px}
+  .su-dnote{display:block}
+  .su-dacts{display:flex;gap:8px;margin-top:12px}
+  .su-filter{font-size:13.5px;color:var(--ink-2);gap:8px!important}
+  .su-filter a{color:var(--accent-hi)}
   .cv-tog:hover{color:var(--ink-2)}
   .cv-card .cv-run{margin-top:8px;padding-top:7px}
   .fp-fold{margin-top:8px}
@@ -2505,6 +2556,7 @@
       <div class="eyebrow">Brands</div>
       <h1 id="brands-title">Brands</h1>
       <div class="sub" id="brands-sub">Loading…</div>
+      <div id="supply-card"></div>
       <div id="cover-card"></div>
       <div id="fill-progress"></div>
       <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
@@ -8008,6 +8060,7 @@ function loadBrands(category) {
       : cc.inPlay + ' brands in play · ' + cc.covered + ' have a buyer · ' + cc.need + ' need one';
 
     renderCoverage();
+    if (category === 'all') supLoad(); else supRender();
     if (category === 'all') {
       api('buyerCoverage').then(function (info) {
         CV_INFO = info;
@@ -8146,6 +8199,7 @@ function renderCoverage() {
 
 // "Show them": Needs people, narrowed to that reason, scrolled into view.
 function cvShow(state) {
+  if (BR.sup) { BR.sup = ''; supRender(); }
   BR.show = 'need';
   BR.why = state || '';
   BR.fit = ''; // the card's count is of every score
@@ -8176,6 +8230,288 @@ document.getElementById('cover-card').addEventListener('click', function (e) {
   if (e.target.closest('[data-cvzach]')) cvZachList();
 });
 
+// --- what the queue has to work with (Leo, Nov 5 2026) ------------------
+// "give me counts of how many brands need a linkedin fill. what brands have
+// more people we can reach out to again, and overall clean up the queue
+// brands so that i can get more when i want to reach out". His picks: the
+// counts on All brands, each one opens those brands in the table below;
+// Reach out again = Week plan's rule, with a button per sending day; what the
+// rules hold back as counts with a switch each; Archive dead weight
+// previewed, with Undo. brandSupply (src/lib/supply.ts) answers with the
+// brand ids per count, so a count and the rows its Show opens are one list
+// (BR.sup narrows brShown). The fill's counts use the Fill schedule's Brand
+// Fit floor (localStorage sb.fillFit), so they match it.
+var SUP = { data: null, sets: {}, err: null, againOpen: false, dead: null, deadTick: {}, deadErr: null };
+var SUP_TURN = 0;
+var SUP_LABEL = {
+  ready: 'Ready to go out', short: 'Short on people to go out', none: 'Nobody to reach yet', pass: 'On a two-week Pass',
+  fnew: 'Not read by the LinkedIn fill yet', fagain: 'Read again by the fill', freread: 'One more, wider read on the fill',
+  again: 'Reach out again', giant: 'Giants held back', small: 'Too small, held back', skip: 'In a Skip category'
+};
+function supLoad() {
+  var box = document.getElementById('supply-card');
+  if (!box) return Promise.resolve();
+  if (lastCategory !== 'all' || BRANDS_SHOWN !== 'all') { box.innerHTML = ''; return Promise.resolve(); }
+  var turn = ++SUP_TURN;
+  if (!SUP.data) box.innerHTML = '<div class="panel su-card"><div class="su-dim">Counting what the queue has to work with…</div></div>';
+  return api('brandSupply', { minFit: fillFitFloor() }).then(function (d) {
+    if (turn !== SUP_TURN) return;
+    // An answer without the counts (a server mid-deploy, an older one): no card.
+    if (!d || !d.ids || !d.fill || !d.fill.ids || !d.again || !d.switches) { SUP.data = null; SUP.err = null; box.innerHTML = ''; return; }
+    SUP.data = d; SUP.err = null;
+    var s = {};
+    ['ready', 'short', 'none', 'pass', 'giant', 'skip', 'small'].forEach(function (k) { s[k] = new Set(d.ids[k] || []); });
+    s.fnew = new Set(d.fill.ids.new || []);
+    s.fagain = new Set(d.fill.ids.again || []);
+    s.freread = new Set(d.fill.ids.reread || []);
+    s.again = new Set(d.again.ids || []);
+    SUP.sets = s;
+    supRender();
+    if (BR.sup && lastCategory === 'all') { brRender(); applyBrandFilter(); }
+  }).catch(function (e) {
+    if (turn !== SUP_TURN) return;
+    SUP.err = e.message;
+    supRender();
+  });
+}
+function supShowBtn(k, label) {
+  return '<button class="su-show' + (BR.sup === k ? ' on' : '') + '" data-supshow="' + k + '">' + (label || 'Show') + '</button>';
+}
+function supLine(num, what, k, tip) {
+  return '<div class="su-line"' + (tip ? ' title="' + esc(tip) + '"' : '') + '><b class="su-n">' + num + '</b>' +
+    '<span class="su-w">' + what + '</span>' + (k && num ? supShowBtn(k) : '') + '</div>';
+}
+function supRender() {
+  var box = document.getElementById('supply-card');
+  if (!box) return;
+  if (lastCategory !== 'all' || BRANDS_SHOWN !== 'all') { box.innerHTML = ''; return; }
+  var d = SUP.data;
+  if (!d) {
+    box.innerHTML = SUP.err ? '<div class="panel su-card"><div class="su-dim">Couldn’t count the queue: ' + esc(SUP.err) +
+      ' <button class="su-show" data-supre="1">Try again</button></div></div>' : '';
+    return;
+  }
+  var n = function (k) { return (d.ids[k] || []).length; };
+  var per = d.perDay || 30;
+  var days = d.readyPeople ? Math.max(1, Math.round(d.readyPeople / per)) : 0;
+  var f = d.fill, a = d.again, sw = d.switches;
+  var noBuyer = cvCounts(BR_LIST).need;
+  var fillDays = f.total ? Math.max(1, Math.ceil(f.total / (f.perDay || 100))) : 0;
+
+  var ready = '<div class="su-tile su-ready">' +
+    '<div class="su-h">Ready to go out</div>' +
+    '<div class="su-big">' + n('ready') + '<span>' + (n('ready') === 1 ? ' brand' : ' brands') + '</span></div>' +
+    '<div class="su-sub" title="Never reached, nothing holding them back, and enough people with a LinkedIn or an email to go out whole">' +
+      (d.readyPeople ? 'about ' + d.readyPeople + ' people · ' + plural(days, 'sending day') + ' at ' + per : 'nobody ready yet') + '</div>' +
+    (n('ready') ? supShowBtn('ready', 'Show them') : '') +
+    (n('pass') ? '<div class="su-foot">' + n('pass') + ' more on a two-week Pass ' + supShowBtn('pass') + '</div>' : '') +
+  '</div>';
+
+  var fillNote = [
+    f.belowFit ? f.belowFit + ' under Fit ' + d.minFit + ' left off' : '',
+    f.bigSkipped ? f.bigSkipped + ' very big skipped' : '',
+    f.resting ? f.resting + ' read in full already' : ''
+  ].filter(Boolean).join(' · ');
+  var needs = '<div class="su-tile su-needs">' +
+    '<div class="su-h">Needs a LinkedIn fill</div>' +
+    supLine(n('short'), 'short on people to go out whole' + (n('none') ? ' <span class="su-dim">(' + n('none') + ' with nobody to reach)</span>' : ''), 'short',
+      'Brands the queue could pick by itself, with fewer people to reach than they go out with (3, 4, or 10 at a big company)') +
+    supLine(noBuyer, 'no partnerships, marketing or founder person on file', 'nobuyer') +
+    '<div class="su-fill">' +
+      '<div class="su-fill-h"><span><b>' + f.total + '</b> on the fill at Brand Fit</span><input class="inp su-floor" data-supfloor type="number" min="0" max="100" value="' + esc(String(d.minFit)) +
+        '" title="The same floor as the fill’s setup panel and Outreach → People’s Fill schedule"><span>and up' +
+        (fillDays ? ' · about ' + plural(fillDays, 'day') : '') + '</span></div>' +
+      (f.ids.new.length ? supLine(f.ids.new.length, 'not read yet', 'fnew') : '') +
+      (f.ids.again.length ? supLine(f.ids.again.length, 'read again — the last read went wrong or is due', 'fagain') : '') +
+      (f.total ? '' : '<div class="su-dim">Nothing left for the fill at this floor.</div>') +
+      (!f.ids.reread.length ? '' : supLine(f.ids.reread.length, 'read in full, still short — one more read with founders &amp; events', 'freread',
+        'The fill searched marketing, business development and partnerships. These get one more read that adds founders, owners and events people.')) +
+      (f.shortFirst ? '<div class="su-dim">The ' + f.shortFirst + ' short on people go first, best Brand Fit first, and search founders &amp; events too.</div>' : '') +
+      (fillNote ? '<div class="su-dim">' + esc(fillNote) + '</div>' : '') +
+      (f.total ? '<a class="btn-solid su-go" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" title="Opens LinkedIn in a window of its own and starts the fill. Needs the LinkedIn capture script in Tampermonkey.">Start the fill ↗</a>' : '') +
+    '</div>' +
+  '</div>';
+
+  var again = '<div class="su-tile">' +
+    '<div class="su-h">Reach out again</div>' +
+    '<div class="su-big">' + a.total + '<span>' + (a.total === 1 ? ' brand' : ' brands') + '</span></div>' +
+    '<div class="su-sub">' + (a.total ? a.due + ' due · ' + a.late + ' late' : 'none right now') + '</div>' +
+    '<div class="su-dim">Reached a week or more ago, nobody replied, and someone who decides there was never contacted.</div>' +
+    (a.total ? '<div class="su-acts"><button class="btn-ghost" data-supagain="1" aria-expanded="' + (SUP.againOpen ? 'true' : 'false') + '">' +
+      (SUP.againOpen ? 'Hide the list ▴' : 'See the list ▾') + '</button>' + supShowBtn('again', 'Show in the table') + '</div>' : '') +
+  '</div>';
+
+  var skipLine = (d.skipCats || []).map(function (c) { return esc(CAT_NAMES[c.key] || c.key || 'No category') + ' ' + c.n; }).join(' · ');
+  var held = '<div class="su-tile su-held">' +
+    '<div class="su-h">Held back by the rules</div>' +
+    '<div class="su-rule"><div class="su-rw"><b>Giants</b> ' + (sw.giantsOn ? '<span class="su-on">let in</span>' : n('giant') + ' held back') +
+      '<div class="su-dim">household names, $1B+ sales or 1,500+ on LinkedIn</div></div>' +
+      '<div class="su-ra">' + (!sw.giantsOn && n('giant') ? supShowBtn('giant') : '') +
+      '<button class="btn-ghost" data-supsw="giants">' + (sw.giantsOn ? 'Hold them back' : 'Let them in' + (d.lets.giant ? ' (+' + d.lets.giant + ')' : '')) + '</button></div></div>' +
+    '<div class="su-rule"><div class="su-rw"><b>Too small</b> ' + (sw.smallOn ? '<span class="su-on">let in</span>' : n('small') + ' held back') +
+      '<div class="su-dim">sales under $1M, or under 20 on LinkedIn</div></div>' +
+      '<div class="su-ra">' + (!sw.smallOn && n('small') ? supShowBtn('small') : '') +
+      '<button class="btn-ghost" data-supsw="small">' + (sw.smallOn ? 'Hold them back' : 'Let them in' + (d.lets.small ? ' (+' + d.lets.small + ')' : '')) + '</button></div></div>' +
+    '<div class="su-rule"><div class="su-rw"><b>Skip categories</b> ' + n('skip') + ' held back' +
+      '<div class="su-dim">' + (skipLine || 'no category is on Skip') + '</div></div>' +
+      '<div class="su-ra">' + (n('skip') ? supShowBtn('skip') : '') + '<button class="btn-ghost" data-supcp="1">Category priority…</button></div></div>' +
+    '<div class="su-rule su-deadrow"><div class="su-rw"><b>Dead weight</b> ' + d.dead.count + (d.dead.count === 1 ? ' brand' : ' brands') +
+      '<div class="su-dim">can never go out: not in the US, closed, sells sponsorships, or nobody to reach after a full read</div>' +
+      (d.dead.last ? '<div class="su-dim">Archived ' + d.dead.last.count + ' on ' + esc(shortDate(d.dead.last.at)) + ' · <a href="#" data-supundo="1">Undo</a></div>' : '') + '</div>' +
+      '<div class="su-ra">' + (d.dead.count ? '<button class="btn-ghost" data-supdead="1">Archive dead weight…</button>' : '') + '</div></div>' +
+  '</div>';
+
+  box.innerHTML = '<div class="panel su-card">' +
+    '<div class="su-top"><b>What the queue has to work with</b><span class="su-dim">Click a count to see those brands in the table below.</span>' +
+      '<button class="su-show" data-supre="1" title="Count again">↻</button></div>' +
+    '<div class="su-grid">' + ready + needs + again + held + '</div>' +
+    (SUP.againOpen && a.rows.length ? supAgainHtml(d) : '') +
+    (SUP.dead || SUP.deadErr ? supDeadHtml() : '') +
+  '</div>';
+}
+function supAgainHtml(d) {
+  var a = d.again;
+  return '<div class="su-again"><div class="su-sec">Reach out again — late first, then best Brand Fit</div>' + a.rows.map(function (r) {
+    var who = r.fresh.map(function (p) { return esc(p.name) + (p.title ? ' — ' + esc(p.title) : ''); }).join(' · ') +
+      (r.freshTotal > r.fresh.length ? ' · +' + (r.freshTotal - r.fresh.length) + ' more' : '');
+    var when = r.state === 'late' ? r.daysSince + ' days since the last outreach — late' : 'last outreach ' + sdDayName(r.last) + ' · due by ' + sdDayName(r.dueBy);
+    var btns = r.inToday ? '<span class="su-dim">In today’s list</span>'
+      : r.pinnedOn ? '<span class="su-dim">On ' + esc(sdDayName(r.pinnedOn)) + '</span>'
+      : '<span class="su-dim">Put on</span>' + d.days.map(function (dy) {
+          return '<button class="btn-ghost su-day" data-supday="' + dy.date + '" data-supbrand="' + r.id + '">' + esc(dy.today ? 'Today' : sdDayName(dy.date)) + '</button>';
+        }).join('');
+    return '<div class="su-arow" data-suparow="' + r.id + '">' +
+      '<div class="su-aname"><b class="su-link" data-brand="' + r.id + '">' + esc(r.name) + '</b> ' + rbTag(r.id) +
+        ' <span class="su-fit">Fit ' + r.fit + '</span>' + (r.accepted ? ' <span class="su-dim">· ' + r.accepted + ' accepted, on Zach’s list</span>' : '') +
+        '<div class="su-dim">' + esc(when) + ' · ' + r.going + ' would go: ' + who + '</div></div>' +
+      '<div class="su-adays">' + btns + '</div></div>';
+  }).join('') +
+  (a.total > a.rows.length ? '<div class="su-dim" style="margin-top:8px">… and ' + (a.total - a.rows.length) + ' more — Show in the table lists them all.</div>' : '') +
+  '</div>';
+}
+function supDeadHtml() {
+  if (SUP.deadErr) return '<div class="su-dead"><div class="su-dim">' + esc(SUP.deadErr) + '</div></div>';
+  var list = SUP.dead.brands || [];
+  if (!list.length) return '<div class="su-dead"><div class="su-dim">Nothing to archive — every brand left can still go out.</div> <button class="btn-ghost" data-supdeadx="1">Close</button></div>';
+  var ticked = list.filter(function (b) { return SUP.deadTick[b.id] !== false; }).length;
+  var groups = [], seen = {};
+  list.forEach(function (b) { if (!seen[b.why]) { seen[b.why] = []; groups.push({ why: b.why, text: b.whyText, rows: seen[b.why] }); } seen[b.why].push(b); });
+  return '<div class="su-dead">' +
+    '<div class="su-sec">Archive dead weight — ' + list.length + (list.length === 1 ? ' brand' : ' brands') + ' that can never go out</div>' +
+    '<div class="su-dim">Archive = off outreach, its queued people set aside, off coming Schedule days. Bring one back from the Archived tab, or Undo all of them here. Never a brand in talks, with a deal, or one you added yourself (for “nobody to reach”).</div>' +
+    groups.map(function (g) {
+      return '<div class="su-dgrp"><div class="su-dh">' + esc(g.text) + ' · ' + g.rows.length + '</div>' + g.rows.map(function (b) {
+        var bits = [CAT_NAMES[b.category] || b.category || 'No category', 'Fit ' + b.fit, b.onFile + ' on file'];
+        if (b.contacted) bits.push('reached before');
+        if (b.queued) bits.push(b.queued + ' queued — set aside');
+        if (b.plannedLabel) bits.push('on ' + b.plannedLabel + ' — comes off');
+        return '<label class="su-drow"><input type="checkbox" data-supdtick="' + b.id + '"' + (SUP.deadTick[b.id] !== false ? ' checked' : '') + '>' +
+          '<span><b>' + esc(b.name) + '</b> <span class="su-dim">' + esc(bits.join(' · ')) + '</span>' +
+          (b.note ? '<span class="su-dim su-dnote">' + esc(b.note) + '</span>' : '') + '</span></label>';
+      }).join('') + '</div>';
+    }).join('') +
+    '<div class="su-dacts"><button class="btn-solid" data-supdeadgo="1"' + (ticked ? '' : ' disabled') + '>Archive ' + ticked + ' ticked</button>' +
+      '<button class="btn-ghost" data-supdeadx="1">Cancel</button></div>' +
+  '</div>';
+}
+// "Show": the table below narrowed to that count's brands, best Brand Fit
+// first (the counts are what the queue could use, so the best are the ones
+// to look at). "No buyer" is the coverage card's Needs people.
+function supShow(k) {
+  if (BR.sup === k) { BR.sup = ''; brRender(); applyBrandFilter(); return; }
+  if (k === 'nobuyer') { BR.sup = ''; supRender(); cvShow(''); return; }
+  BR.sup = k; BR.show = 'all'; BR.why = ''; BR.fit = ''; REACH_F.brands = '';
+  BR.sort = 'fit';
+  document.getElementById('bq').value = '';
+  supRender();
+  brRender();
+  applyBrandFilter();
+  var t = document.getElementById('brands-list');
+  if (t && t.scrollIntoView) t.scrollIntoView({ block: 'start' });
+}
+document.getElementById('supply-card').addEventListener('click', function (e) {
+  var b;
+  if ((b = e.target.closest('[data-supshow]'))) { supShow(b.getAttribute('data-supshow')); return; }
+  if (e.target.closest('[data-supre]')) { supLoad(); return; }
+  if (e.target.closest('[data-supagain]')) { SUP.againOpen = !SUP.againOpen; supRender(); return; }
+  if (e.target.closest('[data-supcp]')) { cpOpen(); return; }
+  if ((b = e.target.closest('[data-supsw]'))) {
+    var which = b.getAttribute('data-supsw'), sw = SUP.data.switches;
+    var turnOn = which === 'giants' ? !sw.giantsOn : !sw.smallOn;
+    var what = which === 'giants' ? 'giants (household names, $1B+ sales or 1,500+ on LinkedIn)' : 'too small brands (under $1M sales or under 20 on LinkedIn)';
+    if (!confirm(turnOn
+        ? 'Let ' + what + ' into the queue? Best fit days, Fill to 30, Plan my week and the LinkedIn fill can then pick them by themselves.'
+        : 'Hold ' + what + ' back again? The queue stops picking them by itself; adding one by hand still works.')) return;
+    b.disabled = true;
+    api(which === 'giants' ? 'setGiantsOn' : 'setSmallOn', { on: turnOn }).then(function () {
+      toast((which === 'giants' ? 'Giants' : 'Too small brands') + (turnOn ? ' let in' : ' held back again'));
+      supLoad();
+    }).catch(function (err) { b.disabled = false; toast(err.message); });
+    return;
+  }
+  if ((b = e.target.closest('[data-supday]'))) {
+    var id = b.getAttribute('data-supbrand'), date = b.getAttribute('data-supday');
+    var row = SUP.data.again.rows.filter(function (r) { return r.id === id; })[0];
+    b.disabled = true;
+    api('reachAgain', { brandId: id, date: date }).then(function (r) {
+      if (r.ok === false) { b.disabled = false; toast(r.text || 'Couldn’t put it on that day'); return; }
+      toast((r.brandName || 'Brand') + ' is on ' + (r.label || sdDayName(date)) + ' — ' + plural((r.people || []).length, 'person', 'people') + ' to reach');
+      if (row) { if (date === SUP.data.today) row.inToday = true; else row.pinnedOn = date; }
+      supRender();
+    }).catch(function (err) { b.disabled = false; toast(err.message); });
+    return;
+  }
+  if (e.target.closest('[data-supdead]')) {
+    SUP.deadErr = null; SUP.dead = { brands: [] }; SUP.deadTick = {};
+    var dbtn = e.target.closest('[data-supdead]');
+    dbtn.disabled = true;
+    api('deadWeight', { preview: true }).then(function (r) { SUP.dead = r; supRender(); })
+      .catch(function (err) { SUP.dead = null; SUP.deadErr = err.message; supRender(); });
+    return;
+  }
+  if (e.target.closest('[data-supdeadx]')) { SUP.dead = null; SUP.deadErr = null; supRender(); return; }
+  if ((b = e.target.closest('[data-supdeadgo]'))) {
+    var ids = (SUP.dead.brands || []).filter(function (x) { return SUP.deadTick[x.id] !== false; }).map(function (x) { return x.id; });
+    if (!ids.length) return;
+    if (!confirm('Archive ' + plural(ids.length, 'brand') + '? They come off outreach and their queued people are set aside. Undo brings them all back.')) return;
+    b.disabled = true;
+    api('deadWeight', { preview: false, brandIds: ids }).then(function (r) {
+      toast('Archived ' + plural(r.archived, 'brand') + (r.shelved ? ' · ' + plural(r.shelved, 'person', 'people') + ' set aside' : '') + (r.offDays ? ' · off ' + plural(r.offDays, 'Schedule day') : ''));
+      SUP.dead = null;
+      loadBrands('all');
+    }).catch(function (err) { b.disabled = false; toast(err.message); });
+    return;
+  }
+  if (e.target.closest('[data-supundo]')) {
+    e.preventDefault();
+    api('deadWeightUndo', { preview: true }).then(function (p) {
+      if (!p.brands.length) { toast('Nothing to bring back — they were brought back or archived again since'); return; }
+      if (!confirm('Bring back ' + plural(p.brands.length, 'brand') + '?\n\n' + p.brands.slice(0, 20).join(', ') + (p.brands.length > 20 ? ', …' : ''))) return;
+      return api('deadWeightUndo', { preview: false }).then(function (r) {
+        toast(plural(r.back.length, 'brand') + ' back in outreach');
+        loadBrands('all');
+      });
+    }).catch(function (err) { toast(err.message); });
+  }
+});
+document.getElementById('supply-card').addEventListener('change', function (e) {
+  var t = e.target.closest('[data-supdtick]');
+  if (t) {
+    // The count on the button only — a redraw would move the list under the mouse.
+    SUP.deadTick[t.getAttribute('data-supdtick')] = t.checked;
+    var go = document.querySelector('#supply-card [data-supdeadgo]');
+    var n = (SUP.dead.brands || []).filter(function (x) { return SUP.deadTick[x.id] !== false; }).length;
+    if (go) { go.textContent = 'Archive ' + n + ' ticked'; go.disabled = !n; }
+    return;
+  }
+  var fl = e.target.closest('[data-supfloor]');
+  if (fl) {
+    var v = Math.max(0, Math.min(100, Math.round(Number(fl.value)) || 0));
+    try { localStorage.setItem('sb.fillFit', String(v)); } catch (err) {}
+    supLoad();
+  }
+});
+
 // --- the Brands table -------------------------------------------
 // Leo, Oct 2026: one page for every brand — "make sure we have sufficient
 // contacts for each brand". One row per brand; BUYERS = people on file
@@ -8188,7 +8524,7 @@ document.getElementById('cover-card').addEventListener('click', function (e) {
 // re-file and the SponsorUnited worklist are buttons in the header.
 var BR_LIST = [];
 var BR_TARGET = 1;
-var BR = { show: 'all', why: '', sort: 'fewest', hideArchived: true, fit: '' };
+var BR = { show: 'all', why: '', sort: 'fewest', hideArchived: true, fit: '', sup: '' };
 // Brand Fit counts above the table (Leo, Oct 18 2026: "a count for brands
 // that are above 75 then brands 50-75 then less than 50"): brands in play
 // only (archived / do-not-email are off). A count is the rows its click
@@ -8250,7 +8586,9 @@ function brShown(opts) {
   var rows = BR_LIST.filter(function (b) {
     if (!opts.anyFit && BR.fit && lastCategory !== 'new' && (!brInPlay(b) || brBand(b) !== BR.fit)) return false;
     if (BR.hideArchived && b.passedAt) return false;
-    if (!ql && brSmallHidden(b)) return false;
+    // A count from the queue panel (BR.sup): exactly its brands, too small ones too.
+    if (BR.sup && lastCategory === 'all') { var ss = SUP.sets[BR.sup]; if (ss && !ss.has(b.id)) return false; }
+    if (!ql && !(BR.sup && lastCategory === 'all') && brSmallHidden(b)) return false;
     if (BR.show === 'need' && (!brNeeds(b) || (BR.why && brCoverState(b) !== BR.why))) return false;
     if (BR.show === 'enough' && !brCovered(b)) return false;
     if (!opts.anyReach && !reachOk('brands', brReached(b))) return false;
@@ -8412,7 +8750,7 @@ function brHead(label, key, cls, tip) {
     (on ? '<span class="br-arrow" aria-hidden="true">' + arrow + '</span>' : '') + '</th>';
 }
 function brFiltered() {
-  return BR.show !== 'all' || !!BR.why || !!REACH_F.brands || (!!BR.fit && lastCategory !== 'new') || !!(document.getElementById('bq').value || '').trim();
+  return (!!BR.sup && lastCategory === 'all') || BR.show !== 'all' || !!BR.why || !!REACH_F.brands || (!!BR.fit && lastCategory !== 'new') || !!(document.getElementById('bq').value || '').trim();
 }
 function brRender() {
   var box = document.getElementById('brands-list');
@@ -8425,6 +8763,8 @@ function brRender() {
   var bandN = { hi: 0, mid: 0, lo: 0 };
   brShown({ anyFit: true }).forEach(function (b) { var k = brInPlay(b) && brBand(b); if (k) bandN[k]++; });
   var tools = '<div class="br-tools">' +
+    (BR.sup && lastCategory === 'all' ? '<div class="br-tools-row su-filter">Only <b>' + esc(SUP_LABEL[BR.sup] || BR.sup) + '</b> from the counts above, best Brand Fit first' +
+      ' <a href="#" data-supclear="1">× Show every brand</a></div>' : '') +
     '<div class="br-tools-row">' +
       brCatSelect() +
       brSeg('Show', 'data-brshow', [['all', 'All', BR_LIST.length], ['need', 'Needs people', need, 'Nobody in marketing / partnerships on file yet'],
@@ -8489,12 +8829,14 @@ document.getElementById('brands-list').addEventListener('click', function (e) {
   if (e.target.closest('[data-brclear]')) {
     e.preventDefault();
     BR.show = 'all'; BR.why = ''; REACH_F.brands = ''; BR.fit = '';
+    if (BR.sup) { BR.sup = ''; supRender(); }
     document.getElementById('bq').value = '';
     brRender(); applyBrandFilter();
     return;
   }
+  if (e.target.closest('[data-supclear]')) { e.preventDefault(); BR.sup = ''; supRender(); brRender(); applyBrandFilter(); return; }
   var show = e.target.closest('[data-brshow]');
-  if (show) { BR.show = show.getAttribute('data-brshow'); BR.why = ''; brRender(); applyBrandFilter(); return; }
+  if (show) { BR.show = show.getAttribute('data-brshow'); BR.why = ''; if (BR.sup) { BR.sup = ''; supRender(); } brRender(); applyBrandFilter(); return; }
   var why = e.target.closest('[data-brwhy]');
   if (why) { BR.why = why.getAttribute('data-brwhy'); brRender(); applyBrandFilter(); return; }
   var band = e.target.closest('[data-brfit]');
@@ -17140,6 +17482,8 @@ function cpClose() {
   document.getElementById('cp-scrim').classList.remove('open');
   // Best fit's order changed: the days pick again.
   if (CP.changed && document.getElementById('schedule').classList.contains('active')) { CP.changed = false; sdRefresh(); }
+  // Opened from All brands' "Held back by the rules": count again.
+  if (CP.changed && document.getElementById('brands').classList.contains('active')) { CP.changed = false; supLoad(); }
 }
 document.getElementById('cp-close').addEventListener('click', cpClose);
 document.getElementById('cp-scrim').addEventListener('click', function (e) { if (e.target === this) cpClose(); });
@@ -24381,7 +24725,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'li-zach', 'li-sched', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity', 'st-lanes', 'st-others', 'hm-accepted'].forEach(function (id) {
+['brands-list', 'supply-card', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'li-zach', 'li-sched', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity', 'st-lanes', 'st-others', 'hm-accepted'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;

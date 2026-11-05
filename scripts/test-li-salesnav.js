@@ -641,6 +641,20 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
       ok('a brand under 50 on LinkedIn gets only the marketing search');
     }
 
+    // 1.44 (Leo, Nov 5 2026): a brand the queue could pick that is short on
+    // people (`wide`) also gets its founders and events people — after the
+    // usual searches, and at a small brand too, past the partnerships one it
+    // skips. The visit says so; `reread` = its one more read.
+    {
+      const r = await run([item('b-ld', 'Liquid Death', 'liquid-death', { wide: true }), item('b-small', 'Small SN', 'small-sn', { wide: true, reread: true })]);
+      assert.deepEqual(r.queries.map(q => q.kind + q.page + ':' + q.co), ['fn1:1234', 'fn2:1234', 'kw1:1234', 'kw1:1234', 'fn1:' + r.queries[4].co, 'kw1:' + r.queries[4].co]);
+      assert.match(r.queries[3].q, /keywords:founder OR cofounder OR co-founder OR CEO OR owner OR events OR experiential OR activation/);
+      assert.match(r.queries[5].q, /keywords:founder OR cofounder/);
+      const sw = r.calls.filter(b => b.action === 'liSwept');
+      assert.deepEqual(sw.map(b => [b.brandId, b.salesNav, b.done, b.wide, b.reread]), [['b-ld', true, true, true, false], ['b-small', true, true, true, true]]);
+      ok('a brand short on people: founders & events searched too, a small one included; the visit says so');
+    }
+
     // The start panel's defaults: Brand Fit 50+, very big brands skipped —
     // sent with the worklist; with a floor the panel says mid-size first.
     {
