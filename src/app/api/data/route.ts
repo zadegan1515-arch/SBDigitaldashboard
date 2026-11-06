@@ -91,6 +91,11 @@ import {
   OVERVIEW_MAX_SENTENCES, OVERVIEW_MAX_CHARS, IDEA_MAX_CHARS, NOTE_MAX_CHARS, type TalksState,
 } from '@/lib/in-talks'
 import {
+  zachStage as trackZach, zachReached as trackZachReached, repStage as trackRep, repReached as trackRepReached,
+  brandStage as trackBrand, compareTracker, zachSteps as trackZachSteps, repSteps as trackRepSteps,
+  STAGES as TRACK_STAGES, stageRank as trackRank, type StageKey as TrackStage, type PersonStage as TrackPerson,
+} from '@/lib/tracker'
+import {
   REP, REP_NAME, REP_DAILY, REP_LI_WEEK, REP_DAYS, REP_PLAN_KEY, REP_TPL_KEY, REP_ACCOUNTS_KEY, PLAN_KEEP_DAYS,
   TPL_DEFAULTS as REP_TPL_DEFAULTS, TPL_KINDS as REP_TPL_KINDS, STEP_WORD as REP_STEP_WORD,
   addDays as repAddDays, isSendingKey as repIsSending, onSendingDay as repOnSendingDay, nextSendingAfter as repNextSendingAfter,
@@ -15001,9 +15006,143 @@ const handlers: Record<string, Handler> = {
     const strip = ({ _sort, ...x }: any) => x
     return {
       brands: onList.map(strip),
-      preview: pvRow ? { ...strip(pvRow), preview: true, repliedAt: pvReply } : null,
+      // A look at a brand not in talks (a Replied offer, or any brand opened from
+      // Every brand reached): when it first replied, if it did.
+      preview: pvRow ? { ...strip(pvRow), preview: true, repliedAt: pvReply ?? pvRow.journey.find((j: any) => j.key === 'replied' && j.done)?.at ?? null } : null,
       suggestions: suggest,
       sponsorUrl: sponsorBoardUrl(),
+      today: localDayKey(now),
+    }
+  },
+
+  // In talks → Every brand (Leo, Nov 6 2026: "a clear way to keep track of
+  // every brand that we've reached out to, is accepted, and has responded to
+  // us, and wants to continue. And then we send out an email"). Every brand
+  // reached out to (the Reached tag's rule, Zach's and Elizabeth's rows) plus
+  // every brand on In talks, each at one step — Reached out → Accepted →
+  // Replied → Wants to continue → Email sent → In talks, or Out — with the
+  // people there and what's next. Read-only; rules in src/lib/tracker.ts.
+  async outreachTracker() {
+    const now = new Date()
+    const [targets, reps, talks] = await Promise.all([
+      prisma.target.findMany({
+        where: REACHED_WHERE,
+        select: {
+          id: true, brandId: true, status: true, sentAt: true, repliedAt: true, updatedAt: true, createdAt: true, emailedAt: true,
+          dmSentAt: true, nudgedAt: true, handWantsEmailAt: true, handLiPathAt: true, handLiSentAt: true,
+          callAt: true, callBookedAt: true, handDeclinedAt: true, handSkippedAt: true,
+          events: { where: { toStatus: 'accepted' }, orderBy: { createdAt: 'asc' }, take: 1, select: { createdAt: true } },
+          emails: { where: { OR: [{ direction: 'in' }, SENT_EMAIL] }, orderBy: { createdAt: 'asc' }, take: 20, select: { direction: true, sentAt: true, createdAt: true } },
+          contact: { select: { id: true, name: true, title: true, email: true, linkedinUrl: true, doNotContactAt: true } },
+        },
+        take: 20000,
+      }),
+      prisma.repOutreach.findMany({
+        where: { rep: REP, brandId: { not: null }, OR: [{ sentAt: { not: null } }, { status: { in: ['accepted', 'replied', 'call'] } }] },
+        select: {
+          id: true, brandId: true, contactId: true, name: true, title: true, email: true, linkedinUrl: true, channel: true, status: true,
+          sentAt: true, acceptedAt: true, dmAt: true, followAt: true, repliedAt: true, callAt: true, callBookedAt: true, doneAt: true, updatedAt: true,
+        },
+        take: 20000,
+      }),
+      talksMembership(),
+    ])
+    const ids = [...new Set([...targets.map(t => t.brandId), ...reps.map(r => r.brandId as string), ...talks.onIds])]
+    // A person on the Show Board (kind 'person') is never a brand here.
+    // (Filtered in code: `kind: { not: 'person' }` would drop every null kind too.)
+    const brands = (ids.length ? await prisma.brand.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true, name: true, category: true, tier: true, kind: true, passedAt: true, doNotEmail: true, stoppedAt: true,
+        talksAddedAt: true, talksRemovedAt: true,
+        deals: { orderBy: { updatedAt: 'desc' }, select: { stage: true, name: true, valueCents: true } },
+      },
+    }) : []).filter(b => b.kind !== 'person')
+    const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null)
+    type Person = TrackPerson & { row: Record<string, unknown>; steps: TrackStage[] }
+    const peopleBy = new Map<string, Person[]>()
+    const callsBy = new Map<string, Date[]>()
+    const add = (brandId: string, p: Person) => peopleBy.set(brandId, [...(peopleBy.get(brandId) ?? []), p])
+    const stoppedBrand = new Set(brands.filter(b => b.stoppedAt).map(b => b.id))
+    for (const t of targets) {
+      const sentMail = t.emails.filter(e => e.direction === 'out')
+      const facts = {
+        status: t.status, sentAt: t.sentAt, repliedAt: t.repliedAt, updatedAt: t.updatedAt, createdAt: t.createdAt,
+        acceptedAt: t.events[0]?.createdAt ?? null, emailReply: t.emails.some(e => e.direction === 'in'),
+        emailedAt: t.emailedAt, machineEmailAt: sentMail.length ? (sentMail[0].sentAt ?? sentMail[0].createdAt) : null,
+        dmSentAt: t.dmSentAt, nudgedAt: t.nudgedAt, wantsEmailAt: t.handWantsEmailAt, liPathAt: t.handLiPathAt, liSentAt: t.handLiSentAt,
+        callAt: t.callAt, callBookedAt: t.callBookedAt, declinedAt: t.handDeclinedAt, skippedAt: t.handSkippedAt,
+        contactStopped: !!t.contact.doNotContactAt, brandStopped: stoppedBrand.has(t.brandId),
+      }
+      if (!trackZachReached(facts)) continue
+      // A call before callBookedAt was kept counts from the row's creation
+      // (talksMembership's rule).
+      if (t.callAt || t.callBookedAt) callsBy.set(t.brandId, [...(callsBy.get(t.brandId) ?? []), t.callBookedAt ?? t.createdAt])
+      const s = trackZach(facts, now)
+      add(t.brandId, {
+        ...s, steps: trackZachSteps(facts),
+        row: {
+          key: 't:' + t.id, by: 'zach', channel: t.sentAt || facts.acceptedAt || ['accepted', 'replied', 'converted'].includes(t.status) ? 'linkedin' : 'email',
+          contactId: t.contact.id, name: t.contact.name, title: t.contact.title, email: t.contact.email, linkedinUrl: t.contact.linkedinUrl,
+          invitedAt: iso(t.sentAt), acceptedAt: iso(facts.acceptedAt), repliedAt: iso(t.repliedAt),
+          emailedAt: iso(t.emailedAt ?? facts.machineEmailAt), callAt: iso(t.callAt),
+        },
+      })
+    }
+    for (const r of reps) {
+      if (!trackRepReached(r)) continue
+      const id = r.brandId as string
+      if (r.callAt || r.callBookedAt || r.status === 'call') callsBy.set(id, [...(callsBy.get(id) ?? []), r.callBookedAt ?? r.callAt ?? r.updatedAt])
+      const s = trackRep(r, now)
+      add(id, {
+        ...s, steps: trackRepSteps(r),
+        row: {
+          key: 'e:' + r.id, by: 'elizabeth', channel: r.channel,
+          contactId: r.contactId, name: r.name, title: r.title, email: r.email, linkedinUrl: r.linkedinUrl,
+          invitedAt: r.channel === 'linkedin' ? iso(r.sentAt) : null, acceptedAt: iso(r.acceptedAt), repliedAt: iso(r.repliedAt),
+          emailedAt: r.channel === 'email' ? iso(r.sentAt) : null, callAt: iso(r.callAt),
+        },
+      })
+    }
+    const counts: Record<string, number> = {}
+    const onUs: Record<string, number> = {}
+    const ever: Record<string, number> = {}
+    for (const st of TRACK_STAGES) { counts[st.key] = 0; onUs[st.key] = 0; if (st.key !== 'out') ever[st.key] = 0 }
+    const rows = brands.map(b => {
+      const ps = (peopleBy.get(b.id) ?? []).sort((x, y) =>
+        Number(x.stage === 'out') - Number(y.stage === 'out') || trackRank(y.stage) - trackRank(x.stage) ||
+        Number(y.onUs) - Number(x.onUs) || (y.lastAt?.getTime() ?? 0) - (x.lastAt?.getTime() ?? 0))
+      // On In talks: talksMembership's answer, with Elizabeth's calls too.
+      const tk = talksState({ addedAt: b.talksAddedAt, removedAt: b.talksRemovedAt, callsBooked: callsBy.get(b.id) ?? [] })
+      const deal = b.deals.find(d => d.stage !== 'lost') ?? b.deals[0] ?? null
+      const st = trackBrand(ps, { stopped: !!b.stoppedAt, talksOn: tk.on, talksWhy: tk.why, deal }, now)
+      const lead = st.lead >= 0 ? ps[st.lead] : null
+      const reachedSteps = new Set<TrackStage>(ps.flatMap(p => p.steps))
+      if (st.stage === 'talks') reachedSteps.add('talks')
+      if (ps.length || st.stage === 'talks') reachedSteps.add('reached')
+      for (const k of reachedSteps) if (k in ever) ever[k] += 1
+      counts[st.stage] += 1
+      if (st.onUs) onUs[st.stage] += 1
+      const due = ps.filter(p => p.stage === st.stage && p.onUs && p.due).map(p => p.due as string).sort()[0] ?? null
+      return {
+        id: b.id, name: b.name, category: b.category, tier: b.tier,
+        archived: !!b.passedAt, doNotEmail: b.doNotEmail,
+        stage: st.stage, out: st.out, next: st.next, onUs: st.onUs, due, at: iso(st.at), lastAt: iso(st.lastAt), nextCallAt: iso(st.nextCallAt),
+        inTalks: !!talks.states.get(b.id)?.on, deal: deal ? { stage: deal.stage, name: deal.name, valueCents: deal.valueCents } : null,
+        lead: lead ? { name: lead.row.name, title: lead.row.title, by: lead.row.by } : null,
+        elizabeth: ps.some(p => p.row.by === 'elizabeth'),
+        steps: TRACK_STAGES.map(x => x.key).filter(k => reachedSteps.has(k)),
+        people: ps.map(p => ({
+          ...p.row, stage: p.stage, out: p.out, label: p.label, next: p.next, onUs: p.onUs, due: p.due, at: iso(p.at), lastAt: iso(p.lastAt),
+        })),
+        _sort: { name: b.name, stage: st.stage, onUs: st.onUs, due, lastAt: st.lastAt, nextCallAt: st.nextCallAt },
+      }
+    })
+    // Furthest step first (Out last); inside a step, ours to do first.
+    rows.sort((x, y) => Number(x.stage === 'out') - Number(y.stage === 'out') || trackRank(y.stage) - trackRank(x.stage) || compareTracker(x._sort, y._sort))
+    return {
+      brands: rows.map(({ _sort, ...x }) => x),
+      stages: TRACK_STAGES, counts, onUs, ever, total: rows.length,
       today: localDayKey(now),
     }
   },

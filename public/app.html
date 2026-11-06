@@ -2292,6 +2292,86 @@
     .it-note-acts{opacity:1}
   }
 
+  /* ---- In talks → Every brand reached (tk-*; Leo, Nov 6 2026: "a clear way to keep track of every brand that
+     we've reached out to, is accepted, and has responded to us, and wants to continue. And then we send out an
+     email"). A tile per step, then one row per brand; a row opens its people. ---- */
+  #tracker.page{padding-top:30px}
+  .tk-s-reached{--stage:#8a8fa3} .tk-s-accepted{--stage:var(--accent)} .tk-s-replied{--stage:var(--blue)}
+  .tk-s-continue{--stage:var(--warn)} .tk-s-emailed{--stage:var(--cat-5)} .tk-s-talks{--stage:var(--good)} .tk-s-out{--stage:#6b6f80}
+  .tk-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:20px}
+  .tk-tile{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;padding:12px 14px 13px;
+    border:1px solid var(--border);border-top:3px solid var(--stage);border-radius:12px;background:var(--surface-2);color:inherit;
+    font-family:inherit;text-align:left;cursor:pointer;transition:background .12s,border-color .12s,box-shadow .12s}
+  .tk-tile:hover{border-color:#34343f;border-top-color:var(--stage)}
+  .tk-tile:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+  .tk-tile.on{background:color-mix(in srgb,var(--stage) 14%,var(--surface-2));border-color:var(--stage);box-shadow:inset 0 0 0 1px var(--stage)}
+  .tk-tile-t{font-size:14.5px;font-weight:700;color:var(--ink-1);line-height:1.25}
+  .tk-tile-n{font-family:var(--display);font-size:32px;font-weight:800;line-height:1.1;letter-spacing:-.02em;color:var(--ink-1);font-variant-numeric:tabular-nums}
+  .tk-tile-n small{margin-left:6px;font-family:inherit;font-size:13px;font-weight:600;letter-spacing:0;color:var(--ink-3)}
+  .tk-tile-h{font-size:13px;color:var(--ink-3);line-height:1.35}
+  .tk-tile-u{font-size:13.5px;font-weight:700;color:var(--good)}
+  .tk-ever{margin:12px 2px 0;font-size:14px;color:var(--ink-3);line-height:1.5}
+  .tk-ever b{color:var(--ink-1);font-variant-numeric:tabular-nums}
+  .tk-tools{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin:20px 0 14px}
+  .tk-findwrap{flex:0 1 380px;min-width:220px}
+  .tk-find{font-size:14.5px;padding:9px 12px 9px 30px}
+  .tk-showing{font-size:14px;color:var(--ink-3)}
+  .tk-showing b{color:var(--ink-1)}
+  .tk-clear{background:none;border:0;color:var(--accent-hi);font:inherit;font-size:14px;cursor:pointer;padding:0}
+  .tk-group + .tk-group{margin-top:22px}
+  .tk-gh{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin:0 2px 10px;padding-left:10px;border-left:3px solid var(--stage)}
+  .tk-gh b{font-family:var(--display);font-size:18px;font-weight:800;letter-spacing:-.01em;color:var(--ink-1)}
+  .tk-gh .n{font-size:15px;font-weight:700;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .tk-gh .h{font-size:13.5px;color:var(--ink-3)}
+  .tk-rows{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(540px,100%),1fr));gap:8px;align-items:start}
+  .tk-row{border:1px solid var(--border);border-left:3px solid var(--stage);border-radius:12px;background:var(--surface-2);min-width:0}
+  .tk-row.open{background:#1c1c25;border-color:#34343f;border-left-color:var(--stage)}
+  .tk-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 14px;width:100%;padding:12px 16px 12px 14px;background:none;border:0;
+    color:inherit;font-family:inherit;text-align:left;cursor:pointer;border-radius:12px}
+  .tk-head:hover{background:rgba(255,255,255,.02)}
+  .tk-head:focus-visible{outline:2px solid var(--ring);outline-offset:-2px}
+  .tk-main{min-width:0;display:flex;flex-direction:column;gap:3px}
+  .tk-name{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px}
+  .tk-name b{font-size:16.5px;font-weight:700;color:var(--ink-1);line-height:1.3;overflow-wrap:anywhere}
+  .tk-cat{font-size:13px;color:var(--ink-3)}
+  .tk-tag{font-size:12px;font-weight:700;padding:1px 7px;border-radius:99px;background:rgba(255,255,255,.06);color:var(--ink-2)}
+  .tk-tag.el{background:rgba(67,198,232,.14);color:#7fd8ef}
+  .tk-tag.todo{background:rgba(62,207,142,.14);color:var(--good)}
+  .tk-next{font-size:15px;color:var(--ink-2);line-height:1.4;overflow-wrap:anywhere}
+  .tk-next .late{color:var(--bad);font-weight:700}
+  .tk-next .today{color:var(--accent-hi);font-weight:700}
+  .tk-who{font-size:13.5px;color:var(--ink-3);line-height:1.4;overflow-wrap:anywhere}
+  .tk-who b{color:var(--ink-2);font-weight:600}
+  .tk-side{display:flex;flex-direction:column;align-items:flex-end;gap:7px;padding-top:2px}
+  .tk-pill{font-size:12.5px;font-weight:700;padding:2px 9px;border-radius:99px;white-space:nowrap;
+    background:color-mix(in srgb,var(--stage) 18%,transparent);color:color-mix(in srgb,var(--stage) 75%,#fff)}
+  .tk-dots{display:flex;gap:5px}
+  .tk-dots i{width:9px;height:9px;border-radius:50%;background:#2e2e3a}
+  .tk-dots i.on{background:color-mix(in srgb,var(--good) 70%,#2e2e3a)}
+  .tk-dots i.now{background:var(--stage);box-shadow:0 0 0 3px color-mix(in srgb,var(--stage) 30%,transparent)}
+  .tk-when{font-size:13px;color:var(--ink-3);white-space:nowrap}
+  .tk-body{padding:4px 16px 14px 14px;border-top:1px solid var(--border-soft)}
+  .tk-person{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 4px;border-bottom:1px solid var(--border-soft)}
+  .tk-person[data-brand]{cursor:pointer}
+  .tk-person[data-brand]:hover .tk-pname{text-decoration:underline}
+  .tk-pname{font-size:15px;font-weight:700;color:var(--ink-1)}
+  .tk-ptitle{font-size:13.5px;color:var(--ink-3);font-weight:400}
+  .tk-pnext{font-size:14px;color:var(--ink-2);margin-top:2px}
+  .tk-pdates{font-size:13px;color:var(--ink-3);margin-top:2px}
+  .tk-plinks{display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap;justify-content:flex-end}
+  .tk-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .tk-more{margin-top:10px}
+  .tk-empty{padding:18px 4px;font-size:15px;color:var(--ink-3)}
+  @media (max-width:900px){
+    #tracker.page{padding-top:18px}
+    .tk-tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .tk-tile{padding:10px 12px 11px} .tk-tile-n{font-size:26px}
+    .tk-head{grid-template-columns:minmax(0,1fr);padding:12px}
+    .tk-side{flex-direction:row;align-items:center;justify-content:flex-start;flex-wrap:wrap}
+    .tk-person{grid-template-columns:minmax(0,1fr)}
+    .tk-plinks{justify-content:flex-start}
+  }
+
   /* Elizabeth's outreach (el-*; Leo, Oct 21 2026): her own Today / Week plan /
      Follow-ups / Results. Rows read like Zach's list: a person, where they
      stand, the next buttons. */
@@ -2491,7 +2571,7 @@
         <button class="nav-item" data-view="brands">Brands</button>
         <button class="nav-item" data-view="outreach">Outreach</button>
         <button class="nav-item" data-view="elizabeth">Elizabeth</button>
-        <button class="nav-item" data-view="intalks">In talks</button>
+        <button class="nav-item" data-view="tracker">In talks</button>
         <button class="nav-item" data-view="board">Show Board</button>
         <button class="nav-item" data-view="pipeline">Deals</button>
         <button class="nav-item" data-view="audience">Audience</button>
@@ -2909,6 +2989,14 @@
         </div>
       </div>
       <div id="it-body"></div>
+    </section>
+
+    <!-- EVERY BRAND REACHED (Leo, Nov 6 2026): every brand we reached out to, each at one step — In talks' first sub-tab -->
+    <section class="view page" id="tracker">
+      <div class="eyebrow">In talks</div>
+      <h1>Every brand we’ve reached</h1>
+      <div class="sub" id="tk-sub">Loading…</div>
+      <div id="tk-body"></div>
     </section>
 
     <!-- SHOW BOARD: BOARD CODES (was "In talks" until the In talks tab, Oct 18 2026) -->
@@ -3655,12 +3743,14 @@ var SUBTABS = {
   audience: [['audience', 'Events'], ['attendees', 'Attendees'], ['segments', 'Segments']],
   operations: [['materials', 'Materials'], ['team', 'Team']],
   elizabeth: [['el-today', 'Today'], ['el-week', 'Week plan'], ['el-follow', 'Follow-ups'], ['el-results', 'Results']],
+  // In talks (Leo, Nov 6 2026: "maybe just expand on the brands we're talking to tab"): every brand reached first.
+  tracker: [['tracker', 'Every brand reached'], ['intalks', 'In talks']],
 };
 var GROUP_OF = {
   brands: 'brands', recent: 'brands', brand: 'brands', discover: 'brands', clarify: 'brands', needs: 'brands', stock: 'brands',
   outreach: 'outreach', 'email-out': 'outreach', reached: 'outreach', schedule: 'outreach', weekplan: 'outreach', linkedin: 'outreach', results: 'outreach', passed: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
-  intalks: 'intalks',
+  tracker: 'tracker', intalks: 'tracker',
   pipeline: 'pipeline', sponsorships: 'pipeline',
   audience: 'audience', attendees: 'audience', segments: 'audience',
   materials: 'operations', team: 'operations',
@@ -20563,7 +20653,9 @@ var IT_ICON = {
 // Where a brand stands, one line (the list and the hero).
 function itStatus(b) {
   if (b.stopped) return { cls: 'stop', text: 'Said they don’t want to continue' };
-  if (b.preview) return { cls: 'hand', text: 'Replied' + (b.repliedAt ? ' ' + itDay(b.repliedAt) : '') + ' · not in talks yet' };
+  // A look at a brand not on the list: one that replied (the Replied offers)
+  // or any brand opened from Every brand reached.
+  if (b.preview) return { cls: 'hand', text: (b.repliedAt ? 'Replied ' + itDay(b.repliedAt) + ' · ' : '') + 'not in talks yet' };
   if (b.nextCall) {
     var n = itDaysFromToday(b.nextCall.at);
     return { cls: 'call', text: 'Call ' + (n === 0 ? 'today' : n === 1 ? 'tomorrow' : itDayLong(b.nextCall.at)) };
@@ -20720,7 +20812,7 @@ function itRenderMain() {
     '<div style="min-width:0">' +
       '<div class="it-kicker">' + (cat ? '<span>' + esc(cat) + '</span>' : '') + (b.tier ? '<span class="sep">·</span><span>' + esc(b.tier) + '</span>' : '') +
         (b.preview
-          ? '<span class="sep">·</span><span>replied ' + esc(b.repliedAt ? itDay(b.repliedAt) : '—') + ' · not in talks yet</span>'
+          ? '<span class="sep">·</span><span>' + (b.repliedAt ? 'replied ' + esc(itDay(b.repliedAt)) + ' · ' : '') + 'not in talks yet</span>'
           : '<span class="sep">·</span><span>in talks since ' + esc(b.since ? itDay(b.since) : '—') + (b.why === 'hand' ? ' (added by hand)' : '') + '</span>') +
         (b.archived ? '<span class="sep">·</span><span>archived</span>' : '') + '</div>' +
       '<h2 class="it-name">' + esc(b.name) + '</h2>' +
@@ -21200,6 +21292,245 @@ function bTalksBind(b) {
     }).catch(function (e) { a.disabled = false; toast(e.message); });
   };
 }
+
+// --- In talks → Every brand reached (Leo, Nov 6 2026) ---------------------
+// "a clear way to keep track of every brand that we've reached out to, is
+// accepted, and has responded to us, and wants to continue. And then we send
+// out an email." Every brand Zach or Elizabeth reached out to sits at one
+// step — Reached out → Accepted → Replied → Wants to continue → Email sent →
+// In talks, or Out — the furthest anyone there got to who's still in play.
+// A tile per step (a click shows only that step), a row per brand (a click
+// opens its people; a person opens the brand page at them). Read-only: the
+// steps themselves are ticked on Zach's list / the brand page / Elizabeth's
+// tab. Data = outreachTracker (route.ts; rules in src/lib/tracker.ts).
+
+var TK = { data: null, stage: null, q: '', mine: false, open: {}, more: {} };
+var TK_DOTS = [['reached', 'Reached out'], ['accepted', 'Accepted'], ['replied', 'Replied'], ['continue', 'Wants to continue'], ['emailed', 'Email sent'], ['talks', 'In talks']];
+var TK_PAGE = 40;
+
+function loadTracker() {
+  var again = showView('tracker');
+  var mine = viewTurn('tracker');
+  var body = document.getElementById('tk-body');
+  if (!again) {
+    if (TK.data) renderTracker();
+    else body.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  }
+  return api('outreachTracker').then(function (d) {
+    if (!mine()) return;
+    TK.data = d;
+    renderTracker();
+  }).catch(function (e) {
+    if (!mine()) return;
+    body.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+}
+
+function tkStage(k) {
+  return ((TK.data && TK.data.stages) || []).filter(function (s) { return s.key === k; })[0] || { key: k, label: k, hint: '' };
+}
+// Days from today (New York) to a day key: -2 = two days late.
+function tkDaysTo(key) {
+  var today = (TK.data && TK.data.today) || itKey(new Date());
+  return Math.round((Date.parse(key + 'T12:00:00Z') - Date.parse(today + 'T12:00:00Z')) / 864e5);
+}
+function tkDueHtml(x) {
+  if (!x.onUs || !x.due) return '';
+  var n = tkDaysTo(x.due);
+  return n < 0 ? ' <span class="late">· ' + (-n) + ' day' + (n === -1 ? '' : 's') + ' late</span>'
+    : n === 0 ? ' <span class="today">· due today</span>' : '';
+}
+function tkPlural(n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); }
+
+function tkShown() {
+  var d = TK.data;
+  var q = TK.q.trim().toLowerCase();
+  return (d.brands || []).filter(function (b) {
+    if (TK.stage && b.stage !== TK.stage) return false;
+    if (TK.mine && !b.onUs) return false;
+    if (!q) return true;
+    return b.name.toLowerCase().indexOf(q) !== -1 ||
+      (b.people || []).some(function (p) { return (p.name || '').toLowerCase().indexOf(q) !== -1 || (p.title || '').toLowerCase().indexOf(q) !== -1; });
+  });
+}
+
+function renderTracker() {
+  var d = TK.data;
+  if (!d) return;
+  var total = d.total || 0, todo = 0;
+  Object.keys(d.onUs || {}).forEach(function (k) { todo += d.onUs[k] || 0; });
+  document.getElementById('tk-sub').textContent = total
+    ? tkPlural(total, 'brand') + ' we’ve reached out to' + (todo ? ' · ' + todo + ' with a step for us to do' : '') +
+      ' · each brand sits at the furthest step anyone there got to'
+    : 'Every brand we reach out to shows up here — the moment an invite is marked sent or an email goes out.';
+  var body = document.getElementById('tk-body');
+  if (!body.querySelector('#tk-list')) {
+    body.innerHTML =
+      '<div class="tk-tiles" id="tk-tiles"></div>' +
+      '<div class="tk-ever" id="tk-ever"></div>' +
+      '<div class="tk-tools">' +
+        '<div class="it-findwrap tk-findwrap"><input class="it-find tk-find" id="tk-find" type="search" autocomplete="off" placeholder="Find a brand or person"></div>' +
+        '<button class="chip" id="tk-mine" aria-pressed="false">Only ones with a step for us</button>' +
+        '<span class="tk-showing" id="tk-showing"></span>' +
+      '</div>' +
+      '<div id="tk-list"></div>';
+    document.getElementById('tk-find').value = TK.q;
+  }
+  var tiles = (d.stages || []).map(function (s) {
+    var n = (d.counts || {})[s.key] || 0, u = (d.onUs || {})[s.key] || 0;
+    var on = TK.stage === s.key;
+    return '<button class="tk-tile tk-s-' + s.key + (on ? ' on' : '') + '" data-tk-stage="' + s.key + '" aria-pressed="' + on + '" title="' + esc(on ? 'Show every step again' : 'Show only ' + s.label) + '">' +
+      '<span class="tk-tile-t">' + esc(s.label) + '</span>' +
+      '<span class="tk-tile-n">' + n + '<small>brand' + (n === 1 ? '' : 's') + '</small></span>' +
+      (u ? '<span class="tk-tile-u">' + u + ' to do</span>' : '<span class="tk-tile-h">' + esc(s.hint) + '</span>') +
+      '</button>';
+  }).join('');
+  document.getElementById('tk-tiles').innerHTML = tiles;
+  var ev = d.ever || {};
+  document.getElementById('tk-ever').innerHTML = total
+    ? 'So far: <b>' + (ev.reached || 0) + '</b> reached out to · <b>' + (ev.accepted || 0) + '</b> had someone accept · <b>' + (ev.replied || 0) +
+      '</b> replied · <b>' + (ev['continue'] || 0) + '</b> wanted to continue · <b>' + (ev.emailed || 0) + '</b> got the email · <b>' + (ev.talks || 0) + '</b> in talks'
+    : '';
+  var mineBtn = document.getElementById('tk-mine');
+  mineBtn.classList.toggle('active', TK.mine);
+  mineBtn.setAttribute('aria-pressed', String(TK.mine));
+  mineBtn.textContent = 'Only ones with a step for us' + (todo ? ' (' + todo + ')' : '');
+  renderTrackerList();
+}
+
+function renderTrackerList() {
+  var d = TK.data, el = document.getElementById('tk-list');
+  if (!d || !el) return;
+  var rows = tkShown();
+  var filtered = !!(TK.stage || TK.mine || TK.q.trim());
+  document.getElementById('tk-showing').innerHTML = filtered
+    ? 'Showing <b>' + rows.length + '</b> of ' + (d.total || 0) + ' · <button class="tk-clear" data-tk-clear>Show every brand</button>'
+    : '';
+  if (!rows.length) {
+    el.innerHTML = '<div class="tk-empty">' + (d.total ? 'No brand matches' + (TK.q.trim() ? ' “' + esc(TK.q.trim()) + '”' : '') +
+      (TK.stage ? ' at ' + esc(tkStage(TK.stage).label) : '') + (TK.mine ? ' with a step for us' : '') + '.' : 'Nobody reached yet.') + '</div>';
+    return;
+  }
+  var order = (d.stages || []).map(function (s) { return s.key; });
+  var groups = {};
+  rows.forEach(function (b) { (groups[b.stage] = groups[b.stage] || []).push(b); });
+  // Furthest step first; Out last (the server's order inside each step).
+  var keys = order.filter(function (k) { return k !== 'out'; }).reverse().concat(['out']).filter(function (k) { return groups[k]; });
+  el.innerHTML = keys.map(function (k) {
+    var bs = groups[k], s = tkStage(k);
+    var cut = TK.more[k] || bs.length <= TK_PAGE + 5 ? bs : bs.slice(0, TK_PAGE);
+    return '<section class="tk-group tk-s-' + k + '">' +
+      '<div class="tk-gh"><b>' + esc(s.label) + '</b><span class="n">' + bs.length + '</span><span class="h">' + esc(s.hint) + '</span></div>' +
+      '<div class="tk-rows">' + cut.map(tkRowHtml).join('') + '</div>' +
+      (cut.length < bs.length ? '<div class="tk-more"><button class="btn-ghost sm" data-tk-more="' + k + '">Show all ' + bs.length + '</button></div>' : '') +
+      '</section>';
+  }).join('');
+}
+
+function tkDotsHtml(b) {
+  var got = {};
+  (b.steps || []).forEach(function (k) { got[k] = true; });
+  return '<span class="tk-dots" aria-hidden="true">' + TK_DOTS.map(function (x) {
+    return '<i class="' + (b.stage === x[0] ? 'now' : got[x[0]] ? 'on' : '') + '" title="' + esc(x[1]) + '"></i>';
+  }).join('') + '</span>';
+}
+
+function tkWho(b) {
+  var ps = b.people || [];
+  if (!ps.length) return b.inTalks ? 'Added to In talks — nobody reached on the site yet' : '';
+  var lead = ps[0];
+  var txt = '<b>' + esc(lead.name) + '</b>' + (lead.title ? ' — ' + esc(lead.title) : '') + ' · ' + esc(lead.label);
+  if (ps.length > 1) txt += ' · +' + tkPlural(ps.length - 1, 'more person', 'more people');
+  return txt;
+}
+
+function tkRowHtml(b) {
+  var open = !!TK.open[b.id];
+  var s = tkStage(b.stage);
+  var tags = [];
+  if (b.onUs) tags.push('<span class="tk-tag todo">To do</span>');
+  if (b.elizabeth) tags.push('<span class="tk-tag el">Elizabeth</span>');
+  if (b.archived) tags.push('<span class="tk-tag">archived</span>');
+  var cat = CAT_NAMES[b.category] || b.category || '';
+  var head = '<button class="tk-head" data-tk-row="' + esc(b.id) + '" aria-expanded="' + open + '">' +
+    '<span class="tk-main">' +
+      '<span class="tk-name"><b>' + esc(b.name) + '</b>' + (cat ? '<span class="tk-cat">' + esc(cat) + '</span>' : '') + tags.join('') + '</span>' +
+      '<span class="tk-next">' + esc(b.next || s.label) + tkDueHtml(b) + '</span>' +
+      '<span class="tk-who">' + tkWho(b) + '</span>' +
+    '</span>' +
+    '<span class="tk-side"><span class="tk-pill">' + esc(b.stage === 'out' && b.out ? 'Out' : s.label) + '</span>' + tkDotsHtml(b) +
+      (b.lastAt ? '<span class="tk-when" title="Last step ' + esc(itDay(b.lastAt)) + '">' + esc(itRel(b.lastAt)) + '</span>' : '') + '</span>' +
+    '</button>';
+  return '<div class="tk-row tk-s-' + b.stage + (open ? ' open' : '') + '" data-tk-id="' + esc(b.id) + '">' + head + (open ? tkBodyHtml(b) : '') + '</div>';
+}
+
+function tkBodyHtml(b) {
+  var people = (b.people || []).map(function (p) {
+    var dates = [];
+    if (p.invitedAt) dates.push('invited ' + itDay(p.invitedAt));
+    if (p.acceptedAt) dates.push('accepted ' + itDay(p.acceptedAt));
+    if (p.emailedAt) dates.push('emailed ' + itDay(p.emailedAt));
+    if (p.repliedAt) dates.push('replied ' + itDay(p.repliedAt));
+    if (p.callAt) dates.push('call ' + itDay(p.callAt));
+    var by = p.by === 'elizabeth' ? 'Elizabeth · ' + (p.channel === 'email' ? 'email' : 'LinkedIn') : (p.channel === 'email' ? 'Email' : 'LinkedIn');
+    var stg = tkStage(p.stage);
+    var links = [];
+    if (p.linkedinUrl) links.push('<a class="it-chip" href="' + esc(itHref(p.linkedinUrl)) + '" target="_blank" rel="noopener">' + IT_ICON.li + 'LinkedIn</a>');
+    if (p.email) links.push('<a class="it-chip" href="' + esc(gmailCompose(p.email, 'SB Agency × ' + b.name, '')) + '" target="_blank" rel="noopener" title="Opens a Gmail draft — nothing sends from here">' + IT_ICON.mail + 'Email</a>');
+    var focus = p.contactId ? ' data-brand="' + esc(b.id) + '" data-focus="' + esc(p.contactId) + '" title="Open ' + esc(b.name) + ' at ' + esc(p.name) + '"' : '';
+    return '<div class="tk-person tk-s-' + p.stage + '"' + focus + '>' +
+      '<div style="min-width:0"><div><span class="tk-pname">' + esc(p.name) + '</span>' + (p.title ? ' <span class="tk-ptitle">— ' + esc(p.title) + '</span>' : '') + '</div>' +
+        '<div class="tk-pnext"><span class="tk-pill">' + esc(p.stage === 'out' ? 'Out' : stg.label) + '</span> ' + esc(p.next || p.label) + tkDueHtml(p) + '</div>' +
+        '<div class="tk-pdates">' + esc(by) + (dates.length ? ' · ' + esc(dates.join(' · ')) : '') + '</div></div>' +
+      '<div class="tk-plinks">' + links.join('') + '</div>' +
+      '</div>';
+  }).join('');
+  return '<div class="tk-body">' + (people || '<div class="tk-empty">Nobody reached on the site yet — it was added to In talks by hand.</div>') +
+    '<div class="tk-acts"><button class="btn-solid sm" data-tk-profile="' + esc(b.id) + '">Open its In talks profile</button>' +
+    '<button class="btn-ghost sm" data-tk-brand="' + esc(b.id) + '">Brand page →</button></div></div>';
+}
+
+// The brand's In talks profile (a brand not in talks opens as a look —
+// "Not in talks yet" — with + Add and the deal stages).
+function tkOpenProfile(id) {
+  if (!IT.data) document.getElementById('it-body').innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  IT.edit = null; IT.links = false; IT.mobile = true;
+  itPreview(id);
+}
+
+(function () {
+  var view = document.getElementById('tracker');
+  view.addEventListener('input', function (e) {
+    if (e.target.id !== 'tk-find') return;
+    TK.q = e.target.value;
+    renderTrackerList();
+  });
+  view.addEventListener('click', function (e) {
+    var t = e.target.closest('button, a, [data-focus]');
+    if (!t || !view.contains(t)) return;
+    var v;
+    if (t.tagName === 'A') return;   // links open themselves
+    if ((v = t.getAttribute('data-tk-stage'))) { TK.stage = TK.stage === v ? null : v; renderTracker(); return; }
+    if (t.id === 'tk-mine') { TK.mine = !TK.mine; renderTracker(); return; }
+    if (t.hasAttribute('data-tk-clear')) {
+      TK.stage = null; TK.mine = false; TK.q = '';
+      document.getElementById('tk-find').value = '';
+      renderTracker();
+      return;
+    }
+    if ((v = t.getAttribute('data-tk-more'))) { TK.more[v] = true; renderTrackerList(); return; }
+    if ((v = t.getAttribute('data-tk-row'))) {
+      if (TK.open[v]) delete TK.open[v]; else TK.open[v] = true;
+      var b = ((TK.data && TK.data.brands) || []).filter(function (x) { return x.id === v; })[0];
+      var row = t.closest('.tk-row');
+      if (b && row) row.outerHTML = tkRowHtml(b);
+      return;
+    }
+    if ((v = t.getAttribute('data-tk-profile'))) { tkOpenProfile(v); return; }
+    if ((v = t.getAttribute('data-tk-brand'))) { loadBrand(v); return; }
+    if ((v = t.getAttribute('data-focus'))) { loadBrand(t.getAttribute('data-brand'), v); return; }
+  });
+})();
 
 // --- show board: board codes (was "in talks") -------------------
 //
@@ -24588,6 +24919,7 @@ function gotoViewNow(id) {
   if (id === 'operations') showView('materials');
   if (id === 'talks') loadTalks();
   if (id === 'intalks') loadInTalks();
+  if (id === 'tracker') loadTracker();
   if (id === 'results') loadResults();
   if (id === 'discover') loadDiscover();
   if (id === 'clarify') loadClarify();
@@ -24658,6 +24990,12 @@ function gotoViewNow(id) {
     });
     loadLinkedin();
   }, 50);
+})();
+
+// Deep link: #tracker — In talks → Every brand reached.
+(function () {
+  if (!/^#tracker/.test(location.hash || '')) return;
+  setTimeout(function () { loadTracker(); }, 50);
 })();
 
 // Deep link: #intalks or #intalks/<brandId> — the In talks tab (at that brand).

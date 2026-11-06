@@ -201,7 +201,7 @@ async function main() {
   const last = (fn) => [...calls].reverse().find((c) => c.fn === fn);
 
   await page.goto(base0 + '/app.html');
-  await page.waitForSelector('.tabs .nav-item[data-view="intalks"]');
+  await page.waitForSelector('.tabs .nav-item[data-view="tracker"]');
 
   // 1. The tab
   const tabs = await page.$$eval('.tabs.cc-only:not(#sub-tabs) .nav-item', (els) => els.map((e) => e.textContent));
@@ -210,11 +210,16 @@ async function main() {
   await page.click('.tabs .nav-item[data-view="board"]');
   await page.waitForSelector('#sub-tabs .nav-item[data-view="talks"]');
   assert.equal(await text('#sub-tabs .nav-item[data-view="talks"]'), 'Board codes');
-  await page.click('.tabs .nav-item[data-view="intalks"]');
+  // Nov 6 2026: the tab opens Every brand reached; In talks is its second sub-tab.
+  await page.click('.tabs .nav-item[data-view="tracker"]');
+  await page.waitForSelector('#sub-tabs .nav-item[data-view="intalks"]');
+  assert.deepEqual(await page.$$eval('#sub-tabs .nav-item', (els) => els.map((e) => e.textContent)), ['Every brand reached', 'In talks']);
+  assert.equal(await page.evaluate(() => document.querySelector('.view.active').id), 'tracker');
+  await page.click('#sub-tabs .nav-item[data-view="intalks"]');
   await page.waitForSelector('#it-list .it-item');
   assert.equal(await page.evaluate(() => document.querySelector('.view.active').id), 'intalks');
-  assert.equal(await page.isVisible('#sub-tabs'), false, 'no sub-tabs on In talks');
-  console.log('✓ its own tab between Outreach and Show Board; Show Board’s sub-tab reads Board codes');
+  assert.equal(await page.$eval('.tabs.cc-only:not(#sub-tabs) .nav-item.active', (e) => e.textContent), 'In talks', 'the top tab stays lit');
+  console.log('✓ its own tab between Outreach and Show Board (Every brand reached, then In talks); Show Board’s sub-tab reads Board codes');
 
   // 2. The list
   const groups = await page.$$eval('#it-list .it-glabel', (els) => els.map((e) => e.firstChild.textContent));
@@ -401,7 +406,8 @@ async function main() {
   // 9. A phone
   await page.setViewportSize({ width: 390, height: 844 });
   await page.click('.tabs .nav-item[data-view="dashboard"]');
-  await page.click('.tabs .nav-item[data-view="intalks"]');
+  await page.click('.tabs .nav-item[data-view="tracker"]');
+  await page.click('#sub-tabs .nav-item[data-view="intalks"]');
   await page.evaluate(() => { IT.mobile = false; renderInTalks(); });
   assert.equal(await page.isVisible('#it-list'), true);
   assert.equal(await page.isVisible('#it-main'), false, 'the list first');

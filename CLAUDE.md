@@ -32,7 +32,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 ## Where things live
 - `public/app.html` — the whole UI. Top nav is eight groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
   `showView`): Home · Brands (All brands / Recently added / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
-  Week plan / Schedule / Email / People / Archived / Email stats) · **Elizabeth** (Today / Week plan / Follow-ups / Results, below) · **In talks** (one view, below) ·
+  Week plan / Schedule / Email / People / Archived / Email stats) · **Elizabeth** (Today / Week plan / Follow-ups / Results, below) · **In talks** (Every brand reached / In talks, below) ·
   **Show Board** (Overview = code lookup (`boardCodeLookup`: the whole roster by name / aka, people and archived too — it used to filter listBrands' first 500; `test-board-lookup.js`) + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
   exact NY times and time on board; **every** board open is logged, gate on or off (anonymous = "Visitor") / **Board codes** (was "In talks" until the In talks tab; view id still `talks`, `listTalks`) = per-brand engagement cards (code, viewers, opens, timed minutes
@@ -128,7 +128,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   accepted … their linkedin and even email … the website and brand socials like instagram and tiktok … an overview … not
   more than 4 sentences … an activation idea … editable … a copy button that we can paste into a new chat with instructions
   on how to brainstorm"; his picks: a call booked puts a brand in by itself + an Add button; its own top tab; list + profile;
-  Claude's daily check writes the overview and idea, no API spend). Top tab between Outreach and Show Board (`#intalks`,
+  Claude's daily check writes the overview and idea, no API spend). The In talks top tab's second sub-tab since Nov 6 2026 (`#intalks`,
   `IT` / `it*` in app.html, its own `.it-` look: a two-pane workspace — brands down the left, one brand's profile on the
   right; a phone shows the list, a tap the profile with ‹ All brands). **Who's in** (rules pure in `src/lib/in-talks.ts`,
   `talksState`): any Target with `callBookedAt` (or `callAt`), or `Brand.talksAddedAt` (+ Add to In talks — the brand page's
@@ -163,6 +163,35 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `addWorkLog`); every write is a ClaudeAction (`actionText`). Show Board's old "In talks" sub-tab is **Board codes**.
   Tests: `node scripts/test-in-talks.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-in-talks.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-in-talks-e2e.js`.
+- **In talks → Every brand reached** (Leo, Nov 6 2026: "a tab that has all of the brands that were talking to / emailed
+  out to … a clear way to keep track of every brand that we've reached out to, is accepted, and has responded to us, and
+  wants to continue. And then we send out an email"; he left the where to Claude — "maybe just expand on the brands we're
+  talking to tab"). The In talks top tab (`data-view="tracker"`, still labelled In talks) is a group now: **Every brand
+  reached** (view `#tracker`, `TK` / `tk*` in app.html, `.tk-` CSS, deep link `#tracker`) first, then **In talks** (the
+  profiles, unchanged, `#intalks`). Data = `outreachTracker` (read-only; a READ_NAMES read in claude-day.ts): every brand
+  reached by the Reached tag's rule (`REACHED_WHERE`) or by Elizabeth's rows (sent / accepted / replied / call), plus every
+  brand on In talks; never a person (kind filtered in code — `kind: { not: 'person' }` drops every null kind). Each brand
+  sits at **one step** — Reached out → Accepted → Replied → Wants to continue → Email sent → In talks, or **Out** — the
+  furthest step anyone there is on who's still in play (rules pure in `src/lib/tracker.ts`, `node scripts/test-tracker.mjs`):
+  per person (`zachStage` / `repStage`): accepted = `isAccepted`; replied = a reply (status, repliedAt, an inbound email)
+  or a path picked / a hand email after an accept; **Wants to continue** = Zach's list's They want email / LinkedIn with
+  the email / DM not sent yet; **Email sent** = `emailedAt` / `handLiSentAt` after that (a cold hand or machine email is
+  Reached out); In talks = a call (`callAt` / `callBookedAt`), converted, or her `call`; Out = doesn't want to continue
+  (`handDeclinedAt`, `doNotContactAt`, a stopped brand, her declined), said no, the machine's `dead`, No response (7 days
+  after the final reach-out / her follow-up, Zach's list's cadence). A brand (`brandStage`): stopped → Out; on In talks
+  (`talksState` with her calls too) or an open deal → In talks; a lost deal → Out; else the furthest live person; a call on
+  a brand taken off In talks = Out "taken off". **To do** (`onUs`) = a step that's ours: the first message / final
+  reach-out due (Tue–Thu rule), a reply to answer, the email to send, her follow-up due; "N days late" from `due`. The page:
+  a tile per step (count, "N to do"; a click shows only that step), "So far" (`ever`: brands that ever got to each step),
+  a find box (brands, people, titles), **Only ones with a step for us**, then a heading per step, furthest first (Out
+  last), 40 rows then Show all; a row = brand, category, To do / Elizabeth / archived tags, what's next, the lead person,
+  the step pill and six dots, last step; a click opens everyone reached there (step, next, dates, who reached them,
+  LinkedIn / Gmail compose) — a person opens the brand page at them (`data-focus`), **Open its In talks profile**
+  (`itPreview`: a brand not in talks opens as a look, "not in talks yet" — the profile no longer says "Replied" for one that
+  didn't; `listInTalks.preview.repliedAt` falls back to its journey) and **Brand page →**. Nothing is ticked here — steps stay
+  on Zach's list, the brand page and Elizabeth's tab. Tests: `node scripts/test-tracker.mjs`, `NODE_PATH=$(npm root -g) node
+  scripts/test-tracker.js` (page), `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-tracker-e2e.js`;
+  `test-in-talks.js` opens In talks through the sub-tab.
 - **Elizabeth** (Leo, Oct 21 2026: "a new outreach tab for Elizabeth to use her email to outreach to some brands … a
   different part to the site soley for Elizabeth and I want the brands and the same structure for outreach to carry over";
   his picks: **both** LinkedIn invites from her LinkedIn and emails from her own Gmail, **any brand**, **no rules between her
