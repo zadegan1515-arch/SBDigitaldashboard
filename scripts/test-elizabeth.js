@@ -204,7 +204,8 @@ async function main() {
 
   // 2. Today
   assert.deepEqual(await page.$$eval('#el-today .el-bname', (els) => els.map((e) => e.textContent)), ['Alpha Hydrate', 'Beta Beer']);
-  assert.match(await text('#el-today-sub'), /3 of 30/);
+  // On a Fri–Mon the page says it isn't a sending day (the fake follows the calendar).
+  assert.match(await text('#el-today-sub'), SENDING ? /3 of 30/ : /not a sending day — next is/);
   assert.match(await text('#el-today-body'), /Zeta Gin.*waits/);
   assert.match(await text('#el-today-body'), /From /, 'a carried brand says where it came from');
   const gmail = await page.getAttribute('[data-el-row="r1"] a[href*="mail.google.com"]', 'href');
