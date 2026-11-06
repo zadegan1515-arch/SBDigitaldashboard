@@ -51,7 +51,7 @@ import { noBuyerFirst } from '@/lib/coverage'
 import { giantWhy } from '@/lib/giants'
 import { giantOf, rowReached, parseGiants, GIANTS_KEY, nyDayKey } from '@/lib/queue-rules'
 import { noteChosenIds, readChosenIds } from '@/lib/chosen'
-import { buildLiList, CONTACT_CAP_PER_BRAND } from '@/lib/li-list-db'
+import { buildLiList, CONTACT_CAP_PER_BRAND, LI_FILL_FLOOR_KEY } from '@/lib/li-list-db'
 import { stopIndex, stoppedMatch, stopWords } from '@/lib/do-not-contact'
 
 const prisma = new PrismaClient()
@@ -718,6 +718,12 @@ export async function POST(req: NextRequest) {
   // then the rest; within each, `focus` ("electrolyte") first, then by
   // size, emptiest first.
   if (body.action === 'liList') {
+    // The floor the run asked with (its setup panel, in the LinkedIn Fill app):
+    // Brands → All brands counts the fill at the same floor (brandSupply).
+    if (body.minFit !== undefined && Number.isFinite(Number(body.minFit))) {
+      const floor = { minFit: Math.max(0, Math.min(100, Math.round(Number(body.minFit)))), at: new Date().toISOString() }
+      await writeJsonSetting(prisma, LI_FILL_FLOOR_KEY, floor).catch(() => {})
+    }
     return NextResponse.json({ ok: true, ...(await buildLiList(prisma, body)) }, { headers: cors })
   }
 

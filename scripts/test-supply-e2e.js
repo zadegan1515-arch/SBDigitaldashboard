@@ -83,6 +83,8 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       return out;
     };
     await brand('bReady', 'Ready Hydration'); await people('bReady', 5);
+    // Read in full before the founders & events search, enough people now.
+    await brand('bFull', 'Full Hydration'); await people('bFull', 5);
     await brand('bShort', 'Short Hydration'); await people('bShort', 1);
     await brand('bNone', 'Nobody Hydration'); await people('bNone', 2, { linkedinUrl: null });
     await brand('bGiant', 'Giant Hydration', { liMembers: 2400 }); await people('bGiant', 5);
@@ -100,6 +102,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const at = new Date(Date.now() - 20 * 864e5).toISOString();
     await prisma.setting.create({ data: { key: 'liSweepLog', value: JSON.stringify({
       bNone: { at, seen: 30, added: 0, v: 2, clean: true, issue: null, sn: true },
+      bFull: { at, seen: 30, added: 5, v: 2, clean: true, issue: null, sn: true },
       bDead: { at, seen: 30, added: 0, v: 2, clean: true, issue: null, sn: true, reread: true },
     }) } });
 
@@ -126,6 +129,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
 
     // ---- the fill ----
     assert.ok(has(s.fill.ids.reread, 'bNone'), 'read in full and still short: one more read');
+    assert.ok(has(s.fill.ids.reread, 'bFull'), 'read in full before founders & events, enough people: one more read too (Nov 6 2026)');
     assert.ok(has(s.fill.ids.new, 'bShort') && has(s.fill.ids.new, 'bReady'), 'never read: new');
     assert.ok(!has(s.fill.ids.new, 'bDead') && !has(s.fill.ids.reread, 'bDead'), 're-read already: never again by itself');
     const sched = await data('fillSchedule', { minFit: 0, research: false });
@@ -133,6 +137,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.ok(order.indexOf('bShort') >= 0 && order.indexOf('bReady') >= 0);
     assert.ok(order.indexOf('bShort') < order.indexOf('bReady') && order.indexOf('bNone') < order.indexOf('bReady'),
       'short brands the queue could pick go before ready ones: ' + order.join(', '));
+    assert.ok(order.indexOf('bReady') < order.indexOf('bFull'), 'a brand not read yet goes before one more read of a ready brand: ' + order.join(', '));
     // The run's own list says which reads take the founders & events search.
     const li = await call('/api/ingest', { action: 'liList', token: INGEST_TOKEN, reader: 2, minFit: 0, salesNav: true }, INGEST_TOKEN);
     assert.ok(li.json.ok !== false && Array.isArray(li.json.items), 'liList answered: ' + JSON.stringify(li.json).slice(0, 200));
@@ -140,9 +145,10 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(item('bShort').wide, true);
     assert.equal(item('bNone').wide, true);
     assert.equal(item('bNone').reread, true);
-    assert.equal(item('bReady').wide, false, 'a ready brand reads as before');
-    assert.ok(li.json.shortFirst >= 2 && li.json.reread >= 1);
-    ok('the fill: short brands first, their reads wider, a full read still short back once');
+    assert.equal(item('bReady').wide, true, 'every read searches founders & events');
+    assert.deepEqual([item('bFull').reread, item('bFull').wide, item('bFull').kind], [true, true, 'reread']);
+    assert.ok(li.json.shortFirst >= 2 && li.json.reread >= 2);
+    ok('the fill: short brands first, every read wider, each brand read in full before back once');
 
     // Its one more read lands (script 1.44 sends wide): the brand is re-read for good.
     const sw = await call('/api/ingest', { action: 'liSwept', token: INGEST_TOKEN, reader: 2, brandId: 'bNone', run: 'r1', name: 'Nobody Hydration',
@@ -153,6 +159,14 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     s = await data('brandSupply', { minFit: 0 });
     assert.ok(!has(s.fill.ids.reread, 'bNone') && !has(s.fill.ids.new, 'bNone') && !has(s.fill.ids.again, 'bNone'), 'off the fill once read again');
     ok('the wider read marks the brand re-read: it leaves the fill');
+
+    // The floor the LinkedIn Fill app's run asked with is the card's floor.
+    const floorList = await call('/api/ingest', { action: 'liList', token: INGEST_TOKEN, reader: 2, minFit: 57, salesNav: true }, INGEST_TOKEN);
+    assert.ok(floorList.json.ok !== false);
+    s = await data('brandSupply', {});
+    assert.deepEqual([s.minFit, s.appFloor && s.appFloor.minFit], [57, 57]);
+    assert.equal((await data('brandSupply', { minFit: 0 })).minFit, 0, 'a floor typed on the card wins for that count');
+    ok('the card counts at the floor the fill app\u2019s run uses');
 
     // ---- the Too small switch ----
     const bankIds = async () => (await data('weekBank', {})).bank.rows.map(r => r.id);

@@ -39,6 +39,11 @@ export const REMATCH_SINCE = Date.parse('2026-10-30T12:00:00Z')
 // the household names whatever their page says.
 export { VERY_BIG_LI }
 
+// The Brand Fit floor the fill's last list was asked with (its setup panel in
+// the LinkedIn Fill app; /api/ingest liList saves it): { minFit, at }.
+// Brands → All brands counts the fill at that floor (brandSupply).
+export const LI_FILL_FLOOR_KEY = 'liFillFloor'
+
 // A big company works ten at a time (Leo, Oct 7 2026) — one rule for
 // /api/data and the fill: isBigBrand in brand-work.ts.
 export { isBigBrand }
@@ -186,8 +191,11 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     if (e.why === 'wrong') return !!e.pageIndustry && !pageLooksWrong(b.category, e.pageIndustry)
     return e.why === 'unclear' && !!decideCompanyMatch(b, e.candidates || []).pick
   }
-  // Read in full and still short: one more, wider read (supply.ts rereadOpen).
-  const reread = (b: { id: string }) => shortPick.has(b.id) && rereadOpen(log[b.id])
+  // Read in full before the founders & events search existed: one more read
+  // with it (supply.ts rereadOpen — Leo, Nov 6 2026, after the fill's list was
+  // down to 28 brands: every brand read before it gets it once, short on people
+  // or not). The floor and the very-big skip still apply.
+  const reread = (b: { id: string }) => rereadOpen(log[b.id])
   const restsNow = (b: { id: string; name: string; aka: string | null; category?: string | null }) =>
     !dueOf(b).due && !rematch(b) && !reread(b)
   const resting = underCap.filter(b => restsNow(b) && !hiddenOld(b)).length
@@ -222,11 +230,12 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
       issueText: issueWords(dueOf(b).issue || (hiddenOld(b) ? 'noSalesNav' : null)) || null,
       hiddenRetry: retryOf(b),
       fit: fitOf.get(b.id)?.score ?? null,
-      // The queue could pick it and it's short on people: first, and its read
-      // takes the founders + events search too; `reread` = read in full
-      // before, this is its one more read.
+      // The queue could pick it and it's short on people: first. Every read
+      // takes the founders + events search too (`wide`, script 1.44+), so no
+      // brand needs a second pass for it; `reread` = read in full before it
+      // existed, this is its one more read.
       short: shortPick.has(b.id),
-      wide: shortPick.has(b.id),
+      wide: true,
       reread: reread(b),
       kind: fillKindOf(log[b.id], { reread: reread(b), reader: LI_READER }),
     }))
@@ -260,6 +269,7 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
           parent: parentFor(names[0], akaList),
           // A giant name waits behind everything else (giants held back).
           giant: !giants.on && !!giantWhy(names[0], { aka: akaList }),
+          wide: true,
         })
       }
     }
@@ -277,7 +287,7 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
       if (researchResting(rlog[brandKey(names[0])])) { researchWaiting++; continue }
       asked.push({
         research: true, asked: true, name: names[0], aka: names.slice(1).join(', ') || null,
-        category: x.category, lane: 'Asked for by name', linkedinUrl: null, contacts: 0, focus: true,
+        category: x.category, lane: 'Asked for by name', linkedinUrl: null, contacts: 0, focus: true, wide: true,
       })
     }
     research.unshift(...asked)
@@ -343,9 +353,11 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
   const lead: any[] = [...byFit(planned).sort(byDay), ...byFit(mine), ...research.filter(r => r.asked)]
   const pool: any[] = [...rest, ...research.filter(r => !r.asked)]
   // Brands the queue could pick that are short on people go first (supply.ts),
-  // then the rest — each best Brand Fit first.
+  // then brands not read yet (or read again for an issue), then the one more
+  // read of brands read in full before — each best Brand Fit first.
   const front = pool.filter(i => tail(i) === 0 && !i.research)
-  const sorted: any[] = [...lead, ...byFit(front.filter(i => i.short)), ...byFit(front.filter(i => !i.short)), ...pool.filter(i => tail(i) === 0 && i.research)]
+  const sorted: any[] = [...lead, ...byFit(front.filter(i => i.short)), ...byFit(front.filter(i => !i.short && !i.reread)),
+    ...byFit(front.filter(i => !i.short && i.reread)), ...pool.filter(i => tail(i) === 0 && i.research)]
   // The ones moved to the back don't go first for having no buyer or
   // the focus word any more, so the run's panel mustn't say they do.
   const ordered = [...sorted, ...[1, 2].flatMap(n => byFit(pool.filter(i => tail(i) === n)))]
@@ -363,7 +375,7 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     hiddenRetry: ordered.filter(i => i.retry).length,
     // Short on people and the queue could pick them: read first, wider.
     shortFirst: ordered.filter(i => i.short).length,
-    // Of those, read in full before: their one more read.
+    // Read in full before the founders & events search: their one more read.
     reread: ordered.filter(i => i.reread).length,
     retry: ordered.filter(i => i.retry).length,
     stuck,

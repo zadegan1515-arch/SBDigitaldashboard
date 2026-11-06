@@ -10,9 +10,10 @@
 //     file, or not read by the fill yet
 //   - reach out again = Week plan's rule (reach-again.ts), shown there too
 //   - the fill does the best brands the queue could pick that are short on
-//     people first, and their read adds a founders + events search (`wide`);
-//     one it already read in full that is still short gets that wider read
-//     once more (`reread` on the visit mark, li-sweep.ts nextMark)
+//     people first; every read adds a founders + events search (`wide`), and
+//     every brand read in full before that search existed gets one more read
+//     with it (`reread` on the visit mark, li-sweep.ts nextMark; Nov 6 2026,
+//     after his list was down to 28 brands)
 //   - what the rules hold back (giants, too small, Skip categories) as counts
 //     with a switch each — nothing changes until he flips one
 //   - Archive dead weight: brands that can never go out, previewed, Undo
@@ -76,9 +77,10 @@ export function onlyHeldBy(holds: Hold[][], rule: Hold): number {
 export const FILL_FIT_DEFAULT = 50
 
 // The fill's one more, wider read: its last read was clean (read in full,
-// nothing went wrong), didn't take the founders + events search already
-// (script 1.44 does that for a brand short on people), and it hasn't been
-// read again since. A visit to a brand whose mark was clean sets `reread`
+// nothing went wrong), didn't take the founders + events search (script 1.44
+// adds it to every read), and it hasn't been read again since. Every brand
+// read before that search existed gets it once (Leo, Nov 6 2026), short on
+// people or not; a visit to a brand whose mark was clean sets `reread`
 // (li-sweep.ts nextMark), so it's once.
 export function rereadOpen(mark: LiMark | undefined): boolean {
   return !!mark && !mark.reread && !mark.wide && !mark.skip && markOutcome(mark).clean
@@ -88,7 +90,7 @@ export function rereadOpen(mark: LiMark | undefined): boolean {
 //   new     never read by the current reader
 //   again   read before: the read had an issue, its month is up, or its
 //           parent company's page is still to search
-//   reread  read in full, still short on people: one more, wider read
+//   reread  read in full before the founders & events search: one more read
 export type FillKind = 'new' | 'again' | 'reread'
 export function fillKindOf(mark: LiMark | undefined, opts: { reread: boolean; reader: number }): FillKind {
   if (opts.reread) return 'reread'

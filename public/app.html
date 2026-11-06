@@ -8241,11 +8241,14 @@ document.getElementById('cover-card').addEventListener('click', function (e) {
 // brand ids per count, so a count and the rows its Show opens are one list
 // (BR.sup narrows brShown). The fill's counts use the Fill schedule's Brand
 // Fit floor (localStorage sb.fillFit), so they match it.
-var SUP = { data: null, sets: {}, err: null, againOpen: false, dead: null, deadTick: {}, deadErr: null };
+// floor: a Brand Fit floor typed on the card for this visit; null = the floor
+// the LinkedIn Fill app's run last asked with (Leo runs the fill there — Nov 6
+// 2026), so the count is what that run reads.
+var SUP = { data: null, sets: {}, err: null, againOpen: false, dead: null, deadTick: {}, deadErr: null, floor: null };
 var SUP_TURN = 0;
 var SUP_LABEL = {
   ready: 'Ready to go out', short: 'Short on people to go out', none: 'Nobody to reach yet', pass: 'On a two-week Pass',
-  fnew: 'Not read by the LinkedIn fill yet', fagain: 'Read again by the fill', freread: 'One more, wider read on the fill',
+  fnew: 'Not read by the LinkedIn fill yet', fagain: 'Read again by the fill', freread: 'One more read on the fill, with founders & events',
   again: 'Reach out again', giant: 'Giants held back', small: 'Too small, held back', skip: 'In a Skip category'
 };
 function supLoad() {
@@ -8254,7 +8257,7 @@ function supLoad() {
   if (lastCategory !== 'all' || BRANDS_SHOWN !== 'all') { box.innerHTML = ''; return Promise.resolve(); }
   var turn = ++SUP_TURN;
   if (!SUP.data) box.innerHTML = '<div class="panel su-card"><div class="su-dim">Counting what the queue has to work with…</div></div>';
-  return api('brandSupply', { minFit: fillFitFloor() }).then(function (d) {
+  return api('brandSupply', SUP.floor == null ? {} : { minFit: SUP.floor }).then(function (d) {
     if (turn !== SUP_TURN) return;
     // An answer without the counts (a server mid-deploy, an older one): no card.
     if (!d || !d.ids || !d.fill || !d.fill.ids || !d.again || !d.switches) { SUP.data = null; SUP.err = null; box.innerHTML = ''; return; }
@@ -8319,14 +8322,17 @@ function supRender() {
     supLine(noBuyer, 'no partnerships, marketing or founder person on file', 'nobuyer') +
     '<div class="su-fill">' +
       '<div class="su-fill-h"><span><b>' + f.total + '</b> on the fill at Brand Fit</span><input class="inp su-floor" data-supfloor type="number" min="0" max="100" value="' + esc(String(d.minFit)) +
-        '" title="The same floor as the fill’s setup panel and Outreach → People’s Fill schedule"><span>and up' +
+        '" title="The floor your LinkedIn Fill app’s run uses (its setup panel); type another to see what it would read"><span>and up' +
         (fillDays ? ' · about ' + plural(fillDays, 'day') : '') + '</span></div>' +
+      (d.appFloor && d.appFloor.minFit !== d.minFit
+        ? '<div class="su-dim">Your LinkedIn Fill app’s run uses ' + d.appFloor.minFit + ' · <a href="#" data-supappfloor="1">Count at ' + d.appFloor.minFit + '</a></div>'
+        : d.appFloor ? '<div class="su-dim">The floor your LinkedIn Fill app’s run uses.</div>' : '') +
       (f.ids.new.length ? supLine(f.ids.new.length, 'not read yet', 'fnew') : '') +
       (f.ids.again.length ? supLine(f.ids.again.length, 'read again — the last read went wrong or is due', 'fagain') : '') +
       (f.total ? '' : '<div class="su-dim">Nothing left for the fill at this floor.</div>') +
-      (!f.ids.reread.length ? '' : supLine(f.ids.reread.length, 'read in full, still short — one more read with founders &amp; events', 'freread',
-        'The fill searched marketing, business development and partnerships. These get one more read that adds founders, owners and events people.')) +
-      (f.shortFirst ? '<div class="su-dim">The ' + f.shortFirst + ' short on people go first, best Brand Fit first, and search founders &amp; events too.</div>' : '') +
+      (!f.ids.reread.length ? '' : supLine(f.ids.reread.length, 'read before founders &amp; events were searched — one more read with them', 'freread',
+        'Those reads searched marketing, business development and partnerships only. Each gets one more read that adds founders, owners and events people; every read from now on includes them.')) +
+      (f.shortFirst ? '<div class="su-dim">The ' + f.shortFirst + ' short on people go first, best Brand Fit first.</div>' : '') +
       (fillNote ? '<div class="su-dim">' + esc(fillNote) + '</div>' : '') +
       (f.total ? '<a class="btn-solid su-go" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" title="Opens LinkedIn in a window of its own and starts the fill. Needs the LinkedIn capture script in Tampermonkey.">Start the fill ↗</a>' : '') +
     '</div>' +
@@ -8433,6 +8439,7 @@ document.getElementById('supply-card').addEventListener('click', function (e) {
   var b;
   if ((b = e.target.closest('[data-supshow]'))) { supShow(b.getAttribute('data-supshow')); return; }
   if (e.target.closest('[data-supre]')) { supLoad(); return; }
+  if (e.target.closest('[data-supappfloor]')) { e.preventDefault(); SUP.floor = null; supLoad(); return; }
   if (e.target.closest('[data-supagain]')) { SUP.againOpen = !SUP.againOpen; supRender(); return; }
   if (e.target.closest('[data-supcp]')) { cpOpen(); return; }
   if ((b = e.target.closest('[data-supsw]'))) {
@@ -8507,6 +8514,7 @@ document.getElementById('supply-card').addEventListener('change', function (e) {
   var fl = e.target.closest('[data-supfloor]');
   if (fl) {
     var v = Math.max(0, Math.min(100, Math.round(Number(fl.value)) || 0));
+    SUP.floor = v;
     try { localStorage.setItem('sb.fillFit', String(v)); } catch (err) {}
     supLoad();
   }

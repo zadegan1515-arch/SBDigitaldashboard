@@ -978,22 +978,27 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   **Ready to go out** (the queue could pick it, enough reachable people to go out whole; about N people / N sending days) ·
   **Needs a LinkedIn fill** (short on people = the queue could pick it but reachable < `workNeed`, "with nobody to reach";
   no buyer on file = Buyer coverage's Needs people; on the fill at the Fill schedule's floor, localStorage `sb.fillFit`, the
-  same `buildLiList` the run reads: not read yet / read again / one more, wider read) · **Reach out again** (Week plan's
+  same `buildLiList` the run reads: not read yet / read again / one more read — the floor = the one the **LinkedIn Fill
+  app's** run last asked with (Leo runs the fill there; `/api/ingest` liList saves Setting `liFillFloor`, `brandSupply` uses
+  it when the card sends none and returns `appFloor`; a floor typed on the card counts for that visit, "Count at N" goes
+  back) · **Reach out again** (Week plan's
   `againRows`, the list with a button per sending day → `reachAgain`) · **Held back by the rules** with a switch each:
   Giants (`setGiantsOn`), **Too small** (new: Setting `outreachSmall` = { on }, `SMALL_KEY` / `parseSmall` in queue-rules.ts,
   `QueueCtx.smallOn` — on, bestFitEligible, the LinkedIn fill's floor and the Fill box / Plan my week's Hide too small let them
   in), Skip categories (→ Category priority), each "Let them in (+N)" = brands that rule alone holds; both switches confirm.
-  **The LinkedIn fill (script 1.44)**: after the Schedule's / Leo's / asked-for brands, brands the queue could pick that are
-  short on people go first, best Brand Fit first (`shortPick` in li-list-db.ts; items `short`, `wide`), and their read adds a
-  third Sales Navigator search, **founders & events** (`SN_WIDE`: founder / co-founder / CEO / owner / events / experiential /
-  activation; a small brand under `SN_SMALL` still gets it), liSwept `wide: true`. A brand **read in full and still short**
-  comes back **once** for that wider read (`rereadOpen`: clean, not `wide`, not `reread`; item `reread`, kind `reread`) —
-  any visit after a clean read sets `LiMark.reread` for good (`nextMark`), so it's once even from an older script (Leo's yes
-  to one more read; his Oct 14 rule otherwise stands). **Archive dead weight** (`deadWeight` preview → ticks → apply,
+  **The LinkedIn fill (script 1.44 / 1.45)**: after the Schedule's / Leo's / asked-for brands, brands the queue could pick that
+  are short on people go first, then brands not read yet (or read again for an issue), then the one more reads — each best
+  Brand Fit first (`shortPick` in li-list-db.ts; items `short`). **Every read** adds a third Sales Navigator search,
+  **founders & events** (`SN_WIDE`: founder / co-founder / CEO / owner / events / experiential / activation; items `wide:
+  true`; a small brand under `SN_SMALL` still gets it), liSwept `wide: true`. **Every brand read in full before that search
+  existed comes back once** for it (Leo, Nov 6 2026: the fill's list was down to 28 brands — "it only goes to 28 brands";
+  `rereadOpen`: clean, not `wide`, not `reread`; item `reread`, kind `reread`), short on people or not; the floor and the
+  very-big skip still apply, a brand reached before reads last as before. Any visit after a clean read sets `LiMark.reread`
+  for good (`nextMark`), so it's once even from an older script; otherwise his Oct 14 rule stands. **Archive dead weight** (`deadWeight` preview → ticks → apply,
   `deadWeightUndo`, Setting `deadWeightLast`; the same archive as Suggest Archive, now shared as `archiveLogged` /
   `undoArchiveLogged`): not sold in the US, closed / bought, sells sponsorships (`looksLikeSeller`), no LinkedIn page + no
-  parent + nobody reachable, or nobody reachable after a full read whose wider read is done (or won't come: under Fit 50 or
-  not the queue's pick) — never in talks, a deal, an activation, Elizabeth's rows, and "nobody" never for Leo's own picks.
+  parent + nobody reachable, or nobody reachable after a full read whose one more read is done (or won't come: under Fit
+  50) — never in talks, a deal, an activation, Elizabeth's rows, and "nobody" never for Leo's own picks.
   Tests: `node scripts/test-supply.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-supply.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-supply-e2e.js`, the wide search in `test-li-salesnav.js`.
 - **Outreach filter on every brand list** (Leo, Oct 18 2026: "anywhere on the site where i sort brands … a filter [for]

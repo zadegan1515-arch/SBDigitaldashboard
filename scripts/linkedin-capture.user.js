@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.44
+// @version      1.45
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -86,7 +86,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.44';
+  var VERSION = '1.45';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -2815,8 +2815,9 @@
     if (item.retry) return (job.fitFirst ? 'read again — ' : 'read again first — ') + (item.issueText || 'its last read went wrong') + (item.tries > 1 ? ' (try ' + (item.tries + 1) + ')' : '');
     if (item.hiddenRetry) return 'read before without Sales Navigator — back for it';
     // 1.44: brands the queue could pick that are short on people go first.
-    if (item.reread) return 'read in full before and still short on people — one more read, with founders & events';
-    if (item.short) return 'the queue could pick it but it\u2019s short on people — founders & events searched too';
+    // 1.45: every brand read before the founders & events search gets one more read with it.
+    if (item.reread) return 'read before founders & events were searched — one more read with them' + (item.short ? ', and it\u2019s short on people' : '');
+    if (item.short) return 'the queue could pick it but it\u2019s short on people';
     // Mid-size first (Leo, Oct 12 2026): the size leads the reason.
     if (job.midFirst && item.size) {
       var sw = { target: 'a mid-size brand', unknown: 'size not measured yet', small: 'a small brand', big: 'a big company (500–1,499)' }[item.size];

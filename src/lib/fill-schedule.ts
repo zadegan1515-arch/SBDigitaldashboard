@@ -33,8 +33,8 @@ export function fillWhy(i: FillItem, focus: string, dayLabel: (key: string) => s
   // Back because the last read went wrong (li-sweep.ts liDue).
   if (i.retry) return 'Read again — ' + (issueWords(i.issue) || 'last read had an issue') + (i.tries && i.tries > 1 ? ' (try ' + (i.tries + 1) + ')' : '')
   if (i.hiddenRetry) return 'Back for Sales Navigator (buyers hidden last time)'
-  if (i.reread) return 'Read in full, still short on people — one more read with founders & events'
-  if (i.short) return 'Short on people to go out — first, founders & events searched too'
+  if (i.reread) return 'Read before founders & events were searched — one more read with them'
+  if (i.short) return 'Short on people to go out — first'
   const bits: string[] = []
   if (i.research) bits.push('Research list' + (i.lane ? ' · ' + i.lane : ''))
   // Size and the rest only break a tie in Brand Fit now (byFit below).

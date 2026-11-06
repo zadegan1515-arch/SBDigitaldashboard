@@ -37,8 +37,8 @@ import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import { regionFlag } from '@/lib/region'
 import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hints'
 import { readLiLog, readLiResearch, issueWords, updateLiLog, markOutcome, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
-import { holdsOf, supplyOf, queuePickable, onlyHeldBy, rereadOpen, deadWeightOf, DEAD_WORDS, FILL_FIT_DEFAULT, HOLDS, type Hold, type SupplyState, type DeadWhy } from '@/lib/supply'
-import { buildLiList } from '@/lib/li-list-db'
+import { holdsOf, supplyOf, onlyHeldBy, rereadOpen, deadWeightOf, DEAD_WORDS, FILL_FIT_DEFAULT, HOLDS, type Hold, type SupplyState, type DeadWhy } from '@/lib/supply'
+import { buildLiList, LI_FILL_FLOOR_KEY } from '@/lib/li-list-db'
 import { splitFillDays } from '@/lib/fill-schedule'
 import { readHiddenLog, updateHiddenLog, markZachRead, clearZachRead, zachDue, ZACH_REST_DAYS, type HiddenEntry } from '@/lib/li-hidden'
 import { readRuns } from '@/lib/li-report'
@@ -3038,13 +3038,12 @@ async function deadWeightCandidates(pre?: { brands: PlanBrand[]; rates: AcceptRa
   for (const b of live) {
     const f = planBrandFit(b, ctx.rates)
     const mark = log[b.id]
-    const { state } = supplyStateOf(b, f, ctx.q)
     const why = deadWeightOf({
       notUs: b.usStatus === 'no', closed: !!f.bizNote, seller: looksLikeSeller(b.name, b.notes),
       reachable: b.contacts.filter(isReachable).length,
       cleanRead: !!mark && markOutcome(mark).clean,
-      // The fill's wider read is still to come (the run's default floor).
-      rereadPending: rereadOpen(mark) && queuePickable(state) && f.score >= FILL_FIT_DEFAULT,
+      // The fill's one more read is still to come (the run's default floor).
+      rereadPending: rereadOpen(mark) && f.score >= FILL_FIT_DEFAULT,
       noPage: !b.linkedinUrl && confirmed[b.id] === 'none' && !parentOf(b.name, b.aka),
       inTalks: inConversation(b) || repliedAtBrand(b, ex), deal: ex.deals.has(b.id),
       activation: actSet.has(b.id), rep: repSet.has(b.id),
@@ -7215,8 +7214,14 @@ const handlers: Record<string, Handler> = {
   // the rules hold back with their switches, and how many brands Archive dead
   // weight would offer. Read-only: brand ids per count, so a count and the
   // rows its Show opens are one list.
-  async brandSupply({ minFit = FILL_FIT_DEFAULT }: any = {}) {
-    const floor = Math.max(0, Math.min(100, Math.round(Number(minFit)) || 0))
+  // minFit: the card's own floor; without one, the floor the LinkedIn Fill
+  // app's run last asked with (Setting liFillFloor), else 50 — so the count is
+  // what the run there reads. appFloor = that run's floor, for the card to say.
+  async brandSupply({ minFit }: any = {}) {
+    const app = await readJsonSetting<{ minFit?: number; at?: string } | null>(prisma, LI_FILL_FLOOR_KEY, null)
+    const appFloor = app && Number.isFinite(Number(app.minFit)) ? { minFit: Number(app.minFit), at: app.at ?? null } : null
+    const want = minFit === undefined || minFit === null || minFit === '' ? (appFloor?.minFit ?? FILL_FIT_DEFAULT) : minFit
+    const floor = Math.max(0, Math.min(100, Math.round(Number(want)) || 0))
     const ctx = await loadBankCtx()
     const today = localDayKey()
     const [list, ex] = await Promise.all([
@@ -7245,7 +7250,7 @@ const handlers: Record<string, Handler> = {
     const fill: Record<'new' | 'again' | 'reread', string[]> = { new: [], again: [], reread: [] }
     for (const i of list.items as any[]) if (i.brandId && fill[i.kind as 'new']) fill[i.kind as 'new'].push(i.brandId)
     return {
-      today, minFit: floor,
+      today, minFit: floor, appFloor,
       switches: { giantsOn: ctx.q.giantsOn, smallOn: ctx.q.smallOn },
       ids,
       readyPeople, perDay: DAILY_SEND_LIMIT,

@@ -44,7 +44,7 @@ function reset() {
 }
 reset();
 const supply = (a) => ({
-  today: dayKey(0), minFit: a.minFit, perDay: 30, readyPeople: 4,
+  today: dayKey(0), minFit: a.minFit == null ? 57 : a.minFit, appFloor: { minFit: 57, at: NOW }, perDay: 30, readyPeople: 4,
   switches: { giantsOn: S.giantsOn, smallOn: S.smallOn },
   ids: {
     ready: S.smallOn ? ['bReady', 'bSmall'] : ['bReady'], short: ['bShort', 'bNone'], none: ['bNone'], pass: [],
@@ -130,16 +130,17 @@ async function main() {
   assert.match(text, /2short on people to go out whole/);
   assert.match(text, /1 with nobody to reach/);
   assert.match(text, /1not read yet/);
-  assert.match(text, /1read in full, still short/);
+  assert.match(text, /1read before founders & events were searched/);
+  assert.match(text, /The floor your LinkedIn Fill app’s run uses/);
   assert.match(text, /The 2 short on people go first/);
-  assert.match(text, /5 under Fit 50 left off/);
+  assert.match(text, /5 under Fit 57 left off/);
   assert.match(text, /Reach out again\s*1 brand/);
   assert.match(text, /Giants 1 held back/);
   assert.match(text, /Too small 1 held back/);
   assert.match(text, /Betting & DFS 1/);
   assert.doesNotMatch(text, /read again — the last read/, 'a fill line at 0 is left out');
   assert.match(text, /Dead weight 2 brands/);
-  assert.equal(calls('brandSupply')[0].args.minFit, 50, 'the fill’s default floor');
+  assert.equal(calls('brandSupply')[0].args.minFit, undefined, 'the fill app’s own floor (the server knows it)');
   assert.ok(await page.$('#supply-card a[href*="#sb-fill"]'), 'Start the fill');
   if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT, clip: { x: 0, y: 0, width: 1440, height: 760 } });
   console.log('✓ the four tiles: ready, needs a fill, reach out again, held back by the rules');
@@ -169,6 +170,10 @@ async function main() {
   await page.waitForFunction(() => document.querySelector('#supply-card [data-supfloor]') && document.querySelector('#supply-card [data-supfloor]').value === '60');
   assert.equal(calls('brandSupply').slice(-1)[0].args.minFit, 60);
   assert.equal(await page.evaluate(() => localStorage.getItem('sb.fillFit')), '60', 'shared with the Fill schedule');
+  assert.match(await page.textContent('#supply-card'), /Your LinkedIn Fill app’s run uses 57/);
+  await page.click('#supply-card [data-supappfloor]');
+  await page.waitForFunction(() => document.querySelector('#supply-card [data-supfloor]') && document.querySelector('#supply-card [data-supfloor]').value === '57');
+  assert.equal(calls('brandSupply').slice(-1)[0].args.minFit, undefined, 'back to the app’s floor');
   console.log('✓ the fill’s Brand Fit floor counts again and is remembered');
 
   // ---- the switches ----
