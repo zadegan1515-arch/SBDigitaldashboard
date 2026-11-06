@@ -1561,7 +1561,20 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `SN_DECOS` (…LeadSearchResult-14, 16, 15, 13, 12), the one that answers kept in GM `sbLiSnDeco`; any other failure → that
   brand reads the results page as before (`snDataFailed`, `st.snPageOnly`), `SN_DATA_TRIES` = 3 in a row → pages for the rest
   of the run (`job.snDataOff`, said on the panel's Sales Navigator line); 429 pauses the run. Unverified against the real
-  endpoint until Leo's first run on 1.42 — reports show "(data)" in `via` when it worked. **LinkedIn Fill** — the fill's own Chrome (Leo, Oct 20 2026:
+  endpoint until Leo's first run on 1.42 — reports show "(data)" in `via` when it worked. **An empty answer isn't taken on trust**
+  (script 1.46; Leo, Nov 6 2026: a run "didn't work to fill these" — up to 1.45 an answer with nobody in it was believed,
+  so a brand was marked read in full with nobody and never came back): a first page with no people → `snCompanyTotal`
+  asks the same company with no keywords / function (once a company, `SN_CO_TOTAL`); some → that search really is empty;
+  none while its People tab didn't say 0 (`st.members`) → the answer is wrong → that brand's results pages instead (hidden:
+  they may not draw → an issue, it comes back). liSwept sends `emptyChecked` + `coTotal` → mark `checked`. **Reads that
+  came back empty before** (`emptyUnchecked` in li-sweep.ts: clean, `shown === 0`, nobody added, since `SN_DATA_SINCE`
+  Oct 20 2026, not `checked`) count as issue `snEmpty` once — back on the next run, then `emptyAgain` on the mark keeps it
+  from coming back again whatever that read says; dead weight never takes them meanwhile (not a clean read). The fill
+  **learns the request shape** from Sales Navigator's own results page (`snLearnFromPage`: a PerformanceObserver on its
+  network timeline, only on `/sales/search/people`, never the fill's own asks — `SN_OWN_ASKS`) → GM `sbLiSnDeco`; "Copy a
+  sample for Claude" adds the data ask's last trouble (`SN_DATA_LAST`: decoration, why, the answer's start) and the page's
+  own request (`SN_PAGE_ASK`). Tests: `test-li-capture.mjs` (snEmpty once), `test-li-salesnav.js` (an empty answer
+  checked; the page's decoration learned). **LinkedIn Fill** — the fill's own Chrome (Leo, Oct 20 2026:
   "i dont want it to shut down chrome") keeps the run's own steps at full speed hidden or minimized: Outreach → People's
   **Run it hidden or minimized** (`#li-fast`, `liFastHtml`, `LI_FAST_CMD`, `LI_SCRIPT_URL` in app.html; the run card's hidden
   line and the script's `#sblihidden` warning point there, 1.43) = one Terminal paste that makes

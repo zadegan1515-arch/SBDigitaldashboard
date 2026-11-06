@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB Dashboard — LinkedIn People Capture
 // @namespace    sbagency.command-center
-// @version      1.45
+// @version      1.46
 // @description  Send brands' marketing and partnership people from LinkedIn to the SB Command Center — one People page at a time, or a slow run through every brand.
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
@@ -86,7 +86,7 @@
   // = @downloadURL: opening it brings up Tampermonkey's update page.
   var DOWNLOAD_URL = 'https://raw.githubusercontent.com/zadegan1515-arch/SBDigitaldashboard/main/scripts/linkedin-capture.user.js';
   var TOKEN_KEY = 'sbIngestToken';
-  var VERSION = '1.45';
+  var VERSION = '1.46';
   // Which card reader this is. The dashboard refuses LinkedIn calls from
   // older readers (the "• 3rd+" one read nobody as a buyer), so a stale
   // copy can't quietly rest brands for a month.
@@ -1090,6 +1090,12 @@
         .slice(0, markupChars || 2500));
     });
     if (!cards.length) out.push('No profile links found on this page.');
+    // Sales Navigator's results as data (1.46): what its last ask got wrong,
+    // and the request its own results page makes (the shape that works).
+    if (SN_DATA_LAST) out.push('--- data ask ' + JSON.stringify(SN_DATA_LAST));
+    var decoNow = null;
+    try { decoNow = GM_getValue(SN_DATA_KEY, null); } catch (e) {}
+    out.push('--- data decoration ' + (decoNow || 'none yet') + (SN_PAGE_ASK ? ' · page asked ' + SN_PAGE_ASK : ''));
     return out.join('\n');
   }
   function copySample() {
@@ -1474,8 +1480,10 @@
     function next() {
       if (i >= decos.length) return Promise.resolve({ why: 'LinkedIn turned down every way of asking' });
       var deco = decos[i++];
-      var ask = fetch('/sales-api/salesApiLeadSearch?q=searchQuery&query=' + query + '&start=' + start + '&count=' + SN_PAGE_SIZE +
-        '&decorationId=' + encodeURIComponent(deco), {
+      var path = '/sales-api/salesApiLeadSearch?q=searchQuery&query=' + query + '&start=' + start + '&count=' + SN_PAGE_SIZE +
+        '&decorationId=' + encodeURIComponent(deco);
+      try { SN_OWN_ASKS[new URL(path, location.origin).href] = 1; } catch (e) {}
+      var ask = fetch(path, {
         credentials: 'include',
         headers: { 'csrf-token': m[1], accept: 'application/json', 'x-restli-protocol-version': '2.0.0', 'x-li-lang': 'en_US' },
       });
@@ -1484,12 +1492,12 @@
         if (!r) return { why: 'no answer in 20 s' };
         if (r.status === 429) return { halt: 'LinkedIn said “too many requests”' };
         // An answer shape it doesn't know: the next one.
-        if (r.status === 400 || r.status === 500) return next();
-        if (!r.ok) return { why: 'LinkedIn answered ' + r.status };
+        if (r.status === 400 || r.status === 500) { snDataNote(deco, 'answered ' + r.status, null); return next(); }
+        if (!r.ok) { snDataNote(deco, 'answered ' + r.status, null); return { why: 'LinkedIn answered ' + r.status }; }
         return r.json().then(function (j) {
-          if (!j || !Array.isArray(j.elements)) return next();
+          if (!j || !Array.isArray(j.elements)) { snDataNote(deco, 'no people list in its answer', j); return next(); }
           try { GM_setValue(SN_DATA_KEY, deco); } catch (e) {}
-          return { json: j };
+          return { json: j, deco: deco };
         }, function () { return { why: 'its answer wasn’t data' }; });
       }, function () { return { why: 'the request failed' }; });
     }
@@ -1525,6 +1533,54 @@
     var total = j.paging && typeof j.paging.total === 'number' ? j.paging.total : null;
     return { got: { rows: rows, hidden: hidden, links: Object.keys(ids).length, cards: els.length }, total: total, sample: JSON.stringify(els.slice(0, 3)).slice(0, 1500) };
   }
+
+  // An empty answer isn't taken on trust (1.46; Leo, Nov 6 2026: a run
+  // "didn't work to fill these" — reads that came back with nobody were
+  // marked read in full and never came back). Sales Navigator is asked how
+  // many people the company has at all (no keywords, no function): some →
+  // this search is just empty; none, while its People tab didn't say 0 →
+  // the answer is wrong, and the brand reads the results page instead
+  // (a minimized window: an issue, and the brand comes back). Asked once a
+  // company.
+  var SN_CO_TOTAL = {};
+  function snCompanyTotal(coId, coName) {
+    if (SN_CO_TOTAL[coId] != null) return Promise.resolve({ total: SN_CO_TOTAL[coId] });
+    return snAsk(snQuery(coId, coName, { keywords: '' }, null), 0).then(function (a) {
+      if (a.halt) return { halt: a.halt };
+      var j = a.json;
+      if (!j) return { total: null, why: a.why || 'no answer' };
+      var total = j.paging && typeof j.paging.total === 'number' ? j.paging.total : (Array.isArray(j.elements) ? j.elements.length : null);
+      if (total != null) SN_CO_TOTAL[coId] = total;
+      return { total: total };
+    });
+  }
+  // What the data request last got wrong, for "Copy a sample for Claude".
+  var SN_DATA_LAST = null;
+  function snDataNote(deco, why, j) {
+    SN_DATA_LAST = { at: new Date().toISOString(), deco: deco, why: why, answer: j ? JSON.stringify(j).slice(0, 1200) : null };
+  }
+  // The request Sales Navigator's own results page makes (seen in the
+  // page's network timeline): its decoration is the one LinkedIn wants
+  // now, so the next data ask uses it; the address goes in the sample.
+  var SN_PAGE_ASK = null;
+  var SN_OWN_ASKS = {};
+  function snLearnFromPage(url) {
+    if (!/\/sales-api\/salesApiLeadSearch/.test(url)) return;
+    // Only the results page's own request — never one of the fill's.
+    if (SN_OWN_ASKS[url] || !/^\/sales\/search\/people/.test(location.pathname)) return;
+    SN_PAGE_ASK = url.slice(0, 1500);
+    var m = /[?&]decorationId=([^&]+)/.exec(url);
+    if (!m) return;
+    var deco = decodeURIComponent(m[1]);
+    if (!/^com\.linkedin\.sales\.deco\.[\w.-]+$/.test(deco)) return;
+    try { if (GM_getValue(SN_DATA_KEY, null) !== deco) GM_setValue(SN_DATA_KEY, deco); } catch (e) {}
+  }
+  try {
+    (performance.getEntriesByType('resource') || []).forEach(function (e) { snLearnFromPage(e.name || ''); });
+    new PerformanceObserver(function (list) {
+      list.getEntries().forEach(function (e) { snLearnFromPage(e.name || ''); });
+    }).observe({ type: 'resource', buffered: true });
+  } catch (e) {}
 
   // LinkedIn's own id for the company page we're on — what Sales
   // Navigator's company filter takes. Asked of LinkedIn the way its pages
@@ -2361,11 +2417,26 @@
   function snDataRead(at0, st0, item, search, page, names) {
     var atParent = st0.snFrom === 'parent';
     var query = snQuery(st0.coId, st0.pageName || (atParent ? item.parent.name : item.name), search, atParent ? item.name : null);
+    var coName = st0.pageName || (atParent ? item.parent.name : item.name);
     return snAsk(query, (page - 1) * SN_PAGE_SIZE).then(function (a) {
       if (!sameStep(loadFill(), at0)) return null;
       if (a.halt) return { halt: a.halt };
       var read = a.json ? snFromData(a.json, names) : null;
-      return read || { fallback: a.why || 'its answer had no people list' };
+      if (!read) return { fallback: a.why || 'its answer had no people list' };
+      if (read.got.cards || page > 1) return read;
+      return snCompanyTotal(st0.coId, coName).then(function (co) {
+        if (!sameStep(loadFill(), at0)) return null;
+        if (co.halt) return { halt: co.halt };
+        read.coTotal = co.total;
+        if (co.total > 0) return read;
+        // Its People tab said nobody works there: nothing to find.
+        if (co.total === 0 && st0.members === 0) return read;
+        var why = co.total == null
+          ? 'its answer was empty and Sales Navigator wouldn’t say how many people ' + coName + ' has (' + co.why + ')'
+          : 'its answer came back empty — even for everyone at ' + coName + (st0.members ? ', which has ' + st0.members.toLocaleString('en-US') + ' people on LinkedIn' : '');
+        snDataNote(a.deco || null, why, a.json);
+        return { fallback: why };
+      });
     });
   }
   // The data didn't come: this brand reads the results page instead, and
@@ -2388,9 +2459,11 @@
     var got = null, rows = [], problem = null, sample = null, short = null, totalN = null;
     var atParent = st0.snFrom === 'parent';
     var names = [st0.pageName, item.name, akaName(item), atParent ? item.parent.name : null].filter(Boolean);
+    var res0 = null;
     (asData ? snDataRead(at0, st0, item, search, page, names) : snPageRead(at0)).then(function (res) {
       if (!res) return null;
       if (res.halt || res.fail || res.fallback) return res;
+      res0 = res;
       got = res.got;
       // All of this page drawn? Sales Navigator says how many results there
       // are; a page short of its share is loaded once more, then counted as
@@ -2448,6 +2521,7 @@
       st.pageChecked = true;
       job2.snFails = 0;
       if (asData) { st.snData = (st.snData || 0) + 1; job2.snDataFails = 0; }
+      if (res0 && res0.coTotal != null) st.coTotal = res0.coTotal;
       var seenUrls = st.seenUrls || [];
       rows.forEach(function (x) { if (seenUrls.indexOf(x.linkedinUrl) < 0) seenUrls.push(x.linkedinUrl); });
       st.seenUrls = seenUrls;
@@ -2622,6 +2696,9 @@
       // 25 on file); with no issue the dashboard never brings it back by itself.
       done: !!st.salesNav || !!st.full, issue: issue, issueNote: issueNote,
       skipped: st.skip || null, shown: st.snShown != null ? st.snShown : null, read: st.snSeen != null ? st.snSeen : null,
+      // 1.46: an empty Sales Navigator answer was checked against the
+      // company's own total (coTotal), so "nobody" is real.
+      emptyChecked: true, coTotal: st.coTotal != null ? st.coTotal : null,
       again: !!item.again, review: st.review || 0,
       // Its read took the founders + events search (1.44); its one more read.
       wide: !!st.snWide, reread: !!item.reread,

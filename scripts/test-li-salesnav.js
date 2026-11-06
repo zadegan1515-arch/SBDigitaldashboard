@@ -98,7 +98,8 @@ function salesPage(items, total) {
 const COMPANY_IDS = { 'liquid-death': '1234', 'big-co': '5678', 'wrong-id': '7777', 'no-sn': '9999', 'tiny-co': '4321', 'tiny-two': '4322', 'stuck-one': '4401', 'stuck-two': '4402', 'small-sn': '4501',
   'part-co': '4601', 'big-parent': '4701', 'huge-ok': '4801', 'flaky-dash': '4901', 'empty-tab': '4999',
   'hidden-co': '5101', 'no-count': '5201', 'part-co-p': '4601',
-  'data-co': '6101', 'data-stuck': '6301', 'data-bad1': '6401', 'data-bad2': '6402', 'data-bad3': '6403', 'data-after': '6701', 'data-429': '6801', 'data-odd': '6501', 'data-notitle': '6502' };
+  'data-co': '6101', 'data-stuck': '6301', 'data-bad1': '6401', 'data-bad2': '6402', 'data-bad3': '6403', 'data-after': '6701', 'data-429': '6801', 'data-odd': '6501', 'data-notitle': '6502',
+  'data-empty': '6901' };
 const salesQueries = [];
 // Sales Navigator's results as data (1.42): what the fake LinkedIn answers
 // per company id, and every ask.
@@ -125,10 +126,15 @@ const DATA = {
     if (kind === 'kw') return { body: { elements: [el(mid(6140), 'Pat Partner', 'Partnerships Manager', 'Data Co')], paging: { start: 0, count: 25, total: 1 } } };
     return { body: { elements: [], paging: { total: 0 } } };
   },
-  // Its results page never draws (a minimized window); the data does.
+  // Its results page never draws (a minimized window); the data does. Its
+  // partnerships search is empty — and the company itself has 9 (1.46 asks).
   6301: (kind) => kind === 'fn'
     ? { body: { elements: [el(mid(6301), 'Stu Stuck', 'Brand Manager', 'data-stuck'), el(mid(6302), 'Sal Stuck', 'Head of Marketing', 'data-stuck')], paging: { total: 2 } } }
+    : kind === '?' ? { body: { elements: [el(mid(6309), 'Any One', 'Engineer', 'data-stuck')], paging: { total: 9 } } }
     : { body: { elements: [], paging: { total: 0 } } },
+  // An answer with nobody in it, even for the company as a whole, while its
+  // People tab says 80 people work there: the answer is wrong (1.46).
+  6901: () => ({ body: { elements: [], paging: { total: 0 } } }),
   6401: () => ({ status: 403, body: {} }), 6402: () => ({ status: 403, body: {} }), 6403: () => ({ status: 403, body: {} }),
   6701: () => ({ body: { elements: [el(mid(6701), 'Al After', 'Brand Manager', 'data-after')], paging: { total: 1 } } }),
   6801: () => ({ status: 429, body: {} }),
@@ -261,6 +267,10 @@ const server = http.createServer((req, res) => {
     // A results page that never draws (a slow or hidden window).
     if (co === '4501') return res.end(salesPage([lead(mid(60), 'Sue Small', 'Head of Marketing', 'small-sn')], 1));
     if (['4401', '4402', '6101', '6301'].includes(co)) return res.end('<!doctype html><html><body><main><div class="spinner"></div></main></body></html>');
+    // Sales Navigator's own results page asks for its data with the decoration
+    // LinkedIn wants now (-17): the fill learns it from the page (1.46).
+    if (co === '6901') return res.end(salesPage([], 0) + '<div>No leads match your search</div>' +
+      '<script>fetch("/sales-api/salesApiLeadSearch?q=searchQuery&query=(page)&start=0&count=25&decorationId=com.linkedin.sales.deco.desktop.searchv2.LeadSearchResult-17")</script>');
     if (co === '4321' || co === '4322') {
       return res.end('<!doctype html><html><body><main><h2>No matches found</h2><p>Remove the Function filter to show leads matching your other filters.</p></main></body></html>');
     }
@@ -287,6 +297,9 @@ const server = http.createServer((req, res) => {
   }
   // A People tab with nobody on it: still Sales Navigator (1.38).
   if (url.pathname === '/company/empty-tab/people/') return res.end(peoplePage('Empty Tab', ''));
+  if (url.pathname === '/company/data-empty/people/') {
+    return res.end(peoplePage('data-empty', peopleCard('de-1', 'Dee Empty', 'Brand Manager at data-empty'), '<h2>80 associated members</h2>'));
+  }
   for (const slug of ['no-id', 'wrong-id', 'no-sn', 'after-no-sn', 'tiny-co', 'tiny-two', 'stuck-one', 'stuck-two', 'part-co', 'flaky-dash', 'hidden-co', 'no-count', 'part-co-p',
     'data-co', 'data-stuck', 'data-bad1', 'data-bad2', 'data-bad3', 'data-after', 'data-429', 'data-odd', 'data-notitle']) {
     if (url.pathname === '/company/' + slug + '/people/') {
@@ -737,8 +750,8 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
       assert.match(line, /Its results come as data, so this window can be hidden or minimized/);
       assert.deepEqual(r.queries.filter(q => q.co === '6101' || q.co === '6301'), [], 'no results page opened');
       assert.deepEqual(r.data.map(d => d.co + ':' + d.kind + d.start + ':' + d.deco.slice(-2)), [
-        '6101:fn0:14', '6101:fn0:16', '6101:fn25:16', '6101:kw0:16', '6301:fn0:16', '6301:kw0:16',
-      ], 'a shape it turns down → the next, remembered; page 2 by the count; the second search');
+        '6101:fn0:14', '6101:fn0:16', '6101:fn25:16', '6101:kw0:16', '6301:fn0:16', '6301:kw0:16', '6301:?0:16',
+      ], 'a shape it turns down → the next, remembered; page 2 by the count; the second search; an empty one checked against the company');
       assert.ok(r.data.every(d => d.csrf === 'ajax:123' && d.count === '25'), 'asked the way LinkedIn\'s own page asks');
       assert.match(r.data[1].q, /type:CURRENT_COMPANY,values:List\(\(id:urn:li:organization:6101,text:data-co,selectionType:INCLUDED\)\)/);
       assert.match(r.data[1].q, /type:FUNCTION,values:List\(\(id:15,text:Marketing/);
@@ -762,7 +775,25 @@ const item = (id, name, slug, extra) => Object.assign({ brandId: id, name, aka: 
       const d2 = sw.find(x => x.brandId === 'b-dstuck');
       assert.deepEqual([d2.salesNav, d2.done, d2.issue, d2.via], [true, true, null, 'Sales Navigator (data)']);
       assert.deepEqual(r.calls.filter(b => b.action === 'liCapture' && b.brandId === 'b-dstuck').slice(1).map(c => c.rows.map(x => x.name)), [['Stu Stuck', 'Sal Stuck'], []]);
+      assert.deepEqual([d2.emptyChecked, d2.coTotal], [true, 9], 'its empty search is real: the company has 9 on Sales Navigator');
+      assert.equal(d1.emptyChecked, true);
       ok('a results page that never draws (a minimized window) is no longer a problem: the data is read');
+    }
+    // An answer with nobody in it, even for the whole company, at a brand whose
+    // People tab says 80 people work there (Leo, Nov 6 2026: a run "didn't work
+    // to fill these"): never "read in full, nobody" — the results page instead,
+    // and the next ask uses the decoration Sales Navigator's own page asked with.
+    {
+      const r = await run([item('b-dempty', 'Data Empty', 'data-empty'), item('b-after', 'After', 'data-after')]);
+      assert.deepEqual(r.data.filter(d => d.co === '6901').map(d => d.kind + d.start), ['fn0', '?0'], 'the search, then the company as a whole');
+      assert.deepEqual(r.queries.filter(q => q.co === '6901').map(q => q.kind), ['fn', 'kw'], 'its results pages instead');
+      const sw = r.calls.filter(b => b.action === 'liSwept');
+      const e = sw.find(x => x.brandId === 'b-dempty');
+      assert.deepEqual([e.done, e.issue, e.via, e.emptyChecked], [true, null, 'Sales Navigator', true], 'read on the pages, which say nobody');
+      const after = r.data.filter(d => d.co === '6701');
+      assert.ok(after.length && /LeadSearchResult-17$/.test(after[0].deco), 'the next brand asks the way the page did: ' + after.map(d => d.deco.slice(-2)).join(','));
+      assert.equal(sw.find(x => x.brandId === 'b-after').via, 'Sales Navigator (data)');
+      ok('an empty answer for a company with people: its results page instead; the page\'s own request teaches the next ask');
     }
     // The data not coming: that brand reads the results page; three in a row
     // and the run reads pages for the rest of it.

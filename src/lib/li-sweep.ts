@@ -28,7 +28,7 @@ export const LI_READER = 2
 // copies there's an update (the pill turns orange; one click takes it),
 // since Tampermonkey on its own only checks about once a day.
 // scripts/test-li-script.js fails when the two drift apart.
-export const LI_SCRIPT_VERSION = '1.45'
+export const LI_SCRIPT_VERSION = '1.46'
 
 // Sales Navigator in the fill (script 1.31, Oct 12 2026): reads before this
 // were on the People tab only.
@@ -62,6 +62,14 @@ export type LiMark = {
   // Read again after a clean read (supply.ts rereadOpen — the one more,
   // wider read for a brand still short on people). Kept from then on.
   reread?: boolean
+  // Script 1.46+: an empty Sales Navigator answer was checked against the
+  // company's own total, so a read that showed nobody is real (coTotal =
+  // that total, when it was asked).
+  checked?: boolean
+  coTotal?: number | null
+  // Read again because an unchecked read showed nobody (snEmpty below):
+  // once only, whatever that read says.
+  emptyAgain?: boolean
 }
 export type LiLog = Record<string, LiMark>
 
@@ -77,6 +85,7 @@ const ISSUE_WORDS: Record<string, string> = {
   peopleNoLoad: 'its People tab didn’t load',
   reading: 'the reader misread the page',
   noSalesNav: 'read without Sales Navigator',
+  snEmpty: 'Sales Navigator showed nobody — read again to check',
 }
 export const issueWords = (issue: string | null | undefined) => (issue ? ISSUE_WORDS[issue] || issue : '')
 
@@ -87,7 +96,19 @@ export const issueWords = (issue: string | null | undefined) => (issue ? ISSUE_W
 // old month; an older read that found people is done, one that found
 // nobody keeps the old month's rest.
 const PAGE_NOTE = /no clear LinkedIn page|no LinkedIn page|looks like another company|its LinkedIn page is saved on|could not find .+ on LinkedIn/i
+// Script 1.42 read Sales Navigator's results as data (Oct 20 2026), and up to
+// 1.45 an answer with nobody in it was taken on trust: a read where every
+// search showed nobody was marked read in full and never came back (Leo, Nov
+// 6 2026: a run "didn't work to fill these"). Those reads count as an issue
+// once — snEmpty — so the brand is read again by a script that checks an
+// empty answer against the company's own total (1.46, `checked`).
+export const SN_DATA_SINCE = Date.parse('2026-10-20T16:00:00Z')
+export function emptyUnchecked(mark: LiMark): boolean {
+  return !!mark.clean && !mark.issue && !mark.checked && !mark.emptyAgain && !mark.skip &&
+    mark.shown === 0 && !mark.added && Date.parse(mark.at) >= SN_DATA_SINCE
+}
 export function markOutcome(mark: LiMark): { clean: boolean; issue: string | null } {
+  if (emptyUnchecked(mark)) return { clean: false, issue: 'snEmpty' }
   if (mark.clean !== undefined || mark.issue !== undefined) return { clean: !!mark.clean && !mark.issue, issue: mark.issue || null }
   // snRetried without sn = its one retry still couldn't use Sales Navigator.
   if (mark.sn) return { clean: true, issue: null }
@@ -121,11 +142,12 @@ export function sweptOutcome(body: any): Pick<LiMark, 'clean' | 'issue' | 'issue
     read: num(b.read),
     ...(b.snOn === false ? { snOff: true } : {}),
     ...(b.wide === true ? { wide: true } : {}),
+    ...(b.emptyChecked === true ? { checked: true, coTotal: num(b.coTotal) } : {}),
   }
 }
 
 // The issues that only a Sales Navigator read can clear.
-export const SN_ISSUES = ['snNoLoad', 'snNoId', 'snOtherCompany', 'snLeft', 'partial', 'noSalesNav']
+export const SN_ISSUES = ['snNoLoad', 'snNoId', 'snOtherCompany', 'snLeft', 'partial', 'noSalesNav', 'snEmpty']
 
 // The mark a visit leaves, given the one before: a run with Sales Navigator
 // switched off that ends with nothing wrong doesn't clear a Sales Navigator
@@ -133,9 +155,11 @@ export const SN_ISSUES = ['snNoLoad', 'snNoId', 'snOtherCompany', 'snLeft', 'par
 // A visit to a brand whose last read was clean is its one more read
 // (supply.ts — the fill only brings a clean brand back for that): the mark
 // says so from then on, so it isn't brought back again.
-export function nextMark(prev: LiMark | undefined, mark: Omit<LiMark, 'at'>, at: string): LiMark {
+export function nextMark(prev: LiMark | undefined, visit: Omit<LiMark, 'at'>, at: string): LiMark {
   const before = prev ? markOutcome(prev) : null
   const reread = !!prev && (!!prev.reread || (!!before?.clean && !prev.skip)) ? { reread: true } : {}
+  // Its read again for snEmpty: once, even by a script older than 1.46.
+  const mark: Omit<LiMark, 'at'> = prev && (prev.emptyAgain || emptyUnchecked(prev)) ? { ...visit, emptyAgain: true } : visit
   if (mark.snOff && !mark.issue && !mark.clean && !mark.skip && before?.issue && SN_ISSUES.includes(before.issue)) {
     return { at, ...mark, issue: before.issue, issueNote: prev!.issueNote || null, tries: triesOf(prev!), ...reread }
   }

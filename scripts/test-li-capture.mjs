@@ -467,6 +467,37 @@ t('a liSwept becomes an outcome: 1.38 says done / issue; older copies are read a
   assert.equal(sweep.issueWords('snNoLoad'), 'Sales Navigator’s results didn’t load')
 })
 
+// --- Nov 6 2026: an empty Sales Navigator answer isn't taken on trust ------
+t('a read where Sales Navigator showed nobody (1.42–1.45, unchecked) comes back once', () => {
+  const now = Date.parse('2026-11-07T00:00:00Z')
+  const v = sweep.LI_READER
+  const empty = { at: '2026-11-02T15:00:00Z', seen: 6, added: 0, v, clean: true, issue: null, shown: 0, read: 0, run: 'r1' }
+  assert.deepEqual(sweep.markOutcome(empty), { clean: false, issue: 'snEmpty' })
+  const d = sweep.liDue(empty, false, now)
+  assert.deepEqual([d.due, d.retry, d.issue], [true, true, 'snEmpty'])
+  assert.equal(sweep.issueWords('snEmpty'), 'Sales Navigator showed nobody — read again to check')
+  // Not: Sales Navigator showed people, an older read, a checked read, a skip, people added.
+  assert.equal(sweep.markOutcome({ ...empty, shown: 12 }).clean, true)
+  assert.equal(sweep.markOutcome({ ...empty, at: '2026-10-19T15:00:00Z' }).clean, true, 'before the data reads (1.42)')
+  assert.equal(sweep.markOutcome({ ...empty, checked: true, coTotal: 40 }).clean, true, '1.46 checked the company total')
+  assert.equal(sweep.markOutcome({ ...empty, shown: null }).clean, true, 'Sales Navigator never read (no count)')
+  assert.equal(sweep.markOutcome({ ...empty, added: 2 }).clean, true)
+  // Once: the next visit carries emptyAgain, whatever it says (even an older script's empty read).
+  const again = sweep.nextMark(empty, { seen: 6, added: 0, v, clean: true, issue: null, shown: 0, read: 0, run: 'r2' }, '2026-11-07T15:00:00Z')
+  assert.equal(again.emptyAgain, true)
+  assert.equal(sweep.markOutcome(again).clean, true)
+  assert.equal(sweep.liDue(again, false, now).due, false, 'not back a second time')
+  assert.equal(sweep.nextMark(again, { seen: 1, added: 1, v, clean: true, issue: null, shown: 3, run: 'r3' }, '2026-11-08T15:00:00Z').emptyAgain, true)
+  // A 1.46 visit says it checked; its company total is kept.
+  const o = sweep.sweptOutcome({ salesNav: true, done: true, issue: null, shown: 0, read: 0, emptyChecked: true, coTotal: '38' })
+  assert.deepEqual([o.clean, o.checked, o.coTotal], [true, true, 38])
+  assert.equal(sweep.sweptOutcome({ salesNav: true, done: true, shown: 0 }).checked, undefined, 'an older copy says nothing')
+  // A run with Sales Navigator off can't clear it.
+  const off = sweep.nextMark(empty, { seen: 3, added: 0, v, clean: false, issue: null, snOff: true, run: 'r2' }, '2026-11-07T15:00:00Z')
+  assert.equal(off.issue, 'snEmpty')
+  assert.equal(sweep.liDue(off, false, now).retry, true)
+})
+
 // --- the October rules (the Sep 30 run's wrong people) --------------
 t('students, new grads and store staff are left on LinkedIn', () => {
   for (const r of ['Marketing Major', 'Recent graduate from The University of Florida', 'Communications Studies Major',
