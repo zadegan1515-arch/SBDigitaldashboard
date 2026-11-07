@@ -86,6 +86,14 @@ export function rereadOpen(mark: LiMark | undefined): boolean {
   return !!mark && !mark.reread && !mark.wide && !mark.skip && markOutcome(mark).clean
 }
 
+// One more read for a brand that still needs people (Leo, Nov 7 2026: "i want
+// these brands to be ran" — the Needs a LinkedIn fill card's brands): its last
+// read was clean and it hasn't had its one more read yet, founders & events
+// searched or not. `reread` on the next visit's mark keeps it to once.
+export function needsReadOpen(mark: LiMark | undefined): boolean {
+  return !!mark && !mark.reread && !mark.skip && markOutcome(mark).clean
+}
+
 // What the fill does next with a brand on its worklist (li-list-db.ts):
 //   new     never read by the current reader
 //   again   read before: the read had an issue, its month is up, or its

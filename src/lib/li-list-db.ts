@@ -18,7 +18,7 @@ import { countBuyers, BUYER_TARGET } from './buyers'
 import { byFit } from './fill-schedule'
 import { giantWhy } from './giants'
 import { giantOf, veryBigWhy, rowReached, parseGiants, GIANTS_KEY, VERY_BIG_LI, SMALL_KEY, parseSmall } from './queue-rules'
-import { rereadOpen, fillKindOf } from './supply'
+import { rereadOpen, needsReadOpen, fillKindOf } from './supply'
 import { isBigBrand } from './brand-work'
 
 // How many people we keep on file per brand (Leo, Sep 2026) — see
@@ -143,6 +143,20 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
   const shortNow = (b: (typeof all)[number]) =>
     shortOnPeople({ ...b, big: isBigBrand(b), top: isTopCategory(b.category, priorities) })
   const shortPick = new Set(underCap.filter(b => pickable(b) && shortNow(b)).map(b => b.id))
+  // Brands that need people (Leo, Nov 7 2026: "i want these brands to be ran" —
+  // All brands' Needs a LinkedIn fill card): short on people to go out whole,
+  // or nobody in partnerships, marketing or founder roles on file. They're
+  // read whatever their Brand Fit (the floor is for brands that have their
+  // people), and one read in full before still needing people gets one more
+  // read. Not a brand confirmed not sold in the US, closed, in a Skip category,
+  // or too small while that switch is off — they never go out anyway.
+  const needsOk = (id: string) => {
+    const f = fitOf.get(id)
+    return !!f && !f.ruledOut && !f.bizNote && f.priority !== 'skip' && (!f.tooSmall || smallOn)
+  }
+  const needSet = new Set(underCap
+    .filter(b => (shortPick.has(b.id) || countBuyers(b.contacts.map(c => c.title)).total < BUYER_TARGET) && needsOk(b.id))
+    .map(b => b.id))
   const ignoreRest = body.ignoreRest === true
   // Brands whose people are under a parent company (parents.ts): the run
   // looks there when the brand's own page gives nobody. One read before
@@ -195,7 +209,9 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
   // with it (supply.ts rereadOpen — Leo, Nov 6 2026, after the fill's list was
   // down to 28 brands: every brand read before it gets it once, short on people
   // or not). The floor and the very-big skip still apply.
-  const reread = (b: { id: string }) => rereadOpen(log[b.id])
+  const rereadWide = (b: { id: string }) => rereadOpen(log[b.id])
+  const rereadNeeds = (b: { id: string }) => needSet.has(b.id) && needsReadOpen(log[b.id])
+  const reread = (b: { id: string }) => rereadWide(b) || rereadNeeds(b)
   const restsNow = (b: { id: string; name: string; aka: string | null; category?: string | null }) =>
     !dueOf(b).due && !rematch(b) && !reread(b)
   const resting = underCap.filter(b => restsNow(b) && !hiddenOld(b)).length
@@ -237,6 +253,11 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
       short: shortPick.has(b.id),
       wide: true,
       reread: reread(b),
+      // Why its one more read (script 1.47 says so): the founders & events
+      // search it never had, or it still needs people.
+      rereadWhy: rereadWide(b) ? 'wide' : rereadNeeds(b) ? 'needs' : null,
+      // Needs people: read whatever its Brand Fit.
+      needs: needSet.has(b.id),
       kind: fillKindOf(log[b.id], { reread: reread(b), reader: LI_READER }),
     }))
 
@@ -334,7 +355,7 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
   const others = unplanned.filter(i => !mineIds.has(i.brandId))
   // A retry meets the floor like any brand (the floor may have changed, or
   // its facts — a Skip category, not sold in the US).
-  const fitted = others.filter(i => fitOk(i.brandId))
+  const fitted = others.filter(i => fitOk(i.brandId) || needSet.has(i.brandId))
   const belowFit = others.length - fitted.length
   const rest = skipBig ? fitted.filter(i => !veryBig(byId.get(i.brandId)!)) : fitted
   const bigSkipped = fitted.length - rest.length + giantNamesSkipped
@@ -366,6 +387,8 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     // at its People tab's count when Skip very big brands is on): the
     // Schedule's brands, Leo's own picks, names he asked for, giants he OK'd, conglomerates.
     .map(i => ({ ...i, bigOk: !skipBig || !!i.planned || !!i.mine || !!i.asked || (!!i.brandId && giants.ok.has(i.brandId)) || isParentCompany(i.name, i.aka ?? null) }))
+    // On the list for needing people though under the floor (the run's panel says so).
+    .map(i => (i.needs && !i.planned && !i.mine && !fitOk(i.brandId) ? { ...i, belowFloor: true } : i))
   const reachedLast = (i: any) => i.last === 'reached'
   return {
     items: ordered,
@@ -377,6 +400,8 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     shortFirst: ordered.filter(i => i.short).length,
     // Read in full before the founders & events search: their one more read.
     reread: ordered.filter(i => i.reread).length,
+    // On it for needing people, under the Brand Fit floor.
+    needsUnderFloor: ordered.filter(i => i.belowFloor).length,
     retry: ordered.filter(i => i.retry).length,
     stuck,
     skipBig,

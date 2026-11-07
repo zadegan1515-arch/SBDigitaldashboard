@@ -37,7 +37,7 @@ import BRAND_SUMMARIES from '@/data/brand-summaries.json'
 import { regionFlag } from '@/lib/region'
 import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hints'
 import { readLiLog, readLiResearch, issueWords, updateLiLog, markOutcome, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
-import { holdsOf, supplyOf, onlyHeldBy, rereadOpen, deadWeightOf, DEAD_WORDS, FILL_FIT_DEFAULT, HOLDS, type Hold, type SupplyState, type DeadWhy } from '@/lib/supply'
+import { holdsOf, supplyOf, onlyHeldBy, rereadOpen, needsReadOpen, deadWeightOf, DEAD_WORDS, FILL_FIT_DEFAULT, HOLDS, type Hold, type SupplyState, type DeadWhy } from '@/lib/supply'
 import { buildLiList, LI_FILL_FLOOR_KEY } from '@/lib/li-list-db'
 import { splitFillDays } from '@/lib/fill-schedule'
 import { readHiddenLog, updateHiddenLog, markZachRead, clearZachRead, zachDue, ZACH_REST_DAYS, type HiddenEntry } from '@/lib/li-hidden'
@@ -3047,8 +3047,11 @@ async function deadWeightCandidates(pre?: { brands: PlanBrand[]; rates: AcceptRa
       notUs: b.usStatus === 'no', closed: !!f.bizNote, seller: looksLikeSeller(b.name, b.notes),
       reachable: b.contacts.filter(isReachable).length,
       cleanRead: !!mark && markOutcome(mark).clean,
-      // The fill's one more read is still to come (the run's default floor).
-      rereadPending: rereadOpen(mark) && f.score >= FILL_FIT_DEFAULT,
+      // The fill's one more read is still to come: the founders & events one
+      // (the run's default floor), or — nobody to reach is needing people — the
+      // one every brand that needs people gets (li-list-db.ts), whatever its fit.
+      rereadPending: (rereadOpen(mark) && f.score >= FILL_FIT_DEFAULT) ||
+        (needsReadOpen(mark) && !f.ruledOut && !f.bizNote && f.priority !== 'skip' && (!f.tooSmall || ctx.q.smallOn)),
       noPage: !b.linkedinUrl && confirmed[b.id] === 'none' && !parentOf(b.name, b.aka),
       inTalks: inConversation(b) || repliedAtBrand(b, ex), deal: ex.deals.has(b.id),
       activation: actSet.has(b.id), rep: repSet.has(b.id),
@@ -7265,6 +7268,7 @@ const handlers: Record<string, Handler> = {
       fill: {
         ids: fill, total: list.items.length, belowFit: list.belowFit, bigSkipped: list.bigSkipped,
         resting: list.resting, stuck: list.stuck, shortFirst: list.shortFirst, reread: list.reread, perDay: LI_PER_DAY,
+        needsUnderFloor: list.needsUnderFloor,
       },
       again: {
         total: again.length,

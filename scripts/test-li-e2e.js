@@ -778,8 +778,9 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       const floor = Math.max(...all.items.filter(i => !i.research && !i.planned && !i.mine).map(i => i.fit))
       const high = (await ingest({ action: 'liList', me: leo, focus: '', minFit: floor })).j
       assert.equal(high.minFit, floor)
-      assert.ok(high.items.filter(i => !i.research && !i.planned && !i.mine).every(i => i.fit >= floor), 'only brands at the floor or above')
-      assert.ok(high.belowFit > 0, 'the rest are counted as left out')
+      // …or one that needs people, which is read whatever its fit (Nov 7 2026).
+      assert.ok(high.items.filter(i => !i.research && !i.planned && !i.mine).every(i => i.fit >= floor || (i.belowFloor && i.needs)), 'only brands at the floor or above, or ones that need people')
+      assert.ok(high.belowFit + high.needsUnderFloor > 0, 'the rest are counted: left out, or on it for needing people')
       // Best Brand Fit first (Leo, Oct 19 2026: "have the highest rated brands
       // … ran first then the lower ones after"), re-reads included.
       for (const list of [high, all]) {
@@ -860,7 +861,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       assert.ok(sch.days.every(d => d.rows.length <= sch.perDay), 'never more than a day\'s worth')
       assert.ok(rows.every(r => r.why), 'each says why it is there')
       const hi = await data('fillSchedule', { minFit: 100 })
-      assert.ok(hi.days.flatMap(d => d.rows).every(r => r.research || r.fit >= 100 || /Schedule|Asked|You added|Week plan/.test(r.why)), 'the floor holds, for a read that went wrong too')
+      assert.ok(hi.days.flatMap(d => d.rows).every(r => r.research || r.fit >= 100 || /Schedule|Asked|You added|Week plan|needs people/.test(r.why)), 'the floor holds, for a read that went wrong too — not for a brand that needs people (Nov 7 2026)')
     }
     ok('Fill schedule: the fill\'s own list in its order, a day\'s worth a day, with the floor');
 

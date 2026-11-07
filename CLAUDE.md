@@ -1023,7 +1023,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   existed comes back once** for it (Leo, Nov 6 2026: the fill's list was down to 28 brands — "it only goes to 28 brands";
   `rereadOpen`: clean, not `wide`, not `reread`; item `reread`, kind `reread`), short on people or not; the floor and the
   very-big skip still apply, a brand reached before reads last as before. Any visit after a clean read sets `LiMark.reread`
-  for good (`nextMark`), so it's once even from an older script; otherwise his Oct 14 rule stands. **Archive dead weight** (`deadWeight` preview → ticks → apply,
+  for good (`nextMark`), so it's once even from an older script; otherwise his Oct 14 rule stands. **Brands that need people are read
+  whatever their Brand Fit** (Leo, Nov 7 2026, on this card: "i want these brands to be ran"): `needSet` in li-list-db.ts =
+  under the 25 cap, short on people (`shortPick`) or no buyer title on file (`countBuyers`), not ruled out / closed / Skip /
+  too small (while that switch is off) → past the floor (items `needs`, `belowFloor`; reply `needsUnderFloor`; the card's
+  "N of them are under Fit 57"); the floor still holds brands that have their people. One read in full that still needs
+  people gets **one more read** (`needsReadOpen` in supply.ts: clean, not `reread`, founders & events searched or not;
+  item `rereadWhy: 'needs'`, kind `reread`) — `reread` on the next mark keeps it once; dead weight's `rereadPending` waits
+  for it. Script 1.47 says why ("read before and still needs people — one more read", "needs people — read whatever its
+  Brand Fit"); the Fill schedule too (`fillWhy`). **Archive dead weight** (`deadWeight` preview → ticks → apply,
   `deadWeightUndo`, Setting `deadWeightLast`; the same archive as Suggest Archive, now shared as `archiveLogged` /
   `undoArchiveLogged`): not sold in the US, closed / bought, sells sponsorships (`looksLikeSeller`), no LinkedIn page + no
   parent + nobody reachable, or nobody reachable after a full read whose one more read is done (or won't come: under Fit

@@ -98,12 +98,22 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await brand('bNotUs', 'Faraway Drinks', { usStatus: 'no' }); await people('bNotUs', 2);
     await brand('bSeller', 'Metro Hydration League'); await people('bSeller', 2);
     await brand('bDead', 'Empty Hydration');
+    // Nov 7 2026 ("i want these brands to be ran"): low Brand Fit (a Low category,
+    // money not known) — one short on people, one with people but no buyer title,
+    // one with its buyers (the floor still holds that one); and a high-fit brand
+    // read in full with founders & events searched, still short.
+    const low = { category: 'apparel', salesCents: null };
+    await brand('bLowShort', 'Low Short Threads', low); await people('bLowShort', 1);
+    await brand('bLowNoBuyer', 'Low Nobuyer Threads', low); await people('bLowNoBuyer', 5, { title: 'Store Associate' });
+    await brand('bLowOk', 'Low Fine Threads', low); await people('bLowOk', 5);
+    await brand('bWideShort', 'Wide Short Hydration'); await people('bWideShort', 1);
     // The fill's visit log: bNone and bDead read in full; bDead read again since.
     const at = new Date(Date.now() - 20 * 864e5).toISOString();
     await prisma.setting.create({ data: { key: 'liSweepLog', value: JSON.stringify({
       bNone: { at, seen: 30, added: 0, v: 2, clean: true, issue: null, sn: true },
       bFull: { at, seen: 30, added: 5, v: 2, clean: true, issue: null, sn: true },
       bDead: { at, seen: 30, added: 0, v: 2, clean: true, issue: null, sn: true, reread: true },
+      bWideShort: { at, seen: 12, added: 1, v: 2, clean: true, issue: null, sn: true, wide: true, shown: 12, checked: true },
     }) } });
 
     // ---- the counts ----
@@ -167,6 +177,24 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual([s.minFit, s.appFloor && s.appFloor.minFit], [57, 57]);
     assert.equal((await data('brandSupply', { minFit: 0 })).minFit, 0, 'a floor typed on the card wins for that count');
     ok('the card counts at the floor the fill app\u2019s run uses');
+
+    // Brands that need people are read whatever their Brand Fit; the floor holds
+    // the rest. One read in full that still needs people gets one more read.
+    const at57 = (await call('/api/ingest', { action: 'liList', token: INGEST_TOKEN, reader: 2, minFit: 57, salesNav: true }, INGEST_TOKEN)).json;
+    const it57 = (id) => at57.items.find(i => i.brandId === id);
+    assert.ok(it57('bLowShort') && it57('bLowShort').belowFloor && it57('bLowShort').needs, 'short on people, under the floor: on the fill');
+    assert.ok(it57('bLowNoBuyer') && it57('bLowNoBuyer').belowFloor, 'no buyer on file, under the floor: on the fill');
+    assert.ok(!it57('bLowOk'), 'has its people, under the floor: still left off');
+    assert.ok(!it57('bSkip'), 'a Skip category stays off');
+    assert.deepEqual([it57('bWideShort').reread, it57('bWideShort').rereadWhy, it57('bWideShort').kind], [true, 'needs', 'reread'],
+      'read in full with founders & events, still short: one more read');
+    const s57 = await data('brandSupply', { minFit: 57 });
+    assert.ok(s57.fill.needsUnderFloor >= 2 && has(s57.fill.ids.new, 'bLowShort') && has(s57.fill.ids.reread, 'bWideShort'), JSON.stringify(s57.fill).slice(0, 300));
+    await call('/api/ingest', { action: 'liSwept', token: INGEST_TOKEN, reader: 2, brandId: 'bWideShort', run: 'r2', name: 'Wide Short Hydration',
+      seen: 12, added: 0, salesNav: true, done: true, issue: null, wide: true, reread: true, snOn: true, shown: 12, emptyChecked: true, key: 'r2:0:bWideShort' }, INGEST_TOKEN);
+    const again57 = (await call('/api/ingest', { action: 'liList', token: INGEST_TOKEN, reader: 2, minFit: 57, salesNav: true }, INGEST_TOKEN)).json;
+    assert.ok(!again57.items.some(i => i.brandId === 'bWideShort'), 'its one more read done: off the fill');
+    ok('brands that need people are on the fill whatever their Brand Fit; one read in full and still short gets one more read, once');
 
     // ---- the Too small switch ----
     const bankIds = async () => (await data('weekBank', {})).bank.rows.map(r => r.id);

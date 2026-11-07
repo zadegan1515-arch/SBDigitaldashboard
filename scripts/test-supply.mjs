@@ -58,6 +58,11 @@ is('not a read with an issue (that one is retried anyway)', S.rereadOpen({ ...cl
 is('not a very-big skip', S.rereadOpen({ at, seen: 0, added: 0, v: 2, skip: 'veryBig', clean: false }), false)
 is('not a brand never read', S.rereadOpen(undefined), false)
 is('a legacy Sales Navigator read counts as clean', S.rereadOpen({ at, seen: 10, added: 0, v: 2, sn: true }), true)
+// Nov 7 2026 — a brand that still needs people gets one more read, founders & events searched or not.
+is('still needs people: one more read, even after the wide search', S.needsReadOpen({ ...clean, wide: true }), true)
+is('…once', S.needsReadOpen({ ...clean, wide: true, reread: true }), false)
+is('…not a read with an issue (retried anyway), a skip, or a brand never read',
+  [S.needsReadOpen({ ...clean, clean: false, issue: 'partial' }), S.needsReadOpen({ at, seen: 0, added: 0, v: 2, skip: 'veryBig', clean: false }), S.needsReadOpen(undefined)], [false, false, false])
 
 is('fill kinds', [
   S.fillKindOf(undefined, { reread: false, reader: 2 }),

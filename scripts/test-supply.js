@@ -52,7 +52,7 @@ const supply = (a) => ({
   },
   lets: { giant: 1, skip: 1, small: S.smallOn ? 0 : 1 },
   skipCats: [{ key: 'betting', n: 1 }],
-  fill: { ids: { new: ['bShort'], again: [], reread: ['bNone'] }, total: 2, belowFit: 5, bigSkipped: 0, resting: 9, stuck: 0, shortFirst: 2, reread: 1, perDay: 100 },
+  fill: { ids: { new: ['bShort'], again: [], reread: ['bNone'] }, total: 2, belowFit: 5, bigSkipped: 0, resting: 9, stuck: 0, shortFirst: 2, reread: 1, perDay: 100, needsUnderFloor: 1 },
   again: {
     total: 1, due: 1, late: 0, ids: ['bAgain'],
     rows: [{ id: 'bAgain', name: 'Again Hydration', category: 'electrolytes', fit: 75, state: 'due', last: dayKey(-9), daysSince: 9, dueBy: dayKey(5),
@@ -130,7 +130,8 @@ async function main() {
   assert.match(text, /2short on people to go out whole/);
   assert.match(text, /1 with nobody to reach/);
   assert.match(text, /1not read yet/);
-  assert.match(text, /1read before founders & events were searched/);
+  assert.match(text, /1read before and still need people — one more read/);
+  assert.match(text, /1 of them is under Fit 57 — brands that need people are read whatever their fit/);
   assert.match(text, /The floor your LinkedIn Fill app’s run uses/);
   assert.match(text, /The 2 short on people go first/);
   assert.match(text, /5 under Fit 57 left off/);

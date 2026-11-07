@@ -8338,7 +8338,7 @@ var SUP = { data: null, sets: {}, err: null, againOpen: false, dead: null, deadT
 var SUP_TURN = 0;
 var SUP_LABEL = {
   ready: 'Ready to go out', short: 'Short on people to go out', none: 'Nobody to reach yet', pass: 'On a two-week Pass',
-  fnew: 'Not read by the LinkedIn fill yet', fagain: 'Read again by the fill', freread: 'One more read on the fill, with founders & events',
+  fnew: 'Not read by the LinkedIn fill yet', fagain: 'Read again by the fill', freread: 'One more read on the fill — still need people',
   again: 'Reach out again', giant: 'Giants held back', small: 'Too small, held back', skip: 'In a Skip category'
 };
 function supLoad() {
@@ -8420,9 +8420,10 @@ function supRender() {
       (f.ids.new.length ? supLine(f.ids.new.length, 'not read yet', 'fnew') : '') +
       (f.ids.again.length ? supLine(f.ids.again.length, 'read again — the last read went wrong or is due', 'fagain') : '') +
       (f.total ? '' : '<div class="su-dim">Nothing left for the fill at this floor.</div>') +
-      (!f.ids.reread.length ? '' : supLine(f.ids.reread.length, 'read before founders &amp; events were searched — one more read with them', 'freread',
-        'Those reads searched marketing, business development and partnerships only. Each gets one more read that adds founders, owners and events people; every read from now on includes them.')) +
+      (!f.ids.reread.length ? '' : supLine(f.ids.reread.length, 'read before and still need people — one more read', 'freread',
+        'Read in full once already: each gets one more read — with founders, owners and events people searched too — then the fill leaves it.')) +
       (f.shortFirst ? '<div class="su-dim">The ' + f.shortFirst + ' short on people go first, best Brand Fit first.</div>' : '') +
+      (f.needsUnderFloor ? '<div class="su-dim">' + f.needsUnderFloor + ' of them ' + (f.needsUnderFloor === 1 ? 'is' : 'are') + ' under Fit ' + d.minFit + ' — brands that need people are read whatever their fit.</div>' : '') +
       (fillNote ? '<div class="su-dim">' + esc(fillNote) + '</div>' : '') +
       (f.total ? '<a class="btn-solid su-go" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" title="Opens LinkedIn in a window of its own and starts the fill. Needs the LinkedIn capture script in Tampermonkey.">Start the fill ↗</a>' : '') +
     '</div>' +

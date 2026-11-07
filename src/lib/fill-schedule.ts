@@ -15,6 +15,10 @@ export type FillItem = {
   // The queue could pick it and it's short on people (supply.ts): first, its
   // read wider; reread = read in full before, its one more read.
   short?: boolean; reread?: boolean
+  // Nov 7 2026: its one more read is for still needing people ('needs') or the
+  // founders & events search ('wide'); belowFloor = under the Brand Fit floor,
+  // on the list because it needs people.
+  rereadWhy?: 'wide' | 'needs' | null; belowFloor?: boolean
 }
 export type FillRow = {
   brandId: string | null; name: string; category: string | null; fit: number | null; contacts: number
@@ -24,6 +28,11 @@ export type FillDay = { day: string; rows: FillRow[] }
 
 // Why the run takes it where it does — the script's whyItem, in a few words.
 export function fillWhy(i: FillItem, focus: string, dayLabel: (key: string) => string = k => k): string {
+  const why = fillWhyBase(i, focus, dayLabel)
+  // Under the Brand Fit floor, on the list for needing people (Nov 7 2026).
+  return i.belowFloor && !/needs people|Brand Fit floor/.test(why) ? why + ' · needs people, under the Brand Fit floor' : why
+}
+function fillWhyBase(i: FillItem, focus: string, dayLabel: (key: string) => string): string {
   if (i.planned) return 'On the Schedule ' + dayLabel(i.planned) + ', short on people'
   if (i.mine) return i.mine === 'list' ? 'On your Week plan list (you added it)' : 'You added it'
   if (i.asked) return 'Asked for by name'
@@ -33,8 +42,10 @@ export function fillWhy(i: FillItem, focus: string, dayLabel: (key: string) => s
   // Back because the last read went wrong (li-sweep.ts liDue).
   if (i.retry) return 'Read again — ' + (issueWords(i.issue) || 'last read had an issue') + (i.tries && i.tries > 1 ? ' (try ' + (i.tries + 1) + ')' : '')
   if (i.hiddenRetry) return 'Back for Sales Navigator (buyers hidden last time)'
+  if (i.reread && i.rereadWhy === 'needs') return 'Read before, still needs people — one more read'
   if (i.reread) return 'Read before founders & events were searched — one more read with them'
   if (i.short) return 'Short on people to go out — first'
+  if (i.belowFloor) return 'Needs people — on the fill whatever its Brand Fit'
   const bits: string[] = []
   if (i.research) bits.push('Research list' + (i.lane ? ' · ' + i.lane : ''))
   // Size and the rest only break a tie in Brand Fit now (byFit below).
