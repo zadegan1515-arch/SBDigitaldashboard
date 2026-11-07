@@ -148,11 +148,12 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
   // or nobody in partnerships, marketing or founder roles on file. They're
   // read whatever their Brand Fit (the floor is for brands that have their
   // people), and one read in full before still needing people gets one more
-  // read. Not a brand confirmed not sold in the US, closed, in a Skip category,
-  // or too small while that switch is off — they never go out anyway.
+  // read. Leo, Nov 7 2026: "i just want all brands to be ran and have people to
+  // reach out to" — too small and Skip-category brands too (their fit puts them
+  // late); only a brand confirmed not sold in the US or closed stays off.
   const needsOk = (id: string) => {
     const f = fitOf.get(id)
-    return !!f && !f.ruledOut && !f.bizNote && f.priority !== 'skip' && (!f.tooSmall || smallOn)
+    return !!f && !f.ruledOut && !f.bizNote
   }
   const needSet = new Set(underCap
     .filter(b => (shortPick.has(b.id) || countBuyers(b.contacts.map(c => c.title)).total < BUYER_TARGET) && needsOk(b.id))

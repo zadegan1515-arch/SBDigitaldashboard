@@ -107,6 +107,11 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await brand('bLowNoBuyer', 'Low Nobuyer Threads', low); await people('bLowNoBuyer', 5, { title: 'Store Associate' });
     await brand('bLowOk', 'Low Fine Threads', low); await people('bLowOk', 5);
     await brand('bWideShort', 'Wide Short Hydration'); await people('bWideShort', 1);
+    // "i just want all brands to be ran": a Skip category and a too small brand that need people are read too;
+    // one confirmed not sold in the US is not.
+    await brand('bSkipNeed', 'Skip Need Bets', { category: 'betting' }); await people('bSkipNeed', 1, { title: 'Analyst' });
+    await brand('bSmallNeed', 'Small Need Hydration', { liMembers: 8, salesCents: null }); await people('bSmallNeed', 1, { title: 'Analyst' });
+    await brand('bNotUsNeed', 'Faraway Need Drinks', { usStatus: 'no' });
     // The fill's visit log: bNone and bDead read in full; bDead read again since.
     const at = new Date(Date.now() - 20 * 864e5).toISOString();
     await prisma.setting.create({ data: { key: 'liSweepLog', value: JSON.stringify({
@@ -185,7 +190,9 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.ok(it57('bLowShort') && it57('bLowShort').belowFloor && it57('bLowShort').needs, 'short on people, under the floor: on the fill');
     assert.ok(it57('bLowNoBuyer') && it57('bLowNoBuyer').belowFloor, 'no buyer on file, under the floor: on the fill');
     assert.ok(!it57('bLowOk'), 'has its people, under the floor: still left off');
-    assert.ok(!it57('bSkip'), 'a Skip category stays off');
+    assert.ok(!it57('bSkip'), 'a Skip category brand with its people stays off');
+    assert.ok(it57('bSkipNeed') && it57('bSmallNeed'), 'a Skip category or too small brand that needs people is on the fill');
+    assert.ok(!it57('bNotUsNeed'), 'not sold in the US: never');
     assert.deepEqual([it57('bWideShort').reread, it57('bWideShort').rereadWhy, it57('bWideShort').kind], [true, 'needs', 'reread'],
       'read in full with founders & events, still short: one more read');
     const s57 = await data('brandSupply', { minFit: 57 });

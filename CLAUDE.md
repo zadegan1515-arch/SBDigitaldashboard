@@ -1025,8 +1025,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   very-big skip still apply, a brand reached before reads last as before. Any visit after a clean read sets `LiMark.reread`
   for good (`nextMark`), so it's once even from an older script; otherwise his Oct 14 rule stands. **Brands that need people are read
   whatever their Brand Fit** (Leo, Nov 7 2026, on this card: "i want these brands to be ran"): `needSet` in li-list-db.ts =
-  under the 25 cap, short on people (`shortPick`) or no buyer title on file (`countBuyers`), not ruled out / closed / Skip /
-  too small (while that switch is off) → past the floor (items `needs`, `belowFloor`; reply `needsUnderFloor`; the card's
+  under the 25 cap, short on people (`shortPick`) or no buyer title on file (`countBuyers`), not ruled out / closed (Skip
+  categories and too small brands too — Leo: "i just want all brands to be ran and have people to reach out to") → past the floor (items `needs`, `belowFloor`; reply `needsUnderFloor`; the card's
   "N of them are under Fit 57"); the floor still holds brands that have their people. One read in full that still needs
   people gets **one more read** (`needsReadOpen` in supply.ts: clean, not `reread`, founders & events searched or not;
   item `rereadWhy: 'needs'`, kind `reread`) — `reread` on the next mark keeps it once; dead weight's `rereadPending` waits

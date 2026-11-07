@@ -3051,7 +3051,7 @@ async function deadWeightCandidates(pre?: { brands: PlanBrand[]; rates: AcceptRa
       // (the run's default floor), or — nobody to reach is needing people — the
       // one every brand that needs people gets (li-list-db.ts), whatever its fit.
       rereadPending: (rereadOpen(mark) && f.score >= FILL_FIT_DEFAULT) ||
-        (needsReadOpen(mark) && !f.ruledOut && !f.bizNote && f.priority !== 'skip' && (!f.tooSmall || ctx.q.smallOn)),
+        (needsReadOpen(mark) && !f.ruledOut && !f.bizNote),
       noPage: !b.linkedinUrl && confirmed[b.id] === 'none' && !parentOf(b.name, b.aka),
       inTalks: inConversation(b) || repliedAtBrand(b, ex), deal: ex.deals.has(b.id),
       activation: actSet.has(b.id), rep: repSet.has(b.id),
