@@ -15372,6 +15372,13 @@ const handlers: Record<string, Handler> = {
     const calls = tb.filter(b => b.nextCall && !b.stopped).sort((a, b) => a.nextCall.at.localeCompare(b.nextCall.at))
       .map(b => ({ id: b.id, name: b.name, at: b.nextCall.at, with: b.nextCall.name, stage: b.stage?.label ?? null }))
     const weeks = score.weeks as any[]
+    // Each step's brands carry their In talks stage (set from here — Leo, Nov 8
+    // 2026: "I should be able to edit deal flow from here"), the deal, and for a
+    // brand off In talks, when it was taken off.
+    const stageOf = new Map<string, any>(tb.map(b => [b.id, b.stage]))
+    const stepIds = [...new Set((tracker.brands as any[]).filter(b => b.stage !== 'out').map(b => b.id as string))].filter(id => !stageOf.has(id))
+    const removedOf = new Map((stepIds.length ? await prisma.brand.findMany({ where: { id: { in: stepIds }, talksRemovedAt: { not: null } }, select: { id: true, talksRemovedAt: true } }) : [])
+      .map(b => [b.id, b.talksRemovedAt!.toISOString()]))
     return {
       today, weekStart: monday,
       brands: { total: rosterAll, inPlay: rosterInPlay },
@@ -15390,7 +15397,9 @@ const handlers: Record<string, Handler> = {
         brands: Object.fromEntries((tracker.stages as any[]).filter(x => x.key !== 'out').map(x => [x.key,
           (tracker.brands as any[]).filter(b => b.stage === x.key).map(b => ({
             id: b.id, name: b.name, next: b.next, onUs: b.onUs, due: b.due, at: b.at, lastAt: b.lastAt,
-            lead: b.lead ? b.lead.name : null, by: b.lead ? b.lead.by : null, inTalks: !!b.inTalks,
+            lead: b.lead ? b.lead.name : null, by: b.lead ? b.lead.by : null, inTalks: stageOf.has(b.id),
+            stage: stageOf.get(b.id) ?? null, removedAt: removedOf.get(b.id) ?? null,
+            deal: b.deal ? { stage: b.deal.stage, name: b.deal.name } : null,
           }))])),
       },
       talks: {

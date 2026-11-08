@@ -54,8 +54,12 @@ const OVERVIEW = {
   steps: { stages: TRACK.filter((x) => x.key !== 'out'), counts: { reached: 250, accepted: 90, replied: 30, continue: 8, emailed: 5, talks: 12, out: 17 },
     brands: {
       replied: [
-        { id: 'r1', name: 'Neutonic', next: 'Answer their reply', onUs: true, due: today, at: at(-2), lastAt: at(-2), lead: 'Kerry Szostak', by: 'zach', inTalks: true },
-        { id: 'r2', name: 'SpikedAde', next: 'Waiting on them', onUs: false, due: null, at: at(-5), lastAt: at(-5), lead: 'Jo Jay', by: 'elizabeth', inTalks: true },
+        { id: 'r1', name: 'Neutonic', next: 'Answer their reply', onUs: true, due: today, at: at(-2), lastAt: at(-2), lead: 'Kerry Szostak', by: 'zach', inTalks: true,
+          stage: { key: 'replied', label: 'Replied', at: at(-2), hand: false }, removedAt: null, deal: null },
+        { id: 'r2', name: 'SpikedAde', next: 'Waiting on them', onUs: false, due: null, at: at(-5), lastAt: at(-5), lead: 'Jo Jay', by: 'elizabeth', inTalks: true,
+          stage: { key: 'proposal', label: 'Proposal sent', at: at(-1), hand: true }, removedAt: null, deal: { stage: 'proposal', name: 'SpikedAde' } },
+        { id: 'r3', name: 'Red Bull', next: 'Replied — marked not needed on Zach’s list', onUs: false, due: null, at: at(-40), lastAt: at(-40), lead: 'Stefano Apostolo', by: 'zach', inTalks: false,
+          stage: null, removedAt: at(-30), deal: null },
       ],
       accepted: Array.from({ length: 13 }, (_, i) => ({ id: 'a' + i, name: 'Accepted Co ' + (i + 1), next: 'Text them on LinkedIn', onUs: i < 3,
         due: i < 3 ? new Date(Date.now() - 3 * DAY).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) : null, at: at(-4), lastAt: at(-4), lead: 'Person ' + i, by: 'zach', inTalks: false })),
@@ -89,6 +93,11 @@ const H = {
   zachTodo: () => ({ brands: [], people: 0, done: [], calls: [], held: [] }),
   acceptedPeople: () => ({ people: [], total: 0, brands: 0 }),
   zachOverview: () => OVERVIEW,
+  setTalksStage: (a) => {
+    const b = OVERVIEW.steps.brands.replied.find((x) => x.id === a.brandId);
+    Object.assign(b, { stage: { key: a.stage, label: 'Call booked', at: at(0), hand: true }, inTalks: true, removedAt: null });
+    return { brandId: a.brandId, brandName: b.name, stage: a.stage, label: 'Call booked', at: at(0), event: { id: 'e1' }, deal: null, dealSkipped: null, addedToTalks: true };
+  },
   listReached: () => ({ brands: [], totals: { invited: 0, accepted: 0, replied: 0 } }),
   listDeals: () => ({ deals: [], openCents: 0, wonCents: 0 }),
   listBoardActivity: () => ({ visits: [], brandsToday: 0, last7: 9, requestCount: 0, topShows: [], total: 9, today: 0, uniqueVisitors: 0, daily: [], avgMinutes: null, sheet: null }),
@@ -178,10 +187,20 @@ async function main() {
   const opened = await page.$$eval('.zv-open .zv-row', (els) => els.map((e) => e.innerText.replace(/\s+/g, ' ').trim()));
   assert.ok(/^Neutonic/.test(opened[0]) && /to do/.test(opened[0]) && /Kerry Szostak · Answer their reply/.test(opened[0]), opened[0]);
   assert.ok(/SpikedAde/.test(opened[1]) && /Jo Jay \(Elizabeth\)/.test(opened[1]), opened[1]);
+  // Its stage, set right here ("I should be able to edit deal flow from here").
+  assert.equal(await page.$eval('[data-zv-setstage="r1"]', (e) => e.value), 'replied');
+  assert.ok(/deal: Proposal sent/.test(await page.textContent('.zv-srow:has([data-zv-brand="r2"])')));
+  const rb = await page.textContent('.zv-srow:has([data-zv-brand="r3"])');
+  assert.ok(/Stefano Apostolo · Replied — marked not needed on Zach’s list/.test(rb) && /taken off In talks .* a stage puts it back/.test(rb), rb);
+  assert.equal(await page.$eval('[data-zv-setstage="r3"]', (e) => e.value), '', 'no stage yet');
+  await page.selectOption('[data-zv-setstage="r3"]', 'call_booked');
+  await page.waitForFunction(() => document.querySelector('[data-zv-setstage="r3"]') && document.querySelector('[data-zv-setstage="r3"]').value === 'call_booked' &&
+    !/taken off/.test(document.querySelector('.zv-srow:has([data-zv-brand="r3"])').textContent));
+  assert.deepEqual(calls.filter((c) => c.fn === 'setTalksStage').slice(-1)[0].args, { brandId: 'r3', stage: 'call_booked' });
   await page.click('[data-zv-open="accepted"]');
   await page.waitForSelector('.zv-open [data-zv-brand="a0"]');
   assert.equal(await page.$$eval('.zv-open.tk-s-accepted .zv-row', (e) => e.length), 10, '10 first');
-  assert.ok(/3 days late/.test(await page.textContent('[data-zv-brand="a0"]')));
+  assert.ok(/3 days late/.test(await page.textContent('.zv-srow:has([data-zv-brand="a0"])')));
   await page.click('[data-zv-more="accepted"]');
   assert.equal(await page.$$eval('.zv-open.tk-s-accepted .zv-row', (e) => e.length), 13, 'then all');
   await page.click('[data-zv-open="accepted"]');

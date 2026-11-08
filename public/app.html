@@ -2420,6 +2420,17 @@
   .zv-row .r.todo{color:var(--warn);font-weight:650}
   .zv-row .s{grid-column:1/-1;font-size:15px;color:var(--ink-2);line-height:1.45}
   .zv-row .it-spill{font-size:13.5px;padding:2px 10px}
+  .zv-srow{cursor:default}
+  .zv-srow:hover{background:none}
+  .zv-nm{background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;text-align:left;cursor:pointer;min-width:0;display:flex}
+  .zv-nm:hover .nm{text-decoration:underline}
+  .zv-flow{grid-column:1/-1;display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;margin-top:6px}
+  .zv-flow label{display:inline-flex;align-items:center;gap:8px;font-size:14.5px;font-weight:650;color:var(--ink-2)}
+  .zv-flow select{font:inherit;font-size:15px;font-weight:650;color:#fff;background:color-mix(in srgb,var(--sc,#5c6070) 22%,#14141a);
+    border:1px solid color-mix(in srgb,var(--sc,#5c6070) 70%,transparent);border-radius:10px;padding:6px 10px;cursor:pointer}
+  .zv-flow select:disabled{opacity:.6;cursor:default}
+  .zv-flow-i{font-size:14.5px;color:var(--ink-2)}
+  .zv-flow .zv-more{padding:0;margin-left:auto}
   .zv-more{display:inline-flex;font-size:15px;font-weight:600;color:var(--accent-hi);background:none;border:0;padding:6px 0;cursor:pointer;font-family:inherit}
   @media (max-width:1100px){ .zv-grid{grid-template-columns:minmax(0,1fr)} }
   @media (max-width:600px){ #zachtab.page{padding-top:18px} #zachtab .zv-top h1{font-size:28px} .zv-tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
@@ -21687,7 +21698,7 @@ function itSaveProfile(b, args, done) {
 // brands have viewed the show board this week … click on it and it should go
 // to the show board tab. Same with the results". Read-only: zachOverview, each
 // number the same read as the tab its card opens.
-var ZV = { data: null, open: {}, more: {} };  // open / more: which steps are opened, shown in full
+var ZV = { data: null, open: {}, more: {}, busy: {} };  // open / more: which steps are opened, shown in full
 function loadZachTab() {
   var again = showView('zachtab');
   var mine = viewTurn('zachtab');
@@ -21806,19 +21817,67 @@ function renderZachTab() {
 
   document.getElementById('zv-body').innerHTML = tiles + '<div class="zv-grid">' + week + steps + talksCard + boardCard + '</div>';
 }
-// One brand in an opened step: its name, who leads, what's next and when.
+// One brand in an opened step: its name, who leads, what's next and when —
+// and its stage, set right here (Leo, Nov 8 2026: "I should be able to edit
+// deal flow from here"): the In talks stage (setTalksStage — it puts a brand
+// in talks, and from Proposal sent moves its deal), the deal, and for a brand
+// taken off In talks, when.
 var ZV_STEP_PAGE = 10;
 function zvStepBrand(b) {
   var late = 0;
   if (b.onUs && b.due) late = -itDaysFromToday(b.due + 'T17:00:00Z');
   var when = b.onUs ? (late > 0 ? late + (late === 1 ? ' day late' : ' days late') : 'to do') : b.lastAt ? 'last ' + itDay(b.lastAt) : '';
-  return '<button class="zv-row" data-zv-brand="' + esc(b.id) + '"><span class="nm">' + esc(b.name) + rbTag(b.id) + '</span>' +
+  var t = (ZV.data && ZV.data.talks) || {};
+  var cur = b.stage ? b.stage.key : '';
+  var opts = (cur ? '' : '<option value="" selected>No stage yet</option>') +
+    (t.stages || []).concat(t.ends || []).map(function (x) {
+      return '<option value="' + esc(x.key) + '"' + (x.key === cur ? ' selected' : '') + '>' + esc(x.label) + '</option>';
+    }).join('');
+  var busy = ZV.busy[b.id];
+  var info = [];
+  if (b.stage) info.push('since ' + itDay(b.stage.at) + (b.stage.hand ? '' : ' (from what happened)'));
+  if (b.deal) info.push('deal: ' + itStageName(b.deal.stage));
+  if (!b.inTalks) info.push(b.removedAt ? 'taken off In talks ' + itDay(b.removedAt) + ' — a stage puts it back' : 'not on In talks yet — a stage puts it there');
+  return '<div class="zv-row zv-srow">' +
+    '<button class="zv-nm" data-zv-brand="' + esc(b.id) + '" title="Open ' + esc(b.name) + '’s brand page"><span class="nm">' + esc(b.name) + '</span></button>' +
     '<span class="r' + (late > 0 ? ' late' : b.onUs ? ' todo' : '') + '">' + esc(when) + '</span>' +
-    '<span class="s">' + esc([b.lead ? b.lead + (b.by === 'elizabeth' ? ' (Elizabeth)' : '') : '', b.next || ''].filter(Boolean).join(' · ')) + '</span></button>';
+    '<span class="s">' + rbTag(b.id) + ' ' + esc([b.lead ? b.lead + (b.by === 'elizabeth' ? ' (Elizabeth)' : '') : '', b.next || ''].filter(Boolean).join(' · ')) + '</span>' +
+    '<div class="zv-flow sg-' + esc(cur || 'none') + '"><label>Stage <select data-zv-setstage="' + esc(b.id) + '"' + (busy ? ' disabled' : '') + '>' + opts + '</select></label>' +
+      (info.length ? '<span class="zv-flow-i">' + esc(info.join(' · ')) + '</span>' : '') +
+      '<button class="zv-more" data-zv-talk="' + esc(b.id) + '">In talks profile →</button></div>' +
+    '</div>';
+}
+// A stage set from a row: saved, the row says so at once, then Zach's tab and
+// In talks read again.
+function zvSetStage(brandId, stage, sel) {
+  var b = null;
+  var st = (ZV.data && ZV.data.steps && ZV.data.steps.brands) || {};
+  Object.keys(st).forEach(function (k) { st[k].forEach(function (x) { if (x.id === brandId) b = x; }); });
+  ZV.busy[brandId] = true;
+  if (sel) sel.disabled = true;
+  api('setTalksStage', { brandId: brandId, stage: stage }).then(function (r) {
+    toast('Moved ' + r.brandName + ' to ' + r.label +
+      (r.deal ? ' — its deal ' + (r.deal.created ? 'started at ' : 'moved to ') + itStageName(r.deal.to) : '') +
+      (r.dealSkipped ? ' — ' + r.dealSkipped : '') + (r.addedToTalks ? ' — it’s on In talks now' : ''));
+    if (b) { b.stage = { key: r.stage, label: r.label, at: r.at, hand: true }; if (r.addedToTalks) { b.inTalks = true; b.removedAt = null; } }
+    delete IT.log[brandId];
+    delete ZV.busy[brandId];
+    renderZachTab();
+    loadZachTab();
+  }).catch(function (e) {
+    delete ZV.busy[brandId];
+    toast(e.message);
+    renderZachTab();
+  });
 }
 (function () {
   var view = document.getElementById('zachtab');
   document.getElementById('zv-refresh').addEventListener('click', function () { loadZachTab(); });
+  view.addEventListener('change', function (e) {
+    var t = e.target;
+    var id = t.getAttribute && t.getAttribute('data-zv-setstage');
+    if (id && t.value) zvSetStage(id, t.value, t);
+  });
   view.addEventListener('click', function (e) {
     var t = e.target.closest('button, a');
     if (!t || !view.contains(t)) return;

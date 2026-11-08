@@ -207,7 +207,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   goal, a bar per row, green once met → Results); Where every brand stands (outreachTracker's steps in order, **Out left
   off**, "N to do"; a click opens the row in place — `ZV.open` — with its brands from `zachOverview.steps.brands`, ours to
   do first: name + tag, the lead person (Elizabeth's marked), what's next, "N days late" / "to do" / last step; 10 then
-  Show all, `ZV.more`; a brand → its brand page; "Open <step> in Every brand reached →" = `TK.stage`); In talks (a tile per
+  Show all, `ZV.more`; a brand's name → its brand page; **a Stage picker on every brand** (Leo, Nov 8 2026: "I should be
+  able to edit deal flow from here") = the In talks stage (`setTalksStage` — puts it on In talks, from Proposal sent moves
+  the deal; `zvSetStage`, `ZV.busy`), beside it since when, the deal's stage, or "taken off In talks <day> — a stage puts it
+  back" (`steps.brands[].stage` / `inTalks` / `removedAt` / `deal`), and In talks profile →; "Open <step> in Every brand
+  reached →" = `TK.stage`); In talks (a tile per
   stage → In talks at that stage, `IT.stageF`; calls coming up and the latest stage moves → that profile); Show Board ·
   last 7 days (each brand's opens, minutes, last open, its tag → Show Board). No Deals happening card (the Deals tile
   stays). Big type throughout (tile numbers 40px, names 17px+, labels in normal case), the seven tiles one row from
