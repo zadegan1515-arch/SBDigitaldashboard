@@ -15383,7 +15383,16 @@ const handlers: Record<string, Handler> = {
         elizabeth: { sent: elSent, thisWeek: elSentWeek },
       },
       week: { now: weeks[weeks.length - 1] ?? null, before: weeks[weeks.length - 2] ?? null, goals: score.goals },
-      steps: { stages: tracker.stages, counts: tracker.counts, onUs: tracker.onUs, total: tracker.total },
+      // Every brand reached's steps (Out left off — Leo, Nov 8 2026), each with
+      // its brands for the row that opens in place: ours to do first, as there.
+      steps: {
+        stages: (tracker.stages as any[]).filter(x => x.key !== 'out'), counts: tracker.counts, onUs: tracker.onUs, total: tracker.total,
+        brands: Object.fromEntries((tracker.stages as any[]).filter(x => x.key !== 'out').map(x => [x.key,
+          (tracker.brands as any[]).filter(b => b.stage === x.key).map(b => ({
+            id: b.id, name: b.name, next: b.next, onUs: b.onUs, due: b.due, at: b.at, lastAt: b.lastAt,
+            lead: b.lead ? b.lead.name : null, by: b.lead ? b.lead.by : null, inTalks: !!b.inTalks,
+          }))])),
+      },
       talks: {
         total: tb.length, stages: talks.stages, ends: talks.ends, counts: talks.stageCounts, calls,
         brands: tb.map(b => ({ id: b.id, name: b.name, stage: b.stage, nextCall: b.nextCall, stopped: !!b.stopped, lastAt: b.lastAt })),

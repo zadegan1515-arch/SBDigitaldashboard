@@ -201,11 +201,17 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (LinkedIn invites = `INVITED_WHERE` + emails — machine sent + `emailedAt` — this week since Monday NY, today, Elizabeth's
   apart) → Results; Accepted · replied (Results' totals) → Results; In talks (count, calls coming up) → In talks; Show Board
   · 7 days (its Overview's 7-day count, brands that opened it) → Show Board; Deals (open count, open $ and won $ apart —
-  sponsorship deal money only) → Deals. Cards — In talks (a tile per stage → In talks at that stage, `IT.stageF`; calls coming
-  up and the latest stage moves → that profile), Deals happening (open deals biggest first, next step), Show Board · last 7
-  days (each brand's opens, minutes, last open, its tag → Show Board), Where every brand stands (outreachTracker's steps in
-  order with "N to do" → Every brand reached at that step, `TK.stage`), This week (weeklyScore: this week / last week / goal
-  → Results). ↻ Refresh. Hidden for a rep-only account (top tabs hidden; `zachOverview` isn't in REP_FNS). Tests:
+  sponsorship deal money only) → Deals. Cards (Leo, Nov 8 2026 second pass: "move this up, get rid of the deals happening
+  tab, allow for expansion on the replied brands, and get rid of the last thing … make everything much easier to see"; his
+  picks: This week up, the Out row off, every row opens), in this order — This week (weeklyScore: this week / last week /
+  goal, a bar per row, green once met → Results); Where every brand stands (outreachTracker's steps in order, **Out left
+  off**, "N to do"; a click opens the row in place — `ZV.open` — with its brands from `zachOverview.steps.brands`, ours to
+  do first: name + tag, the lead person (Elizabeth's marked), what's next, "N days late" / "to do" / last step; 10 then
+  Show all, `ZV.more`; a brand → its brand page; "Open <step> in Every brand reached →" = `TK.stage`); In talks (a tile per
+  stage → In talks at that stage, `IT.stageF`; calls coming up and the latest stage moves → that profile); Show Board ·
+  last 7 days (each brand's opens, minutes, last open, its tag → Show Board). No Deals happening card (the Deals tile
+  stays). Big type throughout (tile numbers 40px, names 17px+, labels in normal case), the seven tiles one row from
+  1,360px wide. ↻ Refresh. Hidden for a rep-only account (top tabs hidden; `zachOverview` isn't in REP_FNS). Tests:
   `NODE_PATH=$(npm root -g) node scripts/test-zach-tab.js` (page); the e2e is in test-in-talks-e2e.js.
 - **In talks → Every brand reached** (Leo, Nov 6 2026: "a tab that has all of the brands that were talking to / emailed
   out to … a clear way to keep track of every brand that we've reached out to, is accepted, and has responded to us, and

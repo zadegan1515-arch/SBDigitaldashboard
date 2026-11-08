@@ -9,8 +9,12 @@
 //   2. The tiles: brands, brands outreached to, outreach sent (invites +
 //      emails, this week, today, Elizabeth's), accepted · replied, In talks,
 //      the Show Board's 7 days, deals (open and won money apart).
-//   3. The cards: In talks by stage + calls coming up, deals happening, who
-//      opened the Show Board, where every brand stands, this week vs last.
+//   3. The cards (Leo, Nov 8 2026 second pass: "move this up, get rid of the
+//      deals happening tab, allow for expansion on the replied brands, and get
+//      rid of the last thing … make everything much easier to see"): This week
+//      first, then where every brand stands (no Out row; a row opens its brands
+//      in place, ours to do first, 10 then Show all), In talks by stage + calls,
+//      who opened the Show Board. No Deals happening card. Big type.
 //   4. Every card opens its tab: Show Board, Results, Deals, Brands, Every
 //      brand reached (a step = only that step), In talks (a stage = only that
 //      stage; a call = that brand's profile).
@@ -47,7 +51,15 @@ const OVERVIEW = {
     emails: 210, emailsThisWeek: 6, accepted: 380, replied: 61, elizabeth: { sent: 44, thisWeek: 12 } },
   week: { now: { invites: 74, accepts: 21, replies: 6, calls: 2, deals: 1, brands: 30 }, before: { invites: 90, accepts: 25, replies: 4, calls: 1, deals: 0, brands: 55 },
     goals: { invites: 90, accepts: 25, replies: 8, calls: 3, deals: 1, brands: 50 } },
-  steps: { stages: TRACK, counts: { reached: 250, accepted: 90, replied: 30, continue: 8, emailed: 5, talks: 12, out: 17 },
+  steps: { stages: TRACK.filter((x) => x.key !== 'out'), counts: { reached: 250, accepted: 90, replied: 30, continue: 8, emailed: 5, talks: 12, out: 17 },
+    brands: {
+      replied: [
+        { id: 'r1', name: 'Neutonic', next: 'Answer their reply', onUs: true, due: today, at: at(-2), lastAt: at(-2), lead: 'Kerry Szostak', by: 'zach', inTalks: true },
+        { id: 'r2', name: 'SpikedAde', next: 'Waiting on them', onUs: false, due: null, at: at(-5), lastAt: at(-5), lead: 'Jo Jay', by: 'elizabeth', inTalks: true },
+      ],
+      accepted: Array.from({ length: 13 }, (_, i) => ({ id: 'a' + i, name: 'Accepted Co ' + (i + 1), next: 'Text them on LinkedIn', onUs: i < 3,
+        due: i < 3 ? new Date(Date.now() - 3 * DAY).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) : null, at: at(-4), lastAt: at(-4), lead: 'Person ' + i, by: 'zach', inTalks: false })),
+    },
     onUs: { reached: 40, accepted: 12, replied: 6, continue: 8, emailed: 0, talks: 0, out: 0 }, total: 412 },
   talks: {
     total: 14, stages: STAGES, ends: ENDS,
@@ -145,23 +157,45 @@ async function main() {
   assert.ok(/412/.test(tile('Brands outreached to')) && /\+23 new this week/.test(tile('Brands outreached to')), tile('Brands outreached to'));
   const sent = tile('Outreach sent');
   assert.ok(/1,840/.test(sent) && /1,630 LinkedIn invites/.test(sent) && /210 emails/.test(sent) && /80 this week · 28 today/.test(sent) && /44 by Elizabeth/.test(sent), sent);
-  assert.ok(/380 · 61/.test(tile('Accepted · replied')), tile('Accepted · replied'));
+  assert.ok(/380/.test(tile('Accepted on LinkedIn')) && /61 replied/.test(tile('Accepted on LinkedIn')), tile('Accepted on LinkedIn'));
+  assert.equal(await page.$$eval('#zv-body .zv-tile', (els) => new Set(els.map((e) => Math.round(e.getBoundingClientRect().top))).size), 1, 'all seven tiles in one row');
   assert.ok(/14/.test(tile('In talks')) && /1 call coming up/.test(tile('In talks')), tile('In talks'));
   assert.ok(/Show Board · 7 days 9/i.test(tile('Show Board')) && /2 brands opened it/.test(tile('Show Board')), tile('Show Board'));
-  assert.ok(/\$15,000 open · \$2,500 won/.test(tile('Deals')), tile('Deals'));
+  assert.ok(/\$15,000 open \$2,500 won/.test(tile('Deals')), tile('Deals'));
   console.log('✓ the tiles: brands, outreached to, outreach sent, accepted · replied, In talks, the Show Board, deals');
 
   // 3. The cards
   const body = await text('#zv-body');
   assert.ok(/Calls coming up/.test(body) && /Electrolit/.test(body) && /with Jason Robinson/.test(body));
-  assert.ok(/Garage Beer — fall/.test(body) && /next: Send the deck/.test(body));
+  assert.ok(!/Deals happening/.test(body) && !/Garage Beer — fall/.test(body), 'no Deals happening card');
+  const cards = await page.$$eval('#zv-body .zv-card h3', (els) => els.map((e) => e.textContent));
+  assert.deepEqual(cards, ['This week', 'Where every brand stands', 'In talks', 'Show Board · last 7 days'], 'This week first');
+  const steps = await page.$$eval('.zv-step b', (els) => els.map((e) => e.textContent));
+  assert.deepEqual(steps, ['Reached out', 'Accepted', 'Replied', 'Wants to continue', 'Email sent', 'In talks'], 'no Out row');
+  // A step opens its brands in place; ours to do first, late in days.
+  await page.click('[data-zv-open="replied"]');
+  await page.waitForSelector('.zv-open [data-zv-brand="r1"]');
+  const opened = await page.$$eval('.zv-open .zv-row', (els) => els.map((e) => e.innerText.replace(/\s+/g, ' ').trim()));
+  assert.ok(/^Neutonic/.test(opened[0]) && /to do/.test(opened[0]) && /Kerry Szostak · Answer their reply/.test(opened[0]), opened[0]);
+  assert.ok(/SpikedAde/.test(opened[1]) && /Jo Jay \(Elizabeth\)/.test(opened[1]), opened[1]);
+  await page.click('[data-zv-open="accepted"]');
+  await page.waitForSelector('.zv-open [data-zv-brand="a0"]');
+  assert.equal(await page.$$eval('.zv-open.tk-s-accepted .zv-row', (e) => e.length), 10, '10 first');
+  assert.ok(/3 days late/.test(await page.textContent('[data-zv-brand="a0"]')));
+  await page.click('[data-zv-more="accepted"]');
+  assert.equal(await page.$$eval('.zv-open.tk-s-accepted .zv-row', (e) => e.length), 13, 'then all');
+  await page.click('[data-zv-open="accepted"]');
+  assert.equal(await page.$('.zv-open.tk-s-accepted'), null, 'a second click shuts it');
+  // Easier to see: big numbers and names.
+  const px = (sel) => page.$eval(sel, (e) => parseFloat(getComputedStyle(e).fontSize));
+  assert.ok((await px('.zv-tile .v')) >= 38 && (await px('.zv-step b')) >= 18 && (await px('.zv-open .zv-row .nm')) >= 17 && (await px('.zv-wk td.now')) >= 22, 'big type');
   assert.ok(/Celsius/.test(body) && /3 opens/.test(body) && /\+ 2 opens without a brand code/.test(body));
   assert.ok(/Where every brand stands/.test(body) && /40 to do/.test(body));
   const wk = await page.$$eval('.zv-wk tbody tr', (els) => els.map((e) => e.innerText.replace(/\s+/g, ' ').trim()));
   assert.equal(wk[0], 'LinkedIn invites 74 90 90');
   assert.ok(await page.$('.zv-row .rb-tag'), 'the Outreached / Accepted tag on the Show Board rows');
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'zach-tab.png'), fullPage: true });
-  console.log('✓ the cards: In talks by stage + calls, deals, Show Board opens, every brand’s step, this week');
+  console.log('✓ the cards: This week first, every brand’s step (no Out; a row opens its brands, 10 then all), In talks, Show Board; no Deals card; big type');
 
   // 4. Every card opens its tab
   await page.click('.zv-tile:has-text("Show Board")');
@@ -177,7 +211,7 @@ async function main() {
   await page.click('.zv-tile:has-text("Brands"):not(:has-text("outreached"))');
   await page.waitForFunction(() => document.querySelector('.view.active').id === 'brands');
   await open();
-  await page.click('[data-zv-step="replied"]');
+  await page.click('[data-zv-step="replied"]');   // inside the opened Replied row (ZV.open is kept)
   await page.waitForFunction(() => document.querySelector('.view.active').id === 'tracker');
   assert.equal(await page.evaluate(() => TK.stage), 'replied', 'only that step');
   await open();

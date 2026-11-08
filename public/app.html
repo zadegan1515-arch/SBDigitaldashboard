@@ -2360,55 +2360,71 @@
   }
 
   /* ---- Zach's tab (zv-*; Leo, Nov 8 2026: "one tab for Zach … so he can just look at everything and see what's
-     going on"). Big numbers on top, then a card per part of the work; every card opens its own tab. ---- */
+     going on"; then "make everything much easier to see"). Big numbers on top, then a card per part of the work;
+     every card opens its own tab. Large type, bright text, plenty of room. ---- */
   #zachtab.page{padding-top:30px}
-  .zv-top{display:flex;align-items:flex-end;justify-content:space-between;gap:14px 24px;flex-wrap:wrap;margin-bottom:20px}
-  .zv-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
-  .zv-tile{display:flex;flex-direction:column;gap:3px;padding:15px 16px 14px;border-radius:16px;border:1px solid var(--border-soft);
-    background:rgba(255,255,255,.02);color:var(--ink-2);font:inherit;text-align:left;cursor:pointer;min-width:0;border-top:3px solid var(--zc,#3a3a46)}
-  .zv-tile:hover{border-color:#3a3a46;border-top-color:var(--zc,#3a3a46);background:rgba(255,255,255,.035)}
-  .zv-tile .k{font-size:12px;font-weight:750;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);min-height:2.7em}
-  .zv-tile .v{font-family:var(--display);font-size:30px;font-weight:800;color:var(--ink-1);line-height:1.1;font-variant-numeric:tabular-nums}
-  .zv-tile .n{font-size:13px;color:var(--ink-2);line-height:1.45}
-  .zv-tile .go{font-size:12.5px;color:var(--ink-3);margin-top:4px}
-  .zv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
-  .zv-card{border:1px solid var(--border-soft);border-radius:16px;background:rgba(255,255,255,.018);padding:18px 20px;min-width:0}
-  .zv-card-h{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
-  .zv-card-h h3{font-size:12px;font-weight:750;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
+  .zv-top{display:flex;align-items:flex-end;justify-content:space-between;gap:14px 24px;flex-wrap:wrap;margin-bottom:22px}
+  #zachtab .zv-top h1{font-size:36px}
+  #zachtab .zv-top .sub{font-size:16px;color:var(--ink-2)}
+  .zv-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:22px}
+  @media (min-width:1360px){ .zv-tiles{grid-template-columns:repeat(7,minmax(0,1fr))} }
+  .zv-tile{display:flex;flex-direction:column;gap:6px;padding:18px 20px 16px;border-radius:18px;border:1px solid var(--border);
+    background:rgba(255,255,255,.03);color:var(--ink-1);font:inherit;text-align:left;cursor:pointer;min-width:0;border-top:4px solid var(--zc,#3a3a46)}
+  .zv-tile:hover{border-color:#4a4a58;border-top-color:var(--zc,#3a3a46);background:rgba(255,255,255,.055)}
+  .zv-tile .k{font-size:15px;font-weight:650;color:var(--ink-2);min-height:2.7em;line-height:1.35}
+  .zv-tile .v{font-family:var(--display);font-size:40px;white-space:nowrap;font-weight:800;color:#fff;line-height:1.05;font-variant-numeric:tabular-nums}
+  .zv-tile .n{font-size:15.5px;color:var(--ink-1);line-height:1.5;opacity:.88}
+  .zv-tile .go{font-size:14.5px;font-weight:600;color:var(--accent-hi);margin-top:6px}
+  .zv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;align-items:start}
+  .zv-card{border:1px solid var(--border);border-radius:18px;background:rgba(255,255,255,.025);padding:22px 24px;min-width:0}
+  .zv-card-h{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+  .zv-card-h h3{font-family:var(--display);font-size:20px;font-weight:800;letter-spacing:-.01em;color:#fff}
   .zv-card-h .grow{flex:1}
-  .zv-card-h .zv-dim{font-size:13px}
-  .zv-dim{color:var(--ink-3);font-size:13px}
-  .zv-wk{width:100%;border-collapse:collapse;font-size:14px}
-  .zv-wk th{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);text-align:right;padding:4px 8px}
+  .zv-card-h .it-mini{font-size:14.5px;padding:6px 14px}
+  .zv-dim{color:var(--ink-2);font-size:15px}
+  .zv-sec{font-size:13.5px;font-weight:750;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);margin:16px 0 4px}
+  .zv-wk{width:100%;border-collapse:collapse;font-size:17px}
+  .zv-wk th{font-size:13.5px;font-weight:750;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);text-align:right;padding:6px 10px}
   .zv-wk th:first-child,.zv-wk td:first-child{text-align:left;padding-left:0}
-  .zv-wk td{padding:7px 8px;border-top:1px solid var(--border-soft);text-align:right;font-variant-numeric:tabular-nums}
-  .zv-wk td.now{font-weight:750;color:var(--ink-1)}
-  .zv-bar{height:6px;border-radius:3px;background:var(--border-soft);overflow:hidden;margin-top:4px;min-width:60px}
-  .zv-bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
-  .zv-steps{display:flex;flex-direction:column;gap:4px}
-  .zv-step{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:8px 10px;border-radius:10px;border:1px solid transparent;
-    background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;border-left:3px solid var(--stage,#3a3a46)}
-  .zv-step:hover{background:rgba(255,255,255,.035);border-color:var(--border-soft);border-left-color:var(--stage,#3a3a46)}
-  .zv-step b{font-size:14px;font-weight:650}
-  .zv-step .c{font-family:var(--display);font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
-  .zv-step .todo{font-size:12.5px;color:var(--warn);white-space:nowrap}
-  .zv-stg{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
-  .zv-stg .it-stile{flex:0 1 auto;min-width:88px;max-width:none}
+  .zv-wk td{padding:11px 10px;border-top:1px solid var(--border-soft);text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-1)}
+  .zv-wk td.now{font-family:var(--display);font-size:22px;font-weight:800;color:#fff}
+  .zv-bar{height:9px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:7px;min-width:80px;max-width:340px}
+  .zv-bar i{display:block;height:100%;background:var(--accent);border-radius:5px}
+  .zv-bar i.met{background:var(--good)}
+  .zv-steps{display:flex;flex-direction:column;gap:8px}
+  .zv-step{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:14px;align-items:center;width:100%;padding:13px 14px;border-radius:12px;
+    border:1px solid var(--border-soft);background:rgba(255,255,255,.02);color:inherit;font:inherit;text-align:left;cursor:pointer;border-left:4px solid var(--stage,#3a3a46)}
+  .zv-step:hover{background:rgba(255,255,255,.05);border-color:var(--border);border-left-color:var(--stage,#3a3a46)}
+  .zv-step.open{background:rgba(255,255,255,.05);border-bottom-left-radius:0;border-bottom-right-radius:0}
+  .zv-step .ar{font-size:14px;color:var(--ink-2);width:12px;transition:transform .15s}
+  .zv-step.open .ar{transform:rotate(90deg)}
+  .zv-step b{font-size:18px;font-weight:700;color:#fff}
+  .zv-step .c{font-family:var(--display);font-size:26px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;min-width:2ch;text-align:right}
+  .zv-step .todo{font-size:15px;font-weight:650;color:var(--warn);white-space:nowrap}
+  .zv-open{border:1px solid var(--border);border-top:none;border-left:4px solid var(--stage,#3a3a46);border-radius:0 0 12px 12px;
+    margin-top:-8px;padding:4px 14px 12px;background:rgba(0,0,0,.18)}
+  .zv-open .zv-row{padding:11px 4px}
+  .zv-open .zv-more{margin-top:10px}
+  .zv-stg{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .zv-stg .it-stile{flex:0 1 auto;min-width:104px;max-width:none;padding:10px 14px 11px}
+  .zv-stg .it-stile b{font-size:26px}
+  .zv-stg .it-stile span{font-size:14.5px;color:var(--ink-1)}
   .zv-rows{display:flex;flex-direction:column}
-  .zv-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:baseline;padding:9px 6px;border-top:1px solid var(--border-soft);
-    background:none;border-left:0;border-right:0;border-bottom:0;color:inherit;font:inherit;text-align:left;cursor:pointer;border-radius:0}
+  .zv-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;align-items:baseline;padding:12px 6px;border-top:1px solid var(--border-soft);
+    background:none;border-left:0;border-right:0;border-bottom:0;color:inherit;font:inherit;text-align:left;cursor:pointer;border-radius:0;width:100%}
   .zv-row:first-child{border-top:none}
-  .zv-row:hover{background:rgba(255,255,255,.03)}
-  .zv-row .nm{font-weight:650;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .zv-row .r{font-size:13px;color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
-  .zv-row .s{grid-column:1/-1;font-size:12.5px;color:var(--ink-3)}
-  .zv-money{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px}
-  .zv-money div{display:flex;flex-direction:column}
-  .zv-money b{font-family:var(--display);font-size:20px;font-weight:800}
-  .zv-money span{font-size:12.5px;color:var(--ink-3)}
-  .zv-full{grid-column:1/-1}
-  @media (max-width:1000px){ .zv-grid{grid-template-columns:minmax(0,1fr)} }
-  @media (max-width:600px){ #zachtab.page{padding-top:18px} .zv-tiles{grid-template-columns:repeat(2,minmax(0,1fr))} .zv-tile .v{font-size:24px} }
+  .zv-row:hover{background:rgba(255,255,255,.04)}
+  .zv-row .nm{font-weight:700;font-size:17px;color:#fff;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .zv-row .r{font-size:15.5px;color:var(--ink-1);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .zv-row .r.late{color:#f2918c;font-weight:650}
+  .zv-row .r.todo{color:var(--warn);font-weight:650}
+  .zv-row .s{grid-column:1/-1;font-size:15px;color:var(--ink-2);line-height:1.45}
+  .zv-row .it-spill{font-size:13.5px;padding:2px 10px}
+  .zv-more{display:inline-flex;font-size:15px;font-weight:600;color:var(--accent-hi);background:none;border:0;padding:6px 0;cursor:pointer;font-family:inherit}
+  @media (max-width:1100px){ .zv-grid{grid-template-columns:minmax(0,1fr)} }
+  @media (max-width:600px){ #zachtab.page{padding-top:18px} #zachtab .zv-top h1{font-size:28px} .zv-tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .zv-tile{padding:14px 14px 12px} .zv-tile .v{font-size:30px} .zv-tile .n{font-size:14px} .zv-card{padding:18px 16px} .zv-wk{font-size:15.5px}
+    .zv-wk th:nth-child(3),.zv-wk td:nth-child(3){display:none} .zv-step{gap:10px;padding:12px} .zv-step b{font-size:16.5px} }
 
   /* ---- In talks → Every brand reached (tk-*; Leo, Nov 6 2026: "a clear way to keep track of every brand that
      we've reached out to, is accepted, and has responded to us, and wants to continue. And then we send out an
@@ -21671,7 +21687,7 @@ function itSaveProfile(b, args, done) {
 // brands have viewed the show board this week … click on it and it should go
 // to the show board tab. Same with the results". Read-only: zachOverview, each
 // number the same read as the tab its card opens.
-var ZV = { data: null };
+var ZV = { data: null, open: {}, more: {} };  // open / more: which steps are opened, shown in full
 function loadZachTab() {
   var again = showView('zachtab');
   var mine = viewTurn('zachtab');
@@ -21702,25 +21718,25 @@ function renderZachTab() {
   var now = wk.now || {};
   var monday = new Date(d.weekStart + 'T12:00:00');
   document.getElementById('zv-sub').textContent = 'This week = since Monday ' + monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
-    ' · click any card to open its tab';
-  var tile = function (go, color, k, v, n, goTxt, extra) {
-    return '<button class="zv-tile" data-zv-go="' + go + '"' + (extra || '') + ' style="--zc:' + color + '"><span class="k">' + esc(k) + '</span><span class="v">' + v + '</span>' +
+    ' · click any card to open it';
+  var tile = function (go, color, k, v, n, goTxt) {
+    return '<button class="zv-tile" data-zv-go="' + go + '" style="--zc:' + color + '"><span class="k">' + esc(k) + '</span><span class="v">' + v + '</span>' +
       '<span class="n">' + n + '</span><span class="go">' + esc(goTxt) + ' →</span></button>';
   };
-  var openN = (deals.openCount || 0);
+  var openN = deals.openCount || 0;
   var tiles = '<div class="zv-tiles">' +
     tile('brands', '#8a8fa3', 'Brands', zvN(d.brands.total), zvN(d.brands.inPlay) + ' in play (not archived)', 'Brands') +
-    tile('tracker', '#9d7aff', 'Brands outreached to', zvN(o.brands), '+' + zvN(o.brandsThisWeek) + ' new this week · ' + zvN(o.acceptedBrands) + ' with an accept', 'Every brand reached') +
+    tile('tracker', '#9d7aff', 'Brands outreached to', zvN(o.brands), '+' + zvN(o.brandsThisWeek) + ' new this week<br>' + zvN(o.acceptedBrands) + ' with an accept', 'Every brand reached') +
     tile('reached', 'var(--accent)', 'Outreach sent', zvN((o.invites || 0) + (o.emails || 0)),
       zvPl(o.invites, 'LinkedIn invite') + ' · ' + zvPl(o.emails, 'email') + '<br>' + zvN(o.invitesThisWeek + o.emailsThisWeek) + ' this week · ' + zvN(o.invitesToday) + ' today' +
       (o.elizabeth && o.elizabeth.sent ? '<br>+ ' + zvN(o.elizabeth.sent) + ' by Elizabeth' : ''), 'Results') +
-    tile('reached', 'var(--good)', 'Accepted · replied', zvN(o.accepted) + ' · ' + zvN(o.replied), 'people who accepted on LinkedIn · people who replied', 'Results') +
+    tile('reached', 'var(--good)', 'Accepted on LinkedIn', zvN(o.accepted), 'people who accepted<br>' + zvN(o.replied) + ' replied', 'Results') +
     tile('intalks', '#6f9dff', 'In talks', zvN(talks.total), zvPl((talks.calls || []).length, 'call') + ' coming up', 'In talks') +
-    tile('board', '#e2b04a', 'Show Board · 7 days', zvN(board.visits), zvPl((board.brands || []).length, 'brand') + ' opened it' + (board.anonymous ? ' · ' + zvN(board.anonymous) + ' without a code' : ''), 'Show Board') +
-    tile('pipeline', '#3ecf8e', 'Deals', zvN(openN) + ' open', money(deals.openCents) + ' open · ' + money(deals.wonCents) + ' won (sponsorship)', 'Deals') +
+    tile('board', '#e2b04a', 'Show Board · 7 days', zvN(board.visits), zvPl((board.brands || []).length, 'brand') + ' opened it' + (board.anonymous ? '<br>' + zvN(board.anonymous) + ' without a code' : ''), 'Show Board') +
+    tile('pipeline', '#3ecf8e', 'Deals', zvN(openN) + ' open', esc(money(deals.openCents)) + ' open<br>' + esc(money(deals.wonCents)) + ' won (sponsorship)', 'Deals') +
   '</div>';
 
-  // This week vs last week (weeklyScore — Home's scoreboard).
+  // This week vs last week (weeklyScore — Home's scoreboard). First card (Leo, Nov 8 2026: "move this up").
   var before = wk.before || {};
   var goals = wk.goals || {};
   var rowsW = [['invites', 'LinkedIn invites'], ['accepts', 'Accepted'], ['replies', 'Replied'], ['calls', 'Calls booked'], ['deals', 'Deals started'], ['brands', 'Brands added']];
@@ -21729,20 +21745,32 @@ function renderZachTab() {
     rowsW.map(function (r) {
       var n = now[r[0]] || 0, g = goals[r[0]] || 0;
       var pct = g ? Math.min(100, Math.round(n / g * 100)) : 0;
-      return '<tr><td>' + esc(r[1]) + (g ? '<div class="zv-bar"><i style="width:' + pct + '%"></i></div>' : '') + '</td><td class="now">' + zvN(n) + '</td><td>' + zvN(before[r[0]] || 0) + '</td><td>' + (g ? zvN(g) : '—') + '</td></tr>';
+      return '<tr><td>' + esc(r[1]) + (g ? '<div class="zv-bar"><i' + (n >= g ? ' class="met"' : '') + ' style="width:' + pct + '%"></i></div>' : '') + '</td>' +
+        '<td class="now">' + zvN(n) + '</td><td>' + zvN(before[r[0]] || 0) + '</td><td>' + (g ? zvN(g) : '—') + '</td></tr>';
     }).join('') + '</tbody></table></section>';
 
-  // Where every brand stands (Every brand reached's steps).
+  // Where every brand stands (Every brand reached's steps, Out left off). A row
+  // opens its brands in place (Leo: "allow for expansion"); ours to do first.
   var st = d.steps || {};
+  var stepRow = function (x) {
+    var c = (st.counts || {})[x.key] || 0, u = (st.onUs || {})[x.key] || 0;
+    var open = !!ZV.open[x.key];
+    var list = ((st.brands || {})[x.key] || []);
+    var head = '<button class="zv-step tk-s-' + esc(x.key) + (open ? ' open' : '') + '" data-zv-open="' + esc(x.key) + '" aria-expanded="' + open + '" title="' + esc(x.hint || '') + '">' +
+      '<span class="ar">▸</span><b>' + esc(x.label) + '</b><span class="todo">' + (u ? zvN(u) + ' to do' : '') + '</span><span class="c">' + zvN(c) + '</span></button>';
+    if (!open) return head;
+    var all = !!ZV.more[x.key];
+    var shown = all ? list : list.slice(0, ZV_STEP_PAGE);
+    return head + '<div class="zv-open tk-s-' + esc(x.key) + '">' +
+      (shown.length ? '<div class="zv-rows">' + shown.map(zvStepBrand).join('') + '</div>' : '<div class="zv-dim" style="padding:12px 4px">No brand here right now.</div>') +
+      (list.length > ZV_STEP_PAGE ? '<button class="zv-more" data-zv-more="' + esc(x.key) + '">' + (all ? 'Show fewer' : 'Show all ' + zvN(list.length)) + '</button> · ' : '') +
+      '<button class="zv-more" data-zv-step="' + esc(x.key) + '">Open ' + esc(x.label) + ' in Every brand reached →</button></div>';
+  };
   var steps = '<section class="zv-card"><div class="zv-card-h"><h3>Where every brand stands</h3><span class="zv-dim">' + zvPl(st.total, 'brand') + ' reached</span><span class="grow"></span>' +
     '<button class="it-mini" data-zv-go="tracker">Every brand reached →</button></div><div class="zv-steps">' +
-    (st.stages || []).map(function (x) {
-      var c = (st.counts || {})[x.key] || 0, u = (st.onUs || {})[x.key] || 0;
-      return '<button class="zv-step tk-s-' + esc(x.key) + '" data-zv-step="' + esc(x.key) + '" title="' + esc(x.hint || '') + '"><b>' + esc(x.label) + '</b>' +
-        '<span class="todo">' + (u ? zvN(u) + ' to do' : '') + '</span><span class="c">' + zvN(c) + '</span></button>';
-    }).join('') + '</div></section>';
+    (st.stages || []).filter(function (x) { return x.key !== 'out'; }).map(stepRow).join('') + '</div></section>';
 
-  // In talks: brands at each stage, calls coming up.
+  // In talks: brands at each stage, calls coming up, the latest moves.
   var counts = talks.counts || {};
   var stg = (talks.stages || []).concat(talks.ends || []).map(function (x) {
     var c = counts[x.key] || 0;
@@ -21760,21 +21788,8 @@ function renderZachTab() {
   var talksCard = '<section class="zv-card"><div class="zv-card-h"><h3>In talks</h3><span class="zv-dim">' + zvPl(talks.total, 'brand') + '</span><span class="grow"></span>' +
     '<button class="it-mini" data-zv-go="intalks">In talks →</button></div>' +
     '<div class="zv-stg">' + stg + '</div>' +
-    (calls ? '<div class="zv-dim" style="margin:4px 0 2px">Calls coming up</div><div class="zv-rows">' + calls + '</div>' : '<div class="zv-dim">No calls booked right now.</div>') +
-    (recent ? '<div class="zv-dim" style="margin:12px 0 2px">Latest moves</div><div class="zv-rows">' + recent + '</div>' : '') +
-    '</section>';
-
-  // Deals happening (listDeals): open ones, biggest first; won apart.
-  var dl = (deals.open || []).map(function (x) {
-    return '<button class="zv-row" data-zv-go="pipeline"><span class="nm">' + esc(x.brand ? x.brand.name : x.name) + '</span>' +
-      '<span class="r">' + esc(itStageName(x.stage)) + (x.valueCents ? ' · ' + esc(money(x.valueCents)) : '') + '</span>' +
-      '<span class="s">' + esc(x.name) + (x.nextStep ? ' · next: ' + esc(x.nextStep) : '') + (x.followUpAt ? ' · due ' + esc(itDay(x.followUpAt)) : '') + '</span></button>';
-  }).join('');
-  var dealsCard = '<section class="zv-card"><div class="zv-card-h"><h3>Deals happening</h3><span class="grow"></span><button class="it-mini" data-zv-go="pipeline">Deals →</button></div>' +
-    '<div class="zv-money"><div><b>' + zvN(openN) + '</b><span>open</span></div><div><b>' + esc(money(deals.openCents)) + '</b><span>open sponsorship</span></div>' +
-      '<div><b>' + zvN(deals.wonCount) + '</b><span>won</span></div><div><b>' + esc(money(deals.wonCents)) + '</b><span>won sponsorship</span></div></div>' +
-    (dl ? '<div class="zv-rows">' + dl + '</div>' + (openN > (deals.open || []).length ? '<div class="zv-dim" style="margin-top:8px">+ ' + zvN(openN - deals.open.length) + ' more on the Deals board</div>' : '')
-        : '<div class="zv-dim">No open deals right now.</div>') +
+    (calls ? '<div class="zv-sec">Calls coming up</div><div class="zv-rows">' + calls + '</div>' : '<div class="zv-dim">No calls booked right now.</div>') +
+    (recent ? '<div class="zv-sec">Latest moves</div><div class="zv-rows">' + recent + '</div>' : '') +
     '</section>';
 
   // Show Board, last 7 days: who opened it.
@@ -21786,10 +21801,20 @@ function renderZachTab() {
   var boardCard = '<section class="zv-card"><div class="zv-card-h"><h3>Show Board · last 7 days</h3><span class="zv-dim">' + zvPl(board.visits, 'open') + '</span><span class="grow"></span>' +
     '<button class="it-mini" data-zv-go="board">Show Board →</button></div>' +
     (bb ? '<div class="zv-rows">' + bb + '</div>' : '<div class="zv-dim">No brand opened the Show Board in the last 7 days.</div>') +
-    (board.anonymous ? '<div class="zv-dim" style="margin-top:8px">+ ' + zvPl(board.anonymous, 'open') + ' without a brand code</div>' : '') +
+    (board.anonymous ? '<div class="zv-dim" style="margin-top:10px">+ ' + zvPl(board.anonymous, 'open') + ' without a brand code</div>' : '') +
     '</section>';
 
-  document.getElementById('zv-body').innerHTML = tiles + '<div class="zv-grid">' + talksCard + dealsCard + boardCard + steps + week + '</div>';
+  document.getElementById('zv-body').innerHTML = tiles + '<div class="zv-grid">' + week + steps + talksCard + boardCard + '</div>';
+}
+// One brand in an opened step: its name, who leads, what's next and when.
+var ZV_STEP_PAGE = 10;
+function zvStepBrand(b) {
+  var late = 0;
+  if (b.onUs && b.due) late = -itDaysFromToday(b.due + 'T17:00:00Z');
+  var when = b.onUs ? (late > 0 ? late + (late === 1 ? ' day late' : ' days late') : 'to do') : b.lastAt ? 'last ' + itDay(b.lastAt) : '';
+  return '<button class="zv-row" data-zv-brand="' + esc(b.id) + '"><span class="nm">' + esc(b.name) + rbTag(b.id) + '</span>' +
+    '<span class="r' + (late > 0 ? ' late' : b.onUs ? ' todo' : '') + '">' + esc(when) + '</span>' +
+    '<span class="s">' + esc([b.lead ? b.lead + (b.by === 'elizabeth' ? ' (Elizabeth)' : '') : '', b.next || ''].filter(Boolean).join(' · ')) + '</span></button>';
 }
 (function () {
   var view = document.getElementById('zachtab');
@@ -21798,6 +21823,9 @@ function renderZachTab() {
     var t = e.target.closest('button, a');
     if (!t || !view.contains(t)) return;
     var v;
+    if ((v = t.getAttribute('data-zv-open'))) { ZV.open[v] = !ZV.open[v]; renderZachTab(); return; }
+    if ((v = t.getAttribute('data-zv-more'))) { ZV.more[v] = !ZV.more[v]; renderZachTab(); return; }
+    if ((v = t.getAttribute('data-zv-brand'))) { loadBrand(v); return; }
     if ((v = t.getAttribute('data-zv-step'))) { TK.stage = v; TK.q = ''; TK.mine = false; gotoView('tracker'); return; }
     if ((v = t.getAttribute('data-zv-stage'))) {
       IT.stageF = v; IT.q = '';
