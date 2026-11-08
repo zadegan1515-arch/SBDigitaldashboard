@@ -104,7 +104,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const rb = await data('reachedBrands', {});
     assert.deepEqual(Object.keys(rb.brands), ['reach'], 'only the brand reached out to');
     const three = nyKey(new Date(Date.now() - 3 * 864e5));
-    assert.deepEqual(rb.brands.reach, [three, three, 'i', 1, 0], 'its first and last day, invite out, one invited');
+    assert.deepEqual(rb.brands.reach, [three, three, 'i', 1, 0, ''], 'its first and last day, invite out, one invited, nobody accepted yet');
     ok('reachedBrands: the brands reached out to, with when and how');
 
     // 1. The list ------------------------------------------------------
