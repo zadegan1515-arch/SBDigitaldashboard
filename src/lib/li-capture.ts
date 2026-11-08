@@ -371,7 +371,12 @@ export function noIndustryShown(subtitle: string | null | undefined): boolean {
 // is neither a fit nor a sign of another company.
 const GENERIC_OK = /^(?:electrolytes|energy|beverage|rtd|spirits|alcohol|athletic|nicotine|cpg|apparel|beauty|wellness|tech|home)$/
 export function genericIndustry(category: string | null | undefined, subtitle: string | null | undefined): boolean {
-  return GENERIC_OK.test(String(category || '')) && /^manufacturing$/i.test(industryOf(subtitle))
+  if (!GENERIC_OK.test(String(category || ''))) return false
+  if (/^manufacturing$/i.test(industryOf(subtitle))) return true
+  // A brand page's own line comes whole: "Manufacturing Santa Cruz, CA 19K followers 11-50 employees"
+  // (the Nov 7 2026 run put Goodles, Every Man Jack, GEEK BAR on Leo's list for it).
+  const m = String(subtitle || '').trim().match(/^manufacturing\s+(.+)$/i)
+  return !!m && pageShowsNoIndustry(m[1])
 }
 
 // The first of the most-followed; results with no count lose to any count.

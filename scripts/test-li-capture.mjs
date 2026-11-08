@@ -257,6 +257,15 @@ t('an exact name needs a fitting industry too (Native the deodorant, not the car
   assert.equal(pageLooksWrong('rtd', 'Williamsport, Pennsylvania 212 followers'), false)
   assert.equal(pageLooksWrong('spirits', 'Reno, Nevada'), false)
   assert.equal(pageLooksWrong('rtd', '212 followers 2-10 employees'), false)
+  // Nov 7 2026 run: LinkedIn's catch-all "Manufacturing" sent with the rest of the page's line (Goodles, Every Man Jack,
+  // GEEK BAR, Turning Point Brands went on Leo's list as another company's page).
+  assert.equal(pageLooksWrong('cpg', 'Manufacturing Santa Cruz, CA 19K followers 11-50 employees'), false)
+  assert.equal(pageLooksWrong('beauty', 'Manufacturing Mill Valley, California 7K followers 51-200 employees'), false)
+  assert.equal(pageLooksWrong('cpg', 'Manufacturing Louisville, KY 11K followers 201-500 employees'), false)
+  assert.equal(pageLooksWrong('cpg', 'Manufacturing Sunnyvale, California 15 followers 11-50 employees'), false)
+  // Manufacturing with something that isn't a place after it, or in a category it doesn't fit, is still judged.
+  assert.equal(pageLooksWrong('rtd', 'Manufacturing San Cristóbal de las Casas, Chiapas, Chiapas 118 followers 11-50 employees'), true)
+  assert.equal(pageLooksWrong('entertainment', 'Manufacturing Louisville, KY 11K followers'), true)
   // A real industry on the same line is still judged.
   assert.equal(pageLooksWrong('beverage', 'International Trade and Development Nicosia 16 followers 2-10 employees'), true)
   assert.equal(pageLooksWrong('apparel', 'Spectator Sports San Diego, California 117 followers 2-10 employees'), true)
