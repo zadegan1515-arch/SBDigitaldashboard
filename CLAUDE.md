@@ -30,8 +30,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 `src/app/api/data/route.ts`.
 
 ## Where things live
-- `public/app.html` — the whole UI. Top nav is eight groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
-  `showView`): Home · Brands (All brands / Recently added / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
+- `public/app.html` — the whole UI. Top nav is nine groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
+  `showView`): Home · **Zach** (below) · Brands (All brands / Recently added / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
   Week plan / Schedule / Email / People / Archived / Email stats) · **Elizabeth** (Today / Week plan / Follow-ups / Results, below) · **In talks** (Every brand reached / In talks, below) ·
   **Show Board** (Overview = code lookup (`boardCodeLookup`: the whole roster by name / aka, people and archived too — it used to filter listBrands' first 500; `test-board-lookup.js`) + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
@@ -130,22 +130,49 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   on how to brainstorm"; his picks: a call booked puts a brand in by itself + an Add button; its own top tab; list + profile;
   Claude's daily check writes the overview and idea, no API spend). The In talks top tab's second sub-tab since Nov 6 2026 (`#intalks`,
   `IT` / `it*` in app.html, its own `.it-` look: a two-pane workspace — brands down the left, one brand's profile on the
-  right; a phone shows the list, a tap the profile with ‹ All brands). **Who's in** (rules pure in `src/lib/in-talks.ts`,
-  `talksState`): any Target with `callBookedAt` (or `callAt`), or `Brand.talksAddedAt` (+ Add to In talks — the brand page's
-  line `bTalksLine`, or the list's "Replied, not in talks" offers = brands with a reply, `suggestTalks`); **Take off In talks**
-  / × = `Brand.talksRemovedAt`, which wins over anything older (a newer call or add brings it back; nothing else changes).
-  `listInTalks` (read; `talksMembership` shared with `listTalksToFill`) = per brand: why / since, next and last call, the
+  right; a phone shows the list, a tap the profile with ‹ All brands). **Every brand that replied, a stage, a dated log**
+  (Leo, Nov 8 2026: "every brand that has replied … I want to be able to add more brands too … search up any brand … their
+  stage to be laid out clearly … the deal flow doesn't really incorporate everything that happens … edit it and make notes
+  … dates of when things happen, like when the call or when the email was sent"; his picks: expand In talks, the full stage
+  list, every replied brand by itself). **Who's in** (rules pure in `src/lib/in-talks.ts`, `talksState` with `replies`;
+  `talksMembership(only?)` in route.ts — listInTalks, listTalksToFill, getBrand's line, setTalksDeal / setTalksStage all read
+  it): a call booked (`callBookedAt` / `callAt`), **a reply** (Zach's rows: replied / converted / `repliedAt` / an email back;
+  Elizabeth's `RepOutreach` replied / call — never a Show Board person), or `Brand.talksAddedAt` (+ Add to In talks — the
+  brand page's `bTalksLine`, or the rail's **+ Add a brand**: any brand by `brandLookup`); why = call > hand > reply. The old
+  "Replied, not in talks" offers are gone (they're all in). Every brand reached keeps its own "In talks" step (a call or a
+  hand add — `talksState` without replies). **Take off In talks** = `Brand.talksRemovedAt`, which wins over anything older
+  (a newer call, add or reply brings it back; nothing else changes). **The stage** (`TALKS_STAGES`: Replied → Call booked →
+  Call done → Proposal sent → Negotiating → Verbal yes → Contract signed → Won; `TALKS_ENDS`: Lost, Gone quiet): marks set by
+  hand (table **`TalksEvent`** kind `stage`) plus marks read from what happened (`autoStageMarks`: each reply, each call
+  booked, a call's day gone by, the deal's stage — proposal / verbal / closed / lost — and the brand's stop);
+  `currentTalksStage` reads them oldest first — a hand mark always takes, news only when it's another stage and further along,
+  a way out, or after a way out (a reply after Gone quiet brings it back); `stageDates` = each stage's first day. The page: a
+  strip of a tile per stage across the top (`itRenderStages`, `IT.stageF`; a click shows only that stage), the rail grouped
+  Calls coming up → a group per stage furthest first → No stage yet → Lost / Gone quiet (each item's stage pill, `.sg-<key>`
+  colours), and on the profile the stage card (`itStageCard`: the eight with each day, the two ways out, "Before: Invited ·
+  Accepted") — one click = `setTalksStage({ brandId, stage, day? })` today (a log line; a brand not in talks goes in, not on
+  Lost / Gone quiet; from Proposal sent it moves the deal too — `DEAL_OF_STAGE`: negotiating → proposal, contract → verbal,
+  won → closed, lost → lost; or starts one, never just to lose it; a show / Notion deal is left alone, `dealSkipped`; the line
+  keeps `dealId` / `dealFrom`), **Undo** beside it = `deleteTalksEvent` (the deal back while it still sits there). The old Deal
+  stage bar and `IT_STAGES` buttons are gone (`setTalksDeal` stays for old callers). **What happened** (`#it-logcard`,
+  `itLogShell` / `itRenderLog`, lazy per profile in `IT.log`): + a line (`addTalksEvent`: `LOG_KINDS` call · email sent ·
+  email from them · LinkedIn message · meeting · deck / proposal sent · contract · other, a day — `logMoment`: today = now,
+  a past day = noon New York, never a day to come — and words; ↵ logs it), Edit (`editTalksEvent`: kind, day, words; a stage
+  line stays a stage) and Delete (`deleteTalksEvent` — without `confirm` it names the line and what happens to the deal; the
+  page's confirm quotes it); under them, read-only, everything the site saw (`talksLog` = the hand lines + `brandTimeline`'s
+  invites / accepts / replies / Zach's list steps / emails / Show Board opens / deals / shows, Elizabeth's steps, each call on
+  its day — "Call coming up" for one to come), newest first, 12 then Show all. TalksEvent moves with mergeBrands /
+  combineParent (+ Undo, `COMBINE_TABLES`), deleteBrand names it (`summary.talksLog`), undoDiscoverBulk treats it as touched;
+  every write is a ClaudeAction. `listInTalks` (read) = per brand: why / since, next and last call, `stage` / `stageDates`, the
   people who answered (`isTalksPerson`: accepted, replied anywhere, or a call — Home → Accepted's stage words, furthest
-  first) with LinkedIn, email (Gmail compose — nothing sends) and phone, invited-no-answer, others on file, the journey
+  first; Elizabeth's people too, `by: 'elizabeth'`) with LinkedIn, email (Gmail compose — nothing sends) and phone, invited-no-answer, others on file, the journey
   (`talksJourney`: Invited → Accepted → Replied → Call booked → Deal, first date each), Brand Fit, LinkedIn size, sales,
   raised, sponsors, Show Board opens + Copy board link, the deal, dated notes, and the profile; order `compareTalks` (calls
-  coming up soonest first, then latest activity, stopped last). **A "Replied, not in talks" card opens the brand** (Leo, Oct 18 2026: "u
-  should be able to click on these cards and adjust the deal flow"): `listInTalks({ preview })` builds that brand's profile
-  the same way and returns it as `preview` (never in `brands`; `itPreview` / `IT.pv` / `itCur`, kept through refresh and
-  ‹ › by `IT.pvSeen`), with "Not in talks yet", + Add to In talks and Not now. **Deal stage** under the journey on every
-  profile (`.it-stagebar`, `IT_STAGES`: Conversation · Proposal sent · Verbal yes · Won · Lost) = `setTalksDeal` (moves the
-  deal the profile shows — newest open, else newest — or starts one, `DEAL_STAGES`; a brand not in talks goes in, his pick,
-  except Lost, which takes it off the Replied offers instead; a show / Notion deal is refused). The profile's cards sit in
+  coming up soonest first, then latest activity, stopped last), plus `stageCounts`, `stages` / `ends`, `logKinds`. **A brand
+  not in talks opens for a look** (Every brand reached's Open its In talks profile, or one taken off): `listInTalks({ preview })`
+  builds its profile the same way and returns it as `preview` (never in `brands`; `itPreview` / `IT.pv` / `itCur`, kept
+  through refresh and ‹ › by `IT.pvSeen`), with "Not in talks yet" and + Add to In talks; setting a stage there puts it in.
+  The profile: hero, stage card, What happened, facts, then cards in
   rows of two: Overview | Who we're talking to, **Activation idea | Notes** (Leo: "move the notes to the right of the
   activation idea"), then Deal. **Profile** fields on Brand: `instagramUrl`, `tiktokUrl`,
   `overview`/`overviewBy`/`overviewAt`, `activationIdea`/`activationIdeaBy`/`activationIdeaAt` — `saveTalksProfile` (only the
@@ -162,7 +189,24 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   "In talks (daily)" follows `docs/in-talks.md` (`listTalksToFill` → research → `saveTalksProfile` with `onlyEmpty` →
   `addWorkLog`); every write is a ClaudeAction (`actionText`). Show Board's old "In talks" sub-tab is **Board codes**.
   Tests: `node scripts/test-in-talks.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-in-talks.js` (page),
-  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-in-talks-e2e.js`.
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-in-talks-e2e.js` (also the stage, the log, Elizabeth's
+  replies, the tag's accept day and Zach's tab).
+- **Zach** (Leo, Nov 8 2026: "one tab for Zach … so he can just look at everything and see what's going on. So he doesn't
+  have to look between each individual tab … how many brands, how many outreaches have been sent out, how many brands have
+  been outreached to … what deals are happening … show board stats, like what brands have viewed the show board this week …
+  click on it and it should go to the show board tab. Same with the results"; his pick: a top tab right after Home, anyone
+  signed in sees it). View `#zachtab` (`ZV` / `loadZachTab` / `renderZachTab`, `.zv-` CSS). Data = `zachOverview` (read-only,
+  a READ_NAMES read; each number the same read as the tab its card opens): tiles — Brands (roster, in play) → Brands;
+  Brands outreached to (Zach's Reached tag ∪ Elizabeth's, new this week, with an accept) → Every brand reached; Outreach sent
+  (LinkedIn invites = `INVITED_WHERE` + emails — machine sent + `emailedAt` — this week since Monday NY, today, Elizabeth's
+  apart) → Results; Accepted · replied (Results' totals) → Results; In talks (count, calls coming up) → In talks; Show Board
+  · 7 days (its Overview's 7-day count, brands that opened it) → Show Board; Deals (open count, open $ and won $ apart —
+  sponsorship deal money only) → Deals. Cards — In talks (a tile per stage → In talks at that stage, `IT.stageF`; calls coming
+  up and the latest stage moves → that profile), Deals happening (open deals biggest first, next step), Show Board · last 7
+  days (each brand's opens, minutes, last open, its tag → Show Board), Where every brand stands (outreachTracker's steps in
+  order with "N to do" → Every brand reached at that step, `TK.stage`), This week (weeklyScore: this week / last week / goal
+  → Results). ↻ Refresh. Hidden for a rep-only account (top tabs hidden; `zachOverview` isn't in REP_FNS). Tests:
+  `NODE_PATH=$(npm root -g) node scripts/test-zach-tab.js` (page); the e2e is in test-in-talks-e2e.js.
 - **In talks → Every brand reached** (Leo, Nov 6 2026: "a tab that has all of the brands that were talking to / emailed
   out to … a clear way to keep track of every brand that we've reached out to, is accepted, and has responded to us, and
   wants to continue. And then we send out an email"; he left the where to Claude — "maybe just expand on the brands we're
@@ -473,10 +517,11 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - **The Reached tag** (Leo, Oct 18 2026: "all over the site for any brand that has been reached out to i want a tag that
   shows that"): `reachedBrands` = every brand reached out to by `isReached`'s rule (an invite ever — logged outside the
   queue or withdrawn since, an accept / reply, a hand or machine email) → { id: [first day, last day, stage r/a/i/e/w,
-  invited, emailed] }. The page keeps one map (`RB`, `rbLoad`: at the start, every tab change and window focus — at most
+  invited, emailed, last accept day ('' = none — Home → Accepted's `isAccepted` / `acceptedWhen`)] }. The page keeps one map (`RB`, `rbLoad`: at the start, every tab change and window focus — at most
   every 30 s — and after any call in `RB_WRITES`, e.g. setTargetStatus / logLinkedInPerson / markEmailed / handStep);
-  `rbTag(id)` draws a slot the map fills ("Reached Oct 12", purple; tooltip = first/last day, how many invited / emailed,
-  how far it got), painted again when the map lands (`rbPaint`). On: Brands table (its Outreach column), the brand page header, Needs contacts,
+  `rbTag(id)` draws a slot the map fills — **"Outreached Oct 12"** (the last outreach), or **"Accepted Oct 14"** once someone
+  there accepted (Leo, Nov 8 2026: "when it says reached on a date I want it to say outreach to … if someone has accepted …
+  accepted on … date"; class `.acc`), purple; tooltip = first/last day, the accept, how many invited / emailed, how far it got), painted again when the map lands (`rbPaint`). On: Brands table (its Outreach column), the brand page header, Needs contacts,
   Stock take, Brand Fit review, People, fill schedule, Read on Zach's LinkedIn, the Schedule's cards / Fill box / find box /
   drill-in / contacts check / Plan my week, Week plan, the LinkedIn tab's brand cards, All targets, Archived, global search,
   Today's list for Zach, Deals board, Show Board requests / In talks / visits / code lookup, Partners, Discover (added),

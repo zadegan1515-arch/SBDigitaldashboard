@@ -1,5 +1,6 @@
-// node scripts/test-in-talks.mjs — In talks: who's in (a call booked or a hand
-// add, a removal wins over anything older), replied brands offered, the people
+// node scripts/test-in-talks.mjs — In talks: who's in (a call booked, a reply
+// or a hand add, a removal wins over anything older), the stage (Nov 8 2026:
+// set by hand or read from what happened), the log's days, the people
 // shown, the journey line, the list's order, link cleanup, the 4-sentence
 // overview check and what Claude's daily check still fills (src/lib/in-talks.ts).
 import { execSync } from 'node:child_process'
@@ -17,7 +18,8 @@ for (const f of readdirSync(out)) {
   writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, "from '$1.js'"))
 }
 const m = await import(pathToFileURL(join(out, 'in-talks.js')).href)
-const { talksState, suggestTalks, isTalksPerson, talksPersonStage, stageRank, talksJourney, compareTalks, cleanLink, socialHandle, sentenceCount, missingFields } = m
+const { talksState, suggestTalks, isTalksPerson, talksPersonStage, stageRank, talksJourney, compareTalks, cleanLink, socialHandle, sentenceCount, missingFields,
+  TALKS_STAGES, TALKS_ENDS, isTalksStage, talksStageRank, DEAL_OF_STAGE, autoStageMarks, currentTalksStage, stageDates, logMoment, isLogKind } = m
 
 let n = 0
 function t(name, fn) { fn(); n++; console.log('  ok — ' + name) }
@@ -128,6 +130,77 @@ t('sentences: abbreviations and numbers don’t split them', () => {
 t('the daily check fills only what was never filled', () => {
   assert.deepEqual(missingFields({ overview: null, activationIdea: 'x', website: 'https://a.com', instagramUrl: '', tiktokUrl: null }), ['overview', 'tiktok'])
   assert.deepEqual(missingFields({ overview: 'a', activationIdea: 'b', website: 'c', instagramUrl: 'd', tiktokUrl: '' }), [])
+})
+
+// ---- Nov 8 2026: every brand that replied, the stage bar, the log ----
+t('a reply puts a brand in by itself; taking it off wins until a newer reply', () => {
+  assert.deepEqual(talksState({ addedAt: null, removedAt: null, callsBooked: [], replies: [D('2026-11-02T15:00:00Z')] }),
+    { on: true, why: 'reply', since: D('2026-11-02T15:00:00Z') })
+  assert.equal(talksState({ addedAt: null, removedAt: D('2026-11-03T00:00:00Z'), callsBooked: [], replies: [D('2026-11-02T15:00:00Z')] }).on, false)
+  assert.equal(talksState({ addedAt: null, removedAt: D('2026-11-03T00:00:00Z'), callsBooked: [], replies: [D('2026-11-02T15:00:00Z'), D('2026-11-05T15:00:00Z')] }).on, true)
+  // A call outranks a reply as the reason; since = the first of them.
+  const s = talksState({ addedAt: null, removedAt: null, callsBooked: [D('2026-11-04T15:00:00Z')], replies: [D('2026-11-02T15:00:00Z')] })
+  assert.equal(s.why, 'call')
+  assert.deepEqual(s.since, D('2026-11-02T15:00:00Z'))
+  // Without replies given (Every brand reached's own rule) a reply alone isn't in.
+  assert.equal(talksState({ addedAt: null, removedAt: null, callsBooked: [] }).on, false)
+})
+t('stages: eight on the way, two ways out; from Proposal sent the deal moves', () => {
+  assert.deepEqual(TALKS_STAGES.map(x => x.key), ['replied', 'call_booked', 'call_done', 'proposal', 'negotiating', 'verbal', 'contract', 'won'])
+  assert.deepEqual(TALKS_ENDS.map(x => x.key), ['lost', 'quiet'])
+  assert.ok(isTalksStage('quiet') && !isTalksStage('conversation'))
+  assert.equal(talksStageRank('won'), 8)
+  assert.equal(talksStageRank('lost'), 0)
+  assert.equal(DEAL_OF_STAGE.replied, undefined)
+  assert.equal(DEAL_OF_STAGE.negotiating, 'proposal')
+  assert.equal(DEAL_OF_STAGE.contract, 'verbal')
+  assert.equal(DEAL_OF_STAGE.won, 'closed')
+  assert.equal(DEAL_OF_STAGE.quiet, undefined)
+})
+t('the stage from what happened: reply → call booked → call done → the deal', () => {
+  const now = D('2026-11-08T18:00:00Z')
+  const f = { replies: [D('2026-11-01T15:00:00Z')], callsBooked: [D('2026-11-02T15:00:00Z')], calls: [D('2026-11-05T16:00:00Z')], deal: null, stoppedAt: null }
+  assert.equal(currentTalksStage(autoStageMarks(f, now)).stage, 'call_done')
+  // A call still to come is only booked.
+  assert.equal(currentTalksStage(autoStageMarks({ ...f, calls: [D('2026-11-12T16:00:00Z')] }, now)).stage, 'call_booked')
+  // A deal moved on the Deals board shows; a later reply never winds it back.
+  const withDeal = autoStageMarks({ ...f, replies: [...f.replies, D('2026-11-07T15:00:00Z')], deal: { stage: 'proposal', at: D('2026-11-06T15:00:00Z') } }, now)
+  assert.equal(currentTalksStage(withDeal).stage, 'proposal')
+  assert.equal(currentTalksStage(autoStageMarks({ replies: [], callsBooked: [], calls: [], deal: { stage: 'conversation', at: now }, stoppedAt: null }, now)), null)
+})
+t('a stage set by hand takes; later news moves it only further, or out, or back from out', () => {
+  const now = D('2026-11-20T18:00:00Z')
+  const hand = (stage, at) => ({ stage, at: D(at), hand: true, by: 'Leo', createdAt: D(at) })
+  const auto = autoStageMarks({ replies: [D('2026-11-01T15:00:00Z'), D('2026-11-10T15:00:00Z')], callsBooked: [D('2026-11-12T15:00:00Z')], calls: [], deal: null, stoppedAt: null }, now)
+  // Proposal sent on the 5th: a reply on the 10th and a call booked on the 12th don't wind it back.
+  let cur = currentTalksStage([...auto, hand('proposal', '2026-11-05T16:30:00Z')])
+  assert.equal(cur.stage, 'proposal'); assert.equal(cur.hand, true)
+  // Gone quiet on the 8th: the reply on the 10th brings it back.
+  cur = currentTalksStage([...auto, hand('quiet', '2026-11-08T16:30:00Z')])
+  assert.equal(cur.stage, 'call_booked')
+  // They said stop after the proposal: Lost.
+  cur = currentTalksStage([hand('proposal', '2026-11-05T16:30:00Z'), ...autoStageMarks({ replies: [], callsBooked: [], calls: [], deal: null, stoppedAt: D('2026-11-15T15:00:00Z') }, now)])
+  assert.equal(cur.stage, 'lost')
+  // A hand stage after everything always takes, even back a step.
+  cur = currentTalksStage([...auto, hand('replied', '2026-11-19T16:30:00Z')])
+  assert.equal(cur.stage, 'replied')
+  // The bar moving the deal (same stage, a moment later) leaves "set by Leo".
+  cur = currentTalksStage([hand('won', '2026-11-19T16:30:00Z'), ...autoStageMarks({ replies: [], callsBooked: [], calls: [], deal: { stage: 'closed', at: D('2026-11-19T16:31:00Z') }, stoppedAt: null }, now)])
+  assert.equal(cur.hand, true)
+  // Each stage's day = the first time it was reached.
+  const days = stageDates([...auto, hand('proposal', '2026-11-05T16:30:00Z')])
+  assert.deepEqual(days.replied, D('2026-11-01T15:00:00Z'))
+  assert.deepEqual(days.proposal, D('2026-11-05T16:30:00Z'))
+})
+t('a log line’s day: today = now, a past day = midday New York, never a day to come', () => {
+  const now = D('2026-11-08T18:00:00Z')
+  assert.deepEqual(logMoment('', now, '2026-11-08'), now)
+  assert.deepEqual(logMoment('2026-11-08', now, '2026-11-08'), now)
+  assert.deepEqual(logMoment('2026-11-03', now, '2026-11-08'), D('2026-11-03T16:30:00Z'))
+  assert.equal(D('2026-11-03T16:30:00Z').toLocaleDateString('en-CA', { timeZone: 'America/New_York' }), '2026-11-03')
+  assert.throws(() => logMoment('2026-11-09', now, '2026-11-08'), /hasn’t come yet/)
+  assert.throws(() => logMoment('Nov 3', now, '2026-11-08'), /Pick a day/)
+  assert.ok(isLogKind('call') && isLogKind('email_out') && !isLogKind('stage'))
 })
 
 console.log(`\n${n} passed`)

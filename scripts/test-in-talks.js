@@ -3,8 +3,8 @@
 //
 //   1. Its own top tab between Outreach and Show Board; Show Board's old
 //      "In talks" sub-tab reads "Board codes".
-//   2. The list: calls coming up first, then talking, then stopped; a find box
-//      that also matches people.
+//   2. The list: calls coming up first, then a group per stage (furthest
+//      first, the ways out last); a find box that also matches people.
 //   3. A profile: call card, links (website / Instagram / TikTok / LinkedIn),
 //      the journey, facts, overview, the activation idea, people with LinkedIn,
 //      Gmail and the email, invited-no-answer, notes and the brand page's note.
@@ -13,11 +13,11 @@
 //      saveTalksProfile; notes add (⌘↵), edit and delete (the confirm names it).
 //   6. Copy for a new chat: the brand, our notes, the idea and the brainstorm
 //      steps (21+ for an alcohol brand), money lines kept apart.
-//   7. Replied brands: a card opens the brand's profile (not in talks yet);
-//      a deal stage there starts its deal and puts it in talks, Lost takes it
-//      off the list; a stage on a brand in talks moves its deal. + Add puts one
-//      in talks and opens it; × hides it; Take off In talks asks first.
-//      Notes sit to the right of the activation idea.
+//   7. (Nov 8 2026) The stage strip filters the list; the stage bar sets a
+//      stage (setTalksStage) with Undo; a brand not in talks opened for a look
+//      goes in when a stage is set; the log adds (↵), edits and deletes lines
+//      (the confirm names it); + Add a brand searches any brand and puts it in
+//      talks; Take off In talks asks first. Notes sit right of the idea.
 //   8. The brand page: + Add to In talks, or Open its In talks profile.
 //   9. A phone: the list, a tap opens the profile with ‹ All brands, no
 //      sideways scroll. No page errors.
@@ -46,8 +46,11 @@ const base = (o) => Object.assign({
   sponsorsCollege: null, sponsorNote: null, usStatus: null, fit: 55, overview: null, overviewBy: null, overviewAt: null,
   idea: null, ideaBy: null, ideaAt: null, why: 'call', since: at(-5), addedBy: null, stopped: null, archived: false,
   nextCall: null, lastCall: null, people: [], invited: [], others: 0, notes: [], deal: null,
-  board: { code: null, opens: 0, lastAt: null }, journey: journey(2), lastAt: at(-1),
+  board: { code: null, opens: 0, lastAt: null }, journey: journey(2), lastAt: at(-1), stage: null, stageDates: {},
 }, o);
+const STAGE_LABEL = { replied: 'Replied', call_booked: 'Call booked', call_done: 'Call done', proposal: 'Proposal sent', negotiating: 'Negotiating',
+  verbal: 'Verbal yes', contract: 'Contract signed', won: 'Won', lost: 'Lost', quiet: 'Gone quiet' };
+const stg = (key, d, hand, why) => ({ key, label: STAGE_LABEL[key], at: at(d), hand: !!hand, by: hand ? 'Leo' : null, why: why || null });
 
 let BRANDS = [
   base({
@@ -57,6 +60,7 @@ let BRANDS = [
     overview: 'Electrolit is a rehydration drink from Mexico. It sponsors Coachella.', overviewBy: 'Claude', overviewAt: at(0),
     idea: 'Encore Stations\n\nChilled stations at every show hand out bottles.\nA 5K on show day.\n\nMeasured on bottles handed out.', ideaBy: 'Claude', ideaAt: at(0),
     nextCall: { at: at(3), name: 'Jason Robinson' }, journey: journey(4),
+    stage: stg('call_booked', -2, false, 'call booked'), stageDates: { replied: at(-10), call_booked: at(-2) },
     people: [{ targetId: 't1', contactId: 'c1', name: 'Jason Robinson', title: 'VP Marketing', email: 'jason@electrolit.com', phone: '+1 (555) 010-2000',
       linkedinUrl: 'https://www.linkedin.com/in/jasonr/', stage: 'call', label: 'call booked', invitedAt: at(-30), acceptedAt: at(-25),
       repliedAt: at(-10), repliedBy: 'email', callAt: at(3), callBookedAt: at(-2), emailedAt: null }],
@@ -69,10 +73,19 @@ let BRANDS = [
     people: [{ targetId: 't3', contactId: 'c3', name: 'Lizzy Prater', title: 'Director of Brand Marketing', email: null, phone: null,
       linkedinUrl: 'https://www.linkedin.com/in/lizzy/', stage: 'call', label: 'had a call', invitedAt: at(-40), acceptedAt: at(-35),
       repliedAt: null, repliedBy: null, callAt: at(-2), callBookedAt: at(-9), emailedAt: null }],
-    deal: { id: 'd1', name: 'Garage Beer — fall', stage: 'proposal', valueCents: 1500000, nextStep: 'Send the deck', followUpAt: at(2) } }),
+    deal: { id: 'd1', name: 'Garage Beer — fall', stage: 'proposal', valueCents: 1500000, nextStep: 'Send the deck', followUpAt: at(2) },
+    stage: stg('proposal', -1, true), stageDates: { replied: at(-20), call_booked: at(-9), call_done: at(-2), proposal: at(-1) } }),
   base({ id: 'b3', name: 'Dr. Squatch', category: 'beauty', why: 'hand', addedBy: 'Leo', lastAt: at(-4) }),
-  base({ id: 'b4', name: 'Gone Soda', stopped: at(-1), lastAt: at(-1) }),
+  base({ id: 'b4', name: 'Gone Soda', stopped: at(-1), lastAt: at(-1), stage: stg('lost', -1, false, 'said they don’t want to continue'), stageDates: { replied: at(-6), lost: at(-1) } }),
 ];
+const LOGS = {
+  b2: [
+    { id: 'e1', at: at(-1), kind: 'stage', stage: 'proposal', label: 'Moved to Proposal sent', text: 'Deck went with it', hand: true, by: 'Leo', editedAt: null },
+    { at: at(-2), kind: 'auto', label: 'Call', text: 'Call day with Lizzy Prater', hand: false },
+    { at: at(-9), kind: 'auto', label: 'Zach’s list', text: 'Lizzy Prater — call booked (2026-10-16)', hand: false },
+  ],
+};
+let EV = 10;
 let SUGGEST = [
   { id: 'b5', name: 'SpikedAde', category: 'rtd', repliedAt: at(-3), who: 'Zach Fagin — Associate Trade Marketing Manager' },
   { id: 'b6', name: 'Neutonic', category: 'energy', repliedAt: at(-6), who: 'Kerry Szostak' },
@@ -99,12 +112,61 @@ const H = {
   listInTalks: (a) => {
     const s = a.preview && !byId(a.preview) ? SUGGEST.find((x) => x.id === a.preview) : null;
     return {
-      brands: JSON.parse(JSON.stringify(BRANDS)), suggestions: SUGGEST, sponsorUrl: 'https://shows.example.com', today: '2026-10-18',
+      brands: JSON.parse(JSON.stringify(BRANDS)), sponsorUrl: 'https://shows.example.com', today: '2026-10-18',
+      logKinds: [{ key: 'call', label: 'Call' }, { key: 'email_out', label: 'Email sent' }, { key: 'proposal', label: 'Deck / proposal sent' }, { key: 'other', label: 'Other' }],
       preview: s ? base({ id: s.id, name: s.name, category: s.category, why: 'reply', since: s.repliedAt, preview: true, repliedAt: s.repliedAt, journey: journey(3),
         people: [{ targetId: 't_' + s.id, contactId: 'c_' + s.id, name: s.who, title: 'Brand Manager', email: null, phone: null, linkedinUrl: null,
           stage: 'replied', label: 'replied', invitedAt: at(-40), acceptedAt: at(-35), repliedAt: s.repliedAt, repliedBy: 'linkedin', callAt: null, callBookedAt: null, emailedAt: null }] }) : null,
     };
   },
+  setTalksStage: (a) => {
+    let b = byId(a.brandId);
+    const s = SUGGEST.find((x) => x.id === a.brandId);
+    const added = !b && !['lost', 'quiet'].includes(a.stage);
+    if (!b && added) { SUGGEST = SUGGEST.filter((x) => x.id !== a.brandId); b = base({ id: a.brandId, name: s.name, why: 'hand', addedBy: 'Leo', since: at(0), lastAt: at(0) }); BRANDS.push(b); }
+    const name = b ? b.name : s.name;
+    let deal = null;
+    if (b) {
+      const map = { proposal: 'proposal', negotiating: 'proposal', verbal: 'verbal', contract: 'verbal', won: 'closed', lost: 'lost' };
+      if (map[a.stage] && (!b.deal || b.deal.stage !== map[a.stage])) { deal = { id: 'd_' + b.id, from: b.deal ? b.deal.stage : '', to: map[a.stage], created: !b.deal }; b.deal = Object.assign(b.deal || { id: 'd_' + b.id, name: b.name, valueCents: 0 }, { stage: map[a.stage] }); }
+      b.prevStage = b.stage;
+      b.stage = stg(a.stage, 0, true);
+      b.stageDates = Object.assign({}, b.stageDates, { [a.stage]: at(0) });
+    }
+    const ev = { id: 'e' + (++EV), at: at(0), kind: 'stage', stage: a.stage, label: 'Moved to ' + STAGE_LABEL[a.stage], text: '', hand: true, by: 'Leo', editedAt: null };
+    (LOGS[a.brandId] = LOGS[a.brandId] || []).unshift(ev);
+    return { brandId: a.brandId, brandName: name, stage: a.stage, label: STAGE_LABEL[a.stage], at: ev.at, event: ev, deal, dealSkipped: null, addedToTalks: added };
+  },
+  talksLog: (a) => ({ brandId: a.brandId, items: JSON.parse(JSON.stringify(LOGS[a.brandId] || [])) }),
+  addTalksEvent: (a) => {
+    const ev = { id: 'e' + (++EV), at: a.day ? new Date(a.day + 'T16:30:00Z').toISOString() : at(0), kind: a.kind, label: { call: 'Call', email_out: 'Email sent', proposal: 'Deck / proposal sent', other: 'Other' }[a.kind], text: a.text, hand: true, by: 'Leo', editedAt: null };
+    (LOGS[a.brandId] = LOGS[a.brandId] || []).unshift(ev);
+    return { brandId: a.brandId, brandName: byId(a.brandId).name, event: ev };
+  },
+  editTalksEvent: (a) => {
+    for (const k of Object.keys(LOGS)) for (const e of LOGS[k]) if (e.id === a.id) {
+      if (a.text !== undefined) e.text = a.text;
+      if (a.day) e.at = new Date(a.day + 'T16:30:00Z').toISOString();
+      e.editedAt = at(0);
+      return { brandId: k, brandName: byId(k).name, event: e };
+    }
+    throw new Error('That line is gone');
+  },
+  deleteTalksEvent: (a) => {
+    for (const k of Object.keys(LOGS)) {
+      const e = LOGS[k].find((x) => x.id === a.id);
+      if (!e) continue;
+      const b = byId(k);
+      const dealBack = e.kind === 'stage' && b && b.deal && e.stage === 'verbal' ? { id: b.deal.id, from: 'verbal', to: 'proposal' } : null;
+      if (!a.confirm) return { deleted: false, brandId: k, brandName: b.name, event: e, dealBack, dealStays: null };
+      LOGS[k] = LOGS[k].filter((x) => x.id !== a.id);
+      if (e.kind === 'stage' && b && b.prevStage !== undefined) { b.stage = b.prevStage; delete b.prevStage; if (dealBack) b.deal.stage = 'proposal'; }
+      return { deleted: true, brandId: k, brandName: b.name, event: e, dealBack, dealStays: null };
+    }
+    throw new Error('That line is gone');
+  },
+  brandLookup: (a) => ({ brands: [{ id: 'b9', name: 'Olipop', category: 'beverage', archived: false }, { id: 'b1', name: 'Electrolit', category: 'electrolytes', archived: false }]
+    .filter((x) => x.name.toLowerCase().includes(String(a.q).toLowerCase())), exact: false }),
   setTalksDeal: (a) => {
     let b = byId(a.brandId);
     const s = SUGGEST.find((x) => x.id === a.brandId);
@@ -206,7 +268,8 @@ async function main() {
   // 1. The tab
   const tabs = await page.$$eval('.tabs.cc-only:not(#sub-tabs) .nav-item', (els) => els.map((e) => e.textContent));
   // Elizabeth's outreach tab sits next to Outreach (Oct 21 2026).
-  assert.deepEqual(tabs.slice(0, 6), ['Home', 'Brands', 'Outreach', 'Elizabeth', 'In talks', 'Show Board'], tabs.join(' | '));
+  // Zach's tab right after Home (Nov 8 2026).
+  assert.deepEqual(tabs.slice(0, 7), ['Home', 'Zach', 'Brands', 'Outreach', 'Elizabeth', 'In talks', 'Show Board'], tabs.join(' | '));
   await page.click('.tabs .nav-item[data-view="board"]');
   await page.waitForSelector('#sub-tabs .nav-item[data-view="talks"]');
   assert.equal(await text('#sub-tabs .nav-item[data-view="talks"]'), 'Board codes');
@@ -223,17 +286,25 @@ async function main() {
 
   // 2. The list
   const groups = await page.$$eval('#it-list .it-glabel', (els) => els.map((e) => e.firstChild.textContent));
-  assert.deepEqual(groups, ['Calls coming up', 'Talking', 'Said they’re out']);
+  assert.deepEqual(groups, ['Calls coming up', 'Proposal sent', 'No stage yet', 'Lost']);
   const names = await page.$$eval('#it-list .it-item b', (els) => els.map((e) => e.textContent));
   assert.deepEqual(names, ['Electrolit', 'Garage Beer', 'Dr. Squatch', 'Gone Soda']);
-  assert.ok(/Had a call/.test(await text('#it-list [data-it-sel="b2"]')));
-  assert.ok(/Added .* by Leo/.test(await text('#it-list [data-it-sel="b3"]')));
-  assert.ok(/don’t want to continue/.test(await text('#it-list [data-it-sel="b4"]')));
+  assert.ok(/Call booked/.test(await text('#it-list [data-it-sel="b1"] .it-spill')) && /Call /.test(await text('#it-list [data-it-sel="b1"]')));
+  assert.ok(/Proposal sent/.test(await text('#it-list [data-it-sel="b2"]')) && /since/.test(await text('#it-list [data-it-sel="b2"]')));
+  assert.ok(/No stage yet/.test(await text('#it-list [data-it-sel="b3"]')) && /Added .* by Leo/.test(await text('#it-list [data-it-sel="b3"]')));
+  assert.ok(/Lost/.test(await text('#it-list [data-it-sel="b4"]')));
+  // The stage strip: a tile per stage, a click shows only it, again = all.
+  const tiles = await page.$$eval('#it-stages .it-stile', (els) => els.map((e) => e.textContent));
+  assert.deepEqual(tiles, ['4All brands', '0Replied', '1Call booked', '0Call done', '1Proposal sent', '0Negotiating', '0Verbal yes', '0Contract signed', '0Won', '1Lost', '0Gone quiet', '1No stage yet'], tiles.join(' | '));
+  await page.click('#it-stages [data-it-sf="proposal"]');
+  assert.deepEqual(await page.$$eval('#it-list .it-item b', (els) => els.map((e) => e.textContent)), ['Garage Beer']);
+  await page.click('#it-stages [data-it-sf="proposal"]');
+  assert.equal(await page.$$eval('#it-list .it-item', (els) => els.length), 4);
   await page.fill('#it-find', 'lizzy');
   assert.deepEqual(await page.$$eval('#it-list .it-item b', (els) => els.map((e) => e.textContent)), ['Garage Beer'], 'find matches people too');
   await page.fill('#it-find', '');
   assert.ok(/4 brands · 1 call coming up/.test(await text('#it-sub')));
-  console.log('✓ the list: calls coming up, talking, stopped; the find box matches people');
+  console.log('✓ the list: calls coming up, then a group per stage; the stage strip filters it; the find box matches people');
 
   // 3. The profile
   assert.equal(await text('.it-name'), 'Electrolit');
@@ -242,7 +313,13 @@ async function main() {
   const chips = await page.$$eval('.it-links a.it-chip', (els) => els.map((e) => [e.textContent.trim(), e.getAttribute('href'), e.getAttribute('target')]));
   assert.deepEqual(chips.map((c) => c[0]), ['electrolit.com', 'Instagram @electrolit', 'TikTok @electrolitusa', 'LinkedIn']);
   assert.ok(chips.every((c) => c[2] === '_blank'));
-  assert.equal(await page.$$eval('.it-journey li.done', (e) => e.length), 4);
+  // The stage bar: where it is now, the days each stage was reached.
+  assert.ok(/Call booked/.test(await text('.it-stagenow')) && /call booked on Zach’s list/.test(await text('.it-stagewhy')));
+  assert.equal(await page.$$eval('.it-stagerow .it-sbtn.done', (e) => e.length), 2);
+  assert.equal(await page.getAttribute('.it-stagerow .it-sbtn.cur', 'data-it-sset'), 'call_booked');
+  assert.ok(/Before: Invited .* · Accepted/.test(await text('.it-stagecard')));
+  // What happened: loads into the profile (nothing logged yet here).
+  await page.waitForFunction(() => /Nothing yet/.test(document.querySelector('#it-loglist').textContent));
   const facts = await text('.it-facts');
   assert.ok(/72/.test(facts) && /1.2K/.test(facts) && /College \/ music/.test(facts) && /3opens/.test(facts.replace(/\s+/g, '')), facts);
   assert.ok(/rehydration drink/.test(await text('.it-overview')));
@@ -261,14 +338,19 @@ async function main() {
   assert.equal(await page.evaluate(() => window.__copied), 'jason@electrolit.com');
   await page.click('[data-it-board]');
   assert.equal(await page.evaluate(() => window.__copied), 'https://shows.example.com?code=ELEC-42');
-  console.log('✓ a profile: call, links, journey, facts, overview, idea, people (LinkedIn, Gmail, email), notes, board link');
+  console.log('✓ a profile: call, links, stage bar, facts, overview, idea, people (LinkedIn, Gmail, email), notes, board link');
 
   // 4. Another brand is a page of its own
   await page.click('#it-list [data-it-sel="b2"]');
   await page.waitForFunction(() => document.querySelector('.it-name').textContent === 'Garage Beer');
   assert.ok(/Last call/.test(await text('.it-hero')));
   assert.ok(/proposal/.test(await text('.it-cols')) && /\$15,000 sponsorship/.test(await text('.it-cols')));
-  assert.equal(await page.getAttribute('[data-it-stage="proposal"]', 'aria-pressed'), 'true', 'the deal stage shows lit');
+  assert.equal(await page.getAttribute('.it-sbtn.cur', 'data-it-sset'), 'proposal', 'its stage shows lit');
+  assert.ok(/set by Leo/.test(await text('.it-stagewhy')));
+  await page.waitForSelector('#it-loglist .it-logi');
+  assert.deepEqual(await page.$$eval('#it-loglist .it-logi .l', (els) => els.map((e) => e.textContent)), ['Moved to Proposal sent', 'Call', 'Zach’s list']);
+  assert.equal(await page.$$eval('#it-loglist .it-logi.auto [data-it-ledit]', (e) => e.length), 0, 'what the site saw is read-only');
+  if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, 'in-talks.png'), fullPage: true });
   assert.ok(/no email on file/.test(await text('.it-person')));
   assert.ok(/\+ website, Instagram, TikTok/.test(await text('[data-it-links]')), 'missing links offered');
   await page.click('#nav-back');
@@ -342,53 +424,74 @@ async function main() {
   assert.ok(notesBox.l >= ideaBox.r && Math.abs(notesBox.t - ideaBox.t) < 2, 'notes beside the idea: ' + JSON.stringify([ideaBox, notesBox]));
   console.log('✓ notes sit to the right of the activation idea');
 
-  // 7a. A "Replied, not in talks" card opens the brand; a deal stage puts it in talks
-  assert.ok(/Replied, not in talks/.test(await text('.it-sug summary')));
-  await page.click('.it-sug summary');
-  await page.click('[data-it-sug="b7"]');
+  // 7a. The stage bar: a click sets the stage today (and moves the deal); Undo takes it back.
+  await page.click('#it-list [data-it-sel="b2"]');
+  await page.waitForSelector('#it-loglist .it-logi');
+  await page.click('[data-it-sset="verbal"]');
+  await page.waitForFunction(() => document.querySelector('.it-sbtn.cur') && document.querySelector('.it-sbtn.cur').getAttribute('data-it-sset') === 'verbal');
+  assert.deepEqual(last('setTalksStage').args, { brandId: 'b2', stage: 'verbal' });
+  assert.ok(/Moved to Verbal yes/.test(await text('.it-undo')));
+  await page.waitForFunction(() => /Moved to Verbal yes/.test(document.querySelector('#it-loglist').textContent));
+  assert.ok(/Verbal yes/.test(await text('#it-list [data-it-sel="b2"]')), 'the list moves it too');
+  await page.click('[data-it-sundo]');
+  await page.waitForFunction(() => document.querySelector('.it-sbtn.cur') && document.querySelector('.it-sbtn.cur').getAttribute('data-it-sset') === 'proposal');
+  assert.equal(last('deleteTalksEvent').args.confirm, true);
+  assert.ok(!(await page.$('.it-undo')));
+  console.log('✓ the stage bar: a click sets it (deal follows), Undo takes it back');
+
+  // 7b. The log: add a line with its day (↵), edit it, delete it (the confirm names it).
+  await page.selectOption('[data-it-field="log:kind"]', 'email_out');
+  const past = await page.evaluate(() => { const d = new Date(Date.now() - 3 * 864e5); return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); });
+  await page.fill('[data-it-field="log:day"]', past);
+  await page.fill('[data-it-field="log:text"]', 'Sent Lizzy the fall deck');
+  await page.press('[data-it-field="log:text"]', 'Enter');
+  await page.waitForFunction(() => /Sent Lizzy the fall deck/.test(document.querySelector('#it-loglist').textContent));
+  assert.deepEqual(last('addTalksEvent').args, { brandId: 'b2', kind: 'email_out', day: past, text: 'Sent Lizzy the fall deck' });
+  assert.equal(await page.inputValue('[data-it-field="log:text"]'), '', 'the box empties');
+  const eid = await page.$eval('#it-loglist .it-logi:has-text("fall deck") [data-it-ledit]', (e) => e.getAttribute('data-it-ledit'));
+  await page.click('[data-it-ledit="' + eid + '"]');
+  await page.fill('[data-it-lrow] [data-it-ef="text"]', 'Sent Lizzy the fall deck + pricing');
+  await page.click('[data-it-lsave="' + eid + '"]');
+  await page.waitForFunction(() => /pricing/.test(document.querySelector('#it-loglist').textContent) && !document.querySelector('[data-it-lrow]'));
+  assert.equal(last('editTalksEvent').args.id, eid);
+  assert.equal(last('editTalksEvent').args.text, 'Sent Lizzy the fall deck + pricing');
+  await page.click('[data-it-ldel="' + eid + '"]');
+  await page.waitForFunction(() => !/pricing/.test(document.querySelector('#it-loglist').textContent));
+  assert.ok(/Delete this line/.test(dialogs[dialogs.length - 1]) && /pricing/.test(dialogs[dialogs.length - 1]), 'the confirm names the line');
+  console.log('✓ the log: a line with its day (↵), edited, deleted after a confirm that names it');
+
+  // 7c. A brand not in talks opened for a look: a stage puts it in.
+  await page.evaluate(() => itPreview('b7'));
   await page.waitForFunction(() => document.querySelector('.it-name') && document.querySelector('.it-name').textContent === 'Arizona Beverages');
   assert.ok(/Not in talks yet/.test(await text('.it-pvbar')) && /not in talks yet/.test(await text('.it-hero')));
   assert.ok(await page.isVisible('.it-hero [data-it-add="b7"]') && !(await page.$('.it-hero [data-it-remove]')), 'a look, not on the list: + Add, no Take off');
-  assert.ok(/Thomas Reed/.test(await text('.it-person')), 'its people show');
-  assert.ok((await page.getAttribute('.it-sug-row:has([data-it-sug="b7"])', 'class')).includes('on'), 'the card is lit');
-  assert.ok(/moves Arizona Beverages into In talks/.test(await text('.it-stagebar')));
-  await page.click('#nav-back');
-  await page.waitForFunction(() => document.querySelector('.it-name').textContent === 'Electrolit');
-  await page.click('#nav-fwd');
-  await page.waitForFunction(() => document.querySelector('.it-name') && document.querySelector('.it-name').textContent === 'Arizona Beverages');
-  await page.click('[data-it-stage="proposal"]');
+  await page.click('[data-it-sset="replied"]');
   await page.waitForSelector('#it-list [data-it-sel="b7"].on');
-  assert.deepEqual(last('setTalksDeal').args, { brandId: 'b7', stage: 'proposal' });
-  assert.equal(await page.getAttribute('[data-it-stage="proposal"]', 'aria-pressed'), 'true');
-  assert.ok(!(await page.$('.it-pvbar')) && !(await page.$('[data-it-sug="b7"]')), 'in talks now, off the Replied list');
-  console.log('✓ a Replied card opens the brand; a deal stage starts its deal and puts it in talks; ‹ › work');
+  assert.deepEqual(last('setTalksStage').args, { brandId: 'b7', stage: 'replied' });
+  assert.ok(!(await page.$('.it-pvbar')), 'in talks now');
+  console.log('✓ a brand opened for a look goes in when a stage is set');
 
-  // 7b. A stage on a brand in talks moves its deal; Lost on a Replied card takes it off the list
-  await page.click('#it-list [data-it-sel="b2"]');
-  await page.click('[data-it-stage="verbal"]');
-  await page.waitForFunction(() => document.querySelector('[data-it-stage="verbal"]').getAttribute('aria-pressed') === 'true');
-  assert.deepEqual(last('setTalksDeal').args, { brandId: 'b2', stage: 'verbal' });
-  await page.click('[data-it-sug="b8"]');
-  await page.waitForFunction(() => document.querySelector('.it-name') && document.querySelector('.it-name').textContent === 'Update');
-  await page.click('[data-it-stage="lost"]');
-  await page.waitForFunction(() => !document.querySelector('[data-it-sug="b8"]') && document.querySelector('.it-name') && document.querySelector('.it-name').textContent !== 'Update');
-  assert.ok(!(await page.$('#it-list [data-it-sel="b8"]')), 'Lost never puts it in talks');
-  await page.evaluate(() => { const d = document.querySelector('.it-sug'); if (d) d.open = false; });
-  console.log('✓ a stage on a brand in talks moves its deal; Lost on a Replied card takes it off the list');
+  // 7d. + Add a brand: search any brand, + Add puts it in talks; one already in opens.
+  await page.click('[data-it-addopen]');
+  await page.fill('#it-addq', 'electro');
+  await page.waitForSelector('#it-addres [data-it-sel="b1"]');
+  assert.ok(/In talks · open/.test(await text('#it-addres')));
+  await page.fill('#it-addq', 'oli');
+  await page.waitForSelector('#it-addres [data-it-add="b9"]');
+  await page.click('#it-addres [data-it-add="b9"]');
+  await page.waitForFunction(() => document.querySelector('.it-name') && document.querySelector('.it-name').textContent === 'Olipop');
+  assert.deepEqual(last('setInTalks').args, { brandId: 'b9', on: true });
+  await page.waitForSelector('#it-addres [data-it-sel="b9"]');
+  await page.click('[data-it-addopen]');
+  assert.equal(await page.isVisible('#it-addbox'), false);
+  console.log('✓ + Add a brand: any brand, into talks; one already in says so');
 
-  // 7. Replied brands; Take off
-  await page.click('.it-sug summary');
-  await page.click('[data-it-add="b5"]');
-  await page.waitForFunction(() => document.querySelector('.it-name') && document.querySelector('.it-name').textContent === 'SpikedAde');
-  assert.deepEqual(last('setInTalks').args, { brandId: 'b5', on: true });
-  assert.ok(/Write it/.test(await text('[data-it-edit="overview"]')) && /daily check/.test(await text('.it-card')), 'empty overview says Claude writes it');
-  await page.click('[data-it-notnow="b6"]');
-  await page.waitForFunction(() => !document.querySelector('[data-it-notnow]'));
-  assert.deepEqual(last('setInTalks').args, { brandId: 'b6', on: false });
+  // 7e. Take off asks first.
+  await page.click('#it-list [data-it-sel="b9"]');
   await page.click('[data-it-remove]');
-  await page.waitForFunction(() => !document.querySelector('#it-list [data-it-sel="b5"]'));
-  assert.ok(/Take SpikedAde off In talks/.test(dialogs[dialogs.length - 1]));
-  console.log('✓ + Add puts a replied brand in talks and opens it; × hides it; Take off asks first');
+  await page.waitForFunction(() => !document.querySelector('#it-list [data-it-sel="b9"]'));
+  assert.ok(/Take Olipop off In talks/.test(dialogs[dialogs.length - 1]) && /new reply/.test(dialogs[dialogs.length - 1]));
+  console.log('✓ Take off In talks asks first');
 
   // 8. The brand page
   await page.click('[data-it-sel="b1"]');
@@ -421,7 +524,7 @@ async function main() {
   console.log('✓ a phone: the list, a tap opens the profile with ‹ All brands, no sideways scroll');
 
   assert.deepEqual(errors, [], 'page errors: ' + errors.join(' | '));
-  console.log('\nin-talks page: all 12 passed');
+  console.log('\nin-talks page: all 14 passed');
   await browser.close();
   server.close();
 }

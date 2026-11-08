@@ -2259,6 +2259,64 @@
   .it-fold-row .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .it-more{font-size:12.5px;color:var(--ink-3);margin-top:10px}
   .it-more a{color:var(--accent-hi);cursor:pointer;text-decoration:none}
+  /* Stages (Leo, Nov 8 2026: "I want their stage to be laid out clearly"): a strip across the top (a tile per
+     stage, a click shows only it), a bar on each profile (a click sets it, each stage with its day) and the log. */
+  .sg-replied{--sc:#8b93e6} .sg-call_booked{--sc:#6f9dff} .sg-call_done{--sc:#4fb6f7} .sg-proposal{--sc:#e2b04a}
+  .sg-negotiating{--sc:#f0954f} .sg-verbal{--sc:#a6d46a} .sg-contract{--sc:#4fd19a} .sg-won{--sc:#3ecf8e}
+  .sg-lost{--sc:#f0716b} .sg-quiet{--sc:#8a8fa3} .sg-none{--sc:#5c6070}
+  .it-stages{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}
+  .it-stile{display:flex;flex-direction:column;gap:1px;flex:1 1 84px;min-width:84px;max-width:150px;padding:8px 11px 9px;border-radius:12px;border:1px solid var(--border-soft);
+    border-left:3px solid var(--sc,#3a3a46);background:rgba(255,255,255,.02);color:var(--ink-2);font:inherit;text-align:left;cursor:pointer}
+  .it-stile b{font-family:var(--display);font-size:20px;font-weight:800;color:var(--ink-1);font-variant-numeric:tabular-nums;line-height:1.15}
+  .it-stile span{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .it-stile:hover{border-color:#3a3a46;border-left-color:var(--sc,#3a3a46)}
+  .it-stile.on{background:color-mix(in srgb,var(--sc,#4f83f7) 18%,transparent);border-color:var(--sc,#4f83f7)}
+  .it-stile.zero{opacity:.5}
+  .it-stile.gap{margin-left:12px}
+  .it-spill{display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:650;white-space:nowrap;
+    border:1px solid color-mix(in srgb,var(--sc,#8a8fa3) 55%,transparent);color:color-mix(in srgb,var(--sc,#8a8fa3) 70%,#fff);
+    background:color-mix(in srgb,var(--sc,#8a8fa3) 14%,transparent)}
+  .it-addwrap{display:flex;flex-direction:column;gap:6px}
+  .it-addwrap>.it-mini{align-self:flex-start}
+  .it-addres{display:flex;flex-direction:column;gap:2px;max-height:280px;overflow:auto}
+  .it-addrow{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:10px;font-size:13.5px}
+  .it-addrow:hover{background:rgba(255,255,255,.03)}
+  .it-addrow .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .it-addrow .n small{color:var(--ink-3);font-size:12.5px;margin-left:6px}
+  .it-stagecard{margin:18px 30px 0;padding:16px 18px 14px;border:1px solid var(--border-soft);border-radius:16px;background:rgba(255,255,255,.018)}
+  .it-stagehead{display:flex;align-items:baseline;gap:6px 12px;flex-wrap:wrap;margin-bottom:12px}
+  .it-stagehead h3{font-size:12px;font-weight:750;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
+  .it-stagenow{font-family:var(--display);font-size:19px;font-weight:800;color:color-mix(in srgb,var(--sc,#8a8fa3) 60%,#fff)}
+  .it-stagewhy{font-size:13px;color:var(--ink-3)}
+  .it-stagerow{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px}
+  .it-sbtn{display:flex;flex-direction:column;gap:2px;padding:9px 10px 8px;border-radius:11px;border:1px solid var(--border);background:none;
+    color:var(--ink-3);font:inherit;text-align:left;cursor:pointer;min-width:0}
+  .it-sbtn b{font-size:13px;font-weight:650;line-height:1.25;overflow-wrap:anywhere}
+  .it-sbtn span{font-size:12.5px;font-variant-numeric:tabular-nums}
+  .it-sbtn.done{color:var(--ink-1);border-color:color-mix(in srgb,var(--sc) 45%,transparent);background:color-mix(in srgb,var(--sc) 9%,transparent)}
+  .it-sbtn.cur{color:#fff;border-color:var(--sc);background:color-mix(in srgb,var(--sc) 28%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--sc) 22%,transparent);cursor:default}
+  .it-sbtn:hover:not(:disabled):not(.cur){border-color:var(--sc)}
+  .it-sbtn:disabled:not(.cur){opacity:.55;cursor:default}
+  .it-stagefoot{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  .it-stagefoot .it-sbtn{flex-direction:row;align-items:center;gap:8px;padding:5px 12px;border-radius:999px}
+  .it-stagefoot .grow{flex:1}
+  .it-undo{font-size:13px;color:var(--ink-2);display:inline-flex;gap:8px;align-items:center}
+  .it-logcard{margin:18px 30px 0}
+  .it-logadd{display:grid;grid-template-columns:190px 150px minmax(0,1fr) auto;gap:8px;align-items:center}
+  .it-logadd .inp,.it-logedit .inp{width:100%;font-size:13.5px}
+  .it-log{list-style:none;margin:14px 0 0;padding:0}
+  .it-logi{display:grid;grid-template-columns:70px 150px minmax(0,1fr) auto;gap:12px;padding:9px 0;border-top:1px solid var(--border-soft);align-items:baseline}
+  .it-logi .d{font-size:13px;color:var(--ink-1);font-weight:650;font-variant-numeric:tabular-nums}
+  .it-logi .l{font-size:12.5px;font-weight:650;color:var(--ink-2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .it-logi .t{font-size:14px;line-height:1.5;word-break:break-word;white-space:pre-wrap}
+  .it-logi .t small{color:var(--ink-3);font-size:12.5px;margin-left:6px;white-space:nowrap}
+  .it-logi.auto .d,.it-logi.auto .l{color:var(--ink-3);font-weight:600}
+  .it-logi.auto .t{color:var(--ink-2);font-size:13.5px}
+  .it-logi.up .d,.it-logi.up .l{color:var(--accent-hi)}
+  .it-logi .acts{display:flex;gap:6px;opacity:0;transition:opacity .15s}
+  .it-logi:hover .acts,.it-logi:focus-within .acts{opacity:1}
+  .it-logedit{display:grid;grid-template-columns:190px 150px minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--border-soft)}
+  .it-logtools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
   .it-deal{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
   .it-deal b{font-size:14.5px}
   .it-blank{padding:70px 30px;text-align:center}
@@ -2290,7 +2348,67 @@
     .it-card{padding:16px}
     .it-noteadd{flex-direction:column;align-items:stretch}
     .it-note-acts{opacity:1}
+    .it-stagecard,.it-logcard{margin-left:16px;margin-right:16px}
+    .it-stagerow{grid-template-columns:repeat(4,minmax(0,1fr))}
+    .it-logadd,.it-logedit{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+    .it-logadd [data-it-field="log:text"],.it-logedit [data-it-ef="text"]{grid-column:1/-1}
+    .it-logi{grid-template-columns:62px minmax(0,1fr);gap:2px 10px}
+    .it-logi .t{grid-column:2}
+    .it-logi .acts{grid-column:2;opacity:1}
+    .it-stile{min-width:0;flex:1 1 30%}
+    .it-stile.gap{margin-left:0}
   }
+
+  /* ---- Zach's tab (zv-*; Leo, Nov 8 2026: "one tab for Zach … so he can just look at everything and see what's
+     going on"). Big numbers on top, then a card per part of the work; every card opens its own tab. ---- */
+  #zachtab.page{padding-top:30px}
+  .zv-top{display:flex;align-items:flex-end;justify-content:space-between;gap:14px 24px;flex-wrap:wrap;margin-bottom:20px}
+  .zv-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
+  .zv-tile{display:flex;flex-direction:column;gap:3px;padding:15px 16px 14px;border-radius:16px;border:1px solid var(--border-soft);
+    background:rgba(255,255,255,.02);color:var(--ink-2);font:inherit;text-align:left;cursor:pointer;min-width:0;border-top:3px solid var(--zc,#3a3a46)}
+  .zv-tile:hover{border-color:#3a3a46;border-top-color:var(--zc,#3a3a46);background:rgba(255,255,255,.035)}
+  .zv-tile .k{font-size:12px;font-weight:750;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);min-height:2.7em}
+  .zv-tile .v{font-family:var(--display);font-size:30px;font-weight:800;color:var(--ink-1);line-height:1.1;font-variant-numeric:tabular-nums}
+  .zv-tile .n{font-size:13px;color:var(--ink-2);line-height:1.45}
+  .zv-tile .go{font-size:12.5px;color:var(--ink-3);margin-top:4px}
+  .zv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+  .zv-card{border:1px solid var(--border-soft);border-radius:16px;background:rgba(255,255,255,.018);padding:18px 20px;min-width:0}
+  .zv-card-h{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+  .zv-card-h h3{font-size:12px;font-weight:750;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
+  .zv-card-h .grow{flex:1}
+  .zv-card-h .zv-dim{font-size:13px}
+  .zv-dim{color:var(--ink-3);font-size:13px}
+  .zv-wk{width:100%;border-collapse:collapse;font-size:14px}
+  .zv-wk th{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);text-align:right;padding:4px 8px}
+  .zv-wk th:first-child,.zv-wk td:first-child{text-align:left;padding-left:0}
+  .zv-wk td{padding:7px 8px;border-top:1px solid var(--border-soft);text-align:right;font-variant-numeric:tabular-nums}
+  .zv-wk td.now{font-weight:750;color:var(--ink-1)}
+  .zv-bar{height:6px;border-radius:3px;background:var(--border-soft);overflow:hidden;margin-top:4px;min-width:60px}
+  .zv-bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
+  .zv-steps{display:flex;flex-direction:column;gap:4px}
+  .zv-step{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:8px 10px;border-radius:10px;border:1px solid transparent;
+    background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;border-left:3px solid var(--stage,#3a3a46)}
+  .zv-step:hover{background:rgba(255,255,255,.035);border-color:var(--border-soft);border-left-color:var(--stage,#3a3a46)}
+  .zv-step b{font-size:14px;font-weight:650}
+  .zv-step .c{font-family:var(--display);font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
+  .zv-step .todo{font-size:12.5px;color:var(--warn);white-space:nowrap}
+  .zv-stg{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+  .zv-stg .it-stile{flex:0 1 auto;min-width:88px;max-width:none}
+  .zv-rows{display:flex;flex-direction:column}
+  .zv-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:baseline;padding:9px 6px;border-top:1px solid var(--border-soft);
+    background:none;border-left:0;border-right:0;border-bottom:0;color:inherit;font:inherit;text-align:left;cursor:pointer;border-radius:0}
+  .zv-row:first-child{border-top:none}
+  .zv-row:hover{background:rgba(255,255,255,.03)}
+  .zv-row .nm{font-weight:650;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .zv-row .r{font-size:13px;color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .zv-row .s{grid-column:1/-1;font-size:12.5px;color:var(--ink-3)}
+  .zv-money{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px}
+  .zv-money div{display:flex;flex-direction:column}
+  .zv-money b{font-family:var(--display);font-size:20px;font-weight:800}
+  .zv-money span{font-size:12.5px;color:var(--ink-3)}
+  .zv-full{grid-column:1/-1}
+  @media (max-width:1000px){ .zv-grid{grid-template-columns:minmax(0,1fr)} }
+  @media (max-width:600px){ #zachtab.page{padding-top:18px} .zv-tiles{grid-template-columns:repeat(2,minmax(0,1fr))} .zv-tile .v{font-size:24px} }
 
   /* ---- In talks → Every brand reached (tk-*; Leo, Nov 6 2026: "a clear way to keep track of every brand that
      we've reached out to, is accepted, and has responded to us, and wants to continue. And then we send out an
@@ -2568,6 +2686,7 @@
       </div>
       <nav class="tabs cc-only">
         <button class="nav-item active" data-view="dashboard">Home</button>
+        <button class="nav-item" data-view="zachtab">Zach</button>
         <button class="nav-item" data-view="brands">Brands</button>
         <button class="nav-item" data-view="outreach">Outreach</button>
         <button class="nav-item" data-view="elizabeth">Elizabeth</button>
@@ -2980,6 +3099,19 @@
     </section>
 
     <!-- IN TALKS (Leo, Oct 18 2026): brands with a call booked + any added by hand — its own workspace look -->
+    <!-- ZACH (Leo, Nov 8 2026): one tab for Zach — everything at a glance, each card opens its tab -->
+    <section class="view page" id="zachtab">
+      <div class="zv-top">
+        <div>
+          <div class="eyebrow">For Zach</div>
+          <h1>Everything at a glance</h1>
+          <div class="sub" id="zv-sub">Loading…</div>
+        </div>
+        <button class="btn-ghost" id="zv-refresh" title="Read everything again">↻ Refresh</button>
+      </div>
+      <div id="zv-body"></div>
+    </section>
+
     <section class="view page it-page" id="intalks">
       <div class="it-top">
         <div>
@@ -3516,15 +3648,20 @@ function rbEl(id) {
     (how.length ? ' · ' + how.join(' · ') : '') + (typeof EL_STAGE_WORD !== 'undefined' && EL_STAGE_WORD[r[2]] ? ' · ' + EL_STAGE_WORD[r[2]] : '');
   return '<span class="rb-tag el" title="' + esc(tip) + '">Elizabeth ' + esc(rbDay(r[1])) + '</span>';
 }
+// Leo, Nov 8 2026: "when it says reached on a date I want it to say outreach
+// to … if someone has accepted I want it to say accepted on … date":
+// "Outreached Oct 12" (the last outreach), "Accepted Oct 14" once someone
+// there accepted on LinkedIn (the latest accept — reachedBrands' 6th field).
 function rbZach(id) {
   var r = RB.map && RB.map[id];
   if (!r) return '';
   var how = [];
   if (r[3]) how.push(r[3] + (r[3] === 1 ? ' person' : ' people') + ' invited on LinkedIn');
   if (r[4]) how.push(r[4] + ' emailed');
-  var tip = 'Reached out — last ' + rbDay(r[1]) + (r[0] !== r[1] ? ', first ' + rbDay(r[0]) : '') +
+  var tip = 'Outreached — last ' + rbDay(r[1]) + (r[0] !== r[1] ? ', first ' + rbDay(r[0]) : '') +
+    (r[5] ? ' · accepted ' + rbDay(r[5]) : '') +
     (how.length ? ' · ' + how.join(' · ') : '') + (RB_STAGE[r[2]] ? ' · ' + RB_STAGE[r[2]] : '');
-  return '<span class="rb-tag" title="' + esc(tip) + '">Reached ' + esc(rbDay(r[1])) + '</span>';
+  return '<span class="rb-tag' + (r[5] ? ' acc' : '') + '" title="' + esc(tip) + '">' + (r[5] ? 'Accepted ' + esc(rbDay(r[5])) : 'Outreached ' + esc(rbDay(r[1]))) + '</span>';
 }
 function rbTag(id) {
   if (!id) return '';
@@ -3608,7 +3745,7 @@ function hideSmallBox(where) {
 // the visit (REACH_F[list]) and redraws itself (REACH_DRAW[list]).
 var REACH_F = {};
 var REACH_DRAW = {};
-var REACH_TIP = 'Reached out = someone there got a LinkedIn invite or an email from us (an accept logged straight from LinkedIn counts too) — the brands with the Reached tag';
+var REACH_TIP = 'Reached out = someone there got a LinkedIn invite or an email from us (an accept logged straight from LinkedIn counts too) — the brands with the Outreached / Accepted tag';
 function reachOk(list, reached) {
   var f = REACH_F[list];
   return !f || (f === 'yes') === !!reached;
@@ -20595,7 +20732,9 @@ function loadRequests() {
 // listInTalks; writes = setInTalks, saveTalksProfile, addBrandNote,
 // editBrandNote, deleteBrandNote (route.ts; rules in src/lib/in-talks.ts).
 
-var IT = { data: null, sel: null, want: null, q: '', edit: null, links: false, mobile: false, drafts: {}, pv: null, pvSeen: {} };
+var IT = { data: null, sel: null, want: null, q: '', edit: null, links: false, mobile: false, drafts: {}, pv: null, pvSeen: {},
+  // Leo, Nov 8 2026: the stage strip's pick (null = every stage), + Add a brand, each profile's log.
+  stageF: null, add: { open: false, q: '', rows: null, turn: 0 }, log: {}, logEdit: null, logMore: {}, lastStage: null };
 try { IT.sel = localStorage.getItem('sb.itSel') || null; } catch (e) {}
 
 function itById(id) {
@@ -20608,6 +20747,24 @@ function itCur() {
 }
 var IT_STAGES = [['conversation', 'Conversation'], ['proposal', 'Proposal sent'], ['verbal', 'Verbal yes'], ['closed', 'Won'], ['lost', 'Lost']];
 function itStageName(k) { return (IT_STAGES.filter(function (x) { return x[0] === k; })[0] || [k, k])[1]; }
+// The talks stages (src/lib/in-talks.ts TALKS_STAGES / TALKS_ENDS, sent with listInTalks).
+var IT_TS = [['replied', 'Replied'], ['call_booked', 'Call booked'], ['call_done', 'Call done'], ['proposal', 'Proposal sent'],
+  ['negotiating', 'Negotiating'], ['verbal', 'Verbal yes'], ['contract', 'Contract signed'], ['won', 'Won']];
+var IT_TE = [['lost', 'Lost'], ['quiet', 'Gone quiet']];
+function itTsLabel(k) {
+  var x = IT_TS.concat(IT_TE).filter(function (y) { return y[0] === k; })[0];
+  return x ? x[1] : k;
+}
+function itTsRank(k) {
+  for (var i = 0; i < IT_TS.length; i++) if (IT_TS[i][0] === k) return i + 1;
+  return 0;
+}
+function itTsEnd(k) { return k === 'lost' || k === 'quiet'; }
+function itStageKey(b) { return b.stage ? b.stage.key : 'none'; }
+function itSpill(b) {
+  var k = itStageKey(b);
+  return '<span class="it-spill sg-' + esc(k) + '">' + esc(k === 'none' ? 'No stage yet' : itTsLabel(k)) + '</span>';
+}
 function itSetSel(id) {
   IT.sel = id || null;
   try { if (id) localStorage.setItem('sb.itSel', id); } catch (e) {}
@@ -20713,23 +20870,78 @@ function renderInTalks() {
   var calls = list.filter(function (b) { return b.nextCall && !b.stopped; }).length;
   document.getElementById('it-sub').textContent = list.length
     ? list.length + ' brand' + (list.length === 1 ? '' : 's') + (calls ? ' · ' + calls + ' call' + (calls === 1 ? '' : 's') + ' coming up' : '') +
-      ' · a call booked on Zach’s list puts a brand here by itself'
-    : 'A call booked on Zach’s list puts a brand here by itself — or add one that replied.';
+      ' · every brand that replied is here by itself — + Add a brand puts any other'
+    : 'Every brand that replies (or gets a call booked) lands here by itself — + Add a brand puts any other.';
   var body = document.getElementById('it-body');
   if (!body.querySelector('.it-shell')) {
-    body.innerHTML = '<div class="it-shell">' +
+    body.innerHTML = '<div class="it-stages" id="it-stages"></div>' +
+      '<div class="it-shell">' +
       '<aside class="it-rail">' +
-        '<div class="it-rail-head"><div class="it-findwrap"><input class="it-find" id="it-find" type="search" autocomplete="off" placeholder="Find a brand or person"></div></div>' +
+        '<div class="it-rail-head"><div class="it-findwrap"><input class="it-find" id="it-find" type="search" autocomplete="off" placeholder="Find a brand or person"></div>' +
+          '<div class="it-addwrap"><button class="it-mini" data-it-addopen>+ Add a brand</button>' +
+            '<div id="it-addbox" style="display:none"><div class="it-findwrap"><input class="it-find" id="it-addq" type="search" autocomplete="off" placeholder="Search any brand to add"></div>' +
+            '<div class="it-addres" id="it-addres"></div></div></div></div>' +
         '<div class="it-list" id="it-list"></div>' +
-        '<div id="it-sugbox"></div>' +
       '</aside>' +
       '<div class="it-main" id="it-main"></div>' +
     '</div>';
     document.getElementById('it-find').value = IT.q;
   }
   body.querySelector('.it-shell').classList.toggle('show-profile', !!IT.mobile && !!IT.sel);
+  itRenderStages();
   itRenderRail();
+  itRenderAdd();
   itRenderMain();
+}
+
+// The strip across the top: a tile per stage with how many brands sit there;
+// a click shows only that stage on the left (again = every stage).
+function itRenderStages() {
+  var el = document.getElementById('it-stages');
+  var d = IT.data;
+  if (!el || !d) return;
+  var list = d.brands || [];
+  var n = function (k) { return list.filter(function (b) { return itStageKey(b) === k; }).length; };
+  var tile = function (k, label, count, extra) {
+    return '<button class="it-stile sg-' + esc(k) + (IT.stageF === k ? ' on' : '') + (count ? '' : ' zero') + (extra || '') + '" data-it-sf="' + esc(k) + '" aria-pressed="' + (IT.stageF === k) + '">' +
+      '<b>' + count + '</b><span>' + esc(label) + '</span></button>';
+  };
+  var none = n('none');
+  el.innerHTML = '<button class="it-stile' + (IT.stageF ? '' : ' on') + '" data-it-sf="" aria-pressed="' + !IT.stageF + '"><b>' + list.length + '</b><span>All brands</span></button>' +
+    IT_TS.map(function (x) { return tile(x[0], x[1], n(x[0])); }).join('') +
+    IT_TE.map(function (x, i) { return tile(x[0], x[1], n(x[0]), i === 0 ? ' gap' : ''); }).join('') +
+    (none ? tile('none', 'No stage yet', none) : '');
+}
+
+// + Add a brand: any brand on the roster (brandLookup), into In talks.
+function itRenderAdd() {
+  var box = document.getElementById('it-addbox');
+  var btn = document.querySelector('[data-it-addopen]');
+  if (!box || !btn) return;
+  box.style.display = IT.add.open ? '' : 'none';
+  btn.textContent = IT.add.open ? 'Close' : '+ Add a brand';
+  var res = document.getElementById('it-addres');
+  var q = IT.add.q.trim();
+  if (!IT.add.open || q.length < 2) { res.innerHTML = q.length === 1 ? '<div class="it-hint" style="padding:4px 8px">Keep typing…</div>' : ''; return; }
+  if (!IT.add.rows) { res.innerHTML = '<div class="it-hint" style="padding:4px 8px">Looking…</div>'; return; }
+  res.innerHTML = IT.add.rows.length ? IT.add.rows.map(function (r) {
+    var on = !!itById(r.id);
+    return '<div class="it-addrow"><span class="n">' + esc(r.name) + '<small>' + esc(CAT_NAMES[r.category] || r.category || '') + (r.archived ? ' · archived' : '') + '</small></span>' +
+      (on ? '<button class="it-mini" data-it-sel="' + esc(r.id) + '">In talks · open</button>'
+          : '<button class="it-mini" data-it-add="' + esc(r.id) + '">+ Add</button>') + '</div>';
+  }).join('') : '<div class="it-hint" style="padding:4px 8px">No brand called “' + esc(q) + '” — add it with + Add brand at the top first.</div>';
+}
+function itAddSearch() {
+  var q = IT.add.q.trim();
+  var turn = ++IT.add.turn;
+  IT.add.rows = null;
+  itRenderAdd();
+  if (q.length < 2) return;
+  api('brandLookup', { q: q }).then(function (d) {
+    if (turn !== IT.add.turn) return;
+    IT.add.rows = (d.brands || []).filter(function (b) { return b.id; });
+    itRenderAdd();
+  }).catch(function (e) { if (turn === IT.add.turn) { IT.add.rows = []; itRenderAdd(); toast(e.message); } });
 }
 
 function itRenderRail() {
@@ -20738,40 +20950,36 @@ function itRenderRail() {
   var keep = el.scrollTop;
   var q = IT.q.trim().toLowerCase();
   var rows = (d.brands || []).filter(function (b) {
+    if (IT.stageF && itStageKey(b) !== IT.stageF) return false;
     if (!q) return true;
     return b.name.toLowerCase().indexOf(q) !== -1 ||
       (b.people || []).some(function (p) { return (p.name || '').toLowerCase().indexOf(q) !== -1; });
   });
   var item = function (b) {
     var st = itStatus(b);
+    var when = b.nextCall && !b.stopped ? st.text : b.stage && b.stage.at ? 'since ' + itDay(b.stage.at) : st.text;
     return '<button class="it-item' + (b.id === IT.sel ? ' on' : '') + '" data-it-sel="' + esc(b.id) + '" style="--h:' + itHue(b.name) + '">' +
       '<span class="it-mono">' + esc(itInitials(b.name)) + '</span>' +
       '<span class="it-item-txt"><b>' + esc(b.name) + '</b>' +
-        '<span class="it-item-sub"><i class="it-dot t-' + st.cls + '"></i>' + esc(st.text) + '</span></span></button>';
+        '<span class="it-item-sub">' + itSpill(b) + '<span>' + esc(when) + '</span></span></span></button>';
   };
   var group = function (label, bs) {
     return bs.length ? '<div class="it-glabel">' + esc(label) + '<span>' + bs.length + '</span></div>' + bs.map(item).join('') : '';
   };
-  var up = rows.filter(function (b) { return b.nextCall && !b.stopped; });
-  var talking = rows.filter(function (b) { return !b.nextCall && !b.stopped; });
-  var stopped = rows.filter(function (b) { return b.stopped; });
-  el.innerHTML = rows.length
-    ? group('Calls coming up', up) + group(up.length ? 'Talking' : 'In talks', talking) + group('Said they’re out', stopped)
-    : '<div class="it-empty" style="padding:14px 8px">' + (q ? 'Nothing in talks matches “' + esc(IT.q) + '”.' : 'No brands in talks yet.') + '</div>';
+  // Calls coming up first, then a group per stage — furthest along first,
+  // the ways out last.
+  var up = rows.filter(function (b) { return b.nextCall && !b.stopped && !(b.stage && itTsEnd(b.stage.key)); });
+  var rest = rows.filter(function (b) { return up.indexOf(b) === -1; });
+  var html = group('Calls coming up', up);
+  IT_TS.slice().reverse().forEach(function (x) {
+    html += group(x[1], rest.filter(function (b) { return itStageKey(b) === x[0]; }));
+  });
+  html += group('No stage yet', rest.filter(function (b) { return itStageKey(b) === 'none'; }));
+  IT_TE.forEach(function (x) { html += group(x[1], rest.filter(function (b) { return itStageKey(b) === x[0]; })); });
+  el.innerHTML = rows.length ? html
+    : '<div class="it-empty" style="padding:14px 8px">' + (q ? 'Nothing in talks matches “' + esc(IT.q) + '”' + (IT.stageF ? ' at ' + esc(itTsLabel(IT.stageF)) : '') + '.'
+      : IT.stageF ? 'No brand at ' + esc(IT.stageF === 'none' ? 'No stage yet' : itTsLabel(IT.stageF)) + ' right now.' : 'No brands in talks yet.') + '</div>';
   el.scrollTop = keep;
-
-  var sug = d.suggestions || [];
-  var box = document.getElementById('it-sugbox');
-  var wasOpen = box.querySelector('details') ? box.querySelector('details').open : !(d.brands || []).length;
-  box.innerHTML = sug.length
-    ? '<details class="it-sug"' + (wasOpen ? ' open' : '') + '><summary>Replied, not in talks <span>' + sug.length + '</span></summary>' +
-        sug.map(function (s) {
-          return '<div class="it-sug-row' + (s.id === IT.sel ? ' on' : '') + '"><button class="t" data-it-sug="' + esc(s.id) + '" title="Open ' + esc(s.name) + ' — set its deal stage"><b>' + esc(s.name) + '</b><span>replied ' + esc(itDay(s.repliedAt)) +
-            (s.who ? ' · ' + esc(s.who) : '') + '</span></button>' +
-            '<button class="it-mini" data-it-add="' + esc(s.id) + '" title="Put ' + esc(s.name) + ' in talks">+ Add</button>' +
-            '<button class="it-mini" data-it-notnow="' + esc(s.id) + '" title="Stop offering it here — a new reply offers it again" aria-label="Not now">×</button></div>';
-        }).join('') + '</details>'
-    : '';
 }
 
 function itRenderMain() {
@@ -20783,8 +20991,8 @@ function itRenderMain() {
   }
   var b = itCur();
   if (!b) {
-    el.innerHTML = '<div class="it-blank"><h3>Nobody in talks yet</h3><p>When a call gets booked on Zach’s list, that brand lands here with its people, links, an overview and an activation idea. ' +
-      ((IT.data && IT.data.suggestions || []).length ? 'Brands that replied are on the left — + Add puts one in talks now.' : '') + '</p></div>';
+    el.innerHTML = '<div class="it-blank"><h3>' + ((IT.data && IT.data.brands || []).length ? 'Pick a brand on the left' : 'Nobody in talks yet') + '</h3>' +
+      '<p>Every brand that replies lands here by itself with its stage, the people, what happened and when, links, an overview and an activation idea. + Add a brand puts any other.</p></div>';
     return;
   }
   var st = itStatus(b);
@@ -20814,7 +21022,7 @@ function itRenderMain() {
       '<div class="it-kicker">' + (cat ? '<span>' + esc(cat) + '</span>' : '') + (b.tier ? '<span class="sep">·</span><span>' + esc(b.tier) + '</span>' : '') +
         (b.preview
           ? '<span class="sep">·</span><span>' + (b.repliedAt ? 'replied ' + esc(itDay(b.repliedAt)) + ' · ' : '') + 'not in talks yet</span>'
-          : '<span class="sep">·</span><span>in talks since ' + esc(b.since ? itDay(b.since) : '—') + (b.why === 'hand' ? ' (added by hand)' : '') + '</span>') +
+          : '<span class="sep">·</span><span>in talks since ' + esc(b.since ? itDay(b.since) : '—') + (b.why === 'hand' ? ' (added by hand)' : b.why === 'reply' ? ' (they replied)' : b.why === 'call' ? ' (a call was booked)' : '') + '</span>') +
         (b.archived ? '<span class="sep">·</span><span>archived</span>' : '') + '</div>' +
       '<h2 class="it-name">' + esc(b.name) + '</h2>' +
       '<div class="it-links">' + chips.join('') + '</div>' +
@@ -20822,9 +21030,8 @@ function itRenderMain() {
     '<div class="it-side">' + callCard +
       '<div class="it-side-acts"><button class="it-mini" data-it-brand>Brand page →</button>' +
         (b.preview
-          ? '<button class="it-mini" data-it-add="' + esc(b.id) + '" title="Put ' + esc(b.name) + ' in talks">+ Add to In talks</button>' +
-            '<button class="it-mini" data-it-notnow="' + esc(b.id) + '" title="Stop offering it here — a new reply offers it again">Not now</button>'
-          : '<button class="it-mini danger" data-it-remove title="Off this list — its notes, idea and links stay">Take off In talks</button>') + '</div>' +
+          ? '<button class="it-mini" data-it-add="' + esc(b.id) + '" title="Put ' + esc(b.name) + ' in talks">+ Add to In talks</button>'
+          : '<button class="it-mini danger" data-it-remove title="Off this list — its notes, idea, stage and log stay">Take off In talks</button>') + '</div>' +
     '</div></div>';
 
   var linkEdit = IT.links
@@ -20837,31 +21044,8 @@ function itRenderMain() {
       '</div>'
     : '';
 
-  // --- journey
-  var steps = b.journey || [];
-  var lastDone = -1;
-  steps.forEach(function (s, i) { if (s.done) lastDone = i; });
-  var journey = '<ol class="it-journey">' + steps.map(function (s, i) {
-    return '<li class="' + (s.done ? 'done' : '') + (i === lastDone ? ' last' : '') + '"><span class="it-jdot"></span><b>' + esc(s.label) + '</b><span>' +
-      (s.at ? esc(itDay(s.at)) : s.done ? '✓' : '—') + '</span></li>';
-  }).join('') + '</ol>';
-
-  // --- deal stage (Leo, Oct 18 2026: "click on these cards and adjust the deal
-  // flow"): one click moves the deal or starts it, and puts a brand that only
-  // replied into In talks (Lost takes it off the Replied list instead).
-  var dl = b.deal;
-  var synced = dl && (dl.source === 'sponsorship' || dl.source === 'notion');
-  var stageBar = '<div class="it-stagebar"><span class="lbl">Deal stage</span>' +
-    (synced
-      ? '<span class="it-stage">' + esc(itStageName(dl.stage)) + '</span><span class="it-hint">synced from its ' + (dl.source === 'notion' ? 'Notion page' : 'show') + ' — change it there</span>'
-      : IT_STAGES.map(function (x) {
-          var on = !!dl && dl.stage === x[0];
-          return '<button class="it-stagebtn' + (on ? ' on' : '') + (x[0] === 'lost' ? ' lost' : '') + '" data-it-stage="' + x[0] + '" aria-pressed="' + on + '">' + x[1] + '</button>';
-        }).join('') +
-        (dl ? '' : '<span class="it-hint">' + (b.preview ? 'Pick one to start the deal — it moves ' + esc(b.name) + ' into In talks' : 'No deal yet — pick one to start it') + '</span>')) +
-    '</div>';
   var pvBar = b.preview
-    ? '<div class="it-pvbar"><b>Not in talks yet</b><span>— set a deal stage or + Add to In talks to put it on the list.</span></div>'
+    ? '<div class="it-pvbar"><b>Not in talks yet</b><span>— set a stage or + Add to In talks to put it on the list.</span></div>'
     : '';
 
   // --- facts
@@ -20968,10 +21152,129 @@ function itRenderMain() {
 
   el.innerHTML = '<div class="it-profile" style="--h:' + hue + '">' +
     '<button class="btn-ghost sm it-back" data-it-back>‹ All brands</button>' +
-    hero + linkEdit + pvBar + journey + stageBar +
+    hero + linkEdit + pvBar + itStageCard(b) +
+    '<section class="it-card it-logcard" id="it-logcard">' + itLogShell(b) + '<div id="it-loglist"></div></section>' +
     '<div class="it-facts">' + facts.join('') + '</div>' +
     '<div class="it-cols">' + overview + peopleCard + idea + notes + dealCard + '</div>' +
     '</div>';
+  itRenderLog();
+  itLoadLog(b.id);
+}
+
+// --- the stage (Leo, Nov 8 2026) -------------------------------------
+// One click sets a stage (today — the day can be changed in the log below);
+// each stage shows the day it was first reached. From Proposal sent on, the
+// brand's deal on the Deals board moves with it (setTalksStage).
+function itStageCard(b) {
+  var cur = b.stage;
+  var sd = b.stageDates || {};
+  var reach = cur && !itTsEnd(cur.key) ? itTsRank(cur.key) : 0;
+  if (!cur || itTsEnd(cur.key)) IT_TS.forEach(function (x, i) { if (sd[x[0]]) reach = Math.max(reach, i + 1); });
+  var why = '';
+  if (cur) {
+    why = 'since ' + itDayLong(cur.at) + ' · ' + (cur.hand ? 'set' + (cur.by ? ' by ' + cur.by : ' by hand')
+      : cur.why === 'they replied' ? 'they replied' : cur.why === 'call booked' ? 'call booked on Zach’s list'
+      : cur.why === 'the call’s day went by' ? 'the call’s day went by' : cur.why === 'the deal on the Deals board' ? 'from the Deals board'
+      : cur.why || 'from what happened');
+  }
+  var row = IT_TS.map(function (x, i) {
+    var r = i + 1, isCur = !!cur && cur.key === x[0];
+    var done = r <= reach;
+    var day = sd[x[0]] ? itDay(sd[x[0]]) : done ? '✓' : '—';
+    return '<button class="it-sbtn sg-' + x[0] + (done ? ' done' : '') + (isCur ? ' cur' : '') + '" data-it-sset="' + x[0] + '"' + (isCur ? ' aria-current="step" disabled' : '') +
+      ' title="' + esc(isCur ? 'Where ' + b.name + ' is now' : 'Move ' + b.name + ' to ' + x[1] + ' (today)') + '"><b>' + esc(x[1]) + '</b><span>' + esc(day) + '</span></button>';
+  }).join('');
+  var ends = IT_TE.map(function (x) {
+    var isCur = !!cur && cur.key === x[0];
+    return '<button class="it-sbtn sg-' + x[0] + (isCur ? ' cur' : '') + '" data-it-sset="' + x[0] + '"' + (isCur ? ' disabled' : '') + '><b>' + esc(x[1]) + '</b>' +
+      (sd[x[0]] ? '<span>' + esc(itDay(sd[x[0]])) + '</span>' : '') + '</button>';
+  }).join('');
+  var j = b.journey || [];
+  var inv = j.filter(function (x) { return x.key === 'invited' && x.at; })[0];
+  var acc = j.filter(function (x) { return x.key === 'accepted' && x.at; })[0];
+  var before = [inv ? 'Invited ' + itDay(inv.at) : '', acc ? 'Accepted ' + itDay(acc.at) : ''].filter(Boolean).join(' · ');
+  var dl = b.deal;
+  var synced = dl && (dl.source === 'sponsorship' || dl.source === 'notion');
+  var last = IT.lastStage && IT.lastStage.brandId === b.id ? IT.lastStage : null;
+  return '<section class="it-stagecard sg-' + esc(itStageKey(b)) + '">' +
+    '<div class="it-stagehead"><h3>Stage</h3>' +
+      (cur ? '<span class="it-stagenow">' + esc(itTsLabel(cur.key)) + '</span><span class="it-stagewhy">' + esc(why) + '</span>'
+           : '<span class="it-stagewhy">No stage yet — click where ' + esc(b.name) + ' is</span>') + '</div>' +
+    '<div class="it-stagerow">' + row + '</div>' +
+    '<div class="it-stagefoot">' + ends +
+      (last ? '<span class="it-undo">Moved to ' + esc(last.label) + '<button class="it-mini" data-it-sundo>Undo</button></span>' : '') +
+      '<span class="grow"></span>' +
+      (before ? '<span class="it-hint">Before: ' + esc(before) + '</span>' : '') +
+      (synced ? '<span class="it-hint">Its deal is synced from its ' + (dl.source === 'notion' ? 'Notion page' : 'show') + ' — the stage here doesn’t move it</span>'
+              : '<span class="it-hint">Proposal sent and later move its deal on the Deals board too</span>') +
+    '</div></section>';
+}
+
+// --- what happened (the log) ------------------------------------------
+// Lines logged by hand (a call, an email, a deck… with its day; Edit /
+// Delete) and, read-only, everything the site saw happen (invites, accepts,
+// replies, Zach's list steps, emails, Show Board opens, calls). talksLog.
+function itToday() { return itKey(new Date()); }
+function itLogShell(b) {
+  var kinds = (IT.data && IT.data.logKinds) || [];
+  var kind = itDraft(b, 'log:kind', 'call');
+  var day = itDraft(b, 'log:day', itToday());
+  return '<div class="it-card-h"><h3>What happened</h3><span class="it-hint">every step with its day — newest first</span></div>' +
+    '<div class="it-logadd">' +
+      '<select class="inp" data-it-field="log:kind" aria-label="What happened">' + kinds.map(function (k) {
+        return '<option value="' + esc(k.key) + '"' + (k.key === kind ? ' selected' : '') + '>' + esc(k.label) + '</option>';
+      }).join('') + '</select>' +
+      '<input class="inp" type="date" data-it-field="log:day" max="' + esc(itToday()) + '" value="' + esc(day) + '" aria-label="The day it happened">' +
+      '<input class="inp" data-it-field="log:text" placeholder="Who, what was said, what’s next (↵ logs it)" value="' + esc(itDraft(b, 'log:text', '')) + '">' +
+      '<button class="btn-solid sm" data-it-ladd>Log it</button>' +
+    '</div>';
+}
+function itLoadLog(id, force) {
+  var L = IT.log[id];
+  if (L && !force && (L.items || L.loading)) return;
+  IT.log[id] = Object.assign({}, L || {}, { loading: true });
+  return api('talksLog', { brandId: id }).then(function (d) {
+    IT.log[id] = { items: d.items || [] };
+    if (IT.sel === id) itRenderLog();
+  }).catch(function (e) {
+    IT.log[id] = { err: e.message };
+    if (IT.sel === id) itRenderLog();
+  });
+}
+var IT_LOG_PAGE = 12;
+function itRenderLog() {
+  var box = document.getElementById('it-loglist');
+  var b = itCur();
+  if (!box || !b) return;
+  var L = IT.log[b.id];
+  if (!L || (!L.items && !L.err)) { box.innerHTML = '<div class="it-empty" style="margin-top:12px">Loading what happened…</div>'; return; }
+  if (L.err) { box.innerHTML = '<div class="it-empty" style="margin-top:12px">Could not load: ' + esc(L.err) + '</div>'; return; }
+  var items = L.items;
+  if (!items.length) { box.innerHTML = '<div class="it-empty" style="margin-top:12px">Nothing yet — log the first thing above.</div>'; return; }
+  var kinds = (IT.data && IT.data.logKinds) || [];
+  var all = !!IT.logMore[b.id];
+  var shown = all ? items : items.slice(0, IT_LOG_PAGE);
+  box.innerHTML = '<ul class="it-log">' + shown.map(function (x) {
+    if (x.hand && IT.logEdit === x.id) {
+      var day = itKey(x.at);
+      return '<li class="it-logedit" data-it-lrow="' + esc(x.id) + '">' +
+        (x.kind === 'stage'
+          ? '<span class="l">' + esc(x.label) + '</span>'
+          : '<select class="inp" data-it-ef="kind">' + kinds.map(function (k) {
+              return '<option value="' + esc(k.key) + '"' + (k.key === x.kind ? ' selected' : '') + '>' + esc(k.label) + '</option>';
+            }).join('') + '</select>') +
+        '<input class="inp" type="date" data-it-ef="day" max="' + esc(itToday()) + '" value="' + esc(day) + '">' +
+        '<input class="inp" data-it-ef="text" value="' + esc(x.text || '') + '" placeholder="' + (x.kind === 'stage' ? 'A note (optional)' : 'What happened') + '">' +
+        '<button class="btn-solid sm" data-it-lsave="' + esc(x.id) + '">Save</button><button class="btn-ghost sm" data-it-lcancel>Cancel</button></li>';
+    }
+    return '<li class="it-logi' + (x.hand ? '' : ' auto') + (x.upcoming ? ' up' : '') + '">' +
+      '<span class="d" title="' + esc(itDayLong(x.at)) + '">' + esc(itDay(x.at)) + '</span>' +
+      '<span class="l">' + esc(x.label) + '</span>' +
+      '<span class="t">' + esc(x.text || (x.kind === 'stage' ? '' : '—')) + (x.hand && x.by ? '<small>' + esc(x.by) + (x.editedAt ? ' · edited' : '') + '</small>' : '') + '</span>' +
+      (x.hand ? '<span class="acts"><button class="it-mini" data-it-ledit="' + esc(x.id) + '">Edit</button><button class="it-mini danger" data-it-ldel="' + esc(x.id) + '">Delete</button></span>' : '<span></span>') +
+      '</li>';
+  }).join('') + '</ul>' +
+  (items.length > IT_LOG_PAGE ? '<div class="it-logtools"><button class="it-mini" data-it-lmore>' + (all ? 'Show fewer' : 'Show all ' + items.length) + '</button></div>' : '');
 }
 
 // The idea as written: first line its name (when more follows), then paragraphs.
@@ -21024,6 +21327,7 @@ function itPrompt(b) {
   else if (b.about) L.push('What they do: ' + b.about);
   L.push('');
   L.push('WHERE WE ARE WITH THEM');
+  if (b.stage) L.push('Stage: ' + itTsLabel(b.stage.key) + ' (since ' + itDay(b.stage.at) + ').');
   if (b.stopped) L.push('They said they don’t want to continue (' + itDay(b.stopped) + ').');
   else if (b.nextCall) L.push('Call booked for ' + itDayLong(b.nextCall.at) + ' with ' + b.nextCall.name + '.');
   else if (b.lastCall) L.push('We had a call on ' + itDayLong(b.lastCall.at) + ' with ' + b.lastCall.name + '.');
@@ -21112,9 +21416,16 @@ function itSaveProfile(b, args, done) {
 
 (function () {
   var view = document.getElementById('intalks');
+  var addTimer = null;
   view.addEventListener('input', function (e) {
     var t = e.target;
     if (t.id === 'it-find') { IT.q = t.value; itRenderRail(); return; }
+    if (t.id === 'it-addq') {
+      IT.add.q = t.value;
+      clearTimeout(addTimer);
+      addTimer = setTimeout(itAddSearch, 220);
+      return;
+    }
     var b = itCur();
     if (!b) return;
     var f = t.getAttribute('data-it-field') || t.getAttribute('data-it-link');
@@ -21131,6 +21442,14 @@ function itSaveProfile(b, args, done) {
       var first = view.querySelector('.it-item');
       if (first) itSelect(first.getAttribute('data-it-sel'));
     }
+    if (t.getAttribute && t.getAttribute('data-it-field') === 'log:text' && e.key === 'Enter') {
+      e.preventDefault();
+      var lb = view.querySelector('[data-it-ladd]');
+      if (lb) lb.click();
+    }
+    var er = t.closest && t.closest('[data-it-lrow]');
+    if (er && e.key === 'Enter' && t.tagName === 'INPUT') { e.preventDefault(); var sv = er.querySelector('[data-it-lsave]'); if (sv) sv.click(); }
+    if (er && e.key === 'Escape') { IT.logEdit = null; itRenderLog(); }
   });
   view.addEventListener('click', function (e) {
     var t = e.target.closest('button, a');
@@ -21138,45 +21457,120 @@ function itSaveProfile(b, args, done) {
     var b = itCur();
     var v;
     if ((v = t.getAttribute('data-it-sel'))) { itSelect(v); return; }
-    if ((v = t.getAttribute('data-it-sug'))) { itPreview(v); return; }
+    if (t.hasAttribute('data-it-sf')) {
+      v = t.getAttribute('data-it-sf') || null;
+      IT.stageF = IT.stageF === v ? null : v;
+      itRenderStages(); itRenderRail();
+      return;
+    }
+    if (t.hasAttribute('data-it-addopen')) {
+      IT.add.open = !IT.add.open;
+      itRenderAdd();
+      if (IT.add.open) { var aq = document.getElementById('it-addq'); if (aq) { aq.value = IT.add.q; aq.focus(); } }
+      return;
+    }
     if (t.hasAttribute('data-it-back')) { IT.mobile = false; renderInTalks(); window.scrollTo(0, 0); return; }
     if ((v = t.getAttribute('data-it-add'))) {
       t.disabled = true;
       api('setInTalks', { brandId: v, on: true }).then(function (r) {
-        toast(r.brandName + ' is in talks');
+        toast(r.brandName + ' is in talks — set its stage on the right');
         itSetSel(v); IT.mobile = true; IT.pv = null; delete IT.pvSeen[v];
         return loadInTalks();
       }).catch(function (er) { t.disabled = false; toast(er.message); });
       return;
     }
-    if ((v = t.getAttribute('data-it-notnow'))) {
+    if (!b) return;
+    if ((v = t.getAttribute('data-it-sset'))) {
+      if (b.stage && b.stage.key === v) return;
+      view.querySelectorAll('[data-it-sset]').forEach(function (x) { x.disabled = true; });
+      api('setTalksStage', { brandId: b.id, stage: v }).then(function (r) {
+        toast('Moved ' + r.brandName + ' to ' + r.label +
+          (r.deal ? ' — its deal ' + (r.deal.created ? 'started at ' : 'moved to ') + itStageName(r.deal.to) : '') +
+          (r.dealSkipped ? ' — ' + r.dealSkipped : '') + (r.addedToTalks ? ' — it’s in talks now' : ''));
+        IT.lastStage = { brandId: r.brandId, id: r.event.id, label: r.label };
+        itSetSel(r.brandId);
+        if (r.addedToTalks) { IT.pv = null; delete IT.pvSeen[r.brandId]; }
+        delete IT.log[r.brandId];
+        return loadInTalks();
+      }).catch(function (er) { toast(er.message); renderInTalks(); });
+      return;
+    }
+    if (t.hasAttribute('data-it-sundo')) {
+      var ls = IT.lastStage;
+      if (!ls || ls.brandId !== b.id) return;
       t.disabled = true;
-      api('setInTalks', { brandId: v, on: false }).then(function (r) {
-        toast('Not offering ' + r.brandName + ' here — a new reply brings it back');
-        if (IT.sel === v) { IT.sel = null; IT.pv = null; IT.mobile = false; }
-        delete IT.pvSeen[v];
+      api('deleteTalksEvent', { id: ls.id, confirm: true }).then(function (r) {
+        toast('Took back ' + ls.label + (r.dealBack ? ' — its deal is back at ' + itStageName(r.dealBack.to) : r.dealStays ? ' — ' + r.dealStays : ''));
+        IT.lastStage = null;
+        delete IT.log[b.id];
         return loadInTalks();
       }).catch(function (er) { t.disabled = false; toast(er.message); });
       return;
     }
-    if (!b) return;
-    if ((v = t.getAttribute('data-it-stage'))) {
-      if (b.deal && b.deal.stage === v) return;
-      view.querySelectorAll('[data-it-stage]').forEach(function (x) { x.disabled = true; });
-      api('setTalksDeal', { brandId: b.id, stage: v }).then(function (r) {
-        toast((r.created ? 'Deal started at ' : 'Deal moved to ') + itStageName(r.stage) +
-          (r.addedToTalks ? ' — ' + r.brandName + ' is in talks now' : '') +
-          (r.dismissed ? ' — ' + r.brandName + ' is off the Replied list' : ''));
-        if (r.dismissed) { IT.sel = null; IT.pv = null; IT.mobile = false; delete IT.pvSeen[r.brandId]; }
-        else { itSetSel(r.brandId); if (r.addedToTalks) { IT.pv = null; delete IT.pvSeen[r.brandId]; } }
-        return loadInTalks();
-      }).catch(function (er) { toast(er.message); renderInTalks(); });
+    if (t.hasAttribute('data-it-ladd')) {
+      var kb = view.querySelector('[data-it-field="log:kind"]');
+      var db = view.querySelector('[data-it-field="log:day"]');
+      var tb = view.querySelector('[data-it-field="log:text"]');
+      var kind = kb ? kb.value : 'other';
+      var txt2 = tb ? tb.value.trim() : '';
+      if (kind === 'other' && !txt2) { toast('Say what happened'); if (tb) tb.focus(); return; }
+      t.disabled = true;
+      api('addTalksEvent', { brandId: b.id, kind: kind, day: db && db.value ? db.value : itToday(), text: txt2 }).then(function (r) {
+        itDropDraft(b, 'log:text'); itDropDraft(b, 'log:day');
+        if (tb) tb.value = '';
+        if (db) db.value = itToday();
+        t.disabled = false;
+        toast('Logged: ' + r.event.label + ' · ' + itDay(r.event.at));
+        var L = IT.log[b.id];
+        if (L && L.items) { L.items = [r.event].concat(L.items).sort(function (x, y) { return y.at < x.at ? -1 : y.at > x.at ? 1 : 0; }); itRenderLog(); }
+        itLoadLog(b.id, true);
+      }).catch(function (er) { t.disabled = false; toast(er.message); });
+      return;
+    }
+    if ((v = t.getAttribute('data-it-ledit'))) { IT.logEdit = v; itRenderLog(); var ei = view.querySelector('[data-it-lrow] [data-it-ef="text"]'); if (ei) ei.focus(); return; }
+    if (t.hasAttribute('data-it-lcancel')) { IT.logEdit = null; itRenderLog(); return; }
+    if (t.hasAttribute('data-it-lmore')) { IT.logMore[b.id] = !IT.logMore[b.id]; itRenderLog(); return; }
+    if ((v = t.getAttribute('data-it-lsave'))) {
+      var rowEl = t.closest('[data-it-lrow]');
+      var a2 = { id: v };
+      var ek = rowEl.querySelector('[data-it-ef="kind"]'), ed = rowEl.querySelector('[data-it-ef="day"]'), et = rowEl.querySelector('[data-it-ef="text"]');
+      if (ek) a2.kind = ek.value;
+      if (ed && ed.value) a2.day = ed.value;
+      if (et) a2.text = et.value;
+      t.disabled = true;
+      api('editTalksEvent', a2).then(function (r) {
+        IT.logEdit = null;
+        toast(r.noop ? 'Nothing changed' : 'Saved');
+        var L = IT.log[b.id];
+        if (L && L.items && r.event) { L.items = L.items.map(function (x) { return x.id === v ? r.event : x; }); itRenderLog(); }
+        itLoadLog(b.id, true);
+        // A stage line's day moves the stage's day on the bar.
+        if (r.event && r.event.kind === 'stage' && !r.noop) loadInTalks();
+      }).catch(function (er) { t.disabled = false; toast(er.message); });
+      return;
+    }
+    if ((v = t.getAttribute('data-it-ldel'))) {
+      t.disabled = true;
+      api('deleteTalksEvent', { id: v }).then(function (pv) {
+        var x = pv.event;
+        var msg = 'Delete this line from ' + itDay(x.at) + '?\n\n' + x.label + (x.text ? ': “' + (x.text.length > 200 ? x.text.slice(0, 200) + '…' : x.text) + '”' : '') +
+          (pv.dealBack ? '\n\nIts deal goes back to ' + itStageName(pv.dealBack.to) + '.' : pv.dealStays ? '\n\nThe deal: ' + pv.dealStays + '.' : '') + '\n\nThis can’t be undone.';
+        if (!window.confirm(msg)) { t.disabled = false; return; }
+        return api('deleteTalksEvent', { id: v, confirm: true }).then(function (r) {
+          toast('Deleted' + (r.dealBack ? ' — its deal is back at ' + itStageName(r.dealBack.to) : ''));
+          if (IT.lastStage && IT.lastStage.id === v) IT.lastStage = null;
+          var L = IT.log[b.id];
+          if (L && L.items) { L.items = L.items.filter(function (y) { return y.id !== v; }); itRenderLog(); }
+          itLoadLog(b.id, true);
+          if (x.kind === 'stage') loadInTalks();
+        });
+      }).catch(function (er) { t.disabled = false; toast(er.message); });
       return;
     }
     if (t.hasAttribute('data-it-brand')) { e.preventDefault(); loadBrand(b.id); return; }
     if (t.hasAttribute('data-it-deals')) { gotoView('pipeline'); return; }
     if (t.hasAttribute('data-it-remove')) {
-      if (!window.confirm('Take ' + b.name + ' off In talks?\n\nIts notes, overview, idea and links stay. + Add to In talks on its brand page (or a new call booked) brings it back.')) return;
+      if (!window.confirm('Take ' + b.name + ' off In talks?\n\nIts notes, stage, log, overview, idea and links stay. + Add to In talks (or a new reply or call booked) brings it back.')) return;
       api('setInTalks', { brandId: b.id, on: false }).then(function (r) {
         toast(r.brandName + ' is off In talks');
         IT.sel = null; IT.mobile = false;
@@ -21269,6 +21663,156 @@ function itSaveProfile(b, args, done) {
   });
 })();
 
+// --- Zach's tab (Leo, Nov 8 2026) ---------------------------------------
+// "one tab for Zach … so he can just look at everything and see what's going
+// on. So he doesn't have to look between each individual tab … how many
+// brands, how many outreaches have been sent out, how many brands have been
+// outreached to … what deals are happening … show board stats, like what
+// brands have viewed the show board this week … click on it and it should go
+// to the show board tab. Same with the results". Read-only: zachOverview, each
+// number the same read as the tab its card opens.
+var ZV = { data: null };
+function loadZachTab() {
+  var again = showView('zachtab');
+  var mine = viewTurn('zachtab');
+  var body = document.getElementById('zv-body');
+  if (!again) {
+    if (ZV.data) renderZachTab();
+    else body.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  }
+  return api('zachOverview').then(function (d) {
+    if (!mine()) return;
+    ZV.data = d;
+    renderZachTab();
+  }).catch(function (e) {
+    if (!mine()) return;
+    body.innerHTML = '<div class="panel"><div class="empty"><h3>Could not load</h3><p>' + esc(e.message) + '</p></div></div>';
+  });
+}
+function zvN(n) { return Number(n || 0).toLocaleString('en-US'); }
+function zvPl(n, one, many) { return zvN(n) + ' ' + (n === 1 ? one : (many || one + 's')); }
+function renderZachTab() {
+  var d = ZV.data;
+  if (!d) return;
+  var o = d.outreach || {};
+  var talks = d.talks || {};
+  var deals = d.deals || {};
+  var board = d.board || {};
+  var wk = d.week || {};
+  var now = wk.now || {};
+  var monday = new Date(d.weekStart + 'T12:00:00');
+  document.getElementById('zv-sub').textContent = 'This week = since Monday ' + monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+    ' · click any card to open its tab';
+  var tile = function (go, color, k, v, n, goTxt, extra) {
+    return '<button class="zv-tile" data-zv-go="' + go + '"' + (extra || '') + ' style="--zc:' + color + '"><span class="k">' + esc(k) + '</span><span class="v">' + v + '</span>' +
+      '<span class="n">' + n + '</span><span class="go">' + esc(goTxt) + ' →</span></button>';
+  };
+  var openN = (deals.openCount || 0);
+  var tiles = '<div class="zv-tiles">' +
+    tile('brands', '#8a8fa3', 'Brands', zvN(d.brands.total), zvN(d.brands.inPlay) + ' in play (not archived)', 'Brands') +
+    tile('tracker', '#9d7aff', 'Brands outreached to', zvN(o.brands), '+' + zvN(o.brandsThisWeek) + ' new this week · ' + zvN(o.acceptedBrands) + ' with an accept', 'Every brand reached') +
+    tile('reached', 'var(--accent)', 'Outreach sent', zvN((o.invites || 0) + (o.emails || 0)),
+      zvPl(o.invites, 'LinkedIn invite') + ' · ' + zvPl(o.emails, 'email') + '<br>' + zvN(o.invitesThisWeek + o.emailsThisWeek) + ' this week · ' + zvN(o.invitesToday) + ' today' +
+      (o.elizabeth && o.elizabeth.sent ? '<br>+ ' + zvN(o.elizabeth.sent) + ' by Elizabeth' : ''), 'Results') +
+    tile('reached', 'var(--good)', 'Accepted · replied', zvN(o.accepted) + ' · ' + zvN(o.replied), 'people who accepted on LinkedIn · people who replied', 'Results') +
+    tile('intalks', '#6f9dff', 'In talks', zvN(talks.total), zvPl((talks.calls || []).length, 'call') + ' coming up', 'In talks') +
+    tile('board', '#e2b04a', 'Show Board · 7 days', zvN(board.visits), zvPl((board.brands || []).length, 'brand') + ' opened it' + (board.anonymous ? ' · ' + zvN(board.anonymous) + ' without a code' : ''), 'Show Board') +
+    tile('pipeline', '#3ecf8e', 'Deals', zvN(openN) + ' open', money(deals.openCents) + ' open · ' + money(deals.wonCents) + ' won (sponsorship)', 'Deals') +
+  '</div>';
+
+  // This week vs last week (weeklyScore — Home's scoreboard).
+  var before = wk.before || {};
+  var goals = wk.goals || {};
+  var rowsW = [['invites', 'LinkedIn invites'], ['accepts', 'Accepted'], ['replies', 'Replied'], ['calls', 'Calls booked'], ['deals', 'Deals started'], ['brands', 'Brands added']];
+  var week = '<section class="zv-card"><div class="zv-card-h"><h3>This week</h3><span class="grow"></span><button class="it-mini" data-zv-go="reached">Results →</button></div>' +
+    '<table class="zv-wk"><thead><tr><th></th><th>This week</th><th>Last week</th><th>Goal</th></tr></thead><tbody>' +
+    rowsW.map(function (r) {
+      var n = now[r[0]] || 0, g = goals[r[0]] || 0;
+      var pct = g ? Math.min(100, Math.round(n / g * 100)) : 0;
+      return '<tr><td>' + esc(r[1]) + (g ? '<div class="zv-bar"><i style="width:' + pct + '%"></i></div>' : '') + '</td><td class="now">' + zvN(n) + '</td><td>' + zvN(before[r[0]] || 0) + '</td><td>' + (g ? zvN(g) : '—') + '</td></tr>';
+    }).join('') + '</tbody></table></section>';
+
+  // Where every brand stands (Every brand reached's steps).
+  var st = d.steps || {};
+  var steps = '<section class="zv-card"><div class="zv-card-h"><h3>Where every brand stands</h3><span class="zv-dim">' + zvPl(st.total, 'brand') + ' reached</span><span class="grow"></span>' +
+    '<button class="it-mini" data-zv-go="tracker">Every brand reached →</button></div><div class="zv-steps">' +
+    (st.stages || []).map(function (x) {
+      var c = (st.counts || {})[x.key] || 0, u = (st.onUs || {})[x.key] || 0;
+      return '<button class="zv-step tk-s-' + esc(x.key) + '" data-zv-step="' + esc(x.key) + '" title="' + esc(x.hint || '') + '"><b>' + esc(x.label) + '</b>' +
+        '<span class="todo">' + (u ? zvN(u) + ' to do' : '') + '</span><span class="c">' + zvN(c) + '</span></button>';
+    }).join('') + '</div></section>';
+
+  // In talks: brands at each stage, calls coming up.
+  var counts = talks.counts || {};
+  var stg = (talks.stages || []).concat(talks.ends || []).map(function (x) {
+    var c = counts[x.key] || 0;
+    return '<button class="it-stile sg-' + esc(x.key) + (c ? '' : ' zero') + '" data-zv-stage="' + esc(x.key) + '"><b>' + c + '</b><span>' + esc(x.label) + '</span></button>';
+  }).join('');
+  var calls = (talks.calls || []).slice(0, 8).map(function (c) {
+    return '<button class="zv-row" data-zv-talk="' + esc(c.id) + '"><span class="nm">' + esc(c.name) + '</span><span class="r">' + esc(itDayLong(c.at)) + ' · ' + esc(itRel(c.at)) + '</span>' +
+      '<span class="s">with ' + esc(c.with) + (c.stage ? ' · ' + esc(c.stage) : '') + '</span></button>';
+  }).join('');
+  var recent = (talks.brands || []).filter(function (b) { return b.stage && !b.stopped; })
+    .sort(function (a, b) { return (b.stage.at || '').localeCompare(a.stage.at || ''); }).slice(0, 6).map(function (b) {
+      return '<button class="zv-row" data-zv-talk="' + esc(b.id) + '"><span class="nm">' + esc(b.name) + '</span><span class="r"><span class="it-spill sg-' + esc(b.stage.key) + '">' + esc(itTsLabel(b.stage.key)) + '</span></span>' +
+        '<span class="s">since ' + esc(itDay(b.stage.at)) + '</span></button>';
+    }).join('');
+  var talksCard = '<section class="zv-card"><div class="zv-card-h"><h3>In talks</h3><span class="zv-dim">' + zvPl(talks.total, 'brand') + '</span><span class="grow"></span>' +
+    '<button class="it-mini" data-zv-go="intalks">In talks →</button></div>' +
+    '<div class="zv-stg">' + stg + '</div>' +
+    (calls ? '<div class="zv-dim" style="margin:4px 0 2px">Calls coming up</div><div class="zv-rows">' + calls + '</div>' : '<div class="zv-dim">No calls booked right now.</div>') +
+    (recent ? '<div class="zv-dim" style="margin:12px 0 2px">Latest moves</div><div class="zv-rows">' + recent + '</div>' : '') +
+    '</section>';
+
+  // Deals happening (listDeals): open ones, biggest first; won apart.
+  var dl = (deals.open || []).map(function (x) {
+    return '<button class="zv-row" data-zv-go="pipeline"><span class="nm">' + esc(x.brand ? x.brand.name : x.name) + '</span>' +
+      '<span class="r">' + esc(itStageName(x.stage)) + (x.valueCents ? ' · ' + esc(money(x.valueCents)) : '') + '</span>' +
+      '<span class="s">' + esc(x.name) + (x.nextStep ? ' · next: ' + esc(x.nextStep) : '') + (x.followUpAt ? ' · due ' + esc(itDay(x.followUpAt)) : '') + '</span></button>';
+  }).join('');
+  var dealsCard = '<section class="zv-card"><div class="zv-card-h"><h3>Deals happening</h3><span class="grow"></span><button class="it-mini" data-zv-go="pipeline">Deals →</button></div>' +
+    '<div class="zv-money"><div><b>' + zvN(openN) + '</b><span>open</span></div><div><b>' + esc(money(deals.openCents)) + '</b><span>open sponsorship</span></div>' +
+      '<div><b>' + zvN(deals.wonCount) + '</b><span>won</span></div><div><b>' + esc(money(deals.wonCents)) + '</b><span>won sponsorship</span></div></div>' +
+    (dl ? '<div class="zv-rows">' + dl + '</div>' + (openN > (deals.open || []).length ? '<div class="zv-dim" style="margin-top:8px">+ ' + zvN(openN - deals.open.length) + ' more on the Deals board</div>' : '')
+        : '<div class="zv-dim">No open deals right now.</div>') +
+    '</section>';
+
+  // Show Board, last 7 days: who opened it.
+  var bb = (board.brands || []).map(function (x) {
+    return '<button class="zv-row" data-zv-go="board"><span class="nm">' + esc(x.name) + (x.person ? ' <span class="zv-dim">· person</span>' : '') + rbTag(x.id) + '</span>' +
+      '<span class="r">' + zvPl(x.opens, 'open') + (x.minutes ? ' · ~' + zvN(x.minutes) + ' min' : '') + '</span>' +
+      '<span class="s">last ' + esc(itDayLong(x.lastAt)) + '</span></button>';
+  }).join('');
+  var boardCard = '<section class="zv-card"><div class="zv-card-h"><h3>Show Board · last 7 days</h3><span class="zv-dim">' + zvPl(board.visits, 'open') + '</span><span class="grow"></span>' +
+    '<button class="it-mini" data-zv-go="board">Show Board →</button></div>' +
+    (bb ? '<div class="zv-rows">' + bb + '</div>' : '<div class="zv-dim">No brand opened the Show Board in the last 7 days.</div>') +
+    (board.anonymous ? '<div class="zv-dim" style="margin-top:8px">+ ' + zvPl(board.anonymous, 'open') + ' without a brand code</div>' : '') +
+    '</section>';
+
+  document.getElementById('zv-body').innerHTML = tiles + '<div class="zv-grid">' + talksCard + dealsCard + boardCard + steps + week + '</div>';
+}
+(function () {
+  var view = document.getElementById('zachtab');
+  document.getElementById('zv-refresh').addEventListener('click', function () { loadZachTab(); });
+  view.addEventListener('click', function (e) {
+    var t = e.target.closest('button, a');
+    if (!t || !view.contains(t)) return;
+    var v;
+    if ((v = t.getAttribute('data-zv-step'))) { TK.stage = v; TK.q = ''; TK.mine = false; gotoView('tracker'); return; }
+    if ((v = t.getAttribute('data-zv-stage'))) {
+      IT.stageF = v; IT.q = '';
+      var f = document.getElementById('it-find'); if (f) f.value = '';
+      gotoView('intalks'); return;
+    }
+    if ((v = t.getAttribute('data-zv-talk'))) { IT.stageF = null; IT.mobile = true; loadInTalks(v); return; }
+    if ((v = t.getAttribute('data-zv-go'))) {
+      if (v === 'intalks') IT.stageF = null;
+      if (v === 'tracker') TK.stage = null;
+      gotoView(v);
+    }
+  });
+})();
+
 // The brand page's In talks line: where it stands, and the way in or out.
 function bTalksLine(d) {
   var t = d.talks || {};
@@ -21276,7 +21820,7 @@ function bTalksLine(d) {
   return t.on
     ? '<div class="b-talks" style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13.5px">' +
         '<span class="it-stage s-call">In talks</span><span style="color:var(--ink-3)">' +
-        (t.why === 'call' ? 'a call was booked' : 'added by hand') + (t.since ? ' · since ' + esc(itDay(t.since)) : '') + '</span>' +
+        (t.why === 'call' ? 'a call was booked' : t.why === 'reply' ? 'they replied' : 'added by hand') + (t.since ? ' · since ' + esc(itDay(t.since)) : '') + '</span>' +
         '<button class="btn-ghost sm" id="b-talks-open">Open its In talks profile →</button></div>'
     : '<div class="b-talks" style="margin-top:10px"><button class="btn-ghost sm" id="b-talks-add" title="Put this brand on the In talks tab: notes, people, links, an overview and an activation idea">+ Add to In talks</button></div>';
 }
@@ -24897,6 +25441,7 @@ function gotoView(id) {
 function gotoViewNow(id) {
   if (id !== 'activations') actMode(false);
   if (id === 'dashboard') loadDashboard();
+  if (id === 'zachtab') loadZachTab();
   if (id === 'brands') loadBrands('all');
   if (id === 'recent') loadBrands('recent');
   if (id === 'outreach') loadOutreach();

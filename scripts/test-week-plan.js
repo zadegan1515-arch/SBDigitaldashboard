@@ -262,8 +262,8 @@ async function main() {
   const big = await page.$eval('#wp-list .wp-b .wp-b-name', (el) => parseFloat(getComputedStyle(el).fontSize));
   assert.ok(big >= 17, 'brand names are big (' + big + 'px)');
   assert.match(await page.textContent(cardOf('r1')), /#1[\s\S]*Celsius[\s\S]*99[\s\S]*Energy Drinks[\s\S]*3 people[\s\S]*Ready · 4 reachable[\s\S]*On Tue Oct 20 ✓[\s\S]*✓ Tue[\s\S]*\+ Wed[\s\S]*\+ Thu[\s\S]*Remove/, 'rank, name, fit, category, people, contacts, where, day buttons, Remove');
-  await page.waitForFunction(() => /Reached Sep 22/.test(document.querySelector('#wp-list [data-wpid="r2"]').textContent));
-  assert.match(await page.textContent(cardOf('r2')), /Ghost[\s\S]*added by you[\s\S]*Reached Sep 22[\s\S]*Waiting for a day/, 'a hand add says so, with its Reached tag');
+  await page.waitForFunction(() => /Outreached Sep 22/.test(document.querySelector('#wp-list [data-wpid="r2"]').textContent));
+  assert.match(await page.textContent(cardOf('r2')), /Ghost[\s\S]*added by you[\s\S]*Outreached Sep 22[\s\S]*Waiting for a day/, 'a hand add says so, with its Reached tag');
   assert.match(await page.textContent(cardOf('r3')), /Resting Co[\s\S]*rests a week/, 'a brand that can’t go says why, and has no day buttons');
   assert.equal(await page.$(cardOf('r3') + ' [data-wpput]'), null);
   assert.match(await page.textContent('#wp-listhead'), /Your list[\s\S]*60[\s\S]*brands[\s\S]*1 added by you · 12 more would come in[\s\S]*2 brands to reach out to again/);

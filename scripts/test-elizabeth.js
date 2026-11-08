@@ -195,7 +195,7 @@ async function main() {
 
   // 1. The tab
   const tabs = await page.$$eval('.tabs.cc-only:not(#sub-tabs) .nav-item', (els) => els.map((e) => e.textContent));
-  assert.deepEqual(tabs.slice(2, 5), ['Outreach', 'Elizabeth', 'In talks']);
+  assert.deepEqual(tabs.slice(3, 6), ['Outreach', 'Elizabeth', 'In talks']);  // Home, Zach (Nov 8 2026), Brands first
   await page.click('.tabs .nav-item[data-view="elizabeth"]');
   await page.waitForSelector('#el-today .el-brand');
   const subs = await page.$$eval('#sub-tabs .nav-item', (els) => els.map((e) => e.textContent));

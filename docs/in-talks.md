@@ -1,9 +1,11 @@
 # In talks — Claude's daily check
 
-Leo, Oct 18 2026: every brand on the **In talks** tab (a call booked on Zach's list, or added by hand)
-gets an **overview** (at most 4 sentences), an **activation idea**, and its **website / Instagram /
-TikTok**. A Claude session fills whatever is missing once a day. No API spend — you are the writer.
-Only write the In talks fields below; never send email, never change outreach, never touch other data.
+Leo, Oct 18 2026: every brand on the **In talks** tab (a call booked on Zach's list, a reply — since
+Nov 8 2026 every brand that replied is there by itself — or added by hand) gets an **overview** (at most
+4 sentences), an **activation idea**, and its **website / Instagram / TikTok**. A Claude session fills
+whatever is missing once a day. No API spend — you are the writer. Only write the In talks fields below;
+never send email, never change outreach, never touch other data — and never set a brand's **stage** or
+write its **What happened** log (`setTalksStage`, `addTalksEvent`): those are Leo's and Zach's.
 
 ## Each run
 

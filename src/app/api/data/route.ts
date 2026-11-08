@@ -87,8 +87,10 @@ import { stopIndex, stoppedMatch, stopWords, stopKeys } from '@/lib/do-not-conta
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import { isAccepted, acceptedWhen, acceptedStage } from '@/lib/accepted'
 import {
-  talksState, suggestTalks, isTalksPerson, talksPersonStage, stageRank, talksJourney, compareTalks, cleanLink, sentenceCount, missingFields,
+  talksState, isTalksPerson, talksPersonStage, stageRank, talksJourney, compareTalks, cleanLink, sentenceCount, missingFields,
   OVERVIEW_MAX_SENTENCES, OVERVIEW_MAX_CHARS, IDEA_MAX_CHARS, NOTE_MAX_CHARS, type TalksState,
+  TALKS_STAGES, TALKS_ENDS, isTalksStage, talksStageLabel, isEndStage, DEAL_OF_STAGE, autoStageMarks, currentTalksStage, stageDates,
+  LOG_KINDS, isLogKind, logKindLabel, LOG_TEXT_MAX, logMoment, type StageMark, type TalksStageKey,
 } from '@/lib/in-talks'
 import {
   zachStage as trackZach, zachReached as trackZachReached, repStage as trackRep, repReached as trackRepReached,
@@ -3923,7 +3925,7 @@ async function reconcileBrandTargets(brandId: string, perBrandArg?: number) {
 
 const COMBINE_LAST_KEY = 'parentCombineLast'
 // Everything that hangs off a brand (Partner, one per brand, apart).
-const COMBINE_TABLES = ['contact', 'target', 'deal', 'showSponsor', 'document', 'activation', 'boardVisit', 'boardAccessRequest', 'opsMessage', 'discoveredBrand', 'brandNote', 'repOutreach'] as const
+const COMBINE_TABLES = ['contact', 'target', 'deal', 'showSponsor', 'document', 'activation', 'boardVisit', 'boardAccessRequest', 'opsMessage', 'discoveredBrand', 'brandNote', 'talksEvent', 'repOutreach'] as const
 type CombineTable = (typeof COMBINE_TABLES)[number]
 
 const nameWords = (s: unknown) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -5180,49 +5182,70 @@ async function handWaitingIds(): Promise<Set<string>> {
 // The brand-facing Show Board link (what a brand is sent). SPONSOR_HOST only
 // when Leo has actually attached that domain in Vercel — otherwise its links
 // 404, so the fallback is the page on the deployment itself, which always works.
-// In talks (src/lib/in-talks.ts): which brands are in — a call booked or a
-// hand add, a removal wins over anything older — and which replied brands
-// to offer (+ Add). One read shared by listInTalks and listTalksToFill.
-async function talksMembership() {
-  const [calls, hand, replies] = await Promise.all([
-    prisma.target.findMany({ where: { OR: [{ callBookedAt: { not: null } }, { callAt: { not: null } }] }, select: { brandId: true, callBookedAt: true, createdAt: true } }),
-    prisma.brand.findMany({ where: { talksAddedAt: { not: null } }, select: { id: true } }),
+// In talks (src/lib/in-talks.ts): which brands are in — a call booked, a
+// hand add or (Leo, Nov 8 2026) a reply; a removal wins over anything older,
+// and a newer call, add or reply brings it back. Replies = Zach's rows
+// (replied / converted / a reply date / an email back) and Elizabeth's
+// (replied, a call). One read shared by listInTalks, listTalksToFill, the
+// brand page and the stage buttons; `only` = just those brands. `facts` =
+// each brand's reply and call-booked dates (for the stage bar).
+async function talksMembership(only?: string[]) {
+  const inOnly = only ? { brandId: { in: only } } : {}
+  const [calls, hand, replies, reps] = await Promise.all([
+    prisma.target.findMany({ where: { ...inOnly, OR: [{ callBookedAt: { not: null } }, { callAt: { not: null } }] }, select: { brandId: true, callBookedAt: true, createdAt: true } }),
+    prisma.brand.findMany({ where: { talksAddedAt: { not: null }, ...(only ? { id: { in: only } } : {}) }, select: { id: true } }),
     prisma.target.findMany({
-      where: { OR: [{ status: { in: ['replied', 'converted'] } }, { repliedAt: { not: null } }] },
-      select: { brandId: true, repliedAt: true, updatedAt: true, contact: { select: { name: true, title: true } } },
+      where: { ...inOnly, OR: [{ status: { in: ['replied', 'converted'] } }, { repliedAt: { not: null } }, { emails: { some: { direction: 'in' } } }] },
+      select: {
+        brandId: true, repliedAt: true, updatedAt: true,
+        emails: { where: { direction: 'in' }, orderBy: { createdAt: 'asc' }, take: 1, select: { createdAt: true } },
+      },
+    }),
+    prisma.repOutreach.findMany({
+      where: { rep: REP, brandId: only ? { in: only } : { not: null }, OR: [{ status: { in: ['replied', 'call'] } }, { repliedAt: { not: null } }, { callBookedAt: { not: null } }] },
+      select: { brandId: true, status: true, repliedAt: true, callAt: true, callBookedAt: true, updatedAt: true },
     }),
   ])
-  const ids = [...new Set([...calls.map(c => c.brandId), ...hand.map(h => h.id), ...replies.map(r => r.brandId)])]
+  const ids = [...new Set([...calls.map(c => c.brandId), ...hand.map(h => h.id), ...replies.map(r => r.brandId), ...reps.map(r => r.brandId as string)])]
   const brands = ids.length ? await prisma.brand.findMany({
     where: { id: { in: ids } },
-    select: { id: true, name: true, category: true, kind: true, talksAddedAt: true, talksRemovedAt: true, stoppedAt: true },
+    select: { id: true, kind: true, talksAddedAt: true, talksRemovedAt: true },
   }) : []
-  const callsBy = new Map<string, Date[]>()
+  const facts = new Map<string, { replies: Date[]; callsBooked: Date[] }>()
+  const fact = (id: string) => { let f = facts.get(id); if (!f) facts.set(id, f = { replies: [], callsBooked: [] }); return f }
   // A call from before callBookedAt was kept counts from the row's creation
   // (never its last change, or any later edit would undo a Take off).
-  for (const c of calls) callsBy.set(c.brandId, [...(callsBy.get(c.brandId) ?? []), c.callBookedAt ?? c.createdAt])
-  const repliesBy = new Map<string, typeof replies>()
-  for (const r of replies) repliesBy.set(r.brandId, [...(repliesBy.get(r.brandId) ?? []), r])
+  for (const c of calls) fact(c.brandId).callsBooked.push(c.callBookedAt ?? c.createdAt)
+  for (const r of replies) fact(r.brandId).replies.push(r.repliedAt ?? r.emails[0]?.createdAt ?? r.updatedAt)
+  for (const r of reps) {
+    const f = fact(r.brandId as string)
+    if (r.repliedAt || r.status === 'replied' || r.status === 'call') f.replies.push(r.repliedAt ?? r.callBookedAt ?? r.updatedAt)
+    if (r.callBookedAt || r.status === 'call') f.callsBooked.push(r.callBookedAt ?? r.callAt ?? r.updatedAt)
+  }
   const states = new Map<string, TalksState>()
   const onIds: string[] = []
-  const suggest: { id: string; name: string; category: string | null; repliedAt: string; who: string | null }[] = []
   for (const b of brands) {
-    const st = talksState({ addedAt: b.talksAddedAt, removedAt: b.talksRemovedAt, callsBooked: callsBy.get(b.id) ?? [] })
-    if (st.on) { states.set(b.id, st); onIds.push(b.id); continue }
-    if (b.kind === 'person') continue
-    const rs = (repliesBy.get(b.id) ?? []).map(r => ({ at: r.repliedAt ?? r.updatedAt, who: r.contact.name + (r.contact.title ? ' — ' + r.contact.title : '') }))
-      .sort((x, y) => y.at.getTime() - x.at.getTime())
-    if (suggestTalks({ replies: rs.map(r => r.at), removedAt: b.talksRemovedAt, on: false, stopped: !!b.stoppedAt })) {
-      suggest.push({ id: b.id, name: b.name, category: b.category, repliedAt: rs[0].at.toISOString(), who: rs[0].who })
-    }
+    const f = facts.get(b.id) ?? { replies: [], callsBooked: [] }
+    // A person on the Show Board goes in only by hand.
+    const st = talksState({ addedAt: b.talksAddedAt, removedAt: b.talksRemovedAt, callsBooked: f.callsBooked, replies: b.kind === 'person' ? [] : f.replies })
+    if (st.on) { states.set(b.id, st); onIds.push(b.id) }
   }
-  suggest.sort((x, y) => y.repliedAt.localeCompare(x.repliedAt))
-  return { onIds, states, suggest }
+  return { onIds, states, facts }
 }
 // Who wrote it, as the profile shows it: a Claude session's dashboard token
 // reads as "Claude".
 function talksBy(user: unknown): string | null {
   return user === 'CLI' ? 'Claude' : user ? String(user) : null
+}
+
+// One log line as the page shows it.
+function talksEventOut(e: { id: string; kind: string; stage: string | null; at: Date; text: string | null; by: string | null; createdAt: Date; updatedAt: Date }) {
+  return {
+    id: e.id, at: e.at.toISOString(), kind: e.kind, stage: e.stage,
+    label: e.kind === 'stage' && e.stage ? 'Moved to ' + talksStageLabel(e.stage) : logKindLabel(e.kind),
+    text: e.text ?? '', hand: true, by: e.by,
+    editedAt: e.updatedAt.getTime() - e.createdAt.getTime() > 1000 ? e.updatedAt.toISOString() : null,
+  }
 }
 
 function sponsorBoardUrl(): string {
@@ -7901,7 +7924,7 @@ const handlers: Record<string, Handler> = {
     const brand = await prisma.brand.findUnique({
       where: { id: brandId },
       include: {
-        _count: { select: { contacts: true, targets: true, shows: true, deals: true, brandNotes: true, repOutreach: true } },
+        _count: { select: { contacts: true, targets: true, shows: true, deals: true, brandNotes: true, talksEvents: true, repOutreach: true } },
         shows: { select: { valueCents: true } },
       },
     })
@@ -7915,6 +7938,8 @@ const handlers: Record<string, Handler> = {
       shows: brand._count.shows,
       deals: brand._count.deals,
       notes: brand._count.brandNotes,
+      // In talks log lines logged by hand (go with the brand).
+      talksLog: brand._count.talksEvents,
       // Elizabeth's outreach there: kept by name (RepOutreach, SetNull).
       elizabeth: brand._count.repOutreach,
       attachedCents,
@@ -7937,7 +7962,7 @@ const handlers: Record<string, Handler> = {
     if (!fromId || !toId) throw new Error('Pick both brands')
     if (fromId === toId) throw new Error('That is the same brand')
     const [from, to] = await Promise.all([
-      prisma.brand.findUnique({ where: { id: fromId }, include: { partner: true, _count: { select: { contacts: true, targets: true, shows: true, deals: true, documents: true, activations: true, boardVisits: true, brandNotes: true } } } }),
+      prisma.brand.findUnique({ where: { id: fromId }, include: { partner: true, _count: { select: { contacts: true, targets: true, shows: true, deals: true, documents: true, activations: true, boardVisits: true, brandNotes: true, talksEvents: true } } } }),
       prisma.brand.findUnique({ where: { id: toId }, include: { partner: true } }),
     ])
     if (!from || !to) throw new Error('Brand not found')
@@ -7961,6 +7986,7 @@ const handlers: Record<string, Handler> = {
       deals: from._count.deals, documents: from._count.documents,
       activations: from._count.activations, boardVisits: from._count.boardVisits,
       notes: from._count.brandNotes,
+      talksLog: from._count.talksEvents,
     }
     if (!confirm) return { merged: false, summary }
 
@@ -8004,6 +8030,7 @@ const handlers: Record<string, Handler> = {
       await tx.opsMessage.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
       await tx.discoveredBrand.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
       await tx.brandNote.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
+      await tx.talksEvent.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
       // Elizabeth's outreach follows the brand (her rows keep their own
       // brand name as she saw it).
       await tx.repOutreach.updateMany({ where: { brandId: fromId }, data: { brandId: toId } })
@@ -8386,11 +8413,9 @@ const handlers: Record<string, Handler> = {
     const peopleMergeUndo = lastMerge && Date.now() - Date.parse(lastMerge.at) < 864e5
       ? { at: lastMerge.at, people: lastMerge.recs.map((r: any) => r.name) } : null
 
-    // In talks (the top tab): a call booked or a hand add, a removal wins.
-    const talks = talksState({
-      addedAt: brand.talksAddedAt, removedAt: brand.talksRemovedAt,
-      callsBooked: brand.targets.filter(t => t.callBookedAt || t.callAt).map(t => t.callBookedAt ?? t.createdAt),
-    })
+    // In talks (the top tab): a call booked, a reply or a hand add, a
+    // removal wins (talksMembership's rule).
+    const talks = (await talksMembership([brand.id])).states.get(brand.id) ?? { on: false, why: null, since: null }
 
     return {
       brand: brandOut, events, money, fit, liHidden, samePeople, peopleMergeUndo, talks,
@@ -11079,18 +11104,23 @@ const handlers: Record<string, Handler> = {
   // brand reached out to, by isReached's rule — an invite ever (logged
   // outside the queue, withdrawn since: it still went), an accept or reply,
   // a hand email, an email the machine sent. Per brand id: [first day, last
-  // day, stage, invited, emailed] — New York day keys; stage = brandStage's
-  // r(eplied) / a(ccepted) / i(nvited) / e(mailed) / w(ithdrawn). The page
-  // reads it once and paints the tag wherever a brand shows (rbTag).
+  // day, stage, invited, emailed, last accept day] — New York day keys; stage
+  // = brandStage's r(eplied) / a(ccepted) / i(nvited) / e(mailed) /
+  // w(ithdrawn); the accept day ('' = nobody accepted) is Home → Accepted's
+  // rule (isAccepted / acceptedWhen). The page reads it once and paints the
+  // tag wherever a brand shows (rbTag): "Outreached Oct 12", or "Accepted
+  // Oct 14" once someone there accepted (Leo, Nov 8 2026).
   async reachedBrands() {
     const rows = await prisma.target.findMany({
       where: REACHED_WHERE,
       select: {
         brandId: true, status: true, sentAt: true, emailedAt: true, repliedAt: true, updatedAt: true,
         emails: { where: SENT_EMAIL, select: { sentAt: true }, orderBy: { sentAt: 'desc' }, take: 1 },
+        events: { where: { toStatus: 'accepted' }, orderBy: { createdAt: 'asc' }, take: 1, select: { createdAt: true } },
+        _count: { select: { emails: { where: { direction: 'in' } } } },
       },
     })
-    type Acc = { first: number; last: number; rank: number; invited: number; emailed: number }
+    type Acc = { first: number; last: number; rank: number; invited: number; emailed: number; accepted: number }
     const RANK: Record<string, number> = { r: 5, a: 4, i: 3, e: 2, w: 1 }
     const by = new Map<string, Acc>()
     for (const t of rows) {
@@ -11103,7 +11133,12 @@ const handlers: Record<string, Handler> = {
       // An accept logged with no invite date dates from the row's last change.
       const dates = [t.sentAt, t.emailedAt, email, t.repliedAt].filter((d): d is Date => !!d).map(d => d.getTime())
       if (!dates.length) dates.push(t.updatedAt.getTime())
-      const a = by.get(t.brandId) ?? { first: Infinity, last: 0, rank: 0, invited: 0, emailed: 0 }
+      const a = by.get(t.brandId) ?? { first: Infinity, last: 0, rank: 0, invited: 0, emailed: 0, accepted: 0 }
+      const acc = {
+        status: t.status, sentAt: t.sentAt, repliedAt: t.repliedAt, updatedAt: t.updatedAt, dmSentAt: null, callAt: null, handDeclinedAt: null,
+        acceptedAt: t.events[0]?.createdAt ?? null, emailReply: t._count.emails > 0, contactStopped: false, brandStopped: false,
+      }
+      if (isAccepted(acc)) a.accepted = Math.max(a.accepted, acceptedWhen(acc).at.getTime())
       a.first = Math.min(a.first, ...dates)
       a.last = Math.max(a.last, ...dates)
       a.rank = Math.max(a.rank, RANK[stage])
@@ -11112,9 +11147,9 @@ const handlers: Record<string, Handler> = {
       by.set(t.brandId, a)
     }
     const STAGE = ['', 'w', 'e', 'i', 'a', 'r']
-    const brands: Record<string, [string, string, string, number, number]> = {}
+    const brands: Record<string, [string, string, string, number, number, string]> = {}
     for (const [id, a] of by) {
-      brands[id] = [localDayKey(new Date(a.first)), localDayKey(new Date(a.last)), STAGE[a.rank], a.invited, a.emailed]
+      brands[id] = [localDayKey(new Date(a.first)), localDayKey(new Date(a.last)), STAGE[a.rank], a.invited, a.emailed, a.accepted ? localDayKey(new Date(a.accepted)) : '']
     }
     // Elizabeth's own outreach (her tab): a tag of its own beside Zach's —
     // it never changes his "reached" (no rules between them, Leo's call).
@@ -14896,20 +14931,22 @@ const handlers: Record<string, Handler> = {
   },
 
   // -------- In talks (Leo, Oct 18 2026; rules in src/lib/in-talks.ts) --------
-  // The top tab: every brand with a call booked, plus any put there by hand
-  // (Add to In talks), each with the people who answered, its links, the
-  // overview and activation idea, dated notes, its deal and Show Board
-  // activity — and brands that replied but aren't there yet (+ Add).
-  // `preview` = a brand that isn't in talks (a "Replied, not in talks" card
-  // clicked): its profile comes back as `preview`, built the same way, and it
-  // stays off `brands` (Leo, Oct 18 2026: click the card, adjust the deal).
+  // The top tab: every brand with a call booked or a reply (Nov 8 2026), plus
+  // any put there by hand (Add to In talks), each with its stage (the bar:
+  // set by hand or read from what happened), the people who answered (Zach's
+  // and Elizabeth's), its links, the overview and activation idea, dated
+  // notes, its deal and Show Board activity.
+  // `preview` = a brand that isn't in talks (opened from Every brand reached,
+  // or one taken off): its profile comes back as `preview`, built the same
+  // way, and it stays off `brands`.
   async listInTalks({ preview }: any = {}) {
     const now = new Date()
-    const { onIds, states, suggest } = await talksMembership()
+    const { onIds, states, facts } = await talksMembership()
     const today = startOfLocalDay(now)
     const pv = typeof preview === 'string' && preview && !onIds.includes(preview) ? preview : null
+    const pvFacts = pv ? (await talksMembership([pv])).facts.get(pv) : undefined
     const ids = pv ? [...onIds, pv] : onIds
-    const [full, visits, rates] = await Promise.all([
+    const [full, visits, rates, handStages, reps] = await Promise.all([
       ids.length ? prisma.brand.findMany({
         where: { id: { in: ids } },
         include: {
@@ -14928,12 +14965,26 @@ const handlers: Record<string, Handler> = {
       }) : Promise.resolve([] as any[]),
       ids.length ? prisma.boardVisit.groupBy({ by: ['brandId'], where: { brandId: { in: ids } }, _count: { _all: true }, _max: { createdAt: true } }) : Promise.resolve([] as any[]),
       recentAcceptRates(),
+      ids.length ? prisma.talksEvent.findMany({ where: { brandId: { in: ids }, kind: 'stage' }, select: { id: true, brandId: true, stage: true, at: true, by: true, createdAt: true } }) : Promise.resolve([] as any[]),
+      ids.length ? prisma.repOutreach.findMany({
+        where: { rep: REP, brandId: { in: ids }, OR: [{ status: { in: ['accepted', 'replied', 'call', 'declined'] } }, { repliedAt: { not: null } }, { acceptedAt: { not: null } }] },
+        select: { id: true, brandId: true, contactId: true, name: true, title: true, email: true, linkedinUrl: true, channel: true, status: true, sentAt: true, acceptedAt: true, repliedAt: true, callAt: true, callBookedAt: true, updatedAt: true },
+      }) : Promise.resolve([] as any[]),
     ])
     const visitBy = new Map<string, { opens: number; lastAt: Date | null }>(visits.map((v: any) => [v.brandId, { opens: v._count._all, lastAt: v._max.createdAt }]))
+    const handBy = new Map<string, StageMark[]>()
+    for (const e of handStages) {
+      if (!isTalksStage(e.stage)) continue
+      handBy.set(e.brandId, [...(handBy.get(e.brandId) ?? []), { stage: e.stage, at: e.at, hand: true, by: e.by, id: e.id, createdAt: e.createdAt }])
+    }
+    const repsBy = new Map<string, any[]>()
+    for (const r of reps) repsBy.set(r.brandId, [...(repsBy.get(r.brandId) ?? []), r])
     const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null)
-    const pvReply = pv ? suggest.find(x => x.id === pv)?.repliedAt ?? null : null
+    const earliestOf = (ds: Date[]) => ds.length ? new Date(Math.min(...ds.map(d => d.getTime()))) : null
+    const pvReply = pvFacts ? earliestOf(pvFacts.replies) : null
     const brands = full.filter((b: any) => b.kind !== 'person' || b.id !== pv).map((b: any) => {
-      const st: any = states.get(b.id) ?? { on: false, why: 'reply', since: pvReply ? new Date(pvReply) : null }
+      const st: any = states.get(b.id) ?? { on: false, why: 'reply', since: pvReply }
+      const f = (b.id === pv ? pvFacts : facts.get(b.id)) ?? { replies: [], callsBooked: [] }
       const contactOf = new Map<string, any>(b.contacts.map((c: any) => [c.id, c]))
       const people: any[] = []
       const invited: any[] = []
@@ -14970,6 +15021,30 @@ const handlers: Record<string, Handler> = {
           invited.push({ contactId: c.id, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl, invitedAt: iso(t.sentAt) })
         }
       }
+      // Elizabeth's people who answered (her own rows; never Zach's).
+      const callDays: Date[] = []
+      for (const t of b.targets) if (t.callAt && !t.handDeclinedAt && !contactOf.get(t.contactId)?.doNotContactAt) callDays.push(t.callAt)
+      for (const r of repsBy.get(b.id) ?? []) {
+        const said = r.status === 'declined'
+        const stage = said ? 'declined' : r.status === 'call' || r.callAt ? 'call' : r.status === 'replied' || r.repliedAt ? 'replied' : 'accepted'
+        const label = (said ? 'said no' : stage === 'call' ? (r.callAt && r.callAt < today ? 'had a call' : 'call booked') : stage) + ' · Elizabeth'
+        if (r.contactId) reached.add(r.contactId)
+        ;[r.repliedAt, r.acceptedAt, r.callBookedAt].forEach(touch)
+        if (r.callAt && !said) {
+          callDays.push(r.callAt)
+          if (r.callAt >= today) { if (!nextCall || r.callAt < nextCall.at) nextCall = { at: r.callAt, name: r.name } }
+          else if (!lastCall || r.callAt > lastCall.at) lastCall = { at: r.callAt, name: r.name }
+        }
+        const c = r.contactId ? contactOf.get(r.contactId) : null
+        people.push({
+          targetId: null, repId: r.id, by: 'elizabeth', contactId: r.contactId, name: r.name, title: r.title,
+          email: r.email ?? c?.email ?? null, phone: c?.phone ?? null, linkedinUrl: r.linkedinUrl ?? c?.linkedinUrl ?? null,
+          stage, label, invitedAt: r.channel === 'linkedin' ? iso(r.sentAt) : null, acceptedAt: iso(r.acceptedAt),
+          repliedAt: iso(r.repliedAt), repliedBy: r.repliedAt || r.status === 'replied' ? r.channel : null,
+          callAt: iso(r.callAt), callBookedAt: iso(r.callBookedAt), emailedAt: r.channel === 'email' ? iso(r.sentAt) : null,
+          _accepted: !!r.acceptedAt || ['accepted', 'replied', 'call'].includes(r.status) && r.channel === 'linkedin', _replied: !!r.repliedAt || ['replied', 'call'].includes(r.status),
+        })
+      }
       people.sort((x, y) => stageRank(x.stage) - stageRank(y.stage) || x.name.localeCompare(y.name))
       invited.sort((x, y) => (y.invitedAt || '').localeCompare(x.invitedAt || ''))
       ;[b.talksAddedAt, ...b.brandNotes.map((n: any) => n.createdAt), ...b.deals.map((d: any) => d.updatedAt)].forEach(touch)
@@ -14982,6 +15057,18 @@ const handlers: Record<string, Handler> = {
       deal ? { stage: deal.stage, createdAt: deal.createdAt } : null)
       const v = visitBy.get(b.id)
       const fit = brandFit(b, b.contacts.filter(isReachable).length, rates, now)
+      // The stage: set by hand on the bar, or read from what happened.
+      const marks = [
+        ...(handBy.get(b.id) ?? []),
+        ...autoStageMarks({
+          replies: f.replies, callsBooked: f.callsBooked, calls: callDays,
+          deal: deal ? { stage: deal.stage, at: deal.updatedAt } : null,
+          stoppedAt: b.stoppedAt,
+        }, now),
+      ]
+      const cur = currentTalksStage(marks)
+      const reachedOn = stageDates(marks)
+      ;(handBy.get(b.id) ?? []).forEach(m => touch(m.at))
       return {
         id: b.id, name: b.name, category: b.category, tier: b.tier, kind: b.kind,
         website: b.website, linkedinUrl: b.linkedinUrl, instagramUrl: b.instagramUrl, tiktokUrl: b.tiktokUrl,
@@ -15000,6 +15087,8 @@ const handlers: Record<string, Handler> = {
         deal: deal ? { id: deal.id, name: deal.name, stage: deal.stage, valueCents: deal.valueCents, nextStep: deal.nextStep, followUpAt: iso(deal.followUpAt), source: deal.source } : null,
         board: { code: b.boardCode, opens: v?.opens ?? 0, lastAt: iso(v?.lastAt) },
         journey: journey.map(s => ({ ...s, at: iso(s.at) })),
+        stage: cur ? { key: cur.stage, label: talksStageLabel(cur.stage), at: iso(cur.at), hand: cur.hand, by: cur.by ?? null, why: cur.why ?? null } : null,
+        stageDates: Object.fromEntries(Object.entries(reachedOn).map(([k, d]) => [k, iso(d as Date)])),
         lastAt: iso(lastAt),
         _sort: { name: b.name, stopped: !!b.stoppedAt, nextCallAt: nextCall ? (nextCall as any).at : null, lastAt },
       }
@@ -15008,12 +15097,16 @@ const handlers: Record<string, Handler> = {
     const onList = brands.filter((x: any) => x.id !== pv)
     onList.sort((x: any, y: any) => compareTalks(x._sort, y._sort))
     const strip = ({ _sort, ...x }: any) => x
+    // How many brands sit at each stage (the strip across the top).
+    const stageCounts: Record<string, number> = {}
+    for (const x of [...TALKS_STAGES, ...TALKS_ENDS]) stageCounts[x.key] = 0
+    for (const x of onList) if (x.stage) stageCounts[x.stage.key] += 1
     return {
       brands: onList.map(strip),
-      // A look at a brand not in talks (a Replied offer, or any brand opened from
-      // Every brand reached): when it first replied, if it did.
-      preview: pvRow ? { ...strip(pvRow), preview: true, repliedAt: pvReply ?? pvRow.journey.find((j: any) => j.key === 'replied' && j.done)?.at ?? null } : null,
-      suggestions: suggest,
+      // A look at a brand not in talks (opened from Every brand reached, or one
+      // taken off): when it first replied, if it did.
+      preview: pvRow ? { ...strip(pvRow), preview: true, repliedAt: iso(pvReply) ?? pvRow.journey.find((j: any) => j.key === 'replied' && j.done)?.at ?? null } : null,
+      stages: TALKS_STAGES, ends: TALKS_ENDS, stageCounts, logKinds: LOG_KINDS,
       sponsorUrl: sponsorBoardUrl(),
       today: localDayKey(now),
     }
@@ -15119,7 +15212,8 @@ const handlers: Record<string, Handler> = {
       // On In talks: talksMembership's answer, with Elizabeth's calls too.
       const tk = talksState({ addedAt: b.talksAddedAt, removedAt: b.talksRemovedAt, callsBooked: callsBy.get(b.id) ?? [] })
       const deal = b.deals.find(d => d.stage !== 'lost') ?? b.deals[0] ?? null
-      const st = trackBrand(ps, { stopped: !!b.stoppedAt, talksOn: tk.on, talksWhy: tk.why, deal }, now)
+      // (Its own rule: a call or a hand add — a reply is its Replied step.)
+      const st = trackBrand(ps, { stopped: !!b.stoppedAt, talksOn: tk.on, talksWhy: tk.why === 'reply' ? null : tk.why, deal }, now)
       const lead = st.lead >= 0 ? ps[st.lead] : null
       const reachedSteps = new Set<TrackStage>(ps.flatMap(p => p.steps))
       if (st.stage === 'talks') reachedSteps.add('talks')
@@ -15173,7 +15267,7 @@ const handlers: Record<string, Handler> = {
     const deal = b.deals.find(d => d.stage !== 'lost') ?? b.deals[0] ?? null
     if (deal?.source === 'sponsorship') throw new Error('This deal mirrors a show — change the sponsorship status instead.')
     if (deal?.source === 'notion') throw new Error('This deal mirrors Notion — change its Stage there (it syncs nightly, or hit Sync now).')
-    const on = talksState({ addedAt: b.talksAddedAt, removedAt: b.talksRemovedAt, callsBooked: b.targets.map(t => t.callBookedAt ?? t.createdAt) }).on
+    const on = (await talksMembership([b.id])).onIds.includes(b.id)
     const now = new Date()
     const addToTalks = !on && stage !== 'lost'
     const dismiss = !on && stage === 'lost'
@@ -15197,6 +15291,272 @@ const handlers: Record<string, Handler> = {
       data: on ? { talksAddedAt: now, talksAddedBy: talksBy(__user) } : { talksRemovedAt: now },
     })
     return { brandId: b.id, brandName: b.name, on: !!on }
+  },
+
+  // ── Zach's tab (Leo, Nov 8 2026) ────────────────────────────────────────
+  // "one tab for Zach … so he can just look at everything and see what's going
+  // on. So he doesn't have to look between each individual tab … how many
+  // brands, how many outreaches have been sent out, how many brands have been
+  // outreached to, and then … what deals are happening … show board stats,
+  // like what brands have viewed the show board this week … click on it and
+  // it should go to the show board tab. Same with the results". Read-only;
+  // each number is the same read as the tab its card opens (Results =
+  // listReached's totals, Every brand reached = outreachTracker, In talks =
+  // listInTalks, Deals = listDeals, Show Board = its 7-day count, the week =
+  // weeklyScore). Money stays sponsorship deal money only, open and won apart.
+  async zachOverview() {
+    const now = new Date()
+    const today = localDayKey(now)
+    const monday = addDaysKey(today, -((dayKeyDow(today) + 6) % 7))
+    const weekStart = dayStartOf(monday)
+    const dayStart = startOfLocalDay(now)
+    const weekAgo = new Date(now.getTime() - 7 * 864e5)
+    const notPerson = { OR: [{ kind: null }, { kind: { not: 'person' } }] }
+    const [reached, tracker, talks, deals, score, rosterAll, rosterInPlay, invited, accepted, replied,
+      invitesWeek, invitesToday, mailOut, mailOutWeek, handMail, handMailWeek, elSent, elSentWeek, visits] = await Promise.all([
+      (handlers.reachedBrands as Handler)({}),
+      (handlers.outreachTracker as Handler)({}),
+      (handlers.listInTalks as Handler)({}),
+      (handlers.listDeals as Handler)({}),
+      (handlers.weeklyScore as Handler)({ weeks: 2 }),
+      prisma.brand.count({ where: notPerson }),
+      prisma.brand.count({ where: { ...notPerson, passedAt: null, doNotEmail: false } }),
+      prisma.target.count({ where: INVITED_WHERE }),
+      prisma.target.count({ where: { status: { in: ['accepted', 'replied', 'converted'] } } }),
+      prisma.target.count({ where: { status: { in: ['replied', 'converted'] } } }),
+      prisma.target.count({ where: { sentAt: { gte: weekStart } } }),
+      prisma.target.count({ where: { sentAt: { gte: dayStart } } }),
+      prisma.emailMessage.count({ where: { direction: 'out', status: 'sent' } }),
+      prisma.emailMessage.count({ where: { direction: 'out', status: 'sent', sentAt: { gte: weekStart } } }),
+      prisma.target.count({ where: { emailedAt: { not: null } } }),
+      prisma.target.count({ where: { emailedAt: { gte: weekStart } } }),
+      prisma.repOutreach.count({ where: { rep: REP, sentAt: { not: null } } }),
+      prisma.repOutreach.count({ where: { rep: REP, sentAt: { gte: weekStart } } }),
+      prisma.boardVisit.findMany({
+        where: { createdAt: { gt: weekAgo } }, orderBy: { createdAt: 'desc' },
+        select: { brandId: true, createdAt: true, lastSeenAt: true, brand: { select: { name: true, kind: true } } },
+      }),
+    ]) as any[]
+    // Brands outreached to: Zach's Reached tag and Elizabeth's, once each.
+    const zb: Record<string, any[]> = reached.brands || {}
+    const eb: Record<string, any[]> = reached.el || {}
+    const allIds = new Set([...Object.keys(zb), ...Object.keys(eb)])
+    const firstDay = (id: string) => [zb[id]?.[0], eb[id]?.[0]].filter(Boolean).sort()[0] as string | undefined
+    const newThisWeek = [...allIds].filter(id => (firstDay(id) ?? '') >= monday).length
+    const acceptedBrands = Object.values(zb).filter(r => r[5]).length
+    // The Show Board, last 7 days (its Overview's "7 days" tile): who opened it.
+    const byBrand = new Map<string, { id: string; name: string; opens: number; lastAt: Date; minutes: number; person: boolean }>()
+    let anon = 0
+    for (const v of visits) {
+      if (!v.brandId || !v.brand) { anon += 1; continue }
+      const g = byBrand.get(v.brandId) ?? { id: v.brandId, name: v.brand.name, opens: 0, lastAt: v.createdAt, minutes: 0, person: v.brand.kind === 'person' }
+      g.opens += 1
+      if (v.createdAt > g.lastAt) g.lastAt = v.createdAt
+      if (v.lastSeenAt) g.minutes += Math.max(1, Math.round((v.lastSeenAt.getTime() - v.createdAt.getTime()) / 60000))
+      byBrand.set(v.brandId, g)
+    }
+    const boardBrands = [...byBrand.values()].sort((a, b) => b.lastAt.getTime() - a.lastAt.getTime())
+      .map(g => ({ ...g, lastAt: g.lastAt.toISOString() }))
+    // Deals: open ones by stage, biggest first; won apart.
+    const open = (deals.deals as any[]).filter(d => d.stage !== 'closed' && d.stage !== 'lost')
+    const dealStages: Record<string, number> = {}
+    for (const d of deals.deals as any[]) dealStages[d.stage] = (dealStages[d.stage] ?? 0) + 1
+    open.sort((a, b) => b.valueCents - a.valueCents || +new Date(b.updatedAt) - +new Date(a.updatedAt))
+    const dealRow = (d: any) => ({
+      id: d.id, name: d.name, stage: d.stage, valueCents: d.valueCents, nextStep: d.nextStep, followUpAt: d.followUpAt,
+      updatedAt: d.updatedAt, brand: d.brand ? { id: d.brand.id, name: d.brand.name } : null,
+    })
+    const won = (deals.deals as any[]).filter(d => d.stage === 'closed').sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt))
+    // In talks: each brand's stage, calls coming up first.
+    const tb = (talks.brands as any[])
+    const calls = tb.filter(b => b.nextCall && !b.stopped).sort((a, b) => a.nextCall.at.localeCompare(b.nextCall.at))
+      .map(b => ({ id: b.id, name: b.name, at: b.nextCall.at, with: b.nextCall.name, stage: b.stage?.label ?? null }))
+    const weeks = score.weeks as any[]
+    return {
+      today, weekStart: monday,
+      brands: { total: rosterAll, inPlay: rosterInPlay },
+      outreach: {
+        brands: allIds.size, brandsThisWeek: newThisWeek, acceptedBrands,
+        invites: invited, invitesThisWeek: invitesWeek, invitesToday,
+        emails: mailOut + handMail, emailsThisWeek: mailOutWeek + handMailWeek,
+        accepted, replied,
+        elizabeth: { sent: elSent, thisWeek: elSentWeek },
+      },
+      week: { now: weeks[weeks.length - 1] ?? null, before: weeks[weeks.length - 2] ?? null, goals: score.goals },
+      steps: { stages: tracker.stages, counts: tracker.counts, onUs: tracker.onUs, total: tracker.total },
+      talks: {
+        total: tb.length, stages: talks.stages, ends: talks.ends, counts: talks.stageCounts, calls,
+        brands: tb.map(b => ({ id: b.id, name: b.name, stage: b.stage, nextCall: b.nextCall, stopped: !!b.stopped, lastAt: b.lastAt })),
+      },
+      deals: {
+        open: open.slice(0, 12).map(dealRow), openCount: open.length, openCents: deals.openCents, wonCents: deals.wonCents,
+        won: won.slice(0, 6).map(dealRow), wonCount: won.length, stages: dealStages,
+      },
+      board: { visits: visits.length, brands: boardBrands, anonymous: anon },
+    }
+  },
+
+  // ── In talks → the stage bar and the log (Leo, Nov 8 2026) ──────────────
+  // "I want their stage to be laid out clearly … the deal flow doesn't really
+  // incorporate everything that happens … I should be able to edit it and make
+  // notes, I want dates of when things happen". Rules in src/lib/in-talks.ts.
+
+  // A stage set on the bar: a dated log line (TalksEvent kind 'stage'). From
+  // Proposal sent on it also moves the brand's deal (DEAL_OF_STAGE — or starts
+  // one, as the old Deal stage did; Lost only moves one that's there); a deal synced from a show or Notion is
+  // left alone and said so. A brand not in talks goes in (not on Lost / Gone
+  // quiet). `day` = when it happened (default now; never a day to come).
+  async setTalksStage({ brandId, stage, day, note, __user }: any) {
+    if (!isTalksStage(stage)) throw new Error('Unknown stage')
+    const b = await prisma.brand.findUnique({
+      where: { id: String(brandId || '') },
+      select: { id: true, name: true, kind: true, deals: { orderBy: { updatedAt: 'desc' }, select: { id: true, stage: true, source: true } } },
+    })
+    if (!b) throw new Error('Brand not found')
+    if (b.kind === 'person') throw new Error(b.name + ' is a person, not a brand — no stage here')
+    const now = new Date()
+    const at = logMoment(day, now, localDayKey(now))
+    const text = String(note ?? '').trim()
+    if (text.length > LOG_TEXT_MAX) throw new Error(`That note is too long — keep it under ${LOG_TEXT_MAX} characters`)
+    const on = (await talksMembership([b.id])).onIds.includes(b.id)
+    const addToTalks = !on && !isEndStage(stage)
+    const deal = b.deals.find(d => d.stage !== 'lost') ?? b.deals[0] ?? null
+    const want = DEAL_OF_STAGE[stage as TalksStageKey]
+    let move: { id: string; from: string; to: string; created: boolean } | null = null
+    let dealSkipped: string | null = null
+    if (want) {
+      if (deal && (deal.source === 'sponsorship' || deal.source === 'notion')) {
+        dealSkipped = deal.source === 'notion' ? 'its deal mirrors Notion — change its stage there' : 'its deal mirrors a show — change the sponsorship there'
+      } else if (!deal) {
+        // Lost never starts a deal just to lose it.
+        if (want !== 'lost') move = { id: '', from: '', to: want, created: true }
+      } else if (deal.stage !== want) move = { id: deal.id, from: deal.stage, to: want, created: false }
+    }
+    const ev = await prisma.$transaction(async tx => {
+      if (move?.created) move.id = (await tx.deal.create({ data: { brandId: b.id, name: b.name, stage: move.to, valueCents: 0, source: 'manual' } })).id
+      else if (move) await tx.deal.update({ where: { id: move.id }, data: { stage: move.to } })
+      if (addToTalks) await tx.brand.update({ where: { id: b.id }, data: { talksAddedAt: now, talksAddedBy: talksBy(__user) } })
+      return tx.talksEvent.create({
+        data: { brandId: b.id, kind: 'stage', stage, at, text: text || null, by: talksBy(__user), dealId: move ? move.id : null, dealFrom: move ? move.from : null },
+      })
+    })
+    return {
+      brandId: b.id, brandName: b.name, stage, label: talksStageLabel(stage), at: ev.at.toISOString(),
+      event: talksEventOut(ev), deal: move, dealSkipped, addedToTalks: addToTalks,
+    }
+  },
+
+  // Something that happened, logged by hand with its day: a call, an email,
+  // a deck, a contract… (LOG_KINDS).
+  async addTalksEvent({ brandId, kind, day, text, __user }: any) {
+    if (!isLogKind(kind)) throw new Error('Pick what happened')
+    const t = String(text ?? '').trim()
+    if (t.length > LOG_TEXT_MAX) throw new Error(`That's too long — keep it under ${LOG_TEXT_MAX} characters`)
+    if (kind === 'other' && !t) throw new Error('Say what happened')
+    const b = await prisma.brand.findUnique({ where: { id: String(brandId || '') }, select: { id: true, name: true } })
+    if (!b) throw new Error('Brand not found')
+    const now = new Date()
+    const at = logMoment(day, now, localDayKey(now))
+    const ev = await prisma.talksEvent.create({ data: { brandId: b.id, kind, at, text: t || null, by: talksBy(__user) } })
+    return { brandId: b.id, brandName: b.name, event: talksEventOut(ev) }
+  },
+
+  // Change a line: its day, its words, what it was (a stage line keeps its
+  // stage — set another on the bar). Its deal is never touched.
+  async editTalksEvent({ id, kind, day, text }: any) {
+    const old = await prisma.talksEvent.findUnique({ where: { id: String(id || '') }, include: { brand: { select: { name: true } } } })
+    if (!old) throw new Error('That line is gone')
+    const data: Record<string, any> = {}
+    if (kind !== undefined && kind !== old.kind) {
+      if (old.kind === 'stage') throw new Error('A stage line stays a stage — set another stage on the bar')
+      if (!isLogKind(kind)) throw new Error('Pick what happened')
+      data.kind = kind
+    }
+    if (day !== undefined) {
+      const now = new Date()
+      const k = String(day)
+      // The same day keeps its time (and its place in the day).
+      if (k !== localDayKey(old.at)) data.at = logMoment(k, now, localDayKey(now))
+    }
+    if (text !== undefined) {
+      const t = String(text ?? '').trim()
+      if (t.length > LOG_TEXT_MAX) throw new Error(`That's too long — keep it under ${LOG_TEXT_MAX} characters`)
+      if ((data.kind ?? old.kind) === 'other' && !t) throw new Error('Say what happened')
+      if ((old.text ?? '') !== t) data.text = t || null
+    }
+    if (!Object.keys(data).length) return { noop: true, brandId: old.brandId, brandName: old.brand.name, event: talksEventOut(old) }
+    const ev = await prisma.talksEvent.update({ where: { id: old.id }, data })
+    return { brandId: ev.brandId, brandName: old.brand.name, event: talksEventOut(ev) }
+  },
+
+  // Delete a line. Without confirm it only says what goes — and, for a stage
+  // that moved the deal, what happens to the deal: back to the stage it had
+  // while it still sits where this put it; a deal this line started stays.
+  async deleteTalksEvent({ id, confirm = false }: any) {
+    const old = await prisma.talksEvent.findUnique({ where: { id: String(id || '') }, include: { brand: { select: { name: true } } } })
+    if (!old) throw new Error('That line is gone')
+    const deal = old.dealId ? await prisma.deal.findUnique({ where: { id: old.dealId }, select: { id: true, stage: true } }) : null
+    const putTo = old.stage ? DEAL_OF_STAGE[old.stage as TalksStageKey] : undefined
+    const dealBack = deal && old.dealFrom && deal.stage === putTo ? { id: deal.id, from: deal.stage, to: old.dealFrom } : null
+    const dealStays = deal && !dealBack
+      ? (old.dealFrom === '' ? 'the deal it started stays on the Deals board' : 'its deal has moved since — it stays where it is')
+      : null
+    const out = { brandId: old.brandId, brandName: old.brand.name, event: talksEventOut(old), dealBack, dealStays }
+    if (!confirm) return { deleted: false, ...out }
+    await prisma.$transaction(async tx => {
+      await tx.talksEvent.delete({ where: { id: old.id } })
+      if (dealBack) await tx.deal.update({ where: { id: dealBack.id }, data: { stage: dealBack.to } })
+    })
+    return { deleted: true, ...out }
+  },
+
+  // The log on a profile: the lines logged by hand (editable) and everything
+  // the site saw happen there (read-only — brandTimeline: invites, accepts,
+  // replies, Zach's list steps, emails, Show Board opens, deals, shows), plus
+  // Elizabeth's steps and each call's day. Newest first.
+  async talksLog({ brandId }: any) {
+    const id = String(brandId || '')
+    const brand = await prisma.brand.findUnique({ where: { id }, select: { id: true, name: true } })
+    if (!brand) throw new Error('Brand not found')
+    const [hand, tl, reps, calls] = await Promise.all([
+      prisma.talksEvent.findMany({ where: { brandId: id }, orderBy: [{ at: 'desc' }, { createdAt: 'desc' }], take: 500 }),
+      (handlers.brandTimeline as Handler)({ brandId: id }),
+      prisma.repOutreach.findMany({
+        where: { rep: REP, brandId: id },
+        select: { name: true, channel: true, status: true, sentAt: true, acceptedAt: true, repliedAt: true, callAt: true, callBookedAt: true, dmAt: true, followAt: true },
+      }),
+      prisma.target.findMany({ where: { brandId: id, callAt: { not: null } }, select: { callAt: true, handDeclinedAt: true, contact: { select: { name: true } } } }),
+    ])
+    const now = new Date()
+    type Item = { id?: string; at: string; kind: string; label: string; text: string; hand: boolean; by?: string | null; stage?: string | null; upcoming?: boolean; editedAt?: string | null }
+    const items: Item[] = hand.map(e => ({ ...talksEventOut(e) }))
+    const AUTO_LABEL: Record<string, string> = {
+      sent: 'Invite sent', accepted: 'Accepted', replied: 'Replied', reply: 'Email from them', email: 'Email sent', board: 'Show Board',
+      deal: 'Deal', show: 'Show', step: 'Zach’s list', converted: 'Deal', declined: 'Said no', withdrawn: 'Invite withdrawn', archived: 'Archived', brand: 'Added',
+    }
+    for (const x of (tl as any).items as { at: Date; kind: string; text: string }[]) {
+      // People added by the fills and plain queue moves aren't news here.
+      if (x.kind === 'people' || x.kind === 'queued' || x.kind === 'passed' || x.kind === 'drafted') continue
+      items.push({ at: new Date(x.at).toISOString(), kind: 'auto', label: AUTO_LABEL[x.kind] ?? 'Outreach', text: x.text, hand: false })
+    }
+    for (const r of reps) {
+      const how = r.channel === 'email' ? 'email' : 'LinkedIn invite'
+      const add = (d: Date | null, label: string, text: string) => { if (d) items.push({ at: d.toISOString(), kind: 'auto', label, text: r.name + ' — ' + text, hand: false }) }
+      add(r.sentAt, r.channel === 'email' ? 'Email sent' : 'Invite sent', 'Elizabeth sent the ' + how)
+      add(r.acceptedAt, 'Accepted', 'accepted Elizabeth’s invite')
+      add(r.dmAt, 'Elizabeth', 'Elizabeth messaged them')
+      add(r.followAt, 'Elizabeth', 'Elizabeth followed up')
+      add(r.repliedAt, 'Replied', 'replied to Elizabeth')
+      add(r.callBookedAt, 'Call booked', 'call booked by Elizabeth' + (r.callAt ? ' for ' + r.callAt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/New_York' }) : ''))
+    }
+    // Each call on its own day (a call to come shows at the top, marked).
+    for (const c of [...calls.filter(t => !t.handDeclinedAt).map(t => ({ at: t.callAt as Date, name: t.contact.name })),
+                     ...reps.filter(r => r.callAt && r.status !== 'declined').map(r => ({ at: r.callAt as Date, name: r.name }))]) {
+      const upcoming = c.at.getTime() > now.getTime()
+      items.push({ at: c.at.toISOString(), kind: 'auto', label: upcoming ? 'Call coming up' : 'Call', text: (upcoming ? 'Call with ' : 'Call day with ') + c.name, hand: false, upcoming })
+    }
+    items.sort((x, y) => y.at.localeCompare(x.at))
+    return { brandId: id, name: brand.name, items: items.slice(0, 400), kinds: LOG_KINDS, stages: TALKS_STAGES, ends: TALKS_ENDS, today: localDayKey(now) }
   },
 
   // The profile's own words and links: overview, activation idea, website,
@@ -15943,7 +16303,7 @@ const handlers: Record<string, Handler> = {
     const brands = await prisma.brand.findMany({
       where: { id: { in: createdIds } },
       select: { id: true, name: true, createdAt: true, updatedAt: true, boardCode: true, partner: { select: { id: true } },
-        _count: { select: { contacts: true, targets: true, deals: true, shows: true, activations: true, documents: true, boardVisits: true, brandNotes: true, repOutreach: true } } },
+        _count: { select: { contacts: true, targets: true, deals: true, shows: true, activations: true, documents: true, boardVisits: true, brandNotes: true, talksEvents: true, repOutreach: true } } },
     })
     const ids = brands.map(b => b.id)
     const tally = async (rows: { brandId: string | null }[]) => {
@@ -15964,7 +16324,7 @@ const handlers: Record<string, Handler> = {
       const edited = stamp ? b.updatedAt.getTime() !== Date.parse(stamp) : b.updatedAt.getTime() - b.createdAt.getTime() > 120e3
       const why = c.contacts ? `${c.contacts} ${c.contacts === 1 ? 'person' : 'people'} on file`
         : c.targets ? 'in outreach' : c.repOutreach ? 'in Elizabeth’s outreach' : c.deals ? 'has a deal' : c.shows ? 'on a show' : c.activations ? 'has an activation'
-        : c.documents ? 'has a document' : c.brandNotes ? 'has notes' : b.partner ? 'has a partner record' : c.boardVisits ? 'opened the Show Board'
+        : c.documents ? 'has a document' : c.brandNotes ? 'has notes' : c.talksEvents ? 'has an In talks log' : b.partner ? 'has a partner record' : c.boardVisits ? 'opened the Show Board'
         : requests.get(b.id) ? 'asked for the Show Board' : mail.get(b.id) ? 'has ops mail'
         : planned.has(b.id) ? 'on a Schedule day' : b.boardCode ? 'has a Show Board code'
         : edited ? 'edited since' : null
@@ -15993,7 +16353,7 @@ const handlers: Record<string, Handler> = {
               id: { in: goIds }, boardCode: null, partner: { is: null },
               contacts: { none: {} }, targets: { none: {} }, deals: { none: {} }, shows: { none: {} },
               activations: { none: {} }, documents: { none: {} }, boardVisits: { none: {} }, brandNotes: { none: {} },
-              repOutreach: { none: {} },
+              talksEvents: { none: {} }, repOutreach: { none: {} },
               OR: brands.filter(b => goIds.includes(b.id)).map(b => ({ id: b.id, updatedAt: b.updatedAt })),
             },
           })

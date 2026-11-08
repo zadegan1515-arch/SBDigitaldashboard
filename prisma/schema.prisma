@@ -130,7 +130,7 @@ model Brand {
   topProducts String?
 
   // In talks (Leo, Oct 18 2026 — top tab, src/lib/in-talks.ts): a brand with
-  // a call booked is in talks by itself; talksAddedAt = put there by hand
+  // a call booked — or, since Nov 8 2026, a reply — is in talks by itself; talksAddedAt = put there by hand
   // (Add to In talks), talksRemovedAt = taken off by hand (wins over
   // anything older — a later call or add brings it back).
   talksAddedAt   DateTime?
@@ -150,6 +150,7 @@ model Brand {
 
   contacts    Contact[]
   brandNotes  BrandNote[]
+  talksEvents TalksEvent[]
   targets     Target[]
   repOutreach RepOutreach[]
   partner     Partner?
@@ -1188,6 +1189,31 @@ model BrandNote {
   updatedAt DateTime @updatedAt
 
   @@index([brandId])
+}
+
+// In talks → what happened (Leo, Nov 8 2026: "I want dates of when things
+// happen, like when the call or when the email was sent"). One row per thing
+// logged by hand on a brand's In talks profile — a call, an email, a deck,
+// a contract… — or a stage set on its stage bar (kind 'stage', `stage` =
+// src/lib/in-talks.ts TALKS_STAGES / TALKS_ENDS). `at` = the day it happened
+// (Leo can change it). A stage that moved the brand's deal keeps which deal
+// and the stage it had (`dealId`, `dealFrom`; '' = this started it), so
+// deleting the line can put the deal back.
+model TalksEvent {
+  id        String   @id @default(cuid())
+  brandId   String
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  kind      String
+  stage     String?
+  at        DateTime
+  text      String?
+  by        String?
+  dealId    String?
+  dealFrom  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([brandId, at])
 }
 
 // Elizabeth's outreach (Leo, Oct 21 2026: "a different part to the site

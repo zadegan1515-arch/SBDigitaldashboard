@@ -19,7 +19,7 @@ const READ_NAMES = new Set(['claudeDay', 'dayRecap', 'weeklyScore', 'staleDeals'
   'boardCodeLookup', 'sponsorUrl', 'segmentsOverview', 'audienceEventStats', 'appVersion', 'researchList', 'planDayChoices', 'nextBestBrands',
   'staleInvites', 'repliedOverview', 'buyerCoverage', 'brandLookup', 'brandTimeline', 'brandStock', 'brandPlanLine', 'scheduleStamp',
   'suMatchQueue', 'sheetStatus', 'whoAmI', 'me', 'findDuplicates', 'sponsorReport', 'search', 'checkEmailReplies',
-  'weekBank', 'weekBankBrowse', 'reachedBrands', 'brandSupply', 'outreachTracker'])
+  'weekBank', 'weekBankBrowse', 'reachedBrands', 'brandSupply', 'outreachTracker', 'talksLog', 'zachOverview'])
 // Elizabeth's tab (rep-outreach.ts): its reads, and the opening of her day
 // (elToday makes the day's list by itself, like the page opening it).
 for (const fn of ['elToday', 'elWeek', 'elFollow', 'elResults', 'elBrand', 'elSearch', 'elTemplates']) READ_NAMES.add(fn)
@@ -35,6 +35,7 @@ const NEEDS_YES: Record<string, string[]> = {
   planWeek: ['apply'], fitArchive: ['apply', 'confirm'], refileCategories: ['apply', 'confirm'],
   deleteBrand: ['confirm'], mergeBrands: ['confirm'], weekSpread: ['apply'],
   elSpread: ['apply'], elSpreadUndo: ['confirm'], elTakeOff: ['confirm'],
+  deleteTalksEvent: ['confirm'],
 }
 // Calls that preview unless told preview: false.
 const PREVIEW_BY_DEFAULT = new Set(['researchImport', 'researchUndo', 'deadWeight', 'deadWeightUndo'])
@@ -108,6 +109,10 @@ export function actionText(fn: string, args: any, result: any): string | null {
     case 'addBrandNote': return `Added a note on ${brand || 'a brand'} (In talks)`
     case 'editBrandNote': return `Edited a note on ${brand || 'a brand'} (In talks)`
     case 'deleteBrandNote': return `Deleted a note on ${brand || 'a brand'} (In talks)`
+    case 'setTalksStage': return `Moved ${brand || 'a brand'} to ${s(r.label || a.stage, 30)} (In talks)${r.deal ? ` — its deal to ${s(r.deal.to, 20)}` : ''}`
+    case 'addTalksEvent': return `Logged ${s(r.event?.label || a.kind, 30).toLowerCase()} on ${brand || 'a brand'} (In talks)`
+    case 'editTalksEvent': return r.noop ? null : `Edited a line in ${brand || 'a brand'}'s In talks log`
+    case 'deleteTalksEvent': return r.deleted ? `Deleted a line from ${brand || 'a brand'}'s In talks log` : null
     case 'handStep':
       if (a.step === 'declined') return r.already ? null : stopText(a, r, a.on !== false)
       return `Zach's list: ${s(a.step, 20)}${a.on === false ? ' undone' : ''}${r.contactName ? ' — ' + s(r.contactName) : ''}`

@@ -5,7 +5,8 @@
 // public/app.html in Chromium against a fake /api/data:
 //
 //   1. reachedBrands is read once at the start; a brand reached gets
-//      "Reached <its last day>" (with how in its tooltip), one not reached
+//      "Outreached <its last day>" — "Accepted <the day>" once someone there
+//      accepted (Leo, Nov 8 2026) — with how in its tooltip, one not reached
 //      gets nothing — on Brands → All brands, the global search, the
 //      Schedule's cards and the Week plan.
 //   2. A list drawn before the map lands is painted when it does.
@@ -38,7 +39,7 @@ const brow = (id, name) => ({
   buyerPeople: [], withEmail: 0, withLinkedin: 3, outreach: {},
 });
 
-const S = { reached: { b1: ['2026-09-30', '2026-10-12', 'a', 3, 1] }, slow: 0 };
+const S = { reached: { b1: ['2026-09-30', '2026-10-12', 'a', 3, 1, '2026-10-14'] }, slow: 0 };
 const label = { kind: 'ready', reachable: 4, need: 3, onFile: 4 };
 const H = {
   getMe: () => ({ email: 'leo@example.com', name: 'Leo', owner: 'Leo', role: 'admin' }),
@@ -111,10 +112,10 @@ async function main() {
   await page.evaluate(() => gotoView('brands'));
   await page.waitForSelector('#brands [data-brand="b1"]');
   const row1 = await page.evaluate(() => document.querySelector('#brands [data-brand="b1"]').closest('tr').querySelector('.rb-tag').textContent);
-  assert.equal(row1, 'Reached Oct 12', 'Brands table: a reached brand');
+  assert.equal(row1, 'Accepted Oct 14', 'Brands table: a reached brand');
   assert.equal(await page.evaluate(() => !!document.querySelector('#brands [data-brand="b2"]').closest('tr').querySelector('.rb-tag')), false, 'not reached: no tag');
   const tip = await page.evaluate(() => document.querySelector('#brands .rb-tag').getAttribute('title'));
-  assert.match(tip, /last Oct 12, first Sep 30 · 3 people invited on LinkedIn · 1 emailed · they accepted/, 'the tooltip says how');
+  assert.match(tip, /^Outreached — last Oct 12, first Sep 30 · accepted Oct 14 · 3 people invited on LinkedIn · 1 emailed · they accepted/, 'the tooltip says how');
   console.log('✓ Brands table');
 
   await page.fill('#q', 'alpha');
@@ -122,18 +123,18 @@ async function main() {
   await page.waitForSelector('#search-results [data-brand="b1"]');
   const sr = await page.evaluate(() => { var el = document.querySelector('#search-results [data-brand="b1"]'); var t = el && el.querySelector('.rb-tag'); return t && t.textContent; });
   assert.equal(await page.evaluate(() => !!document.querySelector('#search-results [data-brand="b2"] .rb-tag')), false, 'search: not reached, no tag');
-  assert.equal(sr, 'Reached Oct 12', 'search results');
+  assert.equal(sr, 'Accepted Oct 14', 'search results');
   console.log('✓ search');
 
   await page.evaluate(() => gotoView('schedule'));
   await page.waitForSelector('#sched-days [data-dragb="b1"]');
-  assert.equal((await tagOf('#sched-days [data-dragb="b1"]')).text, 'Reached Oct 12', 'Schedule: a pinned card');
+  assert.equal((await tagOf('#sched-days [data-dragb="b1"]')).text, 'Accepted Oct 14', 'Schedule: a pinned card');
   assert.equal(await tagOf('#sched-days [data-dragb="b2"]'), null, 'Schedule: an automatic row not reached');
   console.log('✓ Schedule');
 
   await page.evaluate(() => gotoView('weekplan'));
   await page.waitForSelector('#wp-list [data-wprm="b1"]');
-  assert.equal(await page.evaluate(() => document.querySelector('#wp-list [data-wprm="b1"]').closest('.wp-b').querySelector('.rb-tag').textContent), 'Reached Oct 12', 'Week plan');
+  assert.equal(await page.evaluate(() => document.querySelector('#wp-list [data-wprm="b1"]').closest('.wp-b').querySelector('.rb-tag').textContent), 'Accepted Oct 14', 'Week plan');
   console.log('✓ 1 a reached brand is tagged everywhere, one not reached isn’t');
 
   // 2. Drawn before the map lands -----------------------------------------
@@ -150,7 +151,7 @@ async function main() {
   await page.evaluate(() => api('setTargetStatus', { targetId: 't1', status: 'sent' }));
   await page.waitForFunction((m) => document.querySelectorAll('#wp-list .rb-tag').length === 2, n, { timeout: 3000 });
   assert.ok(count('reachedBrands') > n, 'read again after an invite was logged');
-  assert.equal(await page.evaluate(() => document.querySelector('#wp-list [data-wprm="b2"]').closest('.wp-b').querySelector('.rb-tag').textContent), 'Reached Oct 17');
+  assert.equal(await page.evaluate(() => document.querySelector('#wp-list [data-wprm="b2"]').closest('.wp-b').querySelector('.rb-tag').textContent), 'Outreached Oct 17');
   console.log('✓ 3 logging an invite tags the brand without a reload');
 
   assert.deepEqual(errors, [], 'no page errors: ' + errors.join(' | '));

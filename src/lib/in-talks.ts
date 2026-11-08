@@ -8,9 +8,19 @@
 // profile layout; Claude's daily check writes the overview and the idea (no
 // API spend).
 //
+// Leo, Nov 8 2026: "every brand that has replied … I want their stage to be
+// laid out clearly … the deal flow doesn't really incorporate everything that
+// happens … I should be able to edit it and make notes, I want dates of when
+// things happen". His picks: every brand that replied goes in by itself (Add
+// still puts any other), a stage bar Replied → Call booked → Call done →
+// Proposal sent → Negotiating → Verbal yes → Contract signed → Won (+ Lost,
+// Gone quiet), each stage with the day it was reached, and a dated log he can
+// add to and edit (TalksEvent).
+//
 // Pure rules here; the handlers (listInTalks, setInTalks, saveTalksProfile,
-// addBrandNote, editBrandNote, deleteBrandNote, listTalksToFill) are in
-// src/app/api/data/route.ts. node scripts/test-in-talks.mjs
+// addBrandNote, editBrandNote, deleteBrandNote, listTalksToFill,
+// setTalksStage, addTalksEvent, editTalksEvent, deleteTalksEvent, talksLog)
+// are in src/app/api/data/route.ts. node scripts/test-in-talks.mjs
 
 import { acceptedStage, isAccepted, type AcceptedInput } from './accepted'
 
@@ -20,19 +30,25 @@ export type TalksFacts = {
   addedAt: Date | null       // Brand.talksAddedAt — Add to In talks
   removedAt: Date | null     // Brand.talksRemovedAt — Take off In talks
   callsBooked: Date[]        // every Target.callBookedAt at the brand
+  // Every reply at the brand (Zach's rows, an email back, Elizabeth's rows).
+  // Left out = the old rule (a call or a hand add only) — Every brand
+  // reached's own "In talks" step still reads it that way.
+  replies?: Date[]
 }
 
-export type TalksState = { on: boolean; why: 'call' | 'hand' | null; since: Date | null }
+export type TalksState = { on: boolean; why: 'call' | 'hand' | 'reply' | null; since: Date | null }
 
-// A call booked or a hand add puts a brand in; taking it off wins over
-// anything older, and a newer call or add brings it back.
+// A call booked, a hand add or (when given) a reply puts a brand in; taking
+// it off wins over anything older, and a newer call, add or reply brings it
+// back.
 export function talksState(f: TalksFacts): TalksState {
   const after = (d: Date | null) => !!d && (!f.removedAt || d.getTime() > f.removedAt.getTime())
   const calls = f.callsBooked.filter(after)
   const hand = after(f.addedAt)
-  if (!calls.length && !hand) return { on: false, why: null, since: null }
-  const times = [...calls, ...(hand ? [f.addedAt as Date] : [])].map(d => d.getTime())
-  return { on: true, why: calls.length ? 'call' : 'hand', since: new Date(Math.min(...times)) }
+  const replies = (f.replies ?? []).filter(after)
+  if (!calls.length && !hand && !replies.length) return { on: false, why: null, since: null }
+  const times = [...calls, ...(hand ? [f.addedAt as Date] : []), ...replies].map(d => d.getTime())
+  return { on: true, why: calls.length ? 'call' : hand ? 'hand' : 'reply', since: new Date(Math.min(...times)) }
 }
 
 // A brand that replied but isn't in talks: offered as "+ Add" until it's
@@ -92,6 +108,131 @@ export function talksJourney(people: JourneyPerson[], deal: { stage: string; cre
     { key: 'call', label: 'Call booked', done: !!callBookedAt, at: callBookedAt },
     { key: 'deal', label: dealOpen ? 'Deal · ' + deal!.stage : 'Deal', done: dealOpen, at: dealOpen ? deal!.createdAt : null },
   ]
+}
+
+// ---- the stage (Leo, Nov 8 2026) --------------------------------------
+
+export type TalksStageKey = 'replied' | 'call_booked' | 'call_done' | 'proposal' | 'negotiating' | 'verbal' | 'contract' | 'won' | 'lost' | 'quiet'
+
+// The way forward, in order, then the two ways out.
+export const TALKS_STAGES: Array<{ key: TalksStageKey; label: string }> = [
+  { key: 'replied', label: 'Replied' },
+  { key: 'call_booked', label: 'Call booked' },
+  { key: 'call_done', label: 'Call done' },
+  { key: 'proposal', label: 'Proposal sent' },
+  { key: 'negotiating', label: 'Negotiating' },
+  { key: 'verbal', label: 'Verbal yes' },
+  { key: 'contract', label: 'Contract signed' },
+  { key: 'won', label: 'Won' },
+]
+export const TALKS_ENDS: Array<{ key: TalksStageKey; label: string }> = [
+  { key: 'lost', label: 'Lost' },
+  { key: 'quiet', label: 'Gone quiet' },
+]
+const ALL_STAGES = [...TALKS_STAGES, ...TALKS_ENDS]
+export const isTalksStage = (k: unknown): k is TalksStageKey => ALL_STAGES.some(s => s.key === k)
+export const talksStageLabel = (k: string) => ALL_STAGES.find(s => s.key === k)?.label ?? k
+export const isEndStage = (k: string) => k === 'lost' || k === 'quiet'
+// 1..8 along the way; the ways out 0.
+export const talksStageRank = (k: string) => TALKS_STAGES.findIndex(s => s.key === k) + 1
+
+// The Deals board's stage a talks stage moves the brand's deal to (the
+// stages before a proposal leave the deal alone; Gone quiet too).
+export const DEAL_OF_STAGE: Partial<Record<TalksStageKey, string>> = {
+  proposal: 'proposal', negotiating: 'proposal', verbal: 'verbal', contract: 'verbal', won: 'closed', lost: 'lost',
+}
+// And the other way: a deal moved on the Deals board shows on the bar.
+const STAGE_OF_DEAL: Record<string, TalksStageKey> = { proposal: 'proposal', verbal: 'verbal', closed: 'won', lost: 'lost' }
+
+// One dated mark of where a brand got to: set by hand on the stage bar
+// (hand), or read from what happened (a reply, a call booked, a call's day
+// gone by, the deal's stage, the brand saying stop).
+export type StageMark = {
+  stage: TalksStageKey; at: Date; hand: boolean
+  by?: string | null; id?: string; createdAt?: Date; why?: string
+}
+
+export type AutoStageFacts = {
+  replies: Date[]               // every reply
+  callsBooked: Date[]           // when each call was booked
+  calls: Date[]                 // each call's day (people still in play)
+  deal: { stage: string; at: Date } | null   // the deal the profile shows
+  stoppedAt: Date | null        // the brand doesn't want to continue
+}
+
+export function autoStageMarks(f: AutoStageFacts, now = new Date()): StageMark[] {
+  const out: StageMark[] = []
+  const seen = new Set<string>()
+  const push = (stage: TalksStageKey, at: Date, why: string) => {
+    const k = stage + '|' + at.getTime()
+    if (seen.has(k)) return
+    seen.add(k)
+    out.push({ stage, at, hand: false, why })
+  }
+  for (const d of f.replies) push('replied', d, 'they replied')
+  for (const d of f.callsBooked) push('call_booked', d, 'call booked')
+  for (const d of f.calls) if (d.getTime() <= now.getTime()) push('call_done', d, 'the call’s day went by')
+  const ds = f.deal ? STAGE_OF_DEAL[f.deal.stage] : undefined
+  if (f.deal && ds) push(ds, f.deal.at, 'the deal on the Deals board')
+  if (f.stoppedAt) push('lost', f.stoppedAt, 'said they don’t want to continue')
+  return out
+}
+
+// Where a brand is now. Marks are read oldest first: a stage set by hand
+// always takes; what happened takes only when it's another stage and further along (a later
+// reply never winds Proposal sent back to Replied), when the brand is at a
+// way out (a reply after Gone quiet brings it back), or when it's a way out
+// itself (they said stop after the proposal).
+export function currentTalksStage(marks: StageMark[]): StageMark | null {
+  const sorted = [...marks].sort((a, b) => a.at.getTime() - b.at.getTime() ||
+    (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0) || Number(a.hand) - Number(b.hand))
+  let cur: StageMark | null = null
+  for (const m of sorted) {
+    if (m.hand || !cur) { cur = m; continue }
+    // The same stage again (a deal moved by the bar itself) changes nothing.
+    if (m.stage === cur.stage) continue
+    if (isEndStage(cur.stage) || isEndStage(m.stage) || talksStageRank(m.stage) > talksStageRank(cur.stage)) cur = m
+  }
+  return cur
+}
+
+// The day each stage was first reached (for the bar).
+export function stageDates(marks: StageMark[]): Partial<Record<TalksStageKey, Date>> {
+  const out: Partial<Record<TalksStageKey, Date>> = {}
+  for (const m of marks) if (!out[m.stage] || m.at < (out[m.stage] as Date)) out[m.stage] = m.at
+  return out
+}
+
+// ---- the log (TalksEvent) ---------------------------------------------
+
+// What Leo can log by hand, each with its day. A stage set on the bar is a
+// log line too (kind 'stage').
+export const LOG_KINDS: Array<{ key: string; label: string }> = [
+  { key: 'call', label: 'Call' },
+  { key: 'email_out', label: 'Email sent' },
+  { key: 'email_in', label: 'Email from them' },
+  { key: 'message', label: 'LinkedIn message' },
+  { key: 'meeting', label: 'Meeting' },
+  { key: 'proposal', label: 'Deck / proposal sent' },
+  { key: 'contract', label: 'Contract' },
+  { key: 'other', label: 'Other' },
+]
+export const isLogKind = (k: unknown): k is string => LOG_KINDS.some(x => x.key === k)
+export const logKindLabel = (k: string) => k === 'stage' ? 'Stage' : LOG_KINDS.find(x => x.key === k)?.label ?? k
+export const LOG_TEXT_MAX = 2000
+
+// A day key → the moment a log line sits at: now for today (so a stage set
+// today comes after anything earlier today), else noon New York that day.
+// Refuses a day that hasn't come yet.
+export function logMoment(day: unknown, now = new Date(), todayKey?: string): Date {
+  const today = todayKey ?? now.toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+  if (day == null || day === '') return now
+  const k = String(day)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(k) || Number.isNaN(Date.parse(k + 'T12:00:00Z'))) throw new Error('Pick a day')
+  if (k > today) throw new Error('That day hasn’t come yet — log it when it happens')
+  if (k === today) return now
+  // Noon in New York is 16:00 or 17:00 UTC; 16:30 keeps the day the same.
+  return new Date(k + 'T16:30:00Z')
 }
 
 // ---- the list's order ----------------------------------------------

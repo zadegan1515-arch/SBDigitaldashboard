@@ -159,9 +159,9 @@ async function main() {
   await page.click('#brands-list [data-brreach="yes"]');
   assert.deepEqual(await brNames(), ['Charlie Spirits', 'Echo Mail', 'Bravo Soda'], 'invited or emailed (an email alone counts, like the tag)');
   assert.equal(await shown(), 'Showing 3 of 5 brandsClear filters');
-  await page.waitForFunction(() => /Reached/.test((document.querySelector('[data-brow="b3"] .br-out .rb-tag') || {}).textContent || ''));
-  assert.match(await page.textContent('[data-brow="b3"] .br-out'), /Reached .*1 invited/, 'the Outreach column: the Reached tag and how');
-  assert.match(await page.textContent('[data-brow="b5"] .br-out'), /Reached .*1 emailed/);
+  await page.waitForFunction(() => /Outreached/.test((document.querySelector('[data-brow="b3"] .br-out .rb-tag') || {}).textContent || ''));
+  assert.match(await page.textContent('[data-brow="b3"] .br-out'), /Outreached .*1 invited/, 'the Outreach column: the Reached tag and how');
+  assert.match(await page.textContent('[data-brow="b5"] .br-out'), /Outreached .*1 emailed/);
   assert.equal(await page.isVisible('[data-brow="b3"] .br-nyet'), false);
   await page.click('#brands-list [data-brreach="no"]');
   assert.deepEqual(await brNames(), ['Alpha Energy']);
