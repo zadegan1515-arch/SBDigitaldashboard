@@ -5,16 +5,19 @@
 // viewed the show board this week … click on it and it should go to the show
 // board tab. Same with the results"). Chromium against a fake /api/data:
 //
-//   1. Its own top tab right after Home; it reads zachOverview.
+//   1. (Nov 8 2026, third pass: "combine the Zach tab and the In talks tab …
+//      get rid of the Elizabeth tab … combine the Deals tab") One top tab,
+//      Deals, right after Home: Overview (this page) · In talks · Deals board ·
+//      Sponsorships. No Zach, In talks or Elizabeth tab. It reads zachOverview.
 //   2. The tiles: brands, brands outreached to, outreach sent (invites +
 //      emails, this week, today, Elizabeth's), accepted · replied, In talks,
 //      the Show Board's 7 days, deals (open and won money apart).
-//   3. The cards (Leo, Nov 8 2026 second pass: "move this up, get rid of the
-//      deals happening tab, allow for expansion on the replied brands, and get
-//      rid of the last thing … make everything much easier to see"): This week
-//      first, then where every brand stands (no Out row; a row opens its brands
-//      in place, ours to do first, 10 then Show all), In talks by stage + calls,
-//      who opened the Show Board. No Deals happening card. Big type.
+//   3. Where every brand stands: seven blocks across (Reached out · Accepted ·
+//      Replied · Wants to continue · Email sent · In talks · Out — "so that you
+//      can click across and see"); a click opens that step's brands under them
+//      (ours to do first, 10 then Show all, a Stage picker on each), again shuts
+//      it. Then the cards: This week, In talks by stage + calls, who opened the
+//      Show Board. No Deals happening card. Big type.
 //   4. Every card opens its tab: Show Board, Results, Deals, Brands, Every
 //      brand reached (a step = only that step), In talks (a stage = only that
 //      stage; a call = that brand's profile).
@@ -51,7 +54,7 @@ const OVERVIEW = {
     emails: 210, emailsThisWeek: 6, accepted: 380, replied: 61, elizabeth: { sent: 44, thisWeek: 12 } },
   week: { now: { invites: 74, accepts: 21, replies: 6, calls: 2, deals: 1, brands: 30 }, before: { invites: 90, accepts: 25, replies: 4, calls: 1, deals: 0, brands: 55 },
     goals: { invites: 90, accepts: 25, replies: 8, calls: 3, deals: 1, brands: 50 } },
-  steps: { stages: TRACK.filter((x) => x.key !== 'out'), counts: { reached: 250, accepted: 90, replied: 30, continue: 8, emailed: 5, talks: 12, out: 17 },
+  steps: { stages: TRACK, counts: { reached: 250, accepted: 90, replied: 30, continue: 8, emailed: 5, talks: 12, out: 17 },
     brands: {
       replied: [
         { id: 'r1', name: 'Neutonic', next: 'Answer their reply', onUs: true, due: today, at: at(-2), lastAt: at(-2), lead: 'Kerry Szostak', by: 'zach', inTalks: true,
@@ -61,6 +64,7 @@ const OVERVIEW = {
         { id: 'r3', name: 'Red Bull', next: 'Replied — marked not needed on Zach’s list', onUs: false, due: null, at: at(-40), lastAt: at(-40), lead: 'Stefano Apostolo', by: 'zach', inTalks: false,
           stage: null, removedAt: at(-30), deal: null },
       ],
+      out: [{ id: 'o1', name: 'Gone Soda', next: 'Said no', onUs: false, due: null, at: at(-9), lastAt: at(-9), lead: 'Pat Lee', by: 'zach', inTalks: false, stage: null, removedAt: null, deal: null }],
       accepted: Array.from({ length: 13 }, (_, i) => ({ id: 'a' + i, name: 'Accepted Co ' + (i + 1), next: 'Text them on LinkedIn', onUs: i < 3,
         due: i < 3 ? new Date(Date.now() - 3 * DAY).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) : null, at: at(-4), lastAt: at(-4), lead: 'Person ' + i, by: 'zach', inTalks: false })),
     },
@@ -152,12 +156,22 @@ async function main() {
 
   // 1. The tab
   const tabs = await page.$$eval('.tabs.cc-only:not(#sub-tabs) .nav-item', (els) => els.map((e) => e.textContent));
-  assert.deepEqual(tabs.slice(0, 2), ['Home', 'Zach']);
+  assert.deepEqual(tabs, ['Home', 'Deals', 'Brands', 'Outreach', 'Show Board', 'Audience', 'Operations'], 'one Deals tab; no Zach, In talks or Elizabeth');
   await open();
   assert.equal(await active(), 'zachtab');
   assert.ok(calls.some((c) => c.fn === 'zachOverview'));
-  assert.equal(await page.$eval('.tabs.cc-only:not(#sub-tabs) .nav-item.active', (e) => e.textContent), 'Zach');
-  console.log('✓ its own tab right after Home');
+  assert.equal(await page.$eval('.tabs.cc-only:not(#sub-tabs) .nav-item.active', (e) => e.textContent), 'Deals');
+  assert.deepEqual(await page.$$eval('#sub-tabs .nav-item', (els) => els.map((e) => e.textContent)), ['Overview', 'In talks', 'Deals board', 'Sponsorships']);
+  assert.equal(await page.$eval('#sub-tabs .nav-item.active', (e) => e.textContent), 'Overview');
+  assert.equal(await page.$('#el-today'), null, 'Elizabeth’s pages are gone');
+  await page.click('#sub-tabs .nav-item[data-view="intalks"]');
+  await page.waitForFunction(() => document.querySelector('.view.active').id === 'intalks');
+  assert.equal(await page.$eval('.tabs.cc-only:not(#sub-tabs) .nav-item.active', (e) => e.textContent), 'Deals', 'In talks lives under Deals');
+  await page.click('#sub-tabs .nav-item[data-view="pipeline"]');
+  await page.waitForFunction(() => document.querySelector('.view.active').id === 'pipeline');
+  assert.equal(await page.$eval('#sub-tabs .nav-item.active', (e) => e.textContent), 'Deals board');
+  await open();
+  console.log('✓ one Deals tab after Home: Overview · In talks · Deals board · Sponsorships; no Zach, In talks or Elizabeth tab');
 
   // 2. The tiles
   const tiles = await page.$$eval('#zv-body .zv-tile', (els) => els.map((e) => e.innerText.replace(/\s+/g, ' ').trim()));
@@ -177,13 +191,17 @@ async function main() {
   const body = await text('#zv-body');
   assert.ok(/Calls coming up/.test(body) && /Electrolit/.test(body) && /with Jason Robinson/.test(body));
   assert.ok(!/Deals happening/.test(body) && !/Garage Beer — fall/.test(body), 'no Deals happening card');
-  const cards = await page.$$eval('#zv-body .zv-card h3', (els) => els.map((e) => e.textContent));
-  assert.deepEqual(cards, ['This week', 'Where every brand stands', 'In talks', 'Show Board · last 7 days'], 'This week first');
-  const steps = await page.$$eval('.zv-step b', (els) => els.map((e) => e.textContent));
-  assert.deepEqual(steps, ['Reached out', 'Accepted', 'Replied', 'Wants to continue', 'Email sent', 'In talks'], 'no Out row');
-  // A step opens its brands in place; ours to do first, late in days.
-  await page.click('[data-zv-open="replied"]');
+  const cards = await page.$$eval('#zv-body .zv-card > .zv-card-h h3', (els) => els.map((e) => e.textContent));
+  assert.deepEqual(cards, ['Where every brand stands', 'This week', 'In talks', 'Show Board · last 7 days']);
+  // Seven blocks across, Out included; nothing open until one is clicked.
+  const blocks = await page.$$eval('.zv-block', (els) => els.map((e) => e.querySelector('.k').textContent + ' ' + e.querySelector('.v').textContent));
+  assert.deepEqual(blocks, ['Reached out 250brands', 'Accepted 90brands', 'Replied 30brands', 'Wants to continue 8brands', 'Email sent 5brands', 'In talks 12brands', 'Out 17brands']);
+  assert.equal(await page.$$eval('.zv-block', (els) => new Set(els.map((e) => Math.round(e.getBoundingClientRect().top))).size), 1, 'one row across');
+  assert.ok(/Click a block/.test(await page.textContent('.zv-stepcard')));
+  // A block opens its brands under the blocks; ours to do first.
+  await page.click('[data-zv-pick="replied"]');
   await page.waitForSelector('.zv-open [data-zv-brand="r1"]');
+  assert.equal(await page.getAttribute('.zv-block[data-zv-pick="replied"]', 'aria-pressed'), 'true');
   const opened = await page.$$eval('.zv-open .zv-row', (els) => els.map((e) => e.innerText.replace(/\s+/g, ' ').trim()));
   assert.ok(/^Neutonic/.test(opened[0]) && /to do/.test(opened[0]) && /Kerry Szostak · Answer their reply/.test(opened[0]), opened[0]);
   assert.ok(/SpikedAde/.test(opened[1]) && /Jo Jay \(Elizabeth\)/.test(opened[1]), opened[1]);
@@ -197,24 +215,30 @@ async function main() {
   await page.waitForFunction(() => document.querySelector('[data-zv-setstage="r3"]') && document.querySelector('[data-zv-setstage="r3"]').value === 'call_booked' &&
     !/taken off/.test(document.querySelector('.zv-srow:has([data-zv-brand="r3"])').textContent));
   assert.deepEqual(calls.filter((c) => c.fn === 'setTalksStage').slice(-1)[0].args, { brandId: 'r3', stage: 'call_booked' });
-  await page.click('[data-zv-open="accepted"]');
+  // Click across: another block replaces it; 10 then all; Out opens too.
+  await page.click('[data-zv-pick="accepted"]');
   await page.waitForSelector('.zv-open [data-zv-brand="a0"]');
+  assert.equal(await page.$('.zv-open [data-zv-brand="r1"]'), null, 'one block open at a time');
   assert.equal(await page.$$eval('.zv-open.tk-s-accepted .zv-row', (e) => e.length), 10, '10 first');
   assert.ok(/3 days late/.test(await page.textContent('.zv-srow:has([data-zv-brand="a0"])')));
   await page.click('[data-zv-more="accepted"]');
   assert.equal(await page.$$eval('.zv-open.tk-s-accepted .zv-row', (e) => e.length), 13, 'then all');
-  await page.click('[data-zv-open="accepted"]');
-  assert.equal(await page.$('.zv-open.tk-s-accepted'), null, 'a second click shuts it');
+  await page.click('[data-zv-pick="out"]');
+  await page.waitForSelector('.zv-open [data-zv-brand="o1"]');
+  await page.click('[data-zv-pick="out"]');
+  assert.equal(await page.$('.zv-stepcard .zv-open'), null, 'a second click shuts it');
+  await page.click('[data-zv-pick="replied"]');
+  await page.waitForSelector('.zv-open [data-zv-brand="r1"]');
   // Easier to see: big numbers and names.
   const px = (sel) => page.$eval(sel, (e) => parseFloat(getComputedStyle(e).fontSize));
-  assert.ok((await px('.zv-tile .v')) >= 38 && (await px('.zv-step b')) >= 18 && (await px('.zv-open .zv-row .nm')) >= 17 && (await px('.zv-wk td.now')) >= 22, 'big type');
+  assert.ok((await px('.zv-tile .v')) >= 38 && (await px('.zv-block .v')) >= 32 && (await px('.zv-open .zv-row .nm')) >= 17 && (await px('.zv-wk td.now')) >= 22, 'big type');
   assert.ok(/Celsius/.test(body) && /3 opens/.test(body) && /\+ 2 opens without a brand code/.test(body));
-  assert.ok(/Where every brand stands/.test(body) && /40 to do/.test(body));
+  assert.ok(/Where every brand stands/.test(body) && /40 to do/.test(await page.textContent('.zv-blocks')));
   const wk = await page.$$eval('.zv-wk tbody tr', (els) => els.map((e) => e.innerText.replace(/\s+/g, ' ').trim()));
   assert.equal(wk[0], 'LinkedIn invites 74 90 90');
   assert.ok(await page.$('.zv-row .rb-tag'), 'the Outreached / Accepted tag on the Show Board rows');
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'zach-tab.png'), fullPage: true });
-  console.log('✓ the cards: This week first, every brand’s step (no Out; a row opens its brands, 10 then all), In talks, Show Board; no Deals card; big type');
+  console.log('✓ seven blocks across (Out too): a click opens its brands with a Stage picker, click across, again shuts; then This week, In talks, Show Board; no Deals card; big type');
 
   // 4. Every card opens its tab
   await page.click('.zv-tile:has-text("Show Board")');
@@ -230,7 +254,7 @@ async function main() {
   await page.click('.zv-tile:has-text("Brands"):not(:has-text("outreached"))');
   await page.waitForFunction(() => document.querySelector('.view.active').id === 'brands');
   await open();
-  await page.click('[data-zv-step="replied"]');   // inside the opened Replied row (ZV.open is kept)
+  await page.click('[data-zv-step="replied"]');   // under the opened Replied block (ZV.step is kept)
   await page.waitForFunction(() => document.querySelector('.view.active').id === 'tracker');
   assert.equal(await page.evaluate(() => TK.stage), 'replied', 'only that step');
   await open();

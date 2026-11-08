@@ -321,7 +321,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(zo.talks.total, it.brands.length)
     assert.equal(zo.outreach.invites, await prisma.target.count({ where: { OR: [{ sentAt: { not: null } }, { status: { in: ['sent', 'accepted', 'replied', 'converted'] } }] } }))
     assert.equal(zo.outreach.brands, Object.keys(rb.brands).length + Object.keys(rb.el || {}).filter(id => !rb.brands[id]).length)
-    assert.ok(zo.steps.stages.length === 6 && !zo.steps.stages.some(x => x.key === 'out') && typeof zo.steps.total === 'number', 'the steps, Out left off')
+    assert.ok(zo.steps.stages.length === 7 && zo.steps.stages[6].key === 'out' && typeof zo.steps.total === 'number', 'the seven steps, Out included (the blocks)')
     assert.ok(Object.values(zo.steps.brands).flat().every(b => b.id && b.name), 'each step’s brands for the row that opens')
     const stepBrands = Object.values(zo.steps.brands).flat()
     const inTalksIds = new Set(it.brands.map(b => b.id))

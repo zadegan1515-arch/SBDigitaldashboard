@@ -154,17 +154,18 @@ async function main() {
   const shot = process.env.TK_SHOTS;
 
   await page.goto(base0 + '/app.html');
-  await page.waitForSelector('.tabs .nav-item[data-view="tracker"]');
+  await page.waitForSelector('.tabs .nav-item[data-view="zachtab"]');
 
-  // 1. The tab
-  assert.equal(await text('.tabs .nav-item[data-view="tracker"]'), 'In talks');
-  await page.click('.tabs .nav-item[data-view="tracker"]');
+  // 1. The page (Nov 8 2026: under Deals, the Overview's full list — its blocks link here)
+  assert.equal(await text('.tabs .nav-item[data-view="zachtab"]'), 'Deals');
+  await page.evaluate(() => gotoView('tracker'));
   await page.waitForSelector('#tk-list .tk-row');
   assert.equal(await page.evaluate(() => document.querySelector('.view.active').id), 'tracker');
+  assert.equal(await page.$eval('.tabs.cc-only:not(#sub-tabs) .nav-item.active', (e) => e.textContent), 'Deals');
   assert.deepEqual(await page.$$eval('#sub-tabs .nav-item', (els) => els.map((e) => [e.textContent, e.classList.contains('active')])),
-    [['Every brand reached', true], ['In talks', false]]);
+    [['Overview', true], ['In talks', false], ['Deals board', false], ['Sponsorships', false]]);
   assert.ok(/57 brands we’ve reached out to · 3 with a step for us to do/.test(await text('#tk-sub')), await text('#tk-sub'));
-  console.log('✓ the In talks tab opens Every brand reached (sub-tabs: Every brand reached · In talks)');
+  console.log('✓ Every brand reached sits under Deals (the Overview stays lit — its blocks link here)');
 
   // 2. Tiles
   const tiles = await page.$$eval('.tk-tile', (els) => els.map((e) => [e.getAttribute('data-tk-stage'), e.querySelector('.tk-tile-n').firstChild.textContent, (e.querySelector('.tk-tile-u') || {}).textContent || '']));
@@ -245,7 +246,7 @@ async function main() {
   console.log('✓ a row opens its people; a person opens the brand page at them; In talks profile; Brand page →');
 
   // 6. A long step
-  await page.click('.tabs .nav-item[data-view="tracker"]');
+  await page.evaluate(() => gotoView('tracker'));
   await page.waitForSelector('#tk-list .tk-row');
   const reached = () => page.$$eval('.tk-group.tk-s-reached .tk-row', (els) => els.length);
   assert.equal(await reached(), 40);

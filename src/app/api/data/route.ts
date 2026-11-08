@@ -15376,7 +15376,7 @@ const handlers: Record<string, Handler> = {
     // 2026: "I should be able to edit deal flow from here"), the deal, and for a
     // brand off In talks, when it was taken off.
     const stageOf = new Map<string, any>(tb.map(b => [b.id, b.stage]))
-    const stepIds = [...new Set((tracker.brands as any[]).filter(b => b.stage !== 'out').map(b => b.id as string))].filter(id => !stageOf.has(id))
+    const stepIds = [...new Set((tracker.brands as any[]).map(b => b.id as string))].filter(id => !stageOf.has(id))
     const removedOf = new Map((stepIds.length ? await prisma.brand.findMany({ where: { id: { in: stepIds }, talksRemovedAt: { not: null } }, select: { id: true, talksRemovedAt: true } }) : [])
       .map(b => [b.id, b.talksRemovedAt!.toISOString()]))
     return {
@@ -15390,11 +15390,12 @@ const handlers: Record<string, Handler> = {
         elizabeth: { sent: elSent, thisWeek: elSentWeek },
       },
       week: { now: weeks[weeks.length - 1] ?? null, before: weeks[weeks.length - 2] ?? null, goals: score.goals },
-      // Every brand reached's steps (Out left off — Leo, Nov 8 2026), each with
-      // its brands for the row that opens in place: ours to do first, as there.
+      // Every brand reached's steps, Out included (Leo, Nov 8 2026: the blocks
+      // "Reached Out … In Talks, Out … so that you can click across and see"),
+      // each with its brands for the block that opens: ours to do first, as there.
       steps: {
-        stages: (tracker.stages as any[]).filter(x => x.key !== 'out'), counts: tracker.counts, onUs: tracker.onUs, total: tracker.total,
-        brands: Object.fromEntries((tracker.stages as any[]).filter(x => x.key !== 'out').map(x => [x.key,
+        stages: tracker.stages, counts: tracker.counts, onUs: tracker.onUs, total: tracker.total,
+        brands: Object.fromEntries((tracker.stages as any[]).map(x => [x.key,
           (tracker.brands as any[]).filter(b => b.stage === x.key).map(b => ({
             id: b.id, name: b.name, next: b.next, onUs: b.onUs, due: b.due, at: b.at, lastAt: b.lastAt,
             lead: b.lead ? b.lead.name : null, by: b.lead ? b.lead.by : null, inTalks: stageOf.has(b.id),

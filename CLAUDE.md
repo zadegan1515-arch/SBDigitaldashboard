@@ -30,14 +30,15 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 `src/app/api/data/route.ts`.
 
 ## Where things live
-- `public/app.html` — the whole UI. Top nav is nine groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
-  `showView`): Home · **Zach** (below) · Brands (All brands / Recently added / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
-  Week plan / Schedule / Email / People / Archived / Email stats) · **Elizabeth** (Today / Week plan / Follow-ups / Results, below) · **In talks** (Every brand reached / In talks, below) ·
+- `public/app.html` — the whole UI. Top nav is seven groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
+  `showView`): Home · **Deals** (Overview / In talks / Deals board / Sponsorships — below; Leo, Nov 8 2026: "combine the Zach
+  tab and the In talks tab … get rid of the Elizabeth tab … combine the Deals tab") · Brands (All brands / Recently added / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
+  Week plan / Schedule / Email / People / Archived / Email stats) ·
   **Show Board** (Overview = code lookup (`boardCodeLookup`: the whole roster by name / aka, people and archived too — it used to filter listBrands' first 500; `test-board-lookup.js`) + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
   exact NY times and time on board; **every** board open is logged, gate on or off (anonymous = "Visitor") / **Board codes** (was "In talks" until the In talks tab; view id still `talks`, `listTalks`) = per-brand engagement cards (code, viewers, opens, timed minutes
   via the board's 60s heartbeat → `BoardVisit.lastSeenAt`, picked shows, visit log) / Requests /
-  Shows) · **Deals** (Board = the old Pipeline / Sponsorships) · **Audience** (Events / Attendees —
+  Shows) · **Audience** (Events / Attendees —
   attendee capture, sponsorship module Phase 1) · Operations (Materials / Team —
   the ops@ inbox and contract/invoice UI are removed from the site per Leo; `src/lib/ops.ts`, its
   cron scan and the generateContract/Invoice handlers still exist server-side).
@@ -128,7 +129,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   accepted … their linkedin and even email … the website and brand socials like instagram and tiktok … an overview … not
   more than 4 sentences … an activation idea … editable … a copy button that we can paste into a new chat with instructions
   on how to brainstorm"; his picks: a call booked puts a brand in by itself + an Add button; its own top tab; list + profile;
-  Claude's daily check writes the overview and idea, no API spend). The In talks top tab's second sub-tab since Nov 6 2026 (`#intalks`,
+  Claude's daily check writes the overview and idea, no API spend). Deals' second sub-tab since Nov 8 2026 (`#intalks`,
   `IT` / `it*` in app.html, its own `.it-` look: a two-pane workspace — brands down the left, one brand's profile on the
   right; a phone shows the list, a tap the profile with ‹ All brands). **Every brand that replied, a stage, a dated log**
   (Leo, Nov 8 2026: "every brand that has replied … I want to be able to add more brands too … search up any brand … their
@@ -191,7 +192,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Tests: `node scripts/test-in-talks.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-in-talks.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-in-talks-e2e.js` (also the stage, the log, Elizabeth's
   replies, the tag's accept day and Zach's tab).
-- **Zach** (Leo, Nov 8 2026: "one tab for Zach … so he can just look at everything and see what's going on. So he doesn't
+- **Deals** (Leo, Nov 8 2026, third pass: "combine the Zach tab and the In talks tab … get rid of the Elizabeth tab … just say
+  Overview or Deals … combine the Deals tab … have each of the blocks … Reached Out … Out … so that you can click across and
+  see"; his picks: the name Deals, sub-tabs, Elizabeth's pages removed completely). One top tab after Home, `data-view="zachtab"`,
+  `SUBTABS.zachtab` = Overview (`#zachtab`) · In talks (`#intalks`) · Deals board (`#pipeline`) · Sponsorships; `GROUP_OF` puts
+  `tracker` there too (Every brand reached = the Overview's full list: its blocks' "See … in the full list" and `#tracker`; the
+  Overview sub-tab stays lit on it). **Overview** = what was Zach's tab:
+- **Overview** (was Zach's tab — Leo, Nov 8 2026: "one tab for Zach … so he can just look at everything and see what's going on. So he doesn't
   have to look between each individual tab … how many brands, how many outreaches have been sent out, how many brands have
   been outreached to … what deals are happening … show board stats, like what brands have viewed the show board this week …
   click on it and it should go to the show board tab. Same with the results"; his pick: a top tab right after Home, anyone
@@ -203,15 +210,17 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   · 7 days (its Overview's 7-day count, brands that opened it) → Show Board; Deals (open count, open $ and won $ apart —
   sponsorship deal money only) → Deals. Cards (Leo, Nov 8 2026 second pass: "move this up, get rid of the deals happening
   tab, allow for expansion on the replied brands, and get rid of the last thing … make everything much easier to see"; his
-  picks: This week up, the Out row off, every row opens), in this order — This week (weeklyScore: this week / last week /
-  goal, a bar per row, green once met → Results); Where every brand stands (outreachTracker's steps in order, **Out left
-  off**, "N to do"; a click opens the row in place — `ZV.open` — with its brands from `zachOverview.steps.brands`, ours to
-  do first: name + tag, the lead person (Elizabeth's marked), what's next, "N days late" / "to do" / last step; 10 then
-  Show all, `ZV.more`; a brand's name → its brand page; **a Stage picker on every brand** (Leo, Nov 8 2026: "I should be
+  picks: This week up, the Out row off, every row opens; then the third pass) — **Where every brand stands** (full width under
+  the tiles): outreachTracker's seven steps as **blocks across** (`.zv-blocks`, one row from 1,360px; Reached out · Accepted ·
+  Replied · Wants to continue · Email sent · In talks · **Out** — back since the third pass), each with its count, "N to do"
+  and hint; a click opens that step's brands under the blocks (`ZV.step`, one at a time, again shuts; "Click a block" until
+  then) from `zachOverview.steps.brands`, ours to do first: name + tag, the lead person (Elizabeth's marked), what's next,
+  "N days late" / "to do" / last step; 10 then Show all, `ZV.more`; a brand's name → its brand page; **a Stage picker on every brand** (Leo, Nov 8 2026: "I should be
   able to edit deal flow from here") = the In talks stage (`setTalksStage` — puts it on In talks, from Proposal sent moves
   the deal; `zvSetStage`, `ZV.busy`), beside it since when, the deal's stage, or "taken off In talks <day> — a stage puts it
   back" (`steps.brands[].stage` / `inTalks` / `removedAt` / `deal`), and In talks profile →; "Open <step> in Every brand
-  reached →" = `TK.stage`); In talks (a tile per
+  reached →" = `TK.stage`). Then the cards — This week (weeklyScore: this week / last week / goal, a bar per row, green once
+  met → Results); In talks (a tile per
   stage → In talks at that stage, `IT.stageF`; calls coming up and the latest stage moves → that profile); Show Board ·
   last 7 days (each brand's opens, minutes, last open, its tag → Show Board). No Deals happening card (the Deals tile
   stays). Big type throughout (tile numbers 40px, names 17px+, labels in normal case), the seven tiles one row from
@@ -220,9 +229,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - **In talks → Every brand reached** (Leo, Nov 6 2026: "a tab that has all of the brands that were talking to / emailed
   out to … a clear way to keep track of every brand that we've reached out to, is accepted, and has responded to us, and
   wants to continue. And then we send out an email"; he left the where to Claude — "maybe just expand on the brands we're
-  talking to tab"). The In talks top tab (`data-view="tracker"`, still labelled In talks) is a group now: **Every brand
-  reached** (view `#tracker`, `TK` / `tk*` in app.html, `.tk-` CSS, deep link `#tracker`) first, then **In talks** (the
-  profiles, unchanged, `#intalks`). Data = `outreachTracker` (read-only; a READ_NAMES read in claude-day.ts): every brand
+  talking to tab"). Since Nov 8 2026 it sits under **Deals** as the Overview's full list (view `#tracker`, `TK` / `tk*` in
+  app.html, `.tk-` CSS, deep link `#tracker`; the Overview's blocks show the same steps and link here); **In talks** (the
+  profiles, `#intalks`) is Deals' second sub-tab. Data = `outreachTracker` (read-only; a READ_NAMES read in claude-day.ts): every brand
   reached by the Reached tag's rule (`REACHED_WHERE`) or by Elizabeth's rows (sent / accepted / replied / call), plus every
   brand on In talks; never a person (kind filtered in code — `kind: { not: 'person' }` drops every null kind). Each brand
   sits at **one step** — Reached out → Accepted → Replied → Wants to continue → Email sent → In talks, or **Out** — the
@@ -246,6 +255,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   on Zach's list, the brand page and Elizabeth's tab. Tests: `node scripts/test-tracker.mjs`, `NODE_PATH=$(npm root -g) node
   scripts/test-tracker.js` (page), `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-tracker-e2e.js`;
   `test-in-talks.js` opens In talks through the sub-tab.
+- **Elizabeth — her pages were removed from the site** (Leo, Nov 8 2026: "get rid of the Elizabeth tab"; his pick: "remove it
+  completely"): no top tab, no `el-*` views, modals, `EL` / `el*` page code or `.el-` CSS, no rep-only page mode, and Team no
+  longer offers "Make it Elizabeth's outreach only" (an account still marked shows "(removed)" with **Give the whole site
+  back**; the page toasts it). What stays: her `RepOutreach` rows and every server handler below (`el*`, `setRepAccount`,
+  REP_FNS), her history where it shows elsewhere (her teal tag `rbEl`, Every brand reached, In talks people, the Overview's
+  numbers), and `test-elizabeth-e2e.js`; `test-elizabeth.js` (the page) was deleted. What it was:
 - **Elizabeth** (Leo, Oct 21 2026: "a new outreach tab for Elizabeth to use her email to outreach to some brands … a
   different part to the site soley for Elizabeth and I want the brands and the same structure for outreach to carry over";
   his picks: **both** LinkedIn invites from her LinkedIn and emails from her own Gmail, **any brand**, **no rules between her
@@ -290,9 +305,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `callback` and `/api/ops/attachment` refuse it; the page (`getMe.rep` → `body.rep-only`, remembered in localStorage
   `sb.rep`) hides the sidebar, top tabs, search and + Add brand, never loads Home or the recap, and its SB mark
   (`#rep-home`) goes to her Today. Leo hasn't set her email yet (his call: "I'll set it myself later"). Nothing sends from
-  the site (rule 7 unchanged). Tests: `node scripts/test-rep-outreach.mjs`, `NODE_PATH=$(npm root -g) node
-  scripts/test-elizabeth.js` (page), `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-elizabeth-e2e.js`
-  (real handlers + a real signed-in session for the lockout).
+  the site (rule 7 unchanged). Tests: `node scripts/test-rep-outreach.mjs`, `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh)
+  node scripts/test-elizabeth-e2e.js` (real handlers + a real signed-in session for the lockout); the page test went with her pages.
 - **Leo's picked ideas, built Oct 6 2026** (retired from `build-ideas.ts`): **Weekly scoreboard** on Home (`#hm-score`,
   `weeklyScore` / `setWeeklyGoals`, Setting `weeklyGoals`, defaults `WEEKLY_GOALS_DEFAULT`): invites / accepted /
   replied / calls booked / deals / brands added per New York week (Mon–Sun), this week vs goal + 8 weeks of bars.
