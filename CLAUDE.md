@@ -195,9 +195,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - **Deals** (Leo, Nov 8 2026, third pass: "combine the Zach tab and the In talks tab … get rid of the Elizabeth tab … just say
   Overview or Deals … combine the Deals tab … have each of the blocks … Reached Out … Out … so that you can click across and
   see"; his picks: the name Deals, sub-tabs, Elizabeth's pages removed completely). One top tab after Home, `data-view="zachtab"`,
-  `SUBTABS.zachtab` = Overview (`#zachtab`) · In talks (`#intalks`) · Deals board (`#pipeline`) · Sponsorships; `GROUP_OF` puts
-  `tracker` there too (Every brand reached = the Overview's full list: its blocks' "See … in the full list" and `#tracker`; the
-  Overview sub-tab stays lit on it). **Overview** = what was Zach's tab:
+  `SUBTABS.zachtab` = Overview (`#zachtab`) · In talks (`#intalks`) · Deals board (`#pipeline`) · Sponsorships. Every brand
+  reached has no page of its own any more — it's drawn inside the Overview (below); `loadTracker`, `gotoView('tracker')`, the
+  `#tracker` deep link and old history entries open the Overview. **Overview** = what was Zach's tab:
 - **Overview** (was Zach's tab — Leo, Nov 8 2026: "one tab for Zach … so he can just look at everything and see what's going on. So he doesn't
   have to look between each individual tab … how many brands, how many outreaches have been sent out, how many brands have
   been outreached to … what deals are happening … show board stats, like what brands have viewed the show board this week …
@@ -210,28 +210,29 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   · 7 days (its Overview's 7-day count, brands that opened it) → Show Board; Deals (open count, open $ and won $ apart —
   sponsorship deal money only) → Deals. Cards (Leo, Nov 8 2026 second pass: "move this up, get rid of the deals happening
   tab, allow for expansion on the replied brands, and get rid of the last thing … make everything much easier to see"; his
-  picks: This week up, the Out row off, every row opens; then the third pass) — **Where every brand stands** (full width under
-  the tiles): outreachTracker's seven steps as **blocks across** (`.zv-blocks`, one row from 1,360px; Reached out · Accepted ·
-  Replied · Wants to continue · Email sent · In talks · **Out** — back since the third pass), each with its count, "N to do"
-  and hint; a click opens that step's brands under the blocks (`ZV.step`, one at a time, again shuts; "Click a block" until
-  then) from `zachOverview.steps.brands`, ours to do first: name + tag, the lead person (Elizabeth's marked), what's next,
-  "N days late" / "to do" / last step; 10 then Show all, `ZV.more`; a brand's name → its brand page; **a Stage picker on every brand** (Leo, Nov 8 2026: "I should be
-  able to edit deal flow from here") = the In talks stage (`setTalksStage` — puts it on In talks, from Proposal sent moves
-  the deal; `zvSetStage`, `ZV.busy`), beside it since when, the deal's stage, or "taken off In talks <day> — a stage puts it
-  back" (`steps.brands[].stage` / `inTalks` / `removedAt` / `deal`), and In talks profile →; "Open <step> in Every brand
-  reached →" = `TK.stage`). Then the cards — This week (weeklyScore: this week / last week / goal, a bar per row, green once
-  met → Results); In talks (a tile per
+  picks: This week up, the Out row off, every row opens; then the third pass; then the fourth — "zoom out … make this page how
+  you had it before, with the In talks and how you can switch from Accepted to Replied to Wants to Continue … more polished")
+  — in this order: the seven number tiles (`#zv-tiles`, compact, one row from 1,280px); **Every brand we've reached** in a
+  card (`#zv-track`: the In talks tracker itself — `#tk-sub` / `#tk-body` live here, `renderTracker` draws them, its
+  listeners are on `#zachtab`): the seven step tiles (Reached out · Accepted · Replied · Wants to continue · Email sent · In
+  talks · Out; a click shows only that step, again shows all), So far, find box, Only ones with a step for us, a card per
+  brand under a heading per step; a card carries its **deal flow** pill (the In talks stage) and, opened, its people and
+  **Deal flow** (`tkFlowHtml`: the In talks stage picker — Leo, Nov 8 2026: "I should be able to edit deal flow from here" —
+  `zvSetStage` → `setTalksStage`, which puts it on In talks and from Proposal sent moves the deal; since when, the deal's
+  stage, or "taken off In talks <day> — a stage puts it back"; `ZV.busy`, `tkRedrawRow`). Data = `zachOverview.tracker` =
+  outreachTracker whole, each brand + `talkStage` / `onTalks` / `talksRemovedAt` (one read for the page; `TK.data`). Then the
+  cards, three across — This week (weeklyScore: this week / last week / goal, a bar per row, green once met → Results); In talks (a tile per
   stage → In talks at that stage, `IT.stageF`; calls coming up and the latest stage moves → that profile); Show Board ·
   last 7 days (each brand's opens, minutes, last open, its tag → Show Board). No Deals happening card (the Deals tile
-  stays). Big type throughout (tile numbers 40px, names 17px+, labels in normal case), the seven tiles one row from
-  1,360px wide. ↻ Refresh. Hidden for a rep-only account (top tabs hidden; `zachOverview` isn't in REP_FNS). Tests:
+  stays). Compact sizes (tile numbers 26px). ↻ Refresh. (Show Board → Board codes now uses its own ids `bc-sub` / `bc-list` —
+  it shared `tk-sub` / `tk-list` with the tracker and wrote into it.) Hidden for a rep-only account (top tabs hidden; `zachOverview` isn't in REP_FNS). Tests:
   `NODE_PATH=$(npm root -g) node scripts/test-zach-tab.js` (page); the e2e is in test-in-talks-e2e.js.
 - **In talks → Every brand reached** (Leo, Nov 6 2026: "a tab that has all of the brands that were talking to / emailed
   out to … a clear way to keep track of every brand that we've reached out to, is accepted, and has responded to us, and
   wants to continue. And then we send out an email"; he left the where to Claude — "maybe just expand on the brands we're
-  talking to tab"). Since Nov 8 2026 it sits under **Deals** as the Overview's full list (view `#tracker`, `TK` / `tk*` in
-  app.html, `.tk-` CSS, deep link `#tracker`; the Overview's blocks show the same steps and link here); **In talks** (the
-  profiles, `#intalks`) is Deals' second sub-tab. Data = `outreachTracker` (read-only; a READ_NAMES read in claude-day.ts): every brand
+  talking to tab"). Since Nov 8 2026 it's drawn inside **Deals → Overview** (`TK` / `tk*` in app.html, `.tk-` CSS; its data
+  comes with `zachOverview.tracker`; deep link `#tracker` opens the Overview); **In talks** (the profiles, `#intalks`) is Deals'
+  second sub-tab. Data = `outreachTracker` (read-only; a READ_NAMES read in claude-day.ts): every brand
   reached by the Reached tag's rule (`REACHED_WHERE`) or by Elizabeth's rows (sent / accepted / replied / call), plus every
   brand on In talks; never a person (kind filtered in code — `kind: { not: 'person' }` drops every null kind). Each brand
   sits at **one step** — Reached out → Accepted → Replied → Wants to continue → Email sent → In talks, or **Out** — the

@@ -12,12 +12,13 @@
 //   2. The tiles: brands, brands outreached to, outreach sent (invites +
 //      emails, this week, today, Elizabeth's), accepted · replied, In talks,
 //      the Show Board's 7 days, deals (open and won money apart).
-//   3. Where every brand stands: seven blocks across (Reached out · Accepted ·
-//      Replied · Wants to continue · Email sent · In talks · Out — "so that you
-//      can click across and see"); a click opens that step's brands under them
-//      (ours to do first, 10 then Show all, a Stage picker on each), again shuts
-//      it. Then the cards: This week, In talks by stage + calls, who opened the
-//      Show Board. No Deals happening card. Big type.
+//   3. Every brand we've reached, as the In talks tracker had it (Leo, Nov 8
+//      2026: "zoom out … make this page how you had it before … switch from
+//      Accepted to Replied to Wants to Continue … more polished"): its seven
+//      step tiles (Out too) — a click shows only that step, again shows all —
+//      a card per brand, opened for its people and its Deal flow (the In talks
+//      stage, set right there; a brand taken off In talks says so). Then This
+//      week, In talks by stage + calls, who opened the Show Board. Compact.
 //   4. Every card opens its tab: Show Board, Results, Deals, Brands, Every
 //      brand reached (a step = only that step), In talks (a stage = only that
 //      stage; a call = that brand's profile).
@@ -47,6 +48,19 @@ const ENDS = [{ key: 'lost', label: 'Lost' }, { key: 'quiet', label: 'Gone quiet
 const TRACK = [['reached', 'Reached out'], ['accepted', 'Accepted'], ['replied', 'Replied'], ['continue', 'Wants to continue'],
   ['emailed', 'Email sent'], ['talks', 'In talks'], ['out', 'Out']].map(([key, label]) => ({ key, label, hint: label }));
 
+// A brand row as outreachTracker sends it (+ the deal flow zachOverview adds).
+function trow(o) {
+  const lead = { name: o.lead, title: 'Marketing', by: o.by || 'zach' };
+  return Object.assign({
+    category: 'energy', tier: 'growth', archived: false, doNotEmail: false, out: null, onUs: false, due: null,
+    at: at(-3), lastAt: at(-3), nextCallAt: null, inTalks: false, deal: null, elizabeth: false, steps: ['reached', 'accepted', 'replied'],
+    people: [{ key: 't:' + o.id, by: o.by || 'zach', channel: 'linkedin', contactId: 'c' + o.id, name: o.lead, title: 'Marketing', email: null,
+      linkedinUrl: 'https://www.linkedin.com/in/' + o.id, stage: o.stage, out: null, label: o.stage, next: o.next, onUs: !!o.onUs, due: o.due || null,
+      at: at(-3), lastAt: at(-3), invitedAt: at(-20), acceptedAt: at(-10), repliedAt: o.stage === 'replied' ? at(-3) : null, emailedAt: null, callAt: null }],
+    talkStage: null, onTalks: false, talksRemovedAt: null,
+  }, o, { lead });
+}
+
 const OVERVIEW = {
   today, weekStart: monday,
   brands: { total: 1520, inPlay: 1310 },
@@ -54,21 +68,23 @@ const OVERVIEW = {
     emails: 210, emailsThisWeek: 6, accepted: 380, replied: 61, elizabeth: { sent: 44, thisWeek: 12 } },
   week: { now: { invites: 74, accepts: 21, replies: 6, calls: 2, deals: 1, brands: 30 }, before: { invites: 90, accepts: 25, replies: 4, calls: 1, deals: 0, brands: 55 },
     goals: { invites: 90, accepts: 25, replies: 8, calls: 3, deals: 1, brands: 50 } },
-  steps: { stages: TRACK, counts: { reached: 250, accepted: 90, replied: 30, continue: 8, emailed: 5, talks: 12, out: 17 },
-    brands: {
-      replied: [
-        { id: 'r1', name: 'Neutonic', next: 'Answer their reply', onUs: true, due: today, at: at(-2), lastAt: at(-2), lead: 'Kerry Szostak', by: 'zach', inTalks: true,
-          stage: { key: 'replied', label: 'Replied', at: at(-2), hand: false }, removedAt: null, deal: null },
-        { id: 'r2', name: 'SpikedAde', next: 'Waiting on them', onUs: false, due: null, at: at(-5), lastAt: at(-5), lead: 'Jo Jay', by: 'elizabeth', inTalks: true,
-          stage: { key: 'proposal', label: 'Proposal sent', at: at(-1), hand: true }, removedAt: null, deal: { stage: 'proposal', name: 'SpikedAde' } },
-        { id: 'r3', name: 'Red Bull', next: 'Replied — marked not needed on Zach’s list', onUs: false, due: null, at: at(-40), lastAt: at(-40), lead: 'Stefano Apostolo', by: 'zach', inTalks: false,
-          stage: null, removedAt: at(-30), deal: null },
-      ],
-      out: [{ id: 'o1', name: 'Gone Soda', next: 'Said no', onUs: false, due: null, at: at(-9), lastAt: at(-9), lead: 'Pat Lee', by: 'zach', inTalks: false, stage: null, removedAt: null, deal: null }],
-      accepted: Array.from({ length: 13 }, (_, i) => ({ id: 'a' + i, name: 'Accepted Co ' + (i + 1), next: 'Text them on LinkedIn', onUs: i < 3,
-        due: i < 3 ? new Date(Date.now() - 3 * DAY).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) : null, at: at(-4), lastAt: at(-4), lead: 'Person ' + i, by: 'zach', inTalks: false })),
-    },
-    onUs: { reached: 40, accepted: 12, replied: 6, continue: 8, emailed: 0, talks: 0, out: 0 }, total: 412 },
+  // Every brand reached (the tracker drawn in the Overview), with each brand's deal flow.
+  tracker: {
+    stages: TRACK, today, total: 412,
+    counts: { reached: 250, accepted: 90, replied: 30, continue: 8, emailed: 5, talks: 12, out: 17 },
+    onUs: { reached: 40, accepted: 12, replied: 6, continue: 8, emailed: 0, talks: 0, out: 0 },
+    ever: { reached: 412, accepted: 140, replied: 40, continue: 15, emailed: 11, talks: 12 },
+    brands: [
+      trow({ id: 'r1', name: 'Neutonic', stage: 'replied', next: 'Answer their reply', onUs: true, due: today, lead: 'Kerry Szostak',
+        talkStage: { key: 'replied', label: 'Replied', at: at(-2), hand: false }, onTalks: true }),
+      trow({ id: 'r2', name: 'SpikedAde', stage: 'replied', next: 'Waiting on them', lead: 'Jo Jay', by: 'elizabeth', elizabeth: true,
+        talkStage: { key: 'proposal', label: 'Proposal sent', at: at(-1), hand: true }, onTalks: true, deal: { stage: 'proposal', name: 'SpikedAde', valueCents: 0 } }),
+      trow({ id: 'r3', name: 'Red Bull', stage: 'replied', next: 'Replied — marked not needed on Zach’s list', lead: 'Stefano Apostolo', talksRemovedAt: at(-30) }),
+      trow({ id: 'o1', name: 'Gone Soda', stage: 'out', out: 'no', next: 'Said no', lead: 'Pat Lee' }),
+      trow({ id: 'a1', name: 'Bubbl’r', stage: 'accepted', next: 'Text them on LinkedIn', onUs: true,
+        due: new Date(Date.now() - 3 * DAY).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }), lead: 'Michael Holzem' }),
+    ],
+  },
   talks: {
     total: 14, stages: STAGES, ends: ENDS,
     counts: { replied: 6, call_booked: 3, call_done: 1, proposal: 2, negotiating: 0, verbal: 1, contract: 0, won: 0, lost: 1, quiet: 0 },
@@ -98,8 +114,8 @@ const H = {
   acceptedPeople: () => ({ people: [], total: 0, brands: 0 }),
   zachOverview: () => OVERVIEW,
   setTalksStage: (a) => {
-    const b = OVERVIEW.steps.brands.replied.find((x) => x.id === a.brandId);
-    Object.assign(b, { stage: { key: a.stage, label: 'Call booked', at: at(0), hand: true }, inTalks: true, removedAt: null });
+    const b = OVERVIEW.tracker.brands.find((x) => x.id === a.brandId);
+    Object.assign(b, { talkStage: { key: a.stage, label: 'Call booked', at: at(0), hand: true }, onTalks: true, talksRemovedAt: null });
     return { brandId: a.brandId, brandName: b.name, stage: a.stage, label: 'Call booked', at: at(0), event: { id: 'e1' }, deal: null, dealSkipped: null, addedToTalks: true };
   },
   listReached: () => ({ brands: [], totals: { invited: 0, accepted: 0, replied: 0 } }),
@@ -154,7 +170,7 @@ async function main() {
     } catch (e) {
       throw new Error('the Overview never showed — on ' + (await active()) + '; page errors: ' + (errors.join(' | ') || 'none'));
     }
-    await page.waitForSelector('#zv-body .zv-tile', { state: 'visible' });
+    await page.waitForSelector('#zv-tiles .zv-tile', { state: 'visible' });
   };
 
   await page.goto(base + '/app.html');
@@ -180,14 +196,14 @@ async function main() {
   console.log('✓ one Deals tab after Home: Overview · In talks · Deals board · Sponsorships; no Zach, In talks or Elizabeth tab');
 
   // 2. The tiles
-  const tiles = await page.$$eval('#zv-body .zv-tile', (els) => els.map((e) => e.innerText.replace(/\s+/g, ' ').trim()));
+  const tiles = await page.$$eval('#zv-tiles .zv-tile', (els) => els.map((e) => e.innerText.replace(/\s+/g, ' ').trim()));
   const tile = (k) => tiles.find((t) => t.toLowerCase().startsWith(k.toLowerCase())) || '';
   assert.ok(/1,520/.test(tile('Brands')) && /1,310 in play/.test(tile('Brands')), tile('Brands'));
   assert.ok(/412/.test(tile('Brands outreached to')) && /\+23 new this week/.test(tile('Brands outreached to')), tile('Brands outreached to'));
   const sent = tile('Outreach sent');
   assert.ok(/1,840/.test(sent) && /1,630 LinkedIn invites/.test(sent) && /210 emails/.test(sent) && /80 this week · 28 today/.test(sent) && /44 by Elizabeth/.test(sent), sent);
   assert.ok(/380/.test(tile('Accepted on LinkedIn')) && /61 replied/.test(tile('Accepted on LinkedIn')), tile('Accepted on LinkedIn'));
-  assert.equal(await page.$$eval('#zv-body .zv-tile', (els) => new Set(els.map((e) => Math.round(e.getBoundingClientRect().top))).size), 1, 'all seven tiles in one row');
+  assert.equal(await page.$$eval('#zv-tiles .zv-tile', (els) => new Set(els.map((e) => Math.round(e.getBoundingClientRect().top))).size), 1, 'all seven tiles in one row');
   assert.ok(/14/.test(tile('In talks')) && /1 call coming up/.test(tile('In talks')), tile('In talks'));
   assert.ok(/Show Board · 7 days 9/i.test(tile('Show Board')) && /2 brands opened it/.test(tile('Show Board')), tile('Show Board'));
   assert.ok(/\$15,000 open \$2,500 won/.test(tile('Deals')), tile('Deals'));
@@ -197,54 +213,41 @@ async function main() {
   const body = await text('#zv-body');
   assert.ok(/Calls coming up/.test(body) && /Electrolit/.test(body) && /with Jason Robinson/.test(body));
   assert.ok(!/Deals happening/.test(body) && !/Garage Beer — fall/.test(body), 'no Deals happening card');
-  const cards = await page.$$eval('#zv-body .zv-card > .zv-card-h h3', (els) => els.map((e) => e.textContent));
-  assert.deepEqual(cards, ['Where every brand stands', 'This week', 'In talks', 'Show Board · last 7 days']);
-  // Seven blocks across, Out included; nothing open until one is clicked.
-  const blocks = await page.$$eval('.zv-block', (els) => els.map((e) => e.querySelector('.k').textContent + ' ' + e.querySelector('.v').textContent));
-  assert.deepEqual(blocks, ['Reached out 250brands', 'Accepted 90brands', 'Replied 30brands', 'Wants to continue 8brands', 'Email sent 5brands', 'In talks 12brands', 'Out 17brands']);
-  assert.equal(await page.$$eval('.zv-block', (els) => new Set(els.map((e) => Math.round(e.getBoundingClientRect().top))).size), 1, 'one row across');
-  assert.ok(/Click a block/.test(await page.textContent('.zv-stepcard')));
-  // A block opens its brands under the blocks; ours to do first.
-  await page.click('[data-zv-pick="replied"]');
-  await page.waitForSelector('.zv-open [data-zv-brand="r1"]');
-  assert.equal(await page.getAttribute('.zv-block[data-zv-pick="replied"]', 'aria-pressed'), 'true');
-  const opened = await page.$$eval('.zv-open .zv-row', (els) => els.map((e) => e.innerText.replace(/\s+/g, ' ').trim()));
-  assert.ok(/^Neutonic/.test(opened[0]) && /to do/.test(opened[0]) && /Kerry Szostak · Answer their reply/.test(opened[0]), opened[0]);
-  assert.ok(/SpikedAde/.test(opened[1]) && /Jo Jay \(Elizabeth\)/.test(opened[1]), opened[1]);
-  // Its stage, set right here ("I should be able to edit deal flow from here").
+  const cards = await page.$$eval('#zachtab .zv-card > .zv-card-h h3', (els) => els.map((e) => e.textContent));
+  assert.deepEqual(cards, ['Every brand we’ve reached', 'This week', 'In talks', 'Show Board · last 7 days']);
+  // The tracker's seven tiles, Out included; click across.
+  const tks = await page.$$eval('#zachtab .tk-tile', (els) => els.map((e) => e.querySelector('.tk-tile-t').textContent + ' ' + e.querySelector('.tk-tile-n').textContent));
+  assert.deepEqual(tks, ['Reached out 250brands', 'Accepted 90brands', 'Replied 30brands', 'Wants to continue 8brands', 'Email sent 5brands', 'In talks 12brands', 'Out 17brands']);
+  assert.ok(/412 brands we’ve reached out to/.test(await text('#tk-sub')));
+  await page.click('#zachtab .tk-tile[data-tk-stage="replied"]');
+  assert.deepEqual(await page.$$eval('#tk-list .tk-row .tk-name b', (els) => els.map((e) => e.textContent)), ['Neutonic', 'SpikedAde', 'Red Bull'], 'only Replied');
+  await page.click('#zachtab .tk-tile[data-tk-stage="accepted"]');
+  assert.deepEqual(await page.$$eval('#tk-list .tk-row .tk-name b', (els) => els.map((e) => e.textContent)), ['Bubbl’r'], 'click across to Accepted');
+  assert.ok(/3 days late/.test(await text('#tk-list .tk-row')));
+  await page.click('#zachtab .tk-tile[data-tk-stage="accepted"]');
+  assert.equal(await page.$$eval('#tk-list .tk-row', (e) => e.length), 5, 'again: every brand');
+  // A brand's card: its deal flow pill; opened, its people and the Deal flow picker.
+  assert.ok(/Proposal sent/.test(await text('#tk-list .tk-row[data-tk-id="r2"] .tk-name')), 'the deal flow on the card');
+  await page.click('#tk-list [data-tk-row="r1"]');
   assert.equal(await page.$eval('[data-zv-setstage="r1"]', (e) => e.value), 'replied');
-  assert.ok(/deal: Proposal sent/.test(await page.textContent('.zv-srow:has([data-zv-brand="r2"])')));
-  const rb = await page.textContent('.zv-srow:has([data-zv-brand="r3"])');
-  assert.ok(/Stefano Apostolo · Replied — marked not needed on Zach’s list/.test(rb) && /taken off In talks .* a stage puts it back/.test(rb), rb);
+  await page.click('#tk-list [data-tk-row="r3"]');
+  const rb = await text('#tk-list .tk-row[data-tk-id="r3"]');
+  assert.ok(/Stefano Apostolo/.test(rb) && /marked not needed on Zach’s list/.test(rb) && /taken off In talks .* a stage puts it back/.test(rb), rb);
   assert.equal(await page.$eval('[data-zv-setstage="r3"]', (e) => e.value), '', 'no stage yet');
   await page.selectOption('[data-zv-setstage="r3"]', 'call_booked');
-  await page.waitForFunction(() => document.querySelector('[data-zv-setstage="r3"]') && document.querySelector('[data-zv-setstage="r3"]').value === 'call_booked' &&
-    !/taken off/.test(document.querySelector('.zv-srow:has([data-zv-brand="r3"])').textContent));
+  await page.waitForFunction(() => { const r = document.querySelector('#tk-list .tk-row[data-tk-id="r3"]'); return r && /Call booked/.test(r.querySelector('.tk-name').textContent) && !/taken off/.test(r.textContent); });
   assert.deepEqual(calls.filter((c) => c.fn === 'setTalksStage').slice(-1)[0].args, { brandId: 'r3', stage: 'call_booked' });
-  // Click across: another block replaces it; 10 then all; Out opens too.
-  await page.click('[data-zv-pick="accepted"]');
-  await page.waitForSelector('.zv-open [data-zv-brand="a0"]');
-  assert.equal(await page.$('.zv-open [data-zv-brand="r1"]'), null, 'one block open at a time');
-  assert.equal(await page.$$eval('.zv-open.tk-s-accepted .zv-row', (e) => e.length), 10, '10 first');
-  assert.ok(/3 days late/.test(await page.textContent('.zv-srow:has([data-zv-brand="a0"])')));
-  await page.click('[data-zv-more="accepted"]');
-  assert.equal(await page.$$eval('.zv-open.tk-s-accepted .zv-row', (e) => e.length), 13, 'then all');
-  await page.click('[data-zv-pick="out"]');
-  await page.waitForSelector('.zv-open [data-zv-brand="o1"]');
-  await page.click('[data-zv-pick="out"]');
-  assert.equal(await page.$('.zv-stepcard .zv-open'), null, 'a second click shuts it');
-  await page.click('[data-zv-pick="replied"]');
-  await page.waitForSelector('.zv-open [data-zv-brand="r1"]');
   // Easier to see: big numbers and names.
   const px = (sel) => page.$eval(sel, (e) => parseFloat(getComputedStyle(e).fontSize));
-  assert.ok((await px('.zv-tile .v')) >= 38 && (await px('.zv-block .v')) >= 32 && (await px('.zv-open .zv-row .nm')) >= 17 && (await px('.zv-wk td.now')) >= 22, 'big type');
+  // Zoomed out again: compact numbers.
+  assert.ok((await px('.zv-tile .v')) <= 28 && (await px('.zv-tile .v')) >= 22, 'compact type');
   assert.ok(/Celsius/.test(body) && /3 opens/.test(body) && /\+ 2 opens without a brand code/.test(body));
-  assert.ok(/Where every brand stands/.test(body) && /40 to do/.test(await page.textContent('.zv-blocks')));
+  assert.ok(/40 to do/.test(await page.textContent('#zachtab .tk-tiles')));
   const wk = await page.$$eval('.zv-wk tbody tr', (els) => els.map((e) => e.innerText.replace(/\s+/g, ' ').trim()));
   assert.equal(wk[0], 'LinkedIn invites 74 90 90');
   assert.ok(await page.$('.zv-row .rb-tag'), 'the Outreached / Accepted tag on the Show Board rows');
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'zach-tab.png'), fullPage: true });
-  console.log('✓ seven blocks across (Out too): a click opens its brands with a Stage picker, click across, again shuts; then This week, In talks, Show Board; no Deals card; big type');
+  console.log('✓ every brand reached as In talks had it: seven tiles (Out too) to click across, a card per brand with its deal flow (set when opened); then This week, In talks, Show Board; compact');
 
   // 4. Every card opens its tab
   await page.click('.zv-tile:has-text("Show Board")');
@@ -260,10 +263,11 @@ async function main() {
   await page.click('.zv-tile:has-text("Brands"):not(:has-text("outreached"))');
   await page.waitForFunction(() => document.querySelector('.view.active').id === 'brands');
   await open();
-  await page.click('[data-zv-step="replied"]');   // under the opened Replied block (ZV.step is kept)
-  await page.waitForFunction(() => document.querySelector('.view.active').id === 'tracker');
-  assert.equal(await page.evaluate(() => TK.stage), 'replied', 'only that step');
-  await open();
+  // The old Every brand reached page opens the Overview (deep link, history).
+  await page.evaluate(() => gotoView('tracker'));
+  await page.waitForFunction(() => document.querySelector('.view.active').id === 'zachtab');
+  await page.click('.zv-tile:has-text("Brands outreached to")');
+  await page.waitForFunction(() => document.querySelector('.view.active').id === 'zachtab' && TK.stage === null);
   await page.click('[data-zv-stage="proposal"]');
   await page.waitForFunction(() => document.querySelector('.view.active').id === 'intalks');
   assert.equal(await page.evaluate(() => IT.stageF), 'proposal', 'only that stage');
@@ -275,7 +279,7 @@ async function main() {
   await open();
   await page.click('.zv-row:has-text("Celsius")');
   await page.waitForFunction(() => document.querySelector('.view.active').id === 'board');
-  console.log('✓ every card opens its tab: Show Board, Results, Deals, Brands, Every brand reached (a step), In talks (a stage, a brand)');
+  console.log('✓ every card opens its tab: Show Board, Results, Deals, Brands, In talks (a stage, a brand); Every brand reached is here');
 
   // 5. A phone
   await page.setViewportSize({ width: 390, height: 844 });

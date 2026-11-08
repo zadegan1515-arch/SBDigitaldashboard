@@ -15390,18 +15390,17 @@ const handlers: Record<string, Handler> = {
         elizabeth: { sent: elSent, thisWeek: elSentWeek },
       },
       week: { now: weeks[weeks.length - 1] ?? null, before: weeks[weeks.length - 2] ?? null, goals: score.goals },
-      // Every brand reached's steps, Out included (Leo, Nov 8 2026: the blocks
-      // "Reached Out … In Talks, Out … so that you can click across and see"),
-      // each with its brands for the block that opens: ours to do first, as there.
-      steps: {
-        stages: tracker.stages, counts: tracker.counts, onUs: tracker.onUs, total: tracker.total,
-        brands: Object.fromEntries((tracker.stages as any[]).map(x => [x.key,
-          (tracker.brands as any[]).filter(b => b.stage === x.key).map(b => ({
-            id: b.id, name: b.name, next: b.next, onUs: b.onUs, due: b.due, at: b.at, lastAt: b.lastAt,
-            lead: b.lead ? b.lead.name : null, by: b.lead ? b.lead.by : null, inTalks: stageOf.has(b.id),
-            stage: stageOf.get(b.id) ?? null, removedAt: removedOf.get(b.id) ?? null,
-            deal: b.deal ? { stage: b.deal.stage, name: b.deal.name } : null,
-          }))])),
+      // Every brand reached, whole (Leo, Nov 8 2026: "make this page how you had
+      // it before, with the In talks and how you can switch from Accepted to
+      // Replied to Wants to Continue") — the Overview draws its tiles and brand
+      // cards from this; each brand carries its In talks stage (the deal flow,
+      // set from the opened card), whether it's on In talks, and when it was
+      // taken off.
+      tracker: {
+        ...tracker,
+        brands: (tracker.brands as any[]).map(b => ({
+          ...b, talkStage: stageOf.get(b.id) ?? null, onTalks: stageOf.has(b.id), talksRemovedAt: removedOf.get(b.id) ?? null,
+        })),
       },
       talks: {
         total: tb.length, stages: talks.stages, ends: talks.ends, counts: talks.stageCounts, calls,

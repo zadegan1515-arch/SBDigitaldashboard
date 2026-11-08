@@ -96,6 +96,8 @@ const H = {
   zachTodo: () => ({ brands: [], people: 0, done: [], calls: [], held: [] }),
   acceptedPeople: () => ({ people: [], total: 0, brands: 0 }),
   outreachTracker: () => JSON.parse(JSON.stringify(TRACKER)),
+  // Nov 8 2026: Every brand reached is drawn in Deals → Overview, from zachOverview's tracker.
+  zachOverview: () => ({ tracker: JSON.parse(JSON.stringify(TRACKER)), today: TRACKER.today, brands: {}, outreach: {}, talks: {}, deals: {}, board: {}, week: {} }),
   listInTalks: (a) => ({
     brands: [], suggestions: [], sponsorUrl: 'https://shows.example.com', today: TODAY,
     preview: a.preview ? {
@@ -160,7 +162,7 @@ async function main() {
   assert.equal(await text('.tabs .nav-item[data-view="zachtab"]'), 'Deals');
   await page.evaluate(() => gotoView('tracker'));
   await page.waitForSelector('#tk-list .tk-row');
-  assert.equal(await page.evaluate(() => document.querySelector('.view.active').id), 'tracker');
+  assert.equal(await page.evaluate(() => document.querySelector('.view.active').id), 'zachtab', 'the old page opens the Overview');
   assert.equal(await page.$eval('.tabs.cc-only:not(#sub-tabs) .nav-item.active', (e) => e.textContent), 'Deals');
   assert.deepEqual(await page.$$eval('#sub-tabs .nav-item', (els) => els.map((e) => [e.textContent, e.classList.contains('active')])),
     [['Overview', true], ['In talks', false], ['Deals board', false], ['Sponsorships', false]]);
@@ -229,7 +231,7 @@ async function main() {
   assert.equal(last('getBrand').args.brandId, 'b3');
   assert.equal(await page.evaluate(() => B_FOCUS && B_FOCUS.contactId), 'c3');
   await page.goBack();
-  await page.waitForFunction(() => document.querySelector('.view.active').id === 'tracker');
+  await page.waitForFunction(() => document.querySelector('.view.active').id === 'zachtab');
   await page.waitForSelector('[data-tk-id="b3"] .tk-body');
   // Open its In talks profile: a look at a brand not in talks.
   await page.click('[data-tk-profile="b3"]');
@@ -238,7 +240,7 @@ async function main() {
   assert.equal(await text('.it-name'), 'Olipop');
   assert.ok(/not in talks yet/.test(await text('.it-hero')) && !/replied —/.test(await text('.it-hero')));
   await page.goBack();
-  await page.waitForFunction(() => document.querySelector('.view.active').id === 'tracker');
+  await page.waitForFunction(() => document.querySelector('.view.active').id === 'zachtab');
   await page.waitForSelector('[data-tk-brand="b3"]');
   await page.click('[data-tk-brand="b3"]');
   await page.waitForFunction(() => document.querySelector('.view.active').id === 'brand');
