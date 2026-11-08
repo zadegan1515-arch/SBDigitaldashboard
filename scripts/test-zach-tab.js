@@ -146,9 +146,15 @@ async function main() {
   });
   const text = (sel) => page.textContent(sel);
   const active = () => page.evaluate(() => document.querySelector('.view.active').id);
+  // The Overview on screen (not just its tiles still in the page from before).
   const open = async () => {
     await page.click('.tabs .nav-item[data-view="zachtab"]');
-    await page.waitForSelector('#zv-body .zv-tile');
+    try {
+      await page.waitForFunction(() => { const v = document.querySelector('.view.active'); return v && v.id === 'zachtab'; }, null, { timeout: 8000 });
+    } catch (e) {
+      throw new Error('the Overview never showed — on ' + (await active()) + '; page errors: ' + (errors.join(' | ') || 'none'));
+    }
+    await page.waitForSelector('#zv-body .zv-tile', { state: 'visible' });
   };
 
   await page.goto(base + '/app.html');
