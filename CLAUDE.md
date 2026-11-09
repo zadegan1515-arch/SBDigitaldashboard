@@ -216,7 +216,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   card (`#zv-track`: the In talks tracker itself — `#tk-sub` / `#tk-body` live here, `renderTracker` draws them, its
   listeners are on `#zachtab`): the seven step tiles (Reached out · Accepted · Replied · Wants to continue · Email sent · In
   talks · Out; a click shows only that step, again shows all), So far, find box, Only ones with a step for us, a card per
-  brand under a heading per step; a card carries its **deal flow** pill (the In talks stage) and, opened, its people and
+  brand under a heading per step; every card carries its **Deal flow** picker under its name, no need to open it (Leo, Nov 9 2026: "edit the deal flow straight from that page"); opened, its people. The picker is
   **Deal flow** (`tkFlowHtml`: the In talks stage picker — Leo, Nov 8 2026: "I should be able to edit deal flow from here" —
   `zvSetStage` → `setTalksStage`, which puts it on In talks and from Proposal sent moves the deal; since when, the deal's
   stage, or "taken off In talks <day> — a stage puts it back"; `ZV.busy`, `tkRedrawRow`). Data = `zachOverview.tracker` =

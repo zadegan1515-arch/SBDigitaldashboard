@@ -2403,8 +2403,8 @@
   .zv-row .r{font-size:12.5px;color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
   .zv-row .s{grid-column:1/-1;font-size:12.5px;color:var(--ink-3)}
   .zv-row .it-spill{font-size:12px}
-  /* The deal flow on an opened brand card (tkFlowHtml): its In talks stage, set right there. */
-  .tk-flow{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin:10px 0 2px;padding-top:10px;border-top:1px solid var(--border-soft)}
+  /* The deal flow on every brand card (tkFlowHtml), under its name: its In talks stage, set right there. */
+  .tk-flow{display:flex;align-items:center;gap:6px 12px;flex-wrap:wrap;margin:-4px 0 0;padding:0 16px 11px 14px}
   .tk-flow label{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
   .tk-flow select{font:inherit;font-size:13.5px;font-weight:650;letter-spacing:0;text-transform:none;color:var(--ink-1);
     background:color-mix(in srgb,var(--sc,#5c6070) 18%,#14141a);border:1px solid color-mix(in srgb,var(--sc,#5c6070) 65%,transparent);border-radius:9px;padding:5px 9px;cursor:pointer}
@@ -21778,7 +21778,6 @@ function tkRowHtml(b) {
   if (b.onUs) tags.push('<span class="tk-tag todo">To do</span>');
   if (b.elizabeth) tags.push('<span class="tk-tag el">Elizabeth</span>');
   if (b.archived) tags.push('<span class="tk-tag">archived</span>');
-  if (b.talkStage) tags.push('<span class="it-spill sg-' + esc(b.talkStage.key) + '" title="Deal flow (In talks stage)">' + esc(itTsLabel(b.talkStage.key)) + '</span>');
   var cat = CAT_NAMES[b.category] || b.category || '';
   var head = '<button class="tk-head" data-tk-row="' + esc(b.id) + '" aria-expanded="' + open + '">' +
     '<span class="tk-main">' +
@@ -21789,7 +21788,7 @@ function tkRowHtml(b) {
     '<span class="tk-side"><span class="tk-pill">' + esc(b.stage === 'out' && b.out ? 'Out' : s.label) + '</span>' + tkDotsHtml(b) +
       (b.lastAt ? '<span class="tk-when" title="Last step ' + esc(itDay(b.lastAt)) + '">' + esc(itRel(b.lastAt)) + '</span>' : '') + '</span>' +
     '</button>';
-  return '<div class="tk-row tk-s-' + b.stage + (open ? ' open' : '') + '" data-tk-id="' + esc(b.id) + '">' + head + (open ? tkBodyHtml(b) : '') + '</div>';
+  return '<div class="tk-row tk-s-' + b.stage + (open ? ' open' : '') + '" data-tk-id="' + esc(b.id) + '">' + head + tkFlowHtml(b) + (open ? tkBodyHtml(b) : '') + '</div>';
 }
 
 function tkBodyHtml(b) {
@@ -21814,12 +21813,11 @@ function tkBodyHtml(b) {
       '</div>';
   }).join('');
   return '<div class="tk-body">' + (people || '<div class="tk-empty">Nobody reached on the site yet — it was added to In talks by hand.</div>') +
-    tkFlowHtml(b) +
     '<div class="tk-acts"><button class="btn-solid sm" data-tk-profile="' + esc(b.id) + '">Open its In talks profile</button>' +
     '<button class="btn-ghost sm" data-tk-brand="' + esc(b.id) + '">Brand page →</button></div></div>';
 }
 
-// The deal flow on an opened card: its In talks stage, set right here, since
+// The deal flow on every card (open or not): its In talks stage, set right here, since
 // when, the deal's stage, or why it isn't on In talks (taken off on a day).
 function tkFlowHtml(b) {
   if (b.talkStage === undefined) return '';

@@ -226,16 +226,20 @@ async function main() {
   assert.ok(/3 days late/.test(await text('#tk-list .tk-row')));
   await page.click('#zachtab .tk-tile[data-tk-stage="accepted"]');
   assert.equal(await page.$$eval('#tk-list .tk-row', (e) => e.length), 5, 'again: every brand');
-  // A brand's card: its deal flow pill; opened, its people and the Deal flow picker.
-  assert.ok(/Proposal sent/.test(await text('#tk-list .tk-row[data-tk-id="r2"] .tk-name')), 'the deal flow on the card');
-  await page.click('#tk-list [data-tk-row="r1"]');
+  // Every brand card has its Deal flow picker without opening it.
+  assert.equal(await page.$$eval('#tk-list .tk-row [data-zv-setstage]', (e) => e.length), 5, 'a picker on every card');
+  assert.equal(await page.$eval('[data-zv-setstage="r2"]', (e) => e.value), 'proposal', 'the deal flow on the card');
   assert.equal(await page.$eval('[data-zv-setstage="r1"]', (e) => e.value), 'replied');
-  await page.click('#tk-list [data-tk-row="r3"]');
-  const rb = await text('#tk-list .tk-row[data-tk-id="r3"]');
-  assert.ok(/Stefano Apostolo/.test(rb) && /marked not needed on Zach’s list/.test(rb) && /taken off In talks .* a stage puts it back/.test(rb), rb);
+  assert.equal(await page.$$eval('#tk-list .tk-row.open', (e) => e.length), 0, 'nothing opened');
+  assert.ok(/taken off In talks .* a stage puts it back/.test(await text('#tk-list .tk-row[data-tk-id="r3"]')));
   assert.equal(await page.$eval('[data-zv-setstage="r3"]', (e) => e.value), '', 'no stage yet');
   await page.selectOption('[data-zv-setstage="r3"]', 'call_booked');
-  await page.waitForFunction(() => { const r = document.querySelector('#tk-list .tk-row[data-tk-id="r3"]'); return r && /Call booked/.test(r.querySelector('.tk-name').textContent) && !/taken off/.test(r.textContent); });
+  await page.waitForFunction(() => { const r = document.querySelector('#tk-list .tk-row[data-tk-id="r3"]'); return r && r.querySelector('[data-zv-setstage]').value === 'call_booked' && !/taken off/.test(r.textContent); });
+  assert.equal(await page.$$eval('#tk-list .tk-row.open', (e) => e.length), 0, 'picking a stage opens nothing');
+  // Opened: its people.
+  await page.click('#tk-list [data-tk-row="r3"]');
+  const rb = await text('#tk-list .tk-row[data-tk-id="r3"]');
+  assert.ok(/Stefano Apostolo/.test(rb) && /marked not needed on Zach’s list/.test(rb), rb);
   assert.deepEqual(calls.filter((c) => c.fn === 'setTalksStage').slice(-1)[0].args, { brandId: 'r3', stage: 'call_booked' });
   // Easier to see: big numbers and names.
   const px = (sel) => page.$eval(sel, (e) => parseFloat(getComputedStyle(e).fontSize));
@@ -247,7 +251,7 @@ async function main() {
   assert.equal(wk[0], 'LinkedIn invites 74 90 90');
   assert.ok(await page.$('.zv-row .rb-tag'), 'the Outreached / Accepted tag on the Show Board rows');
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'zach-tab.png'), fullPage: true });
-  console.log('✓ every brand reached as In talks had it: seven tiles (Out too) to click across, a card per brand with its deal flow (set when opened); then This week, In talks, Show Board; compact');
+  console.log('✓ every brand reached as In talks had it: seven tiles (Out too) to click across, a card per brand with its deal flow picker right on it; then This week, In talks, Show Board; compact');
 
   // 4. Every card opens its tab
   await page.click('.zv-tile:has-text("Show Board")');
