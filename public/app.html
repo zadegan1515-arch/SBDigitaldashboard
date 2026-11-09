@@ -2420,7 +2420,7 @@
      email"). A tile per step, then one row per brand; a row opens its people. ---- */
   #tracker.page{padding-top:30px}
   .tk-s-reached{--stage:#8a8fa3} .tk-s-accepted{--stage:var(--accent)} .tk-s-replied{--stage:var(--blue)}
-  .tk-s-continue{--stage:var(--warn)} .tk-s-emailed{--stage:var(--cat-5)} .tk-s-talks{--stage:var(--good)} .tk-s-out{--stage:#6b6f80}
+  .tk-s-continue{--stage:var(--warn)} .tk-s-lireply{--stage:#2bb3a3} .tk-s-emailed{--stage:var(--cat-5)} .tk-s-talks{--stage:var(--good)} .tk-s-out{--stage:#6b6f80}
   .tk-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:20px}
   .tk-tile{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;padding:12px 14px 13px;
     border:1px solid var(--border);border-top:3px solid var(--stage);border-radius:12px;background:var(--surface-2);color:inherit;
@@ -2475,8 +2475,29 @@
   .tk-when{font-size:13px;color:var(--ink-3);white-space:nowrap}
   .tk-body{padding:4px 16px 14px 14px;border-top:1px solid var(--border-soft)}
   .tk-person{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 4px;border-bottom:1px solid var(--border-soft)}
-  .tk-person[data-brand]{cursor:pointer}
-  .tk-person[data-brand]:hover .tk-pname{text-decoration:underline}
+  .tk-phead{display:block;min-width:0;padding:2px 4px;margin:-2px -4px;background:none;border:0;border-radius:8px;color:inherit;font:inherit;text-align:left;cursor:pointer}
+  .tk-phead:hover{background:rgba(255,255,255,.03)}
+  .tk-phead:hover .tk-pname{text-decoration:underline}
+  .tk-phead:focus-visible{outline:2px solid var(--ring);outline-offset:1px}
+  .tk-pchev{font-size:12px;color:var(--ink-3)}
+  /* A person's chart (tkChartHtml): the steps in a line, theirs ringed; a click sets it. */
+  .tk-chart{grid-column:1/-1;margin:8px 0 2px;padding:12px 12px 10px;border:1px solid var(--border-soft);border-radius:10px;background:rgba(0,0,0,.18)}
+  .tk-cline{display:flex;align-items:flex-start;gap:0;overflow-x:auto;padding-bottom:2px}
+  .tk-cn{flex:1 1 0;min-width:54px;display:flex;flex-direction:column;align-items:center;gap:6px;padding:4px 1px;background:none;border:0;border-radius:8px;
+    color:var(--ink-3);font:inherit;cursor:pointer}
+  .tk-cn:hover:not(:disabled){background:rgba(255,255,255,.04);color:var(--ink-1)}
+  .tk-cn:disabled{cursor:default}
+  .tk-cn .d{width:16px;height:16px;border-radius:50%;background:#2e2e3a;border:2px solid #3a3a48}
+  .tk-cn .t{font-size:12px;font-weight:650;line-height:1.2;text-align:center;overflow-wrap:anywhere}
+  .tk-cn.done .d{background:color-mix(in srgb,var(--stage) 55%,#2e2e3a);border-color:var(--stage)}
+  .tk-cn.done .t{color:var(--ink-2)}
+  .tk-cn.now .d{background:var(--stage);border-color:var(--stage);box-shadow:0 0 0 4px color-mix(in srgb,var(--stage) 30%,transparent)}
+  .tk-cn.now .t{color:var(--ink-1);font-weight:800}
+  .tk-cl{flex:0 1 12px;min-width:3px;height:2px;margin-top:13px;background:#2e2e3a}
+  .tk-cl.on{background:color-mix(in srgb,var(--good) 60%,#2e2e3a)}
+  .tk-csep{flex:0 0 1px;align-self:stretch;margin:0 4px;background:var(--border-soft)}
+  .tk-cnote{margin-top:6px;font-size:12.5px;color:var(--ink-3)}
+  .tk-cnote .tk-clear{font-size:12.5px}
   .tk-pname{font-size:15px;font-weight:700;color:var(--ink-1)}
   .tk-ptitle{font-size:13.5px;color:var(--ink-3);font-weight:400}
   .tk-pnext{font-size:14px;color:var(--ink-2);margin-top:2px}
@@ -21643,8 +21664,8 @@ function bTalksBind(b) {
 // steps themselves are ticked on Zach's list / the brand page / Elizabeth's
 // tab. Data = outreachTracker (route.ts; rules in src/lib/tracker.ts).
 
-var TK = { data: null, stage: null, q: '', mine: false, open: {}, more: {} };
-var TK_DOTS = [['reached', 'Reached out'], ['accepted', 'Accepted'], ['replied', 'Replied'], ['continue', 'Wants to continue'], ['emailed', 'Email sent'], ['talks', 'In talks']];
+var TK = { data: null, stage: null, q: '', mine: false, open: {}, more: {}, popen: {}, pbusy: {} };
+var TK_DOTS = [['reached', 'Reached out'], ['accepted', 'Accepted'], ['replied', 'Replied'], ['continue', 'Wants to continue'], ['lireply', 'LinkedIn response'], ['emailed', 'Email sent'], ['talks', 'In talks']];
 var TK_PAGE = 40;
 
 // Every brand reached lives in the Overview now (Leo, Nov 8 2026): its old
@@ -21716,7 +21737,7 @@ function renderTracker() {
   var ev = d.ever || {};
   document.getElementById('tk-ever').innerHTML = total
     ? 'So far: <b>' + (ev.reached || 0) + '</b> reached out to · <b>' + (ev.accepted || 0) + '</b> had someone accept · <b>' + (ev.replied || 0) +
-      '</b> replied · <b>' + (ev['continue'] || 0) + '</b> wanted to continue · <b>' + (ev.emailed || 0) + '</b> got the email · <b>' + (ev.talks || 0) + '</b> in talks'
+      '</b> replied · <b>' + (ev['continue'] || 0) + '</b> wanted to continue · <b>' + (ev.lireply || 0) + '</b> got a LinkedIn answer · <b>' + (ev.emailed || 0) + '</b> got the email · <b>' + (ev.talks || 0) + '</b> in talks'
     : '';
   var mineBtn = document.getElementById('tk-mine');
   mineBtn.classList.toggle('active', TK.mine);
@@ -21804,12 +21825,17 @@ function tkBodyHtml(b) {
     var links = [];
     if (p.linkedinUrl) links.push('<a class="it-chip" href="' + esc(itHref(p.linkedinUrl)) + '" target="_blank" rel="noopener">' + IT_ICON.li + 'LinkedIn</a>');
     if (p.email) links.push('<a class="it-chip" href="' + esc(gmailCompose(p.email, 'SB Agency × ' + b.name, '')) + '" target="_blank" rel="noopener" title="Opens a Gmail draft — nothing sends from here">' + IT_ICON.mail + 'Email</a>');
-    var focus = p.contactId ? ' data-brand="' + esc(b.id) + '" data-focus="' + esc(p.contactId) + '" title="Open ' + esc(b.name) + ' at ' + esc(p.name) + '"' : '';
-    return '<div class="tk-person tk-s-' + p.stage + '"' + focus + '>' +
-      '<div style="min-width:0"><div><span class="tk-pname">' + esc(p.name) + '</span>' + (p.title ? ' <span class="tk-ptitle">— ' + esc(p.title) + '</span>' : '') + '</div>' +
+    if (p.contactId) links.push('<button class="it-chip" data-brand="' + esc(b.id) + '" data-focus="' + esc(p.contactId) + '" title="Open ' + esc(b.name) + ' at ' + esc(p.name) + '">Brand page →</button>');
+    var pk = p.key || '';
+    var popen = !!TK.popen[pk];
+    return '<div class="tk-person tk-s-' + p.stage + (popen ? ' popen' : '') + '">' +
+      '<button class="tk-phead" data-tk-person="' + esc(pk) + '" aria-expanded="' + popen + '" title="Click to see and set ' + esc(p.name) + '’s steps">' +
+        '<div><span class="tk-pname">' + esc(p.name) + '</span>' + (p.title ? ' <span class="tk-ptitle">— ' + esc(p.title) + '</span>' : '') +
+          ' <span class="tk-pchev" aria-hidden="true">' + (popen ? '▾' : '▸') + '</span></div>' +
         '<div class="tk-pnext"><span class="tk-pill">' + esc(p.stage === 'out' ? 'Out' : stg.label) + '</span> ' + esc(p.next || p.label) + tkDueHtml(p) + '</div>' +
-        '<div class="tk-pdates">' + esc(by) + (dates.length ? ' · ' + esc(dates.join(' · ')) : '') + '</div></div>' +
+        '<div class="tk-pdates">' + esc(by) + (dates.length ? ' · ' + esc(dates.join(' · ')) : '') + '</div></button>' +
       '<div class="tk-plinks">' + links.join('') + '</div>' +
+      (popen ? tkChartHtml(p) : '') +
       '</div>';
   }).join('');
   return '<div class="tk-body">' + (people || '<div class="tk-empty">Nobody reached on the site yet — it was added to In talks by hand.</div>') +
@@ -21832,6 +21858,51 @@ function tkFlowHtml(b) {
   if (!b.onTalks) info.push(b.talksRemovedAt ? 'taken off In talks ' + itDay(b.talksRemovedAt) + ' — a stage puts it back' : 'not on In talks yet — a stage puts it there');
   return '<div class="tk-flow sg-' + esc(cur || 'none') + '"><label>Deal flow <select data-zv-setstage="' + esc(b.id) + '"' + (ZV.busy[b.id] ? ' disabled' : '') + '>' + opts + '</select></label>' +
     (info.length ? '<span class="tk-flow-i">' + esc(info.join(' · ')) + '</span>' : '') + '</div>';
+}
+
+// One person's steps as a chart (Leo, Nov 9 2026: "click on each person and edit
+// their deal flow through a chart"): the outreach steps in a line, lit as far
+// as they got, theirs ringed; Out apart. A click puts them on that step by hand
+// (setTrackerStage) — only here; Zach's list stays as it is, and anything newer
+// that happens on their row moves them on. Undo takes the last mark back.
+function tkChartHtml(p) {
+  var pk = p.key || '';
+  var busy = !!TK.pbusy[pk];
+  var got = {};
+  (p.steps || []).forEach(function (k) { got[k] = true; });
+  var first = String(p.name || '').split(' ')[0] || 'them';
+  var nodes = TK_DOTS.map(function (x, i) {
+    var cls = 'tk-cn tk-s-' + x[0] + (p.stage === x[0] ? ' now' : got[x[0]] ? ' done' : '');
+    return (i ? '<i class="tk-cl' + (got[x[0]] || p.stage === x[0] ? ' on' : '') + '" aria-hidden="true"></i>' : '') +
+      '<button class="' + cls + '" data-tk-setp="' + esc(pk) + '" data-st="' + x[0] + '"' + (busy || p.stage === x[0] ? ' disabled' : '') +
+      ' title="Put ' + esc(first) + ' on ' + esc(x[1]) + '"><span class="d"></span><span class="t">' + esc(x[1]) + '</span></button>';
+  }).join('');
+  var out = '<button class="tk-cn tk-cout tk-s-out' + (p.stage === 'out' ? ' now' : '') + '" data-tk-setp="' + esc(pk) + '" data-st="out"' +
+    (busy || p.stage === 'out' ? ' disabled' : '') + ' title="Put ' + esc(first) + ' on Out"><span class="d"></span><span class="t">Out</span></button>';
+  var note = p.hand
+    ? 'Set by hand ' + itDay(p.hand.at) + (p.hand.by ? ' (' + String(p.hand.by).split('@')[0] + ')' : '') + ' — stays until something newer happens'
+    : 'Click a step to put ' + first + ' there — only here, Zach’s list stays as it is';
+  return '<div class="tk-chart" role="group" aria-label="' + esc(p.name) + '’s steps">' +
+    '<div class="tk-cline">' + nodes + '<span class="tk-csep" aria-hidden="true"></span>' + out + '</div>' +
+    '<div class="tk-cnote">' + esc(note) + (p.canUndo ? ' · <button class="tk-clear" data-tk-undop="' + esc(pk) + '"' + (busy ? ' disabled' : '') + '>Undo</button>' : '') + '</div></div>';
+}
+function tkSetPerson(pk, stage, undo) {
+  TK.pbusy[pk] = true;
+  tkRedrawPerson(pk);
+  api('setTrackerStage', undo ? { key: pk, undo: true } : { key: pk, stage: stage }).then(function (r) {
+    delete TK.pbusy[pk];
+    toast(undo ? 'Took back ' + r.name + '’s step' + (r.stage ? ' — back on ' + tkStage(r.stage).label : '')
+      : 'Put ' + r.name + ' (' + r.brandName + ') on ' + tkStage(r.stage).label);
+    loadZachTab();
+  }).catch(function (e) {
+    delete TK.pbusy[pk];
+    toast(e.message);
+    tkRedrawPerson(pk);
+  });
+}
+function tkRedrawPerson(pk) {
+  var b = ((TK.data && TK.data.brands) || []).filter(function (x) { return (x.people || []).some(function (p) { return p.key === pk; }); })[0];
+  if (b) tkRedrawRow(b.id);
 }
 
 // The brand's In talks profile (a brand not in talks opens as a look —
@@ -21870,6 +21941,13 @@ function tkOpenProfile(id) {
       if (b && row) row.outerHTML = tkRowHtml(b);
       return;
     }
+    if ((v = t.getAttribute('data-tk-person')) !== null && t.hasAttribute('data-tk-person')) {
+      if (TK.popen[v]) delete TK.popen[v]; else TK.popen[v] = true;
+      tkRedrawPerson(v);
+      return;
+    }
+    if ((v = t.getAttribute('data-tk-setp'))) { tkSetPerson(v, t.getAttribute('data-st'), false); return; }
+    if ((v = t.getAttribute('data-tk-undop'))) { tkSetPerson(v, null, true); return; }
     if ((v = t.getAttribute('data-tk-profile'))) { tkOpenProfile(v); return; }
     if ((v = t.getAttribute('data-tk-brand'))) { loadBrand(v); return; }
     if ((v = t.getAttribute('data-focus'))) { loadBrand(t.getAttribute('data-brand'), v); return; }

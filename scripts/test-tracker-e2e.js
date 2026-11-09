@@ -152,7 +152,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
 
     // Order: furthest step first, Out last.
     const order = r.brands.map(b => b.stage)
-    const rank = { talks: 0, emailed: 1, continue: 2, replied: 3, accepted: 4, reached: 5, out: 6 }
+    const rank = { talks: 0, emailed: 1, lireply: 1.5, continue: 2, replied: 3, accepted: 4, reached: 5, out: 6 }
     assert.deepEqual(order, [...order].sort((a, b) => rank[a] - rank[b]), 'furthest step first: ' + order.join(','))
     // Inside Replied: Rita (Zach, ours to do) and Elizabeth's — both ours.
     assert.ok(by.b_rep.onUs && by.b_el.onUs)
@@ -182,7 +182,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
 
     // Counts.
     assert.equal(r.total, 15)
-    assert.deepEqual(r.counts, { reached: 1, accepted: 3, replied: 2, continue: 1, emailed: 1, talks: 3, out: 4 })
+    assert.deepEqual(r.counts, { reached: 1, accepted: 3, replied: 2, continue: 1, lireply: 0, emailed: 1, talks: 3, out: 4 })
     assert.equal(r.onUs.replied, 2)
     assert.equal(r.onUs.continue, 1)
     // So far: every brand reached; accepted = anyone accepted, also the ones out since.
@@ -193,12 +193,45 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(r.ever.continue, 2)
     assert.equal(r.ever.emailed, 1)
     assert.equal(r.ever.talks, 4)    // call, hand, deal, and Off Co's call before it came off
-    assert.deepEqual(r.stages.map(s => s.key), ['reached', 'accepted', 'replied', 'continue', 'emailed', 'talks', 'out'])
+    assert.deepEqual(r.stages.map(s => s.key), ['reached', 'accepted', 'replied', 'continue', 'lireply', 'emailed', 'talks', 'out'])
     ok('the counts per step, ours to do, and the so-far numbers');
 
     // Read-only: nothing changed, no ClaudeAction.
     assert.equal(await prisma.claudeAction.count({ where: { fn: 'outreachTracker' } }), 0)
     ok('read-only: never logged as a change');
+
+    // LinkedIn response (Leo, Nov 9 2026): they replied, wanted LinkedIn, we answered there — waiting on them.
+    await brand('b_li', 'Li Co')
+    await mk('b_li', 'Lee Linked', 'Partnerships', { status: 'replied', sentAt: D(12), repliedAt: D(6), handLiPathAt: D(6), handLiSentAt: D(4) }, D(10))
+    // A person's step set by hand on their chart: only a mark, Zach's list untouched.
+    const al = await prisma.target.findFirst({ where: { brandId: 'b_acc' } })
+    const before = JSON.stringify(al)
+    const set = await data('setTrackerStage', { key: 't:' + al.id, stage: 'replied' })
+    assert.equal(set.name, 'Al Accept'); assert.equal(set.brandName, 'Accept Co'); assert.equal(set.stage, 'replied')
+    let r2 = await data('outreachTracker')
+    const by2 = Object.fromEntries(r2.brands.map(b => [b.id, b]))
+    assert.equal(by2.b_li.stage, 'lireply'); assert.ok(/Answered on LinkedIn .* — waiting on them/.test(by2.b_li.next), by2.b_li.next)
+    assert.deepEqual(by2.b_li.people[0].steps, ['reached', 'accepted', 'replied', 'continue', 'lireply'])
+    assert.equal(r2.counts.lireply, 1)
+    const alp = by2.b_acc.people.find(p => p.key === 't:' + al.id)
+    assert.equal(alp.stage, 'replied'); assert.equal(alp.hand.stage, 'replied'); assert.equal(alp.canUndo, true)
+    assert.equal(by2.b_acc.stage, 'replied')
+    assert.equal(JSON.stringify(await prisma.target.findUnique({ where: { id: al.id } })), before, 'the row itself unchanged')
+    assert.equal(await prisma.claudeAction.count({ where: { fn: 'setTrackerStage' } }), 1)
+    await assert.rejects(data('setTrackerStage', { key: 't:' + al.id, stage: 'nope' }))
+    await assert.rejects(data('setTrackerStage', { key: 'x:1', stage: 'replied' }))
+    // Undo: back to what happened.
+    const un = await data('setTrackerStage', { key: 't:' + al.id, undo: true })
+    assert.equal(un.stage, null); assert.equal(un.undone, 'replied')
+    r2 = await data('outreachTracker')
+    assert.equal(r2.brands.find(b => b.id === 'b_acc').stage, 'accepted')
+    await assert.rejects(data('setTrackerStage', { key: 't:' + al.id, undo: true }), /Nothing to undo/)
+    // Something newer on the row wins over a mark.
+    await data('setTrackerStage', { key: 't:' + al.id, stage: 'out' })
+    assert.equal((await data('outreachTracker')).brands.find(b => b.id === 'b_acc').stage, 'out')
+    await prisma.target.update({ where: { id: al.id }, data: { dmSentAt: new Date(Date.now() + 1000) } })
+    assert.equal((await data('outreachTracker')).brands.find(b => b.id === 'b_acc').stage, 'accepted')
+    ok('LinkedIn response; a person set on a step by hand, Undo, newer news wins');
   } finally {
     if (prisma) await prisma.$disconnect().catch(() => {});
     if (server) { try { process.kill(-server.pid, 'SIGTERM'); } catch (e) {} }

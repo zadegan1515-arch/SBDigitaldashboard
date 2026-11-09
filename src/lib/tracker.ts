@@ -17,30 +17,35 @@
 import { isAccepted } from './accepted'
 import { addDays, nyKey, onSendingDay, standing } from './rep-outreach'
 
-export type StageKey = 'reached' | 'accepted' | 'replied' | 'continue' | 'emailed' | 'talks' | 'out'
+export type StageKey = 'reached' | 'accepted' | 'replied' | 'continue' | 'lireply' | 'emailed' | 'talks' | 'out'
 
 export const STAGES: Array<{ key: StageKey; label: string; hint: string }> = [
   { key: 'reached', label: 'Reached out', hint: 'Invite or email out — no answer yet' },
   { key: 'accepted', label: 'Accepted', hint: 'Accepted on LinkedIn — no reply yet' },
   { key: 'replied', label: 'Replied', hint: 'Wrote back — how do they want to continue?' },
   { key: 'continue', label: 'Wants to continue', hint: 'Asked for an email or a LinkedIn DM — send it' },
+  // Leo, Nov 9 2026: "a stage that says linkedin response … when we respond on
+  // linkedin but they dont respond back after they already have".
+  { key: 'lireply', label: 'LinkedIn response', hint: 'We answered them on LinkedIn — waiting on them' },
   { key: 'emailed', label: 'Email sent', hint: 'We sent it — next, book the call' },
   { key: 'talks', label: 'In talks', hint: 'Call booked, or a deal going' },
   { key: 'out', label: 'Out', hint: 'Said no, doesn’t want to continue, or never answered' },
 ]
-const RANK: Record<StageKey, number> = { reached: 0, accepted: 1, replied: 2, continue: 3, emailed: 4, talks: 5, out: -1 }
+const RANK: Record<StageKey, number> = { reached: 0, accepted: 1, replied: 2, continue: 3, lireply: 4, emailed: 5, talks: 6, out: -1 }
+export const isStageKey = (v: unknown): v is StageKey => typeof v === 'string' && v in RANK
 export const stageRank = (s: StageKey) => RANK[s]
 
-export type OutReason = 'stopped' | 'no' | 'quiet' | 'lost' | 'removed'
+export type OutReason = 'stopped' | 'no' | 'quiet' | 'lost' | 'removed' | 'hand'
 export const OUT_TEXT: Record<OutReason, string> = {
   stopped: 'Doesn’t want to continue',
   no: 'Said no',
   quiet: 'No response after the last follow-up',
   lost: 'Deal lost',
   removed: 'Taken off In talks',
+  hand: 'Marked out by hand',
 }
 // Which reason a brand shows when everyone there is out: the strongest one.
-const OUT_ORDER: OutReason[] = ['stopped', 'no', 'lost', 'removed', 'quiet']
+const OUT_ORDER: OutReason[] = ['stopped', 'no', 'lost', 'removed', 'hand', 'quiet']
 
 // Zach's list's cadence (route.ts HAND_DM_DAYS / HAND_NUDGE_DAYS /
 // HAND_QUIET_DAYS): text them 2 days after the accept (on a Tue–Thu), the
@@ -62,6 +67,7 @@ export type PersonStage = {
   at: Date | null        // when they reached this step
   lastAt: Date | null    // the latest dated step on the row
   callAt: Date | null    // a call booked with them (any day)
+  hand?: HandMark | null // set by hand on Deals → Overview (handStage)
 }
 
 // ---- Zach's rows ----------------------------------------------------
@@ -140,6 +146,11 @@ export function zachStage(t: ZachFacts, now = new Date()): PersonStage {
         next: emailTodo ? 'Send them the email' : 'Send them the LinkedIn DM',
       }
     }
+    // Answered on LinkedIn (the DM they asked for) and no email: LinkedIn
+    // response — waiting on them to write back.
+    if (t.liSentAt && !t.emailedAt) {
+      return { ...base, stage: 'lireply', out: null, onUs: false, at: dt(t.liSentAt), label: 'LinkedIn response', next: 'Answered on LinkedIn ' + fmt(t.liSentAt) + ' — waiting on them' }
+    }
     if (t.emailedAt || t.liSentAt) {
       const sentWhat = t.emailedAt ? 'Emailed ' + fmt(t.emailedAt) : 'DM sent ' + fmt(t.liSentAt)
       // Zach's list keeps "Call to book" under Waiting (Leo, Oct 6: not urgent).
@@ -183,6 +194,33 @@ export function zachStage(t: ZachFacts, now = new Date()): PersonStage {
 
 function dayName(k: string): string {
   return new Date(k + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+}
+
+// ---- a step set by hand (Leo, Nov 9 2026: "click on each person and edit
+// their deal flow through a chart"; his picks: the outreach steps, a hand mark
+// on Deals only — Zach's list isn't changed — and anything newer that happens
+// moves them on). The mark stands while nothing on the row is newer.
+
+export type HandMark = { stage: StageKey; at: string; by: string | null }
+
+export function handStage(p: PersonStage, mark: HandMark | null | undefined): PersonStage {
+  if (!mark || !isStageKey(mark.stage)) return p
+  const at = new Date(mark.at)
+  if (isNaN(at.getTime())) return p
+  if (p.lastAt && p.lastAt > at) return p          // something newer happened
+  const label = STAGES.find(x => x.key === mark.stage)?.label ?? mark.stage
+  return {
+    ...p, stage: mark.stage, out: mark.stage === 'out' ? 'hand' : null, onUs: false, due: null, at,
+    label: label.toLowerCase(), next: label + ' — set by hand ' + fmt(at), hand: mark,
+  }
+}
+
+// The steps a person shows lit on their chart: what they got through, plus a
+// step set by hand.
+export function chartSteps(steps: StageKey[], p: PersonStage): StageKey[] {
+  const set = new Set(steps)
+  if (p.hand && p.stage !== 'out') set.add(p.stage)
+  return STAGES.map(s => s.key).filter(k => set.has(k))
 }
 
 // ---- Elizabeth's rows -------------------------------------------------
@@ -258,7 +296,7 @@ export function brandStage(people: PersonStage[], f: BrandFacts, now = new Date(
   const lastAt = latest(...people.map(p => p.lastAt))
   const calls = people.filter(p => p.stage === 'talks' && p.callAt && nyKey(p.callAt) >= today).map(p => p.callAt as Date)
   const nextCallAt = calls.length ? new Date(Math.min(...calls.map(d => d.getTime()))) : null
-  const ps = people.map(p => (p.stage === 'talks' && !f.talksOn
+  const ps = people.map(p => (p.stage === 'talks' && !f.talksOn && !p.hand
     ? { ...p, stage: 'out' as StageKey, out: 'removed' as OutReason, label: OUT_TEXT.removed.toLowerCase(), next: OUT_TEXT.removed, onUs: false }
     : p))
   const res = (stage: StageKey, out: OutReason | null, next: string, onUs: boolean, lead: number, at: Date | null): BrandStage =>
@@ -280,7 +318,7 @@ export function brandStage(people: PersonStage[], f: BrandFacts, now = new Date(
     return res('out', 'stopped', OUT_TEXT.stopped, false, i, i >= 0 ? ps[i].at : null)
   }
   const dealOpen = !!f.deal && f.deal.stage !== 'lost'
-  if (f.talksOn || dealOpen) {
+  if (f.talksOn || dealOpen || ps.some(p => p.hand && p.stage === 'talks')) {
     const i = bestIn(p => p.stage === 'talks')
     const next = nextCallAt ? 'Call ' + fmt(nextCallAt)
       : dealOpen ? 'Deal · ' + dealWord(f.deal!.stage)
@@ -335,7 +373,8 @@ export function zachSteps(t: ZachFacts): StageKey[] {
     (accepted && !!(t.wantsEmailAt || t.liPathAt || t.liSentAt || t.emailedAt))
   if (replied) out.push('replied')
   if (t.wantsEmailAt || t.liPathAt) out.push('continue')
-  if ((t.emailedAt && replied) || t.liSentAt) out.push('emailed')
+  if (t.liSentAt) out.push('lireply')
+  if (t.emailedAt && replied) out.push('emailed')
   if (t.callAt || t.callBookedAt || t.status === 'converted') out.push('talks')
   return out
 }

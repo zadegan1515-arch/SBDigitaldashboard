@@ -96,6 +96,7 @@ import {
   zachStage as trackZach, zachReached as trackZachReached, repStage as trackRep, repReached as trackRepReached,
   brandStage as trackBrand, compareTracker, zachSteps as trackZachSteps, repSteps as trackRepSteps,
   STAGES as TRACK_STAGES, stageRank as trackRank, type StageKey as TrackStage, type PersonStage as TrackPerson,
+  handStage as trackHand, chartSteps as trackChartSteps, isStageKey as isTrackStage, type HandMark as TrackMark,
 } from '@/lib/tracker'
 import {
   REP, REP_NAME, REP_DAILY, REP_LI_WEEK, REP_DAYS, REP_PLAN_KEY, REP_TPL_KEY, REP_ACCOUNTS_KEY, PLAN_KEEP_DAYS,
@@ -3325,6 +3326,38 @@ async function readBankState(): Promise<BankState> {
 }
 // One writer at a time: two quick clicks (+ Add, ×) each read the list
 // and wrote it back, and the second undid the first.
+// Deals → Overview: a person's step set by hand (Leo, Nov 9 2026). Setting
+// trackerMarks = { 't:<targetId>' | 'e:<repId>': [mark, …] } — the last is
+// the one that counts, the ones before are its Undo. Zach's list isn't touched.
+const TRACKER_MARKS_KEY = 'trackerMarks'
+type TrackerMarks = Record<string, TrackMark[]>
+function cleanTrackerMarks(v: unknown): TrackerMarks {
+  const out: TrackerMarks = {}
+  if (!v || typeof v !== 'object') return out
+  for (const [k, list] of Object.entries(v as Record<string, unknown>)) {
+    if (!/^[te]:[\w-]+$/.test(k) || !Array.isArray(list)) continue
+    const ms = list.filter((m: any) => m && isTrackStage(m.stage) && typeof m.at === 'string' && m.stage !== undefined)
+      .map((m: any) => ({ stage: m.stage, at: m.at, by: m.by ?? null }))
+    if (ms.length) out[k] = ms.slice(-10)
+  }
+  return out
+}
+async function readTrackerMarks(): Promise<TrackerMarks> {
+  return cleanTrackerMarks(await readJsonSetting<unknown>(prisma, TRACKER_MARKS_KEY, {}))
+}
+async function updateTrackerMarks(fn: (m: TrackerMarks) => TrackerMarks): Promise<TrackerMarks> {
+  return prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${TRACKER_MARKS_KEY}))::text`
+    const row = await tx.setting.findUnique({ where: { key: TRACKER_MARKS_KEY } })
+    let v: unknown = null
+    try { v = row ? JSON.parse(row.value) : null } catch { v = null }
+    const next = cleanTrackerMarks(fn(cleanTrackerMarks(v)))
+    const value = JSON.stringify(next)
+    await tx.setting.upsert({ where: { key: TRACKER_MARKS_KEY }, create: { key: TRACKER_MARKS_KEY, value }, update: { value } })
+    return next
+  })
+}
+
 async function updateBankState(fn: (s: BankState) => BankState): Promise<BankState> {
   return prisma.$transaction(async tx => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${BANK_KEY}))::text`
@@ -15121,7 +15154,7 @@ const handlers: Record<string, Handler> = {
   // people there and what's next. Read-only; rules in src/lib/tracker.ts.
   async outreachTracker() {
     const now = new Date()
-    const [targets, reps, talks] = await Promise.all([
+    const [targets, reps, talks, marks] = await Promise.all([
       prisma.target.findMany({
         where: REACHED_WHERE,
         select: {
@@ -15143,7 +15176,9 @@ const handlers: Record<string, Handler> = {
         take: 20000,
       }),
       talksMembership(),
+      readTrackerMarks(),
     ])
+    const markOf = (k: string) => { const l = marks[k]; return l && l.length ? l[l.length - 1] : null }
     const ids = [...new Set([...targets.map(t => t.brandId), ...reps.map(r => r.brandId as string), ...talks.onIds])]
     // A person on the Show Board (kind 'person') is never a brand here.
     // (Filtered in code: `kind: { not: 'person' }` would drop every null kind too.)
@@ -15175,9 +15210,9 @@ const handlers: Record<string, Handler> = {
       // A call before callBookedAt was kept counts from the row's creation
       // (talksMembership's rule).
       if (t.callAt || t.callBookedAt) callsBy.set(t.brandId, [...(callsBy.get(t.brandId) ?? []), t.callBookedAt ?? t.createdAt])
-      const s = trackZach(facts, now)
+      const s = trackHand(trackZach(facts, now), markOf('t:' + t.id))
       add(t.brandId, {
-        ...s, steps: trackZachSteps(facts),
+        ...s, steps: trackChartSteps(trackZachSteps(facts), s),
         row: {
           key: 't:' + t.id, by: 'zach', channel: t.sentAt || facts.acceptedAt || ['accepted', 'replied', 'converted'].includes(t.status) ? 'linkedin' : 'email',
           contactId: t.contact.id, name: t.contact.name, title: t.contact.title, email: t.contact.email, linkedinUrl: t.contact.linkedinUrl,
@@ -15190,9 +15225,9 @@ const handlers: Record<string, Handler> = {
       if (!trackRepReached(r)) continue
       const id = r.brandId as string
       if (r.callAt || r.callBookedAt || r.status === 'call') callsBy.set(id, [...(callsBy.get(id) ?? []), r.callBookedAt ?? r.callAt ?? r.updatedAt])
-      const s = trackRep(r, now)
+      const s = trackHand(trackRep(r, now), markOf('e:' + r.id))
       add(id, {
-        ...s, steps: trackRepSteps(r),
+        ...s, steps: trackChartSteps(trackRepSteps(r), s),
         row: {
           key: 'e:' + r.id, by: 'elizabeth', channel: r.channel,
           contactId: r.contactId, name: r.name, title: r.title, email: r.email, linkedinUrl: r.linkedinUrl,
@@ -15232,6 +15267,7 @@ const handlers: Record<string, Handler> = {
         steps: TRACK_STAGES.map(x => x.key).filter(k => reachedSteps.has(k)),
         people: ps.map(p => ({
           ...p.row, stage: p.stage, out: p.out, label: p.label, next: p.next, onUs: p.onUs, due: p.due, at: iso(p.at), lastAt: iso(p.lastAt),
+          steps: p.steps, hand: p.hand ?? null, canUndo: !!marks[p.row.key as string]?.length,
         })),
         _sort: { name: b.name, stage: st.stage, onUs: st.onUs, due, lastAt: st.lastAt, nextCallAt: st.nextCallAt },
       }
@@ -15243,6 +15279,33 @@ const handlers: Record<string, Handler> = {
       stages: TRACK_STAGES, counts, onUs, ever, total: rows.length,
       today: localDayKey(now),
     }
+  },
+
+  // Deals → Overview: put one person on a step by hand (their chart). Only a
+  // mark here — Zach's list, the queue and the person's row stay as they are.
+  // key = 't:<targetId>' (Zach) or 'e:<repId>' (Elizabeth). undo = take the
+  // last mark back (the one before it, or none, counts again).
+  async setTrackerStage({ key, stage, undo, __user }: any) {
+    const k = String(key || '')
+    const m = /^([te]):([\w-]+)$/.exec(k)
+    if (!m) throw new Error('Unknown person')
+    if (!undo && !isTrackStage(stage)) throw new Error('Unknown step')
+    const who = m[1] === 't'
+      ? await prisma.target.findUnique({ where: { id: m[2] }, select: { brandId: true, brand: { select: { name: true } }, contact: { select: { name: true } } } })
+        .then(t => (t ? { brandId: t.brandId, brandName: t.brand.name, name: t.contact.name } : null))
+      : await prisma.repOutreach.findUnique({ where: { id: m[2] }, select: { brandId: true, brandName: true, name: true } })
+        .then(r => (r ? { brandId: r.brandId, brandName: r.brandName, name: r.name } : null))
+    if (!who) throw new Error('Person not found')
+    let undone: TrackMark | null = null
+    const next = await updateTrackerMarks(all => {
+      const list = [...(all[k] ?? [])]
+      if (undo) { undone = list.pop() ?? null }
+      else list.push({ stage, at: new Date().toISOString(), by: __user === 'CLI' ? 'Claude' : (__user ?? null) })
+      return { ...all, [k]: list }
+    })
+    if (undo && !undone) throw new Error('Nothing to undo for ' + who.name)
+    const cur = next[k]?.length ? next[k][next[k].length - 1] : null
+    return { key: k, brandId: who.brandId, brandName: who.brandName, name: who.name, stage: undo ? cur?.stage ?? null : stage, undone: undo ? (undone as TrackMark | null)?.stage ?? null : null }
   },
 
   // In talks → Deal stage (Leo, Oct 18 2026: "u should be able to click on

@@ -36,6 +36,7 @@ const STAGES = [
   { key: 'accepted', label: 'Accepted', hint: 'Accepted on LinkedIn — no reply yet' },
   { key: 'replied', label: 'Replied', hint: 'Wrote back — how do they want to continue?' },
   { key: 'continue', label: 'Wants to continue', hint: 'Asked for an email or a LinkedIn DM — send it' },
+  { key: 'lireply', label: 'LinkedIn response', hint: 'We answered them on LinkedIn — waiting on them' },
   { key: 'emailed', label: 'Email sent', hint: 'We sent it — next, book the call' },
   { key: 'talks', label: 'In talks', hint: 'Call booked, or a deal going' },
   { key: 'out', label: 'Out', hint: 'Said no, doesn’t want to continue, or never answered' },
@@ -97,6 +98,7 @@ const H = {
   acceptedPeople: () => ({ people: [], total: 0, brands: 0 }),
   outreachTracker: () => JSON.parse(JSON.stringify(TRACKER)),
   // Nov 8 2026: Every brand reached is drawn in Deals → Overview, from zachOverview's tracker.
+  setTrackerStage: (a) => ({ key: a.key, brandId: 'b3', brandName: 'Olipop', name: 'Melanie Ross', stage: a.undo ? null : a.stage, undone: a.undo ? 'replied' : null }),
   zachOverview: () => ({ tracker: JSON.parse(JSON.stringify(TRACKER)), today: TRACKER.today, brands: {}, outreach: {}, talks: {}, deals: {}, board: {}, week: {} }),
   listInTalks: (a) => ({
     brands: [], suggestions: [], sponsorUrl: 'https://shows.example.com', today: TODAY,
@@ -171,8 +173,8 @@ async function main() {
 
   // 2. Tiles
   const tiles = await page.$$eval('.tk-tile', (els) => els.map((e) => [e.getAttribute('data-tk-stage'), e.querySelector('.tk-tile-n').firstChild.textContent, (e.querySelector('.tk-tile-u') || {}).textContent || '']));
-  assert.deepEqual(tiles, [['reached', '50', ''], ['accepted', '2', '1 to do'], ['replied', '1', '1 to do'], ['continue', '1', '1 to do'], ['emailed', '1', ''], ['talks', '1', ''], ['out', '1', '']]);
-  assert.ok(/So far: 57 reached out to · 7 had someone accept · 5 replied · 3 wanted to continue · 2 got the email · 1 in talks/.test(await text('#tk-ever')));
+  assert.deepEqual(tiles, [['reached', '50', ''], ['accepted', '2', '1 to do'], ['replied', '1', '1 to do'], ['continue', '1', '1 to do'], ['lireply', '0', ''], ['emailed', '1', ''], ['talks', '1', ''], ['out', '1', '']]);
+  assert.ok(/So far: 57 reached out to · 7 had someone accept · 5 replied · 3 wanted to continue · 0 got a LinkedIn answer · 2 got the email · 1 in talks/.test(await text('#tk-ever')));
   console.log('✓ a tile per step with its count and to-dos; the So far line');
 
   // 3. The list
@@ -184,7 +186,7 @@ async function main() {
   assert.ok(/archived/.test(await text('[data-tk-id="b6"] .tk-name')));
   assert.ok(/\+1 more person/.test(await text('[data-tk-id="b3"] .tk-who')));
   const dots = await page.$$eval('[data-tk-id="b3"] .tk-dots i', (els) => els.map((e) => e.className));
-  assert.deepEqual(dots, ['on', 'on', 'on', 'now', '', '']);
+  assert.deepEqual(dots, ['on', 'on', 'on', 'now', '', '', '']);
   assert.equal(await text('[data-tk-id="b7"] .tk-pill'), 'Out');
   if (shot) await page.screenshot({ path: shot + '/tracker-wide.png', fullPage: false });
   console.log('✓ the list: furthest step first, Out last; next step, late, tags, the step dots');
@@ -225,8 +227,21 @@ async function main() {
   const li = await page.$$eval('[data-tk-id="b1"] .tk-person a', (els) => els.map((e) => [e.textContent.trim(), e.getAttribute('target')]));
   assert.deepEqual(li.map((x) => x[0]), ['LinkedIn', 'Email']);
   if (shot) await page.screenshot({ path: shot + '/tracker-open.png', fullPage: false });
-  // A person: the brand page at them.
-  await page.click('[data-tk-id="b3"] .tk-person[data-focus="c3"] .tk-pname');
+  // A person: a click opens their chart; a step puts them there (a hand mark).
+  await page.click('[data-tk-id="b3"] .tk-person:first-child .tk-phead');
+  await page.waitForSelector('[data-tk-id="b3"] .tk-chart');
+  if (shot) { await page.$eval('[data-tk-id="b3"]', (e) => e.scrollIntoView()); await page.screenshot({ path: shot + '/tracker-chart.png', fullPage: false }); }
+  const nodes = await page.$$eval('[data-tk-id="b3"] .tk-chart .tk-cn', (els) => els.map((e) => [e.textContent, e.className.includes('now'), e.disabled]));
+  assert.deepEqual(nodes.map((x) => x[0]), ['Reached out', 'Accepted', 'Replied', 'Wants to continue', 'LinkedIn response', 'Email sent', 'In talks', 'Out']);
+  assert.deepEqual(nodes.filter((x) => x[1]).map((x) => x[0]), ['Wants to continue'], 'their step ringed');
+  assert.ok(/only here, Zach’s list stays as it is/.test(await text('[data-tk-id="b3"] .tk-chart')));
+  const key = await page.getAttribute('[data-tk-id="b3"] .tk-chart [data-st="lireply"]', 'data-tk-setp');
+  await page.click('[data-tk-id="b3"] .tk-chart [data-st="lireply"]');
+  await page.waitForFunction(() => /on LinkedIn response/.test(document.body.textContent));
+  assert.deepEqual(last('setTrackerStage').args, { key, stage: 'lireply' });
+  await page.waitForSelector('[data-tk-id="b3"] .tk-chart', { state: 'attached' });
+  // A brand page button beside LinkedIn / Email.
+  await page.click('[data-tk-id="b3"] .tk-person [data-focus="c3"]');
   await page.waitForFunction(() => document.querySelector('.view.active').id === 'brand');
   assert.equal(last('getBrand').args.brandId, 'b3');
   assert.equal(await page.evaluate(() => B_FOCUS && B_FOCUS.contactId), 'c3');
@@ -245,7 +260,7 @@ async function main() {
   await page.click('[data-tk-brand="b3"]');
   await page.waitForFunction(() => document.querySelector('.view.active').id === 'brand');
   assert.equal(last('getBrand').args.brandId, 'b3');
-  console.log('✓ a row opens its people; a person opens the brand page at them; In talks profile; Brand page →');
+  console.log('✓ a row opens its people; a person opens their chart (a step sets it); Brand page at them; In talks profile; Brand page →');
 
   // 6. A long step
   await page.evaluate(() => gotoView('tracker'));

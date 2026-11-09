@@ -235,12 +235,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   second sub-tab. Data = `outreachTracker` (read-only; a READ_NAMES read in claude-day.ts): every brand
   reached by the Reached tag's rule (`REACHED_WHERE`) or by Elizabeth's rows (sent / accepted / replied / call), plus every
   brand on In talks; never a person (kind filtered in code — `kind: { not: 'person' }` drops every null kind). Each brand
-  sits at **one step** — Reached out → Accepted → Replied → Wants to continue → Email sent → In talks, or **Out** — the
+  sits at **one step** — Reached out → Accepted → Replied → Wants to continue → **LinkedIn response** → Email sent → In talks, or **Out** — the
   furthest step anyone there is on who's still in play (rules pure in `src/lib/tracker.ts`, `node scripts/test-tracker.mjs`):
   per person (`zachStage` / `repStage`): accepted = `isAccepted`; replied = a reply (status, repliedAt, an inbound email)
   or a path picked / a hand email after an accept; **Wants to continue** = Zach's list's They want email / LinkedIn with
-  the email / DM not sent yet; **Email sent** = `emailedAt` / `handLiSentAt` after that (a cold hand or machine email is
-  Reached out); In talks = a call (`callAt` / `callBookedAt`), converted, or her `call`; Out = doesn't want to continue
+  the email / DM not sent yet; **LinkedIn response** (`lireply`; Leo, Nov 9 2026: "when we respond on linkedin but they dont
+  respond back after they already have") = Zach's list's DM sent (`handLiSentAt`) after their reply and no email — waiting on
+  them; **Email sent** = `emailedAt` after that (a cold hand or machine email is Reached out); In talks = a call (`callAt` / `callBookedAt`), converted, or her `call`; Out = doesn't want to continue
   (`handDeclinedAt`, `doNotContactAt`, a stopped brand, her declined), said no, the machine's `dead`, No response (7 days
   after the final reach-out / her follow-up, Zach's list's cadence). A brand (`brandStage`): stopped → Out; on In talks
   (`talksState` with her calls too) or an open deal → In talks; a lost deal → Out; else the furthest live person; a call on
@@ -250,7 +251,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   a find box (brands, people, titles), **Only ones with a step for us**, then a heading per step, furthest first (Out
   last), 40 rows then Show all; a row = brand, category, To do / Elizabeth / archived tags, what's next, the lead person,
   the step pill and six dots, last step; a click opens everyone reached there (step, next, dates, who reached them,
-  LinkedIn / Gmail compose) — a person opens the brand page at them (`data-focus`), **Open its In talks profile**
+  LinkedIn / Gmail compose / **Brand page →** at them (`data-focus`). **A person's chart** (Leo, Nov 9 2026: "click on each
+  person and edit their deal flow through a chart"; his picks: the outreach steps, a hand mark on Deals only, newer news moves
+  them on): a click on a person opens their steps in a line (`tkChartHtml`: lit as far as they got, theirs ringed, Out apart);
+  a step = `setTrackerStage({ key: 't:<targetId>' | 'e:<repId>', stage })` — Setting `trackerMarks` (advisory-locked, the last
+  10 per person; **Undo** = `{ key, undo: true }`). Zach's list and the row are never touched; the mark stands while nothing on
+  the row is newer (`handStage` in tracker.ts: `lastAt` after the mark → what happened wins); Out by hand = reason `hand`; a
+  person set to In talks keeps the brand In talks. A ClaudeAction. **Open its In talks profile**
   (`itPreview`: a brand not in talks opens as a look, "not in talks yet" — the profile no longer says "Replied" for one that
   didn't; `listInTalks.preview.repliedAt` falls back to its journey) and **Brand page →**. Nothing is ticked here — steps stay
   on Zach's list, the brand page and Elizabeth's tab. Tests: `node scripts/test-tracker.mjs`, `NODE_PATH=$(npm root -g) node

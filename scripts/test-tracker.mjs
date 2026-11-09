@@ -16,7 +16,7 @@ for (const f of readdirSync(out).filter(f => f.endsWith('.js'))) {
   writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, "from '$1.js'"))
 }
 const m = await import(pathToFileURL(join(out, 'tracker.js')).href)
-const { zachStage, zachReached, repStage, repReached, brandStage, compareTracker, zachSteps, repSteps, STAGES, stageRank } = m
+const { zachStage, zachReached, repStage, repReached, brandStage, compareTracker, zachSteps, repSteps, STAGES, stageRank, handStage, chartSteps } = m
 
 let n = 0
 function t(name, fn) { fn(); n++; console.log('  ok — ' + name) }
@@ -37,7 +37,7 @@ const zs = (o) => zachStage(Z(o), NOW)
 const rs = (o) => repStage(R(o), NOW)
 
 t('the steps, in order', () => {
-  assert.deepEqual(STAGES.map(s => s.key), ['reached', 'accepted', 'replied', 'continue', 'emailed', 'talks', 'out'])
+  assert.deepEqual(STAGES.map(s => s.key), ['reached', 'accepted', 'replied', 'continue', 'lireply', 'emailed', 'talks', 'out'])
   assert.ok(stageRank('emailed') > stageRank('continue') && stageRank('out') < stageRank('reached'))
 })
 
@@ -107,6 +107,33 @@ t('wants to continue → the email (or DM) to send, then Email sent', () => {
   // A hand email after an accept means they asked for it.
   const acc = zs({ status: 'accepted', acceptedAt: D('2026-10-30T15:00:00Z'), emailedAt: D('2026-11-02T15:00:00Z') })
   assert.equal(acc.stage, 'emailed')
+})
+
+t('LinkedIn response: we answered on LinkedIn, waiting on them', () => {
+  const base = { status: 'replied', sentAt: D('2026-10-28T15:00:00Z'), acceptedAt: D('2026-10-30T15:00:00Z'), repliedAt: D('2026-11-03T15:00:00Z') }
+  const li = zs({ ...base, liPathAt: D('2026-11-03T16:00:00Z'), liSentAt: D('2026-11-04T15:00:00Z') })
+  assert.equal(li.stage, 'lireply'); assert.equal(li.onUs, false); assert.equal(li.next, 'Answered on LinkedIn Nov 4 — waiting on them')
+  assert.ok(stageRank('lireply') > stageRank('continue') && stageRank('lireply') < stageRank('emailed'))
+  // An email as well: Email sent.
+  assert.equal(zs({ ...base, liPathAt: D('2026-11-03T16:00:00Z'), liSentAt: D('2026-11-04T15:00:00Z'), wantsEmailAt: D('2026-11-03T16:00:00Z'), emailedAt: D('2026-11-04T16:00:00Z') }).stage, 'emailed')
+  assert.deepEqual(zachSteps(Z({ ...base, liPathAt: D('2026-11-03T16:00:00Z'), liSentAt: D('2026-11-04T15:00:00Z') })), ['reached', 'accepted', 'replied', 'continue', 'lireply'])
+})
+
+t('a step set by hand stands until something newer happens', () => {
+  const p = zs({ status: 'sent', sentAt: D('2026-11-02T15:00:00Z') })
+  const h = handStage(p, { stage: 'replied', at: '2026-11-05T15:00:00Z', by: 'leo@x' })
+  assert.equal(h.stage, 'replied'); assert.equal(h.onUs, false); assert.equal(h.next, 'Replied — set by hand Nov 5'); assert.ok(h.hand)
+  assert.deepEqual(chartSteps(['reached'], h), ['reached', 'replied'])
+  // Newer news on the row wins.
+  const later = zs({ status: 'accepted', sentAt: D('2026-11-02T15:00:00Z'), acceptedAt: D('2026-11-06T14:00:00Z') })
+  assert.equal(handStage(later, { stage: 'out', at: '2026-11-05T15:00:00Z', by: null }).stage, 'accepted')
+  // Out by hand.
+  const o = handStage(p, { stage: 'out', at: '2026-11-05T15:00:00Z', by: null })
+  assert.equal(o.stage, 'out'); assert.equal(o.out, 'hand')
+  assert.equal(handStage(p, null), p)
+  // In talks by hand keeps the brand In talks, though it isn't on In talks.
+  const tk = handStage(p, { stage: 'talks', at: '2026-11-05T15:00:00Z', by: null })
+  assert.equal(brandStage([tk], { stopped: false, talksOn: false, talksWhy: null, deal: null }, NOW).stage, 'talks')
 })
 
 t('a call booked is In talks; no, stopped, dead are Out', () => {

@@ -110,6 +110,7 @@ export function actionText(fn: string, args: any, result: any): string | null {
     case 'editBrandNote': return `Edited a note on ${brand || 'a brand'} (In talks)`
     case 'deleteBrandNote': return `Deleted a note on ${brand || 'a brand'} (In talks)`
     case 'setTalksStage': return `Moved ${brand || 'a brand'} to ${s(r.label || a.stage, 30)} (In talks)${r.deal ? ` — its deal to ${s(r.deal.to, 20)}` : ''}`
+    case 'setTrackerStage': return a.undo ? `Took back ${s(r.name) || 'a person'}'s step at ${brand || 'a brand'} (Deals)` : `Put ${s(r.name) || 'a person'} at ${brand || 'a brand'} on ${s(a.stage, 20)} (Deals)`
     case 'addTalksEvent': return `Logged ${s(r.event?.label || a.kind, 30).toLowerCase()} on ${brand || 'a brand'} (In talks)`
     case 'editTalksEvent': return r.noop ? null : `Edited a line in ${brand || 'a brand'}'s In talks log`
     case 'deleteTalksEvent': return r.deleted ? `Deleted a line from ${brand || 'a brand'}'s In talks log` : null
