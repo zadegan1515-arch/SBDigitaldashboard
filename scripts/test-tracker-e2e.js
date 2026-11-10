@@ -152,7 +152,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
 
     // Order: furthest step first, Out last.
     const order = r.brands.map(b => b.stage)
-    const rank = { talks: 0, emailed: 1, lireply: 1.5, continue: 2, replied: 3, accepted: 4, reached: 5, out: 6 }
+    const rank = { talks: 0, emailed: 1, lireply: 1.5, continue: 2, referral: 2.5, replied: 3, accepted: 4, reached: 5, out: 6 }
     assert.deepEqual(order, [...order].sort((a, b) => rank[a] - rank[b]), 'furthest step first: ' + order.join(','))
     // Inside Replied: Rita (Zach, ours to do) and Elizabeth's — both ours.
     assert.ok(by.b_rep.onUs && by.b_el.onUs)
@@ -182,7 +182,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
 
     // Counts.
     assert.equal(r.total, 15)
-    assert.deepEqual(r.counts, { reached: 1, accepted: 3, replied: 2, continue: 1, lireply: 0, emailed: 1, talks: 3, out: 4 })
+    assert.deepEqual(r.counts, { referred: 0, reached: 1, accepted: 3, replied: 2, referral: 0, continue: 1, lireply: 0, emailed: 1, talks: 3, out: 4 })
     assert.equal(r.onUs.replied, 2)
     assert.equal(r.onUs.continue, 1)
     // So far: every brand reached; accepted = anyone accepted, also the ones out since.
@@ -193,7 +193,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(r.ever.continue, 2)
     assert.equal(r.ever.emailed, 1)
     assert.equal(r.ever.talks, 4)    // call, hand, deal, and Off Co's call before it came off
-    assert.deepEqual(r.stages.map(s => s.key), ['reached', 'accepted', 'replied', 'continue', 'lireply', 'emailed', 'talks', 'out'])
+    assert.deepEqual(r.stages.map(s => s.key), ['referred', 'reached', 'accepted', 'replied', 'referral', 'continue', 'lireply', 'emailed', 'talks', 'out'])
     ok('the counts per step, ours to do, and the so-far numbers');
 
     // Read-only: nothing changed, no ClaudeAction.
@@ -232,6 +232,47 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await prisma.target.update({ where: { id: al.id }, data: { dmSentAt: new Date(Date.now() + 1000) } })
     assert.equal((await data('outreachTracker')).brands.find(b => b.id === 'b_acc').stage, 'accepted')
     ok('LinkedIn response; a person set on a step by hand, Undo, newer news wins');
+
+    // A referral (Leo, Nov 10 2026): Lee Linked points us to Mike Ref.
+    const lee = await prisma.target.findFirst({ where: { brandId: 'b_li' } })
+    const rf = await data('addReferral', { fromKey: 't:' + lee.id, name: 'Mike Ref', title: 'Head of Partnerships', linkedinUrl: 'https://www.linkedin.com/in/mikeref' })
+    assert.equal(rf.brandName, 'Li Co'); assert.equal(rf.fromName, 'Lee Linked'); assert.equal(rf.created, true); assert.equal(rf.queued, true)
+    const mike = await prisma.contact.findUnique({ where: { id: rf.contactId }, include: { targets: true } })
+    assert.equal(mike.source, 'referral'); assert.ok(/Referred by Lee Linked/.test(mike.notes))
+    assert.equal(mike.targets.length, 1); assert.equal(mike.targets[0].status, 'queued'); assert.ok(mike.targets[0].queuedFor, 'in the outreach queue')
+    let r3 = await data('outreachTracker')
+    let li3 = r3.brands.find(b => b.id === 'b_li')
+    const mp = li3.people.find(p => p.key === 'r:' + rf.id)
+    assert.equal(mp.stage, 'referred'); assert.equal(mp.referredBy, 'Lee Linked'); assert.equal(mp.onUs, true); assert.deepEqual(mp.steps, ['referred'])
+    const lp = li3.people.find(p => p.key === 't:' + lee.id)
+    assert.equal(lp.stage, 'referral'); assert.deepEqual(lp.referred, ['Mike Ref']); assert.ok(lp.steps.includes('referral'))
+    assert.equal(li3.stage, 'referral')
+    // The same person again: reused, not a second copy; the one who referred can't refer themselves.
+    const again = await data('addReferral', { fromKey: 't:' + lee.id, name: 'mike ref' })
+    assert.equal(again.created, false); assert.equal(again.contactId, rf.contactId)
+    assert.equal(await prisma.contact.count({ where: { brandId: 'b_li', name: { equals: 'Mike Ref', mode: 'insensitive' } } }), 1)
+    await assert.rejects(data('addReferral', { fromKey: 't:' + lee.id, name: 'Lee Linked' }), /same person/)
+    await assert.rejects(data('addReferral', { fromKey: 't:' + lee.id, name: '' }), /name/)
+    // Mike's own chart: a step by hand.
+    const again2 = (await data('outreachTracker')).brands.find(b => b.id === 'b_li').people.find(p => p.contactId === rf.contactId)
+    await data('setTrackerStage', { key: again2.key, stage: 'replied' })
+    assert.equal((await data('outreachTracker')).brands.find(b => b.id === 'b_li').people.find(p => p.key === again2.key).stage, 'replied')
+    // Once his invite goes out, his own row takes over — still "Referred by Lee".
+    await prisma.target.update({ where: { id: mike.targets[0].id }, data: { status: 'sent', sentAt: new Date() } })
+    r3 = await data('outreachTracker')
+    li3 = r3.brands.find(b => b.id === 'b_li')
+    const mrow = li3.people.filter(p => p.contactId === rf.contactId)
+    assert.equal(mrow.length, 1); assert.equal(mrow[0].key, 't:' + mike.targets[0].id); assert.equal(mrow[0].referredBy, 'Lee Linked')
+    assert.deepEqual(mrow[0].steps, ['referred', 'reached'])
+    // Taking a referral off: a preview first; the person stays.
+    const pv = await data('removeReferral', { id: again.id })
+    assert.equal(pv.preview, true); assert.ok(/stays on Li Co/.test(pv.stays))
+    await data('removeReferral', { id: again.id, confirm: true })
+    await assert.rejects(data('removeReferral', { id: rf.id, confirm: true }), /not found/, 'the second add replaced the first')
+    assert.ok(await prisma.contact.findUnique({ where: { id: rf.contactId } }), 'the person stays')
+    assert.equal((await data('outreachTracker')).brands.find(b => b.id === 'b_li').people.find(p => p.contactId === rf.contactId).referredBy, null)
+    assert.equal(await prisma.claudeAction.count({ where: { fn: 'addReferral' } }), 2)
+    ok('a referral: the person named on the brand and in the queue, starting at Referred; the one who referred on Referred us');
   } finally {
     if (prisma) await prisma.$disconnect().catch(() => {});
     if (server) { try { process.kill(-server.pid, 'SIGTERM'); } catch (e) {} }

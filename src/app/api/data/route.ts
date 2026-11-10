@@ -96,7 +96,7 @@ import {
   zachStage as trackZach, zachReached as trackZachReached, repStage as trackRep, repReached as trackRepReached,
   brandStage as trackBrand, compareTracker, zachSteps as trackZachSteps, repSteps as trackRepSteps,
   STAGES as TRACK_STAGES, stageRank as trackRank, type StageKey as TrackStage, type PersonStage as TrackPerson,
-  handStage as trackHand, chartSteps as trackChartSteps, isStageKey as isTrackStage, type HandMark as TrackMark,
+  handStage as trackHand, chartSteps as trackChartSteps, referredStage as trackReferred, isStageKey as isTrackStage, type HandMark as TrackMark,
 } from '@/lib/tracker'
 import {
   REP, REP_NAME, REP_DAILY, REP_LI_WEEK, REP_DAYS, REP_PLAN_KEY, REP_TPL_KEY, REP_ACCOUNTS_KEY, PLAN_KEEP_DAYS,
@@ -3335,7 +3335,7 @@ function cleanTrackerMarks(v: unknown): TrackerMarks {
   const out: TrackerMarks = {}
   if (!v || typeof v !== 'object') return out
   for (const [k, list] of Object.entries(v as Record<string, unknown>)) {
-    if (!/^[te]:[\w-]+$/.test(k) || !Array.isArray(list)) continue
+    if (!/^[ter]:[\w-]+$/.test(k) || !Array.isArray(list)) continue
     const ms = list.filter((m: any) => m && isTrackStage(m.stage) && typeof m.at === 'string' && m.stage !== undefined)
       .map((m: any) => ({ stage: m.stage, at: m.at, by: m.by ?? null }))
     if (ms.length) out[k] = ms.slice(-10)
@@ -3356,6 +3356,50 @@ async function updateTrackerMarks(fn: (m: TrackerMarks) => TrackerMarks): Promis
     await tx.setting.upsert({ where: { key: TRACKER_MARKS_KEY }, create: { key: TRACKER_MARKS_KEY, value }, update: { value } })
     return next
   })
+}
+
+// Referrals (Leo, Nov 10 2026): someone at a brand pointed us to someone else.
+// Setting trackerReferrals = [{ id, brandId, contactId, fromKey, fromName, name, at, by }].
+// The person referred is a real Contact, queued for outreach like a hand add.
+const TRACKER_REFS_KEY = 'trackerReferrals'
+type TrackerRef = { id: string; brandId: string; contactId: string; fromKey: string; fromName: string; name: string; at: string; by: string | null }
+function cleanTrackerRefs(v: unknown): TrackerRef[] {
+  if (!Array.isArray(v)) return []
+  return v.filter((r: any) => r && typeof r.id === 'string' && typeof r.brandId === 'string' && typeof r.contactId === 'string' && typeof r.at === 'string')
+    .map((r: any) => ({ id: r.id, brandId: r.brandId, contactId: r.contactId, fromKey: String(r.fromKey ?? ''), fromName: String(r.fromName ?? ''), name: String(r.name ?? ''), at: r.at, by: r.by ?? null }))
+    .slice(-2000)
+}
+async function readTrackerRefs(): Promise<TrackerRef[]> {
+  return cleanTrackerRefs(await readJsonSetting<unknown>(prisma, TRACKER_REFS_KEY, []))
+}
+async function updateTrackerRefs(fn: (r: TrackerRef[]) => TrackerRef[]): Promise<TrackerRef[]> {
+  return prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${TRACKER_REFS_KEY}))::text`
+    const row = await tx.setting.findUnique({ where: { key: TRACKER_REFS_KEY } })
+    let v: unknown = null
+    try { v = row ? JSON.parse(row.value) : null } catch { v = null }
+    const next = cleanTrackerRefs(fn(cleanTrackerRefs(v)))
+    const value = JSON.stringify(next)
+    await tx.setting.upsert({ where: { key: TRACKER_REFS_KEY }, create: { key: TRACKER_REFS_KEY, value }, update: { value } })
+    return next
+  })
+}
+// Who a tracker key names: 't:<targetId>' Zach's row, 'e:<repId>' Elizabeth's, 'r:<refId>' a referral.
+async function trackerWho(key: string): Promise<{ brandId: string | null; brandName: string | null; name: string; contactId: string | null } | null> {
+  const m = /^([ter]):([\w-]+)$/.exec(key)
+  if (!m) return null
+  if (m[1] === 't') {
+    const t = await prisma.target.findUnique({ where: { id: m[2] }, select: { brandId: true, contactId: true, brand: { select: { name: true } }, contact: { select: { name: true } } } })
+    return t ? { brandId: t.brandId, brandName: t.brand.name, name: t.contact.name, contactId: t.contactId } : null
+  }
+  if (m[1] === 'e') {
+    const r = await prisma.repOutreach.findUnique({ where: { id: m[2] }, select: { brandId: true, brandName: true, name: true, contactId: true } })
+    return r ? { brandId: r.brandId, brandName: r.brandName, name: r.name, contactId: r.contactId } : null
+  }
+  const ref = (await readTrackerRefs()).find(r => r.id === m[2])
+  if (!ref) return null
+  const c = await prisma.contact.findUnique({ where: { id: ref.contactId }, select: { name: true, brand: { select: { name: true } } } })
+  return { brandId: ref.brandId, brandName: c?.brand.name ?? null, name: c?.name ?? ref.name, contactId: ref.contactId }
 }
 
 async function updateBankState(fn: (s: BankState) => BankState): Promise<BankState> {
@@ -15154,7 +15198,7 @@ const handlers: Record<string, Handler> = {
   // people there and what's next. Read-only; rules in src/lib/tracker.ts.
   async outreachTracker() {
     const now = new Date()
-    const [targets, reps, talks, marks] = await Promise.all([
+    const [targets, reps, talks, marks, refs] = await Promise.all([
       prisma.target.findMany({
         where: REACHED_WHERE,
         select: {
@@ -15177,9 +15221,13 @@ const handlers: Record<string, Handler> = {
       }),
       talksMembership(),
       readTrackerMarks(),
+      readTrackerRefs(),
     ])
+    const refByContact = new Map(refs.map(r => [r.contactId, r]))
+    const refsFrom = new Map<string, string[]>()
+    for (const r of refs) refsFrom.set(r.fromKey, [...(refsFrom.get(r.fromKey) ?? []), r.name])
     const markOf = (k: string) => { const l = marks[k]; return l && l.length ? l[l.length - 1] : null }
-    const ids = [...new Set([...targets.map(t => t.brandId), ...reps.map(r => r.brandId as string), ...talks.onIds])]
+    const ids = [...new Set([...targets.map(t => t.brandId), ...reps.map(r => r.brandId as string), ...talks.onIds, ...refs.map(r => r.brandId)])]
     // A person on the Show Board (kind 'person') is never a brand here.
     // (Filtered in code: `kind: { not: 'person' }` would drop every null kind too.)
     const brands = (ids.length ? await prisma.brand.findMany({
@@ -15196,6 +15244,7 @@ const handlers: Record<string, Handler> = {
     const callsBy = new Map<string, Date[]>()
     const add = (brandId: string, p: Person) => peopleBy.set(brandId, [...(peopleBy.get(brandId) ?? []), p])
     const stoppedBrand = new Set(brands.filter(b => b.stoppedAt).map(b => b.id))
+    const reachedRefs = new Set<string>()
     for (const t of targets) {
       const sentMail = t.emails.filter(e => e.direction === 'out')
       const facts = {
@@ -15211,10 +15260,15 @@ const handlers: Record<string, Handler> = {
       // (talksMembership's rule).
       if (t.callAt || t.callBookedAt) callsBy.set(t.brandId, [...(callsBy.get(t.brandId) ?? []), t.callBookedAt ?? t.createdAt])
       const s = trackHand(trackZach(facts, now), markOf('t:' + t.id))
+      const ref = refByContact.get(t.contact.id)
+      if (ref) reachedRefs.add(ref.id)
+      const steps = trackChartSteps(trackZachSteps(facts), s)
+      if (ref) steps.unshift('referred')
+      if (refsFrom.has('t:' + t.id) && !steps.includes('referral')) steps.push('referral')
       add(t.brandId, {
-        ...s, steps: trackChartSteps(trackZachSteps(facts), s),
+        ...s, steps: TRACK_STAGES.map(x => x.key).filter(k => steps.includes(k)),
         row: {
-          key: 't:' + t.id, by: 'zach', channel: t.sentAt || facts.acceptedAt || ['accepted', 'replied', 'converted'].includes(t.status) ? 'linkedin' : 'email',
+          key: 't:' + t.id, by: 'zach', referredBy: ref ? ref.fromName : null, referredAt: ref ? ref.at : null, referred: refsFrom.get('t:' + t.id) ?? [], channel: t.sentAt || facts.acceptedAt || ['accepted', 'replied', 'converted'].includes(t.status) ? 'linkedin' : 'email',
           contactId: t.contact.id, name: t.contact.name, title: t.contact.title, email: t.contact.email, linkedinUrl: t.contact.linkedinUrl,
           invitedAt: iso(t.sentAt), acceptedAt: iso(facts.acceptedAt), repliedAt: iso(t.repliedAt),
           emailedAt: iso(t.emailedAt ?? facts.machineEmailAt), callAt: iso(t.callAt),
@@ -15226,13 +15280,41 @@ const handlers: Record<string, Handler> = {
       const id = r.brandId as string
       if (r.callAt || r.callBookedAt || r.status === 'call') callsBy.set(id, [...(callsBy.get(id) ?? []), r.callBookedAt ?? r.callAt ?? r.updatedAt])
       const s = trackHand(trackRep(r, now), markOf('e:' + r.id))
+      const esteps = trackChartSteps(trackRepSteps(r), s)
+      if (refsFrom.has('e:' + r.id) && !esteps.includes('referral')) esteps.push('referral')
       add(id, {
-        ...s, steps: trackChartSteps(trackRepSteps(r), s),
+        ...s, steps: TRACK_STAGES.map(x => x.key).filter(k => esteps.includes(k)),
         row: {
-          key: 'e:' + r.id, by: 'elizabeth', channel: r.channel,
+          key: 'e:' + r.id, by: 'elizabeth', channel: r.channel, referred: refsFrom.get('e:' + r.id) ?? [],
           contactId: r.contactId, name: r.name, title: r.title, email: r.email, linkedinUrl: r.linkedinUrl,
           invitedAt: r.channel === 'linkedin' ? iso(r.sentAt) : null, acceptedAt: iso(r.acceptedAt), repliedAt: iso(r.repliedAt),
           emailedAt: r.channel === 'email' ? iso(r.sentAt) : null, callAt: iso(r.callAt),
+        },
+      })
+    }
+    // People a brand referred us to, not reached yet: their own path from Referred.
+    const waitingRefs = refs.filter(r => !reachedRefs.has(r.id))
+    const refPeople = waitingRefs.length ? await prisma.contact.findMany({
+      where: { id: { in: waitingRefs.map(r => r.contactId) } },
+      select: { id: true, name: true, title: true, email: true, linkedinUrl: true, doNotContactAt: true },
+    }) : []
+    const refPerson = new Map(refPeople.map(c => [c.id, c]))
+    for (const r of waitingRefs) {
+      const c = refPerson.get(r.contactId)
+      if (!c) continue
+      const base = c.doNotContactAt
+        ? { ...trackReferred(r), stage: 'out' as TrackStage, out: 'stopped' as const, onUs: false, label: 'doesn’t want to continue', next: 'Doesn’t want to continue' }
+        : trackReferred(r)
+      const s = trackHand(base, markOf('r:' + r.id))
+      const rsteps = trackChartSteps(['referred'], s)
+      if (refsFrom.has('r:' + r.id) && !rsteps.includes('referral')) rsteps.push('referral')
+      add(r.brandId, {
+        ...s, steps: TRACK_STAGES.map(x => x.key).filter(k => rsteps.includes(k)),
+        row: {
+          key: 'r:' + r.id, refId: r.id, by: 'referral', channel: c.linkedinUrl ? 'linkedin' : 'email', referredBy: r.fromName, referredAt: r.at,
+          referred: refsFrom.get('r:' + r.id) ?? [],
+          contactId: c.id, name: c.name, title: c.title, email: c.email, linkedinUrl: c.linkedinUrl,
+          invitedAt: null, acceptedAt: null, repliedAt: null, emailedAt: null, callAt: null,
         },
       })
     }
@@ -15287,14 +15369,9 @@ const handlers: Record<string, Handler> = {
   // last mark back (the one before it, or none, counts again).
   async setTrackerStage({ key, stage, undo, __user }: any) {
     const k = String(key || '')
-    const m = /^([te]):([\w-]+)$/.exec(k)
-    if (!m) throw new Error('Unknown person')
+    if (!/^[ter]:[\w-]+$/.test(k)) throw new Error('Unknown person')
     if (!undo && !isTrackStage(stage)) throw new Error('Unknown step')
-    const who = m[1] === 't'
-      ? await prisma.target.findUnique({ where: { id: m[2] }, select: { brandId: true, brand: { select: { name: true } }, contact: { select: { name: true } } } })
-        .then(t => (t ? { brandId: t.brandId, brandName: t.brand.name, name: t.contact.name } : null))
-      : await prisma.repOutreach.findUnique({ where: { id: m[2] }, select: { brandId: true, brandName: true, name: true } })
-        .then(r => (r ? { brandId: r.brandId, brandName: r.brandName, name: r.name } : null))
+    const who = await trackerWho(k)
     if (!who) throw new Error('Person not found')
     let undone: TrackMark | null = null
     const next = await updateTrackerMarks(all => {
@@ -15306,6 +15383,92 @@ const handlers: Record<string, Handler> = {
     if (undo && !undone) throw new Error('Nothing to undo for ' + who.name)
     const cur = next[k]?.length ? next[k][next[k].length - 1] : null
     return { key: k, brandId: who.brandId, brandName: who.brandName, name: who.name, stage: undo ? cur?.stage ?? null : stage, undone: undo ? (undone as TrackMark | null)?.stage ?? null : null }
+  },
+
+  // Deals → Overview: someone referred us to someone else (Leo, Nov 10 2026; his picks: the one who referred us
+  // goes on "Referred us", the person they named gets a path of their own from "Referred", and they go everywhere
+  // else too — a real person on the brand, queued for outreach like a hand add, so the LinkedIn queue and then
+  // Zach's list pick them up). The same person on file (LinkedIn link, email, or name at the brand) is reused.
+  // A referral is the brand's own ask, so the brand's rest and the giant hold don't apply; someone who said they
+  // don't want to continue is refused.
+  async addReferral({ fromKey, name, title, linkedinUrl, email, __user }: any) {
+    const fk = String(fromKey || '')
+    const from = await trackerWho(fk)
+    if (!from || !from.brandId) throw new Error('Who referred you? That person isn’t on file.')
+    const nm = String(name ?? '').trim().replace(/\s+/g, ' ')
+    if (!nm) throw new Error('The name of the person they referred you to is needed')
+    const li = String(linkedinUrl ?? '').trim() || null
+    if (li && !/linkedin\.com\/(in|sales\/lead)\//i.test(li)) throw new Error('That LinkedIn link isn’t a profile (linkedin.com/in/…)')
+    const em = String(email ?? '').trim().toLowerCase() || null
+    if (em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) throw new Error('That email doesn’t look right')
+    const brand = await prisma.brand.findUnique({ where: { id: from.brandId }, select: { id: true, name: true, tier: true, owner: true, stoppedAt: true, kind: true } })
+    if (!brand) throw new Error('Brand not found')
+    if (brand.stoppedAt) throw new Error(brand.name + ' said they don’t want to continue — nobody there is reached again.')
+    const twin = stoppedMatch(await loadStopIndex(), { brandId: brand.id, name: nm, linkedinUrl: li, email: em })
+    if (twin) throw new Error(stopWords({ name: twin.name, at: twin.at }))
+    const slug = li ? profileSlug(li) : null
+    const people = await prisma.contact.findMany({ where: { brandId: brand.id }, select: { id: true, name: true, email: true, linkedinUrl: true, notes: true, title: true } })
+    const same = people.find(c => (slug && c.linkedinUrl && profileSlug(c.linkedinUrl) === slug) || (em && (c.email ?? '').toLowerCase() === em) ||
+      c.name.trim().toLowerCase() === nm.toLowerCase())
+    if (same && same.id === from.contactId) throw new Error('That’s the same person who referred you')
+    const day = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' })
+    const line = 'Referred by ' + from.name + ' (' + day + ')'
+    const now = new Date()
+    const res = await prisma.$transaction(async tx => {
+      let contact = same
+      let created = false
+      if (contact) {
+        contact = await tx.contact.update({
+          where: { id: contact.id },
+          data: {
+            title: contact.title || (title ? String(title).trim() : null) || null,
+            email: contact.email || em, linkedinUrl: contact.linkedinUrl || li,
+            notes: [contact.notes, line].filter(Boolean).join('\n'),
+          },
+          select: { id: true, name: true, email: true, linkedinUrl: true, notes: true, title: true },
+        })
+      } else {
+        created = true
+        contact = await tx.contact.create({
+          data: { brandId: brand.id, name: nm, title: title ? String(title).trim() : null, email: em, linkedinUrl: li, isDecisionMaker: looksLikeDecisionMaker(title ?? null), notes: line, source: 'referral' },
+          select: { id: true, name: true, email: true, linkedinUrl: true, notes: true, title: true },
+        })
+      }
+      // Queued for outreach (a hand add): a row already reached stays as it is.
+      const t = await tx.target.findFirst({ where: { contactId: contact.id }, orderBy: { createdAt: 'asc' } })
+      let queued: string | null = null
+      if (!t) {
+        const nt = await tx.target.create({ data: { brandId: brand.id, contactId: contact.id, fitScore: scoreFit(contact.title, brand.tier), assignedTo: brand.owner ?? null, queuedFor: now } })
+        queued = nt.id
+      } else if (!['sent', 'accepted', 'replied', 'converted', 'declined', 'dead'].includes(t.status)) {
+        await tx.target.update({ where: { id: t.id }, data: { status: ['queued', 'drafted'].includes(t.status) ? t.status : 'queued', shelved: false, shelvedHow: null, queuedFor: now } })
+        queued = t.id
+      }
+      return { contact, created, queued, inPlay: t && !queued ? t.status : null }
+    })
+    if (res.queued) await noteChosen([res.queued])
+    const ref: TrackerRef = { id: 'rf' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), brandId: brand.id, contactId: res.contact.id, fromKey: fk, fromName: from.name, name: res.contact.name, at: now.toISOString(), by: __user === 'CLI' ? 'Claude' : (__user ?? null) }
+    await updateTrackerRefs(all => [...all.filter(r => !(r.contactId === ref.contactId && r.fromKey === fk)), ref])
+    // The one who referred us: on "Referred us" (a mark, Undo on their chart).
+    await updateTrackerMarks(all => ({ ...all, [fk]: [...(all[fk] ?? []), { stage: 'referral', at: now.toISOString(), by: ref.by }] }))
+    return {
+      id: ref.id, brandId: brand.id, brandName: brand.name, fromName: from.name, name: res.contact.name, contactId: res.contact.id,
+      created: res.created, queued: !!res.queued, inPlay: res.inPlay, hasLinkedIn: !!res.contact.linkedinUrl,
+    }
+  },
+
+  // Take a referral off Deals. Without confirm it only names it. The person stays on the brand (and in the queue,
+  // where Queue / Pass on the brand page decide) — only the "Referred" path goes.
+  async removeReferral({ id, confirm }: any) {
+    const refs = await readTrackerRefs()
+    const ref = refs.find(r => r.id === String(id || ''))
+    if (!ref) throw new Error('Referral not found')
+    const brand = await prisma.brand.findUnique({ where: { id: ref.brandId }, select: { name: true } })
+    const out = { id: ref.id, brandId: ref.brandId, brandName: brand?.name ?? null, name: ref.name, fromName: ref.fromName,
+      stays: ref.name + ' stays on ' + (brand?.name ?? 'the brand') + '’s page; only the Referred path on Deals goes.' }
+    if (!confirm) return { ...out, preview: true }
+    await updateTrackerRefs(all => all.filter(r => r.id !== ref.id))
+    return { ...out, removed: true }
   },
 
   // In talks → Deal stage (Leo, Oct 18 2026: "u should be able to click on

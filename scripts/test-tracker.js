@@ -98,6 +98,7 @@ const H = {
   acceptedPeople: () => ({ people: [], total: 0, brands: 0 }),
   outreachTracker: () => JSON.parse(JSON.stringify(TRACKER)),
   // Nov 8 2026: Every brand reached is drawn in Deals → Overview, from zachOverview's tracker.
+  addReferral: (a) => ({ id: 'rf1', brandId: 'b3', brandName: 'Olipop', fromName: 'Melanie Ross', name: a.name, contactId: 'cx', created: true, queued: true, inPlay: null, hasLinkedIn: !!a.linkedinUrl }),
   setTrackerStage: (a) => ({ key: a.key, brandId: 'b3', brandName: 'Olipop', name: 'Melanie Ross', stage: a.undo ? null : a.stage, undone: a.undo ? 'replied' : null }),
   zachOverview: () => ({ tracker: JSON.parse(JSON.stringify(TRACKER)), today: TRACKER.today, brands: {}, outreach: {}, talks: {}, deals: {}, board: {}, week: {} }),
   listInTalks: (a) => ({
@@ -186,7 +187,7 @@ async function main() {
   assert.ok(/archived/.test(await text('[data-tk-id="b6"] .tk-name')));
   assert.ok(/\+1 more person/.test(await text('[data-tk-id="b3"] .tk-who')));
   const dots = await page.$$eval('[data-tk-id="b3"] .tk-dots i', (els) => els.map((e) => e.className));
-  assert.deepEqual(dots, ['on', 'on', 'on', 'now', '', '', '']);
+  assert.deepEqual(dots, ['on', 'on', 'on', '', 'now', '', '', '']);
   assert.equal(await text('[data-tk-id="b7"] .tk-pill'), 'Out');
   if (shot) await page.screenshot({ path: shot + '/tracker-wide.png', fullPage: false });
   console.log('✓ the list: furthest step first, Out last; next step, late, tags, the step dots');
@@ -232,7 +233,7 @@ async function main() {
   await page.waitForSelector('[data-tk-id="b3"] .tk-chart');
   if (shot) { await page.$eval('[data-tk-id="b3"]', (e) => e.scrollIntoView()); await page.screenshot({ path: shot + '/tracker-chart.png', fullPage: false }); }
   const nodes = await page.$$eval('[data-tk-id="b3"] .tk-chart .tk-cn', (els) => els.map((e) => [e.textContent, e.className.includes('now'), e.disabled]));
-  assert.deepEqual(nodes.map((x) => x[0]), ['Reached out', 'Accepted', 'Replied', 'Wants to continue', 'LinkedIn response', 'Email sent', 'In talks', 'Out']);
+  assert.deepEqual(nodes.map((x) => x[0]), ['Reached out', 'Accepted', 'Replied', 'Referred us', 'Wants to continue', 'LinkedIn response', 'Email sent', 'In talks', 'Out']);
   assert.deepEqual(nodes.filter((x) => x[1]).map((x) => x[0]), ['Wants to continue'], 'their step ringed');
   assert.ok(/only here, Zach’s list stays as it is/.test(await text('[data-tk-id="b3"] .tk-chart')));
   const key = await page.getAttribute('[data-tk-id="b3"] .tk-chart [data-st="lireply"]', 'data-tk-setp');
@@ -240,6 +241,16 @@ async function main() {
   await page.waitForFunction(() => /on LinkedIn response/.test(document.body.textContent));
   assert.deepEqual(last('setTrackerStage').args, { key, stage: 'lireply' });
   await page.waitForSelector('[data-tk-id="b3"] .tk-chart', { state: 'attached' });
+  // Referred us opens "who did they refer you to?"; Add sends the person.
+  await page.click('[data-tk-id="b3"] .tk-chart [data-st="referral"]');
+  await page.waitForSelector('[data-tk-id="b3"] .tk-refform');
+  assert.ok(/Who did Melanie refer you to\?/.test(await text('[data-tk-id="b3"] .tk-refform')));
+  await page.fill('[data-tk-id="b3"] [data-tk-reff="name"]', 'Mike Lee');
+  await page.fill('[data-tk-id="b3"] [data-tk-reff="title"]', 'Head of Partnerships');
+  await page.fill('[data-tk-id="b3"] [data-tk-reff="linkedinUrl"]', 'https://www.linkedin.com/in/mikelee');
+  await page.click('[data-tk-id="b3"] [data-tk-refadd]');
+  await page.waitForFunction(() => /Added Mike Lee to Olipop — referred by Melanie Ross; in the outreach queue/.test(document.body.textContent));
+  assert.deepEqual(last('addReferral').args, { fromKey: key, name: 'Mike Lee', title: 'Head of Partnerships', linkedinUrl: 'https://www.linkedin.com/in/mikelee', email: '' });
   // A brand page button beside LinkedIn / Email.
   await page.click('[data-tk-id="b3"] .tk-person [data-focus="c3"]');
   await page.waitForFunction(() => document.querySelector('.view.active').id === 'brand');

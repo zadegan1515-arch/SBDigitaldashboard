@@ -16,7 +16,7 @@ for (const f of readdirSync(out).filter(f => f.endsWith('.js'))) {
   writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, "from '$1.js'"))
 }
 const m = await import(pathToFileURL(join(out, 'tracker.js')).href)
-const { zachStage, zachReached, repStage, repReached, brandStage, compareTracker, zachSteps, repSteps, STAGES, stageRank, handStage, chartSteps } = m
+const { zachStage, zachReached, repStage, repReached, brandStage, compareTracker, zachSteps, repSteps, STAGES, stageRank, handStage, chartSteps, referredStage } = m
 
 let n = 0
 function t(name, fn) { fn(); n++; console.log('  ok — ' + name) }
@@ -37,7 +37,7 @@ const zs = (o) => zachStage(Z(o), NOW)
 const rs = (o) => repStage(R(o), NOW)
 
 t('the steps, in order', () => {
-  assert.deepEqual(STAGES.map(s => s.key), ['reached', 'accepted', 'replied', 'continue', 'lireply', 'emailed', 'talks', 'out'])
+  assert.deepEqual(STAGES.map(s => s.key), ['referred', 'reached', 'accepted', 'replied', 'referral', 'continue', 'lireply', 'emailed', 'talks', 'out'])
   assert.ok(stageRank('emailed') > stageRank('continue') && stageRank('out') < stageRank('reached'))
 })
 
@@ -231,6 +231,20 @@ t('the steps a person got through', () => {
   assert.deepEqual(zachSteps(Z({ status: 'queued', emailedAt: D('2026-11-04T15:00:00Z') })), ['reached'])
   assert.deepEqual(repSteps(R({ channel: 'linkedin', status: 'call', sentAt: D('2026-10-28T15:00:00Z'), acceptedAt: D('2026-10-30T15:00:00Z'), callAt: D('2026-11-12T16:00:00Z') })),
     ['reached', 'accepted', 'replied', 'talks'])
+})
+
+t('a referral: the person named starts at Referred, the one who referred us is on Referred us', () => {
+  const r = referredStage({ fromName: 'Carly Ciarletta', at: '2026-11-05T15:00:00Z' })
+  assert.equal(r.stage, 'referred'); assert.equal(r.onUs, true); assert.equal(r.next, 'Referred by Carly Ciarletta Nov 5 — reach out')
+  assert.ok(stageRank('referred') < stageRank('reached') && stageRank('referred') > stageRank('out'))
+  assert.ok(stageRank('referral') > stageRank('replied') && stageRank('referral') < stageRank('continue'))
+  const carly = handStage(zs({ status: 'replied', sentAt: D('2026-10-28T15:00:00Z'), acceptedAt: D('2026-10-30T15:00:00Z'), repliedAt: D('2026-11-03T15:00:00Z') }),
+    { stage: 'referral', at: '2026-11-05T15:00:00Z', by: null })
+  assert.equal(carly.stage, 'referral')
+  // The brand sits on Referred us until the person named gets further.
+  assert.equal(brandStage([carly, r], { stopped: false, talksOn: false, talksWhy: null, deal: null }, NOW).stage, 'referral')
+  const mike = handStage(r, { stage: 'continue', at: '2026-11-06T15:00:00Z', by: null })
+  assert.equal(brandStage([carly, mike], { stopped: false, talksOn: false, talksWhy: null, deal: null }, NOW).stage, 'continue')
 })
 
 console.log(`\n${n} passed`)

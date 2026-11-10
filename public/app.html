@@ -2420,7 +2420,7 @@
      email"). A tile per step, then one row per brand; a row opens its people. ---- */
   #tracker.page{padding-top:30px}
   .tk-s-reached{--stage:#8a8fa3} .tk-s-accepted{--stage:var(--accent)} .tk-s-replied{--stage:var(--blue)}
-  .tk-s-continue{--stage:var(--warn)} .tk-s-lireply{--stage:#2bb3a3} .tk-s-emailed{--stage:var(--cat-5)} .tk-s-talks{--stage:var(--good)} .tk-s-out{--stage:#6b6f80}
+  .tk-s-continue{--stage:var(--warn)} .tk-s-lireply{--stage:#2bb3a3} .tk-s-referral{--stage:#d58bf0} .tk-s-referred{--stage:#e7a86b} .tk-s-emailed{--stage:var(--cat-5)} .tk-s-talks{--stage:var(--good)} .tk-s-out{--stage:#6b6f80}
   .tk-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:20px}
   .tk-tile{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;padding:12px 14px 13px;
     border:1px solid var(--border);border-top:3px solid var(--stage);border-radius:12px;background:var(--surface-2);color:inherit;
@@ -2498,6 +2498,13 @@
   .tk-csep{flex:0 0 1px;align-self:stretch;margin:0 4px;background:var(--border-soft)}
   .tk-cnote{margin-top:6px;font-size:12.5px;color:var(--ink-3)}
   .tk-cnote .tk-clear{font-size:12.5px}
+  .tk-refform{margin-top:10px;padding-top:10px;border-top:1px solid var(--border-soft)}
+  .tk-rh{font-size:13.5px;font-weight:700;color:var(--ink-1);margin-bottom:8px}
+  .tk-rgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .tk-rin{font:inherit;font-size:13.5px;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:#14141a;color:var(--ink-1);min-width:0}
+  .tk-racts{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin-top:8px}
+  .tk-rnote{font-size:12.5px;color:var(--ink-3)}
+  @media (max-width:600px){ .tk-rgrid{grid-template-columns:minmax(0,1fr)} }
   .tk-pname{font-size:15px;font-weight:700;color:var(--ink-1)}
   .tk-ptitle{font-size:13.5px;color:var(--ink-3);font-weight:400}
   .tk-pnext{font-size:14px;color:var(--ink-2);margin-top:2px}
@@ -21664,8 +21671,8 @@ function bTalksBind(b) {
 // steps themselves are ticked on Zach's list / the brand page / Elizabeth's
 // tab. Data = outreachTracker (route.ts; rules in src/lib/tracker.ts).
 
-var TK = { data: null, stage: null, q: '', mine: false, open: {}, more: {}, popen: {}, pbusy: {} };
-var TK_DOTS = [['reached', 'Reached out'], ['accepted', 'Accepted'], ['replied', 'Replied'], ['continue', 'Wants to continue'], ['lireply', 'LinkedIn response'], ['emailed', 'Email sent'], ['talks', 'In talks']];
+var TK = { data: null, stage: null, q: '', mine: false, open: {}, more: {}, popen: {}, pbusy: {}, refForm: {} };
+var TK_DOTS = [['reached', 'Reached out'], ['accepted', 'Accepted'], ['replied', 'Replied'], ['referral', 'Referred us'], ['continue', 'Wants to continue'], ['lireply', 'LinkedIn response'], ['emailed', 'Email sent'], ['talks', 'In talks']];
 var TK_PAGE = 40;
 
 // Every brand reached lives in the Overview now (Leo, Nov 8 2026): its old
@@ -21724,7 +21731,8 @@ function renderTracker() {
       '<div id="tk-list"></div>';
     document.getElementById('tk-find').value = TK.q;
   }
-  var tiles = (d.stages || []).map(function (s) {
+  // Referred only gets a tile when a brand sits there (everyone else at it is out).
+  var tiles = (d.stages || []).filter(function (s) { return s.key !== 'referred' || (d.counts || {}).referred; }).map(function (s) {
     var n = (d.counts || {})[s.key] || 0, u = (d.onUs || {})[s.key] || 0;
     var on = TK.stage === s.key;
     return '<button class="tk-tile tk-s-' + s.key + (on ? ' on' : '') + '" data-tk-stage="' + s.key + '" aria-pressed="' + on + '" title="' + esc(on ? 'Show every step again' : 'Show only ' + s.label) + '">' +
@@ -21821,6 +21829,8 @@ function tkBodyHtml(b) {
     if (p.repliedAt) dates.push('replied ' + itDay(p.repliedAt));
     if (p.callAt) dates.push('call ' + itDay(p.callAt));
     var by = p.by === 'elizabeth' ? 'Elizabeth · ' + (p.channel === 'email' ? 'email' : 'LinkedIn') : (p.channel === 'email' ? 'Email' : 'LinkedIn');
+    if (p.referredBy) by = 'Referred by ' + p.referredBy + (p.referredAt ? ' ' + itDay(p.referredAt) : '') + ' · ' + by;
+    if (p.referred && p.referred.length) by += ' · referred us to ' + p.referred.join(', ');
     var stg = tkStage(p.stage);
     var links = [];
     if (p.linkedinUrl) links.push('<a class="it-chip" href="' + esc(itHref(p.linkedinUrl)) + '" target="_blank" rel="noopener">' + IT_ICON.li + 'LinkedIn</a>');
@@ -21871,11 +21881,15 @@ function tkChartHtml(p) {
   var got = {};
   (p.steps || []).forEach(function (k) { got[k] = true; });
   var first = String(p.name || '').split(' ')[0] || 'them';
-  var nodes = TK_DOTS.map(function (x, i) {
+  // Someone a brand referred us to starts at Referred (Leo, Nov 10 2026).
+  var line = (p.referredBy || got.referred ? [['referred', 'Referred']] : []).concat(TK_DOTS);
+  var nodes = line.map(function (x, i) {
     var cls = 'tk-cn tk-s-' + x[0] + (p.stage === x[0] ? ' now' : got[x[0]] ? ' done' : '');
+    // Referred us opens "who did they refer you to?" — it's never just a mark.
+    var isRef = x[0] === 'referral';
     return (i ? '<i class="tk-cl' + (got[x[0]] || p.stage === x[0] ? ' on' : '') + '" aria-hidden="true"></i>' : '') +
-      '<button class="' + cls + '" data-tk-setp="' + esc(pk) + '" data-st="' + x[0] + '"' + (busy || p.stage === x[0] ? ' disabled' : '') +
-      ' title="Put ' + esc(first) + ' on ' + esc(x[1]) + '"><span class="d"></span><span class="t">' + esc(x[1]) + '</span></button>';
+      '<button class="' + cls + '" ' + (isRef ? 'data-tk-refopen' : 'data-tk-setp') + '="' + esc(pk) + '" data-st="' + x[0] + '"' + (busy || (!isRef && p.stage === x[0]) ? ' disabled' : '') +
+      ' title="' + esc(isRef ? first + ' referred you to someone else — add who' : 'Put ' + first + ' on ' + x[1]) + '"><span class="d"></span><span class="t">' + esc(x[1]) + '</span></button>';
   }).join('');
   var out = '<button class="tk-cn tk-cout tk-s-out' + (p.stage === 'out' ? ' now' : '') + '" data-tk-setp="' + esc(pk) + '" data-st="out"' +
     (busy || p.stage === 'out' ? ' disabled' : '') + ' title="Put ' + esc(first) + ' on Out"><span class="d"></span><span class="t">Out</span></button>';
@@ -21884,7 +21898,50 @@ function tkChartHtml(p) {
     : 'Click a step to put ' + first + ' there — only here, Zach’s list stays as it is';
   return '<div class="tk-chart" role="group" aria-label="' + esc(p.name) + '’s steps">' +
     '<div class="tk-cline">' + nodes + '<span class="tk-csep" aria-hidden="true"></span>' + out + '</div>' +
-    '<div class="tk-cnote">' + esc(note) + (p.canUndo ? ' · <button class="tk-clear" data-tk-undop="' + esc(pk) + '"' + (busy ? ' disabled' : '') + '>Undo</button>' : '') + '</div></div>';
+    '<div class="tk-cnote">' + esc(note) + (p.canUndo ? ' · <button class="tk-clear" data-tk-undop="' + esc(pk) + '"' + (busy ? ' disabled' : '') + '>Undo</button>' : '') +
+      (p.refId ? ' · <button class="tk-clear" data-tk-refdel="' + esc(p.refId) + '"' + (busy ? ' disabled' : '') + '>Take the referral off Deals</button>' : '') + '</div>' +
+    (TK.refForm[pk] ? tkRefFormHtml(p) : '') + '</div>';
+}
+// "Who did they refer you to?" — the person goes on the brand and into the queue (addReferral).
+function tkRefFormHtml(p) {
+  var pk = p.key || '';
+  var first = String(p.name || '').split(' ')[0] || 'They';
+  var f = TK.refForm[pk] || {};
+  var inp = function (k, ph, type) {
+    return '<input class="tk-rin" data-tk-reff="' + k + '" type="' + (type || 'text') + '" placeholder="' + esc(ph) + '" value="' + esc(f[k] || '') + '"' + (f.busy ? ' disabled' : '') + '>';
+  };
+  return '<div class="tk-refform" data-tk-refform="' + esc(pk) + '">' +
+    '<div class="tk-rh">Who did ' + esc(first) + ' refer you to?</div>' +
+    '<div class="tk-rgrid">' + inp('name', 'Name (needed)') + inp('title', 'Title') + inp('linkedinUrl', 'LinkedIn profile link', 'url') + inp('email', 'Email', 'email') + '</div>' +
+    '<div class="tk-racts"><button class="btn-solid sm" data-tk-refadd="' + esc(pk) + '"' + (f.busy ? ' disabled' : '') + '>' + (f.busy ? 'Adding…' : 'Add them') + '</button>' +
+    '<button class="btn-ghost sm" data-tk-refcancel="' + esc(pk) + '"' + (f.busy ? ' disabled' : '') + '>Cancel</button>' +
+    '<span class="tk-rnote">They go on the brand and into the outreach queue, starting at Referred; ' + esc(first) + ' goes on Referred us.</span></div></div>';
+}
+function tkRefAdd(pk) {
+  var f = TK.refForm[pk];
+  if (!f) return;
+  if (!String(f.name || '').trim()) { toast('Their name is needed'); return; }
+  f.busy = true;
+  tkRedrawPerson(pk);
+  api('addReferral', { fromKey: pk, name: f.name, title: f.title || '', linkedinUrl: f.linkedinUrl || '', email: f.email || '' }).then(function (r) {
+    delete TK.refForm[pk];
+    toast('Added ' + r.name + ' to ' + r.brandName + ' — referred by ' + r.fromName +
+      (r.queued ? '; in the outreach queue' + (r.hasLinkedIn ? '' : ' (no LinkedIn link yet)') : r.inPlay ? '; already reached (' + r.inPlay + ')' : ''));
+    loadZachTab();
+  }).catch(function (e) {
+    f.busy = false;
+    toast(e.message);
+    tkRedrawPerson(pk);
+  });
+}
+function tkRefRemove(id) {
+  api('removeReferral', { id: id }).then(function (pv) {
+    if (!confirm('Take ' + pv.name + '’s referral (from ' + pv.fromName + ') off Deals?\n\n' + pv.stays)) return;
+    return api('removeReferral', { id: id, confirm: true }).then(function () {
+      toast('Took ' + pv.name + '’s referral off Deals');
+      loadZachTab();
+    });
+  }).catch(function (e) { toast(e.message); });
 }
 function tkSetPerson(pk, stage, undo) {
   TK.pbusy[pk] = true;
@@ -21916,6 +21973,13 @@ function tkOpenProfile(id) {
 (function () {
   var view = document.getElementById('zachtab');
   view.addEventListener('input', function (e) {
+    var rf = e.target.getAttribute && e.target.getAttribute('data-tk-reff');
+    if (rf) {
+      var box = e.target.closest('[data-tk-refform]');
+      var f = box && TK.refForm[box.getAttribute('data-tk-refform')];
+      if (f) f[rf] = e.target.value;
+      return;
+    }
     if (e.target.id !== 'tk-find') return;
     TK.q = e.target.value;
     renderTrackerList();
@@ -21947,6 +22011,10 @@ function tkOpenProfile(id) {
       return;
     }
     if ((v = t.getAttribute('data-tk-setp'))) { tkSetPerson(v, t.getAttribute('data-st'), false); return; }
+    if ((v = t.getAttribute('data-tk-refopen'))) { if (TK.refForm[v]) delete TK.refForm[v]; else TK.refForm[v] = {}; tkRedrawPerson(v); return; }
+    if ((v = t.getAttribute('data-tk-refcancel'))) { delete TK.refForm[v]; tkRedrawPerson(v); return; }
+    if ((v = t.getAttribute('data-tk-refadd'))) { tkRefAdd(v); return; }
+    if ((v = t.getAttribute('data-tk-refdel'))) { tkRefRemove(v); return; }
     if ((v = t.getAttribute('data-tk-undop'))) { tkSetPerson(v, null, true); return; }
     if ((v = t.getAttribute('data-tk-profile'))) { tkOpenProfile(v); return; }
     if ((v = t.getAttribute('data-tk-brand'))) { loadBrand(v); return; }

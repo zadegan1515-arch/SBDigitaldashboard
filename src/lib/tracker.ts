@@ -17,12 +17,16 @@
 import { isAccepted } from './accepted'
 import { addDays, nyKey, onSendingDay, standing } from './rep-outreach'
 
-export type StageKey = 'reached' | 'accepted' | 'replied' | 'continue' | 'lireply' | 'emailed' | 'talks' | 'out'
+export type StageKey = 'referred' | 'reached' | 'accepted' | 'replied' | 'referral' | 'continue' | 'lireply' | 'emailed' | 'talks' | 'out'
 
 export const STAGES: Array<{ key: StageKey; label: string; hint: string }> = [
+  // Leo, Nov 10 2026: "what if someone refers me to someone else … a deal flow path for that". The person they
+  // pointed us to starts at Referred; the one who did the pointing is on Referred us.
+  { key: 'referred', label: 'Referred', hint: 'Someone at the brand pointed us to them — reach out' },
   { key: 'reached', label: 'Reached out', hint: 'Invite or email out — no answer yet' },
   { key: 'accepted', label: 'Accepted', hint: 'Accepted on LinkedIn — no reply yet' },
   { key: 'replied', label: 'Replied', hint: 'Wrote back — how do they want to continue?' },
+  { key: 'referral', label: 'Referred us', hint: 'Pointed us to someone else at the brand' },
   { key: 'continue', label: 'Wants to continue', hint: 'Asked for an email or a LinkedIn DM — send it' },
   // Leo, Nov 9 2026: "a stage that says linkedin response … when we respond on
   // linkedin but they dont respond back after they already have".
@@ -31,7 +35,7 @@ export const STAGES: Array<{ key: StageKey; label: string; hint: string }> = [
   { key: 'talks', label: 'In talks', hint: 'Call booked, or a deal going' },
   { key: 'out', label: 'Out', hint: 'Said no, doesn’t want to continue, or never answered' },
 ]
-const RANK: Record<StageKey, number> = { reached: 0, accepted: 1, replied: 2, continue: 3, lireply: 4, emailed: 5, talks: 6, out: -1 }
+const RANK: Record<StageKey, number> = { referred: -0.5, reached: 0, accepted: 1, replied: 2, referral: 2.5, continue: 3, lireply: 4, emailed: 5, talks: 6, out: -1 }
 export const isStageKey = (v: unknown): v is StageKey => typeof v === 'string' && v in RANK
 export const stageRank = (s: StageKey) => RANK[s]
 
@@ -221,6 +225,15 @@ export function chartSteps(steps: StageKey[], p: PersonStage): StageKey[] {
   const set = new Set(steps)
   if (p.hand && p.stage !== 'out') set.add(p.stage)
   return STAGES.map(s => s.key).filter(k => set.has(k))
+}
+
+// Someone the brand referred us to, not reached yet: Referred, ours to act on.
+export function referredStage(r: { fromName: string; at: When }): PersonStage {
+  const at = dt(r.at)
+  return {
+    stage: 'referred', out: null, label: 'referred by ' + r.fromName, onUs: true, due: null, at, lastAt: at, callAt: null,
+    next: 'Referred by ' + r.fromName + ' ' + fmt(at) + ' — reach out',
+  }
 }
 
 // ---- Elizabeth's rows -------------------------------------------------

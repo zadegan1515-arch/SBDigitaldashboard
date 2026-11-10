@@ -235,7 +235,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   second sub-tab. Data = `outreachTracker` (read-only; a READ_NAMES read in claude-day.ts): every brand
   reached by the Reached tag's rule (`REACHED_WHERE`) or by Elizabeth's rows (sent / accepted / replied / call), plus every
   brand on In talks; never a person (kind filtered in code — `kind: { not: 'person' }` drops every null kind). Each brand
-  sits at **one step** — Reached out → Accepted → Replied → Wants to continue → **LinkedIn response** → Email sent → In talks, or **Out** — the
+  sits at **one step** — (Referred →) Reached out → Accepted → Replied → (Referred us →) Wants to continue → **LinkedIn response** → Email sent → In talks, or **Out** — the
   furthest step anyone there is on who's still in play (rules pure in `src/lib/tracker.ts`, `node scripts/test-tracker.mjs`):
   per person (`zachStage` / `repStage`): accepted = `isAccepted`; replied = a reply (status, repliedAt, an inbound email)
   or a path picked / a hand email after an accept; **Wants to continue** = Zach's list's They want email / LinkedIn with
@@ -257,7 +257,19 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   a step = `setTrackerStage({ key: 't:<targetId>' | 'e:<repId>', stage })` — Setting `trackerMarks` (advisory-locked, the last
   10 per person; **Undo** = `{ key, undo: true }`). Zach's list and the row are never touched; the mark stands while nothing on
   the row is newer (`handStage` in tracker.ts: `lastAt` after the mark → what happened wins); Out by hand = reason `hand`; a
-  person set to In talks keeps the brand In talks. A ClaudeAction. **Open its In talks profile**
+  person set to In talks keeps the brand In talks. A ClaudeAction. **Referrals** (Leo, Nov 10 2026: "what if someone refers me to someone else, can we make a deal
+  flow path for that"; his picks: the one who referred us on a step **Referred us** (`referral`, between Replied and Wants to
+  continue), the person they named on a path of their own from **Referred** (`referred`, ranked below Reached out, a tile only
+  when a brand sits there), and that person goes **everywhere else** too): the chart's Referred us opens "Who did <first>
+  refer you to?" (`tkRefFormHtml`: name, title, LinkedIn, email) → `addReferral({ fromKey, name, title?, linkedinUrl?, email? })`
+  = a real Contact on the brand (source `referral`, notes "Referred by …"; the same person by LinkedIn link, email or name
+  is reused, never a second copy) **queued for outreach like a hand add** (a Target with `queuedFor` now, `noteChosen`; a
+  row already reached stays; the brand's rest and the giant hold don't apply — it's the brand's own ask; a stopped person /
+  brand is refused), a record in Setting `trackerReferrals` (advisory-locked) and a `referral` mark on the one who referred
+  (Undo on their chart). The tracker shows the person as `r:<refId>` (`referredStage`: ours, "Referred by … — reach out";
+  their own hand marks) until their own row is reached, then their `t:` row with "Referred by …" and `referred` first in
+  its steps; the one who referred shows "referred us to …". **Take the referral off Deals** = `removeReferral({ id })`
+  (preview names it; `confirm` removes only the record — the person stays on the brand). Both are ClaudeActions. **Open its In talks profile**
   (`itPreview`: a brand not in talks opens as a look, "not in talks yet" — the profile no longer says "Replied" for one that
   didn't; `listInTalks.preview.repliedAt` falls back to its journey) and **Brand page →**. Nothing is ticked here — steps stay
   on Zach's list, the brand page and Elizabeth's tab. Tests: `node scripts/test-tracker.mjs`, `NODE_PATH=$(npm root -g) node
