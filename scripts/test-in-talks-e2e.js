@@ -159,9 +159,24 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(await prisma.brandNote.count({ where: { brandId: 'bb' } }), 2);
     r = await data('listInTalks');
     assert.deepEqual(r.brands.find(b => b.id === 'bb').notes.map(x => x.text), ['Budget lands in February.', 'First call went well.'], 'newest first');
+    // The brand page's profile (Nov 10 2026) reads the same notes the same way,
+    // with the profile's words and links; its older note saves alone.
+    const gb = await data('getBrand', { brandId: 'bb' });
+    assert.deepEqual(gb.notes, r.brands.find(b => b.id === 'bb').notes, 'the brand page and the In talks profile get one note the same way');
+    assert.deepEqual([gb.brand.website, gb.brand.instagramUrl, gb.brand.tiktokUrl], ['https://betabeer.com', 'https://www.instagram.com/betabeer/', '']);
+    assert.equal(gb.brand.overview, 'Beta Beer is a light lager. It is growing fast.');
+    assert.match(gb.brand.activationIdea, /^Open the Garage\n\nA pop-up/);
+    assert.deepEqual((await data('getBrand', { brandId: 'bc' })).notes, [], 'a brand with no notes: an empty list');
+    const before = await prisma.brand.findUnique({ where: { id: 'bb' } });
+    await data('updateBrand', { brandId: 'bb', notes: 'Met at BevNET.' });
+    const after = await prisma.brand.findUnique({ where: { id: 'bb' } });
+    assert.equal(after.notes, 'Met at BevNET.');
+    assert.deepEqual([after.website, after.category, after.tier, after.overview, after.activationIdea], [before.website, before.category, before.tier, before.overview, before.activationIdea], 'nothing else on the brand moved');
+    await data('updateBrand', { brandId: 'bb', notes: '' });
+    assert.equal((await prisma.brand.findUnique({ where: { id: 'bb' } })).notes, null);
     await data('deleteBrandNote', { id: n1.id, confirm: true });
     assert.equal(await prisma.brandNote.count({ where: { brandId: 'bb' } }), 1);
-    ok('notes add (trimmed, by Claude), edit, and delete only with confirm; newest first');
+    ok('notes add (trimmed, by Claude), edit, and delete only with confirm; newest first; the brand page reads them too');
 
     // 5. What the daily check still fills
     r = await data('listTalksToFill');

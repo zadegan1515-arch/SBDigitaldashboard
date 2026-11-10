@@ -886,9 +886,6 @@
   .sd-tag.bad{color:#f2918c;border-color:rgba(240,113,107,.4)}
   .hs-switch{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;color:var(--ink-2);white-space:nowrap;cursor:pointer;user-select:none}
   .hs-switch input{margin:0}
-  .fit-why{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;color:var(--ink-3);margin-top:6px}
-  .fit-why .y{color:#55d9a2}
-  .fit-why .n{color:#f2918c}
   .fit-panel{margin-top:14px}
   .fit-panel h3{font-size:14px;margin:0 0 6px}
   .fit-row{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--border);font-size:13px}
@@ -2359,6 +2356,123 @@
     .it-stile.gap{margin-left:0}
   }
 
+  /* ---- Brand page: the profile on top (bx-*; Leo, Nov 10 2026: "redo this page to be more complex, put the
+     company's socials, wesbote, notes (editable), activation idea, and make it easier to read"). A hero (name,
+     what they do, link chips, where it stands), a strip of numbers, the Schedule line, then Overview | Brand Fit
+     and Activation idea | Notes. The In talks profile's pieces (it-chip, it-card, it-note…) are reused. ---- */
+  .bx-hero{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(270px,360px);gap:22px;align-items:start;padding:26px 28px;
+    border:1px solid var(--border-soft);border-radius:20px;
+    background:radial-gradient(120% 150% at 0% 0%,hsl(var(--h,220) 55% 30% / .28),transparent 55%),linear-gradient(180deg,#101016,#0c0c11);
+    box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 18px 50px rgba(0,0,0,.3)}
+  .bx-hero.solo{grid-template-columns:auto minmax(0,1fr)}
+  .bx-hero-main{min-width:0}
+  .bx-hero h1{font-size:36px;margin:6px 0 0;word-break:break-word}
+  .bx-kicker{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;margin-top:0;font-size:13.5px}
+  .bx-kicker .sep{opacity:.5}
+  .bx-sum{font-size:15.5px;line-height:1.6;color:var(--ink-2);max-width:74ch;margin:10px 0 0}
+  .bx-sum.none{font-size:13.5px;color:var(--ink-3)}
+  .bx-hero .it-links{margin-top:14px}
+  .bx-hero .it-chip{font-size:13.5px;padding:6px 12px}
+  .bx-hero .it-chip svg{width:15px;height:15px}
+  /* Where it stands: the furthest step anyone here got to, the steps in a line, and In talks. */
+  .bx-stand{border:1px solid var(--border);border-radius:16px;padding:14px 16px 13px;background:rgba(0,0,0,.28);display:flex;flex-direction:column;gap:3px;min-width:0;--sc:#5c6070}
+  .bx-stand .lbl{font-size:11.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+  .bx-stand .now{font-family:var(--display);font-size:20px;font-weight:800;letter-spacing:-.01em;line-height:1.25;color:color-mix(in srgb,var(--sc) 55%,#fff)}
+  .bx-stand .who{font-size:13px;color:var(--ink-2);line-height:1.45}
+  .bx-stand.t-reached{--sc:#6f9dff} .bx-stand.t-accepted{--sc:#43c6e8} .bx-stand.t-replied{--sc:#3ecf8e} .bx-stand.t-call{--sc:#e2b04a}
+  .bx-stand.t-stop{--sc:#f0716b;border-color:rgba(240,113,107,.45)} .bx-stand.t-queue{--sc:#9d7aff}
+  .bx-stand:not(.t-none):not(.t-stop){border-color:color-mix(in srgb,var(--sc) 42%,transparent)}
+  .bx-steps{list-style:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:12px 0 0;padding:0}
+  .bx-steps li{position:relative;display:flex;flex-direction:column;gap:1px;padding-top:17px;min-width:0}
+  .bx-steps li:before{content:'';position:absolute;top:4px;left:10px;right:0;height:2px;background:var(--border)}
+  .bx-steps li:last-child:before{display:none}
+  .bx-steps li i{position:absolute;top:0;left:0;width:10px;height:10px;border-radius:50%;border:2px solid #3a3a46;background:#0c0c11}
+  .bx-steps li.done i{border-color:var(--sc);background:var(--sc)}
+  .bx-steps li.thru:before{background:var(--sc)}
+  .bx-steps b{font-size:12.5px;font-weight:650;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bx-steps li.done b{color:var(--ink-1)}
+  .bx-steps span{font-size:12.5px;color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bx-stand .b-talks{display:flex;gap:6px 10px;align-items:center;flex-wrap:wrap;font-size:13px;margin-top:12px;padding-top:11px;border-top:1px solid var(--border-soft)}
+  .bx-linkedit{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:10px;align-items:end;margin-top:12px;padding:16px 18px 6px;
+    border:1px solid var(--border-soft);border-radius:16px;background:rgba(255,255,255,.018)}
+  .bx-linkedit label{font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);display:flex;flex-direction:column;gap:5px}
+  .bx-linkedit .inp{width:100%;font-size:14px;text-transform:none;letter-spacing:0;font-weight:400}
+  .bx-linkedit .it-hint{grid-column:1/-1;padding-bottom:10px}
+  .bx-linkedit .it-edit-acts{margin:0}
+  #brand .btn-solid.sm{padding:6px 14px;font-size:13px}
+  /* The numbers: one strip, each tile grows to fill its row. */
+  .bx-facts{display:flex;flex-wrap:wrap;gap:1px;margin:16px 0 0;border:1px solid var(--border-soft);border-radius:16px;overflow:hidden;background:var(--border-soft)}
+  .bx-fact{flex:1 1 150px;background:#0f0f15;padding:14px 16px 13px;min-width:0;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start}
+  .bx-fact .k{font-size:11.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bx-fact .v{font-family:var(--display);font-size:24px;font-weight:800;letter-spacing:-.02em;margin-top:4px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bx-fact .v small{font-family:'Inter',sans-serif;font-size:13px;font-weight:500;color:var(--ink-3);margin-left:5px;letter-spacing:0}
+  .bx-fact .n{font-size:12.5px;color:var(--ink-3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .bx-fact.money{box-shadow:inset 3px 0 0 var(--good)}
+  button.bx-fact{border:0;font:inherit;color:inherit;text-align:left;cursor:pointer}
+  button.bx-fact:hover{background:#14141c}
+  button.bx-fact:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--accent)}
+  #b-sec-people,#b-sec-outreach,#b-sec-shows,#b-sec-board{scroll-margin-top:calc(var(--head-h,76px) + 14px)}
+  .bx-fact.good .v{color:#55d9a2} .bx-fact.warn .v{color:#eec777}
+  .bx-bar{margin-top:16px;padding:12px 18px;border:1px solid var(--border-soft);border-radius:14px;background:rgba(255,255,255,.018)}
+  .bx-bar .b-plan{margin:0;font-size:14px}
+  .bx-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;margin-top:16px}
+  .bx-grid .it-card{display:flex;flex-direction:column}
+  .bx-grid .it-card-h h3{font-size:12.5px}
+  .bx-grid .it-idea-foot{margin-top:auto;padding-top:14px}
+  .bx-grid .it-idea-body,.bx-grid .it-overview,.bx-grid .it-empty{margin-bottom:16px}
+  .bx-grid .it-note-acts{opacity:.55}
+  .bx-grid .it-note:hover .it-note-acts,.bx-grid .it-note:focus-within .it-note-acts{opacity:1}
+  .bx-notes-scroll{max-height:420px;overflow:auto;margin-right:-8px;padding-right:8px}
+  .bx-dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:7px 16px;margin:0;padding-top:14px;border-top:1px solid var(--border-soft);font-size:14px;line-height:1.5}
+  .bx-dl dt{font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);padding-top:3px;white-space:nowrap}
+  .bx-dl dd{margin:0;color:var(--ink-1);min-width:0;word-break:break-word}
+  /* Brand Fit: the score, then every reason on its own line with its points. */
+  .bx-fit-top{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+  .bx-score{font-family:var(--display);font-size:34px;font-weight:800;letter-spacing:-.03em;line-height:1;white-space:nowrap}
+  .bx-score small{font-family:'Inter',sans-serif;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-right:8px;vertical-align:middle}
+  .bx-score em{font-style:normal;font-family:'Inter',sans-serif;font-size:13px;font-weight:500;color:var(--ink-3);letter-spacing:0;margin-left:5px}
+  .bx-score.good{color:#55d9a2} .bx-score.warn{color:#eec777}
+  .bx-meter{flex:1;height:8px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden;min-width:60px}
+  .bx-meter i{display:block;height:100%;border-radius:99px;background:var(--accent)}
+  .bx-meter i.good{background:var(--good)} .bx-meter i.warn{background:var(--warn)}
+  .bx-flags{display:flex;gap:6px;flex-wrap:wrap}
+  .bx-why{list-style:none;margin:0;padding:0}
+  .bx-why li{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:8px;align-items:baseline;padding:8px 0;border-top:1px solid var(--border-soft);font-size:14px;line-height:1.45}
+  .bx-why .m{font-weight:800;color:var(--ink-3);text-align:center}
+  .bx-why li.y .m{color:#55d9a2} .bx-why li.n .m{color:#f2918c}
+  .bx-why .t{color:var(--ink-1);min-width:0}
+  .bx-why li.q .t{color:var(--ink-2)}
+  .bx-why .p{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink-3);white-space:nowrap}
+  .bx-why li.y .p{color:#55d9a2}
+  /* Easier to read under the profile: section names a size up; a person = initials, the name, the title
+     on its own line; the Outreach rows a size up too. */
+  #brand .section-head{font-size:15px;font-weight:700;color:var(--ink-1)}
+  #brand .section-head .n{font-size:13px}
+  #brand-body .target .t-line{font-size:14.5px}
+  #brand-body .target .t-brand{font-size:15px}
+  .bx-av{flex:none;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;
+    background:hsl(var(--h,230) 30% 19%);color:hsl(var(--h,230) 70% 84%);border:1px solid hsl(var(--h,230) 32% 28%)}
+  .bx-av:before{content:attr(data-ini)}
+  #brand-body .target[data-pcid]{gap:14px}
+  #brand-body .target[data-pcid] .t-line{display:flex;flex-direction:column;gap:1px}
+  #brand-body .target[data-pcid] .t-line .t-sep{display:none}
+  #brand-body .target[data-pcid] .t-title{font-size:13.5px}
+  @media (max-width:1180px){
+    .bx-hero{grid-template-columns:auto minmax(0,1fr)}
+    .bx-stand{grid-column:1/-1}
+    .bx-grid{grid-template-columns:minmax(0,1fr)}
+  }
+  @media (max-width:700px){
+    .bx-hero{grid-template-columns:minmax(0,1fr);padding:18px 16px;gap:14px;border-radius:16px}
+    .bx-hero>.it-mono.lg{display:none}
+    .bx-hero h1{font-size:27px}
+    .bx-linkedit{grid-template-columns:minmax(0,1fr)}
+    .bx-fact{flex-basis:130px}
+    .bx-fact .v{font-size:21px}
+    .bx-grid .it-noteadd{flex-direction:column;align-items:stretch}
+    .bx-grid .it-note-acts{opacity:1}
+  }
+
   /* ---- Deals → Overview (zv-*; Leo, Nov 8 2026: Zach's page — "one tab for Zach … look at everything"; then
      "zoom out … make it more polished, like you had it before"). The numbers on top, Every brand reached (the
      In talks tracker, tk-*) in a card, then This week / In talks / Show Board. Compact. ---- */
@@ -3592,23 +3706,18 @@ document.addEventListener('change', function (e) {
 // The tags a brand row carries. `f` may be missing (old payloads).
 function fitTags(f, opts) {
   if (!f) return '';
-  opts = opts || {};
   var cls = f.score >= 60 ? 'good' : f.score < 35 ? 'warn' : '';
   return '<span class="sd-tag ' + cls + '" title="Brand Fit ' + f.score + ' of 100 — budget and venture money weigh most; open the brand for the reasons">Fit ' + f.score + '</span>' +
-    (f.ruledOut ? '<span class="sd-tag bad" title="Ruled out — never planned or suggested">' + esc(f.ruledOut) + '</span>' : '') +
+    fitFlags(f, opts);
+}
+// Everything but the score: ruled out, closed / bought, too small, US?.
+function fitFlags(f, opts) {
+  if (!f) return '';
+  opts = opts || {};
+  return (f.ruledOut ? '<span class="sd-tag bad" title="Ruled out — never planned or suggested">' + esc(f.ruledOut) + '</span>' : '') +
     (f.bizNote ? '<span class="sd-tag warn" title="On Stock take’s Suggest Archive list — your call">' + esc(f.bizNote) + '</span>' : '') +
     (f.tooSmall ? '<span class="sd-tag warn" title="' + esc(f.tooSmallWhy || '') + '">too small</span>' : '') +
     (f.usUnknown && !opts.noUs ? '<span class="sd-tag" title="Not known yet whether it sells in the US">US?</span>' : '');
-}
-// The brand page's Fit line: the score, its tags and every reason.
-function bFitLine(f) {
-  if (!f) return '';
-  var mark = function (r) { return r.good === true ? '<span class="y">✓</span>' : r.good === false ? '<span class="n">✗</span>' : '?'; };
-  return '<div id="b-fit" class="b-plan"><span class="b-plan-k">Brand Fit</span>' + fitTags(f) +
-    (f.onArchiveList && !f.ruledOut && !f.bizNote ? '<span class="sd-tag warn" title="' + esc(f.archiveWhy || '') + '">on Suggest Archive</span>' : '') +
-    '<div class="fit-why" style="flex-basis:100%">' + (f.reasons || []).map(function (r) {
-      return '<span title="' + r.points + ' points">' + mark(r) + ' ' + esc(r.text) + '</span>';
-    }).join('') + '</div></div>';
 }
 // Cents → "$1.2M" (Brand Fit facts can pass $21M; money() has no cap but
 // spells every digit).
@@ -9833,7 +9942,7 @@ document.getElementById('bq-fill').addEventListener('click', function () {
 // --- brand detail ----------------------------------------------
 
 var CURRENT_BRAND = null;
-// The brand whose Details & notes edit form is open: it stays open when
+// The brand whose Details & settings edit form is open: it stays open when
 // a button on the page refreshes it (a different brand opens it shut).
 var BRAND_EDIT_OPEN = null;
 
@@ -10109,6 +10218,499 @@ document.getElementById('brand-body').addEventListener('click', function (e) {
 // row is scrolled to once and stays lit while the page is up (bFocusApply).
 var B_FOCUS = null;   // { brandId, contactId, scroll }
 
+// --- brand page: the profile on top (Leo, Nov 10 2026) -------------------
+// "redo this page to be more complex, put the company's socials, wesbote,
+// notes (editable), activation idea, and make it easier to read". The top of
+// a brand's page is its profile: a hero (name, what they do, link chips —
+// website, Instagram, TikTok, LinkedIn — and where it stands), a strip of
+// numbers, the Schedule line, then Overview | Brand Fit and Activation idea |
+// Notes. The words, links and notes are the In talks profile's own
+// (saveTalksProfile; addBrandNote / editBrandNote / deleteBrandNote), so what
+// is written here shows there and the other way round. A save redraws its
+// part of the top alone (bxDrawTop / bxDrawCards) — never the People list,
+// and typed text that isn't saved yet survives any redraw (BX.drafts).
+var BX = { edit: null, links: false, drafts: {} };
+function bxDraft(b, field, fallback) {
+  var k = b.id + '|' + field;
+  return Object.prototype.hasOwnProperty.call(BX.drafts, k) ? BX.drafts[k] : fallback;
+}
+function bxDrop(b, field) { delete BX.drafts[b.id + '|' + field]; }
+function bxPl(n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); }
+
+// Where the brand stands, from the people on its page: the furthest step
+// anyone here got to, and the four steps in a line. The same facts as the
+// pills under People — nothing is worked out that the page doesn't show.
+function bxStanding(d) {
+  var b = d.brand, ts = b.targets || [];
+  var nameOf = function (t) { return (t.contact && t.contact.name) || ''; };
+  var names = function (list) {
+    var ns = list.map(nameOf).filter(Boolean);
+    return ns.length > 2 ? ns.slice(0, 2).join(', ') + ' +' + (ns.length - 2) + ' more' : ns.join(' and ');
+  };
+  var edge = function (xs, last) {
+    var ms = xs.filter(Boolean).map(function (x) { return new Date(x).getTime(); }).filter(function (x) { return !isNaN(x); });
+    return ms.length ? new Date(last ? Math.max.apply(null, ms) : Math.min.apply(null, ms)) : null;
+  };
+  var mails = function (t) { return (t.emails || []).filter(function (e) { return e.sentAt; }).map(function (e) { return e.sentAt; }); };
+  // An invite counts with or without its date (one logged as accepted has none).
+  var invited = ts.filter(function (t) { return t.sentAt || ['sent', 'accepted', 'replied', 'converted'].indexOf(t.status) !== -1; });
+  var reached = ts.filter(function (t) { return invited.indexOf(t) !== -1 || t.emailedAt || mails(t).length; });
+  var said = function (t) { return t.status === 'replied' || t.status === 'converted'; };
+  var replied = ts.filter(function (t) { return said(t) || t.repliedAt; });
+  // A reply to an email alone is not an accept on LinkedIn.
+  var accepted = ts.filter(function (t) { return t.status === 'accepted' || (said(t) && (t.sentAt || !(t.emails || []).length)); });
+  var calls = ts.filter(function (t) { return t.callAt && !t.handDeclinedAt; });
+  var waiting = ts.filter(function (t) { return !t.shelved && (t.status === 'queued' || t.status === 'drafted'); });
+  var today0 = new Date(); today0.setHours(0, 0, 0, 0);
+  var byCall = function (x, y) { return new Date(x.callAt) - new Date(y.callAt); };
+  var next = calls.filter(function (t) { return new Date(t.callAt) >= today0; }).sort(byCall)[0];
+  var had = calls.filter(function (t) { return new Date(t.callAt) < today0; }).sort(byCall).pop();
+  var accIds = accepted.map(function (t) { return t.id; });
+  var accDay = edge((d.events || []).filter(function (e) {
+    return e.toStatus === 'accepted' && accIds.indexOf(e.targetId || (e.target && e.target.id)) !== -1;
+  }).map(function (e) { return e.createdAt; }));
+  var repDay = edge(replied.map(function (t) { return t.repliedAt; }));
+  var firstOut = edge([].concat.apply([], reached.map(function (t) { return [t.sentAt, t.emailedAt].concat(mails(t)); })));
+  var lastOut = edge([].concat.apply([], reached.map(function (t) { return [t.sentAt, t.emailedAt].concat(mails(t)); })), true);
+  var people = (b.contacts || []).length;
+  var cls = 't-none', now, who;
+  if (b.stoppedAt) { cls = 't-stop'; now = 'Doesn’t want to continue'; who = 'since ' + shortDate(b.stoppedAt) + ' — nobody here is contacted again'; }
+  else if (next) { cls = 't-call'; now = 'Call booked · ' + itDayLong(next.callAt); who = 'with ' + nameOf(next) + ' · ' + itRel(next.callAt); }
+  else if (had) { cls = 't-call'; now = 'Had a call ' + itDay(had.callAt); who = 'with ' + nameOf(had); }
+  else if (replied.length) { cls = 't-replied'; now = 'Replied'; who = names(replied) + (repDay ? ' · ' + itDay(repDay) : ''); }
+  else if (accepted.length) { cls = 't-accepted'; now = 'Accepted on LinkedIn'; who = names(accepted) + (accDay ? ' · ' + itDay(accDay) : ''); }
+  else if (reached.length) {
+    cls = 't-reached'; now = (invited.length ? 'Invited' : 'Emailed') + ' — no answer yet';
+    who = bxPl(reached.length, 'person', 'people') + (lastOut ? ' · last ' + itDay(lastOut) : '');
+  }
+  else if (waiting.length) { cls = 't-queue'; now = 'In the queue — nothing sent yet'; who = bxPl(waiting.length, 'person', 'people') + ' waiting to go out'; }
+  else if (people) { now = 'Not reached out to yet'; who = bxPl(people, 'person', 'people') + ' on file'; }
+  else { now = 'No people on file yet'; who = 'Find them on LinkedIn or SponsorUnited, then + Add person'; }
+  var sub = function (n, day) { return n ? n + (day ? ' · ' + itDay(day) : '') : '—'; };
+  return {
+    cls: cls, now: now, who: who, reached: reached.length, accepted: accepted.length, replied: replied.length,
+    steps: [
+      { label: 'Reached', done: reached.length > 0, sub: sub(reached.length, firstOut) },
+      { label: 'Accepted', done: accepted.length > 0, sub: sub(accepted.length, accDay) },
+      { label: 'Replied', done: replied.length > 0, sub: sub(replied.length, repDay) },
+      { label: 'Call', done: calls.length > 0, sub: next ? itDay(next.callAt) : had ? itDay(had.callAt) : '—' },
+    ],
+  };
+}
+
+// The hero: who they are and where it stands; under it, the link boxes when open.
+function bxHero(d) {
+  var b = d.brand, person = b.kind === 'person';
+  var kick = [person ? 'Person · gets the Show Board' : esc(CAT_NAMES[b.category] || b.category || 'Uncategorized')];
+  if (b.tier) kick.push(esc(b.tier));
+  if (b.partner) kick.push(esc(String(b.partner.lifecycle || '').replace(/_/g, ' ')));
+  if (b.owner) kick.push('owner ' + esc(b.owner));
+  var kicker = '<div class="sub bx-kicker">' + kick.map(function (x) { return '<span>' + x + '</span>'; }).join('<span class="sep"> · </span>') +
+    rbTag(b.id) +
+    (!person && b.passedAt ? '<span class="sd-tag warn" title="Off outreach until you bring it back (Details &amp; settings)">archived</span>' : '') +
+    (!person && b.doNotEmail && !b.passedAt ? '<span class="sd-tag" title="Left out of all outreach emails">do not email</span>' : '') + '</div>';
+  // Two sentences under the name: what they do + what they're known for
+  // (the About / Best sellers fields).
+  var sum = b.about
+    ? '<p class="bx-sum">' + esc(b.about) + (/[.!?]$/.test(b.about) ? '' : '.') + (b.topProducts ? ' Known for ' + esc(b.topProducts) + '.' : '') + '</p>'
+    : person ? (b.notes ? '<p class="bx-sum">' + esc(b.notes) + '</p>' : '')
+    : b.overview ? ''
+    : '<p class="bx-sum none">No summary yet — open “Details &amp; settings” below and fill in “What they do”.</p>';
+  var chips = [];
+  if (b.website) chips.push('<a class="it-chip" href="' + esc(itHref(b.website)) + '" target="_blank" rel="noopener">' + IT_ICON.web + esc(itHost(b.website)) + '</a>');
+  if (b.instagramUrl) chips.push('<a class="it-chip" href="' + esc(itHref(b.instagramUrl)) + '" target="_blank" rel="noopener">' + IT_ICON.ig + 'Instagram <span class="h">' + esc(itHandle(b.instagramUrl)) + '</span></a>');
+  if (b.tiktokUrl) chips.push('<a class="it-chip" href="' + esc(itHref(b.tiktokUrl)) + '" target="_blank" rel="noopener">' + IT_ICON.tt + 'TikTok <span class="h">' + esc(itHandle(b.tiktokUrl)) + '</span></a>');
+  if (b.linkedinUrl) chips.push('<a class="it-chip" href="' + esc(itHref(b.linkedinUrl)) + '" target="_blank" rel="noopener">' + IT_ICON.li + 'LinkedIn</a>');
+  if (!person) {
+    var missing = [!b.website && 'website', b.instagramUrl == null && 'Instagram', b.tiktokUrl == null && 'TikTok'].filter(Boolean);
+    chips.push('<button class="it-chip ghost" data-bx-links aria-expanded="' + !!BX.links + '">' + (missing.length ? '+ ' + missing.join(', ') : 'Edit links') + '</button>');
+  }
+  var stand = '';
+  if (!person) {
+    var S = bxStanding(d);
+    stand = '<aside class="bx-stand ' + S.cls + '" id="bx-stand">' +
+      '<span class="lbl">Where it stands</span><span class="now">' + esc(S.now) + '</span><span class="who">' + esc(S.who) + '</span>' +
+      '<ol class="bx-steps">' + S.steps.map(function (x, i) {
+        var nx = S.steps[i + 1];
+        return '<li class="' + (x.done ? 'done' : '') + (x.done && nx && nx.done ? ' thru' : '') + '"><i></i><b>' + esc(x.label) + '</b><span>' + esc(x.sub) + '</span></li>';
+      }).join('') + '</ol>' +
+      // In talks (the Deals tab): it's there, or + Add to In talks.
+      bTalksLine(d) + '</aside>';
+  }
+  var linkEdit = !person && BX.links
+    ? '<div class="bx-linkedit" id="bx-linkedit">' +
+        '<label>Website<input class="inp" data-bx-link="website" value="' + esc(bxDraft(b, 'website', b.website || '')) + '" placeholder="brand.com"></label>' +
+        '<label>Instagram<input class="inp" data-bx-link="instagramUrl" value="' + esc(bxDraft(b, 'instagramUrl', b.instagramUrl === '' ? 'none' : (b.instagramUrl || ''))) + '" placeholder="@handle or link"></label>' +
+        '<label>TikTok<input class="inp" data-bx-link="tiktokUrl" value="' + esc(bxDraft(b, 'tiktokUrl', b.tiktokUrl === '' ? 'none' : (b.tiktokUrl || ''))) + '" placeholder="@handle or link"></label>' +
+        '<div class="it-edit-acts"><button class="btn-solid sm" data-bx-links-save>Save</button><button class="btn-ghost sm" data-bx-links-cancel>Cancel</button></div>' +
+        '<div class="it-hint">A handle, @handle or a full link all work. Type “none” when they have no account. Their LinkedIn page is under Details &amp; settings.</div>' +
+      '</div>'
+    : '';
+  return '<div class="bx-hero' + (person ? ' solo' : '') + '" id="bx-hero" style="--h:' + itHue(b.name) + '">' +
+    '<span class="it-mono lg" aria-hidden="true">' + esc(itInitials(b.name)) + '</span>' +
+    '<div class="bx-hero-main">' + kicker + '<h1>' + esc(b.name) + '</h1>' + sum +
+      (chips.length ? '<div class="it-links">' + chips.join('') + '</div>' : '') + '</div>' +
+    stand + '</div>' + linkEdit;
+}
+
+// The numbers in one strip. People, Outreach, Shows and Show Board jump to
+// their part of the page. Money stays on its own lines: confirmed and
+// proposed sponsorship, never added together.
+function bxFacts(d) {
+  var b = d.brand, person = b.kind === 'person', f = d.fit, out = [];
+  var tile = function (k, v, n, o) {
+    o = o || {};
+    var tag = o.jump ? 'button' : 'div';
+    return '<' + tag + ' class="bx-fact' + (o.cls ? ' ' + o.cls : '') + '"' +
+      (o.jump ? ' data-bx-jump="' + o.jump + '" title="Jump to ' + esc(o.title || k) + '"' : '') + '>' +
+      '<div class="k">' + k + (o.jump ? ' ↓' : '') + '</div><div class="v">' + v + '</div>' + (n ? '<div class="n">' + n + '</div>' : '') + '</' + tag + '>';
+  };
+  var cs = b.contacts || [];
+  if (!person && f) out.push(tile('Brand Fit', f.score + '<small>/ 100</small>',
+    f.ruledOut ? esc(f.ruledOut) : f.bizNote ? esc(f.bizNote) : f.tooSmall ? 'too small' : 'every reason below', { cls: f.score >= 60 ? 'good' : f.score < 35 ? 'warn' : '' }));
+  out.push(tile(person ? 'Contacts' : 'People', String(cs.length),
+    bxPl(cs.filter(function (c) { return c.isDecisionMaker; }).length, 'decision maker') +
+      (person ? '' : '<br>' + cs.filter(function (c) { return c.email || c.linkedinUrl; }).length + ' we can reach'), { jump: 'people', title: 'People' }));
+  if (!person) {
+    var S = bxStanding(d);
+    out.push(tile('Outreach', S.reached + '<small>reached</small>',
+      S.reached ? S.accepted + ' accepted · ' + S.replied + ' replied' : 'nobody written to yet', (b.targets || []).length ? { jump: 'outreach', title: 'Outreach' } : null));
+  }
+  var bv = d.boardViews || {};
+  out.push(tile('Show Board', (bv.count || 0) + '<small>open' + (bv.count === 1 ? '' : 's') + '</small>',
+    bv.last ? 'last ' + esc(shortDate(bv.last.createdAt)) : b.boardCode ? 'code ' + esc(b.boardCode) + ' — not opened' : 'no code yet', { jump: 'board', title: 'Show Board access' }));
+  var m = d.money || {};
+  out.push(tile('Confirmed', esc(money(m.confirmedCents || 0)), 'sponsorship revenue', { cls: 'money' }));
+  out.push(tile('Proposed', esc(money(m.proposedCents || 0)), 'not yet agreed'));
+  out.push(tile('Shows', String((b.shows || []).length), 'attached', { jump: 'shows', title: 'Sponsored shows' }));
+  if (!person) {
+    if (b.liMembers) out.push(tile('On LinkedIn', esc(b.liMembers >= 1000 ? (Math.round(b.liMembers / 100) / 10) + 'K' : String(b.liMembers)) + '<small>people</small>', ''));
+    if (b.salesCents != null) out.push(tile('Sales', esc(shortMoney(b.salesCents)) + '<small>a year</small>', ''));
+    if (b.fundingCents != null) out.push(tile('Raised', esc(shortMoney(b.fundingCents)), b.lastRoundAt ? 'last round ' + esc(String(b.lastRoundAt).slice(0, 7)) : ''));
+  }
+  return out.join('');
+}
+
+// Details & settings' fact sheet (everything on file, one line each).
+function bFactsHtml(b) {
+  var factLine = function (label, val) {
+    return val ? '<div style="display:flex;gap:12px;font-size:13.5px;padding:4px 0">' +
+      '<span style="flex:none;width:96px;color:var(--ink-3);font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;padding-top:3px">' + label + '</span>' +
+      '<span style="min-width:0">' + val + '</span></div>' : '';
+  };
+  var link = function (u, text) { return '<a href="' + esc(itHref(u)) + '" target="_blank" rel="noopener">' + esc(text) + '</a>'; };
+  var facts =
+    factLine('Also called', b.aka ? esc(b.aka) : '') +
+    factLine('About', b.about ? esc(b.about) : '') +
+    factLine('Best sellers', b.topProducts ? esc(b.topProducts) : '') +
+    factLine('Website', b.website ? link(b.website, b.website.replace(/^https?:\/\//i, '')) : '') +
+    factLine('Instagram', b.instagramUrl ? link(b.instagramUrl, itHandle(b.instagramUrl) || b.instagramUrl) : b.instagramUrl === '' ? 'None' : '') +
+    factLine('TikTok', b.tiktokUrl ? link(b.tiktokUrl, itHandle(b.tiktokUrl) || b.tiktokUrl) : b.tiktokUrl === '' ? 'None' : '') +
+    factLine('Wants', b.goals ? esc(b.goals) : '') +
+    factLine('Notes', b.notes ? esc(b.notes) : '') +
+    // Brand Fit facts — sales, money raised, US, sponsorships.
+    factLine('Sales', b.salesCents != null ? esc(shortMoney(b.salesCents)) + ' a year' : '') +
+    factLine('Raised', b.fundingCents != null ? esc(shortMoney(b.fundingCents)) +
+      (b.lastRoundAt ? ' · last round ' + esc(String(b.lastRoundAt).slice(0, 7)) : '') : '') +
+    factLine('In the US', b.usStatus === 'yes' ? 'Yes' : b.usStatus === 'no' ? 'No — not sold in the US' : '') +
+    factLine('College / music', b.sponsorsCollege === true ? 'Sponsors' + (b.sponsorNote ? ': ' + esc(b.sponsorNote) : '')
+      : b.sponsorsCollege === false ? 'None found' + (b.sponsorNote ? ' · ' + esc(b.sponsorNote) : '') : (b.sponsorNote ? esc(b.sponsorNote) : '')) +
+    factLine('Status', b.bizStatus && b.bizStatus !== 'active' ? esc(b.bizStatus) + (b.acquiredBy ? ' by ' + esc(b.acquiredBy) : '') : '') +
+    factLine('Researched', b.researchedAt ? esc(shortDate(b.researchedAt)) + (b.researchNote ? ' · ' + esc(b.researchNote) : '') : '');
+  return facts || '<div style="font-size:13px;color:var(--ink-3);padding:2px 0">Nothing on file yet.</div>';
+}
+
+// Brand Fit as a card: the score, then every reason on its own line with its
+// points, most points first (src/lib/brand-fit.ts).
+function bxFitCard(f) {
+  if (!f) return '';
+  var cls = f.score >= 60 ? 'good' : f.score < 35 ? 'warn' : '';
+  var flags = fitFlags(f) +
+    (f.onArchiveList && !f.ruledOut && !f.bizNote ? '<span class="sd-tag warn" title="' + esc(f.archiveWhy || '') + '">on Suggest Archive</span>' : '');
+  var rs = (f.reasons || []).map(function (r, i) { return { r: r, i: i }; })
+    .sort(function (x, y) { return (y.r.points || 0) - (x.r.points || 0) || x.i - y.i; });
+  return '<section class="it-card bx-fit" id="b-fit">' +
+    '<div class="it-card-h"><h3>Brand Fit</h3><span class="grow"></span>' + (flags ? '<span class="bx-flags">' + flags + '</span>' : '') + '</div>' +
+    '<div class="bx-fit-top"><div class="bx-score ' + cls + '" title="Brand Fit ' + f.score + ' of 100 — budget and venture money weigh most"><small>Fit</small> ' + f.score + '<em>/ 100</em></div>' +
+      '<div class="bx-meter" aria-hidden="true"><i class="' + cls + '" style="width:' + Math.max(0, Math.min(100, f.score)) + '%"></i></div></div>' +
+    '<ul class="bx-why">' + rs.map(function (x) {
+      var r = x.r, p = r.points || 0;
+      return '<li class="' + (r.good === true ? 'y' : r.good === false ? 'n' : 'q') + '"><span class="m">' + (r.good === true ? '✓' : r.good === false ? '✗' : '?') + '</span>' +
+        '<span class="t">' + esc(r.text) + '</span><span class="p" title="' + p + ' points">' + (p > 0 ? '+' + p : p < 0 ? '−' + (-p) : '0') + '</span></li>';
+    }).join('') + '</ul></section>';
+}
+
+// One dated note (the In talks profile's look).
+function bxNoteHtml(b, n) {
+  var editing = BX.edit === 'note:' + n.id;
+  return '<li class="it-note">' +
+    '<div class="it-note-meta"><b>' + esc(itDay(n.at)) + '</b>' + (n.by ? '<span>' + esc(n.by) + '</span>' : '') + (n.editedAt ? '<span>· edited</span>' : '') +
+      (editing ? '' : '<span class="it-note-acts"><button class="it-mini" data-bx-edit="note:' + esc(n.id) + '">Edit</button>' +
+        '<button class="it-mini danger" data-bx-note-del="' + esc(n.id) + '">Delete</button></span>') + '</div>' +
+    (editing
+      ? '<textarea class="field-box it-ta" data-bx-field="note:' + esc(n.id) + '" rows="3" style="margin-top:6px">' + esc(bxDraft(b, 'note:' + n.id, n.text)) + '</textarea>' +
+        '<div class="it-edit-acts"><button class="btn-solid sm" data-bx-note-save="' + esc(n.id) + '">Save</button><button class="btn-ghost sm" data-bx-cancel>Cancel</button></div>'
+      : '<div class="it-note-txt">' + esc(n.text) + '</div>') +
+    '</li>';
+}
+
+// Overview | Brand Fit, Activation idea | Notes. A person gets the notes.
+function bxCards(d) {
+  var b = d.brand, person = b.kind === 'person';
+  var list = d.notes || [];
+  var old = b.notes || '';
+  // The brand's older single note (where it came from, the Discover line):
+  // editable here too — for a person it's the line under their name.
+  var oldBlock = BX.edit === 'brandnote'
+    ? '<div class="it-oldnote"><span>On file</span>' +
+        '<textarea class="field-box it-ta" data-bx-field="brandnote" rows="4">' + esc(bxDraft(b, 'brandnote', old)) + '</textarea>' +
+        '<div class="it-edit-acts"><button class="btn-solid sm" data-bx-bnsave>Save</button><button class="btn-ghost sm" data-bx-cancel>Cancel</button></div></div>'
+    : old
+    ? '<div class="it-oldnote"><span>On file</span>' + esc(old) +
+        '<div style="margin-top:8px"><button class="it-mini" data-bx-edit="brandnote">Edit</button></div></div>'
+    : '';
+  var notes = '<section class="it-card" id="bx-notes"' + (person ? ' style="grid-column:1/-1"' : '') + '>' +
+    '<div class="it-card-h"><h3>Notes</h3><span class="it-count">' + (list.length || '') + '</span></div>' +
+    '<div class="it-noteadd"><textarea class="field-box it-ta" data-bx-field="note:new" rows="2" placeholder="What was said, what’s next… (⌘↵ adds it)">' + esc(bxDraft(b, 'note:new', '')) + '</textarea>' +
+      '<button class="btn-solid sm" data-bx-note-add>Add note</button></div>' +
+    (list.length ? '<div class="bx-notes-scroll" data-scroll><ul class="it-notes">' + list.map(function (n) { return bxNoteHtml(b, n); }).join('') + '</ul></div>'
+      : '<div class="it-empty" style="margin-top:12px">No notes yet — each one is dated and signed, and shows on its In talks profile too.</div>') +
+    oldBlock + '</section>';
+  if (person) return notes;
+
+  var dl = [
+    ['Best sellers', b.topProducts], ['They want', b.goals], ['Also called', b.aka],
+    ['Already sponsors', b.sponsorNote || (b.sponsorsCollege === true ? 'College / music' : '')],
+    ['Sold in the US', b.usStatus === 'yes' ? 'Yes' : b.usStatus === 'no' ? 'No — not sold in the US' : ''],
+  ].filter(function (x) { return x[1]; });
+  var overview = '<section class="it-card" id="bx-overview">' +
+    '<div class="it-card-h"><h3>Overview</h3>' + (b.overview && b.overviewBy ? '<span class="it-by">' + esc(b.overviewBy) + (b.overviewAt ? ' · ' + esc(itDay(b.overviewAt)) : '') + '</span>' : '') +
+      '<span class="grow"></span>' + (BX.edit === 'overview' ? '' : '<button class="it-mini" data-bx-edit="overview">' + (b.overview ? 'Edit' : 'Write it') + '</button>') + '</div>' +
+    (BX.edit === 'overview'
+      ? '<textarea class="field-box it-ta" data-bx-field="overview" rows="6" placeholder="Who they are, who buys it, where it sells, what they already sponsor — four sentences at most.">' + esc(bxDraft(b, 'overview', b.overview || '')) + '</textarea>' +
+        '<div class="it-edit-acts" style="margin-bottom:16px"><button class="btn-solid sm" data-bx-save="overview">Save</button><button class="btn-ghost sm" data-bx-cancel>Cancel</button>' +
+        '<span class="it-hint">Shows on its In talks profile too.</span></div>'
+      : b.overview
+      ? '<p class="it-overview">' + esc(b.overview) + '</p>'
+      : '<div class="it-empty"><b>No overview yet.</b> Write one, or Claude writes it on its daily check once the brand is In talks.' +
+          (b.about ? '<br>What they do: ' + esc(b.about) : '') + '</div>') +
+    (dl.length ? '<dl class="bx-dl">' + dl.map(function (x) { return '<dt>' + x[0] + '</dt><dd>' + esc(x[1]) + '</dd>'; }).join('') + '</dl>' : '') +
+    '</section>';
+
+  var ideaText = b.activationIdea || '';
+  var idea = '<section class="it-card it-idea" id="bx-idea">' +
+    '<div class="it-card-h"><h3>Activation idea</h3>' + (ideaText && b.activationIdeaBy ? '<span class="it-by">' + esc(b.activationIdeaBy) + (b.activationIdeaAt ? ' · ' + esc(itDay(b.activationIdeaAt)) : '') + '</span>' : '') +
+      '<span class="grow"></span>' + (BX.edit === 'idea' ? '' : '<button class="it-mini" data-bx-edit="idea">' + (ideaText ? 'Edit' : 'Write one') + '</button>') + '</div>' +
+    (BX.edit === 'idea'
+      ? '<textarea class="field-box it-ta" data-bx-field="idea" rows="10" placeholder="A title on the first line, a blank line, then what happens.">' + esc(bxDraft(b, 'idea', ideaText)) + '</textarea>' +
+        '<div class="it-edit-acts" style="margin-bottom:16px"><button class="btn-solid sm" data-bx-save="idea">Save</button><button class="btn-ghost sm" data-bx-cancel>Cancel</button>' +
+        '<span class="it-hint">First line = the idea’s name.</span></div>'
+      : ideaText ? itIdeaHtml(ideaText)
+      : '<div class="it-empty"><b>No idea yet.</b> Write your own, or copy the brief below into a new Claude chat and paste the result back here.</div>') +
+    '<div class="it-idea-foot"><button class="btn-solid sm" data-bx-copy>Copy for a new chat</button>' +
+      '<span class="it-hint">Copies this brand, our notes and step-by-step brainstorm instructions.</span></div>' +
+    '</section>';
+
+  return overview + bxFitCard(d.fit) + idea + notes;
+}
+
+function bxDrawTop() {
+  var d = CURRENT_BRAND, el = document.getElementById('bx-top');
+  if (!d || !el) return;
+  el.innerHTML = bxHero(d);
+  bTalksBind(d.brand);
+}
+function bxDrawCards() {
+  var d = CURRENT_BRAND, el = document.getElementById('bx-cards');
+  if (d && el) el.innerHTML = bxCards(d);
+}
+// A link or the old note saved up here: Details & settings shows the same.
+function bxSyncDetails(b) {
+  var box = document.getElementById('brand-body');
+  [['website', b.website], ['notes', b.notes]].forEach(function (x) {
+    var el = box.querySelector('[data-bfield="' + x[0] + '"]');
+    if (el) { el.value = x[1] || ''; el.defaultValue = el.value; }
+  });
+  var fl = document.getElementById('b-factlist');
+  if (fl) fl.innerHTML = bFactsHtml(b);
+}
+// The page's data when it still shows this brand (an answer can land after
+// another brand opened, or after a refresh read this one again).
+function bxNow(id) {
+  return CURRENT_BRAND && CURRENT_BRAND.brand && CURRENT_BRAND.brand.id === id ? CURRENT_BRAND : null;
+}
+function bxSaveProfile(b, args, done) {
+  var id = args.brandId = b.id;
+  return api('saveTalksProfile', args).then(function (r) {
+    var p = r.profile || {};
+    if (done) done(r);
+    var d = bxNow(id);
+    if (d) {
+      ['overview', 'overviewBy', 'overviewAt', 'activationIdea', 'activationIdeaBy', 'activationIdeaAt', 'website', 'instagramUrl', 'tiktokUrl'].forEach(function (k) {
+        if (k in p) d.brand[k] = p[k];
+      });
+      bxDrawTop(); bxDrawCards(); bxSyncDetails(d.brand);
+    }
+    // The In talks profile reads it fresh on its next open.
+    toast(r.saved && r.saved.length ? 'Saved ' + r.saved.join(', ') : 'Nothing changed');
+  }).catch(function (e) { toast(e.message); });
+}
+// "Copy for a new chat": the In talks profile's own brief (itPrompt), built
+// from that profile's read so the people, the call and the deal are in it.
+function bxCopyPrompt(b, btn) {
+  btn.disabled = true;
+  var free = function () { btn.disabled = false; };
+  return api('listInTalks', { preview: b.id }).then(function (r) {
+    var p = (r.brands || []).filter(function (x) { return x.id === b.id; })[0] || (r.preview && r.preview.id === b.id ? r.preview : null);
+    if (!p) throw new Error('Could not build the brief for ' + b.name);
+    if (r.sponsorUrl) SPONSOR_URL = r.sponsorUrl;
+    return ztCopy(itPrompt(p), 'Copied — paste it into a new Claude chat');
+  }).then(free, function (e) { free(); toast(e.message); });
+}
+
+(function () {
+  var box = document.getElementById('brand-body');
+  var cur = function () { return CURRENT_BRAND && CURRENT_BRAND.brand; };
+  box.addEventListener('input', function (e) {
+    var t = e.target, b = cur();
+    if (!b || !t.getAttribute) return;
+    var f = t.getAttribute('data-bx-field') || t.getAttribute('data-bx-link');
+    if (f) BX.drafts[b.id + '|' + f] = t.value;
+  });
+  box.addEventListener('keydown', function (e) {
+    var t = e.target;
+    if (!t.getAttribute) return;
+    var f = t.getAttribute('data-bx-field');
+    if (f && e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      // ⌘↵ = the card's own button: Add note, or Save.
+      var scope = t.closest('.it-note, .it-oldnote') || t.closest('.it-card');
+      var btn = f === 'note:new' ? box.querySelector('[data-bx-note-add]')
+        : scope && scope.querySelector('[data-bx-note-save], [data-bx-bnsave], [data-bx-save]');
+      if (btn) { e.preventDefault(); btn.click(); }
+    }
+    if (t.getAttribute('data-bx-link') && e.key === 'Enter') {
+      e.preventDefault();
+      var sv = box.querySelector('[data-bx-links-save]');
+      if (sv) sv.click();
+    }
+  });
+  box.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-bx-links],[data-bx-links-save],[data-bx-links-cancel],[data-bx-edit],[data-bx-cancel],[data-bx-save],' +
+      '[data-bx-note-add],[data-bx-note-save],[data-bx-note-del],[data-bx-bnsave],[data-bx-copy],[data-bx-jump]');
+    var b = cur();
+    if (!t || !b || !box.contains(t)) return;
+    var d = CURRENT_BRAND, id = b.id, v;
+    if ((v = t.getAttribute('data-bx-jump'))) {
+      var to = document.getElementById('b-sec-' + v);
+      if (!to) return;
+      if (to.tagName === 'DETAILS') to.open = true;
+      to.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    if (t.hasAttribute('data-bx-links')) {
+      BX.links = !BX.links; bxDrawTop();
+      var first = BX.links && box.querySelector('[data-bx-link]');
+      if (first) first.focus();
+      return;
+    }
+    if (t.hasAttribute('data-bx-links-cancel')) {
+      ['website', 'instagramUrl', 'tiktokUrl'].forEach(function (f) { bxDrop(b, f); });
+      BX.links = false; bxDrawTop(); return;
+    }
+    if (t.hasAttribute('data-bx-links-save')) {
+      var args = {};
+      box.querySelectorAll('[data-bx-link]').forEach(function (inp) { args[inp.getAttribute('data-bx-link')] = inp.value; });
+      t.disabled = true;
+      bxSaveProfile(b, args, function () {
+        ['website', 'instagramUrl', 'tiktokUrl'].forEach(function (f) { bxDrop(b, f); });
+        BX.links = false;
+      }).then(function () { t.disabled = false; });
+      return;
+    }
+    if ((v = t.getAttribute('data-bx-edit'))) {
+      BX.edit = v; bxDrawCards();
+      var ta = box.querySelector('[data-bx-field="' + v + '"]');
+      if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+      return;
+    }
+    if (t.hasAttribute('data-bx-cancel')) {
+      if (BX.edit) bxDrop(b, BX.edit);
+      BX.edit = null; bxDrawCards(); return;
+    }
+    if ((v = t.getAttribute('data-bx-save'))) {
+      var ta2 = box.querySelector('[data-bx-field="' + v + '"]');
+      var a = {};
+      a[v === 'idea' ? 'activationIdea' : 'overview'] = ta2 ? ta2.value : '';
+      t.disabled = true;
+      bxSaveProfile(b, a, function () { bxDrop(b, v); if (BX.edit === v) BX.edit = null; }).then(function () { t.disabled = false; });
+      return;
+    }
+    if (t.hasAttribute('data-bx-note-add')) {
+      var nb = box.querySelector('[data-bx-field="note:new"]');
+      var txt = nb ? nb.value.trim() : '';
+      if (!txt) { toast('Write the note first'); if (nb) nb.focus(); return; }
+      t.disabled = true;
+      api('addBrandNote', { brandId: id, text: txt }).then(function (r) {
+        bxDrop(b, 'note:new');
+        toast('Note added');
+        var now = bxNow(id);
+        if (!now) return;
+        if (!(now.notes || []).some(function (n) { return n.id === r.note.id; })) now.notes = [r.note].concat(now.notes || []);
+        bxDrawCards();
+      }).catch(function (er) { t.disabled = false; toast(er.message); });
+      return;
+    }
+    if ((v = t.getAttribute('data-bx-note-save'))) {
+      var eb = box.querySelector('[data-bx-field="note:' + v + '"]');
+      t.disabled = true;
+      api('editBrandNote', { id: v, text: eb ? eb.value : '' }).then(function (r) {
+        bxDrop(b, 'note:' + v);
+        if (BX.edit === 'note:' + v) BX.edit = null;
+        toast(r.noop ? 'Nothing changed' : 'Note saved');
+        var now = bxNow(id);
+        if (!now) return;
+        if (r.note) now.notes = (now.notes || []).map(function (n) { return n.id === v ? r.note : n; });
+        bxDrawCards();
+      }).catch(function (er) { t.disabled = false; toast(er.message); });
+      return;
+    }
+    if ((v = t.getAttribute('data-bx-note-del'))) {
+      var note = (d.notes || []).filter(function (n) { return n.id === v; })[0];
+      if (!note) return;
+      // Shows exactly what goes before it goes.
+      var shown = note.text.length > 240 ? note.text.slice(0, 240) + '…' : note.text;
+      if (!window.confirm('Delete this note from ' + itDay(note.at) + '?\n\n“' + shown + '”\n\nThis can’t be undone.')) return;
+      t.disabled = true;
+      api('deleteBrandNote', { id: v, confirm: true }).then(function () {
+        toast('Note deleted');
+        var now = bxNow(id);
+        if (!now) return;
+        now.notes = (now.notes || []).filter(function (n) { return n.id !== v; });
+        bxDrawCards();
+      }).catch(function (er) { t.disabled = false; toast(er.message); });
+      return;
+    }
+    if (t.hasAttribute('data-bx-bnsave')) {
+      var ob = box.querySelector('[data-bx-field="brandnote"]');
+      var val = ob ? ob.value.trim() : '';
+      if (val === (b.notes || '').trim()) { bxDrop(b, 'brandnote'); BX.edit = null; bxDrawCards(); toast('Nothing changed'); return; }
+      t.disabled = true;
+      api('updateBrand', { brandId: id, notes: val }).then(function () {
+        bxDrop(b, 'brandnote');
+        if (BX.edit === 'brandnote') BX.edit = null;
+        toast('Saved');
+        var now = bxNow(id);
+        if (!now) return;
+        now.brand.notes = val || null;
+        // A person's note is the line under their name.
+        bxDrawTop(); bxDrawCards(); bxSyncDetails(now.brand);
+      }).catch(function (er) { t.disabled = false; toast(er.message); });
+      return;
+    }
+    if (t.hasAttribute('data-bx-copy')) { bxCopyPrompt(b, t); return; }
+  });
+})();
+
 function loadBrand(brandId, focusContactId) {
   rbLoad();
   // The brand already on screen again = a button on its page finished:
@@ -10121,6 +10723,7 @@ function loadBrand(brandId, focusContactId) {
   if (!again) {
     box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
     BRAND_EDIT_OPEN = null;
+    BX.edit = null; BX.links = false;
   }
   var mine = viewTurn('brand');
 
@@ -10149,24 +10752,11 @@ function loadBrand(brandId, focusContactId) {
       : 'https://pro.sponsorunited.com/';
     var suLabel = b.externalId ? 'SponsorUnited ↗' : 'SponsorUnited (search) ↗';
 
+    // The profile on top (bx*, above): hero, banners, the numbers, the
+    // Schedule line, then the cards. bxDrawTop / bxDrawCards redraw their
+    // part alone after a save.
     var head =
-      '<h1>' + esc(b.name) + '</h1>' +
-      '<div class="sub">' +
-        (person ? 'Person · gets the Show Board' : esc(CAT_NAMES[b.category] || b.category || 'Uncategorized')) +
-        (b.tier ? ' · ' + esc(b.tier) : '') +
-        (b.partner ? ' · ' + esc(b.partner.lifecycle.replace(/_/g, ' ')) : '') +
-        rbTag(b.id) +
-      '</div>' +
-      // Two-sentence summary right under the name: what they do + what
-      // they're known for. Lives in the About / Best sellers fields.
-      (b.about
-        ? '<div style="font-size:14px;line-height:1.55;color:var(--ink-2);max-width:660px;margin:8px 0 0">' +
-            esc(b.about) + (/[.!?]$/.test(b.about) ? '' : '.') +
-            (b.topProducts ? ' Known for ' + esc(b.topProducts) + '.' : '') + '</div>'
-        : person ? (b.notes ? '<div style="font-size:14px;color:var(--ink-2);margin:8px 0 0">' + esc(b.notes) + '</div>' : '')
-        : '<div class="hint" style="margin:8px 0 0">No summary yet — open “Details &amp; notes” below and fill in “What they do”.</div>') +
-      // In talks (the top tab): it's there, or + Add to In talks.
-      bTalksLine(d) +
+      '<div id="bx-top">' + bxHero(d) + '</div>' +
       // They said they don't want to continue (Zach's list, whole brand):
       // nobody here is contacted until the Undo.
       (b.stoppedAt
@@ -10175,11 +10765,6 @@ function loadBrand(brandId, focusContactId) {
             ' — nobody at ' + esc(b.name) + ' is contacted again: no invites, LinkedIn messages, follow-ups or emails. ' +
             '<button class="btn-ghost" id="b-stop-undo" style="margin-left:6px" title="Reach out to them again: puts back what the stop changed">Undo</button></div>'
         : '') +
-      // Where it stands on the Schedule, and a menu to put it on a day
-      // (filled by bpLoad once the page is up).
-      '<div id="b-plan" class="b-plan"></div>' +
-      // Brand Fit: the score and every reason (src/lib/brand-fit.ts).
-      (person ? '' : bFitLine(d.fit)) +
       // A Show Board access request waiting on a decision. Same two
       // actions as the Show Board queue — this is just the other place
       // you'd naturally look for the brand that asked.
@@ -10198,47 +10783,20 @@ function loadBrand(brandId, focusContactId) {
             }).join('<hr style="border:0;border-top:1px solid var(--border-soft);margin:12px 0">') +
           '</div>'
         : '') +
-      '<div class="kpi-row">' +
-        '<div class="kpi money"><div class="kpi-label">Confirmed</div><div class="kpi-value">' +
-          money(d.money.confirmedCents) + '</div><div class="kpi-note">sponsorship revenue</div></div>' +
-        '<div class="kpi"><div class="kpi-label">Proposed</div><div class="kpi-value">' +
-          money(d.money.proposedCents) + '</div><div class="kpi-note">not yet agreed</div></div>' +
-        '<div class="kpi"><div class="kpi-label">Shows</div><div class="kpi-value">' +
-          b.shows.length + '</div><div class="kpi-note">attached</div></div>' +
-        '<div class="kpi"><div class="kpi-label">Contacts</div><div class="kpi-value">' +
-          b.contacts.length + '</div><div class="kpi-note">' +
-          b.contacts.filter(function (c) { return c.isDecisionMaker; }).length + ' decision makers</div></div>' +
-      '</div>';
+      '<div class="bx-facts" id="bx-facts">' + bxFacts(d) + '</div>' +
+      // Where it stands on the Schedule, and a menu to put it on a day
+      // (filled by bpLoad once the page is up). Not for a person.
+      (person ? '' : '<div class="bx-bar"><div id="b-plan" class="b-plan"></div></div>');
+    // Overview | Brand Fit, Activation idea | Notes (a person: the notes).
+    var cards = '<div class="bx-grid" id="bx-cards">' + bxCards(d) + '</div>';
 
     // details / edit
     // Lead with what we actually know; the edit form stays folded away so
     // the card never opens as a wall of empty boxes.
-    var factLine = function (label, val) {
-      return val ? '<div style="display:flex;gap:12px;font-size:13.5px;padding:4px 0">' +
-        '<span style="flex:none;width:96px;color:var(--ink-3);font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;padding-top:3px">' + label + '</span>' +
-        '<span style="min-width:0">' + val + '</span></div>' : '';
-    };
-    var siteHref = b.website ? (/^https?:/i.test(b.website) ? b.website : 'https://' + b.website) : '';
-    var facts =
-      factLine('Also called', b.aka ? esc(b.aka) : '') +
-      factLine('About', b.about ? esc(b.about) : '') +
-      factLine('Best sellers', b.topProducts ? esc(b.topProducts) : '') +
-      factLine('Website', b.website ? '<a href="' + esc(siteHref) + '" target="_blank" rel="noopener">' + esc(b.website.replace(/^https?:\/\//i, '')) + '</a>' : '') +
-      factLine('Wants', b.goals ? esc(b.goals) : '') +
-      factLine('Notes', b.notes ? esc(b.notes) : '') +
-      // Brand Fit facts — sales, money raised, US, sponsorships.
-      factLine('Sales', b.salesCents != null ? esc(shortMoney(b.salesCents)) + ' a year' : '') +
-      factLine('Raised', b.fundingCents != null ? esc(shortMoney(b.fundingCents)) +
-        (b.lastRoundAt ? ' · last round ' + esc(String(b.lastRoundAt).slice(0, 7)) : '') : '') +
-      factLine('In the US', b.usStatus === 'yes' ? 'Yes' : b.usStatus === 'no' ? 'No — not sold in the US' : '') +
-      factLine('College / music', b.sponsorsCollege === true ? 'Sponsors' + (b.sponsorNote ? ': ' + esc(b.sponsorNote) : '')
-        : b.sponsorsCollege === false ? 'None found' + (b.sponsorNote ? ' · ' + esc(b.sponsorNote) : '') : (b.sponsorNote ? esc(b.sponsorNote) : '')) +
-      factLine('Status', b.bizStatus && b.bizStatus !== 'active' ? esc(b.bizStatus) + (b.acquiredBy ? ' by ' + esc(b.acquiredBy) : '') : '') +
-      factLine('Researched', b.researchedAt ? esc(shortDate(b.researchedAt)) + (b.researchNote ? ' · ' + esc(b.researchNote) : '') : '');
     var details =
-      '<details class="fold"><summary class="section-head">Details &amp; notes</summary>' +
+      '<details class="fold"><summary class="section-head">Details &amp; settings</summary>' +
       '<div class="panel panel-pad">' +
-        (facts || '<div style="font-size:13px;color:var(--ink-3);padding:2px 0">Nothing on file yet.</div>') +
+        '<div id="b-factlist">' + bFactsHtml(b) + '</div>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
           '<button class="btn-solid" id="b-enrich">Auto-fill from the web</button>' +
           '<button class="btn-ghost" id="b-edit-toggle">Edit</button>' +
@@ -10374,7 +10932,7 @@ function loadBrand(brandId, focusContactId) {
 
     // shows
     var shows =
-      '<div class="section-head">Sponsored shows <span class="n">' + b.shows.length + '</span>' +
+      '<div class="section-head" id="b-sec-shows">Sponsored shows <span class="n">' + b.shows.length + '</span>' +
         '<button class="btn-ghost" id="b-attach" style="margin-left:auto">+ Attach shows</button></div>' +
       '<div id="b-attach-slot"></div>' +
       // Wrapped rather than passed straight to map — map's second
@@ -10388,7 +10946,7 @@ function loadBrand(brandId, focusContactId) {
     var tByContact = {};
     (b.targets || []).forEach(function (t) { tByContact[t.contactId] = t; });
     var contacts =
-      '<div class="section-head">People <span class="n">' + b.contacts.length + '</span>' +
+      '<div class="section-head" id="b-sec-people">People <span class="n">' + b.contacts.length + '</span>' +
         '<button class="btn-ghost" id="b-split" style="margin-left:auto" title="Two companies filed under one name — move some of these people onto their own brand">Split into two brands…</button>' +
         '<button class="btn-ghost" id="b-addcontact">+ Add person</button></div>' +
       // People LinkedIn hid from Leo's account here (li-hidden.ts): Zach's
@@ -10438,7 +10996,7 @@ function loadBrand(brandId, focusContactId) {
         // queued or logged again, nor anyone at a brand that said it.
         var said = !!(c.doNotContactAt || (ct && ct.handDeclinedAt));
         var off = said || !!b.stoppedAt;
-        return '<div class="target" data-pcid="' + esc(c.id) + '"><div class="t-main">' +
+        return '<div class="target" data-pcid="' + esc(c.id) + '"><span class="bx-av" aria-hidden="true" data-ini="' + esc(itInitials(c.name)) + '" style="--h:' + itHue(c.name) + '"></span><div class="t-main">' +
           '<div class="t-line"><span class="t-brand">' + esc(c.name) + '</span>' +
             (c.title ? '<span class="t-sep">·</span><span class="t-title">' + esc(c.title) + '</span>' : '') + '</div>' +
           '<div class="t-meta">' +
@@ -10548,7 +11106,7 @@ function loadBrand(brandId, focusContactId) {
           esc(brandEmailWords.what + ' ' + brandEmailWords.state) + ' →</button>'
       : '<button class="btn-ghost" id="b-draftintro" style="margin-left:auto" title="Writes an intro email for review in Outreach → Email. It does not send.">Draft intro email</button>';
     var outreach = b.targets.length
-      ? '<div class="section-head">Outreach <span class="n">' + esc(outreachCounts) + '</span>' +
+      ? '<div class="section-head" id="b-sec-outreach">Outreach <span class="n">' + esc(outreachCounts) + '</span>' +
         introControl + '</div>' +
         '<div class="hint" style="margin:-6px 0 10px">Only the top ' + TARGET_CAP + ' by fit per brand go in the queue. ' +
           'Promote or shelve anyone here.</div>' +
@@ -10663,7 +11221,7 @@ function loadBrand(brandId, focusContactId) {
     // Show Board access — the whole public board is code-gated; this is
     // where a brand's code is minted and its ready-to-send link copied.
     var boardAccess =
-      '<details class="fold"' + (person ? ' open' : '') + '><summary class="section-head">Show Board access' +
+      '<details class="fold" id="b-sec-board"' + (person ? ' open' : '') + '><summary class="section-head">Show Board access' +
         (b.boardCode ? ' <span class="n">code set</span>' : '') + '</summary>' +
       '<div class="panel panel-pad">' +
         (b.boardCode
@@ -10699,8 +11257,8 @@ function loadBrand(brandId, focusContactId) {
 
     // Essentials open (people, outreach, shows); everything else folded.
     box.innerHTML = person
-      ? head + boardAccess + contacts + outreach + shows + details + docs + activity
-      : head + contacts + outreach + shows + details + boardAccess + docs + activity;
+      ? head + boardAccess + cards + contacts + outreach + shows + details + docs + activity
+      : head + cards + contacts + outreach + shows + details + boardAccess + docs + activity;
     if (!person) bpLoad(b.id);
     // Zach's list under the people who accepted: drawn from what's known
     // straight away (a refresh keeps an open card), then read fresh.
@@ -21635,16 +22193,16 @@ function tkRedrawRow(id) {
   });
 })();
 
-// The brand page's In talks line: where it stands, and the way in or out.
+// The brand page's In talks line (in the hero's Where it stands card):
+// where it stands, and the way in or out.
 function bTalksLine(d) {
   var t = d.talks || {};
   if (d.brand.kind === 'person') return '';
   return t.on
-    ? '<div class="b-talks" style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13.5px">' +
-        '<span class="it-stage s-call">In talks</span><span style="color:var(--ink-3)">' +
+    ? '<div class="b-talks"><span class="it-stage s-call">In talks</span><span style="color:var(--ink-3)">' +
         (t.why === 'call' ? 'a call was booked' : t.why === 'reply' ? 'they replied' : 'added by hand') + (t.since ? ' · since ' + esc(itDay(t.since)) : '') + '</span>' +
         '<button class="btn-ghost sm" id="b-talks-open">Open its In talks profile →</button></div>'
-    : '<div class="b-talks" style="margin-top:10px"><button class="btn-ghost sm" id="b-talks-add" title="Put this brand on the In talks tab: notes, people, links, an overview and an activation idea">+ Add to In talks</button></div>';
+    : '<div class="b-talks"><button class="btn-ghost sm" id="b-talks-add" title="Put this brand on the In talks tab: its stage, what happened and when, the people who answered">+ Add to In talks</button></div>';
 }
 function bTalksBind(b) {
   var o = document.getElementById('b-talks-open');

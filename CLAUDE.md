@@ -124,6 +124,33 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `node scripts/cc.mjs <fn> @file.json` reads args from a file. Tests: `node scripts/test-chat-log.mjs`,
   `node scripts/test-chat-log-hook.mjs`, `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-chat-log-e2e.js`,
   page in `test-claude-day.js` (4 — the #chats page).
+- **Brand page → the profile on top** (Leo, Nov 10 2026: "redo this page to be more complex, put the company's socials,
+  wesbote, notes (editable) , activation idea, and make it easier to read"; `bx*` / `BX` in app.html, `.bx-` CSS, reusing
+  the In talks profile's `it-chip` / `it-card` / `it-note` pieces). Top to bottom: the **hero** (`bxHero`, `#bx-top`:
+  initials, category · tier · the Reached tag, the name, about + "Known for", a chip per link — website, Instagram, TikTok,
+  LinkedIn — and "+ Instagram, TikTok" / Edit links → three boxes saved by `saveTalksProfile`; on its right **Where it
+  stands** (`bxStanding`, `#bx-stand`: the furthest step anyone on the page got to — Doesn't want to continue > Call booked /
+  Had a call > Replied > Accepted on LinkedIn > Invited / Emailed, no answer yet > In the queue > Not reached out to yet —
+  who and when, the four steps in a line Reached · Accepted · Replied · Call, and the In talks line `bTalksLine`: + Add to
+  In talks / Open its In talks profile; read from the page's own targets, the same facts as the People pills)) → the
+  stopped banner and Show Board access requests → **the numbers** (`bxFacts`, `#bx-facts`; replaced the KPI row: Brand
+  Fit, People ↓, Outreach ↓, Show Board ↓, Confirmed, Proposed — two numbers, never added — Shows ↓, On LinkedIn, Sales,
+  Raised; a ↓ tile jumps to `#b-sec-people` / `-outreach` / `-shows` / `-board`) → the **Schedule** line in its bar
+  (`#b-plan`, bpLoad, unchanged) → `#bx-cards` (`bxCards`), rows of two: **Overview** (`Brand.overview`, Edit / Write it;
+  under it Best sellers, They want, Also called, Already sponsors, Sold in the US) | **Brand Fit** (`bxFitCard`, `#b-fit`:
+  the score and a meter, every reason on its own line with its points, most points first; `fitFlags` = fitTags without the
+  score), then **Activation idea** (`Brand.activationIdea`; Copy for a new chat = `bxCopyPrompt` → `listInTalks({ preview })`
+  → `itPrompt`) | **Notes** (the dated `BrandNote`s — `getBrand.notes`, shaped as listInTalks sends them — add (⌘↵) / Edit /
+  Delete (its confirm quotes the note); under them the older `Brand.notes` as "On file", Edit = `updateBrand({ brandId,
+  notes })` alone). The words, links and notes are the In talks profile's own fields, so what's written on one shows on the
+  other. A save redraws only its part (`bxDrawTop` / `bxDrawCards`; answers land by brand id, `bxNow`; `bxSyncDetails` keeps
+  Details' fact sheet and edit form in step) — never the People list — and text typed but not saved survives any redraw or
+  refresh (`BX.drafts`, `BX.edit`, `BX.links`; cleared when another brand opens). Below: People (initials `.bx-av`, the
+  name, the title on its own line), Outreach, Sponsored shows, **Details & settings** (was "Details & notes"; its fact
+  sheet = `bFactsHtml`, `#b-factlist`), Show Board access, Documents, Activity, Timeline — section names a size up. A
+  person (`kind: 'person'`): the hero without links or Where it stands, the numbers, Show Board access open, then the
+  Notes card alone. Socials are empty until typed (or until the brand is In talks — Claude's daily check fills those).
+  Tests: `NODE_PATH=$(npm root -g) node scripts/test-brand-profile.js` (page); getBrand's notes in `test-in-talks-e2e.js`.
 - **In talks** (Leo, Oct 18 2026: "for the brands where the call has been scheduled i want u to put them there … a
   different type of layout … cleaner and more complex … notes for each brand … the person/people we reached out to and
   accepted … their linkedin and even email … the website and brand socials like instagram and tiktok … an overview … not

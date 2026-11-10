@@ -8428,7 +8428,7 @@ const handlers: Record<string, Handler> = {
       else if (s.status === 'proposed') money.proposedCents += s.valueCents
     }
 
-    const [boardViewCount, lastVisit, recentVisits] = await Promise.all([
+    const [boardViewCount, lastVisit, recentVisits, brandNotes] = await Promise.all([
       prisma.boardVisit.count({ where: { brandId } }),
       prisma.boardVisit.findFirst({ where: { brandId }, orderBy: { createdAt: 'desc' } }),
       // The visit log for the brand page: who opened the board with this
@@ -8438,6 +8438,13 @@ const handlers: Record<string, Handler> = {
         orderBy: { createdAt: 'desc' },
         take: 15,
         select: { email: true, createdAt: true, lastSeenAt: true },
+      }),
+      // The dated notes (the brand page's Notes card — the same notes as its
+      // In talks profile: addBrandNote / editBrandNote / deleteBrandNote).
+      prisma.brandNote.findMany({
+        where: { brandId },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, text: true, by: true, createdAt: true, updatedAt: true },
       }),
     ])
 
@@ -8496,6 +8503,11 @@ const handlers: Record<string, Handler> = {
 
     return {
       brand: brandOut, events, money, fit, liHidden, samePeople, peopleMergeUndo, talks,
+      // Shaped as listInTalks sends them, so both pages draw one note the same way.
+      notes: brandNotes.map(n => ({
+        id: n.id, text: n.text, by: n.by, at: n.createdAt.toISOString(),
+        editedAt: n.updatedAt.getTime() - n.createdAt.getTime() > 1000 ? n.updatedAt.toISOString() : null,
+      })),
       // A big company works ten at a time, a Top category's brand four
       // (the Work menu's suggestion).
       big: isBigBrand(brand),
