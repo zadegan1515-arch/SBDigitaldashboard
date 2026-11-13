@@ -9,10 +9,17 @@
 // <DASHBOARD_TOKEN>` so Claude Code / scripts on Leo's Mac can call the
 // same functions the UI uses (warmup status, ops scan, test sends…)
 // without a browser session. No token set in Vercel → no bearer access.
+//
+// And one more on the same path: a key made on Operations → Team
+// (`Bearer sbk_…`, src/lib/api-keys.ts). Middleware can't read the
+// database, so it only lets a key-SHAPED request through; /api/data then
+// checks it against the stored list and answers 401 to anything that isn't
+// a live key. The shape alone opens nothing.
 
 import { withAuth } from 'next-auth/middleware'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { bearerOf, isKeyShaped } from '@/lib/api-key-shape'
 
 // The brand hostname (shows.sboyagency.com) only ever serves the sponsor
 // page and what it needs. Anything else on that host goes to the page.
@@ -27,7 +34,9 @@ const auth = withAuth({
       if (req.nextUrl.pathname !== '/api/data') return false
       const expected = process.env.DASHBOARD_TOKEN
       const given = req.headers.get('authorization') ?? ''
-      return !!expected && expected.length >= 24 && given === `Bearer ${expected}`
+      if (!!expected && expected.length >= 24 && given === `Bearer ${expected}`) return true
+      // Checked for real in /api/data (findKey) before anything runs.
+      return isKeyShaped(bearerOf(given))
     },
   },
 })

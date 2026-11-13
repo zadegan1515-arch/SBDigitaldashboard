@@ -1295,6 +1295,27 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (Oct 8 2026 — every error used to read "doesn't have access"): AccessDenied names the address Google gave
   (`?email=`; a Workspace alias signs in as its main address), OAuthCallback/OAuthSignin/Callback = Google didn't
   finish (try again, or the sboyagency.com Google admin blocks the app), Unavailable = the list couldn't be read.
+- **Keys for other tools** (Leo, Nov 13 2026: "give me the backend for the command center so people can add things to
+  it"; his picks: a key for another tool, anything on the site; `docs/api.md`). Operations → Team → **Keys for other
+  tools** (founding members only; `teamKeysHtml`, `TEAM_KEY` / `TEAM_GUIDE` in app.html): name it → **Create key** →
+  the key (`sbk_` + 43 characters) is on screen once (Copy key / Copy instructions / Done; gone on leaving Team, never
+  in browser storage) — only its SHA-256 is kept (Setting `apiKeys`). Whoever holds it calls `/api/data` with
+  `Authorization: Bearer sbk_…`: middleware lets a key-**shaped** request through on that path only
+  (`src/lib/api-key-shape.ts`, no imports — the Edge runtime can't read the database), and POST checks it
+  (`findKey(await readKeys(prisma), bearer)` → 401) before anything runs, then `keyBlocked(fn)` → 403. A key acts under
+  its name (`__user` = the name, `__key`; `by` on notes, stages…), every change it makes is listed under it on Team
+  (Setting `apiKeyLog`, last 40 a key, worded by `actionText`; reads, previews and a createBrand that found the brand
+  already there aren't changes; never a ClaudeAction) and "last used" moves at most every 5 min on reads
+  (`noteKeyUse`, advisory-locked `updateKeys`). **Revoke** = refused from the next call; listed 90 days. **Never with a
+  key** (by name and by shape, so a new `send…` / `disconnect…` / `…Attendee…` / `…ApiKey…` handler is closed from day
+  one; the test holds the exact list against every handler): Team and keys (`createApiKey` / `revokeApiKey` also need
+  a signed-in founding member — not Claude's token either), Show Board access approval, the LinkedIn account lock,
+  Google disconnects, every send, the ops mailbox, attendee records and door PINs (rule 9; totals stay open). Paid AI
+  is off site-wide (`NO_PAID_APIS`). `whoAmI` = who's calling (key / token / sign-in); `apiGuide` = the instructions
+  (`src/lib/api-guide.ts`, lists read from the code, `GUIDE_FNS`) + every function a key may call. /api/data now
+  dispatches own handlers only (`toString` = Unknown function). `DASHBOARD_TOKEN` is separate and unchanged. Tests:
+  `node scripts/test-api-keys.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-api-keys.js` (page),
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-api-keys-e2e.js` (real middleware, sessions, keys).
 - **+ Add brand → Person** (Leo, Oct 12 2026: "sometimes we want to send the show board to individual people"):
   the Add box has a Brand / Person switch (`nbSetKind`, `NB_KIND`). A person = `Brand.kind = 'person'`
   (`createBrand({ kind: 'person', name, email, phone })` → `addPerson` in route.ts): archived + do-not-email from

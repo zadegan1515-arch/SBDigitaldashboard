@@ -3262,8 +3262,8 @@
     <!-- TEAM -->
     <section class="view page" id="team">
       <div class="eyebrow">Team</div>
-      <h1>Who can sign in</h1>
-      <div class="sub">Google sign-in allowlist.</div>
+      <h1>Who can get in</h1>
+      <div class="sub">People who sign in with Google, and keys for other tools.</div>
       <div id="team-body" style="margin-top:24px"></div>
     </section>
 
@@ -23311,8 +23311,71 @@ function loadCRM() {
 
 // --- team ------------------------------------------------------
 
+// Keys for other tools (Leo, Nov 13 2026: "the backend for the command
+// center so people can add things to it"; src/lib/api-keys.ts). Founding
+// members make a named key here; it's shown once (TEAM_KEY — on screen until
+// Done or until you leave Team, never stored in the browser), then only what
+// it changed and Revoke. TEAM_GUIDE = the instructions that go with a key.
+var TEAM_KEY = null, TEAM_GUIDE = '';
+
+function teamKeysHtml(k) {
+  var list = k.list || [], live = list.filter(function (r) { return !r.revokedAt; });
+  var out = '<div class="section-head" id="team-keys-head">Keys for other tools <span class="n">' + live.length + ' in use</span></div>' +
+    '<div class="panel panel-pad" style="margin-bottom:10px">' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        '<input class="field-box" id="key-name" type="text" maxlength="40" placeholder="Who or what is it for? e.g. Maya, Zapier" style="flex:1;min-width:220px">' +
+        '<button class="btn-solid" id="key-add">Create key</button>' +
+        '<button class="btn-ghost" data-key-guide title="How to use a key — give this to the person or paste it into their tool">Copy instructions</button>' +
+      '</div>' +
+      '<div class="hint" style="margin:10px 0 0">A key lets another app or Claude chat add things here without signing in. ' +
+        'It can’t change who has access, send email or read attendees.</div></div>';
+  if (TEAM_KEY) {
+    out += '<div class="panel panel-pad" id="key-new" style="margin-bottom:10px;border-color:rgba(124,201,138,.55)">' +
+      '<div style="font-size:15px;font-weight:600;margin-bottom:10px">' + esc(TEAM_KEY.name) + '’s key — copy it now. It isn’t shown again.</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        '<input class="field-box" id="key-new-val" type="text" readonly value="' + esc(TEAM_KEY.key) + '" style="flex:1;min-width:260px;font-family:ui-monospace,Menlo,monospace;font-size:13px">' +
+        '<button class="btn-solid" data-key-copy>Copy key</button>' +
+        '<button class="btn-ghost" data-key-guide>Copy instructions</button>' +
+        '<button class="btn-ghost" data-key-done>Done</button>' +
+      '</div>' +
+      '<div class="hint" style="margin:10px 0 0">Give them both: the key goes in their tool’s API-key setting, the instructions tell the tool what to do.</div></div>';
+  }
+  out += list.map(function (r) {
+    var off = !!r.revokedAt, log = r.log || [];
+    var meta = 'made by ' + esc(r.createdBy || '—') + ' · ' + when(r.createdAt) +
+      (off ? ' · revoked ' + when(r.revokedAt)
+        : ' · ' + (r.lastUsedAt ? 'last used ' + timeAgo(r.lastUsedAt) : 'not used yet'));
+    return '<div class="target" data-key-row="' + esc(r.id) + '"' + (off ? ' style="opacity:.6"' : '') + '><div class="t-main"><div class="t-line">' +
+      '<span class="t-brand">' + esc(r.name) + '</span>' +
+      '<span class="t-sep">·</span><span class="t-title" title="The key’s last four characters">ends …' + esc(r.tail || '????') + '</span>' +
+      (off ? ' <span class="status">revoked</span>' : '') + '</div>' +
+      '<div class="t-meta"><span>' + meta + '</span></div>' +
+      (r.changes
+        ? '<details data-key-log="' + esc(r.id) + '" style="margin-top:8px"><summary style="cursor:pointer;font-size:13px;color:var(--ink-2)">' +
+            'What it changed (' + r.changes + ')</summary>' +
+            '<div style="margin-top:6px;font-size:13px;line-height:1.6;color:var(--ink-2)">' +
+            log.map(function (l) {
+              return '<div><span style="color:var(--ink-3)">' + when(l.at) + ' · ' + esc(timeAgo(l.at)) + '</span> — ' + esc(l.text) + '</div>';
+            }).join('') +
+            (r.changes > log.length ? '<div style="color:var(--ink-3)">…and ' + (r.changes - log.length) + ' earlier</div>' : '') +
+            '</div></details>'
+        : '') +
+      '</div><div class="t-actions">' +
+      (off ? '' : '<button class="btn-ghost danger" data-key-revoke="' + esc(r.id) + '" data-name="' + esc(r.name) + '">Revoke</button>') +
+      '</div></div>';
+  }).join('');
+  if (!list.length && !TEAM_KEY) {
+    out += '<div class="panel"><div class="empty"><h3>No keys yet</h3>' +
+      '<p>Name one above and press Create key.</p></div></div>';
+  }
+  return out;
+}
+
 function loadTeam() {
   var again = showView('team');
+  // A key just made stays on screen through refreshes of Team, never past
+  // leaving it.
+  if (!again) TEAM_KEY = null;
   var box = document.getElementById('team-body');
   if (!again) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
 
@@ -23376,7 +23439,28 @@ function loadTeam() {
       : '<div class="panel"><div class="empty"><h3>Nobody added yet</h3>' +
         '<p>' + (d.canManage ? 'Add an email above to give someone access.' : 'A founding member can add people here.') + '</p></div></div>';
 
+    // Keys for other tools: founding members only.
+    TEAM_GUIDE = d.keys ? d.keys.guide || '' : '';
+    if (d.keys) out += teamKeysHtml(d.keys);
+
     box.innerHTML = out;
+
+    var keyAdd = document.getElementById('key-add'), keyName = document.getElementById('key-name');
+    var makeKey = function () {
+      var nm = keyName.value.trim();
+      if (!nm) { toast('Name the key first — who or what it’s for'); keyName.focus(); return; }
+      keyAdd.disabled = true;
+      api('createApiKey', { name: nm }).then(function (r) {
+        TEAM_KEY = { id: r.row.id, name: r.row.name, key: r.key };
+        keyName.value = '';
+        toast('Key made — copy it now');
+        teamRefresh();
+      }).catch(function (e) { toast(e.message); keyAdd.disabled = false; });
+    };
+    if (keyAdd) {
+      keyAdd.onclick = makeKey;
+      keyName.onkeydown = function (e) { if (e.key === 'Enter') makeKey(); };
+    }
 
     var addBtn = document.getElementById('team-add');
     if (addBtn) addBtn.onclick = function () {
@@ -23395,6 +23479,32 @@ function loadTeam() {
 }
 
 document.getElementById('team-body').addEventListener('click', function (e) {
+  if (e.target.closest('[data-key-copy]')) {
+    if (TEAM_KEY) ztCopy(TEAM_KEY.key, 'Key copied');
+    return;
+  }
+  if (e.target.closest('[data-key-guide]')) {
+    if (TEAM_GUIDE) ztCopy(TEAM_GUIDE, 'Instructions copied — give them to whoever holds the key');
+    return;
+  }
+  if (e.target.closest('[data-key-done]')) {
+    if (!window.confirm('Copied it? The key can’t be shown again.')) return;
+    TEAM_KEY = null;
+    teamRefresh();
+    return;
+  }
+  var rev = e.target.closest('[data-key-revoke]');
+  if (rev) {
+    var kid = rev.getAttribute('data-key-revoke'), knm = rev.getAttribute('data-name');
+    if (!window.confirm('Revoke ' + knm + '’s key?\n\nWhatever uses it stops working right away. What it already added stays.')) return;
+    rev.disabled = true;
+    api('revokeApiKey', { id: kid }).then(function () {
+      if (TEAM_KEY && TEAM_KEY.id === kid) TEAM_KEY = null;
+      toast(knm + '’s key is off');
+      teamRefresh();
+    }).catch(function (err) { toast(err.message); rev.disabled = false; });
+    return;
+  }
   var rep = e.target.closest('[data-team-rep]');
   if (rep) {
     var em = rep.getAttribute('data-team-rep'), on = rep.getAttribute('data-on') === '1';

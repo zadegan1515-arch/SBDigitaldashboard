@@ -19,6 +19,12 @@ import {
   candidatesToOffer, readRejected, rejectCandidates, resemblingCandidates,
 } from '@/lib/su-match'
 import { getServerSession } from 'next-auth'
+import { bearerOf, isKeyShaped } from '@/lib/api-key-shape'
+import {
+  activeKeys, cleanKeyName, findKey, keyBlocked, mintKey, noteKeyUse, pruneKeys, publicKey, readKeyLog, readKeys, updateKeys,
+  MAX_ACTIVE_KEYS, type ApiKeyRow,
+} from '@/lib/api-keys'
+import { apiGuideText } from '@/lib/api-guide'
 import Anthropic from '@anthropic-ai/sdk'
 import { authOptions, allowlist, readDenied } from '@/lib/auth'
 import {
@@ -5332,6 +5338,12 @@ function sponsorBoardUrl(): string {
     : (process.env.SITE_URL || 'https://sb-digitaldashboard.vercel.app') + '/partnerships'
 }
 
+// The site's own address: links in answers, and the instructions that go
+// with a key.
+function siteBase(): string {
+  return (process.env.SITE_URL || 'https://sb-digitaldashboard.vercel.app').replace(/\/+$/, '')
+}
+
 const handlers: Record<string, Handler> = {
   // The Show Board link the page copies for a brand (asked once on load).
   async sponsorUrl() {
@@ -8932,7 +8944,71 @@ const handlers: Record<string, Handler> = {
     const allowed = new Set([...managers, ...invited.map(i => i.email.toLowerCase())])
     const denied = (await readDenied()).filter(d => !allowed.has(d.email) && Date.now() - Date.parse(d.at) < 14 * 864e5)
     const reps = await readRepAccounts(prisma, true)
-    return { managers, invited, denied, canManage: Boolean(me && managers.includes(me)), me, reps, repName: REP_NAME }
+    const canManage = Boolean(me && managers.includes(me))
+    // Keys for other tools (src/lib/api-keys.ts): founding members only —
+    // each key with what it changed, never the key itself — and the
+    // instructions that go with one.
+    let keys: any = null
+    if (canManage) {
+      const [rows, log] = await Promise.all([readKeys(prisma), readKeyLog(prisma)])
+      keys = {
+        list: rows.map(r => publicKey(r, log[r.id])).sort((a, b) => Number(!!a.revokedAt) - Number(!!b.revokedAt) || b.createdAt.localeCompare(a.createdAt)),
+        max: MAX_ACTIVE_KEYS,
+        guide: apiGuideText(siteBase(), { dealStages: DEAL_STAGES }),
+      }
+    }
+    return { managers, invited, denied, canManage, me, reps, repName: REP_NAME, keys }
+  },
+
+  // A key for another tool (Leo, Nov 13 2026: "the backend for the command
+  // center so people can add things to it"). Founding members, signed in —
+  // never with a key or Claude's token. The key itself is in this answer
+  // and nowhere else: only its hash is kept.
+  async createApiKey({ name }: any) {
+    const session = await getServerSession(authOptions)
+    const me = session?.user?.email?.toLowerCase()
+    if (!me || !allowlist().includes(me)) throw new Error('Only the founding members can make keys.')
+    const clean = cleanKeyName(name)
+    if (!clean.name) throw new Error(clean.error ?? 'Give the key a name.')
+    return updateKeys(prisma, st => {
+      const live = activeKeys(st.rows)
+      if (live.some(r => r.name.toLowerCase() === clean.name!.toLowerCase())) throw new Error(`There’s already a key called “${clean.name}” — revoke it first, or pick another name.`)
+      if (live.length >= MAX_ACTIVE_KEYS) throw new Error(`That’s ${MAX_ACTIVE_KEYS} keys in use — revoke one first.`)
+      const pruned = pruneKeys(st.rows, st.log)
+      const made = mintKey(clean.name!, me)
+      st.rows = [...pruned.rows, made.row]
+      st.log = pruned.log
+      return { key: made.key, row: publicKey(made.row) }
+    })
+  },
+
+  // Switch a key off: refused from its next call on. It stays listed, with
+  // what it changed, for 90 days.
+  async revokeApiKey({ id }: any) {
+    const session = await getServerSession(authOptions)
+    const me = session?.user?.email?.toLowerCase()
+    if (!me || !allowlist().includes(me)) throw new Error('Only the founding members can revoke keys.')
+    return updateKeys(prisma, st => {
+      const row = st.rows.find(r => r.id === String(id ?? ''))
+      if (!row) throw new Error('That key isn’t on the list any more.')
+      if (!row.revokedAt) { row.revokedAt = new Date().toISOString(); row.revokedBy = me }
+      return { ok: true, row: publicKey(row) }
+    })
+  },
+
+  // For a key (or anyone): does this work, and who is it acting as?
+  async whoAmI({ __user, __key }: any = {}) {
+    if (__key) return { name: __key.name, via: 'key', created: __key.createdAt, site: siteBase() }
+    if (__user === 'CLI') return { name: 'Claude', via: 'token', site: siteBase() }
+    return { name: __user ?? null, via: 'sign-in', site: siteBase() }
+  },
+
+  // The instructions that go with a key, and every function a key may call.
+  async apiGuide() {
+    return {
+      text: apiGuideText(siteBase(), { dealStages: DEAL_STAGES }),
+      functions: Object.keys(handlers).filter(f => !keyBlocked(f)).sort(),
+    }
   },
 
   // Mark an account as Elizabeth's (Leo, Oct 21 2026: "her own sign-in, sees
@@ -18153,10 +18229,10 @@ const REP_FNS = new Set<string>(['getMe', 'listOwners', 'reachedBrands', 'appVer
 export async function POST(req: NextRequest) {
   try {
     const { fn, args } = await req.json()
-    const handler = handlers[fn]
-    if (!handler) {
-      return NextResponse.json({ ok: false, error: `Unknown function: ${fn}` }, { status: 400 })
-    }
+    // Only the functions written in this file — never something every
+    // object carries ("toString"). An unknown name is answered further
+    // down, after a key has been checked (a bad key learns nothing).
+    const handler = typeof fn === 'string' && Object.prototype.hasOwnProperty.call(handlers, fn) ? handlers[fn] : null
     // Who's acting, for attribution (documents record their author).
     // Middleware already guarantees a session exists.
     // `__` arguments are the server's own (__user below, getOutreachPlan's
@@ -18167,13 +18243,31 @@ export async function POST(req: NextRequest) {
     try {
       const session: any = await getServerSession(authOptions)
       email = session?.user?.email ?? null
-      if (email) {
-        const first = String(email).split('@')[0].split(/[._-]/)[0]
-        a.__user = first.charAt(0).toUpperCase() + first.slice(1)
-      } else if ((req.headers.get('authorization') ?? '').startsWith('Bearer ')) {
+    } catch {}
+    // A key made on Operations → Team (src/lib/api-keys.ts). Middleware only
+    // looked at its shape — it can't read the database — so this is the
+    // check: a key that isn't on the list, or was revoked, stops here.
+    let key: ApiKeyRow | null = null
+    if (email) {
+      const first = String(email).split('@')[0].split(/[._-]/)[0]
+      a.__user = first.charAt(0).toUpperCase() + first.slice(1)
+    } else {
+      const bearer = bearerOf(req.headers.get('authorization'))
+      const dash = process.env.DASHBOARD_TOKEN ?? ''
+      if (isKeyShaped(bearer) && !(dash.length >= 24 && bearer === dash)) {
+        key = findKey(await readKeys(prisma), bearer)
+        if (!key) return NextResponse.json({ ok: false, error: 'That key isn’t valid — it was revoked, or it’s mistyped.' }, { status: 401 })
+        const no = keyBlocked(String(fn))
+        if (no) return NextResponse.json({ ok: false, error: no }, { status: 403 })
+        a.__user = key.name
+        a.__key = { id: key.id, name: key.name, createdAt: key.createdAt }
+      } else if (bearer) {
         a.__user = 'CLI'   // bearer-token caller (Claude Code / scripts), let through by middleware
       }
-    } catch {}
+    }
+    if (!handler) {
+      return NextResponse.json({ ok: false, error: `Unknown function: ${fn}` }, { status: 400 })
+    }
     // An account marked as Elizabeth's (Operations → Team) opens only her
     // outreach: her handlers, who's signed in, the Reached tags.
     if (email && !REP_FNS.has(String(fn)) && await repAccountOf(prisma, email)) {
@@ -18190,6 +18284,9 @@ export async function POST(req: NextRequest) {
       const text = actionText(String(fn), a, data)
       if (text) await (prisma as any).claudeAction.create({ data: { fn: String(fn).slice(0, 80), text: text.slice(0, 400), args: argsBrief(a) || null } }).catch(() => {})
     }
+    // A change a key made: listed under that key on Team (and "last used"
+    // moved on). Never holds up or fails the answer either.
+    if (key) await noteKeyUse(prisma, key, String(fn), actionText(String(fn), a, data)).catch(() => {})
     // How long the handler took, for the browser's Network panel (Timing):
     // the way to measure the live Schedule without logging anything.
     return NextResponse.json({ ok: true, data }, { headers: { 'Server-Timing': `${String(fn).replace(/[^A-Za-z0-9]/g, '')};dur=${Date.now() - t0}` } })

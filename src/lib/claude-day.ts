@@ -19,7 +19,7 @@ const READ_NAMES = new Set(['claudeDay', 'dayRecap', 'weeklyScore', 'staleDeals'
   'boardCodeLookup', 'sponsorUrl', 'segmentsOverview', 'audienceEventStats', 'appVersion', 'researchList', 'planDayChoices', 'nextBestBrands',
   'staleInvites', 'repliedOverview', 'buyerCoverage', 'brandLookup', 'brandTimeline', 'brandStock', 'brandPlanLine', 'scheduleStamp',
   'suMatchQueue', 'sheetStatus', 'whoAmI', 'me', 'findDuplicates', 'sponsorReport', 'search', 'checkEmailReplies',
-  'weekBank', 'weekBankBrowse', 'reachedBrands', 'brandSupply', 'outreachTracker', 'talksLog', 'zachOverview'])
+  'weekBank', 'weekBankBrowse', 'reachedBrands', 'brandSupply', 'outreachTracker', 'talksLog', 'zachOverview', 'apiGuide'])
 // Elizabeth's tab (rep-outreach.ts): its reads, and the opening of her day
 // (elToday makes the day's list by itself, like the page opening it).
 for (const fn of ['elToday', 'elWeek', 'elFollow', 'elResults', 'elBrand', 'elSearch', 'elTemplates']) READ_NAMES.add(fn)
@@ -85,7 +85,8 @@ export function actionText(fn: string, args: any, result: any): string | null {
     case 'liPageRetry': return `Sent ${brand || 'a brand'} back to the LinkedIn fill`
     case 'addDiscoveredBulk': return `Added ${plural(Number(r.added) || 0, 'brand')} from Discover`
     case 'addDiscoveredBrand': return 'Added a brand from Discover'
-    case 'createBrand': return `Added ${s(a.name || brand || 'a brand')}`
+    // Already on the roster: createBrand answers with the brand it found, and nothing changed.
+    case 'createBrand': return r.created === false ? null : `Added ${s(a.name || brand || 'a brand')}`
     case 'updateBrand': return `Edited ${brand || 'a brand'}${a.facts ? ' (facts)' : ''}`
     case 'upsertContact': return `${a.id ? 'Edited' : 'Added'} ${s(a.name || 'a person')}`
     case 'weekBankAdd': return `Put ${plural(count(r.added), 'brand')} on the week list`
