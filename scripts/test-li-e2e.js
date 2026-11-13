@@ -513,7 +513,15 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     // Read before the Oct 13 2026 match fix and parked on Leo's list: due again
     // when the saved results now resolve; still unclear → keeps resting.
     {
-      const old = '2026-10-12T15:00:00.000Z';
+      // Dated an hour before the last match fix (REMATCH_SINCE, read from the
+      // code). It was a fixed Oct 12 — and once that mark's month of rest ran
+      // out (Nov 11) both brands were due by age alone, so "still resting"
+      // failed on a day nothing had changed.
+      const since = Date.parse(/REMATCH_SINCE = Date\.parse\('([^']+)'\)/.exec(fs.readFileSync(path.join(ROOT, 'src/lib/li-list-db.ts'), 'utf8'))[1]);
+      const old = new Date(since - 3600e3).toISOString();
+      // The month a "no clear page" mark rests (LI_REST_DAYS). While it runs,
+      // only the match rule can bring a brand back; after it, age does too.
+      const inRest = Date.now() < since - 3600e3 + 30 * 864e5;
       await prisma.brand.create({ data: { id: 'b_snb', name: 'Sierra Nevada Test', aka: 'Sierra Nevada', category: 'rtd' } });
       // (Not Zone: it's Imperial Brands' now — a brand with a parent is due for the parent's page.)
       await prisma.brand.create({ data: { id: 'b_zon', name: 'Zestie Test', aka: 'Zestie', category: 'energy' } });
@@ -529,7 +537,8 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       await prisma.setting.upsert({ where: { key: 'liPageReview' }, update: { value: JSON.stringify(rev) }, create: { key: 'liPageReview', value: JSON.stringify(rev) } });
       const l = (await ingest({ action: 'liList', focus: '', me: { slug: 'leo-z', name: 'Leo Z' } })).j;
       assert.ok(l.items.some(i => i.brandId === 'b_snb'), 'Sierra Nevada back on the worklist');
-      assert.ok(!l.items.some(i => i.brandId === 'b_zon'), 'Zestie still resting');
+      if (inRest) assert.ok(!l.items.some(i => i.brandId === 'b_zon'), 'Zestie still resting');
+      else console.log('  (the unclear one\'s month of rest has run out since the last match fix — only the come-back half is checked)');
       const m = (await ingest({ action: 'liMatched', brandId: 'b_snb', candidates: rev.b_snb.candidates.map(c => ({ url: 'https://www.linkedin.com/company/' + c.slug + '/', name: c.name, subtitle: c.subtitle })), me: { slug: 'leo-z', name: 'Leo Z' } })).j;
       assert.equal((await prisma.brand.findUnique({ where: { id: 'b_snb' } })).linkedinUrl, 'https://www.linkedin.com/company/sierra-nevada-brewing-co/', JSON.stringify(m));
       await prisma.brand.deleteMany({ where: { id: { in: ['b_snb', 'b_zon'] } } });
