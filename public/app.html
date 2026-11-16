@@ -1657,7 +1657,7 @@
   .su-show{background:none;border:1px solid var(--border);color:var(--accent-hi);font:inherit;font-size:12.5px;border-radius:99px;padding:2px 10px;cursor:pointer;white-space:nowrap}
   .su-show:hover{border-color:var(--accent)}
   .su-show.on{background:var(--accent-soft);border-color:var(--accent)}
-  /* Outreach → Email: emails for the people who didn't answer on LinkedIn (Leo, Nov 16 2026; find-emails.ts) */
+  /* Outreach → Email: find emails with Hunter — who didn't answer on LinkedIn + brands not reached yet (Leo, Nov 16 2026; find-emails.ts) */
   .fe-card{margin-top:18px;padding:16px 18px}
   .fe-h{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:12px}
   .fe-h b{font-size:16px}
@@ -1687,6 +1687,8 @@
   .fe-ok{color:var(--good)} .fe-maybe{color:var(--warn)}
   .fe-foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
   .fe-card .btn-solid:disabled{opacity:.5;cursor:default}
+  .fe-doms{margin:10px 0 6px;padding:10px 12px;border:1px solid var(--border-soft);border-radius:10px;font-size:13.5px;line-height:1.6;color:var(--ink-2)}
+  .fe-doms b{color:var(--ink-1)} .fe-doms a{color:var(--accent-hi);white-space:nowrap}
   .fe-skip{margin-top:10px;font-size:13.5px;color:var(--ink-2)}
   .fe-skip summary{cursor:pointer}
   .fe-skip li{margin:3px 0 3px 18px}
@@ -20348,7 +20350,15 @@ function lintDraft(subject, body) {
 // hands back). Bring Hunter's file back = saveFoundEmails: every line shown
 // first, ticks, then Save fills only empty email fields. Undo names who
 // loses theirs first (undoFoundEmails). Nothing is emailed from here.
-var FE = { data: null, err: '', minDays: 21, on: { noaccept: true, quiet: true }, more: false, all: false, pv: null, csv: '', file: '', tick: {}, saving: false, note: '', stale: false };
+// Later that day ("about 900 brands … get all those brands into our cold
+// email outreach … a download … that has a list of all the brands and then
+// probably the people"): a third group, brands not reached out to yet — their
+// best few people each (FE.per: 3 / 5 / 10 / everyone), on the same file —
+// and a second file, the websites of the ones with nobody to look up, for
+// Hunter's Domain Search (one a line).
+var FE = { data: null, err: '', minDays: 21, per: 3, on: { noaccept: true, quiet: true, fresh: true }, more: false, all: false, pv: null, csv: '', file: '', tick: {}, saving: false, note: '', stale: false };
+var FE_GROUPS = ['noaccept', 'quiet', 'fresh'];
+var FE_DOMAINS = 'https://hunter.io/bulks/domain-search';
 var FE_HEAD = ['First name', 'Last name', 'Company', 'Company website', 'SB brand', 'SB title', 'SB LinkedIn', 'SB id'];
 var FE_HUNTER = 'https://hunter.io/bulks/email-finder';
 var FE_SKIP = {
@@ -20374,9 +20384,9 @@ function feShell() {
 
 function feLoad() {
   if (!feShell()) return Promise.resolve();
-  var asked = FE.minDays;
-  return api('noAnswerList', { minDays: asked }).then(function (d) {
-    if (asked !== FE.minDays) return;
+  var asked = FE.minDays, per = FE.per;
+  return api('noAnswerList', { minDays: asked, perBrand: per }).then(function (d) {
+    if (asked !== FE.minDays || per !== FE.per) return;
     if (!d || !d.counts || !Array.isArray(d.people)) throw new Error('no answer');
     FE.data = d; FE.err = '';
     feRender();
@@ -20401,19 +20411,34 @@ function feSaveFile(name, text) {
   a.click();
   setTimeout(function () { a.remove(); URL.revokeObjectURL(url); }, 1500);
 }
-function feWhy(g) { return g === 'quiet' ? 'Accepted, then no response' : 'Didn’t accept'; }
+function feWhy(g) { return g === 'quiet' ? 'Accepted, then no response' : g === 'fresh' ? 'Not reached out to yet' : 'Didn’t accept'; }
+function feReady() {
+  return FE.data ? (FE.data.ready || []).filter(function (p) { return FE.on[p.group]; }) : [];
+}
+// One company a line for Hunter's Domain Search: its website, else its name.
+function feDomainLines(list) {
+  var seen = {}, out = [];
+  (list || []).forEach(function (r) {
+    var v = String(r.domain || r.company || '').trim(), k = v.toLowerCase();
+    if (!v || seen[k]) return;
+    seen[k] = 1; out.push(v);
+  });
+  return out;
+}
 
 function feRender() {
   var top = document.getElementById('fe-top');
   if (!top) return;
   var d = FE.data;
-  var title = '<b>Emails for people who didn’t answer on LinkedIn</b>';
+  var title = '<b>Find emails with Hunter — every brand we’re not talking to</b>';
   if (!d) {
     top.innerHTML = '<div class="fe-h">' + title + '</div><div class="fe-dim">' +
-      (FE.err ? 'Couldn’t count them: ' + esc(FE.err) + ' <button class="su-show" data-fe="retry">Try again</button>' : 'Counting who didn’t answer…') + '</div>';
+      (FE.err ? 'Couldn’t count them: ' + esc(FE.err) + ' <button class="su-show" data-fe="retry">Try again</button>' : 'Counting who needs an email…') + '</div>';
     return;
   }
-  var c = d.counts, rows = feRows();
+  var c = d.counts, rows = feRows(), have = feReady();
+  var doms = feDomainLines(d.domains);
+  var perWords = FE.per ? 'the best ' + FE.per + ' a brand' : 'everyone';
   var brands = {};
   rows.forEach(function (r) { brands[r.brandId] = 1; });
   var nb = Object.keys(brands).length;
@@ -20423,7 +20448,10 @@ function feRender() {
     c.noName ? c.noName + ' whose name LinkedIn cut short' : '',
     c.emailed ? c.emailed + ' already emailed' : '',
     c.waitingBrands ? plural(c.waitingBrands, 'brand') + ' where someone accepted and is still on Zach’s list' : '',
-    c.offBrands ? plural(c.offBrands, 'brand') + ' archived or marked do not email' : ''
+    c.offBrands ? plural(c.offBrands, 'brand') + ' archived or marked do not email' : '',
+    c.freshMore ? c.freshMore + ' more at brands not reached yet, past ' + perWords : '',
+    c.heldBrands ? plural(c.heldBrands, 'brand') + ' the queue holds back (giants, Skip categories, too small)' : '',
+    c.dealBrands ? plural(c.dealBrands, 'brand') + ' with a deal, a show or a Show Board request' : ''
   ].filter(Boolean);
   var chip = function (g, label, n) {
     return '<button class="chip' + (FE.on[g] ? ' active' : '') + '" data-fe="group" data-g="' + g + '" aria-pressed="' + (FE.on[g] ? 'true' : 'false') + '">' + label + ' · ' + n + '</button>';
@@ -20431,14 +20459,17 @@ function feRender() {
   var days = [[21, '21 days ago'], [14, '14 days ago'], [7, '7 days ago'], [0, 'any time']].map(function (o) {
     return '<option value="' + o[0] + '"' + (FE.minDays === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
   }).join('');
+  var pers = [[3, 'their best 3'], [5, 'their best 5'], [10, 'their best 10'], [0, 'everyone on file']].map(function (o) {
+    return '<option value="' + o[0] + '"' + (FE.per === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+  }).join('');
   top.innerHTML =
     '<div class="fe-h">' + title +
-      '<span class="fe-dim">Download the list, find their emails in Hunter, bring Hunter’s file back. Nothing is emailed from here.</span></div>' +
+      '<span class="fe-dim">People who didn’t answer on LinkedIn, and brands not reached out to yet. Download the list, find their emails in Hunter, bring Hunter’s file back. Nothing is emailed from here.</span></div>' +
     '<div class="fe-grid">' +
       '<div class="su-tile"><div class="su-h">Need an email</div><div class="su-big" id="fe-need">' + rows.length + '<span>' + (rows.length === 1 ? ' person' : ' people') + '</span></div>' +
-        '<div class="su-sub">at ' + plural(nb, 'brand') + ' nobody answered from</div></div>' +
-      '<div class="su-tile"><div class="su-h">Already have an email</div><div class="su-big" id="fe-have">' + c.have + '<span>' + (c.have === 1 ? ' person' : ' people') + '</span></div>' +
-        '<div class="su-sub">never emailed' + (c.have ? ' · <button class="su-show" data-fe="ready">Download them</button>' : '') + '</div></div>' +
+        '<div class="su-sub">at ' + plural(nb, 'brand') + ' we’re not talking to</div></div>' +
+      '<div class="su-tile"><div class="su-h">Already have an email</div><div class="su-big" id="fe-have">' + have.length + '<span>' + (have.length === 1 ? ' person' : ' people') + '</span></div>' +
+        '<div class="su-sub">never emailed' + (have.length ? ' · <button class="su-show" data-fe="ready">Download them</button>' : '') + '</div></div>' +
       '<div class="su-tile fe-steps">' +
         '<div class="fe-step"><span class="fe-num">1</span><button class="btn-solid" data-fe="download"' + (rows.length ? '' : ' disabled') + '>Download the list for Hunter (' + rows.length + ')</button></div>' +
         '<div class="fe-step"><span class="fe-num">2</span><span>In Hunter: <b>Bulks → Email Finder</b>, upload it, then download the result. <a href="' + FE_HUNTER + '" target="_blank" rel="noopener">Open Hunter ↗</a></span></div>' +
@@ -20446,11 +20477,15 @@ function feRender() {
       '</div>' +
     '</div>' +
     '<div class="fe-row">' +
-      chip('noaccept', 'Didn’t accept', c.noaccept) + chip('quiet', 'Accepted, then no response', c.quiet) +
+      chip('noaccept', 'Didn’t accept', c.noaccept) + chip('quiet', 'Accepted, then no response', c.quiet) + chip('fresh', 'Not reached out to yet', c.fresh || 0) +
       '<label class="fe-days">Invite sent at least <select class="inp" id="fe-days">' + days + '</select></label>' +
+      '<label class="fe-days">Brands not reached yet: <select class="inp" id="fe-per">' + pers + '</select></label>' +
       (rows.length ? '<button class="su-show" data-fe="more">' + (FE.more ? 'Hide the list' : 'See who’s on it') + '</button>' : '') +
     '</div>' +
     (noDom ? '<div class="fe-dim">' + noDom + ' of them ' + (noDom === 1 ? 'has' : 'have') + ' no company website on file — Hunter looks ' + (noDom === 1 ? 'that one' : 'those') + ' up by company name.</div>' : '') +
+    (doms.length ? '<div class="fe-doms" id="fe-doms"><b>' + plural(doms.length, 'brand') + '</b> not reached yet ' + (doms.length === 1 ? 'has' : 'have') + ' nobody on file to look up. ' +
+      '<button class="su-show" data-fe="domains">Download their websites (' + doms.length + ')</button> for Hunter’s <b>Bulks → Domain Search</b> — it lists who it knows there. ' +
+      '<a href="' + FE_DOMAINS + '" target="_blank" rel="noopener">Open it ↗</a></div>' : '') +
     (left.length ? '<div class="fe-dim" id="fe-left">Left out: ' + left.join(' · ') + '.</div>' : '') +
     (d.last ? '<div class="fe-last" id="fe-last">Last file: ' + plural(d.last.count, 'email') + ' saved ' + shortDate(d.last.at) + (d.last.by ? ' by ' + esc(d.last.by) : '') +
       ' · <button class="su-show" data-fe="undo">Undo</button></div>' : '');
@@ -20604,7 +20639,7 @@ function feOnClick(e) {
   if (a === 'group') {
     var g = t.getAttribute('data-g');
     FE.on[g] = !FE.on[g];
-    if (!FE.on.noaccept && !FE.on.quiet) FE.on[g === 'quiet' ? 'noaccept' : 'quiet'] = true;   // never both off
+    if (!FE_GROUPS.some(function (k) { return FE.on[k]; })) FE.on[g] = true;   // never all off
     feRender();
     return;
   }
@@ -20620,9 +20655,16 @@ function feOnClick(e) {
     return;
   }
   if (a === 'ready' && d) {
-    feSaveFile('sb-have-emails-' + d.today + '.csv', feCsv([['First name', 'Last name', 'Email', 'Brand', 'Title', 'LinkedIn', 'Why']].concat(d.ready.map(function (r) {
+    feSaveFile('sb-have-emails-' + d.today + '.csv', feCsv([['First name', 'Last name', 'Email', 'Brand', 'Title', 'LinkedIn', 'Why']].concat(feReady().map(function (r) {
       return [r.first || r.name, r.last, r.email, r.brandName, r.title || '', r.linkedinUrl || '', feWhy(r.group)];
     }))));
+    return;
+  }
+  if (a === 'domains' && d) {
+    var lines = feDomainLines(d.domains);
+    if (!lines.length) return;
+    feSaveFile('sb-brand-websites-' + d.today + '.csv', lines.map(function (v) { return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join('\r\n') + '\r\n');
+    toast('Downloaded ' + plural(lines.length, 'brand') + ' — upload it in Hunter’s Domain Search');
     return;
   }
   if (a === 'pick') { document.getElementById('fe-file').click(); return; }
@@ -20640,6 +20682,7 @@ function feOnChange(e) {
   // The box is emptied once read, so choosing the same file again still counts as a choice.
   if (t.id === 'fe-file') { var file = t.files && t.files[0]; feTakeFile(file); t.value = ''; return; }
   if (t.id === 'fe-days') { FE.minDays = Number(t.value) || 0; FE.all = false; feLoad(); return; }
+  if (t.id === 'fe-per') { FE.per = Number(t.value) || 0; FE.all = false; feLoad(); return; }
   var id = t.getAttribute && t.getAttribute('data-fetick');
   if (id) { FE.tick[id] = t.checked; feSyncSave(); }
 }

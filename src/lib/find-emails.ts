@@ -19,6 +19,17 @@
 // continue, is archived or marked do-not-email — and a brand where someone
 // accepted and is still being worked on LinkedIn waits until that ends.
 //
+//
+// Later the same day (Leo: "there are about 900 brands on the Command Center
+// … I want to get all those brands into our cold email outreach … a download
+// … that has a list of all the brands and then probably the people from those
+// brands too"): a third group, brands **not reached out to yet** — the ones
+// the queue could still pick (never invited or emailed, not in talks, no
+// deal, not set aside or held back). At each, the best few people on file
+// (FRESH_PER_BRAND; buyer titles first) — the ones with no email go on the
+// list for Hunter, the ones with an email are ready. A brand with nobody to
+// look up goes on a second file, its website, for Hunter's Domain Search.
+//
 // Pure: the handlers in route.ts load the rows. node scripts/test-find-emails.mjs
 
 import { websiteDomain } from './duplicates'
@@ -105,8 +116,8 @@ export type FindBrand = {
   id: string; name: string; category?: string | null; stage: string; out?: string | null
   archived?: boolean; doNotEmail?: boolean; people: FindPerson[]
 }
-export type FindGroup = 'noaccept' | 'quiet'
-export const GROUP_WORDS: Record<FindGroup, string> = { noaccept: 'Didn’t accept', quiet: 'Accepted, then no response' }
+export type FindGroup = 'noaccept' | 'quiet' | 'fresh'
+export const GROUP_WORDS: Record<FindGroup, string> = { noaccept: 'Didn’t accept', quiet: 'Accepted, then no response', fresh: 'Not reached out to yet' }
 
 // Invited (or emailed) with no answer → didn't accept; accepted and quiet
 // after the last follow-up → no response. Anyone else isn't on the list.
@@ -139,7 +150,7 @@ export type FindRow = {
   brandId: string; brandName: string; category: string | null; group: FindGroup; lastAt: string | null; by: string | null
 }
 export type FindCounts = {
-  need: number; needBrands: number; noaccept: number; quiet: number
+  need: number; needBrands: number; noaccept: number; quiet: number; fresh: number
   have: number; emailed: number; tooNew: number; noName: number; offBrands: number; waitingBrands: number
 }
 
@@ -150,7 +161,7 @@ export function needEmailList(brands: FindBrand[], opts: { minDays?: number; now
   const minDays = Math.max(0, opts.minDays ?? FIND_MIN_DAYS)
   const cutoff = now.getTime() - minDays * 864e5
   const need: FindRow[] = [], have: FindRow[] = []
-  const c: FindCounts = { need: 0, needBrands: 0, noaccept: 0, quiet: 0, have: 0, emailed: 0, tooNew: 0, noName: 0, offBrands: 0, waitingBrands: 0 }
+  const c: FindCounts = { need: 0, needBrands: 0, noaccept: 0, quiet: 0, fresh: 0, have: 0, emailed: 0, tooNew: 0, noName: 0, offBrands: 0, waitingBrands: 0 }
   const seen = new Set<string>()
   const needBrands = new Set<string>()
   for (const b of brands) {
@@ -187,6 +198,96 @@ export function needEmailList(brands: FindBrand[], opts: { minDays?: number; now
   c.need = need.length
   c.needBrands = needBrands.size
   return { need, have, counts: c }
+}
+
+// ---- brands not reached out to yet -----------------------------------
+
+// How many people a brand not reached yet gets by default: its best three
+// (a first outreach opens with three or four — brand-work.ts).
+export const FRESH_PER_BRAND = 3
+
+// One person on file at a brand nobody has reached out to. flagged = not a
+// buyer's title, no title, or works outside the US (the queue check's ⚠);
+// rank = how strong the title is (partnerships > events > marketing =
+// founder, queue-check.ts buyerRank).
+export type FreshPerson = {
+  contactId: string; name?: string | null; title?: string | null; linkedinUrl?: string | null; email?: string | null
+  stopped?: boolean; flagged?: boolean; rank?: number; decisionMaker?: boolean
+}
+export type FreshBrand = { id: string; name: string; category?: string | null; people: FreshPerson[] }
+export type FreshCounts = {
+  fresh: number; freshBrands: number; freshHave: number
+  freshMore: number          // people past the brand's number — not looked up
+  freshNoName: number        // no email and no first + last name to look up
+  nobodyBrands: number       // nobody there to email or look up → the Domain Search file
+}
+
+// Who goes first at a brand: an unflagged title, the stronger title, a
+// marked decision maker, a LinkedIn link (Hunter's match is surer with the
+// profile beside it). Equal people keep the order they came in.
+function freshOrder(a: FreshPerson, b: FreshPerson): number {
+  return Number(!!a.flagged) - Number(!!b.flagged) || (b.rank ?? 0) - (a.rank ?? 0) ||
+    Number(!!b.decisionMaker) - Number(!!a.decisionMaker) || Number(!!b.linkedinUrl) - Number(!!a.linkedinUrl)
+}
+
+// The best `perBrand` people at each brand (0 = everyone): the ones with an
+// email are ready, the ones without go on the list for Hunter. Flagged
+// people only when the brand has nobody else — a worse door beats no door.
+// Never someone who said they don't want to continue. `skip` = contact ids
+// already on the list another way.
+export function freshList(brands: FreshBrand[], opts: { perBrand?: number; skip?: Set<string> } = {}): {
+  need: FindRow[]; have: FindRow[]; nobody: Array<{ id: string; name: string; category: string | null }>; counts: FreshCounts
+} {
+  const per = Math.max(0, Math.floor(opts.perBrand ?? FRESH_PER_BRAND))
+  const need: FindRow[] = [], have: FindRow[] = []
+  const nobody: Array<{ id: string; name: string; category: string | null }> = []
+  const c: FreshCounts = { fresh: 0, freshBrands: 0, freshHave: 0, freshMore: 0, freshNoName: 0, nobodyBrands: 0 }
+  const seen = new Set<string>(opts.skip ?? [])
+  for (const b of brands) {
+    const pool: Array<{ p: FreshPerson; nm: { first: string; last: string } | null; email: string | null }> = []
+    const here = new Set<string>()
+    for (const p of b.people ?? []) {
+      if (!p.contactId || p.stopped || seen.has(p.contactId) || here.has(p.contactId)) continue
+      here.add(p.contactId)
+      const email = p.email && looksLikeEmail(p.email) ? cleanEmail(p.email) : null
+      const nm = splitName(p.name)
+      if (!email && !nm) { c.freshNoName += 1; continue }
+      pool.push({ p, nm, email })
+    }
+    if (!pool.length) { nobody.push({ id: b.id, name: b.name, category: b.category ?? null }); c.nobodyBrands += 1; continue }
+    const ok = pool.filter(x => !x.p.flagged)
+    const from = (ok.length ? ok : pool).map((x, i) => ({ x, i })).sort((l, r) => freshOrder(l.x.p, r.x.p) || l.i - r.i).map(o => o.x)
+    const take = per ? from.slice(0, per) : from
+    c.freshMore += from.length - take.length
+    let any = false
+    for (const { p, nm, email } of take) {
+      seen.add(p.contactId)
+      const row: FindRow = {
+        contactId: p.contactId, name: String(p.name ?? '').trim(), first: nm?.first ?? '', last: nm?.last ?? '',
+        title: p.title ?? null, linkedinUrl: p.linkedinUrl ?? null, email,
+        brandId: b.id, brandName: b.name, category: b.category ?? null, group: 'fresh', lastAt: null, by: null,
+      }
+      if (email) { have.push(row); c.freshHave += 1 } else { need.push(row); c.fresh += 1; any = true }
+    }
+    if (any) c.freshBrands += 1
+  }
+  return { need, have, nobody, counts: c }
+}
+
+// The file for Hunter's bulk Domain Search: one company a line — its
+// website's domain, else its name (Hunter takes either; a domain is surer).
+// The same company once.
+export function domainLines(rows: Array<{ domain?: string | null; company?: string | null }>): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const r of rows) {
+    const v = String(r.domain || r.company || '').trim()
+    const k = v.toLowerCase()
+    if (!v || seen.has(k)) continue
+    seen.add(k)
+    out.push(v)
+  }
+  return out
 }
 
 // ---- Hunter's file, read back ---------------------------------------

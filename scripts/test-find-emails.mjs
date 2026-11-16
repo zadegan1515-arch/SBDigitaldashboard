@@ -1,5 +1,6 @@
-// node scripts/test-find-emails.mjs — Outreach → Email's "Emails for people
-// who didn't answer on LinkedIn" (Leo, Nov 16 2026; src/lib/find-emails.ts):
+// node scripts/test-find-emails.mjs — Outreach → Email's "Find emails with
+// Hunter" (Leo, Nov 16 2026; src/lib/find-emails.ts): the people who didn't
+// answer on LinkedIn and the brands not reached out to yet —
 // who goes on the list for Hunter, how a name and a company's domain are
 // read, the file for Hunter, Hunter's file read back, and what a file would
 // save (never over an email already there).
@@ -20,6 +21,7 @@ const m = await import(pathToFileURL(join(out, 'find-emails.js')).href)
 const {
   splitName, mailDomain, companyDomain, personGroup, brandIn, brandAnswered, needEmailList, parseCsv, toCsv, hunterCsv, HUNTER_HEAD,
   readFoundFile, verdictOf, planFoundEmails, findKey, sigOf, foundNote, addNote, dropNote, FIND_MIN_DAYS,
+  freshList, domainLines, FRESH_PER_BRAND, GROUP_WORDS,
 } = m
 
 let n = 0
@@ -129,7 +131,7 @@ t('the list: people with no email, old enough, with a name to look up', () => {
   assert.deepEqual(r.need.map(x => x.group), ['noaccept', 'quiet', 'noaccept', 'quiet'])
   assert.deepEqual([r.need[0].first, r.need[0].last, r.need[0].brandName], ['Ann', 'Lee', 'Alpha'])
   assert.deepEqual(r.have.map(x => [x.contactId, x.email]), [['a3', 'cy@alpha.com']])
-  assert.deepEqual(r.counts, { need: 4, needBrands: 2, noaccept: 2, quiet: 2, have: 1, emailed: 1, tooNew: 1, noName: 1, offBrands: 1, waitingBrands: 1 })
+  assert.deepEqual(r.counts, { need: 4, needBrands: 2, noaccept: 2, quiet: 2, fresh: 0, have: 1, emailed: 1, tooNew: 1, noName: 1, offBrands: 1, waitingBrands: 1 })
   assert.equal(FIND_MIN_DAYS, 21)
 })
 t('the wait is the caller\'s: any time lets a fresh invite in', () => {
@@ -137,6 +139,73 @@ t('the wait is the caller\'s: any time lets a fresh invite in', () => {
   assert.deepEqual(needEmailList(brands, { now: NOW }).need.map(x => x.contactId), [])
   assert.deepEqual(needEmailList(brands, { now: NOW, minDays: 7 }).need.map(x => x.contactId), ['x2'])
   assert.deepEqual(needEmailList(brands, { now: NOW, minDays: 0 }).need.map(x => x.contactId), ['x1', 'x2'])
+})
+
+// ---- brands not reached out to yet
+const FP = (id, name, extra = {}) => ({ contactId: id, name, title: 'Head of Partnerships', linkedinUrl: 'https://www.linkedin.com/in/' + id, email: null, rank: 3, ...extra })
+t('a brand not reached yet gives its best three: the ones with an email are ready, the rest go to Hunter', () => {
+  assert.equal(FRESH_PER_BRAND, 3)
+  assert.equal(GROUP_WORDS.fresh, 'Not reached out to yet')
+  const b = { id: 'b1', name: 'Nova Pouch', category: 'nicotine', people: [
+    FP('m', 'Mia Marketing', { title: 'Brand Manager', rank: 1 }),
+    FP('f', 'Finn Founder', { title: 'Founder', rank: 1 }),
+    FP('e', 'Eve Events', { title: 'Events Manager', rank: 2 }),
+    FP('h', 'Hal Has', { title: 'VP Partnerships', email: 'Hal@NovaPouch.com ' }),
+    FP('p', 'Pat Partner'),
+  ] }
+  const r = freshList([b])
+  // Partnerships first (in the order they came), then events; marketing and the founder are past the three.
+  assert.deepEqual(r.have.map(x => [x.contactId, x.email, x.group]), [['h', 'hal@novapouch.com', 'fresh']])
+  assert.deepEqual(r.need.map(x => [x.contactId, x.first, x.last, x.group, x.brandName, x.lastAt]), [['p', 'Pat', 'Partner', 'fresh', 'Nova Pouch', null], ['e', 'Eve', 'Events', 'fresh', 'Nova Pouch', null]])
+  assert.deepEqual(r.counts, { fresh: 2, freshBrands: 1, freshHave: 1, freshMore: 2, freshNoName: 0, nobodyBrands: 0 })
+  // Everyone, or another number.
+  assert.deepEqual(freshList([b], { perBrand: 0 }).need.map(x => x.contactId), ['p', 'e', 'm', 'f'])
+  assert.equal(freshList([b], { perBrand: 0 }).counts.freshMore, 0)
+  assert.deepEqual(freshList([b], { perBrand: 1 }).need.map(x => x.contactId), [])
+  assert.deepEqual(freshList([b], { perBrand: 1 }).have.map(x => x.contactId), ['h'])
+})
+t('a marked decision maker, then a LinkedIn link, break a tie in title', () => {
+  const b = { id: 'b1', name: 'Nova', people: [
+    FP('plain', 'Al Plain', { linkedinUrl: null }), FP('link', 'Bo Link'), FP('dm', 'Cy Decides', { linkedinUrl: null, decisionMaker: true }),
+  ] }
+  assert.deepEqual(freshList([b], { perBrand: 0 }).need.map(x => x.contactId), ['dm', 'link', 'plain'])
+})
+t('flagged people only when the brand has nobody else; never someone who said stop', () => {
+  const mixed = { id: 'b1', name: 'Mixed', people: [FP('s', 'Sal Sales', { title: 'Sales Associate', rank: 0, flagged: true }), FP('ok', 'Olive Kay', { title: 'CMO', rank: 1 })] }
+  assert.deepEqual(freshList([mixed], { perBrand: 0 }).need.map(x => x.contactId), ['ok'])
+  // A flagged person with an email doesn't stand in for a buyer either.
+  const flagMail = { id: 'b2', name: 'Flag Mail', people: [FP('s', 'Sal Sales', { flagged: true, rank: 0, email: 'sal@x.com' }), FP('ok', 'Olive Kay')] }
+  assert.deepEqual([freshList([flagMail]).have.length, freshList([flagMail]).need.map(x => x.contactId)], [0, ['ok']])
+  const only = { id: 'b3', name: 'Only Door', people: [FP('s', 'Sal Sales', { title: 'Office Manager', rank: 0, flagged: true })] }
+  assert.deepEqual(freshList([only]).need.map(x => x.contactId), ['s'])
+  const stopped = { id: 'b4', name: 'Stopped One', people: [FP('x', 'Xi Stop', { stopped: true }), FP('y', 'Yo Fine', { rank: 1 })] }
+  assert.deepEqual(freshList([stopped], { perBrand: 0 }).need.map(x => x.contactId), ['y'])
+})
+t('nobody to look up → the brand goes on the Domain Search file', () => {
+  const brands = [
+    { id: 'b1', name: 'Empty Co', category: 'energy', people: [] },
+    { id: 'b2', name: 'Cut Short', people: [FP('c', 'Cara S.'), FP('m', 'LinkedIn Member')] },
+    { id: 'b3', name: 'All Stopped', people: [FP('x', 'Xi Stop', { stopped: true })] },
+    { id: 'b4', name: 'Has One', people: [FP('o', 'Otto One')] },
+    { id: 'b5', name: 'Mail Only', people: [FP('q', 'Madonna', { email: 'm@mailonly.com' })] },
+  ]
+  const r = freshList(brands)
+  assert.deepEqual(r.nobody, [{ id: 'b1', name: 'Empty Co', category: 'energy' }, { id: 'b2', name: 'Cut Short', category: null }, { id: 'b3', name: 'All Stopped', category: null }])
+  assert.deepEqual([r.counts.nobodyBrands, r.counts.freshNoName, r.counts.freshBrands, r.counts.fresh, r.counts.freshHave], [3, 2, 1, 1, 1])
+  // A one-word name with an email is still someone to write to.
+  assert.deepEqual(r.have.map(x => [x.contactId, x.first, x.name]), [['q', '', 'Madonna']])
+})
+t('someone already on the list another way is not listed twice', () => {
+  const b = { id: 'b1', name: 'Nova', people: [FP('a', 'Ann Lee'), FP('b', 'Bo Chen'), FP('a', 'Ann Lee')] }
+  assert.deepEqual(freshList([b], { perBrand: 0 }).need.map(x => x.contactId), ['a', 'b'])
+  assert.deepEqual(freshList([b], { perBrand: 0, skip: new Set(['a']) }).need.map(x => x.contactId), ['b'])
+})
+t('the Domain Search file: one company a line — its website, else its name, each once', () => {
+  assert.deepEqual(domainLines([
+    { domain: 'zestsoda.com', company: 'Zest Soda' }, { domain: null, company: 'Diageo' }, { domain: 'ZestSoda.com', company: 'Zest Zero' },
+    { domain: '', company: 'diageo' }, { domain: null, company: '' }, { domain: 'acme.co', company: 'Acme, Inc.' },
+  ]), ['zestsoda.com', 'Diageo', 'acme.co'])
+  assert.deepEqual(domainLines([]), [])
 })
 
 // ---- the file for Hunter, and back

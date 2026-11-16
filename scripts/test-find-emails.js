@@ -5,7 +5,10 @@
 // shown), Hunter's file brought back (a preview of every line, unverified
 // ones unticked, Save sends only the ticked), a stale answer shown again
 // with the ticks kept, the wrong file, Undo (names who loses theirs first),
-// a person opening their brand page, and the phone width.
+// a person opening their brand page, and the phone width. Also the brands not
+// reached out to yet (the third group, their best few people a brand) and the
+// second file — the websites of brands with nobody to look up, one a line,
+// for Hunter's Domain Search.
 //   NODE_PATH=$(npm root -g) node scripts/test-find-emails.js
 const http = require('http');
 const fs = require('fs');
@@ -39,21 +42,33 @@ function reset() {
   ];
 }
 reset();
+const fresh = (id, first, last, extra) => Object.assign(person(id, first, last, 'b5', 'Nova Pouch', 'fresh'), { lastAt: null, by: null, category: 'nicotine' }, extra || {});
 const list = (a) => {
   const days = a.minDays == null ? 21 : a.minDays;
-  const people = days === 0 ? S.people.concat([person('c5', 'Ed', 'Nolan', 'b4', 'Fresh Co', 'noaccept')]) : S.people;
+  const per = a.perBrand == null ? 3 : a.perBrand;
+  let people = days === 0 ? S.people.concat([person('c5', 'Ed', 'Nolan', 'b4', 'Fresh Co', 'noaccept')]) : S.people;
+  // Brands not reached yet: their best 3 a brand — everyone lets one more in.
+  people = people.concat([fresh('f1', 'Hal', 'Frost')], per === 0 || per > 3 ? [fresh('f2', 'Ida', 'Moss', { title: 'Brand Manager' })] : []);
   const left = people.filter((p) => !S.saved.includes(p.contactId));
   return {
-    minDays: days, today: '2026-11-16',
+    minDays: days, perBrand: per, today: '2026-11-16',
     counts: {
       need: left.length, needBrands: new Set(left.map((p) => p.brandId)).size,
       noaccept: left.filter((p) => p.group === 'noaccept').length, quiet: left.filter((p) => p.group === 'quiet').length,
-      have: 2, emailed: 3, tooNew: days === 0 ? 0 : 1, noName: 2, offBrands: 1, waitingBrands: 4, noDomain: left.filter((p) => !p.domain).length,
+      have: 3, emailed: 3, tooNew: days === 0 ? 0 : 1, noName: 2, offBrands: 1, waitingBrands: 4, noDomain: left.filter((p) => !p.domain).length,
+      fresh: left.filter((p) => p.group === 'fresh').length, freshBrands: 1, freshHave: 1, freshMore: per === 3 ? 1 : 0, freshNoName: 0, nobodyBrands: 2,
+      heldBrands: 2, held: { giant: 1, skip: 1, small: 0 }, dealBrands: 1,
     },
     people: left,
     ready: [
       Object.assign(person('r1', 'Flo', 'Reyes', 'b1', 'Alpha Energy', 'noaccept'), { email: 'flo@alphaenergy.com' }),
       Object.assign(person('r2', 'Gus', 'Hall', 'b3', 'Gamma Drinks', 'quiet'), { email: 'gus@gammadrinks.com' }),
+      fresh('r3', 'Jo', 'Vale', { email: 'jo@novapouch.com' }),
+    ],
+    domains: [
+      { brandId: 'b6', brandName: 'Zest Soda', category: 'beverage', company: 'Zest Soda', domain: 'zestsoda.com', parent: null },
+      { brandId: 'b7', brandName: 'Casamigos', category: 'spirits', company: 'Diageo', domain: null, parent: 'Diageo' },
+      { brandId: 'b8', brandName: 'Zest Zero', category: 'beverage', company: 'Zest Zero', domain: 'zestsoda.com', parent: null },
     ],
     last: S.last,
   };
@@ -151,17 +166,19 @@ async function main() {
 
   // ---- the counts ----
   let text = await page.textContent('#fe-card');
-  assert.match(text, /Emails for people who didn’t answer on LinkedIn/);
-  assert.match(text, /Need an email\s*4 people\s*at 3 brands nobody answered from/);
-  assert.match(text, /Already have an email\s*2 people\s*never emailed/);
-  assert.match(text, /Download the list for Hunter \(4\)/);
+  assert.match(text, /Find emails with Hunter — every brand we’re not talking to/);
+  assert.match(text, /Need an email\s*5 people\s*at 4 brands we’re not talking to/);
+  assert.match(text, /Already have an email\s*3 people\s*never emailed/);
+  assert.match(text, /Download the list for Hunter \(5\)/);
   assert.match(text, /Didn’t accept · 2/);
   assert.match(text, /Accepted, then no response · 2/);
+  assert.match(text, /Not reached out to yet · 1/);
   assert.match(text, /1 of them has no company website on file — Hunter looks that one up by company name/);
-  assert.match(text, /Left out: 1 invited less than 21 days ago · 2 whose name LinkedIn cut short · 3 already emailed · 4 brands where someone accepted and is still on Zach’s list · 1 brand archived or marked do not email\./);
+  assert.match(text, /Left out: 1 invited less than 21 days ago · 2 whose name LinkedIn cut short · 3 already emailed · 4 brands where someone accepted and is still on Zach’s list · 1 brand archived or marked do not email · 1 more at brands not reached yet, past the best 3 a brand · 2 brands the queue holds back \(giants, Skip categories, too small\) · 1 brand with a deal, a show or a Show Board request\./);
   assert.match(text, /Nothing is emailed from here/);
   assert.equal(await page.getAttribute('#fe-card a[href^="https://hunter.io"]', 'target'), '_blank');
   assert.equal(calls('noAnswerList')[0].args.minDays, 21);
+  assert.equal(calls('noAnswerList')[0].args.perBrand, 3);
   ok('the card counts who needs an email, who has one, and who is left out');
 
   // ---- the file for Hunter ----
@@ -174,7 +191,8 @@ async function main() {
   let f = await grab('#fe-card [data-fe="download"]');
   assert.equal(f.name, 'sb-need-emails-2026-11-16.csv');
   assert.deepEqual(f.grid[0], ['First name', 'Last name', 'Company', 'Company website', 'SB brand', 'SB title', 'SB LinkedIn', 'SB id']);
-  assert.deepEqual(f.grid.slice(1).map((r) => r[7]), ['c1', 'c2', 'c3', 'c4']);
+  assert.deepEqual(f.grid.slice(1).map((r) => r[7]), ['c1', 'c2', 'c3', 'c4', 'f1']);
+  assert.deepEqual(f.grid[5], ['Hal', 'Frost', 'Nova Pouch', 'novapouch.com', 'Nova Pouch', 'Head of Partnerships', 'https://www.linkedin.com/in/f1/', 'f1']);
   assert.deepEqual(f.grid[1], ['Ann', 'Lee', 'Alpha Energy', 'alphaenergy.com', 'Alpha Energy', 'Head of Partnerships', 'https://www.linkedin.com/in/c1/', 'c1']);
   assert.equal(f.grid[2][5], 'VP, "Brand"');
   // A label under a parent: looked up by the parent's name, no website.
@@ -183,34 +201,64 @@ async function main() {
 
   // ---- the groups ----
   await page.click('#fe-card [data-g="quiet"]');
+  assert.match(await page.textContent('#fe-need'), /^3 people/);
+  assert.match(await page.textContent('#fe-card'), /at 3 brands we’re not talking to/);
+  f = await grab('#fe-card [data-fe="download"]');
+  assert.deepEqual(f.grid.slice(1).map((r) => r[7]), ['c1', 'c3', 'f1']);
+  // The brands not reached yet are a group of their own.
+  await page.click('#fe-card [data-g="fresh"]');
   assert.match(await page.textContent('#fe-need'), /^2 people/);
-  assert.match(await page.textContent('#fe-card'), /at 2 brands nobody answered from/);
+  assert.match(await page.textContent('#fe-have'), /^1 person/);
   f = await grab('#fe-card [data-fe="download"]');
   assert.deepEqual(f.grid.slice(1).map((r) => r[7]), ['c1', 'c3']);
-  // Never both off: turning the last one off turns the other on.
+  // Never all off: the last one on stays on.
   await page.click('#fe-card [data-g="noaccept"]');
-  assert.equal(await page.getAttribute('#fe-card [data-g="quiet"]', 'aria-pressed'), 'true');
-  assert.equal(await page.getAttribute('#fe-card [data-g="noaccept"]', 'aria-pressed'), 'false');
+  assert.equal(await page.getAttribute('#fe-card [data-g="noaccept"]', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('#fe-card [data-g="quiet"]', 'aria-pressed'), 'false');
+  await page.click('#fe-card [data-g="quiet"]');
+  await page.click('#fe-card [data-g="noaccept"]');
   f = await grab('#fe-card [data-fe="download"]');
   assert.deepEqual(f.grid.slice(1).map((r) => r[7]), ['c2', 'c4']);
   await page.click('#fe-card [data-g="noaccept"]');
-  assert.match(await page.textContent('#fe-need'), /^4 people/);
+  await page.click('#fe-card [data-g="fresh"]');
+  assert.match(await page.textContent('#fe-need'), /^5 people/);
   ok('a group off leaves its people out of the count and the file');
 
   // ---- the wait ----
   await page.selectOption('#fe-days', '0');
-  await page.waitForFunction(() => /^5 people/.test(document.getElementById('fe-need').textContent));
+  await page.waitForFunction(() => /^6 people/.test(document.getElementById('fe-need').textContent));
   assert.equal(calls('noAnswerList').slice(-1)[0].args.minDays, 0);
   assert.doesNotMatch(await page.textContent('#fe-card'), /invited less than/);
   await page.selectOption('#fe-days', '21');
-  await page.waitForFunction(() => /^4 people/.test(document.getElementById('fe-need').textContent));
+  await page.waitForFunction(() => /^5 people/.test(document.getElementById('fe-need').textContent));
   ok('the wait is a choice: any time lets fresh invites in');
+
+  // ---- how many people at a brand not reached yet ----
+  await page.selectOption('#fe-per', '0');
+  await page.waitForFunction(() => /^6 people/.test(document.getElementById('fe-need').textContent));
+  assert.deepEqual([calls('noAnswerList').slice(-1)[0].args.perBrand, calls('noAnswerList').slice(-1)[0].args.minDays], [0, 21]);
+  assert.match(await page.textContent('#fe-card'), /Not reached out to yet · 2/);
+  assert.doesNotMatch(await page.textContent('#fe-card'), /more at brands not reached yet/);
+  f = await grab('#fe-card [data-fe="download"]');
+  assert.deepEqual(f.grid.slice(1).map((r) => r[7]), ['c1', 'c2', 'c3', 'c4', 'f1', 'f2']);
+  await page.selectOption('#fe-per', '3');
+  await page.waitForFunction(() => /^5 people/.test(document.getElementById('fe-need').textContent));
+  ok('brands not reached yet give their best 3 — or everyone, when asked');
+
+  // ---- brands with nobody to look up: their websites, one a line ----
+  assert.match(await page.textContent('#fe-doms'), /2 brands not reached yet have nobody on file to look up\. Download their websites \(2\) for Hunter’s Bulks → Domain Search/);
+  assert.equal(await page.getAttribute('#fe-doms a', 'href'), 'https://hunter.io/bulks/domain-search');
+  f = await grab('#fe-doms [data-fe="domains"]');
+  assert.equal(f.name, 'sb-brand-websites-2026-11-16.csv');
+  // One company a line, a website once, a parent's label by the parent's name.
+  assert.deepEqual(f.grid, [['zestsoda.com'], ['Diageo']]);
+  ok('brands with nobody on file download as a list of websites for Domain Search');
 
   // ---- the people who already have an email ----
   f = await grab('#fe-card [data-fe="ready"]');
   assert.equal(f.name, 'sb-have-emails-2026-11-16.csv');
   assert.deepEqual(f.grid[0], ['First name', 'Last name', 'Email', 'Brand', 'Title', 'LinkedIn', 'Why']);
-  assert.deepEqual(f.grid.slice(1).map((r) => [r[2], r[6]]), [['flo@alphaenergy.com', 'Didn’t accept'], ['gus@gammadrinks.com', 'Accepted, then no response']]);
+  assert.deepEqual(f.grid.slice(1).map((r) => [r[2], r[6]]), [['flo@alphaenergy.com', 'Didn’t accept'], ['gus@gammadrinks.com', 'Accepted, then no response'], ['jo@novapouch.com', 'Not reached out to yet']]);
   ok('the people who already have an email download as their own file');
 
   // ---- who's on it ----
@@ -220,7 +268,8 @@ async function main() {
   assert.match(text, /Ann Lee/);
   assert.match(text, /Diageo \(by name — its parent company\)/);
   assert.match(text, /Accepted, then no response/);
-  assert.equal(await page.$$eval('#fe-list tbody tr', (r) => r.length), 4);
+  assert.match(text, /Hal Frost[\s\S]*Nova Pouch[\s\S]*Not reached out to yet/);
+  assert.equal(await page.$$eval('#fe-list tbody tr', (r) => r.length), 5);
   await page.click('#fe-list [data-focus="c1"]');
   await page.waitForFunction(() => document.getElementById('brand') && document.getElementById('brand').classList.contains('active'));
   assert.equal(calls('getBrand').length >= 1, true);
@@ -273,7 +322,7 @@ async function main() {
   assert.match(await page.textContent('#fe-note'), /Saved 2 emails at 2 brands\./);
   await page.waitForSelector('#fe-last');
   assert.match(await page.textContent('#fe-last'), /Last file: 2 emails saved .* by leo@example\.com · Undo/);
-  assert.match(await page.textContent('#fe-need'), /^2 people/);
+  assert.match(await page.textContent('#fe-need'), /^3 people/);
   assert.equal(await page.$('#fe-pv .fe-table'), null);
   ok('Save sends only the ticked people and the preview’s signature');
 
@@ -306,7 +355,7 @@ async function main() {
   await page.click('#fe-last [data-fe="undo"]');
   await page.waitForFunction(() => !document.getElementById('fe-last'));
   assert.equal(calls('undoFoundEmails').filter((c) => c.args.confirm).length, 1);
-  assert.match(await page.textContent('#fe-need'), /^4 people/);
+  assert.match(await page.textContent('#fe-need'), /^5 people/);
   ok('Undo names who loses their email first; No changes nothing');
 
   // ---- a refresh keeps an open preview ----

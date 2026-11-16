@@ -1082,6 +1082,24 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   picks its intros from people with an email whose invite is still out, so saved addresses start showing up as **drafts**
   on this tab (one per brand, inside the cap; nothing sends while `EMAIL_SENDING_OFF`). Hunter's own pages couldn't be
   read from the cloud session (host not allowed), so its result file's headings are unverified until Leo's first file.
+  **Every brand we're not talking to** (Leo, later Nov 16 2026: "there are about 900 brands on the Command Center … I want
+  to get all those brands into our cold email outreach … a download … that has a list of all the brands and then probably
+  the people from those brands too"; the card is now titled "Find emails with Hunter — every brand we're not talking to").
+  A third group / chip, **Not reached out to yet** (`group: 'fresh'`, `freshList` in find-emails.ts, `findEmailPeople` in
+  route.ts — one read shared by `noAnswerList` and a file brought back without `SB id`): brands never invited or emailed,
+  not on the tracker (so not in talks), with no deal / show / activation / Show Board request, and nothing the queue's own
+  picks set aside or hold back (`supplyStateOf`: archived, do-not-email, stopped, not US, closed → out; a held giant, a
+  Skip category, too small → counted "the queue holds back", the same switches as What the queue has to work with). Best
+  Brand Fit first; at each, its **best N people** (`perBrand`, the card's menu: 3 by default — `FRESH_PER_BRAND` — 5, 10,
+  everyone = 0): unflagged titles first (`personProblem` + the abroad test; a flagged person only when the brand has
+  nobody else), partnerships > events > marketing = founder (`buyerRank`), a marked decision maker, a LinkedIn link;
+  never someone who said stop. Of those N, the ones with an email are `ready`, the ones without go on the same file for
+  Hunter's Email Finder (our id comes back, `saveFoundEmails` unchanged). `domains` = brands not reached yet with nobody
+  to email or look up → **Download their websites** = a second file, one company a line (its domain, else its name — a
+  parent's for a label; `domainLines` / `feDomainLines`, each once), for Hunter's **Bulks → Domain Search**. Bringing
+  that result back (it makes new people) is **not built** — wait for Leo's first Domain Search file to read its headings.
+  Hunter's bulk Domain Search takes domains or company names one a line and has no department filter we could confirm
+  (the filter is on the one-company search); help.hunter.io / hunter.io still can't be read from the cloud session.
   Tests: `node scripts/test-find-emails.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-find-emails.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-find-emails-e2e.js`.
 - **Brands → Stock take** (`brandStock` + `src/lib/stock.ts`; deep link `app.html#stock`; linked from

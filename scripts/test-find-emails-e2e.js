@@ -7,7 +7,10 @@
 // a label), Hunter's file brought back — preview first, only empty email
 // fields filled, never over another address, never a stopped person, never
 // somebody else's address — the stale check, the Claude's-day line, and Undo
-// (names who loses theirs; a changed address stays).
+// (names who loses theirs; a changed address stays). And the brands not
+// reached out to yet: their best few people each, never a held giant, a Skip
+// category, a deal or a brand set aside; the ones with nobody to look up as
+// the Domain Search list.
 // Run: E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-find-emails-e2e.js
 const path = require('path');
 const { spawn, execSync } = require('child_process');
@@ -264,6 +267,91 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual(up2.goes, [])
     assert.deepEqual(up2.stays.map(s => s.why), ['an email to them was drafted or sent since'])
     ok('an address an email was drafted to since stays on Undo');
+
+    // ---- brands not reached out to yet ----
+    // Up to here every brand had been reached, so the list was the people who didn't answer and nobody else.
+    const before = await data('noAnswerList')
+    assert.equal(before.counts.fresh, 0); assert.deepEqual(before.domains, [])
+    assert.equal(before.people.some(p => p.group === 'fresh') || before.ready.some(p => p.group === 'fresh'), false)
+    const person = (id, brandId, name, title, extra) => prisma.contact.create({ data: Object.assign({ id, brandId, name, title, linkedinUrl: 'https://www.linkedin.com/in/' + id }, extra || {}) })
+    // Never reached: five buyers, one with an email, one flagged title, one abroad, a name cut short, one who said stop, one queued (not sent).
+    await brand('b_nova', 'Nova Pouch', { category: 'nicotine', website: 'https://novapouch.com/' })
+    await person('f_p', 'b_nova', 'Pat Partner', 'Head of Partnerships')
+    await person('f_has', 'b_nova', 'Hana Has', 'VP Partnerships', { email: 'hana@novapouch.com' })
+    await person('f_e', 'b_nova', 'Eve Events', 'Events Manager')
+    await person('f_m', 'b_nova', 'Mia Marketing', 'Brand Marketing Manager')
+    await person('f_c', 'b_nova', 'Finn Founder', 'Founder')
+    await person('f_s', 'b_nova', 'Sal Sales', 'Sales Associate')
+    await person('f_uk', 'b_nova', 'Una Kay', 'UK Partnerships Manager')
+    await person('f_cut', 'b_nova', 'Lena K.', 'Head of Partnerships')
+    await person('f_stop', 'b_nova', 'Stan Stop', 'Head of Partnerships', { doNotContactAt: D(3), doNotContactBy: 'leo' })
+    await prisma.target.create({ data: { brandId: 'b_nova', contactId: 'f_p' } })
+    // Nobody on file, and nobody with a name to look up: the Domain Search file.
+    await brand('b_zest', 'Zest Soda', { category: 'beverage', website: 'www.zestsoda.com/about' })
+    await brand('b_bare', 'Bare Bars', { category: 'wellness' })
+    await person('f_lm', 'b_bare', 'LinkedIn Member', 'Head of Partnerships')
+    // Only a flagged title there: a worse door beats no door.
+    await brand('b_lone', 'Lone Co', { website: 'loneco.com' })
+    await person('f_lone', 'b_lone', 'Jo Solo', 'Office Manager')
+    // Held back by the queue's rules, set aside, or already working with us: never on it.
+    await brand('b_giant', 'Red Bull', { website: 'redbull.com' })
+    await person('f_g', 'b_giant', 'Gil Giant', 'Head of Partnerships')
+    await brand('b_bet', 'Bet Co', { category: 'betting' })
+    await person('f_b', 'b_bet', 'Bea Bet', 'Head of Partnerships')
+    await brand('b_notus', 'Abroad Only Co', { usStatus: 'no' })
+    await person('f_n', 'b_notus', 'Nils Nope', 'Head of Partnerships')
+    await brand('b_deal', 'Deal Co')
+    await person('f_d', 'b_deal', 'Dana Deal', 'Head of Partnerships')
+    await prisma.deal.create({ data: { brandId: 'b_deal', name: 'Deal Co', stage: 'conversation', valueCents: 0, source: 'manual' } })
+    await brand('b_newarch', 'Shelved Co', { passedAt: D(1) })
+    await person('f_a', 'b_newarch', 'Abe Archived', 'Head of Partnerships')
+
+    let fl = await data('noAnswerList')
+    const fresh = (rows) => rows.filter(r => r.group === 'fresh').map(r => r.contactId).sort()
+    assert.equal(fl.perBrand, 3)
+    // Nova Pouch's best three: the two partnerships people (one has an email → ready) and events; Lone Co's only door.
+    assert.deepEqual(fresh(fl.people), ['f_e', 'f_lone', 'f_p'])
+    assert.deepEqual(fresh(fl.ready), ['f_has'])
+    assert.deepEqual([fl.counts.fresh, fl.counts.freshBrands, fl.counts.freshHave, fl.counts.freshMore, fl.counts.freshNoName], [3, 2, 1, 2, 2])
+    assert.deepEqual([fl.counts.heldBrands, fl.counts.held.giant, fl.counts.held.skip, fl.counts.dealBrands, fl.counts.nobodyBrands], [2, 1, 1, 1, 2])
+    assert.equal(fl.counts.need, fl.people.length); assert.equal(fl.counts.have, fl.ready.length)
+    const fp = fl.people.find(p => p.contactId === 'f_p')
+    assert.deepEqual([fp.first, fp.last, fp.company, fp.domain, fp.brandName, fp.lastAt], ['Pat', 'Partner', 'Nova Pouch', 'novapouch.com', 'Nova Pouch', null])
+    // The people who didn't answer are still there, first.
+    assert.equal(fl.people[0].group !== 'fresh', true)
+    assert.equal(fl.people.filter(p => p.group !== 'fresh').length, before.people.length)
+    assert.deepEqual(fl.domains.map(d => [d.brandName, d.domain]).sort(), [['Bare Bars', null], ['Zest Soda', 'zestsoda.com']])
+    for (const id of ['f_s', 'f_uk', 'f_cut', 'f_stop', 'f_g', 'f_b', 'f_n', 'f_d', 'f_a', 'f_lm', 'f_m', 'f_c'])
+      assert.equal(fl.people.some(p => p.contactId === id) || fl.ready.some(p => p.contactId === id), false, id + ' is not on the list')
+    ok('brands not reached yet: their best three people each — never a held giant, a Skip category, a deal, not-US or archived');
+
+    fl = await data('noAnswerList', { perBrand: 0 })
+    assert.deepEqual(fresh(fl.people), ['f_c', 'f_e', 'f_lone', 'f_m', 'f_p'])
+    assert.equal(fl.counts.freshMore, 0)
+    fl = await data('noAnswerList', { perBrand: 1 })
+    assert.deepEqual([fresh(fl.people).length + fresh(fl.ready).length, fl.counts.freshMore], [2, 4])
+    ok('everyone at a brand, or its best one — the number is a choice');
+
+    // Reached since: the brand leaves "not reached yet" and waits its 21 days like any invite.
+    await prisma.target.updateMany({ where: { contactId: 'f_p' }, data: { status: 'sent', sentAt: D(1) } })
+    fl = await data('noAnswerList')
+    assert.deepEqual(fresh(fl.people).filter(id => id !== 'f_lone'), [])
+    assert.equal(fl.people.some(p => p.contactId === 'f_p'), false)
+    await prisma.target.updateMany({ where: { contactId: 'f_p' }, data: { status: 'queued', sentAt: null } })
+    ok('a brand reached since moves to the people who didn’t answer, with their wait');
+
+    // Hunter's file for them: our id comes back; a file without it is matched by name and brand.
+    const ff = csv([HEAD, line('f_p', 'Pat', 'Partner', 'Nova Pouch', 'pat@novapouch.com', 'valid', 95), line('f_e', 'Eve', 'Events', 'Nova Pouch', 'hana@novapouch.com', 'valid', 80)])
+    const fpv = await data('saveFoundEmails', { csv: ff })
+    assert.deepEqual(fpv.lines.map(x => [x.contactId, x.action]), [['f_p', 'save'], ['f_e', 'taken']])
+    const fpv2 = await data('saveFoundEmails', { csv: csv([['First name', 'Last name', 'Company', 'Email'], ['Mia', 'Marketing', 'Nova Pouch', 'mia@novapouch.com'], ['Sal', 'Sales', 'Nova Pouch', 'sal@novapouch.com']]) })
+    assert.deepEqual(fpv2.lines.map(x => [x.contactId, x.action]), [['f_m', 'save'], [null, 'unknown']])
+    const fsv = await data('saveFoundEmails', { csv: ff, confirm: true, expect: fpv.expect, ids: ['f_p'] })
+    assert.equal(fsv.saved, 1)
+    assert.equal((await prisma.contact.findUnique({ where: { id: 'f_p' } })).email, 'pat@novapouch.com')
+    fl = await data('noAnswerList')
+    assert.deepEqual([fresh(fl.people), fresh(fl.ready)], [['f_e', 'f_lone'], ['f_has', 'f_p']])
+    ok('their emails come back the same way: preview, ticked, saved — then they’re ready');
 
     // ---- never sends ----
     assert.equal(await prisma.emailMessage.count({ where: { status: 'sent' } }), 0)
