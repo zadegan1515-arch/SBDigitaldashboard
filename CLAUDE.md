@@ -1132,6 +1132,19 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   own email machine already skips those brands, and **Instantly's send list never takes them**: `sendToInstantly` reads
   this card's `ready` list, so it drops group `working` and treats `held` as `fresh` (not reached yet → unticked, Leo's
   call); `test-instantly-e2e.js` holds both. A new group on this list must be decided there too.
+  **Domain Search is the main route** (Leo, later Nov 16 2026, after importing the people file into Hunter's *Leads* and
+  seeing a credit an email: "lets do the domain search" — reported at about a credit a company for up to 10 emails, and
+  it finds more people at each; Hunter's pricing page still couldn't be opened from the cloud session). The card's
+  websites file now covers **every company still missing emails** (`feCompanies`: the people file's brands as the chips
+  and category stand + the brands with nobody on file; "Domain Search — N companies still missing emails (M with nobody
+  on file)", how many share a line, how many go by name for want of a website). On Nov 16: 711 companies, 191 with a
+  website. **Websites in bulk**: `saveBrandWebsites({ rows: [{ brandId, website }] })` previews every brand first (only an
+  empty website is filled; never a social / marketplace link; `expect` stale-check), one transaction, Setting
+  `brandWebsitesLast`; `undoBrandWebsites` names what goes (one changed since stays). Both are ClaudeActions. A Claude
+  session researched the missing ones on the open web (no API spend) for Leo's yes. Hunter's **Leads** export (no `SB id`;
+  "Verification status" beside "Sending status" and "Verification date") reads back through `saveFoundEmails` — matched by
+  the first + last name and the company each person was sent as. **Bringing Domain Search results back (new people) is
+  still not built** — it waits for Leo's first result file.
   Tests: `node scripts/test-find-emails.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-find-emails.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-find-emails-e2e.js`.
 - **Outreach → Instantly** (Leo, Nov 16 2026: "I want to get the emails from Hunter, connect that to Instantly, and run
