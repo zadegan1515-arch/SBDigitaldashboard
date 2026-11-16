@@ -52,8 +52,8 @@ import { companySlug, companyPageUrl, profileSlug, looksLikeSeller } from '@/lib
 import { whyLeaveOut, parentOf, parentCompanyOf, findParent, parentBrandNames, LI_PARENT_PAGES_KEY, type Parent } from '@/lib/parents'
 import { samePeopleGroups, pickKeeper, mergeFields, targetBeats, pairKey as personPairKey, personNameKey, linkedinSlug, type PersonRow, type MergeFields } from '@/lib/same-person'
 import {
-  needEmailList, freshList, companyDomain, readFoundFile, planFoundEmails, findKey as findPersonKey, foundNote, addNote as addFoundNote, dropNote as dropFoundNote,
-  cleanEmail as cleanFoundEmail, FIND_MIN_DAYS, FRESH_PER_BRAND, FOUND_LAST_KEY, type FoundContact, type HunterRow, type FindRow, type FreshBrand,
+  needEmailList, freshList, tallySpots, companyDomain, readFoundFile, planFoundEmails, findKey as findPersonKey, foundNote, addNote as addFoundNote, dropNote as dropFoundNote,
+  cleanEmail as cleanFoundEmail, FIND_MIN_DAYS, FRESH_PER_BRAND, FOUND_LAST_KEY, type FoundContact, type HunterRow, type FindRow, type FreshBrand, type BrandSpot,
 } from '@/lib/find-emails'
 import { BIG_BRAND_WORK, brandSize } from '@/lib/brand-size'
 import { outcomeRates, ACCEPT_AFTER_DAYS as OUTCOME_ACCEPT_DAYS, type OutcomeInvite } from '@/lib/outcomes'
@@ -3044,9 +3044,10 @@ function supplyStateOf(b: PlanBrand, f: FitResult, q: QueueCtx): { state: Supply
 // neither goes by the parent's name (its people mail from there).
 async function findEmailPeople(opts: { minDays: number; perBrand: number; now?: Date }) {
   const now = opts.now ?? new Date()
-  const [tr, ctx, deals, acts, sponsors, asked] = await Promise.all([
+  const [tr, ctx, people, deals, acts, sponsors, asked] = await Promise.all([
     (handlers.outreachTracker as Handler)({}) as Promise<any>,
     loadBankCtx(),
+    prisma.brand.findMany({ where: { kind: 'person' }, select: { id: true } }),
     prisma.deal.findMany({ select: { brandId: true }, distinct: ['brandId'] }),
     prisma.activation.findMany({ select: { brandId: true }, distinct: ['brandId'] }),
     prisma.showSponsor.findMany({ select: { brandId: true }, distinct: ['brandId'] }),
@@ -3058,13 +3059,17 @@ async function findEmailPeople(opts: { minDays: number; perBrand: number; now?: 
   const held: Record<Hold, number> = { giant: 0, skip: 0, small: 0 }
   let heldBrands = 0, dealBrands = 0
   const freshBrands: Array<FreshBrand & { fit: number }> = []
+  // Where every brand stands (BrandSpot): the reached ones as the list says,
+  // the rest here. A person on the Show Board is not a brand.
+  const notBrand = new Set(people.map(b => b.id))
+  const spotOf = new Map<string, BrandSpot>(Object.entries(list.spots) as Array<[string, BrandSpot]>)
   for (const b of ctx.brands) {
-    if (tracked.has(b.id)) continue
+    if (tracked.has(b.id) || notBrand.has(b.id)) continue
     const fit = planBrandFit(b, ctx.rates)
     const { state, holds } = supplyStateOf(b, fit, ctx.q)
-    if (state === 'off' || state === 'reached') continue
-    if (known.has(b.id)) { dealBrands += 1; continue }
-    if (state === 'held') { heldBrands += 1; for (const h of holds) held[h] += 1; continue }
+    if (state === 'off' || state === 'reached') { spotOf.set(b.id, state === 'off' ? 'off' : 'other'); continue }
+    if (known.has(b.id)) { dealBrands += 1; spotOf.set(b.id, 'known'); continue }
+    if (state === 'held') { heldBrands += 1; for (const h of holds) held[h] += 1; spotOf.set(b.id, 'held'); continue }
     const names = brandNames(b)
     const isAbroad = abroadTest(b, names)
     freshBrands.push({
@@ -3079,6 +3084,9 @@ async function findEmailPeople(opts: { minDays: number; perBrand: number; now?: 
   freshBrands.sort((x, y) => y.fit - x.fit || x.name.localeCompare(y.name))
   const fresh = freshList(freshBrands, { perBrand: opts.perBrand, skip: new Set([...list.need, ...list.have].map(r => r.contactId)) })
   const byId = new Map(ctx.brands.map(b => [b.id, b]))
+  const lookUp = new Set(fresh.need.map(r => r.brandId)), mail = new Set(fresh.have.map(r => r.brandId))
+  for (const b of freshBrands) spotOf.set(b.id, lookUp.has(b.id) ? 'list' : mail.has(b.id) ? 'ready' : 'nobody')
+  const tally = tallySpots([...spotOf].map(([id, spot]) => ({ category: byId.get(id)?.category ?? null, spot })))
   const memo = new Map<string, { company: string; domain: string | null; domainFrom: string | null; parent: string | null }>()
   const coOf = (brandId: string, name: string) => {
     const hit = memo.get(brandId)
@@ -3095,7 +3103,7 @@ async function findEmailPeople(opts: { minDays: number; perBrand: number; now?: 
     return co
   }
   const withCo = (r: FindRow): HunterRow & { domainFrom: string | null; parent: string | null } => ({ ...r, ...coOf(r.brandId, r.brandName) })
-  return { list, fresh, coOf, withCo, heldBrands, held, dealBrands }
+  return { list, fresh, coOf, withCo, heldBrands, held, dealBrands, tally, brandTotal: spotOf.size }
 }
 
 const DEAD_WEIGHT_KEY = 'deadWeightLast'
@@ -15716,6 +15724,8 @@ const handlers: Record<string, Handler> = {
         heldBrands: f.heldBrands, held: f.held, dealBrands: f.dealBrands,
       },
       people, ready,
+      // Every brand in one place, per category (find-emails.ts BrandSpot): the card's "where every brand stands".
+      tally: f.tally, brandTotal: f.brandTotal,
       // Brands not reached yet with nobody to look up: their websites, for Hunter's Domain Search.
       domains: f.fresh.nobody.map(n => { const c = f.coOf(n.id, n.name); return { brandId: n.id, brandName: n.name, category: n.category, company: c.company, domain: c.domain, parent: c.parent } }),
       last: last && Array.isArray(last.rows) && last.rows.length ? { at: last.at, by: last.by ?? null, count: last.rows.length } : null,

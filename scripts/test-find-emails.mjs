@@ -21,7 +21,7 @@ const m = await import(pathToFileURL(join(out, 'find-emails.js')).href)
 const {
   splitName, mailDomain, companyDomain, personGroup, brandIn, brandAnswered, needEmailList, parseCsv, toCsv, hunterCsv, HUNTER_HEAD,
   readFoundFile, verdictOf, planFoundEmails, findKey, sigOf, foundNote, addNote, dropNote, FIND_MIN_DAYS,
-  freshList, domainLines, FRESH_PER_BRAND, GROUP_WORDS,
+  freshList, domainLines, FRESH_PER_BRAND, GROUP_WORDS, tallySpots, BRAND_SPOTS,
 } = m
 
 let n = 0
@@ -141,6 +141,33 @@ t('the wait is the caller\'s: any time lets a fresh invite in', () => {
   assert.deepEqual(needEmailList(brands, { now: NOW, minDays: 0 }).need.map(x => x.contactId), ['x1', 'x2'])
 })
 
+// ---- every brand in one place
+t('each reached brand stands in exactly one place', () => {
+  const old = ago(30), young = ago(3)
+  const P2 = (id, extra = {}) => ({ contactId: id, name: 'Pat ' + id.toUpperCase() + 'son', title: 'VP', email: null, stage: 'reached', lastAt: old, ...extra })
+  const BR = (id, people, extra = {}) => ({ id, name: id, category: 'energy', stage: 'reached', people, ...extra })
+  const r = needEmailList([
+    BR('look', [P2('aa'), P2('ab', { email: 'ab@x.com' })]),
+    BR('mail', [P2('ba', { email: 'ba@x.com' })]),
+    BR('young', [P2('ca', { lastAt: young })]),
+    BR('mailed', [P2('da', { email: 'da@x.com', emailedAt: old })]),
+    BR('cut', [P2('ea', { name: 'Eve S.' })]),
+    BR('zach', [P2('fa', { stage: 'accepted' }), P2('fb')], { stage: 'accepted' }),
+    BR('talks', [P2('ga', { stage: 'talks' })], { stage: 'talks' }),
+    BR('saidno', [P2('ha', { stage: 'out', out: 'no' }), P2('hb')], { stage: 'out', out: 'no' }),
+    BR('gone', [P2('ia')], { archived: true }),
+  ], { now: NOW })
+  assert.deepEqual(r.spots, { look: 'list', mail: 'ready', young: 'tooNew', mailed: 'emailed', cut: 'other', zach: 'waiting', talks: 'talking', saidno: 'talking', gone: 'off' })
+  // The wait off: the young invite's brand has someone to look up.
+  assert.equal(needEmailList([BR('young', [P2('ca', { lastAt: young })])], { now: NOW, minDays: 0 }).spots.young, 'list')
+})
+t('the tally: brands per category and place', () => {
+  const t1 = tallySpots([{ category: 'energy', spot: 'list' }, { category: 'energy', spot: 'list' }, { category: 'energy', spot: 'held' }, { category: null, spot: 'off' }, { category: 'spirits', spot: 'nobody' }])
+  assert.deepEqual(t1, { energy: { list: 2, held: 1 }, '': { off: 1 }, spirits: { nobody: 1 } })
+  assert.deepEqual(tallySpots([]), {})
+  assert.equal(new Set(BRAND_SPOTS).size, 11)
+})
+
 // ---- brands not reached out to yet
 const FP = (id, name, extra = {}) => ({ contactId: id, name, title: 'Head of Partnerships', linkedinUrl: 'https://www.linkedin.com/in/' + id, email: null, rank: 3, ...extra })
 t('a brand not reached yet gives its best three: the ones with an email are ready, the rest go to Hunter', () => {
@@ -214,12 +241,15 @@ t('the file for Hunter: its columns, quotes kept, our id last', () => {
     brandId: 'b1', brandName: 'Alpha, Inc.', category: null, group: 'noaccept', lastAt: null, by: 'zach', company: 'Alpha, Inc.', domain: 'alpha.com' }])
   const grid = parseCsv(csv)
   assert.deepEqual(grid[0], HUNTER_HEAD)
-  assert.deepEqual(grid[1], ['Ann', 'Lee', 'Alpha, Inc.', 'alpha.com', 'Alpha, Inc.', 'VP, "Brand"', 'https://www.linkedin.com/in/ann-lee/', 'c1'])
+  assert.deepEqual(grid[1], ['Ann', 'Lee', 'Alpha, Inc.', 'alpha.com', 'Alpha, Inc.', '', 'VP, "Brand"', 'https://www.linkedin.com/in/ann-lee/', 'c1'])
+  // The category goes in by its name, so the list stays split by category in Hunter.
+  const named = parseCsv(hunterCsv([{ contactId: 'c1', first: 'Ann', last: 'Lee', brandName: 'Alpha', category: 'energy', company: 'Alpha', domain: null }], k => (k === 'energy' ? 'Energy Drinks' : '')))
+  assert.deepEqual([named[0][5], named[1][5]], ['SB category', 'Energy Drinks'])
   assert.deepEqual(parseCsv('﻿a,b\r\n"x\ny",2\r\n\r\n'), [['a', 'b'], ['x\ny', '2']])
   assert.equal(toCsv([['a', 'b,c']]), 'a,"b,c"\r\n')
 })
 const FILE = (rows, head = [...HUNTER_HEAD, 'Email address', 'Confidence score', 'Verification status']) => toCsv([head, ...rows])
-const row = (id, email, status = 'valid', score = '95', first = 'Ann', last = 'Lee', brand = 'Alpha') => [first, last, brand, 'alpha.com', brand, 'VP', '', id, email, score, status]
+const row = (id, email, status = 'valid', score = '95', first = 'Ann', last = 'Lee', brand = 'Alpha') => [first, last, brand, 'alpha.com', brand, 'Energy Drinks', 'VP', '', id, email, score, status]
 t('Hunter\'s file: the address column is found by what\'s in it; rows with nothing are counted', () => {
   const f = readFoundFile(FILE([row('c1', 'Ann.Lee@Alpha.com'), row('c2', ''), row('c3', 'bo@alpha.com', 'accept_all', '70')]))
   assert.equal(f.error, undefined)
@@ -234,7 +264,7 @@ t('Hunter\'s file: the address column is found by what\'s in it; rows with nothi
 })
 t('the wrong file says so', () => {
   assert.match(readFoundFile(hunterCsv([])).error, /no rows/)
-  assert.match(readFoundFile(toCsv([HUNTER_HEAD, ['Ann', 'Lee', 'Alpha', 'alpha.com', 'Alpha', 'VP', '', 'c1']])).error, /No email addresses/)
+  assert.match(readFoundFile(toCsv([HUNTER_HEAD, ['Ann', 'Lee', 'Alpha', 'alpha.com', 'Alpha', 'Energy Drinks', 'VP', '', 'c1']])).error, /No email addresses/)
 })
 t('verified or not', () => {
   assert.equal(verdictOf('valid', true), 'valid')
@@ -289,7 +319,7 @@ t('a file fills empty emails only, and says why for every other line', () => {
   assert.equal(sigOf(['b', 'a']), sigOf(['a', 'b']))
 })
 t('a file with no verification column: saved lines are ticked, and say so', () => {
-  const file = readFoundFile(toCsv([[...HUNTER_HEAD, 'Email'], ['Ann', 'Lee', 'Alpha', 'alpha.com', 'Alpha', 'VP', '', 'c1', 'ann@alpha.com']]))
+  const file = readFoundFile(toCsv([[...HUNTER_HEAD, 'Email'], ['Ann', 'Lee', 'Alpha', 'alpha.com', 'Alpha', 'Energy Drinks', 'VP', '', 'c1', 'ann@alpha.com']]))
   const plan = planFoundEmails(file, { contacts: new Map([C('c1')]) })
   assert.deepEqual([plan.lines[0].action, plan.lines[0].tick, plan.lines[0].verdict], ['save', true, 'unknown'])
   assert.match(plan.lines[0].why, /doesn’t say/)

@@ -1689,6 +1689,9 @@
   .fe-card .btn-solid:disabled{opacity:.5;cursor:default}
   .fe-doms{margin:10px 0 6px;padding:10px 12px;border:1px solid var(--border-soft);border-radius:10px;font-size:13.5px;line-height:1.6;color:var(--ink-2)}
   .fe-doms b{color:var(--ink-1)} .fe-doms a{color:var(--accent-hi);white-space:nowrap}
+  .fe-tally{margin:8px 0 4px;font-size:13.5px;line-height:1.75;color:var(--ink-2)}
+  .fe-tally b{color:var(--ink-1)} .fe-tally .su-show{margin-left:2px}
+  .fe-cat{margin-left:0} .fe-cat select{max-width:230px}
   .fe-skip{margin-top:10px;font-size:13.5px;color:var(--ink-2)}
   .fe-skip summary{cursor:pointer}
   .fe-skip li{margin:3px 0 3px 18px}
@@ -20356,10 +20359,23 @@ function lintDraft(subject, body) {
 // best few people each (FE.per: 3 / 5 / 10 / everyone), on the same file —
 // and a second file, the websites of the ones with nobody to look up, for
 // Hunter's Domain Search (one a line).
-var FE = { data: null, err: '', minDays: 21, per: 3, on: { noaccept: true, quiet: true, fresh: true }, more: false, all: false, pv: null, csv: '', file: '', tick: {}, saving: false, note: '', stale: false };
+// Then ("Only 210 brands, not ~900" · "separate by category too"): one line
+// that puts every brand in exactly one place (d.tally, per category — on the
+// file, has an email, nobody on file, invited too recently, on Zach's list,
+// in talks, held back, set aside), and the category everywhere: a menu that
+// narrows the counts, the list and all three files (FE.cat), the files sorted
+// by category with its name in "SB category".
+var FE = { data: null, err: '', minDays: 21, per: 3, cat: '', on: { noaccept: true, quiet: true, fresh: true }, more: false, all: false, pv: null, csv: '', file: '', tick: {}, saving: false, note: '', stale: false };
 var FE_GROUPS = ['noaccept', 'quiet', 'fresh'];
 var FE_DOMAINS = 'https://hunter.io/bulks/domain-search';
-var FE_HEAD = ['First name', 'Last name', 'Company', 'Company website', 'SB brand', 'SB title', 'SB LinkedIn', 'SB id'];
+var FE_HEAD = ['First name', 'Last name', 'Company', 'Company website', 'SB brand', 'SB category', 'SB title', 'SB LinkedIn', 'SB id'];
+// Where a brand stands, in the order the card says it (find-emails.ts BrandSpot).
+var FE_SPOTS = [
+  ['list', 'have someone to look up'], ['ready', 'already have an email'], ['nobody', 'have nobody on file'],
+  ['tooNew', ''], ['emailed', 'already emailed'], ['waiting', 'where someone accepted — on Zach’s list'],
+  ['talking', 'replied, in talks or said no'], ['held', 'the queue holds back (giants, Skip categories, too small)'],
+  ['known', 'with a deal, a show or a Show Board request'], ['off', 'archived or set aside'], ['other', 'other']
+];
 var FE_HUNTER = 'https://hunter.io/bulks/email-finder';
 var FE_SKIP = {
   same: 'already saved', has: 'already have another email — left as it is', invalid: 'Hunter says the address doesn’t work',
@@ -20396,9 +20412,35 @@ function feLoad() {
   });
 }
 
-function feRows() {
-  return FE.data ? FE.data.people.filter(function (p) { return FE.on[p.group]; }) : [];
+// '' = every category; '~' = brands with none.
+function feCat(p) { return p.category || '~'; }
+function feCatName(k) { return k === '~' ? 'No category' : (CAT_NAMES[k] || k); }
+function feCatRank(k) { var i = CAT_KEYS.indexOf(k); return i < 0 ? CAT_KEYS.length : i; }
+function feInCat(p) { return !FE.cat || feCat(p) === FE.cat; }
+// By category, in the site's category order; inside one, the order they came in.
+function feByCat(list) {
+  return list.map(function (p, i) { return { p: p, i: i }; }).sort(function (a, b) {
+    return feCatRank(feCat(a.p)) - feCatRank(feCat(b.p)) || a.i - b.i;
+  }).map(function (x) { return x.p; });
 }
+function feRows() {
+  return FE.data ? feByCat(FE.data.people.filter(function (p) { return FE.on[p.group] && feInCat(p); })) : [];
+}
+// Every brand in one place: the whole roster's, or the chosen category's.
+function feTally() {
+  var t = (FE.data && FE.data.tally) || {}, out = {}, total = 0;
+  Object.keys(t).forEach(function (k) {
+    if (FE.cat && (k || '~') !== FE.cat) return;
+    Object.keys(t[k]).forEach(function (s) { out[s] = (out[s] || 0) + t[k][s]; total += t[k][s]; });
+  });
+  return { by: out, total: total };
+}
+function feCats() {
+  var t = (FE.data && FE.data.tally) || {};
+  return Object.keys(t).map(function (k) { return { key: k || '~', n: t[k].list || 0 }; })
+    .sort(function (a, b) { return feCatRank(a.key) - feCatRank(b.key); });
+}
+function feFileName(kind, d) { return 'sb-' + kind + (FE.cat ? '-' + (FE.cat === '~' ? 'no-category' : FE.cat) : '') + '-' + d.today + '.csv'; }
 function feCsv(grid) {
   var cell = function (v) { v = v == null ? '' : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
   return grid.map(function (r) { return r.map(cell).join(','); }).join('\r\n') + '\r\n';
@@ -20413,7 +20455,7 @@ function feSaveFile(name, text) {
 }
 function feWhy(g) { return g === 'quiet' ? 'Accepted, then no response' : g === 'fresh' ? 'Not reached out to yet' : 'Didn’t accept'; }
 function feReady() {
-  return FE.data ? (FE.data.ready || []).filter(function (p) { return FE.on[p.group]; }) : [];
+  return FE.data ? feByCat((FE.data.ready || []).filter(function (p) { return FE.on[p.group] && feInCat(p); })) : [];
 }
 // One company a line for Hunter's Domain Search: its website, else its name.
 function feDomainLines(list) {
@@ -20437,24 +20479,30 @@ function feRender() {
     return;
   }
   var c = d.counts, rows = feRows(), have = feReady();
-  var doms = feDomainLines(d.domains);
+  var doms = feDomainLines(feByCat((d.domains || []).filter(feInCat)));
+  var tl = feTally();
+  var cats = '<option value="">All categories</option>' + feCats().map(function (o) {
+    return '<option value="' + esc(o.key) + '"' + (FE.cat === o.key ? ' selected' : '') + '>' + esc(feCatName(o.key)) + ' (' + o.n + ')</option>';
+  }).join('');
+  var spots = FE_SPOTS.filter(function (o) { return tl.by[o[0]]; }).map(function (o) {
+    var n = tl.by[o[0]];
+    if (o[0] === 'tooNew') return n + ' invited less than ' + plural(d.minDays, 'day') + ' ago <button class="su-show" data-fe="anytime">Include them</button>';
+    return (o[0] === 'list' ? '<b>' + n + '</b>' : n) + ' ' + o[1];
+  });
   var perWords = FE.per ? 'the best ' + FE.per + ' a brand' : 'everyone';
   var brands = {};
   rows.forEach(function (r) { brands[r.brandId] = 1; });
   var nb = Object.keys(brands).length;
   var noDom = rows.filter(function (r) { return !r.domain; }).length;
-  var left = [
-    c.tooNew ? c.tooNew + ' invited less than ' + plural(d.minDays, 'day') + ' ago' : '',
+  // People (not brands) the file leaves out — the whole roster's numbers, so only without a category chosen.
+  var left = FE.cat ? [] : [
     c.noName ? c.noName + ' whose name LinkedIn cut short' : '',
     c.emailed ? c.emailed + ' already emailed' : '',
-    c.waitingBrands ? plural(c.waitingBrands, 'brand') + ' where someone accepted and is still on Zach’s list' : '',
-    c.offBrands ? plural(c.offBrands, 'brand') + ' archived or marked do not email' : '',
-    c.freshMore ? c.freshMore + ' more at brands not reached yet, past ' + perWords : '',
-    c.heldBrands ? plural(c.heldBrands, 'brand') + ' the queue holds back (giants, Skip categories, too small)' : '',
-    c.dealBrands ? plural(c.dealBrands, 'brand') + ' with a deal, a show or a Show Board request' : ''
+    c.freshMore ? c.freshMore + ' more at brands not reached yet, past ' + perWords : ''
   ].filter(Boolean);
-  var chip = function (g, label, n) {
-    return '<button class="chip' + (FE.on[g] ? ' active' : '') + '" data-fe="group" data-g="' + g + '" aria-pressed="' + (FE.on[g] ? 'true' : 'false') + '">' + label + ' · ' + n + '</button>';
+  var inGroup = function (g) { return d.people.filter(function (p) { return p.group === g && feInCat(p); }).length; };
+  var chip = function (g, label) {
+    return '<button class="chip' + (FE.on[g] ? ' active' : '') + '" data-fe="group" data-g="' + g + '" aria-pressed="' + (FE.on[g] ? 'true' : 'false') + '">' + label + ' · ' + inGroup(g) + '</button>';
   };
   var days = [[21, '21 days ago'], [14, '14 days ago'], [7, '7 days ago'], [0, 'any time']].map(function (o) {
     return '<option value="' + o[0] + '"' + (FE.minDays === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
@@ -20477,7 +20525,8 @@ function feRender() {
       '</div>' +
     '</div>' +
     '<div class="fe-row">' +
-      chip('noaccept', 'Didn’t accept', c.noaccept) + chip('quiet', 'Accepted, then no response', c.quiet) + chip('fresh', 'Not reached out to yet', c.fresh || 0) +
+      '<label class="fe-days fe-cat">Category <select class="inp" id="fe-cat">' + cats + '</select></label>' +
+      chip('noaccept', 'Didn’t accept') + chip('quiet', 'Accepted, then no response') + chip('fresh', 'Not reached out to yet') +
       '<label class="fe-days">Invite sent at least <select class="inp" id="fe-days">' + days + '</select></label>' +
       '<label class="fe-days">Brands not reached yet: <select class="inp" id="fe-per">' + pers + '</select></label>' +
       (rows.length ? '<button class="su-show" data-fe="more">' + (FE.more ? 'Hide the list' : 'See who’s on it') + '</button>' : '') +
@@ -20486,7 +20535,8 @@ function feRender() {
     (doms.length ? '<div class="fe-doms" id="fe-doms"><b>' + plural(doms.length, 'brand') + '</b> not reached yet ' + (doms.length === 1 ? 'has' : 'have') + ' nobody on file to look up. ' +
       '<button class="su-show" data-fe="domains">Download their websites (' + doms.length + ')</button> for Hunter’s <b>Bulks → Domain Search</b> — it lists who it knows there. ' +
       '<a href="' + FE_DOMAINS + '" target="_blank" rel="noopener">Open it ↗</a></div>' : '') +
-    (left.length ? '<div class="fe-dim" id="fe-left">Left out: ' + left.join(' · ') + '.</div>' : '') +
+    (tl.total ? '<div class="fe-tally" id="fe-tally"><b>' + (FE.cat ? esc(feCatName(FE.cat)) + ' — ' + plural(tl.total, 'brand') : 'All ' + plural(tl.total, 'brand')) + ':</b> ' + spots.join(' · ') + '.</div>' : '') +
+    (left.length ? '<div class="fe-dim" id="fe-left">People left out: ' + left.join(' · ') + '.</div>' : '') +
     (d.last ? '<div class="fe-last" id="fe-last">Last file: ' + plural(d.last.count, 'email') + ' saved ' + shortDate(d.last.at) + (d.last.by ? ' by ' + esc(d.last.by) : '') +
       ' · <button class="su-show" data-fe="undo">Undo</button></div>' : '');
   feRenderList();
@@ -20500,11 +20550,12 @@ function feRenderList() {
   if (!FE.more || !rows.length) { box.innerHTML = ''; return; }
   var cut = FE.all ? rows : rows.slice(0, 40);
   box.innerHTML = '<div class="fe-tablewrap" data-scroll="fe-list"><table class="fe-table"><thead><tr>' +
-    '<th>Person</th><th>Brand</th><th>Hunter looks them up at</th><th>Why they’re here</th><th>Last step</th></tr></thead><tbody>' +
+    '<th>Person</th><th>Brand</th><th>Category</th><th>Hunter looks them up at</th><th>Why they’re here</th><th>Last step</th></tr></thead><tbody>' +
     cut.map(function (r) {
       return '<tr><td><button class="fe-link" data-brand="' + esc(r.brandId) + '" data-focus="' + esc(r.contactId) + '" title="Open ' + esc(r.brandName) + ' at ' + esc(r.name) + '">' + esc(r.name) + '</button>' +
           (r.title ? '<div class="fe-dim">' + esc(r.title) + '</div>' : '') + '</td>' +
         '<td>' + esc(r.brandName) + '</td>' +
+        '<td>' + esc(feCatName(feCat(r))) + '</td>' +
         '<td>' + (r.domain ? esc(r.domain) : esc(r.company) + ' <span class="fe-dim">(by name' + (r.parent && r.company === r.parent ? ' — its parent company' : '') + ')</span>') + '</td>' +
         '<td>' + feWhy(r.group) + '</td>' +
         '<td>' + (r.lastAt ? shortDate(r.lastAt) : '') + '</td></tr>';
@@ -20644,26 +20695,27 @@ function feOnClick(e) {
     return;
   }
   if (a === 'more') { FE.more = !FE.more; FE.all = false; feRender(); return; }
+  if (a === 'anytime') { FE.minDays = 0; FE.all = false; feLoad(); return; }
   if (a === 'all') { FE.all = true; feRenderList(); return; }
   if (a === 'download' && d) {
     var rows = feRows();
     if (!rows.length) return;
-    feSaveFile('sb-need-emails-' + d.today + '.csv', feCsv([FE_HEAD].concat(rows.map(function (r) {
-      return [r.first, r.last, r.company, r.domain || '', r.brandName, r.title || '', r.linkedinUrl || '', r.contactId];
+    feSaveFile(feFileName('need-emails', d), feCsv([FE_HEAD].concat(rows.map(function (r) {
+      return [r.first, r.last, r.company, r.domain || '', r.brandName, feCatName(feCat(r)), r.title || '', r.linkedinUrl || '', r.contactId];
     }))));
     toast('Downloaded ' + plural(rows.length, 'person', 'people') + ' — upload it in Hunter');
     return;
   }
   if (a === 'ready' && d) {
-    feSaveFile('sb-have-emails-' + d.today + '.csv', feCsv([['First name', 'Last name', 'Email', 'Brand', 'Title', 'LinkedIn', 'Why']].concat(feReady().map(function (r) {
-      return [r.first || r.name, r.last, r.email, r.brandName, r.title || '', r.linkedinUrl || '', feWhy(r.group)];
+    feSaveFile(feFileName('have-emails', d), feCsv([['First name', 'Last name', 'Email', 'Brand', 'Category', 'Title', 'LinkedIn', 'Why']].concat(feReady().map(function (r) {
+      return [r.first || r.name, r.last, r.email, r.brandName, feCatName(feCat(r)), r.title || '', r.linkedinUrl || '', feWhy(r.group)];
     }))));
     return;
   }
   if (a === 'domains' && d) {
-    var lines = feDomainLines(d.domains);
+    var lines = feDomainLines(feByCat((d.domains || []).filter(feInCat)));
     if (!lines.length) return;
-    feSaveFile('sb-brand-websites-' + d.today + '.csv', lines.map(function (v) { return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join('\r\n') + '\r\n');
+    feSaveFile(feFileName('brand-websites', d), lines.map(function (v) { return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join('\r\n') + '\r\n');
     toast('Downloaded ' + plural(lines.length, 'brand') + ' — upload it in Hunter’s Domain Search');
     return;
   }
@@ -20683,6 +20735,7 @@ function feOnChange(e) {
   if (t.id === 'fe-file') { var file = t.files && t.files[0]; feTakeFile(file); t.value = ''; return; }
   if (t.id === 'fe-days') { FE.minDays = Number(t.value) || 0; FE.all = false; feLoad(); return; }
   if (t.id === 'fe-per') { FE.per = Number(t.value) || 0; FE.all = false; feLoad(); return; }
+  if (t.id === 'fe-cat') { FE.cat = t.value || ''; FE.all = false; feRender(); return; }
   var id = t.getAttribute && t.getAttribute('data-fetick');
   if (id) { FE.tick[id] = t.checked; feSyncSave(); }
 }

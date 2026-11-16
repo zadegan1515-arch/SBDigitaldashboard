@@ -320,7 +320,22 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     // The people who didn't answer are still there, first.
     assert.equal(fl.people[0].group !== 'fresh', true)
     assert.equal(fl.people.filter(p => p.group !== 'fresh').length, before.people.length)
-    assert.deepEqual(fl.domains.map(d => [d.brandName, d.domain]).sort(), [['Bare Bars', null], ['Zest Soda', 'zestsoda.com']])
+    assert.deepEqual(fl.domains.map(d => [d.brandName, d.domain, d.category]).sort(), [['Bare Bars', null, 'wellness'], ['Zest Soda', 'zestsoda.com', 'beverage']])
+    // Every brand stands in exactly one place, per category — and they add up to every brand (the person aside).
+    const sum = (t) => Object.values(t).reduce((n, by) => n + Object.values(by).reduce((a, b) => a + b, 0), 0)
+    const brandCount = await prisma.brand.count({ where: { OR: [{ kind: null }, { kind: { not: 'person' } }] } })
+    assert.equal(sum(fl.tally), brandCount); assert.equal(fl.brandTotal, brandCount)
+    assert.deepEqual(fl.tally.nicotine, { list: 1 }, 'Nova Pouch')
+    assert.deepEqual(fl.tally.beverage, { nobody: 1 }, 'Zest Soda')
+    assert.deepEqual(fl.tally.wellness, { nobody: 1 }, 'Bare Bars')
+    assert.deepEqual(fl.tally.betting, { held: 1 }, 'Bet Co')
+    // energy: every brand seeded without a category of its own.
+    const en = fl.tally.energy
+    assert.deepEqual([en.held, en.known, en.waiting], [1, 1, 1], 'Red Bull · Deal Co · Waiting Co')
+    assert.equal(en.talking, 4, 'Reply Co, No Co, Mixed Co, and Stop Co (asked us to stop)')
+    assert.equal(en.off, 4, 'Archived Co, Quiet Please Co, Abroad Only Co, Shelved Co')
+    assert.equal(en.list >= 4, true, 'Cold Co, Smirnoff, Quiet Co, Lone Co…')
+    for (const p of fl.people.concat(fl.ready)) assert.equal(typeof p.category, 'string', p.contactId + ' carries its category')
     for (const id of ['f_s', 'f_uk', 'f_cut', 'f_stop', 'f_g', 'f_b', 'f_n', 'f_d', 'f_a', 'f_lm', 'f_m', 'f_c'])
       assert.equal(fl.people.some(p => p.contactId === id) || fl.ready.some(p => p.contactId === id), false, id + ' is not on the list')
     ok('brands not reached yet: their best three people each — never a held giant, a Skip category, a deal, not-US or archived');

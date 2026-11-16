@@ -1100,6 +1100,21 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   that result back (it makes new people) is **not built** — wait for Leo's first Domain Search file to read its headings.
   Hunter's bulk Domain Search takes domains or company names one a line and has no department filter we could confirm
   (the filter is on the one-company search); help.hunter.io / hunter.io still can't be read from the cloud session.
+  **Every brand accounted for, and by category** (Leo, the same day, on his first file — 559 people at 210 brands: "Only
+  210 brands, not ~900" · "i want you to separate by category too"). `noAnswerList.tally` = every brand (a Show Board
+  person aside) in exactly one place per category (`BrandSpot` / `tallySpots` in find-emails.ts; `needEmailList.spots` for
+  reached brands, `findEmailPeople` for the rest; the e2e checks they add up to the brand count): `list` someone to look
+  up · `ready` an email on file, nobody to look up · `nobody` nothing to look up (the websites file) · `tooNew` every
+  invite younger than the wait · `emailed` · `waiting` on Zach's list · `talking` replied / in talks / said no / asked us
+  to stop · `held` by the queue's rules · `known` a deal, show or board request · `off` archived or set aside. The card's
+  line `#fe-tally` ("All 912 brands: 210 have someone to look up · …"; `FE_SPOTS`, `feTally`) says it, with **Include
+  them** on the too-new ones (= the wait to any time). **Category**: a menu on the card (`#fe-cat`, `FE.cat`, '' = all,
+  '~' = none; each with its brands to look up) narrows the tiles, the chips' counts, the every-brand line, the list and
+  all three files; the files are sorted by category in the site's order (`feByCat`, `CAT_KEYS`), carry its name (`SB
+  category` on the Hunter file — `HUNTER_HEAD`; Category on the have-emails file) and take it in their name
+  (`sb-need-emails-energy-<day>.csv`). "People left out" (names cut short, already emailed, past the brand's number) is
+  the roster's, shown only without a category. Leo's first file also showed **146 of its 210 brands have no website on
+  file** (Hunter goes by company name there) — not fixed; filling websites is the next lever for Hunter's hit rate.
   Tests: `node scripts/test-find-emails.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-find-emails.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-find-emails-e2e.js`.
 - **Brands → Stock take** (`brandStock` + `src/lib/stock.ts`; deep link `app.html#stock`; linked from

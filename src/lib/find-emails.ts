@@ -154,9 +154,39 @@ export type FindCounts = {
   have: number; emailed: number; tooNew: number; noName: number; offBrands: number; waitingBrands: number
 }
 
+// Where one brand stands on the card — every brand in exactly one place, so
+// the card can account for the whole roster (Leo, Nov 16 2026: "Only 210
+// brands, not ~900"):
+//   list     someone there to look up (on the file for Hunter)
+//   ready    nobody to look up, but an email is on file and not used yet
+//   nobody   not reached yet and nobody on file to email or look up
+//   tooNew   reached, every invite younger than the wait
+//   emailed  reached, the people there already emailed
+//   waiting  someone accepted and is still on Zach's list
+//   talking  replied, in talks, said no or asked us to stop
+//   held     not reached yet, held back by the queue's rules
+//   known    not reached yet, but a deal / show / activation / board request
+//   off      archived, do not email, stopped, not sold in the US, closed
+export type BrandSpot = 'list' | 'ready' | 'nobody' | 'tooNew' | 'emailed' | 'waiting' | 'talking' | 'held' | 'known' | 'off' | 'other'
+export const BRAND_SPOTS: BrandSpot[] = ['list', 'ready', 'nobody', 'tooNew', 'emailed', 'waiting', 'talking', 'held', 'known', 'off', 'other']
+export type SpotTally = Record<string, Partial<Record<BrandSpot, number>>>
+
+// Brands per category ('' = none) and place: the card sums them, or reads
+// one category's.
+export function tallySpots(rows: Array<{ category?: string | null; spot: BrandSpot }>): SpotTally {
+  const out: SpotTally = {}
+  for (const r of rows) {
+    const k = r.category || ''
+    const t = out[k] ?? (out[k] = {})
+    t[r.spot] = (t[r.spot] ?? 0) + 1
+  }
+  return out
+}
+
 // need = no email on file, a name Hunter can look up, old enough.
 // have = an email is on file and nobody has emailed them yet.
-export function needEmailList(brands: FindBrand[], opts: { minDays?: number; now?: Date } = {}): { need: FindRow[]; have: FindRow[]; counts: FindCounts } {
+// spots = where each of these brands stands (BrandSpot).
+export function needEmailList(brands: FindBrand[], opts: { minDays?: number; now?: Date } = {}): { need: FindRow[]; have: FindRow[]; counts: FindCounts; spots: Record<string, BrandSpot> } {
   const now = opts.now ?? new Date()
   const minDays = Math.max(0, opts.minDays ?? FIND_MIN_DAYS)
   const cutoff = now.getTime() - minDays * 864e5
@@ -164,12 +194,14 @@ export function needEmailList(brands: FindBrand[], opts: { minDays?: number; now
   const c: FindCounts = { need: 0, needBrands: 0, noaccept: 0, quiet: 0, fresh: 0, have: 0, emailed: 0, tooNew: 0, noName: 0, offBrands: 0, waitingBrands: 0 }
   const seen = new Set<string>()
   const needBrands = new Set<string>()
+  const spots: Record<string, BrandSpot> = {}
   for (const b of brands) {
     const where = brandIn(b)
     const mine = (b.people ?? []).filter(p => personGroup(p) && p.contactId)
-    if (where === 'waiting') { if ((b.people ?? []).some(p => personGroup(p))) c.waitingBrands += 1; continue }
-    if (where === 'off') { if (mine.length) c.offBrands += 1; continue }
-    if (where !== 'in') continue
+    if (where === 'waiting') { spots[b.id] = 'waiting'; if ((b.people ?? []).some(p => personGroup(p))) c.waitingBrands += 1; continue }
+    if (where === 'off') { spots[b.id] = 'off'; if (mine.length) c.offBrands += 1; continue }
+    if (where !== 'in') { spots[b.id] = 'talking'; continue }
+    const n = { need: 0, have: 0, tooNew: 0, emailed: 0 }
     for (const p of mine) {
       const id = String(p.contactId)
       if (seen.has(id)) continue
@@ -182,22 +214,24 @@ export function needEmailList(brands: FindBrand[], opts: { minDays?: number; now
         brandId: b.id, brandName: b.name, category: b.category ?? null, group, lastAt: p.lastAt ?? null, by: p.by ?? null,
       }
       if (row.email) {
-        if (p.emailedAt) c.emailed += 1
-        else { have.push(row); c.have += 1 }
+        if (p.emailedAt) { c.emailed += 1; n.emailed += 1 }
+        else { have.push(row); c.have += 1; n.have += 1 }
         continue
       }
       // An invite still out and younger than the wait may yet be accepted.
       const fresh = group === 'noaccept' && p.label !== 'invite withdrawn' && !!p.lastAt && new Date(p.lastAt).getTime() > cutoff
-      if (fresh) { c.tooNew += 1; continue }
+      if (fresh) { c.tooNew += 1; n.tooNew += 1; continue }
       if (!nm) { c.noName += 1; continue }
       need.push(row)
       c[group] += 1
+      n.need += 1
       needBrands.add(b.id)
     }
+    spots[b.id] = n.need ? 'list' : n.have ? 'ready' : n.tooNew ? 'tooNew' : n.emailed ? 'emailed' : 'other'
   }
   c.need = need.length
   c.needBrands = needBrands.size
-  return { need, have, counts: c }
+  return { need, have, counts: c, spots }
 }
 
 // ---- brands not reached out to yet -----------------------------------
@@ -325,10 +359,12 @@ export const toCsv = (grid: unknown[][]) => grid.map(r => r.map(csvCell).join(',
 
 // The file for Hunter's bulk Email Finder. Hunter keeps every column and
 // adds its own, so "SB id" comes back with each address.
-export const HUNTER_HEAD = ['First name', 'Last name', 'Company', 'Company website', 'SB brand', 'SB title', 'SB LinkedIn', 'SB id']
+// "SB category" = the brand's category, so the list stays split by category
+// in Hunter too (catName: its words — the page's CAT_NAMES).
+export const HUNTER_HEAD = ['First name', 'Last name', 'Company', 'Company website', 'SB brand', 'SB category', 'SB title', 'SB LinkedIn', 'SB id']
 export type HunterRow = FindRow & { company: string; domain: string | null }
-export function hunterCsv(rows: HunterRow[]): string {
-  return toCsv([HUNTER_HEAD, ...rows.map(r => [r.first, r.last, r.company, r.domain ?? '', r.brandName, r.title ?? '', r.linkedinUrl ?? '', r.contactId])])
+export function hunterCsv(rows: HunterRow[], catName: (key: string | null) => string = k => k ?? ''): string {
+  return toCsv([HUNTER_HEAD, ...rows.map(r => [r.first, r.last, r.company, r.domain ?? '', r.brandName, catName(r.category), r.title ?? '', r.linkedinUrl ?? '', r.contactId])])
 }
 
 export type FoundRow = {
