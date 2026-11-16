@@ -32,10 +32,20 @@ const is = (label, got, want) => {
 
 // ---- LinkedIn's seven days --------------------------------------------
 {
-  // A normal Tue–Thu at 30 a day is 90: no warning (week-limit).
-  is('limit and warning line', [LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR], [100, 90])
-  const normal = linkedinWindows(['2026-10-15'], new Map([['2026-10-13', 30], ['2026-10-14', 30], ['2026-10-15', 30]]), new Map(), '2026-10-13')
-  is('a normal week (3 × 30) is not near', [normal['2026-10-15'].count, normal['2026-10-15'].near], [90, false])
+  // A normal Tue–Thu at 35 a day is 35 + 35 + 30 = 100 (the third day takes
+  // what the week leaves): exactly the limit, no warning (Leo, Nov 15 2026).
+  is('limit and warning line', [LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR], [100, 100])
+  const normal = linkedinWindows(['2026-10-15'], new Map([['2026-10-13', 35], ['2026-10-14', 35], ['2026-10-15', 30]]), new Map(), '2026-10-13')
+  is('a normal week (35 + 35 + 30) is at the limit, not over, no warning', [normal['2026-10-15'].count, normal['2026-10-15'].over, normal['2026-10-15'].near], [100, 0, false])
+  // The three days as the system sizes them: 35, 35, then what's left of 100.
+  {
+    const c = new Map()
+    const caps = ['2026-10-13', '2026-10-14', '2026-10-15'].map(k => { const n = weekCap(k, c, 35); c.set(k, n); return n })
+    is('35 a day: Tue 35, Wed 35, Thu what the week leaves', caps, [35, 35, 30])
+    // The week after, the same again (last Wed + Thu are in Tuesday's seven days).
+    const next = ['2026-10-20', '2026-10-21', '2026-10-22'].map(k => { const n = weekCap(k, c, 35); c.set(k, n); return n })
+    is('and the week after: 35, 35, 30', next, [35, 35, 30])
+  }
   const today = '2026-09-25' // a Friday
   const sent = new Map([['2026-09-22', 20], ['2026-09-23', 20], ['2026-09-24', 18], ['2026-09-25', 7], ['2026-09-18', 20]])
   // Today's planned number already includes this morning's 7.

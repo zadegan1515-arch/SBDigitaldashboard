@@ -264,7 +264,8 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const listed = new Set(tq.targets.map(t => t.brandId));
     assert.ok(listed.has(wb.bank.rows[0].id), 'the top of the list first');
     assert.ok([...listed].every(id => wb.bank.rows.some(r => r.id === id)), 'only brands from the list');
-    assert.ok(tq.targets.length <= 30, 'never past the day’s 30');
+    assert.equal(tq.cap, 35, 'the day’s limit is 35');
+    assert.ok(tq.targets.length <= tq.cap, 'never past the day’s ' + tq.cap);
     // The list drops what is in today's list.
     const wb2 = await data('weekBank', {});
     assert.ok(![...listed].some(id => wb2.bank.rows.some(r => r.id === id && r.where === 'waiting')), 'today’s brands aren’t waiting on the list any more');

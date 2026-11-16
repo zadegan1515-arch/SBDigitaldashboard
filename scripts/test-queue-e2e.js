@@ -34,7 +34,7 @@
 //   P. A deal changes the Schedule's stamp.
 //   Q. A big brand already in today's list on a Best fit day: the Schedule's
 //      today column says what the queue then stamps.
-//   O. LinkedIn's week used up: Fill says so; hand adds keep the flat 30.
+//   O. LinkedIn's week used up: Fill says so; hand adds keep the flat 35.
 //   Second review (Oct 13 2026):
 //   A+. The roll carries a flagged person Leo queued by hand (and the
 //      hand-queued rest of a part-sent brand): today's queue stamps them
@@ -342,12 +342,21 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     ok('Withdrew: an old invite still counts (the brand stays reached), a same-day one is uncounted');
 
     // ---- F. Adding to today never pushes out a pin ------------------------
+    // Pins that fill the day's flat limit exactly (DAILY_SEND_LIMIT, 35 since
+    // Nov 15 2026 — read from the queue's own reply, never a literal): brands
+    // of three, and one smaller for what's left over.
+    const capF = tq.cap;
+    assert.equal(capF, 35, 'the day\'s flat limit is 35');
     await prisma.target.updateMany({ where: { queuedFor: { not: null } }, data: { queuedFor: null } });
     const pins = [];
-    for (let i = 0; i < 10; i++) {
+    const pinSize = {};
+    for (let i = 0, left = capF; left > 0; i++) {
+      const size = Math.min(BUYERS.length, left);
       await mkBrand('pin' + i, 'Pinned Brand ' + i, 'beverage');
-      await mkPeople('pin' + i, BUYERS);
+      await mkPeople('pin' + i, BUYERS.slice(0, size));
       pins.push('pin' + i);
+      pinSize['pin' + i] = size;
+      left -= size;
     }
     await mkBrand('extra', 'Extra Energy', 'energy');
     await mkPeople('extra', BUYERS);
@@ -355,8 +364,8 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     cur[today] = { category: null, brandIds: pins };
     await setting('outreachPlan', cur);
     await data('planAddBrands', { date: today, brandIds: ['extra'] });
-    for (const id of pins) assert.equal(await prisma.target.count({ where: { brandId: id, queuedFor: { not: null } } }), 3, id + ' stamped before the add');
-    assert.equal(await prisma.target.count({ where: { brandId: 'extra', queuedFor: { not: null } } }), 3, 'the add goes in too (past the 30)');
+    for (const id of pins) assert.equal(await prisma.target.count({ where: { brandId: id, queuedFor: { not: null } } }), pinSize[id], id + ' stamped before the add');
+    assert.equal(await prisma.target.count({ where: { brandId: 'extra', queuedFor: { not: null } } }), 3, 'the add goes in too (past the day\'s ' + capF + ')');
     tq = await data('getTodayQueue');
     assert.deepEqual(tq.plannedWaiting, [], 'no earlier pin waits');
     assert.deepEqual(order(tq.targets), [...pins, 'extra'], 'in the plan\'s order, the add last');
@@ -888,10 +897,10 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await prisma.target.createMany({ data: hv.map((c, i) => ({ brandId: 'heavy', contactId: c.id, status: 'sent', sentAt: noonNY(shift(today, -1 - (i % 5))) })) });
     tq = await data('getTodayQueue');
     assert.deepEqual([tq.dayCap, tq.openSpots], [0, 0], 'nothing left for automatic picks');
-    assert.ok(tq.handSpots > 0, 'hand adds keep the flat 30: ' + tq.handSpots);
+    assert.ok(tq.handSpots > 0, 'hand adds keep the flat ' + tq.cap + ': ' + tq.handSpots);
     const fw = await data('fillToday');
     assert.deepEqual([fw.weekFull, fw.added, fw.dayCap], [true, 0, 0], 'Fill says the week is used up: ' + JSON.stringify(fw));
-    ok('LinkedIn\'s week used up: Fill says so, hand adds keep the flat 30');
+    ok('LinkedIn\'s week used up: Fill says so, hand adds keep the flat day limit');
 
     console.log('queue e2e: all ' + n + ' passed');
   } catch (e) {

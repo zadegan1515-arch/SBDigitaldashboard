@@ -451,7 +451,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await ppl('f0', 1)
     const q1 = await data('getTodayQueue', {})
     assert.equal(q1.dayCap, used + 2, 'today\'s own picks stop at what LinkedIn\'s week leaves: ' + JSON.stringify([q1.dayCap, used]))
-    assert.equal(q1.cap, 30, 'hand adds stay on the flat 30')
+    assert.equal(q1.cap, 35, 'hand adds stay on the flat 35')
     let f12 = await data('fillToday', {})
     assert.equal(f12.added, 0, 'a four-person brand never goes into two spots: ' + JSON.stringify(f12))
     assert.deepEqual([f12.shortBy, f12.smallest], [2, 4], 'and the answer says why')
@@ -471,7 +471,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const l12 = op12b.days.find(d => d.date === later12.date)
     assert.ok((l12.brands || []).some(b => b.id === 'f4'), 'a Skip category Leo gave the day still fills it: ' + JSON.stringify(l12.brands))
     assert.ok(!(l12.brands || []).some(b => b.id === 'f0'), 'too small never')
-    assert.equal(l12.cap, 30, 'a later day out of the seeded week has its 30')
+    assert.equal(l12.cap, 35, 'a later day out of the seeded week has its 35')
     // Four Fin by hand (past today's room — hand adds go): now on the
     // LinkedIn tab too, labelled the way the Schedule labels it.
     await data('queueBrandTargets', { brandId: 'f4' })

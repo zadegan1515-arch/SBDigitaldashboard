@@ -165,12 +165,14 @@ const CONNECTION_NOTE_MAX = 300
 const FIRST_MESSAGE_MAX = 600
 
 // One LinkedIn account caps near 100 connection requests a week.
-// Thirty a day on the three sending days (Tue–Thu) is 90 — Leo's call
-// (Sep 28 2026, up from 20). An extra sending day takes the week past
-// 100, which the Schedule warns about. If LinkedIn ever shows the
-// weekly-limit warning or asks to verify the account, drop this back
-// to 10 for a week.
-const DAILY_SEND_LIMIT = 30
+// Thirty-five a day — Leo's call (Nov 15 2026: "fill the sending days this
+// week with best fit brands (35 a day)"; it was 30 since Sep 28 2026, 20
+// before). Three sending days at 35 would be 105, so the system's own picks
+// stop the third day at what the week leaves (weekCap: 35 + 35 + 30 = 100);
+// a hand add past that is warned about, never blocked. If LinkedIn ever
+// shows the weekly-limit warning or asks to verify the account, drop this
+// back to 10 for a week.
+const DAILY_SEND_LIMIT = 35
 // A deal's stages, in order (the Deals board, Results, In talks → Deal stage).
 const DEAL_STAGES = ['conversation', 'proposal', 'verbal', 'closed', 'lost'] as const
 

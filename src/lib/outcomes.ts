@@ -65,7 +65,7 @@ export type DepthTable = {
   model: DepthModel[]
   day: number
 }
-export const DEPTH_DAY = 30 // DAILY_SEND_LIMIT in route.ts
+export const DEPTH_DAY = 35 // DAILY_SEND_LIMIT in route.ts
 export const FIT_BANDS: Array<[string, number]> = [['65+', 65], ['50–64', 50], ['under 50', -Infinity]]
 export function fitBand(fit: number | null | undefined): string {
   if (fit == null) return 'not scored'

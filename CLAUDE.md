@@ -567,7 +567,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   hand add leaves once something goes out to it after it was added (`handSpent`) or it's archived / do-not-email / not US /
   in talks / stopped (pruned on the next `weekBank` read). Advisory-locked writes (`updateBankState`). **The week**:
   `planWeeks` = this week (Mon–Sun, New York) while it has a sending day after today, and next week; today is never a
-  column. Each day's room = `weekRooms` (30, or what LinkedIn's 100 in 7 days leaves — days counted full in date order)
+  column. Each day's room = `weekRooms` (35, or what LinkedIn's 100 in 7 days leaves — days counted full in date order)
   less its pins going (`weekColumns`, from getOutreachPlan's cards). **Spread** (`weekSpread`, preview → apply,
   `seed` = the shuffle; Shuffle again = a new seed): `spreadWeek` deals the list's waiting brands in rank order, each
   whole, onto the fitting day dealt the fewest brands so far (ties at random) — #1–#3 on three different days, #4–#6 the
@@ -609,8 +609,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Thin 1..need-1, No one reachable 0. A brand goes out **whole**,
   opened to its thread count (`previewBrandPicks` mirrors `queueBrandTargets` without writing;
   `fillWholeBrands` is shared by the preview and `getTodayQueue`, so what the Schedule says is what
-  the LinkedIn tab stamps; a day never passes 30 — `DAILY_SEND_LIMIT` in route.ts, Leo's call Sep 28
-  2026, up from 20; the page shows the server's number via `sdCap()` / `SENT_TODAY.cap`, never a literal;
+  the LinkedIn tab stamps; a day never passes **35** — `DAILY_SEND_LIMIT` in route.ts (Leo, Nov 15 2026: "fill the sending days this week
+  with best fit brands (35 a day)"; it was 30 since Sep 28 2026, 20 before — wherever these notes still say "the day's 30",
+  "Fill to 30" or "the flat 30", read 35; Elizabeth's `REP_DAILY` stays 30); a normal Tue–Thu is 35 + 35 + 30 = 100,
+  the third day stopped by LinkedIn's week (`weekCap`); the page shows the server's number via `sdCap()` / `SENT_TODAY.cap`, never a literal;
   the system's own picks stop sooner when LinkedIn's week leaves less — `days[].cap` / `sdCap(key)`, below). Pinned cards say who goes or exactly why not
   (`outreachGate` + `reasonText`). **Kept simple** (Leo, Oct 7 2026: "a little clunky there's a lot going on"):
   on screen = Plan for Zach / What went out / **More ▾** (Plan my week, Undo week plan, Category priority,
@@ -908,11 +910,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Apply. A day's pins are counted the Schedule's way (plan-week-waits): one past the day's 30 **waits →
   <day>** and counts on the next planned day, first (it used to read "Over by 5" for a day the Schedule showed
   at 30); each day fills only to what LinkedIn's week leaves it (`counts` → `weekCap`, `days[].cap`).
-  **LinkedIn weekly limit**: ~100 invites per rolling 7 days (`LINKEDIN_WEEK_LIMIT`, warns past 90 —
-  `LINKEDIN_WEEK_NEAR`; a normal Tue–Thu at 30 is 90 and warns about nothing; `getOutreachPlan.linkedinWeek`) —
+  **LinkedIn weekly limit**: ~100 invites per rolling 7 days (`LINKEDIN_WEEK_LIMIT`; `LINKEDIN_WEEK_NEAR` is 100 too since
+  Nov 15 2026 — a normal Tue–Thu at 35 a day is 35 + 35 + 30 = exactly 100, so "close" is every week and only going over warns;
+  it was 90 while a week was 3 × 30; `getOutreachPlan.linkedinWeek`) —
   top-right line + a note on any day that would pass it, saying the real choice ("this week goes over by 6; Fri
   can take 10 — take a brand off it": a later day is in the same seven days). **Extra days are sized to what's
-  left** (Leo, Oct 12 2026): the system's own picks fill each day only to `weekCap` = min(30, 100 − invites in the
+  left** (Leo, Oct 12 2026): the system's own picks fill each day only to `weekCap` = min(35, 100 − invites in the
   6 days before it), in date order (pure in plan-week.ts; getTodayQueue `dayCap` via `todayWeekCap`, fillToday,
   getOutreachPlan `days[].cap`, Plan my week) — an extra Friday after a full week takes ~10, and the page's
   "Fill to N", open spots and "/ N · week limit" read it (`sdCap(key)`; the LinkedIn tab's Fill reads

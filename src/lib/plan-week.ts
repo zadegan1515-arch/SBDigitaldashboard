@@ -6,12 +6,14 @@
 
 // LinkedIn stops a personal account at roughly a hundred connection invites
 // a week, counted over the last seven days rather than Monday to Sunday.
-// The Schedule warns before a day would take those seven days past it (and
-// a little before, past 90 — a normal Tue–Thu at 30 a day is 90 and warns
-// about nothing). Hand adds are never blocked: the limit is LinkedIn's,
-// not ours, and it moves. The system's own picks keep under it (weekCap).
+// The Schedule warns when a day would take those seven days past it. A
+// normal Tue–Thu is now 35 + 35 + 30 = exactly 100 (Leo, Nov 15 2026: 35 a
+// day), so "close to it" is every week and no longer a warning of its own:
+// the line is the limit itself (it was 90 while a week was 3 × 30). Hand
+// adds are never blocked: the limit is LinkedIn's, not ours, and it moves.
+// The system's own picks keep under it (weekCap).
 export const LINKEDIN_WEEK_LIMIT = 100
-export const LINKEDIN_WEEK_NEAR = 90
+export const LINKEDIN_WEEK_NEAR = 100
 export type LinkedInWindow = { count: number; over: number; near: boolean }
 
 // The day key n days after `key` (noon UTC is the same calendar date in

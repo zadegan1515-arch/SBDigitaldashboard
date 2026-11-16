@@ -8584,7 +8584,7 @@ document.getElementById('supply-card').addEventListener('click', function (e) {
     var turnOn = which === 'giants' ? !sw.giantsOn : !sw.smallOn;
     var what = which === 'giants' ? 'giants (household names, $1B+ sales or 1,500+ on LinkedIn)' : 'too small brands (under $1M sales or under 20 on LinkedIn)';
     if (!confirm(turnOn
-        ? 'Let ' + what + ' into the queue? Best fit days, Fill to 30, Plan my week and the LinkedIn fill can then pick them by themselves.'
+        ? 'Let ' + what + ' into the queue? Best fit days, Fill to ' + sdCap() + ', Plan my week and the LinkedIn fill can then pick them by themselves.'
         : 'Hold ' + what + ' back again? The queue stops picking them by itself; adding one by hand still works.')) return;
     b.disabled = true;
     api(which === 'giants' ? 'setGiantsOn' : 'setSmallOn', { on: turnOn }).then(function () {
@@ -15361,7 +15361,7 @@ function sdPwDayHtml(day) {
     : open === 0 ? '<span class="sd-st good">Full ✓</span>'
     : '<span class="sd-st warn">' + sdPlural(open, 'open spot', 'open spots') + '</span>';
   var lwN = sdPwWindow(day);
-  var lim = (pw.data && pw.data.linkedin) || { limit: 100, near: 90 };
+  var lim = (pw.data && pw.data.linkedin) || { limit: 100, near: 100 };
   var lwState = lwN == null ? '' : lwN > lim.limit ? 'bad' : lwN > lim.near ? 'warn' : 'ok';
   var html = '<div class="panel sd-pwday">' +
     '<div class="sd-day-h"><div class="sd-day-t">' + esc(sdDayName(day.date)) + '</div>' + sdPwCatSel(day) + '</div>' +
@@ -19310,8 +19310,8 @@ setTimeout(checkAppVersion, 3000);
 
 // The "Sent today: N / cap" chip state — Mark sent / Undo / Withdrew
 // tick it in place, no reload.
-// cap = the server's DAILY_SEND_LIMIT; every queue load sets it (30 until then).
-var SENT_TODAY = { count: 0, cap: 30, day: null };
+// cap = the server's DAILY_SEND_LIMIT; every queue load sets it (35 until then).
+var SENT_TODAY = { count: 0, cap: 35, day: null };
 // What the LinkedIn tab's Fill to N fills today to (getTodayQueue.dayCap).
 function sdFillDayCap() { return typeof SENT_TODAY.day === 'number' ? SENT_TODAY.day : SENT_TODAY.cap; }
 function bumpSentToday(d) {
