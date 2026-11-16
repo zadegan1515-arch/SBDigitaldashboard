@@ -1470,13 +1470,18 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `src/lib/api-key-shape.ts`; middleware on `/api/data` only, then POST → `__user` 'CLI'; a key-shaped bearer beside it
   is still checked as a key; same 24-character floor). So a Claude cloud environment can hold the key as a saved network
   secret (the paste box a chat opens: host `sb-digitaldashboard.vercel.app`, header `X-Dashboard-Token`) and its proxy
-  adds it to every request — **never save it there under `Authorization`**: on that host it would replace the
-  `REPORT_TOKEN` bearer of the daily brand hunt and the LinkedIn run check. The proxy only sees requests that go through
+  adds it to every request. Leo pasted it on **Default** that day (saved under `X-Dashboard-Token`; the Project
+  environment holds it under `Authorization`). **Once a key is saved for the host, the proxy drops the request's own
+  `Authorization`** whatever header the key is under (a made-up bearer sent from Default never arrived), so the
+  `REPORT_TOKEN` bearer of the daily brand hunt and the LinkedIn run check stopped reaching the site from there —
+  `/api/reports/linkedin` and `/api/discover-ingest` therefore **take the dashboard token too** (`dashAllowed`: its
+  header or as the bearer; it can do far more through `/api/data`, so nothing widens; `REPORT_TOKEN` still works where
+  it arrives). The proxy only sees requests that go through
   it, so `scripts/cc.mjs` (re-runs itself) and the chat-log hook's sender (`sendEnv`) set `NODE_USE_ENV_PROXY=1` when
   `HTTPS_PROXY` is set (Node 22.21+; nothing changes on Leo's Mac); `cc.mjs` no longer needs the variable in such a
   session and says "turned the token away" instead of "HTTP 405" when the gate refuses it. A stale `DASHBOARD_TOKEN`
   variable beside the saved key is harmless. Tests: `node scripts/test-api-keys.mjs`, `node scripts/test-chat-log-hook.mjs`,
-  `test-api-keys-e2e.js` (9).
+  `test-api-keys-e2e.js` (9, 10).
 - **+ Add brand → Person** (Leo, Oct 12 2026: "sometimes we want to send the show board to individual people"):
   the Add box has a Brand / Person switch (`nbSetKind`, `NB_KIND`). A person = `Brand.kind = 'person'`
   (`createBrand({ kind: 'person', name, email, phone })` → `addPerson` in route.ts): archived + do-not-email from
@@ -2003,9 +2008,9 @@ cloud environment's settings).
 
 **`DASHBOARD_TOKEN` is letters and numbers only** (Nov 16 2026: the Claude cloud environment's secret form refuses a
 value with spaces or symbols — "Paste only the token" — so a session couldn't be given the old one; Leo set a new one).
-In a cloud session the token is a network secret the proxy adds to every request to the site, never a variable: call with
-`NODE_USE_ENV_PROXY=1 DASHBOARD_TOKEN=proxy-injected node scripts/cc.mjs <fn>` (plain `node scripts/cc.mjs` gets a 405
-from the proxy) or curl with any placeholder bearer. A changed token needs a redeploy, and every other place that holds
+In a cloud session the token is a network secret the proxy adds to every request to the site, never a variable: plain
+`node scripts/cc.mjs <fn>` works there (it sends itself through the proxy and needs no variable — "Claude's token by a
+paste box", above), as does curl with any placeholder bearer. A changed token needs a redeploy, and every other place that holds
 it (other Claude environments, Leo's Mac `.env.local`) needs the new value.
 
 ## Conventions

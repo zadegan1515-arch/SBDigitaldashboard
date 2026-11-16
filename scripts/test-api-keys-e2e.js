@@ -22,6 +22,7 @@ const ROOT = path.join(__dirname, '..');
 const PORT = Number(process.env.E2E_PORT || 3487);
 const BASE = 'http://127.0.0.1:' + PORT;
 const DASHBOARD_TOKEN = 'e2e-dashboard-token-0123456789abcdef';
+const REPORT_TOKEN = 'e2e-report-token-0123456789abcdefgh';
 const SECRET = 'e2e-only-secret';
 const LEO = 'leo@sb.test', MIA = 'mia@sb.test';
 
@@ -70,7 +71,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
 
     server = spawn('npx', ['next', 'dev', '-p', String(PORT)], {
       cwd: ROOT, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...env, DASHBOARD_TOKEN, NEXTAUTH_SECRET: SECRET, NEXTAUTH_URL: BASE, ALLOWED_EMAILS: LEO, SITE_URL: BASE, NEXT_TELEMETRY_DISABLED: '1' },
+      env: { ...env, DASHBOARD_TOKEN, REPORT_TOKEN, NEXTAUTH_SECRET: SECRET, NEXTAUTH_URL: BASE, ALLOWED_EMAILS: LEO, SITE_URL: BASE, NEXT_TELEMETRY_DISABLED: '1' },
     });
     let log = '';
     server.stdout.on('data', d => { log += d; });
@@ -242,6 +243,30 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.ok(hb && (hb.id || hb.brand), 'a write goes through');
     assert.equal(await prisma.claudeAction.count(), acts + 1, 'logged as a change Claude made');
     ok('the dashboard token in its own header: Claude on /api/data only; wrong or short values refused; a key beside it is still a key');
+
+    // 10. The report endpoints (the brand hunt, the LinkedIn run check) take
+    // the dashboard token too: a Claude environment with that token saved
+    // has its proxy drop the request's own Authorization, REPORT_TOKEN and all.
+    const get = async (p, headers) => (await fetch(BASE + p, { redirect: 'manual', headers: headers || {} })).status;
+    for (const p of ['/api/reports/linkedin', '/api/discover-ingest']) {
+      assert.equal(await get(p), 401, p + ': nothing, nobody');
+      assert.equal(await get(p, { Authorization: 'Bearer ' + REPORT_TOKEN }), 200, p + ': the report token, as before');
+      assert.equal(await get(p, { 'X-Dashboard-Token': DASHBOARD_TOKEN }), 200, p + ': the dashboard token in its header');
+      assert.equal(await get(p, { Authorization: 'Bearer ' + DASHBOARD_TOKEN }), 200, p + ': the dashboard token as the bearer');
+      assert.equal(await get(p, { 'X-Dashboard-Token': DASHBOARD_TOKEN + 'x' }), 401, p + ': a wrong value');
+      assert.equal(await get(p, { Authorization: 'Bearer ' + REPORT_TOKEN + 'x', 'X-Dashboard-Token': 'short' }), 401, p + ': two wrong values');
+    }
+    // A find posted with the header alone lands for review (never a brand).
+    const brandsBefore = await brandCount();
+    const hunt = await fetch(BASE + '/api/discover-ingest', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Dashboard-Token': DASHBOARD_TOKEN },
+      body: JSON.stringify({ rows: [] }),
+    });
+    assert.equal(hunt.status, 400, 'past the gate: it asks for rows (' + hunt.status + ')');
+    const huntNo = await fetch(BASE + '/api/discover-ingest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows: [] }) });
+    assert.equal(huntNo.status, 401, 'no token: refused');
+    assert.equal(await brandCount(), brandsBefore);
+    ok('the report endpoints take the dashboard token too (header or bearer); the report token works as before; wrong values refused');
 
     console.log('api keys e2e: ' + n + ' passed');
   } catch (e) {

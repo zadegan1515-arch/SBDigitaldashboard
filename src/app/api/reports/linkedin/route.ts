@@ -17,12 +17,25 @@ import { readLiLog, readLiResearch, markOutcome, issueWords, liDue, LI_SCRIPT_VE
 import { parentOf } from '@/lib/parents'
 import { readCoverCounts } from '@/lib/coverage-db'
 import { LI_REVIEW_KEY, LI_CONFIRMED_KEY, openReview, readJsonSetting, type Review, type Confirmed } from '@/lib/li-review'
+import { dashTokenOk, DASH_HEADER } from '@/lib/api-key-shape'
 
 export const dynamic = 'force-dynamic'
 
 const prisma = new PrismaClient()
 
+// Claude's dashboard token opens this too — as its own header or as the
+// bearer (it can do far more through /api/data, so nothing widens). Needed
+// since Nov 16 2026: a Claude cloud environment that holds the dashboard
+// token as a saved key has its proxy drop the request's own Authorization
+// (a made-up bearer sent from there never arrived), so the REPORT_TOKEN
+// bearer of the brand hunt and the LinkedIn run check stopped reaching us.
+function dashAllowed(req: NextRequest): boolean {
+  const dash = process.env.DASHBOARD_TOKEN
+  return dashTokenOk(req.headers.get(DASH_HEADER), dash) || dashTokenOk(req.headers.get('authorization'), dash)
+}
+
 function allowed(req: NextRequest): boolean {
+  if (dashAllowed(req)) return true
   const expected = process.env.REPORT_TOKEN || ''
   if (expected.length < 24) return false
   const given = Buffer.from(req.headers.get('authorization') || '')

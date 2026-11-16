@@ -25,6 +25,7 @@ import { PrismaClient } from '@prisma/client'
 import { timingSafeEqual } from 'crypto'
 import { HUNT_LANES, HUNT_SOURCES, HUNT_PER_DAY, HUNT_PER_POST, HUNT_SIGNALS, HUNT_LABEL, huntLabel, judgeHuntRow, knownKeys, type HuntRow } from '@/lib/claude-hunt'
 import { GIANT_NAMES } from '@/lib/giants'
+import { dashTokenOk, DASH_HEADER } from '@/lib/api-key-shape'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,7 +36,19 @@ function same(a: string, b: string): boolean {
   return x.length === y.length && timingSafeEqual(x, y)
 }
 
+// Claude's dashboard token opens this too — as its own header or as the
+// bearer (it can do far more through /api/data, so nothing widens). Needed
+// since Nov 16 2026: a Claude cloud environment that holds the dashboard
+// token as a saved key has its proxy drop the request's own Authorization
+// (a made-up bearer sent from there never arrived), so the REPORT_TOKEN
+// bearer of the brand hunt and the LinkedIn run check stopped reaching us.
+function dashAllowed(req: NextRequest): boolean {
+  const dash = process.env.DASHBOARD_TOKEN
+  return dashTokenOk(req.headers.get(DASH_HEADER), dash) || dashTokenOk(req.headers.get('authorization'), dash)
+}
+
 function allowed(req: NextRequest, bodyToken?: unknown): boolean {
+  if (dashAllowed(req)) return true
   const report = process.env.REPORT_TOKEN || ''
   if (report.length >= 24 && same(req.headers.get('authorization') || '', `Bearer ${report}`)) return true
   const ingest = process.env.INGEST_TOKEN || ''
@@ -90,7 +103,7 @@ export async function POST(req: NextRequest) {
   try { body = await req.json() } catch {
     return NextResponse.json({ ok: false, error: 'Bad JSON' }, { status: 400 })
   }
-  if (!process.env.REPORT_TOKEN && !process.env.INGEST_TOKEN) {
+  if (!process.env.REPORT_TOKEN && !process.env.INGEST_TOKEN && !dashAllowed(req)) {
     return NextResponse.json({ ok: false, error: 'Closed — set REPORT_TOKEN in Vercel.' }, { status: 503 })
   }
   if (!allowed(req, body?.token)) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
