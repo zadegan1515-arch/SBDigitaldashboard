@@ -15990,7 +15990,16 @@ const handlers: Record<string, Handler> = {
   async sendToInstantly({ ids, confirm = false, expect, perBrand, __user, __key }: any = {}) {
     // The same list the card above shows (`perBrand` = its "people a brand" for brands not reached yet).
     const list: any = await handlers.noAnswerList({ minDays: 0, perBrand })
-    const ready: Array<HunterRow & { contactId: string }> = list.ready
+    // The card's list is wider than who may be handed over (find-emails.ts
+    // groups, since "i want every brand on the file"):
+    //   'working' — a brand where someone accepted and is still on Zach's
+    //   list — never goes: that's a live LinkedIn conversation (the email
+    //   machine skips those brands too);
+    //   'held' — not reached yet and held back by the queue's rules — goes
+    //   as any brand not reached yet does: unticked, Leo's call.
+    const ready: Array<HunterRow & { contactId: string }> = (list.ready as Array<HunterRow & { contactId: string }>)
+      .filter(r => r.group !== 'working')
+      .map(r => (r.group === 'held' ? { ...r, group: 'fresh' as const } : r))
     const cids = ready.map(r => r.contactId)
     const [contacts, stops, chosen] = await Promise.all([
       prisma.contact.findMany({

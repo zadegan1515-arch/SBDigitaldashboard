@@ -1128,7 +1128,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   The returned-file reader never takes one of our own `SB …` columns for Hunter's verdict or score (`theirs` in
   `readFoundFile` — "SB status" was read as the verification column until the unit test caught it). Because people
   mid-conversation on LinkedIn are now on the file, **don't send to the `On Zach's list` rows from Hunter** — the site's
-  own email machine already skips those brands.
+  own email machine already skips those brands, and **Instantly's send list never takes them**: `sendToInstantly` reads
+  this card's `ready` list, so it drops group `working` and treats `held` as `fresh` (not reached yet → unticked, Leo's
+  call); `test-instantly-e2e.js` holds both. A new group on this list must be decided there too.
   Tests: `node scripts/test-find-emails.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-find-emails.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-find-emails-e2e.js`.
 - **Outreach → Email: Send them through Instantly** (Leo, Nov 16 2026: "I want to get the emails from Hunter, connect

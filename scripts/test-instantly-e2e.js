@@ -200,6 +200,9 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     // A brand nobody has reached out to: its person has an address and no outreach row at all.
     await brand('b_nova', 'Nova Pouch', { category: 'nicotine' });
     await prisma.contact.create({ data: { id: 'c_nia', brandId: 'b_nova', name: 'Nia New', title: 'Head of Partnerships', linkedinUrl: 'https://www.linkedin.com/in/c_nia', email: 'nia@nova.com', notes: VER } });
+    // A brand not reached yet that the queue holds back (a giant): on Hunter's list since "every brand on the file", and here like any brand not reached yet.
+    await brand('b_redbull', 'Red Bull');
+    await prisma.contact.create({ data: { id: 'c_gil', brandId: 'b_redbull', name: 'Gil Giant', title: 'Head of Partnerships', linkedinUrl: 'https://www.linkedin.com/in/c_gil', email: 'gil@redbull.com', notes: VER } });
     // Dee's other copy at another brand (the same address): a stop marks it too. (Archived, so it isn't a brand to email.)
     await brand('b_twin', 'Twin Co', { passedAt: D(2) });
     await mk('c_dee2', 'b_twin', 'Dee Two', 'dee@two.com', null, { status: 'queued', sentAt: null });
@@ -222,11 +225,16 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(pv.preview, true);
     const line = (name) => pv.lines.find(l => l.name === name);
     assert.deepEqual(pv.lines.map(l => l.name).sort(),
-      ['Bo Chen', 'Cy Day', 'Dee Two', 'Del Gone', 'Dr. Ann Lee, MBA', 'Fay Stop', 'Gus Sent', 'Hal Wait', 'Ivy Hand', 'Ivy Inbox', 'Jo Deleted', 'Kit Fine', 'Kat Blocked', 'Kim Already', 'Nia New'].sort());
+      ['Bo Chen', 'Cy Day', 'Dee Two', 'Del Gone', 'Dr. Ann Lee, MBA', 'Fay Stop', 'Gus Sent', 'Hal Wait', 'Ivy Hand', 'Ivy Inbox', 'Jo Deleted', 'Kit Fine', 'Kat Blocked', 'Kim Already', 'Nia New', 'Gil Giant'].sort());
     // Not reached on LinkedIn yet: she can go, but starts unticked — an email makes her brand "reached".
     assert.deepEqual([line('Nia New').action, line('Nia New').tick, line('Nia New').group, line('Nia New').targetId], ['send', false, 'fresh', null]);
     assert.match(line('Nia New').why, /brand not reached on LinkedIn yet/);
-    assert.equal(pv.counts.fresh, 1);
+    // Held back by the queue: the same — she can go, unticked.
+    assert.deepEqual([line('Gil Giant').action, line('Gil Giant').tick, line('Gil Giant').group], ['send', false, 'fresh']);
+    assert.equal(pv.counts.fresh, 2);
+    // Al's brand is on Hunter's list now (its own group) — but someone there accepted on LinkedIn, so he is never handed to a campaign.
+    const hunter = await data(leo, 'noAnswerList', { minDays: 0 });
+    assert.deepEqual(hunter.ready.filter(p => p.contactId === 'c_acc').map(p => p.group), ['working']);
     assert.ok(!line('Nora None') && !line('Al Accepted'), 'nobody without an address, nobody at a brand being worked on LinkedIn');
     assert.equal(line('Dr. Ann Lee, MBA').tick, true);
     assert.equal(line('Dr. Ann Lee, MBA').email, 'ann@cold.com');
