@@ -1049,6 +1049,41 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   LinkedIn invites dated in those New York days, any status (the LinkedIn tab's "sent today" count;
   a same-day Withdrew clears the date, an older one keeps it), by company in send order — **LinkedIn only** (his call); Today / Yesterday /
   This week / Last week or typed dates. `node scripts/test-outreach-lists.js`.
+- **Outreach → Email: emails for the people who didn't answer on LinkedIn** (Leo, Nov 16 2026: "start doing cold emails to
+  all the brands that did not accept us … how do we acquire their emails", then "how can i import all of the brands that
+  didn't accept/respond to us and put into hunter"). A card above the Email tab's own box (`#fe-card`, `FE` / `fe*` in
+  app.html, `.fe-` CSS; rules pure in `src/lib/find-emails.ts`). **Who's on it** = Deals → Overview's own read
+  (`noAnswerList` calls `outreachTracker`, so the two never disagree; read-only, a READ_NAMES read): brands sitting at
+  **Reached out** (nobody accepted) or **Out · no response**, where nobody ever wrote back, said no or asked us to stop —
+  not even "just me" (`brandAnswered`; Reach out again's rule) — and that aren't archived / do-not-email; a brand where
+  someone accepted and is still on Zach's list waits (counted, "left out"). From those: people invited who never accepted
+  (invite at least `minDays` old — 21 by default, `FIND_MIN_DAYS`, the Old invites rule; the card's menu offers 14 / 7 /
+  any time — or withdrawn) and people who accepted and went quiet after the final reach-out. `people` = no email on file
+  and a first + last name to look up (`splitName`: titles, credentials, pronouns, nicknames, emoji dropped; "Jane S." and
+  one-word names are counted as left out); `ready` = an email is on file and nobody emailed them yet ("Already have an
+  email · Download them"). **Download the list for Hunter** = a .csv built on the page for Hunter's bulk Email Finder:
+  First name, Last name, Company, Company website + `SB brand` / `SB title` / `SB LinkedIn` / `SB id` (Hunter keeps every
+  column, so our id comes back with each address). The website = the domain most addresses on file at the brand use
+  (`companyDomain`, never a free mailbox), else the brand's website; a label under a parent company (parents.ts) with no
+  address on file goes by the parent's name and no website. The two chips (Didn't accept / Accepted, then no response) and
+  the wait narrow the count and the file alike; **See who's on it** lists them (a name opens the brand page at them).
+  **Bring Hunter's file back…** = `saveFoundEmails({ csv })`: the file is read on the server (`readFoundFile` — the address
+  column is found by what's in it, so another tool's headings read too; a verification / status column and a score when
+  there are any) and **every line is shown before anything is saved** (rule 6): to save (verified ticked, not-verified
+  unticked, a file with no verification column says so), and left as they are with why — already has another email (never
+  overwritten), already saved, Hunter says invalid, not an email, not on the dashboard, said they don't want to continue
+  (the person, their brand, or a copy of them — `stoppedMatch`), the address is already someone else's, in the file twice.
+  A file without `SB id` is matched by profile link, else name + brand, against the list. **Save N emails** sends the
+  ticked contact ids + the preview's `expect` (`sigOf`; changed since → `stale`, shown again with the ticks kept): one
+  transaction, only fields still empty, a line in the person's notes ("Email added from Hunter's file, <day> (verified)"),
+  Setting `foundEmailsLast` for the Undo. **Undo** (`undoFoundEmails`, the last file only): the confirm names who loses
+  their address; one changed since, or one an email was drafted or sent to since, stays. Both writes are ClaudeActions.
+  Nothing is emailed from here (rule 7 unchanged) — but note the email machine's daily draft (`draftDailyEmails`, cron)
+  picks its intros from people with an email whose invite is still out, so saved addresses start showing up as **drafts**
+  on this tab (one per brand, inside the cap; nothing sends while `EMAIL_SENDING_OFF`). Hunter's own pages couldn't be
+  read from the cloud session (host not allowed), so its result file's headings are unverified until Leo's first file.
+  Tests: `node scripts/test-find-emails.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-find-emails.js` (page),
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-find-emails-e2e.js`.
 - **Brands → Stock take** (`brandStock` + `src/lib/stock.ts`; deep link `app.html#stock`; linked from
   Home → Categories) — the whole roster in one read, every brand in exactly one row. **Leo's lanes are
   real categories** (his yes, Sep 2026): `electrolytes`, `energy`, `rtd` (beer/seltzers/canned

@@ -19,7 +19,7 @@ const READ_NAMES = new Set(['claudeDay', 'dayRecap', 'weeklyScore', 'staleDeals'
   'boardCodeLookup', 'sponsorUrl', 'segmentsOverview', 'audienceEventStats', 'appVersion', 'researchList', 'planDayChoices', 'nextBestBrands',
   'staleInvites', 'repliedOverview', 'buyerCoverage', 'brandLookup', 'brandTimeline', 'brandStock', 'brandPlanLine', 'scheduleStamp',
   'suMatchQueue', 'sheetStatus', 'whoAmI', 'me', 'findDuplicates', 'sponsorReport', 'search', 'checkEmailReplies',
-  'weekBank', 'weekBankBrowse', 'reachedBrands', 'brandSupply', 'outreachTracker', 'talksLog', 'zachOverview', 'apiGuide'])
+  'weekBank', 'weekBankBrowse', 'reachedBrands', 'brandSupply', 'outreachTracker', 'talksLog', 'zachOverview', 'apiGuide', 'noAnswerList'])
 // Elizabeth's tab (rep-outreach.ts): its reads, and the opening of her day
 // (elToday makes the day's list by itself, like the page opening it).
 for (const fn of ['elToday', 'elWeek', 'elFollow', 'elResults', 'elBrand', 'elSearch', 'elTemplates']) READ_NAMES.add(fn)
@@ -36,6 +36,7 @@ const NEEDS_YES: Record<string, string[]> = {
   deleteBrand: ['confirm'], mergeBrands: ['confirm'], weekSpread: ['apply'],
   elSpread: ['apply'], elSpreadUndo: ['confirm'], elTakeOff: ['confirm'],
   deleteTalksEvent: ['confirm'], removeReferral: ['confirm'],
+  saveFoundEmails: ['confirm'], undoFoundEmails: ['confirm'],
 }
 // Calls that preview unless told preview: false.
 const PREVIEW_BY_DEFAULT = new Set(['researchImport', 'researchUndo', 'deadWeight', 'deadWeightUndo'])
@@ -81,6 +82,8 @@ export function actionText(fn: string, args: any, result: any): string | null {
     case 'importContacts': return `Added ${plural(Number(r.added ?? r.created ?? count(a.rows)) || 0, 'person', 'people')}${a.source ? ' (' + s(a.source, 20) + ')' : ''}`
     case 'reviewNewBrands': return `${a.action === 'archive' ? 'Archived' : 'Kept'} ${plural(count(a.ids), 'brand')} from New from LinkedIn`
     case 'saveHandTemplate': return `Saved the ${s(a.kind || 'email')} message template on Zach's list`
+    case 'saveFoundEmails': return `Saved ${plural(Number(r.saved) || 0, 'email')} from Hunter's file (people who didn't answer on LinkedIn)`
+    case 'undoFoundEmails': return `Took back ${plural(Number(r.removed) || 0, 'email')} saved from Hunter's file`
     case 'setCategoryPriority': return 'Changed the category priority'
     case 'liPageRetry': return `Sent ${brand || 'a brand'} back to the LinkedIn fill`
     case 'addDiscoveredBulk': return `Added ${plural(Number(r.added) || 0, 'brand')} from Discover`

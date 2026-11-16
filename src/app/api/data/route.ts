@@ -50,7 +50,11 @@ import { readHiddenLog, updateHiddenLog, markZachRead, clearZachRead, zachDue, Z
 import { readRuns } from '@/lib/li-report'
 import { companySlug, companyPageUrl, profileSlug, looksLikeSeller } from '@/lib/li-capture'
 import { whyLeaveOut, parentOf, parentCompanyOf, findParent, parentBrandNames, LI_PARENT_PAGES_KEY, type Parent } from '@/lib/parents'
-import { samePeopleGroups, pickKeeper, mergeFields, targetBeats, pairKey as personPairKey, personNameKey, type PersonRow, type MergeFields } from '@/lib/same-person'
+import { samePeopleGroups, pickKeeper, mergeFields, targetBeats, pairKey as personPairKey, personNameKey, linkedinSlug, type PersonRow, type MergeFields } from '@/lib/same-person'
+import {
+  needEmailList, companyDomain, readFoundFile, planFoundEmails, findKey as findPersonKey, foundNote, addNote as addFoundNote, dropNote as dropFoundNote,
+  cleanEmail as cleanFoundEmail, FIND_MIN_DAYS, FOUND_LAST_KEY, type FoundContact, type HunterRow,
+} from '@/lib/find-emails'
 import { BIG_BRAND_WORK, brandSize } from '@/lib/brand-size'
 import { outcomeRates, ACCEPT_AFTER_DAYS as OUTCOME_ACCEPT_DAYS, type OutcomeInvite } from '@/lib/outcomes'
 import {
@@ -15607,6 +15611,174 @@ const handlers: Record<string, Handler> = {
       data: on ? { talksAddedAt: now, talksAddedBy: talksBy(__user) } : { talksRemovedAt: now },
     })
     return { brandId: b.id, brandName: b.name, on: !!on }
+  },
+
+  // ── Find emails (Leo, Nov 16 2026) ──────────────────────────────────────
+  // "start doing cold emails to all the brands that did not accept us … how do
+  // we acquire their emails" → "how can i import all of the brands that didn't
+  // accept/respond to us and put into hunter". Outreach → Email's card. Rules
+  // pure in src/lib/find-emails.ts; who's on the list is Deals → Overview's
+  // own read (outreachTracker), so the two never disagree. Read-only.
+  //   people = no email on file → the file for Hunter's bulk Email Finder
+  //   ready  = an email is on file and nobody has emailed them yet
+  async noAnswerList({ minDays }: any = {}) {
+    const days = Math.min(365, Math.max(0, Math.round(Number(minDays ?? FIND_MIN_DAYS)) || 0))
+    const now = new Date()
+    const tr: any = await handlers.outreachTracker({})
+    const list = needEmailList(tr.brands, { minDays: days, now })
+    const brandIds = [...new Set([...list.need, ...list.have].map(r => r.brandId))]
+    const [brands, mails, lastRow] = await Promise.all([
+      prisma.brand.findMany({ where: { id: { in: brandIds } }, select: { id: true, name: true, aka: true, website: true } }),
+      prisma.contact.findMany({ where: { brandId: { in: brandIds }, email: { not: null } }, select: { brandId: true, email: true } }),
+      prisma.setting.findUnique({ where: { key: FOUND_LAST_KEY } }),
+    ])
+    const mailsBy = new Map<string, string[]>()
+    for (const m of mails) if (m.email) mailsBy.set(m.brandId, [...(mailsBy.get(m.brandId) ?? []), m.email])
+    // What Hunter looks the person up under: the domain the brand's people
+    // already mail from, else its website; a label under a parent company
+    // with neither goes by the parent's name (its people mail from there).
+    const co = new Map<string, { company: string; domain: string | null; domainFrom: string | null; parent: string | null }>()
+    for (const b of brands) {
+      const parent = parentOf(b.name, b.aka)
+      const d = companyDomain({ website: b.website, emails: mailsBy.get(b.id) ?? [] })
+      const viaParent = !!parent && d.from !== 'emails'
+      co.set(b.id, { company: viaParent ? parent!.name : b.name, domain: viaParent ? null : d.domain, domainFrom: viaParent ? null : d.from, parent: parent?.name ?? null })
+    }
+    const withCo = (r: (typeof list.need)[number]): HunterRow & { domainFrom: string | null; parent: string | null } => {
+      const c = co.get(r.brandId)
+      return { ...r, company: c?.company ?? r.brandName, domain: c?.domain ?? null, domainFrom: c?.domainFrom ?? null, parent: c?.parent ?? null }
+    }
+    const people = list.need.map(withCo)
+    let last: any = null
+    try { last = lastRow ? JSON.parse(lastRow.value) : null } catch { last = null }
+    return {
+      minDays: days, today: localDayKey(now), counts: { ...list.counts, noDomain: people.filter(p => !p.domain).length },
+      people, ready: list.have.map(withCo),
+      last: last && Array.isArray(last.rows) && last.rows.length ? { at: last.at, by: last.by ?? null, count: last.rows.length } : null,
+    }
+  },
+
+  // Hunter's file, brought back. Without confirm it only shows what would be
+  // saved, line by line (rule 6). confirm + the preview's `expect` + the
+  // ticked contact ids fills the email of each ticked person whose email is
+  // still empty — never over an address already there, never for someone
+  // who said they don't want to continue, never an address that's already
+  // somebody else's. One transaction; Undo = undoFoundEmails (the last file).
+  async saveFoundEmails({ csv, ids, confirm = false, expect, __user }: any) {
+    const file = readFoundFile(String(csv ?? ''))
+    if (file.error) throw new Error(file.error)
+    // A row without our "SB id" column: matched to the list by profile link, else name + brand.
+    const bySlug = new Map<string, string>(), byKey = new Map<string, string>()
+    if (file.rows.some(r => !r.id)) {
+      const tr: any = await handlers.outreachTracker({})
+      const l = needEmailList(tr.brands, { minDays: 0 })
+      for (const r of [...l.need, ...l.have]) {
+        const slug = linkedinSlug(r.linkedinUrl)
+        if (slug && !bySlug.has(slug)) bySlug.set(slug, r.contactId)
+        const k = findPersonKey(r.name, r.brandName)
+        if (k && !byKey.has(k)) byKey.set(k, r.contactId)
+      }
+    }
+    const want = new Set<string>()
+    for (const r of file.rows) {
+      if (r.id) { want.add(r.id); continue }
+      const slug = linkedinSlug(r.linkedin)
+      const id = (slug && bySlug.get(slug)) || byKey.get(findPersonKey(r.name, r.company))
+      if (id) want.add(id)
+    }
+    const emails = [...new Set(file.rows.map(r => r.email).filter(Boolean))]
+    const [people, holders, stops] = await Promise.all([
+      prisma.contact.findMany({
+        where: { id: { in: [...want] } },
+        select: { id: true, name: true, email: true, linkedinUrl: true, notes: true, brandId: true, doNotContactAt: true, brand: { select: { name: true, stoppedAt: true } } },
+      }),
+      prisma.contact.findMany({
+        where: { email: { in: emails, mode: 'insensitive' } },
+        select: { id: true, name: true, email: true, brand: { select: { name: true } } },
+      }),
+      loadStopIndex(),
+    ])
+    const contacts = new Map<string, FoundContact>(people.map(c => [c.id, {
+      id: c.id, name: c.name, email: c.email, linkedinUrl: c.linkedinUrl, brandId: c.brandId, brandName: c.brand.name,
+      stopped: c.brand.stoppedAt ? stopWords({ at: c.brand.stoppedAt }, c.brand.name) : c.doNotContactAt ? stopWords({ name: c.name, at: c.doNotContactAt }) : null,
+    }]))
+    const taken = new Map<string, { id: string; name: string; brandName: string }>()
+    for (const h of holders) if (h.email && !taken.has(cleanFoundEmail(h.email))) taken.set(cleanFoundEmail(h.email), { id: h.id, name: h.name, brandName: h.brand.name })
+    const plan = planFoundEmails(file, {
+      contacts, bySlug, byKey, taken,
+      stopHit: (email, c) => {
+        const hit = stoppedMatch(stops, { brandId: c.brandId, name: c.name, linkedinUrl: c.linkedinUrl, email })
+        return hit ? stopWords({ name: hit.name, at: hit.at }) : null
+      },
+    })
+    const summary = { lines: plan.lines, counts: plan.counts, cols: file.cols, rows: file.total, notFound: file.empty, expect: plan.sig }
+    if (!confirm) return { preview: true, ...summary }
+    if (String(expect || '') !== plan.sig) return { applied: false, stale: true, ...summary }
+    const pick = new Set((Array.isArray(ids) ? ids : []).map(String))
+    const todo = plan.lines.filter(l => l.action === 'save' && l.contactId && pick.has(l.contactId))
+    if (!todo.length) throw new Error('Nothing is ticked to save')
+    const now = new Date()
+    const day = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' })
+    const notesOf = new Map(people.map(c => [c.id, c.notes]))
+    const saved: Array<{ contactId: string; email: string; name: string; brandName: string; note: string }> = []
+    await prisma.$transaction(async tx => {
+      for (const l of todo) {
+        const id = l.contactId as string
+        const note = foundNote(day, l.verdict)
+        // Only while the field is still empty: an address typed in since stays.
+        const r = await tx.contact.updateMany({
+          where: { id, OR: [{ email: null }, { email: '' }] },
+          data: { email: l.email, notes: addFoundNote(notesOf.get(id), note) },
+        })
+        if (r.count) saved.push({ contactId: id, email: l.email, name: l.name, brandName: l.brandName, note })
+      }
+      if (saved.length) {
+        const value = JSON.stringify({ at: now.toISOString(), by: talksBy(__user), rows: saved })
+        await tx.setting.upsert({ where: { key: FOUND_LAST_KEY }, create: { key: FOUND_LAST_KEY, value }, update: { value } })
+      }
+    }, { maxWait: 10000, timeout: 55000 })
+    return { applied: true, saved: saved.length, skipped: todo.length - saved.length, brands: new Set(saved.map(s => s.brandName)).size, ...summary }
+  },
+
+  // Take the last file's addresses back out. Without confirm it names who
+  // loses theirs and who keeps it (rule 6): an address stays when it was
+  // changed since, or when an email to that person was drafted or sent since.
+  async undoFoundEmails({ confirm = false }: any = {}) {
+    const row = await prisma.setting.findUnique({ where: { key: FOUND_LAST_KEY } })
+    let last: any = null
+    try { last = row ? JSON.parse(row.value) : null } catch { last = null }
+    const rows: Array<{ contactId: string; email: string; name: string; brandName: string; note: string }> = last && Array.isArray(last.rows) ? last.rows : []
+    if (!rows.length) throw new Error('Nothing to undo — no emails were saved from a file.')
+    const at = new Date(last.at)
+    const people = await prisma.contact.findMany({
+      where: { id: { in: rows.map(r => r.contactId) } },
+      select: {
+        id: true, email: true, notes: true,
+        targets: { select: { emailedAt: true, emails: { where: { direction: 'out', createdAt: { gt: at } }, select: { id: true }, take: 1 } } },
+      },
+    })
+    const byId = new Map(people.map(p => [p.id, p]))
+    const goes: typeof rows = []
+    const stays: Array<{ name: string; brandName: string; why: string }> = []
+    for (const r of rows) {
+      const p = byId.get(r.contactId)
+      if (!p) { stays.push({ name: r.name, brandName: r.brandName, why: 'no longer on file' }); continue }
+      if (cleanFoundEmail(p.email) !== cleanFoundEmail(r.email)) { stays.push({ name: r.name, brandName: r.brandName, why: 'their email was changed since' }); continue }
+      if (p.targets.some(t => (t.emailedAt && t.emailedAt > at) || t.emails.length)) { stays.push({ name: r.name, brandName: r.brandName, why: 'an email to them was drafted or sent since' }); continue }
+      goes.push(r)
+    }
+    const summary = { at: last.at, by: last.by ?? null, count: rows.length, goes: goes.map(g => ({ name: g.name, brandName: g.brandName, email: g.email })), stays }
+    if (!confirm) return { preview: true, ...summary }
+    let removed = 0
+    await prisma.$transaction(async tx => {
+      for (const g of goes) {
+        const p = byId.get(g.contactId)!
+        const r = await tx.contact.updateMany({ where: { id: g.contactId, email: p.email }, data: { email: null, notes: dropFoundNote(p.notes, g.note) } })
+        removed += r.count
+      }
+      await tx.setting.delete({ where: { key: FOUND_LAST_KEY } })
+    }, { maxWait: 10000, timeout: 55000 })
+    return { applied: true, removed, ...summary }
   },
 
   // ── Zach's tab (Leo, Nov 8 2026) ────────────────────────────────────────

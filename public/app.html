@@ -1657,6 +1657,39 @@
   .su-show{background:none;border:1px solid var(--border);color:var(--accent-hi);font:inherit;font-size:12.5px;border-radius:99px;padding:2px 10px;cursor:pointer;white-space:nowrap}
   .su-show:hover{border-color:var(--accent)}
   .su-show.on{background:var(--accent-soft);border-color:var(--accent)}
+  /* Outreach → Email: emails for the people who didn't answer on LinkedIn (Leo, Nov 16 2026; find-emails.ts) */
+  .fe-card{margin-top:18px;padding:16px 18px}
+  .fe-h{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:12px}
+  .fe-h b{font-size:16px}
+  .fe-dim{font-size:13px;color:var(--ink-3);line-height:1.5}
+  .fe-grid{display:grid;grid-template-columns:minmax(0,.7fr) minmax(0,.7fr) minmax(0,1.6fr);gap:12px}
+  @media (max-width:1100px){.fe-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.fe-steps{grid-column:1/-1}}
+  @media (max-width:640px){.fe-grid{grid-template-columns:minmax(0,1fr)}}
+  .fe-steps{display:flex;flex-direction:column;gap:9px;justify-content:center}
+  .fe-step{display:flex;gap:10px;align-items:center;font-size:13.5px;color:var(--ink-2);min-width:0}
+  .fe-step a{color:var(--accent-hi);white-space:nowrap}
+  .fe-num{flex:none;width:22px;height:22px;border-radius:50%;background:var(--accent-soft);color:#aac6ff;font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+  .fe-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0 6px}
+  .fe-days{font-size:13.5px;color:var(--ink-2);display:inline-flex;gap:6px;align-items:center;margin:0 6px}
+  .fe-days select{padding:5px 8px;font-size:13.5px;width:auto}
+  .fe-last{margin-top:8px;font-size:13.5px;color:var(--ink-2)}
+  .fe-pv{margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft)}
+  .fe-pvh{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px;font-size:14px}
+  .fe-warn{color:var(--warn);font-size:13.5px;margin:6px 0}
+  .fe-tablewrap{max-height:420px;overflow:auto;border:1px solid var(--border-soft);border-radius:10px;margin-top:8px}
+  .fe-table{width:100%;border-collapse:collapse;font-size:13.5px}
+  .fe-table th{position:sticky;top:0;z-index:1;background:var(--surface-2);text-align:left;font-size:12.5px;font-weight:600;color:var(--ink-3);padding:8px 10px;white-space:nowrap}
+  .fe-table td{padding:7px 10px;border-top:1px solid var(--border-soft);vertical-align:top;overflow-wrap:anywhere}
+  .fe-table td.fe-tk{width:34px}
+  .fe-table input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+  .fe-link{background:none;border:none;color:var(--ink-1);font:inherit;font-weight:600;cursor:pointer;padding:0;text-align:left}
+  .fe-link:hover{color:var(--accent-hi)}
+  .fe-ok{color:var(--good)} .fe-maybe{color:var(--warn)}
+  .fe-foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
+  .fe-card .btn-solid:disabled{opacity:.5;cursor:default}
+  .fe-skip{margin-top:10px;font-size:13.5px;color:var(--ink-2)}
+  .fe-skip summary{cursor:pointer}
+  .fe-skip li{margin:3px 0 3px 18px}
   .su-fill{margin-top:8px;padding-top:8px;border-top:1px solid var(--border-soft)}
   .su-fill-h{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ink-2);margin-bottom:2px}
   .su-floor.inp{width:58px;height:28px;padding:2px 6px;font-size:13px;min-height:0}
@@ -2902,6 +2935,8 @@
     <section class="view page" id="email-out">
       <div class="eyebrow">Outreach</div>
       <h1>Email outreach</h1>
+      <!-- Find emails for the people who didn't answer on LinkedIn (Leo, Nov 16 2026; fe*, src/lib/find-emails.ts) -->
+      <div id="fe-card"></div>
       <div id="email-box" style="margin-top:18px"></div>
     </section>
 
@@ -20301,6 +20336,315 @@ function lintDraft(subject, body) {
 }
 
 
+// ---- Emails for the people who didn't answer on LinkedIn -------------
+// Leo, Nov 16 2026: "start doing cold emails to all the brands that did not
+// accept us … how do we acquire their emails" → "how can i import all of the
+// brands that didn't accept/respond to us and put into hunter". A card on
+// Outreach → Email (FE / fe*, .fe- CSS; rules pure in src/lib/find-emails.ts).
+// noAnswerList = the people invited who never accepted (21+ days, or
+// withdrawn) or who accepted and went quiet, at brands nobody answered from —
+// Deals → Overview's own steps. Download = a .csv for Hunter's bulk Email
+// Finder (first name, last name, company, website + our id, which Hunter
+// hands back). Bring Hunter's file back = saveFoundEmails: every line shown
+// first, ticks, then Save fills only empty email fields. Undo names who
+// loses theirs first (undoFoundEmails). Nothing is emailed from here.
+var FE = { data: null, err: '', minDays: 21, on: { noaccept: true, quiet: true }, more: false, all: false, pv: null, csv: '', file: '', tick: {}, saving: false, note: '', stale: false };
+var FE_HEAD = ['First name', 'Last name', 'Company', 'Company website', 'SB brand', 'SB title', 'SB LinkedIn', 'SB id'];
+var FE_HUNTER = 'https://hunter.io/bulks/email-finder';
+var FE_SKIP = {
+  same: 'already saved', has: 'already have another email — left as it is', invalid: 'Hunter says the address doesn’t work',
+  bad: 'not an email address', unknown: 'not someone on the dashboard', stopped: 'said they don’t want to continue',
+  taken: 'the address is already someone else’s', twice: 'in the file twice'
+};
+
+function feShell() {
+  var box = document.getElementById('fe-card');
+  if (!box || box.firstChild) return box;
+  box.innerHTML = '<div class="panel fe-card">' +
+    '<div id="fe-top"></div>' +
+    '<input type="file" id="fe-file" accept=".csv,text/csv,text/plain" hidden>' +
+    '<div id="fe-pv"></div>' +
+    '<div id="fe-list"></div>' +
+  '</div>';
+  box.addEventListener('click', feOnClick);
+  box.addEventListener('change', feOnChange);
+  feRender();
+  return box;
+}
+
+function feLoad() {
+  if (!feShell()) return Promise.resolve();
+  var asked = FE.minDays;
+  return api('noAnswerList', { minDays: asked }).then(function (d) {
+    if (asked !== FE.minDays) return;
+    if (!d || !d.counts || !Array.isArray(d.people)) throw new Error('no answer');
+    FE.data = d; FE.err = '';
+    feRender();
+  }).catch(function (e) {
+    FE.err = e.message || 'Request failed';
+    feRender();
+  });
+}
+
+function feRows() {
+  return FE.data ? FE.data.people.filter(function (p) { return FE.on[p.group]; }) : [];
+}
+function feCsv(grid) {
+  var cell = function (v) { v = v == null ? '' : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  return grid.map(function (r) { return r.map(cell).join(','); }).join('\r\n') + '\r\n';
+}
+function feSaveFile(name, text) {
+  var a = document.createElement('a');
+  var url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+  a.href = url; a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function () { a.remove(); URL.revokeObjectURL(url); }, 1500);
+}
+function feWhy(g) { return g === 'quiet' ? 'Accepted, then no response' : 'Didn’t accept'; }
+
+function feRender() {
+  var top = document.getElementById('fe-top');
+  if (!top) return;
+  var d = FE.data;
+  var title = '<b>Emails for people who didn’t answer on LinkedIn</b>';
+  if (!d) {
+    top.innerHTML = '<div class="fe-h">' + title + '</div><div class="fe-dim">' +
+      (FE.err ? 'Couldn’t count them: ' + esc(FE.err) + ' <button class="su-show" data-fe="retry">Try again</button>' : 'Counting who didn’t answer…') + '</div>';
+    return;
+  }
+  var c = d.counts, rows = feRows();
+  var brands = {};
+  rows.forEach(function (r) { brands[r.brandId] = 1; });
+  var nb = Object.keys(brands).length;
+  var noDom = rows.filter(function (r) { return !r.domain; }).length;
+  var left = [
+    c.tooNew ? c.tooNew + ' invited less than ' + plural(d.minDays, 'day') + ' ago' : '',
+    c.noName ? c.noName + ' whose name LinkedIn cut short' : '',
+    c.emailed ? c.emailed + ' already emailed' : '',
+    c.waitingBrands ? plural(c.waitingBrands, 'brand') + ' where someone accepted and is still on Zach’s list' : '',
+    c.offBrands ? plural(c.offBrands, 'brand') + ' archived or marked do not email' : ''
+  ].filter(Boolean);
+  var chip = function (g, label, n) {
+    return '<button class="chip' + (FE.on[g] ? ' active' : '') + '" data-fe="group" data-g="' + g + '" aria-pressed="' + (FE.on[g] ? 'true' : 'false') + '">' + label + ' · ' + n + '</button>';
+  };
+  var days = [[21, '21 days ago'], [14, '14 days ago'], [7, '7 days ago'], [0, 'any time']].map(function (o) {
+    return '<option value="' + o[0] + '"' + (FE.minDays === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+  }).join('');
+  top.innerHTML =
+    '<div class="fe-h">' + title +
+      '<span class="fe-dim">Download the list, find their emails in Hunter, bring Hunter’s file back. Nothing is emailed from here.</span></div>' +
+    '<div class="fe-grid">' +
+      '<div class="su-tile"><div class="su-h">Need an email</div><div class="su-big" id="fe-need">' + rows.length + '<span>' + (rows.length === 1 ? ' person' : ' people') + '</span></div>' +
+        '<div class="su-sub">at ' + plural(nb, 'brand') + ' nobody answered from</div></div>' +
+      '<div class="su-tile"><div class="su-h">Already have an email</div><div class="su-big" id="fe-have">' + c.have + '<span>' + (c.have === 1 ? ' person' : ' people') + '</span></div>' +
+        '<div class="su-sub">never emailed' + (c.have ? ' · <button class="su-show" data-fe="ready">Download them</button>' : '') + '</div></div>' +
+      '<div class="su-tile fe-steps">' +
+        '<div class="fe-step"><span class="fe-num">1</span><button class="btn-solid" data-fe="download"' + (rows.length ? '' : ' disabled') + '>Download the list for Hunter (' + rows.length + ')</button></div>' +
+        '<div class="fe-step"><span class="fe-num">2</span><span>In Hunter: <b>Bulks → Email Finder</b>, upload it, then download the result. <a href="' + FE_HUNTER + '" target="_blank" rel="noopener">Open Hunter ↗</a></span></div>' +
+        '<div class="fe-step"><span class="fe-num">3</span><button class="btn-ghost" data-fe="pick">Bring Hunter’s file back…</button></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="fe-row">' +
+      chip('noaccept', 'Didn’t accept', c.noaccept) + chip('quiet', 'Accepted, then no response', c.quiet) +
+      '<label class="fe-days">Invite sent at least <select class="inp" id="fe-days">' + days + '</select></label>' +
+      (rows.length ? '<button class="su-show" data-fe="more">' + (FE.more ? 'Hide the list' : 'See who’s on it') + '</button>' : '') +
+    '</div>' +
+    (noDom ? '<div class="fe-dim">' + noDom + ' of them ' + (noDom === 1 ? 'has' : 'have') + ' no company website on file — Hunter looks ' + (noDom === 1 ? 'that one' : 'those') + ' up by company name.</div>' : '') +
+    (left.length ? '<div class="fe-dim" id="fe-left">Left out: ' + left.join(' · ') + '.</div>' : '') +
+    (d.last ? '<div class="fe-last" id="fe-last">Last file: ' + plural(d.last.count, 'email') + ' saved ' + shortDate(d.last.at) + (d.last.by ? ' by ' + esc(d.last.by) : '') +
+      ' · <button class="su-show" data-fe="undo">Undo</button></div>' : '');
+  feRenderList();
+  feRenderPv();
+}
+
+function feRenderList() {
+  var box = document.getElementById('fe-list');
+  if (!box) return;
+  var rows = feRows();
+  if (!FE.more || !rows.length) { box.innerHTML = ''; return; }
+  var cut = FE.all ? rows : rows.slice(0, 40);
+  box.innerHTML = '<div class="fe-tablewrap" data-scroll="fe-list"><table class="fe-table"><thead><tr>' +
+    '<th>Person</th><th>Brand</th><th>Hunter looks them up at</th><th>Why they’re here</th><th>Last step</th></tr></thead><tbody>' +
+    cut.map(function (r) {
+      return '<tr><td><button class="fe-link" data-brand="' + esc(r.brandId) + '" data-focus="' + esc(r.contactId) + '" title="Open ' + esc(r.brandName) + ' at ' + esc(r.name) + '">' + esc(r.name) + '</button>' +
+          (r.title ? '<div class="fe-dim">' + esc(r.title) + '</div>' : '') + '</td>' +
+        '<td>' + esc(r.brandName) + '</td>' +
+        '<td>' + (r.domain ? esc(r.domain) : esc(r.company) + ' <span class="fe-dim">(by name' + (r.parent && r.company === r.parent ? ' — its parent company' : '') + ')</span>') + '</td>' +
+        '<td>' + feWhy(r.group) + '</td>' +
+        '<td>' + (r.lastAt ? shortDate(r.lastAt) : '') + '</td></tr>';
+    }).join('') + '</tbody></table></div>' +
+    (rows.length > cut.length ? '<div class="fe-foot"><button class="su-show" data-fe="all">Show all ' + rows.length + '</button></div>' : '');
+}
+
+// Hunter's file, line by line, before anything is saved.
+function feRenderPv() {
+  var box = document.getElementById('fe-pv');
+  if (!box) return;
+  var p = FE.pv;
+  if (!p) { box.innerHTML = FE.note ? '<div class="fe-pv"><div class="fe-dim" id="fe-note">' + esc(FE.note) + '</div></div>' : ''; return; }
+  var save = p.lines.filter(function (l) { return l.action === 'save'; });
+  var skip = p.lines.filter(function (l) { return l.action !== 'save'; });
+  var unsure = save.filter(function (l) { return l.verdict === 'unverified'; }).length;
+  var why = {}, order = [];
+  skip.forEach(function (l) { var k = FE_SKIP[l.action] || l.why; if (!why[k]) { why[k] = []; order.push(k); } why[k].push(l); });
+  box.innerHTML = '<div class="fe-pv">' +
+    '<div class="fe-pvh"><b>' + esc(FE.file || 'Hunter’s file') + '</b><span class="fe-dim">' + plural(p.rows, 'row') + ' · ' + p.lines.length + ' with an email' +
+      (p.notFound ? ' · ' + p.notFound + ' Hunter found nothing for' : '') + '</span></div>' +
+    (FE.stale ? '<div class="fe-warn">Something changed since you looked — this is how it stands now. Check it and save again.</div>' : '') +
+    (!p.cols.id ? '<div class="fe-warn">This file doesn’t have the “SB id” column, so people are matched by name and brand — check them.</div>' : '') +
+    (save.length && !p.cols.status ? '<div class="fe-warn">This file doesn’t say which addresses are verified.</div>' : '') +
+    (unsure ? '<div class="fe-warn">' + unsure + ' not verified by Hunter ' + (unsure === 1 ? 'is' : 'are') + ' unticked — a wrong address bounces. Tick the ones you trust.</div>' : '') +
+    (save.length
+      ? '<div class="fe-tablewrap" data-scroll="fe-pv"><table class="fe-table"><thead><tr><th></th><th>Person</th><th>Brand</th><th>Email to save</th><th>Hunter says</th></tr></thead><tbody>' +
+        save.map(function (l) {
+          return '<tr><td class="fe-tk"><input type="checkbox" data-fetick="' + esc(l.contactId) + '"' + (FE.tick[l.contactId] ? ' checked' : '') + ' aria-label="Save ' + esc(l.name) + '’s email"></td>' +
+            '<td>' + esc(l.name) + '</td><td>' + esc(l.brandName) + '</td><td>' + esc(l.email) + '</td>' +
+            '<td class="' + (l.verdict === 'valid' ? 'fe-ok' : 'fe-maybe') + '">' + esc(l.why) + (l.score != null ? ' · ' + l.score : '') + '</td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : '<div class="fe-dim">Nothing in this file to save.</div>') +
+    (skip.length
+      ? '<details class="fe-skip"><summary>' + skip.length + ' left as ' + (skip.length === 1 ? 'it is' : 'they are') + ' — ' +
+          order.map(function (k) { return why[k].length + ' ' + esc(k); }).join(' · ') + '</summary><ul>' +
+          skip.map(function (l) { return '<li>' + esc(l.name || '(no name)') + (l.brandName ? ' · ' + esc(l.brandName) : '') + ' — ' + esc(l.email) + ' <span class="fe-dim">' + esc(l.why) + '</span></li>'; }).join('') +
+        '</ul></details>'
+      : '') +
+    '<div class="fe-foot">' +
+      '<button class="btn-solid" data-fe="save" id="fe-save"></button>' +
+      (unsure ? '<button class="su-show" data-fe="tickall">Tick all</button><button class="su-show" data-fe="tickok">Only verified</button>' : '') +
+      '<button class="btn-ghost" data-fe="cancel">Cancel</button>' +
+      '<span class="fe-dim">Only empty email fields are filled. Undo takes them back out.</span>' +
+    '</div>' +
+  '</div>';
+  feSyncSave();
+}
+function feTicked() {
+  return FE.pv ? FE.pv.lines.filter(function (l) { return l.action === 'save' && FE.tick[l.contactId]; }).map(function (l) { return l.contactId; }) : [];
+}
+function feSyncSave() {
+  var b = document.getElementById('fe-save');
+  if (!b) return;
+  var n = feTicked().length;
+  b.textContent = FE.saving ? 'Saving…' : 'Save ' + plural(n, 'email');
+  b.disabled = FE.saving || !n;
+}
+
+// A file chosen: read it here, ask what it would save (nothing is written).
+function feTakeFile(file) {
+  if (!file) return;
+  if (file.size > 4 * 1024 * 1024) { toast('That file is too big — choose the .csv Hunter gave back'); return; }
+  var rd = new FileReader();
+  rd.onload = function () {
+    FE.csv = String(rd.result || ''); FE.file = file.name; FE.note = ''; FE.stale = false;
+    fePreview(true);
+  };
+  rd.onerror = function () { toast('Couldn’t read that file'); };
+  rd.readAsText(file);
+}
+function fePreview(fresh) {
+  return api('saveFoundEmails', { csv: FE.csv }).then(function (p) {
+    FE.pv = p;
+    // Ticks: the preview's own on a new file; Leo's kept when it's shown again.
+    var tick = {};
+    p.lines.forEach(function (l) { if (l.action === 'save') tick[l.contactId] = fresh || FE.tick[l.contactId] == null ? l.tick : FE.tick[l.contactId]; });
+    FE.tick = tick;
+    feRenderPv();
+  }).catch(function (e) {
+    FE.pv = null; FE.csv = ''; FE.note = e.message || 'Couldn’t read that file';
+    feRenderPv();
+  });
+}
+function feSave() {
+  var ids = feTicked();
+  if (!ids.length || FE.saving) return;
+  FE.saving = true; feSyncSave();
+  api('saveFoundEmails', { csv: FE.csv, ids: ids, confirm: true, expect: FE.pv.expect }).then(function (r) {
+    FE.saving = false;
+    if (r.stale) {
+      FE.stale = true; FE.pv = r;
+      var tick = {};
+      r.lines.forEach(function (l) { if (l.action === 'save') tick[l.contactId] = FE.tick[l.contactId] == null ? false : FE.tick[l.contactId]; });
+      FE.tick = tick;
+      feRenderPv();
+      return;
+    }
+    FE.pv = null; FE.csv = ''; FE.stale = false;
+    FE.note = 'Saved ' + plural(r.saved, 'email') + ' at ' + plural(r.brands, 'brand') + (r.skipped ? ' · ' + r.skipped + ' already had one by then' : '') + '.';
+    toast('Saved ' + plural(r.saved, 'email'));
+    feRenderPv();
+    feLoad();
+  }).catch(function (e) { FE.saving = false; feSyncSave(); toast(e.message || 'Couldn’t save'); });
+}
+// Undo the last file: who loses their address is named first.
+function feUndo() {
+  api('undoFoundEmails').then(function (p) {
+    var names = p.goes.slice(0, 12).map(function (g) { return '• ' + g.name + ' (' + g.brandName + ')'; });
+    if (p.goes.length > 12) names.push('…and ' + (p.goes.length - 12) + ' more');
+    var keep = p.stays.length ? '\n\n' + plural(p.stays.length, 'person keeps', 'people keep') + ' theirs (changed, or emailed since).' : '';
+    var ask = p.goes.length
+      ? 'Take back ' + plural(p.goes.length, 'email') + ' saved ' + shortDate(p.at) + '?\n\n' + names.join('\n') + keep
+      : 'Nothing to take back — every address from that file was changed or used since. Forget the file?';
+    if (!confirm(ask)) return;
+    return api('undoFoundEmails', { confirm: true }).then(function (r) {
+      FE.note = r.removed ? 'Took back ' + plural(r.removed, 'email') + '.' : '';
+      toast(r.removed ? 'Took back ' + plural(r.removed, 'email') : 'Done');
+      feRenderPv();
+      feLoad();
+    });
+  }).catch(function (e) { toast(e.message || 'Couldn’t undo'); });
+}
+
+function feOnClick(e) {
+  var t = e.target.closest('[data-fe], [data-brand]');
+  if (!t) return;
+  var a = t.getAttribute('data-fe');
+  if (!a) { loadBrand(t.getAttribute('data-brand'), t.getAttribute('data-focus') || null); return; }
+  var d = FE.data;
+  if (a === 'retry') { feLoad(); return; }
+  if (a === 'group') {
+    var g = t.getAttribute('data-g');
+    FE.on[g] = !FE.on[g];
+    if (!FE.on.noaccept && !FE.on.quiet) FE.on[g === 'quiet' ? 'noaccept' : 'quiet'] = true;   // never both off
+    feRender();
+    return;
+  }
+  if (a === 'more') { FE.more = !FE.more; FE.all = false; feRender(); return; }
+  if (a === 'all') { FE.all = true; feRenderList(); return; }
+  if (a === 'download' && d) {
+    var rows = feRows();
+    if (!rows.length) return;
+    feSaveFile('sb-need-emails-' + d.today + '.csv', feCsv([FE_HEAD].concat(rows.map(function (r) {
+      return [r.first, r.last, r.company, r.domain || '', r.brandName, r.title || '', r.linkedinUrl || '', r.contactId];
+    }))));
+    toast('Downloaded ' + plural(rows.length, 'person', 'people') + ' — upload it in Hunter');
+    return;
+  }
+  if (a === 'ready' && d) {
+    feSaveFile('sb-have-emails-' + d.today + '.csv', feCsv([['First name', 'Last name', 'Email', 'Brand', 'Title', 'LinkedIn', 'Why']].concat(d.ready.map(function (r) {
+      return [r.first || r.name, r.last, r.email, r.brandName, r.title || '', r.linkedinUrl || '', feWhy(r.group)];
+    }))));
+    return;
+  }
+  if (a === 'pick') { document.getElementById('fe-file').click(); return; }
+  if (a === 'save') { feSave(); return; }
+  if (a === 'cancel') { FE.pv = null; FE.csv = ''; FE.note = ''; FE.stale = false; feRenderPv(); return; }
+  if (a === 'tickall' || a === 'tickok') {
+    FE.pv.lines.forEach(function (l) { if (l.action === 'save') FE.tick[l.contactId] = a === 'tickall' ? true : l.verdict !== 'unverified'; });
+    feRenderPv();
+    return;
+  }
+  if (a === 'undo') { feUndo(); return; }
+}
+function feOnChange(e) {
+  var t = e.target;
+  // The box is emptied once read, so choosing the same file again still counts as a choice.
+  if (t.id === 'fe-file') { var file = t.files && t.files[0]; feTakeFile(file); t.value = ''; return; }
+  if (t.id === 'fe-days') { FE.minDays = Number(t.value) || 0; FE.all = false; feLoad(); return; }
+  var id = t.getAttribute && t.getAttribute('data-fetick');
+  if (id) { FE.tick[id] = t.checked; feSyncSave(); }
+}
+
+
 // The Email tab — its own view, fully separate from the LinkedIn queue.
 // Draft cards opened by hand (by id): a change to To / CC or Suggest
 // angle refreshes the tab, and the draft stays open under the cursor.
@@ -20310,6 +20654,7 @@ function loadEmailOutreach() {
   var again = showView('email-out');
   var box = document.getElementById('email-box');
   if (!again) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  feLoad();
   return renderEmailMode(box, again);
 }
 
