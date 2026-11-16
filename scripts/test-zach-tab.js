@@ -178,7 +178,7 @@ async function main() {
 
   // 1. The tab
   const tabs = await page.$$eval('.tabs.cc-only:not(#sub-tabs) .nav-item', (els) => els.map((e) => e.textContent));
-  assert.deepEqual(tabs, ['Home', 'Deals', 'Brands', 'Outreach', 'Show Board', 'Audience', 'Operations'], 'one Deals tab; no Zach, In talks or Elizabeth');
+  assert.deepEqual(tabs, ['Home', 'Deals', 'Brands', 'Outreach', 'Email', 'Show Board', 'Audience', 'Operations'], 'one Deals tab; no Zach, In talks or Elizabeth');
   await open();
   assert.equal(await active(), 'zachtab');
   assert.ok(calls.some((c) => c.fn === 'zachOverview'));

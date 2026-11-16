@@ -135,7 +135,7 @@ async function main() {
   S.connected = false;
   await page.goto(base + '/app.html');
   await page.waitForFunction(() => typeof window.loadInstantly === 'function');
-  // Its own sub-tab under Outreach; the Email tab points to it.
+  // Its own sub-tab under the Email top tab; the Email sub-tab points to it.
   await page.evaluate(() => gotoView('email-out'));
   await page.waitForSelector('#ins-open');
   assert.equal(await page.$('#email-out #ins-card'), null, 'the card is no longer on the Email tab');
@@ -143,7 +143,7 @@ async function main() {
   await page.waitForFunction(() => document.querySelector('.view.active') && document.querySelector('.view.active').id === 'instantly');
   assert.equal(await text('.nav-item.active[data-view="instantly"]'), 'Instantly', 'a sub-tab named Instantly, lit');
   assert.equal(await text('#instantly h1'), 'Instantly');
-  ok('Instantly is its own tab under Outreach; the Email tab keeps a one-line pointer to it');
+  ok('Instantly is its own tab under Email; the Email sub-tab keeps a one-line pointer to it');
 
   await page.waitForSelector('#ins-need');
   const need = await text('#ins-need');

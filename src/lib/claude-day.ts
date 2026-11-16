@@ -101,6 +101,7 @@ export function actionText(fn: string, args: any, result: any): string | null {
       return bits.length ? `Synced with Instantly: ${bits.join(', ')}` : null
     }
     case 'setCategoryPriority': return 'Changed the category priority'
+    case 'saveEmailTemplate': return a.reset ? `Put the ${s(a.key)} email template back to its default` : `Saved the ${s(a.key)} email template`
     case 'liPageRetry': return `Sent ${brand || 'a brand'} back to the LinkedIn fill`
     case 'addDiscoveredBulk': return `Added ${plural(Number(r.added) || 0, 'brand')} from Discover`
     case 'addDiscoveredBrand': return 'Added a brand from Discover'

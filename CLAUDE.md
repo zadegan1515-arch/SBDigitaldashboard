@@ -33,7 +33,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - `public/app.html` — the whole UI. Top nav is seven groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
   `showView`): Home · **Deals** (Overview / In talks / Deals board / Sponsorships — below; Leo, Nov 8 2026: "combine the Zach
   tab and the In talks tab … get rid of the Elizabeth tab … combine the Deals tab") · Brands (All brands / Recently added / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
-  Week plan / Schedule / Email / Instantly / People / Archived / Email stats) ·
+  Week plan / Schedule / People / Archived / Email stats) · **Email** (Email / Instantly / Templates — below; where these
+  notes say "Outreach → Email" or "Outreach → Instantly", read Email → …) ·
   **Show Board** (Overview = code lookup (`boardCodeLookup`: the whole roster by name / aka, people and archived too — it used to filter listBrands' first 500; `test-board-lookup.js`) + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
   exact NY times and time on board; **every** board open is logged, gate on or off (anonymous = "Visitor") / **Board codes** (was "In talks" until the In talks tab; view id still `talks`, `listTalks`) = per-brand engagement cards (code, viewers, opens, timed minutes
@@ -1194,6 +1195,21 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Tests: `node scripts/test-instantly.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-instantly.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-instantly-e2e.js` (real handlers and webhook route,
   a signed-in session, a fake Instantly).
+- **Email — its own top tab, and Templates** (Leo, Nov 16 2026: "keep the Outreach tab but then I want a tab that says
+  Email … put the Email and Instantly tabs there … a Template tab under the Email tab with templates and I want you to
+  separate by category"). Top tab after Outreach (`data-view="email-out"`, `SUBTABS['email-out']` = Email (`#email-out`) ·
+  Instantly (`#instantly`) · Templates (`#templates`)); Outreach keeps LinkedIn / Results / Week plan / Schedule / People /
+  Archived / Email stats. **Templates** (`TPL` / `tpl*` in app.html, `.tpl-` CSS; rules pure in
+  `src/lib/email-templates.ts`): a row per template — **Every category** (First email = Leo's intro word for word, Follow-up,
+  Last follow-up), then **one first email per category** under Top → Skip priority (the intro plus that category's angle
+  line, `CATEGORY_ANGLES` in email.ts; a category with none gets the general one) — and a find box. A row opens its editor,
+  one at a time: subject, body, a preview filled in for a sample person, **Save**, **Copy**, **Copy for Instantly**
+  ((NAME) → `{{firstName}}`, (BRAND) → `{{companyName}}`), Discard changes, **Back to the standard text** (its confirm quotes
+  what goes). `listEmailTemplates` (read) / `saveEmailTemplate({ key: 'intro' | 'followup' | 'final' | 'cat:<category>',
+  subject, body } | { key, reset })` — Setting `emailTemplates` holds only Leo's own versions (advisory-locked; text equal to
+  the standard is no version of his own); a save is a ClaudeAction. Typed text survives a redraw (`TPL.drafts`). **A library
+  only**: nothing sends or drafts from it, and the email machine's intro drafts (`introEmail`) and Instantly's campaigns
+  don't read it yet. Tests: `node scripts/test-email-templates.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-templates.js`.
 - **Brands → Stock take** (`brandStock` + `src/lib/stock.ts`; deep link `app.html#stock`; linked from
   Home → Categories) — the whole roster in one read, every brand in exactly one row. **Leo's lanes are
   real categories** (his yes, Sep 2026): `electrolytes`, `energy`, `rtd` (beer/seltzers/canned

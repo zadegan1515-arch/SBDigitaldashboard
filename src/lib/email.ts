@@ -238,7 +238,7 @@ export function templateFollowup2(t: any, intro: any): { subject: string; body: 
 }
 
 // Per-category angles for the ✦ suggestion box — {brand} gets substituted.
-const CATEGORY_ANGLES: Record<string, { tip: string; insert: string }> = {
+export const CATEGORY_ANGLES: Record<string, { tip: string; insert: string }> = {
   electrolytes: { tip: 'Hydration around long show nights is the native use case — pitch sampling at the doors and in the lines.', insert: 'Long nights on their feet are exactly when students reach for hydration — {brand} sampling at the doors puts product in hand right when it matters.' },
   energy:    { tip: 'Sampling is the natural play — cold cans in hands at peak energy is exactly what energy brands buy.', insert: 'Concerts are a natural sampling moment for {brand} — thousands of students with a cold can in hand at peak energy, plus all the content that follows.' },
   rtd:       { tip: 'Lead with compliant 21+ sampling — the compliance angle is usually their first question.', insert: 'Our 21+ events give {brand} a compliant way to put cans in hands in exactly the setting where trial converts.' },
@@ -261,7 +261,7 @@ const CATEGORY_ANGLES: Record<string, { tip: string; insert: string }> = {
   nightlife: { tip: 'They live in this exact culture — pitch co-branded moments, not just logos.', insert: '{brand} lives in exactly this culture — a co-branded moment inside the show would feel native, not sponsored.' },
   entertainment: { tip: 'Cross-promotion to a captive Gen Z audience is the pitch — trailers, activations, talent moments.', insert: 'Our shows put {brand} in front of a captive Gen Z audience at full attention — perfect for a launch or cross-promotion moment.' },
 }
-const DEFAULT_ANGLE = { tip: 'Make the first idea concrete — name the one thing this brand wants from students (trial, signups, or content) and pitch that.', insert: 'We\u2019d come with concrete ideas for how {brand} shows up — sampling, signage, or seeded product — matched to what you\u2019re trying to grow this year.' }
+export const DEFAULT_ANGLE = { tip: 'Make the first idea concrete — name the one thing this brand wants from students (trial, signups, or content) and pitch that.', insert: 'We\u2019d come with concrete ideas for how {brand} shows up — sampling, signage, or seeded product — matched to what you\u2019re trying to grow this year.' }
 
 function templateSuggestion(t: any): string {
   const a = CATEGORY_ANGLES[t.brand.category ?? ''] ?? DEFAULT_ANGLE
