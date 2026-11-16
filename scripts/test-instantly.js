@@ -1,6 +1,7 @@
-// scripts/test-instantly.js — Outreach → Email's "Send them through Instantly"
-// card (Leo, Nov 16 2026; src/lib/instantly.ts) in Chromium against a fake
-// /api/data: not connected (the steps to connect, the key's name, never a
+// scripts/test-instantly.js — Outreach → Instantly, its own tab (Leo, Nov 16
+// 2026: "make this its own tab and make it all cleaner"; src/lib/instantly.ts)
+// in Chromium against a fake /api/data: the sub-tab and the pointer on the
+// Email tab, not connected (the steps to connect, the key's name, never a
 // box to type it in), picking the campaign, Review & send (everyone named,
 // unverified unticked, the confirm says whether the campaign is running,
 // Send sends only the ticked), a stale answer shown again with the ticks
@@ -125,15 +126,25 @@ async function main() {
   const calls = (fn) => S.calls.filter((c) => c.fn === fn);
   const text = (sel) => page.$eval(sel, (el) => el.textContent.replace(/\s+/g, ' ').trim());
   const wait = (ms) => new Promise((r) => setTimeout(r, ms || 250));
-  const open = async () => { await page.evaluate(() => loadEmailOutreach()); await wait(350); };
+  const open = async () => { await page.evaluate(() => loadInstantly()); await wait(350); };
+  const reads = (sel, v) => page.waitForFunction(([q, want]) => { const el = document.querySelector(q); return !!el && el.textContent.replace(/\s+/g, ' ').trim() === want; }, [sel, v]);
   let n = 0;
   const ok = (name) => { n++; console.log('  ok — ' + name); };
 
   // ---- not connected ----
   S.connected = false;
   await page.goto(base + '/app.html');
-  await page.waitForFunction(() => typeof window.loadEmailOutreach === 'function');
+  await page.waitForFunction(() => typeof window.loadInstantly === 'function');
+  // Its own sub-tab under Outreach; the Email tab points to it.
   await page.evaluate(() => gotoView('email-out'));
+  await page.waitForSelector('#ins-open');
+  assert.equal(await page.$('#email-out #ins-card'), null, 'the card is no longer on the Email tab');
+  await page.click('#ins-open');
+  await page.waitForFunction(() => document.querySelector('.view.active') && document.querySelector('.view.active').id === 'instantly');
+  assert.equal(await text('.nav-item.active[data-view="instantly"]'), 'Instantly', 'a sub-tab named Instantly, lit');
+  assert.equal(await text('#instantly h1'), 'Instantly');
+  ok('Instantly is its own tab under Outreach; the Email tab keeps a one-line pointer to it');
+
   await page.waitForSelector('#ins-need');
   const need = await text('#ins-need');
   assert.match(need, /Create API Key/);
@@ -150,9 +161,10 @@ async function main() {
   await open();
   await page.waitForSelector('#ins-pick');
   assert.deepEqual(await page.$$eval('#ins-pick option', (els) => els.map((o) => o.textContent)), ['Pick a campaign…', 'Cold — no answer · Active', 'Not started · Paused']);
-  assert.equal(await text('#ins-ready'), '4');
+  await reads('#ins-ready', '4');
   assert.equal(await page.$('[data-ins="review"]'), null, 'no Review button before a campaign is picked');
   assert.match(await text('.ins-go .su-sub'), /pick a campaign first/);
+  assert.deepEqual(calls('sendToInstantly').pop().args, { perBrand: 3 }, 'the count is the send list’s own (a preview)');
   assert.deepEqual(calls('instantlyStatus').pop().args, { live: true });
   ok('connected: its campaigns in a menu with their status; nothing can be sent before one is picked');
 
@@ -228,9 +240,9 @@ async function main() {
   assert.match(await text('#ins-note'), /1 Instantly wouldn’t take .*Kat Blocked/);
   assert.match(await text('#ins-note'), /23998 lead uploads left/);
   assert.equal(await text('#ins-waiting'), '2');
-  assert.equal(await text('#ins-ready'), '2');
-  assert.match(await text('#ins-last'), /Last sent: 2 people to “Cold — no answer”.*by Leo.*Undo \(2 not emailed yet\)/);
-  assert.equal(await text('#fe-have'), '2 people', 'the Hunter card’s count follows');
+  await reads('#ins-ready', '2');
+  assert.match(await text('#ins-last'), /Last sent: 2 people to “Cold — no answer”.*by Leo/);
+  assert.equal(await text('.ins-foot [data-ins="undo"]'), 'Undo (2 not emailed yet)');
   ok('Send sends exactly the ticked people; the card says what went, what Instantly refused, and counts them');
 
   // ---- an error on send is said, nothing lost ----
@@ -260,26 +272,29 @@ async function main() {
   assert.equal(calls('undoSendToInstantly').filter((c) => c.args.confirm).length, 1);
   assert.match(await text('#ins-note'), /Took 1 person back out of Instantly/);
   assert.equal(await text('#ins-waiting'), '1');
-  assert.equal(await text('#ins-ready'), '3');
+  await reads('#ins-ready', '3');
   ok('Undo names who comes back out and who stays before it takes anyone out');
 
   // ---- sync now, and who replied ----
   const before = calls('instantlySync').length;
   await page.click('[data-ins="sync"]');
-  await page.waitForSelector('#ins-people details');
+  await page.waitForSelector('#ins-backlist');
   assert.equal(calls('instantlySync').length, before + 1);
   assert.equal(await text('#ins-replied'), '1');
   assert.equal(await text('#ins-unsub'), '1');
   assert.match(await text('#ins-syncline'), /Last read/);
-  assert.deepEqual(await page.$$eval('#ins-people summary', (els) => els.map((e) => e.textContent)), ['Replied · 1', 'Unsubscribed · 1']);
-  await page.click('#ins-people details[data-insfold="replied"] summary');
+  assert.deepEqual(await page.$$eval('#ins-people .chip', (els) => els.map((e) => [e.textContent, e.classList.contains('active')])), [['Replied · 1', true], ['Unsubscribed · 1', false]]);
+  assert.deepEqual(await page.$$eval('#ins-backlist tbody tr', (rows) => rows.map((r) => r.cells[0].firstChild.textContent)), ['Hana Ito']);
+  await page.click('#ins-people .chip[data-s="unsubscribed"]');
+  assert.deepEqual(await page.$$eval('#ins-backlist tbody tr', (rows) => rows.map((r) => r.cells[0].firstChild.textContent)), ['Una Sub']);
+  await page.click('#ins-people .chip[data-s="replied"]');
   await page.click('#ins-people [data-brand="b3"]');
-  await page.waitForFunction(() => document.querySelector('.view.active') && document.querySelector('.view.active').id !== 'email-out');
+  await page.waitForFunction(() => document.querySelector('.view.active') && document.querySelector('.view.active').id !== 'instantly');
   assert.deepEqual(calls('getBrand').pop().args.id || calls('getBrand').pop().args.brandId, 'b3');
-  ok('Sync now reads Instantly; who replied or unsubscribed is listed, and a name opens their brand page');
+  ok('Sync now reads Instantly; who replied or unsubscribed is one list with a chip each, and a name opens their brand page');
 
   // ---- opening the tab syncs by itself, at most every ten minutes ----
-  await page.evaluate(() => gotoView('email-out'));
+  await page.evaluate(() => gotoView('instantly'));
   await wait(400);
   const auto = calls('instantlySync').length;
   await open();

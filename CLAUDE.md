@@ -33,7 +33,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - `public/app.html` — the whole UI. Top nav is seven groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
   `showView`): Home · **Deals** (Overview / In talks / Deals board / Sponsorships — below; Leo, Nov 8 2026: "combine the Zach
   tab and the In talks tab … get rid of the Elizabeth tab … combine the Deals tab") · Brands (All brands / Recently added / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
-  Week plan / Schedule / Email / People / Archived / Email stats) ·
+  Week plan / Schedule / Email / Instantly / People / Archived / Email stats) ·
   **Show Board** (Overview = code lookup (`boardCodeLookup`: the whole roster by name / aka, people and archived too — it used to filter listBrands' first 500; `test-board-lookup.js`) + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
   exact NY times and time on board; **every** board open is logged, gate on or off (anonymous = "Visitor") / **Board codes** (was "In talks" until the In talks tab; view id still `talks`, `listTalks`) = per-brand engagement cards (code, viewers, opens, timed minutes
@@ -1133,9 +1133,17 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   call); `test-instantly-e2e.js` holds both. A new group on this list must be decided there too.
   Tests: `node scripts/test-find-emails.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-find-emails.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-find-emails-e2e.js`.
-- **Outreach → Email: Send them through Instantly** (Leo, Nov 16 2026: "I want to get the emails from Hunter, connect
-  that to Instantly, and run cold outreach through Instantly", then "lets build it connected now"). The card under the
-  Hunter one (`#ins-card`, `INS` / `ins*` in app.html, `.ins-` CSS). Rules pure in `src/lib/instantly.ts`
+- **Outreach → Instantly** (Leo, Nov 16 2026: "I want to get the emails from Hunter, connect that to Instantly, and run
+  cold outreach through Instantly", then "lets build it connected now", then — once it showed on the Email tab — "make
+  this its own tab and make it all cleaner"). Its own Outreach sub-tab after Email (view `instantly`, `loadInstantly`,
+  `#ins-card`, `INS` / `ins*` in app.html, `.ins-` CSS); the Email tab keeps a one-line pointer (`#ins-link`, **Open
+  Instantly →**). The page, top to bottom: the heading with **Live updates** on / off and **↻ Sync now** on its right
+  (`#ins-syncline`) → **Campaign** (the menu, its status pill, what that means, settings worth a look as a list) → six
+  tiles (**Ready to send** with Review & send… — its count is the send list's own, `insPlanLoad` = a `sendToInstantly`
+  preview, never the Hunter card's — then In Instantly · Emailed · Replied · Bounced · Unsubscribed) → Last sent · Undo →
+  **Review & send** (a panel, when open) → **What came back** (one table, a chip per kind: Replied · Unsubscribed ·
+  Bounced · Taken out; a name opens the brand page at them). A tick or a chip never redraws the list (`insSyncSend`,
+  `insSyncBoxes`). Rules pure in `src/lib/instantly.ts`
   (`node scripts/test-instantly.mjs`), the API calls in `src/lib/instantly-api.ts` (Instantly API v2,
   developer.instantly.ai — read Nov 16 2026; Bearer `INSTANTLY_API_KEY`; `INSTANTLY_API_URL` points it at the tests' fake),
   the database side in `src/lib/instantly-db.ts` (shared by /api/data, the webhook route and the cron). **The dashboard is
@@ -1181,7 +1189,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   drafts or follows up for anyone handed over, and its cap and stats never count an Instantly email (`via: null` /
   `instantly: { is: null }` in email.ts). `setInstantlyCampaign` = the menu (Setting `instantlyCampaign`); the card flags
   campaign settings worth a look (`campaignView.warn`: stop on reply off, tracking on, no inbox, no email written, over 30
-  a day an inbox). Not connected, the card is the steps (the key's scopes: `KEY_SCOPES`). **Unverified against a real
+  a day an inbox). Not connected, the page is the steps (the key's scopes: `KEY_SCOPES`). **Unverified against a real
   Instantly account until Leo's first send** — built from its docs and tested against a fake that speaks its paths.
   Tests: `node scripts/test-instantly.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-instantly.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-instantly-e2e.js` (real handlers and webhook route,

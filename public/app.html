@@ -1698,25 +1698,49 @@
   .fe-skip{margin-top:10px;font-size:13.5px;color:var(--ink-2)}
   .fe-skip summary{cursor:pointer}
   .fe-skip li{margin:3px 0 3px 18px}
-  /* Instantly's card (ins*) — the Hunter card's pieces, plus these. */
-  .ins-tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
-  @media (max-width:1100px){.ins-tiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
-  @media (max-width:640px){.ins-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  .ins-tiles .su-big{font-size:26px}
-  .ins-tiles .su-sub{margin-bottom:0}
-  .ins-go .su-big{color:var(--good)}
-  .ins-line{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap;font-size:13.5px;color:var(--ink-2);margin:10px 0 0}
-  .ins-line select{padding:5px 8px;font-size:13.5px;width:auto;max-width:100%}
-  .ins-line b{color:var(--ink-1)}
-  .ins-pill{display:inline-block;border-radius:99px;padding:1px 9px;font-size:12.5px;font-weight:600;background:var(--surface-2);border:1px solid var(--border)}
-  .ins-pill.on{color:var(--good);border-color:var(--good)}
-  .ins-pill.off{color:var(--warn);border-color:var(--warn)}
-  .ins-need{font-size:14px;color:var(--ink-2);line-height:1.6;margin:4px 0 0}
-  .ins-need ol{margin:6px 0 0 20px;padding:0}
-  .ins-need li{margin:4px 0}
+  /* Outreach → Instantly (ins*): its own page. Reuses the Hunter card's table and tile pieces. */
+  .ins-linkbar{margin-top:18px;padding:12px 18px;display:flex;gap:12px 16px;align-items:center;justify-content:space-between;flex-wrap:wrap;font-size:14px;color:var(--ink-2)}
+  .ins-linkbar b{color:var(--ink-1)}
+  .ins-head{display:flex;gap:14px 24px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;margin-bottom:22px}
+  .ins-sub{font-size:15px;color:var(--ink-2);margin-top:8px}
+  .ins-headr{display:flex;gap:8px 10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+  .ins-headr .fe-dim{flex-basis:100%;text-align:right}
+  @media (max-width:820px){.ins-headr{justify-content:flex-start}.ins-headr .fe-dim{text-align:left}}
+  .ins-sec{padding:18px 20px;margin-top:14px;overflow:visible}
+  .ins-sech{font-size:12.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px}
+  .ins-camp{display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap;font-size:14.5px;color:var(--ink-2)}
+  .ins-camp select{padding:8px 10px;font-size:14.5px;width:auto;min-width:240px;max-width:100%}
+  .ins-pill{display:inline-flex;align-items:center;gap:6px;border-radius:99px;padding:3px 11px;font-size:13px;font-weight:600;background:var(--surface-2);border:1px solid var(--border);white-space:nowrap}
+  .ins-pill:before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+  .ins-pill.on{color:var(--good);border-color:rgba(62,207,142,.45)}
+  .ins-pill.off{color:var(--warn);border-color:rgba(232,182,76,.45)}
+  .ins-warns{margin:12px 0 0;padding:0;list-style:none;font-size:13.5px;color:var(--warn)}
+  .ins-warns li{margin:4px 0;padding-left:18px;position:relative}
+  .ins-warns li:before{content:"!";position:absolute;left:2px;font-weight:800}
+  .ins-tiles{display:grid;grid-template-columns:minmax(0,1.7fr) repeat(5,minmax(0,1fr));gap:12px;margin-top:14px}
+  @media (max-width:1180px){.ins-tiles{grid-template-columns:repeat(3,minmax(0,1fr))}.ins-go{grid-column:1/-1}}
+  @media (max-width:640px){.ins-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.ins-tiles .su-tile:last-child{grid-column:1/-1}}
+  .ins-tiles .su-tile{padding:16px 18px;background:var(--surface-1);border-color:var(--border)}
+  .ins-tiles .su-big{font-size:34px}
+  .ins-tiles .su-sub{margin:4px 0 0;font-size:13.5px}
+  .ins-go{display:flex;gap:10px 18px;align-items:center;justify-content:space-between;flex-wrap:wrap;border-color:rgba(79,131,247,.45) !important;background:var(--accent-soft) !important}
+  .ins-go .su-big{color:var(--ink-1)}
+  .ins-go .btn-solid{padding:11px 20px;font-size:14.5px}
+  .ins-go .btn-solid:disabled{opacity:.5;cursor:default}
+  .ins-foot{display:flex;gap:8px 14px;align-items:center;flex-wrap:wrap;font-size:13.5px;color:var(--ink-2);margin-top:14px}
+  .ins-need{font-size:15px;color:var(--ink-2);line-height:1.65}
+  .ins-need ol{margin:8px 0 0 20px;padding:0}
+  .ins-need li{margin:6px 0}
   .ins-need code{background:var(--surface-2);border:1px solid var(--border-soft);border-radius:6px;padding:1px 6px;font-size:13px;color:var(--ink-1)}
   .ins-need a{color:var(--accent-hi)}
-  .ins-folds{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+  .ins-review .fe-pv{margin-top:0;padding-top:0;border-top:none}
+  .ins-notes{margin:8px 0 4px;padding:0;list-style:none;font-size:13.5px;color:var(--ink-2);line-height:1.5}
+  .ins-notes li{margin:4px 0;padding-left:16px;position:relative}
+  .ins-notes li:before{content:"";position:absolute;left:2px;top:.62em;width:6px;height:6px;border-radius:50%;background:var(--warn)}
+  .ins-review .fe-pvh b{font-size:16px}
+  .ins-review .fe-tablewrap{max-height:520px}
+  .ins-backh{display:flex;gap:8px 10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  .ins-backh .ins-sech{margin:0 8px 0 0}
   .su-fill{margin-top:8px;padding-top:8px;border-top:1px solid var(--border-soft)}
   .su-fill-h{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ink-2);margin-bottom:2px}
   .su-floor.inp{width:58px;height:28px;padding:2px 6px;font-size:13px;min-height:0}
@@ -2970,14 +2994,23 @@
       </div>
     </section>
 
+    <!-- INSTANTLY — cold email through Instantly (Leo, Nov 16 2026: "make this its own tab and make it all cleaner"; ins*, src/lib/instantly.ts) -->
+    <section class="view page" id="instantly">
+      <div class="eyebrow">Outreach</div>
+      <div id="ins-card"></div>
+    </section>
+
     <!-- EMAIL OUTREACH -->
     <section class="view page" id="email-out">
       <div class="eyebrow">Outreach</div>
       <h1>Email outreach</h1>
       <!-- Find emails for the people who didn't answer on LinkedIn (Leo, Nov 16 2026; fe*, src/lib/find-emails.ts) -->
       <div id="fe-card"></div>
-      <!-- Cold email through Instantly (Leo, Nov 16 2026; ins*, src/lib/instantly.ts) -->
-      <div id="ins-card"></div>
+      <!-- Cold email through Instantly has its own tab (Outreach → Instantly); this points there. -->
+      <div class="panel ins-linkbar" id="ins-link">
+        <span><b>Got their emails?</b> They go out from your Instantly campaign — nothing is sent from the dashboard.</span>
+        <button class="btn-solid" id="ins-open">Open Instantly →</button>
+      </div>
       <div id="email-box" style="margin-top:18px"></div>
     </section>
 
@@ -3876,7 +3909,7 @@ function refreshAfterSponsorChange() {
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
   brands: [['brands', 'All brands'], ['recent', 'Recently added'], ['discover', 'Discover'], ['clarify', 'Clarify']],
-  outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['weekplan', 'Week plan'], ['schedule', 'Schedule'], ['email-out', 'Email'], ['linkedin', 'People'], ['passed', 'Archived'], ['results', 'Email stats']],
+  outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['weekplan', 'Week plan'], ['schedule', 'Schedule'], ['email-out', 'Email'], ['instantly', 'Instantly'], ['linkedin', 'People'], ['passed', 'Archived'], ['results', 'Email stats']],
   board: [['board', 'Overview'], ['talks', 'Board codes'], ['requests', 'Requests'], ['shows', 'Shows']],
   audience: [['audience', 'Events'], ['attendees', 'Attendees'], ['segments', 'Segments']],
   operations: [['materials', 'Materials'], ['team', 'Team']],
@@ -3886,7 +3919,7 @@ var SUBTABS = {
 };
 var GROUP_OF = {
   brands: 'brands', recent: 'brands', brand: 'brands', discover: 'brands', clarify: 'brands', needs: 'brands', stock: 'brands',
-  outreach: 'outreach', 'email-out': 'outreach', reached: 'outreach', schedule: 'outreach', weekplan: 'outreach', linkedin: 'outreach', results: 'outreach', passed: 'outreach',
+  outreach: 'outreach', 'email-out': 'outreach', instantly: 'outreach', reached: 'outreach', schedule: 'outreach', weekplan: 'outreach', linkedin: 'outreach', results: 'outreach', passed: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
   zachtab: 'zachtab', tracker: 'zachtab', intalks: 'zachtab', pipeline: 'zachtab', sponsorships: 'zachtab',
   audience: 'audience', attendees: 'audience', segments: 'audience',
@@ -20683,8 +20716,6 @@ function feRender() {
       ' · <button class="su-show" data-fe="undo">Undo</button></div>' : '');
   feRenderList();
   feRenderPv();
-  // Instantly's card counts "Ready to send" from this list.
-  if (document.getElementById('ins-top') && INS.data) insRender();
 }
 
 function feRenderList() {
@@ -20894,15 +20925,16 @@ function feOnChange(e) {
 
 // ── Cold email through Instantly ───────────────────────────────────────────
 // Leo, Nov 16 2026: "get the emails from Hunter, connect that to Instantly, and
-// run cold outreach through Instantly … build it connected". The card under
-// the Hunter one (INS / ins*, rules in src/lib/instantly.ts). The dashboard
+// run cold outreach through Instantly … build it connected", then "make this
+// its own tab and make it all cleaner": Outreach → Instantly (view
+// `instantly`, INS / ins*, rules in src/lib/instantly.ts). The dashboard
 // sends nothing: Review & send lists everyone with an address who hasn't
 // been emailed (the Hunter card's "Already have an email"), ticked or not;
 // Send hands the ticked ones to the chosen Instantly campaign, and Instantly
 // emails them. What it did comes back here (sent, replied, bounced,
 // unsubscribed) — live through its webhook, and by the sync. Anyone who
 // stops or answers on the dashboard is taken back out of Instantly.
-var INS = { data: null, err: '', pv: null, tick: {}, sending: false, stale: false, note: '', busy: '', syncing: false, all: false };
+var INS = { data: null, err: '', plan: null, planTurn: 0, pv: null, tick: {}, sending: false, stale: false, note: '', busy: '', syncing: false, all: false, tab: '' };
 var INS_ROWS = 150;
 var INS_KEYS_URL = 'https://app.instantly.ai/app/settings/integrations';
 var INS_SYNC_EVERY = 10 * 60 * 1000;
@@ -20911,11 +20943,18 @@ var INS_FOLDS = [['replied', 'Replied'], ['unsubscribed', 'Unsubscribed'], ['bou
 function insShell() {
   var box = document.getElementById('ins-card');
   if (!box || box.firstChild) return box;
-  box.innerHTML = '<div class="panel fe-card ins-card"><div id="ins-top"></div><div id="ins-pv"></div><div id="ins-people"></div></div>';
+  box.innerHTML = '<div id="ins-top"></div><div id="ins-pv"></div><div id="ins-people"></div>';
   box.addEventListener('click', insOnClick);
   box.addEventListener('change', insOnChange);
   insRender();
   return box;
+}
+
+// Outreach → Instantly (its own tab — Leo, Nov 16 2026: "make this its own
+// tab and make it all cleaner").
+function loadInstantly() {
+  showView('instantly');
+  return insLoad();
 }
 
 function insLoad(noSync) {
@@ -20924,11 +20963,22 @@ function insLoad(noSync) {
     if (!d || !d.counts) throw new Error('no answer');
     INS.data = d; INS.err = '';
     insRender();
+    if (d.connected) insPlanLoad();
     if (!noSync) insAutoSync();
   }).catch(function (e) {
     INS.err = e.message || 'Request failed';
     insRender();
   });
+}
+// Who could go right now, for the Ready to send tile: the same list Review
+// & send opens (a preview — nothing is sent).
+function insPlanLoad() {
+  var turn = INS.planTurn = (INS.planTurn || 0) + 1;
+  return api('sendToInstantly', { perBrand: FE.per }).then(function (p) {
+    if (turn !== INS.planTurn || !p || !p.counts) return;
+    INS.plan = p;
+    insRenderTop();
+  }).catch(function () {});
 }
 
 // Opening the tab reads what Instantly did since (at most every ten minutes
@@ -20943,14 +20993,14 @@ function insAutoSync() {
 }
 function insSync(quiet) {
   if (INS.syncing) return Promise.resolve();
-  INS.syncing = true; insRender();
+  INS.syncing = true; insRenderTop();
   return api('instantlySync').then(function (r) {
     INS.syncing = false;
     try { localStorage.setItem('sb.insSync', String(Date.now())); } catch (e) {}
     if (!quiet) toast(r.ok === false ? (r.error || 'The sync didn’t finish') : insSyncWords(r));
-    return Promise.all([insLoad(true), feLoad()]);
+    return insLoad(true);
   }).catch(function (e) {
-    INS.syncing = false; insRender();
+    INS.syncing = false; insRenderTop();
     if (!quiet) toast(e.message || 'Couldn’t sync');
   });
 }
@@ -20963,83 +21013,90 @@ function insSyncWords(r) {
   return bits.length ? 'Synced — ' + bits.join(', ') : 'Synced — nothing new';
 }
 
-function insRender() {
+function insRender() { insRenderTop(); insRenderPv(); insRenderPeople(); }
+
+function insHead(right) {
+  return '<div class="ins-head"><div><h1>Instantly</h1>' +
+    '<div class="ins-sub">Cold email goes out from your Instantly campaign. Nothing is sent from the dashboard.</div></div>' +
+    (right ? '<div class="ins-headr" id="ins-syncline">' + right + '</div>' : '') + '</div>';
+}
+function insRenderTop() {
   var top = document.getElementById('ins-top');
   if (!top) return;
   var d = INS.data;
-  var title = '<b>Send them through Instantly</b>';
   if (!d) {
-    top.innerHTML = '<div class="fe-h">' + title + '</div><div class="fe-dim">' +
-      (INS.err ? 'Couldn’t read it: ' + esc(INS.err) + ' <button class="su-show" data-ins="retry">Try again</button>' : 'Checking Instantly…') + '</div>';
-    insRenderPv(); insRenderPeople();
+    top.innerHTML = insHead('') + '<div class="panel ins-sec"><div class="fe-dim">' +
+      (INS.err ? 'Couldn’t read it: ' + esc(INS.err) + ' <button class="su-show" data-ins="retry">Try again</button>' : 'Checking Instantly…') + '</div></div>';
     return;
   }
   if (!d.connected) {
-    top.innerHTML = '<div class="fe-h">' + title + '<span class="fe-dim">Not connected yet. Nothing is sent from the dashboard — Instantly does the sending.</span></div>' +
-      '<div class="ins-need" id="ins-need"><b>To connect it:</b><ol>' +
+    top.innerHTML = insHead('<span class="ins-pill off">Not connected</span>') +
+      '<div class="panel ins-sec"><div class="ins-sech">Connect it</div><div class="ins-need" id="ins-need"><ol>' +
         '<li>In Instantly: <a href="' + INS_KEYS_URL + '" target="_blank" rel="noopener">Settings → Integrations → API Keys ↗</a> → <b>Create API Key</b>. Tick these scopes: ' +
           d.scopes.map(function (x) { return '<code>' + esc(x) + '</code>'; }).join(' ') + '</li>' +
         '<li>In Vercel: the project’s <b>Settings → Environment Variables</b> → add <code>' + esc(d.keyName) + '</code> and paste the key there (never in a chat) → <b>Redeploy</b>.</li>' +
         '<li>Come back to this tab — it will show your campaigns.</li>' +
-      '</ol></div>';
-    insRenderPv(); insRenderPeople();
+      '</ol></div></div>';
     return;
   }
-  var c = d.counts;
-  var ready = FE.data && FE.data.ready ? FE.data.ready.length : null;
+  var c = d.counts, plan = INS.plan;
+  var ready = plan ? plan.counts.send : null;
   var camp = d.campaign;
+  var sync = d.sync, hook = d.hook || { on: false };
+  var live = hook.on && hook.working !== false;
+  var right =
+    (live ? '<span class="ins-pill on">Live updates on</span><button class="su-show" data-ins="hookoff">Turn off</button>'
+      : '<span class="ins-pill off">' + (hook.on ? 'Live updates stopped in Instantly' : 'Live updates off') + '</span>' +
+        '<button class="su-show" data-ins="hookon"' + (INS.busy ? ' disabled' : '') + '>Turn on</button>') +
+    '<button class="btn-ghost" data-ins="sync"' + (INS.syncing ? ' disabled' : '') + '>↻ Sync now</button>' +
+    '<span class="fe-dim">' + (INS.syncing ? 'Reading what Instantly did…'
+      : sync && sync.at ? 'Last read ' + shortDate(sync.at) + (sync.ok === false && sync.error ? ' — the last try failed: ' + esc(sync.error) : '')
+      : 'Not read yet') + '</span>';
   var opts = (d.campaigns || []).map(function (x) {
-    return '<option value="' + esc(x.id) + '"' + (d.chosen && d.chosen.id === x.id ? ' selected' : '') + '>' + esc(x.name) + ' · ' + esc(x.statusWord) + '</option>';
+    var mine = !!(d.chosen && d.chosen.id === x.id);
+    return '<option value="' + esc(x.id) + '"' + (mine ? ' selected' : '') + '>' + esc(x.name) + (mine ? '' : ' · ' + esc(x.statusWord)) + '</option>';
   }).join('');
-  var campLine;
+  var campBody;
   if (d.error) {
-    campLine = '<div class="fe-warn" id="ins-err">' + esc(d.error) + ' <button class="su-show" data-ins="retry">Try again</button></div>';
+    campBody = '<div class="fe-warn" id="ins-err">' + esc(d.error) + ' <button class="su-show" data-ins="retry">Try again</button></div>';
   } else if (!d.campaigns || !d.campaigns.length) {
-    campLine = '<div class="ins-line" id="ins-camp">No campaign in Instantly yet — make one there (write its emails, attach the inbox), then <button class="su-show" data-ins="retry">check again</button></div>';
+    campBody = '<div class="ins-camp" id="ins-camp">No campaign in Instantly yet — make one there (write its emails, attach the inbox), then <button class="su-show" data-ins="retry">check again</button></div>';
   } else {
-    campLine = '<div class="ins-line" id="ins-camp"><span>They go to</span>' +
+    campBody = '<div class="ins-camp" id="ins-camp">' +
       '<select class="inp" id="ins-pick"' + (INS.busy ? ' disabled' : '') + ' aria-label="Instantly campaign">' +
         (d.chosen && camp ? '' : '<option value="">Pick a campaign…</option>') + opts + '</select>' +
       (camp ? '<span class="ins-pill ' + (camp.sends ? 'on' : 'off') + '">' + esc(camp.statusWord) + '</span>' +
-        '<span class="fe-dim">' + (camp.sends ? 'Instantly emails whoever you send it, on its next sending slot.' : 'Nothing goes out until you start it in Instantly.') + '</span>' : '') +
+        '<span>' + (camp.sends ? 'Instantly emails whoever you send it, on its next sending slot.' : 'Nothing goes out until you start it in Instantly.') + '</span>' : '') +
       (d.campaignGone ? '<span class="fe-warn">“' + esc(d.chosen.name) + '” isn’t in Instantly any more — pick another.</span>' : '') +
     '</div>' +
-    (camp && camp.warn.length ? '<div class="fe-warn" id="ins-warn">' + camp.warn.map(esc).join(' · ') + '</div>' : '');
+    (camp && camp.warn.length ? '<ul class="ins-warns" id="ins-warn">' + camp.warn.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul>' : '');
   }
-  var tile = function (cls, h, n, sub, id) {
-    return '<div class="su-tile' + (cls ? ' ' + cls : '') + '"><div class="su-h">' + h + '</div><div class="su-big"' + (id ? ' id="' + id + '"' : '') + '>' + n + '</div><div class="su-sub">' + sub + '</div></div>';
+  var tile = function (h, n, sub, id) {
+    return '<div class="su-tile"><div class="su-h">' + h + '</div><div class="su-big" id="' + id + '">' + n + '</div><div class="su-sub">' + sub + '</div></div>';
   };
   var canSend = !!camp && !d.error && ready > 0;
-  var sync = d.sync;
-  var hook = d.hook || { on: false };
-  var hookLine = hook.on && hook.working !== false
-    ? '<span class="ins-pill on">Live updates on</span><button class="su-show" data-ins="hookoff">Turn off</button>'
-    : (hook.on ? '<span class="ins-pill off">Live updates stopped in Instantly</span>' : '<span class="ins-pill off">Live updates off</span>') +
-      '<button class="su-show" data-ins="hookon"' + (INS.busy ? ' disabled' : '') + '>Turn on</button>';
-  top.innerHTML =
-    '<div class="fe-h">' + title + '<span class="fe-dim">Hand people to your Instantly campaign; Instantly emails them. Nothing is sent from the dashboard.</span></div>' +
-    campLine +
-    '<div class="ins-tiles" style="margin-top:12px">' +
-      tile('ins-go', 'Ready to send', ready == null ? '…' : ready,
-        (canSend ? '<button class="btn-solid" data-ins="review"' + (INS.pv ? ' disabled' : '') + '>Review &amp; send…</button>'
-          : ready === 0 ? 'nobody waiting — bring a Hunter file back above' : !camp ? 'pick a campaign first' : 'have an email, never emailed'), 'ins-ready') +
-      tile('', 'In Instantly', c.waiting, 'not emailed yet', 'ins-waiting') +
-      tile('', 'Emailed', c.emailed, 'by Instantly so far', 'ins-emailed') +
-      tile('', 'Replied', c.replied, 'on the brand’s page too', 'ins-replied') +
-      tile('', 'Bounced', c.bounced, 'address didn’t work', 'ins-bounced') +
-      tile('', 'Unsubscribed', c.unsubscribed, 'never contacted again', 'ins-unsub') +
+  var goSub = ready == null ? 'counting who has an email…'
+    : !camp && !d.error ? 'pick a campaign first'
+    : ready === 0 ? 'nobody waiting — bring a Hunter file back on the Email tab'
+    : 'have an email, never emailed' + (plan.counts.fresh ? ' · ' + plan.counts.fresh + ' at brands not reached yet' : '');
+  top.innerHTML = insHead(right) +
+    '<div class="panel ins-sec"><div class="ins-sech">Campaign</div>' + campBody + '</div>' +
+    '<div class="ins-tiles">' +
+      '<div class="su-tile ins-go"><div><div class="su-h">Ready to send</div><div class="su-big" id="ins-ready">' + (ready == null ? '…' : ready) + '</div>' +
+        '<div class="su-sub">' + goSub + '</div></div>' +
+        (canSend ? '<button class="btn-solid" data-ins="review"' + (INS.pv ? ' disabled' : '') + '>Review &amp; send…</button>' : '') + '</div>' +
+      tile('In Instantly', c.waiting, 'not emailed yet', 'ins-waiting') +
+      tile('Emailed', c.emailed, 'so far', 'ins-emailed') +
+      tile('Replied', c.replied, 'on the brand’s page too', 'ins-replied') +
+      tile('Bounced', c.bounced, 'address didn’t work', 'ins-bounced') +
+      tile('Unsubscribed', c.unsubscribed, 'never contacted again', 'ins-unsub') +
     '</div>' +
-    (d.last ? '<div class="fe-last" id="ins-last">Last sent: ' + plural(d.last.count, 'person', 'people') + ' to “' + esc(d.last.campaignName) + '” ' + shortDate(d.last.at) +
-      (d.last.by ? ' by ' + esc(d.last.by) : '') +
-      (d.last.waiting ? ' · <button class="su-show" data-ins="undo">Undo (' + d.last.waiting + ' not emailed yet)</button>' : ' · all emailed') + '</div>' : '') +
-    '<div class="ins-line" id="ins-syncline">' + hookLine +
-      '<span class="fe-dim">' + (INS.syncing ? 'Reading what Instantly did…' : sync && sync.at ? 'Last read ' + shortDate(sync.at) + (sync.ok === false && sync.error ? ' — the last try failed: ' + esc(sync.error) : '') : 'Not read yet') + '</span>' +
-      '<button class="su-show" data-ins="sync"' + (INS.syncing ? ' disabled' : '') + '>↻ Sync now</button>' +
-      (c.removed ? '<span class="fe-dim">' + c.removed + ' taken back out</span>' : '') +
-    '</div>' +
-    (INS.note ? '<div class="fe-dim" id="ins-note" style="margin-top:8px">' + esc(INS.note) + '</div>' : '');
-  insRenderPv();
-  insRenderPeople();
+    (d.last || INS.note ? '<div class="ins-foot">' +
+      (d.last ? '<span id="ins-last">Last sent: ' + plural(d.last.count, 'person', 'people') + ' to “' + esc(d.last.campaignName) + '” ' + shortDate(d.last.at) +
+        (d.last.by ? ' by ' + esc(d.last.by) : '') + (d.last.waiting ? '' : ' · all emailed') + '</span>' +
+        (d.last.waiting ? '<button class="su-show" data-ins="undo">Undo (' + d.last.waiting + ' not emailed yet)</button>' : '') : '') +
+      (INS.note ? '<span class="fe-dim" id="ins-note">' + esc(INS.note) + '</span>' : '') +
+    '</div>' : '');
 }
 
 // Everyone who'd go, before anyone does. Ticks are kept by person.
@@ -21050,6 +21107,7 @@ function insRenderPv() {
   var p = INS.pv;
   if (!p) { box.innerHTML = ''; return; }
   var send = insSendLines();
+  var open = '<div class="panel ins-sec ins-review"><div class="ins-sech">Review &amp; send</div>';
   var skip = p.lines.filter(function (l) { return l.action !== 'send'; });
   var fresh = send.filter(function (l) { return l.group === 'fresh'; }).length;
   var unsure = send.filter(function (l) { return !l.tick && l.group !== 'fresh'; }).length;
@@ -21061,14 +21119,16 @@ function insRenderPv() {
     return '<button class="chip" data-ins="group" data-g="' + g + '" title="Tick or untick everyone in this group"></button>';
   }).join('') : '';
   var cut = INS.all ? send : send.slice(0, INS_ROWS);
-  box.innerHTML = '<div class="fe-pv">' +
+  box.innerHTML = open + '<div class="fe-pv">' +
     '<div class="fe-pvh"><b>' + plural(send.length, 'person', 'people') + ' at ' + plural(p.counts.brands, 'brand') + ' could go</b>' +
       (camp ? '<span class="fe-dim">to “' + esc(camp.name) + '” · ' + esc(camp.statusWord) + '</span>' : '') + '</div>' +
     (INS.stale ? '<div class="fe-warn">Something changed since you looked — this is how it stands now. Check it and send again.</div>' : '') +
-    (camp ? '<div class="' + (camp.sends ? 'fe-warn' : 'fe-dim') + '" id="ins-when">' +
-      (camp.sends ? 'This campaign is running: Instantly starts emailing them on its next sending slot.' : 'This campaign is ' + esc(camp.statusWord.toLowerCase()) + ': nothing goes out until you start it in Instantly.') + '</div>' : '') +
-    (unsure ? '<div class="fe-warn" id="ins-unsure">' + unsure + ' unticked — an address Hunter couldn’t verify, or a shared inbox like info@. Tick the ones you trust.</div>' : '') +
-    (fresh ? '<div class="fe-warn" id="ins-fresh">' + fresh + ' at brands not reached on LinkedIn yet start unticked: once Instantly emails a brand, the LinkedIn queue stops picking it by itself. Tick the ones you’d rather email.</div>' : '') +
+    (camp || unsure || fresh ? '<ul class="ins-notes">' +
+      (camp ? '<li id="ins-when">' +
+        (camp.sends ? 'This campaign is running: Instantly starts emailing them on its next sending slot.' : 'This campaign is ' + esc(camp.statusWord.toLowerCase()) + ': nothing goes out until you start it in Instantly.') + '</li>' : '') +
+      (unsure ? '<li id="ins-unsure">' + unsure + ' unticked — an address Hunter couldn’t verify, or a shared inbox like info@. Tick the ones you trust.</li>' : '') +
+      (fresh ? '<li id="ins-fresh">' + fresh + ' at brands not reached on LinkedIn yet start unticked: once Instantly emails a brand, the LinkedIn queue stops picking it by itself. Tick the ones you’d rather email.</li>' : '') +
+    '</ul>' : '') +
     (chips ? '<div class="fe-row" id="ins-groups">' + chips + '</div>' : '') +
     (send.length
       ? '<div class="fe-tablewrap" data-scroll="ins-pv"><table class="fe-table"><thead><tr><th></th><th>Person</th><th>Brand</th><th>Email</th><th>The address</th></tr></thead><tbody>' +
@@ -21090,7 +21150,7 @@ function insRenderPv() {
       '<button class="btn-ghost" data-ins="cancel">Cancel</button>' +
       '<span class="fe-dim">Only their name, title, company, website and email go to Instantly.</span>' +
     '</div>' +
-  '</div>';
+  '</div></div>';
   insSyncSend();
 }
 function insSyncBoxes() {
@@ -21119,22 +21179,31 @@ function insSyncSend() {
   });
 }
 
-// Who replied, unsubscribed, bounced or was taken back out — a name opens
-// the brand page at them.
+// Who replied, unsubscribed, bounced or was taken back out — one list, a
+// chip per kind; a name opens the brand page at them.
 function insRenderPeople() {
   var box = document.getElementById('ins-people');
   if (!box) return;
   var d = INS.data;
   if (!d || !d.connected || !d.people || !d.people.length) { box.innerHTML = ''; return; }
-  box.innerHTML = '<div class="ins-folds">' + INS_FOLDS.map(function (f) {
-    var rows = d.people.filter(function (x) { return x.state === f[0]; });
-    if (!rows.length) return '';
-    return '<details class="fe-skip" data-insfold="' + f[0] + '"><summary>' + f[1] + ' · ' + d.counts[f[0]] + '</summary><ul>' +
+  var kinds = INS_FOLDS.filter(function (f) { return d.people.some(function (x) { return x.state === f[0]; }); });
+  if (!kinds.some(function (f) { return f[0] === INS.tab; })) INS.tab = kinds[0][0];
+  var rows = d.people.filter(function (x) { return x.state === INS.tab; });
+  var total = d.counts[INS.tab] || rows.length;
+  box.innerHTML = '<div class="panel ins-sec"><div class="ins-backh"><span class="ins-sech">What came back</span>' +
+      kinds.map(function (f) {
+        return '<button class="chip' + (INS.tab === f[0] ? ' active' : '') + '" data-ins="tab" data-s="' + f[0] + '" aria-pressed="' + (INS.tab === f[0] ? 'true' : 'false') + '">' + f[1] + ' · ' + (d.counts[f[0]] || 0) + '</button>';
+      }).join('') + '</div>' +
+    '<div class="fe-tablewrap" data-scroll="ins-back"><table class="fe-table" id="ins-backlist"><thead><tr><th>Person</th><th>Brand</th><th>Email</th><th>When</th>' +
+      (INS.tab === 'removed' ? '<th>Why</th>' : '') + '</tr></thead><tbody>' +
       rows.map(function (x) {
-        return '<li><button class="fe-link" data-brand="' + esc(x.brandId) + '" data-focus="' + esc(x.contactId) + '">' + esc(x.name) + '</button> · ' + esc(x.brandName) +
-          ' <span class="fe-dim">' + esc(x.email) + (x.at ? ' · ' + shortDate(x.at) : '') + (x.note ? ' · ' + esc(x.note) : '') + '</span></li>';
-      }).join('') + '</ul></details>';
-  }).join('') + '</div>';
+        return '<tr><td><button class="fe-link" data-brand="' + esc(x.brandId) + '" data-focus="' + esc(x.contactId) + '" title="Open ' + esc(x.brandName) + ' at ' + esc(x.name) + '">' + esc(x.name) + '</button>' +
+            (x.title ? '<div class="fe-dim">' + esc(x.title) + '</div>' : '') + '</td>' +
+          '<td>' + esc(x.brandName) + '</td><td>' + esc(x.email) + '</td><td>' + (x.at ? shortDate(x.at) : '') + '</td>' +
+          (INS.tab === 'removed' ? '<td>' + esc(x.note || '') + '</td>' : '') + '</tr>';
+      }).join('') + '</tbody></table></div>' +
+    (total > rows.length ? '<div class="fe-dim" style="margin-top:8px">The latest ' + rows.length + ' of ' + total + '.</div>' : '') +
+  '</div>';
 }
 
 function insPreview(fresh) {
@@ -21176,7 +21245,7 @@ function insSend() {
       (extra.length ? ' ' + extra.join(' · ') + '.' : '') +
       (r.remaining != null ? ' ' + r.remaining + ' lead uploads left in your Instantly plan.' : '');
     toast('Sent ' + plural(r.sent, 'person', 'people') + ' to Instantly');
-    return Promise.all([insLoad(true), feLoad()]);
+    return insLoad(true);
   }).catch(function (e) { INS.sending = false; insSyncSend(); toast(e.message || 'Couldn’t send'); });
 }
 // Undo the last send: who comes back out is named first.
@@ -21191,19 +21260,19 @@ function insUndo() {
     return api('undoSendToInstantly', { confirm: true }).then(function (r) {
       INS.note = 'Took ' + plural(r.removed, 'person', 'people') + ' back out of Instantly.';
       toast('Took ' + plural(r.removed, 'person', 'people') + ' back out');
-      return Promise.all([insLoad(true), feLoad()]);
+      return insLoad(true);
     });
   }).catch(function (e) { toast(e.message || 'Couldn’t undo'); });
 }
 function insHook(on) {
   if (INS.busy) return;
   if (!on && !confirm('Turn live updates off? The dashboard will only hear from Instantly at the daily sync, or when you press Sync now.')) return;
-  INS.busy = 'hook'; insRender();
+  INS.busy = 'hook'; insRenderTop();
   api('setInstantlyHook', { on: on }).then(function (r) {
     INS.busy = '';
     toast(r.on ? 'Live updates on — Instantly tells the dashboard as things happen' : 'Live updates off');
     return insLoad(true);
-  }).catch(function (e) { INS.busy = ''; insRender(); toast(e.message || 'Couldn’t change it'); });
+  }).catch(function (e) { INS.busy = ''; insRenderTop(); toast(e.message || 'Couldn’t change it'); });
 }
 
 function insOnClick(e) {
@@ -21229,6 +21298,7 @@ function insOnClick(e) {
     return;
   }
   if (a === 'all') { INS.all = true; insRenderPv(); return; }
+  if (a === 'tab') { INS.tab = t.getAttribute('data-s'); insRenderPeople(); return; }
   if (a === 'undo') { insUndo(); return; }
   if (a === 'sync') { insSync(false); return; }
   if (a === 'hookon') { insHook(true); return; }
@@ -21260,7 +21330,6 @@ function loadEmailOutreach() {
   var box = document.getElementById('email-box');
   if (!again) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   feLoad();
-  insLoad();
   return renderEmailMode(box, again);
 }
 
@@ -27073,6 +27142,7 @@ function gotoViewNow(id) {
   if (id === 'recent') loadBrands('recent');
   if (id === 'outreach') loadOutreach();
   if (id === 'email-out') loadEmailOutreach();
+  if (id === 'instantly') loadInstantly();
   if (id === 'reached') loadReached();
   if (id === 'schedule') loadSchedule();
   if (id === 'weekplan') loadWeekPlan();
@@ -27213,6 +27283,11 @@ document.getElementById('sub-tabs').addEventListener('click', function (e) {
 });
 
 // Home page "Jump to" cards.
+// Email tab → "Open Instantly →" (cold email has its own tab).
+(function () {
+  var b = document.getElementById('ins-open');
+  if (b) b.addEventListener('click', function () { gotoView('instantly'); });
+})();
 document.querySelectorAll('.go-card[data-goto]').forEach(function (c) {
   c.addEventListener('click', function () { gotoView(c.getAttribute('data-goto')); });
 });
