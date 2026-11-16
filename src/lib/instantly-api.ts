@@ -6,6 +6,8 @@
 // Paths used:
 //   GET    /api/v2/campaigns                      list (id, name, status…)
 //   GET    /api/v2/campaigns/{id}
+//   POST   /api/v2/campaigns                      a new campaign (a draft), with its emails
+//   PATCH  /api/v2/campaigns/{id}                 its emails, rewritten
 //   POST   /api/v2/leads/add                      up to 1,000 leads into a campaign
 //   POST   /api/v2/leads/list                     leads of a campaign / by address
 //   DELETE /api/v2/leads/{id}
@@ -35,7 +37,7 @@ function words(status: number, detail: string): string {
 }
 
 type CallOpts = { query?: Record<string, string | number | boolean | null | undefined>; body?: unknown; timeoutMs?: number }
-async function call<T = any>(method: 'GET' | 'POST' | 'DELETE', path: string, opts: CallOpts = {}): Promise<T> {
+async function call<T = any>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, opts: CallOpts = {}): Promise<T> {
   const k = key()
   if (!k) throw new InstantlyError(0, 'Instantly isn’t connected yet — ' + INSTANTLY_KEY_ENV + ' isn’t set in Vercel')
   const qs = new URLSearchParams()
@@ -84,6 +86,15 @@ export async function listCampaigns(max = 300): Promise<Campaign[]> {
 }
 export async function getCampaign(id: string): Promise<Campaign> {
   return call<Campaign>('GET', '/api/v2/campaigns/' + encodeURIComponent(id))
+}
+// A new campaign (it starts as a draft: nothing sends until it's started in
+// Instantly), and a change to one — the dashboard only ever changes its
+// emails (`sequences`). Both need the key's campaigns:all scope.
+export async function createCampaign(body: Record<string, unknown>): Promise<Campaign> {
+  return call<Campaign>('POST', '/api/v2/campaigns', { body, timeoutMs: 30000 })
+}
+export async function patchCampaign(id: string, body: Record<string, unknown>): Promise<Campaign> {
+  return call<Campaign>('PATCH', '/api/v2/campaigns/' + encodeURIComponent(id), { body, timeoutMs: 30000 })
 }
 
 // ---- leads -----------------------------------------------------------

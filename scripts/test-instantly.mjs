@@ -108,6 +108,22 @@ t('the preview’s signature follows who would go and to which address', () => {
   assert.notEqual(a, I.planPush([person({ id: 'a', stopped: 'stopped' }), person({ id: 'b', email: 'bo@coldco.com' })]).sig)
 })
 
+t('each person goes to their template’s campaign; a template with no campaign yet can’t go', () => {
+  const p = I.planPush([
+    person({ id: 'a', tpl: 'energy', tplLabel: 'Energy drinks', campaignId: 'camp-e' }),
+    person({ id: 'b', email: 'bo@glow.com', brandId: 'b2', brandName: 'Glow', tpl: 'beauty', tplLabel: 'Beauty', campaignId: null }),
+    person({ id: 'c', email: 'cy@coldco.com' }),            // no routing at all: goes (one campaign)
+    person({ id: 'd', email: 'dee@stop.com', tpl: 'beauty', tplLabel: 'Beauty', campaignId: null, stopped: 'Dee said stop' }),
+  ])
+  assert.deepEqual(p.lines.map(l => [l.action, l.tpl, l.campaignId]), [['send', 'energy', 'camp-e'], ['nocamp', 'beauty', null], ['send', null, null], ['stopped', 'beauty', null]])
+  assert.match(p.lines[1].why, /No Instantly campaign for Beauty yet/)
+  assert.equal(p.lines[1].tick, false)
+  assert.deepEqual([p.counts.send, p.counts.nocamp, p.counts.stopped], [2, 1, 1])
+  // The signature follows the campaign too: the same people to another campaign is another send.
+  const again = I.planPush([person({ id: 'a', tpl: 'energy', tplLabel: 'Energy drinks', campaignId: 'camp-other' }), person({ id: 'c', email: 'cy@coldco.com' })])
+  assert.notEqual(I.planPush([person({ id: 'a', tpl: 'energy', campaignId: 'camp-e' }), person({ id: 'c', email: 'cy@coldco.com' })]).sig, again.sig)
+})
+
 // ---- what Instantly gets
 t('a lead carries the address, name, company, title, website and our id — nothing else', () => {
   const l = I.leadFor({ name: 'Dr. Ann Lee, MBA', title: 'Head of Partnerships', email: ' Ann@ColdCo.com ', brandName: 'Cold Co', website: 'https://www.coldco.com/shop', contactId: 'c_ann' })
@@ -119,6 +135,9 @@ t('a lead carries the address, name, company, title, website and our id — noth
   assert.equal(m.website, 'label.com')
   // The split the list already made is used as it is.
   assert.equal(I.leadFor({ name: 'x', first: 'Jean-Luc', last: 'Picard', email: 'jl@e.com', brandName: 'E', contactId: 'c3' }).last_name, 'Picard')
+  // Their own Show Board link rides along as the template's (BOARD).
+  const withBoard = I.leadFor({ name: 'Ann Lee', email: 'ann@coldco.com', brandName: 'Cold Co', contactId: 'c_ann', boardLink: 'https://shows.sboyagency.com/?code=ABCD-EFGH&p=K7Q2MX' })
+  assert.deepEqual(withBoard.custom_variables, { sb_id: 'c_ann', board_link: 'https://shows.sboyagency.com/?code=ABCD-EFGH&p=K7Q2MX' })
   // A free mailbox is never given as the company's website.
   assert.equal(I.leadFor({ name: 'Dee Day', email: 'dee@gmail.com', brandName: 'Tiny', contactId: 'c4' }).website, undefined)
 })
@@ -212,7 +231,7 @@ t('small things: the bounce note, a batch id, the scopes the key needs', () => {
   assert.equal(I.bounceNote('ann@coldco.com', 'Nov 17, 2026'), 'Email to ann@coldco.com bounced (Instantly, Nov 17, 2026)')
   const a = I.batchId(NOW), b = I.batchId(NOW)
   assert.match(a, /^ib[a-z0-9]+$/); assert.notEqual(a, b)
-  assert.deepEqual(I.KEY_SCOPES, ['campaigns:read', 'leads:all', 'emails:read', 'webhooks:all', 'block_list_entries:all'])
+  assert.deepEqual(I.KEY_SCOPES, ['campaigns:all', 'leads:all', 'emails:read', 'webhooks:all', 'block_list_entries:all'])
   assert.equal(I.INSTANTLY_KEY_ENV, 'INSTANTLY_API_KEY')
 })
 

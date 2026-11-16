@@ -61,6 +61,19 @@ const fake = http.createServer((req, res) => {
       return { items, ...(from + limit < all.length ? { next_starting_after: idOf(items[items.length - 1]) } : {}) };
     };
     if (m === 'GET' && p === '/api/v2/campaigns') return send(200, page(F.campaigns, x => x.id));
+    if (m === 'POST' && p === '/api/v2/campaigns') {
+      if (F.failWrite) return send(F.failWrite, { statusCode: F.failWrite, error: 'Forbidden', message: 'API key is missing scope campaigns:create' });
+      const c = Object.assign({ id: 'camp-made-' + (++F.n), status: 0, email_list: [] }, body);
+      F.campaigns.push(c);
+      return send(200, c);
+    }
+    if (m === 'PATCH' && p.startsWith('/api/v2/campaigns/')) {
+      if (F.failWrite) return send(F.failWrite, { statusCode: F.failWrite, error: 'Forbidden', message: 'API key is missing scope campaigns:update' });
+      const c = F.campaigns.find(x => x.id === decodeURIComponent(p.split('/').pop()));
+      if (!c) return send(404, { statusCode: 404, error: 'Not Found', message: 'Campaign not found' });
+      Object.assign(c, body);
+      return send(200, c);
+    }
     if (m === 'GET' && p.startsWith('/api/v2/campaigns/')) {
       const c = F.campaigns.find(x => x.id === decodeURIComponent(p.split('/').pop()));
       return c ? send(200, c) : send(404, { statusCode: 404, error: 'Not Found', message: 'Campaign not found' });
@@ -212,12 +225,14 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(st.connected, true);
     assert.equal(st.error, null);
     assert.deepEqual(st.campaigns.map(c => [c.id, c.statusWord, c.sends]), [['camp-cold', 'Active', true], ['camp-draft', 'Draft', false]]);
-    assert.equal(st.chosen, null);
+    assert.deepEqual(st.templates.groups.map(g => [g.key, g.state, g.linked, g.edited, g.steps.length, g.hasBoard]),
+      ['energy', 'alcohol', 'nicotine', 'beauty', 'food', 'general'].map(k => [k, 'none', null, false, 3, true]));
+    assert.equal(st.templates.signature, 'Zach Goldstein\nCo-CEO, SB Agency');
     assert.equal(st.counts.total, 0);
     assert.equal(st.hook.on, false);
     assert.ok(st.campaigns[1].warn.length >= 2, 'the draft with no inbox and no email is flagged');
     assert.ok(!JSON.stringify(st).includes(FAKE_KEY), 'the key never comes back');
-    ok('the card reads Instantly: connected, its campaigns with their status, nothing handed over yet');
+    ok('the page reads Instantly: connected, its campaigns, a draft template per group with no campaign yet, nothing handed over');
 
     // 2. Who could go — a preview, nothing written, nothing sent to Instantly.
     const before = F.calls.filter(c => c.path === '/api/v2/leads/add').length;
@@ -226,45 +241,54 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const line = (name) => pv.lines.find(l => l.name === name);
     assert.deepEqual(pv.lines.map(l => l.name).sort(),
       ['Bo Chen', 'Cy Day', 'Dee Two', 'Del Gone', 'Dr. Ann Lee, MBA', 'Fay Stop', 'Gus Sent', 'Hal Wait', 'Ivy Hand', 'Ivy Inbox', 'Jo Deleted', 'Kit Fine', 'Kat Blocked', 'Kim Already', 'Nia New', 'Gil Giant'].sort());
-    // Not reached on LinkedIn yet: she can go, but starts unticked — an email makes her brand "reached".
-    assert.deepEqual([line('Nia New').action, line('Nia New').tick, line('Nia New').group, line('Nia New').targetId], ['send', false, 'fresh', null]);
-    assert.match(line('Nia New').why, /brand not reached on LinkedIn yet/);
-    // Held back by the queue: the same — she can go, unticked.
-    assert.deepEqual([line('Gil Giant').action, line('Gil Giant').tick, line('Gil Giant').group], ['send', false, 'fresh']);
-    assert.equal(pv.counts.fresh, 2);
+    // Each goes with their brand's template — and no template has a campaign yet, so nobody can go.
+    assert.deepEqual([line('Dr. Ann Lee, MBA').tpl, line('Dr. Ann Lee, MBA').tplLabel, line('Nia New').tpl], ['energy', 'Energy drinks', 'nicotine']);
+    assert.ok(pv.lines.every(l => l.action === 'nocamp' && !l.tick));
+    assert.match(line('Nia New').why, /No Instantly campaign for Nicotine yet/);
+    assert.deepEqual(pv.campaigns.map(c => [c.group, c.id, c.canGo, c.people > 0]), [['energy', null, 0, true], ['nicotine', null, 0, true]]);
     // Al's brand is on Hunter's list now (its own group) — but someone there accepted on LinkedIn, so he is never handed to a campaign.
     const hunter = await data(leo, 'noAnswerList', { minDays: 0 });
     assert.deepEqual(hunter.ready.filter(p => p.contactId === 'c_acc').map(p => p.group), ['working']);
     assert.ok(!line('Nora None') && !line('Al Accepted'), 'nobody without an address, nobody at a brand being worked on LinkedIn');
-    assert.equal(line('Dr. Ann Lee, MBA').tick, true);
     assert.equal(line('Dr. Ann Lee, MBA').email, 'ann@cold.com');
+    assert.equal(F.calls.filter(c => c.path === '/api/v2/leads/add').length, before);
+    assert.equal(await prisma.instantlyLead.count(), 0);
+    ok('the preview names everyone with an address who was never emailed, each with their template — and with no campaign yet, nobody can go');
+
+    // 3. No campaign, no send; Claude's token can give a template its campaign but never send.
+    const T = (name) => line(name).contactId;
+    let r = await call(leo, 'sendToInstantly', { ids: [T('Dr. Ann Lee, MBA')], confirm: true, expect: pv.expect });
+    assert.equal(r.ok, false); assert.match(r.error, /Nobody is ticked to send/);
+    r = await call(leo, 'setInstantlyCampaign', { campaignId: 'nope', group: 'energy' });
+    assert.equal(r.ok, false);
+    r = await call(leo, 'setInstantlyCampaign', { campaignId: 'camp-cold', group: 'not-a-template' });
+    assert.equal(r.ok, false);
+    // A campaign Leo made in Instantly himself, given to the Energy template.
+    const set = await data(null, 'setInstantlyCampaign', { campaignId: 'camp-cold', group: 'energy' });
+    assert.deepEqual([set.group, set.label, set.campaign.name], ['energy', 'Energy drinks', 'Cold — no answer on LinkedIn']);
+    r = await call(leo, 'setInstantlyCampaign', { campaignId: 'camp-cold', group: 'beauty' });
+    assert.equal(r.ok, false); assert.match(r.error, /already the one for Energy drinks/);
+    pv = await data(leo, 'sendToInstantly', {});
+    // Now the Energy people can go. Not reached on LinkedIn yet (or held back by the queue): unticked.
+    assert.deepEqual([line('Dr. Ann Lee, MBA').action, line('Dr. Ann Lee, MBA').tick, line('Dr. Ann Lee, MBA').campaignId], ['send', true, 'camp-cold']);
     assert.equal(line('Bo Chen').tick, false);
     assert.equal(line('Ivy Inbox').tick, false);
     assert.equal(line('Cy Day').tick, true);
-    assert.equal(pv.campaign, null, 'no campaign picked yet');
-    assert.equal(F.calls.filter(c => c.path === '/api/v2/leads/add').length, before);
-    assert.equal(await prisma.instantlyLead.count(), 0);
-    ok('the preview names everyone with an address who was never emailed — unverified and shared inboxes unticked — and sends nothing');
-
-    // 3. No campaign, no send; Claude's token can pick the campaign but never send.
-    const T = (name) => line(name).contactId;
-    let r = await call(leo, 'sendToInstantly', { ids: [T('Dr. Ann Lee, MBA')], confirm: true, expect: pv.expect });
-    assert.equal(r.ok, false); assert.match(r.error, /Pick the Instantly campaign/);
-    r = await call(leo, 'setInstantlyCampaign', { campaignId: 'nope' });
-    assert.equal(r.ok, false);
-    const set = await data(null, 'setInstantlyCampaign', { campaignId: 'camp-cold' });
-    assert.equal(set.campaign.name, 'Cold — no answer on LinkedIn');
+    assert.deepEqual([line('Gil Giant').action, line('Gil Giant').tick, line('Gil Giant').group], ['send', false, 'fresh']);
+    assert.match(line('Gil Giant').why, /brand not reached on LinkedIn yet/);
+    assert.deepEqual([line('Nia New').action, line('Nia New').group, line('Nia New').targetId], ['nocamp', 'fresh', null]);
+    assert.equal(pv.counts.fresh, 1);
     r = await call(null, 'sendToInstantly', { ids: [T('Dr. Ann Lee, MBA')], confirm: true, expect: pv.expect });
     assert.equal(r.ok, false); assert.match(r.error, /Only someone signed in/);
     r = await call(null, 'undoSendToInstantly', { confirm: true });
     assert.equal(r.ok, false);
     assert.equal(F.calls.filter(c => c.path === '/api/v2/leads/add').length, 0);
-    ok('a campaign must be picked (checked with Instantly); Claude’s token can preview and pick, never send');
+    ok('a template needs its campaign (checked with Instantly, one template each); Claude’s token can preview and link, never send');
 
     // 4. A stale preview sends nobody.
     pv = await data(leo, 'sendToInstantly', {});
-    assert.equal(pv.campaign.name, 'Cold — no answer on LinkedIn');
-    assert.equal(pv.campaign.sends, true);
+    assert.deepEqual(pv.campaigns.find(c => c.group === 'energy'), { group: 'energy', label: 'Energy drinks', people: pv.campaigns.find(c => c.group === 'energy').people,
+      canGo: pv.campaigns.find(c => c.group === 'energy').canGo, id: 'camp-cold', name: 'Cold — no answer on LinkedIn', statusWord: 'Active', sends: true });
     const stale = await data(leo, 'sendToInstantly', { ids: [T('Dr. Ann Lee, MBA')], confirm: true, expect: '0.x' });
     assert.equal(stale.stale, true); assert.equal(stale.applied, false);
     assert.equal(F.leads.length, 0);
@@ -278,14 +302,25 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(add.campaign_id, 'camp-cold');
     assert.equal(add.skip_if_in_campaign, true);
     assert.ok(add.idempotency_key && add.idempotency_key.length <= 128);
-    assert.deepEqual(add.leads.find(l => l.email === 'ann@cold.com'),
+    const annLead = add.leads.find(l => l.email === 'ann@cold.com');
+    const coldCode = (await prisma.brand.findUnique({ where: { id: 'b_cold' } })).boardCode;
+    assert.match(coldCode, /^[A-Z2-9]{4}-[A-Z2-9]{4}$/, 'the brand got its Show Board code at the send');
+    assert.match(annLead.custom_variables.board_link, new RegExp('/partnerships\\?code=' + coldCode + '&p=[A-Z2-9]{6}$'));
+    assert.deepEqual({ ...annLead, custom_variables: { sb_id: annLead.custom_variables.sb_id } },
       { email: 'ann@cold.com', first_name: 'Ann', last_name: 'Lee', company_name: 'Cold Co', job_title: 'Head of Partnerships', website: 'cold.com', custom_variables: { sb_id: 'c_ann' } });
-    for (const l of add.leads) assert.deepEqual(Object.keys(l).sort(), ['company_name', 'custom_variables', 'email', 'first_name', 'job_title', 'last_name', 'website'].sort());
+    for (const l of add.leads) {
+      assert.deepEqual(Object.keys(l).sort(), ['company_name', 'custom_variables', 'email', 'first_name', 'job_title', 'last_name', 'website'].sort());
+      assert.deepEqual(Object.keys(l.custom_variables).sort(), ['board_link', 'sb_id']);
+    }
+    // Two people at one brand share its code and differ by their own key.
+    const cyLead = add.leads.find(l => l.email === 'cy@cold.com');
+    assert.equal(cyLead.custom_variables.board_link.split('&p=')[0], annLead.custom_variables.board_link.split('&p=')[0]);
+    assert.notEqual(cyLead.custom_variables.board_link, annLead.custom_variables.board_link);
     const rows = await prisma.instantlyLead.findMany({ orderBy: { email: 'asc' } });
     assert.deepEqual(rows.map(x => [x.email, x.state, x.campaignId, !!x.leadId, x.pushedBy, !!x.batch]),
       [['ann@cold.com', 'waiting', 'camp-cold', true, 'Leo', true], ['cy@cold.com', 'waiting', 'camp-cold', true, 'Leo', true], ['dee@two.com', 'waiting', 'camp-cold', true, 'Leo', true]]);
     assert.equal(await prisma.emailMessage.count(), 0, 'the dashboard itself sent nothing');
-    ok('Send hands the ticked people to the campaign: name, title, company, website, email and our id — and the dashboard sends nothing');
+    ok('Send hands the ticked people to their template’s campaign: name, title, company, website, email, their own Show Board link and our id — and the dashboard sends nothing');
 
     // 6. They leave "ready"; the card counts them.
     const na = await data(leo, 'noAnswerList', {});
@@ -542,21 +577,100 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(es.totalSent, 0);
     ok('the dashboard never drafts a follow-up on top of Instantly’s sequence, and its cap and stats don’t count Instantly’s emails');
 
-    // 18c. Someone at a brand not reached yet, with no outreach row: ticked by hand, she gets a row (next in line —
-    //      the LinkedIn queue's numbers don't move) and goes; Instantly's email makes the brand reached.
+    // 18c. Templates ⇄ Instantly. Claude's token can save a template on the dashboard but never push one.
+    const mineT = { subject: '(BRAND) x SB Agency', steps: [{ body: 'Hi (NAME),\n\nYour board: (BOARD)\n\nBest,', wait: 0 }, { body: 'Hi (NAME),\n\nStill there?\n\nBest,', wait: 3 }] };
+    const savedByClaude = await data(null, 'saveInstantlyTemplate', { group: 'nicotine', ...mineT });
+    assert.deepEqual([savedByClaude.saved.group, savedByClaude.pushed.length], ['nicotine', 0]);
+    r = await call(null, 'saveInstantlyTemplate', { group: 'nicotine', push: true });
+    assert.equal(r.ok, false); assert.match(r.error, /Only someone signed in/);
+    r = await call(leo, 'saveInstantlyTemplate', { group: 'nicotine', subject: '', steps: [{ body: 'x' }] });
+    assert.equal(r.ok, false); assert.match(r.error, /subject is empty/);
+    // A key that can't write campaigns: said in words, nothing made.
+    F.failWrite = 403;
+    r = await call(leo, 'saveInstantlyTemplate', { group: 'nicotine', push: true });
+    assert.equal(r.ok, false); assert.match(r.error, /missing a permission/);
+    F.failWrite = 0;
+    assert.equal(F.campaigns.length, 2);
+    // Leo pushes it: a new draft campaign in Instantly, holding the template's emails in Instantly's own form.
+    const pushed = await data(leo, 'saveInstantlyTemplate', { group: 'nicotine', push: true });
+    assert.deepEqual([pushed.pushed[0].created, pushed.pushed[0].campaign.name], [true, 'SB cold · Nicotine']);
+    const made = F.campaigns.find(c => c.name === 'SB cold · Nicotine');
+    assert.deepEqual([made.status, made.daily_limit, made.stop_on_reply, made.open_tracking, made.link_tracking, made.text_only], [0, 30, true, false, false, true]);
+    assert.deepEqual(made.campaign_schedule.schedules[0].days, { 0: false, 1: false, 2: true, 3: true, 4: true, 5: false, 6: false });
+    assert.deepEqual(made.sequences[0].steps.map(x => [x.delay, x.variants[0].subject]), [[3, '{{companyName}} x SB Agency'], [0, '']]);
+    assert.equal(made.sequences[0].steps[0].variants[0].body, 'Hi {{firstName}},<br/><br/>Your board: {{board_link}}<br/><br/>Best,<br/>Zach Goldstein<br/>Co-CEO, SB Agency');
+    const grp = async (k) => (await data(leo, 'instantlyStatus', { live: true })).templates.groups.find(g => g.key === k);
+    let nic = await grp('nicotine');
+    assert.deepEqual([nic.state, nic.linked.name, nic.campaign.statusWord, nic.campaign.sends, nic.edited], ['match', 'SB cold · Nicotine', 'Draft', false, true]);
+    assert.ok(nic.campaign.warn.some(w => /No sending inbox/.test(w)), 'the draft still needs its inbox');
+    assert.equal((await grp('energy')).state, 'empty', 'the campaign Leo made by hand has no email of ours in it yet');
+    // Edited on the dashboard: the two differ, the dashboard's is newer; pushing it updates the same campaign.
+    await data(leo, 'saveInstantlyTemplate', { group: 'nicotine', subject: 'Quick one, (NAME)', steps: mineT.steps });
+    nic = await grp('nicotine');
+    assert.deepEqual([nic.state, nic.newer, nic.theirs.subject], ['differs', 'dashboard', '(BRAND) x SB Agency']);
+    const again = await data(leo, 'saveInstantlyTemplate', { group: 'nicotine', push: true });
+    assert.equal(again.pushed[0].created, false);
+    assert.equal(F.campaigns.filter(c => c.name === 'SB cold · Nicotine').length, 1, 'never a second campaign');
+    assert.equal(made.sequences[0].steps[0].variants[0].subject, 'Quick one, {{firstName}}');
+    assert.equal((await grp('nicotine')).state, 'match');
+    // Edited in Instantly instead: differs, Instantly's is newer; taking its version brings the words back as our placeholders.
+    made.sequences[0].steps[0].variants[0].body = '<div>Hey {{firstName}},</div><div><br></div><div>See {{board_link}}</div><div><br></div><div>Best,</div><div>Zach Goldstein</div><div>Co-CEO, SB Agency</div>';
+    nic = await grp('nicotine');
+    assert.deepEqual([nic.state, nic.newer], ['differs', 'instantly']);
+    await data(leo, 'pullInstantlyTemplate', { group: 'nicotine' });
+    nic = await grp('nicotine');
+    assert.deepEqual([nic.state, nic.steps[0].body], ['match', 'Hey (NAME),\n\nSee (BOARD)\n\nBest,']);
+    // A new signature goes to every campaign that has a template of ours.
+    const sig = await data(leo, 'saveInstantlyTemplate', { signature: 'Zach Goldstein\nSB Agency · 1 Main St, Miami FL', push: 'all' });
+    assert.deepEqual(sig.pushed.map(x => x.group), ['energy', 'nicotine']);
+    assert.match(made.sequences[0].steps[1].variants[0].body, /Best,<br\/>Zach Goldstein<br\/>SB Agency · 1 Main St, Miami FL$/);
+    assert.equal((await grp('nicotine')).state, 'match');
+    assert.equal((await grp('energy')).state, 'match', 'Energy’s hand-made campaign now holds the Energy template');
+    ok('a template is saved on the dashboard and written into its own Instantly campaign (a draft the first time); the page says when they differ and whose is newer, either can be taken, and a new signature reaches every campaign');
+
+    // 18d. Someone at a brand not reached yet, with no outreach row: ticked by hand, she gets a row (next in line —
+    //      the LinkedIn queue's numbers don't move), her own Show Board link, and goes to her template's campaign.
     assert.equal(await prisma.target.count({ where: { contactId: 'c_nia' } }), 0);
+    assert.equal((await prisma.brand.findUnique({ where: { id: 'b_nova' } })).boardCode, null);
     pv = await data(leo, 'sendToInstantly', {});
+    assert.deepEqual([line('Nia New').action, line('Nia New').tick, line('Nia New').campaignId], ['send', false, made.id]);
+    assert.equal((await prisma.brand.findUnique({ where: { id: 'b_nova' } })).boardCode, null, 'a preview makes no code');
     const nia = await data(leo, 'sendToInstantly', { ids: pick(['Nia New']), confirm: true, expect: pv.expect });
     assert.equal(nia.sent, 1);
+    assert.deepEqual(nia.campaigns.filter(c => c.sent).map(c => [c.group, c.name, c.sends]), [['nicotine', 'SB cold · Nicotine', false]]);
+    assert.deepEqual(nia.waitingToStart, ['SB cold · Nicotine']);
     const niaT = await prisma.target.findFirst({ where: { contactId: 'c_nia' }, include: { instantly: true } });
-    assert.deepEqual([niaT.status, niaT.shelved, niaT.shelvedHow, niaT.brandId, niaT.instantly.state], ['queued', true, 'cap', 'b_nova', 'waiting']);
+    assert.deepEqual([niaT.status, niaT.shelved, niaT.shelvedHow, niaT.brandId, niaT.instantly.state, niaT.instantly.campaignId], ['queued', true, 'cap', 'b_nova', 'waiting', made.id]);
+    const niaLead = F.calls.filter(c => c.path === '/api/v2/leads/add').pop().body;
+    assert.equal(niaLead.campaign_id, made.id);
+    const code = (await prisma.brand.findUnique({ where: { id: 'b_nova' } })).boardCode;
+    assert.match(code, /^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    const link = niaLead.leads[0].custom_variables.board_link;
+    assert.match(link, new RegExp('\\?code=' + code + '&p=[A-Z2-9]{6}$'));
+    assert.equal(niaLead.leads[0].custom_variables.sb_id, 'c_nia');
     assert.ok(fakeLead('nia@nova.com'));
     assert.equal((await data(leo, 'reachedBrands', {})).brands['b_nova'], undefined, 'handed over is not reached yet');
-    await hook({ timestamp: new Date().toISOString(), event_type: 'email_sent', campaign_id: 'camp-cold', lead_email: 'nia@nova.com', step: 1, email_id: 'em-n1', email_subject: 'Nova Pouch x SB' }, HOOK2);
+    await hook({ timestamp: new Date().toISOString(), event_type: 'email_sent', campaign_id: made.id, lead_email: 'nia@nova.com', step: 1, email_id: 'em-n1', email_subject: 'Quick one, Nia' }, HOOK2);
     assert.ok((await data(leo, 'reachedBrands', {})).brands['b_nova'], 'once Instantly emails her, the brand carries the Reached tag');
     const nova = (await data(leo, 'outreachTracker', {})).brands.find(b => b.id === 'b_nova');
     assert.equal(nova.stage, 'reached');
-    ok('someone at a brand not reached yet goes when ticked by hand: she gets an outreach row (next in line), and the email makes the brand reached');
+    // She opens her link: the board logs the visit as hers, and the page counts it.
+    st = await data(leo, 'instantlyStatus', {});
+    assert.equal(st.counts.opened, 0);
+    const q = new URL(link).search;
+    await fetch(BASE + '/api/public/shows' + q).catch(() => null);
+    const visit = await prisma.boardVisit.findFirst({ where: { brandId: 'b_nova' } });
+    assert.deepEqual([visit.email, visit.code], ['nia@nova.com', code]);
+    st = await data(leo, 'instantlyStatus', {});
+    assert.equal(st.counts.opened, 1);
+    assert.deepEqual(st.people.filter(x => x.state === 'opened').map(x => [x.name, x.brandName, x.email, x.note]), [['Nia New', 'Nova Pouch', 'nia@nova.com', '1 open · under a minute']]);
+    // The brand's plain link (no key), a key that fits nobody there, and a key on another brand's code: the brand's visit, nobody's name.
+    await prisma.boardVisit.deleteMany({});
+    await fetch(BASE + '/api/public/shows?code=' + code).catch(() => null);
+    await fetch(BASE + '/api/public/shows?code=' + code + '&p=ZZZZZZ', { headers: { 'x-forwarded-for': '10.0.0.2' } }).catch(() => null);
+    assert.deepEqual((await prisma.boardVisit.findMany({ where: { brandId: 'b_nova' } })).map(v => v.email), [null, null]);
+    assert.equal((await data(leo, 'instantlyStatus', {})).counts.opened, 0);
+    ok('someone at a brand not reached yet goes when ticked: an outreach row (next in line), her template’s campaign, and her own Show Board link — opening it shows on the page as hers');
 
     // 19. A bad key, a lapsed plan: said in words, nothing breaks.
     F.fail = 401;
@@ -578,9 +692,10 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
 
     // 20. Claude's day: picking the campaign is a change; a preview and a status read are not.
     const acts = await prisma.claudeAction.findMany({ orderBy: { at: 'asc' } });
-    assert.deepEqual(acts.map(a => a.fn), ['setInstantlyCampaign']);
-    assert.match(acts[0].text, /Set the Instantly campaign people go to: Cold/);
-    ok('Claude’s day lists the campaign Claude picked — never a read, a preview or a refused send');
+    assert.deepEqual(acts.map(a => a.fn), ['setInstantlyCampaign', 'saveInstantlyTemplate']);
+    assert.match(acts[0].text, /Set the Instantly campaign for Energy drinks: Cold/);
+    assert.equal(acts[1].text, 'Saved the Nicotine cold email template');
+    ok('Claude’s day lists the campaign Claude linked and the template it saved — never a read, a preview or a refused send or push');
 
     // 21. Live updates off: our webhook leaves Instantly, and its secret opens nothing.
     const off = await data(leo, 'setInstantlyHook', { on: false });

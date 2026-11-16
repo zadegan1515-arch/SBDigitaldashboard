@@ -185,7 +185,7 @@ const BLOCKED: Record<string, keyof typeof WHY> = {
   // Instantly (cold email): who goes to it, which campaign, its webhook, the
   // sync that takes people back out. instantlyStatus (a read) stays open.
   sendToInstantly: 'instantly', undoSendToInstantly: 'instantly', setInstantlyCampaign: 'instantly', setInstantlyHook: 'instantly',
-  instantlySync: 'instantly',
+  instantlySync: 'instantly', saveInstantlyTemplate: 'instantly', pullInstantlyTemplate: 'instantly',
   // The ops@ mailbox.
   scanOps: 'ops', listOps: 'ops', getOpsItem: 'ops', updateOpsItem: 'ops', deleteOpsItem: 'ops',
   replyOps: 'ops', forwardOps: 'ops', opsLinkOptions: 'ops', getOpsStatus: 'ops',

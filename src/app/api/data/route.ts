@@ -57,15 +57,18 @@ import {
   cleanEmail as cleanFoundEmail, FIND_MIN_DAYS, FRESH_PER_BRAND, FOUND_LAST_KEY, type FoundContact, type HunterRow, type FindRow, type FreshBrand, type BrandSpot,
 } from '@/lib/find-emails'
 import {
-  planPush, leadFor, campaignView, batchId, isActive as instantlyActive, INSTANTLY_KEY_ENV, KEY_SCOPES as INSTANTLY_SCOPES,
-  CAMPAIGN_KEY as INSTANTLY_CAMPAIGN_KEY, SYNC_KEY as INSTANTLY_SYNC_KEY, PUSH_LAST_KEY as INSTANTLY_PUSH_KEY, PUSH_MAX as INSTANTLY_PUSH_MAX,
-  STATE_WORDS as INSTANTLY_STATE_WORDS, type PushPerson,
+  planPush, leadFor, campaignView, batchId, INSTANTLY_KEY_ENV, KEY_SCOPES as INSTANTLY_SCOPES,
+  SYNC_KEY as INSTANTLY_SYNC_KEY, PUSH_LAST_KEY as INSTANTLY_PUSH_KEY, PUSH_MAX as INSTANTLY_PUSH_MAX,
+  STATE_WORDS as INSTANTLY_STATE_WORDS, type PushPerson, type Campaign as InstantlyCampaign,
 } from '@/lib/instantly'
-import { instantlyKeySet, listCampaigns as instantlyCampaigns, getCampaign as instantlyCampaign, listWebhooks as instantlyWebhooks } from '@/lib/instantly-api'
+import { instantlyKeySet, listCampaigns as instantlyCampaigns, listWebhooks as instantlyWebhooks } from '@/lib/instantly-api'
 import {
-  chosenCampaign, hookInfo, lastPush, pushLeads, syncInstantly, pullBack as instantlyPullBack, undoPush as instantlyUndoPush, setHook as instantlySetHook,
-  readJson as readInstantlyJson, writeJson as writeInstantlyJson, type ChosenCampaign,
+  hookInfo, lastPush, pushLeads, syncInstantly, pullBack as instantlyPullBack, undoPush as instantlyUndoPush, setHook as instantlySetHook,
+  readJson as readInstantlyJson, writeJson as writeInstantlyJson,
+  groupCampaigns, templatesState, saveTemplate as saveColdTemplate, pushTemplate as pushColdTemplate, pullTemplate as pullColdTemplate, linkCampaign as linkColdCampaign,
 } from '@/lib/instantly-db'
+import { TEMPLATE_GROUPS, GENERAL as GENERAL_TEMPLATE, groupOfCategory, groupLabel as templateLabel, readTemplates, fromSequence, syncState as templateSync, hasBoard } from '@/lib/cold-templates'
+import { personBoardLink } from '@/lib/board-key'
 import { BIG_BRAND_WORK, brandSize } from '@/lib/brand-size'
 import { outcomeRates, ACCEPT_AFTER_DAYS as OUTCOME_ACCEPT_DAYS, type OutcomeInvite } from '@/lib/outcomes'
 import {
@@ -5463,6 +5466,25 @@ function talksEventOut(e: { id: string; kind: string; stage: string | null; at: 
   }
 }
 
+// Every brand's Show Board code, made now for the ones that have none (the
+// brand page mints one on demand; a cold email's personal link needs it).
+// Never replaces a code that's there.
+async function ensureBoardCodes(brandIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  if (!brandIds.length) return out
+  const have = await prisma.brand.findMany({ where: { id: { in: brandIds } }, select: { id: true, boardCode: true } })
+  for (const b of have) {
+    if (b.boardCode) { out.set(b.id, b.boardCode); continue }
+    for (let i = 0; i < 6 && !out.has(b.id); i++) {
+      const code = newBoardCode()
+      if (await prisma.brand.findFirst({ where: { boardCode: code }, select: { id: true } })) continue
+      await prisma.brand.updateMany({ where: { id: b.id, boardCode: null }, data: { boardCode: code } })
+      const now = await prisma.brand.findUnique({ where: { id: b.id }, select: { boardCode: true } })
+      if (now?.boardCode) out.set(b.id, now.boardCode)
+    }
+  }
+  return out
+}
 function sponsorBoardUrl(): string {
   const host = (process.env.SPONSOR_HOST || '').trim()
   return host
@@ -15947,8 +15969,8 @@ const handlers: Record<string, Handler> = {
   // the webhook is still on) — one read, never a write.
   async instantlyStatus({ live = false }: any = {}) {
     const connected = instantlyKeySet()
-    const [chosen, hook, sync, last, byState, rows] = await Promise.all([
-      chosenCampaign(prisma), hookInfo(prisma), readInstantlyJson<any>(prisma, INSTANTLY_SYNC_KEY, null), lastPush(prisma),
+    const [groupMap, tplState, hook, sync, last, byState, rows, handed] = await Promise.all([
+      groupCampaigns(prisma), templatesState(prisma), hookInfo(prisma), readInstantlyJson<any>(prisma, INSTANTLY_SYNC_KEY, null), lastPush(prisma),
       prisma.instantlyLead.groupBy({ by: ['state'], _count: { _all: true } }),
       prisma.instantlyLead.findMany({
         where: { state: { in: ['replied', 'bounced', 'unsubscribed', 'removed'] } },
@@ -15958,8 +15980,12 @@ const handlers: Record<string, Handler> = {
           target: { select: { brandId: true, contactId: true, contact: { select: { name: true, title: true } }, brand: { select: { name: true } } } },
         },
       }),
+      prisma.instantlyLead.findMany({
+        select: { email: true, pushedAt: true, target: { select: { brandId: true, contactId: true, contact: { select: { name: true, title: true } }, brand: { select: { name: true } } } } },
+        take: 20000,
+      }),
     ])
-    const counts: Record<string, number> = { waiting: 0, sent: 0, replied: 0, bounced: 0, unsubscribed: 0, done: 0, removed: 0, total: 0, emailed: 0 }
+    const counts: Record<string, number> = { waiting: 0, sent: 0, replied: 0, bounced: 0, unsubscribed: 0, done: 0, removed: 0, total: 0, emailed: 0, opened: 0 }
     for (const g of byState) { counts[g.state] = (counts[g.state] ?? 0) + g._count._all; counts.total += g._count._all }
     // Emailed = everyone Instantly has written to, wherever they stand now.
     counts.emailed = await prisma.instantlyLead.count({ where: { sentAt: { not: null } } })
@@ -15968,16 +15994,33 @@ const handlers: Record<string, Handler> = {
       at: (r.repliedAt ?? r.endedAt)?.toISOString() ?? null,
       name: r.target.contact.name, title: r.target.contact.title, brandId: r.target.brandId, brandName: r.target.brand.name, contactId: r.target.contactId,
     }))
+    // Who opened their own Show Board link since they were handed over (the
+    // board logs a personal link's visit under that person's email).
+    const visits = handed.length ? await prisma.boardVisit.findMany({
+      where: { email: { in: [...new Set(handed.map(h => h.email))] } },
+      select: { brandId: true, email: true, createdAt: true, lastSeenAt: true }, orderBy: { createdAt: 'desc' }, take: 5000,
+    }) : []
+    const opened: typeof people = []
+    for (const h of handed) {
+      const mine = visits.filter(v => v.email === h.email && v.brandId === h.target.brandId && v.createdAt >= h.pushedAt)
+      if (!mine.length) continue
+      const minutes = Math.round(mine.reduce((n, v) => n + Math.max(0, (v.lastSeenAt?.getTime() ?? v.createdAt.getTime()) - v.createdAt.getTime()), 0) / 60000)
+      opened.push({
+        state: 'opened', stateWord: 'Opened the board', email: h.email,
+        note: mine.length + (mine.length === 1 ? ' open' : ' opens') + (minutes ? ' · ' + minutes + ' min on the board' : ' · under a minute'),
+        at: mine[0].createdAt.toISOString(),
+        name: h.target.contact.name, title: h.target.contact.title, brandId: h.target.brandId, brandName: h.target.brand.name, contactId: h.target.contactId,
+      })
+    }
+    opened.sort((x, y) => String(y.at).localeCompare(String(x.at)))
+    counts.opened = opened.length
     const waitingInLast = last ? await prisma.instantlyLead.count({ where: { batch: last.batch, state: 'waiting' } }) : 0
-    let campaigns: ReturnType<typeof campaignView>[] | null = null
-    let campaign: ReturnType<typeof campaignView> | null = null
-    let error: string | null = null, campaignGone = false
+    let raw: InstantlyCampaign[] | null = null
+    let error: string | null = null
     let hookState: { on: boolean; at: string | null; working: boolean | null } = { on: !!hook, at: hook?.at ?? null, working: null }
     if (connected && live) {
       try {
-        campaigns = (await instantlyCampaigns()).map(campaignView)
-        campaign = chosen ? campaigns.find(c => c.id === chosen.id) ?? null : null
-        campaignGone = !!chosen && !campaign
+        raw = await instantlyCampaigns()
         if (hook) {
           const mine = (await instantlyWebhooks()).find(w => w.id === hook.id)
           // Gone, or switched off by Instantly after failed deliveries.
@@ -15985,35 +16028,84 @@ const handlers: Record<string, Handler> = {
         }
       } catch (err: any) { error = String(err?.message ?? 'Couldn’t reach Instantly') }
     }
+    // Each template group: its emails on the dashboard, its Instantly
+    // campaign, and whether the two say the same thing.
+    const tpls = readTemplates(tplState)
+    const groups = tpls.groups.map(g => {
+      const linked = groupMap[g.key] ?? null
+      const found = raw && linked ? raw.find(c => c.id === linked.id) ?? null : null
+      const theirs = found ? fromSequence(found.sequences, tpls.signature) : null
+      const st = raw === null ? { state: linked ? 'unknown' : 'none', newer: null }
+        : templateSync({ mine: { subject: g.subject, steps: g.steps }, signature: tpls.signature, linked: !!linked, found: !!found, theirs, pushedSig: linked?.sig ?? null })
+      return {
+        key: g.key, label: g.label, categories: g.categories, subject: g.subject, steps: g.steps, edited: g.edited, at: g.at, by: g.by,
+        hasBoard: hasBoard(g.steps[0]?.body ?? ''),
+        linked: linked ? { id: linked.id, name: linked.name } : null,
+        campaign: found ? campaignView(found) : null,
+        state: st.state, newer: st.newer, theirs: st.state === 'differs' ? theirs : null,
+      }
+    })
     return {
       connected, keyName: INSTANTLY_KEY_ENV, scopes: INSTANTLY_SCOPES,
-      chosen: chosen ? { id: chosen.id, name: chosen.name } : null, campaign, campaignGone, campaigns, error,
-      counts, people, hook: hookState, sync,
+      campaigns: raw ? raw.map(campaignView) : null, error,
+      templates: { signature: tpls.signature, groups },
+      counts, people: [...opened.slice(0, 80), ...people], hook: hookState, sync,
       last: last ? { at: last.at, by: last.by, count: last.count, campaignName: last.campaignName, waiting: waitingInLast } : null,
     }
   },
 
-  // Which campaign people go to. Checked with Instantly first.
-  async setInstantlyCampaign({ campaignId, __user }: any) {
-    const id = String(campaignId || '').trim()
-    if (!id) throw new Error('Pick a campaign')
-    const c = campaignView(await instantlyCampaign(id))
-    const value: ChosenCampaign = { id: c.id, name: c.name, at: new Date().toISOString(), by: talksBy(__user) }
-    await writeInstantlyJson(prisma, INSTANTLY_CAMPAIGN_KEY, value)
-    return { campaign: c }
+  // A group's template (cold-templates.ts): saved on the dashboard, and —
+  // with `push` — written into that group's Instantly campaign (a new draft
+  // campaign the first time). `push: 'all'` = every group that has one (after
+  // a change to the signature). `reset` = back to the draft. Pushing is a
+  // signed-in person's: it changes what Instantly sends.
+  async saveInstantlyTemplate({ group, subject, steps, signature, reset = false, push = false, __user, __key }: any = {}) {
+    const human = !!__user && __user !== 'CLI' && !__key
+    if (push && !human) throw new Error('Only someone signed in to the dashboard can send a template to Instantly.')
+    const by = talksBy(__user)
+    const hasGroup = group !== undefined && group !== null && group !== ''
+    const editing = hasGroup && (reset || subject !== undefined || steps !== undefined)
+    const saved = editing || signature !== undefined
+      ? await saveColdTemplate(prisma, { group: editing ? group : undefined, template: { subject, steps }, signature, reset: !!reset, by })
+      : null
+    const pushed: Array<{ group: string; label: string; created: boolean; campaign: { id: string; name: string } }> = []
+    if (push === 'all') {
+      const linked = await groupCampaigns(prisma)
+      for (const g of TEMPLATE_GROUPS) if (linked[g.key]) pushed.push(await pushColdTemplate(prisma, g.key, by))
+    } else if (push) {
+      if (!hasGroup) throw new Error('Which template?')
+      pushed.push(await pushColdTemplate(prisma, group, by))
+    }
+    return { saved, pushed, label: hasGroup ? templateLabel(String(group)) : null }
   },
 
-  // Hand people to the chosen campaign. Without confirm: everyone who could
-  // go, each with where their address came from, ticked or not (rule 6) —
-  // the ready list of the card above (an email on file, never emailed, at a
-  // brand nobody answered from or one not reached yet — those start
-  // unticked), less anyone stopped. confirm + the ticked people (contact
-  // ids) + the preview's `expect` (changed since → stale) sends them; someone
-  // with no outreach row yet gets one first, next in line, so the LinkedIn
-  // queue's numbers don't move. Only
-  // a signed-in person can: never a key, never Claude's token, never a cron.
-  // Instantly emails them from there — if the campaign is running, from its
-  // next sending slot; the answer says which.
+  // Instantly's emails for a group taken as the dashboard's template.
+  async pullInstantlyTemplate({ group, __user }: any = {}) {
+    return pullColdTemplate(prisma, group, talksBy(__user))
+  },
+
+  // A campaign made in Instantly by hand, given to a template group (the
+  // people whose brands get that template go to it); '' takes it off.
+  // Checked with Instantly first.
+  async setInstantlyCampaign({ campaignId, group, __user }: any) {
+    const r = await linkColdCampaign(prisma, group || GENERAL_TEMPLATE, String(campaignId || '').trim(), talksBy(__user))
+    return { group: r.group, label: r.label, campaign: r.campaign ? campaignView(r.campaign) : null }
+  },
+
+  // Hand people to Instantly. Without confirm: everyone who could go, each
+  // with where their address came from, ticked or not (rule 6) — the ready
+  // list of the Hunter card (an email on file, never emailed, at a brand
+  // nobody answered from or one not reached yet — those start unticked),
+  // less anyone stopped. Each goes to the campaign of their brand's template
+  // (cold-templates.ts groupOfCategory); a group with no campaign yet can't
+  // go. confirm + the ticked people (contact ids) + the preview's `expect`
+  // (changed since → stale) sends them; someone with no outreach row yet gets
+  // one first, next in line, so the LinkedIn queue's numbers don't move, and
+  // everyone gets their own Show Board link (their brand's code, minted if it
+  // has none, + their key — board-key.ts) as the template's (BOARD). Only a
+  // signed-in person can: never a key, never Claude's token, never a cron.
+  // Instantly emails them from there — a running campaign from its next
+  // sending slot; the answer says which are.
   async sendToInstantly({ ids, confirm = false, expect, perBrand, __user, __key }: any = {}) {
     // The same list the card above shows (`perBrand` = its "people a brand" for brands not reached yet).
     const list: any = await handlers.noAnswerList({ minDays: 0, perBrand })
@@ -16028,50 +16120,66 @@ const handlers: Record<string, Handler> = {
       .filter(r => r.group !== 'working')
       .map(r => (r.group === 'held' ? { ...r, group: 'fresh' as const } : r))
     const cids = ready.map(r => r.contactId)
-    const [contacts, stops, chosen] = await Promise.all([
+    const [contacts, stops, groupMap] = await Promise.all([
       prisma.contact.findMany({
         where: { id: { in: cids } },
         select: {
           id: true, name: true, notes: true, email: true, linkedinUrl: true, brandId: true, doNotContactAt: true,
-          brand: { select: { name: true, website: true, stoppedAt: true } },
+          brand: { select: { name: true, website: true, stoppedAt: true, category: true } },
           targets: { select: { id: true, handDeclinedAt: true, instantly: { select: { id: true } } } },
         },
       }),
-      loadStopIndex(), chosenCampaign(prisma),
+      loadStopIndex(), groupCampaigns(prisma),
     ])
+    // The campaigns as Instantly has them now: which still exist, which are running.
+    let live: Map<string, ReturnType<typeof campaignView>> | null = null
+    let error: string | null = null
+    if (instantlyKeySet() && Object.keys(groupMap).length) {
+      try { live = new Map((await instantlyCampaigns()).map(c => [c.id, campaignView(c)])) } catch (err: any) { error = String(err?.message ?? 'Couldn’t reach Instantly') }
+    }
+    const campOf = (tpl: string): string | null => {
+      const g = groupMap[tpl]
+      return g && (!live || live.has(g.id)) ? g.id : null
+    }
     const byId = new Map(contacts.map(c => [c.id, c]))
     const people: PushPerson[] = []
-    const leads = new Map<string, ReturnType<typeof leadFor>>()          // by contact id
+    const rowBy = new Map<string, HunterRow & { contactId: string }>()
     for (const r of ready) {
       const c = byId.get(r.contactId)
       if (!c) continue
+      rowBy.set(c.id, r)
       const t = c.targets[0] ?? null
       const hit = c.brand.stoppedAt ? null : stoppedMatch(stops, { brandId: c.brandId, name: c.name, linkedinUrl: c.linkedinUrl, email: c.email })
       const stopped = c.brand.stoppedAt ? stopWords({ at: c.brand.stoppedAt }, c.brand.name)
         : c.doNotContactAt || t?.handDeclinedAt ? stopWords({ name: c.name, at: c.doNotContactAt ?? t?.handDeclinedAt })
         : hit ? stopWords({ name: hit.name, at: hit.at }) : null
+      const tpl = groupOfCategory(c.brand.category)
       people.push({
         targetId: t?.id ?? null, contactId: c.id, name: c.name, first: r.first, last: r.last, title: r.title, email: c.email, linkedinUrl: c.linkedinUrl,
         notes: c.notes, brandId: c.brandId, brandName: c.brand.name, website: c.brand.website, domain: r.domain, group: r.group,
-        handed: !!t?.instantly, stopped,
+        handed: !!t?.instantly, stopped, tpl, tplLabel: templateLabel(tpl), campaignId: campOf(tpl),
       })
-      if (c.email) leads.set(c.id, leadFor({ name: c.name, first: r.first, last: r.last, title: r.title, email: c.email, brandName: c.brand.name, website: c.brand.website, domain: r.domain, contactId: c.id }))
     }
     const plan = planPush(people)
-    let campaign: ReturnType<typeof campaignView> | null = null
-    let error: string | null = null
-    if (chosen && instantlyKeySet()) {
-      try { campaign = campaignView(await instantlyCampaign(chosen.id)) } catch (err: any) { error = String(err?.message ?? 'Couldn’t reach Instantly') }
-    }
-    const summary = { lines: plan.lines, counts: plan.counts, expect: plan.sig, campaign, connected: instantlyKeySet(), chosen: chosen ? { id: chosen.id, name: chosen.name } : null, error }
+    // Per template: its campaign, whether it's running, how many could go.
+    const campaigns = TEMPLATE_GROUPS.map(g => {
+      const mine = plan.lines.filter(l => l.tpl === g.key && (l.action === 'send' || l.action === 'nocamp'))
+      const linked = groupMap[g.key]
+      const view = linked && live ? live.get(linked.id) ?? null : null
+      return {
+        group: g.key, label: g.label, people: mine.length, canGo: mine.filter(l => l.action === 'send').length,
+        id: linked && campOf(g.key) ? linked.id : null, name: view?.name ?? linked?.name ?? null,
+        statusWord: view?.statusWord ?? null, sends: view?.sends ?? false,
+      }
+    }).filter(c => c.people > 0)
+    const summary = { lines: plan.lines, counts: plan.counts, expect: plan.sig, campaigns, connected: instantlyKeySet(), error }
     if (!confirm) return { preview: true, ...summary }
-    if (!__user || __user === 'CLI' || __key) throw new Error('Only someone signed in to the dashboard can send people to Instantly — open Outreach → Email and press Send there.')
+    if (!__user || __user === 'CLI' || __key) throw new Error('Only someone signed in to the dashboard can send people to Instantly — open Outreach → Instantly and press Send there.')
     if (!instantlyKeySet()) throw new Error('Instantly isn’t connected yet — ' + INSTANTLY_KEY_ENV + ' isn’t set in Vercel')
-    if (!chosen) throw new Error('Pick the Instantly campaign they go to first')
-    if (!campaign) throw new Error(error || 'That campaign isn’t in Instantly any more — pick another')
+    if (error) throw new Error(error)
     if (String(expect || '') !== plan.sig) return { applied: false, stale: true, ...summary }
     const pick = new Set((Array.isArray(ids) ? ids : []).map(String))
-    const todo = plan.lines.filter(l => l.action === 'send' && pick.has(l.contactId) && leads.has(l.contactId))
+    const todo = plan.lines.filter(l => l.action === 'send' && pick.has(l.contactId) && l.campaignId)
     if (!todo.length) throw new Error('Nobody is ticked to send')
     if (todo.length > INSTANTLY_PUSH_MAX) throw new Error('That’s ' + todo.length + ' people — send at most ' + INSTANTLY_PUSH_MAX + ' at a time')
     // Someone never queued (a brand not reached yet, a person added by
@@ -16086,20 +16194,48 @@ const handlers: Record<string, Handler> = {
       })
       for (const t of await prisma.target.findMany({ where: { contactId: { in: bare.map(l => l.contactId) } }, select: { id: true, contactId: true } })) rowOf.set(t.contactId, t.id)
     }
+    // Each person's own Show Board link: their brand's code (made now if it
+    // has none) and their key.
+    const codes = await ensureBoardCodes([...new Set(todo.map(l => l.brandId))])
+    const boardBase = sponsorBoardUrl()
     const now = new Date()
     const batch = batchId(now)
-    const res = await pushLeads(prisma, {
-      campaignId: chosen.id, by: talksBy(__user), batch,
-      people: todo.filter(l => rowOf.has(l.contactId)).map(l => ({
-        targetId: rowOf.get(l.contactId) as string, contactId: l.contactId, name: l.name, brandName: l.brandName, email: l.email, lead: leads.get(l.contactId)!,
-      })),
-    })
+    const res: Awaited<ReturnType<typeof pushLeads>> = { sent: [], already: [], refused: [], remaining: null }
+    const went: Array<{ group: string; label: string; name: string; sent: number; sends: boolean; statusWord: string | null }> = []
+    for (const c of campaigns) {
+      const mine = todo.filter(l => l.tpl === c.group && rowOf.has(l.contactId))
+      if (!mine.length || !c.id) continue
+      const r = await pushLeads(prisma, {
+        campaignId: c.id, by: talksBy(__user), batch,
+        people: mine.map(l => {
+          const row = rowBy.get(l.contactId)
+          const code = codes.get(l.brandId)
+          const who = byId.get(l.contactId)!
+          return {
+            targetId: rowOf.get(l.contactId) as string, contactId: l.contactId, name: l.name, brandName: l.brandName, email: l.email,
+            lead: leadFor({
+              name: l.name, first: row?.first, last: row?.last, title: l.title, email: l.email, brandName: l.brandName, website: who.brand.website, domain: row?.domain,
+              contactId: l.contactId, boardLink: code ? personBoardLink(boardBase, code, l.contactId) : null,
+            }),
+          }
+        }),
+      })
+      res.sent.push(...r.sent); res.already.push(...r.already); res.refused.push(...r.refused)
+      if (r.remaining != null) res.remaining = r.remaining
+      went.push({ group: c.group, label: c.label, name: c.name ?? c.label, sent: r.sent.length, sends: c.sends, statusWord: c.statusWord })
+    }
+    const names = went.filter(w => w.sent).map(w => w.name)
     if (res.sent.length) {
-      await writeInstantlyJson(prisma, INSTANTLY_PUSH_KEY, { batch, at: now.toISOString(), by: talksBy(__user), campaignId: chosen.id, campaignName: campaign.name, count: res.sent.length })
+      await writeInstantlyJson(prisma, INSTANTLY_PUSH_KEY, {
+        batch, at: now.toISOString(), by: talksBy(__user), campaignId: went.find(w => w.sent)?.group ?? '',
+        campaignName: names.length > 1 ? names[0] + ' + ' + (names.length - 1) + ' more' : names[0] ?? '', count: res.sent.length,
+      })
     }
     return {
       applied: true, sent: res.sent.length, brands: new Set(todo.filter(l => res.sent.some(x => x.targetId === rowOf.get(l.contactId))).map(l => l.brandId)).size,
-      already: res.already, refused: res.refused, remaining: res.remaining, campaignName: campaign.name, sends: campaign.sends, statusWord: campaign.statusWord,
+      already: res.already, refused: res.refused, remaining: res.remaining, campaigns: went,
+      campaignName: names.length > 1 ? names.length + ' campaigns' : names[0] ?? '', sends: went.some(w => w.sent && w.sends),
+      waitingToStart: went.filter(w => w.sent && !w.sends).map(w => w.name),
     }
   },
 

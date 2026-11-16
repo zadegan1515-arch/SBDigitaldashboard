@@ -32,7 +32,8 @@ export const PUSH_LAST_KEY = 'instantlyPushLast'    // Setting — the last Send
 export const HOOK_HEADER = 'x-sb-hook'
 export const VIA = 'instantly'
 // The scopes the key needs (Instantly → Settings → Integrations → API Keys).
-export const KEY_SCOPES = ['campaigns:read', 'leads:all', 'emails:read', 'webhooks:all', 'block_list_entries:all']
+// (campaigns:all since the templates: the dashboard writes each group's emails into its campaign.)
+export const KEY_SCOPES = ['campaigns:all', 'leads:all', 'emails:read', 'webhooks:all', 'block_list_entries:all']
 // Instantly takes up to 1,000 leads a call; smaller keeps a call well inside a request.
 export const PUSH_CHUNK = 200
 export const PUSH_MAX = 1000
@@ -95,11 +96,16 @@ export type PushPerson = {
   brandId: string; brandName: string; website?: string | null; domain?: string | null; group?: string | null
   handed?: boolean          // already has an InstantlyLead
   stopped?: string | null   // why they're never contacted, in words
+  // Which template their brand's category gets (cold-templates.ts) and the
+  // Instantly campaign that template lives in: null = that campaign isn't
+  // set up yet, so they can't go; left out = no routing (one campaign).
+  tpl?: string | null; tplLabel?: string | null; campaignId?: string | null
 }
-export type PushAction = 'send' | 'handed' | 'bad' | 'stopped'
+export type PushAction = 'send' | 'handed' | 'bad' | 'stopped' | 'nocamp'
 export type PushLine = {
   targetId: string | null; contactId: string; name: string; title: string | null; brandId: string; brandName: string; email: string
   source: EmailSource; action: PushAction; why: string; tick: boolean; group: string | null
+  tpl: string | null; tplLabel: string | null; campaignId: string | null
 }
 export type PushPlan = { lines: PushLine[]; counts: Record<PushAction, number> & { ticked: number; brands: number; fresh: number }; sig: string }
 // The group of someone at a brand nobody has reached out to yet (find-emails.ts).
@@ -119,13 +125,17 @@ export function planPush(people: PushPerson[]): PushPlan {
   for (const p of people) {
     const email = cleanEmail(p.email)
     const source = emailSource(p.notes)
-    const base = { targetId: p.targetId, contactId: p.contactId, name: p.name, title: p.title ?? null, brandId: p.brandId, brandName: p.brandName, email, source, group: p.group ?? null }
+    const base = {
+      targetId: p.targetId, contactId: p.contactId, name: p.name, title: p.title ?? null, brandId: p.brandId, brandName: p.brandName, email, source, group: p.group ?? null,
+      tpl: p.tpl ?? null, tplLabel: p.tplLabel ?? null, campaignId: p.campaignId ?? null,
+    }
     const put = (action: PushAction, why: string, tick = false) => lines.push({ ...base, action, why, tick })
     if (p.handed) { put('handed', 'Already in Instantly'); continue }
     if (!looksLikeEmail(email)) { put('bad', 'Not an email address'); continue }
     if (p.stopped) { put('stopped', p.stopped); continue }
     if (used.has(email)) { put('bad', 'Someone else on the list has this address'); continue }
     used.add(email)
+    if (p.campaignId === null) { put('nocamp', 'No Instantly campaign for ' + (p.tplLabel || 'their template') + ' yet — set it up under Templates'); continue }
     const role = isRoleInbox(email)
     const free = !mailDomain(email)
     const fresh = p.group === FRESH_GROUP
@@ -135,7 +145,7 @@ export function planPush(people: PushPerson[]): PushPlan {
       : SOURCE_WORDS[source]) + (fresh ? ' · brand not reached on LinkedIn yet' : '')
     put('send', why, !role && source !== 'unverified' && !fresh)
   }
-  const counts = { send: 0, handed: 0, bad: 0, stopped: 0, ticked: 0, brands: 0, fresh: 0 } as PushPlan['counts']
+  const counts = { send: 0, handed: 0, bad: 0, stopped: 0, nocamp: 0, ticked: 0, brands: 0, fresh: 0 } as PushPlan['counts']
   const brands = new Set<string>()
   for (const l of lines) {
     counts[l.action] += 1
@@ -145,17 +155,18 @@ export function planPush(people: PushPerson[]): PushPlan {
     if (l.group === FRESH_GROUP) counts.fresh += 1
   }
   counts.brands = brands.size
-  return { lines, counts, sig: sigOf(lines.filter(l => l.action === 'send').map(l => l.contactId + ':' + l.email)) }
+  return { lines, counts, sig: sigOf(lines.filter(l => l.action === 'send').map(l => l.contactId + ':' + l.email + (l.campaignId ? ':' + l.campaignId : ''))) }
 }
 
 // The lead Instantly gets. Only what a cold email needs: the address, the
-// name, the company, the title, the website — and our id for the person,
-// which comes back on every event. Nothing else about them leaves.
+// name, the company, the title, the website, their own Show Board link — and
+// our id for the person, which comes back on every event. Nothing else
+// about them leaves.
 export type InstantlyLeadIn = {
   email: string; first_name?: string; last_name?: string; company_name?: string; job_title?: string; website?: string
   custom_variables?: Record<string, string>
 }
-export function leadFor(p: { name: string; first?: string | null; last?: string | null; title?: string | null; email: string; brandName: string; website?: string | null; domain?: string | null; contactId: string }): InstantlyLeadIn {
+export function leadFor(p: { name: string; first?: string | null; last?: string | null; title?: string | null; email: string; brandName: string; website?: string | null; domain?: string | null; contactId: string; boardLink?: string | null }): InstantlyLeadIn {
   const nm = p.first ? { first: p.first, last: p.last ?? '' } : splitName(p.name)
   const first = nm?.first || String(p.name ?? '').trim().split(/\s+/)[0] || ''
   const site = websiteDomain(p.website) || p.domain || mailDomain(p.email) || ''
@@ -166,6 +177,8 @@ export function leadFor(p: { name: string; first?: string | null; last?: string 
   if (p.title) out.job_title = String(p.title).slice(0, 200)
   if (site) out.website = site
   out.custom_variables = { sb_id: p.contactId }
+  // Their own Show Board link — the template's (BOARD), {{board_link}} in Instantly.
+  if (p.boardLink) out.custom_variables.board_link = p.boardLink
   return out
 }
 

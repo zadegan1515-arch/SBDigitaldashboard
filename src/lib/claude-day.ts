@@ -87,7 +87,14 @@ export function actionText(fn: string, args: any, result: any): string | null {
     case 'undoFoundEmails': return `Took back ${plural(Number(r.removed) || 0, 'email')} saved from Hunter's file`
     // Instantly (a Claude session can pick the campaign, turn live updates on
     // and sync; handing people over is a signed-in person's click only).
-    case 'setInstantlyCampaign': return `Set the Instantly campaign people go to: ${s(r.campaign?.name)}`
+    case 'setInstantlyCampaign': return r.campaign ? `Set the Instantly campaign for ${s(r.label || 'everyone')}: ${s(r.campaign?.name)}` : `Took the Instantly campaign off ${s(r.label || 'a template')}`
+    case 'saveInstantlyTemplate': {
+      const what = r.saved?.group ? (r.saved.reset ? `Put the ${s(r.saved.label)} cold email back to its draft` : `Saved the ${s(r.saved.label)} cold email template`)
+        : r.saved?.signature ? 'Changed the cold emails’ signature' : ''
+      const sent = count(r.pushed) ? `sent ${count(r.pushed) === 1 ? s(r.pushed[0].label) : plural(count(r.pushed), 'template')} to Instantly` : ''
+      return [what, sent].filter(Boolean).join(' and ') || null
+    }
+    case 'pullInstantlyTemplate': return `Took Instantly’s version of the ${s(r.label)} cold email as the dashboard’s`
     case 'setInstantlyHook': return r.on ? 'Turned on live updates from Instantly' : 'Turned off live updates from Instantly'
     case 'instantlySync': {
       const bits = [

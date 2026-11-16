@@ -5,6 +5,7 @@
 // team code that always works and belongs to no brand.
 
 import { PrismaClient, type Brand } from '@prisma/client'
+import { cleanPersonKey, personOfKey } from '@/lib/board-key'
 
 const prisma = new PrismaClient()
 
@@ -39,6 +40,18 @@ export async function brandForCode(code: unknown): Promise<{ brand: Brand | null
     if (brand) return { brand }
   }
   return gateEnabled() ? null : { brand: null }
+}
+
+// A personal link's `p` (board-key.ts): which of the brand's people it was
+// sent to. Their email is what the visit is logged under. Null for no key, a
+// key that fits nobody there, or someone with no email. Never throws.
+export async function personForKey(brandId: string | null | undefined, key: unknown): Promise<{ id: string; name: string; email: string } | null> {
+  try {
+    if (!brandId || !cleanPersonKey(key)) return null
+    const people = await prisma.contact.findMany({ where: { brandId }, select: { id: true, name: true, email: true }, take: 200 })
+    const who = personOfKey(people, key)
+    return who && who.email ? { id: who.id, name: who.name, email: who.email } : null
+  } catch { return null }
 }
 
 // Log a board open. One row per (brand/email/ip) per half hour, so a

@@ -119,7 +119,7 @@ const MUST_BLOCK = [
   // email
   'sendApprovedEmails', 'sendEmailDraft', 'sendTestEmail', 'sendReplyEmail', 'sendEventInvite', 'approveAllDrafts', 'setSendingPaused',
   // Instantly (cold email) — its status read stays open
-  'sendToInstantly', 'undoSendToInstantly', 'setInstantlyCampaign', 'setInstantlyHook', 'instantlySync',
+  'sendToInstantly', 'undoSendToInstantly', 'setInstantlyCampaign', 'setInstantlyHook', 'instantlySync', 'saveInstantlyTemplate', 'pullInstantlyTemplate',
   // the ops mailbox
   'scanOps', 'listOps', 'getOpsItem', 'updateOpsItem', 'deleteOpsItem', 'replyOps', 'forwardOps', 'opsLinkOptions', 'getOpsStatus',
   // attendee records (rule 9)

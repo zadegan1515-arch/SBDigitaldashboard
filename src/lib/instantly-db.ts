@@ -18,6 +18,10 @@ import {
   CAMPAIGN_KEY, HOOK_KEY, PUSH_CHUNK, PUSH_LAST_KEY, SYNC_KEY, VIA, bounceNote, isActive, kindOfStep, leadFacts, pullBackWhy,
   stateBeats, stateOfLead, stepOfEmail, type InstantlyEvent, type InstantlyLeadIn, type LeadState,
 } from './instantly'
+import {
+  GENERAL, GROUP_CAMPAIGNS_KEY, TEMPLATES_KEY, campaignDraft, cleanSignature, cleanTemplate, fromSequence, groupLabel, isGroup, readTemplates,
+  templateSig, toSequence, type StoredTemplate, type Template, type TemplatesState,
+} from './cold-templates'
 
 type Db = PrismaClient
 
@@ -35,6 +39,114 @@ export type ChosenCampaign = { id: string; name: string; at: string; by: string 
 export const chosenCampaign = (db: Db) => readJson<ChosenCampaign | null>(db, CAMPAIGN_KEY, null)
 export type HookInfo = { id: string; secret: string; url: string; at: string }
 export const hookInfo = (db: Db) => readJson<HookInfo | null>(db, HOOK_KEY, null)
+
+// ---- templates and each group's campaign ---------------------------------
+
+export type GroupCampaign = { id: string; name: string; at: string; by: string | null; sig?: string | null }
+// Which Instantly campaign each template group's people go to. The campaign
+// picked before there were groups stands for "Everyone else".
+export async function groupCampaigns(db: Db): Promise<Record<string, GroupCampaign>> {
+  const map = await readJson<Record<string, GroupCampaign>>(db, GROUP_CAMPAIGNS_KEY, {})
+  if (!map[GENERAL]) {
+    const old = await chosenCampaign(db)
+    if (old) map[GENERAL] = { id: old.id, name: old.name, at: old.at, by: old.by }
+  }
+  return map
+}
+export const templatesState = (db: Db) => readJson<TemplatesState>(db, TEMPLATES_KEY, {})
+
+// One group's template saved on the dashboard (`reset` = back to the draft),
+// and / or the signature every email ends with. Nothing goes to Instantly.
+export async function saveTemplate(db: Db, args: { group?: unknown; template?: unknown; signature?: unknown; reset?: boolean; by: string | null }) {
+  const state = await templatesState(db)
+  const groups: Record<string, StoredTemplate> = { ...(state.groups ?? {}) }
+  let saved: string | null = null
+  if (args.group !== undefined && args.group !== null && args.group !== '') {
+    if (!isGroup(args.group)) throw new Error('Unknown template')
+    if (args.reset) delete groups[args.group]
+    else groups[args.group] = { ...cleanTemplate(args.template), at: new Date().toISOString(), by: args.by }
+    saved = args.group
+  }
+  const next: TemplatesState = { ...state, groups }
+  if (args.signature !== undefined) next.signature = cleanSignature(args.signature)
+  await writeJson(db, TEMPLATES_KEY, next)
+  return { group: saved, label: saved ? groupLabel(saved) : null, reset: !!args.reset, signature: args.signature !== undefined }
+}
+
+const templateOf = (state: TemplatesState, group: string): { tpl: Template; signature: string } => {
+  const all = readTemplates(state)
+  const g = all.groups.find(x => x.key === group)
+  if (!g) throw new Error('Unknown template')
+  return { tpl: { subject: g.subject, steps: g.steps }, signature: all.signature }
+}
+
+// The dashboard's template written into the group's Instantly campaign: its
+// emails replaced there, or — the first time — a new campaign made for it,
+// as a draft (the inbox, and starting it, are Leo's in Instantly).
+export async function pushTemplate(db: Db, group: unknown, by: string | null) {
+  if (!isGroup(group)) throw new Error('Unknown template')
+  const { tpl, signature } = templateOf(await templatesState(db), group)
+  const sequences = toSequence(tpl, signature)
+  const map = await groupCampaigns(db)
+  const linked = map[group]
+  let created = false
+  let campaign: { id: string; name: string }
+  let exists = false
+  if (linked) {
+    try { const c = await api.getCampaign(linked.id); exists = !!c?.id } catch (err) {
+      if (!(err instanceof api.InstantlyError && err.status === 404)) throw err
+    }
+  }
+  if (linked && exists) {
+    const c = await api.patchCampaign(linked.id, { sequences })
+    campaign = { id: linked.id, name: String(c?.name || linked.name) }
+  } else {
+    const c = await api.createCampaign(campaignDraft(group, sequences))
+    if (!c?.id) throw new Error('Instantly didn’t say which campaign it made — look in Instantly before trying again')
+    campaign = { id: String(c.id), name: String(c.name || 'SB cold · ' + groupLabel(group)) }
+    created = true
+  }
+  const fresh = await readJson<Record<string, GroupCampaign>>(db, GROUP_CAMPAIGNS_KEY, {})
+  fresh[group] = { id: campaign.id, name: campaign.name, at: new Date().toISOString(), by, sig: templateSig(tpl, signature) }
+  await writeJson(db, GROUP_CAMPAIGNS_KEY, fresh)
+  return { group, label: groupLabel(group), created, campaign }
+}
+
+// The other way: Instantly's emails for a group taken as the dashboard's
+// template (after an edit made in Instantly).
+export async function pullTemplate(db: Db, group: unknown, by: string | null) {
+  if (!isGroup(group)) throw new Error('Unknown template')
+  const linked = (await groupCampaigns(db))[group]
+  if (!linked) throw new Error('No Instantly campaign for ' + groupLabel(group) + ' yet')
+  const state = await templatesState(db)
+  const { signature } = templateOf(state, group)
+  const theirs = fromSequence((await api.getCampaign(linked.id)).sequences, signature)
+  if (!theirs) throw new Error('That campaign has no email written in Instantly')
+  const tpl = cleanTemplate(theirs)
+  await writeJson(db, TEMPLATES_KEY, { ...state, groups: { ...(state.groups ?? {}), [group]: { ...tpl, at: new Date().toISOString(), by } } })
+  const fresh = await readJson<Record<string, GroupCampaign>>(db, GROUP_CAMPAIGNS_KEY, {})
+  fresh[group] = { ...linked, sig: templateSig(tpl, signature) }
+  await writeJson(db, GROUP_CAMPAIGNS_KEY, fresh)
+  return { group, label: groupLabel(group), campaign: { id: linked.id, name: linked.name } }
+}
+
+// A campaign Leo made in Instantly himself, given to a group (or taken off it).
+export async function linkCampaign(db: Db, group: unknown, campaignId: string, by: string | null) {
+  if (!isGroup(group)) throw new Error('Unknown template')
+  const fresh = await readJson<Record<string, GroupCampaign>>(db, GROUP_CAMPAIGNS_KEY, {})
+  if (!campaignId) {
+    delete fresh[group]
+    await writeJson(db, GROUP_CAMPAIGNS_KEY, fresh)
+    if (group === GENERAL) await db.setting.deleteMany({ where: { key: CAMPAIGN_KEY } })
+    return { group, label: groupLabel(group), campaign: null }
+  }
+  const c = await api.getCampaign(campaignId)
+  const taken = Object.entries(fresh).find(([k, v]) => k !== group && v.id === campaignId)
+  if (taken) throw new Error('That campaign is already the one for ' + groupLabel(taken[0]))
+  fresh[group] = { id: String(c.id), name: String(c.name || 'Untitled campaign'), at: new Date().toISOString(), by, sig: null }
+  await writeJson(db, GROUP_CAMPAIGNS_KEY, fresh)
+  return { group, label: groupLabel(group), campaign: c }
+}
 
 const dayWords = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' })
 const NEAR_MS = 2 * 60 * 1000
@@ -228,9 +340,9 @@ export async function syncInstantly(db: Db, opts: { budgetMs?: number } = {}): P
   const t0 = Date.now()
   const over = () => Date.now() - t0 > (opts.budgetMs ?? 35000)
   try {
-    const chosen = await chosenCampaign(db)
+    const mine = Object.values(await groupCampaigns(db)).map(g => g.id)
     const used = await db.instantlyLead.findMany({ where: { state: { in: ['waiting', 'sent'] }, campaignId: { not: '' } }, distinct: ['campaignId'], select: { campaignId: true } })
-    const campaigns = [...new Set([...(chosen ? [chosen.id] : []), ...used.map(u => u.campaignId)])].slice(0, 8)
+    const campaigns = [...new Set([...mine, ...used.map(u => u.campaignId)])].slice(0, 12)
     out.campaigns = campaigns.length
     const last = await readJson<{ at?: string; ok?: boolean } | null>(db, SYNC_KEY, null)
     const oldest = await db.instantlyLead.findFirst({ orderBy: { pushedAt: 'asc' }, select: { pushedAt: true } })

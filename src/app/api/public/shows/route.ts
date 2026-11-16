@@ -7,7 +7,7 @@
 import '@/lib/bigint-json'
 import { NextResponse } from 'next/server'
 import { allShows, publicShow } from '@/lib/shows'
-import { brandForCode, gateEnabled, logBoardVisit } from '@/lib/board-access'
+import { brandForCode, gateEnabled, logBoardVisit, personForKey } from '@/lib/board-access'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -23,9 +23,14 @@ export async function GET(req: Request) {
     // anonymous visitor) so the Show Board tab can count total visits.
     const email = String(params.get('email') || '').trim()
     const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-    if (gateEnabled() && !validEmail) return NextResponse.json({ ok: false, error: 'email' }, { status: 401 })
+    // A personal link (?code=…&p=…, the cold emails' (BOARD)): the visit is
+    // logged as the person it was sent to — and with the gate on they aren't
+    // asked for an email, the link already says who they are. An email typed
+    // at the gate wins.
+    const person = validEmail ? null : await personForKey(who.brand?.id, params.get('p'))
+    if (gateEnabled() && !validEmail && !person) return NextResponse.json({ ok: false, error: 'email' }, { status: 401 })
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || null
-    const visitId = await logBoardVisit({ brandId: who.brand?.id, email: validEmail ? email : null, code, ip })
+    const visitId = await logBoardVisit({ brandId: who.brand?.id, email: validEmail ? email : person?.email ?? null, code, ip })
     const r = await allShows()
     const shows = r.shows.map(publicShow)
     return NextResponse.json(

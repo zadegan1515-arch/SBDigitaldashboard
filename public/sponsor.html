@@ -191,6 +191,8 @@
   // deliberately never remembered, so every visit goes through the gate.
   // Clear anything an older version of this page stored.
   var CODE = (P.get('code') || '').trim().toUpperCase(), GATE_EMAIL = '';
+  // A personal link's key (?p=): says which person at the brand the link was sent to.
+  var PERSON = (P.get('p') || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
   try { localStorage.removeItem('sbBoardCode'); localStorage.removeItem('sbBoardEmail'); } catch (e) {}
   fState = P.get('state') || ''; fGenre = P.get('genre') || ''; fSchool = P.get('school') || ''; q = P.get('q') || '';
   fPerf = (P.get('performer') || '').toLowerCase();
@@ -271,7 +273,7 @@
     // show the gate only on a 401 — missing email comes back as its own
     // error so a ?code= link just asks for the email, code pre-filled.
     document.getElementById('list').innerHTML = '<div class="empty">Loading shows…</div>';
-    fetch('/api/public/shows?code=' + encodeURIComponent(CODE) + '&email=' + encodeURIComponent(GATE_EMAIL)).then(function (r) { return r.json(); }).then(function (r) {
+    fetch('/api/public/shows?code=' + encodeURIComponent(CODE) + '&email=' + encodeURIComponent(GATE_EMAIL) + (PERSON ? '&p=' + PERSON : '')).then(function (r) { return r.json(); }).then(function (r) {
       if (!r.ok && r.error === 'code') { showGate(CODE ? 'That code didn’t work — check it and try again.' : ''); return; }
       if (!r.ok && r.error === 'email') { showGate(GATE_EMAIL ? 'Enter a valid work email to continue.' : ''); return; }
       if (!r.ok) throw new Error(r.error || 'Could not load');
