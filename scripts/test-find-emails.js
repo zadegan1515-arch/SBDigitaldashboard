@@ -275,7 +275,9 @@ async function main() {
   ok('brands not reached yet give their best 3 — or everyone, when asked');
 
   // ---- brands with nobody to look up: their websites, one a line ----
-  assert.match(await page.textContent('#fe-doms'), /2 brands not reached yet have nobody on file to look up\. Download their websites \(2\) for Hunter’s Bulks → Domain Search/);
+  // Three brands, two lines: two of them are one company's (the same website), looked up once — the count of brands matches the every-brand line.
+  assert.match(await page.textContent('#fe-doms'), /3 brands not reached yet have nobody on file to look up\. Download their websites \(2\) for Hunter’s Bulks → Domain Search/);
+  assert.match(await page.textContent('#fe-doms'), /1 shares a line with a sister brand/);
   assert.equal(await page.getAttribute('#fe-doms a', 'href'), 'https://hunter.io/bulks/domain-search');
   f = await grab('#fe-doms [data-fe="domains"]');
   assert.equal(f.name, 'sb-brand-websites-2026-11-16.csv');
@@ -302,7 +304,7 @@ async function main() {
   await page.selectOption('#fe-cat', 'beverage');
   assert.match(await page.textContent('#fe-need'), /^0 people/);
   assert.equal(await page.isDisabled('#fe-card [data-fe="download"]'), true);
-  assert.match(await page.textContent('#fe-doms'), /1 brand not reached yet has nobody on file to look up/);
+  assert.match(await page.textContent('#fe-doms'), /2 brands not reached yet have nobody on file to look up\. Download their websites \(1\)/);
   f = await grab('#fe-doms [data-fe="domains"]');
   assert.equal(f.name, 'sb-brand-websites-beverage-2026-11-16.csv');
   assert.deepEqual(f.grid, [['zestsoda.com']]);
